@@ -1321,15 +1321,50 @@ tens of milliseconds — so the ordinary slow-mirror case is an answer that land
 after the list was already built and settled. `OnlineFeatureStore.FeaturesUpdated`
 then invalidates the catalog, and MainForm marshals that onto the UI thread as
 `TaxiAssistForm.OnSurroundingsInvalidated(icao)`, which re-runs the warm-up when
-the form is still in Place mode at that airport with none already in flight. The
-same forward covers a DEGRADED catalog expiring. It is silent at the start — the
-pilot asked for nothing — and silent at the end unless the list really changed,
-in which case the new count is spoken, queued, only while the dialog is open; the
-pilot's own selection is preserved by the settle's existing "live pick wins"
-rule. A refresh that arrives while the destination dropdown is OPEN waits for it
-to close rather than rebuilding the list under the reading cursor. FBOs and
-hangars come mainly from OSM, so without this the pilot's FBO could be missing
-from the list with no hint that it exists.
+the form is still in Place mode at that airport with none already in flight.
+FBOs and hangars come mainly from OSM, so without this the pilot's FBO could be
+missing from the list with no hint that it exists.
+
+That event is the ONLY thing that invokes the forward, and the store raises it
+only when a late fetch SUCCEEDS — so a catalog left DEGRADED is covered only
+when the retry's own fetch lands. A fetch that refused, or a tier that threw,
+raises nothing, and the degraded expiry in `SurroundingsCatalogCache.FreshOrNull`
+notifies nobody; such a list is refreshed by the next ordinary rebuild instead
+(a destination-type switch, a filter toggle, an airport reload, a gate-token
+move).
+
+The refresh is silent at the start — the pilot asked for nothing — and silent at
+the end unless the list really changed, in which case the new count is spoken,
+queued, only while the dialog is open. One that arrives while the destination
+dropdown is OPEN waits for it to close rather than rebuilding the list under the
+reading cursor.
+
+**It stops being background the moment the pilot arrives in front of the list.**
+Switching the destination type away and back mid-refresh empties the list, finds
+nothing cached (the catalog was just invalidated), is refused a second warm-up by
+the in-flight guard and has its "no places" line suppressed by that same guard —
+and the refresh would then settle on an unchanged count and say nothing either,
+leaving the pilot in front of an empty list with not one word spoken.
+`DescribePlaceModeEntry` PROMOTES the running warm-up instead: the ordinary
+"Loading places for {icao}." is spoken there and then, and its settle reports
+like any foreground one. `_placesWarmUpBackground` is a field precisely so the
+settle sees the promotion. A silent destination restore promotes nothing.
+
+**A place that was RENAMED is not a place that was lost.** The catalog's own
+merge rule lets a proper OSM name absorb a synthesized one, so "GA ramp, Parking
+3" can come back as "Narrows Aviation, FBO, Parking 3" with the count unchanged —
+and re-seating by label alone then cleared the selection silently, so the next
+Calculate aborted with "Please select a destination." for no visible reason. On a
+BACKGROUND settle only, and only after the label has failed, the selection is put
+back by its routing TARGET (`PlaceTarget`: the destination node plus the stand's
+position, or no stand for a node-only place) — the same target is the same route,
+the same docking and the same `gate.select` decision, so it is the same choice
+under a new name; the first match wins if two entries share one. Where even the
+target is gone the pilot hears `PlaceListUpdatedMessage` — *"Places updated.
+Please choose the destination again."*, never the GSX sentence, because GSX did
+not do this — queued, while the dialog is visible, and it REPLACES that settle's
+count line. The gate-source-refresh and restore origins keep their existing label
+rule untouched.
 
 **A pending selection the rebuilt list no longer carries leaves NOTHING
 selected, never item 0** — item 0 plus Calculate would route to, and

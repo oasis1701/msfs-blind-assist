@@ -332,6 +332,14 @@ public class TaxiAssistForm : Form
     /// for both and the pilot heard "Loading places for …" and the count twice over. Every other
     /// reader only asks "is a warm-up in flight", which a ticket answers identically.</para></summary>
     private object? _placesWarmUp;
+
+    /// <summary>Whether the warm-up <see cref="_placesWarmUp"/> names is still a BACKGROUND one —
+    /// a FIELD, not just the parameter, because it can be PROMOTED while it runs. The moment the
+    /// pilot arrives in front of the Place list (<see cref="OnDestTypeChanged"/>) a refresh they
+    /// were not waiting on becomes one they are, and its settle must report like any foreground
+    /// warm-up. Meaningless while <see cref="_placesWarmUp"/> is null.</summary>
+    private bool _placesWarmUpBackground;
+
     // True while a programmatic type restore must stay silent (RestoreDestinationState).
     private bool _suppressPlaceAnnounce;
 
@@ -2139,6 +2147,7 @@ public class TaxiAssistForm : Form
         // for state its successor now owns. The pending re-select belongs to the list being
         // replaced and goes with it.
         _placesWarmUp = null;
+        _placesWarmUpBackground = false;
         _pendingPlaceSelection = null;
         _graphSourceToken = "";
         // Invalidate the gate-branch resolution cache — the new airport has a
@@ -2945,6 +2954,7 @@ public class TaxiAssistForm : Form
         // OWNED BY A TICKET, not by the Task — see _placesWarmUp for why the Task cannot serve.
         object mine = new();
         _placesWarmUp = mine;
+        _placesWarmUpBackground = backgroundRefresh;
         var build = SurroundingsCatalogAsync(icao);
         Navigation.Surroundings.AirportFeatureCatalog? built = null;
         try { built = await build; }
@@ -2972,7 +2982,11 @@ public class TaxiAssistForm : Form
                 $"Place warm-up for {icao} was superseded by a newer one; leaving its pending selection alone.");
             return;
         }
+        // The FIELD, not the parameter: OnDestTypeChanged can have PROMOTED this warm-up to a
+        // foreground one since it started, and then it owes the pilot an ordinary settle.
+        bool background = _placesWarmUpBackground;
         _placesWarmUp = null;
+        _placesWarmUpBackground = false;
 
         // Everything below is wrapped like RefreshTrafficThenRepopulate's body, the method this
         // one is shaped after: PopulateDestinations reaches file and DB work, and an exception
@@ -2995,8 +3009,10 @@ public class TaxiAssistForm : Form
             if (catalog == null && built != null && !isRetry)
             {
                 // Built, then discarded by an invalidation that overtook it. Rebuild ONCE — never
-                // a loop: the retry cannot reach this branch again.
-                WarmPlaces(icao, silentRestore, isRetry: true, backgroundRefresh);
+                // a loop: the retry cannot reach this branch again. It inherits the PROMOTED
+                // background flag, not the parameter, or a promotion made during this round
+                // would be undone by its own retry.
+                WarmPlaces(icao, silentRestore, isRetry: true, background);
                 return;
             }
 
@@ -3013,6 +3029,14 @@ public class TaxiAssistForm : Form
             if (!string.IsNullOrEmpty(live))
                 _pendingPlaceSelection = new PendingPlaceSelection(live, FromGateSourceRefresh: false);
 
+            // WHERE the pilot's selection actually ROUTES, captured before the rebuild wipes the
+            // maps — a background refresh's fallback when the label is gone but the place is not.
+            // The catalog's own merge rule renames places (a proper OSM name absorbs a synthesized
+            // one, so "GA ramp, Parking 3" becomes "Narrows Aviation, FBO, Parking 3"), and by
+            // label alone that reads as a place that vanished. Background ONLY: the gate-source
+            // and restore origins keep their existing label rule.
+            PlaceTarget? previousTarget = background ? TargetOfDestination(live) : null;
+
             // What a BACKGROUND refresh measures itself against: the list as the pilot last heard
             // it described. Read before the rebuild, compared after.
             int countBefore = cmbDestination.Items.Count;
@@ -3025,27 +3049,32 @@ public class TaxiAssistForm : Form
                     _pendingPlaceSelection = new PendingPlaceSelection(null, FromGateSourceRefresh: false);
                 PopulateDestinations();
             }
-            bool lostToGateSourceRefresh = ApplyPendingPlaceSelection();
+            var loss = ApplyPendingPlaceSelection(background, previousTarget);
+            // WHOSE fault the lost selection was decides the words — GSX moved the gate list, or
+            // the catalog renamed the place — and whether it is said at all. QUEUED, because both
+            // are background events arriving long after any click, not an echo of one. NOT gated
+            // on silentRestore: a restore's silence covers its own narration, not an unrelated
+            // event that took the pilot's destination away.
+            string? lossLine = DescribePlaceSelectionLoss(loss, Visible);
             // A BACKGROUND refresh reports only a list that really moved; anything else is a count
-            // repeated at a pilot who asked for nothing.
-            if (backgroundRefresh)
+            // repeated at a pilot who asked for nothing. A lost selection REPLACES that count —
+            // it is the sentence they must act on, and both would be two lines for one event.
+            if (background)
             {
-                string? changed = DescribeBackgroundPlaceRefresh(
+                string? line = lossLine ?? DescribeBackgroundPlaceRefresh(
                     Visible, countBefore, cmbDestination.Items.Count, catalog != null, _currentIcao);
-                if (changed != null) _announcer.Announce(changed);
+                if (line != null) _announcer.Announce(line);
             }
             // VISIBILITY AT THE SETTLE, not at the start — the same rule the line below has always
             // used. A warm-up begun while the dialog was hidden and settling while it is OPEN is
             // exactly when the pilot is standing in front of the list wanting to know why it is
             // empty; start-time visibility left them that empty list with nothing said at all.
-            else if (!silentRestore && Visible) AnnouncePlacesReady(catalog != null);
-            // The gate path's OWN words for the same event — the pilot's chosen destination did
-            // not survive a rebuild GSX triggered — said only now that it is known to be true.
-            // Last, so the sentence they must act on ends the sequence; QUEUED, because this is a
-            // background GSX event arriving long after the click, not an echo of anything the
-            // pilot just did. NOT gated on silentRestore: a restore's silence covers its own
-            // narration, not an unrelated GSX event that took the pilot's destination away.
-            if (lostToGateSourceRefresh && Visible) _announcer.Announce(GateListUpdatedMessage);
+            else
+            {
+                if (!silentRestore && Visible) AnnouncePlacesReady(catalog != null);
+                // LAST, so the sentence they must act on ends the sequence.
+                if (lossLine != null) _announcer.Announce(lossLine);
+            }
         }
         catch (Exception ex)
         {
@@ -3055,10 +3084,16 @@ public class TaxiAssistForm : Form
 
     /// <summary>
     /// The surroundings catalog for <paramref name="icao"/> has been thrown away and the next
-    /// build will see more than this list was built from — the OSM buildings arriving after the
-    /// catalog gave up waiting for them (<c>OnlineFeatureStore.FeaturesUpdated</c>), or a DEGRADED
-    /// catalog reaching the end of its lifetime. MainForm marshals this onto the UI thread; it is
-    /// UI-THREAD ONLY.
+    /// build will see more than this list was built from. ONE thing invokes this:
+    /// <c>OnlineFeatureStore.FeaturesUpdated</c>, the OSM buildings arriving after the catalog
+    /// gave up waiting for them — which the store raises only when that late fetch SUCCEEDS.
+    /// MainForm marshals it onto the UI thread; this method is UI-THREAD ONLY.
+    ///
+    /// <para>So a catalog left DEGRADED is covered only when the retry's own fetch lands. A fetch
+    /// that refused, or a tier that threw, raises nothing, and the expiry in
+    /// <c>SurroundingsCatalogCache.FreshOrNull</c> notifies nobody — such a list is refreshed by
+    /// the next ordinary rebuild instead: a destination-type switch, a filter toggle, an airport
+    /// reload or a gate-token move.</para>
     ///
     /// <para>Why the form needs telling at all: the warm-up's own retry fires only when the answer
     /// lands DURING the build, which with a warm scenery cache is a window of tens of milliseconds
@@ -3102,26 +3137,43 @@ public class TaxiAssistForm : Form
     /// The same rule <see cref="RefreshDestinationsIfGateSourceChanged"/> applies to the gate
     /// list, on the one path where the loss can only be discovered asynchronously.
     /// </summary>
-    /// <returns>True when a destination the pilot had chosen was lost AND the request came from a
-    /// gate-source refresh — the one origin that may be announced. A silent destination restore
-    /// returns false however it ends: the pilot performed no action there.</returns>
-    private bool ApplyPendingPlaceSelection()
+    /// <param name="backgroundRefresh">True on a settle nobody asked for
+    /// (<see cref="OnSurroundingsInvalidated"/>), which alone may fall back to
+    /// <paramref name="previousTarget"/> and alone speaks the Place wording when it cannot.</param>
+    /// <param name="previousTarget">Where the pilot's selection routed BEFORE the rebuild, read
+    /// while the maps still held it. The catalog renames places without moving them, so a label
+    /// that is gone is not the same fact as a place that is.</param>
+    /// <returns>Whose doing the lost selection was, or <see cref="PlaceSelectionLoss.None"/> when
+    /// nothing was lost or nothing may be said about it — a silent destination restore returns
+    /// None however it ends, because the pilot performed no action there.</returns>
+    private PlaceSelectionLoss ApplyPendingPlaceSelection(bool backgroundRefresh = false, PlaceTarget? previousTarget = null)
     {
-        if (_pendingPlaceSelection is not { } pending) return false;
+        if (_pendingPlaceSelection is not { } pending) return PlaceSelectionLoss.None;
         _pendingPlaceSelection = null;
 
         int idx = string.IsNullOrEmpty(pending.Label) ? -1 : cmbDestination.Items.IndexOf(pending.Label);
+        // THE SAME TARGET IS THE SAME CHOICE. Only on a background refresh, and only after the
+        // label has failed: same node and same stand means the same route, the same docking and
+        // the same gate.select decision, so the pilot's choice is honoured under its new name
+        // rather than silently dropped. First match wins if two entries share a target.
+        if (idx < 0 && backgroundRefresh && previousTarget is { } target)
+        {
+            idx = IndexOfDestinationWithTarget(target);
+            if (idx >= 0)
+                _taxiFormLog.Info($"Place '{pending.Label}' was renamed by the refreshed catalog; " +
+                                  $"re-seated on '{cmbDestination.Items[idx]}' by its routing target.");
+        }
         if (idx >= 0)
         {
             SelectDestinationSilently(idx);
-            return false;
+            return PlaceSelectionLoss.None;
         }
 
         // Either the label is gone from the rebuilt list, or nothing was selected before it and
         // must not become item 0 now (the gate path's "keep it cleared" branch, carried across
         // the await).
         if (cmbDestination.Items.Count > 0) cmbDestination.SelectedIndex = -1;
-        if (string.IsNullOrEmpty(pending.Label)) return false;
+        if (string.IsNullOrEmpty(pending.Label)) return PlaceSelectionLoss.None;
 
         // Bare facts, no invented origin story: the flag says only whether this loss MAY be
         // announced, and three different requests set it false (a silent destination restore, a
@@ -3135,9 +3187,62 @@ public class TaxiAssistForm : Form
         // would be an instruction to choose from an empty list, and AnnouncePlacesReady's own
         // sentence — which of the two it was — is already the whole truth. The pending is still
         // dropped: there is no selection left to protect.
-        if (cmbDestination.Items.Count == 0) return false;
+        return ClassifyPlaceSelectionLoss(hadLabel: true, reseated: false,
+            listEmpty: cmbDestination.Items.Count == 0,
+            pending.FromGateSourceRefresh, backgroundRefresh);
+    }
 
-        return pending.FromGateSourceRefresh;
+    /// <summary>Whose doing a lost Place selection was, which decides the words and whether there
+    /// are any. GSX's gate list moving and the surroundings catalog renaming a place are different
+    /// events with different remedies, and a silent restore or an empty list is neither.</summary>
+    internal enum PlaceSelectionLoss { None, GateSourceRefresh, BackgroundRefresh }
+
+    /// <summary>The rule behind <see cref="ApplyPendingPlaceSelection"/>'s return value. Nothing
+    /// was lost if there was no label, or it was put back (by name or by target); nothing is said
+    /// over an EMPTY list, because "choose again" would be an instruction to choose from nothing;
+    /// and a loss on neither of the two announceable origins — a silent destination restore, a
+    /// live pick preserved across a rebuild — stays silent as it always has.</summary>
+    internal static PlaceSelectionLoss ClassifyPlaceSelectionLoss(
+        bool hadLabel, bool reseated, bool listEmpty, bool fromGateSourceRefresh, bool backgroundRefresh)
+        => !hadLabel || reseated || listEmpty ? PlaceSelectionLoss.None
+         : fromGateSourceRefresh ? PlaceSelectionLoss.GateSourceRefresh
+         : backgroundRefresh ? PlaceSelectionLoss.BackgroundRefresh
+         : PlaceSelectionLoss.None;
+
+    /// <summary>What the pilot hears for such a loss, or null for silence — including into a
+    /// dialog they have closed, where there is nothing to choose again in.</summary>
+    internal static string? DescribePlaceSelectionLoss(PlaceSelectionLoss loss, bool visible)
+        => !visible ? null
+         : loss switch
+         {
+             PlaceSelectionLoss.GateSourceRefresh => GateListUpdatedMessage,
+             PlaceSelectionLoss.BackgroundRefresh => PlaceListUpdatedMessage,
+             _ => null,
+         };
+
+    /// <summary>Where a Place list entry ROUTES — the identity a rename cannot change, and the
+    /// one a background refresh puts the pilot's selection back by. Same node and same stand means
+    /// the same route, the same docking target and the same <c>gate.select</c> decision, which is
+    /// the whole of what choosing a place decides. A node-only place carries no stand.</summary>
+    internal readonly record struct PlaceTarget(int NodeId, bool HasStand, double StandLat, double StandLon);
+
+    /// <summary>The target behind a destination label, read out of the maps
+    /// <see cref="PopulateDestinations"/> fills, or null when the label names no entry. Position
+    /// rather than the <c>ParkingSpot</c> reference: the same stand compares equal even if the
+    /// spot cache was rebuilt between the two reads.</summary>
+    private PlaceTarget? TargetOfDestination(string? label)
+    {
+        if (string.IsNullOrEmpty(label) || !_destinationNodeMap.TryGetValue(label, out int nodeId)) return null;
+        bool hasStand = _destinationSpotMap.TryGetValue(label, out var spot) && spot != null;
+        return new PlaceTarget(nodeId, hasStand, hasStand ? spot!.Latitude : 0, hasStand ? spot!.Longitude : 0);
+    }
+
+    /// <summary>The first listed destination routing to <paramref name="target"/>, or -1.</summary>
+    private int IndexOfDestinationWithTarget(PlaceTarget target)
+    {
+        for (int i = 0; i < cmbDestination.Items.Count; i++)
+            if (TargetOfDestination(cmbDestination.Items[i]?.ToString()) == target) return i;
+        return -1;
     }
 
     /// <summary>
@@ -3155,6 +3260,33 @@ public class TaxiAssistForm : Form
     {
         string? line = DescribePlaceList(catalogPresent, cmbDestination.Items.Count, _currentIcao);
         if (line != null) _announcer.Announce(line);
+    }
+
+    /// <summary>What arriving in Place mode owes a warm-up that is already running.</summary>
+    /// <param name="PromoteWarmUp">Stop treating it as a background refresh: its settle must report
+    /// like any foreground warm-up (a count, or why there is none) instead of speaking only when
+    /// the count moved.</param>
+    /// <param name="SpeakLoading">Say "Loading places for {icao}." here and now, as the ordinary
+    /// start would have.</param>
+    internal readonly record struct PlaceModeEntry(bool PromoteWarmUp, bool SpeakLoading);
+
+    /// <summary>
+    /// What to do on arriving in Place mode with the list empty. A BACKGROUND refresh
+    /// (<see cref="OnSurroundingsInvalidated"/>) promised to say nothing, which is right while
+    /// nobody is looking — but the pilot switching to Place lands on an empty list that the
+    /// in-flight warm-up suppresses the "no places" line for, that no second warm-up may be
+    /// started for, and whose settle then says nothing either because the count did not move.
+    /// Total silence. So the refresh is PROMOTED and speaks like a foreground one.
+    /// <para>A silent restore promotes nothing — it performs no pilot-visible action, and
+    /// unlocking the settle's count would breach "probing leaves no mark". Promotion is NOT gated
+    /// on visibility (the settle reads that for itself at the moment it speaks, this file's
+    /// standing rule); the loading line is, because that one is spoken here.</para>
+    /// </summary>
+    internal static PlaceModeEntry DescribePlaceModeEntry(
+        bool warmUpInFlight, bool warmUpIsBackground, bool silentRestore, bool visible)
+    {
+        bool promote = warmUpInFlight && warmUpIsBackground && !silentRestore;
+        return new PlaceModeEntry(promote, promote && visible);
     }
 
     /// <summary>
@@ -3291,7 +3423,15 @@ public class TaxiAssistForm : Form
     /// <summary>Spoken when the gate list was rebuilt from a new source and the pilot's chosen
     /// destination is no longer in it. Shared by the show path (queued) and the Calculate path
     /// (immediate abort) so the pilot hears the same words for the same event.</summary>
-    private const string GateListUpdatedMessage = "Gate list updated from GSX. Please choose the destination again.";
+    internal const string GateListUpdatedMessage = "Gate list updated from GSX. Please choose the destination again.";
+
+    /// <summary>The Place list's own words for the same shape of loss, and deliberately NOT the
+    /// gate sentence above: GSX did not do this. The surroundings catalog renamed the place under
+    /// the pilot — its merge rule lets a proper OSM name absorb a synthesized one, so "GA ramp,
+    /// Parking 3" becomes "Narrows Aviation, FBO, Parking 3" — and where even the routing target
+    /// is gone there is nothing left to put back. Without it the selection simply cleared and
+    /// Calculate aborted with "Please select a destination." for no reason the pilot could see.</summary>
+    internal const string PlaceListUpdatedMessage = "Places updated. Please choose the destination again.";
 
     /// <summary>
     /// This form is hide-on-close (see <see cref="OnFormClosing"/>), so re-opening it does not
@@ -3427,11 +3567,22 @@ public class TaxiAssistForm : Form
         // after a failed load it named the PREVIOUS airport. DescribePlaceList carries the other
         // half of the same rule — a blank ICAO says nothing — and tells "this airport has none"
         // apart from "nothing came back", which an empty list alone cannot.
-        if (isPlace && _graph != null && cmbDestination.Items.Count == 0 && _placesWarmUp == null && !_suppressPlaceAnnounce)
+        if (isPlace && _graph != null && cmbDestination.Items.Count == 0)
         {
-            // A lock-only read (SurroundingsCatalogCached never builds), so it is free to ask here.
-            string? line = DescribePlaceList(SurroundingsCatalogCached?.Invoke(_currentIcao) != null, 0, _currentIcao);
-            if (line != null) _announcer.AnnounceImmediate(line);
+            // A SILENT background refresh in flight would otherwise leave the pilot with an empty
+            // list and not one word: this line is suppressed by the warm-up, the warm-up guard
+            // blocks a second one, and the background settle stays silent on an unchanged count.
+            // Arriving here IS the pilot coming to stand in front of the list, so the refresh
+            // stops being background and owes them an ordinary start and settle.
+            var entry = DescribePlaceModeEntry(_placesWarmUp != null, _placesWarmUpBackground, _suppressPlaceAnnounce, Visible);
+            if (entry.PromoteWarmUp) _placesWarmUpBackground = false;
+            if (entry.SpeakLoading) _announcer.Announce($"Loading places for {_currentIcao}.");
+            else if (_placesWarmUp == null && !_suppressPlaceAnnounce)
+            {
+                // A lock-only read (SurroundingsCatalogCached never builds), so it is free to ask here.
+                string? line = DescribePlaceList(SurroundingsCatalogCached?.Invoke(_currentIcao) != null, 0, _currentIcao);
+                if (line != null) _announcer.AnnounceImmediate(line);
+            }
         }
 
         // Entering gate mode: kick a traffic sweep and rebuild once it lands, so the

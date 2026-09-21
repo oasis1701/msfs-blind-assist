@@ -118,4 +118,109 @@ public class TaxiAssistFormPlaceTests
     [Fact]
     public void A_background_place_refresh_says_nothing_into_a_dialog_the_pilot_has_closed()
         => Assert.Null(TaxiAssistForm.DescribeBackgroundPlaceRefresh(visible: false, countBefore: 0, countAfter: 8, catalogPresent: true, "KTIW"));
+
+    // ---- Arriving in front of the list mid-refresh (TaxiAssistForm.DescribePlaceModeEntry) ----
+
+    [Fact]
+    public void Arriving_in_Place_mode_over_a_silent_refresh_promotes_it_and_says_it_is_loading()
+    {
+        // The pilot switches type away and back while a background refresh is in flight: the list
+        // is empty, the catalog was just invalidated so nothing is cached, the warm-up guard blocks
+        // a second one and the "no places" line is suppressed — silence. Then the refresh settles
+        // with an unchanged count and says nothing either. They are left in front of an empty list
+        // with no word spoken at all. A refresh stops being background the moment they arrive.
+        var entry = TaxiAssistForm.DescribePlaceModeEntry(
+            warmUpInFlight: true, warmUpIsBackground: true, silentRestore: false, visible: true);
+        Assert.True(entry.PromoteWarmUp);
+        Assert.True(entry.SpeakLoading);
+    }
+
+    [Fact]
+    public void A_foreground_warm_up_already_said_it_and_is_left_alone()
+    {
+        var entry = TaxiAssistForm.DescribePlaceModeEntry(true, warmUpIsBackground: false, silentRestore: false, visible: true);
+        Assert.False(entry.PromoteWarmUp);
+        Assert.False(entry.SpeakLoading);
+    }
+
+    [Fact]
+    public void With_no_warm_up_in_flight_there_is_nothing_to_promote()
+    {
+        var entry = TaxiAssistForm.DescribePlaceModeEntry(warmUpInFlight: false, warmUpIsBackground: true, silentRestore: false, visible: true);
+        Assert.False(entry.PromoteWarmUp);
+        Assert.False(entry.SpeakLoading);
+    }
+
+    [Fact]
+    public void A_silent_restore_arriving_in_Place_mode_promotes_nothing_and_stays_silent()
+    {
+        // "Probing leaves no mark": the restore performs no pilot-visible action, so neither the
+        // loading line nor the settle's count may be unlocked by it.
+        var entry = TaxiAssistForm.DescribePlaceModeEntry(true, true, silentRestore: true, visible: true);
+        Assert.False(entry.PromoteWarmUp);
+        Assert.False(entry.SpeakLoading);
+    }
+
+    [Fact]
+    public void A_hidden_form_promotes_the_refresh_but_speaks_nothing_here()
+    {
+        // The promotion is about the warm-up's OBLIGATION; the settle applies its own visibility
+        // gate at the moment of settling, which is this file's established rule. The loading line
+        // is spoken HERE, so it reads visibility here — exactly as WarmPlaces' own start line does.
+        var entry = TaxiAssistForm.DescribePlaceModeEntry(true, true, silentRestore: false, visible: false);
+        Assert.True(entry.PromoteWarmUp);
+        Assert.False(entry.SpeakLoading);
+    }
+
+    // ---- A selection that could not be put back (Classify/DescribePlaceSelectionLoss) ----
+
+    [Fact]
+    public void A_selection_that_was_put_back_is_no_loss_at_all()
+    {
+        // Either the label survived the rebuild, or a background refresh found the same TARGET
+        // under a new name. Both are silent re-seats.
+        Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.None,
+            TaxiAssistForm.ClassifyPlaceSelectionLoss(hadLabel: true, reseated: true, listEmpty: false,
+                fromGateSourceRefresh: true, backgroundRefresh: false));
+        Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.None,
+            TaxiAssistForm.ClassifyPlaceSelectionLoss(true, reseated: true, listEmpty: false,
+                fromGateSourceRefresh: false, backgroundRefresh: true));
+    }
+
+    [Fact]
+    public void A_background_refresh_that_could_not_put_the_selection_back_says_so_in_its_own_words()
+    {
+        // GSX did not do this — the catalog's own merge rule renamed the place (a proper OSM name
+        // absorbs a synthesized one, so "GA ramp, Parking 3" becomes "Narrows Aviation, FBO,
+        // Parking 3"). Without a word, Calculate later aborts with "Please select a destination."
+        // for no reason the pilot can see.
+        var loss = TaxiAssistForm.ClassifyPlaceSelectionLoss(hadLabel: true, reseated: false, listEmpty: false,
+            fromGateSourceRefresh: false, backgroundRefresh: true);
+        Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.BackgroundRefresh, loss);
+        Assert.Equal("Places updated. Please choose the destination again.",
+            TaxiAssistForm.DescribePlaceSelectionLoss(loss, visible: true));
+        Assert.Null(TaxiAssistForm.DescribePlaceSelectionLoss(loss, visible: false));
+    }
+
+    [Fact]
+    public void A_gate_source_refresh_keeps_the_GSX_sentence()
+    {
+        var loss = TaxiAssistForm.ClassifyPlaceSelectionLoss(true, reseated: false, listEmpty: false,
+            fromGateSourceRefresh: true, backgroundRefresh: false);
+        Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.GateSourceRefresh, loss);
+        Assert.Equal(TaxiAssistForm.GateListUpdatedMessage, TaxiAssistForm.DescribePlaceSelectionLoss(loss, visible: true));
+    }
+
+    [Fact]
+    public void Neither_a_silent_restore_nor_an_empty_list_nor_a_cleared_selection_is_announced()
+    {
+        // A restore says nothing however it ends; "choose again" over an empty list would be an
+        // instruction to choose from nothing; and a selection that was already clear lost nothing.
+        Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.None,
+            TaxiAssistForm.ClassifyPlaceSelectionLoss(true, false, listEmpty: false, fromGateSourceRefresh: false, backgroundRefresh: false));
+        Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.None,
+            TaxiAssistForm.ClassifyPlaceSelectionLoss(true, false, listEmpty: true, fromGateSourceRefresh: false, backgroundRefresh: true));
+        Assert.Equal(TaxiAssistForm.PlaceSelectionLoss.None,
+            TaxiAssistForm.ClassifyPlaceSelectionLoss(hadLabel: false, reseated: false, listEmpty: false, fromGateSourceRefresh: true, backgroundRefresh: true));
+    }
 }
