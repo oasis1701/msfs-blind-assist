@@ -88,11 +88,11 @@ public class AirportFeatureCatalogTests
         // computed from a degenerate bearing, under a generic name they had just heard for the
         // anonymous pavement. The zone's own name is never said twice, and no distance is zero.
         //
-        // KTIW's OTHER ramp, 600 m away, is also called "GA ramp", so it is the one that stays out
-        // — that is the whole of the rule. The airport's other unnamed apron POLYGONS are separate
-        // pavement under a different word and are named normally (P6: "Apron, ahead, 12 metres");
-        // a count over the whole kind would silence those too, which is what the earlier
-        // spend-the-kind rule did — and with it a real "North Apron" at any airport that has one.
+        // KTIW's OTHER ramp, 600 m away, is also called "GA ramp", so it is the one the name half
+        // of the rule keeps out. Its four unnamed apron POLYGONS are kept out by the other half:
+        // under a ground zone, pavement with no name of its own is the pavement the ramp belongs
+        // to, and it must not spend a slot a building should have. Neither half is a test of the
+        // KIND — a real "North Apron" beside a ramp is a place and is still named.
         var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
         foreach (var s in KtiwStands)
         {
@@ -101,6 +101,7 @@ public class AirportFeatureCatalogTests
             Assert.StartsWith($"Parking {s.Number} at KTIW. On the GA ramp.", said);
             Assert.DoesNotContain(", 0 metres", said);   // leading comma: "520 metres" ends in "0 metres" too
             Assert.Equal(1, Count(said, "GA ramp"));     // the zone line, and nowhere else
+            Assert.DoesNotContain("Apron", said);        // and no anonymous pavement beside it
         }
     }
 

@@ -168,6 +168,29 @@ public class SurroundingsReportTests
     }
 
     [Fact]
+    public void Beside_the_ramp_you_are_on_only_a_NAMED_apron_is_worth_a_slot()
+    {
+        // The anonymous polygon 12 m away is the pavement the ramp belongs to: it names nothing a
+        // pilot can act on and it spends one of the four slots a building should have. A place with
+        // a name of its own is different, however far off.
+        var ring = new[] { new LatLon(10 / 111_320.0, -0.0003), new LatLon(10 / 111_320.0, 0.0003),
+                           new LatLon(40 / 111_320.0, 0.0003), new LatLon(40 / 111_320.0, -0.0003) };
+        var cat = Cat(Ramp("GA ramp", 0), F(FeatureKind.Apron, "", 25, 0, fp: ring), Ramp("North Apron", 300));
+        string s = SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres);
+        Assert.Equal("X. On the GA ramp. North Apron, ahead, 300 metres.", s);
+    }
+
+    [Fact]
+    public void Away_from_any_ramp_an_unnamed_apron_is_real_information_and_is_spoken()
+    {
+        // Out on a taxiway there is no ground zone, so nothing has been said about the pavement
+        // and "Apron, ahead, 200 metres" is the readout doing its job.
+        var cat = Cat(F(FeatureKind.Apron, "", 200, 0));
+        Assert.Null(SurroundingsReport.Zone(cat, Lat, Lon));
+        Assert.Equal("X. Apron, ahead, 200 metres.", SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres));
+    }
+
+    [Fact]
     public void Nothing_at_zero_range_is_ever_given_a_direction()
     {
         // A hangar the aircraft is inside: the bearing to it is degenerate and the distance rounds

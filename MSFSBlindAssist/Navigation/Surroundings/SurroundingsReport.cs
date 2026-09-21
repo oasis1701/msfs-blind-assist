@@ -113,17 +113,26 @@ public static class SurroundingsReport
     }
 
     /// <summary>
-    /// Would naming this piece of ground repeat the words the zone line just used? KTIW has two
-    /// navdata ramps 600 m apart and BOTH are "GA ramp", so "On the GA ramp." followed by "GA ramp,
-    /// to the left, 591 metres" is the one-name-two-places confusion, not information.
+    /// The zone line has already said which pavement the aircraft is on, so a SECOND piece of
+    /// ground is worth one of the four slots only when it is a PLACE — a name of its own, and not
+    /// the one just spoken. Two ways to fail that:
+    /// <list type="bullet">
+    /// <item>no proper name (<see cref="AirportFeature.HasProperName"/>): "Apron, ahead, 12 metres"
+    /// beside the ramp the aircraft is parked on is the pavement that ramp belongs to. It names
+    /// nothing a pilot can act on and it spends a slot a building should have.</item>
+    /// <item>the zone's own spoken name: KTIW has two navdata ramps 600 m apart and BOTH are
+    /// "GA ramp", so "On the GA ramp." then "GA ramp, to the left, 591 metres" is the
+    /// one-name-two-places confusion.</item>
+    /// </list>
     ///
-    /// <para>The test is the NAME, never the kind. A zone that spent its whole kind also silenced
-    /// the one apron in range a pilot could have asked for BY name: inside an anonymous OSM polygon
-    /// ("On the Apron.") a real "North Apron" 300 m away went unmentioned.</para>
+    /// <para>Both halves apply only UNDER A GROUND ZONE. With no zone, or a concourse/terminal one,
+    /// nothing has been said about the pavement and an unnamed "Apron, ahead, 200 metres" out on a
+    /// taxiway is the readout doing its job. Never test the KIND instead: spending the zone's whole
+    /// kind silenced a real "North Apron" 300 m from an anonymous polygon the aircraft sat in.</para>
     /// </summary>
-    private static bool RepeatsZoneName(AirportFeature f, AirportFeature? zone)
+    private static bool AddsNothingBesideGroundZone(AirportFeature f, AirportFeature? zone)
         => zone != null && IsGround(zone) && IsGround(f)
-           && string.Equals(f.SpokenName, zone.SpokenName, StringComparison.OrdinalIgnoreCase);
+           && (!f.HasProperName || string.Equals(f.SpokenName, zone.SpokenName, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>"{name}, here." at zero range, else "{name}, {direction}, {distance}." — the
     /// spoken form. <see cref="RelativeDirection.Describe"/> is never asked about a bearing taken
@@ -146,9 +155,10 @@ public static class SurroundingsReport
 
         // The zone has said where the aircraft IS; nothing it is standing on may also be offered as
         // somewhere nearby ("On the GA ramp." then "Apron, here" about the pavement under it), and
-        // neither may a second piece of ground the zone has ALREADY NAMED.
+        // under a ground zone a second piece of ground earns a slot only as a named PLACE.
         var ranked = Rank(cat, lat, lon, hdgTrue, SpeakRadiusMetres)
-            .Where(n => !ReferenceEquals(n.Feature, zone) && !IsStandingOn(n.Feature, lat, lon) && !RepeatsZoneName(n.Feature, zone))
+            .Where(n => !ReferenceEquals(n.Feature, zone) && !IsStandingOn(n.Feature, lat, lon)
+                        && !AddsNothingBesideGroundZone(n.Feature, zone))
             .ToList();
         if (ranked.Count == 0)
         {
