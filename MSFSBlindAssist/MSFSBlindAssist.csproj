@@ -176,6 +176,9 @@
     <None Update="Checklists\iFly_737MAX8_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Checklists\A220_Checklist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <!-- User-facing guides/manuals. Shipped in full (whole folder) so the in-app
          hotkey lists' "see Guides\..." references resolve next to the exe, and any
          future per-aircraft manual added here ships automatically. -->
@@ -212,6 +215,12 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-md11-efb-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-a220-displays-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-a220-efb-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-oans-agent.js">

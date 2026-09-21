@@ -157,6 +157,7 @@ public partial class MainForm
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
             "TFDI_MD11" => new TFDiMD11Definition(),
+            "SYNAPTIC_A220" => new SynapticA220Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -714,6 +715,9 @@ public partial class MainForm
         // The HS787 def owns its synoptic-display window (a live MFD_2 Coherent socket) + the
         // autopilot window (a refresh timer) — dispose them so they don't outlive the def.
         (oldAircraft as HorizonSim787Definition)?.CloseAuxWindows();
+        // The A220 def owns the APU hold-to-start timer + FCP walk tasks (calc-path
+        // writes) and the autopilot window (refresh timer) — same leak class as above.
+        (oldAircraft as SynapticA220Definition)?.StopAllMotion();
         // Every def's tracked hotkey windows (FBW FCU/Baro/E/WD, PMDG Ctrl+P autopilot).
         // UNCONDITIONAL on purpose — a per-type line here is how the PMDG autopilot window
         // slipped through: it was the first ShowTrackedWindow user outside the FBW pair,
@@ -1151,6 +1155,7 @@ public partial class MainForm
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
         tfdiMd11MenuItem.Checked = false;
+        synapticA220MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -1190,6 +1195,10 @@ public partial class MainForm
         else if (currentAircraft is IFly737MAXDefinition)
         {
             ifly737MaxMenuItem.Checked = true;
+        }
+        else if (currentAircraft is SynapticA220Definition)
+        {
+            synapticA220MenuItem.Checked = true;
         }
     }
 
