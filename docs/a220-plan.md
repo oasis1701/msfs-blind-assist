@@ -1,5 +1,15 @@
 # Synaptic A220-300 — Implementation Plan (pre-release, v2)
 
+> **Historical document.** This is the plan written BEFORE the aircraft shipped, kept
+> because it records why each transport was chosen and what the vendor documentation
+> said at the time. It is NOT a description of the current state: most of it is built
+> and flown, some of it was overturned by live measurement, and the "nothing here is
+> sim-verified yet" line below was true in July 2026 and is not true now. For what the
+> code actually does, and for every finding that came out of the sim, read
+> [a220.md](a220.md) — that is the maintained document. The two source documents this
+> plan cites but does not include (the vendor's PDF manual and the user's own Solo Pilot
+> Guide) are not redistributed here.
+
 **Status:** planning — aircraft releases 27–31 July 2026 (MSFS Marketplace, FS2020+FS2024; user buys the FS2020 Marketplace version). Nothing here is sim-verified yet.
 **Plan updated:** 27 July 2026, from three new sources:
 
