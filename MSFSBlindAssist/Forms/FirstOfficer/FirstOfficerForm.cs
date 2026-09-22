@@ -990,6 +990,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     // runningOverride lets a caller assert "not running" even while FlowManager.IsRunning
     // is technically still true — see OnFlowCompleted/OnFlowCancelled/OnFlowFailed below,
     // which fire from inside RunFlowAsync before the run task has actually unwound.
+    // This is safe only because StartSelectedFlow refuses to start a new flow while
+    // FlowManager.IsRunning is still true. If a flow could ever be restarted while one is
+    // already running, a late FlowCancelled/FlowCompleted/FlowFailed from the OLD run could
+    // still fire after the new run has started and stamp "not running" over it.
     private void UpdateFlowButtonStates(bool? runningOverride = null)
     {
         bool running = runningOverride ?? _flowMgr.IsRunning;

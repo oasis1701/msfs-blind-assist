@@ -13,10 +13,10 @@ namespace MSFSBlindAssist.Tests;
 /// "Unable to complete: APU: ON and available".
 ///
 /// The FLOW engine has always had this guard: FlowManager honours a step's SkipCondition and
-/// announces "Already set" instead of re-issuing the write (FlowManager.cs:173-185, and the
-/// Fenix APU block's own Skip predicates). The hand-tick path had no equivalent, and that
-/// asymmetry IS the bug — the same shape docs/first-officer.md already records for the APU
-/// wait ("the FLOW never had this bug").
+/// announces "Already set" instead of re-issuing the write (RunFlowAsync's SkipCondition
+/// block, and the Fenix APU block's own Skip predicates). The hand-tick path had no
+/// equivalent, and that asymmetry IS the bug — the same shape docs/first-officer.md already
+/// records for the APU wait ("the FLOW never had this bug").
 ///
 /// The guard is the item's OWN condition, so it can never disagree with what the item claims
 /// to be about, and an item reading that condition as true is one EvaluateAutoDetection would

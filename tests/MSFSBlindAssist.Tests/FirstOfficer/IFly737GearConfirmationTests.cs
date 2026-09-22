@@ -295,5 +295,10 @@ public class IFly737GearConfirmationTests
         Assert.Equal(FlowStepActionType.SetSwitch, step.ActionType);
         Assert.Equal("Gear_Lever_Status", step.EventName);
         Assert.Equal(IFly737ActionExecutor.GearUp, step.TargetValue);
+        // It now completes its OWN action group's "Gear lever: UP" (ATKO_GEAR_OFF) rather
+        // than nothing at all, so a failed write is skipped aloud and left live instead of
+        // being ticked anyway by MarkGroupComplete's blanket sweep of the AFTER_TAKEOFF
+        // group at flow completion.
+        Assert.Equal("ATKO_GEAR_OFF", step.CompletesChecklistItemId);
     }
 }

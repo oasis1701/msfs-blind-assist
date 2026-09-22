@@ -253,8 +253,8 @@ public class IFly737ProfileStructureTests
         // Fix pass 1 (2026-08), Fix 3: every CompletesChecklistItemId must name a real
         // checklist ITEM (not just a real group) — a dangling id silently completes nothing
         // when a flow step runs, and this exact bug (a checklist-item id that doesn't exist)
-        // shipped once on a sibling aircraft in this repo. All 9 current uses are correct;
-        // this is a totality net against a future one drifting or being mistyped.
+        // shipped once on a sibling aircraft in this repo. Every current use is correct; this
+        // is a totality net against a future one drifting or being mistyped.
         var realItemIds = IFly737ChecklistDefinitions.Build().SelectMany(g => g.Items).Select(i => i.Id).ToHashSet();
         foreach (var s in flows.SelectMany(f => f.Steps).Where(s => s.CompletesChecklistItemId != null))
             Assert.Contains(s.CompletesChecklistItemId!, realItemIds);

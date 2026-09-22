@@ -448,7 +448,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "AFTER_TAKEOFF",
         Name = "After Takeoff",
-        Description = "Cleans up lights and retracts gear/flaps after positive rate of climb.",
+        Description = "Cleans up lights and retracts gear/flaps after positive rate of climb, then confirms the gear lever is up.",
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TKOF_CL" },
         Steps = new()
         {
@@ -458,11 +458,18 @@ public static class PMDG777FlowDefinitions
                 ("EVT_OH_LIGHTS_LANDING_L", 0), ("EVT_OH_LIGHTS_LANDING_NOSE", 0), ("EVT_OH_LIGHTS_LANDING_R", 0)),
                 s => !s.AreLandingLightsOn()),
             Skip(SW("ATKOF_GEAR_UP",     "Gear: UP",            "EVT_GEAR_LEVER",             0,
-               "GEAR_Lever", v => v < 0.5, "ATKOF_GEAR"),
+               "GEAR_Lever", v => v < 0.5, "ATKO_GEAR_UP"),
                 s => s.IsGearUp()),
             Skip(SW("ATKOF_FLAPS_UP",    "Flaps: UP",           "EVT_CONTROL_STAND_FLAPS_LEVER_0", null,
                true, "FCTL_Flaps_Lever", v => v < 0.5, "ATKOF_FLAPS"),
                 s => s.AreFlapsUp()),
+            // Read-only: completes the After Takeoff Checklist's "Landing Gear: UP" (ATKOF_GEAR)
+            // once the lever reads UP. The lever WRITE above completes its own group's "Gear: UP"
+            // (ATKO_GEAR_UP), so a failed write is skipped aloud and leaves both lines live rather
+            // than latched. Lever-based: the 777 SDK exposes no gear lights. LAST, 20 s.
+            Skip(WaitForField("ATKOF_GEAR_UP_CHECK", "Landing Gear: UP", "GEAR_Lever", v => v < 0.5, 20,
+                    checklistItemId: "ATKOF_GEAR"),
+                s => s.IsGearUp()),
         }
     };
 

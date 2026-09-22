@@ -104,8 +104,8 @@ electrical/pneumatic systems already configured for taxi).
 
 ## Part D — Auto managers
 
-1. In **File → Settings… → First Officer**, enable **Auto Gear Up**, **Auto Gear Down**, and
-   **Auto AP** for the Fenix.
+1. In **File → Settings… → First Officer**, enable **Auto-raise gear on climb**,
+   **Auto-lower gear on descent**, and **Auto-engage autopilot** for the Fenix.
 2. Fly a takeoff and confirm:
    - Positive rate of climb above ~50 ft AGL with gear down → gear auto-raises, "Positive
      rate. Gear up." announced.
@@ -114,8 +114,9 @@ electrical/pneumatic systems already configured for taxi).
      configured number (e.g. "350 feet. Autopilot one engaged.").
 3. On approach/descent, confirm gear auto-lowers between 2000 ft and 100 ft AGL while
    descending (not already down), "Two thousand feet. Gear down." announced.
-4. **Confirm the Auto Flaps checkbox has NO effect on the Fenix.** Enable "Auto Flaps" in
-   the Settings dialog's First Officer tab; fly a climb/descent and confirm flaps never move automatically —
+4. **Confirm the Auto-manage flaps checkbox has NO effect on the Fenix.** Enable
+   "Auto-manage flaps" in the Settings dialog's First Officer tab; fly a climb/descent and
+   confirm flaps never move automatically —
    the Fenix `FenixFOAutoManager` deliberately stores `AutoFlapsEnabled` but never acts on
    it (the Fenix exposes no V1/VR/V2/VAPP L:vars outside the MCDU display, so a speed-based
    auto-flap schedule would be weight-blind guesswork). This is a documented non-feature,
@@ -294,8 +295,8 @@ One change: the Before Start "Waiting for APU available" wait now ABORTS the flo
 
 ## "Landing gear: UP" by lights out, not the lever (2026-09-22)
 
-1. In flight, after takeoff, with the gear still DOWN (disable Auto Gear Up first, or catch
-   it before the auto-manager raises the gear), run the **After Takeoff** flow. Expect
+1. In flight, after takeoff, with the gear still DOWN (disable **Auto-raise gear on climb**
+   first), run the **After Takeoff** flow. Expect
    "Timed out waiting for: Landing gear: UP" then "Skipping: Landing gear: UP" spoken
    *before* "After Takeoff flow complete" (non-interrupting, so both are heard). Open the
    Checklists tab — the After Takeoff Checklist's "Landing gear: UP" line must stay

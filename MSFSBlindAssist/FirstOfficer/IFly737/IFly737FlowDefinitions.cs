@@ -475,8 +475,12 @@ public static class IFly737FlowDefinitions
             Multi("AT_TURNOFF", "Runway turnoff lights: OFF",
                 ("Runway_Turnoff_Light_1_Switch_Status", 0), ("Runway_Turnoff_Light_2_Switch_Status", 0)),
             // Gear_Lever_Status has only 0 Up/1 Down — no OFF detent on this airframe, so this
-            // commands UP and is labelled "UP" rather than the PMDG's "OFF".
-            SW("AT_GEAR_OFF", "Gear lever: UP", "Gear_Lever_Status", IFly737ActionExecutor.GearUp),
+            // commands UP and is labelled "UP" rather than the PMDG's "OFF". Completes its own
+            // action group's "Gear lever: UP" (ATKO_GEAR_OFF) — never the checklist's "Landing
+            // gear: UP" (ATC_GEAR), which the read-only AT_GEAR_UP_CHECK below completes — so a
+            // failed write is skipped aloud and left live rather than latched complete anyway by
+            // MarkGroupComplete's blanket sweep of the AFTER_TAKEOFF group.
+            SW("AT_GEAR_OFF", "Gear lever: UP", "Gear_Lever_Status", IFly737ActionExecutor.GearUp, "ATKO_GEAR_OFF"),
             SW("AT_AB_OFF", "Autobrake: OFF", "Autobrake_Selector_Status",
                 IFly737ActionExecutor.AutobrakeOff),
             // Read-only gear-up confirmation — it never moves the lever (AT_GEAR_OFF above

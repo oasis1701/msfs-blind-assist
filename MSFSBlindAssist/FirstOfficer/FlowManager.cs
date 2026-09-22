@@ -113,7 +113,12 @@ public class FlowManager<TExec, TState>
     {
         if (!IsRunning || _paused) return;
         _paused = true;
-        _pauseTcs = new TaskCompletionSource<bool>();
+        // RunContinuationsAsynchronously: Resume() is a UI-thread click and the flow awaits on
+        // the UI thread, so a default TCS would run the rest of the flow INLINE inside
+        // TrySetResult — before FlowResumed and the "resumed" announcement. A flow paused in its
+        // final wait then sent "flow complete" (non-interrupting) and had it cut off by the
+        // interrupting "resumed", with the status overwritten to "Resumed".
+        _pauseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (CurrentFlow != null) FlowPaused?.Invoke(CurrentFlow);
         _announcer.AnnounceImmediate($"{CurrentFlow?.Name ?? "Flow"} paused");
     }

@@ -321,12 +321,16 @@ the shared `GearLightRules.AsField`, which a flow's wait treats as "not up yet" 
 a false positive.
 
 **UP only — there is no DOWN rule, on purpose.** The PMDG 737 composes "three green, no
-red" from separate green DOWN-AND-LOCKED and red IN-TRANSIT fields; the Fenix's seven gear
-L:vars are plain off/on and carry no colour information at all, so nothing here can
-distinguish a lit green triangle from a lit red bar. And the Fenix First Officer profile has
-no Landing flow to begin with, so its checklist's "Landing gear: DOWN" line (`LDC_GEAR`) is
-never latched by a flow finishing — it stays the plain `S_MIP_GEAR` lever mirror it always
-was, with nothing here to change.
+red" from separate green DOWN-AND-LOCKED and red IN-TRANSIT fields. Each Fenix wheel
+likewise carries two legend L:vars, `_U` (Upper) and `_L` (Lower) — but which of a pair is
+the green DOWN-AND-LOCKED legend and which is red IN-TRANSIT has never been measured, and a
+Fenix legend's meaning must never be inferred from its suffix, from the real aircraft, or
+from a sibling pushbutton (the APU START `_U`/`_L` reversal is the cautionary tale — see
+`FoPr160ProcedureFixTests`). Until the gear legends are measured the same way, "three green,
+no red" cannot be composed from them. And the Fenix First Officer profile has no Landing
+flow to begin with, so its checklist's "Landing gear: DOWN" line (`LDC_GEAR`) is never
+latched by a flow finishing — it stays the plain `S_MIP_GEAR` lever mirror it always was,
+with nothing here to change.
 
 **The After Takeoff flow ends with a read-only step**, `AT_GEAR_UP_CHECK` ("Landing gear:
 UP"), that waits up to 20 s for `FO_GEAR_UP` and completes `ATC_GEAR` on delivery. It never

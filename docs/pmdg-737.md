@@ -386,7 +386,7 @@ over gear that is still down (it used to, whatever the lever read) — unless th
 already ticked before the flow finished. That was the go-around case: the first
 approach's Landing flow latches "Landing gear: DOWN" ticked, and a re-run before gear
 down on the second approach speaks the timeout while the line stays ticked. It is now
-closed (PR #160 follow-up Task D): `ChecklistManager.MarkGroupComplete`'s excluded
+closed: `ChecklistManager.MarkGroupComplete`'s excluded
 branch also exempts a ticked line when its own live state reads definitively false
 (never on NaN), so the next `EvaluateAutoDetection()` un-ticks it instead of leaving it
 frozen under the latch. The gear readout hotkey still says "Gear lever off" when it

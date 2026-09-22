@@ -119,6 +119,13 @@ public class ChecklistItem<TExec, TState>
     /// why the flag can be set on an item that is simultaneously checked — see
     /// MarkGroupComplete's excluded branch, which exempts a hand-ticked-but-undelivered
     /// item (AwaitingActionConfirmation) exactly the same as an un-ticked one.
+    ///
+    /// A THIRD way in covers an item checked from an EARLIER run: the flow skipped it again
+    /// (e.g. a go-around re-running the Landing flow before gear down) but the tick from the
+    /// first pass is still standing — neither un-checked nor AwaitingActionConfirmation is
+    /// true for it — so MarkGroupComplete also exempts a ticked item whose own live state now
+    /// reads definitively FALSE (never NaN; an indeterminate reading is not evidence of
+    /// anything).
     /// </summary>
     public bool ExemptFromCompletionLatch { get; set; }
 

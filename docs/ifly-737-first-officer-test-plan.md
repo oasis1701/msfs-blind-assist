@@ -230,15 +230,17 @@ Confirm a DOWN click actually connects (watch `ENG_TRANSFER_BUS_OFF` / `APU_GEN_
 ### B10. The gear lines are confirmed by the gear lights (After Takeoff and Landing)
 Owner decision 2026-09-22: "Landing gear: UP"/"Landing gear: DOWN" are confirmed by the gear
 lights (`IFly737GearConfirmation`), not the lever alone — see the doc bullet in
-`docs/ifly-737.md`. Turn OFF both universal auto-gear checkboxes in **File → Settings… → First
-Officer tab** first, so the gear stays exactly where you leave it for each check.
+`docs/ifly-737.md`. Turn OFF both **Auto-raise gear on climb** and **Auto-lower gear on
+descent** (File → Settings… → First Officer tab) first, so the gear stays exactly where you
+leave it for each check.
 
-1. With auto-gear off, run the After Takeoff flow while the gear is still DOWN (don't raise it
-   by hand either). Expect "Timed out waiting for: Landing gear: UP" and "Skipping: Landing
-   gear: UP" before "After Takeoff flow complete", and the **After Takeoff Checklist → "Landing
-   gear: UP"** line to stay unticked. Raise the gear afterwards: once all nine gear lights
-   (main-panel red/green ×3 plus the three `SYS2_*` overhead greens) are out, the line ticks by
-   itself with no further action.
+1. The After Takeoff flow raises the lever itself (`AT_GEAR_OFF`), so this is a HAPPY-path
+   check, not a timeout — more than 20 s pass before the flow's final gear-check wait runs, so
+   the gear is always up in time. With **Auto-raise gear on climb** OFF and the gear still down
+   after takeoff, run the After Takeoff flow. It raises the lever itself ("Gear lever: UP").
+   Expect it to end with "Already set: Landing gear: UP", or a short "Waiting for: Landing gear:
+   UP" while the gear retracts, then "After Takeoff flow complete" — with no "Timed out". The
+   **After Takeoff Checklist → "Landing gear: UP"** line should be ticked.
 2. The mirror check for the Landing flow: with auto-gear off, run Landing before lowering the
    gear. Expect "Timed out waiting for: Landing gear: DOWN" and "Skipping: Landing gear: DOWN"
    before "Landing flow complete", and the **Landing Checklist → "Landing gear: DOWN"** line to

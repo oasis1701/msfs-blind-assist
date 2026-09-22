@@ -139,4 +139,23 @@ public class FenixGearConfirmationTests
         Assert.False(item.StateCondition!(0));
         Assert.False(item.StateCondition!(double.NaN));
     }
+
+    // The Fenix profile has no Landing flow at all — that is WHY "Landing gear: DOWN"
+    // (LDC_GEAR) stays a plain lever mirror forever (see the class doc above). That safety
+    // property rests on a premise nothing else pins: FirstOfficerForm's RelatedGroupIdsFor
+    // latches `flow.Id + "_CL"` complete automatically whenever a checklist group of that id
+    // exists, even when the flow never lists it in RelatedChecklistGroupIds. A future Fenix
+    // "LANDING" flow would silently latch "LANDING_CL" — including LDC_GEAR — the moment it
+    // completes, reproducing for DOWN exactly the bug this whole class exists to prevent for
+    // UP. If a Fenix Landing flow is ever added: LDC_GEAR needs its own read-only gear-down
+    // check FIRST (the same shape as AT_GEAR_UP_CHECK above), and which of each wheel's
+    // _U/_L legend is the green one must be MEASURED before a DOWN rule can be composed —
+    // never inferred (see the class doc's APU START warning).
+    [Fact]
+    public void No_Fenix_flow_latches_LANDING_CL()
+    {
+        var flows = FenixFlowDefinitions.Build();
+        Assert.DoesNotContain(flows, f => f.Id == "LANDING");
+        Assert.DoesNotContain(flows, f => f.RelatedChecklistGroupIds.Contains("LANDING_CL"));
+    }
 }

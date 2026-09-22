@@ -290,11 +290,11 @@ and the checklist "Probe heat: ON" ticks.
 1. After a normal takeoff and gear retraction, run the After Takeoff flow: it ends with
    "Already set: Landing gear: UP" (or a short wait while the gear is still retracting), and
    the **After Takeoff Checklist → "Landing gear: UP"** line is ticked.
-2. With auto-gear OFF, run the After Takeoff flow while the gear is still DOWN: after about
-   20 s it says "Timed out waiting for: Landing gear: UP" and "Skipping: Landing gear: UP", and
-   the line stays unticked. Raise the gear: once all gear lights go out, the line ticks by
-   itself.
-3. On approach, with the First Officer's descent auto-gear OFF (otherwise it lowers the gear
+2. With **Auto-raise gear on climb** OFF, run the After Takeoff flow while the gear is still
+   DOWN: after about 20 s it says "Timed out waiting for: Landing gear: UP" and "Skipping:
+   Landing gear: UP", and the line stays unticked. Raise the gear: once all gear lights go
+   out, the line ticks by itself.
+3. On approach, with **Auto-lower gear on descent** OFF (otherwise it lowers the gear
    at 2000 ft AGL mid-wait), run the Landing flow before lowering the gear: after the
    missed-approach reminder it says "Waiting for: Landing gear: DOWN", then after about 20 s
    "Timed out waiting for: Landing gear: DOWN", "Skipping: Landing gear: DOWN", and only then

@@ -460,6 +460,18 @@ public class FoPr160ProcedureFixTests
         Assert.DoesNotContain("AnnounceImmediate($\"{flow.Name} flow complete\")", source);
     }
 
+    // Resume() completes the pause gate on the UI thread; with a default TaskCompletionSource
+    // the rest of the flow runs INLINE inside TrySetResult — before "resumed" is announced —
+    // so a flow paused in its final wait sent its non-interrupting "flow complete" and then had
+    // it cut off by the interrupting "resumed". The gate must run continuations asynchronously.
+    [Fact]
+    public void FlowManager_PauseGate_RunsContinuationsAsynchronously()
+    {
+        string source = File.ReadAllText(FirstOfficerSourcePath("FlowManager.cs"));
+        Assert.Contains("new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)", source);
+        Assert.DoesNotContain("_pauseTcs = new TaskCompletionSource<bool>();", source);
+    }
+
     private static string FirstOfficerSourcePath(string fileName,
         [CallerFilePath] string thisTestFilePath = "") =>
         Path.GetFullPath(Path.Combine(
