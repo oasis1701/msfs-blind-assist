@@ -1202,10 +1202,37 @@ the airport at most every 30 s, and hands the ranked feature list (within
 **A building is PASSED at its closest point of approach** — the range closed by
 at least `MinApproachMetres` (15 m) and has since opened by `OpeningMetres`
 (5 m) — while the building is inside its kind's pass radius (Concourse/Terminal
-150 m, Tower 200 m, others 100 m) and is announceable (Terminal, Concourse,
+225 m, Tower 300 m, others 150 m — **measured, see below**) and is announceable (Terminal, Concourse,
 Fbo, Tower, Fuel, Cargo, FireStation, and Hangar only when NAMED). It then
 fires at most once per building per 5 minutes, once globally per 10 s, and only
 while ground speed is 2–40 kt.
+
+**The radii are MEASURED and the rank window moves with them.** At the shipped
+150/200/100 the feature said almost nothing on a real taxi: replaying two
+RECORDED pilot tracks at 31 Hz through the production catalog, Rank and gate
+gave ONE callout on 5.59 km at EHAM and TWO on 4.35 km at LOWI. ⚠ The first
+diagnosis — that a pass parallel to a pier can never close `MinApproachMetres`
+— was WRONG, and a synthetic sweep over every taxiway at the airport is what
+suggested it; on the pilot's own tracks EVERY announceable feature passed was
+abeam at its closest point, and the blocker was only the radius. What a taxiing
+aircraft goes past clusters just OUTSIDE the old numbers: EHAM's eight nearest
+piers at 141-223 m against 150 m (taxiway Bravo is Schiphol's OUTER parallel and
+never comes nearer), LOWI's ten nearest hangars at 106-137 m against 100 m.
+
+| radius | EHAM says | LOWI says | per km |
+|---|---|---|---|
+| 150/200/100 (shipped) | 1 | 2 | 0.2-0.5 |
+| **x1.5 = 225/300/150** | **7** | **7** | **1.3-1.6** |
+| x2.0 = 300/400/200 | 9 | 9 | 1.6-2.1 |
+| x3.0 = 450/600/300 | 11 | 10 | 2.0-2.3 |
+| x4.0 = 600/800/400 | 13 | 10 | 2.3 |
+
+x1.5 clears the whole cluster at both fields (225 > 223, 150 > 137); both have
+SATURATED by x3, so wider only starts naming buildings the pilot is nowhere
+near. **`PassingCalloutGate.RankRadiusMetres` (350 m) is the ceiling and the
+monitor ranks to it** — it used a literal 250 m, so the widened 300 m tower
+radius would have been a number the gate could never see, silently capped at
+the window. A test pins that no kind's radius can exceed it.
 
 **There is no baseline and must not be one.** Parked beside a terminal, or
 pushed back from one, the range never closes, so nothing is recited. The
