@@ -593,10 +593,13 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             // (no `icao`) — common at small fields and many third-party scenery
             // packs — still come back. This method was originally added for
             // GateResolver.GetCandidateAirports (TCAS gate lookup), which depends
-            // on the ident fallback to find the user's parking field. Callers
-            // that need a strict 4-char ICAO (e.g. the taxi-graph builder, which
-            // queries by canonical ICAO) must filter the result list themselves —
-            // do NOT push the LENGTH(icao)=4 filter back into this SQL.
+            // on the ident fallback to find the user's parking field. It is NOT how
+            // to ask which airport our own aircraft is at: that is
+            // CurrentAirport.Resolve, because this list's first entry is ordered by
+            // summed raw degrees (it names heliport 10CL at 111 of KSNA's 201
+            // stands). Do NOT push a LENGTH(icao)=4 filter into this SQL — every
+            // provider lookup matches icao OR ident, and short idents are real
+            // airports.
             var sql = @"SELECT COALESCE(NULLIF(icao, ''), ident) AS code, laty, lonx
                         FROM airport
                         WHERE laty BETWEEN @MinLat AND @MaxLat

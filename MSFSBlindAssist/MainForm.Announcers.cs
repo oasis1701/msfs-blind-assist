@@ -577,19 +577,20 @@ public partial class MainForm
                         }
                     }
 
-                    // (2) Under-aircraft detection — only when on the ground. Same
-                    //     ICAO-resolution pattern as Where-Am-I (canonical 4-char
-                    //     ICAOs only; the 3-char idents the DB also returns are for
-                    //     fields the taxi-graph layer can't load).
+                    // (2) Under-aircraft detection — only when on the ground. At the airport
+                    //     CurrentAirport.Resolve names, the one Where Am I and Look Around speak,
+                    //     never the nearest four-character reference point: on KSNA's runway 02L
+                    //     that was heliport 10CL, which has no taxi paths, so no runway was found
+                    //     and the assist said "no runway selected" on a runway the database knows.
+                    //     The two calls also share the Where-Am-I graph cache, which two different
+                    //     answers kept evicting. Short idents load like any other.
                     if (!seeded && _lastOnGround && airportDataProvider != null)
                     {
-                        var nearby = airportDataProvider
-                            .GetNearbyAirportICAOs(pos.Latitude, pos.Longitude, 5.0)
-                            .Where(c => c != null && c.Length == 4)
-                            .ToList();
-                        if (nearby.Count > 0 &&
+                        string? airportIcao = MSFSBlindAssist.Services.CurrentAirport.Resolve(
+                            airportDataProvider, pos.Latitude, pos.Longitude);
+                        if (airportIcao != null &&
                             taxiGuidanceManager.TryDetectRunwayUnderAircraft(
-                                airportDataProvider, nearby[0],
+                                airportDataProvider, airportIcao,
                                 pos.Latitude, pos.Longitude,
                                 pos.HeadingMagnetic, pos.MagneticVariation,
                                 out double detLat, out double detLon,
@@ -1788,7 +1789,7 @@ public partial class MainForm
 
     /// <summary>
     /// "Where Am I" — tells the pilot which taxiway/runway/gate they're currently on at
-    /// the nearest airport. Works whether or not taxi guidance is active. Format:
+    /// the airport they are AT (CurrentAirport.Resolve). Works whether or not taxi guidance is active. Format:
     /// "Taxiway Bravo at KJFK." / "Gate A25 at KJFK." / "Runway 22L at KJFK."
     /// </summary>
     private void AnnounceWhereAmI()

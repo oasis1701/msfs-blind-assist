@@ -418,7 +418,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             Size = new Size(200, 35),
             Enabled = _onRefreshTaxiwayNames != null,
             AccessibleName = "Refresh Taxiway Names",
-            AccessibleDescription = "Download fresh taxiway-name data for the nearest airport and announce when complete"
+            AccessibleDescription = "Download fresh taxiway-name data for the airport you are at (within 5 NM) and announce when complete"
         };
         refreshTaxiwayNamesButton.Click += RefreshTaxiwayNamesButton_Click;
 

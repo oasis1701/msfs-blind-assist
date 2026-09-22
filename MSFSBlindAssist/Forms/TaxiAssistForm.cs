@@ -15,7 +15,7 @@ namespace MSFSBlindAssist.Forms;
 /// then activates real-time steering guidance.
 ///
 /// Design:
-/// - Airport ICAO input with auto-fill from nearest airport
+/// - Airport ICAO input, auto-filled with the airport the aircraft is at (CurrentAirport.Resolve, via MainForm.OpenTaxiForm)
 /// - Destination type selection (Runway / Gate-Parking)
 /// - Destination combo (runways or gates sorted by distance)
 /// - First taxiway combo: all taxiways sorted closest to farthest, with "(None - calculate shortest path)" at top
@@ -572,7 +572,7 @@ public class TaxiAssistForm : Form
             Width = controlWidth,
             CharacterCasing = CharacterCasing.Upper,
             AccessibleName = "Airport ICAO",
-            AccessibleDescription = "Enter the four-letter ICAO code for the airport"
+            AccessibleDescription = "Enter the airport's ICAO code or identifier"
         };
         txtAirport.Leave += (s, e) => _ = LoadAirportDataSafeAsync(txtAirport.Text.Trim());
         y += 30;

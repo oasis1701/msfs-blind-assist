@@ -54,15 +54,43 @@ public partial class MainForm
             var dataProvider = airportDataProvider;
             refreshCallback = async () =>
             {
-                var pos = simConnectManager.LastKnownPosition;
-                if (pos == null) return;
+                // A position asked of the simulator at the press. LastKnownPosition is only a
+                // by-product of other features' requests (the ground monitors, a guidance stream,
+                // TCAS), so in quiet cruise it could still hold wherever it was last cached
+                // (usually the departure stand) and the press refreshed THAT airport; with no
+                // position at all since connect it returned in silence. GetFreshAircraftPositionAsync
+                // (MainForm.SayIntentions.cs) asks once, waits up to 1.5 s, falls back to the
+                // cached position, and throws InvalidOperationException only when there is neither.
+                SimConnectManager.AircraftPosition pos;
+                try
+                {
+                    pos = await GetFreshAircraftPositionAsync();
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _taxiAugmentLog.Warn($"taxi-augment: name refresh pressed with no aircraft position ({ex.Message})");
+                    // An error condition, so it is spoken: the button promises an announcement,
+                    // and silence would sound exactly like a press that never registered.
+                    if (IsHandleCreated && !IsDisposed)
+                        announcer.AnnounceImmediate("Aircraft position unavailable.");
+                    return;
+                }
 
-                string? icao = await Task.Run(() =>
-                    dataProvider.GetNearbyAirportICAOs(pos.Value.Latitude, pos.Value.Longitude, 50.0)
-                        .Where(c => c != null && c.Length == 4)
-                        .FirstOrDefault());
+                // The airport the aircraft is AT — CurrentAirport.Resolve, the resolver Where Am I
+                // and Look Around use — never the nearest four-character code within 50 NM this
+                // used to take: at KSNA's GA stands that refreshed heliport 10CL's names. A
+                // database query, so it stays off the UI thread.
+                string? icao = await Task.Run(() => MSFSBlindAssist.Services.CurrentAirport.Resolve(
+                    dataProvider, pos.Latitude, pos.Longitude));
 
-                if (icao == null) return;
+                if (icao == null)
+                {
+                    // With no airport within 5 NM there is nothing to refresh; say so rather than
+                    // stay silent. Same words as Where Am I's.
+                    if (IsHandleCreated && !IsDisposed)
+                        announcer.AnnounceImmediate("No airport nearby.");
+                    return;
+                }
 
                 await provider.PrefetchAsync(icao, force: true);
 
@@ -73,8 +101,9 @@ public partial class MainForm
                     ? $"Taxiway names refreshed for {icao}: {added} added."
                     : $"Taxiway names refreshed for {icao}. No new names found.";
                 // No marshal needed: this callback is invoked from
-                // TaxiGuidancePanel's Button.Click handler (UI thread), and neither await
-                // above uses ConfigureAwait(false), so we're still on the UI thread here.
+                // TaxiGuidancePanel's Button.Click handler (UI thread), and none of the awaits
+                // above uses ConfigureAwait(false) — nor do GetFreshAircraftPositionAsync's own —
+                // so we're still on the UI thread here.
                 if (IsHandleCreated && !IsDisposed)
                     announcer.AnnounceImmediate(msg);
             };
