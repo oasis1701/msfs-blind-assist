@@ -5,8 +5,8 @@ using MSFSBlindAssist.Services;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// The display-read tables whose camera views have never been measured: the PMDG 777 and the
-/// HorizonSim 787. Every row carries a NULL instrument view index, which means
+/// The display-read table whose camera views have never been measured: the HorizonSim 787. Every
+/// row carries a NULL instrument view index, which means
 /// "capture whatever is on screen" — byte-for-byte what these reads did as hand-written switch
 /// arms before they moved onto the shared table.
 ///
@@ -18,7 +18,6 @@ public class UnmeasuredDisplayReadTableTests
 {
     public static TheoryData<string, IReadOnlyList<AiDisplayRead>> Tables => new()
     {
-        { "PMDG 777", Pmdg777DisplayReads.All },
         { "HorizonSim 787", HS787DisplayReads.All },
     };
 
@@ -49,27 +48,6 @@ public class UnmeasuredDisplayReadTableTests
 
         Assert.Equal(names.Length, names.Distinct().Count());
         _ = aircraft;
-    }
-
-    [Theory]
-    [InlineData(HotkeyAction.ReadDisplayPFD, GeminiService.DisplayType.PFD777, "PFD")]
-    [InlineData(HotkeyAction.ReadDisplayND, GeminiService.DisplayType.ND777, "ND")]
-    [InlineData(HotkeyAction.ReadDisplayUpperECAM, GeminiService.DisplayType.EICAS, "EICAS")]
-    [InlineData(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.ISFD, "ISFD")]
-    public void ThePmdg777_KeepsItsPromptsAndSpokenNames(
-        HotkeyAction action, GeminiService.DisplayType type, string name)
-    {
-        Assert.True(AiDisplayRead.TryGet(Pmdg777DisplayReads.All, action, out var read));
-        Assert.Equal(type, read.DisplayType);
-        Assert.Equal(name, read.SpokenName);
-    }
-
-    [Fact]
-    public void ThePmdg777_HasNoLowerDisplayRead()
-    {
-        // Its lower display is a selectable synoptic — a different surface from the 737's lower
-        // DU — so it needs its own measurement rather than a copy of that table.
-        Assert.False(AiDisplayRead.TryGet(Pmdg777DisplayReads.All, HotkeyAction.ReadDisplayLowerECAM, out _));
     }
 
     [Theory]

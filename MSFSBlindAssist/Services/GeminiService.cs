@@ -214,6 +214,7 @@ public class GeminiService : IAiProvider
         PFD777,        // Primary Flight Display (Boeing 777)
         ND777,         // Navigation Display (Boeing 777)
         ISFD,          // Integrated Standby Flight Display (Boeing 777)
+        LowerDisplay777, // Lower display / MFD (Boeing 777) — secondary engine, a synoptic, or an ND
         PFD737,        // Primary Flight Display (Boeing 737 NG3)
         ND737,         // Navigation Display (Boeing 737 NG3)
         ISFD737,       // Integrated Standby Flight Display (Boeing 737 NG3)
@@ -537,6 +538,21 @@ If it shows a NAVIGATION DISPLAY — first line ""Navigation display"" — repor
 Important: N1 and EGT belong to the Upper Engine Display, not this one — do not report them here. Fuel flow appears on BOTH displays (verified in the simulator, 2026-09-20); report the value shown on THIS one.
 If the display is blank or off, say so in one line and stop.
 Skip normal colors (green, white) — only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.LowerDisplay777 => @"You are reading the LOWER display (the lower centre screen, sometimes called the lower EICAS or the MFD) of a Boeing 777 for a screen reader user.
+The image shows the whole forward panel. Describe ONLY the lower centre screen, the one directly BELOW the upper EICAS. Ignore the upper EICAS above it, the standby instrument, the primary flight displays, the navigation displays and the CDU keypads.
+
+This screen is selectable and shows one of several things. Identify which is present from its content, say so on the first line, then report it:
+
+If it shows SECONDARY ENGINE INDICATIONS - first line ""Secondary engine"" - report for each engine, left then right, each on its own line: N2 percentage, fuel flow, oil pressure, oil temperature, oil quantity, and engine vibration. Report the numbers as shown.
+
+If it shows a SYNOPTIC page - first line the page name, for example ""Hydraulic synoptic"", ""Electrical synoptic"", ""Fuel synoptic"", ""Air synoptic"", ""Door synoptic"", ""Gear synoptic"", ""Flight controls synoptic"" or ""Status"" - report the quantities, valve and pump states, and any amber or red items on it, each on its own line.
+
+If it shows a NAVIGATION DISPLAY - first line ""Navigation display"" - report mode and range, heading or track, the active waypoint with distance and time, and any weather radar or terrain indications.
+
+If the screen is blank or off, say so in one line and stop.
+Skip normal colors (green, white) - only mention warning/alert colors (amber, red).
 Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.PFDiFly => @"You are reading the Primary Flight Display (PFD) of an iFly Boeing 737 MAX 8 for a screen reader user. The image may contain several displays. ONLY describe the PFD — the display showing the artificial-horizon attitude indicator with a speed tape on its left and an altitude tape on its right. Ignore the navigation display, the engine indications, the ISFD standby, the flight-information/data page, and the CDU.
