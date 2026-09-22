@@ -64,6 +64,11 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             case "FO_ENGINES_OFF":
                 value = (Eng1N2 < 20 && Eng2N2 < 20) ? 1 : 0;
                 return true;
+            // "Landing gear: UP" — gear up, lights out (FenixGearConfirmation), never the
+            // lever alone (owner decision 2026-09-22).
+            case FenixGearConfirmation.UpField:
+                value = FenixGearConfirmation.UpValue(GetValue);
+                return true;
             default:
                 value = double.NaN;
                 return false;

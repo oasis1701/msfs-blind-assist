@@ -289,3 +289,16 @@ One change: the Before Start "Waiting for APU available" wait now ABORTS the flo
    ~3 minutes, with external power still on the bus. Fix the cause, re-run the flow —
    completed steps announce "Already set" and the flow proceeds.
 3. After Landing APU block: unchanged (timeout announces and continues).
+
+---
+
+## "Landing gear: UP" by lights out, not the lever (2026-09-22)
+
+1. In flight, after takeoff, with the gear still DOWN (disable Auto Gear Up first, or catch
+   it before the auto-manager raises the gear), run the **After Takeoff** flow. Expect
+   "Timed out waiting for: Landing gear: UP" then "Skipping: Landing gear: UP" spoken
+   *before* "After Takeoff flow complete" (non-interrupting, so both are heard). Open the
+   Checklists tab — the After Takeoff Checklist's "Landing gear: UP" line must stay
+   **unticked**. Raise the gear (by hand or via the auto-manager) and confirm the line ticks
+   itself once the lever reads UP **and** every LDG GEAR indicator (all three wheels' upper
+   and lower legends, plus the lever's red arrow) is dark — not merely once the lever moves.

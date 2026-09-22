@@ -301,3 +301,40 @@ location as the round gauges, so view 8 serves both.
 ⚠️ The old hotkey-guide line said the ISIS needs "default camera view 9". That is wrong: view 9
 (index 8) holds the first officer's ND and PFD with the ECAM clipped at its left edge, and no
 standby instruments at all. The standby is in view 8 (index 7), measured.
+
+### Fenix A320 First Officer — "Landing gear: UP" by lights out (2026-09-22)
+
+The After Takeoff Checklist's "Landing gear: UP" (`ATC_GEAR`) used to read `S_MIP_GEAR`
+directly, and `FirstOfficerForm`'s automatic `<Id>_CL` rule (`RelatedGroupIdsFor`) latches
+`flow.Id + "_CL"` complete on top of every group a flow explicitly declares — so finishing
+the After Takeoff flow latched `AFTER_TAKEOFF_CL` even though `ATC_GEAR` had no step of its
+own behind it, and the line could read complete over gear that was still down. Fixed the
+way the PMDG 737's equivalent line was fixed (see [pmdg-737.md](pmdg-737.md) — same owner
+decision, same day): `FenixGearConfirmation` (`FirstOfficer/Fenix/FenixGearConfirmation.cs`,
+published as the synthetic state field `FO_GEAR_UP`) reads UP only when the lever reads UP
+(`S_MIP_GEAR` = 0) **and** all seven LDG GEAR indicator lights are out — `I_MIP_GEAR_1_U` /
+`_1_L`, `I_MIP_GEAR_2_U` / `_2_L`, `I_MIP_GEAR_3_U` / `_3_L` (each wheel's upper/lower
+legend) and `I_MIP_GEAR_RED` (the main-panel lever's own red arrow). All seven are
+`Continuous`-registered L:vars, so the shared batch cache always carries a fresh sample once
+the aircraft is powered; an unwritten field (any of the seven, or the lever) reads NaN via
+the shared `GearLightRules.AsField`, which a flow's wait treats as "not up yet" rather than
+a false positive.
+
+**UP only — there is no DOWN rule, on purpose.** The PMDG 737 composes "three green, no
+red" from separate green DOWN-AND-LOCKED and red IN-TRANSIT fields; the Fenix's seven gear
+L:vars are plain off/on and carry no colour information at all, so nothing here can
+distinguish a lit green triangle from a lit red bar. And the Fenix First Officer profile has
+no Landing flow to begin with, so its checklist's "Landing gear: DOWN" line (`LDC_GEAR`) is
+never latched by a flow finishing — it stays the plain `S_MIP_GEAR` lever mirror it always
+was, with nothing here to change.
+
+**The After Takeoff flow ends with a read-only step**, `AT_GEAR_UP_CHECK` ("Landing gear:
+UP"), that waits up to 20 s for `FO_GEAR_UP` and completes `ATC_GEAR` on delivery. It never
+writes the lever — gear retraction stays the `UniversalAutomationService`'s auto-gear-up job
+(the flow's own `Description` says so) — it only confirms. On a timeout the step is
+announced as skipped ("Timed out waiting for: Landing gear: UP" / "Skipping: Landing gear:
+UP", heard before the non-interrupting "After Takeoff flow complete" — see
+[first-officer.md](first-officer.md)) and `FlowManager` adds `ATC_GEAR` to its
+`_unfinishedChecklistItemIds` set, which `MarkGroupComplete`'s `excludeItemIds` then keeps
+out of the completion latch — so the checklist line keeps mirroring the real gear state
+instead of reading complete over gear that is still down.
