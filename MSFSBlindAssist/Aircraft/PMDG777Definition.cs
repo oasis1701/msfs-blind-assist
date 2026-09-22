@@ -6939,6 +6939,12 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
 
         return false;
     }
+    /// <summary>
+    /// No camera move: this aircraft's instrument view indices are unmeasured, so every read
+    /// captures the current view (Pmdg777DisplayReads).
+    /// </summary>
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => Pmdg777DisplayReads.All;
+
 
     public override bool HandleHotkeyAction(
         HotkeyAction action,
@@ -7273,21 +7279,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 return false;
 
 
-            case HotkeyAction.ReadDisplayPFD:
-                ReadDisplay(Services.GeminiService.DisplayType.PFD777, "PFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayND:
-                ReadDisplay(Services.GeminiService.DisplayType.ND777, "ND", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayISIS:
-                ReadDisplay(Services.GeminiService.DisplayType.ISFD, "ISFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayUpperECAM:
-                ReadDisplay(Services.GeminiService.DisplayType.EICAS, "EICAS", announcer, parentForm);
-                return true;
+            // Alt+P / Alt+N / Alt+I / Alt+E are dispatched from Pmdg777DisplayReads by the base.
 
             case HotkeyAction.ReadFuelInfo:
             {

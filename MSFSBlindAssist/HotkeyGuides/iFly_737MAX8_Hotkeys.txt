@@ -94,12 +94,18 @@ AI Display Reading (needs an AI provider configured in Settings > AI tab):
   Alt+N      Describe the ND (Navigation Display)
   Alt+I      Describe the ISFD (standby instrument)
   Alt+E      Describe the engine display and crew alerts (EICAS)
-  Each captures the simulator window and reads the chosen display aloud in a
-  result window, so have that display visible when you press the key. In the
-  simulator, the Ctrl+1 camera view is the forward cockpit view that shows the
-  PFD, ND, engine display and standby instrument together — the easiest place
-  to read any of them from (this Ctrl+1 is a simulator camera key, not the
-  app's Ctrl+1 above).
+  Each reads the chosen display aloud in a result window.
+  You no longer need to select a cockpit view first: the app moves the
+  simulator camera to the display it is reading and puts your own view back
+  afterwards — including a saved custom camera such as a cabin or wing view.
+  The camera is away for well under a second, and your view is back before the
+  AI is even asked.
+  The app checks that your view really came back rather than assuming it. If it
+  could not get you back it says "Could not return to your previous view"
+  instead of leaving you somewhere you did not choose, and the next display
+  read you take will try again to return you there.
+  From an outside or drone view it says "Switch to a cockpit view first" and
+  does nothing.
 
 Checklists and EFB:
   Shift+C    Open text checklist window (iFly 737 MAX8 normal procedures)
