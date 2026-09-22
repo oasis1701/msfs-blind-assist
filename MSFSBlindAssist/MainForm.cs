@@ -158,6 +158,9 @@ public partial class MainForm : Form
     // them individually is not a nicety here.
     private Forms.MD11.Md11MonitorManagerForm? md11MonitorManagerForm;
 
+    // Stock Cessna 172 monitor manager (Ctrl+M).
+    private Forms.C172.Cessna172MonitorManagerForm? c172MonitorManagerForm;
+
     private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
 
     private TakeoffAssistManager takeoffAssistManager = null!;
@@ -1084,6 +1087,7 @@ public partial class MainForm : Form
         // ends the same way on exit as on a swap (MainForm.AircraftSwitch.cs).
         if (md11MonitorManagerForm != null && !md11MonitorManagerForm.IsDisposed) md11MonitorManagerForm.Dispose();
         md11MonitorManagerForm = null;
+        DisposeC172Forms();
         coherentMd11Efb?.Dispose();
 
         // Clean up 787 forms + the IRS / CAS Coherent clients

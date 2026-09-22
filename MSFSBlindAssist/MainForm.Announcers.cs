@@ -215,7 +215,11 @@ public partial class MainForm
         // gate below never sees those vars and a Ctrl+M mute of them would silently do nothing.
         bool md11Muted = currentAircraft.AircraftCode == "TFDI_MD11" &&
             Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName);
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || md11Muted || uiEcho;
+        // The C172 speaks its warnings, COM actives and squawk from INSIDE ProcessSimVarUpdate
+        // (its simple switches take the generic path below), so the mute must reach it here.
+        bool c172Muted = currentAircraft.AircraftCode == "C172" &&
+            Settings.SettingsManager.Current.C172DisabledMonitorVariablesSet.Contains(e.VarName);
+        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || md11Muted || c172Muted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -337,6 +341,12 @@ public partial class MainForm
                 // displays those lamps ARE its instrument panel.
                 if (currentAircraft.AircraftCode == "TFDI_MD11" &&
                     Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                if (currentAircraft.AircraftCode == "C172" &&
+                    Settings.SettingsManager.Current.C172DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }

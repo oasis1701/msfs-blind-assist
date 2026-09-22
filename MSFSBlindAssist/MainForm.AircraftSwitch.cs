@@ -1020,6 +1020,7 @@ public partial class MainForm
             hs787MonitorManagerForm.Dispose();
             hs787MonitorManagerForm = null;
         }
+        DisposeC172Forms();
         StopA380EWDMonitor(oldAircraft);
 
         // Dispose HS 787 forms when switching aircraft
