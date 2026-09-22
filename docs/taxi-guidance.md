@@ -1057,11 +1057,38 @@ change.
 ### Which airport — `CurrentAirport.Resolve`
 
 Every surroundings path (both hotkeys, the monitor, the Place list) asks the
-same question, and the answer is `CurrentAirportResolver.Pick`: among the
-airports the provider lists within 5 NM, the nearest by TRUE distance that has
-taxi paths and whose navdata bounding box (grown 300 m) contains the aircraft;
-failing that the nearest with taxi paths within 3 NM; failing that the nearest
-of any kind within 5 NM. Idents of any length.
+same question, and the answer is `CurrentAirportResolver.Pick`. Among the
+airports the provider lists within 5 NM it makes four passes, each taking the
+nearest by TRUE distance to the reference point:
+
+1. an airport **with taxi paths** whose navdata bounding box, grown 300 m
+   (`BoxMarginMetres`), contains the aircraft;
+2. an airport of **any kind** whose grown box contains it — a strip with
+   runways but no taxi paths;
+3. the nearest airport with taxi paths within 3 NM;
+4. the nearest of any kind within 5 NM.
+
+Idents of any length.
+
+Pass 2 was missing from the first version, and its absence cost exactly the
+small fields this was meant to serve: a strip with no taxi paths went to a
+taxi-path neighbour, so Where Am I on the runway at 8TX2 Freeman Ranch said
+"Not on a known taxiway or ramp at KECU." — an airport 4.4 km away. Measured on
+fs2024: 1,552 strips (at least one runway, no taxi paths) that the old
+4-character rule named at their own reference point were sent to another
+airport, 1,354 of them to a taxi-path field within 3 NM, and so were 3,306
+runway ends at 1,790 strips. With pass 2, 1,353 of those reference points and
+2,917 of those runway ends name their own strip, and the answer at all 302,142
+stands and at all 56,396 runway ends (`runway_end` rows) of airports with taxi
+paths is unchanged.
+Its place is load-bearing both ways: above pass 1 it would hand 41 of KSNA's
+stands — inside heliport 10CL's grown box and nearer its reference point — to
+the heliport; below pass 3 the neighbour would still win. What it leaves is a
+strip inside a taxi-path airport's own grown box, which pass 1 answers on
+purpose (190 reference points, median 103 m apart — mostly two navdata records
+for one field, such as UZTT/UTTT), and 133 positions where two grown boxes
+overlap and the other airport's reference point is nearer (81 of them a
+heliport beside a strip's runway end).
 
 It replaces `GetNearbyAirportICAOs(…)[0]` filtered to 4-character ICAOs, which
 is ordered by unscaled |Δlat| + |Δlon| to the reference point. Measured on
