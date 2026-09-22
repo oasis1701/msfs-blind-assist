@@ -213,8 +213,10 @@ Approach, Landing, After Landing, Parking, Securing).
 ### Auto-flaps (opt-in, reused near-verbatim from the A380)
 
 `FbwA320FOAutoManager.CheckFlaps` drives the flap lever from the shared `A32NX_SPEEDS_*` L:vars
-(green dot / S / F / VFE-next) — the identical logic proven on the A380, keyed on the same
-variable names since both aircraft share the FBW speed-tape implementation. All checks below
+(green dot / S / F) — the identical logic proven on the A380. VFE-next is the one exception:
+it comes from the FAC's `V_FE_NEXT` ARINC429 word (FAC 1, else FAC 2) through the evaluator's
+`FO_VFE_NEXT` synthetic field, because FBW #10890 stopped publishing `A32NX_SPEEDS_VFEN` — the
+rest of the schedule still reads the shared `A32NX_SPEEDS_*` L:vars by name. All checks below
 require **"Auto Flaps"** enabled in File → Settings… → First Officer, and the label there should
 now read **"Auto-manage flaps (FBW A380 and A32NX)."**
 
@@ -228,7 +230,10 @@ now read **"Auto-manage flaps (FBW A380 and A32NX)."**
    unaffected.
 7. **Approach extension, FULL landing.** With CONF FULL selected (default), fly a decelerating
    approach below 5000 ft AGL. Confirm each step fires as IAS drops through green dot → S → F →
-   (with GEAR DOWN) → FULL. Confirm the 3 → FULL step is gear-gated.
+   (with GEAR DOWN) → FULL. Confirm the 3 → FULL step is gear-gated. On a current FBW
+   Development build (11 Sep 2026 or later), confirm the extensions actually happen — before
+   this fix `A32NX_SPEEDS_VFEN` read a stale 0, the guard held on every approach, and they
+   never fired there.
 8. **Approach extension, CONF 3 landing.** Select CONF 3 — confirm the schedule stops at Flaps 3
    and FULL is never commanded.
 9. **VFE-next guard.** Hold IAS just above VFE-next on a descending approach — confirm no

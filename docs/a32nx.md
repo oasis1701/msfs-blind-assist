@@ -264,6 +264,13 @@ The readouts now take the FAC's own characteristic speeds, which is what the PFD
 | VFE | `A32NX_SPEEDS_VFEN` | `A32NX_FAC_1_V_FE_NEXT`, else `A32NX_FAC_2_V_FE_NEXT` |
 | VS | `A32NX_SPEEDS_VS` | `A32NX_FAC_1_V_STALL_1G`, else `A32NX_FAC_2_V_STALL_1G` |
 
+The First Officer's automatic flap extension had the same dependency: `FbwA320FOAutoManager`
+gated extension on `A32NX_SPEEDS_VFEN`, and with it reading 0 the guard held on every approach,
+so the FO never extended flaps. It now reads the FAC word through the evaluator's
+`FO_VFE_NEXT` synthetic field: FAC 1, else FAC 2, and no data means hold. The Headwind A330's
+evaluator resolves `FO_VFE_NEXT` to the plain L-var. The A380 First Officer still reads the
+plain L-var its aircraft publishes.
+
 VS keeps its meaning: `V_STALL_1G` is the 1g stall speed, the same quantity the deleted
 `A32NX_SPEEDS_VS` carried, and the call-out still says "Stall Speed". Like the PFD, FAC 1 is
 read first and FAC 2 is the fallback when FAC 1 has nothing to say (failed, or switched off).

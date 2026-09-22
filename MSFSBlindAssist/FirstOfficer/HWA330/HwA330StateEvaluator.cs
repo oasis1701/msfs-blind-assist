@@ -92,6 +92,14 @@ public sealed class HwA330StateEvaluator : LVarStateEvaluator
             value = (e1 < 0.5 && e2 < 0.5) ? 1 : 0;
             return true;
         }
+        if (field == "FO_VFE_NEXT")
+        {
+            // The A339X still publishes the plain A32NX_SPEEDS_VFEN L:var (its A32NX_Speeds.ts
+            // predates FBW #10890) and its FACs publish no characteristic speeds at all
+            // (docs/a32nx.md) — never switch this one to the FAC words.
+            value = GetValue("A32NX_SPEEDS_VFEN");
+            return true;
+        }
         value = double.NaN;
         return false;
     }

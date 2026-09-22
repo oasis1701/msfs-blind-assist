@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using MSFSBlindAssist.FirstOfficer.Generic;
+using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.FirstOfficer.FBWA320;
 
@@ -63,13 +64,33 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         // Auto-flap schedule inputs (speed tape + flaps handle). A32NX_SPEEDS_LANDING_CONF3
         // was previously absent here AND unregistered in the definition, so `conf3` was
         // permanently NaN and the CONF 3 landing cap could never engage (fixed 2026-08-30).
-        "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",
+        // VFE-next comes from the FAC's V_FE_NEXT word because FBW #10890 stopped publishing
+        // A32NX_SPEEDS_VFEN (docs/a32nx.md).
+        "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F",
+        "FAC_1_V_FE_NEXT", "FAC_2_V_FE_NEXT",
         "A32NX_SPEEDS_LANDING_CONF3",
         "WIPER_LEFT", "WIPER_RIGHT",
         "A32NX_RCDR_GROUND_CONTROL_ON",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;
+
+    /// <summary>
+    /// VFE of the next flap configuration from the FAC's V_FE_NEXT ARINC429 word: FAC 1, else FAC 2
+    /// (the PFD's order). An unread (NaN) word is skipped; a word without data (no computed data,
+    /// failure warning — and the 0 a never-written L:var reads decodes as failure warning) is not a
+    /// speed. Neither → NaN, which the auto manager treats as "unknown → hold".
+    /// </summary>
+    internal static double DecodeVfeNext(double fac1Raw, double fac2Raw)
+    {
+        foreach (double raw in new[] { fac1Raw, fac2Raw })
+        {
+            if (double.IsNaN(raw)) continue;
+            var word = new Arinc429Word(raw);
+            if (word.HasData) return word.Value;
+        }
+        return double.NaN;
+    }
 
     protected override bool TryGetSyntheticValue(string field, out double value)
     {
@@ -84,6 +105,11 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
                 return true;
             }
             value = (e1 < 0.5 && e2 < 0.5) ? 1 : 0;
+            return true;
+        }
+        if (field == "FO_VFE_NEXT")
+        {
+            value = DecodeVfeNext(GetValue("FAC_1_V_FE_NEXT"), GetValue("FAC_2_V_FE_NEXT"));
             return true;
         }
         value = double.NaN;
