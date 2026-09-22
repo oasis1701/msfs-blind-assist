@@ -533,7 +533,7 @@ public partial class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)335: // Speed VFE
+            case (DATA_REQUESTS)335: // Speed VFE (plain L-var source; the A32NX reads its FAC word instead)
                 SingleValue speedVFEData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
@@ -553,7 +553,7 @@ public partial class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)337: // Speed VS (Stall Speed)
+            case (DATA_REQUESTS)337: // Speed VS (plain L-var source; the A32NX reads its FAC word instead)
                 SingleValue speedVSData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
