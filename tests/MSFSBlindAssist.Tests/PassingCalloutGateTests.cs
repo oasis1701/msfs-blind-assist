@@ -262,6 +262,63 @@ public class PassingCalloutGateTests
         Assert.Equal(95, hit.RelativeBearingDeg);
     }
 
+    // ---- PR #230 review SW-1, controller decision M17: the loop-entry test governs BOTH when
+    // tracking of a new feature starts AND whether an already-armed, Pending track keeps being
+    // visited (and so can fire) while its feature recedes -- M17 deliberately keeps the second
+    // half keyed on the wide rank window, never narrowed back to the kind's own radius. ----
+
+    [Fact]
+    public void A_pass_held_by_speed_still_fires_once_the_current_sample_has_receded_past_the_kind_s_own_radius_but_stays_inside_the_rank_window()
+    {
+        // A pass held by speed (or the global gap) may still be spoken while its building is
+        // anywhere inside RankRadiusMetres, even once the CURRENT sample has grown past the
+        // kind's own (narrower) PassRadiusMetres -- it still names the side and range frozen at
+        // the closest point, never the release sample's. Without this, a track that is simply not
+        // re-visited once it recedes past its own radius could never be released at all.
+        var gate = new PassingCalloutGate();
+        var h = Feat(FeatureKind.Hangar, "Receding Hangar");
+        double kindRadius = PassingCalloutGate.PassRadiusMetres(FeatureKind.Hangar);
+        double rankRadius = PassingCalloutGate.RankRadiusMetres;
+        double releaseDist = (kindRadius + rankRadius) / 2.0;   // strictly between the two, whatever their values
+
+        Assert.Null(gate.Evaluate(At(h, 200), 1.5, T0));                        // below MinSpeedKts throughout the approach
+        Assert.Null(gate.Evaluate(At(h, 100), 1.5, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(At(h, 60), 1.5, T0.AddSeconds(4)));           // closest point: 60 m at 90 degrees -- well inside the 150 m radius
+        Assert.Null(gate.Evaluate(At(h, 90), 1.5, T0.AddSeconds(6)));           // opens -- arms, but still held by speed
+        Assert.Null(gate.Evaluate(At(h, releaseDist), 1.5, T0.AddSeconds(8)));  // recedes past the radius while still held: must stay tracked, not dropped
+
+        // The premise this test exists to pin: the release sample really is outside the kind's own
+        // radius and really is inside the rank window -- a later widening of either constant must
+        // not let this test silently stop exercising M17.
+        Assert.True(releaseDist > kindRadius);
+        Assert.True(releaseDist < rankRadius);
+
+        var hit = gate.Evaluate(At(h, releaseDist), 5, T0.AddSeconds(10));      // speed returns into band: releases
+        Assert.NotNull(hit);
+        Assert.Equal(60, hit!.DistanceMetres);        // still the closest-point values, never the release sample's
+        Assert.Equal(90, hit.RelativeBearingDeg);
+    }
+
+    [Fact]
+    public void A_held_pass_whose_building_leaves_the_rank_window_before_release_is_never_spoken()
+    {
+        // The complementary boundary: the rank window is not unlimited. Once the current sample is
+        // beyond RankRadiusMetres the track is not even visited that tick, so a pass held by speed
+        // cannot be released while its building has gone that far, however recently it was armed.
+        var gate = new PassingCalloutGate();
+        var h = Feat(FeatureKind.Hangar, "Departed Hangar");
+        double rankRadius = PassingCalloutGate.RankRadiusMetres;
+        double beyondRank = rankRadius + 50.0;
+
+        Assert.Null(gate.Evaluate(At(h, 200), 1.5, T0));
+        Assert.Null(gate.Evaluate(At(h, 100), 1.5, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(At(h, 60), 1.5, T0.AddSeconds(4)));            // closest point
+        Assert.Null(gate.Evaluate(At(h, 90), 1.5, T0.AddSeconds(6)));            // opens -- arms, held by speed
+
+        Assert.True(beyondRank > rankRadius);
+        Assert.Null(gate.Evaluate(At(h, beyondRank), 5, T0.AddSeconds(8)));      // speed is back in band, but the building has left the rank window
+    }
+
     [Fact]
     public void The_mirror_case_on_the_left_also_names_the_closest_point_side()
     {
