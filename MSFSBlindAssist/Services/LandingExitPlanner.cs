@@ -383,8 +383,9 @@ public class LandingExitPlanner
             isRunwayDestination: false,
             prebuiltGraph: _graph,
             announceSummary: false,
-            // The aircraft is still rolling at landing speed: this route never starts held.
-            allowStartHold: false);
+            // The aircraft is still rolling at landing speed, so the pass sets no start hold; this
+            // labels the crossings log line phase=touchdown.
+            landingRolloutRoute: true);
 
         if (error != null)
         {

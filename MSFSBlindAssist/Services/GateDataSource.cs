@@ -46,7 +46,17 @@ public sealed class GateDataSource
     private readonly Func<JsonElement?> _getHandlerDataAirport;
     private readonly Func<long> _handlerDataVersion;
 
-    private readonly Dictionary<string, (string path, DateTime stamp, List<ParkingSpot> spots)> _cache
+    // ⚠ THREAD-SAFE ON PURPOSE (PR #238 deferred finding §8a). These were plain Dictionaries, which
+    // is why CLAUDE.md said never to hand one GateDataSource to two threads — and why
+    // LandingExitForm evaluated a full GetNamedSpots, GetRunwayStarts and GetRunways INLINE ON THE
+    // UI THREAD while a screen-reader user was arrowing the exit combo, with only TaxiGraph.Build
+    // itself off-thread. A concurrent dictionary makes every read and write here atomic; two callers
+    // racing a miss may both compute, and the last write wins over an equivalent value.
+    //
+    // This does NOT make the LISTS thread-safe: a list handed back is the SAME instance held in the
+    // cache, and nobody may mutate it (.Clear()/.Remove/.Sort) — that rule is unchanged and is
+    // stated on GetSelectableGates.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string path, DateTime stamp, List<ParkingSpot> spots)> _cache
         = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -69,7 +79,7 @@ public sealed class GateDataSource
     /// snapshot remains the authority whenever the counter cannot be trusted.
     /// </para>
     /// </summary>
-    private readonly Dictionary<string, (long version, string airportSnapshot, List<ParkingSpot> spots)> _apiCache
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long version, string airportSnapshot, List<ParkingSpot> spots)> _apiCache
         = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
