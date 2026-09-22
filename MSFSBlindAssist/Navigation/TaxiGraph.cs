@@ -400,6 +400,11 @@ public class TaxiGraph
                 }
                 var (lat, lon) = SnapStartToRunwayCenterline(
                     s.Latitude, s.Longitude, rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon);
+                // ... and then, separately, a row sitting far OUTBOARD of the pavement ends is slid
+                // back onto the nearer one: the runway shape envelopes the start rows, so a bogus
+                // row extends the runway by up to 800 m and claims taxiway nodes with it (§4).
+                (lat, lon) = PullOutboardStartRowOntoPavement(
+                    lat, lon, rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, s.RunwayName);
                 if (Math.Abs(lat - s.Latitude) < 1e-9 && Math.Abs(lon - s.Longitude) < 1e-9)
                 {
                     snapped.Add(s);
@@ -2323,59 +2328,25 @@ public class TaxiGraph
             // Strict: the runway shape's own half-width, no margin. Stricter than DescribeLocation
             // because takeoff-assist centerline math depends on the chosen runway actually being the
             // one under the aircraft — a 5 m fudge could mis-attribute when the aircraft is sitting on
-            // a high-speed exit immediately adjacent to a runway. The threshold point, heading and
-            // end choice below are unchanged.
-            if (!RunwayShape.For(rwy).Contains(lat, lon, 0.0)) continue;
+            // a high-speed exit immediately adjacent to a runway.
+            var shape = RunwayShape.For(rwy);
+            if (!shape.Contains(lat, lon, 0.0)) continue;
 
-            // Pick the end whose takeoff heading is closer to the aircraft's
-            // heading. End 1's takeoff heading is HeadingDeg1; end 2's is
-            // HeadingDeg1 + 180 (mod 360).
-            double hdg1 = NormalizeHeading(rwy.HeadingDeg1);
-            double hdg2 = NormalizeHeading(rwy.HeadingDeg1 + 180.0);
-            double diff1 = Math.Abs(NormalizeAngle(aircraftHeadingTrue - hdg1));
-            double diff2 = Math.Abs(NormalizeAngle(aircraftHeadingTrue - hdg2));
-
-            if (diff1 <= diff2)
-            {
-                runwayId = rwy.Name1;
-                thresholdLat = rwy.Lat1;
-                thresholdLon = rwy.Lon1;
-                runwayHeadingTrue = hdg1;
-            }
-            else
-            {
-                runwayId = rwy.Name2;
-                thresholdLat = rwy.Lat2;
-                thresholdLon = rwy.Lon2;
-                runwayHeadingTrue = hdg2;
-            }
-
-            // Fallback if the chosen end has an empty Name (shouldn't happen
-            // in well-formed navdata, but defensive — an empty designator
-            // would propagate into the spoken callout). When we fall over to
-            // the other end's name, also re-point the threshold + heading to
-            // that other end so the geometry stays consistent with the name.
-            // If both names are empty, leave the geometry on the originally
-            // chosen end — the empty runwayId will be the caller's signal
-            // that data is malformed, but threshold + heading remain valid
-            // approximations.
-            if (string.IsNullOrEmpty(runwayId))
-            {
-                if (rwy.Name1.Length > 0)
-                {
-                    runwayId = rwy.Name1;
-                    thresholdLat = rwy.Lat1;
-                    thresholdLon = rwy.Lon1;
-                    runwayHeadingTrue = hdg1;
-                }
-                else if (rwy.Name2.Length > 0)
-                {
-                    runwayId = rwy.Name2;
-                    thresholdLat = rwy.Lat2;
-                    thresholdLon = rwy.Lon2;
-                    runwayHeadingTrue = hdg2;
-                }
-            }
+            // The END, its threshold and its heading come from that SAME shape, together
+            // (PR #238 deferred finding §5). They used to be picked from rwy.HeadingDeg1 and
+            // rwy.Lat1/Lat2 — the START-ROW frame — while DescribeLocation named the end through
+            // RunwayShape.NameAt, the pavement frame, so on a name-swapped centreline (AYCH, OIII,
+            // URWW, EDVQ: measured, four of 405) the two answered OPPOSITE ENDS at the same point.
+            // A blind pilot asking Where-Am-I was told one runway while the takeoff-assist reference
+            // seeded at the same spot carried the other, along with that end's threshold.
+            //
+            // The threshold is still a `start` row — runway-destination lineup anchors on the start
+            // table — but the row paired with this end BY POSITION rather than by name index.
+            var end = shape.DepartureEndFor(aircraftHeadingTrue);
+            runwayId = end.Designator;
+            thresholdLat = end.ThresholdLat;
+            thresholdLon = end.ThresholdLon;
+            runwayHeadingTrue = end.HeadingTrue;
 
             return true;
         }
@@ -3379,7 +3350,7 @@ public class TaxiGraph
         return Math.Sqrt(dLat * dLat + dLon * dLon);
     }
 
-    private static double NormalizeAngle(double angle)
+    internal static double NormalizeAngle(double angle)
     {
         while (angle > 180) angle -= 360;
         while (angle < -180) angle += 360;
@@ -3541,6 +3512,79 @@ public class TaxiGraph
         if (along < -half || along > half) return (startLat, startLon);
 
         return (projLat, projLon);
+    }
+
+    /// <summary>
+    /// How far outboard of a pavement end a <c>start</c> row may sit before it is treated as bad
+    /// data rather than a displaced threshold or a starter extension.
+    ///
+    /// <para>MEASURED over 812 start rows at 300 fs2024 airports: exactly THREE sit outboard at
+    /// all — 29.5 m (URWW 05), 471.2 m (KSAW 01) and 799.9 m (LIMC 17L) — and only the first is
+    /// legitimate. 100 m separates it from both bogus ones with wide margins in each direction,
+    /// which is the only reason this number can be a constant rather than a judgement.</para>
+    ///
+    /// <para>⚠ That is one fs2024 database and 300 of its airports. An FS2020 (BGL-built) database
+    /// was NOT measured, and neither was any airport whose runway record stops at the threshold
+    /// markings while the sim's start row sits on a real starter extension or stopway further out
+    /// — a row like that is pulled onto the pavement end and the lineup point moves with it. Every
+    /// relocation is therefore logged (runway, metres) so such a case is diagnosable from
+    /// debug.log rather than indistinguishable from bad scenery.</para>
+    /// </summary>
+    public const double MaxOutboardStartRowMetres = 100.0;
+
+    /// <summary>
+    /// Pulls a <c>start</c>-table row that sits far OUTBOARD of the runway's own pavement back
+    /// along the axis onto the nearer pavement end, keeping its lateral offset. A no-op (to the
+    /// metre) for every row inside the pavement, and for one outboard by less than
+    /// <see cref="MaxOutboardStartRowMetres"/>.
+    ///
+    /// <para>PR #238 deferred finding §4. <see cref="RunwayShape"/> widens a pavement-based extent
+    /// to ENVELOPE the centreline's start rows, because a displaced threshold legitimately puts a
+    /// lineup point outside the pavement ends (OMDB 12R: 761 m, with K5/K6/K7/M8 crossing inside
+    /// it). Nothing bounds that, so a bogus row EXTENDS the runway: at LIMC the 17L row sits 799.9 m
+    /// beyond the threshold and the resulting band claims three graph nodes on TAXIWAY AB —
+    /// <c>DescribeLocation</c> answers "Runway 17L" on a taxiway, <c>TryGetRunwayAtPosition</c>
+    /// seeds takeoff assist there, <c>RunwayUnder</c> silently skips a start hold, and
+    /// <c>IsOnAnyRunway</c> bars those nodes from ever being a hold stop.</para>
+    ///
+    /// <para>The repair belongs HERE, where the row enters the graph, and not in the frame that
+    /// consumes it: runway-destination lineup anchors on the <c>start</c> table (a standing
+    /// invariant), and at LIMC 17L the lineup target IS that bogus row, so capping the extent could
+    /// make the lineup point "not on the runway" and break the reach test for that runway. Pulled
+    /// back, the row becomes the pavement threshold — which is where a 17L departure actually
+    /// begins — and the envelope has nothing pathological left to absorb.</para>
+    ///
+    /// <para>⚠ This is deliberately NOT part of <see cref="SnapStartToRunwayCenterline"/>, whose
+    /// contract is that it only ever repairs the LATERAL error. Widening THAT into an along-track
+    /// relocator is what once projected name-swapped rows onto their named runway, put both of an
+    /// airport's rows at midfield, failed the 200 m separation test and COST AYCH the centreline it
+    /// had. A name-swapped row sits AT the other end, i.e. INSIDE the pavement, so it is not
+    /// outboard and this method never touches it.</para>
+    /// </summary>
+    public static (double Lat, double Lon) PullOutboardStartRowOntoPavement(
+        double startLat, double startLon,
+        double thrLat, double thrLon, double farLat, double farLon,
+        string? runwayName = null)
+    {
+        double totalLen = FastDistanceMeters(thrLat, thrLon, farLat, farLon);
+        if (totalLen < 1.0) return (startLat, startLon);
+
+        var (_, along, projLat, projLon) = ProjectOntoCenterline(startLat, startLon, thrLat, thrLon, farLat, farLon);
+        double outboard = along < 0.0 ? -along : along - totalLen;
+        if (outboard <= MaxOutboardStartRowMetres) return (startLat, startLon);
+
+        // Slide ALONG the axis onto the nearer pavement end, keeping the lateral offset: the row's
+        // foot on the axis moves to the end (t clamped to 0 or 1), and the row keeps its own
+        // displacement from that foot. A row the lateral repair declined to touch (further out than
+        // its own ceiling) must not be quietly relocated onto the line by this one. No projection
+        // math of its own — this area already had four copies (see RunwayShape.For).
+        double t = along < 0.0 ? 0.0 : 1.0;
+        double endLat = thrLat + t * (farLat - thrLat), endLon = thrLon + t * (farLon - thrLon);
+        var pulled = (Lat: endLat + (startLat - projLat), Lon: endLon + (startLon - projLon));
+        MSFSBlindAssist.Utils.Logging.Log.Info("taxi_graph",
+            $"Start row {(runwayName ?? "?")} sat {outboard:F1} m outboard of its pavement end; " +
+            $"pulled onto the end (lineup anchor moved {outboard:F1} m along the runway).");
+        return pulled;
     }
 
     /// <summary>

@@ -372,26 +372,37 @@ public class LandingExitForm : Form
             if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
         }
 
-        var paths = _dataProvider.GetTaxiPaths(icao);
-        if (paths.Count == 0)
-        {
-            lblStatus.Text = $"No taxi data for {icao}.";
-            return;
-        }
-
         lblStatus.Text = $"{icao}: building taxi graph…";
         btnPlan.Enabled = false;
         Navigation.TaxiGraph? builtGraph = null;
         List<Runway> allRunways = new();
+        bool noTaxiData = false;
         try
         {
-            var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
-            var starts = _dataProvider.GetRunwayStarts(icao);
-            // Runways passed so Build can repair laterally-bogus start rows
-            // (SnapStartToRunwayCenterline) — the exit planner's runway geometry must
-            // agree with every other graph in the app.
-            allRunways = _dataProvider.GetRunways(icao);
-            builtGraph = await TaxiGraph.BuildAsync(paths, parking, starts, allRunways);
+            // EVERYTHING the build needs is gathered on the background thread, not just the build
+            // (PR #238 deferred finding §8a). GetNamedSpots alone is a directory listing, a JSON
+            // read, a navdata query, the stand-name overlay and a re-augment; GetRunways is a
+            // 30-column SELECT with three JOINs and two correlated ILS subqueries plus a lazy
+            // orphan-ILS lookup. All of it used to run INLINE ON THE UI THREAD, with only
+            // TaxiGraph.Build off-thread, while a screen-reader user was arrowing the exit combo.
+            // Safe to move because GateDataSource's per-ICAO caches are now concurrent — that was
+            // the prerequisite this finding named, and the reason the work sat here.
+            var built = await System.Threading.Tasks.Task.Run(() =>
+            {
+                var paths = _dataProvider.GetTaxiPaths(icao);
+                if (paths.Count == 0) return (Graph: (Navigation.TaxiGraph?)null, Runways: new List<Runway>());
+                var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
+                var starts = _dataProvider.GetRunwayStarts(icao);
+                // Runways passed so Build can repair laterally-bogus start rows
+                // (SnapStartToRunwayCenterline) — the exit planner's runway geometry must
+                // agree with every other graph in the app.
+                var runways = _dataProvider.GetRunways(icao);
+                return (Graph: (Navigation.TaxiGraph?)TaxiGraph.Build(paths, parking, starts, runways),
+                        Runways: runways);
+            });
+            builtGraph = built.Graph;
+            allRunways = built.Runways;
+            noTaxiData = built.Graph == null;
         }
         finally
         {
@@ -408,6 +419,12 @@ public class LandingExitForm : Form
         // runways to the newer airport's combo or hand it a mismatched graph.
         if (IsDisposed || Disposing) return;
         if (!icao.Equals(_currentIcao, StringComparison.OrdinalIgnoreCase)) return;
+
+        if (noTaxiData || builtGraph == null)
+        {
+            lblStatus.Text = $"No taxi data for {icao}.";
+            return;
+        }
 
         _graph = builtGraph;
         _allRunways = allRunways;
@@ -553,15 +570,25 @@ public class LandingExitForm : Form
             _refreshingAfterAugment = true;
             try
             {
-                var paths = _dataProvider.GetTaxiPaths(icao);
-                if (paths.Count == 0) return;
                 // Same inputs as the first load: the app-wide stand names through the one naming
                 // seam (this graph becomes taxi guidance's when a plan activates, and a stand has ONE
                 // name) and the runway table, so start rows are repaired and runway shapes carry the
                 // real pavement. _allRunways is set and cleared with _graph, so it is live here.
-                var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
-                var starts = _dataProvider.GetRunwayStarts(icao);
-                var rebuilt = await TaxiGraph.BuildAsync(paths, parking, starts, _allRunways);
+                //
+                // All of it on the background thread, not just the build — see the load path, and
+                // PR #238 deferred finding §8a. This refresh fires from an online fetch completing,
+                // i.e. while the pilot is already in the dialog arrowing the exit combo, which is
+                // the worst moment to block the message pump.
+                var runwaysSnapshot = _allRunways;
+                var rebuilt = await System.Threading.Tasks.Task.Run(() =>
+                {
+                    var paths = _dataProvider.GetTaxiPaths(icao);
+                    if (paths.Count == 0) return null;
+                    var parking = Services.ParkingSpotSource.GetNamedSpots(_dataProvider, _gateSource, icao);
+                    var starts = _dataProvider.GetRunwayStarts(icao);
+                    return TaxiGraph.Build(paths, parking, starts, runwaysSnapshot);
+                });
+                if (rebuilt == null) return;
 
                 // The form can be closed, or the pilot can have typed another ICAO, during the
                 // build — re-check both before touching _graph or any control.
