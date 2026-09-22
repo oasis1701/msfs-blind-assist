@@ -4,7 +4,7 @@ This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-MSFS Blind Assist - C# Windows Forms accessibility application for Microsoft Flight Simulator. Multi-aircraft support (FlyByWire A320, Fenix A320, extensible). SimConnect integration, screen reader optimized (NVDA/JAWS). .NET 10, Windows Forms, SQLite.
+MSFS Blind Assist - C# Windows Forms accessibility application for Microsoft Flight Simulator. Multi-aircraft support (FlyByWire A320, Fenix A320, stock Cessna 172, extensible). SimConnect integration, screen reader optimized (NVDA/JAWS). .NET 10, Windows Forms, SQLite.
 
 ## Build Commands
 
@@ -915,6 +915,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **Working on the shared flyPad EFB (A320 + A380 ground services, settings, dashboard reading order)** → [flyPad EFB](docs/flypad.md)
 - **Working on the HorizonSim 787-9 (CDU/IRS/EICAS over the Coherent debugger)** → [HorizonSim 787](docs/hs787.md)
 - **Working on the TFDi MD-11 (CEVENT transport, control state, layout, the control-map generator)** → [TFDi MD-11](docs/md11.md)
+- **Working on the stock Cessna 172 (G1000) (stock-SimVar panel, magneto split, engine start, warnings)** → [Cessna 172](docs/c172.md)
 - **A control "doesn't work" and you're about to declare it broken, computed-output, or unsettable** → [Troubleshooting Playbook](docs/troubleshooting-playbook.md) (read this FIRST — most "broken" verdicts turn out wrong)
 - **Working on Gemini AI display reading, scene description, or route briefing** → [Gemini AI](docs/gemini.md)
 - **Understanding variable patterns** → [Variable System](docs/variable-system.md)
@@ -944,6 +945,7 @@ Details: [docs/a32nx.md](docs/a32nx.md).
 - **[flyPad EFB](docs/flypad.md)** - Shared FlyByWire A320/A380 flyPad accessibility architecture (WebView2 shell, ground services, settings, dashboard)
 - **[HorizonSim 787](docs/hs787.md)** - 787-9 CDU/IRS/EICAS over the Coherent debugger, community-folder-bridge retirement
 - **[TFDi MD-11](docs/md11.md)** - Event-driven transport, the MCDU client-data export, control state composition, panel layout, the control-map generator
+- **[Cessna 172](docs/c172.md)** - Stock-SimVar/K:-event definition, the action-combo + status-row magneto split, the Start Engine machine, warning trackers
 - **[Troubleshooting Playbook](docs/troubleshooting-playbook.md)** - Universal variable/control troubleshooting method — read before declaring any control "broken"
 - **[Gemini AI](docs/gemini.md)** - Model selection, retry/backoff, and API-parameter gotchas for the AI display-reading and route-briefing features
 - **[Aircraft Definitions](docs/aircraft-definitions.md)** - Multi-aircraft dictionary system API reference

@@ -9,6 +9,7 @@
 - `PMDG777Definition` — PMDG 777X
 - `PMDG737Definition` — PMDG 737-800 NG3
 - `HorizonSim787Definition` — HorizonSim 787-9
+- `Cessna172Definition` — stock MSFS 2024 Cessna 172 Skyhawk (G1000); stock SimVars/K: events only (see docs/c172.md)
 
 The application accesses dictionaries through the current aircraft instance:
 - `currentAircraft.GetVariables()` - Get all variables for current aircraft
