@@ -16,12 +16,13 @@ namespace MSFSBlindAssist.Tests;
 /// 2026-09-22). Finishing the After Takeoff flow can no longer latch the line complete
 /// over gear that is still down. Pure logic plus the app's own Build() definitions.
 ///
-/// UP only: the Fenix's seven LDG GEAR indicator L:vars (the three wheels' upper/lower
-/// legends and the lever's own red arrow) are plain off/on and do not distinguish a green
-/// DOWN-AND-LOCKED triangle from a red IN-TRANSIT/UNLOCKED bar the way the PMDG 737's
-/// separate green/red fields do, so "three green, no red" cannot be composed from them —
-/// and the Fenix profile has no Landing flow, so its checklist's "Landing gear: DOWN" line
-/// is never latched by a flow completing.
+/// UP only: each wheel's LDG GEAR indication is two legend L:vars (`_U`/`_L`, "Upper"/"Lower")
+/// plus the lever's red arrow, and WHICH of each wheel's two legends is the green DOWN-AND-
+/// LOCKED one has not been measured — a Fenix legend must be measured, never inferred (the
+/// APU START `_U`/`_L` reversal) — so "three green, no red" is not composed from them yet.
+/// "Lights out" needs no colour: every legend and the arrow go dark when the gear is up and
+/// locked. And the Fenix profile has no Landing flow, so its checklist's "Landing gear: DOWN"
+/// line is never latched by a flow completing.
 /// </summary>
 public class FenixGearConfirmationTests
 {

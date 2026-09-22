@@ -422,30 +422,25 @@ public class Pmdg777FlowOrderingTests
     {
         var groups = PMDG777ChecklistDefinitions.Build();
 
-        // ONE narrow, deliberate exception: AFTER_TKOF_CL's ATKOF_GEAR ("Landing Gear: UP",
-        // index 0) is now completed by the After Takeoff flow's LAST step, a read-only
-        // up-to-20s wait for the lever to confirm UP — the 777 SDK has no gear lights, so
-        // unlike the flaps' own ~600ms write-and-verify this can't be instant, and it is
-        // placed LAST on purpose so a slow gear confirmation never holds up the rest of the
-        // flow (the same reason LD_GEAR_DOWN_CHECK sits last in the Landing flow). ATKOF_FLAPS
-        // (index 1) is therefore ticked FIRST by this flow even though it is listed second —
-        // the one place this invariant is knowingly relaxed.
-        var exceptions = new System.Collections.Generic.HashSet<(string FlowId, string GroupId)>
-            { ("AFTER_TAKEOFF", "AFTER_TKOF_CL") };
-
         foreach (var flow in PMDG777FlowDefinitions.Build())
         {
             // Group the flow's linked ticks by the group each item belongs to, keeping
             // flow order, then assert each group's indices only ever increase.
+            //
+            // ONE item is left out, deliberately: the After Takeoff flow completes
+            // AFTER_TKOF_CL's ATKOF_GEAR ("Landing Gear: UP", listed first) from its LAST step,
+            // a read-only up-to-20 s lever check (the 777 SDK has no gear lights), placed last so
+            // a slow gear confirmation never holds up the flaps — so it ticks after ATKOF_FLAPS.
+            // Only that one item is excused; every other item in every group, including any
+            // later added to AFTER_TKOF_CL, is still checked.
             var linked = flow.Steps
                 .Select(s => s.CompletesChecklistItemId)
                 .Where(id => !string.IsNullOrEmpty(id))
+                .Where(id => !(flow.Id == "AFTER_TAKEOFF" && id == "ATKOF_GEAR"))
                 .ToList();
 
             foreach (var group in groups)
             {
-                if (exceptions.Contains((flow.Id, group.Id))) continue;
-
                 var ids = group.Items.Select(i => i.Id).ToList();
                 var walked = linked.Where(id => ids.Contains(id!)).ToList();
                 int prev = -1;
