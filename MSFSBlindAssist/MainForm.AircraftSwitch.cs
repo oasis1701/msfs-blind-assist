@@ -157,6 +157,7 @@ public partial class MainForm
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
             "TFDI_MD11" => new TFDiMD11Definition(),
+            "C172" => new Cessna172Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -722,6 +723,10 @@ public partial class MainForm
         // so e.g. a stale 777 window can fire 777 event IDs at a loaded 737 (the two
         // EventIds tables use different event_base + N numberings) and actuate an arbitrary
         // wrong control. Idempotent, so the FBW double-call above is a no-op.
+        // A held call-out or an in-flight sequence belongs to the OUTGOING aircraft: drop it before
+        // the definition is replaced (the disconnect and exit paths already do this; the swap did
+        // not). The C172 uses it to return the key to BOTH if the Start Engine walk is abandoned.
+        oldAircraft?.CancelDeferredFlush();
         (oldAircraft as BaseAircraftDefinition)?.DisposeTrackedWindows();
 
         // The MD-11 def owns the CEVENT pump — a background task draining a queue of event ids
@@ -1152,6 +1157,7 @@ public partial class MainForm
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
         tfdiMd11MenuItem.Checked = false;
+        cessna172MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -1191,6 +1197,10 @@ public partial class MainForm
         else if (currentAircraft is IFly737MAXDefinition)
         {
             ifly737MaxMenuItem.Checked = true;
+        }
+        else if (currentAircraft is Cessna172Definition)
+        {
+            cessna172MenuItem.Checked = true;
         }
     }
 

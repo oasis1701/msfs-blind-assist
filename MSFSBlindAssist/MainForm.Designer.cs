@@ -22,6 +22,7 @@
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem cessna172MenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -57,6 +58,7 @@
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.cessna172MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -174,7 +176,8 @@
             this.pmdg777MenuItem,
             this.horizonSim787MenuItem,
             this.ifly737MaxMenuItem,
-            this.tfdiMd11MenuItem});
+            this.tfdiMd11MenuItem,
+            this.cessna172MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -268,6 +271,16 @@
             this.tfdiMd11MenuItem.Text = "TFDi Design &MD-11";
             this.tfdiMd11MenuItem.Checked = false;
             this.tfdiMd11MenuItem.Click += new System.EventHandler(this.TFDiMD11MenuItem_Click);
+            // 
+            // cessna172MenuItem
+            // 
+            this.cessna172MenuItem.AccessibleName = "Cessna 172 Skyhawk (G1000)";
+            this.cessna172MenuItem.AccessibleDescription = "Switch to the stock Cessna 172 Skyhawk with the G1000";
+            this.cessna172MenuItem.Name = "cessna172MenuItem";
+            this.cessna172MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.cessna172MenuItem.Text = "Cessna 172 &Skyhawk (G1000)";
+            this.cessna172MenuItem.Checked = false;
+            this.cessna172MenuItem.Click += new System.EventHandler(this.Cessna172MenuItem_Click);
             //
             // sectionsListBox
             // 

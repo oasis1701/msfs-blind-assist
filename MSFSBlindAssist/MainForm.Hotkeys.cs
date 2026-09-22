@@ -241,6 +241,10 @@ public partial class MainForm
                     // so the A320 MCDU service/form serve it unchanged.
                     ShowFlyByWireMCDUDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "C172")
+                {
+                    announcer.AnnounceImmediate("No M C D U on this aircraft.");
+                }
                 else
                 {
                     ShowFenixMCDUDialog();
@@ -258,6 +262,10 @@ public partial class MainForm
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
                     announcer.AnnounceImmediate("787 E F B not available.");
+                }
+                else if (currentAircraft?.AircraftCode == "C172")
+                {
+                    announcer.AnnounceImmediate("No E F B on this aircraft.");
                 }
                 else if (currentAircraft?.AircraftCode == "TFDI_MD11")
                 {
