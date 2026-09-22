@@ -307,12 +307,10 @@ in `_simpleEventMap` (the 4e branch in `HandleUIVariableSet` owns them). `Switch
 calls `ReleaseEngagedWarningTests` so a held test can't leak into the next aircraft. The FO
 preflight auto-timed stall/overspeed tests are unchanged.
 
-## First Officer: speedbrake ARM and gear lever OFF (live-probed 2026-08-25)
+## First Officer: speedbrake ARM, and why the gear lever OFF is not attempted (live-probed 2026-08-25)
 
-A long live-sim session against the user's real PMDG 737-800, plus two false conclusions
-along the way (a click that sounds like actuation, and two reference add-ons that appear
-to work but do not), settled the following. Recorded here so the next reader does not
-repeat the probing.
+A long live-sim session against the user's real PMDG 737-800 settled the following.
+Recorded here so the next reader does not repeat the probing.
 
 ### Speedbrake ARM — one proven rung
 
@@ -331,91 +329,46 @@ ladder still reads `MAIN_annunSPEEDBRAKE_ARMED` back after dispatching and repor
 honestly if it did not take — that read-back proof is what makes the step trustworthy
 and must stay regardless of how many rungs remain.
 
-### Gear lever OFF — why a verified attempt, not a fire-and-forget write
+### Gear lever OFF — removed from the First Officer (2026-09-22)
 
-`MAIN_GearLever` (0=UP, 1=OFF, 2=DOWN) is a LIVE, trustworthy field — it read `2` the
-moment the pilot moved the lever by hand. Every write shape tried on 2026-08-25 against
-`EVT_GEAR_LEVER` / `EVT_GEAR_LEVER_OFF` was inert:
+The First Officer does **not** touch the gear lever's OFF detent: no After Takeoff step, no
+checklist item, nothing it says asks for OFF. Owner decision (2026-09-22) after a month of
+attempts — no write path moved the NG3 lever to OFF reliably.
 
-| # | Transport | Event | Parameter shape |
-|---|-----------|-------|------------------|
-| 1 | CDA | `EVT_GEAR_LEVER` (70087) | plain param 0 |
-| 2 | CDA | `EVT_GEAR_LEVER` | plain param 1 |
-| 3 | CDA | `EVT_GEAR_LEVER` | plain param 2 |
-| 4 | CDA | `EVT_GEAR_LEVER` | MOUSE_FLAG_LEFTSINGLE |
-| 5 | CDA | `EVT_GEAR_LEVER_OFF` (74183) | plain param 0 |
-| 6 | CDA | `EVT_GEAR_LEVER_OFF` | plain param 1 |
-| 7 | CDA | `EVT_GEAR_LEVER_OFF` | plain param 2 |
-| 8 | CDA | `EVT_GEAR_LEVER_OFF` | MOUSE_FLAG_LEFTSINGLE |
-| 9 | TransmitClientEvent | `EVT_GEAR_LEVER` | plain param 0/1/2 |
-| 10 | TransmitClientEvent | `EVT_GEAR_LEVER` | LEFTSINGLE |
-| 11 | TransmitClientEvent | `EVT_GEAR_LEVER` | RIGHTSINGLE |
-| 12 | TransmitClientEvent | `EVT_GEAR_LEVER_OFF` | plain param 0/1/2 |
-| 13 | TransmitClientEvent | `EVT_GEAR_LEVER_OFF` | LEFTSINGLE |
-| 14 | TransmitClientEvent | `EVT_GEAR_LEVER_OFF` | RIGHTSINGLE |
-| 15 | CDA | `EVT_GEAR_LEVER_UNLOCK` (74184) pulsed, then move | both events above |
-| 16 | TransmitClientEvent | `EVT_GEAR_LEVER_UNLOCK` held, then move | both events above |
-| 17 | L:var write | `switch_455_73X` | direct value write |
-| 18 | `K:ROTOR_BRAKE` encoded | `455101`, `455101`+`455104` press/release, `45501` | see below |
+What was tried, so nobody re-probes it: 21 write shapes against `EVT_GEAR_LEVER` (70087),
+`EVT_GEAR_LEVER_OFF` (74183) and `EVT_GEAR_LEVER_UNLOCK` (74184) — CDA with plain parameters
+0/1/2 and with `MOUSE_FLAG_LEFTSINGLE`; `TransmitClientEvent` with plain parameters and with
+LEFTSINGLE / RIGHTSINGLE; the unlock pulsed before the move and held across it; the
+`K:ROTOR_BRAKE` encoded channel (`455101`, `455101`+`455104`, `45501`); and a direct write to
+`switch_455_73X`. None moved `MAIN_GearLever` (0 UP, 1 OFF, 2 DOWN — a live, trustworthy
+field) to OFF. The last full write-up, with the per-shape matrix, is
+`git show 1ad261be:docs/pmdg-737.md`. A closed-loop "try each transport, read the lever back"
+ladder (`GearOffLadder` + `SetGearLeverOffAsync`) shipped briefly on PR #160 and was deleted
+with the step.
 
-Row 17 **accepted** the write and read back `1.0` on `switch_455_73X` while
-`MAIN_GearLever` stayed at `0` — a dead output mirror, not a control. Row 18 is the
-`ROTOR_BRAKE` channel documented below; it does not rescue the gear lever either.
+Two traps, if anyone reopens this:
 
-**The trap that fooled both the pilot and the investigator:** `TransmitClientEvent` +
-`MOUSE_FLAG_LEFTSINGLE` on `EVT_GEAR_LEVER` produces an **audible click** while the lever
-does not move. Sound is not actuation — never accept a click as proof that a control on
-this airframe moved; read back the field it is supposed to change. This trap is exactly
-why the First Officer's gear-off attempt (below) is closed-loop against `MAIN_GearLever`
-rather than a bare dispatch: the click alone would report a false success.
+- **Sound is not actuation.** `TransmitClientEvent` + `MOUSE_FLAG_LEFTSINGLE` on
+  `EVT_GEAR_LEVER` makes an audible click while the lever does not move. Read
+  `MAIN_GearLever` back; never accept the click.
+- **Other add-ons only appear to do it.** FSFO's `Gear;OFF` sends the stock `GEAR_UP` event,
+  waits, fires the same inert click and calls "Gear" regardless — UP and OFF sound alike by
+  ear. Talking Flight Monitor has no NG3 support at all.
 
-### 2026-08-26: new ground information reopened the question
+Do not re-add a gear-OFF step or item without a write path verified **in flight** by that
+read-back — weight-on-wheels latches the lever at DOWN, so ground tests settle nothing.
 
-Ground testing after the above found `TransmitClientEvent` clicks on `EVT_GEAR_LEVER`
-**audibly reaching the aircraft** — the owner hears the click — while the identical click
-sent over the `ROTOR_BRAKE` encoded channel (row 18 above) is **silent**. So the transmit
-path is live; what the 2026-08-25 session could not settle is whether a bare click can
-pull the lever out of its detent at all, as opposed to reaching the aircraft and being
-ignored. The lever is detented at UP and DOWN with OFF between them — which is what
-`EVT_GEAR_LEVER_UNLOCK` exists for — and ground tests are inconclusive either way because
-weight-on-wheels latches the lever at DOWN, so the detent-release behaviour can only be
-observed in the air.
+Kept deliberately: the After Takeoff Checklist's "Landing gear: UP" (`ATC_GEAR`) ticks for
+anything but DOWN (`v < 1.5`), so a lever a pilot moves to OFF by hand still reads complete;
+and the gear readout hotkey still says "Gear lever off" when it finds the lever there —
+reading the lever is reliable, only moving it to OFF is not.
 
-That is not something the ruled-out matrix above settles, and it does not need to be
-settled before shipping: a **closed-loop, verified** attempt is safe under both outcomes.
-`FirstOfficer/PMDG737/GearOffLadder.cs` (pure policy) plus
-`AircraftActionExecutor.SetGearLeverOffAsync` (the executor, mirroring
-`ArmSpeedbrakeAsync`'s structure) try, in order: (1) `TransmitClick` — the shape just
-confirmed audible, and the shape Talking Flight Monitor and FSFO both use; (2)
-`TransmitUnlockHeldClick` — `EVT_GEAR_LEVER_UNLOCK` LEFTSINGLE, a short hold, the gear
-click, another short hold, then `EVT_GEAR_LEVER_UNLOCK` LEFTRELEASE, holding the unlock
-across the move rather than pulsing it before (the `PullFireHandleAsync` ordering
-precedent — unlock, delay, move); (3) `RotorBrakeClick` — the `K:ROTOR_BRAKE` channel,
-tried last because it is reported silent for this control, but it costs one more cheap
-attempt and the mouse-code table is partly inferred. After each attempt the method reads
-`MAIN_GearLever` back (same 1.2 s / 100 ms poll shape as the speedbrake's
-`WaitForSpeedbrakeArmedAsync`) and stops the ladder the instant it confirms OFF (within
-0.5 of 1) — see "Current First Officer behaviour" below for why the RETURN VALUE no
-longer depends on that confirmation (an owner decision made the same day this ladder
-shipped). A failure is still logged with the observed lever value through
-`MSFSBlindAssist.Utils.Logging.Log`, so ordinary flights tell us which rung (if any)
-actually works, instead of more probing sessions — the pilot just never has to read it.
-The already-OFF and DOWN guards mirror
-`ArmSpeedbrakeAsync`'s already-armed/already-extended guard: OFF is a same-frame no-op,
-and DOWN (on the ground, or gear being extended) is never clicked toward, since a click
-there is a click toward UP.
-
-### Why the reference add-ons appear to do it
-
-Talking Flight Monitor's PMDG support is FSX/NGX-only — its binary contains zero NG3
-references, so it cannot be doing this on the NG3 at all.
-
-FSFO's `Gear;OFF` handler sends the stock `GEAR_UP` event first (a loud, audible gear
-retraction), waits 1.5 s, then fires the same inaudible click documented above, and
-speaks its "Gear" callout regardless of whether the lever actually reached OFF. Its own
-NG3 vocabulary string lists `Gear;Up,Down` with no OFF entry at all, and the user
-confirmed FSFO's own checklist hangs on this exact item. UP and OFF sound identical by
-ear, which is why the combination is convincing even though nothing but UP ever happens.
+**Known limitation — the cockpit panel, not the First Officer.** `PMDG737Definition.cs`
+still exposes the released panel control `Selector("MAIN_GearLever", "Gear Lever", "UP",
+"OFF", "DOWN")`, dispatched through `_simpleEventMap` straight to `EVT_GEAR_LEVER` with a
+plain parameter — the CDA plain-parameter shape above, which never moved the lever to OFF —
+and none of its positions has been verified moving the lever in flight. Left unchanged by
+owner decision (2026-09-22: First Officer only); changing it needs its own in-sim check.
 
 ### The `ROTOR_BRAKE` encoded channel — an existing mechanism, re-confirmed on the 737
 
@@ -447,61 +400,14 @@ production on the 777's `switch_319_a` knob cited above — but that corroborati
 a different airframe and switch, not a 737 live test, so still do not present them as
 737-proven.
 
-This channel does **not** rescue the gear lever — it was one of the 18 ruled-out shapes
-above (row 18). It is recorded here so a future control that needs it is found rather
-than rediscovered from scratch.
+This channel does **not** rescue the gear lever — it is one of the ruled-out shapes in
+"Gear lever OFF" above. It is recorded here so a future control that needs it is found
+rather than rediscovered from scratch.
 
 FSFO reads PMDG switch state back from the `switch_<eventOffset>_73X` L:var family (e.g.
 `switch_455_73X` for the gear lever, which it decodes as 0/30/60 for UP/OFF/DOWN). That
-family is a dead mirror for **writes** — see row 17 above — even though FSFO itself only
-ever reads it.
-
-### Current First Officer behaviour
-
-`FirstOfficer/PMDG737/PMDG737FlowDefinitions.cs`'s After Takeoff flow's `AT_GEAR_OFF`
-step dispatches `GearOffLadder.PseudoKey` (intercepted in
-`AircraftActionExecutor.ExecuteStepAsync`, same mechanism as `SPEEDBRAKE_ARM`), the same
-ladder attempt as before, but the step carries **no verification field**, so it always
-reports success and can never be skipped.
-`FirstOfficer/PMDG737/PMDG737ChecklistDefinitions.cs`'s `ATKO_GEAR_OFF` item is
-`ActionManualAsync` (Actionable, manual-tick, deliberately **no `StateFieldName`**) — a
-tick (by hand, or via the flow step above) fires `SetGearLeverOffAsync`, and the item
-ticks and **stays ticked** regardless of the outcome. The state-verified gear check
-lives on the After Takeoff *Checklist*'s separate `ATC_GEAR` item ("Landing gear: UP and
-OFF"), which was already detection-only and whose wider `v < 1.5` condition is satisfied
-by UP alone — unaffected by any of this.
-
-This is a deliberate, informed product decision (owner-confirmed 2026-08-26), not a
-regression: the OFF detent has no functional consequence in the simulator, and the pilot
-does not want to consult `debug.log` to get a completed checklist, nor does he want the
-item un-ticking itself. **Do not re-litigate this or add hedging behaviour he did not
-ask for** (e.g. a "may not have actually moved" reminder, or reintroducing
-`RevertToState`).
-
-What did **not** change, and must not: `SetGearLeverOffAsync` still reads
-`MAIN_GearLever` back after every rung and stops the ladder the instant OFF is
-confirmed. That read-back is a SAFETY behavior now, not a reporting one — every
-remaining rung is a DOWN-direction click, so continuing to fire rungs after an earlier
-one already reached OFF risks clicking the lever on to DOWN, extending the gear in
-flight. Never re-add a write that skips this read-back, and never accept the audible
-click `TransmitClientEvent`+mouse-flag makes on `EVT_GEAR_LEVER` as proof by itself —
-see the trap note above. The 21-shapes-inert history and the ruled-out matrix above
-remain true and load-bearing: they are exactly why an attempt is still made at all,
-even though the checklist no longer depends on it succeeding. A failed attempt is
-still logged via `Log.Debug("FirstOfficer", …)` — cheap to keep, and it is how a future
-rung collapse (mirroring the speedbrake's) would be decided — but the pilot is never
-required to read it.
-
-**Known limitation — this is not FO-only.** `PMDG737Definition.cs:1225` still exposes a
-pilot-facing panel combo, `Selector("MAIN_GearLever", "Gear Lever", "UP", "OFF", "DOWN")`,
-dispatched through `_simpleEventMap` (`PMDG737Definition.cs:3582`) straight to
-`EVT_GEAR_LEVER` with a plain parameter — row 2/3 in the ruled-out table above, one of the
-inert shapes. A blind pilot who selects any position in that combo gets silence: no
-movement, no error, nothing read back. This is a pre-existing panel-control gap, not
-something the First Officer fix introduced or can paper over — the combo still reads
-`MAIN_GearLever`'s live state correctly, it just cannot write it. Left unchanged
-deliberately (out of scope for this pass; removing the control or making it announce its
-own no-op needs its own decision).
+family is a dead mirror for **writes** — a direct write to `switch_455_73X` read back `1.0`
+while `MAIN_GearLever` stayed at `0` — even though FSFO itself only ever reads it.
 
 ## Transponder STBY is unreachable — the FO targets ALT RPTG OFF (live-probed 2026-08-27)
 

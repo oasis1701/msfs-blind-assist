@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using Xunit;
 
 using MSFSBlindAssist.FirstOfficer;
@@ -16,7 +17,6 @@ using Pmdg777Checklist = MSFSBlindAssist.FirstOfficer.PMDG777ChecklistDefinition
 using Pmdg737Flows = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737FlowDefinitions;
 using Pmdg737Checklist = MSFSBlindAssist.FirstOfficer.PMDG737.PMDG737ChecklistDefinitions;
 using SbLadder = MSFSBlindAssist.FirstOfficer.PMDG737.SpeedbrakeArmLadder;
-using GoLadder = MSFSBlindAssist.FirstOfficer.PMDG737.GearOffLadder;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -264,42 +264,54 @@ public class FoPr160ProcedureFixTests
             .ContainsKey(SbLadder.PseudoKey));
     }
 
-    // -- 737 gear lever OFF: ticks and stays ticked -------------------------
+    // -- 737 gear lever OFF: removed from the First Officer ------------------
 
-    // Owner-confirmed 2026-08-26: the OFF detent has no functional consequence in the
-    // simulator, and a checklist item that can permanently un-tick itself over a
-    // cosmetic detent is worse for the pilot than one that reads complete. The item is
-    // Actionable (manual-tick, no StateFieldName) so nothing can ever auto-revert it —
-    // the flow still attempts the move via GearOffLadder/SetGearLeverOffAsync, and that
-    // attempt still verifies internally (see AircraftActionExecutorTests / the executor
-    // itself), but the checklist no longer depends on the outcome to stay complete.
+    // Owner decision 2026-09-22: no write path moved the NG3 gear lever to OFF reliably
+    // (21 probed shapes left MAIN_GearLever unchanged; the one that "works" by ear only
+    // clicks), so the First Officer no longer touches the OFF detent at all — no step, no
+    // checklist item, nothing spoken that asks for it. docs/pmdg-737.md has the record.
+    private static bool AsksForGearOff(string? text) =>
+        text != null && Regex.IsMatch(text,
+            @"\bgear\b(?:\s+lever)?\s*[:,]?\s*(?:UP\s+and\s+)?OFF\b",
+            RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
     [Fact]
-    public void Pmdg737_AfterTakeoffChecklistGearOff_IsActionableAndNeverAutoReverts()
+    public void Pmdg737_AfterTakeoff_HasNoGearLeverOffStepOrItem()
     {
-        var item = Pmdg737Checklist.Build()
-            .Single(g => g.Id == "AFTER_TAKEOFF").Items
-            .Single(i => i.Id == "ATKO_GEAR_OFF");
-
-        Assert.Equal(ChecklistItemType.Actionable, item.Type);
-        Assert.Null(item.StateFieldName);
-        Assert.NotNull(item.CheckAction);
+        Assert.DoesNotContain("AT_GEAR_OFF", FlowStepIds(Pmdg737Flows.Build(), "AFTER_TAKEOFF"));
+        Assert.DoesNotContain("ATKO_GEAR_OFF", ChecklistItemIds(Pmdg737Checklist.Build(), "AFTER_TAKEOFF"));
     }
 
     [Fact]
-    public void Pmdg737_AfterTakeoffFlowGear_StillAttemptsTheMoveButNeverReportsFailure()
+    public void Pmdg737_NothingTheFirstOfficerSays_AsksForTheGearLeverOff()
     {
-        var step = Pmdg737Flows.Build()
-            .Single(f => f.Id == "AFTER_TAKEOFF").Steps
-            .Single(s => s.Id == "AT_GEAR_OFF");
+        foreach (var flow in Pmdg737Flows.Build())
+        {
+            Assert.False(AsksForGearOff(flow.Description), $"flow {flow.Id} description");
+            foreach (var s in flow.Steps)
+                Assert.False(
+                    AsksForGearOff(s.Label) || AsksForGearOff(s.SpokenLabel) || AsksForGearOff(s.ReminderText),
+                    $"flow {flow.Id} step {s.Id}");
+        }
+        foreach (var group in Pmdg737Checklist.Build())
+            foreach (var i in group.Items)
+                Assert.False(AsksForGearOff(i.Label) || AsksForGearOff(i.ReminderText),
+                    $"group {group.Id} item {i.Id}");
+    }
 
-        // The attempt is still made through the same ladder pseudo-key...
-        Assert.Equal(GoLadder.PseudoKey, step.EventName);
-        Assert.Equal("ATKO_GEAR_OFF", step.CompletesChecklistItemId);
-        // ...but the step no longer carries a verification condition, so a lever that
-        // never reaches OFF cannot fail this step or exclude the checklist item from
-        // MarkGroupComplete.
-        Assert.Null(step.VerifyFieldName);
-        Assert.Null(step.VerifyCondition);
+    [Fact]
+    public void Pmdg737_AfterTakeoffChecklistGear_AsksForUp_AndStillTicksForAnythingButDown()
+    {
+        var item = Pmdg737Checklist.Build()
+            .Single(g => g.Id == "AFTER_TAKEOFF_CL").Items
+            .Single(i => i.Id == "ATC_GEAR");
+
+        Assert.Equal("Landing gear: UP", item.Label);
+        Assert.Equal("MAIN_GearLever", item.StateFieldName);
+        Assert.NotNull(item.StateCondition);
+        Assert.True(item.StateCondition!(0));   // UP
+        Assert.True(item.StateCondition!(1));   // OFF, if a pilot moved it there by hand — gear still up
+        Assert.False(item.StateCondition!(2));  // DOWN
     }
 
     // -- 5. Fenix APU: wrong pushbutton lamp --------------------------------

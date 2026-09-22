@@ -338,25 +338,13 @@ public static class PMDG737FlowDefinitions
     private static Flow BuildAfterTakeoff() => new()
     {
         Id = "AFTER_TAKEOFF", Name = "After Takeoff",
-        Description = "Packs auto, start switches off, turnoff lights off, gear off, autobrake off.",
+        Description = "Packs auto, start switches off, turnoff lights off, autobrake off.",
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TAKEOFF_CL" },
         Steps = new()
         {
             Multi("AT_PACKS", "Packs: AUTO", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
             Multi("AT_START_OFF", "Engine start switches: OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
             Multi("AT_TURNOFF", "Runway turnoff lights: OFF", ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
-            // Verified attempt via the GEAR_LEVER_OFF pseudo-key (intercepted in
-            // AircraftActionExecutor.ExecuteStepAsync, same mechanism as SPEEDBRAKE_ARM).
-            // GearOffLadder tries three transports and this step reads MAIN_GearLever
-            // back internally and stops trying further transports as soon as OFF is
-            // confirmed (every remaining rung is a DOWN-direction click, so continuing
-            // past a confirmed OFF risks driving the lever on to DOWN in flight). This
-            // step carries no verification field, so it always reports success —
-            // owner-confirmed 2026-08-26: the OFF detent has no functional consequence
-            // in the simulator, and the checklist item must tick and stay ticked either
-            // way. See docs/pmdg-737.md for the full history.
-            SW("AT_GEAR_OFF", "Gear lever: OFF", GearOffLadder.PseudoKey, null,
-               checklistItemId: "ATKO_GEAR_OFF"),
             SW("AT_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1),
         }
     };

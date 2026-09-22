@@ -285,21 +285,6 @@ public static class PMDG737ChecklistDefinitions
                 (e, _) => { e.SetEngStartSelector1(1); e.SetEngStartSelector2(1); }),
             Auto("ATKO_TURNOFF", "AFTER_TAKEOFF", "Runway turnoff lights: OFF", "LTS_RunwayTurnoffSw_0", v => v < 0.5,
                 new[] { "LTS_RunwayTurnoffSw_1" }, (e, _) => e.SetRunwayTurnoff(0)),
-            // Actionable, not Auto-detectable — deliberately NO StateFieldName, so
-            // nothing can ever revert this item once ticked (owner-confirmed 2026-08-26:
-            // the OFF detent has no functional consequence in the simulator, and a
-            // checklist item that can permanently un-tick itself over a cosmetic detent
-            // is worse for the pilot than one that reads complete). Ticking it — by hand
-            // or via the After Takeoff flow's AT_GEAR_OFF step — still fires a real
-            // attempt at the OFF detent through GearOffLadder/SetGearLeverOffAsync,
-            // which still verifies MAIN_GearLever internally and stops as soon as OFF is
-            // confirmed (safety-critical: every remaining rung is a DOWN-direction
-            // click), but the executor now reports success unconditionally, so the tick
-            // always sticks. The state-verified gear check on the After Takeoff
-            // Checklist's ATC_GEAR ("Landing gear: UP and OFF") is unaffected — its
-            // wider v < 1.5 condition is satisfied by UP alone.
-            ActionManualAsync("ATKO_GEAR_OFF", "AFTER_TAKEOFF", "Gear lever: OFF",
-                (e, _) => e.SetGearLeverOffAsync()),
             Auto("ATKO_AB_OFF", "AFTER_TAKEOFF", "Autobrake: OFF", "MAIN_AutobrakeSelector", v => v > 0.5 && v < 1.5,
                 (e, _) => e.SetAutobrake(1)),
         }
@@ -534,10 +519,11 @@ public static class PMDG737ChecklistDefinitions
         {
             Auto("ATC_BLEEDS", "AFTER_TAKEOFF_CL", "Engine bleeds: ON", "AIR_BleedAirSwitch_0", v => v > 0.5, new[] { "AIR_BleedAirSwitch_1" }, action: null),
             Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: AUTO", "AIR_PackSwitch_0", v => v > 0.5 && v < 1.5, new[] { "AIR_PackSwitch_1" }, action: null),
-            // "UP and OFF": after takeoff the lever goes to OFF (1) — accept UP(0) OR OFF(1),
-            // exclude DOWN(2). (The old v<0.5 only matched UP=0, so it never ticked once the
-            // action/flow set the lever to OFF=1.)
-            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP and OFF", "MAIN_GearLever", v => v < 1.5, action: null),
+            // Anything but DOWN (2) ticks it: UP (0) is the normal after-takeoff state, and
+            // OFF (1) is still gear up if a pilot moved the lever there by hand. The First
+            // Officer itself never moves the lever to OFF (removed 2026-09-22 — no write
+            // path was reliable; see docs/pmdg-737.md), so the line asks for UP only.
+            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP", "MAIN_GearLever", v => v < 1.5, action: null),
             Reminder("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: UP, no lights"),
         }
     };

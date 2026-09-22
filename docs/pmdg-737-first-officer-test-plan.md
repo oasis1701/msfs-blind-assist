@@ -46,7 +46,7 @@ Pre-condition for the ground flows: start cold-and-dark (or at the matching phas
 | Engine Start | Packs OFF; ENG 2 start switch GRD + start lever IDLE → **waits for ENG 2 start valve to close**; then ENG 1 the same |
 | Before Taxi | **After-start power transfer first** (generators ON, APU bleed OFF, APU OFF), then probe heat ON; packs AUTO; isolation AUTO; start switches CONT; taxi + turnoff lights ON; lower DU SYS; captain reminders for anti-ice and takeoff flaps |
 | Before Takeoff | Landing lights ON; strobes ON; **A/T arm**; transponder TA/RA |
-| After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; gear lever OFF; autobrake OFF |
+| After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; autobrake OFF |
 | Descent | Seatbelt sign ON; captain reminders for autobrake, ILS, landing data |
 | Approach | EFIS APP / range 20; altimeter reminder |
 | Landing | Start switches CONT; speedbrake ARMED; missed-altitude reminder |
@@ -213,7 +213,7 @@ Note the squawk code, then tick **"Transponder: XPNDR"** → the transponder MOD
 Open any readback checklist group (e.g. **Before Start Checklist**, **Landing Checklist**, **Shutdown Checklist**) and tick an item — **no switch should move** (e.g. ticking "Beacon: ON" must NOT toggle the beacon). The item should still **auto-tick on its own** once the real switch reaches position (set it via the matching action group / flow, or by hand in the cockpit). Spot-check that a state-group item (e.g. **Before Start → "Beacon: ON"**) DOES still fire its switch when ticked — only the `*_CL` groups changed.
 
 ### F5. Before/After Takeoff action groups (both aircraft)
-On the **Checklists** tab confirm the tree now lists **"Before Takeoff"** and **"After Takeoff"** action groups directly **above** their **"… Checklist"** readback groups (like every other phase). Ticking an action-group item fires the switch (777: landing/turnoff/strobe lights, transponder TA/RA, LNAV/VNAV arm, gear/flaps; 737: landing/position lights, A/T arm, transponder, packs, start switches, turnoff, gear, autobrake). The matching **"… Checklist"** items still auto-tick from state.
+On the **Checklists** tab confirm the tree now lists **"Before Takeoff"** and **"After Takeoff"** action groups directly **above** their **"… Checklist"** readback groups (like every other phase). Ticking an action-group item fires the switch (777: landing/turnoff/strobe lights, transponder TA/RA, LNAV/VNAV arm, gear/flaps; 737: landing/position lights, A/T arm, transponder, packs, start switches, turnoff, autobrake). The matching **"… Checklist"** items still auto-tick from state.
 
 ### F6. Single-expand tree (both aircraft)
 Expand one top-level checklist group, then expand another → the first **collapses automatically** (only one group open at a time). Child/leaf items are unaffected; NVDA navigation order stays correct.
@@ -286,10 +286,10 @@ After H3/H5, run Before Taxi → the APU selector goes **OFF** and the "APU: OFF
 Tick **"Probe heat: ON"** (or run Before Taxi): **BOTH** probe-heat switches turn ON (spaced writes),
 and the checklist "Probe heat: ON" ticks.
 
-### H8. Landing gear "UP and OFF" auto-ticks (After Takeoff)
-After takeoff, set the gear lever to **OFF** (via the After Takeoff action group or the flow). The
-**After Takeoff Checklist → "Landing gear: UP and OFF"** item now ticks (detects UP *or* OFF; it used to
-require UP only and never matched once the lever went to OFF).
+### H8. Landing gear "UP" auto-ticks (After Takeoff)
+After takeoff, once the gear is up, the **After Takeoff Checklist → "Landing gear: UP"** item ticks by
+itself. The After Takeoff flow and action group no longer mention the gear lever OFF detent at all
+(removed 2026-09-22 — no write path moved the lever there reliably).
 
 ### H9. Altimeters auto-set to STANDARD above transition (requires SimBrief)
 Load a SimBrief OFP with a transition altitude, then climb through it: the FO sets **both** altimeters
