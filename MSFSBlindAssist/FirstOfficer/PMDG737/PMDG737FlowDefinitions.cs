@@ -338,7 +338,7 @@ public static class PMDG737FlowDefinitions
     private static Flow BuildAfterTakeoff() => new()
     {
         Id = "AFTER_TAKEOFF", Name = "After Takeoff",
-        Description = "Packs auto, start switches off, turnoff lights off, autobrake off.",
+        Description = "Packs auto, start switches off, turnoff lights off, autobrake off, then confirms the gear is up.",
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TAKEOFF_CL" },
         Steps = new()
         {
@@ -346,6 +346,17 @@ public static class PMDG737FlowDefinitions
             Multi("AT_START_OFF", "Engine start switches: OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
             Multi("AT_TURNOFF", "Runway turnoff lights: OFF", ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
             SW("AT_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1),
+            // Read-only gear-up confirmation — it never moves the lever (the First Officer
+            // writes no gear lever; see docs/pmdg-737.md). Confirms the gear the way a crew
+            // does, "gear up, lights out" (GearUpConfirmation), and completes the After
+            // Takeoff Checklist's "Landing gear: UP". LAST, so gear still retracting does not
+            // hold up the steps above; waits up to 20 s. If the gear is not confirmed up the
+            // step is announced as skipped and FlowManager keeps ATC_GEAR out of
+            // MarkGroupComplete's latch, so the line keeps mirroring the real gear instead of
+            // reading complete over gear that is still down.
+            Skip(WaitForField("AT_GEAR_UP_CHECK", "Landing gear: UP", GearUpConfirmation.Field, v => v > 0.5, 20,
+                    checklistItemId: "ATC_GEAR"),
+                s => s.GetValue(GearUpConfirmation.Field) > 0.5),
         }
     };
 
@@ -584,7 +595,7 @@ public static class PMDG737FlowDefinitions
     };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
-        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip) => new()
+        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip, string? checklistItemId = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitForCondition,
@@ -592,6 +603,7 @@ public static class PMDG737FlowDefinitions
         Condition = condition,
         TimeoutSeconds = timeoutSec,
         FailurePolicy = onTimeout,
+        CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 0,
     };
 

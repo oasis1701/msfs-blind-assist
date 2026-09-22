@@ -359,10 +359,21 @@ Two traps, if anyone reopens this:
 Do not re-add a gear-OFF step or item without a write path verified **in flight** by that
 read-back — weight-on-wheels latches the lever at DOWN, so ground tests settle nothing.
 
-Kept deliberately: the After Takeoff Checklist's "Landing gear: UP" (`ATC_GEAR`) ticks for
-anything but DOWN (`v < 1.5`), so a lever a pilot moves to OFF by hand still reads complete;
-and the gear readout hotkey still says "Gear lever off" when it finds the lever there —
-reading the lever is reliable, only moving it to OFF is not.
+What replaced it (2026-09-22): the After Takeoff Checklist's "Landing gear: UP"
+(`ATC_GEAR`) is confirmed the way a crew confirms it — gear up, lights out — not from the
+lever. `GearUpConfirmation` (published as the synthetic field `FO_GEAR_UP`) reads up only
+when the lever is not DOWN AND all nine gear lights are out: the main-panel green
+DOWN-AND-LOCKED and red IN-TRANSIT lights for each gear, plus the aft-overhead greens. The
+lever half keeps a cold-and-dark aircraft (every light dark for want of power) from reading
+"up" on the ground, and a light test reads "not up", which is the safe direction. A lever a
+pilot moves to OFF by hand still satisfies it once the gear is up. The After Takeoff flow
+ends with a read-only step, "Landing gear: UP" (`AT_GEAR_UP_CHECK`), that waits up to 20 s
+for it and completes the line. If the gear is not confirmed up, the step says so ("Timed
+out waiting for… / Skipping…") and `FlowManager` keeps `ATC_GEAR` out of
+`MarkGroupComplete`'s latch. So finishing the flow can no longer latch "Landing gear: UP"
+over gear that is still down, which it used to do whatever the lever read. The gear
+readout hotkey still says "Gear lever off" when it finds the lever there, because reading
+the lever is reliable; only moving it to OFF is not.
 
 **Known limitation — the cockpit panel, not the First Officer.** `PMDG737Definition.cs`
 still exposes the released panel control `Selector("MAIN_GearLever", "Gear Lever", "UP",

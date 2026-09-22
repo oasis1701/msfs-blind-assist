@@ -78,6 +78,15 @@ public class AircraftStateEvaluator : IFoStateEvaluator
                        AreWingFuelPumpsOn(), IsEitherCenterPumpOn(),
                        FuelCenterLbs() > CenterFuelPumpAutomation.OffThresholdLbs) ? 1 : 0);
 
+        // Landing gear confirmed UP — "gear up, lights out" (GearUpConfirmation): the lever
+        // not DOWN and every gear indication light out. Read by the After Takeoff Checklist's
+        // "Landing gear: UP" and the After Takeoff flow's read-only AT_GEAR_UP_CHECK step.
+        if (field == GearUpConfirmation.Field)
+            return !CdaReady ? double.NaN
+                : (GearUpConfirmation.IsConfirmedUp(
+                       GetValue(GearUpConfirmation.LeverField),
+                       GearUpConfirmation.LightFields.Select(RawFieldOn)) ? 1 : 0);
+
         // CDA fields: INDETERMINATE (NaN) until the first snapshot arrives — GetFieldValue
         // returns 0.0 for EVERY field before then (interface contract), which false-matched
         // every OFF/closed checklist condition at startup and latched items complete.

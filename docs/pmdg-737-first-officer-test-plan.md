@@ -46,7 +46,7 @@ Pre-condition for the ground flows: start cold-and-dark (or at the matching phas
 | Engine Start | Packs OFF; ENG 2 start switch GRD + start lever IDLE → **waits for ENG 2 start valve to close**; then ENG 1 the same |
 | Before Taxi | **After-start power transfer first** (generators ON, APU bleed OFF, APU OFF), then probe heat ON; packs AUTO; isolation AUTO; start switches CONT; taxi + turnoff lights ON; lower DU SYS; captain reminders for anti-ice and takeoff flaps |
 | Before Takeoff | Landing lights ON; strobes ON; **A/T arm**; transponder TA/RA |
-| After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; autobrake OFF |
+| After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; autobrake OFF; confirms gear up (lights out) |
 | Descent | Seatbelt sign ON; captain reminders for autobrake, ILS, landing data |
 | Approach | EFIS APP / range 20; altimeter reminder |
 | Landing | Start switches CONT; speedbrake ARMED; missed-altitude reminder |
@@ -286,10 +286,14 @@ After H3/H5, run Before Taxi → the APU selector goes **OFF** and the "APU: OFF
 Tick **"Probe heat: ON"** (or run Before Taxi): **BOTH** probe-heat switches turn ON (spaced writes),
 and the checklist "Probe heat: ON" ticks.
 
-### H8. Landing gear "UP" auto-ticks (After Takeoff)
-After takeoff, once the gear is up, the **After Takeoff Checklist → "Landing gear: UP"** item ticks by
-itself. The After Takeoff flow and action group no longer mention the gear lever OFF detent at all
-(removed 2026-09-22 — no write path moved the lever there reliably).
+### H8. "Landing gear: UP" is confirmed by the gear lights (After Takeoff)
+1. After a normal takeoff and gear retraction, run the After Takeoff flow: it ends with
+   "Already set: Landing gear: UP" (or a short wait while the gear is still retracting), and
+   the **After Takeoff Checklist → "Landing gear: UP"** line is ticked.
+2. With auto-gear OFF, run the After Takeoff flow while the gear is still DOWN: after about
+   20 s it says "Timed out waiting for: Landing gear: UP" and "Skipping: Landing gear: UP", and
+   the line stays unticked. Raise the gear: once all gear lights go out, the line ticks by
+   itself.
 
 ### H9. Altimeters auto-set to STANDARD above transition (requires SimBrief)
 Load a SimBrief OFP with a transition altitude, then climb through it: the FO sets **both** altimeters

@@ -317,18 +317,20 @@ public class FoPr160ProcedureFixTests
     }
 
     [Fact]
-    public void Pmdg737_AfterTakeoffChecklistGear_AsksForUp_AndStillTicksForAnythingButDown()
+    public void Pmdg737_AfterTakeoffChecklistGear_AsksForUp_AndReadsTheGearLights()
     {
+        // Owner decision 2026-09-22: "Landing gear: UP" is confirmed by the gear lights
+        // (GearUpConfirmation — lever not DOWN and every gear light out), not the lever alone.
         var item = Pmdg737Checklist.Build()
             .Single(g => g.Id == "AFTER_TAKEOFF_CL").Items
             .Single(i => i.Id == "ATC_GEAR");
 
         Assert.Equal("Landing gear: UP", item.Label);
-        Assert.Equal("MAIN_GearLever", item.StateFieldName);
+        Assert.Equal(MSFSBlindAssist.FirstOfficer.PMDG737.GearUpConfirmation.Field, item.StateFieldName);
         Assert.NotNull(item.StateCondition);
-        Assert.True(item.StateCondition!(0));   // UP
-        Assert.True(item.StateCondition!(1));   // OFF, if a pilot moved it there by hand — gear still up
-        Assert.False(item.StateCondition!(2));  // DOWN
+        Assert.True(item.StateCondition!(1));
+        Assert.False(item.StateCondition!(0));
+        Assert.False(item.StateCondition!(double.NaN));
     }
 
     // -- 5. Fenix APU: wrong pushbutton lamp --------------------------------
