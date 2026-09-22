@@ -140,6 +140,20 @@ public class FlowManager<TExec, TState>
     // Private execution engine
     // -----------------------------------------------------------------------
 
+    // Waits out an active Pause. Factored out of the original top-of-loop check (still
+    // called there, unchanged behaviour) so the same wait can ALSO run (1) on every
+    // iteration of the WaitForCondition loop, before the condition is read, and (2) once
+    // more immediately before FlowCompleted fires — see those call sites for the bugs
+    // each closes. Cancellation is NOT caught here: it propagates as
+    // OperationCanceledException so each call site can handle it the way it already
+    // handles cancellation elsewhere in that same method.
+    private Task WaitWhilePausedAsync(CancellationToken ct)
+    {
+        if (_paused && _pauseTcs != null)
+            return _pauseTcs.Task.WaitAsync(ct);
+        return Task.CompletedTask;
+    }
+
     private async Task RunFlowAsync(FlowDefinition<TState> flow, CancellationToken ct)
     {
         _unfinishedChecklistItemIds.Clear();
@@ -156,14 +170,11 @@ public class FlowManager<TExec, TState>
             }
 
             // Pause check
-            if (_paused && _pauseTcs != null)
+            try { await WaitWhilePausedAsync(ct); }
+            catch (OperationCanceledException)
             {
-                try { await _pauseTcs.Task.WaitAsync(ct); }
-                catch (OperationCanceledException)
-                {
-                    FlowCancelled?.Invoke(flow);
-                    return;
-                }
+                FlowCancelled?.Invoke(flow);
+                return;
             }
 
             CurrentStepIndex = i;
@@ -240,6 +251,18 @@ public class FlowManager<TExec, TState>
             }
         }
 
+        // Pause check before completion: without this, a flow paused during its own final
+        // step (e.g. the 737/iFly 20 s gear-check wait) still fell through here and
+        // completed — announcing "flow complete" and latching the checklist group — while
+        // the window still showed Paused. Wait out any active pause first, same as the
+        // top-of-loop check above.
+        try { await WaitWhilePausedAsync(ct); }
+        catch (OperationCanceledException)
+        {
+            FlowCancelled?.Invoke(flow);
+            return;
+        }
+
         FlowCompleted?.Invoke(flow);
         // NON-INTERRUPTING (Announce), never AnnounceImmediate (owner decision 2026-09-22).
         // This runs straight after the last step with no pause, and AnnounceImmediate
@@ -284,6 +307,15 @@ public class FlowManager<TExec, TState>
                     while (elapsed < step.TimeoutSeconds)
                     {
                         ct.ThrowIfCancellationRequested();
+                        // Pause check, before the condition is read: without this, Pause
+                        // during a flow's FINAL wait (e.g. the 737/iFly 20 s gear checks)
+                        // was announced but had no effect — elapsed kept advancing and the
+                        // wait still timed out (and the flow still went on to complete and
+                        // latch) while the window showed Paused. Cancellation here
+                        // propagates like ct.ThrowIfCancellationRequested above — caught by
+                        // this method's own catch block below, same as everywhere else in
+                        // this loop.
+                        await WaitWhilePausedAsync(ct);
                         double v = _state.GetValue(step.ConditionFieldName);
                         if (step.Condition(v)) return true;
                         await Task.Delay(1000, ct);

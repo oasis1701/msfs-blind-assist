@@ -383,12 +383,15 @@ for it and completes the line. If the gear is not confirmed up, the step says so
 out waiting for… / Skipping…") and `FlowManager` keeps `ATC_GEAR` out of
 `MarkGroupComplete`'s latch. So finishing the flow no longer latches "Landing gear: UP"
 over gear that is still down (it used to, whatever the lever read) — unless the line was
-already ticked before the flow finished, which `MarkGroupComplete` keeps. The likeliest
-case is a go-around: the first approach's Landing flow latched "Landing gear: DOWN"
-ticked, and a re-run before gear down on the second approach speaks the timeout but
-leaves the line ticked. Closing that needs a ChecklistManager change, which is a
-recorded follow-up. The gear readout hotkey still says "Gear lever off" when it finds
-the lever there, because reading the lever is reliable; only moving it to OFF is not.
+already ticked before the flow finished. That was the go-around case: the first
+approach's Landing flow latches "Landing gear: DOWN" ticked, and a re-run before gear
+down on the second approach speaks the timeout while the line stays ticked. It is now
+closed (PR #160 follow-up Task D): `ChecklistManager.MarkGroupComplete`'s excluded
+branch also exempts a ticked line when its own live state reads definitively false
+(never on NaN), so the next `EvaluateAutoDetection()` un-ticks it instead of leaving it
+frozen under the latch. The gear readout hotkey still says "Gear lever off" when it
+finds the lever there, because reading the lever is reliable; only moving it to OFF is
+not.
 
 The Landing Checklist's "Landing gear: DOWN" (`LDC_GEAR`) is its mirror image and was
 latched the same way whenever the Landing flow finished before the gear came down. It now

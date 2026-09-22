@@ -987,10 +987,13 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         }
     }
 
-    private void UpdateFlowButtonStates()
+    // runningOverride lets a caller assert "not running" even while FlowManager.IsRunning
+    // is technically still true — see OnFlowCompleted/OnFlowCancelled/OnFlowFailed below,
+    // which fire from inside RunFlowAsync before the run task has actually unwound.
+    private void UpdateFlowButtonStates(bool? runningOverride = null)
     {
-        bool running = _flowMgr.IsRunning;
-        bool paused  = _flowMgr.IsPaused;
+        bool running = runningOverride ?? _flowMgr.IsRunning;
+        bool paused  = running && _flowMgr.IsPaused;
 
         _startFlowBtn.Enabled    = !running;
         _pauseResumeBtn.Enabled  = running;
@@ -1026,21 +1029,26 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         foreach (var groupId in RelatedGroupIdsFor(flow))
             _checklistMgr.MarkGroupComplete(groupId, unfinished);
 
-        UpdateFlowButtonStates();
+        // These three events fire from INSIDE RunFlowAsync, while FlowManager.IsRunning is
+        // still true (the run task hasn't unwound yet) — the bare call read that as "still
+        // running" and left Start Flow disabled until the pilot changed the flow selection.
+        UpdateFlowButtonStates(runningOverride: false);
     }
 
     private void OnFlowCancelled(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowCancelled(flow)); return; }
         _flowStatusLabel.Text = $"Cancelled: {flow.Name}";
-        UpdateFlowButtonStates();
+        // See the comment in OnFlowCompleted: fires while IsRunning is still true.
+        UpdateFlowButtonStates(runningOverride: false);
     }
 
     private void OnFlowFailed(FlowDefinition<TState> flow, string reason)
     {
         if (InvokeRequired) { Invoke(() => OnFlowFailed(flow, reason)); return; }
         _flowStatusLabel.Text = $"Failed: {flow.Name} — {reason}";
-        UpdateFlowButtonStates();
+        // See the comment in OnFlowCompleted: fires while IsRunning is still true.
+        UpdateFlowButtonStates(runningOverride: false);
     }
 
     private void OnFlowPaused(FlowDefinition<TState> flow)

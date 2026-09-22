@@ -273,4 +273,63 @@ public class FoFlowCompletionExclusionTests
 
         Assert.True(failed.IsChecked); // historical record survives — no longer exempt
     }
+
+    // The go-around case (PR #160 follow-up Task D): a previous MarkGroupComplete latched
+    // the group with a gear line ticked from a genuine delivery on the first approach. On a
+    // go-around re-run of the same flow, the gear-check step no longer matches (gear came
+    // back up) and the flow announces it skipped, so the SECOND MarkGroupComplete excludes
+    // it. Before this fix, neither "unchecked" nor "AwaitingActionConfirmation" was true —
+    // the tick from the first approach was already sitting there — so the stale tick was
+    // never exempted and survived under the latch through the whole go-around. Modeled on
+    // ExcludedItem_ManuallyTickedLater_StillRevertsInsideLatchedGroup above.
+    [Fact]
+    public void ExcludedItem_TickedFromEarlierLatch_WithDefinitelyFalseState_IsExemptedAndReverts()
+    {
+        var (mgr, state, group) = Build(
+            AutoItem("GOOD", "G", "F1"), AutoItem("GEAR", "G", "F2"));
+
+        // First approach: the flow genuinely delivered the gear line, and the group latched.
+        state.Values["F2"] = 1;
+        mgr.MarkGroupComplete("G");
+        var gear = group.Items.Single(i => i.Id == "GEAR");
+        Assert.True(gear.IsChecked);
+        Assert.True(group.CompletionLatched);
+
+        // Go-around: gear is back up, so the re-run's own gear-check step times out and is
+        // announced as skipped — the second MarkGroupComplete excludes GEAR this time.
+        state.Values["F2"] = 0;
+        mgr.MarkGroupComplete("G", new[] { "GEAR" });
+        Assert.True(gear.ExemptFromCompletionLatch);
+
+        mgr.EvaluateAutoDetection();
+
+        Assert.False(gear.IsChecked); // the stale tick is corrected, not frozen by the latch
+    }
+
+    // The same shape, but the item's live state is UNKNOWN (NaN) rather than definitely
+    // false — e.g. a field the aircraft/CDA hasn't published yet. Only a DEFINITE false may
+    // exempt a ticked, excluded item; NaN must not. This pins that the new condition compares
+    // with `== false`, which a lifted `bool?` null correctly fails, rather than `!= true`,
+    // which would not.
+    [Fact]
+    public void ExcludedItem_TickedFromEarlierLatch_WithUnknownState_StaysTickedAndNotExempted()
+    {
+        var (mgr, state, group) = Build(
+            AutoItem("GOOD", "G", "F1"), AutoItem("GEAR", "G", "F2"));
+
+        state.Values["F2"] = 1;
+        mgr.MarkGroupComplete("G");
+        var gear = group.Items.Single(i => i.Id == "GEAR");
+        Assert.True(gear.IsChecked);
+        Assert.True(group.CompletionLatched);
+
+        // The field goes unknown (NaN) rather than definitely false.
+        state.Values.Remove("F2");
+        mgr.MarkGroupComplete("G", new[] { "GEAR" });
+        Assert.False(gear.ExemptFromCompletionLatch);
+
+        mgr.EvaluateAutoDetection();
+
+        Assert.True(gear.IsChecked); // unknown is not evidence enough to un-tick it
+    }
 }
