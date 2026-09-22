@@ -1,0 +1,1 @@
+Where Am I no longer says "Not on a known taxiway or ramp" while you are sitting in the middle of one. Any taxiway segment longer than about 240 metres had a blind stretch in the middle where neither Alt+Y nor Alt+L could name it — 3,788 km of taxiway across 5,610 airports, and nearly three kilometres of it on one taxiway at Shanghai Pudong. The readout is also markedly faster.
