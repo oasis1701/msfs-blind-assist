@@ -2402,6 +2402,13 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
+    /// <summary>
+    /// The camera is moved to the instrument view that frames the display, the capture is taken,
+    /// and the camera is put back where the pilot had it (Services/InstrumentViewSwitcher). Alt+S
+    /// is deliberately absent: the MAX has no lower system display (IFly737DisplayReads).
+    /// </summary>
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => IFly737DisplayReads.All;
+
 
     // =========================================================================
     // Hotkeys + MCP dialogs
@@ -2615,28 +2622,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 announcer.AnnounceImmediate(vs.Length == 0 ? $"VS blank{mode}" : $"VS {vs}{mode}");
                 return true;
             }
-
-            // ------------------------------------------------------------------
-            // AI display reading — Alt+P / Alt+N / Alt+I / Alt+E (mirrors PMDG 737)
-            // ------------------------------------------------------------------
-            case HotkeyAction.ReadDisplayPFD:
-                ReadDisplay(Services.GeminiService.DisplayType.PFDiFly, "PFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayND:
-                ReadDisplay(Services.GeminiService.DisplayType.NDiFly, "ND", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayISIS:
-                ReadDisplay(Services.GeminiService.DisplayType.ISFDiFly, "ISFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayUpperECAM:
-                ReadDisplay(Services.GeminiService.DisplayType.EICASiFly, "EICAS", announcer, parentForm);
-                return true;
-
-            // Lower system display (Alt+S / ReadDisplayLowerECAM) intentionally not handled
-            // (out of scope — matches PMDG 737/777); it falls through to base as a no-op.
 
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);

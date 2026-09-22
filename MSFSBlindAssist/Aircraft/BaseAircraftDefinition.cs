@@ -336,6 +336,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
+        // AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I in output mode), from the
+        // aircraft's own DisplayReads table. A derived switch has already had its say by the time
+        // we get here, so an aircraft that means something else by one of these keys keeps it.
+        if (TryReadDisplayFor(action, simConnect, announcer, parentForm)) return true;
+
         // Try simple variable mapping first
         var variableMap = GetHotkeyVariableMap();
         if (variableMap.TryGetValue(action, out string? eventName))
@@ -807,10 +812,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     ///
     /// With <paramref name="instrumentView"/>, the simulator camera is first moved to that
     /// instrument view (0-based index into the aircraft's cameras.cfg instrument cameras) — the
-    /// pilot presses nothing in the sim to get the display on screen. The camera STAYS there: the
-    /// pilot's previous view is often a user-saved custom camera, which the sim reports as a
-    /// pilot-view index it refuses on the way back (measured 2026-09-09), so a restore was a silent
-    /// no-op for exactly the pilots who used one; they return with their own view key instead.
+    /// pilot presses nothing in the sim to get the display on screen.
+    /// The camera is put back after the capture and before the AI call — verified by read-back,
+    /// and a failure is spoken once rather than assumed. A restore was removed on 2026-09-09 and
+    /// reinstated on 2026-09-18; see <see cref="Services.InstrumentViewPlan"/> for what that
+    /// removal got wrong.
     /// Without it the flow is exactly what it always was: the current view is captured.
     /// </summary>
     protected async void ReadDisplay(Services.GeminiService.DisplayType displayType,
@@ -845,10 +851,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                     return;
                 }
 
+                Services.InstrumentViewSwitcher? switcher = null;
                 Services.InstrumentViewSession? view = null;
                 if (instrumentView != null)
                 {
-                    view = await new Services.InstrumentViewSwitcher(instrumentView.Camera).EnterAsync(instrumentView.ViewIndex);
+                    switcher = new Services.InstrumentViewSwitcher(instrumentView.Camera);
+                    view = await switcher.EnterAsync(instrumentView.ViewIndex);
                     if (view.Outcome == Services.InstrumentViewOutcome.NotInCockpit)
                     {
                         announcer.Announce("Switch to a cockpit view first.");
@@ -864,7 +872,22 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                     }
                 }
 
-                byte[]? screenshot = await screenshotService.CaptureAsync();
+                byte[]? screenshot = null;
+                try
+                {
+                    screenshot = await screenshotService.CaptureAsync();
+                }
+                finally
+                {
+                    // Put the camera back BEFORE the AI call, not after: that call is a network
+                    // round-trip of several seconds and the camera only has to be on the display
+                    // for the capture itself, so the pilot's own view is gone for well under a
+                    // second. In a finally so a capture that returned nothing — or threw —
+                    // restores too. RestoreAsync never throws, so it cannot swallow an exception
+                    // on its way out.
+                    if (switcher != null && view != null && !await switcher.RestoreAsync(view))
+                        announcer.Announce("Could not return to your previous view.");
+                }
 
                 if (screenshot == null || screenshot.Length == 0)
                 {
@@ -906,6 +929,45 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
             System.Windows.Forms.MessageBox.Show(parentForm, pending.Body, pending.Caption,
                 System.Windows.Forms.MessageBoxButtons.OK, pending.Icon);
         }
+    }
+
+    /// <summary>
+    /// This aircraft's AI display reads — the hotkey, the prompt, the spoken name and the
+    /// instrument camera view each one needs. Empty means the aircraft has none.
+    ///
+    /// <para>
+    /// An aircraft gains display reads by supplying a measured table and NOTHING else: the base
+    /// dispatches it from <see cref="HandleHotkeyAction"/>, so there is no per-aircraft dispatch
+    /// line to copy and no second way to wire a display read. A derived override's own switch
+    /// still runs first, so an aircraft that means something different by one of these hotkeys —
+    /// the FlyByWire A320/A380 open their E/WD window on Alt+E, the HorizonSim 787 announces CAS
+    /// alerts on Alt+E and opens a Coherent synoptic on Alt+S — keeps its own arm untouched.
+    /// </para>
+    ///
+    /// <para>
+    /// A row with a null <see cref="AiDisplayRead.InstrumentViewIndex"/> captures whatever is on
+    /// screen, which is what an aircraft whose camera views have never been measured wants.
+    /// </para>
+    /// </summary>
+    protected virtual IReadOnlyList<AiDisplayRead> DisplayReads => Array.Empty<AiDisplayRead>();
+
+    /// <summary>
+    /// Dispatches <paramref name="action"/> when it is one of <see cref="DisplayReads"/>: captures
+    /// that display and reads it back, first moving the simulator camera to the instrument view
+    /// that frames it when the row names one.
+    /// </summary>
+    private bool TryReadDisplayFor(HotkeyAction action,
+                                   SimConnect.SimConnectManager simConnect,
+                                   ScreenReaderAnnouncer announcer,
+                                   System.Windows.Forms.Form parentForm)
+    {
+        if (!AiDisplayRead.TryGet(DisplayReads, action, out var read)) return false;
+
+        ReadDisplay(read.DisplayType, read.SpokenName, announcer, parentForm,
+            read.InstrumentViewIndex is { } view
+                ? new Services.InstrumentViewRequest(simConnect, view)
+                : null);
+        return true;
     }
 
     // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out,
