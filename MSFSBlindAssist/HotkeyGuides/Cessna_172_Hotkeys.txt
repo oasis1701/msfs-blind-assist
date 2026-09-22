@@ -59,12 +59,16 @@ Distance:
 Location:
   C          Read Nearest City
 
+Trim:
+  Shift+T    Toggle Trim Announcements On/Off
+
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic
   Ctrl+R     Open TCAS Traffic Window
   Shift+R    Open Weather Radar Window
 
 Displays and Windows:
+  Alt+D      Describe outside scene (AI)
   Shift+E    Electronic Flight Bag (route viewer, procedure planner, airport lookup)
   Shift+L    Location Info
   Shift+M    Show VATSIM METAR Report
@@ -75,13 +79,16 @@ Displays and Windows:
 Background Announcements:
   Ctrl+M     Cessna 172 Monitor Manager - a checklist of every state the 172 announces
              automatically as it changes (switches, flaps, parking brake, magneto position,
-             COM active frequencies, squawk, and the stall / overspeed / engine-stopped /
-             low-fuel / low-voltage / oil warnings). Uncheck any you don't want spoken; the
-             choice is saved. On-demand read-out hotkeys are unaffected.
+             elevator trim, COM active frequencies, squawk, and the stall / overspeed /
+             engine-stopped / low-fuel / low-voltage / oil warnings). Uncheck any you don't
+             want spoken; the choice is saved. On-demand read-out hotkeys are unaffected.
+             Elevator trim can also be toggled on its own with Shift+T in output mode.
 
 Tools:
   Ctrl+H     Activate/deactivate Hand Fly mode
-  Ctrl+V     Activate/deactivate Visual Guidance mode (requires Hand Fly mode)
+  Ctrl+V     Activate/deactivate Visual Guidance mode. Does not require Hand
+             Fly mode. Enables the same single-letter quick-access hotkeys
+             Hand Fly mode does, plus F for target VS.
   Ctrl+T     Activate/deactivate Takeoff Assistance
   Ctrl+D     Read Distance to Selected Runway
   Ctrl+I     Read ILS Guidance System Report

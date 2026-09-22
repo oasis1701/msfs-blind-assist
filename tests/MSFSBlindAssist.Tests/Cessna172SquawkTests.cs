@@ -12,7 +12,6 @@ public class Cessna172SquawkTests
     [InlineData(1200, 0x1200u)]
     [InlineData(7000, 0x7000u)]
     [InlineData(422, 0x0422u)]
-    [InlineData(0, 0x0000u)]
     public void A_typed_code_encodes_to_bcd(double typed, uint expected)
     {
         Assert.True(Cessna172Squawk.TryToBcd(typed, out uint bcd, out string error));
@@ -25,6 +24,7 @@ public class Cessna172SquawkTests
     [InlineData(1209)]      // digit 9
     [InlineData(12345)]     // five digits
     [InlineData(-1)]
+    [InlineData(0)]         // a BLANK or garbled entry box: MainForm parses it to 0
     [InlineData(double.NaN)]
     public void An_invalid_code_is_refused_with_a_reason(double typed)
     {

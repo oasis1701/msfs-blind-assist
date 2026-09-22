@@ -1,7 +1,9 @@
 // Pins the SHAPE of the C172 definition that the fleet-wide tests cannot express: every panel has a
 // controls entry (a missing one makes MainForm's panel build throw), the magneto combo is never
-// requested (a delivered 0 from a nonexistent var would snap it to Off), cache-only feeds earn no
-// Ctrl+M row, and the guidance numbers are the spec's.
+// REGISTERED so its request no-ops (MainForm requests every action control on each panel open; an
+// UpdateFrequency.Never var gets no data definition, so nothing is ever delivered and a delivered 0
+// from a nonexistent var can never snap the combo to Off), cache-only feeds earn no Ctrl+M row, and
+// the guidance numbers are the spec's.
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.C172;
 using MSFSBlindAssist.Services;
@@ -37,7 +39,7 @@ public class Cessna172DefinitionShapeTests
     }
 
     [Fact]
-    public void The_magneto_combo_is_an_action_control_that_is_never_requested()
+    public void The_magneto_combo_is_an_action_control_that_is_never_registered()
     {
         var def = Def.GetVariables()["C172_MAGNETOS"];
         Assert.Equal(UpdateFrequency.Never, def.UpdateFrequency);
@@ -46,7 +48,7 @@ public class Cessna172DefinitionShapeTests
     }
 
     [Fact]
-    public void The_start_engine_and_ident_buttons_are_buttons_that_are_never_requested()
+    public void The_start_engine_and_ident_buttons_are_buttons_that_are_never_registered()
     {
         foreach (var key in new[] { "C172_ENGINE_START", "C172_XPNDR_IDENT" })
         {

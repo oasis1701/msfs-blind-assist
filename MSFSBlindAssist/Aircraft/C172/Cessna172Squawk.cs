@@ -15,7 +15,11 @@ public static class Cessna172Squawk
     {
         bcd = 0;
         error = "";
-        if (double.IsNaN(typed) || typed < 0 || typed > 7777 || typed != Math.Floor(typed))
+        // 0 is refused, not encoded. It is a legal BCD (0x0000) and a legal transponder code, but
+        // nobody sets 0000 deliberately — and it is exactly what MainForm hands over for a BLANK or
+        // garbled entry box (double.TryParse's failure value), so accepting it turns a mistyped
+        // squawk into a silent XPNDR_SET 0000.
+        if (double.IsNaN(typed) || typed <= 0 || typed > 7777 || typed != Math.Floor(typed))
         {
             error = InvalidMessage;
             return false;

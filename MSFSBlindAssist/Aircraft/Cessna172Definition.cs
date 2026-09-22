@@ -26,7 +26,8 @@ namespace MSFSBlindAssist.Aircraft;
 ///      the callout is the generic "Beacon: On". Only what MUST be composed or edge-triggered is
 ///      handled in the definition.
 ///   2. THE MAGNETO SELECTOR IS SPLIT (the A380 wiper / ND-filter pattern): C172_MAGNETOS is an
-///      ACTION combo (UpdateFrequency.Never — it has no backing var, so it is never requested and a
+///      ACTION combo (UpdateFrequency.Never — it has no backing var, so it is never REGISTERED and
+///      the request MainForm makes on every panel open is a no-op: nothing is ever delivered, so a
 ///      delivered 0 can never snap it to Off) that WRITES MAGNETO1_SET, and the "Magneto position"
 ///      STATUS row (C172_MAG_LEFT) READS the position composed from the three sim bools. A combo
 ///      cannot show a position composed from two vars — MainForm re-syncs a combo only from its own
@@ -125,7 +126,11 @@ public partial class Cessna172Definition : BaseAircraftDefinition
         // ---- Engine ----
         vars[MagnetoComboKey] = new SimVarDefinition
         {
-            Name = MagnetoComboKey, DisplayName = "Magnetos", Type = SimVarType.LVar,
+            // "Set magnetos", not "Magnetos": the combo is WRITE-ONLY. With no backing var there is
+            // nothing to sync it from, so MainForm opens it on item 0 ("Off") whatever the key is
+            // at, and its selection is only ever the pilot's last pick. The "Magneto position"
+            // status row beside it is the truth, and the two names keep them apart.
+            Name = MagnetoComboKey, DisplayName = "Set magnetos", Type = SimVarType.LVar,
             UpdateFrequency = UpdateFrequency.Never, IsAnnounced = false,
             ValueDescriptions = new Dictionary<double, string>(Cessna172Magnetos.SelectablePositions),
         };
@@ -138,6 +143,12 @@ public partial class Cessna172Definition : BaseAircraftDefinition
         vars[MagnetoLeftKey].StateVariables = new[] { MagnetoLeftKey, MagnetoRightKey, StarterKey };
         Switch("C172_FUEL_PUMP", "GENERAL ENG FUEL PUMP SWITCH:1", "Fuel pump");
         Feed("C172_MIXTURE_SET", "GENERAL ENG MIXTURE LEVER POSITION:1", "Mixture", "percent", listed: false);
+        // The _SET box seeds itself from the LEVER POSITION (spec §3's read-back) on creation and
+        // on every focus-in, so tabbing in reads the live mixture and Enter on an untouched box
+        // re-sends it (a no-op). Load-bearing, not a nicety: without it the box renders EMPTY and
+        // MainForm's button hands the definition double.TryParse's failure value — 0 — which
+        // passes the 0-100 range check and sends MIXTURE1_SET 0, idle cut-off on a running engine.
+        vars["C172_MIXTURE_SET"].CurrentValueSourceKey = "C172_MIXTURE_SET";
         Feed(CombustionKey, "GENERAL ENG COMBUSTION:1", "Engine stopped warning", "bool", listed: true);
         Feed(IasKey, "AIRSPEED INDICATED", "Indicated airspeed", "knots", listed: false);
         Feed("C172_OIL_PRESSURE_WARN", "GENERAL ENG OIL PRESSURE:1", "Oil pressure warning", "psi", listed: true);
@@ -150,7 +161,9 @@ public partial class Cessna172Definition : BaseAircraftDefinition
 
         // ---- Fuel ----
         Switch("C172_FUEL_SELECTOR", "FUEL TANK SELECTOR:1", "Fuel selector",
-            new Dictionary<double, string> { [1] = "Both", [2] = "Left", [3] = "Right" }, units: "enum");
+            // 0 is the documented FUEL_SELECTOR_SET parameter for Off, which the write path already
+            // sends; without the description the position could be read back but never picked.
+            new Dictionary<double, string> { [0] = "Off", [1] = "Both", [2] = "Left", [3] = "Right" }, units: "enum");
         Switch("C172_FUEL_SHUTOFF", "GENERAL ENG FUEL VALVE:1", "Fuel shutoff valve",
             new Dictionary<double, string> { [0] = "Closed", [1] = "Open" });
         Display("C172_FUEL_LEFT_DISPLAY", "FUEL LEFT QUANTITY", "Left fuel quantity", "gallons");
@@ -205,6 +218,10 @@ public partial class Cessna172Definition : BaseAircraftDefinition
         {
             [0] = "Off", [1] = "Standby", [2] = "Test", [3] = "On", [4] = "Altitude", [5] = "Ground",
         };
+        // The SELF-entry is load-bearing (the MD-11 lamp-row rule): the definition consumes this
+        // var in ProcessSimVarUpdate, so OnSimVarUpdated never reaches the ordinary display-var
+        // repaint and without it the mode row would lag by up to the 1 s tick. It registers the
+        // DisplayDependent sentinel, which is why there is no TryDescribeControlState override.
         vars["C172_TRANSPONDER_STATE"].StateVariables = new[] { "C172_TRANSPONDER_STATE" };
         Button("C172_XPNDR_IDENT", "Transponder ident");
         Feed(AltimeterKey, "KOHLSMAN SETTING HG:1", "Altimeter setting", "inHg", listed: false);
@@ -259,11 +276,16 @@ public partial class Cessna172Definition : BaseAircraftDefinition
         ["Flight Controls"] = new List<string> { "MON_ElevatorTrim" },
         ["Radios"] = new List<string>
         {
-            Com1ActiveKey, Com2ActiveKey,
+            // The standby rows are the ONLY read-back of a standby frequency: the entry box beside
+            // them is write-only (MainForm's _SET seed renders an INTEGER, so it cannot carry
+            // 121.900). Both are batch-covered, so the display force-read is a safe no-op.
+            Com1ActiveKey, Com1StandbyKey, Com2ActiveKey, Com2StandbyKey,
             "C172_NAV1_ACTIVE", "C172_NAV1_STANDBY", "C172_NAV1_OBS",
             "C172_NAV2_ACTIVE", "C172_NAV2_STANDBY", "C172_NAV2_OBS",
         },
-        ["Transponder"] = new List<string> { "C172_TRANSPONDER_STATE", "C172_ALTIMETER_DISPLAY" },
+        // SquawkKey is its own read-back row (batch-covered: the force-read is a no-op), so the
+        // code is readable at rest and not only when it changes.
+        ["Transponder"] = new List<string> { SquawkKey, "C172_TRANSPONDER_STATE", "C172_ALTIMETER_DISPLAY" },
     };
 
     public override Dictionary<string, string> GetButtonStateMapping() => new();

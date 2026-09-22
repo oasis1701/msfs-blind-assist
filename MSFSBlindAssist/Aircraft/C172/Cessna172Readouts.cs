@@ -19,8 +19,11 @@ public static class Cessna172Readouts
     public static string NavFrequency(double mhz) =>
         mhz >= 108.0 && mhz <= 118.0 ? mhz.ToString("0.00", Inv) + " MHz" : "---.-- MHz";
 
-    public static string Course(double degrees) =>
-        ((int)Math.Round(degrees) % 360 + 360) % 360 is var d ? d.ToString("000", Inv) + " degrees" : "";
+    public static string Course(double degrees)
+    {
+        int d = ((int)Math.Round(degrees) % 360 + 360) % 360;
+        return d.ToString("000", Inv) + " degrees";
+    }
 
     public static string Altimeter(double inHg) =>
         inHg.ToString("0.00", Inv) + " inHg (" + Math.Round(inHg * HpaPerInHg).ToString("0", Inv) + " hPa)";

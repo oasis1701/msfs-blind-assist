@@ -55,7 +55,12 @@ public partial class Cessna172Definition
                 bool now = value > 0.5;
                 bool fell = _combustion == true && !now;
                 _combustion = now;
-                TickEngineStart(announcer);          // a catch answers within the same delivery
+                // The start is NOT ticked here. This case runs INSIDE MainForm's Step-2.5
+                // Suppressed wrap, so with "Engine stopped warning" muted in Ctrl+M the success
+                // sentence ("Engine running") was dropped while the failure sentence — spoken from
+                // the batch hook, outside the wrap — still came through: muting one row silenced
+                // the other half of a different callout. The hook ticks after every SimVarUpdated
+                // of this same batch, so the catch is still answered within this delivery.
                 if (fell)
                 {
                     // Every start is baselined like the first: without this, a second start in
@@ -98,12 +103,12 @@ public partial class Cessna172Definition
             // ---- radios and transponder (baseline 0 / -1 is silent) ----
             case Com1ActiveKey:
                 if (_lastCom1 > 0 && Math.Abs(value - _lastCom1) > 0.001)
-                    announcer.Announce($"COM1 active {value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)}");
+                    announcer.Announce($"COM1 active {Cessna172Readouts.ComFrequency(value)}");
                 _lastCom1 = value;
                 return true;
             case Com2ActiveKey:
                 if (_lastCom2 > 0 && Math.Abs(value - _lastCom2) > 0.001)
-                    announcer.Announce($"COM2 active {value.ToString("0.000", System.Globalization.CultureInfo.InvariantCulture)}");
+                    announcer.Announce($"COM2 active {Cessna172Readouts.ComFrequency(value)}");
                 _lastCom2 = value;
                 return true;
             case SquawkKey:
@@ -134,16 +139,24 @@ public partial class Cessna172Definition
 
     /// <summary>
     /// Runs OUTSIDE MainForm's Suppressed wrap, so the Ctrl+M mute and the pick echo are checked
-    /// here. Also the 1 Hz tick for the engine-start timeout (combustion does not re-deliver while
-    /// it stays false, so the timeout cannot wait on a delivery).
+    /// here. This is ALSO the only place the engine start is ticked: the combustion case runs
+    /// inside that wrap, so ticking there let a muted "Engine stopped warning" row swallow
+    /// "Engine running" while leaving "Engine did not start" audible. The hook fires after every
+    /// SimVarUpdated of the batch that carries the watch var — and every C172 continuous var
+    /// rides ONE batch (well under the 300-slot size), combustion included — so a catch is still
+    /// answered within its own delivery. It is also the 1 Hz tick for the start TIMEOUT, which no
+    /// delivery could carry: combustion does not re-deliver while it stays false.
     /// </summary>
     public override void OnDeferredFlushBatchDelivered(ScreenReaderAnnouncer announcer)
     {
         TickEngineStart(announcer);
 
         if (!_magnetoDirty) return;
-        _magnetoDirty = false;
+        // Cleared only once all three have arrived: clearing above the guard threw away the
+        // dirty flag on a batch that carried a partial set, and the position then went unspoken
+        // until one of the three happened to change again.
         if (_magLeft == null || _magRight == null || _starter == null) return;   // not all three seen yet
+        _magnetoDirty = false;
 
         int pos = Cessna172Magnetos.Position(_magLeft.Value, _magRight.Value, _starter.Value);
         if (_lastMagnetoSpoken < 0) { _lastMagnetoSpoken = pos; return; }        // baseline
@@ -239,23 +252,9 @@ public partial class Cessna172Definition
         return false;
     }
 
-    /// <summary>
-    /// The transponder-mode status row lists itself in StateVariables so a consumed delivery still
-    /// repaints the Status Display; its text is the ValueDescriptions word. The magneto row's text
-    /// is TryGetDisplayOverride's (the display repaint calls that first).
-    /// </summary>
-    public override bool TryDescribeControlState(string varKey, out string stateText)
-    {
-        if (varKey == "C172_TRANSPONDER_STATE" && _sim != null)
-        {
-            double? v = _sim.GetCachedVariableValue(varKey);
-            if (v != null && GetVariables()[varKey].ValueDescriptions.TryGetValue(Math.Round(v.Value), out var word))
-            {
-                stateText = word;
-                return true;
-            }
-        }
-        stateText = "";
-        return false;
-    }
+    // There is deliberately NO TryDescribeControlState override. Both composed rows here are
+    // STATUS DISPLAY rows, not panel controls, and a display row's StateVariables register the
+    // DisplayDependent sentinel — on which RefreshDescribedState short-circuits to a coalesced
+    // repaint and returns before it would ever ask the definition. Their text comes from
+    // TryGetDisplayOverride (the magneto row) or the ValueDescriptions fallback (transponder mode).
 }
