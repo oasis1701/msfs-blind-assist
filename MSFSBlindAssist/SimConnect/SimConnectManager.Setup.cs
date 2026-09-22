@@ -431,6 +431,16 @@ public partial class SimConnectManager
                         varDef.HighFrequency ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
                     Log.Debug("SimConnect", $"Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")}");
+
+                    // A SIM_FRAME + CHANGED subscription delivers nothing while its value stands
+                    // still, so its cache is only ever as good as its INITIAL delivery — and one
+                    // session (MD-11, 2026-09-09) ran for hours with that delivery never having
+                    // landed for the speedbrake lever: every fresh read of the lever came
+                    // back null, the walk aborted before clicking, and the pilot heard "did not
+                    // move". Seed the cache with a one-shot on a SEPARATE request id (never this
+                    // one — re-issuing it delivers nothing new, measured live), which the dispatch
+                    // maps back to the same key. See FreshReadPolicy.SeedRequestId.
+                    if (varDef.HighFrequency) RequestSeedRead(kvp.Key);
                 }
 
                 // Log visual guidance variables specifically
@@ -776,6 +786,7 @@ public partial class SimConnectManager
         variableDataDefinitions.Clear();
         requestIdToVarKey.Clear();
         _freshRequestIdToVarKey.Clear();
+        _seedRequestIdToVarKey.Clear();
         lastVariableValues.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
         _freshReads.FailAll();

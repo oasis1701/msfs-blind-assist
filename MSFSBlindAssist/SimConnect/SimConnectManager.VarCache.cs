@@ -40,10 +40,13 @@ public partial class SimConnectManager
         {
             // Find the variable key for this request ID. A fresh read's PERIOD.ONCE went out under
             // its own id (see FreshReadWaiters): resolve that first — a ONCE answers exactly once,
-            // so the mapping is consumed here — else the id is the var's data-definition id.
+            // so the mapping is consumed here — then the SEED id a SIM_FRAME own subscription is
+            // read beside (fixed per var, so not consumed), else the var's data-definition id.
             string? varKey;
             bool freshRequest = _freshRequestIdToVarKey.TryRemove(requestId, out varKey);
-            if (!freshRequest && !requestIdToVarKey.TryGetValue(requestId, out varKey)) return;
+            if (!freshRequest &&
+                !_seedRequestIdToVarKey.TryGetValue(requestId, out varKey) &&
+                !requestIdToVarKey.TryGetValue(requestId, out varKey)) return;
             if (varKey == null) return;
 
             var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
@@ -76,6 +79,14 @@ public partial class SimConnectManager
             // Check for value changes — by the variable's own tolerance when it sets one.
             double? previousValue = lastVariableValues.TryGetValue(varKey, out double cached) ? cached : null;
             bool hasChanged = IsValueChange(previousValue, currentValue, varDef);
+            if (previousValue == null && varDef.HighFrequency)
+            {
+                // The per-fire line below is skipped for SIM_FRAME vars, so this is the ONLY record
+                // that a subscription ever delivered — once per cache lifetime. A SIM_FRAME +
+                // CHANGED var whose line never appears is one whose cache stayed empty all session
+                // (the MD-11 speedbrake, 2026-09-09: "state var unreadable" on every walk).
+                Log.Debug("SimConnect", $"First delivery for {varKey}: Value={currentValue} (request {requestId})");
+            }
             // Plain indexer write is equivalent to the prior AddOrUpdate here: the update-factory was
             // value-replacing ((key, oldValue) => currentValue), not a merge of oldValue into the new
             // value, so there is no concurrent-update logic being lost — see task-4.1-report.md.
@@ -83,9 +94,14 @@ public partial class SimConnectManager
             // A fresh read is answered by its OWN request, changed or not — never by an earlier
             // read's late answer (the read gave up; its answer must not become the next read's),
             // and never by a panel's ONCE under the data-definition id, which was asked by someone
-            // else at a time the waiter cannot know. A var on its own periodic subscription gets
-            // no ONCE of its own (RequestVariable leaves the subscription alone), so for it the
-            // periodic sample — taken after any waiter registered — is the answer.
+            // else at a time the waiter cannot know. A var on its own PERIOD.SECOND subscription
+            // gets no ONCE of its own (RequestVariable leaves the subscription alone), so for it the
+            // periodic sample — taken after any waiter registered — is the answer. A SIM_FRAME +
+            // CHANGED var is read under a fresh id when its cache is empty (the freshRequest arm),
+            // and its SEED deliveries (setup, plain force-read) land here like a subscription sample:
+            // a waiter on such a var exists only while the cache is EMPTY, i.e. nothing at all has
+            // been delivered, so a seed answering it cannot predate a change the subscription would
+            // have delivered first.
             if (freshRequest)
             {
                 if (!_freshReads.Complete(varKey, requestId, currentValue))

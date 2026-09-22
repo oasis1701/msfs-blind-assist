@@ -1299,6 +1299,7 @@ public partial class SimConnectManager
         variableDataDefinitions.Clear();
         requestIdToVarKey.Clear();
         _freshRequestIdToVarKey.Clear();
+        _seedRequestIdToVarKey.Clear();
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
         for (int i = 0; i < batchVarArrays.Length; i++)

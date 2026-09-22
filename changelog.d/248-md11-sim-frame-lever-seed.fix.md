@@ -1,0 +1,1 @@
+MD-11: setting a speedbrake position no longer says "Spoilers did not move" without ever touching the lever. When the simulator never sent the lever's first position, the app could not read it for the whole session; it now asks for it itself.

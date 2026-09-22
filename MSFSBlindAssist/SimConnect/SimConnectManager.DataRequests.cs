@@ -99,6 +99,14 @@ public partial class SimConnectManager
     private readonly FreshReadWaiters _freshReads = new(FreshRequestIdBase);
     private readonly ConcurrentDictionary<int, string> _freshRequestIdToVarKey = new();
 
+    // The SEED reads (RequestSeedRead): a ONCE beside a SIM_FRAME + CHANGED own subscription, on a
+    // fixed per-var id (FreshReadPolicy.SeedRequestId, def id + 900000 — below FreshRequestIdBase,
+    // above every def id). Issued with no waiter at setup and on a plain force-read, so it answers
+    // no particular ReadFreshAsync and is deliberately NOT a fresh id: its delivery goes down the
+    // own-subscription path in ProcessIndividualVariableResponse like the subscription's own
+    // sample would. Kept out of requestIdToVarKey for the same reason as the fresh map above.
+    private readonly ConcurrentDictionary<int, string> _seedRequestIdToVarKey = new();
+
     // SimConnect is not thread-safe. This gate covers the one off-thread path that issues a data
     // REQUEST and touches the maps below; the client-data WRITES a pool thread already makes (the
     // MD-11's CEVENT pump, the A380's seat-motion Task.Run, both through ExecuteCalculatorCode)
@@ -126,8 +134,9 @@ public partial class SimConnectManager
     /// PERIOD.ONCE response of an individual-def var (a frame or two), or the next continuous batch
     /// of a batch-covered one (up to one period; the force flag makes an unchanged value re-fire).
     /// A var on its own SIM_FRAME + CHANGED subscription gets its CACHE back at once instead — that
-    /// cache is at most a frame old, no PERIOD.ONCE is ever issued for it, and an unchanged value
-    /// would never deliver (<see cref="FreshReadPolicy.CacheIsFresh"/>). Returns null when nothing
+    /// cache is at most a frame old and an unchanged value would never deliver
+    /// (<see cref="FreshReadPolicy.CacheIsFresh"/>) — unless the cache is EMPTY, when the read goes
+    /// out under its own fresh id beside the subscription (<see cref="FreshReadPolicy.AnswerFromCache"/>). Returns null when nothing
     /// is delivered within <paramref name="timeoutMs"/>, when not connected, or when the key cannot
     /// be delivered at all; throws <see cref="OperationCanceledException"/> on <paramref name="ct"/>.
     /// The MD-11 walker reads through this instead of sleeping and polling the cache — the delivery
@@ -138,9 +147,45 @@ public partial class SimConnectManager
         if (!IsConnected || simConnect == null) return Task.FromResult<double?>(null);
         bool deliverable = variableDataDefinitions.ContainsKey(varKey) || continuousVariableIndexMap.ContainsKey(varKey);
         if (!deliverable) return Task.FromResult<double?>(null);
-        if (FreshReadPolicy.CacheIsFresh(DefinitionOf(varKey))) return Task.FromResult(GetCachedVariableValue(varKey));
+        var freshDef = DefinitionOf(varKey);
+        if (FreshReadPolicy.CacheIsFresh(freshDef))
+        {
+            var cached = GetCachedVariableValue(varKey);
+            if (FreshReadPolicy.AnswerFromCache(freshDef, cached)) return Task.FromResult(cached);
+            // Never delivered — the SIM_FRAME + CHANGED subscription's initial delivery did not
+            // land (whole MD-11 sessions, 2026-09-09 and 2026-09-10: the speedbrake lever set up
+            // and never once delivered, every walk "state var unreadable"). The subscription itself
+            // must not be touched, so fall through and ask under this read's OWN request id: a ONCE
+            // on a separate id answers within a frame and leaves the subscription alive (measured
+            // live). RequestVariable issues it because freshRequestId is set — see the SIM_FRAME
+            // branch there.
+        }
         return _freshReads.WaitAsync(varKey,
             id => RequestVariable(varKey, forceUpdate: true, freshRequestId: id), timeoutMs, ct);
+    }
+
+    /// <summary>
+    /// One-shot read of an individual-def var on its SEED request id (<see cref="FreshReadPolicy.SeedRequestId"/>),
+    /// so a var on its own SIM_FRAME + CHANGED subscription can be read without re-issuing —
+    /// and thereby silently replacing — that subscription. The response carries the seed id, which
+    /// <c>ProcessIndividualVariableResponse</c> maps back to the key like any other. Registered at
+    /// setup for every SIM_FRAME own subscription; harmless to call for any other individual def.
+    /// </summary>
+    private void RequestSeedRead(string varKey)
+    {
+        if (simConnect == null || !variableDataDefinitions.TryGetValue(varKey, out int dataDefId)) return;
+        int seedId = FreshReadPolicy.SeedRequestId(dataDefId);
+        _seedRequestIdToVarKey[seedId] = varKey;
+        try
+        {
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)seedId,
+                (DATA_DEFINITIONS)dataDefId, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error issuing seed read for {varKey}: {ex.Message}");
+        }
     }
 
     private SimVarDefinition? DefinitionOf(string varKey)
@@ -216,12 +261,23 @@ public partial class SimConnectManager
         // every panel open, display refresh and force-read. Leave the subscription alone: the
         // force flag recorded above is honoured by the next periodic delivery, so a force-read
         // still fires SimVarUpdated within one period (1 s at PERIOD.SECOND).
-        var defs = CurrentAircraft?.GetVariables();
-        if (defs != null && defs.TryGetValue(varKey, out var periodicDef) &&
-            periodicDef.UpdateFrequency == UpdateFrequency.Continuous &&
-            periodicDef.IsAnnounced && periodicDef.ExcludeFromBatch)
+        //
+        // A SIM_FRAME + CHANGED subscription has no "next periodic delivery" while the value
+        // stands still, so a force-read of an unchanged var would otherwise never answer — and
+        // if its initial delivery never landed, the cache stays empty for the session (the
+        // MD-11 speedbrake, 2026-09-09/10). Answer through a SEPARATE request id instead: a
+        // ONCE there delivers within a frame, honours the force flag recorded above, and leaves
+        // the subscription untouched (measured live). A ReadFreshAsync caller supplied its own
+        // fresh id, so fall through to the issue below (which never touches the subscription's
+        // id); a plain force-read (panel open, walk-end refresh) goes out on the seed id.
+        // PERIOD.SECOND subscriptions keep waiting for their next delivery as before.
+        switch (FreshReadPolicy.RouteRequest(DefinitionOf(varKey), freshRequestId != null))
         {
-            return;
+            case VarRequestRoute.AwaitNextDelivery:
+                return;
+            case VarRequestRoute.SeedId:
+                RequestSeedRead(varKey);
+                return;
         }
 
         try
