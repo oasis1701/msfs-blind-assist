@@ -40,6 +40,7 @@ public class CalcPathProbeOptInTests
         yield return new object[] { new PMDG777Definition() };
         yield return new object[] { new HorizonSim787Definition() };
         yield return new object[] { new IFly737MAXDefinition() };
+        yield return new object[] { new Cessna172Definition() };
     }
 
     [Theory]

@@ -73,6 +73,7 @@ public class ComboLabelCollapseTests
         yield return new object[] { new PMDG737Definition() };
         yield return new object[] { new PMDG777Definition() };
         yield return new object[] { new TFDiMD11Definition() };
+        yield return new object[] { new Cessna172Definition() };
     }
 
     [Theory]
