@@ -1,0 +1,144 @@
+CESSNA 172 SKYHAWK (G1000) HOTKEY REFERENCE
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+OUTPUT MODE - Press right bracket to activate
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
+
+Fuel:
+  F          Read Fuel Quantity per tank (pounds)
+  Shift+F    Read Fuel Quantity per tank (kilograms)
+
+Weight:
+  W          Read Gross Weight (pounds)
+  Shift+W    Read Gross Weight (kilograms)
+
+Flaps:
+  L          Read Flap Position
+
+Altimeter:
+  B          Read Altimeter Setting (hPa and inHg, or Standard)
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius)
+
+Transponder:
+  X          Read Squawk Code
+
+Distance:
+  D          Read Distance to Destination (miles + ETE)
+  Shift+D    Read Distance to Top of Descent (miles + ETE, if FMS has computed a TOD)
+
+Location:
+  C          Read Nearest City
+
+Traffic and Weather:
+  R          Announce Tracked TCAS Traffic
+  Ctrl+R     Open TCAS Traffic Window
+  Shift+R    Open Weather Radar Window
+
+Displays and Windows:
+  Shift+E    Electronic Flight Bag (route viewer, procedure planner, airport lookup)
+  Shift+L    Location Info
+  Shift+M    Show VATSIM METAR Report
+  Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
+  Shift+B    SimBrief Briefing
+  Shift+C    Show Checklist
+
+Background Announcements:
+  Ctrl+M     Cessna 172 Monitor Manager - a checklist of every state the 172 announces
+             automatically as it changes (switches, flaps, parking brake, magneto position,
+             COM active frequencies, squawk, and the stall / overspeed / engine-stopped /
+             low-fuel / low-voltage / oil warnings). Uncheck any you don't want spoken; the
+             choice is saved. On-demand read-out hotkeys are unaffected.
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode (requires Hand Fly mode)
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+  Ctrl+0     Read Approach Capability
+
+Waypoint Tracking:
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Hand Fly Mode Hotkeys:
+  A          Read MSL
+  S          Read IAS
+  D          Read Distance to Destination Runway
+  H          Read Magnetic Heading
+  P          Read Aircraft Pitch
+  B          Read Aircraft Bank
+  Q          Read AGL
+  V          Read VS
+
+Visual Guidance Mode Hotkeys:
+  F          Read Target VS
+
+SayIntentions:
+  Ctrl+S        Read last SayIntentions transmission
+  Ctrl+Shift+S  Open SayIntentions flight information. Assigned arrival gate,
+                departure runway, which runways are landing and departing, the
+                field flow and the altimeter. Read-only: arrow keys move line by
+                line, Escape closes.
+
+VATSIM:
+  Alt+V      Mute or unmute VATSIM announcements (vPilot)
+
+INPUT MODE - Press [ to activate
+
+Teleport:
+  Shift+R    Runway Teleport
+  Shift+G    Gate Teleport
+
+Flight Planning:
+  Shift+F    Fix/Waypoint Tracking Window
+  Shift+D    Select Destination Runway
+
+Radios:
+  Ctrl+N     Set NAV 1 and NAV 2 frequency and course (the panel's Radios and Transponder
+             panels carry the COM standby boxes, the swap buttons, the squawk box and the
+             altimeter box).
+
+SayIntentions:
+  Ctrl+Shift+Y Build a taxi route from the last SayIntentions taxi clearance.
+               Fills the Taxi Assist form with the destination, taxiways and
+               hold-short runways ATC gave, and names anything it could not
+               apply. Review the fields and press Calculate Route to start
+               guidance, or turn on auto-start in the SayIntentions section
+               of Settings > Taxi Guidance.
+
+General:
+  Escape     Exit active hotkey mode
