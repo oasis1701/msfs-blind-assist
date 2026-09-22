@@ -330,6 +330,17 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> Md11DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // Auto-announced C172 variables the user has muted via the Cessna 172 Monitor Manager
+        // (Ctrl+M, Cessna172MonitorManagerForm). Consulted in MainForm.OnSimVarUpdated when
+        // AircraftCode == "C172" — at the generic gate AND via the Suppressed wrap (the warnings
+        // and radio callouts are spoken from INSIDE ProcessSimVarUpdate), and by the definition's
+        // own batch hook (the magneto position callout runs outside that wrap). Persisted.
+        public List<string> C172DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="C172DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> C172DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // The MD-11 walker's learned step polarity (docs/md11.md §3): node ids whose step events run
         // INVERTED relative to the walker's conventional guess (left click / wheel up = increase).
         // Absent = conventional. Written the moment a wrong-way step teaches the walker, read on the
@@ -543,7 +554,7 @@ public class UserSettings
         }
 
     /// <summary>
-    /// Rebuilds the seven *DisabledMonitorVariables HashSet sidecars from their backing Lists.
+    /// Rebuilds the eight *DisabledMonitorVariables HashSet sidecars from their backing Lists.
     /// Every known mutation of those lists (the Fenix/PMDG/A380/HS787/A32NX/iFly/MD-11 monitor-manager
     /// forms' ItemCheck handlers, FlyByWireA380Definition's ToggleECAMMonitoring hotkey, and
     /// SettingsManager.SeedFenixMonitorDefaults) is immediately followed by SettingsManager.Save,
@@ -560,6 +571,7 @@ public class UserSettings
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
         Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
+        C172DisabledMonitorVariablesSet = new HashSet<string>(C172DisabledMonitorVariables);
     }
 
     /// <summary>
