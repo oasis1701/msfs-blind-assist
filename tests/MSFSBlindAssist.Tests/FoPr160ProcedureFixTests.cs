@@ -179,7 +179,9 @@ public class FoPr160ProcedureFixTests
         var flows = Pmdg777Flows.Build();
         var landing = flows.Single(f => f.Id == "LANDING");
 
-        Assert.Equal(new[] { "LD_SPEEDBRAKE_ARM", "LD_MISSED" },
+        // LD_GEAR_DOWN_CHECK (PR #160 follow-up, Task C) is the flow's read-only,
+        // lever-based gear-down confirmation — see Pmdg777LandingGearCheckTests.
+        Assert.Equal(new[] { "LD_SPEEDBRAKE_ARM", "LD_MISSED", "LD_GEAR_DOWN_CHECK" },
                      landing.Steps.Select(s => s.Id).ToArray());
         Assert.Contains("LANDING_CL", landing.RelatedChecklistGroupIds);
 

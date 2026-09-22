@@ -513,7 +513,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "LANDING",
         Name = "Landing",
-        Description = "Speedbrake armed and missed approach altitude set for landing.",
+        Description = "Speedbrake armed and missed approach altitude set for landing, then confirms the gear lever is down.",
         RelatedChecklistGroupIds = new[] { "LANDING_CL" },
         Steps = new()
         {
@@ -532,6 +532,18 @@ public static class PMDG777FlowDefinitions
             // The 737's "Engine start switches: CONT" is deliberately NOT mirrored here —
             // 777 ignition is automatic and needs no CONT selection for landing.
             Captain("LD_MISSED",      "Set the missed approach altitude"),
+            // Read-only gear-down confirmation — it never moves the lever. Unlike the
+            // 737/iFly/Fenix gear checks, this does NOT use GearLightRules: the 777 SDK
+            // exposes no gear-indication lights, only GEAR_Lever, so the crew's usual
+            // "three green" confirmation is unavailable here and the lever is the only
+            // signal there is. LAST step of the flow, so the steps above are not held up;
+            // waits up to 20 s. If the lever is not confirmed down within that window the
+            // step is announced as skipped and FlowManager keeps LDG_GEAR out of
+            // MarkGroupComplete's latch, so the line keeps mirroring the real lever instead
+            // of reading complete over gear that is still up.
+            Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing Gear: DOWN", "GEAR_Lever", v => Math.Abs(v - 1) < 0.1, 20,
+                    checklistItemId: "LDG_GEAR"),
+                s => s.IsPosition("GEAR_Lever", 1)),
         }
     };
 
@@ -741,7 +753,7 @@ public static class PMDG777FlowDefinitions
 
     private static FlowStep<AircraftStateEvaluator> WaitForField(string id, string label, string field,
         Func<double, bool> condition, int timeoutSec,
-        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip) => new()
+        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip, string? checklistItemId = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitForCondition,
@@ -749,6 +761,7 @@ public static class PMDG777FlowDefinitions
         Condition = condition,
         TimeoutSeconds = timeoutSec,
         FailurePolicy = onTimeout,
+        CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 0,
     };
 
