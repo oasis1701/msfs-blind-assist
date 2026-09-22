@@ -344,9 +344,9 @@ public static class PMDG777ChecklistDefinitions
             Manual("BS_CDU_COMPLETE", "BEFORE_START", "CDU Preflight: Verify complete"),
             Manual("BS_V2_SET", "BEFORE_START", "IAS/MACH selector: Set V2"),
             // Owner-ruled OMISSIONS (2026-09-22, "not needed there"): the vendor's LNAV and
-            // VNAV arm lines are deliberately NOT carried — Before Takeoff's "Verify armed"
-            // pair is where the First Officer handles them. Do not restore them from the
-            // vendor page.
+            // VNAV arm lines and its "clearance to pressurize" line are deliberately NOT
+            // carried — Before Takeoff's "Verify armed" pair is where the First Officer
+            // handles LNAV/VNAV. Do not restore any of the three from the vendor page.
             Manual("BS_INIT_HDG", "BEFORE_START", "Initial heading or track: Set"),
             Manual("BS_INIT_ALT", "BEFORE_START", "Initial altitude: Set"),
             Reminder("BS_DOORS_VERIFY", "BEFORE_START", "Exterior doors: Verify closed"),
@@ -356,7 +356,6 @@ public static class PMDG777ChecklistDefinitions
                 action: (e, _) => e.SetSeatBelts(2)),
             ActionManualAsync("BS_APU_START", "BEFORE_START", "APU: START (ON then START; wait for self-sustaining)",
                 (e, _) => e.StartApuAsync()),
-            Manual("BS_HYD_PRESSURIZE", "BEFORE_START", "Obtain clearance to pressurize hydraulics"),
             Auto("BS_HYD_PUMPS_ON", "BEFORE_START", "Engine and Electric primary hydraulic pumps: ON",
                 "HYD_PrimaryEngPump_Sw_ON_0", v => v > 0.5,
                 new[] { "HYD_PrimaryEngPump_Sw_ON_1", "HYD_PrimaryElecPump_Sw_ON_0", "HYD_PrimaryElecPump_Sw_ON_1" },

@@ -207,8 +207,9 @@ public class Pmdg777FlowOrderingTests
     //   Aileron trim Verify 0 / Rudder trim Verify 0 / BEFORE START CHECKLIST.
     //
     // Owner-ruled OMISSIONS (2026-09-22, "not needed there"): MSFSBA deliberately carries
-    // neither "LNAV Arm as needed" nor "VNAV Arm" — Before Takeoff's "Verify armed" pair
-    // is where the First Officer handles them.
+    // neither "LNAV Arm as needed" nor "VNAV Arm" nor "clearance to pressurize the
+    // hydraulic systems" — Before Takeoff's "Verify armed" pair is where the First
+    // Officer handles LNAV/VNAV.
     //
     // MSFSBA had trim NINE items early (#7-9 of 23) and, in the flow, as step 3 of 17 —
     // ahead of the entire APU start and of every hydraulic pump. It also disconnected
@@ -234,7 +235,7 @@ public class Pmdg777FlowOrderingTests
         // The reported defect: "Trim is before hydraulic pumps even come on, so can't
         // even be set."
         AssertOrder(ItemIds("BEFORE_START"),
-            "BS_HYD_PRESSURIZE", "BS_HYD_PUMPS_ON", "BS_HYD_DEMAND",
+            "BS_HYD_PUMPS_ON", "BS_HYD_DEMAND",
             "BS_STAB_TRIM", "BS_AIL_TRIM", "BS_RUD_TRIM");
     }
 
@@ -292,6 +293,19 @@ public class Pmdg777FlowOrderingTests
             Assert.False(
                 text.Contains("LNAV", System.StringComparison.OrdinalIgnoreCase)
                 || text.Contains("VNAV", System.StringComparison.OrdinalIgnoreCase),
+                $"{where}: \"{text}\"");
+    }
+
+    [Fact]
+    public void Preflight_and_BeforeStart_no_longer_ask_for_clearance_to_pressurize_the_hydraulics()
+    {
+        // Owner ruling 2026-09-22, the same as LNAV/VNAV: the vendor's Before Start page
+        // lists "clearance to pressurize the hydraulic systems"; MSFSBA deliberately does
+        // not. The hydraulic pumps themselves, and trim after them, are unchanged.
+        foreach (var (where, text) in PreStartLines())
+            Assert.False(
+                text.Contains("pressuri", System.StringComparison.OrdinalIgnoreCase)
+                && text.Contains("clearance", System.StringComparison.OrdinalIgnoreCase),
                 $"{where}: \"{text}\"");
     }
 
