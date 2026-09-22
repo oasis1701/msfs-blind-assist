@@ -765,6 +765,9 @@ public partial class MainForm : Form
                 takeoffAssistManager.IsActive,
                 taxiGuidanceManager.State,
                 simConnectManager.LastKnownPosition?.GroundSpeedKnots);
+        // Route + runway context: tells traffic ON the route from traffic beside it, counts the
+        // departure queue, and names the runway being held short of so its traffic is reported.
+        groundTrafficMonitor.RouteContextProvider = () => taxiGuidanceManager.GetGroundTrafficContext();
 
         // Per-aircraft rollout-anticipation lead for the taxi steering tone
         // (see IAircraftDefinition.TaxiTurnLeadSeconds).
