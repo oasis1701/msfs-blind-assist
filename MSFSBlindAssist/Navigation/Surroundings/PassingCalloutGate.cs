@@ -6,8 +6,11 @@ namespace MSFSBlindAssist.Navigation.Surroundings;
 /// Pure decision state for "Passing X, on the left." A building is PASSED when its range was
 /// closing and is now opening — the closest point of approach — while that closest point was
 /// itself roughly ABEAM (not a building only ever approached head-on, and not one behind the
-/// aircraft during a pushback reversal), the building is inside its kind's radius, and the
-/// aircraft is at taxi speed. Parked beside a terminal, or pushed back from one without ever
+/// aircraft during a pushback reversal), that closest point was inside the building's kind's
+/// radius (the approach itself is tracked from the edge of the caller's rank window,
+/// <see cref="RankRadiusMetres"/>, so a building passed just inside its radius still shows the
+/// closing an arm needs), and the aircraft is at taxi speed. Parked beside a terminal, or pushed
+/// back from one without ever
 /// closing past the very first reading, the range never closes, so nothing is recited and no
 /// baseline is needed (the old one-shot baseline was a 5-minute timestamp that lapsed during any
 /// normal preflight). Each track is identified by KIND, NAME *and* POSITION: two different
@@ -93,7 +96,14 @@ public sealed class PassingCalloutGate
     /// <see cref="MinSpeedKts"/> nothing may fire) and taxi on three minutes later, and the pilot
     /// heard "Passing X, on the left" about somewhere they no longer were. Long enough for the 10 s
     /// <see cref="GlobalGap"/> and a late tick on top, short enough that what is described is still
-    /// beside the aircraft. An expired pass is consumed silently, exactly like a non-abeam one.</summary>
+    /// beside the aircraft. An expired pass is consumed silently, exactly like a non-abeam one.
+    ///
+    /// <para>This expiry is also what bounds WHERE a held pass may still be released. The release
+    /// loop visits every feature inside <see cref="RankRadiusMetres"/> (tracking starts there), so a
+    /// held pass can be spoken while its building is anywhere in that 350 m window, not only inside
+    /// its kind's radius as before tracking moved out to the window — accepted: it still names the
+    /// side and range of its own closest point, and 20 s at taxi speed keeps that building beside
+    /// the aircraft.</para></summary>
     public static readonly TimeSpan PendingExpiry = TimeSpan.FromSeconds(20);
 
     // Min/MinRel freeze the instant Passed is set (Evaluate gates their update on !Passed): the
@@ -120,7 +130,9 @@ public sealed class PassingCalloutGate
     internal int TrackCount => _tracks.Count;
 
     /// <summary>
-    /// How near a feature of this kind must come before a pass can be reported.
+    /// How near a feature of this kind must come before a pass can be reported — judged at its
+    /// CLOSEST POINT when the pass arms, never as a condition of tracking it (tracking starts at
+    /// <see cref="RankRadiusMetres"/>).
     ///
     /// <para>MEASURED, not chosen. Replaying two RECORDED pilot tracks — 5.59 km at EHAM, 4.35 km
     /// at LOWI, 31 Hz, through the production catalog, Rank and this gate — the shipped
@@ -137,6 +149,11 @@ public sealed class PassingCalloutGate
     /// SATURATED by then, so beyond this the radius only starts naming buildings the pilot is
     /// nowhere near. The gate's own limits — 10 s globally, 5 minutes per building — cap the
     /// worst case regardless of what is set here.</para>
+    ///
+    /// <para>⚠ Those counts were measured while a feature was still tracked only from inside its
+    /// radius, so a feature whose closest point lay within about <see cref="MinApproachMetres"/> of
+    /// the radius could not close enough to arm — EHAM's 223 m pier and LOWI's 135-137 m hangars,
+    /// the very features x1.5 was chosen to clear, included. The counts are what that gate said.</para>
     /// </summary>
     public static double PassRadiusMetres(FeatureKind k) => k switch
     {
@@ -146,12 +163,16 @@ public sealed class PassingCalloutGate
     };
 
     /// <summary>
-    /// How wide the caller must rank before handing the list to <see cref="Evaluate"/>. A pass
-    /// radius ABOVE this is a number the gate can never see: the monitor ranks once and the gate
-    /// only ever sees what that list contains, so the two move together or the widest kind is
-    /// silently capped at the window. This is the ceiling <see cref="PassRadiusMetres"/> is
-    /// tested against, with headroom above the widest kind so a future widening there is a
-    /// deliberate act rather than a silent no-op.
+    /// How wide the caller must rank before handing the list to <see cref="Evaluate"/> — and where
+    /// TRACKING starts. A pass radius ABOVE this is a number the gate can never see: the monitor
+    /// ranks once and the gate only ever sees what that list contains, so the two move together or
+    /// the widest kind is silently capped at the window. A feature is tracked from the moment it
+    /// enters this window and its kind's radius is applied to the CLOSEST POINT when a pass arms,
+    /// so this must also sit at least <see cref="MinApproachMetres"/> above every radius: tracked
+    /// only from inside its radius, a feature passed just within it could never close the 15 m an
+    /// arm needs (EHAM's 223 m pier under 225 m, LOWI's 137 m hangar under 150 m — the very
+    /// features the radii were widened for). Both are pinned by tests, with headroom above the
+    /// widest kind so a future widening there is a deliberate act rather than a silent no-op.
     /// </summary>
     public const double RankRadiusMetres = 350.0;
 
@@ -237,7 +258,12 @@ public sealed class PassingCalloutGate
         NearbyFeature? fire = null; Track? fireTrack = null;
         foreach (var n in nearby)
         {
-            if (!IsAnnounceable(n.Feature) || n.DistanceMetres > PassRadiusMetres(n.Feature.Kind)) continue;
+            // TRACKED from the edge of the rank window, never from the kind's radius — that is
+            // applied to the CLOSEST POINT when the pass arms, below. Tracked only from inside the
+            // radius, a feature's first range was at most the radius, so one passed just within it
+            // could never close MinApproachMetres (see RankRadiusMetres). `!(d <= …)` also skips a
+            // NaN range: an unreadable sample is not the start of an approach.
+            if (!IsAnnounceable(n.Feature) || !(n.DistanceMetres <= RankRadiusMetres)) continue;
             string key = Key(n.Feature); double d = n.DistanceMetres;
             var t = FindTrack(key, n.Feature.Lat, n.Feature.Lon);
             if (t == null)
@@ -248,7 +274,10 @@ public sealed class PassingCalloutGate
             t.LastSeen = now; t.AnchorLat = n.Feature.Lat; t.AnchorLon = n.Feature.Lon;
             if (!t.Passed && d < t.Min) { t.Min = d; t.MinRel = n.RelativeBearingDeg; }   // frozen once armed: see Track's own comment
 
-            if (!t.Passed && t.First - t.Min >= MinApproachMetres && d >= t.Min + OpeningMetres)
+            // A closest point outside the kind's radius is not a pass — and the track stays unarmed,
+            // so a later, nearer approach to the same building (a turn back toward it) can still be one.
+            if (!t.Passed && t.First - t.Min >= MinApproachMetres && d >= t.Min + OpeningMetres
+                && t.Min <= PassRadiusMetres(n.Feature.Kind))
             {
                 t.Passed = true;
                 t.Pending = IsAbeam(t.MinRel);   // tail-first, or a turn away before reaching it: consumed silently

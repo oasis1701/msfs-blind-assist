@@ -1236,15 +1236,34 @@ taxi-scoped and off with no route loaded, so this cannot ride it) and judges
 every `AIRCRAFT_POSITION` answer where it lands (`OnPositionReceived`: its own
 request's and any other feature made — each a fresh sample), re-resolves
 the airport at most every 30 s, and hands the ranked feature list (within
-250 m) to the pure `PassingCalloutGate`.
+`PassingCalloutGate.RankRadiusMetres`, 350 m) to the pure `PassingCalloutGate`.
 
 **A building is PASSED at its closest point of approach** — the range closed by
 at least `MinApproachMetres` (15 m) and has since opened by `OpeningMetres`
-(5 m) — while the building is inside its kind's pass radius (Concourse/Terminal
-225 m, Tower 300 m, others 150 m — **measured, see below**) and is announceable (Terminal, Concourse,
+(5 m) — when that CLOSEST POINT lies inside its kind's pass radius (Concourse/Terminal
+225 m, Tower 300 m, others 150 m — **measured, see below**) and it is announceable (Terminal, Concourse,
 Fbo, Tower, Fuel, Cargo, FireStation, and Hangar only when NAMED). It then
 fires at most once per building per 5 minutes, once globally per 10 s, and only
 while ground speed is 2–40 kt.
+
+**The approach is tracked from the edge of the rank window, never from the
+radius**; the radius is applied to the MINIMUM when a pass arms. Tracked only
+from inside its radius, a feature's first range was at most the radius itself,
+so the most a pass could close was the radius minus its closest point — 2 m for
+EHAM's 223 m pier under 225 m, 13 m for LOWI's 137 m hangar under 150 m — and
+neither could ever be called, although clearing exactly those two was the
+reason for the radii below. A simulated straight pass at 15 kt with the
+monitor's 2 s polls now calls both, and a closest point 5 m outside its radius
+is still silent. A closest point outside the radius leaves the track unarmed, so
+a later, nearer approach to the same building can still be a pass.
+
+**It changes RELEASE too, on purpose.** A pass held back by the 10 s global gap
+or by speed used to be dropped once its building left the kind's radius — the
+release loop only visited features inside it. The loop now visits the whole
+rank window, so a held pass can be spoken while its building is anywhere within
+350 m, as long as `PendingExpiry` (20 s from arming) has not run out. Accepted:
+it still names the side and range of its OWN closest point, and 20 s at taxi
+speed keeps that building beside the aircraft.
 
 **The radii are MEASURED and the rank window moves with them.** At the shipped
 150/200/100 the feature said almost nothing on a real taxi: replaying two
@@ -1268,10 +1287,14 @@ never comes nearer), LOWI's ten nearest hangars at 106-137 m against 100 m.
 
 x1.5 clears the whole cluster at both fields (225 > 223, 150 > 137); both have
 SATURATED by x3, so wider only starts naming buildings the pilot is nowhere
-near. **`PassingCalloutGate.RankRadiusMetres` (350 m) is the ceiling and the
-monitor ranks to it** — it used a literal 250 m, so the widened 300 m tower
-radius would have been a number the gate could never see, silently capped at
-the window. A test pins that no kind's radius can exceed it.
+near. ⚠ The table was measured while a feature was still tracked only from
+inside its radius, so the furthest of each cluster — the two numbers x1.5 was
+chosen to clear — could not arm in it; its counts are what that gate said.
+**`PassingCalloutGate.RankRadiusMetres` (350 m) is the ceiling and the monitor
+ranks to it** — it used a literal 250 m, so the widened 300 m tower radius would
+have been a number the gate could never see, silently capped at the window. It
+is also where tracking starts, so a test pins that every kind's radius sits at
+least `MinApproachMetres` below it.
 
 **One SENTENCE is not said twice in five minutes, whichever feature carries
 it** (`SameNameRepeat`, keyed on spoken name AND side). `PerFeatureRepeat` is

@@ -96,12 +96,20 @@ public class PassingCalloutGateTests
     }
 
     [Fact]
-    public void Kinds_nobody_wants_called_out_and_anything_outside_its_radius_are_ignored_and_state_is_pruned()
+    public void Kinds_nobody_wants_called_out_and_a_closest_point_outside_the_radius_are_never_called_and_state_is_pruned()
     {
         var gate = new PassingCalloutGate();
         Assert.Empty(Drive(gate, Feat(FeatureKind.Apron, "GA ramp"), T0, 90, 50, 40, 60, 90));
         Assert.Empty(Drive(gate, Feat(FeatureKind.Hangar, ""), T0, 90, 50, 40, 60, 90));                  // unnamed hangars are not announceable
-        Assert.Empty(Drive(gate, Feat(FeatureKind.Fuel, "Avfuel"), T0, 240, 200, 160, 200, 240));         // never inside Fuel's 100 m
+        Assert.Equal(0, gate.TrackCount);                                                                  // ...and are never even tracked
+        // Tracked from the edge of the rank window, but its closest point (160 m) never comes inside
+        // Fuel's 150 m radius: tracked, never called.
+        Assert.Empty(Drive(gate, Feat(FeatureKind.Fuel, "Avfuel"), T0, 240, 200, 160, 200, 240));
+        Assert.Equal(1, gate.TrackCount);
+        // Beyond RankRadiusMetres nothing is tracked at all (the monitor never ranks it there anyway).
+        Assert.Empty(Drive(gate, Feat(FeatureKind.Concourse, "Far Pier", lat: 33.70), T0, 420, 400, 380, 400, 420));
+        Assert.Equal(1, gate.TrackCount);
+        gate.Evaluate(Array.Empty<NearbyFeature>(), 10, T0.AddMinutes(1));                                 // unseen for 52 s: pruned
         Assert.Equal(0, gate.TrackCount);
         Drive(gate, Feat(FeatureKind.Fuel, "Avfuel"), T0.AddMinutes(1), 90, 80);
         Assert.Equal(1, gate.TrackCount);

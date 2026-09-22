@@ -371,7 +371,9 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
             double hdgTrue = RelativeDirection.Normalize360(p.HeadingMagnetic + p.MagneticVariation);
             // PassingCalloutGate.RankRadiusMetres, never a literal: the gate only ever sees what
-            // this list contains, so a pass radius wider than the window is silently capped here.
+            // this list contains and starts TRACKING a feature at this window's edge, so a pass
+            // radius wider than the window would be silently capped here, and one within
+            // MinApproachMetres of it could never close enough to arm.
             var ranked = SurroundingsReport.Rank(catalog, p.Latitude, p.Longitude, hdgTrue, PassingCalloutGate.RankRadiusMetres);
 
             var hit = _gate.Evaluate(ranked, p.GroundSpeedKnots, now);
