@@ -2866,6 +2866,36 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsArinc429 = true, Arinc429Unit = "knots", Arinc429Format = "0",
             Arinc429NotAvailableText = "not available"
         },
+        // ---- VFE / VS readout sources (Shift+6 / Shift+5), FAC 1 with FAC 2 as fallback ----
+        // Read on demand by AnnounceFacSpeedAsync; not panel rows. See SpeedRequestTable.
+        ["FAC_1_V_FE_NEXT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FAC_1_V_FE_NEXT", DisplayName = "FAC 1 V FE next",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "knots", Arinc429Format = "0",
+            Arinc429NotAvailableText = "not available"
+        },
+        ["FAC_1_V_STALL_1G"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FAC_1_V_STALL_1G", DisplayName = "FAC 1 1g stall speed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "knots", Arinc429Format = "0",
+            Arinc429NotAvailableText = "not available"
+        },
+        ["FAC_2_V_FE_NEXT"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FAC_2_V_FE_NEXT", DisplayName = "FAC 2 V FE next",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "knots", Arinc429Format = "0",
+            Arinc429NotAvailableText = "not available"
+        },
+        ["FAC_2_V_STALL_1G"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FAC_2_V_STALL_1G", DisplayName = "FAC 2 1g stall speed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            IsArinc429 = true, Arinc429Unit = "knots", Arinc429Format = "0",
+            Arinc429NotAvailableText = "not available"
+        },
         // ---- PFD: transition level (LVar ARINC word; FL decoded MANUALLY, NOT IsArinc429) ----
         ["A32NX_FM1_TRANS_LVL"] = new SimConnect.SimVarDefinition
         {
@@ -6192,27 +6222,27 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
 
             // A32NX-specific speed tape readouts
             case HotkeyAction.ReadSpeedGD:
-                RequestSpeedGD(simConnect);
+                RequestSpeedGD(simConnect, announcer);
                 return true;
 
             case HotkeyAction.ReadSpeedS:
-                RequestSpeedS(simConnect);
+                RequestSpeedS(simConnect, announcer);
                 return true;
 
             case HotkeyAction.ReadSpeedF:
-                RequestSpeedF(simConnect);
+                RequestSpeedF(simConnect, announcer);
                 return true;
 
             case HotkeyAction.ReadSpeedVLS:
-                RequestSpeedVLS(simConnect);
+                RequestSpeedVLS(simConnect, announcer);
                 return true;
 
             case HotkeyAction.ReadSpeedVS:
-                RequestSpeedVS(simConnect);
+                RequestSpeedVS(simConnect, announcer);
                 return true;
 
             case HotkeyAction.ReadSpeedVFE:
-                RequestSpeedVFE(simConnect);
+                RequestSpeedVFE(simConnect, announcer);
                 return true;
 
             // PFD / ND / ECAM / SD display WINDOWS are removed — the A32NX now reads
@@ -8985,51 +9015,84 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // (byte-identical FBW A320/A380 pair and Fenix/FBW A320 pair respectively).
 
     // ---- Speed-tape (GD/S/F/VFE/VLS/VS) on-demand requests ----
-    // Table-driven: the six requests only differ in the temp data-def/request ID
-    // (330-337, matching the dispatch IDs registered in SimConnectManager — 333/334
-    // are the Fuel/Payload dispatch IDs and are skipped here), the source L:var name,
-    // and the error-log label.
+    // Table-driven: each readout is either a PLAIN L-var, read through the hardcoded temp
+    // data-def/request id (330-337, matching the dispatch ids in SimConnectManager -- 333/334 are
+    // the Fuel/Payload dispatch ids and are skipped here), or an ARINC429 FAC word, read through
+    // its registered IsArinc429 definition and decoded by TryDecodeArinc429. The encoding travels
+    // WITH the source, so an ARINC word never reaches a dispatch case that would read it as a
+    // plain number, and no request id is spent on it.
     //
-    // ⚠️ VFE and VS read FAC ARINC429 WORDS, not plain L-vars, and the dispatch decodes
-    // them. They carry their OWN request ids (385/386), NOT the 335/337 the plain L-vars used:
-    // a dispatch case is keyed by request id alone and cannot see which variable produced the
-    // value, so decoding 335/337 as ARINC would mangle any aircraft still sending a plain
-    // number on them -- which HeadwindA330Definition, overriding below, does. FBW #10890 (2026-09-11) DELETED the
-    // A32NX's writes of A32NX_SPEEDS_VFEN and A32NX_SPEEDS_VS outright -- the values still
-    // exist inside NXSpeeds but are no longer published, so the old plain L-vars now read a
-    // stale 0 forever and the readout was silently wrong rather than absent. The FAC words
-    // are the aircraft's own characteristic speeds and are what the PFD tape uses.
-    // VS has no 1g-stall equivalent on the FAC bus: V_STALL_WARN (VSW) is the closest real
-    // quantity, so the readout now SAYS "stall warning speed" rather than relabelling it.
-    // ⚠️ VFE and VS are now IN-FLIGHT ONLY. The deleted plain L-vars were valid on the
-    // ground; a FAC word carries a no-computed-data SSM until the FACs have air data, so both
-    // speak "not available" on stand. That is a real behaviour change, and it is not a
-    // regression worth avoiding: the plain L-var it replaces reads a stale 0 on the ground
-    // too, it just says it with a number.
+    // ⚠️ FBW #10890 (2026-09-11) DELETED the A32NX's writes of A32NX_SPEEDS_VFEN and
+    // A32NX_SPEEDS_VS -- the values still exist inside NXSpeeds but are no longer published, so
+    // those plain L-vars read a stale 0 forever and the readouts were silently wrong rather than
+    // absent. VFE and VS now read the FAC's own characteristic speeds, V_FE_NEXT and V_STALL_1G
+    // (the 1g stall speed -- the same quantity the deleted A32NX_SPEEDS_VS carried), which is
+    // what the PFD tape draws. Like the PFD, FAC 1 is used and FAC 2 is the fallback when FAC 1
+    // has nothing to say (failed, or switched off).
+    // ⚠️ VFE and VS are now IN-FLIGHT ONLY: a FAC word carries a no-computed-data SSM until the
+    // FACs have air data, so both speak "not available" on stand. The plain L-var they replace
+    // read a stale 0 on the ground too, it just said it with a number.
     // ⚠️ The A380 is NOT affected and must not be changed with this: the A380X still writes
-    // both plain L-vars, and FlyByWireA380Definition derives from BaseAircraftDefinition
-    // (not from this class), reading them through its own RequestReadout path.
+    // both plain L-vars, and FlyByWireA380Definition derives from BaseAircraftDefinition (not
+    // from this class), reading them through its own RequestReadout path.
     //
-    // OVERRIDABLE because HeadwindA330Definition derives from this class. That mod is an
-    // A32NX fork on its own sync schedule: whether it carries #10890 (and so needs the FAC
-    // words) or predates it (and still publishes the plain L-vars) cannot be told from this
-    // repo, so it keeps the legacy sources until someone checks it on the aircraft. Breaking
-    // an airframe that cannot be verified here, to fix one that was, is not a trade worth making.
-    protected virtual Dictionary<string, (int DefId, string LVar)> SpeedRequestTable => _a32nxSpeedRequestTable;
+    // OVERRIDABLE because HeadwindA330Definition derives from this class and was CHECKED
+    // (headwindsim/aircraft @ 41eace7) to still publish the plain L-vars and none of the FAC
+    // characteristic speeds -- see its override for the evidence.
+    protected abstract record SpeedSource;
+    protected sealed record PlainSpeed(int DefId, string LVar) : SpeedSource;
+    protected sealed record FacSpeed(string SpokenName, string Fac1Key, string Fac2Key) : SpeedSource;
 
-    private static readonly Dictionary<string, (int DefId, string LVar)> _a32nxSpeedRequestTable = new()
+    protected virtual Dictionary<string, SpeedSource> SpeedRequestTable => _a32nxSpeedRequestTable;
+
+    private static readonly Dictionary<string, SpeedSource> _a32nxSpeedRequestTable = new()
     {
-        ["GD"] = (330, "A32NX_SPEEDS_GD"),
-        ["S"] = (331, "A32NX_SPEEDS_S"),
-        ["F"] = (332, "A32NX_SPEEDS_F"),
-        ["VFE"] = (385, "A32NX_FAC_1_V_FE_NEXT"),   // ARINC429 word -- own id, decoded in dispatch
-        ["VLS"] = (336, "A32NX_SPEEDS_VLS"),
-        ["VS"] = (386, "A32NX_FAC_1_V_STALL_WARN"), // ARINC429 word -- own id, decoded in dispatch
+        ["GD"] = new PlainSpeed(330, "A32NX_SPEEDS_GD"),
+        ["S"] = new PlainSpeed(331, "A32NX_SPEEDS_S"),
+        ["F"] = new PlainSpeed(332, "A32NX_SPEEDS_F"),
+        ["VFE"] = new FacSpeed("V FE Speed", "FAC_1_V_FE_NEXT", "FAC_2_V_FE_NEXT"),
+        ["VLS"] = new PlainSpeed(336, "A32NX_SPEEDS_VLS"),
+        ["VS"] = new FacSpeed("Stall Speed", "FAC_1_V_STALL_1G", "FAC_2_V_STALL_1G"),
     };
 
-    private void RequestSpeedValue(SimConnect.SimConnectManager simConnectMgr, string label)
+    // A FAC word is an individual OnRequest def, answered by its PERIOD.ONCE in a frame or two;
+    // this only bounds a read that never comes back (a disconnect mid-read).
+    private const int FacSpeedReadTimeoutMs = 1000;
+
+    private void RequestSpeedValue(SimConnect.SimConnectManager simConnectMgr, ScreenReaderAnnouncer announcer, string label)
     {
-        var (defId, lvar) = SpeedRequestTable[label];
+        switch (SpeedRequestTable[label])
+        {
+            case FacSpeed fac: _ = AnnounceFacSpeedAsync(simConnectMgr, announcer, fac); return;
+            case PlainSpeed plain: RequestPlainSpeed(simConnectMgr, label, plain); return;
+        }
+    }
+
+    private async Task AnnounceFacSpeedAsync(SimConnect.SimConnectManager simConnectMgr, ScreenReaderAnnouncer announcer, FacSpeed source)
+    {
+        if (!simConnectMgr.IsConnected) return;
+        try
+        {
+            foreach (string key in new[] { source.Fac1Key, source.Fac2Key })
+            {
+                double? raw = await simConnectMgr.ReadFreshAsync(key, FacSpeedReadTimeoutMs);
+                if (raw is double v && new SimConnect.Arinc429Word(v).HasData && TryDecodeArinc429(key, v, out string text))
+                {
+                    announcer.AnnounceImmediate($"{source.SpokenName} {text}");
+                    return;
+                }
+            }
+            announcer.AnnounceImmediate($"{source.SpokenName} not available");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("A320", $"Error reading {source.SpokenName}: {ex.Message}");
+        }
+    }
+
+    private static void RequestPlainSpeed(SimConnect.SimConnectManager simConnectMgr, string label, PlainSpeed source)
+    {
+        var (defId, lvar) = (source.DefId, source.LVar);
         var simConnect = simConnectMgr.SimConnectInstance;
         if (simConnectMgr.IsConnected && simConnect != null)
         {
@@ -9053,12 +9116,12 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
     }
 
-    private void RequestSpeedGD(SimConnect.SimConnectManager simConnectMgr) => RequestSpeedValue(simConnectMgr, "GD");
-    private void RequestSpeedS(SimConnect.SimConnectManager simConnectMgr) => RequestSpeedValue(simConnectMgr, "S");
-    private void RequestSpeedF(SimConnect.SimConnectManager simConnectMgr) => RequestSpeedValue(simConnectMgr, "F");
-    private void RequestSpeedVFE(SimConnect.SimConnectManager simConnectMgr) => RequestSpeedValue(simConnectMgr, "VFE");
-    private void RequestSpeedVLS(SimConnect.SimConnectManager simConnectMgr) => RequestSpeedValue(simConnectMgr, "VLS");
-    private void RequestSpeedVS(SimConnect.SimConnectManager simConnectMgr) => RequestSpeedValue(simConnectMgr, "VS");
+    private void RequestSpeedGD(SimConnect.SimConnectManager simConnectMgr, ScreenReaderAnnouncer announcer) => RequestSpeedValue(simConnectMgr, announcer, "GD");
+    private void RequestSpeedS(SimConnect.SimConnectManager simConnectMgr, ScreenReaderAnnouncer announcer) => RequestSpeedValue(simConnectMgr, announcer, "S");
+    private void RequestSpeedF(SimConnect.SimConnectManager simConnectMgr, ScreenReaderAnnouncer announcer) => RequestSpeedValue(simConnectMgr, announcer, "F");
+    private void RequestSpeedVFE(SimConnect.SimConnectManager simConnectMgr, ScreenReaderAnnouncer announcer) => RequestSpeedValue(simConnectMgr, announcer, "VFE");
+    private void RequestSpeedVLS(SimConnect.SimConnectManager simConnectMgr, ScreenReaderAnnouncer announcer) => RequestSpeedValue(simConnectMgr, announcer, "VLS");
+    private void RequestSpeedVS(SimConnect.SimConnectManager simConnectMgr, ScreenReaderAnnouncer announcer) => RequestSpeedValue(simConnectMgr, announcer, "VS");
 
     // ========================================
     // FCU Request Methods (Aircraft-Specific)

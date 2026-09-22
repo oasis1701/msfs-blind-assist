@@ -261,19 +261,21 @@ The readouts now take the FAC's own characteristic speeds, which is what the PFD
 
 | Readout | Was | Now |
 | --- | --- | --- |
-| VFE | `A32NX_SPEEDS_VFEN` | `A32NX_FAC_1_V_FE_NEXT` |
-| VS | `A32NX_SPEEDS_VS` | `A32NX_FAC_1_V_STALL_WARN` |
+| VFE | `A32NX_SPEEDS_VFEN` | `A32NX_FAC_1_V_FE_NEXT`, else `A32NX_FAC_2_V_FE_NEXT` |
+| VS | `A32NX_SPEEDS_VS` | `A32NX_FAC_1_V_STALL_1G`, else `A32NX_FAC_2_V_STALL_1G` |
 
-Both are **ARINC429 words**, so `SimConnectManager.Dispatch` (ids 335/337) decodes them
-through `Arinc429Word` instead of announcing the raw ~14-billion value, and a bad SSM is
-spoken as "not available" rather than as a number. The old comment in `_speedRequestTable`
-said the opposite — that VFEN was preferred *because* it was a plain L-var the temp-def path
-could read — and that reasoning is now inverted and recorded in place.
+VS keeps its meaning: `V_STALL_1G` is the 1g stall speed, the same quantity the deleted
+`A32NX_SPEEDS_VS` carried, and the call-out still says "Stall Speed". Like the PFD, FAC 1 is
+read first and FAC 2 is the fallback when FAC 1 has nothing to say (failed, or switched off).
 
-⚠️ **VS is not the same quantity any more, and the wording says so.** The deleted
-`A32NX_SPEEDS_VS` was the 1g stall speed; the FAC bus has no 1g stall. `V_STALL_WARN` (VSW)
-is the closest real speed, so the call-out now says **"stall warning speed"** rather than
-quietly relabelling a different number as VS. A blind pilot is told which speed they got.
+Both are **ARINC429 words**. They are NOT read through the hardcoded temp-def/dispatch path
+(ids 330-337, which hands the value on as a plain number): each `SpeedRequestTable` entry
+carries its encoding — `PlainSpeed` for that path, `FacSpeed` for a FAC word — and a
+`FacSpeed` is read through its registered `IsArinc429` definition (`FAC_n_V_FE_NEXT`,
+`FAC_n_V_STALL_1G`) with `ReadFreshAsync` and decoded by `TryDecodeArinc429`, the same decode
+the panel rows use. A bad SSM is spoken as "not available" rather than as a number. Never add
+ARINC decoding to dispatch cases 335/337: they still carry a plain number for the Headwind
+A330 (below).
 
 ⚠️ **VFE and VS are now IN-FLIGHT ONLY.** The deleted plain L-vars were valid on the ground;
 a FAC word carries a no-computed-data SSM until the FACs have air data, so both say "not
@@ -289,19 +291,15 @@ own `RequestReadout` path and shares none of this.
 `headwindsim/aircraft` @ `41eace7` (14 Aug 2026), not assumed: it still writes both from the
 pre-#10890 `A32NX_Speeds.ts` it forked (lines 22/29/69/75), and its FACs publish **six**
 variables in total — `DISCRETE_WORD_2`, `HEALTHY`, `RUDDER_TRIM_POS` per side — **not one of
-them a characteristic speed**. `A32NX_FAC_1_V_FE_NEXT` and `A32NX_FAC_1_V_STALL_WARN` do not
-exist on that airframe at all, so the base sources would read nothing and both call-outs would
-say "not available" for the whole flight. `HeadwindA330Definition` therefore overrides
-`SpeedRequestTable` and keeps the legacy sources. Revisit only if Headwind syncs #10890.
+them a characteristic speed**. None of the FAC speed words exist on that airframe, so
+`HeadwindA330Definition` overrides `SpeedRequestTable` with all-`PlainSpeed` sources, and drops
+the base PFD panel's FAC rows (`PFD_VSW`, `PFD_VALPHAPROT`, `PFD_VALPHAMAX`), which would read
+"not available" all flight. Revisit only if Headwind syncs #10890.
 
-Because a dispatch case is keyed by **request id alone** and cannot see which variable produced
-the value, the two FAC reads carry their own ids (**385/386**); 335/337 still carry a plain
-number for the A330. Decoding those as ARINC would have turned its good speeds into a
-~14-billion word or a false "not available".
+**Requires a FlyByWire A32NX Development build from 11 Sep 2026 or later** for the plain
+L-vars to be gone; the FAC words predate #10890, so this migration also works on an older
+build.
 
-**Requires a FlyByWire A32NX Development build from 11 Sep 2026 or later.** On an older
-build the FAC words are present too (they predate #10890), so this migration is safe in both
-directions — see [require-latest-fbw-build](#) policy: no compat shims.
 ### Fenix A320 AI display reads — the camera indices are MEASURED (2026-09-21)
 
 Five reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/FenixA320DisplayReads.cs`,

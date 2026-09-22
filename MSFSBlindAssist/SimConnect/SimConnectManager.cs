@@ -473,8 +473,7 @@ public partial class SimConnectManager
         REQUEST_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly requests
         REQUEST_SQUAWK_CODE = 329,
-        // 330-337 used by hardcoded V-speed requests; 385/386 carry the FBW A32NX's two
-        // FAC ARINC429 speed sources (see SimConnectManager.Dispatch).
+        // 330-337 used by hardcoded V-speed requests.
         // Use the gaps at 338 / 339 for time-of-day.
         REQUEST_LOCAL_TIME = 338,
         REQUEST_ZULU_TIME = 339,
@@ -543,8 +542,7 @@ public partial class SimConnectManager
         DEF_OUTSIDE_TEMP = 323,
         // 324-328 used by hardcoded takeoff assist / hand fly definitions
         DEF_SQUAWK_CODE = 329,
-        // 330-337 hardcoded V-speed definitions, 385/386 the FAC ARINC429 speed
-        // sources, 338/339 time-of-day (see DATA_REQUESTS).
+        // 330-337 hardcoded V-speed definitions, 338/339 time-of-day (see DATA_REQUESTS).
         DEF_GSX_COUATL_STARTED = 340,
         // 341 and KEEP 342-348 FREE. This enum is a request-id namespace as well as a definition
         // one (RequestSingleValue issues a DEF_* as its request id), and 341-348 is the camera

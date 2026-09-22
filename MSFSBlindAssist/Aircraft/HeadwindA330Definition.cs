@@ -74,24 +74,26 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     ///   * it still WRITES both, from the pre-#10890 A32NX_Speeds.ts it forked --
     ///     hdw-a339x/.../A32NX_Core/A32NX_Speeds.ts lines 22, 29, 69 and 75;
     ///   * its FACs publish SIX variables in total (DISCRETE_WORD_2, HEALTHY, RUDDER_TRIM_POS
-    ///     per side) and NOT ONE of them is a characteristic speed. A32NX_FAC_1_V_FE_NEXT and
-    ///     A32NX_FAC_1_V_STALL_WARN do not exist on this airframe at all.
+    ///     per side) and NOT ONE of them is a characteristic speed. A32NX_FAC_n_V_FE_NEXT,
+    ///     A32NX_FAC_n_V_STALL_1G, and the V_STALL_WARN / V_ALPHA_PROT / V_ALPHA_LIM words behind
+    ///     the base PFD panel's rows do not exist on this airframe at all (those rows are dropped
+    ///     in GetPanelDisplayVariables below).
     ///
     /// So the base class's sources would read nothing here and both call-outs would say
     /// "not available" for the rest of the flight -- two working readouts destroyed to fix a
     /// different aeroplane. ⚠️ Revisit only if Headwind syncs #10890; then its plain L-vars go
     /// dead the same way and this override becomes the bug.
     /// </summary>
-    protected override Dictionary<string, (int DefId, string LVar)> SpeedRequestTable => _a330SpeedRequestTable;
+    protected override Dictionary<string, SpeedSource> SpeedRequestTable => _a330SpeedRequestTable;
 
-    private static readonly Dictionary<string, (int DefId, string LVar)> _a330SpeedRequestTable = new()
+    private static readonly Dictionary<string, SpeedSource> _a330SpeedRequestTable = new()
     {
-        ["GD"] = (330, "A32NX_SPEEDS_GD"),
-        ["S"] = (331, "A32NX_SPEEDS_S"),
-        ["F"] = (332, "A32NX_SPEEDS_F"),
-        ["VFE"] = (335, "A32NX_SPEEDS_VFEN"),
-        ["VLS"] = (336, "A32NX_SPEEDS_VLS"),
-        ["VS"] = (337, "A32NX_SPEEDS_VS"),
+        ["GD"] = new PlainSpeed(330, "A32NX_SPEEDS_GD"),
+        ["S"] = new PlainSpeed(331, "A32NX_SPEEDS_S"),
+        ["F"] = new PlainSpeed(332, "A32NX_SPEEDS_F"),
+        ["VFE"] = new PlainSpeed(335, "A32NX_SPEEDS_VFEN"),
+        ["VLS"] = new PlainSpeed(336, "A32NX_SPEEDS_VLS"),
+        ["VS"] = new PlainSpeed(337, "A32NX_SPEEDS_VS"),
     };
 
     // The A330's Coherent instruments are A339X-named; the <a339x-mcdu> custom element
@@ -343,11 +345,15 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     // display-mode word — the same never-delivered family as the announce path (stuck
     // at 0 the row would read "STD" forever, contradicting the live Kohlsman rows
     // right above it). Swap it for the stock STD flag registered above.
+    // The PFD's FAC characteristic-speed rows go too: this airframe's FACs publish none of
+    // them (see SpeedRequestTable above), so they would read "not available" all flight.
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()
     {
         var d = base.GetPanelDisplayVariables();
         ReplaceDisplayVar(d, "EFIS Captain", "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:1");
         ReplaceDisplayVar(d, "EFIS First Officer", "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:2");
+        if (d.TryGetValue("PFD", out var pfd))
+            pfd.RemoveAll(v => v is "PFD_VSW" or "PFD_VALPHAPROT" or "PFD_VALPHAMAX");
         return d;
     }
 
