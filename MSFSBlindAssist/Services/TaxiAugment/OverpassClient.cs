@@ -26,15 +26,34 @@ public sealed class OverpassClient
             _http.DefaultRequestHeaders.UserAgent.ParseAdd("MSFSBlindAssist/1.0 (taxi-augment)");
     }
 
+    /// <summary>
+    /// PLANET-WIDE Overpass instances only. A REGIONAL instance — one serving a country extract —
+    /// must never appear here, however healthy it looks: asked about anywhere outside its extract
+    /// it answers HTTP 200 with an empty element list and NO remark, which
+    /// <see cref="IsFailedResponse"/> cannot tell from a genuine "nothing there", and which the
+    /// callers then cache as the truth about the airport.
+    ///
+    /// <para><c>overpass.osm.ch</c> (Swiss OSM association, Switzerland extract) was in this list
+    /// and was removed on 2026-09-22 after being measured doing exactly that. It answered EHAM's
+    /// area query, EHAM's <c>around:3000</c> fallback and KATL's taxiway query with 0 elements and
+    /// no remark, while answering LSZH with 77 — Zurich being inside its extract. Worse, it did so
+    /// in about a second while the planet-wide mirrors were returning 504, so
+    /// <see cref="CooldownUntilUtc"/> promoted it to FIRST for every later airport in the session.
+    /// One process, eight airports: KJFK 0 features, then KATL 0 in 1.1 s, EGLL 0 in 1.0 s,
+    /// KORD 0, OMDB 0, LIRF 0, KTIW 0 — and LSZH 80. A fast wrong answer beats a slow right one
+    /// every time, which is what made it the worst possible member of this list.</para>
+    /// </summary>
     private static readonly string[] Mirrors = {
         "https://overpass-api.de/api/interpreter",
         "https://overpass.kumi.systems/api/interpreter",
         "https://overpass.private.coffee/api/interpreter",
         "https://lz4.overpass-api.de/api/interpreter",
         "https://z.overpass-api.de/api/interpreter",
-        "https://overpass.osm.ch/api/interpreter",
         "https://overpass.openstreetmap.fr/api/interpreter",
     };
+
+    /// <summary>The mirror list, for the test that keeps regional instances out of it.</summary>
+    internal static IReadOnlyList<string> MirrorUrls => Mirrors;
 
     /// <summary>
     /// Per-mirror backoff. A public Overpass mirror under load answers 504 for MINUTES, and with a
@@ -80,6 +99,9 @@ public sealed class OverpassClient
         foreach (var m in Mirrors)
             (IsCoolingDown(m, now) ? cooling : fresh).Add(m);
 
+        // An EMPTY answer is held, not returned: see TentativelyEmpty below.
+        string? tentativelyEmpty = null;
+
         foreach (var url in fresh.Concat(cooling))
         {
             if (ct.IsCancellationRequested) return null;
@@ -97,6 +119,14 @@ public sealed class OverpassClient
                 // an EMPTY airport for the session (live: overpass.openstreetmap.fr).
                 if (IsFailedResponse(body)) { MarkFailed(url); continue; }
                 CooldownUntilUtc.TryRemove(url, out _);
+
+                // An empty element list is a legitimate answer for some queries and a REGIONAL
+                // MIRROR'S answer about everywhere outside its extract, and nothing in the body
+                // tells the two apart. Hold it and keep asking: if any other mirror has elements,
+                // that mirror had the region and this one did not. Never MarkFailed on it — an
+                // empty answer is no evidence the mirror is ill, and cooling a healthy planet-wide
+                // mirror for five minutes over one genuinely empty query is the worse error.
+                if (HasNoElements(body)) { tentativelyEmpty ??= body; continue; }
                 return body;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -105,7 +135,31 @@ public sealed class OverpassClient
             }
             catch { MarkFailed(url); }
         }
-        return null;
+
+        // Nobody contradicted it, so the airport really does have nothing for this query. Returning
+        // null here instead would make every genuinely empty airport a failure the store retries
+        // every five minutes for the whole session.
+        return tentativelyEmpty;
+    }
+
+    /// <summary>
+    /// Is this a WELL-FORMED Overpass result carrying NO elements? Deliberately FALSE for a body
+    /// that is not a usable result at all — that is <see cref="IsFailedResponse"/>'s question, and
+    /// a broken body must never be held as a believable empty answer and returned when every other
+    /// mirror declines.
+    /// </summary>
+    internal static bool HasNoElements(string body)
+    {
+        if (string.IsNullOrWhiteSpace(body)) return false;
+        try
+        {
+            using var doc = JsonDocument.Parse(body);
+            var root = doc.RootElement;
+            if (root.ValueKind != JsonValueKind.Object) return false;
+            if (!root.TryGetProperty("elements", out var els) || els.ValueKind != JsonValueKind.Array) return false;
+            return els.GetArrayLength() == 0;
+        }
+        catch (JsonException) { return false; }
     }
 
     internal static bool IsFailedResponse(string body)
