@@ -109,6 +109,13 @@ public partial class Cessna172Definition
                     announcer.Announce("Invalid mixture. Range: 0 to 100 percent.");
                     return true;
                 }
+                // SendEvent silently no-ops when disconnected; refuse aloud rather than confirm a
+                // write that never reached the aircraft (the "no false trace" rule).
+                if (!simConnect.CanSendEvent)
+                {
+                    announcer.Announce("Mixture unavailable. Not connected to the simulator.");
+                    return true;
+                }
                 simConnect.SendEvent("MIXTURE1_SET", Cessna172Readouts.MixtureSetParam(value));
                 announcer.Announce($"Mixture {Cessna172Readouts.Percent(value)}");   // numeric confirmation: no sim echo
                 return true;
@@ -116,6 +123,13 @@ public partial class Cessna172Definition
                 if (!Cessna172Readouts.IsValidAltimeterInHg(value))
                 {
                     announcer.Announce("Invalid altimeter setting. Range: 27.00 to 31.50 inches.");
+                    return true;
+                }
+                // SendEvent silently no-ops when disconnected; refuse aloud rather than confirm a
+                // write that never reached the aircraft (the "no false trace" rule).
+                if (!simConnect.CanSendEvent)
+                {
+                    announcer.Announce("Altimeter unavailable. Not connected to the simulator.");
                     return true;
                 }
                 simConnect.SendEvent("KOHLSMAN_SET", Cessna172Readouts.KohlsmanSetParam(value));
