@@ -802,6 +802,7 @@ public partial class MainForm : Form
         surroundingsMonitor = new MSFSBlindAssist.Services.AirportSurroundingsMonitor(announcer, simConnectManager, () => airportDataProvider, surroundingsCache)
         {
             Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.SurroundingsCalloutsEnabled,
+            SurfaceCalloutsEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.SurfaceChangeCalloutsEnabled,
             SuppressCheck = () =>
                 takeoffAssistManager.IsActive
                 || dockingGuidanceManager.IsActive

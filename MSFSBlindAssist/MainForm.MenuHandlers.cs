@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -231,7 +231,10 @@ public partial class MainForm
 
         // Opt-in passing-building callouts — applies immediately, no restart needed.
         if (surroundingsMonitor != null)
+        {
             surroundingsMonitor.Enabled = settings.SurroundingsCalloutsEnabled;
+            surroundingsMonitor.SurfaceCalloutsEnabled = settings.SurfaceChangeCalloutsEnabled;
+        }
 
         // SceneryIndexEnabled / TaxiAugmentEnabled feed the feature list every cached
         // AirportFeatureCatalog was built from, but flipping either doesn't move the

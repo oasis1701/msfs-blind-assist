@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Services;
+﻿using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Forms.Settings;
@@ -50,6 +50,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
     private CheckBox sceneryIndexEnabledCheckBox = null!;
     private TextBox sceneryIndexStatusTextBox = null!;
     private CheckBox surroundingsCalloutsCheckBox = null!;
+    private CheckBox surfaceChangeCalloutsCheckBox = null!;
 
     // Optional callback for the manual taxiway-names refresh. Null when the caller doesn't
     // supply augmenting-provider support — the button disables itself in that case.
@@ -487,6 +488,20 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleDescription = "When enabled, says for example Passing Concourse B, on the left, as a terminal, hangar, tower, fuel or cargo area comes abeam while taxiing. Queued behind taxi guidance, never during takeoff, landing rollout or docking. Applies immediately."
         };
 
+        // Its OWN switch, not part of the buildings callout above. That one names things you are
+        // going past; this one tells you that you have left the taxiway, which is the only
+        // surroundings callout with a safety case behind it — so it must not be lost when someone
+        // turns the chatty one off. Unlike every other callout on this tab it is deliberately NOT
+        // silenced during takeoff or landing rollout: running off the side is worst exactly there.
+        surfaceChangeCalloutsCheckBox = new CheckBox
+        {
+            Text = "Tell me when I leave the paved surface",
+            Location = new Point(20, 950),
+            Size = new Size(450, 40),
+            AccessibleName = "Tell me when I leave the paved surface",
+            AccessibleDescription = "When enabled, says Off the pavement, on grass, if the wheels leave the paved surface while taxiing, and Back on pavement when they regain it. Ignores changes between paved surfaces such as asphalt to concrete. Still speaks during takeoff roll and landing rollout. Applies immediately."
+        };
+
         // SayIntentions route import. It lives here rather than on a tab of its own:
         // the setting decides what happens to a TAXI ROUTE, which is this tab's
         // subject, and it was the only option left once the API key was retired.
@@ -532,6 +547,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             taxiAugmentEnabledCheckBox, taxiAugmentAttributionLabel,
             sceneryIndexEnabledCheckBox, sceneryIndexStatusTextBox,
             surroundingsCalloutsCheckBox,
+            surfaceChangeCalloutsCheckBox,
             sayIntentionsHeadingLabel,
             sayIntentionsAutoStartCheckBox
         });
@@ -565,6 +581,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sceneryIndexEnabledCheckBox.TabIndex = tabIdx++;
         sceneryIndexStatusTextBox.TabIndex = tabIdx++;
         surroundingsCalloutsCheckBox.TabIndex = tabIdx++;
+        surfaceChangeCalloutsCheckBox.TabIndex = tabIdx++;
         sayIntentionsAutoStartCheckBox.TabIndex = tabIdx++;
     }
 
@@ -722,6 +739,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sceneryIndexEnabledCheckBox.Checked = settings.SceneryIndexEnabled;
         RefreshSceneryIndexStatusText();
         surroundingsCalloutsCheckBox.Checked = settings.SurroundingsCalloutsEnabled;
+        surfaceChangeCalloutsCheckBox.Checked = settings.SurfaceChangeCalloutsEnabled;
         sayIntentionsAutoStartCheckBox.Checked = settings.SayIntentionsAutoStartTaxiGuidance;
     }
 
@@ -786,6 +804,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         settings.TaxiAugmentEnabled = taxiAugmentEnabledCheckBox.Checked;
         settings.SceneryIndexEnabled = sceneryIndexEnabledCheckBox.Checked;
         settings.SurroundingsCalloutsEnabled = surroundingsCalloutsCheckBox.Checked;
+        settings.SurfaceChangeCalloutsEnabled = surfaceChangeCalloutsCheckBox.Checked;
         settings.SayIntentionsAutoStartTaxiGuidance = sayIntentionsAutoStartCheckBox.Checked;
     }
 

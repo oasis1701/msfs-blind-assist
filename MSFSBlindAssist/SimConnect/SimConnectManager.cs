@@ -652,6 +652,14 @@ public partial class SimConnectManager
         public double GroundSpeedKnots;
         public double VerticalSpeedFPM;
         public double SimOnGround;
+        /// <summary>The sim's SURFACE TYPE enum under the wheels. Meaningful only while
+        /// <see cref="SurfaceInfoValid"/> is non-zero — classify it through
+        /// <c>Navigation.Surroundings.SurfaceFamilies</c>, never by comparing the raw number.
+        /// Measured live in MSFS 2024: 0 concrete, 1 grass, 4 asphalt.</summary>
+        public double SurfaceType;
+        /// <summary>SURFACE INFO VALID — false means <see cref="SurfaceType"/> says nothing at
+        /// all, not that the surface is of some default kind.</summary>
+        public double SurfaceInfoValid;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

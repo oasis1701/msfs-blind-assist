@@ -156,6 +156,16 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SIM ON GROUND", "bool",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
+        // The surface under the wheels rides the position stream rather than taking a definition
+        // and a request of its own: every consumer of it (the "off the pavement" callout) already
+        // needs the position and the ground flag in the same sample, and pairing a surface read
+        // with a position from a different tick is how a callout ends up naming the wrong place.
+        // ORDER IS THE CONTRACT — these two must stay last here and last in AircraftPosition, in
+        // the same order, or every field after the divergence is read from the wrong offset.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SURFACE TYPE", "enum",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)8);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SURFACE INFO VALID", "bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)9);
         sc.RegisterDataDefineStruct<AircraftPosition>(DATA_DEFINITIONS.AIRCRAFT_POSITION);
 
         // Register AI traffic data (used by RequestDataOnSimObjectType → OnRecvSimobjectDataBytype)

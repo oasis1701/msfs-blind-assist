@@ -53,6 +53,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     private readonly SurroundingsCatalogCache _cache;
     private readonly System.Windows.Forms.Timer _timer;
     private readonly PassingCalloutGate _gate = new();
+    private readonly SurfaceChangeGate _surface = new();
 
     private string _icao = "";
     private DateTime _icaoAt = DateTime.MinValue;
@@ -65,6 +66,13 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     private AirportFeatureCatalog? _lastCatalog;
 
     public bool Enabled { get; set; }
+    /// <summary>
+    /// "Off the pavement, on grass." — INDEPENDENT of <see cref="Enabled"/>, which is the opt-in
+    /// for the passing callouts. Those are a convenience; this one tells a pilot who cannot see
+    /// the taxiway edge that they have left it, so it is not something to bury behind the same
+    /// switch. It has its own setting.
+    /// </summary>
+    public bool SurfaceCalloutsEnabled { get; set; }
     /// <summary>True while callouts must stay silent because a FEATURE says so — takeoff assist,
     /// docking, the taxi rollout/lineup/hold states, announcer suppressed. None of those is on
     /// during a takeoff or a landing flown without them; the runway itself is
@@ -89,6 +97,9 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     public void Reset()
     {
         _gate.Reset();
+        // A reconnect, an aircraft switch, a database switch or a turnaround liftoff: the pilot
+        // has not driven off anything, so the next surface is a silent baseline.
+        _surface.Reset();
         _icao = ""; _icaoAt = DateTime.MinValue;
         // A warm-up still running is let go, never waited on: it observes its own exception and
         // its only effect is a graph cached for an airport we have just stopped tracking.
@@ -140,7 +151,10 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
     private void OnTick(object? sender, EventArgs e)
     {
-        if (!Enabled || !_sim.IsConnected) return;
+        // Two independent features share this tick and its position sample. The surface callout
+        // is NOT behind Enabled — that switch is the passing callouts' opt-in.
+        if (!_sim.IsConnected) return;
+        if (!Enabled && !SurfaceCalloutsEnabled) return;
         if (_sim.LastKnownOnGround != true)
         {
             // The next landing's ranges have nothing to do with the departure's, and a building
@@ -160,14 +174,45 @@ public sealed class AirportSurroundingsMonitor : IDisposable
         // that had been closing reads as "now opening" — a false "Passing X" at the moment of the
         // teleport. The tracks describe a continuous drive; they do not survive being moved.
         bool firstGroundSample = _lastSeen == null;
-        if (_lastSeen is { } last && IsPositionJump(last.Lat, last.Lon, p.Latitude, p.Longitude))
+        double metresMoved = 0;
+        if (_lastSeen is { } last)
         {
-            // No ICAO in the line: the resolve that names it runs below, and a jump can land here
-            // before this airport has ever been named.
-            _gate.Reset();
-            Log.Debug("Surroundings", "position jump: passing-callout tracks dropped");
+            metresMoved = TaxiGeo.HaversineMeters(last.Lat, last.Lon, p.Latitude, p.Longitude);
+            if (IsPositionJump(last.Lat, last.Lon, p.Latitude, p.Longitude))
+            {
+                // No ICAO in the line: the resolve that names it runs below, and a jump can land
+                // here before this airport has ever been named.
+                _gate.Reset();
+                // The surface gate goes too: an aircraft that was PUT on the grass has not driven
+                // off anything, and the metres between the two positions were never taxied. Its
+                // next sample becomes a silent baseline, exactly as the first one of a session is.
+                _surface.Reset();
+                metresMoved = 0;
+                Log.Debug("Surroundings", "position jump: passing-callout tracks and surface baseline dropped");
+            }
         }
         _lastSeen = (p.Latitude, p.Longitude);
+
+        // The surface callout runs BEFORE every airport-dependent guard below — it needs no
+        // navdata, no catalog and no ICAO, and it must keep working at a field the database has
+        // never heard of. It is also deliberately NOT behind SuppressCheck: running off the side
+        // during a takeoff roll or a landing rollout is the worst case there is, and those are
+        // exactly the states that suppression silences.
+        if (SurfaceCalloutsEnabled && !firstGroundSample)
+        {
+            string? surfaceCall = _surface.Evaluate(
+                (int)Math.Round(p.SurfaceType), p.SurfaceInfoValid != 0,
+                onGround: true, p.GroundSpeedKnots, metresMoved);
+            if (surfaceCall != null)
+            {
+                // Queued, not immediate: AnnounceImmediate discards whatever is being spoken, and
+                // this codebase has been bitten repeatedly by one callout cutting another off
+                // mid-word. A one- or two-second wait behind the queue is the lesser cost.
+                _announcer.Announce(surfaceCall);
+                Log.Debug("Surroundings", $"surface callout: {surfaceCall} (type={p.SurfaceType:F0} valid={p.SurfaceInfoValid:F0} gs={p.GroundSpeedKnots:F1})");
+            }
+        }
+        if (!Enabled) return;   // the rest of this tick belongs to the passing callouts
 
         // The FIRST ground tick of a flight reads a position that may PREDATE the liftoff: the
         // airborne branch above returns without ever requesting one, so LastKnownPosition can still

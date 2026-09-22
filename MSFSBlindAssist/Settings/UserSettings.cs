@@ -443,6 +443,16 @@ public class UserSettings
         public bool SurroundingsCalloutsEnabled { get; set; } = false;
 
         /// <summary>
+        /// "Off the pavement, on grass." — SEPARATE from
+        /// <see cref="SurroundingsCalloutsEnabled"/> on purpose: the passing callouts name
+        /// buildings you are going past, which is a convenience, while this one tells a pilot who
+        /// cannot see the taxiway edge that they have left it. Burying a callout with a safety
+        /// case behind a switch people turn off for chattiness would be the wrong trade.
+        /// Default OFF like every other automatic announcement. Applies immediately.
+        /// </summary>
+        public bool SurfaceChangeCalloutsEnabled { get; set; } = false;
+
+        /// <summary>
         /// Ground-speed announcement cadence used WHILE TAKEOFF ASSIST IS ACTIVE,
         /// applied by the global <see cref="Services.GroundSpeedAnnouncer"/> (NOT a
         /// separate announcer). Sentinel-encoded:
