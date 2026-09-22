@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Navigation.Surroundings;
+﻿using MSFSBlindAssist.Navigation.Surroundings;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -27,7 +27,7 @@ namespace MSFSBlindAssist.Tests;
 /// memory already covers, or two genuinely different piers that happen to share a name, which is
 /// real information a pilot can act on.</para>
 /// </summary>
-public class PassingCalloutGenericNameTests
+public class PassingCalloutSameNameTests
 {
     private const double M = 1.0 / 111_132.0;   // one metre of latitude, in degrees
 
@@ -89,19 +89,36 @@ public class PassingCalloutGenericNameTests
         var t = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         Assert.Equal("Cargo ramp", DrivePast(gate, Cargo(0), t));
-        Assert.Equal("Cargo ramp", DrivePast(gate, Cargo(5000), t + PassingCalloutGate.GenericNameRepeat + TimeSpan.FromSeconds(30)));
+        Assert.Equal("Cargo ramp", DrivePast(gate, Cargo(5000), t + PassingCalloutGate.SameNameRepeat + TimeSpan.FromSeconds(30)));
     }
 
     [Fact]
-    public void Proper_names_are_untouched_even_when_two_features_share_one()
+    public void A_PROPER_name_is_held_too_because_the_scenery_repeats_them_most()
     {
-        // The KSFO control: a real name is information, and two same-named piers 1.3 km apart are
-        // a documented real case (KJFK's two "Concourse B"). Never suppress those.
+        // This assertion is the REVERSE of what it was when the rule first landed, and the
+        // reversal is the point. Keyed on NameIsGeneric it covered only synthesized labels, on
+        // the strength of four airports where no proper name repeated. Surveying the whole
+        // installed set said otherwise: 64 of 109 airports carry a repeated announceable name,
+        // 301 of 1,328 scenery features duplicate one, and RJFF has THIRTY called "Fuk City
+        // Hangar". Those are proper names, so the narrow rule missed the larger half.
+        var gate = new PassingCalloutGate();
+        var t = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+
+        Assert.Equal("DS Hangar", DrivePast(gate, Named("DS Hangar", 0), t));
+        Assert.Null(DrivePast(gate, Named("DS Hangar", 5000), t.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void Different_proper_names_are_all_spoken()
+    {
+        // The KSFO control: twelve callouts, twelve different buildings, nothing suppressed. The
+        // rule must key on the WORDS, so distinct names never interfere with one another.
         var gate = new PassingCalloutGate();
         var t = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
 
         Assert.Equal("FedEx Cargo", DrivePast(gate, Named("FedEx Cargo", 0), t));
-        Assert.Equal("FedEx Cargo", DrivePast(gate, Named("FedEx Cargo", 5000), t.AddMinutes(1)));
+        Assert.Equal("UPS Cargo", DrivePast(gate, Named("UPS Cargo", 5000), t.AddMinutes(1)));
+        Assert.Equal("DHL Cargo", DrivePast(gate, Named("DHL Cargo", 9000), t.AddMinutes(2)));
     }
 
     [Fact]

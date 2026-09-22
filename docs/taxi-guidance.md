@@ -1234,23 +1234,41 @@ monitor ranks to it** — it used a literal 250 m, so the widened 300 m tower
 radius would have been a number the gate could never see, silently capped at
 the window. A test pins that no kind's radius can exceed it.
 
-**One SYNTHESIZED name is not said twice in five minutes, whichever feature
-carries it** (`GenericNameRepeat`). `PerFeatureRepeat` is keyed on identity —
-kind, name AND position — which is right for a building approached twice and
-useless for the collision this fixes: `NavdataFeatureSource` makes a "Cargo
-ramp" per single-linkage stand cluster, a "Fuel" per fuel cluster and a "GA
-ramp" per GA cluster, so several DISTINCT features carry one name, each gets its
-own track and each fires. Measured on routed stand-to-runway taxis: KATL 12
-callouts of which **"Cargo ramp" was FIVE**, OMDB 7 with 2 repeated, NZAA 2 with
-1. **KSFO is the control — 12 callouts, 12 different buildings, nothing to
-suppress** — which is why the rule is keyed on `NameIsGeneric` and never touches
-a proper name: a real name repeating is either the same building again (covered
-above) or two genuinely different piers sharing one, like KJFK's two "Concourse
-B" 1.3 km apart, and that is information. After: KATL 9 callouts, still 8
-distinct names, 1 repeat. `Reset()` clears it; **`RebaselineTracks()`
-deliberately does not** — what the pilot has been told is a fact about the
-pilot, not about the catalog, the same reason the fired memory and the global
-gap survive a catalog swap.
+**One SENTENCE is not said twice in five minutes, whichever feature carries
+it** (`SameNameRepeat`, keyed on spoken name AND side). `PerFeatureRepeat` is
+keyed on identity — kind, name AND position — which is right for a building
+approached twice and useless when several DISTINCT features carry one name:
+each gets its own track and each fires the same words.
+
+Two independent sources of that collision, both measured:
+
+- **Synthesized labels.** `NavdataFeatureSource` makes a "Cargo ramp" per
+  single-linkage stand cluster, a "Fuel" per fuel cluster, a "GA ramp" per GA
+  cluster. On routed taxis: KATL 12 callouts of which **"Cargo ramp" was five**,
+  OMDB 7 with 2 repeated, NZAA 2 with 1.
+- **Proper names from the installed scenery — the bigger half, and missed at
+  first.** Across this machine's 109 airports with scenery features, **64 (59%)
+  carry a repeated announceable name** and **301 of 1,328 (23%) duplicate one**;
+  RJFF has **thirty** features called "Fuk City Hangar", EHAM fifteen "Amsterdam
+  Hangars East", BIKF thirteen "DS Hangar Military". ⚠ The rule was briefly
+  keyed on `NameIsGeneric`, on the strength of four airports where no proper
+  name repeated, and that missed all of these.
+
+**The side is part of the sentence.** The key is name + left/right, so
+"Passing Fuel, on the left" and "Passing Fuel, on the right" both speak — two
+buildings a pilot CAN tell apart. That is what keeps
+`Two_same_named_buildings_150_metres_apart_are_tracked_and_announced_separately`
+green, and only the SENTENCE is deduplicated: tracking stays per building (kind
++ name + position), which is what prevents the false pass a name-only track key
+produced.
+
+After: RJFF 1 callout instead of a row of thirty, BIKF 4, KATL 9 with 8 distinct
+names. **KSFO is the control and is untouched — 7 callouts, 7 different
+buildings.** Known cost: a genuinely different building sharing a name on the
+same side inside the window is dropped (KJFK's two "Concourse B", 1.3 km apart);
+it would have been the identical sentence. `Reset()` clears the memory;
+**`RebaselineTracks()` deliberately does not** — what the pilot has been told is
+a fact about the pilot, not about the catalog.
 
 **There is no baseline and must not be one.** Parked beside a terminal, or
 pushed back from one, the range never closes, so nothing is recited. The

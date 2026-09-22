@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Navigation.Surroundings;
+﻿using MSFSBlindAssist.Navigation.Surroundings;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -136,28 +136,43 @@ public class PassingCalloutGateTests
     }
 
     [Fact]
-    public void Repeat_suppression_is_per_building_not_per_a_name_shared_by_a_different_one()
+    public void A_name_already_said_on_that_side_is_held_even_for_a_different_building()
     {
+        // ⚠ THIS TEST WAS REVERSED (2026-09-22). It asserted that fuelB — a different building
+        // sharing fuelA's name — speaks right away, because suppression was per BUILDING. It is
+        // now held, and the reason is measurement rather than taste.
+        //
+        // Surveying this machine's 109 airports with scenery features: 64 of them (59%) carry at
+        // least one repeated announceable name, 301 of 1,328 announceable scenery features (23%)
+        // duplicate a name already in the catalog, and RJFF has THIRTY features called "Fuk City
+        // Hangar", EHAM fifteen "Amsterdam Hangars East", BIKF thirteen "DS Hangar Military".
+        // Taxiing such a row announced the identical sentence over and over about buildings the
+        // pilot has no way to tell apart.
+        //
+        // What the gate still does per BUILDING is TRACK — kind, name AND position — which is what
+        // stops the false pass a name-only track key produced, and is pinned by the test above.
+        // Only the SENTENCE is deduplicated, and the side is part of the sentence: the test above
+        // also proves fuelA-on-the-left and fuelB-on-the-right BOTH speak.
         var gate = new PassingCalloutGate();
         var fuelA = Feat(FeatureKind.Fuel, "Fuel", lat: 33.6400);
-        var fuelB = Feat(FeatureKind.Fuel, "Fuel", lat: 33.6413);   // same name, ~150 m away: a different building
+        var fuelB = Feat(FeatureKind.Fuel, "Fuel", lat: 33.6413);   // same name, ~150 m away, SAME side
         NearbyFeature[] Solo(AirportFeature f, double d) => new[] { new NearbyFeature(f, d, 90) };
 
         Assert.Null(gate.Evaluate(Solo(fuelA, 100), 10, T0));
         Assert.Null(gate.Evaluate(Solo(fuelA, 60), 10, T0.AddSeconds(2)));
         Assert.NotNull(gate.Evaluate(Solo(fuelA, 70), 10, T0.AddSeconds(4)));                              // fuelA's first pass
 
-        // 2 minutes later: fuelA again is silent (its own 5-minute repeat window)...
+        // 2 minutes later: fuelA again is silent (its own 5-minute per-building window)...
         Assert.Null(gate.Evaluate(Solo(fuelA, 100), 10, T0.AddMinutes(2)));
         Assert.Null(gate.Evaluate(Solo(fuelA, 60), 10, T0.AddMinutes(2).AddSeconds(2)));
         Assert.Null(gate.Evaluate(Solo(fuelA, 70), 10, T0.AddMinutes(2).AddSeconds(4)));
 
-        // ...but fuelB, a DIFFERENT building that merely shares the name, speaks right away.
+        // ...and so is fuelB, which would say the identical sentence on the identical side.
         Assert.Null(gate.Evaluate(Solo(fuelB, 100), 10, T0.AddMinutes(2).AddSeconds(20)));
         Assert.Null(gate.Evaluate(Solo(fuelB, 60), 10, T0.AddMinutes(2).AddSeconds(22)));
-        Assert.NotNull(gate.Evaluate(Solo(fuelB, 70), 10, T0.AddMinutes(2).AddSeconds(24)));
+        Assert.Null(gate.Evaluate(Solo(fuelB, 70), 10, T0.AddMinutes(2).AddSeconds(24)));
 
-        // 8 minutes after fuelA's own first pass, fuelA speaks again.
+        // 8 minutes after fuelA's own first pass, past BOTH windows, "Fuel" is available again.
         Assert.Null(gate.Evaluate(Solo(fuelA, 100), 10, T0.AddMinutes(8)));
         Assert.Null(gate.Evaluate(Solo(fuelA, 60), 10, T0.AddMinutes(8).AddSeconds(2)));
         Assert.NotNull(gate.Evaluate(Solo(fuelA, 70), 10, T0.AddMinutes(8).AddSeconds(4)));

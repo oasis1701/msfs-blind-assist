@@ -54,26 +54,38 @@ public sealed class PassingCalloutGate
                                     TrackExpiry = TimeSpan.FromSeconds(30), RepeatMemory = TimeSpan.FromMinutes(10);
 
     /// <summary>
-    /// How long one SYNTHESIZED name is held after it is spoken, whichever feature next carries it.
+    /// How long one SPOKEN NAME is held after it is said, whichever feature next carries it.
     /// <see cref="PerFeatureRepeat"/> is keyed on identity — kind, name AND position — which is
-    /// right for a building approached twice and useless here: NavdataFeatureSource makes a "Cargo
-    /// ramp" per single-linkage stand cluster, a "Fuel" per fuel cluster and a "GA ramp" per GA
-    /// cluster, so several DISTINCT features carry one name, each gets its own track, and each
-    /// fires. The pilot hears the same sentence about different buildings with nothing to tell
-    /// them apart.
+    /// right for a building approached twice and useless when several DISTINCT features carry one
+    /// name: each gets its own track, and each fires the same sentence.
     ///
-    /// <para>MEASURED on routed stand-to-runway taxis: KATL 12 callouts of which "Cargo ramp" was
-    /// FIVE, OMDB 7 with 2 repeated, NZAA 2 with 1. KSFO is the control — 12 callouts, 12
-    /// different buildings, nothing to suppress — which is why this is keyed on
-    /// <see cref="AirportFeature.NameIsGeneric"/> and never touches a proper name: a real name
-    /// repeating is either the same building again (already covered above) or two genuinely
-    /// different piers sharing one, like KJFK's two "Concourse B" 1.3 km apart, and that is
-    /// information rather than noise.</para>
+    /// <para>Two independent sources of that collision, both MEASURED:</para>
+    ///
+    /// <para>SYNTHESIZED labels. NavdataFeatureSource makes a "Cargo ramp" per single-linkage
+    /// stand cluster, a "Fuel" per fuel cluster, a "GA ramp" per GA cluster. On routed
+    /// stand-to-runway taxis: KATL 12 callouts of which "Cargo ramp" was FIVE, OMDB 7 with 2
+    /// repeated, NZAA 2 with 1.</para>
+    ///
+    /// <para>PROPER names from the installed scenery, which is the bigger half and was missed at
+    /// first. Surveying this machine's own 109 airports with scenery features: 64 of them (59%)
+    /// carry at least one repeated announceable name, 301 of 1,328 announceable scenery features
+    /// (23%) duplicate a name already in the catalog, and four airports have a group of ten or
+    /// more — RJFF has THIRTY features called "Fuk City Hangar", EHAM fifteen "Amsterdam Hangars
+    /// East", BIKF thirteen "DS Hangar Military". Those all carry proper names, so a rule keyed on
+    /// <c>NameIsGeneric</c> — which this was, briefly — misses every one of them.</para>
+    ///
+    /// <para>The question is therefore about the WORDS, not about where they came from: has the
+    /// pilot just been told this? Two features the pilot cannot tell apart from the sentence are
+    /// one thing as far as the sentence is concerned. KSFO is the control and is untouched either
+    /// way: 12 callouts, 12 different names, nothing suppressed. The known cost is a genuinely
+    /// different building sharing a name inside the window — KJFK's two "Concourse B" 1.3 km
+    /// apart — where the second is dropped; it would have been the identical sentence, so nothing
+    /// distinguishable is lost.</para>
     ///
     /// <para>Same length as <see cref="PerFeatureRepeat"/> deliberately: the question it answers
-    /// is the same one — "have I just told the pilot this?" — and only the KEY differs.</para>
+    /// is the same one, and only the KEY differs.</para>
     /// </summary>
-    public static readonly TimeSpan GenericNameRepeat = PerFeatureRepeat;
+    public static readonly TimeSpan SameNameRepeat = PerFeatureRepeat;
 
     /// <summary>How long a pass waits for its conditions before it is given up on. A pass held by
     /// the global gap or by ground speed keeps its own closest-point side and range, which is only
@@ -94,9 +106,15 @@ public sealed class PassingCalloutGate
 
     private readonly List<Track> _tracks = new();
     private readonly List<FiredRecord> _lastFired = new();
-    /// <summary>Spoken name -> when it was last SAID, for synthesized names only. Keyed on the
-    /// words the pilot hears, which is the whole point: the features differ, the sentence does not.</summary>
-    private readonly Dictionary<string, DateTime> _lastGenericName = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Spoken name AND SIDE -> when that sentence was last said. Keyed on the WORDS the
+    /// pilot hears, which is the whole point, and the side is part of the words: "Passing Fuel, on
+    /// the left" and "Passing Fuel, on the right" are two different things to be told, about two
+    /// buildings the pilot CAN tell apart.</summary>
+    private readonly Dictionary<string, DateTime> _lastSpokenSentence = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>The sentence's identity: what is said, and which side it is said about.</summary>
+    private static string SentenceKey(AirportFeature f, double relBearingDeg)
+        => f.SpokenName + "|" + (NormalizeSigned(relBearingDeg) < 0 ? "L" : "R");
     private DateTime? _lastAny;
 
     internal int TrackCount => _tracks.Count;
@@ -243,18 +261,17 @@ public sealed class PassingCalloutGate
             if (!mayFire) continue;
             var fired = FindFired(key, n.Feature.Lat, n.Feature.Lon);
             if (fired != null && now - fired.FiredAt < PerFeatureRepeat) { t.Pending = false; continue; }
-            // A synthesized name just said about ANOTHER feature: same sentence, nothing for the
-            // pilot to tell them apart. Consumed exactly like a repeat, so a different feature
+            // These exact words were just said about ANOTHER feature: same sentence, nothing for
+            // the pilot to tell them apart. Consumed exactly like a repeat, so a different feature
             // still in range can win this tick instead.
-            if (n.Feature.NameIsGeneric
-                && _lastGenericName.TryGetValue(n.Feature.SpokenName, out var saidAt)
-                && now - saidAt < GenericNameRepeat) { t.Pending = false; continue; }
+            if (_lastSpokenSentence.TryGetValue(SentenceKey(n.Feature, t.MinRel), out var saidAt)
+                && now - saidAt < SameNameRepeat) { t.Pending = false; continue; }
             if (fire == null || d < fire.DistanceMetres) { fire = n; fireTrack = t; }     // nearest first
         }
         if (fire == null) return null;
         fireTrack!.Pending = false;
         RecordFired(fireTrack.Key, fireTrack.AnchorLat, fireTrack.AnchorLon, now);
-        if (fire.Feature.NameIsGeneric) _lastGenericName[fire.Feature.SpokenName] = now;
+        _lastSpokenSentence[SentenceKey(fire.Feature, fireTrack.MinRel)] = now;
         _lastAny = now;
         return new NearbyFeature(fire.Feature, fireTrack.Min, fireTrack.MinRel);
     }
@@ -265,7 +282,7 @@ public sealed class PassingCalloutGate
         _lastFired.RemoveAll(f => now - f.FiredAt > RepeatMemory);
     }
 
-    public void Reset() { _tracks.Clear(); _lastFired.Clear(); _lastGenericName.Clear(); _lastAny = null; }
+    public void Reset() { _tracks.Clear(); _lastFired.Clear(); _lastSpokenSentence.Clear(); _lastAny = null; }
 
     /// <summary>
     /// Forget the approaches in progress, and NOTHING else — for a caller that has just been handed
