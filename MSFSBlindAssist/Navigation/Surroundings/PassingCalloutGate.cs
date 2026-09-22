@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Services.TaxiAugment;
+﻿using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Navigation.Surroundings;
 
@@ -53,6 +53,28 @@ public sealed class PassingCalloutGate
     public static readonly TimeSpan PerFeatureRepeat = TimeSpan.FromMinutes(5), GlobalGap = TimeSpan.FromSeconds(10),
                                     TrackExpiry = TimeSpan.FromSeconds(30), RepeatMemory = TimeSpan.FromMinutes(10);
 
+    /// <summary>
+    /// How long one SYNTHESIZED name is held after it is spoken, whichever feature next carries it.
+    /// <see cref="PerFeatureRepeat"/> is keyed on identity — kind, name AND position — which is
+    /// right for a building approached twice and useless here: NavdataFeatureSource makes a "Cargo
+    /// ramp" per single-linkage stand cluster, a "Fuel" per fuel cluster and a "GA ramp" per GA
+    /// cluster, so several DISTINCT features carry one name, each gets its own track, and each
+    /// fires. The pilot hears the same sentence about different buildings with nothing to tell
+    /// them apart.
+    ///
+    /// <para>MEASURED on routed stand-to-runway taxis: KATL 12 callouts of which "Cargo ramp" was
+    /// FIVE, OMDB 7 with 2 repeated, NZAA 2 with 1. KSFO is the control — 12 callouts, 12
+    /// different buildings, nothing to suppress — which is why this is keyed on
+    /// <see cref="AirportFeature.NameIsGeneric"/> and never touches a proper name: a real name
+    /// repeating is either the same building again (already covered above) or two genuinely
+    /// different piers sharing one, like KJFK's two "Concourse B" 1.3 km apart, and that is
+    /// information rather than noise.</para>
+    ///
+    /// <para>Same length as <see cref="PerFeatureRepeat"/> deliberately: the question it answers
+    /// is the same one — "have I just told the pilot this?" — and only the KEY differs.</para>
+    /// </summary>
+    public static readonly TimeSpan GenericNameRepeat = PerFeatureRepeat;
+
     /// <summary>How long a pass waits for its conditions before it is given up on. A pass held by
     /// the global gap or by ground speed keeps its own closest-point side and range, which is only
     /// worth saying while the building is still THERE: pass one, stop inside its radius (below
@@ -72,6 +94,9 @@ public sealed class PassingCalloutGate
 
     private readonly List<Track> _tracks = new();
     private readonly List<FiredRecord> _lastFired = new();
+    /// <summary>Spoken name -> when it was last SAID, for synthesized names only. Keyed on the
+    /// words the pilot hears, which is the whole point: the features differ, the sentence does not.</summary>
+    private readonly Dictionary<string, DateTime> _lastGenericName = new(StringComparer.OrdinalIgnoreCase);
     private DateTime? _lastAny;
 
     internal int TrackCount => _tracks.Count;
@@ -218,11 +243,18 @@ public sealed class PassingCalloutGate
             if (!mayFire) continue;
             var fired = FindFired(key, n.Feature.Lat, n.Feature.Lon);
             if (fired != null && now - fired.FiredAt < PerFeatureRepeat) { t.Pending = false; continue; }
+            // A synthesized name just said about ANOTHER feature: same sentence, nothing for the
+            // pilot to tell them apart. Consumed exactly like a repeat, so a different feature
+            // still in range can win this tick instead.
+            if (n.Feature.NameIsGeneric
+                && _lastGenericName.TryGetValue(n.Feature.SpokenName, out var saidAt)
+                && now - saidAt < GenericNameRepeat) { t.Pending = false; continue; }
             if (fire == null || d < fire.DistanceMetres) { fire = n; fireTrack = t; }     // nearest first
         }
         if (fire == null) return null;
         fireTrack!.Pending = false;
         RecordFired(fireTrack.Key, fireTrack.AnchorLat, fireTrack.AnchorLon, now);
+        if (fire.Feature.NameIsGeneric) _lastGenericName[fire.Feature.SpokenName] = now;
         _lastAny = now;
         return new NearbyFeature(fire.Feature, fireTrack.Min, fireTrack.MinRel);
     }
@@ -233,7 +265,7 @@ public sealed class PassingCalloutGate
         _lastFired.RemoveAll(f => now - f.FiredAt > RepeatMemory);
     }
 
-    public void Reset() { _tracks.Clear(); _lastFired.Clear(); _lastAny = null; }
+    public void Reset() { _tracks.Clear(); _lastFired.Clear(); _lastGenericName.Clear(); _lastAny = null; }
 
     /// <summary>
     /// Forget the approaches in progress, and NOTHING else — for a caller that has just been handed

@@ -1234,6 +1234,24 @@ monitor ranks to it** — it used a literal 250 m, so the widened 300 m tower
 radius would have been a number the gate could never see, silently capped at
 the window. A test pins that no kind's radius can exceed it.
 
+**One SYNTHESIZED name is not said twice in five minutes, whichever feature
+carries it** (`GenericNameRepeat`). `PerFeatureRepeat` is keyed on identity —
+kind, name AND position — which is right for a building approached twice and
+useless for the collision this fixes: `NavdataFeatureSource` makes a "Cargo
+ramp" per single-linkage stand cluster, a "Fuel" per fuel cluster and a "GA
+ramp" per GA cluster, so several DISTINCT features carry one name, each gets its
+own track and each fires. Measured on routed stand-to-runway taxis: KATL 12
+callouts of which **"Cargo ramp" was FIVE**, OMDB 7 with 2 repeated, NZAA 2 with
+1. **KSFO is the control — 12 callouts, 12 different buildings, nothing to
+suppress** — which is why the rule is keyed on `NameIsGeneric` and never touches
+a proper name: a real name repeating is either the same building again (covered
+above) or two genuinely different piers sharing one, like KJFK's two "Concourse
+B" 1.3 km apart, and that is information. After: KATL 9 callouts, still 8
+distinct names, 1 repeat. `Reset()` clears it; **`RebaselineTracks()`
+deliberately does not** — what the pilot has been told is a fact about the
+pilot, not about the catalog, the same reason the fired memory and the global
+gap survive a catalog swap.
+
 **There is no baseline and must not be one.** Parked beside a terminal, or
 pushed back from one, the range never closes, so nothing is recited. The
 baseline this replaced was a one-shot 5-minute timestamp that lapsed during any
