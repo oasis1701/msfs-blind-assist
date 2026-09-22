@@ -2155,89 +2155,53 @@ public class TaxiGraph
         TaxiEdge? bestRunwayEdge = null;  double bestRunwayEdgePerp = double.MaxValue;
         TaxiEdge? bestTaxiwayEdge = null; double bestTaxiwayEdgePerp = double.MaxValue;
 
-        // Collect candidate edges from adjacency of nodes within EDGE_SCAN_RADIUS_M, using the
-        // same spatial-hash ring mechanism as Pass 1 (instead of scanning every node in the
-        // graph). The ring must be sized independently in the lat and lon directions to cover
-        // EDGE_SCAN_RADIUS_M in real METERS: a hash cell is a fixed DEGREE step (`step`, same in
-        // both dimensions), but a degree of longitude is only cos(latitude) as many meters as a
-        // degree of latitude — so a latitude-blind cell count under-covers longitude at higher
-        // latitudes (e.g. ENSB at 78°N, cos(78°) ≈ 0.21). Pass 1's fixed "ring 30" is calibrated
-        // for its own ≤60 m radii at the equator (and its own comment overstates that coverage —
-        // 30 cells is ≈33 m, not "330 m" — a pre-existing, unrelated Pass-1 limitation left
-        // untouched here); reusing "ring 30" as-is for this 120 m radius would silently drop real
-        // candidates, so Pass 2 computes its own ring from EDGE_SCAN_RADIUS_M. Candidates are a
-        // strict superset of what a latitude-correct 120 m circle would need (rectangular ring,
-        // +1 cell margin for rounding) — never a subset — so this is equivalence-preserving with
-        // the original full Adjacency scan, which itself is unconditionally correct because it
-        // filters by true FastDistanceMeters, not by ring geometry.
-        double metersPerDegLat = 111132.0;
-        double metersPerDegLon = metersPerDegLat * Math.Cos(lat * (Math.PI / 180.0));
-        if (metersPerDegLon < 1.0) metersPerDegLon = 1.0; // guard near-pole degeneracy (no real airport is this far north/south)
-        int edgeScanRingLat = (int)Math.Ceiling(EDGE_SCAN_RADIUS_M / (step * metersPerDegLat)) + 1;
-        int edgeScanRingLon = (int)Math.Ceiling(EDGE_SCAN_RADIUS_M / (step * metersPerDegLon)) + 1;
-
-        var edgeScanCandidates = new HashSet<int>();
-        for (int dlat = -edgeScanRingLat; dlat <= edgeScanRingLat; dlat++)
+        // Candidate edges come from the EDGE index (see EnsureEdgeCellIndex), never from the nodes
+        // within EDGE_SCAN_RADIUS_M. Gathering them node-first and then skipping any edge whose
+        // from-node was further than that radius gave every segment longer than 2 x 120 m a DEAD
+        // MIDDLE: the aircraft stands on the centreline of a named taxiway, both endpoints are out
+        // of range, the edge is never examined, and this method returns "" — which the caller
+        // renders as "Not on a known taxiway or ramp at <ICAO>." for both Alt+Y and Alt+L.
+        // Reported live at EHAM on taxiway Delta (1.7 m from the centreline of a 339 m segment
+        // whose ends were 172 m and 166 m away); swept over fs2024 it is 3,788 km of named
+        // centreline across 5,610 airports, worst case ZSPD S2 at 2,965 m blind.
+        //
+        // The index is keyed on the segment's own footprint, so an edge's LENGTH no longer decides
+        // whether it can be found — only its distance from the aircraft, which is what the
+        // perpendicular test below was always meant to be the sole arbiter of.
+        foreach (var edge in EdgesNear(lat, lon, EDGE_SCAN_RADIUS_M))
         {
-            for (int dlon = -edgeScanRingLon; dlon <= edgeScanRingLon; dlon++)
+            var fromNode = Nodes[edge.FromNodeId];
+            var toNode = Nodes[edge.ToNodeId];
+            double perp = PerpendicularDistanceMeters(
+                lat, lon,
+                fromNode.Latitude, fromNode.Longitude,
+                toNode.Latitude, toNode.Longitude);
+
+            // Half-width in meters (width stored as feet)
+            double halfWidthM = (edge.WidthFeet * 0.3048) * 0.5;
+
+            bool isRunway = !string.IsNullOrEmpty(edge.PathType) &&
+                            edge.PathType.StartsWith("R", StringComparison.OrdinalIgnoreCase);
+
+            double tolerance = isRunway ? halfWidthM + 5.0 : halfWidthM + 3.0;
+            if (tolerance < 5.0) tolerance = 5.0; // minimum tolerance if width is missing/zero
+
+            if (perp <= tolerance)
             {
-                string key = GetSpatialHashKey(lat + dlat * step, lon + dlon * step);
-                if (_spatialHash.TryGetValue(key, out var cellNodeIds))
+                if (isRunway)
                 {
-                    foreach (int nodeId in cellNodeIds)
-                        edgeScanCandidates.Add(nodeId);
-                }
-            }
-        }
-
-        // We dedupe by (from,to) pair since adjacency holds both directions.
-        var visitedEdges = new HashSet<long>();
-
-        foreach (int fromId in edgeScanCandidates)
-        {
-            if (!Adjacency.TryGetValue(fromId, out var edgesFromNode)) continue;
-            var fromNode = Nodes[fromId];
-            double fromDist = FastDistanceMeters(lat, lon, fromNode.Latitude, fromNode.Longitude);
-            if (fromDist > EDGE_SCAN_RADIUS_M) continue;
-
-            foreach (var edge in edgesFromNode)
-            {
-                // Dedupe
-                long edgeKey = Math.Min(edge.FromNodeId, edge.ToNodeId) * 1_000_000L + Math.Max(edge.FromNodeId, edge.ToNodeId);
-                if (!visitedEdges.Add(edgeKey)) continue;
-
-                var toNode = Nodes[edge.ToNodeId];
-                double perp = PerpendicularDistanceMeters(
-                    lat, lon,
-                    fromNode.Latitude, fromNode.Longitude,
-                    toNode.Latitude, toNode.Longitude);
-
-                // Half-width in meters (width stored as feet)
-                double halfWidthM = (edge.WidthFeet * 0.3048) * 0.5;
-
-                bool isRunway = !string.IsNullOrEmpty(edge.PathType) &&
-                                edge.PathType.StartsWith("R", StringComparison.OrdinalIgnoreCase);
-
-                double tolerance = isRunway ? halfWidthM + 5.0 : halfWidthM + 3.0;
-                if (tolerance < 5.0) tolerance = 5.0; // minimum tolerance if width is missing/zero
-
-                if (perp <= tolerance)
-                {
-                    if (isRunway)
+                    if (perp < bestRunwayEdgePerp)
                     {
-                        if (perp < bestRunwayEdgePerp)
-                        {
-                            bestRunwayEdgePerp = perp;
-                            bestRunwayEdge = edge;
-                        }
+                        bestRunwayEdgePerp = perp;
+                        bestRunwayEdge = edge;
                     }
-                    else if (!string.IsNullOrEmpty(edge.TaxiwayName))
+                }
+                else if (!string.IsNullOrEmpty(edge.TaxiwayName))
+                {
+                    if (perp < bestTaxiwayEdgePerp)
                     {
-                        if (perp < bestTaxiwayEdgePerp)
-                        {
-                            bestTaxiwayEdgePerp = perp;
-                            bestTaxiwayEdge = edge;
-                        }
+                        bestTaxiwayEdgePerp = perp;
+                        bestTaxiwayEdge = edge;
                     }
                 }
             }
@@ -3320,6 +3284,116 @@ public class TaxiGraph
         }
         return fallback;
     }
+
+    #region Edge cell index
+
+    /// <summary>
+    /// Cell size for the EDGE index, as decimal places of a degree. Deliberately COARSER than
+    /// <see cref="SPATIAL_HASH_PRECISION"/> (5 places, ~1.1 m): an edge is indexed under every
+    /// cell its segment CROSSES, so a 1.1 m grid would put ~300 entries in the index for one
+    /// 340 m taxiway and ~2,900 for ZSPD's longest. At 3 places a cell is ~111 m north-south, a
+    /// 340 m segment occupies about four of them, and a 120 m scan is a 5x5 ring — roughly 25
+    /// dictionary lookups per call against the 47,961 the old node ring did at this latitude.
+    /// </summary>
+    private const int EDGE_CELL_PRECISION = 3;
+
+    private Dictionary<(int Lat, int Lon), List<TaxiEdge>>? _edgeCells;
+    /// <summary>Edge count the index was built from; a mismatch rebuilds it. Edges are added by
+    /// <see cref="AddNode"/> and replaced by <see cref="SplitEdgeAt"/> after Build has returned
+    /// (routing splits an edge to insert a start node), and a stale index would then measure
+    /// against geometry the graph no longer has.</summary>
+    private int _edgeCellsBuiltFromEdgeCount = -1;
+
+    private static (int Lat, int Lon) EdgeCellOf(double lat, double lon)
+    {
+        double step = Math.Pow(10, -EDGE_CELL_PRECISION);
+        return ((int)Math.Floor(lat / step), (int)Math.Floor(lon / step));
+    }
+
+    private int TotalDirectedEdgeCount()
+    {
+        int n = 0;
+        foreach (var edges in Adjacency.Values) n += edges.Count;
+        return n;
+    }
+
+    /// <summary>
+    /// Indexes every edge under each cell its SEGMENT passes through — not merely its endpoints'
+    /// cells, which is the whole point: a segment longer than a cell must be findable from the
+    /// middle. Walks the segment at half-cell steps, so no crossed cell is skipped.
+    /// </summary>
+    private void EnsureEdgeCellIndex()
+    {
+        int edgeCount = TotalDirectedEdgeCount();
+        if (_edgeCells != null && _edgeCellsBuiltFromEdgeCount == edgeCount) return;
+
+        var cells = new Dictionary<(int, int), List<TaxiEdge>>();
+        double step = Math.Pow(10, -EDGE_CELL_PRECISION);
+        var seen = new HashSet<long>();
+
+        foreach (var edges in Adjacency.Values)
+            foreach (var edge in edges)
+            {
+                // Adjacency holds both directions; index each undirected edge once.
+                long key = Math.Min(edge.FromNodeId, edge.ToNodeId) * 1_000_000L + Math.Max(edge.FromNodeId, edge.ToNodeId);
+                if (!seen.Add(key)) continue;
+                // Nodes is a DICTIONARY keyed by node id, not a dense list — ids are neither
+                // 0-based nor contiguous, so membership is the only sound test here.
+                if (!Nodes.TryGetValue(edge.FromNodeId, out var a) || !Nodes.TryGetValue(edge.ToNodeId, out var b)) continue;
+                double dLat = b.Latitude - a.Latitude, dLon = b.Longitude - a.Longitude;
+                // Half-cell sampling in the dimension that spans the most cells.
+                int steps = (int)Math.Ceiling(Math.Max(Math.Abs(dLat), Math.Abs(dLon)) / (step * 0.5));
+                if (steps < 1) steps = 1;
+
+                var last = ((int)int.MinValue, (int)int.MinValue);
+                for (int i = 0; i <= steps; i++)
+                {
+                    double f = (double)i / steps;
+                    var cell = EdgeCellOf(a.Latitude + dLat * f, a.Longitude + dLon * f);
+                    if (cell == last) continue;      // consecutive samples usually land in one cell
+                    last = cell;
+                    if (!cells.TryGetValue(cell, out var list)) cells[cell] = list = new List<TaxiEdge>();
+                    if (!list.Contains(edge)) list.Add(edge);
+                }
+            }
+
+        _edgeCells = cells;
+        _edgeCellsBuiltFromEdgeCount = edgeCount;
+    }
+
+    /// <summary>
+    /// Every edge whose segment passes within roughly <paramref name="radiusMetres"/>, deduped.
+    /// A rectangular ring of whole cells, sized independently in the lat and lon directions
+    /// because a degree of longitude is only cos(latitude) as many metres as a degree of latitude
+    /// (ENSB at 78°N: cos 78° ~ 0.21, so a latitude-blind cell count under-covers longitude by
+    /// nearly five times). The result is a strict SUPERSET of a true circle of that radius — the
+    /// caller filters by real perpendicular distance, so extra candidates cost only arithmetic.
+    /// </summary>
+    private IEnumerable<TaxiEdge> EdgesNear(double lat, double lon, double radiusMetres)
+    {
+        EnsureEdgeCellIndex();
+        if (_edgeCells!.Count == 0) yield break;
+
+        double step = Math.Pow(10, -EDGE_CELL_PRECISION);
+        double metresPerDegLat = 111132.0;
+        double metresPerDegLon = metresPerDegLat * Math.Cos(lat * (Math.PI / 180.0));
+        if (metresPerDegLon < 1.0) metresPerDegLon = 1.0;   // guard near-pole degeneracy
+
+        int ringLat = (int)Math.Ceiling(radiusMetres / (step * metresPerDegLat)) + 1;
+        int ringLon = (int)Math.Ceiling(radiusMetres / (step * metresPerDegLon)) + 1;
+        var centre = EdgeCellOf(lat, lon);
+
+        var emitted = new HashSet<TaxiEdge>();
+        for (int dLat = -ringLat; dLat <= ringLat; dLat++)
+            for (int dLon = -ringLon; dLon <= ringLon; dLon++)
+            {
+                if (!_edgeCells.TryGetValue((centre.Lat + dLat, centre.Lon + dLon), out var list)) continue;
+                foreach (var edge in list)
+                    if (emitted.Add(edge)) yield return edge;
+            }
+    }
+
+    #endregion
 
     #region Helpers
 
