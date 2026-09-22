@@ -1,0 +1,1 @@
+Alt+S now reads the lower display on the PMDG 737 and the PMDG 777, the only place the app reports N2, oil pressure, oil temperature, oil quantity and engine vibration. It names which page is showing first, since either aircraft can put engine data, a synoptic or the navigation display there.

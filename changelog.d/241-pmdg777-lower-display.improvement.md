@@ -1,1 +1,0 @@
-Alt+S now reads the PMDG 777's lower display. It tells you whether the screen is showing secondary engine indications, one of the synoptic pages, or a navigation display, then reads it — and oil pressure, oil quantity and engine vibration are only available there, since nothing else in the app reports them on this aircraft.

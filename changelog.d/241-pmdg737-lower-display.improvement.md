@@ -1,1 +1,0 @@
-Alt+S now reads the PMDG 737's lower display unit, which is where N2, oil pressure, oil temperature, oil quantity and engine vibration live — none of them were on any MSFS Blind Assist panel before. It tells you whether the display is showing engine data or the navigation display, since the LOWER DU selector can put either there.
