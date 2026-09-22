@@ -19,6 +19,27 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
     public override string AircraftName => "Synaptic Simulations A220-300";
     public override string AircraftCode => "SYNAPTIC_A220";
 
+    /// <summary>
+    /// Taxi turn anticipation. This airframe was the ONLY one with no override, so it sat
+    /// on BaseAircraftDefinition's neutral 1.2 s while every other type is tuned.
+    ///
+    /// Set BELOW the default, not above, and the Airbus siblings (1.6-1.8) are the wrong
+    /// model here. The lead SUBTRACTS from the commanded error while yawing (clamped at
+    /// TURN_LEAD_MAX_DEG = 30 deg), on the assumption the pilot is about to arrive and
+    /// should start unwinding — which is right for an airframe that OVERSHOOTS. Measured
+    /// on a KLAX taxi-in 2026-09-22, this one does the opposite: through both 90 deg
+    /// corners the heading error stayed above 25 deg for ~70% of the turn (peaks 46 and
+    /// 52 deg) and ground speed fell to 0-1 kt to get round, while the straight between
+    /// them averaged 6 deg. Lagging, not overshooting — so at 1.2 s and ~10 deg/s of yaw
+    /// the tone was removing ~12 deg of the demand exactly where the pilot was already
+    /// 30 deg behind, which is the reported "sluggish, hard to turn in time".
+    ///
+    /// 0.6 keeps some anticipation (0 disables the projection outright) while leaving the
+    /// cue honest through a corner. It is a FEEL parameter: re-measure the same way
+    /// before moving it, and move it DOWN if turns still feel late, not up.
+    /// </summary>
+    public override double TaxiTurnLeadSeconds => 0.6;
+
     // No direct-set FCP events exist (inputs.mdx documents inc/dec knobs only;
     // HEADING_BUG_SET is sync-to-current-heading) — every dialog walks the knob
     // with read-back verification.
@@ -280,14 +301,23 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
                 else mode = Cached(simConnect, "A22X_FG_FLC") > 0.5 ? ", FLC"
                     : Cached(simConnect, "A22X_FG_VNAV") > 0.5 ? ", VNAV"
                     : Cached(simConnect, "A22X_FG_ALT") > 0.5 ? ", altitude hold" : "";
-                // The FCP can genuinely have NO altitude selected (dashes on the panel,
-                // alt_sel_ft null) — say that, never a stale stock-var number.
-                if (fcp != null && fcp.alt_sel_ft == null)
+                // "The selector shows dashes" is a CLAIM about the panel, so it may only
+                // be made when nothing anywhere knows of a selected altitude. A missing
+                // alt_sel_ft does NOT mean dashes: the AFDX stores broadcast partial
+                // updates, so the field is simply absent from most messages (see the
+                // merge in coherent-a220-displays-agent.js). Live 2026-09-22 this said
+                // "Altitude not set" with FL280 selected and AUTOPILOT ALTITUDE LOCK VAR
+                // reading 28000 the whole time. That stock var tracks the FCP knob click
+                // for click (the same measurement the FCP walk's fallback rests on), so
+                // it is the tie-breaker: only when IT is absent too is the panel really
+                // blank. Heading and speed above never had this bug — they just `??`.
+                double stockAlt = Cached(simConnect, "A22X_AP_ALT");
+                if (fcp?.alt_sel_ft == null && stockAlt <= 0)
                 {
                     announcer.AnnounceImmediate($"Altitude not set — the selector shows dashes{mode}");
                     return true;
                 }
-                int alt = (int)Math.Round(fcp?.alt_sel_ft ?? Cached(simConnect, "A22X_AP_ALT"));
+                int alt = (int)Math.Round(fcp?.alt_sel_ft ?? stockAlt);
                 bool meters = fcp?.alt_in_m ?? Cached(simConnect, "A22X_FG_ALT_UNIT") > 0.5;
                 string unit = meters
                     ? $" ({(int)Math.Round(fcp?.alt_sel_m ?? alt * 0.3048)} meters selected)"

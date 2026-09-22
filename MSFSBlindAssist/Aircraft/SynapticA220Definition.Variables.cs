@@ -119,10 +119,14 @@ public partial class SynapticA220Definition
             Type = SimVarType.SimVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
             ValueDescriptions = Labels("Off", "On")
         };
+        // simvars.mdx documents the stock "EXTERNAL POWER ON:1", but the Synaptic
+        // WASM never DRIVES it — measured live 2026-09-22 with ground power genuinely
+        // in use it still read 0, while the cockpit pb's own state var read 1. The
+        // documented name is the doc's, not the aircraft's; read what the lamp reads.
         v["A22X_EXT_PWR"] = new SimVarDefinition
         {
-            Name = "EXTERNAL POWER ON:1", DisplayName = "External Power",
-            Type = SimVarType.SimVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
+            Name = "A22X External Power In Use", DisplayName = "External Power",
+            Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
             ValueDescriptions = Labels("Off", "On")
         };
         v["A22X_GPU_AVAIL"] = new SimVarDefinition
@@ -299,8 +303,12 @@ public partial class SynapticA220Definition
         // L:var on this aircraft, so these two defs are CARRIERS: they exist to give the
         // display rows a var that MainForm will refresh, and their own value is only the
         // fallback shown when the Coherent link is down. "L:A22X Horizontal Stabilizer" is
-        // the trim ANIMATION ratio, not the units the cockpit prints — do not present it
-        // as the trim setting.
+        // the trim ANIMATION ratio, not the units the cockpit prints — so this raw row is
+        // still not the trim setting. It IS convertible though: the ratio spans the same
+        // 0-17 travel the EICAS draws, so ratio * A220Afdx.StabTrimFullScaleUnits gives the
+        // printed units (measured 2026-09-22 — see that constant). StartStabTrimWalk uses
+        // exactly that as its bus-less read-back; converting this display row the same way
+        // is an obvious follow-up that has NOT been done yet.
         v["A22X_STAB_TRIM"] = Status("A22X Horizontal Stabilizer", "Stabilizer Trim", "percent over 100", "F2");
         // Numeric entry: type the EFB takeoff-performance figure (e.g. 4.6) and the walk
         // drives ELEV_TRIM_UP/DN until efcs.pitch_trim reads it back. No CurrentValueSourceKey
@@ -329,14 +337,24 @@ public partial class SynapticA220Definition
         v["A22X_GEAR_AURAL_CANCEL"] = LMomentary("A22X Gear Aural", "Gear Aural Warning Cancel");
 
         // ==== Flaps / Spoilers ===============================================
-        // Flap combo drives an inc/dec walk (FLAPS_INCR/DECR) verified against the
-        // lever L:var — FLAPS_1/2/3 detent events don't cover detent 4. Continuous
-        // so detent changes announce ("Flaps: 3" — the PM flap callout) and the
-        // approach-callout logic reads a fresh landing-flap state.
+        // The flap lever is the STOCK handle index, not an L:var. The cockpit lever
+        // (FCTL_FLAPS_LEVER, Pedestal/FlightControls.xml) reads
+        // `(A:FLAPS HANDLE INDEX, number)` and writes `<n> 5 / 16383 * (>K:FLAPS_SET)`,
+        // so that SimVar IS the lever position, 0-5.
+        //
+        // simvars.mdx DOES document "L:A22X Flap Lever" and this def used to read it —
+        // but it is dead, exactly like the documented-and-undriven "EXTERNAL POWER ON:1"
+        // beside it: measured live 2026-09-22 it read 0 with the flaps at FULL. That was
+        // not a cosmetic miss. It read 0 forever, so the old inc/dec walk saw "0" against
+        // a target of 2, fired FLAPS_INCR, re-read 0, and fired again for all ten rounds —
+        // driving the flaps to FULL and reporting "Flaps did not reach 2, lever at 0".
+        // The same dead 0 also made the approach callout's `< 4` landing-flap check
+        // permanently claim "flaps not landing flap".
+        // Continuous so detent changes announce ("Flaps: 3" — the PM flap callout).
         v["A22X_FLAP_LEVER"] = new SimVarDefinition
         {
-            Name = "A22X Flap Lever", DisplayName = "Flaps",
-            Type = SimVarType.LVar, Units = "number", UpdateFrequency = UpdateFrequency.Continuous,
+            Name = "FLAPS HANDLE INDEX", DisplayName = "Flaps",
+            Type = SimVarType.SimVar, Units = "number", UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true,
             ValueDescriptions = Labels("0", "1", "2", "3", "4", "5 (Full)")
         };

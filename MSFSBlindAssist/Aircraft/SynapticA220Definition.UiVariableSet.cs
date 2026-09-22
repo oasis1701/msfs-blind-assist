@@ -15,6 +15,13 @@ public partial class SynapticA220Definition
     private int _apuHoldTicks;
     private System.Threading.CancellationTokenSource? _walkCancel;
 
+    /// <summary>Highest flap detent, and the divisor the cockpit lever's own VAR_WRITE
+    /// uses to scale a detent onto FLAPS_SET's 0-16383 range. Six positions, 0-5 —
+    /// matching the lever's <c>n 5 / 16383 *</c> and the ECL's SLAT_FLAP_LEVER_0..5.
+    /// NOTE the stock "FLAPS NUM HANDLE POSITIONS" reads 5 on this aircraft, one short
+    /// of the six the lever actually selects; do not derive this from it.</summary>
+    private const int FlapMaxDetent = 5;
+
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
@@ -43,9 +50,17 @@ public partial class SynapticA220Definition
                 if (Math.Abs(Cached(simConnect, varKey, -1) - value) > 0.5)
                     FireKeyEvent(simConnect, "TOGGLE_MASTER_BATTERY", 2);
                 return true;
+            // The EXT PWR korry is an A220_ButtonPBA with no IS_LATCHED, i.e.
+            // SET_STATE_EXTERNAL = "1 (>L:A22X External Power Toggle)" — a MOMENTARY
+            // pulse the WASM consumes and self-clears (measured live: the var reads 0
+            // again right after, while "In Use" flips). The stock TOGGLE_EXTERNAL_POWER
+            // event is ignored by the Synaptic WASM, so this was a silent no-op. The
+            // batteries beside it really ARE the stock SimVar (their template's VAR is
+            // "A:ELECTRICAL MASTER BATTERY:n"), so they stay on the event path.
             case "A22X_EXT_PWR":
+                // A toggle, so an unknown cache (-1) must still actuate.
                 if (Math.Abs(Cached(simConnect, varKey, -1) - value) > 0.5)
-                    FireKeyEvent(simConnect, "TOGGLE_EXTERNAL_POWER", 1);
+                    WriteLVar(simConnect, "A22X External Power Toggle", 1);
                 return true;
             case "A22X_GEAR_LEVER":
                 FireKeyEvent(simConnect, value >= 0.5 ? "GEAR_DOWN" : "GEAR_UP");
@@ -63,7 +78,7 @@ public partial class SynapticA220Definition
                 });
                 return true;
             case "A22X_FLAP_LEVER":
-                WalkFlapsToDetent(simConnect, announcer, (int)Math.Round(value));
+                SetFlapDetent(simConnect, (int)Math.Round(value));
                 return true;
 
             // ---- master warning/caution acknowledge -----------------------------
@@ -167,33 +182,23 @@ public partial class SynapticA220Definition
     // ---- Flap detent walk ----------------------------------------------------
     // FLAPS_1/2/3 don't cover detent 4, so the combo walks FLAPS_INCR/DECR verified
     // against the lever L:var (self-calibrating; never open-loop).
-    private void WalkFlapsToDetent(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, int target)
+    /// <summary>
+    /// Select a flap detent (0-5) the way the cockpit lever does: ONE
+    /// <c>FLAPS_SET</c> with the handle index scaled onto the event's 0-16383 range,
+    /// verbatim from FCTL_FLAPS_LEVER's own VAR_WRITE (<c>n 5 / 16383 *</c>).
+    ///
+    /// This replaces an inc/dec WALK that read "L:A22X Flap Lever" back. That L:var is
+    /// documented but dead (see the A22X_FLAP_LEVER def), so the walk never saw the
+    /// lever move: it read 0, fired FLAPS_INCR, read 0 again, and kept going for all
+    /// ten rounds — which is how asking for flaps 2 left the aircraft at FULL. There is
+    /// nothing to walk here anyway; the lever takes a direct set.
+    /// </summary>
+    private void SetFlapDetent(SimConnectManager simConnect, int detent)
     {
-        _walkCancel?.Cancel();
-        var cts = new System.Threading.CancellationTokenSource();
-        _walkCancel = cts;
-        _ = System.Threading.Tasks.Task.Run(async () =>
-        {
-            try
-            {
-                for (int round = 0; round < 10 && !cts.IsCancellationRequested; round++)
-                {
-                    simConnect.RequestVariable("A22X_FLAP_LEVER", forceUpdate: true);
-                    await System.Threading.Tasks.Task.Delay(300, cts.Token);
-                    int current = (int)Math.Round(Cached(simConnect, "A22X_FLAP_LEVER"));
-                    if (current == target) return;
-                    FireKeyEvent(simConnect, current < target ? "FLAPS_INCR" : "FLAPS_DECR");
-                    await System.Threading.Tasks.Task.Delay(400, cts.Token);
-                }
-                if (!cts.IsCancellationRequested)
-                {
-                    int landed = (int)Math.Round(Cached(simConnect, "A22X_FLAP_LEVER"));
-                    if (landed != target)
-                        announcer.AnnounceImmediate($"Flaps did not reach {target}, lever at {landed}.");
-                }
-            }
-            catch (OperationCanceledException) { }
-            catch { }
-        });
+        _walkCancel?.Cancel();   // a flap selection supersedes any walk in flight
+        int index = Math.Clamp(detent, 0, FlapMaxDetent);
+        simConnect.ExecuteCalculatorCode(
+            $"{SeqPrefix()}{index} {FlapMaxDetent} / 16383 * (>K:FLAPS_SET)");
     }
+
 }

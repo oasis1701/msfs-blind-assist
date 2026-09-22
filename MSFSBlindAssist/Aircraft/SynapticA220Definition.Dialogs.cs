@@ -85,6 +85,16 @@ public partial class SynapticA220Definition
     /// </summary>
     private readonly Dictionary<string, double> _fcpStepCache = new();
 
+    /// <summary>How long a burst needs to settle before the read-back is trustworthy,
+    /// per SOURCE. The CommBus blocks publish at 20-30 Hz; the SimConnect cache only
+    /// refreshes at 1 Hz, so a read taken on the live budget but served from the cache
+    /// can predate — or fall inside — the burst it is supposed to be measuring. Any
+    /// walk that downgrades live-to-cache mid-read must top its wait up to the cache
+    /// figure before reading; see ReadAltAsync.</summary>
+    private const int LiveSettleMs = 300;
+    private const int FcpLiveSettleMs = 200;
+    private const int CacheSettleMs = 1300;
+
     /// <summary>
     /// Self-calibrating FCP knob walk. No direct-set FCP events exist on this aircraft
     /// (inputs.mdx documents inc/dec only; HEADING_BUG_SET is sync-to-current-heading),
@@ -117,7 +127,8 @@ public partial class SynapticA220Definition
         string readKey, string incEvent, string decEvent, double target, double tolerance,
         double? assumedStep, string valueName, Func<double, string> fmt,
         Func<A220.A220Afdx.LiveBlocks, double?>? liveRead = null, bool headingWrap = false,
-        Func<double, bool, double, string>? note = null)
+        Func<double, bool, double, string>? note = null,
+        Func<double, double>? cacheScale = null, string? cacheNote = null)
     {
         _walkCancel?.Cancel();
         var cts = new System.Threading.CancellationTokenSource();
@@ -138,12 +149,22 @@ public partial class SynapticA220Definition
                         var blocks = await ReadAfdxLiveAsync();
                         if (blocks != null && liveRead(blocks) is { } v) return v;
                         live = false;
+                        // Same top-up as the altitude walk: the short live settle has
+                        // already elapsed, but the cache we are about to read only
+                        // refreshes at 1 Hz, so reading now can sample mid-burst and
+                        // feed the step estimator a value that is far too small.
+                        await System.Threading.Tasks.Task.Delay(CacheSettleMs - FcpLiveSettleMs, cts.Token);
                     }
-                    return Cached(simConnect, readKey);
+                    // The cache may hold the value in a DIFFERENT unit from the target
+                    // (the stabilizer carrier is a 0-1 animation ratio against a target in
+                    // EICAS units) — scale it, or the walk compares 0.25 to 4.3 and drives
+                    // the control to its stop. Identity for every knob that needs none.
+                    double raw = Cached(simConnect, readKey);
+                    return cacheScale != null ? cacheScale(raw) : raw;
                 }
 
                 Task SettleAsync() =>
-                    System.Threading.Tasks.Task.Delay(live ? 200 : 1300, cts.Token);
+                    System.Threading.Tasks.Task.Delay(live ? FcpLiveSettleMs : CacheSettleMs, cts.Token);
 
                 double lastStep = 0;
                 void Finish(double value, bool exact)
@@ -151,6 +172,10 @@ public partial class SynapticA220Definition
                     string text = $"{valueName} {fmt(value)}";
                     if (!exact) text += $" — nearest selectable to {fmt(target)}";
                     if (note != null) text += note(value, exact, lastStep);
+                    // Say when the number came from the derived fallback rather than the
+                    // aircraft's own bus: the pilot is entitled to know the authoritative
+                    // readout is down, even though the walk still closed the loop.
+                    if (!live && cacheNote != null) text += cacheNote;
                     announcer.AnnounceImmediate(text);
                 }
 
@@ -276,15 +301,27 @@ public partial class SynapticA220Definition
     /// </summary>
     internal void StartStabTrimWalk(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, double target)
     {
-        if (LatestFlightControl?.pitch_trim == null)
-        {
-            announcer.AnnounceImmediate(
-                "Stabilizer trim cannot be set — the A220 display link is not connected, so there is no way to read the trim back.");
-            return;
-        }
+        // This used to REFUSE outright whenever the CommBus block was missing, on the
+        // grounds that a stabilizer must never be driven open-loop. The premise was
+        // right; the conclusion was wrong, and it is the FCP lesson over again (see the
+        // note above about the cache being a SOUND fallback). There IS a second
+        // read-back that needs no bus: "L:A22X Horizontal Stabilizer" is the trim
+        // animation ratio over the SAME 0-17 unit travel the EICAS draws, so
+        // ratio * 17 is the number the EICAS prints. Measured live 2026-09-22 against
+        // the aircraft's own trim gauge, whose pointer is drawn with
+        // `translate(0 -pitch_trim * (108/17))` up a 108 px scale from the ND end: at
+        // rest the ratio read 0.2941176 = EXACTLY 5/17, and it tracked every burst of
+        // ELEV_TRIM_DN monotonically down to 0.25343 = 4.31/17.
+        //
+        // It is a DERIVED value, not the bus's own, so it is announced as such — and it
+        // is only ever the fallback: StartFcpWalk prefers `liveRead` whenever the bus is
+        // up. The takeoff-range clause below degrades by itself (pitch_trim_up/_dn exist
+        // only on the bus), so a fallback walk simply omits it rather than guessing it.
         StartFcpWalk(simConnect, announcer, "A22X_STAB_TRIM", "ELEV_TRIM_UP", "ELEV_TRIM_DN",
             target, 0.05, null, "Stabilizer trim", d => $"{d:0.0} units",
             liveRead: b => b.fc?.pitch_trim,
+            cacheScale: r => r * A220.A220Afdx.StabTrimFullScaleUnits,
+            cacheNote: " — read from the stabilizer position, because the data bus is not reporting the trim",
             note: (v, _, _) =>
             {
                 var fc = LatestFlightControl;
@@ -596,11 +633,19 @@ public partial class SynapticA220Definition
                         var b = await ReadAfdxLiveAsync();
                         if (b?.fcp?.alt_sel_ft is { } v) return v;
                         live = false;
+                        // The caller budgeted the SHORT (live) settle before this read,
+                        // but we are now reading a 1 Hz cache — top the wait up to the
+                        // cache settle. Without this, the first read after a downgrade
+                        // lands only ~300 ms after a burst that itself takes ~180 ms, so
+                        // the 1 Hz sample can be from MID-BURST: a 28000 -> 6000 walk
+                        // read "12000", measured a bogus 727 ft per click from it and
+                        // reported having stopped there (user report 2026-09-22).
+                        await System.Threading.Tasks.Task.Delay(CacheSettleMs - LiveSettleMs, cts.Token);
                     }
                     return Cached(simConnect, "A22X_AP_ALT");
                 }
                 Task SettleAsync() =>
-                    System.Threading.Tasks.Task.Delay(live ? 300 : 1300, cts.Token);
+                    System.Threading.Tasks.Task.Delay(live ? LiveSettleMs : CacheSettleMs, cts.Token);
 
                 // Ring bookkeeping: coarse for the thousands, fine for the hundreds, the
                 // pilot's own ring selection put back afterwards.
@@ -846,9 +891,27 @@ public partial class SynapticA220Definition
             new("&Standard", () =>
                 Math.Abs(Cached(simConnect, "A22X_KOHLSMAN", 29.92) - 29.92) < 0.005 ? "STD" : "QNH",
                 () => PulseLVar(simConnect, "A22X L Altimeter STD")),
-            new("&Units", () => Cached(simConnect, "A22X_L_BARO_HPA") > 0.5 ? "Hectopascals" : "Inches",
-                () => WriteLVar(simConnect, "A22X L Altimeter HPA",
-                        Cached(simConnect, "A22X_L_BARO_HPA") > 0.5 ? 0 : 1)),
+            // READ-ONLY. This used to WRITE "A22X L Altimeter HPA" to flip the unit, and
+            // that was wrong twice over (measured live 2026-09-22):
+            //   1. It does nothing. The var is the WASM's OUTPUT mirror — Synaptic's own
+            //      simvars.mdx says "READS whether the CTP's ... setting is displayed in
+            //      hPa", while every neighbour (Altimeter Set/STD, Nav Source) says
+            //      "Read/write". Nothing consumes it: the displays take the unit from the
+            //      CTP CommBus store, and the aircraft exposes no JS->WASM baro channel
+            //      (the whole .call("A22X.…") surface is Display Tune / Refuel / Resync /
+            //      SSPC). B:CTP_BARO_MODE_1_Set and _Toggle were tried live and do nothing.
+            //   2. It CORRUPTED OUR OWN READOUT. The write sticks (the var held a written
+            //      1 for 13 s, unopposed — the WASM republishes only when ITS unit
+            //      changes), and HotkeyAction.ReadAltimeter picks its unit from this very
+            //      var. So one press made the altimeter read-out announce "hectopascals"
+            //      while the aircraft was displaying inches — a wrong unit on an altimeter.
+            // Never write it again without a PROVEN input. Left as a status line so the
+            // pilot can still hear which unit the CTP is in.
+            new("&Units (read-only)", () => Cached(simConnect, "A22X_L_BARO_HPA") > 0.5 ? "Hectopascals" : "Inches",
+                () => announcer.AnnounceImmediate(
+                    (Cached(simConnect, "A22X_L_BARO_HPA") > 0.5 ? "Hectopascals" : "Inches")
+                    + ". The A220 exposes no way to change the altimeter unit from outside the cockpit;"
+                    + " it is set in the aircraft's own options, not here.")),
             new("First Officer S&TD", () => "",
                 () => PulseLVar(simConnect, "A22X R Altimeter STD")),
         };

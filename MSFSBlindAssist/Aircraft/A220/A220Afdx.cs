@@ -155,6 +155,20 @@ internal static class A220Afdx
     internal static string? AutothrottleModeName(int? mode)
         => mode.HasValue && AutothrottleModes.TryGetValue(mode.Value, out var name) ? name : null;
 
+    // ---- Stabilizer trim ---------------------------------------------------------
+
+    /// <summary>
+    /// Full-scale travel of the EICAS stabilizer-trim scale, in the units it prints.
+    /// Taken from the aircraft's own Trim.tsx: the pointer is drawn
+    /// <c>translate(0 -pitch_trim * (108/17))</c> up a 108 px scale whose bottom (ND,
+    /// translate 0) is trim 0 — i.e. 108 px spans 17 units. That makes the trim
+    /// ANIMATION ratio <c>L:A22X Horizontal Stabilizer</c> (0-1 over the same travel)
+    /// convertible: <c>units = ratio * 17</c>, which is the only trim read-back
+    /// available when the CommBus tap is down. Verified live 2026-09-22 — 0.2941176 =
+    /// exactly 5/17 at rest, tracking to 0.25343 = 4.31/17 across ~28 trim clicks.
+    /// </summary>
+    internal const double StabTrimFullScaleUnits = 17.0;
+
     // ---- Flight director ---------------------------------------------------------
 
     /// <summary>Panel/display cell for one side's FD. Deliberately not "Off" when the

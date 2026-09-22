@@ -99,6 +99,11 @@ public sealed class A220FmsForm : Form
 
     private List<Row> _rows = new();
 
+    /// <summary>Index of the row currently held still under the cursor by ApplyRows
+    /// (its text is deliberately one poll or more out of date), or -1. Flushed the
+    /// instant the selection moves off it.</summary>
+    private int _frozenIndex = -1;
+
     /// <summary>Which aircraft overlay currently owns the screen. Menus, dropdowns
     /// and dialogs are MODAL in the real cockpit (a backdrop swallows every click
     /// outside), so the form mirrors that: the list shows only the overlay, and
@@ -172,6 +177,15 @@ public sealed class A220FmsForm : Form
             AccessibleName = "FMS page rows"
         };
         _list.PreviewKeyDown += (_, e) => { if (e.KeyCode == Keys.Enter) e.IsInputKey = true; };
+        // The row we held still under the cursor gets its real text back as soon as
+        // the cursor leaves it (see ApplyRows/FlushFrozenRow).
+        _list.SelectedIndexChanged += (_, _) =>
+        {
+            if (_frozenIndex >= 0 && _frozenIndex != _list.SelectedIndex) FlushFrozenRow();
+        };
+        // Focus leaving the list ends the freeze too — nothing is being read out of
+        // it any more, so there is no reason to keep a row stale.
+        _list.LostFocus += (_, _) => { if (_frozenIndex >= 0) FlushFrozenRow(); };
         _list.KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.Enter) { _ = ActivateSelectedAsync(); e.Handled = true; e.SuppressKeyPress = true; }
@@ -271,7 +285,9 @@ public sealed class A220FmsForm : Form
                 + "menu (direct to, hold, delete…).  Scratchpad + Commit on a waypoint row: enter that waypoint there.  "
                 + "Alt+C or Backspace: clear the scratchpad (also clears a stuck invalid entry).  "
                 + "Delete on a discontinuity row: remove it, then EXEC.  "
-                + "Go to page combo or Ctrl+1-7: DBASE/POS/FPLN/PERF/ROUTE/SEC/ACT.  Ctrl+D: Direct-to.  F5: refresh.  Escape: close menu, then window.",
+                + "Go to page combo or Ctrl+1-7: DBASE/POS/FPLN/PERF/ROUTE/SEC/ACT.  "
+                + "PageUp/PageDown or Alt+Up/Alt+Down: previous/next page of a long list.  "
+                + "Ctrl+D: Direct-to.  F5: refresh.  Escape: close menu, then window.",
             AccessibleName = "Keyboard help"
         };
         Controls.Add(hint);
@@ -279,6 +295,14 @@ public sealed class A220FmsForm : Form
         KeyDown += (_, e) =>
         {
             if (e.KeyCode == Keys.F5) { _ = RefreshAsync(); e.Handled = true; }
+            // Page the FMS window, the same chord every other CDU form in this app
+            // uses (PageUp/PageDown or Alt+Up/Alt+Down). These fire the MKP's own
+            // PREV/NEXT page keys — NOT its UP/DOWN cursor keys, which move the
+            // aircraft's line cursor and are a different control entirely.
+            else if (e.KeyCode == Keys.PageUp || (e.Alt && e.KeyCode == Keys.Up))
+            { PageFms("PREV"); e.Handled = true; e.SuppressKeyPress = true; }
+            else if (e.KeyCode == Keys.PageDown || (e.Alt && e.KeyCode == Keys.Down))
+            { PageFms("NEXT"); e.Handled = true; e.SuppressKeyPress = true; }
             // While any overlay is open, Escape dismisses the OVERLAY (matching the
             // aircraft's own cancel), not the window. A second Escape closes it.
             else if (e.KeyCode == Keys.Escape && _overlay != Overlay.None)
@@ -1013,10 +1037,6 @@ public sealed class A220FmsForm : Form
         var keepRow = keepIndex >= 0 && keepIndex < _rows.Count ? _rows[keepIndex] : null;
         var oldRows = _rows;
         _rows = rows;
-        _list.BeginUpdate();
-        _list.Items.Clear();
-        foreach (var r in rows) _list.Items.Add(r.Display);
-        _list.EndUpdate();
         int restored = keepRow == null ? -1 : rows.FindIndex(r => r.Display == keepRow.Display);
         // A field row's DISPLAY changes while its value is being edited (a Fusion
         // input renders the live scratchpad text in place, and a commit rewrites
@@ -1035,9 +1055,71 @@ public sealed class A220FmsForm : Form
             if (surviving * 2 >= oldRows.Count)
                 restored = Math.Min(keepIndex, rows.Count - 1);
         }
-        if (restored >= 0) _list.SelectedIndex = restored;
-        else if (_list.Items.Count > 0) _list.SelectedIndex = 0;
+        // Reconcile the ListBox IN PLACE — never Clear()+re-Add. A full rebuild
+        // destroys and recreates the focused item, so the screen reader re-reads it
+        // on EVERY poll, and on the legs page the poll signature changes every time
+        // (DTG/ETA tick), so it re-read the waypoint under the cursor once a second
+        // (user report 2026-09-22). Same lesson as the flyPad DOM reconcile.
+        //
+        // The row the user is SITTING ON is left untouched while the list has focus,
+        // unless its IDENTITY changed: rewriting the selected item's text is itself
+        // enough to make the reader speak it again, and a ticking distance is not
+        // worth that. A real change — the plan sequencing so this slot becomes a
+        // different waypoint — still rewrites, and SHOULD be heard. The frozen row's
+        // text is flushed the moment the selection leaves it, so it can only ever be
+        // stale while it is the one row the user is already being told about.
+        bool freeze = _list.Focused && restored >= 0 && keepRow != null
+                      && SameRowIdentity(keepRow, rows[restored]);
+        _list.BeginUpdate();
+        while (_list.Items.Count > rows.Count) _list.Items.RemoveAt(_list.Items.Count - 1);
+        while (_list.Items.Count < rows.Count) _list.Items.Add(rows[_list.Items.Count].Display);
+        for (int i = 0; i < rows.Count; i++)
+        {
+            if (freeze && i == restored) continue;
+            if (!string.Equals((string)_list.Items[i], rows[i].Display, StringComparison.Ordinal))
+                _list.Items[i] = rows[i].Display;
+        }
+        _list.EndUpdate();
+        _frozenIndex = freeze ? restored : -1;
+
+        // Only MOVE the selection when it actually has to move: assigning the same
+        // index still raises SelectedIndexChanged, which is another re-read.
+        if (restored >= 0) { if (_list.SelectedIndex != restored) _list.SelectedIndex = restored; }
+        else if (_list.Items.Count > 0) { if (_list.SelectedIndex != 0) _list.SelectedIndex = 0; }
         _breadcrumb.Text = breadcrumb;
+    }
+
+    /// <summary>Fire an MKP page key (PREV/NEXT) and re-read the window. The cursor is
+    /// sent back to the top of the list because it IS a new page — keeping the old index
+    /// would leave the reader mid-page on unrelated rows. ApplyRows only moves the
+    /// selection when it has to, so this is the one place that deliberately resets it.</summary>
+    private void PageFms(string key)
+    {
+        if (_busy) return;
+        _frozenIndex = -1;            // the page is changing; nothing to hold still
+        _lastSignature = "";          // force a rebuild even if the new page looks similar
+        _def.SendMkpKey(key);
+        _ = DelayedRefreshAsync();
+    }
+
+    /// <summary>Is this the SAME row, ignoring its volatile text? Identity is what the
+    /// actions are addressed by (LegIdx for a legs row, Label+Occurrence elsewhere), so
+    /// a row that keeps its identity is the same waypoint/field with a new number in it.</summary>
+    private static bool SameRowIdentity(Row a, Row b)
+        => a.Kind == b.Kind && a.LegIdx == b.LegIdx
+           && a.Occurrence == b.Occurrence
+           && string.Equals(a.Label, b.Label, StringComparison.Ordinal);
+
+    /// <summary>Put the real text back on a row that was held still under the cursor.
+    /// Called as soon as the selection leaves it, so the user never arrows onto a
+    /// stale row — every row they move TO was being refreshed all along.</summary>
+    private void FlushFrozenRow()
+    {
+        int i = _frozenIndex;
+        _frozenIndex = -1;
+        if (i < 0 || i >= _list.Items.Count || i >= _rows.Count) return;
+        if (!string.Equals((string)_list.Items[i], _rows[i].Display, StringComparison.Ordinal))
+            _list.Items[i] = _rows[i].Display;
     }
 
     /// <summary>Activate a revision-menu option by its aircraft-side index. The

@@ -110,7 +110,25 @@
         (function (name) {
           try {
             cbState.listener.on(name, function (json) {
-              try { cbData[name] = JSON.parse(json); cbStamp[name] = Date.now(); } catch (e2) { }
+              // MERGE, never replace. These stores broadcast PARTIAL updates — the
+              // aircraft's own wrapper (src/avionics/lib/afdx/index.ts) keeps itself
+              // whole by calling "A22X.Resync" whenever a message changes something
+              // and again 3 s after the last one, so a single broadcast is not a full
+              // snapshot. Replacing the cached object therefore ERASED every field the
+              // latest message happened not to carry: live 2026-09-22 the FCP block
+              // arrived with `alt_sel_ft` absent, so the altitude readout announced
+              // "Altitude not set — the selector shows dashes" with FL280 selected,
+              // and the Flight Control block arrived without `pitch_trim`, which is
+              // what made the stabilizer-trim walk refuse as "display link not
+              // connected" while the link was up the whole time.
+              // A genuine null still lands: JSON carries it as a key, so it merges.
+              try {
+                var upd = JSON.parse(json);
+                var cur = cbData[name] || {};
+                for (var k in upd) if (Object.prototype.hasOwnProperty.call(upd, k)) cur[k] = upd[k];
+                cbData[name] = cur;
+                cbStamp[name] = Date.now();
+              } catch (e2) { }
             });
             cbState.subs++;
           } catch (e3) { cbState.err = 'on:' + (e3 && e3.message); }
