@@ -72,6 +72,23 @@ public static class SurfaceFamilies
 /// fires on a stationary aircraft and a "for N samples" rule scales with frame rate. Metres
 /// travelled is the only stable axis.</para>
 ///
+/// <para>The metres are those travelled BETWEEN two readings of the new surface, never the ones
+/// before its first reading: those were driven from where the OLD surface was last read. The only
+/// caller polls every 2 s (<c>AirportSurroundingsMonitor.PollMs</c>) — 10-15 m at taxi speed, a
+/// whole <see cref="ConfirmMetres"/> — so crediting them let one reading confirm on its own, and a
+/// wheel clipping the grass at a corner was announced (PR #230 review, SC-2). Confirming therefore
+/// takes at least two readings of the new surface, whatever the speed; the tests pin this at that
+/// cadence.</para>
+///
+/// <para>What counts as "the new surface" depends on the change. LEAVING THE PAVEMENT is one
+/// surface whatever it is made of: any non-paved family, from the first such reading, so a drift
+/// onto mottled ground whose readings alternate grass and gravel is one excursion, and the
+/// CONFIRMING reading names it (PR #230 review, A3-6 — kept per family, each change reset the
+/// evidence and that drift was never announced). EVERY OTHER change is per family: back onto the
+/// pavement, or one non-paved family to another, needs readings of that family, and a reading of
+/// the family the pilot was last told about resets whatever is pending — so flapping between
+/// grass and gravel off the pavement stays silent.</para>
+///
 /// <para>Only a change of FAMILY is spoken. Asphalt to concrete happens at the edge of most
 /// aprons — measured four times on one 2.35 km LOWI taxi — and carries nothing a pilot can act
 /// on.</para>
@@ -79,7 +96,8 @@ public static class SurfaceFamilies
 public sealed class SurfaceChangeGate
 {
     /// <summary>
-    /// How far the aircraft must travel ON the new surface before it is believed. Sized to cross a
+    /// How far the aircraft must travel ON the new surface before it is believed — measured from
+    /// the FIRST reading of it, never before (see <see cref="Evaluate"/>). Sized to cross a
     /// painted edge and a shoulder rather than to tune a callout: below it, a wheel clipping the
     /// grass at a tight corner and coming straight back is not a departure from the taxiway, and
     /// announcing it teaches the pilot to ignore the one that matters. Distance, not time, so a
@@ -113,7 +131,13 @@ public sealed class SurfaceChangeGate
 
     /// <summary>
     /// One sample. <paramref name="metresSinceLast"/> is the ground distance covered since the
-    /// previous call. Returns the sentence to speak, or null.
+    /// previous call, and it is credited only when THIS reading CONTINUES evidence the previous
+    /// reading already opened: when the pavement is being left, any non-paved reading continues it
+    /// (and the latest reading names the sentence); for every other change, only a reading of the
+    /// same family. A reading that does not continue it opens new evidence at zero, whatever
+    /// distance arrives with it, because that distance was driven from where the old surface was
+    /// last read. A distance that is not a finite number counts as none, and a ground speed that is
+    /// not one counts as stopped — neither can ever confirm. Returns the sentence to speak, or null.
     /// </summary>
     public string? Evaluate(int surfaceType, bool surfaceInfoValid, bool onGround, double groundSpeedKts, double metresSinceLast)
     {
@@ -132,10 +156,28 @@ public sealed class SurfaceChangeGate
 
         if (family == _spoken) { _pending = SurfaceFamily.Unknown; _pendingMetres = 0; return null; }
 
-        if (groundSpeedKts < MinSpeedKts) return null;   // hold the evidence, accumulate nothing
+        // Does this reading CONTINUE the evidence already open? Leaving the pavement is ONE bucket:
+        // while the pilot was last told "pavement", any non-paved reading continues it, so mottled
+        // ground whose readings alternate grass and gravel still adds up (PR #230 review, A3-6). A
+        // pending family can then only be non-paved — a Paved reading equals _spoken and reset it
+        // above. Every other change is per family: back onto the pavement, or one non-paved family
+        // to another, needs readings of THAT family.
+        bool continues = _spoken == SurfaceFamily.Paved ? _pending != SurfaceFamily.Unknown : family == _pending;
 
-        if (family != _pending) { _pending = family; _pendingMetres = 0; }
-        _pendingMetres += Math.Max(0, metresSinceLast);
+        // A reading that does not continue it OPENS new evidence at ZERO, moving or not. The
+        // distance that arrives with it was driven from where the OLD surface was last read — how
+        // much of it lay on the new one is unknowable — and at the monitor's 2 s poll it is a whole
+        // ConfirmMetres: credited, one reading of the grass at a corner confirmed on its own.
+        if (!continues) { _pending = family; _pendingMetres = 0; return null; }
+        _pending = family;   // the latest reading names the sentence
+
+        // Stopped — or a speed that is not a number, which fails every comparison and so is tested
+        // the way that fails CLOSED: hold the evidence, accumulate nothing.
+        if (!(groundSpeedKts >= MinSpeedKts)) return null;
+
+        // Math.Max(0, NaN) is NaN and NaN is never below ConfirmMetres: a distance that is not a
+        // finite number once confirmed on the spot. It is no distance at all.
+        _pendingMetres += double.IsFinite(metresSinceLast) ? Math.Max(0, metresSinceLast) : 0;
         if (_pendingMetres < ConfirmMetres) return null;
 
         var from = _spoken;

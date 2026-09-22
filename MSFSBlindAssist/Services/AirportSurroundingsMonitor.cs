@@ -26,7 +26,10 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public sealed class AirportSurroundingsMonitor : IDisposable
 {
-    private const int PollMs = 2000;
+    /// <summary>The poll period. Internal so the surface tests feed samples at the cadence production
+    /// actually runs at: the distance one sample carries is this period times the ground speed, and a
+    /// test fed any other distance cannot see the rule that matters (PR #230 review, SC-2).</summary>
+    internal const int PollMs = 2000;
     private static readonly TimeSpan IcaoRefresh = TimeSpan.FromSeconds(30);
 
     /// <summary>How long a warm-up that left the probe unable to answer is believed before another

@@ -1434,22 +1434,60 @@ that reason.
 
 `SurfaceChangeGate` is pure (no clock, no sim access) and is driven from
 `AirportSurroundingsMonitor`'s existing 2 s ground tick. `SURFACE TYPE` and
-`SURFACE INFO VALID` ride the `AIRCRAFT_POSITION` definition so the surface and
-the position always come from the SAME sample — pairing a surface read with a
-position from another tick is how a callout names the wrong place. **Their order
-in that definition and in the `AircraftPosition` struct is the contract**: last
-in both, same order, or every field after the divergence reads from the wrong
+`SURFACE INFO VALID` ride the `AIRCRAFT_POSITION` definition. **Their order in
+that definition and in the `AircraftPosition` struct is the contract**: last in
+both, same order, or every field after the divergence reads from the wrong
 offset.
 
-Four rules, each measured rather than chosen:
+**Every OTHER writer of `lastKnownPosition` carries the two fields forward.**
+The visual-guidance (505), flare-assist (508), taxi-guidance (507) and
+takeoff-assist (506) streams each mirror their own frame into
+`lastKnownPosition`, and none of them knows what is under the wheels. Built
+field by field, the surface fields defaulted to 0 — and `SurfaceInfoValid` 0 is
+what the gate reads as "say nothing". Taxi guidance mirrors on every frame, so
+under a loaded taxi route, the case this callout exists for, it could never
+have fired, with no error and nothing in the log. A new position mirror must
+copy both fields from the previous `lastKnownPosition`, as the 506/507 mirrors
+do for `Altitude`. The cost is a known lag: while one of those streams runs, the
+position the monitor reads is that stream's latest frame and the surface is the
+last `AIRCRAFT_POSITION` answer's, about one poll older. Without one of them
+both come from that answer, which is itself the previous poll's:
+`RequestAircraftPosition` is asynchronous and the tick reads
+`LastKnownPosition` straight after asking. The monitor asks on every poll, so
+the lag never grows.
+
+Five rules, each measured rather than chosen:
 
 - **Only a change of FAMILY speaks.** `SurfaceFamilies` folds the sim's enum into
   Paved / Unpaved / Grass / Water / SnowOrIce / Unknown. Asphalt-to-concrete
   happened **four times on one 2.35 km LOWI taxi** (the GA apron is concrete,
   taxiway Alpha is asphalt) and carries nothing a pilot can act on.
-- **Confirmation is by DISTANCE travelled** (`ConfirmMetres`, 12 m), never time or
-  sample count. A DA40 steers on differential braking, so a taxi is stop-start by
-  nature and a "has held for N seconds" rule fires on a stationary aircraft.
+- **Confirmation is by DISTANCE travelled ON the new surface** (`ConfirmMetres`,
+  12 m), never time. A DA40 steers on differential braking, so a taxi is
+  stop-start by nature and a "has held for N seconds" rule fires on a stationary
+  aircraft. The distance is measured FROM THE FIRST READING of the new surface:
+  whatever distance arrives WITH that reading was driven from where the old
+  surface was last read, so none of it is credited. At the monitor's 2 s poll
+  that distance is 10–15 m at taxi speed — a whole `ConfirmMetres` — and the
+  first version credited it, so ONE reading confirmed: a wheel clipping the grass
+  at a corner and coming straight back was announced. Now a single reading never
+  confirms, whatever the speed; rolling on at 15 kt (15.4 m a poll) confirms on
+  the second reading, at 10 kt (10.3 m) on the third. A stop on the new surface
+  holds the evidence; a non-finite distance or ground speed adds nothing. The
+  tests feed the gate at that production cadence
+  (`AirportSurroundingsMonitor.PollMs`) — the 2 m samples they fed before cannot
+  tell the two rules apart.
+- **Leaving the pavement is one surface; every other change is per family.**
+  While the pilot was last told "pavement", every non-paved family — grass,
+  unpaved, water, snow or ice — counts toward ONE excursion from the first such
+  reading, and the reading that confirms it names it: mottled ground whose
+  readings alternate grass and gravel is still "Off the pavement" (review A3-6;
+  kept per family, each change reset the evidence and that drift was never
+  announced). Back onto the pavement, and one non-paved family to another, need
+  readings of that family, and a reading of the family the pilot was last told
+  about resets whatever is pending — so flapping between grass and gravel off
+  the pavement stays silent, and a single asphalt reading after a gravel one is
+  not "Back on pavement.".
 - **An enum value the table does not name is SILENT** and does not disturb what
   the pilot was last told. Only three values are measured live in MSFS 2024 — `0`
   concrete, `1` grass, `4` asphalt, confirmed against LOWI's GA apron, its
