@@ -206,10 +206,13 @@ public class Pmdg777FlowOrderingTests
     //   CANCEL RECALL x2 / Transponder XPNDR / Stabilizer trim Set for TakeOff /
     //   Aileron trim Verify 0 / Rudder trim Verify 0 / BEFORE START CHECKLIST.
     //
+    // Owner-ruled OMISSIONS (2026-09-22, "not needed there"): MSFSBA deliberately carries
+    // neither "LNAV Arm as needed" nor "VNAV Arm" — Before Takeoff's "Verify armed" pair
+    // is where the First Officer handles them.
+    //
     // MSFSBA had trim NINE items early (#7-9 of 23) and, in the flow, as step 3 of 17 —
-    // ahead of the entire APU start and of every hydraulic pump. It also had VNAV before
-    // LNAV, and disconnected ground power at a different point in the flow than in the
-    // checklist.
+    // ahead of the entire APU start and of every hydraulic pump. It also disconnected
+    // ground power at a different point in the flow than in the checklist.
     // =====================================================================
 
     private static void AssertOrder(System.Collections.Generic.List<string> ids,
@@ -259,22 +262,55 @@ public class Pmdg777FlowOrderingTests
         Assert.DoesNotContain("BT_SET_TRIM", ItemIds("BEFORE_TAXI"));
     }
 
-    [Fact]
-    public void BeforeStartChecklist_arms_LNAV_before_VNAV()
+    // Preflight and Before Start, flows and checklist groups alike. Single() so a
+    // renamed id fails loudly instead of silently scanning nothing.
+    private static readonly string[] PreStartFlowIds = { "COCKPIT_PREP", "BEFORE_START" };
+    private static readonly string[] PreStartGroupIds =
+        { "PREFLIGHT", "PREFLIGHT_CL", "BEFORE_START", "BEFORE_START_CL" };
+
+    private static System.Collections.Generic.IEnumerable<(string Where, string Text)> PreStartLines()
     {
-        // Vendor order is LNAV ("Arm as needed") then VNAV ("Arm"); MSFSBA had them
-        // inverted, which is half of why the pair reads oddly against Before Takeoff.
-        AssertOrder(ItemIds("BEFORE_START"), "BS_V2_SET", "BS_LNAV_SET", "BS_VNAV_ARM");
+        var flows = PMDG777FlowDefinitions.Build();
+        foreach (var id in PreStartFlowIds)
+            foreach (var s in flows.Single(f => f.Id == id).Steps)
+                foreach (var t in new[] { s.Label, s.SpokenLabel, s.ReminderText })
+                    if (!string.IsNullOrEmpty(t)) yield return ($"flow {id} step {s.Id}", t);
+        var groups = PMDG777ChecklistDefinitions.Build();
+        foreach (var id in PreStartGroupIds)
+            foreach (var i in groups.Single(g => g.Id == id).Items)
+                foreach (var t in new[] { i.Label, i.ReminderText })
+                    if (!string.IsNullOrEmpty(t)) yield return ($"group {id} item {i.Id}", t);
     }
 
     [Fact]
-    public void BeforeTakeoff_presents_LNAV_and_VNAV_as_a_verification_not_a_second_arming()
+    public void Preflight_and_BeforeStart_no_longer_ask_for_LNAV_or_VNAV()
     {
-        // The Before Takeoff pushes stay — they are the only net that catches an unarmed
-        // VNAV on the runway, and the 777 has no other LNAV/VNAV automation. What changes
-        // is that they no longer read as a second, competing "arm" instruction.
+        // Owner ruling 2026-09-22: arming LNAV/VNAV is not needed before engine start,
+        // even though PMDG's printed Before Start Procedure lists it. Before Takeoff's
+        // "Verify armed" pair (below) is where the First Officer handles them.
+        foreach (var (where, text) in PreStartLines())
+            Assert.False(
+                text.Contains("LNAV", System.StringComparison.OrdinalIgnoreCase)
+                || text.Contains("VNAV", System.StringComparison.OrdinalIgnoreCase),
+                $"{where}: \"{text}\"");
+    }
+
+    [Fact]
+    public void BeforeTakeoff_is_where_LNAV_and_VNAV_get_armed()
+    {
+        // With Preflight and Before Start no longer asking for them (owner ruling
+        // 2026-09-22), these are the First Officer's ONLY LNAV/VNAV lines — and the only
+        // net that catches an unarmed VNAV on the runway, since the 777 profile has no
+        // other LNAV/VNAV automation. They read as a check ("Verify armed"), and a tick
+        // presses the button when the annunciator shows the mode unarmed.
         foreach (var id in new[] { "BTKO_LNAV", "BTKO_VNAV" })
-            Assert.Contains("Verify", Item("BEFORE_TAKEOFF", id).Label);
+        {
+            var item = Item("BEFORE_TAKEOFF", id);
+            Assert.Contains("Verify", item.Label);
+            Assert.NotNull(item.CheckAction);
+        }
+        foreach (var id in new[] { "BTKOF_LNAV", "BTKOF_VNAV" })
+            Assert.Contains(id, FlowStepIds("BEFORE_TAKEOFF"));
     }
 
     // =====================================================================

@@ -343,9 +343,10 @@ public static class PMDG777ChecklistDefinitions
             // match the flow — the two lists used to disagree by four mirrored pairs.
             Manual("BS_CDU_COMPLETE", "BEFORE_START", "CDU Preflight: Verify complete"),
             Manual("BS_V2_SET", "BEFORE_START", "IAS/MACH selector: Set V2"),
-            // Vendor order is LNAV ("Arm as needed") then VNAV ("Arm"); these were inverted.
-            Manual("BS_LNAV_SET", "BEFORE_START", "LNAV: Arm as needed"),
-            Manual("BS_VNAV_ARM", "BEFORE_START", "VNAV: ARM"),
+            // Owner-ruled OMISSIONS (2026-09-22, "not needed there"): the vendor's LNAV and
+            // VNAV arm lines are deliberately NOT carried — Before Takeoff's "Verify armed"
+            // pair is where the First Officer handles them. Do not restore them from the
+            // vendor page.
             Manual("BS_INIT_HDG", "BEFORE_START", "Initial heading or track: Set"),
             Manual("BS_INIT_ALT", "BEFORE_START", "Initial altitude: Set"),
             Reminder("BS_DOORS_VERIFY", "BEFORE_START", "Exterior doors: Verify closed"),
@@ -524,13 +525,12 @@ public static class PMDG777ChecklistDefinitions
             Auto("BTKO_XPNDR", "BEFORE_TAKEOFF", "Transponder: TA/RA",
                 "XPDR_ModeSel", v => v > 3.5,
                 action: (e, _) => e.SetTransponderMode(4)),
-            // LNAV/VNAV are ARMED in Before Start — that is where PMDG's printed procedure
-            // puts them, and the only place. These two lines are the SAFETY NET, not a
-            // second arming: they read as a verification, and the tick still presses the
-            // button if the annunciator shows the mode unarmed, because the 777 profile has
-            // no other LNAV/VNAV automation and an unarmed VNAV on the runway is the
-            // failure this catches. Labelled "Verify armed" so the pair no longer reads as
-            // a competing instruction to the Before Start items.
+            // These two lines are the First Officer's ONLY LNAV/VNAV handling: PMDG's
+            // printed procedure arms them in Before Start, but that pair is an owner-ruled
+            // omission (2026-09-22, "not needed there"). They read as a verification, and
+            // the tick presses the button if the annunciator shows the mode unarmed,
+            // because the 777 profile has no other LNAV/VNAV automation and an unarmed VNAV
+            // on the runway is the failure this catches.
             // The pushes are TOGGLES — press only when the annunciator shows unarmed, or a
             // tick on an already-armed mode would disarm it (the FD-switch trap).
             Auto("BTKO_LNAV", "BEFORE_TAKEOFF", "LNAV: Verify armed",

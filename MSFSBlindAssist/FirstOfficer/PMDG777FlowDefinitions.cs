@@ -247,7 +247,6 @@ public static class PMDG777FlowDefinitions
         Steps = new()
         {
             Captain("BS_MCP_SPEEDS",  "Set MCP: speed, heading and altitude"),
-            Captain("BS_LNAV_VNAV",   "Arm LNAV / VNAV as required"),
             // Trim is NOT briefed here any more — it moved to the end of this flow, where
             // PMDG's own Before Start Procedure puts it (after the transponder) and where
             // the hydraulic pumps that move the surfaces are actually running. It used to
