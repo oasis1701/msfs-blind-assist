@@ -348,15 +348,15 @@ public static class PMDG737FlowDefinitions
             SW("AT_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1),
             // Read-only gear-up confirmation — it never moves the lever (the First Officer
             // writes no gear lever; see docs/pmdg-737.md). Confirms the gear the way a crew
-            // does, "gear up, lights out" (GearUpConfirmation), and completes the After
+            // does, "gear up, lights out" (GearConfirmation), and completes the After
             // Takeoff Checklist's "Landing gear: UP". LAST, so gear still retracting does not
             // hold up the steps above; waits up to 20 s. If the gear is not confirmed up the
             // step is announced as skipped and FlowManager keeps ATC_GEAR out of
             // MarkGroupComplete's latch, so the line keeps mirroring the real gear instead of
             // reading complete over gear that is still down.
-            Skip(WaitForField("AT_GEAR_UP_CHECK", "Landing gear: UP", GearUpConfirmation.Field, v => v > 0.5, 20,
+            Skip(WaitForField("AT_GEAR_UP_CHECK", "Landing gear: UP", GearConfirmation.UpField, v => v > 0.5, 20,
                     checklistItemId: "ATC_GEAR"),
-                s => s.GetValue(GearUpConfirmation.Field) > 0.5),
+                s => s.GetValue(GearConfirmation.UpField) > 0.5),
         }
     };
 
@@ -402,7 +402,7 @@ public static class PMDG737FlowDefinitions
     private static Flow BuildLanding() => new()
     {
         Id = "LANDING", Name = "Landing",
-        Description = "Start switches CONT, speedbrake armed, missed approach altitude.",
+        Description = "Start switches CONT, speedbrake armed, missed approach altitude, then confirms the gear is down.",
         RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
         Steps = new()
         {
@@ -416,6 +416,16 @@ public static class PMDG737FlowDefinitions
             SW("LD_SPDBRK", "Speedbrake: ARMED", SpeedbrakeArmLadder.PseudoKey, null,
                SpeedbrakeArmLadder.ArmedField, v => v > 0.5, "LDC_SPDBRK"),
             Captain("LD_MISSED", "Set the missed approach altitude."),
+            // Read-only gear-down confirmation — it never moves the lever (the First Officer
+            // writes no gear lever; see docs/pmdg-737.md). Confirms the gear the way a crew
+            // does, "three green" (GearConfirmation), and completes the Landing Checklist's
+            // "Landing gear: DOWN". LAST, so the steps above are not held up; waits up to
+            // 20 s. If the gear is not confirmed down the step is announced as skipped and
+            // FlowManager keeps LDC_GEAR out of MarkGroupComplete's latch, so the line keeps
+            // mirroring the real gear instead of reading complete over gear that is still up.
+            Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing gear: DOWN", GearConfirmation.DownField, v => v > 0.5, 20,
+                    checklistItemId: "LDC_GEAR"),
+                s => s.GetValue(GearConfirmation.DownField) > 0.5),
         }
     };
 

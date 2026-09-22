@@ -361,7 +361,7 @@ read-back — weight-on-wheels latches the lever at DOWN, so ground tests settle
 
 What replaced it (2026-09-22): the After Takeoff Checklist's "Landing gear: UP"
 (`ATC_GEAR`) is confirmed the way a crew confirms it — gear up, lights out — not from the
-lever. `GearUpConfirmation` (published as the synthetic field `FO_GEAR_UP`) reads up only
+lever. `GearConfirmation` (published as the synthetic field `FO_GEAR_UP`) reads up only
 when the lever is not DOWN AND all nine gear lights are out: the main-panel green
 DOWN-AND-LOCKED and red IN-TRANSIT lights for each gear, plus the aft-overhead greens. The
 lever half keeps a cold-and-dark aircraft (every light dark for want of power) from reading
@@ -370,10 +370,21 @@ pilot moves to OFF by hand still satisfies it once the gear is up. The After Tak
 ends with a read-only step, "Landing gear: UP" (`AT_GEAR_UP_CHECK`), that waits up to 20 s
 for it and completes the line. If the gear is not confirmed up, the step says so ("Timed
 out waiting for… / Skipping…") and `FlowManager` keeps `ATC_GEAR` out of
-`MarkGroupComplete`'s latch. So finishing the flow can no longer latch "Landing gear: UP"
-over gear that is still down, which it used to do whatever the lever read. The gear
+`MarkGroupComplete`'s latch. So finishing the flow no longer latches "Landing gear: UP"
+over gear that is still down (it used to, whatever the lever read) — unless the line was
+already ticked before the flow finished, which `MarkGroupComplete` keeps. The gear
 readout hotkey still says "Gear lever off" when it finds the lever there, because reading
 the lever is reliable; only moving it to OFF is not.
+
+The Landing Checklist's "Landing gear: DOWN" (`LDC_GEAR`) is its mirror image and was
+latched the same way whenever the Landing flow finished before the gear came down. It now
+reads the synthetic `FO_GEAR_DOWN`, "three green": the lever DOWN, all three main-panel
+green DOWN-AND-LOCKED lights on, and no red. A red means a gear is in transit or disagrees,
+and a light test lights the reds too, so neither reads as "down". The overhead greens are
+the alternate indication and are deliberately not required. The Landing flow ends with a
+read-only "Landing gear: DOWN" wait (`LD_GEAR_DOWN_CHECK`, 20 s) that behaves exactly like
+the After Takeoff check. Both warnings are only heard because the flow engine's "flow
+complete" is now queued rather than interrupting (see docs/first-officer.md).
 
 **Known limitation — the cockpit panel, not the First Officer.** `PMDG737Definition.cs`
 still exposes the released panel control `Selector("MAIN_GearLever", "Gear Lever", "UP",

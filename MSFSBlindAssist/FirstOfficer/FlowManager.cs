@@ -241,7 +241,13 @@ public class FlowManager<TExec, TState>
         }
 
         FlowCompleted?.Invoke(flow);
-        _announcer.AnnounceImmediate($"{flow.Name} flow complete");
+        // QUEUED, never AnnounceImmediate (owner decision 2026-09-22). This runs straight
+        // after the last step with no pause, and an immediate announcement discards the
+        // queue — so every flow's LAST step was cut off, including a skipped wait's
+        // "Timed out waiting for: … / Skipping: …" (the PMDG 737 gear checks), which a blind
+        // pilot then heard as silence followed by "flow complete": success. Queued, the
+        // step's own words are heard first and "flow complete" follows them.
+        _announcer.Announce($"{flow.Name} flow complete");
     }
 
     private async Task<bool> ExecuteStepAsync(FlowDefinition<TState> flow, FlowStep<TState> step, int index, CancellationToken ct)
