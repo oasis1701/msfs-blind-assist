@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -19,10 +19,15 @@
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RouteRunwayCrossings.cs"  Link="Linked\RouteRunwayCrossings.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayFrame.cs"           Link="Linked\RunwayFrame.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayShape.cs"           Link="Linked\RunwayShape.cs" />
-    <!-- TaxiGraph's stand-bridge pass (BridgeOrphanParkingIslands / IsEligibleMainEndpoint /
-         ChooseBridgePair, PR #235) calls RunwayPavement — three call sites this probe's older
-         link list predates, and the same file tools/StandBridgeSweep already had to add. -->
+    <!-- TaxiGraph.BridgeOrphanParkingIslands calls RunwayPavement (a fabricated bridge must never
+         end on or cross a runway) - pre-existing gap in this link set that left the probe unable
+         to BUILD, i.e. unrunnable, on main. Self-contained (RunwayShape + Database.Models, both
+         already linked), so pinning it here adds no further dependency. -->
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayPavement.cs"        Link="Linked\RunwayPavement.cs" />
+    <!-- TaxiGraph logs a relocated start row through Utils/Logging/Log (CLAUDE.md: every diagnostic
+         write goes through it), so the logger and its path authority ride along. -->
+    <Compile Include="..\..\MSFSBlindAssist\Utils\Logging\*.cs"                  Link="Linked\Logging\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Utils\AppLogs.cs"                     Link="Linked\AppLogs.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayRouteClassifier.cs" Link="Linked\RunwayRouteClassifier.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RolloutExitGate.cs"       Link="Linked\RolloutExitGate.cs" />
     <!-- TaxiGraph.ResolveHoldingPointEntries calls NamedHoldingPointResolver.SnapOrInsert (added

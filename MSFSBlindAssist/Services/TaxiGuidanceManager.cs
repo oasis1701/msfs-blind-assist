@@ -2021,8 +2021,9 @@ public partial class TaxiGuidanceManager : IDisposable
         // running — a landing-exit re-route, which goes straight to Taxiing without StartGuidance.
         // It enters the hold on its first taxiing frame and speaks the sentence in that same frame:
         // MainForm feeds no frames while guidance holds. An aircraft already more than 10 m along the
-        // route, or standing on any runway's pavement, gets no hold (the pass's own tests), and the
-        // skip is logged with its reason beside the adoption's "Route crossings:" line.
+        // route, or within the clear margin of any runway (the pass's own tests — the SAME margin the
+        // pass demands of a stop it invents, never bare containment), gets no hold, and the skip is
+        // logged with its reason beside the adoption's "Route crossings:" line.
         if (_state == TaxiGuidanceState.Taxiing && _currentSegmentIndex == 0
             && _route?.StartHoldRunway != null)
         {
@@ -2030,8 +2031,8 @@ public partial class TaxiGuidanceManager : IDisposable
             if (Navigation.RouteRunwayCrossings.RouteProgressMeters(_route.Segments, lat, lon)
                 > Navigation.RouteRunwayCrossings.StopPassedToleranceMetres)
                 skipReason = "aircraft already past the start node";
-            else if (Navigation.RouteRunwayCrossings.RunwayUnder(_graph?.RunwayCenterlines, lat, lon) is { } runwayUnder)
-                skipReason = $"aircraft on the pavement of runway {runwayUnder.Name1}/{runwayUnder.Name2}";
+            else if (Navigation.RouteRunwayCrossings.RunwayWithinClearMargin(_graph?.RunwayCenterlines, lat, lon) is { } runwayUnder)
+                skipReason = $"aircraft on or within the clear margin of runway {runwayUnder.Name1}/{runwayUnder.Name2}";
 
             if (skipReason != null)
             {
@@ -3266,11 +3267,33 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <c>HoldShort</c> on segment 0, and the hold sentence published for exactly one delivery. It is
     /// also the Repeat-last instruction, so Ctrl+Y replays the hold rather than an older callout.
     /// </summary>
+    // The runways THIS hold still guards, and how far through them Continue has got
+    // (PR #238 deferred finding §6, implemented on the owner's ruling). Empty for the ordinary
+    // single-runway hold, which is what keeps that path byte-identical. Derived from the stop's own
+    // label by Navigation.RunwayHoldStages, so nothing new has to survive a route mutation; the only
+    // new state is this list and its index, and both are re-established on every hold entry.
+    private IReadOnlyList<string> _holdStages = Array.Empty<string>();
+    private int _holdStageIndex;
+
+    /// <summary>
+    /// The hold sentence for a stop, staged when it guards more than one runway. Records the stages
+    /// on the way past, so <see cref="ContinuePastHoldShort"/> knows how many clearances are still
+    /// outstanding.
+    /// </summary>
+    private string ComposeHoldEntry(string? holdShortLabel)
+    {
+        _holdStages = Navigation.RunwayHoldStages.From(holdShortLabel);
+        _holdStageIndex = 0;
+        return _holdStages.Count > 0
+            ? Navigation.RunwayHoldStages.ComposeHold(holdShortLabel, _holdStages[0])
+            : Navigation.RouteRunwayCrossings.ComposeHoldShortInstruction(holdShortLabel);
+    }
+
     private void EnterStartHold()
     {
         _steeringTone.Pause();
         SetState(TaxiGuidanceState.HoldShort);
-        string cue = Navigation.RouteRunwayCrossings.ComposeHoldShortInstruction(_route?.StartHoldRunway);
+        string cue = ComposeHoldEntry(_route?.StartHoldRunway);
         LastRouteStartHoldCue = cue;
         _lastInstruction = cue;
     }
@@ -3279,7 +3302,7 @@ public partial class TaxiGuidanceManager : IDisposable
     {
         _steeringTone.Pause();
         SetState(TaxiGuidanceState.HoldShort);
-        AnnounceInstruction(Navigation.RouteRunwayCrossings.ComposeHoldShortInstruction(holdShortSeg.HoldShortRunway));
+        AnnounceInstruction(ComposeHoldEntry(holdShortSeg.HoldShortRunway));
     }
 
     public void ContinuePastHoldShort()
@@ -3287,6 +3310,36 @@ public partial class TaxiGuidanceManager : IDisposable
         lock (_stateLock)
         {
         if (_state != TaxiGuidanceState.HoldShort || _route == null) return;
+
+        // ONE CONTINUE PER RUNWAY at a stop that guards more than one (PR #238 deferred finding §6).
+        // The label merges when two runways resolve to the same stop ("runway 09 and runway 01") and
+        // one segment is tagged, so a single Continue used to authorise crossing BOTH — against this
+        // manager's own stated rule that explicit crossing clearance is required for EACH runway,
+        // because controllers issue them one at a time and an aircraft must have crossed the
+        // previous runway before the next clearance is issued.
+        //
+        // The aircraft does NOT move on this press: the state stays HoldShort and the tone stays
+        // paused, which is why the sentence says "Still holding" rather than "Continuing".
+        //
+        // NOT applied at the DESTINATION hold (_holdShortAtDestination): a Continue there is a
+        // lineup or takeoff clearance and hands over to the lineup state machine, a different
+        // meaning from a crossing clearance. A destination stop that also guards another runway
+        // keeps today's single-press behaviour — a deliberate limit, recorded rather than guessed
+        // at.
+        if (!_holdShortAtDestination && _holdStageIndex + 1 < _holdStages.Count)
+        {
+            string cleared = _holdStages[_holdStageIndex];
+            _holdStageIndex++;
+            string next = _holdStages[_holdStageIndex];
+            string staged = Navigation.RunwayHoldStages.ComposeAdvance(cleared, next);
+            LastRouteStartHoldCue = _route.StartHoldRunway != null && _currentSegmentIndex == 0
+                ? staged
+                : LastRouteStartHoldCue;
+            AnnounceInstruction(staged);
+            return;
+        }
+        _holdStages = Array.Empty<string>();
+        _holdStageIndex = 0;
 
         // Belt-and-braces (PR #238 review, Important 1): SetState's own leaving-Taxiing hook
         // already cleared _pendingTaxiwayAnnouncement the moment guidance entered this hold
@@ -3443,6 +3496,12 @@ public partial class TaxiGuidanceManager : IDisposable
             _holdShortAtDestination = true;
             _steeringTone.Pause();
             SetState(TaxiGuidanceState.HoldShort);
+            // The destination hold is never staged (a Continue here is a lineup/takeoff clearance,
+            // not a crossing clearance) — drop any stages a previous hold left, so nothing can leak
+            // into this one. ContinuePastHoldShort's own !_holdShortAtDestination guard is the rule;
+            // this is the state hygiene beside it.
+            _holdStages = Array.Empty<string>();
+            _holdStageIndex = 0;
 
             string rwy = _destinationName;
             // Full-length backtrack departure: the pilot will enter here and
@@ -3590,6 +3649,8 @@ public partial class TaxiGuidanceManager : IDisposable
         _headingErrorInitialized = false;
         _initialTurnCueAnnounced = false;
         LastRouteStartHoldCue = null;
+        _holdStages = Array.Empty<string>();
+        _holdStageIndex = 0;
         _startChatterSuppressUntil = DateTime.MinValue;
         // Reset the tone slew-limiter baseline so a fresh guidance session snaps
         // to its first target instead of sweeping from a stale value. (LoadRoute
