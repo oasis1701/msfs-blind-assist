@@ -42,6 +42,9 @@ public readonly struct Arinc429Word
     public bool IsNoComputedData => Ssm == 0b01;
     public bool IsFailureWarning => Ssm == 0b00;
 
+    /// <summary>True when the word carries data: Normal Operation or Functional Test.</summary>
+    public bool HasData => Ssm == 0b11 || Ssm == 0b10;
+
     /// <summary>Value when data is present (Normal Operation or Functional Test), else the fallback.</summary>
     public float ValueOr(float fallback) => (Ssm == 0b11 || Ssm == 0b10) ? Value : fallback;
 

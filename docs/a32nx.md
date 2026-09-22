@@ -248,6 +248,58 @@ via the shared `ArmedAltitudeMode.ShouldSpeakHeldAlt`. The A380 has no such trap
 checks `A380DisabledMonitorVariablesSet` locally, so its flush inherits the same check by writing
 it the same way.
 
+### VFE and VS now read the FAC bus — FBW #10890 deleted the plain L-vars (2026-09-22)
+
+**FBW #10890 (`c0421a9`, 11 Sep 2026, "various AFS fixes") stopped the A32NX publishing
+`A32NX_SPEEDS_VFEN` and `A32NX_SPEEDS_VS` at all.** The writes were deleted from
+`A32NX_Speeds.ts`; the values still exist inside `NXSpeeds` but nothing puts them on an
+L-var any more. Nothing was renamed, so a name-diff sweep finds nothing — the vars simply
+stop being written and read a stale `0` forever. That is the failure mode to fear: the VFE
+and VS readouts did not go silent, they confidently said a wrong number.
+
+The readouts now take the FAC's own characteristic speeds, which is what the PFD tape uses:
+
+| Readout | Was | Now |
+| --- | --- | --- |
+| VFE | `A32NX_SPEEDS_VFEN` | `A32NX_FAC_1_V_FE_NEXT`, else `A32NX_FAC_2_V_FE_NEXT` |
+| VS | `A32NX_SPEEDS_VS` | `A32NX_FAC_1_V_STALL_1G`, else `A32NX_FAC_2_V_STALL_1G` |
+
+VS keeps its meaning: `V_STALL_1G` is the 1g stall speed, the same quantity the deleted
+`A32NX_SPEEDS_VS` carried, and the call-out still says "Stall Speed". Like the PFD, FAC 1 is
+read first and FAC 2 is the fallback when FAC 1 has nothing to say (failed, or switched off).
+
+Both are **ARINC429 words**. They are NOT read through the hardcoded temp-def/dispatch path
+(ids 330-337, which hands the value on as a plain number): each `SpeedRequestTable` entry
+carries its encoding — `PlainSpeed` for that path, `FacSpeed` for a FAC word — and a
+`FacSpeed` is read through its registered `IsArinc429` definition (`FAC_n_V_FE_NEXT`,
+`FAC_n_V_STALL_1G`) with `ReadFreshAsync` and decoded by `TryDecodeArinc429`, the same decode
+the panel rows use. A bad SSM is spoken as "not available" rather than as a number. Never add
+ARINC decoding to dispatch cases 335/337: they still carry a plain number for the Headwind
+A330 (below).
+
+⚠️ **VFE and VS are now IN-FLIGHT ONLY.** The deleted plain L-vars were valid on the ground;
+a FAC word carries a no-computed-data SSM until the FACs have air data, so both say "not
+available" on stand. That is a real behaviour change — and not one worth avoiding, because the
+variable it replaces reads a stale 0 on the ground too, it just says it with a number.
+
+⚠️ **The A380 is NOT affected and must not be "fixed" to match.** The A380X still writes
+both plain L-vars (`FmcAircraftInterface.ts`), and `FlyByWireA380Definition` derives from
+`BaseAircraftDefinition` — not from `FlyByWireA320Definition` — so it reads them through its
+own `RequestReadout` path and shares none of this.
+
+⚠️ **The Headwind A330 inherits this table and must KEEP the plain L-vars.** Checked against
+`headwindsim/aircraft` @ `41eace7` (14 Aug 2026), not assumed: it still writes both from the
+pre-#10890 `A32NX_Speeds.ts` it forked (lines 22/29/69/75), and its FACs publish **six**
+variables in total — `DISCRETE_WORD_2`, `HEALTHY`, `RUDDER_TRIM_POS` per side — **not one of
+them a characteristic speed**. None of the FAC speed words exist on that airframe, so
+`HeadwindA330Definition` overrides `SpeedRequestTable` with all-`PlainSpeed` sources, and drops
+the base PFD panel's FAC rows (`PFD_VSW`, `PFD_VALPHAPROT`, `PFD_VALPHAMAX`), which would read
+"not available" all flight. Revisit only if Headwind syncs #10890.
+
+**Requires a FlyByWire A32NX Development build from 11 Sep 2026 or later** for the plain
+L-vars to be gone; the FAC words predate #10890, so this migration also works on an older
+build.
+
 ### Fenix A320 AI display reads — the camera indices are MEASURED (2026-09-21)
 
 Five reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/FenixA320DisplayReads.cs`,
