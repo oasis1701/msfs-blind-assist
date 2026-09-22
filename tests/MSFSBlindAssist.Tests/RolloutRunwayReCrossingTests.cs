@@ -47,6 +47,34 @@ public class RolloutRunwayReCrossingTests
     }
 
     [Fact]
+    public void A_clear_aircraft_whose_anchor_node_is_behind_it_on_the_pavement_is_not_refused()
+    {
+        // A 90 degree exit whose junction node sits 8 m inside the pavement: the aircraft has
+        // vacated laterally (45 m on a 30 m half-width) and the re-route anchors on that junction,
+        // BEHIND it along the exit. The leg back to the anchor is history, not a route onto the
+        // runway (PR #243 review).
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 2950.0, -8.0), RunwayFixture.Node(2, 2960.0, -80.0), RunwayFixture.Node(3, 2960.0, -200.0));
+        var aircraft = new RouteRunwayCrossings.AircraftPosition(RunwayFixture.Lat(-45.0), RunwayFixture.Lon(2950.0));
+
+        Assert.False(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy, aircraft));
+    }
+
+    [Fact]
+    public void A_clear_aircraft_whose_anchor_node_is_ahead_of_it_on_the_pavement_is_still_refused()
+    {
+        // Same anchor, but the route leaves it further DOWN the runway than the aircraft is: the
+        // first leg genuinely goes back onto the pavement.
+        var rwy = RunwayFixture.EastWest("10R", "28L");
+        var segments = RunwayFixture.Route(
+            RunwayFixture.Node(1, 3000.0, -8.0), RunwayFixture.Node(2, 3100.0, -45.0), RunwayFixture.Node(3, 3100.0, -200.0));
+        var aircraft = new RouteRunwayCrossings.AircraftPosition(RunwayFixture.Lat(-45.0), RunwayFixture.Lon(2950.0));
+
+        Assert.True(RolloutRunwayReCrossing.RouteReCrossesRunway(segments, 0, rwy, aircraft));
+    }
+
+    [Fact]
     public void An_end_exit_whose_junction_sits_centimetres_over_the_centerline_is_not_a_re_crossing()
     {
         // KORD 10R exit W5: the route starts on the runway, its junction node is 29 cm past the

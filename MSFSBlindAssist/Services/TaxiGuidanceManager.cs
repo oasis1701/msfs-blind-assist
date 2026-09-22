@@ -1945,8 +1945,9 @@ public partial class TaxiGuidanceManager : IDisposable
         // running — a landing-exit re-route, which goes straight to Taxiing without StartGuidance.
         // It enters the hold on its first taxiing frame and speaks the sentence in that same frame:
         // MainForm feeds no frames while guidance holds. An aircraft already more than 10 m along the
-        // route, or standing on any runway's pavement, gets no hold (the pass's own tests), and the
-        // skip is logged with its reason beside the adoption's "Route crossings:" line.
+        // route, or within the clear margin of any runway (the pass's own tests — the SAME margin the
+        // pass demands of a stop it invents, never bare containment), gets no hold, and the skip is
+        // logged with its reason beside the adoption's "Route crossings:" line.
         if (_state == TaxiGuidanceState.Taxiing && _currentSegmentIndex == 0
             && _route?.StartHoldRunway != null)
         {
@@ -1954,8 +1955,8 @@ public partial class TaxiGuidanceManager : IDisposable
             if (Navigation.RouteRunwayCrossings.RouteProgressMeters(_route.Segments, lat, lon)
                 > Navigation.RouteRunwayCrossings.StopPassedToleranceMetres)
                 skipReason = "aircraft already past the start node";
-            else if (Navigation.RouteRunwayCrossings.RunwayUnder(_graph?.RunwayCenterlines, lat, lon) is { } runwayUnder)
-                skipReason = $"aircraft on the pavement of runway {runwayUnder.Name1}/{runwayUnder.Name2}";
+            else if (Navigation.RouteRunwayCrossings.RunwayWithinClearMargin(_graph?.RunwayCenterlines, lat, lon) is { } runwayUnder)
+                skipReason = $"aircraft on or within the clear margin of runway {runwayUnder.Name1}/{runwayUnder.Name2}";
 
             if (skipReason != null)
             {

@@ -77,8 +77,41 @@ public static class RolloutRunwayReCrossing
         if (segments is null || runway is null) return false;
         if (fromSegmentIndex < 0 || fromSegmentIndex >= segments.Count) return false;
 
-        var nodes = RunwayRouteClassifier.NodesFrom(segments, fromSegmentIndex, aircraft);
-        return RunwayRouteClassifier.Classify(nodes, RunwayShape.For(runway)).Count > 0;
+        var shape = RunwayShape.For(runway);
+        var nodes = RunwayRouteClassifier.NodesFrom(segments, fromSegmentIndex, aircraft, out bool prepended);
+        foreach (var passage in RunwayRouteClassifier.Classify(nodes, shape))
+        {
+            if (prepended && IsAnchorBehindClearAircraft(passage, nodes, shape)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True for the one passage the prepend can invent: the aircraft is already clear of the runway,
+    /// the route's anchor node — its only on-pavement node — is the node the aircraft has just left,
+    /// and the route is clear again at the next node. Judged by DIRECTION: the aircraft lies ahead of
+    /// the anchor along the anchor→next edge, so the leg back to the anchor is history, not a route
+    /// onto the runway. A 90° exit whose junction node sits inside the pavement is this shape on
+    /// every vacate once the aircraft is laterally clear, and refusing it concluded guidance with
+    /// "Stop and hold position" on a hand-off that used to proceed (PR #243 review). A route whose
+    /// anchor is AHEAD of the aircraft, or that goes on across the runway, is still refused.
+    /// </summary>
+    private static bool IsAnchorBehindClearAircraft(
+        RunwayPassage passage, IReadOnlyList<TaxiNode?> nodes, RunwayShape shape)
+    {
+        if (passage.Kind != RunwayEventKind.Entry) return false;
+        if (passage.EntryIndex != 0 || passage.FirstOnIndex != 1 || passage.ExitIndex != 2) return false;
+        if (nodes.Count < 3 || nodes[0] is not { } aircraft || nodes[1] is not { } anchor || nodes[2] is not { } next)
+            return false;
+
+        // In the runway's own (along, lateral) frame, which is planar enough for a direction test.
+        var a = shape.Project(aircraft.Latitude, aircraft.Longitude);
+        var p = shape.Project(anchor.Latitude, anchor.Longitude);
+        var n = shape.Project(next.Latitude, next.Longitude);
+        double ex = n.Along - p.Along, ey = n.Lateral - p.Lateral;      // the exit's own direction
+        double vx = a.Along - p.Along, vy = a.Lateral - p.Lateral;      // anchor → aircraft
+        return ex * vx + ey * vy > 0.0;                                  // aircraft is ahead of the anchor
     }
 
     /// <summary>

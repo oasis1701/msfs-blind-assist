@@ -240,6 +240,37 @@ public class RunwayShapeMemoisationTests
     }
 
     [Fact]
+    public void A_point_just_past_the_runway_end_is_not_clear_within_the_margin()
+    {
+        // The margin applies along the axis as it does across it: a metre past the pavement end on
+        // the extended centreline is the blast pad, not a hold (PR #243 review). Walk 1 (margin 0)
+        // still sees the exact complement of Contains.
+        var shape = RunwayShape.For(RunwayFixture.EastWest());
+
+        Assert.False(shape.IsClearOfAt(3001.0, 0.0, RolloutExitGate.RunwayClearMarginM));
+        Assert.False(shape.IsClearOfAt(-9.0, 0.0, RolloutExitGate.RunwayClearMarginM));
+        Assert.True(shape.IsClearOfAt(3011.0, 0.0, RolloutExitGate.RunwayClearMarginM));
+        Assert.True(shape.IsClearOfAt(3001.0, 0.0, 0.0));
+        Assert.True(shape.IsClearOfAt(1500.0, 41.0, RolloutExitGate.RunwayClearMarginM));
+        Assert.False(shape.IsClearOfAt(1500.0, 39.0, RolloutExitGate.RunwayClearMarginM));
+    }
+
+    [Fact]
+    public void A_shape_is_rebuilt_when_its_centerline_changes_underneath_it()
+    {
+        var cl = RunwayFixture.EastWest(halfWidthM: 30.0);
+        var before = RunwayShape.For(cl);
+        Assert.Equal(30.0, before.HalfWidthMeters, 6);
+
+        cl.PavementHalfWidthMeters = 20.0;
+
+        var after = RunwayShape.For(cl);
+        Assert.NotSame(before, after);
+        Assert.Equal(20.0, after.HalfWidthMeters, 6);
+        Assert.Same(after, RunwayShape.For(cl));
+    }
+
+    [Fact]
     public void A_memoised_shape_still_answers_from_the_pavement()
     {
         var cl = RunwayFixture.EastWest(halfWidthM: 30.0);

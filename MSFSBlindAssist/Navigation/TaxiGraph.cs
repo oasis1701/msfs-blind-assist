@@ -404,7 +404,7 @@ public class TaxiGraph
                 // back onto the nearer one: the runway shape envelopes the start rows, so a bogus
                 // row extends the runway by up to 800 m and claims taxiway nodes with it (§4).
                 (lat, lon) = PullOutboardStartRowOntoPavement(
-                    lat, lon, rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon);
+                    lat, lon, rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, s.RunwayName);
                 if (Math.Abs(lat - s.Latitude) < 1e-9 && Math.Abs(lon - s.Longitude) < 1e-9)
                 {
                     snapped.Add(s);
@@ -3350,7 +3350,7 @@ public class TaxiGraph
         return Math.Sqrt(dLat * dLat + dLon * dLon);
     }
 
-    private static double NormalizeAngle(double angle)
+    internal static double NormalizeAngle(double angle)
     {
         while (angle > 180) angle -= 360;
         while (angle < -180) angle += 360;
@@ -3522,6 +3522,13 @@ public class TaxiGraph
     /// all — 29.5 m (URWW 05), 471.2 m (KSAW 01) and 799.9 m (LIMC 17L) — and only the first is
     /// legitimate. 100 m separates it from both bogus ones with wide margins in each direction,
     /// which is the only reason this number can be a constant rather than a judgement.</para>
+    ///
+    /// <para>⚠ That is one fs2024 database and 300 of its airports. An FS2020 (BGL-built) database
+    /// was NOT measured, and neither was any airport whose runway record stops at the threshold
+    /// markings while the sim's start row sits on a real starter extension or stopway further out
+    /// — a row like that is pulled onto the pavement end and the lineup point moves with it. Every
+    /// relocation is therefore logged (runway, metres) so such a case is diagnosable from
+    /// debug.log rather than indistinguishable from bad scenery.</para>
     /// </summary>
     public const double MaxOutboardStartRowMetres = 100.0;
 
@@ -3556,24 +3563,28 @@ public class TaxiGraph
     /// </summary>
     public static (double Lat, double Lon) PullOutboardStartRowOntoPavement(
         double startLat, double startLon,
-        double thrLat, double thrLon, double farLat, double farLon)
+        double thrLat, double thrLon, double farLat, double farLon,
+        string? runwayName = null)
     {
         double totalLen = FastDistanceMeters(thrLat, thrLon, farLat, farLon);
         if (totalLen < 1.0) return (startLat, startLon);
 
-        var (_, along, _, _) = ProjectOntoCenterline(startLat, startLon, thrLat, thrLon, farLat, farLon);
+        var (_, along, projLat, projLon) = ProjectOntoCenterline(startLat, startLon, thrLat, thrLon, farLat, farLon);
         double outboard = along < 0.0 ? -along : along - totalLen;
         if (outboard <= MaxOutboardStartRowMetres) return (startLat, startLon);
 
-        // Slide ALONG the axis by exactly the outboard excess, toward the runway. The lateral
-        // offset rides along unchanged: a row the lateral repair declined to touch (further out
-        // than its own ceiling) must not be quietly relocated onto the line by this one.
-        double shift = along < 0.0 ? -along : totalLen - along;
-        const double MetersPerDegLat = 111132.0;
-        double metersPerDegLon = MetersPerDegLat * Math.Cos((thrLat + farLat) * 0.5 * (Math.PI / 180.0));
-        double bx = (farLon - thrLon) * metersPerDegLon, by = (farLat - thrLat) * MetersPerDegLat;
-        double ux = bx / totalLen, uy = by / totalLen;
-        return (startLat + shift * uy / MetersPerDegLat, startLon + shift * ux / metersPerDegLon);
+        // Slide ALONG the axis onto the nearer pavement end, keeping the lateral offset: the row's
+        // foot on the axis moves to the end (t clamped to 0 or 1), and the row keeps its own
+        // displacement from that foot. A row the lateral repair declined to touch (further out than
+        // its own ceiling) must not be quietly relocated onto the line by this one. No projection
+        // math of its own — this area already had four copies (see RunwayShape.For).
+        double t = along < 0.0 ? 0.0 : 1.0;
+        double endLat = thrLat + t * (farLat - thrLat), endLon = thrLon + t * (farLon - thrLon);
+        var pulled = (Lat: endLat + (startLat - projLat), Lon: endLon + (startLon - projLon));
+        MSFSBlindAssist.Utils.Logging.Log.Info("taxi_graph",
+            $"Start row {(runwayName ?? "?")} sat {outboard:F1} m outboard of its pavement end; " +
+            $"pulled onto the end (lineup anchor moved {outboard:F1} m along the runway).");
+        return pulled;
     }
 
     /// <summary>

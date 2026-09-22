@@ -495,8 +495,7 @@ public partial class TaxiGuidanceManager
             if (userRunwayHoldShorts != null && userRunwayHoldShorts.Count > 0 && taxiwaySequence != null)
             {
                 runwayHoldShortWarning = ApplyUserRunwayHoldShorts(
-                    route, taxiwaySequence, userRunwayHoldShorts, aircraftLat, aircraftLon,
-                    _lastGroundSpeedKts, userPickEvents);
+                    route, taxiwaySequence, userRunwayHoldShorts, aircraftLat, aircraftLon, userPickEvents);
             }
 
             // Capture the FULL constrained-route length BEFORE TruncateToHoldShort
@@ -1418,7 +1417,8 @@ public partial class TaxiGuidanceManager
         // with every intermediate crossing untagged (PHNL 2026-09-03 — see AdoptRoute). It sits
         // BELOW the no-op guard so a discarded recalc neither re-tags a route nobody adopts nor
         // writes a crossings line claiming it did.
-        AdoptRoute(newRoute, _isRunwayLineup, _destinationName, lat, lon, phase: "recalc");
+        AdoptRoute(newRoute, _isRunwayLineup, _destinationName, lat, lon, phase: "recalc",
+            recalculation: true);
 
         // Re-probe reachability, using the SAME core LoadRoute uses. This must sit BELOW
         // the no-op guard above: the verdict describes `newRoute`, so computing it earlier
@@ -1875,26 +1875,31 @@ public partial class TaxiGuidanceManager
     /// separable. The recalc produced no line at all before, which is why it took a segment-
     /// cursor reset to prove it had even happened. It is a LABEL and nothing else: the start hold
     /// (<see cref="TaxiRoute.StartHoldRunway"/>) is decided by the pass itself, from the aircraft's
-    /// position and ground speed (PR #238 deferred finding §2). The old re-derivation
-    /// (<c>allowStartHold: phase == "load"</c>) made a typo in this string silently disable start
-    /// holds with no compile error.</param>
+    /// position and <paramref name="recalculation"/> (PR #238 deferred finding §2). The old
+    /// re-derivation (<c>allowStartHold: phase == "load"</c>) made a typo in this string silently
+    /// disable start holds with no compile error.</param>
+    /// <param name="recalculation">True from <see cref="TryRecalculateRoute"/> only: a recalculated
+    /// route never starts held (<see cref="RouteRunwayCrossings.AircraftPosition.MayStartHeld"/>). An
+    /// explicit bool, not the phase string, and not a ground-speed gate — that gate read a speed the
+    /// manager holds at 0 on every fresh Calculate, and sat 1 kt above the off-route threshold, so a
+    /// recalc at 2-3 kt could still start held (PR #243 review).</param>
     private void ApplyAutoHoldShortPasses(
         TaxiRoute route, bool isRunwayDestination, string destinationName,
         double aircraftLat, double aircraftLon, string phase,
-        IReadOnlyList<TaxiRouteRunwayEvent>? userPickEvents = null)
+        IReadOnlyList<TaxiRouteRunwayEvent>? userPickEvents = null,
+        bool recalculation = false)
     {
         // Entries and crossings of every runway, one hold each, all recorded on route.RunwayEvents.
-        // The aircraft's position is the route's first point, decides which stops it has already
-        // passed, and — with its ground speed — decides whether the route may start held: a start
-        // hold stops the aircraft where it stands, so it is an instruction to an aircraft that IS
-        // standing. A recalculation is built from a moving aircraft, which is what keeps one from
-        // starting held without a phase string to re-derive it from.
+        // The aircraft's position is the route's first point and decides which stops it has already
+        // passed; a start hold is refused while it stands within the clear margin of any runway, and
+        // on a recalculation outright — that route is built from an aircraft already committed to
+        // where it is going, and a stop where it stands would land on top of "Route changed".
         if (_graph != null)
         {
             RouteRunwayCrossings.InsertRunwayHoldShorts(
                 route, _graph.RunwayCenterlines,
                 isRunwayDestination ? destinationName : "",
-                new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon, _lastGroundSpeedKts));
+                new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon, MayStartHeld: !recalculation));
 
             // The pilot's own picks, merged back in: this pass OWNS the event list and resets it, so
             // a pick it skips — the destination-strip arrival — would otherwise be named nowhere and
@@ -1944,10 +1949,12 @@ public partial class TaxiGuidanceManager
     private void AdoptRoute(
         TaxiRoute route, bool isRunwayDestination, string destinationName,
         double aircraftLat, double aircraftLon, string phase,
-        IReadOnlyList<TaxiRouteRunwayEvent>? userPickEvents = null)
+        IReadOnlyList<TaxiRouteRunwayEvent>? userPickEvents = null,
+        bool recalculation = false)
     {
         ApplyAutoHoldShortPasses(
-            route, isRunwayDestination, destinationName, aircraftLat, aircraftLon, phase, userPickEvents);
+            route, isRunwayDestination, destinationName, aircraftLat, aircraftLon, phase, userPickEvents,
+            recalculation);
         LogStandBridgeSegments(route, phase);
         // A start-hold sentence belongs to the route it was composed for; a new route composes its own.
         LastRouteStartHoldCue = null;
@@ -1992,7 +1999,6 @@ public partial class TaxiGuidanceManager
         Dictionary<int, string> userRunwayHoldShorts,
         double aircraftLat,
         double aircraftLon,
-        double groundSpeedKts,
         List<TaxiRouteRunwayEvent> placedEvents)
     {
         if (_graph == null) return null;
@@ -2077,8 +2083,7 @@ public partial class TaxiGuidanceManager
             switch (RouteRunwayCrossings.ApplyUserRunwayHold(
                         route, targetRwy, _graph.RunwayCenterlines, runwayId, runStart,
                         placed: out var placedEvent,
-                        aircraft: new RouteRunwayCrossings.AircraftPosition(
-                            aircraftLat, aircraftLon, groundSpeedKts)))
+                        aircraft: new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon)))
             {
                 // The pick's own event, merged back in after the automatic pass RESETS the list —
                 // without it a pick on the destination strip, whose arrival that pass skips, was

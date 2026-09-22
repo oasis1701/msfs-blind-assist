@@ -79,6 +79,7 @@ public sealed class RunwayShape
         double halfWidthMeters, bool usesPavement)
     {
         Centerline = centerline;
+        _source = Snapshot(centerline);
         Lat1 = lat1; Lon1 = lon1; Lat2 = lat2; Lon2 = lon2;
         HalfWidthMeters = halfWidthMeters;
         UsesPavement = usesPavement;
@@ -170,11 +171,8 @@ public sealed class RunwayShape
             : new RunwayEndAnchor(Name2, _startRowAtEnd2.Lat, _startRowAtEnd2.Lon, heading2);
     }
 
-    private static double AngleBetween(double a, double b)
-    {
-        double d = Math.Abs((a - b) % 360.0);
-        return d > 180.0 ? 360.0 - d : d;
-    }
+    // The one signed-angle normaliser this area already has, not a ninth private copy.
+    private static double AngleBetween(double a, double b) => Math.Abs(TaxiGraph.NormalizeAngle(a - b));
 
     /// <summary>
     /// ONE shape per centerline, memoised. A centerline is immutable once <c>TaxiGraph.Build</c> has
@@ -201,8 +199,30 @@ public sealed class RunwayShape
     public static RunwayShape For(TaxiGraph.RunwayCenterline centerline)
     {
         ArgumentNullException.ThrowIfNull(centerline);
-        return Shapes.GetValue(centerline, Create);
+        // The memo's precondition — nothing writes a centerline after Build — is a comment, not a
+        // compiler rule: every geometry member is a public setter. So a cached shape is trusted only
+        // while the centerline still reads as it did when the shape was built; a repaired or
+        // re-used centerline gets a fresh shape rather than answering from stale geometry for the
+        // rest of the process (PR #243 review).
+        if (Shapes.TryGetValue(centerline, out var cached) && cached._source == Snapshot(centerline))
+            return cached;
+        var fresh = Create(centerline);
+        Shapes.AddOrUpdate(centerline, fresh);
+        return fresh;
     }
+
+    // What a shape was built FROM, compared on every lookup. Cheap: a handful of doubles and two strings.
+    private readonly record struct SourceSnapshot(
+        double Lat1, double Lon1, double Lat2, double Lon2, double HalfWidth,
+        double PLat1, double PLon1, double PLat2, double PLon2, double PHalfWidth,
+        string? Name1, string? Name2);
+
+    private static SourceSnapshot Snapshot(TaxiGraph.RunwayCenterline cl) => new(
+        cl.Lat1, cl.Lon1, cl.Lat2, cl.Lon2, cl.HalfWidthMeters,
+        cl.PavementLat1, cl.PavementLon1, cl.PavementLat2, cl.PavementLon2, cl.PavementHalfWidthMeters,
+        cl.Name1, cl.Name2);
+
+    private readonly SourceSnapshot _source;
 
     private static RunwayShape Create(TaxiGraph.RunwayCenterline centerline)
     {
@@ -310,9 +330,12 @@ public sealed class RunwayShape
         => Math.Abs(lateral) > HalfWidthMeters + RolloutExitGate.RunwayClearMarginM;
 
     /// <summary>
-    /// Off the runway at a point: OUTSIDE the extent, or beyond half-width +
-    /// <paramref name="lateralMarginMeters"/>. The exact complement of
-    /// <see cref="ContainsAlongLateral"/>, which is what <see cref="IsClearOf"/> was not.
+    /// Off the runway at a point: beyond the extent by more than <paramref name="marginMeters"/>
+    /// along the axis, or beyond half-width + <paramref name="marginMeters"/> laterally. With a
+    /// margin of 0 it is the exact complement of <see cref="ContainsAlongLateral"/>, which is what
+    /// <see cref="IsClearOf"/> was not; with a margin it keeps a stop the same distance off the
+    /// runway END as off its EDGE — a node on the extended centreline a metre past the pavement end
+    /// is the blast pad, not a place to hold (PR #243 review).
     ///
     /// <para>PR #238 deferred finding §3. <see cref="Contains"/> requires <c>along</c> inside the
     /// extent while <see cref="IsClearOf"/> tested <c>|lateral|</c> only, so a node BEYOND the
@@ -323,7 +346,7 @@ public sealed class RunwayShape
     /// trigger shape is a taxiway running off the end of a runway on or near its extended
     /// centreline: a turnpad lead-in, or any approach to a crossing from beyond the end.</para>
     ///
-    /// <para>⚠ <paramref name="lateralMarginMeters"/> is a parameter because the two walks
+    /// <para>⚠ <paramref name="marginMeters"/> is a parameter because the two walks
     /// deliberately differ and that is an owner ruling, not an oversight. The scenery-hold-line walk
     /// passes 0 — the bare half-width — so a painted line hugging the pavement edge is still usable
     /// (measured: SC99's line is 7.2 m out on a 4.0 m half-width, and tightening it to the clear
@@ -331,9 +354,9 @@ public sealed class RunwayShape
     /// <see cref="RolloutExitGate.RunwayClearMarginM"/>, the codebase's definition of "off the
     /// runway" for a stop it invents itself. Do not collapse them.</para>
     /// </summary>
-    public bool IsClearOfAt(double along, double lateral, double lateralMarginMeters)
-        => along < ExtentMinMeters || along > ExtentMaxMeters
-           || Math.Abs(lateral) > HalfWidthMeters + lateralMarginMeters;
+    public bool IsClearOfAt(double along, double lateral, double marginMeters)
+        => along < ExtentMinMeters - marginMeters || along > ExtentMaxMeters + marginMeters
+           || Math.Abs(lateral) > HalfWidthMeters + marginMeters;
 
     /// <summary>
     /// The designator of the end nearer <paramref name="along"/> (in a plane, exactly the
