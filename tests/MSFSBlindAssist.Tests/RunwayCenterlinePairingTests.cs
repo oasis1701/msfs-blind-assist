@@ -290,6 +290,127 @@ public class RunwayCenterlinePairingTests
         Assert.Equal(0.02, lon, 9);
     }
 
+    // -------------------------------------------------- outboard start rows (§4)
+    //
+    // PR #238 deferred finding §4. RunwayShape widens a pavement-based extent to ENVELOPE the
+    // centreline's start rows, so a row sitting outboard of the pavement EXTENDS the runway. That
+    // envelope is deliberate — a displaced threshold legitimately puts a lineup point outside the
+    // pavement ends — but it has nothing to bound it, and two rows in the shipped database are
+    // simply wrong.
+    //
+    // Measured over 812 start rows at 300 fs2024 airports: exactly THREE sit outboard at all, at
+    // 29.5 m (URWW 05, legitimate), 471.2 m (KSAW 01) and 799.9 m (LIMC 17L). At LIMC that 800 m
+    // band claims three graph nodes on TAXIWAY AB: Where-Am-I answers "Runway 17L" on a taxiway,
+    // TryGetRunwayAtPosition seeds takeoff assist there, RunwayUnder silently skips a start hold,
+    // and IsOnAnyRunway bars those nodes from ever being a hold stop.
+    //
+    // The repair is UPSTREAM, where the row enters the graph, rather than a narrowing of the frame
+    // that consumes it: capping the extent would break the lineup, which anchors on the start table
+    // and at LIMC 17L IS that bogus row. 100 m separates the legitimate case from both bogus ones
+    // with wide margins.
+    //
+    // It is deliberately NOT part of SnapStartToRunwayCenterline, whose contract is that it only
+    // ever repairs the LATERAL error: widening THAT into an along-track relocator is what once put
+    // both of an airport's rows at midfield and cost AYCH the centreline it had.
+
+    [Fact]
+    public void A_row_far_outboard_of_the_threshold_is_pulled_back_onto_the_pavement_end()
+    {
+        // LIMC 17L in miniature: 800 m beyond the threshold, on the axis.
+        var (lat, lon) = TaxiGraph.PullOutboardStartRowOntoPavement(
+            0, -0.0072, 0, 0, 0, FarLon);
+
+        Assert.Equal(0, lat, 9);
+        Assert.Equal(0, lon, 9);       // the pavement end itself
+    }
+
+    [Fact]
+    public void A_row_outboard_past_the_far_end_is_pulled_back_to_that_end()
+    {
+        var (lat, lon) = TaxiGraph.PullOutboardStartRowOntoPavement(
+            0, FarLon + 0.0042, 0, 0, 0, FarLon);   // 466 m past the 27 end
+
+        Assert.Equal(0, lat, 9);
+        Assert.Equal(FarLon, lon, 9);
+    }
+
+    [Fact]
+    public void A_legitimately_outboard_row_is_left_alone()
+    {
+        // URWW 05's 29.5 m, and any ordinary starter extension: well inside the 100 m window.
+        var (lat, lon) = TaxiGraph.PullOutboardStartRowOntoPavement(
+            0, -0.000266, 0, 0, 0, FarLon);
+
+        Assert.Equal(0, lat, 9);
+        Assert.Equal(-0.000266, lon, 9);
+    }
+
+    [Fact]
+    public void A_row_inside_the_pavement_is_never_moved()
+    {
+        // A displaced threshold puts the lineup point INSIDE the pavement — 480 m in, the EHAM 36C
+        // shape. Nothing outboard about it.
+        var (lat, lon) = TaxiGraph.PullOutboardStartRowOntoPavement(
+            0, 0.00432, 0, 0, 0, FarLon);
+
+        Assert.Equal(0, lat, 9);
+        Assert.Equal(0.00432, lon, 9);
+    }
+
+    [Fact]
+    public void A_name_swapped_row_at_the_other_end_is_not_outboard_and_is_left_alone()
+    {
+        // AYCH's shape: the row labelled for one end physically sits AT the other, i.e. inside the
+        // pavement. Moving it would re-break the pairing this repair must not touch.
+        var (lat, lon) = TaxiGraph.PullOutboardStartRowOntoPavement(
+            0, FarLon, 0, 0, 0, FarLon);
+
+        Assert.Equal(0, lat, 9);
+        Assert.Equal(FarLon, lon, 9);
+    }
+
+    [Fact]
+    public void An_outboard_row_that_is_also_far_to_the_side_keeps_its_lateral_offset()
+    {
+        // The clamp moves the row ALONG the axis only. A row the lateral repair declined to touch
+        // (further out than its ceiling) must not be quietly relocated onto the line by this one.
+        var (lat, lon) = TaxiGraph.PullOutboardStartRowOntoPavement(
+            0.003, -0.0072, 0, 0, 0, FarLon);
+
+        Assert.Equal(0.003, lat, 9);   // 333 m to the side, untouched
+        Assert.Equal(0, lon, 6);       // along-track clamped to the threshold
+    }
+
+    // The whole point: after the repair the shape's extent no longer envelopes anything outside the
+    // pavement, so nodes near the runway end stop being claimed as "on the runway".
+    [Fact]
+    public void A_repaired_row_leaves_the_shape_extent_on_the_pavement()
+    {
+        // 111 m north of the equator: RunwayShape reads a pavement end of exactly (0, 0) as UNSET.
+        const double Lat0 = 0.001;
+        var runways = new List<Runway>
+        {
+            new() { RunwayID = "09", StartLat = Lat0, StartLon = 0, EndLat = Lat0, EndLon = FarLon, Width = 150 },
+            new() { RunwayID = "27", StartLat = Lat0, StartLon = FarLon, EndLat = Lat0, EndLon = 0, Width = 150 },
+        };
+        var graph = TaxiGraph.Build(Paths(), new List<ParkingSpot>(),
+            new List<StartPosition>
+            {
+                Start("09", 90.0, Lat0, -0.0072),     // 800 m outboard, the LIMC shape
+                Start("27", 270.0, Lat0, FarLon),
+            },
+            runways);
+
+        var cl = Assert.Single(graph.RunwayCenterlines);
+        var shape = RunwayShape.For(cl);
+        Assert.True(shape.UsesPavement);
+        Assert.Equal(0.0, shape.ExtentMinMeters, 1);
+        Assert.Equal(shape.LengthMeters, shape.ExtentMaxMeters, 1);
+
+        // A node 200 m beyond the threshold is no longer on the runway.
+        Assert.False(shape.Contains(Lat0, -0.0018, 0.0));
+    }
+
     [Fact]
     public void Name_swapped_rows_keep_the_centerline_they_already_had()
     {

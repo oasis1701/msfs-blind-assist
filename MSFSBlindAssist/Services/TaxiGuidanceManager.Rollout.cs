@@ -779,8 +779,10 @@ public partial class TaxiGuidanceManager
                     taxiwaySequence: null,
                     prebuiltGraph: _graph,
                     announceSummary: false,
-                    // Still on the landing runway, a start hold would stop the aircraft on it.
-                    allowStartHold: offRunwayAtHandoff);
+                    // A log label only (phase=touchdown). Whether the route may start held is the
+                    // pass's own call, from the aircraft's position: none while it stands within
+                    // the clear margin of any runway, none once it has rolled 10 m along the route.
+                    landingRolloutRoute: true);
                 handoffRerouted = rerouteErr == null;
                 if (handoffRerouted)
                 {
@@ -893,7 +895,7 @@ public partial class TaxiGuidanceManager
                 // The reachability guard passed it, and could not have caught it: it
                 // measures only the FIRST segment's cross-track, and B1 started right at
                 // the aircraft.
-                if (HandoffRouteReCrossesLandingRunway())
+                if (HandoffRouteReCrossesLandingRunway(lat, lon))
                 {
                     string rwyName = _rolloutRunway?.RunwayID ?? "the runway";
 
@@ -1577,10 +1579,10 @@ public partial class TaxiGuidanceManager
         // S5 while committed to S6), sending A* up that exit and across the parallel taxiway: a
         // ~600 m hairpin. Empty name (unnamed exit) → null → legacy nearest-node snap.
         string? startTwy = _rolloutExit.TaxiwayName.Length > 0 ? _rolloutExit.TaxiwayName : null;
-        // The verdict is computed before LoadRoute because the re-route's start hold below,
-        // the reachability guard and the crossing guard all need it, from the same lat/lon,
-        // under the same name the UpdateLandingRollout site uses. One definition of "off the
-        // runway", three uses.
+        // The verdict is computed before LoadRoute because the reachability guard and the
+        // crossing guard's decline/conclude split both need it, from the same lat/lon, under the
+        // same name the UpdateLandingRollout site uses. It no longer feeds the start hold: that is
+        // the pass's own call from the aircraft's position (see the LoadRoute argument below).
         bool offRunwayAtHandoff = !IsWithinRolloutRunwayLaterally(lat, lon);
         string? err = LoadRoute(
             _dataProvider, _icao,
@@ -1590,9 +1592,10 @@ public partial class TaxiGuidanceManager
             prebuiltGraph: _graph,
             announceSummary: false,
             startTaxiwayName: startTwy,
-            // A start hold only once the aircraft is off the runway, as at UpdateLandingRollout's
-            // handoff: on the pavement it would stop the aircraft there.
-            allowStartHold: offRunwayAtHandoff);
+            // A log label only (phase=touchdown), as at UpdateLandingRollout's handoff. The pass
+            // itself refuses a start hold while the aircraft stands within the clear margin of any
+            // runway, so nothing here has to say whether it is on the pavement.
+            landingRolloutRoute: true);
 
         if (err != null)
         {
@@ -1740,7 +1743,7 @@ public partial class TaxiGuidanceManager
             // CLAUDE.md requires EVERY landing-exit handoff re-route to be gated
             // identically, and this method was the last ungated one once before
             // (commit 29b8bcbf). See the other site for the KATL 26R defect.
-            if (HandoffRouteReCrossesLandingRunway())
+            if (HandoffRouteReCrossesLandingRunway(lat, lon))
             {
                 // Gated identically to the UpdateLandingRollout site: DECLINE only while the
                 // aircraft is still ON the runway with the exit ahead; otherwise CONCLUDE.
@@ -2093,8 +2096,8 @@ public partial class TaxiGuidanceManager
                 prebuiltGraph: _graph,
                 announceSummary: false,
                 isRunwayDestination: false,
-                // Adopted for the landing rollout, not at the handoff: never starts held.
-                allowStartHold: false);
+                // Adopted for the landing rollout: labels the crossings log line phase=touchdown.
+                landingRolloutRoute: true);
 
             if (error == null)
             {
@@ -2229,13 +2232,16 @@ public partial class TaxiGuidanceManager
     /// the question does not. This method was the last ungated handoff site once before
     /// (commit 29b8bcbf), and a future third site should call this rather than re-derive it.</para>
     /// </summary>
-    private bool HandoffRouteReCrossesLandingRunway()
+    /// <param name="lat">The aircraft's live latitude — see the aircraft-prepend note above.</param>
+    /// <param name="lon">The aircraft's live longitude.</param>
+    private bool HandoffRouteReCrossesLandingRunway(double lat, double lon)
         => _route != null
            && Navigation.RolloutRunwayReCrossing.RouteReCrossesRunway(
                   _route.Segments,
                   _currentSegmentIndex,
                   Navigation.RolloutRunwayReCrossing.FindLandingRunwayCenterline(
-                      _graph?.RunwayCenterlines, _rolloutRunway?.RunwayID));
+                      _graph?.RunwayCenterlines, _rolloutRunway?.RunwayID),
+                  new Navigation.RouteRunwayCrossings.AircraftPosition(lat, lon));
 
     /// <summary>
     /// "Turn left" / "Gentle right" for the currently targeted landing exit, from the
