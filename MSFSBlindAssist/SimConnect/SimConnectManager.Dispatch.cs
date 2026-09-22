@@ -659,7 +659,11 @@ public partial class SimConnectManager
                     HeadingMagnetic = vgData.HeadingMagnetic,
                     MagneticVariation = vgData.MagneticVariation,
                     GroundSpeedKnots = vgData.GroundSpeedKnots,
-                    VerticalSpeedFPM = vgData.VerticalSpeedFPM
+                    VerticalSpeedFPM = vgData.VerticalSpeedFPM,
+                    // Carried forward, never defaulted — see the surface note on the 507/506
+                    // mirrors. This one fires at SIM_FRAME rate through an approach.
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0,
                 };
 
                 // Mirror to lastKnownPosition so the LandingExitPlanner has a fresh
@@ -741,6 +745,15 @@ public partial class SimConnectManager
                     // preserve the previous value. AltitudeMslFt is the same
                     // "PLANE ALTITUDE"/feet SimVar AIRCRAFT_POSITION.Altitude reads.
                     Altitude = faData.AltitudeMslFt,
+                    // SURFACE fields are carried FORWARD, never defaulted. They exist only on the
+                    // AIRCRAFT_POSITION frame (case 4), and this mirror overwrites lastKnownPosition
+                    // from a stream that has no idea what is under the wheels — so defaulting them
+                    // sets SurfaceInfoValid to 0, which SurfaceChangeGate reads as "say nothing".
+                    // Taxi guidance mirrors here on EVERY frame, which is precisely the phase the
+                    // "off the pavement" callout exists for, so a default here silences it exactly
+                    // when it matters. Same reasoning as the Altitude carry-forward above.
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0,
                     SimOnGround = faData.OnGround
                 };
 
@@ -767,7 +780,16 @@ public partial class SimConnectManager
                     // WeatherRadarForm shows altitude) don't see a hard-zero just
                     // because the most recent position update was a taxi sample.
                     Altitude = lastKnownPosition?.Altitude ?? 0,
-                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0
+                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0,
+                    // SURFACE fields are carried FORWARD, never defaulted. They exist only on the
+                    // AIRCRAFT_POSITION frame (case 4), and this mirror overwrites lastKnownPosition
+                    // from a stream that has no idea what is under the wheels — so defaulting them
+                    // sets SurfaceInfoValid to 0, which SurfaceChangeGate reads as "say nothing".
+                    // Taxi guidance mirrors here on EVERY frame, which is precisely the phase the
+                    // "off the pavement" callout exists for, so a default here silences it exactly
+                    // when it matters. Same reasoning as the Altitude carry-forward above.
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0
                 };
 
                 // Mirror to lastKnownPosition so other features (LandingExitPlanner,
@@ -803,7 +825,16 @@ public partial class SimConnectManager
                     // WeatherRadarForm shows altitude) don't see a hard-zero just
                     // because the most recent position update was a takeoff-assist sample.
                     Altitude = lastKnownPosition?.Altitude ?? 0,
-                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0
+                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0,
+                    // SURFACE fields are carried FORWARD, never defaulted. They exist only on the
+                    // AIRCRAFT_POSITION frame (case 4), and this mirror overwrites lastKnownPosition
+                    // from a stream that has no idea what is under the wheels — so defaulting them
+                    // sets SurfaceInfoValid to 0, which SurfaceChangeGate reads as "say nothing".
+                    // Taxi guidance mirrors here on EVERY frame, which is precisely the phase the
+                    // "off the pavement" callout exists for, so a default here silences it exactly
+                    // when it matters. Same reasoning as the Altitude carry-forward above.
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0
                 };
 
                 // Mirror to lastKnownPosition so cross-feature consumers read a fresh
