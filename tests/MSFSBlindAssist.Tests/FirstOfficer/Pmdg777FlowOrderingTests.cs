@@ -263,8 +263,8 @@ public class Pmdg777FlowOrderingTests
         Assert.DoesNotContain("BT_SET_TRIM", ItemIds("BEFORE_TAXI"));
     }
 
-    // Preflight and Before Start, flows and checklist groups alike. Single() so a
-    // renamed id fails loudly instead of silently scanning nothing.
+    // Preflight and Before Start — flow descriptions and steps, checklist items — alike.
+    // Single() so a renamed id fails loudly instead of silently scanning nothing.
     private static readonly string[] PreStartFlowIds = { "COCKPIT_PREP", "BEFORE_START" };
     private static readonly string[] PreStartGroupIds =
         { "PREFLIGHT", "PREFLIGHT_CL", "BEFORE_START", "BEFORE_START_CL" };
@@ -273,9 +273,13 @@ public class Pmdg777FlowOrderingTests
     {
         var flows = PMDG777FlowDefinitions.Build();
         foreach (var id in PreStartFlowIds)
-            foreach (var s in flows.Single(f => f.Id == id).Steps)
+        {
+            var flow = flows.Single(f => f.Id == id);
+            if (!string.IsNullOrEmpty(flow.Description)) yield return ($"flow {id} description", flow.Description);
+            foreach (var s in flow.Steps)
                 foreach (var t in new[] { s.Label, s.SpokenLabel, s.ReminderText })
                     if (!string.IsNullOrEmpty(t)) yield return ($"flow {id} step {s.Id}", t);
+        }
         var groups = PMDG777ChecklistDefinitions.Build();
         foreach (var id in PreStartGroupIds)
             foreach (var i in groups.Single(g => g.Id == id).Items)

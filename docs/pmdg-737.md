@@ -342,9 +342,10 @@ LEFTSINGLE / RIGHTSINGLE; the unlock pulsed before the move and held across it; 
 `K:ROTOR_BRAKE` encoded channel (`455101`, `455101`+`455104`, `45501`); and a direct write to
 `switch_455_73X`. None moved `MAIN_GearLever` (0 UP, 1 OFF, 2 DOWN — a live, trustworthy
 field) to OFF. The last full write-up, with the per-shape matrix, is
-`git show 1ad261be:docs/pmdg-737.md`. A closed-loop "try each transport, read the lever back"
-ladder (`GearOffLadder` + `SetGearLeverOffAsync`) shipped briefly on PR #160 and was deleted
-with the step.
+`git show 1ad261be:docs/pmdg-737.md` (if your clone lacks that commit — e.g. after a
+squash merge — run `git fetch origin pull/160/head` first). A closed-loop "try each
+transport, read the lever back" ladder (`GearOffLadder` + `SetGearLeverOffAsync`)
+shipped briefly on PR #160 and was deleted with the step.
 
 Two traps, if anyone reopens this:
 
@@ -365,10 +366,12 @@ reading the lever is reliable, only moving it to OFF is not.
 
 **Known limitation — the cockpit panel, not the First Officer.** `PMDG737Definition.cs`
 still exposes the released panel control `Selector("MAIN_GearLever", "Gear Lever", "UP",
-"OFF", "DOWN")`, dispatched through `_simpleEventMap` straight to `EVT_GEAR_LEVER` with a
-plain parameter — the CDA plain-parameter shape above, which never moved the lever to OFF —
-and none of its positions has been verified moving the lever in flight. Left unchanged by
-owner decision (2026-09-22: First Officer only); changing it needs its own in-sim check.
+"OFF", "DOWN")`. It is mapped through `_simpleEventMap` to `EVT_GEAR_LEVER` and, as a
+three-position selector, click-walked by `WalkPMDGSelector`: one `TransmitClientEvent` +
+`MOUSE_FLAG_LEFTSINGLE` per detent toward DOWN, `RIGHTSINGLE` toward UP — so picking OFF
+from UP sends exactly the audible-but-inert click described above. None of its positions
+has been verified moving the lever in flight. Left unchanged by owner decision
+(2026-09-22: First Officer only); changing it needs its own in-sim check.
 
 ### The `ROTOR_BRAKE` encoded channel — an existing mechanism, re-confirmed on the 737
 

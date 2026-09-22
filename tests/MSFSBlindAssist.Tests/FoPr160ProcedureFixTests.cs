@@ -272,8 +272,25 @@ public class FoPr160ProcedureFixTests
     // checklist item, nothing spoken that asks for it. docs/pmdg-737.md has the record.
     private static bool AsksForGearOff(string? text) =>
         text != null && Regex.IsMatch(text,
-            @"\bgear\b(?:\s+lever)?\s*[:,]?\s*(?:UP\s+and\s+)?OFF\b",
+            @"\bgear\b(?:\s+lever)?\s*[:,\-–—]?\s*(?:(?:UP\s+and|to)\s+)?OFF\b",
             RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    // The matcher itself, pinned: it must catch every phrasing of a gear-OFF request
+    // (colon, comma, dash, "to", "UP and OFF") and nothing that is not one.
+    [Theory]
+    [InlineData("Gear lever: OFF", true)]
+    [InlineData("Landing gear: UP and OFF", true)]
+    [InlineData("start switches off, gear off, autobrake off", true)]
+    [InlineData("Gear lever — OFF", true)]
+    [InlineData("Gear lever - OFF", true)]
+    [InlineData("Gear lever to OFF", true)]
+    [InlineData("Landing gear: UP", false)]
+    [InlineData("Landing gear: DOWN", false)]
+    [InlineData("Gear inhibit: OFF", false)]
+    public void Pmdg737_GearOffMatcher_CatchesEveryPhrasingAndNothingElse(string text, bool expected)
+    {
+        Assert.Equal(expected, AsksForGearOff(text));
+    }
 
     [Fact]
     public void Pmdg737_AfterTakeoff_HasNoGearLeverOffStepOrItem()
