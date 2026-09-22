@@ -1,0 +1,1 @@
+After landing, guidance is better at refusing a route that would take you back across the runway you have just landed on. The check could not see the crossing at all when the route's first point sat on the runway behind you, which is where it usually sits — so the tone could steer you back across the landing runway with nothing said.

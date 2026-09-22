@@ -302,3 +302,56 @@ number for the A330. Decoding those as ARINC would have turned its good speeds i
 **Requires a FlyByWire A32NX Development build from 11 Sep 2026 or later.** On an older
 build the FAC words are present too (they predate #10890), so this migration is safe in both
 directions — see [require-latest-fbw-build](#) policy: no compat shims.
+### Fenix A320 AI display reads — the camera indices are MEASURED (2026-09-21)
+
+Five reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/FenixA320DisplayReads.cs`,
+dispatched by `BaseAircraftDefinition.HandleHotkeyAction` from the definition's `DisplayReads`
+override. The app moves the simulator camera to the view that frames the display, captures with
+`PrintWindow`, puts the camera back, and only then makes the AI call.
+
+| Key | Display | Instrument view |
+|---|---|---|
+| Alt+P | PFD (the FIRST OFFICER'S) | view 9 (index 8) |
+| Alt+N | ND (the CAPTAIN'S) | view 8 (index 7) |
+| Alt+E | E/WD | view 8 (index 7) |
+| Alt+S | SD | view 8 (index 7) |
+| Alt+I | Standby instruments | view 8 (index 7) |
+
+**Measured on the live aircraft** (MSFS 2024 1.8.16.0, FenixA320 IAE WF) by writing each index and
+capturing the frame. On this aircraft `cameras.cfg` is wrong TWICE over, so do not "correct" the
+table from it:
+
+- The titles mislead, as always. The camera framing the CENTRE panel is titled "Main Panel (Left)"
+  and the one framing the FIRST OFFICER'S side is titled "Main Panel (Center)".
+- ⚠️ **The live index is not the camera's position in the file.** File position 7,
+  "Main Panel (Left)" — the captain's side — is absent from the live list entirely, so every
+  camera after it shifts down one. `CAMERA VIEW TYPE AND INDEX MAX:2` reads 18 for 18 usable
+  views, 0..17 (writing 18 is refused), which is exactly the 19 definitions minus the missing one.
+  Live index 9 is the upper overhead and 10 the rear circuit-breaker wall, not main-panel views.
+
+⚠️ **The camera list is in `common/config/cameras.cfg`** (84 KB). All four presets — CFM_SL,
+CFM_WF, IAE_SL, IAE_WF — are 45-byte `[MODULAR_MERGE] auto = true` stubs. That is the OPPOSITE of
+the PMDG 737-800 layout (per-livery-preset files, `common` a stub) and the same as the PMDG 737-900,
+so one measurement covers every Fenix variant.
+
+**The captain's PFD cannot be read, and Alt+N deliberately does not match Alt+P's side.** No live
+view frames the captain's PFD: the centre view clips BOTH PFDs to slivers at its edges, and the
+only view holding a whole PFD is the first officer's. The ND is the display where the side
+genuinely matters, because range and mode are set per side (`S_FCU_EFIS1_ND_MODE` /
+`S_FCU_EFIS2_ND_MODE`), so Alt+N reads the captain's; a PFD differs between sides only in the
+altimeter setting and in side-specific FD/AP annunciation. Owner's ruling, 2026-09-21.
+
+**Two prompts are Fenix-specific and must not be folded back into the shared ones.**
+`DisplayType.NDFenix` exists because the centre view frames BOTH NDs and the shared
+`DisplayType.ND` prompt says only "ONLY describe the Navigation Display" — ambiguous with two side
+by side — so it names the left-hand one. `DisplayType.StandbyFenix` exists because Fenix ships
+BOTH kinds of standby: this airframe has three round dial gauges (airspeed, altimeter with a
+Kollsman baro window, attitude) plus a DME/VOR indicator, other variants a single digital ISIS.
+The prompt identifies which is fitted and reports it, the way the PMDG 737's lower-DU prompt names
+which of its two pages it found. `DisplayType.ISIS` is shared with the HorizonSim 787, which has a
+real digital ISFD, so it could not be edited in place. A digital ISIS occupies the same panel
+location as the round gauges, so view 8 serves both.
+
+⚠️ The old hotkey-guide line said the ISIS needs "default camera view 9". That is wrong: view 9
+(index 8) holds the first officer's ND and PFD with the ECAM clipped at its left edge, and no
+standby instruments at all. The standby is in view 8 (index 7), measured.

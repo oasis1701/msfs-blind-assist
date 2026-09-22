@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.MD11;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Services;
@@ -33,7 +34,7 @@ public class Md11DisplayReadsTests
     [InlineData(HotkeyAction.ReadDisplayISIS, GeminiService.DisplayType.ISFDMd11, "Standby instrument", 3)]
     public void EachRead_HasItsPromptNameAndView(HotkeyAction action, GeminiService.DisplayType type, string name, int view)
     {
-        Assert.True(Md11DisplayReads.TryGet(action, out var read));
+        Assert.True(AiDisplayRead.TryGet(Md11DisplayReads.All, action, out var read));
         Assert.Equal(type, read.DisplayType);
         Assert.Equal(name, read.SpokenName);
         Assert.Equal(view, read.InstrumentViewIndex);
@@ -50,6 +51,6 @@ public class Md11DisplayReadsTests
     [Fact]
     public void AnUnrelatedAction_IsNotARead()
     {
-        Assert.False(Md11DisplayReads.TryGet(HotkeyAction.ReadFlaps, out _));
+        Assert.False(AiDisplayRead.TryGet(Md11DisplayReads.All, HotkeyAction.ReadFlaps, out _));
     }
 }
