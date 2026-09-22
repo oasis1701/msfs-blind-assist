@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -48,6 +49,15 @@ public static class GearConfirmation
         => lever < 1.5 && !allLightsOn.Any(on => on);
 
     /// <summary>
+    /// The UP verdict composed from a CDA field reader — exactly what
+    /// <see cref="AircraftStateEvaluator"/> publishes as <see cref="UpField"/>, kept here so the
+    /// wiring (which field plays which role) is testable: the lever from
+    /// <see cref="LeverField"/>, and a light counts as on when its field reads above 0.5.
+    /// </summary>
+    public static bool IsConfirmedUp(Func<string, double> readField)
+        => IsConfirmedUp(readField(LeverField), AllLightFields.Select(f => readField(f) > 0.5));
+
+    /// <summary>
     /// DOWN — "three green": the lever is DOWN AND every main-panel green DOWN-AND-LOCKED
     /// light is on AND no red is on. A red means a gear is in transit or disagrees with the
     /// lever, and a light TEST lights the reds too, so neither can read as "down". The
@@ -60,4 +70,10 @@ public static class GearConfirmation
         var greens = greensOn.ToList();
         return lever > 1.5 && greens.Count > 0 && greens.All(on => on) && !redsOn.Any(on => on);
     }
+
+    /// <summary>The DOWN verdict composed from a CDA field reader — see the UP overload.</summary>
+    public static bool IsConfirmedDown(Func<string, double> readField)
+        => IsConfirmedDown(readField(LeverField),
+               GreenFields.Select(f => readField(f) > 0.5),
+               RedFields.Select(f => readField(f) > 0.5));
 }

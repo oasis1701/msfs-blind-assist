@@ -186,4 +186,40 @@ public class Pmdg737GearConfirmationTests
         Assert.False(step.Condition!(0));
         Assert.False(step.Condition!(double.NaN));
     }
+
+    // ---- the composition the evaluator publishes: which light plays which role ----------
+
+    private static Func<string, double> Reader(double lever, params string[] lit)
+        => f => f == GearConfirmation.LeverField ? lever : (lit.Contains(f) ? 1.0 : 0.0);
+
+    [Fact]
+    public void Composed_up_reads_the_lever_and_every_gear_light_by_name()
+    {
+        Assert.True(GearConfirmation.IsConfirmedUp(Reader(0.0)));
+        Assert.True(GearConfirmation.IsConfirmedUp(Reader(1.0)));
+        Assert.False(GearConfirmation.IsConfirmedUp(Reader(2.0)));
+        Assert.False(GearConfirmation.IsConfirmedUp(Reader(double.NaN)));
+        foreach (var light in GearConfirmation.AllLightFields)
+            Assert.False(GearConfirmation.IsConfirmedUp(Reader(0.0, light)), $"{light} lit must read as not up");
+    }
+
+    [Fact]
+    public void Composed_down_needs_the_three_main_panel_greens_and_no_red()
+    {
+        var greens = GearConfirmation.GreenFields.ToArray();
+        Assert.True(GearConfirmation.IsConfirmedDown(Reader(2.0, greens)));
+        Assert.False(GearConfirmation.IsConfirmedDown(Reader(1.0, greens)));
+        Assert.False(GearConfirmation.IsConfirmedDown(Reader(double.NaN, greens)));
+        foreach (var red in GearConfirmation.RedFields)
+            Assert.False(GearConfirmation.IsConfirmedDown(Reader(2.0, greens.Append(red).ToArray())),
+                $"{red} lit must read as not down");
+        // A swapped wiring (reds read as greens) must fail: three reds alone are not "down".
+        Assert.False(GearConfirmation.IsConfirmedDown(Reader(2.0, GearConfirmation.RedFields.ToArray())));
+        // The overhead greens are the alternate indication: never required, and never a
+        // substitute for a dark main-panel green.
+        Assert.True(GearConfirmation.IsConfirmedDown(
+            Reader(2.0, greens.Concat(GearConfirmation.OverheadGreenFields).ToArray())));
+        Assert.False(GearConfirmation.IsConfirmedDown(
+            Reader(2.0, greens.Skip(1).Concat(GearConfirmation.OverheadGreenFields).ToArray())));
+    }
 }

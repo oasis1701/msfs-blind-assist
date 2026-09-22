@@ -444,4 +444,23 @@ public class FoPr160ProcedureFixTests
         Path.GetFullPath(Path.Combine(
             Path.GetDirectoryName(thisTestFilePath)!,
             "..", "..", "MSFSBlindAssist", "FirstOfficer", "Fenix", fileName));
+
+    // FlowManager is not unit-testable (its ScreenReaderAnnouncer drives a real screen
+    // reader), so its one global announcement rule is pinned on the source text, the same
+    // way as the Fenix lamp guard above: "<flow> flow complete" runs straight after the last
+    // step and must NOT interrupt, or it cuts that step off — a timed-out gear check's
+    // warning, a flow-final Captain reminder (owner decision 2026-09-22).
+    [Fact]
+    public void FlowManager_FlowComplete_IsNonInterrupting()
+    {
+        string source = File.ReadAllText(FirstOfficerSourcePath("FlowManager.cs"));
+        Assert.Contains("_announcer.Announce($\"{flow.Name} flow complete\");", source);
+        Assert.DoesNotContain("AnnounceImmediate($\"{flow.Name} flow complete\")", source);
+    }
+
+    private static string FirstOfficerSourcePath(string fileName,
+        [CallerFilePath] string thisTestFilePath = "") =>
+        Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(thisTestFilePath)!,
+            "..", "..", "MSFSBlindAssist", "FirstOfficer", fileName));
 }

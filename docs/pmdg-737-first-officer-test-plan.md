@@ -294,11 +294,12 @@ and the checklist "Probe heat: ON" ticks.
    20 s it says "Timed out waiting for: Landing gear: UP" and "Skipping: Landing gear: UP", and
    the line stays unticked. Raise the gear: once all gear lights go out, the line ticks by
    itself.
-3. On approach, run the Landing flow before lowering the gear: after the missed-approach
-   reminder it says "Waiting for: Landing gear: DOWN", then after about 20 s "Timed out waiting
-   for: Landing gear: DOWN", "Skipping: Landing gear: DOWN", and only then "Landing flow
-   complete". The **Landing Checklist → "Landing gear: DOWN"** line stays unticked until you
-   lower the gear and all three greens are on.
+3. On approach, with the First Officer's descent auto-gear OFF (otherwise it lowers the gear
+   at 2000 ft AGL mid-wait), run the Landing flow before lowering the gear: after the
+   missed-approach reminder it says "Waiting for: Landing gear: DOWN", then after about 20 s
+   "Timed out waiting for: Landing gear: DOWN", "Skipping: Landing gear: DOWN", and only then
+   "Landing flow complete". The **Landing Checklist → "Landing gear: DOWN"** line stays
+   unticked until you lower the gear and all three greens are on.
 
 ### H9. Altimeters auto-set to STANDARD above transition (requires SimBrief)
 Load a SimBrief OFP with a transition altitude, then climb through it: the FO sets **both** altimeters
