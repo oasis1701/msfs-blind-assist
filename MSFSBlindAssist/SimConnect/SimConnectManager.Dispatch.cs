@@ -481,13 +481,18 @@ public partial class SimConnectManager
                 });
                 break;
 
+            // A32NX_FAC_1_V_FE_NEXT is an ARINC429 word (FBW #10890 deleted the plain
+            // A32NX_SPEEDS_VFEN L-var), so decode it -- the raw double is a ~14-billion word.
+            // A bad SSM means the FAC has nothing to say (on the ground, or FAC failed), which
+            // must be SPOKEN as unavailable rather than announced as a number.
             case (DATA_REQUESTS)335: // Speed VFE
-                SingleValue speedVFEData = (SingleValue)data.dwData[0];
+                var vfeWord = new Arinc429Word(((SingleValue)data.dwData[0]).value);
+                bool vfeOk = vfeWord.IsNormalOperation || vfeWord.IsFunctionalTest;
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "SPEED_VFE",
-                    Value = speedVFEData.value,
-                    Description = $"V FE Speed {speedVFEData.value:0} knots"
+                    Value = vfeOk ? vfeWord.Value : 0,
+                    Description = vfeOk ? $"V FE Speed {vfeWord.Value:0} knots" : "V FE Speed not available"
                 });
                 break;
 
@@ -501,13 +506,17 @@ public partial class SimConnectManager
                 });
                 break;
 
-            case (DATA_REQUESTS)337: // Speed VS (Stall Speed)
-                SingleValue speedVSData = (SingleValue)data.dwData[0];
+            // A32NX_FAC_1_V_STALL_WARN, an ARINC429 word. This is VSW, the stall WARNING
+            // speed -- not the 1g stall speed the deleted A32NX_SPEEDS_VS carried -- so it is
+            // named for what it is. See the _speedRequestTable comment in FlyByWireA320Definition.
+            case (DATA_REQUESTS)337: // Speed VS -> FAC stall warning speed (VSW)
+                var vswWord = new Arinc429Word(((SingleValue)data.dwData[0]).value);
+                bool vswOk = vswWord.IsNormalOperation || vswWord.IsFunctionalTest;
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "SPEED_VS",
-                    Value = speedVSData.value,
-                    Description = $"Stall Speed {speedVSData.value:0} knots"
+                    Value = vswOk ? vswWord.Value : 0,
+                    Description = vswOk ? $"Stall warning speed {vswWord.Value:0} knots" : "Stall warning speed not available"
                 });
                 break;
 

@@ -247,3 +247,40 @@ the `OnDeferredFlushBatchDelivered` batch hook — runs OUTSIDE that wrap and mu
 via the shared `ArmedAltitudeMode.ShouldSpeakHeldAlt`. The A380 has no such trap: its armed branch
 checks `A380DisabledMonitorVariablesSet` locally, so its flush inherits the same check by writing
 it the same way.
+
+### VFE and VS now read the FAC bus — FBW #10890 deleted the plain L-vars (2026-09-22)
+
+**FBW #10890 (`c0421a9`, 11 Sep 2026, "various AFS fixes") stopped the A32NX publishing
+`A32NX_SPEEDS_VFEN` and `A32NX_SPEEDS_VS` at all.** The writes were deleted from
+`A32NX_Speeds.ts`; the values still exist inside `NXSpeeds` but nothing puts them on an
+L-var any more. Nothing was renamed, so a name-diff sweep finds nothing — the vars simply
+stop being written and read a stale `0` forever. That is the failure mode to fear: the VFE
+and VS readouts did not go silent, they confidently said a wrong number.
+
+The readouts now take the FAC's own characteristic speeds, which is what the PFD tape uses:
+
+| Readout | Was | Now |
+| --- | --- | --- |
+| VFE | `A32NX_SPEEDS_VFEN` | `A32NX_FAC_1_V_FE_NEXT` |
+| VS | `A32NX_SPEEDS_VS` | `A32NX_FAC_1_V_STALL_WARN` |
+
+Both are **ARINC429 words**, so `SimConnectManager.Dispatch` (ids 335/337) decodes them
+through `Arinc429Word` instead of announcing the raw ~14-billion value, and a bad SSM is
+spoken as "not available" rather than as a number. The old comment in `_speedRequestTable`
+said the opposite — that VFEN was preferred *because* it was a plain L-var the temp-def path
+could read — and that reasoning is now inverted and recorded in place.
+
+⚠️ **VS is not the same quantity any more, and the wording says so.** The deleted
+`A32NX_SPEEDS_VS` was the 1g stall speed; the FAC bus has no 1g stall. `V_STALL_WARN` (VSW)
+is the closest real speed, so the call-out now says **"stall warning speed"** rather than
+quietly relabelling a different number as VS. A blind pilot is told which speed they got.
+
+⚠️ **The A380 is NOT affected and must not be "fixed" to match.** The A380X still writes
+both plain L-vars (`FmcAircraftInterface.ts`), and `FlyByWireA380Definition` derives from
+`BaseAircraftDefinition` — not from `FlyByWireA320Definition` — so it reads them through its
+own `RequestReadout` path and shares none of this. The Headwind A330 *does* inherit the A320
+table, and being an A32NX-derived mod it carries the same FAC words.
+
+**Requires a FlyByWire A32NX Development build from 11 Sep 2026 or later.** On an older
+build the FAC words are present too (they predate #10890), so this migration is safe in both
+directions — see [require-latest-fbw-build](#) policy: no compat shims.
