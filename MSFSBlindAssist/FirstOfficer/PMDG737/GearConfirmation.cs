@@ -46,7 +46,7 @@ public static class GearConfirmation
     /// all of them and so reads "not up" — the safe direction. A NaN lever reads "not up".
     /// </summary>
     public static bool IsConfirmedUp(double lever, IEnumerable<bool> allLightsOn)
-        => lever < 1.5 && !allLightsOn.Any(on => on);
+        => GearLightRules.IsUp(lever < 1.5, allLightsOn);
 
     /// <summary>
     /// The UP verdict composed from a CDA field reader — exactly what
@@ -66,10 +66,7 @@ public static class GearConfirmation
     /// reads "not down".
     /// </summary>
     public static bool IsConfirmedDown(double lever, IEnumerable<bool> greensOn, IEnumerable<bool> redsOn)
-    {
-        var greens = greensOn.ToList();
-        return lever > 1.5 && greens.Count > 0 && greens.All(on => on) && !redsOn.Any(on => on);
-    }
+        => GearLightRules.IsDown(lever > 1.5, greensOn, redsOn);
 
     /// <summary>The DOWN verdict composed from a CDA field reader — see the UP overload.</summary>
     public static bool IsConfirmedDown(Func<string, double> readField)
