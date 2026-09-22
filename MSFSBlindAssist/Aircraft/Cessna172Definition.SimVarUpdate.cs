@@ -56,8 +56,17 @@ public partial class Cessna172Definition
                 bool fell = _combustion == true && !now;
                 _combustion = now;
                 TickEngineStart(announcer);          // a catch answers within the same delivery
-                if (fell && (!_onGround || _ias > Cessna172Limits.EngineStoppedMinIasKnots))
-                    announcer.Announce("Engine stopped");
+                if (fell)
+                {
+                    // Every start is baselined like the first: without this, a second start in
+                    // the same session sees _seeded already true and speaks the ordinary
+                    // pre-alternator build-up sample as a fresh "Oil pressure low"/"Low voltage".
+                    _lowVoltage.Reset();
+                    _oilPressureLow.Reset();
+                    _oilTempHigh.Reset();
+                    if (!_onGround || _ias > Cessna172Limits.EngineStoppedMinIasKnots)
+                        announcer.Announce("Engine stopped");
+                }
                 return true;
             }
             case IasKey: _ias = value; return true;

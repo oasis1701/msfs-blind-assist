@@ -147,6 +147,12 @@ public partial class Cessna172Definition
             announcer.Announce("Engine start unavailable. Not connected to the simulator.");
             return;
         }
+        // An error condition, so it is speakable: a start on a running engine grinds the starter.
+        if (_combustion == true)
+        {
+            announcer.Announce("Engine already running");
+            return;
+        }
         if (!_engineStart.Begin(Environment.TickCount64)) return;   // a start is already in flight: ignored
         _magnetoPickTicks = Environment.TickCount64;                // the START position is our own write
         sim.SendEvent(Cessna172Magnetos.SetEvent, (uint)Cessna172Magnetos.Start);
