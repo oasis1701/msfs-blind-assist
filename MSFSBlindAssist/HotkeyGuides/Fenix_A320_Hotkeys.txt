@@ -10,12 +10,31 @@ Tip: Press the same bracket key again to cancel a mode you activated by accident
 OUTPUT MODE - Press right bracket to activate
 
 AI Features:
-Alt+d  describe scene
-alt+e Read E/WD (Engine and Warning Display), Needs default camera view 8
-alt+s Read SD (System Display), Needs default camera view 8
-alt+n Read Navigation display, Needs default camera view 8
-alt+p read PFD display, needs default camera view 9
-alt+i read ISIS display, needs default camera view 9
+  Alt+D      Describe outside scene
+  Alt+P      Read PFD
+  Alt+N      Read Navigation Display (the captain's)
+  Alt+E      Read E/WD (Engine and Warning Display)
+  Alt+S      Read SD (System Display)
+  Alt+I      Read the standby instruments
+
+  You no longer need to select a camera view first: the app moves the
+  simulator camera to the display it is reading and puts your own view back
+  afterwards - including a saved custom camera such as a cabin or wing view.
+  The camera is away for well under a second, and your view is back before the
+  AI is even asked.
+  The app checks that your view really came back rather than assuming it. If
+  it could not get you back it says "Could not return to your previous view"
+  instead of leaving you somewhere you did not choose, and the next display
+  read you take will try again to return you there.
+  From an outside or drone view it says "Switch to a cockpit view first" and
+  does nothing.
+
+  Two things about this aircraft are worth knowing. Alt+N reads the CAPTAIN'S
+  navigation display - the one whose range and mode you set on the left EFIS
+  panel. Alt+P reads the FIRST OFFICER'S PFD, because no camera view on the
+  Fenix frames the captain's without cutting it off at the edge; the two PFDs
+  differ only in the altimeter setting and in which side's autopilot and
+  flight director are annunciated.
 
 FCU Controls:
   Shift+H    Read FCU Heading

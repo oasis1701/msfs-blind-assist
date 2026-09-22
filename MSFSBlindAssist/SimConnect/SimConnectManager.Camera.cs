@@ -129,15 +129,67 @@ public partial class SimConnectManager : ICameraViewIo
 
     /// <summary>
     /// Moves the camera: the view type first, then the index within it (the order verified live —
-    /// index alone only works within the current type).
+    /// index alone only works within the current type). Both writes land on the SAME frame.
+    ///
+    /// That is correct for ENTERING an instrument view and measured working there, but it does
+    /// NOT work for leaving one: written together, the type write is refused while the index
+    /// write applies. Anything restoring a previous view must space the pair with
+    /// <see cref="SetCameraViewType"/> and <see cref="SetCameraViewIndex"/> — see
+    /// <c>InstrumentViewSwitcher.RestoreAsync</c>, which carries the measurement.
+    ///
+    /// Returns true when BOTH register writes were dispatched; see
+    /// <see cref="TrySetCameraRegister"/> for what that does and does not claim.
     /// </summary>
-    public void SetCameraView(int viewType, int viewIndex)
+    public bool SetCameraView(int viewType, int viewIndex)
     {
-        SetSimVar("CAMERA VIEW TYPE AND INDEX:0", viewType);
-        SetSimVar("CAMERA VIEW TYPE AND INDEX:1", viewIndex);
+        bool typeSent = SetCameraViewType(viewType);
+        bool indexSent = SetCameraViewIndex(viewIndex);
+        return typeSent && indexSent;
+    }
+
+    /// <summary>Writes the view type register alone, so a caller can put a frame between it and the index.</summary>
+    public bool SetCameraViewType(int viewType) => TrySetCameraRegister("CAMERA VIEW TYPE AND INDEX:0", viewType);
+
+    /// <summary>Writes the view index register alone. Only meaningful once the type register holds the wanted type.</summary>
+    public bool SetCameraViewIndex(int viewIndex) => TrySetCameraRegister("CAMERA VIEW TYPE AND INDEX:1", viewIndex);
+
+    /// <summary>
+    /// Writes one camera register and reports whether the write was DISPATCHED — not whether the
+    /// camera moved, which only a read-back can say.
+    ///
+    /// <c>SetSimVar</c> returns void and swallows both its disconnected guard and any exception,
+    /// so a caller cannot tell "sent, outcome unknown" from "nothing left this process". The
+    /// camera needs that distinction: <c>InstrumentViewPlan.MovedWithNoWayBack</c> decides from it
+    /// whether the app must confess to having moved the pilot's view, and inferring it from the
+    /// read-back instead is what let a landed write with unreadable read-backs strand the pilot in
+    /// silence. Mirrors <c>SetSimVar</c>'s own guard rather than changing it, because that method
+    /// has many callers and none of the others ask this question.
+    /// </summary>
+    private bool TrySetCameraRegister(string varName, double value)
+    {
+        if (!IsConnected || simConnect == null)
+        {
+            Log.Debug("Camera", $"Not connected: {varName} = {value} was not sent");
+            return false;
+        }
+
+        try
+        {
+            SetSimVar(varName, value);
+            return true;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Camera", $"Writing {varName} = {value} failed: {ex.Message}");
+            return false;
+        }
     }
 
     Task<CameraViewReading?> ICameraViewIo.ReadAsync(int timeoutMs) => ReadCameraViewAsync(timeoutMs);
 
-    void ICameraViewIo.Set(int viewType, int viewIndex) => SetCameraView(viewType, viewIndex);
+    bool ICameraViewIo.Set(int viewType, int viewIndex) => SetCameraView(viewType, viewIndex);
+
+    bool ICameraViewIo.SetViewType(int viewType) => SetCameraViewType(viewType);
+
+    bool ICameraViewIo.SetViewIndex(int viewIndex) => SetCameraViewIndex(viewIndex);
 }
