@@ -674,6 +674,50 @@ The actual classification happens in `TaxiGraph.DescribeLocation(lat, lon)`:
 
 Distances use equirectangular projection (sub-cm accuracy at taxi scale); the edge scan clamps to segment endpoints, the runway scan tests the runway's extent.
 
+### Why `DescribeLocation` indexes EDGES, not nodes
+
+Candidate edges come from `TaxiGraph`'s own edge cell index
+(`EnsureEdgeCellIndex`/`EdgesNear`), never from the nodes within
+`EDGE_SCAN_RADIUS_M`. Gathering them node-first and then skipping any edge whose
+from-node was further than that radius gave **every segment longer than 2 x 120 m
+a DEAD MIDDLE**: the aircraft stands on the centreline of a named taxiway, both
+endpoints are out of range, the edge is never examined, and the method returns
+`""` — which `DescribeCurrentLocation` renders as "Not on a known taxiway or ramp
+at &lt;ICAO&gt;." for **both `Alt+Y` and `Alt+L`**.
+
+Reported live at EHAM on taxiway Delta 2026-09-22. Replaying the pilot's own
+recorded 31 Hz track through the production graph reproduced it exactly: at
+52.318294, 4.741688 the aircraft was **1.7 m from the centreline** of
+`taxi_path` 998795 — named "D", 98 ft wide — whose endpoints were 172 m and
+166 m away. Five such stretches totalled 344 m of a 5,589 m taxi (6.1 %).
+
+Swept over the whole fs2024 database: **20,357 of 2,515,711 segments exceed
+240 m, 17,364 of them NAMED, totalling 3,788 km of centreline across 5,610
+airports** — worst case ZSPD taxiway S2, a 3,205 m segment with 2,965 m blind.
+
+The index is keyed on each segment's own footprint, so an edge's LENGTH no
+longer decides whether it can be found — only its distance from the aircraft,
+which the perpendicular test was always meant to be the sole arbiter of. It is
+deliberately COARSE (`EDGE_CELL_PRECISION` 3, ~111 m cells) because an edge is
+indexed under every cell it crosses: at the node hash's 1.1 m precision one
+340 m taxiway would take ~300 entries. As a side effect the scan became a 5x5
+ring instead of the 219x219 the node ring did at EHAM's latitude.
+
+Measured before/after over 600 randomly sampled airports, 70,266 segment
+midpoints:
+
+| | before | after |
+|---|---|---|
+| long (>240 m) names its own taxiway | 2 (0.13 %) | **1,472 (98.99 %)** |
+| long returns NOTHING | **1,465 (98.52 %)** | **0 (0.00 %)** |
+| short (control) names its own taxiway | 47,478 (69.03 %) | 47,478 (69.03 %) |
+| short (control) returns nothing | 1 | 1 |
+
+The control is identical to the digit — the change touches exactly the
+population it targets. The 15 long segments that name something else are correct
+precedence (a midpoint on runway pavement, or inside `PARKING_RADIUS_M` of a
+gate), not failures.
+
 ### One name for a stand — where "Gate X" in that readout comes from
 
 Step 1 above ("Parking node within 40 m → `Gate X`") reads `TaxiNode.ParkingName`, which `TaxiGraph.Build`'s parking pass writes from whatever `List<ParkingSpot>` it was handed. **Every graph build in the app now takes that list from `Services/ParkingSpotSource.GetNamedSpots(dataProvider, gateSource, icao)`**: navdata's own parking list with the concourse letter **corrected in place** from the authoritative gate list (`GsxStandNameOverlay`), then `AugmentingAirportDataProvider.AugmentParking` re-run so this scenery's online aliases resolve against the corrected identity. So a stand is called the same thing in the taxi dialog's destination combo, the gate-teleport list, `gate.select`, Where-Am-I and SayIntentions' "are you at your assigned gate" check.
@@ -1239,6 +1283,68 @@ times the 41 m a 40 kt aircraft covers in one poll, so only a teleport, slew or
 flight reload trips it, and the only cost of tripping it anyway is a forgotten
 track, never a wrong callout).
 
+### Surface-change callout — "Off the pavement, on grass." (opt-in, default off)
+
+The one surroundings callout with a safety case rather than a convenience one. A
+blind pilot cannot see where the taxiway edge is; the tester this was designed
+with could not perform the grass half of its own acceptance test for exactly
+that reason.
+
+`SurfaceChangeGate` is pure (no clock, no sim access) and is driven from
+`AirportSurroundingsMonitor`'s existing 2 s ground tick. `SURFACE TYPE` and
+`SURFACE INFO VALID` ride the `AIRCRAFT_POSITION` definition so the surface and
+the position always come from the SAME sample — pairing a surface read with a
+position from another tick is how a callout names the wrong place. **Their order
+in that definition and in the `AircraftPosition` struct is the contract**: last
+in both, same order, or every field after the divergence reads from the wrong
+offset.
+
+Four rules, each measured rather than chosen:
+
+- **Only a change of FAMILY speaks.** `SurfaceFamilies` folds the sim's enum into
+  Paved / Unpaved / Grass / Water / SnowOrIce / Unknown. Asphalt-to-concrete
+  happened **four times on one 2.35 km LOWI taxi** (the GA apron is concrete,
+  taxiway Alpha is asphalt) and carries nothing a pilot can act on.
+- **Confirmation is by DISTANCE travelled** (`ConfirmMetres`, 12 m), never time or
+  sample count. A DA40 steers on differential braking, so a taxi is stop-start by
+  nature and a "has held for N seconds" rule fires on a stationary aircraft.
+- **An enum value the table does not name is SILENT** and does not disturb what
+  the pilot was last told. Only three values are measured live in MSFS 2024 — `0`
+  concrete, `1` grass, `4` asphalt, confirmed against LOWI's GA apron, its
+  08L/26R grass strip and taxiway Alpha — the rest is the published SDK enum.
+- **The first surface of a session is a silent baseline**, as is the first after a
+  position jump or a `Reset()`. An aircraft that was PUT on the grass has not
+  driven off anything.
+
+Three departures from how the neighbouring callouts behave, all deliberate:
+
+- **Its own setting** (`SurfaceChangeCalloutsEnabled`), not the passing-callouts
+  switch — that one names buildings you go past; losing this because someone
+  turned the chatty one off would be the wrong trade.
+- **NOT behind `SuppressCheck`.** Every other callout on this tick goes quiet
+  during takeoff assist, landing rollout and docking — exactly the states in
+  which running off the side matters most.
+- **Runs before every airport-dependent guard** — no navdata, no catalog, no
+  ICAO, so it still works at a field the database has never heard of.
+
+Queued, not immediate: `AnnounceImmediate` discards whatever is being spoken, and
+this codebase has been bitten repeatedly by one callout cutting another off
+mid-word.
+
+**Measured and REJECTED beside it (2026-09-22): uphill/downhill callouts.**
+`GROUND_ALTITUDE` is an excellent sensor — 9x10^-10 m of drift over 10 s at rest,
+and it resolved a 0.19 % apron drainage camber cleanly — but airports are graded
+flat by regulation (ICAO Annex 14 caps taxiway longitudinal slope at 1.5 %).
+Measured over two real taxis: EHAM 0.50 m of range over 5.59 km, steepest 40 m
+grade +0.58 %; **LOWI, in an alpine valley, 0.03 m over 2.35 km, steepest
++0.006 %** — flatter than Schiphol. There is nothing for it to say. **Bridge
+detection by elevation was rejected in the same pass**: crossing EHAM's
+OSM-tagged taxiway V bridge (within 6 m of the way centre), ground elevation
+moved 14 mm, aircraft altitude 17 mm and AGL 0.045 ft — the taxiway is at grade
+and the road passes underneath in a cutting, so there is no hump to detect. OSM
+`bridge=yes` tags exist on only **289** `aeroway=taxiway|runway` ways worldwide,
+which makes bridges garnish where the data happens to exist, not a feature.
+
 ### Taxi to a place
 
 The pilot can route to a feature — an FBO or hangar after landing, the fuel
@@ -1417,6 +1523,43 @@ during a load.
 
 SayIntentions "taxi to the FBO" as a clearance candidate is deferred until a
 live capture shows SI phrasing a place rather than a stand.
+
+### Overpass mirrors — a regional instance must never be in the list
+
+**A REGIONAL Overpass instance — one serving a country extract — answers a query
+about anywhere outside its extract with HTTP 200, an empty element list and NO
+`remark`.** `OverpassClient.IsFailedResponse` cannot tell that from a genuine
+"nothing there", because for some queries an empty result really is the right
+answer. The damage is downstream: `OnlineFeatureStore` caches it as `Served`
+with `Degraded` false, so "this airport has no buildings" stands for the whole
+session and the passing callouts go silent, while `OsmTaxiSource` reports a
+successful fetch that adopted no names.
+
+`overpass.osm.ch` (Swiss OSM association, Switzerland extract) was in the list
+and was removed 2026-09-22 after being measured doing exactly that: EHAM's area
+query, EHAM's `around:3000` fallback and KATL's taxiway query all 0 elements and
+no remark, against LSZH's 77 — Zurich being inside its extract. Because it
+answered in about a SECOND while the planet-wide mirrors were returning 504, the
+cooldown map promoted it to FIRST for every later airport in the session. One
+process, eight airports: KJFK 0, KATL 0 in 1.1 s, EGLL 0, KORD 0, OMDB 0,
+LIRF 0, KTIW 0 — and LSZH 80. A fast wrong answer beats a slow right one every
+time, which made it the worst possible member of that list. The pilot's own
+`taxi-augment.log` showed `+osm=0 disagree=0` at every airport of that session
+against `+osm=363 disagree=40` at OMDB eight days earlier — same airport, same
+database.
+
+Two defences, deliberately at different levels: the list no longer carries that
+instance, and **`PostAsync` no longer BELIEVES an empty answer until no other
+mirror contradicts it** (held as tentative, returned only when every mirror
+agrees), which covers regional instances nobody has identified yet. An empty
+answer is still returned when they all agree — a strip with no mapped hangar,
+apron or tower is a real answer, and failing it would have the store retry it
+every five minutes for the session — and a mirror answering empty is **never
+blacklisted** for it: that is no evidence the mirror is ill.
+
+**Neither defence touches a query string**, and none ever should: the one change
+to a shipped Overpass query in this feature's history (`out tags geom center`)
+cost every taxiway name at every airport.
 
 ### The OSM buildings query
 
