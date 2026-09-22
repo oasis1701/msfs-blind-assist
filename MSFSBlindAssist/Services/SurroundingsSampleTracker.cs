@@ -25,9 +25,11 @@ internal readonly record struct SurroundingsSample(bool Usable, bool First, bool
 /// The per-sample half of <see cref="AirportSurroundingsMonitor"/> that needs no sim, no timer and
 /// no announcer: the last position, the teleport test, the unreadable-sample guard, the two callout
 /// switches and what turning one back ON forgets, and the <see cref="SurfaceChangeGate"/> they feed.
-/// PURE — the monitor hands it one sample per poll and speaks what comes back — so its rules are
-/// pinned at the cadence production runs at (<see cref="AirportSurroundingsMonitor.PollMs"/>),
-/// which the gate's own tests, fed a distance at a time, cannot see.
+/// PURE — the monitor hands it one sample per <c>AIRCRAFT_POSITION</c> answer, AT LEAST every poll
+/// (ground traffic, TCAS and hotkey one-shots can all deliver one sooner) — and speaks what comes
+/// back, so its rules are pinned at that SPARSEST cadence (<see cref="AirportSurroundingsMonitor.PollMs"/>),
+/// which the gate's own tests, fed a distance at a time, cannot see. Because the rule is
+/// distance-based, a denser real sample only makes it MORE exact, never less.
 ///
 /// <para>The monitor takes NO sample while both switches are off, so the last position is only
 /// current while at least one is on. Turning a switch on therefore forgets it exactly when the

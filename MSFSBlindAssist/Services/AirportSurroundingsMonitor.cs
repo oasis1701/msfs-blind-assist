@@ -12,7 +12,7 @@ namespace MSFSBlindAssist.Services;
 /// shares its samples. Asks for its own position every 2 s on a UI-thread timer (same shape as
 /// GroundTrafficMonitor — the taxi position stream is taxi-scoped and is OFF when no route is
 /// loaded, so this cannot ride it) and judges every AIRCRAFT_POSITION answer where it lands
-/// (<see cref="OnPositionReceived"/>): its own request's and any another feature made, each a
+/// (<see cref="OnPositionReceived"/>): its own request's and any other feature made, each a
 /// fresh sample whose surface, position and ground flag belong together. Resolves the airport at
 /// most every 30 s, reads the catalog from the cache via the non-building TryGetCached (a first
 /// build for an airport is kicked off on a thread-pool thread and picked up on a later sample —
@@ -29,9 +29,12 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public sealed class AirportSurroundingsMonitor : IDisposable
 {
-    /// <summary>The poll period. Internal so the surface tests feed samples at the cadence production
-    /// actually runs at: the distance one sample carries is this period times the ground speed, and a
-    /// test fed any other distance cannot see the rule that matters (PR #230 review, SC-2).</summary>
+    /// <summary>The monitor's own poll period — the SPARSEST cadence a sample can arrive at, since
+    /// ground traffic, TCAS and hotkey one-shots can all deliver an <c>AIRCRAFT_POSITION</c> answer
+    /// sooner. Internal so the surface tests pin that sparsest cadence: the distance a sample carries
+    /// is AT LEAST this period times the ground speed, and because the rule is distance-based, a
+    /// denser real sample only makes it MORE exact — a test fed a WIDER distance cannot see the rule
+    /// that matters (PR #230 review, SC-2).</summary>
     internal const int PollMs = 2000;
     private static readonly TimeSpan IcaoRefresh = TimeSpan.FromSeconds(30);
 
@@ -61,8 +64,12 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     private readonly PassingCalloutGate _gate = new();
     // Everything per-sample that needs no sim — the last position, the jump test, the
     // unreadable-sample guard, both switches and the surface gate — pure, and pinned at this
-    // monitor's own PollMs cadence in SurroundingsSampleTrackerTests.
+    // monitor's own PollMs cadence (the SPARSEST a sample can arrive at) in
+    // SurroundingsSampleTrackerTests.
     private readonly SurroundingsSampleTracker _samples = new();
+    // Captured on the UI thread at construction so a callout can be POSTED back to it rather than
+    // spoken synchronously inside OnPositionReceived — see PostAnnounce.
+    private readonly SynchronizationContext? _syncContext;
 
     private string _icao = "";
     private DateTime _icaoAt = DateTime.MinValue;
@@ -72,6 +79,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     private Task? _probeWarm;
     private bool _resetWhileAirborne;
     private AirportFeatureCatalog? _lastCatalog;
+    private bool _disposed;
 
     /// <summary>
     /// The passing callouts' opt-in. Turning it back ON re-baselines the passing tracks: an approach
@@ -121,8 +129,11 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     public AirportSurroundingsMonitor(ScreenReaderAnnouncer announcer, SimConnectManager sim, Func<IAirportDataProvider?> provider, SurroundingsCatalogCache cache)
     {
         _announcer = announcer; _sim = sim; _provider = provider; _cache = cache;
+        // Captured here, on the UI thread this monitor is always constructed on, so a callout can
+        // be posted back to this same thread instead of spoken inline — see PostAnnounce.
+        _syncContext = SynchronizationContext.Current;
         // Every AIRCRAFT_POSITION answer is judged where it lands — this monitor's own 2 s request
-        // and any another feature made — so the surface, the position and the ground flag it acts
+        // and any other feature made — so the surface, the position and the ground flag it acts
         // on are one sample. Raised only by ProcessAircraftPosition (the case-4 frame, the only one
         // carrying the surface fields), on the UI thread (WndProc dispatch).
         _sim.AircraftPositionReceived += OnPositionReceived;
@@ -243,7 +254,8 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
             // Everything about this sample that needs no sim, no catalog and no ICAO — the last
             // position, the teleport test, the unreadable-sample guard and the surface gate — is
-            // the tracker's, where it is pinned at this poll's own cadence.
+            // the tracker's, where it is pinned at PollMs, the SPARSEST cadence a sample can arrive
+            // at (ground traffic, TCAS and hotkey one-shots can all deliver one sooner).
             var sample = _samples.Sample(p.Latitude, p.Longitude, p.SurfaceType, p.SurfaceInfoValid, p.GroundSpeedKnots);
 
             // A position that is not a finite number: nothing on this sample can use it (the
@@ -273,8 +285,9 @@ public sealed class AirportSurroundingsMonitor : IDisposable
             {
                 // Queued, not immediate: AnnounceImmediate discards whatever is being spoken, and
                 // this codebase has been bitten repeatedly by one callout cutting another off
-                // mid-word. A one- or two-second wait behind the queue is the lesser cost.
-                _announcer.Announce(surfaceCall);
+                // mid-word. A one- or two-second wait behind the queue is the lesser cost. POSTED,
+                // not spoken here — see PostAnnounce.
+                PostAnnounce(surfaceCall);
                 Log.Debug("Surroundings", $"surface callout: {surfaceCall} (type={p.SurfaceType:F0} valid={p.SurfaceInfoValid:F0} gs={p.GroundSpeedKnots:F1})");
             }
             if (!Enabled) return;   // the rest of this sample belongs to the passing callouts
@@ -364,12 +377,45 @@ public sealed class AirportSurroundingsMonitor : IDisposable
             var hit = _gate.Evaluate(ranked, p.GroundSpeedKnots, now);
             if (hit == null) return;
             string phrase = $"Passing {hit.Feature.SpokenName}, {RelativeDirection.Side(hit.RelativeBearingDeg)}.";
-            _announcer.Announce(phrase);
+            // POSTED, not spoken here — see PostAnnounce.
+            PostAnnounce(phrase);
             Log.Debug("Surroundings", $"callout {_icao}: {phrase} dist={hit.DistanceMetres:F0} rel={hit.RelativeBearingDeg:F0}");
         }
         catch (Exception ex)
         {
             Log.Warn("Surroundings", $"monitor sample failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// Delivers a callout OUTSIDE the SimConnect dispatch that produced the sample, never spoken
+    /// synchronously inside <see cref="OnPositionReceived"/>. This monitor is that event's FIRST
+    /// permanent subscriber, so a <c>RequestAircraftPositionAsync</c> one-shot behind it — Where Am
+    /// I, Look Around — answers the SAME sample later in the SAME multicast and may call
+    /// <c>AnnounceImmediate</c> synchronously, which cancels whatever this monitor had just queued.
+    /// Posting to the UI thread's own <see cref="SynchronizationContext"/> (captured at
+    /// construction) lets that interrupting readout speak first and this callout follow it, instead
+    /// of being cancelled within milliseconds of being queued.
+    ///
+    /// <para>Falls back to a direct (still queued) <c>Announce</c> when no context was captured. If
+    /// the captured context's own marshaling is gone by the time this posts, <c>Post</c> throws
+    /// <see cref="InvalidOperationException"/> — the callout is dropped and logged once, never
+    /// thrown onward. The posted callback itself speaks nothing once the monitor is disposed.</para>
+    /// </summary>
+    private void PostAnnounce(string phrase)
+    {
+        if (_syncContext == null) { _announcer.Announce(phrase); return; }
+        try
+        {
+            _syncContext.Post(_ =>
+            {
+                if (_disposed) return;
+                _announcer.Announce(phrase);
+            }, null);
+        }
+        catch (InvalidOperationException ex)
+        {
+            Log.Debug("Surroundings", $"could not post callout, context unavailable: {ex.Message}");
         }
     }
 
@@ -420,6 +466,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
     public void Dispose()
     {
+        _disposed = true;
         _sim.AircraftPositionReceived -= OnPositionReceived;
         _timer.Stop();
         _timer.Dispose();
