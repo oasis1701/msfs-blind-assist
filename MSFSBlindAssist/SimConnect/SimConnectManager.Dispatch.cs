@@ -481,18 +481,13 @@ public partial class SimConnectManager
                 });
                 break;
 
-            // A32NX_FAC_1_V_FE_NEXT is an ARINC429 word (FBW #10890 deleted the plain
-            // A32NX_SPEEDS_VFEN L-var), so decode it -- the raw double is a ~14-billion word.
-            // A bad SSM means the FAC has nothing to say (on the ground, or FAC failed), which
-            // must be SPOKEN as unavailable rather than announced as a number.
-            case (DATA_REQUESTS)335: // Speed VFE
-                var vfeWord = new Arinc429Word(((SingleValue)data.dwData[0]).value);
-                bool vfeOk = vfeWord.IsNormalOperation || vfeWord.IsFunctionalTest;
+            case (DATA_REQUESTS)335: // Speed VFE (plain L-var source)
+                SingleValue speedVFEData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
                 {
                     VarName = "SPEED_VFE",
-                    Value = vfeOk ? vfeWord.Value : 0,
-                    Description = vfeOk ? $"V FE Speed {vfeWord.Value:0} knots" : "V FE Speed not available"
+                    Value = speedVFEData.value,
+                    Description = $"V FE Speed {speedVFEData.value:0} knots"
                 });
                 break;
 
@@ -506,10 +501,38 @@ public partial class SimConnectManager
                 });
                 break;
 
-            // A32NX_FAC_1_V_STALL_WARN, an ARINC429 word. This is VSW, the stall WARNING
-            // speed -- not the 1g stall speed the deleted A32NX_SPEEDS_VS carried -- so it is
-            // named for what it is. See the _speedRequestTable comment in FlyByWireA320Definition.
-            case (DATA_REQUESTS)337: // Speed VS -> FAC stall warning speed (VSW)
+            case (DATA_REQUESTS)337: // Speed VS (plain L-var source)
+                SingleValue speedVSData = (SingleValue)data.dwData[0];
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "SPEED_VS",
+                    Value = speedVSData.value,
+                    Description = $"Stall Speed {speedVSData.value:0} knots"
+                });
+                break;
+
+            // ---- FAC ARINC429 speed sources (FBW A32NX, post-#10890) ----
+            // FBW #10890 deleted the A32NX's writes of the plain A32NX_SPEEDS_VFEN /
+            // A32NX_SPEEDS_VS, so those readouts take the FAC words instead. They get their
+            // OWN request ids because a case is keyed by id alone: 335/337 above still carry a
+            // plain number for aircraft that publish one (Headwind A330), and decoding those as
+            // ARINC would turn a good speed into a ~14-billion word or a false "not available".
+            // A bad SSM is the FAC having nothing to say -- on the ground, or failed -- and must
+            // be SPOKEN as unavailable rather than announced as a number.
+            case (DATA_REQUESTS)385: // Speed VFE -- A32NX_FAC_1_V_FE_NEXT
+                var vfeWord = new Arinc429Word(((SingleValue)data.dwData[0]).value);
+                bool vfeOk = vfeWord.IsNormalOperation || vfeWord.IsFunctionalTest;
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "SPEED_VFE",
+                    Value = vfeOk ? vfeWord.Value : 0,
+                    Description = vfeOk ? $"V FE Speed {vfeWord.Value:0} knots" : "V FE Speed not available"
+                });
+                break;
+
+            // VSW, the stall WARNING speed -- not the 1g stall the deleted A32NX_SPEEDS_VS
+            // carried -- so the call-out is named for what it actually is.
+            case (DATA_REQUESTS)386: // Speed VS -> A32NX_FAC_1_V_STALL_WARN (VSW)
                 var vswWord = new Arinc429Word(((SingleValue)data.dwData[0]).value);
                 bool vswOk = vswWord.IsNormalOperation || vswWord.IsFunctionalTest;
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs

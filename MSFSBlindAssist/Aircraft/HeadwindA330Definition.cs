@@ -64,6 +64,36 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     public override string AircraftName => "Headwind Airbus A330-900neo";
     public override string AircraftCode => "HW_A330";
 
+    /// <summary>
+    /// The A330 keeps the PLAIN speed L-vars the A32NX lost in FBW #10890.
+    ///
+    /// The base class moved VFE and VS onto the FAC ARINC429 words because the A32NX stopped
+    /// publishing A32NX_SPEEDS_VFEN / A32NX_SPEEDS_VS entirely. This mod must NOT follow it.
+    /// Checked against headwindsim/aircraft @ 41eace7 (14 Aug 2026), not assumed:
+    ///
+    ///   * it still WRITES both, from the pre-#10890 A32NX_Speeds.ts it forked --
+    ///     hdw-a339x/.../A32NX_Core/A32NX_Speeds.ts lines 22, 29, 69 and 75;
+    ///   * its FACs publish SIX variables in total (DISCRETE_WORD_2, HEALTHY, RUDDER_TRIM_POS
+    ///     per side) and NOT ONE of them is a characteristic speed. A32NX_FAC_1_V_FE_NEXT and
+    ///     A32NX_FAC_1_V_STALL_WARN do not exist on this airframe at all.
+    ///
+    /// So the base class's sources would read nothing here and both call-outs would say
+    /// "not available" for the rest of the flight -- two working readouts destroyed to fix a
+    /// different aeroplane. ⚠️ Revisit only if Headwind syncs #10890; then its plain L-vars go
+    /// dead the same way and this override becomes the bug.
+    /// </summary>
+    protected override Dictionary<string, (int DefId, string LVar)> SpeedRequestTable => _a330SpeedRequestTable;
+
+    private static readonly Dictionary<string, (int DefId, string LVar)> _a330SpeedRequestTable = new()
+    {
+        ["GD"] = (330, "A32NX_SPEEDS_GD"),
+        ["S"] = (331, "A32NX_SPEEDS_S"),
+        ["F"] = (332, "A32NX_SPEEDS_F"),
+        ["VFE"] = (335, "A32NX_SPEEDS_VFEN"),
+        ["VLS"] = (336, "A32NX_SPEEDS_VLS"),
+        ["VS"] = (337, "A32NX_SPEEDS_VS"),
+    };
+
     // The A330's Coherent instruments are A339X-named; the <a339x-mcdu> custom element
     // lives in this view. coherent-a32nx-flightinfo.js queries both element names, so the
     // only thing that changes is which view CoherentEvalClient evaluates against.

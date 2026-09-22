@@ -8991,29 +8991,45 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // and the error-log label.
     //
     // ⚠️ VFE and VS read FAC ARINC429 WORDS, not plain L-vars, and the dispatch decodes
-    // them (SimConnectManager.Dispatch, ids 335/337). FBW #10890 (2026-09-11) DELETED the
+    // them. They carry their OWN request ids (385/386), NOT the 335/337 the plain L-vars used:
+    // a dispatch case is keyed by request id alone and cannot see which variable produced the
+    // value, so decoding 335/337 as ARINC would mangle any aircraft still sending a plain
+    // number on them -- which HeadwindA330Definition, overriding below, does. FBW #10890 (2026-09-11) DELETED the
     // A32NX's writes of A32NX_SPEEDS_VFEN and A32NX_SPEEDS_VS outright -- the values still
     // exist inside NXSpeeds but are no longer published, so the old plain L-vars now read a
     // stale 0 forever and the readout was silently wrong rather than absent. The FAC words
     // are the aircraft's own characteristic speeds and are what the PFD tape uses.
     // VS has no 1g-stall equivalent on the FAC bus: V_STALL_WARN (VSW) is the closest real
     // quantity, so the readout now SAYS "stall warning speed" rather than relabelling it.
+    // ⚠️ VFE and VS are now IN-FLIGHT ONLY. The deleted plain L-vars were valid on the
+    // ground; a FAC word carries a no-computed-data SSM until the FACs have air data, so both
+    // speak "not available" on stand. That is a real behaviour change, and it is not a
+    // regression worth avoiding: the plain L-var it replaces reads a stale 0 on the ground
+    // too, it just says it with a number.
     // ⚠️ The A380 is NOT affected and must not be changed with this: the A380X still writes
     // both plain L-vars, and FlyByWireA380Definition derives from BaseAircraftDefinition
     // (not from this class), reading them through its own RequestReadout path.
-    private static readonly Dictionary<string, (int DefId, string LVar)> _speedRequestTable = new()
+    //
+    // OVERRIDABLE because HeadwindA330Definition derives from this class. That mod is an
+    // A32NX fork on its own sync schedule: whether it carries #10890 (and so needs the FAC
+    // words) or predates it (and still publishes the plain L-vars) cannot be told from this
+    // repo, so it keeps the legacy sources until someone checks it on the aircraft. Breaking
+    // an airframe that cannot be verified here, to fix one that was, is not a trade worth making.
+    protected virtual Dictionary<string, (int DefId, string LVar)> SpeedRequestTable => _a32nxSpeedRequestTable;
+
+    private static readonly Dictionary<string, (int DefId, string LVar)> _a32nxSpeedRequestTable = new()
     {
         ["GD"] = (330, "A32NX_SPEEDS_GD"),
         ["S"] = (331, "A32NX_SPEEDS_S"),
         ["F"] = (332, "A32NX_SPEEDS_F"),
-        ["VFE"] = (335, "A32NX_FAC_1_V_FE_NEXT"),   // ARINC429 word - decoded in dispatch
+        ["VFE"] = (385, "A32NX_FAC_1_V_FE_NEXT"),   // ARINC429 word -- own id, decoded in dispatch
         ["VLS"] = (336, "A32NX_SPEEDS_VLS"),
-        ["VS"] = (337, "A32NX_FAC_1_V_STALL_WARN"), // ARINC429 word - decoded in dispatch
+        ["VS"] = (386, "A32NX_FAC_1_V_STALL_WARN"), // ARINC429 word -- own id, decoded in dispatch
     };
 
     private void RequestSpeedValue(SimConnect.SimConnectManager simConnectMgr, string label)
     {
-        var (defId, lvar) = _speedRequestTable[label];
+        var (defId, lvar) = SpeedRequestTable[label];
         var simConnect = simConnectMgr.SimConnectInstance;
         if (simConnectMgr.IsConnected && simConnect != null)
         {

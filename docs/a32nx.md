@@ -275,11 +275,29 @@ could read — and that reasoning is now inverted and recorded in place.
 is the closest real speed, so the call-out now says **"stall warning speed"** rather than
 quietly relabelling a different number as VS. A blind pilot is told which speed they got.
 
+⚠️ **VFE and VS are now IN-FLIGHT ONLY.** The deleted plain L-vars were valid on the ground;
+a FAC word carries a no-computed-data SSM until the FACs have air data, so both say "not
+available" on stand. That is a real behaviour change — and not one worth avoiding, because the
+variable it replaces reads a stale 0 on the ground too, it just says it with a number.
+
 ⚠️ **The A380 is NOT affected and must not be "fixed" to match.** The A380X still writes
 both plain L-vars (`FmcAircraftInterface.ts`), and `FlyByWireA380Definition` derives from
 `BaseAircraftDefinition` — not from `FlyByWireA320Definition` — so it reads them through its
-own `RequestReadout` path and shares none of this. The Headwind A330 *does* inherit the A320
-table, and being an A32NX-derived mod it carries the same FAC words.
+own `RequestReadout` path and shares none of this.
+
+⚠️ **The Headwind A330 inherits this table and must KEEP the plain L-vars.** Checked against
+`headwindsim/aircraft` @ `41eace7` (14 Aug 2026), not assumed: it still writes both from the
+pre-#10890 `A32NX_Speeds.ts` it forked (lines 22/29/69/75), and its FACs publish **six**
+variables in total — `DISCRETE_WORD_2`, `HEALTHY`, `RUDDER_TRIM_POS` per side — **not one of
+them a characteristic speed**. `A32NX_FAC_1_V_FE_NEXT` and `A32NX_FAC_1_V_STALL_WARN` do not
+exist on that airframe at all, so the base sources would read nothing and both call-outs would
+say "not available" for the whole flight. `HeadwindA330Definition` therefore overrides
+`SpeedRequestTable` and keeps the legacy sources. Revisit only if Headwind syncs #10890.
+
+Because a dispatch case is keyed by **request id alone** and cannot see which variable produced
+the value, the two FAC reads carry their own ids (**385/386**); 335/337 still carry a plain
+number for the A330. Decoding those as ARINC would have turned its good speeds into a
+~14-billion word or a false "not available".
 
 **Requires a FlyByWire A32NX Development build from 11 Sep 2026 or later.** On an older
 build the FAC words are present too (they predate #10890), so this migration is safe in both
