@@ -93,9 +93,9 @@ public class SurroundingsSampleTrackerTests
     [Fact]
     public void The_first_ground_sample_is_recorded_never_judged()
     {
-        // The first ground tick after a landing can still carry the DEPARTURE's position and
-        // surface: the airborne branch requests none. Made the baseline, a paved departure would
-        // announce a grass-strip landing as leaving the pavement.
+        // The first ground sample after a landing, a Reset() or a pause has nothing to measure it
+        // from — no distance, no jump test — so it is only recorded: no callout, and not even the
+        // baseline, which the NEXT sample sets.
         var t = new SurroundingsSampleTracker();
         t.SetSurfaceEnabled(true);
         var first = Poll(t, Asphalt);

@@ -6,9 +6,11 @@ namespace MSFSBlindAssist.Tests;
 /// <summary>
 /// The monitor's pure rules: whether a BACKGROUND JOB may start on this tick (one policy, both
 /// jobs — the first-time catalog build and the runway probe's graph warm-up), whether the warm-up
-/// is the job that needs starting, and what counts as a teleport rather than a taxi. Everything
-/// else in the monitor is the WinForms timer, the announcer and the cache, none of which belongs
-/// in a unit test.
+/// is the job that needs starting, and what counts as a teleport rather than a taxi. The
+/// per-sample rules — the last position, the unreadable-sample guard, the two switches and the
+/// surface gate — are SurroundingsSampleTracker's, pinned in SurroundingsSampleTrackerTests.
+/// Everything else in the monitor is the WinForms timer, the SimConnect position event, the
+/// announcer and the cache, none of which belongs in a unit test.
 /// </summary>
 public class AirportSurroundingsMonitorPolicyTests
 {
@@ -115,8 +117,9 @@ public class AirportSurroundingsMonitorPolicyTests
         => Assert.True(MovedEastAtEnat(AirportSurroundingsMonitor.JumpMetres * 2.0));
 
     /// <summary>An unreadable sample is not evidence that the aircraft moved, so it never drops the
-    /// tracks — the safe direction, and the same NaN reaches the gate as a NaN range, where no pass
-    /// can arm either.</summary>
+    /// tracks — the safe direction, and the rule for any caller. The monitor itself never asks with
+    /// one: SurroundingsSampleTracker skips a non-finite position before the jump test, and the
+    /// monitor then does nothing with that sample (SurroundingsSampleTrackerTests).</summary>
     [Theory]
     [InlineData(double.NaN, double.NaN, Lat, Lon)]
     [InlineData(Lat, Lon, double.NaN, double.NaN)]

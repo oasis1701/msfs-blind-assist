@@ -1230,9 +1230,11 @@ pressed again.
 
 ### Passing callouts (opt-in, default off)
 
-`AirportSurroundingsMonitor` polls the aircraft's own position on a 2 s UI
+`AirportSurroundingsMonitor` asks for the aircraft's own position on a 2 s UI
 timer (mirrors `GroundTrafficMonitor`'s shape — the taxi position stream is
-taxi-scoped and off with no route loaded, so this cannot ride it), re-resolves
+taxi-scoped and off with no route loaded, so this cannot ride it) and judges
+every `AIRCRAFT_POSITION` answer where it lands (`OnPositionReceived`: its own
+request's and any another feature made — each a fresh sample), re-resolves
 the airport at most every 30 s, and hands the ranked feature list (within
 250 m) to the pure `PassingCalloutGate`.
 
@@ -1362,7 +1364,8 @@ Assist, docking and the taxi states (`LandingRollout`, `LiningUp`, `HoldShort`,
 without an exit plan, leaves all of those idle, so `RunwayProbe`
 (`TaxiGuidanceManager.IsOnRunwayPavement`) asks the pavement itself. That probe
 answers only from geometry that is ALREADY in hand and never builds a graph,
-because its caller is a UI-thread timer; null means "nothing to ask".
+because its caller is the monitor's position handler, on the UI thread; null
+means "nothing to ask".
 
 **The probe keeps its runway shapes.** They are memoised by AIRPORT as well as
 by graph instance, and answer when neither graph is available —
@@ -1382,11 +1385,30 @@ fetch, which is the one invalidation it must outlive. `RefreshDatabaseProvider`
 calls `ClearWhereAmICache` for exactly this reason: the same airport can carry
 different runway geometry in the two databases.
 
-**The first ground tick of a flight only takes its sample.** The airborne
-branch returns without ever requesting a position, so `LastKnownPosition` can
-still be the DEPARTURE airport's when the wheels are down. Resolving an airport
-from it names the wrong one — and keeps naming it for up to the 30 s ICAO
-refresh — and ranks that airport's catalog against a position a flight away.
+**Every `AIRCRAFT_POSITION` answer is a sample, judged where it lands.** The
+2 s timer only ASKS (`RequestAircraftPosition`); `OnPositionReceived`, the
+monitor's handler on `SimConnectManager.AircraftPositionReceived`, judges the
+answer — its own request's, and any another feature made (ground traffic and
+TCAS every 3 s, Where Am I, Look Around, the liftoff confirm). Each is a fresh
+sample: the tracker measures distance between whatever samples it is given,
+and every gate downstream is time- or distance-based, never
+sample-count-based. The tick used to read `LastKnownPosition` straight after
+asking — the PREVIOUS poll's answer — so every callout came a poll late, and
+its ground flag came from yet another sample. The ground flag is now the
+sample's own (`SimOnGround`), and the event is raised only by the case-4 frame,
+the one that carries the surface fields, so surface, position and flag always
+belong together. The monitor is the event's first permanent subscriber, so its
+WHOLE handler is guarded: a throw would abort the multicast and every one-shot
+`RequestAircraftPositionAsync` behind it (Alt+Y, Alt+L, the liftoff confirm)
+would miss the answer. With both callout switches off nothing is asked for, and
+an answer another feature asked for is not sampled either.
+
+**The first sample of a flight is only recorded.** The first sample after a
+liftoff, a `Reset()` or a pause in sampling (both switches off — turning either
+back on forgets the last position, `SurroundingsSampleTracker`) has nothing to
+measure it from — no distance for the surface gate, no jump test — so it is
+only recorded, and the passing half acts from the next one. A sample whose
+position is not a finite number does nothing at all.
 
 `Taxiing` is deliberately NOT suppressed — a pilot under active taxi guidance
 is exactly who this is for.
@@ -1401,7 +1423,7 @@ the UI thread — the SimConnect pump, the queued announcer and the hotkeys — 
 the length of it, during the rollout. Waiting costs at most a late FIRST
 callout. **Never "fix" a busy lock with `Monitor.TryEnter` in the probe**: a
 null answer does not silence anything, so lock-busy would PERMIT callouts on
-the runway. The probe is read once per tick (not at all on a suppressed tick)
+the runway. The probe is read once per position sample (not at all on a suppressed one)
 and that single read feeds both the warm-up decision and the silence;
 `ShouldWarmProbe` is pure, retries at most once per `ProbeWarmRetry` (60 s)
 while the probe still cannot answer, and never starts a second warm-up while
@@ -1423,7 +1445,11 @@ episode (a building still closing at rotation would otherwise read as "opening"
 on the rollout), and on a position JUMP of more than `JumpMetres` (250 m — six
 times the 41 m a 40 kt aircraft covers in one poll, so only a teleport, slew or
 flight reload trips it, and the only cost of tripping it anyway is a forgotten
-track, never a wrong callout).
+track, never a wrong callout). It re-baselines the tracks (`RebaselineTracks` —
+the approaches go, the fired memory and the global gap stay) when the passing
+switch is turned back ON: an approach recorded before the switch went off was
+not watched while it was off, and read against the first sample after it could
+arm a pass nobody saw happen.
 
 ### Surface-change callout — "Off the pavement, on grass." (opt-in, default off)
 
@@ -1433,28 +1459,28 @@ with could not perform the grass half of its own acceptance test for exactly
 that reason.
 
 `SurfaceChangeGate` is pure (no clock, no sim access) and is driven from
-`AirportSurroundingsMonitor`'s existing 2 s ground tick. `SURFACE TYPE` and
-`SURFACE INFO VALID` ride the `AIRCRAFT_POSITION` definition. **Their order in
-that definition and in the `AircraftPosition` struct is the contract**: last in
-both, same order, or every field after the divergence reads from the wrong
-offset.
+`AirportSurroundingsMonitor` through `SurroundingsSampleTracker`, pure too,
+which owns everything per-sample that needs no sim: the last position, the jump
+test, the unreadable-sample guard and the two switches. The monitor judges
+every `AIRCRAFT_POSITION` answer itself (`OnPositionReceived`), never
+`LastKnownPosition`, so the surface, the position and the ground flag it acts on
+are always ONE sample. `SURFACE TYPE` and `SURFACE INFO VALID` ride the
+`AIRCRAFT_POSITION` definition. **Their order in that definition and in the
+`AircraftPosition` struct is the contract**: last in both, same order, or every
+field after the divergence reads from the wrong offset.
 
 **Every OTHER writer of `lastKnownPosition` carries the two fields forward.**
 The visual-guidance (505), flare-assist (508), taxi-guidance (507) and
 takeoff-assist (506) streams each mirror their own frame into
 `lastKnownPosition`, and none of them knows what is under the wheels. Built
-field by field, the surface fields defaulted to 0 — and `SurfaceInfoValid` 0 is
-what the gate reads as "say nothing". Taxi guidance mirrors on every frame, so
-under a loaded taxi route, the case this callout exists for, it could never
-have fired, with no error and nothing in the log. A new position mirror must
-copy both fields from the previous `lastKnownPosition`, as the 506/507 mirrors
-do for `Altitude`. The cost is a known lag: while one of those streams runs, the
-position the monitor reads is that stream's latest frame and the surface is the
-last `AIRCRAFT_POSITION` answer's, about one poll older. Without one of them
-both come from that answer, which is itself the previous poll's:
-`RequestAircraftPosition` is asynchronous and the tick reads
-`LastKnownPosition` straight after asking. The monitor asks on every poll, so
-the lag never grows.
+field by field, the surface fields defaulted to 0, and `SurfaceInfoValid` 0 is
+what the gate reads as "say nothing": while the monitor still read
+`LastKnownPosition`, a loaded taxi route — taxi guidance mirrors on every frame,
+the case this callout exists for — silenced it with no error and nothing in the
+log. The callout no longer reads `lastKnownPosition`, but other features do, so
+a new position mirror must still copy both fields from the previous
+`lastKnownPosition`, as the 506/507 mirrors do for `Altitude`, and never default
+them.
 
 Five rules, each measured rather than chosen:
 
@@ -1493,8 +1519,22 @@ Five rules, each measured rather than chosen:
   concrete, `1` grass, `4` asphalt, confirmed against LOWI's GA apron, its
   08L/26R grass strip and taxiway Alpha — the rest is the published SDK enum.
 - **The first surface of a session is a silent baseline**, as is the first after a
-  position jump or a `Reset()`. An aircraft that was PUT on the grass has not
-  driven off anything.
+  position jump, a `Reset()`, or the surface switch being turned back ON. An
+  aircraft that was PUT on the grass has not driven off anything, and whatever
+  was driven while the switch was off was never watched, so it is not news when
+  the switch comes back on. Turning the PASSING switch on never touches the
+  surface gate: switching the convenience callout on must not cost this one the
+  evidence of an excursion the pilot is driving right now. Re-assigning a switch
+  the value it already has — the settings dialog assigns both on every OK — is
+  not an edge and changes nothing.
+
+**An unreadable sample never confirms.** A position that is not a finite number
+is skipped outright — the monitor acts on nothing for that sample, and the last
+READABLE position stays the one the next distance is measured from. A surface
+type that is not a finite number is no family at all (never `(int)NaN`, which
+.NET 9 and later saturate to 0 — concrete — so a NaN would have told a pilot on
+the grass they were back on pavement), and a validity flag that is not a finite
+number is not valid.
 
 Three departures from how the neighbouring callouts behave, all deliberate:
 

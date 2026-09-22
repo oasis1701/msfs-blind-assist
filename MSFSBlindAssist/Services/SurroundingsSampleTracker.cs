@@ -8,8 +8,9 @@ namespace MSFSBlindAssist.Services;
 /// act on it, and it was not kept as the position the next distance is measured from.</param>
 /// <param name="First">There was no previous position to measure from — the first ground sample
 /// of a session, after <see cref="SurroundingsSampleTracker.Reset"/>, or after a pause in sampling
-/// (both switches off). It is recorded, never judged, and the passing half acts from the NEXT one:
-/// this one may predate a liftoff or be as old as the pause.</param>
+/// (both switches off). It is recorded, never judged, only because there is nothing to measure it
+/// from — no distance for the surface gate, no jump test — and the passing half acts from the NEXT
+/// one.</param>
 /// <param name="Jumped">Further from the previous position than taxiing can account for
 /// (<see cref="AirportSurroundingsMonitor.IsPositionJump"/>): the aircraft was PUT here. The
 /// surface baseline is already dropped; the caller drops its passing tracks.</param>
@@ -126,10 +127,9 @@ internal sealed class SurroundingsSampleTracker
         }
         _last = (lat, lon);
 
-        // The first sample after a reset, a liftoff or a pause is RECORDED, never judged: it can
-        // predate the landing (the airborne branch requests no position, and the position mirrors
-        // carry the last surface forward), and a paved departure made the baseline would announce
-        // a grass-strip landing as leaving the pavement.
+        // The first sample after a reset, a liftoff or a pause is RECORDED, never judged, only
+        // because there is nothing to measure it from: no distance for the gate and no jump test.
+        // The surface baseline is taken from the next sample.
         string? call = null;
         if (_surfaceEnabled && !first)
             call = _surface.Evaluate(SurfaceTypeOf(surfaceType), IsValid(surfaceInfoValid),
