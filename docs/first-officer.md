@@ -31,8 +31,10 @@ The A32NX also gets a **richer cockpit-lighting scene** than the A380's single A
 applied as a coordinated per-phase scene via `SetCockpitLighting`; the three discrete controls
 auto-detect as normal checklist items, while the six analog knobs surface as one `ActionManual`
 grouped item (no clean revert-detectable target for a potentiometer). The opt-in **auto-flaps
-schedule is reused near-verbatim from the A380** (same `A32NX_SPEEDS_*` L:vars, since both
-aircraft share the FBW speed-tape implementation) — the settings checkbox now reads "Auto-manage
+schedule is reused near-verbatim from the A380** (same `A32NX_SPEEDS_*` L:vars for GD/S/F, since
+both aircraft share the FBW speed-tape implementation — except VFE-next, which the A32NX reads from
+the FAC's `V_FE_NEXT` word through its evaluator's `FO_VFE_NEXT` field, because FBW #10890 stopped
+publishing `A32NX_SPEEDS_VFEN` there) — the settings checkbox now reads "Auto-manage
 flaps (FBW A380 and A32NX)." In-sim test plan:
 [docs/fbw-a320-first-officer-test-plan.md](docs/fbw-a320-first-officer-test-plan.md).
 
