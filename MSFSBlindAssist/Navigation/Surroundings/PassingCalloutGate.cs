@@ -76,12 +76,41 @@ public sealed class PassingCalloutGate
 
     internal int TrackCount => _tracks.Count;
 
+    /// <summary>
+    /// How near a feature of this kind must come before a pass can be reported.
+    ///
+    /// <para>MEASURED, not chosen. Replaying two RECORDED pilot tracks — 5.59 km at EHAM, 4.35 km
+    /// at LOWI, 31 Hz, through the production catalog, Rank and this gate — the shipped
+    /// 150/200/100 m produced ONE callout at EHAM and TWO at LOWI. The blocker was neither the
+    /// abeam rule nor the closure rule (on both real tracks EVERY announceable feature passed was
+    /// abeam at its closest point); it was these numbers. What a taxiing aircraft goes past
+    /// clusters just OUTSIDE them: EHAM's eight nearest piers at 141-223 m against a 150 m
+    /// concourse radius — taxiway Bravo is Schiphol's OUTER parallel and never comes nearer —
+    /// and LOWI's ten nearest hangars at 106-137 m against a 100 m one.</para>
+    ///
+    /// <para>x1.5 clears the whole cluster at both fields (225 &gt; 223, 150 &gt; 137) and takes
+    /// EHAM from 1 callout to 7 and LOWI from 2 to 7, about 1.3-1.6 per kilometre. Wider was
+    /// measured and rejected: x2 adds two at each field, x3 adds two more and both airports have
+    /// SATURATED by then, so beyond this the radius only starts naming buildings the pilot is
+    /// nowhere near. The gate's own limits — 10 s globally, 5 minutes per building — cap the
+    /// worst case regardless of what is set here.</para>
+    /// </summary>
     public static double PassRadiusMetres(FeatureKind k) => k switch
     {
-        FeatureKind.Concourse or FeatureKind.Terminal => 150.0,
-        FeatureKind.Tower => 200.0,
-        _ => 100.0,
+        FeatureKind.Concourse or FeatureKind.Terminal => 225.0,
+        FeatureKind.Tower => 300.0,
+        _ => 150.0,
     };
+
+    /// <summary>
+    /// How wide the caller must rank before handing the list to <see cref="Evaluate"/>. A pass
+    /// radius ABOVE this is a number the gate can never see: the monitor ranks once and the gate
+    /// only ever sees what that list contains, so the two move together or the widest kind is
+    /// silently capped at the window. This is the ceiling <see cref="PassRadiusMetres"/> is
+    /// tested against, with headroom above the widest kind so a future widening there is a
+    /// deliberate act rather than a silent no-op.
+    /// </summary>
+    public const double RankRadiusMetres = 350.0;
 
     public static bool IsAnnounceable(AirportFeature f) => f.Kind switch
     {

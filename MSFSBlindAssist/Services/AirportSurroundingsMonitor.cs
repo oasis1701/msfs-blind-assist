@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Services.TaxiAugment;
@@ -297,7 +297,9 @@ public sealed class AirportSurroundingsMonitor : IDisposable
             if (onRunway == true) return;
 
             double hdgTrue = RelativeDirection.Normalize360(p.HeadingMagnetic + p.MagneticVariation);
-            var ranked = SurroundingsReport.Rank(catalog, p.Latitude, p.Longitude, hdgTrue, 250.0);
+            // PassingCalloutGate.RankRadiusMetres, never a literal: the gate only ever sees what
+            // this list contains, so a pass radius wider than the window is silently capped here.
+            var ranked = SurroundingsReport.Rank(catalog, p.Latitude, p.Longitude, hdgTrue, PassingCalloutGate.RankRadiusMetres);
 
             var hit = _gate.Evaluate(ranked, p.GroundSpeedKnots, now);
             if (hit == null) return;
