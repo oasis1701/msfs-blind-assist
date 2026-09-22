@@ -462,7 +462,7 @@ public static class IFly737FlowDefinitions
     private static Flow BuildAfterTakeoff() => new()
     {
         Id = "AFTER_TAKEOFF", Name = "After Takeoff",
-        Description = "Packs auto, start switches off, turnoff lights off, gear up, autobrake off.",
+        Description = "Packs auto, start switches off, turnoff lights off, gear up, autobrake off, then confirms the gear is up.",
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TAKEOFF_CL" },
         Steps = new()
         {
@@ -479,6 +479,17 @@ public static class IFly737FlowDefinitions
             SW("AT_GEAR_OFF", "Gear lever: UP", "Gear_Lever_Status", IFly737ActionExecutor.GearUp),
             SW("AT_AB_OFF", "Autobrake: OFF", "Autobrake_Selector_Status",
                 IFly737ActionExecutor.AutobrakeOff),
+            // Read-only gear-up confirmation — it never moves the lever (AT_GEAR_OFF above
+            // already did). Confirms the gear the way a crew does, "gear up, lights out"
+            // (IFly737GearConfirmation), and completes the After Takeoff Checklist's
+            // "Landing gear: UP". LAST, so gear still retracting does not hold up the steps
+            // above; waits up to 20 s. If the gear is not confirmed up the step is announced
+            // as skipped and FlowManager keeps ATC_GEAR out of MarkGroupComplete's latch, so
+            // the line keeps mirroring the real gear instead of reading complete over gear
+            // that is still down.
+            Skip(WaitForField("AT_GEAR_UP_CHECK", "Landing gear: UP", IFly737GearConfirmation.UpField, v => v > 0.5, 20,
+                    checklistItemId: "ATC_GEAR"),
+                s => s.GetValue(IFly737GearConfirmation.UpField) > 0.5),
         }
     };
 
@@ -524,7 +535,7 @@ public static class IFly737FlowDefinitions
     private static Flow BuildLanding() => new()
     {
         Id = "LANDING", Name = "Landing",
-        Description = "Start switches CONT, speedbrake armed, missed approach altitude.",
+        Description = "Start switches CONT, speedbrake armed, missed approach altitude, then confirms the gear is down.",
         RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
         Steps = new()
         {
@@ -535,6 +546,16 @@ public static class IFly737FlowDefinitions
             // is deliberately read-only (see class doc).
             Captain("LD_SPDBRK", "Speedbrake: ARMED"),
             Captain("LD_MISSED", "Set the missed approach altitude."),
+            // Read-only gear-down confirmation — this flow writes no gear lever at all.
+            // Confirms the gear the way a crew does, "three green" (IFly737GearConfirmation),
+            // and completes the Landing Checklist's "Landing gear: DOWN". LAST, so the steps
+            // above are not held up; waits up to 20 s. If the gear is not confirmed down the
+            // step is announced as skipped and FlowManager keeps LDC_GEAR out of
+            // MarkGroupComplete's latch, so the line keeps mirroring the real gear instead of
+            // reading complete over gear that is still up.
+            Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing gear: DOWN", IFly737GearConfirmation.DownField, v => v > 0.5, 20,
+                    checklistItemId: "LDC_GEAR"),
+                s => s.GetValue(IFly737GearConfirmation.DownField) > 0.5),
         }
     };
 
@@ -677,7 +698,7 @@ public static class IFly737FlowDefinitions
     };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
-        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip) => new()
+        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip, string? checklistItemId = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitForCondition,
@@ -685,6 +706,7 @@ public static class IFly737FlowDefinitions
         Condition = condition,
         TimeoutSeconds = timeoutSec,
         FailurePolicy = onTimeout,
+        CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 0,
     };
 

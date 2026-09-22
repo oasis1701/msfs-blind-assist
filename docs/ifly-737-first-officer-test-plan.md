@@ -86,10 +86,10 @@ plan's Part B2 — this aircraft's flow *steps* are the same, only the underlyin
 | Engine Start | Packs OFF; ENG 2 start switch GRD + start lever IDLE at N2 ≥ 20%, then ENG 1 the same (no start-valve wait — this SDK has no start-valve field, see the flow's header comment) |
 | Before Taxi | After-start power transfer (generators ON, APU bleed OFF, APU OFF), then probe heat **ON** (only Auto/On exist — see B3); packs AUTO; isolation AUTO; start switches CONT; taxi + turnoff lights ON; lower DU item is a Captain reminder (no lower-DU field on this SDK); captain reminders for anti-ice and takeoff flaps |
 | Before Takeoff | Landing lights ON; strobes ON; A/T arm (absolute switch, no toggle hazard); transponder TA/RA |
-| After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; **gear lever UP** (not "OFF" — this airframe's lever has only Up/Down, see B3); autobrake OFF |
+| After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; **gear lever UP** (not "OFF" — this airframe's lever has only Up/Down, see B3); autobrake OFF; then confirms the gear is up via the gear lights (see B10) |
 | Descent | Seatbelt sign ON; captain reminders for autobrake, ILS, landing data |
 | Approach | EFIS APP / range 20; altimeter reminder |
-| Landing | Start switches CONT; **speedbrake ARM is a Captain reminder** (see B7); missed-altitude reminder |
+| Landing | Start switches CONT; **speedbrake ARM is a Captain reminder** (see B7); missed-altitude reminder; then confirms the gear is down via the gear lights (see B10) |
 | After Landing | Landing lights off; taxi light ON; strobes steady; anti-ice OFF; probe heat **AUTO**; APU ON; start switches OFF; autobrake OFF |
 | Shutdown | APU generators ON; start levers CUTOFF (no spool-down wait); signs/lights off; fuel pumps OFF; window heat OFF; transponder **ALT OFF** |
 | Secure | IRS OFF; emergency exit lights **OFF**; window heat OFF; packs OFF |
@@ -226,6 +226,24 @@ N2, and that the flow's gate sees it.
 GRD PWR / generator connect is "Move DOWN = ON, Move UP = OFF". That direction is corroborated
 by the vendor's UP/DOWN ↔ Value2 convention **only** — nothing in the model XML confirms it.
 Confirm a DOWN click actually connects (watch `ENG_TRANSFER_BUS_OFF` / `APU_GEN_OFF_BUS`).
+
+### B10. The gear lines are confirmed by the gear lights (After Takeoff and Landing)
+Owner decision 2026-09-22: "Landing gear: UP"/"Landing gear: DOWN" are confirmed by the gear
+lights (`IFly737GearConfirmation`), not the lever alone — see the doc bullet in
+`docs/ifly-737.md`. Turn OFF both universal auto-gear checkboxes in **File → Settings… → First
+Officer tab** first, so the gear stays exactly where you leave it for each check.
+
+1. With auto-gear off, run the After Takeoff flow while the gear is still DOWN (don't raise it
+   by hand either). Expect "Timed out waiting for: Landing gear: UP" and "Skipping: Landing
+   gear: UP" before "After Takeoff flow complete", and the **After Takeoff Checklist → "Landing
+   gear: UP"** line to stay unticked. Raise the gear afterwards: once all nine gear lights
+   (main-panel red/green ×3 plus the three `SYS2_*` overhead greens) are out, the line ticks by
+   itself with no further action.
+2. The mirror check for the Landing flow: with auto-gear off, run Landing before lowering the
+   gear. Expect "Timed out waiting for: Landing gear: DOWN" and "Skipping: Landing gear: DOWN"
+   before "Landing flow complete", and the **Landing Checklist → "Landing gear: DOWN"** line to
+   stay unticked. Lower the gear afterwards: once all three main-panel greens are on and no red
+   is on, the line ticks by itself.
 
 ---
 

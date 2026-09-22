@@ -40,9 +40,11 @@ using Act = System.Action<IFly737ActionExecutor, IFly737StateEvaluator>;
 ///    but remains deliberately unwired — see IFly737ActionExecutor.PseudoKeys.
 ///  - Gear lever has only Up(0)/Down(1) — no OFF detent (RegisterLandingGear,
 ///    IFly737MAXDefinition.ForwardPedestal.cs:24-25 — `new[] { "Up", "Down" }`). ATKO_GEAR_OFF
-///    and its After Takeoff Checklist twin ATC_GEAR command/detect GearUp only and are labelled
-///    "Gear lever: UP" / "Landing gear: UP" (Fix pass 1, 2026-08) — the PMDG-ported "OFF"/
-///    "UP and OFF" wording named a position this airframe's switch does not have.
+///    commands GearUp and is labelled "Gear lever: UP" (Fix pass 1, 2026-08) — the PMDG-ported
+///    "OFF"/"UP and OFF" wording named a position this airframe's switch does not have. Its
+///    After Takeoff Checklist twin ATC_GEAR keeps the "Landing gear: UP" label but no longer
+///    detects off the lever at all — see its own comment, and GearLightRules/
+///    IFly737GearConfirmation, for the 2026-09-22 gear-lights fix.
 ///  - Transponder STBY wording was likewise ported wrong: this airframe's resting/ground
 ///    position is ALT OFF, not STBY (RegisterTransponder, IFly737MAXDefinition.cs:596-597 —
 ///    `new[] { "ALT OFF", "XPNDR", "TA Only", "TA/RA" }`). PF_XPDR and SD_XPDR are labelled
@@ -650,8 +652,14 @@ public static class IFly737ChecklistDefinitions
                 v => v > 0.5, new[] { "Engine_Bleed_Air_Switch_Status_1" }, action: null),
             Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: AUTO", "Pack_Switch_Status_0", v => v > 0.5 && v < 1.5,
                 new[] { "Pack_Switch_Status_1" }, action: null),
-            // No OFF detent exists (Gear_Lever_Status is 0 Up/1 Down only) — see ATKO_GEAR_OFF.
-            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP", "Gear_Lever_Status", v => v < 0.5,
+            // "Landing gear: UP" is confirmed the way a crew confirms it — gear up, lights
+            // out — through the IFly737GearConfirmation synthetic (lever not Down AND every
+            // gear light out), never the lever alone (owner decision 2026-09-22). The After
+            // Takeoff flow's read-only AT_GEAR_UP_CHECK step waits for the same field and
+            // completes this line; when it times out it is skipped aloud and FlowManager
+            // keeps this line out of MarkGroupComplete's latch, so it never reads complete
+            // over gear that is still down.
+            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP", IFly737GearConfirmation.UpField, v => v > 0.5,
                 action: null),
             Reminder("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: UP, no lights"),
         }
@@ -691,7 +699,16 @@ public static class IFly737ChecklistDefinitions
             // upgrades from a reminder to a live auto-detect.
             Auto("LDC_SPDBRK", "LANDING_CL", "Speedbrake: ARMED", "SPEED_BRAKE_ARMED_Light_Status", v => v > 0.5,
                 action: null),
-            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN", "Gear_Lever_Status", v => v > 0.5, action: null),
+            // "Landing gear: DOWN" is confirmed the way a crew confirms it — three green —
+            // through the IFly737GearConfirmation synthetic (lever Down, all three
+            // main-panel greens on, no red), never the lever alone (owner decision
+            // 2026-09-22). The Landing flow's read-only LD_GEAR_DOWN_CHECK step waits for
+            // the same field and completes this line; when it times out it is skipped aloud
+            // and FlowManager keeps this line out of MarkGroupComplete's latch, so finishing
+            // the flow before the gear is down no longer reads "Landing gear: DOWN" complete
+            // over gear that is still up.
+            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN", IFly737GearConfirmation.DownField, v => v > 0.5,
+                action: null),
             Reminder("LDC_FLAPS", "LANDING_CL", "Flaps: set for landing"),
         }
     };
