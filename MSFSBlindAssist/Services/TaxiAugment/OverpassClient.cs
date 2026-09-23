@@ -13,13 +13,20 @@ public sealed class OverpassClient
 {
     private readonly HttpClient _http;
 
-    public OverpassClient(HttpClient http)
+    /// <summary>A client on the process-wide cooldown map (<see cref="SharedCooldownUntilUtc"/>) —
+    /// what the app's two OSM sources are built with.</summary>
+    public OverpassClient(HttpClient http) : this(http, SharedCooldownUntilUtc) { }
+
+    /// <summary>A client recording mirror failures into <paramref name="cooldownUntilUtc"/> instead of
+    /// the process-wide map, so a test's cooldowns are its own (review SW-2).</summary>
+    internal OverpassClient(HttpClient http, ConcurrentDictionary<string, DateTime> cooldownUntilUtc)
     {
         _http = http;
+        _cooldownUntilUtc = cooldownUntilUtc ?? throw new ArgumentNullException(nameof(cooldownUntilUtc));
         // Overpass returns HTTP 406 for a request with NO User-Agent, so the shared client MUST
         // send one or every OSM fetch silently fails (+osm=0 at every airport — PostAsync reads a
-        // 406 as just another failed mirror, blacklists it and moves on, so with no UA all seven
-        // "fail" and the call ends as a plain null). Guard against a caller that already set one
+        // 406 as just another failed mirror, blacklists it and moves on, so with no UA every mirror
+        // "fails" and the call ends as a plain null). Guard against a caller that already set one
         // (the client is shared with the apt.dat source). Verified live: no UA -> 406 / 0
         // elements; with UA -> 200.
         if (_http.DefaultRequestHeaders.UserAgent.Count == 0)
@@ -38,7 +45,7 @@ public sealed class OverpassClient
     /// area query, EHAM's <c>around:3000</c> fallback and KATL's taxiway query with 0 elements and
     /// no remark, while answering LSZH with 77 — Zurich being inside its extract. Worse, it did so
     /// in about a second while the planet-wide mirrors were returning 504, so
-    /// <see cref="CooldownUntilUtc"/> promoted it to FIRST for every later airport in the session.
+    /// <see cref="SharedCooldownUntilUtc"/> promoted it to FIRST for every later airport in the session.
     /// One process, eight airports: KJFK 0 features, then KATL 0 in 1.1 s, EGLL 0 in 1.0 s,
     /// KORD 0, OMDB 0, LIRF 0, KTIW 0 — and LSZH 80. A fast wrong answer beats a slow right one
     /// every time, which is what made it the worst possible member of this list.</para>
@@ -62,18 +69,32 @@ public sealed class OverpassClient
     ///
     /// <para>The cooldown may only ever REORDER the attempts, never reduce them: <see cref="PostAsync"/>
     /// makes a second pass over the cooled-down mirrors when every fresh one failed, so a wrongly
-    /// blacklisted mirror (or a machine-wide outage that trips all seven) can never turn a fetch that
-    /// works today into a null. Static so the backoff is shared across airports in one session;
-    /// process-lifetime only, like <see cref="TaxiDataCache"/>.</para>
+    /// blacklisted mirror (or a machine-wide outage that trips all of them) can never turn a fetch
+    /// that works today into a null.</para>
+    ///
+    /// <para>This static map is the DEFAULT: every client built with the public constructor records
+    /// into it, so the taxiway-name source and the buildings source learn from each other's mirror
+    /// failures whichever instance each holds, and the backoff carries from one airport to the next.
+    /// Process-lifetime only, like <see cref="TaxiDataCache"/>. A test hands its client a map of its
+    /// own through the internal constructor (review SW-2): with only this one, a test could assert
+    /// nothing about the ORDER mirrors are asked in, and the test meant to pin "an empty answer is
+    /// never blacklisted" still passed with the empty mirror blacklisted.</para>
     /// </summary>
-    private static readonly ConcurrentDictionary<string, DateTime> CooldownUntilUtc = new();
+    private static readonly ConcurrentDictionary<string, DateTime> SharedCooldownUntilUtc = new();
     private static readonly TimeSpan MirrorCooldown = TimeSpan.FromMinutes(5);
+
+    /// <summary>This client's cooldown map: <see cref="SharedCooldownUntilUtc"/> unless a test gave it
+    /// its own.</summary>
+    private readonly ConcurrentDictionary<string, DateTime> _cooldownUntilUtc;
+
+    /// <summary>The map this client records into — for the test that pins the sharing.</summary>
+    internal ConcurrentDictionary<string, DateTime> Cooldowns => _cooldownUntilUtc;
 
     /// <summary>
     /// Longest any ONE mirror may hold the request before we move on. Without it the
     /// per-attempt timeout is the caller's WHOLE budget (AugmentingAirportDataProvider
     /// gives all sources 60 s, and the shared HttpClient's own Timeout is 60 s too), so a
-    /// single blackholed mirror consumed everything and mirrors 2-7 were never contacted —
+    /// single blackholed mirror consumed everything and every mirror after it was never contacted —
     /// i.e. exactly the stall the mirror list and the cooldown were widened for, and the
     /// reason the documented "second pass over the cooled-down mirrors" could never run.
     /// Sized above a healthy Overpass answer and well below the caller's budget so several
@@ -87,12 +108,13 @@ public sealed class OverpassClient
     public async Task<string?> PostAsync(string query, CancellationToken ct)
     {
         // ONE snapshot of the cooldown map, partitioned in a single pass. Two separate
-        // `Where` passes over the shared static dictionary are not atomic: a concurrent
-        // fetch for another airport removing or adding an entry between them could drop a
-        // mirror from BOTH lists (never attempted) or put it in both (attempted twice),
-        // which breaks this class's own "may only ever REORDER the attempts, never reduce
-        // them" guarantee. Fetches for different ICAOs genuinely overlap — the in-flight
-        // map in AugmentingAirportDataProvider dedupes per ICAO only.
+        // `Where` passes over it are not atomic — and in production it is the process-wide
+        // map every other fetch writes: a concurrent fetch for another airport removing or
+        // adding an entry between them could drop a mirror from BOTH lists (never attempted)
+        // or put it in both (attempted twice), which breaks this class's own "may only ever
+        // REORDER the attempts, never reduce them" guarantee. Fetches for different ICAOs
+        // genuinely overlap — the in-flight map in AugmentingAirportDataProvider dedupes per
+        // ICAO only.
         var now = DateTime.UtcNow;
         var fresh = new List<string>(Mirrors.Length);
         var cooling = new List<string>(Mirrors.Length);
@@ -119,7 +141,7 @@ public sealed class OverpassClient
                 // disagree about a "runtime error" body with an empty element list).
                 var kind = ClassifyBody(body);
                 if (kind == BodyKind.Failed) { MarkFailed(url); continue; }
-                CooldownUntilUtc.TryRemove(url, out _);
+                _cooldownUntilUtc.TryRemove(url, out _);
 
                 // An empty element list is a legitimate answer for some queries and a REGIONAL
                 // MIRROR'S answer about everywhere outside its extract, and nothing in the body
@@ -185,9 +207,9 @@ public sealed class OverpassClient
         catch (JsonException) { return BodyKind.Failed; }
     }
 
-    private static bool IsCoolingDown(string url, DateTime nowUtc) =>
-        CooldownUntilUtc.TryGetValue(url, out var until) && until > nowUtc;
+    private bool IsCoolingDown(string url, DateTime nowUtc) =>
+        _cooldownUntilUtc.TryGetValue(url, out var until) && until > nowUtc;
 
-    private static void MarkFailed(string url) =>
-        CooldownUntilUtc[url] = DateTime.UtcNow + MirrorCooldown;
+    private void MarkFailed(string url) =>
+        _cooldownUntilUtc[url] = DateTime.UtcNow + MirrorCooldown;
 }

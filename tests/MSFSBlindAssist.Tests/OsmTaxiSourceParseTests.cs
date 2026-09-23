@@ -2,10 +2,12 @@
 // (named-holding-point augmentation). Taxiway/parking parsing predates these
 // tests and is exercised implicitly by the mixed-payload case.
 
+using System.Collections.Concurrent;
 using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Tests;
 
+[Collection("OverpassMirrorState")]
 public class OsmTaxiSourceParseTests
 {
     private static string Element(string body) =>
@@ -247,7 +249,7 @@ public class OsmTaxiSourceParseTests
     // on de-DE / fr-FR / pt-BR / tr-TR, which turns `around:5000,51.4706,-0.4614` into a
     // five-token clause Overpass rejects with a 400 — silently killing the whole online
     // taxiway/holding-point/stand layer for every user on such a machine, and (since the
-    // per-mirror cooldown landed) blacklisting all seven mirrors while it does so.
+    // per-mirror cooldown landed) blacklisting every mirror while it does so.
 
     [Fact]
     public void The_overpass_query_uses_invariant_decimal_separators()
@@ -301,7 +303,8 @@ public class OsmTaxiSourceParseTests
     [InlineData("{\"elements\":[42]}")]                                                                // not even an object
     public async Task A_body_that_is_shapeless_enough_to_break_the_parser_is_a_failed_fetch_not_a_throw(string body)
     {
-        var source = new OsmTaxiSource(new OverpassClient(new HttpClient(new EveryMirrorAnswers(body))));
+        var source = new OsmTaxiSource(new OverpassClient(new HttpClient(new EveryMirrorAnswers(body)),
+            new ConcurrentDictionary<string, DateTime>()));
         Assert.Null(await source.FetchAsync("KTIW", 47.2679, -122.5781, CancellationToken.None));
     }
 

@@ -48,11 +48,6 @@ public partial class MainForm : Form
     // Typed reference to the augmentation decorator so Phase 6 can call PrefetchAsync.
     private MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider? _augmentingProvider;
 
-    // The shared Overpass mirror client: OsmTaxiSource's taxiway/parking fetch and the
-    // surroundings feature fetch both post through this one instance, so a mirror cooldown
-    // recorded by either fetch is honoured by the other instead of each keeping its own.
-    private MSFSBlindAssist.Services.TaxiAugment.OverpassClient? _overpassClient;
-
     // The surroundings feature's OSM building tier: its OWN Overpass request, cached per ICAO in
     // memory. Separate from the taxiway fetch above so a mirror miss on the buildings can never
     // cost the taxiway names (it once did — the two rode one query).
@@ -831,12 +826,16 @@ public partial class MainForm : Form
         // with no OSM tier until they restarted the app. RefreshDatabaseProvider Clear()s this
         // store rather than rebuilding it, so nothing here is built twice on a database switch.
         var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
-        _overpassClient = new MSFSBlindAssist.Services.TaxiAugment.OverpassClient(http);
+        // ONE Overpass client for both OSM readers: the taxiway/parking names below and the
+        // buildings here. Sharing the INSTANCE is tidiness, not what makes their mirror cooldowns
+        // agree — every client built with the public constructor records into one process-wide
+        // cooldown map, so a mirror either fetch found dead is tried last by the other.
+        var overpassClient = new MSFSBlindAssist.Services.TaxiAugment.OverpassClient(http);
 
-        // The surroundings buildings ride the same mirror client (so one cooldown map serves
-        // both) but their OWN query, store and event. A catalog built before the fetch landed
-        // is invalidated here, so the next Alt+L includes the buildings.
-        var featureSource = new MSFSBlindAssist.Services.Surroundings.OsmFeatureSource(_overpassClient);
+        // The surroundings buildings post through that client with their OWN query, store and
+        // event. A catalog built before the fetch landed is invalidated here, so the next Alt+L
+        // includes the buildings.
+        var featureSource = new MSFSBlindAssist.Services.Surroundings.OsmFeatureSource(overpassClient);
         onlineFeatures = new MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore(featureSource.FetchAsync)
         { Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled };
         onlineFeatures.FeaturesUpdated += icao =>
@@ -868,7 +867,7 @@ public partial class MainForm : Form
         {
             var sources = new System.Collections.Generic.List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
             {
-                new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(_overpassClient),
+                new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(overpassClient),
                 new MSFSBlindAssist.Services.TaxiAugment.XplaneAptDatSource(http),
             };
             var mergeOpt = new MSFSBlindAssist.Services.TaxiAugment.MergeOptions();

@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
@@ -6,6 +7,7 @@ using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Tests;
 
+[Collection("OverpassMirrorState")]
 public class OsmFeatureSourceTests
 {
     [Fact]
@@ -59,8 +61,9 @@ public class OsmFeatureSourceTests
     //
     // Driven through a fake HttpMessageHandler rather than a network: the area query and the
     // fallback are told apart by the posted `data` (only the area query names an aerodrome).
-    // Nothing here depends on WHICH mirror answers, so OverpassClient's process-wide cooldown
-    // map cannot make these order-dependent — the cooldown only ever reorders the attempts.
+    // Each source gets a cooldown map of its OWN (OverpassClient's internal constructor), so a
+    // mirror these tests fail is never cooled for any other test — and the class runs in the
+    // OverpassMirrorState collection besides.
 
     private sealed class ScriptedMirror : HttpMessageHandler
     {
@@ -72,7 +75,8 @@ public class OsmFeatureSourceTests
 
     private static OsmFeatureSource SourceOver(Func<bool, HttpResponseMessage> reply)
         => new(new OverpassClient(new HttpClient(new ScriptedMirror(
-            posted => reply(posted.Contains("aerodrome", StringComparison.Ordinal))))));
+            posted => reply(posted.Contains("aerodrome", StringComparison.Ordinal)))),
+            new ConcurrentDictionary<string, DateTime>()));
 
     private static HttpResponseMessage NoElements() => new(HttpStatusCode.OK) { Content = new StringContent("{\"elements\":[]}") };
 

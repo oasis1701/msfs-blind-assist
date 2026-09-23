@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net;
 using MSFSBlindAssist.Services.TaxiAugment;
 
@@ -25,6 +26,7 @@ namespace MSFSBlindAssist.Tests;
 /// change to a shipped Overpass query in this feature's history (<c>out tags geom center</c>) cost
 /// every taxiway name at every airport, so the query text is left exactly alone.</para>
 /// </summary>
+[Collection("OverpassMirrorState")]
 public class OverpassRegionalMirrorTests
 {
     [Fact]
@@ -63,35 +65,49 @@ public class OverpassRegionalMirrorTests
         => Assert.Equal(OverpassClient.BodyKind.Failed, OverpassClient.ClassifyBody(body));
 
     // ---------------------------------------------------------------- the client's own rule
+    //
+    // Every client below gets a cooldown map of its OWN (OverpassClient's internal constructor),
+    // so the order it asks the mirrors in is the list order minus whatever THIS test cooled —
+    // which is what lets these tests pin the ORDER, not only the answer (review SW-2).
 
+    /// <summary>Answers per HOST and records every host it was asked, in order.</summary>
     private sealed class PerHostMirror : HttpMessageHandler
     {
-        private readonly Func<string, string> _bodyForHost;
-        public int Calls;
-        public PerHostMirror(Func<string, string> bodyForHost) { _bodyForHost = bodyForHost; }
+        private readonly Func<string, CancellationToken, Task<HttpResponseMessage>> _reply;
+        public readonly List<string> Asked = new();
+
+        public PerHostMirror(Func<string, HttpResponseMessage> reply)
+            : this((host, _) => Task.FromResult(reply(host))) { }
+
+        public PerHostMirror(Func<string, CancellationToken, Task<HttpResponseMessage>> reply) { _reply = reply; }
+
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
         {
-            Calls++;
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
-            {
-                Content = new StringContent(_bodyForHost(request.RequestUri!.Host)),
-            });
+            string host = request.RequestUri!.Host;
+            lock (Asked) Asked.Add(host);
+            return _reply(host, ct);
         }
     }
 
     private const string Empty = "{\"version\":0.6,\"elements\":[]}";
     private const string Content = "{\"version\":0.6,\"elements\":[{\"type\":\"node\",\"id\":7,\"lat\":1.0,\"lon\":2.0}]}";
+    private const string Query = "[out:json];node(1);out;";
+
+    private static HttpResponseMessage Ok(string body) => new(HttpStatusCode.OK) { Content = new StringContent(body) };
+    private static HttpResponseMessage ServerError() => new(HttpStatusCode.InternalServerError);
+
+    /// <summary>The mirrors' hosts in list order — the order a client with no cooldowns asks them.</summary>
+    private static readonly string[] Hosts = OverpassClient.MirrorUrls.Select(u => new Uri(u).Host).ToArray();
+
+    private static OverpassClient ClientOver(HttpMessageHandler handler, ConcurrentDictionary<string, DateTime>? cooldowns = null)
+        => new(new HttpClient(handler), cooldowns ?? new ConcurrentDictionary<string, DateTime>());
 
     [Fact]
     public async Task One_mirror_with_the_data_beats_any_number_answering_empty()
     {
-        // Order-independent on purpose: the cooldown map is static and shared across the whole
-        // test run, so which mirror is tried first is not something a test may assume. Whichever
-        // order they are tried in, the answer that HAS elements must be the one returned.
-        var handler = new PerHostMirror(host => host.Contains("kumi") ? Content : Empty);
-        var client = new OverpassClient(new HttpClient(handler));
+        var handler = new PerHostMirror(host => host == Hosts[1] ? Ok(Content) : Ok(Empty));
 
-        string? body = await client.PostAsync("[out:json];node(1);out;", CancellationToken.None);
+        string? body = await ClientOver(handler).PostAsync(Query, CancellationToken.None);
 
         Assert.Equal(Content, body);
     }
@@ -102,14 +118,13 @@ public class OverpassRegionalMirrorTests
         // The regional-mirror defence must not break the airport that genuinely has nothing:
         // a small strip with no mapped hangar, apron or tower is a real answer, and returning
         // null there would have the store retry it every five minutes for the whole session.
-        var handler = new PerHostMirror(_ => Empty);
-        var client = new OverpassClient(new HttpClient(handler));
+        var handler = new PerHostMirror(_ => Ok(Empty));
 
-        string? body = await client.PostAsync("[out:json];node(1);out;", CancellationToken.None);
+        string? body = await ClientOver(handler).PostAsync(Query, CancellationToken.None);
 
         Assert.NotNull(body);
         Assert.Equal(OverpassClient.BodyKind.Empty, OverpassClient.ClassifyBody(body!));
-        Assert.True(handler.Calls >= OverpassClient.MirrorUrls.Count,
+        Assert.True(handler.Asked.Count >= OverpassClient.MirrorUrls.Count,
             "every mirror must be asked before an empty answer is believed");
     }
 
@@ -118,15 +133,29 @@ public class OverpassRegionalMirrorTests
     {
         // An empty answer is not evidence the mirror is ill — it may simply be the truth about
         // that airport. Marking it failed would cool a healthy planet-wide mirror for five
-        // minutes on the strength of one legitimately empty query.
-        var handler = new PerHostMirror(host => host.Contains("kumi") ? Content : Empty);
-        var client = new OverpassClient(new HttpClient(handler));
+        // minutes on the strength of one legitimately empty query, and the NEXT call would ask
+        // it LAST. So it must be asked FIRST again. (The old version of this test compared call
+        // counts, and still passed with the empty mirror blacklisted.)
+        var handler = new PerHostMirror(host => host == Hosts[0] ? Ok(Empty) : Ok(Content));
+        var client = ClientOver(handler);
 
-        await client.PostAsync("[out:json];node(1);out;", CancellationToken.None);
-        int firstRound = handler.Calls;
-        await client.PostAsync("[out:json];node(1);out;", CancellationToken.None);
+        await client.PostAsync(Query, CancellationToken.None);
+        await client.PostAsync(Query, CancellationToken.None);
 
-        Assert.True(handler.Calls - firstRound >= firstRound - 1,
-            "the second call must still be free to try the same mirrors");
+        Assert.Equal(new[] { Hosts[0], Hosts[1], Hosts[0], Hosts[1] }, handler.Asked);
+    }
+
+    [Fact]
+    public async Task A_mirror_that_fails_is_asked_last_next_time()
+    {
+        // The contrast that gives the test above its teeth: a REAL failure does move a mirror to
+        // the back of the next call, so an order assertion can tell the two apart.
+        var handler = new PerHostMirror(host => host == Hosts[0] ? ServerError() : Ok(Content));
+        var client = ClientOver(handler);
+
+        await client.PostAsync(Query, CancellationToken.None);
+        await client.PostAsync(Query, CancellationToken.None);
+
+        Assert.Equal(new[] { Hosts[0], Hosts[1], Hosts[1] }, handler.Asked);
     }
 }

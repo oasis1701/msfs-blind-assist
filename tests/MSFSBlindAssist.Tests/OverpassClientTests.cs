@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Tests;
@@ -9,6 +10,7 @@ namespace MSFSBlindAssist.Tests;
 /// was "empty" to one and "failed" to the other, which only never mattered because the failure
 /// test happened to run first.
 /// </summary>
+[Collection("OverpassMirrorState")]
 public class OverpassClientTests
 {
     private static OverpassClient.BodyKind Kind(string body) => OverpassClient.ClassifyBody(body);
@@ -42,4 +44,29 @@ public class OverpassClientTests
     [InlineData("[1,2,3]")]
     public void A_body_that_is_not_an_overpass_result_is_failed(string body)
         => Assert.Equal(OverpassClient.BodyKind.Failed, Kind(body));
+
+    // ---- whose cooldown map (review SW-2) ------------------------------------------------------
+
+    [Fact]
+    public void Clients_built_the_public_way_share_one_process_wide_cooldown_map()
+    {
+        // What lets the taxiway-name fetch and the buildings fetch honour each other's mirror
+        // failures is the MAP, not the instance MainForm happens to hand both: two separately
+        // built clients must record into the same one.
+        var a = new OverpassClient(new HttpClient());
+        var b = new OverpassClient(new HttpClient());
+
+        Assert.Same(a.Cooldowns, b.Cooldowns);
+    }
+
+    [Fact]
+    public void An_injected_cooldown_map_is_the_clients_own()
+    {
+        var own = new ConcurrentDictionary<string, DateTime>();
+
+        var injected = new OverpassClient(new HttpClient(), own);
+
+        Assert.Same(own, injected.Cooldowns);
+        Assert.NotSame(new OverpassClient(new HttpClient()).Cooldowns, injected.Cooldowns);
+    }
 }
