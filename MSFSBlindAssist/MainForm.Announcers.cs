@@ -2133,7 +2133,7 @@ public partial class MainForm
             if (l.Catalog == null || (l.Catalog.Features.Count == 0 && l.Catalog.Facts.Length == 0))
                 return () => SpeakLookupLine(l.PressedAt, $"No surroundings data for {l.Icao}.");
             var sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
-                l.Icao, l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt);
+                l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt);
             // Nothing to list → SPEAK it; never open a window onto an empty list.
             if (sections.Count == 0)
                 return () => SpeakLookupLine(l.PressedAt, $"Nothing within {Fmt(MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.WindowRadiusMetres)}.");

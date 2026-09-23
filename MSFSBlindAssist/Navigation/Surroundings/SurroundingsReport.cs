@@ -208,7 +208,7 @@ public static class SurroundingsReport
         return string.Join(" ", parts);
     }
 
-    public static IReadOnlyList<InfoSection> BuildSections(string icao, AirportFeatureCatalog cat, string facts, double lat, double lon, double hdgTrue, Func<double, string> formatDistance)
+    public static IReadOnlyList<InfoSection> BuildSections(AirportFeatureCatalog cat, string facts, double lat, double lon, double hdgTrue, Func<double, string> formatDistance)
     {
         var sections = new List<InfoSection>();
         var ranked = Rank(cat, lat, lon, hdgTrue, WindowRadiusMetres);

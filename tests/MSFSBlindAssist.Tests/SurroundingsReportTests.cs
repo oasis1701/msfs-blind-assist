@@ -11,7 +11,7 @@ public class SurroundingsReportTests
     private static AirportFeature F(FeatureKind k, string name, double dLatMetres, double dLonMetres, FeatureSource src = FeatureSource.Osm, IReadOnlyList<LatLon>? fp = null)
         => new() { Kind = k, Name = name, Lat = Lat + dLatMetres / 111_320.0, Lon = Lon + dLonMetres / 111_320.0, Source = src, Footprint = fp };
 
-    private static AirportFeatureCatalog Cat(params AirportFeature[] fs) => AirportFeatureCatalog.Build("KTIW", "v", fs);
+    private static AirportFeatureCatalog Cat(params AirportFeature[] fs) => AirportFeatureCatalog.Build("v", fs);
 
     [Fact]
     public void Compose_leads_with_where_am_i_then_nearest_features_with_direction_and_distance()
@@ -67,7 +67,7 @@ public class SurroundingsReportTests
     {
         Assert.Equal("X. Nothing within 600 metres.", SurroundingsReport.Compose("X.", "X", Cat(F(FeatureKind.Tower, "T", 700, 0)), Lat, Lon, 0.0, Metres));
         Assert.Equal("X. No surroundings data for KXYZ.", SurroundingsReport.Compose("X.", "KXYZ", null, Lat, Lon, 0.0, Metres));
-        Assert.Equal("X. No surroundings data for KXYZ.", SurroundingsReport.Compose("X.", "KXYZ", AirportFeatureCatalog.Build("KXYZ", "", Array.Empty<AirportFeature>()), Lat, Lon, 0.0, Metres));
+        Assert.Equal("X. No surroundings data for KXYZ.", SurroundingsReport.Compose("X.", "KXYZ", AirportFeatureCatalog.Build("", Array.Empty<AirportFeature>()), Lat, Lon, 0.0, Metres));
     }
 
     [Fact]
@@ -76,7 +76,7 @@ public class SurroundingsReportTests
         var cat = Cat(
             new AirportFeature { Kind = FeatureKind.Concourse, Name = "Concourse B", Lat = Lat + 300 / 111_320.0, Lon = Lon, Source = FeatureSource.Navdata, Detail = "Delta gates" },
             F(FeatureKind.Tower, "Control Tower", 0, 150), F(FeatureKind.Hangar, "Far Hangar", 1200, 0));
-        var sections = SurroundingsReport.BuildSections("KATL", cat, "Avgas. Tower 118.5.", Lat, Lon, 0.0, Metres);
+        var sections = SurroundingsReport.BuildSections(cat, "Avgas. Tower 118.5.", Lat, Lon, 0.0, Metres);
         Assert.Equal("Airport", sections[0].Heading);
         Assert.Equal(new[] { "Avgas. Tower 118.5." }, sections[0].Items);
         Assert.Equal("Nearby, 2 items", sections[1].Heading);
@@ -93,7 +93,7 @@ public class SurroundingsReportTests
     [Fact]
     public void Several_unnamed_hangars_read_as_Hangars_even_when_the_cap_is_reached_first()
     {
-        var cat = AirportFeatureCatalog.Build("X", "v", new[]
+        var cat = AirportFeatureCatalog.Build("v", new[]
         {
             Pt(FeatureKind.Tower, "Control Tower", 0.0005, 0), Pt(FeatureKind.Fuel, "Avfuel", 0.0010, 0),
             Pt(FeatureKind.Cargo, "FedEx", 0.0015, 0), Pt(FeatureKind.Hangar, "", 0.0020, 0), Pt(FeatureKind.Hangar, "", 0.0030, 0),
@@ -227,7 +227,7 @@ public class SurroundingsReportTests
         var cat = Cat(F(FeatureKind.Hangar, "Cessna Hangar", 0, 0, fp: ring));
         Assert.Equal("X. Cessna Hangar, here.", SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres));
 
-        var sections = SurroundingsReport.BuildSections("X", cat, "", Lat, Lon, 0.0, Metres);
+        var sections = SurroundingsReport.BuildSections(cat, "", Lat, Lon, 0.0, Metres);
         Assert.Equal(new[] { "Cessna Hangar, here" }, Assert.Single(sections).Items);
     }
 
@@ -241,10 +241,10 @@ public class SurroundingsReportTests
     [Fact]
     public void The_window_never_has_an_empty_list_and_never_hard_codes_a_unit()
     {
-        var far = AirportFeatureCatalog.Build("X", "v", new[] { Pt(FeatureKind.Tower, "Control Tower", 0.5, 0.5) });   // ~78 km away
-        Assert.Empty(SurroundingsReport.BuildSections("X", far, "", 0, 0, 0, Metres));                                  // nothing to show: the caller SPEAKS instead
+        var far = AirportFeatureCatalog.Build("v", new[] { Pt(FeatureKind.Tower, "Control Tower", 0.5, 0.5) });   // ~78 km away
+        Assert.Empty(SurroundingsReport.BuildSections(far, "", 0, 0, 0, Metres));                                  // nothing to show: the caller SPEAKS instead
 
-        var withFacts = SurroundingsReport.BuildSections("X", far, "Tower 118.5.", 0, 0, 0, Metres);
+        var withFacts = SurroundingsReport.BuildSections(far, "Tower 118.5.", 0, 0, 0, Metres);
         Assert.Equal(2, withFacts.Count);
         Assert.All(withFacts, s => Assert.NotEmpty(s.Items));
         Assert.Equal("Nothing within 1000 metres.", Assert.Single(withFacts[1].Items));
@@ -275,7 +275,7 @@ public class SurroundingsReportTests
         // The heading is what the screen reader says on tabbing into the list: "Nearby, 1 items" was
         // read aloud every time the window held a single feature.
         var cat = Cat(F(FeatureKind.Tower, "Control Tower", 0, 150));
-        var nearby = Assert.Single(SurroundingsReport.BuildSections("X", cat, "", Lat, Lon, 0.0, Metres));
+        var nearby = Assert.Single(SurroundingsReport.BuildSections(cat, "", Lat, Lon, 0.0, Metres));
         Assert.Equal("Nearby, 1 item", nearby.Heading);
     }
 }

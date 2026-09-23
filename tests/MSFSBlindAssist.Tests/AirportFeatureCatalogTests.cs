@@ -54,7 +54,7 @@ public class AirportFeatureCatalogTests
         // the OTHER row's stands too) and the 5-stand ramp adopted a 2,335 m² neighbour containing
         // none of its own, so Nearest measured to a polygon instead of to the stands. Parked on the
         // southern row, a pilot heard the ramp they were standing on named 12-85 m away.
-        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
+        var cat = AirportFeatureCatalog.Build("v", KtiwFeatures());
         foreach (var s in KtiwStands)
         {
             var owner = Assert.Single(cat.Features, f => f.Members != null
@@ -66,7 +66,7 @@ public class AirportFeatureCatalogTests
     [Fact]
     public void A_feature_never_carries_a_footprint_its_own_members_are_outside_of()
     {
-        foreach (var f in AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures()).Features)
+        foreach (var f in AirportFeatureCatalog.Build("v", KtiwFeatures()).Features)
             if (f.Footprint != null && f.Members is { Count: > 0 })
                 Assert.Contains(f.Members, m => SurroundingsGeometry.Contains(f.Footprint, m.Lat, m.Lon));
     }
@@ -93,7 +93,7 @@ public class AirportFeatureCatalogTests
         // the other half: beside the ramp the aircraft is parked on, anonymous apron pavement IS
         // that ramp's pavement, and it must not spend a slot a building should have. Neither half
         // is a test of the KIND — a "North ramp" or a de-ice pad beside a ramp still speaks.
-        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
+        var cat = AirportFeatureCatalog.Build("v", KtiwFeatures());
         foreach (var s in KtiwStands)
         {
             string said = SurroundingsReport.Compose($"Parking {s.Number} at KTIW.", "KTIW", cat, s.Lat, s.Lon, 0.0,
@@ -114,7 +114,7 @@ public class AirportFeatureCatalogTests
         // Inside the 66,471 m² apron and 230 m from the nearest stand — well beyond
         // ZoneMemberMetres, so there is no ramp to be "at" and the polygon answers, as it always
         // did. The member rung must not reach across an apron to the nearest row.
-        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
+        var cat = AirportFeatureCatalog.Build("v", KtiwFeatures());
         var zone = SurroundingsReport.Zone(cat, 47.2715, -122.5748);
         Assert.NotNull(zone);
         Assert.Equal(FeatureKind.Apron, zone!.Kind);
@@ -129,7 +129,7 @@ public class AirportFeatureCatalogTests
         // It is what answers out on the apron away from any row (the test above), and it only has
         // the chance because it is no longer merged into a ramp. All four of the fixture's aprons
         // survive; the one holding the stands is the 66,471 m² main apron, 49 vertices.
-        var cat = AirportFeatureCatalog.Build("KTIW", "v", KtiwFeatures());
+        var cat = AirportFeatureCatalog.Build("v", KtiwFeatures());
         var aprons = cat.Features.Where(f => f.Kind == FeatureKind.Apron && f.Footprint != null).ToList();
         Assert.Equal(4, aprons.Count);
         var stand = KtiwStands.Single(s => s.Number == 2);
@@ -153,7 +153,7 @@ public class AirportFeatureCatalogTests
         Assert.False(AirportFeatureCatalog.SameFeature(building, cluster));                     // and symmetrically
 
         var input = reversed ? new[] { building, cluster } : new[] { cluster, building };
-        var cat = AirportFeatureCatalog.Build("KMEM", "v", input);
+        var cat = AirportFeatureCatalog.Build("v", input);
         Assert.Equal(2, cat.Features.Count);
         var kept = Assert.Single(cat.Features, f => f.Name == "Cargo ramp");
         Assert.Equal(3, kept.Members!.Count);                                                   // the row keeps its stands…
@@ -171,7 +171,7 @@ public class AirportFeatureCatalogTests
         var cluster = N(FeatureKind.Cargo, "Cargo ramp", 35.0404, -89.9800, true, FeatureSource.Navdata, row);
         var building = N(FeatureKind.Cargo, "FedEx Cargo", 35.04027, -89.9800, false, FeatureSource.Osm);
         var input = reversed ? new[] { building, cluster } : new[] { cluster, building };
-        var one = Assert.Single(AirportFeatureCatalog.Build("KMEM", "v", input).Features);
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", input).Features);
         Assert.Equal("FedEx Cargo", one.Name);
         Assert.Equal(3, one.Members!.Count);
     }
@@ -199,7 +199,7 @@ public class AirportFeatureCatalogTests
         var west = F(FeatureKind.Apron, "", ca.Lat, ca.Lon, FeatureSource.Osm, fp: a);
         var east = F(FeatureKind.Apron, "", cb.Lat, cb.Lon, FeatureSource.Osm, fp: b);
         var input = reversed ? new[] { east, west } : new[] { west, east };
-        Assert.Equal(2, AirportFeatureCatalog.Build("X", "v", input).Features.Count);
+        Assert.Equal(2, AirportFeatureCatalog.Build("v", input).Features.Count);
     }
 
     // ── Ring against ring: an OVERLAP, or the two halves of one named way (review PC-2) ────────
@@ -247,7 +247,7 @@ public class AirportFeatureCatalogTests
         var named = ApronRing("Apron Oost", Rect(0, 0, 40, 40));
         var unnamed = ApronRing("", Rect(unnamedWest, 0, unnamedWest + 40, 40));
         Assert.False(AirportFeatureCatalog.SameFeature(named, unnamed));
-        var cat = AirportFeatureCatalog.Build("X", "v", reversed ? new[] { unnamed, named } : new[] { named, unnamed });
+        var cat = AirportFeatureCatalog.Build("v", reversed ? new[] { unnamed, named } : new[] { named, unnamed });
         Assert.Equal(2, cat.Features.Count);
         var zone = SurroundingsReport.Zone(cat, 20 / 111_320.0, (unnamedWest + 20) / 111_320.0);   // parked in the middle of the unnamed one
         Assert.NotNull(zone);
@@ -267,7 +267,7 @@ public class AirportFeatureCatalogTests
         var east = ApronRing("West Apron", Rect(eastWest, eastSouth, eastWest + 40, eastSouth + 40));
         Assert.True(AirportFeatureCatalog.SameFeature(west, east));
         Assert.True(AirportFeatureCatalog.SameFeature(east, west));
-        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { west, east }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { west, east }).Features);
     }
 
     [Fact]
@@ -278,7 +278,7 @@ public class AirportFeatureCatalogTests
         var west = ApronRing("North Apron", Rect(0, 0, 40, 40));
         var east = ApronRing("North Apron", Rect(60, 0, 100, 40));
         Assert.False(AirportFeatureCatalog.SameFeature(west, east));
-        Assert.Equal(2, AirportFeatureCatalog.Build("X", "v", new[] { west, east }).Features.Count);
+        Assert.Equal(2, AirportFeatureCatalog.Build("v", new[] { west, east }).Features.Count);
     }
 
     [Theory]
@@ -289,7 +289,7 @@ public class AirportFeatureCatalogTests
         // inside the other: the two outlines OVERLAP.
         var a = ApronRing("", Rect(0, 0, 40, 40));
         var b = ApronRing("", Rect(30, 10, 70, 50));
-        Assert.Single(AirportFeatureCatalog.Build("X", "v", reversed ? new[] { b, a } : new[] { a, b }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("v", reversed ? new[] { b, a } : new[] { a, b }).Features);
     }
 
     [Fact]
@@ -301,7 +301,7 @@ public class AirportFeatureCatalogTests
         // still inside the 5 m margin. (Unnamed, so the halves-of-one-way rule never applies.)
         var a = ApronRing("", Rect(0, 0, 40, 40));
         var b = ApronRing("", Rect(38, 10, 78, 50));
-        Assert.Equal(2, AirportFeatureCatalog.Build("X", "v", new[] { a, b }).Features.Count);
+        Assert.Equal(2, AirportFeatureCatalog.Build("v", new[] { a, b }).Features.Count);
     }
 
     [Fact]
@@ -318,8 +318,8 @@ public class AirportFeatureCatalogTests
         var b = ApronRing("", Rect(90, 40, 120, 60));
         Assert.True(AirportFeatureCatalog.SameFeature(a, b));
         Assert.True(AirportFeatureCatalog.SameFeature(b, a));
-        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { a, b }).Features);
-        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { b, a }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { a, b }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { b, a }).Features);
     }
 
     [Fact]
@@ -333,8 +333,8 @@ public class AirportFeatureCatalogTests
         var d = ApronRing("T Apron", Rect(40, 15, 80, 25));
         Assert.True(AirportFeatureCatalog.SameFeature(c, d));
         Assert.True(AirportFeatureCatalog.SameFeature(d, c));
-        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { c, d }).Features);
-        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { d, c }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { c, d }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { d, c }).Features);
     }
 
     [Theory]
@@ -353,7 +353,7 @@ public class AirportFeatureCatalogTests
         var unnamed = ApronRing("", Rect(innerEdge, innerEdge, 100.0, 100.0));
         Assert.False(AirportFeatureCatalog.SameFeature(named, unnamed));
         Assert.False(AirportFeatureCatalog.SameFeature(unnamed, named));
-        var cat = AirportFeatureCatalog.Build("X", "v", reversed ? new[] { unnamed, named } : new[] { named, unnamed });
+        var cat = AirportFeatureCatalog.Build("v", reversed ? new[] { unnamed, named } : new[] { named, unnamed });
         Assert.Equal(2, cat.Features.Count);
     }
 
@@ -362,7 +362,7 @@ public class AirportFeatureCatalogTests
     {
         var osm = F(FeatureKind.Tower, "Control Tower", 47.2700, -122.5700, FeatureSource.Osm);
         var scenery = F(FeatureKind.Tower, "Control Tower 1", 47.2705, -122.5700, FeatureSource.Scenery); // ~55 m
-        var cat = AirportFeatureCatalog.Build("KTIW", "v", new[] { scenery, osm });
+        var cat = AirportFeatureCatalog.Build("v", new[] { scenery, osm });
         var only = Assert.Single(cat.Features);
         Assert.Equal("Control Tower", only.Name);
         Assert.Equal(FeatureSource.Osm, only.Source);
@@ -374,7 +374,7 @@ public class AirportFeatureCatalogTests
         var square = new[] { new LatLon(0, 0), new LatLon(0, 0.001), new LatLon(0.001, 0.001), new LatLon(0.001, 0) };
         var navdata = F(FeatureKind.Concourse, "Concourse B", 0.0005, 0.0005, FeatureSource.Navdata, detail: "Delta gates");
         var osm = F(FeatureKind.Concourse, "Concourse B", 0.0004, 0.0005, FeatureSource.Osm, fp: square);
-        var cat = AirportFeatureCatalog.Build("X", "v", new[] { navdata, osm });
+        var cat = AirportFeatureCatalog.Build("v", new[] { navdata, osm });
         var only = Assert.Single(cat.Features);
         Assert.Equal(FeatureSource.Osm, only.Source);
         Assert.Equal("Delta gates", only.Detail);
@@ -390,7 +390,7 @@ public class AirportFeatureCatalogTests
         // two "Concourse B" piers 1.3 km apart at KJFK collapse into one.
         var a = F(FeatureKind.Concourse, "Concourse B", 33.6400, -84.430, FeatureSource.Navdata);
         var b = F(FeatureKind.Concourse, "Concourse B", 33.64225, -84.430, FeatureSource.Scenery); // ~250 m
-        Assert.Single(AirportFeatureCatalog.Build("KATL", "v", new[] { a, b }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { a, b }).Features);
     }
 
     [Fact]
@@ -399,7 +399,7 @@ public class AirportFeatureCatalogTests
         var h1 = F(FeatureKind.Hangar, "", 47.2700, -122.5700, FeatureSource.Osm);
         var h2 = F(FeatureKind.Hangar, "", 47.2705, -122.5700, FeatureSource.Osm);   // 55 m
         var fuel = F(FeatureKind.Fuel, "Fuel", 47.2700, -122.5700, FeatureSource.Navdata);
-        Assert.Equal(3, AirportFeatureCatalog.Build("X", "v", new[] { h1, h2, fuel }).Features.Count);
+        Assert.Equal(3, AirportFeatureCatalog.Build("v", new[] { h1, h2, fuel }).Features.Count);
     }
 
     [Fact]
@@ -408,7 +408,7 @@ public class AirportFeatureCatalogTests
         var unnamed = F(FeatureKind.Hangar, "", 47.27, -122.57, FeatureSource.Osm);
         var named = F(FeatureKind.Hangar, "ATP Hangar", 47.2701, -122.57, FeatureSource.Scenery);
         var junk = F(FeatureKind.Other, "", 47.28, -122.58, FeatureSource.Osm);
-        var cat = AirportFeatureCatalog.Build("X", "v", new[] { unnamed, named, junk });
+        var cat = AirportFeatureCatalog.Build("v", new[] { unnamed, named, junk });
         Assert.Equal("ATP Hangar", Assert.Single(cat.Features).Name);
     }
 
@@ -429,7 +429,7 @@ public class AirportFeatureCatalogTests
     [Fact]
     public void Features_are_sorted_by_kind_then_name_and_the_version_is_kept()
     {
-        var cat = AirportFeatureCatalog.Build("X", "tok", new[] {
+        var cat = AirportFeatureCatalog.Build("tok", new[] {
             F(FeatureKind.Hangar, "B Hangar", 1, 1, FeatureSource.Osm), F(FeatureKind.Concourse, "Concourse A", 2, 2, FeatureSource.Osm), F(FeatureKind.Hangar, "A Hangar", 3, 3, FeatureSource.Osm) });
         Assert.Equal("tok", cat.Version);
         Assert.Equal(new[] { "Concourse A", "A Hangar", "B Hangar" }, cat.Features.Select(f => f.Name));
@@ -439,34 +439,34 @@ public class AirportFeatureCatalogTests
     public void Differently_named_neighbours_are_never_collapsed()
     {
         // KMSP: inferred Concourse A and B centroids are 109 m apart — B used to vanish.
-        var cat = AirportFeatureCatalog.Build("KMSP", "v", new[] { N(FeatureKind.Concourse, "Concourse A", 44.8800, -93.2100), N(FeatureKind.Concourse, "Concourse B", 44.8810, -93.2100) });
+        var cat = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Concourse, "Concourse A", 44.8800, -93.2100), N(FeatureKind.Concourse, "Concourse B", 44.8810, -93.2100) });
         Assert.Equal(new[] { "Concourse A", "Concourse B" }, cat.Features.Select(f => f.Name).OrderBy(n => n));
     }
 
     [Fact]
     public void Numbered_helipads_45_metres_apart_both_survive()
     {
-        var cat = AirportFeatureCatalog.Build("KJAC", "v", new[] { N(FeatureKind.Helipad, "Helipad 1", 43.6000, -110.7400, true), N(FeatureKind.Helipad, "Helipad 2", 43.6004, -110.7400, true) });
+        var cat = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Helipad, "Helipad 1", 43.6000, -110.7400, true), N(FeatureKind.Helipad, "Helipad 2", 43.6004, -110.7400, true) });
         Assert.Equal(2, cat.Features.Count);
     }
 
     [Fact]
     public void Two_generic_pieces_of_one_ramp_merge_and_a_proper_name_absorbs_a_generic_one()
     {
-        var ramps = AirportFeatureCatalog.Build("X", "v", new[] { N(FeatureKind.Apron, "GA ramp", 0, 0, true), N(FeatureKind.Apron, "GA ramp", 0.0003, 0, true) });
+        var ramps = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Apron, "GA ramp", 0, 0, true), N(FeatureKind.Apron, "GA ramp", 0.0003, 0, true) });
         Assert.Single(ramps.Features);
 
-        var fuel = AirportFeatureCatalog.Build("X", "v", new[] { N(FeatureKind.Fuel, "Fuel", 0, 0, true), N(FeatureKind.Fuel, "Avfuel", 0.0003, 0, false, FeatureSource.Osm) });
+        var fuel = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Fuel, "Fuel", 0, 0, true), N(FeatureKind.Fuel, "Avfuel", 0.0003, 0, false, FeatureSource.Osm) });
         Assert.Equal("Avfuel", Assert.Single(fuel.Features).Name);
     }
 
     [Fact]
     public void The_same_name_far_apart_is_two_features_and_close_by_is_one()
     {
-        var far = AirportFeatureCatalog.Build("KJFK", "v", new[] { N(FeatureKind.Concourse, "Concourse B", 40.6400, -73.7800), N(FeatureKind.Concourse, "Concourse B", 40.6400, -73.7950) });
+        var far = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Concourse, "Concourse B", 40.6400, -73.7800), N(FeatureKind.Concourse, "Concourse B", 40.6400, -73.7950) });
         Assert.Equal(2, far.Features.Count);
 
-        var near = AirportFeatureCatalog.Build("KATL", "v", new[]
+        var near = AirportFeatureCatalog.Build("v", new[]
         {
             N(FeatureKind.Concourse, "Concourse B", 33.6400, -84.4300, false, FeatureSource.Navdata, (33.6390, -84.4300), (33.6410, -84.4300)),
             N(FeatureKind.Concourse, "concourse  b", 33.6415, -84.4300, false, FeatureSource.Osm),      // ~165 m from the navdata centroid
@@ -481,7 +481,7 @@ public class AirportFeatureCatalogTests
     {
         // KJFK T5: navdata's letter says "Concourse D" (29 gates); GSX says "Terminal 5" for those very stands.
         var stands = new[] { (40.6450, -73.7760), (40.6454, -73.7760), (40.6458, -73.7760) };
-        var cat = AirportFeatureCatalog.Build("KJFK", "v", new[]
+        var cat = AirportFeatureCatalog.Build("v", new[]
         {
             N(FeatureKind.Concourse, "Concourse D", 40.6454, -73.7760, false, FeatureSource.Navdata, stands),
             N(FeatureKind.Terminal, "Terminal 5", 40.6454, -73.7760, false, FeatureSource.Gsx, stands),
@@ -494,7 +494,7 @@ public class AirportFeatureCatalogTests
     {
         Assert.True(AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Avfuel", 0, 0)) > AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Fuel", 0, 0, true, FeatureSource.Osm)));
         Assert.True(AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Fuel", 0, 0, true)) > AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "", 0, 0, false, FeatureSource.Osm)));
-        Assert.Equal("Tower 118.5.", AirportFeatureCatalog.Build("X", "v", Array.Empty<AirportFeature>(), "Tower 118.5.").Facts);
+        Assert.Equal("Tower 118.5.", AirportFeatureCatalog.Build("v", Array.Empty<AirportFeature>(), "Tower 118.5.").Facts);
     }
 
     [Theory]
@@ -510,7 +510,7 @@ public class AirportFeatureCatalogTests
         var ramp = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 55 / M, true, FeatureSource.Navdata, (0.0, 45 / M), (0.0, 55 / M), (0.0, 65 / M));
         Assert.True(AirportFeatureCatalog.SameFeature(fedex, ramp));      // both really could take it…
         Assert.True(AirportFeatureCatalog.SameFeature(ups, ramp));
-        var cat = AirportFeatureCatalog.Build("X", "v", reversed ? new[] { ups, fedex, ramp } : new[] { fedex, ups, ramp });
+        var cat = AirportFeatureCatalog.Build("v", reversed ? new[] { ups, fedex, ramp } : new[] { fedex, ups, ramp });
         Assert.Equal(2, cat.Features.Count);
         Assert.Equal(3, cat.Features.Single(f => f.Name == "UPS Cargo").Members!.Count);   // …the nearer one does
         Assert.Null(cat.Features.Single(f => f.Name == "FedEx Cargo").Members);
@@ -535,7 +535,7 @@ public class AirportFeatureCatalogTests
         var north = N(FeatureKind.Concourse, "Concourse K", 0.0, 15 / M, false, FeatureSource.Navdata, Row(0, 10, 20, 30));
         var south = N(FeatureKind.Concourse, "Concourse K", 0.0, 265 / M, false, FeatureSource.Navdata, Row(250, 260, 270, 280));
         var input = reversed ? new[] { south, north } : new[] { north, south };
-        var one = Assert.Single(AirportFeatureCatalog.Build("LFPG", "v", input).Features);
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", input).Features);
         Assert.Equal(8, one.Members!.Count);
         Assert.InRange(SurroundingsGeometry.Nearest(0.0, 280 / M, one).Metres, 0.0, 1.0);   // the far gate is AT the concourse
     }
@@ -556,7 +556,7 @@ public class AirportFeatureCatalogTests
         var navdata = N(FeatureKind.Concourse, "Concourse D", 40.6454, -73.7760, false, FeatureSource.Navdata, stands);
         var gsx = N(FeatureKind.Terminal, "Terminal 5", 40.6454, -73.7760, false, FeatureSource.Gsx, stands);
         var osm = F(FeatureKind.Terminal, "Terminal 5", 40.6455, -73.7760, FeatureSource.Osm, fp: square);
-        var cat = AirportFeatureCatalog.Build("KJFK", "v", new[] { navdata, gsx, osm });
+        var cat = AirportFeatureCatalog.Build("v", new[] { navdata, gsx, osm });
         Assert.DoesNotContain(cat.Features, f => f.Name == "Concourse D");
         var terminal = Assert.Single(cat.Features, f => f.Name == "Terminal 5");
         Assert.Equal(FeatureSource.Osm, terminal.Source);   // OSM outranked and absorbed the GSX cluster
@@ -582,7 +582,7 @@ public class AirportFeatureCatalogTests
         var scenery = N(FeatureKind.Concourse, "Concourse", 0.0, 70 / M, true, FeatureSource.Scenery,
             (0.0, 60 / M), (0.0, 65 / M), (0.0, 70 / M), (0.0, 75 / M), (0.0, 80 / M));
         var input = reversed ? new[] { scenery, gsx, navdata } : new[] { navdata, gsx, scenery };
-        var cat = AirportFeatureCatalog.Build("KJFK", "v", input);
+        var cat = AirportFeatureCatalog.Build("v", input);
         Assert.DoesNotContain(cat.Features, f => f.Name == "Concourse D");
         var terminal = Assert.Single(cat.Features, f => f.Name == "Terminal 5");
         Assert.Equal(3, terminal.Members!.Count);   // undiluted by the scenery donor
@@ -606,7 +606,7 @@ public class AirportFeatureCatalogTests
         var gsxB = N(FeatureKind.Terminal, "T. K2", 0.0, 150 / M, false, FeatureSource.Gsx, (0.0, 140 / M), (0.0, 160 / M));
         var gsxC = N(FeatureKind.Terminal, "T. K3", 0.0, 290 / M, false, FeatureSource.Gsx, (0.0, 280 / M), (0.0, 300 / M));
         var input = reversed ? new[] { c, gsxC, b, gsxB, a, gsxA } : new[] { a, gsxA, b, gsxB, c, gsxC };
-        var cat = AirportFeatureCatalog.Build("X", "v", input);
+        var cat = AirportFeatureCatalog.Build("v", input);
         Assert.DoesNotContain(cat.Features, f => f.Kind == FeatureKind.Concourse);
         Assert.Equal(3, cat.Features.Count(f => f.Kind == FeatureKind.Terminal));
     }
@@ -629,7 +629,7 @@ public class AirportFeatureCatalogTests
         var gsxAB = N(FeatureKind.Terminal, "T. AB", 0.0, 80 / M, false, FeatureSource.Gsx,
             (0.0, 0 / M), (0.0, 20 / M), (0.0, 140 / M), (0.0, 160 / M));
         var input = reversed ? new[] { c, b, a, gsxAB } : new[] { a, b, c, gsxAB };
-        var cat = AirportFeatureCatalog.Build("X", "v", input);
+        var cat = AirportFeatureCatalog.Build("v", input);
         var survivor = Assert.Single(cat.Features, f => f.Kind == FeatureKind.Concourse);
         Assert.Equal("Concourse K", survivor.Name);
         Assert.Equal(2, survivor.Members!.Count);
@@ -652,7 +652,7 @@ public class AirportFeatureCatalogTests
             (0.0, 0 / M),          // exact duplicate of the winner's first stand
             (3 / M, 10 / M),       // 3 m from the winner's second stand — near, not exact
             (0.0, 20 / M));        // a brand-new stand
-        var one = Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { winner, loser }).Features);
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", new[] { winner, loser }).Features);
         Assert.Equal(4, one.Members!.Count);   // winner's 2 + the near-duplicate + the new one; the exact duplicate is not doubled
         Assert.Single(one.Members, m => m.Lat == 0.0 && m.Lon == 0.0);
     }
@@ -664,7 +664,7 @@ public class AirportFeatureCatalogTests
         // must not rebuild the winner's AirportFeature at all.
         var winner = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm, (0.0, 0.0), (0.0, 0.0001));
         var loser = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 0.0, true, FeatureSource.Navdata, (0.0, 0.0));
-        var one = Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { winner, loser }).Features);
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", new[] { winner, loser }).Features);
         Assert.Same(winner, one);
     }
 
@@ -674,7 +674,7 @@ public class AirportFeatureCatalogTests
         const double M = 111_320.0;
         var winner = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm, (0.0, 0 / M), (0.0, 10 / M));
         var loser = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 0.0, true, FeatureSource.Navdata, (0.0, 20 / M), (0.0, 30 / M));
-        var one = Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { winner, loser }).Features);
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", new[] { winner, loser }).Features);
         Assert.Equal(winner.Members!.Concat(loser.Members!), one.Members);
     }
 }

@@ -6,7 +6,6 @@ public sealed class OsmTaxiSource : ITaxiDataSource
 {
     public string Id => "osm";
     private readonly OverpassClient _client;
-    public OsmTaxiSource(HttpClient http) : this(new OverpassClient(http)) { }
     public OsmTaxiSource(OverpassClient client) { _client = client; }
 
     /// <summary>

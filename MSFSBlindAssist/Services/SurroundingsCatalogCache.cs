@@ -142,7 +142,7 @@ public sealed class SurroundingsCatalogCache
         {
             var b = BuildSupplier(icao);
             degraded = b.Degraded;
-            built = AirportFeatureCatalog.Build(icao, token, b.Features, b.Facts);
+            built = AirportFeatureCatalog.Build(token, b.Features, b.Facts);
         }
         catch (Exception ex) { failure = ex; }
 

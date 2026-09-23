@@ -10,7 +10,7 @@ public class PlaceListBuilderTests
                    Members = members.Length == 0 ? null : members.Select(m => new LatLon(m.Item1, m.Item2)).ToList() };
     private static StandCandidate Stand(string name, int number, int type, double lat, double lon, int node = 7, string gsxId = "")
         => new(new ParkingSpot { Name = name, Number = number, Type = type, Latitude = lat, Longitude = lon, Heading = 90, GsxIdentifier = gsxId }, node);
-    private static AirportFeatureCatalog Cat(params AirportFeature[] f) => AirportFeatureCatalog.Build("X", "v", f);
+    private static AirportFeatureCatalog Cat(params AirportFeature[] f) => AirportFeatureCatalog.Build("v", f);
     private static readonly StandCandidate[] None = Array.Empty<StandCandidate>();
     private static NearestNode? NoNode(double lat, double lon) => null;
     private static bool Any(ParkingSpot s) => true;

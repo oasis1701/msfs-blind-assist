@@ -248,7 +248,7 @@ public sealed class AirportFeatureCatalog
         return best;
     }
 
-    public static AirportFeatureCatalog Build(string icao, string version, IEnumerable<AirportFeature> features, string facts = "")
+    public static AirportFeatureCatalog Build(string version, IEnumerable<AirportFeature> features, string facts = "")
     {
         var all = features.Where(f => f != null && (f.HasName || f.Kind != FeatureKind.Other)).ToList();
 
