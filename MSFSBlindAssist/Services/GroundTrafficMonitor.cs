@@ -157,6 +157,11 @@ public sealed class GroundTrafficMonitor : IDisposable
     private readonly HashSet<uint> _knownOccupants = new();
     private readonly HashSet<uint> _knownFinals = new();
     private readonly HashSet<uint> _shortFinalAnnounced = new();
+    // When each known occupant / known final was first missed (GroundTrafficLogic.ForgetAbsent): a
+    // one-evaluation classification drop neither re-announces it nor empties the runway. The finals map
+    // also covers _shortFinalAnnounced, which is only ever a subset of _knownFinals.
+    private readonly Dictionary<uint, DateTime> _occupantAbsentSince = new();
+    private readonly Dictionary<uint, DateTime> _finalAbsentSince = new();
 
     // Queue position (UI thread)
     private int _queueCandidate, _queueConfirm, _queueAnnounced;
@@ -470,6 +475,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         _knownOccupants.Clear();
         _knownFinals.Clear();
         _shortFinalAnnounced.Clear();
+        _occupantAbsentSince.Clear();
+        _finalAbsentSince.Clear();
     }
 
     private void ResetQueue()
@@ -1086,12 +1093,17 @@ public sealed class GroundTrafficMonitor : IDisposable
             }
         }
 
+        // A known occupant or final is forgotten only once it has been unseen for KnownAbsenceGraceMs:
+        // one evaluation's classification drop (a climb-rate sample over the line, an on-ground flag
+        // flicker, a lateral boundary) must neither announce it again nor call the runway empty while
+        // it is still there (PR #247 B2 review Minor 7). A forgotten final takes its short-final latch
+        // with it. The runway is empty once the LAST known occupant has been gone for the grace period.
         bool hadOccupants = _knownOccupants.Count > 0;
-        _knownOccupants.IntersectWith(seenOccupants);
-        _knownFinals.IntersectWith(seenFinals);
-        _shortFinalAnnounced.IntersectWith(seenFinals);
+        GroundTrafficLogic.ForgetAbsent(_knownOccupants, seenOccupants, _occupantAbsentSince, now);
+        foreach (uint id in GroundTrafficLogic.ForgetAbsent(_knownFinals, seenFinals, _finalAbsentSince, now))
+            _shortFinalAnnounced.Remove(id);
         if (seenOccupants.Count > 0) _runwayEmptiedPending = false;
-        else if (hadOccupants) _runwayEmptiedPending = true;
+        else if (hadOccupants && _knownOccupants.Count == 0) _runwayEmptiedPending = true;
         if (_runwayEmptiedPending)
         {
             string label = GroundTrafficLogic.RunwayLabel(status.Select(s => s.Designator));

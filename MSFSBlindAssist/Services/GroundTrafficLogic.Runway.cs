@@ -211,4 +211,28 @@ internal static partial class GroundTrafficLogic
     /// <summary>A runway status sentence opening, "Runway 27" — designators already bare.</summary>
     public static string RunwayLabel(IEnumerable<string> designators)
         => "Runway " + string.Join(" and ", designators);
+
+    /// <summary>A known runway occupant or final is forgotten only after being unseen this long (G5).</summary>
+    public const double KnownAbsenceGraceMs = 3000.0;
+
+    /// <summary>
+    /// Forgets from <paramref name="known"/> only the ids unseen for <see cref="KnownAbsenceGraceMs"/>;
+    /// <paramref name="absentSince"/> records when each known id was first missed and is cleared when it is
+    /// seen again. Returns the ids forgotten this call.
+    /// </summary>
+    public static IReadOnlyList<uint> ForgetAbsent(HashSet<uint> known, IReadOnlySet<uint> seen,
+        Dictionary<uint, DateTime> absentSince, DateTime now)
+    {
+        var forgotten = new List<uint>();
+        foreach (uint id in known.ToList())
+        {
+            if (seen.Contains(id)) { absentSince.Remove(id); continue; }
+            if (!absentSince.TryGetValue(id, out var since)) { absentSince[id] = now; continue; }
+            if ((now - since).TotalMilliseconds < KnownAbsenceGraceMs) continue;
+            known.Remove(id);
+            absentSince.Remove(id);
+            forgotten.Add(id);
+        }
+        return forgotten;
+    }
 }
