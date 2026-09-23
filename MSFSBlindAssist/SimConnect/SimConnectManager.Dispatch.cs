@@ -1341,7 +1341,7 @@ public partial class SimConnectManager
 
     private void SimConnect_OnRecvSimobjectDataBytype(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
     {
-        bool groundSweep = (int)data.dwRequestID == (int)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC;
+        bool groundSweep = IsGroundTrafficRequestId(data.dwRequestID);
         if (!groundSweep && (int)data.dwRequestID != (int)DATA_REQUESTS.REQUEST_AI_TRAFFIC) return;
         try
         {
@@ -1359,12 +1359,13 @@ public partial class SimConnectManager
         // which the AIRCRAFT object type always includes — which also means a
         // sweep always has at least one entry, so the marker always arrives).
         // Each request id raises its OWN event, so a TCAS sweep can never be
-        // taken for the ground-traffic monitor's (PR #247 review L5).
+        // taken for the ground-traffic monitor's (PR #247 review L5), and a ground
+        // sweep's completion names the id it went out under (PR #247 B2).
         if (data.dwentrynumber >= data.dwoutof)
         {
             try
             {
-                if (groundSweep) GroundTrafficSweepCompleted?.Invoke(this, EventArgs.Empty);
+                if (groundSweep) GroundTrafficSweepCompleted?.Invoke(this, new GroundTrafficSweepEventArgs(data.dwRequestID));
                 else AiTrafficSweepCompleted?.Invoke(this, EventArgs.Empty);
             }
             catch (Exception ex)

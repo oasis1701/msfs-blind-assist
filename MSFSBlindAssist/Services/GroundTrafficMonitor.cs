@@ -123,6 +123,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     // Poll bookkeeping (UI thread)
     private int _tickCount;
     private DateTime _sweepRequestedUtc = DateTime.MinValue;             // our outstanding sweep; MinValue = none
+    private uint _sweepRequestId;                                       // its request id; 0 = none
     private DateTime _lastCompletedSweepRequestedUtc = DateTime.MinValue;
     private uint _lastRadius;
 
@@ -478,8 +479,11 @@ public sealed class GroundTrafficMonitor : IDisposable
             _log.Info($"ev=sweep radius={radius}");
             _lastRadius = radius;
         }
-        _sweepRequestedUtc = now;
-        _sim.RequestGroundTrafficData(radius);
+        // Each sweep has its own request id (SimConnectManager rotates over eight), and only the answer
+        // to this one is credited. Nothing sent (0): nothing is outstanding, and no cycle waits for it.
+        _sweepRequestId = _sim.RequestGroundTrafficData(radius);
+        _sweepRequestedUtc = _sweepRequestId != 0 ? now : DateTime.MinValue;
+        if (_sweepRequestId == 0) _cycle = null;
     }
 
     // ──────────────────────────────────────────────────────────────────────────
@@ -587,10 +591,19 @@ public sealed class GroundTrafficMonitor : IDisposable
         }
     }
 
-    private void OnGroundTrafficSweepCompleted(object? sender, EventArgs e)
+    private void OnGroundTrafficSweepCompleted(object? sender, GroundTrafficSweepEventArgs e)
     {
-        // This event is raised ONLY for our own request id (PR #247 review L5), and only one of our
-        // sweeps is ever outstanding, so this completion is the one requested at _sweepRequestedUtc.
+        // This event is raised ONLY for our own sweeps (PR #247 review L5), each under its own request
+        // id. A sweep given up as lost (SWEEP_STALE_MS) can still complete later: its radius, intake and
+        // cycle were an older tick's, so it credits no readiness, evaluates nothing and completes no
+        // summary (the Alt+G summary has its own timeout). Only the outstanding one, requested at
+        // _sweepRequestedUtc, counts.
+        if (e.RequestId != _sweepRequestId)
+        {
+            _log.Info($"ev=sweep stale id={e.RequestId}");
+            return;
+        }
+        _sweepRequestId = 0;
         if (_sweepRequestedUtc != DateTime.MinValue) _lastCompletedSweepRequestedUtc = _sweepRequestedUtc;
         _sweepRequestedUtc = DateTime.MinValue;
         var cycle = _cycle;
