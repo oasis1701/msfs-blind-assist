@@ -138,6 +138,8 @@ public sealed class GroundTrafficMonitor : IDisposable
     private DateTime _watchStartedUtc = DateTime.MinValue;
     private bool _watchSummaryDone;
     private bool _runwayEmptiedPending;
+    // A single-runway watch whose sources all ended, kept while the aircraft is still crossing (ApplyLinger).
+    private RunwayWatchLinger.Anchor? _linger;
     private readonly HashSet<uint> _knownOccupants = new();
     private readonly HashSet<uint> _knownFinals = new();
     private readonly HashSet<uint> _shortFinalAnnounced = new();
@@ -199,7 +201,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         LogGates(proximity, watchGate);
 
         if (!proximity) ResetProximityState();
-        if (!watchGate) SetWatch(RunwayWatch.None);
+        if (!watchGate) { ClearLinger("gate"); SetWatch(RunwayWatch.None); }
         if (!proximity && !watchGate)
         {
             lock (_lock) { _runwayWatchActive = false; _queueScanActive = false; }
@@ -226,7 +228,13 @@ public sealed class GroundTrafficMonitor : IDisposable
         // Decide the watch BEFORE requesting the sweep, so the intake keeps the airborne/far runway
         // aircraft this very sweep returns.
         var ctx = LocalContext(p.Latitude, p.Longitude);
-        var watch = watchGate ? ResolveWatch(ctx, p.Latitude, p.Longitude) : RunwayWatch.None;
+        // DateTime.UtcNow, not the `now` below: that must stay AFTER SetWatch — the first-status gate
+        // compares the completed sweep's REQUEST time against _watchStartedUtc (set inside SetWatch),
+        // so the sweep requested later in this tick must carry a time no earlier than the watch start.
+        // ApplyLinger's time only feeds the linger's 60 s ceiling.
+        var watch = watchGate
+            ? ApplyLinger(ResolveWatch(ctx, p.Latitude, p.Longitude), ctx, p.Latitude, p.Longitude, DateTime.UtcNow)
+            : ClearLinger("gate");
         SetWatch(watch);
         bool queueScan = proximity && ctx is { IsQueueRoute: true };
         lock (_lock) { _runwayWatchActive = watch.IsActive; _queueScanActive = queueScan; }
@@ -318,6 +326,52 @@ public sealed class GroundTrafficMonitor : IDisposable
         _watchStartedUtc = DateTime.UtcNow;
         if (watch.IsActive)
             _log.Info($"ev=watch start key={watch.Key} des={string.Join("+", watch.Runways.Select(r => r.Designator))} mode={watch.Mode}");
+    }
+
+    /// <summary>
+    /// A single-runway watch whose sources all ended lingers while the aircraft is still crossing that
+    /// runway (<see cref="RunwayWatchLinger"/>) — same key, Holding mode — instead of stopping and
+    /// restarting with a second full first status. Any active resolution replaces it at once.
+    /// </summary>
+    private RunwayWatch ApplyLinger(RunwayWatch resolved, GroundTrafficRouteContext? ctx, double lat, double lon, DateTime now)
+    {
+        if (resolved.IsActive) { if (_linger != null) EndLinger(resolved.Key == _watchKey ? "resumed" : "new-watch"); return resolved; }
+        if (!_currentWatch.IsActive || _currentWatch.Runways.Count != 1) { if (_linger != null) EndLinger("no-watch"); return RunwayWatch.None; }
+
+        var runways = RunwaysFor(ctx);
+        var cl = runways.FirstOrDefault(r => RouteRunwayCrossings.CenterlineHasDesignator(r, _currentWatch.Runways[0].Designator));
+        if (cl == null) { if (_linger != null) EndLinger("no-runway"); return RunwayWatch.None; }
+        var shape = RunwayShape.For(cl);
+        double lateral = shape.Project(lat, lon).Lateral;
+
+        if (_linger == null)
+        {
+            if (!RunwayWatchLinger.CanBegin(lateral)) return RunwayWatch.None;
+            _linger = new RunwayWatchLinger.Anchor(lateral, now);
+            _log.Info(FormattableString.Invariant($"ev=watch linger key={_watchKey} lateral={lateral:0}"));
+        }
+        var verdict = RunwayWatchLinger.Evaluate(_linger.Value, lateral, shape.HalfWidthMeters, now);
+        if (verdict == RunwayLingerVerdict.Keep)
+            return _currentWatch with { Mode = RunwayWatchMode.Holding };
+        EndLinger(verdict switch
+        {
+            RunwayLingerVerdict.ClearFarSide => "clear",
+            RunwayLingerVerdict.TurnedAway => "turned-away",
+            _ => "timeout",
+        });
+        return RunwayWatch.None;
+    }
+
+    private void EndLinger(string reason)
+    {
+        _log.Info($"ev=watch linger-end key={_watchKey} reason={reason}");
+        _linger = null;
+    }
+
+    private RunwayWatch ClearLinger(string reason)
+    {
+        if (_linger != null) EndLinger(reason);
+        return RunwayWatch.None;
     }
 
     private void ResetRunwayWatch()
@@ -1219,6 +1273,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _timer.Dispose();
         _summaryTimeout.Stop();
         _summaryTimeout.Dispose();
+        _linger = null;
     }
 }
 
