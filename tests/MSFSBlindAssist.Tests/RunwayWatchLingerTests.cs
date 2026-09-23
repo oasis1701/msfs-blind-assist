@@ -67,12 +67,33 @@ public class RunwayWatchLingerTests
         Assert.Equal(RunwayLingerVerdict.TimedOut, Evaluate(side, 60, seconds: 60.001));
     }
 
+    // The runway's along-track extent for CanBegin: pavement from 400 m before the along origin to
+    // 2,600 m after it (deliberately not zero-based, so both ends are real bounds).
+    private const double ExtentMinM = -400.0;
+    private const double ExtentMaxM = 2600.0;
+
     [Fact]
     public void A_linger_begins_only_near_the_centreline()
     {
-        Assert.True(RunwayWatchLinger.CanBegin(250.0));
-        Assert.True(RunwayWatchLinger.CanBegin(-250.0));
-        Assert.False(RunwayWatchLinger.CanBegin(250.01));
-        Assert.False(RunwayWatchLinger.CanBegin(-250.01));
+        Assert.True(RunwayWatchLinger.CanBegin(250.0, 1000.0, ExtentMinM, ExtentMaxM));
+        Assert.True(RunwayWatchLinger.CanBegin(-250.0, 1000.0, ExtentMinM, ExtentMaxM));
+        Assert.False(RunwayWatchLinger.CanBegin(250.01, 1000.0, ExtentMinM, ExtentMaxM));
+        Assert.False(RunwayWatchLinger.CanBegin(-250.01, 1000.0, ExtentMinM, ExtentMaxM));
+    }
+
+    // PR #247 B2 review: a lateral offset alone is measured against the runway's infinite centreline,
+    // so a watch lost kilometres beyond a runway end — or carried to another airport with a
+    // same-named runway — could still begin a linger.
+    [Theory]
+    [InlineData(-550.0, true)]    // 150 m before the first end
+    [InlineData(-551.0, false)]   // 151 m before it
+    [InlineData(2750.0, true)]    // 150 m beyond the far end
+    [InlineData(2751.0, false)]   // 151 m beyond it
+    [InlineData(-400.0, true)]    // at either end
+    [InlineData(2600.0, true)]
+    public void A_linger_begins_only_beside_its_runway(double alongM, bool expected)
+    {
+        Assert.Equal(expected, RunwayWatchLinger.CanBegin(50.0, alongM, ExtentMinM, ExtentMaxM));
+        Assert.Equal(expected, RunwayWatchLinger.CanBegin(-50.0, alongM, ExtentMinM, ExtentMaxM));
     }
 }

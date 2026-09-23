@@ -299,12 +299,18 @@ public sealed class GroundTrafficMonitor : IDisposable
     }
 
     /// <summary>
-    /// Adopts <paramref name="runways"/> as the runway cache. Another airport ends any linger: its
-    /// anchor was measured against the previous airport's runway.
+    /// Adopts <paramref name="runways"/> as the runway cache. Another airport ends the watch and any
+    /// linger: both belong to the previous airport's runways, and a watch surviving into the new airport
+    /// could begin a linger against a same-named runway there (PR #247 B2 review). The same holds after
+    /// <see cref="ClearRunwayCache"/>, which forgets which airport the cache held.
     /// </summary>
     private void CacheRunways(IReadOnlyList<TaxiGraph.RunwayCenterline> runways, string icao)
     {
-        if (!string.Equals(icao, _cachedRunwaysIcao, StringComparison.OrdinalIgnoreCase)) ClearLinger("airport-change");
+        if (!string.Equals(icao, _cachedRunwaysIcao, StringComparison.OrdinalIgnoreCase))
+        {
+            ClearLinger("airport-change");
+            SetWatch(RunwayWatch.None);
+        }
         _cachedRunways = runways;
         _cachedRunwaysIcao = icao;
     }
@@ -332,7 +338,8 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// <summary>
     /// Clears the runway cache — a database switch, after which the same airport can carry different
     /// runway names and geometry — and any linger measured against it. The next local route context or
-    /// takeoff-assist runway loads the runways again.
+    /// takeoff-assist runway loads the runways again, and — like an airport change — ends the watch, so
+    /// one in progress restarts on the new database's runways.
     /// </summary>
     public void ClearRunwayCache()
     {
@@ -421,11 +428,12 @@ public sealed class GroundTrafficMonitor : IDisposable
         var cl = runways.FirstOrDefault(r => RouteRunwayCrossings.CenterlineHasDesignator(r, _currentWatch.Runways[0].Designator));
         if (cl == null) { if (_linger != null) EndLinger("no-runway"); return RunwayWatch.None; }
         var shape = RunwayShape.For(cl);
-        double lateral = shape.Project(lat, lon).Lateral;
+        var (along, lateral) = shape.Project(lat, lon);
 
         if (_linger == null)
         {
-            if (!RunwayWatchLinger.CanBegin(lateral)) return RunwayWatch.None;
+            if (!RunwayWatchLinger.CanBegin(lateral, along, shape.ExtentMinMeters, shape.ExtentMaxMeters))
+                return RunwayWatch.None;
             _linger = new RunwayWatchLinger.Anchor(lateral, now);
             _log.Info(FormattableString.Invariant($"ev=watch linger key={_watchKey} lateral={lateral:0}"));
         }
