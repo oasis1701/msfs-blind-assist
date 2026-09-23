@@ -248,4 +248,41 @@ public class OsmFeatureClassifierTests
         Assert.Equal(FeatureKind.Terminal, f.Kind);
         Assert.Null(f.Footprint);
     }
+
+    // ---- name:en (review OV-4) -----------------------------------------------------------------
+    //
+    // OSM's `name` is the LOCAL name. Tag sets below are real, live 2026-09-22.
+
+    [Fact]
+    public void The_english_name_is_spoken_when_osm_has_one()
+    {
+        // RJTT way 500688113.
+        var f = One(Node("\"aeroway\":\"terminal\",\"building\":\"yes\",\"name\":\"第1旅客ターミナル\"," +
+                         "\"name:en\":\"Terminal 1\",\"name:ja\":\"第1旅客ターミナル\",\"operator\":\"日本空港ビルデング株式会社\""))!;
+
+        Assert.Equal("Terminal 1", f.Name);
+        Assert.Equal(FeatureKind.Terminal, f.Kind);
+    }
+
+    [Fact]
+    public void The_english_name_is_also_what_classifies()
+    {
+        // RJAA way 171844492: the only aviation word is in name:en, so read by `name` alone this
+        // cargo building is not a feature at all.
+        const string tags = "\"building\":\"warehouse\",\"name\":\"第3貨物ビル\"";
+        Assert.Null(One(Node(tags)));
+
+        var f = One(Node(tags + ",\"name:en\":\"Cargo Building No.3\""))!;
+
+        Assert.Equal(FeatureKind.Cargo, f.Kind);
+        Assert.Equal("Cargo Building No.3", f.Name);
+    }
+
+    [Fact]
+    public void A_blank_english_name_falls_back_to_the_local_one()
+    {
+        var f = One(Node("\"aeroway\":\"hangar\",\"name\":\"格納庫 1\",\"name:en\":\"  \""))!;
+
+        Assert.Equal("格納庫 1", f.Name);
+    }
 }

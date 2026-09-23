@@ -19,7 +19,7 @@ public static class OsmFeatureClassifier
         string aeroway = Tag(tags, "aeroway"), building = Tag(tags, "building");
         if (aeroway is "taxiway" or "parking_position" or "gate" or "holding_position" or "runway") return null;
 
-        string name = Tag(tags, "name"), op = Tag(tags, "operator");
+        string name = PreferredName(tags), op = Tag(tags, "operator");
         bool nameIsRef = false;
         if (name.Length == 0 && (aeroway is "apron" or "terminal" || building == "terminal"))
         {
@@ -110,6 +110,21 @@ public static class OsmFeatureClassifier
 
     private static string Tag(JsonElement tags, string key)
         => tags.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "").Trim() : "";
+
+    /// <summary>
+    /// The name to SPEAK and to CLASSIFY by: <c>name:en</c> when OSM carries one, else <c>name</c>
+    /// (review OV-4). OSM's <c>name</c> is the LOCAL name — Haneda's terminals are 第1旅客ターミナル,
+    /// Narita's cargo sheds 第3貨物ビル — which a screen reader either spells out or reads in a
+    /// language the pilot may not have, while <c>name:en</c> ("Terminal 1", "Cargo Building No.3") is
+    /// what English signage and charts say. Classification reads the SAME name, never one for each:
+    /// the kind words (cargo, pier, concourse…) live in the English one, so read by <c>name</c> alone
+    /// Narita's cargo buildings were not features at all.
+    /// </summary>
+    private static string PreferredName(JsonElement tags)
+    {
+        string english = Tag(tags, "name:en");
+        return english.Length > 0 ? english : Tag(tags, "name");
+    }
 
     /// <summary>
     /// The outline, or null. A WAY: its own vertices, closing duplicate dropped. A RELATION (a

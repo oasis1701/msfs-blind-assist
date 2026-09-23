@@ -879,6 +879,11 @@ as long as the airport was current.
   routable places. Road fuel (`amenity=fuel`) is not aircraft fuel and is not
   matched at all; `ref` stands in for a missing name only on an apron or a
   terminal, and only when it carries a letter and is not a `;`-separated list.
+  The name it reads — for speech AND for the kind — is `name:en` when OSM
+  carries one, else `name`: OSM's `name` is the local script, so Haneda's
+  terminals were spoken as 第1旅客ターミナル and Narita's cargo sheds (第3貨物ビル,
+  `name:en` "Cargo Building No.3") were no feature at all, their only aviation
+  word being in the English name. Never classify on one and speak the other.
 - **`OsmFeatureSource`** owns the query. It is scoped to the
   `aeroway=aerodrome` area carrying the airport's `icao=` tag; when OSM has not
   tagged that area, one `around:3000` fallback runs and its result is kept only
