@@ -174,4 +174,21 @@ public class NavdataFeatureSourceTests
         var viewPointOnly = new AirportFacilities { HasTowerObject = false, TowerLat = 46.153812, TowerLon = -123.884392 };
         Assert.DoesNotContain(NavdataFeatureSource.Read(Array.Empty<ParkingSpot>(), viewPointOnly), f => f.Kind == FeatureKind.Tower);
     }
+
+    [Fact]
+    public void A_military_cargo_stand_is_never_part_of_a_cargo_ramp()
+    {
+        // navdata type 7 is RAMP_MIL_CARGO — a MILITARY stand (ParkingTypes.IsMilitary). Counted as
+        // cargo it made 605 military stands at 64 fs2024 airports into "Cargo ramp" (PHNL's Hickam
+        // ramp: 27 of them), and 48 of those airports have no civil cargo stand at all.
+        var spots = new List<ParkingSpot>
+        {
+            Spot("Parking", 18, 7, 21.3307, -157.9469), Spot("Parking", 19, 7, 21.3308, -157.9469),   // military cargo
+            Spot("Parking", 20, 8, 21.3309, -157.9469),                                               // military combat
+            Spot("Parking", 1, 6, 21.3400, -157.9200), Spot("Parking", 2, 6, 21.3401, -157.9200),     // civil cargo, ~3 km away
+        };
+        var cargo = Assert.Single(NavdataFeatureSource.Read(spots, null), f => f.Kind == FeatureKind.Cargo);
+        Assert.Equal(2, cargo.Members!.Count);
+        Assert.All(cargo.Members!, m => Assert.Equal(21.34, m.Lat, 2));
+    }
 }

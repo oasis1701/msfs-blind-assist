@@ -858,8 +858,10 @@ as long as the airport was current.
 
 - **`NavdataFeatureSource`** infers concourses from gate letters (via
   `MapParkingName`) with a majority-airline `Detail` when ≥ 60 % of the coded
-  gates in a group share one airline; groups fuel/cargo/GA-ramp `parking` rows
-  into `Fuel`/`Cargo`/`Apron` features; reads helipads and — where the database
+  gates in a group share one airline; groups fuel, CIVIL cargo (type 6) and
+  GA-ramp `parking` rows into `Fuel`/`Cargo`/`Apron` features — a military
+  cargo stand (type 7) is `ParkingTypes.IsMilitary` and never part of a "Cargo
+  ramp"; reads helipads and — where the database
   has a tower OBJECT (`has_tower_object`), never a bare tower position — the
   tower coordinates; and reads `AirportFacilities` (avgas/jet
   flags, `com` frequencies, bounding box, `scenery_local_path`) for the
@@ -905,10 +907,13 @@ as long as the airport was current.
   category header ("Parking", "Ramp", "Gates", "Stand"…) is a profile author's
   section divider, not a place, and is skipped; a group of one is skipped too.
   The **kind** is derived from the header text AND the grouped stands' own
-  parking types (`KindOf`: cargo words or a 60 % cargo-stand majority → Cargo,
-  FBO words → Fbo, concourse words → Concourse, a 60 % GA-ramp majority →
-  Apron, else Terminal), because the header is free text and a cargo ramp typed
-  `Terminal` took the one Terminal slot in the Look-around sentence.
+  parking types (`KindOf`: cargo words or a 60 % civil-cargo-stand majority →
+  Cargo, FBO words → Fbo, concourse words → Concourse, a 60 % majority of
+  GA-ramp or military stands → Apron, else Terminal), because the header is
+  free text and a cargo ramp typed `Terminal` took the one Terminal slot in the
+  Look-around sentence. A military ramp counts as ramp stands for the same
+  reason: once a military cargo stand stopped counting as cargo, a section of
+  them would otherwise have fallen through to Terminal.
 
 ### Merge — `AirportFeatureCatalog.SameFeature`
 
@@ -1714,7 +1719,8 @@ feature onto navdata pavement, **by position**, in this order:
 Among the stands in range it prefers one that is a MEMBER of the feature (a
 concourse resolves to one of its own gates, the most central) and then one
 whose type matches the place — GA-ramp or dock types for an FBO, hangar, office
-or fire station, FUEL stands for fuel, cargo stands for cargo, gate types for a
+or fire station, FUEL stands for fuel, CIVIL cargo stands for cargo (a
+military stand is not a type match), gate types for a
 terminal or concourse — else the nearest non-vehicle stand. Routable kinds are
 Fbo, Hangar, Fuel, Terminal, Concourse, Cargo, FireStation and Office; never
 Tower, Helipad, Apron, DeicePad or Other. (De-ice pads have their own

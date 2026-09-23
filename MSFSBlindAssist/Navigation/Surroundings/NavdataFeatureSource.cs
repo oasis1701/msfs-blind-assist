@@ -64,6 +64,8 @@ public static class NavdataFeatureSource
         };
         foreach (var c in SurroundingsGeometry.SingleLinkage(spots.Where(s => ParkingTypes.IsFuel(s.Type)).ToList(), At, RampLinkMetres))
             result.Add(Make(FeatureKind.Fuel, "Fuel", true, c, fuelDetail));
+        // CIVIL cargo only (ParkingTypes.IsCargo, type 6): a military cargo stand is IsMilitary and is
+        // never a "Cargo ramp" — PHNL's Hickam ramp was one.
         foreach (var c in SurroundingsGeometry.SingleLinkage(spots.Where(s => ParkingTypes.IsCargo(s.Type)).ToList(), At, RampLinkMetres))
             result.Add(Make(FeatureKind.Cargo, "Cargo ramp", true, c));
         foreach (var c in SurroundingsGeometry.SingleLinkage(spots.Where(s => ParkingTypes.IsGaRamp(s.Type) && !IsDirectionalName(s.Name)).ToList(), At, RampLinkMetres).Where(c => c.Count >= 3))

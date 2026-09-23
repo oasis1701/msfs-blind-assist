@@ -38,14 +38,16 @@ public static class GsxTerminalFeatureSource
     }
 
     /// <summary>The header is a scenery author's SECTION title, so the stands decide as much as the
-    /// words do: a cargo ramp typed Terminal took the one Terminal slot in the Alt+L sentence.</summary>
+    /// words do: a cargo ramp typed Terminal took the one Terminal slot in the Alt+L sentence. Cargo
+    /// is CIVIL cargo stands (ParkingTypes.IsCargo); a military ramp is ramp stands like a GA one, so
+    /// a military majority is an Apron too rather than falling through to Terminal.</summary>
     private static FeatureKind KindOf(string header, List<ParkingSpot> members)
     {
         double Share(Func<int, bool> of) => members.Count(m => of(m.Type)) / (double)members.Count;
         if (FeatureLexicon.Cargo.IsMatch(header) || Share(ParkingTypes.IsCargo) >= StandMajority) return FeatureKind.Cargo;
         if (FeatureLexicon.Fbo.IsMatch(header)) return FeatureKind.Fbo;
         if (FeatureLexicon.Concourse.IsMatch(header)) return FeatureKind.Concourse;
-        if (Share(ParkingTypes.IsGaRamp) >= StandMajority) return FeatureKind.Apron;
+        if (Share(t => ParkingTypes.IsGaRamp(t) || ParkingTypes.IsMilitary(t)) >= StandMajority) return FeatureKind.Apron;
         return FeatureKind.Terminal;
     }
 }

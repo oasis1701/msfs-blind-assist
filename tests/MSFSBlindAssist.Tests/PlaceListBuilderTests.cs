@@ -112,4 +112,16 @@ public class PlaceListBuilderTests
             new[] { stand }, None, NoNode, Any);
         Assert.Equal(new[] { "Hangar, Spot 3", "Hangar, Spot 3 (2)" }, entries.Select(e => e.Label).OrderBy(l => l));
     }
+
+    [Fact]
+    public void A_cargo_place_prefers_a_civil_cargo_stand_over_a_nearer_military_one()
+    {
+        // navdata type 7 is RAMP_MIL_CARGO — a MILITARY stand, not the cargo ramp a Cargo place is
+        // about. Counted as cargo it outranked the civil stand on distance alone.
+        var military = Stand("Parking", 18, 7, 21.3308, -157.9469);   // ~11 m from the building
+        var civil = Stand("Parking", 5, 6, 21.3312, -157.9469);       // ~55 m
+        var entry = Assert.Single(PlaceListBuilder.Build(Cat(Place(FeatureKind.Cargo, "UPS Cargo", 21.3307, -157.9469)),
+            new[] { military, civil }, None, NoNode, Any));
+        Assert.Same(civil.Spot, entry.Spot);
+    }
 }

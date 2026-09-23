@@ -179,6 +179,9 @@ public class ParkingSpot
 
     public string GetFilterCategory()
     {
+        // The families come from ParkingTypes, so this list can never drift from the one the
+        // surroundings features and the Place list read; only the gate SIZES are spelled out,
+        // because the filter lists each size on its own.
         return Type switch
         {
             9 => "Gate Small",
@@ -186,10 +189,10 @@ public class ParkingSpot
             11 => "Gate Large",
             13 => "Gate Heavy",
             14 => "Gate Extra",
-            2 or 3 or 4 or 5 or 15 => "Ramp GA",
-            6 => "Ramp Cargo",
-            7 or 8 => "Ramp Military",
-            12 => "Dock",
+            _ when ParkingTypes.IsGaRamp(Type) => "Ramp GA",
+            _ when ParkingTypes.IsCargo(Type) => "Ramp Cargo",
+            _ when ParkingTypes.IsMilitary(Type) => "Ramp Military",
+            _ when ParkingTypes.IsDock(Type) => "Dock",
             _ => "Other"
         };
     }

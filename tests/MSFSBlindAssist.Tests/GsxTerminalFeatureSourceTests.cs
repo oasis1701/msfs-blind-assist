@@ -61,4 +61,18 @@ public class GsxTerminalFeatureSourceTests
         Assert.Equal(2, f.Members!.Count);
         Assert.Equal(FeatureSource.Gsx, f.Source);
     }
+
+    [Fact]
+    public void A_section_of_military_stands_is_an_apron_never_cargo_or_a_terminal()
+    {
+        // GSX stands arrive in navdata numbering (GsxGateMapper): 7 is RAMP_MIL_CARGO, 8 RAMP_MIL_COMBAT.
+        // Counted as cargo, two type-7 stands of three made this a Cargo place. With cargo narrowed to
+        // CIVIL stands it would instead fall through to Terminal and take the one Terminal slot in
+        // the Look-around sentence — the defect KindOf's stand rule exists to prevent.
+        var spots = new[]
+        {
+            G("Hickam AFB", 1, 7, 21.3300, -157.9470), G("Hickam AFB", 2, 7, 21.3304, -157.9470), G("Hickam AFB", 3, 8, 21.3308, -157.9470),
+        };
+        Assert.Equal(FeatureKind.Apron, Assert.Single(GsxTerminalFeatureSource.Read(spots)).Kind);
+    }
 }
