@@ -111,4 +111,57 @@ CREATE TABLE parking (parking_id INTEGER PRIMARY KEY, airport_id INTEGER, type T
         Airport(1, "TNUL", null, 10.0, 20.0, hasTowerObject: null, towerLat: 10.001, towerLon: 20.001);
         Assert.False(Provider().GetAirportFacilities("TNUL")!.HasTowerObject);
     }
+
+    // ── One airport-row lookup ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void A_code_in_any_case_finds_the_airport_and_its_stands()
+    {
+        Airport(1, "KAST", null, 46.15797, -123.87861, hasTowerObject: 0);
+        Stand(1, 12);
+        var provider = Provider();
+        Assert.Equal(46.15797, provider.GetAirportFacilities("kast")!.RefLat, 5);
+        Assert.Equal(12, Assert.Single(provider.GetParkingSpots("kast")).Number);
+    }
+
+    [Fact]
+    public void An_airport_is_found_by_its_icao_column_too()
+    {
+        Airport(1, "X01", "KXYZ", 10.0, 20.0, hasTowerObject: 0);
+        Stand(1, 7);
+        var provider = Provider();
+        Assert.Equal(10.0, provider.GetAirportFacilities("KXYZ")!.RefLat, 5);
+        Assert.Equal(7, Assert.Single(provider.GetParkingSpots("KXYZ")).Number);
+    }
+
+    [Fact]
+    public void An_unknown_code_has_neither_facilities_nor_stands()
+    {
+        Airport(1, "KAST", null, 46.15797, -123.87861, hasTowerObject: 0);
+        Stand(1, 12);
+        var provider = Provider();
+        Assert.Null(provider.GetAirportFacilities("KZZZ"));
+        Assert.Empty(provider.GetParkingSpots("KZZZ"));
+    }
+
+    [Fact]
+    public void The_facilities_and_the_stands_come_from_the_same_airport_row()
+    {
+        // One code, two rows: row 1 carries it in its icao column, row 2 as its ident. fs2024 has no
+        // such pair today (icao is NULL on all 84,278 rows), but the two lookups resolved it
+        // DIFFERENTLY — GetAirportId's UPPER() scan found row 1, GetAirportFacilities' indexed OR
+        // found row 2 — so the surroundings would speak one airport's box, tower and frequencies
+        // beside another airport's stands. One lookup cannot disagree with itself.
+        Airport(1, "ABC1", "XYZ1", 10.0, 10.0, hasTowerObject: 0);
+        Airport(2, "XYZ1", null, 20.0, 20.0, hasTowerObject: 0);
+        Stand(1, 101);
+        Stand(2, 202);
+        var provider = Provider();
+
+        double refLat = provider.GetAirportFacilities("XYZ1")!.RefLat;
+        int standNumber = Assert.Single(provider.GetParkingSpots("XYZ1")).Number;
+
+        int expectedStand = refLat == 10.0 ? 101 : 202;   // whichever row the facilities came from, the stands must come from it too
+        Assert.Equal(expectedStand, standNumber);
+    }
 }

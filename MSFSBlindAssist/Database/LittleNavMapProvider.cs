@@ -502,20 +502,23 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
-        long airportId; bool avgas, jet, towerObject; double left, right, top, bottom; string sceneryPath;
+        // The SAME row the stands, runways and taxi paths are read from (GetAirportId): the box,
+        // tower and frequencies are spoken beside that airport's stands and runways, so they must
+        // never describe a different row. This method used to carry its own copy of the lookup,
+        // and a code two airports share resolved to a different row here than in GetParkingSpots.
+        int airportId = GetAirportId(connection, icao);
+        if (airportId == -1) return null;
+
+        bool avgas, jet, towerObject; double left, right, top, bottom; string sceneryPath;
         double refLat, refLon; int helipads; double? towerLat = null, towerLon = null;
-        // Bare indexed columns compared to an upper-cased PARAMETER, not UPPER(col) on both sides:
-        // UPPER(ident)/UPPER(icao) can't use idx_airport_ident/idx_airport_icao (measured 15 ms
-        // SCAN vs 0.09 ms for the equivalent OR-of-equalities plan).
         using (var cmd = new SqliteCommand(@"
-            SELECT airport_id, has_avgas, has_jetfuel, has_tower_object, left_lonx, right_lonx, top_laty, bottom_laty,
+            SELECT has_avgas, has_jetfuel, has_tower_object, left_lonx, right_lonx, top_laty, bottom_laty,
                    scenery_local_path, tower_laty, tower_lonx, laty, lonx, num_helipad
-            FROM airport WHERE ident = @U OR icao = @U LIMIT 1", connection))
+            FROM airport WHERE airport_id = @Id", connection))
         {
-            cmd.Parameters.AddWithValue("@U", icao.ToUpperInvariant());
+            cmd.Parameters.AddWithValue("@Id", airportId);
             using var r = cmd.ExecuteReader();
             if (!r.Read()) return null;
-            airportId = Convert.ToInt64(r["airport_id"]);
             avgas = SafeReadInt(r, "has_avgas", 0) == 1;
             jet = SafeReadInt(r, "has_jetfuel", 0) == 1;
             // NULL reads as "no tower" (navdatareader declares the column NOT NULL, so only a
@@ -810,17 +813,29 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
 
     #region Helper Methods
 
+    /// <summary>
+    /// THE airport-row lookup for every airport_id-keyed read: runways, stands, taxi paths, runway
+    /// starts, the orphan-ILS relink and the surroundings facilities all resolve their code here, so
+    /// no two of them can describe different rows. Two reads in this class do NOT come through here
+    /// and keep their own UPPER() scan: GetAirport (whose position is also what
+    /// AugmentingAirportDataProvider.FetchCoreAsync centres the online taxiway-name fetch on) and
+    /// AirportExists. Bare indexed columns against an UPPER-CASED PARAMETER, never UPPER(column):
+    /// UPPER() on a column cannot use idx_airport_ident / idx_airport_icao, and the old form was a
+    /// full-table SCAN — 14.3 ms against 0.10 ms for this MULTI-INDEX OR on fs2024's 84,278 airports
+    /// (measured 2026-09-22). On fs2024 the new predicate returns the row the old one did for every
+    /// code: no ident or icao carries a lower-case or non-ASCII letter, icao is NULL on every row, and
+    /// no code names two airports. MSFS 2020 is UNMEASURED (no fs2020 database was available), though
+    /// a disk-built BGL ident cannot carry a lower-case letter: its packed encoding holds only digits
+    /// and capitals.
+    /// Returns -1 when nothing matches.
+    /// </summary>
     private int GetAirportId(SqliteConnection connection, string icao)
     {
-        var sql = "SELECT airport_id FROM airport WHERE UPPER(icao) = UPPER(@ICAO) OR UPPER(ident) = UPPER(@ICAO) LIMIT 1";
-
-        using (var command = new SqliteCommand(sql, connection))
-        {
-            command.Parameters.AddWithValue("@ICAO", icao);
-
-            var result = command.ExecuteScalar();
-            return result != null ? Convert.ToInt32(result) : -1;
-        }
+        using var command = new SqliteCommand(
+            "SELECT airport_id FROM airport WHERE ident = @Code OR icao = @Code LIMIT 1", connection);
+        command.Parameters.AddWithValue("@Code", icao.ToUpperInvariant());
+        var result = command.ExecuteScalar();
+        return result != null ? Convert.ToInt32(result) : -1;
     }
 
     private Runway CreateRunwayFromReader(SqliteDataReader reader, string icao, bool isPrimary, double magVar, OrphanIlsLookup orphanIls)
