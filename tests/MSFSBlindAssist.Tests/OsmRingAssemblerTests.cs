@@ -27,6 +27,11 @@ public class OsmRingAssemblerTests
                                    F = new(50.0445, 8.5960);
     private static readonly LatLon[] Kite = { A, B, X, C };
 
+    // A small rectangle for the duplicated-member test below: Da-Dm-Db-Dn clockwise.
+    private static readonly LatLon Da = new(50.0480, 8.5900), Dm = new(50.0480, 8.5920),
+                                   Db = new(50.0470, 8.5920), Dn = new(50.0470, 8.5900);
+    private static readonly LatLon[] DupRing = { Da, Dm, Db, Dn };
+
     private static IReadOnlyList<LatLon> Way(params LatLon[] pts) => pts;
 
     private static IReadOnlyList<LatLon>? Ring(params IReadOnlyList<LatLon>[] ways) => OsmRingAssembler.LargestRing(ways);
@@ -69,6 +74,41 @@ public class OsmRingAssemblerTests
     }
 
     [Fact]
+    public void A_ring_of_zero_area_is_no_outline()
+        // A single way that goes out to P2 and doubles straight back on itself: closed (P0 both
+        // ends), four vertices after the closing duplicate is dropped, but nothing is enclosed —
+        // `bestArea` used to start at -1, so this area-0 "ring" beat that sentinel and came back as
+        // an outline, contradicting the class doc's "if nothing closes the answer is null".
+        => Assert.Null(Ring(Way(P0, P1, P2, P1, P0)));
+
+    [Fact]
+    public void A_duplicated_member_never_returns_a_wrong_shape_and_recovers_the_real_ring_when_it_can()
+    {
+        // A relation can list the same way TWICE among its members (an OSM data quirk). The
+        // duplicate shares BOTH endpoints with its twin, so the greedy join sometimes retraces it
+        // as a zero-area loop (Da,Dm,Db,Dm,Da) instead of reaching the third way that would close
+        // the real rectangle Da-Dm-Db-Dn — exactly the degenerate shape the fix above must reject.
+        // Whichever member order is used the answer is therefore never a WRONG non-null shape:
+        // either the real rectangle, or — only when the duplicate is joined ahead of the closing
+        // way — null (the real ring was never assembled to compete for "largest" at all).
+        var dupWay = Way(Da, Dm, Db);
+        var closer = Way(Db, Dn, Da);
+        foreach (var order in Orders(new[] { dupWay, dupWay, closer }))
+        {
+            var ring = Ring(order);
+            Assert.True(ring == null || IsSameRing(DupRing, ring),
+                $"member order {string.Join(" ", order.Select(w => "(" + Labels(w) + ")"))} gave a wrong shape {(ring == null ? "" : Labels(ring))}");
+        }
+
+        // And it DOES recover the real ring whenever the duplicate does not out-compete the
+        // closing way for the shared node (i.e. whenever `closer` is not the last member tried) —
+        // give or take which vertex it starts at and which way round it runs, same as any other
+        // member order (Member_order_and_direction_do_not_matter above).
+        Assert.True(IsSameRing(DupRing, Ring(dupWay, closer, dupWay)!));
+        Assert.True(IsSameRing(DupRing, Ring(closer, dupWay, dupWay)!));
+    }
+
+    [Fact]
     public void A_closed_way_touching_an_open_chain_is_never_spliced_into_it_in_any_member_order()
         // The closed triangle X-D-E touches the ring A-B-X + X-C-A at X. Left in the join pool, a
         // closed way was spliced into whichever chain reached X first: member order (ABX) (XDEX)
@@ -84,15 +124,31 @@ public class OsmRingAssemblerTests
 
     // ---- helpers ------------------------------------------------------------------------------
 
-    /// <summary>Every member order of <paramref name="ways"/> must give <paramref name="expected"/> —
-    /// starting at any vertex and running either way round, the only freedom member order may leave.</summary>
+    /// <summary>Every member order of <paramref name="ways"/>, each way ALSO tried reversed (every
+    /// combination of directions), must give <paramref name="expected"/> — starting at any vertex
+    /// and running either way round, the only freedom member order and direction may leave.</summary>
     private static void AssertSameRingInEveryOrder(IReadOnlyList<LatLon> expected, params IReadOnlyList<LatLon>[] ways)
     {
         foreach (var order in Orders(ways))
+            foreach (var directed in Directions(order))
+            {
+                var ring = Ring(directed);
+                Assert.True(ring != null && IsSameRing(expected, ring),
+                    $"member order {string.Join(" ", directed.Select(w => "(" + Labels(w) + ")"))} gave {(ring == null ? "no ring" : Labels(ring))}");
+            }
+    }
+
+    /// <summary>Every combination of forward/reversed for each way in <paramref name="ways"/> — the
+    /// doc promises the join is direction-independent too, not just order-independent.</summary>
+    private static IEnumerable<IReadOnlyList<LatLon>[]> Directions(IReadOnlyList<LatLon>[] ways)
+    {
+        int n = ways.Length;
+        for (int mask = 0; mask < (1 << n); mask++)
         {
-            var ring = Ring(order);
-            Assert.True(ring != null && IsSameRing(expected, ring),
-                $"member order {string.Join(" ", order.Select(w => "(" + Labels(w) + ")"))} gave {(ring == null ? "no ring" : Labels(ring))}");
+            var combo = new IReadOnlyList<LatLon>[n];
+            for (int i = 0; i < n; i++)
+                combo[i] = (mask & (1 << i)) == 0 ? ways[i] : ways[i].Reverse().ToList();
+            yield return combo;
         }
     }
 
@@ -133,6 +189,7 @@ public class OsmRingAssemblerTests
         {
             [A] = "A", [B] = "B", [C] = "C", [D] = "D", [E] = "E", [F] = "F", [X] = "X",
             [P0] = "0", [P1] = "1", [P2] = "2", [P3] = "3", [P4] = "4", [P5] = "5",
+            [Da] = "a", [Dm] = "m", [Db] = "b", [Dn] = "n",
         };
         return string.Concat(pts.Select(p => known.TryGetValue(p, out var name) ? name : "?"));
     }
