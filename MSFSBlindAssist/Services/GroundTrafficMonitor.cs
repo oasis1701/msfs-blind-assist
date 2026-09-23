@@ -143,6 +143,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     // Runway watch (UI thread)
     private RunwayWatch _currentWatch = RunwayWatch.None;
     private string _watchKey = "";
+    private RunwayWatchMode _loggedWatchMode = RunwayWatchMode.None;
     private DateTime _watchStartedUtc = DateTime.MinValue;
     private bool _watchSummaryDone;
     private bool _runwayEmptiedPending;
@@ -374,11 +375,22 @@ public sealed class GroundTrafficMonitor : IDisposable
     private void SetWatch(RunwayWatch watch)
     {
         _currentWatch = watch;
-        if (watch.Key == _watchKey) return;
+        if (watch.Key == _watchKey)
+        {
+            // The same watch in another mode (hold → backtrack → lineup → takeoff wait, a crossing's
+            // linger): logged once per change, so the sim session can see it stayed one watch.
+            if (watch.IsActive && watch.Mode != _loggedWatchMode)
+            {
+                _log.Info($"ev=watch mode key={watch.Key} mode={watch.Mode}");
+                _loggedWatchMode = watch.Mode;
+            }
+            return;
+        }
         if (_watchKey.Length > 0) _log.Info($"ev=watch stop key={_watchKey}");
         ResetRunwayWatch();
         _watchKey = watch.Key;
         _watchStartedUtc = DateTime.UtcNow;
+        _loggedWatchMode = watch.Mode;
         if (watch.IsActive)
             _log.Info($"ev=watch start key={watch.Key} des={string.Join("+", watch.Runways.Select(r => r.Designator))} mode={watch.Mode}");
     }
@@ -445,6 +457,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _queueConfirm = 0;
         _queueAnnounced = 0;
         _queueReadingForSummary = null;
+        _lastQueueLog = "";
     }
 
     /// <summary>Proximity gate closed: the queue, the nudge and every mover state stop describing anything.</summary>
@@ -889,7 +902,9 @@ public sealed class GroundTrafficMonitor : IDisposable
         {
             case NudgeAction.Disarm:
                 _nudge = NudgeState.Disarmed;
-                _log.Info("ev=nudge reset");
+                // NudgeDecision carries no reason of its own (it is Action + Text), so this is the
+                // policy's disarm, told apart from the gate path's reason=gate.
+                _log.Info("ev=nudge reset reason=disarmed");
                 break;
             case NudgeAction.Speak:
                 candidates.Add(new TrafficCallout(TrafficCalloutKind.MoveUp, nearestAhead?.DistFt ?? AWARENESS_FT,
@@ -1273,21 +1288,35 @@ public sealed class GroundTrafficMonitor : IDisposable
     // ──────────────────────────────────────────────────────────────────────────
     // Helpers
 
+    /// <summary>
+    /// Change-only. <c>reason=</c> says why a gate is closed: <c>disconnected</c> (SimConnect is not
+    /// connected), <c>airborne</c> (not on the ground), <c>suppressed</c> (live, but a gate's suppress
+    /// check closed it) — or <c>none</c> when both gates are open.
+    /// </summary>
     private void LogGates(bool proximity, bool watchGate)
     {
-        string line = $"ev=gate proximity={(proximity ? "on" : "off")} watch={(watchGate ? "on" : "off")}";
+        string reason = !_sim.IsConnected ? "disconnected"
+            : !(_sim.LastKnownOnGround ?? false) ? "airborne"
+            : proximity && watchGate ? "none"
+            : "suppressed";
+        string line = $"ev=gate proximity={(proximity ? "on" : "off")} watch={(watchGate ? "on" : "off")} reason={reason}";
         if (line == _lastGateLog) return;
         _lastGateLog = line;
         _log.Info(line);
     }
 
+    /// <summary>
+    /// Change-only on the SPOKEN reading (position, at-the-runway-hold, more beyond). <c>end=</c> rides
+    /// along in the line but never makes an unchanged reading log again — it moves every second while
+    /// the pilot creeps.
+    /// </summary>
     private void LogQueue(GroundTrafficLogic.QueueReading r, double? endAheadM)
     {
+        string reading = $"pos={r.Position} atHold={(r.AtRunwayHold ? 1 : 0)} more={(r.MoreBeyond ? 1 : 0)}";
+        if (reading == _lastQueueLog) return;
+        _lastQueueLog = reading;
         string end = endAheadM is double e ? e.ToString("0", CultureInfo.InvariantCulture) : "none";
-        string line = $"ev=queue pos={r.Position} atHold={(r.AtRunwayHold ? 1 : 0)} more={(r.MoreBeyond ? 1 : 0)} end={end}";
-        if (line == _lastQueueLog) return;
-        _lastQueueLog = line;
-        _log.Info(line);
+        _log.Info($"ev=queue {reading} end={end}");
     }
 
     // Caller holds _lock.
