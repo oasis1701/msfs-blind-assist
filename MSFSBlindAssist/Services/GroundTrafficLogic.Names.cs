@@ -36,11 +36,17 @@ internal static partial class GroundTrafficLogic
         return icao;
     }
 
-    /// <summary>A callsign spaced for speech ("DAL123" → "DAL 123").</summary>
+    /// <summary>
+    /// A callsign spaced for speech ("DAL123" → "DAL 123", "EZY45MR" → "EZY 45MR"). The ONE callsign
+    /// formatter — <c>TcasForm.FormatCallsign</c> delegates here (PR #247 review L8). Registrations
+    /// (N12345), and anything already containing a space or a hyphen, come back trimmed but unchanged;
+    /// null or blank comes back "".
+    /// </summary>
     public static string SpokenCallsign(string? raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return "";
         raw = raw.Trim();
+        if (raw.Contains(' ') || raw.Contains('-')) return raw;
         var m = RxCallsign.Match(raw.ToUpperInvariant());
         return m.Success ? $"{m.Groups[1].Value} {m.Groups[2].Value}" : raw;
     }
@@ -60,4 +66,23 @@ internal static partial class GroundTrafficLogic
             return type.Length > 0 ? $"{cs}, {type}" : cs;
         return type.Length > 0 ? type : "traffic";
     }
+
+    /// <summary>
+    /// The Alt+G summary's name: the callout name plus the spaced callsign when the airline hid it
+    /// ("Delta A320, DAL 1234") — at a hub several "Delta A320"s are otherwise indistinguishable, and
+    /// ATC addresses them by callsign (PR #247 review L3). Callouts keep the short name.
+    /// </summary>
+    public static string SpokenNameWithCallsign(string? airline, string? callsign, string? rawType)
+    {
+        string name = SpokenName(airline, callsign, rawType);
+        string cs = SpokenCallsign(callsign);
+        return (airline ?? "").Trim().Length > 0 && cs.Length > 0 ? $"{name}, {cs}" : name;
+    }
+
+    /// <summary>
+    /// Rebuild a name that has no type once a type is known — the VATSIM feed loads lazily, so the
+    /// first lookup for a new callsign often returns "" (PR #247 review L3).
+    /// </summary>
+    public static bool NameNeedsRefresh(bool nameHasType, string? resolvedType)
+        => !nameHasType && SpokenType(resolvedType).Length > 0;
 }
