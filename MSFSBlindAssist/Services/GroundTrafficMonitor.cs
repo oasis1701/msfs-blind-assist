@@ -972,11 +972,13 @@ public sealed class GroundTrafficMonitor : IDisposable
             // The first status is ALWAYS spoken (R3). The key is the runway itself, so hold →
             // backtrack → lineup → takeoff wait never restarts the watch; one that starts fresh on the
             // runway has not been heard, and must be — interrupting when something is on the runway or
-            // on short final and the pilot is on it.
+            // on short final and the pilot is on it for a reason. A watch the aircraft's position alone
+            // started (turning off after landing, while taxi guidance speaks the exit) gives it in turn
+            // (RunwayWatch.FirstStatusInterrupts, PR #247 B1 review I1).
             var occ = status.SelectMany(s => s.Occupants.Select(o => o.Ac.ObjectId)).ToList();
             var fin = status.SelectMany(s => s.Finals.Select(f => f.Ac.ObjectId)).ToList();
             var shortFin = status.SelectMany(s => s.Finals.Where(IsShortFinal).Select(f => f.Ac.ObjectId)).ToList();
-            bool critical = interrupts && (occ.Count > 0 || shortFin.Count > 0);
+            bool critical = watch.FirstStatusInterrupts && (occ.Count > 0 || shortFin.Count > 0);
             string key = _watchKey;
             candidates.Add(new TrafficCallout(
                 critical ? TrafficCalloutKind.RunwayCritical : TrafficCalloutKind.RunwayInfo, 0,

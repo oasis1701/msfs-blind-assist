@@ -11,8 +11,12 @@ public enum RunwayWatchMode { None, Holding, OnRunway, LiningUp, TakeoffWait }
 /// </summary>
 public readonly record struct WatchedRunway(string Designator, string Key);
 
-/// <summary>The runway watch's scope for one evaluation.</summary>
-public sealed record RunwayWatch(IReadOnlyList<WatchedRunway> Runways, RunwayWatchMode Mode)
+/// <summary>
+/// The runway watch's scope for one evaluation. <see cref="PositionOnly"/>: every runway in it is
+/// watched only because the aircraft is on it — no hold, progressive hold, backtrack, lineup or
+/// takeoff wait behind it.
+/// </summary>
+public sealed record RunwayWatch(IReadOnlyList<WatchedRunway> Runways, RunwayWatchMode Mode, bool PositionOnly = false)
 {
     public static readonly RunwayWatch None = new(Array.Empty<WatchedRunway>(), RunwayWatchMode.None);
 
@@ -28,6 +32,14 @@ public sealed record RunwayWatch(IReadOnlyList<WatchedRunway> Runways, RunwayWat
     /// <summary>On the runway (backtrack, crossing, lineup, takeoff wait) a new occupant or a short final interrupts; at a hold it queues.</summary>
     public bool RunwayEventsInterrupt =>
         Mode is RunwayWatchMode.OnRunway or RunwayWatchMode.LiningUp or RunwayWatchMode.TakeoffWait;
+
+    /// <summary>
+    /// The first status interrupts only when the pilot is on the runway for a REASON (backtrack, lineup,
+    /// takeoff wait): a watch started purely because the aircraft is on a runway — typically turning off
+    /// after landing, while taxi guidance speaks the exit — gives its first status in turn. New events
+    /// after it still follow <see cref="RunwayEventsInterrupt"/>.
+    /// </summary>
+    public bool FirstStatusInterrupts => RunwayEventsInterrupt && !PositionOnly;
 }
 
 /// <summary>Everything <see cref="RunwayWatchScopes.Resolve"/> needs, as plain values.</summary>
@@ -86,15 +98,18 @@ public static class RunwayWatchScopes
     /// The watch for one evaluation. Sources, in precedence order (the first source to add a runway
     /// supplies its spoken designator; the strongest mode wins): takeoff-assist runway (TakeoffWait),
     /// runway lineup (LiningUp), backtrack departure (OnRunway), HoldShort label (Holding),
-    /// progressive hold runway (Holding), runways under the aircraft in any state (OnRunway).
+    /// progressive hold runway (Holding), runways under the aircraft in any state (OnRunway). The
+    /// watch is <see cref="RunwayWatch.PositionOnly"/> when that last source is the only one that
+    /// contributed a runway (a source naming a runway the graph lacks contributes nothing).
     /// </summary>
     public static RunwayWatch Resolve(RunwayWatchInputs input)
     {
         var runways = input.Runways ?? Array.Empty<TaxiGraph.RunwayCenterline>();
         var watched = new List<WatchedRunway>();
         var mode = RunwayWatchMode.None;
+        bool anyIntentSource = false;
 
-        void Watch(IEnumerable<string> designators, RunwayWatchMode sourceMode)
+        void Watch(IEnumerable<string> designators, RunwayWatchMode sourceMode, bool intent = true)
         {
             foreach (string d in designators)
             {
@@ -102,6 +117,7 @@ public static class RunwayWatchScopes
                 string key = RunwayKey(runways, d);
                 if (!watched.Any(w => w.Key == key)) watched.Add(new WatchedRunway(d, key));
                 if (Rank(sourceMode) > Rank(mode)) mode = sourceMode;
+                if (intent) anyIntentSource = true;
             }
         }
 
@@ -115,9 +131,9 @@ public static class RunwayWatchScopes
             Watch(Designators(input.HeldLabel), RunwayWatchMode.Holding);
         if (input.State == TaxiGuidanceState.ProgressiveHold)
             Watch(Designators(input.ProgressiveRunway), RunwayWatchMode.Holding);
-        Watch(input.RunwaysUnderAircraft ?? Array.Empty<string>(), RunwayWatchMode.OnRunway);
+        Watch(input.RunwaysUnderAircraft ?? Array.Empty<string>(), RunwayWatchMode.OnRunway, intent: false);
 
-        return watched.Count == 0 ? RunwayWatch.None : new RunwayWatch(watched, mode);
+        return watched.Count == 0 ? RunwayWatch.None : new RunwayWatch(watched, mode, PositionOnly: !anyIntentSource);
     }
 
     /// <summary>The runways whose pavement holds the point, each named by its nearer end.</summary>

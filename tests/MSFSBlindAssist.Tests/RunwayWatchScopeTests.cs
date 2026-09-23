@@ -102,6 +102,62 @@ public class RunwayWatchScopeTests
         Assert.Equal(RunwayWatchMode.OnRunway, stoppedAfterLanding.Mode);
     }
 
+    // ── A watch started only by position (PR #247 B1 review I1, the landing exit) ──────────
+    // At every landing-exit hand-off the rollout switches to Taxiing while the aircraft is still on
+    // the runway, so a FRESH watch starts from the aircraft's position alone. Its first status used to
+    // interrupt taxi guidance's own exit instructions while the pilot turned off an active runway.
+
+    [Fact]
+    public void A_watch_started_only_by_the_aircraft_being_on_the_runway_gives_its_first_status_in_turn()
+    {
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing, under: new[] { "27" }));
+        Assert.True(w.PositionOnly);
+        Assert.True(w.RunwayEventsInterrupt);       // new events after it still interrupt on the runway
+        Assert.False(w.FirstStatusInterrupts);
+    }
+
+    [Fact]
+    public void A_backtrack_on_the_runway_interrupts_from_its_first_status()
+    {
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.BacktrackDeparture, under: new[] { "09" }));
+        Assert.False(w.PositionOnly);
+        Assert.True(w.RunwayEventsInterrupt);
+        Assert.True(w.FirstStatusInterrupts);
+    }
+
+    [Fact]
+    public void Lineup_and_the_takeoff_wait_interrupt_from_their_first_status()
+    {
+        var lineup = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.LiningUp, under: new[] { "27" }));
+        var wait = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Inactive, destination: null, under: new[] { "27" }, takeoff: "27"));
+        Assert.True(lineup.FirstStatusInterrupts);
+        Assert.True(wait.FirstStatusInterrupts);
+        Assert.False(wait.PositionOnly);
+    }
+
+    [Fact]
+    public void A_hold_never_interrupts()
+    {
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.HoldShort, held: "B, Runway 09"));
+        Assert.False(w.PositionOnly);
+        Assert.False(w.RunwayEventsInterrupt);
+        Assert.False(w.FirstStatusInterrupts);
+    }
+
+    [Fact]
+    public void A_source_whose_runway_the_graph_lacks_is_not_a_reason()
+    {
+        // The hold names a runway with no centerline: it contributes nothing, so the watch rests on
+        // the aircraft's position alone.
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.HoldShort, held: "Runway 18", under: new[] { "22" }));
+        Assert.Equal("04/22", w.Key);
+        Assert.True(w.PositionOnly);
+    }
+
+    [Fact]
+    public void No_watch_is_not_position_only()
+        => Assert.False(RunwayWatch.None.PositionOnly);
+
     [Fact]
     public void A_crossing_hold_and_the_crossing_itself_share_the_key()
     {
