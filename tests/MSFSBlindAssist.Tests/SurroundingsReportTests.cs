@@ -268,4 +268,14 @@ public class SurroundingsReportTests
         Assert.Equal("X. Hangars, to the left, 80 metres. Narrows Aviation, to the right, 100 metres.",
             SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres));
     }
+
+    [Fact]
+    public void One_thing_in_range_is_one_item()
+    {
+        // The heading is what the screen reader says on tabbing into the list: "Nearby, 1 items" was
+        // read aloud every time the window held a single feature.
+        var cat = Cat(F(FeatureKind.Tower, "Control Tower", 0, 150));
+        var nearby = Assert.Single(SurroundingsReport.BuildSections("X", cat, "", Lat, Lon, 0.0, Metres));
+        Assert.Equal("Nearby, 1 item", nearby.Heading);
+    }
 }

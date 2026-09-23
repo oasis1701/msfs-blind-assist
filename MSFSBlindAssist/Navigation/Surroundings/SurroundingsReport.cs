@@ -228,7 +228,7 @@ public static class SurroundingsReport
         }).ToList();
         sections.Add(items.Count == 0
             ? new InfoSection("Nearby", new[] { $"Nothing within {formatDistance(WindowRadiusMetres)}." })
-            : new InfoSection($"Nearby, {items.Count} items", items));
+            : new InfoSection(items.Count == 1 ? "Nearby, 1 item" : $"Nearby, {items.Count} items", items));
         return sections;
     }
 }

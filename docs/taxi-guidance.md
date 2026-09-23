@@ -1398,7 +1398,8 @@ discrete unit and announces its position, and item 0 is pre-selected so
 tabbing in speaks the section and first row in one utterance. First row is
 "Airport" facts (the fuel flags + Tower/Ground/ATIS/CTAF/UNICOM/AWOS/ASOS
 frequencies from `com`, Hz converted to MHz) when the catalog carries a facts
-line, then "Nearby, N items" — everything within 1 km, nearest first. BOTH fuel
+line, then "Nearby, N items" ("Nearby, 1 item" for one) — everything within
+1 km, nearest first. BOTH fuel
 flags together read "Fuel available.", never "Avgas and jet fuel.": on an MSFS
 2024 database the two are all-or-nothing (measured 2026-09-21: 17,079 airports
 carry both, 67,199 neither, not one carries a single flag), so "both" grades
