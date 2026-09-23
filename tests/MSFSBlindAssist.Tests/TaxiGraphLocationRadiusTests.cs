@@ -229,4 +229,175 @@ public class TaxiGraphLocationRadiusTests
 
         Assert.Equal("Near taxiway K", Graph(paths).DescribeLocation(52.0, 4.0));
     }
+
+    // ---- Fix round 1 (owner decision 2026-09-23): near a runway, only a stand inside today's
+    // ring may answer — the wider stand reach above is withheld there ----
+    //
+    // Measured on real fs2024 navdata against the production TaxiGraph: because the stand answer
+    // (step 1) is tested FIRST, ahead of both runway answers, the wider reach above won at about
+    // 2,255 hold-short nodes across 2,036 airports (e.g. 00AN's hold for 03 said "Runway 03", now
+    // said "Gate 1") and on runway pavement itself at >= 1,660 airports (e.g. 02C's runway said
+    // "Parking 13") — breaking the original ruling's promise that "nothing said at a hold line
+    // changes". The fix: a stand found ONLY outside today's ring (RunwayStartReach's ring, reused
+    // bit for bit) may answer ONLY away from a runway. Near a runway — on runway pavement (a), a
+    // "near a runway start" answer in reach (b), or a hold-short node within the stand radius
+    // (c) — Pass 1 considers only a stand INSIDE today's ring, exactly as before this whole PR; if
+    // none qualifies there, the next answers apply exactly as today. The named-node fallback
+    // (step 6) is untouched — this decision concerns the stand reach only.
+
+    /// <summary>
+    /// Named taxiway <paramref name="taxiwayName"/> ending at a hold-short node (StartType "N",
+    /// EndType "HS", so it lands in the navdata-authoritative hold-short identity
+    /// <c>TaxiGraph._navdataHoldShortNodeIds</c> — never <c>TaxiNode.Type</c>, which the parking
+    /// pass below can overwrite) at (<paramref name="lat"/>, <paramref name="lon"/>), plus a stand
+    /// on its own dedicated node <paramref name="standEastMetres"/> due east of it.
+    /// </summary>
+    private static TaxiGraph HoldShortNodeWithStandNearby(
+        double lat, double lon, string taxiwayName, double standEastMetres)
+    {
+        double standLat = lat, standLon = East(lat, lon, standEastMetres);
+        var paths = new List<TaxiPath>
+        {
+            Path(taxiwayName, "T", "N", "HS", North(lat, -200.0), lon, lat, lon, 75.0),
+            Path("", "P", "N", "P", North(standLat, 60.0), standLon, standLat, standLon, 60.0),
+        };
+        var stand = new ParkingSpot { Name = "A", Number = 9, Latitude = standLat, Longitude = standLon };
+        return Graph(paths, stands: new List<ParkingSpot> { stand });
+    }
+
+    [Fact]
+    public void A_stand_30_m_east_of_a_hold_short_node_does_not_outrank_it()
+    {
+        // Predicate (c). 30 m is outside today's ~20.5 m east-west ring at 52°N, so before this
+        // fix the widened reach answered "Gate A 9" AT the hold line instead of the taxiway.
+        var g = HoldShortNodeWithStandNearby(52.0, 4.0, "A", standEastMetres: 30.0);
+
+        Assert.Equal("Taxiway A", g.DescribeLocation(52.0, 4.0));
+    }
+
+    /// <summary>
+    /// A "09/27" runway centerline running east-west through the query point (thresholds 200 m
+    /// west and 400 m east, so the query sits nearer "09" than "27" — an unambiguous nearer end,
+    /// no tie), plus a stand on its own dedicated node <paramref name="standEastMetres"/> due east
+    /// of the query.
+    /// </summary>
+    private static TaxiGraph RunwayPavementWithStandNearby(double lat, double lon, double standEastMetres)
+    {
+        var starts = new List<StartPosition>
+        {
+            new() { RunwayName = "09", Latitude = lat, Longitude = East(lat, lon, -200.0), Heading = 90.0 },
+            new() { RunwayName = "27", Latitude = lat, Longitude = East(lat, lon, 400.0), Heading = 270.0 },
+        };
+        double standLat = lat, standLon = East(lat, lon, standEastMetres);
+        var paths = new List<TaxiPath>
+        {
+            Path("", "P", "N", "P", North(standLat, 60.0), standLon, standLat, standLon, 60.0),
+        };
+        var stand = new ParkingSpot { Name = "A", Number = 9, Latitude = standLat, Longitude = standLon };
+        return Graph(paths, stands: new List<ParkingSpot> { stand }, starts: starts);
+    }
+
+    [Fact]
+    public void A_stand_30_m_east_on_runway_pavement_does_not_outrank_the_runway()
+    {
+        // Predicate (a): on runway pavement, by the same RunwayShape test the runway answer uses.
+        var g = RunwayPavementWithStandNearby(52.0, 4.0, standEastMetres: 30.0);
+
+        Assert.Equal("Runway 09", g.DescribeLocation(52.0, 4.0));
+    }
+
+    /// <summary>
+    /// TaxiwayToRunwayStart's exact setup (see that helper, above) plus a stand
+    /// <paramref name="standEastMetres"/> east of the aircraft, on its own dedicated node.
+    /// </summary>
+    private static TaxiGraph TaxiwayToRunwayStartWithStandNearby(
+        double lat, double lon, double northMetres, double eastMetres, double standEastMetres)
+    {
+        double length = Math.Sqrt(northMetres * northMetres + eastMetres * eastMetres);
+        double rLat = North(lat, northMetres), rLon = East(lat, lon, eastMetres);
+        double fLat = North(lat, -200.0 * northMetres / length);
+        double fLon = East(lat, lon, -200.0 * eastMetres / length);
+        var start = new StartPosition { RunwayName = "09", Latitude = rLat, Longitude = rLon, Heading = 90.0 };
+
+        double standLat = lat, standLon = East(lat, lon, standEastMetres);
+        var paths = new List<TaxiPath>
+        {
+            Path("A", "T", "N", "N", fLat, fLon, rLat, rLon, 75.0),
+            Path("", "P", "N", "P", North(standLat, 60.0), standLon, standLat, standLon, 60.0),
+        };
+        var stand = new ParkingSpot { Name = "A", Number = 9, Latitude = standLat, Longitude = standLon };
+        return Graph(paths, stands: new List<ParkingSpot> { stand }, starts: new List<StartPosition> { start });
+    }
+
+    [Fact]
+    public void A_runway_start_node_inside_the_ring_still_outranks_a_stand_outside_it()
+    {
+        // Predicate (b). R 20 m north is inside today's ~33 m north-south ring (as in
+        // A_runway_start_node_20_m_due_north_still_outranks_the_taxiway_you_are_on, above); the
+        // stand 30 m east is outside today's ~20.5 m east-west one.
+        var g = TaxiwayToRunwayStartWithStandNearby(
+            52.0, 4.0, northMetres: 20.0, eastMetres: 0.0, standEastMetres: 30.0);
+
+        Assert.Equal("Runway 09", g.DescribeLocation(52.0, 4.0));
+    }
+
+    [Fact]
+    public void A_stand_inside_the_ring_still_wins_near_a_runway()
+    {
+        // The older quirk stays exactly as it is: 15 m east is INSIDE today's ~20.5 m east-west
+        // ring at 52°N, so the gate answer wins here exactly as it did before this whole PR —
+        // even though the point is on runway pavement (predicate a).
+        var g = RunwayPavementWithStandNearby(52.0, 4.0, standEastMetres: 15.0);
+
+        Assert.Equal("Gate A 9", g.DescribeLocation(52.0, 4.0));
+    }
+
+    /// <summary>
+    /// Proves predicate (c) reads the navdata-endpoint-type identity, not <c>TaxiNode.Type</c>,
+    /// which CLAUDE.md's rule on stand/hold-short identity exists to rule out (see
+    /// <c>TaxiGraph._navdataHoldShortNodeIds</c>'s own doc).
+    ///
+    /// <para>Hold-short node H sits 36 m due north of the query — just OUTSIDE today's ~33.3 m
+    /// north-south ring, so H cannot itself win the gate via the ring, and inside predicate (c)'s
+    /// 40 m stand radius. H has no parking lead-in of its own, and a phantom parking spot with no
+    /// lead-in either sits exactly on it, so Build's "mark parking nodes" pass — matching by pure
+    /// proximity, in any component, CLAUDE.md's own words — finds H as the nearest existing node
+    /// and overwrites its <c>Type</c> to Parking: the exact real-world shape the rule warns about.
+    /// A second, genuinely separate stand S sits 30 m due east of the query (outside the ~20.5 m
+    /// east-west ring), on its own dedicated node, so it is never confused with H. Named taxiway A
+    /// runs north-south through the query point.</para>
+    ///
+    /// <para>If the near-a-runway gate read <c>TaxiNode.Type</c> instead: H's overwritten Type
+    /// would make predicate (c) miss it entirely, <c>nearRunway</c> would wrongly read false (no
+    /// other predicate fires here), and the gate would fall back to the any-direction candidate —
+    /// S, the nearer of H (36 m) and S (30 m) — winning as "Gate A 9" instead of "Taxiway A".</para>
+    /// </summary>
+    [Fact]
+    public void A_hold_short_node_still_gates_the_stand_even_after_the_parking_pass_overwrites_its_type()
+    {
+        double lat = 52.0, lon = 4.0;
+        double hLat = North(lat, 36.0), hLon = lon;
+        double standLat = lat, standLon = East(lat, lon, 30.0);
+
+        var paths = new List<TaxiPath>
+        {
+            // Named taxiway through the query point — "today's answer" once the gate is correctly
+            // withheld.
+            Path("A", "T", "N", "N", North(lat, -200.0), lon, North(lat, 200.0), lon, 75.0),
+            // Taxiway B ends AT H with EndType "HS", so H lands in the navdata hold-short set.
+            Path("B", "T", "N", "HS", North(hLat, -60.0), hLon, hLat, hLon, 75.0),
+            // S's own dedicated lead-in — its Type is never in question.
+            Path("", "P", "N", "P", North(standLat, 60.0), standLon, standLat, standLon, 60.0),
+        };
+        var phantomStandAtH = new ParkingSpot { Name = "Z", Number = 1, Latitude = hLat, Longitude = hLon };
+        var standUnderTest = new ParkingSpot { Name = "A", Number = 9, Latitude = standLat, Longitude = standLon };
+
+        var g = Graph(paths, stands: new List<ParkingSpot> { phantomStandAtH, standUnderTest });
+
+        // Confirm the setup actually overwrote H's Type, or this test proves nothing.
+        var h = g.Nodes.Values.Single(n => Math.Abs(n.Latitude - hLat) < 1e-9 && Math.Abs(n.Longitude - hLon) < 1e-9);
+        Assert.Equal(TaxiNodeType.Parking, h.Type);
+
+        Assert.Equal("Taxiway A", g.DescribeLocation(lat, lon));
+    }
 }

@@ -122,6 +122,30 @@ public class TaxiGraph
     public bool IsBridgeOnlyStandStub(int nodeId) => _bridgeOnlyStandStubNodes.Contains(nodeId);
 
     /// <summary>
+    /// Every node id <see cref="Build"/> recorded as hold-short (HS/HSND/IHS/IHSND) from the
+    /// navdata rows' endpoint TYPES — the exact same identity set
+    /// <see cref="BridgeOrphanParkingIslands"/> uses (its local <c>holdShortNodes</c>, filled by
+    /// <c>RecordEndpointIdentity</c> over every path endpoint), kept afterward for
+    /// <see cref="DescribeLocationLocked"/>'s near-a-runway gate (GC-5, PR #230 review, owner
+    /// decision 2026-09-23, fix round 1).
+    ///
+    /// <para><see cref="TaxiNode.Type"/> cannot serve this, for the same reason the CLAUDE.md rule
+    /// on stand/hold-short identity exists: the parking pass a few lines into <see cref="Build"/>
+    /// overwrites a node's Type to Parking whenever it is the nearest node to SOME stand within
+    /// 100 m, in ANY component — regardless of what the node's Type was before. That is exactly
+    /// the shape of the bug this set exists to catch: a hold-short node a few metres from a gate
+    /// had its Type stamped Parking, so a Type-based test would call it "not hold-short" at
+    /// precisely the point where the near-a-runway gate most needs to say otherwise. Populated
+    /// once, at the end of the endpoint-recording loop in <see cref="Build"/>, and never mutated
+    /// after. Empty (never null) for a hand-built graph that bypasses <see cref="Build"/> and
+    /// writes <see cref="Nodes"/>/<see cref="Adjacency"/> directly — the same safe default every
+    /// other Build-only identity set in this class has.</para>
+    /// </summary>
+    private HashSet<int> _navdataHoldShortNodeIds = new();
+
+    private bool IsNavdataHoldShort(int nodeId) => _navdataHoldShortNodeIds.Contains(nodeId);
+
+    /// <summary>
     /// Component id of the largest connected component (the main taxi network), or -1 for a graph
     /// Build has not finished. Set once at the end of <see cref="Build"/>, after orphan-stand
     /// bridges are added and components renumbered. Ties do occur (EGUW has two 63-node
@@ -574,6 +598,13 @@ public class TaxiGraph
                 }
             }
         }
+
+        // Navdata-authoritative hold-short identity, kept for DescribeLocationLocked's near-a-
+        // runway gate (GC-5, PR #230 review, owner decision 2026-09-23, fix round 1) — see
+        // _navdataHoldShortNodeIds' own doc for why TaxiNode.Type cannot serve this. Assigned here,
+        // before the parking pass below can start overwriting Type, so the set always reflects the
+        // navdata endpoint types alone.
+        graph._navdataHoldShortNodeIds = holdShortNodes;
 
         // Mark parking nodes by matching to parking spot coordinates (spatial-hash FindNearestNode)
         foreach (var spot in parkingSpots)
@@ -1957,8 +1988,9 @@ public class TaxiGraph
         // Fast path: search the spatial hash with an expanding ring of cells. Precision 5 = cells of
         // 1e-5°: rings of 1, 3, 10 and 30 cells reach ±1.1, ±3.3, ±11 and ±33 m north-south and
         // cos(latitude) of that east-west (ring 30: ±20 m at 52°N, ±7 m at 78°N) — not the "~330m"
-        // this comment once claimed. The first ring holding any node answers; the full scan below
-        // runs only when ring 30 is empty.
+        // this comment once claimed. The first ring holding a node that passes the component and
+        // bridge-stub filters below answers; the full scan below runs only when ring 30 holds none
+        // that do.
         foreach (int ringRadius in new[] { 1, 3, 10, 30 })
         {
             TaxiNode? best = null;
@@ -2148,7 +2180,11 @@ public class TaxiGraph
     /// "Taxiway Bravo", or "" if nothing plausible is nearby.
     ///
     /// Priority order (more specific wins):
-    ///   1. Parking node within 40 m (gate), in every direction.
+    ///   1. Parking node within 40 m (gate), in every direction AWAY FROM RUNWAYS. Near a runway —
+    ///      on runway pavement, a "near a runway start" answer in reach, or a hold-short node
+    ///      within 40 m — only a stand ALSO inside the old ±30-cell ring may answer here; see
+    ///      "near a runway" inside <see cref="DescribeLocationLocked"/> (owner decision
+    ///      2026-09-23, GC-5 fix round 1).
     ///   2. Runway edge (PathType 'R') within half-width+5 m, then the runway shape (RunwayShape) within half-width+5 m.
     ///      Runway edges are those with PathType indicating a runway (first char 'R').
     ///   3. Runway threshold node within 50 m (near a runway start) — but only one inside the old
@@ -2156,7 +2192,7 @@ public class TaxiGraph
     ///      ±33·cos(latitude) m east-west. Kept narrow on purpose (owner ruling, PR #230 review).
     ///   4. Taxiway edge within half-width+3 m perpendicular distance (on a named taxiway).
     ///   5. The nearest node that carries a taxiway name, as a fallback (within 60 m, in every
-    ///      direction).
+    ///      direction) — everywhere, including near a runway; this decision does not touch it.
     ///   The stand and fallback radii are TRUE metres at any latitude: their nodes come from
     ///   <see cref="NodesNear"/>, edges from <see cref="EdgesNear"/>, both latitude-sized rings over
     ///   the cell index.
@@ -2186,17 +2222,28 @@ public class TaxiGraph
         // --- Pass 1: the three node answers — stand (1), near a runway start (3), fallback (5) ---
         // Candidates come from the node half of the cell index (NodesNear), on a ring sized in METRES
         // separately for latitude and longitude, so the stand's 40 m and the fallback's 60 m hold in
-        // every direction at every latitude. They used to come from a fixed ±30-cell ring of the
-        // 1.1 m node hash (its comment said "~= 330 m"): ±33 m north-south but only ±33·cos(latitude) m
-        // east-west — ±20 m at 52°N, ±7 m at ENSB (78°N) — so at 52°N a stand more than about 20 m
-        // east or west of the aircraft was never a candidate and Where-Am-I named the taxiway, or
-        // nothing, instead (GC-5, PR #230 review). As the owner ruled on that review, the runway-start
-        // answer keeps exactly the old reach (RunwayStartReach says why) and the fallback now takes the
-        // nearest node that HAS a taxiway name. The distance tests below are unchanged.
-        TaxiNode? nearestParking = null;         double nearestParkingDist = double.MaxValue;
-        TaxiNode? nearestRunwayThreshold = null; double nearestRunwayDist = double.MaxValue;
-        TaxiNode? nearestNamedNode = null;       double nearestNamedDist = double.MaxValue;
-        RunwayStartReach? runwayStartReach = null;   // built on the first runway-start candidate
+        // every direction at every latitude AWAY FROM RUNWAYS (see "near a runway", below the edge
+        // scan — owner decision 2026-09-23, GC-5 fix round 1). They used to come from a fixed ±30-cell
+        // ring of the 1.1 m node hash (its comment said "~= 330 m"): ±33 m north-south but only
+        // ±33·cos(latitude) m east-west — ±20 m at 52°N, ±7 m at ENSB (78°N) — so at 52°N a stand
+        // more than about 20 m east or west of the aircraft was never a candidate and Where-Am-I
+        // named the taxiway, or nothing, instead (GC-5, PR #230 review). As the owner ruled on that
+        // review, the runway-start answer keeps exactly the old reach (RunwayStartReach says why) and
+        // the fallback now takes the nearest node that HAS a taxiway name. The distance tests below
+        // are unchanged.
+        //
+        // Alongside nearestParking (the nearest qualifying stand in ANY direction) this pass also
+        // tracks nearestParkingInRing — the nearest qualifying stand that ALSO sits inside today's
+        // ring — because the two can be different nodes (a closer stand outside the ring, a farther
+        // one inside it), and which one the gate decision may use depends on whether the point turns
+        // out to be near a runway, which is not known until this loop and the centerline scan below
+        // have both run.
+        TaxiNode? nearestParking = null;            double nearestParkingDist = double.MaxValue;
+        TaxiNode? nearestParkingInRing = null;      double nearestParkingInRingDist = double.MaxValue;
+        TaxiNode? nearestRunwayThreshold = null;    double nearestRunwayDist = double.MaxValue;
+        TaxiNode? nearestNamedNode = null;          double nearestNamedDist = double.MaxValue;
+        bool holdShortWithinStandRadius = false;
+        RunwayStartReach? runwayStartReach = null;   // built on the first candidate that needs the ring test
 
         foreach (var node in NodesNear(lat, lon, NODE_FALLBACK_RADIUS_M))
         {
@@ -2213,11 +2260,19 @@ public class TaxiGraph
 
             if (node.Type == TaxiNodeType.Parking &&
                 !string.IsNullOrEmpty(node.ParkingName) &&
-                !node.ParkingName.StartsWith("Runway", StringComparison.OrdinalIgnoreCase) &&
-                dist < nearestParkingDist)
+                !node.ParkingName.StartsWith("Runway", StringComparison.OrdinalIgnoreCase))
             {
-                nearestParkingDist = dist;
-                nearestParking = node;
+                if (dist < nearestParkingDist)
+                {
+                    nearestParkingDist = dist;
+                    nearestParking = node;
+                }
+                if (dist < nearestParkingInRingDist &&
+                    (runwayStartReach ??= new RunwayStartReach(lat, lon)).Contains(node.Latitude, node.Longitude))
+                {
+                    nearestParkingInRingDist = dist;
+                    nearestParkingInRing = node;
+                }
             }
 
             if (!string.IsNullOrEmpty(node.ParkingName) &&
@@ -2228,12 +2283,62 @@ public class TaxiGraph
                 nearestRunwayDist = dist;
                 nearestRunwayThreshold = node;
             }
+
+            // Predicate (c) of "near a runway" (below): a hold-short node within the stand radius of
+            // the point. Navdata endpoint identity ONLY (_navdataHoldShortNodeIds) — never
+            // TaxiNode.Type, which the parking pass can overwrite to Parking for a node within 100 m
+            // of a stand, i.e. exactly the nodes this predicate most needs to catch (see that
+            // field's own doc).
+            if (!holdShortWithinStandRadius && dist <= PARKING_RADIUS_M && IsNavdataHoldShort(node.NodeId))
+                holdShortWithinStandRadius = true;
         }
 
-        // Gate wins if close enough
-        if (nearestParking != null && nearestParkingDist <= PARKING_RADIUS_M)
+        // Runway centerline scan (works for the whole length, not just the thresholds): on the
+        // runway shape within half-width + 5 m, named after the nearer end — for a stationary
+        // aircraft, the end it would line up to depart from. RunwayShape covers the
+        // displaced-threshold band the start rows leave out.
+        //
+        // Run here, AHEAD of the gate decision (moved for fix round 1, below), so "near a runway"
+        // can see its result without a second RunwayShape test. RunwayShape.For is memoized
+        // (a dictionary lookup against a handful of doubles/strings), so this costs one cached
+        // lookup per runway at the airport even on a call the gate would otherwise have answered
+        // alone — Pass 2's edge scan just below stays gated on the gate decision as before, so the
+        // (potentially larger) EdgesNear scan is still skipped whenever the gate wins.
+        string? runwayCenterlineMatch = null;
+        foreach (var rwy in RunwayCenterlines)
         {
-            string raw = nearestParking.ParkingName!.Trim();
+            var shape = RunwayShape.For(rwy);
+            var (along, lateral) = shape.Project(lat, lon);
+            if (!shape.ContainsAlongLateral(along, lateral, 5.0)) continue;
+            runwayCenterlineMatch = $"Runway {shape.NameAt(along)}";
+            break;
+        }
+
+        bool runwayThresholdAvailable = nearestRunwayThreshold != null && nearestRunwayDist <= RUNWAY_THRESHOLD_RADIUS_M &&
+            !string.IsNullOrEmpty(nearestRunwayThreshold.ParkingName);
+
+        // "Near a runway" (GC-5 fix round 1, owner decision 2026-09-23). The wider stand reach above
+        // let a stand up to 40 m away in ANY direction outrank "Runway X" wherever the two now
+        // coincided — measured against real fs2024 navdata, about 2,255 hold-short nodes at 2,036
+        // airports read a stand instead (e.g. 00AN's hold for 03 said "Runway 03", now said "Gate
+        // 1"), and runway pavement itself did the same at >= 1,660 more (e.g. 02C's runway said
+        // "Parking 13") — breaking the original review ruling's promise that "nothing said at a hold
+        // line changes". So: on runway pavement (a, the same RunwayShape test just above), where a
+        // "near a runway start" answer is available (b, within RunwayStartReach — today's ring), or
+        // within the stand radius of a hold-short node (c, gathered in the loop above) — a stand may
+        // answer ONLY from nearestParkingInRing, i.e. only if it ALSO sits inside today's ring; the
+        // wider, every-direction reach applies solely away from a runway. The older quirk, where
+        // today's ring already reaches a stand at some hold lines, is unchanged either way — this
+        // gate only ever NARROWS which stand is eligible, never widens it.
+        bool nearRunway = runwayCenterlineMatch != null || runwayThresholdAvailable || holdShortWithinStandRadius;
+
+        // Gate wins if close enough — near a runway, only from nearestParkingInRing (see "near a
+        // runway" above); away from one, any direction out to PARKING_RADIUS_M as ruled.
+        var gateCandidate = nearRunway ? nearestParkingInRing : nearestParking;
+        double gateCandidateDist = nearRunway ? nearestParkingInRingDist : nearestParkingDist;
+        if (gateCandidate != null && gateCandidateDist <= PARKING_RADIUS_M)
+        {
+            string raw = gateCandidate.ParkingName!.Trim();
             // Parking name may already be "Gate A25" or just "A25" / "G 10" — prefix "Gate" once
             if (raw.StartsWith("Gate", StringComparison.OrdinalIgnoreCase) ||
                 raw.StartsWith("Parking", StringComparison.OrdinalIgnoreCase) ||
@@ -2304,26 +2409,17 @@ public class TaxiGraph
         // NOTE: this branch only fires for DBs that store runway centerlines as
         // taxi_path.type='R' rows. The current navdatareader schema does NOT —
         // every taxi_path row is type T / PT / P. The runway-centerline scan
-        // below covers the common case using start-table threshold pairs.
+        // above covers the common case using start-table threshold pairs.
         if (bestRunwayEdge != null && !string.IsNullOrEmpty(bestRunwayEdge.TaxiwayName))
             return $"Runway {bestRunwayEdge.TaxiwayName}";
 
-        // Runway centerline scan (works for the whole length, not just the
-        // thresholds): on the runway shape within half-width + 5 m, named after the nearer
-        // end — for a stationary aircraft, the end it would line up to depart from. RunwayShape
-        // covers the displaced-threshold band the start rows leave out.
-        foreach (var rwy in RunwayCenterlines)
-        {
-            var shape = RunwayShape.For(rwy);
-            var (along, lateral) = shape.Project(lat, lon);
-            if (!shape.ContainsAlongLateral(along, lateral, 5.0)) continue;
-            return $"Runway {shape.NameAt(along)}";
-        }
+        // Runway centerline match, computed above (ahead of the gate decision, for fix round 1).
+        if (runwayCenterlineMatch != null)
+            return runwayCenterlineMatch;
 
         // Otherwise if we're near a runway threshold node
-        if (nearestRunwayThreshold != null && nearestRunwayDist <= RUNWAY_THRESHOLD_RADIUS_M &&
-            !string.IsNullOrEmpty(nearestRunwayThreshold.ParkingName))
-            return nearestRunwayThreshold.ParkingName; // already "Runway 22L"
+        if (runwayThresholdAvailable)
+            return nearestRunwayThreshold!.ParkingName!; // already "Runway 22L"
 
         // On taxiway
         if (bestTaxiwayEdge != null && !string.IsNullOrEmpty(bestTaxiwayEdge.TaxiwayName))

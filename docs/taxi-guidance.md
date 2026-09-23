@@ -716,7 +716,10 @@ See `MSFSBlindAssist/Hotkeys/HotkeyManager.cs`:
 4. Calls `TaxiGuidanceManager.DescribeCurrentLocation(provider, icao, lat, lon, databaseGeneration)`, the generation read WITH the provider. The manager reuses the active guidance graph when the ICAO matches, otherwise builds and caches a dedicated query graph in `_whereAmICachedGraph` (invalidated via `ClearWhereAmICache()`, which a database switch calls) — but a graph built through a provider captured before a switch still answers the call and is NOT cached (`StoreWhereAmIGraph`), or an Alt+L in flight across the switch would put the previous database's graph straight back.
 
 The actual classification happens in `TaxiGraph.DescribeLocation(lat, lon)`:
-1. **Parking node** within 40 m, in every direction → `Gate X`.
+1. **Parking node** within 40 m, in every direction away from runways — near one (on runway
+   pavement, a "near a runway start" answer in reach, or a hold-short node within 40 m), only a
+   stand ALSO inside today's node-hash ring may answer here (see "The node answers' reach" below)
+   → `Gate X`.
 2. **Runway edge** (PathType starts with `R`) within half-width + 5 m perpendicular → `Runway X`. *(Effectively dead code in current navdatareader DBs — no `taxi_path` row has type R; the centerline scan below covers this case.)*
 3. **Runway centerline scan** — for each `TaxiGraph.RunwayCenterline`, the runway shape (`RunwayShape`: the pavement ends and real half-width when usable, else the start rows) within half-width + 5 m and inside its extent → `Runway X` for the nearer end. Pairs are built in `TaxiGraph.Build` from opposing-end start rows (reciprocal designator first, reciprocal heading second, 200–6000 m apart). **This is what makes "Runway 27L" work mid-runway and on a displaced threshold**, not just within 50 m of the threshold node.
 4. **Runway threshold node** (ParkingName `Runway …`) within 50 m **and inside the old node-hash ring** (±33 m north-south, ±33·cos(latitude) m east-west — see "The node answers' reach" below) → that name. Catches edge cases where a runway has unpaired start positions.
@@ -726,18 +729,36 @@ The actual classification happens in `TaxiGraph.DescribeLocation(lat, lon)`:
 Distances use equirectangular projection (sub-cm accuracy at taxi scale); the edge scan clamps to segment endpoints, the runway scan tests the runway's extent.
 
 **The node answers' reach.** Steps 1, 4 and 6 read nodes, and each has the reach the owner ruled
-for it on the PR #230 review:
+for it on the PR #230 review, narrowed once more for the stand on 2026-09-23 (fix round 1, next
+bullet):
 
-- **The stand (step 1) and the fallback (step 6): true metres, in every direction, at every
-  latitude.** Their candidates come from the same cell index as the edges — `NodesNear`: every node
-  filed under its ~111 m cell, gathered on a ring sized separately in latitude and longitude. They
-  used to come from a fixed ±30-cell ring of the 1.1 m node hash, commented "~= 330 m" but really
-  ±33 m north-south and ±33·cos(latitude) m east-west: ±20 m at 52°N, ±7 m at ENSB (78°N). At 52°N
-  a stand more than about 20 m east or west of the aircraft was never a candidate, so Where-Am-I
+- **The stand (step 1): true metres, in every direction, at every latitude — AWAY FROM RUNWAYS.**
+  Candidates come from the same cell index as the edges — `NodesNear`: every node filed under its
+  ~111 m cell, gathered on a ring sized separately in latitude and longitude. They used to come
+  from a fixed ±30-cell ring of the 1.1 m node hash, commented "~= 330 m" but really ±33 m
+  north-south and ±33·cos(latitude) m east-west: ±20 m at 52°N, ±7 m at ENSB (78°N). At 52°N a
+  stand more than about 20 m east or west of the aircraft was never a candidate, so Where-Am-I
   named the taxiway, or nothing, instead (the review measured the gate lost at 17-53 % of positions
   25-35 m east or west of a stand). A point up to 40 m from a stand in any direction — on an apron
   taxilane beside it, say — now names the gate; north and south, the old ring already reached 33 m.
-- **The fallback takes the nearest node that HAS a taxiway name.** It used to take the nearest node
+- **Near a runway, the stand keeps exactly the old ring instead (owner decision 2026-09-23, GC-5
+  fix round 1).** The first version of this fix let the wider reach above win over a runway answer
+  wherever the two now coincided — measured against real fs2024 navdata, about 2,255 hold-short
+  nodes at 2,036 airports read a stand instead of "Runway X" (e.g. 00AN's hold for 03 said "Runway
+  03", then said "Gate 1"), and runway pavement itself did the same at >= 1,660 more (e.g. 02C's
+  runway said "Parking 13") — breaking the original ruling's promise that "nothing said at a hold
+  line changes". So a stand found ONLY outside today's ring may answer ONLY away from a runway.
+  "Near a runway" is (a) on runway pavement, by the same `RunwayShape` test step 2 uses; (b) a
+  "near a runway start" answer in reach (step 4, below); or (c) a hold-short node within the stand
+  radius — from the navdata endpoint types `TaxiGraph.Build` records
+  (`TaxiGraph._navdataHoldShortNodeIds`), never `TaxiNode.Type`, which the parking pass can
+  overwrite to Parking for a node within 100 m of a stand — exactly the nodes this predicate most
+  needs to catch. Near a runway, a stand INSIDE today's ring may still answer (the older quirk,
+  unchanged — this gate only ever NARROWS which stand is eligible, never widens it); if none
+  qualifies there, the next answers apply exactly as before this whole PR.
+  `TaxiGraphLocationRadiusTests` pins all three predicates.
+- **The fallback (step 6): true metres, in every direction, everywhere — this decision does not
+  touch it.** It takes the nearest node that HAS a taxiway name. It used to take the nearest node
   of any kind and answer only if that one was named, so a nearer unnamed node (a stand lead-in
   junction, an unnamed apron connector) silenced it.
 - **"Near a runway start" (step 4) keeps EXACTLY the old ring.** `Build` names the node nearest
