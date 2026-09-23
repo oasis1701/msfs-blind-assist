@@ -143,4 +143,54 @@ public class RunwayShapeSourceTests
         Assert.NotNull(shapes);
         Assert.False(RunwayPavement.IsOnPavement(Lat(0), Lon(100), shapes!));
     }
+
+    // ---- The warm-up's publish rule: nothing read before a database switch is stored ----
+
+    [Theory]
+    [InlineData(3L, 3L, true)]
+    [InlineData(2L, 3L, false)]
+    public void Only_what_was_read_under_the_current_generation_may_be_stored(long readUnder, long current, bool expected)
+        => Assert.Equal(expected, RunwayShapeSource.MayStore(readUnder, current));
+
+    [Fact]
+    public void A_warm_up_read_under_the_current_generation_is_published_as_a_rows_only_memo_and_answers()
+    {
+        var shapes = RunwayPavement.BuildShapes(RunwayGraph().RunwayCenterlines);
+        var memo = RunwayShapeSource.Publish(null, "KTIW", 4, 4, shapes, trackedIcao: "KTIW");
+        Assert.NotNull(memo);
+        Assert.Equal("KTIW", memo!.Icao);
+        Assert.Equal(4L, memo.Generation);
+        Assert.Null(memo.SourceGraph);
+        Assert.Same(shapes, memo.Shapes);
+
+        var (answer, kept) = RunwayShapeSource.Resolve("KTIW", 4, null, null, 0, null, null, memo);
+        Assert.Same(shapes, answer);
+        Assert.Same(memo, kept);
+        Assert.True(RunwayPavement.IsOnPavement(Lat(0), Lon(1500), answer!));
+    }
+
+    [Fact]
+    public void A_warm_up_that_straddled_a_database_switch_is_never_stored()
+    {
+        // Its provider was captured before the switch, so it read the PREVIOUS database. Stored, the
+        // probe would answer from those runways for the rest of the session: the switch had already
+        // cleared the memo, and a probe that answers is never warmed again.
+        var shapes = RunwayPavement.BuildShapes(RunwayGraph().RunwayCenterlines);
+        var held = Memo("KSEA", generation: 5);
+        Assert.Same(held, RunwayShapeSource.Publish(held, "KTIW", 4, 5, shapes, trackedIcao: "KTIW"));
+        Assert.Null(RunwayShapeSource.Publish(null, "KTIW", 4, 5, shapes, trackedIcao: "KTIW"));
+    }
+
+    [Fact]
+    public void A_warm_up_for_an_airport_the_probe_is_no_longer_asked_about_is_never_stored()
+    {
+        // The monitor moved from KTIW to KSEA while KTIW's warm-up was still reading; KSEA's own
+        // warm-up has already published. Stored, KTIW's late answer would evict KSEA's memo, and
+        // the probe would answer null — which does not silence — until the retry a minute later.
+        var shapes = RunwayPavement.BuildShapes(RunwayGraph().RunwayCenterlines);
+        var current = Memo("KSEA", generation: 4);
+        Assert.Same(current, RunwayShapeSource.Publish(current, "KTIW", 4, 4, shapes, trackedIcao: "KSEA"));
+        Assert.Null(RunwayShapeSource.Publish(null, "KTIW", 4, 4, shapes, trackedIcao: null));           // asked about nothing yet
+        Assert.NotNull(RunwayShapeSource.Publish(current, "KTIW", 4, 4, shapes, trackedIcao: "ktiw"));   // case never matters
+    }
 }

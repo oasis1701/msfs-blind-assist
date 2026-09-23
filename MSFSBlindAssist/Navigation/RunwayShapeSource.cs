@@ -93,5 +93,30 @@ public static class RunwayShapeSource
         return (reseeded.Shapes, reseeded);
     }
 
+    /// <summary>
+    /// May something read through a provider captured under <paramref name="readUnder"/> be STORED
+    /// now? Only while no database switch has moved the generation since. The one rule for every
+    /// write into what the runway probe reads: whatever straddled a switch read the PREVIOUS
+    /// database, and stored it would outlive the very switch that had just cleared it.
+    /// </summary>
+    public static bool MayStore(long readUnder, long currentGeneration) => readUnder == currentGeneration;
+
+    /// <summary>
+    /// The memo to hold after the probe's warm-up read <paramref name="icao"/>'s runway rows under
+    /// <paramref name="readUnder"/>: a rows-only memo (no source graph) carrying
+    /// <paramref name="shapes"/> — an EMPTY list included, which answers "not on a runway" — when
+    /// <see cref="MayStore"/> allows it AND <paramref name="icao"/> is still the airport the probe is
+    /// being asked about (<paramref name="trackedIcao"/>, the caller's current airport), else
+    /// <paramref name="held"/>, unchanged. The airport rule is what stops a warm-up still running for
+    /// the PREVIOUS airport from landing after the new airport's own warm-up and evicting its memo:
+    /// the probe would then answer null — which does not silence — for up to a minute, until the
+    /// retry came round. Nothing asked yet (<paramref name="trackedIcao"/> null or empty) stores nothing.
+    /// </summary>
+    public static RunwayShapeMemo? Publish(RunwayShapeMemo? held, string icao, long readUnder, long currentGeneration,
+        IReadOnlyList<RunwayShape> shapes, string? trackedIcao)
+        => MayStore(readUnder, currentGeneration) && Holds(trackedIcao, icao)
+            ? new RunwayShapeMemo(icao, readUnder, null, shapes)
+            : held;
+
     private static bool Holds(string? held, string icao) => held != null && string.Equals(held, icao, StringComparison.OrdinalIgnoreCase);
 }
