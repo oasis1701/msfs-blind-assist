@@ -13,14 +13,11 @@
     <!--
       Standalone measurement harness for re-measuring PR #235's stand-bridge headline
       figures against the real fs2024 navdata database, over the REAL production
-      TaxiGraph.Build / RunwayShape / RunwayPavement — never a reimplementation. This
-      links exactly the file set tools/ProgressiveTaxiProbe already uses for TaxiGraph
-      (proven to compile as a set — see that probe), plus RunwayPavement.cs, which
-      TaxiGraph.cs now calls (BridgeOrphanParkingIslands / IsEligibleMainEndpoint /
-      ChooseBridgePair) but which ProgressiveTaxiProbe's own link list predates and does
-      not yet carry — confirmed by attempting a build of that probe unmodified, which
-      fails on exactly the three RunwayPavement call sites and nothing else. This probe
-      does not touch ProgressiveTaxiProbe at all; it just needed the same file plus one.
+      TaxiGraph.Build / RunwayShape / RunwayPavement — never a reimplementation. It links
+      the file set tools/ProgressiveTaxiProbe uses for TaxiGraph (proven to compile as a
+      set — see that probe), RunwayPavement.cs and the Utils/Logging logger included.
+      Keep the two lists in step: when TaxiGraph gained its Log.Info call (7eee43c1) only
+      ProgressiveTaxiProbe gained the logger, and this probe stopped building (CS0234).
     -->
     <!-- Navigation -->
     <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.cs"             Link="Linked\TaxiGraph.cs" />
@@ -35,6 +32,11 @@
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayRouteClassifier.cs" Link="Linked\RunwayRouteClassifier.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RolloutExitGate.cs"       Link="Linked\RolloutExitGate.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\NamedHoldingPointResolver.cs" Link="Linked\NamedHoldingPointResolver.cs" />
+    <!-- TaxiGraph logs a relocated start row through Utils/Logging/Log (CLAUDE.md: every diagnostic
+         write goes through it), so the logger and its path authority ride along — the same two
+         links as tools/ProgressiveTaxiProbe. -->
+    <Compile Include="..\..\MSFSBlindAssist\Utils\Logging\*.cs"                  Link="Linked\Logging\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Utils\AppLogs.cs"                     Link="Linked\AppLogs.cs" />
     <!-- Database models -->
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />
