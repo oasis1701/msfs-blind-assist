@@ -2564,9 +2564,18 @@ that failed says nothing about whether the package is there. A config that
 is absent, names no path, names a folder that is not on disk, or a packages
 root with no Community folder is not a failure — nothing is owed, and a
 rebuild would only find the same absence. Its `IndexOf` match also matches
-`InstalledPackagesPathNextBoot`, and that is PRESERVED deliberately rather
-than fixed: the navdata database build has always resolved its base path
-this way, and changing it is a behaviour change that belongs in its own commit.
+`InstalledPackagesPathNextBoot`, and whether that line counts is the
+CALLER's choice (`includeNextBoot`, passed explicitly with no default). The
+navdata database build keeps it (`TryGetInstalledPackagesPath`, preserved
+deliberately: it has always resolved its base path this way). The census
+never does (`TryGetCommunityPath`, the active key only — the rule
+`AircraftCfgCatalog`, `GsxAirplaneProfile` and `EFBModPackageManager` already
+applied — with no `includeNextBoot` parameter of its own, so no caller can
+take the NextBoot line by accident): it reads while the simulator RUNS, and
+the simulator writes the NextBoot line as soon as the pilot PICKS a new
+packages folder in-sim — a folder that normally exists already — so the
+first-existing rule scanned a Community folder the running simulator was not
+loading (review SI-5).
 
 ### Settings & caching
 

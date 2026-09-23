@@ -59,8 +59,8 @@ public class MsfsPackagesLocatorTests : IDisposable
         // What the file reader walks: it needs each candidate in turn, because it takes the first
         // one that is a folder on disk. The singular above is this sequence's first element.
         var lines = new[] { "Video 1", "InstalledPackagesPathNextBoot \"D:\\NotYet\"", "InstalledPackagesPath \"D:\\Active\"" };
-        Assert.Equal(new[] { "D:\\NotYet", "D:\\Active" }, MsfsPackagesLocator.ParseInstalledPackagesPaths(lines));
-        Assert.Empty(MsfsPackagesLocator.ParseInstalledPackagesPaths(new[] { "Video 1", "InstalledPackagesPath" }));
+        Assert.Equal(new[] { "D:\\NotYet", "D:\\Active" }, MsfsPackagesLocator.ParseInstalledPackagesPaths(lines, includeNextBoot: true));
+        Assert.Empty(MsfsPackagesLocator.ParseInstalledPackagesPaths(new[] { "Video 1", "InstalledPackagesPath" }, includeNextBoot: true));
     }
 
     [Fact]
@@ -214,5 +214,33 @@ public class MsfsPackagesLocatorTests : IDisposable
                                         FileMode.Open, FileAccess.Read, FileShare.None);
         Assert.Equal(Path.Combine(store, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));
         Assert.True(failed);
+    }
+
+    [Fact]
+    public void The_community_folder_comes_from_the_active_key_never_the_next_boot_one()
+    {
+        // The simulator writes InstalledPackagesPathNextBoot as soon as the pilot PICKS a new folder
+        // in-sim, and that folder normally exists already — so on the first-existing rule a NextBoot
+        // line above the active one won, and the census scanned a Community folder the running
+        // simulator is not loading (review SI-5).
+        string next = Path.Combine(_root, "next"), active = Path.Combine(_root, "active");
+        Directory.CreateDirectory(Path.Combine(next, "Community"));
+        WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", active, extraLineBefore: $"InstalledPackagesPathNextBoot \"{next}\"");
+        Directory.CreateDirectory(Path.Combine(active, "Community"));
+        string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
+
+        Assert.Equal(Path.Combine(active, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));
+        Assert.False(failed);                                                                      // skipping a line is not a read failure
+        // The navdata database build keeps its documented first-existing rule, NextBoot included.
+        Assert.Equal(next, MsfsPackagesLocator.TryGetInstalledPackagesPath("FS2024", roaming, local));
+    }
+
+    [Fact]
+    public void The_active_only_parse_skips_the_next_boot_key_in_any_case_and_any_position()
+    {
+        var lines = new[] { "InstalledPackagesPathNextBoot \"D:\\NotYet\"", "  InstalledPackagesPath \"D:\\Active\"",
+                            "installedpackagespathnextboot \"D:\\Lower\"" };
+        Assert.Equal(new[] { "D:\\Active" }, MsfsPackagesLocator.ParseInstalledPackagesPaths(lines, includeNextBoot: false));
+        Assert.Equal(new[] { "D:\\NotYet", "D:\\Active", "D:\\Lower" }, MsfsPackagesLocator.ParseInstalledPackagesPaths(lines, includeNextBoot: true));
     }
 }
