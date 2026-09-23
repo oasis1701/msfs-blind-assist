@@ -114,4 +114,25 @@ public partial class TFDiMD11Definition
         Attach(simConnect);
         PressControl(Md11AutopilotEngage.AutoflightKey);
     }
+
+    /// <summary>
+    /// The First Officer's read of the weather radar OFF button's own var. The mode buttons latch
+    /// as a radio group (TFDi's shipped state snapshots hold OFF = 1 with the radar off), but the
+    /// button itself is registered write-only (a momentary with no proven latch), so the FO reads
+    /// it under a key of its own and the panel button is untouched. LIVE-VERIFY on first use.
+    /// </summary>
+    public const string FoWxrOffReadKey = "MD11_FO_WXR_OFF";
+
+    /// <summary>Adds the First Officer's own read-only variables. Called by BuildVariables.</summary>
+    private static void AddFirstOfficerReadVariables(Dictionary<string, SimConnect.SimVarDefinition> vars)
+    {
+        vars[FoWxrOffReadKey] = new SimConnect.SimVarDefinition
+        {
+            Name = "MD11_PED_WXR_OFF_BT",
+            DisplayName = "Weather radar off (First Officer read)",
+            Type = SimConnect.SimVarType.LVar,
+            UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            ExcludeFromMonitorManager = true,
+        };
+    }
 }
