@@ -745,7 +745,7 @@ The cost: a holding-point pick on the UI thread can wait for one in-flight `Alt+
 ### Why `DescribeLocation` indexes EDGES, not nodes
 
 Candidate edges come from `TaxiGraph`'s own edge cell index
-(`EnsureEdgeCellIndex`/`EdgesNear`), never from the nodes within
+(`EnsureCellIndex`/`EdgesNear`), never from the nodes within
 `EDGE_SCAN_RADIUS_M`. Gathering them node-first and then skipping any edge whose
 from-node was further than that radius gave **every segment longer than 2 x 120 m
 a DEAD MIDDLE**: the aircraft stands on the centreline of a named taxiway, both
@@ -768,8 +768,20 @@ longer decides whether it can be found — only its distance from the aircraft,
 which the perpendicular test was always meant to be the sole arbiter of. It is
 deliberately COARSE (`EDGE_CELL_PRECISION` 3, ~111 m cells) because an edge is
 indexed under every cell it crosses: at the node hash's 1.1 m precision one
-340 m taxiway would take ~300 entries. As a side effect the scan became a 5x5
-ring instead of the 219x219 the node ring did at EHAM's latitude.
+340 m taxiway would take ~300 entries. As a side effect the scan became a 7x7
+ring (49 lookups) instead of the 219x357 (78,183) the old node ring walked at
+EHAM's latitude.
+
+The index is built by the first query that needs it and DROPPED — never
+recounted — wherever `TaxiGraph`'s own code changes the structure
+(`InvalidateCellIndex`, from `AddEdge` and `SplitEdgeAt`); the next query
+rebuilds it. After `Build` the only such change is the painted holding-point
+projection (`InsertHoldingPointNodeOnEdge`); routing never splits an edge.
+`Nodes` and `Adjacency` are public, and hand-built test graphs and the two
+standalone probes (`tools/ProgressiveTaxiProbe`, `tools/StandBridgeSweep`)
+write them directly; that drops nothing, and is safe only because none of them
+then asks `DescribeLocation` anything. The index used to recount every
+adjacency list on every query to notice a change only a mutation can make.
 
 Measured before/after over 600 randomly sampled airports, 70,266 segment
 midpoints:

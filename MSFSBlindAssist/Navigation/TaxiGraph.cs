@@ -1390,6 +1390,10 @@ public class TaxiGraph
     /// <summary>The body of <see cref="SplitEdgeAt"/>; the caller holds <see cref="_structureLock"/>.</summary>
     private TaxiNode SplitEdgeAtLocked(TaxiEdge fwd, double lat, double lon)
     {
+        // A structure change: it adds a node and REMOVES the edge it replaces. The AddEdge calls
+        // below drop the index too, but the removal comes first.
+        InvalidateCellIndex();
+
         int aId = fwd.FromNodeId, bId = fwd.ToNodeId;
         var a = Nodes[aId];
         var b = Nodes[bId];
@@ -1553,6 +1557,8 @@ public class TaxiGraph
 
     private void AddEdge(TaxiEdge edge)
     {
+        InvalidateCellIndex();   // a structure change — see InvalidateCellIndex
+
         if (!Adjacency.ContainsKey(edge.FromNodeId))
             Adjacency[edge.FromNodeId] = new List<TaxiEdge>();
 
@@ -2227,7 +2233,7 @@ public class TaxiGraph
         TaxiEdge? bestRunwayEdge = null;  double bestRunwayEdgePerp = double.MaxValue;
         TaxiEdge? bestTaxiwayEdge = null; double bestTaxiwayEdgePerp = double.MaxValue;
 
-        // Candidate edges come from the EDGE index (see EnsureEdgeCellIndex), never from the nodes
+        // Candidate edges come from the EDGE index (see EnsureCellIndex), never from the nodes
         // within EDGE_SCAN_RADIUS_M. Gathering them node-first and then skipping any edge whose
         // from-node was further than that radius gave every segment longer than 2 x 120 m a DEAD
         // MIDDLE: the aircraft stands on the centreline of a named taxiway, both endpoints are out
@@ -3323,51 +3329,74 @@ public class TaxiGraph
         return fallback;
     }
 
-    #region Edge cell index
+    #region Cell index
 
     /// <summary>
-    /// Cell size for the EDGE index, as decimal places of a degree. Deliberately COARSER than
+    /// Cell size for the cell index, as decimal places of a degree. Deliberately COARSER than
     /// <see cref="SPATIAL_HASH_PRECISION"/> (5 places, ~1.1 m): an edge is indexed under every
     /// cell its segment CROSSES, so a 1.1 m grid would put ~300 entries in the index for one
-    /// 340 m taxiway and ~2,900 for ZSPD's longest. At 3 places a cell is ~111 m north-south, a
-    /// 340 m segment occupies about four of them, and a 120 m scan is a 5x5 ring — roughly 25
-    /// dictionary lookups per call against the 47,961 the old node ring did at this latitude.
+    /// 340 m taxiway and ~2,900 for ZSPD's longest. At 3 places a cell is ~111 m north-south and a
+    /// 340 m segment occupies about four of them. A 120 m scan walks three cells each way (one of
+    /// them margin): 7x7 = 49 lookups from the equator to 52°N, 7x15 at ENSB's 78°N — against the
+    /// 219x219 = 47,961 string-keyed lookups the old 1.1 m node ring did at the equator and
+    /// 219x357 = 78,183 at EHAM's latitude.
     /// </summary>
     private const int EDGE_CELL_PRECISION = 3;
 
-    private Dictionary<(int Lat, int Lon), List<TaxiEdge>>? _edgeCells;
-    /// <summary>Edge count the index was built from; a mismatch rebuilds it. Edges are added by
-    /// <see cref="AddNode"/> and replaced by <see cref="SplitEdgeAt"/> after Build has returned
-    /// (routing splits an edge to insert a start node), and a stale index would then measure
-    /// against geometry the graph no longer has.</summary>
-    private int _edgeCellsBuiltFromEdgeCount = -1;
-
-    private static (int Lat, int Lon) EdgeCellOf(double lat, double lon)
-    {
-        double step = Math.Pow(10, -EDGE_CELL_PRECISION);
-        return ((int)Math.Floor(lat / step), (int)Math.Floor(lon / step));
-    }
-
-    private int TotalDirectedEdgeCount()
-    {
-        int n = 0;
-        foreach (var edges in Adjacency.Values) n += edges.Count;
-        return n;
-    }
+    /// <summary>One cell's side in degrees (both axes), computed once rather than per sample.</summary>
+    private static readonly double EdgeCellStepDegrees = Math.Pow(10, -EDGE_CELL_PRECISION);
 
     /// <summary>
-    /// Indexes every edge under each cell its SEGMENT passes through — not merely its endpoints'
-    /// cells, which is the whole point: a segment longer than a cell must be findable from the
-    /// middle. Walks the segment at half-cell steps, so no crossed cell is skipped.
-    /// Caller holds <see cref="_structureLock"/>.
+    /// The lazily built cell index: every edge under each cell its segment crosses. Null until the
+    /// first query needs it and again after any structure change this class makes
+    /// (<see cref="InvalidateCellIndex"/>). Once Build has returned it is read and written only under
+    /// <see cref="_structureLock"/> (Build's own AddEdge calls drop it before any other thread can
+    /// see the graph).
     /// </summary>
-    private void EnsureEdgeCellIndex()
+    private Dictionary<(int Lat, int Lon), List<TaxiEdge>>? _edgeCells;
+
+    /// <summary>
+    /// How many times the cell index has been built. Diagnostics for TaxiGraphCellIndexTests, and the
+    /// only way to see the index from outside: the one post-Build change this class makes to a graph,
+    /// the painted holding-point projection, subdivides an edge without moving any pavement, so a
+    /// STALE index still answers correctly today — and would silently stop doing so the day a change
+    /// that does move something is added.
+    /// </summary>
+    internal int CellIndexBuildCount { get; private set; }
+
+    /// <summary>
+    /// Drops the cell index; the next query rebuilds it. Called by this class's own mutators wherever
+    /// they change the STRUCTURE: <see cref="AddEdge"/> (every edge Build and the orphan-stand bridges
+    /// add, and the halves <see cref="SplitEdgeAt"/> adds) and <see cref="SplitEdgeAt"/> itself,
+    /// which also REMOVES the edge it replaces. After Build returns the only such change is the
+    /// painted holding-point projection (<see cref="InsertHoldingPointNodeOnEdge"/>); routing never
+    /// splits an edge. This replaced a recount of every adjacency list on every query — O(nodes) per
+    /// Alt+Y / Alt+L to answer a question only a mutation can change.
+    ///
+    /// <para><see cref="Nodes"/> and <see cref="Adjacency"/> are public, and a few callers outside
+    /// this class write them directly — hand-built test graphs, tools/ProgressiveTaxiProbe and
+    /// tools/StandBridgeSweep. Such a write drops nothing; none of them asks DescribeLocation anything
+    /// afterwards, and a caller that would must change the graph through this class instead.</para>
+    /// </summary>
+    private void InvalidateCellIndex() => _edgeCells = null;
+
+    private static (int Lat, int Lon) EdgeCellOf(double lat, double lon)
+        => ((int)Math.Floor(lat / EdgeCellStepDegrees), (int)Math.Floor(lon / EdgeCellStepDegrees));
+
+    /// <summary>
+    /// Builds the cell index when a structure change (or nothing yet) has left it empty. Indexes every
+    /// edge under each cell its SEGMENT passes through — not merely its endpoints' cells, which is the
+    /// whole point: a segment longer than a cell must be findable from the middle. Walks each segment
+    /// at half-cell steps; a cell the segment only clips at a corner between two samples can be left
+    /// out, and the query ring's cell of margin (<see cref="EdgesNear"/>) is what covers it. Caller
+    /// holds <see cref="_structureLock"/>.
+    /// </summary>
+    private void EnsureCellIndex()
     {
-        int edgeCount = TotalDirectedEdgeCount();
-        if (_edgeCells != null && _edgeCellsBuiltFromEdgeCount == edgeCount) return;
+        if (_edgeCells != null) return;
 
         var cells = new Dictionary<(int, int), List<TaxiEdge>>();
-        double step = Math.Pow(10, -EDGE_CELL_PRECISION);
+        double step = EdgeCellStepDegrees;
         var seen = new HashSet<long>();
 
         foreach (var edges in Adjacency.Values)
@@ -3384,20 +3413,24 @@ public class TaxiGraph
                 int steps = (int)Math.Ceiling(Math.Max(Math.Abs(dLat), Math.Abs(dLon)) / (step * 0.5));
                 if (steps < 1) steps = 1;
 
+                // Both coordinates move monotonically along a straight segment and cells are
+                // convex, so the samples visit each cell in ONE unbroken run: skipping a repeat of
+                // the previous sample's cell is the whole dedup (a list.Contains here could never
+                // be true).
                 var last = ((int)int.MinValue, (int)int.MinValue);
                 for (int i = 0; i <= steps; i++)
                 {
                     double f = (double)i / steps;
                     var cell = EdgeCellOf(a.Latitude + dLat * f, a.Longitude + dLon * f);
-                    if (cell == last) continue;      // consecutive samples usually land in one cell
+                    if (cell == last) continue;
                     last = cell;
                     if (!cells.TryGetValue(cell, out var list)) cells[cell] = list = new List<TaxiEdge>();
-                    if (!list.Contains(edge)) list.Add(edge);
+                    list.Add(edge);
                 }
             }
 
         _edgeCells = cells;
-        _edgeCellsBuiltFromEdgeCount = edgeCount;
+        CellIndexBuildCount++;
     }
 
     /// <summary>
@@ -3405,16 +3438,17 @@ public class TaxiGraph
     /// A rectangular ring of whole cells, sized independently in the lat and lon directions
     /// because a degree of longitude is only cos(latitude) as many metres as a degree of latitude
     /// (ENSB at 78°N: cos 78° ~ 0.21, so a latitude-blind cell count under-covers longitude by
-    /// nearly five times). The result is a strict SUPERSET of a true circle of that radius — the
-    /// caller filters by real perpendicular distance, so extra candidates cost only arithmetic.
-    /// Caller holds <see cref="_structureLock"/> for the whole enumeration.
+    /// nearly five times), plus one cell of margin. The result is a strict SUPERSET of a true circle
+    /// of that radius — the caller filters by real perpendicular distance, so extra candidates cost
+    /// only arithmetic. Caller holds <see cref="_structureLock"/> for the whole enumeration.
     /// </summary>
     private IEnumerable<TaxiEdge> EdgesNear(double lat, double lon, double radiusMetres)
     {
-        EnsureEdgeCellIndex();
-        if (_edgeCells!.Count == 0) yield break;
+        EnsureCellIndex();
+        var edgeCells = _edgeCells!;
+        if (edgeCells.Count == 0) yield break;
 
-        double step = Math.Pow(10, -EDGE_CELL_PRECISION);
+        double step = EdgeCellStepDegrees;
         double metresPerDegLat = 111132.0;
         double metresPerDegLon = metresPerDegLat * Math.Cos(lat * (Math.PI / 180.0));
         if (metresPerDegLon < 1.0) metresPerDegLon = 1.0;   // guard near-pole degeneracy
@@ -3427,7 +3461,7 @@ public class TaxiGraph
         for (int dLat = -ringLat; dLat <= ringLat; dLat++)
             for (int dLon = -ringLon; dLon <= ringLon; dLon++)
             {
-                if (!_edgeCells.TryGetValue((centre.Lat + dLat, centre.Lon + dLon), out var list)) continue;
+                if (!edgeCells.TryGetValue((centre.Lat + dLat, centre.Lon + dLon), out var list)) continue;
                 foreach (var edge in list)
                     if (emitted.Add(edge)) yield return edge;
             }
