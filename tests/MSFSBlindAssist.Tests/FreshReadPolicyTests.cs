@@ -75,10 +75,11 @@ public class FreshReadPolicyTests
     }
 
     /// <summary>
-    /// The seed read rides a request id that can never be a data-definition id (those start at
-    /// 1000 and SimConnect caps a connection near 1000 of them) and never the subscription's own
-    /// id — re-issuing that one delivers nothing new, measured live — while staying on the
-    /// individual-variable side of the dispatch (at or above 1000).
+    /// The seed read rides a request id that can never be a data-definition id (the counter restarts
+    /// at 1000 on every connection and aircraft switch, and a connection registers well under 2000)
+    /// and never the subscription's own id — re-issuing that one delivers nothing new, measured live —
+    /// while staying on the individual-variable side of the dispatch (at or above 1000). There is no
+    /// seed map: the dispatch recognises the id and maps it back to its definition id.
     /// </summary>
     [Fact]
     public void TheSeedRequestId_IsDistinctFromEveryDefinitionId_AndDispatchesAsAnIndividualVariable()
@@ -88,19 +89,23 @@ public class FreshReadPolicyTests
             var seed = FreshReadPolicy.SeedRequestId(defId);
             Assert.NotEqual(defId, seed);
             Assert.True(seed >= FreshReadPolicy.SeedRequestIdOffset);
-            Assert.True(seed - FreshReadPolicy.SeedRequestIdOffset == defId);
+            Assert.True(FreshReadPolicy.IsSeedRequestId(seed));
+            Assert.False(FreshReadPolicy.IsSeedRequestId(defId));
+            Assert.Equal(defId, FreshReadPolicy.DataDefinitionIdOf(seed));
             // Routed as an individual variable, like the fresh ids are.
             Assert.True(seed >= (int)SimConnectManager.DATA_REQUESTS.INDIVIDUAL_VARIABLE_BASE);
         }
+        Assert.False(FreshReadPolicy.IsSeedRequestId(SimConnectManager.FreshRequestIdBase));
         Assert.True(FreshReadPolicy.SeedRequestIdOffset > 10_000);
     }
 
     /// <summary>
-    /// The seed ids and the per-read fresh ids are resolved from two different maps in the delivery
-    /// path, so their ranges must never meet: a seed landing in the fresh range would be looked up
-    /// as a fresh read, found in no waiter, and logged as a dropped late answer. Data-definition
-    /// ids start at 1000 and SimConnect caps a connection near 1000 of them, so the seed range is
-    /// bounded by SeedRequestIdOffset + ~2000.
+    /// A seed id must never equal a per-read fresh id: the delivery path resolves the fresh map
+    /// first, so a seed id equal to an outstanding fresh id would be taken for that fresh read —
+    /// another var's value cached under its key and handed to its waiter. Data-definition ids
+    /// restart at 1000 on every connection and aircraft switch (Disconnect, ReregisterAllVariables)
+    /// and a connection registers well under 2000 of them, so the seed range stays below
+    /// SeedRequestIdOffset + 3000.
     /// </summary>
     [Fact]
     public void TheSeedRange_LiesWhollyBelowTheFreshReadRange()
