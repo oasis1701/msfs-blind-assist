@@ -1430,6 +1430,21 @@ fetch, which is the one invalidation it must outlive. `RefreshDatabaseProvider`
 calls `ClearWhereAmICache` for exactly this reason: the same airport can carry
 different runway geometry in the two databases.
 
+**A database switch moves the generation.** `ClearWhereAmICache` drops the
+Where-Am-I graph and the memo and moves `TaxiGuidanceManager.DatabaseGeneration`,
+but deliberately leaves active guidance's own graph alone — a route being flown
+keeps its graph. That graph was built from the previous database, and it records
+the generation current when its INSTANCE was installed (`_graphGeneration`,
+stamped only for a NEW instance — a rollout re-route hands back the same graph
+and must not restamp it), so from the switch on the probe neither answers from
+it nor re-seeds the memo from it (`RunwayShapeSource.Choose`); it once did both,
+and the re-seeded memo — the old database's runways, filed under the new one —
+outlived `StopGuidance`. A memo of another generation is never read. The memo
+is ONE record, `RunwayShapeMemo` (airport, generation, the graph it came from,
+the shapes), and `RunwayShapeSource.Resolve` is the whole probe step — which
+source answers and what memo is left behind — pure and pinned by
+`RunwayShapeSourceTests`.
+
 **Every `AIRCRAFT_POSITION` answer is a sample, judged where it lands.** The
 2 s timer only ASKS (`RequestAircraftPosition`); `OnPositionReceived`, the
 monitor's handler on `SimConnectManager.AircraftPositionReceived`, judges the

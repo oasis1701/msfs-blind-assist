@@ -1,42 +1,57 @@
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
+using static MSFSBlindAssist.Tests.RunwayFixture;
 
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// The pure half of TaxiGuidanceManager.IsOnRunwayPavement's source choice. The manager itself
-/// cannot be constructed here (its constructor builds a TaxiSteeringTone), so the DECISION lives
-/// out here where it can be pinned; the manager holds only the lock, the fields and the geometry.
+/// The pure half of TaxiGuidanceManager.IsOnRunwayPavement. The manager itself cannot be
+/// constructed here (its constructor builds a TaxiSteeringTone), so the DECISION lives out here
+/// where it can be pinned — which source answers (<see cref="RunwayShapeSource.Choose"/>) and the
+/// whole probe step with the memo it leaves behind (<see cref="RunwayShapeSource.Resolve"/>); the
+/// manager holds only the lock, the fields and the database generation.
 /// </summary>
 public class RunwayShapeSourceTests
 {
+    private static RunwayShapeMemo Memo(string icao, long generation = 0)
+        => new(icao, generation, null, Array.Empty<RunwayShape>());
+
+    /// <summary>A 3,000 m 09/27 built from its start rows alone: centrelines, no taxiways.</summary>
+    private static TaxiGraph RunwayGraph() => TaxiGraph.Build(new List<TaxiPath>(), new List<ParkingSpot>(),
+        new List<StartPosition>
+        {
+            new() { RunwayName = "09", Latitude = Lat(0), Longitude = Lon(0), Heading = 90 },
+            new() { RunwayName = "27", Latitude = Lat(0), Longitude = Lon(3000), Heading = 270 },
+        });
+
     [Fact]
     public void The_active_guidance_graph_answers_for_its_own_airport()
-        => Assert.Equal(RunwayShapeSourceKind.ActiveGraph, RunwayShapeSource.Choose("KTIW", "ktiw", "KSEA", "KSEA"));
+        => Assert.Equal(RunwayShapeSourceKind.ActiveGraph, RunwayShapeSource.Choose("KTIW", 0, "ktiw", 0, "KSEA", Memo("KSEA")));
 
     [Fact]
     public void The_where_am_i_graph_answers_when_guidance_is_elsewhere()
-        => Assert.Equal(RunwayShapeSourceKind.WhereAmIGraph, RunwayShapeSource.Choose("KTIW", "KSEA", "KTIW", null));
+        => Assert.Equal(RunwayShapeSourceKind.WhereAmIGraph, RunwayShapeSource.Choose("KTIW", 0, "KSEA", 0, "KTIW", null));
 
     [Fact]
     public void The_memo_answers_after_the_taxiway_name_fetch_drops_the_graph()
     {
-        // The sequence this exists for: the first quiet tick warms the probe, the warm-up's own
-        // GetTaxiPaths starts the online taxiway-name fetch, the fetch lands a few seconds later
-        // and OnAirportDataUpdated nulls the Where-Am-I graph. Without the memo the probe then
-        // answered null — and null does not silence — so building callouts were permitted ON A
-        // RUNWAY until the warm-up retry came round a minute later.
-        Assert.Equal(RunwayShapeSourceKind.Memo, RunwayShapeSource.Choose("KTIW", null, null, "ktiw"));
+        // The sequence this exists for: a Where-Am-I graph answers, the GetTaxiPaths that built it
+        // starts the online taxiway-name fetch, the fetch lands a few seconds later and
+        // OnAirportDataUpdated nulls the graph. Without the memo the probe then answered null — and
+        // null does not silence — so building callouts were permitted ON A RUNWAY until the warm-up
+        // retry came round a minute later.
+        Assert.Equal(RunwayShapeSourceKind.Memo, RunwayShapeSource.Choose("KTIW", 0, null, 0, null, Memo("ktiw")));
     }
 
     [Fact]
     public void A_memo_for_another_airport_answers_nothing()
-        => Assert.Equal(RunwayShapeSourceKind.None, RunwayShapeSource.Choose("KTIW", null, null, "KSEA"));
+        => Assert.Equal(RunwayShapeSourceKind.None, RunwayShapeSource.Choose("KTIW", 0, null, 0, null, Memo("KSEA")));
 
     [Fact]
     public void Nothing_cached_and_no_airport_both_answer_nothing()
     {
-        Assert.Equal(RunwayShapeSourceKind.None, RunwayShapeSource.Choose("KTIW", null, null, null));
-        Assert.Equal(RunwayShapeSourceKind.None, RunwayShapeSource.Choose(" ", "KTIW", "KTIW", "KTIW"));
+        Assert.Equal(RunwayShapeSourceKind.None, RunwayShapeSource.Choose("KTIW", 0, null, 0, null, null));
+        Assert.Equal(RunwayShapeSourceKind.None, RunwayShapeSource.Choose(" ", 0, "KTIW", 0, "KTIW", Memo("KTIW")));
     }
 
     [Fact]
@@ -44,7 +59,88 @@ public class RunwayShapeSourceTests
     {
         // The memo is only ever a stand-in. A graph present for this airport is both fresher and
         // the thing the memo is rebuilt from, so it must win whichever airport the memo holds.
-        Assert.Equal(RunwayShapeSourceKind.ActiveGraph, RunwayShapeSource.Choose("KTIW", "KTIW", null, "KTIW"));
-        Assert.Equal(RunwayShapeSourceKind.WhereAmIGraph, RunwayShapeSource.Choose("KTIW", null, "KTIW", "KTIW"));
+        Assert.Equal(RunwayShapeSourceKind.ActiveGraph, RunwayShapeSource.Choose("KTIW", 0, "KTIW", 0, null, Memo("KTIW")));
+        Assert.Equal(RunwayShapeSourceKind.WhereAmIGraph, RunwayShapeSource.Choose("KTIW", 0, null, 0, "KTIW", Memo("KTIW")));
+    }
+
+    // ---- A database switch moves the generation; what was built before it stops answering ----
+
+    [Fact]
+    public void An_active_graph_installed_before_a_database_switch_no_longer_answers()
+    {
+        // Guidance keeps flying its route across a database switch — its graph is deliberately left
+        // in place — but that graph was built from the database the switch replaced.
+        Assert.Equal(RunwayShapeSourceKind.None, RunwayShapeSource.Choose("KTIW", 1, "KTIW", 0, null, null));
+        Assert.Equal(RunwayShapeSourceKind.WhereAmIGraph, RunwayShapeSource.Choose("KTIW", 1, "KTIW", 0, "KTIW", null));
+    }
+
+    [Fact]
+    public void A_memo_from_another_database_generation_is_never_read()
+        => Assert.Equal(RunwayShapeSourceKind.None, RunwayShapeSource.Choose("KTIW", 2, null, 2, null, Memo("KTIW", generation: 1)));
+
+    // ---- The whole probe step ----
+
+    [Fact]
+    public void A_graph_that_answers_re_seeds_the_memo_once_and_the_memo_answers_after_the_graph_is_gone()
+    {
+        var graph = RunwayGraph();
+        var (shapes, memo) = RunwayShapeSource.Resolve("KTIW", 0, null, null, 0, graph, "KTIW", null);
+        Assert.NotNull(shapes);
+        Assert.Single(shapes!);
+        Assert.Same(graph, memo!.SourceGraph);
+        Assert.Equal(0L, memo.Generation);
+        Assert.True(RunwayPavement.IsOnPavement(Lat(0), Lon(1500), shapes!));
+
+        // The same graph on the next tick: the memo is reused, not rebuilt.
+        var (again, memoAgain) = RunwayShapeSource.Resolve("KTIW", 0, null, null, 0, graph, "KTIW", memo);
+        Assert.Same(memo, memoAgain);
+        Assert.Same(shapes, again);
+
+        // The taxiway-name fetch drops the Where-Am-I graph: the memo answers on its own.
+        var (fromMemo, memoKept) = RunwayShapeSource.Resolve("KTIW", 0, null, null, 0, null, null, memo);
+        Assert.Same(shapes, fromMemo);
+        Assert.Same(memo, memoKept);
+    }
+
+    [Fact]
+    public void An_active_graph_from_before_a_database_switch_neither_answers_nor_re_seeds_the_memo()
+    {
+        // The switch cleared the memo (null here) and moved the generation to 1. The route's graph
+        // (generation 0) must not put the previous database's runways back into the memo — it once
+        // did, and that memo then outlived StopGuidance for the rest of the session.
+        var (shapes, memo) = RunwayShapeSource.Resolve("KTIW", 1, RunwayGraph(), "KTIW", 0, null, null, null);
+        Assert.Null(shapes);
+        Assert.Null(memo);
+    }
+
+    [Fact]
+    public void After_a_database_switch_the_where_am_i_graph_seeds_the_memo_not_the_route_s_graph()
+    {
+        var routeGraph = RunwayGraph();      // installed at generation 0
+        var fresh = RunwayGraph();           // a Where-Am-I graph built after the switch
+        var (shapes, memo) = RunwayShapeSource.Resolve("KTIW", 1, routeGraph, "KTIW", 0, fresh, "KTIW", null);
+        Assert.NotNull(shapes);
+        Assert.Same(fresh, memo!.SourceGraph);
+        Assert.Equal(1L, memo.Generation);
+    }
+
+    [Fact]
+    public void Nothing_held_for_the_airport_answers_null_and_leaves_the_memo_alone()
+    {
+        var other = Memo("KSEA");
+        var (shapes, memo) = RunwayShapeSource.Resolve("KTIW", 0, null, null, 0, null, null, other);
+        Assert.Null(shapes);
+        Assert.Same(other, memo);
+    }
+
+    [Fact]
+    public void An_empty_memo_is_an_answer_not_on_a_runway_rather_than_nothing()
+    {
+        // An airport with no runways: null would mean "unknown" and permit a callout anywhere, an
+        // empty list says "not on a runway", which is simply true there.
+        var empty = Memo("KXYZ");
+        var (shapes, _) = RunwayShapeSource.Resolve("KXYZ", 0, null, null, 0, null, null, empty);
+        Assert.NotNull(shapes);
+        Assert.False(RunwayPavement.IsOnPavement(Lat(0), Lon(100), shapes!));
     }
 }

@@ -79,6 +79,14 @@ public partial class TaxiGuidanceManager : IDisposable
     private readonly ScreenReaderAnnouncer _announcer;
     private TaxiSteeringTone _steeringTone;
     private TaxiGraph? _graph;
+    // The DatabaseGeneration current when _graph's INSTANCE was installed — stamped only when a NEW
+    // graph instance is installed (LoadRoute, both rollout entries), never when the same instance is
+    // handed back: the rollout re-routes pass `prebuiltGraph: _graph`, and restamping those after a
+    // database switch mid-rollout would file the previous database's graph under the new generation.
+    // Put back with _graph by the LoadRoute rollback. A database switch leaves active guidance's own
+    // graph in place, so this is how the runway probe knows that graph is the PREVIOUS database's
+    // (RunwayShapeSource.Choose).
+    private long _graphGeneration;
     private TaxiRoute? _route;
     private TaxiGuidanceState _state = TaxiGuidanceState.Inactive;
 
@@ -1401,6 +1409,17 @@ public partial class TaxiGuidanceManager : IDisposable
     private string _whereAmICachedToken = "";
 
     /// <summary>
+    /// Which database the manager's runway geometry was read from, as a number. Moved — under
+    /// _stateLock — by every database switch (<see cref="ClearWhereAmICache"/>) and read from any
+    /// thread. Whatever records it is judged against it: active guidance's own graph records the
+    /// generation it was installed under (<c>_graphGeneration</c>) and a switch deliberately leaves
+    /// that graph in place, so once the generation has moved the runway probe neither answers from it
+    /// nor re-seeds its memo from it (<see cref="RunwayShapeSource.Choose"/>).
+    /// </summary>
+    public long DatabaseGeneration => Interlocked.Read(ref _databaseGeneration);
+    private long _databaseGeneration;
+
+    /// <summary>
     /// The gate-list source token for an ICAO — <see cref="GateDataSource.GetGateListVersion"/>
     /// at the production call site, wired by <c>MainForm</c> beside
     /// <see cref="ParkingSpotSupplier"/>. Must be O(1) and must never throw; a failure degrades
@@ -1509,27 +1528,30 @@ public partial class TaxiGuidanceManager : IDisposable
         return $"{description} at {icao}.";
     }
 
-    // Runway shapes memoised per graph INSTANCE: RunwayShape.For allocates (and allocates a
-    // second shape inside its own pavement check), so a 2 s poll would otherwise rebuild the
-    // whole set every tick. A rebuilt graph is a different instance, so the memo is never built
-    // from geometry it did not come from.
+    // The runway shapes last memoised for ONE airport, as ONE value (RunwayShapeMemo: the airport,
+    // the database generation, the graph they were built from, the shapes). RunwayShape.For
+    // allocates (and allocates a second shape inside its own pavement check), so the set is built
+    // once per graph instance, never on every 2 s poll; a rebuilt graph is a different instance, so
+    // the memo is never built from geometry it did not come from.
     //
-    // The memo is also keyed by AIRPORT, and that half is what keeps the probe answering: it
-    // OUTLIVES the graph. OnAirportDataUpdated nulls the Where-Am-I graph whenever the online
-    // taxiway-name fetch lands — and the probe's own warm-up is what starts that fetch, so losing
-    // the graph seconds after the first answer is the ordinary sequence, not an edge case. Keyed on
-    // the instance alone the probe then answered null for the ~60 s its caller waits before another
-    // warm-up, and null does not silence: building callouts were permitted ON A RUNWAY for that
-    // minute. Runway pavement does not depend on taxiway NAMES, so the shapes are still right.
-    private TaxiGraph? _runwayShapesGraph;
-    private string _runwayShapesIcao = "";
-    private IReadOnlyList<RunwayShape>? _runwayShapes;
+    // It is keyed by AIRPORT, and that half is what keeps the probe answering: it OUTLIVES the
+    // graph. OnAirportDataUpdated nulls the Where-Am-I graph whenever the online taxiway-name fetch
+    // lands — and the probe's own warm-up is what starts that fetch, so losing the graph seconds
+    // after the first answer is the ordinary sequence, not an edge case. Keyed on the instance alone
+    // the probe then answered null for the ~60 s its caller waits before another warm-up, and null
+    // does not silence: building callouts were permitted ON A RUNWAY for that minute. Runway
+    // pavement does not depend on taxiway NAMES, so the shapes are still right.
+    private RunwayShapeMemo? _runwayShapeMemo;
 
     /// <summary>
     /// Is this point on any runway's pavement at <paramref name="icao"/>? Answers from geometry
-    /// that is already in hand — the active guidance graph, else the Where-Am-I cache, else the
-    /// runway shapes last memoised for this same airport — and NEVER builds a graph, because its
-    /// caller is a UI-thread timer. Null means "nothing to ask".
+    /// that is already in hand — the active guidance graph (only while it was installed under the
+    /// current <see cref="DatabaseGeneration"/>: a database switch leaves a route's graph in place,
+    /// but it is the previous database's), else the Where-Am-I cache, else the runway shapes last
+    /// memoised for this same airport and generation — and NEVER builds a graph, because its caller
+    /// is the passing-callout monitor's position handler, on the UI thread. Null means "nothing to
+    /// ask". The whole step — which source answers and what memo is left behind — is
+    /// <see cref="RunwayShapeSource.Resolve"/>, pure and pinned.
     ///
     /// <para>Deliberately does NOT consult the gate-list token the Where-Am-I cache is keyed on:
     /// that token exists because STAND NAMES are frozen into the graph's nodes at build time, and
@@ -1539,40 +1561,25 @@ public partial class TaxiGuidanceManager : IDisposable
     /// out: shapes built before the online taxiway names landed are still the same pavement after.
     /// <see cref="RunwayShapeSource"/> owns the ordering and carries the measurement.</para>
     ///
-    /// <para>Takes _stateLock like every other reader of the graph pair, so a tick can block for
-    /// as long as a background <see cref="DescribeCurrentLocation"/> holds it building a graph —
-    /// once per airport, and the same wait the locked status readers already take.</para>
+    /// <para>Takes _stateLock like every other reader of the graph pair, so a position sample can
+    /// block for as long as a background <see cref="DescribeCurrentLocation"/> holds it building a
+    /// graph — once per airport, and the same wait the locked status readers already take.</para>
     /// </summary>
     public bool? IsOnRunwayPavement(string icao, double lat, double lon)
     {
         if (string.IsNullOrWhiteSpace(icao)) return null;
 
-        IReadOnlyList<RunwayShape> shapes;
+        IReadOnlyList<RunwayShape>? shapes;
         lock (_stateLock)
         {
-            var source = RunwayShapeSource.Choose(icao,
-                _graph != null ? _icao : null,
-                _whereAmICachedGraph != null ? _whereAmICachedIcao : null,
-                _runwayShapes != null ? _runwayShapesIcao : null);
-            TaxiGraph? graph = source switch
-            {
-                RunwayShapeSourceKind.ActiveGraph => _graph,
-                RunwayShapeSourceKind.WhereAmIGraph => _whereAmICachedGraph,
-                _ => null,
-            };
-            if (graph == null && source != RunwayShapeSourceKind.Memo) return null;
-
-            if (graph != null && (!ReferenceEquals(graph, _runwayShapesGraph) || _runwayShapes == null))
-            {
-                _runwayShapes = RunwayPavement.BuildShapes(graph.RunwayCenterlines);
-                _runwayShapesGraph = graph;
-                _runwayShapesIcao = icao;
-            }
-            shapes = _runwayShapes!;
+            (shapes, _runwayShapeMemo) = RunwayShapeSource.Resolve(icao, DatabaseGeneration,
+                _graph, _icao, _graphGeneration,
+                _whereAmICachedGraph, _whereAmICachedIcao,
+                _runwayShapeMemo);
         }
         // Outside the lock on a local reference — the shape list is immutable once built, exactly
         // as DescribeCurrentLocation runs DescribeLocation on its own local graph.
-        return RunwayPavement.IsOnPavement(lat, lon, shapes);
+        return shapes == null ? null : RunwayPavement.IsOnPavement(lat, lon, shapes);
     }
 
     /// <summary>
@@ -1588,6 +1595,11 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <para>Drops the runway-shape memo too. The memo is built to outlive
     /// <see cref="OnAirportDataUpdated"/> — the taxiway-name fetch, which cannot move a runway —
     /// but not a caller asking for fresh geometry outright, which is what this is.</para>
+    ///
+    /// <para>And MOVES <see cref="DatabaseGeneration"/>, last and under the lock. Active guidance's
+    /// own graph is deliberately left in place — a route being flown keeps its graph — but it was
+    /// built from the database this call retires, so from here on the runway probe neither answers
+    /// from it nor re-seeds the memo it has just lost from it.</para>
     /// </summary>
     public void ClearWhereAmICache()
     {
@@ -1596,9 +1608,8 @@ public partial class TaxiGuidanceManager : IDisposable
             _whereAmICachedGraph = null;
             _whereAmICachedIcao = "";
             _whereAmICachedToken = "";
-            _runwayShapesGraph = null;
-            _runwayShapesIcao = "";
-            _runwayShapes = null;
+            _runwayShapeMemo = null;
+            Interlocked.Increment(ref _databaseGeneration);
         }
     }
 

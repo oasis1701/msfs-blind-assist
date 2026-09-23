@@ -236,6 +236,9 @@ public partial class TaxiGuidanceManager
             RolloutDiag($"BeginRunwayEndCountdownRollout: runway={runway.RunwayID} " +
                 $"hdgTrue={runway.Heading:F2} len={runway.Length:F0} icao={icao} state={_state}");
 
+            // Stamp only a NEW graph instance (see _graphGeneration): the same instance handed back
+            // keeps the generation it was installed under.
+            if (!ReferenceEquals(_graph, graph)) _graphGeneration = DatabaseGeneration;
             _graph = graph;
             _dataProvider = dataProvider;
             _icao = icao ?? "";
@@ -314,6 +317,9 @@ public partial class TaxiGuidanceManager
             // _icao to their PREVIOUS values instead of leaving LoadRoute's failed attempt
             // in place, so those fields can be null (a fresh session) or another airport's
             // objects (a rejected recalc) by the time this runs.
+            // Stamp only a NEW graph instance (see _graphGeneration): the same instance handed back
+            // keeps the generation it was installed under.
+            if (!ReferenceEquals(_graph, graph)) _graphGeneration = DatabaseGeneration;
             _graph = graph;
             _dataProvider = dataProvider;
             _icao = icao;
