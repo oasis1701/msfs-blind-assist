@@ -1018,6 +1018,16 @@ as long as the airport was current.
   entries by their `TerminalName` into features — never from the graph. A bare
   category header ("Parking", "Ramp", "Gates", "Stand"…) is a profile author's
   section divider, not a place, and is skipped; a group of one is skipped too.
+  A group is NAMED without the author's notes (`PlaceName`: every parenthesised
+  group, then the size-hint tail and trailing "N/A" that
+  `ParkingSpot.SpeakableTerminalName` removes) — EHAM's "K/M-Platform buffer
+  overflow (TD) N/A" is "K/M-Platform buffer overflow", and KATL's "Concourse T
+  (T1-T21)" is "Concourse T", the name OSM and the scenery give that pier, so
+  the catalog can merge the three. A header that is only notes, or only a
+  category word once they are gone ("Ramp (TD)"), is no place. The KIND is
+  still read from the header AS WRITTEN, notes included, so a kind word in a
+  note ("Ramp 5 (Cargo)") still decides it. The gate label keeps the notes:
+  there the terminal name exists to tell two stands apart.
   The **kind** is derived from the header text AND the grouped stands' own
   parking types (`KindOf`: the header's WORDS first, through the shared
   `FeatureLexicon.NamedKind` — Cargo, then Fbo, then Concourse — then a 60 %

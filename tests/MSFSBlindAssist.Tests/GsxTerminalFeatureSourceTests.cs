@@ -88,4 +88,49 @@ public class GsxTerminalFeatureSourceTests
         }));
         Assert.Equal(FeatureKind.Fbo, f.Kind);
     }
+
+    [Theory]
+    [InlineData("K/M-Platform buffer overflow (TD) N/A ", "K/M-Platform buffer overflow")]   // live EHAM header
+    [InlineData("Concourse T (T1-T21) ", "Concourse T")]                                    // KATL fixture
+    [InlineData("Delta Tech Ops (E1-21) ", "Delta Tech Ops")]                              // KATL fixture
+    [InlineData("A-Platform =< Medium ", "A-Platform")]
+    [InlineData("A-Platform =< Medium (TD)", "A-Platform")]                                // a note hiding the size-hint tail
+    [InlineData("Terminal 1 - (WIP)", "Terminal 1")]                                       // a work marker, and the dash it leaves dangling
+    [InlineData("Remote (Stands 1-4 (TD))", "Remote")]                                     // a stand range holding a note of its own
+    [InlineData("Terminal 4 - Concourse B", "Terminal 4 - Concourse B")]                  // real prose is left alone
+    [InlineData("(TD)", "")]
+    public void A_header_is_named_without_the_authors_notes(string header, string name)
+        => Assert.Equal(name, GsxTerminalFeatureSource.PlaceName(header));
+
+    [Fact]
+    public void A_kind_word_inside_an_authors_note_still_decides_the_kind()
+    {
+        // The NAME drops the note; the KIND is read from the header as grouped, notes included, so
+        // "(Cargo)" still says what the section is. The stands are gate-typed, so only the words can
+        // make it Cargo.
+        var f = Assert.Single(GsxTerminalFeatureSource.Read(new[]
+        {
+            G("Ramp 5 (Cargo)", 1, 10, 40.660, -73.790), G("Ramp 5 (Cargo)", 2, 10, 40.6604, -73.790),
+        }));
+        Assert.Equal("Ramp 5", f.Name);
+        Assert.Equal(FeatureKind.Cargo, f.Kind);
+    }
+
+    [Fact]
+    public void A_group_is_named_as_the_other_tiers_name_the_place()
+    {
+        var byName = GsxTerminalFeatureSource.Read(new[]
+        {
+            G("K/M-Platform buffer overflow (TD) N/A ", 1, 10, 52.3100, 4.7600), G("K/M-Platform buffer overflow (TD) N/A ", 2, 10, 52.3104, 4.7600),
+            G("Concourse T (T1-T21) ", 1, 10, 33.6400, -84.4250), G("Concourse T (T1-T21) ", 2, 10, 33.6404, -84.4250),
+        }).ToDictionary(f => f.Name, f => f.Kind);
+        Assert.Equal(FeatureKind.Terminal, byName["K/M-Platform buffer overflow"]);
+        // "Concourse T" is what OSM and the scenery call that pier, which is what lets the catalog merge them.
+        Assert.Equal(FeatureKind.Concourse, byName["Concourse T"]);
+    }
+
+    [Theory]
+    [InlineData("(TD)")] [InlineData("Ramp (TD)")] [InlineData("Gates N/A")]
+    public void A_header_that_is_only_notes_or_a_category_is_not_a_place(string header)
+        => Assert.Empty(GsxTerminalFeatureSource.Read(new[] { G(header, 1, 10, 1.0, 1.0), G(header, 2, 10, 1.0004, 1.0) }));
 }
