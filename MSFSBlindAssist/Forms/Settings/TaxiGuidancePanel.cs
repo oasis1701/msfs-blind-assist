@@ -493,6 +493,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         // surroundings callout with a safety case behind it — so it must not be lost when someone
         // turns the chatty one off. Unlike every other callout on this tab it is deliberately NOT
         // silenced during takeoff or landing rollout: running off the side is worst exactly there.
+        // It spans y 950-990 and the SayIntentions heading below starts at 995:
+        // TaxiGuidancePanelLayoutTests measures that no two controls on this tab overlap.
         surfaceChangeCalloutsCheckBox = new CheckBox
         {
             Text = "Tell me when I leave the paved surface",
@@ -508,7 +510,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sayIntentionsHeadingLabel = new Label
         {
             Text = "SayIntentions",
-            Location = new Point(20, 973),
+            Location = new Point(20, 995),
             Size = new Size(450, 20),
             AccessibleName = "SayIntentions section"
         };
@@ -522,7 +524,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sayIntentionsAutoStartCheckBox = new CheckBox
         {
             Text = "SayIntentions import starts taxi &guidance immediately",
-            Location = new Point(20, 998),
+            Location = new Point(20, 1020),
             Size = new Size(450, 40),
             AccessibleName = "SayIntentions import starts taxi guidance immediately",
             AccessibleDescription = "When checked, a SayIntentions import starts guidance immediately "
