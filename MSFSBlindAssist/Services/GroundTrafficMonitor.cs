@@ -819,9 +819,14 @@ public sealed class GroundTrafficMonitor : IDisposable
             }
 
             if (movingAway) { ac.CurrentZone = newZone; continue; }
-            if (!GroundTrafficLogic.ShouldAnnounceEscalation(newZone, ac.CurrentZone, ac.LastSpokenZone, ac.LastAlertTime, now))
+            if (!GroundTrafficLogic.ShouldAnnounceEscalation(newZone, ac.CurrentZone, ac.LastSpokenZone,
+                    ac.LastAlertTime, now, v.DistFt, ac.LastSpokenZoneDistFt))
             {
-                ac.CurrentZone = newZone;
+                // A de-escalation (or no change) and a withheld Awareness ping are recorded silently. A
+                // withheld ESCALATION into Caution/Warning is not: it is judged again next evaluation, so it
+                // speaks once the aircraft has closed by EscalationReclosureFt or the window has passed,
+                // instead of being swallowed for good (PR #247 B1 review I3).
+                if (newZone <= ac.CurrentZone || newZone == GroundZone.Awareness) ac.CurrentZone = newZone;
                 continue;
             }
 
@@ -845,8 +850,15 @@ public sealed class GroundTrafficMonitor : IDisposable
                 announcement = $"{name}, {dir}, {distStr}{motionPart}.";
             }
             var zone = newZone;
+            double zoneDistFt = v.DistFt;
             candidates.Add(new TrafficCallout(kind, v.DistFt, announcement,
-                () => { ac.CurrentZone = zone; ac.LastSpokenZone = zone; ac.LastAlertTime = now; }));
+                () =>
+                {
+                    ac.CurrentZone = zone;
+                    ac.LastSpokenZone = zone;
+                    ac.LastSpokenZoneDistFt = zoneDistFt;
+                    ac.LastAlertTime = now;
+                }));
         }
 
         EvaluateQueuePosition(ctx, queueCandidates, haveRoute, ownRouteM, ownGS, candidates);
@@ -1401,6 +1413,8 @@ internal sealed class TrackedGroundAircraft
     public GroundZone CurrentZone      = GroundZone.None;
     /// <summary>The zone of the last zone callout actually spoken for this aircraft.</summary>
     public GroundZone LastSpokenZone   = GroundZone.None;
+    /// <summary>The distance (feet) of that callout; NaN until one is spoken.</summary>
+    public double LastSpokenZoneDistFt = double.NaN;
     /// <summary>When any callout for this aircraft was last spoken.</summary>
     public DateTime LastAlertTime      = DateTime.MinValue;
     public DateTime LastSeenTime       = DateTime.UtcNow;

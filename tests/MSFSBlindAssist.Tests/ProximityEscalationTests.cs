@@ -74,6 +74,43 @@ public class ProximityEscalationTests
         => Assert.True(GroundTrafficLogic.ShouldAnnounceEscalation(
             GroundZone.Caution, GroundZone.Awareness, GroundZone.None, T0, T0.AddSeconds(3)));
 
+    // ── re-closing after a de-escalation (PR #247 B1 review I3) ─────────────────────────
+    // "Stop" is spoken at 300 ft; the pilot slows, the speed-scaled boundary shrinks and the zone drops
+    // silently; the pilot creeps back in within 15 s. Unchanged distance is boundary flicker; a gap
+    // 50 ft smaller than when that zone was spoken is the pilot closing on it again.
+
+    [Theory]
+    [InlineData(260.0, false)]
+    [InlineData(250.0, true)]    // exactly EscalationReclosureFt closer
+    [InlineData(200.0, true)]
+    public void A_warning_re_entry_is_spoken_again_once_the_gap_has_closed_by_fifty_feet(double distFt, bool expected)
+        => Assert.Equal(expected, GroundTrafficLogic.ShouldAnnounceEscalation(
+            GroundZone.Warning, GroundZone.Caution, GroundZone.Warning, T0, T0.AddSeconds(5), distFt, 300.0));
+
+    [Theory]
+    [InlineData(260.0, false)]
+    [InlineData(250.0, true)]
+    [InlineData(200.0, true)]
+    public void A_caution_re_entry_is_spoken_again_once_the_gap_has_closed_by_fifty_feet(double distFt, bool expected)
+        => Assert.Equal(expected, GroundTrafficLogic.ShouldAnnounceEscalation(
+            GroundZone.Caution, GroundZone.Awareness, GroundZone.Caution, T0, T0.AddSeconds(5), distFt, 300.0));
+
+    [Fact]
+    public void Awareness_is_not_re_announced_by_closing()
+        => Assert.False(GroundTrafficLogic.ShouldAnnounceEscalation(
+            GroundZone.Awareness, GroundZone.None, GroundZone.Awareness, T0, T0.AddSeconds(10), 100.0, 300.0));
+
+    [Fact]
+    public void Without_both_distances_a_re_entry_keeps_the_window_rule()
+    {
+        Assert.False(GroundTrafficLogic.ShouldAnnounceEscalation(
+            GroundZone.Warning, GroundZone.Caution, GroundZone.Warning, T0, T0.AddSeconds(5), double.NaN, 300.0));
+        Assert.False(GroundTrafficLogic.ShouldAnnounceEscalation(
+            GroundZone.Warning, GroundZone.Caution, GroundZone.Warning, T0, T0.AddSeconds(5), 100.0, double.NaN));
+        Assert.True(GroundTrafficLogic.ShouldAnnounceEscalation(
+            GroundZone.Warning, GroundZone.Caution, GroundZone.Warning, T0, T0.AddSeconds(15), double.NaN, double.NaN));
+    }
+
     [Fact]
     public void Staying_in_or_dropping_a_zone_is_never_announced()
     {
