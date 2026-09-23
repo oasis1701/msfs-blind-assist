@@ -182,6 +182,37 @@ public class TaxiGraph
     private readonly Dictionary<string, List<int>> _taxiwayNodeIndex = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
+    /// Serialises this graph's post-Build STRUCTURE changes against the one query that can run off
+    /// the UI thread (GC-1, PR #230 review).
+    ///
+    /// <para>After <see cref="Build"/> returns, exactly one of this class's own methods changes the
+    /// structure: the painted holding-point projection (<see cref="InsertHoldingPointNodeOnEdge"/> →
+    /// <see cref="SplitEdgeAt"/>, reached through NamedHoldingPointResolver.SnapOrInsert).
+    /// TaxiAssistForm runs it on the UI thread — from its holding-point picker, its
+    /// default-holding-point call-out and its Progressive Taxi named-holding-point list — on the SAME
+    /// instance it hands TaxiGuidanceManager.LoadRoute as <c>prebuiltGraph</c>. And exactly one query
+    /// runs on a thread-pool thread against a SHARED graph: <see cref="DescribeLocation"/>, reached
+    /// through TaxiGuidanceManager.DescribeCurrentLocation from Alt+L's surroundings lookup, which
+    /// prefers that very graph while a route is loaded for the airport. Unserialised, the query
+    /// enumerated Adjacency while a split added to it ("Collection was modified", spoken as
+    /// "Surroundings lookup failed.") or measured against an edge already removed and not yet
+    /// replaced.</para>
+    ///
+    /// <para>Both hold this lock: the query for its whole run, INCLUDING its lazily built cell index;
+    /// the projection for its whole scan-then-split (and <see cref="SplitEdgeAt"/> takes it again —
+    /// Monitor is re-entrant — so no mutation depends on its caller remembering). UI-thread readers
+    /// (routing, guidance, the taxi form's own lookups) do not take it and need not: every post-Build
+    /// mutation in the app also runs on the UI thread, so they can never overlap one. A new query
+    /// reachable from a pool thread, or a new post-Build mutation, MUST take it — and since the lock
+    /// is private, both belong inside this class. (<see cref="Nodes"/> and <see cref="Adjacency"/> are
+    /// public, and hand-built test graphs and the standalone probes write them directly; each does so
+    /// on a single thread, which is the only reason that needs no lock.) Nothing takes another lock
+    /// while holding this one, and TaxiGuidanceManager releases its _stateLock before asking the
+    /// graph, so the two never nest.</para>
+    /// </summary>
+    private readonly object _structureLock = new();
+
+    /// <summary>
     /// Build-time-only dedup sidecar for <see cref="RegisterTaxiwayNode"/>: mirrors the node-id
     /// SET for each taxiway in <see cref="_taxiwayNodeIndex"/> so the per-registration "already
     /// added?" check is O(1) instead of an O(n) <see cref="List{T}.Contains"/> scan (large airports
@@ -1242,6 +1273,17 @@ public class TaxiGraph
     }
 
     /// <summary>
+    /// Node ids created by <see cref="InsertHoldingPointNodeOnEdge"/>. These are placements for
+    /// PAINTED HOLD LINES, never junctions, so any search that is looking for real navdata
+    /// topology must skip them — see the skip in <see cref="ResolveHoldingPointEntries"/>.
+    /// </summary>
+    private readonly HashSet<int> _holdingPointProjectionNodes = new();
+
+    /// <summary>True when the node was inserted by the holding-point edge projection.</summary>
+    public bool IsHoldingPointProjectionNode(int nodeId) =>
+        _holdingPointProjectionNodes.Contains(nodeId);
+
+    /// <summary>
     /// Subdivides the taxi edge nearest <paramref name="lat"/>/<paramref name="lon"/> at the
     /// perpendicular projection of that point and returns the inserted node — the fallback that
     /// lets a PAINTED holding point which sits on the pavement but between two navdata vertices
@@ -1265,19 +1307,21 @@ public class TaxiGraph
     /// holding point. A projection landing on (or within the merge threshold of) an endpoint is
     /// refused — that case is already the node snap's, and splitting there would create a
     /// zero-length edge.</para>
+    ///
+    /// <para>Holds <see cref="_structureLock"/> for the whole scan-then-split: this is the one
+    /// post-Build change to the graph, TaxiAssistForm runs it on the UI thread on the very instance
+    /// guidance may be using, and <see cref="DescribeLocation"/> may be reading that instance on a
+    /// thread-pool thread at the same moment. The edge the scan picks must still be the edge
+    /// <see cref="SplitEdgeAt"/> replaces, and no reader may see the graph between the two.</para>
     /// </summary>
-    /// <summary>
-    /// Node ids created by <see cref="InsertHoldingPointNodeOnEdge"/>. These are placements for
-    /// PAINTED HOLD LINES, never junctions, so any search that is looking for real navdata
-    /// topology must skip them — see the skip in <see cref="ResolveHoldingPointEntries"/>.
-    /// </summary>
-    private readonly HashSet<int> _holdingPointProjectionNodes = new();
-
-    /// <summary>True when the node was inserted by the holding-point edge projection.</summary>
-    public bool IsHoldingPointProjectionNode(int nodeId) =>
-        _holdingPointProjectionNodes.Contains(nodeId);
-
     public TaxiNode? InsertHoldingPointNodeOnEdge(double lat, double lon, double maxPerpMeters)
+    {
+        lock (_structureLock)
+            return InsertHoldingPointNodeOnEdgeLocked(lat, lon, maxPerpMeters);
+    }
+
+    /// <summary>The body of <see cref="InsertHoldingPointNodeOnEdge"/>; the caller holds <see cref="_structureLock"/>.</summary>
+    private TaxiNode? InsertHoldingPointNodeOnEdgeLocked(double lat, double lon, double maxPerpMeters)
     {
         TaxiEdge? bestEdge = null;
         double bestPerp = maxPerpMeters;
@@ -1332,8 +1376,19 @@ public class TaxiGraph
     /// that taxiway, like every other vertex on it) and its endpoint's ComponentId — correct by
     /// construction, since a subdivision cannot change reachability, and needed because
     /// AssignConnectedComponents has already run by the time holding points resolve.
+    ///
+    /// <para>Holds <see cref="_structureLock"/> itself. Its only caller,
+    /// <see cref="InsertHoldingPointNodeOnEdge"/>, already does — Monitor is re-entrant — but no
+    /// structure change may depend on its caller remembering.</para>
     /// </summary>
     private TaxiNode SplitEdgeAt(TaxiEdge fwd, double lat, double lon)
+    {
+        lock (_structureLock)
+            return SplitEdgeAtLocked(fwd, lat, lon);
+    }
+
+    /// <summary>The body of <see cref="SplitEdgeAt"/>; the caller holds <see cref="_structureLock"/>.</summary>
+    private TaxiNode SplitEdgeAtLocked(TaxiEdge fwd, double lat, double lon)
     {
         int aId = fwd.FromNodeId, bId = fwd.ToNodeId;
         var a = Nodes[aId];
@@ -2087,10 +2142,22 @@ public class TaxiGraph
     ///   4. Taxiway edge within half-width+3 m perpendicular distance (on a named taxiway).
     ///   5. Nearest node's first taxiway name as a fallback (within 60 m).
     ///
-    /// This does NOT depend on guidance being active — it's a pure query against the graph.
+    /// This does NOT depend on guidance being active, and it changes nothing a caller can see —
+    /// but it is NOT free of shared state. It builds this graph's cell index on first use, and it
+    /// runs on a thread-pool thread for Alt+L (TaxiGuidanceManager.DescribeCurrentLocation) against
+    /// the ACTIVE guidance graph, which TaxiAssistForm subdivides on the UI thread whenever it
+    /// projects a painted holding point (<see cref="InsertHoldingPointNodeOnEdge"/>). So it holds
+    /// <see cref="_structureLock"/> for its whole run.
     /// Caller is responsible for prepending " at ICAO" if desired.
     /// </summary>
     public string DescribeLocation(double lat, double lon)
+    {
+        lock (_structureLock)
+            return DescribeLocationLocked(lat, lon);
+    }
+
+    /// <summary>The body of <see cref="DescribeLocation"/>; the caller holds <see cref="_structureLock"/>.</summary>
+    private string DescribeLocationLocked(double lat, double lon)
     {
         const double PARKING_RADIUS_M = 40.0;
         const double RUNWAY_THRESHOLD_RADIUS_M = 50.0;
@@ -3292,6 +3359,7 @@ public class TaxiGraph
     /// Indexes every edge under each cell its SEGMENT passes through — not merely its endpoints'
     /// cells, which is the whole point: a segment longer than a cell must be findable from the
     /// middle. Walks the segment at half-cell steps, so no crossed cell is skipped.
+    /// Caller holds <see cref="_structureLock"/>.
     /// </summary>
     private void EnsureEdgeCellIndex()
     {
@@ -3339,6 +3407,7 @@ public class TaxiGraph
     /// (ENSB at 78°N: cos 78° ~ 0.21, so a latitude-blind cell count under-covers longitude by
     /// nearly five times). The result is a strict SUPERSET of a true circle of that radius — the
     /// caller filters by real perpendicular distance, so extra candidates cost only arithmetic.
+    /// Caller holds <see cref="_structureLock"/> for the whole enumeration.
     /// </summary>
     private IEnumerable<TaxiEdge> EdgesNear(double lat, double lon, double radiusMetres)
     {

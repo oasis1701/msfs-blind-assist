@@ -1491,7 +1491,11 @@ public partial class TaxiGuidanceManager : IDisposable
         // OnAirportDataUpdated (which nulls the cache) and the locked GetStatusAnnouncement
         // overload — without it, OnAirportDataUpdated could null _whereAmICachedGraph between
         // the read here and a later use, or tear the (graph, icao) pair. DescribeLocation runs
-        // OUTSIDE the lock on the local graph reference (a pure query, no shared state).
+        // OUTSIDE the lock on the local graph reference, but it is NOT free of shared state: this
+        // method runs on a thread-pool thread for Alt+L, and `graph` can be the ACTIVE one, which
+        // TaxiAssistForm subdivides on the UI thread when it projects a painted holding point.
+        // TaxiGraph serialises that pair itself (TaxiGraph._structureLock) — taken only after
+        // _stateLock is released here, so the two locks never nest.
         lock (_stateLock)
         {
             // ShouldRebuildGateList, not a plain compare: it rebuilds on an upgrade or a
@@ -1620,8 +1624,7 @@ public partial class TaxiGuidanceManager : IDisposable
                 _whereAmICachedGraph, _whereAmICachedIcao,
                 _runwayShapeMemo);
         }
-        // Outside the lock on a local reference — the shape list is immutable once built, exactly
-        // as DescribeCurrentLocation runs DescribeLocation on its own local graph.
+        // Outside the lock on a local reference — the shape list is immutable once built.
         return shapes == null ? null : RunwayPavement.IsOnPavement(lat, lon, shapes);
     }
 
@@ -1714,9 +1717,13 @@ public partial class TaxiGuidanceManager : IDisposable
     /// Online taxiway-name augmentation for <paramref name="icao"/> was just (re)fetched. Drop any
     /// cached Where-Am-I graph built from the OLDER (pre-augmentation) data so the next query rebuilds
     /// with the fresh names — keeps Where-Am-I real-time without a manual refresh. Invoked from the
-    /// background fetch thread, so it MUST take _stateLock to serialize against the UI-thread
-    /// Where-Am-I reader/writer (DescribeCurrentLocation) and the locked GetStatusAnnouncement
-    /// overload — both touch the same _whereAmICachedGraph/_whereAmICachedIcao pair.
+    /// background fetch thread, so it MUST take _stateLock to serialize against every other method
+    /// that touches the same _whereAmICachedGraph/_whereAmICachedIcao pair — all four touch it only
+    /// under that lock: DescribeCurrentLocation (Where-Am-I; on the UI thread for Alt+Y, a
+    /// thread-pool thread for Alt+L) and TryDetectRunwayUnderAircraft (Takeoff Assist's runway
+    /// detection) read the pair and cache the graph they build into it (StoreWhereAmIGraph);
+    /// IsOnRunwayPavement (the passing-callout runway probe) reads it; ClearWhereAmICache (a
+    /// database switch) clears it.
     /// </summary>
     public void OnAirportDataUpdated(string icao)
     {

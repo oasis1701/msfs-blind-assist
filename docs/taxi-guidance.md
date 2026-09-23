@@ -390,6 +390,15 @@ A single `_stateLock` in `TaxiGuidanceManager` serializes all of these. Without 
 
 `TaxiSteeringTone` has its own `_lock`. `UpdateHeadingError`, `Pause`, `Resume`, `Start`, `Stop` all acquire it so that `SetPan` / `UpdateVolume` can't race with `Dispose` freeing the underlying NAudio buffer. `ClearWhereAmICache` takes `_stateLock` like its twin `OnAirportDataUpdated` — both mutate the same `_whereAmICachedGraph` / `_whereAmICachedIcao` pair, and an unlocked write here could race a locked read/build elsewhere and leave the pair inconsistent (graph set but ICAO stale, or vice versa). `TryGetRunwayLineupReference` likewise takes `_stateLock` — it reads `_state`, `_hasLineupTarget`, `_isRunwayLineup`, and the lineup lat/lon/heading fields, the same fields every other locked accessor protects.
 
+`TaxiGraph` carries a lock of its own, one per graph instance: `_structureLock`. `DescribeLocation`
+holds it for its whole run — `Alt+L`'s surroundings lookup runs it on a thread-pool thread, through
+`DescribeCurrentLocation`, against the ACTIVE guidance graph whenever the airport matches — and the
+painted holding-point projection (`InsertHoldingPointNodeOnEdge` → `SplitEdgeAt`, the only change
+`TaxiGraph`'s own code makes to a graph after `Build`), which `TaxiAssistForm` runs on the UI thread
+on that same instance, holds it for its whole scan-then-split. `DescribeCurrentLocation` releases
+`_stateLock` before it asks the graph, and nothing takes another lock while holding
+`_structureLock`, so the two never nest. See **Threading** under "Where Am I implementation".
+
 ## Steering Tone
 
 The tone is the "taxiway localizer" — a continuous audio signal that encodes the correction needed to stay aligned with the active segment's bearing.
@@ -715,6 +724,23 @@ The actual classification happens in `TaxiGraph.DescribeLocation(lat, lon)`:
 6. **Nearest node** (≤ 60 m) with at least one taxiway name → `Near taxiway X`.
 
 Distances use equirectangular projection (sub-cm accuracy at taxi scale); the edge scan clamps to segment endpoints, the runway scan tests the runway's extent.
+
+**Threading.** `DescribeLocation` changes nothing a caller can see, but it is not free of shared
+state. `Alt+L`'s surroundings lookup runs `DescribeCurrentLocation` on a thread-pool thread, and the
+manager hands it the ACTIVE guidance graph when the airport matches — the very instance
+`TaxiAssistForm` passed to `LoadRoute` as `prebuiltGraph`, which the form keeps SUBDIVIDING on the UI
+thread whenever it projects a painted holding point onto a taxi edge
+(`NamedHoldingPointResolver.SnapOrInsert` → `TaxiGraph.InsertHoldingPointNodeOnEdge` → `SplitEdgeAt`;
+reached from the holding-point picker, the default-holding-point call-out and the Progressive Taxi
+named-holding-point list). Unserialised, the lookup enumerated the adjacency lists while a split
+added to them — "Collection was modified", spoken as "Surroundings lookup failed." — or measured
+against an edge already removed and not yet replaced. The graph serialises the two with its own lock
+(`TaxiGraph._structureLock`): `DescribeLocation` holds it for its whole run, including the lazy build
+of its index; `InsertHoldingPointNodeOnEdge` for its whole scan-then-split, and `SplitEdgeAt` takes it
+again (re-entrant). UI-thread readers — routing, guidance, the form's own lookups — do not take it,
+because the only post-`Build` mutation runs on the UI thread too. A new query reachable from a pool
+thread, or a new post-`Build` mutation, must take it — inside `TaxiGraph`, since the lock is private.
+The cost: a holding-point pick on the UI thread can wait for one in-flight `Alt+L` query to finish.
 
 ### Why `DescribeLocation` indexes EDGES, not nodes
 
