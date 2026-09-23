@@ -100,6 +100,56 @@ public class SurroundingsCatalogCacheTests
     }
 
     [Fact]
+    public async Task A_stale_build_that_finishes_after_its_replacement_was_stored_does_not_overwrite_it()
+    {
+        // The reverse of the interleaving above: the REPLACEMENT lands first and is cached, then the
+        // build the invalidation overtook finishes. It finds no in-flight entry of its own — the
+        // replacement removed its own on the way out — and must leave the cached catalog alone.
+        var started = new[] { Gate(), Gate() };
+        var release = new[] { Gate(), Gate() };
+        int builds = 0;
+        var cache = new SurroundingsCatalogCache
+        {
+            BuildSupplier = _ =>
+            {
+                int n = Interlocked.Increment(ref builds);
+                started[n - 1].SetResult();
+                release[n - 1].Task.Wait(Wait);
+                return One($"build {n}");
+            },
+        };
+
+        var first = cache.GetAsync("KTIW");
+        await started[0].Task;
+        cache.Invalidate("KTIW");                       // the OSM fetch landed
+        var second = cache.GetAsync("KTIW");
+        await started[1].Task;
+
+        release[1].SetResult();                         // the replacement finishes FIRST…
+        Assert.Equal("build 2", (await second)!.Features[0].Name);
+        release[0].SetResult();                         // …then the build it replaced
+        Assert.Equal("build 1", (await first)!.Features[0].Name);   // its own awaiter still gets it
+
+        Assert.True(cache.TryGetCached("KTIW", out var cached));
+        Assert.Equal("build 2", cached!.Features[0].Name);
+        Assert.Equal("build 2", (await cache.GetAsync("KTIW"))!.Features[0].Name);
+        Assert.Equal(2, builds);
+    }
+
+    [Fact]
+    public async Task An_invalidation_with_no_build_running_does_not_discard_the_next_build()
+    {
+        int builds = 0;
+        var cache = new SurroundingsCatalogCache { BuildSupplier = _ => { builds++; return One($"build {builds}"); } };
+        await cache.GetAsync("KTIW");
+        cache.Invalidate("KTIW");                       // nothing in flight: the next build is simply current
+        Assert.Equal("build 2", (await cache.GetAsync("KTIW"))!.Features[0].Name);
+        Assert.True(cache.TryGetCached("KTIW", out var cached));
+        Assert.Equal("build 2", cached!.Features[0].Name);
+        Assert.Equal(2, builds);
+    }
+
+    [Fact]
     public async Task A_failure_that_lands_after_a_database_switch_is_not_remembered()
     {
         // RefreshDatabaseProvider Clear()s the cache and pulls the provider out from under whatever
@@ -180,7 +230,7 @@ public class SurroundingsCatalogCacheTests
     [Fact]
     public async Task A_degraded_build_that_straddles_an_invalidation_is_still_discarded()
     {
-        // The degraded flag must not buy a stale build a way back in: the generation check still
+        // The degraded flag must not buy a stale build a way back in: the in-flight check still
         // decides whether anything is written at all, and only then does the flag decide how long.
         int builds = 0; using var started = new ManualResetEventSlim(); using var release = new ManualResetEventSlim();
         var cache = new SurroundingsCatalogCache
@@ -203,4 +253,14 @@ public class SurroundingsCatalogCacheTests
         Assert.Null(await cache.GetAsync(" "));
         Assert.False(cache.TryGetCached("", out _));
     }
+
+    [Theory]
+    [InlineData(true, false, "stored")]
+    [InlineData(false, true, "discarded (cache cleared mid-build)")]
+    [InlineData(false, false, "discarded (invalidated mid-build)")]
+    public void A_discarded_build_never_reads_as_cached_and_says_what_overtook_it(bool stored, bool cleared, string expected)
+        // The one debug line a build writes is how "the OSM buildings never appear" gets diagnosed,
+        // so its wording is pinned. The epoch Clear() bumps survives ONLY to tell cleared from
+        // invalidated; whether a build is stored is decided by its in-flight identity.
+        => Assert.Equal(expected, SurroundingsCatalogCache.DescribeOutcome(stored, cleared));
 }

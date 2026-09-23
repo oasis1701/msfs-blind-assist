@@ -1981,7 +1981,7 @@ public partial class MainForm
     /// lookup but is never cached. That guarantee stops at the catalog: the
     /// cache's BuildSupplier (BuildSurroundings) reads the `airportDataProvider` FIELD on its own
     /// pool thread and so may see the new database. Harmless, because RefreshDatabaseProvider
-    /// Clear()s the cache and the cache's generation check then discards a build that straddled
+    /// Clear()s the cache and the cache's in-flight check then discards a build that straddled
     /// the switch instead of caching it. `compose` runs on the pool thread and returns the action
     /// to run on the UI thread.
     /// </summary>

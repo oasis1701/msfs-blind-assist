@@ -1119,18 +1119,26 @@ change.
   each used to carry an in-flight guard of their own. `TryGetCached` is the
   non-building counterpart for a UI-thread caller that must not itself trigger
   that build.
-- **Generation-checked.** A finished build is written back only if nothing
-  invalidated that airport while it ran. The old unconditional store lost every
-  `Invalidate`/`Clear` that landed mid-build — an OSM-less catalog (the 3 s
-  fetch gave up, the answer arrived at 3.2 s) or an old-database one was then
-  served for the rest of the session. The awaiter still gets its result; it is
-  simply not cached, so the next `GetAsync` rebuilds.
-- **Failure memory, also generation-checked.** A build that threw is remembered
+- **Written back only by the airport's in-flight build.** A finished build is
+  stored only if nothing invalidated that airport while it ran — which is
+  exactly "it is still that airport's in-flight build": `Invalidate` and
+  `Clear` both drop the in-flight entry, and a replacement build is a different
+  task, so ONE identity test decides both whether to clear the entry and
+  whether to write anything back (a per-ICAO generation counter used to keep
+  the same fact a second time, and was never pruned). The old unconditional
+  store lost every `Invalidate`/`Clear` that landed mid-build — an OSM-less
+  catalog (the fetch gave up, the answer arrived moments later) or an
+  old-database one was then served for the rest of the session. The awaiter
+  still gets its result; it is simply not cached, so the next `GetAsync`
+  rebuilds. A build overtaken by its replacement — even one that finishes
+  AFTER the replacement was stored — never overwrites it.
+- **Failure memory, under the same check.** A build that threw is remembered
   for `FailureMemory` (60 s) and answered from whatever was cached before, so a
-  2 s poll cannot hammer a broken build. The generation check applies to the
-  failure as well: a database switch pulls the provider out from under a
-  running build, which is exactly what makes it throw, and remembering THAT
-  failure would blank the airport for a minute on the new database.
+  2 s poll cannot hammer a broken build. Only a build that is still the
+  airport's in-flight build records its failure: a database switch pulls the
+  provider out from under a running build, which is exactly what makes it
+  throw, and remembering THAT failure would blank the airport for a minute on
+  the new database.
 - **Degraded lifetime.** A build that went WITHOUT an optional tier —
   `SurroundingsBuild.Degraded`, set when `SurroundingsTier.Read` caught an
   exception or when the OSM store answered `Pending`/`Failed` rather than
@@ -1143,14 +1151,17 @@ change.
   the catalog for the session, and nothing asked the store again once its own
   failure memory ran out. Degraded is never inferred from an EMPTY list: an
   airport can legitimately have no mapped buildings. While the rebuild runs,
-  `GetAsync`'s degraded paths still serve the stored entry and `TryGetCached`
-  reports a miss, which costs the monitor a poll or two — the same as a first
-  build.
+  `TryGetCached` reports a miss, which costs the monitor a poll or two — the
+  same as a first build — and `GetAsync` AWAITS the rebuild rather than serving
+  the expired entry; only a rebuild that FAILS falls back to the stored one (a
+  stale catalog beats none).
 - **Say which happened.** The one debug line a build writes ends `stored`,
   `discarded (invalidated mid-build)` or `discarded (cache cleared mid-build)`,
-  plus `, degraded` when it is. A discarded build must never read as though it
-  had been cached — that line is how "the OSM buildings never appear" gets
-  diagnosed.
+  plus `, degraded` when it is (`SurroundingsCatalogCache.DescribeOutcome`,
+  pinned by a test). A discarded build must never read as though it had been
+  cached — that line is how "the OSM buildings never appear" gets diagnosed.
+  The epoch `Clear()` bumps is kept for this wording alone; whether a build is
+  written back is decided by the in-flight check above.
 
 ### Which airport — `CurrentAirport.Resolve`
 
