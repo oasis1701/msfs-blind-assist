@@ -2002,11 +2002,12 @@ public partial class MainForm
     private readonly LatestRequest _lookAroundRequests = new(), _surroundingsWindowRequests = new();
 
     private sealed record SurroundingsLookup(string Icao, MSFSBlindAssist.Navigation.Surroundings.AirportFeatureCatalog? Catalog,
-        SimConnectManager.AircraftPosition Position, double HeadingTrue, string WhereAmI);
+        SimConnectManager.AircraftPosition Position, double HeadingTrue, string WhereAmI, long PressedAt);
 
     /// <summary>
-    /// The ONE path both surroundings hotkeys take: guards → position → pool hop → which airport →
-    /// catalog → UI marshal. The provider this method's OWN work uses — the airport resolution and
+    /// The ONE path both surroundings hotkeys take: guards → the PRESS's timestamp → position →
+    /// pool hop → which airport → catalog → UI marshal, every spoken line timed from that press
+    /// (SpeakLookupLine). The provider this method's OWN work uses — the airport resolution and
     /// DescribeCurrentLocation — is captured in a LOCAL on the UI thread, so a database switch
     /// cannot swap it out from under a lookup in flight. The manager's DatabaseGeneration is captured
     /// beside it, so a Where-Am-I graph built through that provider after a switch still answers this
@@ -2025,6 +2026,11 @@ public partial class MainForm
         // after a database switch answers this lookup but is never cached.
         long databaseGeneration = taxiGuidanceManager.DatabaseGeneration;
         if (!_lastOnGround) { announcer.AnnounceImmediate("In flight."); return; }
+
+        // THE PRESS, taken on the UI thread before anything is asked of the simulator. Every line
+        // this lookup speaks later is timed from here (SpeakLookupLine): within
+        // SurroundingsLookupNotice.Delay of the press it may interrupt, later it waits its turn.
+        long pressedAt = System.Diagnostics.Stopwatch.GetTimestamp();
 
         simConnectManager.RequestAircraftPositionAsync(position =>
         {
@@ -2047,7 +2053,7 @@ public partial class MainForm
                 try
                 {
                     string? icao = MSFSBlindAssist.Services.CurrentAirport.Resolve(provider, position.Latitude, position.Longitude);
-                    if (icao == null) ui = () => announcer.AnnounceImmediate("No airport nearby.");
+                    if (icao == null) ui = () => SpeakLookupLine(pressedAt, "No airport nearby.");
                     else
                     {
                         string where = needWhereAmI ? taxiGuidanceManager.DescribeCurrentLocation(provider, icao, position.Latitude, position.Longitude, databaseGeneration) : "";
@@ -2062,13 +2068,13 @@ public partial class MainForm
                         var catalog = await pending.ConfigureAwait(false);
                         // AircraftPosition carries degrees (GroundTrafficMonitor adds these two the same way).
                         double hdgTrue = MSFSBlindAssist.Services.RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
-                        ui = compose(new SurroundingsLookup(icao, catalog, position, hdgTrue, where));
+                        ui = compose(new SurroundingsLookup(icao, catalog, position, hdgTrue, where, pressedAt));
                     }
                 }
                 catch (Exception ex)
                 {
                     Log.Warn("Surroundings", $"lookup failed: {ex.Message}");
-                    ui = () => announcer.AnnounceImmediate("Surroundings lookup failed.");
+                    ui = () => SpeakLookupLine(pressedAt, "Surroundings lookup failed.");
                 }
                 SafeBeginInvoke(() => { if (requests.IsLatest(ticket)) ui(); });
             });
@@ -2084,7 +2090,7 @@ public partial class MainForm
         string text = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.Compose(
             l.WhereAmI, l.Icao, l.Catalog, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue,
             m => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m));
-        return () => announcer.AnnounceImmediate(text);
+        return () => SpeakLookupLine(l.PressedAt, text);
     });
 
     /// <summary>
@@ -2104,12 +2110,12 @@ public partial class MainForm
         {
             string Fmt(double m) => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m);
             if (l.Catalog == null || (l.Catalog.Features.Count == 0 && l.Catalog.Facts.Length == 0))
-                return () => announcer.AnnounceImmediate($"No surroundings data for {l.Icao}.");
+                return () => SpeakLookupLine(l.PressedAt, $"No surroundings data for {l.Icao}.");
             var sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
                 l.Icao, l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt);
             // Nothing to list → SPEAK it; never open a window onto an empty list.
             if (sections.Count == 0)
-                return () => announcer.AnnounceImmediate($"Nothing within {Fmt(MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.WindowRadiusMetres)}.");
+                return () => SpeakLookupLine(l.PressedAt, $"Nothing within {Fmt(MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.WindowRadiusMetres)}.");
             return () =>
             {
                 // One window at a time, and the replacement INHERITS the old window's handle —
@@ -2128,6 +2134,21 @@ public partial class MainForm
                 surroundingsForm.Show();
             };
         });
+    }
+
+    /// <summary>
+    /// Speaks one line of a surroundings lookup — its answer, or its error/empty line — the way
+    /// SurroundingsLookupNotice.Delivery decides from how long ago the key was pressed: interrupting
+    /// only while it is still the press's own moment, queued once it is late enough that the pilot
+    /// may be hearing something newer (review item ML-1). UI thread only: it reads
+    /// announcer.Suppressed and speaks.
+    /// </summary>
+    private void SpeakLookupLine(long pressedAt, string text)
+    {
+        var delivery = MSFSBlindAssist.Services.SurroundingsLookupNotice.Delivery(
+            System.Diagnostics.Stopwatch.GetElapsedTime(pressedAt), announcer.Suppressed);
+        if (delivery == MSFSBlindAssist.Services.SurroundingsLookupDelivery.Immediate) announcer.AnnounceImmediate(text);
+        else announcer.Announce(text);
     }
 
     /// <summary>

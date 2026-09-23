@@ -39,4 +39,30 @@ public class SurroundingsLookupNoticeTests
         // still hear it before the catalog build's own OSM wait (OnlineFeatureStore.CatalogWait) is up.
         => Assert.InRange(SurroundingsLookupNotice.Delay, TimeSpan.FromSeconds(1),
                           OnlineFeatureStore.CatalogWait - TimeSpan.FromSeconds(0.8));
+
+    [Fact]
+    public void A_line_inside_the_delay_interrupts_like_any_hotkey_answer()
+    {
+        Assert.Equal(SurroundingsLookupDelivery.Immediate, SurroundingsLookupNotice.Delivery(TimeSpan.Zero, announcerSuppressed: false));
+        Assert.Equal(SurroundingsLookupDelivery.Immediate,
+            SurroundingsLookupNotice.Delivery(SurroundingsLookupNotice.Delay - TimeSpan.FromMilliseconds(1), announcerSuppressed: false));
+    }
+
+    [Fact]
+    public void A_line_from_the_delay_on_is_queued_so_it_cannot_cut_off_a_newer_instruction()
+    {
+        // A cold lookup takes 3-10 s. In that time the pilot can have been told "Stop. Hold short of
+        // runway 27L." — spoken interrupting — and an interrupting answer cut it off mid-word. The
+        // queued "Looking around." notice fires at exactly this delay, so a late answer also lands
+        // behind the notice instead of over it.
+        Assert.Equal(SurroundingsLookupDelivery.Queued, SurroundingsLookupNotice.Delivery(SurroundingsLookupNotice.Delay, announcerSuppressed: false));
+        Assert.Equal(SurroundingsLookupDelivery.Queued, SurroundingsLookupNotice.Delivery(TimeSpan.FromSeconds(8), announcerSuppressed: false));
+    }
+
+    [Fact]
+    public void A_late_line_still_interrupts_while_the_announcer_is_suppressed_because_a_queued_one_is_dropped()
+        // ScreenReaderAnnouncer.Announce returns without speaking while Suppressed (a first-detect
+        // grace window); AnnounceImmediate does not. A pilot who pressed a key must never hear nothing.
+        => Assert.Equal(SurroundingsLookupDelivery.Immediate,
+            SurroundingsLookupNotice.Delivery(TimeSpan.FromSeconds(8), announcerSuppressed: true));
 }

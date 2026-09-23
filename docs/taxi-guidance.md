@@ -1265,8 +1265,10 @@ had just refused, chosen by the metric this exists to retire.
 ### Look around — output `]` then `Alt+L`
 
 Ground-only, same `_lastOnGround` gate and "In flight." answer as Where Am I.
-One `AnnounceImmediate` utterance from `SurroundingsReport.Compose`, same as
-Where Am I:
+One utterance from `SurroundingsReport.Compose` — interrupting
+(`AnnounceImmediate`) like Where Am I when it comes within
+`SurroundingsLookupNotice.Delay` (1.5 s) of the press, QUEUED (`Announce`) when
+it comes later (see the end of "Surroundings window" below):
 
 ```
 {Where-Am-I line}. {Zone}. {Feature 1}, {direction}, {distance}. … (up to 4)
@@ -1376,6 +1378,18 @@ compose — inside `Task.Run` and marshal only the speech or the window back to
 the UI thread (`MainForm.RunSurroundingsLookup`, the ONE path they share), and
 newest-press-wins, so a slow first lookup never speaks after the pilot has
 pressed again.
+
+**Every line a chord SPEAKS is timed from the PRESS**
+(`SurroundingsLookupNotice.Delivery`) — the look-around answer, "No airport
+nearby.", "No surroundings data for …", "Nothing within …", "Surroundings
+lookup failed.". Within `Delay` (1.5 s) it interrupts, like any hotkey answer;
+from then on it is QUEUED. A cold lookup takes 3-10 s, and in that time the
+pilot may have been given a taxi instruction — "Stop. Hold short of runway
+27L." — that an interrupting answer cut off mid-word; the queued "Looking
+around." notice is ahead of it too, and used to be cut off by it. The one
+exception is a SUPPRESSED announcer (a first-detect grace window), which DROPS a
+queued line: there a late line still interrupts, because a pilot who pressed a
+key must never hear nothing.
 
 ### Passing callouts (opt-in, default off)
 
