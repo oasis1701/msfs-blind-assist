@@ -6,8 +6,9 @@ namespace MSFSBlindAssist.Navigation.Surroundings;
 /// Tier 1: features derivable from navdata alone, offline, at every airport. Concourses are
 /// INFERRED from the gate letters (navdata has no building table) and, like fuel/cargo/GA
 /// stands, clustered SPATIALLY per letter/type so a name reused far apart (two piers, two
-/// aprons) never merges into one phantom feature between them; helipads and the control tower
-/// position come straight from the navdata tables. Pure.
+/// aprons) never merges into one phantom feature between them; helipads and — where navdata has
+/// a tower OBJECT, not merely a tower position — the control tower come straight from the
+/// navdata tables. Pure.
 /// </summary>
 public static class NavdataFeatureSource
 {
@@ -70,9 +71,13 @@ public static class NavdataFeatureSource
 
         if (facilities != null)
         {
-            // Present for ~1,950 airports on an MSFS 2024 navdata build (KTIW, KJAC, KJFK, EGLL…);
+            // A tower POSITION is not a tower. An MSFS 2024 navdata build gives 1,952 airports one,
+            // and 319 of them are only the tower-VIEW camera point — has_tower_object 0 and no tower
+            // frequency (KAST's sits 319 ft above a 7 ft field) — which, read as a building, put a
+            // phantom "Control tower" in Look around and the passing callouts. Only a tower OBJECT is
+            // a feature: 1,633 airports, every one with a tower frequency (measured 2026-09-22).
             // NULL on an MSFS 2020 build. Unnamed: a real name comes from OSM or the scenery.
-            if (facilities.TowerLat is double tLat && facilities.TowerLon is double tLon)
+            if (facilities.HasTowerObject && facilities.TowerLat is double tLat && facilities.TowerLon is double tLon)
                 result.Add(new AirportFeature { Kind = FeatureKind.Tower, Name = "", NameIsGeneric = true, Lat = tLat, Lon = tLon, Source = FeatureSource.Navdata });
 
             for (int i = 0; i < facilities.Helipads.Count; i++)

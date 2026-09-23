@@ -795,7 +795,20 @@ plus the installed scenery package's own placement data.
   which is why `AirportFacilities.TowerLat/TowerLon` are nullable. (An earlier
   version of this document said the column was NULL on every row and the tower
   therefore never came from navdata. That was true of the MSFS 2020 build it
-  was measured on and is false on an MSFS 2024 one.)
+  was measured on and is false on an MSFS 2024 one.) **A position is not a
+  tower**: 319 of those 1,952 airports carry `has_tower_object` 0 and no tower
+  frequency — their tower position is only the tower-VIEW camera point (KAST's
+  sits 319 ft above a 7 ft field, KVUO's 43 ft above a 20 ft one), and read as a
+  building it put a phantom "Control tower" in Look around and the passing
+  callouts at 319 fields with no tower. The navdata tower is therefore taken
+  only where `has_tower_object` is 1 (`AirportFacilities.HasTowerObject`:
+  1,633 airports, every one with a tower frequency; measured 2026-09-22). The
+  column is `INTEGER NOT NULL` in navdatareader's own schema, which both the
+  MSFS 2024 SimConnect build and the MSFS 2020 disk build write; a NULL still
+  reads as "no tower". An airport table WITHOUT the column cannot be read by
+  the facilities query at all (SQLite refuses a query naming a column the
+  table lacks) — exactly as one without `tower_laty`/`tower_lonx` never could,
+  so no database that works today breaks.
 - **OSM** at KATL names all seven concourses, the North/South/Domestic
   terminals, FedEx/UPS cargo, 15 named aprons, the fire station, the tower and
   201 gates. At KJAC it names the General Aviation Terminal with its FBO
@@ -847,7 +860,8 @@ as long as the airport was current.
   `MapParkingName`) with a majority-airline `Detail` when ≥ 60 % of the coded
   gates in a group share one airline; groups fuel/cargo/GA-ramp `parking` rows
   into `Fuel`/`Cargo`/`Apron` features; reads helipads and — where the database
-  has them — the tower coordinates; and reads `AirportFacilities` (avgas/jet
+  has a tower OBJECT (`has_tower_object`), never a bare tower position — the
+  tower coordinates; and reads `AirportFacilities` (avgas/jet
   flags, `com` frequencies, bounding box, `scenery_local_path`) for the
   window's "airport facts" row. Every group is clustered **in space**
   (`SurroundingsGeometry.SingleLinkage` — `GateLinkMetres` 200 m for gate

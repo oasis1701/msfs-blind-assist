@@ -11,7 +11,8 @@ public readonly record struct ComFrequency(string Type, int FrequencyHz, string 
 /// filter), the reference point and scenery_local_path (which packages the scenery scan may
 /// open). airport.tower_lonx/laty is NULL on an MSFS 2020 build, but present for ~1,950
 /// airports on an MSFS 2024 build (1,952 of 84,278, measured 2026-09-21) — that is why
-/// TowerLat/TowerLon are nullable rather than always absent.
+/// TowerLat/TowerLon are nullable rather than always absent. A position is not a tower, though:
+/// see <see cref="HasTowerObject"/>.
 /// </summary>
 public sealed class AirportFacilities
 {
@@ -26,6 +27,14 @@ public sealed class AirportFacilities
     public double BottomLat { get; init; }
     public double? TowerLat { get; init; }
     public double? TowerLon { get; init; }
+    /// <summary>
+    /// airport.has_tower_object — the scenery really places a control tower. Only then is
+    /// <see cref="TowerLat"/>/<see cref="TowerLon"/> a building: 319 of the 1,952 fs2024 airports
+    /// with a tower position carry 0 here and no tower frequency, because that position is the
+    /// tower-VIEW camera point (KAST's is 319 ft above a 7 ft field). The other 1,633 all have a
+    /// tower frequency (measured 2026-09-22). NULL reads as false.
+    /// </summary>
+    public bool HasTowerObject { get; init; }
     /// <summary>The airport reference point — where the online feature query is centred.</summary>
     public double RefLat { get; init; }
     public double RefLon { get; init; }

@@ -502,13 +502,13 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
-        long airportId; bool avgas, jet; double left, right, top, bottom; string sceneryPath;
+        long airportId; bool avgas, jet, towerObject; double left, right, top, bottom; string sceneryPath;
         double refLat, refLon; int helipads; double? towerLat = null, towerLon = null;
         // Bare indexed columns compared to an upper-cased PARAMETER, not UPPER(col) on both sides:
         // UPPER(ident)/UPPER(icao) can't use idx_airport_ident/idx_airport_icao (measured 15 ms
         // SCAN vs 0.09 ms for the equivalent OR-of-equalities plan).
         using (var cmd = new SqliteCommand(@"
-            SELECT airport_id, has_avgas, has_jetfuel, left_lonx, right_lonx, top_laty, bottom_laty,
+            SELECT airport_id, has_avgas, has_jetfuel, has_tower_object, left_lonx, right_lonx, top_laty, bottom_laty,
                    scenery_local_path, tower_laty, tower_lonx, laty, lonx, num_helipad
             FROM airport WHERE ident = @U OR icao = @U LIMIT 1", connection))
         {
@@ -518,6 +518,12 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             airportId = Convert.ToInt64(r["airport_id"]);
             avgas = SafeReadInt(r, "has_avgas", 0) == 1;
             jet = SafeReadInt(r, "has_jetfuel", 0) == 1;
+            // NULL reads as "no tower" (navdatareader declares the column NOT NULL, so only a
+            // hand-built database has one). A table WITHOUT the column is deliberately not made
+            // survivable: the SELECT names it, so SQLite refuses the query ("no such column") before
+            // SafeReadInt runs — exactly as it always has for a table without tower_laty/tower_lonx,
+            // so no database that works today breaks.
+            towerObject = SafeReadInt(r, "has_tower_object", 0) == 1;
             left = SafeReadDouble(r, "left_lonx", 0.0);   right = SafeReadDouble(r, "right_lonx", 0.0);
             top = SafeReadDouble(r, "top_laty", 0.0);     bottom = SafeReadDouble(r, "bottom_laty", 0.0);
             sceneryPath = r["scenery_local_path"] is string s ? s : "";
@@ -529,7 +535,7 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
 
         var fac = new AirportFacilities
         {
-            Icao = icao.ToUpperInvariant(), HasAvgas = avgas, HasJetFuel = jet,
+            Icao = icao.ToUpperInvariant(), HasAvgas = avgas, HasJetFuel = jet, HasTowerObject = towerObject,
             LeftLon = left, RightLon = right, TopLat = top, BottomLat = bottom, SceneryLocalPath = sceneryPath,
             TowerLat = towerLat, TowerLon = towerLon, RefLat = refLat, RefLon = refLon,
         };

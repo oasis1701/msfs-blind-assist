@@ -156,12 +156,22 @@ public class NavdataFeatureSourceTests
     }
 
     [Fact]
-    public void The_tower_comes_from_navdata_when_navdata_has_it()
+    public void The_tower_comes_from_navdata_when_navdata_has_a_tower_object()
     {
-        var with = new AirportFacilities { Icao = "KTIW", TowerLat = 47.269379, TowerLon = -122.574707 };
+        var with = new AirportFacilities { HasTowerObject = true, TowerLat = 47.269379, TowerLon = -122.574707 };
         var tower = Assert.Single(NavdataFeatureSource.Read(Array.Empty<ParkingSpot>(), with), f => f.Kind == FeatureKind.Tower);
         Assert.Equal("Control tower", tower.SpokenName);
         Assert.False(tower.HasProperName);
-        Assert.DoesNotContain(NavdataFeatureSource.Read(Array.Empty<ParkingSpot>(), new AirportFacilities { Icao = "KATL" }), f => f.Kind == FeatureKind.Tower);
+        Assert.DoesNotContain(NavdataFeatureSource.Read(Array.Empty<ParkingSpot>(), new AirportFacilities()), f => f.Kind == FeatureKind.Tower);
+    }
+
+    [Fact]
+    public void A_tower_position_with_no_tower_object_is_the_tower_view_point_not_a_tower()
+    {
+        // 319 fs2024 airports (measured 2026-09-22) carry tower_laty/lonx with has_tower_object 0 and
+        // no tower frequency: the tower-VIEW camera point. KAST's sits 319 ft above a 7 ft field.
+        // Read as a building it was "Control tower, ahead" at a field with no tower.
+        var viewPointOnly = new AirportFacilities { HasTowerObject = false, TowerLat = 46.153812, TowerLon = -123.884392 };
+        Assert.DoesNotContain(NavdataFeatureSource.Read(Array.Empty<ParkingSpot>(), viewPointOnly), f => f.Kind == FeatureKind.Tower);
     }
 }
