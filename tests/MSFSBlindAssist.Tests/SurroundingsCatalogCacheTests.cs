@@ -224,8 +224,55 @@ public class SurroundingsCatalogCacheTests
     }
 
     [Fact]
-    public void The_degraded_lifetime_is_the_stores_own_failure_memory()
-        => Assert.Equal(OnlineFeatureStore.FailureMemory, SurroundingsCatalogCache.DegradedLifetime);
+    public void The_degraded_lifetime_is_the_stores_failure_memory_plus_its_fetch_budget()
+        // Both referenced, never copied: a fetch the build gave up on can still FAIL up to
+        // FetchBudget later, and the store remembers that failure for FailureMemory from then.
+        => Assert.Equal(OnlineFeatureStore.FailureMemory + OnlineFeatureStore.FetchBudget, SurroundingsCatalogCache.DegradedLifetime);
+
+    [Fact]
+    public async Task A_degraded_catalog_is_still_served_while_the_store_remembers_the_failure_it_was_built_around()
+    {
+        // The build gives up on a slow fetch; the fetch runs on and FAILS a whole FetchBudget later;
+        // the store remembers that failure for FailureMemory from THEN. A catalog that expired after
+        // FailureMemory alone was rebuilt against a failure the store still remembered — degraded
+        // again — so the mirror was really asked again only after ~10 minutes. It must stay served
+        // until the store's memory has run out, and the rebuild after that must ask the mirror afresh.
+        var now = new DateTime(2026, 9, 22, 12, 0, 0, DateTimeKind.Utc);
+        int fetches = 0;
+        var firstFetch = new TaskCompletionSource<IReadOnlyList<AirportFeature>?>();
+        var store = new OnlineFeatureStore((_, _, _, _, _) =>
+            Interlocked.Increment(ref fetches) == 1
+                ? firstFetch.Task
+                : Task.FromResult<IReadOnlyList<AirportFeature>?>(Array.Empty<AirportFeature>()),
+            () => now) { Enabled = true };
+        int builds = 0;
+        var cache = new SurroundingsCatalogCache(() => now)
+        {
+            BuildSupplier = icao =>
+            {
+                builds++;
+                var got = store.GetAsync(icao, 0, 0, null, TimeSpan.Zero).GetAwaiter().GetResult();
+                return One($"build {builds}", degraded: got.Status is OnlineFeatureStatus.Pending or OnlineFeatureStatus.Failed);
+            },
+        };
+
+        Assert.Equal("build 1", (await cache.GetAsync("KTIW"))!.Features[0].Name);   // gave up: Pending → degraded
+
+        now += OnlineFeatureStore.FetchBudget;                                          // the fetch fails as late as it can
+        firstFetch.SetResult(null);
+        Assert.Equal(OnlineFeatureStatus.Failed,                                        // barrier: the failure is recorded
+            (await store.GetAsync("KTIW", 0, 0, null, TimeSpan.FromSeconds(10))).Status);
+
+        now += OnlineFeatureStore.FailureMemory - TimeSpan.FromSeconds(1);            // the store still remembers it…
+        Assert.True(cache.TryGetCached("KTIW", out var still));                         // …so the catalog is not rebuilt against it
+        Assert.Equal("build 1", still!.Features[0].Name);
+
+        now += TimeSpan.FromSeconds(2);                                                 // both have run out
+        Assert.False(cache.TryGetCached("KTIW", out _));
+        Assert.Equal("build 2", (await cache.GetAsync("KTIW"))!.Features[0].Name);
+        await store.GetAsync("KTIW", 0, 0, null, TimeSpan.FromSeconds(10));           // barrier: the rebuild's own fetch has run
+        Assert.Equal(2, fetches);                                                        // the rebuild asked the mirror AGAIN
+    }
 
     [Fact]
     public async Task A_degraded_build_that_straddles_an_invalidation_is_still_discarded()

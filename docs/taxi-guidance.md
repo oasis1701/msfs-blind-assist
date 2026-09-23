@@ -1163,10 +1163,15 @@ change.
 - **Degraded lifetime.** A build that went WITHOUT an optional tier —
   `SurroundingsBuild.Degraded`, set when `SurroundingsTier.Read` caught an
   exception or when the OSM store answered `Pending`/`Failed` rather than
-  `Served` — is fresh only for `DegradedLifetime`, which IS
-  `OnlineFeatureStore.FailureMemory` (5 minutes), referenced rather than
-  copied: rebuilding sooner only re-reads a failure the store is still
-  remembering. Everything else here is invalidated by an EVENT, and the one
+  `Served` — is fresh only for `DegradedLifetime`, which is
+  `OnlineFeatureStore.FailureMemory` (5 minutes) PLUS
+  `OnlineFeatureStore.FetchBudget` (60 s), both referenced rather than copied:
+  the fetch a build gave up on runs on and can still FAIL up to `FetchBudget`
+  later, and the store remembers that failure for `FailureMemory` from THEN, so
+  rebuilding any sooner only re-reads a failure the store is still remembering.
+  With `FailureMemory` alone it did exactly that — the rebuild came back
+  degraded again and the mirror was really asked again only after about ten
+  minutes, not five. Everything else here is invalidated by an EVENT, and the one
   event that would cover this, `FeaturesUpdated`, is raised only when a late
   fetch SUCCEEDS — so without the lifetime a tier-less catalog simply became
   the catalog for the session, and nothing asked the store again once its own

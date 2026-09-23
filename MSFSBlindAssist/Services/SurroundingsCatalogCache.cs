@@ -58,10 +58,14 @@ public sealed class SurroundingsCatalogCache
     public static readonly TimeSpan FailureMemory = TimeSpan.FromSeconds(60);
 
     /// <summary>How long a catalog built without an optional tier is served before it is built
-    /// again. It IS <see cref="OnlineFeatureStore.FailureMemory"/> — referenced, not copied — because
-    /// the two are one decision: rebuilding any sooner only re-reads a failure the store is still
-    /// remembering, and the rebuild exists precisely to ask it once that memory has expired.</summary>
-    public static readonly TimeSpan DegradedLifetime = OnlineFeatureStore.FailureMemory;
+    /// again: the store's <see cref="OnlineFeatureStore.FailureMemory"/> PLUS its
+    /// <see cref="OnlineFeatureStore.FetchBudget"/> — both referenced, never copied. The build gives
+    /// up on a slow fetch after a few seconds, but the fetch runs on and can still FAIL up to
+    /// FetchBudget later, and the store remembers that failure for FailureMemory from THEN. With
+    /// FailureMemory alone the catalog expired first, the rebuild re-read a failure the store was
+    /// still remembering and came back degraded again, and the OSM tier was really asked again only
+    /// after about ten minutes, not five (review item OV-6).</summary>
+    public static readonly TimeSpan DegradedLifetime = OnlineFeatureStore.FailureMemory + OnlineFeatureStore.FetchBudget;
 
     /// <summary>A cached catalog and the two things staleness needs besides its version token.</summary>
     private sealed record Entry(AirportFeatureCatalog Catalog, bool Degraded, DateTime BuiltAt);

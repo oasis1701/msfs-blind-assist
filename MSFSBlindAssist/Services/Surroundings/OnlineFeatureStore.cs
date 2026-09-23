@@ -35,6 +35,12 @@ public sealed class OnlineFeatureStore
 {
     public delegate Task<IReadOnlyList<AirportFeature>?> Fetcher(string icao, double lat, double lon, AirportFacilities? box, CancellationToken ct);
     public static readonly TimeSpan FailureMemory = TimeSpan.FromMinutes(5);
+
+    /// <summary>The longest one fetch may run before it is cancelled — and so the latest a fetch
+    /// can FAIL after whoever started it stopped waiting for it. That is why the catalog's
+    /// SurroundingsCatalogCache.DegradedLifetime is FailureMemory PLUS this, not FailureMemory
+    /// alone: the failure is remembered from the moment it happens, not from the build.</summary>
+    public static readonly TimeSpan FetchBudget = TimeSpan.FromSeconds(60);
     private static readonly IReadOnlyList<AirportFeature> None = Array.Empty<AirportFeature>();
 
     private readonly Fetcher _fetch;
@@ -106,7 +112,7 @@ public sealed class OnlineFeatureStore
         IReadOnlyList<AirportFeature>? result = null;
         try
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
+            using var cts = new CancellationTokenSource(FetchBudget);
             result = await _fetch(key, lat, lon, box, cts.Token).ConfigureAwait(false);
         }
         catch (Exception ex) { Log.Warn("Surroundings", $"online feature fetch failed for {key}: {ex.Message}"); }
