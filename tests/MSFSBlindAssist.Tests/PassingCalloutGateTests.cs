@@ -281,10 +281,13 @@ public class PassingCalloutGateTests
         double rankRadius = PassingCalloutGate.RankRadiusMetres;
         double releaseDist = (kindRadius + rankRadius) / 2.0;   // strictly between the two, whatever their values
 
-        Assert.Null(gate.Evaluate(At(h, 200), 1.5, T0));                        // below MinSpeedKts throughout the approach
-        Assert.Null(gate.Evaluate(At(h, 100), 1.5, T0.AddSeconds(2)));
-        Assert.Null(gate.Evaluate(At(h, 60), 1.5, T0.AddSeconds(4)));           // closest point: 60 m at 90 degrees -- well inside the 150 m radius
-        Assert.Null(gate.Evaluate(At(h, 90), 1.5, T0.AddSeconds(6)));           // opens -- arms, but still held by speed
+        // Driven at taxi speed up to and including the closest point (PC-1 would otherwise consume
+        // this as a creep, not release it as "held by speed" -- see the PC-1 tests below); only the
+        // opening sample onward is slow, which is what actually holds this pass on MinSpeedKts.
+        Assert.Null(gate.Evaluate(At(h, 200), 10, T0));
+        Assert.Null(gate.Evaluate(At(h, 100), 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(At(h, 60), 10, T0.AddSeconds(4)));            // closest point, at taxi speed: 60 m at 90 degrees -- well inside the 150 m radius
+        Assert.Null(gate.Evaluate(At(h, 90), 1.5, T0.AddSeconds(6)));           // opens -- arms, now below MinSpeedKts: held by speed
         Assert.Null(gate.Evaluate(At(h, releaseDist), 1.5, T0.AddSeconds(8)));  // recedes past the radius while still held: must stay tracked, not dropped
 
         // The premise this test exists to pin: the release sample really is outside the kind's own
@@ -310,9 +313,11 @@ public class PassingCalloutGateTests
         double rankRadius = PassingCalloutGate.RankRadiusMetres;
         double beyondRank = rankRadius + 50.0;
 
-        Assert.Null(gate.Evaluate(At(h, 200), 1.5, T0));
-        Assert.Null(gate.Evaluate(At(h, 100), 1.5, T0.AddSeconds(2)));
-        Assert.Null(gate.Evaluate(At(h, 60), 1.5, T0.AddSeconds(4)));            // closest point
+        // As above: taxi speed through the closest point, so the eventual silence below is really
+        // the rank-window boundary this test exists to pin -- not PC-1 consuming a creep.
+        Assert.Null(gate.Evaluate(At(h, 200), 10, T0));
+        Assert.Null(gate.Evaluate(At(h, 100), 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(At(h, 60), 10, T0.AddSeconds(4)));             // closest point, at taxi speed
         Assert.Null(gate.Evaluate(At(h, 90), 1.5, T0.AddSeconds(6)));            // opens -- arms, held by speed
 
         Assert.True(beyondRank > rankRadius);
@@ -358,13 +363,17 @@ public class PassingCalloutGateTests
     [Fact]
     public void A_pass_that_arms_below_minimum_speed_stays_pending_and_fires_once_speed_comes_back_into_band()
     {
+        // The closest point is driven THROUGH at taxi speed; only the opening sample is slow (the
+        // aircraft braked just past the building). Held below MinSpeedKts, said once it moves on.
+        // A closest point reached while stopped or creeping is a different case, and silent — see
+        // the PC-1 tests below.
         var gate = new PassingCalloutGate();
         var h = Feat(FeatureKind.Concourse, "Concourse B");
-        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 140, 90) }, 1.5, T0));
-        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 90, 90) }, 1.5, T0.AddSeconds(2)));
-        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 60, 90) }, 1.5, T0.AddSeconds(4)));    // closest point, at 1.5 kt -- below MinSpeedKts
-        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 75, 90) }, 1.5, T0.AddSeconds(6)));    // opens (arms), but still under 2 kt: held, not fired
-        var hit = gate.Evaluate(new[] { new NearbyFeature(h, 90, 90) }, 5, T0.AddSeconds(8));          // speeds up to 5 kt, still in range: fires
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 140, 90) }, 10, T0));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 90, 90) }, 10, T0.AddSeconds(2)));
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 60, 90) }, 10, T0.AddSeconds(4)));    // closest point, at taxi speed
+        Assert.Null(gate.Evaluate(new[] { new NearbyFeature(h, 75, 90) }, 1.5, T0.AddSeconds(6)));   // opens (arms) at 1.5 kt -- below MinSpeedKts: held, not fired
+        var hit = gate.Evaluate(new[] { new NearbyFeature(h, 90, 90) }, 5, T0.AddSeconds(8));         // speeds up to 5 kt, still in range: fires
         Assert.NotNull(hit);
         Assert.Equal(60, hit!.DistanceMetres);   // still the closest-point values, however late it fires
         Assert.Equal(90, hit.RelativeBearingDeg);
@@ -602,5 +611,103 @@ public class PassingCalloutGateTests
         // still speaks; short enough that what it describes is still beside the aircraft.
         Assert.NotNull(PassHeldFor(PassingCalloutGate.PendingExpiry - TimeSpan.FromSeconds(1)));
         Assert.Null(PassHeldFor(PassingCalloutGate.PendingExpiry + TimeSpan.FromSeconds(1)));
+    }
+
+    // ---- PC-1: a closest point reached while STOPPED, or at zero range, is not a pass ----
+
+    /// <summary>Feeds one (range, relative bearing, ground speed) sample per 2 s tick — the
+    /// monitor's own poll — and returns every callout.</summary>
+    private static List<NearbyFeature> DriveSamples(PassingCalloutGate gate, AirportFeature f, DateTime start,
+        params (double Metres, double Rel, double Kts)[] samples)
+    {
+        var said = new List<NearbyFeature>();
+        for (int i = 0; i < samples.Length; i++)
+        {
+            var hit = gate.Evaluate(At(f, samples[i].Metres, samples[i].Rel), samples[i].Kts, start.AddSeconds(2 * i));
+            if (hit != null) said.Add(hit);
+        }
+        return said;
+    }
+
+    [Fact]
+    public void Taxiing_onto_a_fuel_stand_refuelling_and_leaving_is_never_called_a_pass()
+    {
+        // A navdata "Fuel" IS its stands and SurroundingsGeometry.Nearest measures to the nearest
+        // one, so taxiing onto a fuel stand closes the range to a couple of metres and stops there.
+        // The bearing to a point 2 m away is noise — here it happens to read abeam left — and leaving
+        // then "opened" the range: "Passing Fuel, on the left." about the stand just refuelled on.
+        var gate = new PassingCalloutGate(); var fuel = Feat(FeatureKind.Fuel, "Fuel");
+        var samples = new List<(double, double, double)> { (140, 15, 10), (110, 15, 10), (80, 15, 10), (50, 20, 10), (25, 25, 8), (8, 40, 4) };
+        for (int i = 0; i < 150; i++) samples.Add((2, -80, 0));                                  // five minutes on the stand
+        samples.AddRange(new[] { (6.0, -120.0, 3.0), (15.0, -150.0, 8.0), (30.0, -160.0, 10.0), (50.0, -165.0, 10.0), (80.0, -170.0, 10.0) });
+        Assert.Empty(DriveSamples(gate, fuel, T0, samples.ToArray()));
+    }
+
+    [Fact]
+    public void A_closest_point_reached_while_stopped_is_consumed_silently_even_well_clear_of_the_feature()
+    {
+        // Held 20 m abeam of a fuel stand — well outside ZeroRangeMetres, a genuinely abeam bearing —
+        // then taxiing on. The aircraft STOPPED at its closest point instead of driving through it,
+        // and a stop is not a pass.
+        var gate = new PassingCalloutGate(); var fuel = Feat(FeatureKind.Fuel, "Fuel");
+        var samples = new List<(double, double, double)> { (140, 40, 10), (100, 50, 10), (60, 60, 10), (30, 75, 6), (20, 90, 0) };
+        for (int i = 0; i < 10; i++) samples.Add((20, 90, 0));
+        samples.AddRange(new[] { (22.0, 100.0, 4.0), (30.0, 120.0, 8.0), (45.0, 140.0, 10.0), (60.0, 150.0, 10.0) });
+        Assert.Empty(DriveSamples(gate, fuel, T0, samples.ToArray()));
+    }
+
+    [Fact]
+    public void A_stop_well_before_the_closest_point_does_not_count_once_the_aircraft_drives_through_it()
+    {
+        // Held 40 m from a fuel stand, then cleared on and driven PAST it at 25 m: the stop was 15 m
+        // further out than the closest point (more than OpeningMetres), so the pass stands.
+        var gate = new PassingCalloutGate(); var fuel = Feat(FeatureKind.Fuel, "Avfuel");
+        var samples = new List<(double, double, double)> { (140, 20, 10), (90, 30, 10), (40, 45, 0) };
+        for (int i = 0; i < 10; i++) samples.Add((40, 45, 0));
+        samples.AddRange(new[] { (30.0, 70.0, 6.0), (25.0, 90.0, 10.0), (32.0, 115.0, 10.0), (45.0, 130.0, 10.0) });
+        var said = DriveSamples(gate, fuel, T0, samples.ToArray());
+        Assert.Single(said);
+        Assert.Equal(25, said[0].DistanceMetres);
+        Assert.Equal(90, said[0].RelativeBearingDeg);
+    }
+
+    // Literal metres, not derived from SurroundingsReport.ZeroRangeMetres (3.81 m) — the same reason
+    // the abeam boundary test above uses literal degrees: derived offsets would follow a change to
+    // the constant's VALUE and pin nothing.
+    [Theory]
+    [InlineData(3.8, false)]    // at or inside ZeroRangeMetres: a degenerate bearing, never a side
+    [InlineData(3.9, true)]     // just outside it: an ordinary pass
+    public void A_closest_point_at_zero_range_is_never_a_pass_even_at_taxi_speed(double minMetres, bool called)
+    {
+        // Rolling straight over a stand point at 10 kt, never stopping: the range closes to a few
+        // metres and opens again. Inside ZeroRangeMetres the bearing to that point is degenerate —
+        // here it reads abeam left by accident — and the Surroundings readout already refuses to put
+        // a side on it ("Fuel, here."); the callout must not put one on it either.
+        var gate = new PassingCalloutGate(); var fuel = Feat(FeatureKind.Fuel, "Fuel");
+        var said = DriveSamples(gate, fuel, T0,
+            (60, 10, 10), (45, 10, 10), (30, 12, 10), (15, 20, 10), (minMetres, -85, 10), (12, -160, 10), (27, -170, 10), (42, -175, 10));
+        Assert.Equal(called ? 1 : 0, said.Count);
+    }
+
+    [Fact]
+    public void A_closest_point_crept_through_below_minimum_speed_is_consumed_silently()
+    {
+        // The data the MinSpeedKts test above used to carry: every sample, the closest point included,
+        // at 1.5 kt. Below MinSpeedKts AT the closest point the aircraft was stopped there as far as
+        // the gate is concerned, and a pass is only ever one driven through.
+        var gate = new PassingCalloutGate();
+        var h = Feat(FeatureKind.Concourse, "Concourse B");
+        var said = DriveSamples(gate, h, T0, (140, 90, 1.5), (90, 90, 1.5), (60, 90, 1.5), (75, 90, 1.5), (90, 90, 5), (120, 90, 10));
+        Assert.Empty(said);
+    }
+
+    [Fact]
+    public void An_ordinary_abeam_pass_driven_through_at_taxi_speed_is_still_called()
+    {
+        var gate = new PassingCalloutGate(); var fuel = Feat(FeatureKind.Fuel, "Fuel");
+        var said = DriveSamples(gate, fuel, T0, (140, 60, 10), (100, 70, 10), (60, 85, 10), (40, 90, 10), (45, 100, 10), (60, 120, 10));
+        Assert.Single(said);
+        Assert.Equal(40, said[0].DistanceMetres);
+        Assert.Equal(90, said[0].RelativeBearingDeg);
     }
 }

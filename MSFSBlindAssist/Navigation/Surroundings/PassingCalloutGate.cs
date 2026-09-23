@@ -6,14 +6,17 @@ namespace MSFSBlindAssist.Navigation.Surroundings;
 /// Pure decision state for "Passing X, on the left." A building is PASSED when its range was
 /// closing and is now opening — the closest point of approach — while that closest point was
 /// itself roughly ABEAM (not a building only ever approached head-on, and not one behind the
-/// aircraft during a pushback reversal), that closest point was inside the building's kind's
+/// aircraft during a pushback reversal), was driven THROUGH rather than stopped at, lay outside
+/// zero range (<see cref="IsSayablePass"/>) and lay inside the building's kind's
 /// radius (the approach itself is tracked from the edge of the caller's rank window,
 /// <see cref="RankRadiusMetres"/>, so a building passed just inside its radius still shows the
 /// closing an arm needs), and the aircraft is at taxi speed. Parked beside a terminal, or pushed
 /// back from one without ever
 /// closing past the very first reading, the range never closes, so nothing is recited and no
 /// baseline is needed (the old one-shot baseline was a 5-minute timestamp that lapsed during any
-/// normal preflight). Each track is identified by KIND, NAME *and* POSITION: two different
+/// normal preflight); an aircraft that TAXIED onto a stand did close the range — to a few metres,
+/// at a standstill — and that stop is what the closest-point rule refuses. Each track is
+/// identified by KIND, NAME *and* POSITION: two different
 /// buildings can legitimately share a name (a navdata per-cluster generic "Fuel"/"Cargo", two
 /// same-named piers, several same-named scenery clutter clusters), and a name-only key let the
 /// nearer one's minimum make the farther one's still-closing range instantly read as "opening" —
@@ -107,11 +110,13 @@ public sealed class PassingCalloutGate
     public static readonly TimeSpan PendingExpiry = TimeSpan.FromSeconds(20);
 
     // Min/MinRel freeze the instant Passed is set (Evaluate gates their update on !Passed): the
-    // pair describes the pass exactly as it was JUDGED by IsAbeam at arm time, so a later, deeper
-    // sample arriving while the pass sits out the global gap or excess speed — a second approach
-    // after a turn back toward the building, a non-convex footprint's second local minimum, bearing
-    // noise near a stop — can never drift what the pass reports once it finally fires.
-    private sealed class Track { public string Key = ""; public double First, Min, MinRel, AnchorLat, AnchorLon; public DateTime LastSeen, PendingAt; public bool Passed, Pending; }
+    // pair describes the pass exactly as it was JUDGED by IsSayablePass at arm time, so a later,
+    // deeper sample arriving while the pass sits out the global gap or excess speed — a second
+    // approach after a turn back toward the building, a non-convex footprint's second local minimum,
+    // bearing noise near a stop — can never drift what the pass reports once it finally fires.
+    // StoppedNearest — the nearest range sampled below MinSpeedKts before the pass armed, +infinity
+    // while there is none — freezes with them.
+    private sealed class Track { public string Key = ""; public double First, Min, MinRel, AnchorLat, AnchorLon, StoppedNearest = double.PositiveInfinity; public DateTime LastSeen, PendingAt; public bool Passed, Pending; }
     private sealed class FiredRecord { public string Key = ""; public double Lat, Lon; public DateTime FiredAt; }
 
     private readonly List<Track> _tracks = new();
@@ -203,6 +208,31 @@ public sealed class PassingCalloutGate
         return abs >= AbeamMinDeg && abs <= AbeamMaxDeg;
     }
 
+    /// <summary>
+    /// Is an armed closest point a PASS worth saying? When it is not, the track is consumed
+    /// silently:
+    /// <list type="bullet">
+    /// <item>not ABEAM (<see cref="AbeamMinDeg"/>..<see cref="AbeamMaxDeg"/>) — tail-first during a
+    /// pushback, or a turn away before reaching it;</item>
+    /// <item>at or inside <see cref="SurroundingsReport.ZeroRangeMetres"/> — the bearing to a point
+    /// the aircraft is on is degenerate, so its side is arbitrary; the Surroundings readout says
+    /// "here" there for the same reason, and a callout must not put a side on it either;</item>
+    /// <item>reached while STOPPED — a sample below <see cref="MinSpeedKts"/> lay within
+    /// <see cref="OpeningMetres"/> of the minimum. A pass is something driven THROUGH. A navdata
+    /// Fuel, Cargo ramp or gate-built Concourse IS its stands and
+    /// <see cref="SurroundingsGeometry.Nearest"/> measures to the nearest one, so taxiing onto one
+    /// closes the range to a couple of metres and stops there; leaving then "opened" it, and the
+    /// gate said "Passing Fuel, on the left." about the stand the aircraft had just stood on, with a
+    /// side read off bearing noise. Speed AT the closest point is the one input that tells a stop
+    /// from a pass; a pass that arms at taxi speed and is only then held below MinSpeedKts is
+    /// <see cref="PendingExpiry"/>'s case, not this one.</item>
+    /// </list>
+    /// </summary>
+    private static bool IsSayablePass(double minMetres, double minRelDeg, double stoppedNearestMetres)
+        => IsAbeam(minRelDeg)
+           && minMetres > SurroundingsReport.ZeroRangeMetres
+           && !(stoppedNearestMetres < minMetres + OpeningMetres);
+
     /// <summary>Nearest track sharing this key within SameFeatureMetres of the given position, or
     /// null to start a new one. Several same-key tracks within range "should not happen" (see
     /// SameFeatureMetres's own doc comment for exactly how close a catalog can leave two of them),
@@ -255,6 +285,9 @@ public sealed class PassingCalloutGate
         Prune(now);
         bool mayFire = groundSpeedKts >= MinSpeedKts && groundSpeedKts <= MaxSpeedKts
                        && !(_lastAny is DateTime last && now - last < GlobalGap);
+        // Below the taxi band's floor counts as STOPPED for the closest-point rule (IsSayablePass) —
+        // and so does an unreadable speed, the safe direction: it can only withhold a callout.
+        bool stopped = !(groundSpeedKts >= MinSpeedKts);
         NearbyFeature? fire = null; Track? fireTrack = null;
         foreach (var n in nearby)
         {
@@ -273,6 +306,7 @@ public sealed class PassingCalloutGate
             }
             t.LastSeen = now; t.AnchorLat = n.Feature.Lat; t.AnchorLon = n.Feature.Lon;
             if (!t.Passed && d < t.Min) { t.Min = d; t.MinRel = n.RelativeBearingDeg; }   // frozen once armed: see Track's own comment
+            if (!t.Passed && stopped && d < t.StoppedNearest) t.StoppedNearest = d;       // see IsSayablePass
 
             // A closest point outside the kind's radius is not a pass — and the track stays unarmed,
             // so a later, nearer approach to the same building (a turn back toward it) can still be one.
@@ -280,7 +314,9 @@ public sealed class PassingCalloutGate
                 && t.Min <= PassRadiusMetres(n.Feature.Kind))
             {
                 t.Passed = true;
-                t.Pending = IsAbeam(t.MinRel);   // tail-first, or a turn away before reaching it: consumed silently
+                // Not abeam (tail-first, a turn away), stopped AT the closest point, or at zero range:
+                // consumed silently — see IsSayablePass.
+                t.Pending = IsSayablePass(t.Min, t.MinRel, t.StoppedNearest);
                 t.PendingAt = now;
             }
             if (!t.Pending) continue;

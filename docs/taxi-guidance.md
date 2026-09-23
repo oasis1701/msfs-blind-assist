@@ -1332,13 +1332,18 @@ it would have been the identical sentence. `Reset()` clears the memory;
 **`RebaselineTracks()` deliberately does not** — what the pilot has been told is
 a fact about the pilot, not about the catalog.
 
-**There is no baseline and must not be one.** Parked beside a terminal, or
-pushed back from one, the range never closes, so nothing is recited. The
-baseline this replaced was a one-shot 5-minute timestamp that lapsed during any
-normal preflight, after which the terminal the aircraft had been parked at all
-along was announced anyway.
+**There is no baseline and must not be one.** Parked beside a terminal the range
+never closes, so nothing is recited. The baseline this replaced was a one-shot
+5-minute timestamp that lapsed during any normal preflight, after which the
+terminal the aircraft had been parked at all along was announced anyway. ⚠ An
+earlier telling added "or pushed back from one" — FALSE for anything measured to
+its stands: a navdata Fuel, Cargo ramp or gate-built Concourse IS its stands
+(`SurroundingsGeometry.Nearest` measures to the nearest one), so an aircraft
+that TAXIED onto one closed the range to a few metres, stood there, and on
+leaving heard "Passing Fuel, on the left." with the side read off bearing
+noise. That case is the closest-point rule's job (below), not a baseline's.
 
-Five rules the gate cannot lose:
+Six rules the gate cannot lose:
 
 - **A track's identity is kind + name AND POSITION** — an incoming feature
   continues an existing track only within `SameFeatureMetres` (40 m) of that
@@ -1357,6 +1362,17 @@ Five rules the gate cannot lose:
   excludes a building approached tail-first during a pushback (the range closes
   backwards, then "opens" as the aircraft taxies away). A non-abeam minimum is
   consumed silently.
+- **A closest point reached while STOPPED, or at zero range, is not a pass** —
+  consumed silently, exactly like a non-abeam one (`IsSayablePass`). A sample
+  below `MinSpeedKts` within `OpeningMetres` of the minimum means the aircraft
+  stopped AT its closest point instead of driving through it (a fuel stand, a
+  hold beside a hangar); a minimum at or inside
+  `SurroundingsReport.ZeroRangeMetres` (3.81 m) has a degenerate bearing, so its
+  side would be arbitrary — the Surroundings readout says "here" there for the
+  same reason. Speed AT the closest point is the one input that tells a stop
+  from a pass: a pass that arms at taxi speed and is only then held below
+  `MinSpeedKts` is `PendingExpiry`'s case and still speaks. An unreadable speed
+  counts as stopped, which can only withhold a callout.
 - **The pass freezes the moment it arms.** `Evaluate` returns the distance and
   bearing the building had at its OWN closest point, not the tick that releases
   it. A pass held back by the 10 s global gap or by ground speed outside the
@@ -2138,8 +2154,9 @@ because it dropped the model library of ten real Community packages.)
   zero range is given a direction: "{name}, here.".
 - A model name is spoken only after `SceneryModelNameClassifier` has produced
   human text; raw `KTIW_*` / `concourse_a_02` strings never reach speech.
-- Passing callouts are queued, fire at the closest point of approach with no
-  baseline, are frozen at arm time, are given up on after `PendingExpiry`, are
+- Passing callouts are queued, fire at the closest point of approach (never one
+  reached while stopped or at zero range) with no baseline, are frozen at arm
+  time, are given up on after `PendingExpiry`, are
   re-baselined (never `Reset`) when the catalog instance changes, and are
   silent on runway pavement as well as under every guidance phase that already
   speaks. The runway probe keeps its shapes per AIRPORT so the taxiway-name
