@@ -224,4 +224,28 @@ public class OsmFeatureClassifierTests
         Assert.Equal(50.0450, f.Lat, 9);
         Assert.Equal(8.5940, f.Lon, 9);
     }
+
+    [Fact]
+    public void An_inner_way_never_becomes_the_footprint_even_when_the_outer_ring_cannot_close()
+    {
+        // A single OUTER member that does not close on its own and has no partner to join with —
+        // LargestRing drops an incomplete chain like this one regardless (see
+        // OsmRingAssemblerTests.A_chain_that_never_closes_is_dropped_and_a_closed_way_still_counts)
+        // — plus an INNER member (a courtyard) that IS closed. Without the `role == "outer"` filter
+        // in RelationOutline, this courtyard is the only thing that closes at all, so it would
+        // become the footprint; pinning this catches that regression even though the real fixture's
+        // own courtyard is too small to ever win on area against its outer ring.
+        const string json =
+            @"{""type"":""relation"",""id"":900000005,
+               ""bounds"":{""minlat"":50.0440,""minlon"":8.5920,""maxlat"":50.0460,""maxlon"":8.5960},
+               ""members"":[
+                 {""type"":""way"",""ref"":1,""role"":""outer"",""geometry"":[{""lat"":50.0460,""lon"":8.5930},{""lat"":50.0460,""lon"":8.5950},{""lat"":50.0450,""lon"":8.5960}]},
+                 {""type"":""way"",""ref"":2,""role"":""inner"",""geometry"":[{""lat"":50.0457,""lon"":8.5934},{""lat"":50.0457,""lon"":8.5938},{""lat"":50.0455,""lon"":8.5938},{""lat"":50.0455,""lon"":8.5934},{""lat"":50.0457,""lon"":8.5934}]}],
+               ""tags"":{""aeroway"":""terminal"",""name"":""Broken Terminal"",""type"":""multipolygon""}}";
+
+        var f = One(json)!;
+
+        Assert.Equal(FeatureKind.Terminal, f.Kind);
+        Assert.Null(f.Footprint);
+    }
 }

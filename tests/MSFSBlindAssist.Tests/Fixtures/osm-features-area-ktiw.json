@@ -1,5 +1,5 @@
 {
- "_attribution": "Real Overpass API response, (c) OpenStreetMap contributors, ODbL 1.0. Captured 2026-09-20 with the query OsmFeatureSource builds (out tags geom;). Trimmed to the members the classifier reads.",
+ "_attribution": "Real Overpass API response, (c) OpenStreetMap contributors, ODbL 1.0. Captured 2026-09-20 with the query OsmFeatureSource built at the time (out tags geom;). Trimmed to the members the classifier reads.",
  "version": 0.6,
  "elements": [
   {

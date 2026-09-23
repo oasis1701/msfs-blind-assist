@@ -27,10 +27,14 @@ public class OsmRingAssemblerTests
                                    F = new(50.0445, 8.5960);
     private static readonly LatLon[] Kite = { A, B, X, C };
 
-    // A small rectangle for the duplicated-member test below: Da-Dm-Db-Dn clockwise.
-    private static readonly LatLon Da = new(50.0480, 8.5900), Dm = new(50.0480, 8.5920),
-                                   Db = new(50.0470, 8.5920), Dn = new(50.0470, 8.5900);
-    private static readonly LatLon[] DupRing = { Da, Dm, Db, Dn };
+    // The duplicated-member case from review round 1: W has THREE interior vertices (five points
+    // in all), so a retrace of it on its own lands in the floating-point residual band the area
+    // tolerance exists for (see A_retrace_with_more_than_one_interior_vertex_is_still_no_outline)
+    // rather than an exact 0 — unlike the simpler rectangle this replaced, which happened to sum to
+    // exactly 0 and so passed even before that fix existed, without ever exercising it.
+    private static readonly LatLon W0 = new(50.0480, 8.5900), W1 = new(50.0481, 8.5907), W2 = new(50.0479, 8.5913),
+                                   W3 = new(50.0480, 8.5920), W4 = new(50.0470, 8.5920), W5 = new(50.0470, 8.5900);
+    private static readonly LatLon[] WRing = { W0, W1, W2, W3, W4, W5 };
 
     private static IReadOnlyList<LatLon> Way(params LatLon[] pts) => pts;
 
@@ -78,35 +82,40 @@ public class OsmRingAssemblerTests
         // A single way that goes out to P2 and doubles straight back on itself: closed (P0 both
         // ends), four vertices after the closing duplicate is dropped, but nothing is enclosed —
         // `bestArea` used to start at -1, so this area-0 "ring" beat that sentinel and came back as
-        // an outline, contradicting the class doc's "if nothing closes the answer is null".
+        // an outline, contradicting the class doc's "if nothing closes the answer is null". Its one
+        // cancelling pair of shoelace terms is ADJACENT in the running sum, so this one case sums to
+        // EXACTLY 0 in floating point — see the test below for why that is not true in general.
         => Assert.Null(Ring(Way(P0, P1, P2, P1, P0)));
 
     [Fact]
-    public void A_duplicated_member_never_returns_a_wrong_shape_and_recovers_the_real_ring_when_it_can()
+    public void A_retrace_with_more_than_one_interior_vertex_is_still_no_outline()
     {
-        // A relation can list the same way TWICE among its members (an OSM data quirk). The
-        // duplicate shares BOTH endpoints with its twin, so the greedy join sometimes retraces it
-        // as a zero-area loop (Da,Dm,Db,Dm,Da) instead of reaching the third way that would close
-        // the real rectangle Da-Dm-Db-Dn — exactly the degenerate shape the fix above must reject.
-        // Whichever member order is used the answer is therefore never a WRONG non-null shape:
-        // either the real rectangle, or — only when the duplicate is joined ahead of the closing
-        // way — null (the real ring was never assembled to compete for "largest" at all).
-        var dupWay = Way(Da, Dm, Db);
-        var closer = Way(Db, Dn, Da);
-        foreach (var order in Orders(new[] { dupWay, dupWay, closer }))
-        {
-            var ring = Ring(order);
-            Assert.True(ring == null || IsSameRing(DupRing, ring),
-                $"member order {string.Join(" ", order.Select(w => "(" + Labels(w) + ")"))} gave a wrong shape {(ring == null ? "" : Labels(ring))}");
-        }
-
-        // And it DOES recover the real ring whenever the duplicate does not out-compete the
-        // closing way for the shared node (i.e. whenever `closer` is not the last member tried) —
-        // give or take which vertex it starts at and which way round it runs, same as any other
-        // member order (Member_order_and_direction_do_not_matter above).
-        Assert.True(IsSameRing(DupRing, Ring(dupWay, closer, dupWay)!));
-        Assert.True(IsSameRing(DupRing, Ring(closer, dupWay, dupWay)!));
+        // A retrace with TWO OR MORE interior vertices no longer sums to exactly 0: its cancelling
+        // shoelace-term pairs are no longer adjacent in the running sum (other terms are added
+        // between them), so intermediate floating-point rounding leaves a residual that is small but
+        // NOT zero — measured on the review round 1 build: a bare `area > 0.0` check let
+        // (P0,P2,P3,P4,P3,P2,P0) back as a 4-distinct-vertex "ring" and the longer one below as an
+        // 8-vertex one. The fix judges the net (signed, cancelling) sum against the GROSS (all
+        // terms taken absolute) sum for the same ring: a real polygon's net area is nowhere near a
+        // billionth of its gross sum; a retrace's residual is roughly the size of one floating-point
+        // rounding step relative to it.
+        Assert.Null(Ring(Way(P0, P2, P3, P4, P3, P2, P0)));
+        Assert.Null(Ring(Way(P0, P1, P2, P3, P4, P3, P2, P1, P0)));
     }
+
+    [Fact]
+    public void A_duplicated_member_is_dropped_before_joining_so_the_real_ring_is_recovered_in_every_order()
+        // A relation can list the same way TWICE among its members (an OSM data quirk). Left in the
+        // join pool, the greedy walk sometimes picks the DUPLICATE over the way that would actually
+        // close the ring, retracing it instead of reaching the real closing way — exactly the
+        // degenerate shape the area-tolerance fix above rejects, but with the duplicate consumed
+        // first the real ring is then never assembled at all, so there is nothing left to compete
+        // for "largest" and the order in question returned null rather than a wrong shape. Dropping
+        // an EXACT duplicate member (the same vertex sequence, either direction) before the join
+        // removes the ambiguity outright: with only ONE copy of the way left, there is nothing else
+        // it could be mistaken for, so the real ring comes back whichever order and direction the
+        // two surviving members are given in — the original ask.
+        => AssertSameRingInEveryOrder(WRing, Way(W0, W1, W2, W3, W4), Way(W0, W1, W2, W3, W4), Way(W4, W5, W0));
 
     [Fact]
     public void A_closed_way_touching_an_open_chain_is_never_spliced_into_it_in_any_member_order()
@@ -189,7 +198,7 @@ public class OsmRingAssemblerTests
         {
             [A] = "A", [B] = "B", [C] = "C", [D] = "D", [E] = "E", [F] = "F", [X] = "X",
             [P0] = "0", [P1] = "1", [P2] = "2", [P3] = "3", [P4] = "4", [P5] = "5",
-            [Da] = "a", [Dm] = "m", [Db] = "b", [Dn] = "n",
+            [W0] = "w0", [W1] = "w1", [W2] = "w2", [W3] = "w3", [W4] = "w4", [W5] = "w5",
         };
         return string.Concat(pts.Select(p => known.TryGetValue(p, out var name) ? name : "?"));
     }
