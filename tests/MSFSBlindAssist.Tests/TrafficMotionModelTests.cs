@@ -71,6 +71,137 @@ public class TrafficMotionModelTests
         Assert.Equal(0.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0, At(0, 0, 5), At(-20, 0, 1)));
     }
 
+    // ── track history (PR #247 B1 review, implementer concern 2) ─────────────────────────
+    // One previous sample is not enough at the 1 s cadence: a 2-4 kt pushback covers 1-2 m per
+    // sample, under ReversingMinMoveM, and a TCAS sweep can land milliseconds after the monitor's
+    // own. A nearby pushback is exactly what switches the 1 s cadence on.
+
+    private static PositionFix At(double northM, double eastM, double seconds, double altitudeFt)
+        => At(northM, eastM, seconds) with { AltitudeFt = altitudeFt };
+
+    // A 2 kt pushback: 1.03 m/s due south, nose north.
+    private const double PushbackMps = 2 * 0.514444;
+    private static PositionFix Pushback(double seconds) => At(-PushbackMps * seconds, 0, seconds);
+
+    [Fact]
+    public void A_two_knot_pushback_is_read_from_the_newest_sample_three_metres_back()
+    {
+        var history = new List<PositionFix> { Pushback(0), Pushback(1), Pushback(2), Pushback(3) };
+        var current = Pushback(4);
+
+        Assert.Equal(Pushback(1), GroundTrafficLogic.TrackAnchor(history, current));
+        Assert.Equal(180.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0,
+            GroundTrafficLogic.TrackAnchor(history, current), current), 0);
+        // The old behaviour — the immediately preceding sample, 1 m back — reads the nose. This is
+        // why the history exists.
+        Assert.Equal(0.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0, Pushback(3), current));
+    }
+
+    [Fact]
+    public void A_sample_milliseconds_before_the_current_one_does_not_hide_an_older_anchor()
+    {
+        // A TCAS sweep landing 5 ms after the monitor's own.
+        var history = new List<PositionFix> { Pushback(0), Pushback(1), Pushback(2), Pushback(3), Pushback(3.995) };
+        Assert.Equal(Pushback(1), GroundTrafficLogic.TrackAnchor(history, Pushback(4)));
+    }
+
+    [Fact]
+    public void Nothing_three_metres_back_within_five_seconds_is_no_anchor()
+    {
+        // 0.5 m/s: 2 m over the whole window.
+        var history = new List<PositionFix> { At(0, 0, 0), At(-0.5, 0, 1), At(-1, 0, 2), At(-1.5, 0, 3) };
+        Assert.Null(GroundTrafficLogic.TrackAnchor(history, At(-2, 0, 4)));
+        Assert.Null(GroundTrafficLogic.TrackAnchor(new List<PositionFix>(), At(-2, 0, 4)));
+    }
+
+    [Fact]
+    public void A_sample_more_than_five_seconds_old_is_never_the_anchor()
+    {
+        // 20 m back: exactly 5 s old it qualifies; 5.5 s old it does not.
+        Assert.Equal(At(18, 0, -1), GroundTrafficLogic.TrackAnchor(
+            new List<PositionFix> { At(18, 0, -1), At(-1, 0, 2), At(-1.5, 0, 3) }, At(-2, 0, 4)));
+        Assert.Null(GroundTrafficLogic.TrackAnchor(
+            new List<PositionFix> { At(18, 0, -1.5), At(-1, 0, 2), At(-1.5, 0, 3) }, At(-2, 0, 4)));
+    }
+
+    // ── climb rate ──────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void ClimbFpm_is_the_altitude_change_per_minute()
+        => Assert.Equal(1800.0, GroundTrafficLogic.ClimbFpm(new[] { At(0, 0, 0, 100) }, At(0, 0, 2, 160))!.Value, 6);
+
+    [Fact]
+    public void ClimbFpm_needs_both_altitudes()
+    {
+        Assert.Null(GroundTrafficLogic.ClimbFpm(new[] { At(0, 0, 0, 100) }, At(0, 0, 2)));   // current unknown
+        Assert.Null(GroundTrafficLogic.ClimbFpm(new[] { At(0, 0, 0) }, At(0, 0, 2, 160)));   // baseline unknown
+    }
+
+    [Fact]
+    public void ClimbFpm_needs_half_a_second_between_its_samples()
+    {
+        Assert.Null(GroundTrafficLogic.ClimbFpm(new[] { At(0, 0, 1.6, 150) }, At(0, 0, 2, 160)));
+        // A sample too new is skipped for the newest one old enough.
+        Assert.Equal(1800.0, GroundTrafficLogic.ClimbFpm(
+            new[] { At(0, 0, 0, 100), At(0, 0, 1.8, 150) }, At(0, 0, 2, 160))!.Value, 6);
+    }
+
+    [Fact]
+    public void ClimbFpm_never_uses_a_sample_more_than_ten_seconds_old()
+    {
+        Assert.Equal(360.0, GroundTrafficLogic.ClimbFpm(new[] { At(0, 0, -8, 100) }, At(0, 0, 2, 160))!.Value, 6);
+        Assert.Null(GroundTrafficLogic.ClimbFpm(new[] { At(0, 0, -9, 100) }, At(0, 0, 2, 160)));
+    }
+
+    // ── the history itself ──────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void AddToHistory_ignores_a_sample_that_is_not_newer_than_the_last()
+    {
+        var h = new List<PositionFix>();
+        GroundTrafficLogic.AddToHistory(h, At(0, 0, 5));
+        GroundTrafficLogic.AddToHistory(h, At(1, 0, 5));   // the same instant
+        GroundTrafficLogic.AddToHistory(h, At(2, 0, 4));   // older
+        Assert.Equal(new[] { At(0, 0, 5) }, h);
+    }
+
+    [Fact]
+    public void AddToHistory_drops_samples_more_than_ten_seconds_older_than_the_newest()
+    {
+        var h = new List<PositionFix>();
+        GroundTrafficLogic.AddToHistory(h, At(0, 0, 0));
+        GroundTrafficLogic.AddToHistory(h, At(0, 0, 1));
+        GroundTrafficLogic.AddToHistory(h, At(0, 0, 10));     // t=0 exactly 10 s older: kept
+        Assert.Equal(3, h.Count);
+        GroundTrafficLogic.AddToHistory(h, At(0, 0, 10.5));   // now 10.5 s older: dropped
+        Assert.Equal(new[] { At(0, 0, 1), At(0, 0, 10), At(0, 0, 10.5) }, h);
+    }
+
+    [Fact]
+    public void AddToHistory_keeps_at_most_twelve_samples()
+    {
+        var h = new List<PositionFix>();
+        for (int i = 0; i < 15; i++) GroundTrafficLogic.AddToHistory(h, At(0, 0, i * 0.5));
+        Assert.Equal(12, h.Count);
+        Assert.Equal(At(0, 0, 1.5), h[0]);   // the three oldest went
+        Assert.Equal(At(0, 0, 7.0), h[^1]);
+    }
+
+    [Fact]
+    public void NewestSampleAged_bounds_are_inclusive()
+    {
+        var h = new[] { At(0, 0, 0) };
+        Assert.Equal(At(0, 0, 0), GroundTrafficLogic.NewestSampleAged(h, T0.AddSeconds(0.5), 0.5, 5.0));
+        Assert.Equal(At(0, 0, 0), GroundTrafficLogic.NewestSampleAged(h, T0.AddSeconds(5.0), 0.5, 5.0));
+        Assert.Null(GroundTrafficLogic.NewestSampleAged(h, T0.AddSeconds(0.49), 0.5, 5.0));
+        Assert.Null(GroundTrafficLogic.NewestSampleAged(h, T0.AddSeconds(5.01), 0.5, 5.0));
+    }
+
+    [Fact]
+    public void NewestSampleAged_takes_the_newest_sample_old_enough()
+        => Assert.Equal(At(0, 0, 2), GroundTrafficLogic.NewestSampleAged(
+            new[] { At(0, 0, 0), At(0, 0, 2), At(0, 0, 3.8) }, T0.AddSeconds(4), 0.5, 5.0));
+
     // ── route-relative motion ───────────────────────────────────────────────────────────
 
     [Theory]

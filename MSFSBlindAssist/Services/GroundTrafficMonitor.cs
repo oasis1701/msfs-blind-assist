@@ -406,7 +406,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 _tracked[e.ObjectId] = ac;
             }
             if (ac.HasFix && now > ac.LastSeenTime)
-                ac.PreviousFix = new PositionFix(ac.Lat, ac.Lon, ac.LastSeenTime);
+                GroundTrafficLogic.AddToHistory(ac.History, new PositionFix(ac.Lat, ac.Lon, ac.LastSeenTime, ac.AltitudeFt));
             ac.Lat = e.Latitude;
             ac.Lon = e.Longitude;
             ac.AltitudeFt = e.AltitudeFt;
@@ -445,9 +445,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// </summary>
     private static string? CheckDataQuality(TrackedGroundAircraft ac, DateTime now)
     {
-        if (ac.DataQualityLogged || ac.PreviousFix is not { } p) return null;
+        if (ac.DataQualityLogged
+            || GroundTrafficLogic.NewestSampleAged(ac.History, now, 0.5, 5.0) is not { } p) return null;
         double dt = (now - p.Utc).TotalSeconds;
-        if (dt < 0.5 || dt > 5.0) return null;
         var (dx, dy) = GroundTrafficLogic.ToLocal(p.Lat, p.Lon, ac.Lat, ac.Lon);
         double derivedKts = Math.Sqrt(dx * dx + dy * dy) / dt / 0.514444;
         ac.SpeedMismatchCount = Math.Abs(derivedKts - ac.GS) > 5.0 ? ac.SpeedMismatchCount + 1 : 0;
@@ -455,6 +455,16 @@ public sealed class GroundTrafficMonitor : IDisposable
         ac.DataQualityLogged = true;
         return FormattableString.Invariant(
             $"ev=data-quality id={ac.ObjectId} name=\"{Q(ac.Name)}\" reportedGs={ac.GS:0.0} derivedGs={derivedKts:0.0} onGround={(ac.OnGround ? 1 : 0)}");
+    }
+
+    // Caller holds _lock.
+    private static PositionFix CurrentFix(TrackedGroundAircraft ac) => new(ac.Lat, ac.Lon, ac.LastSeenTime, ac.AltitudeFt);
+
+    // Caller holds _lock.
+    private static double Direction(TrackedGroundAircraft ac)
+    {
+        var cur = CurrentFix(ac);
+        return GroundTrafficLogic.EffectiveDirection(ac.HeadingTrue, ac.GS, GroundTrafficLogic.TrackAnchor(ac.History, cur), cur);
     }
 
     private void PruneStaleAircraft()
@@ -560,8 +570,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         {
             if (!ac.OnGround || ac.LastSeenTime < fresh || ac.GS > GroundTrafficLogic.MaxTaxiGsKts) continue;
             double distFt = NavigationCalculator.CalculateDistance(ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
-            double direction = GroundTrafficLogic.EffectiveDirection(ac.HeadingTrue, ac.GS, ac.PreviousFix,
-                new PositionFix(ac.Lat, ac.Lon, ac.LastSeenTime));
+            double direction = Direction(ac);
             RouteProjection? proj = haveRoute ? GroundTrafficLogic.ProjectOntoRoute(route, ac.Lat, ac.Lon) : null;
             double aheadM = proj is { } pj ? pj.RouteMetres - ownRouteM : double.NaN;
 
@@ -933,7 +942,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         {
             if (ac.LastSeenTime < fresh) continue;
             var assignments = GroundTrafficLogic.ClassifyAgainstRunways(shapes, ac.Lat, ac.Lon, ac.OnGround,
-                ac.HeadingTrue, ac.AltitudeFt - _ownAltFt);
+                ac.HeadingTrue, ac.AltitudeFt - _ownAltFt, GroundTrafficLogic.ClimbFpm(ac.History, CurrentFix(ac)));
             foreach (var a in assignments)
             {
                 if (!buckets.TryGetValue(a.ShapeIndex, out var st)) continue;
@@ -941,8 +950,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 {
                     double distFt = NavigationCalculator.CalculateDistance(_ownLat, _ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
                     double rel = NormalizeDeg(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
-                    double direction = GroundTrafficLogic.EffectiveDirection(ac.HeadingTrue, ac.GS, ac.PreviousFix,
-                        new PositionFix(ac.Lat, ac.Lon, ac.LastSeenTime));
+                    double direction = Direction(ac);
                     st.Occupants.Add(new RunwayOccupant(ac, distFt, rel,
                         GroundTrafficLogic.ClassifyMotion(_ownHeadingTrue, direction, ac.GS, rel)));
                 }
@@ -1053,8 +1061,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 sb.Append(list.Count == 1 ? "1 aircraft nearby. " : $"{list.Count} aircraft nearby. ");
                 foreach (var (distFt, ac, rel) in list)
                 {
-                    double direction = GroundTrafficLogic.EffectiveDirection(ac.HeadingTrue, ac.GS, ac.PreviousFix,
-                        new PositionFix(ac.Lat, ac.Lon, ac.LastSeenTime));
+                    double direction = Direction(ac);
                     var motion = GroundTrafficLogic.ClassifyMotion(hdgTrue, direction, ac.GS, rel);
                     string name = Capitalise(GroundTrafficLogic.SpokenNameWithCallsign(ac.Airline, ac.Callsign, ac.RawType));
                     sb.Append($"{name}, {GroundTrafficLogic.DescribeDirection(rel)}, " +
@@ -1223,8 +1230,11 @@ internal sealed class TrackedGroundAircraft
     public double HeadingTrue;
     public bool OnGround = true;
     public bool HasFix;
-    /// <summary>The sample before the current one — the motion model's track and the data-quality check.</summary>
-    public PositionFix? PreviousFix;
+    /// <summary>
+    /// Recent samples, oldest first (<c>GroundTrafficLogic.AddToHistory</c>) — the motion model's track
+    /// baseline, the climb rate and the data-quality check.
+    /// </summary>
+    public readonly List<PositionFix> History = new();
     public double GS = -1;        // sentinel: -1 means no data received yet
     public string Callsign = "";
     public string Airline = "";
