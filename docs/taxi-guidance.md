@@ -716,14 +716,44 @@ See `MSFSBlindAssist/Hotkeys/HotkeyManager.cs`:
 4. Calls `TaxiGuidanceManager.DescribeCurrentLocation(provider, icao, lat, lon, databaseGeneration)`, the generation read WITH the provider. The manager reuses the active guidance graph when the ICAO matches, otherwise builds and caches a dedicated query graph in `_whereAmICachedGraph` (invalidated via `ClearWhereAmICache()`, which a database switch calls) — but a graph built through a provider captured before a switch still answers the call and is NOT cached (`StoreWhereAmIGraph`), or an Alt+L in flight across the switch would put the previous database's graph straight back.
 
 The actual classification happens in `TaxiGraph.DescribeLocation(lat, lon)`:
-1. **Parking node** within 40 m → `Gate X`.
+1. **Parking node** within 40 m, in every direction → `Gate X`.
 2. **Runway edge** (PathType starts with `R`) within half-width + 5 m perpendicular → `Runway X`. *(Effectively dead code in current navdatareader DBs — no `taxi_path` row has type R; the centerline scan below covers this case.)*
 3. **Runway centerline scan** — for each `TaxiGraph.RunwayCenterline`, the runway shape (`RunwayShape`: the pavement ends and real half-width when usable, else the start rows) within half-width + 5 m and inside its extent → `Runway X` for the nearer end. Pairs are built in `TaxiGraph.Build` from opposing-end start rows (reciprocal designator first, reciprocal heading second, 200–6000 m apart). **This is what makes "Runway 27L" work mid-runway and on a displaced threshold**, not just within 50 m of the threshold node.
-4. **Runway threshold node** (ParkingName `Runway …`) within 50 m → that name. Catches edge cases where a runway has unpaired start positions.
+4. **Runway threshold node** (ParkingName `Runway …`) within 50 m **and inside the old node-hash ring** (±33 m north-south, ±33·cos(latitude) m east-west — see "The node answers' reach" below) → that name. Catches edge cases where a runway has unpaired start positions.
 5. **Taxiway edge** within half-width + 3 m perpendicular → `Taxiway X`.
-6. **Nearest node** (≤ 60 m) with at least one taxiway name → `Near taxiway X`.
+6. **Nearest node that has a taxiway name**, within 60 m in every direction → `Near taxiway X`.
 
 Distances use equirectangular projection (sub-cm accuracy at taxi scale); the edge scan clamps to segment endpoints, the runway scan tests the runway's extent.
+
+**The node answers' reach.** Steps 1, 4 and 6 read nodes, and each has the reach the owner ruled
+for it on the PR #230 review:
+
+- **The stand (step 1) and the fallback (step 6): true metres, in every direction, at every
+  latitude.** Their candidates come from the same cell index as the edges — `NodesNear`: every node
+  filed under its ~111 m cell, gathered on a ring sized separately in latitude and longitude. They
+  used to come from a fixed ±30-cell ring of the 1.1 m node hash, commented "~= 330 m" but really
+  ±33 m north-south and ±33·cos(latitude) m east-west: ±20 m at 52°N, ±7 m at ENSB (78°N). At 52°N
+  a stand more than about 20 m east or west of the aircraft was never a candidate, so Where-Am-I
+  named the taxiway, or nothing, instead (the review measured the gate lost at 17-53 % of positions
+  25-35 m east or west of a stand). A point up to 40 m from a stand in any direction — on an apron
+  taxilane beside it, say — now names the gate; north and south, the old ring already reached 33 m.
+- **The fallback takes the nearest node that HAS a taxiway name.** It used to take the nearest node
+  of any kind and answer only if that one was named, so a nearer unnamed node (a stand lead-in
+  junction, an unnamed apron connector) silenced it.
+- **"Near a runway start" (step 4) keeps EXACTLY the old ring.** `Build` names the node nearest
+  each runway start row "Runway X" — usually the entry taxiway's junction, at a small field the
+  hold line — and step 4 outranks the taxiway you are on (step 5), so a 50 m reach in every
+  direction would say "Runway 09" instead of "Taxiway A" 20-50 m east or west of such a node: a
+  change to what is said at a hold line that nobody measured. `RunwayStartReach` (beside
+  `GetSpatialHashKey`) replicates the old ring's key arithmetic — the same sums, the same rounding,
+  keys compared bit for bit as their strings compared, so "0" and "-0" stay two buckets — and
+  filters `NodesNear`'s candidates, whose walk always contains the whole old ring, so the
+  runway-start nodes it can name are exactly the old ring's. `TaxiGraphLocationRadiusTests` pins it
+  against a verbatim copy of that ring. Do not widen it without asking the owner again.
+
+The index files EVERY node, not only edge endpoints: measured against fs2024, 2 of 2,344,910 graph
+nodes carry no edge (LGMG, and one on KSQL's taxiway F) and neither is a stand or a runway start,
+but completeness does not rest on that count.
 
 **Threading.** `DescribeLocation` changes nothing a caller can see, but it is not free of shared
 state. `Alt+L`'s surroundings lookup runs `DescribeCurrentLocation` on a thread-pool thread, and the
@@ -742,7 +772,7 @@ because the only post-`Build` mutation runs on the UI thread too. A new query re
 thread, or a new post-`Build` mutation, must take it — inside `TaxiGraph`, since the lock is private.
 The cost: a holding-point pick on the UI thread can wait for one in-flight `Alt+L` query to finish.
 
-### Why `DescribeLocation` indexes EDGES, not nodes
+### Why `DescribeLocation` finds edges in a cell index, not through nearby nodes
 
 Candidate edges come from `TaxiGraph`'s own edge cell index
 (`EnsureCellIndex`/`EdgesNear`), never from the nodes within
@@ -774,7 +804,7 @@ EHAM's latitude.
 
 The index is built by the first query that needs it and DROPPED — never
 recounted — wherever `TaxiGraph`'s own code changes the structure
-(`InvalidateCellIndex`, from `AddEdge` and `SplitEdgeAt`); the next query
+(`InvalidateCellIndex`, from `AddEdge`, `SplitEdgeAt` and `ResolveNode`'s new-node branch); the next query
 rebuilds it. After `Build` the only such change is the painted holding-point
 projection (`InsertHoldingPointNodeOnEdge`); routing never splits an edge.
 `Nodes` and `Adjacency` are public, and hand-built test graphs and the two
@@ -797,6 +827,12 @@ The control is identical to the digit — the change touches exactly the
 population it targets. The 15 long segments that name something else are correct
 precedence (a midpoint on runway pavement, or inside `PARKING_RADIUS_M` of a
 gate), not failures.
+
+Those figures predate the reach change described under "Where Am I implementation" (PR #230
+review, GC-5): a midpoint up to 40 m east or west of a stand now names the gate, where at 52°N one
+more than about 20 m to the side never could, and the fallback now answers where a nearer unnamed
+node used to silence it. Both are correct precedence, but they move some control cases, so
+re-measure before quoting either control row as current.
 
 ### One name for a stand — where "Gate X" in that readout comes from
 
