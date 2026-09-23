@@ -412,6 +412,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             ac.AltitudeFt = e.AltitudeFt;
             ac.HeadingTrue = NormalizeDeg(e.HeadingMagnetic + magVar);
             ac.OnGround = onGround;
+            if (onGround) ac.LastOnGroundUtc = now;
             ac.GS = e.GroundSpeedKnots;
             ac.HasFix = true;
 
@@ -942,7 +943,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         {
             if (ac.LastSeenTime < fresh) continue;
             var assignments = GroundTrafficLogic.ClassifyAgainstRunways(shapes, ac.Lat, ac.Lon, ac.OnGround,
-                ac.HeadingTrue, ac.AltitudeFt - _ownAltFt, GroundTrafficLogic.ClimbFpm(ac.History, CurrentFix(ac)));
+                ac.HeadingTrue, ac.AltitudeFt - _ownAltFt, GroundTrafficLogic.ClimbFpm(ac.History, CurrentFix(ac)),
+                recentlyOnGround: (now - ac.LastOnGroundUtc).TotalSeconds <= GroundTrafficLogic.LandingGroundMemorySec);
             foreach (var a in assignments)
             {
                 if (!buckets.TryGetValue(a.ShapeIndex, out var st)) continue;
@@ -1235,6 +1237,8 @@ internal sealed class TrackedGroundAircraft
     /// baseline, the climb rate and the data-quality check.
     /// </summary>
     public readonly List<PositionFix> History = new();
+    /// <summary>When the intake last saw it on the ground (MinValue = never): a departure is not "landing" for a minute after.</summary>
+    public DateTime LastOnGroundUtc = DateTime.MinValue;
     public double GS = -1;        // sentinel: -1 means no data received yet
     public string Callsign = "";
     public string Airline = "";
