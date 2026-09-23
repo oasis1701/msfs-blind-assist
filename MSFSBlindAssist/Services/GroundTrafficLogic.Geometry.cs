@@ -3,8 +3,8 @@ namespace MSFSBlindAssist.Services;
 /// <summary>A point on the route ahead, with its cumulative route distance.</summary>
 public readonly record struct GroundTrafficRoutePoint(double Lat, double Lon, string Taxiway, double RouteMetres);
 
-/// <summary>Where a traffic aircraft sits relative to the route ahead.</summary>
-internal readonly record struct RouteProjection(double LateralMetres, double RouteMetres, string Taxiway);
+/// <summary>Where a traffic aircraft sits relative to the route ahead; <see cref="SegmentBearingDeg"/> is the true bearing of the leg it projects onto, in route order.</summary>
+internal readonly record struct RouteProjection(double LateralMetres, double RouteMetres, string Taxiway, double SegmentBearingDeg);
 
 internal static partial class GroundTrafficLogic
 {
@@ -95,7 +95,8 @@ internal static partial class GroundTrafficLogic
             {
                 bestD = d;
                 double segLen = route[i + 1].RouteMetres - route[i].RouteMetres;
-                best = new RouteProjection(d, route[i].RouteMetres + segLen * t, route[i + 1].Taxiway);
+                double bearing = (Math.Atan2(dx, dy) * 180.0 / Math.PI + 360.0) % 360.0;
+                best = new RouteProjection(d, route[i].RouteMetres + segLen * t, route[i + 1].Taxiway, bearing);
             }
         }
         return best;
