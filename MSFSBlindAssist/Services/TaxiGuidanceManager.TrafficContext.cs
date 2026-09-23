@@ -35,8 +35,10 @@ public sealed class GroundTrafficRouteContext
     public required IReadOnlyList<GroundTrafficRoutePoint> RouteAhead { get; init; }
 
     /// <summary>
-    /// Along-route metres from the aircraft to the END of the route — for a departure that
-    /// is the runway holding point, because the route is truncated there. NULL when
+    /// Along-route metres to the END of the route — for a departure that is the runway holding
+    /// point, because the route is truncated there — measured like every RouteAhead point, from
+    /// the START of the aircraft's current segment, NOT from the aircraft: subtract the
+    /// aircraft's own projection before comparing with a distance measured from it. NULL when
     /// <see cref="RouteAheadMaxMetres"/> cut the walk short, i.e. the end is further than
     /// the context looks, which is itself the answer to "is this queue at the runway?".
     /// </summary>

@@ -69,6 +69,11 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     // Moving-away hysteresis — distance must grow by this to call it "moving away"
     private const double MOVING_AWAY_HYSTERESIS_FT = 20.0;
+    // Relative-velocity test for "moving away" (see the zone evaluation): ~2 kt of opening.
+    private const double MOVING_AWAY_MIN_OPENING_MPS = 1.0;
+    // How much further along the route an aircraft must be than the first one to count as
+    // queued behind it (two aircraft side by side on one taxiway are both "first").
+    private const double SHADOW_MIN_GAP_M = 10.0;
 
     // Queue-moving detection: tight cone ahead. The GS thresholds and the two departure
     // triggers are pure logic and live in GroundTrafficLogic (QueueStoppedGs / QueueDeparted),
@@ -132,8 +137,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     public Func<GroundTrafficRouteContext?>? RouteContextProvider { get; set; }
 
     private readonly ScreenReaderAnnouncer _announcer;
-    private readonly SimConnectManager _sim;
-    private readonly System.Windows.Forms.Timer _timer;
+    private readonly IGroundTrafficSimSource _sim;
+    // Null in the headless constructor (unit tests), which drives ticks itself.
+    private readonly System.Windows.Forms.Timer? _timer;
     private readonly object _lock = new();
     private readonly Dictionary<uint, TrackedGroundAircraft> _tracked = new();
 
@@ -189,14 +195,22 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     // True while a hotkey summary is waiting for its requested traffic sweep to complete.
     private bool _summaryPending;
-    private readonly System.Windows.Forms.Timer _summaryTimeout;
+    private readonly System.Windows.Forms.Timer? _summaryTimeout;
 
     public GroundTrafficMonitor(ScreenReaderAnnouncer announcer, SimConnectManager sim)
+        : this(announcer, new SimConnectGroundTrafficSource(sim), startTimers: true) { }
+
+    /// <summary>
+    /// Headless constructor (GroundTrafficMonitorHeadlessTests): a simulated traffic source and NO WinForms
+    /// timers — the caller calls <see cref="TickForHarness"/> once per simulated second.
+    /// </summary>
+    internal GroundTrafficMonitor(ScreenReaderAnnouncer announcer, IGroundTrafficSimSource source, bool startTimers)
     {
         _announcer = announcer;
-        _sim = sim;
+        _sim = source;
         _sim.AiTrafficReceived += OnAiTrafficReceived;
         _sim.AiTrafficSweepCompleted += OnAiTrafficSweepCompleted;
+        if (!startTimers) return;
 
         _timer = new System.Windows.Forms.Timer { Interval = POLL_INTERVAL_MS };
         _timer.Tick += OnTick;
@@ -205,6 +219,9 @@ public sealed class GroundTrafficMonitor : IDisposable
         _summaryTimeout = new System.Windows.Forms.Timer { Interval = SUMMARY_SWEEP_TIMEOUT_MS };
         _summaryTimeout.Tick += (_, _) => CompleteSummaryAnnounce();
     }
+
+    /// <summary>One poll tick, for the headless harness (the app's timer calls the same method).</summary>
+    internal void TickForHarness() => OnTick(null, EventArgs.Empty);
 
     // ──────────────────────────────────────────────────────────────────────────
     // Timer
@@ -435,7 +452,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                         && GroundTrafficLogic.ProjectOntoRoute(route, ac.Lat, ac.Lon) is { } qp)
                     {
                         queueOnly.Add(new TrafficView(ac, distFt, 0.0, double.NaN, double.NaN,
-                            TrafficMotion.Stopped, qp, qp.RouteMetres - ownRouteM, false, false));
+                            TrafficMotion.Stopped, qp, qp.RouteMetres - ownRouteM, false, false, 0.0));
                     }
                     continue;
                 }
@@ -445,6 +462,8 @@ public sealed class GroundTrafficMonitor : IDisposable
                 var (rx, ry) = GroundTrafficLogic.ToLocal(ownLat, ownLon, ac.Lat, ac.Lon);
                 var (tvx, tvy) = GroundTrafficLogic.Velocity(ac.HeadingTrue, ac.GS);
                 var (tcpa, dcpa) = GroundTrafficLogic.ClosestApproach(rx, ry, tvx - ownVx, tvy - ownVy);
+                double rLen = Math.Sqrt(rx * rx + ry * ry);
+                double openingMps = rLen < 1.0 ? 0.0 : (rx * (tvx - ownVx) + ry * (tvy - ownVy)) / rLen;
                 var motion = GroundTrafficLogic.ClassifyMotion(ownHdg, ac.HeadingTrue, ac.GS, rel);
 
                 RouteProjection? proj = haveRoute ? GroundTrafficLogic.ProjectOntoRoute(route, ac.Lat, ac.Lon) : null;
@@ -452,7 +471,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 bool onRouteAhead = proj is { } p2 && p2.LateralMetres <= ON_ROUTE_LATERAL_M && aheadM >= ROUTE_ALERT_MIN_AHEAD_M;
                 bool nearRoute = proj is { } p3 && p3.LateralMetres <= NEAR_ROUTE_M && aheadM >= -20.0;
 
-                ground.Add(new TrafficView(ac, distFt, rel, tcpa, dcpa, motion, proj, aheadM, onRouteAhead, nearRoute));
+                ground.Add(new TrafficView(ac, distFt, rel, tcpa, dcpa, motion, proj, aheadM, onRouteAhead, nearRoute, openingMps));
             }
 
             // Speed-based zone boundaries.
@@ -464,10 +483,21 @@ public sealed class GroundTrafficMonitor : IDisposable
             // --- Queue moving ahead, and the "move up" nudge that follows it ---
             EvaluateQueueMoving(ctx, ground, ownGS, useMetres, immediate);
 
+            // The traffic you would reach FIRST on the route ahead. Aircraft queued beyond it are
+            // behind it — you cannot reach them without passing it — so they are not called
+            // separately: a three-aircraft queue was announced as three interrupting "on your
+            // route" calls, then three "Slow down"s, each cutting off the last (simulated
+            // traffic, EGLL, 2026-09-23). The queue position covers them.
+            TrafficView? firstOnRoute = null;
+            foreach (var v in ground)
+                if (v.OnRouteAhead && (firstOnRoute == null || v.AheadM < firstOnRoute.AheadM)) firstOnRoute = v;
+
             foreach (var v in ground)
             {
                 var ac = v.Ac;
                 string name = Capitalise(ac.Name);
+                bool shadowed = v.OnRouteAhead && firstOnRoute != null && !ReferenceEquals(v, firstOnRoute)
+                                && v.AheadM > firstOnRoute.AheadM + SHADOW_MIN_GAP_M;
                 string distStr = FormatDistance(v.DistFt, useMetres);
                 string dir = GroundTrafficLogic.DescribeDirection(v.Rel);
 
@@ -491,7 +521,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                     ac.RouteAlertArmed = true;
                 bool pullingAway = v.Motion == TrafficMotion.SameDirection && ac.GS >= ownGS + 3.0;
                 bool comingAtUs = v.Motion is TrafficMotion.HeadOn or TrafficMotion.OppositeDirection;
-                if (v.OnRouteAhead && ac.RouteAlertArmed && !pullingAway
+                if (v.OnRouteAhead && !shadowed && ac.RouteAlertArmed && !pullingAway
                     && v.AheadM <= ROUTE_ALERT_MAX_AHEAD_M
                     && (ownGS >= SLOW_DOWN_GS_KTS || comingAtUs)
                     && ac.CurrentZone < GroundZone.Caution)
@@ -513,8 +543,27 @@ public sealed class GroundTrafficMonitor : IDisposable
                 // ── Proximity zones ──
                 ac.PreviousDistance = ac.CurrentDistance;
                 ac.CurrentDistance = v.DistFt;
-                bool movingAway = ac.PreviousDistance < double.MaxValue
-                                  && ac.CurrentDistance > ac.PreviousDistance + MOVING_AWAY_HYSTERESIS_FT;
+                // Opening, measured from the relative VELOCITY as well as from the distance
+                // between two evaluations: the hysteresis was sized for the old 3 s poll, and at
+                // 1 s an aircraft opening at 3 m/s gains 10 ft per poll — never the 20 ft needed —
+                // so a pilot creeping up behind a departing aircraft heard "Stop, … very close"
+                // about traffic pulling away from them (simulated traffic, 2026-09-23).
+                // For traffic on the route ahead, the straight-line gap is the wrong measure through
+                // a bend (an aircraft rounding a corner ahead moves sideways to the line of sight
+                // while pulling away along the route): its growing lead ALONG the route counts too.
+                var nowT = DateTime.UtcNow;
+                bool leadGrowing = false;
+                if (v.OnRouteAhead && !double.IsNaN(ac.PreviousAheadM))
+                {
+                    double dt = (nowT - ac.PreviousAheadTime).TotalSeconds;
+                    if (dt > 0.2 && dt < 10.0)
+                        leadGrowing = (v.AheadM - ac.PreviousAheadM) / dt >= MOVING_AWAY_MIN_OPENING_MPS;
+                }
+                ac.PreviousAheadM = v.OnRouteAhead ? v.AheadM : double.NaN;
+                ac.PreviousAheadTime = nowT;
+                bool movingAway = (ac.PreviousDistance < double.MaxValue
+                                   && ac.CurrentDistance > ac.PreviousDistance + MOVING_AWAY_HYSTERESIS_FT)
+                                  || (ac.GS >= MOVING_KTS && (v.OpeningMps >= MOVING_AWAY_MIN_OPENING_MPS || leadGrowing));
 
                 GroundZone newZone;
                 if (v.DistFt > awareDistFt)        newZone = GroundZone.None;
@@ -523,6 +572,10 @@ public sealed class GroundTrafficMonitor : IDisposable
                 else                               newZone = GroundZone.Awareness;
 
                 if (newZone == GroundZone.None) { ac.CurrentZone = GroundZone.None; continue; }
+
+                // Queued beyond the first aircraft on the route: silent unless it is somehow
+                // very close (then "Stop" still speaks — never suppress that).
+                if (shadowed && newZone < GroundZone.Warning) { ac.CurrentZone = newZone; continue; }
 
                 // Caution/Warning only for traffic in the forward arc.
                 bool inForwardArc = v.Rel <= FORWARD_ARC_DEG || v.Rel >= 360.0 - FORWARD_ARC_DEG;
@@ -535,8 +588,15 @@ public sealed class GroundTrafficMonitor : IDisposable
                 // awareness call — it can still escalate later if it becomes a threat.
                 if (haveRoute && newZone >= GroundZone.Caution)
                 {
+                    // The straight-line closest approach is a threat test for MOVING traffic only.
+                    // For a parked aircraft it assumes the pilot keeps going straight, and where the
+                    // route bends toward one before turning away it predicted a near pass that the
+                    // route never makes: "Slow down, … ahead, 160 metres" (and "Stop" at speed) for
+                    // aircraft parked 100 m beside the route — 421 such calls in simulated
+                    // traffic runs, 100 airports, 2026-09-23. A parked aircraft is a threat through
+                    // the route (NearRoute) or by being genuinely very close, as before.
                     bool threat = v.NearRoute
-                                  || (v.Dcpa < THREAT_DCPA_M && v.Tcpa <= 30.0 && (movingTraffic || ownGS >= MOVING_KTS))
+                                  || (v.Dcpa < THREAT_DCPA_M && v.Tcpa <= 30.0 && movingTraffic)
                                   || v.DistFt <= WARNING_FT;
                     if (!threat) newZone = GroundZone.Awareness;
                 }
@@ -569,7 +629,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             }
 
             // ── Departure queue position ──
-            EvaluateQueue(ctx, ground, queueOnly, haveRoute, ownGS, queued);
+            EvaluateQueue(ctx, ground, queueOnly, haveRoute, ownGS, ownRouteM, queued);
 
             // ── Runway watch ──
             EvaluateRunwayWatch(ctx, ownLat, ownLon, ownHdg, useMetres, queued, immediate);
@@ -686,7 +746,7 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     private void EvaluateQueue(GroundTrafficRouteContext? ctx, List<TrafficView> ground,
                                List<TrafficView> queueOnly, bool haveRoute,
-                               double ownGS, List<string> queued)
+                               double ownGS, double ownRouteM, List<string> queued)
     {
         if (ctx == null || !ctx.IsDepartureRoute || ctx.IsLiningUp)
         {
@@ -721,7 +781,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         int ahead = cluster.Count;
         int position = ahead + 1;
         _queuePositionForSummary = position;
-        _queueIsAtRunway = QueueHeadIsAtRunwayHold(ctx, inQueueRange, ahead);
+        _queueIsAtRunway = QueueHeadIsAtRunwayHold(ctx, inQueueRange, ahead, ownRouteM);
         // Only worth saying where the pilot is NOT already at the runway hold: from there
         // anything "further ahead" is on the runway itself, which is the runway watch's to
         // report, not the queue's.
@@ -750,9 +810,15 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// construction: a holding point 2.5 km away is not the one this queue is at.
     /// </summary>
     private static bool QueueHeadIsAtRunwayHold(
-        GroundTrafficRouteContext ctx, IEnumerable<TrafficView> ground, int ahead)
+        GroundTrafficRouteContext ctx, IEnumerable<TrafficView> ground, int ahead, double ownRouteM)
     {
-        if (ctx.RouteEndMetres is not { } endM) return false;
+        if (ctx.RouteEndMetres is not { } routeEndM) return false;
+        // RouteEndMetres is measured along RouteAhead, which starts at the START of the
+        // aircraft's current segment; AheadM is measured from the aircraft. Put both on the
+        // aircraft, or the head reads further from the hold by however far the pilot is into
+        // that segment — EGLL 09L: a queue 35 m from the hold was called "the queue", not the
+        // departure queue, with the pilot stopped partway down a long segment.
+        double endM = routeEndM - ownRouteM;
         double headM = 0.0;
         if (ahead > 0)
         {
@@ -1034,8 +1100,8 @@ public sealed class GroundTrafficMonitor : IDisposable
             // populating the dictionary — announcing synchronously read a stale (usually empty)
             // snapshot. The timeout is a safety net that announces from whatever arrived.
             _summaryPending = true;
-            _summaryTimeout.Stop();
-            _summaryTimeout.Start();
+            _summaryTimeout?.Stop();
+            _summaryTimeout?.Start();
             _sim.RequestAiTrafficData();
         });
     }
@@ -1045,7 +1111,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         if (!_summaryPending) return false;
         _summaryPending = false;
-        _summaryTimeout.Stop();
+        _summaryTimeout?.Stop();
         PruneStaleAircraft();
         _announcer.AnnounceImmediate(GetNearestTrafficSummary());
         return true;
@@ -1079,16 +1145,17 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     private sealed record TrafficView(
         TrackedGroundAircraft Ac, double DistFt, double Rel, double Tcpa, double Dcpa,
-        TrafficMotion Motion, RouteProjection? Proj, double AheadM, bool OnRouteAhead, bool NearRoute);
+        TrafficMotion Motion, RouteProjection? Proj, double AheadM, bool OnRouteAhead, bool NearRoute,
+        double OpeningMps);
 
     public void Dispose()
     {
         _sim.AiTrafficReceived -= OnAiTrafficReceived;
         _sim.AiTrafficSweepCompleted -= OnAiTrafficSweepCompleted;
-        _timer.Stop();
-        _timer.Dispose();
-        _summaryTimeout.Stop();
-        _summaryTimeout.Dispose();
+        _timer?.Stop();
+        _timer?.Dispose();
+        _summaryTimeout?.Stop();
+        _summaryTimeout?.Dispose();
     }
 }
 
@@ -1119,4 +1186,41 @@ internal sealed class TrackedGroundAircraft
     // One-shot per episode: re-armed when the aircraft leaves the route / stops converging.
     public bool RouteAlertArmed        = true;
     public bool ConflictAlertArmed     = true;
+    // Its lead along OUR route at the previous evaluation (NaN when not on it) — whether that
+    // lead is growing is what "moving away" means for traffic ahead on the route.
+    public double PreviousAheadM       = double.NaN;
+    public DateTime PreviousAheadTime  = DateTime.MinValue;
+}
+
+/// <summary>
+/// What <see cref="GroundTrafficMonitor"/> needs from the simulator — the app passes
+/// <see cref="SimConnectGroundTrafficSource"/>; the headless tests pass simulated traffic.
+/// </summary>
+internal interface IGroundTrafficSimSource
+{
+    bool IsConnected { get; }
+    bool? LastKnownOnGround { get; set; }
+    SimConnectManager.AircraftPosition? LastKnownPosition { get; }
+    void RequestAircraftPosition();
+    void RequestAircraftPositionAsync(Action<SimConnectManager.AircraftPosition> callback);
+    void RequestAiTrafficData();
+    event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived;
+    event EventHandler? AiTrafficSweepCompleted;
+}
+
+/// <summary>Pass-through to <see cref="SimConnectManager"/> — no behaviour of its own.</summary>
+internal sealed class SimConnectGroundTrafficSource : IGroundTrafficSimSource
+{
+    private readonly SimConnectManager _sim;
+    public SimConnectGroundTrafficSource(SimConnectManager sim) => _sim = sim;
+    public bool IsConnected => _sim.IsConnected;
+    public bool? LastKnownOnGround { get => _sim.LastKnownOnGround; set => _sim.LastKnownOnGround = value; }
+    public SimConnectManager.AircraftPosition? LastKnownPosition => _sim.LastKnownPosition;
+    public void RequestAircraftPosition() => _sim.RequestAircraftPosition();
+    public void RequestAircraftPositionAsync(Action<SimConnectManager.AircraftPosition> callback) => _sim.RequestAircraftPositionAsync(callback);
+    public void RequestAiTrafficData() => _sim.RequestAiTrafficData();
+    public event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived
+    { add => _sim.AiTrafficReceived += value; remove => _sim.AiTrafficReceived -= value; }
+    public event EventHandler? AiTrafficSweepCompleted
+    { add => _sim.AiTrafficSweepCompleted += value; remove => _sim.AiTrafficSweepCompleted -= value; }
 }
