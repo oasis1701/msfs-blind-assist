@@ -1006,7 +1006,9 @@ as long as the airport was current.
   navdata names none. `BglPlacementReader` (pure, byte-level BGL parsing, by
   seeking) plus `ModelLibNameReader` (a streamed byte search for `<ModelInfo …
   guid="…" name="…">`) hand named placements to `SceneryModelNameClassifier`,
-  which tokenises the raw model name, strips a leading ICAO and vendor token,
+  which tokenises the raw model name, strips the vendor prefix up to and
+  including the airport's ICAO (only the ICAO itself when it ENDS the name, as
+  in `DHL_YSSY`),
   classifies on keywords, drops a stop-list of non-building tokens (fences,
   lights, vehicles, jetways, containers, dollies…), folds part numbers and
   collapses the parts of one multi-part building (`concourse_a_01..03`) onto
@@ -2384,6 +2386,26 @@ cluster.
   feature **per spatial cluster**, never a package-wide average — that put MK
   Studios BIKF's seven "DS Hangar" buildings, 2.3 km apart, at a single phantom
   point between them.
+
+**The airport's ICAO goes with the vendor prefix it ends** (`mk_bikf_…`,
+`iniscene-egss-…`, `KTIW_…`), but some authors put it LAST: `DHL_YSSY`,
+`Security_DHL_yssy`, `TankOil_KPHX`. Stripping everything up to it threw those
+buildings away whole, so when the words after the ICAO hold no kind word and
+the words before it hold one ON THEIR OWN, only the ICAO token goes (review
+SI-3). "On their own" is load-bearing: `MightBeFeature` knows no ICAO and sees
+the whole name, so a kind phrase completed across the gap (`Jet_KXYZ_Centre`)
+would be a name `Classify` accepts and the prefilter had already rejected.
+Measured over all 26,098 model names in the 35 installed airport packages
+(2026-09-22), the rule affects five and names four: YSSY "DHL" and "Security
+DHL" (single placements ~100 m from its cargo stands), YSSY "Cargo Rwy"
+(`cargo_rwy25_yssy`, the author's own words, one placement 221 m from stand G61
+— a recorded residual, beside EIDW's pre-existing "Rwy 28 Poi Bud 2 Cargo":
+runway designators inside a model name are a separate lexical question), and
+KPHX "Tank Oil"; the fifth, `Fuel-truck_KPHX`, stays clutter. What the rule owes
+these models is that they are no longer DROPPED: their names follow the
+classifier's existing rules, so a terminal keeps its keyword-plus-designator
+name — a constructed `Main_Terminal_KSEA` is "Terminal", the name its sibling
+parts share — and `Hangar_KTIW_02` is "Hangar 2".
 
 **`FeatureKind.Terminal` and `FeatureKind.Concourse` are exempt from the
 PLACEMENT cap** (`PlacementCapApplies`), and the exemption is **by kind** on

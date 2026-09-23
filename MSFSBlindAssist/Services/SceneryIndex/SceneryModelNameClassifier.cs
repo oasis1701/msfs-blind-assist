@@ -159,10 +159,13 @@ public static class SceneryModelNameClassifier
     /// for whatever this rejects, so a false positive costs one Classify call while a false
     /// negative loses a place — which is why it must NEVER be false for a name Classify accepts.
     /// It is: it tokenizes and strips noise exactly as Classify does and then asks whether any
-    /// POSITIVE kind word appears (<see cref="KindWordPatterns"/>), over a SUPERSET of Classify's
-    /// tokens (no ICAO is known here, so that prefix stays). Positive words only: the FBO veto in
-    /// FeatureLexicon.NamedKind can turn a match OFF when one word more is seen, and this sees more
-    /// words than Classify does. The noise strip is not an optimisation — Classify reads the
+    /// POSITIVE kind word appears (<see cref="HasKindWord"/>, over <see cref="KindWordPatterns"/>),
+    /// over a SUPERSET of Classify's tokens (no ICAO is known here, so the prefix it ends stays).
+    /// Positive words only: the FBO veto in FeatureLexicon.NamedKind can turn a match OFF when one
+    /// word more is seen, and this sees more words than Classify does. Where Classify drops only the
+    /// ICAO token from the middle of a name, it does so only when the words BEFORE the ICAO carry a
+    /// kind word on their own — so this sees that kind word too, never one completed across the gap
+    /// (see <see cref="Tokenize"/>). The noise strip is not an optimisation — Classify reads the
     /// stripped tokens, where a noise word between two of them ("jet_part_centre") would otherwise
     /// hide a match this has to see. The stop words are deliberately NOT applied: clutter is
     /// Classify's job.
@@ -170,9 +173,7 @@ public static class SceneryModelNameClassifier
     public static bool MightBeFeature(string modelName)
     {
         if (string.IsNullOrWhiteSpace(modelName)) return false;
-        string joined = string.Join(" ", StripNoise(Tokenize(modelName, "")));
-        foreach (var rx in KindWordPatterns) if (rx.IsMatch(joined)) return true;
-        return false;
+        return HasKindWord(Tokenize(modelName, ""));
     }
 
     /// <summary>
@@ -182,7 +183,7 @@ public static class SceneryModelNameClassifier
     private static List<string> Tokenize(string model, string icao)
     {
         var raw = model.Split(TokenSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        int start = 0;
+        int start = 0, icaoAt = -1;
         if (!string.IsNullOrEmpty(icao))
         {
             if (raw.Length > 0 && raw[0].StartsWith(icao, StringComparison.OrdinalIgnoreCase)
@@ -199,17 +200,54 @@ public static class SceneryModelNameClassifier
                     if (!raw[i].Equals(icao, StringComparison.OrdinalIgnoreCase)
                         && !(raw[i].Length <= 8 && raw[i].EndsWith(icao, StringComparison.OrdinalIgnoreCase))) continue;
                     start = i + 1;
+                    icaoAt = i;
                     break;
                 }
             }
         }
-        while (start < raw.Length && VendorTokens.Contains(raw[start])) start++;
 
-        var tokens = new List<string>(raw.Length - start);
-        for (int i = start; i < raw.Length; i++)
+        var tokens = Words(raw, SkipVendors(raw, start), raw.Length);
+        // …unless the ICAO does not END a prefix but a NAME: "DHL_YSSY", "Security_DHL_yssy",
+        // "TankOil_KPHX", "Hangar_KTIW_02". Nothing after it then holds a kind word while the words
+        // BEFORE it do, and stripping through it threw the building away whole (review SI-3; the
+        // rule affects five of the 26,098 names in 35 installed airport packages and names four of
+        // them). Then only the ICAO token goes. The words before it must hold a kind word ON THEIR
+        // OWN, never one completed across the gap ("Jet_KXYZ_Centre"): MightBeFeature knows no ICAO,
+        // sees the whole name, and must never reject a name this accepts.
+        if (icaoAt > 0 && !HasKindWord(tokens))
+        {
+            var before = Words(raw, SkipVendors(raw, 0), icaoAt);
+            if (HasKindWord(before)) tokens = before.Concat(Words(raw, icaoAt + 1, raw.Length)).ToList();
+        }
+        return tokens;
+    }
+
+    /// <summary>The first index at or after <paramref name="start"/> that is not a developer's token.</summary>
+    private static int SkipVendors(string[] raw, int start)
+    {
+        while (start < raw.Length && VendorTokens.Contains(raw[start])) start++;
+        return start;
+    }
+
+    /// <summary><c>raw[from..end)</c>, each split further at camelCase and letter→digit.</summary>
+    private static List<string> Words(string[] raw, int from, int end)
+    {
+        var tokens = new List<string>(Math.Max(0, end - from));
+        for (int i = from; i < end; i++)
             foreach (var piece in TokenSplit.Split(raw[i]))
                 if (piece.Length > 0) tokens.Add(piece);
         return tokens;
+    }
+
+    /// <summary>Whether the words, noise stripped as Classify strips it, carry any POSITIVE kind word
+    /// (<see cref="KindWordPatterns"/>, never the FBO veto): the prefilter's whole test, and the ICAO
+    /// rule's in <see cref="Tokenize"/>. It reads KindWordPatterns itself — the one list the
+    /// vocabulary fingerprint hashes — never a copy of it.</summary>
+    private static bool HasKindWord(List<string> tokens)
+    {
+        string joined = string.Join(" ", StripNoise(tokens));
+        foreach (var rx in KindWordPatterns) if (rx.IsMatch(joined)) return true;
+        return false;
     }
 
     /// <summary>

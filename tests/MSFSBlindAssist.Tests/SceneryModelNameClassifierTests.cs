@@ -77,6 +77,7 @@ public class SceneryModelNameClassifierTests
     [InlineData("EGSS_Main_Terminal_Interior_clutter", "EGSS")] [InlineData("FBKDEN_GroundTowerInterior", "KDEN")]
     [InlineData("EDDF_Equipment_FireExt_001", "EDDF")] [InlineData("MK_BIKF_DK_Sewer_Tank", "BIKF")]
     [InlineData("Barriers_Cargo_12", "EBBR")] [InlineData("kpdx_nxt_concourse_b_walkway", "KPDX")]
+    [InlineData("Fuel-truck_KPHX", "KPHX")]          // measured 2026-09-22: with only its ICAO removed it is still a fuel truck
     public void Clutter_and_interiors_are_not_features(string model, string icao)
         => Assert.Null(SceneryModelNameClassifier.Classify(model, icao));
 
@@ -112,6 +113,54 @@ public class SceneryModelNameClassifierTests
         Assert.NotNull(c);
         Assert.Equal(kind, c!.Kind);
         Assert.Equal(name, c.Name);
+    }
+
+    // Measured 2026-09-22 over all 26,098 model names in the 35 installed airport packages: FIVE names
+    // put the airport's ICAO at the END, after a kind word, so stripping everything up to the ICAO
+    // threw them away whole. The rule affects those five and NAMES four: the three pinned here (each a
+    // single placement of a real building; DHL ~93 m from cargo stand P 91 at YSSY) and
+    // cargo_rwy25_yssy ("Cargo Rwy", a recorded residual — runway designators inside a model name are
+    // a separate lexical question — deliberately not pinned); the fifth, Fuel-truck_KPHX, stays
+    // clutter in the drop table above.
+    [Theory]
+    [InlineData("DHL_YSSY", "YSSY", FeatureKind.Cargo, "DHL")]
+    [InlineData("Security_DHL_yssy", "YSSY", FeatureKind.Cargo, "Security DHL")]
+    [InlineData("TankOil_KPHX", "KPHX", FeatureKind.Fuel, "Tank Oil")]
+    public void An_icao_that_ends_the_name_costs_only_itself(string model, string icao, FeatureKind kind, string name)
+    {
+        var c = SceneryModelNameClassifier.Classify(model, icao);
+        Assert.NotNull(c);
+        Assert.Equal(kind, c!.Kind);
+        Assert.Equal(name, c.Name);
+    }
+
+    // NOT measured model names: the review's shapes for the same rule, and the case it must not
+    // change. What the rule owes them is that they are no longer DROPPED; their names follow the
+    // classifier's existing rules, and the spec's guessed "Main Terminal", "Hangar 02" and "Boeing
+    // Hangar 11" were never requirements. A terminal is its keyword plus a designator only — how
+    // EGSS_Main_Terminal_Part2 and EGSS_Terminal_Main_Part1 share ONE name — so "Main_Terminal_KSEA"
+    // is "Terminal". "02" reads as 2, as KTIW_Hangar_09 reads "Hangar 9". Where the ICAO does end a
+    // prefix, everything through it still goes ("mesh"), and the trailing "11" is a part number.
+    [Theory]
+    [InlineData("Main_Terminal_KSEA", "KSEA", FeatureKind.Terminal, "Terminal")]
+    [InlineData("Hangar_KTIW_02", "KTIW", FeatureKind.Hangar, "Hangar 2")]
+    [InlineData("mesh_EGKK_Boeing_Hangar_11", "EGKK", FeatureKind.Hangar, "Boeing Hangar")]
+    public void The_icao_rule_on_the_reviews_shapes(string model, string icao, FeatureKind kind, string name)
+    {
+        var c = SceneryModelNameClassifier.Classify(model, icao);
+        Assert.NotNull(c);
+        Assert.Equal(kind, c!.Kind);
+        Assert.Equal(name, c.Name);
+    }
+
+    [Fact]
+    public void A_kind_phrase_is_never_completed_across_the_removed_icao()
+    {
+        // "Jet Centre" is an FBO phrase only when the two words are the name's OWN neighbours.
+        // MightBeFeature knows no ICAO and sees "Jet KXYZ Centre": had Classify joined across the gap
+        // it would accept a name the prefilter had already thrown away.
+        Assert.Null(SceneryModelNameClassifier.Classify("Jet_KXYZ_Centre", "KXYZ"));
+        Assert.False(SceneryModelNameClassifier.MightBeFeature("Jet_KXYZ_Centre"));
     }
 
     // NOT measured model names: rows that pin the kind ORDER against the other two tiers. The
