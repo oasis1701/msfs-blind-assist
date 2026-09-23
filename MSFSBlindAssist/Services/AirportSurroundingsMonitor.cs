@@ -25,7 +25,7 @@ namespace MSFSBlindAssist.Services;
 /// of them idle, so <see cref="RunwayProbe"/> asks the pavement itself. And it must not START
 /// BACKGROUND WORK during a rollout (the first sample on the ground lands within about 2 s of
 /// touchdown) — <see cref="MayStartBuild"/> holds off BOTH jobs a sample can start, the first-time
-/// catalog build and the probe's own graph warm-up, until a quiet moment.</para>
+/// catalog build and the probe's own runway-row warm-up, until a quiet moment.</para>
 /// </summary>
 public sealed class AirportSurroundingsMonitor : IDisposable
 {
@@ -40,10 +40,12 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
     /// <summary>How long a warm-up that left the probe unable to answer is believed before another
     /// is allowed. Once-and-never-again is the wrong memory for a warm that THREW (a transient
-    /// database read) or found no taxi data to build from: the probe would then answer null for
-    /// that airport for the whole session, silently switching the runway silence off. Same length
-    /// as SurroundingsCatalogCache.FailureMemory, and for the same reason — long enough that a 2 s
-    /// poll cannot hammer a broken build, short enough that the session recovers.</summary>
+    /// database read): the probe would then answer null for that airport for the whole session,
+    /// silently switching the runway silence off. (An airport with no taxi data, or no runways, is
+    /// no longer such a case — the warm-up reads the runway rows alone, and an empty list answers
+    /// "not on a runway".) Same length as SurroundingsCatalogCache.FailureMemory, and for the same
+    /// reason — long enough that a 2 s poll cannot hammer a broken read, short enough that the
+    /// session recovers.</summary>
     internal static readonly TimeSpan ProbeWarmRetry = TimeSpan.FromSeconds(60);
 
     /// <summary>
@@ -73,10 +75,14 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
     private string _icao = "";
     private DateTime _icaoAt = DateTime.MinValue;
-    private string _probeWarmedIcao = "";
-    private DateTime _probeWarmedAt = DateTime.MinValue;
-    private bool _probeNoGraphLogged;
-    private Task? _probeWarm;
+    /// <summary>
+    /// The runway probe's warm-up as ONE value: the airport it was last started for, when, its task
+    /// (polled for completion, never waited on), and whether the "still cannot be answered" line has
+    /// been written for that airport. They were four fields that every reset and every airport change
+    /// had to clear together.
+    /// </summary>
+    private sealed record ProbeWarmUp(string Icao, DateTime StartedAt, Task Work, bool CannotAnswerLogged);
+    private ProbeWarmUp? _probeWarmUp;
     private bool _resetWhileAirborne;
     private AirportFeatureCatalog? _lastCatalog;
     private bool _disposed;
@@ -120,11 +126,17 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     /// during a takeoff or a landing flown without them; the runway itself is
     /// <see cref="RunwayProbe"/>'s job.</summary>
     public Func<bool>? SuppressCheck { get; set; }
-    /// <summary>True/false = on/off a runway; null = unknown (no graph yet). Runs on the UI thread.</summary>
+    /// <summary>True/false = on/off a runway; null = unknown (nothing read for this airport yet). Runs on the UI thread.</summary>
     public Func<string, double, double, bool?>? RunwayProbe { get; set; }
-    /// <summary>Warms whatever RunwayProbe reads, off the UI thread, once per airport (retried at
-    /// <see cref="ProbeWarmRetry"/> while the probe still cannot answer).</summary>
-    public Action<IAirportDataProvider, string, double, double>? WarmRunwayProbe { get; set; }
+    /// <summary>
+    /// PREPARES the warm-up for whatever RunwayProbe reads: called on the UI thread, in the same
+    /// turn that read the provider, and returns the work to run off it (once per airport, retried at
+    /// <see cref="ProbeWarmRetry"/> while the probe still cannot answer). Two steps so that whatever
+    /// the work must know about THIS moment — the database generation that goes with the provider —
+    /// is captured here rather than on the pool thread, where a database switch could fall in
+    /// between and file the previous database's runways under the new one.
+    /// </summary>
+    public Func<IAirportDataProvider, string, Action>? PrepareRunwayProbeWarmUp { get; set; }
 
     public AirportSurroundingsMonitor(ScreenReaderAnnouncer announcer, SimConnectManager sim, Func<IAirportDataProvider?> provider, SurroundingsCatalogCache cache)
     {
@@ -152,27 +164,31 @@ public sealed class AirportSurroundingsMonitor : IDisposable
         // position is measured from nothing. The two switches are settings and survive.
         _samples.Reset();
         _icao = ""; _icaoAt = DateTime.MinValue;
-        // A warm-up still running is let go, never waited on: it observes its own exception and
-        // its only effect is a graph cached for an airport we have just stopped tracking.
-        _probeWarmedIcao = ""; _probeWarmedAt = DateTime.MinValue; _probeNoGraphLogged = false; _probeWarm = null;
+        // A warm-up still running is let go, never waited on: it observes its own exception, and
+        // it stores nothing once the probe has been asked about another airport (the manager keeps
+        // a warm-up's shapes only for the airport the probe is being asked about) or after a
+        // database switch (its generation is stale before it can publish). At most, until the next
+        // probe read, it can still store a memo for the airport we were tracking, which answers for
+        // no other airport.
+        _probeWarmUp = null;
         _lastCatalog = null;
     }
 
     /// <summary>
-    /// May a BACKGROUND JOB start on this tick? One policy, both of the jobs a tick can start: the
-    /// first-time catalog build (the GSX list, possibly a scenery-package index) and the runway
-    /// probe's graph warm-up. Never during a takeoff, a rollout (the first tick on the ground is
-    /// ~2 s after touchdown), a lineup, a hold or docking.
+    /// May a BACKGROUND JOB start on this position sample? One policy, both of the jobs a sample
+    /// can start: the first-time catalog build (the GSX list, possibly a scenery-package index) and
+    /// the runway probe's warm-up. Never during a takeoff, a rollout (the first sample on the
+    /// ground lands within about 2 s of touchdown), a lineup, a hold or docking.
     /// </summary>
     internal static bool MayStartBuild(bool suppressed, double groundSpeedKts)
         => !suppressed && groundSpeedKts <= PassingCalloutGate.MaxSpeedKts;
 
     /// <summary>
-    /// Should a warm-up start on this tick? PURE, because the caller's state machine is where the
-    /// retry went wrong once: true only when the probe could NOT answer on this tick (there is
-    /// nothing to prepare when it already can), no warm-up is still running, and either this
-    /// airport is not the one last warmed or <see cref="ProbeWarmRetry"/> has passed since that
-    /// warm STARTED. Nothing here reads the probe — the caller hands it the tick's own single
+    /// Should a warm-up start on this position sample? PURE, because the caller's state machine is
+    /// where the retry went wrong once: true only when the probe could NOT answer on this sample
+    /// (there is nothing to prepare when it already can), no warm-up is still running, and either
+    /// this airport is not the one last warmed or <see cref="ProbeWarmRetry"/> has passed since that
+    /// warm STARTED. Nothing here reads the probe — the caller hands it the sample's own single
     /// read.
     /// </summary>
     internal static bool ShouldWarmProbe(bool probeAnswered, bool sameAirportAsLastWarm, TimeSpan sinceLastWarm, bool warmInFlight)
@@ -329,7 +345,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
                 if (MayStartBuild(suppressed, p.GroundSpeedKnots))
                 {
                     _ = _cache.GetAsync(_icao);
-                    WarmProbeIfNeeded(provider, p, now, RunwayProbe?.Invoke(_icao, p.Latitude, p.Longitude) != null);
+                    WarmProbeIfNeeded(provider, now, RunwayProbe?.Invoke(_icao, p.Latitude, p.Longitude) != null);
                 }
                 return;
             }
@@ -348,22 +364,24 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
             if (suppressed) return;
 
-            // ONE probe read per sample, serving BOTH things that need it: the warm-up decision
-            // below and the silence under it. The read takes TaxiGuidanceManager._stateLock, which
-            // is the lock a warm-up itself holds while it builds, so a second read on the same
-            // sample is a second chance to wait on it — and that is exactly how the retry, when it
-            // read the probe for itself, quietly went from once a minute to every poll.
+            // ONE probe read per position sample, serving BOTH things that need it: the warm-up
+            // decision below and the silence under it. The read takes TaxiGuidanceManager._stateLock,
+            // which a Where-Am-I lookup (Alt+Y, Alt+L) holds across its whole graph build, so a
+            // second read on the same sample is a second chance to wait on it — and that is exactly
+            // how the retry, when it read the probe for itself, quietly went from once a minute to
+            // every poll.
             bool? onRunway = RunwayProbe?.Invoke(_icao, p.Latitude, p.Longitude);
 
-            // ONE quiet-moment policy, BOTH background jobs — and the warm-up is the HEAVIER of
-            // the two: it holds that same _stateLock across the taxi paths, the parking list, the
-            // runway rows and the graph build. Ungated, the first ground tick after a touchdown
-            // started that build at ~120 kt and the next tick blocked the UI thread — the
-            // SimConnect pump, the queued announcer and the hotkeys — for the length of it, during
-            // the rollout. Waiting costs at most a late FIRST callout: the airborne Reset() emptied
-            // the tracks, so the gate needs two fed samples and 15 m of closing before it can arm,
-            // and a build started at the first quiet sample normally lands inside that window.
-            if (MayStartBuild(suppressed, p.GroundSpeedKnots)) WarmProbeIfNeeded(provider, p, now, onRunway != null);
+            // ONE quiet-moment policy, BOTH background jobs. The warm-up used to be the heavier of
+            // the two — a whole taxi graph built under that same _stateLock, which, started at
+            // ~120 kt on the first ground tick after a touchdown, blocked the UI thread (the
+            // SimConnect pump, the queued announcer, the hotkeys) for the length of it during the
+            // rollout. It now reads the runway rows alone and takes the lock only to publish, but it
+            // still reads the database, and one policy serves both jobs. Waiting costs at most a late
+            // FIRST callout: the airborne Reset() emptied the tracks, so the gate needs two fed
+            // samples and 15 m of closing before it can arm, and a warm-up started at the first
+            // quiet sample lands well inside that window.
+            if (MayStartBuild(suppressed, p.GroundSpeedKnots)) WarmProbeIfNeeded(provider, now, onRunway != null);
 
             // Takeoff Assist and the taxi states cannot see a takeoff flown without the assist or
             // a landing without an exit plan. A runway is never where a building callout belongs.
@@ -422,48 +440,53 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     }
 
     /// <summary>
-    /// Builds whatever <see cref="RunwayProbe"/> reads for this airport on a thread-pool thread —
-    /// the probe itself may not build anything, and the graph it wants can take a noticeable moment
-    /// to assemble. Once per airport, then at most once per <see cref="ProbeWarmRetry"/> while the
-    /// probe still cannot answer (a warm that threw, or an airport whose taxi data would not build,
-    /// caches no graph, and a stamp alone would leave the runway silence off there for the whole
-    /// session), and never twice at once.
+    /// Starts the runway probe's warm-up on a thread-pool thread — the probe itself reads nothing,
+    /// because its caller is the monitor's position handler, on the UI thread. Once per airport,
+    /// then at most once per <see cref="ProbeWarmRetry"/> while the probe still cannot answer (a
+    /// warm-up whose database read threw publishes nothing, and a stamp alone would leave the runway
+    /// silence off there for the whole session), and never twice at once.
     ///
-    /// <para>This method NEVER reads the probe: <paramref name="probeAnswered"/> is the tick's own
-    /// single read, and <see cref="ShouldWarmProbe"/> decides from state alone. The provider is
-    /// captured on the UI thread, so a database switch cannot swap it out from under a warm-up in
-    /// flight, and the task is only ever polled for completion — never waited on.</para>
+    /// <para>This method NEVER reads the probe: <paramref name="probeAnswered"/> is the sample's own
+    /// single read, and <see cref="ShouldWarmProbe"/> decides from state alone. The warm-up is
+    /// PREPARED here, on the UI thread and in the same turn that read <paramref name="provider"/>
+    /// (<see cref="PrepareRunwayProbeWarmUp"/>), so a database switch can neither swap the provider
+    /// out from under it nor let it file the previous database's runways under the new one; the
+    /// task is only ever polled for completion — never waited on.</para>
     /// </summary>
-    private void WarmProbeIfNeeded(IAirportDataProvider provider, SimConnectManager.AircraftPosition p, DateTime now, bool probeAnswered)
+    private void WarmProbeIfNeeded(IAirportDataProvider provider, DateTime now, bool probeAnswered)
     {
-        if (WarmRunwayProbe == null) return;
+        var prepare = PrepareRunwayProbeWarmUp;
+        if (prepare == null) return;
 
-        bool sameAirport = string.Equals(_probeWarmedIcao, _icao, StringComparison.OrdinalIgnoreCase);
-        // A warm-up for a DIFFERENT airport is no longer this airport's business — let it finish
-        // on its own and stop counting it as in flight, or the first warm here waits out a build
-        // whose result this airport will never read.
-        if (!sameAirport) { _probeWarm = null; _probeNoGraphLogged = false; }
+        // A warm-up for a DIFFERENT airport is no longer this airport's business: it finishes on
+        // its own and is not counted as in flight, or the first warm-up here would wait out a read
+        // whose result this airport never uses. Its result cannot evict this airport's memo either:
+        // the manager keeps a warm-up's shapes only for the airport the probe is being asked about.
+        var last = _probeWarmUp;
+        bool sameAirport = last != null && string.Equals(last.Icao, _icao, StringComparison.OrdinalIgnoreCase);
+        TimeSpan sinceLast = sameAirport ? now - last!.StartedAt : TimeSpan.MaxValue;
+        bool inFlight = sameAirport && !last!.Work.IsCompleted;
+        if (!ShouldWarmProbe(probeAnswered, sameAirport, sinceLast, inFlight)) return;
 
-        if (!ShouldWarmProbe(probeAnswered, sameAirport, now - _probeWarmedAt, _probeWarm is { IsCompleted: false })) return;
-
-        // Reached with sameAirport only on a retry, i.e. a warm-up that left the probe unable to
-        // answer. Said once per airport: the no-data case leaves no other trace at all, and
-        // repeating it every minute would bury the line that matters.
+        // Reached with sameAirport only on a retry: a warm-up that left the probe unable to answer.
+        // Said once per airport — nothing else records it, and repeating it every minute would bury
+        // the line that matters.
         //
-        // What the line may claim is exactly what is known. A probe that has ever answered for this
-        // airport keeps answering from its runway-shape memo, which the online taxiway-name fetch
-        // no longer takes away — so reaching here means the warm-up never produced geometry at all,
-        // not that it produced some and lost it. The two causes left are the airport having no taxi
-        // data to build from and the build throwing; nothing here can tell them apart.
-        if (sameAirport && !_probeNoGraphLogged)
+        // What the line may claim is exactly what is known. The warm-up publishes whatever the
+        // runway rows describe — an EMPTY list at a field with no runways, which answers "not on a
+        // runway" — a late warm-up for another airport can no longer evict this one's memo, and a
+        // database switch resets this monitor, so the one way left to reach here is a warm-up whose
+        // database read THREW, which its own catch below has already logged.
+        bool logged = sameAirport && last!.CannotAnswerLogged;
+        if (sameAirport && !logged)
         {
-            _probeNoGraphLogged = true;
-            Log.Debug("Surroundings", $"runway probe: {_icao} still cannot be answered after a warm-up — no taxi data for it, or the build failed; retrying at most once a minute");
+            logged = true;
+            Log.Debug("Surroundings", $"runway probe: {_icao} still cannot be answered after a warm-up — its runway read failed; retrying at most once a minute");
         }
 
-        _probeWarmedIcao = _icao; _probeWarmedAt = now;
-        string icao = _icao; double lat = p.Latitude, lon = p.Longitude; var warm = WarmRunwayProbe;
-        _probeWarm = Task.Run(() => { try { warm(provider, icao, lat, lon); } catch (Exception ex) { Log.Warn("Surroundings", $"runway probe warm-up failed: {ex.Message}"); } });
+        var work = prepare(provider, _icao);
+        var task = Task.Run(() => { try { work(); } catch (Exception ex) { Log.Warn("Surroundings", $"runway probe warm-up failed: {ex.Message}"); } });
+        _probeWarmUp = new ProbeWarmUp(_icao, now, task, logged);
     }
 
     public void Dispose()

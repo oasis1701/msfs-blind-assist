@@ -1362,8 +1362,8 @@ Six rules the gate cannot lose:
   `MergeRadiusMetres`, whose smallest value is Hangar's 40 m, so for a generic
   hangar pair the margin is zero, not "half" of anything.
 - **The closest sample must itself have been ABEAM** (45°–135° either side),
-  judged at the MINIMUM-range sample and never at the detection tick — at 40 kt
-  with a 2 s poll that tick can sit 40+ m past the true closest point, where a
+  judged at the MINIMUM-range sample and never at the detection sample — at 40 kt
+  with a 2 s poll that sample can sit 40+ m past the true closest point, where a
   genuinely abeam building already reads well past 135°. This is also what
   excludes a building approached tail-first during a pushback (the range closes
   backwards, then "opens" as the aircraft taxies away). A non-abeam minimum is
@@ -1380,21 +1380,21 @@ Six rules the gate cannot lose:
   `MinSpeedKts` is `PendingExpiry`'s case and still speaks. An unreadable speed
   counts as stopped, which can only withhold a callout.
 - **The pass freezes the moment it arms.** `Evaluate` returns the distance and
-  bearing the building had at its OWN closest point, not the tick that releases
+  bearing the building had at its OWN closest point, not the sample that releases
   it. A pass held back by the 10 s global gap or by ground speed outside the
   band can fire 10–25 s later, through a turn; announcing the current bearing
   would name the wrong side, or a direction that is not a side at all. Because
   a pass only ever arms from an abeam minimum, what comes back is always left
   or right.
 - **A pass that cannot fire is given up on**, after `PendingExpiry` (20 s from
-  arming) — comfortably past the 10 s global gap and a late tick, short enough
+  arming) — comfortably past the 10 s global gap and a late sample, short enough
   that what it describes is still beside the aircraft. Pass a building, stop
   inside its radius (below `MinSpeedKts` nothing may fire) and taxi on three
   minutes later, and the held callout named somewhere the aircraft no longer
   was. Checked ABOVE the speed/gap test, because in exactly that case the test
   below it is never reached. An expired pass is consumed silently.
 - **A catalog swap re-baselines the tracks.** When the instance
-  `TryGetCached` hands back differs from the previous tick's, the monitor calls
+  `TryGetCached` hands back differs from the previous sample's, the monitor calls
   `RebaselineTracks()`: a rebuild can change a feature's geometry BASIS (a
   stand cluster becomes a building outline), so a track carried across it sees
   a range STEP rather than the next sample of an approach — a premature pass
@@ -1415,10 +1415,11 @@ means "nothing to ask".
 **The probe keeps its runway shapes.** They are memoised by AIRPORT as well as
 by graph instance, and answer when neither graph is available —
 `RunwayShapeSource` owns the ordering (active graph, Where-Am-I graph, memo).
-The probe's OWN warm-up calls `DescribeCurrentLocation`, whose `GetTaxiPaths`
-starts the background taxiway-name fetch; when that lands,
-`OnAirportDataUpdated` nulls the Where-Am-I graph. Losing the graph seconds
-after the first answer is therefore the ORDINARY sequence, and keyed on the
+An Alt+Y or Alt+L at the airport builds the Where-Am-I graph through
+`GetTaxiPaths`, which starts the background taxiway-name fetch; when that lands,
+`OnAirportDataUpdated` nulls the Where-Am-I graph. (Until the warm-up stopped
+building graphs, the probe's OWN warm-up was what started it.) Losing a graph
+seconds after it answered is therefore the ORDINARY sequence, and keyed on the
 graph instance alone the probe then answered null for the ~60 s until
 `ShouldWarmProbe` allowed another warm-up — during which null does not silence
 anything, so callouts were permitted on a runway (a landing with no exit plan,
@@ -1444,6 +1445,38 @@ is ONE record, `RunwayShapeMemo` (airport, generation, the graph it came from,
 the shapes), and `RunwayShapeSource.Resolve` is the whole probe step — which
 source answers and what memo is left behind — pure and pinned by
 `RunwayShapeSourceTests`.
+
+**The warm-up reads the runway rows, never a taxi graph.**
+`TaxiGuidanceManager.PrepareRunwayShapeWarmUp` builds the shapes from the start
+and runway tables alone (`RunwayPavement.BuildShapesFromRunwayRows`) and
+publishes them to the memo. Centreline pairing in `TaxiGraph.Build` never reads
+a taxi path or a stand — an empty graph returns from its parking and bridging
+passes untouched — so `Build` with no paths and no parking IS that pairing, and
+a test pins the shapes identical to the full graph's. The warm-up used to call
+`DescribeCurrentLocation`, which returned "No taxi data" before building
+anything at an airport with no taxi paths — 18,737 of fs2024's 41,411 airports
+with a runway have none — so the probe stayed null there all session and
+building callouts spoke on the runway during an unassisted takeoff or rollout.
+Measured with a replica of the two pairing passes over those airports: 18,234
+pair a centreline for every land runway from their start rows, 70 some, 393
+none (386 of them because every start row lies within 200 m of every other, the
+pairing floor), and 40 seaplane bases have no land start row. It also held
+`_stateLock` across a whole graph build and, through `GetTaxiPaths`, started the
+online taxiway-name fetch; it does neither now. An airport with no runways
+publishes an EMPTY list, which answers "not on a runway" (right: there is none);
+a runway whose start rows cannot be paired is invisible here exactly as it is to
+Where-Am-I. The warm-up is PREPARED on the UI thread in the same turn that read
+the provider (`AirportSurroundingsMonitor.PrepareRunwayProbeWarmUp`), so it
+carries that provider's database generation, and one that straddled a database
+switch is read for nothing and stored nowhere (`RunwayShapeSource.Publish`) —
+nor is one that finishes after the monitor has moved on to another airport:
+`Publish` keeps a warm-up's shapes only for the airport the probe is being asked
+about (`TaxiGuidanceManager._runwayProbeIcao`, recorded by every probe read), so
+a late warm-up for the previous airport can never evict the new one's memo and
+leave the probe answering null for a minute. A side effect: the first Alt+Y —
+and the first Takeoff Assist runway detection — at an airport builds its own
+Where-Am-I graph again, exactly as both always did with the passing callouts off
+(the default).
 
 **Every `AIRCRAFT_POSITION` answer is a sample, judged where it lands.** The
 2 s timer only ASKS (`RequestAircraftPosition`); `OnPositionReceived`, the
@@ -1479,17 +1512,20 @@ position is not a finite number does nothing at all.
 `Taxiing` is deliberately NOT suppressed — a pilot under active taxi guidance
 is exactly who this is for.
 
-**Neither background job a tick can start may run at a bad moment.** One
-policy, `MayStartBuild(suppressed, groundSpeedKts)`, gates both the first-time
-catalog build and the probe's own graph warm-up. The warm-up is the heavier of
-the two: it holds `TaxiGuidanceManager._stateLock` across the taxi paths,
-the parking list, the runway rows and the graph build. Ungated, the first
-ground tick after a touchdown started it at ~120 kt and the next tick blocked
-the UI thread — the SimConnect pump, the queued announcer and the hotkeys — for
-the length of it, during the rollout. Waiting costs at most a late FIRST
-callout. **Never "fix" a busy lock with `Monitor.TryEnter` in the probe**: a
-null answer does not silence anything, so lock-busy would PERMIT callouts on
-the runway. The probe is read once per position sample (not at all on a suppressed one)
+**Neither background job a position sample can start may run at a bad
+moment.** One policy, `MayStartBuild(suppressed, groundSpeedKts)`, gates both
+the first-time catalog build and the probe's own warm-up. The warm-up used to be
+the heavier of the two: it held `TaxiGuidanceManager._stateLock` across the
+taxi paths, the parking list, the runway rows and a whole graph build, and
+ungated, the first ground tick after a touchdown started it at ~120 kt and the
+next tick blocked the UI thread — the SimConnect pump, the queued announcer and
+the hotkeys — for the length of it, during the rollout. It now reads two small
+tables and takes the lock only to publish, but it still reads the database, and
+one policy serves both jobs. Waiting costs at most a late FIRST callout.
+**Never "fix" a busy lock with `Monitor.TryEnter` in the probe**: a null answer
+does not silence anything, so lock-busy would PERMIT callouts on the runway —
+and a Where-Am-I lookup (Alt+Y, Alt+L) still holds that lock across its own
+graph build. The probe is read once per position sample (not at all on a suppressed one)
 and that single read feeds both the warm-up decision and the silence;
 `ShouldWarmProbe` is pure, retries at most once per `ProbeWarmRetry` (60 s)
 while the probe still cannot answer, and never starts a second warm-up while
@@ -2181,7 +2217,8 @@ because it dropped the model library of ten real Community packages.)
   re-baselined (never `Reset`) when the catalog instance changes, and are
   silent on runway pavement as well as under every guidance phase that already
   speaks. The runway probe keeps its shapes per AIRPORT so the taxiway-name
-  fetch — which its own warm-up starts — cannot blind it.
+  fetch cannot blind it, and warms them from the runway rows alone, so it also
+  answers at the airports that have no taxi paths.
 - The catalog is never built on the UI thread, and neither background job a
   monitor tick can start may run during a rollout.
 - The scenery scan opens only the packages `scenery_local_path` names, or the

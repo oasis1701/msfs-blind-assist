@@ -20,9 +20,10 @@ public sealed record RunwayShapeMemo(string Icao, long Generation, TaxiGraph? So
 /// because the memo's whole point is an ORDERING that is easy to get wrong.
 ///
 /// <para>The memo is the rung that keeps the probe from going blind. The Where-Am-I graph is
-/// dropped by <c>OnAirportDataUpdated</c> whenever the online taxiway-name fetch lands — and the
-/// probe's OWN warm-up is what starts that fetch, so the sequence is the ordinary one: warm, answer,
-/// lose the graph seconds later, answer null for the rest of the minute the warm-up retry waits.
+/// dropped by <c>OnAirportDataUpdated</c> whenever the online taxiway-name fetch lands — and an
+/// Alt+Y or Alt+L at the airport is what starts that fetch (the probe's OWN warm-up did, until it
+/// stopped building graphs), so the sequence is the ordinary one: build, answer, lose the graph
+/// seconds later, answer null for the rest of the minute the warm-up retry waits.
 /// Null does not silence the passing callouts, so that minute permitted them ON A RUNWAY. Runway
 /// pavement does not depend on taxiway NAMES, so shapes built before the fetch are still exactly
 /// right after it.</para>

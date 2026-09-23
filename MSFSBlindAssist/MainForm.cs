@@ -812,8 +812,10 @@ public partial class MainForm : Form
             // None of the states above is on during a takeoff flown without Takeoff Assist or a
             // landing without an exit plan, so the pavement is asked directly.
             RunwayProbe = (icao, lat, lon) => taxiGuidanceManager.IsOnRunwayPavement(icao, lat, lon),
-            // DescribeCurrentLocation builds and caches the Where-Am-I graph IsOnRunwayPavement reads.
-            WarmRunwayProbe = (provider, icao, lat, lon) => taxiGuidanceManager.DescribeCurrentLocation(provider, icao, lat, lon),
+            // The runway rows alone, never a taxi graph: answers at an airport with no taxi paths,
+            // starts no online taxiway-name fetch, and takes the manager's lock only to publish.
+            // Prepared on the UI thread so it carries the database generation of the provider it reads.
+            PrepareRunwayProbeWarmUp = taxiGuidanceManager.PrepareRunwayShapeWarmUp,
         };
 
         // Per-aircraft rollout-anticipation lead for the taxi steering tone

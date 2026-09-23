@@ -4,7 +4,7 @@ using MSFSBlindAssist.Services.TaxiAugment;
 namespace MSFSBlindAssist.Services;
 
 /// <summary>What one ground sample meant to the two callouts that share it.</summary>
-/// <param name="Usable">False when the position was not a finite number: nothing on this tick may
+/// <param name="Usable">False when the position was not a finite number: nothing on this sample may
 /// act on it, and it was not kept as the position the next distance is measured from.</param>
 /// <param name="First">There was no previous position to measure from — the first ground sample
 /// of a session, after <see cref="SurroundingsSampleTracker.Reset"/>, or after a pause in sampling

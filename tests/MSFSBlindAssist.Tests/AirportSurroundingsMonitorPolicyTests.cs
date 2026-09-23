@@ -5,7 +5,7 @@ namespace MSFSBlindAssist.Tests;
 
 /// <summary>
 /// The monitor's pure rules: whether a BACKGROUND JOB may start on this tick (one policy, both
-/// jobs — the first-time catalog build and the runway probe's graph warm-up), whether the warm-up
+/// jobs — the first-time catalog build and the runway probe's warm-up), whether the warm-up
 /// is the job that needs starting, and what counts as a teleport rather than a taxi. The
 /// per-sample rules — the last position, the unreadable-sample guard, the two switches and the
 /// surface gate — are SurroundingsSampleTracker's, pinned in SurroundingsSampleTrackerTests.
@@ -59,9 +59,8 @@ public class AirportSurroundingsMonitorPolicyTests
         => Assert.True(AirportSurroundingsMonitor.ShouldWarmProbe(
             probeAnswered: false, sameAirportAsLastWarm: false, TimeSpan.Zero, warmInFlight: false));
 
-    /// <summary>A build slow enough to still be running at the retry mark is left to finish: a
-    /// second caller would only queue behind the same lock for a graph the first is already
-    /// building.</summary>
+    /// <summary>A warm-up slow enough to still be running at the retry mark is left to finish: a
+    /// second would only repeat the same runway read the first is already doing.</summary>
     [Theory]
     [InlineData(0.0)]
     [InlineData(1.0)]

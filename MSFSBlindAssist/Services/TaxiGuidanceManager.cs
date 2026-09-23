@@ -1415,6 +1415,10 @@ public partial class TaxiGuidanceManager : IDisposable
     /// generation it was installed under (<c>_graphGeneration</c>) and a switch deliberately leaves
     /// that graph in place, so once the generation has moved the runway probe neither answers from it
     /// nor re-seeds its memo from it (<see cref="RunwayShapeSource.Choose"/>).
+    ///
+    /// <para>The runway probe's warm-up captures it WITH its provider, on the UI thread
+    /// (<see cref="PrepareRunwayShapeWarmUp"/>), and its shapes are stored only while it has not
+    /// moved (<see cref="RunwayShapeSource.Publish"/>).</para>
     /// </summary>
     public long DatabaseGeneration => Interlocked.Read(ref _databaseGeneration);
     private long _databaseGeneration;
@@ -1536,12 +1540,18 @@ public partial class TaxiGuidanceManager : IDisposable
     //
     // It is keyed by AIRPORT, and that half is what keeps the probe answering: it OUTLIVES the
     // graph. OnAirportDataUpdated nulls the Where-Am-I graph whenever the online taxiway-name fetch
-    // lands — and the probe's own warm-up is what starts that fetch, so losing the graph seconds
-    // after the first answer is the ordinary sequence, not an edge case. Keyed on the instance alone
+    // lands — and an Alt+Y or Alt+L at the airport is what starts that fetch (the probe's own
+    // warm-up did, until it stopped building graphs), so losing a graph seconds after it answered
+    // is the ordinary sequence, not an edge case. Keyed on the instance alone
     // the probe then answered null for the ~60 s its caller waits before another warm-up, and null
     // does not silence: building callouts were permitted ON A RUNWAY for that minute. Runway
     // pavement does not depend on taxiway NAMES, so the shapes are still right.
     private RunwayShapeMemo? _runwayShapeMemo;
+    // The airport IsOnRunwayPavement was last asked about — the passing-callout monitor's current
+    // one, since the monitor is the probe's only caller and asks before it ever warms. Written under
+    // _stateLock. A warm-up publishes only for this airport (RunwayShapeSource.Publish), so one
+    // still running for the PREVIOUS airport cannot land late and evict this airport's memo.
+    private string _runwayProbeIcao = "";
 
     /// <summary>
     /// Is this point on any runway's pavement at <paramref name="icao"/>? Answers from geometry
@@ -1562,8 +1572,11 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <see cref="RunwayShapeSource"/> owns the ordering and carries the measurement.</para>
     ///
     /// <para>Takes _stateLock like every other reader of the graph pair, so a position sample can
-    /// block for as long as a background <see cref="DescribeCurrentLocation"/> holds it building a
-    /// graph — once per airport, and the same wait the locked status readers already take.</para>
+    /// block for as long as a Where-Am-I lookup (<see cref="DescribeCurrentLocation"/>, Alt+Y or
+    /// Alt+L) holds it building a graph — once per airport, and the same wait the locked status
+    /// readers already take. The probe's own warm-up no longer holds it across anything: it reads
+    /// the runway rows first and takes the lock only to publish
+    /// (<see cref="PrepareRunwayShapeWarmUp"/>).</para>
     /// </summary>
     public bool? IsOnRunwayPavement(string icao, double lat, double lon)
     {
@@ -1572,6 +1585,7 @@ public partial class TaxiGuidanceManager : IDisposable
         IReadOnlyList<RunwayShape>? shapes;
         lock (_stateLock)
         {
+            _runwayProbeIcao = icao;
             (shapes, _runwayShapeMemo) = RunwayShapeSource.Resolve(icao, DatabaseGeneration,
                 _graph, _icao, _graphGeneration,
                 _whereAmICachedGraph, _whereAmICachedIcao,
@@ -1580,6 +1594,60 @@ public partial class TaxiGuidanceManager : IDisposable
         // Outside the lock on a local reference — the shape list is immutable once built, exactly
         // as DescribeCurrentLocation runs DescribeLocation on its own local graph.
         return shapes == null ? null : RunwayPavement.IsOnPavement(lat, lon, shapes);
+    }
+
+    /// <summary>
+    /// Prepares the runway probe's warm-up for <paramref name="icao"/>: captures, on the CALLING
+    /// thread, the <see cref="DatabaseGeneration"/> that goes with <paramref name="dataProvider"/>
+    /// and returns the warm-up itself, to run on any thread. Call it where the provider was read —
+    /// the passing-callout monitor's position handler, on the UI thread — so no database switch can
+    /// fall between the two: captured later, on the pool thread, the previous database's provider
+    /// would be paired with the NEW generation and its runways filed as the current database's.
+    ///
+    /// <para>The warm-up reads the RUNWAY ROWS alone — the start table and the runway table
+    /// (<see cref="RunwayPavement.BuildShapesFromRunwayRows"/>) — and never a taxi graph. So it
+    /// answers at an airport with NO taxi paths, which is 18,737 of fs2024's 41,411 airports with a
+    /// runway (the old graph warm-up returned "No taxi data" there before building anything and left
+    /// the probe null — permitting callouts on the runway — for the whole session); it never calls
+    /// GetTaxiPaths, so it never starts the online taxiway-name fetch; and it reads outside
+    /// _stateLock, taking the lock only to publish. An airport with no runways publishes an EMPTY
+    /// list, which answers "not on a runway". A database read failure throws out of the returned
+    /// action; the caller logs it and retries at its own pace. The result is stored only while no
+    /// database switch has happened since, and only for the airport the probe is still being asked
+    /// about (<see cref="RunwayShapeSource.Publish"/>), so a warm-up that outlived its airport cannot
+    /// evict the next airport's memo.</para>
+    /// </summary>
+    public Action PrepareRunwayShapeWarmUp(IAirportDataProvider dataProvider, string icao)
+    {
+        long readUnder = DatabaseGeneration;
+        return () => WarmRunwayShapes(dataProvider, icao, readUnder);
+    }
+
+    private void WarmRunwayShapes(IAirportDataProvider dataProvider, string icao, long readUnder)
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return;
+        var starts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
+        var shapes = RunwayPavement.BuildShapesFromRunwayRows(starts, dataProvider.GetRunways(icao) ?? new List<Runway>());
+        lock (_stateLock)
+        {
+            var held = _runwayShapeMemo;
+            _runwayShapeMemo = RunwayShapeSource.Publish(
+                held: held,
+                icao: icao,
+                readUnder: readUnder,
+                currentGeneration: DatabaseGeneration,
+                shapes: shapes,
+                trackedIcao: _runwayProbeIcao);
+            if (ReferenceEquals(_runwayShapeMemo, held))
+            {
+                string why = !RunwayShapeSource.MayStore(readUnder, DatabaseGeneration)
+                    ? "the database changed while they were read"
+                    : $"the probe is now asked about {(string.IsNullOrEmpty(_runwayProbeIcao) ? "no airport" : _runwayProbeIcao)}";
+                Log.Debug("Surroundings", $"runway probe: {icao} runway rows read but not stored — {why}");
+                return;
+            }
+        }
+        Log.Debug("Surroundings", $"runway probe: {icao} warmed from its runway rows — {shapes.Count} runway(s) from {starts.Count} start row(s)");
     }
 
     /// <summary>
