@@ -4,9 +4,10 @@ namespace MSFSBlindAssist.Services;
 /// Whether a surroundings lookup (Alt+L, Ctrl+Shift+L) has been slow enough to be worth saying
 /// "Looking around." about.
 ///
-/// <para>A COLD first press at an airport can wait 3-10 s with nothing said: up to 3 s for the
-/// OSM mirror, plus a first-time scenery scan of the package and, on an MSFS 2024 database, a
-/// census of the whole Community folder. A blind pilot has no spinner, so that silence and "the
+/// <para>A COLD first press at an airport can wait seconds with nothing said: a first-time scenery
+/// scan of the package and, on an MSFS 2024 database, a census of the whole Community folder, with
+/// the OSM mirror's wait (OnlineFeatureStore.CatalogWait) running beside them rather than after
+/// them. A blind pilot has no spinner, so that silence and "the
 /// key did nothing" are the same experience — and the window the second hotkey opens can take
 /// the foreground many seconds after the press. But the notice is about 0.8 s of speech placed
 /// IN FRONT of the answer, so speaking it on a cache hit (every press after the first at one
@@ -15,8 +16,9 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 internal static class SurroundingsLookupNotice
 {
-    /// <summary>How long the answer may take before the notice is worth its own 0.8 s. Under the
-    /// OSM tier's own 3 s bound, so a lookup waiting only on the mirror still gets it.</summary>
+    /// <summary>How long the answer may take before the notice is worth its own 0.8 s. Under
+    /// OnlineFeatureStore.CatalogWait with room for the notice itself, so a lookup waiting only on
+    /// the mirror still gets it (pinned by SurroundingsLookupNoticeTests).</summary>
     internal static readonly TimeSpan Delay = TimeSpan.FromSeconds(1.5);
 
     /// <summary>

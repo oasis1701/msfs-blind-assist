@@ -1853,10 +1853,11 @@ public partial class MainForm
 
     /// <summary>
     /// Every surroundings tier for one airport, merged into one list, plus the airport's facts
-    /// line. Four tiers, in this order: navdata stands (the required base — the airport box and
-    /// the facts line come from it), GSX terminals, OSM buildings via OnlineFeatureStore, and the
+    /// line. Four tiers, merged in this order: navdata stands (the required base — the airport box
+    /// and the facts line come from it), GSX terminals, OSM buildings via OnlineFeatureStore, and the
     /// installed scenery package, located by scenery_local_path or, where navdata names none, by
-    /// SceneryPackageCensus. This is SurroundingsCatalogCache.BuildSupplier — which a first-time
+    /// SceneryPackageCensus. The OSM fetch is STARTED first and collected after the scenery tier, so
+    /// the two slow ones overlap. This is SurroundingsCatalogCache.BuildSupplier — which a first-time
     /// scenery scan and DB read can make slow (every BGL in a package opened once, under a
     /// per-package lock) — so the cache contracts to invoke it on a THREAD-POOL thread,
     /// NEVER on the UI thread and NEVER from a per-frame position update. That is also what makes
@@ -1874,6 +1875,17 @@ public partial class MainForm
 
         var gateDataSource = BuildGateDataSource();
         var facilities = (provider as MSFSBlindAssist.Database.IAirportFacilitiesProvider)?.GetAirportFacilities(icao);
+
+        // The OSM fetch STARTS FIRST, before every tier below, and nothing waits for it here
+        // (review item ML-6). It used to be waited for — up to 3 s — BEFORE the scenery tier began,
+        // so a first-time scenery scan and a slow mirror added up, and a mirror that answered
+        // during the scan had already been given up on. It is collected after the scenery tier with
+        // whatever is left of OnlineFeatureStore.CatalogWait. Prefetch never throws and arms no
+        // FeaturesUpdated (see its doc).
+        var osmStore = onlineFeatures;
+        var osmClock = System.Diagnostics.Stopwatch.StartNew();
+        if (osmStore != null && facilities != null)
+            osmStore.Prefetch(icao, facilities.RefLat, facilities.RefLon, facilities);
 
         // NAVDATA is the required base — the airport box and the facts line come from it, so its
         // failure really is the build's. Every tier after it is an ADDITION and is read through
@@ -1897,34 +1909,18 @@ public partial class MainForm
         features.AddRange(gsx.Features);
         degraded |= gsx.Failed;
 
-        // Bounded wait ON A POOL THREAD (this method never runs on the UI thread): include the
-        // buildings when the mirror answers within 3 s; otherwise build without them and let
-        // FeaturesUpdated invalidate this catalog when the fetch lands — which it does only when
-        // that late fetch SUCCEEDS, so a refusal is carried by the degraded flag instead.
-        if (onlineFeatures != null && facilities != null)
-        {
-            var status = MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Disabled;
-            var osm = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("OSM", icao, () =>
-            {
-                var got = onlineFeatures.GetAsync(icao, facilities.RefLat, facilities.RefLon, facilities, TimeSpan.FromSeconds(3))
-                                        .GetAwaiter().GetResult();
-                status = got.Status;
-                return got.Features;
-            });
-            features.AddRange(osm.Features);
-            degraded |= osm.Failed
-                || status is MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Pending
-                          or MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Failed;
-        }
-
+        // The SCENERY tier is READ here, while the OSM fetch runs, and ADDED after OSM below, so the
+        // merge sees the tiers in the order it always has — navdata, GSX, OSM, scenery — which
+        // matters because AirportFeatureCatalog.Build's rank sort is stable: input order breaks ties.
+        MSFSBlindAssist.Services.Surroundings.SurroundingsTier.TierRead? scenery = null;
+        bool sceneryShort = false;
         if (MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled && facilities != null)
         {
             // A SHORT answer is degraded too, not just a thrown one. Both readers refuse to cache
             // a scan they could not finish and re-read the package after a few minutes — but the
             // CATALOG built on that short answer is cached, and nothing rebuilds it on its own,
             // so their memo expiring bought nothing. Degraded gives this build a lifetime.
-            bool sceneryShort = false;
-            var scenery = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("scenery", icao, () =>
+            scenery = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("scenery", icao, () =>
             {
                 var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);
                 bool byCensus = false;
@@ -1945,8 +1941,35 @@ public partial class MainForm
                 sceneryShort |= indexShort;
                 return read;
             });
-            features.AddRange(scenery.Features);
-            degraded |= scenery.Failed || sceneryShort;
+        }
+
+        // OSM, collected NOW with what is left of CatalogWait since the prefetch — zero when the
+        // tiers above took longer, which still takes an answer that landed meanwhile (the store
+        // holds it) and otherwise reports Pending. Still ON A POOL THREAD (this method never runs
+        // on the UI thread): a catalog built without the buildings is invalidated by
+        // FeaturesUpdated when the fetch lands — which it does only when that late fetch
+        // SUCCEEDS, so a refusal is carried by the degraded flag instead.
+        if (osmStore != null && facilities != null)
+        {
+            var status = MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Disabled;
+            var osm = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("OSM", icao, () =>
+            {
+                var got = osmStore.GetAsync(icao, facilities.RefLat, facilities.RefLon, facilities,
+                                            MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore.RemainingWait(osmClock.Elapsed))
+                                  .GetAwaiter().GetResult();
+                status = got.Status;
+                return got.Features;
+            });
+            features.AddRange(osm.Features);
+            degraded |= osm.Failed
+                || status is MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Pending
+                          or MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Failed;
+        }
+
+        if (scenery is { } sceneryRead)
+        {
+            features.AddRange(sceneryRead.Features);
+            degraded |= sceneryRead.Failed || sceneryShort;
         }
         // The facts line rides on the catalog: the window that speaks it would otherwise re-read
         // it from the database on every open.

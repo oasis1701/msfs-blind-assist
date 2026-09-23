@@ -923,10 +923,16 @@ plus the installed scenery package's own placement data.
 
 ### Four tiers, and how they rank
 
-`MainForm.BuildSurroundings(icao)` is the cache's `BuildSupplier`. It reads
-navdata, then GSX, then OSM, then the scenery package, concatenates them, and
-`AirportFeatureCatalog.Build` merges the result (next section) — so the order
-below is the RANK order the merge applies, not the read order.
+`MainForm.BuildSurroundings(icao)` is the cache's `BuildSupplier`. It STARTS
+the OSM fetch first (`OnlineFeatureStore.Prefetch`), reads navdata, then GSX,
+then the scenery package, and only then collects OSM, waiting for whatever is
+left of `OnlineFeatureStore.CatalogWait` (3 s from the prefetch) — so a
+first-time scenery scan and a slow mirror overlap instead of adding up, and an
+answer that landed during the scan is simply taken. It concatenates them in the
+order navdata, GSX, OSM, scenery — the order the merge has always seen, which
+matters because its rank sort is stable — and `AirportFeatureCatalog.Build`
+merges the result (next section) — so the order below is the RANK order the
+merge applies, not the read order.
 
 | Source | What it uniquely contributes |
 |---|---|
@@ -1882,8 +1888,9 @@ miss starts one warm-up (`WarmPlaces`), which repopulates once the cache holds
 a catalog; the latch that used to stand in for this outlived every cache
 invalidation and left the list empty behind a false "No places to route to".
 One bounded retry covers the sequence the cache is designed to produce — the
-build gave up on the 3 s OSM fetch, the answer landed at 3.2 s and invalidated
-the airport, so the finished build was discarded rather than cached — and a
+build stopped waiting for OSM, which it collects last, and the answer landed
+before its merge finished and invalidated the airport, so the finished build
+was discarded rather than cached — and a
 build that genuinely failed is not retried at all (the cache's own failure
 memory owns that). Only the warm-up that still OWNS the form's Place state may
 touch it — by a TICKET minted per warm-up, not by its Task, because
@@ -1892,8 +1899,9 @@ one airport the SAME Task, which a reference test on it let both settle from;
 a superseded one logs a line and changes nothing.
 
 **The list follows buildings that arrive LATE.** That one retry fires only when
-the OSM answer lands DURING the build — with a warm scenery cache, a window of
-tens of milliseconds — so the ordinary slow-mirror case is an answer that lands
+the OSM answer lands in the build's last moments — after it stopped waiting for
+OSM, which it does last, and before its merge finished: milliseconds, whatever
+the scenery cache holds — so the ordinary slow-mirror case is an answer that lands
 after the list was already built and settled. `OnlineFeatureStore.FeaturesUpdated`
 then invalidates the catalog, and MainForm marshals that onto the UI thread as
 `TaxiAssistForm.OnSurroundingsInvalidated(icao)`, which re-runs the warm-up when
@@ -2125,10 +2133,16 @@ modifier (`body` is a verbosity, not a geometry modifier); the only thing
 a node is unchanged. The TAXIWAY query keeps `out tags geom;` byte for byte.
 
 `OnlineFeatureStore` is the tier's cache: per ICAO, in memory only, one fetch in
-flight per airport, and `GetAsync` waits a BOUNDED time (3 s from
-`BuildSurroundings`) so the catalog can include the buildings when the mirror is
-quick and builds without them when it is not —
-`FeaturesUpdated` then invalidates that catalog once the fetch lands.
+flight per airport. `BuildSurroundings` STARTS the fetch before its other tiers
+(`Prefetch`, which returns at once) and asks `GetAsync` for the answer after the
+scenery tier, waiting only for what is left of `CatalogWait` (3 s from the
+prefetch; `RemainingWait`, never negative) — so the catalog includes the
+buildings when the mirror is quick, or merely answered while the scenery package
+was being read, and builds without them when it is not; `FeaturesUpdated` then
+invalidates that catalog once the fetch lands. `Prefetch` arms NO
+`FeaturesUpdated`: the event is owed only to a caller that GAVE UP waiting, and
+armed at the prefetch, an answer landing during the scenery scan would
+invalidate — and so discard — the very build about to include it.
 
 - **A failed fetch is not an empty airport.** Every mirror refusing means
   `FetchAsync` returns null, which is remembered for `FailureMemory` (5 minutes)

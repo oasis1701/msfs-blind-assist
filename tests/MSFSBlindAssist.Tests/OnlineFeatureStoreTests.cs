@@ -154,4 +154,57 @@ public class OnlineFeatureStoreTests
         store.Enabled = true;
         Assert.Equal(OnlineFeatureStatus.Disabled, (await store.GetAsync(" ", 0, 0, null, Long)).Status);
     }
+
+    [Fact]
+    public async Task A_prefetch_starts_the_fetch_by_itself_and_a_later_caller_joins_it()
+    {
+        // The catalog build starts the fetch BEFORE its other tiers (ML-6) and asks for the answer
+        // after them. The fetch must really be running with nobody waiting on it yet, and the later
+        // ask must JOIN it rather than send the mirrors a second request.
+        int fetches = 0;
+        var started = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var gate = new TaskCompletionSource<IReadOnlyList<AirportFeature>?>();
+        var store = new OnlineFeatureStore((_, _, _, _, _) =>
+        {
+            Interlocked.Increment(ref fetches);
+            started.TrySetResult();
+            return gate.Task;
+        }) { Enabled = true };
+
+        store.Prefetch("KTIW", 0, 0, null);
+        await started.Task.WaitAsync(Long);
+        var joined = store.GetAsync("ktiw", 0, 0, null, Long);
+        gate.SetResult(OneHangar);
+        Assert.Single((await joined).Features);
+        Assert.Equal(1, fetches);
+    }
+
+    [Fact]
+    public async Task A_build_that_outran_its_whole_wait_still_takes_an_answer_that_landed_meanwhile()
+    {
+        // The scenery tier took longer than CatalogWait, so the build asks with NOTHING left of it —
+        // and the mirror answered while the scan ran. A zero wait must still hand that answer over as
+        // Served, or the catalog is built without buildings the store already holds. GetAsync's
+        // served check already runs before any wait, so this pins behaviour the zero wait RELIES on.
+        var gate = new TaskCompletionSource<IReadOnlyList<AirportFeature>?>();
+        var store = new OnlineFeatureStore((_, _, _, _, _) => gate.Task) { Enabled = true };
+        store.Prefetch("KTIW", 0, 0, null);
+        gate.SetResult(OneHangar);
+        await store.GetAsync("KTIW", 0, 0, null, Long);                // barrier: the answer is stored
+
+        var wait = OnlineFeatureStore.RemainingWait(OnlineFeatureStore.CatalogWait + TimeSpan.FromSeconds(4));
+        Assert.Equal(TimeSpan.Zero, wait);
+        var taken = await store.GetAsync("KTIW", 0, 0, null, wait);
+        Assert.Equal(OnlineFeatureStatus.Served, taken.Status);
+        Assert.Single(taken.Features);
+    }
+
+    [Fact]
+    public void The_remaining_wait_is_what_is_left_of_the_catalog_wait_and_never_negative()
+    {
+        Assert.Equal(OnlineFeatureStore.CatalogWait, OnlineFeatureStore.RemainingWait(TimeSpan.Zero));
+        Assert.Equal(OnlineFeatureStore.CatalogWait - TimeSpan.FromSeconds(1), OnlineFeatureStore.RemainingWait(TimeSpan.FromSeconds(1)));
+        Assert.Equal(TimeSpan.Zero, OnlineFeatureStore.RemainingWait(OnlineFeatureStore.CatalogWait));
+        Assert.Equal(TimeSpan.Zero, OnlineFeatureStore.RemainingWait(TimeSpan.FromMinutes(1)));
+    }
 }
