@@ -398,10 +398,10 @@ public partial class SimConnectManager
     }
 
     /// <summary>
-    /// Request both engines' N2 for the First Officer background timer. The PMDG NG3 data
+    /// Request every engine's N2 (1–3) for the First Officer background timer. The PMDG NG3 data
     /// struct exposes no N1/N2, so the FO reads the stock TURB ENG N2 SimVars to reliably
     /// tell "engine running" from "cold/unpowered" (the fuel-valve byte alone can't).
-    /// Fires SimVarUpdated with VarName "FO_ENG1_N2" / "FO_ENG2_N2" (percent) — NOT announced.
+    /// Fires SimVarUpdated with VarName "FO_ENG1_N2" / "FO_ENG2_N2" / "FO_ENG3_N2" (percent) — NOT announced.
     /// </summary>
     public void RequestFOEngineN2()
     {
@@ -427,6 +427,19 @@ public partial class SimConnectManager
                 simConnect.RegisterDataDefineStruct<SingleValue>(def2);
                 simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ENG2_N2,
                     def2, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+
+                // Engine 3 (the TFDi MD-11's right-wing engine, the FIRST one TFDi starts).
+                // Requested for every aircraft: a two-engine airframe answers 0, and the only
+                // consumer is an evaluator that opts in through IFoEngine3N2Sink.
+                var def3 = DATA_DEFINITIONS.DEF_FO_ENG3_N2;
+                SafelyClearDataDefinition(def3, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(def3,
+                    "TURB ENG N2:3", "percent",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<SingleValue>(def3);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_ENG3_N2,
+                    def3, SIMCONNECT_OBJECT_ID_USER,
                     SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
             }
             catch (Exception ex)

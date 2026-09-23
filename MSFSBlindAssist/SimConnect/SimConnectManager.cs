@@ -490,6 +490,7 @@ public partial class SimConnectManager
         REQUEST_FO_ENG1_N2       = 382,
         REQUEST_FO_ENG2_N2       = 383,
         REQUEST_FO_CENTER_FUEL_LBS = 384,
+        REQUEST_FO_ENG3_N2       = 385,
         REQUEST_AI_TRAFFIC = 500,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
@@ -562,6 +563,7 @@ public partial class SimConnectManager
         DEF_FO_ENG1_N2 = 382,
         DEF_FO_ENG2_N2 = 383,
         DEF_FO_CENTER_FUEL_LBS = 384,
+        DEF_FO_ENG3_N2 = 385,
         DEF_AI_TRAFFIC = 500,
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
