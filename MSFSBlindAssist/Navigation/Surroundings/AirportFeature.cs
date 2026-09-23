@@ -19,7 +19,8 @@ public sealed class AirportFeature
     public string Name { get; init; } = "";
     public required double Lat { get; init; }
     public required double Lon { get; init; }
-    /// <summary>Closed polygon (OSM apron/terminal way) or null for a point feature.</summary>
+    /// <summary>Closed polygon (an OSM apron/terminal way, or the largest outer ring of a multipolygon
+    /// relation) or null for a point feature.</summary>
     public IReadOnlyList<LatLon>? Footprint { get; init; }
     public required FeatureSource Source { get; init; }
     /// <summary>Short qualifier spoken after the name in the window: "Delta gates", "operator Jackson Hole Aviation".</summary>

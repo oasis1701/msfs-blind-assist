@@ -1944,7 +1944,10 @@ three ways, all measured:
   only the LAST geometry modifier, so adding `center` for the building centroids
   silently dropped the vertex arrays every OSM taxiway name is derived from.
   `OsmTaxiSource.BuildQuery` is byte-identical to its pre-feature text and ends
-  `out tags geom;`; the building centres come from `bounds` instead.
+  `out tags geom;` (pinned character for character by a test). A building's
+  position comes from its outline — the centroid, when it lies inside — or else
+  the centre of its `bounds`, never from `center`; the building queries
+  themselves end `out body geom;` (see below).
 - A mirror with no area database answered the whole fused query with an empty
   HTTP 200, which was then cached as "this airport has no taxiway names".
   `OverpassClient` now treats a body whose `remark` starts "runtime error" as a
@@ -1981,6 +1984,29 @@ become "Fuel, ahead". Every embedded coordinate is `InvariantCulture`-formatted:
 `.` in a custom numeric format is the decimal-point PLACEHOLDER, so a
 comma-decimal locale would emit `around:3000,47,2679,-122,5781`, which every
 mirror answers 400 to.
+
+**Both building queries end `out body geom;`, never `out tags geom;`.** The
+`tags` verbosity prints ids and tags only — no coordinates, no members — and
+`geom` puts coordinates back for nodes and ways but has nothing to hang a
+relation's geometry on. So under `out tags geom;` a multipolygon RELATION (a
+terminal with a courtyard, an apron whose edge is split across several ways)
+arrived as type, id, `bounds` and tags alone — measured live 2026-09-22 against
+KATL relation 10189710, "Domestic Terminal" — and could only be measured to the
+centre of its bounding box; an apron mapped that way could never contain the
+aircraft. Under `body` each way member carries its own `geometry` array, and
+`OsmFeatureClassifier` joins the members whose role is `outer`
+(`OsmRingAssembler.LargestRing`): open ways end to end, a way whose END meets
+the chain walked backwards; a way closed on its own is a ring as it stands and
+never joins another; a chain that comes back to a node it already passed —
+two outer rings touching there, which OSM allows — splits into two rings
+rather than running on as a figure-eight whose shape would depend on member
+order; a chain that never closes is dropped. The LARGEST ring is the
+footprint; inner ways (courtyards) never count. A way or member with a gap in
+its geometry is never joined across it, and no ring at all falls back to the
+bounds centre, as before. It is still ONE output statement with ONE geometry
+modifier (`body` is a verbosity, not a geometry modifier); the only thing
+`body` adds to a way is a `nodes` array of node ids, which no parser reads, and
+a node is unchanged. The TAXIWAY query keeps `out tags geom;` byte for byte.
 
 `OnlineFeatureStore` is the tier's cache: per ICAO, in memory only, one fetch in
 flight per airport, and `GetAsync` waits a BOUNDED time (3 s from

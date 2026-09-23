@@ -279,6 +279,26 @@ public class OsmTaxiSourceParseTests
         Assert.DoesNotContain("area[", q);    // a mirror without an area database fails the WHOLE query
     }
 
+    [Fact]
+    public void The_taxiway_query_is_the_shipped_text_character_for_character()
+    {
+        // The one Overpass query that shipped before the surroundings feature. Its only change in
+        // that feature's history (`out tags geom center`) cost every OSM taxiway name at every
+        // airport, so it is pinned whole: the BUILDINGS queries moved to `out body geom;`, this one
+        // must never follow them. The text is BuildQuery's output at the PR's merge base (23b632ef)
+        // and at aa04a1cf, identical.
+        Assert.Equal(
+            "[out:json][timeout:50];(" +
+            "way[\"aeroway\"=\"taxiway\"](around:5000,47.2679,-122.5781);" +
+            "node[\"aeroway\"=\"parking_position\"](around:5000,47.2679,-122.5781);" +
+            "way[\"aeroway\"=\"parking_position\"](around:5000,47.2679,-122.5781);" +
+            "node[\"aeroway\"=\"gate\"](around:5000,47.2679,-122.5781);" +
+            "way[\"aeroway\"=\"gate\"](around:5000,47.2679,-122.5781);" +
+            "node[\"aeroway\"=\"holding_position\"](around:5000,47.2679,-122.5781);" +
+            ");out tags geom;",
+            OsmTaxiSource.BuildQuery(47.2679, -122.5781));
+    }
+
     // ---- The fetch's "null on failure" contract -----------------------------------
     //
     // Its only caller awaits Task.WhenAll over this source AND the apt.dat one, so an

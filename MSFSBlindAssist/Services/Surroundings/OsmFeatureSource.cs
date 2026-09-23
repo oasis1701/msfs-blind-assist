@@ -32,14 +32,27 @@ public sealed class OsmFeatureSource
         return c;
     }
 
+    /// <summary>
+    /// The ONE output statement both building queries end with. <c>body</c>, not <c>tags</c>: the
+    /// <c>tags</c> verbosity prints no members, so under <c>out tags geom;</c> a multipolygon
+    /// RELATION — a terminal with a courtyard, an apron whose edge is split across several ways —
+    /// arrived as type, id, <c>bounds</c> and tags alone (measured live 2026-09-22, KATL relation
+    /// 10189710 "Domestic Terminal") and could only be measured to its bounding-box centre. Under
+    /// <c>body</c> every member way carries its own <c>geometry</c>, which
+    /// <see cref="OsmFeatureClassifier"/> joins into the outline (review OV-3). A way gains only a
+    /// <c>nodes</c> id array, which nothing here reads; a node is unchanged. NEVER add <c>center</c>
+    /// or <c>bb</c>: Overpass honours only the LAST geometry modifier, so <c>geom center</c> silently
+    /// returns ways with no geometry — the centre comes from the outline or <c>bounds</c>. The
+    /// TAXIWAY query (<see cref="OsmTaxiSource.BuildQuery"/>) keeps <c>out tags geom;</c> byte for byte.
+    /// </summary>
+    internal const string OutputStatement = "out body geom;";
+
     internal static string BuildAreaQuery(string icao)
     {
         string safe = new string((icao ?? "").Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
-        // `out tags geom;` — NEVER add `center`: Overpass honours only the LAST geometry modifier,
-        // so `geom center` silently returns ways with no geometry. The centre comes from `bounds`.
         return "[out:json][timeout:50];" +
                $"area[\"aeroway\"=\"aerodrome\"][\"icao\"=\"{safe}\"]->.ad;" +
-               "(" + Clauses("(area.ad)", includeNamedBuildings: true) + ");out tags geom;";
+               "(" + Clauses("(area.ad)", includeNamedBuildings: true) + ");" + OutputStatement;
     }
 
     /// <summary>For an aerodrome OSM has not tagged with icao=. A bare radius has no area to bound
@@ -51,7 +64,7 @@ public sealed class OsmFeatureSource
     internal static string BuildFallbackQuery(double lat, double lon)
     {
         string around = string.Format(CultureInfo.InvariantCulture, "(around:3000,{0:0.######},{1:0.######})", lat, lon);
-        return "[out:json][timeout:30];(" + Clauses(around, includeNamedBuildings: false) + ");out tags geom;";
+        return "[out:json][timeout:30];(" + Clauses(around, includeNamedBuildings: false) + ");" + OutputStatement;
     }
 
     internal static List<AirportFeature> Parse(string json)

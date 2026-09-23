@@ -16,9 +16,20 @@ public class OsmFeatureSourceTests
         string q = OsmFeatureSource.BuildAreaQuery("ktiw\";x");
         Assert.Contains("area[\"aeroway\"=\"aerodrome\"][\"icao\"=\"KTIWX\"]->.ad;", q);   // sanitised, upper-cased
         Assert.Contains("(area.ad)", q);
-        Assert.EndsWith(");out tags geom;", q);
+        Assert.EndsWith(");out body geom;", q);  // `body`: a relation's members, each with its geometry
+        Assert.Equal(1, CountOf(q, ";out "));    // ONE output statement
         Assert.DoesNotContain("center", q);      // Overpass honours only the LAST geometry modifier
+        Assert.DoesNotContain(" bb", q);
         Assert.DoesNotContain("\"amenity\"~\"^(fuel", q);   // road fuel is not asked for
+    }
+
+    private static int CountOf(string text, string part)
+    {
+        int count = 0;
+        for (int at = text.IndexOf(part, StringComparison.Ordinal); at >= 0;
+             at = text.IndexOf(part, at + part.Length, StringComparison.Ordinal))
+            count++;
+        return count;
     }
 
     [Fact]
@@ -32,7 +43,8 @@ public class OsmFeatureSourceTests
             Assert.Contains("(around:3000,47.2679,-122.5781)", q);
             Assert.DoesNotContain("[\"office\"][\"name\"]", q);
             Assert.DoesNotContain("[\"building\"][\"name\"]", q);
-            Assert.EndsWith(");out tags geom;", q);
+            Assert.EndsWith(");out body geom;", q);
+            Assert.Equal(1, CountOf(q, ";out "));
         }
         finally { System.Globalization.CultureInfo.CurrentCulture = saved; }
     }

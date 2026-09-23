@@ -88,8 +88,9 @@ public static class OsmFeatureClassifier
          : FeatureLexicon.Cargo.IsMatch(name) ? FeatureKind.Cargo
          : FeatureKind.Terminal;
 
-    /// <summary>Node position → footprint centroid (when it lies inside) → centre of `bounds`
-    /// (what `out tags geom;` gives every way and relation) → the stand-line midpoint helper.</summary>
+    /// <summary>Node position → footprint centroid (when it lies inside) → centre of `bounds` (which
+    /// the `geom` modifier gives every way and relation, so a relation with no outer ring to join, or
+    /// of a kind that keeps no footprint, is placed here) → the stand-line midpoint helper.</summary>
     private static bool TryPoint(JsonElement el, IReadOnlyList<LatLon>? footprint, out double lat, out double lon)
     {
         lat = 0; lon = 0;
@@ -110,15 +111,65 @@ public static class OsmFeatureClassifier
     private static string Tag(JsonElement tags, string key)
         => tags.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.String ? (v.GetString() ?? "").Trim() : "";
 
-    /// <summary>A closed way's vertices (closing duplicate dropped), or null. Relations (multipolygons) arrive with `center` only.</summary>
+    /// <summary>
+    /// The outline, or null. A WAY: its own vertices, closing duplicate dropped. A RELATION (a
+    /// multipolygon terminal or apron) has no geometry of its own — under <c>out body geom;</c> each
+    /// member way carries its own <c>geometry</c>, and the outline is the largest ring its OUTER
+    /// members close into (<see cref="RelationOutline"/>). Under the old <c>out tags geom;</c> a
+    /// relation arrived with <c>bounds</c> and tags and NO members at all (measured live 2026-09-22,
+    /// KATL relation 10189710 "Domestic Terminal"), so every multipolygon was measured to the centre
+    /// of its bounding box. Both read their vertices through <see cref="Vertices"/>, so a way with a
+    /// gap has no outline either and is placed at its bounds centre.
+    /// </summary>
     private static IReadOnlyList<LatLon>? Footprint(JsonElement el)
     {
+        if (el.TryGetProperty("members", out var members) && members.ValueKind == JsonValueKind.Array)
+            return RelationOutline(members);
         if (!el.TryGetProperty("geometry", out var geom) || geom.ValueKind != JsonValueKind.Array) return null;
-        var pts = new List<LatLon>();
-        foreach (var g in geom.EnumerateArray())
-            if (g.TryGetProperty("lat", out var la) && g.TryGetProperty("lon", out var lo))
-                pts.Add(new LatLon(la.GetDouble(), lo.GetDouble()));
+        var pts = Vertices(geom);
+        if (pts == null) return null;
         if (pts.Count >= 2 && pts[0] == pts[^1]) pts.RemoveAt(pts.Count - 1);
         return pts.Count >= 3 ? pts : null;
+    }
+
+    /// <summary>
+    /// The largest ring a relation's OUTER member ways close into
+    /// (<see cref="OsmRingAssembler.LargestRing"/>), or null. Inner members — a courtyard, a grass
+    /// island — are never part of an outline, and neither is a member way with a gap in its geometry
+    /// (<see cref="Vertices"/>).
+    /// </summary>
+    private static IReadOnlyList<LatLon>? RelationOutline(JsonElement members)
+    {
+        var outerWays = new List<IReadOnlyList<LatLon>>();
+        foreach (var m in members.EnumerateArray())
+        {
+            if (m.ValueKind != JsonValueKind.Object || Tag(m, "type") != "way" || Tag(m, "role") != "outer") continue;
+            if (!m.TryGetProperty("geometry", out var geom) || geom.ValueKind != JsonValueKind.Array) continue;
+            var pts = Vertices(geom);
+            if (pts != null && pts.Count >= 2) outerWays.Add(pts);
+        }
+        return OsmRingAssembler.LargestRing(outerWays);
+    }
+
+    /// <summary>
+    /// A <c>geometry</c> array's vertices in order — the ONE vertex reader a way and a relation
+    /// member share — or null when it has a GAP: an entry that is not an object carrying both
+    /// <c>lat</c> and <c>lon</c>. Overpass prints a null vertex for a node outside an
+    /// <c>out … (bbox)</c> clip, which these queries never use, and a shape is never joined across a
+    /// gap: with one, a way has no outline and a relation member is left out of the join. (The way's
+    /// own loop used to ask a null vertex for its <c>lat</c>, which throws, and that failed the whole
+    /// airport's buildings fetch.) A coordinate that is not a number still throws, and the source
+    /// turns that into a failed fetch.
+    /// </summary>
+    private static List<LatLon>? Vertices(JsonElement geom)
+    {
+        var pts = new List<LatLon>();
+        foreach (var g in geom.EnumerateArray())
+        {
+            if (g.ValueKind != JsonValueKind.Object || !g.TryGetProperty("lat", out var la) || !g.TryGetProperty("lon", out var lo))
+                return null;
+            pts.Add(new LatLon(la.GetDouble(), lo.GetDouble()));
+        }
+        return pts;
     }
 }
