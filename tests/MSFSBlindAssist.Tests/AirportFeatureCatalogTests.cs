@@ -516,20 +516,165 @@ public class AirportFeatureCatalogTests
         Assert.Null(cat.Features.Single(f => f.Name == "FedEx Cargo").Members);
     }
 
-    [Fact]
-    public void Clusters_of_one_concourse_merge_into_ONE_feature_that_keeps_EVERY_gate()
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Two_clusters_of_one_concourse_merge_and_keep_EVERY_gate(bool reversed)
     {
         // LFPG: "Concourse K" arrives as separate letter clusters that the 300 m same-name radius
-        // re-merges. The winner kept only its OWN stands, so a pilot at the far gates heard the
-        // concourse measured from the first cluster's — LFPG's four clusters and GCXO's "T" lost
-        // 11 gates between them. On the equator here so the metres are exact.
+        // re-merges — real fs2024 LFPG actually forms TWO such pairs this shape (a north pair
+        // 4+4 -> 8 stands and a south pair 5+4 -> 9, about 456 m apart, neither pair merging with
+        // the other), never all four clusters into one. The winner used to keep only its OWN
+        // cluster's stands, so a pilot at the far gates heard the concourse measured from the near
+        // cluster's — a pair of LFPG's clusters, and GCXO's "T", lost 11 gates between them this
+        // way. On the equator here so the metres are exact, and the gap (220 m) sits past
+        // NavdataFeatureSource.GateLinkMetres (200 m) — real navdata output would never hand this
+        // catalog two clusters any closer than that, already merged into one by its OWN
+        // single-linkage pass — but well inside Concourse's 300 m same-name radius.
         const double M = 111_320.0;
         (double, double)[] Row(params double[] east) => east.Select(e => (0.0, e / M)).ToArray();
-        var a = N(FeatureKind.Concourse, "Concourse K", 0.0, 20 / M, false, FeatureSource.Navdata, Row(0, 20, 40));
-        var b = N(FeatureKind.Concourse, "Concourse K", 0.0, 160 / M, false, FeatureSource.Navdata, Row(140, 160, 180));
-        var c = N(FeatureKind.Concourse, "Concourse K", 0.0, 290 / M, false, FeatureSource.Navdata, Row(280, 290, 300));
-        var one = Assert.Single(AirportFeatureCatalog.Build("LFPG", "v", new[] { a, b, c }).Features);
-        Assert.Equal(9, one.Members!.Count);
-        Assert.InRange(SurroundingsGeometry.Nearest(0.0, 300 / M, one).Metres, 0.0, 1.0);   // the far gate is AT the concourse
+        var north = N(FeatureKind.Concourse, "Concourse K", 0.0, 15 / M, false, FeatureSource.Navdata, Row(0, 10, 20, 30));
+        var south = N(FeatureKind.Concourse, "Concourse K", 0.0, 265 / M, false, FeatureSource.Navdata, Row(250, 260, 270, 280));
+        var input = reversed ? new[] { south, north } : new[] { north, south };
+        var one = Assert.Single(AirportFeatureCatalog.Build("LFPG", "v", input).Features);
+        Assert.Equal(8, one.Members!.Count);
+        Assert.InRange(SurroundingsGeometry.Nearest(0.0, 280 / M, one).Metres, 0.0, 1.0);   // the far gate is AT the concourse
+    }
+
+    // ── The supersede pass judges RAW clusters, before any merge (review PC-4 fix round 1) ──────
+
+    [Fact]
+    public void An_OSM_outline_absorbing_GSXs_terminal_does_not_let_the_navdata_guess_survive()
+    {
+        // The pre-existing hole this closes: judged on the MERGED `kept` list, an OSM ring named
+        // "Terminal 5" that outranks and absorbs GSX's "Terminal 5" during the merge loop makes
+        // GSX's Source vanish from `kept` entirely — gsxStands came back empty, the whole
+        // supersede pass was skipped, and navdata's wrong-letter "Concourse D" guess survived
+        // beside it. Judging the RAW pre-merge GSX cluster fixes this for free: the raw GSX
+        // feature is still sitting in the unmerged list, whatever the merge loop later does to it.
+        var stands = new[] { (40.6450, -73.7760), (40.6454, -73.7760), (40.6458, -73.7760) };
+        var square = new[] { new LatLon(40.6440, -73.7770), new LatLon(40.6440, -73.7750), new LatLon(40.6470, -73.7750), new LatLon(40.6470, -73.7770) };
+        var navdata = N(FeatureKind.Concourse, "Concourse D", 40.6454, -73.7760, false, FeatureSource.Navdata, stands);
+        var gsx = N(FeatureKind.Terminal, "Terminal 5", 40.6454, -73.7760, false, FeatureSource.Gsx, stands);
+        var osm = F(FeatureKind.Terminal, "Terminal 5", 40.6455, -73.7760, FeatureSource.Osm, fp: square);
+        var cat = AirportFeatureCatalog.Build("KJFK", "v", new[] { navdata, gsx, osm });
+        Assert.DoesNotContain(cat.Features, f => f.Name == "Concourse D");
+        var terminal = Assert.Single(cat.Features, f => f.Name == "Terminal 5");
+        Assert.Equal(FeatureSource.Osm, terminal.Source);   // OSM outranked and absorbed the GSX cluster
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_generic_scenery_donor_never_lets_the_wrongletter_navdata_guess_survive(bool reversed)
+    {
+        // Case J (review PC-4 fix round 1): the shipped KJFK T5 case below, plus a generic scenery
+        // "Concourse" placement cluster (rank 80, below navdata's 110 and reachable by default) —
+        // close enough (56 m, comfortably inside Concourse's 150 m merge radius) to merge INTO
+        // navdata's "Concourse D" under a post-merge supersede check, expanding it to 8 members,
+        // but far enough (52-72 m from the nearest stand, past SharesStands' 15 m match radius)
+        // that NONE of its own members count toward the ratio — only 3 of 8 shared with GSX's
+        // "Terminal 5", so the wrong-letter guess survived beside it. Judged per RAW cluster (the
+        // fix), navdata's OWN 3 stands are checked against GSX's OWN 3 stands (100% match) before
+        // the scenery donor ever gets a chance to dilute it.
+        const double M = 111_320.0;
+        var stands = new[] { (0.0, 0.0), (0.0, 4 / M), (0.0, 8 / M) };
+        var navdata = N(FeatureKind.Concourse, "Concourse D", 0.0, 4 / M, false, FeatureSource.Navdata, stands);
+        var gsx = N(FeatureKind.Terminal, "Terminal 5", 0.0, 4 / M, false, FeatureSource.Gsx, stands);
+        var scenery = N(FeatureKind.Concourse, "Concourse", 0.0, 70 / M, true, FeatureSource.Scenery,
+            (0.0, 60 / M), (0.0, 65 / M), (0.0, 70 / M), (0.0, 75 / M), (0.0, 80 / M));
+        var input = reversed ? new[] { scenery, gsx, navdata } : new[] { navdata, gsx, scenery };
+        var cat = AirportFeatureCatalog.Build("KJFK", "v", input);
+        Assert.DoesNotContain(cat.Features, f => f.Name == "Concourse D");
+        var terminal = Assert.Single(cat.Features, f => f.Name == "Terminal 5");
+        Assert.Equal(3, terminal.Members!.Count);   // undiluted by the scenery donor
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Each_GSX_section_supersedes_its_own_navdata_cluster_even_though_the_three_would_merge(bool reversed)
+    {
+        // Case F (review PC-4 fix round 1): three navdata "Concourse K" clusters close enough to
+        // merge into ONE 6-stand entity, but GSX publishes them under THREE separate headers, each
+        // covering exactly one cluster's 2 stands. Judged post-merge, no GSX section reaches half
+        // of the 6-member union (2 of 6 each) and the wrong-letter guess survives whole. Judged
+        // per RAW cluster (the fix), each cluster is 100% covered by its own section and all three
+        // are excluded before the merge loop ever runs, so the dilution never happens.
+        const double M = 111_320.0;
+        var a = N(FeatureKind.Concourse, "Concourse K", 0.0, 10 / M, false, FeatureSource.Navdata, (0.0, 0 / M), (0.0, 20 / M));
+        var b = N(FeatureKind.Concourse, "Concourse K", 0.0, 150 / M, false, FeatureSource.Navdata, (0.0, 140 / M), (0.0, 160 / M));
+        var c = N(FeatureKind.Concourse, "Concourse K", 0.0, 290 / M, false, FeatureSource.Navdata, (0.0, 280 / M), (0.0, 300 / M));
+        var gsxA = N(FeatureKind.Terminal, "T. K1", 0.0, 10 / M, false, FeatureSource.Gsx, (0.0, 0 / M), (0.0, 20 / M));
+        var gsxB = N(FeatureKind.Terminal, "T. K2", 0.0, 150 / M, false, FeatureSource.Gsx, (0.0, 140 / M), (0.0, 160 / M));
+        var gsxC = N(FeatureKind.Terminal, "T. K3", 0.0, 290 / M, false, FeatureSource.Gsx, (0.0, 280 / M), (0.0, 300 / M));
+        var input = reversed ? new[] { c, gsxC, b, gsxB, a, gsxA } : new[] { a, gsxA, b, gsxB, c, gsxC };
+        var cat = AirportFeatureCatalog.Build("X", "v", input);
+        Assert.DoesNotContain(cat.Features, f => f.Kind == FeatureKind.Concourse);
+        Assert.Equal(3, cat.Features.Count(f => f.Kind == FeatureKind.Terminal));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_GSX_section_covering_two_of_three_clusters_never_costs_the_uncovered_one_its_concourse(bool reversed)
+    {
+        // Case F2 (review PC-4 fix round 1): the SAME three navdata clusters as above, but GSX
+        // publishes only ONE section, covering a's and b's 4 stands — c's 2 stands have no GSX
+        // coverage at all. Judged post-merge, the merged 6-stand union is 4/6 = 67% covered and
+        // the WHOLE thing — c's genuinely-uncovered gates included — was wrongly superseded.
+        // Judged per RAW cluster (the fix), a and b are superseded (100% covered each) and c,
+        // never reaching 50% coverage from any one GSX feature, survives on its own — the correct
+        // answer, since nothing SAYS c belongs to that GSX section.
+        const double M = 111_320.0;
+        var a = N(FeatureKind.Concourse, "Concourse K", 0.0, 10 / M, false, FeatureSource.Navdata, (0.0, 0 / M), (0.0, 20 / M));
+        var b = N(FeatureKind.Concourse, "Concourse K", 0.0, 150 / M, false, FeatureSource.Navdata, (0.0, 140 / M), (0.0, 160 / M));
+        var c = N(FeatureKind.Concourse, "Concourse K", 0.0, 290 / M, false, FeatureSource.Navdata, (0.0, 280 / M), (0.0, 300 / M));
+        var gsxAB = N(FeatureKind.Terminal, "T. AB", 0.0, 80 / M, false, FeatureSource.Gsx,
+            (0.0, 0 / M), (0.0, 20 / M), (0.0, 140 / M), (0.0, 160 / M));
+        var input = reversed ? new[] { c, b, a, gsxAB } : new[] { a, b, c, gsxAB };
+        var cat = AirportFeatureCatalog.Build("X", "v", input);
+        var survivor = Assert.Single(cat.Features, f => f.Kind == FeatureKind.Concourse);
+        Assert.Equal("Concourse K", survivor.Name);
+        Assert.Equal(2, survivor.Members!.Count);
+        Assert.InRange(SurroundingsGeometry.Nearest(0.0, 300 / M, survivor).Metres, 0.0, 1.0);   // it's cluster c, not a or b
+        Assert.Single(cat.Features, f => f.Kind == FeatureKind.Terminal);
+    }
+
+    // ── UnionMembers itself, exercised only through Build (review PC-4 fix round 1, item 4) ──────
+
+    [Fact]
+    public void The_union_collapses_an_exact_duplicate_but_keeps_a_near_duplicate_3_metres_off()
+    {
+        const double M = 111_320.0;
+        // Winner: proper name, 2 stands. Loser: generic, 3 stands — one is an EXACT duplicate of
+        // the winner's first stand, one sits 3 m from the winner's second (kept: not an exact
+        // duplicate — a near-duplicate can shorten a distance a pilot hears by up to that gap, but
+        // never doubles a stand nor drops one), and one is brand new.
+        var winner = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm, (0.0, 0 / M), (0.0, 10 / M));
+        var loser = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 0.0, true, FeatureSource.Navdata,
+            (0.0, 0 / M),          // exact duplicate of the winner's first stand
+            (3 / M, 10 / M),       // 3 m from the winner's second stand — near, not exact
+            (0.0, 20 / M));        // a brand-new stand
+        var one = Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { winner, loser }).Features);
+        Assert.Equal(4, one.Members!.Count);   // winner's 2 + the near-duplicate + the new one; the exact duplicate is not doubled
+        Assert.Single(one.Members, m => m.Lat == 0.0 && m.Lon == 0.0);
+    }
+
+    [Fact]
+    public void A_loser_whose_stands_all_already_exist_leaves_the_winners_feature_object_untouched()
+    {
+        // The same-instance no-op: nothing new to donate (no footprint, no detail, no new stand)
+        // must not rebuild the winner's AirportFeature at all.
+        var winner = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm, (0.0, 0.0), (0.0, 0.0001));
+        var loser = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 0.0, true, FeatureSource.Navdata, (0.0, 0.0));
+        var one = Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { winner, loser }).Features);
+        Assert.Same(winner, one);
+    }
+
+    [Fact]
+    public void The_union_lists_the_winners_own_stands_first_then_the_losers_new_ones_in_order()
+    {
+        const double M = 111_320.0;
+        var winner = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm, (0.0, 0 / M), (0.0, 10 / M));
+        var loser = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 0.0, true, FeatureSource.Navdata, (0.0, 20 / M), (0.0, 30 / M));
+        var one = Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { winner, loser }).Features);
+        Assert.Equal(winner.Members!.Concat(loser.Members!), one.Members);
     }
 }

@@ -250,10 +250,32 @@ public sealed class AirportFeatureCatalog
 
     public static AirportFeatureCatalog Build(string icao, string version, IEnumerable<AirportFeature> features, string facts = "")
     {
+        var all = features.Where(f => f != null && (f.HasName || f.Kind != FeatureKind.Other)).ToList();
+
+        // A navdata concourse is a GUESS from gate letters (the BGL parking-name enum). When a GSX
+        // feature is built from at least half the same stands, GSX is the one to believe — judged
+        // against the RAW, pre-merge navdata and GSX clusters below, NEVER the merged `kept` list
+        // (review PC-4 fix round 1). Judging the merge broke both ways: a donor UnionMembers folds
+        // into a matching navdata cluster dilutes its ratio below half even though the RAW cluster
+        // was a 100% match (Case J: a generic scenery "Concourse" merges into navdata's "Concourse
+        // D" and drags a genuine 3-of-3 GSX match down to 3-of-8); several GSX sections that each
+        // cover only PART of a merged navdata concourse can together outvote a cluster none of them
+        // alone would have superseded (Case F); and, the other way, one GSX section covering only
+        // SOME of a merged concourse can wrongly outvote gates it never named at all (Case F2). It
+        // also closes a case none of these three are: an OSM ring that outranks and absorbs GSX's
+        // own feature during the merge below makes that GSX Source vanish from `kept` entirely, so
+        // gsxStands came back empty and the whole check was skipped. The GSX clusters are read
+        // straight off `all`, which the merge loop below never mutates — there is no list to
+        // compact out from under this predicate, the SNAPSHOT property CLAUDE.md states.
+        var gsxStands = all.Where(g => g.Source == FeatureSource.Gsx && g.Members is { Count: > 0 }).Select(g => g.Members!).ToList();
+        HashSet<AirportFeature>? superseded = gsxStands.Count == 0 ? null : new HashSet<AirportFeature>(
+            all.Where(n => n.Source == FeatureSource.Navdata && n.Kind == FeatureKind.Concourse && n.Members is { Count: > 0 }
+                && gsxStands.Any(g => SharesStands(n.Members!, g))));
+
         var kept = new List<AirportFeature>();
         // Highest rank first, so the first feature standing in a cluster is the winner — and a later
         // one joins the NEAREST winner that accepts it (NearestSameFeature), never merely the first.
-        foreach (var f in features.Where(f => f != null && (f.HasName || f.Kind != FeatureKind.Other)).OrderByDescending(Rank))
+        foreach (var f in all.Where(f => superseded == null || !superseded.Contains(f)).OrderByDescending(Rank))
         {
             int i = NearestSameFeature(kept, f);
             if (i < 0) { kept.Add(f); continue; }
@@ -263,12 +285,18 @@ public sealed class AirportFeatureCatalog
             // a footprint FIRST, so one adopted ring silently replaces them — KTIW's 6-stand GA
             // ramp took the 66,471 m² main apron and its 5-stand neighbour took a 2,335 m² polygon
             // containing none of its stands, which is how a pilot parked on a ramp was told it lay
-            // 74 m to their right. The loser's STANDS need no test here: SameFeature would not have
-            // matched these two at all unless MembersDescribe already agreed they belong together
-            // (GeometryMayBeOneBody) — a cluster that does not describe the winner is a separate
-            // place and is still standing in `kept`. So they JOIN the winner's own (UnionMembers):
-            // keeping the winner's alone dropped them — LFPG's four "Concourse K" clusters and GCXO's
-            // "T" lost 11 gates between them that way.
+            // 74 m to their right. The loser's STANDS need no test here PROVIDED at least one side
+            // carries Members: only then does GeometryMayBeOneBody's MembersDescribe check even
+            // run at all — a ring-versus-ring pair returns from RingsOverlap/HalvesOfOneWay before
+            // ever reaching it — and no source today emits a feature carrying both a footprint AND
+            // Members, so whichever side has Members always took the MembersDescribe branch, and
+            // SameFeature would not have matched these two at all unless MembersDescribe already
+            // agreed they belong together (GeometryMayBeOneBody) — a cluster that does not describe
+            // the winner is a separate place and is still standing in `kept`. So they JOIN the
+            // winner's own (UnionMembers): keeping the winner's alone dropped them — a pair of
+            // LFPG's "Concourse K" clusters (real fs2024 LFPG splits into two such pairs, ~456 m
+            // apart, that never merge with each other) and GCXO's "T" lost 11 gates between them
+            // that way.
             var footprint = winner.Footprint ?? (winner.Members == null ? f.Footprint : null);
             var members = UnionMembers(winner.Members, f.Members);
             string? detail = winner.Detail ?? f.Detail;
@@ -282,25 +310,16 @@ public sealed class AirportFeatureCatalog
             }
         }
 
-        // A navdata concourse is a GUESS from gate letters (the BGL parking-name enum). When a GSX
-        // feature is built from the very same stands, GSX is the one to believe — and they are
-        // different kinds/names, so the merge above can never reconcile them. The GSX clusters are
-        // SNAPSHOT first: RemoveAll compacts the list as it walks it, so a predicate reading `kept`
-        // is querying a half-rebuilt list.
-        var gsxStands = kept.Where(g => g.Source == FeatureSource.Gsx && g.Members is { Count: > 0 }).Select(g => g.Members!).ToList();
-        if (gsxStands.Count > 0)
-            kept.RemoveAll(n => n.Source == FeatureSource.Navdata && n.Kind == FeatureKind.Concourse && n.Members is { Count: > 0 }
-                && gsxStands.Any(g => SharesStands(n.Members!, g)));
-
         var sorted = kept.OrderBy(f => (int)f.Kind).ThenBy(f => f.SpokenName, StringComparer.OrdinalIgnoreCase).ToList();
         return new AirportFeatureCatalog(version, sorted, facts);
     }
 
     /// <summary>Both sides' stands, the winner's first. A loser stand at the IDENTICAL coordinate
     /// of one already there is not added twice — exact duplicates only: the same stand reported at
-    /// two slightly different positions stays two points, which changes no distance a pilot hears,
-    /// because SurroundingsGeometry.Nearest measures to the NEAREST member. The winner's own list
-    /// comes back UNCHANGED (the same instance) when the loser adds nothing, so Build does not
+    /// two slightly different positions stays two points, since SurroundingsGeometry.Nearest
+    /// measures to the NEAREST member — a near-duplicate can shorten a distance a pilot hears by up
+    /// to the gap between the two copies, but never doubles a stand nor drops one. The winner's own
+    /// list comes back UNCHANGED (the same instance) when the loser adds nothing, so Build does not
     /// rebuild a feature for a no-op.</summary>
     private static IReadOnlyList<LatLon>? UnionMembers(IReadOnlyList<LatLon>? mine, IReadOnlyList<LatLon>? theirs)
     {

@@ -1128,9 +1128,11 @@ KMEM instead:
   geometry, and the back-fill adds those stands to the winner's own — the
   UNION, a stand at an identical coordinate kept once — with no further test,
   because a pair that did not pass this rule never merged at all. Keeping the
-  winner's stands alone dropped the loser's: LFPG's four "Concourse K" letter
-  clusters, re-merged at the 300 m same-name radius, and GCXO's "T" lost 11
-  gates between them.
+  winner's stands alone dropped the loser's: a pair of LFPG's "Concourse K"
+  letter clusters — real fs2024 LFPG splits into two such pairs, ~456 m apart,
+  that never merge with each other, never all four clusters into one — and
+  GCXO's "T" lost 11 gates between them, re-merged at the 300 m same-name
+  radius.
 
 The FIRST rule lives in `Build`'s back-fill, which is where a winner decides
 what it may KEEP. The other THREE live in `SameFeature`, through
@@ -1171,9 +1173,26 @@ reports itself 0 m from the far end of the row.
 enum. When a GSX feature is built from at least half the same stands (within
 15 m each), the navdata one is REMOVED outright rather than merged — the two
 differ in both kind and name, so `SameFeature` can never reconcile them, and
-GSX is the one to believe (measured at KJFK; see [gsx.md](gsx.md)). The GSX
-clusters are snapshot before the `RemoveAll`, which compacts the very list its
-predicate would otherwise be querying.
+GSX is the one to believe (measured at KJFK; see [gsx.md](gsx.md)). **Judged
+against the RAW, pre-merge navdata and GSX clusters, NEVER the merged `kept`
+list** (review PC-4 fix round 1): judging the merge broke both ways. A donor
+`UnionMembers` later folds into a matching navdata cluster dilutes its ratio
+below half even though the raw cluster was a 100% match — a generic scenery
+"Concourse" merging into navdata's "Concourse D" drags a genuine 3-of-3 GSX
+match down to 3-of-8, and the wrong-letter guess survives. Several GSX
+sections that each cover only PART of a merged navdata concourse can together
+outvote a cluster none of them alone would have superseded (three navdata
+clusters merge to 6 stands; three matching GSX sections each cover only 2 of
+the 6; none reaches half). And the other way, one GSX section covering only
+SOME of a merged concourse can wrongly outvote gates it never named — two of
+three navdata clusters merge under one GSX section (4 of the merged 6 stands,
+past half), taking the third, genuinely uncovered, cluster's gates down with
+it. Reading the RAW clusters fixes all three, and for free closes a fourth: an
+OSM ring that outranks and absorbs GSX's own feature during the merge makes
+that GSX Source vanish from `kept` entirely, so the whole check used to be
+skipped. The GSX clusters are read straight off the raw, pre-merge list, which
+the merge loop never mutates — there is no list to compact out from under this
+predicate.
 
 **Distance and bearing are always taken to the same point**
 (`SurroundingsGeometry.Nearest`): the nearest edge of a footprint, else the
