@@ -28,16 +28,39 @@ internal static partial class GroundTrafficLogic
     private const double LandingMaxHeightFt = 300.0;
 
     /// <summary>
+    /// An aircraft climbing faster than this is departing or going around — never landing and never on
+    /// final (PR #247 B1 review: a departure just after liftoff was announced "landing runway 27L",
+    /// interrupting a pilot lined up behind it). Over the pavement the heading cannot tell a departure
+    /// from an arrival, so LANDING needs a KNOWN climb rate: an aircraft first seen over the pavement is
+    /// not called landing until its second sample (about a second later at the watch's cadence).
+    /// </summary>
+    public const double LandingMaxClimbFpm = 300.0;
+
+    /// <summary>
+    /// An aircraft seen ON THE GROUND within this long is taking off (or touching and going), never
+    /// landing — the guard for the first samples after liftoff, before its climb rate shows.
+    /// </summary>
+    public const double LandingGroundMemorySec = 60.0;
+
+    /// <summary>
     /// Classifies one aircraft against one runway: on the pavement (on the ground); landing (airborne,
     /// low, over the pavement, aligned with it); on final to either end (airborne, inside the approach
     /// cone, pointing at the runway, not too high); or neither.
     /// <paramref name="heightAboveFieldFt"/> is the traffic altitude minus the field elevation.
     /// On-final distance is measured to the landing end's THRESHOLD (its paired <c>start</c> row, which
     /// sits inside the pavement at a displaced threshold), not to the pavement end.
+    /// <para><paramref name="climbFpm"/> is the aircraft's vertical speed, null when not yet known.
+    /// LANDING needs it KNOWN and at most <see cref="LandingMaxClimbFpm"/> — over the pavement nothing
+    /// else separates a departure just after liftoff from an arrival in the flare — and also needs
+    /// <paramref name="recentlyOnGround"/> false (not seen on the ground within
+    /// <see cref="LandingGroundMemorySec"/>: the first samples after liftoff, before the climb shows).
+    /// ON FINAL is ruled out only by a KNOWN climb above the limit; an unknown one does not rule it out
+    /// (far out, a sample of delay costs nothing), and <paramref name="recentlyOnGround"/> does not
+    /// affect it.</para>
     /// </summary>
     public static RunwayTrafficFix ClassifyAgainstRunway(
         RunwayShape shape, double lat, double lon, bool onGround,
-        double headingTrue, double heightAboveFieldFt)
+        double headingTrue, double heightAboveFieldFt, double? climbFpm = null, bool recentlyOnGround = false)
     {
         var none = new RunwayTrafficFix(RunwayTrafficKind.None, "", 0);
         if (shape.IsDegenerate) return none;
@@ -53,11 +76,14 @@ internal static partial class GroundTrafficLogic
         double axisHdg = shape.HeadingFromEnd1Deg;
         double reciprocalHdg = (axisHdg + 180.0) % 360.0;
 
-        // Over the pavement: landing when low, near the centreline and aligned (R6).
+        // Over the pavement: landing when low, near the centreline, aligned (R6) — and known not to be
+        // climbing, and not just off the ground (a departure after liftoff has the same geometry).
         if (along >= shape.ExtentMinMeters && along <= shape.ExtentMaxMeters)
         {
             if (Math.Abs(lateral) > shape.HalfWidthMeters + LandingLateralMarginM
                 || heightAboveFieldFt > LandingMaxHeightFt)
+                return none;
+            if (recentlyOnGround || climbFpm is not double c || c > LandingMaxClimbFpm)
                 return none;
             if (Math.Abs(AngleDiff(headingTrue, axisHdg)) <= FinalHeadingToleranceDeg)
                 return new RunwayTrafficFix(RunwayTrafficKind.Landing, shape.Name1, 0);
@@ -65,6 +91,9 @@ internal static partial class GroundTrafficLogic
                 return new RunwayTrafficFix(RunwayTrafficKind.Landing, shape.Name2, 0);
             return none;
         }
+
+        // Off the pavement only a final is left, and a KNOWN climb is never on final.
+        if (climbFpm is double climb && climb > LandingMaxClimbFpm) return none;
 
         // Short of end 1, flying toward end 2 → landing on Name1.
         if (along < shape.ExtentMinMeters)
@@ -90,10 +119,13 @@ internal static partial class GroundTrafficLogic
     /// holds it (an intersection is on both). Airborne it is attributed to AT MOST ONE runway — the
     /// on-final/landing fix with the smallest lateral offset (then the smaller heading error) — so an
     /// arrival to a close parallel is never reported against the pilot's runway (R4).
+    /// <paramref name="climbFpm"/> and <paramref name="recentlyOnGround"/> reach every per-runway
+    /// classification (<see cref="ClassifyAgainstRunway"/>): a departure climbing over the pavement, or
+    /// seen on the ground within <see cref="LandingGroundMemorySec"/>, is landing on no runway.
     /// </summary>
     public static IReadOnlyList<RunwayAssignment> ClassifyAgainstRunways(
         IReadOnlyList<RunwayShape> shapes, double lat, double lon, bool onGround,
-        double headingTrue, double heightAboveFieldFt)
+        double headingTrue, double heightAboveFieldFt, double? climbFpm = null, bool recentlyOnGround = false)
     {
         var result = new List<RunwayAssignment>();
         if (shapes == null) return result;
@@ -102,7 +134,8 @@ internal static partial class GroundTrafficLogic
         {
             for (int i = 0; i < shapes.Count; i++)
             {
-                var fix = ClassifyAgainstRunway(shapes[i], lat, lon, true, headingTrue, heightAboveFieldFt);
+                var fix = ClassifyAgainstRunway(shapes[i], lat, lon, true, headingTrue, heightAboveFieldFt,
+                    climbFpm, recentlyOnGround);
                 if (fix.Kind == RunwayTrafficKind.OnRunway) result.Add(new RunwayAssignment(i, fix));
             }
             return result;
@@ -113,7 +146,8 @@ internal static partial class GroundTrafficLogic
         double bestLateral = double.MaxValue, bestHeadingError = double.MaxValue;
         for (int i = 0; i < shapes.Count; i++)
         {
-            var fix = ClassifyAgainstRunway(shapes[i], lat, lon, false, headingTrue, heightAboveFieldFt);
+            var fix = ClassifyAgainstRunway(shapes[i], lat, lon, false, headingTrue, heightAboveFieldFt,
+                climbFpm, recentlyOnGround);
             if (fix.Kind is not (RunwayTrafficKind.OnFinal or RunwayTrafficKind.Landing)) continue;
 
             double lateral = Math.Abs(shapes[i].Project(lat, lon).Lateral);

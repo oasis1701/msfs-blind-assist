@@ -80,7 +80,7 @@ public class RunwayTrafficClassificationTests
     public void An_aircraft_in_the_flare_is_landing_on_the_end_it_flies_toward(double heading, string designator)
     {
         var fix = GroundTrafficLogic.ClassifyAgainstRunway(Shape(EastWest("09", "27", 50.0)),
-            50.0, 0.003, false, heading, 30);
+            50.0, 0.003, false, heading, 30, climbFpm: -400);
         Assert.Equal(RunwayTrafficKind.Landing, fix.Kind);
         Assert.Equal(designator, fix.Designator);
         Assert.Equal(0.0, fix.DistanceNm);
@@ -105,8 +105,87 @@ public class RunwayTrafficClassificationTests
     public void Landing_counts_for_the_best_runway_assignment()
     {
         var shapes = new[] { Shape(EastWest("09", "27", 50.0)) };
-        var a = Assert.Single(GroundTrafficLogic.ClassifyAgainstRunways(shapes, 50.0, 0.003, false, 90, 30));
+        var a = Assert.Single(GroundTrafficLogic.ClassifyAgainstRunways(shapes, 50.0, 0.003, false, 90, 30, climbFpm: -400));
         Assert.Equal(RunwayTrafficKind.Landing, a.Fix.Kind);
+    }
+
+    // ── climb rate: a departure is not landing (PR #247 B1 review C1, implementer concern 1) ──
+    // A departure just after liftoff is low, aligned and over the pavement — the Landing geometry
+    // exactly — and was announced "landing runway 27L", interrupting a pilot lined up behind it.
+
+    // 150 ft over the 09 end's pavement, heading 090.
+    private static RunwayTrafficFix OverPavement(double? climbFpm, bool recentlyOnGround = false)
+        => GroundTrafficLogic.ClassifyAgainstRunway(Shape(EastWest("09", "27", 50.0)),
+            50.0, 0.003, false, 90, 150, climbFpm, recentlyOnGround);
+
+    // The 3 nm final GroundTrafficLogicTests.Airborne_ThreeMilesWest_HeadingEast_IsOnFinalFor09 uses.
+    private static RunwayTrafficFix ThreeMileFinal(double? climbFpm, bool recentlyOnGround = false)
+        => GroundTrafficLogic.ClassifyAgainstRunway(Shape(EastWest("09", "27", 50.0)),
+            50.0, -3 * 1852 * DegLonPerMetreAt50, false, 92, 950, climbFpm, recentlyOnGround);
+
+    [Fact]
+    public void A_departure_climbing_after_liftoff_is_not_landing()
+        => Assert.Equal(RunwayTrafficKind.None, OverPavement(climbFpm: 1500).Kind);
+
+    [Fact]
+    public void Over_the_pavement_an_unknown_climb_rate_is_not_yet_landing()
+        => Assert.Equal(RunwayTrafficKind.None, OverPavement(climbFpm: null).Kind);
+
+    [Theory]
+    [InlineData(300.0, true)]    // the limit itself still lands
+    [InlineData(301.0, false)]
+    [InlineData(-400.0, true)]
+    public void Landing_needs_a_climb_rate_at_or_below_the_limit(double climbFpm, bool landing)
+        => Assert.Equal(landing ? RunwayTrafficKind.Landing : RunwayTrafficKind.None, OverPavement(climbFpm).Kind);
+
+    [Fact]
+    public void A_known_climb_rules_out_a_final()
+        => Assert.Equal(RunwayTrafficKind.None, ThreeMileFinal(climbFpm: 1200).Kind);
+
+    [Fact]
+    public void An_unknown_climb_rate_does_not_rule_out_a_final()
+    {
+        var fix = ThreeMileFinal(climbFpm: null);
+        Assert.Equal(RunwayTrafficKind.OnFinal, fix.Kind);
+        Assert.Equal("09", fix.Designator);
+    }
+
+    [Fact]
+    public void A_descent_on_final_is_on_final()
+        => Assert.Equal(RunwayTrafficKind.OnFinal, ThreeMileFinal(climbFpm: -700).Kind);
+
+    [Fact]
+    public void A_climbing_aircraft_over_the_pavement_is_assigned_to_no_runway()
+    {
+        var shapes = new[]
+        {
+            Shape(EastWest("09L", "27R", 50.0 + 229 * DegLatPerMetre)),
+            Shape(EastWest("09R", "27L", 50.0)),
+        };
+        Assert.Empty(GroundTrafficLogic.ClassifyAgainstRunways(shapes, 50.0, 0.003, false, 90, 150, climbFpm: 1500));
+        // The same geometry descending is the landing it was always meant to catch.
+        Assert.Equal(1, Assert.Single(
+            GroundTrafficLogic.ClassifyAgainstRunways(shapes, 50.0, 0.003, false, 90, 150, climbFpm: -400)).ShapeIndex);
+    }
+
+    [Fact]
+    public void An_aircraft_seen_on_the_ground_moments_ago_is_not_landing()
+    {
+        // The first samples after liftoff, before the climb rate shows (rotation builds it).
+        Assert.Equal(RunwayTrafficKind.None, OverPavement(climbFpm: -400, recentlyOnGround: true).Kind);
+        Assert.Equal(RunwayTrafficKind.Landing, OverPavement(climbFpm: -400, recentlyOnGround: false).Kind);
+    }
+
+    [Fact]
+    public void Recently_on_the_ground_does_not_affect_a_final()
+        => Assert.Equal(RunwayTrafficKind.OnFinal, ThreeMileFinal(climbFpm: -700, recentlyOnGround: true).Kind);
+
+    [Fact]
+    public void ClassifyAgainstRunways_passes_recently_on_the_ground_through()
+    {
+        var shapes = new[] { Shape(EastWest("09", "27", 50.0)) };
+        Assert.Empty(GroundTrafficLogic.ClassifyAgainstRunways(shapes, 50.0, 0.003, false, 90, 150,
+            climbFpm: -400, recentlyOnGround: true));
     }
 
     // ── threshold distance ──────────────────────────────────────────────────────────────
