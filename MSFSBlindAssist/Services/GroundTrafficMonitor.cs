@@ -72,6 +72,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     // Runway watch
     private const double SHORT_FINAL_NM = 2.0;
     private const double ROLLING_KTS = 30.0;
+    // A watch's first status waits at most this long for an aircraft whose climb rate is not known yet
+    // (RunwayTrafficKind.LandingPending) to be decided.
+    private const int FIRST_STATUS_MAX_DEFER_MS = 3000;
 
     // Hotkey summary
     private const int SUMMARY_MAX_AIRCRAFT = 3;
@@ -146,6 +149,8 @@ public sealed class GroundTrafficMonitor : IDisposable
     private RunwayWatchMode _loggedWatchMode = RunwayWatchMode.None;
     private DateTime _watchStartedUtc = DateTime.MinValue;
     private bool _watchSummaryDone;
+    // When the first status was first held back for a pending aircraft; MinValue = not deferred.
+    private DateTime _firstStatusDeferredSinceUtc = DateTime.MinValue;
     private bool _runwayEmptiedPending;
     // A single-runway watch whose sources all ended, kept while the aircraft is still crossing (ApplyLinger).
     private RunwayWatchLinger.Anchor? _linger;
@@ -445,6 +450,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         _watchKey = "";
         _watchSummaryDone = false;
+        _firstStatusDeferredSinceUtc = DateTime.MinValue;
         _runwayEmptiedPending = false;
         _knownOccupants.Clear();
         _knownFinals.Clear();
@@ -961,7 +967,13 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     // ── Runway watch ─────────────────────────────────────────────────────────────
 
-    private sealed record RunwayStatus(string Designator, List<RunwayOccupant> Occupants, List<RunwayFinal> Finals);
+    /// <summary>
+    /// One watched runway's traffic. <see cref="Pending"/>: aircraft over its pavement whose climb rate
+    /// is not known yet (<see cref="RunwayTrafficKind.LandingPending"/>) — neither occupants nor finals,
+    /// never spoken; they only hold back the watch's first status.
+    /// </summary>
+    private sealed record RunwayStatus(string Designator, List<RunwayOccupant> Occupants, List<RunwayFinal> Finals,
+        List<TrackedGroundAircraft> Pending);
     private sealed record RunwayOccupant(TrackedGroundAircraft Ac, double DistFt, double Rel, TrafficMotion Motion);
     private sealed record RunwayFinal(TrackedGroundAircraft Ac, RunwayTrafficFix Fix);
 
@@ -981,6 +993,21 @@ public sealed class GroundTrafficMonitor : IDisposable
 
         if (!_watchSummaryDone)
         {
+            // An aircraft over the pavement whose climb rate is not known yet (its first sample — the
+            // intake keeps airborne traffic only while a runway is watched) would be missing from the
+            // most important sentence of the watch; wait for its next sample (G1), but never longer
+            // than FIRST_STATUS_MAX_DEFER_MS.
+            int pending = status.Sum(s => s.Pending.Count);
+            if (pending > 0)
+            {
+                if (_firstStatusDeferredSinceUtc == DateTime.MinValue)
+                {
+                    _firstStatusDeferredSinceUtc = now;
+                    _log.Info($"ev=watch first-status-deferred key={_watchKey} pending={pending}");
+                }
+                if ((now - _firstStatusDeferredSinceUtc).TotalMilliseconds < FIRST_STATUS_MAX_DEFER_MS) return;
+            }
+
             // The first status is ALWAYS spoken (R3). The key is the runway itself, so hold →
             // backtrack → lineup → takeoff wait never restarts the watch; one that starts fresh on the
             // runway has not been heard, and must be — interrupting when something is on the runway or
@@ -1079,7 +1106,8 @@ public sealed class GroundTrafficMonitor : IDisposable
                 if (!RouteRunwayCrossings.CenterlineHasDesignator(runways[i], w.Designator)) continue;
                 if (!buckets.ContainsKey(i))
                 {
-                    var st = new RunwayStatus(w.Designator, new List<RunwayOccupant>(), new List<RunwayFinal>());
+                    var st = new RunwayStatus(w.Designator, new List<RunwayOccupant>(), new List<RunwayFinal>(),
+                        new List<TrackedGroundAircraft>());
                     buckets[i] = st;
                     result.Add(st);
                 }
@@ -1098,17 +1126,26 @@ public sealed class GroundTrafficMonitor : IDisposable
             foreach (var a in assignments)
             {
                 if (!buckets.TryGetValue(a.ShapeIndex, out var st)) continue;
-                if (a.Fix.Kind == RunwayTrafficKind.OnRunway)
+                switch (a.Fix.Kind)
                 {
-                    double distFt = NavigationCalculator.CalculateDistance(_ownLat, _ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
-                    double rel = NormalizeDeg(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
-                    double direction = Direction(ac);
-                    st.Occupants.Add(new RunwayOccupant(ac, distFt, rel,
-                        GroundTrafficLogic.ClassifyMotion(_ownHeadingTrue, direction, ac.GS, rel)));
-                }
-                else
-                {
-                    st.Finals.Add(new RunwayFinal(ac, a.Fix));
+                    case RunwayTrafficKind.OnRunway:
+                    {
+                        double distFt = NavigationCalculator.CalculateDistance(_ownLat, _ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
+                        double rel = NormalizeDeg(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
+                        double direction = Direction(ac);
+                        st.Occupants.Add(new RunwayOccupant(ac, distFt, rel,
+                            GroundTrafficLogic.ClassifyMotion(_ownHeadingTrue, direction, ac.GS, rel)));
+                        break;
+                    }
+                    case RunwayTrafficKind.OnFinal:
+                    case RunwayTrafficKind.Landing:
+                        st.Finals.Add(new RunwayFinal(ac, a.Fix));
+                        break;
+                    case RunwayTrafficKind.LandingPending:
+                        // Neither an occupant nor a final, and never spoken: it only holds back the
+                        // watch's first status until its next sample decides it (G1).
+                        st.Pending.Add(ac);
+                        break;
                 }
                 LogRunwayFix(ac, a.Fix, st.Designator);
             }

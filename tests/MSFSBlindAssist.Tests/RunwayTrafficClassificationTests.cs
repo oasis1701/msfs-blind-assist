@@ -127,10 +127,6 @@ public class RunwayTrafficClassificationTests
     public void A_departure_climbing_after_liftoff_is_not_landing()
         => Assert.Equal(RunwayTrafficKind.None, OverPavement(climbFpm: 1500).Kind);
 
-    [Fact]
-    public void Over_the_pavement_an_unknown_climb_rate_is_not_yet_landing()
-        => Assert.Equal(RunwayTrafficKind.None, OverPavement(climbFpm: null).Kind);
-
     [Theory]
     [InlineData(300.0, true)]    // the limit itself still lands
     [InlineData(301.0, false)]
@@ -186,6 +182,62 @@ public class RunwayTrafficClassificationTests
         var shapes = new[] { Shape(EastWest("09", "27", 50.0)) };
         Assert.Empty(GroundTrafficLogic.ClassifyAgainstRunways(shapes, 50.0, 0.003, false, 90, 150,
             climbFpm: -400, recentlyOnGround: true));
+    }
+
+    // ── an unknown climb over the pavement is pending (PR #247 B2 review Important 1) ──────
+    // The intake keeps airborne traffic only while a runway is watched, so when a watch's first
+    // status is composed every airborne aircraft is on its FIRST sample, with no climb rate. An
+    // aircraft in the flare then read as nothing: "Runway 27L: no traffic seen on the runway or on
+    // final." and a second later "Delta A320 landing runway 27L." Pending holds that first status
+    // back for the aircraft's next sample. (The go-around, crossing and off-the-edge tests above
+    // pass no climb rate either: the lateral, height and alignment tests still come first.)
+
+    [Theory]
+    [InlineData(90.0, "09")]
+    [InlineData(270.0, "27")]
+    public void Over_the_pavement_an_unknown_climb_rate_is_landing_pending(double heading, string designator)
+    {
+        var fix = GroundTrafficLogic.ClassifyAgainstRunway(Shape(EastWest("09", "27", 50.0)),
+            50.0, 0.003, false, heading, 150, climbFpm: null);
+        Assert.Equal(RunwayTrafficKind.LandingPending, fix.Kind);
+        Assert.Equal(designator, fix.Designator);
+        Assert.Equal(0.0, fix.DistanceNm);
+    }
+
+    [Fact]
+    public void Seen_on_the_ground_moments_ago_an_unknown_climb_is_not_pending()
+        => Assert.Equal(RunwayTrafficKind.None, OverPavement(climbFpm: null, recentlyOnGround: true).Kind);
+
+    [Fact]
+    public void A_pending_aircraft_is_decided_on_its_next_sample()
+    {
+        Assert.Equal(RunwayTrafficKind.LandingPending, OverPavement(climbFpm: null).Kind);
+        Assert.Equal(RunwayTrafficKind.None, OverPavement(climbFpm: 1500).Kind);     // climbing: a departure
+        Assert.Equal(RunwayTrafficKind.Landing, OverPavement(climbFpm: -400).Kind);  // descending: landing
+    }
+
+    [Theory]
+    [InlineData(30.0, 1, "09R")]   // 30 m from the south runway's centreline, 70 m from the north one's
+    [InlineData(70.0, 0, "09L")]   // 70 m from the south runway's centreline, 30 m from the north one's
+    public void A_pending_aircraft_is_assigned_to_the_better_fitting_parallel(
+        double northOfSouthM, int shapeIndex, string designator)
+    {
+        // Parallels 100 m apart: each runway's landing band (half-width + 60 m) holds the aircraft, so
+        // either alone would call it pending on itself — the R4 best fit must pick one, exactly as it
+        // does for a final or a landing (A_close_parallel_arrival_is_assigned_to_its_own_runway).
+        var shapes = new[]
+        {
+            Shape(EastWest("09L", "27R", 50.0 + 100 * DegLatPerMetre)),
+            Shape(EastWest("09R", "27L", 50.0)),
+        };
+        double lat = 50.0 + northOfSouthM * DegLatPerMetre;
+        Assert.All(shapes, s => Assert.Equal(RunwayTrafficKind.LandingPending,
+            GroundTrafficLogic.ClassifyAgainstRunway(s, lat, 0.003, false, 90, 150).Kind));
+
+        var a = Assert.Single(GroundTrafficLogic.ClassifyAgainstRunways(shapes, lat, 0.003, false, 90, 150));
+        Assert.Equal(shapeIndex, a.ShapeIndex);
+        Assert.Equal(RunwayTrafficKind.LandingPending, a.Fix.Kind);
+        Assert.Equal(designator, a.Fix.Designator);
     }
 
     // ── threshold distance ──────────────────────────────────────────────────────────────
