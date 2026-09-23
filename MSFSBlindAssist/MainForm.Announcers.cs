@@ -2006,7 +2006,8 @@ public partial class MainForm
 
     /// <summary>
     /// The ONE path both surroundings hotkeys take: guards → the PRESS's timestamp → position →
-    /// pool hop → which airport → catalog → UI marshal, every spoken line timed from that press
+    /// pool hop → which airport → the catalog build and the Where-Am-I line, SIDE BY SIDE → UI
+    /// marshal, every spoken line — and the "Looking around." notice — timed from that press
     /// (SpeakLookupLine). The provider this method's OWN work uses — the airport resolution and
     /// DescribeCurrentLocation — is captured in a LOCAL on the UI thread, so a database switch
     /// cannot swap it out from under a lookup in flight. The manager's DatabaseGeneration is captured
@@ -2056,16 +2057,35 @@ public partial class MainForm
                     if (icao == null) ui = () => SpeakLookupLine(pressedAt, "No airport nearby.");
                     else
                     {
-                        string where = needWhereAmI ? taxiGuidanceManager.DescribeCurrentLocation(provider, icao, position.Latitude, position.Longitude, databaseGeneration) : "";
+                        // BOTH builds start now, side by side (review item ML-5): the catalog on the
+                        // cache's own pool thread, the Where-Am-I line on another. Either can be cold
+                        // — a taxi graph for the airport; a scenery scan and the OSM wait — and in
+                        // sequence their times simply added up before a single word was said.
+                        var catalogTask = surroundingsCache.GetAsync(icao);
+                        // databaseGeneration: read WITH the provider at the press (plan D), so a graph
+                        // built through a provider a database switch has since replaced is not cached.
+                        var whereTask = needWhereAmI
+                            ? Task.Run(() => taxiGuidanceManager.DescribeCurrentLocation(provider, icao, position.Latitude, position.Longitude, databaseGeneration))
+                            : Task.FromResult("");
+                        var answer = Task.WhenAll(catalogTask, whereTask);
                         // A cold first press waits seconds with nothing said, and a blind pilot
-                        // cannot tell that from "the key did nothing". Say so ONCE, and only when
-                        // the answer really is slow — see SurroundingsLookupNotice. QUEUED, and
+                        // cannot tell that from "the key did nothing". Say so ONCE, and only when the
+                        // WHOLE answer — catalog AND Where-Am-I line — has not come within
+                        // SurroundingsLookupNotice.Delay of the PRESS (NoticeWait: the position request
+                        // and the airport resolution have already spent some of it). QUEUED, and
                         // dropped if the pilot has pressed again since, exactly like the answer.
-                        var pending = surroundingsCache.GetAsync(icao);
-                        if (await MSFSBlindAssist.Services.SurroundingsLookupNotice
-                                .IsSlowAsync(pending, MSFSBlindAssist.Services.SurroundingsLookupNotice.Delay).ConfigureAwait(false))
+                        if (await MSFSBlindAssist.Services.SurroundingsLookupNotice.IsSlowAsync(answer,
+                                MSFSBlindAssist.Services.SurroundingsLookupNotice.NoticeWait(
+                                    System.Diagnostics.Stopwatch.GetElapsedTime(pressedAt))).ConfigureAwait(false))
                             SafeBeginInvoke(() => { if (requests.IsLatest(ticket)) announcer.Announce("Looking around."); });
-                        var catalog = await pending.ConfigureAwait(false);
+                        // Awaited as ONE task first: a Where-Am-I failure surfaces here, into the catch
+                        // below ("Surroundings lookup failed."), and the combined task's fault is
+                        // OBSERVED — awaiting only the two parts could leave it unobserved. WhenAll
+                        // completes only when BOTH have, so that failure is heard only once the
+                        // catalog build is done too — accepted: the answer needs both anyway.
+                        await answer.ConfigureAwait(false);
+                        var catalog = await catalogTask.ConfigureAwait(false);
+                        string where = await whereTask.ConfigureAwait(false);
                         // AircraftPosition carries degrees (GroundTrafficMonitor adds these two the same way).
                         double hdgTrue = MSFSBlindAssist.Services.RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
                         ui = compose(new SurroundingsLookup(icao, catalog, position, hdgTrue, where, pressedAt));

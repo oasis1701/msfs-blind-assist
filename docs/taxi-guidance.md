@@ -1391,6 +1391,18 @@ exception is a SUPPRESSED announcer (a first-detect grace window), which DROPS a
 queued line: there a late line still interrupts, because a pilot who pressed a
 key must never hear nothing.
 
+**The two cold builds overlap, and the notice watches both from the press.**
+The catalog build STARTS before the Where-Am-I line is computed, and the two
+run side by side: either can be cold (a taxi graph for the airport; a scenery
+scan and the OSM wait), and in sequence their times simply added up before a
+word was said. "Looking around." is spoken once, only when the WHOLE answer —
+the catalog and, for Alt+L, the Where-Am-I line — has not come within `Delay`
+of the PRESS (`SurroundingsLookupNotice.NoticeWait`: the position request and
+the airport resolution have already spent some of it). It used to watch the
+catalog alone, from after the Where-Am-I build — so a slow graph with a cached
+catalog said nothing for seconds, and a slow catalog behind a slow graph was
+announced late.
+
 ### Passing callouts (opt-in, default off)
 
 `AirportSurroundingsMonitor` asks for the aircraft's own position on a 2 s UI

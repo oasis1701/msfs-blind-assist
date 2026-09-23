@@ -20,7 +20,8 @@ internal enum SurroundingsLookupDelivery
 /// <para>A COLD first press at an airport can wait seconds with nothing said: a first-time scenery
 /// scan of the package and, on an MSFS 2024 database, a census of the whole Community folder, with
 /// the OSM mirror's wait (OnlineFeatureStore.CatalogWait) running beside them rather than after
-/// them. A blind pilot has no spinner, so that silence and "the
+/// them — and, for Alt+L, the airport's taxi graph for the Where-Am-I line, built beside the
+/// catalog rather than before it. A blind pilot has no spinner, so that silence and "the
 /// key did nothing" are the same experience — and the window the second hotkey opens can take
 /// the foreground many seconds after the press. But the notice is about 0.8 s of speech placed
 /// IN FRONT of the answer, so speaking it on a cache hit (every press after the first at one
@@ -64,4 +65,10 @@ internal static class SurroundingsLookupNotice
         catch { /* the caller owns this failure */ }
         return false;
     }
+
+    /// <summary>How long the notice still waits for the answer, counted from the PRESS (review item
+    /// ML-5): the position request and the airport resolution ahead of the builds have already spent
+    /// some of <see cref="Delay"/>. Never negative — <see cref="IsSlowAsync"/> with a zero wait
+    /// reports an answer not yet in hand as slow at once.</summary>
+    internal static TimeSpan NoticeWait(TimeSpan sincePress) => sincePress >= Delay ? TimeSpan.Zero : Delay - sincePress;
 }

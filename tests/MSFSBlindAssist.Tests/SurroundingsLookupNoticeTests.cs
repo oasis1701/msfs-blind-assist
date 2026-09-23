@@ -65,4 +65,28 @@ public class SurroundingsLookupNoticeTests
         // grace window); AnnounceImmediate does not. A pilot who pressed a key must never hear nothing.
         => Assert.Equal(SurroundingsLookupDelivery.Immediate,
             SurroundingsLookupNotice.Delivery(TimeSpan.FromSeconds(8), announcerSuppressed: true));
+
+    [Fact]
+    public void The_notice_waits_only_for_what_is_left_of_its_delay_since_the_press()
+    {
+        // ML-5: the clock starts at the KEY PRESS. The position request and the airport resolution
+        // ahead of the builds have already spent some of the delay.
+        Assert.Equal(SurroundingsLookupNotice.Delay, SurroundingsLookupNotice.NoticeWait(TimeSpan.Zero));
+        Assert.Equal(SurroundingsLookupNotice.Delay - TimeSpan.FromMilliseconds(400),
+                     SurroundingsLookupNotice.NoticeWait(TimeSpan.FromMilliseconds(400)));
+        Assert.Equal(TimeSpan.Zero, SurroundingsLookupNotice.NoticeWait(SurroundingsLookupNotice.Delay));
+        Assert.Equal(TimeSpan.Zero, SurroundingsLookupNotice.NoticeWait(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task With_nothing_left_of_the_delay_an_answer_not_yet_in_hand_is_slow_at_once()
+    {
+        // Everything before the builds already took longer than the delay: the notice speaks at
+        // once rather than waiting a further full delay — and an answer already in hand still never
+        // earns it. IsSlowAsync with a zero wait is already pinned above; this pins that NoticeWait's
+        // clamp hands it exactly that zero, which the MainForm wiring relies on.
+        var spent = SurroundingsLookupNotice.NoticeWait(TimeSpan.FromSeconds(2));
+        Assert.True(await SurroundingsLookupNotice.IsSlowAsync(new TaskCompletionSource().Task, spent));
+        Assert.False(await SurroundingsLookupNotice.IsSlowAsync(Task.CompletedTask, spent));
+    }
 }
