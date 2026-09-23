@@ -243,4 +243,102 @@ public class OverpassRegionalMirrorTests
 
         Assert.Equal(new[] { Hosts[0], Hosts[1], Hosts[1] }, handler.Asked);
     }
+
+    [Fact]
+    public async Task A_caller_that_gives_up_during_the_confirmation_still_gets_the_held_empty_answer()
+    {
+        // The first mirror has answered "nothing"; the caller's budget runs out while the second
+        // is being asked. What was learned is still an answer — a well-formed empty body from a
+        // mirror that worked — so PostAsync returns it rather than null (review OV-2). For the
+        // taxiway-name fetch that is its whole answer; the buildings fetch gains it only in its
+        // FALLBACK query, because after an empty AREA answer OsmFeatureSource.FetchAsync runs the
+        // fallback on the same cancelled token, and a PostAsync that learned nothing is still null.
+        var confirming = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var handler = new PerHostMirror(async (host, ct) =>
+        {
+            if (host == Hosts[0]) return Ok(Empty);
+            confirming.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);    // a mirror that never answers in time
+            return Ok(Content);
+        });
+        using var caller = new CancellationTokenSource();
+
+        Task<string?> post = ClientOver(handler).PostAsync(Query, caller.Token);
+        await confirming.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        caller.Cancel();
+        string? body = await post.WaitAsync(TimeSpan.FromSeconds(10));
+
+        Assert.NotNull(body);
+        Assert.Equal(OverpassClient.BodyKind.Empty, OverpassClient.ClassifyBody(body!));
+    }
+
+    [Fact]
+    public async Task A_caller_that_gives_up_before_any_mirror_answered_gets_null()
+    {
+        // Nothing was learned, so there is nothing to hand back — and the caller's cancel is not a
+        // mirror failure: no second mirror is tried and none is cooled.
+        var asking = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var cooldowns = new ConcurrentDictionary<string, DateTime>();
+        var handler = new PerHostMirror(async (host, ct) =>
+        {
+            asking.TrySetResult();
+            await Task.Delay(Timeout.Infinite, ct);
+            return Ok(Content);
+        });
+        using var caller = new CancellationTokenSource();
+
+        Task<string?> post = ClientOver(handler, cooldowns).PostAsync(Query, caller.Token);
+        await asking.Task.WaitAsync(TimeSpan.FromSeconds(10));
+        caller.Cancel();
+
+        Assert.Null(await post.WaitAsync(TimeSpan.FromSeconds(10)));
+        Assert.Equal(Hosts[0], Assert.Single(handler.Asked));
+        Assert.Empty(cooldowns);
+    }
+
+    [Fact]
+    public async Task An_empty_from_a_cooled_down_mirror_on_the_second_pass_is_returned_unconfirmed()
+    {
+        // Every mirror but the first is cooling. The one fresh mirror answers 500 (a real
+        // failure), so the second pass reaches the cooled-down mirrors; the first of those
+        // answers empty. There is no FRESH mirror left to confirm with — cooled-down mirrors are
+        // never asked to confirm — so the empty answer is returned as-is (controller addition 4a).
+        var handler = new PerHostMirror(host => host == Hosts[0] ? ServerError() : host == Hosts[1] ? Ok(Empty) : Ok(Content));
+
+        string? body = await ClientOver(handler, CoolingAllBut(0)).PostAsync(Query, CancellationToken.None);
+
+        Assert.Equal(OverpassClient.BodyKind.Empty, OverpassClient.ClassifyBody(body!));
+        Assert.Equal(new[] { Hosts[0], Hosts[1] }, handler.Asked);
+    }
+
+    [Fact]
+    public async Task The_confirmation_after_a_failed_fresh_mirror_is_the_next_fresh_one_not_list_index_1()
+    {
+        // No cooldowns. The first mirror fails outright (not empty), so it holds nothing and the
+        // SECOND mirror's empty answer becomes the held one. The confirmation is the NEXT FRESH
+        // mirror after the HELD index (list index 2, the third mirror) — never plain list index 1,
+        // which here is where the empty answer itself came from (controller addition 4b).
+        var handler = new PerHostMirror(host => host == Hosts[0] ? ServerError() : host == Hosts[1] ? Ok(Empty) : Ok(Content));
+
+        string? body = await ClientOver(handler).PostAsync(Query, CancellationToken.None);
+
+        Assert.Equal(Content, body);
+        Assert.Equal(new[] { Hosts[0], Hosts[1], Hosts[2] }, handler.Asked);
+    }
+
+    [Fact]
+    public async Task Two_empty_answers_in_a_row_cool_neither_mirror()
+    {
+        // Two mirrors both answer empty: the first is held, the second confirms it. An empty
+        // answer is never evidence a mirror is ill — not the held one, and not the confirming one
+        // either — so afterwards the cooldown map contains neither (controller addition 4c).
+        var cooldowns = new ConcurrentDictionary<string, DateTime>();
+        var handler = new PerHostMirror(_ => Ok(Empty));
+
+        string? body = await ClientOver(handler, cooldowns).PostAsync(Query, CancellationToken.None);
+
+        Assert.Equal(OverpassClient.BodyKind.Empty, OverpassClient.ClassifyBody(body!));
+        Assert.False(cooldowns.ContainsKey(OverpassClient.MirrorUrls[0]));
+        Assert.False(cooldowns.ContainsKey(OverpassClient.MirrorUrls[1]));
+    }
 }

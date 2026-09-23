@@ -1904,8 +1904,9 @@ database.
 
 Two defences, deliberately at different levels: the list no longer carries that
 instance, and **`PostAsync` no longer BELIEVES an empty answer until ONE more
-FRESH mirror has been asked** — if that one has elements, it had the region and
-the first did not — which covers regional instances nobody has identified yet.
+FRESH mirror has been asked, returned unconfirmed at once if none remain** —
+if that one has elements, it had the region and the first did not — which
+covers regional instances nobody has identified yet.
 **One, never a sweep:** asking every remaining mirror, cooled-down ones
 included, made a genuinely empty small field cost up to six round-trips, which
 held the taxiway fetch's `Task.WhenAll` (and the apt.dat names that had already
@@ -1916,8 +1917,18 @@ holds planet-wide instances only (pinned by `OverpassRegionalMirrorTests`), so
 the confirmation is the backstop, not the defence. The empty answer is then
 believed: a strip with no mapped hangar, apron or tower is a real answer, and
 failing it would have the store retry it every five minutes for the session.
-A mirror answering empty is **never blacklisted** for it: that is no evidence
-the mirror is ill.
+A caller that gives up DURING the confirmation gets that held answer too, never
+null: it is already a well-formed answer from a mirror that worked. For the
+taxiway-name fetch that is its whole answer, so an airport OSM genuinely has
+nothing for comes back empty rather than as a failed source. The BUILDINGS
+fetch gains it only in its FALLBACK query: an AREA query that comes back empty
+sends `OsmFeatureSource.FetchAsync` on to the fallback with the same,
+already-cancelled token, and a `PostAsync` that has learned nothing still
+returns null — so a cancel during the area query's confirmation is still a
+failed fetch, remembered for `FailureMemory` and retried. That is right: an
+empty area answer does not say the airport has no buildings (an aerodrome OSM
+has not tagged `icao=` answers empty every time). A mirror answering empty is
+**never blacklisted** for it: that is no evidence the mirror is ill.
 
 **Neither defence touches a query string**, and none ever should: the one change
 to a shipped Overpass query in this feature's history (`out tags geom center`)

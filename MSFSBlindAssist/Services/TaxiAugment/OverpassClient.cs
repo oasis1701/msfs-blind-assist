@@ -71,7 +71,8 @@ public sealed class OverpassClient
     /// makes a second pass over the cooled-down mirrors when every fresh one failed, so a wrongly
     /// blacklisted mirror (or a machine-wide outage that trips all of them) can never turn a fetch
     /// that works today into a null. The one thing a cooled-down mirror is never asked for is to
-    /// CONFIRM an empty answer a fresh one already gave (review OV-1): that answer is returned, never
+    /// CONFIRM an empty answer — a fresh one already gave, or, once every fresh one had failed, a
+    /// cooled-down one gave on that same second pass (review OV-1): that answer is returned, never
     /// a null.</para>
     ///
     /// <para>This static map is the DEFAULT: every client built with the public constructor records
@@ -107,8 +108,9 @@ public sealed class OverpassClient
     /// <summary>
     /// Posts <paramref name="query"/> to the first mirror that answers with a genuine result, trying
     /// fresh mirrors before cooled-down ones. An EMPTY answer is held and believed only after ONE more
-    /// fresh mirror has been asked (see the loop). Returns null when every mirror failed or the caller
-    /// cancelled — never throws.
+    /// fresh mirror has been asked, or returned unconfirmed at once if none remain (see the loop).
+    /// Returns null when every mirror failed, or when the caller cancelled before any mirror answered
+    /// — never throws. A caller that cancels after an empty answer was held gets that answer.
     /// </summary>
     public async Task<string?> PostAsync(string query, CancellationToken ct)
     {
@@ -145,7 +147,12 @@ public sealed class OverpassClient
 
         for (int i = 0; i < order.Count; i++)
         {
-            if (ct.IsCancellationRequested) return null;
+            // The caller gave up. What was already learned is still an answer: a held empty body
+            // is a well-formed "nothing here" from a mirror that worked, so it is handed back, not
+            // dropped for a null (review OV-2). What that buys depends on the caller — it is the
+            // taxiway-name fetch's whole answer, while the buildings fetch, after an empty AREA
+            // answer, runs its fallback on this same cancelled token, and that call learns nothing.
+            if (ct.IsCancellationRequested) return heldEmpty;
             if (heldEmpty != null)
             {
                 // Fresh mirrors come first in `order`, so an index past them means none is left.
@@ -177,7 +184,9 @@ public sealed class OverpassClient
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
             {
-                return null;   // the CALLER gave up: not the mirror's fault, never blacklist, never throw
+                // The CALLER gave up: not the mirror's fault, never blacklist, never throw — and hand
+                // back the held empty answer, if there is one, for the reason above.
+                return heldEmpty;
             }
             catch { MarkFailed(url); }
         }
@@ -195,7 +204,8 @@ public sealed class OverpassClient
         /// <summary>Not a usable result (see <see cref="ClassifyBody"/>): the mirror is marked failed.</summary>
         Failed,
         /// <summary>A well-formed result with NO elements: the truth for some queries, and what a
-        /// REGIONAL mirror says about everywhere outside its extract. Held, never believed at once.</summary>
+        /// REGIONAL mirror says about everywhere outside its extract. Held for one more fresh mirror
+        /// to confirm, or believed at once if none remain.</summary>
         Empty,
         /// <summary>A well-formed result with at least one element.</summary>
         Elements,
