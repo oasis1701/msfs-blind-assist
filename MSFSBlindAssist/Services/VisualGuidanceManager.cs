@@ -79,6 +79,25 @@ public class VisualGuidanceManager : IDisposable
     private double currentPitch = 0.0;
     private double? smoothedCurrentFPM = null;  // Smoothed vertical speed for FPM-based guidance
     private double lastCalculatedTargetFPM = 0.0;  // Last calculated target FPM for hotkey announcement
+
+    // ── Airspeed mode ──────────────────────────────────────────────────────────────────
+    // The vertical tone commands the pitch that holds a target IAS instead of the pitch
+    // that holds the glidepath (AirspeedPitchLaw — see its header for why). Toggled by
+    // the M quick-access key; persists across Stop/Initialize within a session because
+    // the case it exists for (a fixed-throttle career lesson) is flown many times in a
+    // row. The NUDGE resets on every Initialize so a ±5 kt tweak never leaks into the
+    // next flight; the target itself follows the profile Vref (and any live Vref override
+    // an aircraft pushes) through TargetAirspeedKnots.
+    private bool airspeedMode = false;
+    private double airspeedNudgeKnots = 0.0;
+    private double? cachedIasKnots;
+    private double smoothedIasTrendKtPerSec = 0.0;
+    private readonly AirspeedPitchLaw.TrendEstimator iasTrend = new();
+    // The law is referenced to a SMOOTHED current pitch so the desired tone does not mirror
+    // the pilot's own frame-to-frame wobble straight back at them.
+    private double? smoothedPitchReference;
+    private const double PITCH_REFERENCE_SMOOTHING = 0.9;   // ~0.2 s time constant at frame rate
+    private double lastCalculatedAirspeedError = 0.0;        // IAS − target, for the F readout
     private double lastCalculatedAltitudeError = 0.0;  // Last calculated altitude error for hotkey announcement (positive = high, negative = low)
 
     // State tracking for derivative term and rate limiting (lateral)
@@ -220,6 +239,49 @@ public class VisualGuidanceManager : IDisposable
     /// </summary>
     public double GetAltitudeDeviation() => lastCalculatedAltitudeError;
 
+    /// <summary>True while the vertical tone holds airspeed rather than the glidepath.</summary>
+    public bool IsAirspeedMode => airspeedMode;
+
+    /// <summary>
+    /// The speed airspeed mode holds: the profile's reference Vref (or an aircraft's live
+    /// override) plus the pilot's nudge, clamped to the law's flyable range.
+    /// </summary>
+    public double TargetAirspeedKnots => AirspeedPitchLaw.ClampTarget(airspeedReferenceKnots + airspeedNudgeKnots);
+
+    /// <summary>Latest indicated airspeed sample, null before the first delivery.</summary>
+    public double? IndicatedAirspeedKnots => cachedIasKnots;
+
+    /// <summary>
+    /// Flips the vertical tone between the glidepath law and the airspeed law and says
+    /// which is now active. The pitch reference restarts from the aircraft's current pitch
+    /// so the first airspeed-mode command is a nudge from where the nose is, not from where
+    /// the glidepath law last left it.
+    /// </summary>
+    public void ToggleAirspeedMode()
+    {
+        airspeedMode = !airspeedMode;
+        smoothedPitchReference = null;
+        if (airspeedMode)
+            announcer.AnnounceImmediate($"Airspeed mode, {TargetAirspeedKnots:F0} knots");
+        else
+            announcer.AnnounceImmediate("Glidepath mode");
+        Log.Debug("VisualGuidance", $"Airspeed mode {(airspeedMode ? "ON" : "OFF")} (target {TargetAirspeedKnots:F0} kt)");
+    }
+
+    /// <summary>
+    /// Moves the airspeed-mode target by <paramref name="deltaKnots"/> (the minus / equals
+    /// keys pass ∓<see cref="AirspeedPitchLaw.NudgeKnots"/>) and speaks the new target. The
+    /// nudge is held so that the target stays inside the law's range — pressing past the
+    /// limit does not bank up an offset that would have to be unwound later.
+    /// </summary>
+    public void NudgeTargetAirspeed(double deltaKnots)
+    {
+        double clamped = AirspeedPitchLaw.ClampTarget(airspeedReferenceKnots + airspeedNudgeKnots + deltaKnots);
+        airspeedNudgeKnots = clamped - airspeedReferenceKnots;
+        announcer.AnnounceImmediate($"Target {TargetAirspeedKnots:F0} knots");
+        Log.Debug("VisualGuidance", $"Airspeed target nudged to {TargetAirspeedKnots:F0} kt (nudge {airspeedNudgeKnots:+0;-0} kt)");
+    }
+
     /// <summary>
     /// Guidance phases from approach to touchdown
     /// </summary>
@@ -326,6 +388,14 @@ public class VisualGuidanceManager : IDisposable
         // Apply aircraft-specific tunables (preserves A320 defaults if profile is the base instance).
         typicalApproachAoaDeg = profile.TypicalApproachAoaDeg;
         airspeedReferenceKnots = profile.ReferenceVrefKnots;
+        // Airspeed mode: the MODE persists across starts (see the field comment), the nudge
+        // and the per-approach estimators do not.
+        airspeedNudgeKnots = 0.0;
+        cachedIasKnots = null;
+        smoothedIasTrendKtPerSec = 0.0;
+        iasTrend.Reset();
+        smoothedPitchReference = null;
+        lastCalculatedAirspeedError = 0.0;
         maxPitchRateDegPerSec = profile.MaxPitchRateDegPerSec;
         maxBankRateDegPerSec = profile.MaxBankRateDegPerSec;
         glideslopeAltitudeBiasFt = profile.GlideslopeAltitudeBiasFt;
@@ -575,6 +645,16 @@ public class VisualGuidanceManager : IDisposable
     /// honest about whether a sample exists.
     /// </summary>
     public void UpdateAoA(double aoaDegrees) => cachedAoaDeg = aoaDegrees;
+
+    /// <summary>
+    /// Updates the cached indicated airspeed (knots) and its smoothed trend. Fed every
+    /// frame from the consolidated visual guidance data; consumed by airspeed mode only.
+    /// </summary>
+    public void UpdateIndicatedAirspeed(double iasKnots)
+    {
+        cachedIasKnots = iasKnots;
+        smoothedIasTrendKtPerSec = iasTrend.Feed(iasKnots, Environment.TickCount64 / 1000.0);
+    }
 
     /// <summary>
     /// Optional live override for the lateral airspeed-compensation Vref. Aircraft models
@@ -1305,6 +1385,11 @@ public class VisualGuidanceManager : IDisposable
             lastCalculatedTargetFPM = targetFPM;
             lastCalculatedAltitudeError = altitudeError;
 
+            // Airspeed mode: the glidepath figures above are still computed (the F readout and
+            // the mile callouts speak the altitude error), but the TONE holds the target speed.
+            if (airspeedMode)
+                return AirspeedModePitch(distanceToThresholdNM, altitudeError);
+
             // Calculate FPM error (negative = need to descend more, positive = need to descend less)
             double fpmError = targetFPM - smoothedFPM;
 
@@ -1516,12 +1601,53 @@ public class VisualGuidanceManager : IDisposable
         {
             if (distanceNM <= calloutDist && lastAnnouncedDistance > calloutDist)
             {
-                announcer.Announce($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}");
+                // In airspeed mode the tone no longer says where the glidepath is, so the mile
+                // callouts carry it: "1 mile, 200 high". Glidepath mode is unchanged.
+                string profile = airspeedMode
+                    ? ", " + AirspeedPitchLaw.DescribeProfile(lastCalculatedAltitudeError, GLIDESLOPE_CAPTURE_FT)
+                    : "";
+                announcer.Announce($"{calloutDist} mile{(calloutDist > 1 ? "s" : "")}{profile}");
                 lastAnnouncedDistance = calloutDist;
                 lastDistanceAnnouncement = now;
                 break;
             }
         }
+    }
+
+    /// <summary>
+    /// The airspeed-mode vertical command: <see cref="AirspeedPitchLaw"/> referenced to a
+    /// smoothed current pitch, then the SAME per-aircraft pitch-rate limit and ±12° clamp
+    /// the glidepath law applies, so the tone moves at the speed the pilot is used to.
+    /// Before the first airspeed sample the law is fed the target, which commands the
+    /// current pitch — a held note, never a guess.
+    /// </summary>
+    private double AirspeedModePitch(double distanceToThresholdNM, double altitudeError)
+    {
+        double target = TargetAirspeedKnots;
+        double ias = cachedIasKnots ?? target;
+
+        smoothedPitchReference = smoothedPitchReference.HasValue
+            ? PITCH_REFERENCE_SMOOTHING * smoothedPitchReference.Value + (1.0 - PITCH_REFERENCE_SMOOTHING) * currentPitch
+            : currentPitch;
+
+        double rawDesiredPitch = AirspeedPitchLaw.DesiredPitch(
+            smoothedPitchReference.Value, ias, smoothedIasTrendKtPerSec, target);
+
+        double maxPitchChange = maxPitchRateDegPerSec * 1.0;
+        double pitchChange = rawDesiredPitch - previousDesiredPitch;
+        if (Math.Abs(pitchChange) > maxPitchChange)
+            rawDesiredPitch = previousDesiredPitch + Math.Sign(pitchChange) * maxPitchChange;
+
+        double desiredPitch = Math.Clamp(rawDesiredPitch, -12.0, 12.0);
+        previousDesiredPitch = desiredPitch;
+        lastCalculatedAirspeedError = ias - target;
+
+        Log.Debug("VisualGuidance",
+            $"AirspeedMode: IAS={ias:F1}kt, Target={target:F0}kt, Err={lastCalculatedAirspeedError:F1}kt, " +
+            $"Trend={smoothedIasTrendKtPerSec:F2}kt/s, RefPitch={smoothedPitchReference.Value:F2}°, " +
+            $"AltErr={altitudeError:F0}ft, Dist={distanceToThresholdNM:F2}nm → Pitch={desiredPitch:F1}°");
+
+        return desiredPitch;
     }
 
     /// <summary>

@@ -130,6 +130,12 @@ public class HotkeyManager : IDisposable
 
         // Visual guidance mode hotkey IDs
         private const int HOTKEY_VISUAL_TARGET_FPM = 9090;
+        // Visual guidance airspeed mode (vertical tone holds a target IAS instead of the
+        // glidepath): M toggles it, minus / equals nudge the target 5 kt. Quick-access keys
+        // like F — registered while HandFly or VG is up, self-gated on VG.IsActive in MainForm.
+        private const int HOTKEY_VISUAL_AIRSPEED_MODE = 9085;
+        private const int HOTKEY_VISUAL_TARGET_SPEED_DOWN = 9086;
+        private const int HOTKEY_VISUAL_TARGET_SPEED_UP = 9087;
 
         // Monitor Manager hotkey ID (per-aircraft behavior)
         private const int HOTKEY_MONITOR_MANAGER = 9091;
@@ -217,6 +223,9 @@ public class HotkeyManager : IDisposable
             (HOTKEY_HANDFLY_PITCH,           (uint)0x50, "P"),
             (HOTKEY_HANDFLY_ALTITUDE_MSL,    (uint)0x41, "A"),
             (HOTKEY_VISUAL_TARGET_FPM,       (uint)0x46, "F"),
+            (HOTKEY_VISUAL_AIRSPEED_MODE,    (uint)0x4D, "M"),
+            (HOTKEY_VISUAL_TARGET_SPEED_DOWN, (uint)0xBD, "-"),   // VK_OEM_MINUS
+            (HOTKEY_VISUAL_TARGET_SPEED_UP,  (uint)0xBB, "="),    // VK_OEM_PLUS (unshifted =)
         };
 
         public event EventHandler<HotkeyEventArgs>? HotkeyTriggered;
@@ -678,6 +687,15 @@ public class HotkeyManager : IDisposable
                             // The action handler self-gates on VG.IsActive — when only HandFly
                             // is up and the user presses F, they get "Visual guidance not active".
                             TriggerHotkey(HotkeyAction.ReadTargetFPM);
+                            break;
+                        case HOTKEY_VISUAL_AIRSPEED_MODE:
+                            TriggerHotkey(HotkeyAction.ToggleVisualAirspeedMode);
+                            break;
+                        case HOTKEY_VISUAL_TARGET_SPEED_DOWN:
+                            TriggerHotkey(HotkeyAction.VisualTargetSpeedDown);
+                            break;
+                        case HOTKEY_VISUAL_TARGET_SPEED_UP:
+                            TriggerHotkey(HotkeyAction.VisualTargetSpeedUp);
                             break;
                         default:
                             Log.Debug("Hotkeys", $"Quick-access hotkey: Unknown hotkey ID {hotkeyId}");
@@ -1343,6 +1361,9 @@ public class HotkeyManager : IDisposable
         ReadBankAngle,
         ReadPitch,
         ReadTargetFPM,
+        ToggleVisualAirspeedMode,
+        VisualTargetSpeedDown,
+        VisualTargetSpeedUp,
         ShowFenixMCDU,
         ShowPMDGEFB,
         ShowPMDGEFBFirstOfficer,

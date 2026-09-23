@@ -677,6 +677,11 @@ public partial class SimConnectManager
         // TypicalApproachAoaDeg estimate. With autothrust holding Vref this is a near-constant;
         // gusts and configuration changes shift it transiently.
         public double AlphaRadians;
+        // Indicated airspeed (knots). Feeds visual guidance's AIRSPEED MODE, where the
+        // vertical tone commands the pitch that holds a target speed instead of the pitch
+        // that holds the glidepath (fixed-throttle lesson, engine-out glide). Appended LAST
+        // so every earlier field keeps its offset.
+        public double IndicatedAirspeedKnots;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

@@ -970,6 +970,12 @@ public partial class MainForm
             visualGuidanceManager.UpdateAoA(aoaDegrees);
             return true;
         }
+        if (e.VarName == "VISUAL_GUIDANCE_IAS" && visualGuidanceManager.IsActive)
+        {
+            // Indicated airspeed in knots, already in the unit VG's airspeed mode wants.
+            visualGuidanceManager.UpdateIndicatedAirspeed(e.Value);
+            return true;
+        }
 
         // Handle aircraft variable hotkey announcements
         // A380 metric-altitude mode (FCU MTRS / A32NX_METRIC_ALT_TOGGLE): when active, the

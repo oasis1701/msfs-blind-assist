@@ -205,6 +205,10 @@ public partial class SimConnectManager
         // nominal converges on the actual stabilized-approach pitch automatically.
         sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "INCIDENCE ALPHA", "radians",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)11);
+        // Indicated airspeed — visual guidance's airspeed mode holds a target IAS with pitch.
+        // Appended last (struct field order must match definition order).
+        sc.AddToDataDefinition(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA, "AIRSPEED INDICATED", "knots",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)12);
         sc.RegisterDataDefineStruct<VisualGuidanceData>(DATA_DEFINITIONS.VISUAL_GUIDANCE_DATA);
 
         // Register takeoff assist data (consolidated position + pitch + heading + airspeed)

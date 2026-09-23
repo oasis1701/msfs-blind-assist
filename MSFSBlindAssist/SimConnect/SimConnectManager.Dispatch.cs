@@ -711,6 +711,14 @@ public partial class SimConnectManager
                     Value = vgData.AlphaRadians,
                     Description = ""
                 });
+                // Indicated airspeed — consumed by VG's airspeed mode. Before AGL for the same
+                // same-frame reason as the attitude and alpha above.
+                SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                {
+                    VarName = "VISUAL_GUIDANCE_IAS",
+                    Value = vgData.IndicatedAirspeedKnots,
+                    Description = ""
+                });
 
                 // AGL last — its handler triggers ProcessUpdate() with all the above already
                 // applied to this frame's caches.

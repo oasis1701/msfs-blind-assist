@@ -39,7 +39,7 @@ Visual guidance **does not require HandFly mode to be active**. It monitors its 
 - If HandFly mode is *also* active, **HandFly's single tone is automatically muted** via `HandFlyManager.SuppressAudio()`. Reason: HandFly's tone uses the same Hz/pan mapping as VG's tones (it shares `AudioToneGenerator`'s native defaults), so all three tones playing simultaneously gives pilots no way to tell which tone they should be following. Muting HandFly while VG is active leaves a clean two-tone matching exercise. HandFly's announcements (if its feedback mode includes them) continue to fire — only the audio is suppressed.
 - When VG deactivates, HandFly's tone is automatically resumed (`HandFlyManager.ResumeAudio()`) if HandFly is still active and its feedback mode wants tones.
 
-### Quick-access hotkeys (H, V, Q, S, D, B, P, A, F)
+### Quick-access hotkeys (H, V, Q, S, D, B, P, A, F, M, -, =)
 
 The single-letter no-modifier hotkeys are **shared** between HandFly and visual guidance — VG is hand-flying with extra audio guidance, so the same in-flight readouts apply:
 
@@ -53,9 +53,12 @@ The single-letter no-modifier hotkeys are **shared** between HandFly and visual 
 | B | Read bank angle |
 | P | Read pitch |
 | A | Read altitude (MSL) |
-| F | Read target FPM (visual guidance) |
+| F | Read target FPM and glidepath deviation (visual guidance); in airspeed mode, the airspeed error and the glidepath deviation |
+| M | Toggle visual guidance's **airspeed mode** (see below) |
+| - | Lower the airspeed-mode target 5 kt, speaking the new target |
+| = | Raise the airspeed-mode target 5 kt, speaking the new target |
 
-Registration is reference-counted inside `HotkeyManager.AcquireQuickAccessHotkeys` / `ReleaseQuickAccessHotkeys`: the first mode (HandFly or VG) to activate registers all 9 keys; the second mode bumps the ref count without re-registering; whichever mode deactivates last releases the keys. Per-key partial-failure tracking means a key that was unavailable on first try (some other app holding it) will be retried on the next acquire. WM_HOTKEY dispatch is unified — same `case` for each key regardless of which mode is active. Pressing F in HandFly-only mode triggers `ReadTargetFPM`, whose handler self-gates on `visualGuidanceManager.IsActive` and announces *"Visual guidance not active"* if appropriate.
+Registration is reference-counted inside `HotkeyManager.AcquireQuickAccessHotkeys` / `ReleaseQuickAccessHotkeys`: the first mode (HandFly or VG) to activate registers all 12 keys; the second mode bumps the ref count without re-registering; whichever mode deactivates last releases the keys. Per-key partial-failure tracking means a key that was unavailable on first try (some other app holding it) will be retried on the next acquire. WM_HOTKEY dispatch is unified — same `case` for each key regardless of which mode is active. Pressing F in HandFly-only mode triggers `ReadTargetFPM`, whose handler self-gates on `visualGuidanceManager.IsActive` and announces *"Visual guidance not active"* if appropriate.
 
 Both tones use the *same* pitch→Hz and bank→pan mappings, so the rules are:
 
@@ -67,6 +70,18 @@ When the two are out of agreement the two pure tones beat against each other aud
 The two axes are **independent and continuous** — the pilot is not "first center the pan, then align the pitch." Roll to converge the pans and pitch to converge the frequencies in parallel, like flying two cross-pointers on an ILS.
 
 **Why two different waveforms by default:** identical waveforms at the same frequency can phase-cancel or fuse into one tone exactly at the matched state, which is when the pilot most needs to perceive them as distinct. Triangle (desired) + sine (current) stays distinguishable even at zero-beat.
+
+### Airspeed mode (M) — pitch for speed on a fixed-power approach
+
+The vertical law described above commands the pitch that holds the glidepath and **assumes the pilot holds airspeed with power**. That assumption fails whenever the throttle is not the pilot's to manage: the MSFS 2024 career landing lesson locks it, and an engine-out glide has none. There, pitch is the only speed control, so every nose-up the glidepath law asks for trades airspeed for altitude with nothing to buy it back. Measured live in a C172 on 2026-09-22 (three lesson attempts, spawned 1.5 nm out and 700 ft above the glidepath): the glidepath law asked for +3 to +6.6° inside the last mile and every attempt arrived over the threshold slow and nose-high.
+
+Pressing **M** while visual guidance is active flips the vertical tone to `Services/AirspeedPitchLaw`: the desired tone becomes the pitch that holds the target airspeed — fast → nose up, slow → nose down — referenced to a smoothed copy of the current pitch (so the desired tone is always a bounded nudge from the pilot's own tone, never a lurch, and never a mirror of their own wobble), with a trend term that leads the error. The same per-aircraft pitch-rate limit and ±12° clamp apply as in glidepath mode. It speaks "Airspeed mode, 65 knots" / "Glidepath mode" on each toggle. **Nothing else changes**: the lateral pan, the phase callouts, the flare branch and the touchdown auto-deactivate are the same in both modes, and the flare assist's tones take over at 50 ft as before.
+
+- **Target speed** = the profile's `ReferenceVrefKnots` (or an aircraft's live `UpdateReferenceVref` override) plus the pilot's nudge (**-** / **=**, ±5 kt, spoken), clamped to 40–200 kt. The **mode** persists across Stop/Initialize within a session — the case it exists for is flown many times in a row — while the **nudge** resets on every Initialize so a tweak never leaks into the next flight.
+- **The glidepath is still spoken.** The altitude error keeps being computed; **F** reads `airspeed 62, 3 slow, 120 high`, and the 5/3/1-mile callouts carry `, on profile` / `, 200 high` (rounded to 10 ft; "on profile" inside `GLIDESLOPE_CAPTURE_FT`), so a glide that will not reach the runway is heard early even though the tone no longer says so.
+- **Data:** `AIRSPEED INDICATED` was appended (index 12, last) to the consolidated `VISUAL_GUIDANCE_DATA` definition and struct; it is emitted as `VISUAL_GUIDANCE_IAS` before the AGL event like every other same-frame input.
+- Deliberately NOT done: no Settings default, no automatic locked-throttle detection, no "go around" call, and no change to the glidepath law's 1 nm lock (which is the OTHER defect those same logs show — inside `GLIDESLOPE_LOCK_DISTANCE_NM` it commands a plain 3° descent whatever the altitude error; a separate change).
+- Pinned by `AirspeedPitchLawTests` (sign both ways, trend lead, offset bound, target clamp, the two readout formats, the trend estimator).
 
 ### Sign-convention gotcha (bank)
 

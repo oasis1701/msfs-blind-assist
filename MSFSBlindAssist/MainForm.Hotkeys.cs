@@ -354,12 +354,35 @@ public partial class MainForm
                         ? $"{Math.Abs(altitudeDeviation):F0} high"
                         : $"{Math.Abs(altitudeDeviation):F0} low";
 
-                    announcer.AnnounceImmediate($"target {targetFPM:F0}, {deviationText}");
+                    // Airspeed mode: the tone holds a speed, so F reads the speed error first
+                    // and the glidepath second — "airspeed 62, 3 slow, 120 high".
+                    string readout = visualGuidanceManager.IsAirspeedMode
+                        ? $"{Services.AirspeedPitchLaw.DescribeSpeed(visualGuidanceManager.IndicatedAirspeedKnots, visualGuidanceManager.TargetAirspeedKnots)}, {deviationText}"
+                        : $"target {targetFPM:F0}, {deviationText}";
+                    announcer.AnnounceImmediate(readout);
                 }
                 else
                 {
                     announcer.AnnounceImmediate("Visual guidance not active");
                 }
+                break;
+            case HotkeyAction.ToggleVisualAirspeedMode:
+                if (visualGuidanceManager.IsActive)
+                    visualGuidanceManager.ToggleAirspeedMode();
+                else
+                    announcer.AnnounceImmediate("Visual guidance not active");
+                break;
+            case HotkeyAction.VisualTargetSpeedDown:
+                if (visualGuidanceManager.IsActive)
+                    visualGuidanceManager.NudgeTargetAirspeed(-Services.AirspeedPitchLaw.NudgeKnots);
+                else
+                    announcer.AnnounceImmediate("Visual guidance not active");
+                break;
+            case HotkeyAction.VisualTargetSpeedUp:
+                if (visualGuidanceManager.IsActive)
+                    visualGuidanceManager.NudgeTargetAirspeed(Services.AirspeedPitchLaw.NudgeKnots);
+                else
+                    announcer.AnnounceImmediate("Visual guidance not active");
                 break;
             case HotkeyAction.ReadTrackSlot1:
                 ReadTrackedWaypoint(1);

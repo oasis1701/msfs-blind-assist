@@ -171,7 +171,12 @@ Visual Guidance Mode Hotkeys (same single-letter set as Hand Fly mode, plus F):
   B          Read Aircraft Bank
   Q          Read AGL
   V          Read VS
-  F          Read Target VS
+  F          Read Target VS (glidepath mode) or airspeed error and glidepath (airspeed mode)
+  M          Toggle airspeed mode: the vertical tone holds the target airspeed with pitch
+             instead of the glidepath. For fixed-power approaches (a locked throttle,
+             an engine-out glide). Speaks "Airspeed mode, 65 knots" or "Glidepath mode".
+  -          Lower the airspeed-mode target 5 knots (speaks the new target)
+  =          Raise the airspeed-mode target 5 knots (speaks the new target)
 
 Note: both modes share the quick-access hotkeys. Activate Hand Fly mode,
 Visual Guidance mode, or both — the single-letter keys H, V, Q, S, D, B,
