@@ -68,7 +68,7 @@ CI prints the exact `git mv` — that is the backstop, not the detection mechani
   descriptive, unique within the PR.
 - `<category>` — `aircraft` (new airframe), `feature` (new capability), `improvement`
   (existing capability made better), `fix`, or `internal` (validated, never published —
-  for refactors/CI/tests).
+  for refactors/CI/tests; its contributors are still credited, on the notes' closing line).
 - Content — markdown prose, no heading, becomes a bullet. **Write for a pilot, not a
   reviewer**: say what is different when they fly, not which code path moved. Compare
   "Docking no longer says complete when you are parked askew — it tells you to back up
