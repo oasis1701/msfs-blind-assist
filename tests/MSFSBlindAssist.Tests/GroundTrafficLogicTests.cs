@@ -222,4 +222,41 @@ public class GroundTrafficLogicTests
         Assert.False(GroundTrafficLogic.QueueDeparted(2.0, 2.0, 500, double.NaN));
         Assert.True(GroundTrafficLogic.QueueDeparted(0.0, 2.0, 500, double.NaN));
     }
+
+    // --- Phrasing helpers (PR #247 review L12) -------------------------------------------
+
+    [Theory]
+    [InlineData(TrafficMotion.Stopped, "stopped")]
+    [InlineData(TrafficMotion.SameDirection, "same direction")]
+    [InlineData(TrafficMotion.HeadOn, "head-on")]
+    [InlineData(TrafficMotion.OppositeDirection, "opposite direction")]
+    [InlineData(TrafficMotion.CrossingLeftToRight, "crossing left to right")]
+    [InlineData(TrafficMotion.CrossingRightToLeft, "crossing right to left")]
+    public void DescribeMotion_WordsEveryMotion(TrafficMotion motion, string expected)
+        => Assert.Equal(expected, GroundTrafficLogic.DescribeMotion(motion));
+
+    [Theory]
+    [InlineData(0, "ahead")]
+    [InlineData(20, "ahead")]
+    [InlineData(21, "ahead and to the right")]
+    [InlineData(70, "ahead and to the right")]
+    [InlineData(71, "to the right")]
+    [InlineData(110, "to the right")]
+    [InlineData(111, "behind and to the right")]
+    [InlineData(160, "behind and to the right")]
+    [InlineData(161, "behind")]
+    [InlineData(180, "behind")]
+    [InlineData(200, "behind and to the left")]
+    [InlineData(270, "to the left")]
+    [InlineData(340, "ahead")]
+    [InlineData(-30, "ahead and to the left")]
+    public void DescribeDirection_Bands(double relBearing, string expected)
+        => Assert.Equal(expected, GroundTrafficLogic.DescribeDirection(relBearing));
+
+    [Fact]
+    public void RunwayLabel_JoinsDesignators()
+    {
+        Assert.Equal("Runway 27", GroundTrafficLogic.RunwayLabel(new[] { "27" }));
+        Assert.Equal("Runway 27L and 27R", GroundTrafficLogic.RunwayLabel(new[] { "27L", "27R" }));
+    }
 }
