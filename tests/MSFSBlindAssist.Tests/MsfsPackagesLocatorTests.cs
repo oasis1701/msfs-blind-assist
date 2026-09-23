@@ -154,9 +154,65 @@ public class MsfsPackagesLocatorTests : IDisposable
         string packages = WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", Path.Combine(_root, "p2024"));
         string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
 
-        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local));             // packages root, but no Community under it
+        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));  // packages root, but no Community under it
+        Assert.False(failed);
         Directory.CreateDirectory(Path.Combine(packages, "Community"));
-        Assert.Equal(Path.Combine(packages, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local));
-        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2020", roaming, local));             // no config for that simulator at all
+        Assert.Equal(Path.Combine(packages, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out failed));
+        Assert.False(failed);
+        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2020", roaming, local, out failed));      // no config for that simulator at all
+        Assert.False(failed);
+    }
+
+    [Fact]
+    public void A_config_that_exists_but_cannot_be_read_is_a_read_failure_not_no_community_folder()
+    {
+        // SI-2: every MSFS 2024 surroundings build asks this. "Could not read the config" and "there
+        // is no Community folder" were the same null, so one moment's exclusive lock left a catalog
+        // with no scenery tier that was cached as complete and never built again.
+        string packages = WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", Path.Combine(_root, "p2024"));
+        Directory.CreateDirectory(Path.Combine(packages, "Community"));
+        string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
+
+        Assert.Equal(Path.Combine(packages, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));
+        Assert.False(failed);
+
+        using var held = new FileStream(Path.Combine(roaming, "Microsoft Flight Simulator 2024", "UserCfg.opt"),
+                                        FileMode.Open, FileAccess.Read, FileShare.None);
+        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out failed));
+        Assert.True(failed);
+    }
+
+    [Fact]
+    public void Nothing_to_read_is_never_a_read_failure()
+    {
+        string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
+        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));   // no config anywhere
+        Assert.False(failed);
+
+        string dir = Path.Combine(roaming, "Microsoft Flight Simulator 2024");
+        Directory.CreateDirectory(dir);
+        File.WriteAllLines(Path.Combine(dir, "UserCfg.opt"), new[] { "{Graphics", "  Version 1.1.0", "}" });
+        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out failed));        // no key
+        Assert.False(failed);
+
+        File.WriteAllLines(Path.Combine(dir, "UserCfg.opt"), new[] { $"InstalledPackagesPath \"{Path.Combine(_root, "gone")}\"" });
+        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out failed));        // names a folder that is not there
+        Assert.False(failed);
+    }
+
+    [Fact]
+    public void A_failed_read_is_reported_even_when_the_store_config_still_answers()
+    {
+        // The chain still falls through to the Store copy, as the navdata build always has — but the
+        // config that WOULD have won could not be read, so the answer is only what could be had.
+        WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", Path.Combine(_root, "p2024"));
+        string store = WriteUserCfg("Local/Packages/Microsoft.Limitless_8wekyb3d8bbwe/LocalCache", Path.Combine(_root, "s2024"));
+        Directory.CreateDirectory(Path.Combine(store, "Community"));
+        string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
+
+        using var held = new FileStream(Path.Combine(roaming, "Microsoft Flight Simulator 2024", "UserCfg.opt"),
+                                        FileMode.Open, FileAccess.Read, FileShare.None);
+        Assert.Equal(Path.Combine(store, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));
+        Assert.True(failed);
     }
 }

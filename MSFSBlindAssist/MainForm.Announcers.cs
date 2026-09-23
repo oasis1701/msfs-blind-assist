@@ -1929,7 +1929,11 @@ public partial class MainForm
                     // An MSFS 2024 navdata build names no package for ANY airport — find it by where its
                     // objects stand. Header-only and disk-cached; this method is already on a pool thread.
                     string simVersion = MSFSBlindAssist.Settings.SettingsManager.Current.SimulatorVersion ?? "FS2020";
-                    string? community = MSFSBlindAssist.Database.MsfsPackagesLocator.TryGetCommunityPath(simVersion);
+                    string? community = MSFSBlindAssist.Database.MsfsPackagesLocator.TryGetCommunityPath(simVersion, out bool configUnreadable);
+                    // A UserCfg.opt that could not be READ is not "no Community folder" (SI-2): the
+                    // package may well be there, so a catalog built without it is SHORT — degraded,
+                    // built again after its lifetime — never the finished answer for the session.
+                    sceneryShort |= configUnreadable;
                     if (community != null)
                     {
                         dirs = sceneryCensus.Locate(community, facilities, out bool censusShort).ToList();

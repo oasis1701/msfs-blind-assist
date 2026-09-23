@@ -2338,18 +2338,26 @@ therefore what ends a junction cycle. It must be on BOTH: the indexer is handed
 a package the census found in Community, so bounding the walk in one and not the
 other simply moves the cycle.
 
-`MsfsPackagesLocator` is the one resolver of `InstalledPackagesPath` FOR THE
-NAVDATA BUILD AND THE CENSUS (four locations, two per simulator;
+`MsfsPackagesLocator` is the one resolver of `InstalledPackagesPath`
+FOR THE NAVDATA BUILD AND THE CENSUS (four locations, two per simulator;
 `NavdataReaderBuilder` delegates to it) — `EFBModPackageManager`,
 `AircraftCfgCatalog` and `GsxAirplaneProfile` each still parse `UserCfg.opt`
 themselves. It opens the file `FileShare.ReadWrite | FileShare.Delete` and
-closes it before its first `Directory.Exists`: it is the SIMULATOR's own config,
-and since the census it is read while the simulator is running, where a reader
-that permits no writer can make the simulator's own write fail. Its `IndexOf`
-match also matches `InstalledPackagesPathNextBoot`, and that is PRESERVED
-deliberately rather than fixed: the navdata database build has always resolved
-its base path this way, and changing it is a behaviour change that belongs in
-its own commit.
+closes it before its first `Directory.Exists`: it is the SIMULATOR's own
+config, and since the census it is read while the simulator is running, where
+a reader that permits no writer can make the simulator's own write fail. A
+config that EXISTS but cannot be READ — the simulator holding it exclusively
+for a moment, an access error — is reported apart from "nothing to read"
+(`TryGetCommunityPath`'s `readFailed`), and `BuildSurroundings` marks the
+scenery tier SHORT on it, so the catalog is degraded and built again after its
+lifetime instead of standing as an airport with no scenery package: a read
+that failed says nothing about whether the package is there. A config that
+is absent, names no path, names a folder that is not on disk, or a packages
+root with no Community folder is not a failure — nothing is owed, and a
+rebuild would only find the same absence. Its `IndexOf` match also matches
+`InstalledPackagesPathNextBoot`, and that is PRESERVED deliberately rather
+than fixed: the navdata database build has always resolved its base path
+this way, and changing it is a behaviour change that belongs in its own commit.
 
 ### Settings & caching
 

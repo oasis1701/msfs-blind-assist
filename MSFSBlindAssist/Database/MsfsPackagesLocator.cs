@@ -60,13 +60,25 @@ public static class MsfsPackagesLocator
 
     /// <summary>The packages root for "FS2020" or "FS2024", or null when nothing names one that exists.</summary>
     public static string? TryGetInstalledPackagesPath(string simulatorVersion)
-        => TryGetInstalledPackagesPath(simulatorVersion,
-                                       Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                                       Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
+        => TryGetInstalledPackagesPath(simulatorVersion, RoamingAppData(), LocalAppData(), out _);
 
     /// <summary>Test seam: the two roots Windows would otherwise supply.</summary>
     internal static string? TryGetInstalledPackagesPath(string simulatorVersion, string roamingAppData, string localAppData)
+        => TryGetInstalledPackagesPath(simulatorVersion, roamingAppData, localAppData, out _);
+
+    /// <summary>
+    /// The packages root, as above — and <paramref name="readFailed"/> true when a UserCfg.opt that
+    /// EXISTS could not be READ, or the lookup itself threw. That is not the same fact as "nothing
+    /// names a packages root": the answer may be missing (or be the Store copy's instead of the one
+    /// that would have won) for a reason that has nothing to do with the install, and the
+    /// surroundings catalog must not mistake it for "no Community folder" (review item SI-2). A
+    /// config that is absent, names no path, or names a folder that is not on disk is NOT a
+    /// failure. It still reads on past a failed read, exactly as before: the navdata build has
+    /// always taken the next location's answer.
+    /// </summary>
+    internal static string? TryGetInstalledPackagesPath(string simulatorVersion, string roamingAppData, string localAppData, out bool readFailed)
     {
+        readFailed = false;
         try
         {
             string configFileName = simulatorVersion == "FS2024"
@@ -74,7 +86,8 @@ public static class MsfsPackagesLocator
                 : "Microsoft Flight Simulator";
 
             // Check AppData\Roaming location first
-            string? basePath = TryReadUserCfg(Path.Combine(roamingAppData, configFileName, "UserCfg.opt"));
+            string? basePath = TryReadUserCfg(Path.Combine(roamingAppData, configFileName, "UserCfg.opt"), out bool roamingFailed);
+            readFailed |= roamingFailed;
             if (basePath != null)
             {
                 Log.Debug("Database", $"Found {simulatorVersion} base path from UserCfg.opt: {basePath}");
@@ -92,7 +105,8 @@ public static class MsfsPackagesLocator
             };
             if (storePackage != null)
             {
-                basePath = TryReadUserCfg(Path.Combine(localAppData, "Packages", storePackage, "LocalCache", "UserCfg.opt"));
+                basePath = TryReadUserCfg(Path.Combine(localAppData, "Packages", storePackage, "LocalCache", "UserCfg.opt"), out bool storeFailed);
+                readFailed |= storeFailed;
                 if (basePath != null)
                 {
                     Log.Debug("Database", $"Found {simulatorVersion} base path from Store UserCfg.opt: {basePath}");
@@ -106,17 +120,24 @@ public static class MsfsPackagesLocator
         catch (Exception ex)
         {
             Log.Debug("Database", $"Error getting MSFS base path: {ex.Message}");
+            readFailed = true;
             return null;
         }
     }
 
-    /// <summary>The Community folder under the packages root, or null when there is none.</summary>
-    public static string? TryGetCommunityPath(string simulatorVersion)
-        => Community(TryGetInstalledPackagesPath(simulatorVersion));
+    /// <summary>The Community folder under the packages root, or null when there is none — with
+    /// <paramref name="readFailed"/> true when that answer rests on a UserCfg.opt that could not be
+    /// read (see the four-argument TryGetInstalledPackagesPath). "Could not read the config" is not
+    /// "there is no Community folder", and the surroundings catalog degrades on the first.</summary>
+    public static string? TryGetCommunityPath(string simulatorVersion, out bool readFailed)
+        => Community(TryGetInstalledPackagesPath(simulatorVersion, RoamingAppData(), LocalAppData(), out readFailed));
 
     /// <summary>Test seam: the two roots Windows would otherwise supply.</summary>
-    internal static string? TryGetCommunityPath(string simulatorVersion, string roamingAppData, string localAppData)
-        => Community(TryGetInstalledPackagesPath(simulatorVersion, roamingAppData, localAppData));
+    internal static string? TryGetCommunityPath(string simulatorVersion, string roamingAppData, string localAppData, out bool readFailed)
+        => Community(TryGetInstalledPackagesPath(simulatorVersion, roamingAppData, localAppData, out readFailed));
+
+    private static string RoamingAppData() => Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+    private static string LocalAppData() => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
     private static string? Community(string? root)
     {
@@ -128,10 +149,12 @@ public static class MsfsPackagesLocator
     /// <summary>
     /// The first packages root this config names that is really on disk. It keeps reading past a
     /// value that is not a folder, exactly as the method this replaced did: the file can carry
-    /// more than one key-shaped line (see <see cref="ValueOnLine"/>).
+    /// more than one key-shaped line (see <see cref="ValueOnLine"/>). <paramref name="readFailed"/>
+    /// is true only when the file EXISTS and reading it threw.
     /// </summary>
-    private static string? TryReadUserCfg(string configPath)
+    private static string? TryReadUserCfg(string configPath, out bool readFailed)
     {
+        readFailed = false;
         try
         {
             if (!File.Exists(configPath))
@@ -161,7 +184,11 @@ public static class MsfsPackagesLocator
         }
         catch (Exception ex)
         {
-            Log.Debug("Database", $"Error parsing UserCfg.opt: {ex.Message}");
+            // It EXISTS (File.Exists said so) and could not be read — the simulator holding its own
+            // config exclusively for a moment, an access error. Not "no packages root": say so, and
+            // Warn, because it now degrades the surroundings catalog and this line is its only trace.
+            readFailed = true;
+            Log.Warn("Database", $"Could not read UserCfg.opt at {configPath}: {ex.Message}");
             return null;
         }
     }
