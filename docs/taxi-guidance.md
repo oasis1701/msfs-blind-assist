@@ -1075,7 +1075,9 @@ another Concourse by letter at any distance" rule) merged the KJFK pair.
 decides identity from a name and a distance between representative points,
 which says nothing about whether one outline really is the other — and a merge
 hands the winner the loser's geometry, which `SurroundingsGeometry.Nearest`
-then measures to. Four rules, all of them paid for at KTIW:
+then measures to. Four rules — three of them paid for at KTIW, the
+ring-versus-ring one ALSO at EHRD, EHLW and LSZG, and the stand-cluster one at
+KMEM instead:
 
 - A winner that already has `Members` **never adopts a `Footprint`**. Its own
   stands are its geometry, and `Nearest` reads a footprint FIRST, so one
@@ -1085,8 +1087,10 @@ then measures to. Four rules, all of them paid for at KTIW:
   the stands parked on some pavement, and one ring routinely covers several
   rows. Kept apart, the ring stays a polygon `SurroundingsReport.Zone` can put
   the aircraft inside and the cluster stays "GA ramp", measured to its stands.
-- **Ring versus ring** is one body only when the two OVERLAP — one holds the
-  other's representative point, or a vertex of either lies more than
+- **Ring versus ring** is one body only when the two OVERLAP — each one's OWN
+  representative point counts only when it lies inside its OWN outline too
+  (plain containment, no margin), and then only if that same point ALSO lies
+  inside the other's outline; or a vertex of either lies more than
   `RingOverlapMarginMetres` (5 m) inside the other — or when they are the two
   halves of ONE split OSM way: both carry the SAME proper name and the outlines
   TOUCH (a node they share, or a vertex within that margin of the other's
@@ -1096,12 +1100,22 @@ then measures to. Four rules, all of them paid for at KTIW:
   own outline — took the neighbour's zone with it. A proper name beside an
   unnamed or differently named outline stays two features even where they
   touch, and two outlines sharing a proper name that do not touch are two
-  bodies too. The margin is for VERTICES and is MEASURED at KTIW: glued
-  neighbours SHARE nodes, 0.000 m from each other's edge, which the ray cast
-  answers arbitrarily (it called one shared node of each pair "inside"), and no
-  vertex that is not shared lies inside a neighbouring outline at all — the
-  nearest is 1.39 m outside one. Merged halves keep the winner's own outline,
-  as they always have (`Build` never joins two outlines).
+  bodies too — and, for a routable kind, two Place entries, the second labelled
+  with a trailing "(2)" by `PlaceListBuilder`'s own name-collision counter. The
+  self-containment check on the representative point exists because a CONCAVE
+  (L- or U-shaped) outline's own point can fail it: `OsmFeatureClassifier`
+  uses the vertex centroid only when it lies inside the outline and otherwise
+  falls back to the BOUNDS centre, which for an L or U lands IN the notch the
+  outline excludes — outside the outline's own body — and that notch is
+  exactly where a smaller apron is often glued, so the L or U's own bad point
+  read as "inside" it regardless of distance: the SAME EHRD/EHLW/LSZG defect,
+  found again one layer deeper after the one-proper-name rule alone was fixed.
+  The margin is for VERTICES and is MEASURED at KTIW: glued neighbours SHARE
+  nodes, 0.000 m from each other's edge, which the ray cast answers arbitrarily
+  (it called one shared node of each pair "inside"), and no vertex that is not
+  shared lies inside a neighbouring outline at all — the nearest is 1.39 m
+  outside one. Merged halves keep the winner's own outline, as they always
+  have (`Build` never joins two outlines).
 - A **stand cluster the other feature does not describe** — some member further
   from it than `SameNameRadiusMetres` (`MembersDescribe`, measured through
   `Nearest`, never centroid to centroid) — is not that feature at all. Refusing

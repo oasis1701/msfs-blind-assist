@@ -218,6 +218,22 @@ public class AirportFeatureCatalogTests
         return F(FeatureKind.Apron, name, c.Lat, c.Lon, FeatureSource.Osm, fp: ring);
     }
 
+    /// <summary>An L (Γ) outline: two arms of a 100x100 m square missing the lon/lat [40,100]
+    /// quadrant, reflex corner at (40, 40). Its vertex mean — (46.67, 46.67), what
+    /// <see cref="ApronRing"/> uses as the representative point — falls IN that missing quadrant,
+    /// outside the L's own body: the same failure OsmFeatureClassifier.TryPoint's bounds-centre
+    /// fallback produces for a concave outline in production (there landing at (50, 50), also
+    /// outside the L).</summary>
+    private static IReadOnlyList<LatLon> LApronRing()
+    {
+        const double M = 111_320.0;
+        return new[]
+        {
+            new LatLon(0, 0), new LatLon(0, 100 / M), new LatLon(40 / M, 100 / M),
+            new LatLon(40 / M, 40 / M), new LatLon(100 / M, 40 / M), new LatLon(100 / M, 0),
+        };
+    }
+
     [Theory]
     [InlineData(65.0, false)] [InlineData(65.0, true)]   // 25 m of grass between them
     [InlineData(40.0, false)] [InlineData(40.0, true)]   // glued along an edge, as OSM draws neighbours
@@ -286,6 +302,59 @@ public class AirportFeatureCatalogTests
         var a = ApronRing("", Rect(0, 0, 40, 40));
         var b = ApronRing("", Rect(38, 10, 78, 50));
         Assert.Equal(2, AirportFeatureCatalog.Build("X", "v", new[] { a, b }).Features.Count);
+    }
+
+    [Fact]
+    public void A_vertex_poking_into_the_other_ring_is_enough_even_when_nothing_pokes_back()
+    {
+        // Review PC-2 fix round 1, item 2: only B's corners dip into A (10 m past its edge); none
+        // of A's corners reach into B at all. RingsOverlap has two vertex loops, one walking each
+        // ring's own vertices against the OTHER's outline — a SYMMETRIC penetration (both sides poke
+        // into each other, as in Two_outlines_that_really_overlap_are_one_body above) passes even
+        // with either loop deleted, because the surviving one still finds a hit. This asymmetric
+        // geometry does not: delete the loop that walks B's vertices and SameFeature(a, b) goes
+        // false; delete the one that walks A's and SameFeature(b, a) goes false instead.
+        var a = ApronRing("", Rect(0, 0, 100, 100));
+        var b = ApronRing("", Rect(90, 40, 120, 60));
+        Assert.True(AirportFeatureCatalog.SameFeature(a, b));
+        Assert.True(AirportFeatureCatalog.SameFeature(b, a));
+        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { a, b }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { b, a }).Features);
+    }
+
+    [Fact]
+    public void Two_same_named_aprons_that_meet_at_a_T_junction_are_one_apron()
+    {
+        // Review PC-2 fix round 1, item 2: D's west edge lands in the MIDDLE of C's east edge — a
+        // T-junction — not at a shared corner, and none of C's own corners come anywhere near D.
+        // Same asymmetric-loop reasoning as the spike above, this time for RingsTouch (and so
+        // HalvesOfOneWay): only the loop walking D's vertices against C's ring finds the touch.
+        var c = ApronRing("T Apron", Rect(0, 0, 40, 40));
+        var d = ApronRing("T Apron", Rect(40, 15, 80, 25));
+        Assert.True(AirportFeatureCatalog.SameFeature(c, d));
+        Assert.True(AirportFeatureCatalog.SameFeature(d, c));
+        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { c, d }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { d, c }).Features);
+    }
+
+    [Theory]
+    [InlineData(40.0, false)] [InlineData(40.0, true)]   // glued into the notch, sharing 3 nodes
+    [InlineData(48.0, false)] [InlineData(48.0, true)]   // 8 m short of the notch's own edges — disjoint
+    public void A_named_L_shaped_apron_does_not_swallow_the_unnamed_apron_in_its_notch(double innerEdge, bool reversed)
+    {
+        // Review PC-2 fix round 1, item 1 (M26 amendment): the headline case the task's own brief
+        // named — EHRD, EHLW, LSZG — still reproduced after the first commit, because RingsOverlap
+        // trusted EITHER ring's representative point unconditionally. The L's own point (its vertex
+        // mean, what ApronRing uses) falls in the notch it excludes — outside the L's own body —
+        // and that notch is exactly where the smaller apron sits, so the L's bad point read as
+        // "inside" the neighbour regardless of whether they even touch (still true 8 m apart). The
+        // fix requires a representative point to lie inside its OWN outline before it counts.
+        var named = ApronRing("Apron Oost", LApronRing());
+        var unnamed = ApronRing("", Rect(innerEdge, innerEdge, 100.0, 100.0));
+        Assert.False(AirportFeatureCatalog.SameFeature(named, unnamed));
+        Assert.False(AirportFeatureCatalog.SameFeature(unnamed, named));
+        var cat = AirportFeatureCatalog.Build("X", "v", reversed ? new[] { unnamed, named } : new[] { named, unnamed });
+        Assert.Equal(2, cat.Features.Count);
     }
 
     [Fact]

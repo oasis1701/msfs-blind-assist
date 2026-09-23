@@ -65,18 +65,29 @@ public sealed class AirportFeatureCatalog
     /// outline; the nearest vertex that is not shared lies 1.39 m OUTSIDE one. 5 m is well past that
     /// tracing slop and far short of any real overlap, and erring wide costs only a second feature,
     /// where erring narrow loses an apron and the zone of a pilot parked on it. The margin is for
-    /// vertices only: a representative point is tested by plain containment, as it always was.
+    /// vertices only: a representative point is still tested by PLAIN containment, no margin — but
+    /// (M26 amendment, review fix round 1) only when it lies inside its OWN outline too. A concave
+    /// (L- or U-shaped) outline's point can be OsmFeatureClassifier.TryPoint's bounds-centre
+    /// fallback (used whenever the vertex centroid itself misses), which for an L or U lands IN the
+    /// notch the outline excludes — outside the outline's own body, and often inside whatever
+    /// smaller apron is glued into that notch. Trusting that point unconditionally merged a named L
+    /// or U apron with a disjoint unnamed one glued into its notch (real OSM at EHRD, EHLW and
+    /// LSZG) regardless of whether the two even touched.
     /// </summary>
     public const double RingOverlapMarginMetres = 5.0;
 
-    /// <summary>Do two OUTLINES overlap? One holds the other's representative point (plain
-    /// containment), or a VERTEX of either lies more than <see cref="RingOverlapMarginMetres"/>
-    /// inside the other — never a node the two merely share, and never a bare radius between
-    /// edges.</summary>
+    /// <summary>Do two OUTLINES overlap? Each one's OWN representative point counts only when it
+    /// really lies inside its OWN outline (plain containment, no margin — a concave outline's point
+    /// can be a bounds-centre fallback sitting in its own excluded notch, which proves nothing) AND
+    /// that same point also lies inside the OTHER outline; or a VERTEX of either lies more than
+    /// <see cref="RingOverlapMarginMetres"/> inside the other — never a node the two merely share,
+    /// and never a bare radius between edges.</summary>
     private static bool RingsOverlap(AirportFeature a, AirportFeature b)
     {
         IReadOnlyList<LatLon> ra = a.Footprint!, rb = b.Footprint!;
-        if (SurroundingsGeometry.Contains(ra, b.Lat, b.Lon) || SurroundingsGeometry.Contains(rb, a.Lat, a.Lon)) return true;
+        if ((SurroundingsGeometry.Contains(ra, a.Lat, a.Lon) && SurroundingsGeometry.Contains(rb, a.Lat, a.Lon))
+            || (SurroundingsGeometry.Contains(rb, b.Lat, b.Lon) && SurroundingsGeometry.Contains(ra, b.Lat, b.Lon)))
+            return true;
         foreach (var v in rb) if (SurroundingsGeometry.ContainsBeyondEdge(ra, v.Lat, v.Lon, RingOverlapMarginMetres)) return true;
         foreach (var v in ra) if (SurroundingsGeometry.ContainsBeyondEdge(rb, v.Lat, v.Lon, RingOverlapMarginMetres)) return true;
         return false;

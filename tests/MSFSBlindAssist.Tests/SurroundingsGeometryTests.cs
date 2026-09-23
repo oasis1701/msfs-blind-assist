@@ -137,4 +137,25 @@ public class SurroundingsGeometryTests
         Assert.False(SurroundingsGeometry.ContainsBeyondEdge(square, 100 / M, 100 / M, 5.0));     // a corner — a node two outlines share
         Assert.False(SurroundingsGeometry.ContainsBeyondEdge(square, -10 / M, 50 / M, 5.0));      // outside
     }
+
+    [Fact]
+    public void A_point_near_a_concave_corner_is_measured_to_that_corner()
+    {
+        // Review PC-2 fix round 1: an L (Γ) shape — two arms of a 100x100 m square missing the
+        // lat/lon [40,100] quadrant — has a REFLEX corner at (40, 40). A point offset diagonally
+        // from it, into the L's own material, is nowhere near either adjoining edge's own
+        // perpendicular span (both edges start at 40 and run the other way), so NearestOnRing's
+        // nearest point on EITHER edge clamps to that same shared vertex: the "nearest edge"
+        // distance is really the distance to the corner.
+        const double M = 111_320.0;
+        var l = new[]
+        {
+            new LatLon(0, 0), new LatLon(100 / M, 0), new LatLon(100 / M, 40 / M),
+            new LatLon(40 / M, 40 / M), new LatLon(40 / M, 100 / M), new LatLon(0, 100 / M),
+        };
+        // 2*sqrt(2) ≈ 2.83 m from the reflex corner, diagonally inward: inside, short of the margin.
+        Assert.False(SurroundingsGeometry.ContainsBeyondEdge(l, 38 / M, 38 / M, 5.0));
+        // 5*sqrt(2) ≈ 7.07 m from the reflex corner, same diagonal: inside and past the margin.
+        Assert.True(SurroundingsGeometry.ContainsBeyondEdge(l, 35 / M, 35 / M, 5.0));
+    }
 }
