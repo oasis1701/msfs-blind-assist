@@ -53,20 +53,22 @@ public class TrafficMotionModelTests
         Assert.Equal(0.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0, null, At(-20, 0, 1)));
     }
 
+    // The two timestamp cases below use the pushback geometry: nose north, moved 20 m due south
+    // (track 180°, beyond ReversingAngleDeg). Each first shows that geometry DOES flip to the track
+    // with a valid dt, so only the timestamp guard can be what keeps the nose.
+
     [Fact]
     public void Same_timestamp_between_fixes_keeps_the_nose()
     {
-        // When two fixes have the same timestamp (dt = 0), even though they are far apart
-        // and the track points away from the nose heading, keep the nose heading.
-        Assert.Equal(90.0, GroundTrafficLogic.EffectiveDirection(90.0, 2.0, At(0, 0, 1), At(-100, 0, 1)));
+        Assert.Equal(180.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0, At(0, 0, 0), At(-20, 0, 1)), 0);
+        Assert.Equal(0.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0, At(0, 0, 1), At(-20, 0, 1)));
     }
 
     [Fact]
     public void Previous_fix_later_than_current_keeps_the_nose()
     {
-        // When the previous fix is timestamped later than the current one (dt < 0),
-        // keep the nose heading.
-        Assert.Equal(45.0, GroundTrafficLogic.EffectiveDirection(45.0, 2.0, At(0, 0, 5), At(10, 0, 1)));
+        Assert.Equal(180.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0, At(0, 0, 1), At(-20, 0, 5)), 0);
+        Assert.Equal(0.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0, At(0, 0, 5), At(-20, 0, 1)));
     }
 
     // ── route-relative motion ───────────────────────────────────────────────────────────
