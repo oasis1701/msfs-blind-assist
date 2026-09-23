@@ -1861,7 +1861,8 @@ public partial class MainForm
     /// scenery scan and DB read can make slow (every BGL in a package opened once, under a
     /// per-package lock) — so the cache contracts to invoke it on a THREAD-POOL thread,
     /// NEVER on the UI thread and NEVER from a per-frame position update. That is also what makes
-    /// the bounded online-feature wait below safe. A fresh GateDataSource per call for the same
+    /// the bounded online-feature wait below safe. A fresh GateDataSource per call — built over the
+    /// provider this call captured, never the field (W6) — for the same
     /// reason ParkingSpotSupplier builds one, but only ONE build for the whole call (shared
     /// between the named-spots and selectable-gates reads below) — the "never share a
     /// GateDataSource across threads" rule is about the UI thread's own per-ICAO caches, not
@@ -1873,7 +1874,11 @@ public partial class MainForm
         if (provider == null) return new(Array.Empty<MSFSBlindAssist.Navigation.Surroundings.AirportFeature>(), "");
         var features = new List<MSFSBlindAssist.Navigation.Surroundings.AirportFeature>();
 
-        var gateDataSource = BuildGateDataSource();
+        // Over the provider captured above, never the field again (W6): a database switch landing
+        // mid-build then cannot pair one database's navdata reads with another's gate list. (Such a
+        // build is discarded by the cache anyway — review item ML-4 — but the one answer it hands
+        // its own caller is at least consistent.)
+        var gateDataSource = BuildGateDataSource(provider);
         var facilities = (provider as MSFSBlindAssist.Database.IAirportFacilitiesProvider)?.GetAirportFacilities(icao);
 
         // The OSM fetch STARTS FIRST, before every tier below, and nothing waits for it here

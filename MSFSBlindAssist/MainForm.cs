@@ -715,14 +715,17 @@ public partial class MainForm : Form
         // into a graph's nodes at build time, so a Where-Am-I graph built before GSX published
         // this airport would otherwise keep navdata's concourse letters for the whole session
         // while every other readout moved to GSX's — see TaxiGuidanceManager._whereAmICachedToken.
-        // O(1) by contract (a capability lookup, a dictionary read, a field read), which is why
-        // it is affordable to ask on every Where-Am-I press.
-        taxiGuidanceManager.ParkingSpotVersionSupplier =
-            icao => BuildGateDataSource()?.GetGateListVersion(icao) ?? "none";
+        // O(1) by contract (a capability lookup, a dictionary read, a field read) — and read
+        // WITHOUT constructing a GateDataSource (GateListVersion), which is why it is affordable
+        // to ask on every Where-Am-I press.
+        taxiGuidanceManager.ParkingSpotVersionSupplier = GateListVersion;
 
         // Surroundings catalog: same token as the Where-Am-I graph so a GSX publish re-letters
-        // the inferred concourses too. Built on demand from the hotkey handler, never per frame.
-        surroundingsCache.VersionSupplier = icao => BuildGateDataSource()?.GetGateListVersion(icao) ?? "none";
+        // the inferred concourses too — the SAME method, so the two can never drift. Asked on every
+        // position sample the passing-callout monitor handles (TryGetCached, about every 2 s) as
+        // well as by the hotkeys and the Place list, so it must never build a GateDataSource per
+        // ask (review item E8).
+        surroundingsCache.VersionSupplier = GateListVersion;
         surroundingsCache.BuildSupplier = BuildSurroundings;
         sayIntentionsService = new SayIntentionsService();
 

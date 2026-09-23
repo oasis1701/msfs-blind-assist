@@ -653,6 +653,25 @@ public partial class MainForm
         });
     }
 
+    // The four GSX signals every GateDataSource this form builds is given — and the SAME four the
+    // gate-list token is derived from without building one (GateListVersion below). Methods, not
+    // captured values: each reads its field on every call, so a GsxService started, stopped or
+    // replaced later is seen. GSX gates (.ini/navdata path) apply only when GSX is running this
+    // session (Couatl started) AND a profile matches. "Couatl started" is EITHER signal: the Remote
+    // API's own flag OR the L:FSDT_GSX_COUATL_STARTED L:var read over the main SimConnect
+    // connection. The L:var is what every GSX build publishes, Remote API or not — the .ini
+    // overlay, deice pads and profile stop positions are local-file features that never needed the
+    // WebSocket, and gating them on the Remote flag alone silently switched them off for any GSX
+    // build older than 4.0.1 (docs/gsx.md: "neither is a version floor").
+    private bool GsxCouatlRunning()
+        => (_gsxService != null && _gsxService.CouatlStarted)
+           || (simConnectManager != null && simConnectManager.GsxCouatlStartedLVar);
+    private IReadOnlyCollection<string> GsxCapabilities() => _gsxService?.Capabilities ?? Array.Empty<string>();
+    private System.Text.Json.JsonElement? GsxHandlerDataAirport() => _gsxService?.GetHandlerDataAirport();
+    // The staleness token behind GateDataSource.GetGateListVersion — a field read, so a per-ICAO
+    // gate cache can notice GSX (re)publishing this airport per keystroke.
+    private long GsxHandlerDataVersion() => _gsxService?.HandlerDataVersion ?? 0;
+
     /// <summary>
     /// Wires <see cref="Services.GateDataSource"/> to live GSX data: the pre-existing
     /// <c>.ini</c>/navdata path (unchanged, gated on <c>CouatlStarted</c> + a matching
@@ -665,26 +684,30 @@ public partial class MainForm
     /// matter what GSX publishes.
     /// </summary>
     private Services.GateDataSource? BuildGateDataSource()
-    {
-        if (airportDataProvider == null) return null;
-        // GSX gates (.ini/navdata path) only when GSX is running this session (Couatl
-        // started) AND a profile matches. "Couatl started" is EITHER signal: the Remote
-        // API's own flag OR the L:FSDT_GSX_COUATL_STARTED L:var read over the main
-        // SimConnect connection. The L:var is what every GSX build publishes, Remote API or
-        // not — the .ini overlay, deice pads and profile stop positions are local-file
-        // features that never needed the WebSocket, and gating them on the Remote flag
-        // alone silently switched them off for any GSX build older than 4.0.1 (docs/gsx.md:
-        // "neither is a version floor").
-        return new Services.GateDataSource(
-            airportDataProvider,
-            () => (_gsxService != null && _gsxService.CouatlStarted)
-                  || (simConnectManager != null && simConnectManager.GsxCouatlStartedLVar),
-            capabilities: () => _gsxService?.Capabilities ?? Array.Empty<string>(),
-            getHandlerDataAirport: () => _gsxService?.GetHandlerDataAirport(),
-            // The staleness token behind GateDataSource.GetGateListVersion — a field read, so a
-            // per-ICAO gate cache can notice GSX (re)publishing this airport per keystroke.
-            handlerDataVersion: () => _gsxService?.HandlerDataVersion ?? 0);
-    }
+        => airportDataProvider is { } provider ? BuildGateDataSource(provider) : null;
+
+    /// <summary>A GateDataSource over <paramref name="provider"/> — for a caller that has already
+    /// captured the provider it works against (BuildSurroundings, on its pool thread), so its gate
+    /// reads and its navdata reads come from ONE database even if a switch lands mid-call.</summary>
+    private Services.GateDataSource BuildGateDataSource(IAirportDataProvider provider)
+        => new(provider, GsxCouatlRunning,
+               capabilities: GsxCapabilities,
+               getHandlerDataAirport: GsxHandlerDataAirport,
+               handlerDataVersion: GsxHandlerDataVersion);
+
+    /// <summary>
+    /// GateDataSource.GetGateListVersion's token for <paramref name="icao"/> WITHOUT constructing a
+    /// GateDataSource (review item E8): the catalog cache asks for it on every position sample the
+    /// passing-callout monitor handles (about every 2 s), and each GateDataSource built just to
+    /// answer allocated two concurrent dictionaries and a GsxProfileLocator to throw them away. The
+    /// same four signals BuildGateDataSource hands every GateDataSource, so the two cannot drift;
+    /// "none" with no database, exactly what
+    /// BuildGateDataSource()?.GetGateListVersion(icao) ?? "none" answered.
+    /// </summary>
+    private string GateListVersion(string icao)
+        => airportDataProvider == null ? "none"
+           : Services.GateDataSource.ComputeGateListVersion(icao, GsxCouatlRunning, GsxCapabilities,
+                                                            GsxHandlerDataAirport, GsxHandlerDataVersion);
 
     /// <summary>
     /// Constructs a <see cref="Services.Gsx.Remote.GsxRemoteGateSelector"/> when GSX is

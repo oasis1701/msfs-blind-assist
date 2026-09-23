@@ -1133,8 +1133,13 @@ bearing is to the centroid.
 One `AirportFeatureCatalog` per ICAO, plus the airport's facts line, so a
 consumer reads it off the catalog instead of a second database lookup.
 Staleness is the same shape as the Where-Am-I graph cache: a version token
-(`GateDataSource.GetGateListVersion`) compared through
-`ShouldRebuildGateList`, plus `Invalidate(icao)` — whose one production caller
+(`GateDataSource.GetGateListVersion`'s, read through MainForm's
+`GateListVersion` — the static `GateDataSource.ComputeGateListVersion` over the
+same four GSX signals every `GateDataSource` is built with, because the
+passing-callout monitor asks on every position sample it handles, about every
+2 s, and a `GateDataSource` built per ask was two concurrent dictionaries and a
+`GsxProfileLocator` thrown away) compared through `ShouldRebuildGateList`, plus
+`Invalidate(icao)` — whose one production caller
 is `OnlineFeatureStore.FeaturesUpdated`, i.e. an OSM answer that landed after
 the build gave up on it — and `Clear()` from a database switch or a settings
 change.
