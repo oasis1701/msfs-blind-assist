@@ -2432,10 +2432,10 @@ indexer additionally MEMOISES an incomplete scan for
 library is not re-read on every call, and gives the memo up afterwards so the
 condition cannot outlive itself.
 
-Both enumerations use the SAME
+Both walks use the ONE `SceneryPackageDisk.BglFiles` —
 `EnumerationOptions { RecurseSubdirectories, IgnoreInaccessible,
 MatchCasing.CaseInsensitive, AttributesToSkip = 0, MaxRecursionDepth =
-SceneryPackageCensus.MaxBglRecursionDepth }`. `IgnoreInaccessible`
+SceneryPackageDisk.MaxBglRecursionDepth }`. `IgnoreInaccessible`
 because the `SearchOption` overload throws from the ENUMERATOR, outside the
 per-file catch; `CaseInsensitive` because packages ship both `modelLib.BGL` and
 `objects.bgl`; **`AttributesToSkip = 0` deliberately** — the default skips
@@ -2443,9 +2443,14 @@ Hidden and System files, and reparse points must be FOLLOWED, because add-on
 linker tools put whole Community packages behind junctions and a census that
 skipped them would find nothing for exactly the pilots with the most scenery —
 and the depth bound (12; the deepest real BGL measured sits 4 levels down) is
-therefore what ends a junction cycle. It must be on BOTH: the indexer is handed
-a package the census found in Community, so bounding the walk in one and not the
-other simply moves the cycle.
+therefore what ends a junction cycle. It is ONE field because the indexer is
+handed a package the census found in Community, so bounding the walk in one and
+not the other would simply move the cycle. `SceneryPackageDisk` owns every other
+disk rule the two share as well — the `layout.json` stamp, the ONE shared-read
+open `OpenShared` (shared for write and delete, since the simulator may hold the
+file), `WalkBgls` (each BGL opened through it and handed to the caller's reader)
+and the whole-file-or-nothing `.tmp`-then-move `PersistJson` — because each was
+written twice and kept in step only by comment (review CL-4).
 
 `MsfsPackagesLocator` is the one resolver of `InstalledPackagesPath`
 FOR THE NAVDATA BUILD AND THE CENSUS (four locations, two per simulator;

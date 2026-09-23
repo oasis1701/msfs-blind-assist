@@ -45,26 +45,6 @@ public sealed class SceneryPackageCensus
     private readonly object _lock = new();
     private CacheFile? _cache;
 
-    /// <summary>How deep a package's own folders are walked, shared with
-    /// <see cref="SceneryPackageIndexer"/>: this walks whatever is in Community and the indexer is
-    /// then handed one of the packages it found, so a junction cycle bounded here and unbounded
-    /// there would simply move. Reparse points must be FOLLOWED — an add-on linker puts every
-    /// package behind one, and a census that skipped them would find nothing for exactly the
-    /// pilots with the most scenery — so the depth bound is what ends a link cycle. Packages are
-    /// shallow (the deepest real BGL measured sits 4 levels down), so 12 loses nothing.</summary>
-    internal const int MaxBglRecursionDepth = 12;
-
-    /// <summary>Every *.bgl under one package. Same options as
-    /// <see cref="SceneryPackageIndexer"/>'s: IgnoreInaccessible because the enumerator itself
-    /// throws on a folder the user cannot read, CaseInsensitive because packages ship both
-    /// "modelLib.BGL" and "objects.bgl", AttributesToSkip 0 so hidden and system files are read,
-    /// and <see cref="MaxBglRecursionDepth"/>.</summary>
-    private static readonly EnumerationOptions BglFiles = new()
-    {
-        RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive,
-        AttributesToSkip = 0, MaxRecursionDepth = MaxBglRecursionDepth,
-    };
-
     /// <summary>The immediate children of Community. Same reasons for IgnoreInaccessible and
     /// AttributesToSkip; no recursion, because a package is a top-level folder.</summary>
     private static readonly EnumerationOptions PackageFolders = new()
@@ -124,8 +104,8 @@ public sealed class SceneryPackageCensus
 
             foreach (string dir in ScenerylikePackages(communityDir))
             {
-                var layout = new FileInfo(Path.Combine(dir, "layout.json"));
-                long len = layout.Exists ? layout.Length : 0, ticks = layout.Exists ? layout.LastWriteTimeUtc.Ticks : 0;
+                var stamp = SceneryPackageDisk.LayoutStamp.Of(dir);
+                long len = stamp.Length, ticks = stamp.Ticks;
                 if (known.TryGetValue(dir, out var hit) && hit.Cells != null && hit.LayoutLength == len && hit.LayoutTicks == ticks)
                 {
                     seen.Add(hit);
@@ -208,45 +188,32 @@ public sealed class SceneryPackageCensus
 
     /// <summary>
     /// How many placements the package has in each 0.005° cell, and whether every file it holds
-    /// was read. One try/catch per file: one bad BGL costs its own placements, never the package's
-    /// — but it does cost the scan its COMPLETE flag, and only a complete scan is cached. A BGL
-    /// that cannot be OPENED is a lock or a permission, both of which pass; a BGL whose contents
-    /// are rubbish does not reach here at all, because <see cref="BglPlacementReader"/> answers
-    /// with what parsed rather than throwing — but a read an I/O error cut HALFWAY is short for
-    /// the same transient reason as a lock, so the reader reports that separately and it counts.
+    /// was read. One try/catch per file (in <see cref="SceneryPackageDisk.WalkBgls"/>): one bad BGL
+    /// costs its own placements, never the package's — but it does cost the scan its COMPLETE flag,
+    /// and only a complete scan is cached. A BGL that cannot be OPENED is a lock or a permission, both
+    /// of which pass; a BGL whose contents are rubbish does not count at all, because
+    /// <see cref="BglPlacementReader"/> answers with what parsed rather than throwing — but a read an
+    /// I/O error cut HALFWAY is short for the same transient reason as a lock, so the reader reports
+    /// that separately and it counts.
     /// </summary>
     private static (List<int[]> Cells, bool Complete) Scan(string dir)
     {
         var cells = new Dictionary<(int Lat, int Lon), int>();
         string leaf = Path.GetFileName(dir.TrimEnd('\\', '/'));
-        bool complete = true;
+        bool complete;
         try
         {
-            foreach (string bgl in Directory.EnumerateFiles(dir, "*.bgl", BglFiles))
+            var walk = SceneryPackageDisk.WalkBgls(dir, $"census: {leaf}", stream =>
             {
-                try
+                var placements = BglPlacementReader.Read(stream, out bool readToTheEnd);
+                foreach (var p in placements)
                 {
-                    // Shared for write and delete: the simulator may hold this very file open.
-                    using var stream = new FileStream(bgl, FileMode.Open, FileAccess.Read,
-                                                      FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
-                    var placements = BglPlacementReader.Read(stream, out bool readToTheEnd);
-                    if (!readToTheEnd)
-                    {
-                        complete = false;
-                        Log.Warn("SceneryIndex", $"census: {leaf}: {Path.GetFileName(bgl)}: read did not finish");
-                    }
-                    foreach (var p in placements)
-                    {
-                        var key = ((int)Math.Floor(p.Lat / CellDegrees), (int)Math.Floor(p.Lon / CellDegrees));
-                        cells[key] = cells.GetValueOrDefault(key) + 1;
-                    }
+                    var key = ((int)Math.Floor(p.Lat / CellDegrees), (int)Math.Floor(p.Lon / CellDegrees));
+                    cells[key] = cells.GetValueOrDefault(key) + 1;
                 }
-                catch (Exception ex)
-                {
-                    complete = false;
-                    Log.Warn("SceneryIndex", $"census: {leaf}: {Path.GetFileName(bgl)}: {ex.Message}");
-                }
-            }
+                return readToTheEnd;
+            });
+            complete = walk.Unreadable == 0;
         }
         catch (Exception ex)
         {
@@ -317,20 +284,5 @@ public sealed class SceneryPackageCensus
     /// <summary>Whole file or nothing: a truncated census would read as packages that model
     /// fewer buildings here, which nothing downstream could tell from the truth.</summary>
     private void Persist(CacheFile cache)
-    {
-        string path = Path.Combine(_cacheDir, CacheFileName), tmp = path + ".tmp";
-        try
-        {
-            Directory.CreateDirectory(_cacheDir);
-            File.WriteAllText(tmp, JsonSerializer.Serialize(cache));
-            File.Move(tmp, path, overwrite: true);
-        }
-        catch (Exception ex)
-        {
-            // A cache that cannot be written costs the NEXT call its shortcut, not this one its
-            // answer.
-            Log.Warn("SceneryIndex", $"could not write {CacheFileName}: {ex.Message}");
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best effort */ }
-        }
-    }
+        => SceneryPackageDisk.PersistJson(_cacheDir, Path.Combine(_cacheDir, CacheFileName), JsonSerializer.Serialize(cache));
 }

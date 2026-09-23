@@ -59,21 +59,6 @@ public sealed class SceneryPackageIndexer
     /// hull of the airport's own records — so a placement is judged against the box grown by this.</summary>
     public const double BoxMarginMetres = 500.0;
 
-    /// <summary>Every *.bgl under the package. IgnoreInaccessible because the SearchOption overload
-    /// throws from the ENUMERATOR — outside the per-file catch below — so one folder the user
-    /// cannot read cost the whole package; CaseInsensitive because packages ship both "modelLib.BGL"
-    /// and "objects.bgl"; AttributesToSkip 0 to keep the SearchOption overload's behaviour, which
-    /// reads hidden and system files (EnumerationOptions would skip them by default); and the same
-    /// depth bound as <see cref="SceneryPackageCensus"/>'s — reparse points must be FOLLOWED (an
-    /// add-on linker puts every package behind one), so the bound is what ends a link cycle, and a
-    /// package the census handed over is exactly a package out of Community that may be one.
-    /// Packages are shallow (the deepest real BGL measured sits 4 levels down), so 12 loses nothing.</summary>
-    private static readonly EnumerationOptions BglFiles = new()
-    {
-        RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive,
-        AttributesToSkip = 0, MaxRecursionDepth = SceneryPackageCensus.MaxBglRecursionDepth,
-    };
-
     // A named building stands in one place, or a few (an author splits it into parts, or a second
     // one really exists). A generic name is this app's own label ("Terminal", "Fuel"), shared by
     // unrelated models, so it is allowed more of both. Hangars are the exception a real field needs.
@@ -248,9 +233,8 @@ public sealed class SceneryPackageIndexer
 
     private CacheFile LoadOrBuild(string dir)
     {
-        string layout = Path.Combine(dir, "layout.json");
-        var info = new FileInfo(layout);
-        long len = info.Exists ? info.Length : 0, ticks = info.Exists ? info.LastWriteTimeUtc.Ticks : 0;
+        var stamp = SceneryPackageDisk.LayoutStamp.Of(dir);
+        long len = stamp.Length, ticks = stamp.Ticks;
 
         // Cache file name: the package's leaf folder (so a human can read the folder) plus a hash of
         // its FULL path, so two installs sharing a leaf name never share a cache file.
@@ -293,34 +277,23 @@ public sealed class SceneryPackageIndexer
 
             var names = new Dictionary<Guid, string>();
             var placements = new List<ScenePlacement>();
-            int unreadable = 0;
             // A failure of the ENUMERATOR itself throws out of here to GetFeatures, which reports
             // the package unreadable and caches nothing — so whole files never looked at can no
-            // more freeze a short answer than a file that could not be opened.
-            foreach (var bgl in Directory.EnumerateFiles(dir, "*.bgl", BglFiles))
+            // more freeze a short answer than a file that could not be opened. One bad FILE costs
+            // its own names and placements, never the package's, but it does cost the scan its
+            // right to be CACHED (see IncompleteMemoLifetime). No size cap: both readers are
+            // streamed/seeking, and the 600 MB one used to drop the model library — every name —
+            // of ten real airport packages.
+            var walk = SceneryPackageDisk.WalkBgls(dir, leafName, stream =>
             {
-                // One bad file costs its own names and placements, never the package's — but it
-                // does cost the scan its right to be CACHED (see IncompleteMemoLifetime). No size
-                // cap: both readers are streamed/seeking, and the 600 MB one used to drop the
-                // model library — every name — of ten real airport packages.
-                try
-                {
-                    // Shared for write and delete: the simulator may hold this very file open.
-                    using var stream = new FileStream(bgl, FileMode.Open, FileAccess.Read,
-                                                      FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
-                    foreach (var kv in ModelLibNameReader.Read(stream)) names[kv.Key] = kv.Value;
-                    stream.Position = 0;
-                    // A read that DIED halfway (a network drive, a package being replaced) answers
-                    // with what parsed rather than throwing, so only it can say it did not finish.
-                    placements.AddRange(BglPlacementReader.Read(stream, out bool readToTheEnd));
-                    if (!readToTheEnd)
-                    {
-                        unreadable++;
-                        Log.Warn("SceneryIndex", $"{leafName}: {Path.GetFileName(bgl)}: read did not finish");
-                    }
-                }
-                catch (Exception ex) { unreadable++; Log.Warn("SceneryIndex", $"{leafName}: {Path.GetFileName(bgl)}: {ex.Message}"); }
-            }
+                foreach (var kv in ModelLibNameReader.Read(stream)) names[kv.Key] = kv.Value;
+                stream.Position = 0;
+                // A read that DIED halfway (a network drive, a package being replaced) answers
+                // with what parsed rather than throwing, so only it can say it did not finish.
+                placements.AddRange(BglPlacementReader.Read(stream, out bool readToTheEnd));
+                return readToTheEnd;
+            });
+            int unreadable = walk.Unreadable;
 
             // Names are resolved only once every file has been read: a package is free to define a
             // model in one BGL and place it from another, in whatever order the folder lists them.
@@ -346,31 +319,11 @@ public sealed class SceneryPackageIndexer
             // "without a model name" and the package yielding nothing. The census refuses the same
             // thing for the same reason, so without this it could hand over the right package and
             // the indexer would then freeze a wrong answer for it.
-            if (unreadable == 0) Persist(cachePath, cf);
+            if (unreadable == 0) SceneryPackageDisk.PersistJson(_cacheDir, cachePath, JsonSerializer.Serialize(cf, JsonOptions));
             _memo[cachePath] = cf;
             Log.Info("SceneryIndex", $"indexed {leafName}: {models.Count} models, {placements.Count} placements, " +
                                      $"{unresolved} without a model name, {unreadable} unreadable{(unreadable == 0 ? "" : " (not cached)")}");
             return cf;
-        }
-    }
-
-    /// <summary>Whole file or nothing: a truncated cache would be read as a package with fewer
-    /// buildings, which nothing downstream could tell from a package that models fewer.</summary>
-    private void Persist(string cachePath, CacheFile cf)
-    {
-        string tmp = cachePath + ".tmp";
-        try
-        {
-            Directory.CreateDirectory(_cacheDir);
-            File.WriteAllText(tmp, JsonSerializer.Serialize(cf, JsonOptions));
-            File.Move(tmp, cachePath, overwrite: true);
-        }
-        catch (Exception ex)
-        {
-            // A cache that cannot be written costs the NEXT call its shortcut, not this one its
-            // features — reporting the package unreadable when it was read fine would be a lie.
-            Log.Warn("SceneryIndex", $"could not write {Path.GetFileName(cachePath)}: {ex.Message}");
-            try { if (File.Exists(tmp)) File.Delete(tmp); } catch { /* best effort */ }
         }
     }
 }
