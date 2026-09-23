@@ -30,7 +30,7 @@ public sealed class OverpassClient
     /// PLANET-WIDE Overpass instances only. A REGIONAL instance — one serving a country extract —
     /// must never appear here, however healthy it looks: asked about anywhere outside its extract
     /// it answers HTTP 200 with an empty element list and NO remark, which
-    /// <see cref="IsFailedResponse"/> cannot tell from a genuine "nothing there", and which the
+    /// <see cref="ClassifyBody"/> cannot tell from a genuine "nothing there", and which the
     /// callers then cache as the truth about the airport.
     ///
     /// <para><c>overpass.osm.ch</c> (Swiss OSM association, Switzerland extract) was in this list
@@ -114,10 +114,11 @@ public sealed class OverpassClient
                     attemptCts.Token).ConfigureAwait(false);
                 if (!resp.IsSuccessStatusCode) { MarkFailed(url); continue; }
                 string body = await resp.Content.ReadAsStringAsync(attemptCts.Token).ConfigureAwait(false);
-                // HTTP 200 is not success: a mirror without an area database, or one that timed
-                // the query out, answers 200 with a "runtime error" remark. Accepting that cached
-                // an EMPTY airport for the session (live: overpass.openstreetmap.fr).
-                if (IsFailedResponse(body)) { MarkFailed(url); continue; }
+                // ONE parse decides what this body is — see ClassifyBody, including why HTTP 200 is
+                // not success (review CL-6: it was parsed twice here, by two tests that could
+                // disagree about a "runtime error" body with an empty element list).
+                var kind = ClassifyBody(body);
+                if (kind == BodyKind.Failed) { MarkFailed(url); continue; }
                 CooldownUntilUtc.TryRemove(url, out _);
 
                 // An empty element list is a legitimate answer for some queries and a REGIONAL
@@ -126,7 +127,7 @@ public sealed class OverpassClient
                 // that mirror had the region and this one did not. Never MarkFailed on it — an
                 // empty answer is no evidence the mirror is ill, and cooling a healthy planet-wide
                 // mirror for five minutes over one genuinely empty query is the worse error.
-                if (HasNoElements(body)) { tentativelyEmpty ??= body; continue; }
+                if (kind == BodyKind.Empty) { tentativelyEmpty ??= body; continue; }
                 return body;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -142,40 +143,46 @@ public sealed class OverpassClient
         return tentativelyEmpty;
     }
 
-    /// <summary>
-    /// Is this a WELL-FORMED Overpass result carrying NO elements? Deliberately FALSE for a body
-    /// that is not a usable result at all — that is <see cref="IsFailedResponse"/>'s question, and
-    /// a broken body must never be held as a believable empty answer and returned when every other
-    /// mirror declines.
-    /// </summary>
-    internal static bool HasNoElements(string body)
+    /// <summary>What one Overpass body IS — decided by <see cref="ClassifyBody"/>.</summary>
+    internal enum BodyKind
     {
-        if (string.IsNullOrWhiteSpace(body)) return false;
-        try
-        {
-            using var doc = JsonDocument.Parse(body);
-            var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return false;
-            if (!root.TryGetProperty("elements", out var els) || els.ValueKind != JsonValueKind.Array) return false;
-            return els.GetArrayLength() == 0;
-        }
-        catch (JsonException) { return false; }
+        /// <summary>Not a usable result (see <see cref="ClassifyBody"/>): the mirror is marked failed.</summary>
+        Failed,
+        /// <summary>A well-formed result with NO elements: the truth for some queries, and what a
+        /// REGIONAL mirror says about everywhere outside its extract. Held, never believed at once.</summary>
+        Empty,
+        /// <summary>A well-formed result with at least one element.</summary>
+        Elements,
     }
 
-    internal static bool IsFailedResponse(string body)
+    /// <summary>
+    /// ONE parse of a body. <see cref="BodyKind.Failed"/> for anything that is not a usable result —
+    /// blank, not JSON, not an object carrying an <c>elements</c> ARRAY, or one whose <c>remark</c>
+    /// starts "runtime error": HTTP 200 is not success, because a mirror without an area database, or
+    /// one that timed the query out, answers 200 with that remark, and accepting it cached an EMPTY
+    /// airport for the session (live: overpass.openstreetmap.fr). A broken body is never
+    /// <see cref="BodyKind.Empty"/>, so it can never be held and handed back as a believable "nothing
+    /// there". Passing is NOT the same as being parseable by a source: an element with no <c>type</c>,
+    /// a non-array <c>geometry</c> or a coordinate that is not a number still classifies as
+    /// <see cref="BodyKind.Elements"/> — which is why neither source's FetchAsync may throw on a body
+    /// that got this far.
+    /// </summary>
+    internal static BodyKind ClassifyBody(string body)
     {
-        if (string.IsNullOrWhiteSpace(body)) return true;
+        if (string.IsNullOrWhiteSpace(body)) return BodyKind.Failed;
         try
         {
             using var doc = JsonDocument.Parse(body);
             var root = doc.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return true;
-            if (!root.TryGetProperty("elements", out var els) || els.ValueKind != JsonValueKind.Array) return true;
-            return root.TryGetProperty("remark", out var remark)
+            if (root.ValueKind != JsonValueKind.Object) return BodyKind.Failed;
+            if (!root.TryGetProperty("elements", out var els) || els.ValueKind != JsonValueKind.Array) return BodyKind.Failed;
+            if (root.TryGetProperty("remark", out var remark)
                 && remark.ValueKind == JsonValueKind.String
-                && (remark.GetString() ?? "").TrimStart().StartsWith("runtime error", StringComparison.OrdinalIgnoreCase);
+                && (remark.GetString() ?? "").TrimStart().StartsWith("runtime error", StringComparison.OrdinalIgnoreCase))
+                return BodyKind.Failed;
+            return els.GetArrayLength() == 0 ? BodyKind.Empty : BodyKind.Elements;
         }
-        catch (JsonException) { return true; }
+        catch (JsonException) { return BodyKind.Failed; }
     }
 
     private static bool IsCoolingDown(string url, DateTime nowUtc) =>

@@ -1882,7 +1882,7 @@ live capture shows SI phrasing a place rather than a stand.
 
 **A REGIONAL Overpass instance — one serving a country extract — answers a query
 about anywhere outside its extract with HTTP 200, an empty element list and NO
-`remark`.** `OverpassClient.IsFailedResponse` cannot tell that from a genuine
+`remark`.** `OverpassClient.ClassifyBody` cannot tell that from a genuine
 "nothing there", because for some queries an empty result really is the right
 answer. The damage is downstream: `OnlineFeatureStore` caches it as `Served`
 with `Degraded` false, so "this airport has no buildings" stands for the whole
@@ -1932,7 +1932,7 @@ three ways, all measured:
   FAILED mirror and rotates on.
 - Taxiway names waited on a second round-trip before being returned.
 
-**Neither `FetchAsync` may throw on a bad body.** `IsFailedResponse` accepts
+**Neither `FetchAsync` may throw on a bad body.** `OverpassClient.ClassifyBody` passes
 anything that is an object with an `elements` array and no "runtime error"
 remark, which is not the same as being parseable: an element with no `type`, a
 non-array `geometry`, a coordinate that is not a number. Before `OverpassClient`

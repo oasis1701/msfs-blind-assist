@@ -73,7 +73,7 @@ public sealed class OsmFeatureSource
         => box == null ? new List<AirportFeature>()
                        : features.Where(f => box.ContainsPoint(f.Lat, f.Lon, FallbackBoxMarginMetres)).ToList();
 
-    /// <summary>A body that passed <see cref="OverpassClient.IsFailedResponse"/> can still be
+    /// <summary>A body that passed <see cref="OverpassClient.ClassifyBody"/> can still be
     /// shapeless enough to throw inside <see cref="Parse"/> (an element that is not an object, a
     /// coordinate that is not a number). Null then means what it always means here — this source
     /// failed — which the store remembers for its failure memory and retries, where a throw would

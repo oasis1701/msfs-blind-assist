@@ -294,7 +294,7 @@ public class OsmTaxiSourceParseTests
     }
 
     [Theory]
-    // Each passes OverpassClient.IsFailedResponse (an object with an `elements` array and no
+    // Each passes OverpassClient.ClassifyBody (an object with an `elements` array and no
     // "runtime error" remark) and still throws inside Parse.
     [InlineData("{\"elements\":[{\"id\":1}]}")]                                                        // no `type`
     [InlineData("{\"elements\":[{\"type\":\"way\",\"tags\":{\"aeroway\":\"taxiway\",\"ref\":\"A\"},\"geometry\":7}]}")]   // `geometry` not an array

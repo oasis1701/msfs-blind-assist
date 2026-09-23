@@ -95,7 +95,7 @@ public class OsmFeatureSourceTests
     }
 
     [Theory]
-    // Both pass OverpassClient.IsFailedResponse (an object with an `elements` array and no
+    // Both pass OverpassClient.ClassifyBody (an object with an `elements` array and no
     // "runtime error" remark) and still throw inside Parse. A throw here would escape
     // SurroundingsTier.Read's caller as a faulted task rather than a source that failed, so the
     // store must be told "failed" — which it remembers for FailureMemory and then retries.

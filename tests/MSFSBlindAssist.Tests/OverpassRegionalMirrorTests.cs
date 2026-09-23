@@ -6,7 +6,7 @@ namespace MSFSBlindAssist.Tests;
 /// <summary>
 /// A REGIONAL Overpass instance — one serving a country extract rather than the planet — answers a
 /// query about anywhere outside its extract with HTTP 200, <c>"elements": []</c> and NO
-/// <c>remark</c>. <see cref="OverpassClient.IsFailedResponse"/> cannot tell that from a genuine
+/// <c>remark</c>. <see cref="OverpassClient.ClassifyBody"/> cannot tell that from a genuine
 /// "nothing there", because for some queries an empty result really is the right answer. The damage
 /// is downstream: <c>OnlineFeatureStore</c> caches it as Served — "this airport has no buildings" —
 /// for the whole session with Degraded false, so nothing ever expires it, and <c>OsmTaxiSource</c>
@@ -49,18 +49,18 @@ public class OverpassRegionalMirrorTests
     [Fact]
     public void An_empty_element_list_is_recognised_as_empty()
     {
-        Assert.True(OverpassClient.HasNoElements("{\"version\":0.6,\"elements\":[]}"));
-        Assert.False(OverpassClient.HasNoElements("{\"elements\":[{\"type\":\"node\",\"id\":1}]}"));
+        Assert.Equal(OverpassClient.BodyKind.Empty, OverpassClient.ClassifyBody("{\"version\":0.6,\"elements\":[]}"));
+        Assert.Equal(OverpassClient.BodyKind.Elements, OverpassClient.ClassifyBody("{\"elements\":[{\"type\":\"node\",\"id\":1}]}"));
     }
 
-    /// <summary>A body that is not a usable result at all is <see cref="OverpassClient.IsFailedResponse"/>'s
-    /// business, not this one's — it must never be mistaken for a believable empty answer.</summary>
+    /// <summary>A body that is not a usable result at all is a FAILED mirror — it must never be
+    /// mistaken for a believable empty answer.</summary>
     [Theory]
     [InlineData("")]
     [InlineData("<html>nope</html>")]
     [InlineData("{\"version\":0.6}")]
     public void A_broken_body_is_not_treated_as_an_empty_answer(string body)
-        => Assert.False(OverpassClient.HasNoElements(body));
+        => Assert.Equal(OverpassClient.BodyKind.Failed, OverpassClient.ClassifyBody(body));
 
     // ---------------------------------------------------------------- the client's own rule
 
@@ -108,7 +108,7 @@ public class OverpassRegionalMirrorTests
         string? body = await client.PostAsync("[out:json];node(1);out;", CancellationToken.None);
 
         Assert.NotNull(body);
-        Assert.True(OverpassClient.HasNoElements(body!));
+        Assert.Equal(OverpassClient.BodyKind.Empty, OverpassClient.ClassifyBody(body!));
         Assert.True(handler.Calls >= OverpassClient.MirrorUrls.Count,
             "every mirror must be asked before an empty answer is believed");
     }

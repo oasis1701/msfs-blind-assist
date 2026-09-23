@@ -48,7 +48,7 @@ public sealed class OsmTaxiSource : ITaxiDataSource
 
     /// <summary>
     /// Null on failure, NEVER an exception. A body can pass
-    /// <see cref="OverpassClient.IsFailedResponse"/> — an object with an `elements` array and no
+    /// <see cref="OverpassClient.ClassifyBody"/> — an object with an `elements` array and no
     /// "runtime error" remark — and still be shapeless enough to throw inside <see cref="Parse"/>
     /// (an element with no `type`, a non-array `geometry`). Before <see cref="OverpassClient"/> was
     /// extracted, Parse ran inside the per-mirror try, so such a body simply failed that mirror and
