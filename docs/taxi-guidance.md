@@ -1997,10 +1997,10 @@ aircraft. Under `body` each way member carries its own `geometry` array, and
 `OsmFeatureClassifier` joins the members whose role is `outer`
 (`OsmRingAssembler.LargestRing`): open ways end to end, a way whose END meets
 the chain walked backwards; a way closed on its own is a ring as it stands and
-never joins another; a chain that comes back to a node it already passed —
-two outer rings touching there, which OSM allows — splits into two rings
-rather than running on as a figure-eight whose shape would depend on member
-order; a chain that never closes is dropped. The LARGEST ring is the
+never joins another; a chain a way's END brings back to a node it already
+passed — two outer rings touching there, which OSM allows — splits into two
+rings rather than running on as a figure-eight whose shape would depend on
+member order; a chain that never closes is dropped. The LARGEST ring is the
 footprint; inner ways (courtyards) never count. A way or member with a gap in
 its geometry is never joined across it, and no ring at all falls back to the
 bounds centre, as before. It is still ONE output statement with ONE geometry

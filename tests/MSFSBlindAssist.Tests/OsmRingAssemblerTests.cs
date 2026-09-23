@@ -90,15 +90,16 @@ public class OsmRingAssemblerTests
     [Fact]
     public void A_retrace_with_more_than_one_interior_vertex_is_still_no_outline()
     {
-        // A retrace with TWO OR MORE interior vertices no longer sums to exactly 0: its cancelling
-        // shoelace-term pairs are no longer adjacent in the running sum (other terms are added
-        // between them), so intermediate floating-point rounding leaves a residual that is small but
-        // NOT zero — measured on the review round 1 build: a bare `area > 0.0` check let
-        // (P0,P2,P3,P4,P3,P2,P0) back as a 4-distinct-vertex "ring" and the longer one below as an
-        // 8-vertex one. The fix judges the net (signed, cancelling) sum against the GROSS (all
-        // terms taken absolute) sum for the same ring: a real polygon's net area is nowhere near a
-        // billionth of its gross sum; a retrace's residual is roughly the size of one floating-point
-        // rounding step relative to it.
+        // Summing to exactly 0 is GUARANTEED only with a single interior vertex (the test above):
+        // its one cancelling pair of shoelace terms is adjacent in the running sum. With two or
+        // more, other terms land between the cancelling pairs, and rounding USUALLY — not always —
+        // leaves a residual instead (measured: nonzero in 76% of trials at 2 interior vertices, 45%
+        // at 5, 11% at 30) — small in absolute terms, but on the review round 1 build a bare
+        // `area > 0.0` check let (P0,P2,P3,P4,P3,P2,P0) back as a 4-distinct-vertex "ring" and the
+        // longer one below as an 8-vertex one. The fix judges the net (signed, cancelling) sum
+        // against the GROSS (every term taken absolute) sum for the same ring: a real polygon's net
+        // area is nowhere near a billionth of its gross sum, whichever way a retrace's own net area
+        // happens to land — a small residual or exactly 0.
         Assert.Null(Ring(Way(P0, P2, P3, P4, P3, P2, P0)));
         Assert.Null(Ring(Way(P0, P1, P2, P3, P4, P3, P2, P1, P0)));
     }

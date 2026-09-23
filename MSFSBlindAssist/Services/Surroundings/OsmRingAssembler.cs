@@ -23,16 +23,16 @@ namespace MSFSBlindAssist.Services.Surroundings;
 /// would depend on member order. So a way that is closed on its own is pulled out as a ring right
 /// away — a cheap shortcut, not the only thing standing between this and a figure-eight: left in
 /// the join pool instead, the rule below would still split it back off the moment a chain returned
-/// to its shared node. And a chain that comes back to a node it already passed has closed a ring
-/// THERE: that loop is split off as a ring of its own and the chain goes on from the node. Once
-/// exact duplicates are dropped, where every END node (never an interior vertex) is shared by at
-/// most two open ways, member order and way direction then decide nothing but which vertex the
-/// returned ring starts at and which way round it runs, which no reader of a footprint cares about.
-/// That promise does NOT cover a STRAY SPUR: an open way whose far end matches no other way's
-/// endpoint at all dead-ends on its own — a node shared by nobody, so a count of "at most two"
-/// alone does not catch it — and depending on member order the greedy walk can absorb it into the
-/// chain ahead of the segment that would actually have closed the ring, turning what should be the
-/// outline into null.</para>
+/// to its shared node. And when a way's END brings the chain back to a node it already passed, that
+/// loop is split off as a ring of its own and the chain goes on from the node. Once exact
+/// duplicates are dropped, where every END node is shared by at most two open ways and no ring
+/// passes through the same node twice — a self-touching ring (OSM does not allow one) is outside
+/// the promise — member order and way direction then decide nothing but which vertex the returned
+/// ring starts at and which way round it runs, which no reader of a footprint cares about. A stray
+/// spur — an open way whose far end matches no other way's endpoint — is harmless either way:
+/// attached at an interior vertex of another way it is never examined by the join at all, and
+/// attached at a real junction it makes that node's open-way count three, which the end-node rule
+/// above already excludes.</para>
 ///
 /// <para>Endpoints are matched EXACTLY: two members that meet share one OSM node, which Overpass
 /// prints with the same coordinates every time. Inner ways are never passed in — an outline is what
@@ -103,12 +103,13 @@ internal static class OsmRingAssembler
             ring.RemoveAt(ring.Count - 1);                  // the closing duplicate
             if (ring.Count < 3) continue;                   // out and back is no area
             double area = AbsArea(ring, lonScale, out double grossArea);
-            // A retrace's net (signed, cancelling) sum is not always exactly 0 in floating point —
-            // only when its one cancelling pair of shoelace terms is ADJACENT in the running sum
-            // (a single interior vertex). With two or more, other terms land between the pair and
-            // intermediate rounding leaves a residual: small in absolute terms, but a real polygon's
-            // net area is nowhere near a billionth of its own GROSS (every term taken absolute)
-            // sum, so judging the ratio catches it where a bare `area > 0` did not.
+            // A retrace's net (signed, cancelling) sum sums to EXACTLY 0 in floating point only
+            // when GUARANTEED to: its one cancelling pair of shoelace terms is ADJACENT in the
+            // running sum (a single interior vertex). With two or more, other terms land between
+            // the pair and rounding USUALLY — not always — leaves a residual instead: small in
+            // absolute terms, but a real polygon's net area is nowhere near a billionth of its own
+            // GROSS (every term taken absolute) sum, so judging the ratio catches it whichever way
+            // a retrace's own net area happens to land — a small residual or exactly 0.
             if (area <= 1e-9 * grossArea) continue;
             if (area > bestArea) { best = ring; bestArea = area; }
         }
@@ -136,6 +137,7 @@ internal static class OsmRingAssembler
         {
             if (a[i] != b[i]) forward = false;
             if (a[i] != b[b.Count - 1 - i]) backward = false;
+            if (!forward && !backward) return false;   // neither can become true again
         }
         return forward || backward;
     }
