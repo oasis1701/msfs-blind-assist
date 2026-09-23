@@ -75,4 +75,17 @@ public class GsxTerminalFeatureSourceTests
         };
         Assert.Equal(FeatureKind.Apron, Assert.Single(GsxTerminalFeatureSource.Read(spots)).Kind);
     }
+
+    [Fact]
+    public void A_header_that_names_its_kind_is_that_kind_whatever_its_stands_are_typed()
+    {
+        // The same WORDS must read as the same kind from every tier (FeatureLexicon.NamedKind); the
+        // stand types decide only a header whose words say none of Cargo, Fbo or Concourse. Cargo-typed
+        // stands used to outrank an FBO's own name here, so OSM said FBO and GSX said cargo ramp.
+        var f = Assert.Single(GsxTerminalFeatureSource.Read(new[]
+        {
+            G("Signature Flight Support", 1, 6, 40.660, -73.790), G("Signature Flight Support", 2, 6, 40.6604, -73.790),
+        }));
+        Assert.Equal(FeatureKind.Fbo, f.Kind);
+    }
 }

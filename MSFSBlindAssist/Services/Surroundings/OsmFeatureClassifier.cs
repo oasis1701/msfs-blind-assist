@@ -26,11 +26,9 @@ public static class OsmFeatureClassifier
             string r = Tag(tags, "ref");
             if (r.Any(char.IsLetter) && !r.Contains(';')) { name = r; nameIsRef = true; }
         }
-        string nameAndOp = (name + " " + op).Trim();
-
         FeatureKind? kind = aeroway switch
         {
-            "terminal" => TerminalKind(tags, name, nameAndOp),
+            "terminal" => TerminalKind(tags, name, op),
             "hangar" => FeatureKind.Hangar,
             "apron" => FeatureLexicon.Deice.IsMatch(name) ? FeatureKind.DeicePad : FeatureKind.Apron,
             "tower" or "control_tower" => FeatureKind.Tower,
@@ -41,15 +39,12 @@ public static class OsmFeatureClassifier
         if (kind == null)
         {
             if (building == "hangar") kind = FeatureKind.Hangar;
-            else if (building == "terminal") kind = TerminalKind(tags, name, nameAndOp);
+            else if (building == "terminal") kind = TerminalKind(tags, name, op);
             else if (Tag(tags, "man_made") == "tower" && Tag(tags, "tower:type") == "aircraft_control") kind = FeatureKind.Tower;
             else if (Tag(tags, "amenity") == "fire_station") kind = FeatureKind.FireStation;
             else if (name.Length > 0 && (Tag(tags, "office").Length > 0 || building.Length > 0)
                      && !FeatureLexicon.NotAirside.IsMatch(name))
-            {
-                if (FeatureLexicon.Fbo.IsMatch(nameAndOp)) kind = FeatureKind.Fbo;
-                else if (FeatureLexicon.Cargo.IsMatch(name)) kind = FeatureKind.Cargo;
-            }
+                kind = NamedBuildingKind(name, op);
         }
         if (kind == null) return null;
 
@@ -82,11 +77,25 @@ public static class OsmFeatureClassifier
         return word.Length == 0 || name.Contains(word, StringComparison.OrdinalIgnoreCase) ? name : $"{word} {name}";
     }
 
-    private static FeatureKind TerminalKind(JsonElement tags, string name, string nameAndOp)
-        => FeatureLexicon.Concourse.IsMatch(name) ? FeatureKind.Concourse
-         : Tag(tags, "terminal:type") == "general_aviation" || FeatureLexicon.Fbo.IsMatch(nameAndOp) ? FeatureKind.Fbo
-         : FeatureLexicon.Cargo.IsMatch(name) ? FeatureKind.Cargo
-         : FeatureKind.Terminal;
+    /// <summary>A terminal building: its NAME first, in the one order every tier shares
+    /// (<see cref="FeatureLexicon.NamedKind"/>); only a name that says none of Cargo, Fbo or
+    /// Concourse is made an FBO by `terminal:type=general_aviation` or by an FBO operator — never
+    /// an office one: a terminal the "City of Atlanta Department of Aviation" operates is a
+    /// terminal.</summary>
+    private static FeatureKind TerminalKind(JsonElement tags, string name, string op)
+        => FeatureLexicon.NamedKind(name)
+           ?? (Tag(tags, "terminal:type") == "general_aviation" || FeatureLexicon.IsFboName(op) ? FeatureKind.Fbo : FeatureKind.Terminal);
+
+    /// <summary>A plain named building or office is a feature only when its NAME says Cargo or an
+    /// FBO (the one shared order) — never a concourse: this branch is strict on purpose, and
+    /// "Satellite" or "Pier" on a building=yes is no evidence of a passenger pier. An FBO operator
+    /// still makes it an FBO when the name says nothing at all.</summary>
+    private static FeatureKind? NamedBuildingKind(string name, string op)
+    {
+        FeatureKind? byName = FeatureLexicon.NamedKind(name);
+        if (byName is FeatureKind.Cargo or FeatureKind.Fbo) return byName;
+        return byName == null && FeatureLexicon.IsFboName(op) ? FeatureKind.Fbo : null;
+    }
 
     /// <summary>Node position → footprint centroid (when it lies inside) → centre of `bounds` (which
     /// the `geom` modifier gives every way and relation, so a relation with no outer ring to join, or

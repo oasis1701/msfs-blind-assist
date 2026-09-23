@@ -112,8 +112,12 @@ public sealed class SceneryPackageIndexer
     // 2 → 3 is that rule firing for the first time: the classifier's Concourse leg moved to the
     // shared FeatureLexicon.Concourse, which knows "flugsteig" and the private copy did not, so a
     // schema-2 cache was built with every Flugsteig model already filtered out.
-    private const int CurrentSchemaVersion = 3;
-    // Schema 3 carries no enum, but a cache must never come to hold a bare enum NUMBER if one is added.
+    // 3 → 4 is the same rule firing again: FeatureLexicon.Fbo gained sheltair, tac air, clay lacy and
+    // a glued "millionair", and FeatureLexicon.Deice gained deiced, deicer and deicing (spaced and
+    // hyphenated too), so a schema-3 cache was built with every model named only by one of those
+    // words already filtered out.
+    private const int CurrentSchemaVersion = 4;
+    // Schema 4 carries no enum, but a cache must never come to hold a bare enum NUMBER if one is added.
     private static readonly JsonSerializerOptions JsonOptions = new() { Converters = { new JsonStringEnumConverter() } };
 
     private sealed class CacheFile

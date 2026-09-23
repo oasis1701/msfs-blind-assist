@@ -116,13 +116,19 @@ public class SceneryModelNameClassifierTests
 
     // NOT measured model names: rows that pin the kind ORDER against the other two tiers. The
     // catalog never merges across kinds, so one building classified Terminal from scenery and
-    // Cargo from OSM is listed twice under two names. OsmFeatureClassifier.TerminalKind and
-    // GsxTerminalFeatureSource.KindOf both decide Fbo and Cargo before Terminal; "flugsteig" is
-    // OSM's own word for a concourse at EDDF and belongs to the shared FeatureLexicon.
+    // Cargo from OSM is listed twice under two names. Every tier reads a name through
+    // FeatureLexicon.NamedKind — Cargo, then Fbo, then Concourse, all before Terminal (the
+    // cross-tier table is FeatureKindAcrossTiersTests); "flugsteig" is OSM's own word for a
+    // concourse at EDDF and belongs to the shared FeatureLexicon.
     [Theory]
     [InlineData("KXYZ_Cargo_Terminal_01", "KXYZ", FeatureKind.Cargo, "Cargo Terminal")]
     [InlineData("KXYZ_Executive_Terminal", "KXYZ", FeatureKind.Fbo, "Executive Terminal")]
     [InlineData("EDDF_Flugsteig_A_01", "EDDF", FeatureKind.Concourse, "Flugsteig A")]
+    [InlineData("KXYZ_DHL_Aviation", "KXYZ", FeatureKind.Cargo, "DHL Aviation")]
+    [InlineData("KXYZ_Menzies_Aviation_Cargo", "KXYZ", FeatureKind.Cargo, "Menzies Aviation Cargo")]
+    [InlineData("KXYZ_Cargo_Satellite", "KXYZ", FeatureKind.Cargo, "Cargo Satellite")]
+    [InlineData("KXYZ_Deicing_Pad", "KXYZ", FeatureKind.DeicePad, "Deicing Pad")]
+    [InlineData("KXYZ_Avfuel_Tank", "KXYZ", FeatureKind.Fuel, "Avfuel Tank")]            // a fuel BRAND, never an FBO word: Fuel, as OSM's aeroway=fuel "Avfuel" is
     public void A_kind_word_decides_the_same_way_here_as_in_the_osm_and_gsx_tiers(string model, string icao, FeatureKind kind, string name)
     {
         var c = SceneryModelNameClassifier.Classify(model, icao);
@@ -131,28 +137,32 @@ public class SceneryModelNameClassifierTests
         Assert.Equal(name, c.Name);
     }
 
-    // The kind table matches FeatureLexicon.Concourse, but the spoken name is built from the
-    // KEYWORD TOKEN a SEPARATE regex finds, so a lexicon word that regex does not know is
-    // classified as a Concourse and then dropped for having no name to build — silently, and only
-    // for the one vocabulary the two share. Read off the LIVE pattern, so a word added to the
-    // lexicon tomorrow is covered without anyone remembering this test exists.
+    // The kind test and the NAMER must know the same concourse words: the kind table matches
+    // FeatureLexicon.Concourse and the spoken name is built from the keyword TOKEN, so a word one
+    // knew and the other did not was classified and then dropped for having no name. Both are made
+    // from FeatureLexicon.ConcourseWords now, and this walks that array — no pattern text is parsed.
     [Fact]
-    public void Every_concourse_word_the_shared_lexicon_knows_can_still_be_named()
+    public void Every_concourse_word_in_the_shared_list_is_classified_and_named()
     {
-        string[] words = System.Text.RegularExpressions.Regex
-            .Match(FeatureLexicon.Concourse.ToString(), @"\(([^)]*)\)").Groups[1].Value.Split('|');
-
-        Assert.Contains("flugsteig", words);                    // the pattern really was read
-        Assert.All(words, w => Assert.True(w.Length > 0 && w.All(char.IsLetter),
-            $"'{w}' is not a plain word — the lexicon grew a nested group, so extend the extraction above"));
-
-        foreach (string w in words)
+        Assert.NotEmpty(FeatureLexicon.ConcourseWords);
+        foreach (string w in FeatureLexicon.ConcourseWords)
         {
             var c = SceneryModelNameClassifier.Classify($"KXYZ_{w}_A_01", "KXYZ");
             Assert.True(c != null, w);
             Assert.Equal(FeatureKind.Concourse, c!.Kind);
-            Assert.False(string.IsNullOrWhiteSpace(c.Name), w);
+            Assert.Equal(char.ToUpperInvariant(w[0]) + w[1..] + " A", c.Name);
         }
+    }
+
+    [Fact]
+    public void A_vetoed_fbo_word_is_no_feature_but_the_prefilter_still_keeps_the_name()
+    {
+        // "Civil Aviation Authority" is an office, not an FBO (FeatureLexicon.IsFboName)…
+        Assert.Null(SceneryModelNameClassifier.Classify("KXYZ_Civil_Aviation_Authority", "KXYZ"));
+        // …but the prefilter asks POSITIVE words only. A veto can turn a match OFF when one word more
+        // is seen, and the prefilter sees MORE words than Classify (it keeps the ICAO prefix), so a
+        // vetoing prefilter could drop a name Classify accepts at another airport.
+        Assert.True(SceneryModelNameClassifier.MightBeFeature("KXYZ_Civil_Aviation_Authority"));
     }
 
     [Fact]

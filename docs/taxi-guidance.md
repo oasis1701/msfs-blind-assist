@@ -973,8 +973,14 @@ as long as the airport was current.
   ramp" 904 m from its nearest stand and spread 186 of 314 inferred concourses
   over more than 300 m.
 - **`OsmFeatureClassifier`** is deliberately STRICT: a named building is a
-  feature only when its own name says aviation (the `FeatureLexicon` FBO or
-  cargo vocabulary, and not a landside word like "car park" or "hotel"). The
+  feature only when its own name says aviation — `FeatureLexicon.NamedKind`
+  reads it as Cargo or an FBO (a plain building is never made a concourse by its
+  name), an FBO word vetoed by an office or government word ("Civil Aviation
+  Authority") does not count, and a landside word like "car park" or "hotel"
+  rules it out; an FBO operator still makes it an FBO when the name says
+  nothing. A terminal reads its name the same way first, and only a name that
+  says none of Cargo, Fbo or Concourse is made an FBO by
+  `terminal:type=general_aviation` or an FBO operator. The
   earlier "any named building is an office" rule turned EGLL's car parks, bus
   station and escape shafts — and 174 numbered buildings at EDDF — into spoken,
   routable places. Road fuel (`amenity=fuel`) is not aircraft fuel and is not
@@ -1013,13 +1019,16 @@ as long as the airport was current.
   category header ("Parking", "Ramp", "Gates", "Stand"…) is a profile author's
   section divider, not a place, and is skipped; a group of one is skipped too.
   The **kind** is derived from the header text AND the grouped stands' own
-  parking types (`KindOf`: cargo words or a 60 % civil-cargo-stand majority →
-  Cargo, FBO words → Fbo, concourse words → Concourse, a 60 % majority of
-  GA-ramp or military stands → Apron, else Terminal), because the header is
-  free text and a cargo ramp typed `Terminal` took the one Terminal slot in the
-  Look-around sentence. A military ramp counts as ramp stands for the same
-  reason: once a military cargo stand stopped counting as cargo, a section of
-  them would otherwise have fallen through to Terminal.
+  parking types (`KindOf`: the header's WORDS first, through the shared
+  `FeatureLexicon.NamedKind` — Cargo, then Fbo, then Concourse — then a 60 %
+  civil-cargo-stand majority → Cargo, a 60 % majority of GA-ramp or military
+  stands → Apron, else Terminal), because the header is free text and a cargo
+  ramp typed `Terminal` took the one Terminal slot in the Look-around sentence.
+  A military ramp counts as ramp stands for the same reason: once a military
+  cargo stand stopped counting as cargo, a section of them would otherwise have
+  fallen through to Terminal. Words go first so the same header reads as the
+  same kind here as from OSM or the scenery: cargo-typed stands used to outrank
+  an FBO's own name.
 
 ### Merge — `AirportFeatureCatalog.SameFeature`
 
@@ -2265,20 +2274,40 @@ cluster.
   jetways…), or no kind word at all condemns the model. Every rule is pinned by
   a measured package name in `SceneryModelNameClassifierTests` — **extend that
   table first**. Every regex is `static readonly` + `CultureInvariant` (the
-  tr-TR dotless-i trap) and none is built per call. The kind table takes its
-  concourse, FBO and cargo words from the shared `FeatureLexicon` and tests
-  **Fbo and Cargo BEFORE Terminal**, exactly as `OsmFeatureClassifier.TerminalKind`
-  and `GsxTerminalFeatureSource.KindOf` do: the catalog never merges across
-  kinds, so a "Cargo Terminal" read as Terminal here and Cargo from OSM is one
-  building listed twice under two kinds. Hangar stays first — "Narrows Aviation
-  Hangar" is a hangar, not an FBO. `ConcoursePierSatelliteTerminal`, which finds
-  the keyword TOKEN the spoken name is built from, must carry every word
-  `FeatureLexicon.Concourse` matches plus "terminal": a name the kind table
-  accepts and that regex does not is classified and then dropped. That pairing
-  is pinned by `Every_concourse_word_the_shared_lexicon_knows_can_still_be_named`,
-  which reads the LIVE lexicon pattern and runs each word through `Classify`, so
-  a word added to the lexicon tomorrow is covered without anyone remembering the
-  test exists.
+  tr-TR dotless-i trap) and none is built per call. Hangar is decided first —
+  "Narrows Aviation Hangar" is a hangar, not an FBO — and then a name goes
+  through `FeatureLexicon.NamedKind`, the ONE order every tier reads a name
+  in: **Cargo, then Fbo, then Concourse**, all before Terminal. The OSM tier
+  (`TerminalKind` and the named-building branch) and
+  `GsxTerminalFeatureSource.KindOf` call the same function, because the
+  catalog never merges across kinds — a "Cargo Terminal" or a "DHL Aviation"
+  read as two kinds by two tiers is one building listed twice. Cargo leads
+  because "DHL Aviation", "Menzies Aviation Cargo" and "Virgin Atlantic Cargo"
+  are cargo operations whose names also carry an FBO word, and a "Cargo
+  Satellite" is no passenger pier; Fbo precedes Concourse because "pier" and
+  "satellite" are shapes any building can have. An FBO word is vetoed by an
+  office or government word (`FeatureLexicon.IsFboName`: "Civil Aviation
+  Authority", the "City of Atlanta Department of Aviation" operating a
+  terminal), and there is no bare "atlantic" (EGLL's "Virgin Atlantic Upper
+  Class" was an FBO). The FBO chains — brand names that ARE FBO operators:
+  Signature, Million Air, Sheltair, TAC Air, Clay Lacy — are FBO words; the
+  fuel brand Avfuel is not (an "Avfuel" fuel point is Fuel, and one facility
+  must not come out as two kinds). The prefilter asks only the POSITIVE
+  patterns (`KindWordPatterns`) — a veto would let one extra token turn a
+  match off, and `MightBeFeature` must stay a superset of what `Classify`
+  accepts. One de-ice pattern (`FeatureLexicon.Deice`: deice, de-ice, de ice,
+  deicing, deicer) serves the OSM and scenery tiers — the scenery copy had no
+  "deicing". It matches WHOLE words, and that is a trade-off: the trailing
+  word boundary keeps out "de" followed by a word that merely continues past
+  "ice" ("Hangar de Icelandair") and, with it, a glued compound — "Deicepad"
+  is not read as de-icing, which the OSM tier's old `de-?ic` did (the scenery
+  tier never did: its tokenizer splits only a camelCase "DeicePad"). The
+  concourse words are ONE array, `FeatureLexicon.ConcourseWords`: the
+  `Concourse` pattern and the keyword set the spoken name is built from are
+  both made from it, so a word the kind test accepts can never be one the
+  namer lacks — pinned by
+  `Every_concourse_word_in_the_shared_list_is_classified_and_named`, which
+  walks that array.
 - *Structural*, in `SceneryPackageIndexer`: a name scattered over many separate
   clusters is ground equipment. The cap is picked by kind first —
   `MaxClustersHangar` 40 / `MaxPlacementsHangar` 200 for hangars whatever their
@@ -2305,7 +2334,7 @@ applies to every kind, and EGSS's real 4-cluster "Inflite Jet Centre" is an
 accepted, recorded residual. Same measurement, end to end: 308,833 placements →
 837 features before the clutter rule → 533 after.
 
-**The cache stores RAW placements (schema 3).** Each model name that could name
+**The cache stores RAW placements (schema 4).** Each model name that could name
 a feature, with every point it was placed at — nothing in the cache is
 classified. So the airport that ASKS decides the names ("KPWT_Hangar_07" is
 Hangar 7 at KPWT and somebody else's building at KTIW), and a change to HOW a
@@ -2316,7 +2345,10 @@ time, so **widening the classifier's kind keywords needs a
 moving the classifier's Concourse leg onto the shared `FeatureLexicon.Concourse`
 taught it "flugsteig", which the private copy it replaced did not know — so
 every schema-2 cache was built with each Flugsteig model already filtered out,
-and only a bump can get it back. A document of the CURRENT schema with no
+and only a bump can get it back. **3 → 4 fired it again:** `FeatureLexicon.Fbo`
+gained sheltair, tac air, clay lacy and a glued "millionair", and
+`FeatureLexicon.Deice` gained deiced, deicer and deicing. A document of the
+CURRENT schema with no
 `Models` key at all deserialises to null and is rebuilt; `"Models":[]` is a real
 answer and is believed; a document of ANY older schema is rebuilt whole, never
 partly believed. Written to a `.tmp` and moved into place, so a crash never

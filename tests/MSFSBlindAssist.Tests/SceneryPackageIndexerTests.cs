@@ -79,7 +79,7 @@ public class SceneryPackageIndexerTests : IDisposable
         Assert.Single(indexer.GetFeatures("KATL", new[] { pkg }, null));
 
         string json = File.ReadAllText(Assert.Single(Directory.GetFiles(cache, "*.json")));
-        Assert.Contains("\"SchemaVersion\":3", json);
+        Assert.Contains("\"SchemaVersion\":4", json);
         Assert.Contains("\"Name\":\"concourse_a_01\"", json);   // the author's own name, unclassified
         Assert.DoesNotContain("Concourse A", json);             // no spoken name: the airport that asks decides it
         Assert.DoesNotContain("KTIW_Fence2", json);             // the prefilter rejected it, so it never reached the cache
@@ -106,12 +106,15 @@ public class SceneryPackageIndexerTests : IDisposable
     private static (FeatureKind, string, bool, double, double, int) Describe(AirportFeature f)
         => (f.Kind, f.Name, f.NameIsGeneric, Math.Round(f.Lat, 9), Math.Round(f.Lon, 9), f.Members!.Count);
 
-    // EVERY older schema, and the immediate predecessor above all: schema 2 is what a pilot's warm
-    // cache holds, and it was built when MightBeFeature knew no "flugsteig", so every model named
-    // one was filtered out before it could be cached. That is the whole reason for the 2 → 3 bump.
+    // EVERY older schema, and the immediate predecessor above all: schema 3 is what a pilot's warm
+    // cache holds, and it was built when MightBeFeature knew no sheltair, tac air, clay lacy or glued
+    // "millionair" and no deiced, deicer or deicing, so every model named only by one of those was
+    // filtered out before it could be cached — the reason for the 3 → 4 bump, as "flugsteig" was
+    // for 2 → 3.
     [Theory]
     [InlineData(1)]
     [InlineData(2)]
+    [InlineData(3)]
     public void A_cache_written_by_an_older_schema_is_rebuilt_never_half_read(int schema)
     {
         string pkg = MakePackage();
@@ -130,7 +133,7 @@ public class SceneryPackageIndexerTests : IDisposable
 
         var rebuilt = new SceneryPackageIndexer(cache).GetFeatures("KATL", new[] { pkg }, null);
         Assert.Equal("Concourse A", Assert.Single(rebuilt).Name);
-        Assert.Contains("\"SchemaVersion\":3", File.ReadAllText(cachePath));
+        Assert.Contains("\"SchemaVersion\":4", File.ReadAllText(cachePath));
     }
 
     [Fact]
@@ -145,11 +148,11 @@ public class SceneryPackageIndexerTests : IDisposable
         // same as saying it has none. Rebuilt — the BGLs are still there, so the concourse returns.
         // (Written at the CURRENT schema, or the schema check would reject it first and this test
         // would pass without ever reaching the field it is about.)
-        File.WriteAllText(cachePath, "{\"SchemaVersion\":3," + RealStamp(pkg) + ",\"Placements\":3,\"Unresolved\":0}");
+        File.WriteAllText(cachePath, "{\"SchemaVersion\":4," + RealStamp(pkg) + ",\"Placements\":3,\"Unresolved\":0}");
         Assert.Equal("Concourse A", Assert.Single(new SceneryPackageIndexer(cache).GetFeatures("KATL", new[] { pkg }, null)).Name);
 
         // An EMPTY list does say it has none (a package with no buildings), and is believed.
-        File.WriteAllText(cachePath, "{\"SchemaVersion\":3," + RealStamp(pkg) + ",\"Placements\":3,\"Unresolved\":0,\"Models\":[]}");
+        File.WriteAllText(cachePath, "{\"SchemaVersion\":4," + RealStamp(pkg) + ",\"Placements\":3,\"Unresolved\":0,\"Models\":[]}");
         Assert.Empty(new SceneryPackageIndexer(cache).GetFeatures("KATL", new[] { pkg }, null));
     }
 

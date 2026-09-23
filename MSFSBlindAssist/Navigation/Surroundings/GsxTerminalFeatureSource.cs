@@ -37,16 +37,21 @@ public static class GsxTerminalFeatureSource
         return result;
     }
 
-    /// <summary>The header is a scenery author's SECTION title, so the stands decide as much as the
-    /// words do: a cargo ramp typed Terminal took the one Terminal slot in the Alt+L sentence. Cargo
-    /// is CIVIL cargo stands (ParkingTypes.IsCargo); a military ramp is ramp stands like a GA one, so
-    /// a military majority is an Apron too rather than falling through to Terminal.</summary>
+    /// <summary>
+    /// The header's WORDS decide first, through the ONE order every tier reads a name in
+    /// (<see cref="FeatureLexicon.NamedKind"/>: Cargo, then Fbo, then Concourse), so a header names
+    /// the same kind here as the same words do from OSM or the scenery — the catalog never merges
+    /// across kinds. Only a header whose words say none of the three is decided by its STANDS: it is
+    /// a scenery author's section title, and a cargo ramp typed Terminal took the one Terminal slot
+    /// in the Alt+L sentence. Cargo is CIVIL cargo stands (ParkingTypes.IsCargo); a military ramp is
+    /// ramp stands like a GA one, so a military majority is an Apron too rather than falling through
+    /// to Terminal.
+    /// </summary>
     private static FeatureKind KindOf(string header, List<ParkingSpot> members)
     {
+        if (FeatureLexicon.NamedKind(header) is FeatureKind named) return named;
         double Share(Func<int, bool> of) => members.Count(m => of(m.Type)) / (double)members.Count;
-        if (FeatureLexicon.Cargo.IsMatch(header) || Share(ParkingTypes.IsCargo) >= StandMajority) return FeatureKind.Cargo;
-        if (FeatureLexicon.Fbo.IsMatch(header)) return FeatureKind.Fbo;
-        if (FeatureLexicon.Concourse.IsMatch(header)) return FeatureKind.Concourse;
+        if (Share(ParkingTypes.IsCargo) >= StandMajority) return FeatureKind.Cargo;
         if (Share(t => ParkingTypes.IsGaRamp(t) || ParkingTypes.IsMilitary(t)) >= StandMajority) return FeatureKind.Apron;
         return FeatureKind.Terminal;
     }

@@ -18,9 +18,10 @@ public sealed record ClassifiedModel(FeatureKind Kind, string Name, bool NameIsG
 /// the dolly word, and a real building is sometimes placed twice.
 ///
 /// Every rule here is pinned by a measured name in SceneryModelNameClassifierTests; extend the
-/// tables there first. The concourse, FBO and cargo vocabularies come from FeatureLexicon, the ONE
-/// lexicon the OSM, scenery and GSX tiers share — the private copies that used to sit here had
-/// already drifted from it, so one building classified by two tiers came out as two kinds.
+/// tables there first. How a name reads as Cargo, Fbo or Concourse (FeatureLexicon.NamedKind), the
+/// de-ice word and the concourse keyword list all come from FeatureLexicon — the ONE lexicon, and
+/// the ONE order, the OSM, scenery and GSX tiers share. Private copies had drifted, and one building
+/// classified by two tiers came out as two kinds, which AirportFeatureCatalog never merges.
 /// </summary>
 public static class SceneryModelNameClassifier
 {
@@ -43,29 +44,41 @@ public static class SceneryModelNameClassifier
     private static readonly HashSet<string> VendorTokens = new(StringComparer.OrdinalIgnoreCase)
     { "iniscene", "inibuilds", "ini", "lib", "iby", "mk", "fb", "ft", "ftlib", "ene", "nxt", "gse" };
 
-    // Order matters: first match wins — and Fbo and Cargo come BEFORE Terminal, as they do in
-    // OsmFeatureClassifier.TerminalKind and GsxTerminalFeatureSource.KindOf. A "Cargo Terminal"
-    // that reads Terminal here and Cargo there is listed TWICE, because AirportFeatureCatalog
-    // never merges across kinds. Hangar stays first: "Narrows Aviation Hangar" is a hangar.
-    private static readonly (Regex Rx, FeatureKind Kind)[] Kinds =
+    // Hangar is decided FIRST, ahead of the shared lexicon: "Narrows Aviation Hangar" is a hangar.
+    private static readonly Regex HangarWord = new(@"\b(hangars?|hangers?)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    // What the words decide AFTER FeatureLexicon.NamedKind (Cargo, then Fbo, then Concourse — the ONE
+    // order the OSM and GSX tiers read a name in too, so "DHL Aviation" or a "Cargo Terminal" is one
+    // kind from every source; AirportFeatureCatalog never merges across kinds). First match wins.
+    private static readonly (Regex Rx, FeatureKind Kind)[] OtherKinds =
     {
-        (new Regex(@"\b(hangars?|hangers?)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Hangar),
-        (FeatureLexicon.Concourse, FeatureKind.Concourse),
-        (FeatureLexicon.Fbo, FeatureKind.Fbo),
-        (FeatureLexicon.Cargo, FeatureKind.Cargo),
         (new Regex(@"\bterminal\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Terminal),
         (new Regex(@"\b(tower|atc)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Tower),
         (new Regex(@"\b(fire|arff|rescue)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.FireStation),
-        (new Regex(@"\b(deice|de ?ice)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.DeicePad),
+        (FeatureLexicon.Deice, FeatureKind.DeicePad),
         (new Regex(@"\b(fuel|fueltank|avgas|tank)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Fuel),
         (new Regex(@"\b(office|admin|cafe|restaurant)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant), FeatureKind.Office),
     };
 
-    // Classify inline regexes hoisted to static readonly (tr-TR IgnoreCase trap fix). This must
-    // list FeatureLexicon.Concourse's words plus "terminal": it finds the KEYWORD TOKEN the name is
-    // built from, so a word the kind table matches and this does not is classified and then dropped.
-    private static readonly Regex ConcoursePierSatelliteTerminal = new(
-        @"^(concourse|pier|satellite|flugsteig|terminal)$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    /// <summary>
+    /// Every POSITIVE kind pattern — exactly what the prefilter (<see cref="MightBeFeature"/>) asks,
+    /// and therefore what decides which model names a scenery cache holds. Deliberately free of the
+    /// FBO veto (<see cref="FeatureLexicon.IsFboName"/>): a veto can turn a match OFF when one word
+    /// more is seen, and the prefilter sees MORE words than Classify (it keeps the ICAO prefix), so
+    /// a vetoing prefilter could drop a name Classify accepts. Declared after HangarWord and
+    /// OtherKinds: static initialisers run in textual order.
+    /// </summary>
+    internal static readonly IReadOnlyList<Regex> KindWordPatterns =
+        new[] { HangarWord, FeatureLexicon.Cargo, FeatureLexicon.Fbo, FeatureLexicon.Concourse }
+            .Concat(OtherKinds.Select(k => k.Rx)).ToArray();
+
+    // The KEYWORD TOKEN a concourse or terminal name is built from: FeatureLexicon.ConcourseWords —
+    // the very list FeatureLexicon.Concourse is built from, so a word the kind test accepts is always
+    // one this finds — plus "terminal".
+    private static readonly HashSet<string> NameKeywords =
+        new(FeatureLexicon.ConcourseWords.Append("terminal"), StringComparer.OrdinalIgnoreCase);
+
+    // Classify inline regexes hoisted to static readonly (tr-TR IgnoreCase trap fix).
     private static readonly Regex TrailingDigits = new(@"^\d{1,2}$", RegexOptions.CultureInvariant);
     private static readonly Regex SingleLetter = new(@"^[A-Za-z]$", RegexOptions.CultureInvariant);
 
@@ -80,6 +93,17 @@ public static class SceneryModelNameClassifier
     private static readonly Regex DigitsPlusLetter = new(@"^\d+[A-Za-z]$", RegexOptions.CultureInvariant);
     private static readonly Regex HangerVariant = new(@"^hangers?$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
+    /// <summary>The kind these words read as: Hangar first, then the ONE shared Cargo/Fbo/Concourse
+    /// order (<see cref="FeatureLexicon.NamedKind"/>), then <see cref="OtherKinds"/> in order; null
+    /// when no kind word decides.</summary>
+    private static FeatureKind? KindOf(string words)
+    {
+        if (HangarWord.IsMatch(words)) return FeatureKind.Hangar;
+        if (FeatureLexicon.NamedKind(words) is FeatureKind named) return named;
+        foreach (var (rx, k) in OtherKinds) if (rx.IsMatch(words)) return k;
+        return null;
+    }
+
     public static ClassifiedModel? Classify(string modelName, string icao)
     {
         if (string.IsNullOrWhiteSpace(modelName)) return null;
@@ -92,11 +116,7 @@ public static class SceneryModelNameClassifier
 
         var kept = StripNoise(tokens);
         if (kept.Count == 0) return null;
-        string joined = string.Join(" ", kept);
-
-        Regex? kindRx = null;
-        FeatureKind? kind = null;
-        foreach (var (rx, k) in Kinds) if (rx.IsMatch(joined)) { kindRx = rx; kind = k; break; }
+        FeatureKind? kind = KindOf(string.Join(" ", kept));
         if (kind == null) return null;
 
         // A hangar named by another kind's word ("Cessna Service Hangar" contains no other keyword) is
@@ -106,7 +126,7 @@ public static class SceneryModelNameClassifier
             // A concourse or terminal is its keyword plus a designator and nothing else: the rest of
             // the model name belongs to a part, a canopy or an interface, and every piece of the one
             // building must come out under the one name.
-            int kw = kept.FindIndex(t => ConcoursePierSatelliteTerminal.IsMatch(t));
+            int kw = kept.FindIndex(t => NameKeywords.Contains(t));
             if (kw < 0) return null;                                           // keyword only matched inside a longer token: no name to build
             kept = kw + 1 < kept.Count && IsDesignator(kept[kw + 1])
                 ? new List<string> { kept[kw], kept[kw + 1] }
@@ -121,7 +141,7 @@ public static class SceneryModelNameClassifier
             if (kept.Count >= 2 && TrailingDigits.IsMatch(kept[^1]))
             {
                 var without = kept.Take(kept.Count - 1).ToList();
-                bool bareKind = without.Count == 1 && Kinds.Any(x => x.Rx.IsMatch(without[0]));
+                bool bareKind = without.Count == 1 && KindOf(without[0]) != null;
                 if (!(bareKind && kind == FeatureKind.Hangar)) kept = without;   // "Hangar 1" keeps its number; "Tower 1" does not
             }
         }
@@ -130,7 +150,7 @@ public static class SceneryModelNameClassifier
         if (kind == FeatureKind.Fuel && kept.Count == 1) name = "Fuel";
         // Nothing survived but the kind word itself, so the name is this app's label for the kind,
         // not a name the scenery author gave the building.
-        bool generic = kept.Count == 1 && kindRx!.IsMatch(kept[0]);
+        bool generic = kept.Count == 1 && KindOf(kept[0]) == kind;
         return new ClassifiedModel(kind.Value, name, generic);
     }
 
@@ -138,17 +158,20 @@ public static class SceneryModelNameClassifier
     /// Cheap prefilter: could this model name name a feature at all? The indexer skips Classify
     /// for whatever this rejects, so a false positive costs one Classify call while a false
     /// negative loses a place — which is why it must NEVER be false for a name Classify accepts.
-    /// It is: it tokenizes and strips noise exactly as Classify does and then runs the same kind
-    /// regexes, over a SUPERSET of Classify's tokens (no ICAO is known here, so that prefix stays).
-    /// The noise strip is not an optimisation — Classify runs the kind regexes over the stripped
-    /// tokens, where a noise word between two of them ("jet_part_centre") would otherwise hide a
-    /// match this has to see. The stop words are deliberately NOT applied: clutter is Classify's job.
+    /// It is: it tokenizes and strips noise exactly as Classify does and then asks whether any
+    /// POSITIVE kind word appears (<see cref="KindWordPatterns"/>), over a SUPERSET of Classify's
+    /// tokens (no ICAO is known here, so that prefix stays). Positive words only: the FBO veto in
+    /// FeatureLexicon.NamedKind can turn a match OFF when one word more is seen, and this sees more
+    /// words than Classify does. The noise strip is not an optimisation — Classify reads the
+    /// stripped tokens, where a noise word between two of them ("jet_part_centre") would otherwise
+    /// hide a match this has to see. The stop words are deliberately NOT applied: clutter is
+    /// Classify's job.
     /// </summary>
     public static bool MightBeFeature(string modelName)
     {
         if (string.IsNullOrWhiteSpace(modelName)) return false;
         string joined = string.Join(" ", StripNoise(Tokenize(modelName, "")));
-        foreach (var (rx, _) in Kinds) if (rx.IsMatch(joined)) return true;
+        foreach (var rx in KindWordPatterns) if (rx.IsMatch(joined)) return true;
         return false;
     }
 
