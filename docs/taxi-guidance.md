@@ -2428,7 +2428,10 @@ answers instead, from where each package's objects stand: a HEADER-ONLY pass per
 BGL (section table and placement subsections, never a model library's bulk),
 counting placements into 0.005° cells, disk-cached per package on `layout.json`'s
 length and mtime. A package scores by the cells that reach the airport box grown
-300 m, and needs `MinPlacementsInBox` (20) to count — below that is a livery's
+300 m (by `GrownBox`, the one margin conversion
+`AirportFacilities.ContainsPoint` and `CurrentAirportResolver` share, at the
+box's own latitude — the resolver alone used to convert at the aircraft's), and
+needs `MinPlacementsInBox` (20) to count — below that is a livery's
 hangar, a city pack's edge, or one static aircraft on the ramp. **Community
 only**; Official/OneStore is never scanned. Measured on a real Community folder:
 40 scenery packages of 88 (the other 48 carry no `layout.json`, or a

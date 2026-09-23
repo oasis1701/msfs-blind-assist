@@ -45,14 +45,13 @@ public sealed class AirportFacilities
     /// The navdata box is the exact hull of the airport's OWN records (taxi paths, runway ends,
     /// stands): at KTIW its east edge IS the outermost taxi path, so the control tower sits 15 m
     /// outside it. Buildings stand beside the pavement, not on it — callers testing a building
-    /// pass a margin.
+    /// pass a margin, converted by <see cref="GrownBox"/>, the one conversion the scenery census and
+    /// CurrentAirportResolver use too.
     /// </summary>
-    public bool ContainsPoint(double lat, double lon, double marginMetres = 0)
-    {
-        double dLat = marginMetres / 111_320.0;
-        double dLon = marginMetres / (111_320.0 * Math.Max(0.05, Math.Cos((TopLat + BottomLat) / 2.0 * Math.PI / 180.0)));
-        return lat <= TopLat + dLat && lat >= BottomLat - dLat && lon >= LeftLon - dLon && lon <= RightLon + dLon;
-    }
+    public bool ContainsPoint(double lat, double lon, double marginMetres = 0) => Grown(marginMetres).Contains(lat, lon);
+
+    /// <summary>This box grown by <paramref name="marginMetres"/>: build it once when testing many points.</summary>
+    public GrownBox Grown(double marginMetres) => GrownBox.Of(TopLat, BottomLat, LeftLon, RightLon, marginMetres);
 
     /// <summary>A row whose name says it belongs to a ramp position rather than to the controller
     /// the label names. "gates" is one: KMIA lists nine G rows and the first is "MIAMI GATES" at

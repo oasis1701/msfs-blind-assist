@@ -49,11 +49,10 @@ public static class CurrentAirportResolver
     }
 
     /// <summary>Assumes LeftLon &lt;= RightLon, as the box SQL feeding it always has: a box
-    /// spanning ±180° fails this test and the airport degrades to the distance passes.</summary>
+    /// spanning ±180° fails this test and the airport degrades to the distance passes. The margin is
+    /// converted by <see cref="GrownBox"/>, at the box's own latitude, as AirportFacilities and the
+    /// scenery census convert it (it used the aircraft's latitude; for a 300 m margin the two differ
+    /// by well under a metre on any real airport box — about 0.3 m on the largest, KDEN or ENGM).</summary>
     private static bool Contains(AirportCandidate c, double lat, double lon)
-    {
-        double dLat = BoxMarginMetres / 111_320.0;
-        double dLon = BoxMarginMetres / (111_320.0 * Math.Max(0.05, Math.Cos(lat * Math.PI / 180.0)));
-        return lat <= c.TopLat + dLat && lat >= c.BottomLat - dLat && lon >= c.LeftLon - dLon && lon <= c.RightLon + dLon;
-    }
+        => GrownBox.Of(c.TopLat, c.BottomLat, c.LeftLon, c.RightLon, BoxMarginMetres).Contains(lat, lon);
 }

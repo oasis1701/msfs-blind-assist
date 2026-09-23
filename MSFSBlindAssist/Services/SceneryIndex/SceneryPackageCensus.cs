@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text.Json;
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services.SceneryIndex;
@@ -143,7 +144,7 @@ public sealed class SceneryPackageCensus
             if (rescanned > 0)
                 Log.Info("SceneryIndex", $"census: {seen.Count} packages, {rescanned} rescanned, {clock.ElapsedMilliseconds} ms");
 
-            return Score(seen, box);
+            return Score(seen, box.Grown(BoxMarginMetres));
         }
     }
 
@@ -230,14 +231,8 @@ public sealed class SceneryPackageCensus
     /// <summary>The packages with at least <see cref="MinPlacementsInBox"/> placements in cells
     /// that reach the grown airport box, most first. Ties break on the path so the answer — and
     /// the status line built from it — does not depend on enumeration order.</summary>
-    private static List<string> Score(List<PackageCells> packages, AirportFacilities box)
+    private static List<string> Score(List<PackageCells> packages, GrownBox grown)
     {
-        // Same margin conversion as AirportFacilities.ContainsPoint, over a RECTANGLE rather than
-        // a point: a cell counts when its own rectangle reaches the grown box on both axes.
-        double dLat = BoxMarginMetres / 111_320.0;
-        double dLon = BoxMarginMetres / (111_320.0 * Math.Max(0.05, Math.Cos((box.TopLat + box.BottomLat) / 2.0 * Math.PI / 180.0)));
-        double top = box.TopLat + dLat, bottom = box.BottomLat - dLat, left = box.LeftLon - dLon, right = box.RightLon + dLon;
-
         var scored = new List<(int Score, string Path)>();
         foreach (var p in packages)
         {
@@ -245,14 +240,20 @@ public sealed class SceneryPackageCensus
             foreach (var cell in p.Cells!)
             {
                 if (cell is not { Length: >= 3 }) continue;      // only a hand-edited cache can be short: skip the cell, not the package
-                double cellBottom = cell[0] * CellDegrees, cellLeft = cell[1] * CellDegrees;
-                if (cellBottom <= top && cellBottom + CellDegrees >= bottom && cellLeft <= right && cellLeft + CellDegrees >= left)
-                    score += cell[2];
+                if (CellReaches(cell, grown)) score += cell[2];
             }
             if (score >= MinPlacementsInBox) scored.Add((score, p.Path));
         }
         return scored.OrderByDescending(s => s.Score).ThenBy(s => s.Path, StringComparer.Ordinal)
                      .Take(MaxPackages).Select(s => s.Path).ToList();
+    }
+
+    /// <summary>Whether a cell's own rectangle reaches the grown box on both axes. A cell that only
+    /// partly overlaps contributes all of its count (see the class summary).</summary>
+    private static bool CellReaches(int[] cell, GrownBox grown)
+    {
+        double bottom = cell[0] * CellDegrees, left = cell[1] * CellDegrees;
+        return grown.Reaches(bottom, bottom + CellDegrees, left, left + CellDegrees);
     }
 
     private CacheFile Load()

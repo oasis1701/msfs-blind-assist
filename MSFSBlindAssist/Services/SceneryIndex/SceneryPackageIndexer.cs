@@ -195,6 +195,8 @@ public sealed class SceneryPackageIndexer
     private static List<AirportFeature> FeaturesOf(CacheFile cf, string icao, AirportFacilities? box)
     {
         var groups = new Dictionary<(FeatureKind, string), (bool Generic, List<LatLon> Points)>();
+        // Grown once for every placement of every model, not once per point.
+        GrownBox? grown = box?.Grown(BoxMarginMetres);
         foreach (var m in cf.Models!)      // LoadOrBuild returns a cache whose Models it either validated or just built
         {
             var c = SceneryModelNameClassifier.Classify(m.Name, icao);      // once per distinct model, at READ time, for the asking airport
@@ -204,7 +206,7 @@ public sealed class SceneryPackageIndexer
             var inside = (m.Points ?? new List<double[]>())
                 .Where(p => p is { Length: >= 2 })
                 .Select(p => new LatLon(p[0], p[1]))
-                .Where(p => box == null || box.ContainsPoint(p.Lat, p.Lon, BoxMarginMetres))
+                .Where(p => grown == null || grown.Value.Contains(p.Lat, p.Lon))
                 .ToList();
             if (inside.Count == 0) continue;
             if (!groups.TryGetValue((c.Kind, c.Name), out var g)) groups[(c.Kind, c.Name)] = g = (c.NameIsGeneric, new List<LatLon>());
