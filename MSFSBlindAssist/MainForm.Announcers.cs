@@ -1830,11 +1830,13 @@ public partial class MainForm
                 }
                 else
                 {
+                    // The generation read WITH the provider, in this same UI-thread turn.
                     announcement = taxiGuidanceManager.DescribeCurrentLocation(
                         airportDataProvider,
                         icao,
                         position.Latitude,
-                        position.Longitude);
+                        position.Longitude,
+                        taxiGuidanceManager.DatabaseGeneration);
                 }
             }
             catch (Exception ex)
@@ -1974,7 +1976,9 @@ public partial class MainForm
     /// The ONE path both surroundings hotkeys take: guards → position → pool hop → which airport →
     /// catalog → UI marshal. The provider this method's OWN work uses — the airport resolution and
     /// DescribeCurrentLocation — is captured in a LOCAL on the UI thread, so a database switch
-    /// cannot swap it out from under a lookup in flight. That guarantee stops at the catalog: the
+    /// cannot swap it out from under a lookup in flight. The manager's DatabaseGeneration is captured
+    /// beside it, so a Where-Am-I graph built through that provider after a switch still answers this
+    /// lookup but is never cached. That guarantee stops at the catalog: the
     /// cache's BuildSupplier (BuildSurroundings) reads the `airportDataProvider` FIELD on its own
     /// pool thread and so may see the new database. Harmless, because RefreshDatabaseProvider
     /// Clear()s the cache and the cache's generation check then discards a build that straddled
@@ -1985,6 +1989,9 @@ public partial class MainForm
     {
         var provider = airportDataProvider;
         if (provider == null) { announcer.AnnounceImmediate("Airport database not available."); return; }
+        // Read WITH the provider, in this same UI-thread turn: a Where-Am-I graph built through it
+        // after a database switch answers this lookup but is never cached.
+        long databaseGeneration = taxiGuidanceManager.DatabaseGeneration;
         if (!_lastOnGround) { announcer.AnnounceImmediate("In flight."); return; }
 
         simConnectManager.RequestAircraftPositionAsync(position =>
@@ -2011,7 +2018,7 @@ public partial class MainForm
                     if (icao == null) ui = () => announcer.AnnounceImmediate("No airport nearby.");
                     else
                     {
-                        string where = needWhereAmI ? taxiGuidanceManager.DescribeCurrentLocation(provider, icao, position.Latitude, position.Longitude) : "";
+                        string where = needWhereAmI ? taxiGuidanceManager.DescribeCurrentLocation(provider, icao, position.Latitude, position.Longitude, databaseGeneration) : "";
                         // A cold first press waits seconds with nothing said, and a blind pilot
                         // cannot tell that from "the key did nothing". Say so ONCE, and only when
                         // the answer really is slow — see SurroundingsLookupNotice. QUEUED, and

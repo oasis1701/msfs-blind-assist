@@ -704,7 +704,7 @@ See `MSFSBlindAssist/Hotkeys/HotkeyManager.cs`:
 1. **Air/ground gate.** Reads the cached `MainForm._lastOnGround` (kept fresh by the `SIM_ON_GROUND` event handler). If airborne, announces `"In flight."` and returns — Where Am I is ground-only by design (the LocationInfo hotkey covers airborne city/terrain queries).
 2. Fetches the aircraft position asynchronously.
 3. Resolves the airport the aircraft is AT with `CurrentAirport.Resolve` (see "Which airport — `CurrentAirport.Resolve`" below); no airport answers *"No airport nearby."* Idents of any length — every provider lookup matches `icao` OR `ident`. `GetNearbyAirportICAOs` still returns `COALESCE(NULLIF(icao, ''), ident)` for `GateResolver`'s TCAS lookup, which needs 3-char idents — never push a length filter into that SQL.
-4. Calls `TaxiGuidanceManager.DescribeCurrentLocation(provider, icao, lat, lon)`. The manager reuses the active guidance graph when the ICAO matches, otherwise builds and caches a dedicated query graph in `_whereAmICachedGraph` (invalidated via `ClearWhereAmICache()`).
+4. Calls `TaxiGuidanceManager.DescribeCurrentLocation(provider, icao, lat, lon, databaseGeneration)`, the generation read WITH the provider. The manager reuses the active guidance graph when the ICAO matches, otherwise builds and caches a dedicated query graph in `_whereAmICachedGraph` (invalidated via `ClearWhereAmICache()`, which a database switch calls) — but a graph built through a provider captured before a switch still answers the call and is NOT cached (`StoreWhereAmIGraph`), or an Alt+L in flight across the switch would put the previous database's graph straight back.
 
 The actual classification happens in `TaxiGraph.DescribeLocation(lat, lon)`:
 1. **Parking node** within 40 m → `Gate X`.
@@ -1445,6 +1445,15 @@ is ONE record, `RunwayShapeMemo` (airport, generation, the graph it came from,
 the shapes), and `RunwayShapeSource.Resolve` is the whole probe step — which
 source answers and what memo is left behind — pure and pinned by
 `RunwayShapeSourceTests`.
+
+A Where-Am-I graph obeys the same generation: `DescribeCurrentLocation` takes
+the generation read with its provider as a REQUIRED parameter and caches its
+graph only while that generation is current (`StoreWhereAmIGraph`, through the
+same `RunwayShapeSource.MayStore` the warm-up's publish uses). Alt+L captures its
+provider at the PRESS and builds on a pool thread, and one in flight across a
+switch used to write the previous database's graph straight back into the cache
+the switch had just cleared — answering later Where-Am-I presses from the old
+database and handing the probe old runways to re-seed its memo from.
 
 **The warm-up reads the runway rows, never a taxi graph.**
 `TaxiGuidanceManager.PrepareRunwayShapeWarmUp` builds the shapes from the start

@@ -1419,6 +1419,10 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <para>The runway probe's warm-up captures it WITH its provider, on the UI thread
     /// (<see cref="PrepareRunwayShapeWarmUp"/>), and its shapes are stored only while it has not
     /// moved (<see cref="RunwayShapeSource.Publish"/>).</para>
+    ///
+    /// <para>So does a Where-Am-I lookup: <see cref="DescribeCurrentLocation"/> takes the generation
+    /// read with its provider as a required parameter, and a graph built through a provider captured
+    /// before a switch answers its own call but is never cached (<see cref="StoreWhereAmIGraph"/>).</para>
     /// </summary>
     public long DatabaseGeneration => Interlocked.Read(ref _databaseGeneration);
     private long _databaseGeneration;
@@ -1465,11 +1469,18 @@ public partial class TaxiGuidanceManager : IDisposable
     /// Reuses the active guidance graph if it matches the airport; otherwise builds and
     /// caches a graph for ad-hoc queries. Does NOT mutate any guidance state.
     /// </summary>
+    /// <param name="databaseGeneration"><see cref="DatabaseGeneration"/> read WITH
+    /// <paramref name="dataProvider"/> — on the same thread, in the same turn. A graph built through a
+    /// provider captured before a database switch still answers this call but is never cached
+    /// (<see cref="StoreWhereAmIGraph"/>). Required, not defaulted: Alt+L captures its provider at
+    /// the PRESS and calls this from a pool thread, where reading the generation here would pair the
+    /// old provider with the new generation.</param>
     public string DescribeCurrentLocation(
         IAirportDataProvider dataProvider,
         string icao,
         double lat,
-        double lon)
+        double lon,
+        long databaseGeneration)
     {
         if (string.IsNullOrWhiteSpace(icao))
             return "No airport nearby.";
@@ -1514,9 +1525,7 @@ public partial class TaxiGuidanceManager : IDisposable
                     // (TaxiGraph.SnapStartToRunwayCenterline).
                     graph = TaxiGraph.Build(paths, parking, runwayStarts,
                                             dataProvider.GetRunways(icao));
-                    _whereAmICachedGraph = graph;
-                    _whereAmICachedIcao = icao;
-                    _whereAmICachedToken = token;
+                    StoreWhereAmIGraph(graph, icao, token, databaseGeneration);
                 }
                 catch (Exception ex)
                 {
@@ -1530,6 +1539,26 @@ public partial class TaxiGuidanceManager : IDisposable
             return $"Not on a known taxiway or ramp at {icao}.";
 
         return $"{description} at {icao}.";
+    }
+
+    /// <summary>
+    /// Caches a Where-Am-I graph just built through a provider captured under
+    /// <paramref name="readUnder"/> — unless a database switch has happened since
+    /// (<see cref="RunwayShapeSource.MayStore"/>): that graph is the PREVIOUS database's, and cached
+    /// it would outlive the switch that had just cleared this cache, answering Where-Am-I from the
+    /// old database and handing the runway probe old runways to re-seed its memo from. The caller
+    /// still answers from it; it is only not kept. Call under _stateLock.
+    /// </summary>
+    private void StoreWhereAmIGraph(TaxiGraph graph, string icao, string token, long readUnder)
+    {
+        if (!RunwayShapeSource.MayStore(readUnder, DatabaseGeneration))
+        {
+            Log.Debug("Taxi", $"Where-Am-I graph for {icao} answered, not cached: the database changed while it was built");
+            return;
+        }
+        _whereAmICachedGraph = graph;
+        _whereAmICachedIcao = icao;
+        _whereAmICachedToken = token;
     }
 
     // The runway shapes last memoised for ONE airport, as ONE value (RunwayShapeMemo: the airport,
@@ -1782,6 +1811,12 @@ public partial class TaxiGuidanceManager : IDisposable
 
         if (string.IsNullOrWhiteSpace(icao)) return false;
 
+        // Read WITH the provider: this method's one caller (the Takeoff Assist toggle's position
+        // callback) runs on the UI thread and read the provider in this same turn, so no database
+        // switch can fall between the two. A caller that captured its provider EARLIER must pass the
+        // generation it captured with it instead, as DescribeCurrentLocation's callers do.
+        long databaseGeneration = DatabaseGeneration;
+
         lock (_stateLock)
         {
             TaxiGraph? graph = null;
@@ -1812,9 +1847,7 @@ public partial class TaxiGuidanceManager : IDisposable
                     // (TaxiGraph.SnapStartToRunwayCenterline).
                     graph = TaxiGraph.Build(paths, parking, runwayStarts,
                                             dataProvider.GetRunways(icao));
-                    _whereAmICachedGraph = graph;
-                    _whereAmICachedIcao = icao;
-                    _whereAmICachedToken = token;
+                    StoreWhereAmIGraph(graph, icao, token, databaseGeneration);
                 }
                 catch (Exception ex)
                 {
