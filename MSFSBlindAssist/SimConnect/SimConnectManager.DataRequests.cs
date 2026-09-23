@@ -33,6 +33,30 @@ public partial class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// The ground-traffic monitor's sweep: every aircraft within <paramref name="radiusMeters"/>
+    /// (the monitor passes just past what it can use — about 1-17 km — instead of TCAS's 150 nm).
+    /// Entries arrive via AiTrafficReceived with FromGroundTrafficSweep set; the last one raises
+    /// GroundTrafficSweepCompleted. The user's own aircraft is always inside any radius, so the
+    /// sweep always completes.
+    /// </summary>
+    public void RequestGroundTrafficData(uint radiusMeters)
+    {
+        if (!IsConnected || simConnect == null) return;
+        try
+        {
+            simConnect.RequestDataOnSimObjectType(
+                DATA_REQUESTS.REQUEST_GROUND_TRAFFIC,
+                DATA_DEFINITIONS.DEF_AI_TRAFFIC,
+                Math.Max(1u, radiusMeters),
+                SIMCONNECT_SIMOBJECT_TYPE.AIRCRAFT);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"RequestGroundTrafficData error: {ex.Message}");
+        }
+    }
+
     public void RequestAircraftInfo()
     {
         if (IsConnected && simConnect != null)

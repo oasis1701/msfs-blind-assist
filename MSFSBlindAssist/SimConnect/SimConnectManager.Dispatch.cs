@@ -1341,10 +1341,11 @@ public partial class SimConnectManager
 
     private void SimConnect_OnRecvSimobjectDataBytype(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
     {
-        if ((int)data.dwRequestID != (int)DATA_REQUESTS.REQUEST_AI_TRAFFIC) return;
+        bool groundSweep = (int)data.dwRequestID == (int)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC;
+        if (!groundSweep && (int)data.dwRequestID != (int)DATA_REQUESTS.REQUEST_AI_TRAFFIC) return;
         try
         {
-            ProcessAiTrafficEntry(data);
+            ProcessAiTrafficEntry(data, groundSweep);
         }
         catch (Exception ex)
         {
@@ -1357,17 +1358,23 @@ public partial class SimConnectManager
         // may be one the per-entry filters drop (e.g. the user's own aircraft,
         // which the AIRCRAFT object type always includes — which also means a
         // sweep always has at least one entry, so the marker always arrives).
+        // Each request id raises its OWN event, so a TCAS sweep can never be
+        // taken for the ground-traffic monitor's (PR #247 review L5).
         if (data.dwentrynumber >= data.dwoutof)
         {
-            try { AiTrafficSweepCompleted?.Invoke(this, EventArgs.Empty); }
+            try
+            {
+                if (groundSweep) GroundTrafficSweepCompleted?.Invoke(this, EventArgs.Empty);
+                else AiTrafficSweepCompleted?.Invoke(this, EventArgs.Empty);
+            }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"AiTrafficSweepCompleted handler error: {ex.Message}");
+                Log.Debug("SimConnect", $"Traffic sweep-completed handler error: {ex.Message}");
             }
         }
     }
 
-    private void ProcessAiTrafficEntry(SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
+    private void ProcessAiTrafficEntry(SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data, bool fromGroundSweep)
     {
         var raw = (AiTrafficData)data.dwData[0];
 
@@ -1393,6 +1400,7 @@ public partial class SimConnectManager
             FromAirport      = raw.FromAirport?.Trim() ?? "",
             ToAirport        = raw.ToAirport?.Trim() ?? "",
             Airline          = raw.AtcAirline?.Trim() ?? "",
+            FromGroundTrafficSweep = fromGroundSweep,
         };
         AiTrafficReceived?.Invoke(this, eventArgs);
     }

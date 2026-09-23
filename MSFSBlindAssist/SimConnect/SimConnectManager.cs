@@ -103,6 +103,9 @@ public partial class SimConnectManager
     // (dwentrynumber == dwoutof). Lets callers announce/process a COMPLETE
     // traffic snapshot instead of racing the per-aircraft responses.
     public event EventHandler? AiTrafficSweepCompleted;
+    // Fired when a RequestGroundTrafficData sweep delivers its final entry. Separate from
+    // AiTrafficSweepCompleted so the ground-traffic monitor can tell ITS sweep from a TCAS one.
+    public event EventHandler? GroundTrafficSweepCompleted;
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
@@ -485,6 +488,10 @@ public partial class SimConnectManager
         // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
         REQUEST_CAMERA_VIEW = 341,
         REQUEST_AI_TRAFFIC = 500,
+        // The ground-traffic monitor's own by-type sweep (same DEF_AI_TRAFFIC definition, a small
+        // radius). Its OWN id so its completion can never be confused with a TCAS or other
+        // REQUEST_AI_TRAFFIC sweep (PR #247 review L5) — see GroundTrafficSweepCompleted.
+        REQUEST_GROUND_TRAFFIC = 501,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
         // Individual variable requests start from 1000
@@ -1372,6 +1379,9 @@ public class AiTrafficDataEventArgs : EventArgs
     public string FromAirport      { get; set; } = "";
     public string ToAirport        { get; set; } = "";
     public string Airline          { get; set; } = "";
+
+    /// <summary>True when this entry came from the ground-traffic monitor's own sweep.</summary>
+    public bool FromGroundTrafficSweep { get; set; }
 }
 
 public class SimVarUpdateEventArgs : EventArgs
