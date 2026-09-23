@@ -3,7 +3,19 @@ using MSFSBlindAssist.Navigation;
 namespace MSFSBlindAssist.Services;
 
 /// <summary>How the pilot relates to the watched runway(s); decides whether a runway event interrupts.</summary>
-public enum RunwayWatchMode { None, Holding, OnRunway, LiningUp, TakeoffWait }
+public enum RunwayWatchMode
+{
+    None,
+    Holding,
+    OnRunway,
+    LiningUp,
+    TakeoffWait,
+    /// <summary>
+    /// On the runway just landed on, turning off it on the landing-exit route: runway traffic is queued
+    /// while taxi guidance speaks the exit.
+    /// </summary>
+    Vacating,
+}
 
 /// <summary>
 /// One watched runway: <see cref="Designator"/> is the end the pilot is using (what is spoken);
@@ -11,12 +23,8 @@ public enum RunwayWatchMode { None, Holding, OnRunway, LiningUp, TakeoffWait }
 /// </summary>
 public readonly record struct WatchedRunway(string Designator, string Key);
 
-/// <summary>
-/// The runway watch's scope for one evaluation. <see cref="PositionOnly"/>: every runway in it is
-/// watched only because the aircraft is on it — no hold, progressive hold, backtrack, lineup or
-/// takeoff wait behind it.
-/// </summary>
-public sealed record RunwayWatch(IReadOnlyList<WatchedRunway> Runways, RunwayWatchMode Mode, bool PositionOnly = false)
+/// <summary>The runway watch's scope for one evaluation.</summary>
+public sealed record RunwayWatch(IReadOnlyList<WatchedRunway> Runways, RunwayWatchMode Mode)
 {
     public static readonly RunwayWatch None = new(Array.Empty<WatchedRunway>(), RunwayWatchMode.None);
 
@@ -29,20 +37,22 @@ public sealed record RunwayWatch(IReadOnlyList<WatchedRunway> Runways, RunwayWat
 
     public bool IsActive => Runways.Count > 0;
 
-    /// <summary>On the runway (backtrack, crossing, lineup, takeoff wait) a new occupant or a short final interrupts; at a hold it queues.</summary>
+    /// <summary>
+    /// On the runway (backtrack, crossing, lineup, takeoff wait, or stopped on it) the first status and
+    /// every new occupant or short final interrupt when there is traffic to report; at a hold, and while
+    /// vacating after landing (<see cref="RunwayWatchMode.Vacating"/> — taxi guidance is speaking the
+    /// exit), they are queued.
+    /// </summary>
     public bool RunwayEventsInterrupt =>
         Mode is RunwayWatchMode.OnRunway or RunwayWatchMode.LiningUp or RunwayWatchMode.TakeoffWait;
-
-    /// <summary>
-    /// The first status interrupts only when the pilot is on the runway for a REASON (backtrack, lineup,
-    /// takeoff wait): a watch started purely because the aircraft is on a runway — typically turning off
-    /// after landing, while taxi guidance speaks the exit — gives its first status in turn. New events
-    /// after it still follow <see cref="RunwayEventsInterrupt"/>.
-    /// </summary>
-    public bool FirstStatusInterrupts => RunwayEventsInterrupt && !PositionOnly;
 }
 
-/// <summary>Everything <see cref="RunwayWatchScopes.Resolve"/> needs, as plain values.</summary>
+/// <summary>
+/// Everything <see cref="RunwayWatchScopes.Resolve"/> needs, as plain values. <see cref="IsLandingExit"/>
+/// (taxi guidance is steering a landing-exit route) and <see cref="OwnGroundSpeedKts"/> (the pilot's
+/// ground speed, null when not known) tell turning off the runway just landed on
+/// (<see cref="RunwayWatchMode.Vacating"/>) from stopping on it.
+/// </summary>
 public readonly record struct RunwayWatchInputs(
     TaxiGuidanceState State,
     string? HeldLabel,
@@ -51,7 +61,9 @@ public readonly record struct RunwayWatchInputs(
     bool IsRunwayLineup,
     IReadOnlyList<string> RunwaysUnderAircraft,
     string? TakeoffAssistRunway,
-    IReadOnlyList<TaxiGraph.RunwayCenterline> Runways);
+    IReadOnlyList<TaxiGraph.RunwayCenterline> Runways,
+    bool IsLandingExit = false,
+    double? OwnGroundSpeedKts = null);
 
 /// <summary>
 /// Which runway(s) the ground-traffic runway watch covers. PR #247 review R2/R3: the watch was
@@ -67,6 +79,13 @@ public static class RunwayWatchScopes
 
     /// <summary>…or within this of any route point (L6: a progressive hold left over from a hand-flown departure).</summary>
     public const double LocalRouteRangeM = 5000.0;
+
+    /// <summary>
+    /// On a landing-exit route, the runway under the aircraft is <see cref="RunwayWatchMode.Vacating"/>
+    /// only while the pilot is moving at least this fast; stopped on it, it is
+    /// <see cref="RunwayWatchMode.OnRunway"/>.
+    /// </summary>
+    public const double VacatingMinGsKts = 3.0;
 
     /// <summary>
     /// The runway designators a label names: every "runway X" in it (hold labels, "Runway 27L"),
@@ -96,20 +115,22 @@ public static class RunwayWatchScopes
 
     /// <summary>
     /// The watch for one evaluation. Sources, in precedence order (the first source to add a runway
-    /// supplies its spoken designator; the strongest mode wins): takeoff-assist runway (TakeoffWait),
-    /// runway lineup (LiningUp), backtrack departure (OnRunway), HoldShort label (Holding),
-    /// progressive hold runway (Holding), runways under the aircraft in any state (OnRunway). The
-    /// watch is <see cref="RunwayWatch.PositionOnly"/> when that last source is the only one that
-    /// contributed a runway (a source naming a runway the graph lacks contributes nothing).
+    /// supplies its spoken designator; the strongest mode wins — TakeoffWait, LiningUp, OnRunway,
+    /// Vacating, Holding): takeoff-assist runway (TakeoffWait), runway lineup (LiningUp), backtrack
+    /// departure (OnRunway), HoldShort label (Holding), progressive hold runway (Holding), and the
+    /// runways under the aircraft in any state — <see cref="RunwayWatchMode.Vacating"/> while taxi
+    /// guidance steers a landing-exit route (<see cref="RunwayWatchInputs.IsLandingExit"/>) and the pilot
+    /// is moving at <see cref="VacatingMinGsKts"/> or more (turning off the runway just landed on),
+    /// otherwise <see cref="RunwayWatchMode.OnRunway"/>: a crossing no hold could be placed for, a stray
+    /// onto a runway, or stopping on the runway after landing.
     /// </summary>
     public static RunwayWatch Resolve(RunwayWatchInputs input)
     {
         var runways = input.Runways ?? Array.Empty<TaxiGraph.RunwayCenterline>();
         var watched = new List<WatchedRunway>();
         var mode = RunwayWatchMode.None;
-        bool anyIntentSource = false;
 
-        void Watch(IEnumerable<string> designators, RunwayWatchMode sourceMode, bool intent = true)
+        void Watch(IEnumerable<string> designators, RunwayWatchMode sourceMode)
         {
             foreach (string d in designators)
             {
@@ -117,7 +138,6 @@ public static class RunwayWatchScopes
                 string key = RunwayKey(runways, d);
                 if (!watched.Any(w => w.Key == key)) watched.Add(new WatchedRunway(d, key));
                 if (Rank(sourceMode) > Rank(mode)) mode = sourceMode;
-                if (intent) anyIntentSource = true;
             }
         }
 
@@ -131,9 +151,12 @@ public static class RunwayWatchScopes
             Watch(Designators(input.HeldLabel), RunwayWatchMode.Holding);
         if (input.State == TaxiGuidanceState.ProgressiveHold)
             Watch(Designators(input.ProgressiveRunway), RunwayWatchMode.Holding);
-        Watch(input.RunwaysUnderAircraft ?? Array.Empty<string>(), RunwayWatchMode.OnRunway, intent: false);
+        Watch(input.RunwaysUnderAircraft ?? Array.Empty<string>(),
+            input.IsLandingExit && input.OwnGroundSpeedKts is double gs && gs >= VacatingMinGsKts
+                ? RunwayWatchMode.Vacating
+                : RunwayWatchMode.OnRunway);
 
-        return watched.Count == 0 ? RunwayWatch.None : new RunwayWatch(watched, mode, PositionOnly: !anyIntentSource);
+        return watched.Count == 0 ? RunwayWatch.None : new RunwayWatch(watched, mode);
     }
 
     /// <summary>The runways whose pavement holds the point, each named by its nearer end.</summary>
@@ -176,9 +199,10 @@ public static class RunwayWatchScopes
 
     private static int Rank(RunwayWatchMode mode) => mode switch
     {
-        RunwayWatchMode.TakeoffWait => 4,
-        RunwayWatchMode.LiningUp => 3,
-        RunwayWatchMode.OnRunway => 2,
+        RunwayWatchMode.TakeoffWait => 5,
+        RunwayWatchMode.LiningUp => 4,
+        RunwayWatchMode.OnRunway => 3,
+        RunwayWatchMode.Vacating => 2,
         RunwayWatchMode.Holding => 1,
         _ => 0,
     };

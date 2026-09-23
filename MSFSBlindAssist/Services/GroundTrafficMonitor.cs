@@ -247,7 +247,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         // so the sweep requested later in this tick must carry a time no earlier than the watch start.
         // ApplyLinger's time only feeds the linger's 60 s ceiling.
         var watch = watchGate
-            ? ApplyLinger(ResolveWatch(ctx, p.Latitude, p.Longitude), ctx, p.Latitude, p.Longitude, DateTime.UtcNow)
+            ? ApplyLinger(ResolveWatch(ctx, p.Latitude, p.Longitude, p.GroundSpeedKnots), ctx, p.Latitude, p.Longitude, DateTime.UtcNow)
             : ClearLinger("gate");
         SetWatch(watch);
         bool queueScan = proximity && ctx is { IsQueueRoute: true };
@@ -344,7 +344,12 @@ public sealed class GroundTrafficMonitor : IDisposable
     private IReadOnlyList<TaxiGraph.RunwayCenterline> RunwaysFor(GroundTrafficRouteContext? ctx)
         => ctx is { Runways.Count: > 0 } c ? c.Runways : _cachedRunways;
 
-    private RunwayWatch ResolveWatch(GroundTrafficRouteContext? ctx, double lat, double lon)
+    /// <summary>
+    /// This tick's watch (<see cref="RunwayWatchScopes.Resolve"/>). <paramref name="ownGsKts"/> is the
+    /// tick's own ground speed: on a landing-exit route, the runway under the aircraft is Vacating
+    /// (queued) while the pilot is still moving and OnRunway (interrupting) once stopped on it.
+    /// </summary>
+    private RunwayWatch ResolveWatch(GroundTrafficRouteContext? ctx, double lat, double lon, double ownGsKts)
     {
         // With no local route context, a takeoff-assist runway at an airport the cache does not hold (a
         // departure that starts on the runway: a teleport, takeoff assist seeded from the dialog) loads
@@ -370,7 +375,9 @@ public sealed class GroundTrafficMonitor : IDisposable
             ctx?.IsRunwayDestination ?? false,
             RunwayWatchScopes.RunwaysUnder(runways, lat, lon),
             takeoffRunway,
-            runways));
+            runways,
+            ctx?.IsLandingExit ?? false,
+            ownGsKts));
     }
 
     /// <summary>
@@ -1012,13 +1019,13 @@ public sealed class GroundTrafficMonitor : IDisposable
             // The first status is ALWAYS spoken (R3). The key is the runway itself, so hold →
             // backtrack → lineup → takeoff wait never restarts the watch; one that starts fresh on the
             // runway has not been heard, and must be — interrupting when something is on the runway or
-            // on short final and the pilot is on it for a reason. A watch the aircraft's position alone
-            // started (turning off after landing, while taxi guidance speaks the exit) gives it in turn
-            // (RunwayWatch.FirstStatusInterrupts, PR #247 B1 review I1).
+            // on short final and the pilot is on it (RunwayEventsInterrupt). Turning off after landing
+            // on the landing-exit route (Vacating) it waits its turn while taxi guidance speaks the exit
+            // (PR #247 B2 review).
             var occ = status.SelectMany(s => s.Occupants.Select(o => o.Ac.ObjectId)).ToList();
             var fin = status.SelectMany(s => s.Finals.Select(f => f.Ac.ObjectId)).ToList();
             var shortFin = status.SelectMany(s => s.Finals.Where(IsShortFinal).Select(f => f.Ac.ObjectId)).ToList();
-            bool critical = watch.FirstStatusInterrupts && (occ.Count > 0 || shortFin.Count > 0);
+            bool critical = interrupts && (occ.Count > 0 || shortFin.Count > 0);
             string key = _watchKey;
             candidates.Add(new TrafficCallout(
                 critical ? TrafficCalloutKind.RunwayCritical : TrafficCalloutKind.RunwayInfo, 0,
