@@ -25,6 +25,13 @@ internal static partial class GroundTrafficLogic
     }
 
     /// <summary>
+    /// True bearing (0 = north, clockwise, [0, 360)) of a local east/north offset in metres,
+    /// as produced by <see cref="ToLocal"/>. A zero offset gives 0.
+    /// </summary>
+    internal static double LocalBearingDeg(double dxEast, double dyNorth)
+        => (Math.Atan2(dxEast, dyNorth) * 180.0 / Math.PI + 360.0) % 360.0;
+
+    /// <summary>
     /// Closest point of approach of two straight-line tracks. Inputs are the TRAFFIC's position and
     /// velocity RELATIVE to the own aircraft. Returns the time until closest approach (0 when the
     /// two are already opening or not moving relative to each other) and the distance then.
@@ -95,7 +102,7 @@ internal static partial class GroundTrafficLogic
             {
                 bestD = d;
                 double segLen = route[i + 1].RouteMetres - route[i].RouteMetres;
-                double bearing = (Math.Atan2(dx, dy) * 180.0 / Math.PI + 360.0) % 360.0;
+                double bearing = LocalBearingDeg(dx, dy);
                 best = new RouteProjection(d, route[i].RouteMetres + segLen * t, route[i + 1].Taxiway, bearing);
             }
         }

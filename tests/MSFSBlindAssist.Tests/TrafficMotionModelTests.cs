@@ -15,6 +15,17 @@ public class TrafficMotionModelTests
     private static PositionFix At(double northM, double eastM, double seconds)
         => new(50.0 + northM * DegLatPerMetre, eastM * DegLonPerMetreAt50, T0.AddSeconds(seconds));
 
+    // ── local bearing ───────────────────────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(0.0, 1.0, 0.0)]       // due north
+    [InlineData(1.0, 0.0, 90.0)]      // due east
+    [InlineData(0.0, -1.0, 180.0)]    // due south
+    [InlineData(-1.0, 0.0, 270.0)]    // due west
+    [InlineData(0.0, 0.0, 0.0)]       // zero offset
+    public void LocalBearingDeg_computes_true_bearing(double dxEast, double dyNorth, double expectedDeg)
+        => Assert.Equal(expectedDeg, GroundTrafficLogic.LocalBearingDeg(dxEast, dyNorth), 1e-9);
+
     // ── effective direction ─────────────────────────────────────────────────────────────
 
     [Fact]
@@ -40,6 +51,22 @@ public class TrafficMotionModelTests
     {
         Assert.Equal(0.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0, At(0, 0, 0), At(-20, 0, 8)));
         Assert.Equal(0.0, GroundTrafficLogic.EffectiveDirection(0.0, 2.0, null, At(-20, 0, 1)));
+    }
+
+    [Fact]
+    public void Same_timestamp_between_fixes_keeps_the_nose()
+    {
+        // When two fixes have the same timestamp (dt = 0), even though they are far apart
+        // and the track points away from the nose heading, keep the nose heading.
+        Assert.Equal(90.0, GroundTrafficLogic.EffectiveDirection(90.0, 2.0, At(0, 0, 1), At(-100, 0, 1)));
+    }
+
+    [Fact]
+    public void Previous_fix_later_than_current_keeps_the_nose()
+    {
+        // When the previous fix is timestamped later than the current one (dt < 0),
+        // keep the nose heading.
+        Assert.Equal(45.0, GroundTrafficLogic.EffectiveDirection(45.0, 2.0, At(0, 0, 5), At(10, 0, 1)));
     }
 
     // ── route-relative motion ───────────────────────────────────────────────────────────

@@ -78,7 +78,7 @@ internal static partial class GroundTrafficLogic
         if (dt <= 0.0 || dt > ReversingMaxGapSec) return headingTrue;
         var (dx, dy) = ToLocal(p.Lat, p.Lon, current.Lat, current.Lon);
         if (Math.Sqrt(dx * dx + dy * dy) < ReversingMinMoveM) return headingTrue;
-        double track = (Math.Atan2(dx, dy) * 180.0 / Math.PI + 360.0) % 360.0;
+        double track = LocalBearingDeg(dx, dy);
         return Math.Abs(AngleDiff(track, headingTrue)) > ReversingAngleDeg ? track : headingTrue;
     }
 
