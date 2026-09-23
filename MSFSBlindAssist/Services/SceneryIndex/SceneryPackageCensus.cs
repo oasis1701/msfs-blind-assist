@@ -54,6 +54,11 @@ public sealed class SceneryPackageCensus
     private readonly object _lock = new();
     private CacheFile? _cache;
 
+    /// <summary>What each package's manifest said, memoised on its layout.json stamp (see
+    /// <see cref="ScenerylikePackages"/>). Read and written under <c>_lock</c> like everything else
+    /// here; bounded by the folders Community held this session.</summary>
+    private readonly Dictionary<string, (SceneryPackageDisk.LayoutStamp Stamp, bool Scenery)> _sceneryVerdicts = new(StringComparer.OrdinalIgnoreCase);
+
     /// <summary>The immediate children of Community. Same reasons for IgnoreInaccessible and
     /// AttributesToSkip; no recursion, because a package is a top-level folder.</summary>
     private static readonly EnumerationOptions PackageFolders = new()
@@ -111,9 +116,8 @@ public sealed class SceneryPackageCensus
             bool changed = false;
             var clock = Stopwatch.StartNew();
 
-            foreach (string dir in ScenerylikePackages(communityDir))
+            foreach (var (dir, stamp) in ScenerylikePackages(communityDir))
             {
-                var stamp = SceneryPackageDisk.LayoutStamp.Of(dir);
                 long len = stamp.Length, ticks = stamp.Ticks;
                 if (known.TryGetValue(dir, out var hit) && hit.Cells != null && hit.LayoutLength == len && hit.LayoutTicks == ticks)
                 {
@@ -158,21 +162,25 @@ public sealed class SceneryPackageCensus
 
     /// <summary>
     /// Every immediate child of Community that is a package (it has a layout.json) and could be
-    /// scenery. A manifest naming another content_type — AIRCRAFT, LIVERY, MISC, TOOL — is taken
-    /// at its word and skipped; a missing or unreadable manifest is NOT a reason to skip, because
-    /// the cost of reading a package that models nothing is a handful of header seeks while the
-    /// cost of skipping the airport's own package is the whole feature.
+    /// scenery, with its layout.json stamp. A manifest naming another content_type — AIRCRAFT, LIVERY,
+    /// MISC, TOOL — is taken at its word and skipped; a missing or unreadable manifest is NOT a reason
+    /// to skip, because the cost of reading a package that models nothing is a handful of header seeks
+    /// while the cost of skipping the airport's own package is the whole feature. The verdict is
+    /// memoised on the layout.json stamp: every catalog build calls here, and re-reading every
+    /// package's manifest each time cost a file open and a JSON parse per package per build for an
+    /// answer only a package update can change — and an update rewrites layout.json (review CL-8).
     /// </summary>
-    private static List<string> ScenerylikePackages(string communityDir)
+    private List<(string Dir, SceneryPackageDisk.LayoutStamp Stamp)> ScenerylikePackages(string communityDir)
     {
-        var result = new List<string>();
+        var result = new List<(string Dir, SceneryPackageDisk.LayoutStamp Stamp)>();
         try
         {
             foreach (string dir in Directory.EnumerateDirectories(communityDir, "*", PackageFolders))
             {
-                if (!File.Exists(Path.Combine(dir, "layout.json"))) continue;
-                if (!CouldBeScenery(Path.Combine(dir, "manifest.json"))) continue;
-                result.Add(dir);
+                if (!SceneryPackageDisk.LayoutStamp.TryOf(dir, out var stamp)) continue;
+                if (!_sceneryVerdicts.TryGetValue(dir, out var verdict) || verdict.Stamp != stamp)
+                    _sceneryVerdicts[dir] = verdict = (stamp, CouldBeScenery(Path.Combine(dir, "manifest.json")));
+                if (verdict.Scenery) result.Add((dir, stamp));
             }
         }
         catch (Exception ex) { Log.Warn("SceneryIndex", $"census: {communityDir}: {ex.Message}"); }

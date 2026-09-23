@@ -2442,7 +2442,10 @@ which a cold pass now adds and which has not been re-measured), and it
 found the right package at KATL, EGLL, KJFK, LMML, EDDF, KSEA, EHAM
 (`flytampa-amsterdam` — no ICAO in its folder name), OMDB, OMDU, EGSS and KMEM,
 and correctly NONE at KTIW and KSNA. The census also runs on an MSFS 2020
-database whenever navdata names no package for the airport.
+database whenever navdata names no package for the airport. Whether a package
+is scenery at all (its `manifest.json` `content_type`) is memoised on its
+`layout.json` stamp, so a catalog build re-reads no manifest a package update
+has not rewritten (review CL-8).
 
 **A row that names nothing is dropped at LOAD, and an incomplete scan is NEVER
 PERSISTED — by the census AND by the indexer.** The two caches carry the same

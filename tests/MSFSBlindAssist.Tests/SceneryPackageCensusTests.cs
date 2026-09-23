@@ -52,6 +52,25 @@ public class SceneryPackageCensusTests : IDisposable
     }
 
     [Fact]
+    public void A_packages_manifest_is_read_once_until_its_layout_changes()
+    {
+        // Every catalog build calls Locate, and it re-read and re-parsed every package's manifest.json
+        // each time for an answer only a package update can change (review CL-8). An update rewrites
+        // layout.json, so the verdict is memoised on its stamp.
+        string pkg = Package("kxyz", 30, 33.6400, -84.4300);
+        var census = new SceneryPackageCensus(Path.Combine(_root, "cacheManifest"));
+        Assert.Single(census.Locate(Community, Katl));
+
+        // Rewritten WITHOUT a package update: not read again, so the package is still scenery.
+        File.WriteAllText(Path.Combine(pkg, "manifest.json"), "{\"content_type\":\"AIRCRAFT\"}");
+        Assert.Single(census.Locate(Community, Katl));
+
+        // A package update rewrites layout.json, and only then is the manifest read again.
+        File.WriteAllText(Path.Combine(pkg, "layout.json"), "{ \"changed\": true }");
+        Assert.Empty(census.Locate(Community, Katl));
+    }
+
+    [Fact]
     public void A_missing_folder_or_a_broken_package_never_throws()
     {
         Assert.Empty(new SceneryPackageCensus(Path.Combine(_root, "cache")).Locate(Path.Combine(_root, "nope"), Katl));
