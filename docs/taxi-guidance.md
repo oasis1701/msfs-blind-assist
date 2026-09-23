@@ -1186,8 +1186,11 @@ floor, so neither unit can produce a zero with a side attached to it. The window
 takes the same wording; it lists the zone too, being an inventory rather than a
 spoken "where am I".
 
-Two or more unnamed hangars in range collapse to "Hangars, to the left, 80
-metres." Directions come from `RelativeDirection.Describe` (see below);
+Two or more hangars without a proper name in range — unnamed ones, and ones the
+scenery named only by the kind word ("Hangar", `NameIsGeneric`) — collapse to
+"Hangars, to the left, 80 metres.", through the same
+`AirportFeature.HasProperName` test the passing-callout gate uses. Directions
+come from `RelativeDirection.Describe` (see below);
 distances from `DistanceFormatter` on the pilot's `GroundDistanceUnit`.
 "No surroundings data for {icao}." when the catalog itself is empty; "Nothing
 within 600 metres." when it has features but none in range.
@@ -1242,7 +1245,10 @@ the airport at most every 30 s, and hands the ranked feature list (within
 at least `MinApproachMetres` (15 m) and has since opened by `OpeningMetres`
 (5 m) — when that CLOSEST POINT lies inside its kind's pass radius (Concourse/Terminal
 225 m, Tower 300 m, others 150 m — **measured, see below**) and it is announceable (Terminal, Concourse,
-Fbo, Tower, Fuel, Cargo, FireStation, and Hangar only when NAMED). It then
+Fbo, Tower, Fuel, Cargo, FireStation, and Hangar only with a PROPER name — the
+scenery tier labels a model called just "Hangar" with the kind word itself,
+marked `NameIsGeneric`, and "Passing Hangar" names nothing a pilot can look
+for). It then
 fires at most once per building per 5 minutes, once globally per 10 s, and only
 while ground speed is 2–40 kt.
 

@@ -181,11 +181,20 @@ public sealed class PassingCalloutGate
     /// </summary>
     public const double RankRadiusMetres = 350.0;
 
+    /// <summary>
+    /// Which features a passing callout may name. A hangar only with a PROPER name
+    /// (<see cref="AirportFeature.HasProperName"/>): an unnamed one speaks as the bare kind word, and
+    /// so does one the scenery tier named only BY that word — a model called "KTIW_Hangar" comes out
+    /// of SceneryModelNameClassifier as "Hangar", marked NameIsGeneric. "Passing Hangar, on the
+    /// left" names nothing a pilot can look for, and at a field of them it is the same sentence over
+    /// and over. The other kinds speak even unnamed: "Fuel", "Control tower" and "Fire station" are
+    /// what a pilot orients by.
+    /// </summary>
     public static bool IsAnnounceable(AirportFeature f) => f.Kind switch
     {
         FeatureKind.Terminal or FeatureKind.Concourse or FeatureKind.Fbo or FeatureKind.Tower
             or FeatureKind.Fuel or FeatureKind.Cargo or FeatureKind.FireStation => true,
-        FeatureKind.Hangar => f.HasName,
+        FeatureKind.Hangar => f.HasProperName,
         _ => false,
     };
 

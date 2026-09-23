@@ -710,4 +710,32 @@ public class PassingCalloutGateTests
         Assert.Equal(40, said[0].DistanceMetres);
         Assert.Equal(90, said[0].RelativeBearingDeg);
     }
+
+    // ---- A3-x: a hangar the scenery named only by its kind word is not announceable ----
+
+    [Fact]
+    public void A_hangar_the_scenery_named_only_by_its_kind_word_is_not_announced()
+    {
+        // SceneryModelNameClassifier labels a model called just "Hangar" (KTIW_Hangar) with the kind
+        // word itself, marked NameIsGeneric. HasName is true for it, but "Passing Hangar, on the
+        // left" names nothing a pilot can look for — which is exactly why an UNNAMED hangar is not
+        // announceable. Built from the real classifier output, so a change to how the scenery tier
+        // labels a bare hangar is caught here too.
+        var c = MSFSBlindAssist.Services.SceneryIndex.SceneryModelNameClassifier.Classify("KTIW_Hangar", "KTIW")!;
+        var hangar = new AirportFeature { Kind = c.Kind, Name = c.Name, NameIsGeneric = c.NameIsGeneric, Lat = 33.64, Lon = -84.43, Source = FeatureSource.Scenery };
+        Assert.Equal(FeatureKind.Hangar, hangar.Kind);
+        Assert.True(hangar.HasName);                                     // what IsAnnounceable used to test
+        Assert.False(PassingCalloutGate.IsAnnounceable(hangar));
+
+        var gate = new PassingCalloutGate();
+        Assert.Empty(Drive(gate, hangar, T0, 140, 110, 80, 62, 60, 66, 90, 130));
+        Assert.Equal(0, gate.TrackCount);
+    }
+
+    [Fact]
+    public void A_hangar_with_a_proper_name_is_still_announced()
+    {
+        var gate = new PassingCalloutGate();
+        Assert.Equal(new[] { "Titan Airways Hangar" }, Drive(gate, Feat(FeatureKind.Hangar, "Titan Airways Hangar"), T0, 140, 110, 80, 62, 60, 66, 90, 130));
+    }
 }

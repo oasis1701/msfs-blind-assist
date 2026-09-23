@@ -179,7 +179,10 @@ public static class SurroundingsReport
         // Counted over the whole speak radius, not just what the capped loop below gets to: with the
         // cap reached by the first unnamed hangar, a second one just past it never got visited, and
         // the loop-local counter stayed at 1 — "Hangar, ..." (singular) for two hangars in range.
-        int unnamedHangars = ranked.Count(n => n.Feature.Kind == FeatureKind.Hangar && !n.Feature.HasName);
+        // "Unnamed" means no PROPER name (AirportFeature.HasProperName, the helper
+        // PassingCalloutGate.IsAnnounceable uses too): a scenery model called just "Hangar" carries
+        // the kind word as its name, which names nothing a pilot can tell apart.
+        int unnamedHangars = ranked.Count(n => n.Feature.Kind == FeatureKind.Hangar && !n.Feature.HasProperName);
         var spoken = new List<NearbyFeature>();
         var kindsUsed = new HashSet<FeatureKind>();
         NearbyFeature? firstUnnamedHangar = null;
@@ -187,7 +190,7 @@ public static class SurroundingsReport
         {
             if (spoken.Count >= MaxSpoken) break;
             var f = n.Feature;
-            if (f.Kind == FeatureKind.Hangar && !f.HasName)
+            if (f.Kind == FeatureKind.Hangar && !f.HasProperName)
             {
                 if (firstUnnamedHangar == null) { firstUnnamedHangar = n; spoken.Add(n); }
                 continue;

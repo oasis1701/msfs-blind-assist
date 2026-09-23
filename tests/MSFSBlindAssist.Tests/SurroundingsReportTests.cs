@@ -250,4 +250,22 @@ public class SurroundingsReportTests
         Assert.Equal("Nothing within 1000 metres.", Assert.Single(withFacts[1].Items));
         Assert.DoesNotContain("kilometre", string.Join(" ", withFacts.SelectMany(s => s.Items).Concat(withFacts.Select(s => s.Heading))));
     }
+
+    [Fact]
+    public void Hangars_the_scenery_named_only_by_the_kind_word_collapse_like_unnamed_ones()
+    {
+        // Two scenery models called just "Hangar" (KTIW_Hangar): SceneryModelNameClassifier labels
+        // each with the kind word itself, marked NameIsGeneric. HasName is true for them, so they
+        // used to be listed one by one — "Hangar, … Hangar, …" — spending two of the four slots on
+        // a word that names nothing. Without a PROPER name a hangar collapses exactly like an
+        // unnamed one. 60 m apart: beyond the Hangar merge radius (40 m), so the catalog keeps both.
+        static AirportFeature G(double eastMetres) => new()
+        {
+            Kind = FeatureKind.Hangar, Name = "Hangar", NameIsGeneric = true,
+            Lat = Lat, Lon = Lon + eastMetres / 111_320.0, Source = FeatureSource.Scenery,
+        };
+        var cat = Cat(G(-80), G(-140), F(FeatureKind.Fbo, "Narrows Aviation", 0, 100));
+        Assert.Equal("X. Hangars, to the left, 80 metres. Narrows Aviation, to the right, 100 metres.",
+            SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres));
+    }
 }
