@@ -12,7 +12,9 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 /// (airport.scenery_local_path is NULL on every row, so <see cref="SceneryPackageLocator"/> has
 /// nothing to hand the indexer and the whole scenery tier went dark there). HEADER-ONLY: per BGL
 /// it reads the section table and the placement subsections, never a model library's bulk
-/// (measured over this machine's Community folder: 40 scenery packages, 2,443 BGL files, 21 MB).
+/// (measured over this machine's Community folder: 40 scenery packages, 2,443 BGL files, 21 MB) —
+/// and, since review SI-1, the package's own layout.json content list, which that measurement
+/// predates (see <see cref="SceneryPackageDisk.UnfinishedLayoutFiles"/>).
 /// Cached on disk per package, keyed on layout.json's length and mtime; the user's own local
 /// files, so a disk cache is fine. Community only — Official/OneStore content is not scanned.
 ///
@@ -39,7 +41,13 @@ public sealed class SceneryPackageCensus
     /// about IDENTIFYING the package rather than keeping every building it models.</summary>
     public const double BoxMarginMetres = 300.0, CellDegrees = 0.005;
 
-    private const int CurrentSchemaVersion = 1;
+    // BUMP THIS when a document this build would write means something different from one an older
+    // build wrote. 1 → 2: an older build persisted scans taken while an installer was still writing
+    // the package (it could not see that — review SI-1), so a schema-1 row may hold a short count
+    // frozen under the package's FINAL layout.json stamp; one cold census pass reads every package
+    // again (2.6 s measured on 40 packages BEFORE a scan also parsed each package's layout.json; not
+    // re-measured since).
+    internal const int CurrentSchemaVersion = 2;
     private const string CacheFileName = "census.json";
 
     private readonly string _cacheDir;
@@ -188,14 +196,15 @@ public sealed class SceneryPackageCensus
     }
 
     /// <summary>
-    /// How many placements the package has in each 0.005° cell, and whether every file it holds
-    /// was read. One try/catch per file (in <see cref="SceneryPackageDisk.WalkBgls"/>): one bad BGL
-    /// costs its own placements, never the package's — but it does cost the scan its COMPLETE flag,
-    /// and only a complete scan is cached. A BGL that cannot be OPENED is a lock or a permission, both
-    /// of which pass; a BGL whose contents are rubbish does not count at all, because
+    /// How many placements the package has in each 0.005° cell, and whether the scan saw the package
+    /// WHOLE. One try/catch per file (in <see cref="SceneryPackageDisk.WalkBgls"/>): one bad BGL costs
+    /// its own placements, never the package's — but it does cost the scan its COMPLETE flag, and only
+    /// a complete scan is cached. A BGL that cannot be OPENED is a lock or a permission, both of which
+    /// pass; a BGL whose contents are rubbish does not count at all, because
     /// <see cref="BglPlacementReader"/> answers with what parsed rather than throwing — but a read an
     /// I/O error cut HALFWAY is short for the same transient reason as a lock, so the reader reports
-    /// that separately and it counts.
+    /// that separately and it counts. And a package that does not match its own layout.json — an
+    /// installer still writing it — is short too (<see cref="SceneryPackageDisk.UnfinishedLayoutFiles"/>).
     /// </summary>
     private static (List<int[]> Cells, bool Complete) Scan(string dir)
     {
@@ -214,7 +223,11 @@ public sealed class SceneryPackageCensus
                 }
                 return readToTheEnd;
             });
-            complete = walk.Unreadable == 0;
+            // Reading every file FOUND is not finding every file the package HAS.
+            int unfinished = SceneryPackageDisk.UnfinishedLayoutFiles(dir, walk);
+            if (unfinished > 0)
+                Log.Warn("SceneryIndex", $"census: {leaf}: {unfinished} listed BGL file{(unfinished == 1 ? "" : "s")} missing or incomplete");
+            complete = walk.Unreadable == 0 && unfinished == 0;
         }
         catch (Exception ex)
         {

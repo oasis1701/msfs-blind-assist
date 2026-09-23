@@ -1,3 +1,4 @@
+using System.Text.Json;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services.SceneryIndex;
@@ -108,6 +109,119 @@ internal static class SceneryPackageDisk
     /// <summary>A file's path relative to its package, spelled the way layout.json spells it.</summary>
     internal static string RelativeKey(string packageDir, string file)
         => Path.GetRelativePath(packageDir, file).Replace('\\', '/');
+
+    /// <summary>
+    /// The *.bgl rows of the package's OWN layout.json content list — relative path (compared ignoring
+    /// case) → the size it lists, or null for a row that gives none — or null when there is no list
+    /// to hold a walk to: no layout.json, one that does not parse (it may be being written right now;
+    /// its stamp then changes when it is done, which re-scans the package anyway), or one without a
+    /// "content" array. The schema, measured on flightbeam-airport-kpdx-portland (2026-09-22):
+    /// {"content":[{"path":"scenery/global/scenery/modellib.bgl","size":423623764,"date":133986151050000006}, …]}
+    /// — paths relative to the package, lower case, '/'-separated. A row naming a place outside the
+    /// package (rooted, or through "..") is not the package's, and is skipped. Opened through
+    /// <see cref="OpenShared"/>: an installer may be holding layout.json while it works.
+    /// </summary>
+    internal static Dictionary<string, long?>? ListedBgls(string packageDir)
+    {
+        string path = Path.Combine(packageDir, "layout.json");
+        try
+        {
+            if (!File.Exists(path)) return null;
+            using var stream = OpenShared(path);
+            using var doc = JsonDocument.Parse(stream);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object
+                || !doc.RootElement.TryGetProperty("content", out var content) || content.ValueKind != JsonValueKind.Array)
+                return null;
+
+            var listed = new Dictionary<string, long?>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in content.EnumerateArray())
+            {
+                if (entry.ValueKind != JsonValueKind.Object
+                    || !entry.TryGetProperty("path", out var p) || p.ValueKind != JsonValueKind.String) continue;
+                string rel = p.GetString()!.Replace('\\', '/').TrimStart('/');
+                if (!rel.EndsWith(".bgl", StringComparison.OrdinalIgnoreCase) || Path.IsPathRooted(rel)
+                    || rel.Split('/').Contains("..")) continue;
+                listed[rel] = entry.TryGetProperty("size", out var s) && s.ValueKind == JsonValueKind.Number
+                              && s.TryGetInt64(out long size) ? (long?)size : null;
+            }
+            return listed;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SceneryIndex", $"{Path.GetFileName(packageDir.TrimEnd('\\', '/'))}: layout.json not read ({ex.Message}); nothing to hold the scan to");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// How many BGLs the package's own layout.json lists that <paramref name="walk"/> did not see
+    /// whole: not found at all, or read at another length than listed. An installer writes layout.json
+    /// FIRST, with its final stamp, and the BGLs after it (33 of 35 real packages, measured), so every
+    /// file that IS there reads fine and the scan looks complete — cached, its short answer was frozen
+    /// under that final stamp until the package next changed (review SI-1). 0 when there is no list to
+    /// hold the walk to (see <see cref="ListedBgls"/>).
+    ///
+    /// Not held against a package: a listed BGL the walk found but could not read (already counted by
+    /// <see cref="BglWalk.Unreadable"/>); one deeper than <see cref="MaxBglRecursionDepth"/> (no walk
+    /// goes there, by design); a row with no size (held to being present); and a listed BGL absent
+    /// BESIDE a copy of itself carrying one of the three <see cref="SwitchedOffSuffixes"/> —
+    /// "X.bgl.disabled", "X.bgl.off", "X.off" — which is an option the vendor's configurator switched
+    /// OFF, not a missing file. Measured on a real Community folder (2026-09-22): 24 listed BGLs in 6
+    /// of 46 healthy packages (Aerosoft EDDF and ENGM, iniBuilds EGKK, EGLL and PHNL, Orbx KATL) are
+    /// exactly that, and none of the 2,451 present BGLs has a sibling of any "&lt;stem&gt;.*" shape.
+    /// Nothing broader than those three counts (see <see cref="IsSwitchedOffOption"/>). The listed
+    /// "date" is never compared: it equals the installed file's mtime for 0 of 2,451.
+    /// </summary>
+    internal static int UnfinishedLayoutFiles(string packageDir, BglWalk walk)
+    {
+        var listed = ListedBgls(packageDir);
+        if (listed == null) return 0;
+        int unfinished = 0;
+        foreach (var (rel, size) in listed)
+        {
+            if (walk.Files.TryGetValue(rel, out long? length))
+            {
+                if (length.HasValue && size.HasValue && length.Value != size.Value) unfinished++;
+                continue;
+            }
+            if (rel.Count(c => c == '/') > MaxBglRecursionDepth) continue;
+            if (IsSwitchedOffOption(packageDir, rel)) continue;
+            unfinished++;
+        }
+        return unfinished;
+    }
+
+    /// <summary>The suffixes a vendor's options configurator was MEASURED (2026-09-22) to put on a
+    /// listed "x.bgl" it switched off, in place of its ".bgl": ".bgl.disabled" (iniBuilds EGKK, EGLL,
+    /// PHNL), ".bgl.off" (Orbx KATL) and ".off" (Aerosoft EDDF, ENGM — the extension replaced). ONLY
+    /// these three: see <see cref="IsSwitchedOffOption"/>.</summary>
+    private static readonly string[] SwitchedOffSuffixes = { ".bgl.disabled", ".bgl.off", ".off" };
+
+    /// <summary>Whether the folder the listed BGL belongs in holds it renamed with one of the
+    /// <see cref="SwitchedOffSuffixes"/> — "x.bgl" as "x.bgl.disabled", "x.bgl.off" or "x.off" —
+    /// compared ignoring case (OrdinalIgnoreCase: a configurator may write "X.BGL.OFF"). Nothing
+    /// broader counts, never "any file named x.&lt;anything&gt;": "x.bgl.part", "x.bgl.tmp", a backup or
+    /// a same-stem "x.xml" is not an option switched off, and an installer that stages its files under
+    /// such names must never have its half-written package cached as complete (review SI-1,
+    /// pre-flight I13). A longer name ("x-2.bgl") is another file.</summary>
+    private static bool IsSwitchedOffOption(string packageDir, string rel)
+    {
+        try
+        {
+            string full = Path.Combine(packageDir, rel.Replace('/', Path.DirectorySeparatorChar));
+            string? folder = Path.GetDirectoryName(full);
+            if (folder == null || !Directory.Exists(folder)) return false;
+            string stem = Path.GetFileNameWithoutExtension(full);                  // "x" of the listed "x.bgl"
+            foreach (string file in Directory.EnumerateFiles(folder))
+            {
+                string name = Path.GetFileName(file);
+                foreach (string suffix in SwitchedOffSuffixes)
+                    if (name.Equals(stem + suffix, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+        catch (Exception) { return false; }
+    }
 
     /// <summary>
     /// Whole file or nothing: written to a .tmp and moved into place, so a crash never leaves a

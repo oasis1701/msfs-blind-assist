@@ -21,9 +21,10 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 /// disk cache is fine (unlike OSM data) — keyed on the full package path and stamped with
 /// layout.json's length + mtime; written to a .tmp and moved into place, so a crash never leaves
 /// a truncated cache for a later run to read, and a cache of another schema is rebuilt, not read.
-/// Only a scan that read EVERY file is written, as the census does (see
-/// <see cref="IncompleteMemoLifetime"/>), and a document that carries a model naming nothing has
-/// that row dropped on LOAD rather than throwing out of every call it is memoised for.
+/// Only a scan that read EVERY file, and found every BGL the package's own layout.json lists at the
+/// listed size (<see cref="SceneryPackageDisk.UnfinishedLayoutFiles"/>), is written, as the census
+/// does, and a document that carries a model naming nothing has that row dropped on LOAD rather than
+/// throwing out of every call it is memoised for.
 ///
 /// <see cref="GetFeatures"/> then, for the asking airport: classifies each model name, drops every
 /// placement outside that airport's own box grown by <see cref="BoxMarginMetres"/> (one package
@@ -119,9 +120,16 @@ public sealed class SceneryPackageIndexer
         public List<Model>? Models { get; set; }
 
         /// <summary>How many of the package's BGLs this scan could not read to the end. Session
-        /// only, never written, because only a scan with NONE is ever persisted — see
+        /// only, never written, because only a COMPLETE scan is ever persisted — see
         /// <see cref="IncompleteMemoLifetime"/>.</summary>
         [JsonIgnore] public int Unreadable { get; set; }
+        /// <summary>How many BGLs the package's own layout.json lists that this scan did not find
+        /// whole (<see cref="SceneryPackageDisk.UnfinishedLayoutFiles"/>) — an installer still writing
+        /// the package. Session only, like <see cref="Unreadable"/>.</summary>
+        [JsonIgnore] public int Unfinished { get; set; }
+        /// <summary>Read every file AND matched the package's own layout.json: the only scan worth
+        /// keeping. A document read back from disk is complete by construction.</summary>
+        [JsonIgnore] public bool IsComplete => Unreadable == 0 && Unfinished == 0;
         /// <summary>When this scan ran, for <see cref="IncompleteMemoLifetime"/>. Session only;
         /// a document read back from disk is complete by construction, so it never uses this.</summary>
         [JsonIgnore] public DateTime ScannedUtc { get; set; }
@@ -152,11 +160,12 @@ public sealed class SceneryPackageIndexer
 
     /// <summary>
     /// As above, and says whether this answer was SHORT: a package whose scan could not read every
-    /// file (<see cref="IncompleteMemoLifetime"/>), or one the catch below reported unreadable.
-    /// <para>The caller needs it because <see cref="IncompleteMemoLifetime"/> only bounds the
-    /// MEMO. The surroundings catalog built on a short answer is cached too, and nothing rebuilds
-    /// it on its own — so the flag is ORed into that build's degraded bit, which the catalog cache
-    /// does give a lifetime, and the package is read again once the lock or the sweep has gone.</para>
+    /// file or did not match its own layout.json, or one the catch below reported unreadable.
+    /// <para>The caller needs it because the short-scan memo in <c>LoadOrBuild</c> only decides how
+    /// often the PACKAGE is read again. The surroundings catalog built on a short answer is cached
+    /// too, and nothing rebuilds it on its own — so the flag is ORed into that build's degraded bit,
+    /// which the catalog cache does give a lifetime, and the package is read again once the lock, the
+    /// sweep or the installer has gone.</para>
     /// </summary>
     public IReadOnlyList<AirportFeature> GetFeatures(string icao, IEnumerable<string> packageDirs, AirportFacilities? box,
                                                      bool locatedByCensus, out bool incomplete)
@@ -171,13 +180,15 @@ public sealed class SceneryPackageIndexer
                 var cf = LoadOrBuild(dir);
                 var features = FeaturesOf(cf, icao, box);
                 all.AddRange(features);
-                incomplete |= cf.Unreadable > 0;
-                // The unreadable count is part of the sentence because it is the ONLY sign a pilot
-                // gets that this package's answer is short: every placement in a file that could
-                // not be read resolves to "without a model name", so the two figures alone read
-                // exactly like a package that models nothing.
+                incomplete |= !cf.IsComplete;
+                // The unreadable and missing counts are part of the sentence because they are the ONLY
+                // sign a pilot gets that this package's answer is short: every placement in a file that
+                // could not be read resolves to "without a model name", and a file not installed yet
+                // places nothing at all, so the two figures alone read exactly like a package that
+                // models nothing.
                 string unread = cf.Unreadable == 0 ? "" : $", {cf.Unreadable} file{(cf.Unreadable == 1 ? "" : "s")} unreadable";
-                status.Add($"{features.Count} features from {leaf} ({cf.Placements} placements, {cf.Unresolved} without a model name{unread})");
+                string unfinished = cf.Unfinished == 0 ? "" : $", {cf.Unfinished} file{(cf.Unfinished == 1 ? "" : "s")} missing or incomplete";
+                status.Add($"{features.Count} features from {leaf} ({cf.Placements} placements, {cf.Unresolved} without a model name{unread}{unfinished})");
             }
             catch (Exception ex)
             {
@@ -251,7 +262,7 @@ public sealed class SceneryPackageIndexer
             // model library on every call would be unusable, and keeping it for the session would
             // freeze the short answer for as long as the app runs.
             if (_memo.TryGetValue(cachePath, out var memo) && memo.LayoutLength == len && memo.LayoutTicks == ticks
-                && (memo.Unreadable == 0 || _utcNow() - memo.ScannedUtc < IncompleteMemoLifetime)) return memo;
+                && (memo.IsComplete || _utcNow() - memo.ScannedUtc < IncompleteMemoLifetime)) return memo;
 
             if (File.Exists(cachePath))
             {
@@ -296,6 +307,9 @@ public sealed class SceneryPackageIndexer
                 return readToTheEnd;
             });
             int unreadable = walk.Unreadable;
+            // Reading every file FOUND is not finding every file the package HAS: an installer writes
+            // layout.json first, with its final stamp, and the BGLs after it.
+            int unfinished = SceneryPackageDisk.UnfinishedLayoutFiles(dir, walk);
 
             // Names are resolved only once every file has been read: a package is free to define a
             // model in one BGL and place it from another, in whatever order the folder lists them.
@@ -313,18 +327,20 @@ public sealed class SceneryPackageIndexer
             foreach (var (model, pts) in byName) models.Add(new Model { Name = model, Points = pts });
             var cf = new CacheFile { SchemaVersion = CurrentSchemaVersion, LayoutLength = len, LayoutTicks = ticks,
                                      Placements = placements.Count, Unresolved = unresolved, Models = models,
-                                     Unreadable = unreadable, ScannedUtc = _utcNow() };
-            // Only a scan that read every file is worth keeping. A file held open exclusively, or a
-            // read an I/O error cut short, is a MOMENT rather than a property of the package —
-            // persisted, its short answer would be frozen under layout.json's stamp until the
-            // package is next updated, with every placement in the unread file resolving to
-            // "without a model name" and the package yielding nothing. The census refuses the same
-            // thing for the same reason, so without this it could hand over the right package and
-            // the indexer would then freeze a wrong answer for it.
-            if (unreadable == 0) SceneryPackageDisk.PersistJson(_cacheDir, cachePath, JsonSerializer.Serialize(cf, JsonOptions));
+                                     Unreadable = unreadable, Unfinished = unfinished, ScannedUtc = _utcNow() };
+            // Only a scan that read every file AND matched the package's own layout.json is worth
+            // keeping. A file held open exclusively, a read an I/O error cut short, or a package its
+            // installer is still writing is a MOMENT rather than a property of the package —
+            // persisted, its short answer would be frozen under layout.json's stamp until the package
+            // is next updated, with every placement in an unread file resolving to "without a model
+            // name" and the package yielding nothing. The census refuses the same thing for the same
+            // reason, so without this it could hand over the right package and the indexer would
+            // then freeze a wrong answer for it.
+            if (cf.IsComplete) SceneryPackageDisk.PersistJson(_cacheDir, cachePath, JsonSerializer.Serialize(cf, JsonOptions));
             _memo[cachePath] = cf;
             Log.Info("SceneryIndex", $"indexed {leafName}: {models.Count} models, {placements.Count} placements, " +
-                                     $"{unresolved} without a model name, {unreadable} unreadable{(unreadable == 0 ? "" : " (not cached)")}");
+                                     $"{unresolved} without a model name, {unreadable} unreadable, {unfinished} missing or incomplete" +
+                                     (cf.IsComplete ? "" : " (not cached)"));
             return cf;
         }
     }

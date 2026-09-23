@@ -422,6 +422,33 @@ public class SceneryPackageIndexerTests : IDisposable
     }
 
     [Fact]
+    public void A_package_its_installer_has_not_finished_is_used_and_says_so_but_is_never_cached()
+    {
+        string pkg = MakePackage("installing", ("KXYZ_Fire_Station", 40.0005, -75.0005));
+        string scenery = Path.Combine(pkg, "scenery");
+        long lib = new FileInfo(Path.Combine(scenery, "modelLib.BGL")).Length;
+        long objects = new FileInfo(Path.Combine(scenery, "objects.bgl")).Length;
+        byte[] more = BglPlacementReaderTests.BuildBgl((40.0006, -75.0005, 0.0, Guid.NewGuid()));
+        // The packager's lower case ("modellib.bgl") against the disk's "modelLib.BGL".
+        SceneryPackageDiskTests.WriteLayout(pkg, ("scenery/modellib.bgl", lib), ("scenery/objects.bgl", objects), ("scenery/more.bgl", more.Length));
+        string cache = Path.Combine(_root, "cInstalling");
+        var now = DateTime.UtcNow;
+        var indexer = new SceneryPackageIndexer(cache, () => now);
+
+        Assert.Single(indexer.GetFeatures("KXYZ", new[] { pkg }, null, false, out bool incomplete));   // what IS there still counts
+        Assert.True(incomplete);
+        Assert.Contains("1 file missing or incomplete", indexer.LastStatus);
+        Assert.Empty(CacheFiles(cache));
+
+        File.WriteAllBytes(Path.Combine(scenery, "more.bgl"), more);                                     // the installer finishes
+        now += TimeSpan.FromHours(2);                                                                    // past any retry interval
+        indexer.GetFeatures("KXYZ", new[] { pkg }, null, false, out bool after);
+        Assert.False(after);
+        Assert.DoesNotContain("missing", indexer.LastStatus);
+        Assert.Single(CacheFiles(cache));
+    }
+
+    [Fact]
     public void A_package_folder_that_is_not_there_counts_as_a_short_scan()
     {
         // The catch's "unreadable" arm: nothing was read, so the answer is as short as it gets.

@@ -1,5 +1,6 @@
 // The disk rules SceneryPackageCensus and SceneryPackageIndexer share (review CL-4). Synthetic BGLs
 // from BglPlacementReaderTests.BuildBgl — never a payware file.
+using System.Globalization;
 using MSFSBlindAssist.Services.SceneryIndex;
 
 namespace MSFSBlindAssist.Tests;
@@ -106,5 +107,158 @@ public class SceneryPackageDiskTests : IDisposable
         SceneryPackageDisk.PersistJson(cache, blocked, "{}");
         Assert.True(Directory.Exists(blocked));
         Assert.Empty(Directory.GetFiles(cache, "*.tmp"));
+    }
+
+    // ---- the package's own layout.json (review SI-1) ------------------------------------------
+
+    private static string Fixture(string name) => Path.Combine(AppContext.BaseDirectory, "Fixtures", name);
+
+    /// <summary>A layout.json in the schema real packages carry — {"content":[{"path","size","date"}]},
+    /// lower-case '/'-separated paths (Fixtures/layout-kpdx-excerpt.json is a verbatim excerpt of one) —
+    /// listing <paramref name="bgls"/>. Shared with the census and indexer tests.</summary>
+    internal static void WriteLayout(string packageDir, params (string Path, long Size)[] bgls)
+        => File.WriteAllText(Path.Combine(packageDir, "layout.json"),
+            "{\"content\":[" + string.Join(",", bgls.Select(b =>
+                "{\"path\":\"" + b.Path + "\",\"size\":" + b.Size.ToString(CultureInfo.InvariantCulture) +
+                ",\"date\":133921371750000001}")) + "]}");
+
+    private string KpdxShaped(string name)
+    {
+        string pkg = Folder(name);
+        File.Copy(Fixture("layout-kpdx-excerpt.json"), Path.Combine(pkg, "layout.json"));
+        return pkg;
+    }
+
+    [Fact]
+    public void The_real_layout_schema_lists_every_bgl_with_its_size_and_ignores_the_rest()
+    {
+        var listed = SceneryPackageDisk.ListedBgls(KpdxShaped("kpdx-shape"));
+
+        Assert.NotNull(listed);
+        Assert.Equal(2, listed!.Count);                                                          // bglindex.bout is not a BGL
+        Assert.Equal((long?)423_623_764L, listed["scenery/global/scenery/modellib.bgl"]);
+        Assert.Equal((long?)27_804L, listed["Scenery/World/Scenery/flightbeam-airport-kpdx-addl-objects.BGL"]);   // case ignored
+    }
+
+    [Fact]
+    public void A_layout_json_held_open_for_writing_is_still_read()
+    {
+        // An installer can hold layout.json open while it works. The list is opened through
+        // OpenShared, as every BGL is: File.ReadAllText permits no writer and would fail here.
+        string pkg = KpdxShaped("held-layout");
+        using var installer = new FileStream(Path.Combine(pkg, "layout.json"), FileMode.Open, FileAccess.ReadWrite,
+                                             FileShare.ReadWrite | FileShare.Delete);
+
+        Assert.Equal(2, SceneryPackageDisk.ListedBgls(pkg)!.Count);
+    }
+
+    [Theory]
+    [InlineData(null)]                                   // no layout.json at all
+    [InlineData("{}")]                                   // what every other scenery test writes
+    [InlineData("{\"content\":{}}")]                     // a content key that is not a list
+    [InlineData("{\"content\":[{\"path\":")]             // half-written
+    [InlineData("not json")]
+    public void A_layout_with_no_content_list_holds_a_scan_to_nothing(string? layout)
+    {
+        string pkg = Folder("nolist");
+        if (layout != null) File.WriteAllText(Path.Combine(pkg, "layout.json"), layout);
+
+        Assert.Null(SceneryPackageDisk.ListedBgls(pkg));
+        Assert.Equal(0, SceneryPackageDisk.UnfinishedLayoutFiles(pkg, new SceneryPackageDisk.BglWalk()));
+    }
+
+    [Fact]
+    public void A_walk_that_saw_every_listed_bgl_at_its_listed_size_is_finished()
+    {
+        string pkg = KpdxShaped("whole");
+        var walk = new SceneryPackageDisk.BglWalk();
+        walk.Files["scenery/global/scenery/modelLib.BGL"] = 423_623_764L;                         // the disk's own spelling
+        walk.Files["scenery/world/scenery/flightbeam-airport-kpdx-addl-objects.bgl"] = 27_804L;
+        walk.Files["scenery/world/scenery/unlisted-extra.bgl"] = 100L;                            // not listed: not the layout's business
+
+        Assert.Equal(0, SceneryPackageDisk.UnfinishedLayoutFiles(pkg, walk));
+    }
+
+    [Fact]
+    public void A_listed_bgl_read_at_another_length_or_not_found_at_all_is_unfinished()
+    {
+        string pkg = KpdxShaped("installing");
+        var walk = new SceneryPackageDisk.BglWalk();
+        walk.Files["scenery/global/scenery/modellib.bgl"] = 400_000_000L;                         // still being written
+
+        Assert.Equal(2, SceneryPackageDisk.UnfinishedLayoutFiles(pkg, walk));                     // …and addl-objects not there at all
+    }
+
+    [Fact]
+    public void A_listed_bgl_the_walk_could_not_read_is_left_to_the_unreadable_count()
+    {
+        string pkg = KpdxShaped("locked");
+        var walk = new SceneryPackageDisk.BglWalk();
+        walk.Files["scenery/global/scenery/modellib.bgl"] = null;                                 // found, not read to the end
+        walk.Files["scenery/world/scenery/flightbeam-airport-kpdx-addl-objects.bgl"] = 27_804L;
+
+        Assert.Equal(0, SceneryPackageDisk.UnfinishedLayoutFiles(pkg, walk));                     // never counted twice
+    }
+
+    // Measured 2026-09-22: 24 listed BGLs in 6 healthy packages are absent because the vendor's
+    // options tool renamed them, in exactly these three shapes — and ONLY these count (pre-flight I13).
+    [Theory]
+    [InlineData("flightbeam-airport-kpdx-addl-objects.bgl.disabled")]   // iniBuilds EGKK/EGLL/PHNL
+    [InlineData("flightbeam-airport-kpdx-addl-objects.bgl.off")]        // Orbx KATL
+    [InlineData("flightbeam-airport-kpdx-addl-objects.off")]            // Aerosoft EDDF/ENGM: the extension replaced
+    [InlineData("Flightbeam-Airport-KPDX-Addl-Objects.BGL.Disabled")]   // compared ignoring case
+    public void A_listed_bgl_an_options_tool_renamed_is_switched_off_not_missing(string renamed)
+    {
+        string pkg = KpdxShaped("options");
+        File.WriteAllBytes(Path.Combine(Folder("options", "scenery", "world", "scenery"), renamed), new byte[27_804]);
+        var walk = new SceneryPackageDisk.BglWalk();
+        walk.Files["scenery/global/scenery/modellib.bgl"] = 423_623_764L;
+
+        Assert.Equal(0, SceneryPackageDisk.UnfinishedLayoutFiles(pkg, walk));
+    }
+
+    // Anything else beside an absent listed BGL leaves it UNFINISHED. An installer that stages its files
+    // under temporary names ("X.bgl.part", "X.bgl.tmp") would otherwise have its half-written package
+    // cached as complete — the frozen short answer this check exists to prevent — and a same-stem source
+    // file is another file, not the BGL switched off.
+    [Theory]
+    [InlineData("flightbeam-airport-kpdx-addl-objects.bgl.part")]
+    [InlineData("flightbeam-airport-kpdx-addl-objects.bgl.tmp")]
+    [InlineData("flightbeam-airport-kpdx-addl-objects.xml")]
+    public void A_listed_bgl_beside_any_other_sibling_is_still_unfinished(string sibling)
+    {
+        string pkg = KpdxShaped("staged");
+        File.WriteAllBytes(Path.Combine(Folder("staged", "scenery", "world", "scenery"), sibling), new byte[27_804]);
+        var walk = new SceneryPackageDisk.BglWalk();
+        walk.Files["scenery/global/scenery/modellib.bgl"] = 423_623_764L;
+
+        Assert.Equal(1, SceneryPackageDisk.UnfinishedLayoutFiles(pkg, walk));
+    }
+
+    [Fact]
+    public void A_neighbour_that_only_shares_a_prefix_is_not_a_renamed_copy()
+    {
+        // "…addl-objects-2.bgl" is ANOTHER file, not "…addl-objects" switched off.
+        string pkg = KpdxShaped("prefix");
+        File.WriteAllBytes(Path.Combine(Folder("prefix", "scenery", "world", "scenery"), "flightbeam-airport-kpdx-addl-objects-2.bgl"), new byte[10]);
+        var walk = new SceneryPackageDisk.BglWalk();
+        walk.Files["scenery/global/scenery/modellib.bgl"] = 423_623_764L;
+        walk.Files["scenery/world/scenery/flightbeam-airport-kpdx-addl-objects-2.bgl"] = 10L;
+
+        Assert.Equal(1, SceneryPackageDisk.UnfinishedLayoutFiles(pkg, walk));
+    }
+
+    [Fact]
+    public void Entries_outside_the_package_or_deeper_than_any_walk_goes_are_not_held_against_it()
+    {
+        string pkg = Folder("odd-entries");
+        string deep = string.Join("/", Enumerable.Repeat("d", SceneryPackageDisk.MaxBglRecursionDepth + 1)) + "/deep.bgl";
+        File.WriteAllText(Path.Combine(pkg, "layout.json"),
+            "{\"content\":[{\"path\":\"../other/escape.bgl\",\"size\":1},{\"path\":\"C:/abs/rooted.bgl\",\"size\":1}," +
+            "{\"path\":\"" + deep + "\",\"size\":1},{\"path\":\"nosize.bgl\"}]}");
+        var walk = new SceneryPackageDisk.BglWalk();
+        walk.Files["nosize.bgl"] = 12_345L;                                                      // no listed size: held to being present
+
+        Assert.Equal(0, SceneryPackageDisk.UnfinishedLayoutFiles(pkg, walk));
     }
 }

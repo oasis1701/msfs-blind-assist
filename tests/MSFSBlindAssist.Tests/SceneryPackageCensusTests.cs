@@ -1,6 +1,7 @@
 // A fake Community folder: each package is a layout.json, a manifest.json naming its content type
 // and one objects BGL placing N models at a coordinate. Same synthetic BGL builder as
 // BglPlacementReaderTests — never a payware file.
+using System.Globalization;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.SceneryIndex;
 
@@ -12,6 +13,7 @@ public class SceneryPackageCensusTests : IDisposable
     public void Dispose() { try { Directory.Delete(_root, true); } catch { } }
     private string Community => Path.Combine(_root, "Community");
     private static readonly AirportFacilities Katl = new() { Icao = "KATL", LeftLon = -84.45, RightLon = -84.40, TopLat = 33.66, BottomLat = 33.62 };
+    private static readonly string Schema = SceneryPackageCensus.CurrentSchemaVersion.ToString(CultureInfo.InvariantCulture);
 
     private string Package(string name, int count, double lat, double lon, string contentType = "SCENERY")
     {
@@ -116,7 +118,7 @@ public class SceneryPackageCensusTests : IDisposable
         string cache = Path.Combine(_root, "cache");
         Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
         string file = Path.Combine(cache, "census.json");
-        Assert.Contains("\"SchemaVersion\":1", File.ReadAllText(file));
+        Assert.Contains("\"SchemaVersion\":" + Schema, File.ReadAllText(file));
 
         // Another schema's fields mean nothing here. This document would otherwise be believed:
         // it carries the package's REAL stamp and a plausible Cells array.
@@ -125,13 +127,68 @@ public class SceneryPackageCensusTests : IDisposable
                                 $"\"LayoutLength\":{layout.Length},\"LayoutTicks\":{layout.LastWriteTimeUtc.Ticks}," +
                                 "\"Cells\":[[9999,9999,5000]]}]}");
         Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));    // rebuilt from the BGLs, not from cell 9999
-        Assert.Contains("\"SchemaVersion\":1", File.ReadAllText(file));
+        Assert.Contains("\"SchemaVersion\":" + Schema, File.ReadAllText(file));
 
         // A document carrying no Cells key says nothing about where the package's objects stand,
-        // which is not the same as saying it has none — rebuilt rather than believed.
-        File.WriteAllText(file, "{\"SchemaVersion\":1,\"Packages\":[{\"Path\":\"" + pkg.Replace("\\", "\\\\") + "\"," +
+        // which is not the same as saying it has none — rebuilt rather than believed. Written at the
+        // CURRENT schema, or the schema check would reject it first and this would prove nothing.
+        File.WriteAllText(file, "{\"SchemaVersion\":" + Schema + ",\"Packages\":[{\"Path\":\"" + pkg.Replace("\\", "\\\\") + "\"," +
                                 $"\"LayoutLength\":{layout.Length},\"LayoutTicks\":{layout.LastWriteTimeUtc.Ticks}}}]}}");
         Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
+    }
+
+    [Fact]
+    public void A_row_an_earlier_schema_wrote_is_read_again()
+    {
+        // Schema 1 persisted scans taken while an installer was still writing the package (review
+        // SI-1): a row of it may hold a short count frozen under the package's FINAL stamp. This one
+        // says the package models nothing, and must not be believed.
+        string pkg = Package("kxyz", 30, 33.6400, -84.4300);
+        string cache = Path.Combine(_root, "cacheOld");
+        Directory.CreateDirectory(cache);
+        var layout = new FileInfo(Path.Combine(pkg, "layout.json"));
+        File.WriteAllText(Path.Combine(cache, "census.json"), "{\"SchemaVersion\":1,\"Packages\":[{\"Path\":\"" + pkg.Replace("\\", "\\\\") + "\"," +
+                          $"\"LayoutLength\":{layout.Length},\"LayoutTicks\":{layout.LastWriteTimeUtc.Ticks},\"Cells\":[]}}]}}");
+
+        Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
+    }
+
+    [Fact]
+    public void A_package_its_installer_has_not_finished_is_used_but_never_cached()
+    {
+        // An installer writes layout.json FIRST, with its final stamp, and the BGLs after it
+        // (measured on 33 of 35 real packages). Every file that IS there reads fine, so the scan
+        // looked complete and its short count was frozen under that final stamp for good.
+        Package("good", 30, 33.6400, -84.4300);
+        string installing = Package("installing", 30, 33.6410, -84.4300);
+        long objects = new FileInfo(Path.Combine(installing, "scenery", "objects.bgl")).Length;
+        byte[] terminal = BglPlacementReaderTests.BuildBgl((33.6420, -84.4300, 0.0, Guid.NewGuid()));
+        SceneryPackageDiskTests.WriteLayout(installing, ("scenery/objects.bgl", objects), ("scenery/terminal.bgl", terminal.Length));
+        string cache = Path.Combine(_root, "cacheInstalling");
+
+        Assert.Equal(2, new SceneryPackageCensus(cache).Locate(Community, Katl, out bool incomplete).Count);   // what IS there still counts
+        Assert.True(incomplete);
+        Assert.DoesNotContain("installing", File.ReadAllText(Path.Combine(cache, "census.json")));
+
+        File.WriteAllBytes(Path.Combine(installing, "scenery", "terminal.bgl"), terminal);                   // the installer finishes
+        new SceneryPackageCensus(cache).Locate(Community, Katl, out bool after);
+        Assert.False(after);
+        Assert.Contains("installing", File.ReadAllText(Path.Combine(cache, "census.json")));
+    }
+
+    [Fact]
+    public void An_option_its_configurator_switched_off_does_not_keep_the_package_out_of_the_cache()
+    {
+        // Aerosoft EDDF's shape, measured: "eddf_placements_staticac.bgl" listed, "…staticac.off" on disk.
+        string pkg = Package("options", 30, 33.6400, -84.4300);
+        long objects = new FileInfo(Path.Combine(pkg, "scenery", "objects.bgl")).Length;
+        File.WriteAllBytes(Path.Combine(pkg, "scenery", "staticac.off"), new byte[604]);
+        SceneryPackageDiskTests.WriteLayout(pkg, ("scenery/objects.bgl", objects), ("scenery/staticac.bgl", 604));
+        string cache = Path.Combine(_root, "cacheOptions");
+
+        Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl, out bool incomplete));
+        Assert.False(incomplete);
+        Assert.Contains("options", File.ReadAllText(Path.Combine(cache, "census.json")));
     }
 
     [Fact]

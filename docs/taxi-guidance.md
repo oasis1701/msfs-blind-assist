@@ -2436,7 +2436,9 @@ hangar, a city pack's edge, or one static aircraft on the ramp. **Community
 only**; Official/OneStore is never scanned. Measured on a real Community folder:
 40 scenery packages of 88 (the other 48 carry no `layout.json`, or a
 `manifest.json` naming another `content_type`, and no BGL of theirs is opened at
-all), 2,443 BGLs, 21.3 MB read, 2.58 s cold and 16 ms warm, and it
+all), 2,443 BGLs, 21.3 MB read, 2.58 s cold and 16 ms warm (measured before
+a scan also parsed each package's own `layout.json` content list, review SI-1,
+which a cold pass now adds and which has not been re-measured), and it
 found the right package at KATL, EGLL, KJFK, LMML, EDDF, KSEA, EHAM
 (`flytampa-amsterdam` — no ICAO in its folder name), OMDB, OMDU, EGSS and KMEM,
 and correctly NONE at KTIW and KSNA. The census also runs on an MSFS 2020
@@ -2456,14 +2458,46 @@ placement in the unread file resolves to "without a model name", so the package
 yields no features at all and reads exactly like an airport with no buildings.
 Both serve what they DID read for that call, and the indexer's status line now
 carries `, 1 file unreadable` / `, 3 files unreadable` (pluralised, because a
-screen reader speaks it) — the only sign a pilot gets. Two causes count:
-a file that could not be OPENED, and a read a TRANSIENT I/O error cut halfway,
+screen reader speaks it) — the only sign a pilot gets. Three causes count.
+A file that could not be OPENED, and a read a TRANSIENT I/O error cut halfway,
 which `BglPlacementReader.Read(stream, out bool complete)` reports (it never
 throws, so nothing else could see it). It reports `IOException` and
 `ObjectDisposedException` ONLY: a malformed file, an out-of-bounds entry and a
 spent cumulative byte budget are DETERMINISTIC, so they stay cacheable — calling
-them incomplete would re-scan that package for the life of the install. The
-indexer additionally MEMOISES an incomplete scan for
+them incomplete would re-scan that package for the life of the install. And a
+package that does not match its OWN `layout.json`
+(`SceneryPackageDisk.UnfinishedLayoutFiles`, review SI-1): an installer writes
+`layout.json` FIRST, with its final stamp, and the BGLs after it (33 of 35 real
+packages measured), so every file that IS there reads fine and the scan looked
+whole while its short answer was frozen under that final stamp. A BGL the
+content list names that the walk did not find, or read at another length than
+listed, makes the scan short, and the indexer's status then carries
+`, 1 file missing or incomplete` / `, 3 files missing or incomplete`. The list
+is opened through the same shared-read `SceneryPackageDisk.OpenShared` as every
+BGL, because an installer may hold it. A listed BGL absent BESIDE a copy of
+itself carrying one of the three MEASURED suffixes
+(`SceneryPackageDisk.SwitchedOffSuffixes`: `X.bgl.disabled`, `X.bgl.off`,
+`X.off`, compared ignoring case) is an option the vendor's configurator switched
+OFF, not a missing file: measured on a real Community folder (2026-09-22), 24
+listed BGLs in 6 of 46 healthy packages — Aerosoft EDDF and ENGM, iniBuilds
+EGKK, EGLL and PHNL, Orbx KATL — are exactly that, a bare "listed but absent
+means short" rule would have kept all six out of the cache for good, and none of
+the 2,451 present BGLs has a sibling of any `<stem>.*` shape. Nothing broader
+counts: an installer's staged `X.bgl.part` or `X.bgl.tmp`, a backup or a
+same-stem `X.xml` beside an absent listed BGL leaves it unfinished, or a
+half-installed package would be cached as complete. Paths compare IGNORING CASE
+(the list says `scenery/global/scenery/modellib.bgl`, the disk
+`modelLib.BGL`); the listed `date` is NEVER compared (it equals the installed
+file's mtime for 0 of 2,451); a row outside the package, or deeper than the
+walk's depth bound, is not held against it; and a `layout.json` that is absent,
+unparseable or has no content list holds a scan to nothing. The census cache
+went to schema 2 with this, so a row an earlier build froze mid-install is read
+once more. Two recorded residuals: only Community packages were measured — an
+MSFS 2020 Official package that `scenery_local_path` hands the indexer is not,
+and one whose list names a BGL it does not ship as a plain file would read short
+for good; and a file an installer PRE-ALLOCATES at its final size and fills in
+afterwards passes the size check (unmeasured).
+The indexer additionally MEMOISES an incomplete scan for
 `SceneryPackageIndexer.IncompleteMemoLifetime` (5 minutes), so a 600 MB model
 library is not re-read on every call, and gives the memo up afterwards so the
 condition cannot outlive itself.
@@ -2514,7 +2548,7 @@ this way, and changing it is a behaviour change that belongs in its own commit.
 | Setting | Default | Panel |
 |---|---|---|
 | `SurroundingsCalloutsEnabled` | off | Taxi Guidance |
-| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus `", 1 file unreadable"` / `", 3 files unreadable"` when the scan was short (that scan is not cached) and `" (located by Community scan)"` when the census found the package |
+| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus `", 1 file unreadable"` / `", 3 files unreadable"` when a file could not be read and `", 1 file missing or incomplete"` / `", 3 files missing or incomplete"` when the package does not match its own `layout.json` (neither scan is cached), and `" (located by Community scan)"` when the census found the package |
 | OSM feature tags | rides the existing `TaxiAugmentEnabled` opt-in | — |
 
 The scenery index is disk-cached under
