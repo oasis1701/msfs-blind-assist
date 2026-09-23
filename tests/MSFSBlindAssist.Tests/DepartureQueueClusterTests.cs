@@ -1,4 +1,4 @@
-// Tests for GroundTrafficLogic.QueueAheadCount — "number N in the departure queue".
+// Tests for GroundTrafficLogic.QueueAheadOf — "number N in the departure queue".
 //
 // The scan window (1,500 m of route ahead) says how far to LOOK. It does not say where one
 // queue ends and the next begins, and at a busy field that much route in front of a stopped
@@ -20,15 +20,15 @@ public class DepartureQueueClusterTests
     [Fact]
     public void AnEmptyRouteAheadLeavesThePilotFirst()
     {
-        Assert.Equal(0, GroundTrafficLogic.QueueAheadCount(new double[0]));
+        Assert.Equal(0, GroundTrafficLogic.QueueAheadOf(new double[0]).Count);
     }
 
     [Fact]
     public void AContiguousLineIsCountedWhole()
     {
         // Five aircraft at ordinary holding spacing.
-        Assert.Equal(5, GroundTrafficLogic.QueueAheadCount(
-            new double[] { 80, 160, 240, 330, 410 }));
+        Assert.Equal(5, GroundTrafficLogic.QueueAheadOf(
+            new double[] { 80, 160, 240, 330, 410 }).Count);
     }
 
     [Fact]
@@ -39,7 +39,7 @@ public class DepartureQueueClusterTests
         // queue, not eighth overall.
         var aheadM = new double[] { 70, 150, 230, 830, 900, 975, 1050 };
 
-        Assert.Equal(3, GroundTrafficLogic.QueueAheadCount(aheadM));
+        Assert.Equal(3, GroundTrafficLogic.QueueAheadOf(aheadM).Count);
     }
 
     [Fact]
@@ -49,7 +49,7 @@ public class DepartureQueueClusterTests
         // that line, not the shorter one at the runway hold beyond the gap.
         var aheadM = new double[] { 60, 140, 215, 300, 380, 1100, 1180 };
 
-        Assert.Equal(5, GroundTrafficLogic.QueueAheadCount(aheadM));
+        Assert.Equal(5, GroundTrafficLogic.QueueAheadOf(aheadM).Count);
     }
 
     [Fact]
@@ -59,17 +59,17 @@ public class DepartureQueueClusterTests
         // though a queue is visible further on.
         var aheadM = new double[] { 400, 470, 545 };
 
-        Assert.Equal(0, GroundTrafficLogic.QueueAheadCount(aheadM));
+        Assert.Equal(0, GroundTrafficLogic.QueueAheadOf(aheadM).Count);
     }
 
     [Fact]
     public void TheTailOfAQueueIsJoinedAsSoonAsItIsWithinTheGap()
     {
         var justInside = new double[] { GroundTrafficLogic.QueueLinkMaxGapM - 1, 320, 400 };
-        Assert.Equal(3, GroundTrafficLogic.QueueAheadCount(justInside));
+        Assert.Equal(3, GroundTrafficLogic.QueueAheadOf(justInside).Count);
 
         var justOutside = new double[] { GroundTrafficLogic.QueueLinkMaxGapM + 1, 320, 400 };
-        Assert.Equal(0, GroundTrafficLogic.QueueAheadCount(justOutside));
+        Assert.Equal(0, GroundTrafficLogic.QueueAheadOf(justOutside).Count);
     }
 
     [Fact]
@@ -77,14 +77,14 @@ public class DepartureQueueClusterTests
     {
         var shuffled = new double[] { 230, 70, 900, 150, 830 };
 
-        Assert.Equal(3, GroundTrafficLogic.QueueAheadCount(shuffled));
+        Assert.Equal(3, GroundTrafficLogic.QueueAheadOf(shuffled).Count);
     }
 
     [Fact]
     public void NegativeDistancesAreIgnored()
     {
         // Defensive: a projection behind the pilot is not part of the queue ahead.
-        Assert.Equal(2, GroundTrafficLogic.QueueAheadCount(new double[] { -50, 80, 160 }));
+        Assert.Equal(2, GroundTrafficLogic.QueueAheadOf(new double[] { -50, 80, 160 }).Count);
     }
 
     // ── "More traffic holding further ahead." ────────────────────────────
@@ -128,19 +128,10 @@ public class DepartureQueueClusterTests
     }
 
     [Fact]
-    public void CountAgreesWithTheClusterEverywhere()
+    public void TheClusterReportsItsHead()
     {
-        foreach (var set in new[]
-                 {
-                     new double[] { },
-                     new double[] { 70, 150, 230 },
-                     new double[] { 70, 150, 230, 830, 900 },
-                     new double[] { 400, 470 },
-                     new double[] { -50, 80, 160 },
-                 })
-        {
-            Assert.Equal(GroundTrafficLogic.QueueAheadCount(set),
-                         GroundTrafficLogic.QueueAheadOf(set).Count);
-        }
+        var c = GroundTrafficLogic.QueueAheadOf(new double[] { 70, 150, 230, 830, 900 });
+        Assert.Equal(230.0, c.HeadAheadM);
+        Assert.Equal(0.0, GroundTrafficLogic.QueueAheadOf(new double[0]).HeadAheadM);
     }
 }
