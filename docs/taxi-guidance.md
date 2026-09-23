@@ -1903,13 +1903,21 @@ against `+osm=363 disagree=40` at OMDB eight days earlier — same airport, same
 database.
 
 Two defences, deliberately at different levels: the list no longer carries that
-instance, and **`PostAsync` no longer BELIEVES an empty answer until no other
-mirror contradicts it** (held as tentative, returned only when every mirror
-agrees), which covers regional instances nobody has identified yet. An empty
-answer is still returned when they all agree — a strip with no mapped hangar,
-apron or tower is a real answer, and failing it would have the store retry it
-every five minutes for the session — and a mirror answering empty is **never
-blacklisted** for it: that is no evidence the mirror is ill.
+instance, and **`PostAsync` no longer BELIEVES an empty answer until ONE more
+FRESH mirror has been asked** — if that one has elements, it had the region and
+the first did not — which covers regional instances nobody has identified yet.
+**One, never a sweep:** asking every remaining mirror, cooled-down ones
+included, made a genuinely empty small field cost up to six round-trips, which
+held the taxiway fetch's `Task.WhenAll` (and the apt.dat names that had already
+landed) past the taxi dialog's bounded name wait. So a cooled-down mirror is
+never asked just to confirm an empty, a confirmation that fails is not retried,
+and with no fresh mirror left the held answer is returned at once. The list
+holds planet-wide instances only (pinned by `OverpassRegionalMirrorTests`), so
+the confirmation is the backstop, not the defence. The empty answer is then
+believed: a strip with no mapped hangar, apron or tower is a real answer, and
+failing it would have the store retry it every five minutes for the session.
+A mirror answering empty is **never blacklisted** for it: that is no evidence
+the mirror is ill.
 
 **Neither defence touches a query string**, and none ever should: the one change
 to a shipped Overpass query in this feature's history (`out tags geom center`)

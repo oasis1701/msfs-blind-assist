@@ -70,7 +70,9 @@ public sealed class OverpassClient
     /// <para>The cooldown may only ever REORDER the attempts, never reduce them: <see cref="PostAsync"/>
     /// makes a second pass over the cooled-down mirrors when every fresh one failed, so a wrongly
     /// blacklisted mirror (or a machine-wide outage that trips all of them) can never turn a fetch
-    /// that works today into a null.</para>
+    /// that works today into a null. The one thing a cooled-down mirror is never asked for is to
+    /// CONFIRM an empty answer a fresh one already gave (review OV-1): that answer is returned, never
+    /// a null.</para>
     ///
     /// <para>This static map is the DEFAULT: every client built with the public constructor records
     /// into it, so the taxiway-name source and the buildings source learn from each other's mirror
@@ -102,9 +104,12 @@ public sealed class OverpassClient
     /// </summary>
     private static readonly TimeSpan PerMirrorTimeout = TimeSpan.FromSeconds(12);
 
-    /// <summary>Posts <paramref name="query"/> to the first mirror that answers with a genuine
-    /// result, trying fresh mirrors before cooled-down ones. Returns null when every mirror
-    /// failed or the caller cancelled — never throws.</summary>
+    /// <summary>
+    /// Posts <paramref name="query"/> to the first mirror that answers with a genuine result, trying
+    /// fresh mirrors before cooled-down ones. An EMPTY answer is held and believed only after ONE more
+    /// fresh mirror has been asked (see the loop). Returns null when every mirror failed or the caller
+    /// cancelled — never throws.
+    /// </summary>
     public async Task<string?> PostAsync(string query, CancellationToken ct)
     {
         // ONE snapshot of the cooldown map, partitioned in a single pass. Two separate
@@ -120,13 +125,35 @@ public sealed class OverpassClient
         var cooling = new List<string>(Mirrors.Length);
         foreach (var m in Mirrors)
             (IsCoolingDown(m, now) ? cooling : fresh).Add(m);
+        var order = new List<string>(fresh.Count + cooling.Count);
+        order.AddRange(fresh);
+        order.AddRange(cooling);
 
-        // An EMPTY answer is held, not returned: see TentativelyEmpty below.
-        string? tentativelyEmpty = null;
+        // A well-formed EMPTY answer is HELD, not returned. An empty element list is a legitimate
+        // answer for some queries AND a regional mirror's answer about everywhere outside its
+        // extract, and nothing in the body tells the two apart — so ONE more FRESH mirror is asked
+        // before it is believed: if that one has elements, it had the region and the first did
+        // not. One, never a sweep (review OV-1): asking every remaining mirror, cooled-down ones
+        // included, made a genuinely empty small field cost up to six round-trips, which held the
+        // taxiway fetch's Task.WhenAll — and the apt.dat names already fetched — past the taxi
+        // dialog's bounded name wait. So a cooled-down mirror is never asked just to confirm, a
+        // confirmation that fails is not retried, and with no fresh mirror left the held answer is
+        // returned at once. The list holds planet-wide instances only (pinned by a test), so this
+        // is the backstop for a regional instance nobody has identified, not the main defence.
+        string? heldEmpty = null;
+        bool confirmationAsked = false;
 
-        foreach (var url in fresh.Concat(cooling))
+        for (int i = 0; i < order.Count; i++)
         {
             if (ct.IsCancellationRequested) return null;
+            if (heldEmpty != null)
+            {
+                // Fresh mirrors come first in `order`, so an index past them means none is left.
+                if (confirmationAsked || i >= fresh.Count) break;
+                confirmationAsked = true;
+            }
+
+            string url = order[i];
             using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
             attemptCts.CancelAfter(PerMirrorTimeout);
             try
@@ -136,20 +163,16 @@ public sealed class OverpassClient
                     attemptCts.Token).ConfigureAwait(false);
                 if (!resp.IsSuccessStatusCode) { MarkFailed(url); continue; }
                 string body = await resp.Content.ReadAsStringAsync(attemptCts.Token).ConfigureAwait(false);
-                // ONE parse decides what this body is — see ClassifyBody, including why HTTP 200 is
-                // not success (review CL-6: it was parsed twice here, by two tests that could
-                // disagree about a "runtime error" body with an empty element list).
+                // ONE parse decides what this body is — see ClassifyBody, including why HTTP 200
+                // is not success.
                 var kind = ClassifyBody(body);
                 if (kind == BodyKind.Failed) { MarkFailed(url); continue; }
                 _cooldownUntilUtc.TryRemove(url, out _);
 
-                // An empty element list is a legitimate answer for some queries and a REGIONAL
-                // MIRROR'S answer about everywhere outside its extract, and nothing in the body
-                // tells the two apart. Hold it and keep asking: if any other mirror has elements,
-                // that mirror had the region and this one did not. Never MarkFailed on it — an
-                // empty answer is no evidence the mirror is ill, and cooling a healthy planet-wide
-                // mirror for five minutes over one genuinely empty query is the worse error.
-                if (kind == BodyKind.Empty) { tentativelyEmpty ??= body; continue; }
+                // Never MarkFailed on an empty answer: it is no evidence the mirror is ill, and
+                // cooling a healthy planet-wide mirror for five minutes over one genuinely empty
+                // query is the worse error.
+                if (kind == BodyKind.Empty) { heldEmpty ??= body; continue; }
                 return body;
             }
             catch (OperationCanceledException) when (ct.IsCancellationRequested)
@@ -159,10 +182,11 @@ public sealed class OverpassClient
             catch { MarkFailed(url); }
         }
 
-        // Nobody contradicted it, so the airport really does have nothing for this query. Returning
-        // null here instead would make every genuinely empty airport a failure the store retries
-        // every five minutes for the whole session.
-        return tentativelyEmpty;
+        // Nobody asked contradicted it — the mirror that answered empty, and at most one fresh one
+        // after it — so the airport really does have nothing for this query. Returning null here
+        // instead would make every genuinely empty airport a failure the store retries every five
+        // minutes for the whole session.
+        return heldEmpty;
     }
 
     /// <summary>What one Overpass body IS — decided by <see cref="ClassifyBody"/>.</summary>
