@@ -446,4 +446,21 @@ public class AirportFeatureCatalogTests
         Assert.Equal(3, cat.Features.Single(f => f.Name == "UPS Cargo").Members!.Count);   // …the nearer one does
         Assert.Null(cat.Features.Single(f => f.Name == "FedEx Cargo").Members);
     }
+
+    [Fact]
+    public void Clusters_of_one_concourse_merge_into_ONE_feature_that_keeps_EVERY_gate()
+    {
+        // LFPG: "Concourse K" arrives as separate letter clusters that the 300 m same-name radius
+        // re-merges. The winner kept only its OWN stands, so a pilot at the far gates heard the
+        // concourse measured from the first cluster's — LFPG's four clusters and GCXO's "T" lost
+        // 11 gates between them. On the equator here so the metres are exact.
+        const double M = 111_320.0;
+        (double, double)[] Row(params double[] east) => east.Select(e => (0.0, e / M)).ToArray();
+        var a = N(FeatureKind.Concourse, "Concourse K", 0.0, 20 / M, false, FeatureSource.Navdata, Row(0, 20, 40));
+        var b = N(FeatureKind.Concourse, "Concourse K", 0.0, 160 / M, false, FeatureSource.Navdata, Row(140, 160, 180));
+        var c = N(FeatureKind.Concourse, "Concourse K", 0.0, 290 / M, false, FeatureSource.Navdata, Row(280, 290, 300));
+        var one = Assert.Single(AirportFeatureCatalog.Build("LFPG", "v", new[] { a, b, c }).Features);
+        Assert.Equal(9, one.Members!.Count);
+        Assert.InRange(SurroundingsGeometry.Nearest(0.0, 300 / M, one).Metres, 0.0, 1.0);   // the far gate is AT the concourse
+    }
 }

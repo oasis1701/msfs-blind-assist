@@ -255,9 +255,11 @@ public sealed class AirportFeatureCatalog
             // 74 m to their right. The loser's STANDS need no test here: SameFeature would not have
             // matched these two at all unless MembersDescribe already agreed they belong together
             // (GeometryMayBeOneBody) — a cluster that does not describe the winner is a separate
-            // place and is still standing in `kept`.
+            // place and is still standing in `kept`. So they JOIN the winner's own (UnionMembers):
+            // keeping the winner's alone dropped them — LFPG's four "Concourse K" clusters and GCXO's
+            // "T" lost 11 gates between them that way.
             var footprint = winner.Footprint ?? (winner.Members == null ? f.Footprint : null);
-            var members = winner.Members ?? f.Members;
+            var members = UnionMembers(winner.Members, f.Members);
             string? detail = winner.Detail ?? f.Detail;
             if (footprint != winner.Footprint || members != winner.Members || detail != winner.Detail)
             {
@@ -281,6 +283,23 @@ public sealed class AirportFeatureCatalog
 
         var sorted = kept.OrderBy(f => (int)f.Kind).ThenBy(f => f.SpokenName, StringComparer.OrdinalIgnoreCase).ToList();
         return new AirportFeatureCatalog(version, sorted, facts);
+    }
+
+    /// <summary>Both sides' stands, the winner's first. A loser stand at the IDENTICAL coordinate
+    /// of one already there is not added twice — exact duplicates only: the same stand reported at
+    /// two slightly different positions stays two points, which changes no distance a pilot hears,
+    /// because SurroundingsGeometry.Nearest measures to the NEAREST member. The winner's own list
+    /// comes back UNCHANGED (the same instance) when the loser adds nothing, so Build does not
+    /// rebuild a feature for a no-op.</summary>
+    private static IReadOnlyList<LatLon>? UnionMembers(IReadOnlyList<LatLon>? mine, IReadOnlyList<LatLon>? theirs)
+    {
+        if (theirs is not { Count: > 0 }) return mine;
+        if (mine is not { Count: > 0 }) return theirs;
+        var seen = new HashSet<LatLon>(mine);
+        List<LatLon>? union = null;
+        foreach (var m in theirs)
+            if (seen.Add(m)) (union ??= new List<LatLon>(mine)).Add(m);
+        return union ?? mine;
     }
 
     /// <summary>True when at least half of "mine" sits within 15 m of some member of "theirs" —

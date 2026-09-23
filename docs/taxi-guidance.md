@@ -1043,13 +1043,13 @@ as long as the airport was current.
 ### Merge — `AirportFeatureCatalog.SameFeature`
 
 **Identity needs the NAME and the DISTANCE together.** Features are walked
-highest-`Rank` first, so the first one standing in a cluster is the winner, and
-the loser's footprint, detail or member list is folded into it when the winner
-lacks one *and the geometry describes the winner* (see below). A loser that
-more than one winner would accept joins the NEAREST of them
-(`NearestSameFeature`), never merely the first in rank order: two cargo sheds
-80 m apart can both accept the ramp between them, and rank order handed its
-stands to the shed on the far side.
+highest-`Rank` first, so the first one standing in a cluster is the winner; the
+loser's footprint or detail is folded into it when the winner lacks one, and
+its stands JOIN the winner's own — all only *where the geometry describes the
+winner* (see below). A loser that more than one winner would accept joins the
+NEAREST of them (`NearestSameFeature`), never merely the first in rank order:
+two cargo sheds 80 m apart can both accept the ramp between them, and rank
+order handed its stands to the shed on the far side.
 
 | Case | Rule |
 |---|---|
@@ -1111,8 +1111,12 @@ then measures to. Four rules, all of them paid for at KTIW:
   end — 600 m away — was left with no cargo area near them. The good case is
   untouched: a cluster whose every member really is within reach still merges
   into ONE feature carrying the proper name and taking the stands as its
-  geometry, and the back-fill adopts those stands with no further test, because
-  a pair that did not pass this rule never merged at all.
+  geometry, and the back-fill adds those stands to the winner's own — the
+  UNION, a stand at an identical coordinate kept once — with no further test,
+  because a pair that did not pass this rule never merged at all. Keeping the
+  winner's stands alone dropped the loser's: LFPG's four "Concourse K" letter
+  clusters, re-merged at the 300 m same-name radius, and GCXO's "T" lost 11
+  gates between them.
 
 The FIRST rule lives in `Build`'s back-fill, which is where a winner decides
 what it may KEEP. The other THREE live in `SameFeature`, through
