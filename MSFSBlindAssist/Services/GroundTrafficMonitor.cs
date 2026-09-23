@@ -828,11 +828,12 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (!GroundTrafficLogic.ShouldAnnounceEscalation(newZone, ac.CurrentZone, ac.LastSpokenZone,
                     ac.LastAlertTime, now, v.DistFt, ac.LastSpokenZoneDistFt))
             {
-                // A de-escalation (or no change) and a withheld Awareness ping are recorded silently. A
-                // withheld ESCALATION into Caution/Warning is not: it is judged again next evaluation, so it
-                // speaks once the aircraft has closed by EscalationReclosureFt or the window has passed,
-                // instead of being swallowed for good (PR #247 B1 review I3).
-                if (newZone <= ac.CurrentZone || newZone == GroundZone.Awareness) ac.CurrentZone = newZone;
+                // A withheld WARNING escalation is not recorded: it is judged again next evaluation, so
+                // "Stop" speaks once the aircraft has closed by EscalationReclosureFt or the window has
+                // passed, instead of being swallowed for good (PR #247 B1 review I3). Everything else
+                // withheld — a de-escalation, a Caution re-entry, an Awareness ping — is recorded
+                // silently (R8; PR #247 B2 review).
+                ac.CurrentZone = GroundTrafficLogic.ZoneToRecordWhenWithheld(newZone, ac.CurrentZone);
                 continue;
             }
 

@@ -11,9 +11,9 @@ internal static partial class GroundTrafficLogic
     /// <summary>A pilot moving at least this fast can act on traffic from any direction.</summary>
     public const double ConvergingOwnMovingKts = 3.0;
     /// <summary>
-    /// Inside the repeat window, a Caution or Warning re-entry at (or below) the zone last spoken is
-    /// spoken again once the aircraft is this much closer than when that zone was spoken — the pilot
-    /// resumed closing on it. Boundary flicker at an unchanged distance is not.
+    /// Inside the repeat window, a WARNING re-entry is spoken again once the aircraft is this much closer
+    /// than when "Stop" was last spoken — the pilot resumed closing on it. Caution keeps R8: complying
+    /// with "Slow down" never earns another one inside the window.
     /// </summary>
     public const double EscalationReclosureFt = 50.0;
 
@@ -35,11 +35,12 @@ internal static partial class GroundTrafficLogic
     /// last callout for this aircraft. Caution/Warning need a zone ABOVE the last one spoken for it, or
     /// the window — so complying with "Slow down" (which moves the speed-scaled boundary and silently
     /// drops the zone) does not earn another "Slow down" seconds later, while Caution → Warning is
-    /// never suppressed (R8) — or, inside the window, the aircraft
-    /// <see cref="EscalationReclosureFt"/> closer (<paramref name="distFt"/>) than when the last zone
-    /// callout was spoken (<paramref name="lastSpokenDistFt"/>): the pilot resumed closing on it, and a
-    /// "Stop" must not be swallowed (PR #247 B1 review I3). Without both distances (NaN) that last rule
-    /// does not apply. It never applies to Awareness.
+    /// never suppressed (R8). A WARNING re-entry inside the window is also spoken once the aircraft is
+    /// <see cref="EscalationReclosureFt"/> closer (<paramref name="distFt"/>) than when "Stop" was last
+    /// spoken (<paramref name="lastSpokenDistFt"/>): the pilot resumed closing on it, and a "Stop" must
+    /// not be swallowed (PR #247 B1 review I3). Without both distances (NaN) that rule does not apply;
+    /// it never applies to Caution (PR #247 B2 review: it reversed R8 for a pilot who COMPLIED with
+    /// "Slow down") or to Awareness.
     /// </summary>
     public static bool ShouldAnnounceEscalation(GroundZone newZone, GroundZone currentZone,
         GroundZone lastSpokenZone, DateTime lastSpokenUtc, DateTime nowUtc,
@@ -49,9 +50,18 @@ internal static partial class GroundTrafficLogic
         bool windowElapsed = (nowUtc - lastSpokenUtc).TotalMilliseconds >= EscalationRepeatWindowMs;
         if (newZone == GroundZone.Awareness) return windowElapsed;
         if (newZone > lastSpokenZone || windowElapsed) return true;
-        return double.IsFinite(distFt) && double.IsFinite(lastSpokenDistFt)
+        return newZone == GroundZone.Warning
+               && double.IsFinite(distFt) && double.IsFinite(lastSpokenDistFt)
                && distFt <= lastSpokenDistFt - EscalationReclosureFt;
     }
+
+    /// <summary>
+    /// The zone to record when an escalation was NOT announced. A withheld WARNING escalation is not
+    /// recorded — it is judged again next evaluation, so "Stop" is not swallowed for good (I3). Everything
+    /// else withheld — a de-escalation, a Caution re-entry, an Awareness ping — is recorded silently (R8).
+    /// </summary>
+    public static GroundZone ZoneToRecordWhenWithheld(GroundZone newZone, GroundZone currentZone)
+        => newZone > currentZone && newZone == GroundZone.Warning ? currentZone : newZone;
 
     /// <summary>
     /// A converging callout needs the traffic in the forward arc, or the pilot moving (R9): a stopped
