@@ -2124,7 +2124,8 @@ public partial class MainForm
         // thread. SayIntentionsInfoForm captures GetForegroundWindow() itself when given null,
         // which is right for the SayIntentions site because its window opens on the press's own
         // stack — this one opens SECONDS later (the OSM wait plus a possible first scenery scan),
-        // by which time the foreground may be something else entirely.
+        // by which time the foreground may be something else entirely — and what was captured may
+        // be gone, which is why the choice is made again, checked for life, when the window opens.
         IntPtr atPress = GetForegroundWindow();
         RunSurroundingsLookup(_surroundingsWindowRequests, needWhereAmI: false, l =>
         {
@@ -2142,12 +2143,19 @@ public partial class MainForm
                 // the same rule MainForm.SayIntentions.cs follows: on a re-press the old window
                 // may itself hold the foreground, so anything captured relative to it names a
                 // window about to be destroyed and Escape would hand focus to a dead one.
-                IntPtr focusReturn = atPress;
-                if (surroundingsForm is { IsDisposed: false })
-                {
-                    focusReturn = surroundingsForm.PreviousWindow;
-                    try { surroundingsForm.Close(); } catch { }
-                }
+                //
+                // Every candidate is also checked for LIFE, here at completion (ML-3): this runs
+                // SECONDS after the press, and the window that had the foreground then — a
+                // SayIntentions window, the taxi dialog, the one an old surroundings window
+                // inherited — can have been closed or hidden meanwhile. A dead candidate gives way
+                // to whatever has the foreground NOW — never the window being replaced.
+                var old = surroundingsForm is { IsDisposed: false } open ? open : null;
+                IntPtr focusReturn = MSFSBlindAssist.Forms.SayIntentionsInfoForm.ChooseFocusReturn(
+                    preferred: old?.PreviousWindow ?? atPress,
+                    foregroundNow: GetForegroundWindow(),
+                    replacing: old is { IsHandleCreated: true } ? old.Handle : IntPtr.Zero,
+                    isLive: MSFSBlindAssist.Forms.SayIntentionsInfoForm.IsLiveWindow);
+                if (old != null) { try { old.Close(); } catch { } }
                 surroundingsForm = new MSFSBlindAssist.Forms.SayIntentionsInfoForm(
                     sections, focusReturn, $"Surroundings at {l.Icao}", "Close the surroundings window");
                 surroundingsForm.FormClosed += (_, _) => surroundingsForm = null;

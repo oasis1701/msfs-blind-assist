@@ -1373,6 +1373,18 @@ instead of
 putting an empty window in front of the pilot, the same rule the flight-info
 window follows. Not live-updating; reopen the chord for a fresh snapshot.
 
+Escape hands the foreground back to the window that had it at the PRESS —
+captured then, because this window opens seconds later — and a re-press's
+replacement inherits its predecessor's return handle. Both are checked for LIFE
+when the window opens (`SayIntentionsInfoForm.ChooseFocusReturn`,
+`IsLiveWindow`: the window must still exist AND be shown): a window closed during
+the lookup — a SayIntentions window dismissed while the catalog built — or one
+that merely hid, as the hide-on-close taxi dialog does, would otherwise send the
+foreground somewhere Windows picks, or into a window nobody can see. A dead
+candidate gives way to whatever has the foreground when the window opens,
+never the window being replaced, and the form checks again before
+`SetForegroundWindow` on close.
+
 Both chords run the whole lookup — which airport, the catalog build, the
 compose — inside `Task.Run` and marshal only the speech or the window back to
 the UI thread (`MainForm.RunSurroundingsLookup`, the ONE path they share), and

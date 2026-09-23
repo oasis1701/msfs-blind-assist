@@ -33,6 +33,35 @@ public class SayIntentionsInfoForm : Form
     [DllImport("user32.dll")]
     private static extern bool SetForegroundWindow(IntPtr hWnd);
 
+    [DllImport("user32.dll")]
+    private static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowVisible(IntPtr hWnd);
+
+    /// <summary>True when <paramref name="hWnd"/> still names a window that is SHOWN — the only kind
+    /// worth handing the foreground to. Zero never does. Visibility as well as existence, because
+    /// several of this app's dialogs (the taxi dialog among them) HIDE on close rather than being
+    /// destroyed: their handle stays a window, and activating it would put keyboard focus in a
+    /// window nobody can see.</summary>
+    internal static bool IsLiveWindow(IntPtr hWnd) => hWnd != IntPtr.Zero && IsWindow(hWnd) && IsWindowVisible(hWnd);
+
+    /// <summary>
+    /// Where Escape should hand the foreground back to, for a window opened SECONDS after its key
+    /// press (the surroundings window, review item ML-3): <paramref name="preferred"/> — the handle
+    /// captured at the press, or the one a replaced window inherited — while it is still live; else
+    /// whatever has the foreground NOW; else nothing (Zero: on close the choice is left to Windows
+    /// rather than asking it to activate a dead handle). Neither candidate may be
+    /// <paramref name="replacing"/>, the window about to be closed and so about to die. Pure:
+    /// <paramref name="isLive"/> is <see cref="IsLiveWindow"/> in production and a fake in the tests.
+    /// </summary>
+    internal static IntPtr ChooseFocusReturn(IntPtr preferred, IntPtr foregroundNow, IntPtr replacing, Func<IntPtr, bool> isLive)
+    {
+        if (preferred != IntPtr.Zero && preferred != replacing && isLive(preferred)) return preferred;
+        if (foregroundNow != IntPtr.Zero && foregroundNow != replacing && isLive(foregroundNow)) return foregroundNow;
+        return IntPtr.Zero;
+    }
+
     private const int Gutter = 12;
     private const int HeadingHeight = 20;
     private const int HeadingGap = 2;
@@ -209,7 +238,9 @@ public class SayIntentionsInfoForm : Form
     {
         base.OnFormClosed(e);
 
-        // Hand the foreground back to whatever had it — normally the simulator.
-        if (_previousWindow != IntPtr.Zero) SetForegroundWindow(_previousWindow);
+        // Hand the foreground back to whatever had it — normally the simulator — but only while that
+        // is still a shown window (ML-3): the handle was captured when this window was built, and
+        // what it named may have closed, or hidden, since.
+        if (IsLiveWindow(_previousWindow)) SetForegroundWindow(_previousWindow);
     }
 }
