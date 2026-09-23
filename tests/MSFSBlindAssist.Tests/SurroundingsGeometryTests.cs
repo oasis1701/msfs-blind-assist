@@ -124,4 +124,17 @@ public class SurroundingsGeometryTests
         Assert.Equal(3, clusters.Max(c => c.Count));
         Assert.Single(SurroundingsGeometry.SingleLinkage(pts, p => p, 2500.0));
     }
+
+    [Fact]
+    public void A_point_is_inside_beyond_the_edge_only_past_the_margin()
+    {
+        // Equator, where a degree of latitude and of longitude are the same 111,320 m.
+        const double M = 111_320.0;
+        var square = new[] { new LatLon(0, 0), new LatLon(0, 100 / M), new LatLon(100 / M, 100 / M), new LatLon(100 / M, 0) };
+        Assert.True(SurroundingsGeometry.ContainsBeyondEdge(square, 50 / M, 50 / M, 5.0));        // 50 m in
+        Assert.False(SurroundingsGeometry.ContainsBeyondEdge(square, 3 / M, 50 / M, 5.0));        // inside, 3 m from the south edge
+        Assert.False(SurroundingsGeometry.ContainsBeyondEdge(square, 0, 50 / M, 5.0));            // ON the edge: a ray cast may answer either way
+        Assert.False(SurroundingsGeometry.ContainsBeyondEdge(square, 100 / M, 100 / M, 5.0));     // a corner — a node two outlines share
+        Assert.False(SurroundingsGeometry.ContainsBeyondEdge(square, -10 / M, 50 / M, 5.0));      // outside
+    }
 }

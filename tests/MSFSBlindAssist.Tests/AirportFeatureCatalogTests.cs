@@ -202,6 +202,92 @@ public class AirportFeatureCatalogTests
         Assert.Equal(2, AirportFeatureCatalog.Build("X", "v", input).Features.Count);
     }
 
+    // ── Ring against ring: an OVERLAP, or the two halves of one named way (review PC-2) ────────
+
+    /// <summary>A rectangle given in metres east and north of (0, 0), on the equator.</summary>
+    private static IReadOnlyList<LatLon> Rect(double west, double south, double east, double north)
+    {
+        const double M = 111_320.0;
+        return new[] { new LatLon(south / M, west / M), new LatLon(south / M, east / M), new LatLon(north / M, east / M), new LatLon(north / M, west / M) };
+    }
+
+    /// <summary>An OSM apron outline, represented by its vertex centroid (inside a rectangle).</summary>
+    private static AirportFeature ApronRing(string name, IReadOnlyList<LatLon> ring)
+    {
+        var c = SurroundingsGeometry.Centroid(ring);
+        return F(FeatureKind.Apron, name, c.Lat, c.Lon, FeatureSource.Osm, fp: ring);
+    }
+
+    [Theory]
+    [InlineData(65.0, false)] [InlineData(65.0, true)]   // 25 m of grass between them
+    [InlineData(40.0, false)] [InlineData(40.0, true)]   // glued along an edge, as OSM draws neighbours
+    public void A_proper_name_does_not_let_an_apron_swallow_an_unnamed_neighbour(double unnamedWest, bool reversed)
+    {
+        // EHRD, EHLW and LSZG in real OSM: a named apron and an unnamed one close enough for Apron's
+        // 50 m merge radius. One proper name was enough to merge ANY two rings, and the winner keeps
+        // only its own outline — so the unnamed apron, and the zone of a pilot parked on it, was gone.
+        // Touching is not enough either: only two EQUAL proper names make touching outlines the
+        // halves of one way.
+        var named = ApronRing("Apron Oost", Rect(0, 0, 40, 40));
+        var unnamed = ApronRing("", Rect(unnamedWest, 0, unnamedWest + 40, 40));
+        Assert.False(AirportFeatureCatalog.SameFeature(named, unnamed));
+        var cat = AirportFeatureCatalog.Build("X", "v", reversed ? new[] { unnamed, named } : new[] { named, unnamed });
+        Assert.Equal(2, cat.Features.Count);
+        var zone = SurroundingsReport.Zone(cat, 20 / 111_320.0, (unnamedWest + 20) / 111_320.0);   // parked in the middle of the unnamed one
+        Assert.NotNull(zone);
+        Assert.False(zone!.HasName);
+    }
+
+    [Theory]
+    [InlineData(40.0, 0.0)]    // glued along an edge — two shared nodes, the usual split way
+    [InlineData(40.0, 40.0)]   // one shared corner node and nothing else
+    [InlineData(43.0, 0.0)]    // traced 3 m apart: an edge within the margin
+    public void Two_halves_of_one_named_apron_that_touch_are_one_apron(double eastWest, double eastSouth)
+    {
+        // A split OSM way: one name, two rings that touch. Both carry the SAME proper name, so they are
+        // one body, as they always were — two features would make one routable Terminal or Concourse
+        // two Place entries. (This passes before the change too: it pins what the new rule KEEPS.)
+        var west = ApronRing("West Apron", Rect(0, 0, 40, 40));
+        var east = ApronRing("West Apron", Rect(eastWest, eastSouth, eastWest + 40, eastSouth + 40));
+        Assert.True(AirportFeatureCatalog.SameFeature(west, east));
+        Assert.True(AirportFeatureCatalog.SameFeature(east, west));
+        Assert.Single(AirportFeatureCatalog.Build("X", "v", new[] { west, east }).Features);
+    }
+
+    [Fact]
+    public void Two_aprons_that_share_a_name_but_do_not_touch_are_two()
+    {
+        // The name is the same, the pavement is not: 20 m of grass between two outlines is two bodies,
+        // well inside Apron's 100 m same-name radius. Only outlines that TOUCH are halves of one way.
+        var west = ApronRing("North Apron", Rect(0, 0, 40, 40));
+        var east = ApronRing("North Apron", Rect(60, 0, 100, 40));
+        Assert.False(AirportFeatureCatalog.SameFeature(west, east));
+        Assert.Equal(2, AirportFeatureCatalog.Build("X", "v", new[] { west, east }).Features.Count);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Two_outlines_that_really_overlap_are_one_body(bool reversed)
+    {
+        // Neither representative point lies inside the other ring, but a corner of each lies 10 m deep
+        // inside the other: the two outlines OVERLAP.
+        var a = ApronRing("", Rect(0, 0, 40, 40));
+        var b = ApronRing("", Rect(30, 10, 70, 50));
+        Assert.Single(AirportFeatureCatalog.Build("X", "v", reversed ? new[] { b, a } : new[] { a, b }).Features);
+    }
+
+    [Fact]
+    public void Neighbours_traced_two_metres_into_each_other_stay_two()
+    {
+        // Tracing slop is not overlap. Measured on the KTIW fixture, the only vertices inside a
+        // neighbouring outline are the nodes the two SHARE (0 m from its edge); the nearest vertex that
+        // is not shared lies 1.39 m OUTSIDE one. 2 m of overlap is beyond anything measured there and
+        // still inside the 5 m margin. (Unnamed, so the halves-of-one-way rule never applies.)
+        var a = ApronRing("", Rect(0, 0, 40, 40));
+        var b = ApronRing("", Rect(38, 10, 78, 50));
+        Assert.Equal(2, AirportFeatureCatalog.Build("X", "v", new[] { a, b }).Features.Count);
+    }
+
     [Fact]
     public void Same_kind_within_radius_collapses_to_the_higher_rank()
     {

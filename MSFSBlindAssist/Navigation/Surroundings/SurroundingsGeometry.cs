@@ -75,6 +75,14 @@ public static class SurroundingsGeometry
         return inside;
     }
 
+    /// <summary>
+    /// Is the point INSIDE the polygon by more than <paramref name="marginMetres"/> — past its edge,
+    /// not on it? A point ON the boundary (a node two outlines share) is neither in nor out to the
+    /// ray cast in <see cref="Contains"/>, which answers it arbitrarily; this never counts it.
+    /// </summary>
+    public static bool ContainsBeyondEdge(IReadOnlyList<LatLon> polygon, double lat, double lon, double marginMetres)
+        => Contains(polygon, lat, lon) && NearestOnRing(lat, lon, polygon).Metres > marginMetres;
+
     /// <summary>Signed relative bearing, -180..180: negative = left of the nose.</summary>
     public static double RelativeBearingDeg(double ownLat, double ownLon, double ownHeadingTrue, double lat, double lon)
         => RelativeBearingDeg(TaxiGeo.BearingDeg(ownLat, ownLon, lat, lon), ownHeadingTrue);

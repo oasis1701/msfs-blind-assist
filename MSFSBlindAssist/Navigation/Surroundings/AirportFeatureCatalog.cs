@@ -56,23 +56,82 @@ public sealed class AirportFeatureCatalog
     private static bool IsCluster(AirportFeature f) => f.Members is { Count: > 0 };
 
     /// <summary>
-    /// Can these two SHAPES describe one body at all? Asked first, because every branch below
-    /// decides identity from a name and a distance between REPRESENTATIVE POINTS, which says
-    /// nothing about whether one outline really is the other — and a merge hands the winner the
-    /// loser's geometry, so a wrong answer here is a wrong distance in a blind pilot's ear.
-    /// Called only from <see cref="SameFeature"/>, i.e. always on two features of the same kind.
+    /// How far INSIDE the other outline a VERTEX must lie for two rings to OVERLAP — and how near its
+    /// edge a vertex may lie for two same-named rings to TOUCH. MEASURED at KTIW
+    /// (Fixtures/osm-features-area-ktiw.json): OSM glues neighbouring aprons at SHARED nodes — the
+    /// 49-vertex main apron shares two with each of two neighbours — and a node on the boundary is
+    /// neither in nor out to a ray cast, which called one shared node of each pair "inside". Those
+    /// shared nodes, 0.000 m from the other's edge, are the ONLY vertices inside a neighbouring
+    /// outline; the nearest vertex that is not shared lies 1.39 m OUTSIDE one. 5 m is well past that
+    /// tracing slop and far short of any real overlap, and erring wide costs only a second feature,
+    /// where erring narrow loses an apron and the zone of a pilot parked on it. The margin is for
+    /// vertices only: a representative point is tested by plain containment, as it always was.
+    /// </summary>
+    public const double RingOverlapMarginMetres = 5.0;
+
+    /// <summary>Do two OUTLINES overlap? One holds the other's representative point (plain
+    /// containment), or a VERTEX of either lies more than <see cref="RingOverlapMarginMetres"/>
+    /// inside the other — never a node the two merely share, and never a bare radius between
+    /// edges.</summary>
+    private static bool RingsOverlap(AirportFeature a, AirportFeature b)
+    {
+        IReadOnlyList<LatLon> ra = a.Footprint!, rb = b.Footprint!;
+        if (SurroundingsGeometry.Contains(ra, b.Lat, b.Lon) || SurroundingsGeometry.Contains(rb, a.Lat, a.Lon)) return true;
+        foreach (var v in rb) if (SurroundingsGeometry.ContainsBeyondEdge(ra, v.Lat, v.Lon, RingOverlapMarginMetres)) return true;
+        foreach (var v in ra) if (SurroundingsGeometry.ContainsBeyondEdge(rb, v.Lat, v.Lon, RingOverlapMarginMetres)) return true;
+        return false;
+    }
+
+    /// <summary>Do two OUTLINES touch? A vertex of either lies inside the other or within
+    /// <see cref="RingOverlapMarginMetres"/> of its edge (<see cref="SurroundingsGeometry.Nearest"/>
+    /// reads the footprint: 0 inside, else the nearest edge) — a node the two share is 0 m, and an
+    /// edge traced beside the other's brings its end vertex within the margin. Measured from
+    /// VERTICES, which is where two outlines that meet or run side by side come nearest; two thin
+    /// outlines that only CROSS, every vertex far from the other, are not seen — no split OSM way
+    /// has that shape.</summary>
+    private static bool RingsTouch(AirportFeature a, AirportFeature b)
+    {
+        foreach (var v in b.Footprint!) if (SurroundingsGeometry.Nearest(v.Lat, v.Lon, a).Metres <= RingOverlapMarginMetres) return true;
+        foreach (var v in a.Footprint!) if (SurroundingsGeometry.Nearest(v.Lat, v.Lon, b).Metres <= RingOverlapMarginMetres) return true;
+        return false;
+    }
+
+    /// <summary>
+    /// The two halves of ONE split OSM way: both carry a PROPER name, the SAME one (compared as
+    /// <see cref="SameFeature"/> compares names), and the outlines TOUCH (<see cref="RingsTouch"/>).
+    /// One body, as it always was — kept apart, one apron or building would be two places, and a
+    /// routable Terminal or Concourse two Place entries. The merged feature keeps the winner's own
+    /// outline, as before (<see cref="Build"/> never joins two outlines). A name alone is no
+    /// evidence: two same-named outlines that do not touch are two bodies, and a proper name beside
+    /// an unnamed or differently named ring never makes them one, touching or not.
+    /// </summary>
+    private static bool HalvesOfOneWay(AirportFeature a, AirportFeature b)
+        => a.HasProperName && b.HasProperName
+           && string.Equals(Norm(a.Name), Norm(b.Name), StringComparison.OrdinalIgnoreCase)
+           && RingsTouch(a, b);
+
+    /// <summary>
+    /// Can these two SHAPES describe one body at all? Asked LAST, by <see cref="SameFeature"/>, of
+    /// the few pairs its name and distance branches have already accepted — each of those decides
+    /// identity from a name and a distance between REPRESENTATIVE POINTS, which says nothing about
+    /// whether one outline really is the other, and a merge hands the winner the loser's geometry,
+    /// so a wrong answer here is a wrong distance in a blind pilot's ear. Always asked of two
+    /// features of the same kind.
     ///
-    /// <para>Three combinations are refused, all of them ones where nothing but proximity was ever
-    /// claimed. A refusal here is a refused MERGE, not merely a refused donation: geometry that does
-    /// not describe the other feature is evidence they are different bodies, and different bodies
-    /// are two places — not one that quietly swallowed the other.</para>
+    /// <para>Three combinations are refused, all of them ones where proximity — or a name alone — was
+    /// all that was ever claimed. A refusal here is a refused MERGE, not merely a refused donation:
+    /// geometry that does not describe the other feature is evidence they are different bodies, and
+    /// different bodies are two places — not one that quietly swallowed the other.</para>
     /// <list type="bullet">
-    /// <item>RING vs RING with neither proper-named: two outlines are two bodies unless one holds
-    /// the other's representative point. KTIW's four unnamed aprons include a pair 26.4 m apart and
-    /// another 27.9 m apart — both well inside Apron's 50 m radius — so with OSM alone the element
-    /// ORDER decided which polygon survived, and dropping the 66,471 m² one takes the zone a pilot
-    /// is standing in with it. A shared PROPER name is different evidence and still merges two
-    /// halves of one way.</item>
+    /// <item>RING vs RING, unless the two OVERLAP (<see cref="RingsOverlap"/>) or are the two halves
+    /// of ONE split way (<see cref="HalvesOfOneWay"/>: the same proper name on outlines that touch).
+    /// KTIW's four unnamed aprons include a pair 26.4 m apart and another 27.9 m apart — both well
+    /// inside Apron's 50 m radius — so with OSM alone the element ORDER decided which polygon
+    /// survived, and dropping the 66,471 m² one takes the zone a pilot is standing in with it. ONE
+    /// proper name is no evidence either: it used to merge an apron with a DISJOINT unnamed
+    /// neighbour (real OSM at EHRD, EHLW and LSZG), and a winner keeps only its own outline, so the
+    /// neighbour — and the zone of a pilot parked on it — was gone. Two outlines that share a proper
+    /// name but do not touch are two bodies too.</item>
     /// <item>An unnamed RING vs a STAND CLUSTER, for <see cref="FeatureKind.Apron"/> and
     /// <see cref="FeatureKind.DeicePad"/>: the ring is pavement, the cluster is the stands parked
     /// on some pavement, and one ring routinely covers several rows — KTIW's main apron contains
@@ -91,10 +150,7 @@ public sealed class AirportFeatureCatalog
     /// </summary>
     private static bool GeometryMayBeOneBody(AirportFeature a, AirportFeature b)
     {
-        if (IsRing(a) && IsRing(b))
-            return a.HasProperName || b.HasProperName
-                || SurroundingsGeometry.Contains(a.Footprint!, b.Lat, b.Lon)
-                || SurroundingsGeometry.Contains(b.Footprint!, a.Lat, a.Lon);
+        if (IsRing(a) && IsRing(b)) return RingsOverlap(a, b) || HalvesOfOneWay(a, b);
         if (a.Kind is FeatureKind.Apron or FeatureKind.DeicePad
             && ((IsRing(a) && !a.HasName && IsCluster(b)) || (IsRing(b) && !b.HasName && IsCluster(a))))
             return false;
@@ -108,17 +164,19 @@ public sealed class AirportFeatureCatalog
     /// (109 m from A) and 7,236 numbered helipads; name alone (the old concourse rule) would merge
     /// two "Concourse B" piers 1.3 km apart. The five branches, and the shapes each judges — every
     /// one of them can be handed a point, a ring or a stand cluster, which is why
-    /// <see cref="GeometryMayBeOneBody"/> is asked ahead of all of them and <see cref="Build"/>
-    /// decides separately what the winner may actually KEEP:
+    /// <see cref="GeometryMayBeOneBody"/> is asked AFTER all of them, of the pairs they accept, and
+    /// <see cref="Build"/> decides separately what the winner may actually KEEP:
     /// <list type="number">
     /// <item>different kinds — never one body, whatever the shapes.</item>
     /// <item>Tower — position alone; a tower is a point in every tier.</item>
     /// <item>both proper-named — the NAME carries the identity and the distance is only a sanity
-    /// bound, so two rings of one split OSM way, or a ring and the stand cluster inside it, merge.</item>
+    /// bound, so a ring and the stand cluster inside it merge, and so do two rings of one split OSM
+    /// way — but two RINGS only when they overlap or TOUCH (<see cref="HalvesOfOneWay"/>).</item>
     /// <item>one proper name absorbing a synthesized or missing one — the usual ring-meets-cluster
-    /// and point-meets-cluster case ("Avfuel" over navdata's "Fuel").</item>
-    /// <item>neither proper-named — "Helipad 1" is not "Helipad 2"; the shapes left here are two
-    /// points, or a point and a cluster, the ring pairs having been settled above.</item>
+    /// and point-meets-cluster case ("Avfuel" over navdata's "Fuel"); two RINGS here must
+    /// overlap, touching is not enough.</item>
+    /// <item>neither proper-named — "Helipad 1" is not "Helipad 2"; two RINGS here must overlap
+    /// too.</item>
     /// </list>
     ///
     /// <para>The shape question is asked LAST, of the few pairs the name and the distance have

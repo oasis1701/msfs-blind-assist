@@ -1050,7 +1050,7 @@ lacks one *and the geometry describes the winner* (see below).
 | Case | Rule |
 |---|---|
 | Different `FeatureKind` | Never the same feature. |
-| Shapes that cannot be one body | Never the same feature — `GeometryMayBeOneBody`, asked ahead of every row below. |
+| Shapes that cannot be one body | Never the same feature, whatever the rows below say — `GeometryMayBeOneBody`, asked LAST, of the pairs those rows accept. |
 | `Tower` | Distance only, within the merge radius — one airport, one tower ("Control Tower" / "Control Tower 1"). |
 | Both carry a proper name | Same name AND within `SameNameRadiusMetres`. |
 | One carries a proper name | Within `MergeRadiusMetres` — a real name absorbs a synthesized or missing one. |
@@ -1081,10 +1081,23 @@ then measures to. Four rules, all of them paid for at KTIW:
   the stands parked on some pavement, and one ring routinely covers several
   rows. Kept apart, the ring stays a polygon `SurroundingsReport.Zone` can put
   the aircraft inside and the cluster stays "GA ramp", measured to its stands.
-- **Ring versus ring with neither proper-named** is one body only when one
-  CONTAINS the other's representative point — never on a bare radius between
-  edges. A shared PROPER name is different evidence and still merges two halves
-  of one split OSM way.
+- **Ring versus ring** is one body only when the two OVERLAP — one holds the
+  other's representative point, or a vertex of either lies more than
+  `RingOverlapMarginMetres` (5 m) inside the other — or when they are the two
+  halves of ONE split OSM way: both carry the SAME proper name and the outlines
+  TOUCH (a node they share, or a vertex within that margin of the other's
+  edge). Never on a bare radius between edges, and never on one name: a single
+  proper name used to be enough, which merged an apron with a DISJOINT unnamed
+  neighbour (real OSM at EHRD, EHLW and LSZG) and — the winner keeping only its
+  own outline — took the neighbour's zone with it. A proper name beside an
+  unnamed or differently named outline stays two features even where they
+  touch, and two outlines sharing a proper name that do not touch are two
+  bodies too. The margin is for VERTICES and is MEASURED at KTIW: glued
+  neighbours SHARE nodes, 0.000 m from each other's edge, which the ray cast
+  answers arbitrarily (it called one shared node of each pair "inside"), and no
+  vertex that is not shared lies inside a neighbouring outline at all — the
+  nearest is 1.39 m outside one. Merged halves keep the winner's own outline,
+  as they always have (`Build` never joins two outlines).
 - A **stand cluster the other feature does not describe** — some member further
   from it than `SameNameRadiusMetres` (`MembersDescribe`, measured through
   `Nearest`, never centroid to centroid) — is not that feature at all. Refusing
