@@ -1,4 +1,5 @@
-﻿using MSFSBlindAssist.Services.TaxiAugment;
+﻿using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Navigation.Surroundings;
 
@@ -127,9 +128,11 @@ public sealed class PassingCalloutGate
     /// buildings the pilot CAN tell apart.</summary>
     private readonly Dictionary<string, DateTime> _lastSpokenSentence = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The sentence's identity: what is said, and which side it is said about.</summary>
+    /// <summary>The sentence's identity: what is said, and which side it is said about. The bearing
+    /// goes through DockingGeometry.NormalizeDeg180, (-180, 180], so a 0..360 value still lands on
+    /// its side.</summary>
     private static string SentenceKey(AirportFeature f, double relBearingDeg)
-        => f.SpokenName + "|" + (NormalizeSigned(relBearingDeg) < 0 ? "L" : "R");
+        => f.SpokenName + "|" + (DockingGeometry.NormalizeDeg180(relBearingDeg) < 0 ? "L" : "R");
     private DateTime? _lastAny;
 
     internal int TrackCount => _tracks.Count;
@@ -201,19 +204,9 @@ public sealed class PassingCalloutGate
     // Kind + name only: position (FindTrack/FindFired) is what tells two same-named features apart.
     private static string Key(AirportFeature f) => $"{(int)f.Kind}|{f.SpokenName.Trim().ToUpperInvariant()}";
 
-    /// <summary>-180..180 is the documented shape of RelativeBearingDeg, but this normalises
-    /// defensively so a 0..360 value still lands on the correct side.</summary>
-    private static double NormalizeSigned(double deg)
-    {
-        double d = deg % 360.0;
-        if (d > 180.0) d -= 360.0;
-        else if (d <= -180.0) d += 360.0;
-        return d;
-    }
-
     private static bool IsAbeam(double relDeg)
     {
-        double abs = Math.Abs(NormalizeSigned(relDeg));
+        double abs = Math.Abs(DockingGeometry.NormalizeDeg180(relDeg));
         return abs >= AbeamMinDeg && abs <= AbeamMaxDeg;
     }
 

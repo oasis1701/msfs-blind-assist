@@ -39,4 +39,13 @@ public class RelativeDirectionTests
         Assert.Equal(350.0, RelativeDirection.Normalize360(-10));
         Assert.Equal(10.0, RelativeDirection.Normalize360(370));
     }
+
+    [Theory]
+    [InlineData(-10.0, 350.0)]
+    [InlineData(370.0, 10.0)]
+    [InlineData(720.0, 0.0)]
+    [InlineData(-360.0, 0.0)]
+    [InlineData(359.5, 359.5)]
+    public void Normalize360_maps_any_angle_into_0_to_360(double input, double expected)
+        => Assert.Equal(expected, RelativeDirection.Normalize360(input), 9);
 }

@@ -1387,7 +1387,9 @@ within 600 metres." when it has features but none in range.
 `GroundTrafficMonitor`'s own `DescribeDirection`, lifted out into a shared
 helper — so that name no longer exists to grep — giving one phrasing app-wide
 on the same thresholds (20/70/110/160), pinned by a test so the ground-traffic
-phrasing cannot drift out from under this feature.
+phrasing cannot drift out from under this feature. The monitor's private angle
+wrap went the same way: it normalises through `RelativeDirection.Normalize360`,
+the identical expression it used to keep a copy of.
 
 ### Surroundings window — output `]` then `Ctrl+Shift+L`
 

@@ -124,7 +124,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         var pos = _sim.LastKnownPosition;
         if (pos == null) return;
 
-        double hdgTrue = NormalizeDeg(pos.Value.HeadingMagnetic + pos.Value.MagneticVariation);
+        double hdgTrue = RelativeDirection.Normalize360(pos.Value.HeadingMagnetic + pos.Value.MagneticVariation);
         lock (_lock)
         {
             _ownLat = pos.Value.Latitude;
@@ -221,7 +221,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 {
                     double d = NavigationCalculator.CalculateDistance(ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
                     double b = NavigationCalculator.CalculateBearing(ownLat, ownLon, ac.Lat, ac.Lon);
-                    double rel = NormalizeDeg(b - ownHdg);
+                    double rel = RelativeDirection.Normalize360(b - ownHdg);
                     return (ac, d, rel);
                 })
                 .OrderByDescending(t => t.d)  // farthest first
@@ -339,7 +339,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (!onGround || pos == null)
             return "Ground traffic monitor not active in flight.";
 
-        double hdgTrue = NormalizeDeg(pos.Value.HeadingMagnetic + pos.Value.MagneticVariation);
+        double hdgTrue = RelativeDirection.Normalize360(pos.Value.HeadingMagnetic + pos.Value.MagneticVariation);
         double ownLat = pos.Value.Latitude;
         double ownLon = pos.Value.Longitude;
 
@@ -356,7 +356,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                         ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
                     double b = NavigationCalculator.CalculateBearing(
                         ownLat, ownLon, ac.Lat, ac.Lon);
-                    double rel = NormalizeDeg(b - hdgTrue);
+                    double rel = RelativeDirection.Normalize360(b - hdgTrue);
                     return (d, ac, rel);
                 })
                 .OrderBy(t => t.Item1)
@@ -403,7 +403,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 return;
             }
 
-            double hdgTrue = NormalizeDeg(position.HeadingMagnetic + position.MagneticVariation);
+            double hdgTrue = RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
             lock (_lock)
             {
                 _ownLat = position.Latitude;
@@ -460,8 +460,6 @@ public sealed class GroundTrafficMonitor : IDisposable
         double step = feet > 200.0 ? 50.0 : 25.0;
         return (int)(Math.Round(feet / step) * step);
     }
-
-    private static double NormalizeDeg(double d) => ((d % 360.0) + 360.0) % 360.0;
 
     // ──────────────────────────────────────────────────────────────────────────
 
