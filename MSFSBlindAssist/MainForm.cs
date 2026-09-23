@@ -778,6 +778,17 @@ public partial class MainForm : Form
             && takeoffAssistManager.TryGetRunwayReference(out _, out _, out _, out _, out string runwayId, out string icao)
                 ? (runwayId, icao)
                 : null;
+        // The airport's runways when takeoff assist has a runway but taxi guidance never built a route
+        // there (a departure that starts on the runway): runway centerlines only, no taxi network.
+        groundTrafficMonitor.RunwaySupplier = icao =>
+        {
+            var provider = airportDataProvider;
+            if (provider == null || string.IsNullOrWhiteSpace(icao)) return Array.Empty<MSFSBlindAssist.Navigation.TaxiGraph.RunwayCenterline>();
+            var starts = provider.GetRunwayStarts(icao);
+            if (starts == null || starts.Count == 0) return Array.Empty<MSFSBlindAssist.Navigation.TaxiGraph.RunwayCenterline>();
+            return MSFSBlindAssist.Navigation.TaxiGraph.Build(new List<TaxiPath>(), new List<ParkingSpot>(), starts,
+                provider.GetRunways(icao)).RunwayCenterlines;
+        };
 
         // Per-aircraft rollout-anticipation lead for the taxi steering tone
         // (see IAircraftDefinition.TaxiTurnLeadSeconds).

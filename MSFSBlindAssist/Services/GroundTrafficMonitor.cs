@@ -100,6 +100,12 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// <summary>Takeoff assist's runway and airport while it is active, else null (the line-up wait).</summary>
     public Func<(string RunwayId, string AirportIcao)?>? TakeoffRunwayProvider { get; set; }
 
+    /// <summary>
+    /// The airport's runway centerlines by ICAO, for a takeoff-assist runway with no taxi route (a
+    /// departure that starts on the runway). Called at most once per airport; the result is cached.
+    /// </summary>
+    public Func<string, IReadOnlyList<TaxiGraph.RunwayCenterline>>? RunwaySupplier { get; set; }
+
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly SimConnectManager _sim;
     private readonly System.Windows.Forms.Timer _timer;
@@ -127,8 +133,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     private sealed record Cycle(GroundTrafficRouteContext? Ctx, RunwayWatch Watch, bool Proximity, bool WatchGate);
     private Cycle? _cycle;
 
-    // The last local context's runways and airport. StopGuidance nulls the taxi graph when takeoff
-    // assist takes over; the line-up wait still needs the runway's geometry.
+    // The ONE runway cache: the last local context's runways and airport, or — for a takeoff-assist
+    // runway with no local context — RunwaySupplier's for that airport. StopGuidance nulls the taxi
+    // graph when takeoff assist takes over; the line-up wait still needs the runway's geometry.
     private IReadOnlyList<TaxiGraph.RunwayCenterline> _cachedRunways = Array.Empty<TaxiGraph.RunwayCenterline>();
     private string _cachedRunwaysIcao = "";
 
@@ -280,12 +287,51 @@ public sealed class GroundTrafficMonitor : IDisposable
             return null;
         }
         _contextDroppedLogged = false;
-        if (ctx.Runways.Count > 0)
-        {
-            _cachedRunways = ctx.Runways;
-            _cachedRunwaysIcao = ctx.AirportIcao;
-        }
+        if (ctx.Runways.Count > 0) CacheRunways(ctx.Runways, ctx.AirportIcao);
         return ctx;
+    }
+
+    /// <summary>
+    /// Adopts <paramref name="runways"/> as the runway cache. Another airport ends any linger: its
+    /// anchor was measured against the previous airport's runway.
+    /// </summary>
+    private void CacheRunways(IReadOnlyList<TaxiGraph.RunwayCenterline> runways, string icao)
+    {
+        if (!string.Equals(icao, _cachedRunwaysIcao, StringComparison.OrdinalIgnoreCase)) ClearLinger("airport-change");
+        _cachedRunways = runways;
+        _cachedRunwaysIcao = icao;
+    }
+
+    /// <summary>
+    /// Loads <paramref name="icao"/>'s runways from <see cref="RunwaySupplier"/> into the cache — kept
+    /// even when empty, so an airport the database lacks is not queried again every tick.
+    /// </summary>
+    private void LoadSuppliedRunways(string icao)
+    {
+        IReadOnlyList<TaxiGraph.RunwayCenterline> runways = Array.Empty<TaxiGraph.RunwayCenterline>();
+        try
+        {
+            runways = RunwaySupplier?.Invoke(icao) ?? runways;
+            _log.Info($"ev=runways source=supplier icao={icao} count={runways.Count}");
+        }
+        catch (Exception ex)
+        {
+            runways = Array.Empty<TaxiGraph.RunwayCenterline>();
+            _log.Warn($"ev=runways source=supplier icao={icao} count=0 error=\"{Q(ex.Message)}\"");
+        }
+        CacheRunways(runways, icao);
+    }
+
+    /// <summary>
+    /// Clears the runway cache — a database switch, after which the same airport can carry different
+    /// runway names and geometry — and any linger measured against it. The next local route context or
+    /// takeoff-assist runway loads the runways again.
+    /// </summary>
+    public void ClearRunwayCache()
+    {
+        _cachedRunways = Array.Empty<TaxiGraph.RunwayCenterline>();
+        _cachedRunwaysIcao = "";
+        ClearLinger("runways-cleared");
     }
 
     private IReadOnlyList<TaxiGraph.RunwayCenterline> RunwaysFor(GroundTrafficRouteContext? ctx)
@@ -293,11 +339,19 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     private RunwayWatch ResolveWatch(GroundTrafficRouteContext? ctx, double lat, double lon)
     {
+        // With no local route context, a takeoff-assist runway at an airport the cache does not hold (a
+        // departure that starts on the runway: a teleport, takeoff assist seeded from the dialog) loads
+        // that airport's runways once. A blank ICAO names no airport and leaves the cache alone.
+        var takeoff = TakeoffRunwayProvider?.Invoke();
+        if (ctx == null && RunwaySupplier != null && takeoff is { } t && !string.IsNullOrWhiteSpace(t.AirportIcao)
+            && !string.Equals(t.AirportIcao, _cachedRunwaysIcao, StringComparison.OrdinalIgnoreCase))
+            LoadSuppliedRunways(t.AirportIcao);
+
         var runways = RunwaysFor(ctx);
         if (runways.Count == 0) return RunwayWatch.None;
 
         string? takeoffRunway = null;
-        if (TakeoffRunwayProvider?.Invoke() is { } ta
+        if (takeoff is { } ta
             && (ctx != null || string.Equals(ta.AirportIcao, _cachedRunwaysIcao, StringComparison.OrdinalIgnoreCase)))
             takeoffRunway = ta.RunwayId;
 
