@@ -1045,7 +1045,11 @@ as long as the airport was current.
 **Identity needs the NAME and the DISTANCE together.** Features are walked
 highest-`Rank` first, so the first one standing in a cluster is the winner, and
 the loser's footprint, detail or member list is folded into it when the winner
-lacks one *and the geometry describes the winner* (see below).
+lacks one *and the geometry describes the winner* (see below). A loser that
+more than one winner would accept joins the NEAREST of them
+(`NearestSameFeature`), never merely the first in rank order: two cargo sheds
+80 m apart can both accept the ramp between them, and rank order handed its
+stands to the shed on the far side.
 
 | Case | Rule |
 |---|---|

@@ -217,13 +217,34 @@ public sealed class AirportFeatureCatalog
         return true;
     }
 
+    /// <summary>
+    /// Which kept feature does this one belong to? The NEAREST (<see cref="Apart"/>: each one's own
+    /// geometry, both directions) of those <see cref="SameFeature"/> accepts, or -1 — never merely
+    /// the first in rank order. Two cargo sheds 80 m apart can BOTH accept the ramp between them, and
+    /// the first in the list is an accident of rank and element order: it handed the ramp's stands
+    /// to the shed on the far side, so a pilot at the nearer one heard them measured from the wrong
+    /// building. A tie keeps the earlier, higher-ranked one.
+    /// </summary>
+    private static int NearestSameFeature(List<AirportFeature> kept, AirportFeature f)
+    {
+        int best = -1; double bestApart = double.MaxValue;
+        for (int k = 0; k < kept.Count; k++)
+        {
+            if (!SameFeature(kept[k], f)) continue;
+            double apart = Apart(kept[k], f);
+            if (apart < bestApart) { bestApart = apart; best = k; }
+        }
+        return best;
+    }
+
     public static AirportFeatureCatalog Build(string icao, string version, IEnumerable<AirportFeature> features, string facts = "")
     {
         var kept = new List<AirportFeature>();
-        // Highest rank first so the first feature standing in a cluster is the winner.
+        // Highest rank first, so the first feature standing in a cluster is the winner — and a later
+        // one joins the NEAREST winner that accepts it (NearestSameFeature), never merely the first.
         foreach (var f in features.Where(f => f != null && (f.HasName || f.Kind != FeatureKind.Other)).OrderByDescending(Rank))
         {
-            int i = kept.FindIndex(k => SameFeature(k, f));
+            int i = NearestSameFeature(kept, f);
             if (i < 0) { kept.Add(f); continue; }
             var winner = kept[i];
             // GEOMETRY IS ONLY DONATED WHERE IT DESCRIBES THE WINNER. A winner that already has

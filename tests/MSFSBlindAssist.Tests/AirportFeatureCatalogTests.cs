@@ -427,4 +427,23 @@ public class AirportFeatureCatalogTests
         Assert.True(AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Fuel", 0, 0, true)) > AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "", 0, 0, false, FeatureSource.Osm)));
         Assert.Equal("Tower 118.5.", AirportFeatureCatalog.Build("X", "v", Array.Empty<AirportFeature>(), "Tower 118.5.").Facts);
     }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_ramp_between_two_buildings_joins_the_NEARER_one_whatever_the_order(bool reversed)
+    {
+        // Two cargo sheds 80 m apart, both close enough to claim the ramp between them. The first in rank
+        // order used to take it — an accident of element order — and a pilot at the UPS shed heard its
+        // stands measured from the FedEx one.
+        const double M = 111_320.0;
+        var fedex = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm);
+        var ups = N(FeatureKind.Cargo, "UPS Cargo", 0.0, 80 / M, false, FeatureSource.Osm);
+        var ramp = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 55 / M, true, FeatureSource.Navdata, (0.0, 45 / M), (0.0, 55 / M), (0.0, 65 / M));
+        Assert.True(AirportFeatureCatalog.SameFeature(fedex, ramp));      // both really could take it…
+        Assert.True(AirportFeatureCatalog.SameFeature(ups, ramp));
+        var cat = AirportFeatureCatalog.Build("X", "v", reversed ? new[] { ups, fedex, ramp } : new[] { fedex, ups, ramp });
+        Assert.Equal(2, cat.Features.Count);
+        Assert.Equal(3, cat.Features.Single(f => f.Name == "UPS Cargo").Members!.Count);   // …the nearer one does
+        Assert.Null(cat.Features.Single(f => f.Name == "FedEx Cargo").Members);
+    }
 }
