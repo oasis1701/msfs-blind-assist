@@ -55,4 +55,30 @@ public class ModelLibNameReaderTests
 
         Assert.Equal("Foo", names[guid]);
     }
+
+    [Fact]
+    public void A_name_is_read_as_UTF8_with_its_XML_entities_decoded()
+    {
+        // The fragment is XML, and XML here is UTF-8: read as Latin-1, "é" came out as "Ã©", and an
+        // attribute's escapes stayed in, so a screen reader would spell "ampersand amp semicolon".
+        var g1 = Guid.NewGuid(); var g2 = Guid.NewGuid();
+        string xml = $"<ModelInfo guid=\"{{{g1}}}\" name=\"Café_Hangar\"/>" +
+                     $"<ModelInfo guid=\"{{{g2}}}\" name=\"Smith &amp; Sons Hangar &#233;&#x2013;2\"/>";
+
+        var names = ModelLibNameReader.Read(Encoding.UTF8.GetBytes(xml));
+
+        Assert.Equal("Café_Hangar", names[g1]);
+        Assert.Equal("Smith & Sons Hangar é–2", names[g2]);
+    }
+
+    [Fact]
+    public void A_name_that_is_not_valid_UTF8_is_still_read_as_Latin1()
+    {
+        // A lone 0xE9 is not UTF-8: a tool that wrote Latin-1 is read the way this reader always read
+        // it, never turned into replacement characters.
+        var g = Guid.NewGuid();
+        byte[] bytes = Encoding.Latin1.GetBytes($"<ModelInfo guid=\"{{{g}}}\" name=\"Café_Hangar\"/>");
+
+        Assert.Equal("Café_Hangar", ModelLibNameReader.Read(bytes)[g]);
+    }
 }

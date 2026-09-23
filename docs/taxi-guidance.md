@@ -2315,7 +2315,12 @@ KMEM) use 92-byte ones.
 **Neither reader loads a whole file, and there is no size cap.**
 `BglPlacementReader.Read(Stream)` seeks the header, the section table and the
 SceneryObject subsections only; `ModelLibNameReader` streams the file looking
-for the ASCII bytes `<ModelInfo` and decodes only each tag (≤ 1 KB). The old
+for the ASCII bytes `<ModelInfo` and decodes only each tag (≤ 1 KB) — as UTF-8,
+the XML's own encoding (Latin-1 only for a tag that is not valid UTF-8, rather
+than replacement characters), with the name's XML entities (`&amp;`, `&#233;`)
+unescaped, so a name reaches speech as its author wrote it. None of the 26,098
+names in 35 installed airport packages needed either (measured 2026-09-22): this
+guards the next package rather than fixing a current one (review SI-8). The old
 whole-file Latin-1 string cost ~3× the file size and forced a 600 MB skip that
 dropped the model library — every name — of ten real airport packages. Both are
 bounds-checked at every step: a truncated or foreign file yields whatever parsed

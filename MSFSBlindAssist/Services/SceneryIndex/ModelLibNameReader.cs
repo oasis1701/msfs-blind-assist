@@ -1,3 +1,4 @@
+using System.Net;
 using System.Text;
 using System.Text.RegularExpressions;
 
@@ -7,6 +8,9 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 /// Model GUID → author's model name, from the `<ModelInfo … guid="{…}" … name="…">` XML
 /// fragments MSFS embeds beside each model in a modelLib/objects BGL (verified on three packages).
 /// Attribute order varies by developer, so each tag is scanned for both attributes independently.
+/// Each tag is decoded as UTF-8 — the XML's own encoding — and the name's XML entities are
+/// unescaped, so a name reaches the classifier, and a pilot, as its author wrote it (review SI-8).
+/// None of the 26,098 names in 35 installed airport packages needed either (measured 2026-09-22).
 /// </summary>
 public static class ModelLibNameReader
 {
@@ -16,6 +20,10 @@ public static class ModelLibNameReader
     private static readonly Regex NameAttr = new(@"(?<![\w:])name=""([^""]+)""", RegexOptions.CultureInvariant);
     private static readonly byte[] Needle = "<ModelInfo"u8.ToArray();
     private const int DefaultChunkBytes = 1 << 20, MaxTagBytes = 1024;
+
+    /// <summary>Strict, so a tag that is NOT valid UTF-8 is noticed (see <see cref="DecodeTag"/>)
+    /// rather than silently filled with replacement characters.</summary>
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
     /// <summary>Tests only. Production code reads a file through the <see cref="Stream"/>
     /// overload so a multi-hundred-megabyte model library is never pulled fully into memory.</summary>
@@ -52,7 +60,7 @@ public static class ModelLibNameReader
                     if (!eof && have - hit < MaxTagBytes) { keepFrom = hit; break; }   // tag cut by the chunk edge: re-scan it next round
                     pos = hit + Needle.Length; keepFrom = have; continue;             // over-long or unterminated: not a tag
                 }
-                AddTag(Encoding.Latin1.GetString(span.Slice(hit, close + 1)), map);
+                AddTag(DecodeTag(span.Slice(hit, close + 1)), map);
                 pos = hit + close + 1; keepFrom = have;
             }
             if (eof) break;
@@ -63,9 +71,25 @@ public static class ModelLibNameReader
         return map;
     }
 
+    /// <summary>
+    /// One tag's bytes as text. UTF-8 is what the XML is; Latin-1 was read here before, which spelled
+    /// "é" as "Ã©". A tag that is not valid UTF-8 was written by a tool that did not know that, and is
+    /// read as Latin-1 — the way this reader always read it — rather than as replacement characters a
+    /// screen reader would speak. The slice starts at '&lt;' and ends at '&gt;', both ASCII, so it can
+    /// never cut a multi-byte character in two.
+    /// </summary>
+    private static string DecodeTag(ReadOnlySpan<byte> tag)
+    {
+        try { return StrictUtf8.GetString(tag); }
+        catch (DecoderFallbackException) { return Encoding.Latin1.GetString(tag); }
+    }
+
     private static void AddTag(string tag, Dictionary<Guid, string> map)
     {
         var g = GuidAttr.Match(tag); var nm = NameAttr.Match(tag);
-        if (g.Success && nm.Success && Guid.TryParse(g.Groups[1].Value, out var guid)) map[guid] = nm.Groups[1].Value;
+        // An attribute value carries XML's own escapes ("Smith &amp; Sons", "&#233;"); left in, a screen
+        // reader spells the entity out.
+        if (g.Success && nm.Success && Guid.TryParse(g.Groups[1].Value, out var guid))
+            map[guid] = WebUtility.HtmlDecode(nm.Groups[1].Value);
     }
 }
