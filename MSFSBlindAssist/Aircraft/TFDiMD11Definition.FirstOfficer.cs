@@ -95,4 +95,23 @@ public partial class TFDiMD11Definition
 
     /// <summary>The annunciators have power (main bus live AND DC bus 1 not annunciated off).</summary>
     internal bool FoIsDcPowered() => IsDcPowered();
+
+    /// <inheritdoc/>
+    public override int MinimumAutopilotEngageAltitudeAgl => Md11AutopilotEngage.MinimumEngageAglFt;
+
+    /// <inheritdoc/>
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+        => Md11AutopilotEngage.Engaged(simConnect.GetCachedVariableValue(Md11AutopilotEngage.ApStateKey));
+
+    /// <summary>
+    /// Universal auto-engage: press AUTO FLIGHT only when the autopilot reads definitely off.
+    /// Never the stock AUTOPILOT_ON — the MD-11 disables the stock autopilot.
+    /// </summary>
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        if (!Md11AutopilotEngage.ShouldPress(simConnect.GetCachedVariableValue(Md11AutopilotEngage.ApStateKey)))
+            return;
+        Attach(simConnect);
+        PressControl(Md11AutopilotEngage.AutoflightKey);
+    }
 }
