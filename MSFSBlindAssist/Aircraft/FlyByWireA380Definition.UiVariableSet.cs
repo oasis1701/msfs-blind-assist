@@ -483,10 +483,9 @@ public partial class FlyByWireA380Definition
             simConnect.SendEvent($"ANTI_ICE_SET_ENG{varKey[3]}", (uint)Math.Round(value));
             return true;
         }
-        // TRK/FPA reference: the A380X has NO toggle event for it — the cockpit
-        // button writes the L:var directly. Write the absolute 0/1 via the
-        // MobiFlight calculator path (FBW L:var writes over the SimConnect data-def
-        // are as unreliable as the reads), not the default SetLVar.
+        // TRK/FPA reference: since FBW #10855 the L:var is an FCU-shim OUTPUT rewritten every
+        // frame, so writing it does nothing. SetTrkFpaMode fires the cockpit's own toggle event
+        // (A32NX.FCU_TRK_FPA_TOGGLE_PUSH) instead, only when the requested mode differs.
         if (varKey == "A32NX_TRK_FPA_MODE_ACTIVE")
         {
             SetTrkFpaMode(value > 0.5, simConnect);   // owns the write AND the echo window

@@ -2084,7 +2084,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // the session. ValueDescriptions is empty because the row renders from
         // TryGetDisplayOverride, not from a 0/1 flag.
         Mon("A32NX_FCU_ALT_MANAGED", "Altitude Mode", new Dictionary<double, string>());
-        // Settable toggle combo — fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH on change.
+        // Settable toggle combo — SetTrkFpaMode fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH when the pick differs.
         Sel("A32NX_TRK_FPA_MODE_ACTIVE", "Track FPA Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
         // Keep an individual data def for the three managed-status legs the OUTPUT-mode FCU
@@ -3354,9 +3354,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     //    H:A320_Neo_FCU_*_PUSH H-events translate to these).
     //  - A/THR uses the STOCK K:AUTO_THROTTLE_ARM (A32NX.FCU_ATHR_PUSH is not the
     //    event the A380X FCU button uses).
-    //  - TRK/FPA has NO event on the A380X — the button writes the L:var directly,
-    //    so it's intentionally NOT in this map: the combo's default L:var write
-    //    (A32NX_TRK_FPA_MODE_ACTIVE = 0/1) drives it.
+    //  - TRK/FPA is intentionally NOT in this map: its state var is an FCU-shim OUTPUT
+    //    (see the "since FBW #10855" comment on SetTrkFpaMode), so switching it also
+    //    means the mode, V/S and FPA windows re-sync from the aircraft — SetTrkFpaMode
+    //    arms the FCU echo window for that resync before firing
+    //    A32NX.FCU_TRK_FPA_TOGGLE_PUSH, which this map's generic callers don't do.
     private static readonly Dictionary<string, string> _fcuToggleEvents = new()
     {
         ["A32NX_AUTOPILOT_1_ACTIVE"] = "A32NX.FCU_AP_1_PUSH",

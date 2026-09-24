@@ -399,15 +399,26 @@ public partial class FlyByWireA380Definition
         return true;
     }
 
-    /// <summary>Flip HDG·V/S &lt;-&gt; TRK·FPA. The A380X has no working toggle EVENT, so the mode is
-    /// driven by writing the L:var — which is why this lives here rather than in FireFCUButton:
-    /// every MSFSBA-origin path (the heading window's button, the FCU panel combo) must go through
-    /// one place that also arms the echo window, or the toggle speaks its own confirmation and then
-    /// the re-synced heading, V/S and FPA values announce on top of it.</summary>
+    /// <summary>Flip HDG·V/S &lt;-&gt; TRK·FPA. Since FBW #10855 L:A32NX_TRK_FPA_MODE_ACTIVE is an FCU-shim
+    /// OUTPUT rewritten every frame, so the mode can only be moved the way the cockpit button moves it:
+    /// the A32NX.FCU_TRK_FPA_TOGGLE_PUSH event, fired only when the requested mode differs (it is a
+    /// toggle). An unknown live mode fires (A380ToggleCommand). Every MSFSBA-origin path — the heading
+    /// window's button and the FCU panel combo — goes through here, which also arms the echo window for
+    /// the re-synced heading, V/S and FPA values.</summary>
     public void SetTrkFpaMode(bool trkFpa, SimConnectManager s)
     {
-        ArmFcuEchoFor("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", FcuConfirmation.None);
-        s.ExecuteCalculatorCode($"{(trkFpa ? 1 : 0)} (>L:A32NX_TRK_FPA_MODE_ACTIVE)");
+        const string modeKey = "A32NX_TRK_FPA_MODE_ACTIVE";
+        const string toggleEvent = "A32NX.FCU_TRK_FPA_TOGGLE_PUSH";
+        double desired = trkFpa ? 1 : 0;
+        if (!A380ToggleCommand.ShouldFire(desired, CommandedOrCachedValue(modeKey, s)))
+        {
+            // Nothing sent, so nothing will change: re-read so the combo shows the live mode again.
+            s.RequestVariable(modeKey, forceUpdate: true);
+            return;
+        }
+        ArmFcuEchoFor(toggleEvent, FcuConfirmation.None);
+        RememberCommandedValue(modeKey, desired);
+        s.SendEvent(toggleEvent);
     }
 
     // Fire a push/pull/toggle event. When readback is true (the default — used by
