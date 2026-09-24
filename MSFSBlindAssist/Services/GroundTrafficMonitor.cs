@@ -962,6 +962,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 ac.CurrentZone = GroundZone.None;
                 ac.PreviousDistance = double.MaxValue;
                 ac.PreviousAheadM = double.NaN;
+                ac.AheadSamples.Clear();
                 SetStopHeld(ac, false, "far");
                 continue;
             }
@@ -1056,12 +1057,18 @@ public sealed class GroundTrafficMonitor : IDisposable
             DateTime prevAheadUtc = ac.PreviousAheadUtc;
             ac.PreviousAheadM = v.OnRouteAhead ? v.AheadM : double.NaN;
             ac.PreviousAheadUtc = now;
+            // The lead's rate over a few seconds rides over the pilot's own one-sample projection jitter in a
+            // turn (GroundTrafficLogic.LeadRateMps); null until it spans enough, and off the route ahead.
+            if (v.OnRouteAhead) GroundTrafficLogic.AddLeadSample(ac.AheadSamples, now, v.AheadM);
+            else ac.AheadSamples.Clear();
+            double? leadRateMps = GroundTrafficLogic.LeadRateMps(ac.AheadSamples);
             // Opening is judged from the distance between two evaluations (a RATE, R8) and — PR #247
             // author's fix — from motion: the relative velocity, and for traffic on the route ahead its
             // growing lead ALONG the route (through a bend the straight-line gap is the wrong measure). The
             // rate needs a previous evaluation, so a pilot creeping up behind a departing aircraft heard
             // "Stop, … very close" on the first evaluation that saw it pulling away.
-            bool leadGrowing = v.OnRouteAhead && GroundTrafficLogic.IsLeadGrowing(prevAheadM, prevAheadUtc, v.AheadM, now);
+            bool leadGrowing = (v.OnRouteAhead && GroundTrafficLogic.IsLeadGrowing(prevAheadM, prevAheadUtc, v.AheadM, now))
+                               || leadRateMps >= GroundTrafficLogic.MovingAwayMinOpeningMps;
             bool openingNow = GroundTrafficLogic.IsMovingAway(prevDist, prevUtc, v.DistFt, now)
                               || GroundTrafficLogic.IsOpeningByMotion(ac.GS, v.OpeningMps, leadGrowing);
             // A "Stop" withheld because the traffic was opening stays HELD while it keeps moving and is not
@@ -1070,7 +1077,13 @@ public sealed class GroundTrafficMonitor : IDisposable
             // inside GroundTrafficLogic.StopHoldFloorFt, though (PR #247 integration review R1): a pilot
             // closing more slowly than the release speed on a leader still moving at 3 kt or more was
             // otherwise never warned, however close it got.
-            bool movingAway = GroundTrafficLogic.IsMovingAwayOrHeld(openingNow, ac.StopHeldWhileOpening, ac.GS, v.OpeningMps, v.DistFt);
+            // For traffic on the route ahead a held "Stop" is released only when BOTH the straight-line gap
+            // AND its lead along the route (over a few seconds) are closing: round a bend the straight-line
+            // gap closes while the leader pulls away along the route, and a leader that has run past the end
+            // of our route reads a shrinking lead while the real gap opens. A pilot genuinely catching it up
+            // closes on both, and the StopHoldFloorFt floor still releases the hold whatever either says.
+            double holdOpeningMps = leadRateMps is double lr ? Math.Max(lr, v.OpeningMps) : v.OpeningMps;
+            bool movingAway = GroundTrafficLogic.IsMovingAwayOrHeld(openingNow, ac.StopHeldWhileOpening, ac.GS, holdOpeningMps, v.DistFt);
             if (!movingAway)
                 SetStopHeld(ac, false, v.DistFt <= GroundTrafficLogic.StopHoldFloorFt ? "close"
                     : ac.GS < GroundTrafficLogic.MovingTrafficKts ? "stopped" : "closing");
@@ -1907,6 +1920,8 @@ internal sealed class TrackedGroundAircraft
     /// <summary>Its lead along OUR route at the previous evaluation; NaN when it was not on the route ahead then.</summary>
     public double PreviousAheadM       = double.NaN;
     public DateTime PreviousAheadUtc   = DateTime.MinValue;
+    /// <summary>Its lead along OUR route over the last few seconds (GroundTrafficLogic.AddLeadSample); empty off the route ahead.</summary>
+    public readonly List<(DateTime Utc, double AheadM)> AheadSamples = new();
     /// <summary>
     /// A "Stop" withheld because it was opening is HELD — still unrecorded — while it keeps moving, is not
     /// closing and is still farther than <c>GroundTrafficLogic.StopHoldFloorFt</c> (200 ft; at the floor the

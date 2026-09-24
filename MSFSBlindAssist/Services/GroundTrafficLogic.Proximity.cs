@@ -49,6 +49,46 @@ internal static partial class GroundTrafficLogic
         return r < 1.0 ? 0.0 : (rx * relVx + ry * relVy) / r;
     }
 
+    // ── The lead's rate over a few seconds (VirtualPilot traffic A/B, 2026-09-24) ──────────────────────
+    // One second is not enough to judge the lead. The pilot's own position on the route jitters as they
+    // turn (a projection snapping between segments), so a leader pulling away round a bend can read a
+    // lead that SHRINKS for one sample (KPHX 08 → A8: 181 → 177 m with the leader 10 m/s faster), while
+    // the straight-line gap is genuinely closing there because the leader moves sideways. That one sample
+    // released a held "Stop" and spoke "Stop, … very close" about an aircraft pulling away along the
+    // route: 138 such calls over 3,478 simulated taxis. A rate across LeadRateWindowSeconds rides over it.
+
+    /// <summary>The span (seconds) the lead's rate is measured across: <see cref="LeadRateMps"/>.</summary>
+    public const double LeadRateWindowSeconds = 2.0;
+
+    /// <summary>Samples spanning less than this (seconds) give no rate: <see cref="LeadRateMps"/>.</summary>
+    public const double LeadRateMinSpanSeconds = 1.5;
+
+    /// <summary>
+    /// Appends the traffic's lead along the route (<paramref name="aheadM"/>) at <paramref name="nowUtc"/>
+    /// and drops samples older than the window. A gap of 10 s or more since the last sample restarts the
+    /// history, as <see cref="IsLeadGrowing"/> refuses a rate across one.
+    /// </summary>
+    public static void AddLeadSample(List<(DateTime Utc, double AheadM)> samples, DateTime nowUtc, double aheadM)
+    {
+        if (samples.Count > 0 && (nowUtc - samples[^1].Utc).TotalSeconds >= 10.0) samples.Clear();
+        samples.Add((nowUtc, aheadM));
+        while (samples.Count > 1 && (nowUtc - samples[0].Utc).TotalSeconds > LeadRateWindowSeconds + 0.05)
+            samples.RemoveAt(0);
+    }
+
+    /// <summary>
+    /// How fast the traffic's lead along the route is changing (m/s, negative when the pilot is closing
+    /// on it) across the oldest and newest samples of <see cref="AddLeadSample"/>'s window; null when they
+    /// span less than <see cref="LeadRateMinSpanSeconds"/>.
+    /// </summary>
+    public static double? LeadRateMps(IReadOnlyList<(DateTime Utc, double AheadM)> samples)
+    {
+        if (samples.Count < 2) return null;
+        double dt = (samples[^1].Utc - samples[0].Utc).TotalSeconds;
+        if (dt < LeadRateMinSpanSeconds) return null;
+        return (samples[^1].AheadM - samples[0].AheadM) / dt;
+    }
+
     /// <summary>
     /// Is the traffic's lead ALONG THE ROUTE growing at <see cref="MovingAwayMinOpeningMps"/> or more? For
     /// traffic on the route ahead the straight-line gap is the wrong measure through a bend: an aircraft
