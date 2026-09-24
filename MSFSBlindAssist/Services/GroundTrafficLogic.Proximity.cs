@@ -69,4 +69,29 @@ internal static partial class GroundTrafficLogic
     /// </summary>
     public static bool ConvergingAllowed(double relBearingDeg, double ownGsKts)
         => Math.Abs(AngleDiff(relBearingDeg, 0.0)) <= ForwardArcDeg || ownGsKts >= ConvergingOwnMovingKts;
+
+    /// <summary>Traffic at or above this ground speed is MOVING: its straight-line track predicts something.</summary>
+    public const double MovingTrafficKts = 3.0;
+    /// <summary>A predicted closest approach under this makes moving traffic a route threat (<see cref="IsRouteThreat"/>).</summary>
+    public const double ThreatDcpaM = 60.0;
+    /// <summary>That closest approach must come within this many seconds (<see cref="IsRouteThreat"/>).</summary>
+    public const double ThreatMaxTcpaSec = 30.0;
+
+    /// <summary>
+    /// With a taxi route to judge by, may this aircraft earn "Slow down"/"Stop"? Only as a real threat:
+    /// near the route ahead (<paramref name="nearRoute"/>), genuinely very close (<paramref name="veryClose"/>,
+    /// inside the fixed Warning distance), or MOVING (at least <see cref="MovingTrafficKts"/>) with a
+    /// predicted closest approach under <see cref="ThreatDcpaM"/> within <see cref="ThreatMaxTcpaSec"/>.
+    /// Anything else drops to an Awareness ping, which can still escalate later.
+    /// <para>The closest approach is a threat test for moving traffic ONLY (PR #247 author's fix, 9190e869).
+    /// For a parked aircraft it assumes the pilot keeps going straight, and where the route bends toward
+    /// one before turning away it predicted a near pass the route never makes: "Slow down, … ahead, 160
+    /// metres" (and "Stop" at speed) for aircraft parked 100 m beside the route — 421 such calls in his
+    /// simulated-traffic runs over 100 airports. A parked aircraft is a threat through the route or by
+    /// being very close, as before.</para>
+    /// </summary>
+    public static bool IsRouteThreat(bool nearRoute, double dcpaM, double tcpaSec, double trafficGsKts, bool veryClose)
+        => nearRoute
+           || (trafficGsKts >= MovingTrafficKts && dcpaM < ThreatDcpaM && tcpaSec <= ThreatMaxTcpaSec)
+           || veryClose;
 }

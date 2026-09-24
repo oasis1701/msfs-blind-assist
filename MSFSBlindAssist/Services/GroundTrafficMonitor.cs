@@ -58,13 +58,12 @@ public sealed class GroundTrafficMonitor : IDisposable
     private const double ROUTE_ALERT_MAX_AHEAD_M = 600.0;
     private const double OWN_ROUTE_MAX_LATERAL_M = 40.0; // own aircraft must be on its route for route maths
 
-    // Converging (closest point of approach)
+    // Converging (closest point of approach). "Moving" traffic is GroundTrafficLogic.MovingTrafficKts; the
+    // route threat test's own closest-approach limits live with it (GroundTrafficLogic.IsRouteThreat).
     private const double CONFLICT_DCPA_M = 45.0;
     private const double CONFLICT_REARM_DCPA_M = 90.0;
-    private const double THREAT_DCPA_M = 60.0;
     private const double CONFLICT_MIN_TCPA_S = 5.0;
     private const double CONFLICT_MAX_TCPA_S = 40.0;
-    private const double MOVING_KTS = 3.0;
 
     // Queue position must read the same on this many evaluations before it is spoken.
     private const int QUEUE_CONFIRM_EVALS = 2;
@@ -974,7 +973,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             string dir = GroundTrafficLogic.DescribeDirection(v.Rel);
 
             // ── Converging (closest point of approach) ──
-            bool movingTraffic = ac.GS >= MOVING_KTS;
+            bool movingTraffic = ac.GS >= GroundTrafficLogic.MovingTrafficKts;
             bool conflict = movingTraffic && v.Dcpa < CONFLICT_DCPA_M
                             && v.Tcpa >= CONFLICT_MIN_TCPA_S && v.Tcpa <= CONFLICT_MAX_TCPA_S;
             if (!conflict && (v.Dcpa > CONFLICT_REARM_DCPA_M || v.Tcpa <= 0.0))
@@ -1032,16 +1031,14 @@ public sealed class GroundTrafficMonitor : IDisposable
             bool inForwardArc = v.Rel <= GroundTrafficLogic.ForwardArcDeg || v.Rel >= 360.0 - GroundTrafficLogic.ForwardArcDeg;
             if (!inForwardArc && newZone >= GroundZone.Caution) { ac.CurrentZone = newZone; continue; }
 
-            // With a route to judge by, "Slow down"/"Stop" need a real threat: traffic near the route
-            // ahead, a predicted conflict, or genuinely close. Traffic merely beside the route drops
-            // to an awareness ping — it can still escalate later if it becomes a threat.
-            if (haveRoute && newZone >= GroundZone.Caution)
-            {
-                bool threat = v.NearRoute
-                              || (v.Dcpa < THREAT_DCPA_M && v.Tcpa <= 30.0 && (movingTraffic || ownGS >= MOVING_KTS))
-                              || v.DistFt <= WARNING_FT;
-                if (!threat) newZone = GroundZone.Awareness;
-            }
+            // With a route to judge by, "Slow down"/"Stop" need a real threat (GroundTrafficLogic.IsRouteThreat):
+            // traffic near the route ahead, genuinely close, or MOVING on a predicted collision course — a
+            // parked aircraft's straight-line closest approach assumes the pilot keeps going straight, which
+            // the route may not (PR #247 author's fix). Traffic merely beside the route drops to an awareness
+            // ping — it can still escalate later if it becomes a threat.
+            if (haveRoute && newZone >= GroundZone.Caution
+                && !GroundTrafficLogic.IsRouteThreat(v.NearRoute, v.Dcpa, v.Tcpa, ac.GS, v.DistFt <= WARNING_FT))
+                newZone = GroundZone.Awareness;
 
             if (movingAway) { ac.CurrentZone = newZone; continue; }
             if (!GroundTrafficLogic.ShouldAnnounceEscalation(newZone, ac.CurrentZone, ac.LastSpokenZone,

@@ -41,7 +41,7 @@ public class GroundTrafficMonitorHeadlessTests
         Assert.Contains(h.Said.All, m => m.StartsWith("Number 4 in the departure queue"));
     }
 
-    [Fact(Skip = "Fails on the reviewed monitor as merged; the author's fix 2 (CPA threat for moving traffic only) is ported in the next commits of this branch.")]
+    [Fact]
     public void Parked_aircraft_off_a_route_that_bends_away_is_not_a_slow_down()
     {
         // Route east for 80 m, then north. A parked aircraft 170 m straight ahead is 90 m from the
