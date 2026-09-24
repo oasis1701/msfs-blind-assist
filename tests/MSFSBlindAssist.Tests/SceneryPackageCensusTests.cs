@@ -215,7 +215,7 @@ public class SceneryPackageCensusTests : IDisposable
     {
         // A hand-edited or half-corrupted census.json can be valid JSON and still carry a row
         // naming nothing. Indexing the dictionary on that null threw out of Locate, out of
-        // BuildSurroundings, and cost the pilot the WHOLE surroundings catalog at that airport.
+        // SurroundingsCatalogBuilder, and cost the pilot the WHOLE surroundings catalog at that airport.
         string pkg = Package("kxyz", 30, 33.6400, -84.4300);
         string cache = Path.Combine(_root, "cache");
         Assert.Single(new SceneryPackageCensus(cache).Locate(Community, Katl));
@@ -259,7 +259,7 @@ public class SceneryPackageCensusTests : IDisposable
     {
         // Same reason as the indexer's: not caching the short count is only half of it, because
         // the CATALOG built on this locate is cached and nothing rebuilds it on its own. Saying
-        // the scan was short is what gives that catalog a lifetime (BuildSurroundings ORs it into
+        // the scan was short is what gives that catalog a lifetime (SurroundingsCatalogBuilder ORs it into
         // degraded), so the package is looked for again once the lock is gone.
         Package("good", 30, 33.6400, -84.4300);
         string partial = Package("partial", 30, 33.6410, -84.4300);

@@ -31,6 +31,19 @@ public static class PlaceListBuilder
         _ => true,
     };
 
+    /// <summary>The nearest node a Place may END at when it has no stand: never a hold-short node
+    /// and never on runway pavement — the "nearest taxiway point" must not be on a runway.</summary>
+    public static NearestNode? NearestRoutableNode(TaxiGraph graph, double lat, double lon)
+    {
+        var n = graph.FindNearestNode(lat, lon);
+        if (n == null) return null;
+        if (RunwayPavement.IsOnPavement(n.Latitude, n.Longitude, graph.RunwayCenterlines)) return null;
+        // Same test TaxiGraph's own landing-exit scan uses for "this is a hold line".
+        if (n.Type == TaxiNodeType.HoldShort || n.Type == TaxiNodeType.ILSHoldShort) return null;
+        return new NearestNode(n.NodeId, n.Latitude, n.Longitude,
+            TaxiGraph.CalculateDistanceMeters(n.Latitude, n.Longitude, lat, lon));
+    }
+
     public static List<PlaceEntry> Build(AirportFeatureCatalog catalog, IReadOnlyList<StandCandidate> selectable,
         IReadOnlyList<StandCandidate> navdataOnly, Func<double, double, NearestNode?> nearestRoutableNode, Func<ParkingSpot, bool> standAllowed)
     {

@@ -400,7 +400,7 @@ public class SceneryPackageIndexerTests : IDisposable
     {
         // The 5-minute memo is only half the answer: the catalog built on a short scan is cached
         // too, and nothing rebuilds it on its own — so the indexer must SAY the answer was short,
-        // and BuildSurroundings ORs that into the catalog's degraded flag, which does have a
+        // and SurroundingsCatalogBuilder ORs that into the catalog's degraded flag, which does have a
         // lifetime. Without it the short answer outlived the condition for the whole session.
         string pkg = MakePackage("shortscan", ("KXYZ_Fire_Station", 40.0005, -75.0005));
         string locked = Path.Combine(pkg, "scenery", "locked.bgl");

@@ -687,7 +687,7 @@ public partial class MainForm
         => airportDataProvider is { } provider ? BuildGateDataSource(provider) : null;
 
     /// <summary>A GateDataSource over <paramref name="provider"/> — for a caller that has already
-    /// captured the provider it works against (BuildSurroundings, on its pool thread), so its gate
+    /// captured the provider it works against (SurroundingsCatalogBuilder, on its pool thread), so its gate
     /// reads and its navdata reads come from ONE database even if a switch lands mid-call.</summary>
     private Services.GateDataSource BuildGateDataSource(IAirportDataProvider provider)
         => new(provider, GsxCouatlRunning,

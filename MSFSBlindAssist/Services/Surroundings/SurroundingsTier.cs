@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.Services.Surroundings;
 /// The catalog is built from several independent sources — navdata stands, GSX terminals, OSM
 /// buildings, the installed scenery package — and only the navdata tier is required (the airport
 /// box and the facts line come from it). The others are additions. Read in a straight line, an
-/// exception out of ANY of them left <c>BuildSurroundings</c> without a result at all, which
+/// exception out of ANY of them left <c>SurroundingsCatalogBuilder</c> without a result at all, which
 /// <c>SurroundingsCatalogCache</c> records as a failed build: the pilot then gets NO surroundings
 /// at that airport — not even the navdata stands that were already in hand — and the cache retries
 /// the same failing build every 60 s for as long as the airport is current. A mirror that times

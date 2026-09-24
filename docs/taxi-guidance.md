@@ -923,7 +923,7 @@ plus the installed scenery package's own placement data.
 
 ### Four tiers, and how they rank
 
-`MainForm.BuildSurroundings(icao)` is the cache's `BuildSupplier`. It STARTS
+`SurroundingsCatalogBuilder.Build(icao)` is the cache's `BuildSupplier`. It STARTS
 the OSM fetch first (`OnlineFeatureStore.Prefetch`), reads navdata, then GSX,
 then the scenery package, and only then collects OSM, waiting for whatever is
 left of `OnlineFeatureStore.CatalogWait` (3 s from the prefetch) — so a
@@ -2254,7 +2254,7 @@ modifier (`body` is a verbosity, not a geometry modifier); the only thing
 a node is unchanged. The TAXIWAY query keeps `out tags geom;` byte for byte.
 
 `OnlineFeatureStore` is the tier's cache: per ICAO, in memory only, one fetch in
-flight per airport. `BuildSurroundings` STARTS the fetch before its other tiers
+flight per airport. `SurroundingsCatalogBuilder` STARTS the fetch before its other tiers
 (`Prefetch`, which returns at once) and asks `GetAsync` for the answer after the
 scenery tier, waiting only for what is left of `CatalogWait` (3 s from the
 prefetch; `RemainingWait`, never negative) — so the catalog includes the
@@ -2275,7 +2275,7 @@ invalidate — and so discard — the very build about to include it.
   `GetAsync` reports an `OnlineFeatureStatus` alongside the features —
   `Served` (a mirror answered, with buildings or with the fact that there are
   none), `Pending` (the caller's wait ran out; the fetch runs on), `Failed`,
-  `Disabled` — and `BuildSurroundings` marks the catalog `Degraded` on the
+  `Disabled` — and `SurroundingsCatalogBuilder` marks the catalog `Degraded` on the
   middle two, so `SurroundingsCatalogCache` expires it after
   `DegradedLifetime` and the next `GetAsync` asks the store again. Without
   that, a null fetch raised no `FeaturesUpdated` (the continuation requires a
@@ -2562,7 +2562,7 @@ config, and since the census it is read while the simulator is running, where
 a reader that permits no writer can make the simulator's own write fail. A
 config that EXISTS but cannot be READ — the simulator holding it exclusively
 for a moment, an access error — is reported apart from "nothing to read"
-(`TryGetCommunityPath`'s `readFailed`), and `BuildSurroundings` marks the
+(`TryGetCommunityPath`'s `readFailed`), and `SurroundingsCatalogBuilder` marks the
 scenery tier SHORT on it, so the catalog is degraded and built again after its
 lifetime instead of standing as an airport with no scenery package: a read
 that failed says nothing about whether the package is there. A config that

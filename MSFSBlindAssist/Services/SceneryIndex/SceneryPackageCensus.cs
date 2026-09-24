@@ -293,7 +293,7 @@ public sealed class SceneryPackageCensus
                     // row that names nothing. Drop the ROW, not the file — the rest still spares a
                     // rescan — and drop it HERE, at the trust boundary, so nothing downstream has
                     // to keep asking. Indexing the lookup below on such a row threw out of Locate,
-                    // out of BuildSurroundings, and cost the pilot the whole catalog.
+                    // out of SurroundingsCatalogBuilder, and cost the pilot the whole catalog.
                     cached.Packages.RemoveAll(p => p is null || string.IsNullOrEmpty(p.Path));
                     return cached;
                 }

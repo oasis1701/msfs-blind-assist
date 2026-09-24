@@ -1851,139 +1851,6 @@ public partial class MainForm
         });
     }
 
-    /// <summary>
-    /// Every surroundings tier for one airport, merged into one list, plus the airport's facts
-    /// line. Four tiers, merged in this order: navdata stands (the required base — the airport box
-    /// and the facts line come from it), GSX terminals, OSM buildings via OnlineFeatureStore, and the
-    /// installed scenery package, located by scenery_local_path or, where navdata names none, by
-    /// SceneryPackageCensus. The OSM fetch is STARTED first and collected after the scenery tier, so
-    /// the two slow ones overlap. This is SurroundingsCatalogCache.BuildSupplier — which a first-time
-    /// scenery scan and DB read can make slow (every BGL in a package opened once, under a
-    /// per-package lock) — so the cache contracts to invoke it on a THREAD-POOL thread,
-    /// NEVER on the UI thread and NEVER from a per-frame position update. That is also what makes
-    /// the bounded online-feature wait below safe. A fresh GateDataSource per call — built over the
-    /// provider this call captured, never the field (W6) — for the same
-    /// reason ParkingSpotSupplier builds one, but only ONE build for the whole call (shared
-    /// between the named-spots and selectable-gates reads below) — the "never share a
-    /// GateDataSource across threads" rule is about the UI thread's own per-ICAO caches, not
-    /// about paying for a second build on this same thread-pool call.
-    /// </summary>
-    private MSFSBlindAssist.Services.SurroundingsBuild BuildSurroundings(string icao)
-    {
-        var provider = airportDataProvider;
-        if (provider == null) return new(Array.Empty<MSFSBlindAssist.Navigation.Surroundings.AirportFeature>(), "");
-        var features = new List<MSFSBlindAssist.Navigation.Surroundings.AirportFeature>();
-
-        // Over the provider captured above, never the field again (W6): a database switch landing
-        // mid-build then cannot pair one database's navdata reads with another's gate list. (Such a
-        // build is discarded by the cache anyway — review item ML-4 — but the one answer it hands
-        // its own caller is at least consistent.)
-        var gateDataSource = BuildGateDataSource(provider);
-        var facilities = (provider as MSFSBlindAssist.Database.IAirportFacilitiesProvider)?.GetAirportFacilities(icao);
-
-        // The OSM fetch STARTS FIRST, before every tier below, and nothing waits for it here
-        // (review item ML-6). It used to be waited for — up to 3 s — BEFORE the scenery tier began,
-        // so a first-time scenery scan and a slow mirror added up, and a mirror that answered
-        // during the scan had already been given up on. It is collected after the scenery tier with
-        // whatever is left of OnlineFeatureStore.CatalogWait. Prefetch never throws and arms no
-        // FeaturesUpdated (see its doc).
-        var osmStore = onlineFeatures;
-        var osmClock = System.Diagnostics.Stopwatch.StartNew();
-        if (osmStore != null && facilities != null)
-            osmStore.Prefetch(icao, facilities.RefLat, facilities.RefLon, facilities);
-
-        // NAVDATA is the required base — the airport box and the facts line come from it, so its
-        // failure really is the build's. Every tier after it is an ADDITION and is read through
-        // SurroundingsTier, which keeps an optional tier's failure from costing the pilot the
-        // stands and terminals already in hand (a failed build is cached as failed and retried
-        // every 60 s, so one bad mirror reply or one edited cache file meant total silence).
-        var named = MSFSBlindAssist.Services.ParkingSpotSource.GetNamedSpots(provider, gateDataSource, icao);
-        features.AddRange(MSFSBlindAssist.Navigation.Surroundings.NavdataFeatureSource.Read(named, facilities));
-
-        // DEGRADED means an optional tier was not SERVED — it threw, refused, or was still out when
-        // the wait ran out — so this list is what could be had rather than what there is, and the
-        // cache gives it a lifetime instead of treating it as the answer for the session. A tier
-        // that simply has nothing to add is not degraded, and neither is one that cannot run here
-        // at all (switched off, or an airport with no facilities row to bound it): nothing is owed
-        // and a rebuild would only find the same absence.
-        bool degraded = false;
-
-        var gsx = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("GSX", icao, () =>
-            MSFSBlindAssist.Navigation.Surroundings.GsxTerminalFeatureSource.Read(
-                MSFSBlindAssist.Services.ParkingSpotSource.GetSelectableGates(provider, gateDataSource, icao)));
-        features.AddRange(gsx.Features);
-        degraded |= gsx.Failed;
-
-        // The SCENERY tier is READ here, while the OSM fetch runs, and ADDED after OSM below, so the
-        // merge sees the tiers in the order it always has — navdata, GSX, OSM, scenery — which
-        // matters because AirportFeatureCatalog.Build's rank sort is stable: input order breaks ties.
-        MSFSBlindAssist.Services.Surroundings.SurroundingsTier.TierRead? scenery = null;
-        bool sceneryShort = false;
-        if (MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled && facilities != null)
-        {
-            // A SHORT answer is degraded too, not just a thrown one. Both readers refuse to cache
-            // a scan they could not finish and re-read the package after a few minutes — but the
-            // CATALOG built on that short answer is cached, and nothing rebuilds it on its own,
-            // so their memo expiring bought nothing. Degraded gives this build a lifetime.
-            scenery = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("scenery", icao, () =>
-            {
-                var dirs = MSFSBlindAssist.Services.SceneryIndex.SceneryPackageLocator.PackageDirs(facilities.SceneryLocalPath, System.IO.Directory.Exists);
-                bool byCensus = false;
-                if (dirs.Count == 0)
-                {
-                    // An MSFS 2024 navdata build names no package for ANY airport — find it by where its
-                    // objects stand. Header-only and disk-cached; this method is already on a pool thread.
-                    string simVersion = MSFSBlindAssist.Settings.SettingsManager.Current.SimulatorVersion ?? "FS2020";
-                    string? community = MSFSBlindAssist.Database.MsfsPackagesLocator.TryGetCommunityPath(simVersion, out bool configUnreadable);
-                    // A UserCfg.opt that could not be READ is not "no Community folder" (SI-2): the
-                    // package may well be there, so a catalog built without it is SHORT — degraded,
-                    // built again after its lifetime — never the finished answer for the session.
-                    sceneryShort |= configUnreadable;
-                    if (community != null)
-                    {
-                        dirs = sceneryCensus.Locate(community, facilities, out bool censusShort).ToList();
-                        byCensus = dirs.Count > 0;
-                        sceneryShort |= censusShort;
-                    }
-                }
-                var read = sceneryIndexer.GetFeatures(icao, dirs, facilities, byCensus, out bool indexShort);
-                sceneryShort |= indexShort;
-                return read;
-            });
-        }
-
-        // OSM, collected NOW with what is left of CatalogWait since the prefetch — zero when the
-        // tiers above took longer, which still takes an answer that landed meanwhile (the store
-        // holds it) and otherwise reports Pending. Still ON A POOL THREAD (this method never runs
-        // on the UI thread): a catalog built without the buildings is invalidated by
-        // FeaturesUpdated when the fetch lands — which it does only when that late fetch
-        // SUCCEEDS, so a refusal is carried by the degraded flag instead.
-        if (osmStore != null && facilities != null)
-        {
-            var status = MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Disabled;
-            var osm = MSFSBlindAssist.Services.Surroundings.SurroundingsTier.Read("OSM", icao, () =>
-            {
-                var got = osmStore.GetAsync(icao, facilities.RefLat, facilities.RefLon, facilities,
-                                            MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore.RemainingWait(osmClock.Elapsed))
-                                  .GetAwaiter().GetResult();
-                status = got.Status;
-                return got.Features;
-            });
-            features.AddRange(osm.Features);
-            degraded |= osm.Failed
-                || status is MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Pending
-                          or MSFSBlindAssist.Services.Surroundings.OnlineFeatureStatus.Failed;
-        }
-
-        if (scenery is { } sceneryRead)
-        {
-            features.AddRange(sceneryRead.Features);
-            degraded |= sceneryRead.Failed || sceneryShort;
-        }
-        // The facts line rides on the catalog: the window that speaks it would otherwise re-read
-        // it from the database on every open.
-        return new(features, facilities?.DescribeFacts() ?? "", degraded);
-    }
 
     /// <summary>Whatever had the foreground when the pilot pressed the key — the handle Escape
     /// hands back to. Declared here rather than taken from a form, because the surroundings
@@ -2013,7 +1880,7 @@ public partial class MainForm
     /// cannot swap it out from under a lookup in flight. The manager's DatabaseGeneration is captured
     /// beside it, so a Where-Am-I graph built through that provider after a switch still answers this
     /// lookup but is never cached. That guarantee stops at the catalog: the
-    /// cache's BuildSupplier (BuildSurroundings) reads the `airportDataProvider` FIELD on its own
+    /// cache's BuildSupplier (SurroundingsCatalogBuilder) reads the `airportDataProvider` FIELD on its own
     /// pool thread and so may see the new database. Harmless, because RefreshDatabaseProvider
     /// Clear()s the cache and the cache's in-flight check then discards a build that straddled
     /// the switch instead of caching it. `compose` runs on the pool thread and returns the action

@@ -726,7 +726,11 @@ public partial class MainForm : Form
         // well as by the hotkeys and the Place list, so it must never build a GateDataSource per
         // ask (review item E8).
         surroundingsCache.VersionSupplier = GateListVersion;
-        surroundingsCache.BuildSupplier = BuildSurroundings;
+        var catalogBuilder = new MSFSBlindAssist.Services.Surroundings.SurroundingsCatalogBuilder(
+            () => airportDataProvider, BuildGateDataSource, () => onlineFeatures, sceneryCensus, sceneryIndexer,
+            () => MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled,
+            () => MSFSBlindAssist.Settings.SettingsManager.Current.SimulatorVersion ?? "FS2020");
+        surroundingsCache.BuildSupplier = catalogBuilder.Build;
         sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager
@@ -854,7 +858,7 @@ public partial class MainForm : Form
         };
 
         // What ApplyRuntimeSettings will compare the first Settings OK against. Seeded HERE, from
-        // the same SettingsManager.Current the two services above and BuildSurroundings read, so
+        // the same SettingsManager.Current the two services above and SurroundingsCatalogBuilder read, so
         // that first OK clears the catalog cache and the OSM store only when one of them really
         // changed. Left unseeded they were null until the first OK, which therefore threw away
         // every airport's catalog — including a slow first-time scenery scan — and forced a fresh
