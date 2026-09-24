@@ -39,11 +39,15 @@ public class FcuValuePhrasesTests : IDisposable
     [InlineData(360.0, "Heading 000 degrees")]
     [InlineData(249.6, "Heading 250 degrees")]
     [InlineData(359.6, "Heading 000 degrees")]   // round, THEN wrap — never "360"
-    [InlineData(-0.0, "Heading 000 degrees")]    // not a dashes sentinel, and never "-000"
     public void Heading_speaks_whole_degrees(double shim, string expected)
     {
         Assert.Equal(expected, FcuValuePhrases.Heading(shim));
     }
+
+    // Its own Fact: xUnit compares InlineData with ==, so a -0.0 row beside the 0.0 row is a duplicate.
+    [Fact]
+    public void Heading_negative_zero_is_north_not_dashes_and_never_minus_000() =>
+        Assert.Equal("Heading 000 degrees", FcuValuePhrases.Heading(-0.0));
 
     [Fact]
     public void Heading_is_silent_while_the_window_shows_dashes()
@@ -119,11 +123,16 @@ public class FcuValuePhrasesTests : IDisposable
     [InlineData(0.1f, "FPA 0.1 degrees")]
     [InlineData(-2.5f, "FPA -2.5 degrees")]
     [InlineData(0.0f, "FPA 0.0 degrees")]
-    [InlineData(-0.0f, "FPA 0.0 degrees")]     // never "-0.0"
     public void Flight_path_angle_speaks_a_selection(float degrees, string expected)
     {
         Assert.Equal(expected, FcuValuePhrases.FlightPathAngle(Word(NormalOperation, degrees)));
     }
+
+    // Its own Fact: xUnit compares InlineData with ==, so a -0.0f row beside the 0.0f row is a
+    // duplicate — yet the packed word differs (the sign bit), and it must never read "-0.0".
+    [Fact]
+    public void Flight_path_angle_negative_zero_is_never_minus_0_0() =>
+        Assert.Equal("FPA 0.0 degrees", FcuValuePhrases.FlightPathAngle(Word(NormalOperation, -0.0f)));
 
     [Theory]
     [InlineData(NoComputedData, -2.5f)]
