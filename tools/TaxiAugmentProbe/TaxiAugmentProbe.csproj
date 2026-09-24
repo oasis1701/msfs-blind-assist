@@ -14,8 +14,10 @@
     -->
     <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\*.cs" Link="Linked\%(Filename)%(Extension)" />
     <Compile Remove="..\..\MSFSBlindAssist\Services\TaxiAugment\AugmentingAirportDataProvider.cs" />
-    <!-- ParkingSpot model (for the Aliases round-trip assertion). GateSource is its only dep. -->
+    <!-- ParkingSpot model (for the Aliases round-trip assertion). GateSource and ParkingTypes
+         (the named navdata parking-type sets its Describe() reads) are its only deps. -->
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs" Link="Linked\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingTypes.cs" Link="Linked\%(Filename)%(Extension)" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs" Link="Linked\%(Filename)%(Extension)" />
     <!-- StandId identity parser (gate-data correctness). GateAliasResolver is already covered by
          the TaxiAugment\*.cs wildcard above. -->

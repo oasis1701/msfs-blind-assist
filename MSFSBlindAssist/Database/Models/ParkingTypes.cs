@@ -12,7 +12,7 @@ public static class ParkingTypes
     public static bool IsGaRamp(int type) => type is 2 or 3 or 4 or 5 or 15;
 
     /// <summary>CIVIL cargo only: 6, RAMP_CARGO. A military cargo stand is <see cref="IsMilitary"/>;
-    /// counted here it made "Cargo ramp" features of 605 military stands at 64
+    /// counted here it made "Cargo ramp" features and Cargo places of 605 military stands at 64
     /// fs2024 airports (PHNL's Hickam ramp among them).</summary>
     public static bool IsCargo(int type) => type == 6;
 

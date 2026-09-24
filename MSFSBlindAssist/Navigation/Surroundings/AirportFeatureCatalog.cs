@@ -110,8 +110,8 @@ public sealed class AirportFeatureCatalog
     /// <summary>
     /// The two halves of ONE split OSM way: both carry a PROPER name, the SAME one (compared as
     /// <see cref="SameFeature"/> compares names), and the outlines TOUCH (<see cref="RingsTouch"/>).
-    /// One body, as it always was — kept apart, one apron or building would be listed and
-    /// announced as two places. The merged feature keeps the winner's own
+    /// One body, as it always was — kept apart, one apron or building would be two places, and a
+    /// routable Terminal or Concourse two Place entries. The merged feature keeps the winner's own
     /// outline, as before (<see cref="Build"/> never joins two outlines). A name alone is no
     /// evidence: two same-named outlines that do not touch are two bodies, and a proper name beside
     /// an unnamed or differently named ring never makes them one, touching or not.

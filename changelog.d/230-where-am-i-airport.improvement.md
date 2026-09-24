@@ -1,0 +1,1 @@
+Where Am I, the taxi form and takeoff assist now use the airport you are actually standing at — including small fields with a three-character identifier — instead of sometimes picking a nearby heliport or a neighbouring field.

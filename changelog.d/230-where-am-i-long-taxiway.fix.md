@@ -1,0 +1,1 @@
+Where Am I no longer says "Not on a known taxiway or ramp" while you are sitting in the middle of one: any taxiway segment longer than about 240 metres had a blind stretch in its middle. The readout is also markedly faster.

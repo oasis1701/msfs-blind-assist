@@ -1792,7 +1792,7 @@ public partial class TaxiGuidanceManager : IDisposable
     /// gating on `_lastOnGround` (no callsite should ever ask this airborne).
     /// </summary>
     /// <param name="dataProvider">Airport data provider for graph rebuilds.</param>
-    /// <param name="icao">Airport ICAO (4-char canonical).</param>
+    /// <param name="icao">The airport <see cref="CurrentAirport.Resolve"/> named — an ident of any length; every provider lookup matches icao OR ident.</param>
     /// <param name="lat">Aircraft latitude (degrees).</param>
     /// <param name="lon">Aircraft longitude (degrees).</param>
     /// <param name="aircraftHeadingMag">Aircraft magnetic heading (degrees).</param>
