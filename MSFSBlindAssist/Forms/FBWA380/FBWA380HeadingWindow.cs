@@ -48,7 +48,9 @@ public class FBWA380HeadingWindow : FBWA380FCUWindowBase
 
     private void ToggleTrkFpa()
     {
-        bool isTrk = (simConnect.GetCachedVariableValue("A32NX_TRK_FPA_MODE_ACTIVE") ?? 0) > 0.5;
+        // The commanded view, not the raw cache: the cache is fed only by the 1 Hz batch, so a quick
+        // second press read the pre-first-press mode and re-announced the same target.
+        bool isTrk = (aircraft.TrkFpaModeCommandedOrCached(simConnect) ?? 0) > 0.5;
         int next = isTrk ? 0 : 1;
         // Through the def, not a raw SendEvent here: SetTrkFpaMode fires the cockpit's toggle
         // event AND arms the FCU value-change echo window, so the "TRK FPA" confirmation below
@@ -62,7 +64,7 @@ public class FBWA380HeadingWindow : FBWA380FCUWindowBase
 
     private void UpdateTrkLabel()
     {
-        bool isTrk = (simConnect.GetCachedVariableValue("A32NX_TRK_FPA_MODE_ACTIVE") ?? 0) > 0.5;
+        bool isTrk = (aircraft.TrkFpaModeCommandedOrCached(simConnect) ?? 0) > 0.5;
         string text = isTrk
             ? "TRK·FPA / HDG·V/S toggle — now TRK·FPA (press for HDG·V/S)"
             : "HDG·V/S / TRK·FPA toggle — now HDG·V/S (press for TRK·FPA)";

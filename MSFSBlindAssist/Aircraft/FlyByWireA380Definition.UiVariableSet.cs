@@ -67,7 +67,7 @@ public partial class FlyByWireA380Definition
         return live;
     }
 
-    private void RememberCommandedValue(string varKey, double value) =>
+    internal void RememberCommandedValue(string varKey, double value) =>   // internal: tests reach it without a SimConnect send
         _commandedValues[varKey] = (Math.Round(value), Environment.TickCount64);
 
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,

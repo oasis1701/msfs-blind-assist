@@ -428,6 +428,12 @@ public partial class FlyByWireA380Definition
         s.SendEvent(toggleEvent);
     }
 
+    /// <summary>The TRK/FPA mode as <see cref="SetTrkFpaMode"/> judges it: a mode just commanded wins over
+    /// the batch-fed cache until the sim confirms it or the window lapses. The heading window's button
+    /// reads this, so a quick second press asks for the other mode instead of repeating the first.</summary>
+    internal double? TrkFpaModeCommandedOrCached(SimConnectManager s) =>
+        CommandedOrCachedValue("A32NX_TRK_FPA_MODE_ACTIVE", s);
+
     // Fire a push/pull/toggle event. When readback is true (the default — used by
     // the dedicated FCU value-entry windows, where a value confirmation is wanted),
     // also speak the resulting value via OnPanelButtonFired's switch. The input-mode
