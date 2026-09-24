@@ -1054,10 +1054,14 @@ public sealed class GroundTrafficMonitor : IDisposable
                               || GroundTrafficLogic.IsOpeningByMotion(ac.GS, v.OpeningMps, leadGrowing);
             // A "Stop" withheld because the traffic was opening stays HELD while it keeps moving and is not
             // closing on the pilot (PR #247 integration review Q2): following a departing leader, catching up
-            // to its speed brought the opening under 1 m/s and drew "Stop" with the gap still growing.
-            bool movingAway = GroundTrafficLogic.IsMovingAwayOrHeld(openingNow, ac.StopHeldWhileOpening, ac.GS, v.OpeningMps);
+            // to its speed brought the opening under 1 m/s and drew "Stop" with the gap still growing. Never
+            // inside GroundTrafficLogic.StopHoldFloorFt, though (PR #247 integration review R1): a pilot
+            // closing more slowly than the release speed on a leader still moving at 3 kt or more was
+            // otherwise never warned, however close it got.
+            bool movingAway = GroundTrafficLogic.IsMovingAwayOrHeld(openingNow, ac.StopHeldWhileOpening, ac.GS, v.OpeningMps, v.DistFt);
             if (!movingAway)
-                SetStopHeld(ac, false, ac.GS < GroundTrafficLogic.MovingTrafficKts ? "stopped" : "closing");
+                SetStopHeld(ac, false, v.DistFt <= GroundTrafficLogic.StopHoldFloorFt ? "close"
+                    : ac.GS < GroundTrafficLogic.MovingTrafficKts ? "stopped" : "closing");
 
             GroundZone newZone;
             if (v.DistFt > awareDistFt)        newZone = GroundZone.None;

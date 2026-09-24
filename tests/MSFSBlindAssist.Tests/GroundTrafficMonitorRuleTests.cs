@@ -276,6 +276,46 @@ public class GroundTrafficMonitorRuleTests
         Assert.Equal(31, stopAt);   // the first second it closes, at 1 m/s
     }
 
+    [Fact]
+    public void A_Stop_held_down_on_a_slowly_closing_leader_still_speaks_by_the_floor()
+    {
+        // PR #247 integration review R1: a leader moving at 3.5 kt — above MovingTrafficKts — with the pilot
+        // closing at only 0.3 m/s (under HeldStopReleaseClosingMps) would hold "Stop" down forever under the
+        // pre-R1 rule, however close the gap got. The pilot's own speed is constant throughout (3.5 kt + a
+        // 0.3 m/s closing rate = about 4.08 kt) so the speed-scaled Warning boundary never moves: the leader
+        // opens fast for the first three seconds — a fast poll needs an already-tracked aircraft, so with
+        // nothing tracked yet the first sweep only lands on the slow, every-third-tick cadence — arming the
+        // hold on the very first evaluation that sees it (motion-based, PR #247 author's fix), then settles
+        // at 3.5 kt: still MOVING, but closing at only 0.3 m/s. GroundTrafficLogic.StopHoldFloorFt (200 ft)
+        // releases the hold once the gap reaches it, regardless of the speeds.
+        var s = new FollowingLeader(leadM: 62);
+        s.OwnMps = 3.5 * Kt + 0.3;   // constant from the first tick: 4.08 kt, so the Warning boundary never moves
+        s.LeadMps = 8.0;             // opens fast for the first evaluation, whenever the slow cadence delivers it
+        while (s.Second < 3) s.Step();
+        Assert.False(s.StopSpoken, "Stop must not fire while the leader is still opening");
+
+        s.LeadMps = 3.5 * Kt;        // settles: still MOVING, closing at just 0.3 m/s from here on
+        int stopAt = -1;
+        double gapFtAtStop = double.NaN;
+        while (s.Second < 200 && stopAt < 0)
+        {
+            s.Step();
+            if (s.GapM * GroundTrafficLogic.FeetPerMetre > 205 && s.StopSpoken)
+                Assert.Fail($"Stop fired at {s.Second}s, {s.GapM * GroundTrafficLogic.FeetPerMetre:0.0} ft — well outside the floor");
+            if (stopAt < 0 && s.StopSpoken) { stopAt = s.Second; gapFtAtStop = s.GapM * GroundTrafficLogic.FeetPerMetre; }
+        }
+
+        // Measured: "Stop" comes at t=66, with the gap at 199.5 ft — never before the floor (at t=65 the
+        // gap is still 200.4 ft, above it), never later than one tick's travel (0.3 m/s, about 1 ft) past it.
+        Assert.Equal(66, stopAt);
+        Assert.InRange(gapFtAtStop, 200 - 0.3 * GroundTrafficLogic.FeetPerMetre, 200);
+
+        Assert.True(stopAt > 0, "Stop never came");
+        // Within one second's travel (0.3 m/s, about 1 ft) of the 200 ft floor — measured, not derived: the
+        // per-tick step means "Stop" can fire up to a tick late, never early.
+        Assert.InRange(gapFtAtStop, 200 - 0.3 * GroundTrafficLogic.FeetPerMetre, 200);
+    }
+
     // ── A parked aircraft off the route: no "Slow down", and "Stop" on time ─────────────────────────────
 
     [Fact]

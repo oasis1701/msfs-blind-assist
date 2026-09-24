@@ -91,17 +91,35 @@ internal static partial class GroundTrafficLogic
     public const double HeldStopReleaseClosingMps = 0.5;
 
     /// <summary>
+    /// Below this distance (feet) the HELD branch of <see cref="IsMovingAwayOrHeld"/> is never held back,
+    /// whatever the speeds say (PR #247 integration review R1): that branch otherwise leaves a pilot closing
+    /// on a leader that is still moving at <see cref="MovingTrafficKts"/> or more, at under
+    /// <see cref="HeldStopReleaseClosingMps"/>, unwarned at ANY gap until the leader stops or closes faster.
+    /// Sized like the zone thresholds themselves — roughly two widebodies' combined half-length (the Warning
+    /// zone's own sizing works out to about 203 ft for two 787s). Scoped to the held branch only — traffic
+    /// that is GENUINELY opening right now (<paramref name="openingNow"/> below) is still never given a
+    /// "Stop" this close in either; a leader accelerating away from inside the floor is not a threat.
+    /// </summary>
+    public const double StopHoldFloorFt = 200.0;
+
+    /// <summary>
     /// Is the traffic moving away, for its zone callouts — withheld, as traffic pulling away is? Yes while it
     /// is opening now (<paramref name="openingNow"/>: <see cref="IsMovingAway"/> or
-    /// <see cref="IsOpeningByMotion"/>). And while a "Stop" withheld because it was opening is held
-    /// (<paramref name="stopHeld"/>, <see cref="StopHeldAfterMovingAway"/>), still yes as long as the traffic
-    /// is MOVING (at least <see cref="MovingTrafficKts"/>) and not closing at
+    /// <see cref="IsOpeningByMotion"/>) — this half is unconditional, however close the gap: traffic actually
+    /// accelerating away is not a threat regardless of distance. And while a "Stop" withheld because it was
+    /// opening is held (<paramref name="stopHeld"/>, <see cref="StopHeldAfterMovingAway"/>), still yes as long
+    /// as the traffic is MOVING (at least <see cref="MovingTrafficKts"/>), not closing at
     /// <see cref="HeldStopReleaseClosingMps"/> or more (<paramref name="openingMps"/>,
-    /// <see cref="OpeningSpeedMps"/>, negative when closing). It speaks once the traffic stops or closes.
+    /// <see cref="OpeningSpeedMps"/>, negative when closing), and the gap (<paramref name="distFt"/>) is still
+    /// outside <see cref="StopHoldFloorFt"/> (PR #247 integration review R1) — that HELD half releases at the
+    /// floor whatever the speeds say, because it is no longer evidence the traffic is opening, only that it
+    /// once was. It speaks once the traffic stops, closes, or the gap shrinks to the floor.
     /// </summary>
-    public static bool IsMovingAwayOrHeld(bool openingNow, bool stopHeld, double trafficGsKts, double openingMps)
+    public static bool IsMovingAwayOrHeld(bool openingNow, bool stopHeld, double trafficGsKts, double openingMps,
+        double distFt = double.PositiveInfinity)
         => openingNow
-           || (stopHeld && trafficGsKts >= MovingTrafficKts && openingMps > -HeldStopReleaseClosingMps);
+           || (stopHeld && trafficGsKts >= MovingTrafficKts && openingMps > -HeldStopReleaseClosingMps
+               && distFt > StopHoldFloorFt);
 
     /// <summary>
     /// After a zone callout was withheld as moving away (<see cref="IsMovingAwayOrHeld"/>): is a "Stop" held

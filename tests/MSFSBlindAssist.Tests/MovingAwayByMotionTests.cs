@@ -105,6 +105,47 @@ public class MovingAwayByMotionTests
     public void Nothing_is_held_without_a_Stop_withheld_while_opening()
         => Assert.False(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: false, trafficGsKts: 10, openingMps: 0.0));
 
+    // ── The HELD branch is never held inside the floor, whatever the speeds ─────────────────────────
+    // PR #247 integration review R1: the held branch above otherwise never releases a pilot closing at
+    // under HeldStopReleaseClosingMps on a leader still moving at MovingTrafficKts or more — at ANY gap,
+    // until the leader stops or closes faster. StopHoldFloorFt is the floor below which that branch
+    // releases regardless. Scoped to the held branch only: traffic genuinely opening RIGHT NOW is still
+    // never a threat, however close — see the last test below.
+
+    [Fact]
+    public void A_held_Stop_speaks_once_the_gap_shrinks_below_the_floor()
+        => Assert.False(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGsKts: 10,
+            openingMps: 0.0, distFt: 199.9));
+
+    [Fact]
+    public void A_held_Stop_still_holds_just_outside_the_floor()
+        => Assert.True(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGsKts: 10,
+            openingMps: 0.0, distFt: 200.1));
+
+    [Fact]
+    public void The_floor_itself_releases_the_hold()
+        // "≤" the floor releases it: exactly 200 ft is inside, not outside.
+        => Assert.False(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGsKts: 10,
+            openingMps: 0.0, distFt: GroundTrafficLogic.StopHoldFloorFt));
+
+    [Fact]
+    public void The_floor_never_touches_traffic_that_is_genuinely_opening_right_now()
+        // openingNow is unconditional (PR #247 Q2's original rule): a leader actually accelerating away is
+        // not a threat regardless of distance, so the floor must not apply to this half — only to the HELD
+        // half, whose "still opening" is stale evidence rather than a live measurement. Reproduces the
+        // regression a first, over-broad R1 patch caused (GroundTrafficMonitorRuleTests' pulls-away-then-
+        // stops-inside-the-Warning-distance test, at 60 m/197 ft — inside this very floor).
+        => Assert.True(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: true, stopHeld: false, trafficGsKts: 20,
+            openingMps: 5.0, distFt: 150.0));
+
+    [Fact]
+    public void With_no_distance_supplied_the_floor_never_applies()
+    {
+        // The default keeps every pre-R1 call site (and test) byte-identical.
+        Assert.True(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: true, stopHeld: false, trafficGsKts: 10, openingMps: 2.0));
+        Assert.True(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGsKts: 10, openingMps: 0.0));
+    }
+
     [Fact]
     public void Withholding_a_Warning_escalation_as_moving_away_holds_the_Stop()
     {
