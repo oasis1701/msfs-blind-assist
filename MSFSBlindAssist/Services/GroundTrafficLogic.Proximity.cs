@@ -94,4 +94,45 @@ internal static partial class GroundTrafficLogic
         => nearRoute
            || (trafficGsKts >= MovingTrafficKts && dcpaM < ThreatDcpaM && tcpaSec <= ThreatMaxTcpaSec)
            || veryClose;
+
+    // ── Only the first aircraft on the route ahead is called (PR #247 author's fix, 9190e869) ─────────
+    // The author's "shadowed" traffic: an aircraft queued beyond the FIRST one on the route ahead cannot
+    // be reached without passing it, so it is not called on its own — a three-aircraft queue was announced
+    // as three "on your route" calls, then three "Slow down"s, each cutting off the last. The queue
+    // position covers them.
+
+    /// <summary>
+    /// How much further along the route than the first aircraft on it another must be to count as queued
+    /// behind it: two side by side on one taxiway are both first.
+    /// </summary>
+    public const double QueuedBehindFirstGapM = 10.0;
+
+    /// <summary>
+    /// The along-route distance of the FIRST aircraft on the route ahead — among the traffic ON it
+    /// (<c>OnRouteAhead</c>), the smallest distance ahead, the one the pilot would reach first — or null
+    /// when nothing is on the route ahead.
+    /// </summary>
+    public static double? FirstOnRouteAheadM(IEnumerable<(bool OnRouteAhead, double AheadM)> traffic)
+    {
+        double? first = null;
+        foreach (var (onRouteAhead, aheadM) in traffic)
+            if (onRouteAhead && (first is not double f || aheadM < f)) first = aheadM;
+        return first;
+    }
+
+    /// <summary>
+    /// Queued behind the first aircraft on the route ahead: on the route ahead itself, and more than
+    /// <see cref="QueuedBehindFirstGapM"/> further along than that first one (<paramref name="firstAheadM"/>,
+    /// <see cref="FirstOnRouteAheadM"/>). It gets no on-route callout, and its zone callouts are withheld
+    /// unless it is very close (<see cref="WithholdsZoneBehindFirst"/>).
+    /// </summary>
+    public static bool IsQueuedBehindFirst(bool onRouteAhead, double aheadM, double? firstAheadM)
+        => onRouteAhead && firstAheadM is double first && aheadM > first + QueuedBehindFirstGapM;
+
+    /// <summary>
+    /// A zone callout for an aircraft queued behind the first (<see cref="IsQueuedBehindFirst"/>) is
+    /// withheld unless it is very close: "Stop" (<see cref="GroundZone.Warning"/>) is never withheld.
+    /// </summary>
+    public static bool WithholdsZoneBehindFirst(bool queuedBehindFirst, GroundZone zone)
+        => queuedBehindFirst && zone < GroundZone.Warning;
 }

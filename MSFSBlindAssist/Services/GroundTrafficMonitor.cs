@@ -965,12 +965,19 @@ public sealed class GroundTrafficMonitor : IDisposable
 
         EvaluateQueueMovement(ctx, views, ownLat, ownLon, ownGS, useMetres, now, candidates);
 
+        // The traffic the pilot would reach FIRST on the route ahead. Aircraft queued beyond it cannot be
+        // reached without passing it, so they are not called on their own — only "Stop" still speaks for
+        // one — and the queue position covers them (PR #247 author's fix: a three-aircraft queue was
+        // announced as three "on your route" calls, then three "Slow down"s, each cutting off the last).
+        double? firstOnRouteM = GroundTrafficLogic.FirstOnRouteAheadM(views.Select(v => (v.OnRouteAhead, v.AheadM)));
+
         foreach (var v in views)
         {
             var ac = v.Ac;
             string name = Capitalise(ac.Name);
             string distStr = FormatDistance(v.DistFt, useMetres);
             string dir = GroundTrafficLogic.DescribeDirection(v.Rel);
+            bool behindFirst = GroundTrafficLogic.IsQueuedBehindFirst(v.OnRouteAhead, v.AheadM, firstOnRouteM);
 
             // ── Converging (closest point of approach) ──
             bool movingTraffic = ac.GS >= GroundTrafficLogic.MovingTrafficKts;
@@ -993,7 +1000,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 ac.RouteAlertArmed = true;
             bool pullingAway = v.RouteMotion == RouteRelativeMotion.Along && ac.GS >= ownGS + 3.0;
             bool comingAtUs = v.RouteMotion == RouteRelativeMotion.Toward;
-            if (v.OnRouteAhead && ac.RouteAlertArmed && !pullingAway
+            if (v.OnRouteAhead && !behindFirst && ac.RouteAlertArmed && !pullingAway
                 && v.AheadM <= ROUTE_ALERT_MAX_AHEAD_M
                 && (ownGS >= SLOW_DOWN_GS_KTS || comingAtUs)
                 && ac.CurrentZone < GroundZone.Caution)
@@ -1026,6 +1033,11 @@ public sealed class GroundTrafficMonitor : IDisposable
             else                               newZone = GroundZone.Awareness;
 
             if (newZone == GroundZone.None) { ac.CurrentZone = GroundZone.None; continue; }
+
+            // Queued beyond the first aircraft on the route: silent unless it is very close — "Stop" still
+            // speaks, never withheld (GroundTrafficLogic.WithholdsZoneBehindFirst). The zone is recorded, as
+            // every withheld non-Warning zone is.
+            if (GroundTrafficLogic.WithholdsZoneBehindFirst(behindFirst, newZone)) { ac.CurrentZone = newZone; continue; }
 
             // Caution/Warning only for traffic in the forward arc.
             bool inForwardArc = v.Rel <= GroundTrafficLogic.ForwardArcDeg || v.Rel >= 360.0 - GroundTrafficLogic.ForwardArcDeg;

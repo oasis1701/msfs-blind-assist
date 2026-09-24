@@ -58,7 +58,7 @@ public class GroundTrafficMonitorHeadlessTests
         Assert.DoesNotContain(h.Said.All, m => m.StartsWith("Slow down") || m.StartsWith("Stop,"));
     }
 
-    [Fact(Skip = "Fails on the reviewed monitor as merged; the author's fix 3 (only the first aircraft on the route is called) is ported in the next commits of this branch.")]
+    [Fact]
     public void Only_the_first_aircraft_on_the_route_is_called_not_the_queue_behind_it()
     {
         var h = Monitor(East(1000), 1000, ownEastM: 0, ownGs: 15, departure: false);
