@@ -276,6 +276,44 @@ public class GroundTrafficMonitorRuleTests
         Assert.Equal(31, stopAt);   // the first second it closes, at 1 m/s
     }
 
+    // ── A parked aircraft off the route: no "Slow down", and "Stop" on time ─────────────────────────────
+
+    [Fact]
+    public void A_pilot_who_misses_a_bend_hears_Stop_within_a_second_of_the_250_ft_line()
+    {
+        // PR #247 integration review P5 — an accepted gap, and its mitigation. The route turns north 80 m past
+        // its start; the pilot misses the turn and rolls straight on at 12 kt toward an aircraft parked 90 m
+        // beyond the bend, off the route. A parked aircraft off the route is no route threat, so there is no
+        // "Slow down" (the author's fix — the straight-line closest approach assumed the pilot keeps going
+        // straight and made 421 false calls), only "Stop" once it is inside the fixed 250 ft. Rolling at it
+        // inside the Caution distance keeps the sweep at 1 s, so that "Stop" comes within one second of the
+        // line: "250 feet", where the 3 s sweep made it "200 feet".
+        var route = new List<GroundTrafficRoutePoint>
+        {
+            new(0, 0, "A", 0), new(0, 80 * M, "A", 80), new(300 * M, 80 * M, "B", 380),
+        };
+        var h = new GroundTrafficHarness { Context = RouteContext(route, null, departure: false) };
+        h.Sim.Traffic.Add(Ac(1, 170, 0, 0, "British Airways", "BAW1"));
+        double ownM = -150, gapFtAtStop = double.NaN;
+        h.Sim.Position = Own(ownM, 12);
+        while (170 - ownM >= 20 && double.IsNaN(gapFtAtStop))
+        {
+            ownM += 12 * Kt;
+            h.Sim.Position = Own(ownM, 12);
+            h.Tick();
+            if (h.Said.Interrupts.Any(m => m.StartsWith("Stop, British Airways")))
+                gapFtAtStop = (170 - ownM) * GroundTrafficLogic.FeetPerMetre;
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=18 British Airways A320, ahead, 700 feet, stopped.",
+            "t=40 [INT] Stop, British Airways A320 very close, ahead, 250 feet.",
+        }, h.Transcript);
+        // Within one second's travel at 12 kt (about 20 ft) of the 250 ft line.
+        Assert.InRange(gapFtAtStop, 250 - 12 * Kt * GroundTrafficLogic.FeetPerMetre, 250);
+    }
+
     // ── "Stop" is never withheld on a first Warning ──────────────────────────────────────────────────
 
     [Fact]

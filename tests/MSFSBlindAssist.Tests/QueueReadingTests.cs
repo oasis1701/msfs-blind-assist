@@ -127,30 +127,72 @@ public class QueueReadingTests
 
     // ── fast polling ────────────────────────────────────────────────────────────────────
 
+    // The pilot for the rolling cases: 10 kt, so the monitor's speed-scaled Caution distance is
+    // 400 ft + 10 kt × 1.6878 ft/s per kt × 7 s ≈ 518 ft.
+    private const double RollingKts = 10.0, RollingCautionFt = 518.1;
+
     [Fact]
     public void A_runway_watch_always_polls_fast()
-        => Assert.True(GroundTrafficLogic.NeedsFastPoll(true, false,
+        => Assert.True(GroundTrafficLogic.NeedsFastPoll(true, false, 0, RollingCautionFt,
             Array.Empty<(double, double, double)>()));
 
     [Fact]
-    public void Parked_aircraft_alone_never_force_fast_polling()
-        => Assert.False(GroundTrafficLogic.NeedsFastPoll(false, false,
+    public void Parked_aircraft_beside_or_beyond_the_Caution_distance_never_force_fast_polling()
+        => Assert.False(GroundTrafficLogic.NeedsFastPoll(false, false, RollingKts, RollingCautionFt,
             new[] { (300.0, 0.0, 90.0), (800.0, 0.0, 10.0) }));
 
     [Fact]
     public void Moving_traffic_nearby_polls_fast()
     {
-        Assert.True(GroundTrafficLogic.NeedsFastPoll(false, false, new[] { (1000.0, 5.0, 200.0) }));
-        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, false, new[] { (2000.0, 5.0, 200.0) }));
+        Assert.True(GroundTrafficLogic.NeedsFastPoll(false, false, 0, RollingCautionFt, new[] { (1000.0, 5.0, 200.0) }));
+        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, false, 0, RollingCautionFt, new[] { (2000.0, 5.0, 200.0) }));
     }
 
     [Fact]
     public void A_queue_ahead_of_a_stopped_pilot_polls_fast()
     {
-        Assert.True(GroundTrafficLogic.NeedsFastPoll(false, true, new[] { (400.0, 0.0, 10.0) }));
-        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, true, new[] { (700.0, 0.0, 10.0) }));
-        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, true, new[] { (400.0, 0.0, 60.0) }));
-        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, false, new[] { (400.0, 0.0, 10.0) }));
+        Assert.True(GroundTrafficLogic.NeedsFastPoll(false, true, 0, 400, new[] { (400.0, 0.0, 10.0) }));
+        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, true, 0, 400, new[] { (700.0, 0.0, 10.0) }));
+        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, true, 0, 400, new[] { (400.0, 0.0, 60.0) }));
+        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, false, 0, 400, new[] { (400.0, 0.0, 10.0) }));
+    }
+
+    // ── a pilot rolling at a parked aircraft (PR #247 integration review Q4) ─────────────────────────
+    // A parked aircraft off the route never earns "Slow down" (it is no route threat), only "Stop" inside
+    // the fixed 250 ft. With only parked traffic around, the sweeps stayed on the 3 s cadence, so a pilot
+    // who missed a bend and rolled at one heard "Stop" at about 200 ft.
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(30.0)]     // the edge of ±30° of the nose
+    [InlineData(330.0)]
+    public void A_pilot_rolling_at_a_parked_aircraft_ahead_inside_the_Caution_distance_polls_fast(double relBearing)
+        => Assert.True(GroundTrafficLogic.NeedsFastPoll(false, false, RollingKts, RollingCautionFt,
+            new[] { (500.0, 0.0, relBearing) }));
+
+    [Theory]
+    [InlineData(31.0)]
+    [InlineData(90.0)]     // beside
+    [InlineData(180.0)]    // behind
+    [InlineData(270.0)]
+    [InlineData(329.0)]
+    public void A_parked_aircraft_beside_or_behind_a_rolling_pilot_does_not_poll_fast(double relBearing)
+        => Assert.False(GroundTrafficLogic.NeedsFastPoll(false, false, RollingKts, RollingCautionFt,
+            new[] { (300.0, 0.0, relBearing) }));
+
+    [Fact]
+    public void A_parked_aircraft_ahead_counts_only_inside_the_speed_scaled_Caution_distance()
+    {
+        Assert.True(GroundTrafficLogic.NeedsFastPoll(false, false, RollingKts, RollingCautionFt, new[] { (518.1, 0.0, 0.0) }));
+        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, false, RollingKts, RollingCautionFt, new[] { (518.2, 0.0, 0.0) }));
+    }
+
+    [Fact]
+    public void Rolling_means_at_least_3_kt()
+    {
+        // (In the monitor a pilot below 5 kt is also "queued", and the queue cone already covers traffic ahead.)
+        Assert.True(GroundTrafficLogic.NeedsFastPoll(false, false, 3.0, 435.4, new[] { (400.0, 0.0, 0.0) }));
+        Assert.False(GroundTrafficLogic.NeedsFastPoll(false, false, 2.9, 434.3, new[] { (400.0, 0.0, 0.0) }));
     }
 
     [Theory]

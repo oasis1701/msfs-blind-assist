@@ -41,6 +41,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     private const double ZONE_LEAD_SEC = 7.0;
     private const double ZONE_LEAD_KTSFPS = 1.6878; // ft/s per knot
 
+    /// <summary>The speed lead added to every zone boundary at <paramref name="ownGsKts"/>: the evaluation's and the fast poll's.</summary>
+    private static double ZoneLeadFt(double ownGsKts) => ownGsKts * ZONE_LEAD_KTSFPS * ZONE_LEAD_SEC;
+
     // Minimum own GS before a caution-zone alert becomes "Slow down" rather than an awareness ping.
     private const double SLOW_DOWN_GS_KTS = 2.0;
 
@@ -344,7 +347,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         bool fast;
         lock (_lock)
             fast = GroundTrafficLogic.NeedsFastPoll(watch.IsActive,
-                _ownGS <= QueueMovementPolicy.OwnQueueGsKts, GroundGeometryForPoll(now));
+                _ownGS <= QueueMovementPolicy.OwnQueueGsKts, _ownGS, CAUTION_FT + ZoneLeadFt(_ownGS),
+                GroundGeometryForPoll(now));
         if (!outstanding && (fast || _tickCount % SLOW_POLL_EVERY_TICKS == 0))
         {
             _cycle = new Cycle(ctx, watch, proximity, watchGate);
@@ -966,7 +970,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         }
 
         // Speed-based zone boundaries.
-        double lead = ownGS * ZONE_LEAD_KTSFPS * ZONE_LEAD_SEC;
+        double lead = ZoneLeadFt(ownGS);
         double warnDistFt  = WARNING_FT  + lead;
         double cautDistFt  = CAUTION_FT  + lead;
         double awareDistFt = Math.Max(AWARENESS_FT, cautDistFt + 150.0);

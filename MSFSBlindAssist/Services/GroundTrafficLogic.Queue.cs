@@ -172,20 +172,34 @@ internal static partial class GroundTrafficLogic
     public static bool IsInQueueCone(double distFt, double relBearingDeg)
         => distFt <= QueueAheadRangeFt && IsDirectlyAhead(relBearingDeg);
 
+    /// <summary>A pilot rolling at least this fast at ANY ground aircraft ahead keeps the sweep at 1 s (<see cref="NeedsFastPoll"/>).</summary>
+    public const double FastPollOwnRollingKts = 3.0;
+
     /// <summary>
     /// Sweep every second? Only when it can change an answer: a runway watch, moving traffic within
-    /// <see cref="FastPollRangeFt"/>, or a stopped/creeping pilot (<paramref name="ownQueued"/>) with
-    /// traffic in the queue cone ahead. Parked aircraft alone never keep it fast (L7); the slow 3 s
+    /// <see cref="FastPollRangeFt"/>, a stopped/creeping pilot (<paramref name="ownQueued"/>) with
+    /// traffic in the queue cone ahead, or a pilot ROLLING (<paramref name="ownGsKts"/> at least
+    /// <see cref="FastPollOwnRollingKts"/>) with any ground aircraft — parked included — directly ahead
+    /// (±<see cref="QueueAheadConeDeg"/> of the nose) and within <paramref name="cautionDistFt"/>, the
+    /// monitor's own speed-scaled Caution distance (<c>CAUTION_FT</c> plus the speed lead). Parked
+    /// aircraft beside or behind the pilot, or further ahead, never keep it fast (L7); the slow 3 s
     /// cadence is what <c>ZONE_LEAD_SEC</c> was sized for.
+    /// <para>The rolling case is PR #247 integration review Q4: a PARKED aircraft off the route is no route
+    /// threat (<see cref="IsRouteThreat"/>), so it earns no "Slow down" — only "Stop", inside the fixed
+    /// 250 ft — and with only parked traffic around the sweeps stayed on the 3 s cadence: a pilot who
+    /// missed a bend and rolled at one at 12 kt heard "Stop" at about 200 ft. At 1 s it comes within a
+    /// second's travel of the line.</para>
     /// </summary>
-    public static bool NeedsFastPoll(bool runwayWatchActive, bool ownQueued,
+    public static bool NeedsFastPoll(bool runwayWatchActive, bool ownQueued, double ownGsKts, double cautionDistFt,
         IEnumerable<(double DistFt, double GsKts, double RelBearingDeg)> ground)
     {
         if (runwayWatchActive) return true;
+        bool rolling = ownGsKts >= FastPollOwnRollingKts;
         foreach (var a in ground)
         {
             if (a.DistFt <= FastPollRangeFt && a.GsKts >= 1.0) return true;
             if (ownQueued && IsInQueueCone(a.DistFt, a.RelBearingDeg)) return true;
+            if (rolling && a.DistFt <= cautionDistFt && IsDirectlyAhead(a.RelBearingDeg)) return true;
         }
         return false;
     }
