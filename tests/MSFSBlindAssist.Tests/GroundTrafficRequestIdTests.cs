@@ -84,14 +84,30 @@ public class GroundTrafficRequestIdTests
                 $"request id {id} is a hand-numbered guidance frame AND a named DATA_REQUESTS value");
     }
 
+    // The scan pattern itself, on literal strings (PR #247 focused re-review N4): the qualified branch
+    // M6 added is pinned without planting a cast in a source file — no qualified NUMERIC cast exists in
+    // the source for the scan above to find.
+    [Theory]
+    [InlineData("(DATA_REQUESTS)603")]
+    [InlineData("(SimConnectManager.DATA_REQUESTS)603")]
+    [InlineData("(SimConnect.SimConnectManager.DATA_REQUESTS)603")]
+    public void The_scan_pattern_reads_the_id_from_a_bare_or_a_qualified_cast(string cast)
+    {
+        var m = HandNumberedCast.Match(cast);
+        Assert.True(m.Success, cast);
+        Assert.Equal("603", m.Groups[1].Value);
+    }
+
     /// <summary>
-    /// Every id cast by hand to DATA_REQUESTS anywhere in the app's own source — bare
-    /// ((DATA_REQUESTS)507), class-qualified ((SimConnectManager.DATA_REQUESTS)507) or
-    /// namespace-qualified ((SimConnect.SimConnectManager.DATA_REQUESTS)507).
+    /// An id cast by hand to DATA_REQUESTS — bare ((DATA_REQUESTS)507), class-qualified
+    /// ((SimConnectManager.DATA_REQUESTS)507) or namespace-qualified
+    /// ((SimConnect.SimConnectManager.DATA_REQUESTS)507); group 1 is the id.
     /// </summary>
+    private static readonly Regex HandNumberedCast = new(@"\((?:[\w.]+\.)?DATA_REQUESTS\)\s*(\d+)");
+
+    /// <summary>Every id cast by hand to DATA_REQUESTS anywhere in the app's own source (<see cref="HandNumberedCast"/>).</summary>
     private static HashSet<uint> HandNumberedRequestIds()
     {
-        var cast = new Regex(@"\((?:[\w.]+\.)?DATA_REQUESTS\)\s*(\d+)");
         string app = Path.Combine(RepoRoot(), "MSFSBlindAssist");
         var ids = new HashSet<uint>();
         foreach (string file in Directory.EnumerateFiles(app, "*.cs", SearchOption.AllDirectories))
@@ -99,7 +115,7 @@ public class GroundTrafficRequestIdTests
             // Build output (generated files under bin/ and obj/) is not source.
             var parts = Path.GetRelativePath(app, file).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
             if (parts.Contains("bin") || parts.Contains("obj")) continue;
-            foreach (Match m in cast.Matches(File.ReadAllText(file)))
+            foreach (Match m in HandNumberedCast.Matches(File.ReadAllText(file)))
                 ids.Add(uint.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture));
         }
         return ids;
