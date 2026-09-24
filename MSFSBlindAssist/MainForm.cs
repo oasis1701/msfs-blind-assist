@@ -805,25 +805,49 @@ public partial class MainForm : Form
         flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
         simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);
 
-        // Ground traffic monitor — proximity alerts for on-ground AI/multiplayer traffic.
-        // Starts its own 3-second poll timer; gates on LastKnownOnGround each tick.
+        // Ground traffic monitor — proximity, route-aware and runway-watch callouts for on-ground
+        // AI/multiplayer traffic. Ticks every second; sweeps its own small-radius traffic request every
+        // second while something can change an answer, every three seconds otherwise; gates on
+        // LastKnownOnGround each tick.
         groundTrafficMonitor = new GroundTrafficMonitor(announcer, simConnectManager);
-        // Suppress traffic auto-alerts in three contexts: during takeoff roll
-        // (pilot's hands are on rudder + throttle, can't act on a callout),
-        // when Taxi Guidance is not engaged (no route loaded / pre-pushback
-        // / post-stop), and during the landing rollout (hands on brakes +
-        // rudder, and the exit/runway-end callouts must not be talked over).
-        // Hotkey summary (Alt+G) remains available in all cases because it
-        // lives outside this poll loop.
-        // The rule lives in Services/GroundTrafficSuppression so it can be pinned. Note the
-        // landing-rollout arm is speed-qualified: once the aircraft has STOPPED neither reason for
-        // holding callouts back applies, and a pilot held on the runway by ATC can now stay in the
-        // rollout indefinitely (the runway-end countdown no longer treats a stop as a backtrack).
+        // Suppress proximity/route/queue callouts in three contexts: during the takeoff roll (pilot's
+        // hands are on rudder + throttle, can't act on a callout — keyed on takeoff assist), when Taxi
+        // Guidance is not engaged, and during a landing rollout that is still rolling. The rule lives in
+        // Services/GroundTrafficSuppression so it can be pinned; the Alt+G summary stays ungated.
         groundTrafficMonitor.SuppressCheck = () =>
             GroundTrafficSuppression.Suppress(
                 takeoffAssistManager.IsActive,
                 taxiGuidanceManager.State,
                 simConnectManager.LastKnownPosition?.GroundSpeedKnots);
+        // The runway watch has its OWN gate: takeoff assist switches on at lineup alignment, and the
+        // line-up wait is exactly when traffic landing on or entering the runway matters most, so the
+        // watch keeps running until the takeoff roll passes 30 kt (PR #247 review R1).
+        groundTrafficMonitor.RunwayWatchSuppressCheck = () =>
+            GroundTrafficSuppression.SuppressRunwayWatch(
+                takeoffAssistManager.IsActive,
+                taxiGuidanceManager.State,
+                simConnectManager.LastKnownPosition?.GroundSpeedKnots);
+        // Route + runway context: traffic ON the route vs beside it, the queue, and the hold facts the
+        // runway watch is derived from.
+        groundTrafficMonitor.RouteContextProvider = () => taxiGuidanceManager.GetGroundTrafficContext();
+        // Takeoff assist's runway while it is active: taxi guidance has stopped by then, so this is how
+        // the watch knows which runway the pilot is lined up on.
+        groundTrafficMonitor.TakeoffRunwayProvider = () =>
+            takeoffAssistManager.IsActive
+            && takeoffAssistManager.TryGetRunwayReference(out _, out _, out _, out _, out string runwayId, out string icao)
+                ? (runwayId, icao)
+                : null;
+        // The airport's runways when takeoff assist has a runway but taxi guidance never built a route
+        // there (a departure that starts on the runway): runway centerlines only, no taxi network.
+        groundTrafficMonitor.RunwaySupplier = icao =>
+        {
+            var provider = airportDataProvider;
+            if (provider == null || string.IsNullOrWhiteSpace(icao)) return Array.Empty<MSFSBlindAssist.Navigation.TaxiGraph.RunwayCenterline>();
+            var starts = provider.GetRunwayStarts(icao);
+            if (starts == null || starts.Count == 0) return Array.Empty<MSFSBlindAssist.Navigation.TaxiGraph.RunwayCenterline>();
+            return MSFSBlindAssist.Navigation.TaxiGraph.Build(new List<TaxiPath>(), new List<ParkingSpot>(), starts,
+                provider.GetRunways(icao)).RunwayCenterlines;
+        };
 
         // Per-aircraft rollout-anticipation lead for the taxi steering tone
         // (see IAircraftDefinition.TaxiTurnLeadSeconds).

@@ -33,6 +33,42 @@ public partial class SimConnectManager
         }
     }
 
+    // The next of the GroundTrafficRequestIdCount sweep ids to use, 0..7 (UI thread: the monitor's
+    // timer and the Alt+G summary).
+    private uint _groundTrafficSlot;
+
+    /// <summary>
+    /// The ground-traffic monitor's sweep: every aircraft within <paramref name="radiusMeters"/>
+    /// (the monitor passes just past what it can use — about 1-17 km — instead of TCAS's 150 nm).
+    /// Entries arrive via AiTrafficReceived like any other sweep's; the last one raises
+    /// GroundTrafficSweepCompleted with the sweep's request id. The user's own aircraft is always
+    /// inside any radius, so the sweep always completes. Each sweep goes out under the NEXT id of the
+    /// rotating range (<see cref="IsGroundTrafficRequestId"/>), so a late completion of a sweep the
+    /// monitor gave up on can be told from the one it is waiting for. Returns the request id used, or
+    /// 0 when nothing was sent (not connected, or the request threw).
+    /// </summary>
+    public uint RequestGroundTrafficData(uint radiusMeters)
+    {
+        if (!IsConnected || simConnect == null) return 0;
+        try
+        {
+            uint slot = _groundTrafficSlot;
+            _groundTrafficSlot = (slot + 1) % GroundTrafficRequestIdCount;
+            var requestId = (DATA_REQUESTS)((uint)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC + slot);
+            simConnect.RequestDataOnSimObjectType(
+                requestId,
+                DATA_DEFINITIONS.DEF_AI_TRAFFIC,
+                Math.Max(1u, radiusMeters),
+                SIMCONNECT_SIMOBJECT_TYPE.AIRCRAFT);
+            return (uint)requestId;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"RequestGroundTrafficData error: {ex.Message}");
+            return 0;
+        }
+    }
+
     public void RequestAircraftInfo()
     {
         if (IsConnected && simConnect != null)
