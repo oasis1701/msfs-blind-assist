@@ -1,0 +1,1 @@
+MD-11 lever reads no longer depend on each SIM_FRAME subscription's first delivery, which the connect sequence discarded before its data handler was attached: the cache is seeded once the handler exists, and a read that still finds it empty asks for the value itself.
