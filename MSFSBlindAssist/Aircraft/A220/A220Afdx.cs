@@ -235,6 +235,25 @@ internal static class A220Afdx
     /// inside the tolerance, so it oscillates and reports a value hundreds of feet out.
     /// A result of 0 means "already on the closest selectable value" — stop and say so.
     /// </summary>
+    /// <summary>Clicks for a one-unit-per-click knob (selected IAS, heading bug): exactly
+    /// the remaining gap, never more — so a burst can never carry the value past its
+    /// target — capped per burst so a bad read-back can never fire a runaway.</summary>
+    internal static int ExactKnobClicks(double delta, int maxPerBurst = 120)
+        => Math.Min((int)Math.Round(Math.Abs(delta)), maxPerBurst);
+
+    /// <summary>Next per-click pace for a one-unit knob walk, from how many of the last
+    /// burst's clicks the aircraft actually applied. Slow down in proportion when clicks
+    /// are lost (the aircraft takes about one event per frame), bounded to 25-120 ms; a
+    /// burst that landed in full keeps the pace. Only small bursts (under 4 clicks) are
+    /// ignored — one lost click out of two says nothing about the rate.</summary>
+    internal static int NextKnobPaceMs(int paceMs, int clicks, double moved)
+    {
+        if (clicks < 4) return paceMs;
+        double ratio = Math.Clamp(moved / clicks, 0.05, 1.0);
+        if (ratio >= 0.9) return paceMs;
+        return (int)Math.Clamp(Math.Round(paceMs / ratio * 1.1), 25, 120);
+    }
+
     internal static int AimClicks(double delta, double step)
         => step <= 0 ? 0 : Math.Clamp((int)Math.Round(Math.Abs(delta) / step), 0, 220);
 

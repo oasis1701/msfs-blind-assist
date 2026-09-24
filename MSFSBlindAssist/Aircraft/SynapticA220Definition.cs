@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft.A220;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.SimConnect;
@@ -285,10 +285,12 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
             {
                 var fcp = LatestFcp;
                 bool mach = fcp?.spd_in_mach ?? Cached(simConnect, "A22X_AP_MACH_MODE") > 0.5;
-                bool fms = fcp?.spd_fms ?? Cached(simConnect, "A22X_FG_SPEED_MODE") > 0.5;
+                bool fms = IsFmsSpeed(simConnect);
+                // Never the stock AIRSPEED/MACH HOLD VARs: they do not follow this FCP
+                // (445 kt with 142 in the window, live 2026-09-24).
                 string target = mach
-                    ? $"Mach {fcp?.spd_sel_mach ?? Cached(simConnect, "A22X_AP_MACH"):0.00}"
-                    : $"{(int)Math.Round(fcp?.spd_sel_ias ?? Cached(simConnect, "A22X_AP_SPD"))} knots";
+                    ? (fcp?.spd_sel_mach is { } m ? $"Mach {m:0.00}" : "not available")
+                    : (fcp?.spd_sel_ias is { } k ? $"{(int)Math.Round(k)} knots" : "not available");
                 string at = A220Afdx.AutothrottleStatusPhrase(LatestAutoflight) is { } atMode ? $", {atMode}" : "";
                 announcer.AnnounceImmediate($"{(fms ? "FMS speed" : "Manual speed")} {target}{at}");
                 return true;

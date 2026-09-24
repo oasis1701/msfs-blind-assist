@@ -260,7 +260,7 @@ public partial class SynapticA220Definition
         {
             var client = _displaysClient;
             if (client == null) return null;
-            string? raw = await client.CallAgentAsync("__a220Displays.afdx()");
+            string? raw = await client.CallAgentAsync("afdx()");
             if (string.IsNullOrEmpty(raw)) return null;
             var snap = System.Text.Json.JsonSerializer.Deserialize<DisplaysSnap>(raw);
             if (snap == null) return null;

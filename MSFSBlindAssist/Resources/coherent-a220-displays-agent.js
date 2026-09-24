@@ -253,6 +253,22 @@
       return out;
     }
 
+    /// Ask the WASM for a WHOLE copy of every store now. The stores broadcast only
+    /// what changed, so a store nobody has resynced since the page loaded can sit at
+    /// {} for good — and the FCP knob walk then has no selected speed to read (live
+    /// 2026-09-24: the "A22X.FCP Data" store read {} until a resync, then carried
+    /// spd_sel_ias/hdg_sel in full). Throttled to 500 ms, not cbResync's 3 s: the walk
+    /// asks at most a few times, and only when a field it needs is missing.
+    A.afdxResync = function () {
+      ensureCommBus();
+      var now = Date.now();
+      if (!cbState.listener) return 'NO_LISTENER';
+      if ((now - (cbState.lastForcedResync || 0)) < 500) return 'THROTTLED';
+      cbState.lastForcedResync = now;
+      try { cbState.listener.call('COMM_BUS_WASM_CALLBACK', 'A22X.Resync', '{}'); return 'OK'; }
+      catch (e) { return 'ERR:' + (e && e.message); }
+    };
+
     /// Fresh AFDX blocks alone — used by the FCP knob walk, which needs a read-back
     /// far faster than the 1 s display poll.
     A.afdx = function () {
