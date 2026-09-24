@@ -160,7 +160,11 @@ public sealed class GroundTrafficMonitor : IDisposable
     private bool _rearmCriticalOnly;
     // When the first status was first held back for a pending aircraft; MinValue = not deferred.
     private DateTime _firstStatusDeferredSinceUtc = DateTime.MinValue;
-    private bool _runwayEmptiedPending;
+    // The runways (by KEY) whose "no traffic seen on the runway now" line is due: queued when the LAST
+    // known occupant recorded under that key is forgotten by the grace timer (never by the scope purge —
+    // GroundTrafficLogic.EmptiedRunwayKeys), removed when its line is handed over or when an aircraft is
+    // seen on that runway again (PR #247 re-review M2).
+    private readonly HashSet<string> _runwayEmptiedPendingKeys = new(StringComparer.Ordinal);
     // A single-runway watch whose sources all ended, kept while the aircraft is still crossing (ApplyLinger).
     private RunwayWatchLinger.Anchor? _linger;
     // A watch the watch GATE closed on is SUSPENDED, not ended (SuspendWatch; PR #247 final review H5):
@@ -193,10 +197,6 @@ public sealed class GroundTrafficMonitor : IDisposable
     // emptied by these keys (GroundTrafficLogic.IdsOutOfScope): the former is purged silently (K3).
     private readonly Dictionary<uint, string> _knownOccupantRunway = new();
     private readonly Dictionary<uint, string> _knownFinalRunway = new();
-    // The designator(s) of the runway(s) whose known occupants were just forgotten by the grace-timed
-    // absence below — captured before removal, so the pending "no traffic seen" line names the runway
-    // that actually emptied rather than every runway this evaluation happens to be scanning (K3).
-    private IReadOnlyList<string> _runwayEmptiedDesignators = Array.Empty<string>();
 
     // Queue position (UI thread)
     private int _queueCandidate, _queueConfirm, _queueAnnounced;
@@ -603,8 +603,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _firstStatusRearmed = false;
         _rearmCriticalOnly = false;
         _firstStatusDeferredSinceUtc = DateTime.MinValue;
-        _runwayEmptiedPending = false;
-        _runwayEmptiedDesignators = Array.Empty<string>();
+        _runwayEmptiedPendingKeys.Clear();
         _knownOccupants.Clear();
         _knownFinals.Clear();
         _shortFinalAnnounced.Clear();
@@ -1231,8 +1230,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         // Occupants are judged by _knownOccupantRunway and finals by _knownFinalRunway, never one by
         // the other's record (PR #247 re-review Critical 1); keys, not spoken designators, so the nearer
         // end flipping at mid-runway is no purge (Important 2); an id with no recorded key is left to
-        // the grace timer below. Must run before hadOccupants below, so the purge itself can never be
-        // read as "the runway emptied" (PR #247 B5 follow-up K3).
+        // the grace timer below. A purged occupant never reaches EmptiedRunwayKeys below, so the purge
+        // itself can never be read as "the runway emptied" (PR #247 B5 follow-up K3).
         var scopeKeys = new HashSet<string>(status.Select(s => s.Key), StringComparer.Ordinal);
         foreach (uint id in GroundTrafficLogic.IdsOutOfScope(_knownOccupants, _knownOccupantRunway, scopeKeys))
         {
@@ -1253,6 +1252,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         foreach (var s in status)
         {
             string runwayKey = s.Key;
+            // An aircraft on this runway again: its "no traffic seen" line, if still due, is no longer true.
+            if (s.Occupants.Count > 0) _runwayEmptiedPendingKeys.Remove(runwayKey);
             foreach (var o in s.Occupants)
             {
                 seenOccupants.Add(o.Ac.ObjectId);
@@ -1265,7 +1266,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                     interrupts ? TrafficCalloutKind.RunwayCritical : TrafficCalloutKind.RunwayInfo, o.DistFt,
                     $"{Capitalise(o.Ac.Name)} on runway {s.Designator}, {DescribeRunwayMovement(o)}, " +
                     $"{GroundTrafficLogic.DescribeDirection(o.Rel)}, {FormatDistance(o.DistFt, useMetres)}.",
-                    () => { _knownOccupants.Add(id); _knownOccupantRunway[id] = runwayKey; _runwayEmptiedPending = false; }));
+                    () => { _knownOccupants.Add(id); _knownOccupantRunway[id] = runwayKey; }));
             }
             foreach (var f in s.Finals)
             {
@@ -1294,43 +1295,35 @@ public sealed class GroundTrafficMonitor : IDisposable
         // one evaluation's classification drop (a climb-rate sample over the line, an on-ground flag
         // flicker, a lateral boundary) must neither announce it again nor call the runway empty while
         // it is still there (PR #247 B2 review Minor 7). A forgotten final takes its short-final latch
-        // with it. The runway is empty once the LAST known occupant has been gone for the grace period.
-        bool hadOccupants = _knownOccupants.Count > 0;
+        // with it.
         var forgottenOccupants = GroundTrafficLogic.ForgetAbsent(_knownOccupants, seenOccupants, _occupantAbsentSince, now);
-        // Captured BEFORE removal (K3): once a runway leaves the scan, the purge above has already
-        // dropped its occupants' entries, so whatever ForgetAbsent still forgets here is grace-timed
-        // absence on a STILL-SCANNED runway — its recorded key is exactly what emptied, spoken by this
-        // evaluation's designator for that key.
-        var forgottenDesignators = forgottenOccupants
-            .Select(id => _knownOccupantRunway.TryGetValue(id, out string? k)
-                ? status.FirstOrDefault(s => s.Key == k)?.Designator
-                : null)
-            .Where(d => d != null)
-            .Cast<string>()
-            .Distinct(StringComparer.Ordinal)
-            .ToList();
+        // A runway is empty once the LAST known occupant recorded under ITS key has been gone for the
+        // grace period — judged per runway, before the forgotten ids' entries are removed, and never
+        // while an aircraft is seen on it this evaluation (PR #247 re-review M2).
+        var keysWithOccupantsSeen = new HashSet<string>(
+            status.Where(s => s.Occupants.Count > 0).Select(s => s.Key), StringComparer.Ordinal);
+        _runwayEmptiedPendingKeys.UnionWith(GroundTrafficLogic.EmptiedRunwayKeys(
+            forgottenOccupants, _knownOccupantRunway, _knownOccupants, keysWithOccupantsSeen));
         foreach (uint id in forgottenOccupants) _knownOccupantRunway.Remove(id);
         foreach (uint id in GroundTrafficLogic.ForgetAbsent(_knownFinals, seenFinals, _finalAbsentSince, now))
         {
             _shortFinalAnnounced.Remove(id);
             _knownFinalRunway.Remove(id);
         }
-        if (seenOccupants.Count > 0) _runwayEmptiedPending = false;
-        else if (hadOccupants && _knownOccupants.Count == 0)
+        // One line per emptied runway, named by this evaluation's designator for its key — never every
+        // runway the watch scans (K3) — adding "Traffic still on final." only when THAT runway has a
+        // final now. A due runway this evaluation does not scan has no designator to be named by; its
+        // line stays due until it is scanned again.
+        foreach (var s in status)
         {
-            _runwayEmptiedPending = true;
-            _runwayEmptiedDesignators = forgottenDesignators;
-        }
-        if (_runwayEmptiedPending)
-        {
-            // Names the runway(s) the forgotten occupants were actually on, not every watched runway
-            // (K3) — a widened watch can be scanning a runway right now that was never occupied at all.
-            string label = GroundTrafficLogic.RunwayLabel(_runwayEmptiedDesignators);
+            if (!_runwayEmptiedPendingKeys.Contains(s.Key)) continue;
+            string emptiedKey = s.Key;
+            string label = GroundTrafficLogic.RunwayLabel(new[] { s.Designator });
             candidates.Add(new TrafficCallout(TrafficCalloutKind.RunwayInfo, 0,
-                seenFinals.Count > 0
+                s.Finals.Count > 0
                     ? $"{label}: no traffic seen on the runway now. Traffic still on final."
                     : $"{label}: no traffic seen on the runway now.",
-                () => _runwayEmptiedPending = false));
+                () => _runwayEmptiedPendingKeys.Remove(emptiedKey)));
         }
     }
 

@@ -266,4 +266,36 @@ internal static partial class GroundTrafficLogic
                 result.Add(id);
         return result;
     }
+
+    /// <summary>
+    /// The runway keys whose LAST known occupant <see cref="ForgetAbsent"/> has just forgotten — each is
+    /// announced by name ("Runway 27: no traffic seen on the runway now."), once, the moment its OWN last
+    /// known occupant has been unseen for <see cref="KnownAbsenceGraceMs"/>, not only when every runway
+    /// the watch scans has emptied (PR #247 re-review M2).
+    ///
+    /// <para><paramref name="forgotten"/>: the occupants forgotten this evaluation.
+    /// <paramref name="occupantRunwayOf"/>: each known occupant's recorded runway key, read BEFORE the
+    /// forgotten ids' entries are removed. <paramref name="stillKnown"/>: the known occupants that remain —
+    /// one recorded under a runway keeps it occupied. <paramref name="keysWithOccupantsSeen"/>: the runways
+    /// with an aircraft on them this evaluation, known or not — a runway with an aircraft on it now is
+    /// not empty, whatever the bookkeeping says. A forgotten id with no recorded key names no runway.
+    /// Distinct keys, in the order of their first forgotten occupant.</para>
+    ///
+    /// <para>Only grace-timed absence feeds this: an occupant purged because its runway left the scan
+    /// (<see cref="IdsOutOfScope"/>) never reaches it, so a runway that merely left the scan is never
+    /// reported as emptied (PR #247 B5 follow-up K3).</para>
+    /// </summary>
+    public static IReadOnlyList<string> EmptiedRunwayKeys(IEnumerable<uint> forgotten,
+        IReadOnlyDictionary<uint, string> occupantRunwayOf, IEnumerable<uint> stillKnown,
+        IReadOnlySet<string> keysWithOccupantsSeen)
+    {
+        var occupied = new HashSet<string>(keysWithOccupantsSeen, StringComparer.Ordinal);
+        foreach (uint id in stillKnown)
+            if (occupantRunwayOf.TryGetValue(id, out string? key)) occupied.Add(key);
+        var result = new List<string>();
+        foreach (uint id in forgotten)
+            if (occupantRunwayOf.TryGetValue(id, out string? key) && !occupied.Contains(key) && !result.Contains(key))
+                result.Add(key);
+        return result;
+    }
 }

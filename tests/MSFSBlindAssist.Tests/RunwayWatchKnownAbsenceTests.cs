@@ -152,3 +152,50 @@ public class RunwayWatchIdsOutOfScopeTests
         => Assert.Empty(GroundTrafficLogic.IdsOutOfScope(Array.Empty<uint>(),
             new Dictionary<uint, string>(), new HashSet<string> { "09/27" }));
 }
+
+// GroundTrafficLogic.EmptiedRunwayKeys — PR #247 re-review M2 (Minor 7). "No traffic seen on the runway
+// now" is PER RUNWAY: a runway is announced as emptied the moment its OWN last known occupant has been
+// unseen for the grace period (ForgetAbsent), not only once every runway the watch scans has emptied —
+// and never while an aircraft is seen on it this evaluation. Occupants are attributed by the runway key
+// each was recorded under (_knownOccupantRunway, read before the forgotten entries are removed).
+
+public class RunwayWatchEmptiedRunwayTests
+{
+    private static readonly IReadOnlySet<string> NoneSeen = new HashSet<string>();
+
+    [Fact]
+    public void The_last_known_occupant_of_a_runway_forgotten_empties_it()
+        => Assert.Equal(new[] { "09/27" }, GroundTrafficLogic.EmptiedRunwayKeys(new uint[] { 7 },
+            new Dictionary<uint, string> { [7] = "09/27" }, Array.Empty<uint>(), NoneSeen));
+
+    [Fact]
+    public void Another_known_occupant_on_the_same_runway_keeps_it_occupied()
+        => Assert.Empty(GroundTrafficLogic.EmptiedRunwayKeys(new uint[] { 7 },
+            new Dictionary<uint, string> { [7] = "09/27", [8] = "09/27" }, new uint[] { 8 }, NoneSeen));
+
+    [Fact]
+    public void A_known_occupant_on_another_runway_does_not_keep_it_occupied()
+        => Assert.Equal(new[] { "09/27" }, GroundTrafficLogic.EmptiedRunwayKeys(new uint[] { 7 },
+            new Dictionary<uint, string> { [7] = "09/27", [8] = "04/22" }, new uint[] { 8 }, NoneSeen));
+
+    [Fact]
+    public void An_occupant_seen_on_it_this_evaluation_keeps_it_occupied()
+        // Seen, not yet known (its own callout is only now being planned): the runway is not empty.
+        => Assert.Empty(GroundTrafficLogic.EmptiedRunwayKeys(new uint[] { 7 },
+            new Dictionary<uint, string> { [7] = "09/27" }, Array.Empty<uint>(), new HashSet<string> { "09/27" }));
+
+    [Fact]
+    public void Two_runways_emptied_together_are_each_named_once()
+        => Assert.Equal(new[] { "09/27", "04/22" }, GroundTrafficLogic.EmptiedRunwayKeys(new uint[] { 7, 8, 9 },
+            new Dictionary<uint, string> { [7] = "09/27", [8] = "04/22", [9] = "09/27" }, Array.Empty<uint>(), NoneSeen));
+
+    [Fact]
+    public void A_forgotten_occupant_with_no_recorded_runway_names_none()
+        => Assert.Empty(GroundTrafficLogic.EmptiedRunwayKeys(new uint[] { 7 },
+            new Dictionary<uint, string>(), Array.Empty<uint>(), NoneSeen));
+
+    [Fact]
+    public void Nothing_forgotten_empties_nothing()
+        => Assert.Empty(GroundTrafficLogic.EmptiedRunwayKeys(Array.Empty<uint>(),
+            new Dictionary<uint, string> { [8] = "09/27" }, Array.Empty<uint>(), NoneSeen));
+}
