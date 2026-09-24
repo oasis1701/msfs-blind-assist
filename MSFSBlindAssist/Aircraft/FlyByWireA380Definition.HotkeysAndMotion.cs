@@ -262,10 +262,17 @@ public partial class FlyByWireA380Definition
         s.RequestVariable("FCU_ALT_VALUE", forceUpdate: true);
     }
 
+    /// <summary>Mark a Shift+V readout pending (the three halves it pairs up start empty). Split out of
+    /// <see cref="RequestFCUVSWithStatus"/> so a test can reach the pending state without SimConnect.</summary>
+    internal void BeginVsReadout()
+    {
+        _reqVs = true; _pVsVal = _pFpaVal = _pVsMode = null;
+    }
+
     public void RequestFCUVSWithStatus(SimConnectManager s)
     {
         if (!s.IsConnected) return;
-        _reqVs = true; _pVsVal = _pFpaVal = _pVsMode = null;
+        BeginVsReadout();
         // All three via the SimConnect data-def path, same as the heading/speed/alt
         // readouts that work. (VS is non-angular so it reads back unscaled — the
         // earlier "15 vs -2000" that prompted a MobiFlight read was a paused-sim

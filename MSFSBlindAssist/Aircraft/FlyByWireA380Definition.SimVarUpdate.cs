@@ -887,12 +887,14 @@ public partial class FlyByWireA380Definition
         {
             if (varName == Fcu.Altitude) _lastFcuAltFeet = value;
             // A readout pending for this var is about to AnnounceImmediate the same value, which
-            // would cut the callout off mid-word. (The V/S readout reads the shims for its number but
-            // takes its words — dashes, not available — from the PRIM words the announcer listens to,
-            // and arms the echo when it speaks, so its selection is not spoken a second time.)
+            // would cut the callout off mid-word. The V/S readout is covered too: it reads the shims
+            // for its number, but it speaks the same selection as the PRIM V/S and FPA words the
+            // announcer listens to (and takes its dashes / not-available words from them), so both
+            // words are muted while it is pending, and it arms the echo when it speaks.
             bool readoutPending = (_reqHdg && varName == Fcu.Heading)
                 || (_reqSpd && varName == Fcu.Speed)
-                || (_reqAlt && varName == Fcu.Altitude);
+                || (_reqAlt && varName == Fcu.Altitude)
+                || (_reqVs && (varName == Fcu.VerticalSpeed || varName == Fcu.FlightPathAngle));
             bool fcuMuted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName);
             AnnounceFcuValue(varName, fcuPhrase, announcer, muted: fcuMuted || readoutPending);
         }

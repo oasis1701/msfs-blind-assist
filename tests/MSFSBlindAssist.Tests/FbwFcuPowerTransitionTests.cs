@@ -78,6 +78,33 @@ public class FbwFcuPowerTransitionTests : IDisposable
         Assert.Empty(speech.All);
     }
 
+    // A Shift+V readout pending on the A380 is about to AnnounceImmediate the V/S window, so a V/S or
+    // FPA dial callout arriving meanwhile must be recorded silently, as heading/speed/altitude are —
+    // spoken, it would be cut off by the readout a moment later.
+
+    [Fact]
+    public void A380_a_vs_turn_is_spoken_when_no_readout_is_pending()
+    {
+        var def = new FlyByWireA380Definition();
+        var speech = new SpeechCapture();
+        Batch(def, speech, ("A32NX_FCU_AFS_CP_ACTIVE", 1),
+            ("A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", Word(NormalOperation, 500f)));
+        Batch(def, speech, ("A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", Word(NormalOperation, -1500f)));
+        Assert.Equal(new[] { "Vertical speed -1500 feet per minute" }, speech.All);
+    }
+
+    [Fact]
+    public void A380_a_pending_vs_readout_mutes_the_vs_callout()
+    {
+        var def = new FlyByWireA380Definition();
+        var speech = new SpeechCapture();
+        Batch(def, speech, ("A32NX_FCU_AFS_CP_ACTIVE", 1),
+            ("A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", Word(NormalOperation, 500f)));
+        def.BeginVsReadout();
+        Batch(def, speech, ("A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", Word(NormalOperation, -1500f)));
+        Assert.Empty(speech.All);
+    }
+
     [Fact]
     public void A380_an_mtrs_flip_does_not_turn_a_forced_read_into_a_callout()
     {
