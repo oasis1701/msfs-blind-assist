@@ -875,8 +875,9 @@ public partial class FlyByWireA380Definition
         // that release is outside MainForm's announcer.Suppressed wrap, hence the explicit Ctrl+M
         // check below. The fcuValueVar return further down consumes the
         // event, which keeps the generic monitor from speaking the value a second time. MSFSBA's
-        // own writes mute their echo via SuppressFcuValueChangeEcho (SetFCU*/SetTrkFpaMode/
-        // FireFCUButton).
+        // own writes arm their echo through the FcuEchoKeys table (ArmFcuEcho/ArmFcuEchoFor:
+        // SetFCU*Value, SetTrkFpaMode, FireFCUButton, OnPanelButtonFiring) — SuppressFcuValueChangeEcho
+        // is used directly only by the calculator-code V/S set and by the readouts below.
         if (varName == "A32NX_FCU_AFS_CP_ACTIVE")
         {
             ObserveFcuHealth(value > 0.5);

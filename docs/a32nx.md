@@ -19,7 +19,7 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 - **Air-conditioning ZONE TEMP selectors** (5th-audit gap): Cockpit / Fwd Cabin / Aft Cabin are numeric °C inputs (`COND_*_TEMP_SET`) → `HandleUIVariableSet` converts to the `A32NX_OVHD_COND_{CKPT,FWD,AFT}_SELECTOR_KNOB` (0..300 ↔ 18-30 °C, live-verified). Actual zone temps `A32NX_COND_*_TEMP` read in the display. **APU AVAIL** (`A32NX_OVHD_APU_START_PB_IS_AVAILABLE`) is a read-only APU-panel field (not auto-announced — the EWD memo speaks it).
 - **EFIS baro (altimeter) is per-side + silent on first detect.** Captain = `A32NX_FCU_LEFT_EIS_BARO_HPA` + `_EFIS_L_DISPLAY_BARO_VALUE_MODE`; First Officer = the `RIGHT`/`_R_` equivalents (announced with a "First Officer" prefix). BOTH the HPA and the value-MODE handlers **seed their cache silently on the first read** — otherwise each announced on first detect, which was the "altimeter spoken twice on start" bug. Brake "triple indicator" (`A32NX_HYD_BRAKE_{NORM,ALTN}_{LEFT,RIGHT}_PRESS` + `_ALTN_ACC_PRESS`) + Brakes Hot + GPWS Test were added for A380 parity.
 - **Feature parity with the A380:** the A32NX now also has **rudder trim** (FCC display reads `A32NX_FAC_1_RUDDER_TRIM_POS`, an ARINC degrees word, positive = nose-Left, + a Reset combo firing `RUDDER_TRIM_RESET`) and **metric/imperial weight units** (gross-weight + fuel-info readouts follow the EFB `A32NX_EFB_USING_METRIC_UNIT` setting via `WeightUser(kg)`; the EFB "US Units" toggle, Shift+T → Settings, is the control — no separate hotkey). NOT ported (the A320 genuinely can't): **metric ALTITUDE / MTRS** (the real A320 has no MTRS button — A330+/A380 only; NOTE: dev FBW registers a metric-alt-toggle event on the A32NX, but it is INERT on the installed build — the L:var never moves and no consumer exists in any installed bundle, only the ISIS/EFB metric settings do — so it is deliberately NOT exposed, resolved 2026-06-12), and **BTV / OANS / ROW-ROP** (A380/A350 systems).
-- **FCU value-entry windows ported (Ctrl+S/H/A/V/P/B).** The A32NX now has its own Fenix-style FCU windows (`Forms/FBWA320/FBWA320{Speed,Heading,Altitude,VS,Autopilot,Baro}Window` + shared `FBWA320FCUWindowBase`), mirroring the A380's — value entry + knob Push/Pull + mode toggles + spoken read-out, replacing the deleted single-field `ShowA320*InputDialog` / `ShowFBWBaroSetDialog`. Thin UI delegating to public `FlyByWireA320Definition` methods: `SetFCU{Heading,Speed,Altitude,VS}Value`, `FireFCUButton(evt)` (readback via an inline event→`RequestFCU*` switch — the A320 has no `OnPanelButtonFired` override), `RequestFCU{Heading,Speed,Altitude,VS}Readout` (wrappers over the existing private `RequestFCU*WithStatus`/`RequestFCUVerticalSpeedFPA`, which read the `A32NX_FCU_AFS_DISPLAY_*` combine vars), `RequestAutopilotStates`, `SetAltIncrement`. Differences from the A380: **no MTRS/metric toggle** in the Altitude window (real A320 has none); the **Baro** window sets QNH via the proven `A32NX.FCU_EFIS_L/R_BARO_SET` (hPa×16) events (not `CAPT_QNH_SET`/`KOHLSMAN_SET`), **STD/QNH via the `A32NX.FCU_EFIS_L/R_BARO_PULL` (STD) / `_BARO_PUSH` (QNH) knob events — live-verified round-trip 2026-06; the `A32NX_FCU_{LEFT,RIGHT}_EIS_BARO_IS_STD` L:vars are DEAD on the new-FCU A32NX (hold a write but drive nothing, and stay 0 even while actually in STD — the original "STD button doesn't work" bug; dev FBW removed them on the A380 TOO — its STD is now the `A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL}` K-events, read back from `A32NX_FCU_EFIS_{L,R}_DISPLAY_BARO_IS_STD`. **This sentence used to name `H:A380X_EFIS_CP_BARO` + the stock `KOHLSMAN SETTING STD:n` readback; FBW #10855 deleted those H-events, and the A380 now reads the FCU's own per-frame flag instead. The stock mirror is NOT dead — it still tracks both directions — it is simply no longer what MSFSBA reads. See [a380x.md](a380x.md).** CAUTION, the two jets are OPPOSITE: A380 PUSH=STD/PULL=QNH (live-verified 2026-06-11 in the installed fcu.js onPush/onPull), A32NX PULL=STD/PUSH=QNH — never harmonise them). STD state reads `A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE == 0`** (mode 0=STD/1=hPa/2=inHg; the mode carries no unit info while in STD, so the window keeps the last known entry unit), unit via `A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG` (dev FBW REMOVED `XMLVAR_Baro_Selector_HPA_*` from the A32NX — exactly inverted vs the A380, where the XMLVAR is live and IS_INHG is stuck). The Ctrl+B window is now Fenix-style (Mode/Unit combos + value box, 2026-06). **Autopilot panel (Ctrl+P)** identical to the A380 (shared `A32NX.FCU_*` events + `A32NX_*` state vars). The A380 FCU windows are Gus's; these are the A32NX mirror.
+- **FCU value-entry windows ported (Ctrl+S/H/A/V/P/B).** The A32NX now has its own Fenix-style FCU windows (`Forms/FBWA320/FBWA320{Speed,Heading,Altitude,VS,Autopilot,Baro}Window` + shared `FBWA320FCUWindowBase`), mirroring the A380's — value entry + knob Push/Pull + mode toggles + spoken read-out, replacing the deleted single-field `ShowA320*InputDialog` / `ShowFBWBaroSetDialog`. Thin UI delegating to public `FlyByWireA320Definition` methods: `SetFCU{Heading,Speed,Altitude,VS}Value`, `FireFCUButton(evt)` (readback via an inline event→`RequestFCU*` switch — the A320 overrides `OnPanelButtonFiring` to arm the FCU echo before a panel button's event is sent, but `FireFCUButton` still runs its own readback switch rather than `OnPanelButtonFired`), `RequestFCU{Heading,Speed,Altitude,VS}Readout` (wrappers over the existing private `RequestFCU*WithStatus`/`RequestFCUVerticalSpeedFPA`, which read the `A32NX_FCU_AFS_DISPLAY_*` combine vars), `RequestAutopilotStates`, `SetAltIncrement`. Differences from the A380: **no MTRS/metric toggle** in the Altitude window (real A320 has none); the **Baro** window sets QNH via the proven `A32NX.FCU_EFIS_L/R_BARO_SET` (hPa×16) events (not `CAPT_QNH_SET`/`KOHLSMAN_SET`), **STD/QNH via the `A32NX.FCU_EFIS_L/R_BARO_PULL` (STD) / `_BARO_PUSH` (QNH) knob events — live-verified round-trip 2026-06; the `A32NX_FCU_{LEFT,RIGHT}_EIS_BARO_IS_STD` L:vars are DEAD on the new-FCU A32NX (hold a write but drive nothing, and stay 0 even while actually in STD — the original "STD button doesn't work" bug; dev FBW removed them on the A380 TOO — its STD is now the `A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL}` K-events, read back from `A32NX_FCU_EFIS_{L,R}_DISPLAY_BARO_IS_STD`. **This sentence used to name `H:A380X_EFIS_CP_BARO` + the stock `KOHLSMAN SETTING STD:n` readback; FBW #10855 deleted those H-events, and the A380 now reads the FCU's own per-frame flag instead. The stock mirror is NOT dead — it still tracks both directions — it is simply no longer what MSFSBA reads. See [a380x.md](a380x.md).** CAUTION, the two jets are OPPOSITE: A380 PUSH=STD/PULL=QNH (live-verified 2026-06-11 in the installed fcu.js onPush/onPull), A32NX PULL=STD/PUSH=QNH — never harmonise them). STD state reads `A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE == 0`** (mode 0=STD/1=hPa/2=inHg; the mode carries no unit info while in STD, so the window keeps the last known entry unit), unit via `A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG` (dev FBW REMOVED `XMLVAR_Baro_Selector_HPA_*` from the A32NX — exactly inverted vs the A380, where the XMLVAR is live and IS_INHG is stuck). The Ctrl+B window is now Fenix-style (Mode/Unit combos + value box, 2026-06). **Autopilot panel (Ctrl+P)** identical to the A380 (shared `A32NX.FCU_*` events + `A32NX_*` state vars). The A380 FCU windows are Gus's; these are the A32NX mirror.
 - **Engine Mode selector display-sync.** The A32NX combo (MainForm special-case) already reads/writes the **stock ignition simvar** `TURB ENG IGNITION SWITCH EX1:1` (via `TURBINE_IGNITION_SWITCH_SET1/2`), so it never had the A380's read-`XMLVAR_ENG_MODE_SEL` staleness bug (fixed in 7b0f661); the A32NX now also nudges `XMLVAR_ENG_MODE_SEL` on set so the cockpit/EWD display matches (the events don't touch it) — the applicable half of that A380 fix.
 - **A32NX System Display now has 12 pages (added ENG + F/CTL).** The `A32NX_MSFSBA_SD_PAGE` combo offers E/WD(0), ELEC, HYD, PRESS, APU, COND, WHEEL, BLEED, FUEL, DOOR, **Engine(10)**, **Flight Controls(11)**. Content is decoded SimVars per page (`SdSystemRows`), NOT scraped — the A32NX SD page index is read-only so a page can't be forced (only the E/WD, page 0, is scraped). ENG page reads the stock simvars the FBW SD ENG page uses (`GENERAL ENG OIL TEMPERATURE`/`ENG OIL PRESSURE`/`ENG OIL QUANTITY`/`TURB ENG VIBRATION :n` + `A32NX_FADEC_IGNITER_{A,B}_ACTIVE_ENGn`) — pre-declared as **SimVar** (key underscored, Name spaced, like `ENG_ANTI_ICE:1`) so the SD auto-register loop (now pages 1-11) doesn't mis-register them as L:vars. F/CTL page decodes surface positions from the **FCDC/FAC ARINC429** words (`A32NX_FCDC_1_{ELEVATOR,AILERON}_{LEFT,RIGHT}_POS`, `_ELEVATOR_TRIM_POS`, `A32NX_FAC_1_RUDDER_{TRIM,TRAVEL_LIMIT}*`) + rudder percent + spoiler handle. **STS** (computed inop text — not SimVar-decodable, unscrapable) and **CRUISE** (redundant) are intentionally absent. Source-parity adds to existing pages: ELEC gained DC ESS / AC ESS shed / DC ESS shed buses + APU/emer gen frequency; COND gained pack 1/2 flow valves.
 - **A32NX autobrake set uses the calc path.** The Autobrake combo (`AUTOBRAKE_MODE` → `HandleUIVariableSet`) writes `A32NX_AUTOBRAKES_ARMED_MODE_SET` via the MobiFlight **calculator** path (`ExecuteCalculatorCode`), NOT `SetLVar` (the data-def write is unreliable for FBW L:vars). Verified live: `2 (>L:A32NX_AUTOBRAKES_ARMED_MODE_SET)` arms MED, the SET var auto-resets to -1. The FCU value-set events likewise work via the calc-K path (live-verified: HDG/SPD/ALT/VS incl. signed VS round-trip through the `A32NX_FCU_AFS_DISPLAY_*` readback vars).
@@ -346,6 +346,26 @@ sources are registered with Units `"number"` — a batched L:var is read in its 
 unit conversion would destroy a packed word (individual defs always read an L:var as `"number"`,
 whatever Units says).
 
+**FCU availability.** A callout is only released while the FCU itself is producing values —
+`A32NX_FCU_HEALTHY` (A32NX/A330) or `A32NX_FCU_AFS_CP_ACTIVE` (A380, `fcu1||fcu2 afs_cp_active`) —
+and every source above additionally composes `FcuValuePhrases.Unavailable` when its own word reads
+Failure Warning/Functional Test (self-test), or — A380 only — the impossible zero the dead FCU
+writes into every shim and into `FCU_ALT_VALUE` (its selected altitude is never below 100 ft, so 0
+can only mean "off"). `Unavailable` is recorded like dashes, silently, but a delivery FROM
+`Unavailable` (the health var returning, or a source leaving `Unavailable`) begins a settle: the
+A380 zeroes every output rather than dashing it, so without this a battery-on read as nine knob
+turns at once. A power-DOWN is silent outright (staged phrases are dropped).
+
+**Callouts are STAGED, not spoken on delivery, and released at the batch's end.** Whether a change
+is a knob turn depends on the FCU health var too, and that var sorts AFTER the value vars in the
+same continuous batch — so `AnnounceFcuValue` only records a change; `BaseAircraftDefinition.
+OnContinuousBatchDelivered` (fired from `SimConnectManager.ContinuousBatchDelivered`, after every
+`SimVarUpdated` that batch message carried) speaks whatever `FcuValueAnnouncer.OnBatchDelivered`
+released. That release runs OUTSIDE MainForm's `announcer.Suppressed` wrap (which only wraps
+`ProcessSimVarUpdate`), so each airframe checks its own Ctrl+M mute set itself before staging
+(`A32NXDisabledMonitorVariablesSet` / `A380DisabledMonitorVariablesSet`) — the same reason the
+armed-ALT hold above has to.
+
 **The speak/stay-silent rules (`FcuValueAnnouncer`).** Phrases are compared, not numbers: the
 first sample of a key is a silent baseline; a dashed window (null phrase) is recorded but silent,
 so pulling back out of managed speaks the value even when it equals the last selection, and a key
@@ -354,33 +374,81 @@ readout about to speak the same value, still RECORD the value — skipping the c
 baseline that swallowed a later turn back to the old value. Callouts yield when the shared
 announcement queue is backed up.
 
-**MSFSBA's own writes mute their echo** for 2.5 s, for exactly the vars they move, armed BEFORE
-the write (`SuppressFcuValueChangeEcho`, `FcuEchoKeysForEvent`; a TRK/FPA flip names heading, V/S
-and FPA). Every path that moves an FCU value from MSFSBA must arm it, or a knob pull speaks
-"Heading 123 degrees" over its own managed/selected feedback: the FCU windows (`SetFCU*Value`,
-`FireFCUButton`, the A380's `SetTrkFpaMode`) do, the A380's input-mode knob hotkeys go through
-`FireFCUButton`, and its panel push/pull buttons start a readout (which records the value
-silently). The A32NX's knob hotkeys, FCU panel push/pull buttons and HEADING/SPEED/ALTITUDE panel
-fields send plain events instead, so they arm it through `ArmFcuEchoForUiEvent` (in
-`HandleHotkeyAction`, `OnPanelButtonFired` and `HandleUIVariableSet`), gated on `A32NX.FCU_*`
-because `FcuEchoKeysForEvent` matches substrings.
+**Every MSFSBA-origin write arms its echo from ONE table, `FcuEchoKeys.For(evt, sources,
+confirmation)`, BEFORE the send.** `FcuConfirmation` says what else already confirms the write, so
+the table decides which value vars are left for the dial callout to confirm: `ModeFeedback`
+(MainForm's press feedback, `GetButtonStateMapping` — the A32NX's input-mode hotkeys and its
+plain-event FCU panel buttons, armed in `HandleHotkeyAction` and the A32NX's `OnPanelButtonFiring`),
+`ValueReadout` (a readout is about to speak the value — `FireFCUButton(readback:true)` on either
+airframe, and every A380 panel button, whose own `OnPanelButtonFiring` arms it unconditionally),
+and `None` (nothing else confirms the write, so the callout must — the `SetFCU*Value` methods' own
+readback, `SetTrkFpaMode`, and `FireFCUButton(readback:false)`). V/S push/pull get special
+treatment: nothing announces a V/S level-off on its own (the FMA stays V/S), so `FcuEchoKeys.For`
+only mutes the vertical channel for those two events under `ValueReadout` — otherwise (`None`/
+`ModeFeedback`) it leaves them unmuted so the dial's own batch-released callout confirms the
+level-off. `MainForm` calls `OnPanelButtonFiring` on every panel Event-type button BEFORE its event
+is sent, so an echo armed there can never lose the race to the sim's answer.
 
-**After a context reset** — a reconnect or a flight load, `OnSimContextReset` — changes are
-absorbed until an FCU value the AIRCRAFT publishes has moved and then five first-batch deliveries
-pass quietly, or thirty pass regardless (the MD-11's `Md11SeedGate` numbers). A stock SimVar source
-(the A380's `FCU_ALT_VALUE`) moving is not that evidence — the sim core can restore it from the
-flight file before the FBW WASM has run — though it still restarts the quiet count. The baselines
-are kept, never wiped: a value the load leaves alone is never re-delivered, and a wiped baseline
-would take the pilot's first turn as its silent seed. The costs, accepted: a reconnect or a load
-that moves no FCU value absorbs knob turns for about thirty seconds, and an app that connects in
-the middle of a load (after `AircraftLoaded` fired) gets no settle.
+**A dotted A32NX event queued behind the calc-path probe re-arms its echo when it is finally
+sent.** `SendEvent` can hold a dotted/`H:` event for the probe's whole run (`CalcPathVerdict`, up
+to ~60 s) — long past the 2.5 s window the call site armed. `SimConnectManager.
+QueuedEventDispatched` fires from `FlushPendingCalcEvents`, and the base `OnQueuedEventDispatched`
+restarts that event's echo window (`FcuValueAnnouncer.RearmEcho`) the moment it actually reaches
+the sim.
 
-`A32NX_TRK_FPA_MODE_ACTIVE` stays OnRequest on the A32NX: streaming it as announced spoke every
-panel TRK/FPA press twice (the press feedback plus the generic monitor). The Ctrl+H window's TRK/FPA
-button label reads it, so the window requests it itself while open. Registering the speed shim also
-fed the Ctrl+S window's SPD/MACH button label, which had always read it from a cache that was never
-filled. The output-mode readouts (Shift+H/S/A/V) are unchanged and still read the display values —
-on the A32NX that means a live heading, airspeed or vertical speed while the window shows dashes.
+**After a context reset** — a reconnect (`OnVariableCacheCleared`, called right after
+`OnSimContextReset`), a flight load, or an Aircraft-menu switch made within 60 s of
+`AircraftLoaded` (`MainForm.AircraftLoadSettleWindowMs`, a judgement value with no captured timing)
+— changes are absorbed until an FCU value the AIRCRAFT publishes has moved and then five
+first-batch deliveries pass quietly, or thirty pass regardless (the MD-11's `Md11SeedGate`
+numbers). A reconnect's re-fire of every cached var IS that evidence (`refireIsEvidence`), so a
+reconnect settle ends in about 5-6 batches, not thirty; a flight load still waits for a genuinely
+NEW value — a stock SimVar source (the A380's `FCU_ALT_VALUE`) moving is not that evidence, since
+the sim core can restore it from the flight file before the FBW WASM has run, though it still
+restarts the quiet count. The baselines are kept, never wiped: a value the load leaves alone is
+never re-delivered, and a wiped baseline would take the pilot's first turn as its silent seed.
+Accepted residual: the settle only guarantees the FIRST burst of power-up churn is absorbed — a
+LATER transient, such as the FMGC's own AP-engage self-test pulse (on the order of 25 s), can
+arrive after the settle has already ended on ordinary evidence and is spoken like a real knob turn.
+
+**The A380's readouts (Shift+H/S/V) and FCU panel buttons now say "managed"/"not available"
+instead of a live value.** Reading the display values while dashed spoke a live heading/airspeed
+(and, on the A380, a vertical speed of 0) as though it were selected. `FcuWindowStateOf(key)`
+(`BaseAircraftDefinition`, reading `FcuValueAnnouncer`'s own recorded state) answers
+Dashes/Value/Unavailable for a readout to render, and every A380 Shift+H/S/V branch and
+`FireFCUButton`'s value readback go through it; each also arms `SuppressFcuValueChangeEcho` for the
+var it is about to speak, so the same value arriving with the next batch is not spoken twice. On
+the A32NX the readouts instead mute the matching dial source WHILE their own pending flag
+(`isRequestingHeading` etc.) is set (`readoutPending` in `ProcessSimVarUpdate`) and still compose
+their own words via `Compose{Heading,Speed,Altitude,Vertical}Readout` — same result (no double
+speech, "managed"/"not available" instead of a live number), reached by muting the callout rather
+than asking the callout's own tracker for the words.
+
+**A32NX/A330 FCU panel number fields go through the same setters and validation as the FCU
+windows.** `HandleUIVariableSet`'s `A32NX.FCU_{HDG,SPD,ALT}_SET` branches now call
+`FcuValueEntry.Try{Heading,Speed,Altitude}` and the matching `SetFCU*Value` directly, and
+`return true` (handled) instead of falling through to the generic panel path — which sent
+`(uint)value`, truncating a typed Mach (0.78 → 0) and snapping an altitude to its 1000-ft
+increment, and spoke "<name> set to <value>" for whatever was typed rather than what actually
+reached the aircraft. `FcuValueEntry` (a new pure class, `FcuValueEntryTests`) is the one place
+both the panel fields and `FBWA320{Heading,Speed,Altitude}Window` validate a typed value and
+encode it (Mach travels ×100), so an out-of-range entry reads the same error either way.
+
+**The heading window's TRK/FPA label reads the batch, not a poll.** `A32NX_TRK_FPA_MODE_ACTIVE`
+itself stays OnRequest on the A32NX — streaming it as announced spoke every panel TRK/FPA press
+twice (the press feedback plus the generic monitor) — but FBW mirrors the same value into
+`A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE`, which the hardware-dial announcer already streams in the
+batch and consumes silently (`ExcludeFromMonitorManager`, never spoken). `FBWA320HeadingWindow`'s
+500 ms label timer now just reads that cache instead of calling `RequestVariable` on a timer
+(`RequestTrkMode` is gone). The A380's Ctrl+H window is unchanged: it still polls
+`A32NX_TRK_FPA_MODE_ACTIVE` itself, because that airframe has no display-mode mirror to read.
+
+**The five streamed A32NX value vars carry `FCU … Value` `DisplayName`s** (`FCU Heading Value`,
+not `Selected Heading`) so a Ctrl+M search for "heading" does not surface a row named with the
+exact words the MANAGED/SELECTED mode callout speaks — muting THAT row silenced the mode feedback
+instead of the dial callout it looked like it would mute. Pinned by
+`A32nx_callout_mute_rows_never_read_like_a_mode_callout`. The A380's equivalent rows still carry
+their older `Selected …` names — unreviewed for the same collision.
 
 ### Fenix A320 AI display reads — the camera indices are MEASURED (2026-09-21)
 
