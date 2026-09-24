@@ -1,4 +1,4 @@
-﻿# Taxi Guidance
+# Taxi Guidance
 
 Turn-by-turn taxi assistance for blind pilots. Combines a continuous stereo-panned steering tone ("taxiway localizer") with spoken announcements for turns, taxiway crossings, hold-shorts, and arrivals. Works on any airport the user's navdatareader database covers, from major hubs down to small GA fields.
 
@@ -2004,124 +2004,30 @@ It fills the same destination maps the gate branch fills, so Calculate,
   hide-occupied — apply to a Place, so it cannot route a heavy onto a commuter
   stand or onto an occupied one.
 
-**The list awaits its catalog; there is no "warmed once per ICAO" latch.** A
-miss starts one warm-up (`WarmPlaces`), which repopulates once the cache holds
-a catalog; the latch that used to stand in for this outlived every cache
-invalidation and left the list empty behind a false "No places to route to".
-One bounded retry covers the sequence the cache is designed to produce — the
-build stopped waiting for OSM, which it collects last, and the answer landed
-before its merge finished and invalidated the airport, so the finished build
-was discarded rather than cached — and a
-build that genuinely failed is not retried at all (the cache's own failure
-memory owns that). Only the warm-up that still OWNS the form's Place state may
-touch it — by a TICKET minted per warm-up, not by its Task, because
-`SurroundingsCatalogCache.GetAsync` is single-flight and hands two warm-ups for
-one airport the SAME Task, which a reference test on it let both settle from;
-a superseded one logs a line and changes nothing.
+**Loading.** The list is built from the surroundings catalog. When the cache has
+no fresh catalog for the airport, the form starts ONE load (`LoadPlaces`) off the UI
+thread and rebuilds the list when it lands; meanwhile it lists from the catalog it
+last loaded for the same airport, if any, so a filter toggle or a gate-source move
+never empties it. A load that settles never starts another (`_placesSettling`), so a
+cache still remembering a failed build cannot spin. A foreground load says
+*"Loading places for {icao}."* and then the count, or *"Places could not be loaded
+for {icao}."* / *"No places to route to at {icao}."* (`DescribePlaceList`).
 
-**The list follows buildings that arrive LATE.** That one retry fires only when
-the OSM answer lands in the build's last moments — after it stopped waiting for
-OSM, which it does last, and before its merge finished: milliseconds, whatever
-the scenery cache holds — so the ordinary slow-mirror case is an answer that lands
-after the list was already built and settled. `OnlineFeatureStore.FeaturesUpdated`
-then invalidates the catalog, and MainForm marshals that onto the UI thread as
-`TaxiAssistForm.OnSurroundingsInvalidated(icao)`, which re-runs the warm-up when
-the form is still in Place mode at that airport with none already in flight.
-FBOs and hangars come mainly from OSM, so without this the pilot's FBO could be
-missing from the list with no hint that it exists.
+**Late OSM buildings.** `OnlineFeatureStore.FeaturesUpdated` reaches the form as
+`OnSurroundingsInvalidated(icao)`, which reloads a showing Place list in the
+background (after the pilot closes the dropdown, if it is open). A background
+reload speaks only when the list changed (`DescribeBackgroundPlaceRefresh`), and
+becomes a foreground one if the pilot switches to Place while it runs.
 
-That event is the ONLY thing that invokes the forward, and the store raises it
-only when a late fetch SUCCEEDS — so a catalog left DEGRADED is covered only
-when the retry's own fetch lands. A fetch that refused, or a tier that threw,
-raises nothing, and the degraded expiry in `SurroundingsCatalogCache.FreshOrNull`
-notifies nobody; such a list is refreshed by the next ordinary rebuild instead
-(a destination-type switch, a filter toggle, an airport reload, a gate-token
-move).
-
-The refresh is silent at the start — the pilot asked for nothing — and silent at
-the end unless the list really changed, in which case the new count is spoken,
-queued, only while the dialog is open. One that arrives while the destination
-dropdown is OPEN waits for it to close rather than rebuilding the list under the
-reading cursor.
-
-**It stops being background the moment the pilot arrives in front of the list.**
-Switching the destination type away and back mid-refresh empties the list, finds
-nothing cached (the catalog was just invalidated), is refused a second warm-up by
-the in-flight guard and has its "no places" line suppressed by that same guard —
-and the refresh would then settle on an unchanged count and say nothing either,
-leaving the pilot in front of an empty list with not one word spoken.
-`DescribePlaceModeEntry` PROMOTES the running warm-up instead: the ordinary
-"Loading places for {icao}." is spoken there and then, and its settle reports
-like any foreground one. `_placesWarmUpBackground` is a field precisely so the
-settle sees the promotion. A silent destination restore promotes nothing.
-
-**A place that was RENAMED is not a place that was lost.** The catalog's own
-merge rule lets a proper OSM name absorb a synthesized one, so "GA ramp, Parking
-3" can come back as "Narrows Aviation, FBO, Parking 3" with the count unchanged —
-and re-seating by label alone then cleared the selection silently, so the next
-Calculate aborted with "Please select a destination." for no visible reason. On a
-BACKGROUND settle only, and only after the label has failed, the selection is put
-back by its routing TARGET (`PlaceTarget`: the destination node plus the stand's
-position, or no stand for a node-only place) — the same target is the same route,
-the same docking and the same `gate.select` decision, so it is the same choice
-under a new name; the first match wins if two entries share one. Where even the
-target is gone the pilot hears `PlaceListUpdatedMessage` — *"Places updated.
-Please choose the destination again."*, never the GSX sentence, because GSX did
-not do this — queued, while the dialog is visible, and it REPLACES that settle's
-count line. The gate-source-refresh and restore origins keep their existing label
-rule untouched.
-
-**A background settle speaks that sentence for a RESTORE-origin pending too, and
-that is deliberate.** A SayIntentions probe fails, `RestoreDestinationState` arms
-the pilot's pre-probe place (kept, because a warm-up is in flight), and the
-refresh then renames or drops it. The probe's own silence rule — "probing leaves
-no mark" — covers the probe's narration, not a background refresh that removed
-the destination while it ran: what took it away is the refresh, so the sentence
-is true and actionable, and the alternative is a silently cleared destination and
-a baffling "Please select a destination." at the next Calculate. A FOREGROUND
-settle on the same pending still says nothing.
-
-Which of the two a settling warm-up is comes from `ResolveWarmUpBackground`:
-`_placesWarmUpBackground` answers only while the form still names that warm-up's
-ticket — the one state in which it could have been promoted, and the one in which
-a `false` there means "promoted" rather than "cleared by an airport load" — and
-otherwise the warm-up's own start-time parameter is all that is still true about
-it. Read blindly, a background refresh outliving a `LoadAirportDataCoreAsync`
-reset with no successor announced a count nobody asked for and skipped the rename
-fallback.
-
-**A pending selection the rebuilt list no longer carries leaves NOTHING
-selected, never item 0** — item 0 plus Calculate would route to, and
-`gate.select`, a place the pilot never chose; cleared, Calculate aborts with
-"Please select a destination." instead. The pilot's own later pick always wins
-over an armed pending, and `PopulateDestinations` does not auto-seat item 0
-while a Place pending is armed, so a live selection found at the settle can
-only be the pilot's. **A pending that NAMES a destination is never replaced by
-one that names none** (`MergePendingPlaceSelection`), and the origin flag
-follows the label that survives: a second gate-source refresh during the same
-warm-up passes the token check again with the list still empty, so its own
-`previous` is null, and unguarded it wiped the label the first one had armed —
-the pilot's place was never re-seated and nothing was said about it. Where a
-silent restore's label outlives such a request the surviving origin is the
-restore's, so a FOREGROUND settle stays silent about the loss: the restore is a
-probe undoing itself and the pilot performed no action there.
-
-A loss caused by the gate-source refresh speaks the shared
-`GateListUpdatedMessage`, queued, while the form is visible; a loss on a
-foreground settle from any other origin — a silent destination restore, a live
-pick preserved across a rebuild — says nothing; and when nothing is listed at all only
-the list's own line is spoken, because "choose again" would be an instruction
-to choose from an empty list. That line says which KIND of empty it is
-(`DescribePlaceList`): "No places to route to at {icao}." for a catalog that
-exists and yields nothing routable, **"Places could not be loaded for {icao}."**
-when no catalog came back at all — a build that failed, or one discarded twice,
-where the airport having no places was never actually learned. With no airport
-loaded it says nothing rather than "No places to route to at ." (reachable by
-selecting Place while pre-planning in the air) or naming the previous airport
-during a load.
-
-SayIntentions "taxi to the FBO" as a clearance candidate is deferred until a
-live capture shows SI phrasing a place rather than a stand.
+**The pilot's selection survives a rebuild or is cleared, never replaced.** After a
+reload the previous label is put back if the new list carries it. If it does not,
+NOTHING is selected (item 0 plus Calculate would route, and `gate.select`, somewhere
+the pilot never chose) and the pilot hears *"Places updated. Please choose the
+destination again."* (`PlaceListUpdatedMessage`) — usually a rename, a late OSM name
+absorbing a synthesized one. A selection the pilot had deliberately cleared stays
+cleared. A destination restore or a gate-source move that lands while the list is
+still empty hands its label to the running load (`_placeToReselect`); a restore stays
+silent throughout.
 
 ### Overpass mirrors — a regional instance must never be in the list
 
