@@ -244,6 +244,10 @@ public interface IAircraftDefinition
     /// </summary>
     void OnPanelButtonFired(string varKey, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
+    /// <summary>Called just before a panel Event-type button's event is sent, so an aircraft can arm
+    /// anything that must be in place before the sim can answer (the FCU value echo).</summary>
+    void OnPanelButtonFiring(string varKey);
+
     /// <summary>
     /// Called once after a panel is built/shown, so an aircraft with a multi-page
     /// status box (driven by a page combo) can populate the box with the combo's

@@ -74,28 +74,18 @@ public partial class FlyByWireA380Definition
     /// </summary>
     internal bool TryComposeFcuValuePhrase(string varName, double value, out string? phrase)
     {
-        switch (varName)
+        if (varName == Fcu.Heading) { phrase = FcuValuePhrases.Heading(value); return true; }
+        if (varName == Fcu.Speed) { phrase = FcuValuePhrases.Speed(value); return true; }
+        if (varName == Fcu.Altitude)
         {
-            case "A32NX_AUTOPILOT_HEADING_SELECTED":
-                phrase = FcuValuePhrases.Heading(value);
-                return true;
-            case "A32NX_AUTOPILOT_SPEED_SELECTED":
-                phrase = FcuValuePhrases.Speed(value);
-                return true;
-            case "FCU_ALT_VALUE":
-                var (altitude, unit) = AltUser(value);
-                phrase = FcuValuePhrases.Altitude(altitude, unit);
-                return true;
-            case "A32NX_PRIM_1_SELECTED_VERTICAL_SPEED":
-                phrase = FcuValuePhrases.VerticalSpeed(value);
-                return true;
-            case "A32NX_PRIM_1_SELECTED_FPA":
-                phrase = FcuValuePhrases.FlightPathAngle(value);
-                return true;
-            default:
-                phrase = null;
-                return false;
+            var (altitude, unit) = AltUser(value);
+            phrase = FcuValuePhrases.Altitude(altitude, unit);
+            return true;
         }
+        if (varName == Fcu.VerticalSpeed) { phrase = FcuValuePhrases.VerticalSpeed(value); return true; }
+        if (varName == Fcu.FlightPathAngle) { phrase = FcuValuePhrases.FlightPathAngle(value); return true; }
+        phrase = null;
+        return false;
     }
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
@@ -890,9 +880,9 @@ public partial class FlyByWireA380Definition
             // A readout pending for this var is about to AnnounceImmediate the same value, which
             // would cut the callout off mid-word. (The V/S readout reads the shims, not the PRIM
             // words the announcer listens to, so it never collides here.)
-            bool readoutPending = (_reqHdg && varName == "A32NX_AUTOPILOT_HEADING_SELECTED")
-                || (_reqSpd && varName == "A32NX_AUTOPILOT_SPEED_SELECTED")
-                || (_reqAlt && varName == "FCU_ALT_VALUE");
+            bool readoutPending = (_reqHdg && varName == Fcu.Heading)
+                || (_reqSpd && varName == Fcu.Speed)
+                || (_reqAlt && varName == Fcu.Altitude);
             bool fcuMuted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName);
             AnnounceFcuValue(varName, fcuPhrase, announcer, muted: fcuMuted || readoutPending);
         }

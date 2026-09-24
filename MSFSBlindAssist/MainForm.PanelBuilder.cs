@@ -1125,6 +1125,9 @@ public partial class MainForm
                 {
                     if (varDef.Type == SimVarType.Event)
                     {
+                        // Before the send, so an echo armed here can never lose the race to the sim.
+                        currentAircraft.OnPanelButtonFiring(varKey);
+
                         // Special handling for events that don't take parameters
                         if (varDef.Name == "A32NX.AUTOBRAKE_SET_DISARM")
                         {

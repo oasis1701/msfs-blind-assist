@@ -553,6 +553,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Called just BEFORE a panel Event-type button's event is sent, so an aircraft can arm anything
+    /// that must be in place before the sim can answer (the FCU value echo). Default: no-op.
+    /// </summary>
+    public virtual void OnPanelButtonFiring(string varKey)
+    {
+    }
+
+    /// <summary>
     /// Called once after a panel's controls are built/shown. Aircraft with a
     /// multi-page status box driven by a page combo override this to POPULATE the box
     /// with the combo's CURRENT page immediately — so the user doesn't have to cycle
@@ -625,6 +633,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// key the write actually moves and NO others — a knob push/pull that touches no value var
     /// must pass none. Arm it BEFORE the write, so its echo can never arrive first.</summary>
     protected void SuppressFcuValueChangeEcho(params string[] keys) =>
+        _fcuValues.SuppressEcho(keys, Environment.TickCount64);
+
+    /// <summary>Arm the FCU echo window for the value vars an MSFSBA-origin FCU event moves (from
+    /// <see cref="FcuEchoKeys.For"/>). Call it BEFORE the event is sent.</summary>
+    protected void ArmFcuEcho(string evt, IReadOnlyList<string> keys) =>
         _fcuValues.SuppressEcho(keys, Environment.TickCount64);
 
     /// <summary>Whether a delivery of this FCU value var proves the aircraft itself has published
