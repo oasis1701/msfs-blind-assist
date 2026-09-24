@@ -5,6 +5,8 @@
 // request id let an abandoned read's late reply complete the NEXT read) and rotates over a range of
 // ids; the ground sweep now does too.
 
+using System.Globalization;
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Tests;
@@ -57,5 +59,55 @@ public class GroundTrafficRequestIdTests
 
         uint[] handNumbered = { 324, 325, 326, 327, 328, 330, 331, 332, 333, 334, 335, 336, 337, 370, 371, 372, 505, 506, 507, 508 };
         Assert.DoesNotContain(handNumbered, id => id >= First && id <= Last);
+    }
+
+    // ── The source itself (PR #247 final review H8) ──────────────────────────────────────────
+    // The hand-kept list above cannot see a FUTURE hand-numbered cast. These scan every *.cs under
+    // MSFSBlindAssist/ for a raw (DATA_REQUESTS)NNN cast — what actually ships — and hold the same line.
+
+    [Fact]
+    public void No_hand_numbered_request_id_in_the_source_lies_in_the_sweep_range()
+    {
+        var ids = HandNumberedRequestIds();
+        // The scan must see the guidance frames it exists to protect, or it is scanning nothing.
+        Assert.All(new uint[] { 505, 506, 507, 508 }, id => Assert.Contains(id, ids));
+        Assert.DoesNotContain(ids, id => id >= First && id <= Last);
+    }
+
+    [Fact]
+    public void The_hand_numbered_guidance_frames_are_not_named_request_ids()
+    {
+        for (int id = 505; id <= 508; id++)
+            Assert.False(Enum.IsDefined(typeof(SimConnectManager.DATA_REQUESTS), id),
+                $"request id {id} is a hand-numbered guidance frame AND a named DATA_REQUESTS value");
+    }
+
+    /// <summary>Every id cast by hand to DATA_REQUESTS anywhere in the app's own source.</summary>
+    private static HashSet<uint> HandNumberedRequestIds()
+    {
+        var cast = new Regex(@"\((?:SimConnectManager\.)?DATA_REQUESTS\)\s*(\d+)");
+        string app = Path.Combine(RepoRoot(), "MSFSBlindAssist");
+        var ids = new HashSet<uint>();
+        foreach (string file in Directory.EnumerateFiles(app, "*.cs", SearchOption.AllDirectories))
+        {
+            // Build output (generated files under bin/ and obj/) is not source.
+            var parts = Path.GetRelativePath(app, file).Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            if (parts.Contains("bin") || parts.Contains("obj")) continue;
+            foreach (Match m in cast.Matches(File.ReadAllText(file)))
+                ids.Add(uint.Parse(m.Groups[1].Value, CultureInfo.InvariantCulture));
+        }
+        return ids;
+    }
+
+    /// <summary>
+    /// The repository root: the nearest directory above the test assembly that holds
+    /// MSFSBlindAssist.sln. (The suite has no shared helper for this — its other file-reading tests
+    /// read fixtures copied next to the assembly — so it is found the usual way, walking up.)
+    /// </summary>
+    private static string RepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
+        throw new InvalidOperationException($"MSFSBlindAssist.sln was not found above {AppContext.BaseDirectory}");
     }
 }
