@@ -687,6 +687,34 @@ public class GroundTrafficMonitorRuleTests
         }, h.Transcript);
     }
 
+    [Fact]
+    public void A_re_armed_runway_status_waits_for_a_sweep_requested_on_the_runway()
+    {
+        // The one reader of the evaluated cycle's own mode: the RE-ARMED status's wait (PR #247 re-review M5). The
+        // first status is spoken at the hold at t=1, with an aircraft on a 1 nm final. A sweep is requested at the
+        // hold at t=2, and Continue takes the pilot onto the runway at t=3, well inside
+        // RunwayWatchScopes.RearmAfterHoldWindowMs, so the first status is re-armed (critical-only); only then is
+        // the hold's sweep answered. The re-armed status waits it out and is spoken, interrupting, from the next
+        // sweep, requested on the runway — so it is named, as a watch of the runway under the aircraft is, for the
+        // nearer end: 27. Without the wait it went out a sweep early, judged on the hold's sweep, as that sweep's
+        // "Runway 09: …" (PR #247 focused re-review S8).
+        var h = AtTheHold(holdingShort: true);
+        h.Sim.Traffic.Add(OnOneMileFinal());
+
+        h.Tick();                                    // t=1: the first status, at the hold
+        h.TickOnly();                                // t=2: a sweep is requested at the hold
+        OntoTheRunway(h);
+        h.TickOnly();                                // t=3: the same watch, now OnRunway — the first status re-armed
+        h.Sim.CompleteSweep();                       // the hold's sweep is answered: the re-armed status waits
+        h.Tick(3);                                   // t=4..6: sweeps requested on the runway
+
+        Assert.Equal(new[]
+        {
+            "t=1 " + FirstStatusWithTheFinal,
+            "t=4 [INT] Runway 27: no traffic seen on the runway. British Airways A320 on final runway 09, 1.0 miles.",
+        }, h.Transcript);
+    }
+
     // ── A withheld interrupt stays an interrupt ─────────────────────────────────────────────────────
 
     // Inside InterruptProtectMs of the last interrupt, an interrupt that is not STRICTLY more urgent is withheld:
