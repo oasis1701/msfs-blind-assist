@@ -184,6 +184,13 @@ internal static partial class GroundTrafficLogic
     // be reached without passing it, so it is not called on its own — a three-aircraft queue was announced
     // as three "on your route" calls, then three "Slow down"s, each cutting off the last. The queue
     // position covers them.
+    //
+    // Only traffic that OCCUPIES the route can be that first (PR #247 integration review Q3): an aircraft
+    // merely CROSSING it inside the 30 m band will be gone before the pilot gets there, yet as the first
+    // it silenced the aircraft stopped on the route beyond it — no "on your route", no "Slow down", only
+    // "Stop" — and it held back head-on traffic's "coming toward you" from 1,100 to 500 feet (about 15 s
+    // at the reviewer's speeds). Head-on traffic is never queued behind the first either: it is coming
+    // at the pilot, whatever holds the route between them.
 
     /// <summary>
     /// How much further along the route than the first aircraft on it another must be to count as queued
@@ -192,26 +199,37 @@ internal static partial class GroundTrafficLogic
     public const double QueuedBehindFirstGapM = 10.0;
 
     /// <summary>
-    /// The along-route distance of the FIRST aircraft on the route ahead — among the traffic ON it
-    /// (<c>OnRouteAhead</c>), the smallest distance ahead, the one the pilot would reach first — or null
-    /// when nothing is on the route ahead.
+    /// Does this traffic OCCUPY the route — stopped on it or moving along it
+    /// (<see cref="RouteRelativeMotion.Stopped"/>, <see cref="RouteRelativeMotion.Along"/>), rather than
+    /// crossing it or coming head-on? Only such traffic can hide what is beyond it (<see cref="FirstOnRouteAheadM"/>).
     /// </summary>
-    public static double? FirstOnRouteAheadM(IEnumerable<(bool OnRouteAhead, double AheadM)> traffic)
+    public static bool OccupiesRoute(RouteRelativeMotion? routeMotion)
+        => routeMotion is RouteRelativeMotion.Stopped or RouteRelativeMotion.Along;
+
+    /// <summary>
+    /// The along-route distance of the FIRST aircraft on the route ahead — among the traffic ON it
+    /// (<c>OnRouteAhead</c>) that OCCUPIES it (<see cref="OccupiesRoute"/>, from its <c>RouteMotion</c>),
+    /// the smallest distance ahead, the one the pilot would reach first — or null when no such traffic is
+    /// on the route ahead. Traffic crossing the route or coming head-on on it is never the first.
+    /// </summary>
+    public static double? FirstOnRouteAheadM(IEnumerable<(bool OnRouteAhead, double AheadM, RouteRelativeMotion? RouteMotion)> traffic)
     {
         double? first = null;
-        foreach (var (onRouteAhead, aheadM) in traffic)
-            if (onRouteAhead && (first is not double f || aheadM < f)) first = aheadM;
+        foreach (var (onRouteAhead, aheadM, routeMotion) in traffic)
+            if (onRouteAhead && OccupiesRoute(routeMotion) && (first is not double f || aheadM < f)) first = aheadM;
         return first;
     }
 
     /// <summary>
-    /// Queued behind the first aircraft on the route ahead: on the route ahead itself, and more than
+    /// Queued behind the first aircraft on the route ahead: on the route ahead itself, more than
     /// <see cref="QueuedBehindFirstGapM"/> further along than that first one (<paramref name="firstAheadM"/>,
-    /// <see cref="FirstOnRouteAheadM"/>). It gets no on-route callout, and its zone callouts are withheld
-    /// unless it is very close (<see cref="WithholdsZoneBehindFirst"/>).
+    /// <see cref="FirstOnRouteAheadM"/>), and not coming head-on (<paramref name="routeMotion"/>
+    /// <see cref="RouteRelativeMotion.Toward"/> never is). It gets no on-route callout, and its zone callouts
+    /// are withheld unless it is very close (<see cref="WithholdsZoneBehindFirst"/>).
     /// </summary>
-    public static bool IsQueuedBehindFirst(bool onRouteAhead, double aheadM, double? firstAheadM)
-        => onRouteAhead && firstAheadM is double first && aheadM > first + QueuedBehindFirstGapM;
+    public static bool IsQueuedBehindFirst(bool onRouteAhead, double aheadM, double? firstAheadM, RouteRelativeMotion? routeMotion)
+        => onRouteAhead && routeMotion != RouteRelativeMotion.Toward
+           && firstAheadM is double first && aheadM > first + QueuedBehindFirstGapM;
 
     /// <summary>
     /// A zone callout for an aircraft queued behind the first (<see cref="IsQueuedBehindFirst"/>) is

@@ -49,6 +49,100 @@ public class GroundTrafficMonitorRuleTests
         Assert.Contains(h.Said.Interrupts, m => m.StartsWith("Stop, Lufthansa"));
     }
 
+    [Fact]
+    public void An_aircraft_crossing_the_route_does_not_hide_the_stopped_aircraft_beyond_it()
+    {
+        // PR #247 integration review P3: rolling at 12 kt, an aircraft crossing the route 110 m ahead (north at
+        // 10 kt, inside the 30 m band for a few seconds) and one stopped on the route 190 m ahead. Only traffic
+        // that OCCUPIES the route can be the first: the crossing one hid the stopped one, which lost its "on
+        // your route" and its "Slow down" and got only "Stop". The transcript is the one the monitor gave
+        // before the author's first-on-the-route rule was ported.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        var crosser = Ac(1, 110, -40, 10, "Delta", "DAL1", headingDeg: 0);
+        h.Sim.Traffic.Add(crosser);
+        h.Sim.Traffic.Add(Ac(2, 190, 0, 0, "Lufthansa", "DLH2"));
+        double ownM = 0, crosserNorthM = -40;
+        h.Sim.Position = Own(ownM, 12);
+        while (ownM < 175)
+        {
+            crosserNorthM += 10 * Kt;
+            crosser.Latitude = crosserNorthM * M;
+            ownM = Math.Min(ownM + 12 * Kt, 175);
+            h.Sim.Position = Own(ownM, ownM >= 175 ? 0 : 12);
+            h.Tick();
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=3 [INT] Stop, Delta A320 very close, ahead, 300 feet.",
+            "t=3 Delta A320 on your route, taxiway A, 300 feet ahead, crossing.",
+            "t=6 [INT] Slow down, Lufthansa A320 ahead, 500 feet.",
+            "t=6 Lufthansa A320 on your route, taxiway A, 500 feet ahead, stopped.",
+            "t=12 [INT] Stop, Lufthansa A320 very close, ahead, 400 feet.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void Head_on_traffic_beyond_an_aircraft_crossing_the_route_is_called_at_once()
+    {
+        // PR #247 integration review P4: rolling at 10 kt, an aircraft crossing the route 120 m ahead (north at
+        // 6 kt) and another coming head-on along the route from 420 m at 15 kt. Neither hides anything: the
+        // crossing one does not occupy the route, and head-on traffic is never queued behind the first. The
+        // head-on aircraft's "coming toward you" is spoken at 1,100 feet, not held until 500 feet — the
+        // transcript the monitor gave before the author's first-on-the-route rule was ported.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        var crosser = Ac(1, 120, -40, 6, "Delta", "DAL1", headingDeg: 0);
+        var headOn = Ac(2, 420, 0, 15, "Lufthansa", "DLH2", headingDeg: 270);
+        h.Sim.Traffic.Add(crosser);
+        h.Sim.Traffic.Add(headOn);
+        double ownM = 0, crosserNorthM = -40, headOnM = 420;
+        h.Sim.Position = Own(ownM, 10);
+        while (headOnM - ownM >= 40)
+        {
+            crosserNorthM += 6 * Kt;
+            crosser.Latitude = crosserNorthM * M;
+            headOnM -= 15 * Kt;
+            headOn.Longitude = headOnM * M;
+            ownM += 10 * Kt;
+            h.Sim.Position = Own(ownM, 10);
+            h.Tick();
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=3 [INT] Stop, Delta A320 very close, ahead, 350 feet.",
+            "t=3 Delta A320 converging from ahead, about 20 seconds.",
+            "t=6 Lufthansa A320 on your route, taxiway A, 1100 feet ahead, coming toward you.",
+            "t=21 [INT] Slow down, Lufthansa A320 ahead, 500 feet.",
+            "t=24 [INT] Stop, Lufthansa A320 very close, ahead, 350 feet.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void Head_on_traffic_beyond_the_first_aircraft_on_the_route_is_never_queued_behind_it()
+    {
+        // A real first this time: an aircraft stopped 150 m ahead, 25 m off the centreline — inside the 30 m
+        // on-route band, so it is the first, though it does not block the taxiway. Beyond it, one comes head-on
+        // along the route from 420 m at 15 kt while the pilot rolls at 10 kt. Head-on traffic is never queued
+        // behind the first, so it keeps its own "coming toward you" — at 1,100 feet, on the alert line after
+        // the first's own (one alert line per 3 s) — instead of nothing until "Stop".
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        h.Sim.Traffic.Add(Ac(1, 150, 25, 0, "British Airways", "BAW1"));
+        var headOn = Ac(2, 420, 0, 15, "Lufthansa", "DLH2", headingDeg: 270);
+        h.Sim.Traffic.Add(headOn);
+        double ownM = 0, headOnM = 420;
+        for (int s = 0; s < 6; s++)
+        {
+            headOnM -= 15 * Kt;
+            headOn.Longitude = headOnM * M;
+            ownM += 10 * Kt;
+            h.Sim.Position = Own(ownM, 10);
+            h.Tick();
+        }
+
+        Assert.Contains("t=6 Lufthansa A320 on your route, taxiway A, 1100 feet ahead, coming toward you.", h.Transcript);
+    }
+
     // ── A "Stop" withheld while traffic moves away is not swallowed ─────────────────────────────────
 
     [Fact]

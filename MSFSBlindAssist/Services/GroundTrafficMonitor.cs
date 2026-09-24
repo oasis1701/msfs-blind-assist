@@ -977,7 +977,10 @@ public sealed class GroundTrafficMonitor : IDisposable
         // reached without passing it, so they are not called on their own — only "Stop" still speaks for
         // one — and the queue position covers them (PR #247 author's fix: a three-aircraft queue was
         // announced as three "on your route" calls, then three "Slow down"s, each cutting off the last).
-        double? firstOnRouteM = GroundTrafficLogic.FirstOnRouteAheadM(views.Select(v => (v.OnRouteAhead, v.AheadM)));
+        // Only traffic stopped on the route or moving along it can be the first — one merely crossing it
+        // hid the stopped aircraft beyond it — and head-on traffic is never queued behind it (PR #247
+        // integration review Q3).
+        double? firstOnRouteM = GroundTrafficLogic.FirstOnRouteAheadM(views.Select(v => (v.OnRouteAhead, v.AheadM, v.RouteMotion)));
 
         foreach (var v in views)
         {
@@ -985,7 +988,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             string name = Capitalise(ac.Name);
             string distStr = FormatDistance(v.DistFt, useMetres);
             string dir = GroundTrafficLogic.DescribeDirection(v.Rel);
-            bool behindFirst = GroundTrafficLogic.IsQueuedBehindFirst(v.OnRouteAhead, v.AheadM, firstOnRouteM);
+            bool behindFirst = GroundTrafficLogic.IsQueuedBehindFirst(v.OnRouteAhead, v.AheadM, firstOnRouteM, v.RouteMotion);
 
             // ── Converging (closest point of approach) ──
             bool movingTraffic = ac.GS >= GroundTrafficLogic.MovingTrafficKts;

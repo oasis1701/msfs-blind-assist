@@ -31,8 +31,16 @@ internal sealed class GroundTrafficHarness
     /// <summary>What the monitor's <see cref="GroundTrafficMonitor.RouteContextProvider"/> returns.</summary>
     public GroundTrafficRouteContext? Context { get; set; }
 
+    /// <summary>Simulated seconds so far: one per <see cref="Tick"/> or <see cref="TickOnly"/>.</summary>
+    public int Second { get; private set; }
+
+    /// <summary>Every line spoken so far as "t=N text" — N the simulated second it was spoken in, "[INT] " before an interrupt.</summary>
+    public List<string> Transcript
+        => Said.Spoken.Select(s => $"t={s.Second} {(s.Interrupted ? "[INT] " : "")}{s.Text}").ToList();
+
     public GroundTrafficHarness()
     {
+        Said.Clock = () => Second;
         Monitor = new GroundTrafficMonitor(Said, Sim, startTimers: false, () => Now)
         {
             RouteContextProvider = () => Context,
@@ -53,6 +61,7 @@ internal sealed class GroundTrafficHarness
     public void TickOnly()
     {
         Now = Now.AddSeconds(1);
+        Second++;
         Monitor.TickForHarness();
     }
 
@@ -174,8 +183,23 @@ internal sealed class SpeechCapture : ScreenReaderAnnouncer
     /// <summary>Only what was spoken with <see cref="ScreenReaderAnnouncer.AnnounceImmediate"/> (interrupting).</summary>
     public List<string> Interrupts { get; } = new();
 
-    public override void Announce(string message) => All.Add(message);
-    public override void AnnounceImmediate(string message) { All.Add(message); Interrupts.Add(message); }
-    public override void AnnounceQueued(string message) => All.Add(message);
-    public override void AnnounceWithQueue(string message) => All.Add(message);
+    /// <summary>The simulated second each line is stamped with (<see cref="GroundTrafficHarness.Second"/>); 0 when unset.</summary>
+    public Func<int>? Clock { get; set; }
+
+    /// <summary>
+    /// Everything spoken, in order: the simulated second, the text, and whether it interrupted — the same
+    /// line can be spoken both ways.
+    /// </summary>
+    public List<(int Second, string Text, bool Interrupted)> Spoken { get; } = new();
+
+    public override void Announce(string message) => Record(message, interrupted: false);
+    public override void AnnounceImmediate(string message) { Interrupts.Add(message); Record(message, interrupted: true); }
+    public override void AnnounceQueued(string message) => Record(message, interrupted: false);
+    public override void AnnounceWithQueue(string message) => Record(message, interrupted: false);
+
+    private void Record(string message, bool interrupted)
+    {
+        All.Add(message);
+        Spoken.Add((Clock?.Invoke() ?? 0, message, interrupted));
+    }
 }
