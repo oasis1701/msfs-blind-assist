@@ -577,13 +577,9 @@ public partial class MainForm
                         }
                     }
 
-                    // (2) Under-aircraft detection — only when on the ground. At the airport
-                    //     CurrentAirport.Resolve names, the one Where Am I and Look Around speak,
-                    //     never the nearest four-character reference point: on KSNA's runway 02L
-                    //     that was heliport 10CL, which has no taxi paths, so no runway was found
-                    //     and the assist said "no runway selected" on a runway the database knows.
-                    //     The two calls also share the Where-Am-I graph cache, which two different
-                    //     answers kept evicting. Short idents load like any other.
+                    // (2) Under-aircraft detection — only when on the ground, at the airport
+                    //     CurrentAirport.Resolve names (the nearest reference point put KSNA's
+                    //     runway 02L at heliport 10CL, which has no runways to find).
                     if (!seeded && _lastOnGround && airportDataProvider != null)
                     {
                         string? airportIcao = MSFSBlindAssist.Services.CurrentAirport.Resolve(
@@ -1817,11 +1813,8 @@ public partial class MainForm
             string announcement;
             try
             {
-                // Which airport the aircraft is AT, not the nearest reference point — the same
-                // resolver Alt+L uses, because Alt+L speaks this very line and the two must
-                // agree. A 3-character ident is a perfectly good answer here: every airport
-                // lookup in the provider matches `icao` OR `ident`, so the old 4-character
-                // filter only ever threw small fields away.
+                // Which airport the aircraft is AT — the resolver Alt+L uses, since it speaks this
+                // same line. Short idents are fine: every provider lookup matches icao OR ident.
                 string? icao = MSFSBlindAssist.Services.CurrentAirport.Resolve(
                     airportDataProvider, position.Latitude, position.Longitude);
                 if (icao == null)
@@ -1852,9 +1845,7 @@ public partial class MainForm
     }
 
 
-    /// <summary>Whatever had the foreground when the pilot pressed the key — the handle Escape
-    /// hands back to. Declared here rather than taken from a form, because the surroundings
-    /// window is created some seconds after the press and must not capture it then.</summary>
+    /// <summary>The foreground window at the press, which Escape hands back to.</summary>
     [System.Runtime.InteropServices.DllImport("user32.dll")]
     private static extern IntPtr GetForegroundWindow();
 
@@ -1872,49 +1863,31 @@ public partial class MainForm
         SimConnectManager.AircraftPosition Position, double HeadingTrue, string WhereAmI, long PressedAt);
 
     /// <summary>
-    /// The ONE path both surroundings hotkeys take: guards → the PRESS's timestamp → position →
-    /// pool hop → which airport → the catalog build and the Where-Am-I line, SIDE BY SIDE → UI
-    /// marshal, every spoken line — and the "Looking around." notice — timed from that press
-    /// (SpeakLookupLine). The provider this method's OWN work uses — the airport resolution and
-    /// DescribeCurrentLocation — is captured in a LOCAL on the UI thread, so a database switch
-    /// cannot swap it out from under a lookup in flight. The manager's DatabaseGeneration is captured
-    /// beside it, so a Where-Am-I graph built through that provider after a switch still answers this
-    /// lookup but is never cached. That guarantee stops at the catalog: the
-    /// cache's BuildSupplier (SurroundingsCatalogBuilder) reads the `airportDataProvider` FIELD on its own
-    /// pool thread and so may see the new database. Harmless, because RefreshDatabaseProvider
-    /// Clear()s the cache and the cache's in-flight check then discards a build that straddled
-    /// the switch instead of caching it. `compose` runs on the pool thread and returns the action
-    /// to run on the UI thread.
+    /// The one path both surroundings hotkeys take: guards, the press's timestamp, position, then on a
+    /// pool thread the airport, the catalog and the Where-Am-I line side by side, then the UI action
+    /// <paramref name="compose"/> returns. Every spoken line is timed from the press
+    /// (<see cref="SpeakLookupLine"/>). The provider and its DatabaseGeneration are captured on the UI
+    /// thread, so a database switch mid-lookup neither swaps the provider nor lets a stale Where-Am-I
+    /// graph be cached; the catalog cache discards a build that straddled a switch on its own.
     /// </summary>
     private void RunSurroundingsLookup(LatestRequest requests, bool needWhereAmI, Func<SurroundingsLookup, Action> compose)
     {
         var provider = airportDataProvider;
         if (provider == null) { announcer.AnnounceImmediate("Airport database not available."); return; }
-        // Read WITH the provider, in this same UI-thread turn: a Where-Am-I graph built through it
-        // after a database switch answers this lookup but is never cached.
+        // Read with the provider, in this same turn.
         long databaseGeneration = taxiGuidanceManager.DatabaseGeneration;
         if (!_lastOnGround) { announcer.AnnounceImmediate("In flight."); return; }
 
-        // THE PRESS, taken on the UI thread before anything is asked of the simulator. Every line
-        // this lookup speaks later is timed from here (SpeakLookupLine): within
-        // SurroundingsLookupNotice.Delay of the press it may interrupt, later it waits its turn.
+        // The press, before anything is asked of the simulator; every line is timed from here.
         long pressedAt = System.Diagnostics.Stopwatch.GetTimestamp();
 
         simConnectManager.RequestAircraftPositionAsync(position =>
         {
-            // The ticket is taken HERE, not at the press. RequestAircraftPositionAsync silently
-            // returns without ever invoking this callback when SimConnect is not connected (or
-            // the request throws), so a ticket taken at the press would be burned by a press that
-            // can never produce an answer — and, being newer, would suppress the previous press's
-            // in-flight one. The pilot got total silence from two presses. Taken here, only a
-            // press that actually has a position competes, and the newest of those wins.
+            // The ticket is taken here, not at the press: a press whose position never arrives must
+            // not suppress the previous press's answer (two presses once gave total silence).
             int ticket = requests.Next();
 
-            // position is a struct copy handed to us by the SimConnect callback (dispatched on the
-            // UI thread via WndProc). Everything below it — the airport resolution, DescribeCurrentLocation
-            // and the catalog build's possible first-time scenery scan/DB read — runs on a thread-pool
-            // thread, or a first uncached scan stalls the WinForms message pump: every hotkey,
-            // taxi-guidance tone update and queued announcement.
+            // Everything below runs on a pool thread, or a first scenery scan would stall the UI thread.
             Task.Run(async () =>
             {
                 Action ui;
@@ -1924,32 +1897,19 @@ public partial class MainForm
                     if (icao == null) ui = () => SpeakLookupLine(pressedAt, "No airport nearby.");
                     else
                     {
-                        // BOTH builds start now, side by side (review item ML-5): the catalog on the
-                        // cache's own pool thread, the Where-Am-I line on another. Either can be cold
-                        // — a taxi graph for the airport; a scenery scan and the OSM wait — and in
-                        // sequence their times simply added up before a single word was said.
+                        // Both start now, side by side, so a cold taxi graph and a cold catalog overlap.
                         var catalogTask = surroundingsCache.GetAsync(icao);
-                        // databaseGeneration: read WITH the provider at the press (plan D), so a graph
-                        // built through a provider a database switch has since replaced is not cached.
                         var whereTask = needWhereAmI
                             ? Task.Run(() => taxiGuidanceManager.DescribeCurrentLocation(provider, icao, position.Latitude, position.Longitude, databaseGeneration))
                             : Task.FromResult("");
                         var answer = Task.WhenAll(catalogTask, whereTask);
-                        // A cold first press waits seconds with nothing said, and a blind pilot
-                        // cannot tell that from "the key did nothing". Say so ONCE, and only when the
-                        // WHOLE answer — catalog AND Where-Am-I line — has not come within
-                        // SurroundingsLookupNotice.Delay of the PRESS (NoticeWait: the position request
-                        // and the airport resolution have already spent some of it). QUEUED, and
-                        // dropped if the pilot has pressed again since, exactly like the answer.
+                        // "Looking around." once, queued, only when the whole answer is slow counted
+                        // from the press, and only for the newest press.
                         if (await MSFSBlindAssist.Services.SurroundingsLookupNotice.IsSlowAsync(answer,
                                 MSFSBlindAssist.Services.SurroundingsLookupNotice.NoticeWait(
                                     System.Diagnostics.Stopwatch.GetElapsedTime(pressedAt))).ConfigureAwait(false))
                             SafeBeginInvoke(() => { if (requests.IsLatest(ticket)) announcer.Announce("Looking around."); });
-                        // Awaited as ONE task first: a Where-Am-I failure surfaces here, into the catch
-                        // below ("Surroundings lookup failed."), and the combined task's fault is
-                        // OBSERVED — awaiting only the two parts could leave it unobserved. WhenAll
-                        // completes only when BOTH have, so that failure is heard only once the
-                        // catalog build is done too — accepted: the answer needs both anyway.
+                        // Awaited as one task first, so a failure of either is observed and caught below.
                         await answer.ConfigureAwait(false);
                         var catalog = await catalogTask.ConfigureAwait(false);
                         string where = await whereTask.ConfigureAwait(false);
@@ -1981,18 +1941,13 @@ public partial class MainForm
     });
 
     /// <summary>
-    /// Ctrl+Shift+L (output mode): everything within 1 km as a browsable list. No spoken summary
-    /// on open — the screen reader speaks the window and its first item (CLAUDE.md rule). Reuses
-    /// the SayIntentions sectioned list window; a fresh press replaces the previous window.
+    /// Ctrl+Shift+L (output mode): everything within 1 km as a browsable list, in the SayIntentions
+    /// sectioned window. No spoken summary on open; a fresh press replaces the previous window.
     /// </summary>
     private void ShowSurroundingsWindow()
     {
-        // WHERE ESCAPE HANDS THE FOREGROUND BACK TO, captured HERE, at the press, on the UI
-        // thread. SayIntentionsInfoForm captures GetForegroundWindow() itself when given null,
-        // which is right for the SayIntentions site because its window opens on the press's own
-        // stack — this one opens SECONDS later (the OSM wait plus a possible first scenery scan),
-        // by which time the foreground may be something else entirely — and what was captured may
-        // be gone, which is why the choice is made again, checked for life, when the window opens.
+        // Where Escape hands the foreground back to, captured at the press: this window opens
+        // seconds later, when the foreground may be something else. Re-checked for life on open.
         IntPtr atPress = GetForegroundWindow();
         RunSurroundingsLookup(_surroundingsWindowRequests, needWhereAmI: false, l =>
         {
@@ -2001,21 +1956,14 @@ public partial class MainForm
                 return () => SpeakLookupLine(l.PressedAt, $"No surroundings data for {l.Icao}.");
             var sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
                 l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt);
-            // Nothing to list → SPEAK it; never open a window onto an empty list.
+            // Nothing to list: speak it rather than open an empty window.
             if (sections.Count == 0)
                 return () => SpeakLookupLine(l.PressedAt, $"Nothing within {Fmt(MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.WindowRadiusMetres)}.");
             return () =>
             {
-                // One window at a time, and the replacement INHERITS the old window's handle —
-                // the same rule MainForm.SayIntentions.cs follows: on a re-press the old window
-                // may itself hold the foreground, so anything captured relative to it names a
-                // window about to be destroyed and Escape would hand focus to a dead one.
-                //
-                // Every candidate is also checked for LIFE, here at completion (ML-3): this runs
-                // SECONDS after the press, and the window that had the foreground then — a
-                // SayIntentions window, the taxi dialog, the one an old surroundings window
-                // inherited — can have been closed or hidden meanwhile. A dead candidate gives way
-                // to whatever has the foreground NOW — never the window being replaced.
+                // One window at a time; the replacement inherits the old window's return handle (the
+                // old window may itself hold the foreground), and a candidate closed meanwhile gives
+                // way to the foreground now — never the window being replaced.
                 var old = surroundingsForm is { IsDisposed: false } open ? open : null;
                 IntPtr focusReturn = MSFSBlindAssist.Forms.SayIntentionsInfoForm.ChooseFocusReturn(
                     preferred: old?.PreviousWindow ?? atPress,
@@ -2031,13 +1979,8 @@ public partial class MainForm
         });
     }
 
-    /// <summary>
-    /// Speaks one line of a surroundings lookup — its answer, or its error/empty line — the way
-    /// SurroundingsLookupNotice.Delivery decides from how long ago the key was pressed: interrupting
-    /// only while it is still the press's own moment, queued once it is late enough that the pilot
-    /// may be hearing something newer (review item ML-1). UI thread only: it reads
-    /// announcer.Suppressed and speaks.
-    /// </summary>
+    /// <summary>Speaks one lookup line as SurroundingsLookupNotice.Delivery decides from the time since
+    /// the press: interrupting while it is still the press's moment, queued after. UI thread only.</summary>
     private void SpeakLookupLine(long pressedAt, string text)
     {
         var delivery = MSFSBlindAssist.Services.SurroundingsLookupNotice.Delivery(
@@ -2046,12 +1989,8 @@ public partial class MainForm
         else announcer.Announce(text);
     }
 
-    /// <summary>
-    /// Marshal to the UI thread, tolerating the form being torn down between the
-    /// IsHandleCreated check and the BeginInvoke — the surroundings lookup runs on a thread-pool
-    /// thread (Task.Run), so an app shutdown or aircraft swap mid-lookup must not throw there
-    /// (unobserved). Same pattern as FBWA380MCDUForm.SafeBeginInvoke.
-    /// </summary>
+    /// <summary>Marshals to the UI thread, tolerating the form being torn down meanwhile (shutdown or
+    /// aircraft swap mid-lookup). Same pattern as FBWA380MCDUForm.SafeBeginInvoke.</summary>
     private void SafeBeginInvoke(Action action)
     {
         // ObjectDisposedException derives from InvalidOperationException, so one catch covers both.
