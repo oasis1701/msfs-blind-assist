@@ -38,6 +38,12 @@ public readonly record struct NudgeDecision(NudgeAction Action, string Text);
 /// other than the one whose departure armed it (<see cref="NearestOtherAheadFt"/>) — within
 /// <see cref="NudgeMinGapFt"/> ahead, every <see cref="NudgeIntervalMs"/>, at most
 /// <see cref="NudgeMax"/> times, and it disarms the moment the pilot rolls.</para>
+///
+/// <para>That exemption is for the DISARM rule only (PR #247 B5 follow-up K1): the spoken text names
+/// whichever aircraft is nearest ahead, the departed leader included, because a leader that stopped
+/// again a short way ahead genuinely IS the traffic the pilot will close on next. Conflating the two —
+/// judging both the disarm and the text off the leader-excluded distance — made a leader stopped nearby
+/// with nothing else around announce "The traffic ahead has taxied on." instead of naming it.</para>
 /// </summary>
 public static class QueueMovementPolicy
 {
@@ -100,16 +106,21 @@ public static class QueueMovementPolicy
     }
 
     /// <summary>
-    /// What the nudge does this evaluation. <paramref name="nearestAheadFt"/> is the nearest aircraft
-    /// directly ahead OTHER than the one whose departure armed the nudge (<see cref="NearestOtherAheadFt"/>),
-    /// null when there is none in range.
+    /// What the nudge does this evaluation. <paramref name="nearestOtherAheadFt"/> — the nearest
+    /// aircraft directly ahead OTHER than the one whose departure armed the nudge
+    /// (<see cref="NearestOtherAheadFt"/>), null when there is none in range — decides ONLY the
+    /// <see cref="NudgeMinGapFt"/> disarm rule: something else closing the gap is a reason to hold,
+    /// the departed leader stopping again nearby is not. <paramref name="nearestAheadFt"/> — the
+    /// nearest aircraft directly ahead, the leader included, null when nothing is ahead at all — is
+    /// what the spoken text names, since whichever aircraft that is genuinely is the traffic the pilot
+    /// will close on next (PR #247 B5 follow-up K1).
     /// </summary>
     public static NudgeDecision EvaluateNudge(NudgeState state, bool contextAllowsPrompt, double ownGsKts,
-        double? nearestAheadFt, DateTime nowUtc, Func<double, string> formatDistance)
+        double? nearestOtherAheadFt, double? nearestAheadFt, DateTime nowUtc, Func<double, string> formatDistance)
     {
         if (!state.Armed) return new NudgeDecision(NudgeAction.None, "");
         if (!contextAllowsPrompt || ownGsKts >= NudgeResetOwnGsKts) return new NudgeDecision(NudgeAction.Disarm, "");
-        if (nearestAheadFt is double gap && gap < NudgeMinGapFt) return new NudgeDecision(NudgeAction.Disarm, "");
+        if (nearestOtherAheadFt is double gap && gap < NudgeMinGapFt) return new NudgeDecision(NudgeAction.Disarm, "");
         if (state.Count >= NudgeMax) return new NudgeDecision(NudgeAction.Disarm, "");
         if (ownGsKts >= NudgeStoppedOwnGsKts) return new NudgeDecision(NudgeAction.None, "");
         if ((nowUtc - state.LastSpokenUtc).TotalMilliseconds < NudgeIntervalMs) return new NudgeDecision(NudgeAction.None, "");

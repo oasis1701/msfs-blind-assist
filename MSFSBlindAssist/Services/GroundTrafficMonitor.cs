@@ -1011,9 +1011,11 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     /// <summary>
     /// "… ahead is moving." for the NEAREST aircraft directly ahead once its departure has latched,
-    /// then the gated "Move up." (<see cref="QueueMovementPolicy"/>), judged against the nearest
-    /// aircraft directly ahead OTHER than the one whose departure armed it
-    /// (<see cref="QueueMovementPolicy.NearestOtherAheadFt"/>). Caller holds _lock.
+    /// then the gated "Move up." (<see cref="QueueMovementPolicy"/>): disarmed by the nearest aircraft
+    /// directly ahead OTHER than the one whose departure armed it
+    /// (<see cref="QueueMovementPolicy.NearestOtherAheadFt"/>), but spoken naming the plain nearest
+    /// aircraft directly ahead — the leader included, since it stopping again nearby is still the
+    /// traffic to name (K1). Caller holds _lock.
     /// </summary>
     private void EvaluateQueueMovement(GroundTrafficRouteContext? ctx, List<TrafficView> views,
         double ownLat, double ownLon, double ownGS, bool useMetres, DateTime now, List<TrafficCallout> candidates)
@@ -1063,8 +1065,10 @@ public sealed class GroundTrafficMonitor : IDisposable
         bool onRunway = ctx != null && RunwayWatchScopes.RunwaysUnder(ctx.Runways, ownLat, ownLon).Count > 0;
         bool allowsPrompt = ctx is { AllowsQueuePrompt: true } && !onRunway;
         double? nearestOtherFt = QueueMovementPolicy.NearestOtherAheadFt(directlyAhead, _nudgeLeaderId);
-        var decision = QueueMovementPolicy.EvaluateNudge(_nudge, allowsPrompt, ownGS, nearestOtherFt, now,
-            ft => FormatDistance(ft, useMetres));
+        // The spoken text names whichever aircraft is nearest ahead (the leader included) — only the
+        // disarm rule excludes it (K1): a leader stopped again nearby is still the traffic to name.
+        var decision = QueueMovementPolicy.EvaluateNudge(_nudge, allowsPrompt, ownGS, nearestOtherFt,
+            nearestAhead?.DistFt, now, ft => FormatDistance(ft, useMetres));
         switch (decision.Action)
         {
             case NudgeAction.Disarm:

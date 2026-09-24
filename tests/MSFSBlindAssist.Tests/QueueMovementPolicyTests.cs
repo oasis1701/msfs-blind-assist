@@ -100,7 +100,8 @@ public class QueueMovementPolicyTests
 
     private static NudgeDecision Nudge(NudgeState s, bool allowed = true, double ownGs = 0,
         double? nearest = 400, int secondsLater = 21)
-        => QueueMovementPolicy.EvaluateNudge(s, allowed, ownGs, nearest, T0.AddSeconds(secondsLater), Ft);
+        // Tests that don't distinguish the two distances (K1) pass the same value for both.
+        => QueueMovementPolicy.EvaluateNudge(s, allowed, ownGs, nearest, nearest, T0.AddSeconds(secondsLater), Ft);
 
     [Fact]
     public void A_disarmed_nudge_does_nothing()
@@ -149,8 +150,8 @@ public class QueueMovementPolicyTests
     public void AfterSpoken_restarts_the_interval()
     {
         var s = QueueMovementPolicy.AfterSpoken(NudgeState.ArmedAt(T0), T0.AddSeconds(21));
-        Assert.Equal(NudgeAction.None, QueueMovementPolicy.EvaluateNudge(s, true, 0, 400, T0.AddSeconds(30), Ft).Action);
-        Assert.Equal(NudgeAction.Speak, QueueMovementPolicy.EvaluateNudge(s, true, 0, 400, T0.AddSeconds(42), Ft).Action);
+        Assert.Equal(NudgeAction.None, QueueMovementPolicy.EvaluateNudge(s, true, 0, 400, 400, T0.AddSeconds(30), Ft).Action);
+        Assert.Equal(NudgeAction.Speak, QueueMovementPolicy.EvaluateNudge(s, true, 0, 400, 400, T0.AddSeconds(42), Ft).Action);
     }
 
     // ── the leader is not "something else ahead" (PR #247 final review H1) ────────────────
@@ -179,5 +180,38 @@ public class QueueMovementPolicyTests
     {
         double? other = QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0) }, leaderId: 7u);
         Assert.Equal(NudgeAction.Speak, Nudge(NudgeState.ArmedAt(T0), nearest: other).Action);
+    }
+
+    // ── the two distances are separate (PR #247 B5 follow-up K1) ──────────────────────────
+    // EvaluateNudge takes nearestOtherAheadFt (leader excluded, disarm only) and nearestAheadFt
+    // (leader included, spoken text only). Before this split, the disarm-only distance also drove the
+    // text, so a leader that stopped again a short way ahead — with nothing else around — was reported
+    // as "The traffic ahead has taxied on." instead of naming the real distance to it.
+
+    [Fact]
+    public void The_leader_stopped_again_nearby_is_still_named_in_the_move_up_text()
+    {
+        // nearestOtherAheadFt: null (nothing else ahead), nearestAheadFt: 300 (the leader, 300 ft ahead).
+        var d = QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
+            null, 300, T0.AddSeconds(21), Ft);
+        Assert.Equal(NudgeAction.Speak, d.Action);
+        Assert.Equal("Move up. 300 feet to the traffic ahead.", d.Text);
+    }
+
+    [Fact]
+    public void Another_aircraft_200_feet_ahead_disarms()
+        // nearestOtherAheadFt: 200 — something other than the leader, inside the 250 ft gap.
+        => Assert.Equal(NudgeAction.Disarm,
+            QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
+                200, 200, T0.AddSeconds(21), Ft).Action);
+
+    [Fact]
+    public void The_leader_alone_205_feet_ahead_does_not_disarm()
+    {
+        // nearestOtherAheadFt: null (the 205 ft aircraft IS the leader, excluded), nearestAheadFt: 205.
+        var d = QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
+            null, 205, T0.AddSeconds(21), Ft);
+        Assert.Equal(NudgeAction.Speak, d.Action);
+        Assert.Equal("Move up. 205 feet to the traffic ahead.", d.Text);
     }
 }
