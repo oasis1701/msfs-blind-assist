@@ -442,6 +442,8 @@ public partial class SimConnectManager
                         varDef.HighFrequency ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
                     Log.Debug("SimConnect", $"Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")}");
+                    // A SIM_FRAME one is seeded later, once the handler is attached — see
+                    // SeedSimFrameSubscriptions.
                 }
 
                 // Log visual guidance variables specifically
@@ -477,6 +479,28 @@ public partial class SimConnectManager
         // pilot toggled the feature on before connecting, or switched aircraft with it running —
         // would otherwise be silently lost.
         ReassertDeferredSubscriptions();
+    }
+
+    /// <summary>
+    /// Seeds every SIM_FRAME + CHANGED own subscription's cache with one PERIOD.ONCE on its seed id
+    /// (<see cref="FreshReadPolicy.SeedRequestId"/>): such a subscription delivers nothing while its
+    /// value stands still, so its cache is only ever as good as its INITIAL delivery. Must run with
+    /// OnRecvSimobjectData attached — on a connect, the DoEvents pump inside SetupDataDefinitions
+    /// drains every answer that lands before SetupEvents (the drain the GSX note above describes),
+    /// the subscriptions' own first deliveries included, which left the MD-11 speedbrake lever
+    /// uncached for whole sessions. So Connect() calls this after SetupEvents(), and
+    /// ReregisterAllVariables after re-registering (the handler is attached by then). Goes through
+    /// RequestVariable, so it takes the UI-thread gate and skips a var already cached.
+    /// </summary>
+    private void SeedSimFrameSubscriptions()
+    {
+        var defs = CurrentAircraft?.GetVariables();
+        if (defs == null) return;
+        foreach (var key in variableDataDefinitions.Keys)
+        {
+            if (defs.TryGetValue(key, out var def) && FreshReadPolicy.CacheIsFresh(def))
+                RequestVariable(key);
+        }
     }
 
     private void StartContinuousMonitoring()
@@ -804,6 +828,7 @@ public partial class SimConnectManager
 
         // Re-register all variables for new aircraft
         RegisterAllVariables();
+        SeedSimFrameSubscriptions();   // the handler is attached on this path, so the seeds answer at once
     }
 
     private void SetupEvents()

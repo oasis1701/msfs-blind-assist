@@ -866,6 +866,9 @@ public partial class SimConnectManager
 
             SetupDataDefinitions();
             SetupEvents();
+            // Only now: the pump inside SetupDataDefinitions drained whatever answered before the
+            // handler existed, the SIM_FRAME subscriptions' first deliveries included.
+            SeedSimFrameSubscriptions();
             RegisterClientEvents();
 
             // Initialize MobiFlight WASM module
@@ -1310,6 +1313,10 @@ public partial class SimConnectManager
         variableDataDefinitions.Clear();
         requestIdToVarKey.Clear();
         _freshRequestIdToVarKey.Clear();
+        // Definition ids are per connection: restart them as ReregisterAllVariables does, so they (and
+        // the seed ids derived from them, FreshReadPolicy.SeedRequestId) never climb toward the
+        // fresh-read range across reconnects.
+        nextDataDefinitionId = 1000;
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
         for (int i = 0; i < batchVarArrays.Length; i++)
