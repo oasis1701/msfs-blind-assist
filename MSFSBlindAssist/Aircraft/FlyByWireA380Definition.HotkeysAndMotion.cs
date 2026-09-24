@@ -429,7 +429,8 @@ public partial class FlyByWireA380Definition
     }
 
     /// <summary>The TRK/FPA mode as <see cref="SetTrkFpaMode"/> judges it: a mode just commanded wins over
-    /// the batch-fed cache until the sim confirms it or the window lapses. The heading window's button
+    /// the cache — fed by the var's own once-a-second subscription — until the sim confirms it or the
+    /// window lapses. The heading window's button
     /// reads this, so a quick second press asks for the other mode instead of repeating the first.</summary>
     internal double? TrkFpaModeCommandedOrCached(SimConnectManager s) =>
         CommandedOrCachedValue("A32NX_TRK_FPA_MODE_ACTIVE", s);

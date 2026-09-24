@@ -1,8 +1,8 @@
 // The A380 Ctrl+H window's TRK/FPA button decides which mode to ask for from the live mode. The
-// variable cache is fed only by the 1 Hz batch and never written on a UI set, so a quick second press
-// read the pre-first-press mode, recomputed the SAME target and announced "TRK FPA" a second time while
-// SetTrkFpaMode (which reads the commanded view) sent nothing. The window reads the definition's
-// commanded-or-cached view instead.
+// variable cache is fed only by the var's own once-a-second subscription and never written on a UI set,
+// so a quick second press read the pre-first-press mode, recomputed the SAME target and announced
+// "TRK FPA" a second time while SetTrkFpaMode (which reads the commanded view) sent nothing. The window
+// reads the definition's commanded-or-cached view instead.
 
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;

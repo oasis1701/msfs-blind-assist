@@ -48,8 +48,8 @@ public class FBWA380HeadingWindow : FBWA380FCUWindowBase
 
     private void ToggleTrkFpa()
     {
-        // The commanded view, not the raw cache: the cache is fed only by the 1 Hz batch, so a quick
-        // second press read the pre-first-press mode and re-announced the same target.
+        // The commanded view, not the raw cache: the cache is fed only by the var's own once-a-second
+        // subscription, so a quick second press read the pre-first-press mode and re-announced the same target.
         bool isTrk = (aircraft.TrkFpaModeCommandedOrCached(simConnect) ?? 0) > 0.5;
         int next = isTrk ? 0 : 1;
         // Through the def, not a raw SendEvent here: SetTrkFpaMode fires the cockpit's toggle
