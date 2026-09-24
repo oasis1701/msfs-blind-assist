@@ -1,4 +1,4 @@
-using System.Runtime.InteropServices;
+﻿using System.Runtime.InteropServices;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Aircraft.A220;
@@ -447,7 +447,7 @@ public sealed class A220FmsForm : Form
             for (int li = 0; li < model.Legs.Count; li++)
             {
                 var leg = model.Legs[li];
-                string text = A220FmsLegParsing.Describe(leg);
+                string text = A220FmsLegParsing.Describe(leg, model.PredictionIsFuel);
                 bool actionable = leg.Kind is A220FmsLegParsing.LegKind.Leg
                     or A220FmsLegParsing.LegKind.Hold or A220FmsLegParsing.LegKind.Origin;
                 int idx = aligned[li];
@@ -462,6 +462,19 @@ public sealed class A220FmsForm : Form
                     LegIdx = idx
                 });
             }
+            // The LEGS list is PAGED (eight rows per page, the aircraft's own scroll
+            // bar) — without this row a pilot has no way to know the route goes on
+            // past the last waypoint shown (live 2026-09-24: "only down to the SID").
+            var (listPage, listPages) = model.Legs.Count > 0 ? await ReadFmsListPagesAsync() : (0, 1);
+            if (IsDisposed) return;
+            if (listPages > 1)
+                rows.Add(new Row
+                {
+                    Kind = Row.Kinds.Text,
+                    Display = listPage + 1 < listPages
+                        ? $"Route page {listPage + 1} of {listPages} — Page Down for more, Page Up to go back"
+                        : $"Route page {listPage + 1} of {listPages}, end of route — Page Up to go back"
+                });
             // Fields, buttons and unclaimed lines interleave back into READING
             // ORDER (each carries its screen y): the page then reads top-to-bottom
             // like the real screen — sub-tabs first, a heading directly above its
@@ -866,7 +879,19 @@ public sealed class A220FmsForm : Form
 
         var rows = new List<Row>();
         foreach (var f in model.Fields)
-            rows.Add(FieldRow(f));
+        {
+            var row = FieldRow(f);
+            // The list's current pick drawn under its heading ("STARS(32)" over "NEME1Q"): say
+            // what it is, not the raw heading with its count glued on.
+            var (listName, listCount) = A220FmsScreenParsing.SplitListHeading(f.Name);
+            if (listCount > 0 && !f.Editable && !f.IsDropdown)
+            {
+                if (A220FmsScreenParsing.ListHeadingToken(tokens, f.Label, f.X, f.Y) is { } heading)
+                    listName = A220FmsScreenParsing.QualifyListHeading(tokens, heading);
+                row.Display = $"{listName} selected: {A220FmsScreenParsing.SpokenFieldValue(f.Value)}, {listCount} in the list";
+            }
+            rows.Add(row);
+        }
         var seen = new Dictionary<string, int>();
         foreach (var btn in model.ButtonRows)
         {
@@ -899,7 +924,13 @@ public sealed class A220FmsForm : Form
             // (the aircraft draws it cyan) — otherwise "RW25, GIRL1Y, GIRL3X" is a
             // run of bare names with nothing saying which is a runway.
             string column = A220FmsScreenParsing.DialogColumnOf(tokens, model.ButtonRows, btn, st.Y);
-            string display = $"{(column.Length > 0 ? column + " " : "")}{SpokenButton(b)}"
+            string position = "";
+            if (column.Length > 0)
+            {
+                var members = A220FmsScreenParsing.DialogListColumn(model.ButtonRows, btn);
+                if (members.Count >= 2) position = $", {members.IndexOf(btn) + 1} of {members.Count}";
+            }
+            string display = $"{(column.Length > 0 ? column + " " : "")}{SpokenButton(b)}{position}"
                              + $"{(btn.Color == "cyan" ? ", selected" : "")}, button";
             int sameCount = model.Buttons.Count(x => x == b);
             if (sameCount > 1)
@@ -1239,13 +1270,55 @@ public sealed class A220FmsForm : Form
     /// sent back to the top of the list because it IS a new page — keeping the old index
     /// would leave the reader mid-page on unrelated rows. ApplyRows only moves the
     /// selection when it has to, so this is the one place that deliberately resets it.</summary>
-    private void PageFms(string key)
+    private async void PageFms(string key)
     {
         if (_busy) return;
+        // A page with its own paged list (ROUTE ▸ LEGS) is paged through that
+        // list's scroll bar: the MKP PREV/NEXT keys do not move it (probed live
+        // 2026-09-24 — nor do UP/DOWN or the wheel). Only a page with no such
+        // list falls back to the MKP key.
+        int dir = key == "NEXT" ? 1 : -1;
+        string? r = await _def.DisplaysAgentCallAsync($"fmsListPage({dir})");
+        if (IsDisposed) return;
+        if (r == "EDGE")
+        {
+            _announcer.AnnounceImmediate(dir > 0 ? "End of route." : "Start of route.");
+            return;
+        }
         _frozenIndex = -1;            // the page is changing; nothing to hold still
         _lastSignature = "";          // force a rebuild even if the new page looks similar
+        if (r != null && r.StartsWith("PAGED|", StringComparison.Ordinal))
+        {
+            MarkAction();
+            await Task.Delay(300);
+            await RefreshAsync();
+            if (IsDisposed) return;
+            if (_list.Items.Count > 0) _list.SelectedIndex = 0;
+            var parts = r.Split('|');
+            if (parts.Length == 3 && int.TryParse(parts[1], out int pos) && int.TryParse(parts[2], out int pages))
+                _announcer.AnnounceImmediate($"Route page {pos + 1} of {pages}.");
+            return;
+        }
         _def.SendMkpKey(key);
         _ = DelayedRefreshAsync();
+    }
+
+    /// <summary>Position/page count of the FMS page's own paged list (agent
+    /// fmsListPages); (0, 1) when the page has none or the call fails.</summary>
+    private async Task<(int Page, int Pages)> ReadFmsListPagesAsync()
+    {
+        string? raw = await _def.DisplaysAgentCallAsync("fmsListPages()");
+        if (string.IsNullOrEmpty(raw)) return (0, 1);
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            return (doc.RootElement.GetProperty("pos").GetInt32(),
+                    Math.Max(1, doc.RootElement.GetProperty("pages").GetInt32()));
+        }
+        catch (Exception ex) when (ex is System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException)
+        {
+            return (0, 1);
+        }
     }
 
     /// <summary>Is this the SAME row, ignoring its volatile text? Identity is what the

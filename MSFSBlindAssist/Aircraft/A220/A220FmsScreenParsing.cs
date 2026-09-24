@@ -1,4 +1,4 @@
-using System.Text.Json;
+﻿using System.Text.Json;
 
 namespace MSFSBlindAssist.Aircraft.A220;
 
@@ -145,6 +145,8 @@ internal static class A220FmsScreenParsing
         /// (waypoint + track + distance + constraint + RNP). Empty on every other page.
         /// See <see cref="A220FmsLegParsing"/>.</summary>
         public List<A220FmsLegParsing.FmsLeg> Legs = new();
+        /// <summary>LEGS prediction column shows FUEL, not UTC (see FmsLeg.Prediction).</summary>
+        public bool PredictionIsFuel;
     }
 
     private const double FieldMinDy = 10, FieldMaxDy = 60, FieldMaxDx = 45;
@@ -313,11 +315,83 @@ internal static class A220FmsScreenParsing
             }
             return best;
         }
-        var own = HeadingOf(button);
+        // A LIST column is judged from its TOP entry: every button stacked under it at the same x
+        // shares that heading however long the list runs. Judged per button, entries more than
+        // 450 units down lost their name (LGAV ARRIVALS, 32 STARs: from NEME1Q on, every STAR
+        // read bare) and the approaches below the dialog's own gray "COPY TO SEC" label were
+        // named after it (live 2026-09-24).
+        var column = DialogListColumn(buttons, button);
+        var own = HeadingOf(column.Count >= 2 ? column[0] : button);
         if (own == null) return "";
-        int under = buttons.Count(b => HeadingOf(b) is { } h && h.X == own.Value.X && h.Y == own.Value.Y);
+        int under = column.Count >= 2
+            ? column.Count
+            : buttons.Count(b => HeadingOf(b) is { } h && h.X == own.Value.X && h.Y == own.Value.Y);
         if (under < 2) return "";
-        return System.Text.RegularExpressions.Regex.Replace(own.Value.Text.Trim(), @"\s*\(\d+\)$", "");
+        return QualifyListHeading(tokens, own.Value);
+    }
+
+    /// <summary>
+    /// A dialog list heading as spoken, count dropped. A bare "TRANS" is qualified by the list it
+    /// belongs to, because the ARRIVALS dialog carries TWO (TRANS | STARS | TRANS | APPR — each
+    /// transition list sits LEFT of its procedure) and DEPARTURES one after SIDS: "STAR transition",
+    /// "approach transition", "SID transition". Left unqualified when no neighbour says which.
+    /// </summary>
+    internal static string QualifyListHeading(IReadOnlyList<WinToken> tokens, WinToken heading)
+    {
+        string name = SplitListHeading(heading.Text).Name;
+        if (!string.Equals(name, "TRANS", StringComparison.OrdinalIgnoreCase)) return name;
+        WinToken? right = null, left = null;
+        foreach (var t in tokens)
+        {
+            if (t.Color != "gray" || Math.Abs(t.Y - heading.Y) > 10 || t.X == heading.X) continue;
+            if (t.X > heading.X && (right == null || t.X < right.Value.X)) right = t;
+            if (t.X < heading.X && (left == null || t.X > left.Value.X)) left = t;
+        }
+        static string? Proc(WinToken? t) => t == null ? null : SplitListHeading(t.Value.Text).Name.ToUpperInvariant() switch
+        {
+            "STARS" or "STAR" => "STAR",
+            "APPR" or "APPRS" or "APPROACH" => "approach",
+            "SIDS" or "SID" => "SID",
+            _ => null
+        };
+        string? owner = Proc(right) is "STAR" or "approach" ? Proc(right) : Proc(left) is "SID" ? "SID" : null;
+        return owner != null ? $"{owner} transition" : name;
+    }
+
+    /// <summary>The gray list heading token a dialog FIELD's label is, when it is one (nearest same-text gray token).</summary>
+    internal static WinToken? ListHeadingToken(IReadOnlyList<WinToken> tokens, string label, double x, double y)
+    {
+        WinToken? best = null; double bestD = double.MaxValue;
+        foreach (var t in tokens)
+        {
+            if (t.Color != "gray" || t.Text.Trim() != label.Trim()) continue;
+            double d = Math.Abs(t.X - x) + Math.Abs(t.Y - y);
+            if (d < bestD) { bestD = d; best = t; }
+        }
+        return best;
+    }
+
+    /// <summary>
+    /// The list column a dialog button belongs to, top to bottom: the buttons drawn at the same x
+    /// (within 4 units) in an unbroken vertical run (no gap over 80 units — list rows are ~48
+    /// apart). A lone button returns just itself.
+    /// </summary>
+    internal static List<FmsButton> DialogListColumn(IReadOnlyList<FmsButton> buttons, FmsButton button)
+    {
+        var sameX = buttons.Where(b => Math.Abs(b.X - button.X) <= 4).OrderBy(b => b.Y).ToList();
+        int at = sameX.IndexOf(button);
+        if (at < 0) return new List<FmsButton> { button };
+        int first = at, last = at;
+        while (first > 0 && sameX[first].Y - sameX[first - 1].Y <= 80) first--;
+        while (last < sameX.Count - 1 && sameX[last + 1].Y - sameX[last].Y <= 80) last++;
+        return sameX.GetRange(first, last - first + 1);
+    }
+
+    /// <summary>A dialog list heading's trailing count ("STARS(32)" → ("STARS", 32)); count 0 when there is none.</summary>
+    internal static (string Name, int Count) SplitListHeading(string heading)
+    {
+        var m = System.Text.RegularExpressions.Regex.Match(heading.Trim(), @"^(.*?)\s*\((\d+)\)$");
+        return m.Success ? (m.Groups[1].Value.Trim(), int.Parse(m.Groups[2].Value)) : (heading.Trim(), 0);
     }
 
     /// <summary>One plan-leg row of the Direct-To dialog (Dialog/DirectTo.tsx).</summary>
@@ -478,7 +552,10 @@ internal static class A220FmsScreenParsing
         // exactly as before.
         var legConsumed = new HashSet<int>();
         if (A220FmsLegParsing.IsLegsPage(tokens))
+        {
             m.Legs = A220FmsLegParsing.ParseLegs(tokens, out legConsumed);
+            m.PredictionIsFuel = A220FmsLegParsing.PredictionIsFuel(tokens);
+        }
 
         for (int i = 0; i < tokens.Count; i++)
         {

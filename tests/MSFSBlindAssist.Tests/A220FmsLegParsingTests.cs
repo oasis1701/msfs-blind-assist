@@ -382,4 +382,45 @@ public class A220FmsLegParsingTests
         Assert.Equal(new[] { -1, -1 },
             AlignLegIndices(legs, new List<FiberLegRow>()));
     }
+
+    /// <summary>
+    /// Live ACT LEGS capture 2026-09-24 (EGLL 09R departure, UTC column): the
+    /// per-waypoint times at x≈170, the active leg's XTK/EPU and the TOC's DTG
+    /// all used to fall through as loose rows under the route.
+    /// </summary>
+    [Fact]
+    public void Predictions_Dtg_And_Xtk_Attach_To_Their_Legs()
+    {
+        var toks = new List<Tok>
+        {
+            new("UTC", 180, 157, "white"),
+            new("RW09R", 17, 264, "cyan"),
+            new("088° 2.3", 10, 313, "magenta"),
+            new("XTK", 375, 313, "gray"), new("L0.63", 417, 313, "magenta"),
+            new("EPU", 483, 313, "gray"), new("0.02", 525, 313, "magenta"),
+            new("RNP", 578, 313, "gray"), new("1.00", 619, 313, "magenta"),
+            new("D131B", 17, 342, "magenta"), new("15:26", 170, 345, "magenta"),
+            new("↑~150~/590A", 303, 342, "green"),
+            new("119° 2.0", 10, 390, "white"),
+            new("D125D", 17, 419, "white"), new("15:27", 170, 422, "white"),
+            new("DTG", 86, 468, "gray"), new("6.8", 134, 468, "green"),
+            new("TOC", 17, 499, "green"), new("15:28", 170, 500, "green"),
+        };
+        var legs = ParseLegs(toks, out var consumed);
+        var d131 = legs.Single(l => l.Waypoint == "D131B");
+        Assert.Equal("15:26", d131.Prediction);
+        Assert.Equal("L0.63", d131.Xtk);
+        Assert.Equal("0.02", d131.Epu);
+        Assert.Equal("1.00", d131.Rnp);
+        var toc = legs.Single(l => l.Waypoint == "TOC");
+        Assert.Equal("6.8", toc.Dtg);
+        Assert.Equal("15:28", toc.Prediction);
+        // nothing below the header band is left over as a loose row
+        for (int i = 0; i < toks.Count; i++)
+            if (toks[i].Y > 200) Assert.Contains(i, consumed);
+        Assert.Contains("ETA 15:26", Describe(d131));
+        Assert.Contains("cross track 0.63 left", Describe(d131));
+        Assert.Contains("fuel 15:26", Describe(d131, predictionIsFuel: true));
+        Assert.False(PredictionIsFuel(toks));
+    }
 }

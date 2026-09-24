@@ -67,6 +67,13 @@ internal static class A220FmsLegParsing
         public string Distance = "";     // "29.9" / ""
         public string Rnp = "";          // "2.00" / ""
         public string Constraint = "";   // raw, e.g. "↓/6000A" / ""
+        /// <summary>The prediction column on the waypoint row (x≈170): an ETA
+        /// "15:26" in UTC mode, a fuel figure in FUEL mode. Which one is the
+        /// column header's choice (<see cref="LegsPage.PredictionIsFuel"/>).</summary>
+        public string Prediction = "";
+        public string Dtg = "";          // "6.8" — distance to go, drawn on a pseudo-waypoint's (TOC/TOD) track row
+        public string Xtk = "";          // "L0.63" — cross-track error, on the ACTIVE leg's track row
+        public string Epu = "";          // "0.02" — estimated position uncertainty, same row
         public double Y;
         /// <summary>0-based index among the page's discontinuities (Discontinuity
         /// rows only, else -1) — the argument the agent's deleteDiscontinuityClick needs
@@ -77,6 +84,12 @@ internal static class A220FmsLegParsing
     /// <summary>True when this scrape is the LEGS table (at least two track rows).</summary>
     internal static bool IsLegsPage(IReadOnlyList<A220FmsScreenParsing.WinToken> tokens)
         => tokens.Count(t => TrackRow.IsMatch(t.Text.Trim())) >= 2;
+
+    /// <summary>True when the LEGS prediction column is showing FUEL rather than
+    /// UTC (the "UTC"/"FUEL" chooser at y≈157 above the table).</summary>
+    internal static bool PredictionIsFuel(IReadOnlyList<A220FmsScreenParsing.WinToken> tokens)
+        => tokens.Any(t => t.Y < TableTopY && t.X is > 150 and < 260
+                           && t.Text.Trim().StartsWith("FUEL", StringComparison.Ordinal));
 
     private const double PairDy = 29;      // waypoint row sits this far below its track row
     private const double PairTolY = 12;
@@ -167,6 +180,19 @@ internal static class A220FmsLegParsing
 
             if (t.Color == "cyan" && legs.Count == 0) leg.Kind = LegKind.Origin;
 
+            // The prediction column (ETA/fuel) at x≈170, 3 px below the ident.
+            // Measured live 2026-09-24 (EGLL→LGAV ACT LEGS); unclaimed, every
+            // time read as a loose row under the route with no waypoint to it.
+            for (int j = 0; j < tokens.Count; j++)
+            {
+                var g = tokens[j];
+                if (Math.Abs(g.Y - t.Y) > RowTolY) continue;
+                if (g.X < 140 || g.X >= 250 || g.Color == "gray") continue;
+                leg.Prediction = g.Text.Trim();
+                consumed.Add(j);
+                break;
+            }
+
             for (int j = 0; j < tokens.Count; j++)
             {
                 var g = tokens[j];
@@ -197,7 +223,34 @@ internal static class A220FmsLegParsing
                     }
                     else if (gt == "HOLD AT") { leg.Kind = LegKind.Hold; consumed.Add(j); }
                 }
-                else if (g.X >= 560)
+                else if (g.X < 560)
+                {
+                    // Labelled values between the track and RNP columns: "DTG 6.8"
+                    // on a pseudo-waypoint (TOC/TOD) and "XTK L0.63  EPU 0.02" on
+                    // the active leg. Each gray label owns the nearest value to its
+                    // right on the same row.
+                    if (g.Color == "gray")
+                    {
+                        if (gt is "DTG" or "XTK" or "EPU") consumed.Add(j);
+                        continue;
+                    }
+                    string? owner = null;
+                    double best = double.MaxValue;
+                    for (int k = 0; k < tokens.Count; k++)
+                    {
+                        var lab = tokens[k];
+                        if (lab.Color != "gray" || Math.Abs(lab.Y - g.Y) > RowTolY) continue;
+                        string lt = lab.Text.Trim();
+                        if (lt is not ("DTG" or "XTK" or "EPU")) continue;
+                        double dx = g.X - lab.X;
+                        if (dx <= 0 || dx > 80 || dx >= best) continue;
+                        best = dx; owner = lt;
+                    }
+                    if (owner == "DTG") { leg.Dtg = gt; consumed.Add(j); }
+                    else if (owner == "XTK") { leg.Xtk = gt; consumed.Add(j); }
+                    else if (owner == "EPU") { leg.Epu = gt; consumed.Add(j); }
+                }
+                else
                 {
                     // The per-leg "RNP" gray label and its value.
                     if (gt == "RNP") consumed.Add(j);
@@ -278,6 +331,14 @@ internal static class A220FmsLegParsing
     /// number is a hard altitude. Nothing is invented — an unrecognised shape falls
     /// through as its own text rather than being dropped.
     /// </summary>
+    /// <summary>"L0.63" → "0.63 left" (miles are implied by the column).</summary>
+    private static string SpokenXtk(string raw)
+    {
+        if (raw.Length > 1 && raw[0] is 'L' or 'R')
+            return $"{raw[1..]} {(raw[0] == 'L' ? "left" : "right")}";
+        return raw;
+    }
+
     internal static string FormatConstraint(string raw)
     {
         if (string.IsNullOrWhiteSpace(raw)) return "";
@@ -318,7 +379,7 @@ internal static class A220FmsLegParsing
     /// a route, not as a table dump. Degrees are spoken as a word because a bare
     /// "266" next to "29.9" is ambiguous; no feet/mile quantity is invented.
     /// </summary>
-    internal static string Describe(FmsLeg leg)
+    internal static string Describe(FmsLeg leg, bool predictionIsFuel = false)
     {
         switch (leg.Kind)
         {
@@ -340,9 +401,14 @@ internal static class A220FmsLegParsing
                 : $"{leg.Track} degrees");
         }
         if (leg.Distance.Length > 0) parts.Add($"{leg.Distance} miles");
+        if (leg.Dtg.Length > 0) parts.Add($"{leg.Dtg} miles to go");
+        if (leg.Prediction.Length > 0)
+            parts.Add(predictionIsFuel ? $"fuel {leg.Prediction}" : $"ETA {leg.Prediction}");
         string c = FormatConstraint(leg.Constraint);
         if (c.Length > 0) parts.Add(c);
         if (leg.Rnp.Length > 0) parts.Add($"RNP {leg.Rnp}");
+        if (leg.Xtk.Length > 0) parts.Add($"cross track {SpokenXtk(leg.Xtk)}");
+        if (leg.Epu.Length > 0) parts.Add($"EPU {leg.Epu}");
         return string.Join(", ", parts);
     }
 }

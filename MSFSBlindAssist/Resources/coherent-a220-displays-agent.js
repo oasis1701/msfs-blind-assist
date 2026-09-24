@@ -1923,6 +1923,42 @@
       return moved ? ('PAGED|' + first.pos + '|' + first.pages) : 'EDGE';
     };
 
+    // The FMS page's OWN paged list (ROUTE ▸ LEGS today: `fse` renders eight
+    // rows per page through the same `Ur` scroll bar). The MKP PREV/NEXT and
+    // UP/DOWN keys do NOT page it — probed live 2026-09-24, neither moved the
+    // LEGS list, nor did a wheel event — so a pilot on a real route could only
+    // ever read the first page. Scroll bars inside an open dialog belong to the
+    // dialog (dialogPage) and are excluded. Same return shape as dialogPage.
+    function fmsScrollers() {
+      var w = winOf('fms');
+      if (!w) return null;
+      var d = findDialog();
+      var s = scrollersIn(w), out = [];
+      for (var i = 0; i < s.length; i++) {
+        var inDialog = false;
+        if (d && d.g) {
+          var dl = scrollersIn(d.g);
+          for (var k = 0; k < dl.length; k++) if (dl[k].p.setPosition === s[i].p.setPosition) inDialog = true;
+        }
+        if (!inDialog) out.push(s[i]);
+      }
+      return out;
+    }
+    A.fmsListPages = function () {
+      var s = fmsScrollers() || [];
+      return s.length ? JSON.stringify({ pos: s[0].pos, pages: s[0].pages }) : '';
+    };
+    A.fmsListPage = function (dir) {
+      var s = fmsScrollers();
+      if (!s) return 'NO_WINDOW';
+      if (!s.length) return 'NONE';
+      var p = s[0];
+      var to = Math.max(0, Math.min(p.pages - 1, p.pos + dir));
+      if (to === p.pos) return 'EDGE';
+      try { p.p.setPosition(to); } catch (e) { return 'CALL_ERR'; }
+      return 'PAGED|' + to + '|' + p.pages;
+    };
+
     // Click the value node of a field that has NO label of its own (the FUEL
     // page's contingency-percent box, beside the reserve box it belongs to) by
     // the window-relative position fms() reported for it. Same click as a field
