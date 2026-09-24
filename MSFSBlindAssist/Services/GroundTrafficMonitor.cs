@@ -1173,15 +1173,15 @@ public sealed class GroundTrafficMonitor : IDisposable
             var shortFin = status.SelectMany(s => s.Finals.Where(IsShortFinal).Select(f => f.Ac.ObjectId)).ToList();
             bool critical = interrupts && (occ.Count > 0 || shortFin.Count > 0);
             // The one exception: a status RE-ARMED on entering the runway (SetWatch, H2) is critical-only.
-            // With nothing on the runway or on short final it completes silently, marking what it covers
-            // known exactly as the spoken path would, instead of repeating a status already handed over.
+            // With nothing on the runway or on short final it completes silently — and marks NOTHING as
+            // known (PR #247 B5 follow-up K2): nothing was spoken, so an occupant or a final that showed
+            // up since the last (already-spoken) status must still reach the ordinary event path below as
+            // a fresh occupant/final once _watchSummaryDone flips true, rather than being absorbed here
+            // with no callout at all.
             if (_rearmCriticalOnly && !critical)
             {
                 _watchSummaryDone = true;
                 _rearmCriticalOnly = false;
-                _knownOccupants.UnionWith(occ);
-                _knownFinals.UnionWith(fin);
-                _shortFinalAnnounced.UnionWith(shortFin);
                 return;
             }
             string key = _watchKey;
