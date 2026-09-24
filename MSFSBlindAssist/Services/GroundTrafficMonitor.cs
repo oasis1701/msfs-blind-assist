@@ -1250,29 +1250,6 @@ public sealed class GroundTrafficMonitor : IDisposable
             return;
         }
 
-        // A known occupant/final whose recorded runway KEY is no longer among this evaluation's scanned
-        // keys is forgotten SILENTLY: the watch widened its scan for a runway the aircraft was merely on
-        // (H3) and has since narrowed back down, so that runway simply left the scan — it never emptied.
-        // Occupants are judged by _knownOccupantRunway and finals by _knownFinalRunway, never one by
-        // the other's record (PR #247 re-review Critical 1); keys, not spoken designators, so the nearer
-        // end flipping at mid-runway is no purge (Important 2); an id with no recorded key is left to
-        // the grace timer below. A purged occupant never reaches EmptiedRunwayKeys below, so the purge
-        // itself can never be read as "the runway emptied" (PR #247 B5 follow-up K3).
-        var scopeKeys = new HashSet<string>(status.Select(s => s.Key), StringComparer.Ordinal);
-        foreach (uint id in GroundTrafficLogic.IdsOutOfScope(_knownOccupants, _knownOccupantRunway, scopeKeys))
-        {
-            _knownOccupants.Remove(id);
-            _occupantAbsentSince.Remove(id);
-            _knownOccupantRunway.Remove(id);
-        }
-        foreach (uint id in GroundTrafficLogic.IdsOutOfScope(_knownFinals, _knownFinalRunway, scopeKeys))
-        {
-            _knownFinals.Remove(id);
-            _shortFinalAnnounced.Remove(id);
-            _finalAbsentSince.Remove(id);
-            _knownFinalRunway.Remove(id);
-        }
-
         var seenOccupants = new HashSet<uint>();
         var seenFinals = new HashSet<uint>();
         foreach (var s in status)
@@ -1315,6 +1292,42 @@ public sealed class GroundTrafficMonitor : IDisposable
                         () => _shortFinalAnnounced.Add(id)));
                 }
             }
+        }
+
+        // A known occupant/final whose recorded runway KEY is no longer among this evaluation's scanned
+        // keys is forgotten SILENTLY: the watch widened its scan for a runway the aircraft was merely on
+        // (H3) and has since narrowed back down, so that runway simply left the scan — it never emptied.
+        // Occupants are judged by _knownOccupantRunway and finals by _knownFinalRunway, never one by
+        // the other's record (PR #247 re-review Critical 1); keys, not spoken designators, so the nearer
+        // end flipping at mid-runway is no purge (Important 2); an id with no recorded key is left to
+        // the grace timer below. A purged occupant never reaches EmptiedRunwayKeys below, so the purge
+        // itself can never be read as "the runway emptied" (PR #247 B5 follow-up K3).
+        // Run AFTER the scan loop above, never before it: the loop just refreshed every id it SAW this
+        // evaluation to whichever runway key it is standing on now, so an occupant parked inside an
+        // intersection — recorded last under the intersecting runway's key — is reclassified onto the
+        // still-watched runway's key before this test ever runs, and reads as in scope. Purging first (the
+        // old order) tested that occupant's STALE, pre-refresh key against the narrowed scope, read it out
+        // of scope, removed it — and then the very same scan loop, finding it no longer known, announced
+        // it again as new, in the evaluation that had just purged it (PR #247 re-review follow-up, concern
+        // 3). An id the loop never saw this evaluation is untouched by it, so its recorded key is exactly
+        // as stale as before and the purge still drops it precisely as it did before this reordering — the
+        // K3 "runway left the scan" case above is unaffected. Placed here, before ForgetAbsent, the purge
+        // still runs — and both known sets still reflect it — exactly where it always has relative to the
+        // grace-timed absence and the per-runway "emptied" bookkeeping below: silently, and never feeding
+        // EmptiedRunwayKeys.
+        var scopeKeys = new HashSet<string>(status.Select(s => s.Key), StringComparer.Ordinal);
+        foreach (uint id in GroundTrafficLogic.IdsOutOfScope(_knownOccupants, _knownOccupantRunway, scopeKeys))
+        {
+            _knownOccupants.Remove(id);
+            _occupantAbsentSince.Remove(id);
+            _knownOccupantRunway.Remove(id);
+        }
+        foreach (uint id in GroundTrafficLogic.IdsOutOfScope(_knownFinals, _knownFinalRunway, scopeKeys))
+        {
+            _knownFinals.Remove(id);
+            _shortFinalAnnounced.Remove(id);
+            _finalAbsentSince.Remove(id);
+            _knownFinalRunway.Remove(id);
         }
 
         // A known occupant or final is forgotten only once it has been unseen for KnownAbsenceGraceMs:
