@@ -203,8 +203,9 @@ public sealed class GroundTrafficMonitor : IDisposable
     private GroundTrafficLogic.QueueReading? _queueReadingForSummary;
 
     // "Move up" nudge (UI thread). _nudgeLeaderId is the aircraft whose announced departure armed it:
-    // it is never "something else ahead" that disarms the nudge (PR #247 final review H1). Null
-    // whenever the nudge is disarmed.
+    // while it is still moving it is not "something else ahead" that disarms the nudge (PR #247 final
+    // review H1); stopped again, it counts like any other aircraft (re-review M3). Null whenever the
+    // nudge is disarmed.
     private NudgeState _nudge = NudgeState.Disarmed;
     private uint? _nudgeLeaderId;
 
@@ -1031,21 +1032,21 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// <summary>
     /// "… ahead is moving." for the NEAREST aircraft directly ahead once its departure has latched,
     /// then the gated "Move up." (<see cref="QueueMovementPolicy"/>): disarmed by the nearest aircraft
-    /// directly ahead OTHER than the one whose departure armed it
-    /// (<see cref="QueueMovementPolicy.NearestOtherAheadFt"/>), but spoken naming the plain nearest
-    /// aircraft directly ahead — the leader included, since it stopping again nearby is still the
-    /// traffic to name (K1). Caller holds _lock.
+    /// directly ahead OTHER than the one whose departure armed it while that one is still moving
+    /// (<see cref="QueueMovementPolicy.NearestOtherAheadFt"/> — each aircraft's ground speed rides
+    /// along; M3), but spoken naming the plain nearest aircraft directly ahead — the leader included,
+    /// since it is still the traffic the pilot will close on (K1). Caller holds _lock.
     /// </summary>
     private void EvaluateQueueMovement(GroundTrafficRouteContext? ctx, List<TrafficView> views,
         double ownLat, double ownLon, double ownGS, bool useMetres, DateTime now, List<TrafficCallout> candidates)
     {
         var byId = views.ToDictionary(v => v.Ac.ObjectId);
         TrafficView? nearestAhead = null;
-        var directlyAhead = new List<(uint Id, double DistFt)>();
+        var directlyAhead = new List<(uint Id, double DistFt, double GsKts)>();
         foreach (var v in views)
         {
             if (!GroundTrafficLogic.IsDirectlyAhead(v.Rel)) continue;
-            directlyAhead.Add((v.Ac.ObjectId, v.DistFt));
+            directlyAhead.Add((v.Ac.ObjectId, v.DistFt, v.Ac.GS));
             if (nearestAhead == null || v.DistFt < nearestAhead.DistFt) nearestAhead = v;
         }
 
@@ -1073,7 +1074,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                     {
                         _nudge = NudgeState.ArmedAt(now);
                         // The aircraft just announced as moving — the one ShouldArmNudge judged — is
-                        // the reason to move up, never "something else ahead" (H1).
+                        // the reason to move up, not "something else ahead" while it keeps moving (H1, M3).
                         _nudgeLeaderId = ac.ObjectId;
                         _log.Info("ev=nudge armed");
                     }
@@ -1084,8 +1085,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         bool onRunway = ctx != null && RunwayWatchScopes.RunwaysUnder(ctx.Runways, ownLat, ownLon).Count > 0;
         bool allowsPrompt = ctx is { AllowsQueuePrompt: true } && !onRunway;
         double? nearestOtherFt = QueueMovementPolicy.NearestOtherAheadFt(directlyAhead, _nudgeLeaderId);
-        // The spoken text names whichever aircraft is nearest ahead (the leader included) — only the
-        // disarm rule excludes it (K1): a leader stopped again nearby is still the traffic to name.
+        // The disarm rule leaves the leader out only while it is still moving (M3); the spoken text
+        // names whichever aircraft is nearest ahead, the leader included (K1) — the traffic to close on.
         var decision = QueueMovementPolicy.EvaluateNudge(_nudge, allowsPrompt, ownGS, nearestOtherFt,
             nearestAhead?.DistFt, now, ft => FormatDistance(ft, useMetres));
         switch (decision.Action)

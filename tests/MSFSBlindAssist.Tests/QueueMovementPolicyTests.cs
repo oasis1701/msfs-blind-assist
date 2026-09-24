@@ -158,28 +158,48 @@ public class QueueMovementPolicyTests
     // The owner's rule is "never with anything ELSE within 250 ft ahead". The aircraft whose departure
     // armed the nudge reaches 2 kt a few feet from where it sat, so one second later it was still within
     // 250 ft and, counted as the nearest aircraft ahead, disarmed the nudge it had just armed.
+    // ...but only while it is still MOVING (PR #247 re-review M3): a leader that crept 20-40 ft and
+    // stopped again stayed exempt, and "Move up. 200 feet to the traffic ahead." was spoken into a gap
+    // NudgeMinGapFt calls nothing to move up into, inside the Warning distance.
 
     [Fact]
-    public void The_leader_alone_within_250_ft_is_not_counted()
-        => Assert.Null(QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0) }, leaderId: 7u));
+    public void The_leader_moving_within_250_ft_is_not_counted()
+        => Assert.Null(QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0, 3.0) }, leaderId: 7u));
+
+    [Fact]
+    public void The_leader_stopped_again_within_250_ft_is_counted()
+        => Assert.Equal(200.0, QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 200.0, 0.5) }, leaderId: 7u));
+
+    [Theory]
+    [InlineData(GroundTrafficLogic.QueueStoppedGs, 200.0)]          // at the "stopped" line: stopped, counted
+    [InlineData(GroundTrafficLogic.QueueStoppedGs + 0.01, null)]    // just above it: still moving, exempt
+    public void The_leader_is_exempt_only_above_the_queue_stopped_speed(double leaderGs, double? expected)
+        => Assert.Equal(expected, QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 200.0, leaderGs) }, leaderId: 7u));
 
     [Fact]
     public void Another_aircraft_ahead_is_counted_beside_the_leader()
-        => Assert.Equal(200.0, QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0), (9u, 200.0) }, leaderId: 7u));
+        => Assert.Equal(200.0, QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0, 3.0), (9u, 200.0, 0.0) }, leaderId: 7u));
 
     [Fact]
     public void With_no_leader_the_plain_nearest_is_counted()
-        => Assert.Equal(180.0, QueueMovementPolicy.NearestOtherAheadFt(new[] { (9u, 200.0), (7u, 180.0) }, leaderId: null));
+        => Assert.Equal(180.0, QueueMovementPolicy.NearestOtherAheadFt(new[] { (9u, 200.0, 0.0), (7u, 180.0, 3.0) }, leaderId: null));
 
     [Fact]
     public void Nothing_ahead_is_null()
-        => Assert.Null(QueueMovementPolicy.NearestOtherAheadFt(Array.Empty<(uint, double)>(), leaderId: 7u));
+        => Assert.Null(QueueMovementPolicy.NearestOtherAheadFt(Array.Empty<(uint, double, double)>(), leaderId: 7u));
 
     [Fact]
     public void The_leader_pulling_away_no_longer_disarms_the_nudge()
     {
-        double? other = QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0) }, leaderId: 7u);
+        double? other = QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0, 3.0) }, leaderId: 7u);
         Assert.Equal(NudgeAction.Speak, Nudge(NudgeState.ArmedAt(T0), nearest: other).Action);
+    }
+
+    [Fact]
+    public void The_leader_stopped_again_within_250_ft_disarms_the_nudge()
+    {
+        double? other = QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 200.0, 0.5) }, leaderId: 7u);
+        Assert.Equal(NudgeAction.Disarm, Nudge(NudgeState.ArmedAt(T0), nearest: other).Action);
     }
 
     // ── the two distances are separate (PR #247 B5 follow-up K1) ──────────────────────────

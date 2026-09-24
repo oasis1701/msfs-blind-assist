@@ -35,15 +35,20 @@ public readonly record struct NudgeDecision(NudgeAction Action, string Text);
 /// <para>"Move up" is an instruction ATC has not given, so it is tightly gated (owner decision,
 /// review R5): only where the context allows a queue prompt (taxiing on a joined route, not on a
 /// runway, not at a hold), only while the pilot is stopped, never with another aircraft — anything
-/// other than the one whose departure armed it (<see cref="NearestOtherAheadFt"/>) — within
-/// <see cref="NudgeMinGapFt"/> ahead, every <see cref="NudgeIntervalMs"/>, at most
-/// <see cref="NudgeMax"/> times, and it disarms the moment the pilot rolls.</para>
+/// other than the one whose departure armed it, while that one is still moving
+/// (<see cref="NearestOtherAheadFt"/>) — within <see cref="NudgeMinGapFt"/> ahead, every
+/// <see cref="NudgeIntervalMs"/>, at most <see cref="NudgeMax"/> times, and it disarms the moment the
+/// pilot rolls.</para>
 ///
 /// <para>That exemption is for the DISARM rule only (PR #247 B5 follow-up K1): the spoken text names
-/// whichever aircraft is nearest ahead, the departed leader included, because a leader that stopped
-/// again a short way ahead genuinely IS the traffic the pilot will close on next. Conflating the two —
-/// judging both the disarm and the text off the leader-excluded distance — made a leader stopped nearby
-/// with nothing else around announce "The traffic ahead has taxied on." instead of naming it.</para>
+/// whichever aircraft is nearest ahead, the departed leader included — it is the traffic the pilot will
+/// close on next. Conflating the two — judging both the disarm and the text off the leader-excluded
+/// distance — made a leader with nothing else around announce "The traffic ahead has taxied on." while
+/// it was still just ahead. And the exemption lasts only while the leader is still moving (PR #247
+/// re-review M3): stopped again (at or below <see cref="GroundTrafficLogic.QueueStoppedGs"/>), it counts
+/// toward the disarm like any other aircraft, so a leader that crept a few feet and stopped inside
+/// <see cref="NudgeMinGapFt"/> disarms the nudge instead of being named in a "Move up" into a gap there
+/// is no room for.</para>
 /// </summary>
 public static class QueueMovementPolicy
 {
@@ -51,7 +56,7 @@ public static class QueueMovementPolicy
     public const double OwnQueueGsKts = 5.0;
     public const int NudgeIntervalMs = 20000;
     public const int NudgeMax = 3;
-    /// <summary>Closer than this to the nearest aircraft ahead (other than the one that left), there is nothing to move up into.</summary>
+    /// <summary>Closer than this to the nearest aircraft ahead (other than the one that left, while it is still moving), there is nothing to move up into.</summary>
     public const double NudgeMinGapFt = 250.0;
     /// <summary>The pilot rolling at this speed has moved up: disarm.</summary>
     public const double NudgeResetOwnGsKts = 2.0;
@@ -93,27 +98,35 @@ public static class QueueMovementPolicy
         => movingAlongRoute ?? (!double.IsNaN(stoppedGapFt) && distFt > stoppedGapFt + 10.0);
 
     /// <summary>
-    /// The nearest aircraft directly ahead OTHER than the one whose departure armed the nudge — the
-    /// owner's rule is "never with anything ELSE within 250 ft ahead": the leader pulling away is the
-    /// reason to move up, not a reason to stay put. Null when there is none.
+    /// The nearest aircraft directly ahead OTHER than the one whose departure armed the nudge while that
+    /// one is still MOVING — the owner's rule is "never with anything ELSE within 250 ft ahead": the
+    /// leader pulling away is the reason to move up, not a reason to stay put. The leader
+    /// (<paramref name="leaderId"/>) is left out only while its ground speed is above
+    /// <see cref="GroundTrafficLogic.QueueStoppedGs"/>; once it has stopped again it counts like any
+    /// other aircraft ahead (PR #247 re-review M3: a leader that crept 20-40 ft and stopped stayed exempt,
+    /// and "Move up. 200 feet to the traffic ahead." was spoken into a gap <see cref="NudgeMinGapFt"/>
+    /// calls nothing to move up into). Null when there is none.
     /// </summary>
-    public static double? NearestOtherAheadFt(IEnumerable<(uint Id, double DistFt)> directlyAhead, uint? leaderId)
+    public static double? NearestOtherAheadFt(IEnumerable<(uint Id, double DistFt, double GsKts)> directlyAhead, uint? leaderId)
     {
         double? best = null;
-        foreach (var (id, dist) in directlyAhead)
-            if (id != leaderId && (best is null || dist < best)) best = dist;
+        foreach (var (id, dist, gs) in directlyAhead)
+        {
+            if (id == leaderId && gs > GroundTrafficLogic.QueueStoppedGs) continue;
+            if (best is null || dist < best) best = dist;
+        }
         return best;
     }
 
     /// <summary>
     /// What the nudge does this evaluation. <paramref name="nearestOtherAheadFt"/> — the nearest
-    /// aircraft directly ahead OTHER than the one whose departure armed the nudge
-    /// (<see cref="NearestOtherAheadFt"/>), null when there is none in range — decides ONLY the
-    /// <see cref="NudgeMinGapFt"/> disarm rule: something else closing the gap is a reason to hold,
-    /// the departed leader stopping again nearby is not. <paramref name="nearestAheadFt"/> — the
-    /// nearest aircraft directly ahead, the leader included, null when nothing is ahead at all — is
-    /// what the spoken text names, since whichever aircraft that is genuinely is the traffic the pilot
-    /// will close on next (PR #247 B5 follow-up K1).
+    /// aircraft directly ahead OTHER than the one whose departure armed the nudge while that one is
+    /// still moving (<see cref="NearestOtherAheadFt"/>), null when there is none in range — decides ONLY
+    /// the <see cref="NudgeMinGapFt"/> disarm rule: something else closing the gap is a reason to hold,
+    /// the departed leader still pulling away is not — but the leader stopped again within it is (M3).
+    /// <paramref name="nearestAheadFt"/> — the nearest aircraft directly ahead, the leader included,
+    /// null when nothing is ahead at all — is what the spoken text names, since whichever aircraft that
+    /// is genuinely is the traffic the pilot will close on next (PR #247 B5 follow-up K1).
     /// </summary>
     public static NudgeDecision EvaluateNudge(NudgeState state, bool contextAllowsPrompt, double ownGsKts,
         double? nearestOtherAheadFt, double? nearestAheadFt, DateTime nowUtc, Func<double, string> formatDistance)
