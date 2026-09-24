@@ -5,32 +5,24 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 
 /// <summary>
 /// The disk rules <see cref="SceneryPackageCensus"/> and <see cref="SceneryPackageIndexer"/> share,
-/// kept ONCE. The indexer is handed the very packages the census walked, so a rule that differed
-/// between them — which files a package holds, how one is opened while the simulator may hold it,
-/// what stamps a cache, how a cache file is written — would only move a problem from one to the
-/// other. Each of these was written twice, and the two copies were kept in step by comment (review
-/// CL-4).
+/// kept once: the indexer reads the very packages the census walked, so a rule that differed between
+/// them would only move a problem from one to the other.
 /// </summary>
 internal static class SceneryPackageDisk
 {
-    /// <summary>How deep a package's own folders are walked. Reparse points must be FOLLOWED — an
-    /// add-on linker puts every package behind one, and a walk that skipped them would find nothing
-    /// for exactly the pilots with the most scenery — so this bound is what ends a link cycle.
-    /// Packages are shallow (the deepest real BGL measured sits 4 levels down), so 12 loses nothing.</summary>
+    /// <summary>How deep a package is walked. Reparse points are followed (linker tools put whole
+    /// packages behind them), so this bound is what ends a link cycle; the deepest real BGL is 4 down.</summary>
     internal const int MaxBglRecursionDepth = 12;
 
-    /// <summary>Every *.bgl under one package: IgnoreInaccessible because the enumerator itself throws
-    /// on a folder the user cannot read; CaseInsensitive because packages ship both "modelLib.BGL" and
-    /// "objects.bgl"; AttributesToSkip 0 so hidden and system files are read and reparse points
-    /// followed (the default skips them); and <see cref="MaxBglRecursionDepth"/>.</summary>
+    /// <summary>Every *.bgl under one package, any case, hidden/system files included and reparse
+    /// points followed (AttributesToSkip 0), to <see cref="MaxBglRecursionDepth"/>.</summary>
     internal static readonly EnumerationOptions BglFiles = new()
     {
         RecurseSubdirectories = true, IgnoreInaccessible = true, MatchCasing = MatchCasing.CaseInsensitive,
         AttributesToSkip = 0, MaxRecursionDepth = MaxBglRecursionDepth,
     };
 
-    /// <summary>layout.json's length and last-write time: what both caches are stamped with, because a
-    /// package update rewrites layout.json. (0, 0) when there is none.</summary>
+    /// <summary>layout.json's length and last-write time, which a package update rewrites; (0, 0) when absent.</summary>
     internal readonly record struct LayoutStamp(long Length, long Ticks)
     {
         internal static LayoutStamp Of(string packageDir) => TryOf(packageDir, out var stamp) ? stamp : default;
@@ -44,22 +36,16 @@ internal static class SceneryPackageDisk
         }
     }
 
-    /// <summary>Opens a package file for reading SHARED for write and delete — the simulator may hold
-    /// that very file open, and an installer may still be writing it — sequentially, through a 64 KB
-    /// buffer. The ONE shared-read open for a package's own files: the census and the indexer each
-    /// carried a copy of it (review CL-4), and a reader that permits no writer can make the
-    /// simulator's own write to its file fail.</summary>
+    /// <summary>Opens a package file shared for write and delete — the simulator or an installer may
+    /// hold it, and a reader that permits no writer can make their write fail — sequentially, 64 KB.</summary>
     internal static FileStream OpenShared(string path)
         => new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 64 * 1024, FileOptions.SequentialScan);
 
     /// <summary>What one walk of a package's BGLs saw.</summary>
     internal sealed class BglWalk
     {
-        /// <summary>Every *.bgl the walk found, keyed on its path relative to the package with '/'
-        /// separators — layout.json's own spelling — and compared IGNORING case (a layout lists
-        /// "scenery/global/scenery/modellib.bgl" where the disk holds "modelLib.BGL"). The value is the
-        /// length the file had when it was opened, or null when it was not read to the end, which
-        /// <see cref="Unreadable"/> has already counted.</summary>
+        /// <summary>Every *.bgl found, keyed on its package-relative '/' path (layout.json's spelling,
+        /// compared ignoring case) → its length, or null when it was not read to the end.</summary>
         internal Dictionary<string, long?> Files { get; } = new(StringComparer.OrdinalIgnoreCase);
 
         /// <summary>Files that could not be opened, or whose read did not finish.</summary>
@@ -67,14 +53,9 @@ internal static class SceneryPackageDisk
     }
 
     /// <summary>
-    /// Opens every *.bgl under <paramref name="packageDir"/> through <see cref="OpenShared"/> — the
-    /// simulator may hold that very file open — and hands it to <paramref name="readOne"/>, which reads
-    /// what it needs and returns whether that read FINISHED (the flag
-    /// <see cref="BglPlacementReader.Read(Stream, out bool)"/> reports). One try/catch per file: one bad
-    /// BGL costs its own contents, never the package's, but it does cost the walk its completeness,
-    /// which decides whether a scan may be cached. A failure of the ENUMERATOR itself is NOT caught:
-    /// whole files were never looked at, and each caller decides what that means for it.
-    /// <paramref name="logTag"/> opens each warning ("census: {leaf}", or the leaf).
+    /// Opens every *.bgl through <see cref="OpenShared"/> and hands it to <paramref name="readOne"/>,
+    /// which returns whether its read finished. One bad file costs its own contents and the walk's
+    /// completeness, never the package; an enumerator failure is not caught (the caller decides).
     /// </summary>
     internal static BglWalk WalkBgls(string packageDir, string logTag, Func<Stream, bool> readOne)
     {
@@ -111,15 +92,10 @@ internal static class SceneryPackageDisk
         => Path.GetRelativePath(packageDir, file).Replace('\\', '/');
 
     /// <summary>
-    /// The *.bgl rows of the package's OWN layout.json content list — relative path (compared ignoring
-    /// case) → the size it lists, or null for a row that gives none — or null when there is no list
-    /// to hold a walk to: no layout.json, one that does not parse (it may be being written right now;
-    /// its stamp then changes when it is done, which re-scans the package anyway), or one without a
-    /// "content" array. The schema, measured on flightbeam-airport-kpdx-portland (2026-09-22):
-    /// {"content":[{"path":"scenery/global/scenery/modellib.bgl","size":423623764,"date":133986151050000006}, …]}
-    /// — paths relative to the package, lower case, '/'-separated. A row naming a place outside the
-    /// package (rooted, or through "..") is not the package's, and is skipped. Opened through
-    /// <see cref="OpenShared"/>: an installer may be holding layout.json while it works.
+    /// The *.bgl rows of the package's layout.json content list (relative path → listed size), or null
+    /// when there is none to hold a walk to (absent, unparseable — perhaps mid-write — or no "content").
+    /// Shape: {"content":[{"path":"scenery/global/scenery/modellib.bgl","size":423623764,…}]}. A row
+    /// naming a place outside the package is skipped.
     /// </summary>
     internal static Dictionary<string, long?>? ListedBgls(string packageDir)
     {
@@ -154,23 +130,12 @@ internal static class SceneryPackageDisk
     }
 
     /// <summary>
-    /// How many BGLs the package's own layout.json lists that <paramref name="walk"/> did not see
-    /// whole: not found at all, or read at another length than listed. An installer writes layout.json
-    /// FIRST, with its final stamp, and the BGLs after it (33 of 35 real packages, measured), so every
-    /// file that IS there reads fine and the scan looks complete — cached, its short answer was frozen
-    /// under that final stamp until the package next changed (review SI-1). 0 when there is no list to
-    /// hold the walk to (see <see cref="ListedBgls"/>).
-    ///
-    /// Not held against a package: a listed BGL the walk found but could not read (already counted by
-    /// <see cref="BglWalk.Unreadable"/>); one deeper than <see cref="MaxBglRecursionDepth"/> (no walk
-    /// goes there, by design); a row with no size (held to being present); and a listed BGL absent
-    /// BESIDE a copy of itself carrying one of the three <see cref="SwitchedOffSuffixes"/> —
-    /// "X.bgl.disabled", "X.bgl.off", "X.off" — which is an option the vendor's configurator switched
-    /// OFF, not a missing file. Measured on a real Community folder (2026-09-22): 24 listed BGLs in 6
-    /// of 46 healthy packages (Aerosoft EDDF and ENGM, iniBuilds EGKK, EGLL and PHNL, Orbx KATL) are
-    /// exactly that, and none of the 2,451 present BGLs has a sibling of any "&lt;stem&gt;.*" shape.
-    /// Nothing broader than those three counts (see <see cref="IsSwitchedOffOption"/>). The listed
-    /// "date" is never compared: it equals the installed file's mtime for 0 of 2,451.
+    /// How many listed BGLs the walk did not see whole (absent, or another length than listed). An
+    /// installer writes layout.json first with its final stamp, so a half-installed package otherwise
+    /// looks complete and its short answer would be cached. Not counted: a found-but-unreadable file
+    /// (already counted), one deeper than the walk goes, a row with no size (held only to presence),
+    /// and a BGL a vendor configurator switched off (<see cref="IsSwitchedOffOption"/>; 24 such rows in
+    /// 6 of 46 real packages). The listed "date" never matches the file's mtime, so it is not compared.
     /// </summary>
     internal static int UnfinishedLayoutFiles(string packageDir, BglWalk walk)
     {
@@ -191,19 +156,13 @@ internal static class SceneryPackageDisk
         return unfinished;
     }
 
-    /// <summary>The suffixes a vendor's options configurator was MEASURED (2026-09-22) to put on a
-    /// listed "x.bgl" it switched off, in place of its ".bgl": ".bgl.disabled" (iniBuilds EGKK, EGLL,
-    /// PHNL), ".bgl.off" (Orbx KATL) and ".off" (Aerosoft EDDF, ENGM — the extension replaced). ONLY
-    /// these three: see <see cref="IsSwitchedOffOption"/>.</summary>
+    /// <summary>The measured suffixes a configurator gives a listed "x.bgl" it switched off:
+    /// ".bgl.disabled" (iniBuilds), ".bgl.off" (Orbx), ".off" (Aerosoft).</summary>
     private static readonly string[] SwitchedOffSuffixes = { ".bgl.disabled", ".bgl.off", ".off" };
 
-    /// <summary>Whether the folder the listed BGL belongs in holds it renamed with one of the
-    /// <see cref="SwitchedOffSuffixes"/> — "x.bgl" as "x.bgl.disabled", "x.bgl.off" or "x.off" —
-    /// compared ignoring case (OrdinalIgnoreCase: a configurator may write "X.BGL.OFF"). Nothing
-    /// broader counts, never "any file named x.&lt;anything&gt;": "x.bgl.part", "x.bgl.tmp", a backup or
-    /// a same-stem "x.xml" is not an option switched off, and an installer that stages its files under
-    /// such names must never have its half-written package cached as complete (review SI-1,
-    /// pre-flight I13). A longer name ("x-2.bgl") is another file.</summary>
+    /// <summary>Whether the listed BGL's folder holds it renamed with one of the
+    /// <see cref="SwitchedOffSuffixes"/>, ignoring case. Nothing broader: an installer's staged
+    /// "x.bgl.part"/"x.bgl.tmp" must never pass for a switched-off option.</summary>
     private static bool IsSwitchedOffOption(string packageDir, string rel)
     {
         try
@@ -224,10 +183,8 @@ internal static class SceneryPackageDisk
     }
 
     /// <summary>
-    /// Whole file or nothing: written to a .tmp and moved into place, so a crash never leaves a
-    /// truncated cache to be read as a package with fewer buildings — which nothing downstream could
-    /// tell from a package that really models fewer. A cache that cannot be written costs the NEXT
-    /// call its shortcut, never this one its answer.
+    /// Whole file or nothing (.tmp then move), so a crash never leaves a truncated cache that reads as
+    /// a package with fewer buildings. A failed write costs only the next call its shortcut.
     /// </summary>
     internal static void PersistJson(string cacheDir, string cachePath, string json)
     {

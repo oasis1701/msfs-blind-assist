@@ -7,46 +7,25 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist.Services.SceneryIndex;
 
 /// <summary>
-/// Which installed package models THIS airport — answered from where each package's objects
-/// stand, because an MSFS 2024 navdata database records no package paths at all
-/// (airport.scenery_local_path is NULL on every row, so <see cref="SceneryPackageLocator"/> has
-/// nothing to hand the indexer and the whole scenery tier went dark there). HEADER-ONLY: per BGL
-/// it reads the section table and the placement subsections, never a model library's bulk
-/// (measured over this machine's Community folder: 40 scenery packages, 2,443 BGL files, 21 MB) —
-/// and, since review SI-1, the package's own layout.json content list, which that measurement
-/// predates (see <see cref="SceneryPackageDisk.UnfinishedLayoutFiles"/>).
-/// Cached on disk per package, keyed on layout.json's length and mtime; the user's own local
-/// files, so a disk cache is fine. Community only — Official/OneStore content is not scanned.
-///
-/// What is cached is a COUNT PER CELL, not the placements: a package occupies a few hundred cells
-/// at most (measured: 594 for the largest, 3,266 across all 40) where it holds tens of thousands
-/// of placements, and nothing downstream needs the individual points — the indexer re-reads the
-/// package it is handed. A cell that only PARTLY overlaps the airport box contributes all of its
-/// count, so a score is an over-estimate of up to one cell's worth at each edge; measured against
-/// the exact point test on 13 airports it changed no verdict, because a real airport package
-/// scores in the thousands and the bar is <see cref="MinPlacementsInBox"/>.
-///
-/// Call from a background thread: the first pass reads every scenery package in the folder. One
-/// lock for the whole census, so two pool threads asking at once serialize rather than both scan.
+/// Which installed Community package models this airport, found from where each package's objects
+/// stand — an MSFS 2024 navdata build records no package paths, so <see cref="SceneryPackageLocator"/>
+/// has nothing there. Header-only: per BGL the section table and placement subsections (40 packages,
+/// 2,443 BGLs, 21 MB measured), plus each package's layout.json content list.
+/// <para>Cached per package on layout.json's stamp, as a placement COUNT per 0.005° cell (a few
+/// hundred cells against tens of thousands of placements). A cell partly overlapping the box counts
+/// whole; against the exact point test on 13 airports that changed no verdict.</para>
+/// <para>Call off the UI thread; one lock for the whole census.</para>
 /// </summary>
 public sealed class SceneryPackageCensus
 {
-    /// <summary>What it takes to call a package "the one that models this airport". Below this is
-    /// a livery's hangar, a city pack's edge, or one static aircraft parked on the ramp.</summary>
+    /// <summary>Below this is a livery's hangar, a city pack's edge, or one static aircraft.</summary>
     public const int MinPlacementsInBox = 20, MaxPackages = 3;
 
-    /// <summary>Buildings stand beside the pavement and the navdata box is the exact hull of the
-    /// airport's own records, so a placement is judged against the box grown by this — the same
-    /// reasoning as <see cref="SceneryPackageIndexer.BoxMarginMetres"/>, smaller because this is
-    /// about IDENTIFYING the package rather than keeping every building it models.</summary>
+    /// <summary>Box margin: smaller than the indexer's, because this only identifies the package.</summary>
     public const double BoxMarginMetres = 300.0, CellDegrees = 0.005;
 
-    // BUMP THIS when a document this build would write means something different from one an older
-    // build wrote. 1 → 2: an older build persisted scans taken while an installer was still writing
-    // the package (it could not see that — review SI-1), so a schema-1 row may hold a short count
-    // frozen under the package's FINAL layout.json stamp; one cold census pass reads every package
-    // again (2.6 s measured on 40 packages BEFORE a scan also parsed each package's layout.json; not
-    // re-measured since).
+    // Bump when a document means something different from an older build's. 2: schema-1 rows could
+    // hold a short count scanned mid-install and frozen under the final layout.json stamp.
     internal const int CurrentSchemaVersion = 2;
     private const string CacheFileName = "census.json";
 
@@ -54,13 +33,10 @@ public sealed class SceneryPackageCensus
     private readonly object _lock = new();
     private CacheFile? _cache;
 
-    /// <summary>What each package's manifest said, memoised on its layout.json stamp (see
-    /// <see cref="ScenerylikePackages"/>). Read and written under <c>_lock</c> like everything else
-    /// here; bounded by the folders Community held this session.</summary>
+    /// <summary>Each package's manifest verdict, memoised on its layout.json stamp. Under <c>_lock</c>.</summary>
     private readonly Dictionary<string, (SceneryPackageDisk.LayoutStamp Stamp, bool Scenery)> _sceneryVerdicts = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The immediate children of Community. Same reasons for IgnoreInaccessible and
-    /// AttributesToSkip; no recursion, because a package is a top-level folder.</summary>
+    /// <summary>The immediate children of Community: a package is a top-level folder.</summary>
     private static readonly EnumerationOptions PackageFolders = new()
     {
         RecurseSubdirectories = false, IgnoreInaccessible = true, AttributesToSkip = 0,
@@ -69,8 +45,7 @@ public sealed class SceneryPackageCensus
     private sealed class CacheFile
     {
         public int SchemaVersion { get; set; }
-        /// <summary>Nullable with NO initializer, so a document carrying no Packages key at all
-        /// deserialises to null and is rebuilt rather than read as "Community is empty".</summary>
+        /// <summary>No initializer: a missing key reads as null and is rebuilt, not as "Community is empty".</summary>
         public List<PackageCells>? Packages { get; set; }
     }
 
@@ -79,26 +54,21 @@ public sealed class SceneryPackageCensus
         public string Path { get; set; } = "";
         public long LayoutLength { get; set; }
         public long LayoutTicks { get; set; }
-        /// <summary>[latCell, lonCell, count] per occupied cell. Nullable for the same reason as
-        /// Packages above: an EMPTY list says the package models nothing anywhere, which is a real
-        /// answer worth caching; a missing key says nothing at all.</summary>
+        /// <summary>[latCell, lonCell, count] per occupied cell. Empty is a real answer; missing is not.</summary>
         public List<int[]>? Cells { get; set; }
     }
 
     public SceneryPackageCensus(string cacheDir) { _cacheDir = cacheDir; }
 
     /// <summary>
-    /// The installed packages whose objects stand on <paramref name="box"/>'s airport, the one
-    /// with the most first, at most <see cref="MaxPackages"/>. Empty when nothing reaches
-    /// <see cref="MinPlacementsInBox"/> — including when there is no Community folder at all.
+    /// The packages whose objects stand on <paramref name="box"/>'s airport, most first, at most
+    /// <see cref="MaxPackages"/>; empty below <see cref="MinPlacementsInBox"/> or with no Community folder.
     /// </summary>
     public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box) => Locate(communityDir, box, out _);
 
     /// <summary>
-    /// As above, and says whether any package's scan came back SHORT — a file it could not read.
-    /// Such a scan is deliberately not cached (see below), but the surroundings CATALOG built on
-    /// this locate is, and nothing rebuilds that on its own, so the flag is ORed into the build's
-    /// degraded bit to give it a lifetime. A cache hit is complete by construction.
+    /// As above, and whether any scan came back short. A short scan is not cached, but the catalog
+    /// built on it is, so the caller ORs this into the build's degraded bit.
     /// </summary>
     public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box, out bool incomplete)
     {
@@ -129,18 +99,14 @@ public sealed class SceneryPackageCensus
                 var fresh = new PackageCells { Path = dir, LayoutLength = len, LayoutTicks = ticks, Cells = cells };
                 seen.Add(fresh);                                // what WAS read still counts for this call
                 rescanned++;
-                // Only a scan that read every file is worth keeping. A file the simulator had open
-                // exclusively is a moment, not a property of the package — cached, its short count
-                // would be frozen until layout.json next changes, hiding the package for the rest
-                // of the install's life. An out-of-date row must not survive the attempt either.
+                // Keep only a complete scan (a lock is a moment, not a property of the package), and
+                // never let an out-of-date row survive the attempt.
                 if (complete) { known[dir] = fresh; changed = true; }
                 else if (known.Remove(dir)) changed = true;
             }
 
-            // A package that was uninstalled must leave, or the cache grows for the life of the
-            // install and keeps answering for a folder that is no longer there. Judged on the
-            // package's own layout.json rather than on "was it seen this pass", so a second
-            // Community folder's entries (the other simulator's) are not thrown away each time.
+            // Drop uninstalled packages — judged on their own layout.json, not "seen this pass", so
+            // the other simulator's Community entries survive.
             foreach (string path in known.Keys.ToList())
             {
                 if (File.Exists(Path.Combine(path, "layout.json"))) continue;
@@ -161,14 +127,9 @@ public sealed class SceneryPackageCensus
     }
 
     /// <summary>
-    /// Every immediate child of Community that is a package (it has a layout.json) and could be
-    /// scenery, with its layout.json stamp. A manifest naming another content_type — AIRCRAFT, LIVERY,
-    /// MISC, TOOL — is taken at its word and skipped; a missing or unreadable manifest is NOT a reason
-    /// to skip, because the cost of reading a package that models nothing is a handful of header seeks
-    /// while the cost of skipping the airport's own package is the whole feature. The verdict is
-    /// memoised on the layout.json stamp: every catalog build calls here, and re-reading every
-    /// package's manifest each time cost a file open and a JSON parse per package per build for an
-    /// answer only a package update can change — and an update rewrites layout.json (review CL-8).
+    /// Every Community package that could be scenery, with its layout.json stamp. A manifest naming
+    /// another content_type is taken at its word; a missing or unreadable one is not a reason to skip
+    /// (skipping the airport's own package costs the whole feature). Memoised on the stamp.
     /// </summary>
     private List<(string Dir, SceneryPackageDisk.LayoutStamp Stamp)> ScenerylikePackages(string communityDir)
     {
@@ -192,9 +153,7 @@ public sealed class SceneryPackageCensus
         try
         {
             if (!File.Exists(manifestPath)) return true;
-            // ReadAllText, not ReadAllBytes: a manifest.json may carry a UTF-8 BOM (none of the 82
-            // in this install does, but nothing stops one), which JsonDocument rejects outright as
-            // a byte sequence and ReadAllText strips.
+            // ReadAllText strips a UTF-8 BOM, which JsonDocument rejects as bytes.
             using var doc = JsonDocument.Parse(File.ReadAllText(manifestPath));
             if (doc.RootElement.ValueKind != JsonValueKind.Object) return true;
             if (!doc.RootElement.TryGetProperty("content_type", out var type) || type.ValueKind != JsonValueKind.String) return true;
@@ -204,15 +163,9 @@ public sealed class SceneryPackageCensus
     }
 
     /// <summary>
-    /// How many placements the package has in each 0.005° cell, and whether the scan saw the package
-    /// WHOLE. One try/catch per file (in <see cref="SceneryPackageDisk.WalkBgls"/>): one bad BGL costs
-    /// its own placements, never the package's — but it does cost the scan its COMPLETE flag, and only
-    /// a complete scan is cached. A BGL that cannot be OPENED is a lock or a permission, both of which
-    /// pass; a BGL whose contents are rubbish does not count at all, because
-    /// <see cref="BglPlacementReader"/> answers with what parsed rather than throwing — but a read an
-    /// I/O error cut HALFWAY is short for the same transient reason as a lock, so the reader reports
-    /// that separately and it counts. And a package that does not match its own layout.json — an
-    /// installer still writing it — is short too (<see cref="SceneryPackageDisk.UnfinishedLayoutFiles"/>).
+    /// Placements per 0.005° cell, and whether the scan saw the package whole: every file read to the
+    /// end (a lock or an I/O error cut short counts; a malformed file does not) and nothing layout.json
+    /// lists missing. Only a complete scan is cached.
     /// </summary>
     private static (List<int[]> Cells, bool Complete) Scan(string dir)
     {
@@ -231,7 +184,7 @@ public sealed class SceneryPackageCensus
                 }
                 return readToTheEnd;
             });
-            // Reading every file FOUND is not finding every file the package HAS.
+            // Every file found is not every file the package has.
             int unfinished = SceneryPackageDisk.UnfinishedLayoutFiles(dir, walk);
             if (unfinished > 0)
                 Log.Warn("SceneryIndex", $"census: {leaf}: {unfinished} listed BGL file{(unfinished == 1 ? "" : "s")} missing or incomplete");
@@ -239,7 +192,7 @@ public sealed class SceneryPackageCensus
         }
         catch (Exception ex)
         {
-            // The enumerator itself gave up, so whole files were never even looked at.
+            // The enumerator gave up: whole files were never looked at.
             complete = false;
             Log.Warn("SceneryIndex", $"census: {leaf}: {ex.Message}");
         }
@@ -249,9 +202,8 @@ public sealed class SceneryPackageCensus
         return (result, complete);
     }
 
-    /// <summary>The packages with at least <see cref="MinPlacementsInBox"/> placements in cells
-    /// that reach the grown airport box, most first. Ties break on the path so the answer — and
-    /// the status line built from it — does not depend on enumeration order.</summary>
+    /// <summary>Packages with at least <see cref="MinPlacementsInBox"/> placements reaching the box,
+    /// most first; ties break on the path so the answer never depends on enumeration order.</summary>
     private static List<string> Score(List<PackageCells> packages, GrownBox grown)
     {
         var scored = new List<(int Score, string Path)>();
@@ -269,8 +221,7 @@ public sealed class SceneryPackageCensus
                      .Take(MaxPackages).Select(s => s.Path).ToList();
     }
 
-    /// <summary>Whether a cell's own rectangle reaches the grown box on both axes. A cell that only
-    /// partly overlaps contributes all of its count (see the class summary).</summary>
+    /// <summary>Whether a cell's rectangle reaches the grown box on both axes.</summary>
     private static bool CellReaches(int[] cell, GrownBox grown)
     {
         double bottom = cell[0] * CellDegrees, left = cell[1] * CellDegrees;
@@ -285,15 +236,11 @@ public sealed class SceneryPackageCensus
             if (File.Exists(path))
             {
                 var cached = JsonSerializer.Deserialize<CacheFile>(File.ReadAllText(path));
-                // Another schema's fields mean nothing here, so the document is rebuilt rather
-                // than partly believed.
+                // Another schema is rebuilt, never partly believed.
                 if (cached is { Packages: not null } && cached.SchemaVersion == CurrentSchemaVersion)
                 {
-                    // A hand-edited or half-corrupted document can be valid JSON and still carry a
-                    // row that names nothing. Drop the ROW, not the file — the rest still spares a
-                    // rescan — and drop it HERE, at the trust boundary, so nothing downstream has
-                    // to keep asking. Indexing the lookup below on such a row threw out of Locate,
-                    // out of SurroundingsCatalogBuilder, and cost the pilot the whole catalog.
+                    // Drop a row that names nothing here, at the trust boundary: one once threw out
+                    // of Locate and cost the whole catalog.
                     cached.Packages.RemoveAll(p => p is null || string.IsNullOrEmpty(p.Path));
                     return cached;
                 }
@@ -303,8 +250,7 @@ public sealed class SceneryPackageCensus
         return new CacheFile { SchemaVersion = CurrentSchemaVersion, Packages = new List<PackageCells>() };
     }
 
-    /// <summary>Whole file or nothing: a truncated census would read as packages that model
-    /// fewer buildings here, which nothing downstream could tell from the truth.</summary>
+    /// <summary>Whole file or nothing (<see cref="SceneryPackageDisk.PersistJson"/>).</summary>
     private void Persist(CacheFile cache)
         => SceneryPackageDisk.PersistJson(_cacheDir, Path.Combine(_cacheDir, CacheFileName), JsonSerializer.Serialize(cache));
 }

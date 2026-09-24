@@ -1,14 +1,9 @@
 namespace MSFSBlindAssist.Navigation.Surroundings;
 
 /// <summary>
-/// An airport's navdata box grown by a margin in metres — the ONE conversion the three box tests
-/// share: <c>AirportFacilities.ContainsPoint</c> (a building beside the pavement), the scenery
-/// census's cell score, and <see cref="CurrentAirportResolver"/> (which airport the aircraft is at).
-/// Each carried its own copy and they had drifted: the resolver converted the longitude margin at the
-/// AIRCRAFT's latitude, the other two at the box's (review CL-4). The box's middle latitude is the one
-/// used — it is the box being grown — with the cosine floored at 0.05 so a polar box gets a bounded
-/// margin rather than an unbounded one. Assumes Left &lt;= Right, as the navdata box SQL always
-/// gives; a box spanning ±180° is not handled, and never was.
+/// An airport's navdata box grown by a margin in metres — the one conversion AirportFacilities,
+/// the scenery census and <see cref="CurrentAirportResolver"/> share. The longitude margin is taken
+/// at the box's middle latitude, cosine floored at 0.05 for polar boxes. Assumes Left &lt;= Right.
 /// </summary>
 public readonly record struct GrownBox(double Top, double Bottom, double Left, double Right)
 {

@@ -5,25 +5,13 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 public readonly record struct ScenePlacement(double Lat, double Lon, double HeadingDeg, Guid ModelGuid);
 
 /// <summary>
-/// Reads LibraryObject placements out of an MSFS scenery BGL. Layout measured 2026-09-06 on
-/// Orbx KTIW, imaginesim KATL and Axonos KJAC, and written up in docs/taxi-guidance.md under
-/// "The scenery tier — readers, clutter nets and caches". Two record layouts are in
-/// the wild: the classic 64-byte record (model GUID at +44) and the 92-byte record the MSFS
-/// 2024 SDK writes (GUID at +72; +44 holds the latitude as a double instead, so a reader still
-/// looking at +44 there reads garbage). The GUID is always the 16 bytes immediately before the
-/// record's trailing 4-byte scale field, so both layouts are read via <c>size − 20</c>. Measured
-/// 2026-09-20 across ~35 Community packages: 33 use 64-byte records, 2 (iniBuilds LMML,
-/// Glideslope KMEM) use 92-byte records. Bounds-checked at every step: a truncated or foreign
-/// file yields whatever parsed cleanly, never an exception. Every single buffer (one section's
-/// subsection table, one entry's placement data) is capped at <see cref="MaxSubsectionBytes"/>,
-/// but nothing stops a corrupt/hostile file from declaring millions of small, individually
-/// in-bounds entries that all point at the same region — so <see cref="DefaultMaxTotalBytes"/>
-/// additionally bounds the CUMULATIVE bytes read/scanned across one call; once spent, the read
-/// ends and returns whatever was parsed so far, same as any other hostile-input exit, rather
-/// than keep allocating and re-scanning for as long as the file keeps declaring more entries.
-/// Never throwing is not the same as always finishing, so <see cref="Read(Stream, out bool)"/>
-/// reports whether a TRANSIENT failure cut the read short — what the two disk caches need in
-/// order not to freeze a short answer. ONE parser: the span overloads delegate here.
+/// Reads LibraryObject placements out of an MSFS scenery BGL (layout in docs/taxi-guidance.md, "The
+/// scenery tier"). Two record layouts exist — classic 64-byte and the MSFS 2024 SDK's 92-byte — and
+/// the model GUID is the 16 bytes before the trailing 4-byte scale in both (<c>size − 20</c>).
+/// Bounds-checked throughout: a truncated or foreign file yields what parsed, never an exception.
+/// Each buffer is capped at <see cref="MaxSubsectionBytes"/> and the whole call at
+/// <see cref="DefaultMaxTotalBytes"/>, so a hostile file declaring millions of entries still ends.
+/// One parser: the span overloads delegate to the stream one.
 /// </summary>
 public static class BglPlacementReader
 {
@@ -36,19 +24,14 @@ public static class BglPlacementReader
     private const double LatScale = 180.0 / (2.0 * (1 << 28));
     private const int MaxSubsectionBytes = 64 * 1024 * 1024;
 
-    // Real placement files are tiny (the largest measured, flytampa CYYZ's cyyz_objects.bgl, is
-    // 1.27 MB; a header-only scan of 2,443 real BGLs read 21.3 MB in total) — 128 MB leaves about
-    // 100x headroom for one file while still ending a pathological read in a bounded, small amount
-    // of work instead of hours.
+    // The largest real placement file is 1.27 MB (CYYZ); 128 MB is ~100x headroom that still ends
+    // a pathological read quickly.
     private const long DefaultMaxTotalBytes = 128L * 1024 * 1024;
 
-    /// <summary>Tests only, and it DELEGATES to the stream overload so this class holds exactly ONE
-    /// parser. The span version used to be its own: it clamped a truncated entry to the file where
-    /// the stream one rejects the entry, and it had no per-subsection cap — so the tests written
-    /// against it were pinning a parser no production caller ever runs.</summary>
+    /// <summary>Tests only; delegates to the stream overload so there is one parser.</summary>
     public static List<ScenePlacement> Read(ReadOnlySpan<byte> b) => Read(b, DefaultMaxTotalBytes);
 
-    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/> (see the class summary).</summary>
+    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/>.</summary>
     internal static List<ScenePlacement> Read(ReadOnlySpan<byte> b, long maxTotalBytes)
         => Read(new MemoryStream(b.ToArray()), maxTotalBytes);
 
@@ -57,22 +40,16 @@ public static class BglPlacementReader
     public static List<ScenePlacement> Read(Stream bgl) => Read(bgl, DefaultMaxTotalBytes, out _);
 
     /// <summary>
-    /// As <see cref="Read(Stream)"/>, and <paramref name="complete"/> says whether the read
-    /// FINISHED. It is false only when a TRANSIENT failure cut it short — an
-    /// <see cref="IOException"/> or a stream disposed under it, i.e. a network drive that went
-    /// away or a package replaced mid-scan — because the callers that keep a disk cache
-    /// (<see cref="SceneryPackageCensus"/>, <see cref="SceneryPackageIndexer"/>) refuse to cache
-    /// a scan that did not finish. A MALFORMED file (bad magic, an out-of-bounds entry, a
-    /// truncated record) and a spent <see cref="DefaultMaxTotalBytes"/> budget are DETERMINISTIC —
-    /// a re-read answers exactly the same — so they leave it true and ARE cached; calling them
-    /// incomplete would re-read that package for the life of the install.
+    /// As <see cref="Read(Stream)"/>; <paramref name="complete"/> is false only when a transient
+    /// failure (IOException, a stream disposed under it) cut the read short, so the disk caches do not
+    /// keep it. A malformed file or a spent budget answers the same on every re-read, so it stays true.
     /// </summary>
     public static List<ScenePlacement> Read(Stream bgl, out bool complete) => Read(bgl, DefaultMaxTotalBytes, out complete);
 
-    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/> — see the class summary.</summary>
+    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/>.</summary>
     internal static List<ScenePlacement> Read(Stream bgl, long maxTotalBytes) => Read(bgl, maxTotalBytes, out _);
 
-    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/> — see the class summary.</summary>
+    /// <summary>Test seam for <see cref="DefaultMaxTotalBytes"/>.</summary>
     internal static List<ScenePlacement> Read(Stream bgl, long maxTotalBytes, out bool complete)
     {
         complete = true;
@@ -89,8 +66,7 @@ public static class BglPlacementReader
             if (!Fill(bgl, HeaderSize, table)) return result;
 
             long totalRead = 0;
-            // One plain array (no pool), reused across entries and reallocated only when an entry
-            // needs more than the last one did — a legitimate multi-entry file never churns the LOH.
+            // Reused across entries, grown only when needed, so a normal file never churns the LOH.
             byte[] data = Array.Empty<byte>();
             for (int s = 0; s < sections; s++)
             {
@@ -147,10 +123,7 @@ public static class BglPlacementReader
                 double lon = U32(data, p + 4) * LonScale - 180.0;
                 double lat = 90.0 - U32(data, p + 8) * LatScale;
                 double hdg = U16(data, p + 22) * (360.0 / 65536.0);
-                // The GUID is the 16 bytes before the trailing 4-byte scale: +44 in the classic
-                // 64-byte record, +72 in the 92-byte record the MSFS 2024 SDK writes (where +44
-                // holds the latitude as a double). size − 20 is right for both; +44 resolved
-                // 0 of 7,557 placements at iniBuilds LMML.
+                // +44 in a 64-byte record, +72 in a 92-byte one (where +44 is a latitude double).
                 var guid = new Guid(data.Slice(p + size - 20, 16));
                 into.Add(new ScenePlacement(lat, lon, hdg, guid));
             }
