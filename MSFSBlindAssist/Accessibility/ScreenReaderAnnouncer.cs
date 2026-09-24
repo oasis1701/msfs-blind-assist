@@ -216,7 +216,10 @@ public class ScreenReaderAnnouncer : IDisposable
             Log.Debug("Accessibility", "=== End Diagnostic Test ===");
         }
 
-        public void Announce(string message)
+        // The four announce entry points are virtual so headless tests (e.g.
+        // GroundTrafficMonitorHeadlessTests) can subclass with a text-capturing
+        // announcer and check what the app WOULD have spoken.
+        public virtual void Announce(string message)
         {
             if (string.IsNullOrEmpty(message))
                 return;
@@ -277,7 +280,7 @@ public class ScreenReaderAnnouncer : IDisposable
             }
         }
 
-        public void AnnounceImmediate(string message)
+        public virtual void AnnounceImmediate(string message)
         {
             if (string.IsNullOrEmpty(message))
                 return;
@@ -328,7 +331,7 @@ public class ScreenReaderAnnouncer : IDisposable
             }
         }
 
-        public void AnnounceQueued(string message)
+        public virtual void AnnounceQueued(string message)
         {
             Announce(message);
         }
@@ -337,7 +340,7 @@ public class ScreenReaderAnnouncer : IDisposable
         /// Adds a message to the announcement queue for sequential delivery with delays.
         /// Ideal for ECAM messages where multiple messages may appear simultaneously.
         /// </summary>
-        public void AnnounceWithQueue(string message)
+        public virtual void AnnounceWithQueue(string message)
         {
             if (string.IsNullOrEmpty(message))
                 return;

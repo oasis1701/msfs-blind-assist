@@ -103,6 +103,11 @@ public partial class SimConnectManager
     // (dwentrynumber == dwoutof). Lets callers announce/process a COMPLETE
     // traffic snapshot instead of racing the per-aircraft responses.
     public event EventHandler? AiTrafficSweepCompleted;
+    // Fired when a RequestGroundTrafficData sweep delivers its final entry. Separate from
+    // AiTrafficSweepCompleted so the ground-traffic monitor can tell ITS sweep from a TCAS one; the
+    // args carry the sweep's own request id, so a late completion of an abandoned sweep is not taken
+    // for the newer one.
+    public event EventHandler<GroundTrafficSweepEventArgs>? GroundTrafficSweepCompleted;
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
@@ -485,11 +490,27 @@ public partial class SimConnectManager
         // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
         REQUEST_CAMERA_VIEW = 341,
         REQUEST_AI_TRAFFIC = 500,
+        // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
+        // radius), on their OWN ids so a completion can never be confused with a TCAS or other
+        // REQUEST_AI_TRAFFIC sweep (PR #247 review L5) — see GroundTrafficSweepCompleted. The FIRST
+        // of GroundTrafficRequestIdCount (8) ids, 600-607: each sweep goes out under the next one, so
+        // KEEP 601-607 FREE (pinned by GroundTrafficRequestIdTests). Not 501-508: 505-508 are the
+        // hand-numbered guidance frames ((DATA_REQUESTS)505..508 in Monitoring.cs), and a request
+        // issued under an id already in use REPLACES that request.
+        REQUEST_GROUND_TRAFFIC = 600,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
+
+    /// <summary>Ground-traffic sweeps rotate over this many request ids from REQUEST_GROUND_TRAFFIC (600-607), so a late completion of an abandoned sweep is never credited to a newer one.</summary>
+    public const uint GroundTrafficRequestIdCount = 8;
+
+    /// <summary>True for any id in the ground-traffic sweep range.</summary>
+    public static bool IsGroundTrafficRequestId(uint requestId)
+        => requestId >= (uint)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC
+           && requestId < (uint)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC + GroundTrafficRequestIdCount;
 
     internal enum DATA_DEFINITIONS
     {
@@ -551,6 +572,8 @@ public partial class SimConnectManager
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
         DEF_AI_TRAFFIC = 500,
+        // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
+        // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
@@ -1372,6 +1395,15 @@ public class AiTrafficDataEventArgs : EventArgs
     public string FromAirport      { get; set; } = "";
     public string ToAirport        { get; set; } = "";
     public string Airline          { get; set; } = "";
+}
+
+/// <summary>A ground-traffic sweep completed; <see cref="RequestId"/> is the id it was requested under.</summary>
+public sealed class GroundTrafficSweepEventArgs : EventArgs
+{
+    public GroundTrafficSweepEventArgs(uint requestId) => RequestId = requestId;
+
+    /// <summary>The request id the completed sweep went out under (<see cref="SimConnectManager.IsGroundTrafficRequestId"/>).</summary>
+    public uint RequestId { get; }
 }
 
 public class SimVarUpdateEventArgs : EventArgs
