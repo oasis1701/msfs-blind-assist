@@ -179,9 +179,6 @@ public class ParkingSpot
 
     public string GetFilterCategory()
     {
-        // The families come from ParkingTypes, so this list can never drift from the one the
-        // surroundings features and the Place list read; only the gate SIZES are spelled out,
-        // because the filter lists each size on its own.
         return Type switch
         {
             9 => "Gate Small",
@@ -189,17 +186,17 @@ public class ParkingSpot
             11 => "Gate Large",
             13 => "Gate Heavy",
             14 => "Gate Extra",
-            _ when ParkingTypes.IsGaRamp(Type) => "Ramp GA",
-            _ when ParkingTypes.IsCargo(Type) => "Ramp Cargo",
-            _ when ParkingTypes.IsMilitary(Type) => "Ramp Military",
-            _ when ParkingTypes.IsDock(Type) => "Dock",
+            2 or 3 or 4 or 5 or 15 => "Ramp GA",
+            6 => "Ramp Cargo",
+            7 or 8 => "Ramp Military",
+            12 => "Dock",
             _ => "Other"
         };
     }
 
     /// <summary>True for gate-type stands (Gate Small/Medium/Large/Heavy/Extra) — used to render
     /// an empty-name gate as "Gate {n}" rather than the generic "Spot {n}".</summary>
-    private bool IsGateType() => ParkingTypes.IsGate(Type);
+    private bool IsGateType() => Type is 9 or 10 or 11 or 13 or 14;
 
     /// <summary>
     /// Returns whether this spot fits an aircraft with the given wing span
@@ -248,20 +245,6 @@ public class ParkingSpot
         return string.Empty; // "Dummy", "1", or anything not a recognized VDGS -> no suffix
     }
 
-    /// <summary>The stand's NAME as the app says it everywhere, without the type or equipment
-    /// notes: "A 12B", "Parking", "Gate 7A", "Spot 12". A number of 0 means "no number".</summary>
-    public string DescribeIdentity()
-    {
-        string numberPart = Number > 0
-            ? $"{Number}{Suffix}"
-            : (!string.IsNullOrEmpty(Suffix) ? $"0{Suffix}" : "");
-
-        if (!string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(numberPart)) return $"{Name} {numberPart}";
-        if (!string.IsNullOrEmpty(Name)) return Name;
-        if (!string.IsNullOrEmpty(numberPart)) return IsGateType() ? $"Gate {numberPart}" : $"Spot {numberPart}";
-        return "Parking";
-    }
-
     /// <summary>
     /// Base human description WITHOUT online aliases. Dropdowns that list aliases as their OWN
     /// separate entries (e.g. TaxiAssistForm) use this as the clean base label, then add a
@@ -270,7 +253,21 @@ public class ParkingSpot
     /// </summary>
     public string Describe()
     {
-        string baseDescription = $"{DescribeIdentity()} - {GetParkingType()}";
+        string baseDescription;
+        string numberPart = Number > 0
+            ? $"{Number}{Suffix}"
+            : (!string.IsNullOrEmpty(Suffix) ? $"0{Suffix}" : "");
+
+        if (!string.IsNullOrEmpty(Name) && !string.IsNullOrEmpty(numberPart))
+            baseDescription = $"{Name} {numberPart} - {GetParkingType()}";
+        else if (!string.IsNullOrEmpty(Name))
+            baseDescription = $"{Name} - {GetParkingType()}";
+        else if (!string.IsNullOrEmpty(numberPart))
+            baseDescription = IsGateType()
+                ? $"Gate {numberPart} - {GetParkingType()}"
+                : $"Spot {numberPart} - {GetParkingType()}";
+        else
+            baseDescription = $"Parking - {GetParkingType()}";
 
         // The terminal goes HERE — after the type, before the equipment notes — and both
         // halves of that placement are deliberate.

@@ -423,7 +423,7 @@ public class UserSettings
         /// OpenStreetMap and the X-Plane Scenery Gateway to enrich unnamed navdata segments, and
         /// the surroundings catalog's OSM tier (<c>OnlineFeatureStore</c>) fetches the airport's
         /// BUILDINGS — terminals, hangars, FBOs, the tower, fuel, cargo — for Look Around, the
-        /// surroundings window, the passing callouts and the taxi form's Place list. Disabling it
+        /// surroundings window and the passing callouts. Disabling it
         /// reverts to navdata and installed scenery only, with no online requests at all.
         /// <para>Applied LIVE by <c>MainForm.ApplyRuntimeSettings</c>, which pushes it into both
         /// services and clears the cached catalogs when it changed — no restart.</para>

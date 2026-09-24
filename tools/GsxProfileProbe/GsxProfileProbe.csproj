@@ -9,8 +9,6 @@
   <ItemGroup>
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs" Link="Linked\GateSource.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs" Link="Linked\ParkingSpot.cs" />
-    <!-- ParkingSpot.Describe() reads the named navdata parking-type sets, so the two travel together. -->
-    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingTypes.cs" Link="Linked\ParkingTypes.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\GsxGate.cs" Link="Linked\GsxGate.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxProfileParser.cs" Link="Linked\GsxProfileParser.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxGateMapper.cs" Link="Linked\GsxGateMapper.cs" />

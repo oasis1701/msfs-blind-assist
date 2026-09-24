@@ -602,13 +602,10 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             // (no `icao`) — common at small fields and many third-party scenery
             // packs — still come back. This method was originally added for
             // GateResolver.GetCandidateAirports (TCAS gate lookup), which depends
-            // on the ident fallback to find the user's parking field. It is NOT how
-            // to ask which airport our own aircraft is at: that is
-            // CurrentAirport.Resolve, because this list's first entry is ordered by
-            // summed raw degrees (it names heliport 10CL at 111 of KSNA's 201
-            // stands). Do NOT push a LENGTH(icao)=4 filter into this SQL — every
-            // provider lookup matches icao OR ident, and short idents are real
-            // airports.
+            // on the ident fallback to find the user's parking field. Callers
+            // that need a strict 4-char ICAO (e.g. the taxi-graph builder, which
+            // queries by canonical ICAO) must filter the result list themselves —
+            // do NOT push the LENGTH(icao)=4 filter back into this SQL.
             var sql = @"SELECT COALESCE(NULLIF(icao, ''), ident) AS code, laty, lonx
                         FROM airport
                         WHERE laty BETWEEN @MinLat AND @MaxLat
@@ -813,29 +810,17 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
 
     #region Helper Methods
 
-    /// <summary>
-    /// THE airport-row lookup for every airport_id-keyed read: runways, stands, taxi paths, runway
-    /// starts, the orphan-ILS relink and the surroundings facilities all resolve their code here, so
-    /// no two of them can describe different rows. Two reads in this class do NOT come through here
-    /// and keep their own UPPER() scan: GetAirport (whose position is also what
-    /// AugmentingAirportDataProvider.FetchCoreAsync centres the online taxiway-name fetch on) and
-    /// AirportExists. Bare indexed columns against an UPPER-CASED PARAMETER, never UPPER(column):
-    /// UPPER() on a column cannot use idx_airport_ident / idx_airport_icao, and the old form was a
-    /// full-table SCAN — 14.3 ms against 0.10 ms for this MULTI-INDEX OR on fs2024's 84,278 airports
-    /// (measured 2026-09-22). On fs2024 the new predicate returns the row the old one did for every
-    /// code: no ident or icao carries a lower-case or non-ASCII letter, icao is NULL on every row, and
-    /// no code names two airports. MSFS 2020 is UNMEASURED (no fs2020 database was available), though
-    /// a disk-built BGL ident cannot carry a lower-case letter: its packed encoding holds only digits
-    /// and capitals.
-    /// Returns -1 when nothing matches.
-    /// </summary>
     private int GetAirportId(SqliteConnection connection, string icao)
     {
-        using var command = new SqliteCommand(
-            "SELECT airport_id FROM airport WHERE ident = @Code OR icao = @Code LIMIT 1", connection);
-        command.Parameters.AddWithValue("@Code", icao.ToUpperInvariant());
-        var result = command.ExecuteScalar();
-        return result != null ? Convert.ToInt32(result) : -1;
+        var sql = "SELECT airport_id FROM airport WHERE UPPER(icao) = UPPER(@ICAO) OR UPPER(ident) = UPPER(@ICAO) LIMIT 1";
+
+        using (var command = new SqliteCommand(sql, connection))
+        {
+            command.Parameters.AddWithValue("@ICAO", icao);
+
+            var result = command.ExecuteScalar();
+            return result != null ? Convert.ToInt32(result) : -1;
+        }
     }
 
     private Runway CreateRunwayFromReader(SqliteDataReader reader, string icao, bool isPrimary, double magVar, OrphanIlsLookup orphanIls)

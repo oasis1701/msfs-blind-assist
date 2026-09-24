@@ -183,41 +183,42 @@ public class GateResolver
     /// <summary>
     /// Formats a parking spot into a concise label for screen reader display.
     /// Gate types: "Gate A 12", "Gate B 3L"
-    /// Ramp types: "Ramp 5", "Cargo Ramp 2", "Military Ramp 18"
+    /// Ramp types: "Ramp 5", "Cargo Ramp 2"
     /// Other: "Parking 7"
-    /// The families are <see cref="ParkingTypes"/>'s — the same sets the surroundings read.
     /// </summary>
     private static string FormatGateLabel(ParkingSpot spot)
     {
         string numberPart = spot.Number > 0 ? $" {spot.Number}{spot.Suffix}" : "";
 
-        // Gate types: "Gate [Name] [Number]"
-        if (ParkingTypes.IsGate(spot.Type))
+        // Gate types (9-11, 13-14): "Gate [Name] [Number]"
+        if ((spot.Type >= 9 && spot.Type <= 11) || spot.Type == 13 || spot.Type == 14)
         {
             string gateName = !string.IsNullOrEmpty(spot.Name) ? $" {spot.Name}" : "";
             return $"Gate{gateName}{numberPart}".Trim();
         }
 
-        // Civil cargo ramp (6): "Cargo Ramp [Name] [Number]"
-        if (ParkingTypes.IsCargo(spot.Type))
+        // Cargo ramp (6): "Cargo Ramp [Number]"
+        if (spot.Type == 6)
         {
             string name = !string.IsNullOrEmpty(spot.Name) ? $" {spot.Name}" : "";
             return $"Cargo Ramp{name}{numberPart}".Trim();
         }
 
         // GA ramp (2-5, 15): "Ramp [Name] [Number]"
-        if (ParkingTypes.IsGaRamp(spot.Type))
+        if ((spot.Type >= 2 && spot.Type <= 5) || spot.Type == 15)
         {
             string name = !string.IsNullOrEmpty(spot.Name) ? $" {spot.Name}" : "";
             return $"Ramp{name}{numberPart}".Trim();
         }
 
-        // Military (7 cargo, 8 combat): "Military Ramp [Number]"
-        if (ParkingTypes.IsMilitary(spot.Type))
+        // Military (7-8): "Military Ramp [Number]"
+        if (spot.Type == 7 || spot.Type == 8)
+        {
             return $"Military Ramp{numberPart}".Trim();
+        }
 
-        // Dock (12): "Dock [Name] [Number]"
-        if (ParkingTypes.IsDock(spot.Type))
+        // Dock (12): "Dock [Number]"
+        if (spot.Type == 12)
         {
             string name = !string.IsNullOrEmpty(spot.Name) ? $" {spot.Name}" : "";
             return $"Dock{name}{numberPart}".Trim();

@@ -198,7 +198,7 @@ public sealed class SurroundingsCatalogCache
     /// paths (a build that just failed, and a failure still inside <see cref="FailureMemory"/>) it
     /// hands back whatever was last cached WITHOUT that freshness check, because a stale catalog
     /// beats none, where this reports a miss. For a caller (AirportSurroundingsMonitor's UI-thread
-    /// timer tick, the taxi dialog's Place list) that must never trigger the possibly-slow
+    /// timer tick) that must never trigger the possibly-slow
     /// first-time scenery scan/DB read itself; it asks GetAsync for the build instead and revisits
     /// this later.
     ///

@@ -723,7 +723,7 @@ public partial class MainForm : Form
         // Surroundings catalog: same token as the Where-Am-I graph so a GSX publish re-letters
         // the inferred concourses too — the SAME method, so the two can never drift. Asked on every
         // position sample the passing-callout monitor handles (TryGetCached, about every 2 s) as
-        // well as by the hotkeys and the Place list, so it must never build a GateDataSource per
+        // well as by the hotkeys, so it must never build a GateDataSource per
         // ask (review item E8).
         surroundingsCache.VersionSupplier = GateListVersion;
         surroundingsCache.BuildSupplier = BuildSurroundings;
@@ -841,17 +841,7 @@ public partial class MainForm : Form
         var featureSource = new MSFSBlindAssist.Services.Surroundings.OsmFeatureSource(overpassClient);
         onlineFeatures = new MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore(featureSource.FetchAsync)
         { Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled };
-        onlineFeatures.FeaturesUpdated += icao =>
-        {
-            surroundingsCache.Invalidate(icao);
-            // …and tell the taxi dialog, whose Place list has no other way to learn of it: only a
-            // type switch, a filter toggle, an airport reload or a gate-token move rebuilds it,
-            // and none of those happens because a mirror finally answered. FBOs and hangars come
-            // mainly from OSM, so the pilot's FBO could be missing with no hint. Raised on a POOL
-            // thread, so it is marshalled; the form's own method re-checks every guard on arrival
-            // and is silent unless the list really changes.
-            SafeBeginInvoke(() => taxiAssistForm?.OnSurroundingsInvalidated(icao));
-        };
+        onlineFeatures.FeaturesUpdated += icao => surroundingsCache.Invalidate(icao);
 
         // What ApplyRuntimeSettings will compare the first Settings OK against. Seeded HERE, from
         // the same SettingsManager.Current the two services above and BuildSurroundings read, so

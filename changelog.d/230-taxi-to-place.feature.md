@@ -1,1 +1,0 @@
-The taxi form has a new destination type, Place: pick an FBO, hangar, fuel island, terminal or cargo area by name and guidance takes you to the stand in front of it, docking included where the scenery gives a stop.

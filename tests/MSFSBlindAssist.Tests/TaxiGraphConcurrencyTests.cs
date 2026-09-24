@@ -5,7 +5,7 @@ using MSFSBlindAssist.Navigation;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// GC-1 (PR #230 review). <see cref="TaxiGraph.DescribeLocation"/> runs on thread-pool threads —
+/// <see cref="TaxiGraph.DescribeLocation"/> runs on thread-pool threads —
 /// Alt+L's surroundings lookup, through TaxiGuidanceManager.DescribeCurrentLocation — against the
 /// ACTIVE guidance graph whenever its airport matches. That graph is TaxiAssistForm's own
 /// <c>_graph</c> (handed to LoadRoute as <c>prebuiltGraph</c>), and the form SUBDIVIDES it on the UI
@@ -50,8 +50,8 @@ public class TaxiGraphConcurrencyTests
     /// <summary>
     /// Taxiway A due north 1,200 m from the origin, in two rows meeting at 200 m; stand "A 5" 40 m
     /// east of that junction on an unnamed lead-in; and 30 long background taxiways 400-2,140 m east —
-    /// far outside every query's reach, there only so that rebuilding the graph's index is real work a
-    /// concurrent split can land inside.
+    /// far outside every query's reach, there only so that each query's scan of the graph is real
+    /// work a concurrent split can land inside.
     /// </summary>
     private static TaxiGraph Airport()
     {
@@ -73,7 +73,9 @@ public class TaxiGraphConcurrencyTests
     {
         var queries = new (double Lat, double Lon, string Expected)[]
         {
-            (North(1080), East(0), "Taxiway A"),   // ON the taxiway being subdivided: Pass 2's edge answer
+            // ON the taxiway being subdivided, 50 m from its 1,200 m end, so the edge is found both
+            // before and after the splits beside it: Pass 2's edge answer.
+            (North(1150), East(0), "Taxiway A"),
             (North(200), East(40), "Gate A 5"),    // AT the stand: Pass 1's node answer
         };
 

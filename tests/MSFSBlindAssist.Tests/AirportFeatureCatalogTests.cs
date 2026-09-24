@@ -261,8 +261,8 @@ public class AirportFeatureCatalogTests
     public void Two_halves_of_one_named_apron_that_touch_are_one_apron(double eastWest, double eastSouth)
     {
         // A split OSM way: one name, two rings that touch. Both carry the SAME proper name, so they are
-        // one body, as they always were — two features would make one routable Terminal or Concourse
-        // two Place entries. (This passes before the change too: it pins what the new rule KEEPS.)
+        // one body, as they always were — two features would list and announce one apron twice.
+        // (This passes before the change too: it pins what the new rule KEEPS.)
         var west = ApronRing("West Apron", Rect(0, 0, 40, 40));
         var east = ApronRing("West Apron", Rect(eastWest, eastSouth, eastWest + 40, eastSouth + 40));
         Assert.True(AirportFeatureCatalog.SameFeature(west, east));

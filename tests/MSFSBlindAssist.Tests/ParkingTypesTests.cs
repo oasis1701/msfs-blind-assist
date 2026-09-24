@@ -44,22 +44,6 @@ public class ParkingTypesTests
     [InlineData(2, "Ramp GA")] [InlineData(15, "Ramp GA")] [InlineData(12, "Dock")]
     [InlineData(9, "Gate Small")] [InlineData(14, "Gate Extra")]
     [InlineData(16, "Other")] [InlineData(17, "Other")] [InlineData(1, "Other")]
-    public void The_filter_category_follows_the_named_families(int type, string expected)
+    public void The_filter_category_agrees_with_the_named_families(int type, string expected)
         => Assert.Equal(expected, new ParkingSpot { Type = type }.GetFilterCategory());
-
-    private static ParkingSpot Spot(string name, int number, string suffix, int type)
-        => new() { Name = name, Number = number, Suffix = suffix, Type = type };
-
-    [Theory]
-    [InlineData("A", 12, "B", 10, "A 12B")]
-    [InlineData("Parking", 0, "", 4, "Parking")]          // a number of 0 is "no number", never "Parking 0"
-    [InlineData("", 7, "A", 10, "Gate 7A")]
-    [InlineData("", 12, "", 4, "Spot 12")]
-    [InlineData("", 0, "", 16, "Parking")]
-    public void DescribeIdentity_is_the_name_half_of_Describe(string name, int number, string suffix, int type, string expected)
-    {
-        var spot = Spot(name, number, suffix, type);
-        Assert.Equal(expected, spot.DescribeIdentity());
-        Assert.StartsWith(expected + " - ", spot.Describe());
-    }
 }

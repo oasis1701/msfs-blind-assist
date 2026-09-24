@@ -762,14 +762,6 @@ public partial class MainForm
                 airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
                 simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager,
                 importFromSayIntentions: BuildTaxiRouteFromSayIntentionsAsync);
-            // Cached-only (never triggers a build on the UI thread) plus the building read the
-            // form awaits itself when nothing is cached yet — see
-            // TaxiAssistForm.SurroundingsCatalogCached/SurroundingsCatalogAsync.
-            taxiAssistForm.SurroundingsCatalogCached = icao =>
-                surroundingsCache.TryGetCached(icao, out var cached) ? cached : null;
-            // GetAsync does the Task.Run itself and is single-flight, so this never stacks a
-            // second build on top of one already running for the same airport.
-            taxiAssistForm.SurroundingsCatalogAsync = icao => surroundingsCache.GetAsync(icao);
         }
 
         return taxiAssistForm;
@@ -779,23 +771,23 @@ public partial class MainForm
     {
         taxiAssistForm = GetOrCreateTaxiAssistForm();
 
-        // The airport the aircraft is AT — CurrentAirport.Resolve, the resolver Where Am I
-        // (Alt+Y), Look Around (Alt+L) and the surroundings monitor use — so this form, and the
-        // Place list built for its airport, open on the field the pilot has just heard named.
-        // The first four-character code nearest the reference point it used to take opened
-        // heliport 10CL (no taxi data) at 111 of KSNA's 201 stands and disagreed with Where Am I
-        // at 19,700 of fs2024's 302,142. A three-character ident is a good answer: every provider
-        // lookup matches icao OR ident. One box query, the same cost as the one it replaces.
-        string airportIcao = MSFSBlindAssist.Services.CurrentAirport.Resolve(
-            airportDataProvider!, position.Latitude, position.Longitude) ?? "";
+        // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
+        // GetNearbyAirportICAOs may return 3-char idents (used by GateResolver's
+        // TCAS lookup). The taxi-graph builder needs canonical ICAOs.
+        string nearestIcao = "";
+        var nearbyAirports = airportDataProvider!.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
+            .Where(c => c != null && c.Length == 4)
+            .ToList();
+        if (nearbyAirports.Count > 0)
+            nearestIcao = nearbyAirports[0];
 
-        // Task 2 — Departure prefetch: when on the ground and we've resolved the airport,
-        // prefetch once per session so taxiway names are cached before taxi starts.
+        // Task 2 — Departure prefetch: when on the ground and we've resolved a nearest
+        // airport, prefetch once per session so taxiway names are cached before taxi starts.
         // SILENT (fire-and-forget, debounced via _augmentPrefetched).
-        if (_lastOnGround && !string.IsNullOrEmpty(airportIcao) && _augmentPrefetched.Add(airportIcao))
-            _ = _augmentingProvider?.PrefetchAsync(airportIcao, force: true);
+        if (_lastOnGround && !string.IsNullOrEmpty(nearestIcao) && _augmentPrefetched.Add(nearestIcao))
+            _ = _augmentingProvider?.PrefetchAsync(nearestIcao, force: true);
 
-        taxiAssistForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, airportIcao);
+        taxiAssistForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, nearestIcao);
 
         // (StateChanged is subscribed once in InitializeManagers. We deliberately do NOT
         // re-subscribe here — re-subscribing on every form open would either double-fire
