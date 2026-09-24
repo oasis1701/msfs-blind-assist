@@ -36,24 +36,20 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
         CancelButton = closeButton;
 
         // Reflect the live HDG·V/S vs TRK·FPA mode in the toggle button label. A32NX_TRK_FPA_MODE_ACTIVE
-        // is OnRequest (streaming it as announced spoke every panel TRK/FPA press twice), so the
-        // window asks for it itself while open — an unforced read, which updates the cache the label
-        // reads and speaks nothing.
+        // itself stays OnRequest (streaming it as announced spoke every panel TRK/FPA press twice), but
+        // FBW mirrors the same value into A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE, which the hardware-dial
+        // announcer already streams in the batch and consumes silently — so the window just reads that
+        // cache on a timer instead of polling the sim itself.
         _modeTimer = new System.Windows.Forms.Timer { Interval = 500 };
-        _modeTimer.Tick += (s, e) => { RequestTrkMode(); UpdateTrkLabel(); };
+        _modeTimer.Tick += (s, e) => UpdateTrkLabel();
     }
 
     // Fenix-style silent open (see FBWA320SpeedWindow): no stale-then-fresh readout.
-    protected override void SpeakInitialReadout() { RequestTrkMode(); UpdateTrkLabel(); _modeTimer?.Start(); headingTextBox.Focus(); }
-
-    private void RequestTrkMode()
-    {
-        if (simConnect.IsConnected) simConnect.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE");
-    }
+    protected override void SpeakInitialReadout() { UpdateTrkLabel(); _modeTimer?.Start(); headingTextBox.Focus(); }
 
     private void UpdateTrkLabel()
     {
-        bool isTrk = (simConnect.GetCachedVariableValue("A32NX_TRK_FPA_MODE_ACTIVE") ?? 0) > 0.5;
+        bool isTrk = (simConnect.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE") ?? 0) > 0.5;
         string text = isTrk
             ? "TRK·FPA / HDG·V/S toggle — now TRK·FPA (press for HDG·V/S)"
             : "HDG·V/S / TRK·FPA toggle — now HDG·V/S (press for TRK·FPA)";

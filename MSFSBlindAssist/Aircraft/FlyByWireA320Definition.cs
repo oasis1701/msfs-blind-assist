@@ -4644,7 +4644,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_FCU_SELECTED_ALTITUDE",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "Selected Altitude",
+            DisplayName = "FCU Altitude Value",
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             Units = "number"
@@ -4657,7 +4657,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_AUTOPILOT_HEADING_SELECTED",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "Selected Heading",
+            DisplayName = "FCU Heading Value",
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             Units = "number"
@@ -4666,7 +4666,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_AUTOPILOT_SPEED_SELECTED",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "Selected Speed",
+            DisplayName = "FCU Speed Value",
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             Units = "number"
@@ -4679,7 +4679,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_FCU_SELECTED_VERTICAL_SPEED",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "Selected Vertical Speed",
+            DisplayName = "FCU Vertical Speed Value",
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             Units = "number"
@@ -4688,7 +4688,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX_FCU_SELECTED_FPA",
             Type = SimConnect.SimVarType.LVar,
-            DisplayName = "Selected FPA",
+            DisplayName = "FCU FPA Value",
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             Units = "number"
@@ -4701,6 +4701,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Name = "A32NX_FCU_HEALTHY",
             Type = SimConnect.SimVarType.LVar,
             DisplayName = "FCU healthy",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromMonitorManager = true,
+            Units = "number"
+        },
+        // TRK/FPA mode mirror (the FCU's own trk_fpa_mode) for the Ctrl+H window's toggle label: streamed
+        // in the batch and consumed silently, so the window reads the cache instead of polling
+        // A32NX_TRK_FPA_MODE_ACTIVE (which stays on demand — streaming it spoke every panel press twice).
+        ["A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE",
+            Type = SimConnect.SimVarType.LVar,
+            DisplayName = "FCU TRK/FPA display mode",
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,
             ExcludeFromMonitorManager = true,
@@ -8223,6 +8236,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             ObserveFcuHealth(value > 0.5);
             return true;
         }
+        if (varName == "A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE") return true;   // label cache only; never spoken
         if (TryComposeFcuValuePhrase(varName!, value, out string? fcuPhrase))
         {
             bool fcuMuted = Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(varName!);

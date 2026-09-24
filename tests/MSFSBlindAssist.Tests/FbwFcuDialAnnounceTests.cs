@@ -173,6 +173,34 @@ public class FbwFcuDialAnnounceTests : IDisposable
         Assert.Equal(UpdateFrequency.OnRequest, def.GetVariables()["A32NX_TRK_FPA_MODE_ACTIVE"].UpdateFrequency);
     }
 
+    [Theory]
+    [MemberData(nameof(A32nxFamily))]
+    public void A32nx_callout_mute_rows_never_read_like_a_mode_callout(FlyByWireA320Definition def)
+    {
+        // Ctrl+M search matches row labels; a callout row named with the words another callout SPEAKS
+        // leads the pilot to mute the wrong one.
+        var vars = def.GetVariables();
+        var spoken = vars.Values
+            .Where(v => v.IsAnnounced && v.UpdateFrequency == UpdateFrequency.Continuous && v.ValueDescriptions != null)
+            .SelectMany(v => v.ValueDescriptions!.Values)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (string key in new[] { FcuSources.A32nx.Heading, FcuSources.A32nx.Speed, FcuSources.A32nx.Altitude,
+                                       FcuSources.A32nx.VerticalSpeed, FcuSources.A32nx.FlightPathAngle })
+            Assert.DoesNotContain(vars[key].DisplayName, spoken);
+    }
+
+    [Theory]
+    [MemberData(nameof(A32nxFamily))]
+    public void A32nx_heading_window_reads_the_trk_fpa_mode_from_the_batch(FlyByWireA320Definition def)
+    {
+        var v = def.GetVariables()["A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE"];
+        Assert.Equal(UpdateFrequency.Continuous, v.UpdateFrequency);
+        Assert.True(v.IsAnnounced);
+        Assert.False(v.ExcludeFromBatch);
+        Assert.True(v.ExcludeFromMonitorManager);
+        Assert.True(def.ProcessSimVarUpdate("A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE", 1, new SpeechCapture()));
+    }
+
     // ---- A380X ----
 
     [Theory]
