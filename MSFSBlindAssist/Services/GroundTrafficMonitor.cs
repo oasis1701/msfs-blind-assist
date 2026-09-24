@@ -171,8 +171,11 @@ public sealed class GroundTrafficMonitor : IDisposable
     private int _queueCandidate, _queueConfirm, _queueAnnounced;
     private GroundTrafficLogic.QueueReading? _queueReadingForSummary;
 
-    // "Move up" nudge (UI thread)
+    // "Move up" nudge (UI thread). _nudgeLeaderId is the aircraft whose announced departure armed it:
+    // it is never "something else ahead" that disarms the nudge (PR #247 final review H1). Null
+    // whenever the nudge is disarmed.
     private NudgeState _nudge = NudgeState.Disarmed;
+    private uint? _nudgeLeaderId;
 
     // Speech bookkeeping (UI thread)
     private DateTime _lastAlertLineUtc = DateTime.MinValue;
@@ -519,6 +522,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         ResetQueue();
         if (_nudge.Armed) _log.Info("ev=nudge reset reason=gate");
         _nudge = NudgeState.Disarmed;
+        _nudgeLeaderId = null;
         lock (_lock)
             foreach (var ac in _tracked.Values) ac.Mover = QueueMoverState.Initial;
     }
@@ -920,16 +924,22 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     /// <summary>
     /// "… ahead is moving." for the NEAREST aircraft directly ahead once its departure has latched,
-    /// then the gated "Move up." (<see cref="QueueMovementPolicy"/>). Caller holds _lock.
+    /// then the gated "Move up." (<see cref="QueueMovementPolicy"/>), judged against the nearest
+    /// aircraft directly ahead OTHER than the one whose departure armed it
+    /// (<see cref="QueueMovementPolicy.NearestOtherAheadFt"/>). Caller holds _lock.
     /// </summary>
     private void EvaluateQueueMovement(GroundTrafficRouteContext? ctx, List<TrafficView> views,
         double ownLat, double ownLon, double ownGS, bool useMetres, DateTime now, List<TrafficCallout> candidates)
     {
         var byId = views.ToDictionary(v => v.Ac.ObjectId);
         TrafficView? nearestAhead = null;
+        var directlyAhead = new List<(uint Id, double DistFt)>();
         foreach (var v in views)
-            if (GroundTrafficLogic.IsDirectlyAhead(v.Rel) && (nearestAhead == null || v.DistFt < nearestAhead.DistFt))
-                nearestAhead = v;
+        {
+            if (!GroundTrafficLogic.IsDirectlyAhead(v.Rel)) continue;
+            directlyAhead.Add((v.Ac.ObjectId, v.DistFt));
+            if (nearestAhead == null || v.DistFt < nearestAhead.DistFt) nearestAhead = v;
+        }
 
         foreach (var ac in _tracked.Values)
         {
@@ -954,6 +964,9 @@ public sealed class GroundTrafficMonitor : IDisposable
                     if (QueueMovementPolicy.ShouldArmNudge(along, dist, gap))
                     {
                         _nudge = NudgeState.ArmedAt(now);
+                        // The aircraft just announced as moving — the one ShouldArmNudge judged — is
+                        // the reason to move up, never "something else ahead" (H1).
+                        _nudgeLeaderId = ac.ObjectId;
                         _log.Info("ev=nudge armed");
                     }
                 }));
@@ -962,18 +975,20 @@ public sealed class GroundTrafficMonitor : IDisposable
 
         bool onRunway = ctx != null && RunwayWatchScopes.RunwaysUnder(ctx.Runways, ownLat, ownLon).Count > 0;
         bool allowsPrompt = ctx is { AllowsQueuePrompt: true } && !onRunway;
-        var decision = QueueMovementPolicy.EvaluateNudge(_nudge, allowsPrompt, ownGS, nearestAhead?.DistFt, now,
+        double? nearestOtherFt = QueueMovementPolicy.NearestOtherAheadFt(directlyAhead, _nudgeLeaderId);
+        var decision = QueueMovementPolicy.EvaluateNudge(_nudge, allowsPrompt, ownGS, nearestOtherFt, now,
             ft => FormatDistance(ft, useMetres));
         switch (decision.Action)
         {
             case NudgeAction.Disarm:
                 _nudge = NudgeState.Disarmed;
+                _nudgeLeaderId = null;
                 // NudgeDecision carries no reason of its own (it is Action + Text), so this is the
                 // policy's disarm, told apart from the gate path's reason=gate.
                 _log.Info("ev=nudge reset reason=disarmed");
                 break;
             case NudgeAction.Speak:
-                candidates.Add(new TrafficCallout(TrafficCalloutKind.MoveUp, nearestAhead?.DistFt ?? AWARENESS_FT,
+                candidates.Add(new TrafficCallout(TrafficCalloutKind.MoveUp, nearestOtherFt ?? AWARENESS_FT,
                     decision.Text, () => _nudge = QueueMovementPolicy.AfterSpoken(_nudge, now)));
                 break;
         }

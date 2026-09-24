@@ -152,4 +152,32 @@ public class QueueMovementPolicyTests
         Assert.Equal(NudgeAction.None, QueueMovementPolicy.EvaluateNudge(s, true, 0, 400, T0.AddSeconds(30), Ft).Action);
         Assert.Equal(NudgeAction.Speak, QueueMovementPolicy.EvaluateNudge(s, true, 0, 400, T0.AddSeconds(42), Ft).Action);
     }
+
+    // ── the leader is not "something else ahead" (PR #247 final review H1) ────────────────
+    // The owner's rule is "never with anything ELSE within 250 ft ahead". The aircraft whose departure
+    // armed the nudge reaches 2 kt a few feet from where it sat, so one second later it was still within
+    // 250 ft and, counted as the nearest aircraft ahead, disarmed the nudge it had just armed.
+
+    [Fact]
+    public void The_leader_alone_within_250_ft_is_not_counted()
+        => Assert.Null(QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0) }, leaderId: 7u));
+
+    [Fact]
+    public void Another_aircraft_ahead_is_counted_beside_the_leader()
+        => Assert.Equal(200.0, QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0), (9u, 200.0) }, leaderId: 7u));
+
+    [Fact]
+    public void With_no_leader_the_plain_nearest_is_counted()
+        => Assert.Equal(180.0, QueueMovementPolicy.NearestOtherAheadFt(new[] { (9u, 200.0), (7u, 180.0) }, leaderId: null));
+
+    [Fact]
+    public void Nothing_ahead_is_null()
+        => Assert.Null(QueueMovementPolicy.NearestOtherAheadFt(Array.Empty<(uint, double)>(), leaderId: 7u));
+
+    [Fact]
+    public void The_leader_pulling_away_no_longer_disarms_the_nudge()
+    {
+        double? other = QueueMovementPolicy.NearestOtherAheadFt(new[] { (7u, 180.0) }, leaderId: 7u);
+        Assert.Equal(NudgeAction.Speak, Nudge(NudgeState.ArmedAt(T0), nearest: other).Action);
+    }
 }

@@ -34,7 +34,8 @@ public readonly record struct NudgeDecision(NudgeAction Action, string Text);
 ///
 /// <para>"Move up" is an instruction ATC has not given, so it is tightly gated (owner decision,
 /// review R5): only where the context allows a queue prompt (taxiing on a joined route, not on a
-/// runway, not at a hold), only while the pilot is stopped, never with another aircraft within
+/// runway, not at a hold), only while the pilot is stopped, never with another aircraft — anything
+/// other than the one whose departure armed it (<see cref="NearestOtherAheadFt"/>) — within
 /// <see cref="NudgeMinGapFt"/> ahead, every <see cref="NudgeIntervalMs"/>, at most
 /// <see cref="NudgeMax"/> times, and it disarms the moment the pilot rolls.</para>
 /// </summary>
@@ -44,7 +45,7 @@ public static class QueueMovementPolicy
     public const double OwnQueueGsKts = 5.0;
     public const int NudgeIntervalMs = 20000;
     public const int NudgeMax = 3;
-    /// <summary>Closer than this to the nearest aircraft ahead, there is nothing to move up into.</summary>
+    /// <summary>Closer than this to the nearest aircraft ahead (other than the one that left), there is nothing to move up into.</summary>
     public const double NudgeMinGapFt = 250.0;
     /// <summary>The pilot rolling at this speed has moved up: disarm.</summary>
     public const double NudgeResetOwnGsKts = 2.0;
@@ -86,8 +87,22 @@ public static class QueueMovementPolicy
         => movingAlongRoute ?? (!double.IsNaN(stoppedGapFt) && distFt > stoppedGapFt + 10.0);
 
     /// <summary>
+    /// The nearest aircraft directly ahead OTHER than the one whose departure armed the nudge — the
+    /// owner's rule is "never with anything ELSE within 250 ft ahead": the leader pulling away is the
+    /// reason to move up, not a reason to stay put. Null when there is none.
+    /// </summary>
+    public static double? NearestOtherAheadFt(IEnumerable<(uint Id, double DistFt)> directlyAhead, uint? leaderId)
+    {
+        double? best = null;
+        foreach (var (id, dist) in directlyAhead)
+            if (id != leaderId && (best is null || dist < best)) best = dist;
+        return best;
+    }
+
+    /// <summary>
     /// What the nudge does this evaluation. <paramref name="nearestAheadFt"/> is the nearest aircraft
-    /// directly ahead (any aircraft, not only the one that left), null when there is none in range.
+    /// directly ahead OTHER than the one whose departure armed the nudge (<see cref="NearestOtherAheadFt"/>),
+    /// null when there is none in range.
     /// </summary>
     public static NudgeDecision EvaluateNudge(NudgeState state, bool contextAllowsPrompt, double ownGsKts,
         double? nearestAheadFt, DateTime nowUtc, Func<double, string> formatDistance)
