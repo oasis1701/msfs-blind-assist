@@ -26,9 +26,9 @@ public class RunwayWatchScopeTests
     private static RunwayWatchInputs Inputs(
         TaxiGuidanceState state = TaxiGuidanceState.Taxiing, string? held = null, string? progressive = null,
         string? destination = "Runway 27", bool runwayLineup = true, string[]? under = null, string? takeoff = null,
-        bool landingExit = false, double? gs = null, bool wasVacating = false)
+        bool landingExit = false, double? gs = null, string? vacatingRunwayKey = null)
         => new(state, held, progressive, destination, runwayLineup, under ?? Array.Empty<string>(), takeoff, Runways,
-            landingExit, gs, wasVacating);
+            landingExit, gs, vacatingRunwayKey);
 
     [Theory]
     [InlineData("27")]
@@ -151,32 +151,45 @@ public class RunwayWatchScopeTests
     // ── Vacating hysteresis (PR #247 B3 review Important 1) ────────────────────────────
     // An ordinary deceleration through the turn must not flip Vacating to OnRunway tick by tick: once
     // already vacating, the mode holds down to VacatingHoldGsKts; a fresh evaluation that was not
-    // already vacating still needs the full VacatingMinGsKts to enter it.
+    // already vacating still needs the full VacatingMinGsKts to enter it. The hysteresis is scoped to
+    // the runway that was vacating (PR #247 B4 review Important 2): VacatingRunwayKey must name the
+    // SAME runway that is now under the aircraft, or a different runway entered right after the exit
+    // must not inherit it.
 
     [Fact]
     public void Vacating_holds_below_the_minimum_speed_once_already_vacating()
         => Assert.Equal(RunwayWatchMode.Vacating, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: 2.0, wasVacating: true)).Mode);
+            under: new[] { "27" }, landingExit: true, gs: 2.0,
+            vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "27"))).Mode);
 
     [Fact]
     public void Not_yet_vacating_at_the_same_speed_is_on_the_runway()
         => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: 2.0, wasVacating: false)).Mode);
+            under: new[] { "27" }, landingExit: true, gs: 2.0, vacatingRunwayKey: null)).Mode);
 
     [Fact]
     public void Vacating_ends_below_the_hold_speed_even_if_it_was_already_vacating()
         => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: 0.9, wasVacating: true)).Mode);
+            under: new[] { "27" }, landingExit: true, gs: 0.9,
+            vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "27"))).Mode);
 
     [Fact]
     public void Vacating_holds_at_the_hold_speed_boundary()
         => Assert.Equal(RunwayWatchMode.Vacating, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: RunwayWatchScopes.VacatingHoldGsKts, wasVacating: true)).Mode);
+            under: new[] { "27" }, landingExit: true, gs: RunwayWatchScopes.VacatingHoldGsKts,
+            vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "27"))).Mode);
 
     [Fact]
-    public void WasVacating_grants_no_hysteresis_off_a_landing_exit_route()
+    public void VacatingRunwayKey_grants_no_hysteresis_off_a_landing_exit_route()
         => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: false, gs: 5, wasVacating: true)).Mode);
+            under: new[] { "27" }, landingExit: false, gs: 5,
+            vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "27"))).Mode);
+
+    [Fact]
+    public void A_different_runways_vacating_key_grants_no_hysteresis()
+        => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "27" }, landingExit: true, gs: 2.0,
+            vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "22"))).Mode);
 
     [Fact]
     public void A_backtrack_outranks_vacating()

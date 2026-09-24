@@ -51,9 +51,11 @@ public sealed record RunwayWatch(IReadOnlyList<WatchedRunway> Runways, RunwayWat
 /// Everything <see cref="RunwayWatchScopes.Resolve"/> needs, as plain values. <see cref="IsLandingExit"/>
 /// (taxi guidance is steering a landing-exit route) and <see cref="OwnGroundSpeedKts"/> (the pilot's
 /// ground speed, null when not known) tell turning off the runway just landed on
-/// (<see cref="RunwayWatchMode.Vacating"/>) from stopping on it; <see cref="WasVacating"/> (the previous
-/// evaluation's mode was Vacating) gives that mode hysteresis so an ordinary deceleration through the
-/// turn does not flip it tick by tick.
+/// (<see cref="RunwayWatchMode.Vacating"/>) from stopping on it; <see cref="VacatingRunwayKey"/> — the
+/// key (<see cref="RunwayWatchScopes.RunwayKey"/>) of the runway that was Vacating on the previous
+/// evaluation, or null — gives that mode hysteresis, scoped to that one runway only, so an ordinary
+/// deceleration through the turn does not flip it tick by tick, and a different runway entered right
+/// after the exit is never mistaken for the one that was vacating.
 /// </summary>
 public readonly record struct RunwayWatchInputs(
     TaxiGuidanceState State,
@@ -66,7 +68,7 @@ public readonly record struct RunwayWatchInputs(
     IReadOnlyList<TaxiGraph.RunwayCenterline> Runways,
     bool IsLandingExit = false,
     double? OwnGroundSpeedKts = null,
-    bool WasVacating = false);
+    string? VacatingRunwayKey = null);
 
 /// <summary>
 /// Which runway(s) the ground-traffic runway watch covers. PR #247 review R2/R3: the watch was
@@ -127,13 +129,15 @@ public static class RunwayWatchScopes
     /// supplies its spoken designator; the strongest mode wins — TakeoffWait, LiningUp, OnRunway,
     /// Vacating, Holding): takeoff-assist runway (TakeoffWait), runway lineup (LiningUp), backtrack
     /// departure (OnRunway), HoldShort label (Holding), progressive hold runway (Holding), and the
-    /// runways under the aircraft in any state — <see cref="RunwayWatchMode.Vacating"/> while taxi
+    /// runways under the aircraft, judged PER RUNWAY — <see cref="RunwayWatchMode.Vacating"/> while taxi
     /// guidance steers a landing-exit route (<see cref="RunwayWatchInputs.IsLandingExit"/>) and the pilot
     /// is moving at <see cref="VacatingMinGsKts"/> or more (turning off the runway just landed on), or —
-    /// once already vacating (<see cref="RunwayWatchInputs.WasVacating"/>) — at <see cref="VacatingHoldGsKts"/>
-    /// or more (hysteresis: an ordinary deceleration through the turn does not flip the mode tick by
-    /// tick), otherwise <see cref="RunwayWatchMode.OnRunway"/>: a crossing no hold could be placed for, a
-    /// stray onto a runway, or stopping on the runway after landing.
+    /// for that SAME runway, once it was already vacating (<see cref="RunwayWatchInputs.VacatingRunwayKey"/>
+    /// equals its key) — at <see cref="VacatingHoldGsKts"/> or more (hysteresis: an ordinary deceleration
+    /// through the turn does not flip the mode tick by tick), otherwise
+    /// <see cref="RunwayWatchMode.OnRunway"/>: a crossing no hold could be placed for, a stray onto a
+    /// runway, a DIFFERENT runway entered right after the exit (the hysteresis never carries over to it),
+    /// or stopping on the runway after landing.
     /// </summary>
     public static RunwayWatch Resolve(RunwayWatchInputs input)
     {
@@ -162,11 +166,16 @@ public static class RunwayWatchScopes
             Watch(Designators(input.HeldLabel), RunwayWatchMode.Holding);
         if (input.State == TaxiGuidanceState.ProgressiveHold)
             Watch(Designators(input.ProgressiveRunway), RunwayWatchMode.Holding);
-        Watch(input.RunwaysUnderAircraft ?? Array.Empty<string>(),
-            input.IsLandingExit && input.OwnGroundSpeedKts is double gs
-            && (gs >= VacatingMinGsKts || (input.WasVacating && gs >= VacatingHoldGsKts))
-                ? RunwayWatchMode.Vacating
-                : RunwayWatchMode.OnRunway);
+        // Judged per designator (not one shared mode for the whole set): the hysteresis in
+        // VacatingRunwayKey names ONE runway, so a different runway entered right after the exit must
+        // not inherit it (PR #247 B4 review Important 2).
+        foreach (string d in input.RunwaysUnderAircraft ?? Array.Empty<string>())
+        {
+            bool vacating = input.IsLandingExit && input.OwnGroundSpeedKts is double gs
+                && (gs >= VacatingMinGsKts
+                    || (gs >= VacatingHoldGsKts && RunwayKey(runways, d) == input.VacatingRunwayKey));
+            Watch(new[] { d }, vacating ? RunwayWatchMode.Vacating : RunwayWatchMode.OnRunway);
+        }
 
         return watched.Count == 0 ? RunwayWatch.None : new RunwayWatch(watched, mode);
     }

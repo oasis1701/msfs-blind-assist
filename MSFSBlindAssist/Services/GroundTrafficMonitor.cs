@@ -364,10 +364,13 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// This tick's watch (<see cref="RunwayWatchScopes.Resolve"/>). <paramref name="ownGsKts"/> is the
     /// tick's own ground speed: on a landing-exit route, the runway under the aircraft is Vacating
     /// (queued) while the pilot is still moving and OnRunway (interrupting) once stopped on it.
-    /// <see cref="_currentWatch"/>'s mode — the PREVIOUS evaluation's, since this runs before
-    /// <see cref="SetWatch"/> adopts this tick's watch — feeds <see cref="RunwayWatchInputs.WasVacating"/>
-    /// so Vacating holds down to <see cref="RunwayWatchScopes.VacatingHoldGsKts"/> instead of flipping to
-    /// OnRunway tick by tick as the pilot decelerates through the turn.
+    /// <see cref="_currentWatch"/>'s mode and key — the PREVIOUS evaluation's, since this runs before
+    /// <see cref="SetWatch"/> adopts this tick's watch — feed <see cref="RunwayWatchInputs.VacatingRunwayKey"/>
+    /// (the key of the runway that was Vacating, or null when the previous watch was not Vacating, or was
+    /// a multi-runway watch whose joined key matches no single runway) so Vacating holds down to
+    /// <see cref="RunwayWatchScopes.VacatingHoldGsKts"/> for THAT runway only, instead of flipping to
+    /// OnRunway tick by tick as the pilot decelerates through the turn — and never leaking onto a
+    /// different runway entered right after the exit (PR #247 B4 review Important 2).
     /// </summary>
     private RunwayWatch ResolveWatch(GroundTrafficRouteContext? ctx, double lat, double lon, double ownGsKts)
     {
@@ -398,7 +401,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             runways,
             ctx?.IsLandingExit ?? false,
             ownGsKts,
-            WasVacating: _currentWatch.Mode == RunwayWatchMode.Vacating));
+            VacatingRunwayKey: _currentWatch.Mode == RunwayWatchMode.Vacating ? _currentWatch.Key : null));
     }
 
     /// <summary>
@@ -424,6 +427,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 {
                     _watchSummaryDone = false;
                     _firstStatusRearmed = true;
+                    _firstStatusDeferredSinceUtc = DateTime.MinValue;
                     _log.Info($"ev=watch status-rearmed key={watch.Key} reason=stopped-on-runway");
                 }
                 _loggedWatchMode = watch.Mode;
