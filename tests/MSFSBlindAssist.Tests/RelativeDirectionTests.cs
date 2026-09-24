@@ -1,6 +1,6 @@
 // tests/MSFSBlindAssist.Tests/RelativeDirectionTests.cs
-// Pins the thresholds GroundTrafficMonitor.DescribeDirection carried (20/70/110/160) so the
-// ground-traffic phrasing cannot drift now that the surroundings readout shares it.
+// Pins the thresholds (20/70/110/160) of the one relative-direction phrasing, which ground
+// traffic (GroundTrafficLogic.DescribeDirection) and the surroundings readout share.
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;

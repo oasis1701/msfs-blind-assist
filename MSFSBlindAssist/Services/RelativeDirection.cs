@@ -1,10 +1,10 @@
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// The one relative-bearing phrasing in the app. Lifted from GroundTrafficMonitor so the
-/// surroundings readout ("Concourse B, ahead and to the right") and the ground-traffic
-/// summary ("Speedbird 12, to the left, 200 metres") say the same words for the same
-/// angle. Thresholds pinned by RelativeDirectionTests.
+/// The one relative-bearing phrasing in the app, so the surroundings readout ("Concourse B,
+/// ahead and to the right") and ground traffic (GroundTrafficLogic.DescribeDirection
+/// delegates here) say the same words for the same angle. Thresholds pinned by
+/// RelativeDirectionTests.
 /// </summary>
 public static class RelativeDirection
 {

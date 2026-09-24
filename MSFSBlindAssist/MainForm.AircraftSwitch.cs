@@ -1334,6 +1334,10 @@ public partial class MainForm
         landingExitPlanner?.Clear();
         flareAssistManager?.Disarm(announce: true);
 
+        // The ground-traffic runway watch caches an airport's runways too (the line-up wait needs them
+        // after taxi guidance has stopped). Silent: the next route or takeoff-assist runway reloads them.
+        groundTrafficMonitor?.ClearRunwayCache();
+
         UpdateDatabaseStatusDisplay();
     }
 

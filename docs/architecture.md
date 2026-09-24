@@ -24,6 +24,63 @@ This document describes the core components and design patterns of MSFS Blind As
 - **A32NX:** the strengthening is in the SHARED `SimConnectManager` — needs a live A32NX connect check (architecturally identical: fewer continuous vars, same cache reads).
 - **`forceUpdate` works on batch-covered vars too.** Because a Continuous+IsAnnounced var has NO individual data def, a `RequestVariable(key, forceUpdate:true)` is delivered via the batch stream, not `ProcessIndividualVariableResponse`. `ProcessContinuousBatch` therefore consults `forceUpdateVariables` (same `lock` + `Remove` as the individual path) and fires `SimVarUpdated` even when the value is unchanged — without that, a force-read of an unchanged batch-covered value would silently no-op. Keep both paths honoring `forceUpdate`.
 
+### Request id ranges
+
+SimConnect treats a request issued under a request id already in use as a REPLACEMENT of the
+earlier one, not a second, independent request — so every fixed range in this codebase must stay
+clear of every other, and grepping the `DATA_REQUESTS` enum (`SimConnectManager.cs`) alone is not
+enough to check that: several ranges live only as raw `(DATA_REQUESTS)` casts, invisible to a
+search for a named enum member. From low to high:
+
+- **2–14** — the fixed, individually-named `DATA_REQUESTS` one-shots (`REQUEST_FCU_VALUES`,
+  `REQUEST_AIRCRAFT_INFO`, `REQUEST_AIRCRAFT_POSITION`, …), the five
+  `REQUEST_CONTINUOUS_BATCH_n` (8–12) and `REQUEST_PANEL_BATCH`/`REQUEST_WEATHER_DATA` (13–14).
+- **300–340** — the hotkey-readout one-shots (`REQUEST_HEADING`, …, `REQUEST_SQUAWK_CODE`,
+  `REQUEST_LOCAL_TIME`/`REQUEST_ZULU_TIME`, `REQUEST_GSX_COUATL_STARTED` = 340) — two gaps in this
+  band (324–328 and 330–337) are reserved by comment only, for hardcoded takeoff-assist/hand-fly
+  and V-speed requests that never got their own enum member either.
+- **341–348** — the camera read's rotating range (`REQUEST_CAMERA_VIEW` = 341,
+  `SimConnectManager.CameraReadIdCount` = 8, `SimConnect/CameraReadWaiters.cs`): each
+  instrument-view read goes out under the next of these eight ids, so an abandoned read's late
+  reply can never complete the NEXT read — the original design shared ONE id for every camera
+  read and paid for exactly that bug.
+- **370–372** — hand-numbered too, ABOVE the 300–340 band and with no reserving comment in the
+  enum at all: the dispatcher matches 370 (waypoint info) and 371/372 (hand fly's heading and
+  vertical speed, issued in `SimConnectManager.Monitoring.cs`) by raw `(DATA_REQUESTS)` casts in
+  `SimConnectManager.Dispatch.cs`.
+- **500** — `REQUEST_AI_TRAFFIC`, TCAS's own ~150 nm sweep (`RequestAiTrafficData`).
+- **505–508** — the hand-numbered guidance frames, matched by the dispatcher via a raw
+  `(DATA_REQUESTS)` cast rather than a named enum member: 505 visual guidance, 506 takeoff
+  assist, 507 taxi-guidance position, 508 manual-landing flare/rollout assist
+  (`SimConnectManager.Monitoring.cs` issues them, `SimConnectManager.Dispatch.cs` reads them
+  back). The enum has no member for any of the four.
+- **600–607** — `REQUEST_GROUND_TRAFFIC`'s own rotating range
+  (`SimConnectManager.GroundTrafficRequestIdCount` = 8): the ground-traffic monitor's
+  small-radius sweeps (`RequestGroundTrafficData`), completing through the dedicated
+  `GroundTrafficSweepCompleted` event — never TCAS's `REQUEST_AI_TRAFFIC`. It is not 501–508
+  precisely because 505–508 sit there unnamed in the enum; a range chosen from the enum's own
+  text alone would have collided with them and cancelled taxi guidance's own position stream.
+- **700** — `REQUEST_ENUMERATE_INPUT_EVENTS`.
+- **`FreshReadPolicy.SeedRequestIdOffset` (900,000) + a data-definition id** — the one-shot SEED
+  read that primes the cache beside a SIM_FRAME own subscription, resolved back to its
+  definition id by subtracting the offset (`FreshReadPolicy.DataDefinitionIdOf`). Sits between
+  the definition-id range below and the fresh-read range above, clear of both.
+- **`INDIVIDUAL_VARIABLE_BASE` (1000) upward** — one id per registered variable's data
+  definition; the counter resets to 1000 on every connection and every aircraft switch, and a
+  connection registers well under 2,000 defs (see the SimConnect data-definition ceiling above).
+- **`SimConnectManager.FreshRequestIdBase` (1,000,000) upward** — `ReadFreshAsync`'s own
+  per-read PERIOD.ONCE ids, chosen far enough above the largest data-definition id ever reached
+  that the two ranges can never meet, so a fresh read's answer can always be told from an
+  abandoned earlier read's.
+
+Choosing a new fixed id means checking ALL of these, not just the enum: `GroundTrafficRequestIdTests`
+pins that its 600–607 range clashes with none of the named `DATA_REQUESTS`/`DATA_DEFINITIONS`
+values and none of the hand-numbered ones either — a hand-kept list (324–328, 330–337, 370–372,
+505–508) and, so a FUTURE hand-numbered cast is caught too, a scan of every `*.cs` under
+`MSFSBlindAssist/` for a raw `(DATA_REQUESTS)NNN` cast — and that none of 505–508 is also a named
+enum value; a sweep planned at 501–508 during design, before that check existed, would have
+replaced taxi guidance's own 507 position stream mid-flight.
+
 ### MobiFlightWasmModule
 **File:** `SimConnect/MobiFlightWasmModule.cs`
 
