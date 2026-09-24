@@ -180,6 +180,16 @@ public static class RunwayWatchScopes
         return watched.Count == 0 ? RunwayWatch.None : new RunwayWatch(watched, mode);
     }
 
+    /// <summary>
+    /// A watch moving, under the same key, from a mode whose runway lines are queued (Holding, Vacating) into
+    /// one whose lines interrupt (OnRunway, LiningUp, TakeoffWait): the queued status may have been cut off
+    /// by the very instruction that moved the pilot (Continue at a hold; stopping after a landing exit), so it
+    /// is re-armed once, and spoken only if something is on the runway or on short final.
+    /// </summary>
+    public static bool ShouldRearmOnModeChange(RunwayWatchMode from, RunwayWatchMode to)
+        => from is RunwayWatchMode.Holding or RunwayWatchMode.Vacating
+           && to is RunwayWatchMode.OnRunway or RunwayWatchMode.LiningUp or RunwayWatchMode.TakeoffWait;
+
     /// <summary>The runways whose pavement holds the point, each named by its nearer end.</summary>
     public static IReadOnlyList<string> RunwaysUnder(IReadOnlyList<TaxiGraph.RunwayCenterline> runways, double lat, double lon)
     {

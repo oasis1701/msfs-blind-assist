@@ -191,6 +191,36 @@ public class RunwayWatchScopeTests
             under: new[] { "27" }, landingExit: true, gs: 2.0,
             vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "22"))).Mode);
 
+    // ── The first status re-armed on entering the runway (PR #247 final review H2) ────────────
+    // A status queued at a hold or while vacating can be cut off by the very instruction that moved
+    // the pilot ("Continuing.", "Entering Runway 27L…", the backtrack instruction, "Lined up.
+    // Activating takeoff assist.", or stopping after a landing exit), and its latches already marked
+    // every occupant and final known — so the SAME watch changing from a queuing mode into an
+    // interrupting one re-arms it once, spoken only if something is on the runway or on short final.
+
+    private static readonly RunwayWatchMode[] QueuingModes = { RunwayWatchMode.Holding, RunwayWatchMode.Vacating };
+    private static readonly RunwayWatchMode[] InterruptingModes =
+        { RunwayWatchMode.OnRunway, RunwayWatchMode.LiningUp, RunwayWatchMode.TakeoffWait };
+
+    public static IEnumerable<object[]> EveryModeChange()
+        => from f in Enum.GetValues<RunwayWatchMode>()
+           from t in Enum.GetValues<RunwayWatchMode>()
+           select new object[] { f, t, QueuingModes.Contains(f) && InterruptingModes.Contains(t) };
+
+    [Theory]
+    [MemberData(nameof(EveryModeChange))]
+    public void Only_a_queuing_mode_into_an_interrupting_one_re_arms_the_first_status(
+        RunwayWatchMode from, RunwayWatchMode to, bool expected)
+        => Assert.Equal(expected, RunwayWatchScopes.ShouldRearmOnModeChange(from, to));
+
+    [Fact]
+    public void Six_modes_and_exactly_six_mode_changes_re_arm()
+    {
+        var modes = Enum.GetValues<RunwayWatchMode>();
+        Assert.Equal(6, modes.Length);   // a new mode must be placed in one of the two sets above
+        Assert.Equal(6, modes.SelectMany(f => modes.Where(t => RunwayWatchScopes.ShouldRearmOnModeChange(f, t))).Count());
+    }
+
     [Fact]
     public void A_backtrack_outranks_vacating()
     {

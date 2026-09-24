@@ -149,10 +149,15 @@ public sealed class GroundTrafficMonitor : IDisposable
     private RunwayWatchMode _loggedWatchMode = RunwayWatchMode.None;
     private DateTime _watchStartedUtc = DateTime.MinValue;
     private bool _watchSummaryDone;
-    // Vacating -> OnRunway under the same key (the pilot stopped on the runway just landed on) re-arms
-    // the first status ONCE per watch, so it is heard again even though _watchSummaryDone was already
-    // true (PR #247 B3 review Important 2). Reset alongside _watchSummaryDone in ResetRunwayWatch.
+    // The same watch moving from a queuing mode (Holding, Vacating) into an interrupting one (OnRunway,
+    // LiningUp, TakeoffWait) re-arms the first status ONCE per watch
+    // (RunwayWatchScopes.ShouldRearmOnModeChange): a status already handed to the announcer may have
+    // been cut off by the very instruction that moved the pilot. The re-armed status is CRITICAL-ONLY
+    // (_rearmCriticalOnly) — spoken, interrupting, only when something is on the runway or on short
+    // final, otherwise completed silently (PR #247 final review H2, replacing B4's full-status
+    // Vacating -> OnRunway re-arm). Both reset alongside _watchSummaryDone in ResetRunwayWatch.
     private bool _firstStatusRearmed;
+    private bool _rearmCriticalOnly;
     // When the first status was first held back for a pending aircraft; MinValue = not deferred.
     private DateTime _firstStatusDeferredSinceUtc = DateTime.MinValue;
     private bool _runwayEmptiedPending;
@@ -421,17 +426,21 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (watch.IsActive && watch.Mode != _loggedWatchMode)
             {
                 _log.Info($"ev=watch mode key={watch.Key} mode={watch.Mode}");
-                // Vacating -> OnRunway under this same key means the pilot stopped on the runway just
-                // landed on. If the first status was already handed to the announcer, it never covered
-                // this — re-arm it ONCE per watch so the pilot hears the runway situation again,
-                // interrupting like any other on-runway first status (PR #247 B3 review Important 2).
-                if (_loggedWatchMode == RunwayWatchMode.Vacating && watch.Mode == RunwayWatchMode.OnRunway
+                // From a queuing mode into an interrupting one under this same key (_loggedWatchMode is
+                // the mode last adopted for it): Continue at a hold ("Continuing.", "Entering Runway
+                // 27L…", the backtrack instruction) or stopping on the runway after a landing exit. A
+                // first status already handed to the announcer may have been cut off by exactly that
+                // AnnounceImmediate, and its latches marked every occupant and final known — so re-arm
+                // it ONCE per watch, critical-only (PR #247 final review H2).
+                if (RunwayWatchScopes.ShouldRearmOnModeChange(_loggedWatchMode, watch.Mode)
                     && _watchSummaryDone && !_firstStatusRearmed)
                 {
                     _watchSummaryDone = false;
                     _firstStatusRearmed = true;
+                    _rearmCriticalOnly = true;
                     _firstStatusDeferredSinceUtc = DateTime.MinValue;
-                    _log.Info($"ev=watch status-rearmed key={watch.Key} reason=stopped-on-runway");
+                    string reason = _loggedWatchMode == RunwayWatchMode.Holding ? "entered-runway" : "stopped-on-runway";
+                    _log.Info($"ev=watch status-rearmed key={watch.Key} reason={reason}");
                 }
                 _loggedWatchMode = watch.Mode;
             }
@@ -498,6 +507,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _watchKey = "";
         _watchSummaryDone = false;
         _firstStatusRearmed = false;
+        _rearmCriticalOnly = false;
         _firstStatusDeferredSinceUtc = DateTime.MinValue;
         _runwayEmptiedPending = false;
         _knownOccupants.Clear();
@@ -1081,6 +1091,18 @@ public sealed class GroundTrafficMonitor : IDisposable
             var fin = status.SelectMany(s => s.Finals.Select(f => f.Ac.ObjectId)).ToList();
             var shortFin = status.SelectMany(s => s.Finals.Where(IsShortFinal).Select(f => f.Ac.ObjectId)).ToList();
             bool critical = interrupts && (occ.Count > 0 || shortFin.Count > 0);
+            // The one exception: a status RE-ARMED on entering the runway (SetWatch, H2) is critical-only.
+            // With nothing on the runway or on short final it completes silently, marking what it covers
+            // known exactly as the spoken path would, instead of repeating a status already handed over.
+            if (_rearmCriticalOnly && !critical)
+            {
+                _watchSummaryDone = true;
+                _rearmCriticalOnly = false;
+                _knownOccupants.UnionWith(occ);
+                _knownFinals.UnionWith(fin);
+                _shortFinalAnnounced.UnionWith(shortFin);
+                return;
+            }
             string key = _watchKey;
             candidates.Add(new TrafficCallout(
                 critical ? TrafficCalloutKind.RunwayCritical : TrafficCalloutKind.RunwayInfo, 0,
@@ -1088,6 +1110,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 () =>
                 {
                     _watchSummaryDone = true;
+                    _rearmCriticalOnly = false;
                     _knownOccupants.UnionWith(occ);
                     _knownFinals.UnionWith(fin);
                     _shortFinalAnnounced.UnionWith(shortFin);
