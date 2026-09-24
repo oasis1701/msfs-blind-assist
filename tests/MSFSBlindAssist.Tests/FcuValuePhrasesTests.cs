@@ -12,13 +12,21 @@
 // SI conversion may appear here — FBW #10855's note on the A380 readout: a "looks like radians"
 // guess mangles any heading of 006° or less, and the old ×196.85 spoke 500 fpm as "98400".
 
+using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 
 namespace MSFSBlindAssist.Tests;
 
-public class FcuValuePhrasesTests
+public class FcuValuePhrasesTests : IDisposable
 {
     private const uint FailureWarning = 0, NoComputedData = 1, FunctionalTest = 2, NormalOperation = 3;
+
+    // The phrases format numbers in the CURRENT culture on purpose (they must match the readouts),
+    // so the assertions below are only meaningful under a fixed one. Without this pin the suite is
+    // red on a comma-decimal developer machine ("Mach 0,78") while en-US CI stays green.
+    private readonly CultureInfo _previousCulture = CultureInfo.CurrentCulture;
+    public FcuValuePhrasesTests() => CultureInfo.CurrentCulture = new CultureInfo("en-US");
+    public void Dispose() => CultureInfo.CurrentCulture = _previousCulture;
 
     /// <summary>Pack an ARINC429 word the way FBW's Arinc429Utils::toSimVar does.</summary>
     internal static double Word(uint ssm, float value) =>
@@ -127,5 +135,12 @@ public class FcuValuePhrasesTests
     public void Flight_path_angle_is_silent_unless_the_word_is_a_selection(uint ssm, float degrees)
     {
         Assert.Null(FcuValuePhrases.FlightPathAngle(Word(ssm, degrees)));
+    }
+
+    [Fact]
+    public void The_suite_pins_en_US_so_a_comma_decimal_machine_formats_the_same()
+    {
+        Assert.Equal("en-US", CultureInfo.CurrentCulture.Name);
+        Assert.Equal("Mach 0.78", FcuValuePhrases.Speed(0.78));
     }
 }

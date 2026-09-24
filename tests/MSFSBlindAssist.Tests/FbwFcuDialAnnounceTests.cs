@@ -11,15 +11,23 @@
 // themselves are pinned in FcuValuePhrasesTests; the speak/stay-silent rules in
 // FcuValueAnnouncerTests.
 
+using System.Globalization;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Tests;
 
-public class FbwFcuDialAnnounceTests
+public class FbwFcuDialAnnounceTests : IDisposable
 {
     private const uint FailureWarning = 0, NoComputedData = 1, NormalOperation = 3;
     private static double Word(uint ssm, float value) => FcuValuePhrasesTests.Word(ssm, value);
+
+    // The phrases format numbers in the CURRENT culture on purpose (they must match the readouts),
+    // so the assertions below are only meaningful under a fixed one. Without this pin the suite is
+    // red on a comma-decimal developer machine ("Mach 0,78") while en-US CI stays green.
+    private readonly CultureInfo _previousCulture = CultureInfo.CurrentCulture;
+    public FbwFcuDialAnnounceTests() => CultureInfo.CurrentCulture = new CultureInfo("en-US");
+    public void Dispose() => CultureInfo.CurrentCulture = _previousCulture;
 
     public static IEnumerable<object[]> A32nxFamily() => new[]
     {
