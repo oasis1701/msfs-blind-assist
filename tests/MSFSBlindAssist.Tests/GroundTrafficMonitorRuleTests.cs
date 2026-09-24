@@ -446,32 +446,65 @@ public class GroundTrafficMonitorRuleTests
         Assert.Single(h.Said.All, m => m.Contains("British Airways A320 on runway 09"));
     }
 
+    // The watch's first status comes from a sweep requested AFTER the watch started, and two protections keep a
+    // stale sweep from giving it: the READINESS GATE (a sweep requested before the watch started gives no runway
+    // evaluation) and the CYCLE (a completion evaluates the watch and watch gate its own request saw, PR #247
+    // review L9, never the watch in progress). A sweep requested before the watch existed at all is stopped by
+    // both, so a test of that alone passes with either one removed; each test below leaves exactly one standing
+    // (PR #247 integration review, Minor 8).
+    private static AiTrafficDataEventArgs OnOneMileFinal()
+        => Ac(1, Threshold09EastM - 1852, RunwayNorthM, 140, "British Airways", "BAW1", onGround: false, altitudeFt: 300);
+
+    private const string FirstStatusWithTheFinal =
+        "Runway 09: no traffic seen on the runway. British Airways A320 on final runway 09, 1.0 miles.";
+
     [Fact]
-    public void The_first_runway_status_waits_for_a_sweep_requested_after_the_watch_started()
+    public void The_first_runway_status_waits_for_a_sweep_requested_after_the_watch_restarted()
     {
-        // A sweep requested BEFORE the watch started was taken in by an intake that drops airborne traffic —
-        // here its entries arrive while nothing is watched, so the aircraft on final is dropped. Its
-        // completion must not produce the watch's first status ("no traffic seen on the runway or on
-        // final", said with an aircraft on short final); the next sweep, requested after the watch
-        // started, does, and names the aircraft on final.
-        var h = AtTheHold(holdingShort: false);
-        h.Sim.Traffic.Add(Ac(1, Threshold09EastM - 1852, RunwayNorthM, 140, "British Airways", "BAW1",
-            onGround: false, altitudeFt: 300));
+        // Pins the READINESS GATE. A database switch restarts the watch under the SAME key within one tick, while the
+        // sweep requested under its previous run is still outstanding: that sweep's cycle names the very watch in
+        // progress, so the cycle lets it through and only its request time, before the restart, stops it. Its
+        // completion gives no first status (with this gate removed it gave one); the next sweep does.
+        var h = AtTheHold(holdingShort: true);
+        h.Sim.Traffic.Add(OnOneMileFinal());
 
-        h.TickOnly();
-        h.TickOnly();
-        h.TickOnly();                                // the slow cadence requests a sweep on the third tick
-        Assert.NotEqual(0u, h.Sim.PendingSweepId);
-        h.Sim.DeliverEntries();                      // nothing watched yet: the airborne aircraft is dropped
+        h.TickOnly();                                // t=1: the watch starts; a sweep is requested
+        h.Monitor.ClearRunwayCache();                // a database switch
+        h.TickOnly();                                // t=2: the watch restarts under the same key
+        h.Sim.CompleteSweep();                       // the sweep requested before the restart completes
 
-        h.Context = Context(Runway0927(), holdingShort: true);
-        h.TickOnly();                                // the watch starts; the old sweep is still outstanding
-        h.Sim.DeliverCompletion();
+        Assert.Empty(h.Said.All);
 
-        Assert.DoesNotContain(h.Said.All, m => m.StartsWith("Runway 09"));
+        h.Tick();                                    // t=3: the first sweep requested after the restart
+        Assert.Equal(new[] { "t=3 " + FirstStatusWithTheFinal }, h.Transcript);
+    }
 
-        h.Tick();                                    // the first sweep requested after the watch started
-        Assert.Contains(h.Said.All, m => m.StartsWith("Runway 09") && m.Contains("British Airways A320 on final runway 09"));
-        Assert.DoesNotContain(h.Said.All, m => m.Contains("no traffic seen on the runway or on final"));
+    [Fact]
+    public void The_first_runway_status_ignores_a_sweep_requested_while_the_watch_was_suspended()
+    {
+        // Pins the CYCLE. A watch suspended by its gate RESUMES with its original start time, so a sweep requested
+        // during the suspension passes the readiness gate — but its entries came in unwatched and the aircraft on
+        // final was dropped. Evaluated as the resumed watch (with the cycle removed) it said "Runway 09: no traffic
+        // seen on the runway or on final." with an aircraft on a 1 nm final. Its own cycle had no watch and a
+        // closed gate, so it gives no first status; the next sweep does, and names the aircraft on final.
+        bool suppressed = false;
+        var h = AtTheHold(holdingShort: true);
+        h.Monitor.RunwayWatchSuppressCheck = () => suppressed;
+        h.Sim.Traffic.Add(OnOneMileFinal());
+
+        h.TickOnly();                                // t=1: the watch starts; a sweep is requested
+        suppressed = true;
+        h.TickOnly();                                // t=2: the gate closes — the watch is suspended
+        h.Sim.CompleteSweep();                       // that sweep completes with the gate closed: nothing evaluated
+        h.TickOnly();                                // t=3: still suspended — a sweep is requested with no watch
+        h.Sim.DeliverEntries();                      // its entries arrive unwatched: the aircraft on final is dropped
+        suppressed = false;
+        h.TickOnly();                                // t=4: the gate reopens — the watch resumes, same start time
+        h.Sim.DeliverCompletion();                   // the sweep requested while suspended completes
+
+        Assert.Empty(h.Said.All);
+
+        h.Tick();                                    // t=5: the first sweep requested after the resume
+        Assert.Equal(new[] { "t=5 " + FirstStatusWithTheFinal }, h.Transcript);
     }
 }
