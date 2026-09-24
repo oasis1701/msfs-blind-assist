@@ -40,9 +40,8 @@ public class GroundTrafficMonitorRuleTests
         // "Stop", and the one queued 30 m behind it still gets its own — the author's rule withholds only
         // Awareness and Caution for traffic behind the first. PR #247 integration follow-up R3 (M2 concern
         // 1 / review scenario P6): the second "Stop" no longer cuts the first one off a second later — it
-        // is withheld from interrupting for the full InterruptProtectMs window (handled like the other
-        // alerts meanwhile, though the alert slot is itself still spaced from British Airways' own "on your
-        // route" line), landing at t=6 — exactly 3 s after British Airways' "Stop" at t=3 — instead of t=4.
+        // is withheld (neither spoken nor latched) for the full InterruptProtectMs window and interrupts once
+        // the window ends, at t=6 — exactly 3 s after British Airways' "Stop" at t=3 — instead of t=4.
         var h = OnRoute(ownGs: 6);
         h.Sim.Traffic.Add(Ac(1, 30, 0, 0, "British Airways", "BAW1"));
         h.Sim.Traffic.Add(Ac(2, 60, 0, 0, "Lufthansa", "DLH2"));
@@ -173,6 +172,7 @@ public class GroundTrafficMonitorRuleTests
     }
 
     private const double Kt = 0.514444;   // metres a second per knot
+    private const double Ft = 0.3048;     // metres per foot
 
     /// <summary>
     /// The pilot behind one leader on a straight route east, both starting stopped. Each <see cref="Step"/>
@@ -585,5 +585,114 @@ public class GroundTrafficMonitorRuleTests
 
         h.Tick();                                     // t=4: the first sweep requested after the resume
         Assert.Equal(new[] { "t=4 " + FirstStatusWithTheFinal }, h.Transcript);
+    }
+
+    // ── A withheld interrupt stays an interrupt ─────────────────────────────────────────────────────
+
+    // Inside InterruptProtectMs of the last interrupt, an interrupt that is not STRICTLY more urgent is withheld:
+    // not spoken, not latched, re-evaluated every sweep, and spoken as an interrupt once the window ends — never
+    // moved to the queued channel, where it was latched with no protect window of its own and the next interrupt
+    // (even a less urgent one, or another feature's) cancelled it before it was heard (PR #247 focused re-review
+    // I1: both scenarios below are the reviewer's probes, ported unchanged).
+
+    [Fact]
+    public void A_second_Stop_withheld_by_the_protect_window_interrupts_when_it_ends_and_no_Slow_down_cuts_it_off()
+    {
+        // Rolling east at 6 kt. KLM, stopped on the route 170 m ahead, opens with its "on your route" line at t=3.
+        // British Airways appears 240 ft dead ahead on the route at t=5 ("Stop"), Lufthansa 290 ft ahead and 40 m
+        // left of the route at t=6, Delta 440 ft ahead and 45 m right of it at t=8 (a "Slow down"), and the pilot
+        // stops from t=9. Air France, taxiing away 1,000 ft behind and never spoken, keeps the sweep at 1 s.
+        // Lufthansa's "Stop" is withheld until British Airways' window ends and interrupts at t=8, where Delta's
+        // less urgent "Slow down" loses to it — and nothing interrupts it after. Through the queued alert slot it
+        // went out at t=6, latched, and Delta's "Slow down" cancelled it at t=8: the aircraft very close on the
+        // left was never called again.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        const double ownKts = 6.0;
+        double ownM = 0;
+        h.Sim.Position = Own(ownM, ownKts);
+        h.Sim.Traffic.Add(Ac(4, 170, 0, 0, "KLM", "KLM4"));
+        var airFrance = Ac(5, -305, 0, 5, "Air France", "AFR5", headingDeg: 270);
+        h.Sim.Traffic.Add(airFrance);
+        double airFranceM = -305;
+        var britishAirways = Ac(1, 0, 0, 0, "British Airways", "BAW1");
+        var lufthansa = Ac(2, 0, 40, 0, "Lufthansa", "DLH2");
+        var delta = Ac(3, 0, -45, 0, "Delta", "DAL3");
+        for (int s = 1; s <= 14; s++)
+        {
+            ownM += ownKts * Kt;
+            airFranceM -= 5 * Kt;
+            airFrance.Longitude = airFranceM * M;
+            h.Sim.Position = Own(ownM, ownKts);
+            if (s == 5)                                                    // 240 ft dead ahead, on the route
+            {
+                britishAirways.Longitude = (ownM + 240 * Ft) * M;
+                h.Sim.Traffic.Add(britishAirways);
+            }
+            if (s == 6)                                                    // 290 ft, 40 m left of the route
+            {
+                lufthansa.Longitude = (ownM + Math.Sqrt(Math.Pow(290 * Ft, 2) - 40 * 40)) * M;
+                h.Sim.Traffic.Add(lufthansa);
+            }
+            if (s == 8)                                                    // 440 ft, 45 m right of the route
+            {
+                delta.Longitude = (ownM + Math.Sqrt(Math.Pow(440 * Ft, 2) - 45 * 45)) * M;
+                h.Sim.Traffic.Add(delta);
+            }
+            if (s >= 9) { ownM -= ownKts * Kt; h.Sim.Position = Own(ownM, 0); }   // the pilot stops
+            h.Tick();
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=3 KLM A320 on your route, taxiway A, 550 feet ahead, stopped.",
+            "t=5 [INT] Stop, British Airways A320 very close, ahead, 250 feet.",
+            "t=8 [INT] Stop, Lufthansa A320 very close, ahead and to the left, 250 feet.",
+            "t=9 Delta A320, ahead, 450 feet, stopped.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void On_the_runway_a_status_withheld_after_a_Stop_interrupts_when_the_window_ends()
+    {
+        // On runway 09/27, heading west at 3 kt, on a taxi route that leaves it southward: no hold, so the watch is
+        // OnRunway and runway events interrupt. British Airways is stopped on the runway 240 ft ahead (a "Stop" AND
+        // a runway occupant), Delta is on a 1.0 nm final to 27, and Lufthansa appears very close at t=4, 30 m north
+        // of the centreline (off the pavement). The watch's first status (RunwayCritical) loses the interrupt to
+        // British Airways' "Stop" at t=1, is withheld through that window, loses again to Lufthansa's more urgent
+        // "Stop" at t=4, and interrupts once Lufthansa's window ends, at t=7, naming the aircraft on final. Through
+        // the queued alert slot it went out at t=2 with every latch committed (both aircraft known, the short final
+        // announced), and Lufthansa's "Stop" cancelled it at t=4: a pilot on the runway was never told of the
+        // aircraft on a one-mile final.
+        var h = new GroundTrafficHarness
+        {
+            Context = new GroundTrafficRouteContext
+            {
+                Runways = new[] { Runway0927() },
+                AirportIcao = "TEST",
+                State = TaxiGuidanceState.Taxiing,
+                RouteAhead = new List<GroundTrafficRoutePoint>
+                {
+                    new(RunwayNorthM * M, 3000 * M, "C", 0), new((RunwayNorthM - 200) * M, 3000 * M, "C", 200),
+                },
+            },
+        };
+        h.Sim.Position = Own(3000, 3, northM: RunwayNorthM, headingDeg: 270);
+        h.Sim.Traffic.Add(Ac(1, 3000 - 240 * Ft, RunwayNorthM, 0, "British Airways", "BAW1", headingDeg: 270));
+        h.Sim.Traffic.Add(Ac(2, Threshold27EastM + 1852, RunwayNorthM, 140, "Delta", "DAL2", headingDeg: 270,
+            onGround: false, altitudeFt: 300));                               // 1.0 nm final to 27
+        var lufthansa = Ac(3, 3000 - 200 * Ft, RunwayNorthM + 30, 0, "Lufthansa", "DLH3", headingDeg: 270);
+        for (int s = 1; s <= 10; s++)
+        {
+            if (s == 4) h.Sim.Traffic.Add(lufthansa);
+            h.Tick();
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=1 [INT] Stop, British Airways A320 very close, ahead, 250 feet.",
+            "t=4 [INT] Stop, Lufthansa A320 very close, ahead and to the right, 200 feet.",
+            "t=7 [INT] Runway 27: British Airways A320 on the runway, stopped, ahead, 250 feet. "
+                + "Delta A320 on final runway 27, 1.0 miles.",
+        }, h.Transcript);
     }
 }

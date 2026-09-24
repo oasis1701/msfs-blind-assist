@@ -17,6 +17,10 @@ public class TrafficSpeechPolicyTests
     private static SpeechPlan Plan(DateTime? lastAlert = null, bool suppressed = false, params TrafficCallout[] c)
         => TrafficSpeechPolicy.Plan(c, Now, lastAlert ?? DateTime.MinValue, suppressed);
 
+    /// <summary>Every line a plan hands to the announcer: the caller speaks, and latches, exactly these.</summary>
+    private static IEnumerable<TrafficCallout> Planned(SpeechPlan p)
+        => new[] { p.Interrupt, p.Alert }.OfType<TrafficCallout>().Concat(p.Info);
+
     [Theory]
     [InlineData(TrafficCalloutKind.Warning, true)]
     [InlineData(TrafficCalloutKind.RunwayCritical, true)]
@@ -93,14 +97,18 @@ public class TrafficSpeechPolicyTests
     [Fact]
     public void A_less_urgent_interrupt_never_cuts_a_more_urgent_one_off_within_three_seconds()
     {
-        // "Stop" spoken 1 s ago; this evaluation has a "Slow down" for another aircraft.
-        var p = TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Caution) }, Now, DateTime.MinValue, false,
+        // "Stop" spoken 1 s ago; this evaluation has a "Slow down" for another aircraft. It is withheld: not the
+        // interrupt, and never moved to the queued alert slot (PR #247 focused re-review I1) — so it is neither
+        // spoken nor latched, and the next sweep offers it again.
+        var slowDown = C(TrafficCalloutKind.Caution);
+        var p = TrafficSpeechPolicy.Plan(new[] { slowDown }, Now, DateTime.MinValue, false,
             TrafficCalloutKind.Warning, Now.AddSeconds(-1));
-        Assert.Null(p.Interrupt);              // withheld from interrupting, unmarked, re-evaluated next sweep
-        Assert.Equal(TrafficCalloutKind.Caution, p.Alert!.Kind);   // handled like the other alerts instead
-        p = TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Caution) }, Now, DateTime.MinValue, false,
+        Assert.Null(p.Interrupt);
+        Assert.Null(p.Alert);                  // no ordinary alert candidate: the slot stays empty
+        Assert.DoesNotContain(slowDown, Planned(p));
+        p = TrafficSpeechPolicy.Plan(new[] { slowDown }, Now, DateTime.MinValue, false,
             TrafficCalloutKind.Warning, Now.AddMilliseconds(-TrafficSpeechPolicy.InterruptProtectMs));
-        Assert.NotNull(p.Interrupt);
+        Assert.Same(slowDown, p.Interrupt);
     }
 
     [Fact]
@@ -111,18 +119,41 @@ public class TrafficSpeechPolicyTests
     [Fact]
     public void An_equally_urgent_interrupt_does_not_cut_in_within_three_seconds()
     {
-        // PR #247 integration follow-up R3: a second "Stop" (for another aircraft) no longer cuts the
-        // first one off a second later — it is handled like the other alerts instead.
-        var p = TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Warning) }, Now, DateTime.MinValue, false,
+        // PR #247 integration follow-up R3: a second "Stop" (for another aircraft) no longer cuts the first one
+        // off a second later. Withheld, it is never moved to the queued alert slot (PR #247 focused re-review
+        // I1): the slot goes to the best ordinary alert candidate, and the "Stop" is not planned at all.
+        var stop = C(TrafficCalloutKind.Warning, 90);
+        var onRoute = C(TrafficCalloutKind.OnRoute, 400);
+        var p = TrafficSpeechPolicy.Plan(new[] { stop, onRoute }, Now, DateTime.MinValue, false,
             TrafficCalloutKind.Warning, Now.AddSeconds(-1));
         Assert.Null(p.Interrupt);
-        Assert.Equal(TrafficCalloutKind.Warning, p.Alert!.Kind);
+        Assert.Same(onRoute, p.Alert);
+        Assert.DoesNotContain(stop, Planned(p));
     }
 
     [Fact]
     public void An_equally_urgent_interrupt_cuts_in_once_the_protect_window_has_passed()
         => Assert.NotNull(TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Warning) }, Now, DateTime.MinValue, false,
             TrafficCalloutKind.Warning, Now.AddMilliseconds(-TrafficSpeechPolicy.InterruptProtectMs)).Interrupt);
+
+    [Fact]
+    public void A_withheld_interrupt_is_offered_again_and_interrupts_once_the_protect_window_has_passed()
+    {
+        // Nothing latched the withheld "Stop", so every sweep offers the same candidate again: inside the window it
+        // is still not planned (not the interrupt, not the alert line); once InterruptProtectMs has passed since
+        // the last interrupt it IS the interrupt (PR #247 focused re-review I1).
+        var stop = C(TrafficCalloutKind.Warning, 90);
+        var candidates = new[] { stop, C(TrafficCalloutKind.Awareness, 500) };
+        var lastInterruptUtc = Now.AddSeconds(-2);
+
+        var p = TrafficSpeechPolicy.Plan(candidates, Now, DateTime.MinValue, false,
+            TrafficCalloutKind.Warning, lastInterruptUtc);
+        Assert.DoesNotContain(stop, Planned(p));
+
+        p = TrafficSpeechPolicy.Plan(candidates, lastInterruptUtc.AddMilliseconds(TrafficSpeechPolicy.InterruptProtectMs),
+            DateTime.MinValue, false, TrafficCalloutKind.Warning, lastInterruptUtc);
+        Assert.Same(stop, p.Interrupt);
+    }
 
     [Fact]
     public void Planning_never_marks_anything_spoken()

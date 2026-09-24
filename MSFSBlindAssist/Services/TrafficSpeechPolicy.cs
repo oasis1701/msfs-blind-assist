@@ -44,13 +44,15 @@ public static class TrafficSpeechPolicy
     public const int AlertLineSpacingMs = 3000;
 
     /// <summary>
-    /// An interrupt of EQUAL OR LESSER urgency is withheld for this long after a more urgent one, so a
-    /// second "Stop" for another aircraft cannot cut off the "Stop" spoken for the first a second earlier
-    /// (PR #247 integration follow-up R3 — with the faster polling this task's own timing brought, a
-    /// same-kind "Stop" routinely followed within a second, so equal urgency had to join lesser urgency
-    /// here). Only a STRICTLY MORE urgent interrupt may still cut in. A withheld interrupt is not simply
-    /// dropped: it is handled like the other alerts (queued, subject to <see cref="AlertLineSpacingMs"/>)
-    /// — see <see cref="Plan"/>. It stays unmarked either way and is re-evaluated next sweep.
+    /// For this long after an interrupt, the next one is withheld unless it is STRICTLY MORE urgent — so a
+    /// "Slow down", or a second "Stop" for another aircraft, cannot cut off the "Stop" spoken a second
+    /// earlier (PR #247 integration follow-up R3 — with the faster polling this task's own timing brought, a
+    /// same-kind "Stop" routinely followed within a second, so equal urgency joined lesser urgency here). A
+    /// withheld interrupt is left out of the plan, so the caller neither speaks nor latches it: it is
+    /// re-evaluated at the caller's next evaluation and, still due, interrupts once this window has passed.
+    /// It is never moved to the queued alert slot instead — there it was latched with no protect window of
+    /// its own, and the next interrupt, even a less urgent one, cancelled it before it was heard (PR #247
+    /// focused re-review I1).
     /// </summary>
     public const int InterruptProtectMs = 3000;
 
@@ -66,11 +68,11 @@ public static class TrafficSpeechPolicy
     {
         if (candidates.Count == 0) return SpeechPlan.Empty;
 
-        var topInterrupt = candidates.Where(c => Interrupts(c.Kind))
+        var interrupt = candidates.Where(c => Interrupts(c.Kind))
             .OrderByDescending(c => Rank(c.Kind)).ThenBy(c => c.DistFt).FirstOrDefault();
-        var interrupt = topInterrupt;
-        // Equal or lesser urgency within the protect window does not interrupt (R3: was "lesser" only) —
-        // it falls through to the alert slot below instead of being dropped outright.
+        // Equal or lesser urgency within the protect window does not interrupt (R3: was "lesser" only). The
+        // withheld line is left out of the plan — not spoken, not latched, re-evaluated next time — and never
+        // joins the alert slot below (PR #247 focused re-review I1).
         bool interruptWithheld = interrupt != null && lastInterruptKind is { } last
             && (nowUtc - lastInterruptUtc).TotalMilliseconds < InterruptProtectMs
             && Rank(interrupt.Kind) <= Rank(last);
@@ -80,11 +82,8 @@ public static class TrafficSpeechPolicy
 
         TrafficCallout? alert = null;
         if ((nowUtc - lastAlertLineUtc).TotalMilliseconds >= AlertLineSpacingMs)
-        {
-            var alertCandidates = candidates.Where(c => !Interrupts(c.Kind) && !IsInfo(c.Kind));
-            if (interruptWithheld) alertCandidates = alertCandidates.Append(topInterrupt!);
-            alert = alertCandidates.OrderByDescending(c => Rank(c.Kind)).ThenBy(c => c.DistFt).FirstOrDefault();
-        }
+            alert = candidates.Where(c => !Interrupts(c.Kind) && !IsInfo(c.Kind))
+                .OrderByDescending(c => Rank(c.Kind)).ThenBy(c => c.DistFt).FirstOrDefault();
 
         var info = candidates.Where(c => IsInfo(c.Kind)).ToList();
         return new SpeechPlan(interrupt, alert, info);
