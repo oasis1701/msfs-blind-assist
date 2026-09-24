@@ -132,13 +132,18 @@ public class FcuValueAnnouncerTests
         Assert.True(a.IsSettling);
     }
 
+    private static void Deliver(FcuValueAnnouncer a, int count)
+    {
+        for (int i = 0; i < count; i++) a.OnBatchDelivered(1);
+    }
+
     [Fact]
     public void A_value_the_settle_absorbed_is_not_spoken_once_it_ends()
     {
         var a = Seeded(Hdg, "Heading 250 degrees");
         a.BeginSettle();
         a.Observe(Hdg, "Heading 123 degrees", muted: false, nowMs: 0);
-        for (int i = 0; i < 4; i++) a.OnBatchDelivered(1);
+        Deliver(a, 1 + FcuValueAnnouncer.SettleQuietDeliveries);
         Assert.False(a.IsSettling);
 
         Assert.Null(a.Observe(Hdg, "Heading 123 degrees", muted: false, nowMs: 0));
@@ -146,18 +151,36 @@ public class FcuValueAnnouncerTests
     }
 
     [Fact]
-    public void The_settle_ends_after_three_quiet_deliveries_once_the_aircraft_has_published()
+    public void The_settle_ends_after_the_quiet_deliveries_once_the_aircraft_has_published()
     {
         var a = Seeded(Hdg, "Heading 250 degrees");
         a.BeginSettle();
         a.Observe(Hdg, "Heading 123 degrees", muted: false, nowMs: 0);
 
         a.OnBatchDelivered(1);   // carries the change: not quiet
-        a.OnBatchDelivered(1);   // quiet 1
-        a.OnBatchDelivered(1);   // quiet 2
+        Deliver(a, FcuValueAnnouncer.SettleQuietDeliveries - 1);
         Assert.True(a.IsSettling);
-        a.OnBatchDelivered(1);   // quiet 3
+        a.OnBatchDelivered(1);
         Assert.False(a.IsSettling);
+    }
+
+    [Fact]
+    public void A_value_the_sim_itself_writes_is_not_evidence_the_aircraft_published()
+    {
+        // The A380's FCU altitude is a stock SimVar the sim core can restore from the flight file
+        // before the FBW WASM has run at all; taking it as "the aircraft has published" ended the
+        // settle early and let the loaded heading and speed be called out as dial turns.
+        const string Alt = "ALT";
+        var a = Seeded(Alt, "Altitude 10000 feet");
+        a.BeginSettle();
+        Assert.Null(a.Observe(Alt, "Altitude 5000 feet", muted: false, nowMs: 0, countsAsLoadEvidence: false));
+
+        Deliver(a, 1 + FcuValueAnnouncer.SettleQuietDeliveries);
+        Assert.True(a.IsSettling);
+
+        Deliver(a, FcuValueAnnouncer.SettleMaxDeliveries);
+        Assert.False(a.IsSettling);
+        Assert.Null(a.Observe(Alt, "Altitude 5000 feet", muted: false, nowMs: 0));   // absorbed, not replayed
     }
 
     [Fact]
@@ -182,7 +205,7 @@ public class FcuValueAnnouncerTests
         a.BeginSettle();
         a.Observe(Hdg, "Heading 250 degrees", muted: false, nowMs: 0);
 
-        for (int i = 0; i < 4; i++) a.OnBatchDelivered(1);
+        Deliver(a, 1 + FcuValueAnnouncer.SettleQuietDeliveries);
         Assert.True(a.IsSettling);
     }
 
@@ -205,13 +228,10 @@ public class FcuValueAnnouncerTests
         var a = Seeded(Hdg, "Heading 250 degrees");
         a.BeginSettle();
         a.Observe(Hdg, "Heading 123 degrees", muted: false, nowMs: 0);
-        a.OnBatchDelivered(1);
-        a.OnBatchDelivered(1);
-        a.OnBatchDelivered(1);
+        Deliver(a, FcuValueAnnouncer.SettleQuietDeliveries);         // one short of ending
         a.Observe(Spd, "Speed 140 knots", muted: false, nowMs: 0);   // a first sample moves too
         a.OnBatchDelivered(1);   // carries it
-        a.OnBatchDelivered(1);
-        a.OnBatchDelivered(1);
+        Deliver(a, FcuValueAnnouncer.SettleQuietDeliveries - 1);
         Assert.True(a.IsSettling);
         a.OnBatchDelivered(1);
         Assert.False(a.IsSettling);
@@ -236,10 +256,10 @@ public class FcuValueAnnouncerTests
         var a = Seeded(Hdg, "Heading 250 degrees");
         a.BeginSettle();
         a.Observe(Hdg, "Heading 123 degrees", muted: false, nowMs: 0);
-        a.OnBatchDelivered(1);
-        a.OnBatchDelivered(1);
-        a.OnBatchDelivered(1);
+        Deliver(a, FcuValueAnnouncer.SettleQuietDeliveries);   // one delivery short of ending
 
+        // A second load: the evidence and the quiet count both start again, so the delivery that
+        // would have ended the first settle does not end this one.
         a.BeginSettle();
         a.OnBatchDelivered(1);
         Assert.True(a.IsSettling);

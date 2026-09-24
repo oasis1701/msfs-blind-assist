@@ -35,13 +35,21 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
         AcceptButton = setButton;
         CancelButton = closeButton;
 
-        // Reflect the live HDG·V/S vs TRK·FPA mode in the toggle button label.
+        // Reflect the live HDG·V/S vs TRK·FPA mode in the toggle button label. A32NX_TRK_FPA_MODE_ACTIVE
+        // is OnRequest (streaming it as announced spoke every panel TRK/FPA press twice), so the
+        // window asks for it itself while open — an unforced read, which updates the cache the label
+        // reads and speaks nothing.
         _modeTimer = new System.Windows.Forms.Timer { Interval = 500 };
-        _modeTimer.Tick += (s, e) => UpdateTrkLabel();
+        _modeTimer.Tick += (s, e) => { RequestTrkMode(); UpdateTrkLabel(); };
     }
 
     // Fenix-style silent open (see FBWA320SpeedWindow): no stale-then-fresh readout.
-    protected override void SpeakInitialReadout() { UpdateTrkLabel(); _modeTimer?.Start(); headingTextBox.Focus(); }
+    protected override void SpeakInitialReadout() { RequestTrkMode(); UpdateTrkLabel(); _modeTimer?.Start(); headingTextBox.Focus(); }
+
+    private void RequestTrkMode()
+    {
+        if (simConnect.IsConnected) simConnect.RequestVariable("A32NX_TRK_FPA_MODE_ACTIVE");
+    }
 
     private void UpdateTrkLabel()
     {

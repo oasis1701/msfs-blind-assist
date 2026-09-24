@@ -627,6 +627,12 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     protected void SuppressFcuValueChangeEcho(params string[] keys) =>
         _fcuValues.SuppressEcho(keys, Environment.TickCount64);
 
+    /// <summary>Whether a delivery of this FCU value var proves the aircraft itself has published
+    /// after a flight load (<see cref="FcuValueAnnouncer"/>'s settle). A stock SimVar does not: the
+    /// sim core can restore it from the flight file before the aircraft's WASM has run.</summary>
+    internal static bool CountsAsFcuLoadEvidence(SimConnect.SimVarDefinition? def) =>
+        def?.Type != SimConnect.SimVarType.SimVar;
+
     /// <summary>Speak an MCP/FCU selected value when it changes (hardware knob turns).
     /// <paramref name="phrase"/> is null while the window shows no selection — call it for EVERY
     /// delivery of the var anyway, so the dashes are recorded and the value reappearing is heard.
@@ -634,7 +640,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// value) still records the value, so nothing is replayed later.</summary>
     protected void AnnounceFcuValue(string key, string? phrase, ScreenReaderAnnouncer announcer, bool muted = false)
     {
-        string? spoken = _fcuValues.Observe(key, phrase, muted, Environment.TickCount64);
+        GetVariables().TryGetValue(key, out var def);
+        string? spoken = _fcuValues.Observe(key, phrase, muted, Environment.TickCount64,
+            countsAsLoadEvidence: CountsAsFcuLoadEvidence(def));
         if (spoken == null) return;
         if (announcer.QueuedAnnouncementCount >= FcuMaxSharedQueueDepth) return;
         announcer.Announce(spoken);

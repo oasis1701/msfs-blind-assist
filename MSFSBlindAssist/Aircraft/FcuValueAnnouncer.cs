@@ -26,12 +26,16 @@ internal sealed class FcuValueAnnouncer
     internal const long EchoWindowMs = 2500;
 
     /// <summary>Consecutive first-batch deliveries with no FCU value moving that end a settle once
-    /// the aircraft has published since the reset.</summary>
-    internal const int SettleQuietDeliveries = 3;
+    /// the aircraft has published since the reset. Five, as the MD-11's Md11SeedGate: an FBW load
+    /// can publish its FCU values in more than one burst.</summary>
+    internal const int SettleQuietDeliveries = 5;
 
     /// <summary>First-batch deliveries after which a settle ends whatever happened — a load that
-    /// leaves every FCU value where it was never produces the change the quiet rule waits for.</summary>
-    internal const int SettleMaxDeliveries = 20;
+    /// leaves every FCU value where it was never produces the change the quiet rule waits for.
+    /// About thirty seconds, the MD-11 gate's ceiling: batches keep arriving with the OLD values
+    /// while a flight loads (the MD-11 measured its first publish 8.5 s after AircraftLoaded), so
+    /// this is the one bound that behaves like a clock, and it must outlast a slow load.</summary>
+    internal const int SettleMaxDeliveries = 30;
 
     private readonly Dictionary<string, string?> _lastPhrase = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, long> _echoUntilMs = new(StringComparer.Ordinal);
@@ -49,8 +53,11 @@ internal sealed class FcuValueAnnouncer
     /// Record <paramref name="phrase"/> as <paramref name="key"/>'s current state and return it
     /// when it should be spoken now; null otherwise. The baseline is committed FIRST, whatever the
     /// verdict, so a muted, echoed or settling change is absorbed rather than spoken late.
+    /// <paramref name="countsAsLoadEvidence"/> is false for a value the sim core can write itself
+    /// (a stock SimVar restored from the flight file before the aircraft's WASM has run): its
+    /// moving still restarts a settle's quiet count, but is no proof the aircraft has published.
     /// </summary>
-    public string? Observe(string key, string? phrase, bool muted, long nowMs)
+    public string? Observe(string key, string? phrase, bool muted, long nowMs, bool countsAsLoadEvidence = true)
     {
         bool seen = _lastPhrase.TryGetValue(key, out string? previous);
         _lastPhrase[key] = phrase;
@@ -60,7 +67,7 @@ internal sealed class FcuValueAnnouncer
         {
             if (moved)
             {
-                _publishedSinceReset = true;
+                if (countsAsLoadEvidence) _publishedSinceReset = true;
                 _movedSinceDelivery = true;
             }
             return null;
@@ -162,6 +169,15 @@ internal static class FcuValuePhrases
 
     /// <summary>The FCU altitude, already in the unit the pilot reads it in.</summary>
     public static string Altitude(double value, string unit) => $"Altitude {value:0} {unit}";
+
+    /// <summary>A selected-altitude ARINC429 word, feet. Normal Operation whenever the FCU is
+    /// working (the altitude window never shows dashes); a failed FCU publishes empty outputs,
+    /// which read as Failure Warning here rather than as "Altitude 0 feet".</summary>
+    public static string? AltitudeWord(double arincWord)
+    {
+        var word = new Arinc429Word(arincWord);
+        return word.IsNormalOperation ? Altitude(Math.Round(word.Value), "feet") : null;
+    }
 
     /// <summary>A selected-V/S ARINC429 word, feet per minute, snapped to the FCU's 100-fpm detent.</summary>
     public static string? VerticalSpeed(double arincWord)

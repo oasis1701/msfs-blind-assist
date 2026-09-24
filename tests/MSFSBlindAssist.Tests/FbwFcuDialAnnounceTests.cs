@@ -18,7 +18,7 @@ namespace MSFSBlindAssist.Tests;
 
 public class FbwFcuDialAnnounceTests
 {
-    private const uint NoComputedData = 1, NormalOperation = 3;
+    private const uint FailureWarning = 0, NoComputedData = 1, NormalOperation = 3;
     private static double Word(uint ssm, float value) => FcuValuePhrasesTests.Word(ssm, value);
 
     public static IEnumerable<object[]> A32nxFamily() => new[]
@@ -81,10 +81,29 @@ public class FbwFcuDialAnnounceTests
 
     [Theory]
     [MemberData(nameof(A32nxFamily))]
-    public void A32nx_altitude_is_spoken_in_feet(FlyByWireA320Definition def)
+    public void A32nx_altitude_is_spoken_in_feet_from_its_word(FlyByWireA320Definition def)
     {
-        Assert.True(def.TryComposeFcuValuePhrase("A32NX_FCU_AFS_DISPLAY_ALT_VALUE", 10000.0, out string? phrase));
+        Assert.True(def.TryComposeFcuValuePhrase("A32NX_FCU_SELECTED_ALTITUDE",
+            Word(NormalOperation, 10000f), out string? phrase));
         Assert.Equal("Altitude 10000 feet", phrase);
+    }
+
+    [Theory]
+    [MemberData(nameof(A32nxFamily))]
+    public void A32nx_altitude_is_silent_when_the_fcu_has_failed(FlyByWireA320Definition def)
+    {
+        // A failed FCU publishes empty outputs: the display value drops to 0, which spoke
+        // "Altitude 0 feet"; the word drops to Failure Warning, which says nothing.
+        Assert.True(def.TryComposeFcuValuePhrase("A32NX_FCU_SELECTED_ALTITUDE", Word(FailureWarning, 0f), out string? phrase));
+        Assert.Null(phrase);
+    }
+
+    [Theory]
+    [MemberData(nameof(A32nxFamily))]
+    public void A32nx_altitude_display_value_is_readout_only(FlyByWireA320Definition def)
+    {
+        Assert.False(def.TryComposeFcuValuePhrase("A32NX_FCU_AFS_DISPLAY_ALT_VALUE", 10000.0, out _));
+        Assert.Equal(UpdateFrequency.OnRequest, def.GetVariables()["A32NX_FCU_AFS_DISPLAY_ALT_VALUE"].UpdateFrequency);
     }
 
     [Theory]
@@ -114,7 +133,7 @@ public class FbwFcuDialAnnounceTests
             {
                 "A32NX_AUTOPILOT_HEADING_SELECTED",
                 "A32NX_AUTOPILOT_SPEED_SELECTED",
-                "A32NX_FCU_AFS_DISPLAY_ALT_VALUE",
+                "A32NX_FCU_SELECTED_ALTITUDE",
                 "A32NX_FCU_SELECTED_VERTICAL_SPEED",
                 "A32NX_FCU_SELECTED_FPA",
             })
@@ -206,6 +225,20 @@ public class FbwFcuDialAnnounceTests
             Assert.True(v.Units is null or "number", $"{key} Units = {v.Units}");
     }
 
+    [Theory]
+    [InlineData("FCU_ALT_VALUE", false)]                         // stock AUTOPILOT ALTITUDE LOCK VAR:3
+    [InlineData("A32NX_AUTOPILOT_HEADING_SELECTED", true)]
+    [InlineData("A32NX_AUTOPILOT_SPEED_SELECTED", true)]
+    [InlineData("A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", true)]
+    [InlineData("A32NX_PRIM_1_SELECTED_FPA", true)]
+    public void A380_only_the_aircrafts_own_values_prove_a_load_has_published(string key, bool expected)
+    {
+        // A stock SimVar can be restored by the sim core from the flight file before the FBW WASM
+        // has run, so its moving must not end the post-load settle.
+        var def = new FlyByWireA380Definition();
+        Assert.Equal(expected, BaseAircraftDefinition.CountsAsFcuLoadEvidence(def.GetVariables()[key]));
+    }
+
     [Fact]
     public void A380_registers_the_selected_altitude_simvar_under_exactly_one_key()
     {
@@ -245,13 +278,36 @@ public class FbwFcuDialAnnounceTests
     [Theory]
     [InlineData("A32NX.FCU_HDG_PUSH", new[] { "A32NX_AUTOPILOT_HEADING_SELECTED" })]
     [InlineData("A32NX.FCU_SPD_PULL", new[] { "A32NX_AUTOPILOT_SPEED_SELECTED" })]
-    [InlineData("A32NX.FCU_ALT_PUSH", new[] { "A32NX_FCU_AFS_DISPLAY_ALT_VALUE" })]
+    [InlineData("A32NX.FCU_ALT_PUSH", new[] { "A32NX_FCU_SELECTED_ALTITUDE" })]
     [InlineData("A32NX.FCU_VS_PULL", new[] { "A32NX_FCU_SELECTED_VERTICAL_SPEED", "A32NX_FCU_SELECTED_FPA" })]
     [InlineData("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", new[]
         { "A32NX_AUTOPILOT_HEADING_SELECTED", "A32NX_FCU_SELECTED_VERTICAL_SPEED", "A32NX_FCU_SELECTED_FPA" })]
+    // The FCU panel's number fields send these directly; their "Heading set to 270" is the
+    // confirmation, so the value coming back must not be spoken a second time.
+    [InlineData("A32NX.FCU_HDG_SET", new[] { "A32NX_AUTOPILOT_HEADING_SELECTED" })]
+    [InlineData("A32NX.FCU_SPD_SET", new[] { "A32NX_AUTOPILOT_SPEED_SELECTED" })]
+    [InlineData("A32NX.FCU_ALT_SET", new[] { "A32NX_FCU_SELECTED_ALTITUDE" })]
     public void A32nx_fcu_button_mutes_only_the_values_it_moves(string evt, string[] expected)
     {
         Assert.Equal(expected, FlyByWireA320Definition.FcuEchoKeysForEvent(evt));
+    }
+
+    [Theory]
+    // The A32NX's input-mode knob hotkeys, FCU panel buttons and FCU panel number fields send
+    // their events directly (not through FireFCUButton or a SetFCU*Value method), and each already
+    // speaks its own confirmation, so they arm the same echo keys — pulling the heading knob
+    // must not also say "Heading 123 degrees" over "Select heading mode".
+    [InlineData("A32NX.FCU_HDG_PULL", new[] { "A32NX_AUTOPILOT_HEADING_SELECTED" })]
+    [InlineData("A32NX.FCU_SPD_PULL", new[] { "A32NX_AUTOPILOT_SPEED_SELECTED" })]
+    [InlineData("A32NX.FCU_VS_PUSH", new[] { "A32NX_FCU_SELECTED_VERTICAL_SPEED", "A32NX_FCU_SELECTED_FPA" })]
+    [InlineData("A32NX.FCU_ALT_SET", new[] { "A32NX_FCU_SELECTED_ALTITUDE" })]
+    // Only A32NX.FCU_* events move FCU values: a panel key that merely CONTAINS "ALT", "SPD" or
+    // "VS" must not mute a callout.
+    [InlineData("XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT", new string[0])]
+    [InlineData("A32NX_AUTOBRAKES_ARMED_MODE", new string[0])]
+    public void A32nx_ui_origin_fcu_events_arm_the_echo_of_the_values_they_move(string evt, string[] expected)
+    {
+        Assert.Equal(expected, FlyByWireA320Definition.FcuEchoKeysForUiEvent(evt));
     }
 
     [Theory]
@@ -273,6 +329,7 @@ public class FbwFcuDialAnnounceTests
         "A32NX.FCU_HDG_PUSH", "A32NX.FCU_HDG_PULL", "A32NX.FCU_SPD_PUSH", "A32NX.FCU_SPD_PULL",
         "A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PULL", "A32NX.FCU_VS_PUSH", "A32NX.FCU_VS_PULL",
         "A32NX.FCU_TRK_FPA_TOGGLE_PUSH",
+        "A32NX.FCU_HDG_SET", "A32NX.FCU_SPD_SET", "A32NX.FCU_ALT_SET", "A32NX.FCU_VS_SET",
     }.Select(e => new object[] { e });
 
     [Theory]

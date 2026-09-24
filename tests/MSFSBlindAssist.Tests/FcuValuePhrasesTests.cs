@@ -68,6 +68,20 @@ public class FcuValuePhrasesTests
         Assert.Equal(expected, FcuValuePhrases.Altitude(value, unit));
     }
 
+    [Fact]
+    public void Altitude_word_speaks_a_selection_in_feet()
+    {
+        Assert.Equal("Altitude 10000 feet", FcuValuePhrases.AltitudeWord(Word(NormalOperation, 10000f)));
+    }
+
+    [Theory]
+    [InlineData(FailureWarning, 0f)]   // a failed FCU publishes empty outputs
+    [InlineData(NoComputedData, 5000f)]
+    public void Altitude_word_is_silent_unless_it_is_a_selection(uint ssm, float feet)
+    {
+        Assert.Null(FcuValuePhrases.AltitudeWord(Word(ssm, feet)));
+    }
+
     [Theory]
     [InlineData(-1500f, "Vertical speed -1500 feet per minute")]
     [InlineData(500f, "Vertical speed 500 feet per minute")]

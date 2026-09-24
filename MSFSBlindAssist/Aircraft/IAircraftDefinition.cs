@@ -356,8 +356,10 @@ public interface IAircraftDefinition
     /// Connected branch calls ResetAnnouncementBaselines; a tracker wiped there loses the
     /// baseline it has just taken and eats the NEXT real change as its baseline — on the MD-11
     /// that was the first master caution, the first COM tune, the first altimeter wind and the
-    /// pilot's first perf entry of every reconnected session (found 2026-09-08). Definitions
-    /// with no such trackers use the default (does nothing). ⚠️ The two callers differ: a
+    /// pilot's first perf entry of every reconnected session (found 2026-09-08). The base
+    /// (BaseAircraftDefinition) starts the FCU hardware-dial announcer's settle here, so an override
+    /// on an aircraft that uses AnnounceFcuValue must call base; otherwise definitions with no such
+    /// trackers need not override it. ⚠️ The two callers differ: a
     /// disconnect clears the cache, so the reconnect re-fires EVERY variable and a wiped tracker
     /// re-seeds on delivery; a flight load clears nothing and the batch fires only on a CHANGED
     /// value, so a tracker wiped for it must be re-seeded from the cache once the values have
@@ -382,7 +384,8 @@ public interface IAircraftDefinition
     /// not a guarantee of one call per period. The MD-11's context-reset seed pass waits on a
     /// full cycle of these and on the deliveries going quiet (Md11SeedGate);
     /// <see cref="DeferredFlushWatchVariable"/> is the narrower "the batch carrying THIS
-    /// variable arrived" form. Default: nothing.
+    /// variable arrived" form. The base counts the delivery toward the FCU hardware-dial announcer's
+    /// settle, so an override on an aircraft that uses AnnounceFcuValue must call base.
     /// </summary>
     void OnContinuousBatchDelivered(int batchNum);
 
