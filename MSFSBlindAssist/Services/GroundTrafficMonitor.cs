@@ -163,6 +163,15 @@ public sealed class GroundTrafficMonitor : IDisposable
     private bool _runwayEmptiedPending;
     // A single-runway watch whose sources all ended, kept while the aircraft is still crossing (ApplyLinger).
     private RunwayWatchLinger.Anchor? _linger;
+    // A watch the watch GATE closed on is SUSPENDED, not ended (SuspendWatch; PR #247 final review H5):
+    // its key and when; "" = none suspended. While suspended _watchKey is "" and nothing is watched,
+    // but every per-watch field (known sets, first-status state, _watchStartedUtc, _loggedWatchMode) is
+    // kept, and SetWatch RESUMES it — no new first status — when the same key comes back within
+    // RunwayWatchScopes.WatchResumeGraceMs. Any other watch adopted meanwhile, an airport or database
+    // change, or the grace lapsing (checked at the top of each tick) ends it as a stopped watch
+    // (EndSuspendedWatch). At most one watch is suspended: adopting an active watch always consumes it.
+    private string _suspendedKey = "";
+    private DateTime _suspendedUtc = DateTime.MinValue;
     private readonly HashSet<uint> _knownOccupants = new();
     private readonly HashSet<uint> _knownFinals = new();
     private readonly HashSet<uint> _shortFinalAnnounced = new();
@@ -230,9 +239,13 @@ public sealed class GroundTrafficMonitor : IDisposable
         bool proximity = live && ProximityGateOpen();
         bool watchGate = live && WatchGateOpen();
         LogGates(proximity, watchGate);
+        // A suspended watch whose key has not come back within the grace ends here, as a stopped watch.
+        EndLapsedSuspension(DateTime.UtcNow);
 
         if (!proximity) ResetProximityState();
-        if (!watchGate) { ClearLinger("gate"); SetWatch(RunwayWatch.None); }
+        // The watch gate closing SUSPENDS the watch in progress rather than ending it (H5); the linger is
+        // still cleared.
+        if (!watchGate) { ClearLinger("gate"); SuspendWatch(); }
         if (!proximity && !watchGate)
         {
             lock (_lock) { _runwayWatchActive = false; _queueScanActive = false; }
@@ -316,9 +329,10 @@ public sealed class GroundTrafficMonitor : IDisposable
     }
 
     /// <summary>
-    /// Adopts <paramref name="runways"/> as the runway cache. Another airport ends the watch and any
-    /// linger: both belong to the previous airport's runways, and a watch surviving into the new airport
-    /// could begin a linger against a same-named runway there (PR #247 B2 review). The same holds after
+    /// Adopts <paramref name="runways"/> as the runway cache. Another airport ends the watch — a
+    /// suspended one too — and any linger: all belong to the previous airport's runways, a watch
+    /// surviving into the new airport could begin a linger against a same-named runway there (PR #247
+    /// B2 review), and a suspended one could resume there. The same holds after
     /// <see cref="ClearRunwayCache"/>, which forgets which airport the cache held.
     /// </summary>
     private void CacheRunways(IReadOnlyList<TaxiGraph.RunwayCenterline> runways, string icao)
@@ -326,6 +340,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (!string.Equals(icao, _cachedRunwaysIcao, StringComparison.OrdinalIgnoreCase))
         {
             ClearLinger("airport-change");
+            EndSuspendedWatch();
             SetWatch(RunwayWatch.None);
         }
         _cachedRunways = runways;
@@ -418,11 +433,27 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// Adopts this tick's watch. A different key (the runway itself — unchanged from hold through
     /// backtrack, lineup and takeoff wait, and through another runway's pavement, which only widens
     /// <see cref="RunwayWatch.Runways"/>: <see cref="RunwayWatch.Key"/>) restarts the watch; the same
-    /// key never does.
+    /// key never does. A SUSPENDED watch (<see cref="SuspendWatch"/>) resumes when its own key comes
+    /// back within <see cref="RunwayWatchScopes.WatchResumeGraceMs"/> — same known sets, same
+    /// first-status state, same readiness, no new first status; any other active watch adopted
+    /// meanwhile ends it first, as a stopped watch (PR #247 final review H5). Adopting no watch leaves
+    /// a suspension as it is.
     /// </summary>
     private void SetWatch(RunwayWatch watch)
     {
         _currentWatch = watch;
+        if (watch.IsActive && _suspendedKey.Length > 0)
+        {
+            if (RunwayWatchScopes.ShouldResumeSuspended(_suspendedKey, _suspendedUtc, watch.Key, DateTime.UtcNow))
+            {
+                _watchKey = _suspendedKey;
+                _suspendedKey = "";
+                _suspendedUtc = DateTime.MinValue;
+                _log.Info($"ev=watch resume key={_watchKey}");
+            }
+            else
+                EndSuspendedWatch();
+        }
         if (watch.Key == _watchKey)
         {
             // The same watch in another mode (hold → backtrack → lineup → takeoff wait, a crossing's
@@ -504,6 +535,42 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         if (_linger != null) EndLinger(reason);
         return RunwayWatch.None;
+    }
+
+    /// <summary>
+    /// The watch gate is closed: nothing is watched, but the watch in progress is SUSPENDED, not ended
+    /// (PR #247 final review H5) — in a landing rollout the gate follows <c>Suppress</c>'s rolling line
+    /// (about 3 kt), so creeping at about that speed flipped it, and every reopening restarted the
+    /// watch with a full first status. Every per-watch field is kept for <see cref="SetWatch"/> to
+    /// resume; the caller has already cleared any linger. Logs <c>ev=watch suspend</c> once.
+    /// </summary>
+    private void SuspendWatch()
+    {
+        _currentWatch = RunwayWatch.None;
+        if (_watchKey.Length == 0) return;   // no watch in progress, or it is already suspended
+        _suspendedKey = _watchKey;
+        _suspendedUtc = DateTime.UtcNow;
+        _watchKey = "";
+        _log.Info($"ev=watch suspend key={_suspendedKey}");
+    }
+
+    /// <summary>A suspended watch whose key has not come back within the grace ends as a stopped watch.</summary>
+    private void EndLapsedSuspension(DateTime now)
+    {
+        if (_suspendedKey.Length > 0
+            && !RunwayWatchScopes.ShouldResumeSuspended(_suspendedKey, _suspendedUtc, _suspendedKey, now))
+            EndSuspendedWatch();
+    }
+
+    /// <summary>Ends the suspended watch, if any, exactly as a stopped watch: <c>ev=watch stop</c> and a reset.</summary>
+    private void EndSuspendedWatch()
+    {
+        if (_suspendedKey.Length == 0) return;
+        _log.Info($"ev=watch stop key={_suspendedKey}");
+        _suspendedKey = "";
+        _suspendedUtc = DateTime.MinValue;
+        ResetRunwayWatch();
+        _loggedWatchMode = RunwayWatchMode.None;
     }
 
     private void ResetRunwayWatch()

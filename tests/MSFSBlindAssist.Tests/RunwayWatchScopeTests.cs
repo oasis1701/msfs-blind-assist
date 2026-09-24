@@ -308,6 +308,39 @@ public class RunwayWatchScopeTests
         Assert.Equal(6, modes.SelectMany(f => modes.Where(t => RunwayWatchScopes.ShouldRearmOnModeChange(f, t))).Count());
     }
 
+    // ── A watch closed by the gate is suspended, not ended (PR #247 final review H5) ────────────
+    // In a landing rollout the watch gate follows the rolling line (about 3 kt), so creeping at about
+    // that speed flipped the gate and every reopening restarted the watch with a full first status.
+    // The same key coming back within the grace resumes it; after the grace, or another key, it ends.
+
+    private static readonly DateTime Suspended = new(2026, 9, 23, 12, 0, 0, DateTimeKind.Utc);
+
+    [Fact]
+    public void The_same_key_inside_the_grace_resumes()
+        => Assert.True(RunwayWatchScopes.ShouldResumeSuspended("09/27", Suspended, "09/27", Suspended.AddSeconds(10)));
+
+    [Fact]
+    public void The_same_key_at_the_end_of_the_grace_still_resumes()
+        => Assert.True(RunwayWatchScopes.ShouldResumeSuspended("09/27", Suspended, "09/27",
+            Suspended.AddMilliseconds(RunwayWatchScopes.WatchResumeGraceMs)));
+
+    [Fact]
+    public void The_same_key_after_the_grace_does_not_resume()
+        => Assert.False(RunwayWatchScopes.ShouldResumeSuspended("09/27", Suspended, "09/27",
+            Suspended.AddMilliseconds(RunwayWatchScopes.WatchResumeGraceMs + 1)));
+
+    [Fact]
+    public void A_different_key_does_not_resume()
+        => Assert.False(RunwayWatchScopes.ShouldResumeSuspended("09/27", Suspended, "04/22", Suspended.AddSeconds(1)));
+
+    [Fact]
+    public void Nothing_suspended_never_resumes()
+        => Assert.False(RunwayWatchScopes.ShouldResumeSuspended("", Suspended, "", Suspended.AddSeconds(1)));
+
+    [Fact]
+    public void The_resume_grace_is_fifteen_seconds()
+        => Assert.Equal(15000, RunwayWatchScopes.WatchResumeGraceMs);
+
     [Fact]
     public void A_backtrack_outranks_vacating()
     {

@@ -220,6 +220,24 @@ public static class RunwayWatchScopes
         => from is RunwayWatchMode.Holding or RunwayWatchMode.Vacating
            && to is RunwayWatchMode.OnRunway or RunwayWatchMode.LiningUp or RunwayWatchMode.TakeoffWait;
 
+    /// <summary>
+    /// How long a runway watch closed by the watch GATE stays suspended rather than ended (PR #247 final
+    /// review H5): in a landing rollout the gate follows the rolling line (about 3 kt), so creeping at
+    /// about that speed flips it, and every reopening used to restart the watch with a full first status.
+    /// </summary>
+    public const int WatchResumeGraceMs = 15000;
+
+    /// <summary>
+    /// A suspended watch (<paramref name="suspendedKey"/>, suspended at <paramref name="suspendedUtc"/>;
+    /// "" when none) RESUMES — same known sets, same first-status state, same readiness, no new first
+    /// status — when the watch adopted now has the SAME key and no more than
+    /// <see cref="WatchResumeGraceMs"/> have passed. Otherwise it ends as a stopped watch.
+    /// </summary>
+    public static bool ShouldResumeSuspended(string suspendedKey, DateTime suspendedUtc, string newKey, DateTime now)
+        => suspendedKey.Length > 0
+           && string.Equals(newKey, suspendedKey, StringComparison.Ordinal)
+           && (now - suspendedUtc).TotalMilliseconds <= WatchResumeGraceMs;
+
     /// <summary>The runways whose pavement holds the point, each named by its nearer end.</summary>
     public static IReadOnlyList<string> RunwaysUnder(IReadOnlyList<TaxiGraph.RunwayCenterline> runways, double lat, double lon)
     {
