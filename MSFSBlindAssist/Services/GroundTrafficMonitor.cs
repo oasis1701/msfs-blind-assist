@@ -152,12 +152,16 @@ public sealed class GroundTrafficMonitor : IDisposable
     // The same watch moving from a queuing mode (Holding, Vacating) into an interrupting one (OnRunway,
     // LiningUp, TakeoffWait) re-arms the first status ONCE per watch
     // (RunwayWatchScopes.ShouldRearmOnModeChange): a status already handed to the announcer may have
-    // been cut off by the very instruction that moved the pilot. The re-armed status is CRITICAL-ONLY
+    // been cut off by the very instruction that moved the pilot — from Holding only within
+    // RunwayWatchScopes.RearmAfterHoldWindowMs of that hand-over (_firstStatusHandedOverUtc; PR #247
+    // re-review M4), from Vacating at any time. The re-armed status is CRITICAL-ONLY
     // (_rearmCriticalOnly) — spoken, interrupting, only when something is on the runway or on short
     // final, otherwise completed silently (PR #247 final review H2, replacing B4's full-status
-    // Vacating -> OnRunway re-arm). Both reset alongside _watchSummaryDone in ResetRunwayWatch.
+    // Vacating -> OnRunway re-arm). All three reset alongside _watchSummaryDone in ResetRunwayWatch.
     private bool _firstStatusRearmed;
     private bool _rearmCriticalOnly;
+    // When the watch's first status was handed to the announcer (its OnEmitted); MinValue = not yet.
+    private DateTime _firstStatusHandedOverUtc = DateTime.MinValue;
     // When the first status was first held back for a pending aircraft; MinValue = not deferred.
     private DateTime _firstStatusDeferredSinceUtc = DateTime.MinValue;
     // The runways (by KEY) whose "no traffic seen on the runway now" line is due: queued when the LAST
@@ -490,8 +494,12 @@ public sealed class GroundTrafficMonitor : IDisposable
                 // 27L…", the backtrack instruction) or stopping on the runway after a landing exit. A
                 // first status already handed to the announcer may have been cut off by exactly that
                 // AnnounceImmediate, and its latches marked every occupant and final known — so re-arm
-                // it ONCE per watch, critical-only (PR #247 final review H2).
-                if (RunwayWatchScopes.ShouldRearmOnModeChange(_loggedWatchMode, watch.Mode)
+                // it ONCE per watch, critical-only (PR #247 final review H2). From Holding only while a
+                // PROMPT Continue could have cut the queued hold status off (within
+                // RearmAfterHoldWindowMs of its hand-over); later, the re-armed status would interrupt
+                // the Continue instruction with a status the pilot has most likely already heard (M4).
+                double sinceHandedOverMs = (DateTime.UtcNow - _firstStatusHandedOverUtc).TotalMilliseconds;
+                if (RunwayWatchScopes.ShouldRearmOnModeChange(_loggedWatchMode, watch.Mode, sinceHandedOverMs)
                     && _watchSummaryDone && !_firstStatusRearmed)
                 {
                     _watchSummaryDone = false;
@@ -603,6 +611,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _watchSummaryDone = false;
         _firstStatusRearmed = false;
         _rearmCriticalOnly = false;
+        _firstStatusHandedOverUtc = DateTime.MinValue;
         _firstStatusDeferredSinceUtc = DateTime.MinValue;
         _runwayEmptiedPendingKeys.Clear();
         _knownOccupants.Clear();
@@ -1217,6 +1226,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 {
                     _watchSummaryDone = true;
                     _rearmCriticalOnly = false;
+                    _firstStatusHandedOverUtc = now;
                     foreach (var (id, runwayKey) in occ) { _knownOccupants.Add(id); _knownOccupantRunway[id] = runwayKey; }
                     foreach (var (id, runwayKey) in fin) { _knownFinals.Add(id); _knownFinalRunway[id] = runwayKey; }
                     _shortFinalAnnounced.UnionWith(shortFin);

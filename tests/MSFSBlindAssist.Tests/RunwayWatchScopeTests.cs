@@ -298,15 +298,43 @@ public class RunwayWatchScopeTests
     [MemberData(nameof(EveryModeChange))]
     public void Only_a_queuing_mode_into_an_interrupting_one_re_arms_the_first_status(
         RunwayWatchMode from, RunwayWatchMode to, bool expected)
-        => Assert.Equal(expected, RunwayWatchScopes.ShouldRearmOnModeChange(from, to));
+        => Assert.Equal(expected, RunwayWatchScopes.ShouldRearmOnModeChange(from, to, 0));
 
     [Fact]
     public void Six_modes_and_exactly_six_mode_changes_re_arm()
     {
         var modes = Enum.GetValues<RunwayWatchMode>();
         Assert.Equal(6, modes.Length);   // a new mode must be placed in one of the two sets above
-        Assert.Equal(6, modes.SelectMany(f => modes.Where(t => RunwayWatchScopes.ShouldRearmOnModeChange(f, t))).Count());
+        Assert.Equal(6, modes.SelectMany(f => modes.Where(t => RunwayWatchScopes.ShouldRearmOnModeChange(f, t, 0))).Count());
     }
+
+    // ── From Holding only while a prompt Continue could have cut the status off (PR #247 re-review M4) ──
+    // The Holding -> OnRunway/LiningUp/TakeoffWait re-arm interrupts taxi guidance's Continue instruction
+    // ("Entering Runway 27L… Turn right.", the backtrack instruction) and usually repeats a status the
+    // pilot heard at the hold. It exists for a PROMPT Continue that cut the queued hold status off, so it
+    // only fires within RearmAfterHoldWindowMs of the status being handed to the announcer. Stopping on
+    // the runway after landing (from Vacating) keeps no window.
+
+    [Fact]
+    public void A_hold_status_handed_over_just_inside_the_window_re_arms()
+        => Assert.True(RunwayWatchScopes.ShouldRearmOnModeChange(RunwayWatchMode.Holding, RunwayWatchMode.LiningUp, 9999));
+
+    [Fact]
+    public void A_hold_status_handed_over_at_the_end_of_the_window_still_re_arms()
+        => Assert.True(RunwayWatchScopes.ShouldRearmOnModeChange(RunwayWatchMode.Holding, RunwayWatchMode.LiningUp,
+            RunwayWatchScopes.RearmAfterHoldWindowMs));
+
+    [Fact]
+    public void A_hold_status_handed_over_before_the_window_does_not_re_arm()
+        => Assert.False(RunwayWatchScopes.ShouldRearmOnModeChange(RunwayWatchMode.Holding, RunwayWatchMode.LiningUp, 10001));
+
+    [Fact]
+    public void Stopping_on_the_runway_after_landing_re_arms_with_no_window()
+        => Assert.True(RunwayWatchScopes.ShouldRearmOnModeChange(RunwayWatchMode.Vacating, RunwayWatchMode.OnRunway, 60000));
+
+    [Fact]
+    public void The_hold_re_arm_window_is_ten_seconds()
+        => Assert.Equal(10000, RunwayWatchScopes.RearmAfterHoldWindowMs);
 
     // ── A watch closed by the gate is suspended, not ended (PR #247 final review H5) ────────────
     // In a landing rollout the watch gate follows the rolling line (about 3 kt), so creeping at about
