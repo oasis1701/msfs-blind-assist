@@ -380,8 +380,14 @@ public sealed class GroundTrafficMonitor : IDisposable
         ClearLinger("runways-cleared");
     }
 
+    /// <summary>
+    /// The runways a watch is resolved and scanned against: a (local) route context's OWN list whenever
+    /// there is one — even an empty one, never the cache, which may hold another airport's runways — and
+    /// the cache only when there is no local context (the takeoff-wait / <see cref="RunwaySupplier"/>
+    /// path). PR #247 final review H6.
+    /// </summary>
     private IReadOnlyList<TaxiGraph.RunwayCenterline> RunwaysFor(GroundTrafficRouteContext? ctx)
-        => ctx is { Runways.Count: > 0 } c ? c.Runways : _cachedRunways;
+        => ctx != null ? ctx.Runways : _cachedRunways;
 
     /// <summary>
     /// This tick's watch (<see cref="RunwayWatchScopes.Resolve"/>). <paramref name="ownGsKts"/> is the
@@ -1388,7 +1394,9 @@ public sealed class GroundTrafficMonitor : IDisposable
         double ownLat = pos.Value.Latitude;
         double ownLon = pos.Value.Longitude;
         bool useMetres = SettingsManager.Current.GroundTrafficUseMetres;
-        var ctx = SafeContext();
+        // The same local-filtered context the tick uses: a leftover route at another airport never
+        // shapes the summary (PR #247 final review H6).
+        var ctx = LocalContext(ownLat, ownLon);
         var now = DateTime.UtcNow;
         var fresh = now.AddMilliseconds(-FRESH_MS);
 

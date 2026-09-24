@@ -40,7 +40,7 @@ public partial class SimConnectManager
     /// <summary>
     /// The ground-traffic monitor's sweep: every aircraft within <paramref name="radiusMeters"/>
     /// (the monitor passes just past what it can use — about 1-17 km — instead of TCAS's 150 nm).
-    /// Entries arrive via AiTrafficReceived with FromGroundTrafficSweep set; the last one raises
+    /// Entries arrive via AiTrafficReceived like any other sweep's; the last one raises
     /// GroundTrafficSweepCompleted with the sweep's request id. The user's own aircraft is always
     /// inside any radius, so the sweep always completes. Each sweep goes out under the NEXT id of the
     /// rotating range (<see cref="IsGroundTrafficRequestId"/>), so a late completion of a sweep the

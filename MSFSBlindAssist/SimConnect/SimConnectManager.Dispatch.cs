@@ -1345,7 +1345,7 @@ public partial class SimConnectManager
         if (!groundSweep && (int)data.dwRequestID != (int)DATA_REQUESTS.REQUEST_AI_TRAFFIC) return;
         try
         {
-            ProcessAiTrafficEntry(data, groundSweep);
+            ProcessAiTrafficEntry(data);
         }
         catch (Exception ex)
         {
@@ -1375,7 +1375,7 @@ public partial class SimConnectManager
         }
     }
 
-    private void ProcessAiTrafficEntry(SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data, bool fromGroundSweep)
+    private void ProcessAiTrafficEntry(SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
     {
         var raw = (AiTrafficData)data.dwData[0];
 
@@ -1401,7 +1401,6 @@ public partial class SimConnectManager
             FromAirport      = raw.FromAirport?.Trim() ?? "",
             ToAirport        = raw.ToAirport?.Trim() ?? "",
             Airline          = raw.AtcAirline?.Trim() ?? "",
-            FromGroundTrafficSweep = fromGroundSweep,
         };
         AiTrafficReceived?.Invoke(this, eventArgs);
     }

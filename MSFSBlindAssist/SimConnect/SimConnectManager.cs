@@ -1395,9 +1395,6 @@ public class AiTrafficDataEventArgs : EventArgs
     public string FromAirport      { get; set; } = "";
     public string ToAirport        { get; set; } = "";
     public string Airline          { get; set; } = "";
-
-    /// <summary>True when this entry came from the ground-traffic monitor's own sweep.</summary>
-    public bool FromGroundTrafficSweep { get; set; }
 }
 
 /// <summary>A ground-traffic sweep completed; <see cref="RequestId"/> is the id it was requested under.</summary>
