@@ -129,13 +129,26 @@ public partial class SynapticA220Definition
             Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.OnRequest,
             ValueDescriptions = Labels("Off", "On")
         };
+        // The EFB's Ground Equipment "Attach GPU" button writes exactly this L:var
+        // (efb-a220.js equipment table: GPU -> L:INI_GPU_AVAIL), so the panel can
+        // attach/remove the GPU itself. NOTE the EFB removes it again whenever the
+        // beacon is on and its "Auto GPU Disconnect" setting is enabled (the default)
+        // — live 2026-09-24 that read as "external power won't connect". The write
+        // path reads back and says so (HandleUIVariableSet).
         v["A22X_GPU_AVAIL"] = new SimVarDefinition
         {
-            Name = "INI_GPU_AVAIL", DisplayName = "Ground Power Unit",
+            Name = "INI_GPU_AVAIL", DisplayName = "Ground Power Unit (GPU)",
             Type = SimVarType.LVar, Units = "bool", UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = true, RenderAsReadOnlyStatus = true,
-            ValueDescriptions = Labels("Not available", "Available")
+            IsAnnounced = true,
+            ValueDescriptions = Labels("Removed", "Attached")
         };
+        // Stock beacon state: what the EFB's auto GPU disconnect actually tests
+        // (A:LIGHT BEACON ON), read only to explain a GPU removal.
+        AddQuiet(v, "A22X_BEACON_ON_SIM", "LIGHT BEACON ON", "bool", SimVarType.SimVar);
+        AddQuiet(v, "A22X_EXT_PWR_AVAILABLE", "A22X External Power Available", "bool");
+        // FMS nav database source: 0 = MSFS native, 1 = Navigraph (the aircraft's own
+        // downloaded DFD). Written by the MFW Data Load page and its FMS status radio.
+        AddQuiet(v, "A22X_NAV_DATA_SOURCE", "A220 Nav Data Source", "number");
         // "Off" switches: 1 = selected OFF (the physical korry is pushed out).
         v["A22X_L_GEN_OFF"] = LSwitch("A22X L Gen Off", "Left Generator", "On", "Off");
         v["A22X_R_GEN_OFF"] = LSwitch("A22X R Gen Off", "Right Generator", "On", "Off");

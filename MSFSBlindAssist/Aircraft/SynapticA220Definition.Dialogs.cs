@@ -980,21 +980,32 @@ public partial class SynapticA220Definition
 
     // ---- NAV radios (Ctrl+N) -------------------------------------------------
 
+    private Forms.A220.A220RadiosForm? _radiosForm;
+
+    /// <summary>
+    /// Ctrl+N: the A220 radios window — captain course, nav source, NAV 1/2 preset
+    /// frequencies and AUTO/MAN tuning, all through the aircraft's own CommBus calls
+    /// (A220RadiosForm). Replaced the stock NAV*_STBY_SET dialog, which had no course,
+    /// nav-source or AUTO/MAN control.
+    /// </summary>
     private void ShowNavRadiosDialog(SimConnectManager simConnect, ScreenReaderAnnouncer announcer, Form parentForm)
     {
-        double nav1 = Cached(simConnect, "A22X_NAV1_STANDBY", 108.0);
-        double nav2 = Cached(simConnect, "A22X_NAV2_STANDBY", 108.0);
-        var form = new NavRadiosForm(announcer, nav1, 0, nav2, 0, settings =>
+        _sim = simConnect;
+        if (_radiosForm != null && !_radiosForm.IsDisposed)
         {
-            // STANDBY ONLY (NAV-to-NAV transfer protection): the FMS autotunes and
-            // transfers the active frequency itself; setting an ILS active manually
-            // breaks the automatic transfer — including the 400 ft go-around retune.
-            FireKeyEvent(simConnect, "NAV1_STBY_SET_HZ", MhzToHz(settings.Nav1FreqMHz));
-            FireKeyEvent(simConnect, "NAV2_STBY_SET_HZ", MhzToHz(settings.Nav2FreqMHz));
-            announcer.AnnounceImmediate(
-                $"NAV 1 standby {settings.Nav1FreqMHz:0.00}, NAV 2 standby {settings.Nav2FreqMHz:0.00}. " +
-                "Standby only — the FMS handles active tuning on approach.");
-        });
-        form.Show(parentForm);
+            _radiosForm.Activate();
+            return;
+        }
+        _radiosForm = new Forms.A220.A220RadiosForm(
+            DisplaysAgentCallAsync,
+            () => PulseLVar(simConnect, "A22X L Nav Source"),
+            announcer);
+        _ = _radiosForm.OpenAsync();
+    }
+
+    private void DisposeRadiosForm()
+    {
+        try { _radiosForm?.Dispose(); } catch { }
+        _radiosForm = null;
     }
 }

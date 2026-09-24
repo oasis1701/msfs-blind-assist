@@ -95,6 +95,15 @@ public sealed class A220FmsForm : Form
         /// the scratchpad and clicks the entry box (agent clickDirectToEntry —
         /// found structurally, the one gray-arrow row).</summary>
         public bool IsDirectToEntry;
+        /// <summary>A field with no label of its own (the FUEL page's contingency
+        /// percent): committed by its value's position (agent clickFmsAt).</summary>
+        public double? ClickX, ClickY;
+        /// <summary>The entry range the aircraft's Input declares, spoken when an
+        /// entry is refused.</summary>
+        public double? Min, Max;
+        /// <summary>≥0 on a Direct-To dialog altitude row: the leg's VERT →
+        /// occurrence, for agent clickDirectToVertAlt.</summary>
+        public int VertAltOcc = -1;
     }
 
     private List<Row> _rows = new();
@@ -282,11 +291,12 @@ public sealed class A220FmsForm : Form
             Size = new Size(740, 40),
             Anchor = AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             Text = "Enter on a row: click it (edit boxes commit the scratchpad).  Enter on a waypoint: its revision "
-                + "menu (direct to, hold, delete…).  Scratchpad + Commit on a waypoint row: enter that waypoint there.  "
+                + "menu (direct to, hold, delete…).  Scratchpad + Commit on a waypoint row: enter that waypoint there — or, typed like /9000A, "
+                + "250/ or 250/FL120, set that waypoint's speed/altitude constraint (A above, B below).  "
                 + "Alt+C or Backspace: clear the scratchpad (also clears a stuck invalid entry).  "
                 + "Delete on a discontinuity row: remove it, then EXEC.  "
                 + "Go to page combo or Ctrl+1-7: DBASE/POS/FPLN/PERF/ROUTE/SEC/ACT.  "
-                + "PageUp/PageDown or Alt+Up/Alt+Down: previous/next page of a long list.  "
+                + "PageUp/PageDown or Alt+Up/Alt+Down: previous/next page of a long list (inside a dialog: the dialog's own list).  "
                 + "Ctrl+D: Direct-to.  F5: refresh.  Escape: close menu, then window.",
             AccessibleName = "Keyboard help"
         };
@@ -300,9 +310,15 @@ public sealed class A220FmsForm : Form
             // PREV/NEXT page keys — NOT its UP/DOWN cursor keys, which move the
             // aircraft's line cursor and are a different control entirely.
             else if (e.KeyCode == Keys.PageUp || (e.Alt && e.KeyCode == Keys.Up))
-            { PageFms("PREV"); e.Handled = true; e.SuppressKeyPress = true; }
+            {
+                if (_overlay == Overlay.Dialog) _ = PageDialogAsync(-1); else PageFms("PREV");
+                e.Handled = true; e.SuppressKeyPress = true;
+            }
             else if (e.KeyCode == Keys.PageDown || (e.Alt && e.KeyCode == Keys.Down))
-            { PageFms("NEXT"); e.Handled = true; e.SuppressKeyPress = true; }
+            {
+                if (_overlay == Overlay.Dialog) _ = PageDialogAsync(1); else PageFms("NEXT");
+                e.Handled = true; e.SuppressKeyPress = true;
+            }
             // While any overlay is open, Escape dismisses the OVERLAY (matching the
             // aircraft's own cancel), not the window. A second Escape closes it.
             else if (e.KeyCode == Keys.Escape && _overlay != Overlay.None)
@@ -452,28 +468,21 @@ public sealed class A220FmsForm : Form
             // table, the THRUST…/MSG… band last. The old fields→buttons→orphans
             // grouping scattered related rows ("DATA BASES" ended up far from its
             // table), which was much of the reported "still a bit of a mess".
-            var pageRows = new List<(double Y, Row Row)>();
+            var pageRows = new List<(double Y, double X, Row Row)>();
             foreach (var f in model.Fields)
-                pageRows.Add((f.Y, new Row
-                {
-                    Kind = Row.Kinds.Field,
-                    Display = DescribeField(f),
-                    Label = f.Label,
-                    Occurrence = f.Occurrence,
-                    IsDropdown = f.IsDropdown
-                }));
+                pageRows.Add((f.Y, f.X, FieldRow(f)));
             var buttonSeen = new Dictionary<string, int>();
             foreach (var b in model.ButtonRows)
             {
                 int occ = buttonSeen.TryGetValue(b.Text, out int o) ? o : 0;
                 buttonSeen[b.Text] = occ + 1;
-                pageRows.Add((b.Y, new Row { Kind = Row.Kinds.Button, Display = $"{SpokenButton(b.Text)}, button", Label = b.Text.TrimEnd('…'), Occurrence = occ }));
+                pageRows.Add((b.Y, b.X, new Row { Kind = Row.Kinds.Button, Display = $"{SpokenButton(b.Text)}, button", Label = b.Text.TrimEnd('…'), Occurrence = occ }));
             }
             // Text no row above claimed (bare numbers, unpaired headings) — plain
             // rows at their own screen position, NOT a duplicated full-page dump.
             foreach (var line in model.OrphanRows)
-                pageRows.Add((line.Y, new Row { Kind = Row.Kinds.Text, Display = line.Text }));
-            rows.AddRange(pageRows.OrderBy(p => p.Y).Select(p => p.Row));
+                pageRows.Add((line.Y, 0, new Row { Kind = Row.Kinds.Text, Display = line.Text }));
+            rows.AddRange(pageRows.OrderBy(p => p.Y).ThenBy(p => p.X).Select(p => p.Row));
 
             string modeCore = $"{model.Side} {model.Mode}";
             string breadcrumb = modeCore
@@ -513,6 +522,17 @@ public sealed class A220FmsForm : Form
     /// reserved for genuinely typeable fields — a chooser is not one, whatever frame
     /// the renderer draws around it.
     /// </summary>
+    private static Row FieldRow(A220FmsScreenParsing.FmsField f) => new()
+    {
+        Kind = Row.Kinds.Field,
+        Display = DescribeField(f),
+        Label = f.Label,
+        Occurrence = f.Occurrence,
+        IsDropdown = f.IsDropdown,
+        ClickX = f.ClickX, ClickY = f.ClickY,
+        Min = f.Min, Max = f.Max
+    };
+
     private static string DescribeField(A220FmsScreenParsing.FmsField f)
     {
         string value = A220FmsScreenParsing.SpokenFieldValue(f.Value);
@@ -522,11 +542,11 @@ public sealed class A220FmsForm : Form
             // the aircraft HIDES (the plan selector reports 3 — ACT/SEC/MOD — but
             // opens with 2), and a count that contradicts what then opens is worse
             // than none. The open list announces the true count itself.
-            return $"{f.Label}, dropdown: {value}, Enter opens the list";
+            return $"{f.Name}, dropdown: {value}, Enter opens the list";
         }
         return f.Editable
-            ? $"{f.Label}, edit box: {value}"
-            : $"{f.Label}: {value}";
+            ? $"{f.Name}, edit box: {value}"
+            : $"{f.Name}: {value}";
     }
 
     /// <summary>
@@ -668,6 +688,60 @@ public sealed class A220FmsForm : Form
         }
     }
 
+    /// <summary>Position/page count of the open dialog's PAGED list (agent
+    /// dialogPages — the Direct-To and FIX dialogs render a fixed number of slots
+    /// and swap their content, so later entries are not on screen at all until
+    /// the list is paged). 1 page when the dialog has none.</summary>
+    private int _dialogPage, _dialogPages = 1;
+
+    private async Task ReadDialogPagesAsync()
+    {
+        _dialogPage = 0; _dialogPages = 1;
+        string? raw = await _def.DisplaysAgentCallAsync("dialogPages()");
+        if (string.IsNullOrEmpty(raw)) return;
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(raw);
+            foreach (var p in doc.RootElement.EnumerateArray())
+            {
+                _dialogPage = p.GetProperty("pos").GetInt32();
+                _dialogPages = Math.Max(1, p.GetProperty("pages").GetInt32());
+                break;
+            }
+        }
+        catch (System.Text.Json.JsonException) { }
+    }
+
+    /// <summary>PageUp/PageDown inside a dialog: page ITS list (the aircraft's own
+    /// scroll-bar arrows), not the MKP's PREV/NEXT, which page the window behind it.</summary>
+    private async Task PageDialogAsync(int dir)
+    {
+        if (_busy) return;
+        MarkAction();
+        _busy = true;
+        try
+        {
+            string? r = await _def.DisplaysAgentCallAsync($"dialogPage({dir})");
+            if (r == null || !r.StartsWith("PAGED", StringComparison.Ordinal))
+            {
+                _announcer.AnnounceImmediate(r switch
+                {
+                    "EDGE" => dir > 0 ? "Last page." : "First page.",
+                    "NONE" => "This dialog has only one page.",
+                    _ => $"Could not page the dialog — {DescribeClickFailure(r)}"
+                });
+                return;
+            }
+            _frozenIndex = -1;
+            _lastSignature = "";
+            await Task.Delay(300);
+            await RefreshAsync();
+            if (_list.Items.Count > 0) _list.SelectedIndex = 0;
+            _announcer.AnnounceImmediate($"Page {_dialogPage + 1} of {_dialogPages}.");
+        }
+        finally { _busy = false; }
+    }
+
     /// <summary>Header of the currently rendered revision menu (the fix ident),
     /// "" when no menu is up — OpenLegMenuAsync verifies the menu that appeared
     /// belongs to the waypoint the user pressed Enter on.</summary>
@@ -774,6 +848,7 @@ public sealed class A220FmsForm : Form
             (tokens, boxes) = A220FmsScreenParsing.ClipTo(page.Tokens, page.Boxes, st.X, st.Y, st.W, st.H);
         }
         if (tokens.Count == 0) return false;
+        await ReadDialogPagesAsync();
 
         // The Direct-To dialog gets its OWN renderer: the generic field/button
         // pass turns its [→][ident] [VERT →][alt] table into soup (glyph rows,
@@ -791,17 +866,14 @@ public sealed class A220FmsForm : Form
 
         var rows = new List<Row>();
         foreach (var f in model.Fields)
-            rows.Add(new Row
-            {
-                Kind = Row.Kinds.Field,
-                Display = DescribeField(f),
-                Label = f.Label,
-                Occurrence = f.Occurrence,
-                IsDropdown = f.IsDropdown
-            });
+            rows.Add(FieldRow(f));
         var seen = new Dictionary<string, int>();
-        foreach (string b in model.Buttons)
+        foreach (var btn in model.ButtonRows)
         {
+            string b = btn.Text;
+            // The flight-plan tag in the dialog's HEADER band ("… MOD FPLN") is the
+            // plan the dialog edits, not a control of the dialog.
+            if (b is "ACT" or "MOD" or "SEC" && btn.Y - st.Y < 40) continue;
             // DONE/CNCL is the dialog's own dismiss control — a stated row, and the
             // one Escape triggers, never just another anonymous button.
             if (b is "DONE" or "CNCL")
@@ -822,7 +894,13 @@ public sealed class A220FmsForm : Form
             // tell the options apart. Name it by the value drawn on its own row
             // (the constraint the button would pick), falling back to a position.
             string label = b.TrimEnd('…');
-            string display = $"{SpokenButton(b)}, button";
+            // A LIST column (the DEPARTURES dialog's runways / SIDs / transitions):
+            // name each entry by its column heading and say which one is selected
+            // (the aircraft draws it cyan) — otherwise "RW25, GIRL1Y, GIRL3X" is a
+            // run of bare names with nothing saying which is a runway.
+            string column = A220FmsScreenParsing.DialogColumnOf(tokens, model.ButtonRows, btn, st.Y);
+            string display = $"{(column.Length > 0 ? column + " " : "")}{SpokenButton(b)}"
+                             + $"{(btn.Color == "cyan" ? ", selected" : "")}, button";
             int sameCount = model.Buttons.Count(x => x == b);
             if (sameCount > 1)
             {
@@ -855,6 +933,13 @@ public sealed class A220FmsForm : Form
             foreach (string line in orphans)
                 rows.Add(new Row { Kind = Row.Kinds.Text, Display = line });
         }
+
+        if (_dialogPages > 1)
+            rows.Add(new Row
+            {
+                Kind = Row.Kinds.Text,
+                Display = $"Page {_dialogPage + 1} of {_dialogPages} — Page Down for more, Page Up to go back"
+            });
 
         string title = st.Header.Length > 0 ? st.Header : "Dialog";
         // The Direct-To dialog's on-screen header is the bare arrow glyph
@@ -907,13 +992,7 @@ public sealed class A220FmsForm : Form
                 IsDirectToEntry = true
             });
         foreach (var f in dt.Fields)
-            rows.Add(new Row
-            {
-                Kind = Row.Kinds.Field,
-                Display = DescribeField(f),
-                Label = f.Label,
-                Occurrence = f.Occurrence
-            });
+            rows.Add(FieldRow(f));
         var counts = dt.Legs.GroupBy(l => l.Ident)
             .ToDictionary(g => g.Key, g => g.Count(), StringComparer.Ordinal);
         foreach (var leg in dt.Legs)
@@ -928,6 +1007,20 @@ public sealed class A220FmsForm : Form
                 Occurrence = leg.IdentOcc,
                 DialogText = true
             });
+            // The altitude beside VERT → is an entry box: typing one sets an AT
+            // crossing on the leg and is what ENABLES vertical direct on a leg that
+            // has none. Without this row a pilot could only vertical-direct to legs
+            // that already carried a constraint.
+            if (leg.HasAltBox)
+                rows.Add(new Row
+                {
+                    Kind = Row.Kinds.Field,
+                    Display = $"{leg.Ident}{which} altitude, edit box: "
+                        + (leg.VertAlt.Length > 0 ? leg.VertAlt : "blank")
+                        + (leg.VertEnabled ? "" : ", type one to allow vertical direct"),
+                    Label = $"{leg.Ident} altitude",
+                    VertAltOcc = leg.VertOcc
+                });
             if (leg.VertEnabled)
                 rows.Add(new Row
                 {
@@ -940,6 +1033,15 @@ public sealed class A220FmsForm : Form
                     DialogText = true
                 });
         }
+        // Past the fourth leg the dialog PAGES (it renders five slots and swaps
+        // their content) — say so, or a pilot on a real route never learns the
+        // later legs exist.
+        if (_dialogPages > 1)
+            rows.Add(new Row
+            {
+                Kind = Row.Kinds.Text,
+                Display = $"Page {_dialogPage + 1} of {_dialogPages} — Page Down for later legs, Page Up for earlier"
+            });
         rows.Add(new Row
         {
             Kind = Row.Kinds.Button,
@@ -948,11 +1050,12 @@ public sealed class A220FmsForm : Form
             IsDialogDone = true
         });
 
-        ApplyRows(rows, "Direct to — dialog");
+        ApplyRows(rows, _dialogPages > 1 ? $"Direct to — dialog, page {_dialogPage + 1} of {_dialogPages}" : "Direct to — dialog");
         if (justOpened)
             _announcer.AnnounceImmediate(
-                $"Direct to dialog. {dt.Legs.Count} flight plan legs — Enter on a leg goes direct to it"
-                + (dt.Fields.Any(f => f.Label == "CRS")
+                $"Direct to dialog. {(_dialogPages > 1 ? $"Page 1 of {_dialogPages}, " : "")}{dt.Legs.Count} legs shown"
+                + " — Enter on a leg goes direct to it; an altitude row plus Vertical direct flies a path down or up to it"
+                + (dt.Fields.Any(f => f.Label == "CRS" && f.Editable)
                     ? "; the CRS row sets the intercept course"
                     : "")
                 + ". Escape closes.");
@@ -1019,6 +1122,49 @@ public sealed class A220FmsForm : Form
             await RefreshAsync();   // speaks the FMS's own amber error if it refused
             _announcer.AnnounceImmediate(
                 $"{sent} sent as direct-to. Check the rows, then press EXEC to activate.");
+            _scratchpad.Clear();
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>Commit the scratchpad into a Direct-To dialog leg's altitude box
+    /// (agent clickDirectToVertAlt): the aircraft sets an AT crossing on that leg,
+    /// which is what enables VERT → there.</summary>
+    private async Task CommitDirectToAltitudeAsync(Row row)
+    {
+        if (_busy) return;
+        string text = _scratchpad.Text.Trim();
+        if (text.Length == 0)
+        {
+            _announcer.AnnounceImmediate("Type the altitude in the scratchpad box first, for example 6000 or FL120.");
+            return;
+        }
+        MarkAction();
+        _busy = true;
+        try
+        {
+            string? sent = await TypeScratchpadVerifiedAsync(text);
+            if (sent == null) return;
+            string? r = await _def.DisplaysAgentCallAsync($"clickDirectToVertAlt({row.VertAltOcc})");
+            if (r != "CLICKED")
+            {
+                await _def.ClearScratchpadAsync();
+                _announcer.AnnounceImmediate($"Could not reach the {row.Label} box — {DescribeClickFailure(r)}");
+                return;
+            }
+            await Task.Delay(900);
+            var sp = await _def.ScratchpadStateAsync();
+            await _def.ClearScratchpadAsync();
+            MarkAction();
+            await RefreshAsync();
+            var now = _rows.FirstOrDefault(r2 => r2.VertAltOcc == row.VertAltOcc);
+            if (sp is { Kind: "TEXT" } s && s.Text.Length > 0 && s.Error.Length > 0)
+            {
+                _lastFmsError = s.Error.Trim();
+                _announcer.AnnounceImmediate($"{row.Label} not accepted: {s.Error.Trim()}.");
+            }
+            else
+                _announcer.AnnounceImmediate(now?.Display ?? $"{row.Label} sent.");
             _scratchpad.Clear();
         }
         finally { _busy = false; }
@@ -1594,6 +1740,11 @@ public sealed class A220FmsForm : Form
             await CommitDirectToEntryAsync();
             return;
         }
+        if (row is { VertAltOcc: >= 0 })
+        {
+            await CommitDirectToAltitudeAsync(row);
+            return;
+        }
         if (row is not { Kind: Row.Kinds.Field })
         {
             _announcer.AnnounceImmediate("Select a field row first.");
@@ -1615,7 +1766,9 @@ public sealed class A220FmsForm : Form
             // search counts occurrences differently from the dialog rows the pilot
             // picked from, and can hit a page token showing through beneath the
             // floating dialog — writing the value somewhere the pilot never chose.
-            string fieldCall = _overlay == Overlay.Dialog
+            string fieldCall = row.ClickX is double cx && row.ClickY is double cy
+                ? $"clickFmsAt({cx.ToString(System.Globalization.CultureInfo.InvariantCulture)},{cy.ToString(System.Globalization.CultureInfo.InvariantCulture)})"
+                : _overlay == Overlay.Dialog
                 ? $"clickDialogField({A220DisplaysClient.JsString(row.Label)},{row.Occurrence})"
                 : $"clickFmsField({A220DisplaysClient.JsString(row.Label)},{row.Occurrence})";
             string? result = await _def.DisplaysAgentCallAsync(fieldCall);
@@ -1653,37 +1806,54 @@ public sealed class A220FmsForm : Form
                                           && r2.Occurrence == row.Occurrence)?.Display;
                 var spDlg = await _def.ScratchpadStateAsync();
                 if (text.Length > 0) await _def.ClearScratchpadAsync();
-                if (spDlg is { } spd && spd.Error.Length > 0) AnnounceFmsError(spd.Error);
+                string dlgErr = spDlg?.Error ?? "";
+                if (text.Length > 0 && spDlg is { Kind: "TEXT", Text.Length: 0 }) dlgErr = "";
                 await RefreshAsync();
                 var now = _rows.FirstOrDefault(r2 => r2.Kind == Row.Kinds.Field
                                                      && r2.Label == row.Label
                                                      && r2.Occurrence == row.Occurrence);
-                _announcer.AnnounceImmediate(now == null
-                    ? $"{row.Label} committed; the dialog changed."
-                    : now.Display == before
-                        ? $"{row.Label} unchanged — the FMS may have refused the entry."
-                        : now.Display);
+                _announcer.AnnounceImmediate(dlgErr.Length > 0
+                    ? RefusalMessage(row, dlgErr, now?.Display)
+                    : now == null
+                        ? $"{row.Label} committed; the dialog changed."
+                        : now.Display == before
+                            ? $"{row.Label} unchanged — the FMS may have refused the entry."
+                            : now.Display);
                 _scratchpad.Clear();
                 return;
             }
-            var model = await ScrapeAsync();
-            var updated = model?.Fields.FirstOrDefault(f => f.Label == row.Label && f.Occurrence == row.Occurrence);
             // A REFUSED entry does two things a success does not: the FMS
             // broadcasts its reason ("INVALID ENTRY"…), and it leaves the typed
             // text sitting on the aircraft scratchpad (the Input only clears it
             // on success) — where it would concatenate under the NEXT entry.
-            // Speak the reason, then always leave the scratchpad empty.
+            // Speak the reason, then always leave the scratchpad empty. The field
+            // is read back AFTER the clear: a refused Input keeps echoing the
+            // scratchpad, and the agent reports its real value only once the
+            // echo is gone.
             var sp = await _def.ScratchpadStateAsync();
             if (text.Length > 0) await _def.ClearScratchpadAsync();
+            var model = await ScrapeAsync();
+            var updated = model?.Fields.FirstOrDefault(f => f.Label == row.Label && f.Occurrence == row.Occurrence);
             Utils.Logging.Log.Debug("a220_fms",
                 $"field readback: label='{row.Label}' value='{updated?.Value ?? "(row gone)"}' "
                 + $"sp={sp?.Kind ?? "null"}:'{sp?.Text}' err='{sp?.Error}'");
-            if (sp is { } spv && spv.Error.Length > 0) AnnounceFmsError(spv.Error);
-            if (updated != null)
+            // The store keeps its last error for ~3 s, so an error alone could be a
+            // PREVIOUS refusal: this entry was refused only if the typed text is
+            // also still on the scratchpad (a success clears it).
+            string err = sp?.Error ?? "";
+            if (text.Length > 0 && sp is { Kind: "TEXT", Text.Length: 0 }) err = "";
+            if (err.Length > 0)
+            {
+                // ONE utterance: the refusal used to be spoken and then cut off by
+                // the "X now …" read-back straight after it (both interrupt).
+                _announcer.AnnounceImmediate(RefusalMessage(row, err,
+                    updated == null ? null : $"{updated.Name} is {A220FmsScreenParsing.SpokenFieldValue(updated.Value)}"));
+            }
+            else if (updated != null)
             {
                 string exec = model!.ExecAvailable ? " Modification pending — EXEC to activate." : "";
                 _announcer.AnnounceImmediate(
-                    $"{updated.Label} now {A220FmsScreenParsing.SpokenFieldValue(updated.Value)}.{exec}");
+                    $"{updated.Name} now {A220FmsScreenParsing.SpokenFieldValue(updated.Value)}.{exec}");
             }
             else
             {
@@ -1693,6 +1863,23 @@ public sealed class A220FmsForm : Form
             await RefreshAsync();
         }
         finally { _busy = false; }
+    }
+
+    /// <summary>The one sentence for a refused entry: the FMS's own reason, the range
+    /// the field accepts when the aircraft declares one (the FMS only ever says
+    /// "INVALID ENTRY" — the pilot otherwise has to guess what it wanted), and what
+    /// the field holds now.</summary>
+    private string RefusalMessage(Row row, string error, string? nowText)
+    {
+        _lastFmsError = error.Trim();     // the poll must not repeat it
+        string name = row.Display.Split(',')[0];
+        string range = row.Min is double mn && row.Max is double mx
+            ? $" {name} accepts {Num(mn)} to {Num(mx)}." : "";
+        string now = nowText is { Length: > 0 } ? $" {nowText.TrimEnd('.')}." : "";
+        return $"{name} not accepted: {error.Trim()}.{range}{now}";
+
+        static string Num(double v) => v.ToString(v % 1 == 0 ? "0" : "0.##",
+            System.Globalization.CultureInfo.InvariantCulture);
     }
 
     /// <summary>
@@ -1751,6 +1938,11 @@ public sealed class A220FmsForm : Form
                 "Type a waypoint in the scratchpad first. Enter on the row opens its revision menu.");
             return;
         }
+        if (IsConstraintEntry(text))
+        {
+            await CommitConstraintToLegAsync(row, text);
+            return;
+        }
         MarkAction();
         _busy = true;
         try
@@ -1779,6 +1971,67 @@ public sealed class A220FmsForm : Form
             _announcer.AnnounceImmediate(after > before
                 ? $"{sent} entered at the {row.Label} line. Press EXEC to activate the modification."
                 : $"{sent} sent to the {row.Label} line — the FMS may have refused it; check the rows.");
+            _scratchpad.Clear();
+        }
+        finally { _busy = false; }
+    }
+
+    /// <summary>
+    /// A speed/altitude CONSTRAINT entry, in the real FMS's own scratchpad format:
+    /// "/9000A" (at or above), "/9000B" (at or below), "/9000" (at), "/FL120",
+    /// "250/" (speed), "250/9000". A waypoint ident always starts with a LETTER and
+    /// a place/bearing/distance entry is letter-first too, so anything that starts
+    /// with a digit or a slash and holds a slash can only be a constraint.
+    /// </summary>
+    internal static bool IsConstraintEntry(string text)
+        => System.Text.RegularExpressions.Regex.IsMatch(text.Trim().ToUpperInvariant(),
+            @"^(\d{1,3})?/((FL)?\d{1,5}[AB]?)?$")
+           && text.Trim() != "/";
+
+    /// <summary>
+    /// Scratchpad → the LEGS row's speed/altitude constraint field (the green
+    /// "↑250/4000A" column), the cockpit's own crossing-restriction gesture. It is
+    /// the ONLY way to put a crossing altitude on a terminal (procedure) waypoint:
+    /// the aircraft opens no revision menu — so no CROSSING… — for those (live
+    /// 2026-09-24, EGNT GIRL1Y: NTS08 and NTW03 have no menu, GIRLI does).
+    /// Addressed by the aircraft's own legIdx, never by text.
+    /// </summary>
+    private async Task CommitConstraintToLegAsync(Row row, string text)
+    {
+        if (row.LegIdx < 0)
+        {
+            _announcer.AnnounceImmediate(
+                $"Could not identify the {row.Label} leg on the aircraft — refresh with F5 and try again.");
+            return;
+        }
+        MarkAction();
+        _busy = true;
+        try
+        {
+            string? sent = await TypeScratchpadVerifiedAsync(text);
+            if (sent == null) return;
+            string? r = await _def.DisplaysAgentCallAsync($"clickLegConstraintAt({row.LegIdx})");
+            if (r != "CLICKED")
+            {
+                await _def.ClearScratchpadAsync();
+                _announcer.AnnounceImmediate(
+                    $"Could not reach the {row.Label} constraint — {DescribeClickFailure(r)}");
+                return;
+            }
+            await Task.Delay(900);
+            var sp = await _def.ScratchpadStateAsync();
+            await _def.ClearScratchpadAsync();
+            MarkAction();
+            await RefreshAsync();
+            var now = _rows.FirstOrDefault(r2 => r2.LegIdx == row.LegIdx && r2.LegMenu);
+            string nowText = now?.Display.Replace(", button", "") ?? row.Label;
+            if (sp is { Kind: "TEXT" } s && s.Text.Length > 0 && s.Error.Length > 0)
+            {
+                _lastFmsError = s.Error.Trim();
+                _announcer.AnnounceImmediate($"{row.Label} constraint not accepted: {s.Error.Trim()}. {nowText}.");
+            }
+            else
+                _announcer.AnnounceImmediate($"{nowText}. Press EXEC to activate the modification.");
             _scratchpad.Clear();
         }
         finally { _busy = false; }

@@ -176,6 +176,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
         // FMS + ECL forms (FmsEcl partial) — they share the display pump's socket,
         // which StopDisplayPump above already tore down.
         DisposeFmsEclForms();
+        DisposeRadiosForm();
     }
 
     public override bool HandleHotkeyAction(HotkeyAction action, SimConnectManager simConnect,
@@ -467,6 +468,46 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
             }
             catch { /* readout only */ }
         });
+    }
+
+    /// <summary>
+    /// Ground-power read-back: the EXT PWR press and the GPU attach can both be
+    /// "accepted" and still not hold — the EFB removes the GPU while the beacon is on
+    /// (Auto GPU Disconnect, default ON), which drops external power a moment after it
+    /// connects (live 2026-09-24). Success stays silent (the screen reader read the
+    /// pick); a result that did not hold is spoken with its reason.
+    /// </summary>
+    private void VerifyGroundPower(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        string stateKey, bool wantOn, string failText)
+    {
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(2500);
+                if (stateKey == "A22X_EXT_PWR")
+                {
+                    // OnRequest var: force a fresh read before judging.
+                    simConnect.RequestVariable(stateKey, forceUpdate: true);
+                    await System.Threading.Tasks.Task.Delay(400);
+                }
+                double state = Cached(simConnect, stateKey, -1);
+                if (state < 0 || (state >= 0.5) == wantOn) return;
+                announcer.AnnounceImmediate(GpuRemovedReason(simConnect, failText));
+            }
+            catch { /* read-back only */ }
+        });
+    }
+
+    /// <summary>Appends why the GPU is gone, when that is the reason.</summary>
+    private string GpuRemovedReason(SimConnectManager simConnect, string lead)
+    {
+        bool gpuGone = Cached(simConnect, "A22X_GPU_AVAIL", -1) is >= 0 and < 0.5;
+        if (!gpuGone) return lead;
+        if (Cached(simConnect, "A22X_BEACON_ON_SIM", 0) >= 0.5)
+            return lead + " The beacon is on, and the EFB removes the ground power unit while the beacon is on. " +
+                   "Turn the beacon off, or set Auto GPU Disconnect to Disabled in the EFB's Aircraft Settings.";
+        return lead.Contains("no ground power unit") ? lead : lead + " The ground power unit is not attached.";
     }
 
     /// <summary>

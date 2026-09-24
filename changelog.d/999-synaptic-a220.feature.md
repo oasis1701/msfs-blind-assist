@@ -18,3 +18,23 @@ had been left in metres, where "set 5000" would report *"selector reads 5085 fee
 a target one click away. The walks also no longer need the display link to be up: the
 selected altitude, heading and speed are read back from the simulator directly when it
 is not.
+
+Ctrl+N opens an A220 radios window: the captain's nav source, course and tuned
+frequency, both NAV radios with their preset and AUTO/MANUAL tuning, and entries to set
+the course, the NAV presets, the tuning mode and the nav source. The FMS still tunes an
+approach's ILS itself on AUTO.
+
+The FMS navigation database can be updated from the EFB window: its "FMS navigation
+database" button signs you in to Navigraph (reading out the code and opening the page
+in your browser), lists the cycles available to you, loads one into both FMSs and says
+which database the FMS is using. The EFB tablet's own update button does nothing in this
+version of the aircraft.
+
+The ground power unit can be attached and removed from the electrical panel, and when
+external power does not connect you are told why — most often that the beacon is on,
+which makes the EFB remove the ground power unit.
+
+The FMS fuel page no longer loses a field after a refused entry, reads each value once
+under its own name, says the accepted range when an entry is refused, and tells a
+prediction from a constraint on the legs page. Constraints can be typed straight onto a
+procedure waypoint, and Direct To reaches every leg in its list.

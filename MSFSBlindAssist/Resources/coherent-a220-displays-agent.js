@@ -84,17 +84,30 @@
     //                              batch is what made the walk slow and imprecise).
     //   Flight Control pitch_trim  stab trim UNITS + the takeoff green band, and
     //                              rudder_trim. Neither exists as a SimVar.
+    //   L Nav Data    source/course the CAPTAIN's HSI is actually flying (FMS1/FMS2/
+    //                 VOR1/VOR2/LOC1/LOC2 — src/avionics/lib/afdx/nav.ts), its tuned
+    //                 frequency, CDI and marker.
+    //   L CTP Data    the captain CTP's own course setting and nav-source selection.
+    //   Radio Data    vhf.nav_1 / nav_2 (the CNS NAV CONTROL windows).
     var CB_STORES = [
       ['A22X.Autoflight Data', 'af'],
       ['A22X.FCP Data', 'fcp'],
-      ['A22X.Flight Control Data', 'fc']
+      ['A22X.Flight Control Data', 'fc'],
+      ['A22X.L Nav Data', 'lnav'],
+      ['A22X.L CTP Data', 'lctp'],
+      ['A22X.Radio Data', 'radio']
     ];
     // Survives a re-install: the agent is re-evaluated whenever the page reloads or the
     // socket reconnects, and registering a fresh view listener each time would leak one
     // per reconnect (the aircraft's own wrapper has an unregister(); we simply keep ours).
+    // VERSIONED: a listener's message handlers are closures of the agent that
+    // registered them, so a behaviour change in the handler (the deep merge, v2)
+    // needs a FRESH listener and data object — the old one keeps writing into its
+    // own, now-orphaned data. One listener leaks per upgrade, never per reconnect.
+    var CB_VERSION = 2;
     var cbState = window.__a220CommBus;
-    if (!cbState) {
-      cbState = { data: {}, stamp: {}, listener: null, ready: false, subs: 0, tries: 0, lastTry: 0, err: '' };
+    if (!cbState || cbState.v !== CB_VERSION) {
+      cbState = { v: CB_VERSION, data: {}, stamp: {}, listener: null, ready: false, subs: 0, tries: 0, lastTry: 0, err: '' };
       window.__a220CommBus = cbState;
     }
     var cbData = cbState.data, cbStamp = cbState.stamp;
@@ -104,9 +117,40 @@
       return false;
     }
 
+    function deepMerge(cur, upd) {
+      for (var k in upd) {
+        if (!Object.prototype.hasOwnProperty.call(upd, k)) continue;
+        var v = upd[k];
+        if (v && typeof v === 'object' && !(v instanceof Array) &&
+            cur[k] && typeof cur[k] === 'object' && !(cur[k] instanceof Array)) {
+          cur[k] = deepMerge(cur[k], v);
+        } else {
+          cur[k] = v;
+        }
+      }
+      return cur;
+    }
+
+    // The stores only broadcast CHANGES; the aircraft's own wrapper asks for a full
+    // copy with "A22X.Resync" (src/avionics/lib/afdx/index.ts). A store we have never
+    // seen whole (the radios, first opened long after the page loaded) arrives as {}
+    // until something asks — so ask, at most every 3 s.
+    function cbResync() {
+      var now = Date.now();
+      if (!cbState.listener || (now - (cbState.lastResync || 0)) < 3000) return;
+      cbState.lastResync = now;
+      try { cbState.listener.call('COMM_BUS_WASM_CALLBACK', 'A22X.Resync', '{}'); } catch (e) { }
+    }
+
     function cbSubscribe() {
       if (!cbState.listener) return;
+      // Per-store latch: the listener outlives an agent re-install (the page keeps it
+      // in window.__a220CommBus), so a store added in a newer agent must still get
+      // subscribed on an old listener — and an existing one never twice.
+      if (!cbState.subscribed) cbState.subscribed = {};
       for (var i = 0; i < CB_STORES.length; i++) {
+        if (cbState.subscribed[CB_STORES[i][0]]) continue;
+        cbState.subscribed[CB_STORES[i][0]] = true;
         (function (name) {
           try {
             cbState.listener.on(name, function (json) {
@@ -122,11 +166,11 @@
               // what made the stabilizer-trim walk refuse as "display link not
               // connected" while the link was up the whole time.
               // A genuine null still lands: JSON carries it as a key, so it merges.
+              // NESTED too: Radio Data's vhf.nav_1 arrives as {"autotune":true} alone
+              // after a tuning change (live 2026-09-24) — a shallow merge replaced the
+              // whole vhf object and lost every frequency.
               try {
-                var upd = JSON.parse(json);
-                var cur = cbData[name] || {};
-                for (var k in upd) if (Object.prototype.hasOwnProperty.call(upd, k)) cur[k] = upd[k];
-                cbData[name] = cur;
+                cbData[name] = deepMerge(cbData[name] || {}, JSON.parse(json));
                 cbStamp[name] = Date.now();
               } catch (e2) { }
             });
@@ -146,14 +190,16 @@
     // retried while NOTHING has ever arrived, because a silently-dead tap is exactly the
     // failure that cost a whole session of guessing (2026-07-31).
     function ensureCommBus() {
-      if (cbState.listener && (cbState.ready || cbEverDelivered())) return true;
+      if (cbState.listener && (cbState.ready || cbEverDelivered())) { cbSubscribe(); return true; }
       var now = Date.now();
       if (cbState.listener && (cbState.tries >= 6 || (now - cbState.lastTry) < 5000)) return true;
       cbState.tries++;
       cbState.lastTry = now;
       try {
+        cbState.subscribed = {};   // a NEW listener has no subscriptions yet
         cbState.listener = RegisterViewListener('JS_LISTENER_COMM_BUS', function () {
           cbState.ready = true;
+          cbState.subscribed = {};  // (re)subscribe once connected — see above
           cbSubscribe();
         });
       } catch (e) { cbState.listener = null; cbState.err = 'register:' + (e && e.message); }
@@ -186,7 +232,11 @@
            'ap_master', 'at_master', 'approach_status'],
       fcp: ['spd_sel_ias', 'spd_sel_mach', 'spd_in_mach', 'spd_fms', 'hdg_sel',
             'alt_sel_ft', 'alt_sel_m', 'alt_in_m', 'vs_sel', 'vs_mode'],
-      fc: ['pitch_trim', 'pitch_trim_up', 'pitch_trim_dn', 'rudder_trim']
+      fc: ['pitch_trim', 'pitch_trim_up', 'pitch_trim_dn', 'rudder_trim'],
+      lnav: ['source', 'frequency', 'course', 'cdi', 'to', 'bc', 'marker',
+             'preview_source', 'preview_course', 'preview_frequency'],
+      lctp: ['nav_source', 'course', 'crosstune'],
+      radio: ['vhf', 'display_tune_inhib', 'l_ctp_inhib']
     };
 
     // A store the WASM stopped broadcasting is STALE, not current: the aircraft's own
@@ -210,6 +260,47 @@
       var out = { ok: !!cbState.listener, diag: cbDiag() };
       for (var i = 0; i < CB_STORES.length; i++) out[CB_STORES[i][1]] = cbBlock(CB_STORES[i][1], CB_STORES[i][0]);
       return JSON.stringify(out);
+    };
+
+    /// Captain nav/radio truth for the A220 Radios window (read-only).
+    A.radios = function () {
+      ensureCommBus();
+      var rd = cbData['A22X.Radio Data'], nd = cbData['A22X.L Nav Data'], cd = cbData['A22X.L CTP Data'];
+      if (!rd || !rd.vhf || !nd || !('source' in nd) || !cd || !('course' in cd)) cbResync();
+      return JSON.stringify({
+        ok: !!cbState.listener,
+        lnav: cbBlock('lnav', 'A22X.L Nav Data'),
+        lctp: cbBlock('lctp', 'A22X.L CTP Data'),
+        radio: cbBlock('radio', 'A22X.Radio Data'),
+        diag: cbDiag()
+      });
+    };
+
+    // WRITE side — exactly the calls the aircraft's own displays make
+    // (src/avionics/lib/afdx/ctp.ts + radio.ts): the bus wrapper's call() is
+    // viewListener.call("COMM_BUS_WASM_CALLBACK", event, JSON.stringify(payload)).
+    //   "A22X.L CTP Action" {type:"SetConfig", course:n}      — the CTP CRS field
+    //   "A22X.Display Tune" {index:3|4, cmd:{type:"Set", active:false, frequency:Hz}}
+    //                       {index:3|4, cmd:{type:"ConfigNav", autotune:bool}}
+    // NAV index 3 = NAV1, 4 = NAV2. Only PRESET (active:false) frequencies are ever
+    // sent from MSFSBA — see the NAV-to-NAV transfer invariant in docs/a220.md.
+    function cbCall(event, payload) {
+      if (!ensureCommBus() || !cbState.listener) return 'NO_BUS';
+      try {
+        cbState.listener.call('COMM_BUS_WASM_CALLBACK', event, JSON.stringify(payload));
+        return 'SENT';
+      } catch (e) { return 'ERR:' + (e && e.message); }
+    }
+    A.setCourse = function (side, course) {
+      return cbCall('A22X.' + (side === 2 ? 'R' : 'L') + ' CTP Action', { type: 'SetConfig', course: course });
+    };
+    A.setNavPreset = function (index, hz) {
+      if (index !== 3 && index !== 4) return 'BAD_INDEX';
+      return cbCall('A22X.Display Tune', { index: index, cmd: { type: 'Set', active: false, frequency: hz } });
+    };
+    A.setNavAutotune = function (index, auto) {
+      if (index !== 3 && index !== 4) return 'BAD_INDEX';
+      return cbCall('A22X.Display Tune', { index: index, cmd: { type: 'ConfigNav', autotune: !!auto } });
     };
 
     ensureCommBus();   // start filling immediately; the first poll is ~1 s away
@@ -313,13 +404,30 @@
     //                3), while data cells and labels only reach the page-level
     //                click catcher at depth 4+. A bare "has an onClick ancestor"
     //                test is useless — EVERY token has one.
+    //   input      — the Fusion scratchpad Input this text renders (props with
+    //                onSubmit + format + value), for the pending-entry repair
+    //                in visTokens;
+    //   mn / mx    — the entry's numeric range (the Input's wrapper carries
+    //                min/max: ZFW 81750..128000 lb on the FUEL page), so a
+    //                refusal can say what WOULD be accepted.
     function fiberInfoOf(el) {
       var key = fiberKeyOf(el);
       if (!key) return null;
-      var f = el[key], n = 0, dd = null, clickDepth = -1;
+      var f = el[key], n = 0, dd = null, clickDepth = -1, input = null, mn = null, mx = null;
+      var inputSeen = false, ro = false;
       while (f && n < 10) {
         var p = f.memoizedProps;
         if (p) {
+          // The first Input-shaped component (format + value) decides: with an
+          // onSubmit it takes entries; WITHOUT one it is a framed READ-OUT that
+          // merely looks like a box (the FUEL page's RESERVE weight, computed
+          // from the contingency %, bundle `controlled: !0` and no onSubmit).
+          if (!inputSeen && typeof p.format === 'function' && ('value' in p)) {
+            inputSeen = true;
+            if (typeof p.onSubmit === 'function') input = p; else ro = true;
+          }
+          if (mn === null && typeof p.min === 'number' && typeof p.max === 'number'
+              && typeof p.onSubmit === 'function') { mn = p.min; mx = p.max; }
           if (clickDepth < 0 && typeof p.onClick === 'function') clickDepth = n;
           if (!dd && p.options && typeof p.options.length === 'number'
               && p.options.length > 0 && typeof p.onSelect === 'function') {
@@ -333,7 +441,47 @@
         }
         f = f.return; n++;
       }
-      return { dd: dd, clickDepth: clickDepth };
+      return { dd: dd, clickDepth: clickDepth, input: input, mn: mn, mx: mx, ro: ro };
+    }
+
+    // A Fusion Input that has been SUBMITTED and refused stays in its "pending"
+    // state (the bundle's `k` flag is set before the submit and only cleared on
+    // success), and while pending it renders the SHARED SCRATCHPAD in cyan
+    // instead of its own value. After a refusal MSFSBA empties the scratchpad,
+    // so the box renders an EMPTY text node — no token, no field, and the row
+    // vanished from the form (the "fields disappear" FUEL-page report,
+    // reproduced live 2026-09-24: ZFW gone after one INVALID ENTRY). What the
+    // box really holds is its own value, so read that: the same format() call
+    // the component makes, with its ▯-for-required-and-empty rule. Uncontrolled
+    // inputs (no `value` prop) keep their state in a hook we cannot read, so an
+    // empty one falls back to a bare blank slot rather than disappearing.
+    var PENDING_CYAN = 'rgb(0, 191, 230)';
+    // While refused the Input draws AMBER for the ~3 s its error box is up, then
+    // cyan until the next successful entry — both are the scratchpad echo.
+    function isPendingFill(fill) {
+      var f = fill || '';
+      return f.indexOf(PENDING_CYAN) >= 0 || f.indexOf('rgb(255, 227, 0)') >= 0;
+    }
+    // Cyan text on an Input is the pending echo ONLY when cyan is not the
+    // Input's own colour: the origin runway ("RW25") is drawn cyan by design
+    // (textColor #00bfe6), and reading it as a refused entry turned it white
+    // and cost the legs row its "origin" tag (caught 2026-09-24).
+    function isPendingEcho(p, fill) {
+      if (!p) return false;
+      var tc = ('' + (p.textColor || '')).toLowerCase();
+      if ((fill || '').indexOf(PENDING_CYAN) >= 0)
+        return tc !== '#00bfe6' && tc.indexOf('0, 191, 230') < 0;
+      return tc !== '#ffe300' && tc.indexOf('255, 227, 0') < 0;   // amber
+    }
+    function inputDisplayValue(p) {
+      if (!p || p.value === undefined) return '';
+      try {
+        var v = p.value != null ? p.value : undefined;
+        var s = p.format(v);
+        if (typeof s !== 'string') s = s == null ? '' : '' + s;
+        if (p.required && v === undefined) s = s.replace(/-/g, '▯');
+        return norm(s);
+      } catch (e) { return ''; }
     }
     // {n: option count, cur: current label} when this text sits inside a closed
     // dropdown, else null.
@@ -347,6 +495,29 @@
     // click catcher.
     var CLICK_DEPTH_MAX = 3;
 
+    // A LEGS constraint ("↑210/7000") mixes two things in one <text>: the pilot's
+    // or procedure's CONSTRAINT in large type (tspan ContentText) and the FMS's
+    // PREDICTION in small type (tspan LabelText) — on the real display the size
+    // difference is the only thing telling them apart (live 2026-09-24: "↑150/9000"
+    // is a predicted 150 kt over a 9000 ft constraint; "↑210/7000" a 210 kt
+    // constraint over a predicted 7000). Flattened, a prediction read as a
+    // restriction. Wrap each small-type part in ~…~ for FormatConstraint.
+    function markPredicted(el) {
+      var sp = el.getElementsByTagName ? el.getElementsByTagName('tspan') : null;
+      if (!sp || !sp.length) return '';
+      var own = ' ' + (el.getAttribute('class') || '') + ' ';
+      if (own.indexOf(' LabelText ') >= 0) return '';          // the whole text is small
+      var out = '', any = false;
+      for (var i = 0; i < sp.length; i++) {
+        var tx = norm(sp[i].textContent);
+        if (!tx) continue;
+        var cls = ' ' + (sp[i].getAttribute('class') || '') + ' ';
+        if (cls.indexOf(' LabelText ') >= 0 && /[0-9]/.test(tx)) { out += '~' + tx + '~'; any = true; }
+        else out += tx;
+      }
+      return any ? out : '';
+    }
+
     // Visible text tokens, window-relative coordinates (bounding rects share one
     // canvas space, so rect deltas are stable regardless of DU placement).
     function visTokens(win) {
@@ -356,9 +527,12 @@
       for (var i = 0; i < ts.length; i++) {
         var el = ts[i];
         var t = norm(el.textContent);
-        if (!t) continue;
         var cs;
         try { cs = window.getComputedStyle(el); } catch (e) { continue; }
+        // An EMPTY node is normally nothing — except a pending Input's (see
+        // inputDisplayValue), which is a real field showing an empty scratchpad.
+        var pendingInput = isPendingFill(cs.fill);
+        if (!t && !pendingInput) continue;
         // visibility AND opacity: a stale/faded node a sighted pilot cannot see
         // must be equally invisible to the scrape, or the form shows phantom
         // rows that misalign every occurrence-addressed click under them.
@@ -366,6 +540,7 @@
         if (parseFloat(cs.opacity || '1') === 0) continue;
         var r = el.getBoundingClientRect();
         var tok = { t: t, x: Math.round(r.left - wr.left), y: Math.round(r.top - wr.top), c: colorOf(el) };
+        if (tok.c === 'green' && t) tok.t = markPredicted(el) || t;
         // Only VALUES can be a dropdown's face; gray label text never is, so the
         // fiber walk is skipped for labels (keeps the per-poll cost down). The
         // same single walk yields `cl` (genuinely pressable — its own component
@@ -376,8 +551,24 @@
           if (fi) {
             if (fi.dd) { tok.dd = 1; tok.n = fi.dd.n; }
             if (fi.clickDepth >= 0 && fi.clickDepth <= CLICK_DEPTH_MAX) tok.cl = 1;
+            if (fi.mn !== null) { tok.mn = fi.mn; tok.mx = fi.mx; }
+            if (fi.ro) tok.ro = 1;
+            if (pendingInput && isPendingEcho(fi.input, cs.fill)) {
+              var real = inputDisplayValue(fi.input);
+              // An EMPTY text node reports its box's origin, not where its text
+              // would sit (x+7, y+5 units — every filled value in the same box
+              // measures there); report the text position so it pairs exactly
+              // like the filled value it stands in for.
+              if (!t) {
+                var sc = wr.width / 740 || 1;
+                tok.x += Math.round(7 * sc); tok.y += Math.round(5 * sc);
+              }
+              tok.t = real || '▯';
+              tok.c = 'white';
+            }
           }
         }
+        if (!tok.t) continue;                             // empty and not an Input
         out.push(tok);
       }
       return out;
@@ -439,8 +630,39 @@
           w: Math.round(r.width), h: Math.round(r.height)
         });
       }
-      return JSON.stringify({ ok: true, tokens: visTokens(w), boxes: boxes });
+      return JSON.stringify({ ok: true, tokens: withoutErrorBox(w, visTokens(w)), boxes: boxes });
     };
+
+    // The FMS's refusal box (amber 2.5px frame, ~360x40 units, under the field —
+    // see fmsError) is read out separately by the form. Left in the page scrape
+    // its text paired as the NEXT field's value: "GWT, edit box: INVALID ENTRY"
+    // (live 2026-09-24, FUEL page), so drop anything drawn inside it.
+    function withoutErrorBox(w, toks) {
+      var g = fmsScale(w);
+      if (!g) return toks;
+      var boxes = [];
+      var rects = w.querySelectorAll('rect');
+      for (var i = 0; i < rects.length; i++) {
+        var cs;
+        try { cs = window.getComputedStyle(rects[i]); } catch (e) { continue; }
+        if (cs.visibility !== 'visible') continue;
+        if ((cs.stroke || '').indexOf(AMBER) < 0) continue;
+        var r = rects[i].getBoundingClientRect();
+        if (Math.abs(r.height / g.scale - 40) > 10 || r.width / g.scale < 200) continue;
+        boxes.push({ l: r.left - g.winRect.left, t: r.top - g.winRect.top,
+                     r: r.right - g.winRect.left, b: r.bottom - g.winRect.top });
+      }
+      if (!boxes.length) return toks;
+      var out = [];
+      for (var k = 0; k < toks.length; k++) {
+        var tk = toks[k], inside = false;
+        for (var b = 0; b < boxes.length; b++)
+          if (tk.x >= boxes[b].l - 2 && tk.x <= boxes[b].r && tk.y >= boxes[b].t - 4 && tk.y <= boxes[b].b)
+          { inside = true; break; }
+        if (!inside) out.push(tk);
+      }
+      return out;
+    }
 
     A.ecl = function () {
       var w = winOf('ecl');
@@ -1205,9 +1427,10 @@
       for (var i = 0; i < ts.length; i++) {
         var el = ts[i];
         var t = textOfEl(el);
-        if (!t) continue;
         var cs;
         try { cs = window.getComputedStyle(el); } catch (e) { continue; }
+        var pendingInput = isPendingFill(cs.fill);
+        if (!t && !pendingInput) continue;
         if (cs.visibility !== 'visible') continue;
         if (parseFloat(cs.opacity || '1') === 0) continue;
         var r = el.getBoundingClientRect();
@@ -1215,10 +1438,24 @@
           t: t, x: Math.round(r.left - wr.left), y: Math.round(r.top - wr.top),
           c: colorOf(el)
         };
+        // Same structural facts as the page scrape (visTokens): dropdown faces,
+        // genuinely pressable tokens (`cl` — without it every data cell of the
+        // SELECT WPT picker read as a button), entry ranges, and a refused
+        // Input's real value instead of the scratchpad it is echoing.
         if (dtok.c !== 'gray') {
-          var ddd = dropdownInfoOf(el);           // dialogs carry choosers too
-          if (ddd) { dtok.dd = 1; dtok.n = ddd.n; }
+          var fi = fiberInfoOf(el);
+          if (fi) {
+            if (fi.dd) { dtok.dd = 1; dtok.n = fi.dd.n; }
+            if (fi.clickDepth >= 0 && fi.clickDepth <= CLICK_DEPTH_MAX) dtok.cl = 1;
+            if (fi.mn !== null) { dtok.mn = fi.mn; dtok.mx = fi.mx; }
+            if (fi.ro) dtok.ro = 1;
+            if (pendingInput && isPendingEcho(fi.input, cs.fill)) {
+              dtok.t = inputDisplayValue(fi.input) || '▯';
+              dtok.c = 'white';
+            }
+          }
         }
+        if (!dtok.t) continue;
         tokens.push(dtok);
       }
       var boxes = [];
@@ -1468,10 +1705,12 @@
       for (var i = 0; i < ts.length; i++) {
         var el = ts[i];
         if (el === anchor) continue;
-        if (!textOfEl(el)) continue;
-        var vis;
-        try { vis = window.getComputedStyle(el).visibility; } catch (e) { continue; }
-        if (vis !== 'visible') continue;
+        var vcs;
+        try { vcs = window.getComputedStyle(el); } catch (e) { continue; }
+        // A pending Input shows the (empty) scratchpad as an EMPTY node — still
+        // the field's value slot, and still the commit target (see visTokens).
+        if (!textOfEl(el) && !isPendingFill(vcs.fill)) continue;
+        if (vcs.visibility !== 'visible') continue;
         if (colorOf(el) === 'gray') continue;              // rule 1: labels aren't values
         var r = el.getBoundingClientRect();
         var dy = r.top - ar.top;
@@ -1486,9 +1725,10 @@
           if (!(r.left >= vb.left - 6 && r.left <= vb.right + 6
                 && cy >= vb.top - 8 && cy <= vb.bottom + 8)) continue;
           if (ar.left >= vb.left - 6 && ar.left <= vb.right + 6) shared = true;
-          // 170, not 130: the FUEL page's NUMBER OF PAX box starts 162 units
-          // right of its label (bundle Fuel.tsx: label x=8, input x=170).
-          if (vb.left >= ar.left - 6 && vb.left - ar.left <= 170 * scale) inlineBoxed = true;
+          // 180, not 130: the FUEL page's NUMBER OF PAX box starts 162 units
+          // right of its label (bundle Fuel.tsx: label x=8, input x=170), the
+          // DEPARTURES dialog's OTHER AIRPORT box 172.
+          if (vb.left >= ar.left - 6 && vb.left - ar.left <= 180 * scale) inlineBoxed = true;
         }
         var tier = 9;
         if (inl && inlineBoxed) tier = 0;                  // rule 2: the label's own row
@@ -1522,6 +1762,13 @@
         if (textOfEl(el) !== want) continue;
         try { vis = window.getComputedStyle(el).visibility; } catch (e) { continue; }
         if (vis !== 'visible') continue;
+        // LABELS only, counted like ParseFms counts them (gray tokens). A value
+        // can carry the same text as a label — the CROSSING dialog's altitude
+        // chooser shows "AT" right above the "AT" label of the altitude box —
+        // and anchoring on the chooser's face found no value and answered
+        // NO_VALUE, so a plain AT crossing altitude could never be set (live
+        // 2026-09-24).
+        if (colorOf(el) !== 'gray') continue;
         if (n-- > 0) continue;
         anchor = el;
         break;
@@ -1604,13 +1851,168 @@
           if (!rcs.stroke || rcs.stroke === 'none') continue;
           var vb = rects[b].getBoundingClientRect();
           if (vb.left < ar.left || vb.left - ar.left > 130 * d.scale) continue;
-          if (Math.abs((vb.top + vb.height / 2) - (ar.top + ar.height / 2)) > 20 * d.scale) continue;
+          // The entry box sits BELOW-right of its gray arrow, not beside it
+          // (bundle DirectTo.tsx: arrow text y=15, Input y=42 — box centre
+          // ~43 units lower; live 2026-09-24). A same-row test never matched,
+          // so "direct to a typed waypoint" was unreachable.
+          var bdy = (vb.top + vb.height / 2) - (ar.top + ar.height / 2);
+          if (bdy < -20 * d.scale || bdy > 70 * d.scale) continue;
           return fireClick(vb.left + vb.width / 2, vb.top + vb.height / 2, rects[b].parentNode)
             ? 'CLICKED' : 'NO_TARGET';
         }
       }
       return 'NOT_FOUND';
     };
+    // ---- paged dialog lists (the Fusion scroll bar, bundle `Ur`) -------------
+    // Some dialogs PAGINATE rather than scroll: the Direct-To dialog renders
+    // exactly five slots (the typed-entry row + four legs) and swaps their
+    // content as its scroll bar's position changes, so every leg past the
+    // fourth is simply NOT in the DOM until the list is paged — a pilot on a
+    // real route could only ever go direct to the first four legs. The scroll
+    // bar component carries position/setPosition/childCount; calling
+    // setPosition is exactly what its own up/down arrow buttons do.
+    function scrollersIn(root) {
+      var out = [];
+      if (!root) return out;
+      var els = root.querySelectorAll('g,rect');
+      for (var i = 0; i < els.length; i++) {
+        var f = fiberOf(els[i]), n = 0;
+        while (f && n < 3) {
+          var p = f.memoizedProps;
+          if (p && typeof p.setPosition === 'function' && typeof p.position === 'number'
+              && typeof p.childCount === 'number') {
+            var dup = false;
+            for (var k = 0; k < out.length; k++) if (out[k].p.setPosition === p.setPosition) { dup = true; break; }
+            if (!dup) {
+              var ch = p.childHeight || p.childWidth || 1;
+              var len = p.childHeight ? (p.height || 44) : (p.width || 44);
+              var pages = p.pages != null ? p.pages
+                : Math.ceil((p.childCount * ch) / Math.max(ch, Math.round(len / ch) * ch));
+              out.push({ p: p, pos: p.position, pages: pages });
+            }
+            break;
+          }
+          f = f.return; n++;
+        }
+      }
+      return out;
+    }
+    // {pos, pages} of the open dialog's paged list(s), [] when it has none.
+    A.dialogPages = function () {
+      var d = findDialog();
+      var s = d ? scrollersIn(d.g) : [];
+      var out = [];
+      for (var i = 0; i < s.length; i++) out.push({ pos: s[i].pos, pages: s[i].pages });
+      return JSON.stringify(out);
+    };
+    // Page every paged list in the open dialog by `dir` (+1 / -1), clamped.
+    // Returns "PAGED|pos|pages" (first list), "EDGE" when already at that end,
+    // "NONE" when the dialog has no paged list.
+    A.dialogPage = function (dir) {
+      var d = findDialog();
+      if (!d) return 'NO_DIALOG';
+      var s = scrollersIn(d.g);
+      if (!s.length) return 'NONE';
+      var moved = false, first = null;
+      for (var i = 0; i < s.length; i++) {
+        var to = Math.max(0, Math.min(s[i].pages - 1, s[i].pos + dir));
+        if (!first) first = { pos: to, pages: s[i].pages };
+        if (to === s[i].pos) continue;
+        try { s[i].p.setPosition(to); moved = true; } catch (e) { }
+      }
+      return moved ? ('PAGED|' + first.pos + '|' + first.pages) : 'EDGE';
+    };
+
+    // Click the value node of a field that has NO label of its own (the FUEL
+    // page's contingency-percent box, beside the reserve box it belongs to) by
+    // the window-relative position fms() reported for it. Same click as a field
+    // commit, just addressed by the token the form rendered.
+    A.clickFmsAt = function (x, y) {
+      var w = winOf('fms');
+      if (!w) return 'NO_WINDOW';
+      var wr = w.getBoundingClientRect();
+      var ts = w.querySelectorAll('text');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i], cs;
+        try { cs = window.getComputedStyle(el); } catch (e) { continue; }
+        if (cs.visibility !== 'visible') continue;
+        if (colorOf(el) === 'gray') continue;
+        var r = el.getBoundingClientRect();
+        // an empty pending node is REPORTED at its text position (see visTokens)
+        var sc = wr.width / 740 || 1, empty = !textOfEl(el);
+        var ex = Math.round(r.left - wr.left) + (empty ? Math.round(7 * sc) : 0);
+        var ey = Math.round(r.top - wr.top) + (empty ? Math.round(5 * sc) : 0);
+        if (Math.abs(ex - x) > 3 || Math.abs(ey - y) > 3) continue;
+        return fireClick(r.left + r.width / 2, r.top + r.height / 2, el.parentNode || el)
+          ? 'CLICKED' : 'NO_TARGET';
+      }
+      return 'NOT_FOUND';
+    };
+
+    // The speed/altitude CONSTRAINT of a LEGS row ("↑250/4000A", "/-----") is its
+    // own scratchpad Input (bundle: props onSubmit + transition), exactly like
+    // the real FMS: type "/9000A" and click it. This is the ONLY way to set a
+    // crossing restriction on a terminal waypoint — the aircraft opens no
+    // revision menu (so no CROSSING…) for those (live 2026-09-24, EGNT NTS08).
+    // Addressed by the aircraft's legIdx like every other legs action. The
+    // CALLER must have text on the scratchpad: an empty one COPIES the value out.
+    A.clickLegConstraintAt = function (legIdx) {
+      var w = winOf('fms');
+      if (!w) return 'NO_WINDOW';
+      var ts = w.querySelectorAll('text');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i], cs;
+        try { cs = window.getComputedStyle(el); } catch (e) { continue; }
+        if (cs.visibility !== 'visible') continue;
+        if (parseFloat(cs.opacity || '1') === 0) continue;
+        var f = fiberOf(el), n = 0, isCons = false;
+        while (f && n < 10) {
+          var p = f.memoizedProps;
+          if (p && typeof p.onSubmit === 'function' && ('transition' in p)) { isCons = true; break; }
+          f = f.return; n++;
+        }
+        if (!isCons) continue;
+        if (legInfoOf(el).idx !== legIdx) continue;
+        var r = el.getBoundingClientRect();
+        return fireClick(r.left + r.width / 2, r.top + r.height / 2, el.parentNode || el)
+          ? 'CLICKED' : 'NO_TARGET';
+      }
+      return 'NOT_FOUND';
+    };
+
+    // The Direct-To dialog's per-leg crossing altitude (the green box right of
+    // VERT →) is an INPUT: typing an altitude there sets an AT constraint on
+    // that leg (bundle: onSubmit → setLegAttributes(idx, {altitude: At})), and
+    // it is what ENABLES VERT → on a leg that had none. `vertOcc` counts every
+    // "VERT →" in reading order, enabled or not — ParseDirectTo's VertOcc.
+    A.clickDirectToVertAlt = function (vertOcc) {
+      var d = findDialog();
+      if (!d) return 'NO_DIALOG';
+      var ts = d.g.querySelectorAll('text');
+      var verts = [], all = [];
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i], cs;
+        try { cs = window.getComputedStyle(el); } catch (e) { continue; }
+        if (cs.visibility !== 'visible') continue;
+        var r = el.getBoundingClientRect();
+        var t = textOfEl(el);
+        if (t === 'VERT →' || t === 'VERT →') verts.push(r);
+        else if (colorOf(el) !== 'gray') all.push({ el: el, r: r });
+      }
+      verts.sort(function (a, b) { return (a.top - b.top) || (a.left - b.left); });
+      var v = verts[vertOcc || 0];
+      if (!v) return 'NOT_FOUND';
+      var vc = v.top + v.height / 2;
+      for (var k = 0; k < all.length; k++) {
+        var ar = all[k].r;
+        if (Math.abs((ar.top + ar.height / 2) - vc) > 8 * d.scale) continue;
+        if (ar.left <= v.left || ar.left - v.left > 150 * d.scale) continue;
+        return fireClick(ar.left + ar.width / 2, ar.top + ar.height / 2, all[k].el.parentNode || all[k].el)
+          ? 'CLICKED' : 'NO_TARGET';
+      }
+      return 'NO_VALUE';
+    };
+
     A.clickFmsField = function (label, occ) {
       var w = winOf('fms');
       if (!w) return 'NO_WINDOW';
@@ -1625,6 +2027,7 @@
         if (t !== want) continue;
         try { vis = window.getComputedStyle(el).visibility; } catch (e) { continue; }
         if (vis !== 'visible') continue;
+        if (colorOf(el) !== 'gray') continue;   // labels only — see clickDialogField
         if (n-- > 0) continue;
         anchor = el;
         break;
@@ -1654,6 +2057,153 @@
       var br = best.getBoundingClientRect();
       return fireClick(br.left + br.width / 2, br.top + br.height / 2, best.parentNode || best)
         ? ('CLICKED:' + textOfEl(best)) : 'NO_TARGET';
+    };
+
+    // ---- Navigraph navdata load (MFW Maintenance "DATALOAD" format) ----------
+    // The aircraft's working Navigraph updater lives HERE, not in the EFB (whose
+    // UPDATE NAVDATA button calls a WASM callback v1.0.9 never answers). MFW
+    // format 8 = DATALOAD (6 CHART, 7 MAINTENANCE — the MFW Menu.tsx constants);
+    // formats are chosen from a CCP cursor menu with no CTP key, so we dispatch
+    // the display's own redux action (slice "duState", reducer setMfwFormat) on
+    // the CAPTAIN's upper MFW (dus index 2, its left/right partition). Live
+    // 2026-09-24: this route loaded Navigraph_v2_2609_03SEP26 into FMS1+FMS2.
+    function duStore() {
+      if (A._duStore) return A._duStore;
+      var root = document.getElementById('MSFS_REACT_MOUNT');
+      var svg = root && root.querySelector('svg');
+      if (!svg) return null;
+      var key = null;
+      for (var k in svg) { if (k.indexOf('__reactFiber') === 0 || k.indexOf('__reactInternalInstance') === 0) { key = k; break; } }
+      if (!key) return null;
+      var f = svg[key], n = 0;
+      while (f && n < 250) {
+        var p = f.memoizedProps;
+        if (p && p.store && p.store.dispatch && p.store.getState) { A._duStore = p.store; return p.store; }
+        if (p && p.value && p.value.store && p.value.store.dispatch) { A._duStore = p.value.store; return p.value.store; }
+        f = f['return']; n++;
+      }
+      return null;
+    }
+
+    function captainMfw() {
+      var s = duStore();
+      if (!s) return null;
+      var st = s.getState();
+      var part = st.dus && st.dus.leftPartition;
+      if (!part || !st.dus[2] || !st.dus[2][part]) return null;
+      return { store: s, part: part, fmt: st.dus[2][part].mfw };
+    }
+
+    A.setCaptainMfwFormat = function (format) {
+      var c = captainMfw();
+      if (!c) return 'NO_STORE';
+      c.store.dispatch({ type: 'duState/setMfwFormat', payload: { index: 2, partition: c.part, format: format } });
+      var after = captainMfw();
+      return after && after.fmt === format ? 'OK' : 'NOT_APPLIED';
+    };
+
+    function visibleTexts(scope) {
+      var out = [];
+      var ts = (scope || document).querySelectorAll('text');
+      for (var i = 0; i < ts.length; i++) {
+        var el = ts[i];
+        var t = norm(el.textContent);
+        if (!t) continue;
+        var cs;
+        try { cs = window.getComputedStyle(el); } catch (e) { continue; }
+        if (cs.visibility !== 'visible' || cs.display === 'none') continue;
+        var r = el.getBoundingClientRect();
+        if (r.width === 0 && r.height === 0) continue;
+        out.push({ el: el, t: t, x: r.left, y: r.top, w: r.width, h: r.height });
+      }
+      return out;
+    }
+
+    // The captain's MFW window <g> showing the data-load format (or its menu).
+    function dataloadWin() {
+      var root = document.getElementById('MSFS_REACT_MOUNT');
+      if (!root) return null;
+      var gs = root.querySelectorAll('svg > g');
+      for (var i = 0; i < gs.length; i++) {
+        var tc = gs[i].textContent || '';
+        if (tc.indexOf('Load New Databases') >= 0 || tc.indexOf('Maintenance Data Load Menu') >= 0) return gs[i];
+      }
+      return null;
+    }
+
+    function fiberPropsWith(el, prop) {
+      var key = null;
+      for (var k in el) { if (k.indexOf('__reactFiber') === 0 || k.indexOf('__reactInternalInstance') === 0) { key = k; break; } }
+      if (!key) return null;
+      var f = el[key], n = 0;
+      while (f && n < 12) {
+        var p = f.memoizedProps;
+        if (p && typeof p === 'object' && prop in p) return p;
+        f = f['return']; n++;
+      }
+      return null;
+    }
+
+    // Navigraph device-flow dialog ("Navigraph Authentication Required"), shown by
+    // the MFW whenever a Navigraph-backed function is opened without a sign-in.
+    // The code is the one 8-character token below "the following code:".
+    function navigraphAuth() {
+      var all = visibleTexts(document);
+      var hdr = null;
+      for (var i = 0; i < all.length; i++) if (all[i].t === 'Navigraph Authentication Required') { hdr = all[i]; break; }
+      if (!hdr) return null;
+      var code = null;
+      for (var j = 0; j < all.length; j++) {
+        var a = all[j];
+        if (a.y > hdr.y && Math.abs(a.x - hdr.x) < 700 && /^[A-Z0-9]{6,10}$/.test(a.t)) { code = a.t; break; }
+      }
+      return { code: code, url: 'https://navigraph.com/code' };
+    }
+
+    A.dataload = function () {
+      var c = captainMfw();
+      var res = { ok: true, fmt: c ? c.fmt : -1, auth: navigraphAuth(), page: 'none', rows: [],
+                  canStart: false, progress: null, complete: null };
+      var w = dataloadWin();
+      if (!w) return JSON.stringify(res);
+      var ts = visibleTexts(w);
+      var txt = ts.map(function (a) { return a.t; });
+      if (txt.indexOf('Load New Databases') >= 0) res.page = 'databases';
+      else if (txt.indexOf('Maintenance Data Load Menu') >= 0) res.page = 'menu';
+      if (res.page === 'databases') {
+        for (var i = 0; i < ts.length; i++) {
+          var p = fiberPropsWith(ts[i].el, 'selected');
+          if (!p || typeof p.name !== 'string' || p.name !== ts[i].t || !('status' in p)) continue;
+          res.rows.push({ name: p.name, selected: !!p.selected, disabled: !!p.disabled, status: p.status || '' });
+        }
+        for (var k = 0; k < ts.length; k++) {
+          if (ts[k].t === 'Start Load') {
+            var sp = fiberPropsWith(ts[k].el, 'disabled');
+            res.canStart = !(sp && sp.disabled);
+          }
+          if (/^\d{1,3}%$/.test(ts[k].t) && res.progress === null) res.progress = parseInt(ts[k].t, 10);
+          if (ts[k].t === 'Load Complete') res.complete = 'ok';
+          if (ts[k].t === 'Load Complete with Errors') res.complete = 'errors';
+        }
+      }
+      return JSON.stringify(res);
+    };
+
+    // Click a label in the data-load window (tab "LOAD NEW", a database row,
+    // "Start Load") or the Navigraph sign-in dialog ("Open in Browser", "Cancel").
+    A.dataloadClick = function (needle) {
+      var want = norm(needle);
+      var w = dataloadWin();
+      var pools = [w ? visibleTexts(w) : [], visibleTexts(document)];
+      for (var p = 0; p < pools.length; p++) {
+        var ts = pools[p];
+        for (var i = 0; i < ts.length; i++) {
+          if (ts[i].t !== want && ts[i].t.indexOf(want) !== 0) continue;
+          var a = ts[i];
+          return fireClick(a.x + a.w / 2, a.y + a.h / 2, a.el.parentNode || a.el) ? ('CLICKED:' + a.t) : 'NO_TARGET';
+        }
+      }
+      return 'NOT_FOUND';
     };
 
     window.__a220Displays = A;

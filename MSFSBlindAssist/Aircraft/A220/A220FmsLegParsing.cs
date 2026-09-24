@@ -291,12 +291,23 @@ internal static class A220FmsLegParsing
         string speed = slash >= 0 ? s[..slash].Trim() : "";
         string alt = slash >= 0 ? s[(slash + 1)..].Trim() : s.Trim();
 
-        if (speed.Trim('-', ' ').Length > 0) parts.Add($"{speed} knots");
-        if (alt.Trim('-', ' ').Length > 0)
+        // "~…~" = the agent saw that part in the display's SMALL type: the FMS's
+        // PREDICTION, not a constraint (see the agent's markPredicted). Say so —
+        // a predicted value read as a restriction is a wrong instruction.
+        static (string Text, bool Predicted) Unwrap(string p)
         {
-            if (alt.EndsWith("A", StringComparison.Ordinal)) parts.Add($"{alt[..^1]} or above");
-            else if (alt.EndsWith("B", StringComparison.Ordinal)) parts.Add($"{alt[..^1]} or below");
-            else parts.Add(alt);
+            bool pred = p.Contains('~');
+            return (p.Replace("~", "").Trim(), pred);
+        }
+        var (sp, spPred) = Unwrap(speed);
+        var (al, alPred) = Unwrap(alt);
+        if (sp.Trim('-', ' ').Length > 0) parts.Add($"{(spPred ? "predicted " : "")}{sp} knots");
+        if (al.Trim('-', ' ').Length > 0)
+        {
+            string pre = alPred ? "predicted " : "";
+            if (al.EndsWith("A", StringComparison.Ordinal)) parts.Add($"{pre}{al[..^1]} or above");
+            else if (al.EndsWith("B", StringComparison.Ordinal)) parts.Add($"{pre}{al[..^1]} or below");
+            else parts.Add(pre + al);
         }
         return string.Join(", ", parts);
     }

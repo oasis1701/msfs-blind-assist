@@ -27,8 +27,12 @@ internal static class A220FmsScreenParsing
     /// as Dropdown; when NO token in a scrape carries it (older agent, dialog
     /// scrapes, test fixtures), button classification falls back to the text
     /// heuristic.</summary>
+    /// <summary><paramref name="Min"/>/<paramref name="Max"/>: the entry range the
+    /// aircraft's Input carries (ZFW 81750..128000 lb), when it has one — spoken
+    /// when an entry is refused, so the pilot learns what WOULD be accepted.</summary>
     internal readonly record struct WinToken(string Text, double X, double Y, string Color,
-        bool Dropdown = false, int Options = 0, bool Clickable = false);
+        bool Dropdown = false, int Options = 0, bool Clickable = false,
+        double? Min = null, double? Max = null, bool ReadOnly = false);
     internal readonly record struct WinBox(string Kind, double X, double Y, string Fill, double W = 0, double H = 0);
 
     internal sealed class AgentWindow
@@ -56,7 +60,10 @@ internal static class A220FmsScreenParsing
                         t.TryGetProperty("c", out var c) ? c.GetString() ?? "white" : "white",
                         t.TryGetProperty("dd", out var dd) && dd.GetInt32() != 0,
                         t.TryGetProperty("n", out var n) ? n.GetInt32() : 0,
-                        t.TryGetProperty("cl", out var cl) && cl.GetInt32() != 0));
+                        t.TryGetProperty("cl", out var cl) && cl.GetInt32() != 0,
+                        t.TryGetProperty("mn", out var mn) && mn.ValueKind == JsonValueKind.Number ? mn.GetDouble() : null,
+                        t.TryGetProperty("mx", out var mx) && mx.ValueKind == JsonValueKind.Number ? mx.GetDouble() : null,
+                        t.TryGetProperty("ro", out var ro) && ro.GetInt32() != 0));
             if (root.TryGetProperty("boxes", out var boxes))
                 foreach (var b in boxes.EnumerateArray())
                     win.Boxes.Add(new WinBox(
@@ -94,10 +101,26 @@ internal static class A220FmsScreenParsing
         /// <summary>Screen y of the field's LABEL — used to interleave fields,
         /// buttons and plain lines back into READING order in the form.</summary>
         public double Y;
+        /// <summary>Screen x used to order fields that share a row (a table cell
+        /// reads right after its row label, before the next column's field).</summary>
+        public double X;
+        /// <summary>What the pilot HEARS as the field's name, when it differs from
+        /// the on-screen label that addresses the click: a table cell names its row
+        /// AND column ("ZFW CG(%MAC)"), a label drawn over two lines is joined
+        /// ("RESERVE/CONTINGENCY"). Null = speak <see cref="Label"/>.</summary>
+        public string? SpokenLabel;
+        public string Name => SpokenLabel ?? Label;
+        /// <summary>Entry range from the aircraft's Input, when it declares one.</summary>
+        public double? Min, Max;
+        /// <summary>A boxed value with NO label of its own (the FUEL page's
+        /// contingency-percent box) is clicked by the window-relative position of
+        /// its value token (agent clickFmsAt) instead of by label.</summary>
+        public double? ClickX, ClickY;
     }
 
-    /// <summary>A pressable page text (soft key, sub-tab) with its screen y.</summary>
-    internal readonly record struct FmsButton(string Text, double Y);
+    /// <summary>A pressable page text (soft key, sub-tab) with its screen y (and x /
+    /// colour, which dialogs use to name a list column and its selected entry).</summary>
+    internal readonly record struct FmsButton(string Text, double Y, double X = 0, string Color = "white");
 
     /// <summary>A plain unclaimed line with the y of its first token.</summary>
     internal readonly record struct FmsLine(string Text, double Y);
@@ -155,7 +178,7 @@ internal static class A220FmsScreenParsing
     /// a "unit", including a neighbouring field's own label.</summary>
     private static readonly HashSet<string> UnitLabels = new(StringComparer.Ordinal)
     {
-        "KT", "KTS", "NM", "MIN", "FT", "KG", "LB", "°", "Z", "%", "HR", "SEC", "M", "C",
+        "KT", "KTS", "NM", "MIN", "FT", "KG", "LB", "°", "°C", "Z", "%", "HR", "SEC", "M", "C",
     };
 
     /// <summary>
@@ -165,9 +188,18 @@ internal static class A220FmsScreenParsing
     /// </summary>
     private static string? FindTrailingUnit(IReadOnlyList<WinToken> tokens, int valueIdx)
     {
+        int i = TrailingUnitIndex(tokens, valueIdx);
+        return i < 0 ? null : tokens[i].Text.Trim();
+    }
+
+    /// <summary>Index of the unit token <see cref="FindTrailingUnit"/> reads, -1 when
+    /// none — so the pairing pass can also mark it CLAIMED (a unit already spoken
+    /// with its value must not reappear as a stray "°C" line).</summary>
+    private static int TrailingUnitIndex(IReadOnlyList<WinToken> tokens, int valueIdx)
+    {
         const double SameRowDy = 12, MaxDx = 130;
         var v = tokens[valueIdx];
-        string? best = null;
+        int best = -1;
         double bestDx = double.MaxValue;
         for (int i = 0; i < tokens.Count; i++)
         {
@@ -179,7 +211,7 @@ internal static class A220FmsScreenParsing
             if (Math.Abs(t.Y - v.Y) > SameRowDy) continue;
             double dx = t.X - v.X;
             if (dx <= 0 || dx > MaxDx) continue;
-            if (dx < bestDx) { bestDx = dx; best = text; }
+            if (dx < bestDx) { bestDx = dx; best = i; }
         }
         return best;
     }
@@ -201,13 +233,21 @@ internal static class A220FmsScreenParsing
         if (occurrence < 0 || occurrence >= rows.Count) return null;
         var self = rows[occurrence];
 
+        // Gray tokens are LABELS (the SELECT WPT picker draws a gray "FPLN" tag on
+        // every option's row), never part of what the option picks.
         var parts = tokens
-            .Where(t => Math.Abs(t.Y - self.Y) <= RowTolY && t.X > self.X)
+            .Where(t => Math.Abs(t.Y - self.Y) <= RowTolY && t.X > self.X && t.Color != "gray"
+                        && !t.Clickable)                     // the dialog's own CNCL can share the row
             .OrderBy(t => t.X)
             .Select(t => t.Text.Trim())
             .Where(s => s.Length > 0 && s != button)
             .ToList();
-        if (parts.Count > 0)
+        // A row carrying a CONSTRAINT (digits or a slash — the SELECT CONSTRAINT
+        // dialog) names the option by itself. Anything else on the row (the
+        // SELECT WPT picker's region code "LR") is only the START of the option's
+        // description, whose rest is in the band below.
+        bool rowIsConstraint = parts.Any(p => p.Any(char.IsDigit) || p.Contains('/'));
+        if (parts.Count > 0 && rowIsConstraint)
         {
             // A constraint renders as adjacent tokens ("↓" then "/8000A"), so join
             // before speaking it through the same formatter the legs rows use.
@@ -225,12 +265,14 @@ internal static class A220FmsScreenParsing
         // was choosing between identical rows.
         double bandEnd = occurrence + 1 < rows.Count ? rows[occurrence + 1].Y : self.Y + 150;
         var band = tokens
-            .Where(t => t.Y > self.Y + RowTolY && t.Y < bandEnd)
+            .Where(t => t.Y > self.Y + RowTolY && t.Y < bandEnd && t.Color != "gray" && !t.Clickable)
             .OrderBy(t => t.Y).ThenBy(t => t.X)
             .Select(t => t.Text.Trim())
             .Where(s => s.Length > 0 && s != button
+                        && s != "SELECTION REQUIRED"      // the dialog's status line
                         && s.Trim('▯', '□', '-', '.', ' ').Length > 0)
             .ToList();
+        band.InsertRange(0, parts);
         if (band.Count == 0) return null;
         string joined = string.Join(" ", band);
         return joined.Length > 90 ? joined[..90] : joined;
@@ -247,6 +289,35 @@ internal static class A220FmsScreenParsing
             .Replace(value, "[▯□]+", "blank");
         collapsed = collapsed.Trim();
         return collapsed.Length == 0 ? "blank" : collapsed;
+    }
+
+    /// <summary>
+    /// The column heading a dialog button sits under, "" when it is not part of a
+    /// list column. A heading is a gray token above the button (within 20 units of
+    /// its x, below the dialog's header band) — the nearest one — and it only
+    /// counts as a COLUMN when at least two buttons sit under it, so a lone
+    /// button is never renamed after an unrelated label. A trailing count
+    /// ("RWYS(2)") is dropped: the pilot hears the entries themselves.
+    /// </summary>
+    internal static string DialogColumnOf(IReadOnlyList<WinToken> tokens,
+        IReadOnlyList<FmsButton> buttons, FmsButton button, double dialogTop)
+    {
+        WinToken? HeadingOf(FmsButton b)
+        {
+            WinToken? best = null;
+            foreach (var t in tokens)
+            {
+                if (t.Color != "gray" || t.Y >= b.Y || t.Y - dialogTop < 30) continue;
+                if (Math.Abs(t.X - b.X) > 20 || b.Y - t.Y > 450) continue;
+                if (best == null || t.Y > best.Value.Y) best = t;
+            }
+            return best;
+        }
+        var own = HeadingOf(button);
+        if (own == null) return "";
+        int under = buttons.Count(b => HeadingOf(b) is { } h && h.X == own.Value.X && h.Y == own.Value.Y);
+        if (under < 2) return "";
+        return System.Text.RegularExpressions.Regex.Replace(own.Value.Text.Trim(), @"\s*\(\d+\)$", "");
     }
 
     /// <summary>One plan-leg row of the Direct-To dialog (Dialog/DirectTo.tsx).</summary>
@@ -267,6 +338,11 @@ internal static class A220FmsScreenParsing
         public int VertOcc;
         /// <summary>The first (magenta) row is the active leg.</summary>
         public bool Active;
+        /// <summary>The altitude beside VERT → is an ENTRY box (bundle: an Input
+        /// whose submit sets an AT constraint on this leg) — typing one is what
+        /// enables VERT → on a leg that has none. Addressed by <see cref="VertOcc"/>
+        /// (agent clickDirectToVertAlt).</summary>
+        public bool HasAltBox;
     }
 
     internal sealed class DirectToModel
@@ -302,10 +378,23 @@ internal static class A220FmsScreenParsing
         var identOcc = new Dictionary<string, int>(StringComparer.Ordinal);
         int vertOcc = 0;
 
+        double headerY = ordered.Count > 0 ? ordered.Min(t => t.Y) : 0;
         foreach (var t in ordered)
         {
             string text = t.Text.Trim();
             if (text != "→") continue;
+            // The typed-ident entry: the ONE gray arrow below the header, with its
+            // entry box BELOW-right of it, not beside it (bundle DirectTo.tsx:
+            // arrow y=15, Input y=42 — live 2026-09-24 the box's value sat 52
+            // units lower). The same-row search below never matched it, so the
+            // "direct to a typed waypoint" row silently disappeared.
+            if (t.Color == "gray" && t.Y - headerY > 30)
+            {
+                m.HasEntry = m.HasEntry || ordered.Any(o =>
+                    o.Y - t.Y >= -8 && o.Y - t.Y <= 70 && o.X > t.X && o.X - t.X <= 130
+                    && o.Text.Trim('▯', '□', '-', '.', ' ').Length == 0 && InVbox(o));
+                continue;
+            }
             // The row's ident: the next token on the same text row, inside a vbox
             // that starts right of the arrow. Nothing there → not a leg row (the
             // dialog header draws a bare arrow too).
@@ -334,10 +423,14 @@ internal static class A220FmsScreenParsing
                 leg.VertEnabled = vert.Color != "gray";
                 leg.VertOcc = vertOcc++;
                 var alt = ordered.FirstOrDefault(o =>
-                    Math.Abs(o.Y - vert.Y) <= 8 && o.X > vert.X && o.X - vert.X <= 130
+                    Math.Abs(o.Y - vert.Y) <= 8 && o.X > vert.X && o.X - vert.X <= 150
                     && o.Text.Trim().Length > 0 && o.Text.Trim() != "VERT →" && InVbox(o));
-                if (alt != default && alt.Text.Trim('▯', '□', '-', '.', ' ').Length > 0)
-                    leg.VertAlt = alt.Text.Trim();
+                if (alt != default)
+                {
+                    leg.HasAltBox = true;
+                    if (alt.Text.Trim('▯', '□', '-', '.', ' ').Length > 0)
+                        leg.VertAlt = alt.Text.Trim();
+                }
             }
             m.Legs.Add(leg);
         }
@@ -348,6 +441,26 @@ internal static class A220FmsScreenParsing
         m.Fields = generic.Fields
             .Where(f => f.Label is "OFFSET" or "CRS" or "ALT SEL")
             .ToList();
+        // ALT SEL is a READ-OUT of the FCP selected altitude (bundle: a framed
+        // display, not an Input), whatever frame is drawn around it.
+        foreach (var f in m.Fields.Where(f => f.Label == "ALT SEL")) f.Editable = false;
+        // CRS is only an entry box once a direct-to has been chosen; before that
+        // it is plain text beside its label (the current course), which the
+        // box-gated inline pairing cannot see — and the row vanished. Read it.
+        if (!m.Fields.Any(f => f.Label == "CRS"))
+        {
+            var crs = ordered.FirstOrDefault(o => o.Color == "gray" && o.Text.Trim() == "CRS");
+            if (crs != default)
+            {
+                var val = ordered.FirstOrDefault(o => o.Color != "gray" && Math.Abs(o.Y - crs.Y) <= 12
+                                                      && o.X > crs.X && o.X - crs.X <= 120);
+                if (val != default)
+                    m.Fields.Add(new FmsField
+                    {
+                        Label = "CRS", Value = val.Text.Trim() + "°", Editable = false, Y = crs.Y
+                    });
+            }
+        }
         return m;
     }
 
@@ -388,8 +501,14 @@ internal static class A220FmsScreenParsing
         bool haveBoxes = valueBoxes is { Count: > 0 };
         bool haveClickInfo = tokens.Any(t => t.Clickable);
 
+        bool InAnyBox(WinToken t) => haveBoxes && valueBoxes!.Any(b =>
+            t.X >= b.X - 6 && t.X <= b.X + b.W + 6 && t.Y >= b.Y - 8 && t.Y <= b.Y + b.H + 8);
+
+        // Pass 1: each label's BEST value, by exactly the rules the agent's
+        // bestValueNode clicks with (the form reads with one rule set and clicks
+        // with the other, so they must agree).
         var occurrence = new Dictionary<string, int>();
-        var pairedLabels = new HashSet<int>();
+        var cands = new List<(int Label, int Value, int Tier, double Dx, int Occ)>();
         foreach (int li in labelIdx)
         {
             var label = tokens[li];
@@ -430,14 +549,15 @@ internal static class A220FmsScreenParsing
                     label.X >= b.X - 6 && label.X <= b.X + b.W + 6 &&
                     tokens[i].X >= b.X - 6 && tokens[i].X <= b.X + b.W + 6 &&
                     tokens[i].Y >= b.Y - 8 && tokens[i].Y <= b.Y + b.H + 8);
-                // 170, not 130: the FUEL page's "NUMBER OF PAX" entry box sits
+                // 180, not 130: the FUEL page's "NUMBER OF PAX" entry box sits
                 // 162 units right of its label (bundle Fuel.tsx: label x=8,
-                // input x=170) — with 130 the field was unreachable. Keep in
-                // sync with the agent's clickFmsField/clickDialogField gates.
+                // input x=170), the DEPARTURES dialog's OTHER AIRPORT box 172 —
+                // with 130 those fields were unreachable. Keep in sync with the
+                // agent's bestValueNode.
                 bool inlineBoxed = inline_ && haveBoxes && valueBoxes!.Any(b =>
                     tokens[i].X >= b.X - 6 && tokens[i].X <= b.X + b.W + 6 &&
                     tokens[i].Y >= b.Y - 8 && tokens[i].Y <= b.Y + b.H + 8 &&
-                    b.X >= label.X - 6 && b.X - label.X <= 170);
+                    b.X >= label.X - 6 && b.X - label.X <= 180);
                 // INLINE beats BELOW, and only then is nearest-dx used. In the
                 // FUEL page's entry tables the row BELOW a label is the NEXT
                 // field's box, sitting at the SAME dx as this label's own inline
@@ -452,28 +572,124 @@ internal static class A220FmsScreenParsing
                 { bestTier = tier; bestDx = dx; best = i; }
             }
             if (best < 0) continue;
-            consumedAsValue.Add(best);
-            pairedLabels.Add(li);
-            bool editable = haveBoxes
-                ? valueBoxes!.Any(b =>
-                    tokens[best].X >= b.X - 6 && tokens[best].X <= b.X + b.W + 6 &&
-                    tokens[best].Y >= b.Y - 8 && tokens[best].Y <= b.Y + b.H + 8)
-                : !haveClickInfo;
+            // A genuine PRESSABLE (soft key, SELECT) is never a field's value —
+            // the SELECT WPT picker's header paired with the first SELECT button
+            // as "SELECT WPT - TLA, edit box: SELECT". Drop the label rather than
+            // fall back to a second-best value the agent's click would not pick.
+            // (A pressable READ-OUT — the Direct-To dialog's ALT SEL "---" — is
+            // still a value: only a worded key is excluded.)
+            if (tokens[best].Clickable && !tokens[best].Dropdown
+                && tokens[best].Text.Any(char.IsLetter)) continue;
+            cands.Add((li, best, bestTier, bestDx, occ));
+        }
+
+        // Pass 2: ONE label per value. A column heading pairs BELOW with the
+        // first cell under it while that cell's own row label pairs INLINE with
+        // it, so the FUEL page read every entry twice under two names ("WT(LB),
+        // edit box: 101000" AND "ZFW, edit box: 101000"; "FUEL PLANNING(LB)" AND
+        // "BLOCK") and the INIT page's "AVG WIND" heading duplicated the CLB row
+        // (live 2026-09-24). The closest claim wins (inline before below, then
+        // nearest dx, then the earlier label); the loser is a heading and reads
+        // as plain text. Only a label's OWN best value is ever used — never a
+        // second-best — so the agent's click still lands where the row says.
+        var winner = new Dictionary<int, (int Label, int Value, int Tier, double Dx, int Occ)>();
+        foreach (var c in cands)
+            if (!winner.TryGetValue(c.Value, out var w)
+                || c.Tier < w.Tier || (c.Tier == w.Tier && c.Dx < w.Dx))
+                winner[c.Value] = c;
+
+        var pairedLabels = new HashSet<int>();
+        var fieldOf = new Dictionary<int, (FmsField Field, int Tier, int LabelIdx)>();   // by value index
+        foreach (var c in cands.Where(c => winner[c.Value] == c))
+        {
+            var label = tokens[c.Label];
+            consumedAsValue.Add(c.Value);
+            pairedLabels.Add(c.Label);
+            // ReadOnly: the agent saw a framed READ-OUT (an Input with no submit
+            // handler — the FUEL page's computed RESERVE weight), which the box
+            // frame alone cannot tell from an entry field.
+            bool editable = !tokens[c.Value].ReadOnly && (haveBoxes ? InAnyBox(tokens[c.Value]) : !haveClickInfo);
             // The UNIT is drawn as its own gray label just right of the value
             // ("HOLD SPD" / "200" / "KT" — live hold dialog 2026-07-30), so a
             // value spoken alone loses it: "hold speed 200" then, rows later, a
             // bare "KT". Attach it to the value it annotates.
-            string value = tokens[best].Text;
-            string? unit = FindTrailingUnit(tokens, best);
-            if (unit != null) value = $"{value} {unit}";
-            m.Fields.Add(new FmsField
+            string value = tokens[c.Value].Text;
+            int unitIdx = TrailingUnitIndex(tokens, c.Value);
+            if (unitIdx >= 0) { value = $"{value} {tokens[unitIdx].Text.Trim()}"; pairedLabels.Add(unitIdx); }
+            var field = new FmsField
             {
-                Label = label.Text, Value = value, Occurrence = occ, Editable = editable,
+                Label = label.Text, Value = value, Occurrence = c.Occ, Editable = editable,
                 // A chooser is never a typeable box, whatever frame it is drawn in.
-                IsDropdown = tokens[best].Dropdown,
-                OptionCount = tokens[best].Options,
-                Y = label.Y
-            });
+                IsDropdown = tokens[c.Value].Dropdown,
+                OptionCount = tokens[c.Value].Options,
+                Min = tokens[c.Value].Min, Max = tokens[c.Value].Max,
+                Y = label.Y, X = label.X
+            };
+            fieldOf[c.Value] = (field, c.Tier, c.Label);
+            m.Fields.Add(field);
+        }
+
+        // A label drawn over TWO lines ("RESERVE/" above "CONTINGENCY") is one
+        // name: the first line ends in a slash, the second sits directly under it
+        // and pairs with nothing of its own.
+        foreach (var (field, _, li) in fieldOf.Values)
+        {
+            if (!field.Label.EndsWith("/", StringComparison.Ordinal)) continue;
+            var own = tokens[li];
+            int next = labelIdx.FirstOrDefault(n => !pairedLabels.Contains(n) && !legConsumed.Contains(n)
+                && tokens[n].Y - own.Y >= 10 && tokens[n].Y - own.Y <= 30
+                && Math.Abs(tokens[n].X - own.X) <= 60, -1);
+            if (next < 0) continue;
+            field.SpokenLabel = field.Label + tokens[next].Text;
+            pairedLabels.Add(next);
+        }
+
+        // A TABLE cell paired BELOW its column heading also belongs to the row it
+        // sits on: name it by both ("ZFW CG(%MAC)"), taking the row's name from
+        // the INLINE field whose value shares the row, left of it.
+        foreach (var (vi, (field, tier, _)) in fieldOf)
+        {
+            if (tier != 1) continue;
+            var v = tokens[vi];
+            var row = fieldOf.Where(kv => kv.Value.Tier == 0 && kv.Key != vi
+                                          && Math.Abs(tokens[kv.Key].Y - v.Y) <= 8 && tokens[kv.Key].X < v.X)
+                             .OrderByDescending(kv => tokens[kv.Key].X)
+                             .Select(kv => kv.Value.Field).FirstOrDefault();
+            if (row != null)
+            {
+                field.SpokenLabel = $"{row.Name} {field.Label}";
+                field.Y = row.Y; field.X = v.X;    // read with its row, not up at the heading
+            }
+        }
+
+        // A boxed value NO label claimed (the FUEL page's contingency-percent box,
+        // drawn beside the reserve box it qualifies) is still a field the pilot
+        // must be able to reach: name it after the field on its row plus its own
+        // unit ("RESERVE/CONTINGENCY %") and address it by POSITION. Before, it
+        // was glued into an unrelated orphan line ("LW ▯▯.▯ %") and unreachable.
+        if (haveBoxes)
+        {
+            for (int i = 0; i < tokens.Count; i++)
+            {
+                var t = tokens[i];
+                if (consumedAsValue.Contains(i) || chrome.Contains(i) || legConsumed.Contains(i)) continue;
+                if (t.Color == "gray" || t.Clickable || t.ReadOnly || !InAnyBox(t)) continue;
+                var row = fieldOf.Where(kv => Math.Abs(tokens[kv.Key].Y - t.Y) <= 8 && tokens[kv.Key].X < t.X)
+                                 .OrderByDescending(kv => tokens[kv.Key].X)
+                                 .Select(kv => kv.Value.Field).FirstOrDefault();
+                if (row == null) continue;
+                int unitIdx = TrailingUnitIndex(tokens, i);
+                string name = unitIdx >= 0 ? $"{row.Name} {tokens[unitIdx].Text}" : $"{row.Name} second box";
+                if (unitIdx >= 0) pairedLabels.Add(unitIdx);
+                consumedAsValue.Add(i);
+                m.Fields.Add(new FmsField
+                {
+                    Label = name, Value = t.Text, Editable = true,
+                    IsDropdown = t.Dropdown, OptionCount = t.Options,
+                    Min = t.Min, Max = t.Max,
+                    ClickX = t.X, ClickY = t.Y, Y = row.Y, X = t.X
+                });
+            }
         }
 
         // A pending modification is the MODE flag reading "MOD", NOT an on-screen
@@ -499,7 +715,7 @@ internal static class A220FmsScreenParsing
             // and reading it as "…, button" was exactly the reported soup. Without
             // the info (dialog scrapes, fixtures) the text heuristic stands.
             if (haveClickInfo && !t.Clickable) continue;
-            m.ButtonRows.Add(new FmsButton(t.Text, t.Y));
+            m.ButtonRows.Add(new FmsButton(t.Text, t.Y, t.X, t.Color));
             consumedAsButton.Add(i);
         }
 

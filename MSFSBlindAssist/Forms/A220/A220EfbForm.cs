@@ -37,7 +37,7 @@ public sealed class A220EfbForm : Form
     private bool _busy;
     private IntPtr _previousWindow = IntPtr.Zero;
 
-    public A220EfbForm(A220EfbClient client, ScreenReaderAnnouncer announcer)
+    public A220EfbForm(A220EfbClient client, ScreenReaderAnnouncer announcer, Action? openNavdata = null)
     {
         _client = client;
         _announcer = announcer;
@@ -59,7 +59,7 @@ public sealed class A220EfbForm : Form
         _list = new ListBox
         {
             Location = new Point(12, 40),
-            Size = new Size(720, 500),
+            Size = new Size(720, 460),
             Anchor = AnchorStyles.Top | AnchorStyles.Bottom | AnchorStyles.Left | AnchorStyles.Right,
             IntegralHeight = false,
             AccessibleName = "EFB items"
@@ -69,6 +69,21 @@ public sealed class A220EfbForm : Form
         _list.KeyDown += OnListKeyDown;
         _list.DoubleClick += (_, _) => _ = ActivateSelectedAsync();
         Controls.Add(_list);
+
+        // The tablet's own "UPDATE NAVDATA" does nothing on v1.0.9 — the working
+        // Navigraph updater is the MFW Data Load page (A220NavdataForm).
+        if (openNavdata != null)
+        {
+            var navdata = new Button
+            {
+                Text = "FMS &navigation database (Navigraph update)…",
+                Location = new Point(12, 506),
+                Size = new Size(360, 32),
+                Anchor = AnchorStyles.Bottom | AnchorStyles.Left
+            };
+            navdata.Click += (_, _) => openNavdata();
+            Controls.Add(navdata);
+        }
 
         var hint = new Label
         {

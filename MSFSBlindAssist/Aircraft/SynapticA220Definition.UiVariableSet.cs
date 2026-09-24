@@ -58,10 +58,32 @@ public partial class SynapticA220Definition
             // batteries beside it really ARE the stock SimVar (their template's VAR is
             // "A:ELECTRICAL MASTER BATTERY:n"), so they stay on the event path.
             case "A22X_EXT_PWR":
+            {
+                bool wantOn = value >= 0.5;
+                double gpu = Cached(simConnect, "A22X_GPU_AVAIL", -1);
+                if (wantOn && gpu >= 0 && gpu < 0.5)
+                {
+                    // No GPU: the press would be consumed and nothing would happen.
+                    announcer.AnnounceImmediate(GpuRemovedReason(simConnect,
+                        "External power not available: no ground power unit is attached. " +
+                        "Attach the GPU first (Ground Power Unit on this panel, or the EFB's Ground Equipment page)."));
+                    return true;
+                }
                 // A toggle, so an unknown cache (-1) must still actuate.
                 if (Math.Abs(Cached(simConnect, varKey, -1) - value) > 0.5)
                     WriteLVar(simConnect, "A22X External Power Toggle", 1);
+                VerifyGroundPower(simConnect, announcer, varKey, wantOn,
+                    wantOn ? "External power did not connect." : "External power did not disconnect.");
                 return true;
+            }
+            case "A22X_GPU_AVAIL":
+            {
+                bool attach = value >= 0.5;
+                WriteLVar(simConnect, "INI_GPU_AVAIL", attach ? 1 : 0);
+                if (attach)
+                    VerifyGroundPower(simConnect, announcer, varKey, true, "The ground power unit did not stay attached.");
+                return true;
+            }
             case "A22X_GEAR_LEVER":
                 FireKeyEvent(simConnect, value >= 0.5 ? "GEAR_DOWN" : "GEAR_UP");
                 return true;
