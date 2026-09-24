@@ -40,6 +40,9 @@ internal sealed class GroundTrafficHarness
 
     public GroundTrafficHarness()
     {
+        // The callouts' distances follow the user's unit setting; pin feet so the expected phrases do not
+        // depend on the settings file of whoever runs the suite (in memory only, never saved).
+        MSFSBlindAssist.Settings.SettingsManager.Current.GroundTrafficUseMetres = false;
         Said.Clock = () => Second;
         Monitor = new GroundTrafficMonitor(Said, Sim, startTimers: false, () => Now)
         {
