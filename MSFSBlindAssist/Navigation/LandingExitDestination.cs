@@ -100,6 +100,7 @@ public static class LandingExitDestination
         foreach (var e in edges)
         {
             if (e.PathType == "R") continue; // skip runway edges
+            if (TaxiGraph.IsStandBridge(e)) continue; // skip fabricated stand bridges
             double diff = Math.Abs(NormalizeAngle(e.BearingDegrees - exitBearingTrue));
             if (diff < bestDiff)
             {

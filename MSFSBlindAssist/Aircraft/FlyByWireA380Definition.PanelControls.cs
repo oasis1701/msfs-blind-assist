@@ -235,7 +235,7 @@ public partial class FlyByWireA380Definition
         // Ctrl+Shift+R in input mode → FBWA380RmpForm, scraping A380X_RMP_1/2 + firing the keypad H-events.)
         p["Interior Lighting"] = new List<string>
         {
-            "A380X_OVHD_ANN_LT_POSITION", "A32NX_OVHD_INTLT_ANN",
+            "A32NX_OVHD_INTLT_ANN",
             // Cockpit dimmers (FBW #10813). The storm light forces both to full, so it
             // sits alongside them here rather than staying buried in "Recorder and Misc".
             "A380X_PED_LIGHTING_MIP_FLOOD_LT_KNOB", "A380X_PED_LIGHTING_AMBIENT_LT_KNOB",

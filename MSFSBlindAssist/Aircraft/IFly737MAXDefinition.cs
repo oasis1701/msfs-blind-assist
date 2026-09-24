@@ -1689,10 +1689,43 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private readonly Dictionary<string, double> _lastVSpeed = new();
 
     // Takeoff roll "V1"/"Rotate"/"V2" callout state machine (pure; see
-    // IFly737TakeoffCallouts). Fed here from IFLY_IAS samples + the cached
+    // TakeoffVSpeedCallouts). Fed here from IFLY_IAS samples + the cached
     // SIM_ON_GROUND state; V-speed targets from the IFLY_V1/VR/V2 handlers.
-    private readonly IFly737TakeoffCallouts _takeoffCallouts = new();
+    private readonly TakeoffVSpeedCallouts _takeoffCallouts = new();
     private bool _calloutOnGround = true; // last SIM_ON_GROUND sample (ramp default)
+
+    /// <summary>The roll callouts' machine, for the tests that pin what a context reset does to it.</summary>
+    internal TakeoffVSpeedCallouts TakeoffCallouts => _takeoffCallouts;
+
+    /// <summary>
+    /// A SimConnect reconnect disarms the roll-callout machine: an arm from before the drop must
+    /// not survive into a later landing rollout (found in the MD-11's review, 2026-09-07). The
+    /// machine keeps its V-speeds — the SDK shared memory fires only on change and its re-seed is
+    /// an initial snapshot MainForm drops, so they would not come back. This override covers the
+    /// callout machine only; this definition's other announcers keep their own baselines exactly
+    /// as before (the base's ResetAnnouncementBaselines is empty).
+    /// </summary>
+    public override void ResetAnnouncementBaselines()
+    {
+        base.ResetAnnouncementBaselines();
+        _takeoffCallouts.Reset();
+    }
+
+    /// <summary>
+    /// The CONTEXT reset — every SimConnect drop AND a flight load on a live connection — disarms
+    /// it too, and this is the half a load reaches: <see cref="ResetAnnouncementBaselines"/> runs
+    /// only on the Connected branch, which a flight load never takes. IFLY_IAS is per-frame while
+    /// SIM_ON_GROUND rides the 1 Hz batch, so a cruise flight loaded from a parked iFly whose FMC
+    /// already held V-speeds delivered a 280 kt sample while the ground flag still read true, and
+    /// the arm from the ramp called "V1, Rotate, V2" at altitude. The speeds are kept, for the
+    /// same reason as above. Same fix, same reason and the same shared machine as the MD-11's
+    /// (TFDiMD11Definition.OnSimContextReset); nothing else of this definition's state is touched.
+    /// </summary>
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _takeoffCallouts.Reset();
+    }
 
     // Speedbrake lever announce state (PR #163, minor 9). null initial means the
     // first post-launch event announces (announceInitialChange semantics for this
@@ -1964,8 +1997,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // Takeoff roll V-speed callouts, fed per SIM_FRAME (hot path — first
         // branch). AnnounceImmediate, deliberately: "V1"/"Rotate" are action
         // cues whose value IS the timing, and a queued announce would wait out
-        // an in-progress ground-speed callout. That bypasses the Suppressed
-        // wrap AND the Ctrl+M mute, so both gates are re-applied explicitly —
+        // an in-progress ground-speed callout. It interrupts, so the calls one
+        // sample crosses go out as ONE utterance (TakeoffVSpeedCallouts.Compose):
+        // spoken one by one, "V1" was cut off by "Rotate" whenever V1 = VR.
+        // That bypasses the Suppressed wrap AND the Ctrl+M mute, so both gates
+        // are re-applied explicitly —
         // per speed, keyed on the listed IFLY_V1/VR/V2 vars, so muting "V1" in
         // Ctrl+M silences its set-announce and its roll callout together.
         if (varName == "IFLY_IAS")
@@ -1974,13 +2010,17 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             if (callouts.Count > 0 && !announcer.Suppressed)
             {
                 var muted = Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet;
-                foreach (string callout in callouts)
+                string? calloutSentence = TakeoffVSpeedCallouts.Compose(callouts, callout =>
                 {
+                    // An unknown callout maps to no row and is never muted — fail open, as the
+                    // MD-11 does for the same shared machine (a new call must be spoken until it
+                    // is given a row, never swallowed by the V2 checkbox).
                     string gateKey = callout == "V1" ? "IFLY_V1"
-                                   : callout == "Rotate" ? "IFLY_VR" : "IFLY_V2";
-                    if (!muted.Contains(gateKey))
-                        announcer.AnnounceImmediate(callout);
-                }
+                                   : callout == "Rotate" ? "IFLY_VR"
+                                   : callout == "V2" ? "IFLY_V2" : "";
+                    return gateKey.Length != 0 && muted.Contains(gateKey);
+                });
+                if (calloutSentence != null) announcer.AnnounceImmediate(calloutSentence);   // "V1, Rotate": one utterance, never two
             }
             return true;
         }
@@ -2329,6 +2369,13 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         }
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }
+    /// <summary>
+    /// The camera is moved to the instrument view that frames the display, the capture is taken,
+    /// and the camera is put back where the pilot had it (Services/InstrumentViewSwitcher). Alt+S
+    /// is deliberately absent: the MAX has no lower system display (IFly737DisplayReads).
+    /// </summary>
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => IFly737DisplayReads.All;
+
 
     // =========================================================================
     // Hotkeys + MCP dialogs
@@ -2542,28 +2589,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 announcer.AnnounceImmediate(vs.Length == 0 ? $"VS blank{mode}" : $"VS {vs}{mode}");
                 return true;
             }
-
-            // ------------------------------------------------------------------
-            // AI display reading — Alt+P / Alt+N / Alt+I / Alt+E (mirrors PMDG 737)
-            // ------------------------------------------------------------------
-            case HotkeyAction.ReadDisplayPFD:
-                ReadDisplay(Services.GeminiService.DisplayType.PFDiFly, "PFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayND:
-                ReadDisplay(Services.GeminiService.DisplayType.NDiFly, "ND", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayISIS:
-                ReadDisplay(Services.GeminiService.DisplayType.ISFDiFly, "ISFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayUpperECAM:
-                ReadDisplay(Services.GeminiService.DisplayType.EICASiFly, "EICAS", announcer, parentForm);
-                return true;
-
-            // Lower system display (Alt+S / ReadDisplayLowerECAM) intentionally not handled
-            // (out of scope — matches PMDG 737/777); it falls through to base as a no-op.
 
             default:
                 return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);

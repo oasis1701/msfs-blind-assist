@@ -1,0 +1,1 @@
+The flyPad shell reconcile tests now run on every pull request alongside the MD-11 and PMDG EFB reader suites, so a change that would move a pilot's screen-reader focus off a control they just pressed is caught before it ships.

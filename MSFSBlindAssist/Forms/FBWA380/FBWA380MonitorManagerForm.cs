@@ -23,8 +23,12 @@ public sealed class FBWA380MonitorManagerForm : MonitorManagerFormBase
     private const string EcamMemosLabel = "ECAM E/WD call-outs";
 
     public FBWA380MonitorManagerForm(Dictionary<string, SimVarDefinition> variables)
-        : base("A380 Monitor Manager",
-               MonitorRowBuilder.BuildWithFold(variables, EwdLinePrefix, EcamMemosKey, EcamMemosLabel)) { }
+        : base("A380 Monitor Manager", BuildRows(variables)) { }
+
+    /// <summary>The rows this dialog shows - the E/WD fold applied. Internal so the Ctrl+M
+    /// label-uniqueness test measures the list the pilot sees, not the unfolded one.</summary>
+    internal static List<MonitorRow> BuildRows(IReadOnlyDictionary<string, SimVarDefinition> variables)
+        => MonitorRowBuilder.BuildWithFold(variables, EwdLinePrefix, EcamMemosKey, EcamMemosLabel);
 
     protected override ICollection<string> DisabledVariables
         => SettingsManager.Current.A380DisabledMonitorVariables;

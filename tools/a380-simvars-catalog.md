@@ -40,9 +40,9 @@ A prefix-split summary is given at the end.
 
 | Variable | Type | Range / Enum | R/W | Description |
 |---|---|---|---|---|
-| `A380X_OVHD_ANN_LT_POSITION` | enum | 0=TEST, 1=BRT, 2=DIM | R/W | ANN LT switch state (annunciator light test/bright/dim). |
+| ~~`A380X_OVHD_ANN_LT_POSITION`~~ | enum | 0=TEST, 1=BRT, 2=DIM | ~~R/W~~ **PHANTOM** | **DO NOT USE.** Listed in FBW's `a380-simvars.md` but read and written by NOTHING in the aircraft (checked case-insensitively across the installed package, 2026-09-03). Writing it CREATES it, so it reads back whatever you last set and looks like it works — MSFSBA shipped a dead duplicate combo on it for months. The real input is `A32NX_OVHD_INTLT_ANN` below. |
 | `A32NX_OVHD_INTLT_ANN` | enum | 0=TEST, 1=BRT, 2=DIM | R/W | Internal annunciator-light mode (drives all PB integral lights). |
-| `A380X_OVHD_INTLT_ANN` | enum | 0=TEST, 1=BRT, 2=DIM | R/W | A380X duplicate of the above used by some overhead nodes. **[A380-SPECIFIC]** |
+| `A380X_OVHD_INTLT_ANN` | enum | 0=TEST, 1=BRT, 2=DIM | **R only** | `A380_Cockpit_Behavior.xml`'s `VARIABLE_MAPPING` copies `A32NX_OVHD_INTLT_ANN` into this at 18 Hz for the button emissives, so a write here is overwritten every frame. Set `A32NX_OVHD_INTLT_ANN` instead. **[A380-SPECIFIC]** |
 
 ### ELEC – Batteries / Generators / Bus tie / Ext power (ELECTRICAL ATA 24)
 
@@ -351,20 +351,28 @@ Overhead bleed/air-cond controls:
 
 ### EFIS Control Panel (EFIS CP — part of glareshield; NOT the FCU)
 
+> ⚠️ **The R/W column below is NOT trustworthy for the shim-output keys.** `fbw.wasm`'s
+> `FlyByWireInterface::updateFcu` rewrites the navaid, OANS-range, LS, TRAF, WX/TERR-overlay
+> and ND mode/range vars EVERY FRAME (the `idFcuShim…` family), so a write to any of them is
+> DEAD — overwritten within one frame, the combo snaps back, and nothing announces or logs.
+> Those rows are corrected below; drive them through `Aircraft/A380EfisCpControls` and
+> `Aircraft/A380NdKnobSelection`, which fire the FCU's own `A32NX.FCU_EFIS_*` events. Measured
+> live 2026-09-03 — see [docs/a380x.md](../docs/a380x.md).
+
 | Variable | Type | Range / Enum | R/W | Description |
 |---|---|---|---|---|
-| `A380X_EFIS_{SIDE}_LS_BUTTON_IS_ON` | bool | 0/1 | R/W | LS PB. `{SIDE}` = L, R. **[A380-SPECIFIC]** |
+| `A380X_EFIS_{SIDE}_LS_BUTTON_IS_ON` | bool | 0/1 | **R only** (shim output) | LS PB. `{SIDE}` = L, R. Set via `A32NX.FCU_EFIS_{SIDE}_LS_PUSH`. **[A380-SPECIFIC]** |
 | `A380X_EFIS_{SIDE}_VV_BUTTON_IS_ON` | bool | 0/1 | R/W | VV PB. **[A380-SPECIFIC]** |
 | `A380X_EFIS_{SIDE}_CSTR_BUTTON_IS_ON` | bool | 0/1 | R/W | CSTR (constraints) PB. **[A380-SPECIFIC]** |
 | `A380X_EFIS_{SIDE}_ARPT_BUTTON_IS_ON` | bool | 0/1 | R/W | ARPT PB. **[A380-SPECIFIC]** |
-| `A380X_EFIS_{SIDE}_TRAF_BUTTON_IS_ON` | bool | 0/1 | R/W | TRAF PB. **[A380-SPECIFIC]** |
+| `A380X_EFIS_{SIDE}_TRAF_BUTTON_IS_ON` | bool | 0/1 | **R only** (shim output) | TRAF PB. Set via `A32NX.FCU_EFIS_{SIDE}_TRAF_PUSH`. **[A380-SPECIFIC]** |
 | `A380X_EFIS_{SIDE}_ACTIVE_FILTER` | enum | 1=WPT,2=VORD,3=NDB | R/W | Active waypoint filter. **[A380-SPECIFIC]** |
-| `A380X_EFIS_{SIDE}_ACTIVE_OVERLAY` | enum | 0=WX/OFF,1=TERR (page lists 0=OFF,1=WX,2=TERR) | R/W | WX/TERR overlay. **[A380-SPECIFIC]** |
+| `A380X_EFIS_{SIDE}_ACTIVE_OVERLAY` | enum | 0=OFF,1=WX,2=TERR | **R only** (shim output) | WX/TERR overlay. Set via `A32NX.FCU_EFIS_{SIDE}_{WX,TERR}_PUSH` — press the one you want; pressing the ACTIVE one clears. **[A380-SPECIFIC]** |
 | `A380X_EFIS_{SIDE}_NAVAID_{N}_BUTTON_IS_ON` | enum | 0=OFF,1=ADF,2=VOR | R/W | Navaid 1/2 selector. `{N}` = 1,2. **[A380-SPECIFIC]** |
 | `A380X_EFIS_{SIDE}_BARO_PRESELECTED` | number (hPa/inHg) | 0 when not displayed | R | Preselected QNH in STD mode. Not for systems use. **[A380-SPECIFIC]** |
-| `A380X_EFIS_{SIDE}_ND_MODE` | enum | 0=ROSE ILS,1=ROSE VOR,2=ROSE NAV,3=ARC,4=PLAN | R/W | ND mode. **[A380-SPECIFIC]** |
-| `A380X_EFIS_{SIDE}_ND_RANGE` | enum | 0=ZOOM,1=10,2=20,3=40,4=80,5=160,6=320,7=640 | R/W | ND range. **[A380-SPECIFIC]** |
-| `A32NX_EFIS_{SIDE}_OANS_RANGE` | enum | 0=MAX … 4=MIN | R/W | OANS range (requires ND_RANGE=0). |
+| `A380X_EFIS_{SIDE}_ND_MODE` | enum | 0=ROSE ILS,1=ROSE VOR,2=ROSE NAV,3=ARC,4=PLAN | **R only** (shim output) | ND mode. Set via `A32NX.FCU_EFIS_{SIDE}_MODE_SET`, parameter = this enum. **[A380-SPECIFIC]** |
+| `A380X_EFIS_{SIDE}_ND_RANGE` | enum | 0=ZOOM,1=10,2=20,3=40,4=80,5=160,6=320,7=640 | **R only** (shim output) | ND range. Set via `A32NX.FCU_EFIS_{SIDE}_RANGE_SET`, whose parameter is **NOT** this enum: it is `a380_efis_range_selection`, where 0-4 are the OANS zoom levels and 10..640 NM sit at 5..11. So 40 NM READS 3 and must be SET as 7. **[A380-SPECIFIC]** |
+| `A32NX_EFIS_{SIDE}_OANS_RANGE` | enum | 0=MAX … 4=MIN, **5=not zoomed** | **R only** (shim output) | OANS range (requires ND_RANGE=0). Set via `A32NX.FCU_EFIS_{SIDE}_RANGE_SET` param 0-4. 5 is a readback, not a selection — leaving the zoom means choosing an NM range on the ND RANGE knob. |
 | `A32NX_EFIS_{SIDE}_ND_MODE` / `A32NX_EFIS_{SIDE}_ND_RANGE` | enum | as above | R | Legacy A32NX-named mirror of ND mode/range (read). |
 | `A32NX_EFIS_{SIDE}_OPTION` | enum | filter option | R/W | Legacy EFIS option var. |
 | `A32NX_EFIS_TERR_{SIDE}_ACTIVE` | bool | 0/1 | R | Terrain overlay active. |
@@ -607,8 +615,9 @@ R_PFD/ND/MFD, PANEL, PEDESTAL, LIGHT_GENERIC). Lighting presets: `A32NX_LIGHTING
 - **`A380X_` is reserved for genuinely new A380 hardware/logic that has no A320 analog**: the RMP radio
   panel (`A380X_RMP_*`), the EFIS-CP buttons and ND mode/range (`A380X_EFIS_*`), the multi-tank fuel
   transfer/jettison PBs (`A380X_OVHD_FUEL_*`), the MFD page URIs (`A380X_MFD_*`), the battery display
-  knob (`A380X_OVHD_ELEC_BAT_SELECTOR_KNOB`), the ANN-LT/INT-LT enums (`A380X_OVHD_ANN_LT_POSITION`,
-  `A380X_OVHD_INTLT_ANN`), storm light, remote CB, OIT side switches, laptop/keyboard, the standby-compass
+  knob (`A380X_OVHD_ELEC_BAT_SELECTOR_KNOB`), the INT-LT enum (`A380X_OVHD_INTLT_ANN` — an 18 Hz
+  read-only mirror; `A380X_OVHD_ANN_LT_POSITION` beside it is a PHANTOM, see its struck-through row
+  above), storm light, remote CB, OIT side switches, laptop/keyboard, the standby-compass
   ice-indicator switch, and `A380X_FMS_DEST_EFOB_BELOW_MIN` / `A380X_PILOT_IN_FO_SEAT`.
 
 - **`FBW_` prefix** is used for cross-aircraft framework signals — notably the RMP frequency/mode buses

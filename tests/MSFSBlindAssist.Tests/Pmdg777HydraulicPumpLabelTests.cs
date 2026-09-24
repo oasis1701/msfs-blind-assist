@@ -22,32 +22,34 @@ public class Pmdg777HydraulicPumpLabelTests
 {
     private const string FaultSuffix = " FAULT Light";
 
-    /// <summary>varKey, PMDG struct field, spoken label, FAULT-light varKey.</summary>
-    public static TheoryData<string, string, string, string> Pumps() => new()
+    /// <summary>varKey, PMDG struct field, spoken label, FAULT-light varKey, FAULT-light struct field.</summary>
+    public static TheoryData<string, string, string, string, string> Pumps() => new()
     {
         // PRIMARY row, left to right: L ENG, C1 ELEC, C2 ELEC, R ENG.
-        { "HYD_PrimEngPump_1",    "HYD_PrimaryEngPump_Sw_ON_0",   "Primary Engine Pump Left",      "HYD_annunPrimEngPumpFAULT_1" },
-        { "HYD_PrimElecPump_1",   "HYD_PrimaryElecPump_Sw_ON_0",  "Primary Electric Pump Center 1","HYD_annunPrimElecPumpFAULT_1" },
-        { "HYD_PrimElecPump_2",   "HYD_PrimaryElecPump_Sw_ON_1",  "Primary Electric Pump Center 2","HYD_annunPrimElecPumpFAULT_2" },
-        { "HYD_PrimEngPump_2",    "HYD_PrimaryEngPump_Sw_ON_1",   "Primary Engine Pump Right",     "HYD_annunPrimEngPumpFAULT_2" },
+        { "HYD_PrimEngPump_1",    "HYD_PrimaryEngPump_Sw_ON_0",   "Left Primary Engine Pump",      "HYD_annunPrimEngPumpFAULT_1",    "HYD_annunPrimaryEngPumpFAULT_0" },
+        { "HYD_PrimElecPump_1",   "HYD_PrimaryElecPump_Sw_ON_0",  "Center 1 Primary Electric Pump","HYD_annunPrimElecPumpFAULT_1",   "HYD_annunPrimaryElecPumpFAULT_0" },
+        { "HYD_PrimElecPump_2",   "HYD_PrimaryElecPump_Sw_ON_1",  "Center 2 Primary Electric Pump","HYD_annunPrimElecPumpFAULT_2",   "HYD_annunPrimaryElecPumpFAULT_1" },
+        { "HYD_PrimEngPump_2",    "HYD_PrimaryEngPump_Sw_ON_1",   "Right Primary Engine Pump",     "HYD_annunPrimEngPumpFAULT_2",    "HYD_annunPrimaryEngPumpFAULT_1" },
 
         // DEMAND row, left to right: L ELEC, C1 AIR, C2 AIR, R ELEC.
-        { "HYD_DemandElecPump_1", "HYD_DemandElecPump_Selector_0","Demand Electric Pump Left",     "HYD_annunDemandElecPumpFAULT_1" },
-        { "HYD_DemandAirPump_1",  "HYD_DemandAirPump_Selector_0", "Demand Air Pump Center 1",      "HYD_annunDemandAirPumpFAULT_1" },
-        { "HYD_DemandAirPump_2",  "HYD_DemandAirPump_Selector_1", "Demand Air Pump Center 2",      "HYD_annunDemandAirPumpFAULT_2" },
-        { "HYD_DemandElecPump_2", "HYD_DemandElecPump_Selector_1","Demand Electric Pump Right",    "HYD_annunDemandElecPumpFAULT_2" },
+        { "HYD_DemandElecPump_1", "HYD_DemandElecPump_Selector_0","Left Demand Electric Pump",     "HYD_annunDemandElecPumpFAULT_1", "HYD_annunDemandElecPumpFAULT_0" },
+        { "HYD_DemandAirPump_1",  "HYD_DemandAirPump_Selector_0", "Center 1 Demand Air Pump",      "HYD_annunDemandAirPumpFAULT_1",  "HYD_annunDemandAirPumpFAULT_0" },
+        { "HYD_DemandAirPump_2",  "HYD_DemandAirPump_Selector_1", "Center 2 Demand Air Pump",      "HYD_annunDemandAirPumpFAULT_2",  "HYD_annunDemandAirPumpFAULT_1" },
+        { "HYD_DemandElecPump_2", "HYD_DemandElecPump_Selector_1","Right Demand Electric Pump",    "HYD_annunDemandElecPumpFAULT_2", "HYD_annunDemandElecPumpFAULT_1" },
     };
 
     [Theory]
     [MemberData(nameof(Pumps))]
     public void Pump_switch_pins_its_struct_field_and_spoken_label(
-        string varKey, string structField, string label, string faultKey)
+        string varKey, string structField, string label, string faultKey, string faultField)
     {
         _ = faultKey;
+        _ = faultField;
         var vars = new PMDG777Definition().GetVariables();
 
         Assert.True(vars.ContainsKey(varKey), $"missing hydraulic pump var {varKey}");
         Assert.Equal(structField, vars[varKey].Name);
+        PmdgStructFields.AssertResolves777(structField, varKey);
         Assert.Equal(label, vars[varKey].DisplayName);
     }
 
@@ -55,19 +57,28 @@ public class Pmdg777HydraulicPumpLabelTests
     /// The annunciator must carry its switch's name verbatim. The two labels are
     /// spoken through different channels - the switch from the Hydraulic panel,
     /// the FAULT light only as a background announcement - so a drift between
-    /// them surfaces as a FAULT for a pump the panel appears not to have. This
-    /// file already contains one such drift: "Isolation Valve Left" against
-    /// "Isolation Valve L CLOSED Light".
+    /// them surfaces as a FAULT for a pump the panel appears not to have. The
+    /// 777's isolation valves drifted exactly this way - "Isolation Valve Left"
+    /// against "Isolation Valve L CLOSED Light" - until both were bound from one
+    /// constant and the drift was fixed (2026-09); this file pins the same
+    /// discipline for the hydraulic pumps.
     /// </summary>
     [Theory]
     [MemberData(nameof(Pumps))]
     public void Fault_light_label_is_derived_from_its_switch_label(
-        string varKey, string structField, string label, string faultKey)
+        string varKey, string structField, string label, string faultKey, string faultField)
     {
         _ = structField;
         var vars = new PMDG777Definition().GetVariables();
 
         Assert.True(vars.ContainsKey(faultKey), $"missing FAULT light var {faultKey}");
+
+        // The light's own array slot, not just its label: without this, moving a FAULT
+        // light to the wrong slot leaves every label assertion green while "Left Primary
+        // Engine Pump FAULT Light" reports the RIGHT pump's fault.
+        Assert.Equal(faultField, vars[faultKey].Name);
+        PmdgStructFields.AssertResolves777(faultField, faultKey);
+
         Assert.Equal(label + FaultSuffix, vars[faultKey].DisplayName);
         Assert.Equal(vars[varKey].DisplayName + FaultSuffix, vars[faultKey].DisplayName);
     }
@@ -82,10 +93,11 @@ public class Pmdg777HydraulicPumpLabelTests
     [Theory]
     [MemberData(nameof(Pumps))]
     public void Center_system_pumps_are_never_named_after_a_side(
-        string varKey, string structField, string label, string faultKey)
+        string varKey, string structField, string label, string faultKey, string faultField)
     {
         _ = structField;
         _ = faultKey;
+        _ = faultField;
         var vars = new PMDG777Definition().GetVariables();
         string spoken = vars[varKey].DisplayName;
 
@@ -98,6 +110,7 @@ public class Pmdg777HydraulicPumpLabelTests
             Assert.Contains("Center", spoken);
             Assert.DoesNotContain("Left", spoken);
             Assert.DoesNotContain("Right", spoken);
+            Assert.StartsWith("Center ", spoken, StringComparison.Ordinal);
         }
         else
         {
@@ -105,11 +118,13 @@ public class Pmdg777HydraulicPumpLabelTests
             Assert.True(spoken.Contains("Left") || spoken.Contains("Right"),
                 $"{varKey} serves the left or right system, so its label must say which: got \"{spoken}\"");
 
-            // A sided pump ending in a bare index has lost its side - the exact
-            // regression this family exists to prevent. ("Center 1"/"Center 2"
-            // are fine: there the digit is qualified by the system name.)
-            Assert.False(spoken.EndsWith(" 1") || spoken.EndsWith(" 2"),
-                $"{varKey} must name its side, not a bare index: got \"{spoken}\"");
+            // The side leads, so a regression that renumbers these would read "1 Primary
+            // Engine Pump" - a LEADING bare index. The old guard watched the END of the
+            // string, which after the 2026-09 rename is where the system name lives, so it
+            // could never fire.
+            Assert.True(spoken.StartsWith("Left ", StringComparison.Ordinal)
+                     || spoken.StartsWith("Right ", StringComparison.Ordinal),
+                $"{varKey} must lead with its side: got \"{spoken}\"");
         }
 
         _ = label;

@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using Microsoft.FlightSimulator.SimConnect;
 using static Microsoft.FlightSimulator.SimConnect.SimConnect;
 using MSFSBlindAssist.Database.Models;
@@ -327,6 +327,11 @@ public partial class SimConnectManager
         // registration failure must not take the bulk registration below down with it.
         RegisterGsxCouatlStartedDefinition();
 
+        // The simulator camera — one fixed def, read one-shot by AI display reads that move the
+        // camera to an instrument view (SimConnectManager.Camera.cs). Universal, so it registers
+        // here with the fixed defs, in its own try/catch like the GSX one above.
+        RegisterCameraViewDefinition();
+
         // Bulk per-aircraft variable registration runs LAST — see the resilience note at the
         // top of this method. Everything above (detection, position, AI, VG, weather, nav) is
         // now guaranteed registered before the heavy var set can approach the SimConnect ceiling.
@@ -425,13 +430,9 @@ public partial class SimConnectManager
                         varDef.HighFrequency ? SIMCONNECT_PERIOD.SIM_FRAME : SIMCONNECT_PERIOD.SECOND,
                         varDef.HighFrequency ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
-                    // This var now owns a recurring request on dataDefId, so RequestVariable must
-                    // route its one-shot reads to a SEPARATE request id or it would cancel this
-                    // subscription. Map that id back to the same var key so the response still
-                    // routes, and record the var so RequestVariable knows to use it.
-                    standingSubscriptionVars.TryAdd(kvp.Key, 1);
-                    requestIdToVarKey.TryAdd(dataDefId + OneShotRequestIdOffset, kvp.Key);
-                    Log.Debug("SimConnect", $"Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")} (one-shot reads on ID {dataDefId + OneShotRequestIdOffset})");
+                    Log.Debug("SimConnect", $"Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")}");
+                    // A SIM_FRAME one is seeded later, once the handler is attached — see
+                    // SeedSimFrameSubscriptions.
                 }
 
                 // Log visual guidance variables specifically
@@ -461,6 +462,28 @@ public partial class SimConnectManager
             Log.Debug("SimConnect", $"⚠️ {cappedCount} vars exceeded the individual-def cap and are not on-demand-readable (degraded gracefully).");
         try { _registrationLog.Info(regSummary); }
         catch { }
+    }
+
+    /// <summary>
+    /// Seeds every SIM_FRAME + CHANGED own subscription's cache with one PERIOD.ONCE on its seed id
+    /// (<see cref="FreshReadPolicy.SeedRequestId"/>): such a subscription delivers nothing while its
+    /// value stands still, so its cache is only ever as good as its INITIAL delivery. Must run with
+    /// OnRecvSimobjectData attached — on a connect, the DoEvents pump inside SetupDataDefinitions
+    /// drains every answer that lands before SetupEvents (the drain the GSX note above describes),
+    /// the subscriptions' own first deliveries included, which left the MD-11 speedbrake lever
+    /// uncached for whole sessions. So Connect() calls this after SetupEvents(), and
+    /// ReregisterAllVariables after re-registering (the handler is attached by then). Goes through
+    /// RequestVariable, so it takes the UI-thread gate and skips a var already cached.
+    /// </summary>
+    private void SeedSimFrameSubscriptions()
+    {
+        var defs = CurrentAircraft?.GetVariables();
+        if (defs == null) return;
+        foreach (var key in variableDataDefinitions.Keys)
+        {
+            if (defs.TryGetValue(key, out var def) && FreshReadPolicy.CacheIsFresh(def))
+                RequestVariable(key);
+        }
     }
 
     private void StartContinuousMonitoring()
@@ -667,7 +690,7 @@ public partial class SimConnectManager
                 // read from a batch that won't fire — better to have the var be silently
                 // un-monitored than to dereference a stale (batchNum, index) pair forever.
                 foreach (var key in batchMapKeys)
-                    continuousVariableIndexMap.Remove(key);
+                    continuousVariableIndexMap.TryRemove(key, out _);
                 // batchVarArrays[batchNum] was never assigned from batchArrayEntries on this path
                 // (the assignment above only runs after a successful try), so it's still whatever
                 // the top-of-method reset left it at (empty) — no separate rollback needed here.
@@ -776,9 +799,11 @@ public partial class SimConnectManager
         // Clear existing registrations
         variableDataDefinitions.Clear();
         requestIdToVarKey.Clear();
-        standingSubscriptionVars.Clear();
+        _freshRequestIdToVarKey.Clear();
         lastVariableValues.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        _freshReads.FailAll();
+        FailCameraViewRead();
 
         // Reset ID counter to avoid accumulating stale ID ranges over multiple switches
         nextDataDefinitionId = 1000;
@@ -786,6 +811,7 @@ public partial class SimConnectManager
 
         // Re-register all variables for new aircraft
         RegisterAllVariables();
+        SeedSimFrameSubscriptions();   // the handler is attached on this path, so the seeds answer at once
     }
 
     private void SetupEvents()

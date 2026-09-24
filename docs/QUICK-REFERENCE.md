@@ -175,7 +175,8 @@ if (varKey == "ENCODER_INC" && value == 1)
 ### Add Background Monitoring
 1. Add to `GetVariables()` with `UpdateFrequency.Continuous` + `IsAnnounced = true`
 2. Do NOT add to `BuildPanelControls()`
-3. Test
+3. If `ProcessSimVarUpdate` consumes it silently (a cache, never spoken), also set `ExcludeFromMonitorManager = true` - a Ctrl+M row for it would mute nothing
+4. Test
 
 ### Add New Aircraft
 1. Create `YourAircraftDefinition.cs` inheriting `BaseAircraftDefinition`

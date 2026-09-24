@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Accessibility;
+﻿using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -8,14 +8,56 @@ namespace MSFSBlindAssist.Services;
 
 public partial class TaxiGuidanceManager
 {
-    private void CheckUpcomingAnnouncements(double distToTargetM, TaxiRouteSegment currentSeg)
+    private void CheckUpcomingAnnouncements(double distToTargetM, TaxiRouteSegment currentSeg, double arrivalRadius)
     {
         if (_route == null) return;
 
         int nextIdx = _currentSegmentIndex + 1;
         if (nextIdx >= _route.Segments.Count)
         {
-            if (distToTargetM < APPROACH_ANNOUNCE_DISTANCE_M && !_approachAnnounced)
+            // Hold during the start-warning grace window (_startChatterSuppressUntil,
+            // armed by StartGuidance whenever a route-reach or unmapped-start warning
+            // exists): this callout would otherwise cut off a warning spoken by the
+            // form's standstill utterance or the first-frame one-shot at a standstill.
+            // But holding is only safe when the callout can still be delivered once the
+            // window closes -- StartWarningChatterGate.ShouldHold projects the aircraft's
+            // ground speed forward to that moment and returns false (speak now) when it
+            // would not.
+            //
+            // The raw distToTargetM is NOT the point this callout is actually lost at
+            // (PR #238 review finding). On the final segment, UpdatePosition's own
+            // "arrived" check -- just above the onFinalSegment block, using the SAME
+            // arrivalRadius passed in below -- fires (and transitions state via
+            // HandleArrival) once distToTargetM drops under that radius, not under zero.
+            // Passing the raw distance here only narrowed the loss band the
+            // WAYPOINT_CAPTURE_RADIUS_M fix below closes for the advance notice -- a route
+            // shorter than APPROACH_ANNOUNCE_DISTANCE_M (100m), exactly the short
+            // bridged-stand routes PR #235 creates, could still reach that radius inside
+            // the window and lose "X ahead." outright.
+            //
+            // arrivalRadius is a PARAMETER, not recomputed here (PR #238 second-round
+            // review) -- it is the exact same local UpdatePosition already computed a few
+            // lines above its call into this method (TaxiGuidanceManager.cs), covering
+            // every destination kind including a landing-exit route's own
+            // LANDING_EXIT_ARRIVAL_RADIUS_M. A local copy of that ternary here could drift
+            // from the original the moment either constant is re-tuned or a new
+            // destination-kind branch is added there — the gate would keep measuring to
+            // the OLD radius while UpdatePosition's own "arrived" check already moved to
+            // the new one, silently reopening the loss band this method exists to close,
+            // and nothing would fail: the StartWarningChatterGateTests hardcode the
+            // radius as a literal, so they cannot see this class recompute the wrong one.
+            //
+            // Don't set _approachAnnounced when holding, so it still fires normally on
+            // the first frame after the window closes if it still applies.
+            // TryAnnounceCurve and the advance-notice block below hold the same way;
+            // "turn now" already waits on _approachAnnounced so it needs no extra gate,
+            // but AdvanceSegment clears that latch (and _turnImminentAnnounced) as soon as
+            // the aircraft comes within WAYPOINT_CAPTURE_RADIUS_M of the junction -- 25m
+            // BEFORE it is reached, not at it -- which is how a lost advance notice used
+            // to cost "turn now" too, permanently rather than just late.
+            if (distToTargetM < APPROACH_ANNOUNCE_DISTANCE_M && !_approachAnnounced &&
+                !StartWarningChatterGate.ShouldHold(
+                    DateTime.UtcNow, _startChatterSuppressUntil, distToTargetM, arrivalRadius, _lastGroundSpeedKts))
             {
                 AnnounceInstruction($"{_route.DestinationName} ahead.");
                 _approachAnnounced = true;
@@ -35,7 +77,7 @@ public partial class TaxiGuidanceManager
 
         // Cumulative-curve cue — fires for gentle multi-segment curves that the
         // discrete-turn logic below cannot see (every individual junction < 20°).
-        TryAnnounceCurve();
+        TryAnnounceCurve(distToTargetM);
 
         string nextTaxiway = nextSeg.TaxiwayName;
         bool taxiwayChanging = !string.IsNullOrEmpty(nextTaxiway) &&
@@ -72,13 +114,32 @@ public partial class TaxiGuidanceManager
         // Target ≈10 s lead; floor 80 m (≈260 ft) for slow taxi, ceiling 200 m
         // (≈650 ft) for fast taxi. Sharp turns get an extra 50% to give time to slow.
         double approachDist = Math.Clamp(
-            _lastGroundSpeedKts * 0.5144 * APPROACH_ANNOUNCE_SEC_LEAD,
+            _lastGroundSpeedKts * StartWarningChatterGate.MetersPerSecondPerKnot * APPROACH_ANNOUNCE_SEC_LEAD,
             APPROACH_ANNOUNCE_MIN_M, APPROACH_ANNOUNCE_MAX_M);
         if (sharpTurn) approachDist *= 1.5;
 
         // Advance notice (speed-scaled). Terse: direction + taxiway + angle for sharp.
         // Speed-slow warning is owned by CheckSpeedWarnings — don't duplicate it here.
-        if (distToTargetM < approachDist && !_approachAnnounced)
+        // Held during the start-warning grace window (see the comment above in this
+        // method) via the same StartWarningChatterGate, so it can't cut off a start
+        // warning at a standstill AND can't be lost outright when the junction it
+        // describes is close enough to be reached before the window closes.
+        //
+        // The junction itself is NOT where this callout is actually lost (PR #238
+        // review finding, CRITICAL): AdvanceSegment (TaxiGuidanceManager.Routing.cs)
+        // clears _approachAnnounced/_turnImminentAnnounced as soon as distToTargetM
+        // drops under WAYPOINT_CAPTURE_RADIUS_M (25m) -- 25m BEFORE the junction, not at
+        // it. Passing the raw distToTargetM here left a 25m-wide loss band open: a
+        // junction reached inside the grace window could be farther than the true
+        // (junction - 25m) loss point yet still closer than the junction itself, so
+        // ShouldHold kept saying "hold" right up until the latch was already cleared and
+        // the callout was gone for good. Hand the gate WAYPOINT_CAPTURE_RADIUS_M as its
+        // clear radius so it measures to the point where AdvanceSegment actually fires,
+        // not to the junction.
+        if (distToTargetM < approachDist && !_approachAnnounced &&
+            !StartWarningChatterGate.ShouldHold(
+                DateTime.UtcNow, _startChatterSuppressUntil,
+                distToTargetM, WAYPOINT_CAPTURE_RADIUS_M, _lastGroundSpeedKts))
         {
             string distStr = distToTargetM > 15 ? $"In {FormatDistance(distToTargetM)}, " : "";
             // Direction is computed from the aircraft's CURRENT heading toward the
@@ -103,9 +164,9 @@ public partial class TaxiGuidanceManager
 
         // Imminent turn at speed-scaled distance (~4 seconds lead at current ground speed).
         // At 10 kts → 21m; at 20 kts → 41m; at 30 kts → 62m. Clamped to [20, 75]m.
-        // 1 knot = 0.5144 m/s; 4 sec * m/s = meters of lead.
+        // 1 knot = 0.5144 m/s (StartWarningChatterGate.MetersPerSecondPerKnot); 4 sec * m/s = meters of lead.
         double turnImminentDistance = Math.Clamp(
-            _lastGroundSpeedKts * 0.5144 * TURN_IMMINENT_SEC_LEAD,
+            _lastGroundSpeedKts * StartWarningChatterGate.MetersPerSecondPerKnot * TURN_IMMINENT_SEC_LEAD,
             TURN_IMMINENT_MIN_M, TURN_IMMINENT_MAX_M);
         // Sharp turns: push "turn now" further out so the pilot begins the turn
         // slightly early, giving a wider radius on the outside of the corner.
@@ -123,10 +184,44 @@ public partial class TaxiGuidanceManager
         }
     }
 
-    private void TryAnnounceCurve()
+    private void TryAnnounceCurve(double distToTargetM)
     {
         if (_route == null || _route.Segments.Count == 0 ||
             _currentSegmentIndex >= _route.Segments.Count) return;
+
+        // Hold during the start-warning grace window (see the comment in
+        // CheckUpcomingAnnouncements) via the same StartWarningChatterGate — return
+        // before touching _curveAnnouncedSign so the cue still fires normally once the
+        // window closes.
+        //
+        // Measure against distToTargetM -- the distance to the CURRENT segment's end
+        // node -- not the fixed CURVE_SCAN_WINDOW_M lookahead (PR #238 review finding).
+        // CumulativeTurnDeg's scan below starts at that same end node, so distToTargetM
+        // is the genuine "when does this geometry go behind me" distance: the first bend
+        // the scan would accumulate. CURVE_SCAN_WINDOW_M is a fixed constant with no
+        // relation to where the aircraft actually is, and holding against it degenerated
+        // ShouldHold to a bare speed threshold -- under ~15.55kt (100m / (0.5144 * this
+        // class's 12.5s window)) it held for the WHOLE window regardless of real
+        // geometry, so the fix did nothing at this site; above that speed it was the
+        // only non-monotonic call site (ShouldHold could say "speak now" at the top of
+        // the window and flip back to "hold" moments later as the window's remaining
+        // time shrank). distToTargetM needs no clear-radius ADJUSTMENT here (passed as
+        // clearRadiusMeters: 0 below) -- but that is not because nothing can lose this
+        // callout, just that it isn't lost via a latch. (PR #238 second-round review,
+        // MINOR finding: an earlier version of this comment justified the 0 with
+        // "AdvanceSegment does not reset _curveAnnouncedSign", which is true but not the
+        // actual loss mode.) The real mechanism is geometric: when AdvanceSegment fires
+        // at WAYPOINT_CAPTURE_RADIUS_M (25m), _currentSegmentIndex increments and
+        // CumulativeTurnDeg's scan above starts fresh from the NEW current segment's end
+        // node, so the first bend -- the one distToTargetM measures to -- drops out of
+        // the cumulative sum 25m early, same loss as the junction callouts above suffer,
+        // just with no flag to point at. distToTargetM is still the right value to pass;
+        // there is simply no second, closer point (short of the bend itself) where that
+        // dropping-out happens, so there is nothing to subtract.
+        if (StartWarningChatterGate.ShouldHold(
+                DateTime.UtcNow, _startChatterSuppressUntil,
+                distToTargetM, clearRadiusMeters: 0, _lastGroundSpeedKts))
+            return;
 
         var (lats, lons) = RoutePoints();
         double cum = GuidanceGeometry.CumulativeTurnDeg(
@@ -391,15 +486,28 @@ public partial class TaxiGuidanceManager
 
         if (_state == TaxiGuidanceState.HoldShort)
         {
+            // Part-way through a STAGED hold (a stop guarding more than one runway), the status must
+            // say which runway the NEXT press authorises — found in flight at KJFK 31L+04L, where it
+            // answered "Press continue when cleared." and named both runways as though nothing had
+            // been cleared. The destination hold is never staged, so its branch is untouched.
+            string? stagedNext = !_holdShortAtDestination && _holdStageIndex < _holdStages.Count
+                ? _holdStages[_holdStageIndex]
+                : null;
+
             if (_holdShortAtDestination)
                 return $"Holding short of {_destinationName}. Press continue when cleared.";
-            if (_currentSegmentIndex > 0 && _currentSegmentIndex <= _route.Segments.Count)
-            {
-                var holdSeg = _route.Segments[_currentSegmentIndex - 1];
-                if (!string.IsNullOrEmpty(holdSeg.HoldShortRunway))
-                    return $"Holding short of {holdSeg.HoldShortRunway}. Press continue when cleared.";
-            }
-            return "Holding short. Press continue when cleared.";
+
+            // The same derivation the ground-traffic runway watch uses (Navigation.HeldRunwayLabel).
+            string? held = Navigation.HeldRunwayLabel.Resolve(
+                false, _destinationName, _currentSegmentIndex, _route.StartHoldRunway,
+                _route.Segments.Select(s => s.HoldShortRunway).ToList());
+            if (held != null)
+                return stagedNext != null
+                    ? Navigation.RunwayHoldStages.ComposeStatus(held, stagedNext)
+                    : $"Holding short of {held}. Press continue when cleared.";
+            return stagedNext != null
+                ? Navigation.RunwayHoldStages.ComposeStatus(null, stagedNext)
+                : "Holding short. Press continue when cleared.";
         }
 
         if (_state == TaxiGuidanceState.LiningUp)
@@ -558,35 +666,25 @@ public partial class TaxiGuidanceManager
         }
         else
         {
-            // Unconstrained or fallback: list all taxiway names from segments
-            var taxiways = new List<string>();
-            foreach (var seg in route.Segments)
-            {
-                if (!string.IsNullOrEmpty(seg.TaxiwayName) &&
-                    (taxiways.Count == 0 || !taxiways[^1].Equals(seg.TaxiwayName, StringComparison.OrdinalIgnoreCase)))
-                {
-                    taxiways.Add(seg.TaxiwayName);
-                }
-            }
+            // Unconstrained or fallback: list all taxiway names from segments.
+            // Shared with the recalculation's via-list so the two spoken descriptions of a
+            // route cannot disagree about which taxiways it uses.
+            var taxiways = RouteTaxiwaySequence.DistinctConsecutive(route.Segments);
             taxiwayStr = taxiways.Count > 0
                 ? $" via {string.Join(", ", taxiways)}"
                 : "";
         }
 
-        // Describe the hold-short points. Runway crossings are NAMED, not just
-        // counted — "2 hold short points" told the pilot nothing about the
-        // route's shape, and at KSFO (2026-07-01, "Q hold short 10R" from D
-        // between the 28s) the only route onto Q re-crossed 28R twice; the
-        // pilot heard two unexplained "hold short of runway 10L" callouts and
-        // perceived a giant loop. "crossing runway 10L twice" up front makes
-        // the route's runway crossings audible before the pilot starts rolling.
-        // For runway destinations, TruncateToHoldShort tags the last segment
-        // purely as an internal countdown rail — it is NOT an ATC-assigned hold
-        // point and is excluded (same exclusion the old bare count applied).
-        bool excludeLastHold = isRunwayDestination && route.Segments.Count > 0 &&
-            route.Segments[^1].IsHoldShortPoint;
-        var (crossingClause, otherHolds) =
-            RouteRunwayCrossings.Describe(route.Segments, excludeLastHold);
+        // Every runway the route crosses or enters is NAMED, held or not — "2 hold short points"
+        // told the pilot nothing about the route's shape, and at KSFO (2026-07-01) two unexplained
+        // "hold short of runway 10L" callouts read as a giant loop. The clause comes from the route's
+        // recorded events, never from hold labels, so a crossing that could not be held is still
+        // said. Other hold-short points (end of taxiway, named holding points) are counted; a
+        // runway destination's own countdown rail is excluded (ShouldExcludeFinalHold).
+        string crossingClause = RouteRunwayCrossings.DescribeRunwayEvents(route.RunwayEvents);
+        int otherHolds = RouteRunwayCrossings.CountNonRunwayHoldShorts(
+            route.Segments,
+            RouteRunwayCrossings.ShouldExcludeFinalHold(route.Segments, isRunwayDestination));
         string holdStr = "";
         if (crossingClause.Length > 0)
             holdStr += $", {crossingClause}";

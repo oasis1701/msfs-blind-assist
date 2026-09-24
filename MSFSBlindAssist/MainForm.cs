@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -143,6 +143,20 @@ public partial class MainForm : Form
     private Forms.IFly737.IFly737CDUForm? iflyCduForm;
 
     private Forms.IFly737.IFlyEfbForm? iflyEfbForm;
+
+    // TFDi MD-11: all three MCDUs (Left/Center/Right) in one window, fed by the MD11MCDU
+    // client data area. The form reads SimConnectManager for the live manager, so it survives
+    // being opened before the sim connects.
+    private Forms.MD11.Md11McduForm? md11McduForm;
+
+    // TFDi MD-11 EFB — the shared FbwEfbForm over the Coherent debugger, pointed at the MD-11's
+    // own EFB view. One tablet, so unlike PMDG there is no Captain/FO pair.
+    private CoherentPmdgEfbClient? coherentMd11Efb;
+    private Forms.FBWA380.FbwEfbForm? md11EfbForm;
+
+    // MD-11 monitor manager (Ctrl+M) — the aircraft announces 532 annunciator lamps, so muting
+    // them individually is not a nicety here.
+    private Forms.MD11.Md11MonitorManagerForm? md11MonitorManagerForm;
 
     private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
 
@@ -563,6 +577,11 @@ public partial class MainForm : Form
 
         simConnectManager = new SimConnectManager(this.Handle);
         simConnectManager.CurrentAircraft = currentAircraft;
+        // The saved-aircraft path never goes through SwitchAircraft, so the MD-11's Attach (the
+        // SimConnect handle and the UI SynchronizationContext its control-state hook needs) has
+        // to happen here as well — otherwise every panel row opens without a state, and nothing
+        // is described until the pilot's first press. Idempotent: a later switch re-attaches.
+        if (currentAircraft is TFDiMD11Definition startupMd11) startupMd11.Attach(simConnectManager);
         simConnectManager.ConnectionStatusChanged += OnConnectionStatusChanged;
         // A calc path that never came up is a DEGRADED session on FBW aircraft — overhead
         // switches can silently revert and the FCU can ignore commands. Say so once, rather
@@ -579,6 +598,8 @@ public partial class MainForm : Form
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
+        simConnectManager.AircraftLoaded += OnAircraftLoaded;
+        simConnectManager.ConnectionLost += OnConnectionLost;
 
         // Warm the GSX door-offset map in the background so docking sessions have
         // offsets ready without blocking the UI thread for the ~12 s scan.
@@ -591,7 +612,7 @@ public partial class MainForm : Form
         // MobiFlight end-to-end bridge probe: calc-write a nonce L:var, read it back
         // over the data-def channel; a match proves the WASM executed our RPN (the
         // only valid presence signal — the response side can be silent on healthy
-        // installs). FBW defs register the probe var.
+        // installs). The aircraft that opt in register the probe var (see BridgeProbeTimer_Tick).
         _bridgeProbeTimer = new System.Windows.Forms.Timer { Interval = 1500 };
         _bridgeProbeTimer.Tick += BridgeProbeTimer_Tick;
         _bridgeProbeTimer.Start();
@@ -699,6 +720,9 @@ public partial class MainForm : Form
         // taxi form, landing-exit auto-activation, future entry points — gets
         // monitoring wired up automatically.
         taxiGuidanceManager.StateChanged += OnTaxiGuidanceStateChanged;
+        // The two landing-rollout entries that can begin with no position stream running ask for
+        // one (TaxiGuidanceManager.PositionStreamRequired).
+        taxiGuidanceManager.PositionStreamRequired += (s, e) => simConnectManager.StartTaxiGuidanceMonitoring();
         taxiGuidanceManager.RequestTakeoffAssistAutoActivate += OnTaxiGuidanceRequestTakeoffAssistAutoActivate;
 
         // Landing exit planner — watches for touchdown and auto-activates taxi guidance
@@ -712,26 +736,59 @@ public partial class MainForm : Form
         flareAssistManager = new LandingFlareAssistManager(announcer,
             () => currentAircraft?.GetVisualGuidanceProfile()?.FlareAltitudeBiasFt ?? 12.0,
             () => visualGuidanceManager.IsActive,
-            () => taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout,
-            () => taxiGuidanceManager.IsLandingExitTaxiSteering);
+            () => taxiGuidanceManager.IsLandingExitRolloutGuidanceActive,
+            () => taxiGuidanceManager.IsLandingExitTaxiSteering,
+            // With a landing-exit plan pending, the planner leads its own touchdown sentence with
+            // the runway correction and interrupts — so the assist leaves the telling to it rather
+            // than having its own sentence cut off mid-word.
+            () => landingExitPlanner.HasPendingExit);
         flareAssistManager.MonitoringRequestChanged += OnFlareAssistMonitoringRequestChanged;
         flareAssistManager.EngagedChanged += OnFlareAssistEngagedChanged;
         simConnectManager.FlareAssistDataReceived += (s, d) => flareAssistManager.ProcessFrame(d);
 
-        // Ground traffic monitor — proximity alerts for on-ground AI/multiplayer traffic.
-        // Starts its own 3-second poll timer; gates on LastKnownOnGround each tick.
+        // Ground traffic monitor — proximity, route-aware and runway-watch callouts for on-ground
+        // AI/multiplayer traffic. Ticks every second; sweeps its own small-radius traffic request every
+        // second while something can change an answer, every three seconds otherwise; gates on
+        // LastKnownOnGround each tick.
         groundTrafficMonitor = new GroundTrafficMonitor(announcer, simConnectManager);
-        // Suppress traffic auto-alerts in three contexts: during takeoff roll
-        // (pilot's hands are on rudder + throttle, can't act on a callout),
-        // when Taxi Guidance is not engaged (no route loaded / pre-pushback
-        // / post-stop), and during the landing rollout (hands on brakes +
-        // rudder, and the exit/runway-end callouts must not be talked over).
-        // Hotkey summary (Alt+G) remains available in all cases because it
-        // lives outside this poll loop.
+        // Suppress proximity/route/queue callouts in three contexts: during the takeoff roll (pilot's
+        // hands are on rudder + throttle, can't act on a callout — keyed on takeoff assist), when Taxi
+        // Guidance is not engaged, and during a landing rollout that is still rolling. The rule lives in
+        // Services/GroundTrafficSuppression so it can be pinned; the Alt+G summary stays ungated.
         groundTrafficMonitor.SuppressCheck = () =>
+            GroundTrafficSuppression.Suppress(
+                takeoffAssistManager.IsActive,
+                taxiGuidanceManager.State,
+                simConnectManager.LastKnownPosition?.GroundSpeedKnots);
+        // The runway watch has its OWN gate: takeoff assist switches on at lineup alignment, and the
+        // line-up wait is exactly when traffic landing on or entering the runway matters most, so the
+        // watch keeps running until the takeoff roll passes 30 kt (PR #247 review R1).
+        groundTrafficMonitor.RunwayWatchSuppressCheck = () =>
+            GroundTrafficSuppression.SuppressRunwayWatch(
+                takeoffAssistManager.IsActive,
+                taxiGuidanceManager.State,
+                simConnectManager.LastKnownPosition?.GroundSpeedKnots);
+        // Route + runway context: traffic ON the route vs beside it, the queue, and the hold facts the
+        // runway watch is derived from.
+        groundTrafficMonitor.RouteContextProvider = () => taxiGuidanceManager.GetGroundTrafficContext();
+        // Takeoff assist's runway while it is active: taxi guidance has stopped by then, so this is how
+        // the watch knows which runway the pilot is lined up on.
+        groundTrafficMonitor.TakeoffRunwayProvider = () =>
             takeoffAssistManager.IsActive
-            || taxiGuidanceManager.State == TaxiGuidanceState.Inactive
-            || taxiGuidanceManager.State == TaxiGuidanceState.LandingRollout;
+            && takeoffAssistManager.TryGetRunwayReference(out _, out _, out _, out _, out string runwayId, out string icao)
+                ? (runwayId, icao)
+                : null;
+        // The airport's runways when takeoff assist has a runway but taxi guidance never built a route
+        // there (a departure that starts on the runway): runway centerlines only, no taxi network.
+        groundTrafficMonitor.RunwaySupplier = icao =>
+        {
+            var provider = airportDataProvider;
+            if (provider == null || string.IsNullOrWhiteSpace(icao)) return Array.Empty<MSFSBlindAssist.Navigation.TaxiGraph.RunwayCenterline>();
+            var starts = provider.GetRunwayStarts(icao);
+            if (starts == null || starts.Count == 0) return Array.Empty<MSFSBlindAssist.Navigation.TaxiGraph.RunwayCenterline>();
+            return MSFSBlindAssist.Navigation.TaxiGraph.Build(new List<TaxiPath>(), new List<ParkingSpot>(), starts,
+                provider.GetRunways(icao)).RunwayCenterlines;
+        };
 
         // Per-aircraft rollout-anticipation lead for the taxi steering tone
         // (see IAircraftDefinition.TaxiTurnLeadSeconds).
@@ -1041,6 +1098,18 @@ public partial class MainForm : Form
         coherentPmdgEfbCaptain?.Dispose();
         coherentPmdgEfbFirstOfficer?.Dispose();
 
+        // Same for the MD-11's windows + EFB client (same leak class, same swap-only teardown in
+        // MainForm.AircraftSwitch.cs): the MCDU form's 250 ms poll timer would otherwise tick
+        // through Disconnect()'s DoEvents pump, and the EFB client holds the ONE inspector socket
+        // Coherent allows for that view. Forms first, then the client, as on the swap path.
+        if (md11McduForm != null && !md11McduForm.IsDisposed) md11McduForm.Dispose();
+        if (md11EfbForm != null && !md11EfbForm.IsDisposed) md11EfbForm.Dispose();
+        // The Ctrl+M monitor manager holds no timer or socket; disposed here so every MD-11 window
+        // ends the same way on exit as on a swap (MainForm.AircraftSwitch.cs).
+        if (md11MonitorManagerForm != null && !md11MonitorManagerForm.IsDisposed) md11MonitorManagerForm.Dispose();
+        md11MonitorManagerForm = null;
+        coherentMd11Efb?.Dispose();
+
         // Clean up 787 forms + the IRS / CAS Coherent clients
         hs787FMCForm?.Dispose();
         hs787IrsClient?.Dispose();
@@ -1065,6 +1134,31 @@ public partial class MainForm : Form
         (currentAircraft as FlyByWireA380Definition)?.StopAllMotion();
         (currentAircraft as FlyByWireA320Definition)?.StopAllMotion();
         currentAircraft?.CancelDeferredFlush();
+
+        // The MD-11 def owns the CEVENT pump and, during a hold-to-test's 3 s, a button the sim
+        // still has pressed. Dispose it here — BEFORE Disconnect() — so its Dispose (which queues
+        // and drains any held test button's UP, then stops the pump; see Md11EventBus.Dispose)
+        // writes into the sim while it is still connected and the MD-11 is still the loaded
+        // aircraft. Otherwise this def, like the iFly SDK client and the PMDG EFB clients above,
+        // was only ever torn down on the aircraft-swap path. The count of buttons actually
+        // released (if any) is logged by Md11EventBus.Dispose itself, under its own [MD11] line —
+        // not repeated here, since a bounded drain can fall short and this line must not claim a
+        // release the drain could still have dropped.
+        if (currentAircraft is TFDiMD11Definition md11ExitDef)
+        {
+            md11ExitDef.Dispose();
+            Log.Debug("MD11", "App exit: definition disposed.");
+        }
+
+        // Stop listening BEFORE Disconnect(). Disconnect ends by raising ConnectionLost, whose
+        // handler calls currentAircraft.OnSimContextReset() — so on this path it re-entered the
+        // definition disposed six lines above and re-armed the seed gate Dispose had just
+        // disarmed, against its own stated invariant ("nor may a pending seed pass run for one").
+        // Nothing observable followed today, only because that method happens to be inert with a
+        // null _sim and no delivery can follow; the next tracker added to it that owns a timer or
+        // speaks would regress on exit with no warning. Unsubscribing is the fix that does not
+        // depend on the body staying inert.
+        if (simConnectManager != null) simConnectManager.ConnectionLost -= OnConnectionLost;
 
         // Clean up managers and resources
         hotkeyManager?.Cleanup();

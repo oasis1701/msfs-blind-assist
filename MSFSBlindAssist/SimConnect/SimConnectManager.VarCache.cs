@@ -10,6 +10,26 @@ namespace MSFSBlindAssist.SimConnect;
 
 public partial class SimConnectManager
 {
+    /// <summary>
+    /// A delivered value within this of the cached one is the SAME value: no SimVarUpdated fires
+    /// for it (unless force-read). It is the DEFAULT — a variable may set its own
+    /// <see cref="SimVarDefinition.ChangeTolerance"/> — and both delivery paths apply the pair through
+    /// <see cref="IsValueChange"/>. Anything that must agree with them on what a change is uses this
+    /// constant (Md11SeedGate, none of whose seedable vars sets a tolerance of its own) — one
+    /// constant, never a second 0.001.
+    /// </summary>
+    public const double ChangeTolerance = 0.001;
+
+    /// <summary>
+    /// The change rule both delivery paths apply. A first delivery (nothing cached,
+    /// <paramref name="previous"/> null) is a change; after that a value is a change only when it
+    /// moved by MORE than the variable's own <see cref="SimVarDefinition.ChangeTolerance"/>, or
+    /// <see cref="ChangeTolerance"/> when the definition sets none (or there is no definition).
+    /// The cache still takes every delivery, so a drift slower than the tolerance per sample is
+    /// never a change. Pure, so the rule is pinned (ValueChangeToleranceTests).
+    /// </summary>
+    internal static bool IsValueChange(double? previous, double current, SimVarDefinition? def) =>
+        previous is not double last || Math.Abs(last - current) > (def?.ChangeTolerance ?? ChangeTolerance);
 
     /// <summary>
     /// Process individual variable response from our new registration system
@@ -18,17 +38,25 @@ public partial class SimConnectManager
     {
         try
         {
-            // Find the variable key for this request ID
-            if (!requestIdToVarKey.TryGetValue(requestId, out var varKey) || varKey == null)
-            {
-                return;
-            }
+            // Find the variable key for this request ID. A fresh read's PERIOD.ONCE went out under
+            // its own id (see FreshReadWaiters): resolve that first — a ONCE answers exactly once,
+            // so the mapping is consumed here — then a SEED id (def id + offset, FreshReadPolicy),
+            // mapped back through its definition id, else the var's data-definition id.
+            string? varKey;
+            bool freshRequest = _freshRequestIdToVarKey.TryRemove(requestId, out varKey);
+            bool seedRequest = !freshRequest && FreshReadPolicy.IsSeedRequestId(requestId);
+            if (!freshRequest &&
+                !requestIdToVarKey.TryGetValue(seedRequest ? FreshReadPolicy.DataDefinitionIdOf(requestId) : requestId, out varKey)) return;
+            if (varKey == null) return;
 
             var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
             if (!variables.TryGetValue(varKey, out var varDef) || varDef == null)
             {
                 return;
             }
+            // Only a SIM_FRAME own subscription is ever seeded: a seed id resolving to anything else
+            // is a late answer from before an aircraft switch re-used its definition id.
+            if (seedRequest && !FreshReadPolicy.CacheIsFresh(varDef)) return;
 
             double currentValue = data.value;
 
@@ -51,16 +79,43 @@ public partial class SimConnectManager
                 isForceUpdate = forceUpdateVariables.Remove(varKey);
             }
 
-            // Check for value changes
-            bool hasChanged = true;
-            if (lastVariableValues.TryGetValue(varKey, out double previousValue))
+            // Check for value changes — by the variable's own tolerance when it sets one.
+            double? previousValue = lastVariableValues.TryGetValue(varKey, out double cached) ? cached : null;
+            bool hasChanged = IsValueChange(previousValue, currentValue, varDef);
+            if (previousValue == null && varDef.HighFrequency)
             {
-                hasChanged = Math.Abs(previousValue - currentValue) > 0.001; // Small tolerance for floating point
+                // The per-fire line below is skipped for SIM_FRAME vars, so this is the one record of
+                // such a var's FIRST value per cache lifetime, and of which path supplied it. It says
+                // nothing about later subscription samples, and it is written near connect, so a long
+                // session's rotated debug.log may no longer hold it: its absence proves nothing alone.
+                string source = freshRequest ? "fresh read" : seedRequest ? "seed read" : "subscription";
+                Log.Debug("SimConnect", $"First delivery for {varKey}: Value={currentValue} via {source} (request {requestId})");
             }
             // Plain indexer write is equivalent to the prior AddOrUpdate here: the update-factory was
             // value-replacing ((key, oldValue) => currentValue), not a merge of oldValue into the new
             // value, so there is no concurrent-update logic being lost — see task-4.1-report.md.
             lastVariableValues[varKey] = currentValue;
+            // A fresh read is answered by its OWN request, changed or not — never by an earlier
+            // read's late answer (the read gave up; its answer must not become the next read's),
+            // and never by a panel's ONCE under the data-definition id, which was asked by someone
+            // else at a time the waiter cannot know. A var on its own PERIOD.SECOND subscription
+            // gets no ONCE of its own (RequestVariable leaves the subscription alone), so for it the
+            // periodic sample — taken after any waiter registered — is the answer. A SIM_FRAME +
+            // CHANGED var is read under a fresh id when its cache is empty (the freshRequest arm); a
+            // SEED delivery answers no waiter at all, for the same reason a panel's ONCE does not —
+            // it may have been asked before the waiter registered — and only fills the cache.
+            if (freshRequest)
+            {
+                if (!_freshReads.Complete(varKey, requestId, currentValue))
+                {
+                    Log.Debug("SimConnect",
+                        $"Dropped late fresh-read answer for {varKey} (request {requestId}): the read had already given up; cache updated.");
+                }
+            }
+            else if (!seedRequest && FreshReadPolicy.IsOwnSubscription(varDef))
+            {
+                _freshReads.Complete(varKey, currentValue);
+            }
 
             // Suppress SimVarUpdated for unchanged ANNOUNCED CONTINUOUS variables. Previously we
             // fired unconditionally so that displays would refresh; the unintended consequence was
@@ -404,12 +459,10 @@ public partial class SimConnectManager
                             continue; // Skip normal processing for ECAM variables
                         }
 
-                        // Check for value changes (skip unchanged values to reduce announcement spam)
-                        bool hasChanged = true;
-                        if (lastVariableValues.TryGetValue(varKey, out double lastValue))
-                        {
-                            hasChanged = Math.Abs(lastValue - value) > 0.001; // Small tolerance for floating point
-                        }
+                        // Check for value changes (skip unchanged values to reduce announcement spam) —
+                        // by the variable's own tolerance when it sets one.
+                        double? lastValue = lastVariableValues.TryGetValue(varKey, out double cachedValue) ? cachedValue : null;
+                        bool hasChanged = IsValueChange(lastValue, value, varDef);
 
                         // Honor a pending forceUpdate (RequestVariable(key, forceUpdate:true)). Batch-covered
                         // vars (Continuous+IsAnnounced) no longer have an individual data def, so a force-read
@@ -423,6 +476,7 @@ public partial class SimConnectManager
 
                         // Update cache
                         lastVariableValues[varKey] = value;
+                        _freshReads.Complete(varKey, value);
 
                         // Only fire event if value changed or was force-requested (first delivery fires
                         // via hasChanged defaulting to true when lastVariableValues has no prior entry)

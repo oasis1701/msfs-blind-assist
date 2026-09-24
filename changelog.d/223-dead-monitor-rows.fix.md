@@ -1,0 +1,1 @@
+On every aircraft, the "Altitude", "Ground Speed", "G Force" and "Touchdown Vertical Speed" checkboxes in the Ctrl+M mute list never silenced anything and have been removed. The 1,000-foot altitude call-outs now have a real switch: "Announce 1,000-foot altitude crossings" on the Announcements settings tab.

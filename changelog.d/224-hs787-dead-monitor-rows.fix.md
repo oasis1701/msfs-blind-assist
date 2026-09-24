@@ -1,0 +1,1 @@
+The HorizonSim 787's Ctrl+M mute list no longer offers checkboxes for around thirty readouts — the engine indications, fuel quantities, IRS align time and others — that were never spoken aloud in the first place, so unticking them had silenced nothing.

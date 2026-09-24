@@ -70,6 +70,33 @@ public class LandingExitApronNodeTests
         return TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
     }
 
+    // Same first two segments as BuildFaroFStyleGraph (J -> A -> B), but B dead-ends
+    // instead of continuing to a real "clear" node C. An orphan stand stub's connector
+    // sits 10 m north of B — inside TaxiGraph's 50 m bridge cap — with a lateral offset
+    // (45 m) outside the 37.56 m corridor tolerance. Because B is a dead end for the real
+    // taxiway, a fabricated bridge is the ONLY way the un-fixed corridor BFS
+    // (ExitPathLeavesCorridor) could ever leave the runway strip from here.
+    private static TaxiGraph BuildFaroFStyleGraphWithDeadEndAndStandBridge()
+    {
+        const double jLon = 0.009;
+        double aLat = 12.0 * DEG_PER_M, aLon = jLon + 28.3 * DEG_PER_M;
+        double bLat = 35.0 * DEG_PER_M, bLon = jLon + 55.0 * DEG_PER_M;
+        double connectorLat = 45.0 * DEG_PER_M;
+        double standLat = 60.0 * DEG_PER_M;
+
+        var paths = new List<TaxiPath>
+        {
+            new TaxiPath { StartLat = 0.0,  StartLon = jLon, EndLat = aLat, EndLon = aLon, Name = "F" },
+            new TaxiPath { StartLat = aLat, StartLon = aLon, EndLat = bLat, EndLon = bLon, Name = "F" },
+            new TaxiPath
+            {
+                StartLat = connectorLat, StartLon = bLon, EndLat = standLat, EndLon = bLon,
+                Type = "P", StartType = "N", EndType = "P", Width = 60.0,
+            },
+        };
+        return TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+    }
+
     private static double LateralMetres(TaxiGraph g, int nodeId) =>
         Math.Abs(g.Nodes[nodeId].Latitude) * M_PER_DEG; // east-west runway ⇒ lateral = north offset
 
@@ -106,5 +133,21 @@ public class LandingExitApronNodeTests
         Assert.True(LateralMetres(g, f.ApronNodeId) > CorridorTolM,
             $"ApronNodeId should be clear of the runway corridor (> {CorridorTolM:F1} m); " +
             $"was {LateralMetres(g, f.ApronNodeId):F1} m off centreline");
+    }
+
+    [Fact]
+    public void ApronNodeId_never_crosses_a_fabricated_stand_bridge()
+    {
+        var g = BuildFaroFStyleGraphWithDeadEndAndStandBridge();
+
+        // The fixture really produced a fabricated bridge, so this cannot pass vacuously.
+        Assert.Contains(g.Adjacency.Values.SelectMany(es => es), TaxiGraph.IsStandBridge);
+
+        var f = Assert.Single(g.GetLandingExits(Runway0927()), e => e.TaxiwayName == "F");
+
+        // With the bridge ignored there is no real taxiway node beyond B that clears the
+        // runway corridor, so ApronNodeId must come back "not found" (-1) rather than
+        // land on the stand stub the fabricated bridge reaches.
+        Assert.Equal(-1, f.ApronNodeId);
     }
 }

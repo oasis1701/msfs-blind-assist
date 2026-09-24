@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -32,6 +33,42 @@ public partial class FlyByWireA380Definition
         else return null;
         return $"A32NX.FCU_EFIS_{side}_BARO_{(standard ? "PUSH" : "PULL")}";
     }
+
+    // ----------------------------------------------------------------------
+    // Optimistic post-command state for any read-modify-write toggle in this file (the EFIS-CP
+    // shim-output controls, and wing anti-ice).
+    //
+    // SimConnectManager.GetCachedVariableValue reads lastVariableValues, which is written ONLY
+    // by the two inbound delivery handlers — never on a UI set — and these vars are batched at
+    // PERIOD.SECOND. A combo commits per ARROW-KEY press, so two picks inside one batch period
+    // both read the value from before the first, and the second pick is judged against a state
+    // the aircraft has already left. For the LS/TRAF/TRUE REF toggles that silently drops the
+    // second pick (want == have); for the ND OVERLAY it is worse — the clear leg names the
+    // button to press FROM that stale value, and a press of the non-active button REPLACES the
+    // selection, so asking for Off switches the overlay ON instead.
+    //
+    // So remember what was just commanded and prefer it until the sim confirms it or the
+    // window lapses. This is the same shape as _fcuStateCache, but fed from the SET rather
+    // than from ProcessSimVarUpdate, which is exactly the lag being closed.
+    // ----------------------------------------------------------------------
+    private readonly Dictionary<string, (double Value, long Tick)> _commandedValues = new();
+    private const int CommandedValueMs = 3000;
+
+    private double? CommandedOrCachedValue(string varKey, SimConnectManager simConnect)
+    {
+        double? live = simConnect.GetCachedVariableValue(varKey);
+        if (_commandedValues.TryGetValue(varKey, out var commanded))
+        {
+            bool lapsed = Environment.TickCount64 - commanded.Tick >= CommandedValueMs;
+            bool confirmed = live is { } l && Math.Abs(l - commanded.Value) < 0.001;
+            if (lapsed || confirmed) _commandedValues.Remove(varKey);
+            else return commanded.Value;
+        }
+        return live;
+    }
+
+    private void RememberCommandedValue(string varKey, double value) =>
+        _commandedValues[varKey] = (Math.Round(value), Environment.TickCount64);
 
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
@@ -476,6 +513,28 @@ public partial class FlyByWireA380Definition
                 announcer.AnnounceImmediate(NdFilterSelection.ClearUnsupportedMessage);
             return true;
         }
+        // EFIS-CP / FCU controls whose backing L:var is an FCU-SHIM OUTPUT rewritten every
+        // frame, so the direct L:var catch-alls further down are DEAD writes for them (the
+        // combo snaps back and the pilot gets a silent no-op). Read A380EfisCpControls for
+        // the evidence and the per-control actuator. MUST stay ahead of BOTH catch-alls.
+        if (A380EfisCpControls.Handles(varKey))
+        {
+            if (A380EfisCpControls.Command(varKey, value,
+                    CommandedOrCachedValue(varKey, simConnect)) is { } efisCmd)
+            {
+                simConnect.SendEvent(efisCmd.EventName, efisCmd.Parameter);
+                RememberCommandedValue(varKey, value);
+                return true;
+            }
+            // Nothing was sent. If that was a refusal rather than a no-op, say so; either way
+            // the aircraft's value never changed, so the batch's change filter would never
+            // re-fire SimVarUpdated and the combo would sit on the picked-but-not-applied
+            // position for the rest of the session. Force the next batch to deliver it.
+            if (A380EfisCpControls.IsNotZoomedAttempt(varKey, value))
+                announcer.AnnounceImmediate(A380EfisCpControls.NotZoomedUnsupportedMessage);
+            simConnect.RequestVariable(varKey, forceUpdate: true);
+            return true;
+        }
         // EFIS baro STD/QNH. Event name + the push=STD polarity live in BaroModeEvent above —
         // read its remarks before touching either. Fired UNCONDITIONALLY: both are idempotent
         // directional mode sets, so no toggle-if-differs guard (a stale readback would wedge
@@ -505,12 +564,46 @@ public partial class FlyByWireA380Definition
                 : $"Altimeter set {hpa:0} hectopascals");
             return true;
         }
-        // EFIS Control Panel controls are ALL direct L:var writes on the A380X
-        // (no events — confirmed from efis-cp.xml: ND mode/range, navaid 1/2, the
-        // LS/VV/CSTR/ARPT/TRAF option buttons, the WPT/VOR/NDB filter + WX/TERR
-        // overlay, OANS range, and the hPa/inHg baro-unit selector). The cockpit
-        // buttons run RPN that writes the L:var; the SimConnect data-def write is
-        // unreliable for FBW L:vars (same as the reads), so route every one of
+        // ND MODE / ND RANGE are the EXCEPTION to the direct-L:var rule below, and they must
+        // be handled BEFORE it: A32NX_EFIS_{L,R}_ND_{MODE,RANGE} are FCU-SHIM OUTPUTS that
+        // fbw.wasm rewrites every frame, so the catch-all's write is overwritten within one
+        // frame and the knob never moves (live-measured 2026-09-03). Their knobs fire
+        // A32NX.FCU_EFIS_{SIDE}_{MODE,RANGE}_{INC,DEC}, and the FCU also takes the absolute
+        // _SET used here. Read A380NdKnobSelection before touching this — the RANGE parameter
+        // is NOT the value the L:var publishes.
+        // Gated on Handles, not on SetEvent returning null: SetEvent answers null for BOTH
+        // "not my key" and "value I refuse", and IsZoomAttempt rescues only one of the
+        // refusals — so gating on null would drop an out-of-range ND value into the catch-all
+        // below, which is the dead write this whole branch exists to bypass.
+        if (A380NdKnobSelection.Handles(varKey))
+        {
+            if (A380NdKnobSelection.SetEvent(varKey, value) is { } ndKnob)
+            {
+                simConnect.SendEvent(ndKnob.EventName, ndKnob.Parameter);
+                return true;
+            }
+            if (A380NdKnobSelection.IsZoomAttempt(varKey, value))
+                announcer.AnnounceImmediate(A380NdKnobSelection.ZoomUnsupportedMessage);
+            // Nothing was sent, so the var never changes and ProcessContinuousBatch's
+            // `hasChanged || isForceUpdate` gate would never re-fire SimVarUpdated —
+            // UpdateControlFromSimVar would never run and the combo would read the refused
+            // position (e.g. "Zoom") while the aircraft sits at 40 NM, for the rest of the
+            // session and across panel re-opens. A force-read makes the next batch deliver the
+            // true value and snap the selection back. (RequestVariable records the force flag
+            // BEFORE its individual-def early-return, so it works for batch-covered vars.)
+            simConnect.RequestVariable(varKey, forceUpdate: true);
+            return true;
+        }
+        // Every OTHER EFIS Control Panel control is a direct L:var write on the A380X. What is
+        // actually left here is the VV/CSTR/ARPT option buttons and the hPa/inHg baro-unit
+        // selector: ND mode/range are claimed just above, the WPT/VOR/NDB filter by
+        // NdFilterSelection earlier, and navaid 1/2, LS, TRAF, the WX/TERR overlay and the OANS
+        // range by A380EfisCpControls.Handles ~50 lines above — every one of those is an
+        // FCU-SHIM OUTPUT for which this write is DEAD. (The old wording listed them all as
+        // "confirmed from efis-cp.xml: no events", which is the claim A380EfisCpControls was
+        // written to retract; leaving it here is how a maintainer re-adds a dead write.) The
+        // cockpit buttons for the ones that remain run RPN that writes the L:var; the
+        // SimConnect data-def write is unreliable for FBW L:vars (same as the reads), so route
         // them through the MobiFlight calculator path to guarantee they actuate.
         if (varKey.StartsWith("A32NX_EFIS_", StringComparison.Ordinal)
             || varKey.StartsWith("A380X_EFIS_", StringComparison.Ordinal)
@@ -532,22 +625,51 @@ public partial class FlyByWireA380Definition
             if (desiredOn != currentOn) simConnect.SendEvent("TOGGLE_FLIGHT_DIRECTOR", side);
             return true;
         }
-        // Wing anti-ice (CORRECTED 2026-07): write the var the real cockpit button writes,
-        // A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION (0/1), via the calculator path — it
-        // holds (live-verified) and matches the overhead PB, so MSFSBA and the cockpit
-        // switch stay in sync. (The old combo drove the stock STRUCTURAL DEICE SWITCH,
-        // which the cockpit button never touches, so the two diverged.) FBW-build gap:
-        // the A380 wing anti-ice PNEUMATIC isn't modelled — no input drives _SYSTEM_ON
-        // at cruise; the switch is faithful + future-proof, the flow can't engage yet.
+        // Wing anti-ice — ⚠️ the A380 drives the STOCK switch, NOT the A32NX's
+        // A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION; a 2026-07 change assumed the two airframes
+        // shared wiring and left the control dead in icing. Never infer one FBW airframe's
+        // wiring from the other's, even behind an identically named template.
+        // → docs/a380x.md, "Wing anti-ice is the STOCK switch".
+        //
+        // Same toggle-if-differs shape as ELEC_ENG_GEN above: a stock TOGGLE event over
+        // A380ToggleCommand's shared decision, sent with SendEvent (a plain stock K-event needs
+        // no MobiFlight WASM module, and TransmitClientEvent does not coalesce), and a
+        // force-read when nothing is sent so the combo cannot latch on a position the aircraft
+        // never took.
         if (varKey == "WING_ANTI_ICE_OVHD")
         {
-            simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION)");
+            if (A380ToggleCommand.ShouldFire(value, CommandedOrCachedValue(varKey, simConnect)))
+            {
+                simConnect.SendEvent("TOGGLE_STRUCTURAL_DEICE");
+                RememberCommandedValue(varKey, value);
+            }
+            else simConnect.RequestVariable(varKey, forceUpdate: true);
             return true;
         }
         // Probe/window heat: A32NX_MAN_PITOT_HEAT is the var the cockpit button toggles
-        // (verified live #56). It auto-forces ON whenever AC2 is powered or an engine is
-        // running, so a "set Off" reverts — real A380 behaviour (probe heat is automatic);
-        // the Mon auto-announce re-reads the true state. Routed via the calculator path.
+        // (verified live #56).
+        // ⚠️ UNSWEPT (2026-09-03): #56's A380 evidence is a write-stick test, the same check
+        // that certified the wing anti-ice dead mirror above — it cannot tell a working
+        // control from a var no A380 system reads, and this one is A32NX-namespaced and
+        // co-registered on the A320.
+        //
+        // ⚠️ MEASURED LIVE 2026-09-04 (a380x, on ground, all four engines running), and BOTH
+        // behavioural claims this comment used to make are FALSE on that build:
+        //   - "auto-forces ON whenever AC2 is powered or an engine is running" — it does NOT.
+        //     Baseline read 0 with all four engines running.
+        //   - "a 'set Off' reverts" — it does NOT. Writes of 1 AND 0 both stuck and HELD
+        //     across seconds; there is no per-frame writer.
+        // Neither value moved anything downstream: `A:PITOT HEAT` stayed 1 and
+        // `A:PITOT HEAT SWITCH:1` stayed 2 (Auto) throughout. Settable + holds + no observable
+        // effect is the dead-mirror SIGNATURE — the same one the wing anti-ice L:var showed.
+        //
+        // NOT yet a verdict: probe heat was already forced on by AUTO, which would mask a
+        // working manual override, and the attempt to unmask it failed (K:PITOT_HEAT_OFF drove
+        // the stock switch to 1/On rather than 0/Off, and PITOT_HEAT_SET 2 would not restore
+        // Auto). Deciding this needs a cold-and-dark aircraft where AUTO is not already
+        // holding the heat on. Until then treat the "verified live #56" note as unproven,
+        // and do NOT record this control as working on write-stick evidence.
+        // The Mon auto-announce re-reads the true state. Routed via the calculator path.
         if (varKey == "A32NX_MAN_PITOT_HEAT")
         {
             simConnect.ExecuteCalculatorCode($"{(value > 0.5 ? 1 : 0)} (>L:{varKey})");
@@ -611,8 +733,10 @@ public partial class FlyByWireA380Definition
             return true;
         }
         // General catch-all for every remaining writable FBW L:var combo whose KEY is
-        // the L:var itself (e.g. A32NX_TRANSPONDER_MODE, A32NX_SWITCH_ATC_ALT, ND mode/
-        // range, ISIS, EFIS filters). Route through the reliable MobiFlight calculator
+        // the L:var itself (e.g. A32NX_TRANSPONDER_MODE, A32NX_SWITCH_ATC_ALT, ISIS).
+        // NOT ND mode/range and NOT the EFIS filters — those are FCU-shim outputs claimed
+        // by A380NdKnobSelection / NdFilterSelection above, for which this write is DEAD.
+        // Route through the reliable MobiFlight calculator
         // path rather than the base data-def SetLVar. Event-driven controls (engine
         // masters, FCU toggles, seat-belt, lights, …) are all handled in cases above,
         // so anything reaching here is a direct-write L:var. ARINC429/readout vars are

@@ -7,7 +7,7 @@
 The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A380 (`FlyByWireA380Definition.cs`) — every A380 overhead/glareshield/pedestal/ground-services panel exists on the A320, with matching labels. Notes for future maintainers (all live-verified against the running A32NX via the SimConnect MCP calculator path):
 
 - **EFIS is split Captain / First Officer.** The ND mode + range CONTROL is the FCU knob `A32NX_FCU_EFIS_{L,R}_EFIS_MODE/RANGE` — it drives the computed `A32NX_EFIS_{L,R}_ND_MODE/RANGE` DISPLAY output. The bare `A32NX_EFIS_*_ND_*`, `_OPTION` (CSTR/WPT/VORD/NDB/ARPT filter) and `_NAVAID_*_MODE` vars are computed outputs that REVERT a calc-path write (verified) → they stay read-only. The LS button: dev FBW REMOVED `A32NX_EFIS_{L,R}_LS_BUTTON_IS_ON` (the old "directly settable" verdict was the dead-var write-stick trap) — control = the registered input event `A32NX.FCU_EFIS_{L,R}_LS_PUSH`, state = `A32NX_FCU_EFIS_{L,R}_LS_LIGHT_ON`.
-- **Anti-Ice:** the `XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_*_PRESSED` vars are model press-animation flags that do NOT actuate (same as A380 #56). WING anti-ice = `A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED` (calc path; reverts on the on-ground inhibit, holds in flight — `_SYSTEM_ON` is the read-only flowing status). ENG 1/2 anti-ice = the stock K-event `ANTI_ICE_SET_ENGn` (state from `ENG ANTI ICE:n`), routed in HandleUIVariableSet.
+- **Anti-Ice:** the `XMLVAR_MOMENTARY_PUSH_OVHD_ANTIICE_*_PRESSED` vars are model press-animation flags that do NOT actuate (same as A380 #56). WING anti-ice = `A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION` (the var the cockpit PB writes and the only input `WingAntiIcePushButton::read` takes). ⚠️ **CORRECTED** — this line used to say `A32NX_PNEU_WING_ANTI_ICE_SYSTEM_SELECTED` "holds in flight"; that was a mis-test, the var is a Rust per-frame OUTPUT and any write reverts within 2 s at any phase. `_SYSTEM_ON` is the read-only flowing status. The **A380 uses neither var** — it drives the stock `STRUCTURAL DEICE SWITCH`; never copy wing anti-ice wiring between the two airframes. ENG 1/2 anti-ice = the stock K-event `ANTI_ICE_SET_ENGn` (state from `ENG ANTI ICE:n`), routed in HandleUIVariableSet.
 - **Thrust Levers (settable detents)** ported from the A380 (2 engines): synthetic `THROTTLE_ALL_DETENT` + `THROTTLE_{1,2}_DETENT` combos → `THROTTLEn_AXIS_SET_EX1` with the FBW default-calibration axis values (idle `-0.44` verified to snap to the A320 idle dead-zone). The synthetic `_DETENT` keys are EXCLUDED from the GetVariables auto-announce loop (no real L:var to monitor — the loop guard checks `!key.EndsWith("_DETENT")`); the live angle reads from `A32NX_AUTOTHRUST_TLA:n`.
 - **Doors** = synthetic `A32NX_MSFSBA_DOOR_{0..5}` combos backed by `INTERACTIVE POINT OPEN:n` (the exit index maps 1:1 to the interactive point on the A32NX; 0-3 = passenger, 4-5 = cargo per `EXIT TYPE:n`), set toggles `TOGGLE_AIRCRAFT_EXIT:n`. The var is a 0..1 animation fraction → ProcessSimVarUpdate announces Open/Closed once per transition (>0.05) and TryGetDisplayOverride renders the state. **Ground Equipment** jetway/stairs are momentary Activate combos → stock `TOGGLE_JETWAY` / `TOGGLE_RAMPTRUCK` (the A320 has no clean state var like the A380's `A380X_GND_*`). The flyPad Ground page (Shift+T) stays the richer ground interface.
 - **Audio Control Panel: REMOVED (2026-06 dev-source audit).** The `A32NX_RMP_{L,R}_VHF{n}_VOLUME` L:vars do NOT exist in dev FBW — the physical ACP is unmodeled (tooltip-only dummies in the cockpit XML). The old 5-step volume combos were dead writes and were deleted. If volume control is ever wanted, the only functional mechanism is the stock sim (`COM1/2/3_VOLUME_SET` / `COM VOLUME:n`).
@@ -247,3 +247,109 @@ the `OnDeferredFlushBatchDelivered` batch hook — runs OUTSIDE that wrap and mu
 via the shared `ArmedAltitudeMode.ShouldSpeakHeldAlt`. The A380 has no such trap: its armed branch
 checks `A380DisabledMonitorVariablesSet` locally, so its flush inherits the same check by writing
 it the same way.
+
+### VFE and VS now read the FAC bus — FBW #10890 deleted the plain L-vars (2026-09-22)
+
+**FBW #10890 (`c0421a9`, 11 Sep 2026, "various AFS fixes") stopped the A32NX publishing
+`A32NX_SPEEDS_VFEN` and `A32NX_SPEEDS_VS` at all.** The writes were deleted from
+`A32NX_Speeds.ts`; the values still exist inside `NXSpeeds` but nothing puts them on an
+L-var any more. Nothing was renamed, so a name-diff sweep finds nothing — the vars simply
+stop being written and read a stale `0` forever. That is the failure mode to fear: the VFE
+and VS readouts did not go silent, they confidently said a wrong number.
+
+The readouts now take the FAC's own characteristic speeds, which is what the PFD tape uses:
+
+| Readout | Was | Now |
+| --- | --- | --- |
+| VFE | `A32NX_SPEEDS_VFEN` | `A32NX_FAC_1_V_FE_NEXT`, else `A32NX_FAC_2_V_FE_NEXT` |
+| VS | `A32NX_SPEEDS_VS` | `A32NX_FAC_1_V_STALL_1G`, else `A32NX_FAC_2_V_STALL_1G` |
+
+VS keeps its meaning: `V_STALL_1G` is the 1g stall speed, the same quantity the deleted
+`A32NX_SPEEDS_VS` carried, and the call-out still says "Stall Speed". Like the PFD, FAC 1 is
+read first and FAC 2 is the fallback when FAC 1 has nothing to say (failed, or switched off).
+
+Both are **ARINC429 words**. They are NOT read through the hardcoded temp-def/dispatch path
+(ids 330-337, which hands the value on as a plain number): each `SpeedRequestTable` entry
+carries its encoding — `PlainSpeed` for that path, `FacSpeed` for a FAC word — and a
+`FacSpeed` is read through its registered `IsArinc429` definition (`FAC_n_V_FE_NEXT`,
+`FAC_n_V_STALL_1G`) with `ReadFreshAsync` and decoded by `TryDecodeArinc429`, the same decode
+the panel rows use. A bad SSM is spoken as "not available" rather than as a number. Never add
+ARINC decoding to dispatch cases 335/337: they still carry a plain number for the Headwind
+A330 (below).
+
+⚠️ **VFE and VS are now IN-FLIGHT ONLY.** The deleted plain L-vars were valid on the ground;
+a FAC word carries a no-computed-data SSM until the FACs have air data, so both say "not
+available" on stand. That is a real behaviour change — and not one worth avoiding, because the
+variable it replaces reads a stale 0 on the ground too, it just says it with a number.
+
+⚠️ **The A380 is NOT affected and must not be "fixed" to match.** The A380X still writes
+both plain L-vars (`FmcAircraftInterface.ts`), and `FlyByWireA380Definition` derives from
+`BaseAircraftDefinition` — not from `FlyByWireA320Definition` — so it reads them through its
+own `RequestReadout` path and shares none of this.
+
+⚠️ **The Headwind A330 inherits this table and must KEEP the plain L-vars.** Checked against
+`headwindsim/aircraft` @ `41eace7` (14 Aug 2026), not assumed: it still writes both from the
+pre-#10890 `A32NX_Speeds.ts` it forked (lines 22/29/69/75), and its FACs publish **six**
+variables in total — `DISCRETE_WORD_2`, `HEALTHY`, `RUDDER_TRIM_POS` per side — **not one of
+them a characteristic speed**. None of the FAC speed words exist on that airframe, so
+`HeadwindA330Definition` overrides `SpeedRequestTable` with all-`PlainSpeed` sources, and drops
+the base PFD panel's FAC rows (`PFD_VSW`, `PFD_VALPHAPROT`, `PFD_VALPHAMAX`), which would read
+"not available" all flight. Revisit only if Headwind syncs #10890.
+
+**Requires a FlyByWire A32NX Development build from 11 Sep 2026 or later** for the plain
+L-vars to be gone; the FAC words predate #10890, so this migration also works on an older
+build.
+
+### Fenix A320 AI display reads — the camera indices are MEASURED (2026-09-21)
+
+Five reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/FenixA320DisplayReads.cs`,
+dispatched by `BaseAircraftDefinition.HandleHotkeyAction` from the definition's `DisplayReads`
+override. The app moves the simulator camera to the view that frames the display, captures with
+`PrintWindow`, puts the camera back, and only then makes the AI call.
+
+| Key | Display | Instrument view |
+|---|---|---|
+| Alt+P | PFD (the FIRST OFFICER'S) | view 9 (index 8) |
+| Alt+N | ND (the CAPTAIN'S) | view 8 (index 7) |
+| Alt+E | E/WD | view 8 (index 7) |
+| Alt+S | SD | view 8 (index 7) |
+| Alt+I | Standby instruments | view 8 (index 7) |
+
+**Measured on the live aircraft** (MSFS 2024 1.8.16.0, FenixA320 IAE WF) by writing each index and
+capturing the frame. On this aircraft `cameras.cfg` is wrong TWICE over, so do not "correct" the
+table from it:
+
+- The titles mislead, as always. The camera framing the CENTRE panel is titled "Main Panel (Left)"
+  and the one framing the FIRST OFFICER'S side is titled "Main Panel (Center)".
+- ⚠️ **The live index is not the camera's position in the file.** File position 7,
+  "Main Panel (Left)" — the captain's side — is absent from the live list entirely, so every
+  camera after it shifts down one. `CAMERA VIEW TYPE AND INDEX MAX:2` reads 18 for 18 usable
+  views, 0..17 (writing 18 is refused), which is exactly the 19 definitions minus the missing one.
+  Live index 9 is the upper overhead and 10 the rear circuit-breaker wall, not main-panel views.
+
+⚠️ **The camera list is in `common/config/cameras.cfg`** (84 KB). All four presets — CFM_SL,
+CFM_WF, IAE_SL, IAE_WF — are 45-byte `[MODULAR_MERGE] auto = true` stubs. That is the OPPOSITE of
+the PMDG 737-800 layout (per-livery-preset files, `common` a stub) and the same as the PMDG 737-900,
+so one measurement covers every Fenix variant.
+
+**The captain's PFD cannot be read, and Alt+N deliberately does not match Alt+P's side.** No live
+view frames the captain's PFD: the centre view clips BOTH PFDs to slivers at its edges, and the
+only view holding a whole PFD is the first officer's. The ND is the display where the side
+genuinely matters, because range and mode are set per side (`S_FCU_EFIS1_ND_MODE` /
+`S_FCU_EFIS2_ND_MODE`), so Alt+N reads the captain's; a PFD differs between sides only in the
+altimeter setting and in side-specific FD/AP annunciation. Owner's ruling, 2026-09-21.
+
+**Two prompts are Fenix-specific and must not be folded back into the shared ones.**
+`DisplayType.NDFenix` exists because the centre view frames BOTH NDs and the shared
+`DisplayType.ND` prompt says only "ONLY describe the Navigation Display" — ambiguous with two side
+by side — so it names the left-hand one. `DisplayType.StandbyFenix` exists because Fenix ships
+BOTH kinds of standby: this airframe has three round dial gauges (airspeed, altimeter with a
+Kollsman baro window, attitude) plus a DME/VOR indicator, other variants a single digital ISIS.
+The prompt identifies which is fitted and reports it, the way the PMDG 737's lower-DU prompt names
+which of its two pages it found. `DisplayType.ISIS` is shared with the HorizonSim 787, which has a
+real digital ISFD, so it could not be edited in place. A digital ISIS occupies the same panel
+location as the round gauges, so view 8 serves both.
+
+⚠️ The old hotkey-guide line said the ISIS needs "default camera view 9". That is wrong: view 9
+(index 8) holds the first officer's ND and PFD with the ECAM clipped at its left edge, and no
+standby instruments at all. The standby is in view 8 (index 7), measured.

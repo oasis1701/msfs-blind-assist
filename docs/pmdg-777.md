@@ -46,7 +46,23 @@ Note that `RequestVariable(key, forceUpdate: true)` — the combo snap-back used
 
 **Do NOT re-derive that from event-id order.** Event ids order *events*, not array slots, and the SDK header itself disproves the equivalence: `FCTL_WingHydValve_Sw_SHUT_OFF[3]` is annotated `left/right/center` while its ids run `WING_L +60 < WING_C +63 < WING_R +66`. `ELEC_ExtPwr*` has the event **names** swapped against the array outright (`_simpleEventMap` says so in place). The eight pump ids do happen to trace the panel rows (`DEMAND_ELEC1 +35, AIR1 +36, AIR2 +37, DEMAND_ELEC2 +38`, then `ENG1 +39, ELEC1 +40, ELEC2 +41, ENG2 +42`; `THIRD_PARTY_EVENT_ID_MIN` 69632), but that is corroboration, not the rule — and it is 8 of the 22 `EVT_OH_HYD_*` events, the excluded `RAM_AIR`/`VLV_PWR` ones being exactly those that break it. Pinned by `tests/MSFSBlindAssist.Tests/Pmdg777HydraulicPumpLabelTests.cs`; the dictionary keys keep their `_1`/`_2` suffixes because Ctrl+M persists a mute under the key and there is no rename migration.
 
-**⚠️ Still to confirm in-sim:** the C1/C2 **order within each center pair** is the one part inferred rather than corroborated — the header annotates neither array, and the NG3 SDK inverts exactly this array on the 737 (`HYD_PumpSw_elec`: `[0]`=pump 2, forcing a compensating display swap). What the 737 inversion was *spotted by* is absent here, which is mild reassurance rather than proof: there `ELEC2` carries the lower id, while on the 777 `ELEC1 +40 < ELEC2 +41` runs in order. Confirm that `HYD_PrimElecPump_1` moves the **C1** electric primary (not C2), and likewise `HYD_DemandAirPump_1` and C1 AIR. The Left/Right pairs are the safer half but deserve the same check: `Primary Engine Pump Left` must move the **L** ENG pump.
+**⚠️ Still to confirm in-sim:** the C1/C2 **order within each center pair** is the one part inferred rather than corroborated — the header annotates neither array, and the NG3 SDK inverts exactly this array on the 737 (`HYD_PumpSw_elec`: `[0]`=pump 2, forcing a compensating display swap). What the 737 inversion was *spotted by* is absent here, which is mild reassurance rather than proof: there `ELEC2` carries the lower id, while on the 777 `ELEC1 +40 < ELEC2 +41` runs in order. Confirm that `HYD_PrimElecPump_1` moves the **C1** electric primary (not C2), and likewise `HYD_DemandAirPump_1` and C1 AIR. The Left/Right pairs are the safer half but deserve the same check: `Left Primary Engine Pump` must move the **L** ENG pump.
+
+**Pressurization, straight from `PMDG_777X_SDK.h`.** All three outflow-valve arrays
+are annotated `// fwd / aft`, so slot 0 is the FORWARD valve — this pair needs no
+inference. The manual selector is additionally annotated `0: OPEN  1: Neutral  2: CLOSE`;
+its middle detent is a spring-loaded **Neutral** and read "Auto" until 2026-09, which
+collided with the Mode row's genuine "Auto" two rows apart in the same panel. Note the
+NG3 inverts this array on the 737 (`0=CLOSE 1=NEUTRAL 2=OPEN`) — the two airframes
+genuinely differ, so never port one's ordering to the other.
+
+**The manual landing altitude is not published at all.** `EVT_OH_PRESS_LAND_ALT_KNOB_PULL`
+works (a toggle) and `..._ROTATE` is accepted, but no SDK variable carries the value the
+knob sets — `FMC_LandingAltitude` is the FMC's computed destination elevation, a different
+quantity (verified live, 2026-09). So `AIR_LdgAltSelector` is deliberately NOT announced
+and has no panel control: a call-out could only report a transient spring-loaded position,
+and no control could read back what the pilot set. This is a data-source fact, like the
+EFB's missing minimums — not a gap to fix.
 
 **CDU interaction:** CDU buttons must send parameter 1 (pressed) via CDA; parameter 0 also registers as a press (not a release). Text entry sends one character at a time with 350ms delay; repeated characters need an extra 400ms for the CDU to distinguish separate presses. CDU display uses color and font-size data to detect toggle selections (non-white color or non-small font = selected, marked with `X`). Toggle detection only applies to rows with adjacent `<>` (mapped from 0xA1/0xA2 arrow symbols). Scratchpad announcements are suppressed during text entry and clearing (`_typingInProgress`/`_clearingInProgress` flags); `_previousScratchpad` is only updated when the announcement actually fires. CLR uses `_clearingInProgress` to suppress intermediate states and only announces "Cleared" once the scratchpad is empty.
 
@@ -60,3 +76,57 @@ Note that `RequestVariable(key, forceUpdate: true)` — the combo snap-back used
 
 **System Display synoptic read-outs (`PMDG777Definition.SystemDisplay.cs`, partial class).** A read-only status box in the **Displays → System Display** panel, organized like the real Display Select Panel synoptic pages. A single combo (`PMDG777_SD_PAGE`, `SdPageKey`) selects one of 9 pages (0 Engine, 1 Status, 2 Electrical, 3 Hydraulics, 4 Fuel, 5 Air, 6 Doors, 7 Gear, 8 Flight Controls); selecting a page writes a private L:var (`PMDG777_MSFSBA_SD_PAGE`), and `RefreshSystemDisplayAsync` repaints the box. **HYBRID data sourcing** — each row is `(label, var, fmt)`: most values are **stock SimVars** read from the SimConnect cache (`GetCachedVariableValue` — oil temp/press/qty, EGT, N1/N2, fuel flow, hydraulic pressure/reservoir, electrical voltages, cabin alt/rate/diff, CG%MAC, gear, control surfaces/trim), while a small set of PMDG-SDK-broadcast fields (`_sdPmdgVars`: feed-tank fuel quantities, duct pressures, brake accumulator, IRS aligned, APU running, door states) are read **live** via `simConnect.PMDGDataManager.GetFieldValue(name)` (with `_N` array-index suffix), because OnRequest PMDGVars never land in the SimConnect cache. The box rides the GENERIC MainForm `_DISPLAY_`/`_REFRESH_` status-box infra (a navigable ListBox with a 1 s live auto-refresh + coalesced in-place row reconcile — see "Status-display boxes refresh live") — `OnDisplayPanelShown` triggers a refresh when the panel is shown; `TryGetDisplayOverride(SdPageKey, …)` renders the page name + content. **Documented gaps not in the SDK** (so NOT covered): oxygen, water, brake temp, tire pressure, APU N/EGT/load, generator load amps, EICAS alert message TEXT (WASM-only), wear/cycles, chrono elapsed time. **Formatting (2026-06-21):** the shared `Lbs`/`Pph` formatters show weight/fuel in BOTH units — "`<lb>` pounds (`<kg>` kg)" / "… pounds per hour (… kg per hour)" (1 lb = 0.45359237 kg) — covering every pounds field on every page (Fuel Flow, Fuel Used, Gross Weight, Total Fuel, per-tank). The continuous readouts carry ONE decimal place (`{v:0.0}` on percent / volts / psi / degrees-C) so sub-unit changes are visible — integer rounding had made live values look frozen (a reservoir at 96.9% read a static "97"). Weight/fuel stay whole (sub-unit is noise on a 6-digit number); N1/N2, vibration, flaps, diff-pressure already carried a decimal. The row formatters are `private static` methods (not per-call local funcs) so the compiler caches the method-group delegates — the auto-refresh tick and the 9-page registration loop don't re-allocate them; `TryGetDisplayOverride` renders the page name from `_sdPage` (the same source `_sdContent` was composed from), NOT the cached L:var `value`, which lags the calc-write/read-back and would briefly show the wrong header over fresh content. **PMDG-broadcast reads are gated on `IPMDGDataManager.IsReady`** — until the first CDA snapshot arrives `GetFieldValue` returns `0.0` for EVERY field (interface contract), which `DoorState(0)="open"` would render as "every door open" / "0 lb"; not-ready now renders `--` (matching the stock-SimVar cache-miss path). **MainForm's PMDG panel-populate loop only force-reads `Type == PMDGVar` controls** (`MainForm.cs` ~6598) — reading a non-PMDG control (the SD page combo is an `LVar`) via `GetFieldValue` returns the `0.0` "unknown field" sentinel, which used to force-reset the combo to page 0 on every panel re-show; non-PMDG controls populate via combo-creation + continuous monitoring instead.
 
+
+## AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I)
+
+Five reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/Pmdg777DisplayReads.cs`,
+dispatched by `BaseAircraftDefinition.HandleHotkeyAction` from the definition's `DisplayReads`
+override. The app moves the simulator camera to the view that frames the display, captures with
+`PrintWindow`, puts the camera back, and only then makes the AI call.
+
+| Key | Display | Instrument view |
+|---|---|---|
+| Alt+P | PFD | view 8 (index 7) |
+| Alt+N | ND | view 8 (index 7) |
+| Alt+E | Upper EICAS | view 2 (index 1) |
+| Alt+S | Lower display | view 2 (index 1) |
+| Alt+I | ISFD (standby) | view 2 (index 1) |
+
+**Measured on the live aircraft** (2026-09-22, MSFS 2024 1.8.16.0, PMDG 777F) by writing each
+index and capturing the frame. View 8 frames the captain's PFD and ND large; view 2 frames the
+whole forward panel — the ISFD, the upper EICAS, the lower display, both CDUs and the first
+officer's displays.
+
+The titles happen to be honest on this airframe. That is **not** a reason to trust them next
+time: on the PMDG 737 the camera titled "PFD" frames the ND as well, and on the Fenix A320 the
+live index is not even the camera's position in the file. Measure, then write the number down.
+
+⚠️ **The camera list is in `common/config/cameras.cfg`** and the per-livery preset is a 48-byte
+`[MODULAR_MERGE] auto = true` stub — the same layout as the PMDG 737-900 and the OPPOSITE of the
+737-600/-700/-800, where `common` is the stub. Read whichever of the two is not a stub.
+`CAMERA VIEW TYPE AND INDEX MAX:2` reads 10 for 10 instrument views, 0..9 — a COUNT, not a top
+index, the same as the Fenix.
+
+**Why the standby does not use the captain-panel view.** The ISFD is in that frame, but hard
+against the right edge, so a narrower window would clip it. In the forward-panel view it sits well
+inside and crops the same size. Same reasoning as the PMDG 737 and the iFly.
+
+**Alt+S reads the lower display**, added 2026-09-22 after the camera work, closing the gap this
+doc previously recorded as needing its own measurement. It shares the forward-panel view with the
+upper EICAS and the ISFD, so those three prompts exclude each other by name. The display is
+SELECTABLE — secondary engine indications, one of the synoptics (STATUS, ELEC, HYD, FUEL, AIR,
+DOOR, GEAR, FCTL), or a navigation display — so `DisplayType.LowerDisplay777` identifies which
+page is present before reporting it, the way the 737's lower-DU and the MD-11's SD prompts do.
+It is a genuinely different surface from the 737's lower DU, which is why it got its own prompt
+rather than a copy of that one.
+
+⚠️ **What the stock SimVars do and do not give you here.** Measured live on the 777F with the
+engines at idle, against the lower display showing its secondary engine page: `TURB ENG N2` reads
+71.16 % against a displayed 71.1, `TURB ENG N1` 22.32 against 22.3, and
+`GENERAL ENG OIL TEMPERATURE` 70.5 °C against a displayed 69 — all real. But
+`GENERAL ENG OIL PRESSURE` reads 58.1 psi against a displayed 32/33, `ENG OIL QUANTITY` a flat
+100 % against 22/21, and `ENG VIBRATION` 2.12 against 0.6/0.5 — those three are the stock engine
+model's, not PMDG's. The 777's CDA struct carries none of them. So oil pressure, oil quantity and
+vibration are reachable ONLY through this read; N2 and oil temperature could also be ordinary
+panel rows, which is a separate capability with its own in-sim test plan and deliberately not part
+of this change.

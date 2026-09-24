@@ -112,20 +112,7 @@ public class PmdgAutopilotRowsTests
     private static void AssertStateFieldResolves(Type cdaStruct, ApRowSpec row, string aircraft)
     {
         if (row.StateField.Length == 0) return; // the stateless disconnects read nothing
-
-        var exact = cdaStruct.GetField(row.StateField);
-        if (exact != null && !exact.FieldType.IsArray) return;
-
-        int cut = row.StateField.LastIndexOf('_');
-        if (cut > 0 && int.TryParse(row.StateField[(cut + 1)..], out int index))
-        {
-            var baseField = cdaStruct.GetField(row.StateField[..cut]);
-            int size = baseField?.GetCustomAttribute<MarshalAsAttribute>()?.SizeConst ?? 0;
-            if (baseField != null && baseField.FieldType.IsArray && index < size) return;
-        }
-
-        Assert.Fail($"{aircraft} row '{row.Label}': state field '{row.StateField}' does not " +
-            $"resolve against {cdaStruct.Name} — GetFieldValue would return the 0.0 sentinel forever");
+        PmdgStructFields.AssertResolves(cdaStruct, row.StateField, $"{aircraft} row '{row.Label}'");
     }
 
     // The 737's momentary rows read an annunciator that differs from the varDef Name;

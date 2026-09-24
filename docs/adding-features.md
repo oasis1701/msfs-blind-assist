@@ -48,7 +48,7 @@ Step-by-step workflows for adding features to MSFS Blind Assist. For quick patte
 
 **File:** Aircraft definition class
 
-**Step 1:** Add to `GetVariables()` with `Continuous` + `IsAnnounced`
+**Step 1:** Add to `GetVariables()` with `Continuous` + `IsAnnounced` (and, if `ProcessSimVarUpdate` will consume it silently as a cache that is never spoken, `ExcludeFromMonitorManager = true` too - otherwise it earns a Ctrl+M checkbox that mutes nothing)
 ```csharp
 ["A32NX_NEW_STATUS"] = new SimConnect.SimVarDefinition
 {
@@ -335,6 +335,7 @@ public override bool HandleHotkeyAction(
 - Background state tracking
 - `UpdateFrequency.Continuous` + `IsAnnounced = true`
 - NOT in BuildPanelControls()
+- Silent caches (consumed by `ProcessSimVarUpdate`, never spoken): also `ExcludeFromMonitorManager = true`
 
 **Hotkey-Only Variables:**
 - Ad-hoc requests via hotkeys

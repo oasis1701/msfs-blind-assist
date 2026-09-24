@@ -36,37 +36,82 @@ public static class RolloutRunwayReCrossing
         => RouteRunwayCrossings.FindCenterlineForDesignator(centerlines, runwayId);
 
     /// <summary>
-    /// True when any segment from <paramref name="fromSegmentIndex"/> onward crosses the
-    /// runway's centerline between its thresholds.
+    /// True when the route, judged from <paramref name="fromSegmentIndex"/> onward, enters or crosses
+    /// the runway (<see cref="RunwayRouteClassifier"/>). A route that starts on the runway and turns off
+    /// meets nothing, however close to the centerline its exit junction sits (KORD 10R W5); one that
+    /// goes back onto the pavement — across it, or onto it and off the same side — is refused.
     ///
-    /// <para>Uses <see cref="TaxiGraph.EdgeCrossesRunwayStatic"/> — a segment-vs-segment
-    /// intersection, NOT a point-on-pavement test. The point test silently missed every
-    /// crossing whose flanking nodes sit more than half-width + 5 m out (KBOS 33L via K/B/C,
-    /// docs/taxi-guidance.md), which is most of them.</para>
-    ///
-    /// <para>Judged from <paramref name="fromSegmentIndex"/> because that is the segment
-    /// the tone is about to steer at — a crossing already behind the aircraft is history,
-    /// not a route it is about to fly.</para>
+    /// <para>Judged from <paramref name="fromSegmentIndex"/> because that is the segment the tone is
+    /// about to steer at — a crossing already behind the aircraft is history, not a route it is about
+    /// to fly.</para>
     /// </summary>
     public static bool RouteReCrossesRunway(
         IReadOnlyList<TaxiRouteSegment>? segments,
         int fromSegmentIndex,
         TaxiGraph.RunwayCenterline? runway)
+        => RouteReCrossesRunway(segments, fromSegmentIndex, runway, aircraft: null);
+
+    /// <summary>
+    /// As above, with the aircraft as the route's first point while it has not rolled 10 m along
+    /// the segments being judged (<see cref="RunwayRouteClassifier.NodesFrom"/>'s position
+    /// overload — the SAME rule the automatic hold pass uses, which is the point of the overload).
+    ///
+    /// <para>PR #238 deferred finding §1. Without the aircraft, the node list starts at
+    /// <c>segments[fromSegmentIndex].FromNode</c> — the node BEHIND the aircraft — and the
+    /// classifier emits nothing at all when that node is already on the runway. The A* anchor
+    /// routinely IS on the pavement while the aircraft is on or beside the landing runway (the
+    /// KATL fixture's B1 sits about 2.5 m from the 26R centreline), so a first edge straight to
+    /// the far side produced no passage, the guard returned false and the re-crossing handoff was
+    /// accepted — the very KATL 26R failure this guard exists to refuse.</para>
+    ///
+    /// <para>An aircraft still ON the pavement prepends a node on the runway, so the route starts
+    /// on it and vacates: nothing is reported, exactly as before. That is the KORD 10R W5 end-exit
+    /// case, and it must stay that way.</para>
+    /// </summary>
+    public static bool RouteReCrossesRunway(
+        IReadOnlyList<TaxiRouteSegment>? segments,
+        int fromSegmentIndex,
+        TaxiGraph.RunwayCenterline? runway,
+        RouteRunwayCrossings.AircraftPosition? aircraft)
     {
         if (segments is null || runway is null) return false;
         if (fromSegmentIndex < 0 || fromSegmentIndex >= segments.Count) return false;
 
-        for (int i = fromSegmentIndex; i < segments.Count; i++)
+        var shape = RunwayShape.For(runway);
+        var nodes = RunwayRouteClassifier.NodesFrom(segments, fromSegmentIndex, aircraft, out bool prepended);
+        foreach (var passage in RunwayRouteClassifier.Classify(nodes, shape))
         {
-            var s = segments[i];
-            if (s?.FromNode is null || s.ToNode is null) continue;
-            if (TaxiGraph.EdgeCrossesRunwayStatic(
-                    s.FromNode.Latitude, s.FromNode.Longitude,
-                    s.ToNode.Latitude, s.ToNode.Longitude,
-                    runway.Lat1, runway.Lon1, runway.Lat2, runway.Lon2))
-                return true;
+            if (prepended && IsAnchorBehindClearAircraft(passage, nodes, shape)) continue;
+            return true;
         }
         return false;
+    }
+
+    /// <summary>
+    /// True for the one passage the prepend can invent: the aircraft is already clear of the runway,
+    /// the route's anchor node — its only on-pavement node — is the node the aircraft has just left,
+    /// and the route is clear again at the next node. Judged by DIRECTION: the aircraft lies ahead of
+    /// the anchor along the anchor→next edge, so the leg back to the anchor is history, not a route
+    /// onto the runway. A 90° exit whose junction node sits inside the pavement is this shape on
+    /// every vacate once the aircraft is laterally clear, and refusing it concluded guidance with
+    /// "Stop and hold position" on a hand-off that used to proceed (PR #243 review). A route whose
+    /// anchor is AHEAD of the aircraft, or that goes on across the runway, is still refused.
+    /// </summary>
+    private static bool IsAnchorBehindClearAircraft(
+        RunwayPassage passage, IReadOnlyList<TaxiNode?> nodes, RunwayShape shape)
+    {
+        if (passage.Kind != RunwayEventKind.Entry) return false;
+        if (passage.EntryIndex != 0 || passage.FirstOnIndex != 1 || passage.ExitIndex != 2) return false;
+        if (nodes.Count < 3 || nodes[0] is not { } aircraft || nodes[1] is not { } anchor || nodes[2] is not { } next)
+            return false;
+
+        // In the runway's own (along, lateral) frame, which is planar enough for a direction test.
+        var a = shape.Project(aircraft.Latitude, aircraft.Longitude);
+        var p = shape.Project(anchor.Latitude, anchor.Longitude);
+        var n = shape.Project(next.Latitude, next.Longitude);
+        double ex = n.Along - p.Along, ey = n.Lateral - p.Lateral;      // the exit's own direction
+        double vx = a.Along - p.Along, vy = a.Lateral - p.Lateral;      // anchor → aircraft
+        return ex * vx + ey * vy > 0.0;                                  // aircraft is ahead of the anchor
     }
 
     /// <summary>
@@ -167,9 +212,6 @@ public static class RolloutRunwayReCrossing
         return s;
     }
 
-    /// <summary>Feet per second in one knot. Matches <c>GroundTrafficMonitor</c>'s own.</summary>
-    private const double FeetPerSecondPerKnot = 1.6878;
-
     /// <summary>
     /// True when a rollout callout armed at <paramref name="calloutTriggerFeet"/> is superseded
     /// by a crossing-decline utterance spoken at <paramref name="distanceAheadFeet"/> — i.e.
@@ -199,10 +241,6 @@ public static class RolloutRunwayReCrossing
     public static bool DeclineSupersedesCallout(
         double distanceAheadFeet, double calloutTriggerFeet,
         double groundSpeedKts, double leadSeconds)
-    {
-        if (distanceAheadFeet <= calloutTriggerFeet) return true;
-        if (groundSpeedKts <= 0.0 || leadSeconds <= 0.0) return false;
-        return distanceAheadFeet - calloutTriggerFeet
-            <= groundSpeedKts * FeetPerSecondPerKnot * leadSeconds;
-    }
+        => RolloutCalloutSupersession.Supersedes(
+               distanceAheadFeet, calloutTriggerFeet, groundSpeedKts, leadSeconds);
 }

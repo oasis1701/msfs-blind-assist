@@ -208,18 +208,27 @@ public class GeminiService : IAiProvider
         UpperECAM,     // Upper ECAM / Engine Warning Display
         ND,            // Navigation Display
         ISIS,          // Integrated Standby Instrument System
+        NDFenix,       // Navigation Display (Fenix A320) — its frame holds BOTH NDs, so this one names the captain's
+        StandbyFenix,  // Standby instruments (Fenix A320) — three round gauges on some variants, a digital ISIS on others
         EICAS,         // Engine Indicating and Crew Alerting System (Boeing 777)
         PFD777,        // Primary Flight Display (Boeing 777)
         ND777,         // Navigation Display (Boeing 777)
         ISFD,          // Integrated Standby Flight Display (Boeing 777)
+        LowerDisplay777, // Lower display / MFD (Boeing 777) — secondary engine, a synoptic, or an ND
         PFD737,        // Primary Flight Display (Boeing 737 NG3)
         ND737,         // Navigation Display (Boeing 737 NG3)
         ISFD737,       // Integrated Standby Flight Display (Boeing 737 NG3)
         EICAS737,      // Upper Engine Display / "EICAS-equivalent" / DU3 (Boeing 737 NG3)
+        LowerDU737,    // Lower Display Unit / DU4 — secondary engine data, or the ND when selected (Boeing 737 NG3)
         PFDiFly,       // Primary Flight Display (iFly 737 MAX 8)
         NDiFly,        // Navigation Display (iFly 737 MAX 8)
         ISFDiFly,      // Integrated Standby Flight Display (iFly 737 MAX 8)
-        EICASiFly      // Engine indications + crew alerts, "EICAS-equivalent" (iFly 737 MAX 8)
+        EICASiFly,     // Engine indications + crew alerts, "EICAS-equivalent" (iFly 737 MAX 8)
+        PFDMd11,       // Captain's Primary Flight Display (TFDi MD-11) — instrument view 1
+        NDMd11,        // Captain's Navigation Display (TFDi MD-11) — instrument view 1
+        EADMd11,       // Engine and Alert Display, the MD-11's EICAS (TFDi MD-11) — instrument view 1
+        SDMd11,        // System Display, the page currently selected (TFDi MD-11) — instrument view 3
+        ISFDMd11       // Standby instrument on the forward pedestal (TFDi MD-11) — instrument view 4
     }
 
     /// <summary>
@@ -346,6 +355,27 @@ Skip normal colors (green, white, magenta) - only mention warning/alert colors (
 Report: display mode (ROSE NAV, ARC, PLAN), range setting, aircraft heading/track, active waypoints in sequence, distance/time to next waypoint, course deviation if present, weather radar returns if shown, TCAS traffic if present.
 Use line breaks to separate information. Put mode and range on the first line, heading/track on the next line, then each waypoint on its own line.
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.NDFenix => @"You are reading the CAPTAIN'S Navigation Display of an Airbus A320 for a screen reader user.
+The image contains two navigation displays side by side, one for each pilot. Describe ONLY the LEFT-HAND one, which is the captain's. Ignore the right-hand navigation display, the ECAM displays in the centre, the standby instruments and everything else.
+The two can show different modes and ranges, so do not merge them or fall back to the other one: if the left-hand display is blank or off, say so in one line and stop.
+Be extremely concise and direct. Skip descriptions of map layouts, visual positioning, and symbology explanations. Only report actual values, modes, and navigation data.
+Skip normal colors (green, white, magenta) - only mention warning/alert colors (amber, red).
+Report: display mode (ROSE NAV, ARC, PLAN), range setting, aircraft heading/track, ground speed and true airspeed, wind direction and speed, active waypoints in sequence, distance/time to next waypoint, course deviation if present, weather radar returns if shown, TCAS traffic if present.
+Use line breaks to separate information. Put mode and range on the first line, heading/track on the next line, then each waypoint on its own line.
+Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.StandbyFenix => @"You are reading the STANDBY INSTRUMENTS of an Airbus A320 for a screen reader user.
+The image contains the whole centre panel. Describe ONLY the standby instruments, which sit between the captain's navigation display and the ECAM displays. Ignore the navigation displays, the ECAM displays, and the landing gear and autobrake panels.
+This aircraft is fitted with ONE of two kinds. Identify which is present from its appearance, say so on the first line, then report it:
+
+If it is THREE ROUND DIAL GAUGES - first line ""Round standby gauges"" - report each on its own line: the standby airspeed in knots from the pointer, the standby altitude in feet from the drum or pointers, the barometric setting in the small window on the altimeter face (give the number and say whether it is hPa or inches of mercury), and the pitch and bank from the standby attitude indicator if either is other than level. If a DME or VOR bearing indicator is beside them, report its distance and bearing last.
+
+If it is a SINGLE DIGITAL SCREEN - first line ""Digital ISIS"" - report airspeed, altitude, barometric setting (including STD if standard is selected), pitch and bank if other than level, and any mode annunciations or flags.
+
+If the standby instruments are dark or not visible in this image, say so in one line and stop. Do not report values from the navigation displays or the ECAM instead.
+Skip normal colors - only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
             DisplayType.ISIS => @"You are reading the ISIS backup display for a screen reader user.
 The image may contain multiple displays. ONLY describe the ISIS (center backup instrument). Ignore any other displays.
@@ -496,6 +526,35 @@ Skip normal colors (green, white) — only mention warning/alert colors (amber, 
 Use line breaks to separate parameters. Put thrust mode on the first line, TAT/SAT on the next, then each engine on its own line, then fuel quantities, then limits, then any alerts.
 Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
 
+            DisplayType.LowerDU737 => @"You are reading the Lower Display Unit (DU4, the lower centre display) of a Boeing 737 (NG3 family — 737-600 / -700 / -800 / -900) for a screen reader user.
+The image may contain multiple displays. ONLY describe the lower centre display, below the Upper Engine Display. Ignore the PFD, the navigation displays, the ISFD, the Upper Engine Display (N1, EGT) and the CDU.
+
+This display unit shows one of two things, selected by the pilot on the LOWER DU selector. Identify which is present from its content and say so on the first line, then report it:
+
+If it shows SECONDARY ENGINE INDICATIONS — first line ""Secondary engine"" — report for each engine (ENG 1 / ENG 2 or Left / Right), each on its own line: N2 percentage, fuel flow (FF), oil pressure, oil temperature, oil quantity percentage, and engine vibration. Then any other values or crew alert text present.
+
+If it shows a NAVIGATION DISPLAY — first line ""Navigation display"" — report it as a navigation display: mode and range, heading or track, active waypoint with distance and time, wind, and any weather-radar or terrain indications.
+
+Important: N1 and EGT belong to the Upper Engine Display, not this one — do not report them here. Fuel flow appears on BOTH displays (verified in the simulator, 2026-09-20); report the value shown on THIS one.
+If the display is blank or off, say so in one line and stop.
+Skip normal colors (green, white) — only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
+            DisplayType.LowerDisplay777 => @"You are reading the LOWER display (the lower centre screen, sometimes called the lower EICAS or the MFD) of a Boeing 777 for a screen reader user.
+The image shows the whole forward panel. Describe ONLY the lower centre screen, the one directly BELOW the upper EICAS. Ignore the upper EICAS above it, the standby instrument, the primary flight displays, the navigation displays and the CDU keypads.
+
+This screen is selectable and shows one of several things. Identify which is present from its content, say so on the first line, then report it:
+
+If it shows SECONDARY ENGINE INDICATIONS - first line ""Secondary engine"" - report for each engine, left then right, each on its own line: N2 percentage, fuel flow, oil pressure, oil temperature, oil quantity, and engine vibration. Report the numbers as shown.
+
+If it shows a SYNOPTIC page - first line the page name, for example ""Hydraulic synoptic"", ""Electrical synoptic"", ""Fuel synoptic"", ""Air synoptic"", ""Door synoptic"", ""Gear synoptic"", ""Flight controls synoptic"" or ""Status"" - report the quantities, valve and pump states, and any amber or red items on it, each on its own line.
+
+If it shows a NAVIGATION DISPLAY - first line ""Navigation display"" - report mode and range, heading or track, the active waypoint with distance and time, and any weather radar or terrain indications.
+
+If the screen is blank or off, say so in one line and stop.
+Skip normal colors (green, white) - only mention warning/alert colors (amber, red).
+Use line breaks to separate values. Do not use markdown formatting. Do not explain what things mean. Just state the essential data.",
+
             DisplayType.PFDiFly => @"You are reading the Primary Flight Display (PFD) of an iFly Boeing 737 MAX 8 for a screen reader user. The image may contain several displays. ONLY describe the PFD — the display showing the artificial-horizon attitude indicator with a speed tape on its left and an altitude tape on its right. Ignore the navigation display, the engine indications, the ISFD standby, the flight-information/data page, and the CDU.
 Report in this order:
 Flight Mode Annunciator (FMA) across the top, left to right: autothrottle mode (e.g. N1, RETARD, ARM, FMC SPD), roll mode (e.g. LNAV, HDG SEL, VOR/LOC, LOC), pitch mode (e.g. VNAV PTH, VNAV SPD, ALT, V/S, G/S, FLARE), and AFDS status (FD, CMD, or single/dual channel).
@@ -523,7 +582,7 @@ VOR/ADF pointers and tuned stations if shown.
 RNP/ANP figures and any navigation flags or messages.
 Skip normal colors; only call out amber and red. Put each item on its own line. Do not use markdown. Do not explain. Just state the data.",
 
-            DisplayType.ISFDiFly => @"You are reading the Integrated Standby Flight Display (ISFD) of an iFly Boeing 737 MAX 8 for a screen reader user — the small standby instrument on the right side of the main panel, a compact attitude indicator with its own speed and altitude readouts. The image may contain several displays. ONLY describe the ISFD; ignore the main PFD, the ND, the engine display, and the CDU.
+            DisplayType.ISFDiFly => @"You are reading the Integrated Standby Flight Display (ISFD) of an iFly Boeing 737 MAX 8 for a screen reader user — the small standby instrument in the centre of the main panel, between the two pilots' display units, a compact attitude indicator with its own speed and altitude readouts. The image may contain several displays. ONLY describe the ISFD; ignore the main PFD, the ND, the engine display, and the CDU.
 Report: airspeed; attitude (pitch and bank only if unusual); altitude; barometric setting (e.g. 1013 HPA, 29.71 IN, or STD); and any mode annunciations (e.g. APP, ILS) or flags.
 Skip normal colors; only call out amber and red. Put each parameter on its own line. Do not use markdown. Do not explain. Just state the data.",
 
@@ -542,6 +601,51 @@ Flap position and landing-gear indications if shown on this display.
 Fuel quantity: left, center, right, and total if shown, in thousands of pounds.
 Then, most important, the crew alert messages: read every caution (amber) and warning (red) message line exactly as written, top to bottom. If there are none, say ""No alerts"".
 Skip normal colors (green, white); call out amber and red. Put the thrust mode first, then TAT/SAT, then each engine on its own line, then flaps/gear, then fuel, then the alerts. Do not use markdown. Do not explain. Just state the data.",
+
+            DisplayType.PFDMd11 => @"You are reading the captain's Primary Flight Display (PFD) of a McDonnell Douglas MD-11 for a screen reader user. The image may contain several displays. ONLY describe the PFD — the leftmost display, with the attitude sphere, a speed tape on its left and an altitude tape on its right. Ignore the navigation display, the engine display and everything else.
+The flight mode annunciator across the top of the PFD is the most important part: it is the only place the engaged autoflight modes exist. Report it first, in three windows from left to right: the speed and thrust window (the target speed or Mach and the thrust mode, e.g. "".815 THRUST"", ""250 PITCH"", ""IDLE""), the roll window (e.g. NAV1, NAV2, HDG, TRK, LOC, LAND ARMED, ROLLOUT), and the pitch window (e.g. HOLD 32000, ALT CAP, PROF, V/S, FPA, G/S, FLARE). Read each word exactly as written and give its colour: white means selected on the flight control panel, magenta means commanded by the FMS. Then the line beneath the windows: AP1, AP2 or FD, and any armed mode shown there.
+Then report, one per line:
+Airspeed: the indicated airspeed, the Mach number, and any speed bugs shown on the tape.
+Altitude: the current altitude, the selected altitude at the top of the tape, and the metric altitude if a metres readout is shown.
+Vertical speed.
+Heading or track at the bottom, with MAG or TRUE.
+Barometric setting below the altitude tape (inches or hectopascals, or STD).
+Decision height or minimums (DH, MDA) and the radio altitude if displayed.
+Localizer and glideslope deviation if an approach is displayed and they are not centred.
+Any flags, failure flags, or amber or red annunciations.
+Be extremely concise and direct. Skip descriptions of tape layouts, scales and positioning. Skip normal colours for flight data (green, white); only call out amber and red there. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.NDMd11 => @"You are reading the captain's Navigation Display (ND) of a McDonnell Douglas MD-11 for a screen reader user. The image may contain several displays. ONLY describe the ND — the display to the right of the PFD, showing a compass arc or rose with the aircraft symbol. Ignore the PFD, the engine display beside the ND, and everything else.
+Report in this order, one item per line:
+Display mode (MAP, PLAN, VOR, APPR or TCAS) and the range in nautical miles (the RNG box).
+Heading or track at the top of the compass, and whether MAG or TRUE is selected.
+Ground speed (GS) and true airspeed (TAS).
+Wind direction and speed.
+The active waypoint at the top right: its name, distance and time or ETA.
+Further waypoints along the route in order, if legible.
+Bearing pointers and the stations they point to (VOR, ADF) if shown.
+TCAS traffic: relative bearing, range and relative altitude of each symbol, and any TA or RA.
+Weather radar returns and their colour, and terrain shading and its colour, if displayed.
+The clock and elapsed time if shown.
+Any flags or messages (e.g. TERRAIN, WX, the navigation source).
+Skip normal colours (green, white, magenta, cyan); only call out amber and red. Skip descriptions of map layout and symbology. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.EADMd11 => @"You are reading the Engine and Alert Display (EAD) of a McDonnell Douglas MD-11 for a screen reader user. The EAD is this aircraft's EICAS. The image may contain several displays. ONLY describe the EAD — the centre display with three columns of round engine gauges (one column per engine) and an alert area below them. Ignore the navigation display to its left, the system display to its right, and the PFD. The small ""GEAR LIMIT SPD"" placard printed below the display, next to the gear handle, is NOT part of the display; do not report it.
+Report in this order, one item per line:
+The thrust limit line at the top (e.g. ""1.45 CRZ LIM"", ""TO"", ""CLB"", ""GA"") and TAT.
+For each engine, engine 1 then 2 then 3 (left to right): EPR (Pratt and Whitney) or N1 (General Electric) with the limit bug value if shown, EGT in degrees Celsius, N1 percent, N2 percent, and fuel flow (FF).
+Flap and slat position, landing gear indications, and pitch trim if shown on this display (a green box around the flap and trim values means take-off configuration is good; say so).
+Then, most important, the alert area at the bottom of the display: read every message exactly as written, top to bottom, with its colour — red is a warning (level 3), amber is a caution (level 2), cyan is a level 1 alert or a memo such as NO SMOKING. If there are none, say ""No alerts"".
+Be extremely concise and direct. Skip descriptions of gauge layout, arc positions and visual formatting. Skip normal colours (green, white); call out amber, red and cyan in the alert area only. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.SDMd11 => @"You are reading the System Display (SD) of a McDonnell Douglas MD-11 for a screen reader user. The image may contain several displays. ONLY describe the SD — the display to the right of the gear handle, showing one system synoptic page. Ignore the engine display to its left, the navigation displays and the PFD.
+First line: the page name. The SD shows one of these pages: ENG (secondary engine data: oil pressure, temperature and quantity, nacelle temperature, vibration, plus gross weight, CG, fuel, cabin altitude and rate, stabilizer trim), HYD (hydraulics), ELEC (electrical), AIR (air conditioning and pneumatics), FUEL (fuel quantities and pumps), CONFIG (configuration: flaps, slats, gear, trim, spoilers), MISC (miscellaneous), STATUS, CONSEQ (consequences of a failure), or a third navigation display. Identify the page from its title or its content.
+Then report every value with its unit and every system state, one per line: quantities, pressures, temperatures, voltages, frequencies, ON/OFF, OPEN/CLOSED, pump and valve states, and any messages on the page.
+Skip descriptions of layouts, diagrams and visual positioning. Skip normal colours (green, white, cyan); only call out amber and red. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
+
+            DisplayType.ISFDMd11 => @"You are reading the standby instrument of a McDonnell Douglas MD-11 for a screen reader user — the small integrated standby flight display at the top centre of the forward pedestal, between the two MCDUs and above the autobrake selector, with its own attitude sphere, speed tape and altitude tape. The image may contain several displays. ONLY describe the standby instrument; ignore the MCDUs and the main panel displays.
+Report, one per line: pitch and bank only if unusual (otherwise say wings level); airspeed and the Mach number; altitude and the metric altitude in the box beside it if shown; the barometric setting (IN or HPA, or STD); heading at the bottom; and any flags or amber or red annunciations.
+Skip normal colours; only call out amber and red. Skip descriptions of instrument layout and positioning. Do not use markdown formatting. Do not explain what things mean. Just state the data.",
 
             _ => "Report what you see on this display in plain text. No markdown formatting. No explanations. Just the data."
         };

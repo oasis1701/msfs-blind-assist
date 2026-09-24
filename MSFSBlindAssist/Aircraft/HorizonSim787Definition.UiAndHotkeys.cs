@@ -113,6 +113,10 @@ public partial class HorizonSim787Definition
             if (currentState == targetState)
                 return true; // no-op — state already matches request
 
+            // Remember the pilot's own pick so the resulting HS787_ExtPwrOn state change is not
+            // spoken back over the screen reader's own combo announcement (IsExtPwrUiEcho).
+            _extPwrUiSetTicks[varKey == "HS787_ExtPwr1" ? 1 : 2] = Environment.TickCount64;
+
             string eventName = varKey == "HS787_ExtPwr1" ? "AIRLINER_EXT_PWR_1" : "AIRLINER_EXT_PWR_2";
             bool usedInputEvent = simConnect.HasInputEvent(eventName) &&
                                   simConnect.TrySetInputEvent(eventName, 1);
@@ -576,6 +580,13 @@ public partial class HorizonSim787Definition
 
         return false;
     }
+    /// <summary>
+    /// Three reads only — Alt+E (CAS alerts) and Alt+S (the system synoptic) are Coherent scrapes
+    /// on this aircraft, not AI captures, and keep their own arms below. No camera move: the
+    /// instrument view indices are unmeasured (HS787DisplayReads).
+    /// </summary>
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => HS787DisplayReads.All;
+
 
     // =========================================================================
     // Hotkey Handling
@@ -846,7 +857,7 @@ public partial class HorizonSim787Definition
             case HotkeyAction.ReadDistanceToDest:
             {
                 double? meters = simConnect.GetCachedVariableValue("HS787_DistDest");
-                double gs = simConnect.GetCachedVariableValue("HS787_GroundSpeed") ?? 0;
+                double gs = simConnect.GetCachedVariableValue("GROUND_VELOCITY") ?? 0;
                 var parts = new System.Collections.Generic.List<string>();
 
                 if (meters != null && meters.Value > 0)
@@ -881,7 +892,7 @@ public partial class HorizonSim787Definition
                     return true;
                 }
                 double todNm = todMeters.Value / 1852.0;
-                double gs = simConnect.GetCachedVariableValue("HS787_GroundSpeed") ?? 0;
+                double gs = simConnect.GetCachedVariableValue("GROUND_VELOCITY") ?? 0;
                 string ete = FormatEte(todNm, gs);
                 announcer.AnnounceImmediate(ete.Length > 0
                     ? $"{(int)todNm} miles to top of descent, {ete}"
@@ -918,21 +929,12 @@ public partial class HorizonSim787Definition
                 ShowHs787Display("787 System Synoptic Display", "HSB789_MFD_2", announcer, hotkeyManager);
                 return true;
 
-            // The ND / PFD / standby are positional (a flat scrape returns scale ticks), so read them
-            // with the AI-vision path (needs a Gemini key + the Ctrl+2 cockpit view). Their data is
-            // also on the SimVar read-outs (B / Shift+S / Shift+H / A / Q, D / Shift+D, waypoint info).
-            // The CAS monitor owns MFD_1 and the IRS reader owns the PFD view, so neither is scraped.
-            case HotkeyAction.ReadDisplayND:               // Alt+N
-                ReadDisplay(Services.GeminiService.DisplayType.ND, "Navigation Display", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayPFD:              // Alt+P
-                ReadDisplay(Services.GeminiService.DisplayType.PFD, "PFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayISIS:             // Alt+I — standby instrument
-                ReadDisplay(Services.GeminiService.DisplayType.ISIS, "Standby Instrument", announcer, parentForm);
-                return true;
+            // The ND / PFD / standby are positional (a flat scrape returns scale ticks), so they
+            // are read with the AI-vision path (needs an AI key) from HS787DisplayReads, dispatched
+            // by the base. Their data is also on the SimVar read-outs (B / Shift+S / Shift+H / A /
+            // Q, D / Shift+D, waypoint info). The CAS monitor owns MFD_1 and the IRS reader owns
+            // the PFD view, so neither is scraped. Alt+E and Alt+S stay above: they are not AI
+            // reads on this aircraft.
 
             // FMC keyboard not available in Phase 1 (requires JS bridge)
             // MainForm will handle ShowFenixMCDU for other aircraft; return false here

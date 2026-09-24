@@ -1,15 +1,11 @@
-// Characterization tests for MSFSBlindAssist.Navigation.RouteRunwayCrossings.
+// Characterization tests for the designator and label helpers of
+// MSFSBlindAssist.Navigation.RouteRunwayCrossings: normalization/padding, the W (water-runway)
+// suffix, reciprocals, label parsing, the crossing-label composition policy, the destination
+// countdown-rail rule and prefix stripping. Hold placement is pinned in RunwayHoldPlacementTests,
+// the spoken clause in RunwayEventDescriptionTests, classification in RunwayRouteClassifierTests.
 //
-// Ports the RouteRunwayCrossings-relevant golden cases from
-// tools/ProgressiveTaxiProbe/Program.cs (sections #7, #9(f), #10, #11): the KSFO
-// same-runway-twice incident, the KBOS three-distinct-runways summary, label-shape
-// parsing, destination-truncation exclusion, designator normalization/padding, the W
-// (water-runway) suffix, reciprocal merging, and the crossing-label composition policy.
-//
-// This is characterization, not spec verification: values are taken from the probe /
-// derived by reasoning about the source and confirmed by running the tests; if a
-// literal ever disagrees with actual output, the test must be corrected to match real
-// output, not the other way around.
+// This is characterization, not spec verification: if a literal ever disagrees with actual output,
+// the test must be corrected to match real output, not the other way around.
 
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
@@ -18,14 +14,6 @@ namespace MSFSBlindAssist.Tests;
 
 public class RouteRunwayCrossingsTests
 {
-    private static TaxiRouteSegment Seg(bool hold, string? label) => new TaxiRouteSegment
-    {
-        FromNode = new TaxiNode(),
-        ToNode = new TaxiNode(),
-        IsHoldShortPoint = hold,
-        HoldShortRunway = label,
-    };
-
     // --- NormalizeDesignator ---------------------------------------------------
 
     [Theory]
@@ -105,237 +93,61 @@ public class RouteRunwayCrossingsTests
         Assert.Equal("runway 28L", RouteRunwayCrossings.ComposeCrossingLabel("runway 28R at Q", "28L"));
     }
 
-    // --- ResolveCrossingHoldSegment ----------------------------------------
+    // --- ShouldExcludeFinalHold ---------------------------------------------------------
     //
-    // Placement of a runway-crossing hold-short. The crossing is detected as the
-    // edge straddling the runway CENTERLINE, so the node before it is routinely
-    // ON the pavement — the resolver walks back to the scenery's own hold node.
-    // Shape below is LEBL D5 over 24R (2026-08): 250 m → 105 m HSND → 51 m →
-    // 21 m → centerline, with the hold node named after the nearer end (06L).
+    // A runway destination's final hold-short is TruncateToHoldShort's countdown rail, not a hold
+    // point to count; a gate route's final hold-short is real.
 
-    private static TaxiRouteSegment Leg(
-        double distanceM,
-        TaxiNodeType endType = TaxiNodeType.Normal,
-        string? endHoldName = null,
-        bool alreadyHold = false) => new TaxiRouteSegment
-        {
-            FromNode = new TaxiNode(),
-            ToNode = new TaxiNode { Type = endType, HoldShortName = endHoldName },
-            DistanceMeters = distanceM,
-            IsHoldShortPoint = alreadyHold,
-        };
-
-    [Fact]
-    public void ResolveCrossingHoldSegment_walks_back_to_the_scenery_hold_node()
+    private static List<TaxiRouteSegment> Route(int count)
     {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Leg(112),                                                            // 0: → 105 m out
-            Leg(54, TaxiNodeType.HoldShort, "runway 06L at D5"),                  // 1: → HSND
-            Leg(29),                                                             // 2: → 51 m out
-            Leg(23),                                                             // 3: → 21 m out (old pick)
-            Leg(23),                                                             // 4: crossing edge
-        };
-
-        // Either designator of the crossed pavement resolves to the same node.
-        Assert.Equal(1, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 4, "24R"));
-        Assert.Equal(1, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 4, "06L"));
+        var list = new List<TaxiRouteSegment>();
+        for (int i = 0; i < count; i++)
+            list.Add(new TaxiRouteSegment
+            {
+                FromNode = new TaxiNode { NodeId = 1, Latitude = i * 0.001 },
+                ToNode = new TaxiNode { NodeId = 2, Latitude = i * 0.001 + 0.001 },
+                DistanceMeters = 100.0,
+            });
+        return list;
     }
 
     [Fact]
-    public void ResolveCrossingHoldSegment_accepts_an_ils_hold_node()
+    public void ShouldExcludeFinalHold_ExcludesARunwayRoutesOwnTaggedFinalSegment()
     {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Leg(40, TaxiNodeType.ILSHoldShort, "runway 02 at S"),
-            Leg(30),
-            Leg(25),
-        };
-
-        Assert.Equal(0, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 2, "02"));
+        var segs = Route(3);
+        segs[^1].IsHoldShortPoint = true;
+        Assert.True(RouteRunwayCrossings.ShouldExcludeFinalHold(segs, isRunwayDestination: true));
     }
 
     [Fact]
-    public void ResolveCrossingHoldSegment_accepts_an_unnamed_hold_node()
+    public void ShouldExcludeFinalHold_KeepsAGateRoutesTaggedFinalSegment()
     {
-        var segs = new List<TaxiRouteSegment> { Leg(40, TaxiNodeType.HoldShort), Leg(30), Leg(25) };
-
-        Assert.Equal(0, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 2, "24R"));
+        var segs = Route(3);
+        segs[^1].IsHoldShortPoint = true;
+        Assert.False(RouteRunwayCrossings.ShouldExcludeFinalHold(segs, isRunwayDestination: false));
     }
 
     [Fact]
-    public void ResolveCrossingHoldSegment_falls_back_when_there_is_no_hold_node()
-    {
-        var segs = new List<TaxiRouteSegment> { Leg(60), Leg(29), Leg(23), Leg(23) };
-
-        Assert.Equal(2, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 3, "24R"));
-    }
+    public void ShouldExcludeFinalHold_IsFalseWhenTheFinalSegmentCarriesNoHold()
+        => Assert.False(RouteRunwayCrossings.ShouldExcludeFinalHold(Route(3), isRunwayDestination: true));
 
     [Fact]
-    public void ResolveCrossingHoldSegment_falls_back_when_the_hold_node_is_beyond_the_lookback()
+    public void ShouldExcludeFinalHold_IsFalseForAnEmptyRoute()
+        => Assert.False(RouteRunwayCrossings.ShouldExcludeFinalHold(
+            Array.Empty<TaxiRouteSegment>(), isRunwayDestination: true));
+
+    // --- StripRunwayPrefix -------------------------------------------------------
+
+    [Theory]
+    [InlineData("Runway 33L", "33L")]
+    [InlineData("runway 09", "09")]
+    [InlineData("RUNWAY 4R", "4R")]
+    [InlineData("A9 - Gate Medium", "A9 - Gate Medium")]
+    [InlineData("  Runway 22L  ", "22L")]
+    [InlineData("", "")]
+    [InlineData(null, "")]
+    public void StripRunwayPrefix_drops_only_the_spoken_prefix(string? input, string expected)
     {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Leg(50, TaxiNodeType.HoldShort, "runway 24R"),   // 0: too far back
-            Leg(200),                                        // 1: blows the 150 m budget
-            Leg(23),                                         // 2
-            Leg(23),                                         // 3: crossing edge
-        };
-
-        Assert.Equal(2, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 3, "24R"));
-    }
-
-    [Fact]
-    public void ResolveCrossingHoldSegment_stops_at_a_hold_node_guarding_another_runway()
-    {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Leg(30, TaxiNodeType.HoldShort, "runway 24R at D5"),  // 0: the one we want…
-            Leg(20, TaxiNodeType.HoldShort, "runway 02 at D5"),   // 1: …behind another runway's line
-            Leg(23),                                             // 2
-            Leg(23),                                             // 3: crossing edge
-        };
-
-        Assert.Equal(2, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 3, "24R"));
-    }
-
-    [Fact]
-    public void ResolveCrossingHoldSegment_never_walks_through_an_existing_hold_short()
-    {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Leg(30, TaxiNodeType.HoldShort, "runway 24R"),
-            Leg(20, alreadyHold: true),                           // another crossing's stop point
-            Leg(23),
-            Leg(23),                                             // crossing edge
-        };
-
-        Assert.Equal(2, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 3, "24R"));
-    }
-
-    [Fact]
-    public void ResolveCrossingHoldSegment_always_returns_an_indexable_segment()
-    {
-        var segs = new List<TaxiRouteSegment> { Leg(23), Leg(23) };
-
-        // Crossing on the first segment — there is nothing before it.
-        Assert.Equal(0, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 0, "24R"));
-        // Out-of-range index clamps into the route rather than handing the
-        // caller an index that would throw on Segments[...].
-        Assert.Equal(1, RouteRunwayCrossings.ResolveCrossingHoldSegment(segs, 99, "24R"));
-        Assert.Equal(0, RouteRunwayCrossings.ResolveCrossingHoldSegment(
-            new List<TaxiRouteSegment>(), 3, "24R"));
-    }
-
-    // --- Describe: KSFO 2026-07-01 incident shape --------------------------
-
-    [Fact]
-    public void Describe_same_runway_crossed_twice_reports_twice()
-    {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Seg(false, null), Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 10L"),
-        };
-
-        var (clause, nonRunway) = RouteRunwayCrossings.Describe(segs, excludeLastSegment: false);
-
-        Assert.Equal("crossing runway 10L twice", clause);
-        Assert.Equal(0, nonRunway);
-    }
-
-    [Fact]
-    public void Describe_three_distinct_runways_preserves_taxi_order()
-    {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Seg(true, "runway 04L"), Seg(true, "runway 04R at C"), Seg(true, "runway 27"),
-        };
-
-        var (clause, nonRunway) = RouteRunwayCrossings.Describe(segs, excludeLastSegment: false);
-
-        Assert.Equal("crossing runways 04L, 04R and 27", clause);
-        Assert.Equal(0, nonRunway);
-    }
-
-    [Fact]
-    public void Describe_mixed_label_shapes_and_non_runway_holds()
-    {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Seg(true, "runway 15R at N"), Seg(true, "D5, Runway 22R"),
-            Seg(true, "end of taxiway B"), Seg(true, "A5"),
-        };
-
-        var (clause, nonRunway) = RouteRunwayCrossings.Describe(segs, excludeLastSegment: false);
-
-        Assert.Equal("crossing runways 15R and 22R", clause);
-        Assert.Equal(2, nonRunway);
-    }
-
-    [Fact]
-    public void Describe_excludes_the_destination_truncation_tag_on_the_last_segment()
-    {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Seg(true, "runway 04L"), Seg(false, null), Seg(true, "Runway 33L"),
-        };
-
-        var (clause, nonRunway) = RouteRunwayCrossings.Describe(segs, excludeLastSegment: true);
-
-        Assert.Equal("crossing runway 04L", clause);
-        Assert.Equal(0, nonRunway);
-    }
-
-    [Fact]
-    public void Describe_no_hold_shorts_yields_empty_clause()
-    {
-        var segs = new List<TaxiRouteSegment> { Seg(false, null), Seg(false, null) };
-
-        var (clause, nonRunway) = RouteRunwayCrossings.Describe(segs, excludeLastSegment: false);
-
-        Assert.Equal("", clause);
-        Assert.Equal(0, nonRunway);
-    }
-
-    [Fact]
-    public void Describe_merges_reciprocal_designators_as_one_pavement_speaking_both_names()
-    {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 28R"),
-        };
-
-        var (clause, nonRunway) = RouteRunwayCrossings.Describe(segs, excludeLastSegment: false);
-
-        Assert.Equal("crossing runway 10L/28R twice", clause);
-        Assert.Equal(0, nonRunway);
-    }
-
-    [Fact]
-    public void Describe_same_designator_crossings_keep_a_single_name()
-    {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Seg(true, "runway 10L"), Seg(false, null), Seg(true, "runway 10L"),
-        };
-
-        var (clause, nonRunway) = RouteRunwayCrossings.Describe(segs, excludeLastSegment: false);
-
-        Assert.Equal("crossing runway 10L twice", clause);
-        Assert.Equal(0, nonRunway);
-    }
-
-    [Fact]
-    public void Describe_merges_unpadded_reciprocal_labels_with_the_padded_form()
-    {
-        var segs = new List<TaxiRouteSegment>
-        {
-            Seg(true, "runway 9"), Seg(false, null), Seg(true, "runway 27"),
-        };
-
-        var (clause, nonRunway) = RouteRunwayCrossings.Describe(segs, excludeLastSegment: false);
-
-        Assert.Equal("crossing runway 09/27 twice", clause);
-        Assert.Equal(0, nonRunway);
+        Assert.Equal(expected, RouteRunwayCrossings.StripRunwayPrefix(input));
     }
 }

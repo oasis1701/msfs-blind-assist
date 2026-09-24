@@ -37,3 +37,46 @@ jobs:
       # the native DLLs are tracked in-repo. x64 matches <Platforms>x64</Platforms>.
       - name: Run tests
         run: dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64
+
+      # The MD-11 control-map generator finds the aircraft across FS2020/FS2024,
+      # MS Store/Steam/external package folders. That discovery is pure logic and
+      # is unit-tested with stdlib unittest (no pip install needed). Without this
+      # step the tests would sit unrun -- which is how the old hardcoded
+      # single-developer path survived unnoticed.
+      - name: MD-11 generator path tests (Python)
+        run: python -m unittest discover -s tools/md11-gen -p "test_*.py" -v
+
+  efb-readers:
+    name: EFB reader tests (jsdom)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Setup Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      # The in-page EFB readers (the JS MSFSBA injects into the PMDG tablet and the TFDi MD-11 EFB)
+      # and the shared WebView2 shell's keyed reconcile (the flyPad shell mirror, whose baseLabel
+      # rule FbwEfbForm shares across every EFB) are pure DOM logic, replayed under jsdom. Until
+      # this job existed they only ran by hand, so a reader regression could reach a pilot unnoticed.
+      # Each suite has its own lockfile, so each gets its own npm ci.
+      - name: MD-11 EFB reader
+        working-directory: tools/md11-efb-test
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
+      - name: PMDG EFB reader
+        working-directory: tools/pmdg-efb-test
+        run: |
+          npm ci --no-audit --no-fund
+          npm test
+
+      - name: flyPad shell reconcile
+        working-directory: tools/flypad-shell-test
+        run: |
+          npm ci --no-audit --no-fund
+          npm test

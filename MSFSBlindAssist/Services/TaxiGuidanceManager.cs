@@ -300,7 +300,30 @@ public partial class TaxiGuidanceManager : IDisposable
     // vacate.
     private bool _landingExitRouteUnreachable = false;
     private DateTime _lastRecalculationTime = DateTime.MinValue;
+    // The ReachabilityRefusalGate key for the most recently SPOKEN recalculation
+    // reachability refusal (Navigation.ReachabilityRefusalGate), or null before any refusal
+    // has been spoken for the current route. A reachability verdict is a standing property
+    // of the airport data and the current destination, so without this latch the same
+    // ~20-word AnnounceImmediate refusal repeated every RECALCULATION_COOLDOWN_SEC (15 s)
+    // for as long as the aircraft stayed off-route, cutting off hold-short and
+    // runway-crossing callouts each time. Reset on LoadRoute and StopGuidance so a new
+    // route or a new destination can speak its own first refusal.
+    private string? _lastReachabilityRefusalKey = null;
     private string _lastAnnouncedTaxiway = "";
+    // A taxiway-change name deferred by TaxiwayChangeGate while the start-warning chatter
+    // window (_startChatterSuppressUntil) was open, waiting to be spoken -- or discarded
+    // silently -- once it closes. Null whenever nothing is waiting. Set only by
+    // AnnounceOrDeferTaxiwayChange (the one shared helper both AdvanceToNearestSegment and
+    // AdvanceSegment go through) and consumed only by FlushPendingTaxiwayAnnouncement, which
+    // UpdatePosition calls on every Taxiing-state frame -- never while guidance is holding,
+    // lining up, arrived, or otherwise off that state, because none of those states ever
+    // reach that call again. SetState clears this the instant guidance LEAVES Taxiing (PR
+    // #238 review, Important 1), so a name deferred just before a hold-short can no longer
+    // sit waiting through the whole hold and then be flushed against a changed world once
+    // Continue is pressed -- see SetState's own remarks. Also reset on LoadRoute and
+    // StopGuidance so a stale deferred name from one route can never leak into (and be
+    // spoken over) the next.
+    private string? _pendingTaxiwayAnnouncement = null;
     private bool _approachAnnounced = false;      // "In X, turn..." advance notice (~300 ft lead, spoken in the active unit)
     private int _curveAnnouncedSign = 0;   // -1 announced left, +1 right, 0 armed
     private bool _turnImminentAnnounced = false;   // "Turn now" at ~100ft
@@ -475,12 +498,26 @@ public partial class TaxiGuidanceManager : IDisposable
     // INITIAL_TURN_CUE_DEG / INITIAL_TURN_UTURN_DEG consts were deleted rather than
     // left in place, so nobody tunes a number here and wonders why nothing changes.
     private bool _initialTurnCueAnnounced = false;
-    // After a route-reach warning, briefly hold the INFORMATIONAL taxiway-crossing
-    // and taxiway-change callouts so they don't stomp that (longer, safety-
-    // critical) warning at guidance start — 2026-06-13: "Crossing taxiway G" cut
-    // the warning off mid-sentence. Hold-shorts, runway-crossing callouts, and the
-    // lineup bailout are NOT gated by this.
-    private const double REACH_WARNING_CHATTER_GRACE_SEC = 8.0;
+    // After a route-reach warning OR an unmapped-start warning (either "start warning"),
+    // briefly hold the INFORMATIONAL taxiway-crossing, taxiway-change, curve and
+    // final-destination-ahead callouts so they don't stomp that (longer, safety-critical)
+    // warning at guidance start — 2026-06-13: "Crossing taxiway G" cut the reach warning
+    // off mid-sentence, and the same collision reproduces for the unmapped-start warning
+    // on the very first frame (Progressive Taxi cuts the warning itself; a normal
+    // Calculate cuts the whole standstill utterance ~33 ms later). Hold-shorts,
+    // runway-crossing callouts, lineup, speed warnings, and "Straighten." are NOT gated
+    // by this.
+    //
+    // Sized from the measured System.Speech Rate-0 length (trailing silence trimmed) of the
+    // LONGEST start utterance this window protects: a destination-not-connected warning
+    // followed by the route-start turn cue it can be folded ahead of ("B 18R isn't connected
+    // to the taxiway network you're on. The first 35 metres of the route aren't mapped. Make
+    // a U-turn to the left onto taxiway B." — 10.41 s), plus about a fifth for margin ≈ 12.5 s.
+    // Was 8.0 s, sized before the destination-off-network warning existed and too short for
+    // this one — a route-reach or unmapped-start warning is safety-critical and must never be
+    // the thing that gets cut. Does NOT cover a longer SayIntentions import summary spoken
+    // ahead of the warning in the same utterance; that combination is not measured here.
+    private const double START_WARNING_CHATTER_GRACE_SEC = 12.5;
     private DateTime _startChatterSuppressUntil = DateTime.MinValue;
     // "Straighten." yaw-episode thresholds (see the _yawEpisodeSign field comment).
     private const double STRAIGHTEN_EPISODE_MIN_RATE_DEG_SEC = 4.0;  // open episode / cue may fire
@@ -503,15 +540,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // outside of the turn.
     private const double SHARP_TURN_ANGLE_DEG = 60.0;
 
-    // Off-route (perpendicular cross-track) thresholds.
-    // Tolerance = max(halfWidth + margin, floor). The margin absorbs navdata
-    // centerline sampling error and pilot-discretion margin on wide aprons;
-    // the floor protects against tiny/zero width values on unnamed connectors.
-    // 75 ft default taxiway width covers FAA AC 150/5300 Code B/C taxiways
-    // (50–82 ft) — good enough as a fallback when the DB row has no width.
-    private const double OFF_ROUTE_PERP_FLOOR_M = 25.0;
-    private const double OFF_ROUTE_PERP_MARGIN_M = 15.0;
-    private const double DEFAULT_TAXIWAY_WIDTH_FT = 75.0;
+    // Off-route (perpendicular cross-track) tolerance lives in Navigation.PavementTolerance.
     // Minimum negative along-track (behind the segment's start node) before the
     // "going backwards" off-route condition fires. GPS at taxi scale has <1 m
     // noise; 10 m gives a comfortable margin while catching deliberate rearward
@@ -520,11 +549,6 @@ public partial class TaxiGuidanceManager : IDisposable
     // cross-track near zero (PerpendicularDistance returns ~0), so the lateral
     // check never fires even as the pilot drives steadily away from the route.
     private const double OFF_ROUTE_BEHIND_START_M = 10.0;
-    // Some navdata rows report absurd widths (up to thousands of feet on aprons
-    // / combined surfaces). Cap so a malformed row can't blow the perpendicular
-    // off-route tolerance out to hundreds of meters — that would mean the
-    // aircraft is effectively never "off route" on those segments.
-    private const double OFF_ROUTE_PERP_WIDTH_CAP_FT = 300.0;
     // Grace window after a segment advance during which off-route is suppressed.
     // First-turn false-trigger: in the middle of the turn arc the aircraft's
     // perpendicular distance to the just-completed *or* just-entered segment can
@@ -702,8 +726,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // are private and called only from within the static Build() method; no
     // public TaxiGraph method mutates Nodes afterward (verified by inspection,
     // 2026-07). So it's safe to rebuild only when the _graph REFERENCE changes
-    // (every _graph assignment site — LoadRoute's two branches, StopGuidance —
-    // installs a brand-new TaxiGraph or null, never mutates the existing one).
+    // (every _graph assignment site — LoadRoute's two branches,
+    // BeginRunwayEndCountdownRollout, StopGuidance — installs a TaxiGraph reference or
+    // null and never mutates the graph it replaces).
     private TaxiGraph? _holdShortNodesGraph;
     private List<TaxiNode>? _cachedHoldShortNodes;
 
@@ -959,19 +984,31 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutCrossingDeclineAnnounced = false;
     // Runway-end countdown mode. Entered when the overshoot detector finds
     // no downfield exit remaining (or RetargetLandingExit's LoadRoute call
-    // fails). Drives a distance-to-runway-end countdown (1500 / 500 / 100 ft)
-    // so the blind pilot knows how much pavement is left for braking instead
-    // of falling silent. State stays in LandingRollout so UpdatePosition
-    // continues to feed the per-frame loop; transitions to Taxiing only
-    // when the pilot is effectively stopped or has begun a backtaxi turn.
+    // fails), or at touchdown from BeginRunwayEndCountdownRollout when a
+    // landing-exit plan made for another runway finds no usable exit on the
+    // runway actually landed on. Drives a distance-to-runway-end countdown
+    // (1500 / 500 / 100 ft) so the blind pilot knows how much pavement is
+    // left for braking instead of falling silent. State stays in
+    // LandingRollout so UpdatePosition continues to feed the per-frame
+    // loop. Ends by POSITION, never on any stop or turn alone
+    // (Navigation.RunwayEndCountdownGate): "Runway vacated" once laterally
+    // clear; backtracking when stopped or turning within the 500 ft / 150 m
+    // runway-end milestone, or after turning around anywhere; one stopped
+    // notice for a stop mid-runway.
     private bool _rolloutNoExitMode;
     private bool _rolloutEnd1500Announced;
     private bool _rolloutEnd500Announced;
     private bool _rolloutEnd100Announced;
-
-    // Backtrack state. Entered from runway-end countdown once the pilot has stopped
-    // or begun a 180° turn. Guides on the reciprocal runway heading until the
-    // aircraft reaches the first taxi-graph connection node.
+    // One-shot "Stopped on runway X. Runway end in N." for a mid-runway stop during the countdown
+    // (Navigation.RunwayEndCountdownGate). Reset at all four rollout latch sites, matching
+    // _rolloutEnd*Announced: BeginLandingRollout, BeginLandingRolloutNoGraph,
+    // EnterRunwayEndCountdown and StopGuidance.
+    private bool _rolloutStoppedNoticeGiven;
+    // Backtrack state. Entered from runway-end countdown when the pilot has STOPPED within
+    // RolloutExitGate.NearRunwayEndFeet of the end, or has turned around (150°+)
+    // anywhere on the runway (Navigation.RunwayEndCountdownGate). Guides on the
+    // reciprocal runway heading until the aircraft reaches the first taxi-graph
+    // connection node.
     private double _backtrackHeadingTrue;
     private double _backtrackConnectionLat;
     private double _backtrackConnectionLon;
@@ -1040,12 +1077,13 @@ public partial class TaxiGuidanceManager : IDisposable
     // 1000 ft gives ~15 s at 40 kt to hear the callout and react.
     private const double ROLLOUT_UNDERSHOOT_RANGE_FT = 1000.0;
     // Outer speed threshold for the undershoot scan. Below this speed any
-    // earlier shallow or high-speed exit is viable.
-    private const double ROLLOUT_UNDERSHOOT_ENTRY_GS_KTS = 50.0;
+    // earlier shallow or high-speed exit is viable. These three turn-off values
+    // are RolloutExitGate's, shared with the touchdown re-plan's comfortable lead.
+    private const double ROLLOUT_UNDERSHOOT_ENTRY_GS_KTS = Navigation.RolloutExitGate.ShallowExitTurnOffSpeedKts;
     // Steep exits need the aircraft to be slower — the tighter turn demands
     // more braking margin. Only included in the undershoot scan below this speed.
-    private const double ROLLOUT_UNDERSHOOT_STEEP_ANGLE_DEG = 45.0;
-    private const double ROLLOUT_UNDERSHOOT_STEEP_GS_KTS = 20.0;
+    private const double ROLLOUT_UNDERSHOOT_STEEP_ANGLE_DEG = Navigation.RolloutExitGate.SteepExitAngleDeg;
+    private const double ROLLOUT_UNDERSHOOT_STEEP_GS_KTS = Navigation.RolloutExitGate.SteepExitTurnOffSpeedKts;
     // Minimum gap between consecutive undershoot retargets. Prevents rapid
     // cascade when multiple earlier exits fall within the range window.
     private const double ROLLOUT_UNDERSHOOT_COOLDOWN_SEC = 8.0;
@@ -1059,8 +1097,8 @@ public partial class TaxiGuidanceManager : IDisposable
     // the high-speed-exit ceiling (Category E RETs top out there), beyond which
     // any retarget is unsafe at any range. If you change either constant, check
     // the cutoff GS still lines up.
-    private const double ROLLOUT_UNDERSHOOT_MIN_LEAD_FT = 200.0;
-    private const double ROLLOUT_UNDERSHOOT_LEAD_PER_KT_FT = 11.0;
+    private const double ROLLOUT_UNDERSHOOT_MIN_LEAD_FT = Navigation.RolloutExitGate.ExitLeadMinFeet;
+    private const double ROLLOUT_UNDERSHOOT_LEAD_PER_KT_FT = Navigation.RolloutExitGate.ExitLeadFeetPerKnot;
 
     // Minimum gap before the handoff block is re-entered after a handoff was DECLINED
     // for re-crossing the landing runway (see the RolloutRunwayReCrossing guard in
@@ -1107,6 +1145,15 @@ public partial class TaxiGuidanceManager : IDisposable
     // CLAUDE.md's liftoff-handoff rule forbids: nothing here mutes speech.
     private const double ROLLOUT_DECLINE_CALLOUT_LEAD_SEC = 4.0;
 
+    // Lead window for the touchdown sentence that carries a landing-exit runway correction
+    // ("Touchdown on runway 30L, not 12L. High-speed exit taxiway M12A in 4,000 feet."): a rollout
+    // milestone the aircraft reaches inside it is retired and folded into that sentence
+    // (Navigation.TouchdownCallout), so its AnnounceImmediate cannot cut the correction off.
+    // MEASURED, not estimated: that sentence renders in 7.51 s through System.Speech at Rate 0 (the
+    // rate ScreenReaderAnnouncer's SAPI fallback uses; voice Microsoft David Desktop, trailing
+    // silence trimmed), plus about a fifth. Not a speech mute.
+    private const double ROLLOUT_TOUCHDOWN_CORRECTION_LEAD_SEC = 9.0;
+
     // Distance from the chosen exit at which the rollout speaks "turn now". Not a
     // DistanceMilestones entry — it is the turn-now handoff boundary, and the 500 ft approach
     // callout's lower bound is deliberately the same number so the two never overlap.
@@ -1152,7 +1199,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // than ROLLOUT_TAXI_GS_KTS (30) because the pilot in this mode is
     // braking hard with no further callouts coming; once they're at a
     // crawl the countdown has nothing more useful to say.
-    private const double ROLLOUT_NO_EXIT_STOPPED_GS_KTS = 3.0;
+    private const double ROLLOUT_NO_EXIT_STOPPED_GS_KTS = Navigation.RolloutExitGate.NoExitStoppedGroundSpeedKts;
 
     // Backtrack guidance thresholds.
     // Within ANNOUNCE distance: fires the "taxiway ahead" callout.
@@ -1205,9 +1252,11 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <summary>
     /// True once the landing-exit handoff has completed and the exit route's own
     /// steering tone is panning the pilot onto the taxiway. Read by the manual-landing
-    /// assist, which must stop its rollout pan tone the moment this turns true — the
+    /// assist as a backstop: it normally hands over on the state change itself
+    /// (LandingFlareAssistManager.StepTaxiHandover, forwarded from StateChanged), and this
+    /// catches an assist that re-enters rollout while taxi guidance already steers — the
     /// handoff can fire as high as 90 kt (turnBegun) or at any speed at all
-    /// (exitedLaterally), so its speed threshold alone cannot keep the two apart.
+    /// (exitedLaterally), so a speed threshold alone cannot keep the two apart.
     /// </summary>
     public bool IsLandingExitTaxiSteering
     {
@@ -1216,6 +1265,23 @@ public partial class TaxiGuidanceManager : IDisposable
             lock (_stateLock)
             {
                 return _state == TaxiGuidanceState.Taxiing && _isLandingExitRoute;
+            }
+        }
+    }
+
+    /// <summary>
+    /// True while a landing-exit rollout is steering at an exit: <c>LandingRollout</c> outside the
+    /// runway-end countdown. Read by the manual-landing assist to decide whether an exit-steering
+    /// tone will take over from its rollout tone. The countdown pauses the taxi tone, so it must
+    /// not count, or the assist would stop its own tone at 55 kt with nothing taking over.
+    /// </summary>
+    public bool IsLandingExitRolloutGuidanceActive
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _state == TaxiGuidanceState.LandingRollout && !_rolloutNoExitMode;
             }
         }
     }
@@ -1261,9 +1327,59 @@ public partial class TaxiGuidanceManager : IDisposable
         return cue;
     }
 
+    /// <summary>
+    /// The unmapped-first-leg warning for the route just built, or null. Composed ONCE by LoadRoute
+    /// when RouteReachability finds the route starting with a straight unmapped leg: either the
+    /// aircraft is leaving a disconnected piece of network ("Your position isn't connected to the
+    /// taxiway network…") or the destination is on a piece of network the aircraft is not on ("{name}
+    /// isn't connected to the taxiway network you're on…"). Delivered exactly like
+    /// <see cref="LastRouteInitialTurnCue"/>: folded into the form's standstill utterance, or spoken by
+    /// the first-taxiing-frame one-shot together with the turn cue. Never both.
+    /// </summary>
+    public string? LastRouteUnmappedStartWarning { get; private set; }
+
+    /// <summary>Takes the warning and clears it, so neither delivery path can repeat it.</summary>
+    public string? ConsumeUnmappedStartWarning()
+    {
+        string? warning = LastRouteUnmappedStartWarning;
+        LastRouteUnmappedStartWarning = null;
+        return warning;
+    }
+
+    /// <summary>
+    /// The start-hold sentence ("Stop. Hold short of runway 12R. Press continue when cleared.") for a
+    /// route that begins at a runway hold line (<see cref="TaxiRoute.StartHoldRunway"/>), set when
+    /// guidance enters that hold, and spoken exactly once. EVERY caller of <see cref="StartGuidance"/>
+    /// must consume and speak it: MainForm feeds no position frames while guidance holds, so no later
+    /// frame will. <c>TaxiAssistForm</c> folds it LAST into its standstill utterance on Calculate and
+    /// speaks it as a Progressive leg's opening instruction. A landing-exit re-route, which no caller
+    /// starts, enters the hold in <see cref="UpdatePosition"/> and is spoken in that same frame.
+    /// </summary>
+    public string? LastRouteStartHoldCue { get; private set; }
+
+    /// <summary>Takes the start-hold sentence and clears it, so it is spoken only once.</summary>
+    public string? ConsumeStartHoldCue()
+    {
+        string? cue = LastRouteStartHoldCue;
+        LastRouteStartHoldCue = null;
+        return cue;
+    }
+
     public TaxiRoute? CurrentRoute => _route;
     public TaxiGraph? CurrentGraph => _graph;
     public int CurrentSegmentIndex => _currentSegmentIndex;
+
+    /// <summary>
+    /// True while a route is actually being flown (see <see cref="LiveRouteStates"/>) --
+    /// the question <c>TaxiAssistForm.ShowRouteFailure</c>'s <c>keepSummary</c> decision
+    /// needs, and which <see cref="CurrentRoute"/> cannot answer on its own: <c>HandleArrival</c>
+    /// sets <see cref="State"/> to <see cref="TaxiGuidanceState.Arrived"/> without ever
+    /// nulling <c>_route</c>, so <c>CurrentRoute != null</c> stayed true for the rest of the
+    /// session after a completed, docking-off arrival with no Stop pressed -- wrongly
+    /// protecting the NEXT leg's failed-Calculate summary with a route that was no longer
+    /// live (PR #238 review, Important 3).
+    /// </summary>
+    public bool HasLiveRoute => LiveRouteStates.IsRouteLive(_state);
 
     // "Where Am I" graph cache — used when guidance is inactive so we don't rebuild
     // the graph on every hotkey press. Keyed by ICAO AND by the gate-list source token, and
@@ -1577,6 +1693,16 @@ public partial class TaxiGuidanceManager : IDisposable
     public event EventHandler<TaxiGuidanceState>? StateChanged;
 
     /// <summary>
+    /// Raised by the two landing-rollout entries that can be reached with NO position stream
+    /// running: <see cref="BeginLandingRolloutNoGraph"/> (after a failed LoadRoute, so no Taxiing
+    /// transition ever started one) and <see cref="BeginRunwayEndCountdownRollout"/> (no route at
+    /// all). MainForm answers by starting the taxi-guidance position stream; without it those
+    /// rollouts would speak their touchdown sentence and never receive another frame. Raised under
+    /// the state lock after the state change, like <see cref="StateChanged"/>.
+    /// </summary>
+    public event EventHandler? PositionStreamRequired;
+
+    /// <summary>
     /// Fires once per route when the aircraft becomes lined up on the
     /// destination runway (lineup hysteresis met). Subscribed by MainForm
     /// to auto-activate Takeoff Assist when the user's setting permits.
@@ -1600,11 +1726,16 @@ public partial class TaxiGuidanceManager : IDisposable
         {
         if (_route == null || _route.Segments.Count == 0) return;
 
-        // If this route can't reach its runway, the form speaks the reach warning
-        // right after this call. Open a short grace window so the informational
-        // taxiway-crossing / taxiway-change callouts don't stomp it at start.
-        _startChatterSuppressUntil = LastRouteReachWarning != null
-            ? DateTime.UtcNow.AddSeconds(REACH_WARNING_CHATTER_GRACE_SEC)
+        // If this route can't reach its runway, or starts with an unmapped first leg --
+        // either because the aircraft leaves a disconnected position for the main network, or
+        // because the destination itself is on a piece of network the aircraft is not on --
+        // the form's standstill utterance (or the first-taxiing-frame one-shot, for paths the
+        // form doesn't run) speaks that warning right after this call -- both warnings are
+        // still unconsumed here. Open a short grace window so the informational
+        // taxiway-crossing / taxiway-change / curve / destination-ahead callouts don't stomp
+        // it at start.
+        _startChatterSuppressUntil = (LastRouteReachWarning != null || LastRouteUnmappedStartWarning != null)
+            ? DateTime.UtcNow.AddSeconds(START_WARNING_CHATTER_GRACE_SEC)
             : DateTime.MinValue;
 
         _announceCrossings = settings.TaxiGuidanceAnnounceCrossings;
@@ -1622,6 +1753,19 @@ public partial class TaxiGuidanceManager : IDisposable
             settings.TaxiGuidanceToneVolume);
 
         SetState(TaxiGuidanceState.Taxiing);
+
+        // A route that begins at a runway hold line starts HELD: no "steering guidance active"
+        // callout — the hold sentence is the instruction, published as LastRouteStartHoldCue for
+        // the caller to speak (see its doc). Continue resumes taxiing on segment 0. Entered FROM
+        // Taxiing so every state listener sees guidance start: MainForm starts the position feed on
+        // that transition (OnTaxiGuidanceStateChanged) — the previous Progressive leg's
+        // ProgressiveHold stopped it — though it hands guidance no frames until Continue leaves
+        // HoldShort. No taxiing frame can run in between: this method holds _stateLock until it returns.
+        if (_route.StartHoldRunway != null)
+        {
+            EnterStartHold();
+            return;
+        }
 
         // Announce the first *named* taxiway, not the literal first segment. When
         // the aircraft is pushing off a stand, the first route segment is
@@ -1797,13 +1941,47 @@ public partial class TaxiGuidanceManager : IDisposable
             return;
         }
 
+        // Start hold (TaxiRoute.StartHoldRunway) for a route adopted while guidance was already
+        // running — a landing-exit re-route, which goes straight to Taxiing without StartGuidance.
+        // It enters the hold on its first taxiing frame and speaks the sentence in that same frame:
+        // MainForm feeds no frames while guidance holds. An aircraft already more than 10 m along the
+        // route, or within the clear margin of any runway (the pass's own tests — the SAME margin the
+        // pass demands of a stop it invents, never bare containment), gets no hold, and the skip is
+        // logged with its reason beside the adoption's "Route crossings:" line.
+        if (_state == TaxiGuidanceState.Taxiing && _currentSegmentIndex == 0
+            && _route?.StartHoldRunway != null)
+        {
+            string? skipReason = null;
+            if (Navigation.RouteRunwayCrossings.RouteProgressMeters(_route.Segments, lat, lon)
+                > Navigation.RouteRunwayCrossings.StopPassedToleranceMetres)
+                skipReason = "aircraft already past the start node";
+            else if (Navigation.RouteRunwayCrossings.RunwayWithinClearMargin(_graph?.RunwayCenterlines, lat, lon) is { } runwayUnder)
+                skipReason = $"aircraft on or within the clear margin of runway {runwayUnder.Name1}/{runwayUnder.Name2}";
+
+            if (skipReason != null)
+            {
+                _guidanceLog.Info(
+                    $"Start hold skipped: startHold=\"{_route.StartHoldRunway}\" — {skipReason}.");
+                _route.StartHoldRunway = null;
+            }
+            else
+            {
+                EnterStartHold();
+                string? cue = ConsumeStartHoldCue();
+                if (cue != null) AnnounceInstruction(cue);
+                return;
+            }
+        }
+
         if (_state != TaxiGuidanceState.Taxiing || _route == null || _graph == null)
         {
-            // After a landing-exit arrival the pilot is in Arrived state with no
-            // route — they still need runway incursion warnings while taxiing to
-            // their gate before opening the taxi planner (e.g. runway 16/34 at EIDW
-            // lies east of the S6 exit on the way to the terminal).
-            if (_state == TaxiGuidanceState.Arrived && _graph != null)
+            // With no route the pilot still needs runway incursion warnings while they taxi to
+            // their gate before opening the taxi planner (e.g. runway 16/34 at EIDW lies east of
+            // the S6 exit on the way to the terminal). That covers a landing-exit arrival AND the
+            // three route-less ways guidance can now finish on the airfield still taxiing: the
+            // countdown's "Runway vacated" close-out and both backtrack endings, all of which land
+            // in Taxiing. See Services/RunwayIncursionWatch for why the map, not the state, decides.
+            if (RunwayIncursionWatch.RunsWithoutARoute(_state, _graph != null))
                 CheckRunwayIncursion(lat, lon);
             // ProgressiveHold is a terminal no-op: tone is off, the aircraft holds,
             // the pilot sets the next leg. No tone, no recalc, no movement logic.
@@ -1962,6 +2140,21 @@ public partial class TaxiGuidanceManager : IDisposable
             ? ARRIVAL_RADIUS_M
             : GATE_ARRIVAL_RADIUS_FEET / METERS_TO_FEET; // 20 ft → ~6 m
 
+        // WHERE A CALLOUT IS LOST is a different question from WHEN WE HAVE ARRIVED, and
+        // the two must not share one local. CheckUpcomingAnnouncements needs the radius at
+        // which the destination-ahead callout stops being deliverable, which for a
+        // landing-exit route is its own LANDING_EXIT_ARRIVAL_RADIUS_M (the dedicated
+        // `_isLandingExitRoute && onFinalSegment` block below measures arrival against
+        // that, not against arrivalRadius). Folding that branch into arrivalRadius itself
+        // was tried and reverted: the fallback arrival check further down has no
+        // stillOnRunway guard of its own, so widening its radius from ~6 m to 25 m let a
+        // landing-exit route DECLARE ARRIVAL while still laterally on the runway -- which
+        // the dedicated block deliberately withholds. Arrival behaviour is unchanged by
+        // this local; only the announcement gate reads it.
+        double announcementClearRadius = _isLandingExitRoute
+            ? LANDING_EXIT_ARRIVAL_RADIUS_M
+            : arrivalRadius;
+
         bool onFinalSegment = _currentSegmentIndex == _route.Segments.Count - 1;
 
         // Landing-exit ("vacate onto the taxiway") arrival — fire the "Off the runway.
@@ -2076,8 +2269,17 @@ public partial class TaxiGuidanceManager : IDisposable
             // ASTERN the 50/20/10 ft cadence has nothing left to say anyway.
             //
             // Runway lineup stays excluded — LiningUp owns that approach and has its own
-            // unreachable-route warning. Landing-exit routes are handled (and returned)
-            // by the branch above.
+            // unreachable-route warning. Landing-exit routes are normally handled (and
+            // returned) by the branch above, but NOT while stillOnRunway is true there —
+            // that guard deliberately withholds arrival while the aircraft is still
+            // laterally within the runway, so a landing-exit route on its final segment
+            // can still fall through to here on every frame until it clears the pavement.
+            // This block therefore keeps the ~6 m gate radius: `arrivalRadius` is
+            // deliberately NOT widened to LANDING_EXIT_ARRIVAL_RADIUS_M (25 m), because
+            // this fallback has no stillOnRunway guard of its own and a 25 m radius here
+            // would let a landing-exit route declare arrival while still laterally on the
+            // runway — exactly what the block above withholds. See the
+            // `announcementClearRadius` comment at the top of this method.
             if (!arrived && !_isRunwayLineup)
             {
                 AlongTrackToSegmentEnd(lat, lon, currentSeg,
@@ -2108,10 +2310,10 @@ public partial class TaxiGuidanceManager : IDisposable
         // starts with the aircraft pointing well away from the route's first
         // segment — the normal post-pushback case — a tone alone can't convey
         // "turn around, which way." Speak a one-shot direction cue (sign matches
-        // the tone). Skipped when the route doesn't reach its runway
-        // (LastRouteReachWarning set): that warning is the priority — the form
-        // speaks it after StartGuidance, and a turn cue here would be moot (the
-        // pilot will reprogram) AND would stomp the warning.
+        // the tone). The cue (not the unmapped-start warning below) is dropped when
+        // the route doesn't reach its runway (LastRouteReachWarning set): that
+        // warning is the priority — the form speaks it after StartGuidance, and a
+        // turn cue here would be moot (the pilot will reprogram) AND would stomp it.
         if (!_initialTurnCueAnnounced)
         {
             _initialTurnCueAnnounced = true;
@@ -2121,12 +2323,33 @@ public partial class TaxiGuidanceManager : IDisposable
             // have nobody else to say it. Never recomposed here: two composers would be two
             // wordings and, worse, two chances to disagree on left versus right.
             //
-            // Still suppressed entirely when the route does not reach its runway: that
-            // warning is the priority, the form speaks it after StartGuidance, and a turn
-            // cue would be moot (the pilot will reprogram) AND would stomp it.
+            // Consumed UNCONDITIONALLY (so the per-frame one-shot can never repeat it
+            // behind the form's back) regardless of whether a reach warning drops it from
+            // what actually gets spoken.
             string? cue = ConsumeInitialTurnCue();
-            if (cue != null && LastRouteReachWarning == null)
-                AnnounceInstruction(cue);
+            // The unmapped-start warning is a DIFFERENT kind of fact from the cue -- a
+            // safety-relevant statement about ground the aircraft is about to taxi across
+            // unmapped -- and must survive a reach warning rather than being dropped with
+            // the cue (ComposeStartSpeech's job). It is read here WITHOUT being consumed
+            // yet: only once we know it is actually about to be spoken is it taken
+            // (cleared), so a route with nothing to say at all can never silently discard a
+            // warning nobody else will ever say.
+            //
+            // PR #238 review, Task 5 Defect A: this used to consume (clear) BOTH the cue and
+            // the warning unconditionally via JoinStartSpeech, then drop the WHOLE result --
+            // warning included -- behind a `LastRouteReachWarning == null` guard that was
+            // written only to suppress the moot cue. On every path that doesn't run
+            // TaxiAssistForm's standstill block (Progressive Taxi, landing-exit handoffs,
+            // announceSummary:false) nothing else speaks either message, so the warning was
+            // silently lost instead of merely reordered.
+            bool reachWarningPresent = LastRouteReachWarning != null;
+            string? startSpeech = RouteReachabilityMessages.ComposeStartSpeech(
+                LastRouteUnmappedStartWarning, cue, reachWarningPresent);
+            if (startSpeech != null)
+            {
+                ConsumeUnmappedStartWarning();
+                AnnounceInstruction(startSpeech);
+            }
         }
 
         // Post-high-speed-exit: ExitBearingTrue acts as a minimum pan floor so the
@@ -2296,8 +2519,18 @@ public partial class TaxiGuidanceManager : IDisposable
                 headingError, _smoothedHeadingError);
         }
 
+        // Deliver a taxiway-change name AnnounceOrDeferTaxiwayChange deferred while the
+        // start-warning chatter window was open, now that it may have closed. Cheap no-op
+        // when nothing is pending; must run every Taxiing frame this method reaches, not
+        // only on a segment advance, or a deferred name could sit unspoken until the window
+        // closes several frames later. This point in UpdatePosition is only ever reached
+        // while _state == Taxiing (every earlier branch of this method returns first for
+        // every other state), so nothing pending can survive past a transition out of
+        // Taxiing without help -- SetState provides that help; see its own remarks.
+        FlushPendingTaxiwayAnnouncement(currentSeg.TaxiwayName);
+
         // Check for upcoming announcements
-        CheckUpcomingAnnouncements(distToTarget, currentSeg);
+        CheckUpcomingAnnouncements(distToTarget, currentSeg, announcementClearRadius);
 
         // Check hold-short countdown (300/150/50ft cadence) — critical runway incursion prevention
         CheckHoldShortCountdown(distToTarget, currentSeg);
@@ -2333,17 +2566,10 @@ public partial class TaxiGuidanceManager : IDisposable
         // persistence window and the recalc then fell back to shortest path,
         // bypassing the ATC-cleared sequence.
         //
-        // Tolerance = max(edge half-width + 15 m, OFF_ROUTE_PERP_FLOOR_M), capped
-        // at an upper bound so bogus DB widths (we see values up to 4000+ ft in
-        // some rows — aprons mis-tagged as taxi paths) don't produce a 600 m
-        // tolerance that would mask real deviations.
-        // PathWidth is in feet and may be 0 for unnamed connectors; 75 ft is a
-        // reasonable default taxiway width — FAA AC 150/5300 Code B/C = 50-82 ft.
-        double widthFt = currentSeg.PathWidth > 0 ? currentSeg.PathWidth : DEFAULT_TAXIWAY_WIDTH_FT;
-        if (widthFt > OFF_ROUTE_PERP_WIDTH_CAP_FT) widthFt = OFF_ROUTE_PERP_WIDTH_CAP_FT;
-        double widthM = widthFt * 0.3048;
-        double halfWidth = widthM * 0.5;
-        double perpTolerance = Math.Max(halfWidth + OFF_ROUTE_PERP_MARGIN_M, OFF_ROUTE_PERP_FLOOR_M);
+        // Tolerance = max(edge half-width + 15 m, 25 m), width defaulted (75 ft) and capped
+        // (300 ft) against bogus DB rows. One definition, shared with RouteReachability:
+        // see Navigation.PavementTolerance.
+        double perpTolerance = PavementTolerance.ForWidthFeet(currentSeg.PathWidth);
 
         double perpCurrent = PerpendicularDistanceToSegmentMeters(
             lat, lon,
@@ -2429,7 +2655,41 @@ public partial class TaxiGuidanceManager : IDisposable
         // line once, the taxi from the gate onto the first taxiway reads as
         // "off-route" by definition — suppress recalc so the entered clearance
         // isn't trimmed before the pilot joins it.
-        if (perp <= perpTolerance) _hasJoinedRoute = true;
+        if (perp <= perpTolerance)
+        {
+            _hasJoinedRoute = true;
+
+            // PR #238 review, Critical A re-fix. The reachability-refusal latch
+            // (ReachabilityRefusalGate's _lastReachabilityRefusalKey) must ALSO clear here,
+            // on this SPECIFIC test — being back within the route's own pavement tolerance is
+            // the one signal that genuinely means an off-route episode has ended. This used to
+            // be decided by the `else` of the offRouteNow persistence guard further down (the
+            // ORIGINAL Important 2 fix) — but that guard's `else` runs whenever offRouteNow
+            // reads false, or ground speed drops below OFF_ROUTE_MIN_GS_KTS, and offRouteNow
+            // has THREE independent ways to read false, only one of which is "the episode is
+            // over":
+            //   - perp <= perpTolerance (this test) — genuinely back on the route line.
+            //   - nearTurn — true for POST_TURN_OFFROUTE_GRACE_SEC after EVERY ordinary
+            //     segment advance, and within the speed-scaled window before a turning next
+            //     segment. On navdata's short 5-15 m segments this is ROUTINE while an
+            //     excursion is still ongoing, not the end of one.
+            //   - _lastGroundSpeedKts < OFF_ROUTE_MIN_GS_KTS — a pilot who just heard a
+            //     refusal and stops to think crosses this for a single frame while STILL
+            //     laterally off-route. The old code read that stop as "episode over," cleared
+            //     the latch, and let the identical ~20-word interrupting refusal fire again the
+            //     moment RECALCULATION_COOLDOWN_SEC expired and the aircraft rolled on — the
+            //     exact 15-second nag Important 2 was written to close, reopened by clearing on
+            //     the wrong signal.
+            // Clearing on perp <= perpTolerance instead cannot fire on either in-episode case:
+            // both presuppose the aircraft is still laterally off the route, and offRouteNow's
+            // other two disjuncts (farBehindStart, goingBackward) are irrelevant to nearTurn or
+            // ground speed — they don't make perp small. Harmless to re-clear every frame the
+            // aircraft is on the route line, including frames where nothing was latched (this
+            // runs far more often than a genuine refusal latch exists to be cleared). The
+            // successful-recalculation clear in TryRecalculateRoute is untouched — that is the
+            // OTHER legitimate way an off-route episode ends, and is unaffected by this fix.
+            _lastReachabilityRefusalKey = null;
+        }
 
         // Never-joined escape (see NEVER_JOINED_OPENING_M). Track the closest the
         // aircraft has come to the route while it has yet to join; once it is clearly
@@ -2472,6 +2732,19 @@ public partial class TaxiGuidanceManager : IDisposable
             // Reset the persistence timer whenever we're back inside tolerance
             // (or not moving — a stationary off-route sample shouldn't count toward
             // the persistence window either).
+            //
+            // Deliberately does NOT ALSO clear _lastReachabilityRefusalKey here (PR #238
+            // review, Critical A re-fix — this branch used to, and that was the regression).
+            // This `else` is not specific to "the episode ended, the aircraft is back on
+            // route": it is reached whenever offRouteNow reads false for ANY of its three
+            // reasons (back on route, nearTurn, or a low-speed frame while still off-route —
+            // see the perp <= perpTolerance block above for the one test that actually means
+            // "on route," and for why the other two fire routinely INSIDE a sustained
+            // off-route episode). Clearing the latch on nearTurn or a momentary stop reopened
+            // the exact 15-second-nag defect Important 2 was written to close: a pilot who
+            // stopped below OFF_ROUTE_MIN_GS_KTS to think about a just-spoken refusal cleared
+            // the latch here, then rolled on and heard the identical refusal again the moment
+            // the recalculation cooldown expired.
             _offRouteSince = DateTime.MinValue;
         }
         } // end lock(_stateLock)
@@ -2746,8 +3019,19 @@ public partial class TaxiGuidanceManager : IDisposable
             scheduledHsNodeId = _route.Segments[_currentSegmentIndex].ToNode.NodeId;
         }
 
-        if (_lastIncursionWarnedNodeId != -1 &&
-            (DateTime.UtcNow - _lastIncursionWarningTime).TotalSeconds < INCURSION_WARNING_COOLDOWN_SEC)
+        // The cooldown is a pure TIME check. It used to also require _lastIncursionWarnedNodeId
+        // != -1, which meant any path that re-armed the node id disarmed the cooldown with it —
+        // and this callout is AnnounceImmediate, so it could fire on the very next position
+        // frame and cut off whatever had just been spoken. That is exactly what an accepted
+        // recalculation does: it re-arms the id and then speaks "Route changed. Now via Q, A,
+        // crossing runways 28R and 10L", which the bare "Crossing runway 28R." would truncate
+        // one frame later — the same sentence twice within seconds, meaning two different
+        // things, with the route-changed context and any second crossed runway lost. The
+        // route-changed sentence NAMES the crossings, so the tactical callout has nothing to
+        // add for those few seconds. Every other reset site (LoadRoute, StopGuidance) clears
+        // the timestamp to MinValue as well, so those stay fully re-armed exactly as before —
+        // dropping the conjunct changes behaviour only where a caller deliberately stamps it.
+        if ((DateTime.UtcNow - _lastIncursionWarningTime).TotalSeconds < INCURSION_WARNING_COOLDOWN_SEC)
             return;
 
         // Build the set of HS node-IDs that lie on the remaining planned route
@@ -2902,15 +3186,47 @@ public partial class TaxiGuidanceManager : IDisposable
         }
     }
 
+    /// <summary>
+    /// Holds at the route's start node (<see cref="TaxiRoute.StartHoldRunway"/>): tone paused,
+    /// <c>HoldShort</c> on segment 0, and the hold sentence published for exactly one delivery. It is
+    /// also the Repeat-last instruction, so Ctrl+Y replays the hold rather than an older callout.
+    /// </summary>
+    // The runways THIS hold still guards, and how far through them Continue has got
+    // (PR #238 deferred finding §6, implemented on the owner's ruling). Empty for the ordinary
+    // single-runway hold, which is what keeps that path byte-identical. Derived from the stop's own
+    // label by Navigation.RunwayHoldStages, so nothing new has to survive a route mutation; the only
+    // new state is this list and its index, and both are re-established on every hold entry.
+    private IReadOnlyList<string> _holdStages = Array.Empty<string>();
+    private int _holdStageIndex;
+
+    /// <summary>
+    /// The hold sentence for a stop, staged when it guards more than one runway. Records the stages
+    /// on the way past, so <see cref="ContinuePastHoldShort"/> knows how many clearances are still
+    /// outstanding.
+    /// </summary>
+    private string ComposeHoldEntry(string? holdShortLabel)
+    {
+        _holdStages = Navigation.RunwayHoldStages.From(holdShortLabel);
+        _holdStageIndex = 0;
+        return _holdStages.Count > 0
+            ? Navigation.RunwayHoldStages.ComposeHold(holdShortLabel, _holdStages[0])
+            : Navigation.RouteRunwayCrossings.ComposeHoldShortInstruction(holdShortLabel);
+    }
+
+    private void EnterStartHold()
+    {
+        _steeringTone.Pause();
+        SetState(TaxiGuidanceState.HoldShort);
+        string cue = ComposeHoldEntry(_route?.StartHoldRunway);
+        LastRouteStartHoldCue = cue;
+        _lastInstruction = cue;
+    }
+
     private void HandleHoldShort(TaxiRouteSegment holdShortSeg)
     {
         _steeringTone.Pause();
         SetState(TaxiGuidanceState.HoldShort);
-
-        string holdOf = !string.IsNullOrEmpty(holdShortSeg.HoldShortRunway)
-            ? $" of {holdShortSeg.HoldShortRunway}"
-            : "";
-        AnnounceInstruction($"Stop. Hold short{holdOf}. Press continue when cleared.");
+        AnnounceInstruction(ComposeHoldEntry(holdShortSeg.HoldShortRunway));
     }
 
     public void ContinuePastHoldShort()
@@ -2918,6 +3234,60 @@ public partial class TaxiGuidanceManager : IDisposable
         lock (_stateLock)
         {
         if (_state != TaxiGuidanceState.HoldShort || _route == null) return;
+
+        // ONE CONTINUE PER RUNWAY at a stop that guards more than one (PR #238 deferred finding §6).
+        // The label merges when two runways resolve to the same stop ("runway 09 and runway 01") and
+        // one segment is tagged, so a single Continue used to authorise crossing BOTH — against this
+        // manager's own stated rule that explicit crossing clearance is required for EACH runway,
+        // because controllers issue them one at a time and an aircraft must have crossed the
+        // previous runway before the next clearance is issued.
+        //
+        // The aircraft does NOT move on this press: the state stays HoldShort and the tone stays
+        // paused, which is why the sentence says "Still holding" rather than "Continuing".
+        //
+        // NOT applied at the DESTINATION hold (_holdShortAtDestination): a Continue there is a
+        // lineup or takeoff clearance and hands over to the lineup state machine, a different
+        // meaning from a crossing clearance. A destination stop that also guards another runway
+        // keeps today's single-press behaviour — a deliberate limit, recorded rather than guessed
+        // at.
+        if (!_holdShortAtDestination && _holdStageIndex + 1 < _holdStages.Count)
+        {
+            string cleared = _holdStages[_holdStageIndex];
+            _holdStageIndex++;
+            string next = _holdStages[_holdStageIndex];
+            string staged = Navigation.RunwayHoldStages.ComposeAdvance(cleared, next);
+            LastRouteStartHoldCue = _route.StartHoldRunway != null && _currentSegmentIndex == 0
+                ? staged
+                : LastRouteStartHoldCue;
+            AnnounceInstruction(staged);
+            return;
+        }
+        _holdStages = Array.Empty<string>();
+        _holdStageIndex = 0;
+
+        // Belt-and-braces (PR #238 review, Important 1): SetState's own leaving-Taxiing hook
+        // already cleared _pendingTaxiwayAnnouncement the moment guidance entered this hold
+        // -- reaching HoldShort at all requires having left Taxiing first -- so this is
+        // always a no-op today. Kept explicit anyway, right where _lastAnnouncedTaxiway is
+        // about to be re-set below for the ordinary resume: this method already owns
+        // speaking the taxiway name for the leg guidance is about to resume on, so a
+        // deferred copy of an EARLIER name would be redundant by construction even if some
+        // future change ever let one survive this far.
+        _pendingTaxiwayAnnouncement = null;
+
+        // Leaving a start hold: it is spent. _holdShortAtDestination is false for it, so execution
+        // falls through to the ordinary resume on segment 0 below. The route-start turn cue was
+        // never spoken while held (its per-frame one-shot runs only on a taxiing frame), so unless
+        // the form already folded it into its standstill utterance it rides in the resume sentence
+        // here — left for the next frame it would interrupt "Continuing." (a Progressive leg that
+        // begins at a hold line, a landing-exit re-route).
+        string? startTurnCue = null;
+        if (_route.StartHoldRunway != null && _currentSegmentIndex == 0)
+        {
+            _route.StartHoldRunway = null;
+            LastRouteStartHoldCue = null;
+            startTurnCue = LastRouteReachWarning == null ? ConsumeInitialTurnCue() : null;
+        }
 
         // Holding short AT the destination runway: Continue means pilot has been
         // cleared (line up and wait, or cleared for takeoff). Transition into the
@@ -3006,7 +3376,9 @@ public partial class TaxiGuidanceManager : IDisposable
             // Update the announced-taxiway tracker so AdvanceToNearestSegment doesn't
             // redundantly re-announce the same taxiway a few frames later.
             _lastAnnouncedTaxiway = seg.TaxiwayName ?? "";
-            AnnounceInstruction($"Continuing. {taxiway}");
+            AnnounceInstruction(startTurnCue != null
+                ? $"Continuing. {startTurnCue}"
+                : $"Continuing. {taxiway}");
         }
         else
         {
@@ -3048,6 +3420,12 @@ public partial class TaxiGuidanceManager : IDisposable
             _holdShortAtDestination = true;
             _steeringTone.Pause();
             SetState(TaxiGuidanceState.HoldShort);
+            // The destination hold is never staged (a Continue here is a lineup/takeoff clearance,
+            // not a crossing clearance) — drop any stages a previous hold left, so nothing can leak
+            // into this one. ContinuePastHoldShort's own !_holdShortAtDestination guard is the rule;
+            // this is the state hygiene beside it.
+            _holdStages = Array.Empty<string>();
+            _holdStageIndex = 0;
 
             string rwy = _destinationName;
             // Full-length backtrack departure: the pilot will enter here and
@@ -3194,6 +3572,9 @@ public partial class TaxiGuidanceManager : IDisposable
         _positionInitialized = false;
         _headingErrorInitialized = false;
         _initialTurnCueAnnounced = false;
+        LastRouteStartHoldCue = null;
+        _holdStages = Array.Empty<string>();
+        _holdStageIndex = 0;
         _startChatterSuppressUntil = DateTime.MinValue;
         // Reset the tone slew-limiter baseline so a fresh guidance session snaps
         // to its first target instead of sweeping from a stale value. (LoadRoute
@@ -3217,12 +3598,20 @@ public partial class TaxiGuidanceManager : IDisposable
         _crossingAnnounced = false;
         _lastCrossingNodeId = -1;
         _lastAnnouncedTaxiway = "";
+        // A deferred taxiway-change name from this session must never survive into the
+        // next one and be spoken (or wrongly discarded as stale) against a route it was
+        // never about.
+        _pendingTaxiwayAnnouncement = null;
         _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
         _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
         _lastIncursionWarnedNodeId = -1;
         // Reset cooldowns so a freshly-loaded route after Stop gets prompt warnings
         // instead of inheriting a stale cooldown from the prior session.
         _lastRecalculationTime = DateTime.MinValue;
+        // A new guidance session must be able to speak its own first reachability
+        // refusal, not stay silent because a prior route already spoke an
+        // identically-keyed one (ReachabilityRefusalGate).
+        _lastReachabilityRefusalKey = null;
         _lastSpeedWarningTime = DateTime.MinValue;
         _lastIncursionWarningTime = DateTime.MinValue;
         _offRouteSince = DateTime.MinValue;
@@ -3242,13 +3631,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // without depending on its own field assignments to overwrite.
         _rolloutExit = null;
         _isLandingExitRoute = false;
-        _landingExitOffPavement = true;   // fresh session: no failed handoff to remember
-        _landingExitMissed = false;
-        _landingExitVacatedEarly = false;
-        _landingExitVacatedEarlyPlannedName = null;
-        _landingExitRouteUnreachable = false;
-        _landingExitMinDistToTargetM = double.MaxValue;
-        _missedVacateSince = DateTime.MinValue;
+        ResetLandingExitOutcomeFlags();   // fresh session: no failed handoff to remember
         _rolloutRunway = null;
         _rolloutAllExits = new List<Navigation.LandingExit>();
         ResetRolloutApproachLatches();
@@ -3257,6 +3640,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _rolloutEnd1500Announced = false;
         _rolloutEnd500Announced = false;
         _rolloutEnd100Announced = false;
+        _rolloutStoppedNoticeGiven = false;
         _rolloutCrossingDeclinedUtc = DateTime.MinValue;
         _rolloutCrossingDeclineAnnounced = false;
         _backtrackConnectionNodeId = 0;
@@ -3275,6 +3659,29 @@ public partial class TaxiGuidanceManager : IDisposable
         _state = newState;
         // DIAGNOSTIC: state transitions during landing-exit / rollout flow.
         RolloutDiag($"SetState: {prev} -> {newState}");
+
+        // A taxiway-change name deferred by AnnounceOrDeferTaxiwayChange while the
+        // start-warning chatter window was open must not outlive the Taxiing frame it was
+        // deferred in. FlushPendingTaxiwayAnnouncement only ever runs from the Taxiing
+        // branch of UpdatePosition, so once guidance leaves Taxiing that method never runs
+        // again until (if ever) guidance returns to Taxiing -- a pending name held onto
+        // across the gap would then be flushed against a world that has moved on (PR #238
+        // review, Important 1). Concretely: a name deferred just before a mid-route
+        // hold-short used to survive the WHOLE hold, sometimes minutes, and
+        // ContinuePastHoldShort's own "Continuing. Taxiway X." resume sentence was then
+        // stomped by that stale deferred name on the very next Taxiing frame -- a segment
+        // just past a crossing hold-short routinely carries the SAME taxiway name (the
+        // documented KBOS "N, hold short 15R, N" shape), so IsStillCurrent read the stale
+        // name as still current and re-announced it, cutting the Continue confirmation off
+        // mid-word at the moment the pilot is entering an active runway. Dropping it here is
+        // safe and deliberate in every direction guidance can leave Taxiing: HoldShort and
+        // LiningUp both speak their own opening sentence moments later, Arrived needs no
+        // taxiway name at all, and ProgressiveHold speaks its own terminator sentence --
+        // none of them owe the pilot the name that was waiting (this is also why a name
+        // still pending at HandleArrival is correctly, not accidentally, lost outright:
+        // see FlushPendingTaxiwayAnnouncement's own remarks and Minor 2 of the same review).
+        if (prev == TaxiGuidanceState.Taxiing && newState != TaxiGuidanceState.Taxiing)
+            _pendingTaxiwayAnnouncement = null;
 
         // Lineup must never end in silence. The lineup tone is the pilot's only
         // alignment instrument; if a route reload / recalc (LiningUp ->
