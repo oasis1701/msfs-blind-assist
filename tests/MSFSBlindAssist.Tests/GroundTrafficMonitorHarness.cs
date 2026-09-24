@@ -135,10 +135,27 @@ internal sealed class FakeGroundTrafficSim : IGroundTrafficSimSource
     /// <summary>Answers the outstanding sweep, if any: every aircraft, then the completion under its request id.</summary>
     public void CompleteSweep()
     {
+        if (PendingSweepId == 0) return;
+        DeliverEntries();
+        DeliverCompletion();
+    }
+
+    /// <summary>
+    /// Only the outstanding sweep's aircraft, not its completion — SimConnect's entries arrive over several
+    /// message pumps, and a tick can run between them and the final one.
+    /// </summary>
+    public void DeliverEntries()
+    {
+        if (PendingSweepId == 0) return;
+        foreach (var t in Traffic.ToList()) AiTrafficReceived?.Invoke(this, t);
+    }
+
+    /// <summary>Only the outstanding sweep's completion, under its request id.</summary>
+    public void DeliverCompletion()
+    {
         uint id = PendingSweepId;
         if (id == 0) return;
         PendingSweepId = 0;
-        foreach (var t in Traffic.ToList()) AiTrafficReceived?.Invoke(this, t);
         GroundTrafficSweepCompleted?.Invoke(this, new GroundTrafficSweepEventArgs(id));
     }
 
