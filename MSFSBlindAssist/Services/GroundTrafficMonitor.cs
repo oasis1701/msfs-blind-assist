@@ -110,8 +110,13 @@ public sealed class GroundTrafficMonitor : IDisposable
     public Func<string, IReadOnlyList<TaxiGraph.RunwayCenterline>>? RunwaySupplier { get; set; }
 
     private readonly ScreenReaderAnnouncer _announcer;
-    private readonly SimConnectManager _sim;
-    private readonly System.Windows.Forms.Timer _timer;
+    private readonly IGroundTrafficSimSource _sim;
+    // Null in the headless constructor (GroundTrafficMonitorHeadlessTests), which drives ticks itself.
+    private readonly System.Windows.Forms.Timer? _timer;
+    // The monitor's ONE clock: DateTime.UtcNow in the app; the headless tests pass a simulated one, so
+    // the time-based rules (the speech policy's spacing, the escalation window, the runway watch's
+    // grace and deferral timers) run as they would a second apart in the sim.
+    private readonly Func<DateTime> _utcNow;
     private readonly object _lock = new();
     private readonly Dictionary<uint, TrackedGroundAircraft> _tracked = new();
 
@@ -235,14 +240,27 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     // True while a hotkey summary is waiting for its requested traffic sweep to complete.
     private bool _summaryPending;
-    private readonly System.Windows.Forms.Timer _summaryTimeout;
+    private readonly System.Windows.Forms.Timer? _summaryTimeout;
 
     public GroundTrafficMonitor(ScreenReaderAnnouncer announcer, SimConnectManager sim)
+        : this(announcer, new SimConnectGroundTrafficSource(sim), startTimers: true) { }
+
+    /// <summary>
+    /// Headless constructor (GroundTrafficMonitorHeadlessTests): a simulated traffic source and NO WinForms
+    /// timers — the caller runs each poll tick with <see cref="TickForHarness"/> and completes the sweep a
+    /// tick requested through the source's own <see cref="IGroundTrafficSimSource.GroundTrafficSweepCompleted"/>,
+    /// exactly as SimConnect does — and <paramref name="utcNow"/>, the clock every rule reads (null =
+    /// <see cref="DateTime.UtcNow"/>, which is what the app uses).
+    /// </summary>
+    internal GroundTrafficMonitor(ScreenReaderAnnouncer announcer, IGroundTrafficSimSource source, bool startTimers,
+        Func<DateTime>? utcNow = null)
     {
         _announcer = announcer;
-        _sim = sim;
+        _sim = source;
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
         _sim.AiTrafficReceived += OnAiTrafficReceived;
         _sim.GroundTrafficSweepCompleted += OnGroundTrafficSweepCompleted;
+        if (!startTimers) return;
 
         _timer = new System.Windows.Forms.Timer { Interval = POLL_INTERVAL_MS };
         _timer.Tick += OnTick;
@@ -251,6 +269,9 @@ public sealed class GroundTrafficMonitor : IDisposable
         _summaryTimeout = new System.Windows.Forms.Timer { Interval = SUMMARY_SWEEP_TIMEOUT_MS };
         _summaryTimeout.Tick += (_, _) => CompleteSummaryAnnounce();
     }
+
+    /// <summary>One poll tick, for the headless harness (the app's timer calls the same method).</summary>
+    internal void TickForHarness() => OnTick(null, EventArgs.Empty);
 
     // ──────────────────────────────────────────────────────────────────────────
     // Gates
@@ -273,7 +294,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         bool watchGate = live && WatchGateOpen();
         LogGates(proximity, watchGate);
         // A suspended watch whose key has not come back within the grace ends here, as a stopped watch.
-        EndLapsedSuspension(DateTime.UtcNow);
+        EndLapsedSuspension(_utcNow());
 
         if (!proximity) ResetProximityState();
         // The watch gate closing SUSPENDS the watch in progress rather than ending it (H5); the linger is
@@ -305,20 +326,20 @@ public sealed class GroundTrafficMonitor : IDisposable
         // Decide the watch BEFORE requesting the sweep, so the intake keeps the airborne/far runway
         // aircraft this very sweep returns.
         var ctx = LocalContext(p.Latitude, p.Longitude);
-        // DateTime.UtcNow, not the `now` below: that must stay AFTER SetWatch — the first-status gate
+        // A clock read of its own, not the `now` below: that must stay AFTER SetWatch — the first-status gate
         // compares the completed sweep's REQUEST time against _watchStartedUtc (set inside SetWatch),
         // so the sweep requested later in this tick must carry a time no earlier than the watch start.
         // ApplyLinger's time feeds the linger's 60 s ceiling and, for a linger begun from a hold, the
         // hold's release time (_holdReleasedUtc) that SetWatch measures a re-arm to.
         var watch = watchGate
-            ? ApplyLinger(ResolveWatch(ctx, p.Latitude, p.Longitude, p.GroundSpeedKnots), ctx, p.Latitude, p.Longitude, DateTime.UtcNow)
+            ? ApplyLinger(ResolveWatch(ctx, p.Latitude, p.Longitude, p.GroundSpeedKnots), ctx, p.Latitude, p.Longitude, _utcNow())
             : ClearLinger("gate");
         SetWatch(watch);
         bool queueScan = proximity && ctx is { IsQueueRoute: true };
         lock (_lock) { _runwayWatchActive = watch.IsActive; _queueScanActive = queueScan; }
 
         _tickCount++;
-        var now = DateTime.UtcNow;
+        var now = _utcNow();
         bool outstanding = _sweepRequestedUtc != DateTime.MinValue
                            && (now - _sweepRequestedUtc).TotalMilliseconds < SWEEP_STALE_MS;
         bool fast;
@@ -484,7 +505,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _currentWatch = watch;
         if (watch.IsActive && _suspendedKey.Length > 0)
         {
-            if (RunwayWatchScopes.ShouldResumeSuspended(_suspendedKey, _suspendedUtc, watch.Key, DateTime.UtcNow))
+            if (RunwayWatchScopes.ShouldResumeSuspended(_suspendedKey, _suspendedUtc, watch.Key, _utcNow()))
             {
                 _watchKey = _suspendedKey;
                 _suspendedKey = "";
@@ -516,7 +537,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 // (_holdReleasedUtc) is the release; with no linger (a destination hold goes straight
                 // to LiningUp or the backtrack) it is this change itself (PR #247 focused re-review N1).
                 // Vacating has no window.
-                var changeUtc = DateTime.UtcNow;
+                var changeUtc = _utcNow();
                 DateTime measuredTo = _loggedWatchMode == RunwayWatchMode.Holding ? _holdReleasedUtc ?? changeUtc : changeUtc;
                 double sinceHandedOverMs = (measuredTo - _firstStatusHandedOverUtc).TotalMilliseconds;
                 if (RunwayWatchScopes.ShouldRearmOnModeChange(_loggedWatchMode, watch.Mode, sinceHandedOverMs)
@@ -541,7 +562,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (_watchKey.Length > 0) _log.Info($"ev=watch stop key={_watchKey}");
         ResetRunwayWatch();
         _watchKey = watch.Key;
-        _watchStartedUtc = DateTime.UtcNow;
+        _watchStartedUtc = _utcNow();
         _loggedWatchMode = watch.Mode;
         if (watch.IsActive)
             _log.Info($"ev=watch start key={watch.Key} des={string.Join("+", watch.Runways.Select(r => r.Designator))} mode={watch.Mode}");
@@ -611,7 +632,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _currentWatch = RunwayWatch.None;
         if (_watchKey.Length == 0) return;   // no watch in progress, or it is already suspended
         _suspendedKey = _watchKey;
-        _suspendedUtc = DateTime.UtcNow;
+        _suspendedUtc = _utcNow();
         _watchKey = "";
         _log.Info($"ev=watch suspend key={_suspendedKey}");
     }
@@ -725,7 +746,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (!GroundTrafficLogic.KeepInIntake(onGround, distM, e.GroundSpeedKnots, watch, queue)) return;
 
         double magVar = pos?.MagneticVariation ?? 0.0;
-        var now = DateTime.UtcNow;
+        var now = _utcNow();
         string? dataQuality = null;
         lock (_lock)
         {
@@ -801,7 +822,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         lock (_lock)
         {
-            var cutoff = DateTime.UtcNow.AddMilliseconds(-PRUNE_AGE_MS);
+            var cutoff = _utcNow().AddMilliseconds(-PRUNE_AGE_MS);
             var stale = _tracked.Where(kv => kv.Value.LastSeenTime < cutoff)
                                  .Select(kv => kv.Key).ToList();
             foreach (var id in stale) _tracked.Remove(id);
@@ -845,7 +866,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     private void EvaluateAlerts(GroundTrafficRouteContext? ctx, RunwayWatch watch, bool proximity, bool runwayWatch)
     {
         var candidates = new List<TrafficCallout>();
-        var now = DateTime.UtcNow;
+        var now = _utcNow();
         lock (_lock)
         {
             if (!_positionValid) return;
@@ -1544,7 +1565,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         // The same local-filtered context the tick uses: a leftover route at another airport never
         // shapes the summary (PR #247 final review H6).
         var ctx = LocalContext(ownLat, ownLon);
-        var now = DateTime.UtcNow;
+        var now = _utcNow();
         var fresh = now.AddMilliseconds(-FRESH_MS);
 
         var sb = new System.Text.StringBuilder();
@@ -1628,9 +1649,9 @@ public sealed class GroundTrafficMonitor : IDisposable
             // dictionary. Only one sweep of ours is ever outstanding: if one already is, its
             // completion speaks the summary. The timeout is a safety net.
             _summaryPending = true;
-            _summaryTimeout.Stop();
-            _summaryTimeout.Start();
-            var now = DateTime.UtcNow;
+            _summaryTimeout?.Stop();
+            _summaryTimeout?.Start();
+            var now = _utcNow();
             bool outstanding = _sweepRequestedUtc != DateTime.MinValue
                                && (now - _sweepRequestedUtc).TotalMilliseconds < SWEEP_STALE_MS;
             if (!outstanding)
@@ -1647,7 +1668,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         if (!_summaryPending) return false;
         _summaryPending = false;
-        _summaryTimeout.Stop();
+        _summaryTimeout?.Stop();
         PruneStaleAircraft();
         _announcer.AnnounceImmediate(GetNearestTrafficSummary());
         return true;
@@ -1733,10 +1754,10 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         _sim.AiTrafficReceived -= OnAiTrafficReceived;
         _sim.GroundTrafficSweepCompleted -= OnGroundTrafficSweepCompleted;
-        _timer.Stop();
-        _timer.Dispose();
-        _summaryTimeout.Stop();
-        _summaryTimeout.Dispose();
+        _timer?.Stop();
+        _timer?.Dispose();
+        _summaryTimeout?.Stop();
+        _summaryTimeout?.Dispose();
         _linger = null;
     }
 }
