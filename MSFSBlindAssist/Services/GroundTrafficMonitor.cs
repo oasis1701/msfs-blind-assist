@@ -414,7 +414,9 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     /// <summary>
     /// Adopts this tick's watch. A different key (the runway itself — unchanged from hold through
-    /// backtrack, lineup and takeoff wait) restarts the watch; the same key never does.
+    /// backtrack, lineup and takeoff wait, and through another runway's pavement, which only widens
+    /// <see cref="RunwayWatch.Runways"/>: <see cref="RunwayWatch.Key"/>) restarts the watch; the same
+    /// key never does.
     /// </summary>
     private void SetWatch(RunwayWatch watch)
     {

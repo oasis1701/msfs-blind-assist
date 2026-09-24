@@ -88,6 +88,54 @@ public class RunwayWatchScopeTests
         Assert.Equal("27", Assert.Single(wait.Runways).Designator);   // the end the pilot departs from
     }
 
+    // ── The watch's identity is its reason (PR #247 final review H3) ─────────────────────────
+    // RunwaysUnder adds every runway whose pavement holds the aircraft, so backtracking through an
+    // intersection, or lining up or waiting inside another runway's pavement, changed the joined key
+    // and restarted the watch — twice, in and out. A reason (takeoff wait, lineup, backtrack, hold,
+    // progressive hold) now names the watch; a runway added only by position widens what is scanned.
+
+    [Fact]
+    public void A_backtrack_through_an_intersection_keeps_its_key_and_watches_both_runways()
+    {
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.BacktrackDeparture, under: new[] { "09", "22" }));
+        Assert.Equal("09/27", w.Key);
+        Assert.Equal(new[] { "04/22", "09/27" }, w.Runways.Select(r => r.Key).OrderBy(k => k, StringComparer.Ordinal));
+        Assert.Equal(RunwayWatchMode.OnRunway, w.Mode);
+    }
+
+    [Fact]
+    public void Leaving_the_intersecting_runways_pavement_keeps_the_same_key()
+    {
+        var inside = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.BacktrackDeparture, under: new[] { "09", "22" }));
+        var outside = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.BacktrackDeparture, under: new[] { "09" }));
+        Assert.Equal(outside.Key, inside.Key);
+        Assert.Equal("09/27", Assert.Single(outside.Runways).Key);
+    }
+
+    [Fact]
+    public void Lining_up_or_waiting_inside_another_runways_pavement_keeps_the_key()
+    {
+        var lineup = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.LiningUp, under: new[] { "27", "22" }));
+        var wait = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Inactive, destination: null,
+            under: new[] { "27", "04" }, takeoff: "27"));
+        Assert.Equal("09/27", lineup.Key);
+        Assert.Equal("09/27", wait.Key);
+        Assert.Equal(2, wait.Runways.Count);
+    }
+
+    [Fact]
+    public void A_position_only_watch_on_two_runways_keeps_the_joined_key()
+    {
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing, under: new[] { "09", "22" }));
+        Assert.Equal("04/22,09/27", w.Key);
+        Assert.Null(w.IdentityKey);
+    }
+
+    [Fact]
+    public void A_hold_naming_two_runways_joins_both_keys()
+        => Assert.Equal("04/22,09/27",
+            RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.HoldShort, held: "runway 27 and runway 04")).Key);
+
     [Fact]
     public void A_gate_lineup_watches_nothing()
         => Assert.False(RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.LiningUp, runwayLineup: false)).IsActive);
