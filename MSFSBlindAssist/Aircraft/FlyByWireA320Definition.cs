@@ -6606,6 +6606,20 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     /// <inheritdoc />
     public override void CancelDeferredFlush() => _altArmHoldPending = false;
 
+    /// <inheritdoc />
+    /// <remarks>Also drops any FCU readout still waiting for its second half. Those latches have no
+    /// timeout and mute that window's dial callout while set (readoutPending), so one whose half was
+    /// lost to a SimConnect drop muted the dial until the readout was pressed again.</remarks>
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        isRequestingHeading = isRequestingSpeed = isRequestingAltitude = isRequestingVSFPA = false;
+        pendingHeadingValue = pendingHeadingStatus = null;
+        pendingSpeedValue = pendingSpeedStatus = null;
+        pendingAltitudeValue = pendingAltitudeStatus = null;
+        pendingVSFPAValue = pendingVSFPAMode = null;
+    }
+
     public override void ResetAnnouncementBaselines()
     {
         _prevVertArmed = -1;

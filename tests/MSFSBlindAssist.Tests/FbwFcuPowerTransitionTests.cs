@@ -106,6 +106,22 @@ public class FbwFcuPowerTransitionTests : IDisposable
     }
 
     [Fact]
+    public void A380_a_readout_left_pending_across_a_context_reset_no_longer_mutes_the_vs_callout()
+    {
+        // A readout whose second half was lost to a SimConnect drop has no timeout: without the reset
+        // clearing it, that dial stayed muted until the readout was pressed again.
+        var def = new FlyByWireA380Definition();
+        var speech = new SpeechCapture();
+        Batch(def, speech, ("A32NX_FCU_AFS_CP_ACTIVE", 1),
+            ("A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", Word(NormalOperation, 500f)));
+        def.BeginVsReadout();
+        def.OnSimContextReset();
+        for (int i = 0; i < FcuValueAnnouncer.SettleMaxDeliveries; i++) Batch(def, speech);   // settle ends
+        Batch(def, speech, ("A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", Word(NormalOperation, -1500f)));
+        Assert.Equal(new[] { "Vertical speed -1500 feet per minute" }, speech.All);
+    }
+
+    [Fact]
     public void A380_an_mtrs_flip_does_not_turn_a_forced_read_into_a_callout()
     {
         var def = new FlyByWireA380Definition();

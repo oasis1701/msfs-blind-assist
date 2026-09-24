@@ -1052,6 +1052,17 @@ public partial class FlyByWireA380Definition
     /// <inheritdoc />
     public override void CancelDeferredFlush() => _altArmHoldPending = false;
 
+    /// <inheritdoc />
+    /// <remarks>Also drops any FCU readout still waiting for its second half. Those latches have no
+    /// timeout and mute that window's dial callout while set (readoutPending), so one whose half was
+    /// lost to a SimConnect drop muted the dial until the readout was pressed again.</remarks>
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _reqHdg = _reqSpd = _reqAlt = _reqVs = false;
+        _pHdgVal = _pHdgMgd = _pSpdVal = _pSpdMgd = _pVsVal = _pFpaVal = _pVsMode = null;
+    }
+
     public override void ResetAnnouncementBaselines()
     {
         _altMode.Reset();
