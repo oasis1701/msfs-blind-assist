@@ -96,20 +96,33 @@ public class TrafficSpeechPolicyTests
         // "Stop" spoken 1 s ago; this evaluation has a "Slow down" for another aircraft.
         var p = TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Caution) }, Now, DateTime.MinValue, false,
             TrafficCalloutKind.Warning, Now.AddSeconds(-1));
-        Assert.Null(p.Interrupt);   // withheld, unmarked, re-evaluated next sweep
+        Assert.Null(p.Interrupt);              // withheld from interrupting, unmarked, re-evaluated next sweep
+        Assert.Equal(TrafficCalloutKind.Caution, p.Alert!.Kind);   // handled like the other alerts instead
         p = TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Caution) }, Now, DateTime.MinValue, false,
             TrafficCalloutKind.Warning, Now.AddMilliseconds(-TrafficSpeechPolicy.InterruptProtectMs));
         Assert.NotNull(p.Interrupt);
     }
 
     [Fact]
-    public void An_equally_or_more_urgent_interrupt_may_cut_in()
-    {
-        Assert.NotNull(TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Warning) }, Now, DateTime.MinValue, false,
-            TrafficCalloutKind.Warning, Now.AddSeconds(-1)).Interrupt);
-        Assert.NotNull(TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Warning) }, Now, DateTime.MinValue, false,
+    public void A_more_urgent_interrupt_may_cut_in()
+        => Assert.NotNull(TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Warning) }, Now, DateTime.MinValue, false,
             TrafficCalloutKind.Caution, Now.AddSeconds(-1)).Interrupt);
+
+    [Fact]
+    public void An_equally_urgent_interrupt_does_not_cut_in_within_three_seconds()
+    {
+        // PR #247 integration follow-up R3: a second "Stop" (for another aircraft) no longer cuts the
+        // first one off a second later — it is handled like the other alerts instead.
+        var p = TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Warning) }, Now, DateTime.MinValue, false,
+            TrafficCalloutKind.Warning, Now.AddSeconds(-1));
+        Assert.Null(p.Interrupt);
+        Assert.Equal(TrafficCalloutKind.Warning, p.Alert!.Kind);
     }
+
+    [Fact]
+    public void An_equally_urgent_interrupt_cuts_in_once_the_protect_window_has_passed()
+        => Assert.NotNull(TrafficSpeechPolicy.Plan(new[] { C(TrafficCalloutKind.Warning) }, Now, DateTime.MinValue, false,
+            TrafficCalloutKind.Warning, Now.AddMilliseconds(-TrafficSpeechPolicy.InterruptProtectMs)).Interrupt);
 
     [Fact]
     public void Planning_never_marks_anything_spoken()

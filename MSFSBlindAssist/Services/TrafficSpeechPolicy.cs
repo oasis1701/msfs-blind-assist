@@ -44,9 +44,13 @@ public static class TrafficSpeechPolicy
     public const int AlertLineSpacingMs = 3000;
 
     /// <summary>
-    /// A LESS urgent interrupt is withheld for this long after a more urgent one, so a "Slow down"
-    /// for one aircraft cannot cut off the "Stop" spoken for another a second earlier. Equal or
-    /// higher urgency may always cut in. A withheld callout stays unmarked and is re-evaluated.
+    /// An interrupt of EQUAL OR LESSER urgency is withheld for this long after a more urgent one, so a
+    /// second "Stop" for another aircraft cannot cut off the "Stop" spoken for the first a second earlier
+    /// (PR #247 integration follow-up R3 — with the faster polling this task's own timing brought, a
+    /// same-kind "Stop" routinely followed within a second, so equal urgency had to join lesser urgency
+    /// here). Only a STRICTLY MORE urgent interrupt may still cut in. A withheld interrupt is not simply
+    /// dropped: it is handled like the other alerts (queued, subject to <see cref="AlertLineSpacingMs"/>)
+    /// — see <see cref="Plan"/>. It stays unmarked either way and is re-evaluated next sweep.
     /// </summary>
     public const int InterruptProtectMs = 3000;
 
@@ -62,19 +66,25 @@ public static class TrafficSpeechPolicy
     {
         if (candidates.Count == 0) return SpeechPlan.Empty;
 
-        var interrupt = candidates.Where(c => Interrupts(c.Kind))
+        var topInterrupt = candidates.Where(c => Interrupts(c.Kind))
             .OrderByDescending(c => Rank(c.Kind)).ThenBy(c => c.DistFt).FirstOrDefault();
-        if (interrupt != null && lastInterruptKind is { } last
+        var interrupt = topInterrupt;
+        // Equal or lesser urgency within the protect window does not interrupt (R3: was "lesser" only) —
+        // it falls through to the alert slot below instead of being dropped outright.
+        bool interruptWithheld = interrupt != null && lastInterruptKind is { } last
             && (nowUtc - lastInterruptUtc).TotalMilliseconds < InterruptProtectMs
-            && Rank(interrupt.Kind) < Rank(last))
-            interrupt = null;
+            && Rank(interrupt.Kind) <= Rank(last);
+        if (interruptWithheld) interrupt = null;
         if (announcerSuppressed)
             return new SpeechPlan(interrupt, null, Array.Empty<TrafficCallout>());
 
         TrafficCallout? alert = null;
         if ((nowUtc - lastAlertLineUtc).TotalMilliseconds >= AlertLineSpacingMs)
-            alert = candidates.Where(c => !Interrupts(c.Kind) && !IsInfo(c.Kind))
-                .OrderByDescending(c => Rank(c.Kind)).ThenBy(c => c.DistFt).FirstOrDefault();
+        {
+            var alertCandidates = candidates.Where(c => !Interrupts(c.Kind) && !IsInfo(c.Kind));
+            if (interruptWithheld) alertCandidates = alertCandidates.Append(topInterrupt!);
+            alert = alertCandidates.OrderByDescending(c => Rank(c.Kind)).ThenBy(c => c.DistFt).FirstOrDefault();
+        }
 
         var info = candidates.Where(c => IsInfo(c.Kind)).ToList();
         return new SpeechPlan(interrupt, alert, info);

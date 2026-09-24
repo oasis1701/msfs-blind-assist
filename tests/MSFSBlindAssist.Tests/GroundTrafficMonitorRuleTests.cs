@@ -38,15 +38,23 @@ public class GroundTrafficMonitorRuleTests
     {
         // Both inside the Warning distance at 6 kt (250 ft + the speed lead, about 98 m): the first gets its
         // "Stop", and the one queued 30 m behind it still gets its own — the author's rule withholds only
-        // Awareness and Caution for traffic behind the first.
+        // Awareness and Caution for traffic behind the first. PR #247 integration follow-up R3 (M2 concern
+        // 1 / review scenario P6): the second "Stop" no longer cuts the first one off a second later — it
+        // is withheld from interrupting for the full InterruptProtectMs window (handled like the other
+        // alerts meanwhile, though the alert slot is itself still spaced from British Airways' own "on your
+        // route" line), landing at t=6 — exactly 3 s after British Airways' "Stop" at t=3 — instead of t=4.
         var h = OnRoute(ownGs: 6);
         h.Sim.Traffic.Add(Ac(1, 30, 0, 0, "British Airways", "BAW1"));
         h.Sim.Traffic.Add(Ac(2, 60, 0, 0, "Lufthansa", "DLH2"));
 
         h.Tick(6);
 
-        Assert.Contains(h.Said.Interrupts, m => m.StartsWith("Stop, British Airways"));
-        Assert.Contains(h.Said.Interrupts, m => m.StartsWith("Stop, Lufthansa"));
+        Assert.Equal(new[]
+        {
+            "t=3 [INT] Stop, British Airways A320 very close, ahead, 100 feet.",
+            "t=3 British Airways A320 on your route, taxiway A, 100 feet ahead, stopped.",
+            "t=6 [INT] Stop, Lufthansa A320 very close, ahead, 200 feet.",
+        }, h.Transcript);
     }
 
     [Fact]
