@@ -7,10 +7,18 @@ namespace MSFSBlindAssist.Aircraft;
 /// </summary>
 internal static class FcuValueEntry
 {
+    /// <summary>
+    /// The FCU windows' wording for text that is not a number. The panel number fields hand such text
+    /// over as NaN (SimVarDefinition.UnparseableTextAsNaN): NaN passes every range test below and
+    /// (int)Math.Round(NaN) saturates to 0, so without this check an empty heading box commanded north.
+    /// </summary>
+    public const string InvalidNumber = "Invalid number format";
+
     public static bool TryHeading(double value, out int heading, out string? error)
     {
         heading = 0;
         error = null;
+        if (!double.IsFinite(value)) { error = InvalidNumber; return false; }
         if (value < 0 || value > 360) { error = "Heading must be between 0 and 360 degrees"; return false; }
         heading = (int)Math.Round(value) % 360;
         return true;
@@ -20,6 +28,7 @@ internal static class FcuValueEntry
     {
         internalSpeed = 0;
         error = null;
+        if (!double.IsFinite(value)) { error = InvalidNumber; return false; }
         if (!((value >= 100 && value <= 399) || (value >= 0.10 && value <= 0.99)))
         {
             error = "Speed must be 100-399 knots or 0.10-0.99 Mach";
@@ -33,6 +42,7 @@ internal static class FcuValueEntry
     {
         feet = 0;
         error = null;
+        if (!double.IsFinite(value)) { error = InvalidNumber; return false; }
         if (value < 100 || value > 49000) { error = "Altitude must be between 100 and 49000 feet"; return false; }
         feet = value;
         return true;

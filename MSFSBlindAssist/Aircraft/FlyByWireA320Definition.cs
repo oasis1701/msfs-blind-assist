@@ -1555,7 +1555,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX.FCU_HDG_SET",
             DisplayName = "Heading",
-            Type = SimConnect.SimVarType.Event
+            Type = SimConnect.SimVarType.Event,
+            UnparseableTextAsNaN = true   // FcuValueEntry refuses NaN; a 0 here would be a real value
         },
         ["A32NX.FCU_HDG_PUSH"] = new SimConnect.SimVarDefinition
         {
@@ -1579,7 +1580,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX.FCU_SPD_SET",
             DisplayName = "Speed",
-            Type = SimConnect.SimVarType.Event
+            Type = SimConnect.SimVarType.Event,
+            UnparseableTextAsNaN = true   // FcuValueEntry refuses NaN; a 0 here would be a real value
         },
         ["A32NX.FCU_SPD_PUSH"] = new SimConnect.SimVarDefinition
         {
@@ -1597,7 +1599,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "A32NX.FCU_ALT_SET",
             DisplayName = "Altitude",
-            Type = SimConnect.SimVarType.Event
+            Type = SimConnect.SimVarType.Event,
+            UnparseableTextAsNaN = true   // FcuValueEntry refuses NaN; a 0 here would be a real value
         },
         ["A32NX.FCU_ALT_PUSH"] = new SimConnect.SimVarDefinition
         {

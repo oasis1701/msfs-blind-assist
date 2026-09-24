@@ -974,14 +974,19 @@ public partial class MainForm
                 {
                     // Aircraft delegation: let the loaded aircraft claim _SET keys
                     // (e.g., PMDG 737's EFIS_MinsValueFt_*_SET vars need RST-then-rotate
-                    // dispatch). The aircraft parses textBox.Text itself; we pass the
-                    // double value when parseable, else 0.
-                    double parsedValue = 0;
-                    double.TryParse(
-                        textBox.Text.Replace(',', '.'),
-                        System.Globalization.NumberStyles.Float,
-                        System.Globalization.CultureInfo.InvariantCulture,
-                        out parsedValue);
+                    // dispatch). We pass the double value when parseable, else 0 -- or NaN
+                    // for a field that opted in (UnparseableTextAsNaN), where 0 is a real value
+                    // (an A32NX FCU heading of 0 is north) and the handler refuses NaN. Every
+                    // other field still receives the historical 0: their handlers were written
+                    // against it, and several would forward a NaN to the sim.
+                    if (!double.TryParse(
+                            textBox.Text.Replace(',', '.'),
+                            System.Globalization.NumberStyles.Float,
+                            System.Globalization.CultureInfo.InvariantCulture,
+                            out double parsedValue))
+                    {
+                        parsedValue = varDef.UnparseableTextAsNaN ? double.NaN : 0;
+                    }
                     if (currentAircraft.HandleUIVariableSet(
                             varKey, parsedValue, varDef, simConnectManager!, announcer))
                     {

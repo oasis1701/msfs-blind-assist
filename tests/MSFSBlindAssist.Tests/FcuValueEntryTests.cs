@@ -67,3 +67,52 @@ public class FcuValueEntryTests
         Assert.Equal("Altitude must be between 100 and 49000 feet", error);
     }
 }
+
+public class FcuValueEntryUnparseableTests
+{
+    // The FCU panel number fields hand an UNPARSEABLE entry over as NaN (never 0, which is a real
+    // heading — north): each entry must refuse it with the FCU windows' own wording and send nothing.
+    // (int)Math.Round(NaN) saturates to 0 on .NET 9+, and NaN passes every "value < min || value > max"
+    // range test, so without an explicit check an empty heading box commanded heading 000.
+    public static IEnumerable<object[]> NonFinite() => new[]
+    {
+        new object[] { double.NaN },
+        new object[] { double.PositiveInfinity },
+        new object[] { double.NegativeInfinity },
+    };
+
+    [Theory]
+    [MemberData(nameof(NonFinite))]
+    public void A_non_finite_heading_is_an_invalid_number(double value)
+    {
+        Assert.False(FcuValueEntry.TryHeading(value, out _, out string? error));
+        Assert.Equal("Invalid number format", error);
+    }
+
+    [Theory]
+    [MemberData(nameof(NonFinite))]
+    public void A_non_finite_speed_is_an_invalid_number(double value)
+    {
+        Assert.False(FcuValueEntry.TrySpeed(value, out _, out string? error));
+        Assert.Equal("Invalid number format", error);
+    }
+
+    [Theory]
+    [MemberData(nameof(NonFinite))]
+    public void A_non_finite_altitude_is_an_invalid_number(double value)
+    {
+        Assert.False(FcuValueEntry.TryAltitude(value, out _, out string? error));
+        Assert.Equal("Invalid number format", error);
+    }
+
+    [Theory]
+    [InlineData("A32NX.FCU_HDG_SET")]
+    [InlineData("A32NX.FCU_SPD_SET")]
+    [InlineData("A32NX.FCU_ALT_SET")]
+    public void The_a32nx_family_fcu_number_fields_take_an_unparseable_entry_as_NaN(string key)
+    {
+        // Opt-in per definition, so every other aircraft's _SET field still receives 0 as before.
+        Assert.True(new FlyByWireA320Definition().GetVariables()[key].UnparseableTextAsNaN);
+        Assert.True(new HeadwindA330Definition().GetVariables()[key].UnparseableTextAsNaN);
+    }
+}
