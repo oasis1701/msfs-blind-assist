@@ -303,36 +303,4 @@ public class FbwFcuDialAnnounceTests : IDisposable
 
         Assert.Equal(new[] { "FCU_ALT_VALUE" }, keys);
     }
-
-    // ---- A380 heading readout: dashes are not "359 degrees" ----
-    // A32NX_AUTOPILOT_HEADING_SELECTED is -1 while the heading window shows dashes. The Shift+H
-    // readout wrapped it into 0-360 first, so a managed heading read "FCU heading 359 degrees,
-    // managed" — a plausible number that is on no display. The dial announcer and the readout must
-    // agree, and the announcer says nothing for dashes; the readout says so in words, the way the
-    // speed readout already does ("FCU speed managed").
-
-    [Theory]
-    [InlineData(-1.0, true, "FCU heading managed")]
-    [InlineData(-1.0, false, "FCU heading managed")]
-    [InlineData(345.0, false, "FCU heading 345 degrees, selected")]
-    [InlineData(5.0, false, "FCU heading 005 degrees, selected")]
-    [InlineData(360.0, true, "FCU heading 000 degrees, managed")]
-    public void A380_heading_readout_speaks_dashes_as_managed_not_as_a_number(double raw, bool managed, string expected)
-    {
-        Assert.Equal(expected, FlyByWireA380Definition.FormatFcuHeadingReadout(raw, managed));
-    }
-
-    // ---- A32NX speed readout: a Mach target is not "001 knots" ----
-    // A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE holds the target DIRECTLY — a Mach number below 10,
-    // otherwise knots — so the readout cannot render it as "{value:000} knots" unconditionally.
-
-    [Theory]
-    [InlineData(0.78, "selected", "FCU speed mach 0.78, selected")]
-    [InlineData(0.82, "managed", "FCU speed mach 0.82, managed")]
-    [InlineData(250.0, "selected", "FCU speed 250 knots, selected")]
-    [InlineData(80.0, "selected", "FCU speed 080 knots, selected")]
-    public void A32nx_speed_readout_splits_mach_from_knots(double value, string status, string expected)
-    {
-        Assert.Equal(expected, FlyByWireA320Definition.FormatFcuSpeedReadout(value, status));
-    }
 }

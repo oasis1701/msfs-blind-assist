@@ -57,15 +57,55 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         return false;
     }
 
-    /// <summary>The FCU speed readout phrase (RequestFCUSpeedWithStatus — output mode + Shift+S).
-    /// A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE
-    /// holds the target DIRECTLY — a Mach number below 10, otherwise knots — so it cannot be rendered
-    /// as "{value:000} knots" unconditionally: that spoke a selected Mach 0.78 as "001 knots". Same
-    /// split the hardware-dial announcer and the A380 readout use; the three must never disagree.</summary>
-    internal static string FormatFcuSpeedReadout(double value, string status) =>
-        value < 10
-            ? $"FCU speed mach {value:0.00}, {status}"
-            : $"FCU speed {value:000} knots, {status}";
+    // The Shift+H/S/A/V readouts read the DISPLAY values (live data while dashed); the dial's own
+    // sources say whether the window shows dashes, so the words come from them. Each arms the echo so
+    // the dial callout for the same value, arriving with the next batch, is not spoken on top of the
+    // readout.
+    private string ComposeHeadingReadout(double displayValue, bool managed)
+    {
+        SuppressFcuValueChangeEcho(Fcu.Heading);
+        return FcuWindowStateOf(Fcu.Heading) switch
+        {
+            FcuWindowState.Unavailable => FcuValuePhrases.NotAvailableReadout("heading"),
+            FcuWindowState.Dashes => "FCU heading managed",
+            _ => $"FCU heading {displayValue:000} degrees, {(managed ? "managed" : "selected")}",
+        };
+    }
+
+    /// <summary>A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE holds the target DIRECTLY — a Mach number below
+    /// 10, otherwise knots — so it goes through <see cref="FcuValuePhrases.SpeedReadout"/>, the one
+    /// Mach/knots split the A380 readout shares.</summary>
+    private string ComposeSpeedReadout(double displayValue, string status)
+    {
+        SuppressFcuValueChangeEcho(Fcu.Speed);
+        return FcuWindowStateOf(Fcu.Speed) switch
+        {
+            FcuWindowState.Unavailable => FcuValuePhrases.NotAvailableReadout("speed"),
+            FcuWindowState.Dashes => "FCU speed managed",
+            _ => FcuValuePhrases.SpeedReadout(displayValue, status),
+        };
+    }
+
+    private string ComposeAltitudeReadout(double displayValue, string status)
+    {
+        SuppressFcuValueChangeEcho(Fcu.Altitude);
+        return FcuWindowStateOf(Fcu.Altitude) == FcuWindowState.Unavailable
+            ? FcuValuePhrases.NotAvailableReadout("altitude")
+            : $"FCU altitude {displayValue:00000} feet, {status}";
+    }
+
+    private string ComposeVerticalReadout(bool fpaMode, double displayValue)
+    {
+        SuppressFcuValueChangeEcho(Fcu.VerticalSpeed, Fcu.FlightPathAngle);
+        return FcuWindowStateOf(fpaMode ? Fcu.FlightPathAngle : Fcu.VerticalSpeed) switch
+        {
+            FcuWindowState.Unavailable => FcuValuePhrases.NotAvailableReadout("vertical speed"),
+            FcuWindowState.Dashes => FcuValuePhrases.ManagedVerticalReadout(fpaMode),
+            _ => fpaMode
+                ? $"FCU FPA {displayValue:+0.0;-0.0;0.0} degrees"
+                : $"FCU VS {displayValue:+0;-0;0} feet per minute",
+        };
+    }
 
     // Flight phase tracking
     private string currentFlightPhase = "";
@@ -8172,9 +8212,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // released when its batch has finished dispatching (BaseAircraftDefinition.
         // OnContinuousBatchDelivered), once the FCU health var in the same sample is known. That
         // release runs OUTSIDE MainForm's announcer.Suppressed wrap, hence the explicit Ctrl+M check.
-        // Consumed (return true) so the generic monitor never speaks it a second time. None of the
-        // sources is what a Shift+H/S/A/V readout reads (those read the display values below), so
-        // a readout never collides with a callout here. MSFSBA's own writes mute their echo via
+        // Consumed (return true) so the generic monitor never speaks it a second time. A readout
+        // (Shift+H/S/A/V) reads the display values below, but speaks the same selection: while one is
+        // pending for a window its callout is recorded silently (readoutPending), and the readout
+        // arms the echo when it speaks (Compose*Readout). MSFSBA's own writes mute their echo via
         // SuppressFcuValueChangeEcho / ArmFcuEcho — the FCU windows, and the hotkeys, panel buttons
         // and panel number fields through ArmFcuEchoFor.
         if (varName == "A32NX_FCU_HEALTHY")
@@ -8185,7 +8226,13 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         if (TryComposeFcuValuePhrase(varName!, value, out string? fcuPhrase))
         {
             bool fcuMuted = Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(varName!);
-            AnnounceFcuValue(varName!, fcuPhrase, announcer, muted: fcuMuted);
+            // A readout pending for this var is about to AnnounceImmediate the same value, which would
+            // cut the callout off or repeat it.
+            bool readoutPending = (isRequestingHeading && varName == Fcu.Heading)
+                || (isRequestingSpeed && varName == Fcu.Speed)
+                || (isRequestingAltitude && varName == Fcu.Altitude)
+                || (isRequestingVSFPA && (varName == Fcu.VerticalSpeed || varName == Fcu.FlightPathAngle));
+            AnnounceFcuValue(varName!, fcuPhrase, announcer, muted: fcuMuted || readoutPending);
             return true;
         }
 
@@ -8199,8 +8246,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingHeadingValue = value;
             if (pendingHeadingStatus.HasValue)
             {
-                string status = pendingHeadingStatus.Value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate($"FCU heading {pendingHeadingValue.Value:000} degrees, {status}");
+                announcer.AnnounceImmediate(ComposeHeadingReadout(pendingHeadingValue.Value, managed: pendingHeadingStatus.Value > 0));
                 pendingHeadingValue = null;
                 pendingHeadingStatus = null;
                 isRequestingHeading = false; // Clear flag after announcement
@@ -8216,8 +8262,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingHeadingStatus = value;
             if (pendingHeadingValue.HasValue)
             {
-                string status = value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate($"FCU heading {pendingHeadingValue.Value:000} degrees, {status}");
+                announcer.AnnounceImmediate(ComposeHeadingReadout(pendingHeadingValue.Value, managed: value > 0));
                 pendingHeadingValue = null;
                 pendingHeadingStatus = null;
                 isRequestingHeading = false; // Clear flag after announcement
@@ -8235,7 +8280,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             if (pendingSpeedStatus.HasValue)
             {
                 string status = pendingSpeedStatus.Value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate(FormatFcuSpeedReadout(pendingSpeedValue.Value, status));
+                announcer.AnnounceImmediate(ComposeSpeedReadout(pendingSpeedValue.Value, status));
                 pendingSpeedValue = null;
                 pendingSpeedStatus = null;
                 isRequestingSpeed = false; // Clear flag after announcement
@@ -8252,7 +8297,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             if (pendingSpeedValue.HasValue)
             {
                 string status = value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate(FormatFcuSpeedReadout(pendingSpeedValue.Value, status));
+                announcer.AnnounceImmediate(ComposeSpeedReadout(pendingSpeedValue.Value, status));
                 pendingSpeedValue = null;
                 pendingSpeedStatus = null;
                 isRequestingSpeed = false; // Clear flag after announcement
@@ -8270,7 +8315,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             if (pendingAltitudeStatus.HasValue)
             {
                 string status = pendingAltitudeStatus.Value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate($"FCU altitude {pendingAltitudeValue.Value:00000} feet, {status}");
+                announcer.AnnounceImmediate(ComposeAltitudeReadout(pendingAltitudeValue.Value, status));
                 pendingAltitudeValue = null;
                 pendingAltitudeStatus = null;
                 isRequestingAltitude = false; // Clear flag after announcement
@@ -8287,7 +8332,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             if (pendingAltitudeValue.HasValue)
             {
                 string status = value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate($"FCU altitude {pendingAltitudeValue.Value:00000} feet, {status}");
+                announcer.AnnounceImmediate(ComposeAltitudeReadout(pendingAltitudeValue.Value, status));
                 pendingAltitudeValue = null;
                 pendingAltitudeStatus = null;
                 isRequestingAltitude = false; // Clear flag after announcement
@@ -8304,11 +8349,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingVSFPAValue = value;
             if (pendingVSFPAMode.HasValue)
             {
-                bool isFpaMode = pendingVSFPAMode.Value > 0;
-                string modeText = isFpaMode ? "FPA" : "VS";
-                string units = isFpaMode ? "degrees" : "feet per minute";
-                string valueText = isFpaMode ? $"{value:+0.0;-0.0;0.0}" : $"{value:+0;-0;0}";
-                announcer.AnnounceImmediate($"FCU {modeText} {valueText} {units}");
+                announcer.AnnounceImmediate(ComposeVerticalReadout(pendingVSFPAMode.Value > 0, value));
                 pendingVSFPAValue = null;
                 pendingVSFPAMode = null;
                 isRequestingVSFPA = false; // Clear flag after announcement
@@ -8324,11 +8365,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             pendingVSFPAMode = value;
             if (pendingVSFPAValue.HasValue)
             {
-                bool isFpaMode = value > 0;
-                string modeText = isFpaMode ? "FPA" : "VS";
-                string units = isFpaMode ? "degrees" : "feet per minute";
-                string valueText = isFpaMode ? $"{pendingVSFPAValue.Value:+0.0;-0.0;0.0}" : $"{pendingVSFPAValue.Value:+0;-0;0}";
-                announcer.AnnounceImmediate($"FCU {modeText} {valueText} {units}");
+                announcer.AnnounceImmediate(ComposeVerticalReadout(value > 0, pendingVSFPAValue.Value));
                 pendingVSFPAValue = null;
                 pendingVSFPAMode = null;
                 isRequestingVSFPA = false; // Clear flag after announcement

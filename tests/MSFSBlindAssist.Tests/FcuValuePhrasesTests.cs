@@ -155,6 +155,43 @@ public class FcuValuePhrasesTests : IDisposable
         Assert.Equal(FcuValuePhrases.Unavailable, FcuValuePhrases.FlightPathAngle(Word(ssm, value)));
     }
 
+    // ---- The Shift+H/S/V readouts: the words agree with the dial ----
+    // A heading shim of -1 is dashes, said in words ("FCU heading managed"), never wrapped into
+    // "359 degrees". A speed target is Mach below 10, else knots, and 0 is the FCU publishing
+    // nothing (the A380 zeroes every output when its FCU is off) — never "mach 0.00".
+
+    [Theory]
+    [InlineData(-1.0, true, "FCU heading managed")]
+    [InlineData(-1.0, false, "FCU heading managed")]
+    [InlineData(345.0, false, "FCU heading 345 degrees, selected")]
+    [InlineData(5.0, false, "FCU heading 005 degrees, selected")]
+    [InlineData(360.0, true, "FCU heading 000 degrees, managed")]
+    public void HeadingReadout_says_dashes_in_words(double shim, bool managed, string expected) =>
+        Assert.Equal(expected, FcuValuePhrases.HeadingReadout(shim, managed));
+
+    [Theory]
+    [InlineData(0.78, "selected", "FCU speed mach 0.78, selected")]
+    [InlineData(250.0, "selected", "FCU speed 250 knots, selected")]
+    [InlineData(80.0, "selected", "FCU speed 080 knots, selected")]
+    [InlineData(0.0, "selected", "FCU speed not available")]
+    public void SpeedReadout_splits_mach_from_knots_and_never_says_mach_zero(double value, string status, string expected) =>
+        Assert.Equal(expected, FcuValuePhrases.SpeedReadout(value, status));
+
+    [Fact]
+    public void The_vertical_and_not_available_readouts()
+    {
+        Assert.Equal("FCU vertical speed managed", FcuValuePhrases.ManagedVerticalReadout(fpaMode: false));
+        Assert.Equal("FCU flight path angle managed", FcuValuePhrases.ManagedVerticalReadout(fpaMode: true));
+        Assert.Equal("FCU altitude not available", FcuValuePhrases.NotAvailableReadout("altitude"));
+    }
+
+    [Theory]
+    [InlineData(-1.0, null)]
+    [InlineData(359.6, 0.0)]
+    [InlineData(5.0, 5.0)]
+    public void HeadingDegrees_is_the_one_normalisation(double shim, double? expected) =>
+        Assert.Equal(expected, FcuValuePhrases.HeadingDegrees(shim));
+
     [Fact]
     public void The_suite_pins_en_US_so_a_comma_decimal_machine_formats_the_same()
     {

@@ -47,19 +47,6 @@ public partial class FlyByWireA380Definition
     private static readonly (int bit, string phrase)[] OansWord1Bits =
         { (11, "Runway ahead") };
 
-    /// <summary>The Shift+H FCU heading readout. A32NX_AUTOPILOT_HEADING_SELECTED is -1 while the
-    /// window shows dashes, so that is said in words — wrapping it first read a managed heading
-    /// as "359 degrees", a number on no display, one keypress after the dial announcer (rightly)
-    /// said nothing for it. Mirrors the speed readout's "FCU speed managed". Pinned by
-    /// FbwFcuDialAnnounceTests.</summary>
-    internal static string FormatFcuHeadingReadout(double raw, bool managed)
-    {
-        if (raw < 0) return "FCU heading managed";
-        double degrees = Math.Round(raw) % 360;
-        if (degrees == 0) degrees = 0;   // -0 would otherwise format as "-000"
-        return $"FCU heading {degrees:000} degrees, {(managed ? "managed" : "selected")}";
-    }
-
     /// <summary>
     /// The hardware-dial announcer's phrase for an FCU selected-value delivery (777-MCP parity,
     /// PR #140): true when <paramref name="varName"/> is one of the vars it listens to, with
@@ -900,8 +887,9 @@ public partial class FlyByWireA380Definition
         {
             if (varName == Fcu.Altitude) _lastFcuAltFeet = value;
             // A readout pending for this var is about to AnnounceImmediate the same value, which
-            // would cut the callout off mid-word. (The V/S readout reads the shims, not the PRIM
-            // words the announcer listens to, so it never collides here.)
+            // would cut the callout off mid-word. (The V/S readout reads the shims for its number but
+            // takes its words — dashes, not available — from the PRIM words the announcer listens to,
+            // and arms the echo when it speaks, so its selection is not spoken a second time.)
             bool readoutPending = (_reqHdg && varName == Fcu.Heading)
                 || (_reqSpd && varName == Fcu.Speed)
                 || (_reqAlt && varName == Fcu.Altitude);
@@ -926,7 +914,12 @@ public partial class FlyByWireA380Definition
             else _pHdgMgd = value;
             if (_pHdgVal.HasValue && _pHdgMgd.HasValue)
             {
-                announcer.AnnounceImmediate(FormatFcuHeadingReadout(_pHdgVal.Value, _pHdgMgd.Value > 0));
+                // The shim reads -1 while dashed (said in words by HeadingReadout) and 0 while the FCU
+                // is off — the dial's own state tells the two apart from a real 000.
+                SuppressFcuValueChangeEcho(Fcu.Heading);
+                announcer.AnnounceImmediate(FcuWindowStateOf(Fcu.Heading) == FcuWindowState.Unavailable
+                    ? FcuValuePhrases.NotAvailableReadout("heading")
+                    : FcuValuePhrases.HeadingReadout(_pHdgVal.Value, _pHdgMgd.Value > 0));
                 _pHdgVal = _pHdgMgd = null; _reqHdg = false;
             }
             return true;
@@ -939,18 +932,17 @@ public partial class FlyByWireA380Definition
                 // Managed speed parks SPEED_SELECTED at -1 (dashes on the FCU). Don't
                 // format that as a bogus "mach -1.00" — announce the managed state.
                 bool managed = _pSpdMgd.Value > 0 || _pSpdVal.Value < 0;
-                string spoken;
-                if (managed)
-                    spoken = "FCU speed managed";
-                else
-                    // A32NX_AUTOPILOT_SPEED_SELECTED holds the target DIRECTLY: a mach number
-                    // when < 1 (e.g. 0.82), otherwise the speed already in KNOTS (e.g. 220 = 220 kt).
-                    // It is NOT an SI velocity — the earlier ×1.943844 m/s→kt conversion was wrong
-                    // and reported 220 kt as "428 knots" (220 × 1.943844). Live-verified airborne:
-                    // the L:var read = 220 with IAS 220. So announce knots verbatim, no scaling.
-                    spoken = _pSpdVal.Value < 10
-                        ? $"FCU speed mach {_pSpdVal.Value:0.00}, selected"
-                        : $"FCU speed {_pSpdVal.Value:000} knots, selected";
+                // A32NX_AUTOPILOT_SPEED_SELECTED holds the target DIRECTLY: a mach number
+                // when < 1 (e.g. 0.82), otherwise the speed already in KNOTS (e.g. 220 = 220 kt).
+                // It is NOT an SI velocity — the earlier ×1.943844 m/s→kt conversion was wrong
+                // and reported 220 kt as "428 knots" (220 × 1.943844). Live-verified airborne:
+                // the L:var read = 220 with IAS 220. So announce knots verbatim, no scaling
+                // (FcuValuePhrases.SpeedReadout, the one Mach/knots split). 0 is the FCU off.
+                SuppressFcuValueChangeEcho(Fcu.Speed);
+                string spoken = FcuWindowStateOf(Fcu.Speed) == FcuWindowState.Unavailable
+                    ? FcuValuePhrases.NotAvailableReadout("speed")
+                    : managed ? "FCU speed managed"
+                    : FcuValuePhrases.SpeedReadout(_pSpdVal.Value, "selected");
                 announcer.AnnounceImmediate(spoken);
                 _pSpdVal = _pSpdMgd = null; _reqSpd = false;
             }
@@ -964,7 +956,10 @@ public partial class FlyByWireA380Definition
         {
             var (av, au) = AltUser(value);
             string st = !_altMode.IsKnown ? "mode not yet known" : _altMode.IsManaged ? "managed" : "selected";
-            announcer.AnnounceImmediate($"FCU altitude {av:0} {au}, {st}");
+            SuppressFcuValueChangeEcho(Fcu.Altitude);
+            announcer.AnnounceImmediate(FcuWindowStateOf(Fcu.Altitude) == FcuWindowState.Unavailable
+                ? FcuValuePhrases.NotAvailableReadout("altitude")
+                : $"FCU altitude {av:0} {au}, {st}");
             _reqAlt = false;
             return true;
         }
@@ -980,9 +975,18 @@ public partial class FlyByWireA380Definition
             else _pVsMode = value;
             if (_pVsMode.HasValue && ((_pVsMode.Value > 0 && _pFpaVal.HasValue) || (_pVsMode.Value <= 0 && _pVsVal.HasValue)))
             {
-                string spoken = _pVsMode.Value > 0
-                    ? $"FCU flight path angle {_pFpaVal!.Value:0.0} degrees"
-                    : $"FCU vertical speed {_pVsVal!.Value:0} feet per minute";
+                bool fpaMode = _pVsMode.Value > 0;
+                SuppressFcuValueChangeEcho(Fcu.VerticalSpeed, Fcu.FlightPathAngle);
+                // The V/S and FPA shims read 0 while dashed; PRIM 1's words say whether the window shows a
+                // selection (the dial's own sources).
+                string spoken = FcuWindowStateOf(fpaMode ? Fcu.FlightPathAngle : Fcu.VerticalSpeed) switch
+                {
+                    FcuWindowState.Unavailable => FcuValuePhrases.NotAvailableReadout("vertical speed"),
+                    FcuWindowState.Dashes => FcuValuePhrases.ManagedVerticalReadout(fpaMode),
+                    _ => fpaMode
+                        ? $"FCU flight path angle {_pFpaVal!.Value:0.0} degrees"
+                        : $"FCU vertical speed {_pVsVal!.Value:0} feet per minute",
+                };
                 announcer.AnnounceImmediate(spoken);
                 _pVsVal = _pFpaVal = _pVsMode = null; _reqVs = false;
             }

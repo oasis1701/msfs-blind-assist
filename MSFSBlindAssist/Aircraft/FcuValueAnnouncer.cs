@@ -234,14 +234,38 @@ internal static class FcuValuePhrases
     /// is a power-up (a settle), not a knob turn.</summary>
     public const string Unavailable = "\u0001FCU unavailable";
 
-    /// <summary>A32NX_AUTOPILOT_HEADING_SELECTED: whole degrees; -1 while dashed (or the FCU failed).</summary>
-    public static string? Heading(double shim)
+    /// <summary>A selected heading/track in whole degrees 0-359, or null while dashed (-1). The one
+    /// normalisation the callout and both readouts use.</summary>
+    public static double? HeadingDegrees(double shim)
     {
         if (shim < 0) return null;
         double degrees = Math.Round(shim) % 360;
-        if (degrees == 0) degrees = 0;   // -0 would otherwise format as "-000"
-        return $"Heading {degrees:000} degrees";
+        return degrees == 0 ? 0 : degrees;   // -0 would otherwise format as "-000"
     }
+
+    /// <summary>A32NX_AUTOPILOT_HEADING_SELECTED: whole degrees; -1 while dashed (or the FCU failed).</summary>
+    public static string? Heading(double shim) =>
+        HeadingDegrees(shim) is double degrees ? $"Heading {degrees:000} degrees" : null;
+
+    /// <summary>The Shift+H heading readout: dashes are said in words, never as a number.</summary>
+    public static string HeadingReadout(double shim, bool managed) =>
+        HeadingDegrees(shim) is double degrees
+            ? $"FCU heading {degrees:000} degrees, {(managed ? "managed" : "selected")}"
+            : "FCU heading managed";
+
+    /// <summary>The Shift+S speed readout from a displayed target: Mach below 10, else knots. 0 (or
+    /// less) is the FCU publishing nothing — never "mach 0.00".</summary>
+    public static string SpeedReadout(double value, string status) =>
+        value <= 0 ? NotAvailableReadout("speed")
+        : value < 10 ? $"FCU speed mach {value:0.00}, {status}"
+        : $"FCU speed {value:000} knots, {status}";
+
+    /// <summary>The Shift+V readout while the V/S (or FPA) window shows dashes.</summary>
+    public static string ManagedVerticalReadout(bool fpaMode) =>
+        fpaMode ? "FCU flight path angle managed" : "FCU vertical speed managed";
+
+    /// <summary>A readout while the FCU itself publishes no value.</summary>
+    public static string NotAvailableReadout(string window) => $"FCU {window} not available";
 
     /// <summary>A32NX_AUTOPILOT_SPEED_SELECTED: the target itself — Mach below 10, else knots;
     /// -1 while dashed. 0 is the FCU being off (the A380 zeroes every output then) — never a
