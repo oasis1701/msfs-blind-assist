@@ -1306,7 +1306,20 @@ public sealed class GroundTrafficMonitor : IDisposable
 
         var status = ScanRunways(RunwaysFor(ctx), watch, now);
         if (status.Count == 0) return;
-        bool interrupts = watch.RunwayEventsInterrupt;
+        // Every runway line — the first status, re-armed or not, and every new occupant, new final or final
+        // turning short — takes its CHANNEL from the watch ADOPTED THIS TICK (_currentWatch): where the pilot
+        // is NOW, never the mode of the tick that REQUESTED this sweep (`watch`, the evaluated cycle). Runway
+        // traffic interrupts while the pilot is ON the runway, and a runway line never cuts off taxi guidance's
+        // exit instructions (Vacating) — both facts about now: a sweep requested at a hold and answered once
+        // the pilot was on the runway queued a short final, and one requested while stopped after landing and
+        // answered once the pilot was vacating interrupted the exit instructions (PR #247 focused re-review
+        // S7). The scan and the words stay the evaluated cycle's, so what is said can be up to one sweep old.
+        // The caller evaluates only a cycle whose key is _watchKey, and outside a tick _currentWatch always
+        // carries _watchKey (SetWatch adopts both, SuspendWatch clears both; a crossing's linger is the same
+        // key in Holding mode), so here the two watches differ at most in mode and in the runways scanned.
+        bool interrupts = _currentWatch.RunwayEventsInterrupt;
+        // The requesting tick's own mode: read ONLY by the re-armed status's wait below (M5).
+        bool cycleInterrupts = watch.RunwayEventsInterrupt;
 
         if (!_watchSummaryDone)
         {
@@ -1338,24 +1351,20 @@ public sealed class GroundTrafficMonitor : IDisposable
             var fin = status.SelectMany(s => s.Finals.Select(f => (Id: f.Ac.ObjectId, s.Key))).ToList();
             var shortFin = status.SelectMany(s => s.Finals.Where(IsShortFinal).Select(f => f.Ac.ObjectId)).ToList();
             bool onRunwayOrShortFinal = occ.Count > 0 || shortFin.Count > 0;
-            // A RE-ARMED status (SetWatch, H2) is judged by the watch ADOPTED THIS TICK (_currentWatch),
-            // never by the possibly-stale cycle a slow sweep completes with (`watch` / `interrupts`, the
-            // mode of the tick that REQUESTED the sweep). That adopted watch decides BOTH things:
-            // - whether a queuing evaluation WAITS (PR #247 re-review M5): a sweep requested before the
-            //   mode change completes with its OLD, queuing cycle, in which nothing can be critical, and
-            //   completing the re-armed status there would spend the once-per-watch re-arm before the new
-            //   mode was ever evaluated — so it waits, but only while the adopted watch still interrupts.
-            //   Waiting on the stale cycle's own mode alone never ended once the pilot went back to a
-            //   queuing mode before any evaluation in the interrupting one completed: every later sweep
-            //   failed the same test and the whole runway watch was muted for the rest of the session
-            //   (PR #247 re-review follow-up, concern 1 — replay G);
-            // - whether the re-armed status is CRITICAL (PR #247 focused re-review N2): the cycle's mode
-            //   can be the interrupting one while the pilot has already moved again — re-armed on stopping
-            //   after landing, the OnRunway cycle's sweep completing once Vacating had been adopted again —
-            //   and that status interrupted the exit instructions (replay X3).
-            // The ordinary first status still follows the evaluated cycle's mode.
-            if (_rearmCriticalOnly && !interrupts && _currentWatch.RunwayEventsInterrupt) return;
-            bool critical = (_rearmCriticalOnly ? _currentWatch.RunwayEventsInterrupt : interrupts) && onRunwayOrShortFinal;
+            // Whether a first status is CRITICAL is the adopted watch's (`interrupts`, above) — for a RE-ARMED
+            // status (SetWatch, H2) since PR #247 focused re-review N2 (re-armed on stopping after landing, the
+            // OnRunway cycle's sweep completing once Vacating had been adopted again interrupted the exit
+            // instructions, replay X3), for the ordinary one since S7. A RE-ARMED status also WAITS while the
+            // evaluated cycle's own mode (`cycleInterrupts`) is a queuing one and the adopted watch interrupts
+            // (PR #247 re-review M5): a sweep requested before the mode change was taken in the OLD mode, and
+            // completing the once-per-watch re-arm on it would judge the pilot's new situation on that old sweep,
+            // so it waits for a sweep requested in the interrupting mode — but only while the adopted watch still
+            // interrupts. Waiting on the stale cycle's own mode alone never ended once the pilot went back to a
+            // queuing mode before any evaluation in the interrupting one completed: every later sweep failed the
+            // same test and the whole runway watch was muted for the rest of the session (PR #247 re-review
+            // follow-up, concern 1 — replay G).
+            if (_rearmCriticalOnly && !cycleInterrupts && interrupts) return;
+            bool critical = interrupts && onRunwayOrShortFinal;
             // The one exception: a status RE-ARMED on entering the runway (SetWatch, H2) is critical-only.
             // With nothing on the runway or on short final — or once the adopted watch no longer interrupts
             // — it completes silently, and marks NOTHING as known (PR #247 B5 follow-up K2): nothing was

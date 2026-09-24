@@ -497,8 +497,9 @@ public class GroundTrafficMonitorRuleTests
     // integration review, Minor 8). The first test below pins the readiness gate, the third R2's re-arm of it on
     // resume. The second no longer pins the cycle: since R2 the re-armed readiness gate stops its sweep as well, and
     // for the first status no test can tell the cycle's watch-gate check apart any more — it is defence in depth
-    // (PR #247 focused re-review M1). The cycle's other half, the watch MODE its request saw, still decides how a
-    // first status is spoken when its sweep straddles a mode change under the same key; no test pins that half.
+    // (PR #247 focused re-review M1). The cycle's other half, the watch its request saw, still decides what is
+    // scanned and said, but no longer the channel: every runway line takes that from the watch adopted this tick
+    // (S7, the next section's tests), and the cycle's own mode is read only by the re-armed status's wait.
     private static AiTrafficDataEventArgs OnOneMileFinal()
         => Ac(1, Threshold09EastM - 1852, RunwayNorthM, 140, "British Airways", "BAW1", onGround: false, altitudeFt: 300);
 
@@ -586,6 +587,104 @@ public class GroundTrafficMonitorRuleTests
 
         h.Tick();                                     // t=4: the first sweep requested after the resume
         Assert.Equal(new[] { "t=4 " + FirstStatusWithTheFinal }, h.Transcript);
+    }
+
+    // ── A runway line takes its channel from where the pilot is NOW ─────────────────────────────────
+
+    // Every runway-watch line takes its CHANNEL (interrupt or queued) from the watch adopted this tick — where
+    // the pilot is now — never from the mode of the tick that requested the sweep it comes from; the scan and the
+    // words stay that sweep's (PR #247 focused re-review S7). In each test below one sweep straddles a mode change
+    // under the same key: requested in one mode and answered only after the next tick adopted the other (the
+    // harness answers it late; in the sim, a sweep slower than the one-second tick).
+
+    /// <summary>Continue at the hold: the route goes on across, and the pilot rolls onto the runway's pavement.</summary>
+    private static void OntoTheRunway(GroundTrafficHarness h)
+    {
+        h.Context = Context(Runway0927(), holdingShort: false);
+        h.Sim.Position = Own(3800, 5, northM: RunwayNorthM - 5, headingDeg: 0);
+    }
+
+    [Fact]
+    public void A_first_status_from_a_sweep_requested_at_the_hold_interrupts_once_the_pilot_is_on_the_runway()
+    {
+        // Holding short of 09 with an aircraft on a 1 nm final. The sweep requested at the hold is answered only
+        // after Continue has taken the pilot onto the runway (the same watch, now OnRunway; the harness compresses
+        // the roll onto the pavement into one tick). Something is on short final and the pilot is on the runway,
+        // so the first status interrupts. It was queued: it followed the Holding mode of the tick that requested
+        // the sweep.
+        var h = AtTheHold(holdingShort: true);
+        h.Sim.Traffic.Add(OnOneMileFinal());
+
+        h.TickOnly();                                // t=1: the watch starts at the hold; a sweep is requested
+        OntoTheRunway(h);
+        h.TickOnly();                                // t=2: the same watch, now OnRunway
+        h.Sim.CompleteSweep();                       // the sweep requested at the hold is answered
+
+        Assert.Equal(new[] { "t=2 [INT] " + FirstStatusWithTheFinal }, h.Transcript);
+    }
+
+    [Fact]
+    public void A_new_short_final_from_a_sweep_requested_at_the_hold_interrupts_once_the_pilot_is_on_the_runway()
+    {
+        // The event path. The first status is spoken at the hold at t=1 (nothing on the runway or on final) and the
+        // pilot holds for 14 s, past RunwayWatchScopes.RearmAfterHoldWindowMs, so entering the runway re-arms
+        // nothing. At t=15 an aircraft is on a 1 nm final to 09, in a sweep requested at the hold and answered only
+        // once Continue has taken the pilot onto the runway: a new short final, told to a pilot on the runway,
+        // interrupts. It was queued, by the Holding mode of the tick that requested the sweep.
+        var h = AtTheHold(holdingShort: true);
+        h.Tick();                                    // t=1: the first status
+        h.Tick(13);                                  // t=2..14: holding
+        h.Sim.Traffic.Add(OnOneMileFinal());
+        h.TickOnly();                                // t=15: a sweep is requested at the hold
+        OntoTheRunway(h);
+        h.TickOnly();                                // t=16: the same watch, now OnRunway
+        h.Sim.CompleteSweep();                       // the sweep requested at the hold is answered
+
+        Assert.Equal(new[]
+        {
+            "t=1 Runway 09: no traffic seen on the runway or on final.",
+            "t=16 [INT] British Airways A320 on final runway 09, 1.0 miles.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void A_new_short_final_from_a_sweep_requested_while_stopped_after_landing_is_queued_once_the_pilot_is_vacating()
+    {
+        // The reverse. Stopped on the runway just landed on (27, on a landing-exit route) the watch is OnRunway, and
+        // its first status is spoken at t=1 (nothing on the runway or on final). At t=2 an aircraft is on a 1 nm
+        // final to 27, in a sweep requested while the pilot is stopped and answered only once the pilot is rolling
+        // again: Vacating, turning off the runway just landed on, where a runway line waits its turn behind taxi
+        // guidance's exit instructions. So the new final is queued. It interrupted, by the OnRunway mode of the tick
+        // that requested the sweep.
+        var h = new GroundTrafficHarness
+        {
+            Context = new GroundTrafficRouteContext
+            {
+                Runways = new[] { Runway0927() },
+                AirportIcao = "TEST",
+                State = TaxiGuidanceState.Taxiing,
+                IsLandingExit = true,
+                LandingRunway = "27",
+                RouteAhead = new List<GroundTrafficRoutePoint>
+                {
+                    new(RunwayNorthM * M, 3000 * M, "C", 0), new((RunwayNorthM - 200) * M, 3000 * M, "C", 200),
+                },
+            },
+        };
+        h.Sim.Position = Own(3000, 0, northM: RunwayNorthM, headingDeg: 270);
+        h.Tick();                                    // t=1: stopped on the runway (OnRunway); the first status
+        h.Sim.Traffic.Add(Ac(1, Threshold27EastM + 1852, RunwayNorthM, 140, "British Airways", "BAW1",
+            headingDeg: 270, onGround: false, altitudeFt: 300));          // 1.0 nm final to 27
+        h.TickOnly();                                // t=2: a sweep is requested while stopped
+        h.Sim.Position = Own(3000, 5, northM: RunwayNorthM, headingDeg: 270);   // rolling again
+        h.TickOnly();                                // t=3: the same watch, now Vacating
+        h.Sim.CompleteSweep();                       // the sweep requested while stopped is answered
+
+        Assert.Equal(new[]
+        {
+            "t=1 Runway 27: no traffic seen on the runway or on final.",
+            "t=3 British Airways A320 on final runway 27, 1.0 miles.",
+        }, h.Transcript);
     }
 
     // ── A withheld interrupt stays an interrupt ─────────────────────────────────────────────────────
