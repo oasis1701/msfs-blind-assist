@@ -348,13 +348,17 @@ whatever Units says).
 
 **FCU availability.** A callout is only released while the FCU itself is producing values —
 `A32NX_FCU_HEALTHY` (A32NX/A330) or `A32NX_FCU_AFS_CP_ACTIVE` (A380, `fcu1||fcu2 afs_cp_active`) —
-and every source above additionally composes `FcuValuePhrases.Unavailable` when its own word reads
-Failure Warning/Functional Test (self-test), or — A380 only — the impossible zero the dead FCU
-writes into every shim and into `FCU_ALT_VALUE` (its selected altitude is never below 100 ft, so 0
-can only mean "off"). `Unavailable` is recorded like dashes, silently, but a delivery FROM
-`Unavailable` (the health var returning, or a source leaving `Unavailable`) begins a settle: the
-A380 zeroes every output rather than dashing it, so without this a battery-on read as nine knob
-turns at once. A power-DOWN is silent outright (staged phrases are dropped).
+which sorts AFTER the value vars in the same batch and clears whatever they staged. Every source
+above also composes `FcuValuePhrases.Unavailable` on its own when its word reads Failure
+Warning/Functional Test (self-test); on the A380 only, so do the speed shim's and `FCU_ALT_VALUE`'s
+own impossible zeros (the FCU never selects 0 kt/Mach, and its selected altitude is never below
+100 ft, so 0 can only mean "off"). The HEADING shim's zero is NOT one of these:
+`FcuValuePhrases.Heading`/`HeadingDegrees` has no zero case — 0° is a real heading — so a dead A380
+FCU's zero heading composes an ordinary "Heading 000 degrees" and is kept silent only by the
+health-var gate above, never by `Unavailable`. `Unavailable` is recorded like dashes, silently, but
+a delivery FROM `Unavailable` (the health var returning, or a source leaving `Unavailable`) begins
+a settle: the A380 zeroes every output rather than dashing it, so without this a battery-on read as
+nine knob turns at once. A power-DOWN is silent outright (staged phrases are dropped).
 
 **Callouts are STAGED, not spoken on delivery, and released at the batch's end.** Whether a change
 is a knob turn depends on the FCU health var too, and that var sorts AFTER the value vars in the
