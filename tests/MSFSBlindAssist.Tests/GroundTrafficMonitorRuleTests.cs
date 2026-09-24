@@ -547,4 +547,35 @@ public class GroundTrafficMonitorRuleTests
         h.Tick();                                    // t=5: the first sweep requested after the resume
         Assert.Equal(new[] { "t=5 " + FirstStatusWithTheFinal }, h.Transcript);
     }
+
+    [Fact]
+    public void The_first_runway_status_ignores_a_sweep_requested_before_the_watch_was_suspended()
+    {
+        // PR #247 integration follow-up R2. Neither existing protection covers this ordering: the sweep is
+        // requested BEFORE the suspension (its cycle's WatchGate is TRUE, so the CYCLE gate — pinned by the
+        // test above — lets it through), and its entries arrive DURING the suspension — unwatched, so the
+        // aircraft on final is dropped — with its COMPLETION only arriving AFTER the watch resumes. Before
+        // R2, the readiness reference was left at the watch's ORIGINAL start (before the sweep was even
+        // requested), so the stale completion passed the readiness gate too and reported a false "no
+        // traffic seen on the runway or on final." with the final still genuinely there. R2 re-arms the
+        // readiness reference to the resume moment, so this completion — requested before it — is ignored;
+        // the next, freshly-requested sweep reports the final correctly.
+        bool suppressed = false;
+        var h = AtTheHold(holdingShort: true);
+        h.Monitor.RunwayWatchSuppressCheck = () => suppressed;
+        h.Sim.Traffic.Add(OnOneMileFinal());
+
+        h.TickOnly();                                // t=1: the watch starts, gate open; sweep requested
+        suppressed = true;
+        h.TickOnly();                                // t=2: the gate closes — the watch is suspended
+        h.Sim.DeliverEntries();                       // that sweep's entries arrive unwatched: the final is dropped
+        suppressed = false;
+        h.TickOnly();                                // t=3: the gate reopens — the watch resumes
+        h.Sim.DeliverCompletion();                    // the sweep requested before the suspension completes
+
+        Assert.Empty(h.Said.All);
+
+        h.Tick();                                     // t=4: the first sweep requested after the resume
+        Assert.Equal(new[] { "t=4 " + FirstStatusWithTheFinal }, h.Transcript);
+    }
 }

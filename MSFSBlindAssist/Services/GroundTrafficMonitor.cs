@@ -190,11 +190,15 @@ public sealed class GroundTrafficMonitor : IDisposable
     private RunwayWatchLinger.Anchor? _linger;
     // A watch the watch GATE closed on is SUSPENDED, not ended (SuspendWatch; PR #247 final review H5):
     // its key and when; "" = none suspended. While suspended _watchKey is "" and nothing is watched,
-    // but every per-watch field (known sets, first-status state, _watchStartedUtc, _loggedWatchMode) is
-    // kept, and SetWatch RESUMES it — no new first status — when the same key comes back within
-    // RunwayWatchScopes.WatchResumeGraceMs. Any other watch adopted meanwhile, an airport or database
-    // change, or the grace lapsing (checked at the top of each tick) ends it as a stopped watch
-    // (EndSuspendedWatch). At most one watch is suspended: adopting an active watch always consumes it.
+    // but every per-watch field (known sets, first-status state, _loggedWatchMode) is kept, and SetWatch
+    // RESUMES it — no new first status — when the same key comes back within
+    // RunwayWatchScopes.WatchResumeGraceMs. _watchStartedUtc is the one exception: SetWatch re-arms it to
+    // the resume moment (PR #247 integration review R2), so the readiness gate (EvaluateRunwayWatch,
+    // AnnounceNearestTrafficSummary) only credits a sweep requested from the resume onward — a sweep still
+    // in flight from before the suspension had its entries delivered while unwatched. Any other watch
+    // adopted meanwhile, an airport or database change, or the grace lapsing (checked at the top of each
+    // tick) ends it as a stopped watch (EndSuspendedWatch). At most one watch is suspended: adopting an
+    // active watch always consumes it.
     private string _suspendedKey = "";
     private DateTime _suspendedUtc = DateTime.MinValue;
     private readonly HashSet<uint> _knownOccupants = new();
@@ -499,9 +503,14 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// <see cref="RunwayWatch.Runways"/>: <see cref="RunwayWatch.Key"/>) restarts the watch; the same
     /// key never does. A SUSPENDED watch (<see cref="SuspendWatch"/>) resumes when its own key comes
     /// back within <see cref="RunwayWatchScopes.WatchResumeGraceMs"/> — same known sets, same
-    /// first-status state, same readiness, no new first status; any other active watch adopted
-    /// meanwhile ends it first, as a stopped watch (PR #247 final review H5). Adopting no watch leaves
-    /// a suspension as it is.
+    /// first-status state, no new first status, but the READINESS reference (<see cref="_watchStartedUtc"/>)
+    /// is re-armed to the resume moment (PR #247 integration review R2): a sweep requested BEFORE the
+    /// suspension began, whose entries then arrived DURING it — unwatched, so an aircraft on final was
+    /// dropped — could otherwise complete AFTER the resume and pass the readiness gate on its original,
+    /// pre-suspension request time, reporting a false "no traffic seen … or on final" with the dropped
+    /// final still genuinely there. Only a sweep requested from the resume onward is now evaluated,
+    /// exactly as at a fresh watch START; any other active watch adopted meanwhile ends the suspension
+    /// first, as a stopped watch (PR #247 final review H5). Adopting no watch leaves a suspension as it is.
     /// </summary>
     private void SetWatch(RunwayWatch watch)
     {
@@ -513,6 +522,9 @@ public sealed class GroundTrafficMonitor : IDisposable
                 _watchKey = _suspendedKey;
                 _suspendedKey = "";
                 _suspendedUtc = DateTime.MinValue;
+                // Re-arm the readiness gate (R2): a sweep in flight since before the suspension must not
+                // be evaluated against the resumed watch — its answer was already decided unwatched.
+                _watchStartedUtc = _utcNow();
                 _log.Info($"ev=watch resume key={_watchKey}");
             }
             else
