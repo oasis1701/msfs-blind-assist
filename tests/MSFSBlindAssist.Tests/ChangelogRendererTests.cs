@@ -242,10 +242,141 @@ public class ChangelogRendererTests
     [Fact]
     public void Render_still_excludes_internal_fragments_even_with_attribution()
     {
+        // The fragment's text is never published — only its contributor is, on the closing line.
         var body = ChangelogRenderer.Render(
             [F(184, "a", ChangelogCategory.Internal, "Refactor.")],
             Credits(184, "robin24"));
 
-        Assert.Equal("", body);
+        Assert.DoesNotContain("Refactor.", body);
+        Assert.Equal("Also contributed to this release: @robin24 (#184).\n", body);
+    }
+
+    // ---- closing credit -----------------------------------------------------
+    // An internal fragment is never rendered, so without this its PR's people would go
+    // uncredited (PR #248). Anyone no entry above credits is named once on a closing line.
+
+    [Fact]
+    public void Render_credits_an_internal_only_contributor_on_a_closing_line()
+    {
+        var body = ChangelogRenderer.Render(
+            [
+                F(184, "a", ChangelogCategory.Fix, "It works now."),
+                F(248, "b", ChangelogCategory.Internal, "Refactor."),
+            ],
+            new Dictionary<int, IReadOnlyList<string>>
+            {
+                [184] = new[] { "robin24" },
+                [248] = new[] { "danielw97" },
+            });
+
+        Assert.Equal(
+            "## Fixes\n\n- It works now. — @robin24\n\nAlso contributed to this release: @danielw97 (#248).\n",
+            body);
+    }
+
+    [Fact]
+    public void Render_does_not_repeat_a_contributor_already_credited_on_an_entry()
+    {
+        var body = ChangelogRenderer.Render(
+            [
+                F(184, "a", ChangelogCategory.Fix, "It works now."),
+                F(248, "b", ChangelogCategory.Internal, "Refactor."),
+            ],
+            new Dictionary<int, IReadOnlyList<string>>
+            {
+                [184] = new[] { "robin24" },
+                [248] = new[] { "danielw97", "robin24" },
+            });
+
+        Assert.EndsWith("\n\nAlso contributed to this release: @danielw97 (#248).\n", body);
+    }
+
+    [Fact]
+    public void Render_adds_no_closing_line_for_a_pr_that_also_has_a_published_entry()
+    {
+        var body = ChangelogRenderer.Render(
+            [
+                F(184, "a", ChangelogCategory.Fix, "It works now."),
+                F(184, "b", ChangelogCategory.Internal, "Refactor."),
+            ],
+            Credits(184, "robin24", "alice"));
+
+        Assert.Equal("## Fixes\n\n- It works now. — @robin24 and @alice\n", body);
+    }
+
+    [Fact]
+    public void Render_orders_the_closing_line_by_first_pr_and_lists_each_persons_prs()
+    {
+        var body = ChangelogRenderer.Render(
+            [
+                F(212, "a", ChangelogCategory.Internal, "One."),
+                F(205, "b", ChangelogCategory.Internal, "Two."),
+                F(248, "c", ChangelogCategory.Internal, "Three."),
+                F(210, "d", ChangelogCategory.Internal, "Four."),
+            ],
+            new Dictionary<int, IReadOnlyList<string>>
+            {
+                [212] = new[] { "bob" },
+                [205] = new[] { "alice", "bob" },
+                [248] = new[] { "carol" },
+                [210] = new[] { "bob" },
+            });
+
+        Assert.Equal(
+            "Also contributed to this release: @alice (#205), @bob (#205, #210, #212) and @carol (#248).\n",
+            body);
+    }
+
+    [Fact]
+    public void Render_joins_two_people_on_the_closing_line_with_and()
+    {
+        var body = ChangelogRenderer.Render(
+            [F(248, "a", ChangelogCategory.Internal, "Refactor.")],
+            Credits(248, "danielw97", "robin24"));
+
+        Assert.Equal("Also contributed to this release: @danielw97 (#248) and @robin24 (#248).\n", body);
+    }
+
+    [Fact]
+    public void Render_ignores_a_map_entry_whose_pr_has_no_fragment()
+    {
+        var body = ChangelogRenderer.Render(
+            [F(184, "a", ChangelogCategory.Fix, "It works now.")],
+            new Dictionary<int, IReadOnlyList<string>>
+            {
+                [184] = new[] { "robin24" },
+                [300] = new[] { "stranger" },
+            });
+
+        Assert.Equal("## Fixes\n\n- It works now. — @robin24\n", body);
+    }
+
+    [Fact]
+    public void Render_adds_no_closing_line_without_a_contributor_map()
+    {
+        var body = ChangelogRenderer.Render(
+        [
+            F(184, "a", ChangelogCategory.Fix, "It works now."),
+            F(248, "b", ChangelogCategory.Internal, "Refactor."),
+        ]);
+
+        Assert.Equal("## Fixes\n\n- It works now.\n", body);
+    }
+
+    [Fact]
+    public void Render_matches_logins_case_insensitively()
+    {
+        var body = ChangelogRenderer.Render(
+            [
+                F(184, "a", ChangelogCategory.Fix, "It works now."),
+                F(248, "b", ChangelogCategory.Internal, "Refactor."),
+            ],
+            new Dictionary<int, IReadOnlyList<string>>
+            {
+                [184] = new[] { "Robin24" },
+                [248] = new[] { "robin24" },
+            });
+
+        Assert.Equal("## Fixes\n\n- It works now. — @Robin24\n", body);
     }
 }

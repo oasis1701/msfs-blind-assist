@@ -1,0 +1,1 @@
+On the FlyByWire A32NX, the VFE and VS readouts had started giving a wrong number after a FlyByWire update; they now read the aircraft's flight augmentation computers, as the PFD speed tape does, and say "not available" when there is nothing to give.
