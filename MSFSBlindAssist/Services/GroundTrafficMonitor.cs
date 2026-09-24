@@ -1113,8 +1113,8 @@ public sealed class GroundTrafficMonitor : IDisposable
             // pulled away inside the Warning distance was swallowed for good if it then stopped there, since
             // Warning would no longer be an escalation; with the motion signals above moving-away fires on
             // the first evaluation that sees traffic opening, which made that the common case. A withheld
-            // Warning escalation is HELD until the traffic stops or closes (above); a zone below Warning
-            // releases it, since no "Stop" is due there.
+            // Warning escalation is HELD until the traffic stops, the pilot closes on it or the gap reaches
+            // StopHoldFloorFt (above); here, a zone below Warning releases it, since no "Stop" is due there.
             if (movingAway)
             {
                 SetStopHeld(ac, GroundTrafficLogic.StopHeldAfterMovingAway(newZone, ac.CurrentZone, ac.StopHeldWhileOpening),
@@ -1789,11 +1789,12 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// <summary>
     /// Holds or releases <paramref name="ac"/>'s withheld "Stop" (<see cref="TrackedGroundAircraft.StopHeldWhileOpening"/>),
     /// logging only a change: <c>ev=stop-hold … state=on distFt=…</c> when a "Stop" withheld as moving away
-    /// starts being held, <c>state=off reason=…</c> when the hold ends — <c>stopped</c> (the traffic is below
-    /// 3 kt) or <c>closing</c> (the pilot closes on it), after which the same evaluation judges the "Stop";
-    /// <c>zone</c> (below the Warning distance), <c>far</c> (beyond the Awareness distance or the tracking
-    /// range) or <c>gate</c> (the proximity gate closed). <paramref name="releaseReason"/> is used only for a
-    /// release. Caller holds _lock.
+    /// starts being held, <c>state=off reason=…</c> when the hold ends — <c>close</c> (the gap has reached
+    /// <see cref="GroundTrafficLogic.StopHoldFloorFt"/>, 200 ft, whatever the speeds: PR #247 integration
+    /// follow-up R1), else <c>stopped</c> (the traffic is below 3 kt), else <c>closing</c> (the pilot closes on
+    /// it), after which the same evaluation judges the "Stop"; <c>zone</c> (still moving away, but below the
+    /// Warning distance), <c>far</c> (beyond the Awareness distance or the tracking range) or <c>gate</c> (the
+    /// proximity gate closed). <paramref name="releaseReason"/> is used only for a release. Caller holds _lock.
     /// </summary>
     private static void SetStopHeld(TrackedGroundAircraft ac, bool held, string releaseReason, double distFt = double.NaN)
     {
@@ -1895,8 +1896,10 @@ internal sealed class TrackedGroundAircraft
     public double PreviousAheadM       = double.NaN;
     public DateTime PreviousAheadUtc   = DateTime.MinValue;
     /// <summary>
-    /// A "Stop" withheld because it was opening is HELD — still unrecorded — while it keeps moving and is
-    /// not closing (<c>GroundTrafficLogic.IsMovingAwayOrHeld</c>); set and cleared only through
+    /// A "Stop" withheld because it was opening is HELD — still unrecorded — while it keeps moving, is not
+    /// closing and is still farther than <c>GroundTrafficLogic.StopHoldFloorFt</c> (200 ft; at the floor the
+    /// hold is released whatever the speeds, PR #247 integration follow-up R1)
+    /// (<c>GroundTrafficLogic.IsMovingAwayOrHeld</c>); set and cleared only through
     /// <c>GroundTrafficMonitor.SetStopHeld</c>, which logs the change.
     /// </summary>
     public bool StopHeldWhileOpening;
