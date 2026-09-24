@@ -4,86 +4,97 @@ using MSFSBlindAssist.SimConnect;
 namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
-/// Decides WHEN a hardware-dialled FCU/MCP selected value is spoken — the FlyByWire jets' half of
-/// the PMDG 777's MCP callouts (PR #140). Pure: no SimConnect, no speech, an injected clock. The
-/// definition hands it the PHRASE for every delivery of a value var (null when the window shows
-/// dashes or the value is not a selection, see <see cref="FcuValuePhrases"/>) and speaks whatever
-/// <see cref="Observe"/> returns. Pinned by FcuValueAnnouncerTests.
+/// Decides WHEN a hardware-dialled FCU/MCP selected value is spoken — the FlyByWire jets' half of the
+/// PMDG 777's MCP callouts (PR #140). Pure: no SimConnect, no speech, an injected clock. The definition
+/// hands it the PHRASE for every delivery of a value var (<see cref="FcuValuePhrases"/>: null while the
+/// window shows dashes, <see cref="FcuValuePhrases.Unavailable"/> while the FCU itself is off) and speaks
+/// whatever <see cref="OnBatchDelivered"/> releases.
 ///
-/// Comparing PHRASES, not raw numbers, is what makes a dashed window an ordinary state: null is
-/// recorded like any other phrase, so the value reappearing on a pull is a change even when it
-/// equals the last selection, and a key first seen dashed still speaks its first selection.
+/// A change is STAGED, never spoken on delivery: whether it is a knob turn depends on the whole sample
+/// (the FCU health var sorts after the value vars in the same batch), so it is judged when the batch has
+/// finished dispatching. Comparing PHRASES, not numbers, is what makes dashes an ordinary state.
 ///
-/// Thread use: <see cref="Observe"/>, <see cref="BeginSettle"/> and <see cref="OnBatchDelivered"/>
-/// run on the UI thread (ProcessSimVarUpdate and the two IAircraftDefinition hooks).
-/// <see cref="SuppressEcho"/> does not — the A32NX altitude setter arms it from a deferred
-/// continuation — so the echo deadlines are the one concurrent map.
+/// Thread use: everything runs on the UI thread except <see cref="SuppressEcho"/> (the A32NX altitude
+/// setter arms it from a deferred continuation), so the echo maps are the only concurrent state.
+/// Pinned by FcuValueAnnouncerTests.
 /// </summary>
 internal sealed class FcuValueAnnouncer
 {
-    /// <summary>How long after MSFSBA itself sets a value its echo is absorbed. The set method
-    /// speaks its own confirmation, so the change arriving back from the sim must not repeat it.</summary>
+    /// <summary>How long after MSFSBA itself sets a value its echo is absorbed.</summary>
     internal const long EchoWindowMs = 2500;
 
-    /// <summary>Consecutive first-batch deliveries with no FCU value moving that end a settle once
-    /// the aircraft has published since the reset. Five, as the MD-11's Md11SeedGate: an FBW load
-    /// can publish its FCU values in more than one burst.</summary>
+    /// <summary>Consecutive first-batch deliveries with no FCU value moving that end a settle once the
+    /// aircraft has published since it began. Five, as Md11SeedGate.</summary>
     internal const int SettleQuietDeliveries = 5;
 
-    /// <summary>First-batch deliveries after which a settle ends whatever happened — a load that
-    /// leaves every FCU value where it was never produces the change the quiet rule waits for.
-    /// About thirty seconds, the MD-11 gate's ceiling: batches keep arriving with the OLD values
-    /// while a flight loads (the MD-11 measured its first publish 8.5 s after AircraftLoaded), so
-    /// this is the one bound that behaves like a clock, and it must outlast a slow load.</summary>
+    /// <summary>First-batch deliveries after which a settle ends whatever happened (~30 s).</summary>
     internal const int SettleMaxDeliveries = 30;
 
     private readonly Dictionary<string, string?> _lastPhrase = new(StringComparer.Ordinal);
+    private readonly List<(string Key, string Phrase)> _staged = new();
+    private readonly HashSet<string> _seenSinceSettle = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, long> _echoUntilMs = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, string[]> _echoKeysByEvent = new(StringComparer.Ordinal);
 
     private bool _settling;
+    private bool _refireIsEvidence;
     private bool _publishedSinceReset;
     private bool _movedSinceDelivery;
     private int _quietDeliveries;
     private int _settleDeliveries;
+    private bool? _fcuHealthy;
+    private bool _healthSeenTrue;
 
-    /// <summary>A context reset's settle is still absorbing changes.</summary>
+    /// <summary>A settle is still absorbing changes.</summary>
     public bool IsSettling => _settling;
 
+    /// <summary>False once the FCU health var, having read healthy, reads unhealthy.</summary>
+    public bool IsFcuAvailable => !(_healthSeenTrue && _fcuHealthy == false);
+
     /// <summary>
-    /// Record <paramref name="phrase"/> as <paramref name="key"/>'s current state and return it
-    /// when it should be spoken now; null otherwise. The baseline is committed FIRST, whatever the
-    /// verdict, so a muted, echoed or settling change is absorbed rather than spoken late.
-    /// <paramref name="countsAsLoadEvidence"/> is false for a value the sim core can write itself
-    /// (a stock SimVar restored from the flight file before the aircraft's WASM has run): its
-    /// moving still restarts a settle's quiet count, but is no proof the aircraft has published.
+    /// Record <paramref name="phrase"/> as <paramref name="key"/>'s state and stage it when it should be
+    /// spoken. The baseline is committed first, whatever the verdict. <paramref name="countsAsLoadEvidence"/>
+    /// is false for a value the sim core can write itself (a stock SimVar restored from the flight file).
     /// </summary>
-    public string? Observe(string key, string? phrase, bool muted, long nowMs, bool countsAsLoadEvidence = true)
+    public void Observe(string key, string? phrase, bool muted, long nowMs, bool countsAsLoadEvidence = true)
     {
         bool seen = _lastPhrase.TryGetValue(key, out string? previous);
         _lastPhrase[key] = phrase;
         bool moved = !seen || !string.Equals(previous, phrase, StringComparison.Ordinal);
+        Unstage(key);   // the latest sample of a key replaces anything still staged for it
 
         if (_settling)
         {
-            if (moved)
+            bool refire = _refireIsEvidence && _seenSinceSettle.Add(key);
+            if (moved || refire)
             {
-                if (countsAsLoadEvidence) _publishedSinceReset = true;
+                if (countsAsLoadEvidence && ((seen && moved) || refire)) _publishedSinceReset = true;
                 _movedSinceDelivery = true;
             }
-            return null;
+            return;
         }
 
-        if (!seen || !moved) return null;          // first sample is the baseline; no change
-        if (phrase == null) return null;           // dashes: recorded, nothing to say
-        if (muted) return null;
-        if (_echoUntilMs.TryGetValue(key, out long until) && nowMs < until) return null;
-        return phrase;
+        if (!seen || !moved) return;                                     // baseline / no change
+        if (phrase == null || phrase == FcuValuePhrases.Unavailable) return;   // dashes / FCU off: recorded
+        if (previous == FcuValuePhrases.Unavailable) { BeginSettle(); return; } // the FCU came back
+        if (!IsFcuAvailable || muted) return;
+        if (_echoUntilMs.TryGetValue(key, out long until) && nowMs < until) return;
+        _staged.Add((key, phrase));
     }
 
-    /// <summary>Absorb every change of each named key for <see cref="EchoWindowMs"/> (not just the next
-    /// one). Name only the keys the write moves. <paramref name="forEvent"/> remembers which keys that
-    /// event armed, so <see cref="RearmEcho"/> can restart the window when a QUEUED event is finally sent.</summary>
+    /// <summary>The FCU health var was delivered (A32NX_FCU_HEALTHY / A32NX_FCU_AFS_CP_ACTIVE).</summary>
+    public void ObserveFcuHealth(bool healthy)
+    {
+        bool cameBack = healthy && _fcuHealthy == false;
+        _fcuHealthy = healthy;
+        if (healthy) _healthSeenTrue = true;
+        if (cameBack) BeginSettle();                     // power-up: absorb the FCU's start-up values
+        else if (!IsFcuAvailable) _staged.Clear();       // power-down: this sample is the FCU going dark
+    }
+
+    /// <summary>Absorb every change of each named key for <see cref="EchoWindowMs"/>. Name only the keys
+    /// the write moves. <paramref name="forEvent"/> remembers which keys that event armed, so
+    /// <see cref="RearmEcho"/> can restart the window when a QUEUED event is finally sent.</summary>
     public void SuppressEcho(IEnumerable<string> keys, long nowMs, string? forEvent = null)
     {
         string[] list = keys.ToArray();
@@ -92,38 +103,70 @@ internal sealed class FcuValueAnnouncer
         if (forEvent != null && list.Length > 0) _echoKeysByEvent[forEvent] = list;
     }
 
-    /// <summary>An event queued while the calc-path probe was running has just been sent: restart the echo
-    /// window it was armed with (none if it never armed one).</summary>
+    /// <summary>A queued event has just been sent: restart the echo window it was armed with.</summary>
     public void RearmEcho(string evt, long nowMs)
     {
         if (_echoKeysByEvent.TryGetValue(evt, out string[]? keys)) SuppressEcho(keys, nowMs);
     }
 
-    /// <summary>
-    /// The values about to arrive describe a different situation — a flight load or a reconnect
-    /// (IAircraftDefinition.OnSimContextReset). Absorb changes until the aircraft has published
-    /// and gone quiet. The baselines are KEPT: a value the load leaves alone is never re-delivered,
-    /// and a wiped baseline would take the pilot's first turn of that knob as its silent seed.
-    /// </summary>
-    public void BeginSettle()
+    /// <summary>Record a phrase silently (the words changed but the value did not — MTRS).</summary>
+    public void Rebaseline(string key, string? phrase)
     {
+        _lastPhrase[key] = phrase;
+        Unstage(key);
+    }
+
+    /// <summary>What the FCU window for <paramref name="key"/> last showed, for the readouts.</summary>
+    public FcuWindowState StateOf(string key)
+    {
+        if (!IsFcuAvailable) return FcuWindowState.Unavailable;
+        if (!_lastPhrase.TryGetValue(key, out string? phrase)) return FcuWindowState.Unknown;
+        if (phrase == null) return FcuWindowState.Dashes;
+        return phrase == FcuValuePhrases.Unavailable ? FcuWindowState.Unavailable : FcuWindowState.Value;
+    }
+
+    /// <summary>
+    /// The values about to arrive describe a different situation. Absorb changes until the aircraft has
+    /// published and gone quiet. Baselines are KEPT. <paramref name="refireIsEvidence"/>: the variable
+    /// cache was cleared (a SimConnect drop), so each key's first delivery since now IS the aircraft
+    /// publishing. A plain settle begun while a re-fire settle runs keeps the re-fire rule.
+    /// </summary>
+    public void BeginSettle(bool refireIsEvidence = false)
+    {
+        if (refireIsEvidence || !_settling)
+        {
+            _refireIsEvidence = refireIsEvidence;
+            _seenSinceSettle.Clear();
+        }
         _settling = true;
         _publishedSinceReset = false;
         _movedSinceDelivery = false;
         _quietDeliveries = 0;
         _settleDeliveries = 0;
+        _staged.Clear();
     }
 
     /// <summary>
-    /// A continuous batch finished dispatching (IAircraftDefinition.OnContinuousBatchDelivered).
-    /// Only batch 1 is counted, so the settle is measured in samples of the sim, not in however
-    /// many batches an aircraft happens to need — and never on a wall clock, which a loading
-    /// screen would run out.
+    /// A continuous batch finished dispatching: every value it carried, and the health var, are current.
+    /// Returns the phrases to speak now (arrival order) and clears them. Only batch 1 counts toward a
+    /// settle, so it is measured in samples of the sim, never on a wall clock.
     /// </summary>
-    public void OnBatchDelivered(int batchNum)
+    public IReadOnlyList<string> OnBatchDelivered(int batchNum)
     {
-        if (!_settling || batchNum != 1) return;
+        if (_settling)
+        {
+            if (batchNum == 1) CountSettleDelivery();
+            _staged.Clear();
+            return Array.Empty<string>();
+        }
+        if (_staged.Count == 0) return Array.Empty<string>();
+        string[] due = IsFcuAvailable ? _staged.Select(s => s.Phrase).ToArray() : Array.Empty<string>();
+        _staged.Clear();
+        return due;
+    }
 
+    private void CountSettleDelivery()
+    {
         _settleDeliveries++;
         if (_movedSinceDelivery)
         {
@@ -134,14 +177,18 @@ internal sealed class FcuValueAnnouncer
         {
             _quietDeliveries++;
         }
-
         if ((_publishedSinceReset && _quietDeliveries >= SettleQuietDeliveries)
             || _settleDeliveries >= SettleMaxDeliveries)
         {
             _settling = false;
         }
     }
+
+    private void Unstage(string key) => _staged.RemoveAll(s => s.Key == key);
 }
+
+/// <summary>What an FCU window last showed, as the announcer recorded it.</summary>
+internal enum FcuWindowState { Unknown, Dashes, Value, Unavailable }
 
 /// <summary>
 /// The words the FCU hardware-dial announcer speaks for each selected value, or null when the
@@ -161,6 +208,11 @@ internal sealed class FcuValueAnnouncer
 /// </summary>
 internal static class FcuValuePhrases
 {
+    /// <summary>The phrase a source composes when the FCU itself produces no value — unpowered, failed
+    /// or in self-test. Recorded, never spoken: it marks the window unavailable so the FCU coming back
+    /// is a power-up (a settle), not a knob turn.</summary>
+    public const string Unavailable = "\u0001FCU unavailable";
+
     /// <summary>A32NX_AUTOPILOT_HEADING_SELECTED: whole degrees; -1 while dashed (or the FCU failed).</summary>
     public static string? Heading(double shim)
     {
