@@ -370,8 +370,9 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     /// <summary>
     /// This tick's watch (<see cref="RunwayWatchScopes.Resolve"/>). <paramref name="ownGsKts"/> is the
-    /// tick's own ground speed: on a landing-exit route, the runway under the aircraft is Vacating
-    /// (queued) while the pilot is still moving and OnRunway (interrupting) once stopped on it.
+    /// tick's own ground speed: on a landing-exit route, the runway just landed on
+    /// (<see cref="GroundTrafficRouteContext.LandingRunway"/> — no other runway under the aircraft) is
+    /// Vacating (queued) while the pilot is still moving and OnRunway (interrupting) once stopped on it.
     /// <see cref="_currentWatch"/>'s mode and key — the PREVIOUS evaluation's, since this runs before
     /// <see cref="SetWatch"/> adopts this tick's watch — feed <see cref="RunwayWatchInputs.VacatingRunwayKey"/>
     /// (the key of the runway that was Vacating, or null when the previous watch was not Vacating, or was
@@ -409,7 +410,8 @@ public sealed class GroundTrafficMonitor : IDisposable
             runways,
             ctx?.IsLandingExit ?? false,
             ownGsKts,
-            VacatingRunwayKey: _currentWatch.Mode == RunwayWatchMode.Vacating ? _currentWatch.Key : null));
+            VacatingRunwayKey: _currentWatch.Mode == RunwayWatchMode.Vacating ? _currentWatch.Key : null,
+            LandingRunway: ctx?.LandingRunway));
     }
 
     /// <summary>

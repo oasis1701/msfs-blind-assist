@@ -39,6 +39,13 @@ public sealed class GroundTrafficRouteContext
     /// <summary>Taxi guidance is steering a landing-exit route — the pilot is turning off the runway just landed on.</summary>
     public bool IsLandingExit { get; init; }
 
+    /// <summary>
+    /// While <see cref="IsLandingExit"/>: the designator of the runway being vacated — the runway the
+    /// landing rollout was flown on (<c>Runway.RunwayID</c>). Null otherwise, and null when that runway
+    /// carries no designator. The runway watch lets ONLY this runway be Vacating (PR #247 final review H4).
+    /// </summary>
+    public string? LandingRunway { get; init; }
+
     /// <summary>The route from the START of the current segment onward, capped at <see cref="RouteAheadMaxMetres"/>.</summary>
     public required IReadOnlyList<GroundTrafficRoutePoint> RouteAhead { get; init; }
 
@@ -82,6 +89,16 @@ public partial class TaxiGuidanceManager
                     _route.StartHoldRunway, _route.Segments.Select(s => s.HoldShortRunway).ToList())
                 : null;
             string? progressive = ProgressiveHoldRunway();
+            // The same condition as IsLandingExitTaxiSteering, read under the same lock.
+            bool landingExit = _state == TaxiGuidanceState.Taxiing && _isLandingExitRoute;
+            // The runway just landed on. _rolloutRunway is set by every rollout entry that sets
+            // _isLandingExitRoute (BeginLandingRollout, BeginLandingRolloutNoGraph — the runway actually
+            // landed on, after any re-plan) and cleared only by StopGuidance; LoadRoute, which clears
+            // _isLandingExitRoute at every hand-off re-route before the rollout re-sets it, never touches
+            // it — so for the whole landing-exit route it names the runway being vacated.
+            string? landingRunway = landingExit && !string.IsNullOrWhiteSpace(_rolloutRunway?.RunwayID)
+                ? _rolloutRunway!.RunwayID
+                : null;
 
             var ahead = new List<GroundTrafficRoutePoint>();
             double? routeEndMetres = null;
@@ -114,8 +131,8 @@ public partial class TaxiGuidanceManager
                 IsRunwayDestination = _isRunwayLineup,
                 IsQueueRoute = _isRunwayLineup || progressive != null,
                 AllowsQueuePrompt = _state == TaxiGuidanceState.Taxiing && _hasJoinedRoute,
-                // The same condition as IsLandingExitTaxiSteering, read under the same lock.
-                IsLandingExit = _state == TaxiGuidanceState.Taxiing && _isLandingExitRoute,
+                IsLandingExit = landingExit,
+                LandingRunway = landingRunway,
                 RouteAhead = ahead,
                 RouteEndMetres = routeEndMetres,
             };

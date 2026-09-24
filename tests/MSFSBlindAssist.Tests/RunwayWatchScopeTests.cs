@@ -26,9 +26,9 @@ public class RunwayWatchScopeTests
     private static RunwayWatchInputs Inputs(
         TaxiGuidanceState state = TaxiGuidanceState.Taxiing, string? held = null, string? progressive = null,
         string? destination = "Runway 27", bool runwayLineup = true, string[]? under = null, string? takeoff = null,
-        bool landingExit = false, double? gs = null, string? vacatingRunwayKey = null)
+        bool landingExit = false, double? gs = null, string? vacatingRunwayKey = null, string? landingRunway = null)
         => new(state, held, progressive, destination, runwayLineup, under ?? Array.Empty<string>(), takeoff, Runways,
-            landingExit, gs, vacatingRunwayKey);
+            landingExit, gs, vacatingRunwayKey, landingRunway);
 
     [Theory]
     [InlineData("27")]
@@ -170,7 +170,7 @@ public class RunwayWatchScopeTests
     [Fact]
     public void Turning_off_on_a_landing_exit_route_is_vacating_and_waits_its_turn()
     {
-        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing, under: new[] { "27" }, landingExit: true, gs: 12));
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing, under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: 12));
         Assert.Equal(RunwayWatchMode.Vacating, w.Mode);
         Assert.Equal("09/27", w.Key);
         Assert.False(w.RunwayEventsInterrupt);
@@ -181,7 +181,7 @@ public class RunwayWatchScopeTests
     [InlineData(2.99)]
     public void Stopped_on_the_runway_on_a_landing_exit_route_is_on_the_runway(double gs)
     {
-        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing, under: new[] { "27" }, landingExit: true, gs: gs));
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing, under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: gs));
         Assert.Equal(RunwayWatchMode.OnRunway, w.Mode);
         Assert.True(w.RunwayEventsInterrupt);
     }
@@ -189,12 +189,51 @@ public class RunwayWatchScopeTests
     [Fact]
     public void Vacating_begins_at_the_minimum_ground_speed()
         => Assert.Equal(RunwayWatchMode.Vacating, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: RunwayWatchScopes.VacatingMinGsKts)).Mode);
+            under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: RunwayWatchScopes.VacatingMinGsKts)).Mode);
 
     [Fact]
     public void An_unknown_ground_speed_on_a_landing_exit_route_is_on_the_runway()
         => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: null)).Mode);
+            under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: null)).Mode);
+
+    // ── Only the runway just landed on is Vacating (PR #247 final review H4) ─────────────────
+    // IsLandingExit is true for the whole landing-exit route, so every runway under the aircraft at
+    // 3 kt or more was Vacating (queued) — including a parallel the exit route crosses (land on the
+    // outer runway, cross the inner one), where runway traffic must interrupt.
+
+    [Fact]
+    public void Turning_off_the_runway_landed_on_is_vacating()
+        => Assert.Equal(RunwayWatchMode.Vacating, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: 12)).Mode);
+
+    [Fact]
+    public void The_runway_landed_on_is_recognised_by_its_other_end()
+        => Assert.Equal(RunwayWatchMode.Vacating, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "09" }, landingExit: true, landingRunway: "27", gs: 12)).Mode);
+
+    [Fact]
+    public void A_different_runway_on_the_landing_exit_route_is_on_the_runway()
+    {
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "22" }, landingExit: true, landingRunway: "27", gs: 12));
+        Assert.Equal(RunwayWatchMode.OnRunway, w.Mode);
+        Assert.True(w.RunwayEventsInterrupt);
+    }
+
+    [Fact]
+    public void With_no_landing_runway_nothing_is_vacating()
+        => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "27" }, landingExit: true, landingRunway: null, gs: 12)).Mode);
+
+    [Fact]
+    public void Crossing_another_runway_while_vacating_interrupts()
+    {
+        // Still on the pavement of the runway landed on, already on the one the exit route crosses.
+        var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "27", "22" }, landingExit: true, landingRunway: "27", gs: 12));
+        Assert.Equal(RunwayWatchMode.OnRunway, w.Mode);
+        Assert.True(w.RunwayEventsInterrupt);
+    }
 
     // ── Vacating hysteresis (PR #247 B3 review Important 1) ────────────────────────────
     // An ordinary deceleration through the turn must not flip Vacating to OnRunway tick by tick: once
@@ -207,36 +246,36 @@ public class RunwayWatchScopeTests
     [Fact]
     public void Vacating_holds_below_the_minimum_speed_once_already_vacating()
         => Assert.Equal(RunwayWatchMode.Vacating, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: 2.0,
+            under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: 2.0,
             vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "27"))).Mode);
 
     [Fact]
     public void Not_yet_vacating_at_the_same_speed_is_on_the_runway()
         => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: 2.0, vacatingRunwayKey: null)).Mode);
+            under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: 2.0, vacatingRunwayKey: null)).Mode);
 
     [Fact]
     public void Vacating_ends_below_the_hold_speed_even_if_it_was_already_vacating()
         => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: 0.9,
+            under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: 0.9,
             vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "27"))).Mode);
 
     [Fact]
     public void Vacating_holds_at_the_hold_speed_boundary()
         => Assert.Equal(RunwayWatchMode.Vacating, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: RunwayWatchScopes.VacatingHoldGsKts,
+            under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: RunwayWatchScopes.VacatingHoldGsKts,
             vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "27"))).Mode);
 
     [Fact]
     public void VacatingRunwayKey_grants_no_hysteresis_off_a_landing_exit_route()
         => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: false, gs: 5,
+            under: new[] { "27" }, landingExit: false, landingRunway: "27", gs: 5,
             vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "27"))).Mode);
 
     [Fact]
     public void A_different_runways_vacating_key_grants_no_hysteresis()
         => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
-            under: new[] { "27" }, landingExit: true, gs: 2.0,
+            under: new[] { "27" }, landingExit: true, landingRunway: "27", gs: 2.0,
             vacatingRunwayKey: RunwayWatchScopes.RunwayKey(Runways, "22"))).Mode);
 
     // ── The first status re-armed on entering the runway (PR #247 final review H2) ────────────
@@ -273,7 +312,7 @@ public class RunwayWatchScopeTests
     public void A_backtrack_outranks_vacating()
     {
         var w = RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.BacktrackDeparture, under: new[] { "09" },
-            landingExit: true, gs: 12));
+            landingExit: true, landingRunway: "27", gs: 12));
         Assert.Equal(RunwayWatchMode.OnRunway, w.Mode);
         Assert.True(w.RunwayEventsInterrupt);
     }
