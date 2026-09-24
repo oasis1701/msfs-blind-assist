@@ -604,6 +604,28 @@ public class GroundTrafficMonitorRuleTests
         h.Sim.Position = Own(3800, 5, northM: RunwayNorthM - 5, headingDeg: 0);
     }
 
+    /// <summary>Just landed on 27, on a landing-exit route that turns off south at east 3000.</summary>
+    private static GroundTrafficRouteContext LandingExitOn27() => new()
+    {
+        Runways = new[] { Runway0927() },
+        AirportIcao = "TEST",
+        State = TaxiGuidanceState.Taxiing,
+        IsLandingExit = true,
+        LandingRunway = "27",
+        RouteAhead = new List<GroundTrafficRoutePoint>
+        {
+            new(RunwayNorthM * M, 3000 * M, "C", 0), new((RunwayNorthM - 200) * M, 3000 * M, "C", 200),
+        },
+    };
+
+    /// <summary>On runway 27 just landed on, at east 3000 heading west: rolling at 5 kt (Vacating) or stopped (OnRunway).</summary>
+    private static SimConnectManager.AircraftPosition OnTheLandingRunway(double gsKts)
+        => Own(3000, gsKts, northM: RunwayNorthM, headingDeg: 270);
+
+    private static AiTrafficDataEventArgs OnOneMileFinalTo27()
+        => Ac(1, Threshold27EastM + 1852, RunwayNorthM, 140, "British Airways", "BAW1",
+            headingDeg: 270, onGround: false, altitudeFt: 300);
+
     [Fact]
     public void A_first_status_from_a_sweep_requested_at_the_hold_interrupts_once_the_pilot_is_on_the_runway()
     {
@@ -656,27 +678,12 @@ public class GroundTrafficMonitorRuleTests
         // again: Vacating, turning off the runway just landed on, where a runway line waits its turn behind taxi
         // guidance's exit instructions. So the new final is queued. It interrupted, by the OnRunway mode of the tick
         // that requested the sweep.
-        var h = new GroundTrafficHarness
-        {
-            Context = new GroundTrafficRouteContext
-            {
-                Runways = new[] { Runway0927() },
-                AirportIcao = "TEST",
-                State = TaxiGuidanceState.Taxiing,
-                IsLandingExit = true,
-                LandingRunway = "27",
-                RouteAhead = new List<GroundTrafficRoutePoint>
-                {
-                    new(RunwayNorthM * M, 3000 * M, "C", 0), new((RunwayNorthM - 200) * M, 3000 * M, "C", 200),
-                },
-            },
-        };
-        h.Sim.Position = Own(3000, 0, northM: RunwayNorthM, headingDeg: 270);
+        var h = new GroundTrafficHarness { Context = LandingExitOn27() };
+        h.Sim.Position = OnTheLandingRunway(gsKts: 0);
         h.Tick();                                    // t=1: stopped on the runway (OnRunway); the first status
-        h.Sim.Traffic.Add(Ac(1, Threshold27EastM + 1852, RunwayNorthM, 140, "British Airways", "BAW1",
-            headingDeg: 270, onGround: false, altitudeFt: 300));          // 1.0 nm final to 27
+        h.Sim.Traffic.Add(OnOneMileFinalTo27());
         h.TickOnly();                                // t=2: a sweep is requested while stopped
-        h.Sim.Position = Own(3000, 5, northM: RunwayNorthM, headingDeg: 270);   // rolling again
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);   // rolling again
         h.TickOnly();                                // t=3: the same watch, now Vacating
         h.Sim.CompleteSweep();                       // the sweep requested while stopped is answered
 
@@ -712,6 +719,62 @@ public class GroundTrafficMonitorRuleTests
         {
             "t=1 " + FirstStatusWithTheFinal,
             "t=4 [INT] Runway 27: no traffic seen on the runway. British Airways A320 on final runway 09, 1.0 miles.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void A_brief_stop_while_vacating_does_not_mute_the_runway_watch()
+    {
+        // Replay G: the re-armed status waits only while the ADOPTED watch interrupts (PR #247 re-review follow-up).
+        // Rolling off the runway just landed on (27, Vacating), the first status is spoken, queued, at t=1. A sweep is
+        // requested at t=2; the pilot stops for one tick at t=3 (OnRunway: the first status is re-armed), and only
+        // then is that sweep answered, so the re-armed status waits. From t=4 the pilot rolls again (Vacating), the
+        // wait ends and the re-armed status completes silently, so the aircraft on a 1 nm final to 27 from t=6 is
+        // announced, queued behind the exit instructions. Waiting on the cycle's own mode alone, every Vacating sweep
+        // waited again and the event path never ran: nothing, through t=25, about a one-mile final to the runway the
+        // pilot was still on (PR #247 focused re-review S9).
+        var h = new GroundTrafficHarness { Context = LandingExitOn27() };
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);
+        h.Tick();                                    // t=1: rolling off the runway (Vacating); the first status
+        h.TickOnly();                                // t=2: a sweep is requested while vacating
+        h.Sim.Position = OnTheLandingRunway(gsKts: 0);
+        h.TickOnly();                                // t=3: a brief stop (OnRunway) — the first status re-armed
+        h.Sim.CompleteSweep();                       // the vacating sweep is answered: the re-armed status waits
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);
+        h.Tick(2);                                   // t=4..5: rolling again (Vacating)
+        h.Sim.Traffic.Add(OnOneMileFinalTo27());
+        h.Tick(20);                                  // t=6..25
+
+        Assert.Equal(new[]
+        {
+            "t=1 Runway 27: no traffic seen on the runway or on final.",
+            "t=6 British Airways A320 on final runway 27, 1.0 miles.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void A_status_re_armed_on_stopping_after_landing_stays_silent_once_the_pilot_is_vacating_again()
+    {
+        // X3: a re-armed status is critical only by the ADOPTED watch (PR #247 focused re-review N2). Rolling off the
+        // runway just landed on (27, Vacating) with an aircraft on a 1 nm final, the first status names it, queued,
+        // at t=1. The pilot stops at t=2 (OnRunway: the first status is re-armed) and a sweep is requested; the pilot
+        // rolls again at t=3 (Vacating), and only then is that sweep answered. Judged by the watch the pilot is now in,
+        // the re-armed status completes silently. Judged by its sweep's OnRunway mode, it interrupted at t=3 — a
+        // status heard two seconds earlier, cutting off taxi guidance's exit instruction (PR #247 focused re-review S9).
+        var h = new GroundTrafficHarness { Context = LandingExitOn27() };
+        h.Sim.Traffic.Add(OnOneMileFinalTo27());
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);
+        h.Tick();                                    // t=1: rolling off the runway (Vacating); the first status
+        h.Sim.Position = OnTheLandingRunway(gsKts: 0);
+        h.TickOnly();                                // t=2: stopped (OnRunway) — re-armed; a sweep is requested
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);
+        h.TickOnly();                                // t=3: rolling again (Vacating)
+        h.Sim.CompleteSweep();                       // the sweep requested while stopped is answered
+        h.Tick(5);                                   // t=4..8
+
+        Assert.Equal(new[]
+        {
+            "t=1 Runway 27: no traffic seen on the runway. British Airways A320 on final runway 27, 1.0 miles.",
         }, h.Transcript);
     }
 
