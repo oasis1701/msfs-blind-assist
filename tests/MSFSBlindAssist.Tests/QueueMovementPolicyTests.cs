@@ -204,9 +204,10 @@ public class QueueMovementPolicyTests
 
     // ── the two distances are separate (PR #247 B5 follow-up K1) ──────────────────────────
     // EvaluateNudge takes nearestOtherAheadFt (leader excluded, disarm only) and nearestAheadFt
-    // (leader included, spoken text only). Before this split, the disarm-only distance also drove the
-    // text, so a leader that stopped again a short way ahead — with nothing else around — was reported
-    // as "The traffic ahead has taxied on." instead of naming the real distance to it.
+    // (leader included: the spoken text — and, since N3 below, silence while it is inside 250 ft).
+    // Before this split, the disarm-only distance also drove the text, so a leader that stopped again a
+    // short way ahead — with nothing else around — was reported as "The traffic ahead has taxied on."
+    // instead of naming the real distance to it.
 
     [Fact]
     public void The_leader_stopped_again_nearby_is_still_named_in_the_move_up_text()
@@ -229,9 +230,38 @@ public class QueueMovementPolicyTests
     public void The_leader_alone_205_feet_ahead_does_not_disarm()
     {
         // nearestOtherAheadFt: null (the 205 ft aircraft IS the leader, excluded), nearestAheadFt: 205.
+        // Not disarmed — and, inside 250 ft, not spoken either: it waits for the gap to open (N3).
         var d = QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
             null, 205, T0.AddSeconds(21), Ft);
-        Assert.Equal(NudgeAction.Speak, d.Action);
-        Assert.Equal("Move up. 205 feet to the traffic ahead.", d.Text);
+        Assert.Equal(NudgeAction.None, d.Action);
     }
+
+    // ── the leader still inside 250 ft says nothing (PR #247 focused re-review N3) ──────────
+    // A leader creeping on at 1.6-2.5 kt stays exempt from the disarm (M3) and can still be within
+    // 250 ft when the 20 s interval comes round, which gave "Move up. 210 feet to the traffic ahead." —
+    // inside the Warning distance. The nudge now stays armed and says nothing until the gap has opened.
+
+    [Fact]
+    public void The_leader_moving_at_two_knots_210_feet_ahead_keeps_the_nudge_armed_and_silent()
+    {
+        var ahead = new[] { (7u, 210.0, 2.0) };
+        var d = QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
+            QueueMovementPolicy.NearestOtherAheadFt(ahead, leaderId: 7u), 210.0, T0.AddSeconds(21), Ft);
+        Assert.Equal(NudgeAction.None, d.Action);   // None, not Disarm: still armed for when the gap opens
+    }
+
+    [Fact]
+    public void The_leader_moving_at_two_knots_260_feet_ahead_is_named_in_the_move_up()
+    {
+        var ahead = new[] { (7u, 260.0, 2.0) };
+        var d = QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
+            QueueMovementPolicy.NearestOtherAheadFt(ahead, leaderId: 7u), 260.0, T0.AddSeconds(21), Ft);
+        Assert.Equal(NudgeAction.Speak, d.Action);
+        Assert.Equal("Move up. 260 feet to the traffic ahead.", d.Text);
+    }
+
+    [Fact]
+    public void The_leader_exactly_250_feet_ahead_is_outside_the_gap()
+        => Assert.Equal(NudgeAction.Speak, QueueMovementPolicy.EvaluateNudge(NudgeState.ArmedAt(T0), true, 0,
+            null, QueueMovementPolicy.NudgeMinGapFt, T0.AddSeconds(21), Ft).Action);
 }

@@ -218,8 +218,9 @@ public sealed class GroundTrafficMonitor : IDisposable
 
     // "Move up" nudge (UI thread). _nudgeLeaderId is the aircraft whose announced departure armed it:
     // while it is still moving it is not "something else ahead" that disarms the nudge (PR #247 final
-    // review H1); stopped again, it counts like any other aircraft (re-review M3). Null whenever the
-    // nudge is disarmed.
+    // review H1) — though while it is still within 250 ft the nudge stays silent (focused re-review
+    // N3); stopped again, it counts like any other aircraft (re-review M3). Null whenever the nudge is
+    // disarmed.
     private NudgeState _nudge = NudgeState.Disarmed;
     private uint? _nudgeLeaderId;
 
@@ -1074,7 +1075,8 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// directly ahead OTHER than the one whose departure armed it while that one is still moving
     /// (<see cref="QueueMovementPolicy.NearestOtherAheadFt"/> — each aircraft's ground speed rides
     /// along; M3), but spoken naming the plain nearest aircraft directly ahead — the leader included,
-    /// since it is still the traffic the pilot will close on (K1). Caller holds _lock.
+    /// since it is still the traffic the pilot will close on (K1) — and not spoken at all while that
+    /// one is still within <see cref="QueueMovementPolicy.NudgeMinGapFt"/> (N3). Caller holds _lock.
     /// </summary>
     private void EvaluateQueueMovement(GroundTrafficRouteContext? ctx, List<TrafficView> views,
         double ownLat, double ownLon, double ownGS, bool useMetres, DateTime now, List<TrafficCallout> candidates)
@@ -1125,7 +1127,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         bool allowsPrompt = ctx is { AllowsQueuePrompt: true } && !onRunway;
         double? nearestOtherFt = QueueMovementPolicy.NearestOtherAheadFt(directlyAhead, _nudgeLeaderId);
         // The disarm rule leaves the leader out only while it is still moving (M3); the spoken text
-        // names whichever aircraft is nearest ahead, the leader included (K1) — the traffic to close on.
+        // names whichever aircraft is nearest ahead, the leader included (K1) — the traffic to close on —
+        // and waits, armed, while that one is still within NudgeMinGapFt (N3).
         var decision = QueueMovementPolicy.EvaluateNudge(_nudge, allowsPrompt, ownGS, nearestOtherFt,
             nearestAhead?.DistFt, now, ft => FormatDistance(ft, useMetres));
         switch (decision.Action)

@@ -48,7 +48,10 @@ public readonly record struct NudgeDecision(NudgeAction Action, string Text);
 /// re-review M3): stopped again (at or below <see cref="GroundTrafficLogic.QueueStoppedGs"/>), it counts
 /// toward the disarm like any other aircraft, so a leader that crept a few feet and stopped inside
 /// <see cref="NudgeMinGapFt"/> disarms the nudge instead of being named in a "Move up" into a gap there
-/// is no room for.</para>
+/// is no room for. While the leader is still moving but still inside <see cref="NudgeMinGapFt"/>, the
+/// nudge neither disarms nor speaks: it waits, armed, and speaks once the gap has opened (PR #247 focused
+/// re-review N3) — a leader creeping on at 1.6-2.5 kt drew "Move up. 210 feet to the traffic ahead.",
+/// inside the Warning distance.</para>
 /// </summary>
 public static class QueueMovementPolicy
 {
@@ -56,7 +59,11 @@ public static class QueueMovementPolicy
     public const double OwnQueueGsKts = 5.0;
     public const int NudgeIntervalMs = 20000;
     public const int NudgeMax = 3;
-    /// <summary>Closer than this to the nearest aircraft ahead (other than the one that left, while it is still moving), there is nothing to move up into.</summary>
+    /// <summary>
+    /// Closer than this to anything directly ahead, there is nothing to move up into: any other aircraft
+    /// this close disarms the nudge (the one that left counts only once it has stopped again), and the
+    /// one that left, while still moving this close, keeps it armed and silent until the gap opens (N3).
+    /// </summary>
     public const double NudgeMinGapFt = 250.0;
     /// <summary>The pilot rolling at this speed has moved up: disarm.</summary>
     public const double NudgeResetOwnGsKts = 2.0;
@@ -122,11 +129,13 @@ public static class QueueMovementPolicy
     /// What the nudge does this evaluation. <paramref name="nearestOtherAheadFt"/> — the nearest
     /// aircraft directly ahead OTHER than the one whose departure armed the nudge while that one is
     /// still moving (<see cref="NearestOtherAheadFt"/>), null when there is none in range — decides ONLY
-    /// the <see cref="NudgeMinGapFt"/> disarm rule: something else closing the gap is a reason to hold,
-    /// the departed leader still pulling away is not — but the leader stopped again within it is (M3).
+    /// the <see cref="NudgeMinGapFt"/> disarm rule: something else closing the gap disarms the nudge,
+    /// the departed leader still pulling away does not — but the leader stopped again within it does (M3).
     /// <paramref name="nearestAheadFt"/> — the nearest aircraft directly ahead, the leader included,
     /// null when nothing is ahead at all — is what the spoken text names, since whichever aircraft that
-    /// is genuinely is the traffic the pilot will close on next (PR #247 B5 follow-up K1).
+    /// is genuinely is the traffic the pilot will close on next (PR #247 B5 follow-up K1); while it is
+    /// still inside <see cref="NudgeMinGapFt"/> (the leader creeping on, which the disarm rule exempts)
+    /// the nudge says nothing and stays armed until the gap has opened (PR #247 focused re-review N3).
     /// </summary>
     public static NudgeDecision EvaluateNudge(NudgeState state, bool contextAllowsPrompt, double ownGsKts,
         double? nearestOtherAheadFt, double? nearestAheadFt, DateTime nowUtc, Func<double, string> formatDistance)
@@ -135,6 +144,10 @@ public static class QueueMovementPolicy
         if (!contextAllowsPrompt || ownGsKts >= NudgeResetOwnGsKts) return new NudgeDecision(NudgeAction.Disarm, "");
         if (nearestOtherAheadFt is double gap && gap < NudgeMinGapFt) return new NudgeDecision(NudgeAction.Disarm, "");
         if (state.Count >= NudgeMax) return new NudgeDecision(NudgeAction.Disarm, "");
+        // Anything ahead still inside NudgeMinGapFt — after the disarm rules above that can only be the
+        // departed leader, exempt from them while it creeps on — is no room to move up into yet: stay
+        // armed and say nothing; the prompt speaks once the gap has opened (PR #247 focused re-review N3).
+        if (nearestAheadFt is double ahead && ahead < NudgeMinGapFt) return new NudgeDecision(NudgeAction.None, "");
         if (ownGsKts >= NudgeStoppedOwnGsKts) return new NudgeDecision(NudgeAction.None, "");
         if ((nowUtc - state.LastSpokenUtc).TotalMilliseconds < NudgeIntervalMs) return new NudgeDecision(NudgeAction.None, "");
         string text = nearestAheadFt is double d
