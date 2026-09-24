@@ -64,6 +64,8 @@ public class GroundTrafficRequestIdTests
     // ── The source itself (PR #247 final review H8) ──────────────────────────────────────────
     // The hand-kept list above cannot see a FUTURE hand-numbered cast. These scan every *.cs under
     // MSFSBlindAssist/ for a raw (DATA_REQUESTS)NNN cast — what actually ships — and hold the same line.
+    // Qualified or not (PR #247 re-review M6): FlyByWireA320Definition.cs already casts to
+    // (SimConnect.SimConnectManager.DATA_REQUESTS), a form the first pattern could not see.
 
     [Fact]
     public void No_hand_numbered_request_id_in_the_source_lies_in_the_sweep_range()
@@ -82,10 +84,14 @@ public class GroundTrafficRequestIdTests
                 $"request id {id} is a hand-numbered guidance frame AND a named DATA_REQUESTS value");
     }
 
-    /// <summary>Every id cast by hand to DATA_REQUESTS anywhere in the app's own source.</summary>
+    /// <summary>
+    /// Every id cast by hand to DATA_REQUESTS anywhere in the app's own source — bare
+    /// ((DATA_REQUESTS)507), class-qualified ((SimConnectManager.DATA_REQUESTS)507) or
+    /// namespace-qualified ((SimConnect.SimConnectManager.DATA_REQUESTS)507).
+    /// </summary>
     private static HashSet<uint> HandNumberedRequestIds()
     {
-        var cast = new Regex(@"\((?:SimConnectManager\.)?DATA_REQUESTS\)\s*(\d+)");
+        var cast = new Regex(@"\((?:[\w.]+\.)?DATA_REQUESTS\)\s*(\d+)");
         string app = Path.Combine(RepoRoot(), "MSFSBlindAssist");
         var ids = new HashSet<uint>();
         foreach (string file in Directory.EnumerateFiles(app, "*.cs", SearchOption.AllDirectories))
