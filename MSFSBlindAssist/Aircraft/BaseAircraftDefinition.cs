@@ -605,7 +605,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         text = "";
         if (!GetVariables().TryGetValue(varKey, out var def) || !def.IsArinc429) return false;
         var w = new SimConnect.Arinc429Word(value);
-        if (!(w.IsNormalOperation || w.IsFunctionalTest)) { text = def.Arinc429NotAvailableText; return true; }
+        if (!w.HasData) { text = def.Arinc429NotAvailableText; return true; }
         string v = w.Value.ToString(def.Arinc429Format, System.Globalization.CultureInfo.InvariantCulture);
         text = string.IsNullOrEmpty(def.Arinc429Unit) ? v : $"{v} {def.Arinc429Unit}";
         return true;
