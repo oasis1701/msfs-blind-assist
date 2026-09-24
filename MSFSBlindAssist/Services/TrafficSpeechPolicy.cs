@@ -49,7 +49,8 @@ public static class TrafficSpeechPolicy
     /// earlier (PR #247 integration follow-up R3 — with the faster polling this task's own timing brought, a
     /// same-kind "Stop" routinely followed within a second, so equal urgency joined lesser urgency here). A
     /// withheld interrupt is left out of the plan, so the caller neither speaks nor latches it: it is
-    /// re-evaluated at the caller's next evaluation and, still due, interrupts once this window has passed.
+    /// re-evaluated at the caller's next evaluation and, still due, interrupts at the first evaluation after
+    /// this window at which nothing more urgent, and nothing as urgent but nearer, is due.
     /// It is never moved to the queued alert slot instead — there it was latched with no protect window of
     /// its own, and the next interrupt, even a less urgent one, cancelled it before it was heard (PR #247
     /// focused re-review I1).

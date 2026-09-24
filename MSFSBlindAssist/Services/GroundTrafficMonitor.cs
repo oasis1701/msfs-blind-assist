@@ -1306,8 +1306,9 @@ public sealed class GroundTrafficMonitor : IDisposable
 
         var status = ScanRunways(RunwaysFor(ctx), watch, now);
         if (status.Count == 0) return;
-        // Every runway line — the first status, re-armed or not, and every new occupant, new final or final
-        // turning short — takes its CHANNEL from the watch ADOPTED THIS TICK (_currentWatch): where the pilot
+        // Every runway line that can interrupt — the first status, re-armed or not, and every new occupant, new
+        // final or final turning short ("no traffic seen on the runway now" never can: it is always queued) —
+        // takes its CHANNEL from the watch ADOPTED THIS TICK (_currentWatch): where the pilot
         // is NOW, never the mode of the tick that REQUESTED this sweep (`watch`, the evaluated cycle). Runway
         // traffic interrupts while the pilot is ON the runway, and a runway line never cuts off taxi guidance's
         // exit instructions (Vacating) — both facts about now: a sweep requested at a hold and answered once
@@ -1316,7 +1317,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         // S7). The scan and the words stay the evaluated cycle's, so what is said can be up to one sweep old.
         // The caller evaluates only a cycle whose key is _watchKey, and outside a tick _currentWatch always
         // carries _watchKey (SetWatch adopts both, SuspendWatch clears both; a crossing's linger is the same
-        // key in Holding mode), so here the two watches differ at most in mode and in the runways scanned.
+        // key in Holding mode), so here the two watches differ at most in mode, in the runways scanned and in
+        // the name each runway is spoken by.
         bool interrupts = _currentWatch.RunwayEventsInterrupt;
         // The requesting tick's own mode: read ONLY by the re-armed status's wait below (M5).
         bool cycleInterrupts = watch.RunwayEventsInterrupt;
@@ -1801,9 +1803,10 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// starts being held, <c>state=off reason=…</c> when the hold ends — <c>close</c> (the gap has reached
     /// <see cref="GroundTrafficLogic.StopHoldFloorFt"/>, 200 ft, whatever the speeds: PR #247 integration
     /// follow-up R1), else <c>stopped</c> (the traffic is below 3 kt), else <c>closing</c> (the pilot closes on
-    /// it), after which the same evaluation judges the "Stop"; <c>zone</c> (still moving away, but below the
-    /// Warning distance), <c>far</c> (beyond the Awareness distance or the tracking range) or <c>gate</c> (the
-    /// proximity gate closed). <paramref name="releaseReason"/> is used only for a release. Caller holds _lock.
+    /// it), after which the same evaluation judges the "Stop"; <c>zone</c> (still moving away, but outside the
+    /// Warning distance, or not a route threat), <c>far</c> (beyond the Awareness distance or the tracking
+    /// range) or <c>gate</c> (the proximity gate closed). <paramref name="releaseReason"/> is used only for a
+    /// release. Caller holds _lock.
     /// </summary>
     private static void SetStopHeld(TrackedGroundAircraft ac, bool held, string releaseReason, double distFt = double.NaN)
     {

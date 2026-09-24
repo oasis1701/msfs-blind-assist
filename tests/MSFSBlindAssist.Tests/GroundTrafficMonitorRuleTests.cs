@@ -498,8 +498,9 @@ public class GroundTrafficMonitorRuleTests
     // resume. The second no longer pins the cycle: since R2 the re-armed readiness gate stops its sweep as well, and
     // for the first status no test can tell the cycle's watch-gate check apart any more — it is defence in depth
     // (PR #247 focused re-review M1). The cycle's other half, the watch its request saw, still decides what is
-    // scanned and said, but no longer the channel: every runway line takes that from the watch adopted this tick
-    // (S7, the next section's tests), and the cycle's own mode is read only by the re-armed status's wait.
+    // scanned and said, but no longer the channel: every runway line that can interrupt takes that from the watch
+    // adopted this tick (S7, the next section's tests), and the cycle's own mode is read only by the re-armed
+    // status's wait.
     private static AiTrafficDataEventArgs OnOneMileFinal()
         => Ac(1, Threshold09EastM - 1852, RunwayNorthM, 140, "British Airways", "BAW1", onGround: false, altitudeFt: 300);
 
@@ -591,7 +592,8 @@ public class GroundTrafficMonitorRuleTests
 
     // ── A runway line takes its channel from where the pilot is NOW ─────────────────────────────────
 
-    // Every runway-watch line takes its CHANNEL (interrupt or queued) from the watch adopted this tick — where
+    // Every runway-watch line that can interrupt ("no traffic seen on the runway now" never can: it is always queued)
+    // takes its CHANNEL (interrupt or queued) from the watch adopted this tick — where
     // the pilot is now — never from the mode of the tick that requested the sweep it comes from; the scan and the
     // words stay that sweep's (PR #247 focused re-review S7). In each test below one sweep straddles a mode change
     // under the same key: requested in one mode and answered only after the next tick adopted the other (the
@@ -781,7 +783,8 @@ public class GroundTrafficMonitorRuleTests
     // ── A withheld interrupt stays an interrupt ─────────────────────────────────────────────────────
 
     // Inside InterruptProtectMs of the last interrupt, an interrupt that is not STRICTLY more urgent is withheld:
-    // not spoken, not latched, re-evaluated every sweep, and spoken as an interrupt once the window ends — never
+    // not spoken, not latched, re-evaluated every sweep, and spoken as an interrupt at the first evaluation after the
+    // window at which nothing more urgent, and nothing as urgent but nearer, is due — never
     // moved to the queued channel, where it was latched with no protect window of its own and the next interrupt
     // (even a less urgent one, or another feature's) cancelled it before it was heard (PR #247 focused re-review
     // I1: both scenarios below are the reviewer's probes, ported unchanged).
