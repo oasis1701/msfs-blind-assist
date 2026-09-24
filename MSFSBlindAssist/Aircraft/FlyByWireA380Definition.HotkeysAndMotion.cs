@@ -307,8 +307,8 @@ public partial class FlyByWireA380Definition
     public bool SetFCUHeadingValue(int hdg, SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
-        s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
         SuppressFcuValueChangeEcho("A32NX_AUTOPILOT_HEADING_SELECTED");   // the explicit readback below is the single confirmation
+        s.SendEvent("A32NX.FCU_HDG_SET", (uint)hdg);
         // Clean Fenix-style readback (NOT the racy RequestFCUHeadingWithStatus, which read the
         // cache via forceUpdate and spoke the STALE value first): announce the value we just
         // set plus the cached managed dot, once. The window's SelectAll gives the field echo.
@@ -321,8 +321,8 @@ public partial class FlyByWireA380Definition
     public bool SetFCUSpeedValue(int internalSpeed, SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) { a.AnnounceImmediate("Not connected to simulator."); return false; }
-        s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
         SuppressFcuValueChangeEcho("A32NX_AUTOPILOT_SPEED_SELECTED");
+        s.SendEvent("A32NX.FCU_SPD_SET", (uint)internalSpeed);
         // Clean Fenix-style readback (NOT the racy RequestFCUSpeedWithStatus): the value we set
         // plus the cached managed dot, once. internalSpeed < 100 is Mach*100 (e.g. 78 = 0.78).
         string spdStatus = (s.GetCachedVariableValue("A32NX_FCU_SPD_MANAGED_DOT") ?? 0) > 0.5 ? "managed" : "selected";
@@ -349,8 +349,8 @@ public partial class FlyByWireA380Definition
             s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
             System.Threading.Thread.Sleep(50);
         }
-        s.SendEvent("A32NX.FCU_ALT_SET", rounded);
         SuppressFcuValueChangeEcho("FCU_ALT_VALUE");
+        s.SendEvent("A32NX.FCU_ALT_SET", rounded);
         // Fenix-style readback: speak the FCU altitude + managed/selected state once, using the
         // value we just set (no racy cache re-read) plus the cached managed dot — mirroring the
         // "FCU altitude 36000, managed/selected" Fenix announces. The window's SelectAll
@@ -377,8 +377,8 @@ public partial class FlyByWireA380Definition
         // reads A320_Neo_FCU_VS_SET_DATA and does Math.round(value)/10 in FPA mode,
         // gated on |value| < 100 — an ×100 encoding was silently IGNORED, not clamped).
         int toSend = Math.Abs(value) < 100 ? (int)Math.Round(value * 10) : (int)Math.Round(value);
+        SuppressFcuValueChangeEcho(FcuVerticalEchoKeys);
         s.ExecuteCalculatorCode($"{toSend} (>K:A32NX.FCU_VS_SET)");
-        SuppressFcuValueChangeEcho("A32NX_AUTOPILOT_VS_SELECTED", "A32NX_AUTOPILOT_FPA_SELECTED");
         // Consistent Fenix-style readback (V/S has no managed/selected dot, so just the value).
         if (Math.Abs(value) < 100)
             a.AnnounceImmediate($"FCU flight path angle {value:0.0}");
@@ -396,19 +396,30 @@ public partial class FlyByWireA380Definition
     // transition) speaks — the Fenix-style behaviour the user asked for. The old
     // unconditional readback spoke the full value on EVERY press, identical to the
     // output-mode read query and far too verbose for a knob nudge.
-    /// <summary>The FCU value var(s) an FCU button actually moves, for the echo window. A button
-    /// that touches no value var (AP/ATHR disconnect, the EFIS filter buttons) returns none.
+    /// <summary>The announcer's two vertical-channel sources — a V/S write re-expresses both.</summary>
+    private static readonly string[] FcuVerticalEchoKeys =
+        { "A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", "A32NX_PRIM_1_SELECTED_FPA" };
+
+    /// <summary>A HDG·V/S &lt;-&gt; TRK·FPA flip re-syncs the heading window onto the track as well as
+    /// the vertical channel.</summary>
+    private static readonly string[] FcuTrkFpaEchoKeys =
+        { "A32NX_AUTOPILOT_HEADING_SELECTED", "A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", "A32NX_PRIM_1_SELECTED_FPA" };
+
+    /// <summary>The FCU value var(s) an FCU button actually moves, for the echo window — always vars
+    /// the announcer listens to (TryComposeFcuValuePhrase; pinned by FbwFcuDialAnnounceTests). A
+    /// button that touches no value var (AP/ATHR disconnect, the EFIS filter buttons) returns none.
     /// SPD/MACH toggle is deliberately excluded: it genuinely re-expresses the speed target in the
     /// other unit, and on the silent (readback:false) path nothing else would speak the new
     /// number.</summary>
     internal static string[] FcuEchoKeysForEvent(string evt)
     {
         if (evt.Contains("SPD_MACH_TOGGLE", StringComparison.Ordinal)) return Array.Empty<string>();
+        if (evt.Contains("TRK_FPA_TOGGLE", StringComparison.Ordinal)) return (string[])FcuTrkFpaEchoKeys.Clone();
         if (evt.Contains("HDG", StringComparison.Ordinal)) return new[] { "A32NX_AUTOPILOT_HEADING_SELECTED" };
         if (evt.Contains("SPD", StringComparison.Ordinal)) return new[] { "A32NX_AUTOPILOT_SPEED_SELECTED" };
         if (evt.Contains("ALT", StringComparison.Ordinal)) return new[] { "FCU_ALT_VALUE" };
         if (evt.Contains("VS", StringComparison.Ordinal) || evt.Contains("FPA", StringComparison.Ordinal))
-            return new[] { "A32NX_AUTOPILOT_VS_SELECTED", "A32NX_AUTOPILOT_FPA_SELECTED" };
+            return (string[])FcuVerticalEchoKeys.Clone();
         return Array.Empty<string>();
     }
 
@@ -416,11 +427,10 @@ public partial class FlyByWireA380Definition
     /// driven by writing the L:var — which is why this lives here rather than in FireFCUButton:
     /// every MSFSBA-origin path (the heading window's button, the FCU panel combo) must go through
     /// one place that also arms the echo window, or the toggle speaks its own confirmation and then
-    /// the re-synced V/S and FPA vars announce their values on top of it.</summary>
+    /// the re-synced heading, V/S and FPA values announce on top of it.</summary>
     public void SetTrkFpaMode(bool trkFpa, SimConnectManager s)
     {
-        SuppressFcuValueChangeEcho("A32NX_AUTOPILOT_VS_SELECTED", "A32NX_AUTOPILOT_FPA_SELECTED",
-                                   "A32NX_AUTOPILOT_HEADING_SELECTED");
+        SuppressFcuValueChangeEcho(FcuTrkFpaEchoKeys);
         s.ExecuteCalculatorCode($"{(trkFpa ? 1 : 0)} (>L:A32NX_TRK_FPA_MODE_ACTIVE)");
     }
 

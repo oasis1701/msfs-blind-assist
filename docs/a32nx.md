@@ -300,6 +300,64 @@ the base PFD panel's FAC rows (`PFD_VSW`, `PFD_VALPHAPROT`, `PFD_VALPHAMAX`), wh
 L-vars to be gone; the FAC words predate #10890, so this migration also works on an older
 build.
 
+### FCU hardware-dial callouts — speak only what the window SHOWS (PR #140, 2026-09)
+
+Turning an FCU knob on hardware (MobiFlight, FSUIPC, the 3-D cockpit) speaks the new value on the
+A32NX, the Headwind A330 (inherited unchanged) and the A380X — the PMDG 777's MCP callouts. The
+definition composes a phrase per delivery (`TryComposeFcuValuePhrase` → `FcuValuePhrases`) and
+`FcuValueAnnouncer` decides whether it is spoken. Pinned by `FbwFcuDialAnnounceTests`,
+`FcuValuePhrasesTests` and `FcuValueAnnouncerTests`.
+
+**⚠️ The sources are the whole feature.** While a window shows dashes, the A32NX FCU keeps copying
+the aircraft's LIVE data into its plain display values (`FcuComputer.cpp`: the dashes branches set
+the heading value from the ADIRS heading or track, the speed from CAS or Mach clamped 100-399, and
+the V/S from the current vertical speed rounded to 100 fpm). The first version announced
+`A32NX_FCU_AFS_DISPLAY_{HDG_TRK,SPD_MACH,VS_FPA}_VALUE`, so the heading was read out as the
+aircraft turned on the ground (the report that found it), and the airspeed and vertical speed
+would have been narrated through every take-off roll and managed climb. Pairing those values with
+the separate `…_DASHES` flags does not fix it either: the flag and the value arrive on different
+SimConnect deliveries, so the order races. Every source must say ON ITS OWN whether its window
+shows a selection:
+
+| | A32NX / A330 | A380X |
+| --- | --- | --- |
+| Heading | `A32NX_AUTOPILOT_HEADING_SELECTED` (shim, -1 while dashed or the FCU failed) | same shim |
+| Speed | `A32NX_AUTOPILOT_SPEED_SELECTED` (shim, -1 while dashed; Mach below 10, knots above) | same shim |
+| Altitude | `A32NX_FCU_AFS_DISPLAY_ALT_VALUE` (never dashed) | stock `AUTOPILOT ALTITUDE LOCK VAR:3` (`FCU_ALT_VALUE`), metric under MTRS |
+| V/S | `A32NX_FCU_SELECTED_VERTICAL_SPEED` (FCU bus ARINC429 word) | `A32NX_PRIM_1_SELECTED_VERTICAL_SPEED` (PRIM FG word) |
+| FPA | `A32NX_FCU_SELECTED_FPA` | `A32NX_PRIM_1_SELECTED_FPA` |
+
+The V/S word is Normal Operation only while the V/S window shows a V/S selection — No Computed
+Data while dashed or in TRK/FPA — and the FPA word the reverse (`FcuComputer.cpp` bus-output SSMs;
+the A380 PRIM's `A380PrimComputerFctl.cpp` mirrors them, and its FCU shows dashes exactly when the
+master PRIM's word for the active mode is not Normal Operation). So neither needs the TRK/FPA mode,
+and a selected V/S of 0 (a push-to-level-off) is spoken while dashes are not. The
+`A32NX_AUTOPILOT_{VS,FPA}_SELECTED` shims are NOT sources on either airframe: they read 0 while
+dashed and in the other mode. The A380's PRIM 1 words carry the same single-source limitation as
+its PRIM 1 envelope speeds: with PRIM 1 not the master they go silent rather than follow PRIM 2/3.
+Batched words are registered with Units `"number"` — a batched L:var is read in its registered
+unit, and a unit conversion would destroy the packed word (individual defs always read an L:var as
+`"number"`, whatever Units says).
+
+**The speak/stay-silent rules (`FcuValueAnnouncer`).** Phrases are compared, not numbers: the
+first sample of a key is a silent baseline; a dashed window (null phrase) is recorded but silent,
+so pulling back out of managed speaks the value even when it equals the last selection, and a key
+first seen dashed still speaks its first selection (an FMS departure). A Ctrl+M mute, and a
+readout about to speak the same value, still RECORD the value — skipping the call left a stale
+baseline that swallowed a later turn back to the old value. MSFSBA's own writes arm a 2.5 s echo
+window for exactly the vars they move, BEFORE the write (`SuppressFcuValueChangeEcho`,
+`FcuEchoKeysForEvent`; a TRK/FPA flip names heading, V/S and FPA). After a context reset — a
+reconnect or a flight load, `OnSimContextReset` — changes are absorbed until an FCU value has moved
+and then three first-batch deliveries pass quietly, or twenty pass regardless; the baselines are
+kept, never wiped, because a value the load leaves alone is never re-delivered and a wiped
+baseline would take the pilot's first turn as its silent seed. Callouts yield when the shared
+announcement queue is backed up.
+
+`A32NX_TRK_FPA_MODE_ACTIVE` stays OnRequest on the A32NX: nothing above needs the mode, and
+streaming it as announced spoke every panel TRK/FPA press twice (the press feedback plus the
+generic monitor). Registering the speed shim also fed the Ctrl+S window's SPD/MACH button label,
+which had always read it from a cache that was never filled.
+
 ### Fenix A320 AI display reads — the camera indices are MEASURED (2026-09-21)
 
 Five reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/FenixA320DisplayReads.cs`,

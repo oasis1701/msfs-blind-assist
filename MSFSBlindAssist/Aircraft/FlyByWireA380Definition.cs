@@ -2026,22 +2026,44 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // either the SimConnect side or ours. See the FCU readout in .SimVarUpdate.cs.
         Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "number");
         Read("A32NX_AUTOPILOT_FPA_SELECTED", "Selected FPA", "number");
-        // The four FCU selected VALUES are continuously monitored so hardware knob turns
-        // (MobiFlight/FSUIPC dials, the cockpit knobs) announce on change — 777-MCP parity;
-        // the change block in ProcessSimVarUpdate formats them for speech. Those values are
-        // already in DISPLAY units per the #10855 note above — the announce block must not
-        // re-scale them (see FcuAnnounceDisplayValue in .SimVarUpdate.cs).
+        // FCU selected values the hardware-dial announcer speaks as they change — 777-MCP parity
+        // (TryComposeFcuValuePhrase in .SimVarUpdate.cs). Heading and speed are the shims above:
+        // the FCU writes them as -1 while the window shows dashes, so a dashed window is silent
+        // by construction. ExcludeFromBatch gives each its own PERIOD.SECOND subscription; the
+        // Shift+H/S readouts' force-read is honoured by its next delivery (never by re-issuing the
+        // subscription's own request id, which would replace it), so they answer within a second.
         //
-        // ExcludeFromBatch gives each its own PERIOD.SECOND subscription. The Shift+H/S/A/V
-        // readouts' RequestVariable(forceUpdate) never re-issues that subscription's own request id
-        // (that would REPLACE it and silence the announcements for the session); the force flag is
-        // honoured by the next periodic delivery instead, so the readout answers within one second.
-        foreach (var fcuValKey in new[] { "A32NX_AUTOPILOT_HEADING_SELECTED", "A32NX_AUTOPILOT_SPEED_SELECTED",
-                                          "A32NX_AUTOPILOT_VS_SELECTED", "A32NX_AUTOPILOT_FPA_SELECTED" })
+        // V/S and FPA are NOT the shims: both read 0 while the window shows dashes and in the
+        // other mode, so a level-off spoke "Vertical speed 0 feet per minute", and 0 is also a
+        // real selection. They stay OnRequest for the Shift+V readout; the announcer reads PRIM 1's
+        // selected-V/S and selected-FPA ARINC429 words below instead.
+        foreach (var fcuValKey in new[] { "A32NX_AUTOPILOT_HEADING_SELECTED", "A32NX_AUTOPILOT_SPEED_SELECTED" })
         {
             vars[fcuValKey].UpdateFrequency = UpdateFrequency.Continuous;
             vars[fcuValKey].IsAnnounced = true;
             vars[fcuValKey].ExcludeFromBatch = true;
+        }
+        // The FCU shows the MASTER PRIM's selected V/S or FPA word, and shows dashes exactly when
+        // the word for the active mode is not Normal Operation (A380FcuComputer); the PRIM marks
+        // selected_vs_ft_min No Computed Data while dashed or in TRK/FPA, and selected_fpa_deg the
+        // reverse (A380PrimComputerFctl). So each word says on its own whether its value is on
+        // the FCU — no separate dashes flag to race. KNOWN LIMITATION, the same as the PRIM 1
+        // envelope speeds above: PRIM 1 single-sourced, so with PRIM 1 not the master these go
+        // silent rather than follow PRIM 2/3. Batch-covered, units "number": a batched L:var is
+        // read in its registered unit, and a unit conversion would destroy a packed word. They
+        // carry the pilot-facing names because their Ctrl+M rows are the callout mutes; the OnRequest
+        // shims above keep the same names on the PFD panel rows, the only place those appear.
+        foreach (var (primWordKey, display) in new[]
+        {
+            ("A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", "Selected Vertical Speed"),
+            ("A32NX_PRIM_1_SELECTED_FPA", "Selected FPA"),
+        })
+        {
+            vars[primWordKey] = new SimVarDefinition
+            {
+                Name = primWordKey, DisplayName = display, Type = SimVarType.LVar,
+                UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "number"
+            };
         }
         // Managed-vs-selected indicators — AUTO-ANNOUNCED so a knob PUSH (managed)
         // or PULL (selected) speaks the resulting mode. Previously OnRequest/silent,
@@ -2086,11 +2108,6 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         vars["A32NX_FCU_HDG_MANAGED_DASHES"].ExcludeFromBatch = true;
         vars["A32NX_FCU_SPD_MANAGED_DOT"].ExcludeFromBatch = true;
         vars["A32NX_TRK_FPA_MODE_ACTIVE"].ExcludeFromBatch = true;
-        // ⚠️ A32NX_TRK_FPA_MODE_ACTIVE must stay CONTINUOUS and keep arriving: the V/S-vs-FPA
-        // announce gate in ProcessSimVarUpdate reads the mode it caches, and a mode frozen at
-        // whatever the last Shift+V happened to read would announce the wrong vertical channel.
-        // That is only safe because the force-read no longer cancels the subscription (see the
-        // one-shot request id note on the selected-VALUE block above).
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
         // ⚠️ ONE key per underlying simvar: FCU_ALT_VALUE *is* the A380's selected-altitude var.
         // There is deliberately no second FCU_SEL_ALT registration of AUTOPILOT ALTITUDE LOCK VAR:3
@@ -2098,8 +2115,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // ("Selected Altitude" in Ctrl+M vs "FCU selected altitude" in the PFD panel). This key is
         // the one that carries the metric-altitude (MTRS) display override in .Displays.cs.
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
-        // Same 777-MCP-parity continuous monitoring for the FCU altitude, with the same individual
-        // def + one-shot-read arrangement as the L:var block above.
+        // Streamed for the hardware-dial announcer like heading and speed above, on its own
+        // PERIOD.SECOND subscription (the Shift+A readout's force-read is answered by its next
+        // delivery). The altitude window never shows dashes, so the stock value is enough.
         vars["FCU_ALT_VALUE"].UpdateFrequency = UpdateFrequency.Continuous;
         vars["FCU_ALT_VALUE"].IsAnnounced = true;
         vars["FCU_ALT_VALUE"].ExcludeFromBatch = true;
@@ -3303,11 +3321,6 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private double? _pHdgVal, _pHdgMgd, _pSpdVal, _pSpdMgd, _pVsVal, _pFpaVal, _pVsMode;
     private bool _reqHdg, _reqSpd, _reqAlt, _reqVs;
     private bool _reqFlaps, _reqGear, _reqBaro;
-    // Live TRK/FPA mode (A32NX_TRK_FPA_MODE_ACTIVE), cached in ProcessSimVarUpdate. Decides which
-    // of A32NX_AUTOPILOT_{VS,FPA}_SELECTED is the meaningful one — they are both shims off the
-    // same FCU vs_fpa_value, so announcing both speaks one real value and one nonsense one.
-    // Defaults to false = HDG/V·S, the FCU's own power-up mode.
-    private bool _trkFpaModeActive;
     private double _gwCgMac = -1;   // gross-weight CG %MAC (FBW L-var, cached)
     private double _gwKgCache = -1; // gross weight in kg (stock TOTAL WEIGHT, cached)
 
