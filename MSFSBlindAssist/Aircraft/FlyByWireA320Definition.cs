@@ -8752,13 +8752,26 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true; // Handled
         }
 
-        // FCU panel HEADING / SPEED / ALTITUDE number fields: the generic panel path sends the event
-        // and speaks "<name> set to <value>", so only the FCU value echo is armed here — the value
-        // coming back must not be spoken a second time.
-        if (varKey is "A32NX.FCU_HDG_SET" or "A32NX.FCU_SPD_SET" or "A32NX.FCU_ALT_SET")
+        // FCU panel HEADING / SPEED / ALTITUDE number fields: the same setters (and validation) as the FCU
+        // windows. The generic path sent (uint)value — Mach truncated to 0, an altitude snapped to the
+        // 1000-ft increment — and announced "set to" whatever was typed.
+        if (varKey == "A32NX.FCU_HDG_SET")
         {
-            ArmFcuEchoFor(varKey, FcuConfirmation.None);
-            return false;   // not handled: the generic path sends it
+            if (FcuValueEntry.TryHeading(value, out int heading, out string? error)) SetFCUHeadingValue(heading, simConnect, announcer);
+            else announcer.AnnounceImmediate(error!);
+            return true;
+        }
+        if (varKey == "A32NX.FCU_SPD_SET")
+        {
+            if (FcuValueEntry.TrySpeed(value, out int internalSpeed, out string? error)) SetFCUSpeedValue(internalSpeed, simConnect, announcer);
+            else announcer.AnnounceImmediate(error!);
+            return true;
+        }
+        if (varKey == "A32NX.FCU_ALT_SET")
+        {
+            if (FcuValueEntry.TryAltitude(value, out double feet, out string? error)) SetFCUAltitudeValue(feet, simConnect, announcer);
+            else announcer.AnnounceImmediate(error!);
+            return true;
         }
 
         // VS/FPA set — delegate to SetFCUVSValue: the calc-code K: path (negatives

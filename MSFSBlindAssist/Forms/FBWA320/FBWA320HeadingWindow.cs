@@ -70,8 +70,8 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
     {
         string input = headingTextBox.Text.Trim();
         if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); headingTextBox.SelectAll(); return; }
-        if (v < 0 || v > 360) { announcer.AnnounceImmediate("Heading must be between 0 and 360 degrees"); headingTextBox.SelectAll(); return; }
-        aircraft.SetFCUHeadingValue((int)Math.Round(v) % 360, simConnect, announcer);
+        if (!FcuValueEntry.TryHeading(v, out int heading, out string? error)) { announcer.AnnounceImmediate(error!); headingTextBox.SelectAll(); return; }
+        aircraft.SetFCUHeadingValue(heading, simConnect, announcer);
         headingTextBox.SelectAll();
     }
 }
