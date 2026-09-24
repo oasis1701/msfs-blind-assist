@@ -235,4 +235,29 @@ internal static partial class GroundTrafficLogic
         }
         return forgotten;
     }
+
+    /// <summary>
+    /// The known ids (<paramref name="knownIds"/>) whose recorded runway (<paramref name="knownRunwayOf"/>,
+    /// the designator of the runway status each was last seen under) is no longer among this evaluation's
+    /// scanned designators (<paramref name="scopeDesignators"/>) — never the ones simply missing this
+    /// evaluation, that is <see cref="ForgetAbsent"/>'s job.
+    ///
+    /// <para>The runway watch widens what it scans for a runway the aircraft is merely on, without
+    /// changing the watch's identity (PR #247 final review H3): backtracking through an intersection, or
+    /// waiting inside another runway's pavement, adds that runway to the scan. Once the aircraft leaves
+    /// its pavement, that runway drops out of the scan entirely — its known occupant is not "unseen for a
+    /// while", the watch simply stopped scanning it — so it must be forgotten SILENTLY rather than through
+    /// the grace-timed absence that reports "no traffic seen on the runway now" of a runway that was never
+    /// occupied in the first place (PR #247 B5 follow-up K3). An id with no recorded runway at all is
+    /// treated as out of scope too — it was never legitimately marked known.</para>
+    /// </summary>
+    public static IReadOnlyList<uint> IdsOutOfScope(IEnumerable<uint> knownIds,
+        IReadOnlyDictionary<uint, string> knownRunwayOf, IReadOnlySet<string> scopeDesignators)
+    {
+        var result = new List<uint>();
+        foreach (uint id in knownIds)
+            if (!knownRunwayOf.TryGetValue(id, out string? designator) || !scopeDesignators.Contains(designator))
+                result.Add(id);
+        return result;
+    }
 }

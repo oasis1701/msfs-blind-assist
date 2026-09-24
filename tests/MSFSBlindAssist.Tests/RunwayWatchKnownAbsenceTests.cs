@@ -72,3 +72,57 @@ public class RunwayWatchKnownAbsenceTests
         Assert.Empty(absentSince);
     }
 }
+
+// GroundTrafficLogic.IdsOutOfScope — PR #247 B5 follow-up K3. Since PR #247 final review H3, the
+// runway watch widens its scan for a runway the aircraft is merely on, without changing the watch's
+// identity. Once the aircraft leaves that runway's pavement, the runway drops out of the scan
+// entirely — its known occupant is not "unseen", the watch simply stopped scanning it — so it must be
+// told apart from a runway that genuinely emptied. IdsOutOfScope answers "which known ids were last
+// seen under a runway no longer in this evaluation's scan" from each id's recorded runway
+// (_knownRunwayOf) against the current scan's designators.
+
+public class RunwayWatchIdsOutOfScopeTests
+{
+    [Fact]
+    public void An_id_recorded_under_a_still_scanned_runway_stays_in_scope()
+    {
+        var known = new HashSet<uint> { 7 };
+        var runwayOf = new Dictionary<uint, string> { [7] = "27" };
+        var scope = new HashSet<string> { "27" };
+        Assert.Empty(GroundTrafficLogic.IdsOutOfScope(known, runwayOf, scope));
+    }
+
+    [Fact]
+    public void An_id_recorded_under_a_runway_no_longer_scanned_is_out_of_scope()
+    {
+        // The aircraft was on an intersecting runway (33) that widened the scan; the watch has since
+        // narrowed back down to just 27, so 33's occupant must be forgotten silently.
+        var known = new HashSet<uint> { 7 };
+        var runwayOf = new Dictionary<uint, string> { [7] = "33" };
+        var scope = new HashSet<string> { "27" };
+        Assert.Equal(new uint[] { 7 }, GroundTrafficLogic.IdsOutOfScope(known, runwayOf, scope));
+    }
+
+    [Fact]
+    public void An_id_with_no_recorded_runway_is_out_of_scope()
+    {
+        var known = new HashSet<uint> { 7 };
+        var runwayOf = new Dictionary<uint, string>();
+        var scope = new HashSet<string> { "27" };
+        Assert.Equal(new uint[] { 7 }, GroundTrafficLogic.IdsOutOfScope(known, runwayOf, scope));
+    }
+
+    [Fact]
+    public void Only_the_out_of_scope_ids_are_returned()
+    {
+        var known = new HashSet<uint> { 7, 8, 9 };
+        var runwayOf = new Dictionary<uint, string> { [7] = "27", [8] = "33", [9] = "27" };
+        var scope = new HashSet<string> { "27" };
+        Assert.Equal(new uint[] { 8 }, GroundTrafficLogic.IdsOutOfScope(known, runwayOf, scope));
+    }
+
+    [Fact]
+    public void Nothing_known_is_nothing_out_of_scope()
+        => Assert.Empty(GroundTrafficLogic.IdsOutOfScope(Array.Empty<uint>(),
+            new Dictionary<uint, string>(), new HashSet<string> { "27" }));
+}
