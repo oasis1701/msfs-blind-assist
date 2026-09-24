@@ -394,6 +394,12 @@ public interface IAircraftDefinition
     void OnContinuousBatchDelivered(int batchNum);
 
     /// <summary>
+    /// An event SimConnectManager queued while the calc-path probe was pending has just been sent
+    /// (SimConnectManager.QueuedEventDispatched). Default (base): restart that event's FCU echo window.
+    /// </summary>
+    void OnQueuedEventDispatched(string eventName);
+
+    /// <summary>
     /// The monitored variable whose continuous-batch delivery completes an announcement this
     /// definition is currently HOLDING, or null when nothing is held.
     ///

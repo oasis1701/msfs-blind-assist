@@ -638,7 +638,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <summary>Arm the FCU echo window for the value vars an MSFSBA-origin FCU event moves (from
     /// <see cref="FcuEchoKeys.For"/>). Call it BEFORE the event is sent.</summary>
     protected void ArmFcuEcho(string evt, IReadOnlyList<string> keys) =>
-        _fcuValues.SuppressEcho(keys, Environment.TickCount64);
+        _fcuValues.SuppressEcho(keys, Environment.TickCount64, forEvent: evt);
 
     /// <summary>Whether a delivery of this FCU value var proves the aircraft itself has published
     /// after a flight load (<see cref="FcuValueAnnouncer"/>'s settle). A stock SimVar does not: the
@@ -817,6 +817,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <remarks>The base counts the delivery toward the FCU value announcer's settle: an override on
     /// an aircraft that uses <see cref="AnnounceFcuValue"/> must call base.</remarks>
     public virtual void OnContinuousBatchDelivered(int batchNum) => _fcuValues.OnBatchDelivered(batchNum);
+
+    /// <inheritdoc />
+    /// <remarks>The base restarts the FCU value echo the event was armed with (Task 3 of the PR #140
+    /// fixes): the A32NX queues dotted FCU events until the calc-path probe concludes, which can be a
+    /// minute after the echo armed at the call site expired.</remarks>
+    public virtual void OnQueuedEventDispatched(string eventName) =>
+        _fcuValues.RearmEcho(eventName, Environment.TickCount64);
 
     /// <inheritdoc />
     /// <remarks>Most definitions hold nothing, so the batch hook never fires for them.</remarks>

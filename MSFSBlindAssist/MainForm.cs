@@ -596,6 +596,7 @@ public partial class MainForm : Form
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
+        simConnectManager.QueuedEventDispatched += OnQueuedEventDispatched;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
         simConnectManager.AircraftLoaded += OnAircraftLoaded;

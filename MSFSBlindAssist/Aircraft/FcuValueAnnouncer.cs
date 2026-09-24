@@ -39,6 +39,7 @@ internal sealed class FcuValueAnnouncer
 
     private readonly Dictionary<string, string?> _lastPhrase = new(StringComparer.Ordinal);
     private readonly ConcurrentDictionary<string, long> _echoUntilMs = new(StringComparer.Ordinal);
+    private readonly ConcurrentDictionary<string, string[]> _echoKeysByEvent = new(StringComparer.Ordinal);
 
     private bool _settling;
     private bool _publishedSinceReset;
@@ -80,12 +81,22 @@ internal sealed class FcuValueAnnouncer
         return phrase;
     }
 
-    /// <summary>Absorb the next change of each named key for <see cref="EchoWindowMs"/>. Name only
-    /// the keys the write actually moves: a button that moves no value must name none.</summary>
-    public void SuppressEcho(IEnumerable<string> keys, long nowMs)
+    /// <summary>Absorb every change of each named key for <see cref="EchoWindowMs"/> (not just the next
+    /// one). Name only the keys the write moves. <paramref name="forEvent"/> remembers which keys that
+    /// event armed, so <see cref="RearmEcho"/> can restart the window when a QUEUED event is finally sent.</summary>
+    public void SuppressEcho(IEnumerable<string> keys, long nowMs, string? forEvent = null)
     {
+        string[] list = keys.ToArray();
         long until = nowMs + EchoWindowMs;
-        foreach (string key in keys) _echoUntilMs[key] = until;
+        foreach (string key in list) _echoUntilMs[key] = until;
+        if (forEvent != null && list.Length > 0) _echoKeysByEvent[forEvent] = list;
+    }
+
+    /// <summary>An event queued while the calc-path probe was running has just been sent: restart the echo
+    /// window it was armed with (none if it never armed one).</summary>
+    public void RearmEcho(string evt, long nowMs)
+    {
+        if (_echoKeysByEvent.TryGetValue(evt, out string[]? keys)) SuppressEcho(keys, nowMs);
     }
 
     /// <summary>

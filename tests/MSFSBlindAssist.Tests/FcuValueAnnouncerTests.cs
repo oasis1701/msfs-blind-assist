@@ -264,4 +264,23 @@ public class FcuValueAnnouncerTests
         a.OnBatchDelivered(1);
         Assert.True(a.IsSettling);
     }
+
+    // ---- Re-arming the echo for a queued event (PR #140 Task 3) ----
+
+    [Fact]
+    public void A_queued_write_re_arms_the_echo_it_was_armed_with_when_it_is_finally_sent()
+    {
+        var a = Seeded(Hdg, "Heading 250 degrees");
+        a.SuppressEcho(new[] { Hdg }, nowMs: 0, forEvent: "A32NX.FCU_HDG_SET");
+        a.RearmEcho("A32NX.FCU_HDG_SET", nowMs: 60_000);          // the probe gave up; the event goes out now
+        Assert.Null(a.Observe(Hdg, "Heading 270 degrees", muted: false, nowMs: 60_500));
+    }
+
+    [Fact]
+    public void Re_arming_an_event_that_was_never_armed_mutes_nothing()
+    {
+        var a = Seeded(Hdg, "Heading 250 degrees");
+        a.RearmEcho("A32NX.FCU_AP_1_PUSH", nowMs: 60_000);
+        Assert.Equal("Heading 270 degrees", a.Observe(Hdg, "Heading 270 degrees", muted: false, nowMs: 60_500));
+    }
 }
