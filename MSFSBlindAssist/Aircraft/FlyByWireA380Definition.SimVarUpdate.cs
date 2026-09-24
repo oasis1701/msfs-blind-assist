@@ -47,6 +47,19 @@ public partial class FlyByWireA380Definition
     private static readonly (int bit, string phrase)[] OansWord1Bits =
         { (11, "Runway ahead") };
 
+    /// <summary>The Shift+H FCU heading readout. A32NX_AUTOPILOT_HEADING_SELECTED is -1 while the
+    /// window shows dashes, so that is said in words — wrapping it first read a managed heading
+    /// as "359 degrees", a number on no display, one keypress after the dial announcer (rightly)
+    /// said nothing for it. Mirrors the speed readout's "FCU speed managed". Pinned by
+    /// FbwFcuDialAnnounceTests.</summary>
+    internal static string FormatFcuHeadingReadout(double raw, bool managed)
+    {
+        if (raw < 0) return "FCU heading managed";
+        double degrees = Math.Round(raw) % 360;
+        if (degrees == 0) degrees = 0;   // -0 would otherwise format as "-000"
+        return $"FCU heading {degrees:000} degrees, {(managed ? "managed" : "selected")}";
+    }
+
     /// <summary>
     /// The hardware-dial announcer's phrase for an FCU selected-value delivery (777-MCP parity,
     /// PR #140): true when <paramref name="varName"/> is one of the vars it listens to, with
@@ -897,12 +910,11 @@ public partial class FlyByWireA380Definition
             // DEGREES, not the radians older builds wrote. Verified live: FCU 345 reads
             // 345.0. Do NOT re-add a "looks like radians" guess — it would mangle any
             // selected heading of 006° or less. Requires the A380X build in docs/a380x.md.
-            if (varName.EndsWith("HEADING_SELECTED")) _pHdgVal = ((value % 360) + 360) % 360;
+            if (varName.EndsWith("HEADING_SELECTED")) _pHdgVal = value;
             else _pHdgMgd = value;
             if (_pHdgVal.HasValue && _pHdgMgd.HasValue)
             {
-                string st = _pHdgMgd.Value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate($"FCU heading {_pHdgVal.Value:000} degrees, {st}");
+                announcer.AnnounceImmediate(FormatFcuHeadingReadout(_pHdgVal.Value, _pHdgMgd.Value > 0));
                 _pHdgVal = _pHdgMgd = null; _reqHdg = false;
             }
             return true;

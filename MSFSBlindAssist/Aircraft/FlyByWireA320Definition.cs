@@ -3752,7 +3752,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Check after SPD/MACH toggle
             ValueDescriptions = new Dictionary<double, string> { [0] = "Mach mode off", [1] = "Mach mode on" }
         },
-        // OnRequest: the Ctrl+V readout and the TRK/FPA button's press feedback read it on demand.
+        // OnRequest: the output-mode Shift+V readout and the TRK/FPA button's press feedback read it on demand.
         // Streaming it as announced spoke every panel TRK/FPA press twice (the press feedback and
         // the generic monitor); the hardware-dial announcer needs no mode, because its V/S and FPA
         // sources are separate words that each say whether they are on the FCU.
@@ -3763,7 +3763,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,  // Check after TRK/FPA toggle
             ValueDescriptions = new Dictionary<double, string> { [0] = "HDG/VS mode", [1] = "TRK/FPA mode" }
         },
-        // ⚠️ OnRequest (Ctrl+V readout only), never an announce source: while the V/S window shows
+        // ⚠️ OnRequest (Shift+V readout only), never an announce source: while the V/S window shows
         // dashes the FCU copies the aircraft's LIVE vertical speed into this value (FcuComputer),
         // so announcing it narrated every managed climb and descent. The hardware-dial announcer
         // reads A32NX_FCU_SELECTED_VERTICAL_SPEED / _FPA instead (FCU READOUT VALUES below).
@@ -4570,7 +4570,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         },
 
         // FCU READOUT VALUES (for hotkeys)
-        // ⚠️ The heading and speed display values stay OnRequest (Ctrl+H/S only) and must never be
+        // ⚠️ The heading and speed display values stay OnRequest (Shift+H/S readouts only) and must never be
         // announce sources: while a window shows dashes the FCU copies the aircraft's LIVE heading
         // and airspeed (clamped 100-399) into them (FcuComputer's dashes branches), so announcing
         // them read the heading out as the aircraft turned on the ground and the airspeed through
@@ -4593,7 +4593,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Each one says ON ITS OWN whether the FCU window shows a selection (FcuValuePhrases).
         // The altitude window never shows dashes, so its display value serves. ExcludeFromBatch
         // keeps its individual def, read as "number" whatever Units says (a batched L:var would be
-        // read in "feet" and scaled); the Ctrl+A readout's force-read is answered by its next
+        // read in "feet" and scaled); the Shift+A readout's force-read is answered by its next
         // PERIOD.SECOND delivery.
         ["A32NX_FCU_AFS_DISPLAY_ALT_VALUE"] = new SimConnect.SimVarDefinition
         {
@@ -8153,7 +8153,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // true itself. MSFSBA's own writes mute their echo via SuppressFcuValueChangeEcho.
         if (TryComposeFcuValuePhrase(varName!, value, out string? fcuPhrase))
         {
-            // The Ctrl+A readout is about to AnnounceImmediate this same value, which would cut the
+            // The Shift+A readout is about to AnnounceImmediate this same value, which would cut the
             // callout off mid-word. (The heading, speed and V/S readouts read the display values,
             // which are not sources, so they never collide here.)
             bool readoutPending = isRequestingAltitude && varName == "A32NX_FCU_AFS_DISPLAY_ALT_VALUE";
@@ -8234,7 +8234,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Altitude
         else if (varName == "A32NX_FCU_AFS_DISPLAY_ALT_VALUE")
         {
-            // Only reached while the Ctrl+A readout is pending: otherwise the announcer block
+            // Only reached while the Shift+A readout is pending: otherwise the announcer block
             // above has already consumed this source.
             pendingAltitudeValue = value;
             if (pendingAltitudeStatus.HasValue)
