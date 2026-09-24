@@ -611,11 +611,11 @@ public partial class TFDiMD11Definition
 
     /// <summary>
     /// How long the Dial-A-Flap read-back waits for the written value to reach the wheel's own
-    /// L:var, and how often it looks. The var streams SIM_FRAME + CHANGED, so its "fresh read" is
-    /// the cache (<see cref="FreshReadPolicy.CacheIsFresh"/>) and there is no delivery to await —
-    /// polling it IS awaiting delivery. The path is calc → WASM → L:var → SIM_FRAME, two to three
-    /// sim frames, so a landed set answers on the first poll or two; the ceiling only bounds a set
-    /// that never arrives, and the exact compare needs it so a slow frame cannot invent a miss.
+    /// L:var, and how often it looks. The var streams SIM_FRAME + CHANGED and the write changes it,
+    /// so the write's own delivery lands in the cache — polling the cache IS awaiting delivery, with
+    /// no request of our own. The path is calc → WASM → L:var → SIM_FRAME, two to three sim frames,
+    /// so a landed set answers on the first poll or two; the ceiling only bounds a set that never
+    /// arrives, and the exact compare needs it so a slow frame cannot invent a miss.
     /// </summary>
     private const int DialSettleTimeoutMs = 900;
     private const int DialPollMs = 50;
@@ -673,11 +673,13 @@ public partial class TFDiMD11Definition
         if (gen != _dialSetGen) return;                // superseded during the write — let the newer one speak
 
         // WAIT FOR THE WRITTEN VALUE TO ARRIVE, don't sleep a fixed time and read whatever is there.
-        // This var streams on its own SIM_FRAME + CHANGED subscription, so FreshReadPolicy.CacheIsFresh
-        // makes ReadFreshAsync hand the CACHE back at once — there is no PERIOD.ONCE to await for it
-        // (one would replace the subscription, and a stationary value delivers nothing). The cache IS
-        // this var's delivery channel, so "await delivery" means polling it until the wheel reaches
-        // the pick. With a fixed 200 ms settle the compare below could read the PRE-write value on a
+        // This var streams on its own SIM_FRAME + CHANGED subscription and the write changes it, so
+        // the subscription delivers the landed value into the cache: the cache IS this var's delivery
+        // channel, and "await delivery" means polling it until the wheel reaches the pick. Read the
+        // cache itself, never ReadFreshAsync: with an empty cache that issues a forced read of its
+        // own, whose PRE-write answer would use up MainForm's echo suppression (the landed angle then
+        // spoken over the pick) and whose 1.2 s wait per pass would stretch this loop far past its
+        // ceiling. With a fixed 200 ms settle the compare below could read the PRE-write value on a
         // slow frame (calc → WASM → L:var → SIM_FRAME is two to three frames) and invent a
         // "could not reach" for a set that landed a moment later — a false failure the exact compare
         // must never produce. A set that lands exits on the first poll; only a genuine miss waits out
@@ -691,7 +693,7 @@ public partial class TFDiMD11Definition
             // this one — or Dispose can bump the generation — and past this point the value read is
             // `sim`'s cache, which after an aircraft switch belongs to the NEXT aircraft.
             if (gen != _dialSetGen) return;
-            raw = await sim.ReadFreshAsync(Md11FlapSystem.DialKey, Md11SelectorWalker.FreshReadTimeoutMs).ConfigureAwait(false);
+            raw = sim.GetCachedVariableValue(Md11FlapSystem.DialKey);
             if (raw == null) continue;
             wantedRaw = _flaps.NearestSelectableDegrees(raw.Value);
             if (wantedRaw == want) break;              // landed — nothing to say
@@ -786,10 +788,11 @@ public partial class TFDiMD11Definition
             // stays silent; a failed one snaps the combo to the real position once, beside the
             // "did not move" message. A superseded walk leaves the re-sync to the walk that owns it.
             // Not for the flap handle or the speedbrake lever (a refused pick leaves through here
-            // too): they stream SIM_FRAME + CHANGED, so this issues no ONCE (RequestVariable leaves
-            // an own subscription alone) and nothing arrives while they stand still; and
-            // ProcessSimVarUpdate consumes every delivery of them, so MainForm never re-syncs their
-            // combos after the panel is built. Each keeps the pilot's pick.
+            // too): they stream SIM_FRAME + CHANGED, so this goes out on their SEED id
+            // (FreshReadPolicy.RouteRequest) and its forced delivery re-enters ProcessSimVarUpdate,
+            // whose deduped read-outs stay silent — and ProcessSimVarUpdate consumes every delivery
+            // of them, so MainForm never re-syncs their combos after the panel is built (the
+            // delivery only corrects MainForm's stored value). Each combo keeps the pilot's pick.
             if (mine && !cancelled) sim.RequestVariable(varKey, forceUpdate: true);
         }
     }
