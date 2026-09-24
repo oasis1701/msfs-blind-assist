@@ -72,7 +72,7 @@ public class GroundTrafficMonitorHeadlessTests
         Assert.DoesNotContain(h.Said.All, m => m.Contains("Lufthansa") || m.Contains("easyJet"));
     }
 
-    [Fact(Skip = "Fails on the reviewed monitor as merged; the author's fix 4 (opening from relative velocity and route lead) is ported in the next commits of this branch.")]
+    [Fact]
     public void Traffic_pulling_away_ahead_is_not_a_stop()
     {
         // 95 m ahead on the route, 20 kt against the pilot's 6 kt — the gap opens at ~7 m/s.

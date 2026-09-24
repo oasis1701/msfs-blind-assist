@@ -29,6 +29,51 @@ internal static partial class GroundTrafficLogic
         return (distFt - previousDistFt) / dt >= MovingAwayFtPerSec;
     }
 
+    // ── Moving away judged from MOTION (PR #247 author's fix, 9190e869) ─────────────────────────────
+    // IsMovingAway needs two evaluations, so traffic pulling away was still "Stop, … very close" on the
+    // first evaluation that saw it — a pilot creeping up behind a departing aircraft, in the author's
+    // simulated traffic. These are OR'd with it.
+
+    /// <summary>Opening this fast (m/s, about 2 kt) is moving away: <see cref="IsOpeningByMotion"/>, <see cref="IsLeadGrowing"/>.</summary>
+    public const double MovingAwayMinOpeningMps = 1.0;
+
+    /// <summary>
+    /// How fast the gap is opening NOW, in m/s — negative when closing: the traffic's velocity relative to
+    /// ours (<paramref name="relVx"/>, <paramref name="relVy"/>, m/s east and north) along the line of sight
+    /// to it (<paramref name="rx"/>, <paramref name="ry"/>, its offset in metres, <see cref="ToLocal"/>).
+    /// 0 when the two are within a metre.
+    /// </summary>
+    public static double OpeningSpeedMps(double rx, double ry, double relVx, double relVy)
+    {
+        double r = Math.Sqrt(rx * rx + ry * ry);
+        return r < 1.0 ? 0.0 : (rx * relVx + ry * relVy) / r;
+    }
+
+    /// <summary>
+    /// Is the traffic's lead ALONG THE ROUTE growing at <see cref="MovingAwayMinOpeningMps"/> or more? For
+    /// traffic on the route ahead the straight-line gap is the wrong measure through a bend: an aircraft
+    /// rounding a corner ahead moves sideways to the line of sight while pulling away along the route.
+    /// <paramref name="previousAheadM"/> is its lead at the previous evaluation (NaN when it was not on the
+    /// route ahead then); two leads less than 0.2 s or 10 s or more apart are no basis for a rate.
+    /// </summary>
+    public static bool IsLeadGrowing(double previousAheadM, DateTime previousUtc, double aheadM, DateTime nowUtc)
+    {
+        if (double.IsNaN(previousAheadM) || double.IsNaN(aheadM)) return false;
+        double dt = (nowUtc - previousUtc).TotalSeconds;
+        if (dt <= 0.2 || dt >= 10.0) return false;
+        return (aheadM - previousAheadM) / dt >= MovingAwayMinOpeningMps;
+    }
+
+    /// <summary>
+    /// Moving away judged from motion: MOVING traffic (at least <see cref="MovingTrafficKts"/>) whose
+    /// relative velocity opens the gap at <see cref="MovingAwayMinOpeningMps"/> or more
+    /// (<paramref name="openingMps"/>, <see cref="OpeningSpeedMps"/>), or whose lead along the route is
+    /// growing that fast (<paramref name="leadGrowing"/>, <see cref="IsLeadGrowing"/>). The monitor ORs it
+    /// with <see cref="IsMovingAway"/>. A parked aircraft never moves away by this test.
+    /// </summary>
+    public static bool IsOpeningByMotion(double trafficGsKts, double openingMps, bool leadGrowing)
+        => trafficGsKts >= MovingTrafficKts && (openingMps >= MovingAwayMinOpeningMps || leadGrowing);
+
     /// <summary>
     /// Announce this zone change? Only an escalation (<paramref name="newZone"/> above
     /// <paramref name="currentZone"/>). Awareness needs <see cref="EscalationRepeatWindowMs"/> since the

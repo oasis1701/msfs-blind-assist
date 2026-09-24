@@ -941,6 +941,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             {
                 ac.CurrentZone = GroundZone.None;
                 ac.PreviousDistance = double.MaxValue;
+                ac.PreviousAheadM = double.NaN;
                 continue;
             }
 
@@ -948,13 +949,15 @@ public sealed class GroundTrafficMonitor : IDisposable
             var (rx, ry) = GroundTrafficLogic.ToLocal(ownLat, ownLon, ac.Lat, ac.Lon);
             var (tvx, tvy) = GroundTrafficLogic.Velocity(direction, ac.GS);
             var (tcpa, dcpa) = GroundTrafficLogic.ClosestApproach(rx, ry, tvx - ownVx, tvy - ownVy);
+            double openingMps = GroundTrafficLogic.OpeningSpeedMps(rx, ry, tvx - ownVx, tvy - ownVy);
             var motion = GroundTrafficLogic.ClassifyMotion(ownHdg, direction, ac.GS, rel);
             bool onRouteAhead = proj is { } p2 && p2.LateralMetres <= ON_ROUTE_LATERAL_M && aheadM >= ROUTE_ALERT_MIN_AHEAD_M;
             bool nearRoute = proj is { } p3 && p3.LateralMetres <= NEAR_ROUTE_M && aheadM >= -20.0;
             RouteRelativeMotion? routeMotion = proj is { } p4
                 ? GroundTrafficLogic.ClassifyAlongRoute(direction, ac.GS, p4.SegmentBearingDeg)
                 : null;
-            views.Add(new TrafficView(ac, distFt, rel, tcpa, dcpa, motion, proj, aheadM, onRouteAhead, nearRoute, routeMotion));
+            views.Add(new TrafficView(ac, distFt, rel, tcpa, dcpa, motion, proj, aheadM, onRouteAhead, nearRoute, routeMotion,
+                openingMps));
         }
 
         // Speed-based zone boundaries.
@@ -1024,7 +1027,19 @@ public sealed class GroundTrafficMonitor : IDisposable
             DateTime prevUtc = ac.PreviousDistanceUtc;
             ac.PreviousDistance = v.DistFt;
             ac.PreviousDistanceUtc = now;
-            bool movingAway = GroundTrafficLogic.IsMovingAway(prevDist, prevUtc, v.DistFt, now);
+            // Its lead along the route at the previous evaluation, kept only while it was on the route ahead.
+            double prevAheadM = ac.PreviousAheadM;
+            DateTime prevAheadUtc = ac.PreviousAheadUtc;
+            ac.PreviousAheadM = v.OnRouteAhead ? v.AheadM : double.NaN;
+            ac.PreviousAheadUtc = now;
+            // Opening is judged from the distance between two evaluations (a RATE, R8) and — PR #247
+            // author's fix — from motion: the relative velocity, and for traffic on the route ahead its
+            // growing lead ALONG the route (through a bend the straight-line gap is the wrong measure). The
+            // rate needs a previous evaluation, so a pilot creeping up behind a departing aircraft heard
+            // "Stop, … very close" on the first evaluation that saw it pulling away.
+            bool leadGrowing = v.OnRouteAhead && GroundTrafficLogic.IsLeadGrowing(prevAheadM, prevAheadUtc, v.AheadM, now);
+            bool movingAway = GroundTrafficLogic.IsMovingAway(prevDist, prevUtc, v.DistFt, now)
+                              || GroundTrafficLogic.IsOpeningByMotion(ac.GS, v.OpeningMps, leadGrowing);
 
             GroundZone newZone;
             if (v.DistFt > awareDistFt)        newZone = GroundZone.None;
@@ -1757,7 +1772,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     private sealed record TrafficView(
         TrackedGroundAircraft Ac, double DistFt, double Rel, double Tcpa, double Dcpa,
         TrafficMotion Motion, RouteProjection? Proj, double AheadM, bool OnRouteAhead, bool NearRoute,
-        RouteRelativeMotion? RouteMotion);
+        RouteRelativeMotion? RouteMotion, double OpeningMps);
 
     public void Dispose()
     {
@@ -1804,6 +1819,9 @@ internal sealed class TrackedGroundAircraft
     public DateTime LastSeenTime       = DateTime.UtcNow;
     public double PreviousDistance     = double.MaxValue;
     public DateTime PreviousDistanceUtc = DateTime.MinValue;
+    /// <summary>Its lead along OUR route at the previous evaluation; NaN when it was not on the route ahead then.</summary>
+    public double PreviousAheadM       = double.NaN;
+    public DateTime PreviousAheadUtc   = DateTime.MinValue;
     public QueueMoverState Mover       = QueueMoverState.Initial;
     // One-shot per episode: re-armed when the aircraft leaves the route / stops converging.
     public bool RouteAlertArmed        = true;
