@@ -1072,9 +1072,16 @@ public sealed class GroundTrafficMonitor : IDisposable
             // every withheld non-Warning zone is.
             if (GroundTrafficLogic.WithholdsZoneBehindFirst(behindFirst, newZone)) { ac.CurrentZone = newZone; continue; }
 
-            // Caution/Warning only for traffic in the forward arc.
+            // Caution/Warning only for traffic in the forward arc. The withheld zone is recorded by the same rule
+            // as every other withheld escalation — never a WARNING (PR #247 integration review Q5): recorded,
+            // "Stop" for an aircraft very close behind the pilot was swallowed for good once the pilot turned
+            // to face it, since Warning was no longer an escalation.
             bool inForwardArc = v.Rel <= GroundTrafficLogic.ForwardArcDeg || v.Rel >= 360.0 - GroundTrafficLogic.ForwardArcDeg;
-            if (!inForwardArc && newZone >= GroundZone.Caution) { ac.CurrentZone = newZone; continue; }
+            if (!inForwardArc && newZone >= GroundZone.Caution)
+            {
+                ac.CurrentZone = GroundTrafficLogic.ZoneToRecordWhenWithheld(newZone, ac.CurrentZone);
+                continue;
+            }
 
             // With a route to judge by, "Slow down"/"Stop" need a real threat (GroundTrafficLogic.IsRouteThreat):
             // traffic near the route ahead, genuinely close, or MOVING on a predicted collision course — a

@@ -314,6 +314,27 @@ public class GroundTrafficMonitorRuleTests
         Assert.InRange(gapFtAtStop, 250 - 12 * Kt * GroundTrafficLogic.FeetPerMetre, 250);
     }
 
+    // ── A Warning withheld outside the forward arc is not recorded ───────────────────────────────────
+
+    [Fact]
+    public void Traffic_very_close_behind_earns_Stop_once_the_pilot_turns_to_face_it()
+    {
+        // PR #247 integration review Q5: an aircraft parked 50 m behind the pilot — inside the Warning distance,
+        // outside the ±120° forward arc, so "Stop" is withheld. The forward-arc branch recorded that Warning as
+        // if it had been spoken, so when the pilot then turned to face the aircraft, Warning was no longer an
+        // escalation and "Stop" never came. A withheld Warning is never recorded, here as everywhere else.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(1000), null, departure: false) };
+        h.Sim.Traffic.Add(Ac(1, 450, 0, 0, "British Airways", "BAW1"));
+        h.Sim.Position = Own(500, 3);                        // heading east: the aircraft is dead astern
+        h.Tick(3);                                           // the first sweep, on the third tick
+        Assert.Empty(h.Said.All);
+
+        h.Sim.Position = Own(500, 3, headingDeg: 270);       // turned to face it
+        h.Tick(3);
+
+        Assert.Equal(new[] { "t=4 [INT] Stop, British Airways A320 very close, ahead, 175 feet." }, h.Transcript);
+    }
+
     // ── "Stop" is never withheld on a first Warning ──────────────────────────────────────────────────
 
     [Fact]
