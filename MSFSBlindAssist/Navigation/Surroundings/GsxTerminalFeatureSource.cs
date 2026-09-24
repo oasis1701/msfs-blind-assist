@@ -4,18 +4,14 @@ using System.Text.RegularExpressions;
 namespace MSFSBlindAssist.Navigation.Surroundings;
 
 /// <summary>
-/// GSX's uiTerminalName per stand, grouped. Read from the SELECTABLE list (GetSelectableGates)
-/// — GetNamedSpots deliberately does not carry TerminalName. Outranks navdata's letter
-/// inference in the catalog (GSX is right where navdata's letter is wrong, measured KJFK).
-/// The header is a free-text section title a profile author wrote, not a promise of what kind
-/// of place it names, so the KIND is derived from the header text AND the grouped stands'
-/// own parking types (see KindOf) rather than assumed to always be a terminal.
-/// Its NAME is the header without the author's notes (see PlaceName).
+/// GSX's uiTerminalName per stand, grouped into features, from the selectable list (GetNamedSpots
+/// carries no TerminalName). The header is a profile author's free-text section title, so its kind
+/// comes from its words and its stands (<see cref="KindOf"/>) and its name drops the author's notes
+/// (<see cref="PlaceName"/>).
 /// </summary>
 public static class GsxTerminalFeatureSource
 {
-    /// <summary>Category headers with no place behind them — GSX profile authors use these as
-    /// plain section dividers, not names. Exact match only: "Terminal 5 - Remote" survives.</summary>
+    /// <summary>Plain section dividers, not names. Exact match only: "Terminal 5 - Remote" survives.</summary>
     private static readonly HashSet<string> BareHeaders = new(StringComparer.OrdinalIgnoreCase)
     { "Parking", "Ramp", "Gates", "Gate", "Stands", "Stand", "Apron" };
     private const double StandMajority = 0.60;
@@ -23,8 +19,8 @@ public static class GsxTerminalFeatureSource
     public static List<AirportFeature> Read(IReadOnlyList<ParkingSpot> selectableGates)
     {
         var result = new List<AirportFeature>();
-        // Grouped by the header AS WRITTEN: two sections that clean to one name stay two groups, and
-        // the catalog's same-name rule (distance + stands) decides whether they are one place.
+        // Grouped by the header as written; the catalog's same-name rule decides whether two
+        // sections that clean to one name are one place.
         var groups = selectableGates
             .Where(s => s.Source == GateSource.Gsx)
             .Select(s => (Spot: s, Header: ParkingSpot.SpeakableTerminalName(s.TerminalName).Trim()))
@@ -34,15 +30,12 @@ public static class GsxTerminalFeatureSource
         {
             var members = g.ToList();
             if (members.Count < 2) continue;
-            // Named as a PLACE, without the author's notes; nothing but notes, or only a category word
-            // once they are gone ("Ramp (TD)"), is no place at all.
+            // Nothing but notes, or only a category word once they are gone ("Ramp (TD)"), is no place.
             string name = PlaceName(g.Key);
             if (name.Length == 0 || BareHeaders.Contains(name)) continue;
             var pts = members.Select(m => new LatLon(m.Latitude, m.Longitude)).ToList();
             var c = SurroundingsGeometry.Centroid(pts);
-            // The KIND is read from the header as grouped — notes included, only the size-hint tail and
-            // "N/A" gone: a kind word the author put in a note ("Ramp 5 (Cargo)") still says what the
-            // section is, even though the NAME drops it.
+            // The kind reads the header with its notes: "Ramp 5 (Cargo)" is still cargo.
             result.Add(new AirportFeature { Kind = KindOf(g.Key, members), Name = name, Lat = c.Lat, Lon = c.Lon, Members = pts, Source = FeatureSource.Gsx });
         }
         return result;
@@ -54,18 +47,11 @@ public static class GsxTerminalFeatureSource
     private static readonly char[] DanglingSeparators = { ' ', '-', '–', '—', ',', ';', ':', '/', '|' };
 
     /// <summary>
-    /// What a section header is CALLED as a place: every parenthesised group removed (innermost
-    /// first, until none is left), then <see cref="ParkingSpot.SpeakableTerminalName"/> (the size-hint
-    /// tail and a trailing "N/A"), then any dash or comma left dangling at either end. "K/M-Platform
-    /// buffer overflow (TD) N/A" is "K/M-Platform buffer overflow"; KATL's "Concourse T (T1-T21)" is
-    /// "Concourse T" — what OSM and the scenery call that pier, which is what lets the catalog merge
-    /// the three. The groups go FIRST because a note can hide a tail from SpeakableTerminalName,
-    /// which only looks at the END ("A-Platform =&lt; Medium (TD)"). Empty when the header was
-    /// nothing but a note. EVERY parenthesised group goes, whatever it says — in a GSX header they
-    /// carry the author's notes (a stand range, "TD"), so a qualifier an author put in parentheses
-    /// is lost with them; the KIND is not, because Read classifies the header as grouped. The gate
-    /// LABEL (ParkingSpot.Describe) keeps them: a label must stay unique, and the terminal name is
-    /// there to tell two stands apart.
+    /// A section header as a place name: every parenthesised note removed (they can hide a size-hint
+    /// tail from <see cref="ParkingSpot.SpeakableTerminalName"/>, which only looks at the end), then
+    /// that tail, then dangling separators. KATL's "Concourse T (T1-T21)" is "Concourse T", which is
+    /// what lets it merge with OSM's and the scenery's pier. Empty when the header was only a note.
+    /// The gate LABEL keeps the notes, because a label must stay unique.
     /// </summary>
     internal static string PlaceName(string? header)
     {
@@ -75,14 +61,9 @@ public static class GsxTerminalFeatureSource
     }
 
     /// <summary>
-    /// The header's WORDS decide first, through the ONE order every tier reads a name in
-    /// (<see cref="FeatureLexicon.NamedKind"/>: Cargo, then Fbo, then Concourse), so a header names
-    /// the same kind here as the same words do from OSM or the scenery — the catalog never merges
-    /// across kinds. Only a header whose words say none of the three is decided by its STANDS: it is
-    /// a scenery author's section title, and a cargo ramp typed Terminal took the one Terminal slot
-    /// in the Alt+L sentence. Cargo is CIVIL cargo stands (ParkingTypes.IsCargo); a military ramp is
-    /// ramp stands like a GA one, so a military majority is an Apron too rather than falling through
-    /// to Terminal.
+    /// The header's words decide first, through <see cref="FeatureLexicon.NamedKind"/>, so a header
+    /// names the same kind as the same words do in the other tiers. Otherwise a 60 % majority of
+    /// civil cargo stands makes it Cargo, of GA-ramp or military stands an Apron, else Terminal.
     /// </summary>
     private static FeatureKind KindOf(string header, List<ParkingSpot> members)
     {

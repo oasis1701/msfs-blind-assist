@@ -4,26 +4,16 @@ using MSFSBlindAssist.Services.TaxiAugment;
 namespace MSFSBlindAssist.Navigation.Surroundings;
 
 /// <summary>
-/// "Which airport is this aircraft at?" Four passes over the candidates, each taking the nearest by
-/// TRUE distance to the reference point: (1) an airport WITH TAXI PATHS whose navdata box, grown
-/// <see cref="BoxMarginMetres"/>, contains the aircraft; (2) an airport of ANY kind whose grown box
-/// contains it — a strip with runways but no taxi paths; (3) the nearest airport with taxi paths
-/// within <see cref="NearWithTaxiPathsNm"/>; (4) the nearest of any kind within
-/// <see cref="AnyKindNm"/>. Idents of any length. Replaces `GetNearbyAirportICAOs(…)[0]` filtered to
-/// 4-character idents, which is ordered by unscaled |Δlat|+|Δlon| to the reference point: measured
-/// on fs2024.sqlite it sent 2,371 stands at 212 airports to a neighbour (KSNA 111/201 → heliport
-/// 10CL) and could never resolve 2,454 fields with a 3-character ident. Pure.
-///
-/// <para>Pass 2's place is load-bearing both ways. It comes AFTER pass 1 so an airport's own box
-/// still beats a heliport or strip box overlapping it: 41 of KSNA's stands lie inside heliport
-/// 10CL's grown box, nearer its reference point than KSNA's. It comes BEFORE pass 3 because without
-/// it a strip with no taxi paths went to a taxi-path neighbour: 1,552 strips the old rule named at
-/// their own reference point — 1,354 of them by the 3 NM pass — and 3,306 runway ends
-/// (`runway_end` rows) at 1,790 strips were sent elsewhere; 8TX2 Freeman Ranch went to KECU 4.4 km
-/// away, so Where Am I on 8TX2's runway said "Not on a known taxiway or ramp at KECU." Replayed on
-/// fs2024, pass 2 names 1,353 of those reference points and 2,917 of those runway ends after their
-/// own strip, and changes the answer at none of the 302,142 stands or the 56,396 runway ends
-/// (`runway_end` rows) of airports with taxi paths.</para>
+/// "Which airport is this aircraft at?" Four passes, each taking the nearest by true distance:
+/// (1) an airport with taxi paths whose box, grown <see cref="BoxMarginMetres"/>, contains the
+/// aircraft; (2) any airport whose grown box contains it; (3) the nearest with taxi paths within
+/// <see cref="NearWithTaxiPathsNm"/>; (4) the nearest of any kind within <see cref="AnyKindNm"/>.
+/// Idents of any length. Replaces the old |Δlat|+|Δlon| nearest-4-character rule, which sent 2,371
+/// fs2024 stands to a neighbour (KSNA → heliport 10CL) and never resolved 3-character idents.
+/// <para>Pass 2 sits after pass 1 so an airport's own box beats an overlapping heliport's (41 KSNA
+/// stands lie in 10CL's box), and before pass 3 so a strip with no taxi paths is not handed to a
+/// taxi-path neighbour (8TX2 went to KECU 4.4 km away). Replayed on fs2024 it changes no stand's
+/// answer.</para>
 /// </summary>
 public static class CurrentAirportResolver
 {
@@ -48,11 +38,8 @@ public static class CurrentAirportResolver
         return null;
     }
 
-    /// <summary>Assumes LeftLon &lt;= RightLon, as the box SQL feeding it always has: a box
-    /// spanning ±180° fails this test and the airport degrades to the distance passes. The margin is
-    /// converted by <see cref="GrownBox"/>, at the box's own latitude, as AirportFacilities and the
-    /// scenery census convert it (it used the aircraft's latitude; for a 300 m margin the two differ
-    /// by well under a metre on any real airport box — about 0.3 m on the largest, KDEN or ENGM).</summary>
+    /// <summary>Assumes LeftLon &lt;= RightLon, as the box SQL always has; a box spanning ±180°
+    /// degrades to the distance passes.</summary>
     private static bool Contains(AirportCandidate c, double lat, double lon)
         => GrownBox.Of(c.TopLat, c.BottomLat, c.LeftLon, c.RightLon, BoxMarginMetres).Contains(lat, lon);
 }

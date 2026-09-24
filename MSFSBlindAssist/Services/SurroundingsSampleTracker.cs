@@ -4,16 +4,12 @@ using MSFSBlindAssist.Services.TaxiAugment;
 namespace MSFSBlindAssist.Services;
 
 /// <summary>What one ground sample meant to the two callouts that share it.</summary>
-/// <param name="Usable">False when the position was not a finite number: nothing on this sample may
-/// act on it, and it was not kept as the position the next distance is measured from.</param>
-/// <param name="First">There was no previous position to measure from — the first ground sample
-/// of a session, after <see cref="SurroundingsSampleTracker.Reset"/>, or after a pause in sampling
-/// (both switches off). It is recorded, never judged, only because there is nothing to measure it
-/// from — no distance for the surface gate, no jump test — and the passing half acts from the NEXT
-/// one.</param>
-/// <param name="Jumped">Further from the previous position than taxiing can account for
-/// (<see cref="AirportSurroundingsMonitor.IsPositionJump"/>): the aircraft was PUT here. The
-/// surface baseline is already dropped; the caller drops its passing tracks.</param>
+/// <param name="Usable">False when the position was not finite; nothing may act on it and it is
+/// not kept as the reference.</param>
+/// <param name="First">No previous position to measure from (session start, reset, or a pause in
+/// sampling): recorded, never judged.</param>
+/// <param name="Jumped">Too far from the previous position to have been taxied: the aircraft was put
+/// here. The surface baseline is already dropped; the caller drops its passing tracks.</param>
 /// <param name="SurfaceCallout">The surface sentence to speak (queued), or null.</param>
 internal readonly record struct SurroundingsSample(bool Usable, bool First, bool Jumped, string? SurfaceCallout)
 {
@@ -22,19 +18,12 @@ internal readonly record struct SurroundingsSample(bool Usable, bool First, bool
 }
 
 /// <summary>
-/// The per-sample half of <see cref="AirportSurroundingsMonitor"/> that needs no sim, no timer and
-/// no announcer: the last position, the teleport test, the unreadable-sample guard, the two callout
-/// switches and what turning one back ON forgets, and the <see cref="SurfaceChangeGate"/> they feed.
-/// PURE — the monitor hands it one sample per <c>AIRCRAFT_POSITION</c> answer, AT LEAST every poll
-/// (ground traffic, TCAS and hotkey one-shots can all deliver one sooner) — and speaks what comes
-/// back, so its rules are pinned at that SPARSEST cadence (<see cref="AirportSurroundingsMonitor.PollMs"/>),
-/// which the gate's own tests, fed a distance at a time, cannot see. Because the rule is
-/// distance-based, a denser real sample only makes it MORE exact, never less.
-///
-/// <para>The monitor takes NO sample while both switches are off, so the last position is only
-/// current while at least one is on. Turning a switch on therefore forgets it exactly when the
-/// other was off too — a pause in sampling — and never otherwise: forgetting it while the other
-/// switch kept sampling would only throw a poll of evidence away.</para>
+/// The pure per-sample half of <see cref="AirportSurroundingsMonitor"/>: last position, teleport
+/// test, unreadable-sample guard, the two callout switches, and the <see cref="SurfaceChangeGate"/>
+/// they feed. Pinned at the monitor's sparsest cadence (<see cref="AirportSurroundingsMonitor.PollMs"/>);
+/// the surface rule is distance-based, so denser samples only make it more exact.
+/// <para>No sample is taken while both switches are off, so turning one on forgets the last position
+/// exactly when the other was off too.</para>
 /// </summary>
 internal sealed class SurroundingsSampleTracker
 {
@@ -53,13 +42,9 @@ internal sealed class SurroundingsSampleTracker
     public SurfaceFamily AnnouncedSurface => _surface.AnnouncedFamily;
 
     /// <summary>
-    /// Sets the passing callouts' switch and returns TRUE only when this call turned it on from
-    /// off: the caller's passing tracks then hold approaches nobody watched while it was off, and
-    /// read against the next sample one could arm a pass that was never seen, so the caller
-    /// rebaselines them. Assigning the value it already has — the settings dialog assigns every
-    /// switch on every OK — is not an edge and returns false. Never touches the surface gate: the
-    /// convenience callout being switched on must not cost the safety one the evidence of an
-    /// excursion the pilot is driving right now.
+    /// Sets the passing switch; true only when this call turned it on, so the caller rebaselines its
+    /// tracks (approaches recorded before were never watched). Re-assigning the same value is not an
+    /// edge. Never touches the surface gate, so an excursion in progress keeps its evidence.
     /// </summary>
     public bool SetPassingEnabled(bool on)
     {
@@ -70,12 +55,8 @@ internal sealed class SurroundingsSampleTracker
     }
 
     /// <summary>
-    /// Sets the surface callout's switch and returns TRUE only when this call turned it on from
-    /// off. Turning it on drops the surface baseline: what the gate last believed was read before
-    /// the switch went off and anything driven since was never watched, so the next judged
-    /// surface is a silent baseline — the first surface of a session is one for the same reason.
-    /// Assigning the value it already has changes nothing, so a settings OK in the middle of an
-    /// excursion keeps its evidence.
+    /// Sets the surface switch; true only when this call turned it on. Turning it on drops the surface
+    /// baseline, so the next surface is a silent baseline. Re-assigning the same value changes nothing.
     /// </summary>
     public bool SetSurfaceEnabled(bool on)
     {
@@ -89,25 +70,18 @@ internal sealed class SurroundingsSampleTracker
         return turnedOn;
     }
 
-    /// <summary>A reconnect, an aircraft or database switch, a turnaround liftoff, an airborne
-    /// episode: forget the last position and the surface baseline. The switches are the pilot's
-    /// settings and survive.</summary>
+    /// <summary>Forgets the last position and the surface baseline (reconnect, aircraft or database
+    /// switch, turnaround liftoff, airborne episode). The switches survive.</summary>
     public void Reset()
     {
         _surface.Reset();
         _last = null;
     }
 
-    /// <summary>
-    /// One ground sample, in the <c>AIRCRAFT_POSITION</c> struct's own terms (its surface fields
-    /// are doubles). Returns what the sample meant; see <see cref="SurroundingsSample"/>.
-    /// </summary>
+    /// <summary>One ground sample, in the <c>AIRCRAFT_POSITION</c> struct's own terms.</summary>
     public SurroundingsSample Sample(double lat, double lon, double surfaceType, double surfaceInfoValid, double groundSpeedKts)
     {
-        // An unreadable position is not a sample. Kept as the last position it would poison the
-        // next one — no distance can be measured from a NaN, and the NaN distance it yields once
-        // confirmed a surface on the spot — so it is skipped outright and the last READABLE
-        // position stays the reference.
+        // A NaN kept as the reference once confirmed a surface on the spot; skip it outright.
         if (!double.IsFinite(lat) || !double.IsFinite(lon)) return SurroundingsSample.Unusable;
 
         bool first = _last == null;
@@ -117,8 +91,7 @@ internal sealed class SurroundingsSampleTracker
         {
             if (AirportSurroundingsMonitor.IsPositionJump(last.Lat, last.Lon, lat, lon))
             {
-                // An aircraft PUT on the grass has not driven off anything, and the metres between
-                // the two positions were never taxied: this sample becomes the silent baseline.
+                // Put on the grass is not driving off the pavement: this sample is the new baseline.
                 jumped = true;
                 _surface.Reset();
             }
@@ -129,9 +102,7 @@ internal sealed class SurroundingsSampleTracker
         }
         _last = (lat, lon);
 
-        // The first sample after a reset, a liftoff or a pause is RECORDED, never judged, only
-        // because there is nothing to measure it from: no distance for the gate and no jump test.
-        // The surface baseline is taken from the next sample.
+        // A first sample has no distance to judge by; the surface baseline comes from the next.
         string? call = null;
         if (_surfaceEnabled && !first)
             call = _surface.Evaluate(SurfaceTypeOf(surfaceType), IsValid(surfaceInfoValid),
@@ -139,13 +110,10 @@ internal sealed class SurroundingsSampleTracker
         return new SurroundingsSample(Usable: true, First: first, Jumped: jumped, SurfaceCallout: call);
     }
 
-    // A surface type that is not a finite number is no family at all: -1 is outside the enum, so
-    // SurfaceFamilies reads it as Unknown and the gate stays silent. Never (int)NaN, which .NET 9
-    // and later saturate to 0 — CONCRETE — so a NaN would tell a pilot on the grass they were back
-    // on pavement (measured on the 10.0 runtime).
+    // A non-finite type is -1, i.e. Unknown. Never (int)NaN: .NET 9+ saturates it to 0, CONCRETE,
+    // which would tell a pilot on the grass they were back on pavement.
     private static int SurfaceTypeOf(double raw) => double.IsFinite(raw) ? (int)Math.Round(raw) : -1;
 
-    // SURFACE INFO VALID is a bool the sim delivers as 0 or 1. NaN != 0 is TRUE, so a bare "!= 0"
-    // would call an unreadable flag valid.
+    // NaN != 0 is true, so a bare "!= 0" would call an unreadable flag valid.
     private static bool IsValid(double raw) => double.IsFinite(raw) && raw != 0;
 }

@@ -1,62 +1,38 @@
 namespace MSFSBlindAssist.Services;
 
-/// <summary>How one spoken line of a surroundings lookup is delivered — see
-/// <see cref="SurroundingsLookupNotice.Delivery"/>.</summary>
+/// <summary>How one spoken line of a surroundings lookup is delivered (<see cref="SurroundingsLookupNotice.Delivery"/>).</summary>
 internal enum SurroundingsLookupDelivery
 {
-    /// <summary><c>AnnounceImmediate</c>: still the press's own moment, so it may interrupt, as every
-    /// hotkey answer does.</summary>
+    /// <summary><c>AnnounceImmediate</c>: still the press's own moment.</summary>
     Immediate,
-    /// <summary><c>Announce</c>: late enough that what is being spoken may be NEWER than the press —
-    /// a taxi instruction, or this lookup's own "Looking around." — so it waits its turn.</summary>
+    /// <summary><c>Announce</c>: late enough that what is being spoken may be newer than the press.</summary>
     Queued,
 }
 
 /// <summary>
-/// How a surroundings lookup (Alt+L, Ctrl+Shift+L) sounds while it is slow: whether it has been
-/// slow enough to be worth saying "Looking around." about (<see cref="IsSlowAsync"/>), and whether a
-/// line it speaks may still interrupt (<see cref="Delivery"/>).
-///
-/// <para>A COLD first press at an airport can wait seconds with nothing said: a first-time scenery
-/// scan of the package and, on an MSFS 2024 database, a census of the whole Community folder, with
-/// the OSM mirror's wait (OnlineFeatureStore.CatalogWait) running beside them rather than after
-/// them — and, for Alt+L, the airport's taxi graph for the Where-Am-I line, built beside the
-/// catalog rather than before it. A blind pilot has no spinner, so that silence and "the
-/// key did nothing" are the same experience — and the window the second hotkey opens can take
-/// the foreground many seconds after the press. But the notice is about 0.8 s of speech placed
-/// IN FRONT of the answer, so speaking it on a cache hit (every press after the first at one
-/// airport) would be noise over the thing they asked for. Hence: only when the answer is
-/// genuinely slow, at most once per press, and QUEUED so it can never cut a taxi instruction.</para>
+/// How a slow surroundings lookup (Alt+L, Ctrl+Shift+L) sounds. A cold first press can take seconds
+/// (scenery scan, census, OSM wait, taxi graph) and a blind pilot has no spinner, so after
+/// <see cref="Delay"/> a queued "Looking around." is spoken — only then, since on a cache hit it
+/// would be noise in front of the answer.
 /// </summary>
 internal static class SurroundingsLookupNotice
 {
-    /// <summary>How long the answer may take before the notice is worth its own 0.8 s — and so also
-    /// the line between a lookup line that may interrupt and one that must queue
-    /// (<see cref="Delivery"/>): the notice is queued at this moment, and a later line interrupting
-    /// would cut it off. Under OnlineFeatureStore.CatalogWait with room for the notice itself, so a
-    /// lookup waiting only on the mirror still gets it (pinned by SurroundingsLookupNoticeTests).</summary>
+    /// <summary>When the notice speaks, and from when a lookup line queues instead of interrupting.
+    /// Under OnlineFeatureStore.CatalogWait so a lookup waiting on the mirror still gets it (pinned).</summary>
     internal static readonly TimeSpan Delay = TimeSpan.FromSeconds(1.5);
 
     /// <summary>
-    /// How one line of a surroundings lookup — its answer, or its error/empty line — is spoken, from
-    /// how long ago the KEY was pressed (review item ML-1). Within <see cref="Delay"/> it is still the
-    /// press's own moment and interrupts, as every hotkey answer does. From <see cref="Delay"/> on it
-    /// is QUEUED: a cold lookup takes 3-10 s, and in that time the pilot can have been given a taxi
-    /// instruction ("Stop. Hold short of runway 27L.") that an interrupting answer would cut off
-    /// mid-word — and "Looking around.", queued at exactly this delay, is ahead of it too. The one
-    /// exception is a SUPPRESSED announcer (a first-detect grace window): a queued line is DROPPED
-    /// there, and a pilot who pressed a key must never hear nothing, so it interrupts.
+    /// Within <see cref="Delay"/> of the press a line interrupts, as every hotkey answer does; later it
+    /// is queued, because an interrupting answer 3-10 s late would cut off a taxi instruction given
+    /// meanwhile. A suppressed announcer drops queued lines, so there it still interrupts.
     /// </summary>
     internal static SurroundingsLookupDelivery Delivery(TimeSpan sincePress, bool announcerSuppressed)
         => sincePress < Delay || announcerSuppressed ? SurroundingsLookupDelivery.Immediate : SurroundingsLookupDelivery.Queued;
 
     /// <summary>
-    /// True when <paramref name="work"/> had not finished within <paramref name="delay"/>. Never
-    /// throws <paramref name="work"/>'s own exception and never leaves it unobserved: the caller
-    /// awaits the same task immediately afterwards, inside its own catch, and a failure surfacing
-    /// HERE would replace "Surroundings lookup failed." with an unhandled pool-thread exception.
-    /// <para><c>WaitAsync</c>, not <c>WhenAny(work, Task.Delay(…))</c>, which arms a timer nothing
-    /// cancels when the work wins.</para>
+    /// True when <paramref name="work"/> had not finished within <paramref name="delay"/>. Swallows the
+    /// work's own failure: the caller awaits the same task next, inside its own catch.
+    /// <c>WaitAsync</c>, not <c>WhenAny(work, Task.Delay(…))</c>, whose timer nothing cancels.
     /// </summary>
     internal static async Task<bool> IsSlowAsync(Task work, TimeSpan delay)
     {
@@ -66,9 +42,6 @@ internal static class SurroundingsLookupNotice
         return false;
     }
 
-    /// <summary>How long the notice still waits for the answer, counted from the PRESS (review item
-    /// ML-5): the position request and the airport resolution ahead of the builds have already spent
-    /// some of <see cref="Delay"/>. Never negative — <see cref="IsSlowAsync"/> with a zero wait
-    /// reports an answer not yet in hand as slow at once.</summary>
+    /// <summary>What is left of <see cref="Delay"/>, counted from the press; never negative.</summary>
     internal static TimeSpan NoticeWait(TimeSpan sincePress) => sincePress >= Delay ? TimeSpan.Zero : Delay - sincePress;
 }

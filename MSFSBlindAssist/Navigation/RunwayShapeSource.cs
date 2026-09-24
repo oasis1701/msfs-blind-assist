@@ -4,43 +4,22 @@ namespace MSFSBlindAssist.Navigation;
 public enum RunwayShapeSourceKind { None, ActiveGraph, WhereAmIGraph, Memo }
 
 /// <summary>
-/// The runway shapes <c>TaxiGuidanceManager</c> last memoised for ONE airport, as ONE value: the
-/// airport, the database generation they were read under (<c>TaxiGuidanceManager.DatabaseGeneration</c>),
-/// the graph they were built from, and the shapes. It replaced three fields that every writer and
-/// every clear had to keep in step. An EMPTY <see cref="Shapes"/> is a real answer — an airport
-/// with no runways, where "not on a runway" is exactly right.
+/// The runway shapes last memoised for one airport, with the database generation they were read
+/// under and the graph they came from (null for a runway-rows warm-up). An empty
+/// <see cref="Shapes"/> is a real answer: no runways, so "not on a runway".
 /// </summary>
 public sealed record RunwayShapeMemo(string Icao, long Generation, TaxiGraph? SourceGraph, IReadOnlyList<RunwayShape> Shapes);
 
 /// <summary>
-/// The pure decision behind <c>TaxiGuidanceManager.IsOnRunwayPavement</c>: given the airport being
-/// probed and what the two graph caches and the runway-shape memo currently hold, which one
-/// answers (<see cref="Choose"/>) and the memo to hold afterwards (<see cref="Resolve"/>). Out here
-/// because the manager cannot be built in a test (its constructor opens a steering tone) and
-/// because the memo's whole point is an ORDERING that is easy to get wrong.
-///
-/// <para>The memo is the rung that keeps the probe from going blind. The Where-Am-I graph is
-/// dropped by <c>OnAirportDataUpdated</c> whenever the online taxiway-name fetch lands — and an
-/// Alt+Y or Alt+L at the airport is what starts that fetch (the probe's OWN warm-up did, until it
-/// stopped building graphs), so the sequence is the ordinary one: build, answer, lose the graph
-/// seconds later, answer null for the rest of the minute the warm-up retry waits.
-/// Null does not silence the passing callouts, so that minute permitted them ON A RUNWAY. Runway
-/// pavement does not depend on taxiway NAMES, so shapes built before the fetch are still exactly
-/// right after it.</para>
-///
-/// <para>A graph for the airport always outranks the memo: it is fresher and it is what the memo
-/// would be rebuilt from. The memo is dropped with the graph cache it shadows
-/// (<c>ClearWhereAmICache</c>, which a database switch calls — the same airport can carry
-/// different runway geometry in two databases) and replaced as soon as a graph for a different
-/// airport is probed — never by the name fetch, which is the one invalidation it must outlive.</para>
-///
-/// <para>THE DATABASE GENERATION. A database switch (<c>ClearWhereAmICache</c>) drops the
-/// Where-Am-I graph and the memo, moves <c>TaxiGuidanceManager.DatabaseGeneration</c>, and
-/// deliberately leaves active guidance's own graph in place — a route being flown keeps its graph.
-/// That graph was built from the PREVIOUS database, so once the generation has moved it neither
-/// answers nor re-seeds the memo: it once did both, and the memo it re-seeded — the old runways,
-/// filed under the new database — outlived <c>StopGuidance</c> for the rest of the session. A memo
-/// of another generation is never read either.</para>
+/// The pure decision behind <c>TaxiGuidanceManager.IsOnRunwayPavement</c>: which held geometry
+/// answers (active graph, Where-Am-I graph, memo — in that order) and the memo to hold afterwards.
+/// <para>The memo keeps the probe answering after the Where-Am-I graph is dropped, which the online
+/// taxiway-name fetch does seconds after an Alt+Y/Alt+L builds it. A null answer does not silence
+/// the passing callouts, so without the memo they were permitted on a runway for up to a minute.
+/// Runway pavement does not depend on taxiway names.</para>
+/// <para>A database switch moves the generation and leaves an active route's graph in place; from
+/// then on that graph neither answers nor re-seeds the memo, and a memo of another generation is
+/// never read.</para>
 /// </summary>
 public static class RunwayShapeSource
 {
@@ -61,12 +40,9 @@ public static class RunwayShapeSource
     }
 
     /// <summary>
-    /// The whole probe step, run by the manager under its lock: which shapes answer for
-    /// <paramref name="icao"/> — null when nothing held can say — and the memo to hold afterwards.
-    /// A GRAPH that answers re-seeds the memo from its own centrelines, once per graph instance
-    /// (<see cref="RunwayShape.For"/> allocates, and a 2 s poll must not rebuild the set every
-    /// tick), which is what lets the probe keep answering after that graph is dropped. Nothing else
-    /// is written here — in particular never from an active graph of an older generation.
+    /// The whole probe step, run under the manager's lock: the shapes that answer (null when nothing
+    /// held can) and the memo to hold afterwards. An answering graph re-seeds the memo once per graph
+    /// instance, never per poll.
     /// </summary>
     public static (IReadOnlyList<RunwayShape>? Shapes, RunwayShapeMemo? Memo) Resolve(
         string icao, long currentGeneration,
@@ -94,24 +70,15 @@ public static class RunwayShapeSource
         return (reseeded.Shapes, reseeded);
     }
 
-    /// <summary>
-    /// May something read through a provider captured under <paramref name="readUnder"/> be STORED
-    /// now? Only while no database switch has moved the generation since. The one rule for every
-    /// write into what the runway probe reads: whatever straddled a switch read the PREVIOUS
-    /// database, and stored it would outlive the very switch that had just cleared it.
-    /// </summary>
+    /// <summary>Whether something read under generation <paramref name="readUnder"/> may be stored:
+    /// only while no database switch has happened since.</summary>
     public static bool MayStore(long readUnder, long currentGeneration) => readUnder == currentGeneration;
 
     /// <summary>
-    /// The memo to hold after the probe's warm-up read <paramref name="icao"/>'s runway rows under
-    /// <paramref name="readUnder"/>: a rows-only memo (no source graph) carrying
-    /// <paramref name="shapes"/> — an EMPTY list included, which answers "not on a runway" — when
-    /// <see cref="MayStore"/> allows it AND <paramref name="icao"/> is still the airport the probe is
-    /// being asked about (<paramref name="trackedIcao"/>, the caller's current airport), else
-    /// <paramref name="held"/>, unchanged. The airport rule is what stops a warm-up still running for
-    /// the PREVIOUS airport from landing after the new airport's own warm-up and evicting its memo:
-    /// the probe would then answer null — which does not silence — for up to a minute, until the
-    /// retry came round. Nothing asked yet (<paramref name="trackedIcao"/> null or empty) stores nothing.
+    /// The memo after a runway-rows warm-up: a graph-less memo of <paramref name="shapes"/> when
+    /// <see cref="MayStore"/> allows it and <paramref name="icao"/> is still the airport the probe is
+    /// asked about (<paramref name="trackedIcao"/>), else <paramref name="held"/> unchanged — so a
+    /// late warm-up for the previous airport cannot evict the current one's memo.
     /// </summary>
     public static RunwayShapeMemo? Publish(RunwayShapeMemo? held, string icao, long readUnder, long currentGeneration,
         IReadOnlyList<RunwayShape> shapes, string? trackedIcao)
