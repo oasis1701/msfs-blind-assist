@@ -26,7 +26,7 @@ public sealed record ClassifiedModel(FeatureKind Kind, string Name, bool NameIsG
 public static class SceneryModelNameClassifier
 {
     private static readonly Regex StopList = new(
-        @"\b(fences?|lights?|rooflights?|poles?|aircon|hvac|vehicles?|cars?|carparks?|trucks?|vans?|cargovan|loaders?|cones?|signs?|markings?|lines?|jetways?|bridges?|pylons?|silos?|lod|shadows?|decals?|grass|trees?|pedestrian|crossing|tickets?|platform|gates?|safegate|base|stairs?|railing|barrier|bollards?|hydrant)\d*\b",
+        @"\b(fences?|lights?|rooflights?|poles?|aircon|hvac|vehicles?|cars?|carparks?|trucks?|vans?|cargovan|loaders?|cones?|signs?|markings?|lines?|jetways?|bridges?|pylons?|silos?|lod|shadows?|decals?|grass|trees?|pedestrian|crossing|tickets?|platform|gates?|safegate|base|stairs?|railing|barrier|bollards?|hydrant|fire ?engines?|ligths)\d*\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     // Whole model dropped when ANY token equals one of these (OrdinalIgnoreCase). Measured clutter
@@ -37,12 +37,31 @@ public static class SceneryModelNameClassifier
         "pallet", "pallets", "tug", "tugs", "tractor", "tractors", "pumper", "extinguisher", "extinguishers", "ext", "fireext",
         "connector", "connectors", "barrel", "barrels", "dumpster", "dumpsters", "equipment", "walkway", "walkways", "guard",
         "sewer", "water", "text", "unmarked", "wrapped", "strapped", "antenna", "antennas", "glass", "roof", "barriers", "sm", "lg",
+        // Measured 2026-09-24 over the 360 airports with installed scenery: ground equipment, parked
+        // vehicles, ships, props ("AptItem"), masts named "… tower", city landmark packs, and "POI" —
+        // how MK Studios and iniBuilds tag a landside landmark (a skyscraper, a road filling station).
+        "gse", "veh", "vehic", "vh", "semi", "semitrailer", "tt", "ud", "trailer", "trailers", "cont", "uld", "sunduk",
+        "iveco", "deicer", "deicers", "rack", "racks", "anim", "item", "items", "piles", "prop", "props", "boxpack",
+        "ship", "ships", "radar", "ils", "radio", "ldm", "waw", "poi", "pois",
+        "merged", "rg", "dm", "landmarks", "jumper", "walker",      // Orbx city-pack naming; in no airport package
     };
     // Dropped FROM the name; the model survives. "part" so the parts of one building share one name.
     private static readonly HashSet<string> NoiseTokens = new(StringComparer.OrdinalIgnoreCase) { "msfs", "new", "old", "part", "bldg" };
-    // Leading developer tokens, measured: iniBuilds, Flightbeam, FlyTampa, MK Studios, imaginesim.
+    // Leading developer tokens, measured: iniBuilds, Flightbeam, FlyTampa, MK Studios (and its
+    // sublayer codes after the ICAO), imaginesim, Drzewiecki, pyreegue, FSDG, CloudSurf.
     private static readonly HashSet<string> VendorTokens = new(StringComparer.OrdinalIgnoreCase)
-    { "iniscene", "inibuilds", "ini", "lib", "iby", "mk", "fb", "ft", "ftlib", "ene", "nxt", "gse" };
+    {
+        "iniscene", "inibuilds", "ini", "lib", "iby", "mk", "fb", "ft", "ftlib", "ene", "nxt",
+        "vt", "ot", "pg", "dk", "dk2", "lk", "kg", "pw", "dd", "prg", "vrm", "cas",
+    };
+    // Modelling words dropped from a name once its kind is decided ("KLAX_FUEL_FARM_CLUSTER").
+    // After the kind, never before: removing a token first could complete a kind phrase across it
+    // that MightBeFeature, which keeps it, would not see.
+    private static readonly HashSet<string> DescriptorTokens = new(StringComparer.OrdinalIgnoreCase) { "cluster" };
+    // Project Coastline's ships ("12_Cargo2", "16_CargoOil1"): a leading number, then "cargo".
+    private static readonly Regex NumberedCargo = new(@"^\d+ cargo\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    // A parked freighter model ("EPWA_B763F_UPS"): an aircraft, whatever operator it carries.
+    private static readonly Regex FreighterModel = new(@"(?:^|[_\-. ])[AB]\d{3}F(?:$|[_\-. ])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     // Hangar is decided FIRST, ahead of the shared lexicon: "Narrows Aviation Hangar" is a hangar.
     private static readonly Regex HangarWord = new(@"\b(hangars?|hangers?)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -72,11 +91,10 @@ public static class SceneryModelNameClassifier
         new[] { HangarWord, FeatureLexicon.Cargo, FeatureLexicon.Fbo, FeatureLexicon.Concourse }
             .Concat(OtherKinds.Select(k => k.Rx)).ToArray();
 
-    // The KEYWORD TOKEN a concourse or terminal name is built from: FeatureLexicon.ConcourseWords —
-    // the very list FeatureLexicon.Concourse is built from, so a word the kind test accepts is always
-    // one this finds — plus "terminal".
-    private static readonly HashSet<string> NameKeywords =
-        new(FeatureLexicon.ConcourseWords.Append("terminal"), StringComparer.OrdinalIgnoreCase);
+    // The keyword token a concourse name is built from: FeatureLexicon.ConcourseWords, the very list
+    // FeatureLexicon.Concourse is built from, so a word the kind test accepts is always one this finds.
+    // A terminal's name is built from "terminal".
+    private static readonly HashSet<string> ConcourseKeywords = new(FeatureLexicon.ConcourseWords, StringComparer.OrdinalIgnoreCase);
 
     // Classify inline regexes hoisted to static readonly (tr-TR IgnoreCase trap fix).
     private static readonly Regex TrailingDigits = new(@"^\d{1,2}$", RegexOptions.CultureInvariant);
@@ -104,20 +122,40 @@ public static class SceneryModelNameClassifier
         return null;
     }
 
-    public static ClassifiedModel? Classify(string modelName, string icao)
+    /// <summary>
+    /// The airport a package was built for, from its folder name's "&lt;vendor&gt;-airport-&lt;icao&gt;-…"
+    /// convention, or null. Its models carry that ICAO even where the package also covers a
+    /// neighbouring field (KLAX's cargo hangars beside heliport CL02).
+    /// </summary>
+    public static string? PackageIcao(string packageFolderName)
+    {
+        var parts = packageFolderName.Split('-');
+        for (int i = 0; i + 1 < parts.Length; i++)
+            if (parts[i].Equals("airport", StringComparison.OrdinalIgnoreCase)
+                && parts[i + 1].Length is 3 or 4 && parts[i + 1].All(char.IsAsciiLetterOrDigit))
+                return parts[i + 1];
+        return null;
+    }
+
+    /// <param name="packageIcao">The package's own airport (<see cref="PackageIcao"/>), stripped like
+    /// <paramref name="icao"/> when the asking airport's own code is not in the name.</param>
+    public static ClassifiedModel? Classify(string modelName, string icao, string? packageIcao = null)
     {
         if (string.IsNullOrWhiteSpace(modelName)) return null;
-        var tokens = Tokenize(modelName, icao);
+        if (FreighterModel.IsMatch(modelName)) return null;
+        var tokens = Tokenize(modelName, icao, packageIcao);
         if (tokens.Count == 0) return null;
         // Ground equipment, a building INTERIOR, a ground-marking decal: one such token condemns
         // the whole model, however building-like the rest of the name reads.
         if (tokens.Any(t => StopWords.Contains(t))) return null;
-        if (StopList.IsMatch(string.Join(" ", tokens))) return null;
+        string joined = string.Join(" ", tokens);
+        if (StopList.IsMatch(joined) || NumberedCargo.IsMatch(joined)) return null;
 
         var kept = StripNoise(tokens);
         if (kept.Count == 0) return null;
         FeatureKind? kind = KindOf(string.Join(" ", kept));
         if (kind == null) return null;
+        if (kept.Count > 1) kept.RemoveAll(t => DescriptorTokens.Contains(t));
 
         // A hangar named by another kind's word ("Cessna Service Hangar" contains no other keyword) is
         // fine; but "Narrows Aviation Hangar" must be a HANGAR, not an FBO — Hangar is checked first.
@@ -125,8 +163,11 @@ public static class SceneryModelNameClassifier
         {
             // A concourse or terminal is its keyword plus a designator and nothing else: the rest of
             // the model name belongs to a part, a canopy or an interface, and every piece of the one
-            // building must come out under the one name.
-            int kw = kept.FindIndex(t => NameKeywords.Contains(t));
+            // building must come out under the one name. The keyword is the one that decided the kind,
+            // so a terminal's pier ("Terminal_1_pier_2") is "Pier 2", never a second "Terminal 1".
+            int kw = kind == FeatureKind.Terminal
+                ? kept.FindIndex(t => t.Equals("terminal", StringComparison.OrdinalIgnoreCase))
+                : kept.FindIndex(t => ConcourseKeywords.Contains(t));
             if (kw < 0) return null;                                           // keyword only matched inside a longer token: no name to build
             kept = kw + 1 < kept.Count && IsDesignator(kept[kw + 1])
                 ? new List<string> { kept[kw], kept[kw + 1] }
@@ -173,38 +214,18 @@ public static class SceneryModelNameClassifier
     public static bool MightBeFeature(string modelName)
     {
         if (string.IsNullOrWhiteSpace(modelName)) return false;
-        return HasKindWord(Tokenize(modelName, ""));
+        return HasKindWord(Tokenize(modelName, "", null));
     }
 
     /// <summary>
     /// The model name's own words, with the ICAO and the developer's prefix gone. Both are stripped
     /// HERE rather than in Classify so the prefilter tokenizes a name exactly the same way.
     /// </summary>
-    private static List<string> Tokenize(string model, string icao)
+    private static List<string> Tokenize(string model, string icao, string? packageIcao)
     {
         var raw = model.Split(TokenSeparators, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        int start = 0, icaoAt = -1;
-        if (!string.IsNullOrEmpty(icao))
-        {
-            if (raw.Length > 0 && raw[0].StartsWith(icao, StringComparison.OrdinalIgnoreCase)
-                && AllAsciiDigits(raw[0].AsSpan(icao.Length)))
-            {
-                start = 1;                                                     // "KTIW_…", "katl471_…"
-            }
-            else
-            {
-                // "iniscene-egss-…", "mk_bikf_…": the ICAO ends the vendor's prefix, so everything
-                // through it goes. A short leading token may END with the ICAO ("FBKDEN", "FBKSFO").
-                for (int i = 0; i < raw.Length && i < 3; i++)
-                {
-                    if (!raw[i].Equals(icao, StringComparison.OrdinalIgnoreCase)
-                        && !(raw[i].Length <= 8 && raw[i].EndsWith(icao, StringComparison.OrdinalIgnoreCase))) continue;
-                    start = i + 1;
-                    icaoAt = i;
-                    break;
-                }
-            }
-        }
+        if (!FindIcao(raw, icao, out int start, out int icaoAt))
+            FindIcao(raw, packageIcao, out start, out icaoAt);
 
         var tokens = Words(raw, SkipVendors(raw, start), raw.Length);
         // …unless the ICAO does not END a prefix but a NAME: "DHL_YSSY", "Security_DHL_yssy",
@@ -220,6 +241,32 @@ public static class SceneryModelNameClassifier
             if (HasKindWord(before)) tokens = before.Concat(Words(raw, icaoAt + 1, raw.Length)).ToList();
         }
         return tokens;
+    }
+
+    /// <summary>Where the name's own words start once <paramref name="icao"/> and the prefix it ends
+    /// are gone; false when the name does not carry it. <paramref name="icaoAt"/> is the ICAO token's
+    /// index when it ends a prefix, else -1.</summary>
+    private static bool FindIcao(string[] raw, string? icao, out int start, out int icaoAt)
+    {
+        start = 0; icaoAt = -1;
+        if (string.IsNullOrEmpty(icao)) return false;
+        if (raw.Length > 0 && raw[0].StartsWith(icao, StringComparison.OrdinalIgnoreCase)
+            && AllAsciiDigits(raw[0].AsSpan(icao.Length)))
+        {
+            start = 1;                                                             // "KTIW_…", "katl471_…"
+            return true;
+        }
+        // "iniscene-egss-…", "mk_bikf_…": the ICAO ends the vendor's prefix, so everything through it
+        // goes. A short leading token may END with the ICAO ("FBKDEN", "FBKSFO").
+        for (int i = 0; i < raw.Length && i < 3; i++)
+        {
+            if (!raw[i].Equals(icao, StringComparison.OrdinalIgnoreCase)
+                && !(raw[i].Length <= 8 && raw[i].EndsWith(icao, StringComparison.OrdinalIgnoreCase))) continue;
+            start = i + 1;
+            icaoAt = i;
+            return true;
+        }
+        return false;
     }
 
     /// <summary>The first index at or after <paramref name="start"/> that is not a developer's token.</summary>

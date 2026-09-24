@@ -78,6 +78,29 @@ public class SceneryModelNameClassifierTests
     [InlineData("EDDF_Equipment_FireExt_001", "EDDF")] [InlineData("MK_BIKF_DK_Sewer_Tank", "BIKF")]
     [InlineData("Barriers_Cargo_12", "EBBR")] [InlineData("kpdx_nxt_concourse_b_walkway", "KPDX")]
     [InlineData("Fuel-truck_KPHX", "KPHX")]          // measured 2026-09-22: with only its ICAO removed it is still a fuel truck
+    // Measured 2026-09-24, the audit of all 360 airports with installed scenery: each was spoken as a place.
+    [InlineData("KSAT_SEMI_UPS", "KLAX")] [InlineData("KSAT_TT_UPS", "KLAX")] [InlineData("Trailer_UPS", "KMEM")]
+    [InlineData("UD_UPS_M", "KIAD")] [InlineData("Cont_UPS", "KLAS")] [InlineData("sunduk_UPS", "KMIA")]
+    [InlineData("katl524_trailer_usa_ups", "KATL")] [InlineData("LOWW_VEH_Trailer_UPS", "LOWW")] [InlineData("ESSA_V3_VEH_UPS", "ESSA")]
+    [InlineData("prg_ULD_AAY_UPS_60580", "EGPH")] [InlineData("mk-eidw-gse-lgcontainercargo-ups", "EIDW")]
+    [InlineData("ini_GSE_GPU_TLD_406_SIGNATURE", "KDFW")] [InlineData("ini_GSE_STAIR_01_SIGNATURE", "FACT")]
+    [InlineData("EPWA_B763F_UPS", "EPWA")] [InlineData("DD_B763F_UPS", "KBFM")]                     // a parked freighter
+    [InlineData("16_CargoOil1", "LIMJ")] [InlineData("11_CargoGas", "LIIYR")]                        // ships
+    [InlineData("ini_GSE_Deicer_Folded_IDS_Yellow", "ENSB")] [InlineData("DD_Deicer_EU2_LS", "EPWA")] [InlineData("MK_EFHK_KG_DEICER", "EFRO")]
+    [InlineData("FireEngine_kbos", "KBOS")] [InlineData("fire_engine_lgav", "LGAV")]
+    [InlineData("MK_LSZH_VT_Cargo_Racks", "LSZH")] [InlineData("CAS_RPLL_AptItem_Cargo_Piles", "RPLL")] [InlineData("Ft_Vehic_DomTerminal", "YSSY")]
+    [InlineData("katl399_tower_radar_anim", "KATL")] [InlineData("cyyz_radar_tower", "CYYZ")] [InlineData("KDFW_RadarTower_01", "KDFW")]
+    [InlineData("TowerRadar", "OEDF")] [InlineData("MK_KSEA_VT_Radar_Tower_01", "KSEA")]              // masts, not the control tower
+    [InlineData("MK_EKVG_VT_ILS_Tower", "EKVG")] [InlineData("ftlib_ils_tower1", "KBOS")]
+    [InlineData("mk_dub_lk_radio_tower", "EIDW")] [InlineData("MK_LEMG_VT_NAV_RadioTower", "LEMG")]
+    [InlineData("LDM_Istanbul_AkbankTower", "LT76J")] [InlineData("WAW_KJ_OxfordTower", "EP89J")]  // city landmark packs
+    [InlineData("VHHH_POI_CCB_Tower", "VHHZ")] [InlineData("OMDU_POI_IndexTower", "OMFMJ")]            // "POI": a landside landmark
+    [InlineData("MK_KSEA_DK_Restaurant_POI_01", "KSEA")] [InlineData("MK_KSEA_DK_Fuel_Station_POI_01", "KSEA")]
+    [InlineData("prg_iveco_fedex", "EGPH")] [InlineData("prg_prop_cargo_wrap", "EGPH")] [InlineData("prg_cargo_boxpack", "EGPH")]
+    [InlineData("CAS_RPLL_VH_TRUCKSM_DHL", "RPLL")] [InlineData("MK_GCTS_GSE_Cargo_Load_Set_01", "GCTS")]
+    [InlineData("TE_EU_RG_Gare de Lyon with clock tower", "LF8JI")] [InlineData("AU_DM_AUT_Tower", "NZBC")]   // Orbx city packs
+    [InlineData("Merged_TE_AS_SI_Suntec City Tower 5", "WSUA6")] [InlineData("Tower_Jumper", "NZBC")]
+    [InlineData("12_Cargo2", "LIIYR")] [InlineData("15_Cargo_empty", "LIZE6")]                          // coastline pack ships
     public void Clutter_and_interiors_are_not_features(string model, string icao)
         => Assert.Null(SceneryModelNameClassifier.Classify(model, icao));
 
@@ -107,6 +130,19 @@ public class SceneryModelNameClassifierTests
     [InlineData("MK_BIKF_DS_Hangar_03", "BIKF", FeatureKind.Hangar, "DS Hangar")]
     [InlineData("mk_bikf_da_terminal", "BIKF", FeatureKind.Terminal, "Terminal")]
     [InlineData("Titan_Airways_Hangar", "EGSS", FeatureKind.Hangar, "Titan Airways Hangar")]
+    // Measured 2026-09-24: MK Studios, Drzewiecki, FSDG and CloudSurf sublayer tokens, and the "cluster"/"POI" model words.
+    [InlineData("MK_YPAD_VT_West_Restaurant_01", "YPAD", FeatureKind.Office, "West Restaurant")]
+    [InlineData("vrm_Restaurant_1", "VR10", FeatureKind.Office, "Restaurant")]
+    [InlineData("MK_EFHK_OT_ATC_Tower", "EFHK", FeatureKind.Tower, "ATC Tower")]
+    [InlineData("DD_FuelTank_01", "KBFM", FeatureKind.Fuel, "Fuel Tank")]
+    [InlineData("CAS_RPLL_Tower", "RPLL", FeatureKind.Tower, "Tower")]
+    [InlineData("KLAX_FUEL_FARM_CLUSTER", "KLAX", FeatureKind.Fuel, "Fuel Farm")]
+    [InlineData("KJFK_Allied_Aviation_Cluster", "KJFK", FeatureKind.Fbo, "Allied Aviation")]
+    [InlineData("KDFW_UPS_Customer_Cluster", "KDFW", FeatureKind.Cargo, "UPS Customer")]
+    // A pier of a terminal is named by the word that made it a concourse, never "Terminal 1": the
+    // terminal's own parts are Terminal 1, and the catalog never merges across kinds (EIDW, 2026-09-24).
+    [InlineData("mk_eidw_Terminal_1_pier_2", "EIDW", FeatureKind.Concourse, "Pier 2")]
+    [InlineData("mk_eidw_terminal1_pier1", "EIDW", FeatureKind.Concourse, "Pier 1")]
     public void Real_buildings_lose_their_vendor_prefix_and_keep_their_name(string model, string icao, FeatureKind kind, string name)
     {
         var c = SceneryModelNameClassifier.Classify(model, icao);
@@ -152,6 +188,27 @@ public class SceneryModelNameClassifierTests
         Assert.Equal(kind, c!.Kind);
         Assert.Equal(name, c.Name);
     }
+
+    // Measured 2026-09-24: a package's models carry ITS airport's ICAO, which is spoken at a
+    // neighbouring field the package also covers (KLAX's cargo hangars at heliport CL02).
+    [Theory]
+    [InlineData("KLAX_HIGHWAY_HANGAR", "CL02", "inibuilds-airport-klax-los-angeles", FeatureKind.Hangar, "Highway Hangar")]
+    [InlineData("VRM_VRMM_Tower_New", "VRMS", "fsdg-airport-vrmm-maldives-velana", FeatureKind.Tower, "Tower")]
+    public void The_package_airports_icao_goes_like_the_asking_airports(string model, string icao, string package, FeatureKind kind, string name)
+    {
+        var c = SceneryModelNameClassifier.Classify(model, icao, SceneryModelNameClassifier.PackageIcao(package));
+        Assert.NotNull(c);
+        Assert.Equal(kind, c!.Kind);
+        Assert.Equal(name, c.Name);
+    }
+
+    [Theory]
+    [InlineData("inibuilds-airport-klax-los-angeles", "klax")]
+    [InlineData("29palms-airport-lgsr-santorini", "lgsr")]
+    [InlineData("drzewieckidesign-landmarks-warsaw", null)]
+    [InlineData("LFPG_fix", null)]
+    public void A_package_names_its_airport_after_the_word_airport(string package, string? icao)
+        => Assert.Equal(icao, SceneryModelNameClassifier.PackageIcao(package));
 
     [Fact]
     public void A_kind_phrase_is_never_completed_across_the_removed_icao()

@@ -116,7 +116,7 @@ public sealed class SceneryPackageIndexer
             try
             {
                 var cf = LoadOrBuild(dir);
-                var features = FeaturesOf(cf, icao, box);
+                var features = FeaturesOf(cf, icao, SceneryModelNameClassifier.PackageIcao(leaf), box);
                 all.AddRange(features);
                 incomplete |= !cf.IsComplete;
                 // The only sign a pilot gets that the answer is short: otherwise it reads exactly like
@@ -138,14 +138,14 @@ public sealed class SceneryPackageIndexer
         return all;
     }
 
-    private static List<AirportFeature> FeaturesOf(CacheFile cf, string icao, AirportFacilities? box)
+    private static List<AirportFeature> FeaturesOf(CacheFile cf, string icao, string? packageIcao, AirportFacilities? box)
     {
         var groups = new Dictionary<(FeatureKind, string), (bool Generic, List<LatLon> Points)>();
         // Grown once for every placement of every model, not once per point.
         GrownBox? grown = box?.Grown(BoxMarginMetres);
         foreach (var m in cf.Models!)      // LoadOrBuild returns a cache whose Models it either validated or just built
         {
-            var c = SceneryModelNameClassifier.Classify(m.Name, icao);      // once per distinct model, at READ time, for the asking airport
+            var c = SceneryModelNameClassifier.Classify(m.Name, icao, packageIcao);   // once per distinct model, at READ time, for the asking airport
             if (c == null) continue;
             // A short point array means a hand-edited cache: skip the point, never throw.
             var inside = (m.Points ?? new List<double[]>())

@@ -2309,7 +2309,29 @@ cluster.
   both made from it, so a word the kind test accepts can never be one the
   namer lacks — pinned by
   `Every_concourse_word_in_the_shared_list_is_classified_and_named`, which
-  walks that array.
+  walks that array. A concourse or terminal is named from the keyword that
+  DECIDED its kind: `mk_eidw_Terminal_1_pier_2` is Concourse "Pier 2", never a
+  Concourse "Terminal 1" beside the terminal's own Terminal "Terminal 1" — the
+  catalog never merges across kinds, so Look Around said "Terminal 1" twice.
+
+  The audit of all 360 airports with installed scenery (2026-09-24) added, each
+  pinned by its measured model name: ground equipment and parked vehicles
+  (`gse` — every iniBuilds/MK `GSE_` model is equipment, and as a vendor token
+  it let a Signature-branded GPU become an FBO — `veh`, `vh`, `semi`, `tt`,
+  `ud`, `trailer`, `cont`, `uld`, `iveco`, `deicer`, `racks`, `anim`, `prop`,
+  "fire engine", a freighter model like `B763F`); ships (`ship`, and Project
+  Coastline's `12_Cargo2`, a leading number then "cargo"); masts named "…
+  tower" (`radar`, `ils`, `radio`) so they are not the control tower; city
+  landmark packs (`ldm`, `waw`, and Orbx's `merged`/`rg`/`dm`/`landmarks`
+  naming, none of which any airport package uses); and `poi`, which MK Studios
+  and iniBuilds put on landside landmarks — skyscrapers, road filling stations,
+  a marine pier. Vendor sublayer codes (`vt`, `ot`, `pg`, `dk`, `lk`, `kg`,
+  `pw`, `dd`, `prg`, `vrm`, `cas`) are stripped like vendor prefixes, and
+  "cluster" is dropped from a name once its kind is decided (after, never
+  before: dropping it first could complete a kind phrase the prefilter never
+  saw). Recorded residuals: an unmarked skyscraper ("Albahar Tower", "Imperial
+  Tower" at city heliports) still reads as a tower, and KJFK's "Tower Air"
+  building is a Tower.
 - *Structural*, in `SceneryPackageIndexer`: a name scattered over many separate
   clusters is ground equipment. The cap is picked by kind first —
   `MaxClustersHangar` 40 / `MaxPlacementsHangar` 200 for hangars whatever their
@@ -2321,7 +2343,12 @@ cluster.
   point between them.
 
 **The airport's ICAO goes with the vendor prefix it ends** (`mk_bikf_…`,
-`iniscene-egss-…`, `KTIW_…`), but some authors put it LAST: `DHL_YSSY`,
+`iniscene-egss-…`, `KTIW_…`) — and so does the PACKAGE's own ICAO, read from
+its `<vendor>-airport-<icao>-…` folder name
+(`SceneryModelNameClassifier.PackageIcao`), because a package's models carry
+its airport's code where it also covers a neighbour (KLAX's
+`KLAX_HIGHWAY_HANGAR` beside heliport CL02 is "Highway Hangar"). Some authors
+put the ICAO LAST: `DHL_YSSY`,
 `Security_DHL_yssy`, `TankOil_KPHX`. Stripping everything up to it threw those
 buildings away whole, so when the words after the ICAO hold no kind word and
 the words before it hold one ON THEIR OWN, only the ICAO token goes (review
