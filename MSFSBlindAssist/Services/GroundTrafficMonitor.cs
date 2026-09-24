@@ -1206,6 +1206,12 @@ public sealed class GroundTrafficMonitor : IDisposable
             var fin = status.SelectMany(s => s.Finals.Select(f => (Id: f.Ac.ObjectId, s.Key))).ToList();
             var shortFin = status.SelectMany(s => s.Finals.Where(IsShortFinal).Select(f => f.Ac.ObjectId)).ToList();
             bool critical = interrupts && (occ.Count > 0 || shortFin.Count > 0);
+            // A re-armed status is judged only by an evaluation in the INTERRUPTING mode it was re-armed
+            // for (PR #247 re-review M5). A sweep requested before the mode change completes with its
+            // OLD, queuing cycle, in which nothing can be critical: the branch below would complete the
+            // re-armed status silently there and spend the once-per-watch re-arm before the new mode
+            // was ever evaluated. Wait for an evaluation in the interrupting mode.
+            if (_rearmCriticalOnly && !interrupts) return;
             // The one exception: a status RE-ARMED on entering the runway (SetWatch, H2) is critical-only.
             // With nothing on the runway or on short final it completes silently — and marks NOTHING as
             // known (PR #247 B5 follow-up K2): nothing was spoken, so an occupant or a final that showed
