@@ -34,6 +34,9 @@ public sealed class A220FmsForm : Form
     private readonly System.Windows.Forms.Timer _pageNavTimer;
     private IntPtr _previousWindow = IntPtr.Zero;
     private bool _busy;
+    /// <summary>The last refresh showed a ROUTE ▸ LEGS list — the only page whose
+    /// PREV/NEXT is its own scroll bar rather than the MKP key (see PageFms).</summary>
+    private bool _showingLegs;
     private bool _refreshing;
 
     // Live auto-refresh (the A380 MCDU-form idiom): poll while visible, re-render
@@ -438,6 +441,7 @@ public sealed class A220FmsForm : Form
             // degrades to text addressing rather than blocking the page.
             var fiberLegs = await ReadFiberLegsAsync();
             var aligned = A220FmsLegParsing.AlignLegIndices(model.Legs, fiberLegs);
+            _showingLegs = model.Legs.Count > 0;
             // ROUTE ▸ LEGS: the route reads FIRST and as ONE row per leg — the
             // page's whole point is the sequence of waypoints, so it must not sit
             // below the soft keys. Section headers and discontinuities are plain
@@ -1278,27 +1282,44 @@ public sealed class A220FmsForm : Form
         // 2026-09-24 — nor do UP/DOWN or the wheel). Only a page with no such
         // list falls back to the MKP key.
         int dir = key == "NEXT" ? 1 : -1;
-        string? r = await _def.DisplaysAgentCallAsync($"fmsListPage({dir})");
-        if (IsDisposed) return;
-        if (r == "EDGE")
+        // Only the LEGS page with nothing floating over it: any other page's
+        // scroll bar (or a revision menu's / open dropdown's) is not "the route",
+        // and PREV/NEXT there must still reach the aircraft.
+        if (_showingLegs && _overlay == Overlay.None)
         {
-            _announcer.AnnounceImmediate(dir > 0 ? "End of route." : "Start of route.");
-            return;
+            _busy = true;
+            try
+            {
+                string? r = await _def.DisplaysAgentCallAsync($"fmsListPage({dir})");
+                if (IsDisposed) return;
+                if (r == "EDGE")
+                {
+                    _announcer.AnnounceImmediate(dir > 0 ? "End of route." : "Start of route.");
+                    return;
+                }
+                if (r != null && r.StartsWith("PAGED|", StringComparison.Ordinal))
+                {
+                    _frozenIndex = -1;    // the page is changing; nothing to hold still
+                    _lastSignature = "";  // force a rebuild even if the new page looks similar
+                    MarkAction();
+                    await Task.Delay(300);
+                    // A poll already in flight read the OLD page; wait it out so the
+                    // rebuild below reads the new one and matches the announcement.
+                    while (_refreshing && !IsDisposed) await Task.Delay(50);
+                    if (IsDisposed) return;
+                    await RefreshAsync();
+                    if (IsDisposed) return;
+                    if (_list.Items.Count > 0) _list.SelectedIndex = 0;
+                    var parts = r.Split('|');
+                    if (parts.Length == 3 && int.TryParse(parts[1], out int pos) && int.TryParse(parts[2], out int pages))
+                        _announcer.AnnounceImmediate($"Route page {pos + 1} of {pages}.");
+                    return;
+                }
+            }
+            finally { _busy = false; }
         }
         _frozenIndex = -1;            // the page is changing; nothing to hold still
         _lastSignature = "";          // force a rebuild even if the new page looks similar
-        if (r != null && r.StartsWith("PAGED|", StringComparison.Ordinal))
-        {
-            MarkAction();
-            await Task.Delay(300);
-            await RefreshAsync();
-            if (IsDisposed) return;
-            if (_list.Items.Count > 0) _list.SelectedIndex = 0;
-            var parts = r.Split('|');
-            if (parts.Length == 3 && int.TryParse(parts[1], out int pos) && int.TryParse(parts[2], out int pages))
-                _announcer.AnnounceImmediate($"Route page {pos + 1} of {pages}.");
-            return;
-        }
         _def.SendMkpKey(key);
         _ = DelayedRefreshAsync();
     }
