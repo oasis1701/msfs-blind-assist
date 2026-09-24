@@ -216,13 +216,15 @@ public static class RunwayWatchScopes
     /// by the very instruction that moved the pilot (Continue at a hold; stopping after a landing exit), so it
     /// is re-armed once, and spoken only if something is on the runway or on short final.
     ///
-    /// <para>From Holding only when the change comes within <see cref="RearmAfterHoldWindowMs"/> of the
-    /// moment the watch's first status was handed to the announcer
-    /// (<paramref name="msSinceFirstStatusHandedOver"/>): the re-arm exists for a PROMPT Continue that cut
-    /// the queued hold status off; later, it would only interrupt taxi guidance's Continue instruction
-    /// ("Entering Runway 27L… Turn right.", the backtrack instruction) with a status the pilot has most
-    /// likely already heard (PR #247 re-review M4). From Vacating — stopping on the runway after landing —
-    /// there is no window.</para>
+    /// <para>From Holding only when the hold was released within <see cref="RearmAfterHoldWindowMs"/> of
+    /// the moment the watch's first status was handed to the announcer
+    /// (<paramref name="msSinceFirstStatusHandedOver"/>, which the monitor measures to that release: the
+    /// start of a crossing's linger — about when Continue was pressed, 11-15 s before the pavement makes the
+    /// watch OnRunway from a median hold line — or this change itself when there was no linger; PR #247
+    /// focused re-review N1): the re-arm exists for a PROMPT Continue that cut the queued hold status off;
+    /// later, it would only interrupt taxi guidance's Continue instruction ("Entering Runway 27L… Turn
+    /// right.", the backtrack instruction) with a status the pilot has most likely already heard (PR #247
+    /// re-review M4). From Vacating — stopping on the runway after landing — there is no window.</para>
     /// </summary>
     public static bool ShouldRearmOnModeChange(RunwayWatchMode from, RunwayWatchMode to, double msSinceFirstStatusHandedOver)
         => (to is RunwayWatchMode.OnRunway or RunwayWatchMode.LiningUp or RunwayWatchMode.TakeoffWait)
@@ -230,10 +232,11 @@ public static class RunwayWatchScopes
                || (from == RunwayWatchMode.Holding && msSinceFirstStatusHandedOver <= RearmAfterHoldWindowMs));
 
     /// <summary>
-    /// How long after the first status was handed to the announcer a Holding -> interrupting mode change
-    /// still re-arms it (<see cref="ShouldRearmOnModeChange"/>; inclusive). A JUDGEMENT of how long a
-    /// queued hold status can take to be spoken and heard — nothing measured it: a status can wait behind
-    /// other queued lines before it even starts, and a long one (several aircraft) runs several seconds.
+    /// How long after the first status was handed to the announcer the hold may be released and a
+    /// Holding -> interrupting mode change still re-arm it (<see cref="ShouldRearmOnModeChange"/>;
+    /// inclusive). A JUDGEMENT of how long a queued hold status can take to be spoken and heard — nothing
+    /// measured it: a status can wait behind other queued lines before it even starts, and a long one
+    /// (several aircraft) runs several seconds.
     /// </summary>
     public const int RearmAfterHoldWindowMs = 10000;
 

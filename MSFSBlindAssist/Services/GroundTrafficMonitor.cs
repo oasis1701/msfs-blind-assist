@@ -152,16 +152,26 @@ public sealed class GroundTrafficMonitor : IDisposable
     // The same watch moving from a queuing mode (Holding, Vacating) into an interrupting one (OnRunway,
     // LiningUp, TakeoffWait) re-arms the first status ONCE per watch
     // (RunwayWatchScopes.ShouldRearmOnModeChange): a status already handed to the announcer may have
-    // been cut off by the very instruction that moved the pilot — from Holding only within
-    // RunwayWatchScopes.RearmAfterHoldWindowMs of that hand-over (_firstStatusHandedOverUtc; PR #247
-    // re-review M4), from Vacating at any time. The re-armed status is CRITICAL-ONLY
-    // (_rearmCriticalOnly) — spoken, interrupting, only when something is on the runway or on short
-    // final, otherwise completed silently (PR #247 final review H2, replacing B4's full-status
-    // Vacating -> OnRunway re-arm). All three reset alongside _watchSummaryDone in ResetRunwayWatch.
+    // been cut off by the very instruction that moved the pilot — from Holding only when the hold was
+    // released within RunwayWatchScopes.RearmAfterHoldWindowMs of that hand-over
+    // (_firstStatusHandedOverUtc, _holdReleasedUtc; PR #247 re-review M4, focused re-review N1), from
+    // Vacating at any time. The re-armed status is CRITICAL-ONLY (_rearmCriticalOnly) — spoken,
+    // interrupting, only when something is on the runway or on short final, otherwise completed
+    // silently (PR #247 final review H2, replacing B4's full-status Vacating -> OnRunway re-arm). All
+    // of them reset alongside _watchSummaryDone in ResetRunwayWatch.
     private bool _firstStatusRearmed;
     private bool _rearmCriticalOnly;
     // When the watch's first status was handed to the announcer (its OnEmitted); MinValue = not yet.
     private DateTime _firstStatusHandedOverUtc = DateTime.MinValue;
+    // When the HOLD was released: the moment a linger began from a Holding watch (ApplyLinger) — at a
+    // crossing, about when Continue was pressed. Continue ends the hold source there, but the watch then
+    // LINGERS in Holding until the aircraft reaches the pavement and the watch becomes OnRunway, 11-15 s
+    // later from a median hold line, so a re-arm window measured to that mode change almost never
+    // admitted the crossing whose "Continuing." had cut the hold status off (PR #247 focused re-review
+    // N1). It outlives the EndLinger("resumed") ApplyLinger runs at the runway entry, so SetWatch's
+    // re-arm check at that change still reads it; SetWatch drops it once a watch is adopted with no
+    // linger in progress, and ResetRunwayWatch clears it. Null = no such release pending.
+    private DateTime? _holdReleasedUtc;
     // When the first status was first held back for a pending aircraft; MinValue = not deferred.
     private DateTime _firstStatusDeferredSinceUtc = DateTime.MinValue;
     // The runways (by KEY) whose "no traffic seen on the runway now" line is due: queued when the LAST
@@ -297,7 +307,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         // DateTime.UtcNow, not the `now` below: that must stay AFTER SetWatch — the first-status gate
         // compares the completed sweep's REQUEST time against _watchStartedUtc (set inside SetWatch),
         // so the sweep requested later in this tick must carry a time no earlier than the watch start.
-        // ApplyLinger's time only feeds the linger's 60 s ceiling.
+        // ApplyLinger's time feeds the linger's 60 s ceiling and, for a linger begun from a hold, the
+        // hold's release time (_holdReleasedUtc) that SetWatch measures a re-arm to.
         var watch = watchGate
             ? ApplyLinger(ResolveWatch(ctx, p.Latitude, p.Longitude, p.GroundSpeedKnots), ctx, p.Latitude, p.Longitude, DateTime.UtcNow)
             : ClearLinger("gate");
@@ -495,10 +506,18 @@ public sealed class GroundTrafficMonitor : IDisposable
                 // first status already handed to the announcer may have been cut off by exactly that
                 // AnnounceImmediate, and its latches marked every occupant and final known — so re-arm
                 // it ONCE per watch, critical-only (PR #247 final review H2). From Holding only while a
-                // PROMPT Continue could have cut the queued hold status off (within
+                // PROMPT Continue could have cut the queued hold status off (the hold released within
                 // RearmAfterHoldWindowMs of its hand-over); later, the re-armed status would interrupt
                 // the Continue instruction with a status the pilot has most likely already heard (M4).
-                double sinceHandedOverMs = (DateTime.UtcNow - _firstStatusHandedOverUtc).TotalMilliseconds;
+                // The window runs from the hand-over to the moment the HOLD WAS RELEASED, not to this
+                // change: at a crossing the watch lingers in Holding from Continue until the pavement
+                // makes it OnRunway, 11-15 s later from a median hold line, so the start of that linger
+                // (_holdReleasedUtc) is the release; with no linger (a destination hold goes straight
+                // to LiningUp or the backtrack) it is this change itself (PR #247 focused re-review N1).
+                // Vacating has no window.
+                var changeUtc = DateTime.UtcNow;
+                DateTime measuredTo = _loggedWatchMode == RunwayWatchMode.Holding ? _holdReleasedUtc ?? changeUtc : changeUtc;
+                double sinceHandedOverMs = (measuredTo - _firstStatusHandedOverUtc).TotalMilliseconds;
                 if (RunwayWatchScopes.ShouldRearmOnModeChange(_loggedWatchMode, watch.Mode, sinceHandedOverMs)
                     && _watchSummaryDone && !_firstStatusRearmed)
                 {
@@ -511,6 +530,11 @@ public sealed class GroundTrafficMonitor : IDisposable
                 }
                 _loggedWatchMode = watch.Mode;
             }
+            // A release time belongs to the change that ends ITS linger, read just above: once a watch is
+            // adopted with no linger in progress it is dropped, so a later change straight from a hold —
+            // a hold taken up again under this key, then Continue to the lineup — is measured to itself,
+            // never to an old linger's start (N1).
+            if (watch.IsActive && _linger == null) _holdReleasedUtc = null;
             return;
         }
         if (_watchKey.Length > 0) _log.Info($"ev=watch stop key={_watchKey}");
@@ -543,6 +567,11 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (!RunwayWatchLinger.CanBegin(lateral, along, shape.ExtentMinMeters, shape.ExtentMaxMeters))
                 return RunwayWatch.None;
             _linger = new RunwayWatchLinger.Anchor(lateral, now);
+            // A linger begun from a HOLD: the hold has just been released (Continue ended its source),
+            // the moment SetWatch measures a from-Holding re-arm to (N1). Kept, not overwritten, if a
+            // linger begins again before any watch is adopted without one (only after ClearRunwayCache
+            // ended the first): that hold was still released when the first began.
+            if (_currentWatch.Mode == RunwayWatchMode.Holding) _holdReleasedUtc ??= now;
             _log.Info(FormattableString.Invariant($"ev=watch linger key={_watchKey} lateral={lateral:0}"));
         }
         var verdict = RunwayWatchLinger.Evaluate(_linger.Value, lateral, shape.HalfWidthMeters, now);
@@ -612,6 +641,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _firstStatusRearmed = false;
         _rearmCriticalOnly = false;
         _firstStatusHandedOverUtc = DateTime.MinValue;
+        _holdReleasedUtc = null;
         _firstStatusDeferredSinceUtc = DateTime.MinValue;
         _runwayEmptiedPendingKeys.Clear();
         _knownOccupants.Clear();
