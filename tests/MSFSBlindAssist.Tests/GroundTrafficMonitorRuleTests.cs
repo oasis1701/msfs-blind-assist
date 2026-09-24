@@ -317,11 +317,6 @@ public class GroundTrafficMonitorRuleTests
         // gap is still 200.4 ft, above it), never later than one tick's travel (0.3 m/s, about 1 ft) past it.
         Assert.Equal(66, stopAt);
         Assert.InRange(gapFtAtStop, 200 - 0.3 * GroundTrafficLogic.FeetPerMetre, 200);
-
-        Assert.True(stopAt > 0, "Stop never came");
-        // Within one second's travel (0.3 m/s, about 1 ft) of the 200 ft floor — measured, not derived: the
-        // per-tick step means "Stop" can fire up to a tick late, never early.
-        Assert.InRange(gapFtAtStop, 200 - 0.3 * GroundTrafficLogic.FeetPerMetre, 200);
     }
 
     // ── A parked aircraft off the route: no "Slow down", and "Stop" on time ─────────────────────────────
