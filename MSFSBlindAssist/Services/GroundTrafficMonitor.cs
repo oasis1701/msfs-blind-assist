@@ -1067,7 +1067,12 @@ public sealed class GroundTrafficMonitor : IDisposable
                 && !GroundTrafficLogic.IsRouteThreat(v.NearRoute, v.Dcpa, v.Tcpa, ac.GS, v.DistFt <= WARNING_FT))
                 newZone = GroundZone.Awareness;
 
-            if (movingAway) { ac.CurrentZone = newZone; continue; }
+            // Moving away: nothing is said, and the zone is recorded by the same rule as any other withheld
+            // escalation — a withheld WARNING is not recorded. Recorded, a "Stop" withheld while the traffic
+            // pulled away inside the Warning distance was swallowed for good if it then stopped there, since
+            // Warning would no longer be an escalation; with the motion signals above moving-away fires on
+            // the first evaluation that sees traffic opening, which made that the common case.
+            if (movingAway) { ac.CurrentZone = GroundTrafficLogic.ZoneToRecordWhenWithheld(newZone, ac.CurrentZone); continue; }
             if (!GroundTrafficLogic.ShouldAnnounceEscalation(newZone, ac.CurrentZone, ac.LastSpokenZone,
                     ac.LastAlertTime, now, v.DistFt, ac.LastSpokenZoneDistFt))
             {
