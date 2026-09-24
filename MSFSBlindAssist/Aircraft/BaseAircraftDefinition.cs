@@ -617,7 +617,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // (FcuValuePhrases — null while the window shows dashes) and FcuValueAnnouncer decides whether
     // it is spoken: the first sample of a key is a silent baseline, a dashed window or an unavailable
     // FCU is recorded but silent, a muted or echoed change is absorbed, a change is STAGED and spoken
-    // only once its batch has finished dispatching (the FCU health var sorts after the value vars),
+    // only once its batch has finished dispatching (judged with the FCU health var of that sample,
+    // whichever side of the value it sorts on),
     // and after a flight load, a reconnect or an FCU power-up changes are absorbed until the aircraft
     // has published and gone quiet (OnSimContextReset / OnVariableCacheCleared +
     // OnContinuousBatchDelivered below).

@@ -347,8 +347,14 @@ unit conversion would destroy a packed word (individual defs always read an L:va
 whatever Units says).
 
 **FCU availability.** A callout is only released while the FCU itself is producing values —
-`A32NX_FCU_HEALTHY` (A32NX/A330) or `A32NX_FCU_AFS_CP_ACTIVE` (A380, `fcu1||fcu2 afs_cp_active`) —
-which sorts AFTER the value vars in the same batch and clears whatever they staged. Every source
+`A32NX_FCU_HEALTHY` (A32NX/A330) or `A32NX_FCU_AFS_CP_ACTIVE` (A380, `fcu1||fcu2 afs_cp_active`).
+It rides the SAME continuous batch as the heading/speed shims and (A380) `FCU_ALT_VALUE`, pinned by
+`FcuHealthBatchMembershipTests` against the production layout (`ContinuousBatchLayout`). Within the
+batch it sorts AFTER the shims but BEFORE the A32NX `A32NX_FCU_SELECTED_*` words, and the A380's
+stock altitude sorts first of all; the A380's PRIM 1 V/S and FPA words sort so late they currently
+ride the NEXT batch and are judged against the health delivered one batch earlier. Either order is
+safe because nothing is spoken until the batch ends: a health drop clears whatever was staged
+before it and blocks anything staged after it, and a return starts a settle. Every source
 above also composes `FcuValuePhrases.Unavailable` on its own when its word reads Failure
 Warning/Functional Test (self-test); on the A380 only, so do the speed shim's and `FCU_ALT_VALUE`'s
 own impossible zeros (the FCU never selects 0 kt/Mach, and its selected altitude is never below
@@ -361,8 +367,8 @@ a settle: the A380 zeroes every output rather than dashing it, so without this a
 nine knob turns at once. A power-DOWN is silent outright (staged phrases are dropped).
 
 **Callouts are STAGED, not spoken on delivery, and released at the batch's end.** Whether a change
-is a knob turn depends on the FCU health var too, and that var sorts AFTER the value vars in the
-same continuous batch — so `AnnounceFcuValue` only records a change; `BaseAircraftDefinition.
+is a knob turn depends on the FCU health var of the same sample too, which may sort before or after
+the value in its batch (above) — so `AnnounceFcuValue` only records a change; `BaseAircraftDefinition.
 OnContinuousBatchDelivered` (fired from `SimConnectManager.ContinuousBatchDelivered`, after every
 `SimVarUpdated` that batch message carried) speaks whatever `FcuValueAnnouncer.OnBatchDelivered`
 released. That release runs OUTSIDE MainForm's `announcer.Suppressed` wrap (which only wraps

@@ -398,7 +398,7 @@ public interface IAircraftDefinition
     /// <see cref="DeferredFlushWatchVariable"/> is the narrower "the batch carrying THIS
     /// variable arrived" form. The base counts the delivery toward the FCU hardware-dial announcer's
     /// settle and speaks the FCU callouts staged while this batch dispatched (a callout is judged on
-    /// the whole sample, since the FCU health var sorts after the value vars), so an override on an
+    /// the whole sample, with the FCU health var wherever it sorts in the batch), so an override on an
     /// aircraft that uses AnnounceFcuValue must call base.
     /// </summary>
     void OnContinuousBatchDelivered(int batchNum);

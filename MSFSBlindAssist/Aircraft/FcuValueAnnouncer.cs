@@ -11,8 +11,9 @@ namespace MSFSBlindAssist.Aircraft;
 /// whatever <see cref="OnBatchDelivered"/> releases.
 ///
 /// A change is STAGED, never spoken on delivery: whether it is a knob turn depends on the whole sample
-/// (the FCU health var sorts after the value vars in the same batch), so it is judged when the batch has
-/// finished dispatching. Comparing PHRASES, not numbers, is what makes dashes an ordinary state.
+/// (the FCU health var rides the same batch, sorting after the heading/speed shims but before the
+/// FCU_SELECTED_* and PRIM words), so it is judged when the batch has finished dispatching — which makes
+/// either order safe: a health drop clears what was staged and blocks later staging, a return settles. Comparing PHRASES, not numbers, is what makes dashes an ordinary state.
 ///
 /// Thread use: everything runs on the UI thread except <see cref="SuppressEcho"/> (the A32NX altitude
 /// setter arms it from a deferred continuation), so the echo maps are the only concurrent state.
