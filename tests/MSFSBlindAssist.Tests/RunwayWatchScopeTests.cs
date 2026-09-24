@@ -26,9 +26,9 @@ public class RunwayWatchScopeTests
     private static RunwayWatchInputs Inputs(
         TaxiGuidanceState state = TaxiGuidanceState.Taxiing, string? held = null, string? progressive = null,
         string? destination = "Runway 27", bool runwayLineup = true, string[]? under = null, string? takeoff = null,
-        bool landingExit = false, double? gs = null)
+        bool landingExit = false, double? gs = null, bool wasVacating = false)
         => new(state, held, progressive, destination, runwayLineup, under ?? Array.Empty<string>(), takeoff, Runways,
-            landingExit, gs);
+            landingExit, gs, wasVacating);
 
     [Theory]
     [InlineData("27")]
@@ -147,6 +147,36 @@ public class RunwayWatchScopeTests
     public void An_unknown_ground_speed_on_a_landing_exit_route_is_on_the_runway()
         => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
             under: new[] { "27" }, landingExit: true, gs: null)).Mode);
+
+    // ── Vacating hysteresis (PR #247 B3 review Important 1) ────────────────────────────
+    // An ordinary deceleration through the turn must not flip Vacating to OnRunway tick by tick: once
+    // already vacating, the mode holds down to VacatingHoldGsKts; a fresh evaluation that was not
+    // already vacating still needs the full VacatingMinGsKts to enter it.
+
+    [Fact]
+    public void Vacating_holds_below_the_minimum_speed_once_already_vacating()
+        => Assert.Equal(RunwayWatchMode.Vacating, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "27" }, landingExit: true, gs: 2.0, wasVacating: true)).Mode);
+
+    [Fact]
+    public void Not_yet_vacating_at_the_same_speed_is_on_the_runway()
+        => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "27" }, landingExit: true, gs: 2.0, wasVacating: false)).Mode);
+
+    [Fact]
+    public void Vacating_ends_below_the_hold_speed_even_if_it_was_already_vacating()
+        => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "27" }, landingExit: true, gs: 0.9, wasVacating: true)).Mode);
+
+    [Fact]
+    public void Vacating_holds_at_the_hold_speed_boundary()
+        => Assert.Equal(RunwayWatchMode.Vacating, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "27" }, landingExit: true, gs: RunwayWatchScopes.VacatingHoldGsKts, wasVacating: true)).Mode);
+
+    [Fact]
+    public void WasVacating_grants_no_hysteresis_off_a_landing_exit_route()
+        => Assert.Equal(RunwayWatchMode.OnRunway, RunwayWatchScopes.Resolve(Inputs(TaxiGuidanceState.Taxiing,
+            under: new[] { "27" }, landingExit: false, gs: 5, wasVacating: true)).Mode);
 
     [Fact]
     public void A_backtrack_outranks_vacating()

@@ -149,6 +149,10 @@ public sealed class GroundTrafficMonitor : IDisposable
     private RunwayWatchMode _loggedWatchMode = RunwayWatchMode.None;
     private DateTime _watchStartedUtc = DateTime.MinValue;
     private bool _watchSummaryDone;
+    // Vacating -> OnRunway under the same key (the pilot stopped on the runway just landed on) re-arms
+    // the first status ONCE per watch, so it is heard again even though _watchSummaryDone was already
+    // true (PR #247 B3 review Important 2). Reset alongside _watchSummaryDone in ResetRunwayWatch.
+    private bool _firstStatusRearmed;
     // When the first status was first held back for a pending aircraft; MinValue = not deferred.
     private DateTime _firstStatusDeferredSinceUtc = DateTime.MinValue;
     private bool _runwayEmptiedPending;
@@ -360,6 +364,10 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// This tick's watch (<see cref="RunwayWatchScopes.Resolve"/>). <paramref name="ownGsKts"/> is the
     /// tick's own ground speed: on a landing-exit route, the runway under the aircraft is Vacating
     /// (queued) while the pilot is still moving and OnRunway (interrupting) once stopped on it.
+    /// <see cref="_currentWatch"/>'s mode — the PREVIOUS evaluation's, since this runs before
+    /// <see cref="SetWatch"/> adopts this tick's watch — feeds <see cref="RunwayWatchInputs.WasVacating"/>
+    /// so Vacating holds down to <see cref="RunwayWatchScopes.VacatingHoldGsKts"/> instead of flipping to
+    /// OnRunway tick by tick as the pilot decelerates through the turn.
     /// </summary>
     private RunwayWatch ResolveWatch(GroundTrafficRouteContext? ctx, double lat, double lon, double ownGsKts)
     {
@@ -389,7 +397,8 @@ public sealed class GroundTrafficMonitor : IDisposable
             takeoffRunway,
             runways,
             ctx?.IsLandingExit ?? false,
-            ownGsKts));
+            ownGsKts,
+            WasVacating: _currentWatch.Mode == RunwayWatchMode.Vacating));
     }
 
     /// <summary>
@@ -406,6 +415,17 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (watch.IsActive && watch.Mode != _loggedWatchMode)
             {
                 _log.Info($"ev=watch mode key={watch.Key} mode={watch.Mode}");
+                // Vacating -> OnRunway under this same key means the pilot stopped on the runway just
+                // landed on. If the first status was already handed to the announcer, it never covered
+                // this — re-arm it ONCE per watch so the pilot hears the runway situation again,
+                // interrupting like any other on-runway first status (PR #247 B3 review Important 2).
+                if (_loggedWatchMode == RunwayWatchMode.Vacating && watch.Mode == RunwayWatchMode.OnRunway
+                    && _watchSummaryDone && !_firstStatusRearmed)
+                {
+                    _watchSummaryDone = false;
+                    _firstStatusRearmed = true;
+                    _log.Info($"ev=watch status-rearmed key={watch.Key} reason=stopped-on-runway");
+                }
                 _loggedWatchMode = watch.Mode;
             }
             return;
@@ -470,6 +490,7 @@ public sealed class GroundTrafficMonitor : IDisposable
     {
         _watchKey = "";
         _watchSummaryDone = false;
+        _firstStatusRearmed = false;
         _firstStatusDeferredSinceUtc = DateTime.MinValue;
         _runwayEmptiedPending = false;
         _knownOccupants.Clear();

@@ -51,7 +51,9 @@ public sealed record RunwayWatch(IReadOnlyList<WatchedRunway> Runways, RunwayWat
 /// Everything <see cref="RunwayWatchScopes.Resolve"/> needs, as plain values. <see cref="IsLandingExit"/>
 /// (taxi guidance is steering a landing-exit route) and <see cref="OwnGroundSpeedKts"/> (the pilot's
 /// ground speed, null when not known) tell turning off the runway just landed on
-/// (<see cref="RunwayWatchMode.Vacating"/>) from stopping on it.
+/// (<see cref="RunwayWatchMode.Vacating"/>) from stopping on it; <see cref="WasVacating"/> (the previous
+/// evaluation's mode was Vacating) gives that mode hysteresis so an ordinary deceleration through the
+/// turn does not flip it tick by tick.
 /// </summary>
 public readonly record struct RunwayWatchInputs(
     TaxiGuidanceState State,
@@ -63,7 +65,8 @@ public readonly record struct RunwayWatchInputs(
     string? TakeoffAssistRunway,
     IReadOnlyList<TaxiGraph.RunwayCenterline> Runways,
     bool IsLandingExit = false,
-    double? OwnGroundSpeedKts = null);
+    double? OwnGroundSpeedKts = null,
+    bool WasVacating = false);
 
 /// <summary>
 /// Which runway(s) the ground-traffic runway watch covers. PR #247 review R2/R3: the watch was
@@ -86,6 +89,12 @@ public static class RunwayWatchScopes
     /// <see cref="RunwayWatchMode.OnRunway"/>.
     /// </summary>
     public const double VacatingMinGsKts = 3.0;
+
+    /// <summary>
+    /// Once vacating, the mode holds down to this speed, so decelerating through the turn does not flip
+    /// it; below it the pilot has stopped on the runway and runway traffic interrupts again.
+    /// </summary>
+    public const double VacatingHoldGsKts = 1.0;
 
     /// <summary>
     /// The runway designators a label names: every "runway X" in it (hold labels, "Runway 27L"),
@@ -120,9 +129,11 @@ public static class RunwayWatchScopes
     /// departure (OnRunway), HoldShort label (Holding), progressive hold runway (Holding), and the
     /// runways under the aircraft in any state — <see cref="RunwayWatchMode.Vacating"/> while taxi
     /// guidance steers a landing-exit route (<see cref="RunwayWatchInputs.IsLandingExit"/>) and the pilot
-    /// is moving at <see cref="VacatingMinGsKts"/> or more (turning off the runway just landed on),
-    /// otherwise <see cref="RunwayWatchMode.OnRunway"/>: a crossing no hold could be placed for, a stray
-    /// onto a runway, or stopping on the runway after landing.
+    /// is moving at <see cref="VacatingMinGsKts"/> or more (turning off the runway just landed on), or —
+    /// once already vacating (<see cref="RunwayWatchInputs.WasVacating"/>) — at <see cref="VacatingHoldGsKts"/>
+    /// or more (hysteresis: an ordinary deceleration through the turn does not flip the mode tick by
+    /// tick), otherwise <see cref="RunwayWatchMode.OnRunway"/>: a crossing no hold could be placed for, a
+    /// stray onto a runway, or stopping on the runway after landing.
     /// </summary>
     public static RunwayWatch Resolve(RunwayWatchInputs input)
     {
@@ -152,7 +163,8 @@ public static class RunwayWatchScopes
         if (input.State == TaxiGuidanceState.ProgressiveHold)
             Watch(Designators(input.ProgressiveRunway), RunwayWatchMode.Holding);
         Watch(input.RunwaysUnderAircraft ?? Array.Empty<string>(),
-            input.IsLandingExit && input.OwnGroundSpeedKts is double gs && gs >= VacatingMinGsKts
+            input.IsLandingExit && input.OwnGroundSpeedKts is double gs
+            && (gs >= VacatingMinGsKts || (input.WasVacating && gs >= VacatingHoldGsKts))
                 ? RunwayWatchMode.Vacating
                 : RunwayWatchMode.OnRunway);
 
