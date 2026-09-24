@@ -82,12 +82,10 @@ public class FcuValuePhrasesTests : IDisposable
         Assert.Equal("Altitude 10000 feet", FcuValuePhrases.AltitudeWord(Word(NormalOperation, 10000f)));
     }
 
-    [Theory]
-    [InlineData(FailureWarning, 0f)]   // a failed FCU publishes empty outputs
-    [InlineData(NoComputedData, 5000f)]
-    public void Altitude_word_is_silent_unless_it_is_a_selection(uint ssm, float feet)
+    [Fact]
+    public void Altitude_word_is_silent_when_it_carries_no_computed_data()
     {
-        Assert.Null(FcuValuePhrases.AltitudeWord(Word(ssm, feet)));
+        Assert.Null(FcuValuePhrases.AltitudeWord(Word(NoComputedData, 5000f)));
     }
 
     [Theory]
@@ -111,9 +109,7 @@ public class FcuValuePhrasesTests : IDisposable
     [Theory]
     [InlineData(NoComputedData, -1300f)]   // dashed: the A32NX FCU carries the LIVE V/S here
     [InlineData(NoComputedData, 0f)]       // dashed on the A380 (value defaulted), or FPA mode
-    [InlineData(FailureWarning, 0f)]       // no word at all reads as 0.0
-    [InlineData(FunctionalTest, 1000f)]
-    public void Vertical_speed_is_silent_unless_the_word_is_a_selection(uint ssm, float fpm)
+    public void Vertical_speed_is_silent_while_the_word_carries_no_computed_data(uint ssm, float fpm)
     {
         Assert.Null(FcuValuePhrases.VerticalSpeed(Word(ssm, fpm)));
     }
@@ -131,10 +127,32 @@ public class FcuValuePhrasesTests : IDisposable
 
     [Theory]
     [InlineData(NoComputedData, -2.5f)]
-    [InlineData(FailureWarning, 0f)]
-    public void Flight_path_angle_is_silent_unless_the_word_is_a_selection(uint ssm, float degrees)
+    public void Flight_path_angle_is_silent_while_the_word_carries_no_computed_data(uint ssm, float degrees)
     {
         Assert.Null(FcuValuePhrases.FlightPathAngle(Word(ssm, degrees)));
+    }
+
+    [Fact]
+    public void A_zero_speed_is_the_fcu_being_off_not_mach_zero() =>
+        Assert.Equal(FcuValuePhrases.Unavailable, FcuValuePhrases.Speed(0.0));
+
+    [Fact]
+    public void A_failed_word_is_unavailable_and_a_no_computed_data_word_is_dashes()
+    {
+        Assert.Equal(FcuValuePhrases.Unavailable, FcuValuePhrases.AltitudeWord(Word(FailureWarning, 0f)));
+        Assert.Equal(FcuValuePhrases.Unavailable, FcuValuePhrases.VerticalSpeed(Word(FailureWarning, 0f)));
+        Assert.Equal(FcuValuePhrases.Unavailable, FcuValuePhrases.FlightPathAngle(Word(FailureWarning, 0f)));
+        Assert.Null(FcuValuePhrases.VerticalSpeed(Word(NoComputedData, -1300f)));
+        Assert.Null(FcuValuePhrases.FlightPathAngle(Word(NoComputedData, -3f)));
+    }
+
+    [Theory]
+    [InlineData(FunctionalTest, 1000f)]   // the FCU's self-test: no selection to speak, and no dashes either
+    public void A_functional_test_word_is_unavailable(uint ssm, float value)
+    {
+        Assert.Equal(FcuValuePhrases.Unavailable, FcuValuePhrases.AltitudeWord(Word(ssm, value)));
+        Assert.Equal(FcuValuePhrases.Unavailable, FcuValuePhrases.VerticalSpeed(Word(ssm, value)));
+        Assert.Equal(FcuValuePhrases.Unavailable, FcuValuePhrases.FlightPathAngle(Word(ssm, value)));
     }
 
     [Fact]

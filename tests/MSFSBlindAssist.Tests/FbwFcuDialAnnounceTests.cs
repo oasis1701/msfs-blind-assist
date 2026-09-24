@@ -98,12 +98,13 @@ public class FbwFcuDialAnnounceTests : IDisposable
 
     [Theory]
     [MemberData(nameof(A32nxFamily))]
-    public void A32nx_altitude_is_silent_when_the_fcu_has_failed(FlyByWireA320Definition def)
+    public void A32nx_altitude_from_a_failed_fcu_is_unavailable(FlyByWireA320Definition def)
     {
         // A failed FCU publishes empty outputs: the display value drops to 0, which spoke
-        // "Altitude 0 feet"; the word drops to Failure Warning, which says nothing.
+        // "Altitude 0 feet"; the word drops to Failure Warning, which marks the window unavailable
+        // (recorded, never spoken) so the FCU coming back is a power-up, not a knob turn.
         Assert.True(def.TryComposeFcuValuePhrase("A32NX_FCU_SELECTED_ALTITUDE", Word(FailureWarning, 0f), out string? phrase));
-        Assert.Null(phrase);
+        Assert.Equal(FcuValuePhrases.Unavailable, phrase);
     }
 
     [Theory]
@@ -247,6 +248,45 @@ public class FbwFcuDialAnnounceTests : IDisposable
         Assert.Equal(expected, BaseAircraftDefinition.CountsAsFcuLoadEvidence(def.GetVariables()[key]));
     }
 
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(-5.0)]
+    public void A380_altitude_at_or_below_zero_is_the_fcu_being_off(double value)
+    {
+        Assert.True(new FlyByWireA380Definition().TryComposeFcuValuePhrase("FCU_ALT_VALUE", value, out string? phrase));
+        Assert.Equal(FcuValuePhrases.Unavailable, phrase);
+    }
+
+    [Fact]
+    public void Each_airframe_registers_a_silent_batch_covered_fcu_health_var()
+    {
+        foreach (var (defs, key) in new (Dictionary<string, SimVarDefinition>, string)[]
+        {
+            (new FlyByWireA320Definition().GetVariables(), "A32NX_FCU_HEALTHY"),
+            (new HeadwindA330Definition().GetVariables(), "A32NX_FCU_HEALTHY"),
+            (new FlyByWireA380Definition().GetVariables(), "A32NX_FCU_AFS_CP_ACTIVE"),
+        })
+        {
+            var v = defs[key];
+            Assert.Equal(UpdateFrequency.Continuous, v.UpdateFrequency);
+            Assert.True(v.IsAnnounced);
+            Assert.False(v.ExcludeFromBatch);
+            Assert.True(v.ExcludeFromMonitorManager);
+            Assert.Equal("number", v.Units);
+        }
+    }
+
+    [Theory]
+    [InlineData("A32NX_AUTOPILOT_HEADING_SELECTED")]
+    [InlineData("A32NX_AUTOPILOT_SPEED_SELECTED")]
+    [InlineData("FCU_ALT_VALUE")]
+    public void A380_fcu_value_sources_ride_the_batch_with_the_health_var(string key)
+    {
+        // The batch-end release judges a sample against the health var; a source on its own 1 Hz
+        // subscription would arrive on a different message with its own phase.
+        Assert.False(new FlyByWireA380Definition().GetVariables()[key].ExcludeFromBatch);
+    }
+
     [Fact]
     public void A380_registers_the_selected_altitude_simvar_under_exactly_one_key()
     {
@@ -254,7 +294,7 @@ public class FbwFcuDialAnnounceTests : IDisposable
         // with two 1 Hz pollers and, worse, two spoken names ("Selected Altitude" in Ctrl+M vs "FCU
         // selected altitude" in the PFD panel). VarNameCollisionTests cannot catch this class: it
         // filters to batched vars (!ExcludeFromBatch) because the hazard it guards is batch struct
-        // drift, and both of these carry their own data def.
+        // drift, and both of these carried their own data def at the time.
         var keys = new FlyByWireA380Definition().GetVariables()
             .Where(kv => kv.Value.Name == "AUTOPILOT ALTITUDE LOCK VAR:3")
             .Select(kv => kv.Key)

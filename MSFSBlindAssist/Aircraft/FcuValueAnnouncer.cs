@@ -210,8 +210,10 @@ internal sealed class FcuValueAnnouncer
 internal enum FcuWindowState { Unknown, Dashes, Value, Unavailable }
 
 /// <summary>
-/// The words the FCU hardware-dial announcer speaks for each selected value, or null when the
-/// FCU window is not showing a selection. Pinned by FcuValuePhrasesTests.
+/// The words the FCU hardware-dial announcer speaks for each selected value. Every input maps to
+/// one of three answers: a phrase (the window shows a selection), null (the window shows dashes,
+/// or the word belongs to the other mode), or <see cref="Unavailable"/> (the FCU itself produces
+/// no value — off, failed or self-testing). Pinned by FcuValuePhrasesTests.
 ///
 /// ⚠️ Every input here is one that says ON ITS OWN whether the window shows a selection, and it
 /// must stay that way. The FCU's plain display values do not: while a window shows dashes, FBW's
@@ -242,10 +244,12 @@ internal static class FcuValuePhrases
     }
 
     /// <summary>A32NX_AUTOPILOT_SPEED_SELECTED: the target itself — Mach below 10, else knots;
-    /// -1 while dashed.</summary>
+    /// -1 while dashed. 0 is the FCU being off (the A380 zeroes every output then) — never a
+    /// selection, since the FCU clamps its target to at least 100 kt / Mach 0.10.</summary>
     public static string? Speed(double shim)
     {
         if (shim < 0) return null;
+        if (shim == 0) return Unavailable;
         return shim < 10 ? $"Mach {shim:F2}" : $"Speed {Math.Round(shim):0} knots";
     }
 
@@ -253,31 +257,42 @@ internal static class FcuValuePhrases
     public static string Altitude(double value, string unit) => $"Altitude {value:0} {unit}";
 
     /// <summary>A selected-altitude ARINC429 word, feet. Normal Operation whenever the FCU is
-    /// working (the altitude window never shows dashes); a failed FCU publishes empty outputs,
-    /// which read as Failure Warning here rather than as "Altitude 0 feet".</summary>
+    /// working (the altitude window never shows dashes); a failed or self-testing FCU publishes
+    /// Failure Warning / Functional Test, which reads as <see cref="Unavailable"/> rather than as
+    /// "Altitude 0 feet". No Computed Data is null.</summary>
     public static string? AltitudeWord(double arincWord)
     {
         var word = new Arinc429Word(arincWord);
-        return word.IsNormalOperation ? Altitude(Math.Round(word.Value), "feet") : null;
+        if (word.IsNormalOperation) return Altitude(Math.Round(word.Value), "feet");
+        return WordWithoutSelection(word);
     }
 
-    /// <summary>A selected-V/S ARINC429 word, feet per minute, snapped to the FCU's 100-fpm detent.</summary>
+    /// <summary>A selected-V/S ARINC429 word, feet per minute, snapped to the FCU's 100-fpm detent.
+    /// No Computed Data (dashes, or FPA mode) is null; Failure Warning / Functional Test (the FCU
+    /// dead or self-testing) is <see cref="Unavailable"/>.</summary>
     public static string? VerticalSpeed(double arincWord)
     {
         var word = new Arinc429Word(arincWord);
-        if (!word.IsNormalOperation) return null;
+        if (!word.IsNormalOperation) return WordWithoutSelection(word);
         double fpm = Math.Round(word.Value / 100.0) * 100.0;
         if (fpm == 0) fpm = 0;   // -0 → 0
         return $"Vertical speed {fpm:0} feet per minute";
     }
 
-    /// <summary>A selected-FPA ARINC429 word, degrees to one decimal.</summary>
+    /// <summary>A selected-FPA ARINC429 word, degrees to one decimal. No Computed Data (dashes, or
+    /// V/S mode) is null; Failure Warning / Functional Test is <see cref="Unavailable"/>.</summary>
     public static string? FlightPathAngle(double arincWord)
     {
         var word = new Arinc429Word(arincWord);
-        if (!word.IsNormalOperation) return null;
+        if (!word.IsNormalOperation) return WordWithoutSelection(word);
         double degrees = Math.Round(word.Value, 1);
         if (degrees == 0) degrees = 0;   // -0.0 would otherwise format as "-0.0"
         return $"FPA {degrees:0.0} degrees";
     }
+
+    /// <summary>A word that is not Normal Operation: No Computed Data is the window showing no
+    /// selection in this word's mode (null); Failure Warning or Functional Test is the FCU itself
+    /// producing nothing (<see cref="Unavailable"/>).</summary>
+    private static string? WordWithoutSelection(Arinc429Word word) =>
+        word.IsNoComputedData ? null : Unavailable;
 }

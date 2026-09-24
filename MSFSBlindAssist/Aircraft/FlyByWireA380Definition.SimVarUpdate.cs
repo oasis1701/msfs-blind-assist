@@ -63,10 +63,12 @@ public partial class FlyByWireA380Definition
     /// <summary>
     /// The hardware-dial announcer's phrase for an FCU selected-value delivery (777-MCP parity,
     /// PR #140): true when <paramref name="varName"/> is one of the vars it listens to, with
-    /// <paramref name="phrase"/> null while the FCU window shows no selection.
+    /// <paramref name="phrase"/> null while the FCU window shows no selection and
+    /// <see cref="FcuValuePhrases.Unavailable"/> while the FCU is off.
     ///
-    /// Heading and speed are the #10855 display-unit shims, -1 while dashed; the altitude is the
-    /// stock FCU altitude in the pilot's unit (metric under MTRS); V/S and FPA are PRIM 1's
+    /// Heading and speed are the #10855 display-unit shims, -1 while dashed (0 while the FCU is off:
+    /// it zeroes every output); the altitude is the stock FCU altitude in the pilot's unit (metric
+    /// under MTRS), 0 while the FCU is off; V/S and FPA are PRIM 1's
     /// selected words, which say on their own whether the value is on the FCU. See
     /// <see cref="FcuValuePhrases"/> for why each source must say that on its own, and why no SI
     /// conversion belongs here. The A32NX_AUTOPILOT_{VS,FPA}_SELECTED shims are deliberately NOT
@@ -78,6 +80,8 @@ public partial class FlyByWireA380Definition
         if (varName == Fcu.Speed) { phrase = FcuValuePhrases.Speed(value); return true; }
         if (varName == Fcu.Altitude)
         {
+            // The FCU zeroes the stock altitude when it is off; its selected altitude is never below 100 ft.
+            if (value <= 0) { phrase = FcuValuePhrases.Unavailable; return true; }
             var (altitude, unit) = AltUser(value);
             phrase = FcuValuePhrases.Altitude(altitude, unit);
             return true;
@@ -856,7 +860,15 @@ public partial class FlyByWireA380Definition
         }
         // Metric-altitude (FCU MTRS) state — cache it so every MSFSBA altitude
         // read-out switches to metres; let the generic monitor announce On/Off.
-        if (varName == "A32NX_METRIC_ALT_TOGGLE") { _metricAlt = value > 0.5; return false; }
+        if (varName == "A32NX_METRIC_ALT_TOGGLE")
+        {
+            _metricAlt = value > 0.5;
+            // The unit is part of the altitude callout's words but not of FCU_ALT_VALUE: re-express the
+            // recorded altitude, or the next forced read of an unchanged altitude is spoken as a turn.
+            if (_lastFcuAltFeet is double feet && TryComposeFcuValuePhrase(Fcu.Altitude, feet, out string? altPhrase))
+                RebaselineFcuValue(Fcu.Altitude, altPhrase);
+            return false;
+        }
 
         // Suppress the side-effect "Altitude Increment: 100" announce that a window-driven
         // SetFCUAltitudeValue fires to force 100-ft granularity (the user set an altitude, not
@@ -867,16 +879,26 @@ public partial class FlyByWireA380Definition
         // ---- FCU selected-value CHANGE announcements (hardware knob turns; 777-MCP parity) ----
         // A hardware dial (MobiFlight, FSUIPC, the cockpit knob) is spoken as it changes, the way
         // the PMDG 777 speaks its MCP. EVERY delivery of a var the announcer listens to goes
-        // through AnnounceFcuValue — a dashed window (null phrase) and a delivery a readout is
-        // about to speak included, both recorded without a word — so the value reappearing on a
-        // pull is heard and a readout never leaves a stale baseline behind (which swallowed a
-        // later turn back to the old value). The fcuValueVar return further down consumes the
+        // through AnnounceFcuValue — a dashed window (null phrase), an FCU that is off
+        // (Unavailable) and a delivery a readout is about to speak included, all recorded without
+        // a word — so the value reappearing on a pull is heard and a readout never leaves a stale
+        // baseline behind (which swallowed a later turn back to the old value). A change is STAGED
+        // here and released when its batch has finished dispatching (BaseAircraftDefinition.
+        // OnContinuousBatchDelivered), judged with A32NX_FCU_AFS_CP_ACTIVE from the same sample;
+        // that release is outside MainForm's announcer.Suppressed wrap, hence the explicit Ctrl+M
+        // check below. The fcuValueVar return further down consumes the
         // event, which keeps the generic monitor from speaking the value a second time. MSFSBA's
         // own writes mute their echo via SuppressFcuValueChangeEcho (SetFCU*/SetTrkFpaMode/
         // FireFCUButton).
+        if (varName == "A32NX_FCU_AFS_CP_ACTIVE")
+        {
+            ObserveFcuHealth(value > 0.5);
+            return true;
+        }
         bool fcuValueVar = TryComposeFcuValuePhrase(varName, value, out string? fcuPhrase);
         if (fcuValueVar)
         {
+            if (varName == Fcu.Altitude) _lastFcuAltFeet = value;
             // A readout pending for this var is about to AnnounceImmediate the same value, which
             // would cut the callout off mid-word. (The V/S readout reads the shims, not the PRIM
             // words the announcer listens to, so it never collides here.)

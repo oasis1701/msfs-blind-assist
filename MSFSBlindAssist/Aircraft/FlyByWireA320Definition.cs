@@ -4653,6 +4653,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             Units = "number"
         },
+        // FCU health: the FCU publishes real values. The hardware-dial callouts are released only while it
+        // is healthy, and its return starts a settle, so a power-up is never read out as knob turns.
+        // Consumed silently in ProcessSimVarUpdate.
+        ["A32NX_FCU_HEALTHY"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_HEALTHY",
+            Type = SimConnect.SimVarType.LVar,
+            DisplayName = "FCU healthy",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromMonitorManager = true,
+            Units = "number"
+        },
 
         // SPEED TAPE VALUES (for hotkey readouts)
         ["A32NX_SPEEDS_GD"] = new SimConnect.SimVarDefinition
@@ -8154,17 +8167,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // ---- FCU selected-value CHANGE announcements (hardware knob turns; 777-MCP parity) ----
         // A hardware dial (MobiFlight, FSUIPC, the cockpit knob) is spoken as it changes, the way
         // the PMDG 777 speaks its MCP. EVERY delivery of a source goes through AnnounceFcuValue —
-        // a dashed window (null phrase) included, recorded without a word — so the value
-        // reappearing on a pull is heard. The Ctrl+M mute reaches the speech through MainForm's
-        // announcer.Suppressed wrap around this method, which still lets the value be recorded.
+        // a dashed window (null phrase) and an FCU that is off (Unavailable) included, recorded
+        // without a word — so the value reappearing on a pull is heard. A change is STAGED here and
+        // released when its batch has finished dispatching (BaseAircraftDefinition.
+        // OnContinuousBatchDelivered), once the FCU health var in the same sample is known. That
+        // release runs OUTSIDE MainForm's announcer.Suppressed wrap, hence the explicit Ctrl+M check.
         // Consumed (return true) so the generic monitor never speaks it a second time. None of the
         // sources is what a Shift+H/S/A/V readout reads (those read the display values below), so
         // a readout never collides with a callout here. MSFSBA's own writes mute their echo via
         // SuppressFcuValueChangeEcho / ArmFcuEcho — the FCU windows, and the hotkeys, panel buttons
         // and panel number fields through ArmFcuEchoFor.
+        if (varName == "A32NX_FCU_HEALTHY")
+        {
+            ObserveFcuHealth(value > 0.5);
+            return true;
+        }
         if (TryComposeFcuValuePhrase(varName!, value, out string? fcuPhrase))
         {
-            AnnounceFcuValue(varName!, fcuPhrase, announcer);
+            bool fcuMuted = Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(varName!);
+            AnnounceFcuValue(varName!, fcuPhrase, announcer, muted: fcuMuted);
             return true;
         }
 
