@@ -178,7 +178,11 @@ public partial class MainForm
     private long? _lastAircraftLoadedTick;
 
     /// <summary>An Aircraft-menu switch within this long of AircraftLoaded is treated as made during the
-    /// load: the new definition's FCU callouts settle until the aircraft publishes.</summary>
+    /// load: the new definition's FCU callouts settle until the aircraft publishes. A judgement value,
+    /// not a measurement — there is no captured timing for how long a manual switch can trail a load.
+    /// The cost of picking it too wide: a switch made AFTER the aircraft has already published, but
+    /// still inside the window, gets a settle it does not need and absorbs the pilot's own knob turns
+    /// until the settle's SettleMaxDeliveries ceiling releases it.</summary>
     private const long AircraftLoadSettleWindowMs = 60_000;
 
     /// <summary>

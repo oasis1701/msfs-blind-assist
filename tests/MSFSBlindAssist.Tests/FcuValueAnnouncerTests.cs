@@ -167,6 +167,41 @@ public class FcuValueAnnouncerTests
     }
 
     [Fact]
+    public void A_source_leaving_unavailable_for_dashes_starts_a_settle()
+    {
+        const string Vs = "VS";
+        var a = Seeded(Vs, Off);                                    // FCU off at connect
+        Assert.Empty(Deliver(a, Vs, null));                         // power-up: the FCU's first sample is dashes
+        Assert.True(a.IsSettling);
+        Assert.Empty(Deliver(a, Vs, "Vertical speed 0 feet per minute"));   // still absorbed, not released
+    }
+
+    [Fact]
+    public void A_power_up_from_the_health_var_settles_for_only_the_quiet_deliveries()
+    {
+        var a = Seeded(Hdg, "Heading 250 degrees");
+        a.ObserveFcuHealth(false);
+        Assert.Empty(a.OnBatchDelivered(1));
+        a.ObserveFcuHealth(true);
+        Assert.Empty(a.OnBatchDelivered(1));                        // the flip's own delivery: not quiet
+        Batches(a, FcuValueAnnouncer.SettleQuietDeliveries - 1);
+        Assert.True(a.IsSettling);
+        a.OnBatchDelivered(1);
+        Assert.False(a.IsSettling);
+    }
+
+    [Fact]
+    public void A_power_up_from_a_source_leaving_unavailable_settles_for_only_the_quiet_deliveries()
+    {
+        var a = Seeded(Alt, Off);                                   // FCU off at connect
+        Assert.Empty(Deliver(a, Alt, "Altitude 100 feet"));         // the flip's own delivery: not quiet
+        Batches(a, FcuValueAnnouncer.SettleQuietDeliveries - 1);
+        Assert.True(a.IsSettling);
+        a.OnBatchDelivered(1);
+        Assert.False(a.IsSettling);
+    }
+
+    [Fact]
     public void Health_coming_back_drops_what_the_same_batch_staged_and_settles()
     {
         // The A32NX shims sort BEFORE the health var in the batch, so the power-up sample stages them
@@ -202,6 +237,28 @@ public class FcuValueAnnouncerTests
         a.ObserveFcuHealth(false);
         Assert.True(a.IsFcuAvailable);
         Assert.Equal(new[] { "Heading 260 degrees" }, Deliver(a, Hdg, "Heading 260 degrees"));
+    }
+
+    [Fact]
+    public void Health_reported_unhealthy_twice_stays_unavailable()
+    {
+        var a = Seeded(Hdg, "Heading 250 degrees");
+        a.ObserveFcuHealth(true);
+        Assert.Empty(a.OnBatchDelivered(1));
+        a.ObserveFcuHealth(false);
+        Assert.False(a.IsFcuAvailable);
+        a.ObserveFcuHealth(false);                                  // reported unhealthy again: no re-trigger
+        Assert.False(a.IsFcuAvailable);
+        Assert.Empty(Deliver(a, Hdg, "Heading 260 degrees"));
+    }
+
+    [Fact]
+    public void A_never_seen_key_reads_unavailable_while_the_fcu_is_unavailable()
+    {
+        var a = new FcuValueAnnouncer();
+        a.ObserveFcuHealth(true);
+        a.ObserveFcuHealth(false);
+        Assert.Equal(FcuWindowState.Unavailable, a.StateOf(Hdg));   // unavailability outranks "never seen"
     }
 
     [Fact]
@@ -325,6 +382,20 @@ public class FcuValueAnnouncerTests
         Assert.True(a.IsSettling);
         Deliver(a, Hdg, "Heading 250 degrees");                     // the aircraft publishes
         Batches(a, FcuValueAnnouncer.SettleQuietDeliveries);
+        Assert.False(a.IsSettling);
+    }
+
+    [Fact]
+    public void A_first_ever_key_during_a_re_fire_settle_is_evidence()
+    {
+        // Unlike a plain settle, a re-fire settle counts a never-seen key's own first delivery: the
+        // reconnect re-fires every var, so seeing it at all is the aircraft publishing.
+        var a = new FcuValueAnnouncer();
+        a.BeginSettle(refireIsEvidence: true);
+        Deliver(a, Hdg, "Heading 250 degrees");
+        Batches(a, FcuValueAnnouncer.SettleQuietDeliveries - 1);
+        Assert.True(a.IsSettling);
+        a.OnBatchDelivered(1);
         Assert.False(a.IsSettling);
     }
 

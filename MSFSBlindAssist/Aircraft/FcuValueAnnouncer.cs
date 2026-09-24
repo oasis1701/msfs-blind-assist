@@ -20,14 +20,19 @@ namespace MSFSBlindAssist.Aircraft;
 /// </summary>
 internal sealed class FcuValueAnnouncer
 {
-    /// <summary>How long after MSFSBA itself sets a value its echo is absorbed.</summary>
+    /// <summary>How long after MSFSBA itself sets a value its echo is absorbed. The set method speaks
+    /// its own confirmation, so the change arriving back from the sim must not repeat it.</summary>
     internal const long EchoWindowMs = 2500;
 
     /// <summary>Consecutive first-batch deliveries with no FCU value moving that end a settle once the
-    /// aircraft has published since it began. Five, as Md11SeedGate.</summary>
+    /// aircraft has published since it began. Five, as Md11SeedGate: an FBW load can publish its FCU
+    /// values in more than one burst.</summary>
     internal const int SettleQuietDeliveries = 5;
 
-    /// <summary>First-batch deliveries after which a settle ends whatever happened (~30 s).</summary>
+    /// <summary>First-batch deliveries after which a settle ends whatever happened (~30 s, the MD-11
+    /// gate's ceiling). Batches keep arriving with the OLD values while a flight loads (the MD-11
+    /// measured its first publish 8.5 s after AircraftLoaded), so this is the one bound that behaves
+    /// like a clock and it must outlast a slow load.</summary>
     internal const int SettleMaxDeliveries = 30;
 
     private readonly Dictionary<string, string?> _lastPhrase = new(StringComparer.Ordinal);
@@ -75,8 +80,10 @@ internal sealed class FcuValueAnnouncer
         }
 
         if (!seen || !moved) return;                                     // baseline / no change
+        // The FCU coming back is evidence it published, whether it returns showing a value or dashes
+        // (phrase != Unavailable is implied here: moved is true, so previous == Unavailable rules it out).
+        if (previous == FcuValuePhrases.Unavailable) { BeginPowerUpSettle(); return; }
         if (phrase == null || phrase == FcuValuePhrases.Unavailable) return;   // dashes / FCU off: recorded
-        if (previous == FcuValuePhrases.Unavailable) { BeginSettle(); return; } // the FCU came back
         if (!IsFcuAvailable || muted) return;
         if (_echoUntilMs.TryGetValue(key, out long until) && nowMs < until) return;
         _staged.Add((key, phrase));
@@ -88,8 +95,20 @@ internal sealed class FcuValueAnnouncer
         bool cameBack = healthy && _fcuHealthy == false;
         _fcuHealthy = healthy;
         if (healthy) _healthSeenTrue = true;
-        if (cameBack) BeginSettle();                     // power-up: absorb the FCU's start-up values
+        if (cameBack) BeginPowerUpSettle();              // power-up: absorb the FCU's start-up values
         else if (!IsFcuAvailable) _staged.Clear();       // power-down: this sample is the FCU going dark
+    }
+
+    /// <summary>A settle begun because the FCU itself just came back (a health flip, or a source
+    /// leaving <see cref="FcuValuePhrases.Unavailable"/>) IS the aircraft publishing — unlike an
+    /// ordinary reset, whose baselines say nothing yet. Ending it must therefore wait only for
+    /// <see cref="SettleQuietDeliveries"/> quiet deliveries, never the full <see cref="SettleMaxDeliveries"/>.
+    /// The delivery that carries the power-up sample itself counts as moved, not quiet.</summary>
+    private void BeginPowerUpSettle()
+    {
+        BeginSettle();
+        _publishedSinceReset = true;
+        _movedSinceDelivery = true;
     }
 
     /// <summary>Absorb every change of each named key for <see cref="EchoWindowMs"/>. Name only the keys
