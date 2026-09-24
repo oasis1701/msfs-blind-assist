@@ -10,7 +10,8 @@ public static class ChangelogRenderer
 {
     /// <summary>
     /// Editorial order, not alphabetical: what a pilot most wants to know comes first.
-    /// ChangelogCategory.Internal is deliberately absent — that is what excludes it.
+    /// ChangelogCategory.Internal is deliberately absent — that is what excludes it. Its
+    /// contributors are still credited, on the closing line (<see cref="ClosingCredit"/>).
     /// </summary>
     private static readonly (ChangelogCategory Category, string Heading)[] Sections =
     [
@@ -60,7 +61,74 @@ public static class ChangelogRenderer
             }
         }
 
+        var closing = ClosingCredit(all, contributors);
+        if (closing is not null)
+        {
+            if (builder.Length > 0)
+            {
+                builder.Append('\n');
+            }
+
+            builder.Append(closing).Append('\n');
+        }
+
         return builder.ToString();
+    }
+
+    /// <summary>
+    /// Credits everyone the entries above do not — in practice the people of a PR whose
+    /// fragments are all internal, which are never rendered and so can carry no attribution
+    /// (PR #248's author went uncredited that way). Each person is named once, with their PR
+    /// numbers. Null when there is no one to add, so output without a map, or with everyone
+    /// already credited, is unchanged.
+    /// </summary>
+    private static string? ClosingCredit(
+        IReadOnlyList<ChangelogFragment> all,
+        IReadOnlyDictionary<int, IReadOnlyList<string>> contributors)
+    {
+        // GitHub logins are case-insensitive.
+        var credited = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var fragment in all.Where(f => f.Category != ChangelogCategory.Internal))
+        {
+            if (contributors.TryGetValue(fragment.PrNumber, out var logins))
+            {
+                credited.UnionWith(logins);
+            }
+        }
+
+        // PRs ascending, map order within a PR: each person lands at their lowest PR, and the
+        // first spelling seen is the one printed.
+        var prsByLogin = new Dictionary<string, SortedSet<int>>(StringComparer.OrdinalIgnoreCase);
+        var people = new List<string>();
+        foreach (var pr in all.Select(f => f.PrNumber).Distinct().OrderBy(n => n))
+        {
+            if (!contributors.TryGetValue(pr, out var logins))
+            {
+                continue;
+            }
+
+            foreach (var login in logins.Where(l => !credited.Contains(l)))
+            {
+                if (!prsByLogin.TryGetValue(login, out var prs))
+                {
+                    prs = new SortedSet<int>();
+                    prsByLogin[login] = prs;
+                    people.Add(login);
+                }
+
+                prs.Add(pr);
+            }
+        }
+
+        if (people.Count == 0)
+        {
+            return null;
+        }
+
+        var credits = people
+            .Select(login => $"@{login} ({string.Join(", ", prsByLogin[login].Select(n => $"#{n}"))})")
+            .ToList();
+        return "Also contributed to this release: " + JoinWithAnd(credits) + ".";
     }
 
     /// <summary>
@@ -77,13 +145,15 @@ public static class ChangelogRenderer
             return entry.Body;
         }
 
-        var handles = logins.Select(l => "@" + l).ToList();
-        var joined = handles.Count == 1
-            ? handles[0]
-            : string.Join(", ", handles.Take(handles.Count - 1)) + " and " + handles[^1];
-
+        var joined = JoinWithAnd(logins.Select(l => "@" + l).ToList());
         return entry.Body.TrimEnd() + " — " + joined;
     }
+
+    /// <summary>"a", "a and b", "a, b and c" — the one list style every credit uses.</summary>
+    private static string JoinWithAnd(IReadOnlyList<string> items) =>
+        items.Count == 1
+            ? items[0]
+            : string.Join(", ", items.Take(items.Count - 1)) + " and " + items[^1];
 
     private static void AppendBullet(StringBuilder builder, string body)
     {

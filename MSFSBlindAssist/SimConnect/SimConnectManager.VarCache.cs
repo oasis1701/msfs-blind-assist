@@ -40,10 +40,13 @@ public partial class SimConnectManager
         {
             // Find the variable key for this request ID. A fresh read's PERIOD.ONCE went out under
             // its own id (see FreshReadWaiters): resolve that first — a ONCE answers exactly once,
-            // so the mapping is consumed here — else the id is the var's data-definition id.
+            // so the mapping is consumed here — then a SEED id (def id + offset, FreshReadPolicy),
+            // mapped back through its definition id, else the var's data-definition id.
             string? varKey;
             bool freshRequest = _freshRequestIdToVarKey.TryRemove(requestId, out varKey);
-            if (!freshRequest && !requestIdToVarKey.TryGetValue(requestId, out varKey)) return;
+            bool seedRequest = !freshRequest && FreshReadPolicy.IsSeedRequestId(requestId);
+            if (!freshRequest &&
+                !requestIdToVarKey.TryGetValue(seedRequest ? FreshReadPolicy.DataDefinitionIdOf(requestId) : requestId, out varKey)) return;
             if (varKey == null) return;
 
             var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
@@ -51,6 +54,9 @@ public partial class SimConnectManager
             {
                 return;
             }
+            // Only a SIM_FRAME own subscription is ever seeded: a seed id resolving to anything else
+            // is a late answer from before an aircraft switch re-used its definition id.
+            if (seedRequest && !FreshReadPolicy.CacheIsFresh(varDef)) return;
 
             double currentValue = data.value;
 
@@ -76,6 +82,15 @@ public partial class SimConnectManager
             // Check for value changes — by the variable's own tolerance when it sets one.
             double? previousValue = lastVariableValues.TryGetValue(varKey, out double cached) ? cached : null;
             bool hasChanged = IsValueChange(previousValue, currentValue, varDef);
+            if (previousValue == null && varDef.HighFrequency)
+            {
+                // The per-fire line below is skipped for SIM_FRAME vars, so this is the one record of
+                // such a var's FIRST value per cache lifetime, and of which path supplied it. It says
+                // nothing about later subscription samples, and it is written near connect, so a long
+                // session's rotated debug.log may no longer hold it: its absence proves nothing alone.
+                string source = freshRequest ? "fresh read" : seedRequest ? "seed read" : "subscription";
+                Log.Debug("SimConnect", $"First delivery for {varKey}: Value={currentValue} via {source} (request {requestId})");
+            }
             // Plain indexer write is equivalent to the prior AddOrUpdate here: the update-factory was
             // value-replacing ((key, oldValue) => currentValue), not a merge of oldValue into the new
             // value, so there is no concurrent-update logic being lost — see task-4.1-report.md.
@@ -83,9 +98,12 @@ public partial class SimConnectManager
             // A fresh read is answered by its OWN request, changed or not — never by an earlier
             // read's late answer (the read gave up; its answer must not become the next read's),
             // and never by a panel's ONCE under the data-definition id, which was asked by someone
-            // else at a time the waiter cannot know. A var on its own periodic subscription gets
-            // no ONCE of its own (RequestVariable leaves the subscription alone), so for it the
-            // periodic sample — taken after any waiter registered — is the answer.
+            // else at a time the waiter cannot know. A var on its own PERIOD.SECOND subscription
+            // gets no ONCE of its own (RequestVariable leaves the subscription alone), so for it the
+            // periodic sample — taken after any waiter registered — is the answer. A SIM_FRAME +
+            // CHANGED var is read under a fresh id when its cache is empty (the freshRequest arm); a
+            // SEED delivery answers no waiter at all, for the same reason a panel's ONCE does not —
+            // it may have been asked before the waiter registered — and only fills the cache.
             if (freshRequest)
             {
                 if (!_freshReads.Complete(varKey, requestId, currentValue))
@@ -94,7 +112,7 @@ public partial class SimConnectManager
                         $"Dropped late fresh-read answer for {varKey} (request {requestId}): the read had already given up; cache updated.");
                 }
             }
-            else if (FreshReadPolicy.IsOwnSubscription(varDef))
+            else if (!seedRequest && FreshReadPolicy.IsOwnSubscription(varDef))
             {
                 _freshReads.Complete(varKey, currentValue);
             }
