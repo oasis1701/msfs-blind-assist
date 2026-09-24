@@ -44,7 +44,7 @@ public static class FeatureLexicon
     /// a terminal, "Federal Aviation Administration", "Museum of Aviation", "Army Aviation Support
     /// Facility".</summary>
     private static readonly Regex NotFbo = new(
-        @"\b(civil aviation|authority|administration|department|ministry|agency|division|museum|school|academy|college|university|security|police|military|army|navy|air force|national guard|coast guard)\b", Opt);
+        @"\b(civil aviation|authority|administration|department|ministry|agency|division|museum|school|academy|college|university|security|police|military|army|navy|air force|national guard|coast guard|port of)\b", Opt);
 
     public static readonly Regex Cargo = new(@"\b(cargo|freight|fedex|ups|dhl)\b", Opt);
 

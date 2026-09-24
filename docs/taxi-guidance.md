@@ -991,12 +991,23 @@ as long as the airport was current.
   terminals were spoken as 第1旅客ターミナル and Narita's cargo sheds (第3貨物ビル,
   `name:en` "Cargo Building No.3") were no feature at all, their only aviation
   word being in the English name. Never classify on one and speak the other.
+  A name that says nothing on its own is prefixed with the word for what the
+  feature IS (`FeatureKindWords.Generic`): one with no letters at all (WSSS and
+  FAOR tag aprons and helipads by bare number, so "203" is spoken "Apron 203"
+  and "1" "Helipad 1"), and a `ref` of one token ("12-14" → "Apron 12-14").
+  A name that already carries the word is left alone, and runs of whitespace
+  (OMDB's "Terminal  3") are one space.
 - **`OsmFeatureSource`** owns the query. It is scoped to the
   `aeroway=aerodrome` area carrying the airport's `icao=` tag; when OSM has not
   tagged that area, one `around:3000` fallback runs and its result is kept only
   inside the navdata airport box grown `FallbackBoxMarginMetres` (500 m). A
   bare radius is what let the KTIW Chevron in, and with **no** box the fallback
-  result is dropped entirely — fail closed. OSM feature data has its own
+  result is dropped entirely — fail closed. The AREA answer is bounded too, more
+  loosely (`AreaBoxMarginMetres`, 3 km past the box, because an aerodrome
+  outline legitimately reaches landside buildings): an `icao=` tag can sit on
+  the wrong aerodrome (live UKRB and UKRK named fields 1,279 km and 4,171 km
+  away), and an area answer with nothing left near the airport falls through to
+  the radius query. OSM feature data has its own
   in-memory store (`OnlineFeatureStore`), no disk cache, same ODbL "produced
   work" position as the rest of this pipeline. See "The OSM buildings query"
   below for why it must never be fused back into the taxiway-name query.
@@ -1096,7 +1107,10 @@ KMEM instead:
   `RingOverlapMarginMetres` (5 m) inside the other — or when they are the two
   halves of ONE split OSM way: both carry the SAME proper name and the outlines
   TOUCH (a node they share, or a vertex within that margin of the other's
-  edge). Never on a bare radius between edges, and never on one name: a single
+  edge) — or when they are PIECES OF ONE BUILDING: two UNNAMED Terminal or
+  Concourse outlines that touch (OSM often maps a terminal as several glued
+  `building=terminal` parts; kept apart, one terminal was listed once per
+  piece). Only those two kinds: two touching unnamed aprons are still two. Never on a bare radius between edges, and never on one name: a single
   proper name used to be enough, which merged an apron with a DISJOINT unnamed
   neighbour (real OSM at EHRD, EHLW and LSZG) and — the winner keeping only its
   own outline — took the neighbour's zone with it. A proper name beside an
@@ -2136,6 +2150,13 @@ become "Fuel, ahead". Every embedded coordinate is `InvariantCulture`-formatted:
 comma-decimal locale would emit `around:3000,47,2679,-122,5781`, which every
 mirror answers 400 to.
 
+The AREA answer is not trusted blindly either: an `icao=` tag can sit on the
+wrong aerodrome (live UKRB and UKRK: fields 1,279 km and 4,171 km away), so
+`FetchAsync` keeps only what lies within `AreaBoxMarginMetres` (3 km) of the
+navdata box — looser than the fallback's 500 m, because the real aerodrome
+outline reaches landside buildings — and an area answer with nothing left falls
+through to the fallback query as an untagged aerodrome would.
+
 **Both building queries end `out body geom;`, never `out tags geom;`.** The
 `tags` verbosity prints ids and tags only — no coordinates, no members — and
 `geom` puts coordinates back for nodes and ways but has nothing to hang a
@@ -2268,7 +2289,8 @@ cluster.
   "satellite" are shapes any building can have. An FBO word is vetoed by an
   office or government word (`FeatureLexicon.IsFboName`: "Civil Aviation
   Authority", the "City of Atlanta Department of Aviation" operating a
-  terminal), and there is no bare "atlantic" (EGLL's "Virgin Atlantic Upper
+  terminal, KSEA's "Port of Seattle Aviation Maintenance" — a port authority is
+  a government body), and there is no bare "atlantic" (EGLL's "Virgin Atlantic Upper
   Class" was an FBO). The FBO chains — brand names that ARE FBO operators:
   Signature, Million Air, Sheltair, TAC Air, Clay Lacy — are FBO words; the
   fuel brand Avfuel is not (an "Avfuel" fuel point is Fuel, and one facility

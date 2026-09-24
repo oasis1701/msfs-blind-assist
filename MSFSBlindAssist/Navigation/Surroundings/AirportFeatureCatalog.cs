@@ -95,12 +95,20 @@ public sealed class AirportFeatureCatalog
            && string.Equals(Norm(a.Name), Norm(b.Name), StringComparison.OrdinalIgnoreCase)
            && RingsTouch(a, b);
 
+    /// <summary>Two UNNAMED terminal or concourse outlines that touch: one building OSM drew as
+    /// several pieces. (Aprons stay separate zones even when glued; see <see cref="GeometryMayBeOneBody"/>.)</summary>
+    private static bool PiecesOfOneBuilding(AirportFeature a, AirportFeature b)
+        => a.Kind is FeatureKind.Terminal or FeatureKind.Concourse
+           && !a.HasName && !b.HasName
+           && RingsTouch(a, b);
+
     /// <summary>
     /// Can these two shapes be one body at all? Asked last by <see cref="SameFeature"/>, of pairs
     /// the name and distance already accepted. A refusal is a refused merge — they stay two places.
     /// <list type="bullet">
-    /// <item>Two rings, unless they overlap or are halves of one way (KTIW has unnamed aprons 26 m
-    /// apart; merging them lost the apron a pilot was parked on).</item>
+    /// <item>Two rings, unless they overlap, are halves of one way, or are touching pieces of one
+    /// unnamed terminal (KTIW has unnamed aprons 26 m apart; merging them lost the apron a pilot
+    /// was parked on).</item>
     /// <item>An unnamed apron/de-ice ring beside a stand cluster: one ring covers several rows of
     /// stands, so the ring stays a zone and the cluster stays "GA ramp".</item>
     /// <item>A stand cluster the other feature does not describe (<see cref="MembersDescribe"/>): a
@@ -109,7 +117,7 @@ public sealed class AirportFeatureCatalog
     /// </summary>
     private static bool GeometryMayBeOneBody(AirportFeature a, AirportFeature b)
     {
-        if (IsRing(a) && IsRing(b)) return RingsOverlap(a, b) || HalvesOfOneWay(a, b);
+        if (IsRing(a) && IsRing(b)) return RingsOverlap(a, b) || HalvesOfOneWay(a, b) || PiecesOfOneBuilding(a, b);
         if (a.Kind is FeatureKind.Apron or FeatureKind.DeicePad
             && ((IsRing(a) && !a.HasName && IsCluster(b)) || (IsRing(b) && !b.HasName && IsCluster(a))))
             return false;

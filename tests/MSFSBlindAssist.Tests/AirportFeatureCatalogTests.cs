@@ -255,6 +255,26 @@ public class AirportFeatureCatalogTests
     }
 
     [Theory]
+    [InlineData(FeatureKind.Terminal, 40.0, true)]    // glued along an edge: pieces of one terminal
+    [InlineData(FeatureKind.Concourse, 40.0, true)]
+    [InlineData(FeatureKind.Terminal, 65.0, false)]   // 25 m apart: two buildings
+    [InlineData(FeatureKind.Apron, 40.0, false)]      // aprons stay separate zones even when glued
+    public void Unnamed_terminal_outlines_that_touch_are_one_building(FeatureKind kind, double eastWest, bool one)
+    {
+        // Live sweep: 50 unnamed OSM "Terminal" pairs within 60 m of each other, one terminal drawn
+        // as several building outlines, each announced as its own "Terminal".
+        static AirportFeature Piece(FeatureKind k, IReadOnlyList<LatLon> ring)
+        {
+            var c = SurroundingsGeometry.Centroid(ring);
+            return F(k, "", c.Lat, c.Lon, FeatureSource.Osm, fp: ring);
+        }
+        var west = Piece(kind, Rect(0, 0, 40, 40));
+        var east = Piece(kind, Rect(eastWest, 0, eastWest + 40, 40));
+        Assert.Equal(one, AirportFeatureCatalog.SameFeature(west, east));
+        Assert.Equal(one, AirportFeatureCatalog.SameFeature(east, west));
+    }
+
+    [Theory]
     [InlineData(40.0, 0.0)]    // glued along an edge — two shared nodes, the usual split way
     [InlineData(40.0, 40.0)]   // one shared corner node and nothing else
     [InlineData(43.0, 0.0)]    // traced 3 m apart: an edge within the margin

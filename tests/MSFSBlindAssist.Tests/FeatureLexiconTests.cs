@@ -1,4 +1,4 @@
-using MSFSBlindAssist.Navigation.Surroundings;
+﻿using MSFSBlindAssist.Navigation.Surroundings;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -53,6 +53,7 @@ public class FeatureLexiconTests
     [InlineData("Federal Aviation Administration")]
     [InlineData("Museum of Aviation")]
     [InlineData("Army Aviation Support Facility")]
+    [InlineData("Port of Seattle Aviation Maintenance")]           // KSEA, sweep: the port authority's works yard
     public void An_office_or_an_airline_facility_is_not_an_fbo(string name)
     {
         Assert.False(FeatureLexicon.IsFboName(name), name);

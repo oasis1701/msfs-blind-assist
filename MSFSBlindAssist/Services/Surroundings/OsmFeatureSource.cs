@@ -67,6 +67,9 @@ public sealed class OsmFeatureSource
         return "[out:json][timeout:30];(" + Clauses(around, includeNamedBuildings: false) + ");" + OutputStatement;
     }
 
+    /// <summary>How far past the navdata airport box an AREA-query feature may lie.</summary>
+    internal const double AreaBoxMarginMetres = 3000.0;
+
     internal static List<AirportFeature> Parse(string json)
     {
         var result = new List<AirportFeature>();
@@ -107,6 +110,11 @@ public sealed class OsmFeatureSource
         if (body == null) return null;
         var features = TryParse(icao, body);
         if (features == null) return null;
+        // An icao= tag can sit on the wrong aerodrome (live UKRB/UKRK: fields 1,279 km and
+        // 4,171 km away), so the area answer is bounded too — more loosely than the fallback,
+        // since an aerodrome outline legitimately reaches landside buildings past navdata's box.
+        // Nothing left means the tag named another field: fall through to the radius query.
+        if (box != null) features = features.Where(f => box.ContainsPoint(f.Lat, f.Lon, AreaBoxMarginMetres)).ToList();
         if (features.Count > 0) return features;
 
         // A fallback that never reached a mirror is a FAILURE, not an airport without buildings:

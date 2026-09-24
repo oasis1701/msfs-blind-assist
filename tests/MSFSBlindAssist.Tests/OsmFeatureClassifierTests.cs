@@ -52,6 +52,20 @@ public class OsmFeatureClassifierTests
         Assert.False(One(Node("\"aeroway\":\"terminal\",\"ref\":\"222;223\""))!.HasName);   // a list is not a name either
     }
 
+    [Theory]
+    // Live WSSS: aprons named "200".."469"; live FAOR: helipads named "1".."6". A bare number
+    // spoken on its own ("203, ahead, 50 metres") names nothing a pilot can look for.
+    [InlineData("\"aeroway\":\"apron\",\"name\":\"203\"", "Apron 203")]
+    [InlineData("\"aeroway\":\"helipad\",\"name\":\"1\"", "Helipad 1")]
+    [InlineData("\"aeroway\":\"apron\",\"name\":\"12-14\"", "Apron 12-14")]
+    public void A_name_with_no_letters_is_spoken_with_the_word_for_what_it_is(string tags, string expected)
+        => Assert.Equal(expected, One(Node(tags))!.Name);
+
+    [Fact]
+    public void Runs_of_whitespace_in_a_name_are_one_space()
+        // Live OMDB: an apron named "E45L  -- E45 -- E45R".
+        => Assert.Equal("E45L -- E45 -- E45R", One(Node("\"aeroway\":\"apron\",\"name\":\"E45L  -- E45 --   E45R\""))!.Name);
+
     [Fact]
     public void A_designator_borrowed_from_ref_is_spoken_with_the_word_for_what_it_is()
     {

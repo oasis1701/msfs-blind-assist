@@ -60,19 +60,18 @@ public static class OsmFeatureClassifier
     }
 
     /// <summary>
-    /// A designator borrowed from `ref` is given the word for what it is: "Apron A", "Terminal T2".
-    /// A ref is a REFERENCE, and spoken bare it reached the pilot as "On the A." and "A, to the
-    /// left, 100 metres" — which names nothing they can look for. It stays a PROPER name (it is
-    /// OSM's own designator for this apron, and must still outrank an unnamed neighbour in the
-    /// catalog merge), so only the wording changes.
-    ///
-    /// <para>Two refs are left alone: one carrying WHITESPACE, which is prose somebody put in the
-    /// wrong tag rather than a designator (the live "De-icing pad"), and one that already says the
-    /// kind's own word. A real `name` is never touched at all.</para>
+    /// The name as spoken. Whitespace runs collapse to one space. A name with no letters ("203",
+    /// "1") and a designator borrowed from `ref` ("A", "T2") get the word for what they are —
+    /// "Apron 203", "Terminal T2" — because spoken bare they name nothing a pilot can look for.
+    /// They stay PROPER names (OSM's own designator, outranking an unnamed neighbour in the merge).
+    /// Left alone: a ref carrying whitespace (prose in the wrong tag, like "De-icing pad") and a
+    /// name that already says the kind's word.
     /// </summary>
     private static string SpeakableName(string name, bool fromRef, FeatureKind kind)
     {
-        if (!fromRef || name.Any(char.IsWhiteSpace)) return name;
+        name = System.Text.RegularExpressions.Regex.Replace(name, @"\s+", " ");
+        bool needsWord = name.Length > 0 && (!name.Any(char.IsLetter) || (fromRef && !name.Any(char.IsWhiteSpace)));
+        if (!needsWord) return name;
         string word = FeatureKindWords.Generic(kind);
         return word.Length == 0 || name.Contains(word, StringComparison.OrdinalIgnoreCase) ? name : $"{word} {name}";
     }

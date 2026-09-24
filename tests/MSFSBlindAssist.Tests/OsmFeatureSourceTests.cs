@@ -122,4 +122,32 @@ public class OsmFeatureSourceTests
         var source = SourceOver(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
         Assert.Null(await source.FetchAsync("KTIW", 47.2679, -122.5781, null, CancellationToken.None));
     }
+
+    private static readonly AirportFacilities UkrbBox = new()
+        { Icao = "UKRB", LeftLon = 31.60, RightLon = 31.62, TopLat = 51.62, BottomLat = 51.60 };
+
+    private static HttpResponseMessage Hangars(params (double Lat, double Lon)[] at) => new(HttpStatusCode.OK)
+    {
+        Content = new StringContent("{\"elements\":[" + string.Join(",", at.Select((p, i) =>
+            $"{{\"type\":\"node\",\"id\":{i + 1},\"lat\":{p.Lat.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"lon\":{p.Lon.ToString(System.Globalization.CultureInfo.InvariantCulture)},\"tags\":{{\"aeroway\":\"hangar\",\"name\":\"H{i + 1}\"}}}}")) + "]}"),
+    };
+
+    [Fact]
+    public async Task An_area_answer_keeps_only_what_lies_near_the_airport()
+    {
+        // Live UKRB/UKRK: the icao-tagged aerodrome OSM returned was another field 1,279 km and
+        // 4,171 km away, and its hangars were announced as this airport's.
+        var source = SourceOver(isArea => isArea ? Hangars((51.61, 31.61), (40.0, 20.0)) : NoElements());
+        var features = await source.FetchAsync("UKRB", 51.61, 31.61, UkrbBox, CancellationToken.None);
+        Assert.Equal("H1", Assert.Single(features!).Name);
+    }
+
+    [Fact]
+    public async Task An_area_answer_about_another_airport_falls_through_to_the_radius_query()
+    {
+        var source = SourceOver(isArea => isArea ? Hangars((40.0, 20.0)) : Hangars((51.605, 31.615)));
+        var features = await source.FetchAsync("UKRB", 51.61, 31.61, UkrbBox, CancellationToken.None);
+        Assert.Equal("H1", Assert.Single(features!).Name);
+        Assert.Equal(51.605, features![0].Lat, 6);
+    }
 }
