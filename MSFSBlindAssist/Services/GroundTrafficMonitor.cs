@@ -1235,28 +1235,31 @@ public sealed class GroundTrafficMonitor : IDisposable
             var occ = status.SelectMany(s => s.Occupants.Select(o => (Id: o.Ac.ObjectId, s.Key))).ToList();
             var fin = status.SelectMany(s => s.Finals.Select(f => (Id: f.Ac.ObjectId, s.Key))).ToList();
             var shortFin = status.SelectMany(s => s.Finals.Where(IsShortFinal).Select(f => f.Ac.ObjectId)).ToList();
-            bool critical = interrupts && (occ.Count > 0 || shortFin.Count > 0);
-            // A re-armed status is judged only by an evaluation in the INTERRUPTING mode it was re-armed
-            // for (PR #247 re-review M5). A sweep requested before the mode change completes with its
-            // OLD, queuing cycle, in which nothing can be critical: the branch below would complete the
-            // re-armed status silently there and spend the once-per-watch re-arm before the new mode
-            // was ever evaluated. Wait for an evaluation in the interrupting mode — but only while the
-            // watch ADOPTED THIS TICK (_currentWatch, never the possibly-stale `watch` parameter a slow
-            // sweep completes with) still interrupts. Waiting on the stale cycle's own `interrupts` alone
-            // can never end once the mode has gone back to a queuing one before any evaluation in the
-            // interrupting mode completed: every sweep afterwards, stale or fresh, keeps failing the same
-            // test and the whole runway watch is muted for the rest of the session (PR #247 re-review
-            // follow-up, concern 1 — measured, replay G). Once the adopted watch has itself left the
-            // interrupting mode, fall through instead to the ordinary silent completion just below, which
-            // — per K2 — marks nothing known, so a real occupant or final since the last spoken status is
-            // still picked up fresh by the event path once _watchSummaryDone flips true.
+            bool onRunwayOrShortFinal = occ.Count > 0 || shortFin.Count > 0;
+            // A RE-ARMED status (SetWatch, H2) is judged by the watch ADOPTED THIS TICK (_currentWatch),
+            // never by the possibly-stale cycle a slow sweep completes with (`watch` / `interrupts`, the
+            // mode of the tick that REQUESTED the sweep). That adopted watch decides BOTH things:
+            // - whether a queuing evaluation WAITS (PR #247 re-review M5): a sweep requested before the
+            //   mode change completes with its OLD, queuing cycle, in which nothing can be critical, and
+            //   completing the re-armed status there would spend the once-per-watch re-arm before the new
+            //   mode was ever evaluated — so it waits, but only while the adopted watch still interrupts.
+            //   Waiting on the stale cycle's own mode alone never ended once the pilot went back to a
+            //   queuing mode before any evaluation in the interrupting one completed: every later sweep
+            //   failed the same test and the whole runway watch was muted for the rest of the session
+            //   (PR #247 re-review follow-up, concern 1 — replay G);
+            // - whether the re-armed status is CRITICAL (PR #247 focused re-review N2): the cycle's mode
+            //   can be the interrupting one while the pilot has already moved again — re-armed on stopping
+            //   after landing, the OnRunway cycle's sweep completing once Vacating had been adopted again —
+            //   and that status interrupted the exit instructions (replay X3).
+            // The ordinary first status still follows the evaluated cycle's mode.
             if (_rearmCriticalOnly && !interrupts && _currentWatch.RunwayEventsInterrupt) return;
+            bool critical = (_rearmCriticalOnly ? _currentWatch.RunwayEventsInterrupt : interrupts) && onRunwayOrShortFinal;
             // The one exception: a status RE-ARMED on entering the runway (SetWatch, H2) is critical-only.
-            // With nothing on the runway or on short final it completes silently — and marks NOTHING as
-            // known (PR #247 B5 follow-up K2): nothing was spoken, so an occupant or a final that showed
-            // up since the last (already-spoken) status must still reach the ordinary event path below as
-            // a fresh occupant/final once _watchSummaryDone flips true, rather than being absorbed here
-            // with no callout at all.
+            // With nothing on the runway or on short final — or once the adopted watch no longer interrupts
+            // — it completes silently, and marks NOTHING as known (PR #247 B5 follow-up K2): nothing was
+            // spoken, so an occupant or a final that showed up since the last (already-spoken) status must
+            // still reach the ordinary event path below as a fresh occupant/final once _watchSummaryDone
+            // flips true, rather than being absorbed here with no callout at all.
             if (_rearmCriticalOnly && !critical)
             {
                 _watchSummaryDone = true;
