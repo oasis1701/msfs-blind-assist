@@ -450,8 +450,11 @@ twice (the press feedback plus the generic monitor) — but FBW mirrors the same
 `A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE`, which the hardware-dial announcer already streams in the
 batch and consumes silently (`ExcludeFromMonitorManager`, never spoken). `FBWA320HeadingWindow`'s
 500 ms label timer now just reads that cache instead of calling `RequestVariable` on a timer
-(`RequestTrkMode` is gone). The A380's Ctrl+H window is unchanged: it still polls
-`A32NX_TRK_FPA_MODE_ACTIVE` itself, because that airframe has no display-mode mirror to read.
+(`RequestTrkMode` is gone). The A380's Ctrl+H window never polled: `A32NX_TRK_FPA_MODE_ACTIVE`
+streams there on its own per-var subscription (Continuous + `ExcludeFromBatch`), and the window's
+timer only reads the cache that subscription feeds — through the definition's commanded-or-cached
+view (`TrkFpaModeCommandedOrCached`), so a mode just pressed shows, and a quick second press asks
+for the other mode, before the sim confirms the first.
 
 **The five streamed A32NX value vars carry `FCU … Value` `DisplayName`s** (`FCU Heading Value`,
 not `Selected Heading`) so a Ctrl+M search for "heading" does not surface a row named with the
