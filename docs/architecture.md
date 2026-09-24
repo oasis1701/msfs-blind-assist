@@ -36,14 +36,18 @@ search for a named enum member. From low to high:
   `REQUEST_AIRCRAFT_INFO`, `REQUEST_AIRCRAFT_POSITION`, …), the five
   `REQUEST_CONTINUOUS_BATCH_n` (8–12) and `REQUEST_PANEL_BATCH`/`REQUEST_WEATHER_DATA` (13–14).
 - **300–340** — the hotkey-readout one-shots (`REQUEST_HEADING`, …, `REQUEST_SQUAWK_CODE`,
-  `REQUEST_LOCAL_TIME`/`REQUEST_ZULU_TIME`, `REQUEST_GSX_COUATL_STARTED` = 340) — some of this
-  band (324–328, 330–337, 370–372) is reserved by comment only, for hardcoded takeoff-assist/
-  hand-fly/V-speed/waypoint requests that never got their own enum member either.
+  `REQUEST_LOCAL_TIME`/`REQUEST_ZULU_TIME`, `REQUEST_GSX_COUATL_STARTED` = 340) — two gaps in this
+  band (324–328 and 330–337) are reserved by comment only, for hardcoded takeoff-assist/hand-fly
+  and V-speed requests that never got their own enum member either.
 - **341–348** — the camera read's rotating range (`REQUEST_CAMERA_VIEW` = 341,
   `SimConnectManager.CameraReadIdCount` = 8, `SimConnect/CameraReadWaiters.cs`): each
   instrument-view read goes out under the next of these eight ids, so an abandoned read's late
   reply can never complete the NEXT read — the original design shared ONE id for every camera
   read and paid for exactly that bug.
+- **370–372** — hand-numbered too, ABOVE the 300–340 band and with no reserving comment in the
+  enum at all: the dispatcher matches 370 (waypoint info) and 371/372 (hand fly's heading and
+  vertical speed, issued in `SimConnectManager.Monitoring.cs`) by raw `(DATA_REQUESTS)` casts in
+  `SimConnectManager.Dispatch.cs`.
 - **500** — `REQUEST_AI_TRAFFIC`, TCAS's own ~150 nm sweep (`RequestAiTrafficData`).
 - **505–508** — the hand-numbered guidance frames, matched by the dispatcher via a raw
   `(DATA_REQUESTS)` cast rather than a named enum member: 505 visual guidance, 506 takeoff
@@ -71,9 +75,11 @@ search for a named enum member. From low to high:
 
 Choosing a new fixed id means checking ALL of these, not just the enum: `GroundTrafficRequestIdTests`
 pins that its 600–607 range clashes with none of the named `DATA_REQUESTS`/`DATA_DEFINITIONS`
-values and none of the hand-numbered ones either (324–328, 330–337, 370–372, 505–508); a sweep
-planned at 501–508 during design, before that check existed, would have replaced taxi guidance's
-own 507 position stream mid-flight.
+values and none of the hand-numbered ones either — a hand-kept list (324–328, 330–337, 370–372,
+505–508) and, so a FUTURE hand-numbered cast is caught too, a scan of every `*.cs` under
+`MSFSBlindAssist/` for a raw `(DATA_REQUESTS)NNN` cast — and that none of 505–508 is also a named
+enum value; a sweep planned at 501–508 during design, before that check existed, would have
+replaced taxi guidance's own 507 position stream mid-flight.
 
 ### MobiFlightWasmModule
 **File:** `SimConnect/MobiFlightWasmModule.cs`
