@@ -74,6 +74,45 @@ internal static partial class GroundTrafficLogic
     public static bool IsOpeningByMotion(double trafficGsKts, double openingMps, bool leadGrowing)
         => trafficGsKts >= MovingTrafficKts && (openingMps >= MovingAwayMinOpeningMps || leadGrowing);
 
+    // ── A "Stop" withheld while the traffic opens stays withheld while it keeps pulling away ──────────
+    // (PR #247 integration review Q2.) A withheld Warning is never recorded, so once the traffic stops
+    // opening the next evaluation says "Stop" — which closed the swallowed "Stop" of a leader that pulls
+    // away and stops again ahead. But "stops opening" also comes while it is still pulling away slowly: a
+    // pilot following a departing leader out of a queue, catching up to its speed, brought the opening
+    // below MovingAwayMinOpeningMps and heard "Stop" with the gap still growing. So once a "Stop" has been
+    // withheld BECAUSE the traffic was opening, it is HELD — still unrecorded — until the traffic stops or
+    // closes on the pilot. Never "recorded until the traffic stops": a leader that slows to 4 kt without
+    // stopping would then never earn "Stop" as the pilot closes on it.
+
+    /// <summary>
+    /// A held "Stop" (<see cref="IsMovingAwayOrHeld"/>) is released once the pilot closes on the traffic at
+    /// this speed (m/s) or faster.
+    /// </summary>
+    public const double HeldStopReleaseClosingMps = 0.5;
+
+    /// <summary>
+    /// Is the traffic moving away, for its zone callouts — withheld, as traffic pulling away is? Yes while it
+    /// is opening now (<paramref name="openingNow"/>: <see cref="IsMovingAway"/> or
+    /// <see cref="IsOpeningByMotion"/>). And while a "Stop" withheld because it was opening is held
+    /// (<paramref name="stopHeld"/>, <see cref="StopHeldAfterMovingAway"/>), still yes as long as the traffic
+    /// is MOVING (at least <see cref="MovingTrafficKts"/>) and not closing at
+    /// <see cref="HeldStopReleaseClosingMps"/> or more (<paramref name="openingMps"/>,
+    /// <see cref="OpeningSpeedMps"/>, negative when closing). It speaks once the traffic stops or closes.
+    /// </summary>
+    public static bool IsMovingAwayOrHeld(bool openingNow, bool stopHeld, double trafficGsKts, double openingMps)
+        => openingNow
+           || (stopHeld && trafficGsKts >= MovingTrafficKts && openingMps > -HeldStopReleaseClosingMps);
+
+    /// <summary>
+    /// After a zone callout was withheld as moving away (<see cref="IsMovingAwayOrHeld"/>): is a "Stop" held
+    /// now? Yes when what was withheld is a Warning ESCALATION (<paramref name="newZone"/> Warning, above
+    /// <paramref name="currentZone"/> — left unrecorded by <see cref="ZoneToRecordWhenWithheld"/>); no once
+    /// the zone is below Warning, where no "Stop" is due; otherwise (a Warning already recorded, so no
+    /// escalation) as it was (<paramref name="stopHeld"/>).
+    /// </summary>
+    public static bool StopHeldAfterMovingAway(GroundZone newZone, GroundZone currentZone, bool stopHeld)
+        => newZone == GroundZone.Warning && (currentZone < GroundZone.Warning || stopHeld);
+
     /// <summary>
     /// Announce this zone change? Only an escalation (<paramref name="newZone"/> above
     /// <paramref name="currentZone"/>). Awareness needs <see cref="EscalationRepeatWindowMs"/> since the

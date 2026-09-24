@@ -73,4 +73,56 @@ public class MovingAwayByMotionTests
     [InlineData(10.0, -2.0, false, false)]
     public void Opening_by_motion_needs_moving_traffic(double trafficGs, double openingMps, bool leadGrowing, bool expected)
         => Assert.Equal(expected, GroundTrafficLogic.IsOpeningByMotion(trafficGs, openingMps, leadGrowing));
+
+    // ── a "Stop" withheld while the traffic opens stays withheld while it keeps pulling away ────────
+    // PR #247 integration review Q2: without this, "Stop" fired the moment a departing leader's opening
+    // fell below 1 m/s — a pilot following it out of a queue, catching up to its speed, heard "Stop" while
+    // the gap was still growing.
+
+    [Fact]
+    public void A_withheld_Stop_stays_withheld_while_the_traffic_is_still_opening()
+    {
+        Assert.True(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: true, stopHeld: true, trafficGsKts: 10, openingMps: 2.0));
+        Assert.True(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: true, stopHeld: false, trafficGsKts: 10, openingMps: 2.0));
+    }
+
+    [Theory]
+    [InlineData(3.0, 0.0)]      // still moving, the gap steady
+    [InlineData(3.0, -0.49)]    // closing, but slower than half a metre a second
+    [InlineData(12.0, 0.6)]     // opening, too slowly to count as opening by motion
+    public void A_withheld_Stop_stays_withheld_while_the_traffic_moves_at_3_kt_and_is_not_closing(double trafficGs, double openingMps)
+        => Assert.True(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGs, openingMps));
+
+    [Fact]
+    public void A_withheld_Stop_speaks_once_the_traffic_is_below_3_kt()
+        => Assert.False(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGsKts: 2.9, openingMps: 0.0));
+
+    [Fact]
+    public void A_withheld_Stop_speaks_once_the_traffic_closes_at_half_a_metre_a_second()
+        => Assert.False(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: true, trafficGsKts: 10, openingMps: -0.5));
+
+    [Fact]
+    public void Nothing_is_held_without_a_Stop_withheld_while_opening()
+        => Assert.False(GroundTrafficLogic.IsMovingAwayOrHeld(openingNow: false, stopHeld: false, trafficGsKts: 10, openingMps: 0.0));
+
+    [Fact]
+    public void Withholding_a_Warning_escalation_as_moving_away_holds_the_Stop()
+    {
+        Assert.True(GroundTrafficLogic.StopHeldAfterMovingAway(GroundZone.Warning, GroundZone.Caution, stopHeld: false));
+        Assert.True(GroundTrafficLogic.StopHeldAfterMovingAway(GroundZone.Warning, GroundZone.None, stopHeld: false));
+    }
+
+    [Fact]
+    public void A_zone_below_Warning_releases_the_hold()
+    {
+        Assert.False(GroundTrafficLogic.StopHeldAfterMovingAway(GroundZone.Caution, GroundZone.Caution, stopHeld: true));
+        Assert.False(GroundTrafficLogic.StopHeldAfterMovingAway(GroundZone.Awareness, GroundZone.Caution, stopHeld: true));
+    }
+
+    [Fact]
+    public void A_Warning_that_is_no_escalation_leaves_the_hold_as_it_was()
+    {
+        Assert.True(GroundTrafficLogic.StopHeldAfterMovingAway(GroundZone.Warning, GroundZone.Warning, stopHeld: true));
+        Assert.False(GroundTrafficLogic.StopHeldAfterMovingAway(GroundZone.Warning, GroundZone.Warning, stopHeld: false));
+    }
 }

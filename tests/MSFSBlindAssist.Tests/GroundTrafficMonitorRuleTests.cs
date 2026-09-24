@@ -70,6 +70,118 @@ public class GroundTrafficMonitorRuleTests
         Assert.Contains(h.Said.Interrupts, m => m.StartsWith("Stop, British Airways"));
     }
 
+    private const double Kt = 0.514444;   // metres a second per knot
+
+    /// <summary>
+    /// The pilot behind one leader on a straight route east, both starting stopped. Each <see cref="Step"/>
+    /// is one simulated second: both move by their speed (<see cref="OwnMps"/>, <see cref="LeadMps"/>, set by
+    /// the test), then the monitor ticks and the sweep is answered.
+    /// </summary>
+    private sealed class FollowingLeader
+    {
+        public GroundTrafficHarness H { get; } = new() { Context = RouteContext(East(3000), null, departure: false) };
+        private readonly AiTrafficDataEventArgs _leader;
+        public double OwnM, OwnMps, LeadM, LeadMps;
+        public int Second { get; private set; }
+
+        public FollowingLeader(double leadM)
+        {
+            LeadM = leadM;
+            H.Sim.Position = Own(0, 0);
+            _leader = Ac(1, leadM, 0, 0, "British Airways", "BAW1");
+            H.Sim.Traffic.Add(_leader);
+        }
+
+        public double GapM => LeadM - OwnM;
+        public bool StopSpoken => H.Said.Interrupts.Any(m => m.StartsWith("Stop, British Airways"));
+
+        public void Step()
+        {
+            Second++;
+            LeadM += LeadMps;
+            OwnM += OwnMps;
+            H.Sim.Position = Own(OwnM, OwnMps / Kt);
+            _leader.Longitude = LeadM * M;
+            _leader.GroundSpeedKnots = LeadMps / Kt;
+            H.Tick();
+        }
+    }
+
+    [Fact]
+    public void A_leader_that_departs_and_stops_again_ahead_earns_Stop_as_soon_as_it_stops()
+    {
+        // PR #247 integration review P1 (a queue hop): stopped 85 m behind a stopped leader, the pilot follows
+        // it at 10 kt as it departs at up to 16 kt; six seconds later it stops again, 102 m ahead — inside the
+        // Warning distance (about 112 m at 10 kt). While it pulls away, no "Stop"; on the first evaluation
+        // that sees it stopped, "Stop". On the reviewed base this "Stop" was swallowed: withheld while the
+        // leader opened, the Warning was recorded as if spoken, and a stop was no longer an escalation.
+        var s = new FollowingLeader(leadM: 85);
+        int stoppedAt = -1, stopAt = -1;
+        while (s.Second < 20 && stopAt < 0)
+        {
+            int t = s.Second + 1;
+            if (t >= 5 && t < 11) s.LeadMps = Math.Min(16 * Kt, s.LeadMps + 2.5);
+            else if (t >= 11) { s.LeadMps = 0; if (stoppedAt < 0) stoppedAt = t; }
+            if (t >= 6) s.OwnMps = Math.Min(10 * Kt, s.OwnMps + 1.2);
+            s.Step();
+            if (s.StopSpoken) stopAt = s.Second;
+        }
+
+        Assert.Equal(11, stoppedAt);
+        Assert.Equal(stoppedAt, stopAt);   // not while it pulled away, and not a second after it stopped
+    }
+
+    [Fact]
+    public void Following_a_departing_leader_earns_no_Stop_while_it_pulls_away()
+    {
+        // PR #247 integration review P2: the leader departs and the pilot follows three seconds later with the
+        // same acceleration; both settle at 12 kt with the gap, about 103 m, inside the Warning distance (about
+        // 119 m at 12 kt). The gap never closes. The "Stop" withheld while the leader opened at 1 m/s or more
+        // stays withheld once the pilot, catching up to its speed, brings the opening below that — it fired
+        // there, at 350 feet, before the hold-down. Then the leader stops: "Stop" at once.
+        var s = new FollowingLeader(leadM: 85);
+        while (s.Second < 45)
+        {
+            int t = s.Second + 1;
+            if (t >= 5) s.LeadMps = Math.Min(12 * Kt, s.LeadMps + 0.5);
+            if (t >= 8) s.OwnMps = Math.Min(12 * Kt, s.OwnMps + 0.5);
+            s.Step();
+        }
+        Assert.DoesNotContain(s.H.Said.All, m => m.StartsWith("Stop,"));
+        Assert.InRange(s.GapM, 100, 106);   // still inside the Warning distance: it was held, not out of range
+
+        s.LeadMps = 0;
+        s.Step();
+        Assert.True(s.StopSpoken, "no Stop once the leader stopped");
+    }
+
+    [Fact]
+    public void A_leader_that_pulls_away_then_slows_to_4_kt_earns_Stop_once_the_pilot_closes_on_it()
+    {
+        // Why the withheld "Stop" is held down rather than recorded until the leader stops: this leader never
+        // stops. As in the previous test both settle at 12 kt, 103 m apart; then it slows to 4 kt. It is still
+        // MOVING, but the pilot closes on it at 1 m/s and more — "Stop" on that first evaluation. Recorded
+        // until the leader stopped, the Warning would never have been an escalation again.
+        var s = new FollowingLeader(leadM: 85);
+        while (s.Second < 30)
+        {
+            int t = s.Second + 1;
+            if (t >= 5) s.LeadMps = Math.Min(12 * Kt, s.LeadMps + 0.5);
+            if (t >= 8) s.OwnMps = Math.Min(12 * Kt, s.OwnMps + 0.5);
+            s.Step();
+        }
+        Assert.DoesNotContain(s.H.Said.All, m => m.StartsWith("Stop,"));
+
+        int stopAt = -1;
+        while (s.Second < 40 && stopAt < 0)
+        {
+            s.LeadMps = Math.Max(4 * Kt, s.LeadMps - 1.0);
+            s.Step();
+            if (s.StopSpoken) stopAt = s.Second;
+        }
+        Assert.Equal(31, stopAt);   // the first second it closes, at 1 m/s
+    }
+
     // ── "Stop" is never withheld on a first Warning ──────────────────────────────────────────────────
 
     [Fact]

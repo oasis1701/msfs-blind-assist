@@ -683,7 +683,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _lastQueueLog = "";
     }
 
-    /// <summary>Proximity gate closed: the queue, the nudge and every mover state stop describing anything.</summary>
+    /// <summary>Proximity gate closed: the queue, the nudge, every mover state and every held "Stop" stop describing anything.</summary>
     private void ResetProximityState()
     {
         ResetQueue();
@@ -691,7 +691,11 @@ public sealed class GroundTrafficMonitor : IDisposable
         _nudge = NudgeState.Disarmed;
         _nudgeLeaderId = null;
         lock (_lock)
-            foreach (var ac in _tracked.Values) ac.Mover = QueueMoverState.Initial;
+            foreach (var ac in _tracked.Values)
+            {
+                ac.Mover = QueueMoverState.Initial;
+                SetStopHeld(ac, false, "gate");
+            }
     }
 
     // Caller holds _lock.
@@ -942,6 +946,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 ac.CurrentZone = GroundZone.None;
                 ac.PreviousDistance = double.MaxValue;
                 ac.PreviousAheadM = double.NaN;
+                SetStopHeld(ac, false, "far");
                 continue;
             }
 
@@ -1038,8 +1043,14 @@ public sealed class GroundTrafficMonitor : IDisposable
             // rate needs a previous evaluation, so a pilot creeping up behind a departing aircraft heard
             // "Stop, … very close" on the first evaluation that saw it pulling away.
             bool leadGrowing = v.OnRouteAhead && GroundTrafficLogic.IsLeadGrowing(prevAheadM, prevAheadUtc, v.AheadM, now);
-            bool movingAway = GroundTrafficLogic.IsMovingAway(prevDist, prevUtc, v.DistFt, now)
+            bool openingNow = GroundTrafficLogic.IsMovingAway(prevDist, prevUtc, v.DistFt, now)
                               || GroundTrafficLogic.IsOpeningByMotion(ac.GS, v.OpeningMps, leadGrowing);
+            // A "Stop" withheld because the traffic was opening stays HELD while it keeps moving and is not
+            // closing on the pilot (PR #247 integration review Q2): following a departing leader, catching up
+            // to its speed brought the opening under 1 m/s and drew "Stop" with the gap still growing.
+            bool movingAway = GroundTrafficLogic.IsMovingAwayOrHeld(openingNow, ac.StopHeldWhileOpening, ac.GS, v.OpeningMps);
+            if (!movingAway)
+                SetStopHeld(ac, false, ac.GS < GroundTrafficLogic.MovingTrafficKts ? "stopped" : "closing");
 
             GroundZone newZone;
             if (v.DistFt > awareDistFt)        newZone = GroundZone.None;
@@ -1047,7 +1058,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             else if (v.DistFt <= cautDistFt)   newZone = GroundZone.Caution;
             else                               newZone = GroundZone.Awareness;
 
-            if (newZone == GroundZone.None) { ac.CurrentZone = GroundZone.None; continue; }
+            if (newZone == GroundZone.None) { ac.CurrentZone = GroundZone.None; SetStopHeld(ac, false, "far"); continue; }
 
             // Queued beyond the first aircraft on the route: silent unless it is very close — "Stop" still
             // speaks, never withheld (GroundTrafficLogic.WithholdsZoneBehindFirst). The zone is recorded, as
@@ -1071,8 +1082,16 @@ public sealed class GroundTrafficMonitor : IDisposable
             // escalation — a withheld WARNING is not recorded. Recorded, a "Stop" withheld while the traffic
             // pulled away inside the Warning distance was swallowed for good if it then stopped there, since
             // Warning would no longer be an escalation; with the motion signals above moving-away fires on
-            // the first evaluation that sees traffic opening, which made that the common case.
-            if (movingAway) { ac.CurrentZone = GroundTrafficLogic.ZoneToRecordWhenWithheld(newZone, ac.CurrentZone); continue; }
+            // the first evaluation that sees traffic opening, which made that the common case. A withheld
+            // Warning escalation is HELD until the traffic stops or closes (above); a zone below Warning
+            // releases it, since no "Stop" is due there.
+            if (movingAway)
+            {
+                SetStopHeld(ac, GroundTrafficLogic.StopHeldAfterMovingAway(newZone, ac.CurrentZone, ac.StopHeldWhileOpening),
+                    "zone", v.DistFt);
+                ac.CurrentZone = GroundTrafficLogic.ZoneToRecordWhenWithheld(newZone, ac.CurrentZone);
+                continue;
+            }
             if (!GroundTrafficLogic.ShouldAnnounceEscalation(newZone, ac.CurrentZone, ac.LastSpokenZone,
                     ac.LastAlertTime, now, v.DistFt, ac.LastSpokenZoneDistFt))
             {
@@ -1737,6 +1756,24 @@ public sealed class GroundTrafficMonitor : IDisposable
         _log.Info($"ev=queue {reading} end={end}");
     }
 
+    /// <summary>
+    /// Holds or releases <paramref name="ac"/>'s withheld "Stop" (<see cref="TrackedGroundAircraft.StopHeldWhileOpening"/>),
+    /// logging only a change: <c>ev=stop-hold … state=on distFt=…</c> when a "Stop" withheld as moving away
+    /// starts being held, <c>state=off reason=…</c> when the hold ends — <c>stopped</c> (the traffic is below
+    /// 3 kt) or <c>closing</c> (the pilot closes on it), after which the same evaluation judges the "Stop";
+    /// <c>zone</c> (below the Warning distance), <c>far</c> (beyond the Awareness distance or the tracking
+    /// range) or <c>gate</c> (the proximity gate closed). <paramref name="releaseReason"/> is used only for a
+    /// release. Caller holds _lock.
+    /// </summary>
+    private static void SetStopHeld(TrackedGroundAircraft ac, bool held, string releaseReason, double distFt = double.NaN)
+    {
+        if (ac.StopHeldWhileOpening == held) return;
+        ac.StopHeldWhileOpening = held;
+        _log.Info(held
+            ? FormattableString.Invariant($"ev=stop-hold id={ac.ObjectId} name=\"{Q(ac.Name)}\" state=on distFt={distFt:0}")
+            : FormattableString.Invariant($"ev=stop-hold id={ac.ObjectId} name=\"{Q(ac.Name)}\" state=off reason={releaseReason}"));
+    }
+
     // Caller holds _lock.
     private void LogRunwayFix(TrackedGroundAircraft ac, RunwayTrafficFix fix, string watchedDesignator)
     {
@@ -1827,6 +1864,12 @@ internal sealed class TrackedGroundAircraft
     /// <summary>Its lead along OUR route at the previous evaluation; NaN when it was not on the route ahead then.</summary>
     public double PreviousAheadM       = double.NaN;
     public DateTime PreviousAheadUtc   = DateTime.MinValue;
+    /// <summary>
+    /// A "Stop" withheld because it was opening is HELD — still unrecorded — while it keeps moving and is
+    /// not closing (<c>GroundTrafficLogic.IsMovingAwayOrHeld</c>); set and cleared only through
+    /// <c>GroundTrafficMonitor.SetStopHeld</c>, which logs the change.
+    /// </summary>
+    public bool StopHeldWhileOpening;
     public QueueMoverState Mover       = QueueMoverState.Initial;
     // One-shot per episode: re-armed when the aircraft leaves the route / stops converging.
     public bool RouteAlertArmed        = true;
