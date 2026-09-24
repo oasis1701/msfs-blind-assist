@@ -180,11 +180,19 @@ public sealed class GroundTrafficMonitor : IDisposable
     // also covers _shortFinalAnnounced, which is only ever a subset of _knownFinals.
     private readonly Dictionary<uint, DateTime> _occupantAbsentSince = new();
     private readonly Dictionary<uint, DateTime> _finalAbsentSince = new();
-    // The designator of the runway status each known occupant / known final was last seen under
-    // (GroundTrafficLogic.IdsOutOfScope) — shared between the two, since an id is never both at once.
-    // Lets a runway that merely left the watch's widened scan (H3) be told apart from one that
-    // genuinely emptied: the former is purged silently, the latter reported by name (PR #247 B5 K3).
-    private readonly Dictionary<uint, string> _knownRunwayOf = new();
+    // The runway KEY (WatchedRunway.Key, both ends — never the spoken designator, which for a
+    // position-only watch names the nearer end and flips at mid-runway) each known occupant was last
+    // seen under, and — in a SEPARATE map — each known final. An id CAN be both: a landing aircraft is
+    // a known occupant from touchdown while still a known final until KnownAbsenceGraceMs later, so the
+    // final's cleanup must never touch the occupant's record (PR #247 re-review Critical 1: one shared
+    // map lost the occupant's entry with the final's, and every landing aircraft was announced twice).
+    // Each map is written only for its own kind — when an id becomes known, and refreshed for every id
+    // seen under that kind each evaluation — and cleaned only with its own set: an occupant forgotten or
+    // purged loses its occupant entry, a final its final entry. Only a known id's entry is ever read. A
+    // runway that merely left the watch's widened scan (H3) is told apart from one that genuinely
+    // emptied by these keys (GroundTrafficLogic.IdsOutOfScope): the former is purged silently (K3).
+    private readonly Dictionary<uint, string> _knownOccupantRunway = new();
+    private readonly Dictionary<uint, string> _knownFinalRunway = new();
     // The designator(s) of the runway(s) whose known occupants were just forgotten by the grace-timed
     // absence below — captured before removal, so the pending "no traffic seen" line names the runway
     // that actually emptied rather than every runway this evaluation happens to be scanning (K3).
@@ -602,7 +610,8 @@ public sealed class GroundTrafficMonitor : IDisposable
         _shortFinalAnnounced.Clear();
         _occupantAbsentSince.Clear();
         _finalAbsentSince.Clear();
-        _knownRunwayOf.Clear();
+        _knownOccupantRunway.Clear();
+        _knownFinalRunway.Clear();
     }
 
     private void ResetQueue()
@@ -1133,11 +1142,13 @@ public sealed class GroundTrafficMonitor : IDisposable
     // ── Runway watch ─────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// One watched runway's traffic. <see cref="Pending"/>: aircraft over its pavement whose climb rate
-    /// is not known yet (<see cref="RunwayTrafficKind.LandingPending"/>) — neither occupants nor finals,
-    /// never spoken; they only hold back the watch's first status.
+    /// One watched runway's traffic. <see cref="Designator"/> is the end the watch names (what is
+    /// spoken); <see cref="Key"/> is the runway itself (<see cref="WatchedRunway.Key"/>, both ends) —
+    /// what the known-traffic records are kept by. <see cref="Pending"/>: aircraft over its pavement
+    /// whose climb rate is not known yet (<see cref="RunwayTrafficKind.LandingPending"/>) — neither
+    /// occupants nor finals, never spoken; they only hold back the watch's first status.
     /// </summary>
-    private sealed record RunwayStatus(string Designator, List<RunwayOccupant> Occupants, List<RunwayFinal> Finals,
+    private sealed record RunwayStatus(string Designator, string Key, List<RunwayOccupant> Occupants, List<RunwayFinal> Finals,
         List<TrackedGroundAircraft> Pending);
     private sealed record RunwayOccupant(TrackedGroundAircraft Ac, double DistFt, double Rel, TrafficMotion Motion);
     private sealed record RunwayFinal(TrackedGroundAircraft Ac, RunwayTrafficFix Fix);
@@ -1179,10 +1190,11 @@ public sealed class GroundTrafficMonitor : IDisposable
             // on short final and the pilot is on it (RunwayEventsInterrupt). Turning off after landing
             // on the landing-exit route (Vacating) it waits its turn while taxi guidance speaks the exit
             // (PR #247 B2 review).
-            // Each id carries the designator it was seen under (K3), so the first status also seeds
-            // _knownRunwayOf exactly as the event path does — never just an id list.
-            var occ = status.SelectMany(s => s.Occupants.Select(o => (Id: o.Ac.ObjectId, s.Designator))).ToList();
-            var fin = status.SelectMany(s => s.Finals.Select(f => (Id: f.Ac.ObjectId, s.Designator))).ToList();
+            // Each id carries the KEY of the runway it was seen under, so the first status also seeds
+            // _knownOccupantRunway / _knownFinalRunway exactly as the event path does — never just an
+            // id list (K3; keyed by runway since PR #247 re-review Critical 1).
+            var occ = status.SelectMany(s => s.Occupants.Select(o => (Id: o.Ac.ObjectId, s.Key))).ToList();
+            var fin = status.SelectMany(s => s.Finals.Select(f => (Id: f.Ac.ObjectId, s.Key))).ToList();
             var shortFin = status.SelectMany(s => s.Finals.Where(IsShortFinal).Select(f => f.Ac.ObjectId)).ToList();
             bool critical = interrupts && (occ.Count > 0 || shortFin.Count > 0);
             // The one exception: a status RE-ARMED on entering the runway (SetWatch, H2) is critical-only.
@@ -1205,56 +1217,60 @@ public sealed class GroundTrafficMonitor : IDisposable
                 {
                     _watchSummaryDone = true;
                     _rearmCriticalOnly = false;
-                    foreach (var (id, designator) in occ) { _knownOccupants.Add(id); _knownRunwayOf[id] = designator; }
-                    foreach (var (id, designator) in fin) { _knownFinals.Add(id); _knownRunwayOf[id] = designator; }
+                    foreach (var (id, runwayKey) in occ) { _knownOccupants.Add(id); _knownOccupantRunway[id] = runwayKey; }
+                    foreach (var (id, runwayKey) in fin) { _knownFinals.Add(id); _knownFinalRunway[id] = runwayKey; }
                     _shortFinalAnnounced.UnionWith(shortFin);
                     _log.Info($"ev=watch status-spoken key={key}");
                 }));
             return;
         }
 
-        // A known occupant/final whose recorded runway (_knownRunwayOf) is no longer among this
-        // evaluation's scanned designators is forgotten SILENTLY: the watch widened its scan for a
-        // runway the aircraft was merely on (H3) and has since narrowed back down, so that runway
-        // simply left the scan — it never emptied. Must run before hadOccupants below, so the purge
-        // itself can never be read as "the runway emptied" (PR #247 B5 follow-up K3).
-        var scopeDesignators = new HashSet<string>(status.Select(s => s.Designator), StringComparer.Ordinal);
-        foreach (uint id in GroundTrafficLogic.IdsOutOfScope(_knownOccupants, _knownRunwayOf, scopeDesignators))
+        // A known occupant/final whose recorded runway KEY is no longer among this evaluation's scanned
+        // keys is forgotten SILENTLY: the watch widened its scan for a runway the aircraft was merely on
+        // (H3) and has since narrowed back down, so that runway simply left the scan — it never emptied.
+        // Occupants are judged by _knownOccupantRunway and finals by _knownFinalRunway, never one by
+        // the other's record (PR #247 re-review Critical 1); keys, not spoken designators, so the nearer
+        // end flipping at mid-runway is no purge (Important 2); an id with no recorded key is left to
+        // the grace timer below. Must run before hadOccupants below, so the purge itself can never be
+        // read as "the runway emptied" (PR #247 B5 follow-up K3).
+        var scopeKeys = new HashSet<string>(status.Select(s => s.Key), StringComparer.Ordinal);
+        foreach (uint id in GroundTrafficLogic.IdsOutOfScope(_knownOccupants, _knownOccupantRunway, scopeKeys))
         {
             _knownOccupants.Remove(id);
             _occupantAbsentSince.Remove(id);
-            _knownRunwayOf.Remove(id);
+            _knownOccupantRunway.Remove(id);
         }
-        foreach (uint id in GroundTrafficLogic.IdsOutOfScope(_knownFinals, _knownRunwayOf, scopeDesignators))
+        foreach (uint id in GroundTrafficLogic.IdsOutOfScope(_knownFinals, _knownFinalRunway, scopeKeys))
         {
             _knownFinals.Remove(id);
             _shortFinalAnnounced.Remove(id);
             _finalAbsentSince.Remove(id);
-            _knownRunwayOf.Remove(id);
+            _knownFinalRunway.Remove(id);
         }
 
         var seenOccupants = new HashSet<uint>();
         var seenFinals = new HashSet<uint>();
         foreach (var s in status)
         {
+            string runwayKey = s.Key;
             foreach (var o in s.Occupants)
             {
                 seenOccupants.Add(o.Ac.ObjectId);
-                // Refreshed for every seen id, known or not (K3): an already-known id that continues
-                // below without a new candidate must still keep its recorded runway current.
-                _knownRunwayOf[o.Ac.ObjectId] = s.Designator;
+                // Refreshed for every seen occupant, known or not (K3): an already-known id that
+                // continues below without a new candidate must still keep its recorded runway current.
+                _knownOccupantRunway[o.Ac.ObjectId] = runwayKey;
                 if (_knownOccupants.Contains(o.Ac.ObjectId)) continue;
                 uint id = o.Ac.ObjectId;
                 candidates.Add(new TrafficCallout(
                     interrupts ? TrafficCalloutKind.RunwayCritical : TrafficCalloutKind.RunwayInfo, o.DistFt,
                     $"{Capitalise(o.Ac.Name)} on runway {s.Designator}, {DescribeRunwayMovement(o)}, " +
                     $"{GroundTrafficLogic.DescribeDirection(o.Rel)}, {FormatDistance(o.DistFt, useMetres)}.",
-                    () => { _knownOccupants.Add(id); _knownRunwayOf[id] = s.Designator; _runwayEmptiedPending = false; }));
+                    () => { _knownOccupants.Add(id); _knownOccupantRunway[id] = runwayKey; _runwayEmptiedPending = false; }));
             }
             foreach (var f in s.Finals)
             {
                 seenFinals.Add(f.Ac.ObjectId);
-                _knownRunwayOf[f.Ac.ObjectId] = s.Designator;
+                _knownFinalRunway[f.Ac.ObjectId] = runwayKey;
                 uint id = f.Ac.ObjectId;
                 bool isShort = IsShortFinal(f);
                 if (!_knownFinals.Contains(id))
@@ -1262,7 +1278,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                     candidates.Add(new TrafficCallout(
                         interrupts && isShort ? TrafficCalloutKind.RunwayCritical : TrafficCalloutKind.RunwayInfo, 0,
                         DescribeFinal(f, shortWord: false),
-                        () => { _knownFinals.Add(id); _knownRunwayOf[id] = s.Designator; if (isShort) _shortFinalAnnounced.Add(id); }));
+                        () => { _knownFinals.Add(id); _knownFinalRunway[id] = runwayKey; if (isShort) _shortFinalAnnounced.Add(id); }));
                 }
                 else if (isShort && !_shortFinalAnnounced.Contains(id))
                 {
@@ -1283,18 +1299,21 @@ public sealed class GroundTrafficMonitor : IDisposable
         var forgottenOccupants = GroundTrafficLogic.ForgetAbsent(_knownOccupants, seenOccupants, _occupantAbsentSince, now);
         // Captured BEFORE removal (K3): once a runway leaves the scan, the purge above has already
         // dropped its occupants' entries, so whatever ForgetAbsent still forgets here is grace-timed
-        // absence on a STILL-SCANNED runway — its recorded designator is exactly what emptied.
+        // absence on a STILL-SCANNED runway — its recorded key is exactly what emptied, spoken by this
+        // evaluation's designator for that key.
         var forgottenDesignators = forgottenOccupants
-            .Select(id => _knownRunwayOf.TryGetValue(id, out string? d) ? d : null)
+            .Select(id => _knownOccupantRunway.TryGetValue(id, out string? k)
+                ? status.FirstOrDefault(s => s.Key == k)?.Designator
+                : null)
             .Where(d => d != null)
             .Cast<string>()
             .Distinct(StringComparer.Ordinal)
             .ToList();
-        foreach (uint id in forgottenOccupants) _knownRunwayOf.Remove(id);
+        foreach (uint id in forgottenOccupants) _knownOccupantRunway.Remove(id);
         foreach (uint id in GroundTrafficLogic.ForgetAbsent(_knownFinals, seenFinals, _finalAbsentSince, now))
         {
             _shortFinalAnnounced.Remove(id);
-            _knownRunwayOf.Remove(id);
+            _knownFinalRunway.Remove(id);
         }
         if (seenOccupants.Count > 0) _runwayEmptiedPending = false;
         else if (hadOccupants && _knownOccupants.Count == 0)
@@ -1334,7 +1353,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 if (!RouteRunwayCrossings.CenterlineHasDesignator(runways[i], w.Designator)) continue;
                 if (!buckets.ContainsKey(i))
                 {
-                    var st = new RunwayStatus(w.Designator, new List<RunwayOccupant>(), new List<RunwayFinal>(),
+                    var st = new RunwayStatus(w.Designator, w.Key, new List<RunwayOccupant>(), new List<RunwayFinal>(),
                         new List<TrackedGroundAircraft>());
                     buckets[i] = st;
                     result.Add(st);

@@ -237,10 +237,10 @@ internal static partial class GroundTrafficLogic
     }
 
     /// <summary>
-    /// The known ids (<paramref name="knownIds"/>) whose recorded runway (<paramref name="knownRunwayOf"/>,
-    /// the designator of the runway status each was last seen under) is no longer among this evaluation's
-    /// scanned designators (<paramref name="scopeDesignators"/>) — never the ones simply missing this
-    /// evaluation, that is <see cref="ForgetAbsent"/>'s job.
+    /// The known ids (<paramref name="knownIds"/>) whose recorded runway KEY (<paramref name="knownRunwayOf"/>,
+    /// the <c>WatchedRunway.Key</c> — both ends, "09/27" — of the runway status each was last seen under)
+    /// is no longer among this evaluation's scanned keys (<paramref name="scopeKeys"/>) — never the ones
+    /// simply missing this evaluation, that is <see cref="ForgetAbsent"/>'s job.
     ///
     /// <para>The runway watch widens what it scans for a runway the aircraft is merely on, without
     /// changing the watch's identity (PR #247 final review H3): backtracking through an intersection, or
@@ -248,15 +248,21 @@ internal static partial class GroundTrafficLogic
     /// its pavement, that runway drops out of the scan entirely — its known occupant is not "unseen for a
     /// while", the watch simply stopped scanning it — so it must be forgotten SILENTLY rather than through
     /// the grace-timed absence that reports "no traffic seen on the runway now" of a runway that was never
-    /// occupied in the first place (PR #247 B5 follow-up K3). An id with no recorded runway at all is
-    /// treated as out of scope too — it was never legitimately marked known.</para>
+    /// occupied in the first place (PR #247 B5 follow-up K3).</para>
+    ///
+    /// <para>Keys, never spoken designators: a position-only watch names the NEARER end, which flips at
+    /// mid-runway, and comparing designators purged — and so announced again — the same runway's known
+    /// traffic (PR #247 re-review Important 2). An id with NO recorded key is NOT out of scope: nothing
+    /// says its runway left the scan, so it is left to <see cref="ForgetAbsent"/> (PR #247 re-review
+    /// Critical 1 — a missing entry read as out of scope purged every landing aircraft's occupant record,
+    /// and it was announced again).</para>
     /// </summary>
     public static IReadOnlyList<uint> IdsOutOfScope(IEnumerable<uint> knownIds,
-        IReadOnlyDictionary<uint, string> knownRunwayOf, IReadOnlySet<string> scopeDesignators)
+        IReadOnlyDictionary<uint, string> knownRunwayOf, IReadOnlySet<string> scopeKeys)
     {
         var result = new List<uint>();
         foreach (uint id in knownIds)
-            if (!knownRunwayOf.TryGetValue(id, out string? designator) || !scopeDesignators.Contains(designator))
+            if (knownRunwayOf.TryGetValue(id, out string? key) && !scopeKeys.Contains(key))
                 result.Add(id);
         return result;
     }
