@@ -2331,7 +2331,14 @@ cluster.
   before: dropping it first could complete a kind phrase the prefilter never
   saw). Recorded residuals: an unmarked skyscraper ("Albahar Tower", "Imperial
   Tower" at city heliports) still reads as a tower, and KJFK's "Tower Air"
-  building is a Tower.
+  building is a Tower. Some packages give the scenery tier nothing, correctly
+  or by a known gap: ZBAA places no named building at all (lights, chairs,
+  cars); LEMD and HECA abbreviate ("Term1", "term3r"); Kuwait, Punta Cana and
+  others glue words ("firestation2025", "northhanger2", "oldhangar"). Reading a
+  kind word inside a glued token was considered and NOT done — the same rule
+  reads "libarationtower2" (a Kuwait City skyscraper) as a control tower and a
+  glued "firetruck" as a fire station — so those airports get their buildings
+  from navdata, GSX and OSM.
 - *Structural*, in `SceneryPackageIndexer`: a name scattered over many separate
   clusters is ground equipment. The cap is picked by kind first —
   `MaxClustersHangar` 40 / `MaxPlacementsHangar` 200 for hangars whatever their
