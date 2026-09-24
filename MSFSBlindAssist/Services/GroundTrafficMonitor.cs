@@ -1210,8 +1210,17 @@ public sealed class GroundTrafficMonitor : IDisposable
             // for (PR #247 re-review M5). A sweep requested before the mode change completes with its
             // OLD, queuing cycle, in which nothing can be critical: the branch below would complete the
             // re-armed status silently there and spend the once-per-watch re-arm before the new mode
-            // was ever evaluated. Wait for an evaluation in the interrupting mode.
-            if (_rearmCriticalOnly && !interrupts) return;
+            // was ever evaluated. Wait for an evaluation in the interrupting mode — but only while the
+            // watch ADOPTED THIS TICK (_currentWatch, never the possibly-stale `watch` parameter a slow
+            // sweep completes with) still interrupts. Waiting on the stale cycle's own `interrupts` alone
+            // can never end once the mode has gone back to a queuing one before any evaluation in the
+            // interrupting mode completed: every sweep afterwards, stale or fresh, keeps failing the same
+            // test and the whole runway watch is muted for the rest of the session (PR #247 re-review
+            // follow-up, concern 1 — measured, replay G). Once the adopted watch has itself left the
+            // interrupting mode, fall through instead to the ordinary silent completion just below, which
+            // — per K2 — marks nothing known, so a real occupant or final since the last spoken status is
+            // still picked up fresh by the event path once _watchSummaryDone flips true.
+            if (_rearmCriticalOnly && !interrupts && _currentWatch.RunwayEventsInterrupt) return;
             // The one exception: a status RE-ARMED on entering the runway (SetWatch, H2) is critical-only.
             // With nothing on the runway or on short final it completes silently — and marks NOTHING as
             // known (PR #247 B5 follow-up K2): nothing was spoken, so an occupant or a final that showed
