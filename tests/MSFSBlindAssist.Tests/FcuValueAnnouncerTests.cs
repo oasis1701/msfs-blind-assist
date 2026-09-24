@@ -151,6 +151,18 @@ public class FcuValueAnnouncerTests
         Assert.Equal(new[] { "Heading 270 degrees" }, Deliver(a, Hdg, "Heading 270 degrees", nowMs: 60_500));
     }
 
+    [Fact]
+    public void A_later_empty_arm_of_the_same_event_replaces_the_keys_a_re_arm_restores()
+    {
+        // The latest arm of an event is what its queued send confirms; an older, wider arm must not
+        // come back when the event is finally sent.
+        var a = Seeded(Hdg, "Heading 250 degrees");
+        a.SuppressEcho(new[] { Hdg }, nowMs: 0, forEvent: "A32NX.FCU_HDG_PULL");
+        a.SuppressEcho(Array.Empty<string>(), nowMs: 10_000, forEvent: "A32NX.FCU_HDG_PULL");
+        a.RearmEcho("A32NX.FCU_HDG_PULL", nowMs: 60_000);
+        Assert.Equal(new[] { "Heading 270 degrees" }, Deliver(a, Hdg, "Heading 270 degrees", nowMs: 60_500));
+    }
+
     // ---- FCU availability (power transitions) ----
 
     [Fact]

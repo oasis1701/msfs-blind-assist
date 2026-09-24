@@ -114,13 +114,14 @@ internal sealed class FcuValueAnnouncer
 
     /// <summary>Absorb every change of each named key for <see cref="EchoWindowMs"/>. Name only the keys
     /// the write moves. <paramref name="forEvent"/> remembers which keys that event armed, so
-    /// <see cref="RearmEcho"/> can restart the window when a QUEUED event is finally sent.</summary>
+    /// <see cref="RearmEcho"/> can restart the window when a QUEUED event is finally sent — the latest
+    /// arm wins, an EMPTY one included, so an older wider arm never comes back on the send.</summary>
     public void SuppressEcho(IEnumerable<string> keys, long nowMs, string? forEvent = null)
     {
         string[] list = keys.ToArray();
         long until = nowMs + EchoWindowMs;
         foreach (string key in list) _echoUntilMs[key] = until;
-        if (forEvent != null && list.Length > 0) _echoKeysByEvent[forEvent] = list;
+        if (forEvent != null) _echoKeysByEvent[forEvent] = list;
     }
 
     /// <summary>A queued event has just been sent: restart the echo window it was armed with.</summary>
