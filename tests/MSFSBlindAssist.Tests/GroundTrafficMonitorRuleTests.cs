@@ -495,11 +495,15 @@ public class GroundTrafficMonitorRuleTests
     }
 
     // The watch's first status comes from a sweep requested AFTER the watch started, and two protections keep a
-    // stale sweep from giving it: the READINESS GATE (a sweep requested before the watch started gives no runway
-    // evaluation) and the CYCLE (a completion evaluates the watch and watch gate its own request saw, PR #247
-    // review L9, never the watch in progress). A sweep requested before the watch existed at all is stopped by
-    // both, so a test of that alone passes with either one removed; each test below leaves exactly one standing
-    // (PR #247 integration review, Minor 8).
+    // stale sweep from giving it: the READINESS GATE (a sweep requested before the watch started — or, since R2,
+    // before a suspended watch resumed — gives no runway evaluation) and the CYCLE (a completion evaluates the watch
+    // and watch gate its own request saw, PR #247 review L9, never the watch in progress). A sweep requested before
+    // the watch existed at all is stopped by both, so a test of that alone passes with either one removed (PR #247
+    // integration review, Minor 8). The first test below pins the readiness gate, the third R2's re-arm of it on
+    // resume. The second no longer pins the cycle: since R2 the re-armed readiness gate stops its sweep as well, and
+    // for the first status no test can tell the cycle's watch-gate check apart any more — it is defence in depth
+    // (PR #247 focused re-review M1). The cycle's other half, the watch MODE its request saw, still decides how a
+    // first status is spoken when its sweep straddles a mode change under the same key; no test pins that half.
     private static AiTrafficDataEventArgs OnOneMileFinal()
         => Ac(1, Threshold09EastM - 1852, RunwayNorthM, 140, "British Airways", "BAW1", onGround: false, altitudeFt: 300);
 
@@ -530,11 +534,13 @@ public class GroundTrafficMonitorRuleTests
     [Fact]
     public void The_first_runway_status_ignores_a_sweep_requested_while_the_watch_was_suspended()
     {
-        // Pins the CYCLE. A watch suspended by its gate RESUMES with its original start time, so a sweep requested
-        // during the suspension passes the readiness gate — but its entries came in unwatched and the aircraft on
-        // final was dropped. Evaluated as the resumed watch (with the cycle removed) it said "Runway 09: no traffic
-        // seen on the runway or on final." with an aircraft on a 1 nm final. Its own cycle had no watch and a
-        // closed gate, so it gives no first status; the next sweep does, and names the aircraft on final.
+        // A sweep requested during the suspension came in unwatched, so the aircraft on final was dropped: evaluated
+        // as the resumed watch it said "Runway 09: no traffic seen on the runway or on final." with an aircraft on a
+        // 1 nm final. Since R2 BOTH protections stop it, and either one alone does: its own cycle had no watch and a
+        // closed gate, and it was requested before the resume, the moment the readiness gate is re-armed to. With
+        // both removed it gives that false status; with either one removed this test still passes, so it pins
+        // neither alone (measured, PR #247 focused re-review M1). The next sweep gives the first status, and names
+        // the aircraft on final.
         bool suppressed = false;
         var h = AtTheHold(holdingShort: true);
         h.Monitor.RunwayWatchSuppressCheck = () => suppressed;
@@ -547,7 +553,7 @@ public class GroundTrafficMonitorRuleTests
         h.TickOnly();                                // t=3: still suspended — a sweep is requested with no watch
         h.Sim.DeliverEntries();                      // its entries arrive unwatched: the aircraft on final is dropped
         suppressed = false;
-        h.TickOnly();                                // t=4: the gate reopens — the watch resumes, same start time
+        h.TickOnly();                                // t=4: the gate reopens — the watch resumes (readiness re-armed)
         h.Sim.DeliverCompletion();                   // the sweep requested while suspended completes
 
         Assert.Empty(h.Said.All);
@@ -559,9 +565,9 @@ public class GroundTrafficMonitorRuleTests
     [Fact]
     public void The_first_runway_status_ignores_a_sweep_requested_before_the_watch_was_suspended()
     {
-        // PR #247 integration follow-up R2. Neither existing protection covers this ordering: the sweep is
-        // requested BEFORE the suspension (its cycle's WatchGate is TRUE, so the CYCLE gate — pinned by the
-        // test above — lets it through), and its entries arrive DURING the suspension — unwatched, so the
+        // PR #247 integration follow-up R2. Neither protection as it stood before R2 covers this ordering: the
+        // sweep is requested BEFORE the suspension (its cycle's WatchGate is TRUE, so the CYCLE gate lets it
+        // through), and its entries arrive DURING the suspension — unwatched, so the
         // aircraft on final is dropped — with its COMPLETION only arriving AFTER the watch resumes. Before
         // R2, the readiness reference was left at the watch's ORIGINAL start (before the sweep was even
         // requested), so the stale completion passed the readiness gate too and reported a false "no
