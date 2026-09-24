@@ -218,6 +218,23 @@ internal static class A220FmsScreenParsing
         return best;
     }
 
+    /// <summary>True when the gray token at <paramref name="unitIdx"/> is a unit
+    /// (<see cref="UnitLabels"/>) sitting just right of a non-gray value on its row —
+    /// the mirror of <see cref="TrailingUnitIndex"/>.</summary>
+    private static bool IsUnitOfValue(IReadOnlyList<WinToken> tokens, int unitIdx)
+    {
+        var u = tokens[unitIdx];
+        if (!UnitLabels.Contains(u.Text.Trim())) return false;
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            var v = tokens[i];
+            if (i == unitIdx || v.Color == "gray") continue;
+            double dx = u.X - v.X;
+            if (Math.Abs(u.Y - v.Y) <= 12 && dx > 0 && dx <= 130) return true;
+        }
+        return false;
+    }
+
     /// <summary>
     /// What the nth repeated choice button in a dialog would pick: the value drawn
     /// on the SAME row, to that button's right. The A220's SELECT CONSTRAINT dialog
@@ -563,7 +580,12 @@ internal static class A220FmsScreenParsing
             if (t.Text is "FMS1" or "FMS2") { if (m.Side.Length == 0) m.Side = t.Text; chrome.Add(i); continue; }
             if (t.Text is "ACT" or "MOD" or "SEC" && m.Mode.Length == 0 && t.Y < 60) { m.Mode = t.Text; chrome.Add(i); continue; }
             if (FmsTiles.Contains(t.Text) && t.Y < 60) { m.Tiles.Add(t.Text); chrome.Add(i); continue; }
-            if (t.Color == "gray") labelIdx.Add(i);
+            // A unit drawn just right of a value ("+18" "°C") is that value's
+            // annotation, never a field label. As a label it paired INLINE with the
+            // next field's box and beat that field's own label: the PERF ▸ ARR page
+            // read RWY WIND as "°C", then QNH and ALT as "°C QNH" / "°C ALT" (live
+            // 2026-09-24). TrailingUnitIndex still attaches it to its value.
+            if (t.Color == "gray" && !IsUnitOfValue(tokens, i)) labelIdx.Add(i);
         }
 
         // Value-box rects (the drawn frame around ENTERABLE fields). Whether "no
@@ -693,8 +715,14 @@ internal static class A220FmsScreenParsing
             string value = tokens[c.Value].Text;
             int unitIdx = TrailingUnitIndex(tokens, c.Value);
             if (unitIdx >= 0) { value = $"{value} {tokens[unitIdx].Text.Trim()}"; pairedLabels.Add(unitIdx); }
+            // A bare TRANS is one of two on the ARR summary (TRANS | STAR | TRANS |
+            // APPR) — name which, as the ARRIVALS dialog already does.
+            // (Bare "TRANS" only: a counted dialog heading "TRANS(3)" keeps its raw
+            // label, the dialog renderer reads the count off it.)
+            string? qualified = label.Text.Trim() == "TRANS" ? QualifyListHeading(tokens, label) : null;
             var field = new FmsField
             {
+                SpokenLabel = qualified != null && qualified != "TRANS" ? qualified : null,
                 Label = label.Text, Value = value, Occurrence = c.Occ, Editable = editable,
                 // A chooser is never a typeable box, whatever frame it is drawn in.
                 IsDropdown = tokens[c.Value].Dropdown,
@@ -756,8 +784,19 @@ internal static class A220FmsScreenParsing
                                  .Select(kv => kv.Value.Field).FirstOrDefault();
                 if (row == null) continue;
                 int unitIdx = TrailingUnitIndex(tokens, i);
-                string name = unitIdx >= 0 ? $"{row.Name} {tokens[unitIdx].Text}" : $"{row.Name} second box";
+                // PERF ▸ ARR draws VREF as "[125] + [--]": the second box is the
+                // speed ADDITIVE, and the "+" between the boxes says so. Before,
+                // it read "VREF second box" with a stray "+" line under it.
+                int plusIdx = -1;
+                for (int p = 0; p < tokens.Count && plusIdx < 0; p++)
+                    if (tokens[p].Text.Trim() == "+" && tokens[p].Color != "gray"
+                        && Math.Abs(tokens[p].Y - t.Y) <= 8 && tokens[p].X < t.X && t.X - tokens[p].X <= 80)
+                        plusIdx = p;
+                string name = unitIdx >= 0 ? $"{row.Name} {tokens[unitIdx].Text}"
+                    : plusIdx >= 0 ? $"{row.Name} additive"
+                    : $"{row.Name} second box";
                 if (unitIdx >= 0) pairedLabels.Add(unitIdx);
+                if (plusIdx >= 0) pairedLabels.Add(plusIdx);
                 consumedAsValue.Add(i);
                 m.Fields.Add(new FmsField
                 {
@@ -801,14 +840,53 @@ internal static class A220FmsScreenParsing
         // Anything no field/button/tile row claimed (bare numbers, dim dashes,
         // unpaired gray headings…) still reaches the user — as plain rows, not a
         // duplicated full-page dump.
-        var orphanTokens = new List<WinToken>();
+        bool Free(int i) => !chrome.Contains(i) && !consumedAsValue.Contains(i) && !consumedAsButton.Contains(i)
+                            && !pairedLabels.Contains(i) && !legConsumed.Contains(i);
+        bool NothingBelow(WinToken h) => !tokens.Any(t => t.Y - h.Y >= FieldMinDy && t.Y - h.Y <= FieldMaxDy
+                                                          && Math.Abs(t.X - h.X) <= 20);
+        // A gray READ-OUT under its gray heading ("AIRPORT (PERF)" over "LGAV")
+        // is one line, not two unrelated ones. Only when the value is alone on its
+        // row, so a heading over a sub-heading row is untouched.
+        var grayPairs = new Dictionary<int, int>();
         for (int i = 0; i < tokens.Count; i++)
         {
-            if (chrome.Contains(i) || consumedAsValue.Contains(i) || consumedAsButton.Contains(i)) continue;
-            if (pairedLabels.Contains(i) || legConsumed.Contains(i)) continue;
-            orphanTokens.Add(tokens[i]);
+            if (!Free(i) || tokens[i].Color != "gray" || tokens[i].Text.Trim() == "TRANS") continue;
+            for (int j = 0; j < tokens.Count; j++)
+            {
+                if (j == i || !Free(j) || tokens[j].Color != "gray" || grayPairs.ContainsKey(j)) continue;
+                double dy = tokens[j].Y - tokens[i].Y;
+                if (dy < FieldMinDy || dy > FieldMaxDy || Math.Abs(tokens[j].X - tokens[i].X) >= FieldMaxDx) continue;
+                int jj = j;
+                if (tokens.Where((o, k) => k != jj && Math.Abs(o.Y - tokens[jj].Y) <= LineTolY).Any()) break;
+                grayPairs[i] = j; pairedLabels.Add(j);
+                break;
+            }
+        }
+        var orphanTokens = new List<WinToken>();
+        var extraRows = new List<FmsLine>();
+        for (int i = 0; i < tokens.Count; i++)
+        {
+            if (!Free(i)) continue;
+            var t = tokens[i];
+            // An empty transition slot on the ARR summary is a bare gray "TRANS"
+            // with nothing under it: say which transition, and that none is set.
+            if (t.Color == "gray" && t.Text.Trim() == "TRANS" && NothingBelow(t)
+                && QualifyListHeading(tokens, t) is var q && q != "TRANS")
+            {
+                extraRows.Add(new FmsLine($"{q}: none", t.Y));
+                continue;
+            }
+            if (grayPairs.TryGetValue(i, out int val))
+            {
+                extraRows.Add(new FmsLine($"{t.Text}: {tokens[val].Text}", t.Y));
+                continue;
+            }
+            // A lone "/" is a separator glyph left over from a composite field.
+            if (t.Text.Trim() == "/") continue;
+            orphanTokens.Add(t);
         }
         m.OrphanRows = ComposeRows(orphanTokens);
+        m.OrphanRows.AddRange(extraRows);
         return m;
     }
 
