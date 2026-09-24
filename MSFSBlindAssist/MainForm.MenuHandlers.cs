@@ -54,13 +54,9 @@ public partial class MainForm
             var dataProvider = airportDataProvider;
             refreshCallback = async () =>
             {
-                // A position asked of the simulator at the press. LastKnownPosition is only a
-                // by-product of other features' requests (the ground monitors, a guidance stream,
-                // TCAS), so in quiet cruise it could still hold wherever it was last cached
-                // (usually the departure stand) and the press refreshed THAT airport; with no
-                // position at all since connect it returned in silence. GetFreshAircraftPositionAsync
-                // (MainForm.SayIntentions.cs) asks once, waits up to 1.5 s, falls back to the
-                // cached position, and throws InvalidOperationException only when there is neither.
+                // A position asked of the simulator at the press: LastKnownPosition can be stale in
+                // quiet cruise (usually the departure stand). Falls back to it after 1.5 s; throws
+                // only when there is neither.
                 SimConnectManager.AircraftPosition pos;
                 try
                 {
@@ -69,17 +65,14 @@ public partial class MainForm
                 catch (InvalidOperationException ex)
                 {
                     _taxiAugmentLog.Warn($"taxi-augment: name refresh pressed with no aircraft position ({ex.Message})");
-                    // An error condition, so it is spoken: the button promises an announcement,
-                    // and silence would sound exactly like a press that never registered.
+                    // An error, so spoken: silence would sound like a press that never registered.
                     if (IsHandleCreated && !IsDisposed)
                         announcer.AnnounceImmediate("Aircraft position unavailable.");
                     return;
                 }
 
-                // The airport the aircraft is AT — CurrentAirport.Resolve, the resolver Where Am I
-                // and Look Around use — never the nearest four-character code within 50 NM this
-                // used to take: at KSNA's GA stands that refreshed heliport 10CL's names. A
-                // database query, so it stays off the UI thread.
+                // The airport the aircraft is AT (CurrentAirport.Resolve); a database query, so off
+                // the UI thread.
                 string? icao = await Task.Run(() => MSFSBlindAssist.Services.CurrentAirport.Resolve(
                     dataProvider, pos.Latitude, pos.Longitude));
 
@@ -101,9 +94,7 @@ public partial class MainForm
                     ? $"Taxiway names refreshed for {icao}: {added} added."
                     : $"Taxiway names refreshed for {icao}. No new names found.";
                 // No marshal needed: this callback is invoked from
-                // TaxiGuidancePanel's Button.Click handler (UI thread), and none of the awaits
-                // above uses ConfigureAwait(false) — nor do GetFreshAircraftPositionAsync's own —
-                // so we're still on the UI thread here.
+                // Still on the UI thread: no await above uses ConfigureAwait(false).
                 if (IsHandleCreated && !IsDisposed)
                     announcer.AnnounceImmediate(msg);
             };
@@ -121,12 +112,8 @@ public partial class MainForm
         }
     }
 
-    /// <summary>What the last <see cref="ApplyRuntimeSettings"/> saw for the two settings that
-    /// feed the surroundings catalog. SEEDED at construction from the same
-    /// <c>SettingsManager.Current</c> the services themselves read (MainForm.cs, beside the
-    /// <c>OnlineFeatureStore</c>), because that IS what the cached catalogs are built under — as
-    /// nullable they were null until the first OK, so the session's first Settings visit cleared
-    /// the catalog cache and the OSM store for ANY change and forced a fresh network fetch.</summary>
+    /// <summary>What the last <see cref="ApplyRuntimeSettings"/> saw for the two settings feeding the
+    /// surroundings catalog, seeded at construction so the first OK clears only on a real change.</summary>
     private bool _appliedSceneryIndexEnabled, _appliedTaxiAugmentEnabled;
 
     /// <summary>Re-applies saved UserSettings to the live runtime managers after the Settings
@@ -265,13 +252,8 @@ public partial class MainForm
             surroundingsMonitor.SurfaceCalloutsEnabled = settings.SurfaceChangeCalloutsEnabled;
         }
 
-        // SceneryIndexEnabled / TaxiAugmentEnabled feed the feature list every cached
-        // AirportFeatureCatalog was built from, but flipping either doesn't move the
-        // gate-list version token the cache keys on — clear it so the very next Alt+L
-        // reflects the new setting instead of serving a catalog built under the old one.
-        // Both flags feed that list and nothing else in this dialog does, so only a real
-        // CHANGE clears: on every OK it threw away every airport's catalog — including the
-        // slow first-time scenery scan — for a dialog visit that touched neither.
+        // These two flags feed every cached catalog but not the gate-list token it keys on, so a
+        // real change (and only a change) clears the cache and the OSM store.
         if (_appliedSceneryIndexEnabled != settings.SceneryIndexEnabled || _appliedTaxiAugmentEnabled != settings.TaxiAugmentEnabled)
         {
             surroundingsCache.Clear();

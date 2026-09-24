@@ -47,25 +47,12 @@ public static class RunwayPavement
     }
 
     /// <summary>
-    /// The runway shapes an airport's RUNWAY ROWS alone describe — its start rows paired into
-    /// centrelines, with the runway table's pavement — for a caller that must know where the runways
-    /// are without building a taxi graph: the passing-callout runway probe's warm-up, at an airport
-    /// that may have no taxi paths at all.
-    ///
-    /// <para>Centreline pairing in <see cref="TaxiGraph.Build"/> reads nothing but these two lists:
-    /// both passes pair start rows (designator first, heading second) and fill the pavement from the
-    /// runway table, and nothing Build does with taxi paths or stands feeds a centreline — on an
-    /// empty graph the parking and runway-start passes find no node and BridgeOrphanParkingIslands
-    /// returns at once. So Build with no paths and no parking IS that pairing, not a copy of it, and
-    /// the shapes are identical to the full graph's for the same rows (RunwayRowShapesTests). The
-    /// graph itself is discarded — only its centrelines are read — which is also why the empty
-    /// parking list is safe here: the rule that Build be fed navdata's own spot set protects graphs
-    /// that are KEPT.</para>
-    ///
-    /// <para>No runway rows → an EMPTY list, which answers "not on a runway": right at a field with
-    /// none. A runway whose start rows cannot be paired (a strip under the 200 m pairing floor, a
-    /// seaplane base with no land start row) is invisible here exactly as it is to every other user
-    /// of the centrelines.</para>
+    /// The runway shapes an airport's runway rows alone describe, for a caller that must not build a
+    /// taxi graph (the passing-callout probe's warm-up, possibly at an airport with no taxi paths).
+    /// <para>It IS Build's centreline pairing, not a copy: Build with no paths and no parking pairs
+    /// the same start rows against the same runway table (pinned by RunwayRowShapesTests). The graph is
+    /// discarded, which is why the empty parking list is safe here. No runway rows → an empty list,
+    /// i.e. "not on a runway".</para>
     /// </summary>
     public static IReadOnlyList<RunwayShape> BuildShapesFromRunwayRows(
         List<StartPosition> runwayStarts, IReadOnlyList<Runway>? runways)

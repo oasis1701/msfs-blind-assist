@@ -418,15 +418,10 @@ public class UserSettings
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
         /// <summary>
-        /// When true (default), the app makes online requests for airport data it cannot get from
-        /// navdata: the augmenting provider fetches taxiway names and gate-name aliases from
-        /// OpenStreetMap and the X-Plane Scenery Gateway to enrich unnamed navdata segments, and
-        /// the surroundings catalog's OSM tier (<c>OnlineFeatureStore</c>) fetches the airport's
-        /// BUILDINGS — terminals, hangars, FBOs, the tower, fuel, cargo — for Look Around, the
-        /// surroundings window, the passing callouts and the taxi form's Place list. Disabling it
-        /// reverts to navdata and installed scenery only, with no online requests at all.
-        /// <para>Applied LIVE by <c>MainForm.ApplyRuntimeSettings</c>, which pushes it into both
-        /// services and clears the cached catalogs when it changed — no restart.</para>
+        /// When true (default), the app fetches airport data navdata lacks: taxiway names and gate
+        /// aliases (OpenStreetMap, X-Plane Scenery Gateway) and the OSM buildings the surroundings
+        /// features use. Off means navdata and installed scenery only, no online requests. Applied
+        /// live by <c>MainForm.ApplyRuntimeSettings</c>.
         /// </summary>
         public bool TaxiAugmentEnabled { get; set; } = true;
 
@@ -443,11 +438,8 @@ public class UserSettings
         public bool SurroundingsCalloutsEnabled { get; set; } = false;
 
         /// <summary>
-        /// "Off the pavement, on grass." — SEPARATE from
-        /// <see cref="SurroundingsCalloutsEnabled"/> on purpose: the passing callouts name
-        /// buildings you are going past, which is a convenience, while this one tells a pilot who
-        /// cannot see the taxiway edge that they have left it. Burying a callout with a safety
-        /// case behind a switch people turn off for chattiness would be the wrong trade.
+        /// "Off the pavement, on grass." — separate from <see cref="SurroundingsCalloutsEnabled"/> on
+        /// purpose: a safety callout must not hide behind a switch people turn off for chattiness.
         /// Default OFF like every other automatic announcement. Applies immediately.
         /// </summary>
         public bool SurfaceChangeCalloutsEnabled { get; set; } = false;

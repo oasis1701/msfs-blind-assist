@@ -457,9 +457,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
                 + "by a one-time scan of the Community folder's scenery headers. Applies immediately."
         };
 
-        // Read-only status readout for the scenery indexer's last run — a Label is not in the
-        // tab order (CLAUDE.md VATSIM rule: status/diagnostic text must be a TextBox so a
-        // screen-reader user can tab to it instead of hunting with the review cursor).
+        // Read-only TextBox, not a Label, so a screen-reader user can tab to it.
         sceneryIndexStatusTextBox = new TextBox
         {
             Location = new Point(20, 858),
@@ -468,17 +466,11 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             Multiline = true,
             AccessibleName = "Scenery index status"
         };
-        // The box follows the CHECKBOX, not the saved setting: OK has not been pressed yet, so
-        // while the dialog is open the checkbox is what the pilot has chosen and the box must
-        // describe that. (Setting a TextBox's Text announces nothing on its own — the screen
-        // reader reads it when focus arrives — so this is not a UI-interaction echo.)
+        // The box follows the checkbox (the pilot's current choice), not the saved setting.
+        // Setting its Text announces nothing, so this is no UI-interaction echo.
         sceneryIndexEnabledCheckBox.CheckedChanged += (_, _) => RefreshSceneryIndexStatusText();
 
-        // Opt-in "Passing Concourse B, on the left." callouts while taxiing, fed by the
-        // same surroundings catalog the Look Around hotkey and the Surroundings window
-        // read (the scenery index above is one of its tiers). NOT the Where-Am-I readout,
-        // which answers from the taxi graph alone. Placed directly below the scenery-index
-        // status box.
+        // Opt-in "Passing Concourse B, on the left." callouts, from the surroundings catalog.
         surroundingsCalloutsCheckBox = new CheckBox
         {
             Text = "Announce airport buildings as you taxi past them",
@@ -488,11 +480,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleDescription = "When enabled, says for example Passing Concourse B, on the left, as a terminal, hangar, tower, fuel or cargo area comes abeam while taxiing. Queued behind taxi guidance, never during takeoff, landing rollout or docking. Applies immediately."
         };
 
-        // Its OWN switch, not part of the buildings callout above. That one names things you are
-        // going past; this one tells you that you have left the taxiway, which is the only
-        // surroundings callout with a safety case behind it — so it must not be lost when someone
-        // turns the chatty one off. Unlike every other callout on this tab it is deliberately NOT
-        // silenced during takeoff or landing rollout: running off the side is worst exactly there.
+        // Its own switch: leaving the taxiway is a safety callout and must survive someone turning
+        // the chatty passing callouts off. Deliberately not silenced on takeoff or rollout.
         // It spans y 950-990 and the SayIntentions heading below starts at 995:
         // TaxiGuidancePanelLayoutTests measures that no two controls on this tab overlap.
         surfaceChangeCalloutsCheckBox = new CheckBox
@@ -750,14 +739,10 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             DescribeSceneryIndexStatus(sceneryIndexEnabledCheckBox.Checked, _sceneryIndexStatus?.Invoke());
 
     /// <summary>
-    /// What the read-only scenery-index status box holds. Never an empty string: it is a TextBox
-    /// precisely so a screen-reader user can TAB to it, and an empty edit field reads exactly like
-    /// a control that is broken. The indexer only writes its sentence when a catalog build has
-    /// actually read a package, so before the session's first Alt+L there is nothing to show, and
-    /// once the index is switched off the last run's sentence is no longer what the app will do.
+    /// What the scenery-index status box holds — never empty, since an empty edit field reads as a
+    /// broken control. Before the session's first build, or with the index off, it says so.
     /// </summary>
-    /// <param name="enabled">The CHECKBOX's state while the dialog is open, not the saved
-    /// setting — OK has not been pressed, so the checkbox is the pilot's current choice.</param>
+    /// <param name="enabled">The checkbox's current state, not the saved setting.</param>
     /// <param name="lastStatus"><c>SceneryPackageIndexer.LastStatus</c>: the last build's whole
     /// sentence, or empty when none has run this session.</param>
     internal static string DescribeSceneryIndexStatus(bool enabled, string? lastStatus)

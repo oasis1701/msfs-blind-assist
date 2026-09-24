@@ -660,9 +660,7 @@ public partial class SimConnectManager
                     MagneticVariation = vgData.MagneticVariation,
                     GroundSpeedKnots = vgData.GroundSpeedKnots,
                     VerticalSpeedFPM = vgData.VerticalSpeedFPM,
-                    // Carried forward, never defaulted, for the other readers of lastKnownPosition —
-                    // see the surface note on the 507/506 mirrors. This one fires at SIM_FRAME rate
-                    // through an approach.
+                    // Carried forward, never defaulted — see the surface note on the mirrors below.
                     SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
                     SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0,
                 };
@@ -746,13 +744,9 @@ public partial class SimConnectManager
                     // preserve the previous value. AltitudeMslFt is the same
                     // "PLANE ALTITUDE"/feet SimVar AIRCRAFT_POSITION.Altitude reads.
                     Altitude = faData.AltitudeMslFt,
-                    // SURFACE fields are carried FORWARD, never defaulted. They exist only on the
-                    // AIRCRAFT_POSITION frame (case 4), and this mirror overwrites lastKnownPosition
-                    // from a stream that has no idea what is under the wheels — defaulted, every
-                    // other reader of lastKnownPosition would see SurfaceInfoValid 0 ("unknown")
-                    // whenever this stream wrote last. The "off the pavement" callout does not read
-                    // lastKnownPosition: AirportSurroundingsMonitor judges each case-4 answer itself
-                    // (OnPositionReceived). A frame without Altitude carries that forward the same way.
+                    // SURFACE fields exist only on the AIRCRAFT_POSITION frame (case 4): carried
+                    // forward, never defaulted, or every other reader of lastKnownPosition would see
+                    // "unknown" whenever this stream wrote last. (A frame without Altitude likewise.)
                     SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
                     SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0,
                     SimOnGround = faData.OnGround
@@ -782,13 +776,9 @@ public partial class SimConnectManager
                     // because the most recent position update was a taxi sample.
                     Altitude = lastKnownPosition?.Altitude ?? 0,
                     VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0,
-                    // SURFACE fields are carried FORWARD, never defaulted. They exist only on the
-                    // AIRCRAFT_POSITION frame (case 4), and this mirror overwrites lastKnownPosition
-                    // from a stream that has no idea what is under the wheels — defaulted, every
-                    // other reader of lastKnownPosition would see SurfaceInfoValid 0 ("unknown")
-                    // whenever this stream wrote last. The "off the pavement" callout does not read
-                    // lastKnownPosition: AirportSurroundingsMonitor judges each case-4 answer itself
-                    // (OnPositionReceived). A frame without Altitude carries that forward the same way.
+                    // SURFACE fields exist only on the AIRCRAFT_POSITION frame (case 4): carried
+                    // forward, never defaulted, or every other reader of lastKnownPosition would see
+                    // "unknown" whenever this stream wrote last. (A frame without Altitude likewise.)
                     SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
                     SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0
                 };
@@ -827,13 +817,9 @@ public partial class SimConnectManager
                     // because the most recent position update was a takeoff-assist sample.
                     Altitude = lastKnownPosition?.Altitude ?? 0,
                     VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0,
-                    // SURFACE fields are carried FORWARD, never defaulted. They exist only on the
-                    // AIRCRAFT_POSITION frame (case 4), and this mirror overwrites lastKnownPosition
-                    // from a stream that has no idea what is under the wheels — defaulted, every
-                    // other reader of lastKnownPosition would see SurfaceInfoValid 0 ("unknown")
-                    // whenever this stream wrote last. The "off the pavement" callout does not read
-                    // lastKnownPosition: AirportSurroundingsMonitor judges each case-4 answer itself
-                    // (OnPositionReceived). A frame without Altitude carries that forward the same way.
+                    // SURFACE fields exist only on the AIRCRAFT_POSITION frame (case 4): carried
+                    // forward, never defaulted, or every other reader of lastKnownPosition would see
+                    // "unknown" whenever this stream wrote last. (A frame without Altitude likewise.)
                     SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
                     SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0
                 };

@@ -715,16 +715,11 @@ public partial class MainForm : Form
         // into a graph's nodes at build time, so a Where-Am-I graph built before GSX published
         // this airport would otherwise keep navdata's concourse letters for the whole session
         // while every other readout moved to GSX's — see TaxiGuidanceManager._whereAmICachedToken.
-        // O(1) by contract (a capability lookup, a dictionary read, a field read) — and read
-        // WITHOUT constructing a GateDataSource (GateListVersion), which is why it is affordable
-        // to ask on every Where-Am-I press.
+        // O(1) and builds no GateDataSource (GateListVersion), so it is cheap per press.
         taxiGuidanceManager.ParkingSpotVersionSupplier = GateListVersion;
 
-        // Surroundings catalog: same token as the Where-Am-I graph so a GSX publish re-letters
-        // the inferred concourses too — the SAME method, so the two can never drift. Asked on every
-        // position sample the passing-callout monitor handles (TryGetCached, about every 2 s) as
-        // well as by the hotkeys and the Place list, so it must never build a GateDataSource per
-        // ask (review item E8).
+        // Same token as the Where-Am-I graph, so a GSX publish re-letters the inferred concourses
+        // too. Asked on every monitor sample, so it must stay as cheap as GateListVersion.
         surroundingsCache.VersionSupplier = GateListVersion;
         var catalogBuilder = new MSFSBlindAssist.Services.Surroundings.SurroundingsCatalogBuilder(
             () => airportDataProvider, BuildGateDataSource, () => onlineFeatures, sceneryCensus, sceneryIndexer,
@@ -835,12 +830,11 @@ public partial class MainForm : Form
                 || taxiGuidanceManager.State is TaxiGuidanceState.LandingRollout or TaxiGuidanceState.LiningUp
                     or TaxiGuidanceState.HoldShort or TaxiGuidanceState.ProgressiveHold
                     or TaxiGuidanceState.BacktrackingOnRunway or TaxiGuidanceState.BacktrackDeparture,
-            // None of the states above is on during a takeoff flown without Takeoff Assist or a
-            // landing without an exit plan, so the pavement is asked directly.
+            // A takeoff without Takeoff Assist or a landing without an exit plan sets none of the
+            // states above, so the pavement is asked directly.
             RunwayProbe = (icao, lat, lon) => taxiGuidanceManager.IsOnRunwayPavement(icao, lat, lon),
-            // The runway rows alone, never a taxi graph: answers at an airport with no taxi paths,
-            // starts no online taxiway-name fetch, and takes the manager's lock only to publish.
-            // Prepared on the UI thread so it carries the database generation of the provider it reads.
+            // Runway rows only, never a taxi graph; prepared on the UI thread so it carries the
+            // provider's database generation.
             PrepareRunwayProbeWarmUp = taxiGuidanceManager.PrepareRunwayShapeWarmUp,
         };
 
@@ -851,42 +845,28 @@ public partial class MainForm : Form
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
 
-        // The Overpass mirror client and the OSM BUILDINGS store, UNCONDITIONALLY — unlike the
-        // taxi-name decorator below, the buildings tier needs no base provider, and built inside
-        // that guard a pilot who BUILDS the navdata database during the session had surroundings
-        // with no OSM tier until they restarted the app. RefreshDatabaseProvider Clear()s this
-        // store rather than rebuilding it, so nothing here is built twice on a database switch.
+        // Built unconditionally: the buildings tier needs no base provider, so a database built
+        // mid-session still gets it (a switch Clear()s the store, never rebuilds it).
         var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
-        // ONE Overpass client for both OSM readers: the taxiway/parking names below and the
-        // buildings here. Sharing the INSTANCE is tidiness, not what makes their mirror cooldowns
-        // agree — every client built with the public constructor records into one process-wide
-        // cooldown map, so a mirror either fetch found dead is tried last by the other.
+        // One Overpass client for both OSM readers (mirror cooldowns are process-wide anyway).
         var overpassClient = new MSFSBlindAssist.Services.TaxiAugment.OverpassClient(http);
 
-        // The surroundings buildings post through that client with their OWN query, store and
-        // event. A catalog built before the fetch landed is invalidated here, so the next Alt+L
-        // includes the buildings.
+        // Buildings have their own query, store and event; a catalog built before they landed is
+        // invalidated here.
         var featureSource = new MSFSBlindAssist.Services.Surroundings.OsmFeatureSource(overpassClient);
         onlineFeatures = new MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore(featureSource.FetchAsync)
         { Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled };
         onlineFeatures.FeaturesUpdated += icao =>
         {
             surroundingsCache.Invalidate(icao);
-            // …and tell the taxi dialog, whose Place list has no other way to learn of it: only a
-            // type switch, a filter toggle, an airport reload or a gate-token move rebuilds it,
-            // and none of those happens because a mirror finally answered. FBOs and hangars come
-            // mainly from OSM, so the pilot's FBO could be missing with no hint. Raised on a POOL
-            // thread, so it is marshalled; the form's own method re-checks every guard on arrival
-            // and is silent unless the list really changes.
+            // …and tell the taxi dialog, whose Place list has no other way to learn that FBOs and
+            // hangars (mostly OSM) arrived. Raised on a pool thread, so marshalled; the form stays
+            // silent unless its list really changes.
             SafeBeginInvoke(() => taxiAssistForm?.OnSurroundingsInvalidated(icao));
         };
 
-        // What ApplyRuntimeSettings will compare the first Settings OK against. Seeded HERE, from
-        // the same SettingsManager.Current the two services above and SurroundingsCatalogBuilder read, so
-        // that first OK clears the catalog cache and the OSM store only when one of them really
-        // changed. Left unseeded they were null until the first OK, which therefore threw away
-        // every airport's catalog — including a slow first-time scenery scan — and forced a fresh
-        // network fetch, for a dialog visit that may have touched neither setting.
+        // Seeded now, so the first Settings OK clears the catalog cache and OSM store only when
+        // one of these settings really changed (unseeded, every first OK threw them all away).
         _appliedSceneryIndexEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled;
         _appliedTaxiAugmentEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled;
 

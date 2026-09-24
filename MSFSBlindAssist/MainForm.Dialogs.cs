@@ -653,16 +653,10 @@ public partial class MainForm
         });
     }
 
-    // The four GSX signals every GateDataSource this form builds is given — and the SAME four the
-    // gate-list token is derived from without building one (GateListVersion below). Methods, not
-    // captured values: each reads its field on every call, so a GsxService started, stopped or
-    // replaced later is seen. GSX gates (.ini/navdata path) apply only when GSX is running this
-    // session (Couatl started) AND a profile matches. "Couatl started" is EITHER signal: the Remote
-    // API's own flag OR the L:FSDT_GSX_COUATL_STARTED L:var read over the main SimConnect
-    // connection. The L:var is what every GSX build publishes, Remote API or not — the .ini
-    // overlay, deice pads and profile stop positions are local-file features that never needed the
-    // WebSocket, and gating them on the Remote flag alone silently switched them off for any GSX
-    // build older than 4.0.1 (docs/gsx.md: "neither is a version floor").
+    // The four GSX signals every GateDataSource is given, and the gate-list token is derived from.
+    // Methods, so a GsxService started or replaced later is seen. "Couatl started" is EITHER the
+    // Remote API flag OR L:FSDT_GSX_COUATL_STARTED, which every GSX build publishes — the .ini
+    // overlay, deice pads and stop positions are local-file features and not a version floor.
     private bool GsxCouatlRunning()
         => (_gsxService != null && _gsxService.CouatlStarted)
            || (simConnectManager != null && simConnectManager.GsxCouatlStartedLVar);
@@ -686,9 +680,8 @@ public partial class MainForm
     private Services.GateDataSource? BuildGateDataSource()
         => airportDataProvider is { } provider ? BuildGateDataSource(provider) : null;
 
-    /// <summary>A GateDataSource over <paramref name="provider"/> — for a caller that has already
-    /// captured the provider it works against (SurroundingsCatalogBuilder, on its pool thread), so its gate
-    /// reads and its navdata reads come from ONE database even if a switch lands mid-call.</summary>
+    /// <summary>A GateDataSource over an already-captured <paramref name="provider"/>, so a pool-thread
+    /// caller's gate and navdata reads come from one database even across a switch.</summary>
     private Services.GateDataSource BuildGateDataSource(IAirportDataProvider provider)
         => new(provider, GsxCouatlRunning,
                capabilities: GsxCapabilities,
@@ -696,13 +689,9 @@ public partial class MainForm
                handlerDataVersion: GsxHandlerDataVersion);
 
     /// <summary>
-    /// GateDataSource.GetGateListVersion's token for <paramref name="icao"/> WITHOUT constructing a
-    /// GateDataSource (review item E8): the catalog cache asks for it on every position sample the
-    /// passing-callout monitor handles (about every 2 s), and each GateDataSource built just to
-    /// answer allocated two concurrent dictionaries and a GsxProfileLocator to throw them away. The
-    /// same four signals BuildGateDataSource hands every GateDataSource, so the two cannot drift;
-    /// "none" with no database, exactly what
-    /// BuildGateDataSource()?.GetGateListVersion(icao) ?? "none" answered.
+    /// GateDataSource.GetGateListVersion's token without constructing a GateDataSource — it is asked
+    /// on every monitor sample. The same four signals BuildGateDataSource uses, so they cannot drift;
+    /// "none" with no database.
     /// </summary>
     private string GateListVersion(string icao)
         => airportDataProvider == null ? "none"
@@ -779,13 +768,8 @@ public partial class MainForm
     {
         taxiAssistForm = GetOrCreateTaxiAssistForm();
 
-        // The airport the aircraft is AT — CurrentAirport.Resolve, the resolver Where Am I
-        // (Alt+Y), Look Around (Alt+L) and the surroundings monitor use — so this form, and the
-        // Place list built for its airport, open on the field the pilot has just heard named.
-        // The first four-character code nearest the reference point it used to take opened
-        // heliport 10CL (no taxi data) at 111 of KSNA's 201 stands and disagreed with Where Am I
-        // at 19,700 of fs2024's 302,142. A three-character ident is a good answer: every provider
-        // lookup matches icao OR ident. One box query, the same cost as the one it replaces.
+        // The airport the aircraft is AT (CurrentAirport.Resolve), so the form opens on the field
+        // Where Am I just named — the old nearest-code rule disagreed at 19,700 fs2024 stands.
         string airportIcao = MSFSBlindAssist.Services.CurrentAirport.Resolve(
             airportDataProvider!, position.Latitude, position.Longitude) ?? "";
 

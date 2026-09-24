@@ -2705,18 +2705,9 @@ public class TaxiAssistForm : Form
     /// <summary>
     /// The SELECTABLE stands for the loaded airport, each already paired with its routing node —
     /// resolved ONCE per (ICAO, gate-list SOURCE) into <see cref="_cachedGateSpots"/>.
-    ///
-    /// <para>This is the heavy per-airport work: <c>GetGates</c> (directory enumeration / an
-    /// uncached navdata DB query at .py-only airports like EDDF) plus a <c>FindNearestNode</c> and
-    /// a distance check per spot, all synchronously on the UI thread — and
-    /// <see cref="PopulateDestinations"/> runs on every gate-search keystroke. Neither the search
-    /// text nor the fit filter affects node resolution, so caching it is behaviour-preserving.</para>
-    ///
-    /// <para>Keyed on the gate-list TOKEN as well as the ICAO. The compare is the one thing added
-    /// to the per-keystroke path and it is a property read — <c>GateDataSource</c> does no file or
-    /// DB work to answer it. It is what makes a list bound from the .ini/navdata fallback BEFORE
-    /// GSX published this airport rebuild the moment GSX does (the descent-pre-plan /
-    /// pre-publish scenario described at the field).</para>
+    /// <para>Cached because <see cref="PopulateDestinations"/> runs on every search keystroke and this
+    /// is heavy UI-thread work. Keyed on the gate-list token as well as the ICAO (a property read), so
+    /// a list bound before GSX published the airport rebuilds the moment it does.</para>
     /// </summary>
     private List<(ParkingSpot spot, int nodeId)> EnsureGateSpotCache()
     {
@@ -2726,12 +2717,9 @@ public class TaxiAssistForm : Form
             && !Services.GateDataSource.ShouldRebuildGateList(_cachedGateSpotsSourceToken, sourceToken))
             return _cachedGateSpots;
 
-        // The SELECTABLE list — GSX's own, because a destination has to be acted on: the
-        // fit filter needs GSX's max wingspan, docking needs the stop position, auto-select
-        // needs GsxIdentifier, and TerminalName is what tells two identically-named stands
-        // apart. Plus this scenery's online gate aliases (GSX bypasses GetParkingSpots, but
-        // GSX stands carry spot codes that don't match real gate numbers, and the alias is
-        // what lets the pilot pick the ATC gate).
+        // The SELECTABLE list, because a destination is acted on (wingspan, stop position,
+        // GsxIdentifier, TerminalName), plus this scenery's online gate aliases so the pilot can
+        // pick the gate ATC names.
         var sourceSpots = Services.ParkingSpotSource.GetSelectableGates(_dataProvider, _gateSource, _currentIcao);
         var resolved = new List<(ParkingSpot spot, int nodeId)>(sourceSpots.Count);
         foreach (var spot in sourceSpots)
@@ -2757,19 +2745,10 @@ public class TaxiAssistForm : Form
     }
 
     /// <summary>
-    /// The stands navdata lists that the SELECTABLE list does not — GSX's list excludes Vehicle
-    /// and Fuel stands and drops the ones it finds no usable heading for, which is exactly the
-    /// kind of spot an FBO, hangar or fuel place ends at. So this is a SECOND-CHOICE source for
-    /// <c>PlaceListBuilder</c>, behind the selectable list; it carries no <c>GsxIdentifier</c>,
-    /// which is why <see cref="ShouldSendGateSelect"/> never asks GSX to prepare one.
-    ///
-    /// <para>"Not in the selectable list" is decided by POSITION (within 10 m of a selectable
-    /// stand), never by name: the two lists name the same stand differently often enough that a
-    /// name join would list it twice — the very defect
-    /// <c>Services.ParkingSpotSource</c> exists to prevent.</para>
-    ///
-    /// <para>The navdata list handed back by <c>GetNamedSpots</c> may be the instance the provider
-    /// holds, so it is only ever READ here.</para>
+    /// Navdata stands the selectable list lacks (GSX drops vehicle, fuel and headingless stands —
+    /// just where an FBO, hangar or fuel place ends). A second-choice source for PlaceListBuilder,
+    /// with no GsxIdentifier. "Lacks" is judged by position (10 m), never by name, which differs
+    /// between the lists. The navdata list is only read: it may be the provider's own instance.
     /// </summary>
     private List<Navigation.Surroundings.StandCandidate> EnsureNavdataOnlyStands(
         List<(ParkingSpot spot, int nodeId)> selectable)
@@ -4988,11 +4967,9 @@ public class TaxiAssistForm : Form
         // available without re-opening.
     }
 
-    /// <summary>Gate / Parking always asks (an identifier-less spot reports "could not prepare" —
-    /// the documented .ini/navdata fallback, a degraded gate list the pilot should know about). A
-    /// PLACE asks only for a stand GSX itself published: most FBO, hangar and fuel places end on a
-    /// stand GSX never listed, and "GSX could not prepare this stand." after every such route was a
-    /// false alarm. Runway, progressive and de-ice never ask.</summary>
+    /// <summary>Gate / Parking always asks (an identifier-less spot's "could not prepare" is news the
+    /// pilot should hear). A Place asks only for a stand GSX published — otherwise every FBO or hangar
+    /// route ended in a false "could not prepare". Runway, progressive and de-ice never ask.</summary>
     internal static bool ShouldSendGateSelect(int destinationTypeIndex, ParkingSpot? spot) => spot != null && destinationTypeIndex switch
     {
         1 => true,

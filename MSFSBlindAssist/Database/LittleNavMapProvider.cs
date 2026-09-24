@@ -502,10 +502,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         using var connection = new SqliteConnection(_connectionString);
         connection.Open();
 
-        // The SAME row the stands, runways and taxi paths are read from (GetAirportId): the box,
-        // tower and frequencies are spoken beside that airport's stands and runways, so they must
-        // never describe a different row. This method used to carry its own copy of the lookup,
-        // and a code two airports share resolved to a different row here than in GetParkingSpots.
+        // The same row the stands, runways and taxi paths come from (GetAirportId), so the facts
+        // spoken beside them always describe that airport.
         int airportId = GetAirportId(connection, icao);
         if (airportId == -1) return null;
 
@@ -521,11 +519,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             if (!r.Read()) return null;
             avgas = SafeReadInt(r, "has_avgas", 0) == 1;
             jet = SafeReadInt(r, "has_jetfuel", 0) == 1;
-            // NULL reads as "no tower" (navdatareader declares the column NOT NULL, so only a
-            // hand-built database has one). A table WITHOUT the column is deliberately not made
-            // survivable: the SELECT names it, so SQLite refuses the query ("no such column") before
-            // SafeReadInt runs — exactly as it always has for a table without tower_laty/tower_lonx,
-            // so no database that works today breaks.
+            // NULL reads as "no tower". A table without the column fails the SELECT, exactly as a
+            // table without tower_laty always has.
             towerObject = SafeReadInt(r, "has_tower_object", 0) == 1;
             left = SafeReadDouble(r, "left_lonx", 0.0);   right = SafeReadDouble(r, "right_lonx", 0.0);
             top = SafeReadDouble(r, "top_laty", 0.0);     bottom = SafeReadDouble(r, "bottom_laty", 0.0);
@@ -602,13 +597,10 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
             // (no `icao`) — common at small fields and many third-party scenery
             // packs — still come back. This method was originally added for
             // GateResolver.GetCandidateAirports (TCAS gate lookup), which depends
-            // on the ident fallback to find the user's parking field. It is NOT how
-            // to ask which airport our own aircraft is at: that is
-            // CurrentAirport.Resolve, because this list's first entry is ordered by
-            // summed raw degrees (it names heliport 10CL at 111 of KSNA's 201
-            // stands). Do NOT push a LENGTH(icao)=4 filter into this SQL — every
-            // provider lookup matches icao OR ident, and short idents are real
-            // airports.
+            // on the ident fallback to find the user's parking field. Never use it for
+            // which airport our own aircraft is at — that is CurrentAirport.Resolve (this
+            // list is ordered by raw degrees). Never add a LENGTH(icao)=4 filter: short
+            // idents are real airports.
             var sql = @"SELECT COALESCE(NULLIF(icao, ''), ident) AS code, laty, lonx
                         FROM airport
                         WHERE laty BETWEEN @MinLat AND @MaxLat
@@ -641,11 +633,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
     }
 
     /// <summary>
-    /// Airports within <paramref name="radiusNm"/> of a position, as bounding-box + reference-point
-    /// + taxi-path-count candidates for <c>CurrentAirportResolver</c> to decide which one the
-    /// aircraft is actually at. Unlike <see cref="GetNearbyAirportICAOs"/>, this is not filtered to
-    /// airports carrying a usable code — the resolver needs the box/count of everything nearby,
-    /// heliports included, to tell a real airport apart from one.
+    /// Airports within <paramref name="radiusNm"/>, with box, reference point and taxi-path count, for
+    /// <c>CurrentAirportResolver</c>. Unfiltered (heliports included), unlike <see cref="GetNearbyAirportICAOs"/>.
     /// </summary>
     public IReadOnlyList<AirportCandidate> GetNearbyAirportCandidates(double latitude, double longitude, double radiusNm)
     {
@@ -814,20 +803,11 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
     #region Helper Methods
 
     /// <summary>
-    /// THE airport-row lookup for every airport_id-keyed read: runways, stands, taxi paths, runway
-    /// starts, the orphan-ILS relink and the surroundings facilities all resolve their code here, so
-    /// no two of them can describe different rows. Two reads in this class do NOT come through here
-    /// and keep their own UPPER() scan: GetAirport (whose position is also what
-    /// AugmentingAirportDataProvider.FetchCoreAsync centres the online taxiway-name fetch on) and
-    /// AirportExists. Bare indexed columns against an UPPER-CASED PARAMETER, never UPPER(column):
-    /// UPPER() on a column cannot use idx_airport_ident / idx_airport_icao, and the old form was a
-    /// full-table SCAN — 14.3 ms against 0.10 ms for this MULTI-INDEX OR on fs2024's 84,278 airports
-    /// (measured 2026-09-22). On fs2024 the new predicate returns the row the old one did for every
-    /// code: no ident or icao carries a lower-case or non-ASCII letter, icao is NULL on every row, and
-    /// no code names two airports. MSFS 2020 is UNMEASURED (no fs2020 database was available), though
-    /// a disk-built BGL ident cannot carry a lower-case letter: its packed encoding holds only digits
-    /// and capitals.
-    /// Returns -1 when nothing matches.
+    /// The airport-row lookup for every airport_id-keyed read (runways, stands, taxi paths, starts, the
+    /// orphan-ILS relink, surroundings facilities), so none of them can describe different rows.
+    /// GetAirport and AirportExists keep their own scan. Indexed columns against an upper-cased
+    /// PARAMETER, never UPPER(column), which scanned the table (14.3 ms against 0.10 ms on fs2024,
+    /// same row for every code). Returns -1 when nothing matches.
     /// </summary>
     private int GetAirportId(SqliteConnection connection, string icao)
     {
