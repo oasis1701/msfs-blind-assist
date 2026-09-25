@@ -12,10 +12,13 @@ namespace MSFSBlindAssist.Navigation;
 /// source TaxiGraph builds RunwayCenterlines from, and TakeoffAssist's cross-track math reads
 /// those centerlines; anchoring the lineup target here keeps taxi-lineup and TakeoffAssist on
 /// the same physical position. The row is trusted for WHERE ALONG the runway the departure
-/// begins, but pulled back onto the runway_end centerline first (EGKK's rows sit ~110 m to the
-/// SIDE of their own runway). All rows per runway end are offered: TaxiGraph.PickFullLengthStart
-/// picks the full-length (furthest-back) one and REJECTS a row past 40 % of the runway. When no
-/// usable row exists the physical pavement start is used.</para>
+/// begins, but pulled back onto the runway_end centerline first: EGKK's rows sit ~110 m to the
+/// SIDE of their own runway, which would otherwise aim the lineup target — the thing a blind
+/// pilot steers by — off the pavement, and feed the same error into the route destination node
+/// and the holding-point envelope's near end. All rows per runway end are offered:
+/// TaxiGraph.PickFullLengthStart picks the full-length (furthest-back) one and REJECTS a row
+/// past 40 % of the runway. When no usable row exists the physical pavement start is
+/// used.</para>
 ///
 /// <para>The entry node is NOT a bare FindNearestNode: nothing guarantees a taxiway MEETS the
 /// runway at the lineup point (LPPT 20's start row sits on a 1955 ft displaced threshold with the
@@ -27,8 +30,10 @@ public static class RunwayLineupTarget
 {
     public sealed record Result(double LineupLat, double LineupLon, TaxiNode? EntryNode);
 
-    /// <summary>Half-width fallback when the runway row carries no width (feet).</summary>
-    public const double DefaultRunwayWidthFeet = 150.0;
+    /// <summary>Full runway width in feet assumed when the runway row carries none; halved
+    /// below to get the corridor half-width <see cref="TaxiGraph.FindRunwayLineupEntryNode"/>
+    /// searches within.</summary>
+    private const double FallbackRunwayWidthFeet = 150.0;
 
     /// <param name="startsForRunway">Every start row for this runway end (may be null/empty).</param>
     /// <param name="anchorLat">The aircraft's position when known — the reachability anchor;
@@ -51,7 +56,7 @@ public static class RunwayLineupTarget
             lineupLon = rwy.StartLon;
         }
 
-        double halfWidthM = (rwy.Width > 0 ? rwy.Width : DefaultRunwayWidthFeet) * 0.3048 / 2.0;
+        double halfWidthM = (rwy.Width > 0 ? rwy.Width : FallbackRunwayWidthFeet) * 0.3048 / 2.0;
         var entry = graph.FindRunwayLineupEntryNode(
             lineupLat, lineupLon,
             rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon,

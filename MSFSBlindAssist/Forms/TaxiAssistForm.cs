@@ -2238,43 +2238,16 @@ public class TaxiAssistForm : Form
 
         if (isRunway)
         {
-            // Build a runway-name → StartPosition lookup so we can anchor the
-            // route destination and the lineup target at the actual painted
-            // lineup point, not the physical pavement edge.
-            //
-            // Runway.StartLat/StartLon comes from runway_end.lonx/laty in the
-            // navdatareader DB — i.e., the physical pavement edge of the
-            // runway end. For runways with a displaced threshold (e.g., KLAS
-            // 26R has a 1407 ft displacement), the painted lineup point sits
-            // hundreds of meters from that edge. Using the physical edge
-            // would cause FindNearestNode to resolve to an adjacent-taxiway
-            // node instead of a runway-threshold node, and _destinationThresholdMap
-            // would feed a wrong _lineupTargetLat/Lon into LiningUp's cross-track
-            // math.
-            //
-            // The `start` table is navdatareader's curated "where MSFS spawns an
-            // aircraft if you select runway X" value, which correctly accounts
-            // for displaced thresholds. It is ALSO the source TaxiGraph builds
-            // RunwayCenterlines from (see TaxiGraph.Build, around line 170),
-            // and TakeoffAssist's cross-track math reads those centerlines.
-            // Anchoring the route destination and lineup target here on the
-            // same source means taxi-lineup centerline math and TakeoffAssist
-            // centerline math reference the same physical position; otherwise
-            // the two systems disagree on where the runway "begins" by hundreds
-            // of meters at displaced-threshold airports.
-            //
-            // Fall back to Runway.StartLat/StartLon only when the start table
-            // has no entry for a given runway name. That preserves the current
-            // behavior for runways the start table doesn't cover (rare; covers
-            // DBs/scenery where start-table data is incomplete).
-            // ALL rows per runway end, not the first one: a runway end can carry
-            // several, and TaxiGraph.PickFullLengthStart picks the full-length
-            // (furthest-back) one and REJECTS a row past 40 % of the runway. Taking
-            // g.First() took whichever the DB happened to return — EGLL 09R's is 342 m
-            // down the runway with a 67 m row sitting right there, and LatinVFR's LEMD
-            // parks four runways' rows at the MIDPOINT — which anchors both the route
-            // destination and the lineup target mid-field, and skews the holding-point
-            // envelope's LineupAlong with them.
+            // Build a runway-name → StartPosition lookup so RunwayLineupTarget (below) can pick
+            // the right start row for each runway end. ALL rows per runway end, not the first
+            // one: a runway end can carry several, and TaxiGraph.PickFullLengthStart picks the
+            // full-length (furthest-back) one and REJECTS a row past 40 % of the runway. Taking
+            // g.First() took whichever the DB happened to return — EGLL 09R's is 342 m down the
+            // runway with a 67 m row sitting right there, and LatinVFR's LEMD parks four
+            // runways' rows at the MIDPOINT — which anchors both the route destination and the
+            // lineup target mid-field, and skews the holding-point envelope's LineupAlong with
+            // them. See RunwayLineupTarget for why the lineup point is anchored on this table at
+            // all (displaced thresholds) and how it becomes a route destination node.
             var startsByRunway = _dataProvider.GetRunwayStarts(_currentIcao)
                 .Where(s => !string.IsNullOrEmpty(s.RunwayName))
                 .GroupBy(s => s.RunwayName, StringComparer.OrdinalIgnoreCase)
