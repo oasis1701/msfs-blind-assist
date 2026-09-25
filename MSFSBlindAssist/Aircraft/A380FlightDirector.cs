@@ -32,19 +32,6 @@ public static class A380FlightDirector
     public const string PushEvent = "A32NX.FCU_FD_PUSH";
 
     /// <summary>
-    /// The per-side keys from the stock-var era. They are kept as ALIASES of <see cref="StateKey"/>
-    /// — same light, same button, registered OnRequest so they add nothing to the batch — so a
-    /// caller that sets "both sides" (the First Officer's cockpit-preparation step does exactly
-    /// that) presses the button once and reads the real state back. They are in no panel: two
-    /// "Flight Director 1 / 2" controls for one button would each switch both.
-    /// </summary>
-    public static readonly IReadOnlyList<string> LegacySideKeys = new[] { "FD_1_CTL", "FD_2_CTL" };
-
-    /// <summary>Whether <paramref name="varKey"/> commands the flight directors.</summary>
-    public static bool IsControlKey(string varKey) =>
-        varKey == StateKey || LegacySideKeys.Contains(varKey);
-
-    /// <summary>
     /// The event to fire to bring the flight directors to <paramref name="desired"/>, or null when
     /// they are already there. <paramref name="current"/> null = unknown, which presses — the rule
     /// every A380 toggle shares (<see cref="A380ToggleCommand"/>).

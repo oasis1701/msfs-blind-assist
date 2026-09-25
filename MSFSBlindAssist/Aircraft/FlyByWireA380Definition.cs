@@ -2224,19 +2224,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // DEAD since #10855 — nothing writes the var, and the WASM masks the event into a press
         // of the one button, so the old per-side combos read a frozen state and their two
         // presses cancelled. See A380FlightDirector before changing any of this.
+        // The per-side keys of the stock-var era (FD_1_CTL / FD_2_CTL) are gone: a key per side
+        // for one button would be two presses that cancel. Anything that sets the flight
+        // directors sets this one key.
         Sel(A380FlightDirector.StateKey, "Flight Directors", onOff);
-        // The per-side keys survive as ALIASES — same light, OnRequest so the batch carries the
-        // name once — for callers that set both sides (the First Officer's cockpit-prep step).
-        // HandleUIVariableSet routes all three through one commanded state, so that is one press.
-        foreach (var legacyKey in A380FlightDirector.LegacySideKeys)
-        {
-            vars[legacyKey] = new SimVarDefinition
-            {
-                Name = A380FlightDirector.StateKey, DisplayName = "Flight Directors",
-                Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
-                ValueDescriptions = onOff
-            };
-        }
         // Monitored (so ProcessSimVarUpdate sees changes) + Ctrl+M-muteable; the raw
         // generic announce is suppressed by the decoded handler returning true.
         Mon("A32NX_FMA_VERTICAL_ARMED", "Armed Vertical Modes", new Dictionary<double, string>());
@@ -3208,6 +3199,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool _calloutOnGround = true;
     /// <summary>The roll callouts' machine, for tests.</summary>
     internal TakeoffVSpeedCallouts TakeoffCallouts => _takeoffCallouts;
+    /// <inheritdoc />
+    public override string? TakeoffCalloutFeedKey => A380TakeoffCallouts.IasKey;
+    /// <inheritdoc />
+    public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
     private readonly int[] _gpuAvail = { -1, -1, -1, -1 };   // last external-power-available state per GPU (-1 = unseen)
     private readonly HashSet<int> _btvExitSpoken = new();
     private readonly HashSet<int> _btvRwyEndSpoken = new();
@@ -3499,12 +3494,15 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // Kept across every reset — the read-outs and the Altitude window use the last known unit until
     // the next word says otherwise.
     private bool _metricAlt;
-    // Whether _metricAlt is from THIS context (cleared by OnSimContextReset). An unknown mode is not a
-    // "same" mode: a pick presses MTRS rather than trusting the last flight's word.
+    // Whether a word has arrived in THIS context (cleared by OnSimContextReset). Until one does, or
+    // the FCU settle ends with none (the word was unchanged, so a flight load never re-delivered it),
+    // the mode is unknown — and an unknown mode is not a "same" mode: a pick presses MTRS. See
+    // MetricAltIsKnown.
     private bool _metricAltKnown;
-    // Whether the MTRS call-out has its baseline (cleared by OnSimContextReset only — NOT by
-    // ResetAnnouncementBaselines, which runs after the reconnect's first batch): the first word
-    // after a reset is recorded, never spoken. See UpdateMetricAltitude.
+    // Whether the MTRS call-out has its session baseline: the first word ever read is recorded, never
+    // spoken. NOT cleared by any reset — a flight load re-delivers only CHANGED vars, so a baseline
+    // cleared there stayed cleared until the next REAL change, which was then swallowed. A reset's
+    // new-situation words are absorbed by the FCU settle instead (UpdateMetricAltitude).
     private bool _metricAltBaselined;
     // The MTRS mode MSFSBA just commanded, until the PRIM confirms it or CommandedValueMs lapses.
     private (bool Value, long Tick)? _metricCommanded;

@@ -19,38 +19,7 @@ public static class A380TakeoffCallouts
     public const string VrKey = "PFD_VR";
     public const string V2Key = "PFD_V2";
 
-    /// <summary>
-    /// The Ctrl+M key whose mute silences <paramref name="callout"/> ("V1", "Rotate" or "V2") — the
-    /// row that also mutes that speed's set-announce ("V1: 142 knots"). A callout this table does
-    /// not know maps to NO row and is never muted: fail open, as on the MD-11 and the iFly.
-    /// </summary>
-    public static string MuteKeyFor(string callout) => callout switch
-    {
-        "V1" => V1Key,
-        "Rotate" => VrKey,
-        "V2" => V2Key,
-        _ => "",
-    };
-
-    /// <summary>Whether the pilot muted <paramref name="callout"/> in Ctrl+M (its <see cref="MuteKeyFor"/>
-    /// row is in <paramref name="muted"/>); a callout with no row never is.</summary>
-    public static bool IsMuted(string callout, IReadOnlySet<string> muted)
-    {
-        var row = MuteKeyFor(callout);
-        return row.Length != 0 && muted.Contains(row);
-    }
-
-    /// <summary>True for the three FMS V-speed variables that arm the machine.</summary>
-    public static bool IsVSpeedKey(string varName) => varName is V1Key or VrKey or V2Key;
-
-    /// <summary>Hands a delivered V-speed to the machine; anything else is ignored.</summary>
-    public static void Feed(TakeoffVSpeedCallouts machine, string varName, double value)
-    {
-        switch (varName)
-        {
-            case V1Key: machine.SetV1(value); break;
-            case VrKey: machine.SetVR(value); break;
-            case V2Key: machine.SetV2(value); break;
-        }
-    }
+    /// <summary>The feed, the speeds and their Ctrl+M rule: each call is muted by its speed's row,
+    /// which also mutes that speed's set-announce ("V1: 142 knots").</summary>
+    public static readonly TakeoffCalloutKeys Keys = new(IasKey, V1Key, VrKey, V2Key);
 }

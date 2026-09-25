@@ -124,7 +124,8 @@ public class A380MetricAltitudeTests
         // re-fired every var (the ordering trap CLAUDE.md records under the MD-11). It must keep the
         // unit — or a typed altitude is taken as feet on a metric FCU — and must NOT clear the
         // call-out's baseline, or the first real MTRS change after the reconnect is swallowed as
-        // one. The context reset on the way down (OnSimContextReset) clears it instead.
+        // one. No reset clears it: the FCU settle a context reset begins absorbs the new context's
+        // first words instead (see the flight-load tests below).
         var def = new FlyByWireA380Definition();
         var speech = new SpeechCapture();
         def.ProcessSimVarUpdate("FMA_FG_ALERTS", FgWord(NormalOperation, Bit14), speech);   // baseline
@@ -151,6 +152,45 @@ public class A380MetricAltitudeTests
         Assert.Equal("A32NX.FCU_METRIC_ALT_TOGGLE_PUSH", def.MetricAltitudeCommand(1));
         def.ProcessSimVarUpdate("FMA_FG_ALERTS", FgWord(NormalOperation, 0), speech);   // a baseline again
         Assert.Empty(speech.All);
+    }
+
+    // A flight load re-delivers only CHANGED vars: a word 5 that is the same in the new flight never
+    // arrives. The FCU settle (BaseAircraftDefinition, OnSimContextReset) ends after 30 batch-1
+    // deliveries at most, whatever the aircraft publishes.
+    private static void SettleWithoutTheWord(FlyByWireA380Definition def)
+    {
+        for (int i = 0; i < 30; i++) def.OnContinuousBatchDelivered(1);
+    }
+
+    [Fact]
+    public void After_a_flight_load_with_an_unchanged_word_the_next_mtrs_change_is_spoken()
+    {
+        // Clearing the call-out's baseline on the context reset left it cleared for good when the word
+        // was not re-delivered, so the next REAL change was recorded as a baseline and never spoken.
+        var def = new FlyByWireA380Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSimVarUpdate("FMA_FG_ALERTS", FgWord(NormalOperation, 0), speech);   // baseline, feet
+
+        def.OnSimContextReset();
+        SettleWithoutTheWord(def);
+
+        def.ProcessSimVarUpdate("FMA_FG_ALERTS", FgWord(NormalOperation, Bit14), speech);
+        Assert.Equal(new[] { "Metric altitude: on" }, speech.All);
+    }
+
+    [Fact]
+    public void After_a_flight_load_with_an_unchanged_word_the_mode_is_known_again()
+    {
+        // The aircraft has published and gone quiet with no new word: the last word stands, so a pick
+        // of the mode already in force presses nothing (a press would toggle MTRS the wrong way).
+        var def = new FlyByWireA380Definition();
+        var speech = new SpeechCapture();
+        def.ProcessSimVarUpdate("FMA_FG_ALERTS", FgWord(NormalOperation, 0), speech);
+
+        def.OnSimContextReset();
+        SettleWithoutTheWord(def);
+
+        Assert.Null(def.MetricAltitudeCommand(0));
     }
 
     [Fact]

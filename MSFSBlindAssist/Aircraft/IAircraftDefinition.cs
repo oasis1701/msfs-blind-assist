@@ -301,6 +301,18 @@ public interface IAircraftDefinition
     /// </summary>
     bool IsMuteWrapExempt(string varName);
 
+    /// <summary>
+    /// The per-SIM_FRAME airspeed feed of this aircraft's take-off roll callouts
+    /// (<see cref="TakeoffVSpeedCallouts"/>), or null when it has none. MainForm pauses that one
+    /// subscription while <see cref="TakeoffCalloutFeedNeeded"/> is false and resumes it when it turns
+    /// true again, checked after every delivery of the feed and of <c>SIM_ON_GROUND</c>.
+    /// </summary>
+    string? TakeoffCalloutFeedKey { get; }
+
+    /// <summary>Whether the callouts need the feed now — on the ground, or on a roll still armed
+    /// (<see cref="TakeoffVSpeedCallouts.NeedsSamples"/>). Meaningless without a feed key.</summary>
+    bool TakeoffCalloutFeedNeeded { get; }
+
     // UI Variable Setting (Panel Controls)
 
     /// <summary>

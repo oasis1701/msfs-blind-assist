@@ -105,7 +105,7 @@ public partial class FlyByWireA380Definition
             if (callouts.Count > 0 && !announcer.Suppressed)
             {
                 var muted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet;
-                string? sentence = TakeoffVSpeedCallouts.Compose(callouts, callout => A380TakeoffCallouts.IsMuted(callout, muted));
+                string? sentence = TakeoffVSpeedCallouts.Compose(callouts, callout => A380TakeoffCallouts.Keys.IsMuted(callout, muted));
                 if (sentence != null) announcer.AnnounceImmediate(sentence);   // "V1, Rotate": one utterance, never two
             }
             return true;
@@ -115,7 +115,7 @@ public partial class FlyByWireA380Definition
         // still speaks "V1: 142 knots" as the pilot enters a speed. Up here, ahead of every branch
         // that could consume them.
         if (varName == "SIM_ON_GROUND") _calloutOnGround = value >= 0.5;
-        else if (A380TakeoffCallouts.IsVSpeedKey(varName)) A380TakeoffCallouts.Feed(_takeoffCallouts, varName, value);
+        else if (A380TakeoffCallouts.Keys.IsVSpeedKey(varName)) A380TakeoffCallouts.Keys.Feed(_takeoffCallouts, varName, value);
 
         // Cache the ND TO-waypoint packed-word halves for the ND status box decode
         // (no announcement; fall through to normal processing).
@@ -831,7 +831,9 @@ public partial class FlyByWireA380Definition
             bool inHg = value > 0.5;
             bool? prev = capt ? _baroInHgL : _baroInHgR;
             if (capt) _baroInHgL = inHg; else _baroInHgR = inHg;
-            if (prev.HasValue && prev.Value != inHg) // skip the baseline read
+            // Skip the baseline read, and the echo of a unit MSFSBA set (HandleUIVariableSet): the
+            // pilot picked it in a combo the screen reader has already read.
+            if (prev.HasValue && prev.Value != inHg && !IsCommandedEcho(varName, inHg ? 1 : 0))
             {
                 double last = capt ? _lastBaroL : _lastBaroR;
                 if (last > 0 && (capt ? _baroStdL : _baroStdR) != true)
@@ -1099,15 +1101,16 @@ public partial class FlyByWireA380Definition
 
     /// <summary>
     /// The metric-altitude (MTRS) mode from PRIM FG discrete word 5 bit 14 — FBW #10855, see
-    /// <see cref="A380MetricAltitude"/>. The first word after a baseline reset only records it. A
-    /// change re-expresses the FCU altitude callout's baseline in the new unit, and one after the
-    /// baseline is spoken — unless it confirms the pilot's own combo pick (the screen reader has
-    /// already read that) or the word's Ctrl+M row, "FMA Mode Alerts", is muted: the call-out rides
-    /// that row because it comes from the same word.
+    /// <see cref="A380MetricAltitude"/>. The session's first word only records it, and so does a
+    /// word that arrives while a flight load, reconnect or FCU power-up is settling (the new
+    /// situation, not a change anyone made). A change re-expresses the FCU altitude callout's
+    /// baseline in the new unit, and any other change is spoken — unless it confirms the pilot's own
+    /// combo pick (the screen reader has already read that) or the word's Ctrl+M row, "FMA Mode
+    /// Alerts", is muted: the call-out rides that row because it comes from the same word.
     /// </summary>
     private void UpdateMetricAltitude(bool metric, bool muted, ScreenReaderAnnouncer announcer)
     {
-        bool baseline = !_metricAltBaselined;
+        bool baseline = !_metricAltBaselined || IsFcuValueSettling;
         bool changed = metric != _metricAlt;
         _metricAltBaselined = true;
         _metricAltKnown = true;
@@ -1133,9 +1136,12 @@ public partial class FlyByWireA380Definition
         _reqHdg = _reqSpd = _reqAlt = _reqVs = false;
         _pHdgVal = _pHdgMgd = _pSpdVal = _pSpdMgd = _pVsVal = _pFpaVal = _pVsMode = null;
         // A new flight or a dropped connection: the last MTRS word may no longer be true. Its unit
-        // stays in _metricAlt for the read-outs until the next word, but it is not "known".
+        // stays in _metricAlt for the read-outs until the next word, but it is not "known" until a
+        // word arrives or the settle base.OnSimContextReset began ends without one (MetricAltIsKnown).
+        // The call-out's baseline is KEPT: the settle absorbs this context's first words, and a word
+        // this flight load never re-delivers (unchanged) must not leave the next real change to be
+        // swallowed as a baseline.
         _metricAltKnown = false;
-        _metricAltBaselined = false;
         // The roll callouts' ARM (never the speeds, which a reconnect does not reliably redeliver):
         // a flight load delivers the per-frame airspeed ahead of the 1 Hz SIM_ON_GROUND, so an arm
         // kept from a parked aircraft would call V1, Rotate and V2 at the loaded cruise.
@@ -1222,9 +1228,10 @@ public partial class FlyByWireA380Definition
         // the same word but is deliberately NOT reset here: this runs after the reconnect's first
         // batch has re-fired every var, so clearing _metricAltBaselined here swallowed the first
         // real MTRS change after a reconnect, and clearing the unit (_metricAlt/_metricAltKnown)
-        // sent the read-outs and the Altitude window back to feet on a metric FCU. All three are
-        // OnSimContextReset's, on the way down. (_fmaFgBitState has the same ordering hazard; it
-        // predates this and is left as it was.)
+        // sent the read-outs and the Altitude window back to feet on a metric FCU. Only
+        // _metricAltKnown is reset, by OnSimContextReset on the way down; the baseline is never
+        // reset, and the FCU settle absorbs a new context's first words. (_fmaFgBitState has the
+        // same ordering hazard; it predates this and is left as it was.)
         _fmaFgBitState.Clear();
         // External power (GPU) available, per GPU 1-4 (A380X_GND_GPU_AVAIL_n): gate is
         // prev >= 0 (declared sentinel -1 = unseen), independent per index — no

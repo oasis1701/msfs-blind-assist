@@ -72,7 +72,7 @@ public class A380TakeoffCalloutsTests : IDisposable
     [InlineData("V2", "PFD_V2", "AIRLINER_V2_SPEED")]
     public void Each_callout_is_muted_by_its_v_speed_row(string callout, string key, string name)
     {
-        Assert.Equal(key, A380TakeoffCallouts.MuteKeyFor(callout));
+        Assert.Equal(key, A380TakeoffCallouts.Keys.MuteKeyFor(callout));
         var row = Vars[key];
         Assert.Equal(name, row.Name);                                    // what the A380 FMS writes
         Assert.Equal(UpdateFrequency.Continuous, row.UpdateFrequency);

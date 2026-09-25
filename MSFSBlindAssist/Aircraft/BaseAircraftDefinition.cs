@@ -679,6 +679,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <summary>Begin the FCU callouts' settle (MainForm: a profile switched while a flight loads).</summary>
     internal void BeginFcuValueSettle() => _fcuValues.BeginSettle();
 
+    /// <summary>A flight load, reconnect or FCU power-up is still settling: the values arriving now
+    /// describe a new situation, not a change anyone made.</summary>
+    protected bool IsFcuValueSettling => _fcuValues.IsSettling;
+
     // Variable Update Processing
 
     /// <summary>
@@ -860,6 +864,13 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <inheritdoc />
     /// <remarks>None by default: a branch's call-outs are its own row's.</remarks>
     public virtual bool IsMuteWrapExempt(string varName) => false;
+
+    /// <inheritdoc />
+    /// <remarks>None by default: only the airframes with take-off roll callouts have a feed.</remarks>
+    public virtual string? TakeoffCalloutFeedKey => null;
+
+    /// <inheritdoc />
+    public virtual bool TakeoffCalloutFeedNeeded => true;
 
     /// <inheritdoc />
     /// <remarks>Most definitions hold nothing, so the batch hook never fires for them.</remarks>

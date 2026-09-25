@@ -71,10 +71,23 @@ public partial class FlyByWireA380Definition
         _commandedValues[varKey] = (Math.Round(value), Environment.TickCount64);
 
     /// <summary>
-    /// The FD pushbutton event to send for a set of ANY flight-director key, or null when the
-    /// flight directors are already where the pilot asked. Judged against the commanded-or-cached
-    /// state of the one FD light, and records what it commands — which is what turns a set of
-    /// both "sides" into a single press. Internal so tests reach it without a SimConnect send.
+    /// Whether <paramref name="value"/>, just delivered for <paramref name="varKey"/>, is the echo of a
+    /// set MSFSBA made (<see cref="RememberCommandedValue"/>) within <see cref="CommandedValueMs"/>.
+    /// Consumes the record either way: a different value supersedes the command.
+    /// </summary>
+    private bool IsCommandedEcho(string varKey, double value)
+    {
+        if (!_commandedValues.Remove(varKey, out var commanded)) return false;
+        return Environment.TickCount64 - commanded.Tick < CommandedValueMs
+            && Math.Abs(value - commanded.Value) < 0.001;
+    }
+
+    /// <summary>
+    /// The FD pushbutton event to send for a Flight Directors set, or null when the flight
+    /// directors are already where the pilot asked. Judged against the commanded-or-cached state of
+    /// the one FD light, and records what it commands — so a second set inside one batch period is
+    /// judged against the first, not the stale cache. Internal so tests reach it without a
+    /// SimConnect send.
     /// </summary>
     internal string? FlightDirectorCommand(double desired, SimConnectManager simConnect)
     {
@@ -130,12 +143,17 @@ public partial class FlyByWireA380Definition
         if (_metricCommanded is { } c)
         {
             bool lapsed = Environment.TickCount64 - c.Tick >= CommandedValueMs;
-            bool confirmed = _metricAltKnown && _metricAlt == c.Value;
+            bool confirmed = MetricAltIsKnown && _metricAlt == c.Value;
             if (lapsed || confirmed) _metricCommanded = null;
             else return c.Value;
         }
-        return _metricAltKnown ? _metricAlt : null;
+        return MetricAltIsKnown ? _metricAlt : null;
     }
+
+    /// <summary>Whether <c>_metricAlt</c> describes THIS context: a word has arrived since the last
+    /// context reset, or the reset's settle has ended without one — the word was unchanged, so the
+    /// flight load never re-delivered it, and the last one stands.</summary>
+    private bool MetricAltIsKnown => _metricAltKnown || (_metricAltBaselined && !IsFcuValueSettling);
 
     /// <summary>
     /// An ECAM Control Panel key (<c>A32NX_BTN_*</c>). Since FBW #10934 the FWS samples these once per
@@ -701,8 +719,8 @@ public partial class FlyByWireA380Definition
         }
         // Every OTHER EFIS Control Panel control is a direct L:var write on the A380X. What is
         // actually left here is the VV/CSTR/ARPT option buttons. (The hPa/inHg baro-unit selector
-        // is A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG since FBW #10855, a plain FCU input the generic
-        // A32NX_ catch-all at the bottom writes.) ND mode/range are claimed just above, the
+        // is A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG since FBW #10855, a plain FCU input written by its
+        // own branch below, which records the write for the echo.) ND mode/range are claimed just above, the
         // WPT/VOR/NDB filter by NdFilterSelection earlier, and navaid 1/2, LS, TRAF, the WX/TERR
         // overlay and the OANS range by A380EfisCpControls.Handles ~50 lines above — every one of those is an
         // FCU-SHIM OUTPUT for which this write is DEAD. (The old wording listed them all as
@@ -718,16 +736,26 @@ public partial class FlyByWireA380Definition
             return true;
         }
         // Flight directors (CORRECTED 2026-09 for FBW #10855): ONE FCU pushbutton, read from its
-        // light and pressed only when the pick differs. The FCU combo and the two legacy per-side
-        // keys all land here and share ONE commanded state, so setting both sides — what the old
-        // per-side combos invited, and what the First Officer's cockpit-prep step does — presses
-        // the button once instead of twice (two presses cancel). Never K:TOGGLE_FLIGHT_DIRECTOR:
-        // see A380FlightDirector.
-        if (A380FlightDirector.IsControlKey(varKey))
+        // light and pressed only when the pick differs, judged against the state MSFSBA last
+        // commanded (a second pick inside one batch period would otherwise press again and undo
+        // the first). Never K:TOGGLE_FLIGHT_DIRECTOR: see A380FlightDirector.
+        if (varKey == A380FlightDirector.StateKey)
         {
             if (FlightDirectorCommand(value, simConnect) is { } fdEvent) simConnect.SendEvent(fdEvent);
             // Nothing sent, so nothing will change: re-read so the combo shows the live state.
             else simConnect.RequestVariable(varKey, forceUpdate: true);
+            return true;
+        }
+        // EFIS-CP hPa/inHg selector, per side (1 = inHg): the same write the generic A32NX_ catch-all
+        // below makes, plus a record of it. The Baro window's unit combo sets BOTH sides through
+        // ApplyUIVariable, which MainForm's _uiSetEcho never sees, so without the record the pick came
+        // back as a "Captain …" and a "First officer …" altimeter call-out over a combo the screen
+        // reader had already read. The IS_INHG branch in ProcessSimVarUpdate drops that echo.
+        if (varKey is "A32NX_FCU_EFIS_L_BARO_IS_INHG" or "A32NX_FCU_EFIS_R_BARO_IS_INHG")
+        {
+            int inHg = value > 0.5 ? 1 : 0;
+            RememberCommandedValue(varKey, inHg);
+            simConnect.ExecuteCalculatorCode($"{inHg} (>L:{varKey})");
             return true;
         }
         // FCU altitude increment (0 = 100 ft, 1 = 1000 ft): the FCU's own absolute set, the event the

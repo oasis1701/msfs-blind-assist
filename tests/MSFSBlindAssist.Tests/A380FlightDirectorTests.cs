@@ -35,30 +35,35 @@ public class A380FlightDirectorTests
             + "read a stale value: " + string.Join(", ", stale));
     }
 
-    [Theory]
-    [InlineData(A380FlightDirector.StateKey)]
-    [InlineData("FD_1_CTL")]
-    [InlineData("FD_2_CTL")]
-    public void Every_flight_director_control_key_reads_the_fcu_pushbutton_light(string key)
+    [Fact]
+    public void The_flight_director_control_reads_the_fcu_pushbutton_light()
     {
-        Assert.True(A380FlightDirector.IsControlKey(key));
-        Assert.True(Vars().TryGetValue(key, out var def), $"'{key}' is not registered.");
+        Assert.True(Vars().TryGetValue(A380FlightDirector.StateKey, out var def));
         Assert.Equal("A32NX_FCU_FD_LIGHT_ON", def!.Name);
         Assert.Equal(SimVarType.LVar, def.Type);
     }
 
-    [Fact]
-    public void Exactly_one_flight_director_key_is_monitored()
+    [Theory]
+    [InlineData("FD_1_CTL")]
+    [InlineData("FD_2_CTL")]
+    public void The_per_side_keys_of_the_stock_var_era_are_gone(string key)
     {
-        // One button, one state, one call-out. The per-side keys stay registered for callers that
-        // set both sides, but a second Continuous var on the same Name would shift every later
-        // slot of the batch (VarNameCollisionTests) and speak the one change twice.
-        var monitored = Vars()
-            .Where(kv => kv.Value.Name == A380FlightDirector.StateKey
-                         && kv.Value.UpdateFrequency == UpdateFrequency.Continuous)
+        // One button drives both flight directors: a per-side key would be a second name for it,
+        // and a set of each would be two presses that cancel.
+        Assert.False(Vars().ContainsKey(key), $"'{key}' is still registered.");
+    }
+
+    [Fact]
+    public void Exactly_one_flight_director_key_reads_the_light()
+    {
+        // One button, one state, one call-out: a second key on the same Name would, as a Continuous
+        // var, shift every later slot of the batch (VarNameCollisionTests) and speak the one change twice.
+        var keys = Vars()
+            .Where(kv => kv.Value.Name == A380FlightDirector.StateKey)
             .Select(kv => kv.Key).ToList();
 
-        Assert.Equal(new[] { A380FlightDirector.StateKey }, monitored);
+        Assert.Equal(new[] { A380FlightDirector.StateKey }, keys);
+        Assert.Equal(UpdateFrequency.Continuous, Vars()[A380FlightDirector.StateKey].UpdateFrequency);
         Assert.True(Vars()[A380FlightDirector.StateKey].IsAnnounced);
     }
 
@@ -82,10 +87,10 @@ public class A380FlightDirectorTests
     }
 
     [Fact]
-    public void Setting_both_sides_on_presses_the_button_once()
+    public void A_repeated_pick_inside_one_batch_period_presses_once()
     {
-        // The First Officer's cockpit-prep step sets FD_1_CTL then FD_2_CTL ~200 ms apart — well
-        // inside one batch period, so the cache still shows the pre-press state for the second.
+        // Two "on" picks well inside one batch period: the cache still shows the pre-press state for
+        // the second, so it is judged against the state the first one commanded.
         var def = new FlyByWireA380Definition();
         var mgr = new SimConnectManager(IntPtr.Zero);   // never connected: the cache is empty
 

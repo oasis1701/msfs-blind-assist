@@ -87,6 +87,19 @@ public partial class MainForm
         currentAircraft?.OnQueuedEventDispatched(eventName);
     }
 
+    /// <summary>
+    /// Pause the take-off callouts' per-frame airspeed feed while the aircraft does not need it
+    /// (airborne, no roll armed) and resume it when it does (touchdown) — judged after each delivery of
+    /// the feed and of SIM_ON_GROUND, the only two things that change the answer. The manager ignores a
+    /// call that changes nothing, so this costs a dictionary lookup per frame while the feed runs.
+    /// </summary>
+    private void UpdateTakeoffCalloutFeed(string varName)
+    {
+        string? feed = currentAircraft?.TakeoffCalloutFeedKey;
+        if (feed == null || (varName != feed && varName != "SIM_ON_GROUND")) return;
+        simConnectManager?.SetSimFrameSubscriptionActive(feed, currentAircraft!.TakeoffCalloutFeedNeeded);
+    }
+
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
     {
         if (InvokeRequired)
@@ -211,6 +224,7 @@ public partial class MainForm
         {
             if (suppressDefAnnounce) announcer.Suppressed = prevSuppressed;
         }
+        UpdateTakeoffCalloutFeed(e.VarName);
 
         // Complete any pending display request for BOTH branches, before the def-handled early
         // return below. A var whose ProcessSimVarUpdate returns true still ARRIVED, and the panel
