@@ -1688,10 +1688,12 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// A32NX equivalent. The A320 has no D/Shift+D path of its own and drives its MCDU over
-    /// the SimBridge relay (not the Coherent MCDU bridge), so we read its FMS guidanceController
-    /// directly via a ONE-SHOT Coherent eval of the self-contained coherent-a32nx-flightinfo.js,
-    /// then announce identically to the A380 (PMDG-format TOD).
+    /// A32NX equivalent. We read the FMS guidanceController directly with the self-contained
+    /// coherent-a32nx-flightinfo.js evaluated on the MCDU's Coherent view, then announce
+    /// identically to the A380 (PMDG-format TOD). Coherent GT allows ONE inspector socket per
+    /// view: once the MCDU window has been opened, FlyByWireMCDUService holds that view's
+    /// socket for the rest of the aircraft session, so the script rides THAT socket; only
+    /// before the MCDU window has ever been opened is a one-shot eval used.
     /// </summary>
     public async void AnnounceA32NXFlightInfo(bool tod)
     {
@@ -1703,7 +1705,13 @@ public partial class MainForm
         string mcduView = (currentAircraft as Aircraft.FlyByWireA320Definition)?.FlightInfoMcduView
             ?? "A32NX_MCDU";
         string raw = "";
-        try { raw = await SimConnect.CoherentEvalClient.EvalAsync(mcduView, js); }
+        try
+        {
+            var mcduService = flyByWireMCDUService;
+            raw = mcduService is { HoldsMcduView: true }
+                ? await mcduService.EvalOnMcduViewAsync(js)
+                : await SimConnect.CoherentEvalClient.EvalAsync(mcduView, js);
+        }
         catch (Exception ex) { Log.Debug("MainForm", $"{ex.Message}"); }
         AnnounceFlightInfoJson(raw, tod);
     }

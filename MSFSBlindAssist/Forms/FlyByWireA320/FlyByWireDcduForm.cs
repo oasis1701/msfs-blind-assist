@@ -27,9 +27,10 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 /// Ctrl+PageDown step between messages. F5 refreshes.
 ///
 /// Transport: ONE-SHOT <see cref="SimConnect.CoherentEvalClient"/> evals of
-/// Resources/coherent-a32nx-dcdu.js against the "DCDU" Coherent view — NO
-/// persistent Coherent socket on the A32NX by policy (the A320 EWD scrape was
-/// removed over socket crash risk; one-shots are the flightInfo-proven path).
+/// Resources/coherent-a32nx-dcdu.js against the "DCDU" Coherent view. One-shots
+/// suit this window (a 1-2 s poll on a view nothing else holds); the former
+/// "no persistent Coherent socket on the A32NX" policy was retired 2026-09-25 —
+/// the MCDU now holds a persistent socket on ITS view (CoherentA32nxMcduClient).
 /// Refresh: on open, every 1 s while open (change-only, caret-preserving), and
 /// ~1.2 s after a soft key (the DCDU Button delays its action 1 s for its
 /// visual confirm). Soft keys fire the REAL DCDU H-events via the calc path
