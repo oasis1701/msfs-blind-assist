@@ -28,6 +28,15 @@ public class FlightPlan
     public DateTime? LoadedTime { get; set; }
     public string ExtractedFlightData { get; set; } = "";
 
+    // Aircraft and airline exactly as SimBrief filed them (aircraft/icaocode, aircraft/name,
+    // aircraft/max_passengers, general/icao_airline). The route briefing's taxi section classifies
+    // the aircraft from these ALONE (owner's choice: SimBrief-only, never the loaded aircraft).
+    // Empty / null when the OFP did not carry them.
+    public string AircraftTypeIcao { get; set; } = "";
+    public string AircraftName { get; set; } = "";
+    public int? AircraftMaxPassengers { get; set; }
+    public string AirlineIcao { get; set; } = "";
+
     /// <summary>
     /// Gets all waypoints in flight plan order (A through F)
     /// </summary>
