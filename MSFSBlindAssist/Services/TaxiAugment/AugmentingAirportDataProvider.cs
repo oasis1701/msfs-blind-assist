@@ -254,6 +254,30 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
         await FetchSharedAsync(icao).ConfigureAwait(false);
     }
 
+    // ── Route-briefing read of the online data ───────────────────────────────
+    /// <summary>
+    /// The cached online taxi data for an airport (every source that answered), for the route
+    /// BRIEFING's planning-only graph and nothing else. Read-only: nothing here merges geometry
+    /// into the navdata path, and TaxiDataMerger's rule ("navdata is AUTHORITATIVE; online-only
+    /// geometry is IGNORED — we only steer on navdata pavement") is untouched. Awaits the shared
+    /// fetch when nothing is cached; returns null when augmentation is disabled, when the fetch
+    /// does not complete before <paramref name="ct"/> is cancelled, or when it returned nothing.
+    /// </summary>
+    public async Task<IReadOnlyList<AirportTaxiData>?> GetOnlineTaxiDataAsync(string icao, CancellationToken ct)
+    {
+        if (!Enabled || string.IsNullOrWhiteSpace(icao)) return null;
+        if (_cache.TryLoad(icao, out var cached) && cached != null) return cached;
+        try
+        {
+            await PrefetchAsync(icao).WaitAsync(ct).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException)
+        {
+            return null;
+        }
+        return _cache.TryLoad(icao, out var fetched) && fetched != null ? fetched : null;
+    }
+
     // ── Merge implementation ─────────────────────────────────────────────────
     /// <summary>
     /// Runs the pure-geometry name-merger ONCE and captures its per-segment output (adopted name +
