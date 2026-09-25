@@ -118,7 +118,7 @@ public class PhaseContinuousOscillator : ISampleProvider
                 GenerateSawtoothWave();
                 break;
             case HandFlyWaveType.Square:
-                GenerateSquareWave();
+                GenerateRichSineWave();
                 break;
         }
     }
@@ -155,10 +155,12 @@ public class PhaseContinuousOscillator : ISampleProvider
         }
     }
 
-    private void GenerateSquareWave()
+    /// <summary>Despite the enum member being called <c>Square</c>, this is a WARM SINE —
+    /// fundamental plus a 25% second harmonic — not a square wave. The name is kept on the enum
+    /// because settings serialise by name; the method and the pilot-facing label say what it
+    /// actually is ("Sine (Rich)").</summary>
+    private void GenerateRichSineWave()
     {
-        // Generate "warm sine" - fundamental sine + second harmonic for richness
-        // This creates a smooth, warm tone distinct from pure sine
         for (int i = 0; i < wavetableSize; i++)
         {
             double angle = 2.0 * Math.PI * i / wavetableSize;

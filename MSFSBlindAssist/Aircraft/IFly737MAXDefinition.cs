@@ -32,6 +32,39 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // Measured on the PMDG 737 and validated in-sim; same airframe class.
     public override double TaxiTurnLeadSeconds => 0.4;
 
+    // Waypoint Flight Director: 737-class narrowbody — rolls about as briskly as an A320, so the
+    // baseline profile fits. Stated explicitly rather than inherited so the choice is visible
+    // (same reason the FBW A320 and Fenix defs spell theirs out); values equal
+    // BaseAircraftDefinition's defaults, so this is a no-op today.
+    //
+    // NOTE the taxi-turn lead above is NOT evidence for BankRateLeadSec: that 0.4 s is a measured
+    // GROUND-steering figure dominated by the pilot's own rollout anticipation, whereas the FD's
+    // lead models airframe roll rate in flight. The PMDG 777 shows the same split (taxi 0.3 s,
+    // FD lead 1.3 s) — don't derive one from the other. Best-effort default; calibrate in-sim.
+    // Bank cap from the type: the 737 AFDS commands up to 30° in LNAV above 200 ft AGL (8° below),
+    // and the FMC plans turns at ~25° to keep 5° spare for correction — so 30 is the real ceiling,
+    // not the Airbus-derived 25 this inherited from the baseline. Approach-AoA fallback 5.0 to match
+    // the figure this same airframe already uses in its Visual Guidance profile: it was 6.0 here and
+    // 5.0 there, two values for one physical quantity on one aircraft. Published 737 approach
+    // attitude is ~2.5° pitch on a 3° path ≈ 5-5.5° AoA. CLASS-1 figures; gain/lead still estimates.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        MaxBankDeg            = 30.0,   // AFDS LNAV limit above 200 ft AGL
+        TypicalApproachAoaDeg = 5.0     // matches this airframe's VG profile
+    };
+
+    // Visual Landing Guidance: same 737 airframe class as the PMDG 737-800, so the same three
+    // Boeing-flare deltas off the (Airbus-tuned) baseline — flare initiated at ~20 ft RA rather
+    // than 30, flare attitude ~+5° rather than +6°, and a 5° approach-AoA fallback. See the fuller
+    // rationale on PMDG737Definition.GetVisualGuidanceProfile. Estimates pending in-sim
+    // calibration, like the baseline's own datum biases.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 5.0,
+        FlareTriggerWheelHeightFt = 20.0,
+        FlareTargetPitchDeg       = 5.0
+    };
+
     /// <summary>The shared-memory SDK client. Owned by the definition; started/bridged by MainForm.</summary>
     public IFlySdkClient Sdk { get; } = new();
 

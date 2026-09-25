@@ -49,6 +49,83 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // yaw inertia in the fleet needs the most lead. 1.8 s; re-measure from telemetry.
     public override double TaxiTurnLeadSeconds => 1.8;
 
+    // Waypoint Flight Director: very heavy quad — the gentlest roll gain, largest capture radius
+    // and longest rate-lead of the fleet (it rolls the slowest). Best-effort defaults; tune in-sim.
+    public override WaypointFlightDirectorProfile GetWaypointFlightDirectorProfile() => new()
+    {
+        // MEASURED off the aeroplane, 2026-09 (four AP-flown HDG SEL turns at 4000 ft: right and
+        // left at 180 kt, then right and left at 280 kt), sampling bank + magnetic heading at 4 Hz.
+        //
+        // ⚠️ The A380 does NOT roll like the 777, and this is why a gain must never be copied between
+        // airframes. The 777 bleeds bank off in PROPORTION to remaining error (a flat 2.35 ratio all
+        // the way down). The A380 holds FULL bank until it is ~5° from the target and then rolls out
+        // hard at ~3.7°/s, arriving with about a third of a degree of overshoot. Fitting a
+        // proportional law to that gives a ratio climbing 2.5 -> 15 as the error shrinks; the shape is
+        // saturated-then-rate-limited, not proportional.
+        //
+        // The load-bearing number is therefore the ROLLOUT ONSET, which replicated at ~5° of error in
+        // both directions. Modelled as saturate-then-slew: gain 5.0 puts the command on the 25° cap
+        // until exactly 5° of error (25 / 5.0), and MaxBankRateDegPerSec then shapes the rollout the
+        // way the aeroplane actually does it. The old 0.85 commanded about a SIXTH of the bank this
+        // aircraft uses.
+        KRollDegPerDegTrack = 5.0,
+        // Measured across four turns: 25.7 / 24.2° at 180 kt, 26.4 / 23.1° at 280 kt. Mean 24.85, so
+        // 25 is the right number. The cap does NOT scale down with true airspeed — the Airbus
+        // "Roll Limit 2 = 15-25 with TAS" range does not show here, exactly as the equivalent Boeing
+        // AUTO range did not on the 777.
+        // ⚠️ Note the LEFT/RIGHT asymmetry, which grows with speed (1.5° apart at 180 kt, 3.3° at
+        // 280). Both directions were flown by the same autopilot in the same conditions, so it is a
+        // property of the aircraft, not the measurement. A single cap cannot express it and 25 splits
+        // it; do not "correct" the number from a one-direction run.
+        MaxBankDeg          = 25.0,
+        // Measured roll rate 3.7°/s in and out. On this airframe the slew cap is not a safety net —
+        // it IS the rollout law, because the aeroplane rolls out at a rate rather than proportionally.
+        MaxBankRateDegPerSec = 3.7,
+        MaxPitchDeg         = 10.0,
+        CaptureRadiusNm     = 0.9,
+        LowSpeedFloorKts    = 60.0,
+        // ZERO, and this is a DELIBERATE COMPROMISE rather than a clean fit — read on before
+        // "improving" it.
+        //
+        // At 180 kt the rollout onset (5°) is exactly MaxBankDeg / gain with no lead, so zero is
+        // right there. But the 280 kt run showed the onset moves with speed: 5.0° of error at 180 kt
+        // versus ~3.1° at 280 (5.0/5.0 left and right, 3.0/3.2 left and right — the speed dependence
+        // replicated in BOTH directions at BOTH speeds). That is the opposite direction from what this
+        // law can produce — its onset is `MaxBankDeg / gain + turnRate * lead`, and turn rate FALLS at higher speed for the
+        // same bank, so any positive lead makes the onset shrink LESS than measured, never more.
+        // Solving both runs simultaneously needs MaxBankDeg / gain = -2.46, i.e. no valid pair of
+        // (gain, lead) reproduces both speeds. The A380 rolls out on something closer to constant
+        // TIME-to-target (2.13 s at 180 kt, 1.74 s at 280) where the 777 uses a constant HEADING lead
+        // (10.8° / 10.3°, i.e. 4.3 s vs 6.4 s) — two aircraft, two different anticipation strategies,
+        // and this law's form can only express the 777's.
+        //
+        // Tuned for the slower regime, which is where a hand-flying pilot actually needs the cue
+        // (departure, approach, circuits). Expect the rollout to be commanded slightly EARLY at high
+        // cruise speeds. Fixing it properly means giving the law a time-to-target term, which is a
+        // change to the shared geometry and not something to bolt on for one airframe.
+        BankRateLeadSec     = 0.0,
+        TypicalApproachAoaDeg = 4.0,
+        TonePitchRangeDeg   = 10.0   // == MaxPitchDeg, so the tone spans the whole command range
+    };
+
+    // Visual Landing Guidance: the A380 is a heavy widebody and must NOT use the A320 baseline
+    // (which flares ~one bias too late and reads high on the glidepath for a big jet). Modelled on
+    // the MEASURED PMDG 777 widebody profile + A380 published approach performance (Vref ~140 kt at
+    // typical landing weight, low approach AoA from the very large wing). The glidepath/flare biases
+    // are 777-class ESTIMATES pending an in-sim coupled-ILS-autoland calibration on the A380.
+    public override VisualGuidanceProfile GetVisualGuidanceProfile() => new()
+    {
+        TypicalApproachAoaDeg     = 4.0,
+        ReferenceVrefKnots        = 140.0,
+        MaxPitchRateDegPerSec     = 2.0,
+        MaxBankRateDegPerSec      = 3.0,
+        GlideslopeAltitudeBiasFt  = 80.0,   // 777-class estimate — calibrate vs a coupled ILS autoland
+        FlareAltitudeBiasFt       = 40.0,   // 777-class estimate
+        FlareTriggerWheelHeightFt = 50.0,   // A380 flares at the 50 ft RA callout (user-confirmed)
+        FlareTargetPitchDeg       = 4.5,
+        TonePitchRangeDeg         = 10.0
+    };
+
     // The FBW ice-stick announcer (see the A32NX_ICING_STATE_ICING_STICK_INDICATOR
     // block) is this airframe's single icing voice; the generic announcer yields.
     public override bool HasOwnIcingAnnouncer => true;
