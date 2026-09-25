@@ -263,6 +263,23 @@ public partial class SimConnectManager
                 });
                 break;
 
+            case DATA_REQUESTS.REQUEST_FO_GEAR_POSITIONS:
+                // Left, center, right gear-leg positions (percent) — see RequestFOGearPositions.
+                DoubleValueTriple foGear = (DoubleValueTriple)data.dwData[0];
+                foreach (var (name, pct) in new[] {
+                    ("FO_GEAR_LEFT_POS", foGear.value1),
+                    ("FO_GEAR_CENTER_POS", foGear.value2),
+                    ("FO_GEAR_RIGHT_POS", foGear.value3) })
+                {
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = name,
+                        Value = pct,
+                        Description = $"{pct:0}"
+                    });
+                }
+                break;
+
             case DATA_REQUESTS.REQUEST_AIRSPEED_TAS:
                 SingleValue tasData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs

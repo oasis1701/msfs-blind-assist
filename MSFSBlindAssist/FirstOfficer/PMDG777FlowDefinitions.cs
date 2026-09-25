@@ -448,7 +448,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "AFTER_TAKEOFF",
         Name = "After Takeoff",
-        Description = "Cleans up lights and retracts gear/flaps after positive rate of climb, then confirms the flap and gear levers are up.",
+        Description = "Cleans up lights and retracts gear/flaps after positive rate of climb, then confirms the flap lever is up and the gear is up.",
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TKOF_CL" },
         Steps = new()
         {
@@ -476,12 +476,15 @@ public static class PMDG777FlowDefinitions
                     checklistItemId: "ATKOF_FLAPS"),
                 s => s.AreFlapsUp()),
             // Read-only: completes the After Takeoff Checklist's "Landing Gear: UP" (ATKOF_GEAR)
-            // once the lever reads UP. The lever WRITE above completes its own group's "Gear: UP"
-            // (ATKO_GEAR_UP), so a failed write is skipped aloud and leaves both lines live rather
-            // than latched. Lever-based: the 777 SDK exposes no gear lights. LAST, 20 s.
-            Skip(WaitForField("ATKOF_GEAR_UP_CHECK", "Landing Gear: UP", "GEAR_Lever", v => v < 0.5, 20,
-                    checklistItemId: "ATKOF_GEAR"),
-                s => s.IsGearUp()),
+            // once the gear is CONFIRMED up — lever UP and all three legs fully retracted
+            // (Pmdg777GearConfirmation: the 777 SDK exposes no gear lights, so the physical
+            // position comes from the stock GEAR x POSITION SimVars). The lever WRITE above
+            // completes its own group's "Gear: UP" (ATKO_GEAR_UP), so a failed write is skipped
+            // aloud and leaves both lines live rather than latched. LAST, 20 s — it starts
+            // several seconds after the lever write (the flaps steps and 2 s pacing sit between).
+            Skip(WaitForField("ATKOF_GEAR_UP_CHECK", "Landing Gear: UP", Pmdg777GearConfirmation.UpField,
+                    v => v > 0.5, 20, checklistItemId: "ATKOF_GEAR"),
+                s => s.IsGearConfirmedUp()),
         }
     };
 
@@ -532,7 +535,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "LANDING",
         Name = "Landing",
-        Description = "Speedbrake armed and missed approach altitude set for landing, then confirms the gear lever is down.",
+        Description = "Speedbrake armed and missed approach altitude set for landing, then confirms the gear is down.",
         RelatedChecklistGroupIds = new[] { "LANDING_CL" },
         Steps = new()
         {
@@ -551,18 +554,17 @@ public static class PMDG777FlowDefinitions
             // The 737's "Engine start switches: CONT" is deliberately NOT mirrored here —
             // 777 ignition is automatic and needs no CONT selection for landing.
             Captain("LD_MISSED",      "Set the missed approach altitude"),
-            // Read-only gear-down confirmation — it never moves the lever. Unlike the
-            // 737/iFly/Fenix gear checks, this does NOT use GearLightRules: the 777 SDK
-            // exposes no gear-indication lights, only GEAR_Lever, so the crew's usual
-            // "three green" confirmation is unavailable here and the lever is the only
-            // signal there is. LAST step of the flow, so the steps above are not held up;
-            // waits up to 20 s. If the lever is not confirmed down within that window the
-            // step is announced as skipped and FlowManager keeps LDG_GEAR out of
-            // MarkGroupComplete's latch, so the line keeps mirroring the real lever instead
-            // of reading complete over gear that is still up.
-            Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing Gear: DOWN", "GEAR_Lever", v => Math.Abs(v - 1) < 0.1, 20,
-                    checklistItemId: "LDG_GEAR"),
-                s => s.IsPosition("GEAR_Lever", 1)),
+            // Read-only gear-down confirmation — it never moves the lever. The 777 SDK exposes
+            // no gear-indication lights, so the crew's "three green" is composed from the lever
+            // DOWN and all three legs fully extended per the stock GEAR x POSITION SimVars
+            // (Pmdg777GearConfirmation, on the shared GearLightRules). LAST step of the flow,
+            // so the steps above are not held up; waits up to 20 s. If the gear is not
+            // confirmed down within that window the step is announced as skipped and
+            // FlowManager keeps LDG_GEAR out of MarkGroupComplete's latch, so the line keeps
+            // mirroring the real gear instead of reading complete over gear that is still up.
+            Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing Gear: DOWN", Pmdg777GearConfirmation.DownField,
+                    v => v > 0.5, 20, checklistItemId: "LDG_GEAR"),
+                s => s.IsGearConfirmedDown()),
         }
     };
 

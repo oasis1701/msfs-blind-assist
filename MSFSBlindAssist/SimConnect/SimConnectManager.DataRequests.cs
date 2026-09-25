@@ -530,6 +530,42 @@ public partial class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// Request the three stock gear-leg positions for the PMDG 777 First Officer's gear
+    /// confirmation (its SDK exposes no gear-indication lights). One definition carrying
+    /// GEAR LEFT / CENTER / RIGHT POSITION (percent — the unit the 777 System Display's Gear page
+    /// reads them in). Fires SimVarUpdated three times, VarName "FO_GEAR_LEFT_POS" /
+    /// "FO_GEAR_CENTER_POS" / "FO_GEAR_RIGHT_POS" (percent extended) — NOT announced.
+    /// </summary>
+    public void RequestFOGearPositions()
+    {
+        if (IsConnected && simConnect != null)
+        {
+            try
+            {
+                var defId = DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS;
+                SafelyClearDataDefinition(defId, requestId: null, delayMs: 50);
+                simConnect.AddToDataDefinition(defId,
+                    "GEAR LEFT POSITION", "percent",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.AddToDataDefinition(defId,
+                    "GEAR CENTER POSITION", "percent",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.AddToDataDefinition(defId,
+                    "GEAR RIGHT POSITION", "percent",
+                    SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+                simConnect.RegisterDataDefineStruct<DoubleValueTriple>(defId);
+                simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FO_GEAR_POSITIONS,
+                    defId, SIMCONNECT_OBJECT_ID_USER,
+                    SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            }
+            catch (Exception ex)
+            {
+                System.Diagnostics.Debug.WriteLine($"Error requesting FO gear positions: {ex.Message}");
+            }
+        }
+    }
+
     public void RequestAirspeedTrue()
     {
         if (!IsConnected || simConnect == null) return;

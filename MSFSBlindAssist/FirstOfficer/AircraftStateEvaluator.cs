@@ -21,7 +21,31 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     private double _eng1N2 = double.NaN;
     private double _eng2N2 = double.NaN;
 
+    // Gear-leg positions (percent extended; left main, nose, right main), pushed from the same
+    // timer via SetGearPosition — NaN until the first push, so the gear verdicts stay unknown
+    // rather than guessing. Indexed as Pmdg777GearConfirmation.PositionFields.
+    private readonly double[] _gearPct = { double.NaN, double.NaN, double.NaN };
+
     public AircraftStateEvaluator() { }
+
+    private static int GearLegIndex(string fieldName)
+    {
+        var fields = Pmdg777GearConfirmation.PositionFields;
+        for (int i = 0; i < fields.Count; i++)
+            if (fields[i] == fieldName) return i;
+        return -1;
+    }
+
+    /// <summary>
+    /// Store one gear leg's position (percent extended), fed by FirstOfficerForm from the stock
+    /// GEAR LEFT/CENTER/RIGHT POSITION SimVars. <paramref name="field"/> is one of
+    /// <see cref="Pmdg777GearConfirmation.PositionFields"/>; anything else is ignored.
+    /// </summary>
+    public void SetGearPosition(string field, double percent)
+    {
+        int leg = GearLegIndex(field);
+        if (leg >= 0) System.Threading.Volatile.Write(ref _gearPct[leg], percent);
+    }
 
     /// <summary>Update the data manager reference (called when sim connects/disconnects).</summary>
     public void SetDataManager(PMDG777DataManager? dm) => _dm = dm;
@@ -62,6 +86,16 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         // CDA snapshot has not landed, which is precisely when an engine start happens.
         if (fieldName == "FO_ENG1_N2") return System.Threading.Volatile.Read(ref _eng1N2);
         if (fieldName == "FO_ENG2_N2") return System.Threading.Volatile.Read(ref _eng2N2);
+
+        // Gear-leg positions come from SimConnect too (stock GEAR x POSITION, percent) —
+        // served ahead of the CdaReady gate for the same reason as N2.
+        int leg = GearLegIndex(fieldName);
+        if (leg >= 0) return System.Threading.Volatile.Read(ref _gearPct[leg]);
+
+        // Landing gear confirmed UP / DOWN from the lever AND the physical leg positions
+        // (Pmdg777GearConfirmation). NaN until the lever (CDA) and all three legs are known.
+        if (fieldName == Pmdg777GearConfirmation.UpField)   return Pmdg777GearConfirmation.UpValue(GetValue);
+        if (fieldName == Pmdg777GearConfirmation.DownField) return Pmdg777GearConfirmation.DownValue(GetValue);
 
         if (!CdaReady) return double.NaN;
         try { return _dm?.GetFieldValue(fieldName) ?? double.NaN; }
@@ -232,6 +266,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // GearLever: 0=Up, 1=Down
     public bool IsGearDown()             => IsPosition("GEAR_Lever", 1);
     public bool IsGearUp()               => IsPosition("GEAR_Lever", 0);
+
+    // Gear CONFIRMED from the lever AND the physical leg positions (Pmdg777GearConfirmation);
+    // false (never true) while any reading is unknown.
+    public bool IsGearConfirmedUp()      => IsPosition(Pmdg777GearConfirmation.UpField, 1);
+    public bool IsGearConfirmedDown()    => IsPosition(Pmdg777GearConfirmation.DownField, 1);
 
     // Autobrake (PMDG_777X_SDK.h line 272): 0=RTO, 1=Off, 2=Disarm, 3="1", 4="2",
     // 5="3", 6="4", 7=Max Auto. The DISARM detent used to be missing from this map;

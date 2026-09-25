@@ -172,6 +172,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
                 if (_stateEval is MSFSBlindAssist.FirstOfficer.IFly737.IFly737StateEvaluator)
                     _simConnect.RequestFOCenterFuelLbs();
 
+                // PMDG 777 only: its SDK exposes no gear lights, so the checklist gear lines
+                // confirm the physical gear from the stock GEAR x POSITION SimVars
+                // (Pmdg777GearConfirmation; pushed back via OnSimVarUpdated -> SetGearPosition).
+                if (_stateEval is MSFSBlindAssist.FirstOfficer.AircraftStateEvaluator)
+                    _simConnect.RequestFOGearPositions();
+
                 // LVar-based profiles (Fenix/FBW): poll OnRequest-registered control vars
                 // onto the cache so checklist auto-detection can read them. PMDG evaluators
                 // are not LVarStateEvaluator, so this is a no-op for them.
@@ -300,6 +306,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             case "FO_AIRSPEED_IAS":  _latestIas = e.Value; break;
             case "FO_ENG1_N2":       _latestEng1N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
             case "FO_ENG2_N2":       _latestEng2N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
+            case "FO_GEAR_LEFT_POS":
+            case "FO_GEAR_CENTER_POS":
+            case "FO_GEAR_RIGHT_POS":
+                if (_stateEval is MSFSBlindAssist.FirstOfficer.AircraftStateEvaluator eval777)
+                    eval777.SetGearPosition(e.VarName, e.Value);
+                break;
             case "FO_CENTER_FUEL_LBS":
                 if (_stateEval is MSFSBlindAssist.FirstOfficer.IFly737.IFly737StateEvaluator iflyEval)
                     iflyEval.SetSimCenterFuelLbs(e.Value);

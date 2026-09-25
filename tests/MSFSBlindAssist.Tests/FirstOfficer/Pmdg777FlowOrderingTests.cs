@@ -429,8 +429,9 @@ public class Pmdg777FlowOrderingTests
             //
             // ONE item is left out, deliberately: the After Takeoff flow completes
             // AFTER_TKOF_CL's ATKOF_GEAR ("Landing Gear: UP", listed first) from its LAST step,
-            // a read-only up-to-20 s lever check (the 777 SDK has no gear lights), placed last so
-            // a slow gear confirmation never holds up the flaps — so it ticks after ATKOF_FLAPS.
+            // a read-only up-to-20 s check that the gear is physically up (lever plus the stock
+            // gear-leg positions — the 777 SDK has no gear lights), placed last so a slow gear
+            // confirmation never holds up the flaps — so it ticks after ATKOF_FLAPS.
             // Only that one item is excused; every other item in every group, including any
             // later added to AFTER_TKOF_CL, is still checked.
             var linked = flow.Steps

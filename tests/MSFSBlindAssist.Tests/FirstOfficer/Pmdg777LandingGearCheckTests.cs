@@ -8,11 +8,11 @@ namespace MSFSBlindAssist.Tests;
 
 /// <summary>
 /// PMDG 777 First Officer gear checks. The Landing flow latches LANDING_CL complete, and
-/// LDG_GEAR ("Landing Gear: DOWN", GEAR_Lever == 1) had no step behind it — running the flow
-/// before lowering the gear locked the line complete over gear still up. Unlike the
-/// iFly/Fenix/737 gear checks, the 777 SDK exposes no gear-indication lights (only
-/// GEAR_Lever), so this does NOT use GearLightRules: it is a read-only wait on the LEVER,
-/// matching the same aircraft's existing After Takeoff gear-up WRITE step (ATKOF_GEAR_UP).
+/// LDG_GEAR ("Landing Gear: DOWN") had no step behind it — running the flow before lowering
+/// the gear locked the line complete over gear still up. The 777 SDK exposes no
+/// gear-indication lights, so the check reads the lever AND the stock gear-leg positions
+/// (Pmdg777GearConfirmation, 2026-09-25 — it read the lever alone before; see
+/// Pmdg777GearConfirmationTests), the same shape as the After Takeoff gear-up check.
 /// That write step's event, target and verify are unchanged; only its checklist LINK moved,
 /// to its own action group's "Gear: UP" (ATKO_GEAR_UP) — a second read-only step,
 /// ATKOF_GEAR_UP_CHECK, now completes the checklist's "Landing Gear: UP" (ATKOF_GEAR)
@@ -32,7 +32,9 @@ public class Pmdg777LandingGearCheckTests
         Assert.Equal("LD_GEAR_DOWN_CHECK", step.Id);
         Assert.Equal("Landing Gear: DOWN", step.Label);
         Assert.Equal(FlowStepActionType.WaitForCondition, step.ActionType);
-        Assert.Equal("GEAR_Lever", step.ConditionFieldName);
+        // Lever DOWN AND all three legs extended (Pmdg777GearConfirmation) — no longer the
+        // lever alone; the field reads 1 = confirmed, 0 = not, NaN = unknown.
+        Assert.Equal(Pmdg777GearConfirmation.DownField, step.ConditionFieldName);
         Assert.Equal("LDG_GEAR", step.CompletesChecklistItemId);
 
         // A timeout must SKIP (so FlowManager keeps LDG_GEAR out of the completion
@@ -101,7 +103,9 @@ public class Pmdg777LandingGearCheckTests
         Assert.Equal("ATKOF_GEAR_UP_CHECK", step.Id);
         Assert.Equal("Landing Gear: UP", step.Label);
         Assert.Equal(FlowStepActionType.WaitForCondition, step.ActionType);
-        Assert.Equal("GEAR_Lever", step.ConditionFieldName);
+        // Lever UP AND all three legs retracted (Pmdg777GearConfirmation) — no longer the
+        // lever alone; the field reads 1 = confirmed, 0 = not, NaN = unknown.
+        Assert.Equal(Pmdg777GearConfirmation.UpField, step.ConditionFieldName);
         Assert.Equal("ATKOF_GEAR", step.CompletesChecklistItemId);
 
         // A timeout must SKIP (so FlowManager keeps ATKOF_GEAR out of the completion
@@ -114,8 +118,8 @@ public class Pmdg777LandingGearCheckTests
         Assert.Empty(step.MultiActions);
 
         Assert.NotNull(step.Condition);
-        Assert.True(step.Condition!(0));
-        Assert.False(step.Condition!(1));
+        Assert.True(step.Condition!(1));
+        Assert.False(step.Condition!(0));
         Assert.False(step.Condition!(double.NaN));
 
         Assert.NotNull(step.SkipCondition);
