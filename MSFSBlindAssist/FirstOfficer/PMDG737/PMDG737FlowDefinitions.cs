@@ -123,9 +123,9 @@ public static class PMDG737FlowDefinitions
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 0), ("EVT_OH_FUEL_PUMP_R_CENTER", 0)),
             SW("PF_EMER", "Emergency exit lights: ARMED", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 1, checklistItemId: "PF_EMER"),
             SW("PF_BELTS", "Seatbelt signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2, checklistItemId: "PF_BELTS"),
-            Multi("PF_WINHEAT", "Window heat: ON", "PF_WINHEAT",
+            Also(Multi("PF_WINHEAT", "Window heat: ON", "PF_WINHEAT",
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 1), ("EVT_OH_ICE_WINDOW_HEAT_2", 1),
-                ("EVT_OH_ICE_WINDOW_HEAT_3", 1), ("EVT_OH_ICE_WINDOW_HEAT_4", 1)),
+                ("EVT_OH_ICE_WINDOW_HEAT_3", 1), ("EVT_OH_ICE_WINDOW_HEAT_4", 1)), "PFC_WINHEAT"),
             Multi("PF_PROBE_OFF", "Probe heat: OFF", "PF_PROBE_OFF", ("EVT_OH_ICE_PROBE_HEAT_1", 0), ("EVT_OH_ICE_PROBE_HEAT_2", 0)),
             SW("PF_WAI_OFF", "Wing anti-ice: OFF", "EVT_OH_ICE_WING_ANTIICE", 0, checklistItemId: "PF_WAI"),
             Multi("PF_EAI_OFF", "Engine anti-ice: OFF", "PF_EAI_OFF", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
@@ -222,7 +222,7 @@ public static class PMDG737FlowDefinitions
             Multi("BS_HYDENG", "Engine hydraulic pumps: ON", "BS_HYDENG", ("EVT_OH_HYD_ENG1", 1), ("EVT_OH_HYD_ENG2", 1)),
             Multi("BS_HYD", "Electric hydraulic pumps: ON", "BS_HYD", ("EVT_OH_HYD_ELEC1", 1), ("EVT_OH_HYD_ELEC2", 1)),
             SW("BS_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1, checklistItemId: "BS_APUBLEED"),
-            SW("BS_ANTICOL", "Anti-collision light: ON", "EVT_OH_LIGHTS_ANT_COL", 1, checklistItemId: "BS_ANTICOL"),
+            Also(SW("BS_ANTICOL", "Anti-collision light: ON", "EVT_OH_LIGHTS_ANT_COL", 1, checklistItemId: "BS_ANTICOL"), "BSC_ANTICOL"),
             SW("BS_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4, checklistItemId: "BS_XPDR"),
             Captain("BS_GND", "Confirm ground power and chocks removed, doors closed."),
             Captain("BS_ACARS", "Start ACARS"),
@@ -292,14 +292,14 @@ public static class PMDG737FlowDefinitions
         Steps = new()
         {
             // --- After-start power transfer (folded in from the former After Start flow) ---
-            Multi("BT_GEN", "Generators: ON", "BT_GEN", ("EVT_OH_ELEC_GEN1_SWITCH", 1), ("EVT_OH_ELEC_GEN2_SWITCH", 1)),
+            Also(Multi("BT_GEN", "Generators: ON", "BT_GEN", ("EVT_OH_ELEC_GEN1_SWITCH", 1), ("EVT_OH_ELEC_GEN2_SWITCH", 1)), "BTC_GEN"),
             SW("BT_APUBLEED_OFF", "APU bleed air: OFF", "EVT_OH_BLEED_APU_SWITCH", 0, checklistItemId: "BT_APUBLEED_OFF"),
             SW("BT_APU_OFF", "APU selector: OFF", "EVT_OH_LIGHTS_APU_START", 0, checklistItemId: "BT_APU"),
             // --- Before-taxi setup ---
-            Multi("BT_PROBE", "Probe heat: ON", "BT_PROBE", ("EVT_OH_ICE_PROBE_HEAT_1", 1), ("EVT_OH_ICE_PROBE_HEAT_2", 1)),
+            Also(Multi("BT_PROBE", "Probe heat: ON", "BT_PROBE", ("EVT_OH_ICE_PROBE_HEAT_1", 1), ("EVT_OH_ICE_PROBE_HEAT_2", 1)), "BTC_PROBE"),
             Multi("BT_PACKS", "Packs: AUTO", "BT_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
-            SW("BT_ISO", "Isolation valve: AUTO", "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH", 1, checklistItemId: "BT_ISO"),
-            Multi("BT_START_CONT", "Engine start switches: CONT", "BT_START", ("EVT_OH_LIGHTS_L_ENGINE_START", 2), ("EVT_OH_LIGHTS_R_ENGINE_START", 2)),
+            Also(SW("BT_ISO", "Isolation valve: AUTO", "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH", 1, checklistItemId: "BT_ISO"), "BTC_ISO"),
+            Also(Multi("BT_START_CONT", "Engine start switches: CONT", "BT_START", ("EVT_OH_LIGHTS_L_ENGINE_START", 2), ("EVT_OH_LIGHTS_R_ENGINE_START", 2)), "BTC_START"),
             Captain("BT_ANTIICE", "Set engine and wing anti-ice as required for conditions."),
             SW("BT_TAXI", "Taxi light: ON", "EVT_OH_LIGHTS_TAXI", 1, checklistItemId: "BT_TAXI"),
             Multi("BT_TURNOFF", "Runway turnoff lights: ON", "BT_TURNOFF", ("EVT_OH_LIGHTS_L_TURNOFF", 1), ("EVT_OH_LIGHTS_R_TURNOFF", 1)),
@@ -486,8 +486,8 @@ public static class PMDG737FlowDefinitions
             // transfer bus 2 on its engine generator until the levers cut it off).
             Multi("SD_APUGEN", "APU generators: ON", "SD_APUGEN",
                 ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
-            Multi("SD_LEVERS", "Engine start levers: CUTOFF", "SD_LEVERS",
-                ("EVT_CONTROL_STAND_ENG1_START_LEVER", 0), ("EVT_CONTROL_STAND_ENG2_START_LEVER", 0)),
+            Also(Multi("SD_LEVERS", "Engine start levers: CUTOFF", "SD_LEVERS",
+                ("EVT_CONTROL_STAND_ENG1_START_LEVER", 0), ("EVT_CONTROL_STAND_ENG2_START_LEVER", 0)), "SDC_LEVERS"),
             // (No spool-down wait — mirrors the 777 shutdown: nothing downstream needs the
             // engines stopped, and the old start-valve wait was an instant no-op anyway.)
             SW("SD_BELTS", "Seatbelt signs: OFF", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0, checklistItemId: "SD_BELTS"),
@@ -495,10 +495,10 @@ public static class PMDG737FlowDefinitions
             SW("SD_TAXI_OFF", "Taxi light: OFF", "EVT_OH_LIGHTS_TAXI", 0, checklistItemId: "SD_TAXI"),
             SW("SD_LOGO_OFF", "Logo lights: OFF", "EVT_OH_LIGHTS_LOGO", 0, checklistItemId: "SD_LOGO"),
             SW("SD_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1, checklistItemId: "SD_APUBLEED"),
-            Multi("SD_FUEL_OFF", "Fuel pumps: OFF", "SD_FUEL",
+            Also(Multi("SD_FUEL_OFF", "Fuel pumps: OFF", "SD_FUEL",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 0), ("EVT_OH_FUEL_PUMP_2_AFT", 0),
-                ("EVT_OH_FUEL_PUMP_L_CENTER", 0), ("EVT_OH_FUEL_PUMP_R_CENTER", 0)),
+                ("EVT_OH_FUEL_PUMP_L_CENTER", 0), ("EVT_OH_FUEL_PUMP_R_CENTER", 0)), "SDC_FUEL"),
             Multi("SD_EAI_OFF", "Engine anti-ice: OFF", "SD_EAI", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
             Multi("SD_HYDELEC_OFF", "Electric hydraulic pumps: OFF", "SD_HYDELEC", ("EVT_OH_HYD_ELEC1", 0), ("EVT_OH_HYD_ELEC2", 0)),
             Multi("SD_HYDENG_OFF", "Engine hydraulic pumps: OFF", "SD_HYDENG", ("EVT_OH_HYD_ENG1", 0), ("EVT_OH_HYD_ENG2", 0)),
@@ -519,12 +519,12 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SECURE" },
         Steps = new()
         {
-            Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS", ("EVT_IRU_MSU_LEFT", 0), ("EVT_IRU_MSU_RIGHT", 0)),
-            SW("SE_EMER_OFF", "Emergency exit lights: OFF", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 0, checklistItemId: "SE_EMER"),
-            Multi("SE_WINHEAT_OFF", "Window heat: OFF", "SE_WINHEAT",
+            Also(Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS", ("EVT_IRU_MSU_LEFT", 0), ("EVT_IRU_MSU_RIGHT", 0)), "SEC_IRS"),
+            Also(SW("SE_EMER_OFF", "Emergency exit lights: OFF", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 0, checklistItemId: "SE_EMER"), "SEC_EMER"),
+            Also(Multi("SE_WINHEAT_OFF", "Window heat: OFF", "SE_WINHEAT",
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 0), ("EVT_OH_ICE_WINDOW_HEAT_2", 0),
-                ("EVT_OH_ICE_WINDOW_HEAT_3", 0), ("EVT_OH_ICE_WINDOW_HEAT_4", 0)),
-            Multi("SE_PACKS_OFF", "Packs: OFF", "SE_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
+                ("EVT_OH_ICE_WINDOW_HEAT_3", 0), ("EVT_OH_ICE_WINDOW_HEAT_4", 0)), "SEC_WINHEAT"),
+            Also(Multi("SE_PACKS_OFF", "Packs: OFF", "SE_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)), "SEC_PACKS"),
             // APU selector to OFF (absolute set — idempotent when already off). Ground
             // power OFF is a directional press, so it is skip-guarded on IsGpuOn() to no-op
             // when no GPU is connected (mirrors the Before-Start BS_GPU_OFF drop).

@@ -155,13 +155,19 @@ public class Pmdg737FlowChecklistLinkTests
         FlowChecklistLinkAudit.Delivers(FlowChecklistLinkAudit.Writes(step), item,
             ev => EventFields.TryGetValue(ev, out var f) ? f : null, ActionItems);
 
-    // The groups each flow's RelatedChecklistGroupIds names. (FirstOfficerForm also latches the
-    // group named after the flow and its "_CL" read-back — FlowDefinition.CompletionGroupIds;
-    // this audit has not been widened to those yet.)
+    // Every group a finishing flow latches — FlowDefinition.CompletionGroupIds, the SAME rule
+    // FirstOfficerForm uses: the flow's RelatedChecklistGroupIds plus the group named after the
+    // flow and its "_CL" read-back. Auditing RelatedChecklistGroupIds alone missed twelve
+    // read-back lines (PREFLIGHT_CL, BEFORE_START_CL, BEFORE_TAXI_CL, SHUTDOWN_CL, SECURE_CL)
+    // that a failed write still latched done.
     private static List<(FlowDefinition<AircraftStateEvaluator> Flow,
-        List<ChecklistItem<AircraftActionExecutor, AircraftStateEvaluator>> Items)> FlowsWithItems() =>
-        FlowChecklistLinkAudit.FlowsWithItems(PMDG737FlowDefinitions.Build(),
-            PMDG737ChecklistDefinitions.Build(), f => f.RelatedChecklistGroupIds);
+        List<ChecklistItem<AircraftActionExecutor, AircraftStateEvaluator>> Items)> FlowsWithItems()
+    {
+        var groups = PMDG737ChecklistDefinitions.Build();
+        var ids = groups.Select(g => g.Id).ToHashSet();
+        return FlowChecklistLinkAudit.FlowsWithItems(PMDG737FlowDefinitions.Build(),
+            groups, f => f.CompletionGroupIds(ids.Contains));
+    }
 
     [Fact]
     public void Every_written_event_is_mapped_to_its_state_or_declared_stateless()
@@ -224,6 +230,10 @@ public class Pmdg737FlowChecklistLinkTests
             // After Takeoff Checklist: engine bleeds have no step in the After Takeoff flow
             // (they are set ON in Preflight).
             "AFTER_TAKEOFF/ATC_BLEEDS",
+            // Before Start Checklist: passenger signs are set ON in Preflight, not Before Start.
+            "BEFORE_START/BSC_BELTS",
+            // Before Taxi Checklist: autobrake RTO is set in Preflight, not Before Taxi.
+            "BEFORE_TAXI/BTC_AB",
             // Before Taxi: the six-pack recall has no flow step.
             "BEFORE_TAXI/BT_RECALL",
             // Descent Checklist: LAND ALT is set in Preflight, not Descent.
@@ -234,8 +244,17 @@ public class Pmdg737FlowChecklistLinkTests
             // Stop-policy start-valve / N2 waits abort the flow before any latch on a failure.
             "ENGINE_START/ES_E1_GRD",
             "ENGINE_START/ES_E2_GRD",
+            // Preflight Checklist read-backs no Preflight step sets: the start levers, the parking
+            // brake and the pressurization mode selector are never written by the flow.
+            "PREFLIGHT/PFC_LEVERS",
+            "PREFLIGHT/PFC_PARK",
+            "PREFLIGHT/PFC_PRESS",
             // Two SimBrief DynSW steps + a Captain fallback; a missing plan is a quiet success.
             "PREFLIGHT/PF_PRESS",
+            // Shutdown Checklist: parking brake is the Captain's, probe heat is switched off in
+            // After Landing, not Shutdown.
+            "SHUTDOWN/SDC_PARK",
+            "SHUTDOWN/SDC_PROBE",
         }, undelivered);
     }
 }
