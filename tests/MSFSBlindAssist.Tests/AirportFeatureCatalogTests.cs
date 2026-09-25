@@ -697,4 +697,20 @@ public class AirportFeatureCatalogTests
         var one = Assert.Single(AirportFeatureCatalog.Build("v", new[] { winner, loser }).Features);
         Assert.Equal(winner.Members!.Concat(loser.Members!), one.Members);
     }
+
+    [Fact]
+    public void A_hyphen_or_underscore_between_words_does_not_make_a_second_name()
+    {
+        // Live LOWI OSM, 2026-09-25: "Flugsportzentrum Tirol" and "Flugsportzentrum-Tirol", hangars
+        // 60 m apart, were two Places ending at the same stand.
+        const double M = 111_320.0;
+        var a = F(FeatureKind.Hangar, "Flugsportzentrum Tirol", 47.26, 11.34, FeatureSource.Osm);
+        var b = F(FeatureKind.Hangar, "Flugsportzentrum-Tirol", 47.26 + 60 / M, 11.34, FeatureSource.Osm);
+        Assert.True(AirportFeatureCatalog.SameFeature(a, b));
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { a, b }).Features);
+        // …but a hyphen never joins digits into another number.
+        var h12 = F(FeatureKind.Hangar, "Hangar 12", 47.26, 11.34, FeatureSource.Osm);
+        var h1to2 = F(FeatureKind.Hangar, "Hangar 1-2", 47.26 + 20 / M, 11.34, FeatureSource.Osm);
+        Assert.False(AirportFeatureCatalog.SameFeature(h12, h1to2));
+    }
 }

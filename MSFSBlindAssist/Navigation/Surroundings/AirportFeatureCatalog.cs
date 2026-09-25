@@ -43,7 +43,13 @@ public sealed class AirportFeatureCatalog
     public static double SameNameRadiusMetres(FeatureKind k)
         => k is FeatureKind.Terminal or FeatureKind.Concourse ? 300.0 : 2.0 * MergeRadiusMetres(k);
 
-    private static string Norm(string s) => string.Join(' ', s.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    /// <summary>A name as the merge compares it: a hyphen or underscore BETWEEN WORDS is a space
+    /// (live LOWI OSM spelt one club's hangars "Flugsportzentrum Tirol" and "Flugsportzentrum-Tirol"),
+    /// never between digits — "Hangar 1-2" is not "Hangar 12" — and runs of whitespace are one.</summary>
+    private static string Norm(string s)
+        => string.Join(' ', WordJoiner.Replace(s, " ").Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries));
+    private static readonly System.Text.RegularExpressions.Regex WordJoiner = new(
+        @"(?<=\p{L})[-_]+(?=\p{L})", System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     /// <summary>Distance between two features honoring each one's own footprint/member geometry
     /// (SurroundingsGeometry.Nearest) in both directions — the smaller of the two wins.</summary>

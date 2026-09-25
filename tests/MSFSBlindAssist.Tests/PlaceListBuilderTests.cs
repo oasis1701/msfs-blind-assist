@@ -148,4 +148,14 @@ public class PlaceListBuilderTests
 
         Assert.Null(n);
     }
+
+    [Fact]
+    public void A_named_office_kind_place_is_not_labelled_airport_office()
+    {
+        // Office is the catch-all kind (office, admin, cafe, restaurant): live LOWI read
+        // "Burkia Restaurant, airport office, Parking 14". The name says what it is.
+        var restaurant = Place(FeatureKind.Office, "Burkia Restaurant", 0, 0);
+        var entry = Assert.Single(PlaceListBuilder.Build(Cat(restaurant), new[] { Stand("Parking", 14, 4, 0, 0) }, None, NoNode, Any));
+        Assert.Equal("Burkia Restaurant, Parking 14", entry.Label);
+    }
 }
