@@ -921,6 +921,30 @@ plus the installed scenery package's own placement data.
   it by GUID) was built and measured as a spike — see "Rejected: base-library
   index" below.
 
+### When an airport is readied (`AirportWarmUp`)
+
+An airport's online taxiway names (OSM and apt.dat) and its surroundings
+catalog — whose build starts the OSM buildings fetch and the scenery scan — are
+fetched BEFORE the pilot asks for them, at two moments:
+
+- **The airport the aircraft is at, on the ground**: on connect, and 10 s after
+  every flight or aircraft load (`AircraftLoaded` fires as the aircraft file
+  loads, before the flight's own position has settled). The position is asked
+  of the simulator and resolved with `CurrentAirport.Resolve`. In the air the
+  airport below is not the pilot's, so nothing is warmed.
+- **The destination airport** chosen with Shift+D, on the ground or in the air.
+
+Names are fetched once per airport per session, claimed in the same set every
+other name prefetch uses (taxi form, ILS and visual guidance, landing-exit
+planner), and only while online taxi data is switched ON — a claim is made only
+when a fetch is, so switching it on later still owes the airport its names. The
+surroundings build is asked every time: the catalog cache answers a fresh
+catalog at once, joins a running build and rebuilds a stale one, and every tier
+obeys its own setting. Before this, the current airport was readied only when
+the taxi form opened or a lookup built it (or, for buildings, while the passing
+or surface callouts were switched on), and Shift+D fetched names but never
+buildings.
+
 ### Four tiers, and how they rank
 
 `SurroundingsCatalogBuilder.Build(icao)` is the cache's `BuildSupplier`. It STARTS

@@ -224,11 +224,10 @@ public partial class MainForm
             if (dialog.SelectedRunway != null && dialog.SelectedAirport != null)
             {
                 simConnectManager.SetDestinationRunway(dialog.SelectedRunway, dialog.SelectedAirport);
-                // Destination just set → force-fresh the online taxiway names + gate aliases NOW, so
-                // they're ready well before the approach (instead of waiting until ILS guidance or the
-                // landing-exit planner is opened).
-                if (_augmentPrefetched.Add(dialog.SelectedAirport.ICAO))
-                    _ = _augmentingProvider?.PrefetchAsync(dialog.SelectedAirport.ICAO, force: true);
+                // Destination just set → ready its online taxiway names + gate aliases, OSM buildings
+                // and scenery NOW, in the air or on the ground, so they are in hand well before the
+                // approach (instead of waiting until ILS guidance or the landing-exit planner opens).
+                _airportWarmUp?.AtDestination(dialog.SelectedAirport.ICAO);
 
                 // Manual-landing checkbox: arm (or clear) the flare/rollout assist for this
                 // destination. A re-selection WITHOUT the checkbox must disarm — the pilot's

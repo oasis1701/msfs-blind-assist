@@ -201,6 +201,49 @@ public partial class MainForm
         }
         _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
+        ScheduleCurrentAirportWarmUp();
+    }
+
+    /// <summary>How long after AircraftLoaded the aircraft's position is read for the warm-up: the
+    /// event fires as the aircraft file loads, before the flight's own position has settled.</summary>
+    private const int WarmUpAfterLoadMs = 10_000;
+    private System.Windows.Forms.Timer? _warmUpAfterLoadTimer;
+
+    /// <summary>Warms the airport the aircraft is at once a flight or aircraft load has settled; a
+    /// second load inside the wait restarts it.</summary>
+    private void ScheduleCurrentAirportWarmUp()
+    {
+        _warmUpAfterLoadTimer?.Stop();
+        _warmUpAfterLoadTimer?.Dispose();
+        _warmUpAfterLoadTimer = new System.Windows.Forms.Timer { Interval = WarmUpAfterLoadMs };
+        _warmUpAfterLoadTimer.Tick += (_, _) =>
+        {
+            _warmUpAfterLoadTimer?.Stop();
+            WarmCurrentAirport();
+        };
+        _warmUpAfterLoadTimer.Start();
+    }
+
+    /// <summary>
+    /// Asks the simulator where the aircraft is and, on the ground, readies that airport
+    /// (<see cref="MSFSBlindAssist.Services.AirportWarmUp.AtCurrentAirport"/>) — so the taxiway
+    /// names, OSM buildings and scenery are in hand before the taxi form, Where Am I or Look Around
+    /// asks. The position callback lands on the UI thread.
+    /// </summary>
+    private void WarmCurrentAirport()
+    {
+        var provider = airportDataProvider;
+        if (provider == null || _airportWarmUp == null || !simConnectManager.IsConnected) return;
+        simConnectManager.RequestAircraftPositionAsync(p =>
+        {
+            try
+            {
+                bool onGround = p.SimOnGround >= 0.5;
+                string? icao = onGround ? MSFSBlindAssist.Services.CurrentAirport.Resolve(provider, p.Latitude, p.Longitude) : null;
+                _airportWarmUp?.AtCurrentAirport(icao, onGround);
+            }
+            catch (Exception ex) { Log.Warn("Surroundings", $"current-airport warm-up failed: {ex.Message}"); }
+        });
     }
 
     /// <summary>
@@ -283,6 +326,9 @@ public partial class MainForm
 
             // Request all current values when connected
             RequestAllCurrentValues();
+
+            // The airport the aircraft is at, readied now rather than when first asked about.
+            WarmCurrentAirport();
 
             // Start a grace period before enabling continuous variable announcements
             // This prevents initial ECAM messages and other variables from being announced

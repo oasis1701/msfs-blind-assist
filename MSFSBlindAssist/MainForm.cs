@@ -262,6 +262,9 @@ public partial class MainForm : Form
     // Guards automatic departure/destination prefetches so each airport is fetched at most once
     // per app session. Manual refresh (force:true) bypasses it.
     private readonly HashSet<string> _augmentPrefetched = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Readies the current and destination airports' online and scenery data before the pilot
+    /// asks for them (connect, flight load, Shift+D). Claims names in <see cref="_augmentPrefetched"/>.</summary>
+    private MSFSBlindAssist.Services.AirportWarmUp? _airportWarmUp;
 
     // MobiFlight end-to-end bridge probe state (see BridgeProbeTimer_Tick).
     private System.Windows.Forms.Timer? _bridgeProbeTimer;
@@ -908,6 +911,13 @@ public partial class MainForm : Form
             _augmentingProvider = decorator;
             airportDataProvider = decorator;
         }
+
+        // Reads the fields at call time: a database switch replaces the providers behind them.
+        _airportWarmUp = new MSFSBlindAssist.Services.AirportWarmUp(
+            claimNames: icao => _augmentPrefetched.Add(icao),
+            onlineNamesEnabled: () => _augmentingProvider?.Enabled == true,
+            prefetchNames: icao => _ = _augmentingProvider?.PrefetchAsync(icao, force: true),
+            buildSurroundings: icao => _ = surroundingsCache.GetAsync(icao));
 
         // Initialize flight plan manager with navigation database
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
