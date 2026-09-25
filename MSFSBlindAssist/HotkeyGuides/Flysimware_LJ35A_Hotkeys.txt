@@ -1,0 +1,96 @@
+FLYSIMWARE LEARJET 35A — HOTKEY GUIDE
+
+The Learjet answers every app-wide hotkey (altitude, heading, airspeed, wind, taxi guidance,
+GSX, weather and the rest — see the general guide). This page lists what is DIFFERENT on the
+Learjet: the readouts that speak in jet terms and the windows only this aircraft has.
+
+DISPLAY WINDOWS (direct Alt keys, no output mode)
+  Alt+N or Alt+M   GNS 530 window (pilot's GPS, COM 1 and NAV 1)
+  Alt+P            GNS 430 window (copilot's GPS, COM 2 and NAV 2)
+
+  Inside either window the list is read with the arrow keys and the bezel is on Ctrl and Alt:
+    Ctrl+Left / Ctrl+Right   large right knob (page group)
+    Ctrl+Up / Ctrl+Down      small right knob (page)
+    Shift+Enter              push the right knob (cursor on and off)
+    Ctrl+Enter               ENT
+    Ctrl+D  Direct-to   Ctrl+F  FPL   Ctrl+P  PROC   Ctrl+E  MENU   Ctrl+L  CLR
+    Ctrl+G  MSG         Ctrl+O  OBS   Ctrl+C  CDI    Ctrl+V  VNAV
+    Ctrl+T                   type an ident into the field under the cursor (Direct-to, a
+                             flight plan insert, a waypoint page); Ctrl+Enter then confirms it
+    Ctrl+PageUp / Ctrl+PageDown   map range out and in
+    Alt+Up / Alt+Down        radio megahertz          Alt+Left / Alt+Right   radio kilohertz
+    Alt+Enter                toggle COM and NAV tuning
+    Alt+Shift+Enter          COM swap                 Ctrl+Alt+Shift+Enter    NAV swap
+    F5 refreshes, Escape closes.
+
+  The first line of the list always says which page or dialog is up, and every key answers
+  with what it did: the page it turned to, the row the cursor landed on, the character an
+  ident entry now shows under the cursor, or the new standby frequency.
+
+  The GNS starts on the Working Title self-test page, and on that page only the large knob and
+  ENT do anything: press Ctrl+Right until the cursor is on "OK?", then Ctrl+Enter. Flight plan,
+  procedures and VNAV are their own page groups; inside them the large knob turns no page, and
+  Ctrl+L (or the same button again) is the way back. Waypoint idents are entered a character at
+  a time: the small knob changes the character under the cursor, the large knob moves to the
+  next character — or Ctrl+T types the whole ident.
+
+  On the FLIGHT PLAN page (Ctrl+F) the knobs mean something different, and it matters: Shift+Enter
+  puts the cursor on the legs, the LARGE knob (Ctrl+Left / Ctrl+Right) moves through them, the
+  small knob on a leg opens a waypoint entry to INSERT before it, and Ctrl+L on a leg asks to
+  DELETE it (answer with Ctrl+L again to keep it). To go direct to a leg: cursor on, Ctrl+Right
+  to the leg, Ctrl+D, then Ctrl+Enter twice (ident, then Activate?). To go direct to any fix:
+  Ctrl+D, Ctrl+T, type the ident, Ctrl+Enter, Ctrl+Enter.
+
+OUTPUT MODE (press the output-mode key, then the letter)
+  P          N1 and N2, both engines
+  E          N1, fuel flow and thrust-lever position, both engines
+  Shift+O    ITT, oil pressure and oil temperature, both engines
+  Shift+A    altitude alerter (the FC-530 preselect)
+  Shift+H    heading bug
+  Shift+S    speed target, in knots or Mach as selected
+  V          vertical speed, what the aeroplane is doing
+  Shift+V    vertical speed target
+  D          distance and time to the destination, from the GNS flight plan
+  Shift+D    estimated top of descent: a three-degree path to the GNS VNAV target, or to
+             1500 feet when no target is set (the readout says which)
+  Ctrl+W     the waypoint the GNS is flying to: ident, distance, bearing and time
+
+  Speeds (the Airbus green-dot keys carry the 35A's speeds instead):
+  Shift+1    takeoff at current weight, flaps 8: rotate and V2 (estimated from the stall speeds)
+  Shift+2    Vmo 300 knots and Mmo 0.81
+  Shift+3    flap limits: 200 knots for 8 and 20 degrees, 150 for 40
+  Shift+4    Vref flaps 40 at current weight, with a flaps-20 figure (computed from the stall
+             speed at weight; matches the 35A chart within a knot or two)
+  Shift+5    stall speeds at current weight, clean and flaps 40, and the AFM figures at max gross
+  Shift+6    gear: operate below 200 knots, extended limit 260
+  B          both altimeter settings, in hectopascals and inches
+  F          flaps, with asymmetry if the two sides differ
+  G          gear: three green, up, or in transit with the percentages
+  Shift+F    fuel by tank in pounds and gallons, with the manual's transfer advice
+
+INPUT MODE (press the input-mode key, then the letter)
+  Ctrl+A     altitude alerter, with Altitude Select (arm) and Altitude Hold buttons
+  Ctrl+H     heading bug, with Heading, NAV and Approach buttons
+  Ctrl+S     speed target, with Speed mode and Mach units buttons
+  Ctrl+V     vertical speed target, with V/S and Altitude Hold buttons
+  Ctrl+P     every FC-530 mode button in one dialog
+  Ctrl+B     both altimeters (type 1013 or 29.92), with a Both to Standard button
+  Ctrl+M     Learjet Monitor Manager: tick and un-tick which switch and lamp changes speak
+
+THE FC-530 IN A SENTENCE
+  Power the Autopilot Master Circuit on the FC-530 panel, set the alerter with Ctrl+A and arm
+  Altitude Select, engage with Ctrl+P, then Heading or NAV. Vertical Speed captures the rate it
+  is engaged at; Altitude Hold holds the altitude it is engaged at; Speed holds airspeed with
+  pitch. With the GNS 530 fit the vendor provides no go-around mode and no half bank.
+
+ENGINE START, FROM THE PANELS
+  Start Panel > Engine Start: Battery 1 and 2 on, Ground Power Unit connected, both inverters
+  on. Anti-Ice and Fuel Computer Panel: both fuel computers on. Throttle Quadrant: both fuel
+  cut-offs at Cut-off. Engine Start: Left Starter Generator to Start; when N2 passes about
+  8 percent set the Left Fuel Cut-off to Run. Light-off follows; the starter drops out itself,
+  then move the Left Starter Generator to Generator. Repeat on the right. The GPU disconnects
+  itself when a generator comes on line.
+
+Airport surroundings (app-wide, named here so every guide carries its own chords):
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)

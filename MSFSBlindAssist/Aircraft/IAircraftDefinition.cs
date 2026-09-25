@@ -445,6 +445,15 @@ public interface IAircraftDefinition
     /// </summary>
     void CancelDeferredFlush();
 
+    /// <summary>
+    /// One frame of the standing one-second GPS waypoint definition (the stock GPS SimVars
+    /// the aircraft's own navigator writes), forwarded by MainForm for every aircraft. A
+    /// definition with a GPS navigator uses it for the waypoint-passing call; the rest ignore
+    /// it. ⚠ Like <see cref="OnDeferredFlushBatchDelivered"/> this runs OUTSIDE the
+    /// <c>announcer.Suppressed</c> wrap, so a definition must consult its own Ctrl+M set here.
+    /// </summary>
+    void OnGpsWaypointReceived(SimConnect.SimConnectManager.GpsWaypointData data, Accessibility.ScreenReaderAnnouncer announcer);
+
     // Visual Landing Guidance Profile
 
     /// <summary>

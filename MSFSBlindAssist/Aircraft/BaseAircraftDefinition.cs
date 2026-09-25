@@ -867,6 +867,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <inheritdoc />
     public virtual void CancelDeferredFlush() { }
 
+    /// <inheritdoc />
+    /// <remarks>Most definitions ignore it; the GPS-navigator ones use it for the waypoint-passing call.</remarks>
+    public virtual void OnGpsWaypointReceived(SimConnect.SimConnectManager.GpsWaypointData data, Accessibility.ScreenReaderAnnouncer announcer) { }
+
     /// <summary>
     /// Default visual-guidance profile (A320 numbers). Override on heavier or smaller airframes.
     /// </summary>

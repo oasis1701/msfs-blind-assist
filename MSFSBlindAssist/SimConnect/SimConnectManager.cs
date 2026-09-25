@@ -118,6 +118,24 @@ public partial class SimConnectManager
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
+
+    /// <summary>
+    /// The active flight plan's TO-waypoint, once a second, for every aircraft whose GPS
+    /// drives the stock GPS SimVars. Raised on each delivery, changed or not; the SEQUENCING
+    /// decision is made by <see cref="Services.GpsWaypointSequencer"/>, never here.
+    /// </summary>
+    public event EventHandler<GpsWaypointData>? GpsWaypointReceived;
+
+    /// <summary>
+    /// The last GPS waypoint frame delivered, or null before the first one. Read by the
+    /// on-demand readout hotkeys — NEVER re-requested: this def carries a standing
+    /// PERIOD.SECOND subscription, and re-issuing its id with PERIOD.ONCE would REPLACE that
+    /// subscription with nothing to re-arm it (the same trap that froze the A380's
+    /// A32NX_FCU_ALT_MANAGED derivation the moment its panel was opened).
+    /// </summary>
+    public GpsWaypointData? LastGpsWaypoint { get; private set; }
+
+    internal void SetLastGpsWaypoint(GpsWaypointData data) => LastGpsWaypoint = data;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
     // assist. Fired only while StartFlareAssistMonitoring is active.
@@ -496,6 +514,7 @@ public partial class SimConnectManager
         // The FIRST of CameraReadIdCount (8) ids, 341-348: each read goes out under its own id
         // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
         REQUEST_CAMERA_VIEW = 341,
+        REQUEST_GPS_WAYPOINT = 349,   // NOT 341: main reserves 341-348 for the camera read's rotating request ids
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -578,6 +597,7 @@ public partial class SimConnectManager
         // to CameraViewData, so a definition landing at 342 would have its SingleValue answer
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
+        DEF_GPS_WAYPOINT = 349,   // NOT 341: main reserves 341-348 for the camera read's rotating request ids
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -778,6 +798,49 @@ public partial class SimConnectManager
         public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
         public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
         public double StructuralIcePct; // STRUCTURAL ICE PCT, ratio 0..1 ("percent over 100")
+    }
+
+    /// <summary>
+    /// The active flight plan's TO-waypoint, straight off the stock GPS SimVars.
+    ///
+    /// ⚠️ These are not "the SDK's GPS variables" in the abstract — they are what the aircraft's
+    /// own navigator WRITES. Read live out of the Working Title Garmin SDK's `GpsSynchronizer`
+    /// (the G1000 on the DA40, the GNS 530 on the Learjet 35A): `onWaypointIndexChanged` sets
+    /// GPS WP NEXT ID to the ACTIVE LATERAL LEG's name, `onIsPrevLegChanged` sets GPS WP PREV ID
+    /// to the leg BEFORE it, and `onLnavDistanceChanged` sets distance and ETE. So PREV ID is
+    /// precisely "the waypoint just passed" — the aeroplane answering the question rather than
+    /// this app inferring it from a value that changed.
+    ///
+    /// ⚠️ GPS WP BEARING is written in RADIANS; the request asks for degrees and lets SimConnect
+    /// convert. ⚠️ GPS FLIGHT PLAN WP COUNT is deliberately absent: the G1000's write of it is
+    /// COMMENTED OUT in the shipping build, so it reads 0 with a plan loaded and would look like
+    /// "no flight plan" to anything trusting it.
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct GpsWaypointData
+    {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string NextId;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 64)]
+        public string PrevId;
+        public double DistanceMeters;
+        public double BearingDegrees;
+        public double EteSeconds;
+        public double IsActiveFlightPlan;
+        public double IsDirectTo;
+        public double PrevValid;
+        /// <summary>
+        /// Time to the DESTINATION (the whole route), not to the next waypoint - the plain
+        /// `GPS ETE`, distinct from `GPS WP ETE` above.
+        ///
+        /// ⚠️ ROUTE DISTANCE TO THE DESTINATION IS NEVER PUBLISHED AS A SIMVAR AT ALL. The
+        /// Garmin SDK's `onLnavDistanceToDestinationChanged` RECEIVES the distance and writes only
+        /// ETE and ETA from it — read out of the running instrument. But its formula is
+        /// `ete = 3600 * distance / groundSpeed`, so the distance is recoverable exactly by
+        /// inverting it, which is why ground speed rides along in this struct.
+        /// </summary>
+        public double RouteEteSeconds;
+        public double GroundSpeedKnots;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

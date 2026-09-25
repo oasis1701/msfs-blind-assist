@@ -336,6 +336,17 @@ public class UserSettings
         // first walk of each control, so a control pays for its calibration once, ever.
         public List<string> Md11InvertedStepControls { get; set; } = new List<string>();
 
+        // Auto-announced Flysimware Learjet 35A variables the user has muted via the Learjet
+        // Monitor Manager (Ctrl+M, Lj35MonitorManagerForm). Consulted in MainForm.OnSimVarUpdated
+        // when AircraftCode == "FLYSIMWARE_LJ35A" — both at the generic gate AND via the
+        // Suppressed-wrap, because the derived annunciator lamps announce from INSIDE
+        // ProcessSimVarUpdate (the HS787 pattern). Persisted across sessions.
+        public List<string> LJ35DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="LJ35DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> LJ35DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // Announce each 1,000-foot crossing while airborne ("5,000 feet", …). Default on.
         public bool AltitudeCalloutsEnabled { get; set; } = true;
 
@@ -560,6 +571,7 @@ public class UserSettings
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
         Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
+        LJ35DisabledMonitorVariablesSet = new HashSet<string>(LJ35DisabledMonitorVariables);
     }
 
     /// <summary>

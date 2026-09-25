@@ -965,3 +965,7 @@ Details: [docs/gemini.md](docs/gemini.md).
 ## Technology Stack
 
 .NET 10 (C# 13), Windows Forms, SimConnect SDK (MSFS), SQLite, NVDA/Tolk (screen readers)
+
+### Flysimware Learjet 35A
+
+Details: [docs/learjet35a.md](docs/learjet35a.md) (transports, panel map, derived annunciators, GNS windows) and [docs/learjet35a-variables.md](docs/learjet35a-variables.md) (every measured variable). Every vendor switch is a plain L:var written through the calculator path; the GNS bezel goes over the display window's own Coherent socket; reads during development are verified through a Coherent view, never the MCP's MobiFlight read path.
