@@ -101,6 +101,26 @@ public class SceneryModelNameClassifierTests
     [InlineData("TE_EU_RG_Gare de Lyon with clock tower", "LF8JI")] [InlineData("AU_DM_AUT_Tower", "NZBC")]   // Orbx city packs
     [InlineData("Merged_TE_AS_SI_Suntec City Tower 5", "WSUA6")] [InlineData("Tower_Jumper", "NZBC")]
     [InlineData("12_Cargo2", "LIIYR")] [InlineData("15_Cargo_empty", "LIZE6")]                          // coastline pack ships
+    // Measured 2026-09-25, the second audit (all 360 airports, every kept name read by eye): props
+    // carrying a brand or a kind word, several of them routable Places.
+    [InlineData("katl260_bench_signature", "KATL")] [InlineData("katl261_bin_signature", "KATL")] [InlineData("katl266_flower_signature", "KATL")]
+    [InlineData("katl966_people_signature_woman_sitting_idle", "KATL")] [InlineData("katl267_wall_signature", "KATL")]
+    [InlineData("katl262_luggage_trolley_signature", "KATL")] [InlineData("prg_egph_signature_entryboard", "EGPH")]
+    [InlineData("sbsv_br_aviation_tanques", "SBSV")] [InlineData("sbsv_br_aviation_toten_br", "SBSV")] [InlineData("sbsv_br_aviation_guarita", "SBSV")]
+    [InlineData("simnord_ekch_taxisign_tw_loc_BZ_deicing", "EKCH")] [InlineData("MK_EFHK_SC_TGS_DE_ICING_right", "EFHK")]
+    [InlineData("MK_KSEA_SC_TGS_CARGO_2_up", "KSEA")]                                                    // taxi guidance signs
+    [InlineData("EPWA_JL_FireWreck", "EPWA")] [InlineData("Fire_737_lgav", "LGAV")] [InlineData("MK_EFRO_OT_FirePlane", "EFRO")]
+    [InlineData("ENKB_FireFightingPlane", "ENKB")] [InlineData("AIRPORTS_YBBN_v2_FIRE_TRAINING_PLANE", "YBBN")]
+    [InlineData("ORBX_APT_YMML_FIRE_TRAINING_AIRCRAFT", "YMML")] [InlineData("AIRPORTS_YPPH_FIRE_EXTRAS", "YPPH")]
+    [InlineData("AIRPORTS_YPPH_COSTCO_FUEL", "YPPH")] [InlineData("Propane_Tank_White", "KDFW")] [InlineData("MK_GCTS_OT_T_Fuel_Curbs", "GCTS")]
+    [InlineData("LMML_Fuel_Station_Wall", "LMML")] [InlineData("LSGG_BLD_FuelThingy", "LSGG")]
+    [InlineData("mk_LIPE_LAMPS_TOWER", "LIPE")] [InlineData("Area06_VentilationTower", "RJTT")] [InlineData("ini_Lib_DME_Tower", "OMDB")]
+    [InlineData("KDFW_CommTower", "KDFW")] [InlineData("Area03_SteelTower", "RJTT")] [InlineData("EDDHsw_PKW_TOWER", "EDDH")]
+    [InlineData("katl79_cargo_trolley", "KATL")] [InlineData("katl543_cargo_pipes1", "KATL")] [InlineData("EGNT_CARGO_WALLS_BIG", "EGNT")]
+    [InlineData("MK_LIRF_GSE_Cargo_Box_Set_01", "LIRF")] [InlineData("DHL_Details", "KMIA")]
+    [InlineData("DHL_Model", "KMIA")] [InlineData("EBBR_Terrain_hill_DHL", "EBBR")] [InlineData("EDDM_OBJ-VEHApron1_cargo", "EDDM")]
+    [InlineData("KDFW_Cargo_Various", "KDFW")] [InlineData("YSWS_B777_F_FEDEX", "YSSY")]
+    [InlineData("MK_EFHK_OT_Hangar_Finnair_01_Doors", "EFHK")] [InlineData("MK_YPAD_VT_Terminal_Parking_Lot", "YPAD")]
     public void Clutter_and_interiors_are_not_features(string model, string icao)
         => Assert.Null(SceneryModelNameClassifier.Classify(model, icao));
 

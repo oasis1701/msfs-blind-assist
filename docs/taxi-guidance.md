@@ -2336,7 +2336,18 @@ cluster.
   landmark packs (`ldm`, `waw`, and Orbx's `merged`/`rg`/`dm`/`landmarks`
   naming, none of which any airport package uses); and `poi`, which MK Studios
   and iniBuilds put on landside landmarks — skyscrapers, road filling stations,
-  a marine pier. Vendor sublayer codes (`vt`, `ot`, `pg`, `dk`, `lk`, `kg`,
+  a marine pier. A second pass (2026-09-25) read every kept name of that audit
+  by eye and pinned the props still getting through, several of them routable
+  Places: brand-carrying props (KATL's `…_signature` benches, bins, flower
+  pots and seated people read as FBOs; `wall`, `trolley`, `entryboard`, the
+  SBSV tanks and booths), taxi guidance signs (MK's `TGS`, SimNord's
+  `taxisign`), fire-training wrecks and planes (`wreck`, `plane`, "training
+  aircraft", `Fire_737`), masts (`lamps`, `ventilation`, `dme`, `comm`, "steel
+  tower", `pkw`), landside fuel (`costco`, `propane`, `curbs`) and cargo-area
+  dressing (`pipes`, `box`, `details`, `model`, `terrain`, `various`, `empty`,
+  `doors`, "parking lot"); the freighter test now also reads a separated
+  `B777_F`. `canopy` is deliberately NOT a stop word: KATL's
+  `concourse_t_canopy_01` is part of Concourse T. Vendor sublayer codes (`vt`, `ot`, `pg`, `dk`, `lk`, `kg`,
   `pw`, `dd`, `prg`, `vrm`, `cas`) are stripped like vendor prefixes, and
   "cluster" is dropped from a name once its kind is decided (after, never
   before: dropping it first could complete a kind phrase the prefilter never

@@ -26,7 +26,7 @@ public sealed record ClassifiedModel(FeatureKind Kind, string Name, bool NameIsG
 public static class SceneryModelNameClassifier
 {
     private static readonly Regex StopList = new(
-        @"\b(fences?|lights?|rooflights?|poles?|aircon|hvac|vehicles?|cars?|carparks?|trucks?|vans?|cargovan|loaders?|cones?|signs?|markings?|lines?|jetways?|bridges?|pylons?|silos?|lod|shadows?|decals?|grass|trees?|pedestrian|crossing|tickets?|platform|gates?|safegate|base|stairs?|railing|barrier|bollards?|hydrant|fire ?engines?|ligths)\d*\b",
+        @"\b(fences?|lights?|rooflights?|poles?|aircon|hvac|vehicles?|cars?|carparks?|trucks?|vans?|cargovan|loaders?|cones?|signs?|markings?|lines?|jetways?|bridges?|pylons?|silos?|lod|shadows?|decals?|grass|trees?|pedestrian|crossing|tickets?|platform|gates?|safegate|base|stairs?|railing|barrier|bollards?|hydrant|fire ?engines?|ligths|steel ?towers?|parking ?lots?|training ?aircraft|fire ?\d{3})\d*\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     // Whole model dropped when ANY token equals one of these (OrdinalIgnoreCase). Measured clutter
@@ -44,6 +44,13 @@ public static class SceneryModelNameClassifier
         "iveco", "deicer", "deicers", "rack", "racks", "anim", "item", "items", "piles", "prop", "props", "boxpack",
         "ship", "ships", "radar", "ils", "radio", "ldm", "waw", "poi", "pois",
         "merged", "rg", "dm", "landmarks", "jumper", "walker",      // Orbx city-pack naming; in no airport package
+        // Measured 2026-09-25, the second audit, every kept name read by eye: brand-carrying props
+        // (KATL's "..._signature" benches and bins), taxi guidance signs ("TGS", "taxisign"),
+        // fire-training wrecks, masts, landside fuel, and cargo-area dressing.
+        "bench", "bin", "flower", "people", "entryboard", "wall", "walls", "trolley", "trolleys", "tanque", "tanques",
+        "toten", "guarita", "taxisign", "tgs", "wreck", "plane", "planes", "extras", "costco", "propane", "curbs",
+        "thingy", "lamps", "ventilation", "dme", "comm", "comms", "pkw", "pipes", "box", "details", "model",
+        "terrain", "vehapron", "various", "empty", "doors",
     };
     // Dropped FROM the name; the model survives. "part" so the parts of one building share one name.
     private static readonly HashSet<string> NoiseTokens = new(StringComparer.OrdinalIgnoreCase) { "msfs", "new", "old", "part", "bldg" };
@@ -61,7 +68,7 @@ public static class SceneryModelNameClassifier
     // Project Coastline's ships ("12_Cargo2", "16_CargoOil1"): a leading number, then "cargo".
     private static readonly Regex NumberedCargo = new(@"^\d+ cargo\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
     // A parked freighter model ("EPWA_B763F_UPS"): an aircraft, whatever operator it carries.
-    private static readonly Regex FreighterModel = new(@"(?:^|[_\-. ])[AB]\d{3}F(?:$|[_\-. ])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex FreighterModel = new(@"(?:^|[_\-. ])[AB][_\-. ]?\d{3}[_\-. ]?F(?:$|[_\-. ])", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     // Hangar is decided FIRST, ahead of the shared lexicon: "Narrows Aviation Hangar" is a hangar.
     private static readonly Regex HangarWord = new(@"\b(hangars?|hangers?)\b", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
