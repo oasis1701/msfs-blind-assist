@@ -202,15 +202,16 @@ public partial class FlyByWireA380Definition
         }
         // Mach — two decimals (default F0 would render "0").
         if (varKey == "PFD_MACH") { displayText = $"{value:0.00}"; return true; }
-        // Autoland capability (FCDC FG discrete word 4): bit 23 LAND2, 24 LAND3 single, 25 LAND3 dual.
+        // Autoland capability (FCDC FG discrete word 1 — see A380ApproachCapability).
         if (varKey == "PFD_AUTOLAND")
         {
-            var w = new SimConnect.Arinc429Word(value);
-            if (!w.IsNormalOperation && !w.IsFunctionalTest) displayText = "none";
-            else if (w.BitValueOr(25, false)) displayText = "LAND 3 dual";
-            else if (w.BitValueOr(24, false)) displayText = "LAND 3 single";
-            else if (w.BitValueOr(23, false)) displayText = "LAND 2";
-            else displayText = "none";
+            displayText = A380ApproachCapability.Describe(value) ?? "none";
+            return true;
+        }
+        // Per-side flight directors (PRIM FG discrete word 1 — the FMA "1FD2" cell).
+        if (varKey == "FD_1" || varKey == "FD_2")
+        {
+            displayText = A380FlightDirector.DescribeSide(value, varKey == "FD_1" ? 1 : 2);
             return true;
         }
         // Managed target speed on the PFD (0 = none shown).
@@ -407,11 +408,11 @@ public partial class FlyByWireA380Definition
                 displayText = value > 0.5 ? "Kilograms (metric)" : "Pounds (imperial)";
                 return true;
             // Altitude panel fields honour the FCU metric-altitude (MTRS) selection
-            // — feet by default, metres when A32NX_METRIC_ALT_TOGGLE is on.
+            // — feet by default, metres when MTRS is on (MetricAlt, A380MetricAltitude).
             case "FCU_ALT_VALUE":
             case "INDICATED ALTITUDE":
             {
-                if (!_metricAlt) return false;   // feet — let the generic "N feet" render
+                if (!MetricAlt) return false;   // feet — let the generic "N feet" render
                 displayText = $"{value * 0.3048:0} meters";
                 return true;
             }
@@ -480,11 +481,15 @@ public partial class FlyByWireA380Definition
     public bool MetricWeight => _metricWeight;
 
     /// <summary>True when the A380 is in metric-altitude mode (FCU MTRS): MSFSBA reads altitudes in metres.</summary>
-    public bool MetricAlt => _metricAlt;
+    // The unit the altitude read-outs and the Altitude window's typed input use: one MSFSBA has just
+    // commanded, else the PRIM's last word (MetricAltCommandedOrKnown), else the last word of an
+    // earlier context. Feet before the first PRIM word of the session. (The FCU altitude CALL-OUT
+    // uses the PRIM's word alone — TryComposeFcuValuePhrase.)
+    public bool MetricAlt => MetricAltCommandedOrKnown() ?? _metricAlt;
 
     /// <summary>Convert a feet altitude to the pilot's selected unit + spoken word (A380 metric-alt).</summary>
     private (double value, string unit) AltUser(double feet)
-        => _metricAlt ? (feet * 0.3048, "meters") : (feet, "feet");
+        => MetricAlt ? (feet * 0.3048, "meters") : (feet, "feet");
 
     /// <summary>
     /// Read the currently-selected SD page off the real System Display Coherent view

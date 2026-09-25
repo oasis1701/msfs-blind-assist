@@ -50,16 +50,24 @@ public class ArmedAltitudeModeTests
 
     // ---- The qualifiers are read off an ARINC 429 word, SSM-gated ----
 
+    /// <summary>
+    /// A PRIM FG discrete word as FBW packs it: the bitfield converted to a float NUMERICALLY,
+    /// that float's IEEE-754 bits in the low 32, the SSM above them.
+    /// </summary>
+    private static double FgWord(uint ssm, uint bitfield) =>
+        (double)(((ulong)ssm << 32) | BitConverter.SingleToUInt32Bits((float)bitfield));
+
     [Fact]
     public void Qualifiers_are_read_from_the_live_word()
     {
-        // Measured live at FL360 after a step climb: SSM 3 (Normal Operation), payload
-        // 0x4D804000 — bit 28 set, bit 29 clear. Nothing was armed at the time, which is the
-        // whole point: the constraint qualifier stands on its own and must never be mistaken
-        // for an armed state (see Name's contract).
+        // Measured live at FL360 after a step climb: SSM 3 (Normal Operation), raw low word
+        // 0x4D804000. That is the float 2^28 + 2^19 = bits 29 (cruise — the PFD's altIsCrzAlt)
+        // and 20 (ALT hold): level cruise. The constraint qualifier is CLEAR. Until 2026-09-25
+        // the decoder tested the raw bits, read the float's exponent, and reported this capture
+        // as "bit 28 set, bit 29 clear" — the opposite of both.
         double raw = (3.0 * 4294967296.0) + 0x4D804000;
-        Assert.True(ArmedAltitudeMode.ConstraintApplicable(raw));
-        Assert.False(ArmedAltitudeMode.IsCruiseAltitude(raw));
+        Assert.False(ArmedAltitudeMode.ConstraintApplicable(raw));
+        Assert.True(ArmedAltitudeMode.IsCruiseAltitude(raw));
     }
 
     [Fact]
@@ -67,7 +75,7 @@ public class ArmedAltitudeModeTests
     {
         // SSM 0 = Failure Warning. Degrading to the plain "Altitude" call-out is the safe
         // answer; inventing a constraint from a failed word is not.
-        double failed = (0.0 * 4294967296.0) + 0x4D804000;
+        double failed = FgWord(0, (1u << 27) | (1u << 28));
         Assert.False(ArmedAltitudeMode.ConstraintApplicable(failed));
         Assert.False(ArmedAltitudeMode.IsCruiseAltitude(failed));
         Assert.Equal("Altitude", ArmedAltitudeMode.Name(
@@ -78,7 +86,7 @@ public class ArmedAltitudeModeTests
     public void Cruise_bit_is_read_at_the_right_position()
     {
         // Bit 29 alone, SSM Normal Operation.
-        double raw = (3.0 * 4294967296.0) + (1u << 28);
+        double raw = FgWord(3, 1u << 28);
         Assert.False(ArmedAltitudeMode.ConstraintApplicable(raw));
         Assert.True(ArmedAltitudeMode.IsCruiseAltitude(raw));
     }
@@ -86,10 +94,21 @@ public class ArmedAltitudeModeTests
     [Fact]
     public void Constraint_bit_is_read_at_the_right_position()
     {
-        // Bit 28 ALONE, SSM Normal Operation. The live-capture test above uses a payload with
-        // six bits set, so it passes for five WRONG bit indices; this is what actually pins 28.
-        double raw = (3.0 * 4294967296.0) + (1u << 27);
+        // Bit 28 ALONE, SSM Normal Operation. The live capture above carries two bits and
+        // neither is 28, so this is what actually pins 28.
+        double raw = FgWord(3, 1u << 27);
         Assert.True(ArmedAltitudeMode.ConstraintApplicable(raw));
+        Assert.False(ArmedAltitudeMode.IsCruiseAltitude(raw));
+    }
+
+    [Fact]
+    public void A_high_unrelated_bit_is_not_read_as_the_constraint()
+    {
+        // Bit 20 (ALT hold) alone. The raw-bit reading reported the constraint qualifier for
+        // ANY word with a bit at 18 or above, because that is where the float's exponent sets
+        // the bit it was testing.
+        double raw = FgWord(3, 1u << 19);
+        Assert.False(ArmedAltitudeMode.ConstraintApplicable(raw));
         Assert.False(ArmedAltitudeMode.IsCruiseAltitude(raw));
     }
 

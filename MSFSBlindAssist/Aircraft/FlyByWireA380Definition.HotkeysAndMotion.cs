@@ -133,17 +133,11 @@ public partial class FlyByWireA380Definition
             case HotkeyAction.ReadApproachCapability:
             {
                 // A32NX_APPROACH_CAPABILITY doesn't exist in FBW — decode the FCDC FG
-                // word 4 (same source as the PFD_AUTOLAND display + the PFD FMA).
-                var w4 = simConnect.GetCachedVariableValue("PFD_AUTOLAND");
-                string cap = "not available";
-                if (w4.HasValue)
-                {
-                    var w = new SimConnect.Arinc429Word(w4.Value);
-                    cap = (!w.IsNormalOperation && !w.IsFunctionalTest) ? "none computed"
-                        : w.BitValueOr(25, false) ? "LAND 3 dual"
-                        : w.BitValueOr(24, false) ? "LAND 3 single"
-                        : w.BitValueOr(23, false) ? "LAND 2" : "none computed";
-                }
+                // word 1 (same source as the PFD_AUTOLAND display + the PFD FMA).
+                var word = simConnect.GetCachedVariableValue("PFD_AUTOLAND");
+                string cap = word.HasValue
+                    ? A380ApproachCapability.Describe(word.Value) ?? "none computed"
+                    : "not available";
                 announcer.AnnounceImmediate($"Approach capability {cap}");
                 return true;
             }
@@ -361,10 +355,12 @@ public partial class FlyByWireA380Definition
         // non-thousand altitude (e.g. 4500) would land on the 1000-grid. Force 100-ft
         // granularity FIRST — but ONLY when the target isn't already a 1000-multiple, so the
         // common FLxx0 case (e.g. 36000) never needlessly fires the increment. When we do
-        // change it, suppress its "Altitude Increment: 100" side-effect auto-announce.
+        // change it, suppress its "Altitude Increment: 100" side-effect auto-announce. The window
+        // has to outlast the once-a-second batch A32NX_FCU_ALT_INCREMENT_1000 rides (plus the
+        // calculator round trip), or the side effect is spoken a moment after the mute lapses.
         if (rounded % 1000 != 0)
         {
-            _altIncrAnnounceSuppressUntil = DateTime.UtcNow.AddMilliseconds(750);
+            _altIncrAnnounceSuppressUntil = DateTime.UtcNow.AddMilliseconds(2500);
             s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", 100);
             System.Threading.Thread.Sleep(50);
         }
@@ -378,7 +374,7 @@ public partial class FlyByWireA380Definition
         // direct read of A32NX_FCU_ALT_MANAGED: that L:var has been hardcoded to 0 by the
         // aircraft since FBW #10855, so a ">0.5" test on it would always read "selected".
         string altStatus = !_altMode.IsKnown ? "mode not yet known" : _altMode.IsManaged ? "managed" : "selected";
-        if (_metricAlt)
+        if (MetricAlt)
         {
             int m = (int)Math.Round(rounded * 0.3048);
             a.AnnounceImmediate($"FCU altitude {m} metres, {altStatus}");
@@ -450,20 +446,18 @@ public partial class FlyByWireA380Definition
         // A readback speaks the resulting value; without one only the mode monitors speak — the table
         // decides which value vars that leaves the dial callout to confirm.
         ArmFcuEchoFor(evt, readback ? FcuConfirmation.ValueReadout : FcuConfirmation.None);
-        if (evt == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH") s.ExecuteCalculatorCode(SpdMachToggleRpn);
         // The A380's NEW FCU consumes EVERY A32NX.FCU_* button as a K-EVENT, not the A320-era
         // H-event the SendEvent path produces — live-verified: (>H:A32NX.FCU_SPD_PUSH) left the
         // managed dot at 0, (>K:A32NX.FCU_SPD_PUSH) set it to 1. The Speed/Alt/Hdg/VS push-pull
-        // windows already pass the correct A380 event names (incl. the TO_AP_HDG/VS variants), so
-        // firing them as K-events makes all those FCU knob buttons work. (SPD/MACH stays the
-        // conditional RPN above; TRK/FPA toggle goes through here too — verify it separately.)
-        // Everything else goes through SendEvent, which routes A32NX.FCU_* down the
-        // calculator path AND makes each command unique. This used to call
-        // ExecuteCalculatorCode("(>K:{evt})") directly: that bypassed the probe (which is
-        // why the knob buttons kept working while the combos silently did not) but carried
-        // no sequence prefix, so two presses of the SAME button coalesced — the documented
+        // windows already pass the correct A380 event names, so firing them as K-events makes all
+        // those FCU knob buttons work — SPD/MACH included since FBW #10855: see the note on the
+        // SPD/MACH branch in HandleUIVariableSet for why the stock-event RPN it used is dead.
+        // SendEvent routes A32NX.FCU_* down the calculator path AND makes each command unique.
+        // This used to call ExecuteCalculatorCode("(>K:{evt})") directly: that bypassed the probe
+        // (which is why the knob buttons kept working while the combos silently did not) but
+        // carried no sequence prefix, so two presses of the SAME button coalesced — the documented
         // "one push did nothing, you had to push again". SendEvent now does both correctly.
-        else s.SendEvent(evt);
+        s.SendEvent(evt);
         if (readback) OnPanelButtonFired(evt, s, a);
     }
 
@@ -642,16 +636,21 @@ public partial class FlyByWireA380Definition
             // LOC/APPR state = the FCU button lights since FBW #10855 (the old
             // *_MODE_ACTIVE vars are gone). No EXPED — the A380 FCU has no such button.
             "A32NX_FCU_LOC_LIGHT_ON", "A32NX_FCU_APPR_LIGHT_ON",
-            "FD_1_CTL", "FD_2_CTL" })
+            A380FlightDirector.StateKey })
             s.RequestVariable(v, forceUpdate: true);
     }
 
-    // Toggle the FCU metric-altitude pushbutton (cockpit does !L then write-back).
+    // Toggle the FCU metric-altitude (MTRS) pushbutton — the Altitude window's MTRS button. Asks for
+    // the other mode than the one in force or just commanded, so the window's label and the unit a
+    // typed altitude is taken in follow at once. Since FBW #10855 the button is
+    // A32NX.FCU_METRIC_ALT_TOGGLE_PUSH and the mode is the PRIM's (A380MetricAltitude); the write of
+    // L:A32NX_METRIC_ALT_TOGGLE this used to make has had no reader since.
     public void ToggleMetricAltitude(SimConnectManager s, ScreenReaderAnnouncer a)
     {
         if (!s.IsConnected) return;
-        s.ExecuteCalculatorCode($"{(_metricAlt ? 0 : 1)} (>L:A32NX_METRIC_ALT_TOGGLE)");
+        if (MetricAltitudeCommand(MetricAlt ? 0 : 1) is { } evt) s.SendEvent(evt);
     }
 
-    // SetAltIncrement moved to BaseAircraftDefinition (byte-identical FBW A320/A380 pair).
+    // SetAltIncrement lives on BaseAircraftDefinition (the FBW A320/A380 pair); the A380 overrides
+    // it to arm the increment call-out's echo mute (FlyByWireA380Definition.cs).
 }
