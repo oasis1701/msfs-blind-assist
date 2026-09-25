@@ -2344,10 +2344,11 @@ cluster.
   `taxisign`), fire-training wrecks and planes (`wreck`, `plane`, "training
   aircraft", `Fire_737`), masts (`lamps`, `ventilation`, `dme`, `comm`, "steel
   tower", `pkw`), landside fuel (`costco`, `propane`, `curbs`) and cargo-area
-  dressing (`pipes`, `box`, `details`, `model`, `terrain`, `various`, `empty`,
+  dressing (`pipes`, "cargo box", `details`, `model`, `terrain`, `various`, `empty`,
   `doors`, "parking lot"); the freighter test now also reads a separated
   `B777_F`. `canopy` is deliberately NOT a stop word: KATL's
-  `concourse_t_canopy_01` is part of Concourse T. Vendor sublayer codes (`vt`, `ot`, `pg`, `dk`, `lk`, `kg`,
+  `concourse_t_canopy_01` is part of Concourse T; nor is a bare `box`, because
+  `KLAX_TheBoxTerminal` is KLAX's terminal. Vendor sublayer codes (`vt`, `ot`, `pg`, `dk`, `lk`, `kg`,
   `pw`, `dd`, `prg`, `vrm`, `cas`) are stripped like vendor prefixes, and
   "cluster" is dropped from a name once its kind is decided (after, never
   before: dropping it first could complete a kind phrase the prefilter never
