@@ -47,6 +47,38 @@ public partial class FlyByWireA380Definition
     private static readonly (int bit, string phrase)[] OansWord1Bits =
         { (11, "Runway ahead") };
 
+    /// <summary>
+    /// The hardware-dial announcer's phrase for an FCU selected-value delivery (777-MCP parity,
+    /// PR #140): true when <paramref name="varName"/> is one of the vars it listens to, with
+    /// <paramref name="phrase"/> null while the FCU window shows no selection and
+    /// <see cref="FcuValuePhrases.Unavailable"/> while the FCU is off.
+    ///
+    /// Heading and speed are the #10855 display-unit shims, -1 while dashed (0 while the FCU is off:
+    /// it zeroes every output); the altitude is the stock FCU altitude in the pilot's unit (metric
+    /// under MTRS), 0 while the FCU is off; V/S and FPA are PRIM 1's
+    /// selected words, which say on their own whether the value is on the FCU. See
+    /// <see cref="FcuValuePhrases"/> for why each source must say that on its own, and why no SI
+    /// conversion belongs here. The A32NX_AUTOPILOT_{VS,FPA}_SELECTED shims are deliberately NOT
+    /// sources: they read 0 while dashed and in the other mode. Pinned by FbwFcuDialAnnounceTests.
+    /// </summary>
+    internal bool TryComposeFcuValuePhrase(string varName, double value, out string? phrase)
+    {
+        if (varName == Fcu.Heading) { phrase = FcuValuePhrases.Heading(value); return true; }
+        if (varName == Fcu.Speed) { phrase = FcuValuePhrases.Speed(value); return true; }
+        if (varName == Fcu.Altitude)
+        {
+            // The FCU zeroes the stock altitude when it is off; its selected altitude is never below 100 ft.
+            if (value <= 0) { phrase = FcuValuePhrases.Unavailable; return true; }
+            var (altitude, unit) = AltUser(value);
+            phrase = FcuValuePhrases.Altitude(altitude, unit);
+            return true;
+        }
+        if (varName == Fcu.VerticalSpeed) { phrase = FcuValuePhrases.VerticalSpeed(value); return true; }
+        if (varName == Fcu.FlightPathAngle) { phrase = FcuValuePhrases.FlightPathAngle(value); return true; }
+        phrase = null;
+        return false;
+    }
+
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
         // Cache the ND TO-waypoint packed-word halves for the ND status box decode
@@ -815,13 +847,58 @@ public partial class FlyByWireA380Definition
         }
         // Metric-altitude (FCU MTRS) state — cache it so every MSFSBA altitude
         // read-out switches to metres; let the generic monitor announce On/Off.
-        if (varName == "A32NX_METRIC_ALT_TOGGLE") { _metricAlt = value > 0.5; return false; }
+        if (varName == "A32NX_METRIC_ALT_TOGGLE")
+        {
+            _metricAlt = value > 0.5;
+            // The unit is part of the altitude callout's words but not of FCU_ALT_VALUE: re-express the
+            // recorded altitude, or the next forced read of an unchanged altitude is spoken as a turn.
+            if (_lastFcuAltFeet is double feet && TryComposeFcuValuePhrase(Fcu.Altitude, feet, out string? altPhrase))
+                RebaselineFcuValue(Fcu.Altitude, altPhrase);
+            return false;
+        }
 
         // Suppress the side-effect "Altitude Increment: 100" announce that a window-driven
         // SetFCUAltitudeValue fires to force 100-ft granularity (the user set an altitude, not
         // the increment). Time-boxed, so a deliberate later increment change still speaks.
         if (varName == "XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT" && DateTime.UtcNow < _altIncrAnnounceSuppressUntil)
             return true;
+
+        // ---- FCU selected-value CHANGE announcements (hardware knob turns; 777-MCP parity) ----
+        // A hardware dial (MobiFlight, FSUIPC, the cockpit knob) is spoken as it changes, the way
+        // the PMDG 777 speaks its MCP. EVERY delivery of a var the announcer listens to goes
+        // through AnnounceFcuValue — a dashed window (null phrase), an FCU that is off
+        // (Unavailable) and a delivery a readout is about to speak included, all recorded without
+        // a word — so the value reappearing on a pull is heard and a readout never leaves a stale
+        // baseline behind (which swallowed a later turn back to the old value). A change is STAGED
+        // here and released when its batch has finished dispatching (BaseAircraftDefinition.
+        // OnContinuousBatchDelivered), judged with A32NX_FCU_AFS_CP_ACTIVE from the same sample;
+        // that release is outside MainForm's announcer.Suppressed wrap, hence the explicit Ctrl+M
+        // check below. The fcuValueVar return further down consumes the
+        // event, which keeps the generic monitor from speaking the value a second time. MSFSBA's
+        // own writes arm their echo through the FcuEchoKeys table (ArmFcuEcho/ArmFcuEchoFor:
+        // SetFCU*Value, SetTrkFpaMode, FireFCUButton, OnPanelButtonFiring) — SuppressFcuValueChangeEcho
+        // is used directly only by the calculator-code V/S set and by the readouts below.
+        if (varName == "A32NX_FCU_AFS_CP_ACTIVE")
+        {
+            ObserveFcuHealth(value > 0.5);
+            return true;
+        }
+        bool fcuValueVar = TryComposeFcuValuePhrase(varName, value, out string? fcuPhrase);
+        if (fcuValueVar)
+        {
+            if (varName == Fcu.Altitude) _lastFcuAltFeet = value;
+            // A readout pending for this var is about to AnnounceImmediate the same value, which
+            // would cut the callout off mid-word. The V/S readout is covered too: it reads the shims
+            // for its number, but it speaks the same selection as the PRIM V/S and FPA words the
+            // announcer listens to (and takes its dashes / not-available words from them), so both
+            // words are muted while it is pending, and it arms the echo when it speaks.
+            bool readoutPending = (_reqHdg && varName == Fcu.Heading)
+                || (_reqSpd && varName == Fcu.Speed)
+                || (_reqAlt && varName == Fcu.Altitude)
+                || (_reqVs && (varName == Fcu.VerticalSpeed || varName == Fcu.FlightPathAngle));
+            bool fcuMuted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName);
+            AnnounceFcuValue(varName, fcuPhrase, announcer, muted: fcuMuted || readoutPending);
+        }
 
         // ---- FCU readouts: value + managed-indicator pairs ----
         // Each Read* hotkey requests the value var(s) and the managed indicator
@@ -836,12 +913,16 @@ public partial class FlyByWireA380Definition
             // DEGREES, not the radians older builds wrote. Verified live: FCU 345 reads
             // 345.0. Do NOT re-add a "looks like radians" guess — it would mangle any
             // selected heading of 006° or less. Requires the A380X build in docs/a380x.md.
-            if (varName.EndsWith("HEADING_SELECTED")) _pHdgVal = ((value % 360) + 360) % 360;
+            if (varName.EndsWith("HEADING_SELECTED")) _pHdgVal = value;
             else _pHdgMgd = value;
             if (_pHdgVal.HasValue && _pHdgMgd.HasValue)
             {
-                string st = _pHdgMgd.Value > 0 ? "managed" : "selected";
-                announcer.AnnounceImmediate($"FCU heading {_pHdgVal.Value:000} degrees, {st}");
+                // The shim reads -1 while dashed (said in words by HeadingReadout) and 0 while the FCU
+                // is off — the dial's own state tells the two apart from a real 000.
+                SuppressFcuValueChangeEcho(Fcu.Heading);
+                announcer.AnnounceImmediate(FcuWindowStateOf(Fcu.Heading) == FcuWindowState.Unavailable
+                    ? FcuValuePhrases.NotAvailableReadout("heading")
+                    : FcuValuePhrases.HeadingReadout(_pHdgVal.Value, _pHdgMgd.Value > 0));
                 _pHdgVal = _pHdgMgd = null; _reqHdg = false;
             }
             return true;
@@ -854,18 +935,17 @@ public partial class FlyByWireA380Definition
                 // Managed speed parks SPEED_SELECTED at -1 (dashes on the FCU). Don't
                 // format that as a bogus "mach -1.00" — announce the managed state.
                 bool managed = _pSpdMgd.Value > 0 || _pSpdVal.Value < 0;
-                string spoken;
-                if (managed)
-                    spoken = "FCU speed managed";
-                else
-                    // A32NX_AUTOPILOT_SPEED_SELECTED holds the target DIRECTLY: a mach number
-                    // when < 1 (e.g. 0.82), otherwise the speed already in KNOTS (e.g. 220 = 220 kt).
-                    // It is NOT an SI velocity — the earlier ×1.943844 m/s→kt conversion was wrong
-                    // and reported 220 kt as "428 knots" (220 × 1.943844). Live-verified airborne:
-                    // the L:var read = 220 with IAS 220. So announce knots verbatim, no scaling.
-                    spoken = _pSpdVal.Value < 10
-                        ? $"FCU speed mach {_pSpdVal.Value:0.00}, selected"
-                        : $"FCU speed {_pSpdVal.Value:000} knots, selected";
+                // A32NX_AUTOPILOT_SPEED_SELECTED holds the target DIRECTLY: a mach number
+                // when < 1 (e.g. 0.82), otherwise the speed already in KNOTS (e.g. 220 = 220 kt).
+                // It is NOT an SI velocity — the earlier ×1.943844 m/s→kt conversion was wrong
+                // and reported 220 kt as "428 knots" (220 × 1.943844). Live-verified airborne:
+                // the L:var read = 220 with IAS 220. So announce knots verbatim, no scaling
+                // (FcuValuePhrases.SpeedReadout, the one Mach/knots split). 0 is the FCU off.
+                SuppressFcuValueChangeEcho(Fcu.Speed);
+                string spoken = FcuWindowStateOf(Fcu.Speed) == FcuWindowState.Unavailable
+                    ? FcuValuePhrases.NotAvailableReadout("speed")
+                    : managed ? "FCU speed managed"
+                    : FcuValuePhrases.SpeedReadout(_pSpdVal.Value, "selected");
                 announcer.AnnounceImmediate(spoken);
                 _pSpdVal = _pSpdMgd = null; _reqSpd = false;
             }
@@ -879,7 +959,10 @@ public partial class FlyByWireA380Definition
         {
             var (av, au) = AltUser(value);
             string st = !_altMode.IsKnown ? "mode not yet known" : _altMode.IsManaged ? "managed" : "selected";
-            announcer.AnnounceImmediate($"FCU altitude {av:0} {au}, {st}");
+            SuppressFcuValueChangeEcho(Fcu.Altitude);
+            announcer.AnnounceImmediate(FcuWindowStateOf(Fcu.Altitude) == FcuWindowState.Unavailable
+                ? FcuValuePhrases.NotAvailableReadout("altitude")
+                : $"FCU altitude {av:0} {au}, {st}");
             _reqAlt = false;
             return true;
         }
@@ -895,14 +978,29 @@ public partial class FlyByWireA380Definition
             else _pVsMode = value;
             if (_pVsMode.HasValue && ((_pVsMode.Value > 0 && _pFpaVal.HasValue) || (_pVsMode.Value <= 0 && _pVsVal.HasValue)))
             {
-                string spoken = _pVsMode.Value > 0
-                    ? $"FCU flight path angle {_pFpaVal!.Value:0.0} degrees"
-                    : $"FCU vertical speed {_pVsVal!.Value:0} feet per minute";
+                bool fpaMode = _pVsMode.Value > 0;
+                SuppressFcuValueChangeEcho(Fcu.VerticalSpeed, Fcu.FlightPathAngle);
+                // The V/S and FPA shims read 0 while dashed; PRIM 1's words say whether the window shows a
+                // selection (the dial's own sources).
+                string spoken = FcuWindowStateOf(fpaMode ? Fcu.FlightPathAngle : Fcu.VerticalSpeed) switch
+                {
+                    FcuWindowState.Unavailable => FcuValuePhrases.NotAvailableReadout("vertical speed"),
+                    FcuWindowState.Dashes => FcuValuePhrases.ManagedVerticalReadout(fpaMode),
+                    _ => fpaMode
+                        ? $"FCU flight path angle {_pFpaVal!.Value:0.0} degrees"
+                        : $"FCU vertical speed {_pVsVal!.Value:0} feet per minute",
+                };
                 announcer.AnnounceImmediate(spoken);
                 _pVsVal = _pFpaVal = _pVsMode = null; _reqVs = false;
             }
             return true;
         }
+
+        // FCU value vars are def-handled (the change block above + the readout branches) — never
+        // let the generic monitor speak them a second time. A def-handled var skips MainForm's
+        // displayValues write, but UpdateDisplayText reads the SimConnect cache first, so an open
+        // panel row still shows the new value on its next repaint.
+        if (fcuValueVar) return true;
 
         return base.ProcessSimVarUpdate(varName, value, announcer);
     }
@@ -953,6 +1051,17 @@ public partial class FlyByWireA380Definition
 
     /// <inheritdoc />
     public override void CancelDeferredFlush() => _altArmHoldPending = false;
+
+    /// <inheritdoc />
+    /// <remarks>Also drops any FCU readout still waiting for its second half. Those latches have no
+    /// timeout and mute that window's dial callout while set (readoutPending), so one whose half was
+    /// lost to a SimConnect drop muted the dial until the readout was pressed again.</remarks>
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _reqHdg = _reqSpd = _reqAlt = _reqVs = false;
+        _pHdgVal = _pHdgMgd = _pSpdVal = _pSpdMgd = _pVsVal = _pFpaVal = _pVsMode = null;
+    }
 
     public override void ResetAnnouncementBaselines()
     {
