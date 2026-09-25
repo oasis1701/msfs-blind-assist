@@ -57,9 +57,11 @@ public sealed class OverpassClient
     /// <summary>The map this client records into — for the test that pins the sharing.</summary>
     internal ConcurrentDictionary<string, DateTime> Cooldowns => _cooldownUntilUtc;
 
-    /// <summary>Longest one mirror may hold the request, so a black-holed mirror cannot spend the
-    /// caller's whole budget and several mirrors fit inside it.</summary>
-    private static readonly TimeSpan PerMirrorTimeout = TimeSpan.FromSeconds(12);
+    /// <summary>Longest one mirror may hold the request unless the caller says otherwise, so a
+    /// black-holed mirror cannot spend the caller's whole budget and several mirrors fit inside it.
+    /// Right for the taxiway-name query; the buildings query needs longer
+    /// (<see cref="Surroundings.OsmFeatureSource.PerMirrorTimeout"/>).</summary>
+    internal static readonly TimeSpan DefaultPerMirrorTimeout = TimeSpan.FromSeconds(12);
 
     /// <summary>
     /// Posts <paramref name="query"/> to the first mirror with a genuine result, fresh mirrors
@@ -67,7 +69,10 @@ public sealed class OverpassClient
     /// none remain). Null when every mirror failed or the caller cancelled before any answered;
     /// never throws. A caller that cancels after an empty answer was held gets that answer.
     /// </summary>
-    public async Task<string?> PostAsync(string query, CancellationToken ct)
+    public Task<string?> PostAsync(string query, CancellationToken ct) => PostAsync(query, DefaultPerMirrorTimeout, ct);
+
+    /// <summary>As above, with the longest one mirror may hold this request.</summary>
+    public async Task<string?> PostAsync(string query, TimeSpan perMirrorTimeout, CancellationToken ct)
     {
         // One snapshot of the shared cooldown map, partitioned in one pass, so a concurrent fetch
         // cannot drop a mirror from both lists or put it in both.
@@ -98,7 +103,7 @@ public sealed class OverpassClient
 
             string url = order[i];
             using var attemptCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
-            attemptCts.CancelAfter(PerMirrorTimeout);
+            attemptCts.CancelAfter(perMirrorTimeout);
             try
             {
                 using var resp = await _http.PostAsync(url,

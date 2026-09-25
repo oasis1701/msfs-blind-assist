@@ -2150,6 +2150,13 @@ become "Fuel, ahead". Every embedded coordinate is `InvariantCulture`-formatted:
 comma-decimal locale would emit `around:3000,47,2679,-122,5781`, which every
 mirror answers 400 to.
 
+**The buildings query gets 35 s per mirror, the taxiway query 12 s**
+(`OsmFeatureSource.PerMirrorTimeout`, passed to `OverpassClient.PostAsync`; the client's default stays
+12 s). The area query at a large airport takes 17-23 s on a healthy mirror (KDEN 23 s, KDFW 17 s,
+EGLL 21 s, measured 2026-09-25), so under the shared 12 s it failed on every mirror and a large
+airport never had OSM buildings — the catalog quietly went degraded and retried into the same wall.
+35 s still leaves `FetchBudget` (60 s) room for a second mirror.
+
 The AREA answer is not trusted blindly either: an `icao=` tag can sit on the
 wrong aerodrome (live UKRB and UKRK: fields 1,279 km and 4,171 km away), so
 `FetchAsync` keeps only what lies within `AreaBoxMarginMetres` (3 km) of the

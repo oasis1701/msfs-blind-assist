@@ -67,6 +67,14 @@ public sealed class OsmFeatureSource
         return "[out:json][timeout:30];(" + Clauses(around, includeNamedBuildings: false) + ");" + OutputStatement;
     }
 
+    /// <summary>
+    /// Longest one mirror may hold a buildings query. The AREA query at a large airport takes 17-23 s
+    /// on a healthy mirror (KDEN 23 s, KDFW 17 s, EGLL 21 s, measured 2026-09-25), so the client's
+    /// 12 s default failed it on every mirror and a large airport never had OSM buildings. 35 s
+    /// clears that and still leaves the store's FetchBudget room for a second mirror.
+    /// </summary>
+    internal static readonly TimeSpan PerMirrorTimeout = TimeSpan.FromSeconds(35);
+
     /// <summary>How far past the navdata airport box an AREA-query feature may lie.</summary>
     internal const double AreaBoxMarginMetres = 3000.0;
 
@@ -106,7 +114,7 @@ public sealed class OsmFeatureSource
 
     public async Task<IReadOnlyList<AirportFeature>?> FetchAsync(string icao, double lat, double lon, AirportFacilities? box, CancellationToken ct)
     {
-        string? body = await _client.PostAsync(BuildAreaQuery(icao), ct).ConfigureAwait(false);
+        string? body = await _client.PostAsync(BuildAreaQuery(icao), PerMirrorTimeout, ct).ConfigureAwait(false);
         if (body == null) return null;
         var features = TryParse(icao, body);
         if (features == null) return null;
@@ -122,7 +130,7 @@ public sealed class OsmFeatureSource
         // where null is remembered for OnlineFeatureStore.FailureMemory and then retried. An
         // aerodrome OSM has not tagged with icao= takes this path every time, so the difference
         // is the whole feature for those airports.
-        string? fallback = await _client.PostAsync(BuildFallbackQuery(lat, lon), ct).ConfigureAwait(false);
+        string? fallback = await _client.PostAsync(BuildFallbackQuery(lat, lon), PerMirrorTimeout, ct).ConfigureAwait(false);
         if (fallback == null) return null;
         var parsed = TryParse(icao, fallback);
         return parsed == null ? null : KeepInsideBox(parsed, box);

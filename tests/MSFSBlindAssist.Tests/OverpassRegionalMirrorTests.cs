@@ -104,6 +104,39 @@ public class OverpassRegionalMirrorTests
     private static OverpassClient ClientOver(HttpMessageHandler handler, ConcurrentDictionary<string, DateTime>? cooldowns = null)
         => new(new HttpClient(handler), cooldowns ?? new ConcurrentDictionary<string, DateTime>());
 
+    // Measured 2026-09-25 against overpass.private.coffee: the buildings AREA query took 23 s at
+    // KDEN, 17 s at KDFW and 21 s at EGLL. Under the old fixed 12 s per mirror it could never
+    // succeed at a large airport, so the caller now names the per-mirror timeout it needs.
+    [Fact]
+    public async Task A_mirror_slower_than_the_callers_timeout_is_abandoned_for_the_next()
+    {
+        var handler = new PerHostMirror(async (host, ct) =>
+        {
+            if (host == Hosts[0]) await Task.Delay(TimeSpan.FromSeconds(5), ct);
+            return Ok(Content);
+        });
+
+        string? body = await ClientOver(handler).PostAsync(Query, TimeSpan.FromMilliseconds(150), CancellationToken.None);
+
+        Assert.Equal(Content, body);
+        Assert.Equal(new[] { Hosts[0], Hosts[1] }, handler.Asked);
+    }
+
+    [Fact]
+    public async Task A_mirror_within_the_callers_timeout_is_waited_for()
+    {
+        var handler = new PerHostMirror(async (host, ct) =>
+        {
+            await Task.Delay(TimeSpan.FromMilliseconds(300), ct);
+            return Ok(Content);
+        });
+
+        string? body = await ClientOver(handler).PostAsync(Query, TimeSpan.FromSeconds(5), CancellationToken.None);
+
+        Assert.Equal(Content, body);
+        Assert.Equal(new[] { Hosts[0] }, handler.Asked);
+    }
+
     [Fact]
     public async Task A_fresh_mirror_with_the_data_beats_an_empty_answer_from_the_one_before()
     {

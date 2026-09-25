@@ -150,4 +150,14 @@ public class OsmFeatureSourceTests
         Assert.Equal("H1", Assert.Single(features!).Name);
         Assert.Equal(51.605, features![0].Lat, 6);
     }
+
+    // The buildings query at a large airport takes 17-23 s on a healthy mirror (KDEN, KDFW, EGLL,
+    // measured 2026-09-25); the per-mirror timeout must clear that with margin and still leave the
+    // store's FetchBudget room to try a second mirror.
+    [Fact]
+    public void The_per_mirror_timeout_fits_a_large_airport_and_leaves_room_for_a_second_mirror()
+    {
+        Assert.True(OsmFeatureSource.PerMirrorTimeout >= TimeSpan.FromSeconds(30));
+        Assert.True(OsmFeatureSource.PerMirrorTimeout * 1.5 <= OnlineFeatureStore.FetchBudget);
+    }
 }
