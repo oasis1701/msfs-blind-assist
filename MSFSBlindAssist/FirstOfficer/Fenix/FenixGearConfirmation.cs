@@ -23,6 +23,8 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// <item>Annunciator light TEST (<c>S_OH_IN_LT_ANN_LT</c> = 2): all three <c>_U</c> = 1 and
 /// <c>I_MIP_GEAR_RED</c> = 1; back to Bright returned the <c>_U</c> legends to 0. That proves
 /// the <c>_U</c> vars are live lights, not a nonexistent L:var reading 0.</item>
+/// <item>Annunciator switch DIM (<c>S_OH_IN_LT_ANN_LT</c> = 0): the <c>_L</c> legends still read 1 —
+/// plain on/off, not brightness-scaled, so the <c>&gt; 0.5</c> test holds at either setting.</item>
 /// </list>
 /// So with the gear down and locked only the LOWER legend of each wheel is lit: <c>_L</c> is
 /// the green (<see cref="GreenFields"/>). <c>_U</c> is the wheel's other legend — dark when

@@ -552,7 +552,8 @@ powered (main bus 28.5 V), lever `S_MIP_GEAR` = 1, gear down and locked. With th
 annunciator switch `S_OH_IN_LT_ANN_LT` at Bright (1), `I_MIP_GEAR_1_L`/`_2_L`/`_3_L` all read
 1 and `I_MIP_GEAR_1_U`/`_2_U`/`_3_U` and `I_MIP_GEAR_RED` all read 0; with the switch at TEST
 (2) all three `_U` and `I_MIP_GEAR_RED` read 1 (proving the `_U` vars are live lights, not a
-nonexistent L:var reading 0), and back to Bright returned them to 0. So **`_L` is the green
+nonexistent L:var reading 0), and back to Bright returned them to 0. At DIM (0) the three `_L` still read 1 — the legends are plain
+on/off, not brightness-scaled like the iFly's, so the `> 0.5` test holds at either setting. So **`_L` is the green
 DOWN-AND-LOCKED legend**, and `_U` is the wheel's other legend — dark when down-locked, lit
 in the light test; its colour in transit was NOT observed and nothing depends on it. The
 real A320's LDG GEAR panel happens to agree (red UNLK above, green triangle below), but the
