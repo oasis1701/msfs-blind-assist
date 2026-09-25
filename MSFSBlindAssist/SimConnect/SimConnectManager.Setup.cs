@@ -519,33 +519,12 @@ public partial class SimConnectManager
 
         // Get all continuous variables from current aircraft
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-        var continuousVariables = new List<KeyValuePair<string, SimVarDefinition>>();
 
-        foreach (var kvp in variables)
-        {
-            if (kvp.Value.UpdateFrequency == UpdateFrequency.Continuous &&
-                kvp.Value.IsAnnounced)
-            {
-                // Skip PMDGVar - these are monitored by IPMDGDataManager, not SimConnect batches
-                if (kvp.Value.Type == SimVarType.PMDGVar)
-                    continue;
-
-                // Skip vars flagged ExcludeFromBatch — they use per-var continuous subscriptions
-                // set up in RegisterAllVariables, avoiding any batch-struct alignment risk.
-                if (kvp.Value.ExcludeFromBatch)
-                    continue;
-
-                continuousVariables.Add(kvp);
-            }
-        }
-
-        // CRITICAL: Sort variables alphabetically by FULL NAME (with prefix) to match SimConnect's internal ordering
-        continuousVariables.Sort((a, b) =>
-        {
-            string aFullName = a.Value.Type == SimVarType.LVar ? $"L:{a.Value.Name}" : a.Value.Name;
-            string bFullName = b.Value.Type == SimVarType.LVar ? $"L:{b.Value.Name}" : b.Value.Name;
-            return string.CompareOrdinal(aFullName, bFullName);
-        });
+        // Continuous + IsAnnounced, minus PMDGVar (monitored by IPMDGDataManager, not SimConnect
+        // batches) and ExcludeFromBatch (per-var continuous subscriptions set up in
+        // RegisterAllVariables), sorted by FULL NAME to match SimConnect's internal ordering.
+        // ContinuousBatchLayout is pure so which batch a var lands in can be pinned by tests.
+        var continuousVariables = ContinuousBatchLayout.Order(variables);
 
         Log.Debug("SimConnect", $"Aircraft: {CurrentAircraft?.AircraftName ?? "null"}");
         Log.Debug("SimConnect", $"Found {continuousVariables.Count} continuous+announced variables (out of {variables.Count} total)");
@@ -565,7 +544,7 @@ public partial class SimConnectManager
         // Split variables into 5 batches (up to 300 variables per batch = 1500 total).
         // The GenericBatch1-5 structs each hold 300 doubles to match BATCH_SIZE.
         // (Headroom: the A380 currently uses ~700 continuous+announced vars.)
-        const int BATCH_SIZE = 300;
+        const int BATCH_SIZE = ContinuousBatchLayout.BatchSize;
         const int NUM_BATCHES = 5;
 
         // Batch configuration: (batchNum, dataDefinition, dataRequest, structType)
@@ -620,7 +599,7 @@ public partial class SimConnectManager
                     var kvp = continuousVariables[i];
                     var varDef = kvp.Value;
 
-                    string simVarName = varDef.Type == SimVarType.LVar ? $"L:{varDef.Name}" : varDef.Name;
+                    string simVarName = ContinuousBatchLayout.FullName(varDef);
                     string units = varDef.Units ?? "number";
 
                     sc.AddToDataDefinition(

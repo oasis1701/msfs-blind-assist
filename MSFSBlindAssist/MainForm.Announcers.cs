@@ -76,6 +76,17 @@ public partial class MainForm
         aircraft.OnDeferredFlushBatchDelivered(announcer);
     }
 
+    /// <summary>A queued FCU event has actually been sent; let the definition restart its echo window.</summary>
+    private void OnQueuedEventDispatched(object? sender, string eventName)
+    {
+        if (InvokeRequired)
+        {
+            BeginInvoke(new Action(() => OnQueuedEventDispatched(sender, eventName)));
+            return;
+        }
+        currentAircraft?.OnQueuedEventDispatched(eventName);
+    }
+
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
     {
         if (InvokeRequired)
