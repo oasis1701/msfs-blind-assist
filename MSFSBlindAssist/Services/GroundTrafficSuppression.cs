@@ -32,4 +32,26 @@ public static class GroundTrafficSuppression
         return groundSpeedKts is not double gs
                || gs >= Navigation.RolloutExitGate.NoExitStoppedGroundSpeedKts;
     }
+
+    /// <summary>
+    /// Takeoff-roll cutoff for the runway watch: below it, with takeoff assist on, the pilot is
+    /// lined up and waiting, which is exactly when traffic landing on or entering the runway
+    /// matters most (PR #247 review R1).
+    /// </summary>
+    public const double RunwayWatchTakeoffCutoffKts = 30.0;
+
+    /// <summary>
+    /// The runway watch's own gate. <see cref="Suppress"/> silences everything while takeoff assist
+    /// is on — the takeoff-roll rule for PROXIMITY callouts — and takeoff assist auto-activates at
+    /// lineup alignment, so the line-up wait lost the runway watch with it. Here takeoff assist
+    /// suppresses only once the ground speed is known to be at or above
+    /// <see cref="RunwayWatchTakeoffCutoffKts"/> (an unknown speed counts as rolling); otherwise the
+    /// rule is exactly <see cref="Suppress"/>'s.
+    /// </summary>
+    public static bool SuppressRunwayWatch(bool takeoffAssistActive, TaxiGuidanceState state, double? groundSpeedKts)
+    {
+        if (takeoffAssistActive)
+            return groundSpeedKts is not double gs || gs >= RunwayWatchTakeoffCutoffKts;
+        return Suppress(false, state, groundSpeedKts);
+    }
 }

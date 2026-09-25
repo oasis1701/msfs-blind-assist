@@ -1,0 +1,892 @@
+// The reviewed monitor's own highest-risk rules, driven through the headless harness
+// (GroundTrafficHarness: the real tick, intake, sweep bookkeeping, evaluation and speech policy, one
+// simulated second at a time). The pure units behind each rule have their own characterization tests;
+// these pin that the monitor actually wires them together as documented.
+//
+// Geometry: the equator, heading east unless stated, so 1 m east = 1 / 111320 degrees of longitude.
+
+using MSFSBlindAssist.Navigation;
+using MSFSBlindAssist.Services;
+using MSFSBlindAssist.SimConnect;
+using static MSFSBlindAssist.Tests.GroundTrafficHarness;
+
+namespace MSFSBlindAssist.Tests;
+
+public class GroundTrafficMonitorRuleTests
+{
+    private static GroundTrafficHarness OnRoute(double ownGs)
+    {
+        var h = new GroundTrafficHarness { Context = RouteContext(East(1000), null, departure: false) };
+        h.Sim.Position = Own(0, ownGs);
+        return h;
+    }
+
+    private static void MoveTo(AiTrafficDataEventArgs ac, double eastM, double northM, double gsKts,
+        double altitudeFt = 0.0, bool onGround = true)
+    {
+        ac.Longitude = eastM * M;
+        ac.Latitude = northM * M;
+        ac.GroundSpeedKnots = gsKts;
+        ac.AltitudeFt = altitudeFt;
+        ac.OnGround = onGround;
+    }
+
+    // ── Only the first aircraft on the route is called — but "Stop" is never withheld ─────────────────
+
+    [Fact]
+    public void An_aircraft_queued_behind_the_first_still_earns_Stop_when_very_close()
+    {
+        // Both inside the Warning distance at 6 kt (250 ft + the speed lead, about 98 m): the first gets its
+        // "Stop", and the one queued 30 m behind it still gets its own — the author's rule withholds only
+        // Awareness and Caution for traffic behind the first. PR #247 integration follow-up R3 (M2 concern
+        // 1 / review scenario P6): the second "Stop" no longer cuts the first one off a second later — it
+        // is withheld (neither spoken nor latched) for the full InterruptProtectMs window and interrupts once
+        // the window ends, at t=6 — exactly 3 s after British Airways' "Stop" at t=3 — instead of t=4.
+        var h = OnRoute(ownGs: 6);
+        h.Sim.Traffic.Add(Ac(1, 30, 0, 0, "British Airways", "BAW1"));
+        h.Sim.Traffic.Add(Ac(2, 60, 0, 0, "Lufthansa", "DLH2"));
+
+        h.Tick(6);
+
+        Assert.Equal(new[]
+        {
+            "t=3 [INT] Stop, British Airways A320 very close, ahead, 100 feet.",
+            "t=3 British Airways A320 on your route, taxiway A, 100 feet ahead, stopped.",
+            "t=6 [INT] Stop, Lufthansa A320 very close, ahead, 200 feet.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void An_aircraft_crossing_the_route_does_not_hide_the_stopped_aircraft_beyond_it()
+    {
+        // PR #247 integration review P3: rolling at 12 kt, an aircraft crossing the route 110 m ahead (north at
+        // 10 kt, inside the 30 m band for a few seconds) and one stopped on the route 190 m ahead. Only traffic
+        // that OCCUPIES the route can be the first: the crossing one hid the stopped one, which lost its "on
+        // your route" and its "Slow down" and got only "Stop". The transcript is the one the monitor gave
+        // before the author's first-on-the-route rule was ported.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        var crosser = Ac(1, 110, -40, 10, "Delta", "DAL1", headingDeg: 0);
+        h.Sim.Traffic.Add(crosser);
+        h.Sim.Traffic.Add(Ac(2, 190, 0, 0, "Lufthansa", "DLH2"));
+        double ownM = 0, crosserNorthM = -40;
+        h.Sim.Position = Own(ownM, 12);
+        while (ownM < 175)
+        {
+            crosserNorthM += 10 * Kt;
+            crosser.Latitude = crosserNorthM * M;
+            ownM = Math.Min(ownM + 12 * Kt, 175);
+            h.Sim.Position = Own(ownM, ownM >= 175 ? 0 : 12);
+            h.Tick();
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=3 [INT] Stop, Delta A320 very close, ahead, 300 feet.",
+            "t=3 Delta A320 on your route, taxiway A, 300 feet ahead, crossing.",
+            "t=6 [INT] Slow down, Lufthansa A320 ahead, 500 feet.",
+            "t=6 Lufthansa A320 on your route, taxiway A, 500 feet ahead, stopped.",
+            "t=12 [INT] Stop, Lufthansa A320 very close, ahead, 400 feet.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void Head_on_traffic_beyond_an_aircraft_crossing_the_route_is_called_at_once()
+    {
+        // PR #247 integration review P4: rolling at 10 kt, an aircraft crossing the route 120 m ahead (north at
+        // 6 kt) and another coming head-on along the route from 420 m at 15 kt. Neither hides anything: the
+        // crossing one does not occupy the route, and head-on traffic is never queued behind the first. The
+        // head-on aircraft's "coming toward you" is spoken at 1,100 feet, not held until 500 feet — the
+        // transcript the monitor gave before the author's first-on-the-route rule was ported.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        var crosser = Ac(1, 120, -40, 6, "Delta", "DAL1", headingDeg: 0);
+        var headOn = Ac(2, 420, 0, 15, "Lufthansa", "DLH2", headingDeg: 270);
+        h.Sim.Traffic.Add(crosser);
+        h.Sim.Traffic.Add(headOn);
+        double ownM = 0, crosserNorthM = -40, headOnM = 420;
+        h.Sim.Position = Own(ownM, 10);
+        while (headOnM - ownM >= 40)
+        {
+            crosserNorthM += 6 * Kt;
+            crosser.Latitude = crosserNorthM * M;
+            headOnM -= 15 * Kt;
+            headOn.Longitude = headOnM * M;
+            ownM += 10 * Kt;
+            h.Sim.Position = Own(ownM, 10);
+            h.Tick();
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=3 [INT] Stop, Delta A320 very close, ahead, 350 feet.",
+            "t=3 Delta A320 converging from ahead, about 20 seconds.",
+            "t=6 Lufthansa A320 on your route, taxiway A, 1100 feet ahead, coming toward you.",
+            "t=21 [INT] Slow down, Lufthansa A320 ahead, 500 feet.",
+            "t=24 [INT] Stop, Lufthansa A320 very close, ahead, 350 feet.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void Head_on_traffic_beyond_the_first_aircraft_on_the_route_is_never_queued_behind_it()
+    {
+        // A real first this time: an aircraft stopped 150 m ahead, 25 m off the centreline — inside the 30 m
+        // on-route band, so it is the first, though it does not block the taxiway. Beyond it, one comes head-on
+        // along the route from 420 m at 15 kt while the pilot rolls at 10 kt. Head-on traffic is never queued
+        // behind the first, so it keeps its own "coming toward you" — at 1,100 feet, on the alert line after
+        // the first's own (one alert line per 3 s) — instead of nothing until "Stop".
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        h.Sim.Traffic.Add(Ac(1, 150, 25, 0, "British Airways", "BAW1"));
+        var headOn = Ac(2, 420, 0, 15, "Lufthansa", "DLH2", headingDeg: 270);
+        h.Sim.Traffic.Add(headOn);
+        double ownM = 0, headOnM = 420;
+        for (int s = 0; s < 6; s++)
+        {
+            headOnM -= 15 * Kt;
+            headOn.Longitude = headOnM * M;
+            ownM += 10 * Kt;
+            h.Sim.Position = Own(ownM, 10);
+            h.Tick();
+        }
+
+        Assert.Contains("t=6 Lufthansa A320 on your route, taxiway A, 1100 feet ahead, coming toward you.", h.Transcript);
+    }
+
+    // ── A "Stop" withheld while traffic moves away is not swallowed ─────────────────────────────────
+
+    [Fact]
+    public void Traffic_that_pulls_away_then_stops_inside_the_Warning_distance_still_earns_Stop()
+    {
+        // 60 m ahead, inside the Warning distance (about 98 m at 6 kt), pulling away at 20 kt: moving
+        // away, so no "Stop". Then it stops where it is. A withheld Warning is never recorded as if it had
+        // been spoken, so the next evaluation says "Stop" — recording it silently while the aircraft
+        // pulled away swallowed that "Stop" for good.
+        var h = OnRoute(ownGs: 6);
+        var leader = Ac(1, 60, 0, 20, "British Airways", "BAW1");
+        h.Sim.Traffic.Add(leader);
+
+        h.Tick(4);
+        Assert.DoesNotContain(h.Said.All, m => m.StartsWith("Stop,"));
+
+        leader.GroundSpeedKnots = 0;
+        h.Tick(2);
+        Assert.Contains(h.Said.Interrupts, m => m.StartsWith("Stop, British Airways"));
+    }
+
+    private const double Kt = 0.514444;   // metres a second per knot
+    private const double Ft = 0.3048;     // metres per foot
+
+    /// <summary>
+    /// The pilot behind one leader on a straight route east, both starting stopped. Each <see cref="Step"/>
+    /// is one simulated second: both move by their speed (<see cref="OwnMps"/>, <see cref="LeadMps"/>, set by
+    /// the test), then the monitor ticks and the sweep is answered.
+    /// </summary>
+    private sealed class FollowingLeader
+    {
+        public GroundTrafficHarness H { get; } = new() { Context = RouteContext(East(3000), null, departure: false) };
+        private readonly AiTrafficDataEventArgs _leader;
+        public double OwnM, OwnMps, LeadM, LeadMps;
+        public int Second { get; private set; }
+
+        public FollowingLeader(double leadM)
+        {
+            LeadM = leadM;
+            H.Sim.Position = Own(0, 0);
+            _leader = Ac(1, leadM, 0, 0, "British Airways", "BAW1");
+            H.Sim.Traffic.Add(_leader);
+        }
+
+        public double GapM => LeadM - OwnM;
+        public bool StopSpoken => H.Said.Interrupts.Any(m => m.StartsWith("Stop, British Airways"));
+
+        public void Step()
+        {
+            Second++;
+            LeadM += LeadMps;
+            OwnM += OwnMps;
+            H.Sim.Position = Own(OwnM, OwnMps / Kt);
+            _leader.Longitude = LeadM * M;
+            _leader.GroundSpeedKnots = LeadMps / Kt;
+            H.Tick();
+        }
+    }
+
+    [Fact]
+    public void A_leader_that_departs_and_stops_again_ahead_earns_Stop_as_soon_as_it_stops()
+    {
+        // PR #247 integration review P1 (a queue hop): stopped 85 m behind a stopped leader, the pilot follows
+        // it at 10 kt as it departs at up to 16 kt; six seconds later it stops again, 102 m ahead — inside the
+        // Warning distance (about 112 m at 10 kt). While it pulls away, no "Stop"; on the first evaluation
+        // that sees it stopped, "Stop". On the reviewed base this "Stop" was swallowed: withheld while the
+        // leader opened, the Warning was recorded as if spoken, and a stop was no longer an escalation.
+        var s = new FollowingLeader(leadM: 85);
+        int stoppedAt = -1, stopAt = -1;
+        while (s.Second < 20 && stopAt < 0)
+        {
+            int t = s.Second + 1;
+            if (t >= 5 && t < 11) s.LeadMps = Math.Min(16 * Kt, s.LeadMps + 2.5);
+            else if (t >= 11) { s.LeadMps = 0; if (stoppedAt < 0) stoppedAt = t; }
+            if (t >= 6) s.OwnMps = Math.Min(10 * Kt, s.OwnMps + 1.2);
+            s.Step();
+            if (s.StopSpoken) stopAt = s.Second;
+        }
+
+        Assert.Equal(11, stoppedAt);
+        Assert.Equal(stoppedAt, stopAt);   // not while it pulled away, and not a second after it stopped
+    }
+
+    [Fact]
+    public void Following_a_departing_leader_earns_no_Stop_while_it_pulls_away()
+    {
+        // PR #247 integration review P2: the leader departs and the pilot follows three seconds later with the
+        // same acceleration; both settle at 12 kt with the gap, about 103 m, inside the Warning distance (about
+        // 119 m at 12 kt). The gap never closes. The "Stop" withheld while the leader opened at 1 m/s or more
+        // stays withheld once the pilot, catching up to its speed, brings the opening below that — it fired
+        // there, at 350 feet, before the hold-down. Then the leader stops: "Stop" at once.
+        var s = new FollowingLeader(leadM: 85);
+        while (s.Second < 45)
+        {
+            int t = s.Second + 1;
+            if (t >= 5) s.LeadMps = Math.Min(12 * Kt, s.LeadMps + 0.5);
+            if (t >= 8) s.OwnMps = Math.Min(12 * Kt, s.OwnMps + 0.5);
+            s.Step();
+        }
+        Assert.DoesNotContain(s.H.Said.All, m => m.StartsWith("Stop,"));
+        Assert.InRange(s.GapM, 100, 106);   // still inside the Warning distance: it was held, not out of range
+
+        s.LeadMps = 0;
+        s.Step();
+        Assert.True(s.StopSpoken, "no Stop once the leader stopped");
+    }
+
+    [Fact]
+    public void A_leader_that_pulls_away_then_slows_to_4_kt_earns_Stop_once_the_pilot_closes_on_it()
+    {
+        // Why the withheld "Stop" is held down rather than recorded until the leader stops: this leader never
+        // stops. As in the previous test both settle at 12 kt, 103 m apart; then it slows to 4 kt. It is still
+        // MOVING, but the pilot closes on it at 1 m/s and more — "Stop" on that first evaluation. Recorded
+        // until the leader stopped, the Warning would never have been an escalation again.
+        var s = new FollowingLeader(leadM: 85);
+        while (s.Second < 30)
+        {
+            int t = s.Second + 1;
+            if (t >= 5) s.LeadMps = Math.Min(12 * Kt, s.LeadMps + 0.5);
+            if (t >= 8) s.OwnMps = Math.Min(12 * Kt, s.OwnMps + 0.5);
+            s.Step();
+        }
+        Assert.DoesNotContain(s.H.Said.All, m => m.StartsWith("Stop,"));
+
+        int stopAt = -1;
+        while (s.Second < 40 && stopAt < 0)
+        {
+            s.LeadMps = Math.Max(4 * Kt, s.LeadMps - 1.0);
+            s.Step();
+            if (s.StopSpoken) stopAt = s.Second;
+        }
+        Assert.Equal(31, stopAt);   // the first second it closes, at 1 m/s
+    }
+
+    [Fact]
+    public void A_Stop_held_down_on_a_slowly_closing_leader_still_speaks_by_the_floor()
+    {
+        // PR #247 integration review R1: a leader moving at 3.5 kt — above MovingTrafficKts — with the pilot
+        // closing at only 0.3 m/s (under HeldStopReleaseClosingMps) would hold "Stop" down forever under the
+        // pre-R1 rule, however close the gap got. The pilot's own speed is constant throughout (3.5 kt + a
+        // 0.3 m/s closing rate = about 4.08 kt) so the speed-scaled Warning boundary never moves: the leader
+        // opens fast for the first three seconds — a fast poll needs an already-tracked aircraft, so with
+        // nothing tracked yet the first sweep only lands on the slow, every-third-tick cadence — arming the
+        // hold on the very first evaluation that sees it (motion-based, PR #247 author's fix), then settles
+        // at 3.5 kt: still MOVING, but closing at only 0.3 m/s. GroundTrafficLogic.StopHoldFloorFt (200 ft)
+        // releases the hold once the gap reaches it, regardless of the speeds.
+        var s = new FollowingLeader(leadM: 62);
+        s.OwnMps = 3.5 * Kt + 0.3;   // constant from the first tick: 4.08 kt, so the Warning boundary never moves
+        s.LeadMps = 8.0;             // opens fast for the first evaluation, whenever the slow cadence delivers it
+        while (s.Second < 3) s.Step();
+        Assert.False(s.StopSpoken, "Stop must not fire while the leader is still opening");
+
+        s.LeadMps = 3.5 * Kt;        // settles: still MOVING, closing at just 0.3 m/s from here on
+        int stopAt = -1;
+        double gapFtAtStop = double.NaN;
+        while (s.Second < 200 && stopAt < 0)
+        {
+            s.Step();
+            if (s.GapM * GroundTrafficLogic.FeetPerMetre > 205 && s.StopSpoken)
+                Assert.Fail($"Stop fired at {s.Second}s, {s.GapM * GroundTrafficLogic.FeetPerMetre:0.0} ft — well outside the floor");
+            if (stopAt < 0 && s.StopSpoken) { stopAt = s.Second; gapFtAtStop = s.GapM * GroundTrafficLogic.FeetPerMetre; }
+        }
+
+        // Measured: "Stop" comes at t=66, with the gap at 199.5 ft — never before the floor (at t=65 the
+        // gap is still 200.4 ft, above it), never later than one tick's travel (0.3 m/s, about 1 ft) past it.
+        Assert.Equal(66, stopAt);
+        Assert.InRange(gapFtAtStop, 200 - 0.3 * GroundTrafficLogic.FeetPerMetre, 200);
+    }
+
+    // ── A parked aircraft off the route: no "Slow down", and "Stop" on time ─────────────────────────────
+
+    [Fact]
+    public void A_pilot_who_misses_a_bend_hears_Stop_within_a_second_of_the_250_ft_line()
+    {
+        // PR #247 integration review P5 — an accepted gap, and its mitigation. The route turns north 80 m past
+        // its start; the pilot misses the turn and rolls straight on at 12 kt toward an aircraft parked 90 m
+        // beyond the bend, off the route. A parked aircraft off the route is no route threat, so there is no
+        // "Slow down" (the author's fix — the straight-line closest approach assumed the pilot keeps going
+        // straight and made 421 false calls), only "Stop" once it is inside the fixed 250 ft. Rolling at it
+        // inside the Caution distance keeps the sweep at 1 s, so that "Stop" comes within one second of the
+        // line: "250 feet", where the 3 s sweep made it "200 feet".
+        var route = new List<GroundTrafficRoutePoint>
+        {
+            new(0, 0, "A", 0), new(0, 80 * M, "A", 80), new(300 * M, 80 * M, "B", 380),
+        };
+        var h = new GroundTrafficHarness { Context = RouteContext(route, null, departure: false) };
+        h.Sim.Traffic.Add(Ac(1, 170, 0, 0, "British Airways", "BAW1"));
+        double ownM = -150, gapFtAtStop = double.NaN;
+        h.Sim.Position = Own(ownM, 12);
+        while (170 - ownM >= 20 && double.IsNaN(gapFtAtStop))
+        {
+            ownM += 12 * Kt;
+            h.Sim.Position = Own(ownM, 12);
+            h.Tick();
+            if (h.Said.Interrupts.Any(m => m.StartsWith("Stop, British Airways")))
+                gapFtAtStop = (170 - ownM) * GroundTrafficLogic.FeetPerMetre;
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=18 British Airways A320, ahead, 700 feet, stopped.",
+            "t=40 [INT] Stop, British Airways A320 very close, ahead, 250 feet.",
+        }, h.Transcript);
+        // Within one second's travel at 12 kt (about 20 ft) of the 250 ft line.
+        Assert.InRange(gapFtAtStop, 250 - 12 * Kt * GroundTrafficLogic.FeetPerMetre, 250);
+    }
+
+    // ── A Warning withheld outside the forward arc is not recorded ───────────────────────────────────
+
+    [Fact]
+    public void Traffic_very_close_behind_earns_Stop_once_the_pilot_turns_to_face_it()
+    {
+        // PR #247 integration review Q5: an aircraft parked 50 m behind the pilot — inside the Warning distance,
+        // outside the ±120° forward arc, so "Stop" is withheld. The forward-arc branch recorded that Warning as
+        // if it had been spoken, so when the pilot then turned to face the aircraft, Warning was no longer an
+        // escalation and "Stop" never came. A withheld Warning is never recorded, here as everywhere else.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(1000), null, departure: false) };
+        h.Sim.Traffic.Add(Ac(1, 450, 0, 0, "British Airways", "BAW1"));
+        h.Sim.Position = Own(500, 3);                        // heading east: the aircraft is dead astern
+        h.Tick(3);                                           // the first sweep, on the third tick
+        Assert.Empty(h.Said.All);
+
+        h.Sim.Position = Own(500, 3, headingDeg: 270);       // turned to face it
+        h.Tick(3);
+
+        Assert.Equal(new[] { "t=4 [INT] Stop, British Airways A320 very close, ahead, 175 feet." }, h.Transcript);
+    }
+
+    // ── "Stop" is never withheld on a first Warning ──────────────────────────────────────────────────
+
+    [Fact]
+    public void A_Slow_down_that_keeps_closing_reaches_Stop_inside_the_repeat_window()
+    {
+        // Rolling at 10 kt toward an aircraft parked on the route 190 m ahead (Caution inside about 158 m,
+        // Warning inside about 112 m at that speed). "Slow down" is spoken first; "Stop" follows nine
+        // seconds later, well inside the 15 s repeat window — Caution → Warning is never suppressed.
+        var h = OnRoute(ownGs: 10);
+        h.Sim.Traffic.Add(Ac(1, 190, 0, 0, "British Airways", "BAW1"));
+        double ownEastM = 0;
+
+        int slowDownAt = -1, stopAt = -1;
+        for (int s = 1; s <= 21; s++)
+        {
+            ownEastM += 10 * 0.514444;
+            h.Sim.Position = Own(ownEastM, 10);
+            h.Tick();
+            if (slowDownAt < 0 && h.Said.Interrupts.Any(m => m.StartsWith("Slow down, British Airways"))) slowDownAt = s;
+            if (stopAt < 0 && h.Said.Interrupts.Any(m => m.StartsWith("Stop, British Airways"))) stopAt = s;
+        }
+
+        Assert.True(slowDownAt > 0, "no Slow down");
+        Assert.True(stopAt > slowDownAt, "no Stop after the Slow down");
+        Assert.True(stopAt - slowDownAt < GroundTrafficLogic.EscalationRepeatWindowMs / 1000,
+            $"Stop came {stopAt - slowDownAt} s after Slow down, not inside the repeat window");
+    }
+
+    [Fact]
+    public void Stop_is_spoken_while_the_announcer_is_suppressed_and_nothing_queued_is_lost()
+    {
+        // The aircraft-switch grace suppresses the announcer: only an interrupt is planned, so "Stop" still
+        // speaks, and a queued line is neither spoken nor marked spoken — it goes out once the grace ends.
+        var h = OnRoute(ownGs: 6);
+        h.Sim.Traffic.Add(Ac(1, 60, 0, 0, "British Airways", "BAW1"));
+        h.Sim.Traffic.Add(Ac(2, 150, 60, 0, "Lufthansa", "DLH2"));   // off the route, ahead and to the left
+        h.Said.Suppressed = true;
+
+        h.Tick(3);
+        Assert.Contains(h.Said.Interrupts, m => m.StartsWith("Stop, British Airways"));
+        Assert.Equal(h.Said.Interrupts, h.Said.All);   // nothing queued went out (British Airways' "on your route" either)
+
+        h.Said.Suppressed = false;
+        h.Tick(3);
+        Assert.Contains(h.Said.All, m => m.StartsWith("Lufthansa A320, ahead and to the left"));
+    }
+
+    // ── The runway watch ────────────────────────────────────────────────────────────────────────────
+
+    // Runway 09/27, 3 km long, 1 km north of the origin: the 09 threshold 1 km east, the 27 threshold 4 km
+    // east. The pilot holds short of it on the south side near the 27 end (70 m from the centreline), far
+    // outside the proximity range of anything rolling on the 09 half.
+    private const double RunwayNorthM = 1000, Threshold09EastM = 1000, Threshold27EastM = 4000;
+
+    private static TaxiGraph.RunwayCenterline Runway0927() => new()
+    {
+        Name1 = "09", Name2 = "27", HeadingDeg1 = 90, HalfWidthMeters = 22.86,
+        Lat1 = RunwayNorthM * M, Lon1 = Threshold09EastM * M,
+        Lat2 = RunwayNorthM * M, Lon2 = Threshold27EastM * M,
+    };
+
+    private static GroundTrafficRouteContext Context(TaxiGraph.RunwayCenterline runway, bool holdingShort) => new()
+    {
+        Runways = new[] { runway },
+        AirportIcao = "TEST",
+        State = holdingShort ? TaxiGuidanceState.HoldShort : TaxiGuidanceState.Taxiing,
+        HeldRunwayLabel = holdingShort ? "Runway 09" : null,
+        RouteAhead = new List<GroundTrafficRoutePoint>
+        {
+            new((RunwayNorthM - 70) * M, 3800 * M, "C", 0), new((RunwayNorthM + 100) * M, 3800 * M, "C", 170),
+        },
+    };
+
+    private static GroundTrafficHarness AtTheHold(bool holdingShort)
+    {
+        var runway = Runway0927();
+        var h = new GroundTrafficHarness { Context = Context(runway, holdingShort) };
+        h.Sim.Position = Own(3800, 0, northM: RunwayNorthM - 70, headingDeg: 0);
+        return h;
+    }
+
+    [Fact]
+    public void A_landing_aircraft_on_the_watched_runway_is_announced_once()
+    {
+        // On final → over the pavement (landing) → touchdown → a long roll on the runway. It is a known
+        // final AND a known occupant for the grace period after touchdown; the final's cleanup must never
+        // touch the occupant's record, or it is announced again (PR #247 re-review Critical 1 / M1).
+        var h = AtTheHold(holdingShort: true);
+        var ac = Ac(1, Threshold09EastM - 1852, RunwayNorthM, 140, "British Airways", "BAW1",
+            onGround: false, altitudeFt: 300);                                  // 1.0 nm final
+        h.Sim.Traffic.Add(ac);
+
+        h.Tick();                                                                // the watch's first status
+        MoveTo(ac, Threshold09EastM + 300, RunwayNorthM, 135, altitudeFt: 40, onGround: false);   // landing
+        h.Tick();
+        double east = Threshold09EastM + 600, gs = 120;
+        MoveTo(ac, east, RunwayNorthM, gs);                                      // touchdown
+        h.Tick();
+        for (int s = 0; s < 8; s++)                                              // rolling out, well past the 3 s grace
+        {
+            gs -= 10;
+            east += gs * 0.514444;
+            MoveTo(ac, east, RunwayNorthM, gs);
+            h.Tick();
+        }
+
+        Assert.Single(h.Said.All, m => m.Contains("British Airways A320 on final runway 09")
+                                       || m.Contains("British Airways A320 landing runway 09"));
+        Assert.Single(h.Said.All, m => m.Contains("British Airways A320 on runway 09"));
+    }
+
+    // The watch's first status comes from a sweep requested AFTER the watch started, and two protections keep a
+    // stale sweep from giving it: the READINESS GATE (a sweep requested before the watch started — or, since R2,
+    // before a suspended watch resumed — gives no runway evaluation) and the CYCLE (a completion evaluates the watch
+    // and watch gate its own request saw, PR #247 review L9, never the watch in progress). A sweep requested before
+    // the watch existed at all is stopped by both, so a test of that alone passes with either one removed (PR #247
+    // integration review, Minor 8). The first test below pins the readiness gate, the third R2's re-arm of it on
+    // resume. The second no longer pins the cycle: since R2 the re-armed readiness gate stops its sweep as well, and
+    // for the first status no test can tell the cycle's watch-gate check apart any more — it is defence in depth
+    // (PR #247 focused re-review M1). The cycle's other half, the watch its request saw, still decides what is
+    // scanned and said, but no longer the channel: every runway line that can interrupt takes that from the watch
+    // adopted this tick (S7, the next section's tests), and the cycle's own mode is read only by the re-armed
+    // status's wait.
+    private static AiTrafficDataEventArgs OnOneMileFinal()
+        => Ac(1, Threshold09EastM - 1852, RunwayNorthM, 140, "British Airways", "BAW1", onGround: false, altitudeFt: 300);
+
+    private const string FirstStatusWithTheFinal =
+        "Runway 09: no traffic seen on the runway. British Airways A320 on final runway 09, 1.0 miles.";
+
+    [Fact]
+    public void The_first_runway_status_waits_for_a_sweep_requested_after_the_watch_restarted()
+    {
+        // Pins the READINESS GATE. A database switch restarts the watch under the SAME key within one tick, while the
+        // sweep requested under its previous run is still outstanding: that sweep's cycle names the very watch in
+        // progress, so the cycle lets it through and only its request time, before the restart, stops it. Its
+        // completion gives no first status (with this gate removed it gave one); the next sweep does.
+        var h = AtTheHold(holdingShort: true);
+        h.Sim.Traffic.Add(OnOneMileFinal());
+
+        h.TickOnly();                                // t=1: the watch starts; a sweep is requested
+        h.Monitor.ClearRunwayCache();                // a database switch
+        h.TickOnly();                                // t=2: the watch restarts under the same key
+        h.Sim.CompleteSweep();                       // the sweep requested before the restart completes
+
+        Assert.Empty(h.Said.All);
+
+        h.Tick();                                    // t=3: the first sweep requested after the restart
+        Assert.Equal(new[] { "t=3 " + FirstStatusWithTheFinal }, h.Transcript);
+    }
+
+    [Fact]
+    public void The_first_runway_status_ignores_a_sweep_requested_while_the_watch_was_suspended()
+    {
+        // A sweep requested during the suspension came in unwatched, so the aircraft on final was dropped: evaluated
+        // as the resumed watch it said "Runway 09: no traffic seen on the runway or on final." with an aircraft on a
+        // 1 nm final. Since R2 BOTH protections stop it, and either one alone does: its own cycle had no watch and a
+        // closed gate, and it was requested before the resume, the moment the readiness gate is re-armed to. With
+        // both removed it gives that false status; with either one removed this test still passes, so it pins
+        // neither alone (measured, PR #247 focused re-review M1). The next sweep gives the first status, and names
+        // the aircraft on final.
+        bool suppressed = false;
+        var h = AtTheHold(holdingShort: true);
+        h.Monitor.RunwayWatchSuppressCheck = () => suppressed;
+        h.Sim.Traffic.Add(OnOneMileFinal());
+
+        h.TickOnly();                                // t=1: the watch starts; a sweep is requested
+        suppressed = true;
+        h.TickOnly();                                // t=2: the gate closes — the watch is suspended
+        h.Sim.CompleteSweep();                       // that sweep completes with the gate closed: nothing evaluated
+        h.TickOnly();                                // t=3: still suspended — a sweep is requested with no watch
+        h.Sim.DeliverEntries();                      // its entries arrive unwatched: the aircraft on final is dropped
+        suppressed = false;
+        h.TickOnly();                                // t=4: the gate reopens — the watch resumes (readiness re-armed)
+        h.Sim.DeliverCompletion();                   // the sweep requested while suspended completes
+
+        Assert.Empty(h.Said.All);
+
+        h.Tick();                                    // t=5: the first sweep requested after the resume
+        Assert.Equal(new[] { "t=5 " + FirstStatusWithTheFinal }, h.Transcript);
+    }
+
+    [Fact]
+    public void The_first_runway_status_ignores_a_sweep_requested_before_the_watch_was_suspended()
+    {
+        // PR #247 integration follow-up R2. Neither protection as it stood before R2 covers this ordering: the
+        // sweep is requested BEFORE the suspension (its cycle's WatchGate is TRUE, so the CYCLE gate lets it
+        // through), and its entries arrive DURING the suspension — unwatched, so the
+        // aircraft on final is dropped — with its COMPLETION only arriving AFTER the watch resumes. Before
+        // R2, the readiness reference was left at the watch's ORIGINAL start (before the sweep was even
+        // requested), so the stale completion passed the readiness gate too and reported a false "no
+        // traffic seen on the runway or on final." with the final still genuinely there. R2 re-arms the
+        // readiness reference to the resume moment, so this completion — requested before it — is ignored;
+        // the next, freshly-requested sweep reports the final correctly.
+        bool suppressed = false;
+        var h = AtTheHold(holdingShort: true);
+        h.Monitor.RunwayWatchSuppressCheck = () => suppressed;
+        h.Sim.Traffic.Add(OnOneMileFinal());
+
+        h.TickOnly();                                // t=1: the watch starts, gate open; sweep requested
+        suppressed = true;
+        h.TickOnly();                                // t=2: the gate closes — the watch is suspended
+        h.Sim.DeliverEntries();                       // that sweep's entries arrive unwatched: the final is dropped
+        suppressed = false;
+        h.TickOnly();                                // t=3: the gate reopens — the watch resumes
+        h.Sim.DeliverCompletion();                    // the sweep requested before the suspension completes
+
+        Assert.Empty(h.Said.All);
+
+        h.Tick();                                     // t=4: the first sweep requested after the resume
+        Assert.Equal(new[] { "t=4 " + FirstStatusWithTheFinal }, h.Transcript);
+    }
+
+    // ── A runway line takes its channel from where the pilot is NOW ─────────────────────────────────
+
+    // Every runway-watch line that can interrupt ("no traffic seen on the runway now" never can: it is always queued)
+    // takes its CHANNEL (interrupt or queued) from the watch adopted this tick — where
+    // the pilot is now — never from the mode of the tick that requested the sweep it comes from; the scan and the
+    // words stay that sweep's (PR #247 focused re-review S7). In each test below one sweep straddles a mode change
+    // under the same key: requested in one mode and answered only after the next tick adopted the other (the
+    // harness answers it late; in the sim, a sweep slower than the one-second tick).
+
+    /// <summary>Continue at the hold: the route goes on across, and the pilot rolls onto the runway's pavement.</summary>
+    private static void OntoTheRunway(GroundTrafficHarness h)
+    {
+        h.Context = Context(Runway0927(), holdingShort: false);
+        h.Sim.Position = Own(3800, 5, northM: RunwayNorthM - 5, headingDeg: 0);
+    }
+
+    /// <summary>Just landed on 27, on a landing-exit route that turns off south at east 3000.</summary>
+    private static GroundTrafficRouteContext LandingExitOn27() => new()
+    {
+        Runways = new[] { Runway0927() },
+        AirportIcao = "TEST",
+        State = TaxiGuidanceState.Taxiing,
+        IsLandingExit = true,
+        LandingRunway = "27",
+        RouteAhead = new List<GroundTrafficRoutePoint>
+        {
+            new(RunwayNorthM * M, 3000 * M, "C", 0), new((RunwayNorthM - 200) * M, 3000 * M, "C", 200),
+        },
+    };
+
+    /// <summary>On runway 27 just landed on, at east 3000 heading west: rolling at 5 kt (Vacating) or stopped (OnRunway).</summary>
+    private static SimConnectManager.AircraftPosition OnTheLandingRunway(double gsKts)
+        => Own(3000, gsKts, northM: RunwayNorthM, headingDeg: 270);
+
+    private static AiTrafficDataEventArgs OnOneMileFinalTo27()
+        => Ac(1, Threshold27EastM + 1852, RunwayNorthM, 140, "British Airways", "BAW1",
+            headingDeg: 270, onGround: false, altitudeFt: 300);
+
+    [Fact]
+    public void A_first_status_from_a_sweep_requested_at_the_hold_interrupts_once_the_pilot_is_on_the_runway()
+    {
+        // Holding short of 09 with an aircraft on a 1 nm final. The sweep requested at the hold is answered only
+        // after Continue has taken the pilot onto the runway (the same watch, now OnRunway; the harness compresses
+        // the roll onto the pavement into one tick). Something is on short final and the pilot is on the runway,
+        // so the first status interrupts. It was queued: it followed the Holding mode of the tick that requested
+        // the sweep.
+        var h = AtTheHold(holdingShort: true);
+        h.Sim.Traffic.Add(OnOneMileFinal());
+
+        h.TickOnly();                                // t=1: the watch starts at the hold; a sweep is requested
+        OntoTheRunway(h);
+        h.TickOnly();                                // t=2: the same watch, now OnRunway
+        h.Sim.CompleteSweep();                       // the sweep requested at the hold is answered
+
+        Assert.Equal(new[] { "t=2 [INT] " + FirstStatusWithTheFinal }, h.Transcript);
+    }
+
+    [Fact]
+    public void A_new_short_final_from_a_sweep_requested_at_the_hold_interrupts_once_the_pilot_is_on_the_runway()
+    {
+        // The event path. The first status is spoken at the hold at t=1 (nothing on the runway or on final) and the
+        // pilot holds for 14 s, past RunwayWatchScopes.RearmAfterHoldWindowMs, so entering the runway re-arms
+        // nothing. At t=15 an aircraft is on a 1 nm final to 09, in a sweep requested at the hold and answered only
+        // once Continue has taken the pilot onto the runway: a new short final, told to a pilot on the runway,
+        // interrupts. It was queued, by the Holding mode of the tick that requested the sweep.
+        var h = AtTheHold(holdingShort: true);
+        h.Tick();                                    // t=1: the first status
+        h.Tick(13);                                  // t=2..14: holding
+        h.Sim.Traffic.Add(OnOneMileFinal());
+        h.TickOnly();                                // t=15: a sweep is requested at the hold
+        OntoTheRunway(h);
+        h.TickOnly();                                // t=16: the same watch, now OnRunway
+        h.Sim.CompleteSweep();                       // the sweep requested at the hold is answered
+
+        Assert.Equal(new[]
+        {
+            "t=1 Runway 09: no traffic seen on the runway or on final.",
+            "t=16 [INT] British Airways A320 on final runway 09, 1.0 miles.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void A_new_short_final_from_a_sweep_requested_while_stopped_after_landing_is_queued_once_the_pilot_is_vacating()
+    {
+        // The reverse. Stopped on the runway just landed on (27, on a landing-exit route) the watch is OnRunway, and
+        // its first status is spoken at t=1 (nothing on the runway or on final). At t=2 an aircraft is on a 1 nm
+        // final to 27, in a sweep requested while the pilot is stopped and answered only once the pilot is rolling
+        // again: Vacating, turning off the runway just landed on, where a runway line waits its turn behind taxi
+        // guidance's exit instructions. So the new final is queued. It interrupted, by the OnRunway mode of the tick
+        // that requested the sweep.
+        var h = new GroundTrafficHarness { Context = LandingExitOn27() };
+        h.Sim.Position = OnTheLandingRunway(gsKts: 0);
+        h.Tick();                                    // t=1: stopped on the runway (OnRunway); the first status
+        h.Sim.Traffic.Add(OnOneMileFinalTo27());
+        h.TickOnly();                                // t=2: a sweep is requested while stopped
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);   // rolling again
+        h.TickOnly();                                // t=3: the same watch, now Vacating
+        h.Sim.CompleteSweep();                       // the sweep requested while stopped is answered
+
+        Assert.Equal(new[]
+        {
+            "t=1 Runway 27: no traffic seen on the runway or on final.",
+            "t=3 British Airways A320 on final runway 27, 1.0 miles.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void A_re_armed_runway_status_waits_for_a_sweep_requested_on_the_runway()
+    {
+        // The one reader of the evaluated cycle's own mode: the RE-ARMED status's wait (PR #247 re-review M5). The
+        // first status is spoken at the hold at t=1, with an aircraft on a 1 nm final. A sweep is requested at the
+        // hold at t=2, and Continue takes the pilot onto the runway at t=3, well inside
+        // RunwayWatchScopes.RearmAfterHoldWindowMs, so the first status is re-armed (critical-only); only then is
+        // the hold's sweep answered. The re-armed status waits it out and is spoken, interrupting, from the next
+        // sweep, requested on the runway — so it is named, as a watch of the runway under the aircraft is, for the
+        // nearer end: 27. Without the wait it went out a sweep early, judged on the hold's sweep, as that sweep's
+        // "Runway 09: …" (PR #247 focused re-review S8).
+        var h = AtTheHold(holdingShort: true);
+        h.Sim.Traffic.Add(OnOneMileFinal());
+
+        h.Tick();                                    // t=1: the first status, at the hold
+        h.TickOnly();                                // t=2: a sweep is requested at the hold
+        OntoTheRunway(h);
+        h.TickOnly();                                // t=3: the same watch, now OnRunway — the first status re-armed
+        h.Sim.CompleteSweep();                       // the hold's sweep is answered: the re-armed status waits
+        h.Tick(3);                                   // t=4..6: sweeps requested on the runway
+
+        Assert.Equal(new[]
+        {
+            "t=1 " + FirstStatusWithTheFinal,
+            "t=4 [INT] Runway 27: no traffic seen on the runway. British Airways A320 on final runway 09, 1.0 miles.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void A_brief_stop_while_vacating_does_not_mute_the_runway_watch()
+    {
+        // Replay G: the re-armed status waits only while the ADOPTED watch interrupts (PR #247 re-review follow-up).
+        // Rolling off the runway just landed on (27, Vacating), the first status is spoken, queued, at t=1. A sweep is
+        // requested at t=2; the pilot stops for one tick at t=3 (OnRunway: the first status is re-armed), and only
+        // then is that sweep answered, so the re-armed status waits. From t=4 the pilot rolls again (Vacating), the
+        // wait ends and the re-armed status completes silently, so the aircraft on a 1 nm final to 27 from t=6 is
+        // announced, queued behind the exit instructions. Waiting on the cycle's own mode alone, every Vacating sweep
+        // waited again and the event path never ran: nothing, through t=25, about a one-mile final to the runway the
+        // pilot was still on (PR #247 focused re-review S9).
+        var h = new GroundTrafficHarness { Context = LandingExitOn27() };
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);
+        h.Tick();                                    // t=1: rolling off the runway (Vacating); the first status
+        h.TickOnly();                                // t=2: a sweep is requested while vacating
+        h.Sim.Position = OnTheLandingRunway(gsKts: 0);
+        h.TickOnly();                                // t=3: a brief stop (OnRunway) — the first status re-armed
+        h.Sim.CompleteSweep();                       // the vacating sweep is answered: the re-armed status waits
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);
+        h.Tick(2);                                   // t=4..5: rolling again (Vacating)
+        h.Sim.Traffic.Add(OnOneMileFinalTo27());
+        h.Tick(20);                                  // t=6..25
+
+        Assert.Equal(new[]
+        {
+            "t=1 Runway 27: no traffic seen on the runway or on final.",
+            "t=6 British Airways A320 on final runway 27, 1.0 miles.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void A_status_re_armed_on_stopping_after_landing_stays_silent_once_the_pilot_is_vacating_again()
+    {
+        // X3: a re-armed status is critical only by the ADOPTED watch (PR #247 focused re-review N2). Rolling off the
+        // runway just landed on (27, Vacating) with an aircraft on a 1 nm final, the first status names it, queued,
+        // at t=1. The pilot stops at t=2 (OnRunway: the first status is re-armed) and a sweep is requested; the pilot
+        // rolls again at t=3 (Vacating), and only then is that sweep answered. Judged by the watch the pilot is now in,
+        // the re-armed status completes silently. Judged by its sweep's OnRunway mode, it interrupted at t=3 — a
+        // status heard two seconds earlier, cutting off taxi guidance's exit instruction (PR #247 focused re-review S9).
+        var h = new GroundTrafficHarness { Context = LandingExitOn27() };
+        h.Sim.Traffic.Add(OnOneMileFinalTo27());
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);
+        h.Tick();                                    // t=1: rolling off the runway (Vacating); the first status
+        h.Sim.Position = OnTheLandingRunway(gsKts: 0);
+        h.TickOnly();                                // t=2: stopped (OnRunway) — re-armed; a sweep is requested
+        h.Sim.Position = OnTheLandingRunway(gsKts: 5);
+        h.TickOnly();                                // t=3: rolling again (Vacating)
+        h.Sim.CompleteSweep();                       // the sweep requested while stopped is answered
+        h.Tick(5);                                   // t=4..8
+
+        Assert.Equal(new[]
+        {
+            "t=1 Runway 27: no traffic seen on the runway. British Airways A320 on final runway 27, 1.0 miles.",
+        }, h.Transcript);
+    }
+
+    // ── A withheld interrupt stays an interrupt ─────────────────────────────────────────────────────
+
+    // Inside InterruptProtectMs of the last interrupt, an interrupt that is not STRICTLY more urgent is withheld:
+    // not spoken, not latched, re-evaluated every sweep, and spoken as an interrupt at the first evaluation after the
+    // window at which nothing more urgent, and nothing as urgent but nearer, is due — never
+    // moved to the queued channel, where it was latched with no protect window of its own and the next interrupt
+    // (even a less urgent one, or another feature's) cancelled it before it was heard (PR #247 focused re-review
+    // I1: both scenarios below are the reviewer's probes, ported unchanged).
+
+    [Fact]
+    public void A_second_Stop_withheld_by_the_protect_window_interrupts_when_it_ends_and_no_Slow_down_cuts_it_off()
+    {
+        // Rolling east at 6 kt. KLM, stopped on the route 170 m ahead, opens with its "on your route" line at t=3.
+        // British Airways appears 240 ft dead ahead on the route at t=5 ("Stop"), Lufthansa 290 ft ahead and 40 m
+        // left of the route at t=6, Delta 440 ft ahead and 45 m right of it at t=8 (a "Slow down"), and the pilot
+        // stops from t=9. Air France, taxiing away 1,000 ft behind and never spoken, keeps the sweep at 1 s.
+        // Lufthansa's "Stop" is withheld until British Airways' window ends and interrupts at t=8, where Delta's
+        // less urgent "Slow down" loses to it — and nothing interrupts it after. Through the queued alert slot it
+        // went out at t=6, latched, and Delta's "Slow down" cancelled it at t=8: the aircraft very close on the
+        // left was never called again.
+        var h = new GroundTrafficHarness { Context = RouteContext(East(3000), null, departure: false) };
+        const double ownKts = 6.0;
+        double ownM = 0;
+        h.Sim.Position = Own(ownM, ownKts);
+        h.Sim.Traffic.Add(Ac(4, 170, 0, 0, "KLM", "KLM4"));
+        var airFrance = Ac(5, -305, 0, 5, "Air France", "AFR5", headingDeg: 270);
+        h.Sim.Traffic.Add(airFrance);
+        double airFranceM = -305;
+        var britishAirways = Ac(1, 0, 0, 0, "British Airways", "BAW1");
+        var lufthansa = Ac(2, 0, 40, 0, "Lufthansa", "DLH2");
+        var delta = Ac(3, 0, -45, 0, "Delta", "DAL3");
+        for (int s = 1; s <= 14; s++)
+        {
+            ownM += ownKts * Kt;
+            airFranceM -= 5 * Kt;
+            airFrance.Longitude = airFranceM * M;
+            h.Sim.Position = Own(ownM, ownKts);
+            if (s == 5)                                                    // 240 ft dead ahead, on the route
+            {
+                britishAirways.Longitude = (ownM + 240 * Ft) * M;
+                h.Sim.Traffic.Add(britishAirways);
+            }
+            if (s == 6)                                                    // 290 ft, 40 m left of the route
+            {
+                lufthansa.Longitude = (ownM + Math.Sqrt(Math.Pow(290 * Ft, 2) - 40 * 40)) * M;
+                h.Sim.Traffic.Add(lufthansa);
+            }
+            if (s == 8)                                                    // 440 ft, 45 m right of the route
+            {
+                delta.Longitude = (ownM + Math.Sqrt(Math.Pow(440 * Ft, 2) - 45 * 45)) * M;
+                h.Sim.Traffic.Add(delta);
+            }
+            if (s >= 9) { ownM -= ownKts * Kt; h.Sim.Position = Own(ownM, 0); }   // the pilot stops
+            h.Tick();
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=3 KLM A320 on your route, taxiway A, 550 feet ahead, stopped.",
+            "t=5 [INT] Stop, British Airways A320 very close, ahead, 250 feet.",
+            "t=8 [INT] Stop, Lufthansa A320 very close, ahead and to the left, 250 feet.",
+            "t=9 Delta A320, ahead, 450 feet, stopped.",
+        }, h.Transcript);
+    }
+
+    [Fact]
+    public void On_the_runway_a_status_withheld_after_a_Stop_interrupts_when_the_window_ends()
+    {
+        // On runway 09/27, heading west at 3 kt, on a taxi route that leaves it southward: no hold, so the watch is
+        // OnRunway and runway events interrupt. British Airways is stopped on the runway 240 ft ahead (a "Stop" AND
+        // a runway occupant), Delta is on a 1.0 nm final to 27, and Lufthansa appears very close at t=4, 30 m north
+        // of the centreline (off the pavement). The watch's first status (RunwayCritical) loses the interrupt to
+        // British Airways' "Stop" at t=1, is withheld through that window, loses again to Lufthansa's more urgent
+        // "Stop" at t=4, and interrupts once Lufthansa's window ends, at t=7, naming the aircraft on final. Through
+        // the queued alert slot it went out at t=2 with every latch committed (both aircraft known, the short final
+        // announced), and Lufthansa's "Stop" cancelled it at t=4: a pilot on the runway was never told of the
+        // aircraft on a one-mile final.
+        var h = new GroundTrafficHarness
+        {
+            Context = new GroundTrafficRouteContext
+            {
+                Runways = new[] { Runway0927() },
+                AirportIcao = "TEST",
+                State = TaxiGuidanceState.Taxiing,
+                RouteAhead = new List<GroundTrafficRoutePoint>
+                {
+                    new(RunwayNorthM * M, 3000 * M, "C", 0), new((RunwayNorthM - 200) * M, 3000 * M, "C", 200),
+                },
+            },
+        };
+        h.Sim.Position = Own(3000, 3, northM: RunwayNorthM, headingDeg: 270);
+        h.Sim.Traffic.Add(Ac(1, 3000 - 240 * Ft, RunwayNorthM, 0, "British Airways", "BAW1", headingDeg: 270));
+        h.Sim.Traffic.Add(Ac(2, Threshold27EastM + 1852, RunwayNorthM, 140, "Delta", "DAL2", headingDeg: 270,
+            onGround: false, altitudeFt: 300));                               // 1.0 nm final to 27
+        var lufthansa = Ac(3, 3000 - 200 * Ft, RunwayNorthM + 30, 0, "Lufthansa", "DLH3", headingDeg: 270);
+        for (int s = 1; s <= 10; s++)
+        {
+            if (s == 4) h.Sim.Traffic.Add(lufthansa);
+            h.Tick();
+        }
+
+        Assert.Equal(new[]
+        {
+            "t=1 [INT] Stop, British Airways A320 very close, ahead, 250 feet.",
+            "t=4 [INT] Stop, Lufthansa A320 very close, ahead and to the right, 200 feet.",
+            "t=7 [INT] Runway 27: British Airways A320 on the runway, stopped, ahead, 250 feet. "
+                + "Delta A320 on final runway 27, 1.0 miles.",
+        }, h.Transcript);
+    }
+}

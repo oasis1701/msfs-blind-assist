@@ -175,6 +175,17 @@ public partial class MainForm
         announcer.Announce(version);
     }
 
+    /// <summary>When AircraftLoaded last fired (Environment.TickCount64), or null if it never has.</summary>
+    private long? _lastAircraftLoadedTick;
+
+    /// <summary>An Aircraft-menu switch within this long of AircraftLoaded is treated as made during the
+    /// load: the new definition's FCU callouts settle until the aircraft publishes. A judgement value,
+    /// not a measurement — there is no captured timing for how long a manual switch can trail a load.
+    /// The cost of picking it too wide: a switch made AFTER the aircraft has already published, but
+    /// still inside the window, gets a settle it does not need and absorbs the pilot's own knob turns
+    /// until the settle's SettleMaxDeliveries ceiling releases it.</summary>
+    private const long AircraftLoadSettleWindowMs = 60_000;
+
     /// <summary>
     /// A flight or aircraft was loaded on a live connection. The definition's baseline-first
     /// announcers re-seed from the new situation rather than narrate it — the second job the
@@ -189,6 +200,7 @@ public partial class MainForm
             BeginInvoke(new Action(() => OnAircraftLoaded(sender, file)));
             return;
         }
+        _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
     }
 
@@ -205,6 +217,7 @@ public partial class MainForm
             return;
         }
         currentAircraft?.OnSimContextReset();
+        currentAircraft?.OnVariableCacheCleared();
     }
 
     private void OnConnectionStatusChanged(object? sender, string status)
@@ -746,6 +759,13 @@ public partial class MainForm
 
         // Update the aircraft instance
         currentAircraft = newAircraft;
+
+        // A profile picked while a flight is still loading (AircraftLoaded fired, the new aircraft has not
+        // published yet) would take the pre-publish values as its FCU callout baselines and then speak the
+        // published ones as knob turns. Settle the new definition until the aircraft publishes.
+        if (_lastAircraftLoadedTick is long loadedTick
+            && Environment.TickCount64 - loadedTick < AircraftLoadSettleWindowMs)
+            (newAircraft as BaseAircraftDefinition)?.BeginFcuValueSettle();
 
         // The MD-11's composed-state hook reads the SimConnect cache through the handle Attach
         // captures. Without this the first panel opens before any control has been pressed and
@@ -1324,6 +1344,10 @@ public partial class MainForm
         // otherwise expect to still be armed on the approach.
         landingExitPlanner?.Clear();
         flareAssistManager?.Disarm(announce: true);
+
+        // The ground-traffic runway watch caches an airport's runways too (the line-up wait needs them
+        // after taxi guidance has stopped). Silent: the next route or takeoff-assist runway reloads them.
+        groundTrafficMonitor?.ClearRunwayCache();
 
         UpdateDatabaseStatusDisplay();
     }
