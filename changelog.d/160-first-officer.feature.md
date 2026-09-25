@@ -11,12 +11,12 @@ itself once the aircraft is actually in that state, however it got there. When y
 an item yourself, the First Officer does it for you, or just ticks it if it is already
 done. Run Related Flow starts the flow for the section you have selected.
 
-The First Officer checks that a switch really moved before it calls the step done. If a
-step fails, you hear "Skipping:" and the item's name, and that item stays unticked even
-after the rest of the flow completes. If you tick an item and the action doesn't take,
-the tick is removed and you hear "Unable to complete:" and the item's name. The
-checklist never shows a switch as set when it isn't. Slow items wait for the real
-result. Before Start leaves ground power connected until the APU is actually available.
+Where the aircraft reports a switch's position, the First Officer checks that the switch
+really moved before it calls the step done. If a step fails, you hear "Skipping:" and
+the item's name, and that item is not ticked along with the rest of the flow: it keeps
+following the real switch, and ticks itself if you set it by hand. If you tick an item
+and the action doesn't take, the tick is removed and you hear "Unable to complete:" and
+the item's name. Slow items wait for the real result. Before Start leaves ground power connected until the APU is actually available.
 The engine start items tick once each engine is running, whoever started it. The gear
 lines are checked against the aircraft's own gear indications wherever it provides them.
 Preflight runs the aircraft's own self-tests the way a pilot does, and the test's sound
@@ -32,8 +32,8 @@ at the transition level. The rest of the automation is on the new First Officer 
 Settings, and all of it is off until you turn it on:
 
 - Seat belt signs switch at 10,000 feet, or at top of climb and top of descent.
-- On the PMDG 737, PMDG 777 and iFly MAX8, the center fuel pumps come on for the ground
-  when the center tank holds more than 1,500 lbs. They go off with a callout once it drops
+- On the PMDG 737, PMDG 777 and iFly MAX8, the center fuel pumps come on during ground
+  setup when the center tank holds more than 1,500 lbs. They go off with a callout once it drops
   below 1,000 lbs.
 - On the FlyByWire A32NX, A380 and Headwind A330, flaps follow the speed tape, stopping at
   CONF 3 when that is your landing configuration.
