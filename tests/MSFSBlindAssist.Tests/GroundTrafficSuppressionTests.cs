@@ -56,4 +56,39 @@ public class GroundTrafficSuppressionTests
         Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.HoldShort, Stopped));
         Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Arrived, Stopped));
     }
+
+    // --- The runway watch's own gate (PR #247 review R1) -------------------------------------
+    // Takeoff assist switches on at lineup alignment by default, and Suppress() silences
+    // everything while it is on — which silenced the new runway watch for the whole line-up
+    // wait. The watch keeps running on the ground below the takeoff-roll cutoff; proximity
+    // callouts keep the old rule (Suppress is unchanged).
+
+    [Theory]
+    [InlineData(0.0)]
+    [InlineData(29.9)]
+    public void The_line_up_wait_keeps_the_runway_watch(double gs)
+        => Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(true, TaxiGuidanceState.Inactive, gs));
+
+    [Fact]
+    public void The_takeoff_roll_silences_the_runway_watch()
+        => Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(
+            true, TaxiGuidanceState.Inactive, GroundTrafficSuppression.RunwayWatchTakeoffCutoffKts));
+
+    [Fact]
+    public void Takeoff_assist_with_an_unknown_speed_silences_the_runway_watch()
+        => Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(true, TaxiGuidanceState.Inactive, null));
+
+    [Fact]
+    public void Without_takeoff_assist_the_watch_follows_the_proximity_rule()
+    {
+        Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.Inactive, Stopped));
+        Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.LandingRollout, Rolling));
+        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.LandingRollout, Stopped));
+        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.HoldShort, Stopped));
+        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.BacktrackDeparture, Rolling));
+    }
+
+    [Fact]
+    public void Proximity_suppression_is_unchanged_during_the_line_up_wait()
+        => Assert.True(GroundTrafficSuppression.Suppress(true, TaxiGuidanceState.Inactive, Stopped));
 }

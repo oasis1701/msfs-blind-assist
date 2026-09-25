@@ -692,4 +692,58 @@ public class RunwayCenterlinePairingTests
 
         Assert.Single(g.RunwayCenterlines);
     }
+
+    // ------------------------------------------------ centerlines need no taxi network
+    //
+    // The ground-traffic monitor's line-up-wait watch for a departure that STARTS on the runway (a
+    // teleport, takeoff assist seeded from the dialog, no taxi route ever built at the airport) builds
+    // its runways from the start rows and the runway table ALONE — an empty taxi-path list (PR #247 B2,
+    // F4). That is only right while the centerlines do not depend on the taxi paths, pinned here.
+
+    [Fact]
+    public void Runway_centerlines_are_the_same_with_or_without_the_taxi_network()
+    {
+        const double Mid = FarLon / 2;
+        var starts = new List<StartPosition>
+        {
+            Start("09", 90.0, 0, 0.0005),            // 55 m inside the pavement: a displaced threshold
+            Start("27", 270.0, 0, FarLon),
+            Start("18", 180.0, Mid, Mid),              // a crossing runway, north-south
+            Start("36", 0.0, -Mid, Mid),
+        };
+        var runways = new List<Runway>
+        {
+            new() { RunwayID = "09", Heading = 90, StartLat = 0, StartLon = 0, EndLat = 0, EndLon = FarLon, Width = 150 },
+            new() { RunwayID = "27", Heading = 270, StartLat = 0, StartLon = FarLon, EndLat = 0, EndLon = 0, Width = 150 },
+            new() { RunwayID = "18", Heading = 180, StartLat = Mid, StartLon = Mid, EndLat = -Mid, EndLon = Mid, Width = 200 },
+            new() { RunwayID = "36", Heading = 0, StartLat = -Mid, StartLon = Mid, EndLat = Mid, EndLon = Mid, Width = 200 },
+        };
+        // A parallel taxiway with hold-short lines at both runways, and a stand lead-in.
+        var paths = new List<TaxiPath>
+        {
+            new() { Name = "A", Type = "T", StartLat = 0.0006, StartLon = 0.002, EndLat = 0.0006, EndLon = 0.012 },
+            new() { Name = "A", Type = "T", StartLat = 0.0006, StartLon = 0.012, EndLat = 0.0006, EndLon = 0.025 },
+            new() { Name = "A1", Type = "T", StartLat = 0.0006, StartLon = 0.002, EndLat = 0.0003, EndLon = 0.002, EndType = "HS" },
+            new() { Name = "A2", Type = "T", StartLat = 0.0006, StartLon = 0.012, EndLat = 0.0006, EndLon = 0.0128, EndType = "HS" },
+            new() { Name = "", Type = "P", StartLat = 0.0010, StartLon = 0.020, EndLat = 0.0006, EndLon = 0.020, StartType = "P" },
+        };
+
+        var withTaxiways = TaxiGraph.Build(paths, new List<ParkingSpot>(), starts, runways).RunwayCenterlines;
+        var runwaysOnly = TaxiGraph.Build(new List<TaxiPath>(), new List<ParkingSpot>(), starts, runways).RunwayCenterlines;
+
+        Assert.Equal(2, withTaxiways.Count);
+        Assert.Equal(withTaxiways.Count, runwaysOnly.Count);
+        for (int i = 0; i < withTaxiways.Count; i++)
+        {
+            var a = withTaxiways[i];
+            var b = runwaysOnly[i];
+            Assert.Equal((a.Name1, a.Name2), (b.Name1, b.Name2));
+            Assert.Equal((a.Lat1, a.Lon1, a.Lat2, a.Lon2), (b.Lat1, b.Lon1, b.Lat2, b.Lon2));
+            Assert.Equal((a.HeadingDeg1, a.HalfWidthMeters), (b.HeadingDeg1, b.HalfWidthMeters));
+            Assert.Equal((a.PavementLat1, a.PavementLon1, a.PavementLat2, a.PavementLon2, a.PavementHalfWidthMeters),
+                         (b.PavementLat1, b.PavementLon1, b.PavementLat2, b.PavementLon2, b.PavementHalfWidthMeters));
+        }
+        // ... and the pavement really came from the runway table, not the start-row fallback.
+        Assert.Equal(0.0, runwaysOnly.Single(c => c.Name1 == "09").PavementLon1);
+    }
 }

@@ -562,6 +562,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Called just BEFORE a panel Event-type button's event is sent, so an aircraft can arm anything
+    /// that must be in place before the sim can answer (the FCU value echo). Default: no-op.
+    /// </summary>
+    public virtual void OnPanelButtonFiring(string varKey)
+    {
+    }
+
+    /// <summary>
     /// Called once after a panel's controls are built/shown. Aircraft with a
     /// multi-page status box driven by a page combo override this to POPULATE the box
     /// with the combo's CURRENT page immediately — so the user doesn't have to cycle
@@ -610,6 +618,75 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         text = string.IsNullOrEmpty(def.Arinc429Unit) ? v : $"{v} {def.Arinc429Unit}";
         return true;
     }
+
+    // ---- Shared MCP/FCU selected-value change announcer (777-MCP parity) ----
+    // The PMDG 777 speaks every MCP value change ("MCP heading 250", "MCP altitude 10000
+    // feet", ...) as the pilot dials hardware. The FlyByWire jets get the same behaviour through
+    // AnnounceFcuValue: the definition composes the PHRASE for each delivery of a value var
+    // (FcuValuePhrases — null while the window shows dashes) and FcuValueAnnouncer decides whether
+    // it is spoken: the first sample of a key is a silent baseline, a dashed window or an unavailable
+    // FCU is recorded but silent, a muted or echoed change is absorbed, a change is STAGED and spoken
+    // only once its batch has finished dispatching (judged with the FCU health var of that sample,
+    // whichever side of the value it sorts on),
+    // and after a flight load, a reconnect or an FCU power-up changes are absorbed until the aircraft
+    // has published and gone quiet (OnSimContextReset / OnVariableCacheCleared +
+    // OnContinuousBatchDelivered below).
+    private readonly FcuValueAnnouncer _fcuValues = new();
+
+    /// <summary>The announcer the last FCU value delivery used; the batch-end release speaks through it.</summary>
+    private ScreenReaderAnnouncer? _fcuAnnouncer;
+
+    /// <summary>Depth of the shared announcement queue at which a released FCU callout is dropped. A knob
+    /// position is perishable — a stale one spoken behind an ECAM backlog is worse than silence — and
+    /// <see cref="ScreenReaderAnnouncer.Announce"/> speaks past the queue. Deliberately LOWER than
+    /// VatsimAnnouncementService.MaxSharedQueueDepth (5): a callout is dropped as soon as a real backlog
+    /// forms, where VATSIM chatter is only capped so it never blocks ECAM.</summary>
+    private const int FcuMaxSharedQueueDepth = 3;
+
+    /// <summary>Mute the FCU value-change announcer for the named keys for a short window after
+    /// MSFSBA itself set them (the set method already speaks its own confirmation). Pass every
+    /// key the write actually moves and NO others — a knob push/pull that touches no value var
+    /// must pass none. Arm it BEFORE the write, so its echo can never arrive first.</summary>
+    protected void SuppressFcuValueChangeEcho(params string[] keys) =>
+        _fcuValues.SuppressEcho(keys, Environment.TickCount64);
+
+    /// <summary>Arm the FCU echo window for the value vars an MSFSBA-origin FCU event moves (from
+    /// <see cref="FcuEchoKeys.For"/>). Call it BEFORE the event is sent.</summary>
+    protected void ArmFcuEcho(string evt, IReadOnlyList<string> keys) =>
+        _fcuValues.SuppressEcho(keys, Environment.TickCount64, forEvent: evt);
+
+    /// <summary>Whether a delivery of this FCU value var proves the aircraft itself has published
+    /// after a flight load (<see cref="FcuValueAnnouncer"/>'s settle). A stock SimVar does not: the
+    /// sim core can restore it from the flight file before the aircraft's WASM has run.</summary>
+    internal static bool CountsAsFcuLoadEvidence(SimConnect.SimVarDefinition? def) =>
+        def?.Type != SimConnect.SimVarType.SimVar;
+
+    /// <summary>
+    /// Record an MCP/FCU selected value for the hardware-dial callouts. <paramref name="phrase"/> is null
+    /// while the window shows dashes and <see cref="FcuValuePhrases.Unavailable"/> while the FCU is off —
+    /// call it for EVERY delivery of the var. The callout is released by <see cref="OnContinuousBatchDelivered"/>,
+    /// OUTSIDE MainForm's announcer.Suppressed wrap, so <paramref name="muted"/> must carry the aircraft's
+    /// own Ctrl+M mute (and a readout that is about to speak this very value).
+    /// </summary>
+    protected void AnnounceFcuValue(string key, string? phrase, ScreenReaderAnnouncer announcer, bool muted = false)
+    {
+        _fcuAnnouncer = announcer;
+        GetVariables().TryGetValue(key, out var def);
+        _fcuValues.Observe(key, phrase, muted, Environment.TickCount64,
+            countsAsLoadEvidence: CountsAsFcuLoadEvidence(def));
+    }
+
+    /// <summary>The aircraft's FCU health var was delivered (true = the FCU publishes real values).</summary>
+    protected void ObserveFcuHealth(bool healthy) => _fcuValues.ObserveFcuHealth(healthy);
+
+    /// <summary>Record an FCU value's phrase silently (its words changed, its value did not).</summary>
+    protected void RebaselineFcuValue(string key, string? phrase) => _fcuValues.Rebaseline(key, phrase);
+
+    /// <summary>What the FCU window for <paramref name="key"/> last showed (for the readouts).</summary>
+    internal FcuWindowState FcuWindowStateOf(string key) => _fcuValues.StateOf(key);
+
+    /// <summary>Begin the FCU callouts' settle (MainForm: a profile switched while a flight loads).</summary>
+    internal void BeginFcuValueSettle() => _fcuValues.BeginSettle();
 
     // Variable Update Processing
 
@@ -759,10 +836,35 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual void ResetAnnouncementBaselines() { }
 
     /// <inheritdoc />
-    public virtual void OnSimContextReset() { }
+    /// <remarks>The base starts the FCU value announcer's settle: an override on an aircraft that uses
+    /// <see cref="AnnounceFcuValue"/> must call base.</remarks>
+    public virtual void OnSimContextReset() => _fcuValues.BeginSettle();
 
     /// <inheritdoc />
-    public virtual void OnContinuousBatchDelivered(int batchNum) { }
+    /// <remarks>The base upgrades the FCU settle so the reconnect's re-fire counts as the aircraft
+    /// publishing (the cache was cleared on the way down).</remarks>
+    public virtual void OnVariableCacheCleared() => _fcuValues.BeginSettle(refireIsEvidence: true);
+
+    /// <inheritdoc />
+    /// <remarks>The base counts the delivery toward the FCU settle and speaks the FCU callouts this batch
+    /// completed: an override on an aircraft that uses <see cref="AnnounceFcuValue"/> must call base.</remarks>
+    public virtual void OnContinuousBatchDelivered(int batchNum)
+    {
+        IReadOnlyList<string> due = _fcuValues.OnBatchDelivered(batchNum);
+        if (due.Count == 0 || _fcuAnnouncer is not { } announcer) return;
+        foreach (string phrase in due)
+        {
+            if (announcer.QueuedAnnouncementCount >= FcuMaxSharedQueueDepth) return;
+            announcer.Announce(phrase);
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>The base restarts the FCU value echo the event was armed with (Task 3 of the PR #140
+    /// fixes): the A32NX queues dotted FCU events until the calc-path probe concludes, which can be a
+    /// minute after the echo armed at the call site expired.</remarks>
+    public virtual void OnQueuedEventDispatched(string eventName) =>
+        _fcuValues.RearmEcho(eventName, Environment.TickCount64);
 
     /// <inheritdoc />
     /// <remarks>Most definitions hold nothing, so the batch hook never fires for them.</remarks>
