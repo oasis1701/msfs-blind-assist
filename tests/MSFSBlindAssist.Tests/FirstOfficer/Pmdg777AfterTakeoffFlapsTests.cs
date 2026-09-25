@@ -65,7 +65,14 @@ public class Pmdg777AfterTakeoffFlapsTests
         var item = PMDG777ChecklistDefinitions.Build()
             .Single(g => g.Id == "AFTER_TKOF_CL").Items.Single(i => i.Id == "ATKOF_FLAPS");
         Assert.Equal(item.StateFieldName, step.ConditionFieldName);
-        Assert.Equal(item.Label, step.Label);
+
+        // Spoken DIFFERENTLY from the write: both lines read "Flaps: UP", so a failed write
+        // followed by a timed-out check used to say "Skipping: Flaps: UP" twice. The check
+        // names what it reads — the LEVER — in the gear checks' "Noun: STATE" form (and the
+        // 777's own wording for this lever, After Landing's "Flap lever: UP").
+        Assert.Equal("Flap lever: UP", step.Label);
+        Assert.Equal("Flap lever: UP", step.AnnounceText);
+        Assert.NotEqual(Step("ATKOF_FLAPS_UP").AnnounceText, step.AnnounceText);
 
         Assert.NotNull(step.SkipCondition);
         Assert.False(step.SkipCondition!(new AircraftStateEvaluator()));

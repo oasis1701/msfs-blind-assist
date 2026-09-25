@@ -438,6 +438,11 @@ public class Pmdg777FlowOrderingTests
                 .Select(s => s.CompletesChecklistItemId)
                 .Where(id => !string.IsNullOrEmpty(id))
                 .Where(id => !(flow.Id == "AFTER_TAKEOFF" && id == "ATKOF_GEAR"))
+                // A line several steps deliver (both wiper sides → one "Wiper selectors: OFF";
+                // left FD, both A/T ARMs, right FD in physical MCP order → "Flight Director
+                // switches: ON" and "Autothrottle arm switches: ARM") is placed by the FIRST
+                // step that names it.
+                .Distinct()
                 .ToList();
 
             foreach (var group in groups)
