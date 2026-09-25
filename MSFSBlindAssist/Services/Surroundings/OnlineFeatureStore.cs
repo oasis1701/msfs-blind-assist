@@ -31,7 +31,7 @@ public readonly record struct OnlineFeatureResult(IReadOnlyList<AirportFeature> 
 /// </summary>
 public sealed class OnlineFeatureStore
 {
-    public delegate Task<IReadOnlyList<AirportFeature>?> Fetcher(string icao, double lat, double lon, AirportFacilities? box, CancellationToken ct);
+    public delegate Task<IReadOnlyList<AirportFeature>?> Fetcher(string icao, AirportFacilities? box, CancellationToken ct);
     public static readonly TimeSpan FailureMemory = TimeSpan.FromMinutes(5);
 
     /// <summary>The longest one fetch may run — and so the latest it can fail after its caller stopped
@@ -60,11 +60,11 @@ public sealed class OnlineFeatureStore
     public bool Enabled { get; set; }
     public event Action<string>? FeaturesUpdated;
 
-    public async Task<OnlineFeatureResult> GetAsync(string icao, double lat, double lon, AirportFacilities? box, TimeSpan maxWait)
+    public async Task<OnlineFeatureResult> GetAsync(string icao, AirportFacilities? box, TimeSpan maxWait)
     {
         if (!Enabled || string.IsNullOrWhiteSpace(icao)) return new(None, OnlineFeatureStatus.Disabled);
         string key = Key(icao);
-        var task = Begin(key, lat, lon, box, out var answer);
+        var task = Begin(key, box, out var answer);
         if (task == null) return answer;
 
         try
@@ -93,10 +93,10 @@ public sealed class OnlineFeatureStore
     /// waiting. Armed here, an answer landing mid-build would invalidate the build about to include it.</para>
     /// <para>Never throws: it runs before any tier's own guard, so a throw would cost the whole build.</para>
     /// </summary>
-    public void Prefetch(string icao, double lat, double lon, AirportFacilities? box)
+    public void Prefetch(string icao, AirportFacilities? box)
     {
         if (!Enabled || string.IsNullOrWhiteSpace(icao)) return;
-        try { _ = Begin(Key(icao), lat, lon, box, out _); }
+        try { _ = Begin(Key(icao), box, out _); }
         catch (Exception ex) { Log.Warn("Surroundings", $"online feature prefetch failed for {icao}: {ex.Message}"); }
     }
 
@@ -105,7 +105,7 @@ public sealed class OnlineFeatureStore
     /// <summary>An answer available without waiting (cached, or a remembered failure) in
     /// <paramref name="answer"/> with a null return; otherwise the in-flight or newly started fetch.
     /// Shared by GetAsync and Prefetch so they agree on when a fetch is owed.</summary>
-    private Task<IReadOnlyList<AirportFeature>?>? Begin(string key, double lat, double lon, AirportFacilities? box, out OnlineFeatureResult answer)
+    private Task<IReadOnlyList<AirportFeature>?>? Begin(string key, AirportFacilities? box, out OnlineFeatureResult answer)
     {
         lock (_lock)
         {
@@ -120,20 +120,20 @@ public sealed class OnlineFeatureStore
                 // Task.Run, never a bare call: a fetch completing inline would re-enter _lock on this
                 // thread and remove the _inFlight entry before it is written, parking a completed task
                 // there forever.
-                _inFlight[key] = task = Task.Run(() => RunAsync(key, lat, lon, box, epoch));
+                _inFlight[key] = task = Task.Run(() => RunAsync(key, box, epoch));
             }
             return task;
         }
     }
 
     /// <summary>Always started through Task.Run, so a fetcher that blocks or throws early costs the caller nothing.</summary>
-    private async Task<IReadOnlyList<AirportFeature>?> RunAsync(string key, double lat, double lon, AirportFacilities? box, int epoch)
+    private async Task<IReadOnlyList<AirportFeature>?> RunAsync(string key, AirportFacilities? box, int epoch)
     {
         IReadOnlyList<AirportFeature>? result = null;
         try
         {
             using var cts = new CancellationTokenSource(FetchBudget);
-            result = await _fetch(key, lat, lon, box, cts.Token).ConfigureAwait(false);
+            result = await _fetch(key, box, cts.Token).ConfigureAwait(false);
         }
         catch (Exception ex) { Log.Warn("Surroundings", $"online feature fetch failed for {key}: {ex.Message}"); }
         lock (_lock)

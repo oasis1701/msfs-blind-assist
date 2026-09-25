@@ -129,7 +129,7 @@ public sealed class OsmFeatureSource
     /// retries), an empty list when one answered with nothing. With a navdata box, ONE bounded box
     /// query; without one, the icao= area query, unbounded because nothing else can bound it.
     /// </summary>
-    public async Task<IReadOnlyList<AirportFeature>?> FetchAsync(string icao, double lat, double lon, AirportFacilities? box, CancellationToken ct)
+    public async Task<IReadOnlyList<AirportFeature>?> FetchAsync(string icao, AirportFacilities? box, CancellationToken ct)
     {
         string query = box != null ? BuildBoxQuery(box) : BuildAreaQuery(icao);
         string? body = await _client.PostAsync(query, PerMirrorTimeout, ct).ConfigureAwait(false);

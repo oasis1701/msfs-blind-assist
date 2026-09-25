@@ -61,7 +61,7 @@ public sealed class SurroundingsCatalogBuilder
         var osmStore = _osm();
         var osmClock = System.Diagnostics.Stopwatch.StartNew();
         if (osmStore != null && facilities != null)
-            osmStore.Prefetch(icao, facilities.RefLat, facilities.RefLon, facilities);
+            osmStore.Prefetch(icao, facilities);
 
         var named = ParkingSpotSource.GetNamedSpots(provider, gateSource, icao);
         features.AddRange(NavdataFeatureSource.Read(named, facilities));
@@ -84,7 +84,7 @@ public sealed class SurroundingsCatalogBuilder
             var status = OnlineFeatureStatus.Disabled;
             var osm = SurroundingsTier.Read("OSM", icao, () =>
             {
-                var got = osmStore.GetAsync(icao, facilities.RefLat, facilities.RefLon, facilities,
+                var got = osmStore.GetAsync(icao, facilities,
                                             OnlineFeatureStore.RemainingWait(osmClock.Elapsed))
                                   .GetAwaiter().GetResult();
                 status = got.Status;

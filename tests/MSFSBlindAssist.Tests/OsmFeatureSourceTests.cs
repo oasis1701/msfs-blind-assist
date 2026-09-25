@@ -107,7 +107,7 @@ public class OsmFeatureSourceTests
         // area_tags_local.bin") and was the one mirror answering; the area query failed there.
         int areaAsked = 0;
         var source = SourceOver(isArea => { if (isArea) areaAsked++; return Hangars((47.2700, -122.5760)); });
-        var features = await source.FetchAsync("KTIW", 47.2679, -122.5781, KtiwBox, CancellationToken.None);
+        var features = await source.FetchAsync("KTIW", KtiwBox, CancellationToken.None);
         Assert.Single(features!);
         Assert.Equal(0, areaAsked);
     }
@@ -118,14 +118,14 @@ public class OsmFeatureSourceTests
         // null, so the store remembers a failure and retries — an empty list would cache
         // "no buildings here" for the whole session.
         var source = SourceOver(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
-        Assert.Null(await source.FetchAsync("KTIW", 47.2679, -122.5781, KtiwBox, CancellationToken.None));
+        Assert.Null(await source.FetchAsync("KTIW", KtiwBox, CancellationToken.None));
     }
 
     [Fact]
     public async Task A_box_query_that_answers_with_nothing_really_is_an_airport_without_buildings()
     {
         var source = SourceOver(_ => NoElements());
-        var features = await source.FetchAsync("KTIW", 47.2679, -122.5781, KtiwBox, CancellationToken.None);
+        var features = await source.FetchAsync("KTIW", KtiwBox, CancellationToken.None);
         Assert.NotNull(features);
         Assert.Empty(features);
     }
@@ -140,8 +140,8 @@ public class OsmFeatureSourceTests
     public async Task A_body_that_is_shapeless_enough_to_break_the_parser_is_a_failed_fetch_not_a_throw(string body)
     {
         var source = SourceOver(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
-        Assert.Null(await source.FetchAsync("KTIW", 47.2679, -122.5781, KtiwBox, CancellationToken.None));
-        Assert.Null(await source.FetchAsync("KTIW", 47.2679, -122.5781, null, CancellationToken.None));
+        Assert.Null(await source.FetchAsync("KTIW", KtiwBox, CancellationToken.None));
+        Assert.Null(await source.FetchAsync("KTIW", null, CancellationToken.None));
     }
 
     private static HttpResponseMessage Hangars(params (double Lat, double Lon)[] at) => new(HttpStatusCode.OK)
@@ -154,7 +154,7 @@ public class OsmFeatureSourceTests
     public async Task A_box_answer_keeps_only_what_lies_inside_the_box_plus_margin()
     {
         var source = SourceOver(_ => Hangars((47.2700, -122.5760), (47.2712, -122.5500)));   // a filling station 1.7 km east
-        var features = await source.FetchAsync("KTIW", 47.2679, -122.5781, KtiwBox, CancellationToken.None);
+        var features = await source.FetchAsync("KTIW", KtiwBox, CancellationToken.None);
         Assert.Equal("H1", Assert.Single(features!).Name);
     }
 
@@ -163,7 +163,7 @@ public class OsmFeatureSourceTests
     {
         int areaAsked = 0;
         var source = SourceOver(isArea => { if (isArea) areaAsked++; return Hangars((47.2700, -122.5760)); });
-        var features = await source.FetchAsync("KTIW", 47.2679, -122.5781, null, CancellationToken.None);
+        var features = await source.FetchAsync("KTIW", null, CancellationToken.None);
         Assert.Single(features!);
         Assert.Equal(1, areaAsked);
     }

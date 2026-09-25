@@ -240,7 +240,7 @@ public class SurroundingsCatalogCacheTests
         var now = new DateTime(2026, 9, 22, 12, 0, 0, DateTimeKind.Utc);
         int fetches = 0;
         var firstFetch = new TaskCompletionSource<IReadOnlyList<AirportFeature>?>();
-        var store = new OnlineFeatureStore((_, _, _, _, _) =>
+        var store = new OnlineFeatureStore((_, _, _) =>
             Interlocked.Increment(ref fetches) == 1
                 ? firstFetch.Task
                 : Task.FromResult<IReadOnlyList<AirportFeature>?>(Array.Empty<AirportFeature>()),
@@ -251,7 +251,7 @@ public class SurroundingsCatalogCacheTests
             BuildSupplier = icao =>
             {
                 builds++;
-                var got = store.GetAsync(icao, 0, 0, null, TimeSpan.Zero).GetAwaiter().GetResult();
+                var got = store.GetAsync(icao, null, TimeSpan.Zero).GetAwaiter().GetResult();
                 return One($"build {builds}", degraded: got.Status is OnlineFeatureStatus.Pending or OnlineFeatureStatus.Failed);
             },
         };
@@ -261,7 +261,7 @@ public class SurroundingsCatalogCacheTests
         now += OnlineFeatureStore.FetchBudget;                                          // the fetch fails as late as it can
         firstFetch.SetResult(null);
         Assert.Equal(OnlineFeatureStatus.Failed,                                        // barrier: the failure is recorded
-            (await store.GetAsync("KTIW", 0, 0, null, TimeSpan.FromSeconds(10))).Status);
+            (await store.GetAsync("KTIW", null, TimeSpan.FromSeconds(10))).Status);
 
         now += OnlineFeatureStore.FailureMemory - TimeSpan.FromSeconds(1);            // the store still remembers it…
         Assert.True(cache.TryGetCached("KTIW", out var still));                         // …so the catalog is not rebuilt against it
@@ -270,7 +270,7 @@ public class SurroundingsCatalogCacheTests
         now += TimeSpan.FromSeconds(2);                                                 // both have run out
         Assert.False(cache.TryGetCached("KTIW", out _));
         Assert.Equal("build 2", (await cache.GetAsync("KTIW"))!.Features[0].Name);
-        await store.GetAsync("KTIW", 0, 0, null, TimeSpan.FromSeconds(10));           // barrier: the rebuild's own fetch has run
+        await store.GetAsync("KTIW", null, TimeSpan.FromSeconds(10));           // barrier: the rebuild's own fetch has run
         Assert.Equal(2, fetches);                                                        // the rebuild asked the mirror AGAIN
     }
 

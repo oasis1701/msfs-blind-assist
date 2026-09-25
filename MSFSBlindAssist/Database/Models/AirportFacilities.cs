@@ -29,7 +29,8 @@ public sealed class AirportFacilities
     /// field), with this 0 and no tower frequency. NULL reads as false.
     /// </summary>
     public bool HasTowerObject { get; init; }
-    /// <summary>The airport reference point — where the online feature query is centred.</summary>
+    /// <summary>The airport reference point (navdata's own). The online feature query is bounded by the
+    /// box above, not centred here.</summary>
     public double RefLat { get; init; }
     public double RefLon { get; init; }
     /// <summary>navdatareader's comma-separated package list, e.g. "fs-base-genericairports, C:\...\Community\orbx-airport-ktiw-tacoma-narrows".</summary>

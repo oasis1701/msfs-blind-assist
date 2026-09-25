@@ -259,8 +259,9 @@ public partial class MainForm : Form
     private LandingExitForm? landingExitForm;
 
     // Per-session set of ICAOs already prefetched by AugmentingAirportDataProvider.
-    // Guards automatic departure/destination prefetches so each airport is fetched at most once
-    // per app session. Manual refresh (force:true) bypasses it.
+    // Guards the automatic taxiway-name prefetches (taxi form, ILS and visual guidance, the
+    // landing-exit planner, the airport warm-up) so each airport is fetched at most once per app
+    // session. The Settings "Refresh Taxiway Names" button calls PrefetchAsync directly, past it.
     private readonly HashSet<string> _augmentPrefetched = new(StringComparer.OrdinalIgnoreCase);
     /// <summary>Readies the current and destination airports' online and scenery data before the pilot
     /// asks for them (connect, flight load, Shift+D). Claims names in <see cref="_augmentPrefetched"/>.</summary>
@@ -1145,6 +1146,9 @@ public partial class MainForm : Form
 
         _displayRepaintDebounce?.Stop();
         _displayRepaintDebounce?.Dispose();
+
+        _warmUpAfterLoadTimer?.Stop();
+        _warmUpAfterLoadTimer?.Dispose();
 
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();
