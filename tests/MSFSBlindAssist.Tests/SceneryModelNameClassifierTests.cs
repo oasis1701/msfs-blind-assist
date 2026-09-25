@@ -29,6 +29,7 @@ public class SceneryModelNameClassifierTests
     [InlineData("concourse_a_02", "KATL", FeatureKind.Concourse, "Concourse A")]
     [InlineData("concourse_a_interface_12m_b36", "KATL", FeatureKind.Concourse, "Concourse A")]
     [InlineData("concourse_t_canopy_01", "KATL", FeatureKind.Concourse, "Concourse T")]
+    [InlineData("KLAX_TheBoxTerminal", "KLAX", FeatureKind.Terminal, "Terminal")]   // a building "box" must not stop (2026-09-25)
     [InlineData("northwestern_cargo_01", "KATL", FeatureKind.Cargo, "Northwestern Cargo")]
     [InlineData("southern_hangar_01", "KATL", FeatureKind.Hangar, "Southern Hangar")]
     public void Classifies_measured_model_names(string model, string icao, FeatureKind kind, string name)
@@ -119,7 +120,7 @@ public class SceneryModelNameClassifierTests
     [InlineData("katl79_cargo_trolley", "KATL")] [InlineData("katl543_cargo_pipes1", "KATL")] [InlineData("EGNT_CARGO_WALLS_BIG", "EGNT")]
     [InlineData("MK_LIRF_GSE_Cargo_Box_Set_01", "LIRF")] [InlineData("DHL_Details", "KMIA")]
     [InlineData("DHL_Model", "KMIA")] [InlineData("EBBR_Terrain_hill_DHL", "EBBR")] [InlineData("EDDM_OBJ-VEHApron1_cargo", "EDDM")]
-    [InlineData("KDFW_Cargo_Various", "KDFW")] [InlineData("YSWS_B777_F_FEDEX", "YSSY")]
+    [InlineData("KDFW_Cargo_Various", "KDFW")] [InlineData("BOX_DHL", "KDEN")] [InlineData("YSWS_B777_F_FEDEX", "YSSY")]
     [InlineData("MK_EFHK_OT_Hangar_Finnair_01_Doors", "EFHK")] [InlineData("MK_YPAD_VT_Terminal_Parking_Lot", "YPAD")]
     public void Clutter_and_interiors_are_not_features(string model, string icao)
         => Assert.Null(SceneryModelNameClassifier.Classify(model, icao));

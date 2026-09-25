@@ -26,7 +26,7 @@ public sealed record ClassifiedModel(FeatureKind Kind, string Name, bool NameIsG
 public static class SceneryModelNameClassifier
 {
     private static readonly Regex StopList = new(
-        @"\b(fences?|lights?|rooflights?|poles?|aircon|hvac|vehicles?|cars?|carparks?|trucks?|vans?|cargovan|loaders?|cones?|signs?|markings?|lines?|jetways?|bridges?|pylons?|silos?|lod|shadows?|decals?|grass|trees?|pedestrian|crossing|tickets?|platform|gates?|safegate|base|stairs?|railing|barrier|bollards?|hydrant|fire ?engines?|ligths|steel ?towers?|parking ?lots?|training ?aircraft|fire ?\d{3})\d*\b",
+        @"\b(fences?|lights?|rooflights?|poles?|aircon|hvac|vehicles?|cars?|carparks?|trucks?|vans?|cargovan|loaders?|cones?|signs?|markings?|lines?|jetways?|bridges?|pylons?|silos?|lod|shadows?|decals?|grass|trees?|pedestrian|crossing|tickets?|platform|gates?|safegate|base|stairs?|railing|barrier|bollards?|hydrant|fire ?engines?|ligths|steel ?towers?|parking ?lots?|training ?aircraft|fire ?\d{3}|cargo ?box(es)?|box (dhl|ups|fedex))\d*\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     // Whole model dropped when ANY token equals one of these (OrdinalIgnoreCase). Measured clutter
@@ -49,7 +49,7 @@ public static class SceneryModelNameClassifier
         // fire-training wrecks, masts, landside fuel, and cargo-area dressing.
         "bench", "bin", "flower", "people", "entryboard", "wall", "walls", "trolley", "trolleys", "tanque", "tanques",
         "toten", "guarita", "taxisign", "tgs", "wreck", "plane", "planes", "extras", "costco", "propane", "curbs",
-        "thingy", "lamps", "ventilation", "dme", "comm", "comms", "pkw", "pipes", "box", "details", "model",
+        "thingy", "lamps", "ventilation", "dme", "comm", "comms", "pkw", "pipes", "details", "model",
         "terrain", "vehapron", "various", "empty", "doors",
     };
     // Dropped FROM the name; the model survives. "part" so the parts of one building share one name.
