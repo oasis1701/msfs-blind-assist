@@ -1,0 +1,93 @@
+using MSFSBlindAssist.Navigation.Briefing;
+
+namespace MSFSBlindAssist.Tests;
+
+public class AircraftSizeClassTests
+{
+    [Fact]
+    public void A388_is_code_F_with_its_wingspan_and_a_heavy_touchdown_speed()
+    {
+        var p = AircraftSizeClass.Resolve("A388", "Airbus A380-800", 500);
+
+        Assert.Equal(IcaoCodeLetter.F, p.CodeLetter);
+        Assert.Equal(79.75, p.WingspanMetres!.Value, 2);
+        Assert.Equal(140.0, p.TouchdownSpeedKts);
+        Assert.False(p.IsFreighter);
+        Assert.Equal("Airbus A380-800", p.DisplayName);
+        Assert.Equal(25.0, AircraftSizeClass.MinTaxiwayWidthMetres(p.CodeLetter));
+    }
+
+    [Fact]
+    public void B738_is_code_C()
+    {
+        var p = AircraftSizeClass.Resolve("b738", "Boeing 737-800", 189);
+        Assert.Equal(IcaoCodeLetter.C, p.CodeLetter);
+        Assert.Equal("B738", p.TypeCode);
+        Assert.Equal(130.0, p.TouchdownSpeedKts);
+        Assert.Equal(15.0, AircraftSizeClass.MinTaxiwayWidthMetres(IcaoCodeLetter.C));
+    }
+
+    [Theory]
+    [InlineData("MD1F", "MD-11F", 0)]
+    [InlineData("B77L", "Boeing 777F", 0)]
+    [InlineData("B748", "Boeing 747-8F", null)]
+    [InlineData("MD11", "McDonnell Douglas MD-11F", null)]
+    [InlineData("B738", "Boeing 737-800BCF", null)]
+    [InlineData("B752", "Boeing 757-200PF", null)]
+    [InlineData("A332", "Airbus A330-200F", null)]
+    [InlineData("B763", "Boeing 767-300 Freighter", null)]
+    [InlineData("A320", "Airbus A320", 0)]
+    public void Freighters_are_recognised(string code, string name, int? maxPax)
+        => Assert.True(AircraftSizeClass.LooksLikeFreighter(code, name, maxPax));
+
+    [Theory]
+    [InlineData("B77L", "Boeing 777-200LR", 301)]
+    [InlineData("A320", "Airbus A320-200", 180)]
+    [InlineData("F100", "Fokker 100", 100)]
+    [InlineData("B738", "Boeing 737-800", null)]
+    public void Passenger_aircraft_are_not_freighters(string code, string name, int? maxPax)
+        => Assert.False(AircraftSizeClass.LooksLikeFreighter(code, name, maxPax));
+
+    [Fact]
+    public void Unknown_type_has_no_wingspan_and_the_unknown_letter()
+    {
+        var p = AircraftSizeClass.Resolve("ZZZZ", "", null);
+        Assert.Null(p.WingspanMetres);
+        Assert.Equal(IcaoCodeLetter.Unknown, p.CodeLetter);
+        Assert.Equal(130.0, p.TouchdownSpeedKts);
+        Assert.Equal(0.0, AircraftSizeClass.MinTaxiwayWidthMetres(IcaoCodeLetter.Unknown));
+        Assert.Equal("ZZZZ", p.DisplayName);
+    }
+
+    [Fact]
+    public void Blank_type_and_name_still_yield_a_profile()
+    {
+        var p = AircraftSizeClass.Resolve(null, null, null);
+        Assert.Equal("", p.TypeCode);
+        Assert.Equal("unknown aircraft", p.DisplayName);
+        Assert.Equal(IcaoCodeLetter.Unknown, p.CodeLetter);
+    }
+
+    [Theory]
+    [InlineData(14.99, IcaoCodeLetter.A)]
+    [InlineData(15.0, IcaoCodeLetter.B)]
+    [InlineData(35.99, IcaoCodeLetter.C)]
+    [InlineData(36.0, IcaoCodeLetter.D)]
+    [InlineData(51.99, IcaoCodeLetter.D)]
+    [InlineData(52.0, IcaoCodeLetter.E)]
+    [InlineData(64.99, IcaoCodeLetter.E)]
+    [InlineData(65.0, IcaoCodeLetter.F)]
+    [InlineData(88.4, IcaoCodeLetter.F)]
+    public void Letter_boundaries_follow_annex_14(double metres, IcaoCodeLetter expected)
+        => Assert.Equal(expected, AircraftSizeClass.LetterForWingspan(metres));
+
+    [Theory]
+    [InlineData(IcaoCodeLetter.A, 70.0)]
+    [InlineData(IcaoCodeLetter.B, 115.0)]
+    [InlineData(IcaoCodeLetter.C, 130.0)]
+    [InlineData(IcaoCodeLetter.D, 135.0)]
+    [InlineData(IcaoCodeLetter.E, 140.0)]
+    [InlineData(IcaoCodeLetter.F, 140.0)]
+    public void Touchdown_speed_per_letter(IcaoCodeLetter letter, double kts)
+        => Assert.Equal(kts, AircraftSizeClass.TouchdownSpeedKts(letter));
+}
