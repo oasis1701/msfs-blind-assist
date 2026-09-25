@@ -2019,8 +2019,8 @@ Each entry reads "Narrows Aviation, FBO, Parking 12" — or "…, Gate 7A" for a
 lettered gate, "…, Spot 12" for a letterless one, "…, nearest taxiway point"
 when only a node was found — the place, its kind, and the stand the pilot will actually
 be guided to. The kind word is left out when the name already says it ("Fuel,
-Parking"), and for a named place of the catch-all Office kind (office, admin, cafe,
-restaurant), whose "airport office" only mislabelled it (live LOWI: "Burkia
+Parking"), and for any place of the catch-all Office kind (office, admin, cafe,
+restaurant — its name, proper or the model's own word, always says what it is), whose "airport office" only mislabelled it (live LOWI: "Burkia
 Restaurant, airport office"); and a spaced dash in the name becomes a comma because
 `RouteReachabilityMessages.SpokenDestinationName` cuts a label at its first
 " - ". Duplicate labels get a "(2)" suffix.

@@ -157,5 +157,9 @@ public class PlaceListBuilderTests
         var restaurant = Place(FeatureKind.Office, "Burkia Restaurant", 0, 0);
         var entry = Assert.Single(PlaceListBuilder.Build(Cat(restaurant), new[] { Stand("Parking", 14, 4, 0, 0) }, None, NoNode, Any));
         Assert.Equal("Burkia Restaurant, Parking 14", entry.Label);
+        // A model named only by its own word ("Restaurant", "Cafe") is generic, and says it just as well.
+        var bare = Place(FeatureKind.Office, "Restaurant", 0, 0, generic: true);
+        var bareEntry = Assert.Single(PlaceListBuilder.Build(Cat(bare), new[] { Stand("Parking", 14, 4, 0, 0) }, None, NoNode, Any));
+        Assert.Equal("Restaurant, Parking 14", bareEntry.Label);
     }
 }

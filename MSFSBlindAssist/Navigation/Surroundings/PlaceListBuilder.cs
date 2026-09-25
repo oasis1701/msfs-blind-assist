@@ -101,10 +101,11 @@ public static class PlaceListBuilder
         string kind = FeatureKindWords.Generic(f.Kind);
         string kindWord = kind == "FBO" ? kind : kind.ToLowerInvariant();
         string where = spot?.DescribeIdentity() ?? "nearest taxiway point";
-        // Office is the catch-all kind (office, admin, cafe, restaurant): once a proper name says what
-        // the place is, "airport office" only mislabels it (live LOWI: "Burkia Restaurant, airport office").
+        // Office is the catch-all kind (office, admin, cafe, restaurant): its name — a proper one, or
+        // the model's own word — always says what the place is, and "airport office" only mislabelled
+        // it (live LOWI: "Burkia Restaurant, airport office").
         bool nameSaysIt = name.Contains(kindWord, StringComparison.OrdinalIgnoreCase)
-                          || (f.Kind == FeatureKind.Office && f.HasProperName);
+                          || (f.Kind == FeatureKind.Office && f.HasName);
         return nameSaysIt ? $"{name}, {where}" : $"{name}, {kindWord}, {where}";
     }
 }
