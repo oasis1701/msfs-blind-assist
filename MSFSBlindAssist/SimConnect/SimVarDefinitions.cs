@@ -175,6 +175,14 @@ public class SimVarDefinition
     public string Arinc429NotAvailableText { get; set; } = "not available";
     public bool PreventTextInput { get; set; }  // True to prevent text input UI for _SET variables (e.g., autobrake)
     /// <summary>
+    /// For a "_SET" numeric-input field: when the typed text does not parse, hand the aircraft's
+    /// HandleUIVariableSet double.NaN instead of the historical 0. Opt-in, because 0 is a real value
+    /// for some fields (an FCU heading of 0 is north) and every other field's handler was written
+    /// against the 0; only set it where the handler refuses NaN (the A32NX-family FCU heading, speed
+    /// and altitude fields, through FcuValueEntry).
+    /// </summary>
+    public bool UnparseableTextAsNaN { get; set; }
+    /// <summary>
     /// For a "_SET" numeric-input control: the variable KEY whose cached current
     /// value pre-fills this input field (seeded on creation and on focus-in, then
     /// selected so the user can overtype). Lets an entry field double as a live
