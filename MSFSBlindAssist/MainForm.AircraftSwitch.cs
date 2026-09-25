@@ -157,6 +157,7 @@ public partial class MainForm
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
             "TFDI_MD11" => new TFDiMD11Definition(),
+            "SKYWARD_C680" => new Aircraft.Citation680.SkywardC680Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
         };
@@ -1035,6 +1036,11 @@ public partial class MainForm
             fbwA320MonitorManagerForm.Dispose();
             fbwA320MonitorManagerForm = null;
         }
+        if (c680MonitorManagerForm != null && !c680MonitorManagerForm.IsDisposed)
+        {
+            c680MonitorManagerForm.Dispose();
+            c680MonitorManagerForm = null;
+        }
         if (hs787MonitorManagerForm != null && !hs787MonitorManagerForm.IsDisposed)
         {
             hs787MonitorManagerForm.Dispose();
@@ -1104,6 +1110,13 @@ public partial class MainForm
         else
             DisposeHS787Forms();
 
+        // The Sovereign+ CAS monitor runs for as long as the aircraft is current (the definition
+        // owns it and its windows; DisposeWindows() on the OUTGOING definition tears them down).
+        if (oldAircraft is Aircraft.Citation680.SkywardC680Definition oldC680 && oldAircraft != newAircraft)
+            oldC680.DisposeWindows();
+        if (newAircraft is Aircraft.Citation680.SkywardC680Definition newC680)
+            newC680.StartCasMonitor(announcer);
+
         // The iFly def owns the shared-memory SDK client — stop its poll and close the
         // mapping so it doesn't keep firing events at the new aircraft.
         if (oldAircraft is IFly737MAXDefinition oldIFly && oldAircraft != newAircraft)
@@ -1171,6 +1184,7 @@ public partial class MainForm
         headwindA330MenuItem.Checked = false;
         ifly737MaxMenuItem.Checked = false;
         tfdiMd11MenuItem.Checked = false;
+        c680MenuItem.Checked = false;
 
         // Set the check on the current aircraft's menu item.
         // NOTE: HeadwindA330Definition derives from FlyByWireA320Definition, so it MUST
@@ -1210,6 +1224,10 @@ public partial class MainForm
         else if (currentAircraft is IFly737MAXDefinition)
         {
             ifly737MaxMenuItem.Checked = true;
+        }
+        else if (currentAircraft is Aircraft.Citation680.SkywardC680Definition)
+        {
+            c680MenuItem.Checked = true;
         }
     }
 

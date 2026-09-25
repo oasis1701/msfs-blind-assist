@@ -154,6 +154,9 @@
     <None Update="HotkeyGuides\HS787_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="HotkeyGuides\Skyward_C680_Hotkeys.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="HotkeyGuides\iFly_737MAX8_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -206,6 +209,18 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-flypad-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-gtc-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-c680-cas-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-c680-mfd-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-c680-efb-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-pmdg-efb-agent.js">

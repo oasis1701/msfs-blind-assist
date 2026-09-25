@@ -58,6 +58,8 @@ public partial class MainForm : Form
 
     private Forms.HS787.HS787MonitorManagerForm? hs787MonitorManagerForm;
 
+    private Forms.Citation680.C680MonitorManagerForm? c680MonitorManagerForm;
+
     private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
 
     private MSFSBlindAssist.Services.PMDGProgPageMonitor? pmdgProgPageMonitor;
@@ -491,6 +493,8 @@ public partial class MainForm : Form
         // countdown, so start it here.
         if (currentAircraft?.AircraftCode == "HS_787")
             StartHS787IrsMonitor();
+        if (currentAircraft is Aircraft.Citation680.SkywardC680Definition c680AtStart)
+            c680AtStart.StartCasMonitor(announcer);
 
         // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
         // it works whenever the sim + iFly plugin are running). Generic announcements

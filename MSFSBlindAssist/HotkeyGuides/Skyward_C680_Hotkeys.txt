@@ -1,0 +1,128 @@
+SKYWARD CITATION SOVEREIGN+ (C680) HOTKEY REFERENCE
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+Tip: The Crew Seat (Simulation section) decides which touchscreens open and which altimeter
+     the readouts use. Both seats are always reachable: the "other seat" keys below.
+
+DISPLAY WINDOWS - Input mode (left bracket), unless marked Output
+
+  Shift+M         MFD touchscreen (GTC) for your seat
+  Ctrl+Shift+M    MFD touchscreen for the OTHER seat
+  Ctrl+Shift+R    PFD touchscreen (GTC) for your seat
+  Alt+Shift+R     PFD touchscreen for the OTHER seat
+  Shift+T         Vendor EFB (Home, Services, Flight, Checklists, Settings)
+  Ctrl+P          Autopilot buttons window
+  Alt+E           CAS messages and engine indications (Output mode)
+  Alt+S           MFD synoptic and checklist reader (Output mode)
+  Ctrl+Shift+C    MFD touchscreen opened on its Checklist page (Output mode)
+
+Inside a touchscreen window:
+  Up/Down         Move through the page's text and buttons
+  Enter           Press the selected button
+  Letters/digits  Press the on-screen keys while a keyboard or keypad page is up
+  Backspace/Space Backspace / space on a keyboard page
+  Ctrl+Left/Right Small (inner) knob decrease / increase
+  Ctrl+Up/Down    Large (outer) knob increase / decrease
+  Ctrl+Enter      Push the knob; Ctrl+Shift+Enter push and hold
+  Alt+Up/Down     Middle knob increase / decrease; Alt+Enter push it
+  Ctrl+Shift+Arrows  Joystick nudge; Ctrl+Shift+Space joystick push
+  Ctrl+Home       Home page; Ctrl+Backspace Back; Ctrl+G MSG
+  Ctrl+R          Hide or show the radio bar and the bottom bar (XPDR, Back, Home, MSG)
+                  that every page carries; they are listed after the page's own buttons
+  A               On an Active Flight Plan leg row: open that leg's altitude constraint
+  S               On an Active Flight Plan leg row: open that leg's speed and flight path angle
+  Side combo      Switch the window to the other seat's unit
+  F2              Speak the page title and its text (not the buttons)
+  F5              Re-read the screen; Escape closes
+  Note: on MFD Home, Map / Traffic / Weather select what the touchscreen's half of the MFD
+  shows (press again for that display's settings). On PFD Home, Nav Source cycles the
+  autopilot's lateral source (FMS, LOC1, ...) on every press - read the label first.
+  Reading the rows: toggle buttons say "on" or "off", tabs say "tab" and "selected", an empty
+  entry field says "blank". Choice buttons say "selected" on the chosen one and carry their group
+  name ("XPDR/TCAS Mode: Auto, selected", "Navigation: On, selected"). While a popup is open (Audio & Radios, a keypad, VNAV Constraint)
+  only the popup and the two bars are listed, and the page title is the popup's.
+  Active Flight Plan: one row per leg, for example "ABEGI, at or below 4000 feet, angle -3.00
+  degrees, at 220 knots". "predicted" is VNAV's estimate, not a constraint; "not designated" is
+  a constraint VNAV will not fly. Enter on a leg opens its waypoint options.
+  Flight plans from SimBrief: MFD Home > Services > ACARS > Flight Plan Request. Each plan is
+  one row: Request fetches it, then Import (when it reads "Ready for Import") loads it.
+  From Utilities > Initialization, Weight and Fuel and Takeoff Data show Next instead of Home
+  in the bottom bar: use Back (Ctrl+Backspace) to leave.
+
+Inside the EFB window:
+  Page / Tab / Section combos   Change page, tab and (Checklists) the checklist to read
+  Enter           Toggle the card, door or setting on the selected row, or press its button
+  F5 / Escape     Re-read / close
+  Home lists the cover alerts first, each with Remove and Dismiss buttons: remove the pitot,
+  AOA and wheel chock covers there (or on Services > Ground) before flight.
+
+Inside the CAS window and the synoptic reader:
+  Up/Down         Read the rows; the list refreshes in place
+  Page combo      (synoptic reader) select a synoptic or the checklist
+  F5 / Escape     Re-read / close
+
+OUTPUT MODE - Press right bracket to activate
+
+Autopilot targets:
+  Shift+A    Altitude preselect
+  Shift+H    Heading bug
+  Shift+S    Speed target (knots, or Mach when the units are Mach)
+  Shift+V    Vertical speed target
+
+Speeds:
+  Shift+1    Takeoff V1 / Vr / V2 / Vfto (scaled to gross weight, estimated)
+  Shift+2    Vmo / Mmo
+  Shift+3    Flap and gear limits
+  Shift+4    Vref / Vapp (scaled, estimated)
+  Shift+5    Stall speeds (flight model, scaled)
+  Shift+6    Vfto and gear limits
+
+Engines:
+  P          N1 and N2, both engines
+  E          N1, fuel flow and thrust lever positions
+  Shift+O    ITT, oil pressure and oil temperature
+
+Aircraft:
+  B          Altimeter setting for your seat's PFD (hPa and inches; "standard" at 1013)
+  L          Flap position
+  Shift+G    Gear handle, three gear positions and locks
+  F          Fuel left, right, total (pounds)
+  Shift+F    Fuel in kilograms
+  Shift+W    Gross weight and the margin to the limits
+  X          Squawk and transponder mode
+  D          Distance and time to destination
+  Shift+D    Top of descent (on the MFD touchscreen's VNAV page)
+  Ctrl+E     CAS call-outs on / off
+  Ctrl+M     Monitor manager (mute individual announcements, including the CAS severities)
+
+Standard readouts (altitude, speeds, heading, position, wind, weather, time, navigation
+radios, taxi guidance, GSX) work as on every aircraft; see the general guide.
+
+INPUT MODE - Press left bracket to activate
+
+  Ctrl+A     Set altitude preselect (100 to 47000, rounded to 100)
+  Ctrl+H     Set heading bug
+  Ctrl+S     Set speed target (knots, or 0.xx for Mach). Switches the G3000's speed source
+             from FMS to Manual first - in FMS mode the aircraft ignores typed targets
+  Ctrl+V     Set vertical speed target (negative for down)
+  Ctrl+B     Set both PFD altimeters (hPa or inches; "std" for standard)
+  Ctrl+N     NAV radios dialog
+  Shift+A    AP on / off
+  Shift+P    APR mode
+  Ctrl+J     Autothrottle arm / disconnect
+  Ctrl+L     NAV mode
+
+COLD AND DARK TO APU, IN THE CHECKLIST'S ORDER (Left Tilt Panel section)
+  Electrical: STBY PWR on, Left and Right BATT on, Left and Right AVN on.
+  APU: APU knob On, then Start (it springs back to On); watch RPM to 100 percent; APU GEN on;
+  APU BLEED AIR on. Electrical: INTERIOR on. The bus tie closes itself on the ground.
+  The touchscreens and the CAS come alive once the avionics have power.
+
+Airport surroundings (app-wide, named here so every guide carries its own chords):
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)

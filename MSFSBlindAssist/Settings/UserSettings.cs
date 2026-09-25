@@ -295,6 +295,18 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> HS787DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // Auto-announced Skyward Citation Sovereign+ (C680) variables the user has muted via its
+        // Monitor Manager (Ctrl+M, C680MonitorManagerForm). Consulted at BOTH MainForm gates
+        // (generic path and the Suppressed-wrap). Persisted across sessions.
+        public List<string> C680DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="C680DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> C680DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
+        /// <summary>Sovereign+ crew seat: 1 = Pilot, 2 = Copilot. Which touchscreens the windows open on and which PFD the altimeter reads.</summary>
+        public int C680CrewSeat { get; set; } = 1;
+
         // FlyByWire A32NX Monitor Manager — variable keys the user has un-checked in
         // FlyByWireA320MonitorManagerForm. Consulted (and ECAM-memo sentinel honoured)
         // when AircraftCode == "A320". Persisted across sessions.
@@ -557,6 +569,7 @@ public class UserSettings
         PMDGDisabledMonitorVariablesSet = new HashSet<string>(PMDGDisabledMonitorVariables);
         A380DisabledMonitorVariablesSet = new HashSet<string>(A380DisabledMonitorVariables);
         HS787DisabledMonitorVariablesSet = new HashSet<string>(HS787DisabledMonitorVariables);
+        C680DisabledMonitorVariablesSet = new HashSet<string>(C680DisabledMonitorVariables);
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
         Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
