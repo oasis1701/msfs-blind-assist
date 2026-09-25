@@ -4258,7 +4258,7 @@ public class TaxiAssistForm : Form
                         return;
                     }
                     destNode = holdPoint.NodeId;
-                    term = new ProgressiveTerminator(ProgressiveTerminatorType.HoldAtNamedPoint, holdPoint.Name);
+                    term = new ProgressiveTerminator(ProgressiveTerminatorType.HoldAtNamedPoint, holdPoint.Name, holdPoint.Kind);
                     break;
                 }
                 default: // 3: End of last taxiway
