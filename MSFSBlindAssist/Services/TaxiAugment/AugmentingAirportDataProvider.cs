@@ -251,6 +251,10 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider, IAirpo
     /// </summary>
     public async Task PrefetchAsync(string icao, bool force = false)
     {
+        // An online request like any other: with online taxi data switched off there is nothing to
+        // fetch. Every caller (Shift+D, ILS/visual guidance, the taxi form, the landing-exit planner,
+        // the flight plan) once reached OSM and X-Plane Gateway regardless.
+        if (!Enabled) return;
         if (!force && _cache.TryLoad(icao, out _))
             return;           // cache is fresh, nothing to do
 

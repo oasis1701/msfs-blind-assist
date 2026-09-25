@@ -4021,7 +4021,11 @@ Some sceneries use internal spot codes (e.g. `"GN 3"`) while ATC, OSM, and real-
 - `BackgroundFetch` uses a `HashSet<string> _inFlight` + `lock` so at most one fetch per ICAO is in flight at a time.
 - `FetchCoreAsync` wraps both sources in `Task.WhenAll` with a 60-second `CancellationTokenSource`.
 - Any exception is swallowed — background fetches must never propagate into callers.
-- `PrefetchAsync(icao, force)` is the awaitable variant for Phase 6.
+- `PrefetchAsync(icao, force)` is the awaitable variant for Phase 6. It returns at once when `Enabled`
+  is false: an explicit prefetch is an online request like any other, and until 2026-09-25 every
+  prefetch site reached OSM and X-Plane Gateway with online taxi data switched off (pinned by
+  `AugmentingPrefetchSettingTests`). Settings' Refresh Taxiway Names says the switch is off instead
+  of reporting "No new names found".
 
 ### Settings toggle + manual refresh
 

@@ -85,6 +85,15 @@ public partial class MainForm
                     return;
                 }
 
+                // PrefetchAsync fetches nothing with online taxi data off; "No new names found" would
+                // then be untrue.
+                if (!provider.Enabled)
+                {
+                    if (IsHandleCreated && !IsDisposed)
+                        announcer.AnnounceImmediate("Online taxi data is switched off. Nothing refreshed.");
+                    return;
+                }
+
                 await provider.PrefetchAsync(icao, force: true);
 
                 var cov = provider.GetLastCoverage(icao);
