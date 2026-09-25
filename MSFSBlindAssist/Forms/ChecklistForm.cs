@@ -115,7 +115,8 @@ public partial class ChecklistForm : Form
             { "HW_A330", "FBW_A330_Checklist.txt" },
             { "FENIX_A320CEO", "Fenix_A320_Checklist.txt" },
             { "FBW_A380", "FBW_A380_Checklist.txt" },
-            { "IFLY_737MAX8", "iFly_737MAX8_Checklist.txt" }
+            { "IFLY_737MAX8", "iFly_737MAX8_Checklist.txt" },
+            { "SYNAPTIC_A220", "A220_Checklist.txt" }
         };
 
         // Determine which file to load

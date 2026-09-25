@@ -330,6 +330,15 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
 
         // Toggle trim announcements (Shift+T)
+        // Flight director readout (Alt+F). Only aircraft that can read their FD's real
+        // state AND its command bars override this; say so plainly elsewhere rather than
+        // leaving the key silently dead.
+        if (action == HotkeyAction.ReadFlightDirector)
+        {
+            announcer.AnnounceImmediate("Flight director readout is not available on this aircraft.");
+            return true;
+        }
+
         if (action == HotkeyAction.ToggleTrimAnnouncements)
         {
             _trimAnnouncementsEnabled = !_trimAnnouncementsEnabled;

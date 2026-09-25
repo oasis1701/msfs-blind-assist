@@ -159,6 +159,7 @@ public partial class MainForm : Form
     private Forms.MD11.Md11MonitorManagerForm? md11MonitorManagerForm;
 
     private Forms.IFly737.IFly737MonitorManagerForm? iflyMonitorManagerForm;
+    private Forms.A220.A220MonitorManagerForm? a220MonitorManagerForm;
 
     private TakeoffAssistManager takeoffAssistManager = null!;
 

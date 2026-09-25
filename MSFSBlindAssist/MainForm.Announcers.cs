@@ -375,6 +375,15 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the A220 Monitor Manager. Same split as the iFly:
+                // the def honours the set itself for its self-announced vars (FG modes,
+                // APU, reversers); the lamps/combos announce on THIS path.
+                if (currentAircraft.AircraftCode == "SYNAPTIC_A220" &&
+                    Settings.SettingsManager.Current.A220DisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
                 // Check if disabled in the iFly 737 Monitor Manager. Self-announced iFly
                 // vars (lights, MCP windows, altimeter) are muted by the Step-2.5
                 // iflyMuted wrap above; the deferred off-sweep in the def checks the list

@@ -170,6 +170,11 @@ public class HotkeyManager : IDisposable
         // Time-of-day hotkey IDs (Output mode). Local time = aircraft position
         // local time (sim handles tz mapping); Zulu = UTC. HH:MM by default,
         // HH:MM:SS when AnnounceTimeWithSeconds is on.
+        // Alt+F (Output mode): flight-director state + what its command bars are telling
+        // you to fly. Only aircraft that can read both override it; everything else says
+        // so plainly rather than leaving the key silently dead.
+        private const int HOTKEY_FLIGHT_DIRECTOR = 9214;
+
         private const int HOTKEY_LOCAL_TIME = 9210;
         private const int HOTKEY_ZULU_TIME = 9211;
 
@@ -413,6 +418,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_TOGGLE_TRIM:
                             TriggerHotkey(HotkeyAction.ToggleTrimAnnouncements);
+                            break;
+                        case HOTKEY_FLIGHT_DIRECTOR:
+                            TriggerHotkey(HotkeyAction.ReadFlightDirector);
                             break;
                         case HOTKEY_TAKEOFF_ASSIST:
                             TriggerHotkey(HotkeyAction.ToggleTakeoffAssist);
@@ -745,6 +753,7 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO, MOD_NONE, 0x57);  // W (Waypoint Info)
             RegisterHotKey(windowHandle, HOTKEY_ND_WAYPOINT, MOD_CONTROL, 0x57); // Ctrl+W (FBW ND TO-waypoint info)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM, MOD_SHIFT, 0x54);   // Shift+T (Toggle Trim Announcements)
+            RegisterHotKey(windowHandle, HOTKEY_FLIGHT_DIRECTOR, MOD_ALT, 0x46);  // Alt+F (Flight director state + command bars)
             RegisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST, MOD_CONTROL, 0x54); // Ctrl+T (Takeoff Assist)
             RegisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING, MOD_CONTROL, 0x45); // Ctrl+E (Toggle ECAM Monitoring)
             RegisterHotKey(windowHandle, HOTKEY_VATSIM_MUTE, MOD_ALT, 0x56); // Alt+V (Toggle VATSIM announcements)
@@ -857,6 +866,7 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_WAYPOINT_INFO);
             UnregisterHotKey(windowHandle, HOTKEY_ND_WAYPOINT);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_TRIM);
+            UnregisterHotKey(windowHandle, HOTKEY_FLIGHT_DIRECTOR);
             UnregisterHotKey(windowHandle, HOTKEY_TAKEOFF_ASSIST);
             UnregisterHotKey(windowHandle, HOTKEY_TOGGLE_ECAM_MONITORING);
             UnregisterHotKey(windowHandle, HOTKEY_VATSIM_MUTE);
@@ -1289,6 +1299,7 @@ public class HotkeyManager : IDisposable
         ToggleLocalizer,
         ReadFCUVerticalSpeedFPA,
         ReadApproachCapability,
+        ReadFlightDirector,   // Alt+F (output) — FD on/off per side + what it is commanding
         FCUHeadingPush,
         FCUHeadingPull,
         FCUAltitudePush,

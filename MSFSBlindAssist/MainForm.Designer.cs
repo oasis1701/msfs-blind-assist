@@ -22,6 +22,7 @@
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem synapticA220MenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -57,6 +58,7 @@
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.synapticA220MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -174,7 +176,8 @@
             this.pmdg777MenuItem,
             this.horizonSim787MenuItem,
             this.ifly737MaxMenuItem,
-            this.tfdiMd11MenuItem});
+            this.tfdiMd11MenuItem,
+            this.synapticA220MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -268,6 +271,16 @@
             this.tfdiMd11MenuItem.Text = "TFDi Design &MD-11";
             this.tfdiMd11MenuItem.Checked = false;
             this.tfdiMd11MenuItem.Click += new System.EventHandler(this.TFDiMD11MenuItem_Click);
+            //
+            // synapticA220MenuItem
+            //
+            this.synapticA220MenuItem.AccessibleName = "Synaptic A220-300";
+            this.synapticA220MenuItem.AccessibleDescription = "Switch to the Synaptic Simulations A220-300";
+            this.synapticA220MenuItem.Name = "synapticA220MenuItem";
+            this.synapticA220MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.synapticA220MenuItem.Text = "Synaptic A&220-300";
+            this.synapticA220MenuItem.Checked = false;
+            this.synapticA220MenuItem.Click += new System.EventHandler(this.SynapticA220MenuItem_Click);
             //
             // sectionsListBox
             // 

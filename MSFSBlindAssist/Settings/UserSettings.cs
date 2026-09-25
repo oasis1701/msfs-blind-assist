@@ -330,6 +330,17 @@ public class UserSettings
         [JsonIgnore]
         public HashSet<string> Md11DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
 
+        // Auto-announced A220 variables the user has muted via the A220 Monitor Manager
+        // (Ctrl+M, A220MonitorManagerForm). Consulted in MainForm.OnSimVarUpdated when
+        // AircraftCode == "SYNAPTIC_A220"; the def also honours the set itself for the
+        // vars it self-announces from inside ProcessSimVarUpdate (FG modes, lamps ride
+        // the generic path). Persisted across sessions.
+        public List<string> A220DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="A220DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> A220DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         // The MD-11 walker's learned step polarity (docs/md11.md §3): node ids whose step events run
         // INVERTED relative to the walker's conventional guess (left click / wheel up = increase).
         // Absent = conventional. Written the moment a wrong-way step teaches the walker, read on the
@@ -560,6 +571,7 @@ public class UserSettings
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
         Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
+        A220DisabledMonitorVariablesSet = new HashSet<string>(A220DisabledMonitorVariables);
     }
 
     /// <summary>
