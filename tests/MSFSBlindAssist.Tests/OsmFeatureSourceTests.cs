@@ -10,19 +10,6 @@ namespace MSFSBlindAssist.Tests;
 [Collection("OverpassMirrorState")]
 public class OsmFeatureSourceTests
 {
-    [Fact]
-    public void The_area_query_is_scoped_to_the_icao_tagged_aerodrome_and_asks_for_full_geometry()
-    {
-        string q = OsmFeatureSource.BuildAreaQuery("ktiw\";x");
-        Assert.Contains("area[\"aeroway\"=\"aerodrome\"][\"icao\"=\"KTIWX\"]->.ad;", q);   // sanitised, upper-cased
-        Assert.Contains("(area.ad)", q);
-        Assert.EndsWith(");out body geom;", q);  // `body`: a relation's members, each with its geometry
-        Assert.Equal(1, CountOf(q, ";out "));    // ONE output statement
-        Assert.DoesNotContain("center", q);      // Overpass honours only the LAST geometry modifier
-        Assert.DoesNotContain(" bb", q);
-        Assert.DoesNotContain("\"amenity\"~\"^(fuel", q);   // road fuel is not asked for
-    }
-
     private static int CountOf(string text, string part)
     {
         int count = 0;
@@ -51,9 +38,11 @@ public class OsmFeatureSourceTests
             Assert.Contains("[\"building\"][\"name\"]" + bbox + ";", q);   // bounded by the box, so named buildings are asked for
             Assert.DoesNotContain("area", q);                                  // no area database needed: every planet mirror answers it
             Assert.DoesNotContain("around", q);
-            Assert.EndsWith(");out body geom;", q);
-            Assert.Equal(1, CountOf(q, ";out "));
-            Assert.DoesNotContain("center", q);
+            Assert.EndsWith(");out body geom;", q);  // `body`: a relation's members, each with its geometry
+            Assert.Equal(1, CountOf(q, ";out "));    // ONE output statement
+            Assert.DoesNotContain("center", q);      // Overpass honours only the LAST geometry modifier
+            Assert.DoesNotContain(" bb", q);
+            Assert.DoesNotContain("\"amenity\"~\"^(fuel", q);   // road fuel is not asked for
         }
         finally { System.Globalization.CultureInfo.CurrentCulture = saved; }
     }
@@ -68,14 +57,13 @@ public class OsmFeatureSourceTests
     private static AirportFeature At(double lat, double lon) => new() { Kind = FeatureKind.Hangar, Lat = lat, Lon = lon, Source = FeatureSource.Osm };
 
     [Fact]
-    public void Box_results_are_kept_only_inside_the_airport_box_plus_margin_and_dropped_without_a_box()
+    public void Box_results_are_kept_only_inside_the_airport_box_plus_margin()
     {
         var box = new AirportFacilities { Icao = "KTIW", LeftLon = -122.579353, RightLon = -122.573303, TopLat = 47.274742, BottomLat = 47.260826 };
         var inside = At(47.2712, -122.5731);      // the tower, 15 m outside the bare box
         var chevron = At(47.2712, -122.5500);     // a road filling station ~1.7 km east
         var kept = OsmFeatureSource.KeepInsideBox(new[] { inside, chevron }, box);
         Assert.Same(inside, Assert.Single(kept));
-        Assert.Empty(OsmFeatureSource.KeepInsideBox(new[] { inside, chevron }, null));   // fail closed
     }
 
     // ---- Which query is asked -------------------------------------------------------------
@@ -141,7 +129,6 @@ public class OsmFeatureSourceTests
     {
         var source = SourceOver(_ => new HttpResponseMessage(HttpStatusCode.OK) { Content = new StringContent(body) });
         Assert.Null(await source.FetchAsync("KTIW", KtiwBox, CancellationToken.None));
-        Assert.Null(await source.FetchAsync("KTIW", null, CancellationToken.None));
     }
 
     private static HttpResponseMessage Hangars(params (double Lat, double Lon)[] at) => new(HttpStatusCode.OK)
@@ -159,13 +146,16 @@ public class OsmFeatureSourceTests
     }
 
     [Fact]
-    public async Task Without_a_box_the_icao_area_query_is_asked()
+    public async Task Without_a_box_nothing_is_asked_and_nothing_is_returned()
     {
-        int areaAsked = 0;
-        var source = SourceOver(isArea => { if (isArea) areaAsked++; return Hangars((47.2700, -122.5760)); });
+        // Fail closed: an icao= area query, the only way to ask without a box, landed on the wrong
+        // aerodrome (live UKRB/UKRK).
+        int asked = 0;
+        var source = SourceOver(_ => { asked++; return Hangars((47.2700, -122.5760)); });
         var features = await source.FetchAsync("KTIW", null, CancellationToken.None);
-        Assert.Single(features!);
-        Assert.Equal(1, areaAsked);
+        Assert.NotNull(features);
+        Assert.Empty(features);
+        Assert.Equal(0, asked);
     }
 
     // The box query answers in 1.3-3.3 s even at EGLL, KDEN and KATL (overpass.openstreetmap.fr,

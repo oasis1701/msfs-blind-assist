@@ -2148,8 +2148,8 @@ public partial class MainForm
             return;
         }
 
-        // Task 1 — Destination prefetch (silent, fire-and-forget)
-        if (_augmentPrefetched.Add(airport.ICAO))
+        // Task 1 — Destination prefetch (silent, fire-and-forget; claimed only while online data is on)
+        if (_augmentingProvider?.Enabled == true && _augmentPrefetched.Add(airport.ICAO))
             _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
 
         // Query ILS data from database
@@ -2305,8 +2305,9 @@ public partial class MainForm
             {
                 var destinationAirport = simConnectManager.GetDestinationAirport();
 
-                // Task 1 — Destination prefetch (silent, fire-and-forget)
-                if (destinationAirport != null && _augmentPrefetched.Add(destinationAirport.ICAO))
+                // Task 1 — Destination prefetch (silent, fire-and-forget; claimed only while online data is on)
+                if (destinationAirport != null && _augmentingProvider?.Enabled == true
+                    && _augmentPrefetched.Add(destinationAirport.ICAO))
                     _ = _augmentingProvider?.PrefetchAsync(destinationAirport.ICAO, force: true);
 
                 // Get destination wind from VATSIM API

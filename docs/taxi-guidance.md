@@ -2175,8 +2175,10 @@ area needs an area database and an `icao=` tag on the RIGHT aerodrome (live UKRB
 and UKRK named fields 1,279 km and 4,171 km away), and the 3 km radius reached
 only part of a large field like KDEN. A bounding box needs neither, so every
 planet-wide mirror answers it, and it is fast: 1.3-3.3 s at EGLL, KDEN, KATL and
-KTIW against the area query's 17-23 s. `BuildAreaQuery` survives only for an
-airport navdata gives no box, where nothing else can bound the query.
+KTIW against the area query's 17-23 s. The area query is gone entirely: an
+airport navdata gives no box gets no OSM buildings (`FetchAsync` asks nothing
+without a box), because the catalog builder only fetches for an airport navdata
+describes and the `icao=` tag is exactly what landed on the wrong aerodrome.
 
 **The buildings query gets 20 s per mirror, the taxiway query 12 s**
 (`OsmFeatureSource.PerMirrorTimeout`, passed to `OverpassClient.PostAsync`; the
@@ -2632,10 +2634,10 @@ because it dropped the model library of ten real Community packages.)
   back into the taxiway-name query. OSM data stays in memory; only the scenery
   index (the user's own local files) is disk-cached.
 - The OSM buildings query is ONE bounding box (the navdata box + 500 m) and its
-  answer is kept only inside that box; the `icao=` AREA query is asked only when
-  navdata gives no box. Never go back to the area query as the main path: a
-  mirror without an area database cannot answer it, and on 2026-09-25 that was
-  the only mirror reachable.
+  answer is kept only inside that box; with no box nothing is asked. Never bring
+  back the `icao=` AREA query: a mirror without an area database cannot answer
+  it (on 2026-09-25 that was the only mirror reachable), and its tag landed on
+  the wrong aerodrome (UKRB, UKRK).
 - Feature identity is the NAME **and** the distance together; a navdata
   concourse yields to the GSX feature built from the same stands. Geometry is
   donated in a merge only where it DESCRIBES the winner: a winner with

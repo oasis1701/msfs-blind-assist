@@ -774,8 +774,11 @@ public partial class MainForm
 
         // Task 2 — Departure prefetch: when on the ground and we've resolved the airport,
         // prefetch once per session so taxiway names are cached before taxi starts.
-        // SILENT (fire-and-forget, debounced via _augmentPrefetched).
-        if (_lastOnGround && !string.IsNullOrEmpty(airportIcao) && _augmentPrefetched.Add(airportIcao))
+        // SILENT (fire-and-forget, debounced via _augmentPrefetched). Claimed only while online taxi
+        // data is on — PrefetchAsync fetches nothing otherwise, and a claim with no fetch would
+        // keep this airport from ever being prefetched once the setting is switched on.
+        if (_lastOnGround && !string.IsNullOrEmpty(airportIcao) && _augmentingProvider?.Enabled == true
+            && _augmentPrefetched.Add(airportIcao))
             _ = _augmentingProvider?.PrefetchAsync(airportIcao, force: true);
 
         taxiAssistForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, airportIcao);
@@ -820,8 +823,8 @@ public partial class MainForm
             hasIlsDestination ? simConnectManager.GetDestinationRunway()?.RunwayID : null,
             arrivalPlan?.ArrivalICAO,
             arrivalPlan?.ArrivalRunway);
-        // Task 1 — Destination prefetch (silent, fire-and-forget)
-        if (!string.IsNullOrEmpty(preset.Icao) && _augmentPrefetched.Add(preset.Icao))
+        // Task 1 — Destination prefetch (silent, fire-and-forget; claimed only while online data is on)
+        if (!string.IsNullOrEmpty(preset.Icao) && _augmentingProvider?.Enabled == true && _augmentPrefetched.Add(preset.Icao))
             _ = _augmentingProvider?.PrefetchAsync(preset.Icao, force: true);
 
         // Always rebuild the form so the preset (ICAO + runway from the current

@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Services.Surroundings;
 using MSFSBlindAssist.Utils.Logging;
@@ -136,7 +137,7 @@ public sealed class SurroundingsCatalogCache
     /// <see cref="GetAsync"/>, whose failure paths may hand back a stale one. For UI-thread callers
     /// (the callout monitor, the taxi dialog's Place list) that must never start a build themselves.
     /// </summary>
-    public bool TryGetCached(string icao, out AirportFeatureCatalog? catalog)
+    public bool TryGetCached(string icao, [NotNullWhen(true)] out AirportFeatureCatalog? catalog)
     {
         catalog = null;
         if (string.IsNullOrWhiteSpace(icao)) return false;

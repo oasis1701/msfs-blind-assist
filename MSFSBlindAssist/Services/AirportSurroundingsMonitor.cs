@@ -47,6 +47,10 @@ public sealed class AirportSurroundingsMonitor : IDisposable
 
     private string _icao = "";
     private DateTime _icaoAt = DateTime.MinValue;
+    // True while a CurrentAirport.Resolve runs on a pool thread (see RefreshIcao). UI thread only.
+    private bool _icaoResolving;
+    // Bumped by every Reset, so an airport lookup started before one publishes nothing.
+    private int _resets;
     /// <summary>The runway probe's warm-up: which airport, when it started, the task (only ever
     /// polled), and whether its "cannot be answered" line was logged.</summary>
     private sealed record ProbeWarmUp(string Icao, DateTime StartedAt, Task Work, bool CannotAnswerLogged);
@@ -107,6 +111,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
         // The switches are settings and survive; the next surface is a silent baseline.
         _samples.Reset();
         _icao = ""; _icaoAt = DateTime.MinValue;
+        _resets++;
         // A running warm-up is let go, never waited on; it can no longer publish for another airport.
         _probeWarmUp = null;
         _lastCatalog = null;
@@ -184,11 +189,10 @@ public sealed class AirportSurroundingsMonitor : IDisposable
             if (provider == null) return;
 
             var now = DateTime.UtcNow;
-            if (now - _icaoAt > IcaoRefresh)
+            if (now - _icaoAt > IcaoRefresh && !_icaoResolving)
             {
                 _icaoAt = now;
-                string next = CurrentAirport.Resolve(provider, p.Latitude, p.Longitude) ?? "";
-                if (!string.Equals(next, _icao, StringComparison.OrdinalIgnoreCase)) { _icao = next; _gate.Reset(); _lastCatalog = null; }
+                RefreshIcao(provider, p.Latitude, p.Longitude);
             }
             if (_icao.Length == 0) return;
 
@@ -205,7 +209,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
                 }
                 return;
             }
-            if (catalog == null || catalog.Features.Count == 0) return;
+            if (catalog.Features.Count == 0) return;
 
             // A rebuilt catalog can change a feature's geometry, so tracks carried across it would see
             // a range step. Re-baseline the tracks; keep what was already said.
@@ -215,7 +219,10 @@ public sealed class AirportSurroundingsMonitor : IDisposable
                 _lastCatalog = catalog;
             }
 
-            if (suppressed) return;
+            // A sample skipped here never reaches the gate, so its tracks would keep a closest point
+            // from before the silence and arm on it afterwards (a building passed before a runway
+            // crossing called out on the far side). Re-baseline them; keep what was already said.
+            if (suppressed) { _gate.RebaselineTracks(); return; }
 
             // One probe read per sample serves both the warm-up decision and the runway silence.
             bool? onRunway = RunwayProbe?.Invoke(_icao, p.Latitude, p.Longitude);
@@ -223,7 +230,7 @@ public sealed class AirportSurroundingsMonitor : IDisposable
             if (MayStartBuild(suppressed, p.GroundSpeedKnots)) WarmProbeIfNeeded(provider, now, onRunway != null);
 
             // A runway is never where a building callout belongs.
-            if (onRunway == true) return;
+            if (onRunway == true) { _gate.RebaselineTracks(); return; }
 
             double hdgTrue = RelativeDirection.Normalize360(p.HeadingMagnetic + p.MagneticVariation);
             // RankRadiusMetres, never a literal: the gate tracks a feature from this window's edge.
@@ -239,6 +246,48 @@ public sealed class AirportSurroundingsMonitor : IDisposable
         {
             Log.Warn("Surroundings", $"monitor sample failed: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// Which airport the aircraft is at: <see cref="CurrentAirport.Resolve"/> is a database query,
+    /// so it runs on a pool thread — never inside this UI-thread handler, which runs ahead of the
+    /// Alt+Y and Alt+L one-shots on every sample — and its answer is adopted back on the UI thread.
+    /// An answer from before a <see cref="Reset"/> (airborne, reconnect, aircraft or database
+    /// switch) is dropped. With no context to post to (not the UI thread) it resolves inline.
+    /// </summary>
+    private void RefreshIcao(IAirportDataProvider provider, double lat, double lon)
+    {
+        var context = _syncContext;
+        if (context == null) { AdoptIcao(CurrentAirport.Resolve(provider, lat, lon) ?? ""); return; }
+
+        _icaoResolving = true;
+        int resets = _resets;
+        _ = Task.Run(() =>
+        {
+            string? next = null;
+            try { next = CurrentAirport.Resolve(provider, lat, lon) ?? ""; }
+            catch (Exception ex) { Log.Warn("Surroundings", $"current-airport lookup failed: {ex.Message}"); }
+            try
+            {
+                context.Post(_ =>
+                {
+                    _icaoResolving = false;
+                    if (_disposed || resets != _resets || next == null) return;
+                    AdoptIcao(next);
+                }, null);
+            }
+            catch (InvalidOperationException ex)
+            {
+                Log.Debug("Surroundings", $"could not post the airport lookup, context unavailable: {ex.Message}");
+            }
+        });
+    }
+
+    /// <summary>A different airport forgets the old one's tracks and catalog.</summary>
+    private void AdoptIcao(string next)
+    {
+        if (string.Equals(next, _icao, StringComparison.OrdinalIgnoreCase)) return;
+        _icao = next; _gate.Reset(); _lastCatalog = null;
     }
 
     /// <summary>

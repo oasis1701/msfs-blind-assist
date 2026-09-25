@@ -1398,6 +1398,12 @@ public partial class TaxiGuidanceManager : IDisposable
     private string _whereAmICachedIcao = "";
     private string _whereAmICachedToken = "";
 
+    // Moved (under _stateLock) by every invalidation of that cache — OnAirportDataUpdated and
+    // ClearWhereAmICache. DescribeCurrentLocation builds OUTSIDE the lock and publishes only if
+    // this has not moved meanwhile, so a taxiway-name fetch landing mid-build is never undone by
+    // a graph carrying the older names.
+    private long _whereAmICacheEpoch;
+
     /// <summary>
     /// Which database the runway geometry came from, as a number: moved by every database switch
     /// (<see cref="ClearWhereAmICache"/>). Anything read through a provider is stored only while
@@ -1464,20 +1470,26 @@ public partial class TaxiGuidanceManager : IDisposable
             return "No airport nearby.";
 
         TaxiGraph? graph;
+        string token;
+        long cacheEpoch;
 
-        // _stateLock serializes the cache read + build + write against the background-thread
+        // _stateLock serializes the cache read and the cache write against the background-thread
         // OnAirportDataUpdated (which nulls the cache) and the locked GetStatusAnnouncement
-        // overload — without it, OnAirportDataUpdated could null _whereAmICachedGraph between
-        // the read here and a later use, or tear the (graph, icao) pair. DescribeLocation runs
-        // OUTSIDE the lock on the local graph reference. That graph can be the active one, which the
-        // taxi form subdivides on the UI thread; TaxiGraph serialises that itself (_structureLock),
-        // taken only after _stateLock is released, so the two never nest.
+        // overload, so the (graph, icao, token) triple is never torn. The BUILD runs between the
+        // two, outside the lock: Alt+L calls this from a pool thread, and a cold build (database
+        // reads plus TaxiGraph.Build, up to seconds at a hub) held under the lock froze every
+        // UI-thread caller of it — the passing-callout monitor's runway probe, taxi position
+        // updates. DescribeLocation runs OUTSIDE the lock on the local graph reference. That graph
+        // can be the active one, which the taxi form subdivides on the UI thread; TaxiGraph
+        // serialises that itself (_structureLock), taken only after _stateLock is released, so
+        // the two never nest.
         lock (_stateLock)
         {
             // ShouldRebuildGateList, not a plain compare: it rebuilds on an upgrade or a
             // refresh and never on the DOWNGRADE a transient GSX drop causes, so a good graph
             // survives a reconnect flap. Same treatment the two sibling caches give this token.
-            string token = ResolveParkingSpotVersion(icao);
+            token = ResolveParkingSpotVersion(icao);
+            cacheEpoch = _whereAmICacheEpoch;
 
             // Prefer the active guidance graph if it's for this airport
             if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
@@ -1488,29 +1500,38 @@ public partial class TaxiGuidanceManager : IDisposable
                 graph = _whereAmICachedGraph;
             else
                 graph = null;
+        }
 
-            if (graph == null)
+        if (graph == null)
+        {
+            try
             {
-                try
-                {
-                    var paths = dataProvider.GetTaxiPaths(icao);
-                    if (paths == null || paths.Count == 0)
-                        return $"No taxi data available for {icao}.";
+                var paths = dataProvider.GetTaxiPaths(icao);
+                if (paths == null || paths.Count == 0)
+                    return $"No taxi data available for {icao}.";
 
-                    var parking = ResolveParkingSpots(dataProvider, icao);
-                    var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
+                var parking = ResolveParkingSpots(dataProvider, icao);
+                var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
-                    // Runways let the builder repair laterally-bogus start rows before
-                    // they reach the centerlines this very call is about to query
-                    // (TaxiGraph.SnapStartToRunwayCenterline).
-                    graph = TaxiGraph.Build(paths, parking, runwayStarts,
-                                            dataProvider.GetRunways(icao));
+                // Runways let the builder repair laterally-bogus start rows before
+                // they reach the centerlines this very call is about to query
+                // (TaxiGraph.SnapStartToRunwayCenterline).
+                graph = TaxiGraph.Build(paths, parking, runwayStarts,
+                                        dataProvider.GetRunways(icao));
+            }
+            catch (Exception ex)
+            {
+                return $"Could not load airport data for {icao}. {ex.Message}";
+            }
+
+            lock (_stateLock)
+            {
+                // The token stored is the one read BEFORE the build, so a GSX publish landing
+                // mid-build still reads as a token move on the next press and rebuilds.
+                if (cacheEpoch == _whereAmICacheEpoch)
                     StoreWhereAmIGraph(graph, icao, token, databaseGeneration);
-                }
-                catch (Exception ex)
-                {
-                    return $"Could not load airport data for {icao}. {ex.Message}";
-                }
+                else
+                    Log.Debug("Taxi", $"Where-Am-I graph for {icao} answered, not cached: the cache was invalidated while it was built");
             }
         }
 
@@ -1625,6 +1646,7 @@ public partial class TaxiGuidanceManager : IDisposable
             _whereAmICachedGraph = null;
             _whereAmICachedIcao = "";
             _whereAmICachedToken = "";
+            _whereAmICacheEpoch++;
             _runwayShapeMemo = null;
             Interlocked.Increment(ref _databaseGeneration);
         }
@@ -1640,6 +1662,9 @@ public partial class TaxiGuidanceManager : IDisposable
         if (string.IsNullOrEmpty(icao)) return;
         lock (_stateLock)
         {
+            // Moved whatever the cache holds: a build of THIS airport in flight (which the cache
+            // does not show yet) must not publish the names this fetch just replaced.
+            _whereAmICacheEpoch++;
             if (string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
             {
                 _whereAmICachedGraph = null;

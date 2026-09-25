@@ -3149,11 +3149,12 @@ public class TaxiAssistForm : Form
             }
         }
 
-        // Entering gate mode: kick a traffic sweep and rebuild once it lands, so the
+        // Entering gate or Place mode: kick a traffic sweep and rebuild once it lands, so the
         // occupied-stand filter works on the first list rather than only after the pilot
         // has typed something. The sweep is asynchronous (responses arrive over the next
         // few dozen ms), which is why this is a request-then-rebuild rather than a read.
-        if (isGate) RefreshTrafficThenRepopulate();
+        // Place too: its stands pass through the same filter (SpotIsOccupied).
+        if (isGate || isPlace) RefreshTrafficThenRepopulate();
 
         // Name the default holding point for the runway that is now selected (the list
         // was just rebuilt, which mutes the call-out inside PopulateDestinations).
@@ -3174,8 +3175,8 @@ public class TaxiAssistForm : Form
             _tcasService.PollNow();
             await Task.Delay(600);
             // The pilot may have moved on (closed the form, switched destination type)
-            // while the sweep was in flight.
-            if (IsDisposed || !IsHandleCreated || cmbDestType.SelectedIndex != 1) return;
+            // while the sweep was in flight. Gate / Parking and Place both filter on it.
+            if (IsDisposed || !IsHandleCreated || cmbDestType.SelectedIndex is not (1 or 4)) return;
 
             // Keep whatever the pilot has selected/typed — PopulateDestinations rebuilds
             // the list and re-selects index 0, which would otherwise silently move the

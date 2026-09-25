@@ -71,16 +71,6 @@ public sealed class OsmFeatureSource
         return "[out:json][timeout:30];(" + Clauses(bbox, includeNamedBuildings: true) + ");" + OutputStatement;
     }
 
-    /// <summary>Only for an airport navdata gives no box — nothing else can bound the query. Needs a
-    /// mirror with an area database; a mirror without one fails it and the next is asked.</summary>
-    internal static string BuildAreaQuery(string icao)
-    {
-        string safe = new string((icao ?? "").Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
-        return "[out:json][timeout:50];" +
-               $"area[\"aeroway\"=\"aerodrome\"][\"icao\"=\"{safe}\"]->.ad;" +
-               "(" + Clauses("(area.ad)", includeNamedBuildings: true) + ");" + OutputStatement;
-    }
-
     /// <summary>
     /// Longest one mirror may hold a buildings query. The box query answers in 1.3-3.3 s even at the
     /// largest airports (measured 2026-09-25); 20 s clears that widely and fits THREE mirrors in the
@@ -104,10 +94,9 @@ public sealed class OsmFeatureSource
 
     /// <summary>A feature whose representative point lies outside the grown box is dropped — a
     /// relation the bbox caught by one edge, or a filling station on the road outside the field,
-    /// must never become "Fuel, ahead". With no box, nothing (fail closed).</summary>
-    internal static List<AirportFeature> KeepInsideBox(IEnumerable<AirportFeature> features, AirportFacilities? box)
-        => box == null ? new List<AirportFeature>()
-                       : features.Where(f => box.ContainsPoint(f.Lat, f.Lon, BoxMarginMetres)).ToList();
+    /// must never become "Fuel, ahead".</summary>
+    internal static List<AirportFeature> KeepInsideBox(IEnumerable<AirportFeature> features, AirportFacilities box)
+        => features.Where(f => box.ContainsPoint(f.Lat, f.Lon, BoxMarginMetres)).ToList();
 
     /// <summary>A body that passed <see cref="OverpassClient.ClassifyBody"/> can still be
     /// shapeless enough to throw inside <see cref="Parse"/> (an element that is not an object, a
@@ -126,16 +115,18 @@ public sealed class OsmFeatureSource
 
     /// <summary>
     /// The airport's buildings: null when no mirror answered (the store remembers a failure and
-    /// retries), an empty list when one answered with nothing. With a navdata box, ONE bounded box
-    /// query; without one, the icao= area query, unbounded because nothing else can bound it.
+    /// retries), an empty list when one answered with nothing. ONE query, bounded by the navdata box.
+    /// With no box nothing is asked and nothing is returned (fail closed): the catalog builder only
+    /// fetches for an airport navdata describes, and an icao= area query — the only way to ask
+    /// without a box — landed on the wrong aerodrome (live UKRB/UKRK).
     /// </summary>
     public async Task<IReadOnlyList<AirportFeature>?> FetchAsync(string icao, AirportFacilities? box, CancellationToken ct)
     {
-        string query = box != null ? BuildBoxQuery(box) : BuildAreaQuery(icao);
-        string? body = await _client.PostAsync(query, PerMirrorTimeout, ct).ConfigureAwait(false);
+        if (box == null) return Array.Empty<AirportFeature>();
+        string? body = await _client.PostAsync(BuildBoxQuery(box), PerMirrorTimeout, ct).ConfigureAwait(false);
         if (body == null) return null;
         var features = TryParse(icao, body);
         if (features == null) return null;
-        return box != null ? KeepInsideBox(features, box) : features;
+        return KeepInsideBox(features, box);
     }
 }
