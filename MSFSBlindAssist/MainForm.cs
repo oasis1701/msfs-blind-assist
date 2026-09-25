@@ -848,7 +848,7 @@ public partial class MainForm : Form
 
         // Built unconditionally: the buildings tier needs no base provider, so a database built
         // mid-session still gets it (a switch Clear()s the store, never rebuilds it).
-        var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
+        var http = MSFSBlindAssist.Services.TaxiAugment.OverpassClient.CreateHttpClient(System.TimeSpan.FromSeconds(60));
         // One Overpass client for both OSM readers (mirror cooldowns are process-wide anyway).
         var overpassClient = new MSFSBlindAssist.Services.TaxiAugment.OverpassClient(http);
 

@@ -16,7 +16,11 @@ namespace MSFSBlindAssist.Services.Surroundings;
 /// </summary>
 public sealed class OsmFeatureSource
 {
-    public const double FallbackBoxMarginMetres = 500.0;
+    /// <summary>How far past the navdata airport box the buildings query reaches, and how far a
+    /// feature may lie outside it. The box is the exact hull of the airport's own records, so a
+    /// building beside the outermost stand or runway end sits just outside it (KTIW's own tower,
+    /// 15 m).</summary>
+    public const double BoxMarginMetres = 500.0;
     private readonly OverpassClient _client;
     public OsmFeatureSource(OverpassClient client) { _client = client; }
 
@@ -47,6 +51,28 @@ public sealed class OsmFeatureSource
     /// </summary>
     internal const string OutputStatement = "out body geom;";
 
+    /// <summary>
+    /// The buildings query: every clause bounded by the navdata airport box grown
+    /// <see cref="BoxMarginMetres"/>, named buildings included (the box bounds them). A bounding box
+    /// needs no area database, so EVERY planet-wide mirror answers it — the icao= AREA query this
+    /// replaced failed outright on overpass.openstreetmap.fr, which has none ("runtime error …
+    /// area_tags_local.bin"), and on 2026-09-25 that was the one mirror reachable. It is also fast
+    /// (1.3-3.3 s at EGLL, KDEN, KATL against the area query's 17-23 s), covers a large airport
+    /// whole where the old 3 km radius fallback reached only part of KDEN, and cannot land on the
+    /// wrong aerodrome the way an icao= tag did (live UKRB/UKRK). Coordinates are
+    /// <see cref="CultureInfo.InvariantCulture"/>: `.` in a custom format is the decimal-point
+    /// PLACEHOLDER, so a comma-decimal locale would emit a clause every mirror answers 400 to.
+    /// </summary>
+    internal static string BuildBoxQuery(AirportFacilities box)
+    {
+        var g = box.Grown(BoxMarginMetres);
+        string bbox = string.Format(CultureInfo.InvariantCulture,
+            "({0:0.######},{1:0.######},{2:0.######},{3:0.######})", g.Bottom, g.Left, g.Top, g.Right);
+        return "[out:json][timeout:30];(" + Clauses(bbox, includeNamedBuildings: true) + ");" + OutputStatement;
+    }
+
+    /// <summary>Only for an airport navdata gives no box — nothing else can bound the query. Needs a
+    /// mirror with an area database; a mirror without one fails it and the next is asked.</summary>
     internal static string BuildAreaQuery(string icao)
     {
         string safe = new string((icao ?? "").Where(char.IsLetterOrDigit).ToArray()).ToUpperInvariant();
@@ -55,28 +81,13 @@ public sealed class OsmFeatureSource
                "(" + Clauses("(area.ad)", includeNamedBuildings: true) + ");" + OutputStatement;
     }
 
-    /// <summary>For an aerodrome OSM has not tagged with icao=. A bare radius has no area to bound
-    /// it, so the generic named-building clauses are left out and the caller box-filters the rest.
-    /// Every embedded coordinate is <see cref="CultureInfo.InvariantCulture"/>-formatted: `.` in a
-    /// custom numeric format is the decimal-point PLACEHOLDER, so a comma-decimal locale (de-DE,
-    /// fr-FR, pt-BR, tr-TR) would emit `around:3000,47,2679,-122,5781` — a clause every mirror
-    /// answers 400 to.</summary>
-    internal static string BuildFallbackQuery(double lat, double lon)
-    {
-        string around = string.Format(CultureInfo.InvariantCulture, "(around:3000,{0:0.######},{1:0.######})", lat, lon);
-        return "[out:json][timeout:30];(" + Clauses(around, includeNamedBuildings: false) + ");" + OutputStatement;
-    }
-
     /// <summary>
-    /// Longest one mirror may hold a buildings query. The AREA query at a large airport takes 17-23 s
-    /// on a healthy mirror (KDEN 23 s, KDFW 17 s, EGLL 21 s, measured 2026-09-25), so the client's
-    /// 12 s default failed it on every mirror and a large airport never had OSM buildings. 35 s
-    /// clears that and still leaves the store's FetchBudget room for a second mirror.
+    /// Longest one mirror may hold a buildings query. The box query answers in 1.3-3.3 s even at the
+    /// largest airports (measured 2026-09-25); 20 s clears that widely and fits THREE mirrors in the
+    /// store's FetchBudget — on that day two public mirrors timed out on every request before the
+    /// one that answered was reached.
     /// </summary>
-    internal static readonly TimeSpan PerMirrorTimeout = TimeSpan.FromSeconds(35);
-
-    /// <summary>How far past the navdata airport box an AREA-query feature may lie.</summary>
-    internal const double AreaBoxMarginMetres = 3000.0;
+    internal static readonly TimeSpan PerMirrorTimeout = TimeSpan.FromSeconds(20);
 
     internal static List<AirportFeature> Parse(string json)
     {
@@ -91,11 +102,12 @@ public sealed class OsmFeatureSource
         return result;
     }
 
-    /// <summary>Fail CLOSED: with no box there is nothing to bound a radius query by, and a
-    /// filling station on the road outside the field must never become "Fuel, ahead".</summary>
+    /// <summary>A feature whose representative point lies outside the grown box is dropped — a
+    /// relation the bbox caught by one edge, or a filling station on the road outside the field,
+    /// must never become "Fuel, ahead". With no box, nothing (fail closed).</summary>
     internal static List<AirportFeature> KeepInsideBox(IEnumerable<AirportFeature> features, AirportFacilities? box)
         => box == null ? new List<AirportFeature>()
-                       : features.Where(f => box.ContainsPoint(f.Lat, f.Lon, FallbackBoxMarginMetres)).ToList();
+                       : features.Where(f => box.ContainsPoint(f.Lat, f.Lon, BoxMarginMetres)).ToList();
 
     /// <summary>A body that passed <see cref="OverpassClient.ClassifyBody"/> can still be
     /// shapeless enough to throw inside <see cref="Parse"/> (an element that is not an object, a
@@ -112,27 +124,18 @@ public sealed class OsmFeatureSource
         }
     }
 
+    /// <summary>
+    /// The airport's buildings: null when no mirror answered (the store remembers a failure and
+    /// retries), an empty list when one answered with nothing. With a navdata box, ONE bounded box
+    /// query; without one, the icao= area query, unbounded because nothing else can bound it.
+    /// </summary>
     public async Task<IReadOnlyList<AirportFeature>?> FetchAsync(string icao, double lat, double lon, AirportFacilities? box, CancellationToken ct)
     {
-        string? body = await _client.PostAsync(BuildAreaQuery(icao), PerMirrorTimeout, ct).ConfigureAwait(false);
+        string query = box != null ? BuildBoxQuery(box) : BuildAreaQuery(icao);
+        string? body = await _client.PostAsync(query, PerMirrorTimeout, ct).ConfigureAwait(false);
         if (body == null) return null;
         var features = TryParse(icao, body);
         if (features == null) return null;
-        // An icao= tag can sit on the wrong aerodrome (live UKRB/UKRK: fields 1,279 km and
-        // 4,171 km away), so the area answer is bounded too — more loosely than the fallback,
-        // since an aerodrome outline legitimately reaches landside buildings past navdata's box.
-        // Nothing left means the tag named another field: fall through to the radius query.
-        if (box != null) features = features.Where(f => box.ContainsPoint(f.Lat, f.Lon, AreaBoxMarginMetres)).ToList();
-        if (features.Count > 0) return features;
-
-        // A fallback that never reached a mirror is a FAILURE, not an airport without buildings:
-        // returning the empty list would have the store cache "nothing here" for the session,
-        // where null is remembered for OnlineFeatureStore.FailureMemory and then retried. An
-        // aerodrome OSM has not tagged with icao= takes this path every time, so the difference
-        // is the whole feature for those airports.
-        string? fallback = await _client.PostAsync(BuildFallbackQuery(lat, lon), PerMirrorTimeout, ct).ConfigureAwait(false);
-        if (fallback == null) return null;
-        var parsed = TryParse(icao, fallback);
-        return parsed == null ? null : KeepInsideBox(parsed, box);
+        return box != null ? KeepInsideBox(features, box) : features;
     }
 }

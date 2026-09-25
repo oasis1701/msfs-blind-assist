@@ -997,17 +997,10 @@ as long as the airport was current.
   and "1" "Helipad 1"), and a `ref` of one token ("12-14" → "Apron 12-14").
   A name that already carries the word is left alone, and runs of whitespace
   (OMDB's "Terminal  3") are one space.
-- **`OsmFeatureSource`** owns the query. It is scoped to the
-  `aeroway=aerodrome` area carrying the airport's `icao=` tag; when OSM has not
-  tagged that area, one `around:3000` fallback runs and its result is kept only
-  inside the navdata airport box grown `FallbackBoxMarginMetres` (500 m). A
-  bare radius is what let the KTIW Chevron in, and with **no** box the fallback
-  result is dropped entirely — fail closed. The AREA answer is bounded too, more
-  loosely (`AreaBoxMarginMetres`, 3 km past the box, because an aerodrome
-  outline legitimately reaches landside buildings): an `icao=` tag can sit on
-  the wrong aerodrome (live UKRB and UKRK named fields 1,279 km and 4,171 km
-  away), and an area answer with nothing left near the airport falls through to
-  the radius query. OSM feature data has its own
+- **`OsmFeatureSource`** owns the query: ONE bounding box, the navdata airport
+  box grown `BoxMarginMetres` (500 m), and every result kept only inside that
+  same box. Only an airport navdata gives no box asks the `icao=` aerodrome
+  AREA instead. See "The OSM buildings query". OSM feature data has its own
   in-memory store (`OnlineFeatureStore`), no disk cache, same ODbL "produced
   work" position as the rest of this pipeline. See "The OSM buildings query"
   below for why it must never be fused back into the taxiway-name query.
@@ -2089,14 +2082,8 @@ failing it would have the store retry it every five minutes for the session.
 A caller that gives up DURING the confirmation gets that held answer too, never
 null: it is already a well-formed answer from a mirror that worked. For the
 taxiway-name fetch that is its whole answer, so an airport OSM genuinely has
-nothing for comes back empty rather than as a failed source. The BUILDINGS
-fetch gains it only in its FALLBACK query: an AREA query that comes back empty
-sends `OsmFeatureSource.FetchAsync` on to the fallback with the same,
-already-cancelled token, and a `PostAsync` that has learned nothing still
-returns null — so a cancel during the area query's confirmation is still a
-failed fetch, remembered for `FailureMemory` and retried. That is right: an
-empty area answer does not say the airport has no buildings (an aerodrome OSM
-has not tagged `icao=` answers empty every time). A mirror answering empty is
+nothing for comes back empty rather than as a failed source, and the same is
+true of the buildings fetch, which is now one query too. A mirror answering empty is
 **never blacklisted** for it: that is no evidence the mirror is ill.
 
 **Neither defence touches a query string**, and none ever should: the one change
@@ -2141,32 +2128,39 @@ retry and no cooldown mark. Rotating would buy nothing — a body shape that
 breaks `Parse` is a protocol-level change every mirror shares, not one mirror
 being ill — and the apt.dat result surviving is the whole point of the fix.
 
-`OsmFeatureSource.BuildAreaQuery` asks the `aeroway=aerodrome` area carrying the
-airport's `icao=` tag. When OSM has not tagged that area — which is common at
-smaller fields — `BuildFallbackQuery` reruns without the generic named-building
-clauses at `around:3000`, and `KeepInsideBox` keeps only what falls inside the
-navdata airport box grown `FallbackBoxMarginMetres` (500 m; the box is the exact
-hull of the airport's own records, so at KTIW its own control tower sits 15 m
-outside it). **With no box at all the fallback result is dropped entirely** —
-fail closed, because a filling station on the road outside the field must never
-become "Fuel, ahead". Every embedded coordinate is `InvariantCulture`-formatted:
-`.` in a custom numeric format is the decimal-point PLACEHOLDER, so a
-comma-decimal locale would emit `around:3000,47,2679,-122,5781`, which every
-mirror answers 400 to.
+`OsmFeatureSource.BuildBoxQuery` asks every building clause, named buildings
+included, inside the navdata airport box grown `BoxMarginMetres` (500 m; the box
+is the exact hull of the airport's own records, so at KTIW its own control tower
+sits 15 m outside it), and `KeepInsideBox` keeps only what falls inside that
+same grown box — a relation the box caught by one edge, or a filling station on
+the road outside the field, must never become "Fuel, ahead". Every embedded
+coordinate is `InvariantCulture`-formatted: `.` in a custom numeric format is
+the decimal-point PLACEHOLDER, so a comma-decimal locale would emit a clause
+every mirror answers 400 to.
 
-**The buildings query gets 35 s per mirror, the taxiway query 12 s**
-(`OsmFeatureSource.PerMirrorTimeout`, passed to `OverpassClient.PostAsync`; the client's default stays
-12 s). The area query at a large airport takes 17-23 s on a healthy mirror (KDEN 23 s, KDFW 17 s,
-EGLL 21 s, measured 2026-09-25), so under the shared 12 s it failed on every mirror and a large
-airport never had OSM buildings — the catalog quietly went degraded and retried into the same wall.
-35 s still leaves `FetchBudget` (60 s) room for a second mirror.
+**Why a box, not the aerodrome AREA it replaced (2026-09-25).** An audit run
+with OSM across all 360 airports with installed scenery stalled: overpass-api.de
+and its lz4/z hosts refused this machine's TCP connections, kumi and
+private.coffee timed out even on a one-node query, and the one mirror answering
+— overpass.openstreetmap.fr, 1-2 s, full planet — has NO area database, so it
+answered the area query with `runtime error … area_tags_local.bin` (a failed
+mirror). The area query and its `around:3000` fallback both depended on luck: the
+area needs an area database and an `icao=` tag on the RIGHT aerodrome (live UKRB
+and UKRK named fields 1,279 km and 4,171 km away), and the 3 km radius reached
+only part of a large field like KDEN. A bounding box needs neither, so every
+planet-wide mirror answers it, and it is fast: 1.3-3.3 s at EGLL, KDEN, KATL and
+KTIW against the area query's 17-23 s. `BuildAreaQuery` survives only for an
+airport navdata gives no box, where nothing else can bound the query.
 
-The AREA answer is not trusted blindly either: an `icao=` tag can sit on the
-wrong aerodrome (live UKRB and UKRK: fields 1,279 km and 4,171 km away), so
-`FetchAsync` keeps only what lies within `AreaBoxMarginMetres` (3 km) of the
-navdata box — looser than the fallback's 500 m, because the real aerodrome
-outline reaches landside buildings — and an area answer with nothing left falls
-through to the fallback query as an untagged aerodrome would.
+**The buildings query gets 20 s per mirror, the taxiway query 12 s**
+(`OsmFeatureSource.PerMirrorTimeout`, passed to `OverpassClient.PostAsync`; the
+client's default stays 12 s): wide of the box query's measured 3.3 s, and three
+mirrors fit in `FetchBudget` (60 s). **A mirror's TCP connection gets 5 s**
+(`OverpassClient.ConnectTimeout`, on the handler `OverpassClient.CreateHttpClient`
+builds for both OSM readers): Windows' own connect timeout is 21 s, and three
+refusing overpass-api.de hosts spent the whole budget before a working mirror
+was asked. A mirror that accepts the connection still gets the full per-mirror
+timeout to answer.
 
 **Both building queries end `out body geom;`, never `out tags geom;`.** The
 `tags` verbosity prints ids and tags only — no coordinates, no members — and
@@ -2611,9 +2605,11 @@ because it dropped the model library of ten real Community packages.)
 - OSM buildings have their **own** request, store and event; never fuse them
   back into the taxiway-name query. OSM data stays in memory; only the scenery
   index (the user's own local files) is disk-cached.
-- The OSM query is scoped to the aerodrome AREA, and the `around:3000` fallback
-  is box-filtered — with no box it is dropped entirely. A bare radius admits
-  road filling stations.
+- The OSM buildings query is ONE bounding box (the navdata box + 500 m) and its
+  answer is kept only inside that box; the `icao=` AREA query is asked only when
+  navdata gives no box. Never go back to the area query as the main path: a
+  mirror without an area database cannot answer it, and on 2026-09-25 that was
+  the only mirror reachable.
 - Feature identity is the NAME **and** the distance together; a navdata
   concourse yields to the GSX feature built from the same stands. Geometry is
   donated in a merge only where it DESCRIBES the winner: a winner with

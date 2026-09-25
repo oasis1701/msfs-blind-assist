@@ -11,6 +11,20 @@ public sealed class OverpassClient
 {
     private readonly HttpClient _http;
 
+    /// <summary>
+    /// Longest the TCP connection to one mirror may take. A mirror that refuses it is down or has
+    /// blocked this address, and Windows' own connect timeout is 21 s — measured 2026-09-25, when
+    /// overpass-api.de and its lz4/z hosts refused this machine and three hosts of it spent the
+    /// whole fetch budget before a working mirror was asked. A mirror that ACCEPTS the connection
+    /// still gets the caller's whole per-mirror timeout to answer.
+    /// </summary>
+    public static readonly TimeSpan ConnectTimeout = TimeSpan.FromSeconds(5);
+
+    /// <summary>The HttpClient the app's Overpass readers share: <see cref="ConnectTimeout"/> on the
+    /// connection, <paramref name="overall"/> on a whole request.</summary>
+    public static HttpClient CreateHttpClient(TimeSpan overall)
+        => new(new SocketsHttpHandler { ConnectTimeout = ConnectTimeout }) { Timeout = overall };
+
     /// <summary>A client on the process-wide cooldown map (<see cref="SharedCooldownUntilUtc"/>) —
     /// what the app's two OSM sources are built with.</summary>
     public OverpassClient(HttpClient http) : this(http, SharedCooldownUntilUtc) { }
