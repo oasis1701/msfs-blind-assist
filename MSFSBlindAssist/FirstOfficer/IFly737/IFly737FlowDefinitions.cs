@@ -159,16 +159,16 @@ public static class IFly737FlowDefinitions
         {
             // Battery_Switch_Mode: 1=Off/2=On (guarded switch; ApplyUIVariable special-cases
             // the write and verifies it moved — see IFly737ActionExecutor.SetBattery).
-            Skip(SW("EPU_BAT", "Battery: ON", "Battery_Switch_Mode", 2),
+            Skip(SW("EPU_BAT", "Battery: ON", "Battery_Switch_Mode", 2, checklistItemId: "EPU_BATTERY"),
                 s => s.IsPosition("Battery_Switch_Mode", 2)),
             // STANDBY_POWER_Switch_Mode: 1=Battery/2=Off/3=Auto.
             Skip(SW("EPU_STBY", "Standby power: AUTO", "STANDBY_POWER_Switch_Mode",
-                    IFly737ActionExecutor.StandbyPowerAuto),
+                    IFly737ActionExecutor.StandbyPowerAuto, checklistItemId: "EPU_STBY"),
                 s => s.IsPosition("STANDBY_POWER_Switch_Mode", IFly737ActionExecutor.StandbyPowerAuto)),
             // Ground power ON: momentary click (BTN_GRD_PWR_ON — the _SET command only moves
             // the animation, live-verified dead). Pressed unconditionally like the PMDG
             // template — no reliable "on bus" signal exists to skip on (see class doc).
-            SW("EPU_GPU", "Ground power: ON", "BTN_GRD_PWR_ON", 1, isMomentary: true),
+            SW("EPU_GPU", "Ground power: ON", "BTN_GRD_PWR_ON", 1, isMomentary: true, checklistItemId: "EPU_GPU"),
             // No GPU/ground-power-availability readback exists on this SDK — downgraded from
             // the PMDG's automated WaitForField to a Captain reminder (see class doc).
             Captain("EPU_GPU_WAIT", "Confirm ground power connected",
@@ -176,7 +176,7 @@ public static class IFly737FlowDefinitions
                 "verify it."),
             // IRS_Mode_Switch_Status_{0,1}: 0 Off/1 Align/2 Nav/3 Attitude. Alignment runs in
             // the background; no wait — "IRS aligned" auto-detects later.
-            Multi("EPU_IRS", "IRS mode selectors: NAV",
+            Multi("EPU_IRS", "IRS mode selectors: NAV", "EPU_IRS",
                 ("IRS_Mode_Switch_Status_0", IFly737ActionExecutor.IrsNav),
                 ("IRS_Mode_Switch_Status_1", IFly737ActionExecutor.IrsNav)),
         }
@@ -213,38 +213,38 @@ public static class IFly737FlowDefinitions
                 IFly737ActionExecutor.KeyTcasTest, 1, checklistItemId: "PF_TCAS_TEST"),
             // Yaw_Damper_Switch_Status: 0 Off/1 On. No typed executor wrapper exists — the
             // varKey IS registered/writable, so this uses the executor's generic Set() path.
-            SW("PF_YD", "Yaw damper: ON", "Yaw_Damper_Switch_Status", 1),
-            Multi("PF_FUEL_OFF", "Fuel pumps: OFF",
+            SW("PF_YD", "Yaw damper: ON", "Yaw_Damper_Switch_Status", 1, checklistItemId: "PF_YD"),
+            Multi("PF_FUEL_OFF", "Fuel pumps: OFF", "PF_FUEL_OFF",
                 ("Fuel_L_AFT_Switch_Status", 0), ("Fuel_L_FWD_Switch_Status", 0),
                 ("Fuel_R_FWD_Switch_Status", 0), ("Fuel_R_AFT_Switch_Status", 0),
                 ("Fuel_CENTER_L_Switch_Status", 0), ("Fuel_CENTER_R_Switch_Status", 0)),
             // Emergency_Light_Switch_Status: 0 Guard closed/1 Off/2 Armed/3 On — NOT the
             // PMDG's numbering; use the executor's EmerExitArmed constant.
             SW("PF_EMER", "Emergency exit lights: ARMED", "Emergency_Light_Switch_Status",
-                IFly737ActionExecutor.EmerExitArmed),
+                IFly737ActionExecutor.EmerExitArmed, checklistItemId: "PF_EMER"),
             // Fasten_Belts_Switch_Status: 0 Off/1 Auto/2 On — same numbering as the PMDG.
             SW("PF_BELTS", "Seatbelt signs: ON", "Fasten_Belts_Switch_Status",
-                IFly737ActionExecutor.SignOn),
-            Multi("PF_WINHEAT", "Window heat: ON",
+                IFly737ActionExecutor.SignOn, checklistItemId: "PF_BELTS"),
+            Also(Multi("PF_WINHEAT", "Window heat: ON", "PF_WINHEAT",
                 ("Window_Heat_Switch_1_Status", 1), ("Window_Heat_Switch_2_Status", 1),
-                ("Window_Heat_Switch_3_Status", 1), ("Window_Heat_Switch_4_Status", 1)),
+                ("Window_Heat_Switch_3_Status", 1), ("Window_Heat_Switch_4_Status", 1)), "PFC_WINHEAT"),
             // No OFF position exists on this switch — only Auto(0)/On(1). Label says AUTO,
             // matching the switch's own wording (see class doc).
-            Multi("PF_PROBE_OFF", "Probe heat: AUTO",
+            Multi("PF_PROBE_OFF", "Probe heat: AUTO", "PF_PROBE_OFF",
                 ("Probe_Heat_Switch_1_Status", IFly737ActionExecutor.ProbeHeatAuto),
                 ("Probe_Heat_Switch_2_Status", IFly737ActionExecutor.ProbeHeatAuto)),
-            SW("PF_WAI_OFF", "Wing anti-ice: OFF", "Wing_AntiIce_Switch_Status", 0),
-            Multi("PF_EAI_OFF", "Engine anti-ice: OFF",
+            SW("PF_WAI_OFF", "Wing anti-ice: OFF", "Wing_AntiIce_Switch_Status", 0, checklistItemId: "PF_WAI"),
+            Multi("PF_EAI_OFF", "Engine anti-ice: OFF", "PF_EAI_OFF",
                 ("Eng_1_AntiIce_Switch_Status", 0), ("Eng_2_AntiIce_Switch_Status", 0)),
             // RecircFan_Switch_Status_{0,1}: 0 Off/1 Auto (the ON position is labelled AUTO).
-            Multi("PF_RECIRC", "Recirculation fans: AUTO",
+            Multi("PF_RECIRC", "Recirculation fans: AUTO", "PF_RECIRC",
                 ("RecircFan_Switch_Status_0", 1), ("RecircFan_Switch_Status_1", 1)),
-            Multi("PF_PACKS", "Packs: AUTO",
+            Multi("PF_PACKS", "Packs: AUTO", "PF_PACKS",
                 ("Pack_Switch_Status_0", IFly737ActionExecutor.PackAuto),
                 ("Pack_Switch_Status_1", IFly737ActionExecutor.PackAuto)),
             SW("PF_ISO", "Isolation valve: OPEN", "Isolation_Valve_Switch_Status",
-                IFly737ActionExecutor.IsolationValveOpen),
-            Multi("PF_BLEEDS", "Engine bleeds: ON",
+                IFly737ActionExecutor.IsolationValveOpen, checklistItemId: "PF_ISO"),
+            Multi("PF_BLEEDS", "Engine bleeds: ON", "PF_BLEEDS",
                 ("Engine_Bleed_Air_Switch_Status_0", 1), ("Engine_Bleed_Air_Switch_Status_1", 1)),
             // Pressurization FLT/LAND ALT from the SimBrief plan — routed through the
             // executor's PRESS_ALTS pseudo-key (SetPressurizationAltitudesCoreAsync), the SAME
@@ -262,20 +262,20 @@ public static class IFly737FlowDefinitions
             Skip(Captain("PF_PRESS", "Flight and landing altitudes",
                     "Set flight and landing altitudes on the pressurization panel."),
                 s => s.HasPressurizationPlan),
-            SW("PF_LOGO", "Logo lights: ON", "Logo_Light_Switch_Status", 1),
+            SW("PF_LOGO", "Logo lights: ON", "Logo_Light_Switch_Status", 1, checklistItemId: "PF_LOGO"),
             // Flight directors: absolute SETs, no toggle-guard skip predicate needed.
-            SW("PF_FD1", "Flight director 1: ON", "FD_1_Switch_Status", 1),
-            SW("PF_FD2", "Flight director 2: ON", "FD_2_Switch_Status", 1),
+            SW("PF_FD1", "Flight director 1: ON", "FD_1_Switch_Status", 1, checklistItemId: "PF_FD"),
+            SW("PF_FD2", "Flight director 2: ON", "FD_2_Switch_Status", 1, checklistItemId: "PF_FD"),
             // Fuel_Flow_Switch_Status: 0 Reset/1 Rate/2 Used (spring-loaded RESET).
             SW("PF_FF", "Fuel flow: RESET", "Fuel_Flow_Switch_Status", 0, isMomentary: true),
             SW("PF_AB_RTO", "Autobrake: RTO", "Autobrake_Selector_Status",
-                IFly737ActionExecutor.AutobrakeRto),
+                IFly737ActionExecutor.AutobrakeRto, checklistItemId: "PF_AB"),
             // Transponder_Mode_Switch_Status: 0 ALT OFF/1 XPNDR/2 TA Only/3 TA-RA — this
             // airframe's resting/ground position is ALT OFF, not STBY.
             SW("PF_XPDR", "Transponder: ALT OFF", "Transponder_Mode_Switch_Status",
-                IFly737ActionExecutor.XpdrAltOff),
+                IFly737ActionExecutor.XpdrAltOff, checklistItemId: "PF_XPDR"),
             // ND_Mode_Status_0: 0 Approach/1 VOR/2 Map/3 Plan.
-            SW("PF_EFIS_MODE", "EFIS mode: MAP", "ND_Mode_Status_0", IFly737ActionExecutor.NdModeMap),
+            SW("PF_EFIS_MODE", "EFIS mode: MAP", "ND_Mode_Status_0", IFly737ActionExecutor.NdModeMap, checklistItemId: "PF_EFIS_MODE"),
             // NO EFIS-range step (removed entirely, user decision 2026-08-18 — do not
             // re-add): the ND range cannot be commanded absolutely on this SDK (RANGE_SET
             // dead for every Value2, ND_Range_Status is net-clicks mod 3, and the cockpit
@@ -305,7 +305,7 @@ public static class IFly737FlowDefinitions
             // APU start: the APU_START pseudo-key sequences ON -> 2s dwell -> START internally
             // (IFly737ActionExecutor.StartApuCoreAsync) — a single step replaces the PMDG's
             // three (ON, dwell, START).
-            SW("BS_APU_START", "APU: START", IFly737ActionExecutor.KeyApuStart, 1, isMomentary: true),
+            SW("BS_APU_START", "APU: START", IFly737ActionExecutor.KeyApuStart, 1, isMomentary: true, checklistItemId: "BS_APU"),
             // Generator availability: APU_GEN_OFF_BUS_Light_Status lit = the APU generator is
             // up and able to take a bus. Stop policy — if the APU never comes on line, abort
             // the flow HERE, before the generator transfer and ground-power drop below.
@@ -328,25 +328,25 @@ public static class IFly737FlowDefinitions
                 "APU_GEN_OFF_BUS_Light_Status", v => v > 0.5, 120,
                 onTimeout: FlowStepFailurePolicy.Stop),
             // Transfer the electrical load to the APU: momentary bus-transfer buttons.
-            Multi("BS_APUGEN", "APU generators: ON",
+            Multi("BS_APUGEN", "APU generators: ON", "BS_APUGEN",
                 ("BTN_APU_GEN_1_ON", 1), ("BTN_APU_GEN_2_ON", 1)),
             // Ground power OFF: no GPU-on readback exists to skip on (see class doc) — pressed
             // unconditionally, matching the checklist's own action-only shape for this item.
             SW("BS_GPU_OFF", "Ground power: OFF", "BTN_GRD_PWR_OFF", 1, isMomentary: true),
-            Multi("BS_FUELON", "Fuel pumps: ON",
+            Multi("BS_FUELON", "Fuel pumps: ON", "BS_FUEL",
                 ("Fuel_L_AFT_Switch_Status", 1), ("Fuel_L_FWD_Switch_Status", 1),
                 ("Fuel_R_FWD_Switch_Status", 1), ("Fuel_R_AFT_Switch_Status", 1),
                 ("Fuel_CENTER_L_Switch_Status", 1), ("Fuel_CENTER_R_Switch_Status", 1)),
-            Multi("BS_HYDENG", "Engine hydraulic pumps: ON",
+            Multi("BS_HYDENG", "Engine hydraulic pumps: ON", "BS_HYDENG",
                 ("ENG_1_HYD_Switch_Status", 1), ("ENG_2_HYD_Switch_Status", 1)),
-            Multi("BS_HYD", "Electric hydraulic pumps: ON",
+            Multi("BS_HYD", "Electric hydraulic pumps: ON", "BS_HYD",
                 ("ELEC_1_HYD_Switch_Status", 1), ("ELEC_2_HYD_Switch_Status", 1)),
-            SW("BS_APUBLEED", "APU bleed air: ON", "APU_Bleed_Air_Switch_Status", 1),
-            SW("BS_ANTICOL", "Anti-collision light: ON", "Anti_Collision_Light_Switch_Status", 1),
+            SW("BS_APUBLEED", "APU bleed air: ON", "APU_Bleed_Air_Switch_Status", 1, checklistItemId: "BS_APUBLEED"),
+            Also(SW("BS_ANTICOL", "Anti-collision light: ON", "Anti_Collision_Light_Switch_Status", 1, checklistItemId: "BS_ANTICOL"), "BSC_ANTICOL"),
             // Transponder_Mode_Switch_Status TA/RA = 3 (max position — 4 positions total,
             // not the PMDG's 5).
             SW("BS_XPDR", "Transponder: TA/RA", "Transponder_Mode_Switch_Status",
-                IFly737ActionExecutor.XpdrTaRa),
+                IFly737ActionExecutor.XpdrTaRa, checklistItemId: "BS_XPDR"),
             Captain("BS_GND", "Confirm ground power and chocks removed, doors closed."),
             Captain("BS_ACARS", "Start ACARS"),
             Captain("BS_CLEARANCE", "Obtain pushback and start clearance"),
@@ -366,7 +366,7 @@ public static class IFly737FlowDefinitions
             // Starter air insurance: the start NEEDS bleed pressure (normally the APU).
             Skip(SW("ES_APUBLEED", "APU bleed air: ON", "APU_Bleed_Air_Switch_Status", 1),
                 s => s.IsOn("APU_Bleed_Air_Switch_Status")),
-            Multi("ES_PACKS_OFF", "Packs: OFF",
+            Multi("ES_PACKS_OFF", "Packs: OFF", "ES_PACKS",
                 ("Pack_Switch_Status_0", IFly737ActionExecutor.PackOff),
                 ("Pack_Switch_Status_1", IFly737ActionExecutor.PackOff)),
             // --- Engine 2 ---
@@ -378,7 +378,7 @@ public static class IFly737FlowDefinitions
             // the flow rather than introduce fuel into an under-rotating engine.
             WaitForField("ES_E2_N2", "Engine 2 motoring — waiting for N2 before introducing fuel",
                 "FO_ENG2_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
-            SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "Engine_Start_Lever_Status_1", StartLeverIdle),
+            SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "Engine_Start_Lever_Status_1", StartLeverIdle, checklistItemId: "ES_E2_RUN"),
             // Starter cutout: the start switch springs back out of GRD as the starter
             // disengages. Wait on the switch itself, gating engine 1's GRD press so it's never
             // set while engine 2's starter is still engaged (PMDG 737 parity).
@@ -389,7 +389,7 @@ public static class IFly737FlowDefinitions
                 IFly737ActionExecutor.EngStartGround),
             WaitForField("ES_E1_N2", "Engine 1 motoring — waiting for N2 before introducing fuel",
                 "FO_ENG1_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
-            SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "Engine_Start_Lever_Status_0", StartLeverIdle),
+            SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "Engine_Start_Lever_Status_0", StartLeverIdle, checklistItemId: "ES_E1_RUN"),
             WaitForField("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
                 "Engine_Start_Switch_Status_0", v => System.Math.Abs(v - IFly737ActionExecutor.EngStartOff) < 0.1, 120),
         }
@@ -406,24 +406,24 @@ public static class IFly737FlowDefinitions
         Steps = new()
         {
             // --- After-start power transfer ---
-            Multi("BT_GEN", "Generators: ON", ("BTN_GEN_1_ON", 1), ("BTN_GEN_2_ON", 1)),
-            SW("BT_APUBLEED_OFF", "APU bleed air: OFF", "APU_Bleed_Air_Switch_Status", 0),
-            SW("BT_APU_OFF", "APU selector: OFF", "APU_Switch_Status", IFly737ActionExecutor.ApuOff),
+            Also(Multi("BT_GEN", "Generators: ON", "BT_GEN", ("BTN_GEN_1_ON", 1), ("BTN_GEN_2_ON", 1)), "BTC_GEN"),
+            SW("BT_APUBLEED_OFF", "APU bleed air: OFF", "APU_Bleed_Air_Switch_Status", 0, checklistItemId: "BT_APUBLEED_OFF"),
+            SW("BT_APU_OFF", "APU selector: OFF", "APU_Switch_Status", IFly737ActionExecutor.ApuOff, checklistItemId: "BT_APU"),
             // --- Before-taxi setup ---
-            Multi("BT_PROBE", "Probe heat: ON",
+            Also(Multi("BT_PROBE", "Probe heat: ON", "BT_PROBE",
                 ("Probe_Heat_Switch_1_Status", IFly737ActionExecutor.ProbeHeatOn),
-                ("Probe_Heat_Switch_2_Status", IFly737ActionExecutor.ProbeHeatOn)),
-            Multi("BT_PACKS", "Packs: AUTO",
+                ("Probe_Heat_Switch_2_Status", IFly737ActionExecutor.ProbeHeatOn)), "BTC_PROBE"),
+            Multi("BT_PACKS", "Packs: AUTO", "BT_PACKS",
                 ("Pack_Switch_Status_0", IFly737ActionExecutor.PackAuto),
                 ("Pack_Switch_Status_1", IFly737ActionExecutor.PackAuto)),
-            SW("BT_ISO", "Isolation valve: AUTO", "Isolation_Valve_Switch_Status",
-                IFly737ActionExecutor.IsolationValveAuto),
-            Multi("BT_START_CONT", "Engine start switches: CONT",
+            Also(SW("BT_ISO", "Isolation valve: AUTO", "Isolation_Valve_Switch_Status",
+                IFly737ActionExecutor.IsolationValveAuto, checklistItemId: "BT_ISO"), "BTC_ISO"),
+            Also(Multi("BT_START_CONT", "Engine start switches: CONT", "BT_START",
                 ("Engine_Start_Switch_Status_0", IFly737ActionExecutor.EngStartContinuous),
-                ("Engine_Start_Switch_Status_1", IFly737ActionExecutor.EngStartContinuous)),
+                ("Engine_Start_Switch_Status_1", IFly737ActionExecutor.EngStartContinuous)), "BTC_START"),
             Captain("BT_ANTIICE", "Set engine and wing anti-ice as required for conditions."),
-            SW("BT_TAXI", "Taxi light: ON", "Taxi_Light_Switch_Status", 1),
-            Multi("BT_TURNOFF", "Runway turnoff lights: ON",
+            SW("BT_TAXI", "Taxi light: ON", "Taxi_Light_Switch_Status", 1, checklistItemId: "BT_TAXI"),
+            Multi("BT_TURNOFF", "Runway turnoff lights: ON", "BT_TURNOFF",
                 ("Runway_Turnoff_Light_1_Switch_Status", 1), ("Runway_Turnoff_Light_2_Switch_Status", 1)),
             Captain("BT_FLAPS", "Set the takeoff flaps."),
             // No lower-DU/EICAS synoptic-page-select field exists in IFlySdkFields.cs.
@@ -443,15 +443,15 @@ public static class IFly737FlowDefinitions
         {
             // Landing_Light_{1,2}_Switch_Status: 0 Off/1 Flash/2 On (probe-verified, PR #196 —
             // 1 is FLASH, not On). No retractable/fixed split.
-            Multi("BTO_LAND", "Landing lights: ON",
+            Multi("BTO_LAND", "Landing lights: ON", "BTKO_LAND",
                 ("Landing_Light_1_Switch_Status", IFly737ActionExecutor.LandingLightsOn),
                 ("Landing_Light_2_Switch_Status", IFly737ActionExecutor.LandingLightsOn)),
             SW("BTO_STROBE", "Position lights: STROBE & STEADY", "Position_Light_Switch_Status",
-                IFly737ActionExecutor.PositionLightsStrobeAndSteady),
+                IFly737ActionExecutor.PositionLightsStrobeAndSteady, checklistItemId: "BTKO_STROBE"),
             // Autothrottle arm: absolute SET, no toggle-guard skip predicate needed.
-            SW("BTO_AT", "Autothrottle: ARM", "AT_Switch_Status", 1),
+            SW("BTO_AT", "Autothrottle: ARM", "AT_Switch_Status", 1, checklistItemId: "BTKO_AT"),
             SW("BTO_XPDR", "Transponder: TA/RA", "Transponder_Mode_Switch_Status",
-                IFly737ActionExecutor.XpdrTaRa),
+                IFly737ActionExecutor.XpdrTaRa, checklistItemId: "BTKO_XPDR"),
             // Advise the cabin crew for takeoff — the attendant-call button.
             SW("BTKO_CABIN", "Advise the cabin crew for takeoff", "BTN_ATTENDANT_CALL", 1,
                 checklistItemId: "BTKO_CABIN", isMomentary: true),
@@ -469,13 +469,13 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TAKEOFF_CL" },
         Steps = new()
         {
-            Multi("AT_PACKS", "Packs: AUTO",
+            Also(Multi("AT_PACKS", "Packs: AUTO", "ATKO_PACKS",
                 ("Pack_Switch_Status_0", IFly737ActionExecutor.PackAuto),
-                ("Pack_Switch_Status_1", IFly737ActionExecutor.PackAuto)),
-            Multi("AT_START_OFF", "Engine start switches: OFF",
+                ("Pack_Switch_Status_1", IFly737ActionExecutor.PackAuto)), "ATC_PACKS"),
+            Multi("AT_START_OFF", "Engine start switches: OFF", "ATKO_START_OFF",
                 ("Engine_Start_Switch_Status_0", IFly737ActionExecutor.EngStartOff),
                 ("Engine_Start_Switch_Status_1", IFly737ActionExecutor.EngStartOff)),
-            Multi("AT_TURNOFF", "Runway turnoff lights: OFF",
+            Multi("AT_TURNOFF", "Runway turnoff lights: OFF", "ATKO_TURNOFF",
                 ("Runway_Turnoff_Light_1_Switch_Status", 0), ("Runway_Turnoff_Light_2_Switch_Status", 0)),
             // Gear_Lever_Status has only 0 Up/1 Down — no OFF detent on this airframe, so this
             // commands UP and is labelled "UP" rather than the PMDG's "OFF". Completes its own
@@ -485,7 +485,7 @@ public static class IFly737FlowDefinitions
             // MarkGroupComplete's blanket sweep of the AFTER_TAKEOFF group.
             SW("AT_GEAR_OFF", "Gear lever: UP", "Gear_Lever_Status", IFly737ActionExecutor.GearUp, "ATKO_GEAR_OFF"),
             SW("AT_AB_OFF", "Autobrake: OFF", "Autobrake_Selector_Status",
-                IFly737ActionExecutor.AutobrakeOff),
+                IFly737ActionExecutor.AutobrakeOff, checklistItemId: "ATKO_AB_OFF"),
             // Read-only gear-up confirmation — it never moves the lever (AT_GEAR_OFF above
             // already did). Confirms the gear the way a crew does, "gear up, lights out"
             // (IFly737GearConfirmation), and completes the After Takeoff Checklist's
@@ -510,7 +510,7 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "DESCENT", "DESCENT_CL" },
         Steps = new()
         {
-            SW("DS_BELTS", "Seatbelt signs: ON", "Fasten_Belts_Switch_Status", IFly737ActionExecutor.SignOn),
+            SW("DS_BELTS", "Seatbelt signs: ON", "Fasten_Belts_Switch_Status", IFly737ActionExecutor.SignOn, checklistItemId: "DSA_BELTS"),
             Captain("DS_AB", "Set the landing autobrake — Forward Panel, Autobrake"),
             Captain("DS_ILS", "Set the ILS frequencies and course."),
             Captain("DS_DATA", "Confirm landing data, VREF and minimums."),
@@ -527,7 +527,7 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "APPROACH", "APPROACH_CL" },
         Steps = new()
         {
-            SW("AP_EFIS_MODE", "EFIS mode: APP", "ND_Mode_Status_0", IFly737ActionExecutor.NdModeApproach),
+            SW("AP_EFIS_MODE", "EFIS mode: APP", "ND_Mode_Status_0", IFly737ActionExecutor.NdModeApproach, checklistItemId: "APA_EFIS_MODE"),
             // NO EFIS-range step — removed with the Preflight one (see BuildPreflight).
             // Notify the cabin crew for landing — the attendant-call button.
             SW("AP_CABIN", "Notify the cabin crew for landing", "BTN_ATTENDANT_CALL", 1,
@@ -546,9 +546,9 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
         Steps = new()
         {
-            Multi("LD_START_CONT", "Engine start switches: CONT",
+            Also(Multi("LD_START_CONT", "Engine start switches: CONT", "LDA_START",
                 ("Engine_Start_Switch_Status_0", IFly737ActionExecutor.EngStartContinuous),
-                ("Engine_Start_Switch_Status_1", IFly737ActionExecutor.EngStartContinuous)),
+                ("Engine_Start_Switch_Status_1", IFly737ActionExecutor.EngStartContinuous)), "LDC_START"),
             // Speedbrake ARM is a Captain reminder on this aircraft — the lever's write path
             // is deliberately read-only (see class doc). LD_SPDBRK_CHECK below confirms it.
             Captain("LD_SPDBRK", "Speedbrake: ARMED"),
@@ -594,33 +594,33 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "AFTER_LANDING" },
         Steps = new()
         {
-            Multi("AL_LAND_OFF", "Landing lights: OFF",
+            Multi("AL_LAND_OFF", "Landing lights: OFF", "AL_LAND_OFF",
                 ("Landing_Light_1_Switch_Status", IFly737ActionExecutor.LandingLightsOff),
                 ("Landing_Light_2_Switch_Status", IFly737ActionExecutor.LandingLightsOff)),
-            Multi("AL_TURNOFF", "Runway turnoff lights: ON",
+            Multi("AL_TURNOFF", "Runway turnoff lights: ON", "AL_TURNOFF",
                 ("Runway_Turnoff_Light_1_Switch_Status", 1), ("Runway_Turnoff_Light_2_Switch_Status", 1)),
-            SW("AL_TAXI", "Taxi light: ON", "Taxi_Light_Switch_Status", 1),
+            SW("AL_TAXI", "Taxi light: ON", "Taxi_Light_Switch_Status", 1, checklistItemId: "AL_TAXI"),
             SW("AL_STROBE_OFF", "Position lights: STEADY", "Position_Light_Switch_Status",
-                IFly737ActionExecutor.PositionLightsSteady),
-            Multi("AL_EAI_OFF", "Engine anti-ice: OFF",
+                IFly737ActionExecutor.PositionLightsSteady, checklistItemId: "AL_STROBE"),
+            Multi("AL_EAI_OFF", "Engine anti-ice: OFF", "AL_EAI",
                 ("Eng_1_AntiIce_Switch_Status", 0), ("Eng_2_AntiIce_Switch_Status", 0)),
-            SW("AL_WAI_OFF", "Wing anti-ice: OFF", "Wing_AntiIce_Switch_Status", 0),
+            SW("AL_WAI_OFF", "Wing anti-ice: OFF", "Wing_AntiIce_Switch_Status", 0, checklistItemId: "AL_WAI"),
             // No OFF position on this switch — AUTO is the resting position.
-            Multi("AL_PROBE_OFF", "Probe heat: AUTO",
+            Multi("AL_PROBE_OFF", "Probe heat: AUTO", "AL_PROBE",
                 ("Probe_Heat_Switch_1_Status", IFly737ActionExecutor.ProbeHeatAuto),
                 ("Probe_Heat_Switch_2_Status", IFly737ActionExecutor.ProbeHeatAuto)),
             // APU START for gate power — same collapsed pseudo-key sequence as Before Start;
             // no on-line wait (the aircraft is taxiing in, and the Shutdown flow's generator
             // transfer happens minutes later, matching the PMDG template).
-            SW("AL_APU", "APU: START", IFly737ActionExecutor.KeyApuStart, 1, isMomentary: true),
-            Multi("AL_START_OFF", "Engine start switches: OFF",
+            SW("AL_APU", "APU: START", IFly737ActionExecutor.KeyApuStart, 1, isMomentary: true, checklistItemId: "AL_APU"),
+            Multi("AL_START_OFF", "Engine start switches: OFF", "AL_START_OFF",
                 ("Engine_Start_Switch_Status_0", IFly737ActionExecutor.EngStartOff),
                 ("Engine_Start_Switch_Status_1", IFly737ActionExecutor.EngStartOff)),
             // FLAP_Status: 0 Lever UP..8 Lever 40 — a real absolute combo position on this
             // airframe (not a per-detent momentary click like the PMDG's flap lever).
-            SW("AL_FLAPS_UP", "Flaps: UP", "FLAP_Status", 0),
+            SW("AL_FLAPS_UP", "Flaps: UP", "FLAP_Status", 0, checklistItemId: "AL_FLAPS"),
             SW("AL_AB_OFF", "Autobrake: OFF", "Autobrake_Selector_Status",
-                IFly737ActionExecutor.AutobrakeOff),
+                IFly737ActionExecutor.AutobrakeOff, checklistItemId: "AL_AB"),
         }
     };
 
@@ -635,33 +635,33 @@ public static class IFly737FlowDefinitions
         Steps = new()
         {
             // BOTH APU generator transfer buttons.
-            Multi("SD_APUGEN", "APU generators: ON",
+            Multi("SD_APUGEN", "APU generators: ON", "SD_APUGEN",
                 ("BTN_APU_GEN_1_ON", 1), ("BTN_APU_GEN_2_ON", 1)),
-            Multi("SD_LEVERS", "Engine start levers: CUTOFF",
+            Also(Multi("SD_LEVERS", "Engine start levers: CUTOFF", "SD_LEVERS",
                 ("Engine_Start_Lever_Status_0", StartLeverCutoff),
-                ("Engine_Start_Lever_Status_1", StartLeverCutoff)),
-            SW("SD_BELTS", "Seatbelt signs: OFF", "Fasten_Belts_Switch_Status", IFly737ActionExecutor.SignOff),
-            Multi("SD_TURNOFF", "Runway turnoff lights: OFF",
+                ("Engine_Start_Lever_Status_1", StartLeverCutoff)), "SDC_LEVERS"),
+            SW("SD_BELTS", "Seatbelt signs: OFF", "Fasten_Belts_Switch_Status", IFly737ActionExecutor.SignOff, checklistItemId: "SD_BELTS"),
+            Multi("SD_TURNOFF", "Runway turnoff lights: OFF", "SD_TURNOFF",
                 ("Runway_Turnoff_Light_1_Switch_Status", 0), ("Runway_Turnoff_Light_2_Switch_Status", 0)),
-            SW("SD_TAXI_OFF", "Taxi light: OFF", "Taxi_Light_Switch_Status", 0),
-            SW("SD_LOGO_OFF", "Logo lights: OFF", "Logo_Light_Switch_Status", 0),
-            SW("SD_APUBLEED", "APU bleed air: ON", "APU_Bleed_Air_Switch_Status", 1),
-            Multi("SD_FUEL_OFF", "Fuel pumps: OFF",
+            SW("SD_TAXI_OFF", "Taxi light: OFF", "Taxi_Light_Switch_Status", 0, checklistItemId: "SD_TAXI"),
+            SW("SD_LOGO_OFF", "Logo lights: OFF", "Logo_Light_Switch_Status", 0, checklistItemId: "SD_LOGO"),
+            SW("SD_APUBLEED", "APU bleed air: ON", "APU_Bleed_Air_Switch_Status", 1, checklistItemId: "SD_APUBLEED"),
+            Also(Multi("SD_FUEL_OFF", "Fuel pumps: OFF", "SD_FUEL",
                 ("Fuel_L_AFT_Switch_Status", 0), ("Fuel_L_FWD_Switch_Status", 0),
                 ("Fuel_R_FWD_Switch_Status", 0), ("Fuel_R_AFT_Switch_Status", 0),
-                ("Fuel_CENTER_L_Switch_Status", 0), ("Fuel_CENTER_R_Switch_Status", 0)),
-            Multi("SD_EAI_OFF", "Engine anti-ice: OFF",
+                ("Fuel_CENTER_L_Switch_Status", 0), ("Fuel_CENTER_R_Switch_Status", 0)), "SDC_FUEL"),
+            Multi("SD_EAI_OFF", "Engine anti-ice: OFF", "SD_EAI",
                 ("Eng_1_AntiIce_Switch_Status", 0), ("Eng_2_AntiIce_Switch_Status", 0)),
-            Multi("SD_HYDELEC_OFF", "Electric hydraulic pumps: OFF",
+            Multi("SD_HYDELEC_OFF", "Electric hydraulic pumps: OFF", "SD_HYDELEC",
                 ("ELEC_1_HYD_Switch_Status", 0), ("ELEC_2_HYD_Switch_Status", 0)),
-            Multi("SD_HYDENG_OFF", "Engine hydraulic pumps: OFF",
+            Multi("SD_HYDENG_OFF", "Engine hydraulic pumps: OFF", "SD_HYDENG",
                 ("ENG_1_HYD_Switch_Status", 0), ("ENG_2_HYD_Switch_Status", 0)),
-            Multi("SD_WINHEAT_OFF", "Window heat: OFF",
+            Multi("SD_WINHEAT_OFF", "Window heat: OFF", "SD_WINHEAT",
                 ("Window_Heat_Switch_1_Status", 0), ("Window_Heat_Switch_2_Status", 0),
                 ("Window_Heat_Switch_3_Status", 0), ("Window_Heat_Switch_4_Status", 0)),
             // This airframe's resting position is ALT OFF, not STBY.
             SW("SD_XPDR", "Transponder: ALT OFF", "Transponder_Mode_Switch_Status",
-                IFly737ActionExecutor.XpdrAltOff),
+                IFly737ActionExecutor.XpdrAltOff, checklistItemId: "SD_XPDR"),
         }
     };
 
@@ -675,24 +675,24 @@ public static class IFly737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SECURE" },
         Steps = new()
         {
-            Multi("SE_IRS_OFF", "IRS mode selectors: OFF",
+            Also(Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS",
                 ("IRS_Mode_Switch_Status_0", IFly737ActionExecutor.IrsOff),
-                ("IRS_Mode_Switch_Status_1", IFly737ActionExecutor.IrsOff)),
+                ("IRS_Mode_Switch_Status_1", IFly737ActionExecutor.IrsOff)), "SEC_IRS"),
             // Emergency_Light_Switch_Status: 0 Guard closed/1 Off/2 Armed/3 On — NOT the
             // PMDG's numbering; use the executor's EmerExitOff constant (1, not 0).
-            SW("SE_EMER_OFF", "Emergency exit lights: OFF", "Emergency_Light_Switch_Status",
-                IFly737ActionExecutor.EmerExitOff),
-            Multi("SE_WINHEAT_OFF", "Window heat: OFF",
+            Also(SW("SE_EMER_OFF", "Emergency exit lights: OFF", "Emergency_Light_Switch_Status",
+                IFly737ActionExecutor.EmerExitOff, checklistItemId: "SE_EMER"), "SEC_EMER"),
+            Also(Multi("SE_WINHEAT_OFF", "Window heat: OFF", "SE_WINHEAT",
                 ("Window_Heat_Switch_1_Status", 0), ("Window_Heat_Switch_2_Status", 0),
-                ("Window_Heat_Switch_3_Status", 0), ("Window_Heat_Switch_4_Status", 0)),
-            Multi("SE_PACKS_OFF", "Packs: OFF",
+                ("Window_Heat_Switch_3_Status", 0), ("Window_Heat_Switch_4_Status", 0)), "SEC_WINHEAT"),
+            Also(Multi("SE_PACKS_OFF", "Packs: OFF", "SE_PACKS",
                 ("Pack_Switch_Status_0", IFly737ActionExecutor.PackOff),
-                ("Pack_Switch_Status_1", IFly737ActionExecutor.PackOff)),
+                ("Pack_Switch_Status_1", IFly737ActionExecutor.PackOff)), "SEC_PACKS"),
             // APU selector to OFF (absolute set — idempotent when already off).
-            SW("SE_APU_OFF", "APU: OFF", "APU_Switch_Status", IFly737ActionExecutor.ApuOff),
+            SW("SE_APU_OFF", "APU: OFF", "APU_Switch_Status", IFly737ActionExecutor.ApuOff, checklistItemId: "SE_APU_OFF"),
             // No GPU-on readback exists to skip on (see class doc) — unconditional press,
             // matching the checklist's own action-only shape for this item.
-            SW("SE_GND_PWR_OFF", "Ground power: OFF", "BTN_GRD_PWR_OFF", 1, isMomentary: true),
+            SW("SE_GND_PWR_OFF", "Ground power: OFF", "BTN_GRD_PWR_OFF", 1, isMomentary: true, checklistItemId: "SE_GND_PWR_OFF"),
         }
     };
 
@@ -713,11 +713,15 @@ public static class IFly737FlowDefinitions
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
-    private static Step Multi(string id, string label, params (string EventName, int? TargetValue)[] actions) => new()
+    // checklistItemId is REQUIRED (nullable) so no multi-switch write can be added without
+    // deciding which line it sets (IFly737FlowChecklistLinkTests audits the choice).
+    private static Step Multi(string id, string label, string? checklistItemId,
+        params (string EventName, int? TargetValue)[] actions) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitchMultiple,
         MultiActions = actions.ToList(),
+        CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 400,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
@@ -751,6 +755,16 @@ public static class IFly737FlowDefinitions
     private static Step Skip(Step step, Func<IFly737StateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
+        return step;
+    }
+
+    // A write whose line appears in BOTH its own action group and the phase's read-back
+    // (*_CL) checklist, and which achieves both (same field, same condition): the extra
+    // line is delivered, and on a skipped step kept out of the latch, alongside
+    // CompletesChecklistItemId (FlowStep.AlsoCompletesChecklistItemIds).
+    private static Step Also(Step step, params string[] alsoCompletes)
+    {
+        step.AlsoCompletesChecklistItemIds = alsoCompletes;
         return step;
     }
 }

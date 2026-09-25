@@ -862,14 +862,8 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     /// action group (Id == flow.Id) and the readback group (flow.Id + "_CL") when those
     /// exist. Used to mark every related checklist section complete when the flow finishes.
     /// </summary>
-    private IEnumerable<string> RelatedGroupIdsFor(FlowDefinition<TState> flow)
-    {
-        var ids = new HashSet<string>(flow.RelatedChecklistGroupIds, StringComparer.Ordinal);
-        if (_checklistGroups.Any(g => g.Id == flow.Id)) ids.Add(flow.Id);
-        string cl = flow.Id + "_CL";
-        if (_checklistGroups.Any(g => g.Id == cl)) ids.Add(cl);
-        return ids;
-    }
+    private IEnumerable<string> RelatedGroupIdsFor(FlowDefinition<TState> flow) =>
+        flow.CompletionGroupIds(id => _checklistGroups.Any(g => g.Id == id));
 
     // ------------------------------------------------------------------
     // Flow list population

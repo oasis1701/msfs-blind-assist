@@ -150,60 +150,24 @@ public class Pmdg737FlowChecklistLinkTests
         ["PF_GPWS_TEST"] = new[] { ("GPWS_TEST", 1) },
     };
 
-    private static bool IsWrite(FlowStep<AircraftStateEvaluator> s) =>
-        s.ActionType is FlowStepActionType.SetSwitch or FlowStepActionType.SetSwitchMultiple;
-
-    // The (event, target) pairs a write step sends. A target-less step is a momentary press
-    // or a mouse-flag toggle the flow fires only toward ON — both read as 1. A dynamic
-    // (SimBrief) target has no fixed value; those events are NoStateEvents, so 0 is inert.
-    private static List<(string Event, int Target)> Writes(FlowStep<AircraftStateEvaluator> s) =>
-        s.ActionType == FlowStepActionType.SetSwitchMultiple
-            ? s.MultiActions.Select(a => (a.EventName, a.TargetValue ?? 1)).ToList()
-            : new List<(string, int)> { (s.EventName!, s.TargetValue ?? (s.TargetValueProvider != null ? 0 : 1)) };
-
     private static bool Delivers(FlowStep<AircraftStateEvaluator> step,
-        ChecklistItem<AircraftActionExecutor, AircraftStateEvaluator> item)
-    {
-        var writes = Writes(step);
-        if (ActionItems.TryGetValue(item.Id, out var needed))
-            return needed.All(writes.Contains);
-        if (!item.IsAutoDetectable || item.RevertBehavior == RevertBehavior.StayComplete)
-            return false;
+        ChecklistItem<AircraftActionExecutor, AircraftStateEvaluator> item) =>
+        FlowChecklistLinkAudit.Delivers(FlowChecklistLinkAudit.Writes(step), item,
+            ev => EventFields.TryGetValue(ev, out var f) ? f : null, ActionItems);
 
-        bool any = false;
-        foreach (var (ev, target) in writes)
-        {
-            if (!EventFields.TryGetValue(ev, out var fields)) continue;
-            foreach (var (field, value) in fields)
-            {
-                Func<double, bool>? cond;
-                if (field == item.StateFieldName) cond = item.StateCondition;
-                else if (item.AdditionalStateFields.Contains(field))
-                    cond = item.AdditionalStateCondition ?? item.StateCondition;
-                else continue;
-
-                Assert.True(cond != null, $"{item.Id} has no state condition");
-                if (!cond!(value(target))) return false;   // the write does NOT achieve the line
-                any = true;
-            }
-        }
-        return any;
-    }
-
-    private static IEnumerable<(FlowDefinition<AircraftStateEvaluator> Flow,
-        List<ChecklistItem<AircraftActionExecutor, AircraftStateEvaluator>> Items)> FlowsWithItems()
-    {
-        var groups = PMDG737ChecklistDefinitions.Build();
-        foreach (var flow in PMDG737FlowDefinitions.Build())
-            yield return (flow, flow.RelatedChecklistGroupIds
-                .SelectMany(id => groups.Single(g => g.Id == id).Items).ToList());
-    }
+    // The groups each flow's RelatedChecklistGroupIds names. (FirstOfficerForm also latches the
+    // group named after the flow and its "_CL" read-back — FlowDefinition.CompletionGroupIds;
+    // this audit has not been widened to those yet.)
+    private static List<(FlowDefinition<AircraftStateEvaluator> Flow,
+        List<ChecklistItem<AircraftActionExecutor, AircraftStateEvaluator>> Items)> FlowsWithItems() =>
+        FlowChecklistLinkAudit.FlowsWithItems(PMDG737FlowDefinitions.Build(),
+            PMDG737ChecklistDefinitions.Build(), f => f.RelatedChecklistGroupIds);
 
     [Fact]
     public void Every_written_event_is_mapped_to_its_state_or_declared_stateless()
     {
         var unmapped = FlowsWithItems()
-            .SelectMany(f => f.Flow.Steps.Where(IsWrite).SelectMany(Writes)
+            .SelectMany(f => f.Flow.Steps.Where(FlowChecklistLinkAudit.IsWrite).SelectMany(FlowChecklistLinkAudit.Writes)
                 .Where(w => !EventFields.ContainsKey(w.Event) && !NoStateEvents.Contains(w.Event))
                 .Select(w => $"{f.Flow.Id}: {w.Event}"))
             .Distinct().ToList();
@@ -213,26 +177,7 @@ public class Pmdg737FlowChecklistLinkTests
     [Fact]
     public void Every_write_step_completes_the_line_it_sets()
     {
-        var problems = new List<string>();
-        foreach (var (flow, items) in FlowsWithItems())
-        {
-            foreach (var step in flow.Steps.Where(IsWrite))
-            {
-                var cands = items.Where(i => Delivers(step, i)).ToList();
-                var own = cands.Where(i => !i.GroupId.EndsWith("_CL", StringComparison.Ordinal)).ToList();
-                var primaryOptions = own.Count > 0 ? own : cands;
-                string? primary = step.CompletesChecklistItemId;
-                var linked = step.LinkedChecklistItemIds.OrderBy(x => x, StringComparer.Ordinal).ToList();
-                var expected = cands.Select(i => i.Id).Distinct().OrderBy(x => x, StringComparer.Ordinal).ToList();
-
-                if (!linked.SequenceEqual(expected))
-                    problems.Add($"{flow.Id}/{step.Id} -> should complete [{string.Join(", ", expected)}], " +
-                        $"completes [{string.Join(", ", linked)}]");
-                else if (primaryOptions.Count > 0 && primaryOptions.All(i => i.Id != primary))
-                    problems.Add($"{flow.Id}/{step.Id} -> primary link should be its own group's line " +
-                        $"[{string.Join(", ", primaryOptions.Select(i => i.Id))}], is {primary}");
-            }
-        }
+        var problems = FlowChecklistLinkAudit.LinkProblems(FlowsWithItems(), Delivers);
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 
@@ -272,13 +217,7 @@ public class Pmdg737FlowChecklistLinkTests
     [Fact]
     public void Lines_latched_with_no_delivering_step_are_the_known_set()
     {
-        var undelivered = FlowsWithItems()
-            .SelectMany(f => f.Items
-                .Where(i => i.Type != ChecklistItemType.CaptainReminder
-                         && i.Type != ChecklistItemType.Informational)
-                .Where(i => f.Flow.Steps.All(s => !s.LinkedChecklistItemIds.Contains(i.Id)))
-                .Select(i => $"{f.Flow.Id}/{i.Id}"))
-            .OrderBy(x => x, StringComparer.Ordinal).ToList();
+        var undelivered = FlowChecklistLinkAudit.UndeliveredLines(FlowsWithItems());
 
         Assert.Equal(new[]
         {

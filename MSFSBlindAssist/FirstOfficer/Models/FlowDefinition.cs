@@ -25,4 +25,21 @@ public class FlowDefinition<TState>
     /// Used by "Run Related Flow" from the Checklist tab.
     /// </summary>
     public IReadOnlyList<string> RelatedChecklistGroupIds { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Every checklist group a finished run of this flow marks complete (FirstOfficerForm's
+    /// flow-completion latch): <see cref="RelatedChecklistGroupIds"/>, plus the action group named
+    /// after the flow (Id) and its read-back checklist (Id + "_CL") when
+    /// <paramref name="groupExists"/> says the aircraft has them. A step's checklist links must
+    /// cover the lines it sets in ALL of these, or a failed write is latched complete.
+    /// </summary>
+    public IEnumerable<string> CompletionGroupIds(Func<string, bool> groupExists)
+    {
+        var ids = new List<string>();
+        foreach (var id in RelatedChecklistGroupIds)
+            if (!ids.Contains(id)) ids.Add(id);
+        foreach (var id in new[] { Id, Id + "_CL" })
+            if (!ids.Contains(id) && groupExists(id)) ids.Add(id);
+        return ids;
+    }
 }
