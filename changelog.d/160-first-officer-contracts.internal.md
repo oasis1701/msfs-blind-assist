@@ -13,6 +13,10 @@ fragments, since that work is part of the feature and none of it shipped separat
   evaluators' poll lists.
 - `FoFbwUnclaimedEventKeyTests` sweeps every A32NX and A330 First Officer write and
   requires the definition to claim it (`FoUnclaimedKeyPolicy`).
+- `FbwA380FoKeyRegistrationTests` fails if a FlyByWire-family First Officer reads a key
+  its aircraft definition does not register, or if the A380 one writes such a key. This
+  caught the A380's flight-director step, whose per-side keys went away when FBW #10855
+  gave the A380 a single flight-director button.
 - There are pure-logic tests for the center-pump policy, gear confirmation, transition
   crossings, flow-completion exclusion and checklist latching.
 - The PMDG dispatch tester, the CDU test probe and the iFly SDK probe were updated

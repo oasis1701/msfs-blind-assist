@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer.FBWA380;
@@ -162,10 +163,12 @@ public static class FbwA380ChecklistDefinitions
                 async (e, _) => { await e.Set("A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", 1);
                                   await e.Set("A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON", 1); }),
             Reminder("CP_AIRTEMP", "COCKPIT_PREP", "Cabin temperature: set as required"),
-            Multi("CP_BARO", "COCKPIT_PREP", "Baro reference: hectopascals", "XMLVAR_Baro_Selector_HPA_1", v => v > 0.5,
-                new[] { "XMLVAR_Baro_Selector_HPA_2" },
-                async (e, _) => { await e.Set("XMLVAR_Baro_Selector_HPA_1", 1);
-                                  await e.Set("XMLVAR_Baro_Selector_HPA_2", 1); }),
+            // The EFIS-CP's own hPa/inHg selector since FBW #10855 — 1 = inHg, so hectopascals is 0.
+            // Never XMLVAR_Baro_Selector_HPA_{1,2}: nothing reads it any more (A380Fbw10855DeadNameTests).
+            Multi("CP_BARO", "COCKPIT_PREP", "Baro reference: hectopascals", "A32NX_FCU_EFIS_L_BARO_IS_INHG", v => v < 0.5,
+                new[] { "A32NX_FCU_EFIS_R_BARO_IS_INHG" },
+                async (e, _) => { await e.Set("A32NX_FCU_EFIS_L_BARO_IS_INHG", 0);
+                                  await e.Set("A32NX_FCU_EFIS_R_BARO_IS_INHG", 0); }),
             Reminder("CP_ALTIMETERS", "COCKPIT_PREP", "Altimeters: set QNH"),
             Auto("CP_ANTISKID", "COCKPIT_PREP", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE",
                 v => v > 0.5, (e, _) => e.Set("ANTISKID_BRAKES_ACTIVE", 1)),
@@ -179,9 +182,10 @@ public static class FbwA380ChecklistDefinitions
             Multi("CP_EFISRANGE", "COCKPIT_PREP", "EFIS range: 40", "A32NX_EFIS_L_ND_RANGE", v => Math.Abs(v - 3) < 0.5,
                 new[] { "A32NX_EFIS_R_ND_RANGE" },
                 async (e, _) => { await e.Set("A32NX_EFIS_L_ND_RANGE", 3); await e.Set("A32NX_EFIS_R_ND_RANGE", 3); }),
-            Multi("CP_FD", "COCKPIT_PREP", "Flight directors: ON", "FD_1_CTL", v => v > 0.5,
-                new[] { "FD_2_CTL" },
-                async (e, _) => { await e.Set("FD_1_CTL", 1); await e.Set("FD_2_CTL", 1); }),
+            // ONE FCU pushbutton since FBW #10855 (A380FlightDirector): its light is the state, and the
+            // definition presses it only when the pick differs, so "ON" over lit flight directors is no press.
+            Auto("CP_FD", "COCKPIT_PREP", "Flight directors: ON", A380FlightDirector.StateKey,
+                v => v > 0.5, (e, _) => e.Set(A380FlightDirector.StateKey, 1)),
             Reminder("CP_CLOCK", "COCKPIT_PREP", "Clock: reset"),
             // ECAM SD page — real ECP write (door=5). Auto/RevertToState live mirror; the
             // page index sticks on this build (re-checked live 2026-06-13).

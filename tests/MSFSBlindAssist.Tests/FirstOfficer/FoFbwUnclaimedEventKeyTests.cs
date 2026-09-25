@@ -342,7 +342,7 @@ public class FoFbwUnclaimedEventKeyTests
 
     /// <summary>Flow steps are plain data, so these come off the built profile at runtime — no
     /// source reading, and a renamed key cannot escape.</summary>
-    private static IEnumerable<string> FlowWrittenKeys<TState>(IEnumerable<FlowDefinition<TState>> flows)
+    internal static IEnumerable<string> FlowWrittenKeys<TState>(IEnumerable<FlowDefinition<TState>> flows)
         where TState : IFoStateEvaluator
     {
         foreach (var flow in flows)
@@ -362,7 +362,7 @@ public class FoFbwUnclaimedEventKeyTests
     /// — is still seen. Over-collecting a non-key literal is harmless: the sweep only asks
     /// about keys the definition registers as an Event.
     /// </summary>
-    private static IEnumerable<string> KeyLiteralsPassedToWrites(string sourcePath)
+    internal static IEnumerable<string> KeyLiteralsPassedToWrites(string sourcePath)
     {
         string src = StripCommentsKeepingLiterals(File.ReadAllText(sourcePath));
 
@@ -492,10 +492,10 @@ public class FoFbwUnclaimedEventKeyTests
     private static string A330DefinitionSource([CallerFilePath] string p = "") =>
         RepoRelative(p, "MSFSBlindAssist", "Aircraft", "HeadwindA330Definition.cs");
 
-    private static string ExecutorSourcePath(string folder, string file, [CallerFilePath] string p = "") =>
+    internal static string ExecutorSourcePath(string folder, string file, [CallerFilePath] string p = "") =>
         RepoRelative(p, "MSFSBlindAssist", "FirstOfficer", folder, file);
 
-    private static string ChecklistSourcePath(string folder, string file, [CallerFilePath] string p = "") =>
+    internal static string ChecklistSourcePath(string folder, string file, [CallerFilePath] string p = "") =>
         RepoRelative(p, "MSFSBlindAssist", "FirstOfficer", folder, file);
 
     /// <summary>
