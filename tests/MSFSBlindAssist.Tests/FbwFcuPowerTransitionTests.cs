@@ -127,10 +127,35 @@ public class FbwFcuPowerTransitionTests : IDisposable
         var def = new FlyByWireA380Definition();
         var speech = new SpeechCapture();
         Batch(def, speech, ("A32NX_FCU_AFS_CP_ACTIVE", 1), ("FCU_ALT_VALUE", 10000));
-        def.ProcessSimVarUpdate("A32NX_METRIC_ALT_TOGGLE", 1, speech);
+        // MTRS on, as the PRIM reports it since FBW #10855: FG discrete word 5 bit 14. A discrete
+        // word carries its bitfield as the float's VALUE, so it packs like any other value word.
+        def.ProcessSimVarUpdate("FMA_FG_ALERTS", Word(NormalOperation, 1u << 13), speech);
         Batch(def, speech, ("FCU_ALT_VALUE", 10000));                 // a panel's forced re-read
         Assert.DoesNotContain(speech.All, s => s.StartsWith("Altitude", StringComparison.Ordinal));
         Batch(def, speech, ("FCU_ALT_VALUE", 11000));                 // a real turn: metres now
         Assert.Contains("Altitude 3353 meters", speech.All);
+    }
+
+    [Fact]
+    public void A380_an_mtrs_press_does_not_turn_a_forced_read_into_a_callout_before_the_prim_confirms()
+    {
+        // The press records the commanded unit at once (the Altitude window must take a typed
+        // altitude in it), but the dial callout keeps the PRIM's confirmed unit: the panel's forced
+        // re-read of an unchanged altitude in the next second is not a turn.
+        var def = new FlyByWireA380Definition();
+        var speech = new SpeechCapture();
+        Batch(def, speech, ("A32NX_FCU_AFS_CP_ACTIVE", 1), ("FCU_ALT_VALUE", 10000));
+        def.ProcessSimVarUpdate("FMA_FG_ALERTS", Word(NormalOperation, 0), speech);   // feet, baseline
+
+        Assert.NotNull(def.MetricAltitudeCommand(1));                    // the Altitude window's MTRS button
+        Assert.True(def.MetricAlt);
+        Batch(def, speech, ("FCU_ALT_VALUE", 10000));                               // forced re-read
+        Assert.DoesNotContain(speech.All, s => s.StartsWith("Altitude", StringComparison.Ordinal));
+
+        def.ProcessSimVarUpdate("FMA_FG_ALERTS", Word(NormalOperation, 1u << 13), speech);  // PRIM: metric
+        Batch(def, speech, ("FCU_ALT_VALUE", 10000));
+        // Nothing at all: no altitude callout, and the PRIM confirming the press is its echo (the
+        // button's accessible name already says "currently on").
+        Assert.Empty(speech.All);
     }
 }

@@ -87,6 +87,19 @@ public partial class MainForm
         currentAircraft?.OnQueuedEventDispatched(eventName);
     }
 
+    /// <summary>
+    /// Pause the take-off callouts' per-frame airspeed feed while the aircraft does not need it
+    /// (airborne, no roll armed) and resume it when it does (touchdown) — judged after each delivery of
+    /// the feed and of SIM_ON_GROUND, the only two things that change the answer. The manager ignores a
+    /// call that changes nothing, so this costs a dictionary lookup per frame while the feed runs.
+    /// </summary>
+    private void UpdateTakeoffCalloutFeed(string varName)
+    {
+        string? feed = currentAircraft?.TakeoffCalloutFeedKey;
+        if (feed == null || (varName != feed && varName != "SIM_ON_GROUND")) return;
+        simConnectManager?.SetSimFrameSubscriptionActive(feed, currentAircraft!.TakeoffCalloutFeedNeeded);
+    }
+
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
     {
         if (InvokeRequired)
@@ -175,41 +188,19 @@ public partial class MainForm
         // Step 2.5: Allow aircraft-specific variable processing (e.g., FCU display combining)
         // This lets each aircraft handle complex variables before generic processing.
         //
-        // The HS787 auto-announces ~100 of its vars from INSIDE ProcessSimVarUpdate, which returns
-        // true and exits this method (line below) BEFORE reaching either the generic disabled-monitor
-        // gate OR the generic _uiSetEcho gate further down. So two suppressions that work for every
-        // other aircraft (which announce on the generic path) silently never fire on the 787:
-        //   (1) monitor-manager mute (Ctrl+M),
-        //   (2) UI-set echo — don't re-announce a value the user JUST set via a combo (the screen
-        //       reader already spoke the combo selection).
-        // Both are fixed here the same way: ProcessSimVarUpdate auto-announces ONLY via the
-        // suppressible announcer.Announce(...) (its AnnounceImmediate calls are all hotkey readouts),
-        // so suppress the announcer just for this var's processing — the per-branch state/baseline
-        // updates still run, only the speech is dropped.
-        bool hs787 = currentAircraft!.AircraftCode == "HS_787";
-        bool hs787Muted = hs787 &&
-            Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName);
-        // Same silent-no-op class for the A32NX family: the A320 (EFIS baro) and the
-        // Headwind A330 (stock-Kohlsman altimeter) announce those vars from INSIDE
-        // ProcessSimVarUpdate, which returns true and exits before the generic
-        // A32NXDisabledMonitorVariables gate below — so a Ctrl+M un-tick never muted
-        // them. Suppress right here, exactly like the HS787.
-        bool a32nxMuted = (currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
-            Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName);
-        // The iFly def has the same self-announcing shape as the HS787 (annunciators,
-        // MCP mode lights, warning push lights, ALTIMETER_SETTING and the SYN_* MCP
-        // windows all announce from INSIDE ProcessSimVarUpdate) — same wrap, same
-        // reason. The def's off-sweep timer still checks the list itself because it
-        // runs outside this method entirely.
-        bool iflyMuted = currentAircraft.AircraftCode == "IFLY_737MAX8" &&
-            Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName);
-        // The PMDG defs share the shape: the base class's Shift+T trim callout (MON_ElevatorTrim),
-        // the 737's own Stab Trim row and ~40 PMDG 777 callouts (MCP windows, altimeter, cockpit
-        // door, …) all announce from INSIDE ProcessSimVarUpdate, so a PMDG Announcement Monitor
-        // un-tick never reached them through the generic PMDG gate further down — "Elevator Trim"
-        // was a dead checkbox on the 777. Same wrap, same reason; same PMDG_ prefix test as below.
-        bool pmdgMuted = currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
-            Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName);
+        // A definition that announces from INSIDE ProcessSimVarUpdate returns true and exits this
+        // method BEFORE the generic disabled-monitor gate and the generic _uiSetEcho gate further
+        // down, so two suppressions that work for every generic announcement silently never fire
+        // for it: (1) the Ctrl+M mute, (2) the UI-set echo. Both are applied here the same way —
+        // suppress the announcer for this var's processing: the per-branch state updates still run,
+        // only the queued speech is dropped (AnnounceImmediate, kept for hotkey readouts, is not
+        // affected). Which Ctrl+M list applies to which airframe — the HS787, the A32NX family, the
+        // iFly, the PMDGs, the MD-11 and the FBW A380, all of this self-announcing shape — is
+        // DefAnnounceMuteSets' (the A380 was the one left out until 2026-09-25, so its baro call-outs
+        // ignored their rows). A variable whose branch also speaks ANOTHER row's call-out is left
+        // unwrapped (IAircraftDefinition.IsMuteWrapExempt), or its mute would silence that row too.
+        bool defMuted = Services.DefAnnounceMuteSets.ShouldWrap(currentAircraft!, e.VarName,
+            Settings.SettingsManager.Current);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -223,12 +214,7 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        // Same pattern for the MD-11: it composes its flap read-out from INSIDE
-        // ProcessSimVarUpdate (two vars, one spoken fact) and returns true, so the generic
-        // gate below never sees those vars and a Ctrl+M mute of them would silently do nothing.
-        bool md11Muted = currentAircraft.AircraftCode == "TFDI_MD11" &&
-            Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName);
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || md11Muted || uiEcho;
+        bool suppressDefAnnounce = defMuted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -240,6 +226,7 @@ public partial class MainForm
         {
             if (suppressDefAnnounce) announcer.Suppressed = prevSuppressed;
         }
+        UpdateTakeoffCalloutFeed(e.VarName);
 
         // Complete any pending display request for BOTH branches, before the def-handled early
         // return below. A var whose ProcessSimVarUpdate returns true still ARRIVED, and the panel
@@ -379,7 +366,7 @@ public partial class MainForm
 
                 // Check if disabled in the iFly 737 Monitor Manager. Self-announced iFly
                 // vars (lights, MCP windows, altimeter) are muted by the Step-2.5
-                // iflyMuted wrap above; the deferred off-sweep in the def checks the list
+                // DefAnnounceMuteSets wrap above; the deferred off-sweep in the def checks the list
                 // itself. This gate covers the plain switch/selector combos that announce
                 // on the generic path.
                 if (currentAircraft.AircraftCode == "IFLY_737MAX8" &&
@@ -982,7 +969,7 @@ public partial class MainForm
         }
 
         // Handle aircraft variable hotkey announcements
-        // A380 metric-altitude mode (FCU MTRS / A32NX_METRIC_ALT_TOGGLE): when active, the
+        // A380 metric-altitude mode (FCU MTRS — PRIM FG word 5 bit 14, A380MetricAltitude): when active, the
         // current-altitude readouts (A = MSL, Q = AGL) speak metres instead of feet. Gated to
         // the A380 by both the aircraft-type check and the MetricAlt flag — no other aircraft
         // and no non-metric A380 state reach this branch, so feet behaviour is unchanged.
@@ -1470,6 +1457,12 @@ public partial class MainForm
                         else if (varDef.ValueDescriptions != null && varDef.ValueDescriptions.ContainsKey(value))
                         {
                             displayValue = varDef.ValueDescriptions[value];
+                        }
+                        // A cleared sentinel (SimVarDefinition.NotSetBelow — the FBW V-speeds' -1/0)
+                        // reads "not set" here as it is spoken; the numeric branch showed "V1: -1".
+                        else if (varDef.IsNotSet(value))
+                        {
+                            displayValue = "not set";
                         }
                         else
                         {

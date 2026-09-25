@@ -32,8 +32,9 @@ namespace MSFSBlindAssist.Aircraft;
 /// signal to put there. The constraint refines the name of the ALT bit instead.
 ///
 /// ⚠️ Neither qualifier is an armed state on its own and neither may ever announce by itself.
-/// Measured live at FL360 straight after a step climb: <c>alt_cstr_applicable</c> was TRUE while
-/// <c>A32NX_FMA_VERTICAL_ARMED</c> was 0 and nothing at all was armed.
+/// Measured live at FL360 straight after a step climb: the CRUISE qualifier (bit 29) was TRUE while
+/// <c>A32NX_FMA_VERTICAL_ARMED</c> was 0 and nothing at all was armed. (This once said bit 28: the
+/// raw capture, 0x4D804000, was misread by the pre-2026-09-25 decoder — it is bits 29 and 20.)
 /// </summary>
 public static class ArmedAltitudeMode
 {

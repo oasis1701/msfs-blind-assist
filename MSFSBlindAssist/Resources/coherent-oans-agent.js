@@ -64,15 +64,19 @@
 
   // "Runway ahead" gate: the OANS_WORD_1 ARINC discrete, bit 11 (1-based), SSM-valid.
   // btvUtils.rwyAheadQfu goes stale when the monitor early-bails (stopped / >40 kt).
-  // Bit 11 (1-based) = (low32 >> 10) & 1, matching C# Arinc429Word.BitValueOr(11).
+  // A discrete word carries its bitfield as the float's VALUE (FBW writes this one with
+  // Arinc429Register.writeToSimVar), so decode the float, then test the integer — exactly FBW's
+  // own bitValueOr (the ND's RwyAheadAdvisory reads it that way) and C# Arinc429Word.BitValueOr(11).
+  // Testing the RAW low word read a bit of the float's mantissa instead: bit 11 alone is 1024.0f =
+  // 0x44800000, whose raw bit 10 is 0, so until 2026-09-25 this never returned true and the OANS
+  // window's "runway ahead" line never showed. `>>` truncates the float itself (ToInt32), as in
+  // FBW's `(value >> (bit - 1)) & 1` — no Math.trunc, which is not ES5.
+  // Pinned by tools/oans-agent-test.
   A.rwyAheadActive = function () {
     try {
-      var raw = A.lvar("A32NX_OANS_WORD_1");
-      if (typeof raw !== "number" || !isFinite(raw)) return false;
-      var ssm = Math.floor(raw / 4294967296) % 4;
-      if (ssm !== 3) return false;
-      var bits = raw % 4294967296; if (bits < 0) bits += 4294967296;
-      return (Math.floor(bits / 1024) % 2) === 1; // bit 11 = 2^10
+      var w = A.arinc(A.lvar("A32NX_OANS_WORD_1"));
+      if (!w.valid) return false;
+      return ((w.value >> 10) & 1) === 1; // bit 11 = 2^10
     } catch (e) { return false; }
   };
 
