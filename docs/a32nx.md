@@ -524,7 +524,7 @@ location as the round gauges, so view 8 serves both.
 (index 8) holds the first officer's ND and PFD with the ECAM clipped at its left edge, and no
 standby instruments at all. The standby is in view 8 (index 7), measured.
 
-### Fenix A320 First Officer — "Landing gear: UP" by lights out (2026-09-22)
+### Fenix A320 First Officer — "Landing gear: UP" by lights out, "DOWN" by three green (2026-09-22 / 2026-09-25)
 
 The After Takeoff Checklist's "Landing gear: UP" (`ATC_GEAR`) used to read `S_MIP_GEAR`
 directly, and `FirstOfficerForm`'s automatic `<Id>_CL` rule (`RelatedGroupIdsFor`) latches
@@ -542,17 +542,33 @@ the aircraft is powered; an unwritten field (any of the seven, or the lever) rea
 the shared `GearLightRules.AsField`, which a flow's wait treats as "not up yet" rather than
 a false positive.
 
-**UP only — there is no DOWN rule, on purpose.** The PMDG 737 composes "three green, no
-red" from separate green DOWN-AND-LOCKED and red IN-TRANSIT fields. Each Fenix wheel
-likewise carries two legend L:vars, `_U` (Upper) and `_L` (Lower) — but which of a pair is
-the green DOWN-AND-LOCKED legend and which is red IN-TRANSIT has never been measured, and a
-Fenix legend's meaning must never be inferred from its suffix, from the real aircraft, or
-from a sibling pushbutton (the APU START `_U`/`_L` reversal is the cautionary tale — see
-`FoPr160ProcedureFixTests`). Until the gear legends are measured the same way, "three green,
-no red" cannot be composed from them. And the Fenix First Officer profile has no Landing
-flow to begin with, so its checklist's "Landing gear: DOWN" line (`LDC_GEAR`) is never
-latched by a flow finishing — it stays the plain `S_MIP_GEAR` lever mirror it always was,
-with nothing here to change.
+**DOWN is "three green", from a MEASURED legend (2026-09-25).** The PMDG 737 composes
+"three green, no red" from separate green DOWN-AND-LOCKED and red IN-TRANSIT fields. Each
+Fenix wheel instead carries two legend L:vars, `_U` (Upper) and `_L` (Lower), and a Fenix
+legend's meaning must never be inferred from its suffix, from the real aircraft, or from a
+sibling pushbutton (the APU START `_U`/`_L` reversal is the cautionary tale — see
+`FoPr160ProcedureFixTests`). So it was read in the sim: Fenix A320 CFM, parked at KDFW,
+powered (main bus 28.5 V), lever `S_MIP_GEAR` = 1, gear down and locked. With the
+annunciator switch `S_OH_IN_LT_ANN_LT` at Bright (1), `I_MIP_GEAR_1_L`/`_2_L`/`_3_L` all read
+1 and `I_MIP_GEAR_1_U`/`_2_U`/`_3_U` and `I_MIP_GEAR_RED` all read 0; with the switch at TEST
+(2) all three `_U` and `I_MIP_GEAR_RED` read 1 (proving the `_U` vars are live lights, not a
+nonexistent L:var reading 0), and back to Bright returned them to 0. So **`_L` is the green
+DOWN-AND-LOCKED legend**, and `_U` is the wheel's other legend — dark when down-locked, lit
+in the light test; its colour in transit was NOT observed and nothing depends on it. The
+real A320's LDG GEAR panel happens to agree (red UNLK above, green triangle below), but the
+measurement is the authority, not the real jet.
+
+`FenixGearConfirmation.DownValue`, published as the synthetic `FO_GEAR_DOWN`, reads DOWN only
+when the lever reads DOWN **and** all three `_L` legends are lit **and** none of the three
+`_U` legends nor `I_MIP_GEAR_RED` is lit — the shared `GearLightRules.IsDown`. Treating `_U`
+and the arrow as reds means an annunciator light test (which lights everything) can never
+read as "down". Any unwritten reading gives NaN, as for UP. The Landing Checklist's "Landing
+gear: DOWN" line (`LDC_GEAR`) now auto-ticks from `FO_GEAR_DOWN` instead of the plain lever
+— the same field the PMDG 737 and iFly lines read. It has no `CheckAction`, so a hand tick
+never writes the gear. The Fenix First Officer profile has **no Landing flow**, so nothing
+latches `LANDING_CL` complete: the line ticks and un-ticks from its own state alone
+(`FenixGearConfirmationTests.No_Fenix_flow_latches_LANDING_CL` pins that premise — a future
+Fenix Landing flow would need a read-only gear-down check completing `LDC_GEAR` first).
 
 **The After Takeoff flow ends with a read-only step**, `AT_GEAR_UP_CHECK` ("Landing gear:
 UP"), that waits up to 20 s for `FO_GEAR_UP` and completes `ATC_GEAR` on delivery. It never

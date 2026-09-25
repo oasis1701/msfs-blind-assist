@@ -571,8 +571,13 @@ public static class FenixChecklistDefinitions
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
         {
+            // "Landing gear: DOWN" is confirmed the way a crew confirms it — three green, no
+            // red — through the FenixGearConfirmation synthetic (lever DOWN, each wheel's
+            // lower legend lit, its upper legend and the red arrow out — the greens measured
+            // live 2026-09-25), never the lever alone (owner decision 2026-09-22). The Fenix
+            // has no Landing flow, so nothing latches this line: it ticks from its own state.
             Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN",
-                "S_MIP_GEAR", v => v > 0.5, action: null),
+                FenixGearConfirmation.DownField, v => v > 0.5, action: null),
             Auto("LDC_SIGNS", "LANDING_CL", "Signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
             Auto("LDC_SPOILERS", "LANDING_CL", "Ground spoilers: ARMED",

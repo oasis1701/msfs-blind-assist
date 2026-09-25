@@ -69,6 +69,11 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             case FenixGearConfirmation.UpField:
                 value = FenixGearConfirmation.UpValue(GetValue);
                 return true;
+            // "Landing gear: DOWN" — three green, no red (FenixGearConfirmation; the green
+            // legends measured live 2026-09-25), never the lever alone.
+            case FenixGearConfirmation.DownField:
+                value = FenixGearConfirmation.DownValue(GetValue);
+                return true;
             default:
                 value = double.NaN;
                 return false;

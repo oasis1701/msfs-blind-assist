@@ -11,18 +11,17 @@ using MSFSBlindAssist.SimConnect;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// The Fenix A320 First Officer's "Landing gear: UP" line, confirmed the way a crew
-/// confirms it — gear up, lights out — never from the lever alone (owner decision
-/// 2026-09-22). Finishing the After Takeoff flow can no longer latch the line complete
-/// over gear that is still down. Pure logic plus the app's own Build() definitions.
+/// The Fenix A320 First Officer's landing-gear lines, confirmed the way a crew confirms
+/// them — "gear up, lights out" and "three green" — never from the lever alone (owner
+/// decisions 2026-09-22). Pure logic plus the app's own Build() definitions.
 ///
-/// UP only: each wheel's LDG GEAR indication is two legend L:vars (`_U`/`_L`, "Upper"/"Lower")
-/// plus the lever's red arrow, and WHICH of each wheel's two legends is the green DOWN-AND-
-/// LOCKED one has not been measured — a Fenix legend must be measured, never inferred (the
-/// APU START `_U`/`_L` reversal) — so "three green, no red" is not composed from them yet.
-/// "Lights out" needs no colour: every legend and the arrow go dark when the gear is up and
-/// locked. And the Fenix profile has no Landing flow, so its checklist's "Landing gear: DOWN"
-/// line is never latched by a flow completing.
+/// Each wheel's LDG GEAR indication is two legend L:vars (`_U`/`_L`) plus the lever's red
+/// arrow. Which legend is the green DOWN-AND-LOCKED one was MEASURED live on 2026-09-25
+/// (Fenix A320 CFM, parked at KDFW, powered, lever DOWN, gear down and locked): all three
+/// `_L` lit, all three `_U` and `I_MIP_GEAR_RED` dark; with the annunciator light TEST
+/// selected all three `_U` and `I_MIP_GEAR_RED` lit. So `_L` is the green, and `_U` plus the
+/// arrow are the reds — a Fenix legend is measured, never inferred (the APU START `_U`/`_L`
+/// reversal).
 /// </summary>
 public class FenixGearConfirmationTests
 {
@@ -141,22 +140,143 @@ public class FenixGearConfirmationTests
         Assert.False(item.StateCondition!(double.NaN));
     }
 
-    // The Fenix profile has no Landing flow at all — that is WHY "Landing gear: DOWN"
-    // (LDC_GEAR) stays a plain lever mirror forever (see the class doc above). That safety
-    // property rests on a premise nothing else pins: FirstOfficerForm's RelatedGroupIdsFor
-    // latches `flow.Id + "_CL"` complete automatically whenever a checklist group of that id
-    // exists, even when the flow never lists it in RelatedChecklistGroupIds. A future Fenix
-    // "LANDING" flow would silently latch "LANDING_CL" — including LDC_GEAR — the moment it
-    // completes, reproducing for DOWN exactly the bug this whole class exists to prevent for
-    // UP. If a Fenix Landing flow is ever added: LDC_GEAR needs its own read-only gear-down
-    // check FIRST (the same shape as AT_GEAR_UP_CHECK above), and which of each wheel's
-    // _U/_L legend is the green one must be MEASURED before a DOWN rule can be composed —
-    // never inferred (see the class doc's APU START warning).
+    // The Fenix profile has no Landing flow, so "Landing gear: DOWN" (LDC_GEAR) is only
+    // ever ticked by its own state condition — FO_GEAR_DOWN, three green and no red. That
+    // premise is pinned here because FirstOfficerForm's RelatedGroupIdsFor latches
+    // `flow.Id + "_CL"` complete automatically whenever a checklist group of that id exists:
+    // a future Fenix "LANDING" flow would latch LDC_GEAR the moment it completes, over gear
+    // that may still be up. If one is ever added, it needs a read-only gear-down check that
+    // completes LDC_GEAR FIRST (the same shape as AT_GEAR_UP_CHECK above).
     [Fact]
     public void No_Fenix_flow_latches_LANDING_CL()
     {
         var flows = FenixFlowDefinitions.Build();
         Assert.DoesNotContain(flows, f => f.Id == "LANDING");
         Assert.DoesNotContain(flows, f => f.RelatedChecklistGroupIds.Contains("LANDING_CL"));
+    }
+
+    // ---- DOWN: "three green" — every _L lit, every _U and the red arrow out ----
+
+    private static Dictionary<string, double> ThreeGreen(double lever = 1.0)
+    {
+        var values = new Dictionary<string, double> { [FenixGearConfirmation.LeverField] = lever };
+        foreach (var green in FenixGearConfirmation.GreenFields) values[green] = 1.0;
+        foreach (var red in FenixGearConfirmation.RedFields) values[red] = 0.0;
+        return values;
+    }
+
+    [Fact]
+    public void The_greens_are_the_lower_legends_and_the_reds_the_upper_legends_plus_the_arrow()
+    {
+        // Pinned to the 2026-09-25 live measurement — never to the suffix or the real jet.
+        Assert.Equal(new[] { "I_MIP_GEAR_1_L", "I_MIP_GEAR_2_L", "I_MIP_GEAR_3_L" },
+            FenixGearConfirmation.GreenFields);
+        Assert.Equal(new[] { "I_MIP_GEAR_1_U", "I_MIP_GEAR_2_U", "I_MIP_GEAR_3_U", "I_MIP_GEAR_RED" },
+            FenixGearConfirmation.RedFields);
+        // Together they are exactly the seven lights the UP rule reads.
+        Assert.Equal(FenixGearConfirmation.LightFields.OrderBy(f => f),
+            FenixGearConfirmation.GreenFields.Concat(FenixGearConfirmation.RedFields).OrderBy(f => f));
+        Assert.Equal("FO_GEAR_DOWN", FenixGearConfirmation.DownField);
+    }
+
+    [Fact]
+    public void Lever_down_with_three_green_and_no_red_reads_confirmed_down()
+    {
+        Assert.Equal(1.0, FenixGearConfirmation.DownValue(Reader(ThreeGreen())));
+    }
+
+    [Fact]
+    public void The_measured_down_and_locked_state_reads_confirmed_down()
+    {
+        // The literal 2026-09-25 KDFW readings.
+        var values = new Dictionary<string, double>
+        {
+            ["S_MIP_GEAR"] = 1,
+            ["I_MIP_GEAR_1_L"] = 1, ["I_MIP_GEAR_2_L"] = 1, ["I_MIP_GEAR_3_L"] = 1,
+            ["I_MIP_GEAR_1_U"] = 0, ["I_MIP_GEAR_2_U"] = 0, ["I_MIP_GEAR_3_U"] = 0,
+            ["I_MIP_GEAR_RED"] = 0,
+        };
+        Assert.Equal(1.0, FenixGearConfirmation.DownValue(Reader(values)));
+    }
+
+    [Fact]
+    public void Any_single_green_missing_means_not_down()
+    {
+        foreach (var green in FenixGearConfirmation.GreenFields)
+        {
+            var values = ThreeGreen();
+            values[green] = 0.0;
+            Assert.Equal(0.0, FenixGearConfirmation.DownValue(Reader(values)));
+        }
+    }
+
+    [Fact]
+    public void Any_upper_legend_lit_means_not_down()
+    {
+        foreach (var upper in new[] { "I_MIP_GEAR_1_U", "I_MIP_GEAR_2_U", "I_MIP_GEAR_3_U" })
+        {
+            var values = ThreeGreen();
+            values[upper] = 1.0;
+            Assert.Equal(0.0, FenixGearConfirmation.DownValue(Reader(values)));
+        }
+    }
+
+    [Fact]
+    public void The_red_arrow_lit_means_not_down()
+    {
+        var values = ThreeGreen();
+        values["I_MIP_GEAR_RED"] = 1.0;
+        Assert.Equal(0.0, FenixGearConfirmation.DownValue(Reader(values)));
+    }
+
+    [Fact]
+    public void An_annunciator_light_test_never_reads_down()
+    {
+        // The light test lights every legend and the arrow (measured 2026-09-25).
+        var values = ThreeGreen();
+        foreach (var red in FenixGearConfirmation.RedFields) values[red] = 1.0;
+        Assert.Equal(0.0, FenixGearConfirmation.DownValue(Reader(values)));
+    }
+
+    [Fact]
+    public void Lever_up_reads_not_down_even_with_three_green()
+    {
+        Assert.Equal(0.0, FenixGearConfirmation.DownValue(Reader(ThreeGreen(lever: 0.0))));
+    }
+
+    [Fact]
+    public void Any_unknown_reading_makes_down_NaN()
+    {
+        foreach (var field in FenixGearConfirmation.GreenFields
+                     .Concat(FenixGearConfirmation.RedFields)
+                     .Append(FenixGearConfirmation.LeverField))
+        {
+            var values = ThreeGreen();
+            values.Remove(field);
+            Assert.True(double.IsNaN(FenixGearConfirmation.DownValue(Reader(values))),
+                $"{field} unknown must read NaN");
+        }
+    }
+
+    [Fact]
+    public void Evaluator_reports_gear_down_unknown_with_no_data()
+    {
+        Assert.True(double.IsNaN(new FenixStateEvaluator().GetValue(FenixGearConfirmation.DownField)));
+    }
+
+    [Fact]
+    public void LandingChecklist_gear_line_reads_three_green_and_keeps_its_label()
+    {
+        var item = FenixChecklistDefinitions.Build()
+            .Single(g => g.Id == "LANDING_CL").Items.Single(i => i.Id == "LDC_GEAR");
+
+        Assert.Equal("Landing gear: DOWN", item.Label);
+        Assert.Equal(FenixGearConfirmation.DownField, item.StateFieldName);
+        Assert.NotNull(item.StateCondition);
+        Assert.True(item.StateCondition!(1));
+        Assert.False(item.StateCondition!(0));
+        Assert.False(item.StateCondition!(double.NaN));
+        // Read-only: ticking it never writes the gear.
+        Assert.Null(item.CheckAction);
     }
 }
