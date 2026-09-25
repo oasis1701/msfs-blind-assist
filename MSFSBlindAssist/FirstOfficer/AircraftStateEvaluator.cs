@@ -209,7 +209,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
 
     // FlapsLever: 0=UP, 1=1, 2=5, 3=15, 4=20, 5=25, 6=30 (PMDG positions)
     public int FlapsLeverPosition()       => (int)Math.Round(GetValue("FCTL_Flaps_Lever"));
-    public bool AreFlapsUp()              => FlapsLeverPosition() == 0;
+    // NaN-safe: (int)Math.Round(NaN) is 0 under .NET's saturating float->int conversion, so
+    // FlapsLeverPosition() == 0 read "flaps up" before the first CDA snapshot and the After
+    // Takeoff flaps steps said "Already set" over data that had not arrived.
+    public bool AreFlapsUp()              => IsPosition("FCTL_Flaps_Lever", 0);
     public bool AreFlapsForTakeoff()      => FlapsLeverPosition() >= 1 && FlapsLeverPosition() <= 3;
     public bool AreFlapsForLanding()      => FlapsLeverPosition() >= 4;
 

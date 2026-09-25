@@ -448,7 +448,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "AFTER_TAKEOFF",
         Name = "After Takeoff",
-        Description = "Cleans up lights and retracts gear/flaps after positive rate of climb, then confirms the gear lever is up.",
+        Description = "Cleans up lights and retracts gear/flaps after positive rate of climb, then confirms the flap and gear levers are up.",
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TKOF_CL" },
         Steps = new()
         {
@@ -460,8 +460,20 @@ public static class PMDG777FlowDefinitions
             Skip(SW("ATKOF_GEAR_UP",     "Gear: UP",            "EVT_GEAR_LEVER",             0,
                "GEAR_Lever", v => v < 0.5, "ATKO_GEAR_UP"),
                 s => s.IsGearUp()),
+            // The flap lever WRITE completes its OWN group's "Flaps: UP" (ATKO_FLAPS_UP) — the
+            // gear's shape. It used to complete the checklist's line (ATKOF_FLAPS) instead,
+            // which left ATKO_FLAPS_UP with no step behind it, so MarkGroupComplete latched it
+            // complete over a failed write.
             Skip(SW("ATKOF_FLAPS_UP",    "Flaps: UP",           "EVT_CONTROL_STAND_FLAPS_LEVER_0", null,
-               true, "FCTL_Flaps_Lever", v => v < 0.5, "ATKOF_FLAPS"),
+               true, "FCTL_Flaps_Lever", v => v < 0.5, "ATKO_FLAPS_UP"),
+                s => s.AreFlapsUp()),
+            // Read-only: completes the After Takeoff Checklist's "Flaps: UP" (ATKOF_FLAPS) once
+            // the LEVER reads UP — the checklist line's own condition. Not the physical flap
+            // angle: a retraction from takeoff flap outlasts any sensible wait, so it would
+            // routinely time out. Passes at once after a good write; after a failed one it
+            // gives the pilot 20 s to move the lever, then skips aloud and leaves the line live.
+            Skip(WaitForField("ATKOF_FLAPS_UP_CHECK", "Flaps: UP", "FCTL_Flaps_Lever", v => v < 0.5, 20,
+                    checklistItemId: "ATKOF_FLAPS"),
                 s => s.AreFlapsUp()),
             // Read-only: completes the After Takeoff Checklist's "Landing Gear: UP" (ATKOF_GEAR)
             // once the lever reads UP. The lever WRITE above completes its own group's "Gear: UP"
