@@ -108,6 +108,16 @@ public partial class ChecklistForm : Form
 
     private string GetChecklistText()
     {
+        // ⚠️ THE AIRCRAFT'S OWN CHECKLIST FIRST. Every MSFS aeroplane may ship one as plain
+        // XML inside its package, and it is better than anything hand-transcribed here: it
+        // is the vendor's, it is complete, and it follows the aircraft through updates. The
+        // COWS DA40's also carries a "Tips and help" page with the warm-up times, the
+        // rotate speeds, the traffic-pattern power settings and how to reset failures and
+        // charge the batteries - operating knowledge this project spent days deriving by
+        // probe while it sat in the package unread.
+        string? native = Services.NativeChecklistReader.Render(aircraftCode);
+        if (!string.IsNullOrWhiteSpace(native)) return native;
+
         // Map aircraft codes to checklist filenames
         var filenameMap = new Dictionary<string, string>
         {
@@ -118,10 +128,16 @@ public partial class ChecklistForm : Form
             { "IFLY_737MAX8", "iFly_737MAX8_Checklist.txt" }
         };
 
-        // Determine which file to load
-        string filename = filenameMap.ContainsKey(aircraftCode)
-            ? filenameMap[aircraftCode]
-            : "FBW_A320_Checklist.txt"; // Default fallback
+        // ⚠️ NO AIRBUS FALLBACK. An aeroplane with no checklist of its own used to be shown
+        // the A320's, so the DA40's checklist window was listing an Airbus procedure - which
+        // is worse than an empty window, because it looks authoritative and is wrong about
+        // an aeroplane the pilot is flying.
+        if (!filenameMap.TryGetValue(aircraftCode, out string? filename))
+        {
+            return "[No checklist for this aircraft]\n" +
+                   "This aeroplane ships no checklist of its own and MSFSBA carries none " +
+                   "for it. Use the aircraft's own documentation.";
+        }
 
         // Construct file path
         string appPath = AppDomain.CurrentDomain.BaseDirectory;

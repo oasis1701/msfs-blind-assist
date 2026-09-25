@@ -57,6 +57,7 @@ public partial class MainForm : Form
     private Forms.FlyByWireA320.FlyByWireA320MonitorManagerForm? fbwA320MonitorManagerForm;
 
     private Forms.HS787.HS787MonitorManagerForm? hs787MonitorManagerForm;
+    private Forms.DA40.CowsDA40MonitorManagerForm? cowsDA40MonitorManagerForm;
 
     private PMDGAnnouncementMonitorForm? pmdgAnnouncementMonitorForm;
 
@@ -357,6 +358,14 @@ public partial class MainForm : Form
 
     private readonly MSFSBlindAssist.Services.IceAccretionTracker _iceAccretionTracker = new();
 
+    /// <summary>
+    /// ⚠️ THE ALERT THAT DID NOT EXIST WHEN AN AEROPLANE WAS LOST TO A SPIRAL DIVE. Every
+    /// attitude channel in this app is a QUERY - the hand fly bank tone, the B readout - and a
+    /// query is useless for the attitude nobody noticed. State is carried here rather than in
+    /// the monitor so the monitor stays pure and testable.
+    /// </summary>
+    private MSFSBlindAssist.Services.UnusualAttitudeMonitor.State _attitudeState;
+
     private double _prevVisibility = -1;      // meters; -1 = uninitialized
 
     private bool _prevVisLow = false;         // was visibility below 1500m last check
@@ -492,6 +501,30 @@ public partial class MainForm : Form
         if (currentAircraft?.AircraftCode == "HS_787")
             StartHS787IrsMonitor();
 
+        // ⚠️ THE DA40's CAS WATCHER HAD TO BE HERE TOO, and its absence is why cautions
+        // never auto-announced. SwitchAircraft starts it — but SwitchAircraft runs ONLY
+        // when the pilot picks an aircraft from the menu. The startup path sets
+        // currentAircraft directly from the saved setting (see the constructor), so a
+        // session that opens with the DA40 already selected — which is every session for a
+        // DA40 pilot — never called it. Measured from the log: the aircraft registered, the
+        // display window worked, and "CAS monitor: started" was never written once.
+        //
+        // The A380 and HS787 monitors two blocks up exist for exactly this reason. This is
+        // the third, and the pattern is now: a background monitor must be started in BOTH
+        // places or it does not run for the aircraft the app opens with.
+        if (currentAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
+        {
+            da40Cas.StartCasMonitor(announcer);
+            da40Cas.AttachLampWatch(simConnectManager);
+            da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
+
+            // ⚠️ The DA40 rotates at 67 KIAS, so the stock 80/100 knot roll callouts both land
+            // AFTER it is flying - two announcements during the busiest ten seconds of the
+            // flight, neither marking anything. One call at Vr is what a light single wants.
+            takeoffAssistManager?.ConfigureSpeedCallouts(
+                Aircraft.DA40.DA40Speeds.For(da40Cas.Variant).Vr, "Rotate", null, string.Empty);
+        }
+
         // iFly 737 MAX8: start the shared-memory SDK bridge (independent of SimConnect —
         // it works whenever the sim + iFly plugin are running). Generic announcements
         // don't wait on SimConnect either — see StartIFlyAnnouncementGrace's call sites.
@@ -595,6 +628,7 @@ public partial class MainForm : Form
         };
         simConnectManager.SimulatorVersionDetected += OnSimulatorVersionDetected;
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
+        simConnectManager.FlightAttitudeReceived += OnFlightAttitude;
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
         simConnectManager.QueuedEventDispatched += OnQueuedEventDispatched;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;

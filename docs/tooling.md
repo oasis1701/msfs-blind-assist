@@ -373,3 +373,69 @@ To ground the "flyPad agent serves both FBW jets" claim, this session drove the 
 - **A control "doesn't work"** → STOP. Read the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in `CLAUDE.md` (calculator-path write-stick test, write-mechanism decision tree, the case studies) before concluding anything.
 - **"Can I reuse this scraper for another aircraft?"** → §9: transport + generic scrape core are universal; the aircraft-specific selector/nav/input layer must be re-derived (recipe in §9.3).
 - **Crash** → §8: read `%APPDATA%\MSFSBlindAssist\logs\startup.log`, then Event Viewer for native faults.
+
+## Coherent display read-coverage probe (`tools/coherent-coverage.js`)
+
+Answers one question for a whole instrument at once: **what is on the screen that MSFSBA never
+says?** It visits every page the instrument actually has and, for each, subtracts everything the
+display agent emits from everything a sighted pilot can see.
+
+```bash
+node tools/coherent-coverage.js AS1000_MFD
+node tools/coherent-coverage.js AS1000_PFD
+```
+
+⚠️ **It is not a G1000 tool** — it was one only by accident of implementation. Every argument
+after the first exists so it is not: the agent and its global differ per aircraft, and the
+*says* expression differs per **display**, because no two agents in this codebase share an entry
+point (only the DA40's publishes `rows()`). For another display, pass its own:
+
+```bash
+node tools/coherent-coverage.js A380X_EWD __MSFSBA_EWD MSFSBlindAssist/Resources/coherent-ewd-agent.js "A.scrape()"
+```
+
+A display that cannot enumerate its own pages — an E/WD, a CDU, a flyPad — sweeps whatever is
+**on screen**: drive it to the page you care about and run it again.
+
+⚠️ **Every read-coverage hole in this project was previously found by a pilot flying into it**,
+one at a time, months apart — the CAS block read off a hidden duplicate, the flight plan page
+that reported itself empty, and the entire **lateral half of the FMA**, which sat in an unclassed
+element and was never scraped, so a NAV mode that was engaged and *not capturing* looked exactly
+like one that was working. None were findable by reading code. All are findable by this.
+
+**It is aircraft-agnostic on purpose.** The DA40's G1000, the XLS's and the DA42's are different
+builds with different pages, and a probe hard-wired to one has to be rewritten to stay useful.
+The instrument names its own pages (`pageMap`) and the agent names its own global, so both are
+arguments.
+
+### The two things that make it trustworthy
+
+⚠️ **The visibility test walks the ANCESTOR CHAIN, not just the element.** Checking only the
+element's own computed style passes anything inside a hidden parent — and a G1000 keeps its page
+selector, its dialogs and a second copy of the CAS block mounted at all times. A leaf-only test
+reported 60–80 "unread" items on *every* page, nearly all furniture. A number that large gets
+skimmed and the three real gaps are buried in it, which is worse than having no tool.
+
+⚠️ **Anything appearing on most pages is reported ONCE as chrome, never per page.** Softkey
+labels and selector entries belong to the instrument, not the page. Without this the per-page
+lists are dominated by the same twenty strings.
+
+Together these took a DA40 MFD sweep from ~1,200 raw hits to **33 page-specific items across 17
+pages** — small enough for a person to read every line, which is the only size that gets acted on.
+
+**Stubs are skipped.** 15 of this G1000's 32 advertised pages carry an empty key and were never
+built; their knob does nothing for a sighted pilot either, and sweeping one measures the page
+underneath it.
+
+### Reading the output
+
+A page-specific item is a real candidate. The chrome list is worth a look only if something in it
+should be readable on demand. ⚠️ It reports **candidates, not verdicts** — the scrape may render
+`DIS 53.0NM` where the screen shows `53.0NM`, and although the comparison strips punctuation and
+case to avoid that, a human still confirms each hit before it becomes a fix.
+
+### Prerequisites
+
+The sim running with the aircraft loaded, and **nothing else holding the display's inspector
+socket** — Coherent GT allows exactly one per view. Close MSFSBA's display window first, and note
+that the DA40's background CAS monitor holds the **PFD** socket whenever MSFSBA is running.

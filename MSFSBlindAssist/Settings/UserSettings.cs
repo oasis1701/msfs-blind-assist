@@ -312,6 +312,17 @@ public class UserSettings
         // ProcessSimVarUpdate, the HS787 pattern). Persisted across sessions.
         public List<string> IFlyDisabledMonitorVariables { get; set; } = new List<string>();
 
+        /// <summary>
+        /// Keys the pilot has un-ticked in the COWS DA40 Monitor Manager (Ctrl+M). Honoured
+        /// by the generic gate in MainForm.OnSimVarUpdated — the DA40 definition announces
+        /// nothing from inside ProcessSimVarUpdate, so it needs no Step-2.5 wrap.
+        /// </summary>
+        public List<string> DA40DisabledMonitorVariables { get; set; } = new List<string>();
+
+        /// <summary>Runtime-only HashSet sidecar of <see cref="DA40DisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
+        [JsonIgnore]
+        public HashSet<string> DA40DisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
+
         /// <summary>Runtime-only HashSet sidecar of <see cref="IFlyDisabledMonitorVariables"/>. See <see cref="FenixDisabledMonitorVariablesSet"/>.</summary>
         [JsonIgnore]
         public HashSet<string> IFlyDisabledMonitorVariablesSet { get; private set; } = new HashSet<string>();
@@ -559,6 +570,7 @@ public class UserSettings
         HS787DisabledMonitorVariablesSet = new HashSet<string>(HS787DisabledMonitorVariables);
         A32NXDisabledMonitorVariablesSet = new HashSet<string>(A32NXDisabledMonitorVariables);
         IFlyDisabledMonitorVariablesSet = new HashSet<string>(IFlyDisabledMonitorVariables);
+        DA40DisabledMonitorVariablesSet = new HashSet<string>(DA40DisabledMonitorVariables);
         Md11DisabledMonitorVariablesSet = new HashSet<string>(Md11DisabledMonitorVariables);
     }
 

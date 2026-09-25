@@ -156,6 +156,8 @@ public partial class MainForm
             "HS_787" => new HorizonSim787Definition(),
             "HW_A330" => new HeadwindA330Definition(),
             "IFLY_737MAX8" => new IFly737MAXDefinition(),
+            "COWS_DA40NG" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.NG),
+            "COWS_DA40XLS" => new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.XLS),
             "TFDI_MD11" => new TFDiMD11Definition(),
             // Future aircraft will be added here
             _ => new FlyByWireA320Definition() // Default to A320
@@ -201,6 +203,22 @@ public partial class MainForm
         }
         _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
+        SwapDA40ProfileToMatch(file);
+    }
+
+    /// <summary>
+    /// A DA40 profile follows the DA40 airframe the sim has loaded — see
+    /// <see cref="Aircraft.DA40.DA40Airframe"/>. Called with the AircraftLoaded file path on an
+    /// in-session change, and with the connect's title on the first connect (the connect
+    /// pipeline runs once per connection, so it never reports a later change).
+    /// </summary>
+    private void SwapDA40ProfileToMatch(string? titleOrFile)
+    {
+        if (currentAircraft == null) return;
+        string? target = Aircraft.DA40.DA40Airframe.SwapTarget(currentAircraft.AircraftCode, titleOrFile);
+        if (target == null) return;
+        Log.Debug("MainForm", $"DA40 profile {currentAircraft.AircraftCode} does not match '{titleOrFile}' - switching to {target}");
+        SwitchAircraft(LoadAircraftFromCode(target));
     }
 
     /// <summary>
@@ -231,6 +249,10 @@ public partial class MainForm
 
         if (status.StartsWith("Connected to"))
         {
+            // Before anything announces the profile: a DA40 profile on the other DA40 airframe
+            // swaps to the right one here, so the pilot hears the profile that is flying.
+            SwapDA40ProfileToMatch(status.Substring("Connected to".Length));
+
             // Start event batching timer for high-volume variable updates
             eventBatchTimer?.Start();
             Log.Debug("MainForm", "Event batching timer started");
@@ -876,6 +898,14 @@ public partial class MainForm
             fbwA380MonitorManagerForm.Dispose();
             fbwA380MonitorManagerForm = null;
         }
+        // Dispose the DA40 monitor manager when switching aircraft — it snapshots the
+        // variable dictionary at construction, so a stale one would list the old airframe.
+        if (cowsDA40MonitorManagerForm != null && !cowsDA40MonitorManagerForm.IsDisposed)
+        {
+            cowsDA40MonitorManagerForm.Dispose();
+            cowsDA40MonitorManagerForm = null;
+        }
+
         // Dispose fenixMonitorManagerForm when switching aircraft
         if (fenixMonitorManagerForm != null && !fenixMonitorManagerForm.IsDisposed)
         {
@@ -1042,6 +1072,11 @@ public partial class MainForm
         }
         StopA380EWDMonitor(oldAircraft);
 
+        // Same trap the line above documents: by now currentAircraft is the NEW aircraft,
+        // so the OUTGOING definition is the one that has to be told to let its Coherent
+        // socket go.
+        (oldAircraft as Aircraft.DA40.CowsDA40Definition)?.StopCasMonitor();
+
         // Dispose HS 787 forms when switching aircraft
         if (hs787FMCForm != null && !hs787FMCForm.IsDisposed)
         {
@@ -1093,6 +1128,24 @@ public partial class MainForm
             coherentClient.Start();
             coherentClient.SetActive(false);   // connect + install agent now; scrape only while the MCDU window is open
             StartA380EWDMonitor();
+        }
+
+        // The DA40's CAS/FMA watcher. It runs whether or not the PFD window is open,
+        // because a caution appearing is not something a pilot should have to be already
+        // watching for - and on this aeroplane the CAS window is the only place most
+        // failures are announced at all (there are four annunciator lamps and nothing
+        // else). The PFD window suspends it while open: one inspector socket per view.
+        if (newAircraft is Aircraft.DA40.CowsDA40Definition da40Cas)
+        {
+            da40Cas.StartCasMonitor(announcer);
+            da40Cas.AttachLampWatch(simConnectManager);
+            da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
+
+            // ⚠️ The DA40 rotates at 67 KIAS, so the stock 80/100 knot roll callouts both land
+            // AFTER it is flying - two announcements during the busiest ten seconds of the
+            // flight, neither marking anything. One call at Vr is what a light single wants.
+            takeoffAssistManager?.ConfigureSpeedCallouts(
+                Aircraft.DA40.DA40Speeds.For(da40Cas.Variant).Vr, "Rotate", null, string.Empty);
         }
 
         // The HS787 CDU + EFB open their own Coherent debugger connections on demand (from

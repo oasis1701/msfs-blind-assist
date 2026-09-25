@@ -98,6 +98,73 @@ public partial class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// The active flight plan's TO-waypoint (GPS WP NEXT/PREV ID, distance, bearing, ETE),
+    /// one fixed def requested once a second. Universal rather than aircraft-specific — every
+    /// GPS navigator that drives the stock GPS SimVars fills it, which on the DA40 is the
+    /// Working Title G1000's own GpsSynchronizer — so it registers here with the fixed defs,
+    /// ahead of the bulk per-aircraft registration and its ceiling.
+    ///
+    /// ⚠️ DEFAULT, not CHANGED, for the SAME reason the GSX def above uses DEFAULT: this runs
+    /// inside SetupDataDefinitions, before OnRecvSimobjectData is attached and while
+    /// Application.DoEvents drains the receive queue with no handler on it. Under CHANGED the
+    /// one packet a plan already loaded produces lands in that window and nothing re-sends it,
+    /// so a pilot who loaded their route before MSFSBA connected would get no waypoint calls
+    /// at all. A hundred and forty-four bytes a second is the price of self-healing.
+    /// </summary>
+    /// <summary>
+    /// Attitude at 1 Hz for the unusual-attitude alert. An unusual attitude develops over tens
+    /// of seconds, so a second's resolution is ample and the cost is 24 bytes a second.
+    /// </summary>
+    private void RegisterFlightAttitudeDefinition()
+    {
+        try
+        {
+            var sc = simConnect!;
+            // ⚠️ Degrees, explicitly. The SimVar's native unit is RADIANS despite its name.
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, "PLANE BANK DEGREES", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, "PLANE PITCH DEGREES", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, "SIM ON GROUND", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<FlightAttitudeData>(DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE);
+            sc.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_FLIGHT_ATTITUDE,
+                DATA_DEFINITIONS.DEF_FLIGHT_ATTITUDE, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SECOND, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            Log.Debug("SimConnect", "Registered flight attitude definition (periodic)");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Flight attitude registration failed (unusual-attitude alert unavailable): {ex.Message}");
+        }
+    }
+
+    private void RegisterGpsWaypointDefinition()
+    {
+        try
+        {
+            var sc = simConnect!;
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP NEXT ID", null, SIMCONNECT_DATATYPE.STRING64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP PREV ID", null, SIMCONNECT_DATATYPE.STRING64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP DISTANCE", "Meters", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            // Written in RADIANS by the navigator; SimConnect converts because we ask in degrees.
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP BEARING", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP ETE", "Seconds", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS IS ACTIVE FLIGHT PLAN", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS IS DIRECTTO FLIGHTPLAN", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS WP PREV VALID", "Bool", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS ETE", "Seconds", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_GPS_WAYPOINT, "GPS GROUND SPEED", "Knots", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+            sc.RegisterDataDefineStruct<GpsWaypointData>(DATA_DEFINITIONS.DEF_GPS_WAYPOINT);
+            sc.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_GPS_WAYPOINT,
+                DATA_DEFINITIONS.DEF_GPS_WAYPOINT, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.SECOND, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+            Log.Debug("SimConnect", "Registered GPS waypoint definition (periodic)");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"GPS waypoint registration failed (waypoint readout and passing calls unavailable): {ex.Message}");
+        }
+    }
+
     private void SetupDataDefinitions()
     {
         var sc = simConnect!; // Local reference for cleaner null-safety
@@ -331,6 +398,10 @@ public partial class SimConnectManager
         // camera to an instrument view (SimConnectManager.Camera.cs). Universal, so it registers
         // here with the fixed defs, in its own try/catch like the GSX one above.
         RegisterCameraViewDefinition();
+
+        RegisterGpsWaypointDefinition();
+
+        RegisterFlightAttitudeDefinition();
 
         // Bulk per-aircraft variable registration runs LAST — see the resilience note at the
         // top of this method. Everything above (detection, position, AI, VG, weather, nav) is

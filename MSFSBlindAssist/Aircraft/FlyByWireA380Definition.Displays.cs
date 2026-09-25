@@ -798,6 +798,11 @@ public partial class FlyByWireA380Definition
         // bar from a normalized -1..1 value); a blind pilot sweeping the controls hears
         // the percentage change.
         string Defl(double v) => $"{v * 100:0} percent";
+
+        // ⚠️ The sign convention lives in A380SurfaceDeflection, with the FBW source that
+        // establishes it and the live measurement that exposed the bug. Do not inline it.
+        string Surface(double v) => A380SurfaceDeflection.Describe(v);
+        string SurfaceMirrored(double v) => A380SurfaceDeflection.DescribeMirrored(v);
         // Engine oil pressure is NOT modelled on the A380 dev build (stock simvar returns
         // negative garbage); the FBW page clamps negatives to 0, so mirror that.
         string OilP(double v) => v <= 0 ? "not available" : $"{v:0} psi";
@@ -1129,12 +1134,21 @@ public partial class FlyByWireA380Definition
                 for (int n = 1; n <= 3; n++) r.Add(($"PRIM {n}", $"A32NX_PRIM_{n}_HEALTHY", Healthy));
                 for (int n = 1; n <= 3; n++) r.Add(($"SEC {n}", $"A32NX_SEC_{n}_HEALTHY", Healthy));
                 // Aileron / elevator / rudder deflections (normalized → percent of travel).
+                // ⚠️ The LEFT aileron is read through SurfaceMirrored and the right through
+                // Surface - see the note on those two. Getting this backwards would announce
+                // a droop as a roll, or a roll as a droop, on the one page a pilot opens to
+                // find out what the surfaces are doing.
                 foreach (var side in new[] { "LEFT", "RIGHT" })
                     foreach (var pos in new[] { "OUTWARD", "MIDDLE", "INWARD" })
-                        r.Add(($"{(side == "LEFT" ? "Left" : "Right")} {pos.ToLower()} aileron", $"A32NX_HYD_AILERON_{side}_{pos}_DEFLECTION", Defl));
+                        r.Add(($"{(side == "LEFT" ? "Left" : "Right")} {pos.ToLower()} aileron",
+                               $"A32NX_HYD_AILERON_{side}_{pos}_DEFLECTION",
+                               side == "LEFT" ? SurfaceMirrored : Surface));
+                // The elevators are NOT mirrored - elevators.rs applies the same conversion
+                // to both sides with no negation - so both take Surface unchanged.
                 foreach (var side in new[] { "LEFT", "RIGHT" })
                     foreach (var pos in new[] { "OUTWARD", "INWARD" })
-                        r.Add(($"{(side == "LEFT" ? "Left" : "Right")} {pos.ToLower()} elevator", $"A32NX_HYD_ELEVATOR_{side}_{pos}_DEFLECTION", Defl));
+                        r.Add(($"{(side == "LEFT" ? "Left" : "Right")} {pos.ToLower()} elevator",
+                               $"A32NX_HYD_ELEVATOR_{side}_{pos}_DEFLECTION", Surface));
                 r.Add(("Upper rudder", "A32NX_HYD_UPPER_RUDDER_DEFLECTION", Defl));
                 r.Add(("Lower rudder", "A32NX_HYD_LOWER_RUDDER_DEFLECTION", Defl));
                 for (int sp = 1; sp <= 8; sp++)

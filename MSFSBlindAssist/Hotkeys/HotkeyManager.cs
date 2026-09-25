@@ -114,7 +114,23 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_READ_DISPLAY_LOWER_ECAM = 9070;
         private const int HOTKEY_READ_DISPLAY_UPPER_ECAM = 9071;
         private const int HOTKEY_READ_DISPLAY_ND = 9072;
+
+        // Alt+M, the G1000's MFD. A glass GA panel has a PFD and an MFD and no ND at all,
+        // so borrowing the ND key was the only thing available and never the obvious one -
+        // reported from the cockpit as "Alt+M for the MFD doesn't work". Alt+N still opens
+        // it, because that is what the docs have said and a working key is not taken away.
+        private const int HOTKEY_READ_DISPLAY_MFD = 9253;
         private const int HOTKEY_READ_DISPLAY_ISIS = 9073;
+
+        // GENERAL-AVIATION ENGINE READOUTS. Deliberately NOT named for one aeroplane: a
+        // piston single answers them with manifold pressure and mixture, a FADEC diesel
+        // with load percent, a turboprop with torque and ITT. The action says WHAT is being
+        // asked, and each aircraft definition says what that means on its own engine - the
+        // same shape as the V-speed keys, which mean one thing on an Airbus and another on
+        // a DA40.
+        private const int HOTKEY_READ_ENGINE_RPM = 9260;
+        private const int HOTKEY_READ_ENGINE_POWER = 9261;
+        private const int HOTKEY_READ_ENGINE_TEMPS = 9262;
         private const int HOTKEY_DESCRIBE_SCENE = 9074;
         private const int HOTKEY_SHOW_OANS = 9099; // A380 ND OANS / BTV control panel
 
@@ -310,6 +326,15 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_MACH_SPEED:
                             TriggerHotkey(HotkeyAction.ReadMachSpeed);
                             break;
+                        case HOTKEY_READ_ENGINE_RPM:
+                            TriggerHotkey(HotkeyAction.ReadEngineRpm);
+                            break;
+                        case HOTKEY_READ_ENGINE_POWER:
+                            TriggerHotkey(HotkeyAction.ReadEnginePower);
+                            break;
+                        case HOTKEY_READ_ENGINE_TEMPS:
+                            TriggerHotkey(HotkeyAction.ReadEngineTemps);
+                            break;
                         case HOTKEY_LANDING_RATE:
                             TriggerHotkey(HotkeyAction.ReadLastLandingRate);
                             break;
@@ -474,6 +499,9 @@ public class HotkeyManager : IDisposable
                             break;
                         case HOTKEY_READ_DISPLAY_ND:
                             TriggerHotkey(HotkeyAction.ReadDisplayND);
+                            break;
+                        case HOTKEY_READ_DISPLAY_MFD:
+                            TriggerHotkey(HotkeyAction.ReadDisplayMFD);
                             break;
                         case HOTKEY_READ_DISPLAY_PFD:
                             TriggerHotkey(HotkeyAction.ReadDisplayPFD);
@@ -764,8 +792,16 @@ public class HotkeyManager : IDisposable
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_UPPER_ECAM, MOD_ALT, 0x45);  // Alt+E (Read E/WD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM, MOD_ALT, 0x53);  // Alt+S (Read SD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND, MOD_ALT, 0x4E);          // Alt+N (Read ND)
+            RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_MFD, MOD_ALT, 0x4D);         // Alt+M (Read MFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD, MOD_ALT, 0x50);         // Alt+P (Read PFD)
             RegisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS, MOD_ALT, 0x49);        // Alt+I (Read ISIS)
+
+            // Output mode: P, E and Shift+O. All three were free on every modifier before
+            // this - checked against the whole registration table rather than assumed,
+            // because a silently lost registration is a key that does nothing with no error.
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM, MOD_NONE, 0x50);         // P (RPM / propeller)
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER, MOD_NONE, 0x45);       // E (engine power)
+            RegisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS, MOD_SHIFT, 0x4F);      // Shift+O (engine temperatures)
             RegisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE, MOD_ALT, 0x44);           // Alt+D (Describe Scene)
             RegisterHotKey(windowHandle, HOTKEY_NEAREST_CITY, MOD_NONE, 0x43);             // C (Nearest City)
             RegisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE, MOD_NONE, 0x52);            // R (Announce Tracked TCAS Traffic)
@@ -877,8 +913,31 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_LOWER_ECAM);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ND);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_PFD);
+            // Alt+M. Its two siblings on the line above were released and this one was not —
+            // a plain omission, and PRE-EXISTING rather than part of the engine-key leak. Less
+            // damaging than the bare letters (a pilot rarely needs Alt+M for anything else) but
+            // the same defect, and the sweep above is what found it.
+            UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_MFD);
             UnregisterHotKey(windowHandle, HOTKEY_READ_DISPLAY_ISIS);
             UnregisterHotKey(windowHandle, HOTKEY_DESCRIBE_SCENE);
+            // ⚠️ THESE THREE LEAKED, AND ONE BUG PRODUCED TWO SEPARATE COCKPIT SYMPTOMS.
+            // They are registered in ActivateOutputHotkeyMode as BARE P, BARE E and Shift+O,
+            // and the matching releases were never added here. So one use of output mode held
+            // P and E globally FOR THE REST OF THE SESSION: reported from the cockpit as
+            // "Q and E don't work at all, I can't even type with them".
+            //
+            // The second symptom is worse and looks unrelated. Hand fly's quick-access set
+            // also claims BARE P (pitch), so a leaked P made its RegisterHotKey fail —
+            // "Hand fly mode active, quick keys failed" — while the other EIGHT keys, Q among
+            // them, registered fine and stayed held. The pilot is told the keys failed and
+            // simultaneously loses the keyboard to them. Measured in debug.log: exactly one
+            // failure, "failed to register P (id=9083)", with allOk=False.
+            //
+            // It needed output mode to have been used once first, which is why it did not
+            // happen every time and why it never showed up in testing.
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_RPM);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_POWER);
+            UnregisterHotKey(windowHandle, HOTKEY_READ_ENGINE_TEMPS);
             UnregisterHotKey(windowHandle, HOTKEY_NEAREST_CITY);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_ANNOUNCE);
             UnregisterHotKey(windowHandle, HOTKEY_TCAS_WINDOW);
@@ -1266,6 +1325,13 @@ public class HotkeyManager : IDisposable
         ReadAirspeedTrue,
         ReadGroundSpeed,
         ReadMachSpeed,
+
+        // General-aviation engine readouts. What they MEAN is the aircraft's business:
+        // load percent on a FADEC diesel, manifold pressure and mixture on a piston,
+        // torque and ITT on a turboprop.
+        ReadEngineRpm,
+        ReadEnginePower,
+        ReadEngineTemps,
         ReadLastLandingRate,
         ReadLastLandingPeakG,
         ReadVerticalSpeed,
@@ -1337,6 +1403,9 @@ public class HotkeyManager : IDisposable
         ReadDisplayLowerECAM,
         ReadDisplayUpperECAM,
         ReadDisplayND,
+
+        /// <summary>Alt+M. The G1000's MFD, on an aeroplane that has no ND.</summary>
+        ReadDisplayMFD,
         ReadDisplayISIS,
         DescribeScene,
         ShowTrackFixWindow,

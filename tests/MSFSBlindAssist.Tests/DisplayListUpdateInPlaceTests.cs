@@ -179,4 +179,58 @@ public class DisplayListUpdateInPlaceTests
 
         Assert.Equal(1, lb.SelectedIndex);
     }
+
+    [Fact]
+    public void AFreshlyPopulatedListSelectsItsFirstRow()
+    {
+        // ⚠️ IT USED TO START AT -1 AND STAY THERE. The first-populate path added the items and
+        // returned, and the restore below it can only ever KEEP a selection, never create one -
+        // selText is null when nothing was selected and the sel >= 0 fallback cannot run for a
+        // -1. So a live-updating list re-announced "List, nothing selected, 0 of 2" on every
+        // redraw at a pilot who had touched nothing (five times in one live dump).
+        using var lb = new ListBox();
+        DisplayList.UpdateInPlace(lb, new[] { "one", "two" });
+
+        Assert.Equal(2, lb.Items.Count);
+        Assert.Equal(0, lb.SelectedIndex);
+    }
+
+    [Fact]
+    public void ARedrawStillDoesNotCreateASelectionThePilotNeverMade()
+    {
+        // ⚠️ THE FLOOR IS FIRST-POPULATE ONLY, DELIBERATELY. A redraw introducing a selection
+        // would move focus in a list somebody may have tabbed away from on purpose - which is
+        // what No_selection_before_the_update_means_no_selection_is_introduced pins, and this
+        // test exists so the two are read together rather than one being "fixed" over the
+        // other.
+        using var lb = new ListBox();
+        DisplayList.UpdateInPlace(lb, new[] { "one", "two" });
+        lb.SelectedIndex = -1;
+
+        DisplayList.UpdateInPlace(lb, new[] { "one", "changed" });
+
+        Assert.Equal(-1, lb.SelectedIndex);
+    }
+
+    [Fact]
+    public void APilotsOwnSelectionIsNeverMoved()
+    {
+        // The floor only fires when there is genuinely NO selection - it must never drag a
+        // reader back to the top of a list they are working down.
+        using var lb = new ListBox();
+        DisplayList.UpdateInPlace(lb, new[] { "one", "two", "three" });
+        lb.SelectedIndex = 2;
+
+        DisplayList.UpdateInPlace(lb, new[] { "one", "two", "three", "four" });
+
+        Assert.Equal(2, lb.SelectedIndex);
+    }
+
+    [Fact]
+    public void AnEmptyListIsLeftAloneRatherThanForcedToSelect()
+    {
+        using var lb = new ListBox();
+        DisplayList.UpdateInPlace(lb, System.Array.Empty<string>());
+        Assert.Equal(-1, lb.SelectedIndex);
+    }
 }

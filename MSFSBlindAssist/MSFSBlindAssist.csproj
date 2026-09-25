@@ -133,6 +133,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <!-- Hotkey Guide Files -->
+    <None Update="HotkeyGuides\COWS_DA40_Hotkeys.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="HotkeyGuides\FBW_A320_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -218,6 +221,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-ewd-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-da40-g1000-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-display-agent.js">

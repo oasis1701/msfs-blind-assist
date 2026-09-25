@@ -1,0 +1,342 @@
+COWS DIAMOND DA40 HOTKEY REFERENCE
+
+Covers the DA40-NG and the DA40-XLS. Where the two differ, the difference is
+noted in the aircraft-specific section at the end.
+
+The DA40 is a single-engine GA aeroplane with a Garmin G1000 and a GFC 700
+autopilot. It has no autothrottle, no Airbus FCU and no MCDU, so the FCU and MCDU
+sections of the airliner guides do not apply here. Everything else below is the
+standard MSFSBA set and works on this aircraft.
+
+Application Navigation:
+  Ctrl+1     Focus Sections List
+  Ctrl+2     Focus Panels List
+  Ctrl+3     Focus Status Display field of the current panel (refreshes it if empty)
+  F5         Refresh the current panel's Status Display without leaving your place in it
+  Ctrl+M     Monitor Manager - tick and un-tick which background changes are spoken
+
+The Status Display is the primary readout on this aircraft. Every panel has one,
+holding what the matching glance at the real panel would take in: the whole
+electrical picture, the whole engine picture, and so on. Gauges with published
+arcs report their arc with the value, so oil temperature reads "87 celsius,
+green" rather than a bare number - the arc is what a sighted pilot actually sees.
+
+Tip: Press the same bracket key again to cancel a mode you activated by accident.
+
+OUTPUT MODE - Press right bracket to activate
+
+Altitude:
+  Q          Read Altitude AGL
+  A          Read Altitude MSL
+
+Airspeed:
+  S          Read IAS (Indicated Airspeed)
+  T          Read TAS (True Airspeed)
+  G          Read Ground Speed
+  M          Read Mach Number
+
+Heading:
+  H          Read Magnetic Heading
+  U          Read True Heading
+
+Navigation:
+  N          Read NAV 1 and NAV 2 radio info (frequency, ident, localizer, glideslope, DME)
+  Ctrl+W     Read the waypoint you are flying to: ident (spelt out), distance,
+             magnetic bearing, and time to run. Everything a position report
+             needs, in one sentence.
+
+             You do NOT have to press this to know you have passed one. When
+             the flight plan sequences, MSFSBA says so by itself - "Passing
+             SOXOM. Next VEKIN, 14 miles." - because a sighted pilot sees that
+             happen on the map and a controller expects the call within
+             seconds of it.
+
+             MSFSBA never makes the radio call. It tells you the waypoint went
+             by; what to report, and whether to report it at all, is yours.
+
+             Untick "Waypoint Passing Call" in Ctrl+M to stop the automatic
+             announcement. Ctrl+W keeps working either way.
+
+Fuel:
+  F          Fuel in the TANKS - total and each tank. Answers in the units set on
+             the MFD's Aux System Setup page; while that is the default gallons
+             the AFM's litres figure is given beside it, as the AFM does.
+  Shift+F    How long that fuel LASTS - current flow, endurance at that flow, and
+             the difference between the tanks against the 9 gallon AFM limit.
+             On the NG the tanks drift apart on their own: fuel is burnt from the
+             main and returned through the aux.
+
+             These two do NOT match the MFD's Fuel Calculator, and are not meant
+             to. The calculator is a TOTALIZER - a figure you set yourself with
+             the INC FUEL / DEC FUEL / RST FUEL softkeys on the Engine page, which
+             then counts down by fuel USED. It is a flight-planning figure; these
+             keys read the tanks.
+
+Refuelling (Center Console > Fuel System):
+  There is no fuel panel in the cockpit - the filler caps are on the wings - so
+  MSFSBA offers the transaction instead, which is what you actually do at a pump:
+  type how many gallons you want in each tank, or press Fill Both Tanks for 19.5
+  each, 39 total. Typed in gallons; read back in whatever unit the G1000 is set
+  to. Ground only with the engine shut down, and it says so if you try otherwise.
+
+  If you use GSX, its own refuelling service is the more realistic road and
+  MSFSBA reads it out in full - open the accessible GSX menu with Alt+G.
+
+Weight:
+  W          Read Gross Weight (pounds) + center of gravity
+  Shift+W    Read Gross Weight (kilograms) + center of gravity
+
+V-speeds (output mode). The keys carry Airbus names and DA40 numbers - the
+same aeroplane-specific remapping the display keys use - and every figure comes
+from the AFM:
+
+  Shift+5    Rotate speed, and best rate of climb both with take-off flap and
+             clean. This is the take-off set.
+  Shift+4    Approach speed, short-field approach speed, and best glide. This is
+             the landing set.
+  Shift+6    The flap limit FOR THE FLAP SETTING YOU ARE IN - it reads the
+             selector, so it answers the limit that applies right now.
+  Shift+3    Both flap limits at once, take-off and landing.
+  Shift+2    Manoeuvring speed, never-exceed, and maximum structural cruising.
+
+  The G1000 keeps its own copy of these on the Timer and References window
+  (Ctrl+G on the PFD): VNE, Vg, Vy, Vx, Vr. They agree with the numbers above -
+  two sources, one AFM.
+
+Flaps:
+  L          Read Flap Position
+
+Landing Gear:
+  Shift+G    Read Gear Position
+
+Altimeter:
+  B          Read Altimeter Setting (hPa and inHg, or Standard)
+
+Vertical:
+  V          Read Vertical Speed
+  Ctrl+Shift+R  Read last landing rate (touchdown vertical speed, feet per minute)
+  Ctrl+Shift+G  Read last landing peak g-force
+
+Approach:
+  Ctrl+0     Read Approach Capability (CAT rating)
+
+Engine (single values, for the questions you ask most often):
+  P          RPM. On the NG it also says what the governor is TARGETING, when
+             that differs from what the sensor reads - the Austro has no
+             propeller lever and the ECU sets the blade angle, so this is how you
+             hear it working. On the XLS there is a blue pitch lever and no
+             target.
+  E          Power: load percent, fuel flow, and the power lever position. The
+             Austro has no manifold pressure gauge and no mixture - one lever.
+  Shift+O    Engine temperatures: oil, coolant and gearbox. A liquid-cooled,
+             geared diesel has two the air-cooled Lycoming does not, and on a hot
+             day the coolant temperature is what limits climb power.
+  Alt+S      All of the above at once, plus oil pressure, volts and amps - the
+             whole engine picture in one press.
+
+These three are GENERAL AVIATION keys, not DA40 keys: the question is the same on
+every propeller aeroplane and only the answer changes. A carburetted or injected
+piston would answer E with manifold pressure and mixture, and a turboprop with
+torque and ITT.
+
+Weather:
+  I          Wind Info
+  O          Read Outside Temperature (Celsius) - the OUTSIDE air. Shift+O is the
+             engine's own temperatures.
+
+Time:
+  Z          Read Local Time at aircraft position. Spoken as
+             "HH:MM <time-zone name>" (e.g. "16:38 Eastern Daylight Time"
+             near KJFK), or "HH:MM:SS <time-zone name>" (e.g.
+             "20:30:45 British Summer Time") if "Include seconds in
+             time announcements" is ticked in Announcement Settings.
+             The time-zone name is looked up from the aircraft's
+             geographic position and is DST-aware.
+  Shift+Z    Read Zulu / UTC Time. Spoken as "HH:MMZ" (e.g. "03:30Z"),
+             or "HH:MM:SSZ" (e.g. "00:15:30Z") when seconds are on.
+
+Transponder:
+  X          Read Squawk Code
+
+Distance:
+  D          Distance and time to the DESTINATION.
+
+             Needs the aeroplane moving: the G1000 never publishes route
+             distance directly, so it is recovered from the time-to-run and
+             ground speed - exactly, but only above about a knot. Stopped, it
+             says "not computed" rather than inventing a zero.
+
+  Shift+D    Distance to TOP OF DESCENT, from the G1000's own VNAV.
+
+             Says "no vertical path computed" when there is no descent
+             programmed - which is not the same thing as a descent zero miles
+             away, and the difference matters.
+
+Location:
+  C          Read Nearest City
+
+Trim:
+  Shift+T    Toggle Trim Announcements On/Off
+
+  How to set take-off trim: press Centre Trim on the Elevator Trim panel, and
+  the read-out says "centred". That IS the take-off position on this aeroplane.
+
+  There is no number to calculate and no table to look up. The real DA40's trim
+  wheel carries a moulded T/O mark and the AFM gives no value for it - a sighted
+  pilot matches the wheel to the mark, and the mark is the middle of the band.
+  Real DA40 pilots take off from neutral for a normal load, and adjust in the
+  climb by feel.
+
+  If you are heavily loaded in the back, expect to need a little nose-down after
+  rotation; light and solo, a little nose-up. That is flying, not arithmetic.
+
+  The autopilot cannot help: the GFC 700 trims only while it is ENGAGED, and it
+  may not be engaged below the AFM's minimum engagement height - so take-off trim
+  is always hand-set.
+
+Tools:
+  Ctrl+H     Activate/deactivate Hand Fly mode
+  Ctrl+V     Activate/deactivate Visual Guidance mode. Does not require Hand
+             Fly mode. Enables the same single-letter quick-access hotkeys
+             Hand Fly mode does, plus F for target VS.
+  Ctrl+T     Activate/deactivate Takeoff Assistance
+  Ctrl+D     Read Distance to Selected Runway
+  Ctrl+I     Read ILS Guidance System Report
+
+Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
+  Y          Taxi Status (current taxiway, next turn, distance to destination)
+  Ctrl+Y     Repeat Current Taxi Instruction
+  Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
+  (Open the form with Input mode > Shift+Y)
+
+Waypoint Tracking (use Fix Track window or EFB route viewer to add):
+  1          Track Slot 1
+  2          Track Slot 2
+  3          Track Slot 3
+  4          Track Slot 4
+  5          Track Slot 5
+
+Displays:
+  Alt+P      Open the PFD window - the whole primary flight display, read a line
+             at a time, with the bezel on the keyboard. See the G1000 section.
+  Alt+M      Open the MFD window - pages, softkeys, the engine strip, checklists.
+  Alt+N      Read Navigation Display
+  Alt+E      Read CAS messages (the DA40's equivalent of an E/WD)
+
+  Two keys that are named for an Airbus and do something else here, because this
+  aeroplane has no lower ECAM and no ISIS but does have the things those keys are
+  FOR:
+
+  Alt+S      The ENGINE, at a glance. Load, RPM, oil pressure and temperature,
+             coolant, gearbox, fuel flow, bus volts and amps - one press, the
+             whole engine picture, each gauge with its arc. This is the single
+             most useful key on a single-engine aeroplane: a sighted pilot takes
+             the EIS strip in with one look.
+  Alt+I      The STANDBY instruments. Airspeed, altitude, compass and the standby
+             attitude gyro, plus a warning if that gyro is CAGED or has TOPPLED.
+             The DA40 really carries all four, and a reversion to standbys is the
+             one moment you need them together with no G1000 to read them from.
+
+The G1000 windows (Alt+P and Alt+M):
+
+  These are not read-outs - they are the DISPLAY, with its bezel on the keyboard.
+  Arrow keys read the window; Enter presses the softkey on the selected row.
+
+  Shift+Enter        The FMS cursor (CRSR). Nothing on a setup page can be
+                     changed until this is on.
+  Ctrl+Left/Right    Lower knob - moves BETWEEN fields with the cursor on, and
+                     steps the page GROUP with it off.
+  Ctrl+Up/Down       Upper knob - CHANGES the field you are on (opens its list of
+                     choices, or cycles a letter in a text box), and steps the
+                     PAGE with the cursor off.
+  Ctrl+Enter         ENT - accepts the choice in an open list.
+  Ctrl+G             List every page in the G1000 and open the one you pick. On
+                     the PFD it lists that display's fifteen windows, five of
+                     which have no bezel button at all.
+  Ctrl+T             Type an ident straight into the waypoint box under the
+                     cursor. The aircraft autocompletes it and reads back the
+                     facility it found.
+  Ctrl+D / Ctrl+F / Ctrl+P / Ctrl+E / Ctrl+L
+                     Direct-To / Flight Plan / Procedures / Menu / Clear.
+  Ctrl+Shift+L       Close a window that has opened OVER the page.
+
+                     You will need this. A view stacked on the page - Waypoint
+                     Information, a duplicate-ident picker, the page selector -
+                     SWALLOWS the bezel buttons underneath it, so Ctrl+P for
+                     procedures and Ctrl+F for the flight plan go silently dead
+                     while it is up, with no clue why. CLR does NOT close one.
+                     This does, and it names the page it left you on.
+
+  Ctrl+PageUp/Down   Map range out / in.
+  F5 / Escape        Refresh / close.
+
+  Tuning the radios (PFD only - the G1000 tunes on the PFD and the MFD has no COM
+  or NAV knob at all, for a sighted pilot either):
+
+  Alt+Up/Down        COM megahertz         Alt+Left/Right      COM kilohertz
+  Ctrl+Alt+Up/Down   NAV megahertz         Ctrl+Alt+Left/Right NAV kilohertz
+  Alt+Enter          Move the COM tuning box between COM 1 and COM 2
+  Ctrl+Alt+Enter     Move the NAV tuning box between NAV 1 and NAV 2
+
+  Alt+Shift+Enter        SWAP the COM standby into active
+  Ctrl+Alt+Shift+Enter   SWAP the NAV standby into active
+
+             The push keys above only move the CURSOR between radio 1 and
+             radio 2 - press again and it comes back. Tuning alone changes the
+             STANDBY frequency and nothing else, so without a swap you can dial
+             a frequency perfectly, hear it read back, and still be
+             transmitting on the old one. Shift on the same key swaps it.
+  Ctrl+Shift+Up/Down The barometric knob, one step at a time
+
+  Ctrl+B (input mode) still sets BOTH altimeters to a number you type, and takes
+  either unit - anything above 100 is read as hectopascals, below it as inches.
+  That is the fast way to answer a controller's QNH; the knob above is how the
+  aeroplane is actually flown.
+
+  The frequency speaks itself when the knob comes to rest. The Radios panel keeps
+  its typed entry for when you already know the frequency.
+
+Autopilot (GFC 700):
+  The GFC 700 has NO absolute altitude set - the altitude preselect only moves in
+  steps (1000 ft coarse, 100 ft fine), so altitude is entered by stepping rather
+  than by typing a value. There is no autothrottle on either variant.
+
+DA40-specific notes:
+
+  Held controls. Several controls on this aeroplane are held rather than clicked,
+  and MSFSBA holds them for you for the correct duration: the ECU test (about 26
+  seconds, cycling the propeller once per ECU), the attitude-gyro cage, and the
+  fuel-selector break wire. Press the button once and let it run.
+
+  Silent switches. Panel controls make no cockpit sound. The aeroplane's switch
+  sounds are attached to its mouse clickspots, so driving a control through
+  MSFSBA bypasses them. Confirm a change by reading the value back, not by ear.
+
+  Guards. The engine-master and emergency-battery guards are real controls you
+  can open and close, but they do not physically block their switches in the
+  simulator, and the model opens the engine-master guard by itself when that
+  switch is operated.
+
+  Cycling the propeller is an XLS item and does NOT exist on the NG. On the XLS
+  the Lycoming drives a constant-speed propeller with its own blue pitch lever,
+  and the run-up cycles it two or three times at about 1800 to 2000 RPM: it
+  proves the governor responds, and it pushes the cold, thick oil out of the
+  propeller hub so the blades will change pitch in flight. The NG has no
+  propeller lever at all - the Austro's FADEC governs the propeller through the
+  single power lever - so there is nothing to cycle. What the NG has in its place
+  is the ECU test, which the Engine Start panel runs for you.
+
+  Cold starts. On a cold engine the glow plugs run and the GLOW annunciation
+  lights; the AFM has you wait for it to go out before cranking. The Engine Start
+  panel shows glow state, the glow timer and plug temperature, so the wait is
+  visible. A warm engine never shows it and starts immediately.
+
+Automatic Announcements:
+  Every switch and selector speaks when it changes outside MSFSBA - moved in the
+  cockpit, by hardware, or by a failure. Numeric values (volts, temperatures,
+  RPM, brightness) deliberately do not speak; they change constantly and would
+  bury what matters. Read them from the Status Display instead.
+
+  Use Ctrl+M to mute anything you would rather not hear.

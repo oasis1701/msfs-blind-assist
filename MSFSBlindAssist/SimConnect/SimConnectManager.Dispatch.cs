@@ -146,6 +146,16 @@ public partial class SimConnectManager
                 ProcessWeatherData(weatherData);
                 break;
 
+            case DATA_REQUESTS.REQUEST_FLIGHT_ATTITUDE:
+                FlightAttitudeReceived?.Invoke(this, (FlightAttitudeData)data.dwData[0]);
+                break;
+
+            case DATA_REQUESTS.REQUEST_GPS_WAYPOINT:
+                GpsWaypointData gpsWaypointData = (GpsWaypointData)data.dwData[0];
+                SetLastGpsWaypoint(gpsWaypointData);
+                GpsWaypointReceived?.Invoke(this, gpsWaypointData);
+                break;
+
             case DATA_REQUESTS.REQUEST_NAV_RADIO:
                 NavRadioData navRadioData = (NavRadioData)data.dwData[0];
                 NavRadioReceived?.Invoke(this, navRadioData);

@@ -398,6 +398,16 @@ public partial class MainForm
         SwitchAircraft(new HeadwindA330Definition());
     }
 
+    private void CowsDA40NGMenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.NG));
+    }
+
+    private void CowsDA40XLSMenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new Aircraft.DA40.CowsDA40Definition(Aircraft.DA40.DA40Variant.XLS));
+    }
+
     /// <summary>
     /// Guards against the startup check and the menu item running at once — either would
     /// otherwise open its own update dialog.
