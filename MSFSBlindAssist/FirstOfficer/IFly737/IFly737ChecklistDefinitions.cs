@@ -29,11 +29,12 @@ using Act = System.Action<IFly737ActionExecutor, IFly737StateEvaluator>;
 ///  - Engine start is pilot-paced (PMDG 737 convention) exactly as the template, but the start
 ///    lever's "idle" detection is Engine_Start_Lever_Status_{0,1} &gt;= 3 (a 0-5 switch+fire-light
 ///    composite: 0-2 = Cutoff, 3-5 = Idle), not a derived 1=RUN field.
-///  - Speedbrake ARM (Landing) is a Captain reminder here, not an ActionManual press — this
+///  - Speedbrake ARM (Landing) is a Captain item here, not an ActionManual press — this
 ///    aircraft's speedbrake-lever write has an unverified scale mismatch and is deliberately
-///    read-only. Its Landing Checklist twin (LDC_SPDBRK) auto-detects on
-///    SPEED_BRAKE_ARMED_Light_Status instead of staying a reminder, since the iFly DOES expose
-///    that readback (the PMDG NG3 struct has none at all).
+///    read-only. BOTH its lines — the Landing group's LDA_SPDBRK and the Landing Checklist's
+///    LDC_SPDBRK — are action-free auto-detects on SPEED_BRAKE_ARMED_Light_Status, since the
+///    iFly DOES expose that readback; the Landing flow's read-only LD_SPDBRK_CHECK completes
+///    both, and a timeout keeps both out of the flow-completion latch.
 ///  - Weather radar test: REMOVED from this aircraft's checklist and flow entirely (user
 ///    decision 2026-08-18 — do not re-add). The command exists (`FMS_WXR_SYS_CTRL_SET`,
 ///    Value2 0 TEST/1 NORM, readable back via `Weather_Radar_System_Control_Switch_Status`)
@@ -420,9 +421,15 @@ public static class IFly737ChecklistDefinitions
                 v => v > 1.5 && v < 2.5, new[] { "Engine_Start_Switch_Status_1" },
                 (e, _) => { e.SetEngStartSelector1(IFly737ActionExecutor.EngStartContinuous);
                             e.SetEngStartSelector2(IFly737ActionExecutor.EngStartContinuous); }),
-            // Speedbrake ARM is a Captain reminder on this aircraft — the lever write has an
-            // unverified scale mismatch and is deliberately read-only (see class doc).
-            Reminder("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED"),
+            // Speedbrake ARM is a Captain item on this aircraft — the lever write has an
+            // unverified scale mismatch and is deliberately read-only (see class doc), so this
+            // line has NO action. It mirrors the SPEED BRAKE ARMED light like its Landing
+            // Checklist twin LDC_SPDBRK (it used to be a plain reminder, which the Landing
+            // flow's MarkGroupComplete ticked and latched whether or not the lever was armed).
+            // The flow's read-only LD_SPDBRK_CHECK completes both lines when the light is on,
+            // and on a timeout FlowManager keeps both out of the latch, so they stay live.
+            Auto("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED", "SPEED_BRAKE_ARMED_Light_Status", v => v > 0.5,
+                action: null),
             Reminder("LDA_MISSED", "LANDING", "Set the missed approach altitude"),
         }
     };

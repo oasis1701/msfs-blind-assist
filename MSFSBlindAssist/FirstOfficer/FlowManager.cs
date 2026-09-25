@@ -190,8 +190,8 @@ public class FlowManager<TExec, TState>
             {
                 _announcer.Announce($"Already set: {step.AnnounceText}");
                 StepCompleted?.Invoke(flow, step, i);
-                if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
-                    _checklist.MarkComplete(step.CompletesChecklistItemId);
+                foreach (var itemId in step.LinkedChecklistItemIds)
+                    _checklist.MarkComplete(itemId);
                 if (i < flow.Steps.Count - 1)
                 {
                     try { await Task.Delay(InterStepPauseMs, ct); }
@@ -214,8 +214,11 @@ public class FlowManager<TExec, TState>
                         return;
 
                     case FlowStepFailurePolicy.Skip:
-                        if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
-                            _unfinishedChecklistItemIds.Add(step.CompletesChecklistItemId);
+                        // EVERY linked item, not just CompletesChecklistItemId — a step that
+                        // delivers a line in both the action group and the read-back checklist
+                        // (AlsoCompletesChecklistItemIds) must keep both out of the latch.
+                        foreach (var itemId in step.LinkedChecklistItemIds)
+                            _unfinishedChecklistItemIds.Add(itemId);
                         StepSkipped?.Invoke(flow, step, i);
                         _announcer.Announce($"Skipping: {step.AnnounceText}");
                         break;
@@ -242,8 +245,8 @@ public class FlowManager<TExec, TState>
                 StepCompleted?.Invoke(flow, step, i);
 
                 // Auto-tick linked checklist item
-                if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
-                    _checklist.MarkComplete(step.CompletesChecklistItemId);
+                foreach (var itemId in step.LinkedChecklistItemIds)
+                    _checklist.MarkComplete(itemId);
 
                 // Delay between steps — at least InterStepPauseMs so flows read at
                 // a human pace; a longer per-step PostActionDelayMs still wins.

@@ -158,6 +158,34 @@ public class FlowStep<TState> : IFlowStepDispatch
     /// <summary>If set, auto-checks this checklist item when the step completes successfully.</summary>
     public string? CompletesChecklistItemId { get; set; }
 
+    /// <summary>
+    /// Further checklist items this step delivers, beyond <see cref="CompletesChecklistItemId"/>
+    /// — for a line that appears in BOTH a phase's action group and its read-back checklist and
+    /// is delivered by one step (the iFly 737 Landing flow's read-only speedbrake check completes
+    /// "Speedbrake: ARMED" in both). FlowManager marks, and on a skipped step EXCLUDES, every id
+    /// in <see cref="LinkedChecklistItemIds"/>: a line the step delivers but does not name would
+    /// otherwise be ticked and latched by MarkGroupComplete even when the step was skipped.
+    /// </summary>
+    public IReadOnlyList<string> AlsoCompletesChecklistItemIds { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Every checklist item this step delivers: <see cref="CompletesChecklistItemId"/> first,
+    /// then <see cref="AlsoCompletesChecklistItemIds"/>, skipping blanks and repeats. The one
+    /// list FlowManager consults for all three checklist hand-offs (already set, success, skip).
+    /// </summary>
+    public IEnumerable<string> LinkedChecklistItemIds
+    {
+        get
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            if (!string.IsNullOrEmpty(CompletesChecklistItemId) && seen.Add(CompletesChecklistItemId))
+                yield return CompletesChecklistItemId;
+            foreach (var id in AlsoCompletesChecklistItemIds)
+                if (!string.IsNullOrEmpty(id) && seen.Add(id))
+                    yield return id;
+        }
+    }
+
     // -----------------------------------------------------------------------
     // Skip condition (smart resume)
     // -----------------------------------------------------------------------

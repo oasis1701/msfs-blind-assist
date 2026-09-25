@@ -112,11 +112,14 @@ public class IFly737ProfileStructureTests
         Assert.Equal(ChecklistItemType.CaptainReminder, landingAutobrake.Type);
         Assert.Null(landingAutobrake.CheckAction);
 
-        // Speedbrake ARM (Landing) — Captain reminder on this aircraft (unverified lever
-        // write scale, deliberately read-only).
+        // Speedbrake ARM (Landing) — a Captain item on this aircraft (unverified lever write
+        // scale, deliberately read-only): NO action. It mirrors the armed light rather than
+        // staying a plain reminder, so finishing the Landing flow cannot latch it ticked over
+        // an unarmed lever — see IFly737LandingSpeedbrakeCheckTests.
         var speedbrakeArm = groups.First(g => g.Id == "LANDING").Items.Single(i => i.Id == "LDA_SPDBRK");
-        Assert.Equal(ChecklistItemType.CaptainReminder, speedbrakeArm.Type);
+        Assert.Equal(ChecklistItemType.AutoDetectable, speedbrakeArm.Type);
         Assert.Null(speedbrakeArm.CheckAction);
+        Assert.Equal("SPEED_BRAKE_ARMED_Light_Status", speedbrakeArm.StateFieldName);
 
         // Its Landing Checklist twin auto-detects (the iFly DOES expose a speedbrake-armed
         // readback the PMDG NG3 struct lacks) but must still be action-free per the _CL

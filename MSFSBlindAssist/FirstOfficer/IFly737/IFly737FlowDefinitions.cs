@@ -86,7 +86,10 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///  - Speedbrake ARM (LD_SPDBRK) is a Captain reminder — Spoiler_Lever_Status is registered
 ///    read-only (Disp, ForwardPedestal.cs:822: "raw position (int 0-225) ... nearest-detent
 ///    decode" — no write command exists at all) and the executor deliberately exposes no write
-///    for it (unverified scale mismatch).
+///    for it (unverified scale mismatch). A READ-ONLY wait on SPEED_BRAKE_ARMED_Light_Status
+///    (LD_SPDBRK_CHECK, 15 s, Skip, before the gear check) then confirms the Captain armed it
+///    and completes both "Speedbrake: ARMED" lines, so an unarmed lever is never latched
+///    complete by the flow finishing.
 ///  - Weather radar test: REMOVED from this aircraft's flow and checklist entirely (user
 ///    decision 2026-08-18 — do not re-add). A WXR TEST command does exist
 ///    (`FMS_WXR_SYS_CTRL_SET`, Value2 0 TEST/1 NORM, readable back via
@@ -539,7 +542,7 @@ public static class IFly737FlowDefinitions
     private static Flow BuildLanding() => new()
     {
         Id = "LANDING", Name = "Landing",
-        Description = "Start switches CONT, speedbrake armed, missed approach altitude, then confirms the gear is down.",
+        Description = "Start switches CONT, speedbrake armed, missed approach altitude, then confirms the speedbrake is armed and the gear is down.",
         RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
         Steps = new()
         {
@@ -547,9 +550,27 @@ public static class IFly737FlowDefinitions
                 ("Engine_Start_Switch_Status_0", IFly737ActionExecutor.EngStartContinuous),
                 ("Engine_Start_Switch_Status_1", IFly737ActionExecutor.EngStartContinuous)),
             // Speedbrake ARM is a Captain reminder on this aircraft — the lever's write path
-            // is deliberately read-only (see class doc).
+            // is deliberately read-only (see class doc). LD_SPDBRK_CHECK below confirms it.
             Captain("LD_SPDBRK", "Speedbrake: ARMED"),
             Captain("LD_MISSED", "Set the missed approach altitude."),
+            // Read-only speedbrake confirmation — it never touches the lever (the FO has no
+            // write for it, see class doc); it only waits for the SPEED BRAKE ARMED light the
+            // Captain was just asked for (0 Off / 1 DIM / 2 BRIGHT, DIM counts as armed like
+            // the gear lights). Completes BOTH "Speedbrake: ARMED" lines — the Landing
+            // Checklist's LDC_SPDBRK and this action group's LDA_SPDBRK — so when the light
+            // never comes on the step is announced as skipped and FlowManager keeps both out of
+            // MarkGroupComplete's latch: they keep mirroring the light instead of reading
+            // complete over a lever that is not armed. Before this step, finishing the flow
+            // ticked and latched them whatever the lever was doing.
+            // 15 s, not the gear checks' 20: the reminder was spoken two steps ago (with the
+            // missed-approach reminder and the inter-step pauses in between, the Captain has
+            // had ~20 s since being asked by the time this times out), and the gear check is
+            // queued behind it — a longer wait only delays "three green". A timeout costs
+            // nothing but the "Skipping" line: the checklist line stays live and ticks itself
+            // the moment the Captain arms the lever.
+            Skip(WaitForField("LD_SPDBRK_CHECK", "Speedbrake: ARMED", "SPEED_BRAKE_ARMED_Light_Status", v => v > 0.5, 15,
+                    checklistItemId: "LDC_SPDBRK", alsoChecklistItemIds: new[] { "LDA_SPDBRK" }),
+                s => s.GetValue("SPEED_BRAKE_ARMED_Light_Status") > 0.5),
             // Read-only gear-down confirmation — this flow writes no gear lever at all.
             // Confirms the gear the way a crew does, "three green" (IFly737GearConfirmation),
             // and completes the Landing Checklist's "Landing gear: DOWN". LAST, so the steps
@@ -702,7 +723,8 @@ public static class IFly737FlowDefinitions
     };
 
     private static Step WaitForField(string id, string label, string field, Func<double, bool> condition, int timeoutSec,
-        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip, string? checklistItemId = null) => new()
+        FlowStepFailurePolicy onTimeout = FlowStepFailurePolicy.Skip, string? checklistItemId = null,
+        string[]? alsoChecklistItemIds = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.WaitForCondition,
@@ -711,6 +733,7 @@ public static class IFly737FlowDefinitions
         TimeoutSeconds = timeoutSec,
         FailurePolicy = onTimeout,
         CompletesChecklistItemId = checklistItemId,
+        AlsoCompletesChecklistItemIds = alsoChecklistItemIds ?? Array.Empty<string>(),
         PostActionDelayMs = 0,
     };
 

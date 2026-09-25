@@ -89,7 +89,7 @@ plan's Part B2 — this aircraft's flow *steps* are the same, only the underlyin
 | After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; **gear lever UP** (not "OFF" — this airframe's lever has only Up/Down, see B3); autobrake OFF; then confirms the gear is up via the gear lights (see B10) |
 | Descent | Seatbelt sign ON; captain reminders for autobrake, ILS, landing data |
 | Approach | EFIS APP / range 20; altimeter reminder |
-| Landing | Start switches CONT; **speedbrake ARM is a Captain reminder** (see B7); missed-altitude reminder; then confirms the gear is down via the gear lights (see B10) |
+| Landing | Start switches CONT; **speedbrake ARM is a Captain reminder** (see B7); missed-altitude reminder; then confirms the speedbrake is armed via the SPEED BRAKE ARMED light (15 s, see B7) and the gear is down via the gear lights (see B10) |
 | After Landing | Landing lights off; taxi light ON; strobes steady; anti-ice OFF; probe heat **AUTO**; APU ON; start switches OFF; autobrake OFF |
 | Shutdown | APU generators ON; start levers CUTOFF (no spool-down wait); signs/lights off; fuel pumps OFF; window heat OFF; transponder **ALT OFF** |
 | Secure | IRS OFF; emergency exit lights **OFF**; window heat OFF; packs OFF |
@@ -217,6 +217,16 @@ detents 0 / 35 / 149 / 224. The read-only stance is vendor-justified, not merely
 is deliberate, not a gap to test — confirm the reminder is spoken and no lever movement is
 attempted.
 
+After the reminders the flow waits up to **15 s** for the SPEED BRAKE ARMED light (a READ-ONLY
+check, `LD_SPDBRK_CHECK` — it never moves the lever; the gear check still comes last). It
+completes BOTH "Speedbrake: ARMED" lines — the Landing group's and the Landing Checklist's.
+Two quick checks on final:
+1. Arm the speedbrake when reminded → expect "Speedbrake: ARMED" (or "Already set: Speedbrake:
+   ARMED" if it was armed before the flow) and both lines ticked.
+2. Leave it DOWN → expect "Timed out waiting for: Speedbrake: ARMED", "Skipping: Speedbrake:
+   ARMED", then the gear check and "Landing flow complete" — and both speedbrake lines still
+   UNticked. Arm it now → both lines tick within a second or two.
+
 ### B8. Engine start — GRD auto-release — **LIVE-VERIFY (still open)**
 Engine start gates on the start switch springing back from GRD plus N2 (there is no starter-valve
 field — settled statically). Confirm the switch does return from GRD on its own at the expected
@@ -264,8 +274,9 @@ leave it for each check.
    only auto-ticks from live state.
 6. **Landing Checklist speedbrake-armed item** (`LDC_SPDBRK`) is the one readback item that
    diverges from the PMDG port: it auto-detects on `SPEED_BRAKE_ARMED_Light_Status` (this SDK
-   does expose that light, unlike the PMDG NG3 struct) rather than staying a plain reminder. Arm
-   the speedbrake by hand and confirm the item ticks.
+   does expose that light, unlike the PMDG NG3 struct) rather than staying a plain reminder — and
+   so does its Landing-group twin `LDA_SPDBRK` (both action-free). Arm the speedbrake by hand and
+   confirm both items tick.
 
 ---
 
