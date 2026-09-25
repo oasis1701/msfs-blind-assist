@@ -129,7 +129,9 @@ public class TaxiGraph
     /// </summary>
     private HashSet<int> _navdataHoldShortNodeIds = new();
 
-    private bool IsNavdataHoldShort(int nodeId) => _navdataHoldShortNodeIds.Contains(nodeId);
+    /// <summary>Whether navdata recorded this node as a hold-short — the identity to use, never
+    /// <see cref="TaxiNode.Type"/> (see <see cref="_navdataHoldShortNodeIds"/>).</summary>
+    public bool IsNavdataHoldShort(int nodeId) => _navdataHoldShortNodeIds.Contains(nodeId);
 
     /// <summary>
     /// Component id of the largest connected component (the main taxi network), or -1 for a graph

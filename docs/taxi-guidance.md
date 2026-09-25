@@ -1969,8 +1969,12 @@ feature onto navdata pavement, **by position**, in this order:
    heading, which is exactly the kind of spot an FBO, hangar or fuel place ends
    at);
 3. failing that, a taxi node within `MaxNodeMetres` (100 m) that
-   `TaxiAssistForm.NearestRoutableNode` has cleared of hold-short nodes and
-   runway pavement — the "nearest taxiway point" must not be on a runway;
+   `PlaceListBuilder.NearestRoutableNode` has cleared of hold-short nodes and
+   runway pavement — the "nearest taxiway point" must not be on a runway. A
+   hold line is recognised by navdata's own identity
+   (`TaxiGraph.IsNavdataHoldShort`) as well as the node type, because the
+   parking pass stamps `Parking` on any node within 100 m of a stand — a hold
+   node beside a stand would otherwise pass as an ordinary taxiway point;
 4. failing all three, the place is not routable and is not listed.
 
 Among the stands in range it prefers one that is a MEMBER of the feature (a

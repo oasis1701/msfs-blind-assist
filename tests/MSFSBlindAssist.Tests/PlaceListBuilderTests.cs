@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Navigation.Surroundings;
 
 namespace MSFSBlindAssist.Tests;
@@ -123,5 +124,28 @@ public class PlaceListBuilderTests
         var entry = Assert.Single(PlaceListBuilder.Build(Cat(Place(FeatureKind.Cargo, "UPS Cargo", 21.3307, -157.9469)),
             new[] { military, civil }, None, NoNode, Any));
         Assert.Same(civil.Spot, entry.Spot);
+    }
+
+    // A place must never END on a hold line. Hold-short identity is navdata's endpoint type, never
+    // TaxiNode.Type: the parking pass stamps the node nearest a stand "Parking" whatever it was, so a
+    // hold-short node 10 m from a stand with no lead-in of its own reads as Parking.
+    [Fact]
+    public void A_hold_short_node_stamped_parking_is_still_never_a_place_end()
+    {
+        const double lat = 52.0, lon = 4.0, mPerDeg = 111_320.0;
+        var paths = new List<TaxiPath>
+        {
+            new() { Name = "A", Type = "T", Width = 75, StartType = "N", EndType = "HS",
+                    StartLat = lat - 200 / mPerDeg, StartLon = lon, EndLat = lat, EndLon = lon },
+        };
+        double standLon = lon + 10 / (mPerDeg * Math.Cos(lat * Math.PI / 180));
+        var stand = new ParkingSpot { Name = "A", Number = 9, Latitude = lat, Longitude = standLon };
+        var g = TaxiGraph.Build(paths, new List<ParkingSpot> { stand }, new List<StartPosition>(), new List<Runway>());
+        var holdNode = g.FindNearestNode(lat, lon)!;
+        Assert.Equal(TaxiNodeType.Parking, holdNode.Type);            // the stamp this test is about
+
+        var n = PlaceListBuilder.NearestRoutableNode(g, lat, lon);
+
+        Assert.Null(n);
     }
 }
