@@ -846,13 +846,24 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
             responseJson = await response.Content.ReadAsStringAsync();
         }
 
+        return ParseResponse(responseJson);
+    }
+
+    /// <summary>Spoken/read suffix when Gemini stopped at its output cap — the blind pilot cannot
+    /// see that a briefing just stops. Mirrors ClaudeService's max_tokens note.</summary>
+    internal const string IncompleteNote = "\n\n(Response may be incomplete — Gemini stopped before finishing.)";
+
+    /// <summary>The response parsing formerly inline in SendRequestAsync; internal so GeminiResponseTests can pin it.</summary>
+    internal static string ParseResponse(string responseJson)
+    {
         var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
         if (result?.Candidates == null || result.Candidates.Length == 0)
         {
             throw new InvalidOperationException("Gemini API returned no candidates in response.");
         }
 
-        var candidateContent = result.Candidates[0].Content;
+        var candidate = result.Candidates[0];
+        var candidateContent = candidate.Content;
         if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
         {
             throw new InvalidOperationException("Gemini API returned no content in response.");
@@ -862,7 +873,14 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
         string combined = string.Concat(candidateContent.Parts
             .Where(p => !string.IsNullOrEmpty(p.Text))
             .Select(p => p.Text));
-        return string.IsNullOrWhiteSpace(combined) ? "No description available." : combined;
+        bool truncated = string.Equals(candidate.FinishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(combined))
+        {
+            return truncated
+                ? "Gemini stopped before completing a response. Please try again."
+                : "No description available.";
+        }
+        return truncated ? combined + IncompleteNote : combined;
     }
 
     private static int GetRetryDelay(HttpResponseMessage response, int attempt)
@@ -930,12 +948,33 @@ Cover the following topics, using descriptive section headings separated by blan
    - If no significant NOTAMs are found, state that no notable NOTAMs were found for these airports
    - Skip routine or minor NOTAMs (e.g. crane notifications, wildlife warnings) unless they affect runway operations
 
+7. TAXI OUT AND TAXI IN
+   The flight plan data ends with a TAXI ROUTES block computed by the pilot's own simulator
+   scenery. For each of the two legs (taxi out at the departure airport, taxi in at the arrival
+   airport) do two things, in this order:
+   a) Describe the computed route in prose: the stand it starts from (say plainly when the block
+      calls it a representative stand rather than an assignment), the taxiways in order, every
+      hold-short point and which runway it protects, and for the arrival which side to leave the
+      runway (left or right), the exit taxiway and its distance from the threshold, and the
+      fallback exit if that one is missed. Use ONLY the taxiway, exit and stand names given in the block
+      for this part, and repeat distances and sides exactly as given. If the block says a leg is
+      unavailable, say so in one sentence.
+   b) Then, under the heading ""Real-world practice"", answer this from your own knowledge of the
+      airport: ""Provide the step-by-step taxi route at [ICAO] from [runway] to [terminal/gate] in a [aircraft type]. Please include the expected taxiways, hold short points, and any specific restrictions.""
+      Substitute the airport, runway, stand or terminal and aircraft type from the data. Do it for
+      the departure (from the stand to the runway) and for the arrival (from the runway, via the
+      expected exit, to the terminal or gate). Mention wingspan or aircraft-type restrictions on
+      taxiways and stands where you know of them. Where your route differs from the computed one,
+      say so and say which is which; never present your own route as the computed one. When the
+      block says no ground data exists for an airport, this real-world route is the answer for
+      that leg and should be given in full.
+
 IMPORTANT GUIDELINES:
 - Write in plain text with no markdown formatting
 - Use line breaks between sections for screen reader clarity
 - Use section headings in plain text (not with # or * symbols)
 - Be factual and informative, drawing on your geographic knowledge
-- Aim for 300 to 500 words
+- Aim for 600 to 900 words
 - Focus on helping the pilot build a mental picture of the journey
 - If weather data is not available, note that and skip the weather section
 
@@ -976,6 +1015,9 @@ FLIGHT PLAN DATA:
     {
         [JsonProperty("content")]
         public Content? Content { get; set; }
+
+        [JsonProperty("finishReason")]
+        public string? FinishReason { get; set; }
     }
 
     private class Content
