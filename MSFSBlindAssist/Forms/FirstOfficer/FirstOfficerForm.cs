@@ -93,7 +93,6 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private Button _pauseResumeBtn = null!;
     private Button _stopFlowBtn = null!;
     private Button _loadSimBriefBtn = null!;
-    private CheckBox _speakProgressCheck = null!;
 
     // ------------------------------------------------------------------
     // State
@@ -497,17 +496,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _stopFlowBtn     = MakeButton("Stop Flow",     "Stop and cancel the running flow", StopFlow);
         _loadSimBriefBtn = MakeButton("Load SimBrief", "Load SimBrief flight plan and set transition altitudes", LoadSimBrief);
 
-        _speakProgressCheck = new CheckBox
-        {
-            Text = "Speak flow progress",
-            Checked = true,
-            AutoSize = true,
-            AccessibleName = "Speak flow progress",
-        };
-
+        // A "Speak flow progress" checkbox sat here until 2026-09: nothing ever read it,
+        // so unticking it silenced nothing. Removed rather than wired up (owner decision).
         btnPanel.Controls.AddRange(new Control[] {
-            _startFlowBtn, _pauseResumeBtn, _stopFlowBtn, _loadSimBriefBtn,
-            _speakProgressCheck });
+            _startFlowBtn, _pauseResumeBtn, _stopFlowBtn, _loadSimBriefBtn });
         layout.Controls.Add(btnPanel, 0, 3);
 
         _flowsTab.Controls.Add(layout);
