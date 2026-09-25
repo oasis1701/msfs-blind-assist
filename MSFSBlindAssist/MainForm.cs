@@ -655,6 +655,7 @@ public partial class MainForm : Form
             simConnectManager.RequestFOAltitudeAGL();
         };
         _universalAutomationTimer.Start();
+        simConnectManager.QueuedEventDispatched += OnQueuedEventDispatched;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
         simConnectManager.AircraftLoaded += OnAircraftLoaded;

@@ -244,6 +244,10 @@ public interface IAircraftDefinition
     /// </summary>
     void OnPanelButtonFired(string varKey, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
+    /// <summary>Called just before a panel Event-type button's event is sent, so an aircraft can arm
+    /// anything that must be in place before the sim can answer (the FCU value echo).</summary>
+    void OnPanelButtonFiring(string varKey);
+
     /// <summary>
     /// Called once after a panel is built/shown, so an aircraft with a multi-page
     /// status box (driven by a page combo) can populate the box with the combo's
@@ -382,8 +386,11 @@ public interface IAircraftDefinition
     /// Connected branch calls ResetAnnouncementBaselines; a tracker wiped there loses the
     /// baseline it has just taken and eats the NEXT real change as its baseline — on the MD-11
     /// that was the first master caution, the first COM tune, the first altimeter wind and the
-    /// pilot's first perf entry of every reconnected session (found 2026-09-08). Definitions
-    /// with no such trackers use the default (does nothing). ⚠️ The two callers differ: a
+    /// pilot's first perf entry of every reconnected session (found 2026-09-08). The base
+    /// (BaseAircraftDefinition) starts the FCU hardware-dial announcer's settle here (a drop then
+    /// upgrades it through <see cref="OnVariableCacheCleared"/>), so an override on an aircraft that
+    /// uses AnnounceFcuValue must call base; otherwise definitions with no such trackers need not
+    /// override it. ⚠️ The two callers differ: a
     /// disconnect clears the cache, so the reconnect re-fires EVERY variable and a wiped tracker
     /// re-seeds on delivery; a flight load clears nothing and the batch fires only on a CHANGED
     /// value, so a tracker wiped for it must be re-seeded from the cache once the values have
@@ -400,6 +407,13 @@ public interface IAircraftDefinition
     void OnSimContextReset();
 
     /// <summary>
+    /// The SimConnect variable cache was cleared on a connection drop, so the reconnect re-fires every
+    /// variable. Called right after <see cref="OnSimContextReset"/> by MainForm.OnConnectionLost. The base
+    /// makes the FCU callouts' settle treat that re-fire as the aircraft publishing (Md11SeedGate's rule).
+    /// </summary>
+    void OnVariableCacheCleared();
+
+    /// <summary>
     /// A continuous batch has finished dispatching: every SimVarUpdated it carried has reached
     /// ProcessSimVarUpdate, whether or not anything in it moved. Raised on the UI thread after
     /// that batch's updates, for every delivery the UI thread can vouch for — MainForm skips one
@@ -408,9 +422,18 @@ public interface IAircraftDefinition
     /// not a guarantee of one call per period. The MD-11's context-reset seed pass waits on a
     /// full cycle of these and on the deliveries going quiet (Md11SeedGate);
     /// <see cref="DeferredFlushWatchVariable"/> is the narrower "the batch carrying THIS
-    /// variable arrived" form. Default: nothing.
+    /// variable arrived" form. The base counts the delivery toward the FCU hardware-dial announcer's
+    /// settle and speaks the FCU callouts staged while this batch dispatched (a callout is judged on
+    /// the whole sample, with the FCU health var wherever it sorts in the batch), so an override on an
+    /// aircraft that uses AnnounceFcuValue must call base.
     /// </summary>
     void OnContinuousBatchDelivered(int batchNum);
+
+    /// <summary>
+    /// An event SimConnectManager queued while the calc-path probe was pending has just been sent
+    /// (SimConnectManager.QueuedEventDispatched). Default (base): restart that event's FCU echo window.
+    /// </summary>
+    void OnQueuedEventDispatched(string eventName);
 
     /// <summary>
     /// The monitored variable whose continuous-batch delivery completes an announcement this

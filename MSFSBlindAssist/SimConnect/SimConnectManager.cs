@@ -65,6 +65,13 @@ public partial class SimConnectManager
     public event EventHandler<int>? ContinuousBatchDelivered;
 
     /// <summary>
+    /// A dotted/H: event that SendEvent queued while the calc-path probe was running has just been sent
+    /// by FlushPendingCalcEvents — possibly a minute after the caller asked for it. Lets a definition
+    /// re-arm whatever it armed for the original call (the FCU value echo).
+    /// </summary>
+    public event EventHandler<string>? QueuedEventDispatched;
+
+    /// <summary>
     /// The continuous batch a monitored variable is carried in, or false when the key is not
     /// batch-covered (individual data def, PMDG CDA, or not registered at all).
     /// </summary>

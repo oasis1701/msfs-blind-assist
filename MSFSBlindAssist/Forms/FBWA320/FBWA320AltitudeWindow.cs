@@ -45,8 +45,8 @@ public class FBWA320AltitudeWindow : FBWA320FCUWindowBase
     {
         string input = altTextBox.Text.Trim();
         if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); altTextBox.SelectAll(); return; }
-        if (v < 100 || v > 49000) { announcer.AnnounceImmediate("Altitude must be between 100 and 49000 feet"); altTextBox.SelectAll(); return; }
-        aircraft.SetFCUAltitudeValue(v, simConnect, announcer);
+        if (!FcuValueEntry.TryAltitude(v, out double feet, out string? error)) { announcer.AnnounceImmediate(error!); altTextBox.SelectAll(); return; }
+        aircraft.SetFCUAltitudeValue(feet, simConnect, announcer);
         // SelectAll keeps the field populated and gives NVDA's "<value> selected" echo,
         // alongside the spoken "FCU altitude <value>, selected" readback — matching the A380.
         altTextBox.SelectAll();
