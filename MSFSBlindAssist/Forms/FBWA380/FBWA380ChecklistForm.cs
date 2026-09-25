@@ -1,5 +1,6 @@
 using System.Text;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
@@ -174,7 +175,8 @@ public sealed class FBWA380ChecklistForm : Form
     // were busy — preserving order and count. KEY ANTI-LAG RULE: a Coherent scrape is a
     // round-trip (~tens to hundreds of ms), so we scrape ONCE per BURST, not once per
     // press. When more presses are already queued we fire them back-to-back with only the
-    // short FWS-register gap and skip the scrape; only the LAST press in the burst scrapes
+    // FWS's hold-and-release time (A380EcpKeyPulse — about half a second a press since FBW
+    // #10934) and skip the scrape; only the LAST press in the burst scrapes
     // + reads. So tapping Down five times quickly lands on the final line and reads it
     // once, instead of crawling through five scrape+announce cycles a quarter-second apart
     // (the "laggy as heck" symptom). Spaced-out single presses still each scrape + read.
@@ -185,20 +187,22 @@ public sealed class FBWA380ChecklistForm : Form
         {
             while (true)
             {
+                // The window is closing: its own close-time C/L is the last press it may make, so a
+                // queued key is dropped, never pressed into an E/WD the pilot has left.
+                if (_closing || IsDisposed) { _pending.Clear(); break; }
                 bool moreQueued = _pending.Count > 0;
 
-                // Pulse the momentary ECP button (1 -> 0). The FWS latches the press from a
-                // high-frequency input buffer, so a short high time is plenty.
-                _sim?.ExecuteCalculatorCode($"1 (>L:{lvar})");
-                await Task.Delay(45);
-                _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
+                // Pulse the momentary ECP button (1 -> 0), held through a whole FWS cycle: since
+                // FBW #10934 the FWS samples these keys once per 125 ms cycle, not every frame,
+                // so the old 45 ms press was seen about one time in three (see A380EcpKeyPulse).
+                await PressEcpKey(lvar);
 
                 if (moreQueued)
                 {
-                    // Intermediate press in a burst: just give the FWS time to consume this
-                    // press (and reset its input buffer) before the next one, then fire the
-                    // next without a scrape. No read here — we only read where we land.
-                    await Task.Delay(85);
+                    // Intermediate press in a burst: fire the next one without a scrape (PressEcpKey
+                    // leaves the key released for a whole FWS cycle first, so it is a new rising
+                    // edge rather than merging into this one). No read here — we only read where
+                    // we land.
                     (lvar, say) = _pending.Dequeue();
                     continue;
                 }
@@ -251,7 +255,21 @@ public sealed class FBWA380ChecklistForm : Form
     // hide-on-close.
     private async Task PulseClRaw()
     {
-        try { _sim?.ExecuteCalculatorCode("1 (>L:A32NX_BTN_CL)"); await Task.Delay(140); _sim?.ExecuteCalculatorCode("0 (>L:A32NX_BTN_CL)"); } catch { }
+        try { await PressEcpKey("A32NX_BTN_CL"); } catch { }
+    }
+
+    // ONE press of an ECP key, on the app's one ECP press clock (A380EcpKeyPulse.Shared, which the
+    // ECAM Control Panel's buttons share): reserve the slot — waiting out whatever release time the
+    // previous press still needs, even one still HELD — then hold and release. Every press this
+    // window makes goes through here except the close-time C/L, which reserves on the same clock.
+    private async Task PressEcpKey(string lvar)
+    {
+        int wait = A380EcpKeyPulse.Shared.Reserve(Environment.TickCount64);
+        if (wait > 0) await Task.Delay(wait);
+        _sim?.ExecuteCalculatorCode($"1 (>L:{lvar})");
+        await Task.Delay(A380EcpKeyPulse.HoldMs);
+        _sim?.ExecuteCalculatorCode($"0 (>L:{lvar})");
+        A380EcpKeyPulse.Shared.MarkReleased(Environment.TickCount64);
     }
 
     // The ECL overlay was auto-hidden by the FWS (a checklist completed). Pulse C/L —
@@ -425,9 +443,18 @@ public sealed class FBWA380ChecklistForm : Form
         if (_weShowedOverlay && _sim != null)
         {
             var sim = _sim;
+            // Reserved on the shared clock NOW, so Escape during the opening C/L press (still held)
+            // waits for its release instead of merging with it and leaving the overlay up.
+            int wait = A380EcpKeyPulse.Shared.Reserve(Environment.TickCount64);
             Task.Run(async () =>
             {
-                try { sim.ExecuteCalculatorCode("1 (>L:A32NX_BTN_CL)"); await Task.Delay(140); sim.ExecuteCalculatorCode("0 (>L:A32NX_BTN_CL)"); } catch { }
+                try
+                {
+                    if (wait > 0) await Task.Delay(wait);
+                    sim.ExecuteCalculatorCode("1 (>L:A32NX_BTN_CL)"); await Task.Delay(A380EcpKeyPulse.HoldMs); sim.ExecuteCalculatorCode("0 (>L:A32NX_BTN_CL)");
+                    A380EcpKeyPulse.Shared.MarkReleased(Environment.TickCount64);
+                }
+                catch { }
             });
         }
         // The EWD client is SHARED (owned by MainForm) — only detach + stop the ECL

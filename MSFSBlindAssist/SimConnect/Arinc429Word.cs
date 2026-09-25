@@ -10,6 +10,16 @@
 // Source: fbw-a380x/src/wasm/fbw_a380/src/Arinc429.{cpp,h}; TS wrapper
 // Common/arinc429.tsx. Read the source L:var from SimConnect as FLOAT64, then
 // wrap it here. See tools/a380-sd-pages.md.
+//
+// ⚠️ A DISCRETE word (a bitfield — the PRIM/FMGC/FCDC/FWC/CPIOM status words)
+// is stored the SAME way: FBW builds the bitfield as an integer, converts it to
+// a float NUMERICALLY, and packs that float's IEEE-754 bits. So bit n is read
+// from the float's VALUE, (uint)Value >> (n - 1), exactly as all three FBW
+// readers do it (C++ Arinc429Utils::bitFromValueOr, TS Arinc429Word.bitValueOr,
+// Rust `f32::from_bits(value) as u32`). Testing the RAW low 32 bits instead reads
+// the float's exponent and mantissa: bit 28 comes out set for any word with a bit
+// at 18 or above, and bit 29 never does. That was this decoder's bug until
+// 2026-09-25 — see BitValueOr.
 
 namespace MSFSBlindAssist.SimConnect;
 
@@ -25,17 +35,22 @@ public readonly struct Arinc429Word
     /// <summary>The decoded value, already in engineering units (kg/°C/psi/ft/%/…).</summary>
     public readonly float Value;
 
-    private readonly uint _raw32; // low word as integer (for discrete bitfields)
-
     public Arinc429Word(double simVar)
     {
         // Numeric truncation to match FBW's static_cast<uint64_t>(simVar).
         // Guard against NaN/negative/overflow so a garbage read can't throw.
         ulong u64 = (simVar > 0 && simVar < 1.8e19) ? (ulong)simVar : 0UL;
-        _raw32 = (uint)(u64 & 0xFFFFFFFF);
-        Value = BitConverter.Int32BitsToSingle((int)_raw32);
+        Value = BitConverter.Int32BitsToSingle((int)(uint)(u64 & 0xFFFFFFFF));
         Ssm = (uint)(u64 >> 32);
     }
+
+    /// <summary>
+    /// A discrete word's bitfield: the float <see cref="Value"/> converted back to the integer
+    /// FBW built it from (0 for a negative, NaN or out-of-range value, none of which a discrete
+    /// word carries). Exact for every FBW discrete word: the data bits are 11-29, a span a
+    /// float's 24-bit significand holds without rounding.
+    /// </summary>
+    public uint DiscreteBits => Value >= 0f && Value < 4294967296f ? (uint)Value : 0u;
 
     public bool IsNormalOperation => Ssm == 0b11;
     public bool IsFunctionalTest => Ssm == 0b10;
@@ -48,9 +63,27 @@ public readonly struct Arinc429Word
     /// <summary>Value when data is present (Normal Operation or Functional Test), else the fallback.</summary>
     public float ValueOr(float fallback) => (Ssm == 0b11 || Ssm == 0b10) ? Value : fallback;
 
-    /// <summary>1-based ARINC bit (1..32) when data is present, else the fallback.</summary>
+    /// <summary>
+    /// 1-based ARINC bit (1..32) of a DISCRETE word when data is present, else the fallback —
+    /// read from <see cref="DiscreteBits"/>, the float's value, exactly as FBW's own readers do.
+    /// ⚠️ Never test the raw low 32 bits: until 2026-09-25 this did, and read the float's
+    /// exponent instead of the bitfield. Two live captures recorded as puzzles were that
+    /// misreading: PRIM FG word 5 at rest, 0x48000000, is 131072 = bit 18 (manual speed
+    /// control), not "reversion asserted at rest"; FG word 3 at FL360, 0x4D804000, is bits 20 and
+    /// 29 (ALT hold + cruise), not "the constraint qualifier set with nothing armed".
+    /// </summary>
     public bool BitValueOr(int bit, bool fallback) =>
-        (bit >= 1 && bit <= 32 && (Ssm == 0b11 || Ssm == 0b10)) ? ((_raw32 >> (bit - 1)) & 1) != 0 : fallback;
+        (bit >= 1 && bit <= 32 && (Ssm == 0b11 || Ssm == 0b10)) ? BitValue(bit) : fallback;
+
+    /// <summary>
+    /// 1-based ARINC bit (1..32) of a DISCRETE word WITHOUT the SSM gate — FBW's own
+    /// <c>bitValue</c>. ONLY for a word whose writer never sets its SSM, so its own readers ignore
+    /// it: the A32NX FWC word 124 is built with <c>Arinc429RegisterSubject.createEmpty()</c> and
+    /// stays Failure Warning for good, and the PFD reads CHECK ALT from it with <c>bitValue</c>.
+    /// Everywhere else use <see cref="BitValueOr"/>: a failed word must say nothing, not "off".
+    /// </summary>
+    public bool BitValue(int bit) =>
+        bit >= 1 && bit <= 32 && ((DiscreteBits >> (bit - 1)) & 1) != 0;
 
     /// <summary>
     /// Convenience: format the value for a screen-reader readout, or "invalid"

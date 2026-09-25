@@ -42,8 +42,12 @@ public partial class FlyByWireA380Definition
     // ROW/ROP + OANS RWY AHEAD bit maps (see the A32NX_ROW_ROP_WORD_1/A32NX_OANS_WORD_1
     // handler below) — hoisted out of the per-event ProcessSimVarUpdate call so a fresh
     // array isn't allocated on every landing-rollout frame.
+    // The ROW/ROP layout since FBW #10699 (2026-07-04) — the PFD's AttitudeIndicatorWarnings and
+    // the FWS aurals (FwsAutoCallouts) read it the same way. Before it, 11 was "operative" (now the
+    // SSM), 12 "ROP braking under autobrake" and 13 the manual-braking warning.
     private static readonly (int bit, string phrase)[] RowRopWord1Bits =
-        { (12, "Maximum braking"), (13, "Max braking"), (14, "If wet, runway too short"), (15, "Runway too short") };
+        { (11, "Max braking"), (12, "Set max reverse"), (13, "Keep max reverse"),
+          (14, "If wet, runway too short"), (15, "Runway too short") };
     private static readonly (int bit, string phrase)[] OansWord1Bits =
         { (11, "Runway ahead") };
 
@@ -69,8 +73,13 @@ public partial class FlyByWireA380Definition
         {
             // The FCU zeroes the stock altitude when it is off; its selected altitude is never below 100 ft.
             if (value <= 0) { phrase = FcuValuePhrases.Unavailable; return true; }
-            var (altitude, unit) = AltUser(value);
-            phrase = FcuValuePhrases.Altitude(altitude, unit);
+            // The unit the PRIM has CONFIRMED (_metricAlt), not MetricAlt, which also counts a press
+            // MSFSBA has only commanded: UpdateMetricAltitude rebaselines this phrase when the PRIM's
+            // word arrives, so composed from the commanded unit the panel's forced re-read of an
+            // unchanged altitude in between came out in the new unit and was spoken as a turn.
+            phrase = _metricAlt
+                ? FcuValuePhrases.Altitude(value * 0.3048, "meters")
+                : FcuValuePhrases.Altitude(value, "feet");
             return true;
         }
         if (varName == Fcu.VerticalSpeed) { phrase = FcuValuePhrases.VerticalSpeed(value); return true; }
@@ -81,6 +90,33 @@ public partial class FlyByWireA380Definition
 
     public override bool ProcessSimVarUpdate(string varName, double value, ScreenReaderAnnouncer announcer)
     {
+        // Take-off roll V-speed callouts, fed per SIM_FRAME (hot path — first branch). The contract
+        // is TakeoffVSpeedCallouts': arms on the ground below 40 kt with V1 and VR set, upward
+        // crossings only, once per roll, a rejected take-off re-arms. AnnounceImmediate,
+        // deliberately: "V1" and "Rotate" are action cues whose value IS the timing, and a queued
+        // announce would wait out a ground-speed callout already being spoken. It interrupts, so the
+        // calls one sample crosses go out as ONE utterance (Compose) — spoken one by one, "V1" was
+        // cut off by "Rotate" whenever V1 = VR. AnnounceImmediate bypasses both MainForm's
+        // Suppressed wrap and the Ctrl+M mute, so both are applied here — per speed, keyed on the
+        // V1 / VR / V2 rows (A380TakeoffCallouts.IsMuted), as the MD-11 and the iFly do.
+        if (varName == A380TakeoffCallouts.IasKey)
+        {
+            var callouts = _takeoffCallouts.ProcessSample(value, _calloutOnGround);
+            if (callouts.Count > 0 && !announcer.Suppressed)
+            {
+                var muted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet;
+                string? sentence = TakeoffVSpeedCallouts.Compose(callouts, callout => A380TakeoffCallouts.IsMuted(callout, muted));
+                if (sentence != null) announcer.AnnounceImmediate(sentence);   // "V1, Rotate": one utterance, never two
+            }
+            return true;
+        }
+        // Air/ground for the roll callouts and the FMS V-speeds that arm them — both PEEKED, never
+        // consumed: SIM_ON_GROUND still reaches the base's "On ground"/"Airborne", and the monitor
+        // still speaks "V1: 142 knots" as the pilot enters a speed. Up here, ahead of every branch
+        // that could consume them.
+        if (varName == "SIM_ON_GROUND") _calloutOnGround = value >= 0.5;
+        else if (A380TakeoffCallouts.IsVSpeedKey(varName)) A380TakeoffCallouts.Feed(_takeoffCallouts, varName, value);
+
         // Cache the ND TO-waypoint packed-word halves for the ND status box decode
         // (no announcement; fall through to normal processing).
         if (varName == "A32NX_EFIS_L_TO_WPT_IDENT_0") _ndIdent0 = value;
@@ -341,9 +377,9 @@ public partial class FlyByWireA380Definition
 
         // PRIM FG discrete word 3 — cached, never spoken. Bit 28 (alt_cstr_applicable) and bit
         // 29 (altIsCrzAlt) are QUALIFIERS on the armed ALT call-out, not armed states of their
-        // own: bit 28 was measured TRUE at FL360 with A32NX_FMA_VERTICAL_ARMED at 0 and nothing
-        // armed, so announcing off this word directly would invent an arming that never
-        // happened. Returning true is what keeps it silent. Its "Cruise Altitude Mode" panel row
+        // own: bit 29 was measured TRUE at FL360 with A32NX_FMA_VERTICAL_ARMED at 0 and nothing
+        // armed (a capture once misread as bit 28 — see Arinc429Word.BitValueOr), so announcing
+        // off this word directly would invent an arming that never happened. Returning true is what keeps it silent. Its "Cruise Altitude Mode" panel row
         // still renders, from TryGetDisplayOverride.
         if (varName == "FMA_CRUISE_ALT_MODE")
         {
@@ -441,6 +477,7 @@ public partial class FlyByWireA380Definition
                 if (hadPrev && bitOn != prevOn && !muted)
                     announcer.Announce($"{label}: {(bitOn ? "active" : "off")}");
             }
+            UpdateMetricAltitude(fgWord.BitValueOr(A380MetricAltitude.Bit, false), muted, announcer);
             return true;
         }
         // Keep the live current state of the FCU engage/mode toggles so their
@@ -506,7 +543,7 @@ public partial class FlyByWireA380Definition
             return true;
         }
 
-        // Autoland capability (FCDC FG discrete word 4, bits 23/24/25). Announce
+        // Autoland capability (FCDC FG discrete word 1 — A380ApproachCapability). Announce
         // decoded transitions only; suppress the raw ARINC word from the generic path.
         // GATED on the in-flight FMGC phases (Climb..Go-around) — on the ground the
         // word flickers none↔capability during taxi and spammed callouts (the same
@@ -514,11 +551,7 @@ public partial class FlyByWireA380Definition
         // unaffected.
         if (varName == "PFD_AUTOLAND")
         {
-            var w = new SimConnect.Arinc429Word(value);
-            string cap = (!w.IsNormalOperation && !w.IsFunctionalTest) ? "none"
-                : w.BitValueOr(25, false) ? "LAND 3 dual"
-                : w.BitValueOr(24, false) ? "LAND 3 single"
-                : w.BitValueOr(23, false) ? "LAND 2" : "none";
+            string cap = A380ApproachCapability.Describe(value) ?? "none";
             bool inFlightPhase = _fmgcPhaseA380 >= 2 && _fmgcPhaseA380 <= 6; // Climb..Go-around
             if (inFlightPhase && _lastAutolandCap != null && _lastAutolandCap != cap && cap != "none")
                 announcer.Announce($"Approach capability {cap}");
@@ -580,12 +613,13 @@ public partial class FlyByWireA380Definition
         if (varName is "A32NX_ROW_ROP_WORD_1" or "A32NX_OANS_WORD_1")
         {
             var word = new SimConnect.Arinc429Word(value);
-            // Bit map from the FBW writer (a380_systems hydraulic/autobrakes.rs):
-            // 11 = ROW/ROP operative (status, not spoken), 12 = ROP actively
-            // braking UNDER AUTOBRAKE, 13 = ROP manual-braking warning (throttles
-            // idle, no autobrake), 14/15 = in-flight ROW wet/dry too short.
-            // Bit 12 was missing from this decode — an autobrake landing where
-            // ROP commanded max braking announced nothing.
+            // Bit map from the FBW writer (a380_systems hydraulic/autobrakes.rs, RowRopWord1Bits):
+            // 11 = BRAKE MAX BRAKING requested, 12 = SET MAX REVERSE, 13 = KEEP MAX REVERSE,
+            // 14/15 = in-flight ROW wet/dry too short. ROW/ROP inoperative is a Failure
+            // Warning SSM, which BitValueOr reads as "no bit" — silent, never a false "off".
+            // ⚠️ Until 2026-09-25 none of this could fire: Arinc429Word read the raw IEEE bits
+            // of the float the bitfield is stored as, and the bits it tested here are float
+            // mantissa bits that a word with bits 11-15 never sets.
             (int bit, string phrase)[] bits = varName == "A32NX_ROW_ROP_WORD_1" ? RowRopWord1Bits : OansWord1Bits;
             bool muted = Settings.SettingsManager.Current.A380DisabledMonitorVariablesSet.Contains(varName);
             foreach (var (bit, phrase) in bits)
@@ -785,15 +819,16 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
-        // EFIS baro UNIT lives on XMLVAR_Baro_Selector_HPA_{1,2} (1=hPa, 0=inHg) —
-        // NOT A32NX_FCU_EFIS_*_BARO_IS_INHG, which is stuck at 0 on the A380X
-        // (verified live: F/O reads XMLVAR=0/inHg while IS_INHG stays 0/hPa, so
-        // the readout always said hPa). Track the real unit here and re-announce
+        // EFIS baro UNIT: the EFIS-CP selector's own var, A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG
+        // (1 = inHg), which the FCU reads every frame since FBW #10855. NOT
+        // XMLVAR_Baro_Selector_HPA_{1,2} (1 = hPa), which this tracked before #10855 and which
+        // nothing reads any more — tracking it let the spoken unit, and the unit a typed QNH is
+        // taken in, disagree with what the cockpit shows. Track the real unit here and re-announce
         // the setting in the new unit when the pilot switches it.
-        if (varName == "XMLVAR_Baro_Selector_HPA_1" || varName == "XMLVAR_Baro_Selector_HPA_2")
+        if (varName == "A32NX_FCU_EFIS_L_BARO_IS_INHG" || varName == "A32NX_FCU_EFIS_R_BARO_IS_INHG")
         {
-            bool capt = varName.EndsWith("_1", StringComparison.Ordinal);
-            bool inHg = value < 0.5;
+            bool capt = varName == "A32NX_FCU_EFIS_L_BARO_IS_INHG";
+            bool inHg = value > 0.5;
             bool? prev = capt ? _baroInHgL : _baroInHgR;
             if (capt) _baroInHgL = inHg; else _baroInHgR = inHg;
             if (prev.HasValue && prev.Value != inHg) // skip the baseline read
@@ -845,22 +880,10 @@ public partial class FlyByWireA380Definition
             }
             return true;
         }
-        // Metric-altitude (FCU MTRS) state — cache it so every MSFSBA altitude
-        // read-out switches to metres; let the generic monitor announce On/Off.
-        if (varName == "A32NX_METRIC_ALT_TOGGLE")
-        {
-            _metricAlt = value > 0.5;
-            // The unit is part of the altitude callout's words but not of FCU_ALT_VALUE: re-express the
-            // recorded altitude, or the next forced read of an unchanged altitude is spoken as a turn.
-            if (_lastFcuAltFeet is double feet && TryComposeFcuValuePhrase(Fcu.Altitude, feet, out string? altPhrase))
-                RebaselineFcuValue(Fcu.Altitude, altPhrase);
-            return false;
-        }
-
         // Suppress the side-effect "Altitude Increment: 100" announce that a window-driven
         // SetFCUAltitudeValue fires to force 100-ft granularity (the user set an altitude, not
         // the increment). Time-boxed, so a deliberate later increment change still speaks.
-        if (varName == "XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT" && DateTime.UtcNow < _altIncrAnnounceSuppressUntil)
+        if (varName == "A32NX_FCU_ALT_INCREMENT_1000" && DateTime.UtcNow < _altIncrAnnounceSuppressUntil)
             return true;
 
         // ---- FCU selected-value CHANGE announcements (hardware knob turns; 777-MCP parity) ----
@@ -1006,6 +1029,28 @@ public partial class FlyByWireA380Definition
     }
 
     /// <summary>
+    /// The branches that speak a call-out another Ctrl+M row owns, kept out of MainForm's mute
+    /// wrap so muting their own row cannot silence it; each checks the owning row itself:
+    /// <list type="bullet">
+    /// <item>the FMA vertical mode, lateral mode and armed vertical modes speak the derived altitude
+    /// mode, whose row is "Altitude Mode" (<see cref="SpeakAltitudeMode"/>). What they say for
+    /// themselves is gated on their own rows: the two modes fall through to the generic monitor,
+    /// which checks theirs after the return, and "… armed" checks its row inline;</item>
+    /// <item>the take-off airspeed feed speaks V1, Rotate and V2, whose rows are the V-speeds';</item>
+    /// <item>the VOR/DME and NDB lights speak the ND filter, whose row is the WPT light's;</item>
+    /// <item>the E/WD lines speak ECAM messages, whose row is "ECAM memos".</item>
+    /// </list>
+    /// Wrapped instead, muting "Vertical Mode" (or "Armed Vertical Modes") silenced "Altitude Mode"
+    /// too. A new branch of this shape belongs here, pinned by A380MuteWrapTests.
+    /// </summary>
+    public override bool IsMuteWrapExempt(string varName) =>
+        varName is "A32NX_FMA_VERTICAL_MODE" or "A32NX_FMA_LATERAL_MODE" or ArmedAltitudeMode.ArmedVerticalKey
+            or A380TakeoffCallouts.IasKey
+            or "A32NX_FCU_EFIS_L_VORD_LIGHT_ON" or "A32NX_FCU_EFIS_R_VORD_LIGHT_ON"
+            or "A32NX_FCU_EFIS_L_NDB_LIGHT_ON" or "A32NX_FCU_EFIS_R_NDB_LIGHT_ON"
+        || varName.StartsWith("A32NX_EWD_LOWER_", StringComparison.Ordinal);
+
+    /// <summary>
     /// Speak a phrase the tracker decided is worth speaking, honouring the pilot's Ctrl+M mute.
     /// The mute is checked HERE rather than inside the tracker so the tracker stays pure.
     /// </summary>
@@ -1052,6 +1097,32 @@ public partial class FlyByWireA380Definition
     /// <inheritdoc />
     public override void CancelDeferredFlush() => _altArmHoldPending = false;
 
+    /// <summary>
+    /// The metric-altitude (MTRS) mode from PRIM FG discrete word 5 bit 14 — FBW #10855, see
+    /// <see cref="A380MetricAltitude"/>. The first word after a baseline reset only records it. A
+    /// change re-expresses the FCU altitude callout's baseline in the new unit, and one after the
+    /// baseline is spoken — unless it confirms the pilot's own combo pick (the screen reader has
+    /// already read that) or the word's Ctrl+M row, "FMA Mode Alerts", is muted: the call-out rides
+    /// that row because it comes from the same word.
+    /// </summary>
+    private void UpdateMetricAltitude(bool metric, bool muted, ScreenReaderAnnouncer announcer)
+    {
+        bool baseline = !_metricAltBaselined;
+        bool changed = metric != _metricAlt;
+        _metricAltBaselined = true;
+        _metricAltKnown = true;
+        _metricAlt = metric;
+        if (!changed) return;
+        // The unit is part of the altitude callout's words but not of FCU_ALT_VALUE: re-express the
+        // recorded altitude, or the next forced read of an unchanged altitude is spoken as a turn.
+        if (_lastFcuAltFeet is double feet && TryComposeFcuValuePhrase(Fcu.Altitude, feet, out string? altPhrase))
+            RebaselineFcuValue(Fcu.Altitude, altPhrase);
+        bool echo = Environment.TickCount64 < _metricEchoUntilTick;
+        _metricEchoUntilTick = 0;
+        if (!baseline && !echo && !muted)
+            announcer.Announce($"Metric altitude: {(metric ? "on" : "off")}");
+    }
+
     /// <inheritdoc />
     /// <remarks>Also drops any FCU readout still waiting for its second half. Those latches have no
     /// timeout and mute that window's dial callout while set (readoutPending), so one whose half was
@@ -1061,10 +1132,21 @@ public partial class FlyByWireA380Definition
         base.OnSimContextReset();
         _reqHdg = _reqSpd = _reqAlt = _reqVs = false;
         _pHdgVal = _pHdgMgd = _pSpdVal = _pSpdMgd = _pVsVal = _pFpaVal = _pVsMode = null;
+        // A new flight or a dropped connection: the last MTRS word may no longer be true. Its unit
+        // stays in _metricAlt for the read-outs until the next word, but it is not "known".
+        _metricAltKnown = false;
+        _metricAltBaselined = false;
+        // The roll callouts' ARM (never the speeds, which a reconnect does not reliably redeliver):
+        // a flight load delivers the per-frame airspeed ahead of the 1 Hz SIM_ON_GROUND, so an arm
+        // kept from a parked aircraft would call V1, Rotate and V2 at the loaded cruise.
+        _takeoffCallouts.Reset();
     }
 
     public override void ResetAnnouncementBaselines()
     {
+        // The roll callouts' ARM goes on the reconnect too (as on the MD-11 and the iFly): nothing
+        // armed before a drop may fire on a later landing rollout. The speeds are kept.
+        _takeoffCallouts.Reset();
         _altMode.Reset();
         _prevVertArmed = -1;
         _prevLatArmed = -1;
@@ -1076,7 +1158,7 @@ public partial class FlyByWireA380Definition
         // _lastSquawkBcd < 0.
         _lastSquawkBcd = -1;
         // EFIS baro value/mode/unit, per side (A32NX_FCU_{LEFT,RIGHT}_EIS_BARO_HPA /
-        // _IS_STD / XMLVAR_Baro_Selector_HPA_{1,2}): _lastBaroL/R gate on < 0, the two
+        // _IS_STD / A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG): _lastBaroL/R gate on < 0, the two
         // bool? pairs gate on HasValue.
         _lastBaroL = -1;
         _lastBaroR = -1;
@@ -1136,7 +1218,13 @@ public partial class FlyByWireA380Definition
         // exact cold-start condition for every var it covers.
         _arincEnumState.Clear();
         // FMA mode alert bits (FMA_FG_ALERTS, "Speed Protection"/"FMA Reversion"): gate is
-        // hadPrev from TryGetValue, same absent-key-is-silent shape.
+        // hadPrev from TryGetValue, same absent-key-is-silent shape. The metric-altitude bit rides
+        // the same word but is deliberately NOT reset here: this runs after the reconnect's first
+        // batch has re-fired every var, so clearing _metricAltBaselined here swallowed the first
+        // real MTRS change after a reconnect, and clearing the unit (_metricAlt/_metricAltKnown)
+        // sent the read-outs and the Altitude window back to feet on a metric FCU. All three are
+        // OnSimContextReset's, on the way down. (_fmaFgBitState has the same ordering hazard; it
+        // predates this and is left as it was.)
         _fmaFgBitState.Clear();
         // External power (GPU) available, per GPU 1-4 (A380X_GND_GPU_AVAIL_n): gate is
         // prev >= 0 (declared sentinel -1 = unseen), independent per index — no

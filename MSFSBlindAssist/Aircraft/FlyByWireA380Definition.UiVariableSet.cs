@@ -70,6 +70,102 @@ public partial class FlyByWireA380Definition
     internal void RememberCommandedValue(string varKey, double value) =>   // internal: tests reach it without a SimConnect send
         _commandedValues[varKey] = (Math.Round(value), Environment.TickCount64);
 
+    /// <summary>
+    /// The FD pushbutton event to send for a set of ANY flight-director key, or null when the
+    /// flight directors are already where the pilot asked. Judged against the commanded-or-cached
+    /// state of the one FD light, and records what it commands — which is what turns a set of
+    /// both "sides" into a single press. Internal so tests reach it without a SimConnect send.
+    /// </summary>
+    internal string? FlightDirectorCommand(double desired, SimConnectManager simConnect)
+    {
+        string? evt = A380FlightDirector.Command(desired,
+            CommandedOrCachedValue(A380FlightDirector.StateKey, simConnect));
+        if (evt != null) RememberCommandedValue(A380FlightDirector.StateKey, desired > 0.5 ? 1 : 0);
+        return evt;
+    }
+
+    /// <summary>
+    /// The Ctrl+P window's FD button: one press flips the flight directors from the state a
+    /// combo pick would be judged against (commanded, else cached), and records the result, so a
+    /// Flight Directors pick straight after is not a second press. An unknown state presses and
+    /// records "on", the same "unknown is not off" rule as every A380 toggle.
+    /// </summary>
+    public void ToggleFlightDirectors(SimConnectManager simConnect)
+    {
+        if (FlightDirectorToggleCommand(simConnect) is { } evt) simConnect.SendEvent(evt);
+    }
+
+    /// <summary><see cref="ToggleFlightDirectors"/>'s decision, without the send (internal: tests
+    /// cannot load the SimConnect assembly <c>SendEvent</c> needs).</summary>
+    internal string? FlightDirectorToggleCommand(SimConnectManager simConnect)
+    {
+        double desired = (CommandedOrCachedValue(A380FlightDirector.StateKey, simConnect) ?? 0) > 0.5 ? 0 : 1;
+        return FlightDirectorCommand(desired, simConnect);
+    }
+
+    /// <summary>
+    /// The MTRS press that brings metric altitude to <paramref name="desired"/>, or null when it is
+    /// already there — judged against the mode just commanded, else the PRIM's. Records the command,
+    /// so <see cref="MetricAlt"/> (the unit the Altitude window takes a typed altitude in) reads the new
+    /// mode at once and a second "on" inside the window presses nothing, and marks the PRIM's
+    /// confirmation as an echo: both callers are the pilot's own UI — a combo pick the screen reader
+    /// reads, and the Altitude window's MTRS button, whose accessible name carries the new state the
+    /// moment it is pressed. Internal so tests reach it without a SimConnect send.
+    /// </summary>
+    internal string? MetricAltitudeCommand(double desired)
+    {
+        string? evt = A380MetricAltitude.Command(desired, MetricAltCommandedOrKnown());
+        if (evt != null)
+        {
+            _metricCommanded = (desired > 0.5, Environment.TickCount64);
+            _metricEchoUntilTick = Environment.TickCount64 + CommandedValueMs;
+        }
+        return evt;
+    }
+
+    /// <summary>The metric mode to act on: one just commanded wins until the PRIM confirms it or the
+    /// window lapses; else the PRIM's last word; null before the first word.</summary>
+    private bool? MetricAltCommandedOrKnown()
+    {
+        if (_metricCommanded is { } c)
+        {
+            bool lapsed = Environment.TickCount64 - c.Tick >= CommandedValueMs;
+            bool confirmed = _metricAltKnown && _metricAlt == c.Value;
+            if (lapsed || confirmed) _metricCommanded = null;
+            else return c.Value;
+        }
+        return _metricAltKnown ? _metricAlt : null;
+    }
+
+    /// <summary>
+    /// An ECAM Control Panel key (<c>A32NX_BTN_*</c>). Since FBW #10934 the FWS samples these once per
+    /// 125 ms cycle, so a press is held <see cref="A380EcpKeyPulse.HoldMs"/> and waits on the app's one
+    /// ECP press clock — the checklist window presses on the same one — for the release time the last
+    /// press still needs: two quick presses of CLR otherwise merged into one. Spoken exactly as the
+    /// base <c>PulseMomentaryLVar</c> speaks every other momentary button. Async on the UI thread
+    /// (never <c>Task.Run</c>).
+    /// </summary>
+    private static void PulseEcpKey(SimConnectManager simConnect, ScreenReaderAnnouncer announcer,
+        string varKey, string displayName)
+    {
+        int wait = A380EcpKeyPulse.Shared.Reserve(Environment.TickCount64);
+        _ = PressAsync();
+        announcer.Announce($"{displayName} pressed");
+
+        async Task PressAsync()
+        {
+            try
+            {
+                if (wait > 0) await Task.Delay(wait);
+                simConnect.ExecuteCalculatorCode($"1 (>L:{varKey})");
+                await Task.Delay(A380EcpKeyPulse.HoldMs);
+                simConnect.ExecuteCalculatorCode($"0 (>L:{varKey})");
+                A380EcpKeyPulse.Shared.MarkReleased(Environment.TickCount64);
+            }
+            catch { /* best-effort, as the base pulse */ }
+        }
+    }
+
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
@@ -121,11 +217,18 @@ public partial class FlyByWireA380Definition
             RampSliderTo(varDef.Name, value, simConnect, varDef.SliderMin, varDef.SliderMax);
             return true;
         }
-        // FCU SPD/MACH toggle from a panel button: the legacy dotted event is inert on the A380's
-        // new FCU — switch via the stock K-events instead (see SpdMachToggleRpn). Then re-read.
+        // FCU SPD/MACH toggle from a panel button: press the FCU's own SPD/MACH button, then re-read.
+        // (CORRECTED 2026-09 for FBW #10855.) This used to run an RPN that read the stock
+        // A:AUTOPILOT MANAGED SPEED IN MACH and fired K:AP_MANAGED_SPEED_IN_MACH_ON/_OFF — right
+        // while the TS SpeedManager consumed those events, dead since #10855 deleted it: the WASM
+        // now MASKS both events and re-means them as the FMS's own speed/Mach crossover command
+        // (SimConnectInterface.cpp, A32NX_FMGC_{MACH,SPD}_MODE_ACTIVATE), so the sim never moves
+        // the stock var, the RPN's condition froze, and the button could only ever switch one way.
+        // A32NX.FCU_SPD_MACH_TOGGLE_PUSH is what the cockpit button fires (fcu.xml) and is now
+        // handled by the WASM (spd_mach_button_pressed) — the same event the A32NX uses.
         if (varKey == "A32NX.FCU_SPD_MACH_TOGGLE_PUSH")
         {
-            simConnect.ExecuteCalculatorCode(SpdMachToggleRpn);
+            simConnect.SendEvent(varKey);
             RequestFCUSpeedWithStatus(simConnect);
             return true;
         }
@@ -202,7 +305,10 @@ public partial class FlyByWireA380Definition
             // "Off" does nothing (the pulse already returned the var to 0).
             if (value > 0.5)
             {
-                PulseMomentaryLVar(simConnect, announcer, varKey, varDef.DisplayName);
+                if (varKey.StartsWith("A32NX_BTN_", StringComparison.Ordinal))
+                    PulseEcpKey(simConnect, announcer, varKey, varDef.DisplayName);
+                else
+                    PulseMomentaryLVar(simConnect, announcer, varKey, varDef.DisplayName);
             }
             return true;
         }
@@ -594,10 +700,11 @@ public partial class FlyByWireA380Definition
             return true;
         }
         // Every OTHER EFIS Control Panel control is a direct L:var write on the A380X. What is
-        // actually left here is the VV/CSTR/ARPT option buttons and the hPa/inHg baro-unit
-        // selector: ND mode/range are claimed just above, the WPT/VOR/NDB filter by
-        // NdFilterSelection earlier, and navaid 1/2, LS, TRAF, the WX/TERR overlay and the OANS
-        // range by A380EfisCpControls.Handles ~50 lines above — every one of those is an
+        // actually left here is the VV/CSTR/ARPT option buttons. (The hPa/inHg baro-unit selector
+        // is A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG since FBW #10855, a plain FCU input the generic
+        // A32NX_ catch-all at the bottom writes.) ND mode/range are claimed just above, the
+        // WPT/VOR/NDB filter by NdFilterSelection earlier, and navaid 1/2, LS, TRAF, the WX/TERR
+        // overlay and the OANS range by A380EfisCpControls.Handles ~50 lines above — every one of those is an
         // FCU-SHIM OUTPUT for which this write is DEAD. (The old wording listed them all as
         // "confirmed from efis-cp.xml: no events", which is the claim A380EfisCpControls was
         // written to retract; leaving it here is how a maintainer re-adds a dead write.) The
@@ -605,23 +712,40 @@ public partial class FlyByWireA380Definition
         // SimConnect data-def write is unreliable for FBW L:vars (same as the reads), so route
         // them through the MobiFlight calculator path to guarantee they actuate.
         if (varKey.StartsWith("A32NX_EFIS_", StringComparison.Ordinal)
-            || varKey.StartsWith("A380X_EFIS_", StringComparison.Ordinal)
-            || varKey.StartsWith("XMLVAR_Baro_Selector_HPA_", StringComparison.Ordinal))
+            || varKey.StartsWith("A380X_EFIS_", StringComparison.Ordinal))
         {
             simConnect.ExecuteCalculatorCode($"{(int)Math.Round(value)} (>L:{varKey})");
             return true;
         }
-        // Flight Director 1 / 2 (CORRECTED 2026-06): state is the stock
-        // AUTOPILOT FLIGHT DIRECTOR ACTIVE:n; the working actuator is the cockpit FD
-        // button's event K:TOGGLE_FLIGHT_DIRECTOR with the SIDE as the parameter
-        // (1 = Capt FD, 2 = F/O FD — live-verified per-side). Toggle only when the
-        // desired state differs from the live SimVar. The old _FD_ACTIVE L:var was DEAD.
-        if (varKey == "FD_1_CTL" || varKey == "FD_2_CTL")
+        // Flight directors (CORRECTED 2026-09 for FBW #10855): ONE FCU pushbutton, read from its
+        // light and pressed only when the pick differs. The FCU combo and the two legacy per-side
+        // keys all land here and share ONE commanded state, so setting both sides — what the old
+        // per-side combos invited, and what the First Officer's cockpit-prep step does — presses
+        // the button once instead of twice (two presses cancel). Never K:TOGGLE_FLIGHT_DIRECTOR:
+        // see A380FlightDirector.
+        if (A380FlightDirector.IsControlKey(varKey))
         {
-            uint side = varKey == "FD_1_CTL" ? 1u : 2u;
-            bool desiredOn = value > 0.5;
-            bool currentOn = (simConnect.GetCachedVariableValue(varKey) ?? (desiredOn ? 0.0 : 1.0)) > 0.5;
-            if (desiredOn != currentOn) simConnect.SendEvent("TOGGLE_FLIGHT_DIRECTOR", side);
+            if (FlightDirectorCommand(value, simConnect) is { } fdEvent) simConnect.SendEvent(fdEvent);
+            // Nothing sent, so nothing will change: re-read so the combo shows the live state.
+            else simConnect.RequestVariable(varKey, forceUpdate: true);
+            return true;
+        }
+        // FCU altitude increment (0 = 100 ft, 1 = 1000 ft): the FCU's own absolute set, the event the
+        // Altitude window uses — never the generic A32NX_ catch-all's raw write below, which would
+        // work (the cockpit knob writes the L:var) but leave two paths for one knob.
+        if (varKey == "A32NX_FCU_ALT_INCREMENT_1000")
+        {
+            simConnect.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", value > 0.5 ? 1000u : 100u);
+            return true;
+        }
+        // FCU metric altitude (MTRS): the button is a toggle, so press it only when the pick differs
+        // from the PRIM's mode (see A380MetricAltitude). This key has no L:var of its own — without
+        // this branch it would fall through to the base class's raw write of a nonexistent var.
+        if (varKey == A380MetricAltitude.ControlKey)
+        {
+            if (MetricAltitudeCommand(value) is { } mtrsEvent) simConnect.SendEvent(mtrsEvent);
+            // Nothing sent, so nothing will change: re-read so the combo shows the live mode.
+            else simConnect.RequestVariable(varKey, forceUpdate: true);
             return true;
         }
         // Wing anti-ice — ⚠️ the A380 drives the STOCK switch, NOT the A32NX's
@@ -777,7 +901,7 @@ public partial class FlyByWireA380Definition
     // Apply a settable UI variable through the A380's existing HandleUIVariableSet
     // routing, looking up its registered definition (so callers without a panel
     // varDef can reuse the proven set paths). Used by the FCU Baro window for the
-    // CAPT_QNH_SET / *_EIS_BARO_IS_STD / XMLVAR_Baro_Selector routes.
+    // CAPT_QNH_SET / *_EIS_BARO_IS_STD / A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG routes.
     public bool ApplyUIVariable(string varKey, double value, SimConnectManager s, ScreenReaderAnnouncer a)
     {
         SimVarDefinition def = GetVariables().TryGetValue(varKey, out var d)

@@ -290,6 +290,17 @@ public interface IAircraftDefinition
     /// <returns>True if the update was fully processed and no further generic processing needed, false otherwise</returns>
     bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer);
 
+    /// <summary>
+    /// True when <see cref="ProcessSimVarUpdate"/> for <paramref name="varName"/> speaks a call-out that
+    /// ANOTHER Ctrl+M row owns. MainForm's mute wrap (<see cref="Services.DefAnnounceMuteSets"/>)
+    /// skips such a variable: applied there, muting this variable's row would also silence the
+    /// other row's call-out. Its branch checks each call-out's own row itself, and anything the
+    /// variable says for ITSELF either falls through to the generic monitor, which checks this row
+    /// after the return, or checks it locally. Only the mute half of the wrap is skipped; the
+    /// UI-echo half still applies.
+    /// </summary>
+    bool IsMuteWrapExempt(string varName);
+
     // UI Variable Setting (Panel Controls)
 
     /// <summary>

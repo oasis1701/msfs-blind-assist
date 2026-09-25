@@ -31,6 +31,19 @@ public class SimVarDefinition
     public bool OnlyAnnounceValueDescriptionMatches { get; set; }  // True to only announce when value matches a ValueDescriptions key (within tolerance), skip intermediate values
 
     /// <summary>
+    /// A value below this is a "not set" sentinel, spoken as "DisplayName: not set" instead of a
+    /// number. For a var the aircraft clears to a sentinel such as -1 or 0 — the FBW takeoff speeds
+    /// (FBW #10855 moved the A32NX's cleared V1/VR from 0 to -1, so every climb-out was announced as
+    /// "V1: -1 knots"). A threshold, not a <see cref="ValueDescriptions"/> key: a sentinel written in
+    /// one unit and read back through another need not come back bit-exact. Null (the default) = none.
+    /// </summary>
+    public double? NotSetBelow { get; set; }
+
+    /// <summary>Whether <paramref name="value"/> is this var's "not set" sentinel (<see cref="NotSetBelow"/>).
+    /// The ONE test both the spoken readout and the status-box panels use, so they cannot disagree.</summary>
+    public bool IsNotSet(double value) => NotSetBelow is double below && value < below;
+
+    /// <summary>
     /// How far a delivered value must move from the cached one to count as a CHANGE — to fire
     /// SimVarUpdated (unless force-read). Null, the default, means the shared
     /// <see cref="SimConnectManager.ChangeTolerance"/> (0.001); both delivery paths apply it through
