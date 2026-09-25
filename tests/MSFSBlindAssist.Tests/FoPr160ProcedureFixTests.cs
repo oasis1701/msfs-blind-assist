@@ -253,7 +253,10 @@ public class FoPr160ProcedureFixTests
 
         Assert.Equal(SbLadder.PseudoKey, step.EventName);
         Assert.Equal(SbLadder.ArmedField, step.VerifyFieldName);
-        Assert.Equal("LDC_SPDBRK", step.CompletesChecklistItemId);
+        // Completes its own group's line AND the Landing Checklist read-back, so a failed
+        // arm leaves neither latched (Pmdg737FlowChecklistLinkTests).
+        Assert.Equal("LDA_SPDBRK", step.CompletesChecklistItemId);
+        Assert.Equal(new[] { "LDA_SPDBRK", "LDC_SPDBRK" }, step.LinkedChecklistItemIds.ToArray());
         Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
     }
 

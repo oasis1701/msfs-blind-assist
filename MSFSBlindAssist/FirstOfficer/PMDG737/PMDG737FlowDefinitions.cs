@@ -57,7 +57,7 @@ public static class PMDG737FlowDefinitions
         {
             Skip(SW("EPU_BAT", "Battery: ON", "EVT_OH_ELEC_BATTERY_SWITCH", 1, "ELEC_BatSelector", v => v > 0.5, "EPU_BATTERY"),
                 s => s.IsBatteryOn()),
-            Skip(SW("EPU_STBY", "Standby power: AUTO", "EVT_OH_ELEC_STBY_PWR_SWITCH", 2),
+            Skip(SW("EPU_STBY", "Standby power: AUTO", "EVT_OH_ELEC_STBY_PWR_SWITCH", 2, checklistItemId: "EPU_STBY"),
                 s => s.StandbyPower() == 2),
             // Ground power ON is pressed UNCONDITIONALLY — the NG3 exposes no reliable
             // "ext power on bus" signal to skip on. The raw ELEC_GrdPwrSw bool lies (TRUE
@@ -68,11 +68,11 @@ public static class PMDG737FlowDefinitions
             // press is idempotent when already connected, so pressing always is safe. The
             // follow-up wait announces a timeout when no GPU exists at the stand (skipped
             // when FO_GPU_ON already reads on — benign either way in the power-up context).
-            SW("EPU_GPU", "Ground power: ON", "EVT_OH_ELEC_GRD_PWR_SWITCH", 1),
+            SW("EPU_GPU", "Ground power: ON", "EVT_OH_ELEC_GRD_PWR_SWITCH", 1, checklistItemId: "EPU_GPU"),
             Skip(WaitForField("EPU_GPU_WAIT", "Ground power on the buses", "FO_GPU_ON", v => v > 0.5, 10),
                 s => s.IsGpuOn()),
             // IRS to NAV — alignment runs in the background; no wait. "IRS aligned" auto-detects later.
-            Multi("EPU_IRS", "IRS mode selectors: NAV", ("EVT_IRU_MSU_LEFT", 2), ("EVT_IRU_MSU_RIGHT", 2)),
+            Multi("EPU_IRS", "IRS mode selectors: NAV", "EPU_IRS", ("EVT_IRU_MSU_LEFT", 2), ("EVT_IRU_MSU_RIGHT", 2)),
         }
     };
 
@@ -116,23 +116,23 @@ public static class PMDG737FlowDefinitions
             // preflight steps in between give TCAS's callout room to finish.
             SW("PF_TCAS_TEST", "TCAS test — listen for TCAS test pass",
                 "TCAS_TEST", 1, checklistItemId: "PF_TCAS_TEST"),
-            SW("PF_YD", "Yaw damper: ON", "EVT_OH_YAW_DAMPER", 1),
-            Multi("PF_FUEL_OFF", "Fuel pumps: OFF",
+            SW("PF_YD", "Yaw damper: ON", "EVT_OH_YAW_DAMPER", 1, checklistItemId: "PF_YD"),
+            Multi("PF_FUEL_OFF", "Fuel pumps: OFF", "PF_FUEL_OFF",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 0), ("EVT_OH_FUEL_PUMP_2_AFT", 0),
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 0), ("EVT_OH_FUEL_PUMP_R_CENTER", 0)),
-            SW("PF_EMER", "Emergency exit lights: ARMED", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 1),
-            SW("PF_BELTS", "Seatbelt signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2),
-            Multi("PF_WINHEAT", "Window heat: ON",
+            SW("PF_EMER", "Emergency exit lights: ARMED", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 1, checklistItemId: "PF_EMER"),
+            SW("PF_BELTS", "Seatbelt signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2, checklistItemId: "PF_BELTS"),
+            Multi("PF_WINHEAT", "Window heat: ON", "PF_WINHEAT",
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 1), ("EVT_OH_ICE_WINDOW_HEAT_2", 1),
                 ("EVT_OH_ICE_WINDOW_HEAT_3", 1), ("EVT_OH_ICE_WINDOW_HEAT_4", 1)),
-            Multi("PF_PROBE_OFF", "Probe heat: OFF", ("EVT_OH_ICE_PROBE_HEAT_1", 0), ("EVT_OH_ICE_PROBE_HEAT_2", 0)),
-            SW("PF_WAI_OFF", "Wing anti-ice: OFF", "EVT_OH_ICE_WING_ANTIICE", 0),
-            Multi("PF_EAI_OFF", "Engine anti-ice: OFF", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
-            Multi("PF_RECIRC", "Recirculation fans: AUTO", ("EVT_OH_BLEED_RECIRC_FAN_L_SWITCH", 1), ("EVT_OH_BLEED_RECIRC_FAN_R_SWITCH", 1)),
-            Multi("PF_PACKS", "Packs: AUTO", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
-            SW("PF_ISO", "Isolation valve: OPEN", "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH", 2),
-            Multi("PF_BLEEDS", "Engine bleeds: ON", ("EVT_OH_BLEED_ENG_1_SWITCH", 1), ("EVT_OH_BLEED_ENG_2_SWITCH", 1)),
+            Multi("PF_PROBE_OFF", "Probe heat: OFF", "PF_PROBE_OFF", ("EVT_OH_ICE_PROBE_HEAT_1", 0), ("EVT_OH_ICE_PROBE_HEAT_2", 0)),
+            SW("PF_WAI_OFF", "Wing anti-ice: OFF", "EVT_OH_ICE_WING_ANTIICE", 0, checklistItemId: "PF_WAI"),
+            Multi("PF_EAI_OFF", "Engine anti-ice: OFF", "PF_EAI_OFF", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
+            Multi("PF_RECIRC", "Recirculation fans: AUTO", "PF_RECIRC", ("EVT_OH_BLEED_RECIRC_FAN_L_SWITCH", 1), ("EVT_OH_BLEED_RECIRC_FAN_R_SWITCH", 1)),
+            Multi("PF_PACKS", "Packs: AUTO", "PF_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
+            SW("PF_ISO", "Isolation valve: OPEN", "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH", 2, checklistItemId: "PF_ISO"),
+            Multi("PF_BLEEDS", "Engine bleeds: ON", "PF_BLEEDS", ("EVT_OH_BLEED_ENG_1_SWITCH", 1), ("EVT_OH_BLEED_ENG_2_SWITCH", 1)),
             // Pressurization FLT/LAND ALT from the SimBrief plan (PMDG Direct Control
             // events take literal feet; values pre-rounded to the knob steps at storage —
             // see AircraftStateEvaluator.SetPlannedPressurizationAltitudes). Quietly
@@ -146,14 +146,14 @@ public static class PMDG737FlowDefinitions
             Skip(Captain("PF_PRESS", "Flight and landing altitudes",
                     "Set flight and landing altitudes on the pressurization panel."),
                 s => s.HasPressurizationPlan),
-            SW("PF_LOGO", "Logo lights: ON", "EVT_OH_LIGHTS_LOGO", 1),
-            MouseFlag("PF_FD1", "Flight director 1: ON", "EVT_MCP_FD_SWITCH_L", s => s.IsFDLeftOn()),
-            MouseFlag("PF_FD2", "Flight director 2: ON", "EVT_MCP_FD_SWITCH_R", s => s.IsFDRightOn()),
+            SW("PF_LOGO", "Logo lights: ON", "EVT_OH_LIGHTS_LOGO", 1, checklistItemId: "PF_LOGO"),
+            MouseFlag("PF_FD1", "Flight director 1: ON", "EVT_MCP_FD_SWITCH_L", s => s.IsFDLeftOn(), checklistItemId: "PF_FD"),
+            MouseFlag("PF_FD2", "Flight director 2: ON", "EVT_MCP_FD_SWITCH_R", s => s.IsFDRightOn(), checklistItemId: "PF_FD"),
             Momentary("PF_FF", "Fuel flow: RESET", "EVT_MPM_FUEL_FLOW_SWITCH"),
-            SW("PF_AB_RTO", "Autobrake: RTO", "EVT_MPM_AUTOBRAKE_SELECTOR", 0),
-            SW("PF_XPDR", "Transponder: ALT RPTG OFF", "EVT_TCAS_MODE", 1),
-            SW("PF_EFIS_MODE", "EFIS mode: MAP", "EVT_EFIS_CPT_MODE", 2),
-            SW("PF_EFIS_RANGE", "EFIS range: 40", "EVT_EFIS_CPT_RANGE", 3),
+            SW("PF_AB_RTO", "Autobrake: RTO", "EVT_MPM_AUTOBRAKE_SELECTOR", 0, checklistItemId: "PF_AB"),
+            SW("PF_XPDR", "Transponder: ALT RPTG OFF", "EVT_TCAS_MODE", 1, checklistItemId: "PF_XPDR"),
+            SW("PF_EFIS_MODE", "EFIS mode: MAP", "EVT_EFIS_CPT_MODE", 2, checklistItemId: "PF_EFIS_MODE"),
+            SW("PF_EFIS_RANGE", "EFIS range: 40", "EVT_EFIS_CPT_RANGE", 3, checklistItemId: "PF_EFIS_RANGE"),
             Captain("PF_ALT", "Set the altimeters to the local QNH."),
             // WXR + GPWS tests run LAST so their (and TCAS's, above) audio never overlaps.
             // ORDER MATTERS: WXR goes FIRST because its managed sequence is fully AWAITED
@@ -184,11 +184,11 @@ public static class PMDG737FlowDefinitions
             // APU start: ON → dwell → momentary START. A direct write to START (skipping ON)
             // does not spool the APU up. Each command step skips when the APU is already
             // running (EGT-based), so a flow re-run never re-commands a running APU.
-            Skip(SW("BS_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1),
+            Skip(SW("BS_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1, checklistItemId: "BS_APU"),
                 s => s.IsApuRunning()),
             Skip(Wait("BS_APU_DWELL", "APU spinning up before start", 2),
                 s => s.IsApuRunning()),
-            Skip(SW("BS_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
+            Skip(SW("BS_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2, checklistItemId: "BS_APU"),
                 s => s.IsApuRunning()),
             // Starter cutout: START springs back to ON. Stop policy — if the APU never
             // starts, abort the flow HERE, before the generator transfer and ground-power
@@ -211,19 +211,19 @@ public static class PMDG737FlowDefinitions
             // momentary bus-transfer buttons that must be pressed AFTER the APU is on
             // line (unlike the 777, whose gen switch is armed during preflight). Then
             // drop ground power — skipped when no GPU was ever connected.
-            Multi("BS_APUGEN", "APU generators: ON",
+            Multi("BS_APUGEN", "APU generators: ON", "BS_APUGEN",
                 ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
             Skip(SW("BS_GPU_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0),
                 s => !s.IsGpuOn()),
-            Multi("BS_FUELON", "Fuel pumps: ON",
+            Multi("BS_FUELON", "Fuel pumps: ON", "BS_FUEL",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 1), ("EVT_OH_FUEL_PUMP_2_FORWARD", 1),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 1), ("EVT_OH_FUEL_PUMP_2_AFT", 1),
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 1), ("EVT_OH_FUEL_PUMP_R_CENTER", 1)),
-            Multi("BS_HYDENG", "Engine hydraulic pumps: ON", ("EVT_OH_HYD_ENG1", 1), ("EVT_OH_HYD_ENG2", 1)),
-            Multi("BS_HYD", "Electric hydraulic pumps: ON", ("EVT_OH_HYD_ELEC1", 1), ("EVT_OH_HYD_ELEC2", 1)),
-            SW("BS_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1),
-            SW("BS_ANTICOL", "Anti-collision light: ON", "EVT_OH_LIGHTS_ANT_COL", 1),
-            SW("BS_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4),
+            Multi("BS_HYDENG", "Engine hydraulic pumps: ON", "BS_HYDENG", ("EVT_OH_HYD_ENG1", 1), ("EVT_OH_HYD_ENG2", 1)),
+            Multi("BS_HYD", "Electric hydraulic pumps: ON", "BS_HYD", ("EVT_OH_HYD_ELEC1", 1), ("EVT_OH_HYD_ELEC2", 1)),
+            SW("BS_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1, checklistItemId: "BS_APUBLEED"),
+            SW("BS_ANTICOL", "Anti-collision light: ON", "EVT_OH_LIGHTS_ANT_COL", 1, checklistItemId: "BS_ANTICOL"),
+            SW("BS_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4, checklistItemId: "BS_XPDR"),
             Captain("BS_GND", "Confirm ground power and chocks removed, doors closed."),
             Captain("BS_ACARS", "Start ACARS"),
             Captain("BS_CLEARANCE", "Obtain pushback and start clearance"),
@@ -246,7 +246,7 @@ public static class PMDG737FlowDefinitions
             // (crossbleed starts still work — the start-valve waits below are the gate).
             Skip(SW("ES_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1),
                 s => s.IsApuBleedOn()),
-            Multi("ES_PACKS_OFF", "Packs: OFF", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
+            Multi("ES_PACKS_OFF", "Packs: OFF", "ES_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
             // --- Engine 2 ---
             SW("ES_E2_GRD", "Engine 2 start switch: GRD", "EVT_OH_LIGHTS_R_ENGINE_START", 0),
             // Prove the starter actually engaged (start valve OPEN) before anything else.
@@ -261,7 +261,7 @@ public static class PMDG737FlowDefinitions
             // introduce fuel into an under-rotating engine (a hung/hot start).
             WaitForField("ES_E2_N2", "Engine 2 motoring — waiting for N2 before introducing fuel",
                 "FO_ENG2_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
-            SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "EVT_CONTROL_STAND_ENG2_START_LEVER", 1),
+            SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "EVT_CONTROL_STAND_ENG2_START_LEVER", 1, checklistItemId: "ES_E2_RUN"),
             // Starter cutout: the GRD position is solenoid-held and springs back to OFF
             // as the starter disengages. Wait on the START SWITCH itself — matching the
             // pilot-paced checklist and guaranteeing engine 1's GRD is never set while
@@ -275,7 +275,7 @@ public static class PMDG737FlowDefinitions
                 "ENG_StartValve_0", v => v > 0.5, 15, onTimeout: FlowStepFailurePolicy.Stop),
             WaitForField("ES_E1_N2", "Engine 1 motoring — waiting for N2 before introducing fuel",
                 "FO_ENG1_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
-            SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "EVT_CONTROL_STAND_ENG1_START_LEVER", 1),
+            SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "EVT_CONTROL_STAND_ENG1_START_LEVER", 1, checklistItemId: "ES_E1_RUN"),
             WaitForField("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
                 "ENG_StartSelector_0", v => Math.Abs(v - 1) < 0.1, 120),
         }
@@ -292,19 +292,19 @@ public static class PMDG737FlowDefinitions
         Steps = new()
         {
             // --- After-start power transfer (folded in from the former After Start flow) ---
-            Multi("BT_GEN", "Generators: ON", ("EVT_OH_ELEC_GEN1_SWITCH", 1), ("EVT_OH_ELEC_GEN2_SWITCH", 1)),
-            SW("BT_APUBLEED_OFF", "APU bleed air: OFF", "EVT_OH_BLEED_APU_SWITCH", 0),
-            SW("BT_APU_OFF", "APU selector: OFF", "EVT_OH_LIGHTS_APU_START", 0),
+            Multi("BT_GEN", "Generators: ON", "BT_GEN", ("EVT_OH_ELEC_GEN1_SWITCH", 1), ("EVT_OH_ELEC_GEN2_SWITCH", 1)),
+            SW("BT_APUBLEED_OFF", "APU bleed air: OFF", "EVT_OH_BLEED_APU_SWITCH", 0, checklistItemId: "BT_APUBLEED_OFF"),
+            SW("BT_APU_OFF", "APU selector: OFF", "EVT_OH_LIGHTS_APU_START", 0, checklistItemId: "BT_APU"),
             // --- Before-taxi setup ---
-            Multi("BT_PROBE", "Probe heat: ON", ("EVT_OH_ICE_PROBE_HEAT_1", 1), ("EVT_OH_ICE_PROBE_HEAT_2", 1)),
-            Multi("BT_PACKS", "Packs: AUTO", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
-            SW("BT_ISO", "Isolation valve: AUTO", "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH", 1),
-            Multi("BT_START_CONT", "Engine start switches: CONT", ("EVT_OH_LIGHTS_L_ENGINE_START", 2), ("EVT_OH_LIGHTS_R_ENGINE_START", 2)),
+            Multi("BT_PROBE", "Probe heat: ON", "BT_PROBE", ("EVT_OH_ICE_PROBE_HEAT_1", 1), ("EVT_OH_ICE_PROBE_HEAT_2", 1)),
+            Multi("BT_PACKS", "Packs: AUTO", "BT_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
+            SW("BT_ISO", "Isolation valve: AUTO", "EVT_OH_BLEED_ISOLATION_VALVE_SWITCH", 1, checklistItemId: "BT_ISO"),
+            Multi("BT_START_CONT", "Engine start switches: CONT", "BT_START", ("EVT_OH_LIGHTS_L_ENGINE_START", 2), ("EVT_OH_LIGHTS_R_ENGINE_START", 2)),
             Captain("BT_ANTIICE", "Set engine and wing anti-ice as required for conditions."),
-            SW("BT_TAXI", "Taxi light: ON", "EVT_OH_LIGHTS_TAXI", 1),
-            Multi("BT_TURNOFF", "Runway turnoff lights: ON", ("EVT_OH_LIGHTS_L_TURNOFF", 1), ("EVT_OH_LIGHTS_R_TURNOFF", 1)),
+            SW("BT_TAXI", "Taxi light: ON", "EVT_OH_LIGHTS_TAXI", 1, checklistItemId: "BT_TAXI"),
+            Multi("BT_TURNOFF", "Runway turnoff lights: ON", "BT_TURNOFF", ("EVT_OH_LIGHTS_L_TURNOFF", 1), ("EVT_OH_LIGHTS_R_TURNOFF", 1)),
             Captain("BT_FLAPS", "Set the takeoff flaps."),
-            SW("BT_LOWERDU", "Lower display unit: SYS", "EVT_DSP_CPT_LOWER_DU_SELECTOR", 1),
+            SW("BT_LOWERDU", "Lower display unit: SYS", "EVT_DSP_CPT_LOWER_DU_SELECTOR", 1, checklistItemId: "BT_LOWERDU"),
         }
     };
 
@@ -319,12 +319,12 @@ public static class PMDG737FlowDefinitions
         Steps = new()
         {
             // All FOUR landing lights (retractables to ON=2, fixed inboards to 1).
-            Multi("BTO_LAND", "Landing lights: ON",
+            Multi("BTO_LAND", "Landing lights: ON", "BTKO_LAND",
                 ("EVT_OH_LIGHTS_L_RETRACT", 2), ("EVT_OH_LIGHTS_R_RETRACT", 2),
                 ("EVT_OH_LIGHTS_L_FIXED", 1), ("EVT_OH_LIGHTS_R_FIXED", 1)),
-            SW("BTO_STROBE", "Position lights: STROBE & STEADY", "EVT_OH_LIGHTS_POS_STROBE", 2),
-            MouseFlag("BTO_AT", "Autothrottle: ARM", "EVT_MCP_AT_ARM_SWITCH", s => s.IsATArmOn()),
-            SW("BTO_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4),
+            SW("BTO_STROBE", "Position lights: STROBE & STEADY", "EVT_OH_LIGHTS_POS_STROBE", 2, checklistItemId: "BTKO_STROBE"),
+            MouseFlag("BTO_AT", "Autothrottle: ARM", "EVT_MCP_AT_ARM_SWITCH", s => s.IsATArmOn(), checklistItemId: "BTKO_AT"),
+            SW("BTO_XPDR", "Transponder: TA/RA", "EVT_TCAS_MODE", 4, checklistItemId: "BTKO_XPDR"),
             // Advise the cabin crew for takeoff — the overhead ATTEND pushbutton (cabin chime).
             SW("BTKO_CABIN", "Advise the cabin crew for takeoff", "EVT_OH_ATTND_CALL_SWITCH", 1,
                 checklistItemId: "BTKO_CABIN", isMomentary: true),
@@ -342,10 +342,13 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF", "AFTER_TAKEOFF_CL" },
         Steps = new()
         {
-            Multi("AT_PACKS", "Packs: AUTO", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
-            Multi("AT_START_OFF", "Engine start switches: OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
-            Multi("AT_TURNOFF", "Runway turnoff lights: OFF", ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
-            SW("AT_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1),
+            // Also completes the After Takeoff Checklist's "Packs: AUTO" (same switches, same
+            // condition), so a failed write leaves the read-back line live too.
+            Also(Multi("AT_PACKS", "Packs: AUTO", "ATKO_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 1), ("EVT_OH_BLEED_PACK_R_SWITCH", 1)),
+                "ATC_PACKS"),
+            Multi("AT_START_OFF", "Engine start switches: OFF", "ATKO_START_OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
+            Multi("AT_TURNOFF", "Runway turnoff lights: OFF", "ATKO_TURNOFF", ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
+            SW("AT_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1, checklistItemId: "ATKO_AB_OFF"),
             // Read-only gear-up confirmation — it never moves the lever (the First Officer
             // writes no gear lever; see docs/pmdg-737.md). Confirms the gear the way a crew
             // does, "gear up, lights out" (GearConfirmation), and completes the After
@@ -370,7 +373,7 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "DESCENT", "DESCENT_CL" },
         Steps = new()
         {
-            SW("DS_BELTS", "Seatbelt signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2),
+            SW("DS_BELTS", "Seatbelt signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2, checklistItemId: "DSA_BELTS"),
             Captain("DS_AB", "Set the landing autobrake — Forward Panel, Autobrake"),
             Captain("DS_ILS", "Set the ILS frequencies and course."),
             Captain("DS_DATA", "Confirm landing data, VREF and minimums."),
@@ -387,8 +390,8 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "APPROACH", "APPROACH_CL" },
         Steps = new()
         {
-            SW("AP_EFIS_MODE", "EFIS mode: APP", "EVT_EFIS_CPT_MODE", 0),
-            SW("AP_EFIS_RANGE", "EFIS range: 20", "EVT_EFIS_CPT_RANGE", 2),
+            SW("AP_EFIS_MODE", "EFIS mode: APP", "EVT_EFIS_CPT_MODE", 0, checklistItemId: "APA_EFIS_MODE"),
+            SW("AP_EFIS_RANGE", "EFIS range: 20", "EVT_EFIS_CPT_RANGE", 2, checklistItemId: "APA_EFIS_RANGE"),
             // Notify the cabin crew for landing — the overhead ATTEND pushbutton (cabin chime).
             SW("AP_CABIN", "Notify the cabin crew for landing", "EVT_OH_ATTND_CALL_SWITCH", 1,
                 checklistItemId: "AP_CABIN", isMomentary: true),
@@ -406,15 +409,22 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
         Steps = new()
         {
-            Multi("LD_START_CONT", "Engine start switches: CONT", ("EVT_OH_LIGHTS_L_ENGINE_START", 2), ("EVT_OH_LIGHTS_R_ENGINE_START", 2)),
+            // Also completes the Landing Checklist's "Engine start switches: CONT".
+            Also(Multi("LD_START_CONT", "Engine start switches: CONT", "LDA_START", ("EVT_OH_LIGHTS_L_ENGINE_START", 2), ("EVT_OH_LIGHTS_R_ENGINE_START", 2)),
+                "LDC_START"),
             // Verified arm via the SPEEDBRAKE_ARM pseudo-key (intercepted in
             // AircraftActionExecutor.ExecuteStepAsync, same mechanism as GPWS_TEST /
             // TCAS_TEST). A bare dispatch of the real event reported success whether or
             // not the lever moved; this one proves it against the ARMED annunciator, and
             // the Skip failure policy means a genuine failure is announced without
             // aborting the rest of the Landing flow.
-            SW("LD_SPDBRK", "Speedbrake: ARMED", SpeedbrakeArmLadder.PseudoKey, null,
-               SpeedbrakeArmLadder.ArmedField, v => v > 0.5, "LDC_SPDBRK"),
+            // Completes BOTH "Speedbrake: ARMED" lines — its own group's LDA_SPDBRK and the
+            // Landing Checklist's LDC_SPDBRK — since the verified arm achieves both (same
+            // ARMED annunciator). It used to name only LDC_SPDBRK, so a failed arm left
+            // LDA_SPDBRK to MarkGroupComplete's blanket sweep, latched complete over a lever
+            // that never armed.
+            Also(SW("LD_SPDBRK", "Speedbrake: ARMED", SpeedbrakeArmLadder.PseudoKey, null,
+               SpeedbrakeArmLadder.ArmedField, v => v > 0.5, "LDA_SPDBRK"), "LDC_SPDBRK"),
             Captain("LD_MISSED", "Set the missed approach altitude."),
             // Read-only gear-down confirmation — it never moves the lever (the First Officer
             // writes no gear lever; see docs/pmdg-737.md). Confirms the gear the way a crew
@@ -439,26 +449,26 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "AFTER_LANDING" },
         Steps = new()
         {
-            Multi("AL_LAND_OFF", "Landing lights: OFF",
+            Multi("AL_LAND_OFF", "Landing lights: OFF", "AL_LAND_OFF",
                 ("EVT_OH_LIGHTS_L_RETRACT", 0), ("EVT_OH_LIGHTS_R_RETRACT", 0),
                 ("EVT_OH_LIGHTS_L_FIXED", 0), ("EVT_OH_LIGHTS_R_FIXED", 0)),
-            Multi("AL_TURNOFF", "Runway turnoff lights: ON", ("EVT_OH_LIGHTS_L_TURNOFF", 1), ("EVT_OH_LIGHTS_R_TURNOFF", 1)),
-            SW("AL_TAXI", "Taxi light: ON", "EVT_OH_LIGHTS_TAXI", 1),
-            SW("AL_STROBE_OFF", "Position lights: STEADY", "EVT_OH_LIGHTS_POS_STROBE", 0),
-            Multi("AL_EAI_OFF", "Engine anti-ice: OFF", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
-            SW("AL_WAI_OFF", "Wing anti-ice: OFF", "EVT_OH_ICE_WING_ANTIICE", 0),
-            Multi("AL_PROBE_OFF", "Probe heat: OFF", ("EVT_OH_ICE_PROBE_HEAT_1", 0), ("EVT_OH_ICE_PROBE_HEAT_2", 0)),
+            Multi("AL_TURNOFF", "Runway turnoff lights: ON", "AL_TURNOFF", ("EVT_OH_LIGHTS_L_TURNOFF", 1), ("EVT_OH_LIGHTS_R_TURNOFF", 1)),
+            SW("AL_TAXI", "Taxi light: ON", "EVT_OH_LIGHTS_TAXI", 1, checklistItemId: "AL_TAXI"),
+            SW("AL_STROBE_OFF", "Position lights: STEADY", "EVT_OH_LIGHTS_POS_STROBE", 0, checklistItemId: "AL_STROBE"),
+            Multi("AL_EAI_OFF", "Engine anti-ice: OFF", "AL_EAI", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
+            SW("AL_WAI_OFF", "Wing anti-ice: OFF", "EVT_OH_ICE_WING_ANTIICE", 0, checklistItemId: "AL_WAI"),
+            Multi("AL_PROBE_OFF", "Probe heat: OFF", "AL_PROBE", ("EVT_OH_ICE_PROBE_HEAT_1", 0), ("EVT_OH_ICE_PROBE_HEAT_2", 0)),
             // APU START for gate power — ON alone never spools it up (same ON → dwell →
             // momentary START sequence as Before Start; no on-line wait, the aircraft is
             // taxiing in and the Shutdown flow's gen transfer happens minutes later).
-            SW("AL_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1),
+            SW("AL_APU_ON", "APU selector: ON", "EVT_OH_LIGHTS_APU_START", 1, checklistItemId: "AL_APU"),
             Wait("AL_APU_DWELL", "APU spinning up before start", 2),
-            SW("AL_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2),
-            Multi("AL_START_OFF", "Engine start switches: OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
+            SW("AL_APU_START", "APU selector: START", "EVT_OH_LIGHTS_APU_START", 2, checklistItemId: "AL_APU"),
+            Multi("AL_START_OFF", "Engine start switches: OFF", "AL_START_OFF", ("EVT_OH_LIGHTS_L_ENGINE_START", 1), ("EVT_OH_LIGHTS_R_ENGINE_START", 1)),
             // Flaps UP — was missing entirely (the flow description always promised it).
             // The per-detent event routes through the executor's MouseFlag dispatch.
-            Momentary("AL_FLAPS_UP", "Flaps: UP", "EVT_CONTROL_STAND_FLAPS_LEVER_0"),
-            SW("AL_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1),
+            Momentary("AL_FLAPS_UP", "Flaps: UP", "EVT_CONTROL_STAND_FLAPS_LEVER_0", checklistItemId: "AL_FLAPS"),
+            SW("AL_AB_OFF", "Autobrake: OFF", "EVT_MPM_AUTOBRAKE_SELECTOR", 1, checklistItemId: "AL_AB"),
         }
     };
 
@@ -474,28 +484,28 @@ public static class PMDG737FlowDefinitions
         {
             // BOTH APU generator transfer buttons (the old single-event step left
             // transfer bus 2 on its engine generator until the levers cut it off).
-            Multi("SD_APUGEN", "APU generators: ON",
+            Multi("SD_APUGEN", "APU generators: ON", "SD_APUGEN",
                 ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
-            Multi("SD_LEVERS", "Engine start levers: CUTOFF",
+            Multi("SD_LEVERS", "Engine start levers: CUTOFF", "SD_LEVERS",
                 ("EVT_CONTROL_STAND_ENG1_START_LEVER", 0), ("EVT_CONTROL_STAND_ENG2_START_LEVER", 0)),
             // (No spool-down wait — mirrors the 777 shutdown: nothing downstream needs the
             // engines stopped, and the old start-valve wait was an instant no-op anyway.)
-            SW("SD_BELTS", "Seatbelt signs: OFF", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0),
-            Multi("SD_TURNOFF", "Runway turnoff lights: OFF", ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
-            SW("SD_TAXI_OFF", "Taxi light: OFF", "EVT_OH_LIGHTS_TAXI", 0),
-            SW("SD_LOGO_OFF", "Logo lights: OFF", "EVT_OH_LIGHTS_LOGO", 0),
-            SW("SD_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1),
-            Multi("SD_FUEL_OFF", "Fuel pumps: OFF",
+            SW("SD_BELTS", "Seatbelt signs: OFF", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 0, checklistItemId: "SD_BELTS"),
+            Multi("SD_TURNOFF", "Runway turnoff lights: OFF", "SD_TURNOFF", ("EVT_OH_LIGHTS_L_TURNOFF", 0), ("EVT_OH_LIGHTS_R_TURNOFF", 0)),
+            SW("SD_TAXI_OFF", "Taxi light: OFF", "EVT_OH_LIGHTS_TAXI", 0, checklistItemId: "SD_TAXI"),
+            SW("SD_LOGO_OFF", "Logo lights: OFF", "EVT_OH_LIGHTS_LOGO", 0, checklistItemId: "SD_LOGO"),
+            SW("SD_APUBLEED", "APU bleed air: ON", "EVT_OH_BLEED_APU_SWITCH", 1, checklistItemId: "SD_APUBLEED"),
+            Multi("SD_FUEL_OFF", "Fuel pumps: OFF", "SD_FUEL",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 0), ("EVT_OH_FUEL_PUMP_2_AFT", 0),
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 0), ("EVT_OH_FUEL_PUMP_R_CENTER", 0)),
-            Multi("SD_EAI_OFF", "Engine anti-ice: OFF", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
-            Multi("SD_HYDELEC_OFF", "Electric hydraulic pumps: OFF", ("EVT_OH_HYD_ELEC1", 0), ("EVT_OH_HYD_ELEC2", 0)),
-            Multi("SD_HYDENG_OFF", "Engine hydraulic pumps: OFF", ("EVT_OH_HYD_ENG1", 0), ("EVT_OH_HYD_ENG2", 0)),
-            Multi("SD_WINHEAT_OFF", "Window heat: OFF",
+            Multi("SD_EAI_OFF", "Engine anti-ice: OFF", "SD_EAI", ("EVT_OH_ICE_ENGINE_ANTIICE_1", 0), ("EVT_OH_ICE_ENGINE_ANTIICE_2", 0)),
+            Multi("SD_HYDELEC_OFF", "Electric hydraulic pumps: OFF", "SD_HYDELEC", ("EVT_OH_HYD_ELEC1", 0), ("EVT_OH_HYD_ELEC2", 0)),
+            Multi("SD_HYDENG_OFF", "Engine hydraulic pumps: OFF", "SD_HYDENG", ("EVT_OH_HYD_ENG1", 0), ("EVT_OH_HYD_ENG2", 0)),
+            Multi("SD_WINHEAT_OFF", "Window heat: OFF", "SD_WINHEAT",
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 0), ("EVT_OH_ICE_WINDOW_HEAT_2", 0),
                 ("EVT_OH_ICE_WINDOW_HEAT_3", 0), ("EVT_OH_ICE_WINDOW_HEAT_4", 0)),
-            SW("SD_XPDR", "Transponder: ALT RPTG OFF", "EVT_TCAS_MODE", 1),
+            SW("SD_XPDR", "Transponder: ALT RPTG OFF", "EVT_TCAS_MODE", 1, checklistItemId: "SD_XPDR"),
         }
     };
 
@@ -509,17 +519,17 @@ public static class PMDG737FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SECURE" },
         Steps = new()
         {
-            Multi("SE_IRS_OFF", "IRS mode selectors: OFF", ("EVT_IRU_MSU_LEFT", 0), ("EVT_IRU_MSU_RIGHT", 0)),
-            SW("SE_EMER_OFF", "Emergency exit lights: OFF", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 0),
-            Multi("SE_WINHEAT_OFF", "Window heat: OFF",
+            Multi("SE_IRS_OFF", "IRS mode selectors: OFF", "SE_IRS", ("EVT_IRU_MSU_LEFT", 0), ("EVT_IRU_MSU_RIGHT", 0)),
+            SW("SE_EMER_OFF", "Emergency exit lights: OFF", "EVT_OH_EMER_EXIT_LIGHT_SWITCH", 0, checklistItemId: "SE_EMER"),
+            Multi("SE_WINHEAT_OFF", "Window heat: OFF", "SE_WINHEAT",
                 ("EVT_OH_ICE_WINDOW_HEAT_1", 0), ("EVT_OH_ICE_WINDOW_HEAT_2", 0),
                 ("EVT_OH_ICE_WINDOW_HEAT_3", 0), ("EVT_OH_ICE_WINDOW_HEAT_4", 0)),
-            Multi("SE_PACKS_OFF", "Packs: OFF", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
+            Multi("SE_PACKS_OFF", "Packs: OFF", "SE_PACKS", ("EVT_OH_BLEED_PACK_L_SWITCH", 0), ("EVT_OH_BLEED_PACK_R_SWITCH", 0)),
             // APU selector to OFF (absolute set — idempotent when already off). Ground
             // power OFF is a directional press, so it is skip-guarded on IsGpuOn() to no-op
             // when no GPU is connected (mirrors the Before-Start BS_GPU_OFF drop).
-            SW("SE_APU_OFF", "APU: OFF", "EVT_OH_LIGHTS_APU_START", 0),
-            Skip(SW("SE_GND_PWR_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0),
+            SW("SE_APU_OFF", "APU: OFF", "EVT_OH_LIGHTS_APU_START", 0, checklistItemId: "SE_APU_OFF"),
+            Skip(SW("SE_GND_PWR_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0, checklistItemId: "SE_GND_PWR_OFF"),
                 s => !s.IsGpuOn()),
         }
     };
@@ -565,13 +575,14 @@ public static class PMDG737FlowDefinitions
     // is required so the step is no-op'd when already correct — the same guard the panel
     // (HandleUIVariableSet) and the checklists (SetFDLeft(target, state)) already apply.
     private static Step MouseFlag(string id, string label, string eventName,
-        Func<AircraftStateEvaluator, bool> skipWhen) => new()
+        Func<AircraftStateEvaluator, bool> skipWhen, string? checklistItemId = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
         UsesMouseFlag = true,
         SkipCondition = skipWhen,
+        CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 350,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
@@ -587,11 +598,16 @@ public static class PMDG737FlowDefinitions
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
 
-    private static Step Multi(string id, string label, params (string EventName, int? TargetValue)[] actions) => new()
+    // checklistItemId is REQUIRED (positional, ahead of the params list): every multi-switch
+    // step sets a checklist line, and an unlinked write step has its line latched complete by
+    // MarkGroupComplete even when the write failed (Pmdg737FlowChecklistLinkTests).
+    private static Step Multi(string id, string label, string? checklistItemId,
+        params (string EventName, int? TargetValue)[] actions) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitchMultiple,
         MultiActions = actions.ToList(),
+        CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 400,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
@@ -631,6 +647,16 @@ public static class PMDG737FlowDefinitions
     private static Step Skip(Step step, Func<AircraftStateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
+        return step;
+    }
+
+    // A write whose line appears in BOTH its own action group and the phase's read-back
+    // (*_CL) checklist, and which achieves both (same field, same condition): the extra
+    // line is delivered, and on a skipped step kept out of the latch, alongside
+    // CompletesChecklistItemId (FlowStep.AlsoCompletesChecklistItemIds).
+    private static Step Also(Step step, params string[] alsoCompletes)
+    {
+        step.AlsoCompletesChecklistItemIds = alsoCompletes;
         return step;
     }
 }
