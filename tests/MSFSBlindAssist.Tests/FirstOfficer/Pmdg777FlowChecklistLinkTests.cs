@@ -134,9 +134,12 @@ public class Pmdg777FlowChecklistLinkTests
         // Per-detent flap lever click events: the detent they select.
         m["EVT_CONTROL_STAND_FLAPS_LEVER_0"] = new (string, Func<int, double>)[] { ("FCTL_Flaps_Lever", _ => 0) };
         m["EVT_CONTROL_STAND_FLAPS_LEVER_1"] = new (string, Func<int, double>)[] { ("FCTL_Flaps_Lever", _ => 1) };
-        // _5 is flaps FIVE degrees (lever detent 2) — the 777 table is keyed by degrees. The
-        // Before Taxi flow's "Flaps: 25" step writes it (reported; not changed here).
+        // The 777 table is keyed by DEGREES: _5 is lever detent 2, _15 detent 3, _20 detent 4,
+        // _25 detent 5 (Pmdg777TakeoffFlapsTests).
         m["EVT_CONTROL_STAND_FLAPS_LEVER_5"] = new (string, Func<int, double>)[] { ("FCTL_Flaps_Lever", _ => 2) };
+        m["EVT_CONTROL_STAND_FLAPS_LEVER_15"] = new (string, Func<int, double>)[] { ("FCTL_Flaps_Lever", _ => 3) };
+        m["EVT_CONTROL_STAND_FLAPS_LEVER_20"] = new (string, Func<int, double>)[] { ("FCTL_Flaps_Lever", _ => 4) };
+        m["EVT_CONTROL_STAND_FLAPS_LEVER_25"] = new (string, Func<int, double>)[] { ("FCTL_Flaps_Lever", _ => 5) };
         // Speed brake detent click events (the lever is an analog 0-100 position).
         m["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM"] = new (string, Func<int, double>)[]
         { ("FCTL_Speedbrake_Lever", _ => Pmdg777SpeedbrakeLever.ArmedValue) };
@@ -144,15 +147,6 @@ public class Pmdg777FlowChecklistLinkTests
         { ("FCTL_Speedbrake_Lever", _ => Pmdg777SpeedbrakeLever.DownValue) };
         return m;
     }
-
-    // Flap-lever event names the Before Taxi flow writes that are NOT in the 777's event table
-    // at all (it has _0/_1/_5/_15/_20/_25/_30 — degrees, not detent indices), so their dispatch
-    // fails and the step is announced as skipped. Pinned by the known-missing test below; the
-    // Before Taxi flaps line they would serve (BT_FLAPS) is in the undelivered list.
-    private static readonly string[] MissingFlapEvents =
-    {
-        "EVT_CONTROL_STAND_FLAPS_LEVER_2", "EVT_CONTROL_STAND_FLAPS_LEVER_3", "EVT_CONTROL_STAND_FLAPS_LEVER_4",
-    };
 
     // Written events with no readable CDA state behind them. Lines they deliver are
     // action-only, matched through ActionItems below.
@@ -167,8 +161,6 @@ public class Pmdg777FlowChecklistLinkTests
         "EVT_DSP_CANC_RCL_SWITCH",                                  // momentary
         // Held self-completing test pseudo-keys (no persistent "test performed" state).
         "OXY_TEST_CAPT", "OXY_TEST_FO", "FIRE_OVHT_TEST", "TCAS_TEST", "WXR_TEST",
-        // Not in the 777 event table (see MissingFlapEvents).
-        "EVT_CONTROL_STAND_FLAPS_LEVER_2", "EVT_CONTROL_STAND_FLAPS_LEVER_3", "EVT_CONTROL_STAND_FLAPS_LEVER_4",
     };
 
     private static (string Event, int Target)[] W(params (string Event, int Target)[] writes) => writes;
@@ -334,11 +326,11 @@ public class Pmdg777FlowChecklistLinkTests
     }
 
     [Fact]
-    public void Written_events_missing_from_the_777_event_table_are_the_known_set()
+    public void Every_written_event_is_in_the_777_event_table()
     {
         // A write to an event the 777 table does not carry fails at dispatch every time. The
-        // Before Taxi flow's flaps 5 / 15 / 20 steps name 737-style detent INDICES; the table
-        // is keyed by DEGREES. Known and reported — change this list deliberately.
+        // Before Taxi flaps steps once named 737-style detent INDICES (_2/_3/_4) where the
+        // table is keyed by DEGREES, so flaps 5 / 15 / 20 never moved; none may be missing.
         var pseudoKeys = new HashSet<string>(StringComparer.Ordinal)
         { "OXY_TEST_CAPT", "OXY_TEST_FO", "FIRE_OVHT_TEST", "TCAS_TEST", "WXR_TEST", "EMER_EXIT_LIGHTS" };
         var missing = PMDG777FlowDefinitions.Build()
@@ -346,7 +338,7 @@ public class Pmdg777FlowChecklistLinkTests
             .Select(w => w.Event)
             .Where(e => !pseudoKeys.Contains(e) && !PMDG777Definition.EventIds.ContainsKey(e))
             .Distinct().OrderBy(e => e, StringComparer.Ordinal).ToArray();
-        Assert.Equal(MissingFlapEvents, missing);
+        Assert.Empty(missing);
     }
 
     // Characterization of what is still latched with no step behind it: every non-reminder line
@@ -363,8 +355,7 @@ public class Pmdg777FlowChecklistLinkTests
             // Before Taxi: autobrake RTO is set in Cockpit Prep; recall has no flow step.
             // Before Taxi "Flap lever: Set for takeoff" (BT_FLAPS): its five plan-gated flap
             // steps are NOT linked — the four not planned skip as "Already set", which would tick
-            // the line whatever the planned step does (and flaps 5 / 15 / 20 write events the 777
-            // does not have — Written_events_missing_from_the_777_event_table_are_the_known_set).
+            // the line whatever the planned step does.
             // Before Takeoff "Flaps: Set for takeoff" and Landing "Flaps: Set for landing": the
             // captain sets the flaps; no flow step writes them.
             // Cockpit Prep: battery, ADIRU, demand pumps, nav lights and gear DOWN are set in

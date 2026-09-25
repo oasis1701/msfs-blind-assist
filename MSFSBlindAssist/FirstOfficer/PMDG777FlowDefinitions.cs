@@ -447,11 +447,14 @@ public static class PMDG777FlowDefinitions
                checklistItemId: "BT_STORM_OFF"),
             // Takeoff flaps — set from SimBrief perf data (defaults to flaps 5 if not loaded).
             // Only the step matching the planned setting runs; the others are skipped.
+            // The 777's flap-lever events are named by DEGREES (_0/_1/_5/_15/_20/_25/_30), not
+            // the 737's detent indices — see AircraftActionExecutor.SetFlapsPosition and
+            // Pmdg777TakeoffFlapsTests.
             Skip(Momentary("BT_FLAPS_1",  "Flaps: 1",  "EVT_CONTROL_STAND_FLAPS_LEVER_1"), s => s.GetTakeoffFlaps() != 1),
-            Skip(Momentary("BT_FLAPS_5",  "Flaps: 5",  "EVT_CONTROL_STAND_FLAPS_LEVER_2"), s => s.GetTakeoffFlaps() != 5),
-            Skip(Momentary("BT_FLAPS_15", "Flaps: 15", "EVT_CONTROL_STAND_FLAPS_LEVER_3"), s => s.GetTakeoffFlaps() != 15),
-            Skip(Momentary("BT_FLAPS_20", "Flaps: 20", "EVT_CONTROL_STAND_FLAPS_LEVER_4"), s => s.GetTakeoffFlaps() != 20),
-            Skip(Momentary("BT_FLAPS_25", "Flaps: 25", "EVT_CONTROL_STAND_FLAPS_LEVER_5"), s => s.GetTakeoffFlaps() != 25),
+            Skip(Momentary("BT_FLAPS_5",  "Flaps: 5",  "EVT_CONTROL_STAND_FLAPS_LEVER_5"), s => s.GetTakeoffFlaps() != 5),
+            Skip(Momentary("BT_FLAPS_15", "Flaps: 15", "EVT_CONTROL_STAND_FLAPS_LEVER_15"), s => s.GetTakeoffFlaps() != 15),
+            Skip(Momentary("BT_FLAPS_20", "Flaps: 20", "EVT_CONTROL_STAND_FLAPS_LEVER_20"), s => s.GetTakeoffFlaps() != 20),
+            Skip(Momentary("BT_FLAPS_25", "Flaps: 25", "EVT_CONTROL_STAND_FLAPS_LEVER_25"), s => s.GetTakeoffFlaps() != 25),
             // Packs: both to AUTO for departure (skip each if already AUTO)
             Skip(SW("BT_PACK_L_AUTO", "Pack left: AUTO",  "EVT_OH_AIRCOND_PACK_SWITCH_L", 1, checklistItemId: "BT_PACKS"),
                 s => s.IsPack1Auto()),

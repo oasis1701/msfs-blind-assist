@@ -551,7 +551,7 @@ public static class PMDG777ChecklistDefinitions
         {
             // Flap target depends on SimBrief perf data — no fixed action value
             Auto("BTKOF_FLAPS", "BEFORE_TKOF_CL", "Flaps: Set for takeoff",
-                "FCTL_Flaps_Lever", v => v >= 1 && v <= 3),
+                "FCTL_Flaps_Lever", v => v >= 1 && v <= 4),   // 1, 5, 15 or 20 (detents 1-4)
             Manual("BTKOF_V_SPEEDS", "BEFORE_TKOF_CL", "V speeds: Checked"),
             Manual("BTKOF_ALT", "BEFORE_TKOF_CL", "Altitude: Set initial climb"),
         }
