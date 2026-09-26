@@ -38,9 +38,9 @@ public static partial class TaxiBriefingPlanner
         // that used the whole budget (an OpenStreetMap fetch for an airport with no navdata taxiways can)
         // left the arrival leg to start on an already-cancelled token: it was reported as timed out without
         // a single database read.
-        var taxiOut = PlanLegSafelyAsync(request.OriginIcao, request.OriginRunway, provider, gateSource, token, ct,
+        var taxiOut = PlanLegSafelyAsync(request.OriginIcao, request.OriginRunway, request.OriginRunwayNote, provider, gateSource, token, ct,
             g => PlanTaxiOut(request, g));
-        var taxiIn = PlanLegSafelyAsync(request.DestinationIcao, request.DestinationRunway, provider, gateSource, token, ct,
+        var taxiIn = PlanLegSafelyAsync(request.DestinationIcao, request.DestinationRunway, request.DestinationRunwayNote, provider, gateSource, token, ct,
             g => PlanTaxiIn(request, g));
         await Task.WhenAll(taxiOut, taxiIn).ConfigureAwait(false);
         return new TaxiBriefing(request.Aircraft, await taxiOut.ConfigureAwait(false), await taxiIn.ConfigureAwait(false));
@@ -52,19 +52,25 @@ public static partial class TaxiBriefingPlanner
     /// at the budget keeps running (a graph build cannot be cancelled) and must not log a result after the
     /// leg has been reported as timed out. Throws only for the caller's own cancellation.
     /// </summary>
-    private static async Task<TaxiLegBriefing> PlanLegSafelyAsync(string icao, string runway, IAirportDataProvider? provider,
-        GateDataSource? gateSource, CancellationToken budget, CancellationToken caller, Func<GraphBundle, TaxiLegBriefing> plan)
+    private static async Task<TaxiLegBriefing> PlanLegSafelyAsync(string icao, string runway, string? runwayNote,
+        IAirportDataProvider? provider, GateDataSource? gateSource, CancellationToken budget, CancellationToken caller,
+        Func<GraphBundle, TaxiLegBriefing> plan)
     {
+        // A leg made unavailable HERE -- before PlanTaxiOut/PlanTaxiIn ever runs -- would otherwise carry no notes at
+        // all, dropping the runway note the request was given (a leg that could not be computed still deserves to
+        // say why SayIntentions' runway was used).
+        var notes = runwayNote is { Length: > 0 } ? new[] { runwayNote } : null;
+
         if (provider == null || !provider.DatabaseExists)
-            return LogLeg(TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, "no navigation database loaded"));
+            return LogLeg(TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, "no navigation database loaded", notes: notes));
         if (string.IsNullOrWhiteSpace(icao))
-            return LogLeg(TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, "no airport in the flight plan"));
+            return LogLeg(TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, "no airport in the flight plan", notes: notes));
 
         var work = Task.Run(async () =>
         {
             var (bundle, reason) = await TaxiBriefingGraphSource.BuildAsync(provider, gateSource, icao, budget).ConfigureAwait(false);
             if (bundle == null)
-                return TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, reason ?? "no ground data for this airport");
+                return TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, reason ?? "no ground data for this airport", notes: notes);
             budget.ThrowIfCancellationRequested();
             return plan(bundle);
         }, budget);
@@ -85,7 +91,7 @@ public static partial class TaxiBriefingPlanner
         }
         catch (OperationCanceledException) when (budget.IsCancellationRequested)
         {
-            var timedOut = TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, "taxi route computation timed out");
+            var timedOut = TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, "taxi route computation timed out", notes: notes);
             Log.Warn(LogCategory, Summarise(timedOut));
             ObserveAbandonedLeg(work, icao, runway);
             return timedOut;
@@ -93,7 +99,7 @@ public static partial class TaxiBriefingPlanner
         catch (Exception ex)
         {
             // Includes a cancellation neither token asked for: a failure, not a timeout.
-            var failed = TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, $"taxi route could not be computed ({ex.Message})");
+            var failed = TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, $"taxi route could not be computed ({ex.Message})", notes: notes);
             Log.Warn(LogCategory, $"{Summarise(failed)} {ex}");
             return failed;
         }

@@ -115,9 +115,10 @@ briefing.
   (5,000 m, the same "at this airport" distance as the own-position test) from the arrival airport's
   reference point is not used. The leg then says so in a note — "SayIntentions' parking service named
   {label}, but its position is not at {ICAO}; using a representative stand instead" — and picks a
-  representative stand as today. A parking-service hint with no position is used by name, as Taxi
-  Assist's import uses it; a file hint is never subject to this check. With no reference point (an
-  airport the leg could not place), the check is skipped.
+  representative stand as today. A parking-service hint with no position is refused the same way, with
+  the note "SayIntentions' parking service named {label} but gave no position to confirm it is at
+  {ICAO}; using a representative stand instead" (owner decision, 2026-09-26). With no reference point
+  (an airport the leg could not place), the check is skipped.
 - **Never costs the taxi section.** `BuildTaxiRoutesBlockAsync` reads SayIntentions inside its own
   try/catch; a failure logs a warning (`taxi_briefing`) and continues with no SayIntentions data,
   instead of rendering both legs "could not be computed".
@@ -144,8 +145,8 @@ briefing.
   `current_flight.flight_plan_departing_runway` / `flight_plan_arriving_runway`).
 - `TaxiBriefingRequest` gains optional `OriginRunwayNote` and `DestinationRunwayNote`. `PlanTaxiOut` /
   `PlanTaxiIn` put the note first in the leg's notes, so every leg the planner returns carries it,
-  unavailable ones included. (Legs made unavailable before planning — no database, timeout — carry no
-  note; the header still names the runway.)
+  unavailable ones included. (A leg made unavailable before planning — no database, timeout, a failure —
+  carries the note too.)
 - The prompt adds: when a leg's note says SayIntentions assigned a different runway from the flight plan,
   say so in the taxi section and in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both.
   The filed SID/STAR is still described as filed.
@@ -167,7 +168,8 @@ briefing.
     it cannot be measured.
   - `string? StandTurn(IReadOnlyList<TaxiRouteSegment> segments)` — the turn from the last named run
     into the unnamed segments that end the route (the stand lead-in); null when the route ends on a named
-    segment, when there is nothing to measure, or when the turn is straight.
+    segment, when there is nothing to measure, when the turn is straight, or when the unnamed tail is
+    longer than a stand lead-in (`TaxiGraph.STAND_LEAD_IN_CHAIN_MAX_M`, 100 m).
 - **Measured over a stretch, not a junction.** A change's stretch runs from
   `min(StretchMetres, half the incoming run's length)` before the incoming run's end, through any unnamed
   connector segments between the runs, to `min(StretchMetres, half the outgoing run's length)` into the
@@ -179,7 +181,7 @@ briefing.
   side.
 - **Words**, by the magnitude: under 20° "straight ahead"; 20° to under 60° "slight left/right"; 60° to
   under 120° "left/right"; 120° and more "sharp left/right". The 20° and 60° lines are
-  `TaxiRouter.GetTurnDirection`'s, so the direction always agrees with what live guidance calls out; the
+  `TaxiRouter.GetTurnDirection`'s, the same lines live guidance's callouts use; the
   120° line is TaxiRouter's documented normal/sharp split. Live guidance adds "sharp" and the angle from
   60° up; the briefing keeps plain words, like a controller's clearance.
 - **Deliberately no direction** for joining the first taxiway (after pushback, or where the taxi-in

@@ -926,7 +926,9 @@ public partial class ElectronicFlightBagForm : Form
         var aircraft = AircraftSizeClass.Resolve(plan.AircraftTypeIcao, plan.AircraftName, plan.AircraftMaxPassengers);
         // SayIntentions is read while the aircraft position is: a web call to its parking service can take seconds.
         var siTask = ReadSayIntentionsAsync();
-        string outRunway = plan.DepartureRunway, inRunway = plan.ArrivalRunway;
+        // Hoisted so the catch can still name the runway SayIntentions assigned (and why) even when the leg itself
+        // could not be computed -- defaults to the flight plan's own runway, with no note, until the try below picks.
+        BriefingRunway outChoice = new(plan.DepartureRunway, null), inChoice = new(plan.ArrivalRunway, null);
         try
         {
             var provider = _briefingDependencies?.Provider();
@@ -937,12 +939,11 @@ public partial class ElectronicFlightBagForm : Form
             // SayIntentions' runways and gate count only for THIS flight; its runway wins over the flight plan's and the
             // leg says so (BriefingRunwayChoice).
             bool siThisFlight = SayIntentionsArrivalGate.IsThisFlight(si?.Context, plan.DepartureICAO, plan.ArrivalICAO);
-            var outChoice = BriefingRunwayChoice.Choose(plan.DepartureRunway, si?.Context.DepartureRunway, siThisFlight);
-            var inChoice = BriefingRunwayChoice.Choose(plan.ArrivalRunway, si?.Context.ArrivalRunway, siThisFlight);
-            (outRunway, inRunway) = (outChoice.Runway, inChoice.Runway);
+            outChoice = BriefingRunwayChoice.Choose(plan.DepartureRunway, si?.Context.DepartureRunway, siThisFlight);
+            inChoice = BriefingRunwayChoice.Choose(plan.ArrivalRunway, si?.Context.ArrivalRunway, siThisFlight);
             var siGate = SayIntentionsArrivalGate.FromStatus(si, plan.DepartureICAO, plan.ArrivalICAO);
 
-            var request = new TaxiBriefingRequest(plan.DepartureICAO, outRunway, plan.ArrivalICAO, inRunway,
+            var request = new TaxiBriefingRequest(plan.DepartureICAO, outChoice.Runway, plan.ArrivalICAO, inChoice.Runway,
                                                   aircraft, plan.AirlineIcao, own, siGate, outChoice.Note, inChoice.Note);
             var briefing = await TaxiBriefingPlanner.PlanAsync(request, provider, gateSource, TaxiBriefingPlanner.DefaultBudget);
             return TaxiBriefingRenderer.Render(briefing);
@@ -950,8 +951,8 @@ public partial class ElectronicFlightBagForm : Form
         catch (Exception ex)
         {
             Log.Warn("taxi_briefing", $"taxi routes block failed: {ex}");
-            return TaxiBriefingRenderer.Render(TaxiBriefing.Unavailable(aircraft, plan.DepartureICAO, outRunway,
-                plan.ArrivalICAO, inRunway, $"taxi route could not be computed ({ex.Message})"));
+            return TaxiBriefingRenderer.Render(TaxiBriefing.Unavailable(aircraft, plan.DepartureICAO, outChoice.Runway,
+                plan.ArrivalICAO, inChoice.Runway, $"taxi route could not be computed ({ex.Message})", outChoice.Note, inChoice.Note));
         }
     }
 

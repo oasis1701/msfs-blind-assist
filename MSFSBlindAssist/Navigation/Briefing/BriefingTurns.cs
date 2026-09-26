@@ -14,9 +14,11 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// connector between the two.</para>
 ///
 /// <para>Runs are exactly <see cref="RouteTaxiwaySequence.DistinctConsecutive"/>'s groups, so the turns line up with the
-/// taxiway names. The 20° and 60° lines are <see cref="TaxiRouter.GetTurnDirection"/>'s, so a direction always agrees
-/// with what live taxi guidance calls out; the 120° line is TaxiRouter's documented split between a normal and a sharp
-/// turn. Live guidance adds "sharp" and the angle from 60° up; a briefing keeps plain words.</para>
+/// taxiway names. The 20° and 60° lines are <see cref="TaxiRouter.GetTurnDirection"/>'s, so the briefing uses the same
+/// 20° and 60° lines as live taxi guidance (which judges a single junction from the aircraft's heading, so the two can
+/// still differ where a junction's bend and the stretch disagree); the 120° line is TaxiRouter's documented split
+/// between a normal and a sharp turn. Live guidance adds "sharp" and the angle from 60° up; a briefing keeps plain
+/// words.</para>
 ///
 /// <para>No direction is given for joining the first taxiway: after pushback the aircraft's heading is not known, and on
 /// the taxi-in the landing exit's side is already briefed.</para>

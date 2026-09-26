@@ -90,11 +90,17 @@ public sealed class TaxiLegBriefing
 
 public sealed record TaxiBriefing(AircraftProfile Aircraft, TaxiLegBriefing TaxiOut, TaxiLegBriefing TaxiIn)
 {
-    /// <summary>Both legs unavailable for one reason (no database, planner failure) — still rendered, never silent.</summary>
+    /// <summary>Both legs unavailable for one reason (no database, planner failure) — still rendered, never silent.
+    /// Each leg keeps its OWN runway note (<see cref="TaxiBriefingRequest.OriginRunwayNote"/> /
+    /// <see cref="TaxiBriefingRequest.DestinationRunwayNote"/>), so a leg that could not be computed still says
+    /// why SayIntentions' runway was used.</summary>
     public static TaxiBriefing Unavailable(AircraftProfile aircraft, string originIcao, string originRunway,
-        string destinationIcao, string destinationRunway, string reason) => new(aircraft,
-        TaxiLegBriefing.UnavailableLeg(originIcao, originRunway, BriefingTier.None, reason),
-        TaxiLegBriefing.UnavailableLeg(destinationIcao, destinationRunway, BriefingTier.None, reason));
+        string destinationIcao, string destinationRunway, string reason,
+        string? originRunwayNote = null, string? destinationRunwayNote = null) => new(aircraft,
+        TaxiLegBriefing.UnavailableLeg(originIcao, originRunway, BriefingTier.None, reason,
+            notes: originRunwayNote is { Length: > 0 } ? new[] { originRunwayNote } : null),
+        TaxiLegBriefing.UnavailableLeg(destinationIcao, destinationRunway, BriefingTier.None, reason,
+            notes: destinationRunwayNote is { Length: > 0 } ? new[] { destinationRunwayNote } : null));
 }
 
 /// <summary>One airport's graph and the data it was built from. <see cref="Note"/> is a caveat the tier
