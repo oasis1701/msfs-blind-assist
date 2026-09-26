@@ -20,7 +20,7 @@ public class TaxiEdge
 /// Builds and represents a taxi graph from navdatareader taxi_path data.
 /// Each taxi_path row defines a centerline segment; endpoints within ~1m are merged into shared nodes.
 /// </summary>
-public class TaxiGraph
+public partial class TaxiGraph
 {
     // Merge threshold in METERS. Using a distance-based check keeps merging consistent
     // across latitudes — a degree-based check was asymmetric (NS vs EW) at high latitudes
@@ -3732,6 +3732,7 @@ public class TaxiGraph
         double lengthM = rwy.Length * 0.3048;
         double maxDistFt = rwy.Length - END_BUFFER_FT;
         double landingThresholdOffsetFt = rwy.ThresholdOffset;
+        var axis = RunwayAxis.For(rwy);
 
         foreach (var node in Nodes.Values)
         {
@@ -3818,9 +3819,6 @@ public class TaxiGraph
             if (best == null) continue;
 
             double relBest = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
-            // A stub peeling back toward the approach end is a turnaround, not an exit - the
-            // very thing this scan exists to keep the pilot out of.
-            if (relBest > 90.0) continue;
             double exitAngle = relBest;
 
             double endRatio = alongFt / rwy.Length;
@@ -3855,7 +3853,7 @@ public class TaxiGraph
                     exitBearingTrue = apronBrg == 0.0 ? 360.0 : apronBrg;
             }
 
-            found.Add(new LandingExit
+            var candidateExit = new LandingExit
             {
                 NodeId = node.NodeId,
                 ApronNodeId = apronNodeId > 0 ? apronNodeId : node.NodeId,
@@ -3870,7 +3868,14 @@ public class TaxiGraph
                 ExitSide = NormalizeAngle(
                     (exitBearingTrue == 360.0 ? 0.0 : exitBearingTrue) - rwyHeadingTrue) >= 0
                     ? "Right" : "Left"
-            });
+            };
+            // Branch-measured like the planner list; turnarounds are dropped (this scan never offered
+            // them) unless their forward sibling exists. An unmeasured branch keeps the scan's old rule:
+            // a first edge peeling back past 90 degrees is the backtrack this scan exists to avoid.
+            var refinedExit = RefineExitByBranch(candidateExit, best.ToNodeId, keepNode: false,
+                dropTurnarounds: true, rwy, axis, afterDistanceFromThresholdFeet, out bool measured);
+            if (!measured && relBest > 90.0) continue;
+            if (refinedExit != null) found.Add(refinedExit);
         }
 
         found.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
@@ -3925,6 +3930,8 @@ public class TaxiGraph
         double lateralToleranceM = (halfWidthFt * 0.3048) + 15.0;
 
         double lengthM = rwy.Length * 0.3048;
+        // The branch-measurement frame (ExitBranch): same projection and half-width rule as this method.
+        var axis = RunwayAxis.For(rwy);
 
         // Displaced threshold handling. rwy.ThresholdOffset is the distance (feet)
         // from the physical runway end (rwy.StartLat/Lon) to the painted landing
@@ -4018,15 +4025,32 @@ public class TaxiGraph
             // hasHoldShortOnRunway=true, blocking the Normal-node fallback from finding
             // the real 10L exits (N1/N2/N3), leaving only that backward RET.
             if (!Adjacency.TryGetValue(n.NodeId, out var hsEdges)) continue;
-            bool hasForwardExit = false;
+            bool hasNamedEdge = false;
             foreach (var he in hsEdges)
+                if (!string.IsNullOrEmpty(he.TaxiwayName)) { hasNamedEdge = true; break; }
+            if (!hasNamedEdge) continue;
+
+            // Branch-measured (ExitBranch): a hold-short node counts only when its branch leaves the
+            // runway FORWARD for this landing direction. An unmeasured branch keeps the old per-edge
+            // test, so thin navdata behaves exactly as before.
+            var hsBranch = ExitBranch.Analyze(this, axis, n.NodeId);
+            bool hasForwardExit;
+            if (hsBranch.IsMeasured)
             {
-                if (string.IsNullOrEmpty(he.TaxiwayName)) continue;
-                double relAngle = Math.Abs(NormalizeAngle(he.BearingDegrees - rwyHeadingTrue));
-                bool peelsBack = relAngle > 90.0;
-                double ea = peelsBack ? 180.0 - relAngle : relAngle;
-                if (peelsBack && ea < 50.0) ea = NORMAL_MAX_DEG + 20.0;
-                if (ea <= NORMAL_MAX_DEG) { hasForwardExit = true; break; }
+                hasForwardExit = !hsBranch.IsTurnaround;
+            }
+            else
+            {
+                hasForwardExit = false;
+                foreach (var he in hsEdges)
+                {
+                    if (string.IsNullOrEmpty(he.TaxiwayName)) continue;
+                    double relAngle = Math.Abs(NormalizeAngle(he.BearingDegrees - rwyHeadingTrue));
+                    bool peelsBack = relAngle > 90.0;
+                    double ea = peelsBack ? 180.0 - relAngle : relAngle;
+                    if (peelsBack && ea < 50.0) ea = NORMAL_MAX_DEG + 20.0;
+                    if (ea <= NORMAL_MAX_DEG) { hasForwardExit = true; break; }
+                }
             }
             if (hasForwardExit) { hasHoldShortOnRunway = true; break; }
         }
@@ -4112,6 +4136,7 @@ public class TaxiGraph
             string taxiwayName = "";
             double exitAngle = 90.0; // default to perpendicular if nothing better found
             double exitBearingTrue = 0.0; // true bearing of best exit edge; 0 = not found
+            int? bestToNodeId = null;
             if (Adjacency.TryGetValue(node.NodeId, out var edges))
             {
                 TaxiEdge? best = null;
@@ -4205,6 +4230,7 @@ public class TaxiGraph
 
                 if (best != null)
                 {
+                    bestToNodeId = best.ToNodeId;
                     taxiwayName = best.TaxiwayName;
                     // Store 360.0 for due-north edges so 0.0 stays unambiguous as "not found".
                     exitBearingTrue = best.BearingDegrees == 0.0 ? 360.0 : best.BearingDegrees;
@@ -4355,7 +4381,7 @@ public class TaxiGraph
             else
                 exitType = "End";
 
-            exits.Add(new LandingExit
+            var candidateExit = new LandingExit
             {
                 NodeId = node.NodeId,
                 // HS/IHS exits: normally the hold-short bar is at the junction (apron side).
@@ -4379,7 +4405,10 @@ public class TaxiGraph
                 ExitSide = exitBearingTrue != 0.0
                     ? (NormalizeAngle((exitBearingTrue == 360.0 ? 0.0 : exitBearingTrue) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
                     : ""
-            });
+            };
+            var refinedExit = RefineExitByBranch(candidateExit, bestToNodeId, keepNode: isHoldShortNode,
+                dropTurnarounds: false, rwy, axis, double.NegativeInfinity, out _);
+            if (refinedExit != null) exits.Add(refinedExit);
         }
 
         // Deduplicate exits that share the same taxiway name and are within 50 ft of
@@ -4562,7 +4591,7 @@ public class TaxiGraph
                         : angle2 <= NORMAL_MAX_DEG ? "Normal"
                         : "End";
 
-                    fallbackExits.Add(new LandingExit
+                    var candidateFallback = new LandingExit
                     {
                         NodeId = node.NodeId,
                         ApronNodeId = apronNode,
@@ -4577,7 +4606,10 @@ public class TaxiGraph
                         ExitSide = best2Brg != 0.0
                             ? (NormalizeAngle((best2Brg == 360.0 ? 0.0 : best2Brg) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
                             : ""
-                    });
+                    };
+                    var refinedFallback = RefineExitByBranch(candidateFallback, best2?.ToNodeId, keepNode: false,
+                        dropTurnarounds: false, rwy, axis, double.NegativeInfinity, out _);
+                    if (refinedFallback != null) fallbackExits.Add(refinedFallback);
                 }
 
                 if (fallbackExits.Count > 0)
