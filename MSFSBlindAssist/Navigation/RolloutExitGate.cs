@@ -88,7 +88,10 @@ public static class RolloutExitGate
     public const double NearRunwayEndFeet = 500.0;
 
     /// <summary>
-    /// How close to the exit a turn must begin to count as taking it.
+    /// The CEILING on an exit's own turn window (<see cref="TurnWindowFeetFor"/>), the window used
+    /// when no exit is targeted, and the straight-line bound in <see cref="IsVacateAwayFromPlannedExit"/>.
+    /// Until 2026-09 it was the turn window for EVERY exit (how close to the exit a turn had to begin
+    /// to count as taking it), sized by the worst case derived below.
     ///
     /// <para>Derived, not fitted. An exit node can sit forward of its actual pavement
     /// junction by up to <c>lateralTolerance / tan(exitAngle)</c>, where lateralTolerance is
@@ -283,9 +286,15 @@ public static class RolloutExitGate
     /// <c>turnBegun</c> hasn't accepted the turn yet), more than <see cref="ExitToneArmFeet"/>
     /// from the exit NODE, was getting a "hold the runway heading" DriftCorrection tone
     /// that directly opposes a turn <see cref="IsExitTurnBegun"/> is about to accept — real,
-    /// not hypothetical, because <see cref="TurnWindowFeet"/>'s own derivation shows an exit
-    /// node can read up to 558 ft forward of its pavement junction. Silence, not opposition,
-    /// is correct here: don't fight a turn the gate is about to accept.</para>
+    /// not hypothetical, because an exit node can read forward of its pavement junction (up to
+    /// 558 ft in <see cref="TurnWindowFeet"/>'s worst case). Silence, not opposition, is correct
+    /// INSIDE the window: don't fight a turn the gate is about to accept.</para>
+    ///
+    /// <para>The window is a PARAMETER since 2026-09: the targeted exit's own
+    /// (<see cref="TurnWindowFeetFor"/>), never more than <see cref="TurnWindowFeet"/>. The fixed
+    /// 1,000 ft was far too wide for an exit whose node is its centreline junction: at KMEM 36L a
+    /// leftover 8° right turn 631 ft before M7, whose own window is 324 ft, went Silent instead of
+    /// getting the drift tone. Beyond the exit's own window a deviation toward its side is drift.</para>
     ///
     /// <para>A KNOWN exit side is required (<see cref="HasKnownExitSide"/>) — not merely
     /// deferred to <see cref="IsTurnTowardExit"/>'s own unknown-side degradation — because at
@@ -343,6 +352,12 @@ public static class RolloutExitGate
     /// <para>A genuine early turn-off at a DIFFERENT exit is not this method's job and is not
     /// lost by tightening it: <c>exitedLaterally</c> catches that from position, which no
     /// heading test can fake.</para>
+    ///
+    /// <para>The distance clause's window is a PARAMETER since 2026-09: the targeted exit's own
+    /// (<see cref="TurnWindowFeetFor"/>), never more than the fixed <see cref="TurnWindowFeet"/> it
+    /// replaced. The fixed 1,000 ft accepted a leftover 15° right turn 483 ft before KMEM M7, whose
+    /// own window is 324 ft, as the M7 turn — and the handoff that followed swung the tone hard left
+    /// as the aircraft left the runway.</para>
     /// </summary>
     /// <param name="exitRelativeBearingDeg">
     /// From <see cref="ExitRelativeBearingDeg"/> — never a hand-written
@@ -590,7 +605,8 @@ public static class RolloutExitGate
     /// above <see cref="TaxiGroundSpeedKts"/>. An End exit is in the last 15% of the runway (or a turnaround),
     /// so missing it leaves little runway to stop on: its "Slow down." keeps the pre-2026-09 30 kt line even
     /// when its angle would allow 60 kt. One owner for the rollout's 500 ft callout and the two sentences that
-    /// fold its "Slow down." (the crossing decline and the touchdown correction).
+    /// fold its "Slow down." (the crossing decline and the touchdown correction), and for the retarget
+    /// sentence (<c>RetargetCallout</c>), which folds it the same way.
     /// </summary>
     public static double SlowDownAboveKts(double exitAngleDeg, string? exitType)
         => exitType == "End"
@@ -693,9 +709,14 @@ public static class RolloutExitGate
 
     /// <summary>
     /// The speed a landing rollout is braking TOWARD, not through: below it the aircraft is at
-    /// normal taxi speed and is no longer shedding energy hard. Mirrors
-    /// <c>TaxiGuidanceManager.ROLLOUT_TAXI_GS_KTS</c>, the same 30 kt at which the rollout hands
-    /// over to ordinary taxi guidance and stops appending "Slow down."
+    /// normal taxi speed and is no longer shedding energy hard.
+    /// <c>TaxiGuidanceManager.ROLLOUT_TAXI_GS_KTS</c>, the 30 kt of the rollout's taxi-speed handoff
+    /// to ordinary taxi guidance, aliases it.
+    ///
+    /// <para>It is no longer the rollout's "Slow down." line for every exit: since 2026-09 that line is
+    /// <see cref="SlowDownAboveKts"/> — the exit's own <see cref="MaxTurnSpeedKts"/> — and this 30 kt
+    /// survives there only as an "End" exit's line. It is also the speed at or above which
+    /// ground-traffic callouts stay silent on a landing-exit route (<c>GroundTrafficSuppression</c>).</para>
     ///
     /// <para>Used by <see cref="RolloutCalloutSupersession.ReachFeet"/> so that assuming braking
     /// does not run away at the slow end: at 22 kt an aircraft is not decelerating at

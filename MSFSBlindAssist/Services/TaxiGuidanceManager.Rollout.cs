@@ -1024,8 +1024,9 @@ public partial class TaxiGuidanceManager
                     // "Rollout-driven" is NOT "audible". Naming SelectToneMode's above-50-kt
                     // Silent mode here would be naming the one silent state that cannot apply,
                     // since every trigger that reaches this branch is a slow-speed one. The two
-                    // that CAN leave a stopped aircraft with no sound are: the 300–1,000 ft
-                    // turn-window Silent (≥ DriftToneSilentDeg of deviation toward a known exit
+                    // that CAN leave a stopped aircraft with no sound are: the turn-window Silent
+                    // (from 300 ft out to the targeted exit's own window, _rolloutExitTurnWindowFeet,
+                    // at most 1,000 ft; ≥ DriftToneSilentDeg of deviation toward a known exit
                     // side), and DriftCorrection itself, which is a heading cue and therefore
                     // zero volume for an aircraft aligned with the runway. Beyond
                     // ExitToneArmFeet (300 ft) one of those two always owns the tone. That is
@@ -1085,8 +1086,9 @@ public partial class TaxiGuidanceManager
                         // it is one-shot, so speaking it early costs nothing even on a fast
                         // frame. Waiting for trulyStopped would instead leave the CREEPING case
                         // silent: a speedNearExitHandoff decline reaches here anywhere inside
-                        // ROLLOUT_NEAR_EXIT_FT (500 ft), and 300–500 ft of that overlaps the
-                        // turn-window Silent band — so an aircraft crawling at 4 kt, above
+                        // ROLLOUT_NEAR_EXIT_FT (500 ft), and the part of that beyond 300 ft overlaps
+                        // the turn-window Silent band as far as the exit's own window reaches (up to
+                        // all of 300–500 ft) — so an aircraft crawling at 4 kt, above
                         // ROLLOUT_NO_EXIT_STOPPED_GS_KTS and therefore never "stopped", would
                         // hear nothing at all. That is precisely the state this exists to close.
                         // One-shot per rollout, so the cost of speaking early is a single
@@ -1567,12 +1569,12 @@ public partial class TaxiGuidanceManager
         // KSEA 34L 2026-08-21: a 15.1° drift built up here with no cue at all, and the
         // steering tone's first utterance was a 79° hard pan once ExitBearing took over.
         //
-        // Exception, within RolloutExitGate.TurnWindowFeet of the exit: a heading deviation
+        // Exception, within the targeted exit's own turn window (_rolloutExitTurnWindowFeet —
+        // RolloutExitGate.TurnWindowFeetFor, never more than TurnWindowFeet): a heading deviation
         // that is toward a KNOWN exit side goes Silent instead of DriftCorrection — don't
         // fight a turn IsExitTurnBegun is about to accept just because it hasn't reached the
-        // 15° turnBegun threshold yet. See RolloutExitGate.SelectToneMode's doc. Since 2026-09
-        // that window is the targeted exit's own (_rolloutExitTurnWindowFeet, TurnWindowFeetFor,
-        // never more than TurnWindowFeet): at KMEM 36L a leftover right turn 631 ft before M7,
+        // 15° turnBegun threshold yet. See RolloutExitGate.SelectToneMode's doc. Until 2026-09
+        // the window was the fixed 1,000 ft: at KMEM 36L a leftover right turn 631 ft before M7,
         // whose own window is 324 ft, silenced the tone; it now gets the drift tone instead.
         //
         // Within 300 ft (≤50 kt) the tone is ExitBearing: desired heading = bearing to the
@@ -2002,8 +2004,9 @@ public partial class TaxiGuidanceManager
                 // panned at a route that no longer exists. Rollout-driven is not the same as
                 // always audible, and the above-50-kt Silent mode is the wrong one to name:
                 // this method only runs at low speed. The two of RolloutExitGate.SelectToneMode's
-                // states that can genuinely produce no sound here are the 300–1,000 ft
-                // turn-window Silent and a sub-DriftToneSilentDeg DriftCorrection, which is a
+                // states that can genuinely produce no sound here are the turn-window Silent
+                // (from 300 ft out to the targeted exit's own window, at most 1,000 ft) and a
+                // sub-DriftToneSilentDeg DriftCorrection, which is a
                 // heading cue and so goes to zero volume once the aircraft is aligned. This
                 // decline fires within ExitToneArmFeet (300 ft), where the tone is ExitBearing
                 // and audible, so it does not need its own callout — and if the aircraft then
