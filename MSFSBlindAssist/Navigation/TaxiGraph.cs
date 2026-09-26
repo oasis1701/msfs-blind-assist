@@ -3723,9 +3723,8 @@ public partial class TaxiGraph
     /// that whole branch (<see cref="ExitBranch"/>): a turnaround (sharpest turn to clear above
     /// <see cref="RolloutExitGate.TurnaroundAboveDeg"/>, 110 degrees) is dropped unless its
     /// forward sibling exists and that sibling's junction lies ahead of
-    /// <paramref name="afterDistanceFromThresholdFeet"/>, and a forward branch's angle is capped at
-    /// 90 degrees. A forward branch whose junction is already behind that point keeps the
-    /// candidate's own node (the refinement never removes a forward exit). Only an
+    /// <paramref name="afterDistanceFromThresholdFeet"/>, and a forward exit keeps the candidate's own
+    /// node with its branch's angle (capped at 90 degrees), type and bearing. Only an
     /// UNMEASURED branch keeps the old first-edge rule (a turn past 90 degrees is dropped).
     /// Hold-short markers are ignored in BOTH directions - a marked node is as eligible as an
     /// unmarked one.</para>
@@ -3897,7 +3896,7 @@ public partial class TaxiGraph
             // Branch-measured like the planner list; turnarounds are dropped (this scan never offered
             // them) unless their forward sibling exists. An unmeasured branch keeps the scan's old rule:
             // a first edge peeling back past 90 degrees is the backtrack this scan exists to avoid.
-            var refinedExit = RefineExitByBranch(candidateExit, best.ToNodeId, keepNode: false,
+            var refinedExit = RefineExitByBranch(candidateExit, best.ToNodeId,
                 dropTurnarounds: true, rwy, axis, afterDistanceFromThresholdFeet, out bool measured);
             if (!measured && relBest > 90.0) continue;
             if (refinedExit != null) found.Add(refinedExit);
@@ -4425,7 +4424,7 @@ public partial class TaxiGraph
                     : ""
             };
             string producerExitType = candidateExit.ExitType;
-            var refinedExit = RefineExitByBranch(candidateExit, bestToNodeId, keepNode: isHoldShortNode,
+            var refinedExit = RefineExitByBranch(candidateExit, bestToNodeId,
                 dropTurnarounds: false, rwy, axis, double.NegativeInfinity, out _);
             if (refinedExit != null)
             {
@@ -4629,7 +4628,7 @@ public partial class TaxiGraph
                             ? (NormalizeAngle((best2Brg == 360.0 ? 0.0 : best2Brg) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
                             : ""
                     };
-                    var refinedFallback = RefineExitByBranch(candidateFallback, best2?.ToNodeId, keepNode: false,
+                    var refinedFallback = RefineExitByBranch(candidateFallback, best2?.ToNodeId,
                         dropTurnarounds: false, rwy, axis, double.NegativeInfinity, out _);
                     if (refinedFallback != null) fallbackExits.Add(refinedFallback);
                 }

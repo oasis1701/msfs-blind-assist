@@ -8,30 +8,30 @@ namespace MSFSBlindAssist.Navigation;
 public partial class TaxiGraph
 {
     /// <summary>
-    /// Refines a candidate exit by its branch. The inward walk that finds the branch stays on the
-    /// exit's own taxiway (<see cref="ExitBranch.Analyze"/>'s name filter; unnamed edges only for an
-    /// unnamed exit), so a node shared with another exit is never measured along that exit's arm
-    /// (KATL 26L: B4 was listed as a copy of E3); a candidate whose own taxiway never reaches the
-    /// runway is unmeasured.
-    /// <para>Unmeasured branches (nothing clears the runway within reach) leave the exit exactly as it
-    /// was, so thin navdata can never lose an exit here.</para>
-    /// <para>A turnaround is replaced by its forward sibling when one exists and the sibling's junction
-    /// passes the distance rules (<see cref="ExitAtJunction"/>); that substitution relocates the exit
-    /// even when <paramref name="keepNode"/> is set. Otherwise it is recorded as the turnaround it is
-    /// (130°, "End") at its own node - never dropped from the planner list (worldwide sweep,
-    /// 2026-09-26: dropping it emptied 111 runway directions' lists, e.g. 0KS5 09) - except that
-    /// <paramref name="dropTurnarounds"/> (the rescue scan) drops it.</para>
-    /// <para>A forward branch gets its sharpest turn to clear (capped at 90°) and, unless
-    /// <paramref name="keepNode"/> (hold-short-anchored exits), moves to its junction. Relocation
-    /// never removes an exit: where the junction fails a distance rule the exit's own node passed
-    /// (MIN_DIST_FT, END_BUFFER_FT, or the rescue scan's
-    /// <paramref name="minDistanceFromThresholdFeet"/>), the exit keeps its own node, as keepNode
-    /// does, with the refined angle and type - and, unlike keepNode, the branch's bearing, because
-    /// the producer's can be a lead line's backward edge (KMTC 19 B and LSGL 18 L, whose lead-ins
-    /// start under 500 ft, were dropped).</para>
+    /// Refines a candidate exit by its branch. The whole measurement stays on the exit's own taxiway
+    /// (<see cref="ExitBranch.Analyze"/>'s name filter; unnamed edges only for an unnamed exit): the
+    /// inward walk, so a node shared with another exit is never walked in along that exit's arm (KATL
+    /// 26L: B4 was listed as a copy of E3), and the outward search, so a lead line another exit crosses
+    /// is never measured out along that exit's arm (KMIA 08R: M7 took M6's 90° crossing).
+    /// <para>Unmeasured branches (the exit's own taxiway never reaches or never clears the runway within
+    /// reach) leave the exit exactly as it was, so thin navdata can never lose an exit here.</para>
+    /// <para>A FORWARD exit keeps its own node - NodeId, position and distances unchanged, for every
+    /// producer - and takes the branch's angle (its sharpest turn to clear, capped at 90°), its type
+    /// (classified where the exit stands) and its bearing and side (<see cref="BranchExitBearing"/>;
+    /// the producer's bearing can be a lead line's or a hold-short node's BACKWARD edge, and after "turn
+    /// now" the rollout steers a Normal exit by its bearing). It is never moved to its junction: the
+    /// worldwide sweep (2026-09-26) found lead-in starts up to 150 m before the turn-off (KMIA 08R Z),
+    /// which put "turn now" hundreds of feet early, and moving exits back pushed distinct same-name
+    /// turnoffs inside the coverage window.</para>
+    /// <para>A TURNAROUND (<see cref="LandingExitBranch.IsTurnaround"/>, judged by how the branch leaves
+    /// the runway pavement) is replaced by its forward sibling when one exists and the sibling's
+    /// junction passes the distance rules (<see cref="ExitAtJunction"/>) - the one case in which an exit
+    /// moves. Otherwise it is recorded as the turnaround it is (130°, "End") at its own node - never
+    /// dropped from the planner list (dropping it emptied 111 runway directions' lists, e.g. 0KS5 09) -
+    /// except that <paramref name="dropTurnarounds"/> (the rescue scan) drops it.</para>
     /// </summary>
     private LandingExit? RefineExitByBranch(
-        LandingExit exit, int? seedNeighborId, bool keepNode, bool dropTurnarounds,
+        LandingExit exit, int? seedNeighborId, bool dropTurnarounds,
         Runway rwy, RunwayAxis axis, double minDistanceFromThresholdFeet, out bool measured)
     {
         var branch = ExitBranch.Analyze(this, axis, exit.NodeId, seedNeighborId, exit.TaxiwayName ?? "");
@@ -51,28 +51,19 @@ public partial class TaxiGraph
         }
 
         double angle = Math.Min(branch.TurnToClearDeg, RolloutExitGate.MaxUsableExitTurnDeg);
-        if (!keepNode)
-        {
-            var atJunction = ExitAtJunction(branch, exit.TaxiwayName, exit.ApronNodeId, rwy, axis, minDistanceFromThresholdFeet);
-            if (atJunction != null) return atJunction;
-            // The junction fails a distance rule the exit's own node passed: keep the node - with the
-            // branch's bearing as well as its angle and type. The producer's bearing at a node on a
-            // lead line can be the line's BACKWARD edge (it typed that node End, 130°), and after
-            // "turn now" the rollout steers a Normal exit by its bearing (worldwide sweep, 2026-09-26:
-            // 76 such exits, e.g. KMTC 19 B at 537 ft).
-            exit.ExitBearingTrue = BranchExitBearing(branch, rwy.Heading);
-            exit.ExitSide = ExitSideFor(exit.ExitBearingTrue, rwy.Heading);
-        }
-        exit.ExitAngleDegrees = angle;
         double alongFt = axis.Project(exit.Latitude, exit.Longitude).AlongMetres / 0.3048;
+        exit.ExitAngleDegrees = angle;
         exit.ExitType = ClassifyExit(angle, alongFt, rwy.Length);
+        exit.ExitBearingTrue = BranchExitBearing(branch, rwy.Heading);
+        exit.ExitSide = ExitSideFor(exit.ExitBearingTrue, rwy.Heading);
         return exit;
     }
 
     /// <summary>
-    /// The exit at <paramref name="branch"/>'s junction, or null when that junction fails the same
-    /// distance rules every exit does (closer than MIN_DIST_FT, 500 ft, past the landing threshold,
-    /// within END_BUFFER_FT, 50 ft, of the pavement end, or not beyond
+    /// The exit at a forward SIBLING's junction - the one case in which the refinement moves an exit (a
+    /// turnaround replaced by its Y's other arm) - or null when that junction fails the same distance
+    /// rules every exit does (closer than MIN_DIST_FT, 500 ft, past the landing threshold, within
+    /// END_BUFFER_FT, 50 ft, of the pavement end, or not beyond
     /// <paramref name="minDistanceFromThresholdFeet"/>).
     /// </summary>
     private LandingExit? ExitAtJunction(

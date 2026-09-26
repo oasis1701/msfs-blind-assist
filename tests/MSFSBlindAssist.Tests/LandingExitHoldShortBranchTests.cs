@@ -68,6 +68,28 @@ public class LandingExitHoldShortBranchTests
     }
 
     [Fact]
+    public void A_hold_short_exit_takes_its_branchs_bearing_not_a_backward_edges()
+    {
+        // Round 2, S4 (FL86 10, KHON 36, EGMC 23). Hold-short node H (1045,36) sits on a forward fillet
+        // from (1000,0) that turns 11, 22, 41 and 65 degrees. At H itself the inward edge (115 degrees,
+        // pointing back) is more off-axis than the outward one (50 degrees), so the producer's bearing
+        // points back down the runway; after "turn now" the rollout steers a Normal exit by its bearing.
+        var g = Build(
+            Seg(1000, 0, 1010, 2, "A"), Seg(1010, 2, 1025, 8, "A"), Seg(1025, 8, 1036.5, 17.9, "A"),
+            Seg(1036.5, 17.9, 1045, 36, "A", endType: "HSND"), Seg(1045, 36, 1070.7, 66.6, "A"),
+            Seg(1070.7, 66.6, 1080, 100, "A"));
+
+        var a = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "A");
+
+        Assert.Equal(NodeAt(g, 1045, 36).NodeId, a.NodeId);
+        Assert.Equal("Normal", a.ExitType);
+        double relative = ((a.ExitBearingTrue - 90.0) % 360.0 + 540.0) % 360.0 - 180.0;
+        Assert.True(RolloutExitGate.IsPlausibleExitBearing(a.ExitBearingTrue, 90.0), $"bearing {relative:F1} off the runway");
+        Assert.InRange(relative, -90.0, -5.0);   // forward and LEFT (north of an eastbound runway)
+        Assert.Equal("Left", a.ExitSide);
+    }
+
+    [Fact]
     public void A_hold_short_turnaround_with_no_forward_arm_is_recorded_as_a_130_degree_end_exit()
     {
         var g = HoldShortRunway();

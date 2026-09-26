@@ -1,12 +1,12 @@
-// Relocating a landing exit to where its branch leaves the runway must never REMOVE the exit
-// (worldwide sweep, 2026-09-26). TaxiGraph.RefineExitByBranch moves an exit to its branch's junction,
-// or to its forward sibling's; where that junction fails a distance rule the exit's own node passed,
-// the exit stays where the producer found it instead of vanishing:
-//   - a forward exit keeps its own node, with the branch's angle and type (the keepNode behaviour) -
-//     KMTC 19 B and LSGL 18 L were dropped because their lead-ins start under 500 ft;
-//   - a turnaround whose forward sibling fails is recorded as the turnaround, 130 degrees / End, at its
-//     own node - 111 of the 154 directions that lost every exit, e.g. 0KS5 09. The rescue scan still
-//     drops it: a backtrack is what that scan exists to avoid.
+// Where TaxiGraph.RefineExitByBranch places a landing exit (worldwide sweep, 2026-09-26, and the
+// round-2 rulings that followed it):
+//   - a FORWARD exit always keeps its own node, with its branch's angle, type and bearing. Moving it to
+//     its lead-in start put "turn now" up to 150 m early (KMIA 08R Z) and dropped exits whose lead-ins
+//     start under 500 ft (KMTC 19 B, LSGL 18 L);
+//   - a TURNAROUND moves only to its forward sibling's junction; when that junction fails a distance
+//     rule it is recorded as the turnaround, 130 degrees / End, at its own node - 111 of the 154
+//     directions that lost every exit, e.g. 0KS5 09. The rescue scan still drops it: a backtrack is
+//     what that scan exists to avoid.
 //
 // Fixture frame, as in ExitBranchTests: a due-east runway on the equator, threshold at (0,0), 164 ft
 // wide (half-width 25.0 m, clear boundary 35.0 m, corridor 40.0 m). Along-runway metres =
@@ -101,6 +101,23 @@ public class LandingExitRelocationTests
         Assert.True(RolloutExitGate.IsPlausibleExitBearing(k.ExitBearingTrue, 90.0), $"bearing {relative:F1} off the runway");
         Assert.InRange(relative, -90.0, -5.0);   // forward and LEFT (north of an eastbound runway)
         Assert.Equal("Left", k.ExitSide);
+    }
+
+    [Fact]
+    public void A_forward_exit_keeps_its_own_node_however_early_its_lead_line_starts()
+    {
+        // Round 2, S1 (KMIA 08R Z): "Z" leaves the runway from (1100,1) as a RET through (1150,10),
+        // (1200,25) and (1250,45); its unnamed lead line starts 100 m earlier, at (1000,0). Moving the exit
+        // to the lead-line start would put "turn now" 328 ft before the RET leaves the runway.
+        var g = Build(
+            Seg(1000, 0, 1100, 1), Seg(1100, 1, 1150, 10, "Z"), Seg(1150, 10, 1200, 25, "Z"),
+            Seg(1200, 25, 1250, 45, "Z"));
+
+        var z = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "Z");
+
+        Assert.Equal(NodeAt(g, 1100, 1).NodeId, z.NodeId);
+        Assert.InRange(z.DistanceFromThresholdFeet, 1100.0 / 0.3048 - 5.0, 1100.0 / 0.3048 + 5.0);
+        Assert.Equal("High-speed", z.ExitType);
     }
 
     [Fact]

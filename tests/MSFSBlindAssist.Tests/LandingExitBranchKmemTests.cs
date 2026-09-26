@@ -55,10 +55,12 @@ public class LandingExitBranchKmemTests
     }
 
     [Fact]
-    public void M8_moves_to_where_its_branch_leaves_the_runway()
+    public void M8_keeps_its_own_node()
     {
+        // Relocation to the lead-in start was withdrawn after the worldwide sweep: lead-in starts sit up to
+        // 150 m before the turn-off (KMIA 08R Z), putting "turn now" hundreds of feet early.
         var m8 = Exit("M8");
-        Assert.InRange(m8.DistanceFromThresholdFeet, 8650.0, 8690.0);
+        Assert.InRange(m8.DistanceFromThresholdFeet, 8820.0, 8860.0);
         Assert.Equal("End", m8.ExitType); // past 85% of the 9,310 ft runway, as before
         Assert.InRange(m8.ExitAngleDegrees, 52.5, 55.5);
     }
