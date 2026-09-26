@@ -6,9 +6,9 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 
 /// <summary>
 /// Accessible MCDU for the FlyByWire A32NX (ListBox display, scratchpad input, page
-/// buttons) over the SimBridge websocket. Single MCDU (Captain) by design — the remote
-/// protocol cannot separate Captain and First Officer screens (both keys carry the same
-/// screen); see <see cref="FlyByWireMCDUService"/> remarks. This matches FBW's own remote.
+/// buttons) over the Coherent debugger, SimBridge's websocket as the fallback. Single
+/// MCDU (Captain) by design — one instrument draws both screens, so neither transport
+/// can separate Captain and First Officer; see <see cref="FlyByWireMCDUService"/> remarks.
 /// </summary>
 public class FlyByWireMCDUForm : Form
 {
@@ -393,7 +393,13 @@ public class FlyByWireMCDUForm : Form
     {
         if (IsDisposed || !IsHandleCreated) return;
         connectionStatus.Text = isConnected ? "MCDU: Connected" : "MCDU: Disconnected";
-        _announcer.Announce(isConnected ? "MCDU connected" : "MCDU disconnected");
+        // Spoken only while the window is open. With the Coherent transport primary, a
+        // flight reload or the debugger re-attaching drops and re-establishes the socket
+        // as a matter of course; with SimBridge absent (the normal case now) each of those
+        // flipped the state, and a HIDDEN window narrated "disconnected" then "connected"
+        // over whatever the pilot was listening to, for nothing they could act on. The
+        // label keeps the state, and ShowForm speaks it if the window opens disconnected.
+        if (Visible) { _announcer.Announce(isConnected ? "MCDU connected" : "MCDU disconnected"); }
     }
 
     public void ShowForm()
@@ -406,7 +412,34 @@ public class FlyByWireMCDUForm : Form
         TopMost = false;
         this.ActiveControl = mcduDisplay;
         mcduDisplay.Focus();
+        ArmDisconnectedOnShowCheck();
     }
+
+    /// <summary>
+    /// A window opened onto a dead transport says so — once, after the transports have had
+    /// a moment. The check is DEFERRED because the very first open creates the service and
+    /// connects it, and the Coherent socket takes ~100 ms to come up: an immediate check
+    /// would speak "disconnected" on every first open and be contradicted a beat later
+    /// (the "connected" transition itself announces while the window is visible).
+    /// </summary>
+    private void ArmDisconnectedOnShowCheck()
+    {
+        if (_service.IsConnected) return;
+        _disconnectedOnShowTimer ??= new System.Windows.Forms.Timer { Interval = 2000 };
+        _disconnectedOnShowTimer.Tick -= DisconnectedOnShowTick;
+        _disconnectedOnShowTimer.Tick += DisconnectedOnShowTick;
+        _disconnectedOnShowTimer.Stop();
+        _disconnectedOnShowTimer.Start();
+    }
+
+    private void DisconnectedOnShowTick(object? sender, EventArgs e)
+    {
+        _disconnectedOnShowTimer?.Stop();
+        if (IsDisposed || !Visible || _service.IsConnected) return;
+        _announcer.Announce("MCDU disconnected");
+    }
+
+    private System.Windows.Forms.Timer? _disconnectedOnShowTimer;
 
     protected override void Dispose(bool disposing)
     {
@@ -416,6 +449,7 @@ public class FlyByWireMCDUForm : Form
             _service.ConnectionStatusChanged -= OnConnectionStatusChanged;
             _service.PrintReceived -= OnPrintReceived;
             _scratchpadDebounceTimer?.Dispose();
+            _disconnectedOnShowTimer?.Dispose();
         }
         base.Dispose(disposing);
     }

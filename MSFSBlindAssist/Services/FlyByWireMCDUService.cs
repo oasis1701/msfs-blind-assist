@@ -1,282 +1,136 @@
-using System.Net.WebSockets;
-using System.Text;
-using Newtonsoft.Json.Linq;
+using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
 /// <summary>
-/// Connects to the FlyByWire SimBridge MCDU relay websocket and exposes the Captain
-/// MCDU screen as <see cref="MCDUDisplayData"/>. Mirrors the FenixMCDUService shape
-/// (connect-loop + backoff + UI marshalling) but uses a single socket for both directions.
+/// The FlyByWire A32NX (and Headwind A330) MCDU as ONE service for the MCDU window,
+/// over TWO transports the window never sees:
 ///
-/// IMPORTANT — the protocol cannot separate Captain and First Officer MCDUs.
-/// FBW's A320_Neo_CDU_MainDisplay.sendUpdate() builds ONE screenState from its own
-/// display and assigns that same object to BOTH the "left" and "right" keys of every
-/// update message (only annunciators/brightness differ). This FBW version runs a single
-/// MCDU instrument writing both keys (no sender tag); the no-side-separation conclusion
-/// is unchanged. So content.left == content.right in every message and a "side selector"
-/// cannot pick one MCDU. We therefore mirror FBW's own web remote MCDU exactly: only
-/// ever control the Captain MCDU (event:left) and read the single shared screen
-/// (content.left). Verified live: left == right in 100% of observed messages.
+///  • PRIMARY — <see cref="CoherentA32nxMcduClient"/>, a persistent Coherent debugger
+///    socket on the MCDU view. Nothing to launch: it works whenever the sim is up.
+///  • FALLBACK — <see cref="FlyByWireSimBridgeMcduClient"/>, SimBridge's relay websocket,
+///    the transport this window used exclusively before 2026-09. It carries the screen
+///    only while the Coherent socket is down, and is still the ONLY source of MCDU
+///    printouts (ATIS/OFP), which exist nowhere but on the relay.
+///
+/// <see cref="FbwMcduTransportArbiter"/> decides which transport is live, and both
+/// transports post their callbacks to the UI context, so the arbiter and the window's
+/// events are driven from one thread.
+///
+/// IMPORTANT — neither transport can separate the Captain and First Officer MCDUs.
+/// FBW's panel.cfg declares ONE mcdu.html gauge on the shared MCDU texture, so one
+/// instrument (one Coherent view) draws both screens, and its sendUpdate() writes the
+/// same screenState into both the "left" and "right" relay keys (only annunciators and
+/// brightness differ). We therefore mirror FBW's own web remote MCDU exactly: only ever
+/// control the Captain MCDU and read the single shared screen. Do NOT reintroduce a side
+/// selector on either transport.
 /// </summary>
 public class FlyByWireMCDUService : IDisposable
 {
-    private readonly string _host;
-
-    // The protocol's "left"/"right" keys both carry the same screen (see class remarks);
-    // we always control and read the Captain MCDU, matching FBW's own remote.
-    private const string CaptainSide = "left";
-
-    private ClientWebSocket? _ws;
-
-    // Serializes ALL SendAsync calls on the single socket. ClientWebSocket allows only one
-    // outstanding send; SendButtonPress is fire-and-forget while SendTextToMCDU awaits a
-    // sequential per-character loop, so two concurrent sends threw InvalidOperationException
-    // (swallowed by SendRaw's catch → silently dropped keypress).
-    private readonly SemaphoreSlim _sendLock = new(1, 1);
-
-    private CancellationTokenSource? _cts;
-    private readonly SynchronizationContext? _syncContext;
-    private bool _isConnected;
+    private readonly CoherentA32nxMcduClient _coherent;
+    private readonly FlyByWireSimBridgeMcduClient _simBridge;
+    private readonly FbwMcduTransportArbiter _arbiter = new();
     private bool _disposed;
-    private int _reconnectAttempt;
-    private static readonly int[] ReconnectDelays = { 1000, 3000, 6000, 12000, 30000 };
 
     public event Action<MCDUDisplayData>? DisplayUpdated;
     public event Action<bool>? ConnectionStatusChanged;
     public event Action<List<string>>? PrintReceived;
 
-    public bool IsConnected => _isConnected;
+    /// <summary>Either transport is up — what the window shows as "MCDU: Connected".</summary>
+    public bool IsConnected => _arbiter.AnyConnected;
 
-    public FlyByWireMCDUService(string host = "localhost:8380")
+    /// <summary>
+    /// True while the Coherent client holds the MCDU view's inspector socket. Coherent GT
+    /// allows ONE socket per view, so any other eval against that view (the D / Shift+D
+    /// flight-info readout) must go through <see cref="EvalOnMcduViewAsync"/> meanwhile.
+    /// </summary>
+    public bool HoldsMcduView => _coherent.HoldsView;
+
+    /// <param name="mcduViewTitle">The MCDU's Coherent view title needle: "A32NX_MCDU", or
+    /// "A339X_MCDU" on the Headwind A330 (<c>FlyByWireA320Definition.FlightInfoMcduView</c>).</param>
+    /// <param name="simBridgeHost">SimBridge host:port for the relay fallback.</param>
+    public FlyByWireMCDUService(string mcduViewTitle = "A32NX_MCDU", string simBridgeHost = "localhost:8380")
     {
-        _host = host;
-        _syncContext = SynchronizationContext.Current;
-    }
-
-    private string WsUrl => $"ws://{_host}/interfaces/v1/mcdu";
-
-    public void Connect()
-    {
-        if (_disposed) { return; }
-        _cts = new CancellationTokenSource();
-        _ = ConnectLoop(_cts.Token);
-    }
-
-    public void Disconnect()
-    {
-        _cts?.Cancel();
-        CloseWebSocket();
-        SetConnected(false);
-        _cts?.Dispose();
-        _cts = null;
-    }
-
-    private async Task ConnectLoop(CancellationToken ct)
-    {
-        while (!ct.IsCancellationRequested)
+        _coherent = new CoherentA32nxMcduClient(mcduViewTitle);
+        _coherent.DisplayUpdated += d => Apply(_arbiter.Offer(FbwMcduSource.Coherent, d));
+        _coherent.ConnectionStatusChanged += c =>
         {
-            try
-            {
-                await ConnectAndReceive(ct);
-            }
-            catch (Exception ex)
-            {
-                if (!ct.IsCancellationRequested)
-                {
-                    Log.Debug("Services", $"Connection error: {ex.Message}");
-                    SetConnected(false);
-                }
-                // Cancellation-path exceptions (socket disposed under a pending
-                // ReceiveAsync during Disconnect) are expected — swallow so they
-                // don't surface as unobserved task exceptions.
-            }
+            Log.Info("Services", $"A32NX MCDU over Coherent: {(c ? "readable" : "not readable")}");
+            Apply(_arbiter.SetConnected(FbwMcduSource.Coherent, c));
+        };
 
-            if (ct.IsCancellationRequested) { break; }
-
-            int delay = ReconnectDelays[Math.Min(_reconnectAttempt, ReconnectDelays.Length - 1)];
-            _reconnectAttempt++;
-            try { await Task.Delay(delay, ct); }
-            catch (TaskCanceledException) { break; }
-        }
-    }
-
-    private async Task ConnectAndReceive(CancellationToken ct)
-    {
-        var ws = new ClientWebSocket();
-        _ws = ws;
-        try
+        _simBridge = new FlyByWireSimBridgeMcduClient(simBridgeHost);
+        _simBridge.DisplayUpdated += d => Apply(_arbiter.Offer(FbwMcduSource.SimBridge, d));
+        _simBridge.ConnectionStatusChanged += c =>
         {
-            await ws.ConnectAsync(new Uri(WsUrl), ct);
-            _reconnectAttempt = 0;
-            SetConnected(true);
-            await SendRaw("requestUpdate", ct);
-
-            var buffer = new byte[131072];
-            // Accumulate raw bytes and decode once at EndOfMessage — per-fragment decoding
-            // corrupts a multibyte UTF-8 char (°, arrows) split across a receive boundary.
-            var ms = new System.IO.MemoryStream();
-            while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
-            {
-                ms.SetLength(0);
-                WebSocketReceiveResult result;
-                do
-                {
-                    result = await ws.ReceiveAsync(new ArraySegment<byte>(buffer), ct);
-                    if (result.MessageType == WebSocketMessageType.Close) { return; }
-                    ms.Write(buffer, 0, result.Count);
-                } while (!result.EndOfMessage);
-
-                HandleMessage(Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
-            }
-        }
-        finally
-        {
-            // Release THIS attempt's socket on every exit (close frame, exception,
-            // cancellation). CompareExchange clears the field only when it still points at
-            // OUR socket — a concurrent Dispose/Disconnect may have claimed it first via
-            // Interlocked.Exchange, in which case it already aborted+disposed this same
-            // instance and the calls below are idempotent no-ops.
-            Interlocked.CompareExchange(ref _ws, null, ws);
-            try { ws.Abort(); } catch { }
-            try { ws.Dispose(); } catch { }
-        }
-    }
-
-    private void HandleMessage(string msg)
-    {
-        // The gateway relays every message (including our own sends).
-        int idx = msg.IndexOf(':');
-        string type = idx == -1 ? msg : msg.Substring(0, idx);
-
-        // Handle print: messages (ATIS/OFP print output) before the update filter.
-        // FBW sends print:{lines:[...]} where lines are plain strings (markup already
-        // stripped) that may contain embedded '\n' for multi-line entries.
-        if (type == "print")
-        {
-            try
-            {
-                var payload = JObject.Parse(msg.Substring(idx + 1));
-                var rawLines = payload["lines"] as JArray;
-                if (rawLines != null)
-                {
-                    var lines = new List<string>();
-                    foreach (var tok in rawLines)
-                    {
-                        // Each entry may embed '\n' (FBW strips {tag} markup before sending).
-                        foreach (var part in tok.ToString().Split('\n'))
-                        {
-                            string trimmed = part.Trim();
-                            if (!string.IsNullOrEmpty(trimmed)) { lines.Add(trimmed); }
-                        }
-                    }
-                    if (lines.Count > 0)
-                    {
-                        PostToUI(() => PrintReceived?.Invoke(lines));
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("Services", $"Print parse error: {ex.Message}");
-            }
-            return;
-        }
-
-        if (type != "update") { return; }
-
-        try
-        {
-            var content = JObject.Parse(msg.Substring(idx + 1));
-            // MCDU1 unpowered (AC ESS SHED) renders empty lines while MCDU2 may have
-            // content — fall back to "right" when "left" carries no text at all.
-            if (content[CaptainSide] is not JObject side) { return; }
-            var data = FbwMcduFormat.BuildDisplayData(side);
-            if (IsBlankScreen(data) && content["right"] is JObject rightSide)
-            {
-                var rightData = FbwMcduFormat.BuildDisplayData(rightSide);
-                if (!IsBlankScreen(rightData)) { data = rightData; }
-            }
-            PostToUI(() => DisplayUpdated?.Invoke(data));
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Services", $"Parse error: {ex.Message}");
-        }
+            Log.Info("Services", $"A32NX MCDU over SimBridge: {(c ? "connected" : "disconnected")}");
+            Apply(_arbiter.SetConnected(FbwMcduSource.SimBridge, c));
+        };
+        _simBridge.PrintReceived += lines => PrintReceived?.Invoke(lines);
     }
 
     /// <summary>
-    /// Returns true when the display carries no readable text — title, scratchpad, and all
-    /// 14 raw line slots are empty or whitespace. Used to detect an unpowered MCDU side.
+    /// Start both transports. There is deliberately NO Disconnect(): the Coherent client
+    /// cannot be restarted (Start() after Stop() is a no-op), so a Disconnect/Connect pair
+    /// would silently leave the primary transport dead. The lifecycle is Connect once,
+    /// Dispose on aircraft switch — which is all MainForm ever did.
     /// </summary>
-    private static bool IsBlankScreen(MCDUDisplayData d)
+    public void Connect()
     {
-        if (!string.IsNullOrWhiteSpace(d.Title)) { return false; }
-        if (!string.IsNullOrWhiteSpace(d.Scratchpad)) { return false; }
-        foreach (var line in d.RawLines)
+        if (_disposed) { return; }
+        _coherent.Start();
+        _simBridge.Connect();
+    }
+
+    /// <summary>
+    /// Poll the Coherent screen only while the MCDU window is visible; the socket stays
+    /// warm while it is closed. The SimBridge relay pushes on its own and needs no gate.
+    /// </summary>
+    public void SetActive(bool active) => _coherent.SetActive(active);
+
+    /// <summary>
+    /// Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU over the
+    /// live transport. A Coherent press that provably never reached the instrument (the
+    /// socket just dropped, the agent is re-installing — <see cref="CoherentA32nxMcduClient.IsUndeliveredKey"/>)
+    /// is resent over the relay when SimBridge is up, since the arbiter only switches on a
+    /// posted state change and the key would otherwise vanish in that window. An AMBIGUOUS
+    /// result (a timeout, a dispatch that threw) is never resent: it may have landed, and a
+    /// second press on an MCDU key is its own error. Awaited in order by the typing loop, so
+    /// a resend keeps the scratchpad's character order.
+    /// </summary>
+    public async Task SendButtonPress(string key)
+    {
+        if (_arbiter.Live != FbwMcduSource.Coherent)
         {
-            if (!string.IsNullOrWhiteSpace(line)) { return false; }
+            // No live transport: the relay send is a no-op on a closed socket, so trying
+            // costs nothing and covers the moment right after SimBridge comes up.
+            await _simBridge.SendButtonPress(key);
+            return;
         }
-        return true;
-    }
 
-    /// <summary>Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU.</summary>
-    public Task SendButtonPress(string key) => SendRaw($"event:{CaptainSide}:{key}", CancellationToken.None);
-
-    public Task RequestUpdate() => SendRaw("requestUpdate", CancellationToken.None);
-
-    private async Task SendRaw(string message, CancellationToken ct)
-    {
-        var ws = _ws;
-        if (ws == null || ws.State != WebSocketState.Open) { return; }
-        var bytes = Encoding.UTF8.GetBytes(message);
-        try
+        string result = await _coherent.SendKeyAsync(key);
+        if (CoherentA32nxMcduClient.IsUndeliveredKey(result) && _simBridge.IsConnected)
         {
-            await _sendLock.WaitAsync(ct);
-            try { await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct); }
-            finally { _sendLock.Release(); }
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Services", $"Send error ({message}): {ex.Message}");
+            Log.Debug("Services", $"A32NX MCDU key {key} not delivered over Coherent ({result}) — resent over SimBridge.");
+            await _simBridge.SendButtonPress(key);
         }
     }
 
-    private void SetConnected(bool connected)
-    {
-        if (_isConnected == connected) { return; }
-        _isConnected = connected;
-        PostToUI(() => ConnectionStatusChanged?.Invoke(connected));
-    }
+    /// <summary>Evaluate a self-contained expression on the MCDU view over the held socket.</summary>
+    public Task<string> EvalOnMcduViewAsync(string expression) => _coherent.EvalForResultAsync(expression);
 
-    private void PostToUI(Action action)
+    private void Apply(FbwMcduTransportArbiter.Decision decision)
     {
-        if (_syncContext != null) { _syncContext.Post(_ => action(), null); }
-        else { action(); }
-    }
-
-    private void CloseWebSocket()
-    {
-        // Interlocked.Exchange guarantees exactly ONE caller tears a given socket down.
-        // Dispose() on the UI thread and the pool thread's ConnectAndReceive finally used to
-        // race through the null check together: the UI thread parked up to 2 s in
-        // CloseAsync(...).Wait() (UI freeze) while the pool thread disposed and nulled the
-        // field under it, then NRE'd at _ws.Dispose() outside any catch. Abort() (no close
-        // handshake, never blocks) matches the Coherent clients; the SimBridge gateway
-        // treats it like any dropped client.
-        var ws = Interlocked.Exchange(ref _ws, null);
-        if (ws == null) { return; }
-        try { ws.Abort(); } catch { }
-        try { ws.Dispose(); } catch { }
+        if (decision.ConnectionChangedTo is bool connected) { ConnectionStatusChanged?.Invoke(connected); }
+        if (decision.Publish != null) { DisplayUpdated?.Invoke(decision.Publish); }
     }
 
     public void Dispose()
     {
         if (_disposed) { return; }
         _disposed = true;
-        _cts?.Cancel();
-        CloseWebSocket();
-        _cts?.Dispose();
+        _coherent.Dispose();
+        _simBridge.Dispose();
     }
 }
