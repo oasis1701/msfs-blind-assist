@@ -810,7 +810,7 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
 4. `LandingExitPlanner.ProcessGroundState(onGround, gs, lat, lon, headingTrue)` is fed from every `SIM_ON_GROUND` update in `MainForm.OnSimVarUpdated`. It edge-detects the airborne→on-ground transition and requires ground speed ≥ 40 kt (`LANDING_MIN_GS_KNOTS`) to count as a real touchdown — a teleport or reload at low speed won't trigger it.
 5. On touchdown it first checks which runway the aircraft is on (`LandingRunwayMatch`; another runway or the other end is re-planned — see **The landing-exit plan's runway is checked against the runway actually landed on**), then calls `TaxiGuidanceManager.LoadRoute(...)` with the exit node id as the destination, `isRunwayDestination: false`, and the pre-built graph as `prebuiltGraph`. Then `StartGuidance(SettingsManager.Current)`. The route snaps from the aircraft's current (post-touchdown) position through the exit's graph node — shortest path, so it naturally follows the runway centerline until the chosen exit.
 6. Announcement: "Touchdown. High-speed exit taxiway K2 in 1800 metres." (metres mode) / "…in 5800 feet." (feet mode). The exit class ("high-speed exit", "exit", "runway-end exit") and unit are determined at runtime from the exit geometry and the user's distance-unit setting (`DistanceFormatter.FromFeet`).
-7. **Rollout phase (`TaxiGuidanceState.LandingRollout`).** The steering tone runs in three modes, selected every frame by `RolloutExitGate.SelectToneMode`: **Silent** above `ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS` (50 kt) — a pan cue means nothing at runway speed; **DriftCorrection** below that speed and beyond `ROLLOUT_EXIT_TONE_ARM_FT` (300 ft) of the exit — desired heading is the runway heading itself, steering the pilot back onto the runway heading through the long deceleration that used to be silent. It is a HEADING cue only — there is no cross-track term, so an aircraft that drifts and then re-aligns goes quiet while still laterally displaced, tracking parallel; that is deliberate (a constant offset is not closing on the edge, and a cross-track term would fight the exit turn), so do not describe this mode as steering back to the centerline. And **ExitBearing** inside 300 ft — desired heading is the bearing to the exit's node (or `ExitBearingTrue` once the "turn now" callout has fired for a Normal exit, and only a bearing `RolloutExitGate.IsPlausibleExitBearing` accepts; after "too fast to turn" with no exit ahead, ExitBearing is replaced by DriftCorrection). The drift band carries one exception that makes a fourth outcome: inside the targeted exit's own turn window (`RolloutExitGate.TurnWindowFeetFor`, never more than `TurnWindowFeet`, 1,000 ft — see **Per-exit turn window and exit-bearing plausibility** below), a deviation of at least `DriftToneSilentDeg` (2°) toward a KNOWN exit side returns **Silent** instead of DriftCorrection — below the 15° `turnBegun` threshold the two are indistinguishable to a heading test, and silence beats a tone that opposes a turn `IsExitTurnBegun` is about to accept. A known side is required (`HasKnownExitSide`), so where `ExitBearingTrue` is unset the drift tone keeps working. Voice callouts at 1500 ft / 900 ft (high-speed exits only) / 500 ft / turn-now mark approach to the chosen exit throughout, independent of tone mode — and "turn now" is never said at a speed the exit cannot be taken at (see **Too fast to turn** below). Two transitions out of this phase:
+7. **Rollout phase (`TaxiGuidanceState.LandingRollout`).** The steering tone runs in three modes, selected every frame by `RolloutExitGate.SelectToneMode`: **Silent** above `ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS` (50 kt) — a pan cue means nothing at runway speed; **DriftCorrection** below that speed and beyond `ROLLOUT_EXIT_TONE_ARM_FT` (300 ft) of the exit — desired heading is the runway heading itself, steering the pilot back onto the runway heading through the long deceleration that used to be silent. It is a HEADING cue only — there is no cross-track term, so an aircraft that drifts and then re-aligns goes quiet while still laterally displaced, tracking parallel; that is deliberate (a constant offset is not closing on the edge, and a cross-track term would fight the exit turn), so do not describe this mode as steering back to the centerline. And **ExitBearing** inside 300 ft — desired heading is the bearing to the exit's node (or `ExitBearingTrue` once the "turn now" callout has fired for a Normal exit, and only a bearing `RolloutExitGate.IsPlausibleExitBearing` accepts). While the aircraft is too fast for the targeted exit — `IsTooFastToTurn` before its turn point, or "too fast to turn" declined there — the tone is DriftCorrection wherever it would be ExitBearing or the turn-window Silent (`SelectToneMode`'s `tooFastForExit`). The drift band carries one exception that makes a fourth outcome: inside the targeted exit's own turn window (`RolloutExitGate.TurnWindowFeetFor`, never more than `TurnWindowFeet`, 1,000 ft — see **Per-exit turn window and exit-bearing plausibility** below), a deviation of at least `DriftToneSilentDeg` (2°) toward a KNOWN exit side returns **Silent** instead of DriftCorrection — below the 15° `turnBegun` threshold the two are indistinguishable to a heading test, and silence beats a tone that opposes a turn `IsExitTurnBegun` is about to accept. A known side is required (`HasKnownExitSide`), so where `ExitBearingTrue` is unset the drift tone keeps working. Voice callouts at 1500 ft / 900 ft (high-speed exits only) / 500 ft / turn-now mark approach to the chosen exit throughout, independent of tone mode — and "turn now" is never said at a speed the exit cannot be taken at (see **Too fast to turn** below). Two transitions out of this phase:
 
    - **Normal handoff to `Taxiing`** fires when EITHER the pilot has begun the turn off the runway, OR BOTH (a) the aircraft is at taxi speed (`< 30 kt`) AND (b) is within 500 ft (`ROLLOUT_NEAR_EXIT_FT`) of the exit — plus a few narrower signals (lateral departure from the runway, exit-bearing alignment, a full stop short of the exit) that catch shallow exits and undershoots; see `TaxiGuidanceManager.Rollout.cs` for the complete condition. "Begun the turn" is `RolloutExitGate.IsExitTurnBegun`: a heading deviation ≥ `ROLLOUT_TURN_BEGAN_HDG_DEG` (15°) off runway centerline that must now also be toward the exit's own side and begin within the exit's own turn window (`RolloutExitGate.TurnWindowFeetFor`, never more than 1,000 ft) or past it — a bare 15° deviation anywhere on the runway is no longer enough; see the subsections below for why. The conjunctive gate on `nearExit` still prevents the tone from resuming early on long runways where GS drops below 30 kt thousands of feet upfield of the planned exit.
 
@@ -850,6 +850,10 @@ Before touchdown (during cruise or descent), the pilot picks a runway-exit taxiw
   turn the gate is about to accept. Beyond the exit's own window the same deviation is
   drift and gets the drift tone. The known-side
   requirement is what keeps the drift tone alive at airports where `ExitBearingTrue` is unset.
+  And while the aircraft is too fast for the targeted exit (`tooFastForExit`: `IsTooFastToTurn`
+  before its turn point, or declined there), the tone is drift-correction wherever it would be
+  exit-bearing or turn-window silent: it never leads toward, or goes quiet for a turn toward, an
+  exit the aircraft cannot make.
 - After an early vacate the handoff must NEVER re-route to the planned exit. The taxi
   graph carries no runway edges, so A* routes between two exits the long way round: at
   KSEA that was 1,678 m up the parallel taxiway T and back down Z toward the runway.
@@ -1015,17 +1019,35 @@ taxiway M6"* at 49 kt onto a 52° exit started the turn that ended in the grass.
   (`FindDownfieldExits`) is asked with the same cutoff, exactly as the overshoot path asks it.
   Found: it retargets there with `RetargetReason.TooFast` — *"Too fast for taxiway M6. Continue
   to taxiway M8, 1250 feet."* (one utterance, see below).
+- **Before the turn point, the tone never leads toward a too-fast exit.** While "turn now" has not
+  been said and `IsTooFastToTurn` holds, `SelectToneMode`'s `tooFastForExit` makes the tone
+  DriftCorrection (the runway heading) wherever it would be ExitBearing or the turn-window Silent:
+  an ExitBearing pan toward an off-centreline node at 35–50 kt led the pilot into a turn that
+  `turnBegun` then handed off at speed — the KMEM shape. A turn toward an exit the aircraft cannot
+  make is opposed, not led or silenced. Above 50 kt the tone stays Silent as before.
 - **No exit ahead:** *"Taxiway M6, too fast to turn. Slow down."*
   (`RetargetCallout.ComposeTooFastNoExit`), and `_rolloutTooFastNoExit` latches for that exit:
-  - the tone HOLDS THE RUNWAY HEADING — an ExitBearing selection becomes DriftCorrection — so it
+  - the tone HOLDS THE RUNWAY HEADING — the same `tooFastForExit` rule, now for good — so it
     never pans toward the declined exit or its bearing, and never flips round to a node behind
     the aircraft;
   - the two SPEED-driven handoffs, `speedNearExitHandoff` and `TryEarlyExitHandoff`, stay closed,
     so slowing down as told never re-offers the exit declined seconds earlier. The handoffs that
     follow what the pilot actually does (`turnBegun`, `exitedLaterally`, `alignedWithExit`,
-    `trulyStopped`) stay open: a pilot who turns onto it anyway, or stops, is still guided;
-  - once the aircraft is past the exit, the ordinary overshoot handler takes over (a retarget, or
-    *"Missed last exit on runway X."*).
+    `trulyStopped`) stay open: a pilot who turns onto it anyway, or stops short of it, is still
+    guided;
+  - its overshoot margin is 0 (`RolloutExitGate.OvershootMarginFeet`): the overshoot handler moves
+    the aircraft on as soon as it is PAST the node, at any speed, stopped included (the handoff
+    block runs first on the same frame, so a turn onto the exit is still guided). With the usual
+    100 ft margin a pilot who obeyed, braked and stopped just past the node got no handoff (all
+    of them need it short of the node or turning), no overshoot and no countdown — silent on an
+    active runway. The handler retargets to a downfield exit (the ordinary search, which can now
+    accept a close one since the aircraft is slow — *"Missed taxiway M6. Retargeting …"*), or,
+    with none, starts the runway-end countdown WITHOUT *"Missed last exit on runway X."* (the
+    pilot already heard "too fast to turn"). The countdown speaks on its first frame — the stopped
+    notice *"Stopped on runway 36L. Runway end in 4,500 feet."*, a backtrack, or a milestone — and
+    where it would say nothing (still rolling short of the 1,500 ft milestone) it speaks its own
+    status once, *"Runway end in 4,500 feet."* (`_rolloutCountdownStatusOwed`,
+    `ComposeRunwayEndStatus`).
 
   The latch resets with the approach latches: the two rollout entries that target an exit, every
   retarget, the runway-end countdown and `StopGuidance`.

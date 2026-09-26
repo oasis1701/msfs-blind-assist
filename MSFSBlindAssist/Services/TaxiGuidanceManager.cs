@@ -934,13 +934,21 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutApproach500Announced = false;
     private bool _rolloutTurnNowAnnounced = false;
     // Set when "too fast to turn" was spoken at the turn point with no exit left ahead. That exit is then
-    // not offered again: the tone holds the runway heading (DriftCorrection in place of ExitBearing) and
-    // never steers toward its junction or bearing, and the two SPEED-driven handoffs (speedNearExitHandoff
-    // and the High-speed early handoff) stay closed for it, so slowing down as told never brings back
-    // "turn … taxiway X". The handoffs that follow what the pilot DOES stay open (turnBegun,
-    // exitedLaterally, alignedWithExit, trulyStopped): a pilot who turns onto it anyway, or stops, is
-    // still guided. Reset with the approach latches, so a later retarget restores normal behaviour.
+    // not offered again: the tone holds the runway heading (SelectToneMode's tooFastForExit —
+    // DriftCorrection, never ExitBearing or the turn-window Silent) and never steers toward its junction
+    // or bearing, and the two SPEED-driven handoffs (speedNearExitHandoff and the High-speed early
+    // handoff) stay closed for it, so slowing down as told never brings back "turn … taxiway X". The
+    // handoffs that follow what the pilot DOES stay open (turnBegun, exitedLaterally, alignedWithExit,
+    // trulyStopped): a pilot who turns onto it anyway, or stops short of it, is still guided. Its overshoot
+    // margin is 0 (RolloutExitGate.OvershootMarginFeet), so a pilot who stops just PAST it is moved on to a
+    // downfield exit or the runway-end countdown instead of being left silent. Reset with the approach
+    // latches, so a later retarget restores normal behaviour.
     private bool _rolloutTooFastNoExit = false;
+    // Set when such a declined exit is overshot with no exit left and the runway-end countdown begins
+    // without "Missed last exit" (the pilot already heard "too fast to turn"). The countdown's first frame
+    // then speaks its own status once ("Runway end in …") unless the countdown itself spoke on that frame,
+    // so a pilot still rolling mid-runway is not left in silence until the 1,500 ft milestone.
+    private bool _rolloutCountdownStatusOwed = false;
     // Which steering-tone behaviour the last rollout frame used. A change resets the
     // heading-error smoother so a DriftCorrection residual never leaks into the sharp
     // exit-bearing pan, and vice versa. Replaces the old _rolloutExitToneArmed latch,

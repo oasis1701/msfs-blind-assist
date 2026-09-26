@@ -306,14 +306,24 @@ public static class RolloutExitGate
     /// The targeted exit's own turn window (<see cref="TurnWindowFeetFor"/>). The turn-window Silent
     /// only applies inside it; beyond it a deviation toward the exit side is drift.
     /// </param>
+    /// <param name="tooFastForExit">
+    /// The aircraft is too fast for the targeted exit: <see cref="IsTooFastToTurn"/> before its turn
+    /// point, or the exit was declined as too fast there. Below the tone line the tone is then
+    /// DriftCorrection, the runway heading: never ExitBearing, and never the turn-window Silent. A turn
+    /// toward an exit the aircraft cannot make is opposed, not led or silenced — an ExitBearing pan
+    /// toward an off-centreline node at 35–50 kt led a pilot into a turn <c>turnBegun</c> then handed
+    /// off at speed (the KMEM 36L shape).
+    /// </param>
     public static RolloutToneMode SelectToneMode(
         double groundSpeedKts,
         double distToExitFeet,
         double headingDeltaSignedDeg,
         double exitRelativeBearingDeg,
-        double turnWindowFeet)
+        double turnWindowFeet,
+        bool tooFastForExit = false)
     {
         if (groundSpeedKts > ToneActiveBelowGroundSpeedKts) return RolloutToneMode.Silent;
+        if (tooFastForExit) return RolloutToneMode.DriftCorrection;
         if (distToExitFeet <= ExitToneArmFeet) return RolloutToneMode.ExitBearing;
 
         if (distToExitFeet <= turnWindowFeet
@@ -594,6 +604,17 @@ public static class RolloutExitGate
 
     /// <summary>The fastest ground speed at which "turn now" onto an exit of <paramref name="exitAngleDeg"/> is still said.</summary>
     public static double MaxTurnSpeedKts(double exitAngleDeg) => ExitTurnOffSpeedKts(exitAngleDeg) + TooFastMarginKts;
+
+    /// <summary>
+    /// How far past the targeted exit the rollout's overshoot handler waits before calling it missed:
+    /// <paramref name="baseMarginFeet"/> (the exit-type margin), or 0 once the exit was declined as too
+    /// fast at its turn point. A declined exit is not going to be taken, and every handoff that could move
+    /// the aircraft on needs it short of the node or turning — so a pilot who obeyed "too fast to turn",
+    /// braked and stopped just past the node got no handoff, no overshoot and no countdown: silent on an
+    /// active runway. The handoffs still run first on the same frame, so a turn onto the exit is guided.
+    /// </summary>
+    public static double OvershootMarginFeet(double baseMarginFeet, bool tooFastDeclined)
+        => tooFastDeclined ? 0.0 : baseMarginFeet;
 
     /// <summary>True when the aircraft is too fast to make the turn: "turn now" must not be said.</summary>
     public static bool IsTooFastToTurn(double groundSpeedKts, double exitAngleDeg)

@@ -22,6 +22,7 @@ public partial class TaxiGuidanceManager
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
         _rolloutTooFastNoExit = false;
+        _rolloutCountdownStatusOwed = false;
         _rolloutToneMode = Navigation.RolloutToneMode.Silent;
         _rolloutToneLogMode = null;
         _rolloutToneLogExit = null;
@@ -1275,13 +1276,21 @@ public partial class TaxiGuidanceManager
             overshootMargin = _rolloutExit.ExitType == "High-speed"
                 ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT : ROLLOUT_OVERSHOOT_FT;
         }
+        // An exit declined as too fast at its turn point is overshot the moment the aircraft is past it,
+        // at any speed, stopped included (RolloutExitGate.OvershootMarginFeet): no speed handoff re-offers
+        // it and trulyStopped needs the aircraft short of the node, so with the usual margin a pilot who
+        // obeyed and stopped just past it sat silent on the runway. The handoff block above runs first on
+        // this frame, so turnBegun (and the other pilot-driven handoffs) still get first refusal.
+        bool tooFastDeclined = _rolloutTooFastNoExit;
+        overshootMargin = Navigation.RolloutExitGate.OvershootMarginFeet(overshootMargin, tooFastDeclined);
         if (signedAlongPastFt >= overshootMargin
             && hdgDeltaAbs < ROLLOUT_TURN_BEGAN_HDG_DEG
             && stillOnRunway
             && !alignedWithExit)
         {
             RolloutDiag($"OVERSHOOT detected: signedAlongPast={signedAlongPastFt:F0}ft hdgDelta={hdgDeltaAbs:F1}deg " +
-                $"lateral={lateralFromCenterlineFt:F0}ft halfWidth={halfRunwayWidthFt:F0}ft exitBrgErr={exitBrgErr:F1}deg");
+                $"lateral={lateralFromCenterlineFt:F0}ft halfWidth={halfRunwayWidthFt:F0}ft exitBrgErr={exitBrgErr:F1}deg " +
+                $"margin={overshootMargin:F0}ft tooFastDeclined={tooFastDeclined} gs={groundSpeedKts:F1}kt");
 
             // Measured from the aircraft, not the missed exit - see DownfieldCutoffFeet. A
             // high-speed exit is only declared missed up to ROLLOUT_HIGHSPEED_OVERSHOOT_FT
@@ -1328,6 +1337,18 @@ public partial class TaxiGuidanceManager
             // inside a loop that wrote down nothing about what it looked at.
             RolloutDiag($"OVERSHOOT no downfield exit past {downfieldCutoffFt:F0}ft -> " +
                 $"EnterRunwayEndCountdown; considered {DescribeExits(_rolloutAllExits)}");
+
+            if (tooFastDeclined)
+            {
+                // Already told "too fast to turn" for this exit: no "Missed last exit" on top of it — the
+                // countdown's first due callout would cut it off on the very next frame. The countdown
+                // speaks on its first frame (the stopped notice, a backtrack, a milestone), and the owed
+                // status covers the one case where it would not: still rolling short of the 1,500 ft
+                // milestone, which could be a minute of silence on an active runway.
+                EnterRunwayEndCountdown();
+                _rolloutCountdownStatusOwed = true;
+                return;
+            }
 
             // No downfield exit. Announce, clear the route so the off-route
             // recalc has nothing to chase, fall through to idle Taxiing.
@@ -1593,12 +1614,15 @@ public partial class TaxiGuidanceManager
         //   exits like EIDW S5 (apron ~90° off runway). Bearing-to-junction stays silent
         //   while the aircraft is on centreline and only deviates as the aircraft nears
         //   an off-axis junction — appropriate directional pan without false alarms.
+        // Too fast for the targeted exit — by the too-fast rule before its turn point, or declined there
+        // ("too fast to turn" with no exit left): the tone holds the runway heading and never leads the
+        // pilot toward that exit, nor goes quiet for a turn toward it (RolloutExitGate.SelectToneMode).
+        bool tooFastForExit = _rolloutTooFastNoExit
+            || (!_rolloutTurnNowAnnounced
+                && Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, _rolloutExit.ExitAngleDegrees));
         var toneMode = Navigation.RolloutExitGate.SelectToneMode(
             groundSpeedKts, distToExitFeet, hdgDelta, exitRelBearingDeg,
-            _rolloutExitTurnWindowFeet);
-        // Told "too fast to turn" with no exit left: never steer at that exit, hold the runway heading.
-        if (_rolloutTooFastNoExit && toneMode == Navigation.RolloutToneMode.ExitBearing)
-            toneMode = Navigation.RolloutToneMode.DriftCorrection;
+            _rolloutExitTurnWindowFeet, tooFastForExit: tooFastForExit);
         if (toneMode != _rolloutToneMode)
         {
             // Start every mode from a clean filter so the pan is sharp and immediate rather
@@ -1633,7 +1657,7 @@ public partial class TaxiGuidanceManager
                 // the pilot aligns with the exit, telling them how much more to turn.
                 // Only a plausible exit direction (RolloutExitGate.IsPlausibleExitBearing): KMEM M6 carried
                 // 127° true on a 359° runway, and after "turn now" the tone demanded that hairpin at 49 kt.
-                if (_rolloutTurnNowAnnounced && !_rolloutTooFastNoExit && _rolloutExit!.ExitType == "Normal"
+                if (_rolloutTurnNowAnnounced && _rolloutExit!.ExitType == "Normal"
                     && Navigation.RolloutExitGate.IsPlausibleExitBearing(
                            _rolloutExit.ExitBearingTrue, _rolloutRunwayHeadingTrue))
                 {
@@ -2168,6 +2192,10 @@ public partial class TaxiGuidanceManager
             laterallyClear: !IsWithinRolloutRunwayLaterally(lat, lon),
             stoppedNoticeGiven: _rolloutStoppedNoticeGiven);
 
+        // Every action but Continue speaks its own sentence below, which settles any owed status.
+        if (action != Navigation.RunwayEndCountdownAction.Continue)
+            _rolloutCountdownStatusOwed = false;
+
         switch (action)
         {
             case Navigation.RunwayEndCountdownAction.Vacated:
@@ -2192,9 +2220,7 @@ public partial class TaxiGuidanceManager
 
             case Navigation.RunwayEndCountdownAction.StoppedMidRunwayNotice:
                 _rolloutStoppedNoticeGiven = true;
-                AnnounceInstruction(
-                    $"Stopped on runway {_rolloutRunway.RunwayID ?? "runway"}. " +
-                    $"Runway end in {DistanceFormatter.FromFeet(Math.Max(0.0, distToEndFt))}.");
+                AnnounceInstruction(ComposeRunwayEndStatus(distToEndFt, stopped: true));
                 return;
         }
 
@@ -2210,10 +2236,12 @@ public partial class TaxiGuidanceManager
             return;
 
         var rm = DistanceMilestones.RunwayEnd(); // far->near: [0]=1500ft/500m, [1]=500ft/150m, [2]=100ft/30m
+        bool milestoneSpoke = false;
         if (!_rolloutEnd1500Announced && distToEndFt <= rm[0].TriggerMetres / DistanceFormatter.MetresPerFoot && distToEndFt > rm[1].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
             AnnounceInstruction($"Runway end in {rm[0].Label}.");
             _rolloutEnd1500Announced = true;
+            milestoneSpoke = true;
         }
 
         if (!_rolloutEnd500Announced && distToEndFt <= rm[1].TriggerMetres / DistanceFormatter.MetresPerFoot && distToEndFt > rm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
@@ -2227,14 +2255,35 @@ public partial class TaxiGuidanceManager
             string slowSuffix = groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
             AnnounceInstruction($"Runway end in {rm[1].Label}.{slowSuffix}");
             _rolloutEnd500Announced = true;
+            milestoneSpoke = true;
         }
 
         if (!_rolloutEnd100Announced && distToEndFt <= rm[2].TriggerMetres / DistanceFormatter.MetresPerFoot)
         {
             AnnounceInstruction($"Runway end in {rm[2].Label}. Stop.");
             _rolloutEnd100Announced = true;
+            milestoneSpoke = true;
+        }
+
+        // The status owed when a too-fast declined exit was overshot with no exit left
+        // (_rolloutCountdownStatusOwed): once, on the countdown's first frame, and only when nothing above
+        // spoke — rolling short of the first milestone, the countdown would otherwise say nothing at all.
+        if (_rolloutCountdownStatusOwed)
+        {
+            _rolloutCountdownStatusOwed = false;
+            if (!milestoneSpoke)
+                AnnounceInstruction(ComposeRunwayEndStatus(distToEndFt, stopped: false));
         }
     }
+
+    /// <summary>
+    /// The runway-end countdown's status sentence, "Runway end in N.", led by "Stopped on runway R." for a
+    /// stopped aircraft. ONE composer for the mid-runway stop notice and the status owed after a too-fast
+    /// declined exit is overshot with no exit left (_rolloutCountdownStatusOwed).
+    /// </summary>
+    private string ComposeRunwayEndStatus(double distToEndFt, bool stopped)
+        => (stopped ? $"Stopped on runway {_rolloutRunway?.RunwayID ?? "runway"}. " : "")
+           + $"Runway end in {DistanceFormatter.FromFeet(Math.Max(0.0, distToEndFt))}.";
 
     /// <summary>
     /// Re-routes the active landing rollout to a new exit. Called when the

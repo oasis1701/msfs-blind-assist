@@ -147,4 +147,56 @@ public class RolloutExitGatePerExitRulesTests
     [Fact]
     public void An_unknown_bearing_is_never_steered_to()
         => Assert.False(RolloutExitGate.IsPlausibleExitBearing(0.0, 359.0));
+
+    // ---- An exit declined as too fast: overshoot margin and tone ----------------------------
+
+    [Theory]
+    [InlineData(100.0)]
+    [InlineData(500.0)]
+    public void A_declined_exit_is_overshot_as_soon_as_the_aircraft_is_past_it(double baseMargin)
+        => Assert.Equal(0.0, RolloutExitGate.OvershootMarginFeet(baseMargin, tooFastDeclined: true));
+
+    [Theory]
+    [InlineData(100.0)]
+    [InlineData(500.0)]
+    public void Otherwise_the_exit_type_margin_is_unchanged(double baseMargin)
+        => Assert.Equal(baseMargin, RolloutExitGate.OvershootMarginFeet(baseMargin, tooFastDeclined: false));
+
+    [Fact]
+    public void Too_fast_near_an_off_centreline_exit_holds_the_runway_heading()
+    {
+        // 200 ft out at 40 kt, exit 30° to the right: normally the exit-bearing pan toward its node.
+        Assert.Equal(RolloutToneMode.ExitBearing,
+            RolloutExitGate.SelectToneMode(40.0, 200.0, 0.0, 30.0, 500.0));
+        Assert.Equal(RolloutToneMode.DriftCorrection,
+            RolloutExitGate.SelectToneMode(40.0, 200.0, 0.0, 30.0, 500.0, tooFastForExit: true));
+    }
+
+    [Fact]
+    public void Too_fast_a_turn_toward_the_exit_inside_its_window_is_opposed_not_silenced()
+    {
+        // 400 ft out, inside a 500 ft window, 8° right toward a right-hand exit: normally left alone.
+        Assert.Equal(RolloutToneMode.Silent,
+            RolloutExitGate.SelectToneMode(40.0, 400.0, 8.0, 30.0, 500.0));
+        Assert.Equal(RolloutToneMode.DriftCorrection,
+            RolloutExitGate.SelectToneMode(40.0, 400.0, 8.0, 30.0, 500.0, tooFastForExit: true));
+    }
+
+    [Fact]
+    public void Above_the_tone_line_a_too_fast_exit_is_still_silent()
+        => Assert.Equal(RolloutToneMode.Silent,
+            RolloutExitGate.SelectToneMode(60.0, 200.0, 0.0, 30.0, 500.0, tooFastForExit: true));
+
+    [Fact]
+    public void Not_too_fast_every_mode_is_unchanged()
+    {
+        Assert.Equal(RolloutToneMode.ExitBearing,
+            RolloutExitGate.SelectToneMode(40.0, 200.0, 0.0, 30.0, 500.0, tooFastForExit: false));
+        Assert.Equal(RolloutToneMode.Silent,
+            RolloutExitGate.SelectToneMode(40.0, 400.0, 8.0, 30.0, 500.0, tooFastForExit: false));
+        Assert.Equal(RolloutToneMode.DriftCorrection,
+            RolloutExitGate.SelectToneMode(48.1, 631.0, 8.4, 15.5, 324.0, tooFastForExit: false));
+        Assert.Equal(RolloutToneMode.Silent,
+            RolloutExitGate.SelectToneMode(60.0, 200.0, 0.0, 30.0, 500.0, tooFastForExit: false));
+    }
 }
