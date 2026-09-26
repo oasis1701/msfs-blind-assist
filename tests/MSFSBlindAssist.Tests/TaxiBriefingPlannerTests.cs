@@ -679,14 +679,28 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
-    public void A_parking_service_gate_with_no_position_is_not_briefed()
+    public void A_parking_service_gate_with_no_position_is_found_by_name_in_the_arrival_scenery()
     {
-        // Nothing can confirm a position-less parking-service gate is at the arrival airport (owner decision, 2026-09-26).
+        // Live KMEM→KATL 2026-09-26: getParking answered "B3" with no position and the flight file said "Gate B3" nine
+        // seconds later, with the aircraft at KMEM Gate 17 — the parking service meant the ARRIVAL gate. It is looked up
+        // by name in the arrival airport's scenery rather than replaced by a representative stand (owner, 2026-09-26).
         var gate = new SayIntentionsGateHint("Terminal 1 Gate G1", null, SayIntentionsGateSource.ParkingService);
         var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate), Airport());
 
+        Assert.Equal("SayIntentions assigned gate G 1", leg.EndpointDescription);
+        Assert.Contains("SayIntentions' parking service gave no position for Terminal 1 Gate G1, so it was matched by name in this scenery", leg.Notes);
+    }
+
+    [Fact]
+    public void A_parking_service_gate_with_no_position_and_no_matching_name_falls_back_to_a_representative_stand()
+    {
+        var gate = new SayIntentionsGateHint("Gate Q99", null, SayIntentionsGateSource.ParkingService);
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate), Airport());
+
         Assert.StartsWith("representative stand", leg.EndpointDescription);
-        Assert.Contains("SayIntentions' parking service named Terminal 1 Gate G1 but gave no position to confirm it is at TEST; using a representative stand instead", leg.Notes);
+        Assert.Contains(leg.Notes, n => n.Contains("Gate Q99", StringComparison.Ordinal) &&
+                                        n.Contains("was not found at this airport", StringComparison.Ordinal));
+        Assert.DoesNotContain(leg.Notes, n => n.Contains("matched by name", StringComparison.Ordinal));
     }
 
     [Fact]

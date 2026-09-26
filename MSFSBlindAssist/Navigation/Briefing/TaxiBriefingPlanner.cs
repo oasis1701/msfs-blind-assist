@@ -115,18 +115,18 @@ public static partial class TaxiBriefingPlanner
             return TaxiLegBriefing.UnavailableLeg(icao, r.DestinationRunway, g.Tier,
                 $"runway {r.DestinationRunway} is not in the navigation database for {icao}", notes: notes);
 
-        // SAPI does not say whether its parking service means the arrival gate or the aircraft's current parking, and an
-        // origin can share a concourse letter with the destination (KMEM and KATL both have a B): a parking-service gate
-        // is briefed as SayIntentions' only when its own position is at this airport — never with no position to check (owner
-        // decision, 2026-09-26) and never from beyond ParkingServiceMaxAirportDistanceMetres (live KMEM→KATL, 2026-09-26).
+        // A parking-service gate whose position is published is refused when that position is beyond
+        // ParkingServiceMaxAirportDistanceMetres of this airport: it then names somewhere else. With no position it is
+        // looked up by NAME in this airport's scenery, as a flight-file gate is (owner, 2026-09-26, reversing that
+        // morning's refusal): live KMEM→KATL, getParking answered "B3" with no position and the flight file said
+        // "Gate B3" nine seconds later with the aircraft at KMEM Gate 17 — the service meant the ARRIVAL gate, and
+        // refusing it briefed a representative stand the pilot was never assigned.
         var arrivalGate = r.ArrivalGate;
+        bool matchedByNameOnly = false;
         if (arrivalGate is { Source: SayIntentionsGateSource.ParkingService })
         {
             if (arrivalGate.Position is not GeoPoint pin)
-            {
-                notes.Add($"SayIntentions' parking service named {arrivalGate.Label} but gave no position to confirm it is at {icao}; using a representative stand instead");
-                arrivalGate = null;
-            }
+                matchedByNameOnly = true;
             else if (g.Airport != null &&
                      TaxiGraph.FastDistanceMeters(pin.Latitude, pin.Longitude, g.Airport.Latitude, g.Airport.Longitude) > ParkingServiceMaxAirportDistanceMetres)
             {
@@ -136,6 +136,8 @@ public static partial class TaxiBriefingPlanner
         }
 
         var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, s => StandNode(g.Graph, s) != null);
+        if (matchedByNameOnly && stand?.Source == StandChoiceSource.SayIntentions)
+            notes.Add($"SayIntentions' parking service gave no position for {arrivalGate!.Label}, so it was matched by name in this scenery");
         if (stand != null) AddStandNotes(notes, stand, g.Note);
         string endpoint = stand == null ? "" : DescribeArrivalStand(stand, r.AirlineIcao);
 
