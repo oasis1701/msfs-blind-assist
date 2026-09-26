@@ -23,11 +23,13 @@ public static class RetargetCallout
     /// <summary>
     /// How long the longest realistic retarget sentence takes to speak, MEASURED through System.Speech at
     /// Rate 0 (what ScreenReaderAnnouncer uses) with trailing silence trimmed, plus about a fifth:
-    /// "Too fast for taxiway N12. Straighten. Continue to taxiway N14, 1250 feet." = 9.15 s → 11 s.
-    /// (The common "Missed taxiway M6. Straighten. Retargeting taxiway M7, 650 feet ahead." = 8.25 s.)
+    /// "Too fast for taxiway N12. Straighten. Continue to taxiway N14, 1250 feet. Slow down." = 10.76 s
+    /// → 13 s (2026-09-26). Without its "Slow down." the same sentence is 9.15 s, which sized the earlier
+    /// 11 s and was too short for the folded "Slow down."; the common "Missed taxiway M6. Straighten.
+    /// Retargeting taxiway M7, 650 feet ahead." is 8.25 s.
     /// Never size this by estimate — re-measure when the wording changes.
     /// </summary>
-    public const double LeadSeconds = 11.0;
+    public const double LeadSeconds = 13.0;
 
     public static string Compose(
         RetargetReason reason, string? fromTaxiwayName, string? toTaxiwayName,

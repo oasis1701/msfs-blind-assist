@@ -965,6 +965,10 @@ public partial class TaxiGuidanceManager : IDisposable
     // cannot flood the log. Reset in ResetRolloutApproachLatches.
     private Navigation.RolloutToneMode? _rolloutToneLogMode;
     private Navigation.LandingExit? _rolloutToneLogExit;
+    // When the last "tone mode=" line was written (MinValue = none yet): a MOVING frame logs at most one
+    // line per ROLLOUT_TONE_LOG_MIN_INTERVAL_MS, a mode or exit change always logs. Reset with the latches.
+    private DateTime _rolloutToneLogUtc = DateTime.MinValue;
+    private const double ROLLOUT_TONE_LOG_MIN_INTERVAL_MS = 100.0;
     // Latches true after the one-shot TryEarlyExitHandoff attempt so we don't
     // retry on every subsequent frame. The attempt happens once: at the first
     // frame where GS ≤ ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS and dist ≤ ROLLOUT_EXIT_TONE_ARM_FT.

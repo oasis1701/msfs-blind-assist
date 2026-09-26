@@ -26,6 +26,7 @@ public partial class TaxiGuidanceManager
         _rolloutToneMode = Navigation.RolloutToneMode.Silent;
         _rolloutToneLogMode = null;
         _rolloutToneLogExit = null;
+        _rolloutToneLogUtc = DateTime.MinValue;
     }
 
     /// <summary>
@@ -1712,18 +1713,22 @@ public partial class TaxiGuidanceManager
 
         // Rollout tone diagnostics: every frame the tone can be live, so a report of an erratic tone is
         // read from landing_exit.log instead of being reconstructed from the code (KMEM 36L 2026-09-26).
-        // Every frame only while the aircraft is MOVING with the tone live (above
-        // RolloutExitGate.NoExitStoppedGroundSpeedKts, at or below the 50 kt tone line); otherwise only on a
-        // frame whose tone mode or targeted exit differs from the last line written, whatever the speed. A
-        // pilot held on the runway stays in LandingRollout indefinitely, and a line per frame would cycle
+        // While the aircraft is MOVING with the tone live (above RolloutExitGate.NoExitStoppedGroundSpeedKts,
+        // at or below the 50 kt tone line), at most one line per ROLLOUT_TONE_LOG_MIN_INTERVAL_MS (100 ms):
+        // SIM_FRAME runs at 30-60 Hz, and a line per frame flooded the log. Any frame whose tone mode or
+        // targeted exit differs from the last line written is ALWAYS logged, whatever the speed or interval.
+        // A pilot held on the runway stays in LandingRollout indefinitely, and a line per frame would cycle
         // landing_exit.log's 5 MB x 3 rotation within the hour, so a stopped aircraft logs nothing until
         // something changes.
+        DateTime toneLogNowUtc = DateTime.UtcNow;
         bool toneLogMoving = groundSpeedKts > Navigation.RolloutExitGate.NoExitStoppedGroundSpeedKts
-                             && groundSpeedKts <= ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS;
+                             && groundSpeedKts <= ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS
+                             && (toneLogNowUtc - _rolloutToneLogUtc).TotalMilliseconds >= ROLLOUT_TONE_LOG_MIN_INTERVAL_MS;
         bool toneLogChanged = toneMode != _rolloutToneLogMode
                               || !ReferenceEquals(_rolloutExit, _rolloutToneLogExit);
         if (toneLogMoving || toneLogChanged)
         {
+            _rolloutToneLogUtc = toneLogNowUtc;
             string toneDiag = toneLive
                 ? $"desired={toneDesiredHeading:F1} raw={toneRawError:+0.0;-0.0} smooth={_smoothedHeadingError:+0.0;-0.0}"
                 : "desired=- raw=- smooth=-";
@@ -2153,10 +2158,11 @@ public partial class TaxiGuidanceManager
     /// distToEnd = length - alongFromStart.
     ///
     /// Ends via Navigation.RunwayEndCountdownGate: "Runway vacated" once laterally
-    /// clear of the runway; backtracking when stopped or turning within the 500 ft /
-    /// 150 m runway-end milestone, or after turning around anywhere (mid-runway it
-    /// does not claim the runway ended); one notice for a mid-runway stop. On exit,
-    /// _route stays null so the Taxiing branch's off-route recalc has nothing to chase.
+    /// clear of the runway; backtracking when STOPPED within RolloutExitGate.NearRunwayEndFeet
+    /// (never on a turn there — a turn-off and a turnaround look the same), or after
+    /// turning around anywhere (mid-runway it does not claim the runway ended); one
+    /// notice for a mid-runway stop. On exit, _route stays null so the Taxiing branch's
+    /// off-route recalc has nothing to chase.
     /// </summary>
     private void UpdateRunwayEndCountdown(double lat, double lon, double headingTrue, double groundSpeedKts)
     {
@@ -2461,8 +2467,12 @@ public partial class TaxiGuidanceManager
 
     /// <summary>
     /// The exit a too-fast pilot is told to continue to: the first suitable exit downfield of the one just
-    /// declined AND at least RolloutExitGate.ExitLeadFeet ahead of the aircraft (the undershoot scan's
-    /// lead), with the graph rescue scan as the fallback exactly as the overshoot path uses it.
+    /// declined that the aircraft can slow down for with COMFORTABLE braking, judged for that exit's own
+    /// angle (RolloutExitGate.FirstComfortableDownfieldExit — the touchdown re-plan's comfortable pass).
+    /// Only when none is, today's rule: the first one at least RolloutExitGate.ExitLeadFeet ahead of the
+    /// aircraft (the undershoot scan's lead, tuned below 50 kt, which above about 60 kt could pick an exit
+    /// itself too fast at its own turn point — a cascade of too-fast retargets). The graph rescue scan is
+    /// the fallback exactly as the overshoot path uses it.
     /// </summary>
     /// <param name="signedAlongPastFt">The aircraft's along-track position relative to the declined exit
     /// (positive = past it), as UpdateLandingRollout computed it. The exact projection, never the exit's
@@ -2471,10 +2481,11 @@ public partial class TaxiGuidanceManager
     private Navigation.LandingExit? FindTooFastAlternative(double signedAlongPastFt, double groundSpeedKts)
     {
         double aircraftFromThresholdFt = _rolloutExit!.DistanceFromThresholdFeet + signedAlongPastFt;
+        double pastDeclinedFt = _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT;
         double cutoffFt = Math.Max(
-            _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT,
+            pastDeclinedFt,
             aircraftFromThresholdFt + Navigation.RolloutExitGate.ExitLeadFeet(groundSpeedKts));
-        var next = Navigation.RolloutExitGate.FirstSuitableDownfieldExit(_rolloutAllExits, cutoffFt);
+        var next = PickTooFastAlternative(pastDeclinedFt, aircraftFromThresholdFt, cutoffFt, groundSpeedKts);
         if (next == null && _graph != null && _rolloutRunway != null)
         {
             var rescued = _graph.FindDownfieldExits(_rolloutRunway, cutoffFt);
@@ -2482,11 +2493,19 @@ public partial class TaxiGuidanceManager
             {
                 RolloutDiag($"Too fast: planned list exhausted - graph rescan found {rescued.Count}: {DescribeExits(rescued)}");
                 _rolloutAllExits = Navigation.RolloutExitGate.MergeRescueExits(_rolloutAllExits, rescued);
-                next = Navigation.RolloutExitGate.FirstSuitableDownfieldExit(_rolloutAllExits, cutoffFt);
+                next = PickTooFastAlternative(pastDeclinedFt, aircraftFromThresholdFt, cutoffFt, groundSpeedKts);
             }
         }
         return next;
     }
+
+    /// <summary>FindTooFastAlternative's pick over the current exit list: the comfortable-lead exit first,
+    /// else the first beyond the ExitLeadFeet cutoff.</summary>
+    private Navigation.LandingExit? PickTooFastAlternative(
+        double pastDeclinedFt, double aircraftFromThresholdFt, double cutoffFt, double groundSpeedKts)
+        => Navigation.RolloutExitGate.FirstComfortableDownfieldExit(
+               _rolloutAllExits, pastDeclinedFt, aircraftFromThresholdFt, groundSpeedKts)
+           ?? Navigation.RolloutExitGate.FirstSuitableDownfieldExit(_rolloutAllExits, cutoffFt);
 
     /// <summary>
     /// Ends landing-exit guidance with the aircraft OFF the runway, and picks the closure

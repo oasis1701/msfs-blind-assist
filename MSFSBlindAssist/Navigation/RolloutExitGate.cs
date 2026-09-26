@@ -553,9 +553,12 @@ public static class RolloutExitGate
     // ---- Per-exit rules (KMEM 36L, 2026-09-26 — docs/taxi-guidance.md, "Exits measured by branch").
 
     /// <summary>
-    /// A branch that turns more than this from the landing heading before it is clear of the runway
-    /// leaves BACKWARD: for this landing direction it is a turnaround, not an exit. The same 110° that
-    /// divides "Normal" from "End" in <c>TaxiGraph.GetLandingExits</c> (<c>NORMAL_MAX_DEG</c>).
+    /// A branch whose turn to LEAVE the runway pavement (<c>LandingExitBranch.TurnToLeaveDeg</c>: the
+    /// sharpest turn from the landing heading up to and including the first node beyond the runway
+    /// half-width) is more than this
+    /// leaves BACKWARD: for this landing direction it is a turnaround, not an exit. Judged at the
+    /// pavement edge, never at the clear line further out. The same 110° that divides "Normal" from
+    /// "End" in <c>TaxiGraph.GetLandingExits</c> (<c>NORMAL_MAX_DEG</c>).
     /// </summary>
     public const double TurnaroundAboveDeg = 110.0;
 
@@ -822,6 +825,34 @@ public static class RolloutExitGate
             if (e.DistanceFromThresholdFeet <= afterDistanceFromThresholdFeet) continue;
             if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > MaxUsableExitTurnDeg) continue;
             return e;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The nearest exit in <paramref name="exits"/> beyond <paramref name="afterDistanceFromThresholdFeet"/>,
+    /// suitable by <see cref="FirstSuitableDownfieldExit"/>'s own rules, that is at least
+    /// <see cref="ComfortableExitLeadFeet"/> ahead of the aircraft for its OWN angle — the touchdown re-plan's
+    /// comfortable pass (<c>LandingExitReplan.LeadFeet</c>, <c>LandingExitLeadTier.Comfortable</c>). Null when
+    /// none is. The too-fast alternative prefers this: <see cref="ExitLeadFeet"/> was tuned below 50 kt, so above
+    /// about 60 kt it can offer an exit that is itself too fast at its own turn point, one retarget after another.
+    /// </summary>
+    /// <param name="aircraftFromThresholdFeet">The aircraft's own along-track distance from the threshold.</param>
+    public static LandingExit? FirstComfortableDownfieldExit(
+        IReadOnlyList<LandingExit>? exits,
+        double afterDistanceFromThresholdFeet,
+        double aircraftFromThresholdFeet,
+        double groundSpeedKts)
+    {
+        if (exits == null) return null;
+        foreach (var e in exits)
+        {
+            if (e == null) continue;
+            if (e.DistanceFromThresholdFeet <= afterDistanceFromThresholdFeet) continue;
+            if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > MaxUsableExitTurnDeg) continue;
+            if (e.DistanceFromThresholdFeet - aircraftFromThresholdFeet
+                    >= ComfortableExitLeadFeet(groundSpeedKts, e.ExitAngleDegrees))
+                return e;
         }
         return null;
     }

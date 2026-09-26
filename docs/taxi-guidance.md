@@ -1013,9 +1013,13 @@ taxiway M6"* at 49 kt onto a 52° exit started the turn that ended in the grass.
   measurement.
 - **At the turn point** (`ROLLOUT_TURN_NOW_FT`, 150 ft), when too fast, the rollout looks for
   somewhere else to go (`FindTooFastAlternative`): the first suitable exit downfield of the
-  declined one that is also at least `RolloutExitGate.ExitLeadFeet` ahead of the aircraft (the
-  undershoot scan's lead: 200 ft, or 11 ft per knot when more), measured from the aircraft's exact
-  along-runway position. With nothing in the planned list, the graph rescue scan
+  declined one that the aircraft can slow down for with COMFORTABLE braking, for that exit's own
+  angle (`RolloutExitGate.FirstComfortableDownfieldExit` — `ComfortableExitLeadFeet`, the touchdown
+  re-plan's comfortable pass); only when none is, the first one at least `RolloutExitGate.ExitLeadFeet`
+  ahead (the undershoot scan's lead: 200 ft, or 11 ft per knot when more — tuned below 50 kt, so
+  above about 60 kt alone it could pick an exit itself too fast at its own turn point, a cascade of
+  too-fast retargets). Both are measured from the aircraft's exact along-runway position. With
+  nothing in the planned list, the graph rescue scan
   (`FindDownfieldExits`) is asked with the same cutoff, exactly as the overshoot path asks it.
   Found: it retargets there with `RetargetReason.TooFast` — *"Too fast for taxiway M6. Continue
   to taxiway M8, 1250 feet."* (one utterance, see below).
@@ -1100,10 +1104,12 @@ setting (`DistanceFormatter.FromFeet`).
   exit the sentence would collide with — the 1,500, 900 (high-speed exits only) and 500 ft calls the
   aircraft is already inside, or will reach within `RetargetCallout.LeadSeconds` — through the same
   `TouchdownCallout.RetireExitCallouts` rule the touchdown correction uses (the lead converted to a
-  distance with braking toward taxi speed, `RolloutCalloutSupersession`). `LeadSeconds` is 11 s:
+  distance with braking toward taxi speed, `RolloutCalloutSupersession`). `LeadSeconds` is 13 s:
   the longest realistic sentence, *"Too fast for taxiway N12. Straighten. Continue to taxiway N14,
-  1250 feet."*, measures 9.15 s through System.Speech at Rate 0 with trailing silence trimmed,
-  plus about a fifth. Re-measure it whenever the wording changes; never size it by estimate.
+  1250 feet. Slow down."*, measures 10.76 s through System.Speech at Rate 0 with trailing silence
+  trimmed (2026-09-26), plus about a fifth. The earlier 11 s was sized on the same sentence WITHOUT
+  its folded "Slow down." (9.15 s). Re-measure it whenever the wording changes; never size it by
+  estimate.
 - **What a retired milestone uniquely adds is folded in**: the 500 ft call's *"Slow down."*, at
   `SlowDownAboveKts` (above). **Turn-now is NEVER retired here**: "now" belongs to its own point,
   where the too-fast rule judges it.
@@ -1113,9 +1119,9 @@ setting (`DistanceFormatter.FromFeet`).
   its own turn — that is, unless the deviation is toward the new exit's side AND the aircraft is
   inside that exit's own turn window (or past it). KMEM: an 8.4° leftover right turn toward M6,
   631 ft before M7 (window 324 ft), gets "Straighten."; below 5° nothing is said.
-- **Accepted residual.** After a MISSED retarget onto a near high-speed exit, the early handoff can
-  fire within 300 ft, and Taxiing's own advance notice (*"In 300 feet, turn … onto taxiway M7."*)
-  then cuts the retarget sentence off. It names the same exit and direction, and "Straighten."
+- **Accepted residual.** After a MISSED or a TOO FAST retarget onto a nearby high-speed exit, the
+  early handoff can fire within 300 ft, and Taxiing's own advance notice (*"In 300 feet, turn …
+  onto taxiway M7."*) then cuts the retarget sentence off. It names the same exit and direction, and "Straighten."
   comes early in the sentence, so it is spoken first.
 
 ### Off-pavement alert (KMEM 36L, 2026-09-26)
@@ -1169,11 +1175,13 @@ code:
 
 - `tone mode=<Silent|DriftCorrection|ExitBearing> exit='…' dist=…ft window=…ft hdgDelta=…deg
   lateral=…m gs=…kt turnBegun=… desired=… raw=… smooth=…` — the rollout tone's decision (the
-  EFFECTIVE mode, after the too-fast override) and every input to it. Written on EVERY frame while
-  the aircraft is moving with the tone able to sound (above `RolloutExitGate.NoExitStoppedGroundSpeedKts`,
-  3 kt, and at or below the 50 kt tone line); otherwise only when the tone mode or the targeted exit
-  changes. A pilot held on the runway stays in `LandingRollout` indefinitely, and a line per frame
-  would cycle the log's 5 MB × 3 rotation within the hour.
+  EFFECTIVE mode, after the too-fast rule) and every input to it. Written at most once per 100 ms
+  while the aircraft is moving with the tone able to sound (above
+  `RolloutExitGate.NoExitStoppedGroundSpeedKts`, 3 kt, and at or below the 50 kt tone line) — SIM_FRAME
+  runs at 30-60 Hz, and a line per frame flooded the log — and ALWAYS on a frame where the tone mode
+  or the targeted exit changes, whatever the speed. A pilot held on the runway stays in
+  `LandingRollout` indefinitely, and a line per frame would cycle the log's 5 MB × 3 rotation within
+  the hour.
 - `Turn window for '…': … ft (node lateral … m, angle … deg, runway width … ft)` — every recompute of
   the targeted exit's own turn window.
 - `Retarget (<Missed|TooFast|Earlier>) '…' -> '…' dist=…ft gs=…kt hdgDelta=…deg window=…ft
@@ -1259,9 +1267,14 @@ a copy of E3.
 
 **No relocation.** An exit keeps its PRODUCER node: `NodeId`, position and distances. The
 refinement changes only `ExitAngleDegrees`, `ExitType` (`ClassifyExit` at the exit's own
-along-track position) and `ExitBearingTrue` / `ExitSide` (`BranchExitBearing`: the branch's edge
-onward from its junction, or the chord to its corridor node when that edge runs under 20° off the
-runway and the chord is wider and still forward, ≤ 110° — the producers' own apron-override rule).
+along-track position) and `ExitBearingTrue` / `ExitSide` (`BranchExitBearing`, evaluated at the
+exit's OWN node, `EdgeIndexAt`: the branch's edge FROM that node when the node is on the runway
+pavement, the edge INTO it when the node is already off the pavement — it was reached turning off
+it, and the edge onward can run back along a parallel taxiway (OI19 11) — clamped to the path's last
+edge, and from the junction when the node is not on the path; a sibling swap evaluates at its
+divergence node instead. In every case the chord to the corridor node replaces an edge that runs
+under 20° off the runway when the chord is wider and still forward, ≤ 110° — the producers' own
+apron-override rule).
 The producer's bearing can be a lead line's or a hold-short node's BACKWARD edge, and after "turn
 now" the rollout steers a Normal exit by its bearing. Measured: moving exits to their junctions put
 them up to 150 m before where the pavement actually leaves the runway (KMIA 08R Z), and sibling
@@ -2326,7 +2339,7 @@ subsection above for the behavioral story; this table is just the numbers.
 | `RolloutExitGate.TooFastMarginKts` | 10.0 | Added to the exit's turn-off speed (`ExitTurnOffSpeedKts`: 50 kt below 45°, 20 kt otherwise) for `MaxTurnSpeedKts` — 60 / 30 kt. Faster than that, "turn now" is never said. A judgement value |
 | `RolloutExitGate.SlowDownAboveKts(...)` | `MaxTurnSpeedKts`; End exits 30 | The one "Slow down." line: the 500 ft callout, the touchdown correction, the crossing decline and the retarget sentence |
 | `RolloutExitGate.StraightenMinDeviationDeg` | 5.0 | A retarget sentence says "Straighten." only for at least this much heading off the runway that the new exit would not accept as its own turn |
-| `RetargetCallout.LeadSeconds` | 11.0 s | The retarget sentence's retirement lead: the longest realistic sentence measures 9.15 s at System.Speech Rate 0, plus about a fifth. Re-measure when the wording changes |
+| `RetargetCallout.LeadSeconds` | 13.0 s | The retarget sentence's retirement lead: the longest realistic sentence ("Too fast for taxiway N12. Straighten. Continue to taxiway N14, 1250 feet. Slow down.") measures 10.76 s at System.Speech Rate 0, plus about a fifth. Re-measure when the wording changes |
 | `OffPavementAlert.OnsetSeconds` / `RepeatSeconds` / `RearmOnPavementSeconds` / `MinGroundSpeedKts` | 1 s / 6 s / 2 s / 5 kt | "Off pavement." after 1 s off while ≥ 5 kt, every 6 s while still off, re-armed after 2 s back on. Judgement values |
 | `RolloutExitGate.ExitSideMinBearingDeg` | 3.0 | Below this relative bearing an exit has no meaningful side and `IsTurnTowardExit`'s direction test is skipped (matches the existing `ExitAngleDegrees >= 3.0` gate in `alignedWithExit`) |
 | `ROLLOUT_TURN_MAX_GS_KTS` (→ `RolloutExitGate.TurnMaxGroundSpeedKts`) | 90.0 | Above this GS a heading deviation is touchdown yaw / crosswind crab, not a deliberate exit turn — used by both `IsExitTurnBegun` and the post-handoff overshoot monitor's `turnBegunPH` |
@@ -2588,7 +2601,7 @@ The bullets below were previously carried verbatim in CLAUDE.md as a running cha
   the scan was at fault. **Do not remove those two `DescribeExits` calls** — they are the only channel that
   makes a repeat of this report answerable.
 
-  **Runway-end countdown after a missed-last-exit (`UpdateRunwayEndCountdown`).** When `EnterRunwayEndCountdown` fires (overshoot with no downfield exit, a retarget LoadRoute failure, or `BeginRunwayEndCountdownRollout` at touchdown when a plan made for another runway finds no usable exit on the runway actually landed on), state stays in `LandingRollout` and a per-frame loop drives three voice callouts based on signed along-runway projection from `_rolloutRunway.StartLat/Lon` plus `Length`: *"Runway end in 1500 feet."* / *"Runway end in 500 feet. Slow down."* / *"Runway end in 100 feet. Stop."* — the 500 ft "Slow down" suffix is suppressed when GS ≤ 30 kt (still at taxi speed, the directive is noise); the 100 ft "Stop" suffix is **unconditional** (the pilot needs the action cue regardless of current speed). Hold-short and parking countdowns are also unconditional on their action suffixes. Tone stays silent — no steering target on rollout, pilot is on rudder/brakes. Ends by POSITION through `Navigation/RunwayEndCountdownGate` (xUnit-pinned), rules in order: laterally clear of the runway → *"Runway vacated. No route set — use the taxi planner for a route to your stand."* and `Taxiing` with `_route = null`, tone stopped first; heading ≥ 150° off the runway (turned around) → `BacktrackingOnRunway`; stopped (< `ROLLOUT_NO_EXIT_STOPPED_GS_KTS` = 3 kt) or turning (≥ 15° below 90 kt) within the 500 ft / 150 m runway-end milestone → `BacktrackingOnRunway`; stopped anywhere else → one *"Stopped on runway X. Runway end in N."*; otherwise the countdown continues, so a turn onto a taxiway mid-runway says nothing until the aircraft is clear. Backtracking says *"End of runway X. Turn around, heading H. Backtracking."* only near the end and *"Backtracking on runway X, heading H."* after a mid-runway turnaround; H is the MAGNETIC reciprocal (`RunwayHeadings.SpokenReciprocalMagnetic`, spoken 1-360) while the tone steers on the true one. The old rule handed ANY stop or 15° turn to backtracking and told a pilot turning off at a taxiway mid-runway to turn around (PR #236 review). **Keep `_rolloutRunway` cached through `EnterRunwayEndCountdown` — the countdown needs it.** Full silence on a missed-last-exit is unsafe for a blind pilot rolling toward the end of an active runway; the countdown gives them real braking information.
+  **Runway-end countdown after a missed-last-exit (`UpdateRunwayEndCountdown`).** When `EnterRunwayEndCountdown` fires (overshoot with no downfield exit, a retarget LoadRoute failure, or `BeginRunwayEndCountdownRollout` at touchdown when a plan made for another runway finds no usable exit on the runway actually landed on), state stays in `LandingRollout` and a per-frame loop drives three voice callouts based on signed along-runway projection from `_rolloutRunway.StartLat/Lon` plus `Length`: *"Runway end in 1500 feet."* / *"Runway end in 500 feet. Slow down."* / *"Runway end in 100 feet. Stop."* — the 500 ft "Slow down" suffix is suppressed when GS ≤ 30 kt (still at taxi speed, the directive is noise); the 100 ft "Stop" suffix is **unconditional** (the pilot needs the action cue regardless of current speed). Hold-short and parking countdowns are also unconditional on their action suffixes. Tone stays silent — no steering target on rollout, pilot is on rudder/brakes. Ends by POSITION through `Navigation/RunwayEndCountdownGate` (xUnit-pinned), rules in order: laterally clear of the runway → *"Runway vacated. No route set — use the taxi planner for a route to your stand."* and `Taxiing` with `_route = null`, tone stopped first; heading ≥ 150° off the runway (turned around) → `BacktrackingOnRunway`; STOPPED (< `RolloutExitGate.NoExitStoppedGroundSpeedKts`, 3 kt) within `RolloutExitGate.NearRunwayEndFeet` (500 ft — a guidance constant of its own, not the spoken milestone) → `BacktrackingOnRunway`; stopped anywhere else → one *"Stopped on runway X. Runway end in N."*; otherwise the countdown continues. A TURN near the end is deliberately NOT a backtrack trigger — between 15° and 150° a turn onto the taxiway at the end and the start of a turnaround look the same, and `BacktrackingOnRunway` cannot be taken back — so a turn onto a taxiway, near the end or mid-runway, says nothing until the aircraft is clear. Entered after a too-fast declined exit is overshot (no *"Missed last exit"*), the countdown's first frame on which nothing else speaks says its own status once, *"Runway end in N."*. Backtracking says *"End of runway X. Turn around, heading H. Backtracking."* only near the end and *"Backtracking on runway X, heading H."* after a mid-runway turnaround; H is the MAGNETIC reciprocal (`RunwayHeadings.SpokenReciprocalMagnetic`, spoken 1-360) while the tone steers on the true one. The old rule handed ANY stop or 15° turn to backtracking and told a pilot turning off at a taxiway mid-runway to turn around (PR #236 review). **Keep `_rolloutRunway` cached through `EnterRunwayEndCountdown` — the countdown needs it.** Full silence on a missed-last-exit is unsafe for a blind pilot rolling toward the end of an active runway; the countdown gives them real braking information.
 - **Connected-component-aware start-node selection.** `TaxiGraph.Build` runs a single BFS pass at the end to assign every `TaxiNode` a `ComponentId`. `LoadRoute` (and `TryRecalculateRoute`) look up the destination node's component and pass it as `requiredComponentId` to `FindNearestNodeInDirection` / `FindNearestNodeOnTaxiway`; candidates in a different connected component are filtered out. Same filter is applied to `TaxiRouter`'s private `FindNearestNodeOnTaxiway*` helpers via the from/target node's component. `_nextNodeId` in `TaxiGraph` starts at 1 so node ID 0 is a permanent "not set" sentinel — `TaxiGuidanceManager` uses `_destinationNodeId = 0` as the cleared-route marker, and a zero-based node ID would collide with that. Motivating defect: fs2024 navdata at GCLP models taxiway S5 as an isolated 13-node island (no graph connection to any other taxiway at either terminus). A pilot touching down on 03L near S5 had the start-node picker snap to an S5 node, and A* couldn't reach R9R (in the main 1075-node component) — the pilot heard "Could not calculate a route to the destination." and got silence during rollout. With the component filter the picker skips S5 and selects an R3 node ~187 m ahead instead. Applies to every `LoadRoute` caller, not just landing-exit, so the gate-to-runway taxi path at the same airports is protected too.
 - **Stranded stand stubs are reattached; unreachable destinations are refused (OMDB B 18R, issue #228; narrowed in review 2026-09-14).** The component filter above misfired at OMDB. Gate B 18R's stand and connector are one `P` lead-in row whose open end stops 12 m short of taxiway U, so the stub stayed its own component and `LoadRoute` found no start node (*"Could not find a nearby taxiway node."*).
 

@@ -187,6 +187,28 @@ public class RolloutExitGatePerExitRulesTests
         => Assert.Equal(RolloutToneMode.Silent,
             RolloutExitGate.SelectToneMode(60.0, 200.0, 0.0, 30.0, 500.0, tooFastForExit: true));
 
+    // ---- The too-fast alternative's comfortable pass ----------------------------------------
+
+    private static LandingExit At(string name, double distFromThresholdFt, double angleDeg) => new LandingExit
+    {
+        TaxiwayName = name, DistanceFromThresholdFeet = distFromThresholdFt, ExitAngleDegrees = angleDeg
+    };
+
+    [Fact]
+    public void Above_60_knots_the_too_fast_alternative_is_one_the_aircraft_can_slow_down_for()
+    {
+        // At 65 kt ExitLeadFeet asks only 715 ft, but slowing to a 90° exit's 20 kt with comfortable braking
+        // takes about 1,050 ft: B, 900 ft ahead, would itself be too fast at its own turn point.
+        var exits = new List<LandingExit> { At("B", 5900.0, 90.0), At("C", 6200.0, 90.0) };
+        Assert.Equal("C",
+            RolloutExitGate.FirstComfortableDownfieldExit(exits, 5100.0, 5000.0, 65.0)?.TaxiwayName);
+    }
+
+    [Fact]
+    public void With_no_comfortable_exit_the_comfortable_pass_finds_none()
+        => Assert.Null(RolloutExitGate.FirstComfortableDownfieldExit(
+               new List<LandingExit> { At("B", 5900.0, 90.0) }, 5100.0, 5000.0, 65.0));
+
     [Fact]
     public void Not_too_fast_every_mode_is_unchanged()
     {
