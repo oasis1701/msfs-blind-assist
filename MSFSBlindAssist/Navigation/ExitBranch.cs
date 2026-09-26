@@ -109,11 +109,13 @@ public static class ExitBranch
     /// Measures the branch <paramref name="candidateNodeId"/> lies on. <paramref name="seedNeighborId"/>
     /// picks the side when the candidate IS the junction (a taxiway crossing the runway): the outward
     /// search's first hop is then only that neighbour. <paramref name="nameFilter"/>, when set, keeps
-    /// the inward walk (<see cref="WalkToJunction"/>, both phases) on edges that are unnamed or carry
-    /// that name - an empty name means unnamed edges only - so a candidate at a node it shares with
-    /// another exit is never measured along that exit's arm (KATL 26L: B4 was listed as a copy of E3).
-    /// A candidate whose filtered walk cannot reach the runway is unmeasured. The outward search that
-    /// finds the clear node is never filtered.
+    /// the whole measurement on edges that are unnamed or carry that name - an empty name means unnamed
+    /// edges only: the inward walk (<see cref="WalkToJunction"/>, both phases), so a candidate at a node
+    /// it shares with another exit is never walked in along that exit's arm (KATL 26L: B4 was listed as
+    /// a copy of E3), and the outward search for the clear node, so a candidate on a lead line another
+    /// exit crosses is never measured out along that exit's arm (KMIA 08R: M7 was given M6's 90°
+    /// crossing). A candidate whose own taxiway never reaches the runway, or never clears it, is
+    /// unmeasured. Unset (the hold-short gate), nothing is filtered.
     /// </summary>
     public static LandingExitBranch Analyze(TaxiGraph graph, RunwayAxis axis, int candidateNodeId,
         int? seedNeighborId = null, string? nameFilter = null)
@@ -125,11 +127,11 @@ public static class ExitBranch
         // so it must be reported unmeasured rather than silently measured from wherever the walk gave up.
         if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres)
             return new LandingExitBranch(junction, -1, -1, 0.0, 0.0, inward);
-        var branch = MeasureFrom(graph, axis, inward, junction == candidateNodeId ? seedNeighborId : null);
+        var branch = MeasureFrom(graph, axis, inward, junction == candidateNodeId ? seedNeighborId : null, nameFilter);
         if (branch.IsMeasured || junction == candidateNodeId) return branch;
         // Nothing leaves the runway from the candidate itself — it sits on a lead-in line beside the
         // junction. Measure the junction's own branch instead.
-        return MeasureFrom(graph, axis, new List<int> { junction }, null);
+        return MeasureFrom(graph, axis, new List<int> { junction }, null, nameFilter);
     }
 
     /// <summary>
@@ -265,12 +267,13 @@ public static class ExitBranch
         return path;
     }
 
-    private static LandingExitBranch MeasureFrom(TaxiGraph graph, RunwayAxis axis, List<int> inward, int? seedNeighborId)
+    private static LandingExitBranch MeasureFrom(
+        TaxiGraph graph, RunwayAxis axis, List<int> inward, int? seedNeighborId, string? nameFilter)
     {
         int junction = inward[0];
         int candidate = inward[^1];
         var (clearNode, corridorNode, parents) =
-            SearchOutward(graph, axis, candidate, new HashSet<int>(inward), seedNeighborId);
+            SearchOutward(graph, axis, candidate, new HashSet<int>(inward), seedNeighborId, nameFilter);
 
         int clearIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.ClearLateralMetres);
         List<int> path;
@@ -288,10 +291,11 @@ public static class ExitBranch
             TurnAlong(graph, axis, path), TurnToLeave(graph, axis, path), path);
     }
 
-    // Dijkstra by path length from `from`, never entering `excluded` (the inward path). Returns the first
+    // Dijkstra by path length from `from`, never entering `excluded` (the inward path) and - when
+    // `nameFilter` is set - following only edges that are unnamed or carry that name. Returns the first
     // node beyond the clear boundary and the first beyond the corridor boundary (-1 when none in reach).
     private static (int Clear, int Corridor, Dictionary<int, int> Parents) SearchOutward(
-        TaxiGraph graph, RunwayAxis axis, int from, HashSet<int> excluded, int? seedNeighborId)
+        TaxiGraph graph, RunwayAxis axis, int from, HashSet<int> excluded, int? seedNeighborId, string? nameFilter)
     {
         var parents = new Dictionary<int, int>();
         var best = new Dictionary<int, double> { [from] = 0.0 };
@@ -301,6 +305,7 @@ public static class ExitBranch
         foreach (var e in Walkable(graph, from))
         {
             if (excluded.Contains(e.ToNodeId)) continue;
+            if (!MatchesNameFilter(e, nameFilter)) continue;
             if (seedNeighborId.HasValue && e.ToNodeId != seedNeighborId.Value) continue;
             if (best.TryGetValue(e.ToNodeId, out double known) && known <= e.DistanceMeters) continue;
             best[e.ToNodeId] = e.DistanceMeters;
@@ -320,6 +325,7 @@ public static class ExitBranch
             foreach (var e in Walkable(graph, node))
             {
                 if (excluded.Contains(e.ToNodeId) || done.Contains(e.ToNodeId)) continue;
+                if (!MatchesNameFilter(e, nameFilter)) continue;
                 double next = dist + e.DistanceMeters;
                 if (best.TryGetValue(e.ToNodeId, out double known) && known <= next) continue;
                 best[e.ToNodeId] = next;

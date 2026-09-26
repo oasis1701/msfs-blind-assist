@@ -116,6 +116,22 @@ public class LandingExitRelocationTests
         Assert.Equal(90.0, d1.ExitAngleDegrees);
     }
 
+    [Fact]
+    public void An_exit_on_a_lead_line_shared_with_another_named_exit_takes_its_own_arms_angle()
+    {
+        // Round 2, S3 (KMIA 08R M7): M7's first node sits on a lead line M6 crosses at 90 degrees. M7 is a
+        // RET of about 22 degrees; M6's crossing is not M7.
+        var g = ExitBranchTests.BuildSharedLeadLine();
+
+        var exits = g.GetLandingExits(Runway09(3000.0));
+
+        var m7 = exits.Where(e => e.TaxiwayName == "M7").OrderBy(e => e.DistanceFromThresholdFeet).First();
+        Assert.Equal("High-speed", m7.ExitType);
+        Assert.InRange(m7.ExitAngleDegrees, 15.0, 25.0);
+        var m6 = Assert.Single(exits, e => e.TaxiwayName == "M6");
+        Assert.Equal(90.0, m6.ExitAngleDegrees);
+    }
+
     // The KMEM M6 Y shape moved toward the threshold: the forward arm (unnamed) leaves the runway at
     // (68,0), 223 ft - under the 500 ft MIN_DIST_FT - and the backward arm (named M6, a 160-degree
     // turn) at (222,1), 728 ft, with a lead-in tail on to (254,-1); both meet the stem at (150,55).

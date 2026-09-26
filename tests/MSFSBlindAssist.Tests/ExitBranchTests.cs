@@ -371,6 +371,40 @@ public class ExitBranchTests
         Assert.True(b.IsTurnaround);
     }
 
+    // --- Task 3b round 2, S3: the outward search stays on the exit's own taxiway -----------------
+
+    // The KMIA 08R M7 shape: M7's lead line runs along the centreline from (900,0) through (1000,1) and
+    // (1080,2) to M (1100,2), where M6 crosses at 90 degrees out to (1100,60); M7 carries on to (1250,3)
+    // and leaves as a RET through (1300,15), (1350,30) and (1400,50).
+    internal static TaxiGraph BuildSharedLeadLine() => Build(
+        Seg(900, 0, 1000, 1), Seg(1000, 1, 1080, 2), Seg(1080, 2, 1100, 2, "M7"),
+        Seg(1100, 2, 1100, 60, "M6"),
+        Seg(1100, 2, 1250, 3, "M7"), Seg(1250, 3, 1300, 15, "M7"), Seg(1300, 15, 1350, 30, "M7"),
+        Seg(1350, 30, 1400, 50, "M7"));
+
+    [Fact]
+    public void A_candidate_on_a_lead_line_shared_with_another_named_exit_is_measured_along_its_own_arm()
+    {
+        var g = BuildSharedLeadLine();
+        int candidate = NodeAt(g, 1080, 2);
+
+        // Unfiltered (the hold-short gate's call), the nearest way off is M6's arm.
+        Assert.Equal(NodeAt(g, 1100, 60), ExitBranch.Analyze(g, Axis, candidate).ClearNodeId);
+
+        var m7 = ExitBranch.Analyze(g, Axis, candidate, nameFilter: "M7");
+        Assert.Equal(NodeAt(g, 1400, 50), m7.ClearNodeId);
+        Assert.InRange(m7.TurnToClearDeg, 15.0, 25.0);
+    }
+
+    [Fact]
+    public void A_name_filtered_branch_that_never_clears_on_its_own_taxiway_is_unmeasured()
+    {
+        // Only M6 leads off the runway from K's lead line; nothing named K (or unnamed) clears.
+        var g = Build(Seg(900, 0, 1000, 1, "K"), Seg(1000, 1, 1100, 2, "K"), Seg(1100, 2, 1100, 60, "M6"));
+
+        Assert.False(ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 1), nameFilter: "K").IsMeasured);
+    }
+
     [Fact]
     public void A_sibling_arm_named_only_beyond_its_own_clear_point_is_rejected()
     {
