@@ -177,7 +177,7 @@ public class BriefingStandPickerTests
 
         Assert.Same(b6, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Contains(choice.Notes, n => n.Contains("matched by position", StringComparison.Ordinal));
+        Assert.Contains("SayIntentions assigned Gate 99, which this scenery lists as B 6", choice.Notes);
     }
 
     [Fact]
@@ -277,7 +277,7 @@ public class BriefingStandPickerTests
         var choice = BriefingStandPicker.Pick(new[] { a24a }, B738, null, new SayIntentionsGateHint("Gate A24", null), Always)!;
 
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Contains(choice.Notes, n => n.Contains("\"Gate A24\"", StringComparison.Ordinal) && n.Contains("another name", StringComparison.Ordinal));
+        Assert.Contains("SayIntentions assigned Gate A24, which this scenery lists as A 24A", choice.Notes);
     }
 
     [Fact]
@@ -291,7 +291,7 @@ public class BriefingStandPickerTests
 
         Assert.Same(gate, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Contains(choice.Notes, n => n.Contains("\"Gate 99\"", StringComparison.Ordinal) && n.Contains("matched by position", StringComparison.Ordinal));
+        Assert.Contains("SayIntentions assigned Gate 99, which this scenery lists as G 1", choice.Notes);
     }
 
     [Theory]
@@ -314,7 +314,7 @@ public class BriefingStandPickerTests
             Assert.Same(gate6, choice.Spot);
             Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
             Assert.Contains(choice.Notes, n => n.Contains("\"Gate 105\" was found, but only as a stand the briefing does not route to", StringComparison.Ordinal));
-            Assert.DoesNotContain(choice.Notes, n => n.Contains("not found", StringComparison.Ordinal) || n.Contains("matched by position", StringComparison.Ordinal));
+            Assert.DoesNotContain(choice.Notes, n => n.Contains("not found", StringComparison.Ordinal) || n.Contains("which this scenery lists as", StringComparison.Ordinal));
         }
     }
 
@@ -464,6 +464,103 @@ public class BriefingStandPickerTests
         Assert.Contains(choice.Notes, n => n.Contains("\"Gate 99\"", StringComparison.Ordinal)
                                         && n.Contains("by position", StringComparison.Ordinal)
                                         && n.Contains("does not connect to the taxiway network", StringComparison.Ordinal));
+    }
+
+    // ── SayIntentions' pin: with a published position, the stand AT the pin ─────────────────
+    // A same-named stand far from the point SayIntentions published is a different stand and is never
+    // used as SayIntentions' gate: a name or alias counts only for a stand whose own reach covers the pin.
+
+    [Fact]
+    public void Say_intentions_pin_picks_the_suffixed_gate_there_over_a_namesake_far_away()
+    {
+        // SayIntentions "Gate 7", pinned 10 m from this scenery's "Gate 7A"; the only stand that reads
+        // "7" is the GA ramp "Spot 7", 1.21 km from the pin.
+        var gate7a = Spot("", 7, 10, 0, 0);
+        gate7a.Suffix = "A";
+        var spot7 = Spot("", 7, 4, 1220, 0, radiusFt: 39);
+        var choice = BriefingStandPicker.Pick(new[] { spot7, gate7a }, B738, null, At("Gate 7", 10), Always)!;
+
+        Assert.Same(gate7a, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Contains("SayIntentions assigned Gate 7, which this scenery lists as Gate 7A", choice.Notes);
+    }
+
+    [Fact]
+    public void Say_intentions_pin_passes_over_every_namesake_far_from_it()
+    {
+        // "Spot 7" and "Parking 7" both read "7" and are both far from the pin; "B 7" is at it.
+        var spot7 = Spot("", 7, 4, 0, 0, radiusFt: 39);
+        var parking7 = Spot("Parking", 7, 3, 600, 0, radiusFt: 23);
+        var b7 = Spot("B", 7, 10, 1200, 0);
+        var choice = BriefingStandPicker.Pick(new[] { spot7, parking7, b7 }, B738, null, At("Gate 7", 1205), Always)!;
+
+        Assert.Same(b7, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Contains("SayIntentions assigned Gate 7, which this scenery lists as B 7", choice.Notes);
+    }
+
+    [Fact]
+    public void An_excluded_namesake_far_from_the_pin_does_not_stop_the_position_match()
+    {
+        // The fuel spot "Spot 105" is 1.2 km from the pin; the gate "B 5" is 10 m from it.
+        var fuel = Spot("", 105, 16, 0, 0, radiusFt: 26);
+        var b5 = Spot("B", 5, 10, 1210, 0);
+        foreach (var label in new[] { "Spot 105", "Parking 105" })
+        {
+            var choice = BriefingStandPicker.Pick(new[] { fuel, b5 }, B738, null, At(label, 1200), Always)!;
+
+            Assert.Same(b5, choice.Spot);
+            Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+            Assert.Contains($"SayIntentions assigned {label}, which this scenery lists as B 5", choice.Notes);
+            Assert.DoesNotContain(choice.Notes, n => n.Contains("does not route to", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void Nothing_at_the_pin_means_no_say_intentions_stand_even_with_a_namesake_far_away()
+    {
+        // SayIntentions "Gate 8" is pinned where this scenery has no stand; the only "8" here is the GA
+        // ramp "Spot 8", 1.2 km away. SayIntentions' gate is not found, so a representative stand is used.
+        var spot8 = Spot("", 8, 4, 1200, 0, radiusFt: 39);
+        var g1 = Spot("G", 1, 10, 600, 0);
+        var choice = BriefingStandPicker.Pick(new[] { spot8, g1 }, B738, null, At("Gate 8", 0), Always)!;
+
+        Assert.Same(g1, choice.Spot);
+        Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Contains(choice.Notes, n => n.Contains("\"Gate 8\" was not found at this airport", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_name_match_at_the_pin_beats_a_nearer_differently_named_stand()
+    {
+        // "Gate 7" is 30 m from the pin (inside its 61 m reach), "Gate 7A" only 5 m: the name decides.
+        var gate7 = Spot("", 7, 10, 0, 0);
+        var gate7a = Spot("", 7, 10, 35, 0);
+        gate7a.Suffix = "A";
+        var choice = BriefingStandPicker.Pick(new[] { gate7a, gate7 }, B738, null, At("Gate 7", 30), Always)!;
+
+        Assert.Same(gate7, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Empty(choice.Notes);
+    }
+
+    [Fact]
+    public void An_alias_counts_only_within_reach_of_the_pin()
+    {
+        // "A 24A" answers to the online alias "A24". Pinned at "B 3" the alias is not enough; pinned at
+        // "A 24A" it is.
+        var a24a = Spot("A", 24, 10, 0, 0);
+        a24a.Suffix = "A";
+        a24a.Aliases.Add("A24");
+        var b3 = Spot("B", 3, 10, 900, 0);
+
+        var atB3 = BriefingStandPicker.Pick(new[] { a24a, b3 }, B738, null, At("Gate A24", 905), Always)!;
+        Assert.Same(b3, atB3.Spot);
+        Assert.Contains("SayIntentions assigned Gate A24, which this scenery lists as B 3", atB3.Notes);
+
+        var atA24a = BriefingStandPicker.Pick(new[] { a24a, b3 }, B738, null, At("Gate A24", 5), Always)!;
+        Assert.Same(a24a, atA24a.Spot);
+        Assert.Contains("SayIntentions assigned Gate A24, which this scenery lists as A 24A", atA24a.Notes);
     }
 
     // ── SayIntentions position acceptance ────────────────────────────────────────────────────
