@@ -183,24 +183,34 @@ as the assigned "Gate 8", because `NormalizeParkingName` strips the stand-type w
 
 ### 5.4 `BriefingExitPicker`
 
-```csharp
-public sealed record ExitChoice(LandingExit Exit, LandingExit? NextExit, bool ComfortablyReachable);
-public static class BriefingExitPicker
-{
-    public const double HighSpeedPreferenceFeet = 1500.0;
-    public static ExitChoice? Pick(IReadOnlyList<LandingExit> exitsSortedByThreshold, double touchdownSpeedKts);
-}
-```
+Constants: `PreferenceWindowFeet` = 1,500 (was `HighSpeedPreferenceFeet`),
+`NextExitMinSeparationFeet` = 500. The picker stays pure; the planner supplies which exits are
+usable and which ones avoid the landing runway (see below).
 
 Input is `TaxiGraph.GetLandingExits(rwy)` after `LandingExitVacateScreen.Mark`. Candidates:
 `VacatesRunway` and `ExitAngleDegrees <= RolloutExitGate.MaxUsableExitTurnDeg` (90°); if none,
 any `VacatesRunway` exit; if none, null. Reachable = candidates with
 `DistanceFromTouchdownFeet >= RolloutExitGate.ComfortableExitLeadFeet(touchdownSpeedKts, ExitAngleDegrees)`.
-Chosen = the first reachable exit, except that a `High-speed` exit no more than
-`HighSpeedPreferenceFeet` further along than that first one wins over a `Normal` one. If nothing
-is reachable, the furthest candidate is chosen with `ComfortablyReachable = false` (the block says
-the runway is short for this aircraft). `NextExit` = the next candidate beyond the chosen one, or
-null.
+
+Revised during the final review (2026-09-26), measured on the real fs2024 database over 60 hubs /
+414 arrival legs:
+- **Side consistency (planner).** `LandingExitDestination.Resolve` sometimes returns another exit's
+  clear-of-runway node on the OPPOSITE side (KLAX 25L A7, KORD 22R/04R/09R, KSFO 01L/28R, LEBL 02,
+  EGLL 27L S5W → N5E), so the briefing only offers an exit whose route starts on the side it turns
+  toward (33 mismatches → 0). When the only comfortable exits are set aside this way, the block
+  says so rather than calling the runway short. When the taxiway that takes the aircraft off the
+  pavement is not the exit's own, a note names it ("the mapped route leaves the runway on taxiway
+  X"). `LandingExitDestination` itself is unchanged (the planner, the rollout and the Landing Exit
+  planner still share it; its opposite-side resolution is a separate follow-up).
+- **Gate side (owner decision, 2026-09-26).** Among the reachable candidates within
+  `PreferenceWindowFeet` of the first reachable one (high-speed preference kept inside that
+  window), choose the first whose route to the chosen stand exists and does NOT cross the landing
+  runway (either end); if every one crosses, keep the first-reachable choice (every crossing of the landing runway briefed (re-crossings, a start hold, and a second crossing of one runway), side-inconsistent exits discarded, the gate-side preference and same-side next exit;
+  re-crossings 107 → 57; the rest have no alternative within reach). `NextExit` = the next
+  candidate on the SAME side at least `NextExitMinSeparationFeet` further along, else null (next
+  exits under 500 ft: 81 → 0).
+- If nothing is reachable, the furthest candidate is chosen with `ComfortablyReachable = false`
+  (the block says the runway is short for this aircraft).
 
 ### 5.5 `RunwayLineupTarget` (in `Navigation/`)
 
@@ -296,7 +306,10 @@ data is not available / not yet available / disabled in settings" as applicable)
    taxiway.
 6. `NarrowTaxiways`: for each distinct taxiway on the route, the minimum `WidthFeet` of its edges
    on the route; when `> 0` and below `MinTaxiwayWidthMetres(aircraft.CodeLetter)` (converted),
-   one note. Width 0 (unknown, and every OSM edge) never produces a note.
+   judged at the block's 0.1 m precision, one note. Width 0 (unknown, and every OSM edge) never
+   produces a note. (Revised in the final review: the most common navdata taxiway width is exactly
+   82 ft = 24.99 m — 62 % of fs2024 / 65 % of fs2020 taxiway rows — so an unrounded compare flagged
+   nearly every taxiway for a code F aircraft as "25.0 m, below the 25.0 m minimum".)
 
 **Taxi-in** (`PlanTaxiIn`):
 1. Runway as above.
@@ -339,12 +352,18 @@ data is not available / not yet available / disabled in settings" as applicable)
     `Name/Number/Suffix` from `StandId.Parse(ref)` (whole ref as `Name` when it does not parse).
     Unknown type/size means §5.3 keeps them all and applies no fit filter; the note says "stand
     types unknown (OpenStreetMap)";
-  - runways and starts pass through from the database. With no start rows the graph has no
-    centerlines, so hold-short placement and lineup targets cannot run; the leg then reports
-    `Unavailable = "the database has no runway start positions for ICAO"`.
+  - runways and starts pass through from the database. (Not implemented: the first version said a
+    graph with no start rows would report "the database has no runway start positions"; the
+    shipped code plans on regardless — with no centerlines, crossings cannot be detected at the
+    ~14 such airports. Recorded as a known gap.)
   - zero taxiways → null (tier 3).
-- Every OSM-tier block line carries "(OpenStreetMap, planning only — taxi guidance cannot use
-  this)". The graph object is a local of the planner; nothing stores it.
+- An OSM-tier leg's HEADER carries "(OpenStreetMap, planning only — taxi guidance cannot use
+  this)" (`TaxiBriefingRenderer.OsmLabel`), and the leg carries one "stand types unknown
+  (OpenStreetMap)" note. The graph is built by `TaxiBriefingGraphSource.BuildAsync` inside the
+  planner's leg task; nothing stores it. Before any tier decision the graph source waits up to
+  8 s (never past the budget) for the online taxiway-name prefetch, as `LandingExitForm` and
+  `TaxiAssistForm` do (final review: without it the first briefing of a session at a name-poor
+  airport such as LSZH came out "(unnamed)" and differed from the second press).
 
 ### 5.8 `TaxiBriefingRenderer`
 
@@ -441,7 +460,7 @@ pin it.
 | Scenery has no taxiways, OSM available | leg computed, labelled OpenStreetMap planning-only; stand types unknown |
 | Scenery has no taxiways, OSM disabled / offline / not yet fetched | leg unavailable with that reason; AI route primary |
 | Not parked at origin (airborne, elsewhere, or no SimConnect) | taxi-out from a representative stand, said so |
-| SI absent / other flight / stale other city pair | representative stand, "No SayIntentions gate" |
+| SI absent / other flight / stale other city pair | representative stand, described as "representative stand …" (no SayIntentions note) |
 | SI gate not found at the airport | representative stand, note names the missing gate |
 | No exit vacates the runway | taxi-in exit unavailable; stand still named |
 | No stand fits / no cargo stands / no gates | falls back with a note, never silent |
@@ -481,8 +500,8 @@ xUnit in `tests/MSFSBlindAssist.Tests` (all pure; graph fixtures copied from
   taxiway U → crossing runway 09/27 with an HSND hold → taxiway to runway 18 entry; landing
   runway 09 with two exits at 2,000 ft and 6,000 ft): taxi-out sequence, crossing hold note,
   before-entering hold note, start from own position when on ground within 5 km, representative
-  stand otherwise; taxi-in exit choice by speed, taxi-in route from the vacate node, landing-runway
-  start hold discarded, other-runway crossing kept; unavailable reasons for missing runway, no
+  stand otherwise; taxi-in exit choice by speed, taxi-in route from the vacate node, every crossing of the landing runway briefed (re-crossings, a start hold, and a second crossing of one runway), side-inconsistent exits discarded, the gate-side preference and same-side next exit;
+  other-runway crossing kept; unavailable reasons for missing runway, no
   entry node, no exit, no stand; narrow-taxiway note when width < minimum and none at width 0.
 - `OsmPlanningGraphTests`: segments become connected edges; a holding point within 3 m makes an
   HS node (ILS → IHS); stands parse; no taxiways → null; source with most taxiways chosen.
