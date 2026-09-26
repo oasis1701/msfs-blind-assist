@@ -11,7 +11,7 @@ public class RouteDescriptionPromptTests
         string prompt = GeminiService.GetRouteDescriptionPrompt("FLIGHT DATA HERE");
 
         Assert.Contains("7. TAXI OUT AND TAXI IN", prompt);
-        Assert.Contains("Provide the step-by-step taxi route at [ICAO] from [runway] to [terminal/gate] in a [aircraft type]. " +
+        Assert.Contains("Provide the step-by-step taxi route at [ICAO Code] from [Runway] to [Terminal/Gate] in a [Aircraft Type]. " +
                         "Please include the expected taxiways, hold short points, and any specific restrictions.", prompt);
         Assert.Contains("Real-world practice", prompt);
         Assert.Contains("Aim for 600 to 900 words", prompt);

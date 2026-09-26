@@ -905,7 +905,7 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     /// if it comes back anyway (live KMEM→KATL, 2026-09-26).
     /// </summary>
     internal const string RealWorldTaxiQuestion =
-        "Provide the step-by-step taxi route at [ICAO] from [runway] to [terminal/gate] in a [aircraft type]. " +
+        "Provide the step-by-step taxi route at [ICAO Code] from [Runway] to [Terminal/Gate] in a [Aircraft Type]. " +
         "Please include the expected taxiways, hold short points, and any specific restrictions.";
 
     /// <summary>
