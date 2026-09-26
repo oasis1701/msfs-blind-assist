@@ -651,7 +651,10 @@ public class TaxiBriefingPlannerTests
         var toG1 = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: new SayIntentionsGateHint("Terminal 1 Gate G1", null)), Airport());
         Assert.Equal(new string?[] { null }, toG1.TaxiwayTurns);
         Assert.Null(toG1.StandTurn);
-        Assert.Null(TaxiBriefingPlanner.PlanTaxiIn(Request(Md11F, airline: "UPS"), Airport()).StandTurn);
+
+        var toC1 = TaxiBriefingPlanner.PlanTaxiIn(Request(Md11F, airline: "UPS"), Airport());
+        Assert.Null(toC1.Unavailable);   // otherwise a null StandTurn below would pass vacuously
+        Assert.Null(toC1.StandTurn);
     }
 
     // ── SayIntentions' parking-service gate ─────────────────────────────────────────────────
