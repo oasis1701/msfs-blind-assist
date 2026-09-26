@@ -694,7 +694,8 @@ public partial class TaxiGuidanceManager
         // Heading-aligned-with-exit handoff for shallow RETs whose angle is
         // below ROLLOUT_TURN_BEGAN_HDG_DEG (15°), so turnBegun never fires.
         // Fires when the aircraft heading is within 5° of ExitBearingTrue AND
-        // has deviated at least 70% of the exit angle from runway heading.
+        // has deviated at least 70% of how steeply the exit leaves its node
+        // (RolloutExitGate.IsAlignedWithExit, LandingExit.DivergenceAngleDegrees).
         //
         // The 70% floor is the key overshoot guard: a pilot holding a crosswind
         // correction equal to, say, 2° while rolling past a 3° exit would need
@@ -705,12 +706,9 @@ public partial class TaxiGuidanceManager
         double exitBrgErr = _rolloutExit.ExitBearingTrue != 0.0
             ? Math.Abs(NormalizeAngle(headingTrue - _rolloutExit.ExitBearingTrue))
             : double.MaxValue;
-        bool alignedWithExit = _rolloutExit.ExitBearingTrue != 0.0
-            && _rolloutExit.ExitAngleDegrees >= 3.0
-            && exitBrgErr <= 5.0
-            && hdgDeltaAbs >= Math.Max(2.0, _rolloutExit.ExitAngleDegrees * 0.7)
-            && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS
-            && pastExit;
+        bool alignedWithExit = Navigation.RolloutExitGate.IsAlignedWithExit(
+            headingTrue, _rolloutExit.ExitBearingTrue, _rolloutExit.ExitAngleDegrees,
+            _rolloutExit.DivergenceAngleDegrees, hdgDeltaAbs, groundSpeedKts, pastExit);
 
         // Speed-based "decelerated near the exit" handoff. EXCLUDED for high-speed
         // (rapid-exit) taxiways. On a normal-deceleration landing the aircraft is
@@ -1262,21 +1260,10 @@ public partial class TaxiGuidanceManager
         // buildup is too slow but heading alignment with ExitBearingTrue is clear).
         bool stillOnRunway = !exitedLaterally;
 
-        // Exit-type-aware margin — same angle-proportional formula as the
-        // post-handoff monitor. See that block for the rationale.
-        double overshootMargin;
-        if (_rolloutExit.ExitType == "High-speed" && _rolloutExit.ExitAngleDegrees > 0.0)
-        {
-            double radOM = _rolloutExit.ExitAngleDegrees * Math.PI / 180.0;
-            double angleBasedFtOM = (OVERSHOOT_ON_CENTERLINE_FT + 5.0) / Math.Sin(radOM);
-            overshootMargin = Math.Max(ROLLOUT_OVERSHOOT_FT,
-                              Math.Min(angleBasedFtOM, ROLLOUT_HIGHSPEED_OVERSHOOT_FT));
-        }
-        else
-        {
-            overshootMargin = _rolloutExit.ExitType == "High-speed"
-                ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT : ROLLOUT_OVERSHOOT_FT;
-        }
+        // Exit-type-aware margin — the same rule as the post-handoff monitor, read at
+        // how steeply the exit leaves its node (RolloutExitGate.OvershootMarginFor).
+        double overshootMargin = Navigation.RolloutExitGate.OvershootMarginFor(
+            _rolloutExit.ExitType, _rolloutExit.DivergenceAngleDegrees);
         // An exit declined as too fast at its turn point is overshot the moment the aircraft is past it,
         // at any speed, stopped included (RolloutExitGate.OvershootMarginFeet): no speed handoff re-offers
         // it and trulyStopped needs the aircraft short of the node, so with the usual margin a pilot who

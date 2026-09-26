@@ -619,6 +619,59 @@ public static class RolloutExitGate
     public static double OvershootMarginFeet(double baseMarginFeet, bool tooFastDeclined)
         => tooFastDeclined ? 0.0 : baseMarginFeet;
 
+    /// <summary>
+    /// Along-runway distance past an ordinary exit at which it is called missed: 100 ft at 30 kt is about
+    /// 2 s, by when a correct turn has already handed off.
+    /// </summary>
+    public const double ExitOvershootFeet = 100.0;
+
+    /// <summary>
+    /// The longest a high-speed exit's miss waits: a rapid exit curves away so gently (ICAO design radius
+    /// at least 550 m) that a correct turn is still near the centreline for hundreds of feet.
+    /// </summary>
+    public const double HighSpeedExitOvershootMaxFeet = 500.0;
+
+    /// <summary>
+    /// A genuine overshoot is still within this of the centreline; further out the aircraft is curving
+    /// onto the exit, not missing it.
+    /// </summary>
+    public const double OnCentrelineOvershootFeet = 30.0;
+
+    /// <summary>
+    /// The exit-type margin <see cref="OvershootMarginFeet"/> starts from. For a high-speed exit, how far a
+    /// correct turn along its first stretch (<paramref name="divergenceAngleDeg"/>,
+    /// <see cref="LandingExit.DivergenceAngleDegrees"/>) runs before it is more than
+    /// <see cref="OnCentrelineOvershootFeet"/> + 5 ft off the centreline, held between
+    /// <see cref="ExitOvershootFeet"/> and <see cref="HighSpeedExitOvershootMaxFeet"/>; a high-speed exit of
+    /// unknown angle waits the full 500 ft, any other exit 100 ft. Read at the branch's sharpest turn
+    /// instead, EDDB 24L M3 (24.3°, leaving its node at 6.9°) got 100 ft where it needs 291.
+    /// </summary>
+    public static double OvershootMarginFor(string exitType, double divergenceAngleDeg)
+    {
+        if (exitType != "High-speed") return ExitOvershootFeet;
+        if (divergenceAngleDeg <= 0.0) return HighSpeedExitOvershootMaxFeet;
+        double leavesCentrelineFt = (OnCentrelineOvershootFeet + 5.0) / Math.Sin(divergenceAngleDeg * Math.PI / 180.0);
+        return Math.Max(ExitOvershootFeet, Math.Min(leavesCentrelineFt, HighSpeedExitOvershootMaxFeet));
+    }
+
+    /// <summary>
+    /// The alignment handoff, for a correct turn onto a shallow exit that never reaches
+    /// <see cref="TurnBegunHeadingDeg"/>: past the exit's node, below <see cref="TurnMaxGroundSpeedKts"/>,
+    /// heading within 5° of <paramref name="exitBearingTrue"/> and turned at least 70% of the way the exit
+    /// leaves its node (<paramref name="divergenceAngleDeg"/>, floored at 2°) - so a crosswind correction
+    /// rolling straight past a shallow exit cannot satisfy it. An exit whose branch turns less than 3° in all
+    /// (<paramref name="exitAngleDeg"/>) is indistinguishable from rolling straight and is excluded.
+    /// </summary>
+    public static bool IsAlignedWithExit(double headingTrueDeg, double exitBearingTrue, double exitAngleDeg,
+        double divergenceAngleDeg, double headingDeltaAbsDeg, double groundSpeedKts, bool pastExit)
+    {
+        if (exitBearingTrue == 0.0 || exitAngleDeg < 3.0) return false;
+        return Math.Abs(NormalizeAngle(headingTrueDeg - exitBearingTrue)) <= 5.0
+            && headingDeltaAbsDeg >= Math.Max(2.0, divergenceAngleDeg * 0.7)
+            && groundSpeedKts < TurnMaxGroundSpeedKts
+            && pastExit;
+    }
+
     /// <summary>True when the aircraft is too fast to make the turn: "turn now" must not be said.</summary>
     public static bool IsTooFastToTurn(double groundSpeedKts, double exitAngleDeg)
         => groundSpeedKts > MaxTurnSpeedKts(exitAngleDeg);

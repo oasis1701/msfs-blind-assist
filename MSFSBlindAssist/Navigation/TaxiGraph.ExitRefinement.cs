@@ -54,9 +54,11 @@ public partial class TaxiGraph
 
         double angle = Math.Min(branch.TurnToClearDeg, RolloutExitGate.MaxUsableExitTurnDeg);
         double alongFt = axis.Project(exit.Latitude, exit.Longitude).AlongMetres / 0.3048;
+        var place = PlaceOf(branch, exit.NodeId, axis);
         exit.ExitAngleDegrees = angle;
+        exit.DivergenceAngleDegrees = DivergenceAt(branch, axis, place, angle);
         exit.ExitType = ClassifyExit(angle, alongFt, rwy.Length);
-        exit.ExitBearingTrue = BranchExitBearing(branch, rwy.Heading, PlaceOf(branch, exit.NodeId, axis));
+        exit.ExitBearingTrue = BranchExitBearing(branch, rwy.Heading, place);
         exit.ExitSide = ExitSideFor(exit.ExitBearingTrue, rwy.Heading);
         return exit;
     }
@@ -117,10 +119,22 @@ public partial class TaxiGraph
             DistanceFromTouchdownFeet = distFromThresholdFt - TOUCHDOWN_AIM_FT,
             TaxiwayName = name,
             ExitAngleDegrees = angle,
+            DivergenceAngleDegrees = DivergenceAt(branch, axis, (at, false), angle),
             ExitBearingTrue = bearing,
             ExitType = ClassifyExit(angle, alongFt, rwy.Length),
             ExitSide = ExitSideFor(bearing, rwy.Heading),
         };
+    }
+
+    // How steeply the branch leaves the exit's own node (LandingExit.DivergenceAngleDegrees): the heading
+    // of its stroke where the exit stands, never above the branch's own angle.
+    private double DivergenceAt(LandingExitBranch branch, RunwayAxis axis, (int Index, bool Into) place, double angle)
+    {
+        var (from, to) = ExitBranch.StrokeAt(this, branch.Path, place.Index, place.Into);
+        if (from == to) return angle;
+        var a = Nodes[branch.Path[from]];
+        var b = Nodes[branch.Path[to]];
+        return Math.Min(Math.Abs(axis.RelativeHeadingDeg(a.Latitude, a.Longitude, b.Latitude, b.Longitude)), angle);
     }
 
     // "Right"/"Left" of the landing heading for an ExitBearingTrue, "" for the 0.0 "unknown" sentinel -

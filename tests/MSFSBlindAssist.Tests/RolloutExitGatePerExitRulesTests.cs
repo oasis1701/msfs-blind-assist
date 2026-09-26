@@ -241,5 +241,26 @@ public class RolloutExitGatePerExitRulesTests
         Assert.Equal("left", RolloutExitGate.TurnDirectionWord("", -6.0));
         Assert.Equal("right", RolloutExitGate.TurnDirectionWord(null, 6.0));
     }
+    [Fact]
+    public void A_high_speed_exits_miss_waits_for_how_its_first_stretch_leaves_the_centreline()
+    {
+        // EDDB 24L M3 leaves its node at 6.9° and turns 24.3° in all: a correct turn is still within
+        // 35 ft of the centreline 291 ft past the node. Read at 24.3° the miss came at 100 ft.
+        Assert.InRange(RolloutExitGate.OvershootMarginFor("High-speed", 6.9), 285.0, 295.0);
+        Assert.Equal(100.0, RolloutExitGate.OvershootMarginFor("High-speed", 24.3), 3);
+        Assert.Equal(100.0, RolloutExitGate.OvershootMarginFor("Normal", 73.0), 3);
+        Assert.Equal(500.0, RolloutExitGate.OvershootMarginFor("High-speed", 0.0), 3);
+    }
+
+    [Fact]
+    public void Following_a_shallow_first_stretch_counts_as_aligned_with_the_exit()
+    {
+        // EDDB 24L (248.8°) M3, bearing 264.2°: 11.1° into the turn along its 6.9° first stretch. At 70% of
+        // the branch's 24.3° the floor was 17° and a correct turn never counted.
+        Assert.True(RolloutExitGate.IsAlignedWithExit(259.9, 264.2, 24.3, 6.9, 11.1, 50.0, pastExit: true));
+        Assert.False(RolloutExitGate.IsAlignedWithExit(259.9, 264.2, 24.3, 24.3, 11.1, 50.0, pastExit: true));
+        Assert.False(RolloutExitGate.IsAlignedWithExit(259.9, 264.2, 24.3, 6.9, 11.1, 50.0, pastExit: false));
+        Assert.False(RolloutExitGate.IsAlignedWithExit(259.9, 264.2, 2.5, 2.5, 11.1, 50.0, pastExit: true));
+    }
 }
 

@@ -1094,7 +1094,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // and "starting the turn" on a normal exit. 100 ft @ 30 kt = ~2 s — the
     // tone resume / turn-began handoff has already fired by then in the
     // normal case, so an actual overshoot is unambiguous when this fires.
-    private const double ROLLOUT_OVERSHOOT_FT = 100.0;
+    private const double ROLLOUT_OVERSHOOT_FT = Navigation.RolloutExitGate.ExitOvershootFeet;
 
     // Overshoot margin for a HIGH-SPEED (rapid-exit) taxiway. A RET curves away
     // from the runway so gently (ICAO design radius >= 550 m) that at 100 ft
@@ -1103,13 +1103,13 @@ public partial class TaxiGuidanceManager : IDisposable
     // flat 100 ft margin therefore mistakes a correct RET turn for a miss and
     // retargets, cascading exit-to-exit down the runway. ~500 ft gives the turn
     // room to register before an overshoot can be declared.
-    private const double ROLLOUT_HIGHSPEED_OVERSHOOT_FT = 500.0;
+    private const double ROLLOUT_HIGHSPEED_OVERSHOOT_FT = Navigation.RolloutExitGate.HighSpeedExitOvershootMaxFeet;
 
     // Cross-track-from-centerline gate for overshoot detection: a genuine
     // overshoot is past the exit AND still tracking the runway. Once the
     // aircraft has moved this far off the centerline it is curving onto the
     // exit, not missing it — not an overshoot regardless of distance past.
-    private const double OVERSHOOT_ON_CENTERLINE_FT = 30.0;
+    private const double OVERSHOOT_ON_CENTERLINE_FT = Navigation.RolloutExitGate.OnCentrelineOvershootFeet;
 
     // If the aircraft is within this distance of an earlier exit while below
     // the undershoot speed threshold, retarget to minimise runway occupancy.
@@ -2075,10 +2075,6 @@ public partial class TaxiGuidanceManager : IDisposable
             // suffer the same false-positive mode.
             bool exitedLaterallyPH = lateralFtPH >= halfWidthFtPH + 30.0;
 
-            double exitBrgErrPH = _rolloutExit.ExitBearingTrue != 0.0
-                ? Math.Abs(NormalizeAngle(headingTrue - _rolloutExit.ExitBearingTrue))
-                : double.MaxValue;
-
             double signedAlongPastFtPH = SignedAlongRunwayMeters(
                 lat, lon,
                 _rolloutExit.Latitude, _rolloutExit.Longitude,
@@ -2088,13 +2084,10 @@ public partial class TaxiGuidanceManager : IDisposable
             // count as committed. Without the pastExit guard, A/P jitter on shallow
             // exits (e.g. 7.6° at LGAV 03R D8/D9) falsely satisfies this check while
             // the aircraft is still hundreds of feet short, killing the overshoot monitor
-            // prematurely. Thresholds match alignedWithExit in UpdateLandingRollout.
-            bool alignedWithExitPH = _rolloutExit.ExitBearingTrue != 0.0
-                && _rolloutExit.ExitAngleDegrees >= 3.0
-                && exitBrgErrPH <= 5.0
-                && hdgDeltaAbsPH >= Math.Max(2.0, _rolloutExit.ExitAngleDegrees * 0.7)
-                && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS
-                && signedAlongPastFtPH >= 0.0;
+            // prematurely. The same rule as alignedWithExit in UpdateLandingRollout.
+            bool alignedWithExitPH = Navigation.RolloutExitGate.IsAlignedWithExit(
+                headingTrue, _rolloutExit.ExitBearingTrue, _rolloutExit.ExitAngleDegrees,
+                _rolloutExit.DivergenceAngleDegrees, hdgDeltaAbsPH, groundSpeedKts, signedAlongPastFtPH >= 0.0);
 
             if (turnBegunPH || exitedLaterallyPH || alignedWithExitPH)
             {
@@ -2111,20 +2104,10 @@ public partial class TaxiGuidanceManager : IDisposable
                 // past the junction, giving counterproductive left pan for
                 // hundreds of feet. Use an angle-proportional formula:
                 // fire as soon as the lateral displacement of a committed
-                // aircraft would exceed OVERSHOOT_ON_CENTERLINE_FT + 5 ft.
-                double overshootMarginPH;
-                if (_rolloutExit.ExitType == "High-speed" && _rolloutExit.ExitAngleDegrees > 0.0)
-                {
-                    double radPH = _rolloutExit.ExitAngleDegrees * Math.PI / 180.0;
-                    double angleBasedFtPH = (OVERSHOOT_ON_CENTERLINE_FT + 5.0) / Math.Sin(radPH);
-                    overshootMarginPH = Math.Max(ROLLOUT_OVERSHOOT_FT,
-                                        Math.Min(angleBasedFtPH, ROLLOUT_HIGHSPEED_OVERSHOOT_FT));
-                }
-                else
-                {
-                    overshootMarginPH = _rolloutExit.ExitType == "High-speed"
-                        ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT : ROLLOUT_OVERSHOOT_FT;
-                }
+                // aircraft would exceed OVERSHOOT_ON_CENTERLINE_FT + 5 ft, read at how
+                // steeply the exit leaves its node (RolloutExitGate.OvershootMarginFor).
+                double overshootMarginPH = Navigation.RolloutExitGate.OvershootMarginFor(
+                    _rolloutExit.ExitType, _rolloutExit.DivergenceAngleDegrees);
                 if (signedAlongPastFtPH >= overshootMarginPH
                     && lateralFtPH < OVERSHOOT_ON_CENTERLINE_FT)
                 {

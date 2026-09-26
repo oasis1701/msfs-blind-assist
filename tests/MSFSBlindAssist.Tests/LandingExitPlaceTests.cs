@@ -115,4 +115,18 @@ public class LandingExitPlaceTests
         Assert.Equal("Left", c.ExitSide);
         Assert.InRange(RolloutExitGate.ExitRelativeBearingDeg(c.ExitBearingTrue, 90.0), -25.0, -10.0);
     }
+    [Fact]
+    public void A_curved_rapid_exit_keeps_how_steeply_it_leaves_its_node()
+    {
+        // EDDB 24L M3 (fs2024, nodes 909-905, 197 ft wide): leaves its node at 6.9° and turns 24.3° in all.
+        // The angle types it; the divergence is what the overshoot margin and the alignment handoff read.
+        var g = Build(
+            Seg(2285.5, 0.3, 2321.3, -4.1, "M3"), Seg(2321.3, -4.1, 2390.2, -17.6, "M3"),
+            Seg(2390.2, -17.6, 2450.7, -36.5, "M3"), Seg(2450.7, -36.5, 2500.8, -59.1, "M3"));
+        var m3 = g.GetLandingExits(Runway09(4000.0, widthFt: 197.0)).Single(e => e.TaxiwayName == "M3");
+        Assert.InRange(m3.Longitude * M_PER_DEG, 2285.0, 2286.0);
+        Assert.Equal("High-speed", m3.ExitType);
+        Assert.InRange(m3.ExitAngleDegrees, 23.5, 25.0);
+        Assert.InRange(m3.DivergenceAngleDegrees, 6.5, 7.5);
+    }
 }

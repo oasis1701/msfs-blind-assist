@@ -52,6 +52,22 @@ public class LandingExit
     public double ExitAngleDegrees { get; set; }
 
     /// <summary>
+    /// How steeply the exit's path leaves its own node, in degrees off the runway heading: its first
+    /// stretch of at least <see cref="ExitBranch.MinStrokeMetres"/> from where the exit stands, never more
+    /// than <see cref="ExitAngleDegrees"/>. The overshoot margin and the alignment handoff read this: a
+    /// pilot correctly following a curved rapid exit is only as far off the runway as its first stretch
+    /// takes them - EDDB 24L M3 leaves at 6.9° where its branch's sharpest turn is 24.3°, and read at
+    /// 24.3° a correct turn was called missed 100 ft past the node. <see cref="ExitAngleDegrees"/> (type,
+    /// too-fast line) stays the sharpest turn. Unset, it is <see cref="ExitAngleDegrees"/>.
+    /// </summary>
+    public double DivergenceAngleDegrees
+    {
+        get => double.IsNaN(_divergenceAngleDegrees) ? ExitAngleDegrees : _divergenceAngleDegrees;
+        set => _divergenceAngleDegrees = value;
+    }
+    private double _divergenceAngleDegrees = double.NaN;
+
+    /// <summary>
     /// True bearing (0–360°) of the best taxiway edge leading away from the
     /// runway at this exit node. Used during landing rollout to blend the
     /// steering tone toward the actual exit direction as the aircraft closes
