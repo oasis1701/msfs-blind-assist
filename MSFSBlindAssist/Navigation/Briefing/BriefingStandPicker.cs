@@ -9,17 +9,19 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// Which stand a briefing leg routes to, decided in this order:
 /// <list type="number">
 /// <item>Military Combat, Fuel and Vehicles stands and de-ice pads are never briefed.</item>
-/// <item>SayIntentions' assigned gate, when its flight is this OFP's: by NAME (every stand whose
-/// identity matches the label, and only when none does, every stand whose online alias does). When
-/// SayIntentions published a position, a name counts only for a stand whose own reach covers that pin:
-/// a namesake far from the pin is a different stand and is never used. When several match, the
-/// evidence decides — the one nearest the pin, or with no pin a gate before any other type, then list
-/// order. A stand of navdata's None type may be the one (navdata reads UNKN as None, and LEBB's jetway
-/// gates are UNKN), but it ranks after every other stand the evidence cannot tell it from: with no
-/// position, and within a metre when there is one. Only when the name matched nothing in reach of the
-/// pin (or only a stand the briefing never routes to, far from the pin) is the published POSITION
-/// used on its own. Either way the stand must connect to the taxiway network; a stand the name found
-/// but the briefing cannot use is reported, never swapped for a neighbour.</item>
+/// <item>SayIntentions' assigned gate, when its flight is this OFP's, looked for in the order Taxi
+/// Assist's own SayIntentions import looks for it (TaxiAssistForm.TryResolveExternalDestination): by
+/// NAME (every stand whose identity matches the label), only when none does by the scenery's online
+/// ALIASES, and only when neither matches by the POSITION SayIntentions published. A name or alias counts
+/// wherever the stand is. When several match, the evidence decides — the one nearest the published
+/// position, or with none a gate before any other type, then list order — and when the published position
+/// is outside the chosen stand's own reach, a note says how far away it is. A stand of navdata's None
+/// type may be the one (navdata reads UNKN as None, and LEBB's jetway gates are UNKN), but it ranks after
+/// every other stand the evidence cannot tell it from: with no position, and within a metre when there
+/// is one. Either way the stand must connect to the taxiway network: a stand the name found that does not
+/// connect is reported, never swapped for a neighbour; a name found only on a stand the briefing never
+/// routes to is reported, and the published position is tried next, as the import tries it when the name
+/// seats nothing.</item>
 /// <item>Otherwise a representative stand among those that connect, never one of the None type:
 /// category (freighter → cargo stands; code A → ramps, then gates, then cargo; everyone else → gates,
 /// then ramps, then cargo), wingspan fit, the SimBrief airline's own stands, then the stand at the
@@ -141,17 +143,22 @@ public static class BriefingStandPicker
     // ── SayIntentions ────────────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// The stand SayIntentions assigned, or null with a note saying why not. NormalizeParkingName strips
+    /// The stand SayIntentions assigned, or null with a note saying why not. The evidence is tried in the
+    /// order Taxi Assist's own SayIntentions import tries it (TaxiAssistForm.TryResolveExternalDestination:
+    /// the name, then the scenery's online aliases, then the published position), so the briefing looks for
+    /// SayIntentions' gate the way the import does (owner decision, 2026-09-26, reversing an earlier rule
+    /// under which the published position overruled the name). NormalizeParkingName strips
     /// GATE/SPOT/PARKING/…, so a letterless "Gate 8", "Spot 8" and "Parking 8" all compare as "8", and
     /// navdata lists its unnamed spots (the GA ramps) first — at CYEG "Spot 8" is a GA ramp 1.2 km from
-    /// "Gate 8". So every exact match is collected (and only when there is none, every alias match) and
-    /// the evidence chooses among them; list order alone would brief the ramp as the controller's gate.
-    /// When SayIntentions published a position, a name or alias counts only for a stand whose own reach
-    /// covers that pin: the pin says where SayIntentions' gate is, and a namesake far from it is a
-    /// different stand, never used. The pool is every stand the briefing may route to, None-type stands
-    /// included (see <see cref="NoneType"/>). Once the name has found SayIntentions' stand — even one
-    /// that does not connect, or one of a type the briefing never routes to — the step ends there: the
-    /// position is not then used to hand the label to a differently named neighbour.
+    /// "Gate 8". So every exact match is collected (and only when there is none, every alias match),
+    /// wherever it is, and the evidence chooses among them; list order alone would brief the ramp as the
+    /// controller's gate. When the published position is outside the chosen stand's own reach, a note gives
+    /// the distance, so the pilot hears that SayIntentions put its gate somewhere else. The pool is every
+    /// stand the briefing may route to, None-type stands included (see <see cref="NoneType"/>). Once the
+    /// name has found a stand the briefing routes to — even one that does not connect — the step ends
+    /// there: the position is not then used to hand the label to a differently named neighbour. A name found
+    /// only on a stand the briefing never routes to is said, and the position, when SayIntentions published
+    /// one, is tried next.
     /// </summary>
     private static ParkingSpot? MatchSayIntentionsGate(IReadOnlyList<ParkingSpot> spots, SayIntentionsGateHint hint,
                                                        Func<ParkingSpot, bool> hasGraphNode, List<string> notes)
@@ -162,13 +169,12 @@ public static class BriefingStandPicker
         var pool = spots.Where(IsRoutable).ToList();
         string wanted = SayIntentionsClearanceParser.NormalizeParkingName(hint.Label);
         GeoPoint? pin = hint.Position;
-        bool AtPin(ParkingSpot s) => pin is not GeoPoint point || Reaches(s, point);
 
         if (wanted.Length > 0)
         {
-            var named = pool.Where(s => SameName(IdentityLabel(s), wanted) && AtPin(s)).ToList();
+            var named = pool.Where(s => SameName(IdentityLabel(s), wanted)).ToList();
             if (named.Count == 0)
-                named = pool.Where(s => HasAlias(s, wanted) && AtPin(s)).ToList();
+                named = pool.Where(s => HasAlias(s, wanted)).ToList();
 
             if (named.Count > 0)
             {
@@ -178,15 +184,24 @@ public static class BriefingStandPicker
                     notes.Add($"{assigned} was found but does not connect to the taxiway network; using a representative stand instead");
                     return null;
                 }
-                return Assigned(chosen, hint.Label, wanted, notes);
+                Assigned(chosen, hint.Label, wanted, notes);
+                if (pin is GeoPoint published && !Reaches(chosen, published))
+                    notes.Add(FarFromPin(chosen, published));
+                return chosen;
             }
 
             // Only a stand the briefing never routes to (Military Combat, Fuel, Vehicles, a de-ice pad)
-            // carries the name, at the pin when there is one. It exists, so "not found" would be untrue.
-            if (spots.Any(s => !IsRoutable(s) && (SameName(IdentityLabel(s), wanted) || HasAlias(s, wanted)) && AtPin(s)))
+            // carries the name. It exists, so "not found" would be untrue; and the name has seated nothing,
+            // so the published position, when there is one, is tried next, as the import tries it.
+            if (spots.Any(s => !IsRoutable(s) && (SameName(IdentityLabel(s), wanted) || HasAlias(s, wanted))))
             {
-                notes.Add($"{assigned} was found, but only as a stand the briefing does not route to; using a representative stand instead");
-                return null;
+                string found = $"{assigned} was found, but only as a stand the briefing does not route to";
+                if (pin is not GeoPoint)
+                {
+                    notes.Add($"{found}; using a representative stand instead");
+                    return null;
+                }
+                notes.Add(found);
             }
         }
 
@@ -205,8 +220,8 @@ public static class BriefingStandPicker
             }
         }
 
-        // With a published position the only honest claim is about that position: a stand of the same name can be
-        // here, outside the pin's reach, and "not found at this airport" would then be untrue.
+        // With a published position the note speaks of that position, the last evidence tried: it holds whatever
+        // the name found (a stand the briefing does not route to, say), where "not found at this airport" need not.
         notes.Add(pin is GeoPoint
             ? $"{assigned}, but no stand at SayIntentions' position was found in this scenery; using a representative stand instead"
             : $"{assigned} was not found at this airport; using a representative stand instead");
@@ -225,6 +240,12 @@ public static class BriefingStandPicker
             notes.Add($"SayIntentions assigned {label}, which this scenery lists as {listedAs}");
         return stand;
     }
+
+    /// <summary>"SayIntentions' position is 1.2 km from this stand": said of a stand found by name or alias when
+    /// the published position is outside the stand's own reach (<see cref="Reaches"/>), so the pilot hears
+    /// that SayIntentions put its gate somewhere other than the stand the name found.</summary>
+    private static string FarFromPin(ParkingSpot stand, GeoPoint pin) =>
+        $"SayIntentions' position is {TaxiBriefingRenderer.FormatDistance(MetresTo(stand, pin))} from this stand";
 
     /// <summary>Whether a stand label already says what kind of stand it is ("Gate 5", "Spot 12", "Parking"), so
     /// "gate" is not put in front of it ("SayIntentions assigned gate Gate 5").</summary>
@@ -283,7 +304,8 @@ public static class BriefingStandPicker
         TaxiGraph.FastDistanceMeters(p.Latitude, p.Longitude, s.Latitude, s.Longitude);
 
     /// <summary>Whether the published point is within the stand's own reach
-    /// (<see cref="AcceptanceMetres"/>).</summary>
+    /// (<see cref="AcceptanceMetres"/>): what the position match accepts, and how near a stand found by name
+    /// or alias must be for its distance from the point to go unsaid.</summary>
     private static bool Reaches(ParkingSpot s, GeoPoint point) => MetresTo(s, point) <= AcceptanceMetres(s);
 
     /// <summary>How far the published point may sit from a stand and still be that stand: twice its
