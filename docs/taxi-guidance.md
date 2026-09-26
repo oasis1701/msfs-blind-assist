@@ -4402,7 +4402,10 @@ subsection above for the behavioral story; this table is just the numbers.
 | `RolloutExitGate.StraightenMinDeviationDeg` | 5.0 | A retarget sentence says "Straighten." only for at least this much heading off the runway that the new exit would not accept as its own turn |
 | `RetargetCallout.LeadSecondsFor(...)` | 8–13.5 s | Each retarget sentence's own retirement lead: its worst spoken length up to 3,550 ft at System.Speech Rate 0 plus a fifth (too fast 13.5/11.5/9.5, missed 13/11.5/9.5, earlier 9.5/8). Re-measure when the wording changes |
 | `RolloutExitGate.TurnNowFeet` | 150 ft | The "turn now" cue's distance and the floor on every exit's turn window |
-| `TaxiGraph.ParallelTaxiwayMaxDeg` | 5.0° | The rescue scan refuses a node beyond the pavement whose every edge runs within this of the axis — a node on a parallel taxiway (parallels offered as exits ran within 3.1°) |
+| `TaxiGraph.ParallelTaxiwayMaxDeg` | 5.0° | The rescue scan refuses a node beyond the pavement whose every edge runs within this of the axis — a node on a parallel taxiway (parallels offered as exits ran within 3.1°); `ExitBranch.LeadsOntoRunway`'s inward steps must turn more than this toward the runway |
+| `TaxiGraph.MinFallbackExitAngleDeg` | 20.0° | The class constant behind both producers' `MIN_FALLBACK_EXIT_ANGLE_DEG`; `ExitBranch.RunsAlongRunway` calls an edge within it part of a line along the runway |
+| `ExitBranch.ReachWalkMaxMetres` | 150 m | How far `LeadsOntoRunway` walks inward; the longest walk that gets onto a runway in fs2024, over all 190,958 corridor nodes beyond a runway edge, is 85 m (LEGI 09/27) |
+| `ExitBranch.PavementSeamMetres` | 2 m | A strip this narrow between a taxiway's pavement and the runway's still counts as touching. A judgement value: the refused parallels leave 5.7 m (NC12 26) and 7.8 m (SC41 33) of grass |
 | `OffPavementAlert.OnsetSeconds` / `RepeatSeconds` / `RearmOnPavementSeconds` / `MinGroundSpeedKts` | 1 s / 6 s / 2 s / 5 kt | "Off pavement." after 1 s off while ≥ 5 kt, every 6 s while still off, re-armed after 2 s back on. Judgement values |
 | `RolloutExitGate.ExitSideMinBearingDeg` | 3.0 | Below this relative bearing an exit has no meaningful side and `IsTurnTowardExit`'s direction test is skipped (matches the existing `ExitAngleDegrees >= 3.0` gate in `alignedWithExit`) |
 | `ROLLOUT_TURN_MAX_GS_KTS` (→ `RolloutExitGate.TurnMaxGroundSpeedKts`) | 90.0 | Above this GS a heading deviation is touchdown yaw / crosswind crab, not a deliberate exit turn — used by both `IsExitTurnBegun` and the post-handoff overshoot monitor's `turnBegunPH` |
@@ -4657,13 +4660,25 @@ The bullets below were previously carried verbatim in CLAUDE.md as a running cha
   one means crossing grass to a turnoff already behind the wing. A known TURNAROUND never covers a rescued
   FORWARD exit of its name — every picker skips the turnaround, so dropping the forward exit beside it left
   the pilot with neither (measured 2026-09-26, missing each forward exit in turn: 4 runway directions gain an
-  exit, none loses one). The scan never offers a node beyond the pavement whose every edge runs within
-  `TaxiGraph.ParallelTaxiwayMaxDeg` (5°) of the axis (`IsRescueCandidateSite`): that is a node ON a parallel
-  taxiway inside the corridor, which the corridor walk reached the parallel's next connector from and called a
-  0.2° "high-speed exit" (S36 15, a 40 ft runway with A 20.9 m out) with turn-now pointing across the grass. A
-  taxiway stopped short of the runway edge, a fork, a hold line or a rapid exit's arc leaves the axis far more
-  steeply and stays a candidate (15 rescue entries go, every one on a parallel; NC12 26's parallel bends away
-  at 6.7° and escapes, a known residual). Both overshoot sites — the LandingRollout detector and the
+  exit, none loses one). The scan never offers a node beyond the pavement that an aircraft cannot reach on
+  paved ground (`IsRescueCandidateSite`). Two shapes are refused. One is a node whose every edge runs within
+  `TaxiGraph.ParallelTaxiwayMaxDeg` (5°) of the axis: a node ON a parallel taxiway inside the corridor, which
+  the corridor walk reached the parallel's next connector from and called a 0.2° "high-speed exit" (S36 15, a
+  40 ft runway with A 20.9 m out) with turn-now pointing across the grass. The other is a node whose taxiway does
+  not lead onto the runway (`ExitBranch.LeadsOntoRunway`): its own pavement - half its navdata width, all but a
+  2 m seam (`ExitBranch.PavementSeamMetres`) - stops short of the runway's, and walked inward by steps angled
+  more than 5° toward the runway it stops on a line running along it (a walkable edge each way within 20°,
+  `ExitBranch.RunsAlongRunway`). That is a parallel whose bends are steeper than 5° - NC12 26: A, 26 ft wide,
+  20.0 m out beside a 68 ft runway, bending 6.7°, offered as "A, End" 3,261 ft past the missed exit - or where a
+  loop to the apron leaves one - SC41 33: B, 20 ft wide, 27.7 m out, the loop at 48°, offered as "B, End". A
+  taxiway stopped short of the runway edge, a fork, a hold line, an edge crossing the runway (LEMD 18R's Z7)
+  and a rapid exit's arc all lead onto it and stay; so does a parallel whose pavement meets the runway's
+  (4AK6 19's CC, 55 ft wide, 1.1 m out). Never judge a site by its steepest edge alone - a parallel's bend and
+  an apron loop are steep too - nor by the walk alone, which would refuse that last case. Measured over fs2024
+  (2026-09-26, every forward planner exit missed in turn): the overshoot answer changes on those two runway
+  directions only, both now "Missed last exit"; of the 49,181 rescue entries with no cutoff, 53 go - 24 replaced
+  by the same taxiway's real connector further on, 29 points on parallels 3-11 m of grass from the runway. The
+  planner's lists are untouched. Both overshoot sites — the LandingRollout detector and the
   post-handoff monitor in `Taxiing` — pick through the one `PickOvershootRetarget`: the aircraft-relative
   cutoff, the rescue, and the verdict logged with its list.
 

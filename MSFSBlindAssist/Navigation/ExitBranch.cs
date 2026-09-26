@@ -104,6 +104,19 @@ public static class ExitBranch
     public const double BandWalkMaxMetres = 150.0;
     /// <summary>How far the outward search follows the branch (ExitPathLeavesCorridor's own bound).</summary>
     public const double OutwardMaxMetres = 600.0;
+    /// <summary>
+    /// How far <see cref="LeadsOntoRunway"/> walks inward. A taxiway that leads onto the runway gets there
+    /// within tens of metres (the longest such walk in the fs2024 database, over every corridor node beyond a
+    /// runway edge, is 85 m at LEGI 09/27); a parallel taxiway drifting toward the runway takes hundreds, or never does.
+    /// </summary>
+    public const double ReachWalkMaxMetres = 150.0;
+    /// <summary>
+    /// How wide a strip between a taxiway's pavement and the runway's may be and still count as the two
+    /// touching - a seam in how the scenery was drawn, not a verge an aircraft crosses on grass. A judgement
+    /// value, not a measurement (2026-09-26): the parallels the rescue scan must never offer leave 5.7 m of
+    /// grass (NC12 26's A) and 7.8 m (SC41 33's B); EGDR 36's L misses touching by 0.2 m.
+    /// </summary>
+    public const double PavementSeamMetres = 2.0;
     /// <summary>How far past the clear point the sibling search looks for a Y-exit's other arm.</summary>
     public const double SiblingSearchMaxMetres = 150.0;
     /// <summary>
@@ -385,6 +398,102 @@ public static class ExitBranch
 
         path.Reverse();
         return path;
+    }
+
+    /// <summary>
+    /// Can an aircraft on the runway get to <paramref name="startNodeId"/> on paved ground - its taxiway a way
+    /// off the runway, not a taxiway running beside it across the grass?
+    /// <para>True at once where the node's own taxiway pavement reaches the runway's: no further beyond the
+    /// runway edge than the taxiway's half-width and <see cref="PavementSeamMetres"/>
+    /// (<see cref="TouchesRunwayPavement"/>; 4AK6 19's CC, 55 ft wide, 1.1 m beyond).</para>
+    /// <para>Otherwise walks inward by steepest descent over walkable edges (never a stand lead-in or a stand
+    /// bridge), each step at least <see cref="InwardStepMinMetres"/> closer to the centreline and angled more
+    /// than <see cref="TaxiGraph.ParallelTaxiwayMaxDeg"/> off the axis - a step within that runs along the
+    /// runway, not toward it - for up to <see cref="ReachWalkMaxMetres"/>. True when a step ends on the runway
+    /// pavement (<see cref="RunwayAxis.HalfWidthMetres"/>), crosses the centreline or reaches a node whose
+    /// taxiway pavement touches the runway's; the last step counts only as far as the pavement edge, so a long
+    /// edge crossing the runway is not held against its length (LEMD 18R's Z7 crosses in one 166 m edge and is
+    /// on the pavement after 34). True too when the walk stops short at a node NOT on a line along the runway
+    /// (<see cref="RunsAlongRunway"/>): a connector's inner end, a fork, a taxiway stopped short of the runway
+    /// edge (KTPA 10's N, its stub ending 4.3 m beyond the navdata edge).</para>
+    /// <para>False when it stops on such a line - a parallel taxiway with grass between it and the runway,
+    /// where it bends closest (NC12 26's A: 26 ft wide, 20.0 m out on a 10.4 m half-width) or where a loop to
+    /// the apron leaves it (SC41 33's B: 20 ft wide, 27.7 m out on 16.9 m) - or when it runs out of
+    /// <see cref="ReachWalkMaxMetres"/>.</para>
+    /// </summary>
+    internal static bool LeadsOntoRunway(TaxiGraph graph, RunwayAxis axis, int startNodeId)
+    {
+        if (!graph.Nodes.ContainsKey(startNodeId)) return false;
+        double lateral = Lateral(graph, axis, startNodeId);
+        double outward = Math.Abs(lateral);           // how far out on the start side; negative = across
+        double side = Math.Sign(lateral);
+        int current = startNodeId;
+        double walked = 0.0;
+        while (true)
+        {
+            if (outward <= axis.HalfWidthMetres || TouchesRunwayPavement(graph, axis, current, outward)) return true;
+            // Strictly inward every step, so the walk can never revisit a node.
+            TaxiEdge? best = null;
+            double bestOutward = outward - InwardStepMinMetres;
+            foreach (var e in Walkable(graph, current))
+            {
+                double next = side * Lateral(graph, axis, e.ToNodeId);
+                if (next > bestOutward) continue;
+                if (OffAxisDeg(Heading(graph, axis, current, e.ToNodeId)) <= TaxiGraph.ParallelTaxiwayMaxDeg) continue;
+                best = e;
+                bestOutward = next;
+            }
+            if (best == null) return !RunsAlongRunway(graph, axis, current);
+            if (bestOutward <= axis.HalfWidthMetres)
+            {
+                double toPavement = best.DistanceMeters * (outward - axis.HalfWidthMetres) / (outward - bestOutward);
+                return walked + toPavement <= ReachWalkMaxMetres;
+            }
+            walked += best.DistanceMeters;
+            if (walked > ReachWalkMaxMetres) return false;
+            current = best.ToNodeId;
+            outward = bestOutward;
+        }
+    }
+
+    /// <summary>
+    /// Does the pavement of the taxiway at <paramref name="nodeId"/>, <paramref name="outwardMetres"/> from the
+    /// centreline, reach the runway's? Its half-width - the widest walkable edge's navdata width, capped at
+    /// <see cref="PavementTolerance.WidthCapFeet"/> - must close the gap to the runway edge, all but a
+    /// <see cref="PavementSeamMetres"/> seam. A row with no width is no evidence of pavement, so it never touches.
+    /// </summary>
+    internal static bool TouchesRunwayPavement(TaxiGraph graph, RunwayAxis axis, int nodeId, double outwardMetres)
+    {
+        double widestFeet = 0.0;
+        foreach (var e in Walkable(graph, nodeId))
+            if (e.WidthFeet > widestFeet) widestFeet = e.WidthFeet;
+        if (widestFeet <= 0.0) return false;
+        double halfWidthMetres = Math.Min(widestFeet, PavementTolerance.WidthCapFeet) * 0.3048 * 0.5;
+        return outwardMetres - axis.HalfWidthMetres - halfWidthMetres <= PavementSeamMetres;
+    }
+
+    /// <summary>
+    /// Is <paramref name="nodeId"/> on a line running along the runway - a walkable edge each way within
+    /// <see cref="TaxiGraph.MinFallbackExitAngleDeg"/> of the axis? One edge along the runway is not a line
+    /// along it: a connector's inner end with a short link running on to its twin is not (KBUR 26's D).
+    /// </summary>
+    internal static bool RunsAlongRunway(TaxiGraph graph, RunwayAxis axis, int nodeId)
+    {
+        bool forward = false, backward = false;
+        foreach (var e in Walkable(graph, nodeId))
+        {
+            double rel = Math.Abs(Heading(graph, axis, nodeId, e.ToNodeId));
+            if (rel < TaxiGraph.MinFallbackExitAngleDeg) forward = true;
+            else if (rel > 180.0 - TaxiGraph.MinFallbackExitAngleDeg) backward = true;
+        }
+        return forward && backward;
+    }
+
+    // A relative heading (degrees, signed) folded onto the angle it makes with the axis, 0-90.
+    private static double OffAxisDeg(double relativeHeadingDeg)
+    {
+        double a = Math.Abs(relativeHeadingDeg);
+        return a > 90.0 ? 180.0 - a : a;
     }
 
     private static LandingExitBranch MeasureFrom(

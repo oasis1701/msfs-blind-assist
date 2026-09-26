@@ -41,6 +41,8 @@
     <!-- TaxiGraph.cs is now partial: its landing-exit producers call ExitBranch (via TaxiGraph.ExitRefinement.cs). -->
     <Compile Include="..\..\MSFSBlindAssist\Navigation\ExitBranch.cs"            Link="Linked\ExitBranch.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.ExitRefinement.cs" Link="Linked\TaxiGraph.ExitRefinement.cs" />
+    <!-- ExitBranch's rescue-site walk caps a taxiway's width with PavementTolerance.WidthCapFeet. -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\PavementTolerance.cs"     Link="Linked\PavementTolerance.cs" />
     <!-- Database models -->
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />

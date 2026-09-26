@@ -81,6 +81,9 @@
              Condition="Exists('..\..\MSFSBlindAssist\Navigation\ExitBranch.cs')" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.ExitRefinement.cs" Link="Linked\TaxiGraph.ExitRefinement.cs"
              Condition="Exists('..\..\MSFSBlindAssist\Navigation\TaxiGraph.ExitRefinement.cs')" />
+    <!-- ExitBranch's rescue-site walk caps a taxiway's width with PavementTolerance.WidthCapFeet. -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\PavementTolerance.cs" Link="Linked\PavementTolerance.cs"
+             Condition="Exists('..\..\MSFSBlindAssist\Navigation\ExitBranch.cs')" />
   </ItemGroup>
   <!-- SimConnectStub.cs is auto-included by the SDK glob — no explicit entry needed. -->
 </Project>

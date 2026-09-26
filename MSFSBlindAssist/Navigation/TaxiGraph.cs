@@ -3979,7 +3979,7 @@ public partial class TaxiGraph
         // Same frame, tolerances and classification thresholds as GetLandingExits - a rescue
         // candidate must describe the same geometry a planned one would. The cutoffs and
         // thresholds are the class-scope consts both share (ClassifyExit applies them).
-        const double MIN_FALLBACK_EXIT_ANGLE_DEG = 20.0;
+        const double MIN_FALLBACK_EXIT_ANGLE_DEG = MinFallbackExitAngleDeg;
         const double METERS_PER_DEG_LAT = 111132.0;
         const double COVERAGE_GAP_FT    = RolloutExitGate.EarlyVacateMaxPassedFeet;
 
@@ -4029,7 +4029,10 @@ public partial class TaxiGraph
                 if (!string.IsNullOrEmpty(ed.TaxiwayName) && off >= MIN_FALLBACK_EXIT_ANGLE_DEG)
                     hasOffAxisNamedEdge = true;
             }
-            if (!IsRescueCandidateSite(Math.Abs(lateralM), axis.HalfWidthMetres, steepestEdgeOffAxis)) continue;
+            bool beyondPavement = Math.Abs(lateralM) > axis.HalfWidthMetres;
+            bool leadsOntoRunway = !beyondPavement || ExitBranch.LeadsOntoRunway(this, axis, node.NodeId);
+            if (!IsRescueCandidateSite(Math.Abs(lateralM), axis.HalfWidthMetres, steepestEdgeOffAxis,
+                    leadsOntoRunway)) continue;
             int apronNodeId = ExitPathLeavesCorridor(
                 node.NodeId, rwy.StartLat, rwy.StartLon, cosH, sinH, lateralToleranceM);
             if (!hasOffAxisNamedEdge && apronNodeId < 0) continue;
@@ -4204,7 +4207,7 @@ public partial class TaxiGraph
         // runway (≥ MIN_FALLBACK_EXIT_ANGLE_DEG). That excludes parallel taxiway
         // nodes (which lie close to the axis but only have edges parallel to it)
         // while still picking up real intersections.
-        const double MIN_FALLBACK_EXIT_ANGLE_DEG = 20.0;
+        const double MIN_FALLBACK_EXIT_ANGLE_DEG = MinFallbackExitAngleDeg;
 
         bool hasHoldShortOnRunway = false;
         foreach (var n in Nodes.Values)
@@ -4885,18 +4888,34 @@ public partial class TaxiGraph
     internal const double ParallelTaxiwayMaxDeg = 5.0;
 
     /// <summary>
-    /// Can <c>FindDownfieldExits</c> offer a node as an exit? Not when it lies beyond the runway's pavement
-    /// (<paramref name="halfWidthMetres"/>) with every edge running within <see cref="ParallelTaxiwayMaxDeg"/>
-    /// of the axis (<paramref name="steepestEdgeOffAxisDeg"/>): that node is ON a taxiway running beside the
-    /// runway, not at a way off it, and the corridor walk reaches the taxiway's next connector and calls the
-    /// node an exit. S36 15: parallel A 20.9 m out on a 40 ft runway, inside its 21.1 m corridor, was offered
-    /// as a 0.2-degree "high-speed exit", and turn-now would have pointed the pilot across the grass at it.
-    /// A node on a way off the runway - a rapid exit's arc, a connector's hold line, a taxiway stopped short
-    /// of the runway edge - has an edge leaving the axis more steeply than that, and stays a candidate.
+    /// How far an edge must turn off the runway axis to leave the runway strip rather than run along it: the
+    /// exit producers' fallback threshold (a named edge this steep is a way off), and the angle within which
+    /// <see cref="ExitBranch.RunsAlongRunway"/> calls an edge part of a line along the runway.
+    /// </summary>
+    internal const double MinFallbackExitAngleDeg = 20.0;
+
+    /// <summary>
+    /// Can <c>FindDownfieldExits</c> offer a node as an exit? Always when it lies on the runway's pavement
+    /// (<paramref name="halfWidthMetres"/>). Beyond the pavement only at a way off the runway - a rapid exit's
+    /// arc, a connector's hold line, a taxiway stopped short of the runway edge, a fork - and never ON a
+    /// taxiway running beside the runway, which the corridor walk follows to its next connector and so calls
+    /// an exit: turn-now would point the pilot across the grass at it. Two shapes are such a taxiway:
+    /// <list type="bullet">
+    /// <item>every edge within <see cref="ParallelTaxiwayMaxDeg"/> of the axis
+    /// (<paramref name="steepestEdgeOffAxisDeg"/>) - a straight parallel, or its end (S36 15: parallel A 20.9 m
+    /// out on a 40 ft runway, offered as a 0.2-degree "high-speed exit");</item>
+    /// <item>a taxiway that does not lead onto the runway (<paramref name="leadsOntoRunway"/>,
+    /// <see cref="ExitBranch.LeadsOntoRunway"/>): its own pavement stops short of the runway's, and walked
+    /// inward it stops on a line running along the runway -
+    /// a parallel that bends more than 5 degrees (NC12 26, A 20.0 m out: 2.5 one way, 6.7 the other), or one a
+    /// loop to the apron leaves steeply (SC41 33, B 27.7 m out, the loop at 48 degrees, and the loop's own
+    /// nodes). A rapid exit's arc runs along the runway too, but walked inward it gets onto it, and stays.</item>
+    /// </list>
     /// </summary>
     internal static bool IsRescueCandidateSite(double absLateralMetres, double halfWidthMetres,
-        double steepestEdgeOffAxisDeg)
-        => absLateralMetres <= halfWidthMetres || steepestEdgeOffAxisDeg > ParallelTaxiwayMaxDeg;
+        double steepestEdgeOffAxisDeg, bool leadsOntoRunway)
+        => absLateralMetres <= halfWidthMetres
+           || (steepestEdgeOffAxisDeg > ParallelTaxiwayMaxDeg && leadsOntoRunway);
 
     // BFS from startNodeId. Returns the node ID of the first reachable node that lies
     // outside the runway lateral corridor (|lateral| > lateralToleranceM) within
