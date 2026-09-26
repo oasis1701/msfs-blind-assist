@@ -208,6 +208,7 @@ public partial class TaxiGuidanceManager
             ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
+            _rolloutUnroutableExitNodes.Clear();
             _rolloutCrossingDeclinedUtc = DateTime.MinValue;
             _rolloutCrossingDeclineAnnounced = false;
             // Defense in depth: clear no-exit/runway-end state from any prior
@@ -405,6 +406,7 @@ public partial class TaxiGuidanceManager
             ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
+            _rolloutUnroutableExitNodes.Clear();
             _rolloutCrossingDeclinedUtc = DateTime.MinValue;
             _rolloutCrossingDeclineAnnounced = false;
             _rolloutNoExitMode = false;
@@ -1424,6 +1426,11 @@ public partial class TaxiGuidanceManager
                     if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > 90.0)
                         continue;
 
+                    // Skip an exit this rollout already failed to route to: offered again it fails again,
+                    // every cooldown, while the pilot keeps the planned exit.
+                    if (_rolloutUnroutableExitNodes.Contains(e.NodeId))
+                        continue;
+
                     // Steep exits need more braking margin — only include them when
                     // the aircraft is slow enough to make the tighter turn safely.
                     if (e.ExitAngleDegrees >= ROLLOUT_UNDERSHOOT_STEEP_ANGLE_DEG
@@ -2341,13 +2348,15 @@ public partial class TaxiGuidanceManager
     /// fail does it fall through to EnterRunwayEndCountdown, so the off-route
     /// recalc cannot fire back to the just-passed exit.
     /// </summary>
-    /// <param name="reason">Why the rollout moves (Navigation.RetargetReason), which picks the sentence:
-    /// Missed (the default: an overshoot), TooFast (the turn point's too-fast rule) or Earlier (the
-    /// undershoot retarget). Missed and Earlier describe only <paramref name="newExit"/>: a fall-forward
-    /// to a later exit is announced as a miss, and so is the no-reachable-exit line. TooFast describes
-    /// the exit being left, which the pilot has not reached, so it holds for every candidate ("Too fast
-    /// for taxiway M6. Continue to taxiway M8, …") and for the no-reachable-exit line ("Too fast for
-    /// taxiway M6. No reachable exit remaining.") — a too-fast call never says "Missed".</param>
+    /// <param name="reason">Why the rollout moves (Navigation.RetargetReason), which picks the sentence for
+    /// every candidate the fall-forward tries: Missed (the default: an overshoot, "Missed taxiway M6.
+    /// Retargeting taxiway M8, …"), TooFast (the turn point's too-fast rule, which describes the exit being
+    /// left and never says "Missed") or Earlier (the undershoot retarget). An Earlier fall-forward stops
+    /// SILENTLY at the exit already targeted (Navigation.RetargetCallout.StaysOnPlannedExit): that exit is
+    /// still ahead, so the pilot keeps it and its route and callouts, and the exits that failed are
+    /// remembered so the undershoot scan does not offer them again. Every other reason ends, when no
+    /// candidate routes, in Navigation.RetargetCallout.ComposeNoReachableExit and the runway-end
+    /// countdown.</param>
     /// <param name="queued">Speak the retarget AFTER whatever is being spoken instead of cutting it off: the
     /// overshoot of an exit already declined as too fast, whose warning may still be running.</param>
     private void RetargetLandingExit(Navigation.LandingExit newExit, double lat, double lon, double headingTrue,
@@ -2360,7 +2369,10 @@ public partial class TaxiGuidanceManager
         }
 
         string prevTaxiwayName = _rolloutExit.TaxiwayName;
-        string prevName = string.IsNullOrEmpty(prevTaxiwayName) ? "exit" : $"taxiway {prevTaxiwayName}";
+        var plannedExit = _rolloutExit;
+        // A failed LoadRoute leaves the destination fields on the exit it could not reach (only its
+        // reachability refusals roll back); staying on the planned exit puts them back.
+        var rollback = CaptureLoadRouteRollback();
 
         // Try the requested exit; if its route cannot be built, fall forward to
         // the next downfield exit instead of giving up. A single failed
@@ -2372,6 +2384,10 @@ public partial class TaxiGuidanceManager
         Navigation.LandingExit? candidate = newExit;
         while (candidate != null)
         {
+            if (Navigation.RetargetCallout.StaysOnPlannedExit(
+                    reason, candidate.DistanceFromThresholdFeet, plannedExit.DistanceFromThresholdFeet))
+                break;
+
             string destNameForRoute = candidate.TaxiwayName.Length > 0
                 ? $"Taxiway {candidate.TaxiwayName}"
                 : "Exit";
@@ -2420,24 +2436,29 @@ public partial class TaxiGuidanceManager
                 // the next UpdatePosition frame re-runs UpdateLandingRollout.
                 SetState(TaxiGuidanceState.LandingRollout);
 
-                // The caller's reason describes only the exit it asked for; a fall-forward is a miss.
-                // Except TooFast: it is about the exit being left, which the pilot has not reached, so
-                // it holds for every candidate and never becomes "Missed".
-                AnnounceRetarget(candidate == newExit || reason == Navigation.RetargetReason.TooFast
-                        ? reason : Navigation.RetargetReason.Missed,
-                    prevTaxiwayName, candidate, lat, lon, headingTrue, queued);
+                // The caller's reason holds for every candidate: an earlier-exit fall-forward is still an
+                // earlier exit (it stops at the planned one), a missed exit's fall-forward is still that
+                // miss, and a too-fast call never becomes "Missed".
+                AnnounceRetarget(reason, prevTaxiwayName, candidate, lat, lon, headingTrue, queued);
                 return;
             }
 
             RolloutDiag($"RetargetLandingExit: route to '{candidate.TaxiwayName}' failed ({error}) — " +
                 $"trying next downfield exit");
+            _rolloutUnroutableExitNodes.Add(candidate.NodeId);
             candidate = NextDownfieldExit(candidate);
         }
 
-        // Every downfield exit failed to route. A too-fast call is made at the exit's turn point, before
-        // the pilot has reached it, so it never says "Missed".
-        string noExitLead = reason == Navigation.RetargetReason.TooFast ? "Too fast for" : "Missed";
-        string noExit = $"{noExitLead} {prevName}. No reachable exit remaining.";
+        if (reason == Navigation.RetargetReason.Earlier)
+        {
+            RestoreLoadRouteRollback(rollback);
+            RolloutDiag($"RetargetLandingExit (Earlier): no earlier exit routes — staying on " +
+                $"'{plannedExit.TaxiwayName}', silently");
+            return;
+        }
+
+        // Every downfield exit failed to route.
+        string noExit = Navigation.RetargetCallout.ComposeNoReachableExit(reason, prevTaxiwayName);
         if (queued) AnnounceQueuedInstruction(noExit); else AnnounceInstruction(noExit);
         EnterRunwayEndCountdown();
     }

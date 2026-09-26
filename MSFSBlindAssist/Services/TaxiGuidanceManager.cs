@@ -999,6 +999,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // yet this rollout. Guards against rapid cascade retargeting when multiple
     // earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
     private DateTime _lastUndershootRetargetTime = DateTime.MinValue;
+    // Exits RetargetLandingExit could not route to this rollout. The undershoot scan skips them, or it would
+    // offer the same earlier exit again after every cooldown. Cleared at both rollout entries.
+    private readonly HashSet<int> _rolloutUnroutableExitNodes = new();
     // Timestamp of the last handoff declined because the re-routed path re-crossed
     // the landing runway (RolloutRunwayReCrossing). DateTime.MinValue = no decline
     // yet this rollout. See ROLLOUT_CROSSING_RETRY_FLOOR_SEC for why this exists.

@@ -55,6 +55,30 @@ public class RetargetCalloutTests
     }
 
     [Fact]
+    public void No_reachable_exit_is_one_sentence_and_a_too_fast_call_never_says_missed()
+    {
+        Assert.Equal("Missed taxiway M6. No reachable exit remaining.",
+            RetargetCallout.ComposeNoReachableExit(RetargetReason.Missed, "M6"));
+        Assert.Equal("Too fast for taxiway M6. No reachable exit remaining.",
+            RetargetCallout.ComposeNoReachableExit(RetargetReason.TooFast, "M6"));
+        Assert.Equal("Missed exit. No reachable exit remaining.",
+            RetargetCallout.ComposeNoReachableExit(RetargetReason.Missed, ""));
+    }
+
+    [Theory]
+    // An earlier-exit fall-forward that reaches the planned exit (or passes it) stays on it, silently.
+    [InlineData(RetargetReason.Earlier, 5000, 5000, true)]
+    [InlineData(RetargetReason.Earlier, 5600, 5000, true)]
+    // One still short of the planned exit is another earlier exit: announced as one.
+    [InlineData(RetargetReason.Earlier, 4400, 5000, false)]
+    // A miss or a too-fast call is already past, or declining, the exit it had.
+    [InlineData(RetargetReason.Missed, 5600, 5000, false)]
+    [InlineData(RetargetReason.TooFast, 5600, 5000, false)]
+    public void Only_an_earlier_exit_retarget_stays_on_the_planned_exit(
+        RetargetReason reason, double candidateFt, double plannedFt, bool stays)
+        => Assert.Equal(stays, RetargetCallout.StaysOnPlannedExit(reason, candidateFt, plannedFt));
+
+    [Fact]
     public void Too_fast_with_nothing_ahead_never_says_turn()
     {
         Assert.Equal("Taxiway M9, too fast to turn. Slow down.", RetargetCallout.ComposeTooFastNoExit("M9"));

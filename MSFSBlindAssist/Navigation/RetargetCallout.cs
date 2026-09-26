@@ -84,6 +84,29 @@ public static class RetargetCallout
             : $"Missed {from}.{straight} Retargeting {to}, {distance} ahead.{slow}";
     }
 
+    /// <summary>
+    /// The one sentence for a retarget whose every candidate failed to route. A too-fast call is made at the
+    /// exit's turn point, before the pilot has reached it, so it never says "Missed". An earlier-exit retarget
+    /// never gets here: it stays on the planned exit instead (<see cref="StaysOnPlannedExit"/>).
+    /// </summary>
+    public static string ComposeNoReachableExit(RetargetReason reason, string? fromTaxiwayName)
+    {
+        string from = TouchdownCallout.ExitNamePhrase(fromTaxiwayName);
+        string lead = reason == RetargetReason.TooFast ? "Too fast for" : "Missed";
+        return $"{lead} {from}. No reachable exit remaining.";
+    }
+
+    /// <summary>
+    /// True when a retarget's fall-forward has reached the exit the rollout already targets and should stop
+    /// there without a word. Only an EARLIER-exit retarget does: it is a detour on the way to the planned exit,
+    /// so when no exit before it can be routed the pilot keeps the exit, route and callouts they had. It used to
+    /// fall forward onto that same exit and say "Missed taxiway P. Retargeting taxiway P, 1500 feet ahead." about
+    /// an exit still ahead, re-arming its approach calls - and the undershoot scan tried again every 8 s.
+    /// </summary>
+    public static bool StaysOnPlannedExit(
+        RetargetReason reason, double candidateFromThresholdFeet, double plannedFromThresholdFeet)
+        => reason == RetargetReason.Earlier && candidateFromThresholdFeet >= plannedFromThresholdFeet;
+
     /// <summary>Said at the turn-now point instead of "turn now" when too fast and no exit is left ahead.</summary>
     public static string ComposeTooFastNoExit(string? taxiwayName)
     {
