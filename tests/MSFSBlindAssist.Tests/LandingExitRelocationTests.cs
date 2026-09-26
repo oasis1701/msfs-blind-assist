@@ -121,6 +121,26 @@ public class LandingExitRelocationTests
     }
 
     [Fact]
+    public void A_sibling_swap_lands_where_the_sibling_arm_leaves_the_centreline()
+    {
+        // Round 3, T1. The KMEM M6 Y shape, but the forward (unnamed) arm has a 120 m lead line along the
+        // centreline, (798,1) -> (858,1) -> (918,0), before it leaves the band toward (976,15). The swap
+        // for M6's backward arm lands at the divergence node (918,0) - 3,012 ft - not at the lead-line
+        // start (798,1), which would put "turn now" nearly 400 ft early.
+        var g = Build(
+            Seg(798, 1, 858, 1), Seg(858, 1, 918, 0),
+            Seg(918, 0, 976, 15), Seg(976, 15, 994, 33), Seg(994, 33, 1000, 55),
+            Seg(1072, 1, 1030, 16, "M6"), Seg(1030, 16, 1015, 32, "M6"), Seg(1015, 32, 1000, 55, "M6"),
+            Seg(1072, 1, 1104, -1, "M6"), Seg(1000, 55, 1000, 85, "M6"));
+
+        var m6 = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "M6");
+
+        Assert.Equal(NodeAt(g, 918, 0).NodeId, m6.NodeId);
+        Assert.InRange(m6.DistanceFromThresholdFeet, 918.0 / 0.3048 - 5.0, 918.0 / 0.3048 + 5.0);
+        Assert.Equal("Normal", m6.ExitType);
+    }
+
+    [Fact]
     public void A_ninety_degree_exit_that_hooks_back_beyond_the_runway_edge_is_listed_as_normal()
     {
         // Round 2, S2 (CYVR 26L D1, SNOL 30, MURU 06): the exit leaves the pavement at 90 degrees and

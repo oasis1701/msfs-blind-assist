@@ -25,8 +25,8 @@ public partial class TaxiGraph
     /// turnoffs inside the coverage window.</para>
     /// <para>A TURNAROUND (<see cref="LandingExitBranch.IsTurnaround"/>, judged by how the branch leaves
     /// the runway pavement) is replaced by its forward sibling when one exists and the sibling's
-    /// junction passes the distance rules (<see cref="ExitAtJunction"/>) - the one case in which an exit
-    /// moves. Otherwise it is recorded as the turnaround it is (130°, "End") at its own node - never
+    /// divergence node passes the distance rules (<see cref="SiblingExit"/>) - the one case in which an
+    /// exit moves, and then to where the sibling arm leaves the centreline, not to its lead-in start. Otherwise it is recorded as the turnaround it is (130°, "End") at its own node - never
     /// dropped from the planner list (dropping it emptied 111 runway directions' lists, e.g. 0KS5 09) -
     /// except that <paramref name="dropTurnarounds"/> (the rescue scan) drops it.</para>
     /// </summary>
@@ -42,7 +42,7 @@ public partial class TaxiGraph
         {
             var sibling = ExitBranch.FindForwardSibling(this, axis, branch, exit.TaxiwayName);
             var atSibling = sibling == null ? null
-                : ExitAtJunction(sibling, exit.TaxiwayName, exit.ApronNodeId, rwy, axis, minDistanceFromThresholdFeet);
+                : SiblingExit(sibling, exit.TaxiwayName, exit.ApronNodeId, rwy, axis, minDistanceFromThresholdFeet);
             if (atSibling != null) return atSibling;
             if (dropTurnarounds) return null;
             exit.ExitAngleDegrees = RolloutExitGate.TurnaroundExitAngleDeg;
@@ -60,30 +60,34 @@ public partial class TaxiGraph
     }
 
     /// <summary>
-    /// The exit at a forward SIBLING's junction - the one case in which the refinement moves an exit (a
-    /// turnaround replaced by its Y's other arm) - or null when that junction fails the same distance
-    /// rules every exit does (closer than MIN_DIST_FT, 500 ft, past the landing threshold, within
-    /// END_BUFFER_FT, 50 ft, of the pavement end, or not beyond
+    /// The exit on a forward SIBLING - the one case in which the refinement moves an exit (a turnaround
+    /// replaced by its Y's other arm). It lands at the sibling's DIVERGENCE node, where the arm leaves
+    /// the centreline band (<see cref="DivergenceIndex"/>), never at its junction: the junction is the
+    /// arm's lead-in start, up to 150 m earlier, which put "turn now" up to 777 ft early (worldwide sweep,
+    /// 2026-09-26: KMIA 08R Z at 2,073 ft for an arm leaving at 2,762). Null when that node fails the same
+    /// distance rules every exit does (closer than MIN_DIST_FT, 500 ft, past the landing threshold,
+    /// within END_BUFFER_FT, 50 ft, of the pavement end, or not beyond
     /// <paramref name="minDistanceFromThresholdFeet"/>).
     /// </summary>
-    private LandingExit? ExitAtJunction(
+    private LandingExit? SiblingExit(
         LandingExitBranch branch, string name, int fallbackApronNodeId,
         Runway rwy, RunwayAxis axis, double minDistanceFromThresholdFeet)
     {
-        if (!Nodes.TryGetValue(branch.JunctionNodeId, out var junction)) return null;
-        double alongFt = axis.Project(junction.Latitude, junction.Longitude).AlongMetres / 0.3048;
+        int at = DivergenceIndex(branch, axis);
+        if (!Nodes.TryGetValue(branch.Path[at], out var node)) return null;
+        double alongFt = axis.Project(node.Latitude, node.Longitude).AlongMetres / 0.3048;
         double distFromThresholdFt = alongFt - rwy.ThresholdOffset;
         if (distFromThresholdFt < MIN_DIST_FT || alongFt > rwy.Length - END_BUFFER_FT) return null;
         if (distFromThresholdFt <= minDistanceFromThresholdFeet) return null;
 
         double angle = Math.Min(branch.TurnToClearDeg, RolloutExitGate.MaxUsableExitTurnDeg);
-        double bearing = BranchExitBearing(branch, rwy.Heading);
+        double bearing = BranchExitBearing(branch, rwy.Heading, at);
         return new LandingExit
         {
-            NodeId = junction.NodeId,
+            NodeId = node.NodeId,
             ApronNodeId = branch.CorridorNodeId > 0 ? branch.CorridorNodeId : fallbackApronNodeId,
-            Latitude = junction.Latitude,
-            Longitude = junction.Longitude,
+            Latitude = node.Latitude,
+            Longitude = node.Longitude,
             DistanceFromThresholdFeet = distFromThresholdFt,
             DistanceFromTouchdownFeet = distFromThresholdFt - TOUCHDOWN_AIM_FT,
             TaxiwayName = name,
@@ -101,15 +105,31 @@ public partial class TaxiGraph
             ? (NormalizeAngle((bearingTrue == 360.0 ? 0.0 : bearingTrue) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
             : "";
 
-    // ExitBearingTrue by the existing rule, evaluated at the junction: the branch's first edge, replaced
-    // by the junction→corridor-node chord when the first edge is under 20° and the chord is wider and
-    // forward (≤ NORMAL_MAX_DEG, 110°, the producers' own apron-override guard). Due north is stored
-    // as 360 so 0 keeps meaning "unknown".
-    private double BranchExitBearing(LandingExitBranch branch, double rwyHeadingTrue)
+    // Index in the branch's path of its DIVERGENCE node: the last node, counting from the junction
+    // outward, before the path first leaves the ExitBranch.CenterlineBandMetres band - where the arm
+    // leaves the centreline. The junction itself when the next node is already out of the band (KMEM
+    // M6's 36L arm) or the junction is out of it.
+    private int DivergenceIndex(LandingExitBranch branch, RunwayAxis axis)
     {
-        if (branch.Path.Count < 2) return 0.0;
-        var a = Nodes[branch.Path[0]];
-        var b = Nodes[branch.Path[1]];
+        for (int i = 0; i < branch.Path.Count; i++)
+        {
+            var n = Nodes[branch.Path[i]];
+            if (Math.Abs(axis.Project(n.Latitude, n.Longitude).LateralMetres) > ExitBranch.CenterlineBandMetres)
+                return Math.Max(0, i - 1);
+        }
+        return 0;
+    }
+
+    // ExitBearingTrue by the existing rule, evaluated at path index `from` (the junction by default, a
+    // sibling's divergence node for a swap): the branch's edge onward from there, replaced by the chord
+    // from there to the corridor node when that edge is under 20° and the chord is wider and forward
+    // (≤ NORMAL_MAX_DEG, 110°, the producers' own apron-override guard). Due north is stored as 360 so
+    // 0 keeps meaning "unknown".
+    private double BranchExitBearing(LandingExitBranch branch, double rwyHeadingTrue, int from = 0)
+    {
+        if (from < 0 || from + 1 >= branch.Path.Count) return 0.0;
+        var a = Nodes[branch.Path[from]];
+        var b = Nodes[branch.Path[from + 1]];
         double first = NavigationCalculator.CalculateBearing(a.Latitude, a.Longitude, b.Latitude, b.Longitude);
         double firstRel = Math.Abs(NormalizeAngle(first - rwyHeadingTrue));
         double bearing = first;

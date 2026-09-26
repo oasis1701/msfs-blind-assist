@@ -145,12 +145,18 @@ public static class ExitBranch
     /// are walled off only up to where the arm meets other pavement (three or more walkable
     /// neighbours, where a Y's two arms merge), so the flood can pass through a merge that lies
     /// inside the clear line onto the forward arm (VADE 26, KIXA 20). A sibling's junction must lie
-    /// within <see cref="SiblingJunctionMaxMetres"/> along the runway of the backward arm's.</para>
+    /// within <see cref="SiblingJunctionMaxMetres"/> along the runway of the backward arm's, and may be
+    /// the backward arm's own junction - a Y whose two arms leave the runway from one node - as long as
+    /// the sibling's path beyond it never reuses the backward arm's own nodes.</para>
     /// </summary>
     public static LandingExitBranch? FindForwardSibling(TaxiGraph graph, RunwayAxis axis, LandingExitBranch backward, string exitName)
     {
         if (!backward.IsTurnaround) return null;
         var own = OwnArmNodes(graph, backward.Path);
+        // The inward walk may END on the backward arm's own junction - a Y whose two arms leave the
+        // runway from one node (KMIA 08R Z, ULWB 33) - but never uses the backward arm's other nodes.
+        var ownBeyondJunction = new HashSet<int>(own);
+        ownBeyondJunction.Remove(backward.JunctionNodeId);
         int side = Math.Sign(Lateral(graph, axis, backward.ClearNodeId));
         double backwardAlong = Along(graph, axis, backward.JunctionNodeId);
         bool OnThisSideOffTheRunway(int nodeId)
@@ -164,9 +170,10 @@ public static class ExitBranch
         // close its own pavement sits to this exit's clear point.
         foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own, exitName, OnThisSideOffTheRunway))
         {
-            var inward = WalkToJunction(graph, axis, start, own, exitName);
+            var inward = WalkToJunction(graph, axis, start, ownBeyondJunction, exitName);
             int junction = inward[0];
-            if (junction == start || own.Contains(junction)) continue;
+            if (junction == start) continue;
+            if (junction != backward.JunctionNodeId && own.Contains(junction)) continue;
             if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres) continue;
             if (Math.Abs(Along(graph, axis, junction) - backwardAlong) > SiblingJunctionMaxMetres) continue;
             // Covers the WHOLE arm (junction..start), not just junction..clear — a name change beyond

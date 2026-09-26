@@ -405,6 +405,30 @@ public class ExitBranchTests
         Assert.False(ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 1), nameFilter: "K").IsMeasured);
     }
 
+    // --- Task 3b round 3, T2: a Y whose two arms leave from one runway node ----------------------
+
+    [Fact]
+    public void The_forward_arm_of_a_Y_whose_arms_share_one_runway_node_is_its_sibling()
+    {
+        // The KMIA 08R Z / ULWB 33 shape. Both arms of "Y" leave the runway from J (1000,0): the backward
+        // arm through (975,20) to (960,40), the forward arm through (1030,28) - already past the 25 m
+        // half-width - to (1045,45). A connector along 40-45 m joins their outer ends.
+        var g = Build(
+            Seg(1000, 0, 975, 20, "Y"), Seg(975, 20, 960, 40, "Y"),
+            Seg(1000, 0, 1030, 28, "Y"), Seg(1030, 28, 1045, 45, "Y"),
+            Seg(960, 40, 1000, 42, "Y"), Seg(1000, 42, 1045, 45, "Y"));
+        var backward = ExitBranch.Analyze(g, Axis, NodeAt(g, 975, 20), nameFilter: "Y");
+        Assert.Equal(NodeAt(g, 1000, 0), backward.JunctionNodeId);
+        Assert.True(backward.IsTurnaround);
+
+        var sibling = ExitBranch.FindForwardSibling(g, Axis, backward, "Y");
+
+        Assert.NotNull(sibling);
+        Assert.Equal(NodeAt(g, 1000, 0), sibling!.JunctionNodeId);
+        Assert.Equal(NodeAt(g, 1030, 28), sibling.Path[1]);   // out along the forward arm, not the backward one
+        Assert.False(sibling.IsTurnaround);
+    }
+
     [Fact]
     public void A_sibling_arm_named_only_beyond_its_own_clear_point_is_rejected()
     {
