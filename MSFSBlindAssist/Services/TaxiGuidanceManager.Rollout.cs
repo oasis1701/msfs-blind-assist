@@ -1508,6 +1508,9 @@ public partial class TaxiGuidanceManager
         var toneMode = Navigation.RolloutExitGate.SelectToneMode(
             groundSpeedKts, distToExitFeet, hdgDelta, exitRelBearingDeg,
             _rolloutExitTurnWindowFeet);
+        // Told "too fast to turn" with no exit left: never steer at that exit, hold the runway heading.
+        if (_rolloutTooFastNoExit && toneMode == Navigation.RolloutToneMode.ExitBearing)
+            toneMode = Navigation.RolloutToneMode.DriftCorrection;
         if (toneMode != _rolloutToneMode)
         {
             // Start every mode from a clean filter so the pan is sharp and immediate rather
@@ -2160,8 +2163,11 @@ public partial class TaxiGuidanceManager
     /// </summary>
     /// <param name="reason">Why the rollout moves (Navigation.RetargetReason), which picks the sentence:
     /// Missed (the default: an overshoot), TooFast (the turn point's too-fast rule) or Earlier (the
-    /// undershoot retarget). It describes only <paramref name="newExit"/>; a fall-forward to a later exit
-    /// is announced as a miss.</param>
+    /// undershoot retarget). Missed and Earlier describe only <paramref name="newExit"/>: a fall-forward
+    /// to a later exit is announced as a miss, and so is the no-reachable-exit line. TooFast describes
+    /// the exit being left, which the pilot has not reached, so it holds for every candidate ("Too fast
+    /// for taxiway M6. Continue to taxiway M8, …") and for the no-reachable-exit line ("Too fast for
+    /// taxiway M6. No reachable exit remaining.") — a too-fast call never says "Missed".</param>
     private void RetargetLandingExit(Navigation.LandingExit newExit, double lat, double lon, double headingTrue,
         Navigation.RetargetReason reason = Navigation.RetargetReason.Missed)
     {
@@ -2233,7 +2239,10 @@ public partial class TaxiGuidanceManager
                 SetState(TaxiGuidanceState.LandingRollout);
 
                 // The caller's reason describes only the exit it asked for; a fall-forward is a miss.
-                AnnounceRetarget(candidate == newExit ? reason : Navigation.RetargetReason.Missed,
+                // Except TooFast: it is about the exit being left, which the pilot has not reached, so
+                // it holds for every candidate and never becomes "Missed".
+                AnnounceRetarget(candidate == newExit || reason == Navigation.RetargetReason.TooFast
+                        ? reason : Navigation.RetargetReason.Missed,
                     prevTaxiwayName, candidate, lat, lon, headingTrue);
                 return;
             }
@@ -2243,8 +2252,10 @@ public partial class TaxiGuidanceManager
             candidate = NextDownfieldExit(candidate);
         }
 
-        // Every downfield exit failed to route.
-        AnnounceInstruction($"Missed {prevName}. No reachable exit remaining.");
+        // Every downfield exit failed to route. A too-fast call is made at the exit's turn point, before
+        // the pilot has reached it, so it never says "Missed".
+        string noExitLead = reason == Navigation.RetargetReason.TooFast ? "Too fast for" : "Missed";
+        AnnounceInstruction($"{noExitLead} {prevName}. No reachable exit remaining.");
         EnterRunwayEndCountdown();
     }
 
