@@ -8,14 +8,22 @@ namespace MSFSBlindAssist.Navigation;
 public partial class TaxiGraph
 {
     /// <summary>
-    /// Refines a candidate exit by its branch. Unmeasured branches (nothing clears the runway within
-    /// reach) leave the exit exactly as it was, so thin navdata can never lose an exit here.
-    /// A turnaround is replaced by its forward sibling when one exists, and that substitution
-    /// relocates the exit to the sibling's junction even when <paramref name="keepNode"/> is set;
-    /// otherwise it is recorded as a turnaround (130°, "End") — or dropped when
-    /// <paramref name="dropTurnarounds"/> (the rescue scan).
-    /// A forward branch gets its sharpest turn to clear (capped at 90°) and, unless
-    /// <paramref name="keepNode"/> (hold-short-anchored exits), moves to its junction.
+    /// Refines a candidate exit by its branch.
+    /// <para>Unmeasured branches (nothing clears the runway within reach) leave the exit exactly as it
+    /// was, so thin navdata can never lose an exit here.</para>
+    /// <para>A turnaround is replaced by its forward sibling when one exists and the sibling's junction
+    /// passes the distance rules (<see cref="ExitAtJunction"/>); that substitution relocates the exit
+    /// even when <paramref name="keepNode"/> is set. Otherwise it is recorded as the turnaround it is
+    /// (130°, "End") at its own node - never dropped from the planner list (worldwide sweep,
+    /// 2026-09-26: dropping it emptied 111 runway directions' lists, e.g. 0KS5 09) - except that
+    /// <paramref name="dropTurnarounds"/> (the rescue scan) drops it.</para>
+    /// <para>A forward branch gets its sharpest turn to clear (capped at 90°) and, unless
+    /// <paramref name="keepNode"/> (hold-short-anchored exits), moves to its junction. Relocation
+    /// never removes an exit: where the junction fails a distance rule the exit's own node passed
+    /// (MIN_DIST_FT, END_BUFFER_FT, or the rescue scan's
+    /// <paramref name="minDistanceFromThresholdFeet"/>), the exit keeps its own node with the
+    /// refined angle and type - the keepNode behaviour (KMTC 19 B and LSGL 18 L, whose lead-ins
+    /// start under 500 ft, were dropped).</para>
     /// </summary>
     private LandingExit? RefineExitByBranch(
         LandingExit exit, int? seedNeighborId, bool keepNode, bool dropTurnarounds,
@@ -28,8 +36,9 @@ public partial class TaxiGraph
         if (branch.IsTurnaround)
         {
             var sibling = ExitBranch.FindForwardSibling(this, axis, branch, exit.TaxiwayName);
-            if (sibling != null)
-                return ExitAtJunction(sibling, exit.TaxiwayName, exit.ApronNodeId, rwy, axis, minDistanceFromThresholdFeet);
+            var atSibling = sibling == null ? null
+                : ExitAtJunction(sibling, exit.TaxiwayName, exit.ApronNodeId, rwy, axis, minDistanceFromThresholdFeet);
+            if (atSibling != null) return atSibling;
             if (dropTurnarounds) return null;
             exit.ExitAngleDegrees = RolloutExitGate.TurnaroundExitAngleDeg;
             exit.ExitType = "End";
@@ -37,14 +46,16 @@ public partial class TaxiGraph
         }
 
         double angle = Math.Min(branch.TurnToClearDeg, RolloutExitGate.MaxUsableExitTurnDeg);
-        if (keepNode)
+        if (!keepNode)
         {
-            exit.ExitAngleDegrees = angle;
-            double alongFt = axis.Project(exit.Latitude, exit.Longitude).AlongMetres / 0.3048;
-            exit.ExitType = ClassifyExit(angle, alongFt, rwy.Length);
-            return exit;
+            var atJunction = ExitAtJunction(branch, exit.TaxiwayName, exit.ApronNodeId, rwy, axis, minDistanceFromThresholdFeet);
+            if (atJunction != null) return atJunction;
+            // The junction fails a distance rule the exit's own node passed: keep the node.
         }
-        return ExitAtJunction(branch, exit.TaxiwayName, exit.ApronNodeId, rwy, axis, minDistanceFromThresholdFeet);
+        exit.ExitAngleDegrees = angle;
+        double alongFt = axis.Project(exit.Latitude, exit.Longitude).AlongMetres / 0.3048;
+        exit.ExitType = ClassifyExit(angle, alongFt, rwy.Length);
+        return exit;
     }
 
     /// <summary>
