@@ -76,6 +76,12 @@ public static class ExitBranch
     public const double InwardStepMinMetres = 0.25;
     public const int WalkMaxHops = 12;
     public const double WalkMaxMetres = 400.0;
+    /// <summary>
+    /// How far the walk back along the band (<see cref="WalkToJunction"/>'s second phase) may follow a
+    /// lead-in line, measured along its own edges. A lead-in line runs from where the exit's pavement
+    /// meets the band back to where its painted line starts - tens of metres (KMEM M5 18 m, M7 24 m).
+    /// </summary>
+    public const double BandWalkMaxMetres = 150.0;
     /// <summary>How far the outward search follows the branch (ExitPathLeavesCorridor's own bound).</summary>
     public const double OutwardMaxMetres = 600.0;
     /// <summary>How far past the clear point the sibling search looks for a Y-exit's other arm.</summary>
@@ -138,12 +144,23 @@ public static class ExitBranch
     }
 
     /// <summary>
-    /// Junction … start. Steps toward the centerline (each step at least <see cref="InwardStepMinMetres"/>
-    /// closer, the closest neighbour first) until inside the band, then walks BACK along the band
-    /// (toward the landing threshold) to where the lead-in line starts. Never enters
-    /// <paramref name="excluded"/>. When <paramref name="nameFilter"/> is set, only follows edges that
-    /// are unnamed or carry that name (<see cref="StringComparison.OrdinalIgnoreCase"/>) — the sibling
-    /// search's own walk stays on exitName's taxiway and can never wander home via someone else's.
+    /// Junction … start. Two phases.
+    /// <para>Phase 1 steps toward the centerline (each step at least <see cref="InwardStepMinMetres"/>
+    /// closer, the closest neighbour first) until inside the <see cref="CenterlineBandMetres"/> band.</para>
+    /// <para>Phase 2 then walks BACK along the band (toward the landing threshold) to where the exit's
+    /// lead-in line starts - and follows a SIMPLE line only, because a lead-in line is a simple chain
+    /// until it meets other pavement. It may start only when the first in-band node has at most two
+    /// walkable neighbours; it continues only from a node with exactly two; it may step INTO a node of
+    /// any degree, and that node ends the walk and is the junction; and it follows at most
+    /// <see cref="BandWalkMaxMetres"/> of band. So it never slides down a taxi path drawn along the
+    /// centreline, or onto another exit's lead line (worldwide sweep, 2026-09-26: 1,591 exits were
+    /// relocated more than 300 ft that way - KMIA 08R M5 by 1,080 ft, KDFW 17C P2 by 1,306 ft).
+    /// "Walkable neighbours" are the distinct neighbours <c>Walkable</c> returns, whatever their name.</para>
+    /// <para>Both phases share <see cref="WalkMaxHops"/> and <see cref="WalkMaxMetres"/>, never enter
+    /// <paramref name="excluded"/>, and - when <paramref name="nameFilter"/> is set - only follow edges
+    /// that are unnamed or carry that name (<see cref="StringComparison.OrdinalIgnoreCase"/>; an empty
+    /// filter means unnamed edges only). The refinement's walk stays on its exit's own taxiway that
+    /// way, and the sibling search's own walk can never wander home via someone else's.</para>
     /// </summary>
     internal static List<int> WalkToJunction(TaxiGraph graph, RunwayAxis axis, int startNodeId, ISet<int>? excluded, string? nameFilter = null)
     {
@@ -152,6 +169,7 @@ public static class ExitBranch
         int current = startNodeId;
         double walked = 0.0;
 
+        // Phase 1: steepest descent into the band.
         while (path.Count <= WalkMaxHops && Math.Abs(Lateral(graph, axis, current)) > CenterlineBandMetres)
         {
             double limit = Math.Abs(Lateral(graph, axis, current)) - InwardStepMinMetres;
@@ -170,8 +188,11 @@ public static class ExitBranch
             visited.Add(current);
         }
 
-        if (Math.Abs(Lateral(graph, axis, current)) <= CenterlineBandMetres)
+        // Phase 2: back along the band on a simple line only (see the summary).
+        if (Math.Abs(Lateral(graph, axis, current)) <= CenterlineBandMetres
+            && WalkableDegree(graph, current) <= 2)
         {
+            double bandWalked = 0.0;
             while (path.Count <= WalkMaxHops)
             {
                 double limit = Along(graph, axis, current) - InwardStepMinMetres;
@@ -184,11 +205,16 @@ public static class ExitBranch
                     double along = Along(graph, axis, e.ToNodeId);
                     if (along <= limit) { best = e; limit = along; }
                 }
-                if (best == null || walked + best.DistanceMeters > WalkMaxMetres) break;
+                if (best == null
+                    || walked + best.DistanceMeters > WalkMaxMetres
+                    || bandWalked + best.DistanceMeters > BandWalkMaxMetres) break;
                 walked += best.DistanceMeters;
+                bandWalked += best.DistanceMeters;
                 current = best.ToNodeId;
                 path.Add(current);
                 visited.Add(current);
+                // Where the chain meets other pavement (or ends), that node is the junction.
+                if (WalkableDegree(graph, current) != 2) break;
             }
         }
 
@@ -346,6 +372,14 @@ public static class ExitBranch
             if (!graph.Nodes.ContainsKey(e.ToNodeId)) continue;
             yield return e;
         }
+    }
+
+    // The number of distinct neighbours Walkable reaches from `nodeId`, whatever their names.
+    private static int WalkableDegree(TaxiGraph graph, int nodeId)
+    {
+        var neighbours = new HashSet<int>();
+        foreach (var e in Walkable(graph, nodeId)) neighbours.Add(e.ToNodeId);
+        return neighbours.Count;
     }
 
     private static double Lateral(TaxiGraph graph, RunwayAxis axis, int nodeId)

@@ -194,6 +194,65 @@ public class ExitBranchTests
         Assert.Null(ExitBranch.FindForwardSibling(g, Axis, backward, "Z9"));
     }
 
+    // --- Task 3b R1: the band walk follows a simple lead-in line only ---------------------------
+    // A lead-in line is a simple chain until it meets other pavement. The walk back along the band
+    // may start only from an in-band node with at most two walkable neighbours, continues only from
+    // nodes with exactly two, stops at the first node where the chain meets anything else, and never
+    // follows more than 150 m of band (worldwide sweep, 2026-09-26: 1,591 exits relocated > 300 ft by
+    // sliding down centreline taxi paths and other exits' lead lines).
+
+    [Fact]
+    public void An_exit_meeting_a_centreline_taxi_path_is_measured_from_the_meeting_node()
+    {
+        // A taxi path drawn down the whole runway centreline; exit A meets it at (1000,0), a node with
+        // three neighbours. The old walk slid 300-400 m down the centreline toward the threshold.
+        var paths = new List<TaxiPath>();
+        for (int a = 0; a < 2000; a += 50) paths.Add(Seg(a, 0, a + 50, 0));
+        paths.Add(Seg(1000, 0, 1000, 60, "A"));
+        var g = Build(paths.ToArray());
+        int meeting = NodeAt(g, 1000, 0);
+
+        var fromOuterNode = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 60));
+        Assert.Equal(meeting, fromOuterNode.JunctionNodeId);
+        Assert.True(fromOuterNode.IsMeasured);
+        Assert.InRange(fromOuterNode.TurnToClearDeg, 89.0, 91.0);
+
+        var fromJunction = ExitBranch.Analyze(g, Axis, meeting, NodeAt(g, 1000, 60));
+        Assert.Equal(meeting, fromJunction.JunctionNodeId);
+    }
+
+    [Fact]
+    public void A_lead_in_chain_that_meets_another_exits_lead_line_stops_at_the_meeting_node()
+    {
+        // Exit B: lead line from (1100,0) along the band to M (1200,1), where B's arm leaves.
+        // Exit A: arm from (1400,60) into the band at (1300,4), then a lead-in chain (1250,2) -> M.
+        // The old walk carried on past M down B's lead line to (1100,0).
+        var g = Build(
+            Seg(1100, 0, 1200, 1, "B"), Seg(1200, 1, 1230, 10, "B"), Seg(1230, 10, 1270, 60, "B"),
+            Seg(1400, 60, 1300, 4, "A"), Seg(1300, 4, 1250, 2, "A"), Seg(1250, 2, 1200, 1, "A"));
+
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1400, 60));
+
+        Assert.Equal(NodeAt(g, 1200, 1), b.JunctionNodeId);
+        Assert.True(b.IsMeasured);
+        Assert.False(b.IsTurnaround);
+    }
+
+    [Fact]
+    public void The_band_walk_follows_at_most_150_metres_of_lead_in_line()
+    {
+        // Exit A drops into the band at (1300,3) and its lead-in line runs 300 m on toward the
+        // threshold in 20 m segments. 150 m of band walk ends at (1160,3); the old walk ran on to
+        // its hop limit at (1080,3).
+        var paths = new List<TaxiPath> { Seg(1300, 60, 1300, 3, "A") };
+        for (int a = 1300; a > 1000; a -= 20) paths.Add(Seg(a, 3, a - 20, 3, "A"));
+        var g = Build(paths.ToArray());
+
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1300, 60));
+
+        Assert.Equal(NodeAt(g, 1160, 3), b.JunctionNodeId);
+    }
+
     [Fact]
     public void A_sibling_arm_named_only_beyond_its_own_clear_point_is_rejected()
     {
