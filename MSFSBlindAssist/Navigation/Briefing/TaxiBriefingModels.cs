@@ -30,9 +30,13 @@ public enum StandChoiceSource { SayIntentions, AirlineMatch, Category, Any }
 /// <summary>The stand a leg routes to and how it was chosen; <see cref="Notes"/> are pilot-readable caveats.</summary>
 public sealed record StandChoice(ParkingSpot Spot, StandChoiceSource Source, IReadOnlyList<string> Notes);
 
+/// <param name="OriginRunwayNote">Where the departure runway came from (<see cref="BriefingRunwayChoice"/>); the leg's
+/// first note when set.</param>
+/// <param name="DestinationRunwayNote">Where the arrival runway came from; the leg's first note when set.</param>
 public sealed record TaxiBriefingRequest(
     string OriginIcao, string OriginRunway, string DestinationIcao, string DestinationRunway,
-    AircraftProfile Aircraft, string? AirlineIcao, OwnPosition? Own, SayIntentionsGateHint? ArrivalGate);
+    AircraftProfile Aircraft, string? AirlineIcao, OwnPosition? Own, SayIntentionsGateHint? ArrivalGate,
+    string? OriginRunwayNote = null, string? DestinationRunwayNote = null);
 
 /// <summary>A hold-short point on the route: the runway it protects, the taxiway it is on, and whether it is
 /// the hold before entering the departure runway (true) or a crossing (false).</summary>
@@ -55,6 +59,11 @@ public sealed class TaxiLegBriefing
     public string EndpointDescription { get; init; } = "";
     public StandChoice? Stand { get; init; }
     public IReadOnlyList<string> Taxiways { get; init; } = Array.Empty<string>();
+    /// <summary>The turn onto each of <see cref="Taxiways"/>, aligned with it (<see cref="BriefingTurns.TaxiwayTurns"/>):
+    /// null for the first taxiway and wherever no turn could be measured.</summary>
+    public IReadOnlyList<string?> TaxiwayTurns { get; init; } = Array.Empty<string?>();
+    /// <summary>Taxi-in only: the turn from the last taxiway into the stand (<see cref="BriefingTurns.StandTurn"/>), or null.</summary>
+    public string? StandTurn { get; init; }
     public double DistanceMetres { get; init; }
     public IReadOnlyList<HoldShortNote> HoldShorts { get; init; } = Array.Empty<HoldShortNote>();
     public ExitChoice? Exit { get; init; }
@@ -94,8 +103,10 @@ public sealed record GraphBundle(TaxiGraph Graph, BriefingTier Tier, IReadOnlyLi
     IReadOnlyList<StartPosition> Starts, IReadOnlyList<ParkingSpot> Spots, string? Note, Airport? Airport);
 
 /// <summary>What the EFB needs from MainForm to compute the taxi section: a provider GETTER (the instance is
-/// swapped on a database switch), the gate source and the SayIntentions file reader. Null in tests.</summary>
+/// swapped on a database switch), the gate source and SayIntentions' status — the flight file, and its parking service
+/// when the file has no gate (<c>SayIntentionsService.GetAssignedStatusAsync</c>, the SayIntentions window's own call).
+/// Null in tests.</summary>
 public sealed record RouteBriefingDependencies(
     Func<IAirportDataProvider?> Provider,
     Func<GateDataSource?> GateSource,
-    Func<Task<SayIntentionsFlightContext>> SayIntentions);
+    Func<Task<SayIntentionsStatusResult>> SayIntentions);

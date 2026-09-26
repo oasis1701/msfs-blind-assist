@@ -124,6 +124,7 @@ public static partial class TaxiBriefingPlanner
         return leg.Unavailable != null
             ? $"{head} unavailable=\"{leg.Unavailable}\""
             : $"{head} endpoint=\"{leg.EndpointDescription}\" taxiways=[{string.Join(",", leg.Taxiways)}] " +
+              $"turns=[{string.Join(",", leg.TaxiwayTurns.Select(t => t ?? "-"))}] standTurn=\"{leg.StandTurn ?? "-"}\" " +
               $"holds=[{string.Join(";", leg.HoldShorts.Select(h => $"{h.Runway}@{h.Taxiway}{(h.BeforeEntering ? "(entry)" : "")}"))}] " +
               $"exit={(leg.Exit is { } x ? TaxiBriefingRenderer.ExitName(x.Exit) : "-")} " +
               $"next={(leg.Exit?.NextExit is { } n ? TaxiBriefingRenderer.ExitName(n) : "-")} " +

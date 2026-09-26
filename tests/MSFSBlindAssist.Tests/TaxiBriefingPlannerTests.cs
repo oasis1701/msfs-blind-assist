@@ -2,6 +2,7 @@
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Navigation.Briefing;
+using MSFSBlindAssist.Services.SayIntentions;
 using static MSFSBlindAssist.Tests.TaxiBriefingFixture;
 
 namespace MSFSBlindAssist.Tests;
@@ -620,5 +621,97 @@ public class TaxiBriefingPlannerTests
         var own = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, airline: "JBU", own: parkedAtT1), bundle);
         Assert.Null(own.Unavailable);
         Assert.StartsWith("representative stand T 1", own.EndpointDescription);
+    }
+
+    // ── turn directions ─────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_taxi_out_gives_the_turn_onto_each_taxiway_after_the_first()
+    {
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(Md11F, airline: "UPS"), Airport());
+        Assert.Equal(new[] { "A", "E1" }, leg.Taxiways);
+        Assert.Equal(new string?[] { null, "left" }, leg.TaxiwayTurns);   // west along A, then south down E1
+        Assert.Null(leg.StandTurn);
+    }
+
+    [Fact]
+    public void The_taxi_in_gives_the_turn_into_the_stand()
+    {
+        var toG1 = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: new SayIntentionsGateHint("Terminal 1 Gate G1", null)), Airport());
+        Assert.Equal(new[] { "A" }, toG1.Taxiways);
+        Assert.Equal(new string?[] { null }, toG1.TaxiwayTurns);
+        Assert.Equal("right", toG1.StandTurn);    // west along A, then north into G 1
+
+        var toC1 = TaxiBriefingPlanner.PlanTaxiIn(Request(Md11F, airline: "UPS"), Airport());
+        Assert.Equal("left", toC1.StandTurn);     // east along A, then north into C 1
+    }
+
+    // ── SayIntentions' parking-service gate ─────────────────────────────────────────────────
+
+    [Fact]
+    public void A_parking_service_gate_at_the_arrival_airport_is_briefed_as_SayIntentions_gate()
+    {
+        var gate = new SayIntentionsGateHint("Terminal 1 Gate G1", new GeoPoint(Lat(250), Lon(300)), SayIntentionsGateSource.ParkingService);
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate), Airport());
+        Assert.Equal("SayIntentions assigned gate G 1", leg.EndpointDescription);
+    }
+
+    [Fact]
+    public void A_parking_service_gate_not_at_the_arrival_airport_is_not_briefed()
+    {
+        // SAPI does not say whether getParking means the arrival gate or the current parking; KMEM has a concourse B too.
+        var gate = new SayIntentionsGateHint("Terminal 1 Gate G1", new GeoPoint(Lat(500_000), Lon(300)), SayIntentionsGateSource.ParkingService);
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate), Airport());
+
+        Assert.StartsWith("representative stand", leg.EndpointDescription);
+        Assert.Contains("SayIntentions' parking service named Terminal 1 Gate G1, but its position is not at TEST; using a representative stand instead", leg.Notes);
+    }
+
+    [Fact]
+    public void A_parking_service_gate_with_no_position_is_briefed_by_name()
+    {
+        var gate = new SayIntentionsGateHint("Terminal 1 Gate G1", null, SayIntentionsGateSource.ParkingService);
+        Assert.Equal("SayIntentions assigned gate G 1", TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate), Airport()).EndpointDescription);
+    }
+
+    [Fact]
+    public void A_flight_file_gate_is_never_refused_for_its_position()
+    {
+        var gate = new SayIntentionsGateHint("Terminal 1 Gate G1", new GeoPoint(Lat(500_000), Lon(300)));
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate), Airport());
+        Assert.Equal("SayIntentions assigned gate G 1", leg.EndpointDescription);
+        Assert.DoesNotContain(leg.Notes, n => n.Contains("parking service", StringComparison.Ordinal));
+    }
+
+    // ── runway notes ────────────────────────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_runway_note_leads_the_taxi_out_notes()
+    {
+        const string note = "runway 09 is the runway SayIntentions assigned; the flight plan names 27";
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738) with { OriginRunwayNote = note }, Airport());
+        Assert.Null(leg.Unavailable);
+        Assert.Equal(note, leg.Notes[0]);
+    }
+
+    [Fact]
+    public void The_runway_note_leads_the_taxi_in_notes()
+    {
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738) with { DestinationRunwayNote = BriefingRunwayChoice.AgreesNote }, Airport());
+        Assert.Null(leg.Unavailable);
+        Assert.Equal(BriefingRunwayChoice.AgreesNote, leg.Notes[0]);
+    }
+
+    [Fact]
+    public void An_unavailable_leg_keeps_its_runway_note()
+    {
+        const string note = "runway 04 is the runway SayIntentions assigned; the flight plan names 09";
+        var outLeg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, originRunway: "04") with { OriginRunwayNote = note }, Airport());
+        var inLeg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, destRunway: "04") with { DestinationRunwayNote = note }, Airport());
+
+        Assert.NotNull(outLeg.Unavailable);
+        Assert.Contains(note, outLeg.Notes);
+        Assert.NotNull(inLeg.Unavailable);
+        Assert.Contains(note, inLeg.Notes);
     }
 }

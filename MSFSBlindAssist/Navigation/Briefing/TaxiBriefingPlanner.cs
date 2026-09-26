@@ -18,11 +18,15 @@ public static partial class TaxiBriefingPlanner
     public const double OwnPositionMaxNodeDistanceMetres = 150.0;
     /// <summary>A stand resolves to its nearest graph node within this distance (Taxi Assist's gate rule).</summary>
     public const double StandNodeMaxDistanceMetres = 100.0;
+    /// <summary>A SayIntentions parking-service gate is briefed only when its position lies within this distance of the
+    /// arrival airport's reference point — the same "at this airport" line as <see cref="OwnPositionMaxAirportDistanceMetres"/>.</summary>
+    public const double ParkingServiceMaxAirportDistanceMetres = OwnPositionMaxAirportDistanceMetres;
 
     public static TaxiLegBriefing PlanTaxiOut(TaxiBriefingRequest r, GraphBundle g)
     {
         string icao = r.OriginIcao;
         var notes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(r.OriginRunwayNote)) notes.Add(r.OriginRunwayNote);
         if (g.Note != null) notes.Add(g.Note);
 
         if (string.IsNullOrWhiteSpace(r.OriginRunway))
@@ -90,6 +94,7 @@ public static partial class TaxiBriefingPlanner
         {
             Icao = icao, Runway = rwy.RunwayID, Tier = g.Tier, EndpointDescription = endpoint, Stand = stand,
             Taxiways = RouteTaxiwaySequence.DistinctConsecutive(route.Segments),
+            TaxiwayTurns = BriefingTurns.TaxiwayTurns(route.Segments),
             DistanceMetres = route.TotalDistanceMeters, HoldShorts = holds,
             NarrowTaxiways = NarrowTaxiways(route, r.Aircraft), Notes = notes,
         };
@@ -99,6 +104,7 @@ public static partial class TaxiBriefingPlanner
     {
         string icao = r.DestinationIcao;
         var notes = new List<string>();
+        if (!string.IsNullOrWhiteSpace(r.DestinationRunwayNote)) notes.Add(r.DestinationRunwayNote);
         if (g.Note != null) notes.Add(g.Note);
 
         if (string.IsNullOrWhiteSpace(r.DestinationRunway))
@@ -108,7 +114,18 @@ public static partial class TaxiBriefingPlanner
             return TaxiLegBriefing.UnavailableLeg(icao, r.DestinationRunway, g.Tier,
                 $"runway {r.DestinationRunway} is not in the navigation database for {icao}", notes: notes);
 
-        var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, r.ArrivalGate, s => StandNode(g.Graph, s) != null);
+        // SAPI does not say whether its parking service means the arrival gate or the aircraft's current parking, and an
+        // origin can share a concourse letter with the destination (KMEM and KATL both have a B): a parking-service gate
+        // whose own position is not at this airport is not briefed as SayIntentions' (live KMEM→KATL, 2026-09-26).
+        var arrivalGate = r.ArrivalGate;
+        if (arrivalGate is { Source: SayIntentionsGateSource.ParkingService, Position: GeoPoint pin } && g.Airport != null &&
+            TaxiGraph.FastDistanceMeters(pin.Latitude, pin.Longitude, g.Airport.Latitude, g.Airport.Longitude) > ParkingServiceMaxAirportDistanceMetres)
+        {
+            notes.Add($"SayIntentions' parking service named {arrivalGate.Label}, but its position is not at {icao}; using a representative stand instead");
+            arrivalGate = null;
+        }
+
+        var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, s => StandNode(g.Graph, s) != null);
         if (stand != null) AddStandNotes(notes, stand, g.Note);
         string endpoint = stand == null ? "" : DescribeArrivalStand(stand, r.AirlineIcao);
 
@@ -154,6 +171,8 @@ public static partial class TaxiBriefingPlanner
         {
             Icao = icao, Runway = rwy.RunwayID, Tier = g.Tier, EndpointDescription = endpoint, Stand = stand,
             Taxiways = RouteTaxiwaySequence.DistinctConsecutive(way.Route.Segments),
+            TaxiwayTurns = BriefingTurns.TaxiwayTurns(way.Route.Segments),
+            StandTurn = BriefingTurns.StandTurn(way.Route.Segments),
             DistanceMetres = way.Route.TotalDistanceMeters, HoldShorts = way.Holds, Exit = choice, VacatingExits = vacating,
             ExitsSearched = true, NarrowTaxiways = NarrowTaxiways(way.Route, r.Aircraft), Notes = notes,
         };

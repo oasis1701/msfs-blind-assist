@@ -625,7 +625,7 @@ public partial class MainForm
                 new MSFSBlindAssist.Navigation.Briefing.RouteBriefingDependencies(
                     () => airportDataProvider,            // a getter: RefreshDatabaseProvider swaps the instance
                     BuildGateDataSource,
-                    () => sayIntentionsService.ReadFlightContextAsync()));
+                    () => sayIntentionsService.GetAssignedStatusAsync()));
         }
 
         // Show the form (reuses same instance to preserve flight plan data)

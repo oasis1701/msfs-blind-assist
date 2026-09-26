@@ -7,6 +7,7 @@ using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Navigation.Briefing;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.SayIntentions;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Settings;
 using MSFSBlindAssist.Utils.Logging;
@@ -923,24 +924,51 @@ public partial class ElectronicFlightBagForm : Form
     private async Task<string> BuildTaxiRoutesBlockAsync(FlightPlan plan)
     {
         var aircraft = AircraftSizeClass.Resolve(plan.AircraftTypeIcao, plan.AircraftName, plan.AircraftMaxPassengers);
+        // SayIntentions is read while the aircraft position is: a web call to its parking service can take seconds.
+        var siTask = ReadSayIntentionsAsync();
+        string outRunway = plan.DepartureRunway, inRunway = plan.ArrivalRunway;
         try
         {
             var provider = _briefingDependencies?.Provider();
             var gateSource = _briefingDependencies?.GateSource();
             var own = await ReadOwnPositionAsync();
-            var siContext = _briefingDependencies == null ? null : await _briefingDependencies.SayIntentions();
-            var siGate = SayIntentionsArrivalGate.From(siContext, plan.DepartureICAO, plan.ArrivalICAO);
+            var si = await siTask;
 
-            var request = new TaxiBriefingRequest(plan.DepartureICAO, plan.DepartureRunway, plan.ArrivalICAO, plan.ArrivalRunway,
-                                                  aircraft, plan.AirlineIcao, own, siGate);
+            // SayIntentions' runways and gate count only for THIS flight; its runway wins over the flight plan's and the
+            // leg says so (BriefingRunwayChoice).
+            bool siThisFlight = SayIntentionsArrivalGate.IsThisFlight(si?.Context, plan.DepartureICAO, plan.ArrivalICAO);
+            var outChoice = BriefingRunwayChoice.Choose(plan.DepartureRunway, si?.Context.DepartureRunway, siThisFlight);
+            var inChoice = BriefingRunwayChoice.Choose(plan.ArrivalRunway, si?.Context.ArrivalRunway, siThisFlight);
+            (outRunway, inRunway) = (outChoice.Runway, inChoice.Runway);
+            var siGate = SayIntentionsArrivalGate.FromStatus(si, plan.DepartureICAO, plan.ArrivalICAO);
+
+            var request = new TaxiBriefingRequest(plan.DepartureICAO, outRunway, plan.ArrivalICAO, inRunway,
+                                                  aircraft, plan.AirlineIcao, own, siGate, outChoice.Note, inChoice.Note);
             var briefing = await TaxiBriefingPlanner.PlanAsync(request, provider, gateSource, TaxiBriefingPlanner.DefaultBudget);
             return TaxiBriefingRenderer.Render(briefing);
         }
         catch (Exception ex)
         {
             Log.Warn("taxi_briefing", $"taxi routes block failed: {ex}");
-            return TaxiBriefingRenderer.Render(TaxiBriefing.Unavailable(aircraft, plan.DepartureICAO, plan.DepartureRunway,
-                plan.ArrivalICAO, plan.ArrivalRunway, $"taxi route could not be computed ({ex.Message})"));
+            return TaxiBriefingRenderer.Render(TaxiBriefing.Unavailable(aircraft, plan.DepartureICAO, outRunway,
+                plan.ArrivalICAO, inRunway, $"taxi route could not be computed ({ex.Message})"));
+        }
+    }
+
+    /// <summary>SayIntentions' status — the flight file and, when it has no gate, the parking service — or null when
+    /// SayIntentions is not wired in or the read fails. A SayIntentions failure costs the briefing SayIntentions' data
+    /// only, never the taxi routes.</summary>
+    private async Task<SayIntentionsStatusResult?> ReadSayIntentionsAsync()
+    {
+        if (_briefingDependencies == null) return null;
+        try
+        {
+            return await _briefingDependencies.SayIntentions();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("taxi_briefing", $"SayIntentions read failed; briefing without it: {ex.Message}");
+            return null;
         }
     }
 

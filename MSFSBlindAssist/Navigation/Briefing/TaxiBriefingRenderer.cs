@@ -74,7 +74,7 @@ public static class TaxiBriefingRenderer
         else
         {
             lines.Add($"TAXI OUT at {leg.Icao} ({TierLabel(leg.Tier)}): from {leg.EndpointDescription} to runway {leg.Runway}");
-            lines.Add($"  Taxiways: {JoinNames(leg.Taxiways)} ({FormatDistance(leg.DistanceMetres)})");
+            lines.Add($"  Taxiways: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres)})");
             lines.Add(HoldLine(leg.HoldShorts));
             foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter));
         }
@@ -96,7 +96,7 @@ public static class TaxiBriefingRenderer
             lines.Add($"TAXI IN at {leg.Icao} ({TierLabel(leg.Tier)}), landing runway {leg.Runway}");
             if (leg.Exit != null) lines.Add(ExitLine(leg.Exit, aircraft));
             lines.Add($"  Stand: {leg.EndpointDescription}");
-            lines.Add($"  Taxiways from the exit: {JoinNames(leg.Taxiways)} ({FormatDistance(leg.DistanceMetres)})");
+            lines.Add($"  Taxiways from the exit: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres)})");
             lines.Add(HoldLine(leg.HoldShorts));
             foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter));
             lines.Add(ExitsListLine(leg));
@@ -175,7 +175,22 @@ public static class TaxiBriefingRenderer
         return $"  Exits on {leg.Runway} that get clear of the runway: {list}";
     }
 
-    private static string JoinNames(IReadOnlyList<string> names) => names.Count == 0 ? Unnamed : string.Join(", ", names);
+    /// <summary>The taxiways in order with the turn onto each where one was measured ("N, left onto M, …") and, on the
+    /// taxi-in, the turn into the stand ("…, then right into the stand"). A taxiway with no turn is named alone; a
+    /// wholly unnamed route reads <see cref="Unnamed"/>.</summary>
+    private static string RouteText(TaxiLegBriefing leg)
+    {
+        if (leg.Taxiways.Count == 0) return Unnamed;
+        var parts = new List<string>(leg.Taxiways.Count + 1);
+        for (int i = 0; i < leg.Taxiways.Count; i++)
+        {
+            string? turn = i < leg.TaxiwayTurns.Count ? leg.TaxiwayTurns[i] : null;
+            parts.Add(turn == null ? leg.Taxiways[i] : $"{turn} onto {leg.Taxiways[i]}");
+        }
+        if (leg.StandTurn != null) parts.Add($"then {leg.StandTurn} into the stand");
+        return string.Join(", ", parts);
+    }
+
     private static string Feet(double ft) => Math.Round(ft).ToString("N0", CultureInfo.InvariantCulture);
     private static string SideUpper(string side) => string.IsNullOrEmpty(side) ? "side unknown" : $"{side.ToUpperInvariant()} side";
     private static string SideLower(string side) => string.IsNullOrEmpty(side) ? "side unknown" : $"{side.ToLowerInvariant()} side";

@@ -26,7 +26,8 @@ public class TaxiBriefingRendererTests
         {
             Icao = "KMEM", Runway = "36L", Tier = BriefingTier.Navdata,
             EndpointDescription = "representative stand C 1 (Ramp Cargo, UPS)", Stand = Cargo(),
-            Taxiways = new[] { "N", "M", "A", "B" }, DistanceMetres = 2400,
+            Taxiways = new[] { "N", "M", "A", "B" }, TaxiwayTurns = new string?[] { null, "left", "right", "slight right" },
+            DistanceMetres = 2400,
             HoldShorts = new[] { new HoldShortNote("27", "M", false), new HoldShortNote("36L", "B", true) },
             NarrowTaxiways = new[] { new NarrowTaxiwayNote("K", 15.0, 18.0) },
         };
@@ -34,7 +35,8 @@ public class TaxiBriefingRendererTests
         {
             Icao = "KLAX", Runway = "25L", Tier = BriefingTier.Navdata,
             EndpointDescription = "SayIntentions assigned gate 52A",
-            Taxiways = new[] { "AA", "E", "C" }, DistanceMetres = 3100,
+            Taxiways = new[] { "AA", "E", "C" }, TaxiwayTurns = new string?[] { null, "left", "right" }, StandTurn = "right",
+            DistanceMetres = 3100,
             HoldShorts = new[] { new HoldShortNote("25R", "AA", false) },
             Exit = new ExitChoice(aa, ab, true), VacatingExits = new[] { aa, ab },
             Notes = new[] { "assigned gate matched by position" },
@@ -49,13 +51,13 @@ public class TaxiBriefingRendererTests
             "TAXI ROUTES (computed by MSFS Blind Assist; each leg names its data source, and taxiway names are that source's own)\n" +
             "Aircraft: MD-11F (SimBrief type MD1F), size class D, wingspan 51.7 m, freighter: cargo stands preferred\n" +
             "TAXI OUT at KMEM (scenery navdata): from representative stand C 1 (Ramp Cargo, UPS) to runway 36L\n" +
-            "  Taxiways: N, M, A, B (2.4 km)\n" +
+            "  Taxiways: N, left onto M, right onto A, slight right onto B (2.4 km)\n" +
             "  Hold short: runway 27 on taxiway M (crossing); runway 36L on taxiway B (before entering)\n" +
             "  Taxiway width note: taxiway K is 15.0 m in the navdata, below the 18.0 m code D minimum\n" +
             "TAXI IN at KLAX (scenery navdata), landing runway 25L\n" +
             "  Expected exit: taxiway AA, high-speed, RIGHT side, 6,200 ft from the threshold. Next exit if missed: AB, right side, 7,100 ft\n" +
             "  Stand: SayIntentions assigned gate 52A\n" +
-            "  Taxiways from the exit: AA, E, C (3.1 km)\n" +
+            "  Taxiways from the exit: AA, left onto E, right onto C, then right into the stand (3.1 km)\n" +
             "  Hold short: runway 25R on taxiway AA (crossing)\n" +
             "  Exits on 25L that get clear of the runway: AA (6,200 ft, right, high-speed), AB (7,100 ft, right, normal)\n" +
             "  Note: assigned gate matched by position";
@@ -266,5 +268,29 @@ public class TaxiBriefingRendererTests
     {
         Assert.Equal("999 m", TaxiBriefingRenderer.FormatDistance(999.4));
         Assert.Equal("1.0 km", TaxiBriefingRenderer.FormatDistance(999.6));     // not "1000 m"
+    }
+
+    [Fact]
+    public void A_leg_without_turns_names_its_taxiways_alone()
+    {
+        var b = FullBriefing();
+        var bare = b with { TaxiOut = new TaxiLegBriefing
+        {
+            Icao = "KMEM", Runway = "36L", Tier = BriefingTier.Navdata, EndpointDescription = "current position",
+            Taxiways = new[] { "N", "M" }, DistanceMetres = 900,
+        } };
+        Assert.Contains("  Taxiways: N, M (900 m)\n", TaxiBriefingRenderer.Render(bare));
+    }
+
+    [Fact]
+    public void A_straight_change_reads_straight_ahead_onto()
+    {
+        var b = FullBriefing();
+        var straight = b with { TaxiOut = new TaxiLegBriefing
+        {
+            Icao = "KMEM", Runway = "36L", Tier = BriefingTier.Navdata, EndpointDescription = "current position",
+            Taxiways = new[] { "N", "M" }, TaxiwayTurns = new string?[] { null, "straight ahead" }, DistanceMetres = 900,
+        } };
+        Assert.Contains("  Taxiways: N, straight ahead onto M (900 m)\n", TaxiBriefingRenderer.Render(straight));
     }
 }
