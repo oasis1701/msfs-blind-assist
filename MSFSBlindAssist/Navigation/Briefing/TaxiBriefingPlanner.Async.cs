@@ -127,7 +127,7 @@ public static partial class TaxiBriefingPlanner
     private static string Summarise(TaxiLegBriefing leg)
     {
         string head = $"{LogField(leg.Icao)} {LogField(leg.Runway)} tier={leg.Tier}";
-        return leg.Unavailable != null
+        string body = leg.Unavailable != null
             ? $"{head} unavailable=\"{leg.Unavailable}\""
             : $"{head} endpoint=\"{leg.EndpointDescription}\" taxiways=[{string.Join(",", leg.Taxiways)}] " +
               $"turns=[{string.Join(",", leg.TaxiwayTurns.Select(t => t ?? "-"))}] standTurn=\"{leg.StandTurn ?? "-"}\" " +
@@ -135,6 +135,9 @@ public static partial class TaxiBriefingPlanner
               $"exit={(leg.Exit is { } x ? TaxiBriefingRenderer.ExitName(x.Exit) : "-")} " +
               $"next={(leg.Exit?.NextExit is { } n ? TaxiBriefingRenderer.ExitName(n) : "-")} " +
               $"distM={leg.DistanceMetres.ToString("0", CultureInfo.InvariantCulture)}";
+        // The runway note and a parking-service refusal live only in Notes -- without this, debug.log named the
+        // runway used but never said SayIntentions assigned it, or that a gate was refused and why.
+        return leg.Notes.Count > 0 ? $"{body} notes=\"{string.Join(" | ", leg.Notes)}\"" : body;
     }
 
     /// <summary>A blank airport or runway logs as "-", so no line starts with a space.</summary>
