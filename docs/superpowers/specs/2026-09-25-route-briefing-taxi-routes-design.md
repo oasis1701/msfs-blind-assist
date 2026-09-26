@@ -138,35 +138,42 @@ public static class BriefingStandPicker
 }
 ```
 
-Order of decisions:
+Order of decisions (revised during review, 2026-09-25 — the first version matched the
+SayIntentions gate on the UNFILTERED list in list order, and a measurement on the real fs2024
+database showed that at ~20 airports a same-numbered GA ramp ("Spot 8") would have been briefed
+as the assigned "Gate 8", because `NormalizeParkingName` strips the stand-type word):
 
 0. **SayIntentions gate** (hint non-null; the caller has already checked the SI flight matches
-   this OFP, §5.9): exact normalized name match — `SayIntentionsClearanceParser.NormalizeParkingName(hint.Label)`
-   against `NormalizeParkingName(spot.Describe())` and against each of `spot.Aliases` — then, if
-   nothing matched and a position is published, the nearest spot within
-   `min(SiPositionBackstopMetres, radiusMetres × SiNoseStopRadiusFactor)` where radius is
-   converted by `Source` (navdata radius is FEET, GSX radius is METRES). A found stand is
-   `StandChoiceSource.SayIntentions` (note "matched by position" for the second path). Nothing
-   found → fall through to the inference below, with a note that the assigned gate was not found
-   at this airport.
-1. **Category.** Exclude `Type` 1 (None), 8 (Military Combat), 16 (Fuel), 17 (Vehicles) and
-   `IsDeiceArea`. Freighter → keep `Type` 6 or 7 (Ramp Cargo / Ramp Military Cargo); if none
-   exist, keep everything else with note "no cargo stands at this airport". Non-freighter → keep
-   gate types 9, 10, 11, 13, 14; if none exist, keep ramps 2, 3, 4, 5, 12, 15 with note "no gate
-   stands at this airport; using a ramp". Stands of unknown type (`Type` 0, OSM tier) are always
-   kept.
-2. **Wingspan fit.** When `WingspanMetres` is known: keep spots for which
-   `FitsAircraft(wingspanFeet)` is true **or** whose size is unknown (`Radius <= 0` and no
-   `MaxWingspanMeters`). If that empties the list, keep the unfiltered list with note "no stand at
-   this airport is marked as fitting a N m wingspan".
-3. **Airline.** When `airlineIcao` is set and any candidate's `AirlineCodes` (split on `,`, `;`,
-   whitespace; ordinal-ignore-case) contains it, restrict to those (`AirlineMatch`).
-4. **Reachable.** Keep only `hasGraphNode(spot)` (the planner supplies "nearest graph node within
-   100 m", the same rule Taxi Assist uses for a gate destination). Empty → return null with the
-   caller noting "no stand at this airport connects to the taxiway network".
-5. **Central.** The candidate nearest the arithmetic centroid of the candidates' coordinates;
-   ties → smallest `Describe()` ordinal. Source is `AirlineMatch`, `Category` (a category filter
-   applied) or `Any`.
+   this OFP, §5.9). The pool excludes types 8 (Military Combat), 16 (Fuel), 17 (Vehicles) and
+   de-ice pads; type 1 is KEPT here because navdata maps unknown-type stands to it, real jetway
+   gates included (LEBB 101–106), but it ranks after every known-type candidate. By name first:
+   every stand whose identity label (`Describe()` before its first " - ") normalises
+   (`SayIntentionsClearanceParser.NormalizeParkingName`) to the hint's label; only if none, every
+   stand with a matching online alias. Several matches → the one nearest the published position;
+   no position → a gate type (9, 10, 11, 13, 14) first, then list order. The chosen stand must
+   connect to the taxiway network; a matched name that does not connect is said so ("was found but
+   does not connect"), and the published position is never used to hand SayIntentions' label to a
+   neighbouring stand. By position only when the name matched nothing: the nearest stand within
+   `min(150 m, radiusMetres × 2.0)` — the values are `SayIntentionsGatePositionMatcher`'s own
+   calibrated constants; radius is FEET for navdata, METRES for GSX; 60 m for a stand of unknown
+   radius (every OpenStreetMap stand). A found stand is `StandChoiceSource.SayIntentions`; nothing
+   found → a note naming the assigned label, and the inference below.
+1. **Eligible and reachable.** The representative choice excludes types 1, 8, 16, 17 and de-ice
+   pads, and keeps only stands with a graph node within 100 m (Taxi Assist's gate rule) — checked
+   BEFORE the filters below, so a filter never leaves a leg without a stand while one connects.
+2. **Category.** Freighter → cargo (6, 7); code A → ramp, gate, cargo; everyone else → gate
+   (9, 10, 11, 13, 14), ramp (2, 3, 4, 5, 12, 15), cargo — the first non-empty in that order, with a
+   note for every fallback ("no gate or ramp stands at this airport; using a cargo stand", …).
+   Stands of unknown type (0, the OSM tier) are kept with any category; when every type is unknown
+   the note says "stand types unknown".
+3. **Wingspan fit.** When `WingspanMetres` is known: keep stands for which
+   `FitsAircraft(wingspanFeet)` is true **or** whose size is unknown; if that empties the list,
+   keep it unfiltered with a note naming the category judged.
+4. **Airline.** Restrict to stands whose `AirlineCodes` (split on `,`, `;`, whitespace;
+   ordinal-ignore-case) contain the SimBrief airline, when any do (`AirlineMatch`).
+5. **Central.** The candidate nearest the centroid of the candidates; ties → smallest `Describe()`
+   ordinal. Source is `AirlineMatch`, `Category` or `Any`. Null only when no eligible stand
+   connects.
 
 ### 5.4 `BriefingExitPicker`
 
@@ -293,8 +300,11 @@ data is not available / not yet available / disabled in settings" as applicable)
    E12 — assigned gate 'Terminal 1 Gate 6' not found at this airport").
 5. Route: shortest path from the vacate node to the stand node, then
    `InsertRunwayHoldShorts(route, centerlines, destinationName: "", aircraft: null)`.
-   A start hold naming the runway just landed on (either designator of its pair) is **discarded**
-   — the aircraft has just vacated it. Crossings of any other runway are hold notes as in taxi-out.
+   Every hold on the route is a hold note, the runway just landed on included. (Revised during
+   review, 2026-09-25: the first version discarded a start hold naming the landing runway "because
+   the aircraft has just vacated it". But every briefed exit is one the vacate screen says gets
+   clear of the runway, so the route always starts clear of it, and a hold naming the landing
+   runway can only mean the route crosses it again. Discarding it dropped exactly that crossing.)
 6. Taxiways, distance, narrow-taxiway notes as in taxi-out.
 
 ### 5.7 OpenStreetMap planning graph (tier 2)
