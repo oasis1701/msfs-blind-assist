@@ -752,15 +752,19 @@ public partial class MainForm : Form
         // second while something can change an answer, every three seconds otherwise; gates on
         // LastKnownOnGround each tick.
         groundTrafficMonitor = new GroundTrafficMonitor(announcer, simConnectManager);
-        // Suppress proximity/route/queue callouts in three contexts: during the takeoff roll (pilot's
+        // Suppress proximity/route/queue callouts in four contexts: during the takeoff roll (pilot's
         // hands are on rudder + throttle, can't act on a callout — keyed on takeoff assist), when Taxi
-        // Guidance is not engaged, and during a landing rollout that is still rolling. The rule lives in
-        // Services/GroundTrafficSuppression so it can be pinned; the Alt+G summary stays ungated.
+        // Guidance is not engaged, during a landing rollout that is still rolling, and while taxi
+        // guidance is steering a landing-exit route above taxi speed (the rollout's hands-full reason
+        // outlives the handoff to taxi steering until the aircraft has slowed down, KMEM 36L
+        // 2026-09-26). The rule lives in Services/GroundTrafficSuppression so it can be pinned; the
+        // Alt+G summary stays ungated.
         groundTrafficMonitor.SuppressCheck = () =>
             GroundTrafficSuppression.Suppress(
                 takeoffAssistManager.IsActive,
                 taxiGuidanceManager.State,
-                simConnectManager.LastKnownPosition?.GroundSpeedKnots);
+                simConnectManager.LastKnownPosition?.GroundSpeedKnots,
+                taxiGuidanceManager.IsLandingExitTaxiSteering);
         // The runway watch has its OWN gate: takeoff assist switches on at lineup alignment, and the
         // line-up wait is exactly when traffic landing on or entering the runway matters most, so the
         // watch keeps running until the takeoff roll passes 30 kt (PR #247 review R1).
@@ -768,7 +772,8 @@ public partial class MainForm : Form
             GroundTrafficSuppression.SuppressRunwayWatch(
                 takeoffAssistManager.IsActive,
                 taxiGuidanceManager.State,
-                simConnectManager.LastKnownPosition?.GroundSpeedKnots);
+                simConnectManager.LastKnownPosition?.GroundSpeedKnots,
+                taxiGuidanceManager.IsLandingExitTaxiSteering);
         // Route + runway context: traffic ON the route vs beside it, the queue, and the hold facts the
         // runway watch is derived from.
         groundTrafficMonitor.RouteContextProvider = () => taxiGuidanceManager.GetGroundTrafficContext();
