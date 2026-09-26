@@ -5,9 +5,11 @@ using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
+using MSFSBlindAssist.Navigation.Briefing;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms;
 /// <summary>
@@ -26,6 +28,9 @@ public partial class ElectronicFlightBagForm : Form
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly WaypointTracker _waypointTracker;
     private readonly string _simbriefUsername;
+    // What the taxi section of the route briefing needs from MainForm; null when the form is built
+    // without it (tests), in which case the block says no navigation database is loaded.
+    private readonly RouteBriefingDependencies? _briefingDependencies;
     private IntPtr previousWindow;
 
     // Navigation tab controls
@@ -75,13 +80,15 @@ public partial class ElectronicFlightBagForm : Form
     private SimBriefPlannerForm? _simbriefPlannerForm;
 
     public ElectronicFlightBagForm(FlightPlanManager flightPlanManager, SimConnectManager simConnectManager,
-                                   ScreenReaderAnnouncer announcer, WaypointTracker waypointTracker, string simbriefUsername)
+                                   ScreenReaderAnnouncer announcer, WaypointTracker waypointTracker, string simbriefUsername,
+                                   RouteBriefingDependencies? briefingDependencies = null)
     {
         _flightPlanManager = flightPlanManager;
         _simConnectManager = simConnectManager;
         _announcer = announcer;
         _waypointTracker = waypointTracker;
         _simbriefUsername = simbriefUsername;
+        _briefingDependencies = briefingDependencies;
 
         InitializeComponent();
         SetupEventHandlers();
@@ -873,9 +880,17 @@ public partial class ElectronicFlightBagForm : Form
             // (MainForm keeps one instance to preserve flight-plan data), so a cached provider would
             // keep calling whichever backend was active when the form was first created — ignoring a
             // later provider switch in Settings. Display/scene reads already resolve per-call; match that.
+            // The taxi section: computed from the pilot's own scenery for THIS press and appended to the
+            // flight data for this AI call only — the stored ExtractedFlightData stays pure SimBrief,
+            // since the facts change when a runway is edited or the aircraft moves. Never blocks the
+            // briefing: every failure renders as an "unavailable" line inside the block.
+            UpdateStatus("Computing taxi routes...");
+            string taxiBlock = await BuildTaxiRoutesBlockAsync();
+            UpdateStatus("Generating route description...");
+            string flightData = _flightPlanManager.CurrentFlightPlan.ExtractedFlightData + "\n\n" + taxiBlock;
+
             var aiProvider = AiProviderFactory.Create();
-            string description = await aiProvider.DescribeRouteAsync(
-                _flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
+            string description = await aiProvider.DescribeRouteAsync(flightData);
 
             routeDescriptionTextBox.Text = description.Replace("\r\n", "\n").Replace("\n", "\r\n");
             routeDescriptionTextBox.Visible = true;
@@ -899,6 +914,46 @@ public partial class ElectronicFlightBagForm : Form
         {
             describeRouteButton.Enabled = true;
         }
+    }
+
+    private const int OwnPositionTimeoutMs = 1500;
+
+    private async Task<string> BuildTaxiRoutesBlockAsync()
+    {
+        var plan = _flightPlanManager.CurrentFlightPlan;
+        var aircraft = AircraftSizeClass.Resolve(plan.AircraftTypeIcao, plan.AircraftName, plan.AircraftMaxPassengers);
+        try
+        {
+            var provider = _briefingDependencies?.Provider();
+            var gateSource = _briefingDependencies?.GateSource();
+            var own = await ReadOwnPositionAsync();
+            var siContext = _briefingDependencies == null ? null : await _briefingDependencies.SayIntentions();
+            var siGate = SayIntentionsArrivalGate.From(siContext, plan.DepartureICAO, plan.ArrivalICAO);
+
+            var request = new TaxiBriefingRequest(plan.DepartureICAO, plan.DepartureRunway, plan.ArrivalICAO, plan.ArrivalRunway,
+                                                  aircraft, plan.AirlineIcao, own, siGate);
+            var briefing = await TaxiBriefingPlanner.PlanAsync(request, provider, gateSource, TaxiBriefingPlanner.DefaultBudget);
+            return TaxiBriefingRenderer.Render(briefing);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("taxi_briefing", $"taxi routes block failed: {ex}");
+            return TaxiBriefingRenderer.Render(TaxiBriefing.Unavailable(aircraft, plan.DepartureICAO, plan.DepartureRunway,
+                plan.ArrivalICAO, plan.ArrivalRunway, $"taxi route could not be computed ({ex.Message})"));
+        }
+    }
+
+    /// <summary>The aircraft's position for the "parked at the origin" test — null when not connected or
+    /// when SimConnect does not answer within <see cref="OwnPositionTimeoutMs"/> (the callback lands on the
+    /// UI message pump, which this await yields to).</summary>
+    private async Task<OwnPosition?> ReadOwnPositionAsync()
+    {
+        if (_simConnectManager?.IsConnected != true) return null;
+        var tcs = new TaskCompletionSource<OwnPosition?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _simConnectManager.RequestAircraftPositionAsync(p =>
+            tcs.TrySetResult(new OwnPosition(p.Latitude, p.Longitude, p.SimOnGround > 0.5)));
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(OwnPositionTimeoutMs));
+        return completed == tcs.Task ? tcs.Task.Result : null;
     }
 
     private void RefreshAircraftPosition()
