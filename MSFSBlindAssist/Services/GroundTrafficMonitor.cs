@@ -327,7 +327,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         _sim.RequestAircraftPosition();
         if (pos == null) return;
         var p = pos.Value;
-        double hdgTrue = NormalizeDeg(p.HeadingMagnetic + p.MagneticVariation);
+        double hdgTrue = RelativeDirection.Normalize360(p.HeadingMagnetic + p.MagneticVariation);
         lock (_lock)
         {
             _ownLat = p.Latitude;
@@ -732,7 +732,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         {
             if (!ac.OnGround || ac.LastSeenTime < fresh) continue;
             double distFt = NavigationCalculator.CalculateDistance(_ownLat, _ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
-            double rel = NormalizeDeg(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
+            double rel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
             list.Add((distFt, ac.GS, rel));
         }
         return list;
@@ -788,7 +788,7 @@ public sealed class GroundTrafficMonitor : IDisposable
             ac.Lat = e.Latitude;
             ac.Lon = e.Longitude;
             ac.AltitudeFt = e.AltitudeFt;
-            ac.HeadingTrue = NormalizeDeg(e.HeadingMagnetic + magVar);
+            ac.HeadingTrue = RelativeDirection.Normalize360(e.HeadingMagnetic + magVar);
             ac.OnGround = onGround;
             if (onGround) ac.LastOnGroundUtc = now;
             ac.GS = e.GroundSpeedKnots;
@@ -997,7 +997,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 continue;
             }
 
-            double rel = NormalizeDeg(NavigationCalculator.CalculateBearing(ownLat, ownLon, ac.Lat, ac.Lon) - ownHdg);
+            double rel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(ownLat, ownLon, ac.Lat, ac.Lon) - ownHdg);
             var (rx, ry) = GroundTrafficLogic.ToLocal(ownLat, ownLon, ac.Lat, ac.Lon);
             var (tvx, tvy) = GroundTrafficLogic.Velocity(direction, ac.GS);
             var (tcpa, dcpa) = GroundTrafficLogic.ClosestApproach(rx, ry, tvx - ownVx, tvy - ownVy);
@@ -1599,7 +1599,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                     case RunwayTrafficKind.OnRunway:
                     {
                         double distFt = NavigationCalculator.CalculateDistance(_ownLat, _ownLon, ac.Lat, ac.Lon) * NM_TO_FEET;
-                        double rel = NormalizeDeg(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
+                        double rel = RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(_ownLat, _ownLon, ac.Lat, ac.Lon) - _ownHeadingTrue);
                         double direction = Direction(ac);
                         st.Occupants.Add(new RunwayOccupant(ac, distFt, rel,
                             GroundTrafficLogic.ClassifyMotion(_ownHeadingTrue, direction, ac.GS, rel)));
@@ -1690,7 +1690,7 @@ public sealed class GroundTrafficMonitor : IDisposable
         if (!onGround || pos == null)
             return "Ground traffic monitor not active in flight.";
 
-        double hdgTrue = NormalizeDeg(pos.Value.HeadingMagnetic + pos.Value.MagneticVariation);
+        double hdgTrue = RelativeDirection.Normalize360(pos.Value.HeadingMagnetic + pos.Value.MagneticVariation);
         double ownLat = pos.Value.Latitude;
         double ownLon = pos.Value.Longitude;
         bool useMetres = SettingsManager.Current.GroundTrafficUseMetres;
@@ -1707,7 +1707,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 .Where(ac => ac.OnGround && ac.LastSeenTime >= fresh)
                 .Select(ac => (d: NavigationCalculator.CalculateDistance(ownLat, ownLon, ac.Lat, ac.Lon) * NM_TO_FEET,
                                ac,
-                               rel: NormalizeDeg(NavigationCalculator.CalculateBearing(ownLat, ownLon, ac.Lat, ac.Lon) - hdgTrue)))
+                               rel: RelativeDirection.Normalize360(NavigationCalculator.CalculateBearing(ownLat, ownLon, ac.Lat, ac.Lon) - hdgTrue)))
                 .Where(t => t.d <= GroundTrafficLogic.TrackRangeFt)
                 .OrderBy(t => t.d)
                 .Take(SUMMARY_MAX_AIRCRAFT)
@@ -1765,7 +1765,7 @@ public sealed class GroundTrafficMonitor : IDisposable
                 return;
             }
 
-            double hdgTrue = NormalizeDeg(position.HeadingMagnetic + position.MagneticVariation);
+            double hdgTrue = RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
             lock (_lock)
             {
                 _ownLat = position.Latitude;
@@ -1892,7 +1892,6 @@ public sealed class GroundTrafficMonitor : IDisposable
     private static string Capitalise(string s)
         => string.IsNullOrEmpty(s) ? s : char.ToUpperInvariant(s[0]) + s[1..];
 
-    private static double NormalizeDeg(double d) => ((d % 360.0) + 360.0) % 360.0;
 
     /// <summary>A value safe inside a quoted log field.</summary>
     private static string Q(string s) => (s ?? "").Replace('"', '\'');

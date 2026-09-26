@@ -53,6 +53,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // block) is this airframe's single icing voice; the generic announcer yields.
     public override bool HasOwnIcingAnnouncer => true;
 
+    // The FBW A380 ignores the stock COM events (live-verified: COM_STBY_RADIO_SET_HZ to 119.000
+    // left COM1 standby at 121.95), so the surroundings window's Enter must not pretend to tune.
+    public override string? StockComTuningRefusal =>
+        "This aircraft tunes its radios only through its RMP window, input mode Ctrl+Shift+R.";
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;

@@ -538,120 +538,14 @@ public class NavdataReaderBuilder
     }
 
     /// <summary>
-    /// Gets the base path for MSFS/MSFS24 from UserCfg.opt file
+    /// Gets the base path for MSFS/MSFS24 from UserCfg.opt file. The lookup itself lives in
+    /// <see cref="MsfsPackagesLocator"/>, which the scenery census also asks — one place that
+    /// knows where a simulator keeps its packages.
     /// </summary>
     /// <param name="simulatorVersion">FS2020 or FS2024</param>
     /// <returns>Base path if found, null otherwise</returns>
-    private string? GetMSFSBasePath(string simulatorVersion)
-    {
-        try
-        {
-            string configFileName = simulatorVersion == "FS2024"
-                ? "Microsoft Flight Simulator 2024"
-                : "Microsoft Flight Simulator";
-
-            // Check AppData\Roaming location first
-            string roamingPath = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
-                configFileName,
-                "UserCfg.opt");
-
-            string? basePath = TryParseUserCfgForBasePath(roamingPath);
-            if (basePath != null)
-            {
-                Log.Debug("Database", $"Found {simulatorVersion} base path from UserCfg.opt: {basePath}");
-                return basePath;
-            }
-
-            // For FS2020, also check LocalCache location (Store version)
-            if (simulatorVersion == "FS2020")
-            {
-                string localCachePath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Packages\\Microsoft.FlightSimulator_8wekyb3d8bbwe\\LocalCache",
-                    "UserCfg.opt");
-
-                basePath = TryParseUserCfgForBasePath(localCachePath);
-                if (basePath != null)
-                {
-                    Log.Debug("Database", $"Found {simulatorVersion} base path from Store UserCfg.opt: {basePath}");
-                    return basePath;
-                }
-            }
-
-            // For FS2024, also check LocalCache location (Store version)
-            if (simulatorVersion == "FS2024")
-            {
-                string localCachePath = Path.Combine(
-                    Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-                    "Packages\\Microsoft.Limitless_8wekyb3d8bbwe\\LocalCache",
-                    "UserCfg.opt");
-
-                basePath = TryParseUserCfgForBasePath(localCachePath);
-                if (basePath != null)
-                {
-                    Log.Debug("Database", $"Found {simulatorVersion} base path from Store UserCfg.opt: {basePath}");
-                    return basePath;
-                }
-            }
-
-            Log.Debug("Database", $"Could not find base path for {simulatorVersion}");
-            return null;
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Database", $"Error getting MSFS base path: {ex.Message}");
-            return null;
-        }
-    }
-
-    /// <summary>
-    /// Parses UserCfg.opt file to extract InstalledPackagesPath
-    /// </summary>
-    private string? TryParseUserCfgForBasePath(string configPath)
-    {
-        try
-        {
-            if (!File.Exists(configPath))
-            {
-                Log.Debug("Database", $"UserCfg.opt not found at: {configPath}");
-                return null;
-            }
-
-            string[] lines = File.ReadAllLines(configPath);
-            foreach (string line in lines)
-            {
-                // Look for InstalledPackagesPath setting
-                if (line.IndexOf("InstalledPackagesPath", StringComparison.OrdinalIgnoreCase) >= 0)
-                {
-                    // Format: InstalledPackagesPath "F:\msfs2024"
-                    int firstQuote = line.IndexOf('"');
-                    int lastQuote = line.LastIndexOf('"');
-
-                    if (firstQuote >= 0 && lastQuote > firstQuote)
-                    {
-                        string path = line.Substring(firstQuote + 1, lastQuote - firstQuote - 1);
-                        // Validate the path exists
-                        if (Directory.Exists(path))
-                        {
-                            return path;
-                        }
-                        else
-                        {
-                            Log.Debug("Database", $"InstalledPackagesPath found but directory doesn't exist: {path}");
-                        }
-                    }
-                }
-            }
-
-            return null;
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Database", $"Error parsing UserCfg.opt: {ex.Message}");
-            return null;
-        }
-    }
+    private static string? GetMSFSBasePath(string simulatorVersion)
+        => MsfsPackagesLocator.TryGetInstalledPackagesPath(simulatorVersion);
 
     /// <summary>
     /// Confirms the World of Jetways exclusion actually applied, and returns the success

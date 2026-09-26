@@ -83,8 +83,12 @@ public interface IAirportDataProvider
     HashSet<string> GetAllAirportICAOs();
 
     /// <summary>
-    /// Returns ICAO codes of airports within a bounding box around the given position.
-    /// Used to identify which airport a ground aircraft is at when route data is unavailable.
+    /// Returns ICAO codes (the ident where an airport has no ICAO) of airports within a bounding
+    /// box around the given position, ordered by summed raw degrees to it. Used by GateResolver to
+    /// identify which airport a ground TRAFFIC aircraft is at when its route data is unavailable.
+    /// Never the answer to which airport OUR aircraft is at, except as <c>CurrentAirport.Resolve</c>'s
+    /// own no-candidates fallback — ask <c>CurrentAirport.Resolve</c>; this list's first entry is a
+    /// heliport at 111 of KSNA's 201 stands.
     /// </summary>
     List<string> GetNearbyAirportICAOs(double latitude, double longitude, double radiusNm);
 

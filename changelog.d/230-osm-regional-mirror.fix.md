@@ -1,0 +1,1 @@
+OpenStreetMap taxiway names no longer go missing for a whole session: one of the servers the app rotated through covers only Switzerland, and its instant "nothing here" for every other airport was believed. That server is gone.

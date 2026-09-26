@@ -27,7 +27,7 @@ namespace MSFSBlindAssist.Services.TaxiAugment;
 /// base provider — this class is transparent to all existing consumers.
 /// </para>
 /// </summary>
-public sealed class AugmentingAirportDataProvider : IAirportDataProvider
+public sealed class AugmentingAirportDataProvider : IAirportDataProvider, IAirportFacilitiesProvider
 {
     // ── Construction ────────────────────────────────────────────────────────
     private readonly IAirportDataProvider _base;
@@ -119,6 +119,10 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     public HashSet<string> GetAllAirportICAOs()                                   => _base.GetAllAirportICAOs();
     public List<string> GetNearbyAirportICAOs(double lat, double lon, double nm)  => _base.GetNearbyAirportICAOs(lat, lon, nm);
     public List<StartPosition> GetRunwayStarts(string icao)                       => _base.GetRunwayStarts(icao);
+    public AirportFacilities? GetAirportFacilities(string icao)
+        => (_base as IAirportFacilitiesProvider)?.GetAirportFacilities(icao);
+    public IReadOnlyList<AirportCandidate> GetNearbyAirportCandidates(double lat, double lon, double nm)
+        => (_base as IAirportFacilitiesProvider)?.GetNearbyAirportCandidates(lat, lon, nm) ?? Array.Empty<AirportCandidate>();
 
     /// <summary>
     /// Returns parking spots for the airport, filling in EMPTY navdata gate/stand names from the
@@ -247,6 +251,10 @@ public sealed class AugmentingAirportDataProvider : IAirportDataProvider
     /// </summary>
     public async Task PrefetchAsync(string icao, bool force = false)
     {
+        // An online request like any other: with online taxi data switched off there is nothing to
+        // fetch. Every caller (Shift+D, ILS/visual guidance, the taxi form, the landing-exit planner,
+        // the flight plan) once reached OSM and X-Plane Gateway regardless.
+        if (!Enabled) return;
         if (!force && _cache.TryLoad(icao, out _))
             return;           // cache is fresh, nothing to do
 

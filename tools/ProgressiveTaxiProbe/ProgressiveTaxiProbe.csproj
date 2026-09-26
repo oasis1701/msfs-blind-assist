@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net10.0-windows</TargetFramework>
@@ -45,6 +45,7 @@
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs"      Link="Linked\ParkingSpot.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingTypes.cs"     Link="Linked\ParkingTypes.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs"       Link="Linked\GateSource.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\StartPosition.cs"    Link="Linked\StartPosition.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\Runway.cs"           Link="Linked\Runway.cs" />

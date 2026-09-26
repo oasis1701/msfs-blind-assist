@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Database.Models;
+
 namespace MSFSBlindAssist.Navigation;
 
 /// <summary>
@@ -43,6 +45,18 @@ public static class RunwayPavement
         }
         return shapes;
     }
+
+    /// <summary>
+    /// The runway shapes an airport's runway rows alone describe, for a caller that must not build a
+    /// taxi graph (the passing-callout probe's warm-up, possibly at an airport with no taxi paths).
+    /// <para>It IS Build's centreline pairing, not a copy: Build with no paths and no parking pairs
+    /// the same start rows against the same runway table (pinned by RunwayRowShapesTests). The graph is
+    /// discarded, which is why the empty parking list is safe here. No runway rows → an empty list,
+    /// i.e. "not on a runway".</para>
+    /// </summary>
+    public static IReadOnlyList<RunwayShape> BuildShapesFromRunwayRows(
+        List<StartPosition> runwayStarts, IReadOnlyList<Runway>? runways)
+        => BuildShapes(TaxiGraph.Build(new List<TaxiPath>(), new List<ParkingSpot>(), runwayStarts, runways).RunwayCenterlines);
 
     /// <summary>
     /// True when the point lies within any runway's half-width of its centreline AND inside its

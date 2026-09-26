@@ -122,6 +122,18 @@ public partial class TaxiGraph
     public bool IsBridgeOnlyStandStub(int nodeId) => _bridgeOnlyStandStubNodes.Contains(nodeId);
 
     /// <summary>
+    /// Node ids <see cref="Build"/> recorded as hold-short from the navdata endpoint TYPES (the set
+    /// <see cref="BridgeOrphanParkingIslands"/> uses), kept for DescribeLocation's near-a-runway gate.
+    /// Never <see cref="TaxiNode.Type"/>: the parking pass overwrites it to Parking for any node
+    /// within 100 m of a stand — exactly the hold-short nodes that gate needs. Empty for a hand-built graph.
+    /// </summary>
+    private HashSet<int> _navdataHoldShortNodeIds = new();
+
+    /// <summary>Whether navdata recorded this node as a hold-short — the identity to use, never
+    /// <see cref="TaxiNode.Type"/> (see <see cref="_navdataHoldShortNodeIds"/>).</summary>
+    public bool IsNavdataHoldShort(int nodeId) => _navdataHoldShortNodeIds.Contains(nodeId);
+
+    /// <summary>
     /// Component id of the largest connected component (the main taxi network), or -1 for a graph
     /// Build has not finished. Set once at the end of <see cref="Build"/>, after orphan-stand
     /// bridges are added and components renumbered. Ties do occur (EGUW has two 63-node
@@ -180,6 +192,19 @@ public partial class TaxiGraph
     private int _nextNodeId = 1;
     private readonly Dictionary<string, List<int>> _spatialHash = new();
     private readonly Dictionary<string, List<int>> _taxiwayNodeIndex = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Serialises post-Build structure changes against the one query that runs off the UI thread:
+    /// <see cref="DescribeLocation"/> (Alt+L, via TaxiGuidanceManager.DescribeCurrentLocation, often
+    /// on the active guidance graph). The only post-Build change is the painted holding-point
+    /// projection (<see cref="InsertHoldingPointNodeOnEdge"/> → <see cref="SplitEdgeAt"/>), which
+    /// TaxiAssistForm runs on the UI thread; unserialised, the query hit "Collection was modified".
+    /// <para>The query holds it for its whole run (cell index included), the projection for its whole
+    /// scan-then-split. UI-thread readers need no lock because every mutation is on the UI thread too.
+    /// A new pool-thread query or post-Build mutation MUST take it. Nothing nests another lock inside
+    /// it, and TaxiGuidanceManager releases _stateLock before asking the graph.</para>
+    /// </summary>
+    private readonly object _structureLock = new();
 
     /// <summary>
     /// Build-time-only dedup sidecar for <see cref="RegisterTaxiwayNode"/>: mirrors the node-id
@@ -543,6 +568,9 @@ public partial class TaxiGraph
                 }
             }
         }
+
+        // Before the parking pass below can overwrite Type (see _navdataHoldShortNodeIds).
+        graph._navdataHoldShortNodeIds = holdShortNodes;
 
         // Mark parking nodes by matching to parking spot coordinates (spatial-hash FindNearestNode)
         foreach (var spot in parkingSpots)
@@ -1243,6 +1271,17 @@ public partial class TaxiGraph
     }
 
     /// <summary>
+    /// Node ids created by <see cref="InsertHoldingPointNodeOnEdge"/>. These are placements for
+    /// PAINTED HOLD LINES, never junctions, so any search that is looking for real navdata
+    /// topology must skip them — see the skip in <see cref="ResolveHoldingPointEntries"/>.
+    /// </summary>
+    private readonly HashSet<int> _holdingPointProjectionNodes = new();
+
+    /// <summary>True when the node was inserted by the holding-point edge projection.</summary>
+    public bool IsHoldingPointProjectionNode(int nodeId) =>
+        _holdingPointProjectionNodes.Contains(nodeId);
+
+    /// <summary>
     /// Subdivides the taxi edge nearest <paramref name="lat"/>/<paramref name="lon"/> at the
     /// perpendicular projection of that point and returns the inserted node — the fallback that
     /// lets a PAINTED holding point which sits on the pavement but between two navdata vertices
@@ -1266,19 +1305,18 @@ public partial class TaxiGraph
     /// holding point. A projection landing on (or within the merge threshold of) an endpoint is
     /// refused — that case is already the node snap's, and splitting there would create a
     /// zero-length edge.</para>
+    ///
+    /// <para>Holds <see cref="_structureLock"/> for the whole scan-then-split, so the edge scanned is
+    /// the edge split and no reader sees the graph in between.</para>
     /// </summary>
-    /// <summary>
-    /// Node ids created by <see cref="InsertHoldingPointNodeOnEdge"/>. These are placements for
-    /// PAINTED HOLD LINES, never junctions, so any search that is looking for real navdata
-    /// topology must skip them — see the skip in <see cref="ResolveHoldingPointEntries"/>.
-    /// </summary>
-    private readonly HashSet<int> _holdingPointProjectionNodes = new();
-
-    /// <summary>True when the node was inserted by the holding-point edge projection.</summary>
-    public bool IsHoldingPointProjectionNode(int nodeId) =>
-        _holdingPointProjectionNodes.Contains(nodeId);
-
     public TaxiNode? InsertHoldingPointNodeOnEdge(double lat, double lon, double maxPerpMeters)
+    {
+        lock (_structureLock)
+            return InsertHoldingPointNodeOnEdgeLocked(lat, lon, maxPerpMeters);
+    }
+
+    /// <summary>The body of <see cref="InsertHoldingPointNodeOnEdge"/>; the caller holds <see cref="_structureLock"/>.</summary>
+    private TaxiNode? InsertHoldingPointNodeOnEdgeLocked(double lat, double lon, double maxPerpMeters)
     {
         TaxiEdge? bestEdge = null;
         double bestPerp = maxPerpMeters;
@@ -1333,9 +1371,22 @@ public partial class TaxiGraph
     /// that taxiway, like every other vertex on it) and its endpoint's ComponentId — correct by
     /// construction, since a subdivision cannot change reachability, and needed because
     /// AssignConnectedComponents has already run by the time holding points resolve.
+    ///
+    /// <para>Takes <see cref="_structureLock"/> itself (re-entrant), so no structure change depends on
+    /// its caller remembering.</para>
     /// </summary>
     private TaxiNode SplitEdgeAt(TaxiEdge fwd, double lat, double lon)
     {
+        lock (_structureLock)
+            return SplitEdgeAtLocked(fwd, lat, lon);
+    }
+
+    /// <summary>The body of <see cref="SplitEdgeAt"/>; the caller holds <see cref="_structureLock"/>.</summary>
+    private TaxiNode SplitEdgeAtLocked(TaxiEdge fwd, double lat, double lon)
+    {
+        // It removes an edge before the AddEdge calls below, so drop the index here too.
+        InvalidateCellIndex();
+
         int aId = fwd.FromNodeId, bId = fwd.ToNodeId;
         var a = Nodes[aId];
         var b = Nodes[bId];
@@ -1475,7 +1526,8 @@ public partial class TaxiGraph
             }
         }
 
-        // Create new node
+        // Create new node: every structure change drops the cell index, by construction.
+        InvalidateCellIndex();
         int newId = _nextNodeId++;
         var newNode = new TaxiNode
         {
@@ -1499,6 +1551,8 @@ public partial class TaxiGraph
 
     private void AddEdge(TaxiEdge edge)
     {
+        InvalidateCellIndex();   // a structure change — see InvalidateCellIndex
+
         if (!Adjacency.ContainsKey(edge.FromNodeId))
             Adjacency[edge.FromNodeId] = new List<TaxiEdge>();
 
@@ -1890,8 +1944,9 @@ public partial class TaxiGraph
     public TaxiNode? FindNearestNode(double lat, double lon, int? requiredComponentId = null,
         bool excludeBridgeOnlyStandStubs = false)
     {
-        // Fast path: search the spatial hash with an expanding ring of cells.
-        // Precision 5 = ~1.1m cells at equator. Rings 1, 3, 10, 30 cover up to ~330m cheaply.
+        // Fast path: expanding rings of 1e-5° cells (1, 3, 10, 30 cells: up to ±33 m north-south,
+        // cos(latitude) of that east-west). The first ring with a node passing the filters answers;
+        // the full scan runs only when ring 30 has none.
         foreach (int ringRadius in new[] { 1, 3, 10, 30 })
         {
             TaxiNode? best = null;
@@ -2081,72 +2136,119 @@ public partial class TaxiGraph
     /// "Taxiway Bravo", or "" if nothing plausible is nearby.
     ///
     /// Priority order (more specific wins):
-    ///   1. Parking node within 40 m (gate).
+    ///   1. Parking node within 40 m (gate) in every direction — but near a runway (on its pavement,
+    ///      a runway-start answer in reach, or a hold-short node within 40 m) only a stand also inside
+    ///      <see cref="RunwayStartReach"/> may answer.
     ///   2. Runway edge (PathType 'R') within half-width+5 m, then the runway shape (RunwayShape) within half-width+5 m.
     ///      Runway edges are those with PathType indicating a runway (first char 'R').
-    ///   3. Runway threshold node within 50 m (near a runway start).
+    ///   3. Runway threshold node within 50 m (near a runway start), only inside
+    ///      <see cref="RunwayStartReach"/> — narrow on purpose (owner ruling).
     ///   4. Taxiway edge within half-width+3 m perpendicular distance (on a named taxiway).
-    ///   5. Nearest node's first taxiway name as a fallback (within 60 m).
+    ///   5. The nearest node carrying a taxiway name, within 60 m (fallback).
+    ///   Stand and fallback radii are true metres at any latitude (<see cref="NodesNear"/>,
+    ///   <see cref="EdgesNear"/>).
     ///
-    /// This does NOT depend on guidance being active — it's a pure query against the graph.
+    /// Runs on a pool thread for Alt+L against a graph the UI thread may subdivide, and builds the
+    /// cell index on first use, so it holds <see cref="_structureLock"/> for its whole run.
     /// Caller is responsible for prepending " at ICAO" if desired.
     /// </summary>
     public string DescribeLocation(double lat, double lon)
+    {
+        lock (_structureLock)
+            return DescribeLocationLocked(lat, lon);
+    }
+
+    /// <summary>The body of <see cref="DescribeLocation"/>; the caller holds <see cref="_structureLock"/>.</summary>
+    private string DescribeLocationLocked(double lat, double lon)
     {
         const double PARKING_RADIUS_M = 40.0;
         const double RUNWAY_THRESHOLD_RADIUS_M = 50.0;
         const double NODE_FALLBACK_RADIUS_M = 60.0;
         const double EDGE_SCAN_RADIUS_M = 120.0; // generous — runway surfaces are wide
 
-        // --- Pass 1: scan nearby nodes via spatial hash ---
-        TaxiNode? nearestParking = null;      double nearestParkingDist = double.MaxValue;
-        TaxiNode? nearestRunwayThreshold = null; double nearestRunwayDist = double.MaxValue;
-        TaxiNode? nearestAnyNode = null;      double nearestAnyDist = double.MaxValue;
+        // --- Pass 1: the three node answers — stand (1), near a runway start (3), fallback (5) ---
+        // Candidates come from a metre-sized ring (NodesNear). The old fixed ±30-cell ring of the
+        // 1.1 m hash reached only ±20 m east-west at 52°N (±7 m at 78°N), so stands a little east or
+        // west were never seen. The runway-start answer keeps exactly that old reach (RunwayStartReach).
+        // nearestParkingInRing tracks the nearest stand inside that old reach too, because near a
+        // runway only it may answer — which is not known until the centreline scan below.
+        TaxiNode? nearestParking = null;            double nearestParkingDist = double.MaxValue;
+        TaxiNode? nearestParkingInRing = null;      double nearestParkingInRingDist = double.MaxValue;
+        TaxiNode? nearestRunwayThreshold = null;    double nearestRunwayDist = double.MaxValue;
+        TaxiNode? nearestNamedNode = null;          double nearestNamedDist = double.MaxValue;
+        bool holdShortWithinStandRadius = false;
+        RunwayStartReach? runwayStartReach = null;   // built on the first candidate that needs the ring test
 
-        double step = Math.Pow(10, -SPATIAL_HASH_PRECISION);
-        // ring radius 30 cells ~= 330 m at equator — covers EDGE_SCAN_RADIUS_M comfortably
-        for (int dlat = -30; dlat <= 30; dlat++)
+        foreach (var node in NodesNear(lat, lon, NODE_FALLBACK_RADIUS_M))
         {
-            for (int dlon = -30; dlon <= 30; dlon++)
+            double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
+
+            // Only a named node may answer the fallback; a nearer unnamed one used to silence it.
+            if (node.TaxiwayNames.Count > 0 && dist < nearestNamedDist)
             {
-                string key = GetSpatialHashKey(lat + dlat * step, lon + dlon * step);
-                if (!_spatialHash.TryGetValue(key, out var nodeIds)) continue;
+                nearestNamedDist = dist;
+                nearestNamedNode = node;
+            }
 
-                foreach (int nodeId in nodeIds)
+            if (node.Type == TaxiNodeType.Parking &&
+                !string.IsNullOrEmpty(node.ParkingName) &&
+                !node.ParkingName.StartsWith("Runway", StringComparison.OrdinalIgnoreCase))
+            {
+                if (dist < nearestParkingDist)
                 {
-                    var node = Nodes[nodeId];
-                    double dist = FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
-
-                    if (dist < nearestAnyDist)
-                    {
-                        nearestAnyDist = dist;
-                        nearestAnyNode = node;
-                    }
-
-                    if (node.Type == TaxiNodeType.Parking &&
-                        !string.IsNullOrEmpty(node.ParkingName) &&
-                        !node.ParkingName.StartsWith("Runway", StringComparison.OrdinalIgnoreCase) &&
-                        dist < nearestParkingDist)
-                    {
-                        nearestParkingDist = dist;
-                        nearestParking = node;
-                    }
-
-                    if (!string.IsNullOrEmpty(node.ParkingName) &&
-                        node.ParkingName.StartsWith("Runway", StringComparison.OrdinalIgnoreCase) &&
-                        dist < nearestRunwayDist)
-                    {
-                        nearestRunwayDist = dist;
-                        nearestRunwayThreshold = node;
-                    }
+                    nearestParkingDist = dist;
+                    nearestParking = node;
+                }
+                if (dist < nearestParkingInRingDist &&
+                    (runwayStartReach ??= new RunwayStartReach(lat, lon)).Contains(node.Latitude, node.Longitude))
+                {
+                    nearestParkingInRingDist = dist;
+                    nearestParkingInRing = node;
                 }
             }
+
+            if (!string.IsNullOrEmpty(node.ParkingName) &&
+                node.ParkingName.StartsWith("Runway", StringComparison.OrdinalIgnoreCase) &&
+                dist < nearestRunwayDist &&
+                (runwayStartReach ??= new RunwayStartReach(lat, lon)).Contains(node.Latitude, node.Longitude))
+            {
+                nearestRunwayDist = dist;
+                nearestRunwayThreshold = node;
+            }
+
+            // "Near a runway" (c): a hold-short node within the stand radius, by navdata identity
+            // only (never TaxiNode.Type — see _navdataHoldShortNodeIds).
+            if (!holdShortWithinStandRadius && dist <= PARKING_RADIUS_M && IsNavdataHoldShort(node.NodeId))
+                holdShortWithinStandRadius = true;
         }
 
-        // Gate wins if close enough
-        if (nearestParking != null && nearestParkingDist <= PARKING_RADIUS_M)
+        // Runway centerline scan over the whole length: on the runway shape within half-width + 5 m,
+        // named after the nearer end. Run ahead of the gate decision, which needs its result.
+        string? runwayCenterlineMatch = null;
+        foreach (var rwy in RunwayCenterlines)
         {
-            string raw = nearestParking.ParkingName!.Trim();
+            var shape = RunwayShape.For(rwy);
+            var (along, lateral) = shape.Project(lat, lon);
+            if (!shape.ContainsAlongLateral(along, lateral, 5.0)) continue;
+            runwayCenterlineMatch = $"Runway {shape.NameAt(along)}";
+            break;
+        }
+
+        bool runwayThresholdAvailable = nearestRunwayThreshold != null && nearestRunwayDist <= RUNWAY_THRESHOLD_RADIUS_M &&
+            !string.IsNullOrEmpty(nearestRunwayThreshold.ParkingName);
+
+        // "Near a runway": on runway pavement (a), a runway-start answer in reach (b), or a hold-short
+        // node within the stand radius (c). There a stand answers only from nearestParkingInRing —
+        // the wider reach put a stand ahead of "Runway X" at ~2,255 fs2024 hold-short nodes and on
+        // runway pavement at >= 1,660 more. This only ever narrows which stand is eligible.
+        bool nearRunway = runwayCenterlineMatch != null || runwayThresholdAvailable || holdShortWithinStandRadius;
+
+        // Gate wins if close enough.
+        var gateCandidate = nearRunway ? nearestParkingInRing : nearestParking;
+        double gateCandidateDist = nearRunway ? nearestParkingInRingDist : nearestParkingDist;
+        if (gateCandidate != null && gateCandidateDist <= PARKING_RADIUS_M)
+        {
+            string raw = gateCandidate.ParkingName!.Trim();
             // Parking name may already be "Gate A25" or just "A25" / "G 10" — prefix "Gate" once
             if (raw.StartsWith("Gate", StringComparison.OrdinalIgnoreCase) ||
                 raw.StartsWith("Parking", StringComparison.OrdinalIgnoreCase) ||
@@ -2161,89 +2263,44 @@ public partial class TaxiGraph
         TaxiEdge? bestRunwayEdge = null;  double bestRunwayEdgePerp = double.MaxValue;
         TaxiEdge? bestTaxiwayEdge = null; double bestTaxiwayEdgePerp = double.MaxValue;
 
-        // Collect candidate edges from adjacency of nodes within EDGE_SCAN_RADIUS_M, using the
-        // same spatial-hash ring mechanism as Pass 1 (instead of scanning every node in the
-        // graph). The ring must be sized independently in the lat and lon directions to cover
-        // EDGE_SCAN_RADIUS_M in real METERS: a hash cell is a fixed DEGREE step (`step`, same in
-        // both dimensions), but a degree of longitude is only cos(latitude) as many meters as a
-        // degree of latitude — so a latitude-blind cell count under-covers longitude at higher
-        // latitudes (e.g. ENSB at 78°N, cos(78°) ≈ 0.21). Pass 1's fixed "ring 30" is calibrated
-        // for its own ≤60 m radii at the equator (and its own comment overstates that coverage —
-        // 30 cells is ≈33 m, not "330 m" — a pre-existing, unrelated Pass-1 limitation left
-        // untouched here); reusing "ring 30" as-is for this 120 m radius would silently drop real
-        // candidates, so Pass 2 computes its own ring from EDGE_SCAN_RADIUS_M. Candidates are a
-        // strict superset of what a latitude-correct 120 m circle would need (rectangular ring,
-        // +1 cell margin for rounding) — never a subset — so this is equivalence-preserving with
-        // the original full Adjacency scan, which itself is unconditionally correct because it
-        // filters by true FastDistanceMeters, not by ring geometry.
-        double metersPerDegLat = 111132.0;
-        double metersPerDegLon = metersPerDegLat * Math.Cos(lat * (Math.PI / 180.0));
-        if (metersPerDegLon < 1.0) metersPerDegLon = 1.0; // guard near-pole degeneracy (no real airport is this far north/south)
-        int edgeScanRingLat = (int)Math.Ceiling(EDGE_SCAN_RADIUS_M / (step * metersPerDegLat)) + 1;
-        int edgeScanRingLon = (int)Math.Ceiling(EDGE_SCAN_RADIUS_M / (step * metersPerDegLon)) + 1;
-
-        var edgeScanCandidates = new HashSet<int>();
-        for (int dlat = -edgeScanRingLat; dlat <= edgeScanRingLat; dlat++)
+        // Candidate edges come from the edge index, keyed on each segment's own footprint. Gathered
+        // from nearby nodes instead, a segment longer than 240 m had a dead middle: standing on
+        // EHAM's taxiway Delta, 1.7 m from a 339 m segment's centreline, answered "Not on a known
+        // taxiway" (3,788 km of fs2024 centreline was blind that way).
+        foreach (var edge in EdgesNear(lat, lon, EDGE_SCAN_RADIUS_M))
         {
-            for (int dlon = -edgeScanRingLon; dlon <= edgeScanRingLon; dlon++)
+            var fromNode = Nodes[edge.FromNodeId];
+            var toNode = Nodes[edge.ToNodeId];
+            double perp = PerpendicularDistanceMeters(
+                lat, lon,
+                fromNode.Latitude, fromNode.Longitude,
+                toNode.Latitude, toNode.Longitude);
+
+            // Half-width in meters (width stored as feet)
+            double halfWidthM = (edge.WidthFeet * 0.3048) * 0.5;
+
+            bool isRunway = !string.IsNullOrEmpty(edge.PathType) &&
+                            edge.PathType.StartsWith("R", StringComparison.OrdinalIgnoreCase);
+
+            double tolerance = isRunway ? halfWidthM + 5.0 : halfWidthM + 3.0;
+            if (tolerance < 5.0) tolerance = 5.0; // minimum tolerance if width is missing/zero
+
+            if (perp <= tolerance)
             {
-                string key = GetSpatialHashKey(lat + dlat * step, lon + dlon * step);
-                if (_spatialHash.TryGetValue(key, out var cellNodeIds))
+                if (isRunway)
                 {
-                    foreach (int nodeId in cellNodeIds)
-                        edgeScanCandidates.Add(nodeId);
-                }
-            }
-        }
-
-        // We dedupe by (from,to) pair since adjacency holds both directions.
-        var visitedEdges = new HashSet<long>();
-
-        foreach (int fromId in edgeScanCandidates)
-        {
-            if (!Adjacency.TryGetValue(fromId, out var edgesFromNode)) continue;
-            var fromNode = Nodes[fromId];
-            double fromDist = FastDistanceMeters(lat, lon, fromNode.Latitude, fromNode.Longitude);
-            if (fromDist > EDGE_SCAN_RADIUS_M) continue;
-
-            foreach (var edge in edgesFromNode)
-            {
-                // Dedupe
-                long edgeKey = Math.Min(edge.FromNodeId, edge.ToNodeId) * 1_000_000L + Math.Max(edge.FromNodeId, edge.ToNodeId);
-                if (!visitedEdges.Add(edgeKey)) continue;
-
-                var toNode = Nodes[edge.ToNodeId];
-                double perp = PerpendicularDistanceMeters(
-                    lat, lon,
-                    fromNode.Latitude, fromNode.Longitude,
-                    toNode.Latitude, toNode.Longitude);
-
-                // Half-width in meters (width stored as feet)
-                double halfWidthM = (edge.WidthFeet * 0.3048) * 0.5;
-
-                bool isRunway = !string.IsNullOrEmpty(edge.PathType) &&
-                                edge.PathType.StartsWith("R", StringComparison.OrdinalIgnoreCase);
-
-                double tolerance = isRunway ? halfWidthM + 5.0 : halfWidthM + 3.0;
-                if (tolerance < 5.0) tolerance = 5.0; // minimum tolerance if width is missing/zero
-
-                if (perp <= tolerance)
-                {
-                    if (isRunway)
+                    if (perp < bestRunwayEdgePerp)
                     {
-                        if (perp < bestRunwayEdgePerp)
-                        {
-                            bestRunwayEdgePerp = perp;
-                            bestRunwayEdge = edge;
-                        }
+                        bestRunwayEdgePerp = perp;
+                        bestRunwayEdge = edge;
                     }
-                    else if (!string.IsNullOrEmpty(edge.TaxiwayName))
+                }
+                else if (!string.IsNullOrEmpty(edge.TaxiwayName))
+                {
+                    if (perp < bestTaxiwayEdgePerp)
                     {
-                        if (perp < bestTaxiwayEdgePerp)
-                        {
-                            bestTaxiwayEdgePerp = perp;
-                            bestTaxiwayEdge = edge;
-                        }
+                        bestTaxiwayEdgePerp = perp;
+                        bestTaxiwayEdge = edge;
                     }
                 }
             }
@@ -2253,36 +2310,26 @@ public partial class TaxiGraph
         // NOTE: this branch only fires for DBs that store runway centerlines as
         // taxi_path.type='R' rows. The current navdatareader schema does NOT —
         // every taxi_path row is type T / PT / P. The runway-centerline scan
-        // below covers the common case using start-table threshold pairs.
+        // above covers the common case using start-table threshold pairs.
         if (bestRunwayEdge != null && !string.IsNullOrEmpty(bestRunwayEdge.TaxiwayName))
             return $"Runway {bestRunwayEdge.TaxiwayName}";
 
-        // Runway centerline scan (works for the whole length, not just the
-        // thresholds): on the runway shape within half-width + 5 m, named after the nearer
-        // end — for a stationary aircraft, the end it would line up to depart from. RunwayShape
-        // covers the displaced-threshold band the start rows leave out.
-        foreach (var rwy in RunwayCenterlines)
-        {
-            var shape = RunwayShape.For(rwy);
-            var (along, lateral) = shape.Project(lat, lon);
-            if (!shape.ContainsAlongLateral(along, lateral, 5.0)) continue;
-            return $"Runway {shape.NameAt(along)}";
-        }
+        // Runway centerline match, computed above.
+        if (runwayCenterlineMatch != null)
+            return runwayCenterlineMatch;
 
         // Otherwise if we're near a runway threshold node
-        if (nearestRunwayThreshold != null && nearestRunwayDist <= RUNWAY_THRESHOLD_RADIUS_M &&
-            !string.IsNullOrEmpty(nearestRunwayThreshold.ParkingName))
-            return nearestRunwayThreshold.ParkingName; // already "Runway 22L"
+        if (runwayThresholdAvailable)
+            return nearestRunwayThreshold!.ParkingName!; // already "Runway 22L"
 
         // On taxiway
         if (bestTaxiwayEdge != null && !string.IsNullOrEmpty(bestTaxiwayEdge.TaxiwayName))
             return $"Taxiway {bestTaxiwayEdge.TaxiwayName}";
 
-        // Fallback: nearest node's first taxiway name
-        if (nearestAnyNode != null && nearestAnyDist <= NODE_FALLBACK_RADIUS_M &&
-            nearestAnyNode.TaxiwayNames.Count > 0)
+        // Fallback: the nearest node that carries a taxiway name
+        if (nearestNamedNode != null && nearestNamedDist <= NODE_FALLBACK_RADIUS_M)
         {
-            string name = nearestAnyNode.TaxiwayNames.First();
+            string name = nearestNamedNode.TaxiwayNames.First();
             return $"Near taxiway {name}";
         }
 
@@ -3293,11 +3340,198 @@ public partial class TaxiGraph
         return fallback;
     }
 
+    #region Cell index
+
+    /// <summary>
+    /// Cell-index cell size in decimal places of a degree (~111 m). Coarser than
+    /// <see cref="SPATIAL_HASH_PRECISION"/> because an edge is filed under every cell it crosses: a
+    /// 340 m taxiway takes ~4 cells instead of ~300, and a 120 m scan is 49 lookups at the equator
+    /// against the old 1.1 m node ring's ~48,000.
+    /// </summary>
+    private const int EDGE_CELL_PRECISION = 3;
+
+    /// <summary>One cell's side in degrees (both axes).</summary>
+    private static readonly double EdgeCellStepDegrees = Math.Pow(10, -EDGE_CELL_PRECISION);
+
+    /// <summary>
+    /// The lazily built cell index: each edge under every cell its segment crosses, each node under its
+    /// own cell. Null until needed and after any structure change (<see cref="InvalidateCellIndex"/>).
+    /// After Build, read and written only under <see cref="_structureLock"/>.
+    /// </summary>
+    private Dictionary<(int Lat, int Lon), List<TaxiEdge>>? _edgeCells;
+    private Dictionary<(int Lat, int Lon), List<TaxiNode>>? _nodeCells;
+
+    /// <summary>How many times the cell index was built — for TaxiGraphCellIndexTests, since a stale
+    /// index still answers correctly today and would stop silently the day a mutation moves pavement.</summary>
+    internal int CellIndexBuildCount { get; private set; }
+
+    /// <summary>
+    /// Drops the cell index; the next query rebuilds it. Called wherever this class changes structure:
+    /// <see cref="AddEdge"/>, <see cref="SplitEdgeAt"/> (which also removes an edge) and
+    /// <see cref="ResolveNode"/> when it creates a node.
+    /// <para>Writing the public <see cref="Nodes"/>/<see cref="Adjacency"/> directly (test graphs, the
+    /// standalone probes) drops nothing, so never do it to a graph DescribeLocation will be asked about.</para>
+    /// </summary>
+    private void InvalidateCellIndex()
+    {
+        _edgeCells = null;
+        _nodeCells = null;
+    }
+
+    private static (int Lat, int Lon) EdgeCellOf(double lat, double lon)
+        => ((int)Math.Floor(lat / EdgeCellStepDegrees), (int)Math.Floor(lon / EdgeCellStepDegrees));
+
+    /// <summary>
+    /// Builds the cell index if absent: every edge under each cell its SEGMENT passes through (so a
+    /// long segment is findable from the middle), sampled at half-cell steps — a corner-clipped cell
+    /// is covered by the query ring's margin — and every node under its own cell. Caller holds
+    /// <see cref="_structureLock"/>.
+    /// </summary>
+    private void EnsureCellIndex()
+    {
+        if (_edgeCells != null && _nodeCells != null) return;
+
+        var edgeCells = new Dictionary<(int, int), List<TaxiEdge>>();
+        double step = EdgeCellStepDegrees;
+        var seen = new HashSet<long>();
+
+        foreach (var edges in Adjacency.Values)
+            foreach (var edge in edges)
+            {
+                // Adjacency holds both directions; index each undirected edge once.
+                long key = Math.Min(edge.FromNodeId, edge.ToNodeId) * 1_000_000L + Math.Max(edge.FromNodeId, edge.ToNodeId);
+                if (!seen.Add(key)) continue;
+                // Node ids are not dense, so test membership.
+                if (!Nodes.TryGetValue(edge.FromNodeId, out var a) || !Nodes.TryGetValue(edge.ToNodeId, out var b)) continue;
+                double dLat = b.Latitude - a.Latitude, dLon = b.Longitude - a.Longitude;
+                // Half-cell sampling in the dimension that spans the most cells.
+                int steps = (int)Math.Ceiling(Math.Max(Math.Abs(dLat), Math.Abs(dLon)) / (step * 0.5));
+                if (steps < 1) steps = 1;
+
+                // A straight segment visits each cell in one unbroken run, so skipping a repeat of
+                // the previous cell is the whole dedup.
+                var last = ((int)int.MinValue, (int)int.MinValue);
+                for (int i = 0; i <= steps; i++)
+                {
+                    double f = (double)i / steps;
+                    var cell = EdgeCellOf(a.Latitude + dLat * f, a.Longitude + dLon * f);
+                    if (cell == last) continue;
+                    last = cell;
+                    if (!edgeCells.TryGetValue(cell, out var list)) edgeCells[cell] = list = new List<TaxiEdge>();
+                    list.Add(edge);
+                }
+            }
+
+        // Every node, not only edge endpoints, so Pass 1 never depends on a node having an edge.
+        var nodeCells = new Dictionary<(int, int), List<TaxiNode>>();
+        foreach (var node in Nodes.Values)
+        {
+            var cell = EdgeCellOf(node.Latitude, node.Longitude);
+            if (!nodeCells.TryGetValue(cell, out var list)) nodeCells[cell] = list = new List<TaxiNode>();
+            list.Add(node);
+        }
+
+        _edgeCells = edgeCells;
+        _nodeCells = nodeCells;
+        CellIndexBuildCount++;
+    }
+
+    /// <summary>
+    /// The centre cell and how many cells to walk each way to cover <paramref name="radiusMetres"/>,
+    /// sized separately for latitude and longitude (cos 78° ≈ 0.21 at ENSB), plus one cell of margin.
+    /// Shared by <see cref="EdgesNear"/> and <see cref="NodesNear"/> so they agree on "within R metres".
+    /// </summary>
+    private static ((int Lat, int Lon) Centre, int RingLat, int RingLon) CellRing(
+        double lat, double lon, double radiusMetres)
+    {
+        double metresPerDegLat = 111132.0;
+        double metresPerDegLon = metresPerDegLat * Math.Cos(lat * (Math.PI / 180.0));
+        if (metresPerDegLon < 1.0) metresPerDegLon = 1.0;   // guard near-pole degeneracy
+
+        int ringLat = (int)Math.Ceiling(radiusMetres / (EdgeCellStepDegrees * metresPerDegLat)) + 1;
+        int ringLon = (int)Math.Ceiling(radiusMetres / (EdgeCellStepDegrees * metresPerDegLon)) + 1;
+        return (EdgeCellOf(lat, lon), ringLat, ringLon);
+    }
+
+    /// <summary>Every edge within roughly <paramref name="radiusMetres"/>, deduped — a superset the
+    /// caller filters by real distance. Caller holds <see cref="_structureLock"/> while enumerating.</summary>
+    private IEnumerable<TaxiEdge> EdgesNear(double lat, double lon, double radiusMetres)
+    {
+        EnsureCellIndex();
+        var edgeCells = _edgeCells!;
+        if (edgeCells.Count == 0) yield break;
+
+        var (centre, ringLat, ringLon) = CellRing(lat, lon, radiusMetres);
+        var emitted = new HashSet<TaxiEdge>();
+        for (int dLat = -ringLat; dLat <= ringLat; dLat++)
+            for (int dLon = -ringLon; dLon <= ringLon; dLon++)
+            {
+                if (!edgeCells.TryGetValue((centre.Lat + dLat, centre.Lon + dLon), out var list)) continue;
+                foreach (var edge in list)
+                    if (emitted.Add(edge)) yield return edge;
+            }
+    }
+
+    /// <summary>Every node within roughly <paramref name="radiusMetres"/> (same ring as
+    /// <see cref="EdgesNear"/>), a superset the caller filters by real distance. Caller holds
+    /// <see cref="_structureLock"/> while enumerating.</summary>
+    private IEnumerable<TaxiNode> NodesNear(double lat, double lon, double radiusMetres)
+    {
+        EnsureCellIndex();
+        var nodeCells = _nodeCells!;
+
+        var (centre, ringLat, ringLon) = CellRing(lat, lon, radiusMetres);
+        for (int dLat = -ringLat; dLat <= ringLat; dLat++)
+            for (int dLon = -ringLon; dLon <= ringLon; dLon++)
+            {
+                if (!nodeCells.TryGetValue((centre.Lat + dLat, centre.Lon + dLon), out var list)) continue;
+                foreach (var node in list)
+                    yield return node;
+            }
+    }
+
+    #endregion
+
     #region Helpers
 
     private static string GetSpatialHashKey(double lat, double lon)
     {
         return $"{Math.Round(lat, SPATIAL_HASH_PRECISION)},{Math.Round(lon, SPATIAL_HASH_PRECISION)}";
+    }
+
+    /// <summary>
+    /// The reach of DescribeLocation's "near a runway start" answer: exactly the nodes the old fixed
+    /// ±30-cell ring of this node hash saw (±33 m north-south, ±33·cos(latitude) m east-west).
+    /// <para>Narrow by the owner's ruling: Build names the node nearest each runway start "Runway X",
+    /// and that answer outranks the taxiway you are on, so widening it would change what is said at
+    /// hold lines. Do not widen it without asking the owner again.</para>
+    /// <para>It replicates the ring's key arithmetic (the same <c>lat + d * step</c> sums and
+    /// Math.Round as <see cref="GetSpatialHashKey"/>, compared by bit pattern since "-0" and "0" were
+    /// different string keys) rather than a distance, because only that gives the same set. Pinned
+    /// against a verbatim copy of the old ring by TaxiGraphLocationRadiusTests.</para>
+    /// </summary>
+    private sealed class RunwayStartReach
+    {
+        private const int RingCells = 30;
+        private readonly HashSet<long> _latKeys = new();
+        private readonly HashSet<long> _lonKeys = new();
+
+        public RunwayStartReach(double lat, double lon)
+        {
+            double step = Math.Pow(10, -SPATIAL_HASH_PRECISION);
+            for (int d = -RingCells; d <= RingCells; d++)
+            {
+                _latKeys.Add(Key(lat + d * step));
+                _lonKeys.Add(Key(lon + d * step));
+            }
+        }
+
+        public bool Contains(double lat, double lon)
+            => _latKeys.Contains(Key(lat)) && _lonKeys.Contains(Key(lon));
+
+        // GetSpatialHashKey's rounding of one coordinate, as bits.
+        private static long Key(double coordinate)
+            => BitConverter.DoubleToInt64Bits(Math.Round(coordinate, SPATIAL_HASH_PRECISION));
     }
 
     private static IEnumerable<string> GetNearbyCellKeys(double lat, double lon)
