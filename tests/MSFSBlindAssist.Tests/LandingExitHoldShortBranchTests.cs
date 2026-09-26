@@ -164,4 +164,34 @@ public class LandingExitHoldShortBranchTests
         Assert.Contains(exits, e => e.TaxiwayName == "D");
         Assert.Contains(exits, e => e.TaxiwayName == "N4");
     }
+    [Fact]
+    public void A_crossing_found_by_the_fallback_pass_is_its_forward_half_whatever_the_row_order()
+    {
+        // The runway's only hold-short node, H, is 100 m in - short of the 500 ft floor - so the list is
+        // built by the Normal-node fallback. X crosses at 1000 m, forward-right at 60°; its BACKWARD row is
+        // listed first, and the fallback's own best-edge copy had no tie-break for two rows that fold to the
+        // same 60°: the first-listed won, and a forward exit was measured as a 120° turnaround.
+        var g = Build(
+            Seg(100, 0, 100, 36, "H", endType: "HSND"), Seg(100, 36, 100, 80, "H"),
+            Seg(1000, 0, 970, 51.96, "X"), Seg(1000, 0, 1030, -51.96, "X"));
+        var x = g.GetLandingExits(Runway09(3000.0)).Single(e => e.TaxiwayName == "X");
+        Assert.Equal("Normal", x.ExitType);
+        Assert.InRange(x.ExitAngleDegrees, 57.0, 63.0);
+        Assert.Equal("Right", x.ExitSide);
+    }
+
+    [Fact]
+    public void A_kinked_crossing_is_measured_on_its_forward_half()
+    {
+        // No hold-short nodes, so X's centreline node is an implicit exit: forward-right at 60.0°, back-left at
+        // 119.5°. Folded off the axis the backward row reads 60.5°, wider than 60.0°, so the best-edge rule
+        // seeds it - and the forward exit was measured as a turnaround.
+        var g = Build(
+            Seg(1000, 0, 1030, -51.96, "X"),
+            Seg(1000, 0, 1000 + 60 * Math.Cos(119.5 * Math.PI / 180), 60 * Math.Sin(119.5 * Math.PI / 180), "X"));
+        var x = g.GetLandingExits(Runway09(3000.0)).Single(e => e.TaxiwayName == "X");
+        Assert.Equal("Normal", x.ExitType);
+        Assert.InRange(x.ExitAngleDegrees, 58.0, 62.0);
+        Assert.Equal("Right", x.ExitSide);
+    }
 }

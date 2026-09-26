@@ -3794,55 +3794,9 @@ public partial class TaxiGraph
                 node.NodeId, rwy.StartLat, rwy.StartLon, cosH, sinH, lateralToleranceM);
             if (!hasOffAxisNamedEdge && apronNodeId < 0) continue;
 
-            // Best exit edge: connector-style names first, then the widest turn off the axis
-            // - the same ranking GetLandingExits uses, so a rescue candidate is announced to
-            // the pilot the way a planned one would be.
-            TaxiEdge? best = null;
-            foreach (var e in edges)
-            {
-                if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
-                if (string.IsNullOrEmpty(e.TaxiwayName)) continue;
-                if (best == null) { best = e; continue; }
-                bool bestHasDigit = HasLetterAndDigit(best.TaxiwayName);
-                bool curHasDigit  = HasLetterAndDigit(e.TaxiwayName);
-                if (curHasDigit && !bestHasDigit) { best = e; continue; }
-                if (curHasDigit != bestHasDigit) continue;
-                double bestRel = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
-                double bestOff = bestRel > 90.0 ? 180.0 - bestRel : bestRel;
-                double curRel  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
-                double curOff  = curRel > 90.0 ? 180.0 - curRel : curRel;
-                if (curOff > bestOff + 0.01) { best = e; continue; }
-                if (Math.Abs(curOff - bestOff) > 0.01) continue;
-
-                // Equal off-axis angle: the adjacency list holds BOTH the forward exit edge
-                // and the reverse edge of the same taxiway segment, and the two fold to the
-                // SAME `off`, so without a tie-break first-encountered wins on navdata row
-                // order alone. That is not cosmetic here - for an UNMEASURED branch the
-                // relBest > 90 guard below discards the junction outright, and for a measured
-                // one this edge is the seed that picks which side ExitBranch measures when the
-                // candidate is itself the junction (the wrong side can read as a turnaround and
-                // be dropped), so a real turnoff (a 60-degree crossing taxiway, say) is invisible
-                // to the rescue scan on roughly half of orderings and the pilot is told the
-                // runway has run out of exits. Same tie-break
-                // GetLandingExits carries: the correct edge moves the aircraft further
-                // off-runway on the SAME side as the junction (lateralM: + right, - left).
-                if (Math.Abs(lateralM) > 1.0)
-                {
-                    double bestLatComp = Math.Sin(
-                        NormalizeAngle(best.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
-                    double curLatComp = Math.Sin(
-                        NormalizeAngle(e.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
-                    if (Math.Sign(curLatComp) == Math.Sign(lateralM)
-                        && Math.Sign(bestLatComp) != Math.Sign(lateralM))
-                        best = e;
-                }
-                else if (curRel <= 90.0 && bestRel > 90.0)
-                {
-                    // Junction sits on the centreline - lateral direction cannot
-                    // discriminate. Fall back to hemisphere: forward beats backward.
-                    best = e;
-                }
-            }
+            // Best exit edge: the ONE rule every producer uses, so a rescue candidate is
+            // announced to the pilot the way a planned one would be.
+            TaxiEdge? best = BestExitEdge(edges, rwyHeadingTrue, lateralM);
             if (best == null) continue;
 
             double relBest = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
@@ -4165,94 +4119,7 @@ public partial class TaxiGraph
             int? bestToNodeId = null;
             if (Adjacency.TryGetValue(node.NodeId, out var edges))
             {
-                TaxiEdge? best = null;
-                foreach (var e in edges)
-                {
-                    // Skip runway-type edges (the edge that lies on the runway centerline).
-                    bool onRunway = string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase);
-                    if (onRunway) continue;
-                    if (string.IsNullOrEmpty(e.TaxiwayName)) continue;
-
-                    if (best == null)
-                    {
-                        best = e;
-                        continue;
-                    }
-
-                    // Prefer connector-style names (letter+digit) over bare main names.
-                    // Same ranking spirit as hold-short naming (Feature #7).
-                    bool bestHasDigit = HasLetterAndDigit(best.TaxiwayName);
-                    bool curHasDigit  = HasLetterAndDigit(e.TaxiwayName);
-                    if (curHasDigit && !bestHasDigit)
-                    {
-                        best = e;
-                    }
-                    else if (curHasDigit == bestHasDigit)
-                    {
-                        // Same name priority — prefer the edge that turns most off-axis
-                        // from the runway. Adjacency-list ordering is not guaranteed, so
-                        // without this tie-break a parallel-running named edge can be
-                        // chosen over the actual perpendicular exit edge, producing an
-                        // exit angle of ~0° for exits like EGCC AF/AG on 23R.
-                        double bestRel = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
-                        double bestOff = bestRel > 90.0 ? 180.0 - bestRel : bestRel;
-                        double curRel  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
-                        double curOff  = curRel > 90.0 ? 180.0 - curRel : curRel;
-                        if (curOff > bestOff + 0.01)
-                        {
-                            best = e;
-                        }
-                        else if (Math.Abs(curOff - bestOff) <= 0.01)
-                        {
-                            // Equal off-axis angle (within float tolerance): the adjacency
-                            // list contains both the forward exit edge and the reverse edge
-                            // of the same taxiway segment. Both fold to the same `off`, so
-                            // first-encountered was winning non-deterministically.
-                            // Wrong edge → wrong ExitBearingTrue → FindExitExtensionNode
-                            // routes backward → permanent max-pan tone for any exit angle.
-                            //
-                            // Primary tiebreak — lateral direction.
-                            //   Use the junction node's signed lateral offset from the
-                            //   runway centreline (lateralM: + = right, - = left, already
-                            //   computed above). The correct exit edge moves the aircraft
-                            //   further off-runway on the SAME side as the junction; the
-                            //   reverse edge heads toward the opposite apron or back across
-                            //   the runway. lateralComponent = sin(NormalizeAngle(bearing −
-                            //   rwyHeading)) gives the signed lateral movement of an edge.
-                            //   This criterion is geometrically correct for ALL exit angles:
-                            //     7°  exit: correct edge lat≈+0.12, reverse lat≈-0.12
-                            //     90° exit: correct edge lat=±1.00, reverse lat=∓1.00
-                            //     100° exit: correct edge lat≈±0.98, reverse lat≈∓0.98
-                            //   (hemisphere alone would mis-pick the reverse edge for
-                            //   obtuse exits 90°–180° where the correct edge is in the
-                            //   "backward" hemisphere by the rel≤90 criterion.)
-                            //
-                            // Fallback tiebreak — hemisphere.
-                            //   Applied only when the junction is within 1 m of the
-                            //   centreline and lateral direction can't discriminate.
-                            //   Forward-hemisphere edges (rel ≤ 90°) beat backward edges;
-                            //   correct for acute exits, ambiguous for obtuse exits on the
-                            //   centreline (an inherently rare degenerate case).
-                            if (Math.Abs(lateralM) > 1.0)
-                            {
-                                double bestLatComp = Math.Sin(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
-                                double curLatComp  = Math.Sin(NormalizeAngle(e.BearingDegrees   - rwyHeadingTrue) * Math.PI / 180.0);
-                                bool curMatchesSide  = Math.Sign(curLatComp)  == Math.Sign(lateralM);
-                                bool bestMatchesSide = Math.Sign(bestLatComp) == Math.Sign(lateralM);
-                                if (curMatchesSide && !bestMatchesSide)
-                                    best = e;
-                            }
-                            else
-                            {
-                                // Junction near centreline: fall back to hemisphere.
-                                bool bestForward = bestRel <= 90.0;
-                                bool curForward  = curRel  <= 90.0;
-                                if (curForward && !bestForward)
-                                    best = e;
-                            }
-                        }
-                    }
-                }
+                TaxiEdge? best = BestExitEdge(edges, rwyHeadingTrue, lateralM);
 
                 if (best != null)
                 {
@@ -4563,28 +4430,11 @@ public partial class TaxiGraph
 
                     string txName2 = "";
                     double angle2 = 90.0;
-                    TaxiEdge? best2 = null;
+                    // The ONE best-edge rule. This pass once kept its own copy with no tie-break,
+                    // so a straight crossing's two rows (folding to the same angle) went to whichever
+                    // navdata listed first, and the backward one measured as a turnaround.
+                    TaxiEdge? best2 = BestExitEdge(ee, rwyHeadingTrue, lM2);
                     double best2Brg = 0.0; // 0 = not found; due-north stored as 360
-                    foreach (var e in ee)
-                    {
-                        if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)
-                            || string.IsNullOrEmpty(e.TaxiwayName)) continue;
-                        if (best2 == null) { best2 = e; continue; }
-                        bool b2hd = HasLetterAndDigit(best2.TaxiwayName);
-                        bool ehd  = HasLetterAndDigit(e.TaxiwayName);
-                        if (ehd && !b2hd)
-                        {
-                            best2 = e;
-                        }
-                        else if (ehd == b2hd)
-                        {
-                            double b2r = Math.Abs(NormalizeAngle(best2.BearingDegrees - rwyHeadingTrue));
-                            double b2o = b2r > 90.0 ? 180.0 - b2r : b2r;
-                            double er  = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
-                            double eo  = er > 90.0 ? 180.0 - er : er;
-                            if (eo > b2o) best2 = e;
-                        }
-                    }
                     if (best2 != null)
                     {
                         txName2 = best2.TaxiwayName;

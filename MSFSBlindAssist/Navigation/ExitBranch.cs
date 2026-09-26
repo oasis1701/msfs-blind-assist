@@ -143,12 +143,54 @@ public static class ExitBranch
         bool exitOnPavement = Math.Abs(Lateral(graph, axis, candidateNodeId)) <= axis.HalfWidthMetres;
         var branch = MeasureFrom(graph, axis, inward, junction == candidateNodeId ? seedNeighborId : null,
             nameFilter, exitOnPavement);
+        if (junction == candidateNodeId && seedNeighborId.HasValue && (!branch.IsMeasured || branch.IsTurnaround))
+            return ForwardHalf(graph, axis, inward, seedNeighborId.Value, nameFilter, exitOnPavement) ?? branch;
         if (branch.IsMeasured || junction == candidateNodeId) return branch;
         // Nothing leaves the runway from the candidate itself — it sits on a lead-in line beside the
         // junction. Measure the junction's own branch instead: on the candidate's own side of the runway
         // whenever the candidate has an arm of its own there (OwnSideToKeep).
         return MeasureFrom(graph, axis, new List<int> { junction }, null, nameFilter, exitOnPavement,
             OwnSideToKeep(graph, axis, candidateNodeId, nameFilter));
+    }
+
+    /// <summary>
+    /// A crossing whose seeded half does not measure forward (a turnaround, or never clearing) is measured on
+    /// its other half instead - a first hop from the candidate on an edge carrying the exit's own name, never
+    /// an unnamed one (which could run along the runway to another exit's arm), whose branch clears on the
+    /// OTHER side of the runway from the way the seed edge heads - returning the forward one that leaves the
+    /// pavement least sharply (ties: the lower neighbour id), or null. The producers seed the edge their
+    /// best-edge rule picks, and that rule reads each edge folded off the runway axis, so a crossing's backward
+    /// half wins whenever it is the more nearly perpendicular: a kink of half a degree (forward 60.0°, back
+    /// 119.5°) was enough to measure a usable exit as a 130° turnaround. Only a crossing: two arms of one name
+    /// on the SAME side are a Y, whose forward arm is listed where it leaves the centreline (its own node, or
+    /// FindForwardSibling's divergence node) - rescued here at the junction, KABQ 08 P was listed 353 ft
+    /// before its turn-off, at a point where its lead line still runs 3.7° off the runway.
+    /// </summary>
+    private static LandingExitBranch? ForwardHalf(TaxiGraph graph, RunwayAxis axis, List<int> inward, int seed,
+        string? nameFilter, bool exitOnPavement)
+    {
+        if (string.IsNullOrEmpty(nameFilter)) return null;
+        var at = graph.Nodes[inward[^1]];
+        var seedNode = graph.Nodes[seed];
+        double seedLateral = Math.Sin(axis.RelativeHeadingDeg(at.Latitude, at.Longitude, seedNode.Latitude, seedNode.Longitude) * Math.PI / 180.0);
+        if (Math.Abs(seedLateral) < 0.05) return null;   // along the runway: no side to cross from
+        int seedSide = Math.Sign(seedLateral);
+        LandingExitBranch? best = null;
+        int bestHop = int.MaxValue;
+        foreach (var e in Walkable(graph, inward[^1]))
+        {
+            if (e.ToNodeId == seed || !string.Equals(e.TaxiwayName, nameFilter, StringComparison.OrdinalIgnoreCase)) continue;
+            var half = MeasureFrom(graph, axis, inward, e.ToNodeId, nameFilter, exitOnPavement);
+            if (!half.IsMeasured || half.IsTurnaround) continue;
+            if (Math.Sign(Lateral(graph, axis, half.ClearNodeId)) != -seedSide) continue;
+            if (best == null || half.TurnToLeaveDeg < best.TurnToLeaveDeg
+                || (half.TurnToLeaveDeg == best.TurnToLeaveDeg && e.ToNodeId < bestHop))
+            {
+                best = half;
+                bestHop = e.ToNodeId;
+            }
+        }
+        return best;
     }
 
     /// <summary>

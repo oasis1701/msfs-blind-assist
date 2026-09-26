@@ -198,4 +198,48 @@ public partial class TaxiGraph
         if (angleDeg <= NORMAL_MAX_DEG) return "Normal";
         return "End";
     }
+    // The ONE best-edge rule every producer uses (GetLandingExits' main and fallback passes,
+    // FindDownfieldExits). Of a node's named, non-runway edges: connector-style names (letter and digit) over
+    // bare main names - the same ranking spirit as hold-short naming - then the edge turning most off the
+    // runway axis, folded to 0-90° so a reverse row counts as parallel (without it a parallel-running named
+    // edge was chosen over the perpendicular exit edge: EGCC AF/AG on 23R read about 0°). Two rows folding to
+    // the same angle (within 0.01°) are one taxiway's forward and reverse edges: the one taking the aircraft
+    // further off the runway on the node's own side wins (lateralM: + right, - left), or, with the node within
+    // 1 m of the centreline, the forward one. The chosen edge's far node is the producer's seed, the half a
+    // crossing is measured on; ExitBranch.Analyze tries the other half when that half is not forward.
+    private static TaxiEdge? BestExitEdge(IEnumerable<TaxiEdge> edges, double rwyHeadingTrue, double lateralM)
+    {
+        TaxiEdge? best = null;
+        foreach (var e in edges)
+        {
+            if (string.Equals(e.PathType, "R", StringComparison.OrdinalIgnoreCase)) continue;
+            if (string.IsNullOrEmpty(e.TaxiwayName)) continue;
+            if (best == null) { best = e; continue; }
+            bool bestHasDigit = HasLetterAndDigit(best.TaxiwayName);
+            bool curHasDigit = HasLetterAndDigit(e.TaxiwayName);
+            if (curHasDigit && !bestHasDigit) { best = e; continue; }
+            if (curHasDigit != bestHasDigit) continue;
+            double bestRel = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
+            double bestOff = bestRel > 90.0 ? 180.0 - bestRel : bestRel;
+            double curRel = Math.Abs(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue));
+            double curOff = curRel > 90.0 ? 180.0 - curRel : curRel;
+            if (curOff > bestOff + 0.01) { best = e; continue; }
+            if (Math.Abs(curOff - bestOff) > 0.01) continue;
+            // For two rows of a line drawn ALONG the runway the lateral sign below is noise (sin of ±0.1°), but
+            // do not hand such ties to the hemisphere rule: a hold-short node on such a line decides whether the
+            // runway's list is built in hold-short mode at all (hsOnlyEnds reads this producer reading), and
+            // reading it forward cut KFCM 10L from seven exits to two (whole-database sweep, 2026-09-26).
+            if (Math.Abs(lateralM) > 1.0)
+            {
+                double bestLat = Math.Sin(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
+                double curLat = Math.Sin(NormalizeAngle(e.BearingDegrees - rwyHeadingTrue) * Math.PI / 180.0);
+                if (Math.Sign(curLat) == Math.Sign(lateralM) && Math.Sign(bestLat) != Math.Sign(lateralM)) best = e;
+            }
+            else if (curRel <= 90.0 && bestRel > 90.0)
+            {
+                best = e;
+            }
+        }
+        return best;
+    }
 }

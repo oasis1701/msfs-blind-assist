@@ -577,4 +577,17 @@ public class ExitBranchTests
         Assert.True(backward.IsTurnaround);
         Assert.Null(ExitBranch.FindForwardSibling(g, Axis, backward, "Z9"));
     }
+    [Fact]
+    public void A_crossing_seeded_on_its_backward_half_is_measured_on_its_forward_half()
+    {
+        // Taxiway X crosses the runway at J(1000,0): forward-RIGHT at 60° and, continuing straight, back-LEFT
+        // at 120°. A producer whose best edge was the backward row seeded that half, which leaves the pavement
+        // 120° back: a turnaround, and the forward exit it is was lost. North = LEFT in this frame.
+        var g = Build(Seg(1000, 0, 1030, -51.96, "X"), Seg(1000, 0, 970, 51.96, "X"));
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0), NodeAt(g, 970, 51.96), "X");
+        Assert.True(b.IsMeasured);
+        Assert.False(b.IsTurnaround);
+        Assert.InRange(b.TurnToClearDeg, 59.0, 61.0);
+        Assert.True(g.Nodes[b.ClearNodeId].Latitude < 0);   // the right-hand, forward half
+    }
 }
