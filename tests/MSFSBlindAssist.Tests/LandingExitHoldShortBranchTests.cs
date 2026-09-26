@@ -79,15 +79,15 @@ public class LandingExitHoldShortBranchTests
     }
 
     [Fact]
-    public void A_hold_short_node_on_a_Y_stem_keeps_the_runway_in_hold_short_mode()
+    public void A_lone_backward_hold_short_arm_with_a_forward_sibling_leaves_the_geometric_exits_listed()
     {
-        // The only hold-short node inside the corridor sits 38 m out on the stem of Y-shaped exit
-        // "Y". Its backward arm (named, junction downfield at 2,050 m, a 158-degree turn) is nearer
-        // the centreline, so the unseeded inward walk takes it; the forward arm (unnamed, junction at
-        // 1,930 m) is its sibling. D is an unmarked 90-degree taxiway at 1,000 m.
-        // The observable difference: in hold-short mode the unmarked taxiway D is not listed; had the
-        // gate judged the stem by its backward arm alone, the runway would have fallen back to
-        // geometry mode and listed D as well.
+        // The CYVR 26L shape (worldwide sweep, 2026-09-26: its 12 exits became 1; EDDK 24 8 -> 3,
+        // KDCA 15 6 -> 1). The only hold-short node inside the corridor sits 38 m out on the stem of
+        // Y-shaped exit "Y". Its backward arm (named, junction downfield at 2,050 m, a 158-degree turn)
+        // is nearer the centreline, so the unseeded inward walk takes it; the forward arm (unnamed,
+        // junction at 1,930 m) is its sibling. D is an unmarked 90-degree taxiway at 1,000 m.
+        // The gate judges the node by its OWN branch - a turnaround - so the runway does not switch to
+        // hold-short mode, and the unmarked taxiway D stays listed.
         var g = Build(
             Seg(2000, 38, 2000, 90, "Y", startType: "HSND"),
             Seg(2050, 0, 2030, 8, "Y"), Seg(2030, 8, 2000, 38, "Y"),
@@ -96,6 +96,31 @@ public class LandingExitHoldShortBranchTests
 
         var exits = g.GetLandingExits(Runway09(3000.0));
 
-        Assert.Equal(new[] { "Y" }, exits.Select(e => e.TaxiwayName).ToArray());
+        Assert.Contains(exits, e => e.TaxiwayName == "D");
+        // Y is still offered, by its forward arm's junction.
+        var y = Assert.Single(exits, e => e.TaxiwayName == "Y");
+        Assert.InRange(y.DistanceFromThresholdFeet, 1930.0 / 0.3048 - 30.0, 1930.0 / 0.3048 + 30.0);
+    }
+
+    [Fact]
+    public void A_lone_hold_short_exit_typed_End_before_refinement_still_brings_in_the_geometric_exits()
+    {
+        // The EIDW 28R / KPWK 34 shape (worldwide sweep, 2026-09-26: 5 exits became 1, 7 became 1).
+        // The runway's only hold-short node H (1050,29) sits on a shallow forward RET "N4" whose
+        // junction is at (900,0). H's inward edge (7.1 degrees off the axis, pointing back) is more
+        // off-axis than its outward one (4.6 degrees), so the producer reads H as a backward peel:
+        // 130 degrees, End. Measured by its branch H is Normal (a 56-degree turn off the runway at the
+        // junction). Whether the geometric second pass runs is decided on the PRODUCER's type, as it
+        // always was - so the unmarked taxiway D at 2,000 m is still listed.
+        var g = Build(
+            Seg(900, 0, 910, 15, "N4"), Seg(910, 15, 960, 20, "N4"), Seg(960, 20, 1010, 24, "N4"),
+            Seg(1010, 24, 1050, 29, "N4", endType: "HSND"), Seg(1050, 29, 1150, 37, "N4"),
+            Seg(1150, 37, 1250, 70, "N4"),
+            Seg(2000, 0, 2000, 90, "D"));
+
+        var exits = g.GetLandingExits(Runway09(3000.0));
+
+        Assert.Contains(exits, e => e.TaxiwayName == "D");
+        Assert.Contains(exits, e => e.TaxiwayName == "N4");
     }
 }

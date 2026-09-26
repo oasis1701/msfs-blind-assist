@@ -4041,27 +4041,19 @@ public partial class TaxiGraph
                 if (!string.IsNullOrEmpty(he.TaxiwayName)) { hasNamedEdge = true; break; }
             if (!hasNamedEdge) continue;
 
-            // Branch-measured (ExitBranch): a hold-short node counts only when its branch leaves the
-            // runway FORWARD for this landing direction, or - on the stem of a Y exit, where the
-            // unseeded inward walk can take the backward arm - when that arm's forward sibling exists
-            // under one of the node's taxiway names, the same substitution the main loop makes
-            // (RefineExitByBranch). An unmeasured branch keeps the old per-edge test, so thin navdata
-            // behaves exactly as before.
+            // Branch-measured (ExitBranch): a hold-short node counts only when its OWN branch leaves
+            // the runway FORWARD for this landing direction (is not a turnaround). An unmeasured
+            // branch keeps the old per-edge test, so thin navdata behaves exactly as before.
+            // Deliberately NOT honoured here: a backward branch's forward sibling (the Y-exit
+            // substitution RefineExitByBranch makes). Counting it switched runways whose only
+            // hold-short marker sat on a backward arm into hold-short mode and hid every unmarked
+            // exit (worldwide sweep, 2026-09-26: CYVR 26L 12 exits -> 1, EDDK 24 8 -> 3, KDCA 15
+            // 6 -> 1). The sibling is still offered - the geometric pass finds it.
             var hsBranch = ExitBranch.Analyze(this, axis, n.NodeId);
             bool hasForwardExit;
             if (hsBranch.IsMeasured)
             {
                 hasForwardExit = !hsBranch.IsTurnaround;
-                if (!hasForwardExit)
-                {
-                    var triedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var he in hsEdges)
-                    {
-                        if (string.IsNullOrEmpty(he.TaxiwayName) || !triedNames.Add(he.TaxiwayName)) continue;
-                        if (ExitBranch.FindForwardSibling(this, axis, hsBranch, he.TaxiwayName) != null)
-                        { hasForwardExit = true; break; }
-                    }
-                }
             }
             else
             {
@@ -4078,6 +4070,14 @@ public partial class TaxiGraph
             }
             if (hasForwardExit) { hasHoldShortOnRunway = true; break; }
         }
+
+        // Each main-pass exit's type as the PRODUCER classified it, before RefineExitByBranch - the
+        // type the hold-short-only-ends test below (hsOnlyEnds) reads. Refinement must never change
+        // whether that test sends the runway to the geometric second pass: a lone hold-short exit the
+        // producer read as End and the branch measurement retypes Normal used to switch the pass
+        // off and hide every unmarked exit (worldwide sweep, 2026-09-26: KPWK 34 7 exits -> 1,
+        // EIDW 28R 5 -> 1). Keyed by reference: the refined exit is sometimes a new instance.
+        var producerExitTypes = new Dictionary<LandingExit, string>(ReferenceEqualityComparer.Instance);
 
         foreach (var node in Nodes.Values)
         {
@@ -4421,9 +4421,14 @@ public partial class TaxiGraph
                     ? (NormalizeAngle((exitBearingTrue == 360.0 ? 0.0 : exitBearingTrue) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
                     : ""
             };
+            string producerExitType = candidateExit.ExitType;
             var refinedExit = RefineExitByBranch(candidateExit, bestToNodeId, keepNode: isHoldShortNode,
                 dropTurnarounds: false, rwy, axis, double.NegativeInfinity, out _);
-            if (refinedExit != null) exits.Add(refinedExit);
+            if (refinedExit != null)
+            {
+                exits.Add(refinedExit);
+                producerExitTypes[refinedExit] = producerExitType;
+            }
         }
 
         // Deduplicate exits that share the same taxiway name and are within 50 ft of
@@ -4500,8 +4505,11 @@ public partial class TaxiGraph
         // the only HS node in range, but its exit angle is backward/End for 10L landings.
         // In that case we run a second pass collecting Normal-node fallback exits, merge them
         // with the HS End exits, and return the combined deduplicated list.
+        // Judged on each exit's PRODUCER type (producerExitTypes, recorded above), never its refined
+        // one: the branch refinement must not change whether the second pass runs.
         bool hsOnlyEnds = hasHoldShortOnRunway && deduped.Count > 0
-            && deduped.TrueForAll(e => e.ExitType == "End");
+            && deduped.TrueForAll(e =>
+                (producerExitTypes.TryGetValue(e, out var producerType) ? producerType : e.ExitType) == "End");
 
         // HS nodes exist in corridor but every one failed the distance filter
         // (too close to threshold or beyond END_BUFFER). Treat the same as
