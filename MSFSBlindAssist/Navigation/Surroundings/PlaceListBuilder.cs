@@ -1,0 +1,125 @@
+using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Services.TaxiAugment;
+
+namespace MSFSBlindAssist.Navigation.Surroundings;
+
+public readonly record struct NearestNode(int NodeId, double Lat, double Lon, double DistanceMetres);
+public sealed record StandCandidate(ParkingSpot Spot, int NodeId);
+public sealed record PlaceEntry(string Label, AirportFeature Feature, ParkingSpot? Spot, int NodeId, double Lat, double Lon, double? HeadingDeg);
+
+/// <summary>
+/// A feature is never a route target itself (features are readout-only and never enter TaxiGraph).
+/// It RESOLVES onto navdata pavement: a stand of the SELECTABLE list within 150 m — chosen by
+/// POSITION, never by name — else a stand only navdata lists, else a taxi node within 100 m, else it
+/// is not a place. A stand entry targets the stand's own position and heading exactly as the
+/// Gate / Parking destination does; a node entry has NO heading, so arrival simply stops (a heading
+/// toward the building steered the lineup tone off the taxiway). A cargo ramp or concourse only the
+/// navdata describes is not a place at all (<see cref="DuplicatesGateList"/>). Pure.
+/// </summary>
+public static class PlaceListBuilder
+{
+    public const double MaxStandMetres = 150.0, MaxNodeMetres = 100.0, MemberMatchMetres = 15.0;
+
+    public static bool IsRoutable(FeatureKind kind) => kind is FeatureKind.Fbo or FeatureKind.Hangar or FeatureKind.Fuel
+        or FeatureKind.Terminal or FeatureKind.Concourse or FeatureKind.Cargo or FeatureKind.FireStation or FeatureKind.Office;
+
+    /// <summary>
+    /// A cargo ramp or concourse that only the navdata describes is a group of stands the Gate /
+    /// Parking list already offers, under a vaguer name — a "Cargo ramp" per cluster of cargo stands,
+    /// a "Concourse B" inferred from gate letters — and routing to one went to the group's central
+    /// stand, which is not how a stand is assigned (KMEM listed 40 such "Cargo ramp" places, live
+    /// 2026-09-26). It stays a Place only when OSM, the scenery or GSX gives it a real name, which
+    /// names somewhere the gate list cannot ("FedEx hub"). Fuel is deliberately not affected: with GSX
+    /// supplying the gate list, a fuel place is the only route to a fuel stand.
+    /// </summary>
+    public static bool DuplicatesGateList(AirportFeature f)
+        => f.Kind is FeatureKind.Cargo or FeatureKind.Concourse
+           && (f.Source == FeatureSource.Navdata || !f.HasProperName);
+
+    private static bool IsPreferredStand(FeatureKind kind, int type) => kind switch
+    {
+        FeatureKind.Fbo or FeatureKind.Hangar or FeatureKind.Office or FeatureKind.FireStation => ParkingTypes.IsGaRamp(type) || ParkingTypes.IsDock(type),
+        FeatureKind.Fuel => ParkingTypes.IsFuel(type),
+        FeatureKind.Cargo => ParkingTypes.IsCargo(type),
+        FeatureKind.Terminal or FeatureKind.Concourse => ParkingTypes.IsGate(type),
+        _ => true,
+    };
+
+    /// <summary>The nearest node a Place may END at when it has no stand: never a hold-short node
+    /// and never on runway pavement — the "nearest taxiway point" must not be on a runway. A hold
+    /// line is judged by navdata's identity as well as the node type, which the parking pass
+    /// overwrites to Parking on a node near a stand.</summary>
+    public static NearestNode? NearestRoutableNode(TaxiGraph graph, double lat, double lon)
+    {
+        var n = graph.FindNearestNode(lat, lon);
+        if (n == null) return null;
+        if (RunwayPavement.IsOnPavement(n.Latitude, n.Longitude, graph.RunwayCenterlines)) return null;
+        if (graph.IsNavdataHoldShort(n.NodeId) || n.Type is TaxiNodeType.HoldShort or TaxiNodeType.ILSHoldShort) return null;
+        return new NearestNode(n.NodeId, n.Latitude, n.Longitude,
+            TaxiGraph.CalculateDistanceMeters(n.Latitude, n.Longitude, lat, lon));
+    }
+
+    public static List<PlaceEntry> Build(AirportFeatureCatalog catalog, IReadOnlyList<StandCandidate> selectable,
+        IReadOnlyList<StandCandidate> navdataOnly, Func<double, double, NearestNode?> nearestRoutableNode, Func<ParkingSpot, bool> standAllowed)
+    {
+        var entries = new List<PlaceEntry>();
+        var used = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        foreach (var f in catalog.Features.Where(f => IsRoutable(f.Kind) && !DuplicatesGateList(f)).OrderBy(f => f.SpokenName, StringComparer.OrdinalIgnoreCase))
+        {
+            var stand = BestStand(f, selectable, standAllowed) ?? BestStand(f, navdataOnly, standAllowed);
+            PlaceEntry? entry = null;
+            if (stand != null)
+                entry = new PlaceEntry("", f, stand.Spot, stand.NodeId, stand.Spot.Latitude, stand.Spot.Longitude, stand.Spot.Heading);
+            else if (nearestRoutableNode(f.Lat, f.Lon) is NearestNode n && n.DistanceMetres <= MaxNodeMetres)
+                entry = new PlaceEntry("", f, null, n.NodeId, n.Lat, n.Lon, null);
+            if (entry == null) continue;
+
+            string label = Label(f, entry.Spot);
+            used[label] = used.TryGetValue(label, out int seen) ? seen + 1 : 1;
+            entries.Add(entry with { Label = used[label] == 1 ? label : $"{label} ({used[label]})" });
+        }
+        return entries;
+    }
+
+    private static StandCandidate? BestStand(AirportFeature f, IReadOnlyList<StandCandidate> stands, Func<ParkingSpot, bool> allowed)
+    {
+        StandCandidate? best = null; int bestTier = -1; double bestScore = double.MaxValue;
+        foreach (var c in stands)
+        {
+            var s = c.Spot;
+            if (c.NodeId < 0 || ParkingTypes.IsVehicle(s.Type) || !allowed(s)) continue;
+            double d = SurroundingsGeometry.Nearest(s.Latitude, s.Longitude, f).Metres;
+            if (d > MaxStandMetres) continue;
+            // A feature made of stands resolves to one of ITS stands; among those, the most central.
+            bool member = f.Members != null && d <= MemberMatchMetres;
+            int tier = (member ? 2 : 0) + (IsPreferredStand(f.Kind, s.Type) ? 1 : 0);
+            double score = member ? TaxiGeo.HaversineMeters(s.Latitude, s.Longitude, f.Lat, f.Lon) : d;
+            if (tier > bestTier || (tier == bestTier && score < bestScore)) { best = c; bestTier = tier; bestScore = score; }
+        }
+        return best;
+    }
+
+    /// <summary>"Narrows Aviation, FBO, Parking 12". The kind word is left out when the name already
+    /// says it ("Fuel, Parking"); the stand is named as it is everywhere else in the app; a spaced
+    /// dash becomes a comma because RouteReachabilityMessages.SpokenDestinationName cuts a label at
+    /// its first " - ".
+    ///
+    /// <para>With no stand in reach the place ends at "nearest taxiway point", which is what
+    /// <c>nearestRoutableNode</c> actually returns — any routable node within
+    /// <see cref="MaxNodeMetres"/>, wherever along a taxiway it happens to be. "End of taxiway"
+    /// said something else entirely, and it is the wording the Progressive Taxi terminator uses for
+    /// a place that really IS one.</para></summary>
+    internal static string Label(AirportFeature f, ParkingSpot? spot)
+    {
+        string name = f.SpokenName.Replace(" - ", ", ");
+        string kind = FeatureKindWords.Generic(f.Kind);
+        string kindWord = kind == "FBO" ? kind : kind.ToLowerInvariant();
+        string where = spot?.DescribeIdentity() ?? "nearest taxiway point";
+        // Office is the catch-all kind (office, admin, cafe, restaurant): its name — a proper one, or
+        // the model's own word — always says what the place is, and "airport office" only mislabelled
+        // it (live LOWI: "Burkia Restaurant, airport office").
+        bool nameSaysIt = name.Contains(kindWord, StringComparison.OrdinalIgnoreCase)
+                          || (f.Kind == FeatureKind.Office && f.HasName);
+        return nameSaysIt ? $"{name}, {where}" : $"{name}, {kindWord}, {where}";
+    }
+}

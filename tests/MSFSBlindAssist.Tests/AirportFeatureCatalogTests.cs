@@ -1,0 +1,718 @@
+using System.Text.Json;
+using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Navigation.Surroundings;
+using MSFSBlindAssist.Services.Surroundings;
+using MSFSBlindAssist.Services.TaxiAugment;
+
+namespace MSFSBlindAssist.Tests;
+
+public class AirportFeatureCatalogTests
+{
+    private static AirportFeature F(FeatureKind k, string name, double lat, double lon, FeatureSource src, string? detail = null, IReadOnlyList<LatLon>? fp = null)
+        => new() { Kind = k, Name = name, Lat = lat, Lon = lon, Source = src, Detail = detail, Footprint = fp };
+
+    private static AirportFeature N(FeatureKind k, string name, double lat, double lon, bool generic = false, FeatureSource src = FeatureSource.Navdata, params (double, double)[] members)
+        => new() { Kind = k, Name = name, NameIsGeneric = generic, Lat = lat, Lon = lon, Source = src,
+                   Members = members.Length == 0 ? null : members.Select(m => new LatLon(m.Item1, m.Item2)).ToList() };
+
+    // ── KTIW, the PR's reference airport: real navdata stands + the real OSM reply ───────────
+    //
+    // The 11 parking rows of KTIW, read ONCE from %APPDATA%\MSFSBlindAssist\databases\fs2024.sqlite
+    // and embedded here as the navdata facts they are — this test never opens a database. Types are
+    // LittleNavMapProvider.MapParkingType's: 3 = RAMP_GA_SMALL, 4 = RAMP_GA_MEDIUM, both GA ramp;
+    // navdata's parking name "P" becomes "Parking". The odd numbers are one row of 6 stands to the
+    // north, the even ones a row of 5 about 600 m south, and NavdataFeatureSource clusters each into
+    // its own generic "GA ramp" (RampLinkMetres 80, at least 3 stands).
+    private static readonly (int Number, int Type, double Lat, double Lon)[] KtiwStands =
+    {
+        (1,  3, 47.27431869506836,   -122.57439422607422), (2,  4, 47.269439697265625,  -122.57501983642578),
+        (3,  3, 47.274192810058594,  -122.57440948486328), (4,  4, 47.269107818603516,  -122.57505798339844),
+        (5,  3, 47.27407455444336,   -122.5744400024414),  (6,  4, 47.26865768432617,   -122.57512664794922),
+        (7,  3, 47.27395248413086,   -122.57445526123047), (8,  4, 47.26814651489258,   -122.57530212402344),
+        (9,  3, 47.27383041381836,   -122.57447814941406), (10, 4, 47.267799377441406,  -122.57539367675781),
+        (11, 3, 47.273712158203125,  -122.57450866699219),
+    };
+
+    /// <summary>Both tiers a KTIW catalog is built from: the navdata GA ramps and the real Overpass
+    /// reply this PR ships as a fixture (4 unnamed apron polygons, 20 hangars, a tower).</summary>
+    private static List<AirportFeature> KtiwFeatures()
+    {
+        var stands = KtiwStands
+            .Select(s => new ParkingSpot { Name = "Parking", Number = s.Number, Type = s.Type, Latitude = s.Lat, Longitude = s.Lon })
+            .ToList();
+        var features = new List<AirportFeature>(NavdataFeatureSource.Read(stands, null));
+        using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Fixtures", "osm-features-area-ktiw.json")));
+        features.AddRange(doc.RootElement.GetProperty("elements").EnumerateArray()
+            .Select(OsmFeatureClassifier.Classify).Where(f => f != null).Select(f => f!));
+        return features;
+    }
+
+    [Fact]
+    public void At_KTIW_every_stand_is_standing_on_the_ramp_that_owns_it()
+    {
+        // The defect this pins: the 6-stand ramp adopted the 66,471 m² main apron (which contains
+        // the OTHER row's stands too) and the 5-stand ramp adopted a 2,335 m² neighbour containing
+        // none of its own, so Nearest measured to a polygon instead of to the stands. Parked on the
+        // southern row, a pilot heard the ramp they were standing on named 12-85 m away.
+        var cat = AirportFeatureCatalog.Build("v", KtiwFeatures());
+        foreach (var s in KtiwStands)
+        {
+            var owner = Assert.Single(cat.Features, f => f.Members != null
+                && f.Members.Any(m => TaxiGeo.HaversineMeters(m.Lat, m.Lon, s.Lat, s.Lon) <= 1.0));
+            Assert.InRange(SurroundingsGeometry.Nearest(s.Lat, s.Lon, owner).Metres, 0.0, 1.0);
+        }
+    }
+
+    [Fact]
+    public void A_feature_never_carries_a_footprint_its_own_members_are_outside_of()
+    {
+        foreach (var f in AirportFeatureCatalog.Build("v", KtiwFeatures()).Features)
+            if (f.Footprint != null && f.Members is { Count: > 0 })
+                Assert.Contains(f.Members, m => SurroundingsGeometry.Contains(f.Footprint, m.Lat, m.Lon));
+    }
+
+    /// <summary>How many times `needle` appears in `haystack`.</summary>
+    private static int Count(string haystack, string needle)
+    {
+        int n = 0;
+        for (int i = haystack.IndexOf(needle, StringComparison.Ordinal); i >= 0;
+             i = haystack.IndexOf(needle, i + needle.Length, StringComparison.Ordinal)) n++;
+        return n;
+    }
+
+    [Fact]
+    public void At_KTIW_the_ramp_you_are_parked_on_IS_the_zone_and_nothing_is_named_at_zero_range()
+    {
+        // The whole point of the pass, end to end: the ramp the aircraft is standing on is where it
+        // IS, not a nearby thing — and "GA ramp, to the left, 0 metres" gave a blind pilot a side
+        // computed from a degenerate bearing, under a generic name they had just heard for the
+        // anonymous pavement. The zone's own name is never said twice, and no distance is zero.
+        //
+        // KTIW's OTHER ramp, 600 m away, is also called "GA ramp", so it is the one the name half
+        // of the rule keeps out. Its four apron POLYGONS carry no name at all and are kept out by
+        // the other half: beside the ramp the aircraft is parked on, anonymous apron pavement IS
+        // that ramp's pavement, and it must not spend a slot a building should have. Neither half
+        // is a test of the KIND — a "North ramp" or a de-ice pad beside a ramp still speaks.
+        var cat = AirportFeatureCatalog.Build("v", KtiwFeatures());
+        foreach (var s in KtiwStands)
+        {
+            string said = SurroundingsReport.Compose($"Parking {s.Number} at KTIW.", "KTIW", cat, s.Lat, s.Lon, 0.0,
+                                                     m => $"{Math.Round(m)} metres");
+            Assert.StartsWith($"Parking {s.Number} at KTIW. On the GA ramp.", said);
+            Assert.DoesNotContain(", 0 metres", said);   // leading comma: "520 metres" ends in "0 metres" too
+            Assert.Equal(1, Count(said, "GA ramp"));     // the zone line, and nowhere else
+            // No anonymous pavement beside it. Matching the bare word is safe HERE because nothing
+            // at KTIW is NAMED "… Apron"; do not copy this assertion to an airport that has one —
+            // "North Apron" is a place and the rule speaks it.
+            Assert.DoesNotContain("Apron", said);
+        }
+    }
+
+    [Fact]
+    public void At_KTIW_out_on_the_pavement_between_the_rows_the_zone_is_the_apron_itself()
+    {
+        // Inside the 66,471 m² apron and 230 m from the nearest stand — well beyond
+        // ZoneMemberMetres, so there is no ramp to be "at" and the polygon answers, as it always
+        // did. The member rung must not reach across an apron to the nearest row.
+        var cat = AirportFeatureCatalog.Build("v", KtiwFeatures());
+        var zone = SurroundingsReport.Zone(cat, 47.2715, -122.5748);
+        Assert.NotNull(zone);
+        Assert.Equal(FeatureKind.Apron, zone!.Kind);
+        Assert.False(zone.HasName);
+        Assert.Contains("On the Apron.", SurroundingsReport.Compose("X.", "KTIW", cat, 47.2715, -122.5748, 0.0, m => $"{Math.Round(m)} metres"));
+    }
+
+    [Fact]
+    public void At_KTIW_the_pavement_under_the_stands_survives_as_its_own_feature()
+    {
+        // Keeping the ramps' own stand geometry must not cost the polygon a pilot is STANDING on.
+        // It is what answers out on the apron away from any row (the test above), and it only has
+        // the chance because it is no longer merged into a ramp. All four of the fixture's aprons
+        // survive; the one holding the stands is the 66,471 m² main apron, 49 vertices.
+        var cat = AirportFeatureCatalog.Build("v", KtiwFeatures());
+        var aprons = cat.Features.Where(f => f.Kind == FeatureKind.Apron && f.Footprint != null).ToList();
+        Assert.Equal(4, aprons.Count);
+        var stand = KtiwStands.Single(s => s.Number == 2);
+        Assert.Single(aprons, a => SurroundingsGeometry.Contains(a.Footprint!, stand.Lat, stand.Lon));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_named_building_beside_one_stand_of_a_600_metre_row_is_a_SECOND_place(bool reversed)
+    {
+        // The mirror of the KTIW case, in Members instead of Footprint. Measured cluster extents:
+        // KMEM's cargo rows run 686 m, KSNA's GA ramp 1,296 m, KLNK's 1,016 m. A proper name 30 m
+        // from ONE stand absorbs the generic cluster under the name rule alone — and inheriting its
+        // members would then report the building at 0 m from the far end of the row. Refusing the
+        // members is not enough: the cluster is a real place and consuming it leaves a pilot at the
+        // far end with no cargo area near them at all.
+        var row = new[] { (35.0400, -89.9800), (35.0430, -89.9800), (35.0454, -89.9800) };     // ~601 m end to end
+        var cluster = N(FeatureKind.Cargo, "Cargo ramp", 35.0428, -89.9800, true, FeatureSource.Navdata, row);
+        var building = N(FeatureKind.Cargo, "FedEx Cargo", 35.04027, -89.9800, false, FeatureSource.Osm);   // ~30 m from the first stand
+        Assert.False(AirportFeatureCatalog.SameFeature(cluster, building));
+        Assert.False(AirportFeatureCatalog.SameFeature(building, cluster));                     // and symmetrically
+
+        var input = reversed ? new[] { building, cluster } : new[] { cluster, building };
+        var cat = AirportFeatureCatalog.Build("v", input);
+        Assert.Equal(2, cat.Features.Count);
+        var kept = Assert.Single(cat.Features, f => f.Name == "Cargo ramp");
+        Assert.Equal(3, kept.Members!.Count);                                                   // the row keeps its stands…
+        Assert.True(kept.NameIsGeneric);                                                        // …and its synthesized name
+        Assert.InRange(SurroundingsGeometry.Nearest(35.0454, -89.9800, kept).Metres, 0.0, 1.0); // …and answers at the far end
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_cluster_the_named_building_really_does_describe_still_becomes_one_place(bool reversed)
+    {
+        // The good case, kept: every stand within SameNameRadiusMetres of the building, so the row
+        // IS the building's ramp. One feature, the proper name, the stands as its geometry.
+        var row = new[] { (35.0400, -89.9800), (35.0404, -89.9800), (35.0408, -89.9800) };     // ~89 m end to end
+        var cluster = N(FeatureKind.Cargo, "Cargo ramp", 35.0404, -89.9800, true, FeatureSource.Navdata, row);
+        var building = N(FeatureKind.Cargo, "FedEx Cargo", 35.04027, -89.9800, false, FeatureSource.Osm);
+        var input = reversed ? new[] { building, cluster } : new[] { cluster, building };
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", input).Features);
+        Assert.Equal("FedEx Cargo", one.Name);
+        Assert.Equal(3, one.Members!.Count);
+    }
+
+    /// <summary>A square of <paramref name="side"/> metres whose south-west corner sits
+    /// <paramref name="eastMetres"/> east of longitude 0, on the equator — where a degree of
+    /// longitude and a degree of latitude are the same 111,320 m, so the metres are exact.</summary>
+    private static IReadOnlyList<LatLon> Square(double eastMetres, double side)
+    {
+        const double M = 111_320.0;
+        double w = eastMetres / M, e = (eastMetres + side) / M, n = side / M;
+        return new[] { new LatLon(0.0, w), new LatLon(0.0, e), new LatLon(n, e), new LatLon(n, w) };
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Two_apron_polygons_26_metres_apart_are_two_aprons_whatever_the_order(bool reversed)
+    {
+        // KTIW again, in miniature: two of its four unnamed aprons sit 26.4 m apart and a third
+        // 27.9 m from one of those, well inside Apron's 50 m merge radius — so with OSM alone the
+        // element order decided which polygon survived, and dropping the big one takes the zone a
+        // pilot is standing in with it. Two rings that neither contain nor overlap are two aprons.
+        var a = Square(0, 20); var b = Square(46, 20);                     // 26 m between the near edges
+        LatLon ca = SurroundingsGeometry.Centroid(a), cb = SurroundingsGeometry.Centroid(b);
+        var west = F(FeatureKind.Apron, "", ca.Lat, ca.Lon, FeatureSource.Osm, fp: a);
+        var east = F(FeatureKind.Apron, "", cb.Lat, cb.Lon, FeatureSource.Osm, fp: b);
+        var input = reversed ? new[] { east, west } : new[] { west, east };
+        Assert.Equal(2, AirportFeatureCatalog.Build("v", input).Features.Count);
+    }
+
+    // ── Ring against ring: an OVERLAP, or the two halves of one named way (review PC-2) ────────
+
+    /// <summary>A rectangle given in metres east and north of (0, 0), on the equator.</summary>
+    private static IReadOnlyList<LatLon> Rect(double west, double south, double east, double north)
+    {
+        const double M = 111_320.0;
+        return new[] { new LatLon(south / M, west / M), new LatLon(south / M, east / M), new LatLon(north / M, east / M), new LatLon(north / M, west / M) };
+    }
+
+    /// <summary>An OSM apron outline, represented by its vertex centroid (inside a rectangle).</summary>
+    private static AirportFeature ApronRing(string name, IReadOnlyList<LatLon> ring)
+    {
+        var c = SurroundingsGeometry.Centroid(ring);
+        return F(FeatureKind.Apron, name, c.Lat, c.Lon, FeatureSource.Osm, fp: ring);
+    }
+
+    /// <summary>An L (Γ) outline: two arms of a 100x100 m square missing the lon/lat [40,100]
+    /// quadrant, reflex corner at (40, 40). Its vertex mean — (46.67, 46.67), what
+    /// <see cref="ApronRing"/> uses as the representative point — falls IN that missing quadrant,
+    /// outside the L's own body: the same failure OsmFeatureClassifier.TryPoint's bounds-centre
+    /// fallback produces for a concave outline in production (there landing at (50, 50), also
+    /// outside the L).</summary>
+    private static IReadOnlyList<LatLon> LApronRing()
+    {
+        const double M = 111_320.0;
+        return new[]
+        {
+            new LatLon(0, 0), new LatLon(0, 100 / M), new LatLon(40 / M, 100 / M),
+            new LatLon(40 / M, 40 / M), new LatLon(100 / M, 40 / M), new LatLon(100 / M, 0),
+        };
+    }
+
+    [Theory]
+    [InlineData(65.0, false)] [InlineData(65.0, true)]   // 25 m of grass between them
+    [InlineData(40.0, false)] [InlineData(40.0, true)]   // glued along an edge, as OSM draws neighbours
+    public void A_proper_name_does_not_let_an_apron_swallow_an_unnamed_neighbour(double unnamedWest, bool reversed)
+    {
+        // EHRD, EHLW and LSZG in real OSM: a named apron and an unnamed one close enough for Apron's
+        // 50 m merge radius. One proper name was enough to merge ANY two rings, and the winner keeps
+        // only its own outline — so the unnamed apron, and the zone of a pilot parked on it, was gone.
+        // Touching is not enough either: only two EQUAL proper names make touching outlines the
+        // halves of one way.
+        var named = ApronRing("Apron Oost", Rect(0, 0, 40, 40));
+        var unnamed = ApronRing("", Rect(unnamedWest, 0, unnamedWest + 40, 40));
+        Assert.False(AirportFeatureCatalog.SameFeature(named, unnamed));
+        var cat = AirportFeatureCatalog.Build("v", reversed ? new[] { unnamed, named } : new[] { named, unnamed });
+        Assert.Equal(2, cat.Features.Count);
+        var zone = SurroundingsReport.Zone(cat, 20 / 111_320.0, (unnamedWest + 20) / 111_320.0);   // parked in the middle of the unnamed one
+        Assert.NotNull(zone);
+        Assert.False(zone!.HasName);
+    }
+
+    [Theory]
+    [InlineData(FeatureKind.Terminal, 40.0, true)]    // glued along an edge: pieces of one terminal
+    [InlineData(FeatureKind.Concourse, 40.0, true)]
+    [InlineData(FeatureKind.Terminal, 65.0, false)]   // 25 m apart: two buildings
+    [InlineData(FeatureKind.Apron, 40.0, false)]      // aprons stay separate zones even when glued
+    public void Unnamed_terminal_outlines_that_touch_are_one_building(FeatureKind kind, double eastWest, bool one)
+    {
+        // Live sweep: 50 unnamed OSM "Terminal" pairs within 60 m of each other, one terminal drawn
+        // as several building outlines, each announced as its own "Terminal".
+        static AirportFeature Piece(FeatureKind k, IReadOnlyList<LatLon> ring)
+        {
+            var c = SurroundingsGeometry.Centroid(ring);
+            return F(k, "", c.Lat, c.Lon, FeatureSource.Osm, fp: ring);
+        }
+        var west = Piece(kind, Rect(0, 0, 40, 40));
+        var east = Piece(kind, Rect(eastWest, 0, eastWest + 40, 40));
+        Assert.Equal(one, AirportFeatureCatalog.SameFeature(west, east));
+        Assert.Equal(one, AirportFeatureCatalog.SameFeature(east, west));
+    }
+
+    [Theory]
+    [InlineData(40.0, 0.0)]    // glued along an edge — two shared nodes, the usual split way
+    [InlineData(40.0, 40.0)]   // one shared corner node and nothing else
+    [InlineData(43.0, 0.0)]    // traced 3 m apart: an edge within the margin
+    public void Two_halves_of_one_named_apron_that_touch_are_one_apron(double eastWest, double eastSouth)
+    {
+        // A split OSM way: one name, two rings that touch. Both carry the SAME proper name, so they are
+        // one body, as they always were — two features would make one routable Terminal or Concourse
+        // two Place entries. (This passes before the change too: it pins what the new rule KEEPS.)
+        var west = ApronRing("West Apron", Rect(0, 0, 40, 40));
+        var east = ApronRing("West Apron", Rect(eastWest, eastSouth, eastWest + 40, eastSouth + 40));
+        Assert.True(AirportFeatureCatalog.SameFeature(west, east));
+        Assert.True(AirportFeatureCatalog.SameFeature(east, west));
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { west, east }).Features);
+    }
+
+    [Fact]
+    public void Two_aprons_that_share_a_name_but_do_not_touch_are_two()
+    {
+        // The name is the same, the pavement is not: 20 m of grass between two outlines is two bodies,
+        // well inside Apron's 100 m same-name radius. Only outlines that TOUCH are halves of one way.
+        var west = ApronRing("North Apron", Rect(0, 0, 40, 40));
+        var east = ApronRing("North Apron", Rect(60, 0, 100, 40));
+        Assert.False(AirportFeatureCatalog.SameFeature(west, east));
+        Assert.Equal(2, AirportFeatureCatalog.Build("v", new[] { west, east }).Features.Count);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Two_outlines_that_really_overlap_are_one_body(bool reversed)
+    {
+        // Neither representative point lies inside the other ring, but a corner of each lies 10 m deep
+        // inside the other: the two outlines OVERLAP.
+        var a = ApronRing("", Rect(0, 0, 40, 40));
+        var b = ApronRing("", Rect(30, 10, 70, 50));
+        Assert.Single(AirportFeatureCatalog.Build("v", reversed ? new[] { b, a } : new[] { a, b }).Features);
+    }
+
+    [Fact]
+    public void Neighbours_traced_two_metres_into_each_other_stay_two()
+    {
+        // Tracing slop is not overlap. Measured on the KTIW fixture, the only vertices inside a
+        // neighbouring outline are the nodes the two SHARE (0 m from its edge); the nearest vertex that
+        // is not shared lies 1.39 m OUTSIDE one. 2 m of overlap is beyond anything measured there and
+        // still inside the 5 m margin. (Unnamed, so the halves-of-one-way rule never applies.)
+        var a = ApronRing("", Rect(0, 0, 40, 40));
+        var b = ApronRing("", Rect(38, 10, 78, 50));
+        Assert.Equal(2, AirportFeatureCatalog.Build("v", new[] { a, b }).Features.Count);
+    }
+
+    [Fact]
+    public void A_vertex_poking_into_the_other_ring_is_enough_even_when_nothing_pokes_back()
+    {
+        // Review PC-2 fix round 1, item 2: only B's corners dip into A (10 m past its edge); none
+        // of A's corners reach into B at all. RingsOverlap has two vertex loops, one walking each
+        // ring's own vertices against the OTHER's outline — a SYMMETRIC penetration (both sides poke
+        // into each other, as in Two_outlines_that_really_overlap_are_one_body above) passes even
+        // with either loop deleted, because the surviving one still finds a hit. This asymmetric
+        // geometry does not: delete the loop that walks B's vertices and SameFeature(a, b) goes
+        // false; delete the one that walks A's and SameFeature(b, a) goes false instead.
+        var a = ApronRing("", Rect(0, 0, 100, 100));
+        var b = ApronRing("", Rect(90, 40, 120, 60));
+        Assert.True(AirportFeatureCatalog.SameFeature(a, b));
+        Assert.True(AirportFeatureCatalog.SameFeature(b, a));
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { a, b }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { b, a }).Features);
+    }
+
+    [Fact]
+    public void Two_same_named_aprons_that_meet_at_a_T_junction_are_one_apron()
+    {
+        // Review PC-2 fix round 1, item 2: D's west edge lands in the MIDDLE of C's east edge — a
+        // T-junction — not at a shared corner, and none of C's own corners come anywhere near D.
+        // Same asymmetric-loop reasoning as the spike above, this time for RingsTouch (and so
+        // HalvesOfOneWay): only the loop walking D's vertices against C's ring finds the touch.
+        var c = ApronRing("T Apron", Rect(0, 0, 40, 40));
+        var d = ApronRing("T Apron", Rect(40, 15, 80, 25));
+        Assert.True(AirportFeatureCatalog.SameFeature(c, d));
+        Assert.True(AirportFeatureCatalog.SameFeature(d, c));
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { c, d }).Features);
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { d, c }).Features);
+    }
+
+    [Theory]
+    [InlineData(40.0, false)] [InlineData(40.0, true)]   // glued into the notch, sharing 3 nodes
+    [InlineData(48.0, false)] [InlineData(48.0, true)]   // 8 m short of the notch's own edges — disjoint
+    public void A_named_L_shaped_apron_does_not_swallow_the_unnamed_apron_in_its_notch(double innerEdge, bool reversed)
+    {
+        // Review PC-2 fix round 1, item 1 (M26 amendment): the headline case the task's own brief
+        // named — EHRD, EHLW, LSZG — still reproduced after the first commit, because RingsOverlap
+        // trusted EITHER ring's representative point unconditionally. The L's own point (its vertex
+        // mean, what ApronRing uses) falls in the notch it excludes — outside the L's own body —
+        // and that notch is exactly where the smaller apron sits, so the L's bad point read as
+        // "inside" the neighbour regardless of whether they even touch (still true 8 m apart). The
+        // fix requires a representative point to lie inside its OWN outline before it counts.
+        var named = ApronRing("Apron Oost", LApronRing());
+        var unnamed = ApronRing("", Rect(innerEdge, innerEdge, 100.0, 100.0));
+        Assert.False(AirportFeatureCatalog.SameFeature(named, unnamed));
+        Assert.False(AirportFeatureCatalog.SameFeature(unnamed, named));
+        var cat = AirportFeatureCatalog.Build("v", reversed ? new[] { unnamed, named } : new[] { named, unnamed });
+        Assert.Equal(2, cat.Features.Count);
+    }
+
+    [Fact]
+    public void Same_kind_within_radius_collapses_to_the_higher_rank()
+    {
+        var osm = F(FeatureKind.Tower, "Control Tower", 47.2700, -122.5700, FeatureSource.Osm);
+        var scenery = F(FeatureKind.Tower, "Control Tower 1", 47.2705, -122.5700, FeatureSource.Scenery); // ~55 m
+        var cat = AirportFeatureCatalog.Build("v", new[] { scenery, osm });
+        var only = Assert.Single(cat.Features);
+        Assert.Equal("Control Tower", only.Name);
+        Assert.Equal(FeatureSource.Osm, only.Source);
+    }
+
+    [Fact]
+    public void Loser_donates_footprint_and_detail_the_winner_lacks()
+    {
+        var square = new[] { new LatLon(0, 0), new LatLon(0, 0.001), new LatLon(0.001, 0.001), new LatLon(0.001, 0) };
+        var navdata = F(FeatureKind.Concourse, "Concourse B", 0.0005, 0.0005, FeatureSource.Navdata, detail: "Delta gates");
+        var osm = F(FeatureKind.Concourse, "Concourse B", 0.0004, 0.0005, FeatureSource.Osm, fp: square);
+        var cat = AirportFeatureCatalog.Build("v", new[] { navdata, osm });
+        var only = Assert.Single(cat.Features);
+        Assert.Equal(FeatureSource.Osm, only.Source);
+        Assert.Equal("Delta gates", only.Detail);
+        Assert.NotNull(only.Footprint);
+    }
+
+    [Fact]
+    public void Concourses_with_a_matching_name_merge_beyond_the_plain_radius_but_not_without_limit()
+    {
+        // Concourse's plain merge radius is 150 m; its same-name radius is 300 m. This pair sits
+        // in between (~250 m) so it only merges BECAUSE the names match — unlike the old rule,
+        // which matched on the letter "regardless of distance" and is exactly the bug that let
+        // two "Concourse B" piers 1.3 km apart at KJFK collapse into one.
+        var a = F(FeatureKind.Concourse, "Concourse B", 33.6400, -84.430, FeatureSource.Navdata);
+        var b = F(FeatureKind.Concourse, "Concourse B", 33.64225, -84.430, FeatureSource.Scenery); // ~250 m
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { a, b }).Features);
+    }
+
+    [Fact]
+    public void Different_kinds_never_merge_and_unnamed_hangars_stay_separate_beyond_40m()
+    {
+        var h1 = F(FeatureKind.Hangar, "", 47.2700, -122.5700, FeatureSource.Osm);
+        var h2 = F(FeatureKind.Hangar, "", 47.2705, -122.5700, FeatureSource.Osm);   // 55 m
+        var fuel = F(FeatureKind.Fuel, "Fuel", 47.2700, -122.5700, FeatureSource.Navdata);
+        Assert.Equal(3, AirportFeatureCatalog.Build("v", new[] { h1, h2, fuel }).Features.Count);
+    }
+
+    [Fact]
+    public void Named_beats_unnamed_within_a_source_and_unnamed_Other_is_dropped()
+    {
+        var unnamed = F(FeatureKind.Hangar, "", 47.27, -122.57, FeatureSource.Osm);
+        var named = F(FeatureKind.Hangar, "ATP Hangar", 47.2701, -122.57, FeatureSource.Scenery);
+        var junk = F(FeatureKind.Other, "", 47.28, -122.58, FeatureSource.Osm);
+        var cat = AirportFeatureCatalog.Build("v", new[] { unnamed, named, junk });
+        Assert.Equal("ATP Hangar", Assert.Single(cat.Features).Name);
+    }
+
+    [Fact]
+    public void Rank_prefers_named_then_source_order()
+    {
+        // Rank no longer collapses every unnamed feature to a flat 0 (it still carries a source
+        // component), so this is pinned as an ORDERING, not the old literal 40/30/20/10/0 values.
+        AirportFeature Named(FeatureSource src) => F(FeatureKind.Hangar, "N", 0, 0, src);
+        var unnamed = F(FeatureKind.Hangar, "", 0, 0, FeatureSource.Osm);
+        Assert.True(AirportFeatureCatalog.Rank(Named(FeatureSource.Osm)) > AirportFeatureCatalog.Rank(Named(FeatureSource.Scenery)));
+        Assert.True(AirportFeatureCatalog.Rank(Named(FeatureSource.Scenery)) > AirportFeatureCatalog.Rank(Named(FeatureSource.Gsx)));
+        Assert.True(AirportFeatureCatalog.Rank(Named(FeatureSource.Gsx)) > AirportFeatureCatalog.Rank(Named(FeatureSource.Navdata)));
+        // Even the lowest-priority source, named, outranks the highest-priority source, unnamed.
+        Assert.True(AirportFeatureCatalog.Rank(Named(FeatureSource.Navdata)) > AirportFeatureCatalog.Rank(unnamed));
+    }
+
+    [Fact]
+    public void Features_are_sorted_by_kind_then_name_and_the_version_is_kept()
+    {
+        var cat = AirportFeatureCatalog.Build("tok", new[] {
+            F(FeatureKind.Hangar, "B Hangar", 1, 1, FeatureSource.Osm), F(FeatureKind.Concourse, "Concourse A", 2, 2, FeatureSource.Osm), F(FeatureKind.Hangar, "A Hangar", 3, 3, FeatureSource.Osm) });
+        Assert.Equal("tok", cat.Version);
+        Assert.Equal(new[] { "Concourse A", "A Hangar", "B Hangar" }, cat.Features.Select(f => f.Name));
+    }
+
+    [Fact]
+    public void Differently_named_neighbours_are_never_collapsed()
+    {
+        // KMSP: inferred Concourse A and B centroids are 109 m apart — B used to vanish.
+        var cat = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Concourse, "Concourse A", 44.8800, -93.2100), N(FeatureKind.Concourse, "Concourse B", 44.8810, -93.2100) });
+        Assert.Equal(new[] { "Concourse A", "Concourse B" }, cat.Features.Select(f => f.Name).OrderBy(n => n));
+    }
+
+    [Fact]
+    public void Numbered_helipads_45_metres_apart_both_survive()
+    {
+        var cat = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Helipad, "Helipad 1", 43.6000, -110.7400, true), N(FeatureKind.Helipad, "Helipad 2", 43.6004, -110.7400, true) });
+        Assert.Equal(2, cat.Features.Count);
+    }
+
+    [Fact]
+    public void Two_generic_pieces_of_one_ramp_merge_and_a_proper_name_absorbs_a_generic_one()
+    {
+        var ramps = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Apron, "GA ramp", 0, 0, true), N(FeatureKind.Apron, "GA ramp", 0.0003, 0, true) });
+        Assert.Single(ramps.Features);
+
+        var fuel = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Fuel, "Fuel", 0, 0, true), N(FeatureKind.Fuel, "Avfuel", 0.0003, 0, false, FeatureSource.Osm) });
+        Assert.Equal("Avfuel", Assert.Single(fuel.Features).Name);
+    }
+
+    [Fact]
+    public void The_same_name_far_apart_is_two_features_and_close_by_is_one()
+    {
+        var far = AirportFeatureCatalog.Build("v", new[] { N(FeatureKind.Concourse, "Concourse B", 40.6400, -73.7800), N(FeatureKind.Concourse, "Concourse B", 40.6400, -73.7950) });
+        Assert.Equal(2, far.Features.Count);
+
+        var near = AirportFeatureCatalog.Build("v", new[]
+        {
+            N(FeatureKind.Concourse, "Concourse B", 33.6400, -84.4300, false, FeatureSource.Navdata, (33.6390, -84.4300), (33.6410, -84.4300)),
+            N(FeatureKind.Concourse, "concourse  b", 33.6415, -84.4300, false, FeatureSource.Osm),      // ~165 m from the navdata centroid
+        });
+        var one = Assert.Single(near.Features);
+        Assert.Equal(FeatureSource.Osm, one.Source);
+        Assert.Equal(2, one.Members!.Count);             // the winner inherits what it lacks
+    }
+
+    [Fact]
+    public void A_guessed_navdata_concourse_yields_to_the_GSX_feature_made_of_the_same_stands()
+    {
+        // KJFK T5: navdata's letter says "Concourse D" (29 gates); GSX says "Terminal 5" for those very stands.
+        var stands = new[] { (40.6450, -73.7760), (40.6454, -73.7760), (40.6458, -73.7760) };
+        var cat = AirportFeatureCatalog.Build("v", new[]
+        {
+            N(FeatureKind.Concourse, "Concourse D", 40.6454, -73.7760, false, FeatureSource.Navdata, stands),
+            N(FeatureKind.Terminal, "Terminal 5", 40.6454, -73.7760, false, FeatureSource.Gsx, stands),
+        });
+        Assert.Equal("Terminal 5", Assert.Single(cat.Features).Name);
+    }
+
+    [Fact]
+    public void A_proper_name_outranks_a_generic_one_which_outranks_none_and_the_facts_ride_along()
+    {
+        Assert.True(AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Avfuel", 0, 0)) > AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Fuel", 0, 0, true, FeatureSource.Osm)));
+        Assert.True(AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Fuel", 0, 0, true)) > AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "", 0, 0, false, FeatureSource.Osm)));
+        var facts = new AirportFacts("", new[] { new FrequencyRow("Tower 118.5", 118500000) });
+        Assert.Same(facts, AirportFeatureCatalog.Build("v", Array.Empty<AirportFeature>(), facts).Facts);
+        Assert.True(AirportFeatureCatalog.Build("v", Array.Empty<AirportFeature>()).Facts.IsEmpty);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_ramp_between_two_buildings_joins_the_NEARER_one_whatever_the_order(bool reversed)
+    {
+        // Two cargo sheds 80 m apart, both close enough to claim the ramp between them. The first in rank
+        // order used to take it — an accident of element order — and a pilot at the UPS shed heard its
+        // stands measured from the FedEx one.
+        const double M = 111_320.0;
+        var fedex = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm);
+        var ups = N(FeatureKind.Cargo, "UPS Cargo", 0.0, 80 / M, false, FeatureSource.Osm);
+        var ramp = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 55 / M, true, FeatureSource.Navdata, (0.0, 45 / M), (0.0, 55 / M), (0.0, 65 / M));
+        Assert.True(AirportFeatureCatalog.SameFeature(fedex, ramp));      // both really could take it…
+        Assert.True(AirportFeatureCatalog.SameFeature(ups, ramp));
+        var cat = AirportFeatureCatalog.Build("v", reversed ? new[] { ups, fedex, ramp } : new[] { fedex, ups, ramp });
+        Assert.Equal(2, cat.Features.Count);
+        Assert.Equal(3, cat.Features.Single(f => f.Name == "UPS Cargo").Members!.Count);   // …the nearer one does
+        Assert.Null(cat.Features.Single(f => f.Name == "FedEx Cargo").Members);
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Two_clusters_of_one_concourse_merge_and_keep_EVERY_gate(bool reversed)
+    {
+        // LFPG: "Concourse K" arrives as separate letter clusters that the 300 m same-name radius
+        // re-merges — real fs2024 LFPG actually forms TWO such pairs this shape (a north pair
+        // 4+4 -> 8 stands and a south pair 5+4 -> 9, about 456 m apart, neither pair merging with
+        // the other), never all four clusters into one. The winner used to keep only its OWN
+        // cluster's stands, so a pilot at the far gates heard the concourse measured from the near
+        // cluster's — a pair of LFPG's clusters, and GCXO's "T", lost 11 gates between them this
+        // way. On the equator here so the metres are exact, and the gap (220 m) sits past
+        // NavdataFeatureSource.GateLinkMetres (200 m) — real navdata output would never hand this
+        // catalog two clusters any closer than that, already merged into one by its OWN
+        // single-linkage pass — but well inside Concourse's 300 m same-name radius.
+        const double M = 111_320.0;
+        (double, double)[] Row(params double[] east) => east.Select(e => (0.0, e / M)).ToArray();
+        var north = N(FeatureKind.Concourse, "Concourse K", 0.0, 15 / M, false, FeatureSource.Navdata, Row(0, 10, 20, 30));
+        var south = N(FeatureKind.Concourse, "Concourse K", 0.0, 265 / M, false, FeatureSource.Navdata, Row(250, 260, 270, 280));
+        var input = reversed ? new[] { south, north } : new[] { north, south };
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", input).Features);
+        Assert.Equal(8, one.Members!.Count);
+        Assert.InRange(SurroundingsGeometry.Nearest(0.0, 280 / M, one).Metres, 0.0, 1.0);   // the far gate is AT the concourse
+    }
+
+    // ── The supersede pass judges RAW clusters, before any merge (review PC-4 fix round 1) ──────
+
+    [Fact]
+    public void An_OSM_outline_absorbing_GSXs_terminal_does_not_let_the_navdata_guess_survive()
+    {
+        // The pre-existing hole this closes: judged on the MERGED `kept` list, an OSM ring named
+        // "Terminal 5" that outranks and absorbs GSX's "Terminal 5" during the merge loop makes
+        // GSX's Source vanish from `kept` entirely — gsxStands came back empty, the whole
+        // supersede pass was skipped, and navdata's wrong-letter "Concourse D" guess survived
+        // beside it. Judging the RAW pre-merge GSX cluster fixes this for free: the raw GSX
+        // feature is still sitting in the unmerged list, whatever the merge loop later does to it.
+        var stands = new[] { (40.6450, -73.7760), (40.6454, -73.7760), (40.6458, -73.7760) };
+        var square = new[] { new LatLon(40.6440, -73.7770), new LatLon(40.6440, -73.7750), new LatLon(40.6470, -73.7750), new LatLon(40.6470, -73.7770) };
+        var navdata = N(FeatureKind.Concourse, "Concourse D", 40.6454, -73.7760, false, FeatureSource.Navdata, stands);
+        var gsx = N(FeatureKind.Terminal, "Terminal 5", 40.6454, -73.7760, false, FeatureSource.Gsx, stands);
+        var osm = F(FeatureKind.Terminal, "Terminal 5", 40.6455, -73.7760, FeatureSource.Osm, fp: square);
+        var cat = AirportFeatureCatalog.Build("v", new[] { navdata, gsx, osm });
+        Assert.DoesNotContain(cat.Features, f => f.Name == "Concourse D");
+        var terminal = Assert.Single(cat.Features, f => f.Name == "Terminal 5");
+        Assert.Equal(FeatureSource.Osm, terminal.Source);   // OSM outranked and absorbed the GSX cluster
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_generic_scenery_donor_never_lets_the_wrongletter_navdata_guess_survive(bool reversed)
+    {
+        // Case J (review PC-4 fix round 1): the shipped KJFK T5 case below, plus a generic scenery
+        // "Concourse" placement cluster (rank 80, below navdata's 110 and reachable by default) —
+        // close enough (56 m, comfortably inside Concourse's 150 m merge radius) to merge INTO
+        // navdata's "Concourse D" under a post-merge supersede check, expanding it to 8 members,
+        // but far enough (52-72 m from the nearest stand, past SharesStands' 15 m match radius)
+        // that NONE of its own members count toward the ratio — only 3 of 8 shared with GSX's
+        // "Terminal 5", so the wrong-letter guess survived beside it. Judged per RAW cluster (the
+        // fix), navdata's OWN 3 stands are checked against GSX's OWN 3 stands (100% match) before
+        // the scenery donor ever gets a chance to dilute it.
+        const double M = 111_320.0;
+        var stands = new[] { (0.0, 0.0), (0.0, 4 / M), (0.0, 8 / M) };
+        var navdata = N(FeatureKind.Concourse, "Concourse D", 0.0, 4 / M, false, FeatureSource.Navdata, stands);
+        var gsx = N(FeatureKind.Terminal, "Terminal 5", 0.0, 4 / M, false, FeatureSource.Gsx, stands);
+        var scenery = N(FeatureKind.Concourse, "Concourse", 0.0, 70 / M, true, FeatureSource.Scenery,
+            (0.0, 60 / M), (0.0, 65 / M), (0.0, 70 / M), (0.0, 75 / M), (0.0, 80 / M));
+        var input = reversed ? new[] { scenery, gsx, navdata } : new[] { navdata, gsx, scenery };
+        var cat = AirportFeatureCatalog.Build("v", input);
+        Assert.DoesNotContain(cat.Features, f => f.Name == "Concourse D");
+        var terminal = Assert.Single(cat.Features, f => f.Name == "Terminal 5");
+        Assert.Equal(3, terminal.Members!.Count);   // undiluted by the scenery donor
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void Each_GSX_section_supersedes_its_own_navdata_cluster_even_though_the_three_would_merge(bool reversed)
+    {
+        // Case F (review PC-4 fix round 1): three navdata "Concourse K" clusters close enough to
+        // merge into ONE 6-stand entity, but GSX publishes them under THREE separate headers, each
+        // covering exactly one cluster's 2 stands. Judged post-merge, no GSX section reaches half
+        // of the 6-member union (2 of 6 each) and the wrong-letter guess survives whole. Judged
+        // per RAW cluster (the fix), each cluster is 100% covered by its own section and all three
+        // are excluded before the merge loop ever runs, so the dilution never happens.
+        const double M = 111_320.0;
+        var a = N(FeatureKind.Concourse, "Concourse K", 0.0, 10 / M, false, FeatureSource.Navdata, (0.0, 0 / M), (0.0, 20 / M));
+        var b = N(FeatureKind.Concourse, "Concourse K", 0.0, 150 / M, false, FeatureSource.Navdata, (0.0, 140 / M), (0.0, 160 / M));
+        var c = N(FeatureKind.Concourse, "Concourse K", 0.0, 290 / M, false, FeatureSource.Navdata, (0.0, 280 / M), (0.0, 300 / M));
+        var gsxA = N(FeatureKind.Terminal, "T. K1", 0.0, 10 / M, false, FeatureSource.Gsx, (0.0, 0 / M), (0.0, 20 / M));
+        var gsxB = N(FeatureKind.Terminal, "T. K2", 0.0, 150 / M, false, FeatureSource.Gsx, (0.0, 140 / M), (0.0, 160 / M));
+        var gsxC = N(FeatureKind.Terminal, "T. K3", 0.0, 290 / M, false, FeatureSource.Gsx, (0.0, 280 / M), (0.0, 300 / M));
+        var input = reversed ? new[] { c, gsxC, b, gsxB, a, gsxA } : new[] { a, gsxA, b, gsxB, c, gsxC };
+        var cat = AirportFeatureCatalog.Build("v", input);
+        Assert.DoesNotContain(cat.Features, f => f.Kind == FeatureKind.Concourse);
+        Assert.Equal(3, cat.Features.Count(f => f.Kind == FeatureKind.Terminal));
+    }
+
+    [Theory]
+    [InlineData(false)] [InlineData(true)]
+    public void A_GSX_section_covering_two_of_three_clusters_never_costs_the_uncovered_one_its_concourse(bool reversed)
+    {
+        // Case F2 (review PC-4 fix round 1): the SAME three navdata clusters as above, but GSX
+        // publishes only ONE section, covering a's and b's 4 stands — c's 2 stands have no GSX
+        // coverage at all. Judged post-merge, the merged 6-stand union is 4/6 = 67% covered and
+        // the WHOLE thing — c's genuinely-uncovered gates included — was wrongly superseded.
+        // Judged per RAW cluster (the fix), a and b are superseded (100% covered each) and c,
+        // never reaching 50% coverage from any one GSX feature, survives on its own — the correct
+        // answer, since nothing SAYS c belongs to that GSX section.
+        const double M = 111_320.0;
+        var a = N(FeatureKind.Concourse, "Concourse K", 0.0, 10 / M, false, FeatureSource.Navdata, (0.0, 0 / M), (0.0, 20 / M));
+        var b = N(FeatureKind.Concourse, "Concourse K", 0.0, 150 / M, false, FeatureSource.Navdata, (0.0, 140 / M), (0.0, 160 / M));
+        var c = N(FeatureKind.Concourse, "Concourse K", 0.0, 290 / M, false, FeatureSource.Navdata, (0.0, 280 / M), (0.0, 300 / M));
+        var gsxAB = N(FeatureKind.Terminal, "T. AB", 0.0, 80 / M, false, FeatureSource.Gsx,
+            (0.0, 0 / M), (0.0, 20 / M), (0.0, 140 / M), (0.0, 160 / M));
+        var input = reversed ? new[] { c, b, a, gsxAB } : new[] { a, b, c, gsxAB };
+        var cat = AirportFeatureCatalog.Build("v", input);
+        var survivor = Assert.Single(cat.Features, f => f.Kind == FeatureKind.Concourse);
+        Assert.Equal("Concourse K", survivor.Name);
+        Assert.Equal(2, survivor.Members!.Count);
+        Assert.InRange(SurroundingsGeometry.Nearest(0.0, 300 / M, survivor).Metres, 0.0, 1.0);   // it's cluster c, not a or b
+        Assert.Single(cat.Features, f => f.Kind == FeatureKind.Terminal);
+    }
+
+    // ── UnionMembers itself, exercised only through Build (review PC-4 fix round 1, item 4) ──────
+
+    [Fact]
+    public void The_union_collapses_an_exact_duplicate_but_keeps_a_near_duplicate_3_metres_off()
+    {
+        const double M = 111_320.0;
+        // Winner: proper name, 2 stands. Loser: generic, 3 stands — one is an EXACT duplicate of
+        // the winner's first stand, one sits 3 m from the winner's second (kept: not an exact
+        // duplicate — a near-duplicate can shorten a distance a pilot hears by up to that gap, but
+        // never doubles a stand nor drops one), and one is brand new.
+        var winner = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm, (0.0, 0 / M), (0.0, 10 / M));
+        var loser = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 0.0, true, FeatureSource.Navdata,
+            (0.0, 0 / M),          // exact duplicate of the winner's first stand
+            (3 / M, 10 / M),       // 3 m from the winner's second stand — near, not exact
+            (0.0, 20 / M));        // a brand-new stand
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", new[] { winner, loser }).Features);
+        Assert.Equal(4, one.Members!.Count);   // winner's 2 + the near-duplicate + the new one; the exact duplicate is not doubled
+        Assert.Single(one.Members, m => m.Lat == 0.0 && m.Lon == 0.0);
+    }
+
+    [Fact]
+    public void A_loser_whose_stands_all_already_exist_leaves_the_winners_feature_object_untouched()
+    {
+        // The same-instance no-op: nothing new to donate (no footprint, no detail, no new stand)
+        // must not rebuild the winner's AirportFeature at all.
+        var winner = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm, (0.0, 0.0), (0.0, 0.0001));
+        var loser = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 0.0, true, FeatureSource.Navdata, (0.0, 0.0));
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", new[] { winner, loser }).Features);
+        Assert.Same(winner, one);
+    }
+
+    [Fact]
+    public void The_union_lists_the_winners_own_stands_first_then_the_losers_new_ones_in_order()
+    {
+        const double M = 111_320.0;
+        var winner = N(FeatureKind.Cargo, "FedEx Cargo", 0.0, 0.0, false, FeatureSource.Osm, (0.0, 0 / M), (0.0, 10 / M));
+        var loser = N(FeatureKind.Cargo, "Cargo ramp", 0.0, 0.0, true, FeatureSource.Navdata, (0.0, 20 / M), (0.0, 30 / M));
+        var one = Assert.Single(AirportFeatureCatalog.Build("v", new[] { winner, loser }).Features);
+        Assert.Equal(winner.Members!.Concat(loser.Members!), one.Members);
+    }
+
+    [Fact]
+    public void A_hyphen_or_underscore_between_words_does_not_make_a_second_name()
+    {
+        // Live LOWI OSM, 2026-09-25: "Flugsportzentrum Tirol" and "Flugsportzentrum-Tirol", hangars
+        // 60 m apart, were two Places ending at the same stand.
+        const double M = 111_320.0;
+        var a = F(FeatureKind.Hangar, "Flugsportzentrum Tirol", 47.26, 11.34, FeatureSource.Osm);
+        var b = F(FeatureKind.Hangar, "Flugsportzentrum-Tirol", 47.26 + 60 / M, 11.34, FeatureSource.Osm);
+        Assert.True(AirportFeatureCatalog.SameFeature(a, b));
+        Assert.Single(AirportFeatureCatalog.Build("v", new[] { a, b }).Features);
+        // …but a hyphen never joins digits into another number.
+        var h12 = F(FeatureKind.Hangar, "Hangar 12", 47.26, 11.34, FeatureSource.Osm);
+        var h1to2 = F(FeatureKind.Hangar, "Hangar 1-2", 47.26 + 20 / M, 11.34, FeatureSource.Osm);
+        Assert.False(AirportFeatureCatalog.SameFeature(h12, h1to2));
+    }
+}

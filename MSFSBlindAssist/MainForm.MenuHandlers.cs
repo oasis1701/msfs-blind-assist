@@ -54,15 +54,45 @@ public partial class MainForm
             var dataProvider = airportDataProvider;
             refreshCallback = async () =>
             {
-                var pos = simConnectManager.LastKnownPosition;
-                if (pos == null) return;
+                // A position asked of the simulator at the press: LastKnownPosition can be stale in
+                // quiet cruise (usually the departure stand). Falls back to it after 1.5 s; throws
+                // only when there is neither.
+                SimConnectManager.AircraftPosition pos;
+                try
+                {
+                    pos = await GetFreshAircraftPositionAsync();
+                }
+                catch (InvalidOperationException ex)
+                {
+                    _taxiAugmentLog.Warn($"taxi-augment: name refresh pressed with no aircraft position ({ex.Message})");
+                    // An error, so spoken: silence would sound like a press that never registered.
+                    if (IsHandleCreated && !IsDisposed)
+                        announcer.AnnounceImmediate("Aircraft position unavailable.");
+                    return;
+                }
 
-                string? icao = await Task.Run(() =>
-                    dataProvider.GetNearbyAirportICAOs(pos.Value.Latitude, pos.Value.Longitude, 50.0)
-                        .Where(c => c != null && c.Length == 4)
-                        .FirstOrDefault());
+                // The airport the aircraft is AT (CurrentAirport.Resolve); a database query, so off
+                // the UI thread.
+                string? icao = await Task.Run(() => MSFSBlindAssist.Services.CurrentAirport.Resolve(
+                    dataProvider, pos.Latitude, pos.Longitude));
 
-                if (icao == null) return;
+                if (icao == null)
+                {
+                    // With no airport within 5 NM there is nothing to refresh; say so rather than
+                    // stay silent. Same words as Where Am I's.
+                    if (IsHandleCreated && !IsDisposed)
+                        announcer.AnnounceImmediate("No airport nearby.");
+                    return;
+                }
+
+                // PrefetchAsync fetches nothing with online taxi data off; "No new names found" would
+                // then be untrue.
+                if (!provider.Enabled)
+                {
+                    if (IsHandleCreated && !IsDisposed)
+                        announcer.AnnounceImmediate("Online taxi data is switched off. Nothing refreshed.");
+                    return;
+                }
 
                 await provider.PrefetchAsync(icao, force: true);
 
@@ -73,8 +103,7 @@ public partial class MainForm
                     ? $"Taxiway names refreshed for {icao}: {added} added."
                     : $"Taxiway names refreshed for {icao}. No new names found.";
                 // No marshal needed: this callback is invoked from
-                // TaxiGuidancePanel's Button.Click handler (UI thread), and neither await
-                // above uses ConfigureAwait(false), so we're still on the UI thread here.
+                // Still on the UI thread: no await above uses ConfigureAwait(false).
                 if (IsHandleCreated && !IsDisposed)
                     announcer.AnnounceImmediate(msg);
             };
@@ -82,7 +111,8 @@ public partial class MainForm
 
         using var dlg = new Forms.Settings.SettingsForm(
             refreshTaxiwayNames: refreshCallback,
-            vatsimStatus: () => vatsimService?.GetStatus());
+            vatsimStatus: () => vatsimService?.GetStatus(),
+            sceneryIndexStatus: () => sceneryIndexer.LastStatus);
         if (dlg.ShowDialog(this) == DialogResult.OK)
         {
             ApplyRuntimeSettings();
@@ -90,6 +120,10 @@ public partial class MainForm
             announcer.Announce("Settings saved");
         }
     }
+
+    /// <summary>What the last <see cref="ApplyRuntimeSettings"/> saw for the two settings feeding the
+    /// surroundings catalog, seeded at construction so the first OK clears only on a real change.</summary>
+    private bool _appliedSceneryIndexEnabled, _appliedTaxiAugmentEnabled;
 
     /// <summary>Re-applies saved UserSettings to the live runtime managers after the Settings
     /// dialog is accepted, so changes take effect without restarting. Each settings section that
@@ -217,6 +251,25 @@ public partial class MainForm
         // to push into; apply it here so it takes effect immediately (next route build).
         if (_augmentingProvider != null)
             _augmentingProvider.Enabled = settings.TaxiAugmentEnabled;
+        if (onlineFeatures != null)
+            onlineFeatures.Enabled = settings.TaxiAugmentEnabled;
+
+        // Opt-in passing-building callouts — applies immediately, no restart needed.
+        if (surroundingsMonitor != null)
+        {
+            surroundingsMonitor.Enabled = settings.SurroundingsCalloutsEnabled;
+            surroundingsMonitor.SurfaceCalloutsEnabled = settings.SurfaceChangeCalloutsEnabled;
+        }
+
+        // These two flags feed every cached catalog but not the gate-list token it keys on, so a
+        // real change (and only a change) clears the cache and the OSM store.
+        if (_appliedSceneryIndexEnabled != settings.SceneryIndexEnabled || _appliedTaxiAugmentEnabled != settings.TaxiAugmentEnabled)
+        {
+            surroundingsCache.Clear();
+            if (_appliedTaxiAugmentEnabled != settings.TaxiAugmentEnabled) onlineFeatures?.Clear();
+        }
+        _appliedSceneryIndexEnabled = settings.SceneryIndexEnabled;
+        _appliedTaxiAugmentEnabled = settings.TaxiAugmentEnabled;
 
         // VATSIM: install or refresh the vPilot plugin and start/stop the pipe server.
         var vatsimInstall = vatsimService?.ApplySettings(settings);

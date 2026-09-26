@@ -162,6 +162,8 @@ public class HotkeyManager : IDisposable
         private const int HOTKEY_TAXI_CONTINUE = 9203;      // Input mode: Y (Continue past hold-short)
         private const int HOTKEY_TAXI_STOP = 9204;          // Input mode: Ctrl+Y (Stop guidance)
         private const int HOTKEY_TAXI_WHERE_AM_I = 9205;    // Output mode: Alt+Y (Describe current location)
+        private const int HOTKEY_LOOK_AROUND = 9219;        // Output mode: Alt+L (surroundings readout)
+        private const int HOTKEY_SHOW_SURROUNDINGS = 9220;  // Output mode: Ctrl+Shift+L (surroundings window)
         private const int HOTKEY_LANDING_EXIT = 9206;       // Input mode: Shift+X (Landing Exit Planner)
         private const int HOTKEY_GROUND_TRAFFIC = 9207;     // Output mode: Alt+G (Nearest ground traffic)
         private const int HOTKEY_ACCESS_GSX = 9208;         // Input mode: Alt+G (Open Access GSX window)
@@ -187,6 +189,19 @@ public class HotkeyManager : IDisposable
         internal const uint SI_BUILD_TAXI_ROUTE_MODIFIERS = MOD_CONTROL | MOD_SHIFT;
         internal const uint SI_BUILD_TAXI_ROUTE_KEY = 0x59; // Y
         internal const string SayIntentionsBuildTaxiRouteChordText = "Ctrl+Shift+Y";
+
+        // Alt+L and Ctrl+Shift+L follow the same pattern as SayIntentionsBuildTaxiRouteChordText
+        // above: registration constants plus the human-readable chord, so the registration and
+        // the guide text can never drift apart.
+        internal const uint LOOK_AROUND_MODIFIERS = MOD_ALT;
+        internal const uint LOOK_AROUND_KEY = 0x4C; // L
+        // Consumed by the guide test — see HotkeyGuideSurroundingsChordTests.
+        internal const string LookAroundChordText = "Alt+L";
+
+        internal const uint SHOW_SURROUNDINGS_MODIFIERS = MOD_CONTROL | MOD_SHIFT;
+        internal const uint SHOW_SURROUNDINGS_KEY = 0x4C; // L
+        // Consumed by the guide test — see HotkeyGuideSurroundingsChordTests.
+        internal const string SurroundingsWindowChordText = "Ctrl+Shift+L";
 
         private IntPtr windowHandle;
         private bool visualGuidanceHotkeysActive = false;
@@ -511,6 +526,12 @@ public class HotkeyManager : IDisposable
                         case HOTKEY_TAXI_WHERE_AM_I:
                             TriggerHotkey(HotkeyAction.TaxiWhereAmI);
                             break;
+                        case HOTKEY_LOOK_AROUND:
+                            TriggerHotkey(HotkeyAction.LookAround);
+                            break;
+                        case HOTKEY_SHOW_SURROUNDINGS:
+                            TriggerHotkey(HotkeyAction.ShowSurroundings);
+                            break;
                         case HOTKEY_GROUND_TRAFFIC:
                             TriggerHotkey(HotkeyAction.AnnounceGroundTraffic);
                             break;
@@ -790,6 +811,8 @@ public class HotkeyManager : IDisposable
             // chord was held by the (now-retired) STATUS Display hotkey; it stays on Alt+Y so
             // existing users' muscle memory and all guides remain valid.
             RegisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I, MOD_ALT, 0x59);          // Alt+Y (Where Am I)
+            RegisterHotKey(windowHandle, HOTKEY_LOOK_AROUND, LOOK_AROUND_MODIFIERS, LOOK_AROUND_KEY);                    // Alt+L (Look around)
+            RegisterHotKey(windowHandle, HOTKEY_SHOW_SURROUNDINGS, SHOW_SURROUNDINGS_MODIFIERS, SHOW_SURROUNDINGS_KEY); // Ctrl+Shift+L (Surroundings window)
             RegisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC, MOD_ALT, 0x47);           // Alt+G (Nearest ground traffic)
             RegisterHotKey(windowHandle, HOTKEY_READ_GSX_TOOLTIP, MOD_CONTROL, 0x47);     // Ctrl+G (Read latest GSX tooltip)
 
@@ -894,6 +917,8 @@ public class HotkeyManager : IDisposable
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_STATUS);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_REPEAT);
             UnregisterHotKey(windowHandle, HOTKEY_TAXI_WHERE_AM_I);
+            UnregisterHotKey(windowHandle, HOTKEY_LOOK_AROUND);
+            UnregisterHotKey(windowHandle, HOTKEY_SHOW_SURROUNDINGS);
             UnregisterHotKey(windowHandle, HOTKEY_GROUND_TRAFFIC);
             UnregisterHotKey(windowHandle, HOTKEY_READ_GSX_TOOLTIP);
             UnregisterHotKey(windowHandle, HOTKEY_SI_LAST_TRANSMISSION);
@@ -1365,6 +1390,8 @@ public class HotkeyManager : IDisposable
         TaxiContinue,
         TaxiStop,
         TaxiWhereAmI,
+        LookAround,
+        ShowSurroundings,
         LandingExitPlanner,
         AnnounceGroundTraffic,
         ShowAccessGSX,
