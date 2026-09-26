@@ -163,27 +163,6 @@ public class RolloutExitGatePerExitRulesTests
         => Assert.Equal(baseMargin, RolloutExitGate.OvershootMarginFeet(baseMargin, tooFastDeclined: false));
 
     [Fact]
-    public void A_countdown_no_too_fast_sentence_holds_may_speak_at_once()
-        => Assert.True(RolloutExitGate.CountdownStatusMaySpeak(
-               new DateTime(2026, 9, 26, 1, 23, 40, DateTimeKind.Utc), DateTime.MinValue));
-
-    [Fact]
-    public void After_too_fast_to_turn_the_countdown_waits_until_the_sentence_has_been_spoken()
-    {
-        // Probed 50 ms either side of the 5.3 s line: AddSeconds converts through a double, so a probe AT
-        // it lands a tick short — a boundary no 30-60 Hz frame is ever exact on.
-        var spoken = new DateTime(2026, 9, 26, 1, 23, 30, DateTimeKind.Utc);
-        Assert.False(RolloutExitGate.CountdownStatusMaySpeak(spoken.AddSeconds(3.5), spoken));   // node passed
-        Assert.False(RolloutExitGate.CountdownStatusMaySpeak(spoken.AddSeconds(5.25), spoken));
-        Assert.True(RolloutExitGate.CountdownStatusMaySpeak(spoken.AddSeconds(5.35), spoken));
-        Assert.True(RolloutExitGate.CountdownStatusMaySpeak(spoken.AddSeconds(60.0), spoken));  // never dropped
-    }
-
-    [Fact]
-    public void The_hold_covers_the_measured_sentence_plus_about_a_fifth()
-        => Assert.InRange(RolloutExitGate.TooFastNoExitSpeechHoldSeconds, 4.39 * 1.2, 4.39 * 1.25);
-
-    [Fact]
     public void Too_fast_near_an_off_centreline_exit_holds_the_runway_heading()
     {
         // 200 ft out at 40 kt, exit 30° to the right: normally the exit-bearing pan toward its node.

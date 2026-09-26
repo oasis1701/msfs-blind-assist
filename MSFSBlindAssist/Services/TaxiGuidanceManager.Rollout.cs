@@ -23,7 +23,6 @@ public partial class TaxiGuidanceManager
         _rolloutTurnNowAnnounced = false;
         _rolloutTooFastNoExit = false;
         _rolloutCountdownStatusOwed = false;
-        _rolloutTooFastNoExitSpokenUtc = DateTime.MinValue;
         _rolloutToneMode = Navigation.RolloutToneMode.Silent;
         _rolloutToneLogMode = null;
         _rolloutToneLogExit = null;
@@ -1346,14 +1345,9 @@ public partial class TaxiGuidanceManager
                 // countdown's first due callout would cut it off on the very next frame. The countdown
                 // speaks on its first frame (the stopped notice, a backtrack, a milestone), and the owed
                 // status covers the one case where it would not: still rolling short of the 1,500 ft
-                // milestone, which could be a minute of silence on an active runway. (First frame = the
-                // first frame past the hold.) Its first STATUS
-                // waits until "too fast to turn … Slow down." has been spoken: the sentence's start time
-                // is carried across the entry, whose latch reset would otherwise clear it.
-                DateTime tooFastSpokenUtc = _rolloutTooFastNoExitSpokenUtc;
+                // milestone, which could be a minute of silence on an active runway.
                 EnterRunwayEndCountdown();
                 _rolloutCountdownStatusOwed = true;
-                _rolloutTooFastNoExitSpokenUtc = tooFastSpokenUtc;
                 return;
             }
 
@@ -1525,7 +1519,6 @@ public partial class TaxiGuidanceManager
                     return;
                 }
                 _rolloutTooFastNoExit = true;
-                _rolloutTooFastNoExitSpokenUtc = DateTime.UtcNow;
                 AnnounceInstruction(Navigation.RetargetCallout.ComposeTooFastNoExit(_rolloutExit.TaxiwayName));
             }
             else
@@ -2205,18 +2198,6 @@ public partial class TaxiGuidanceManager
             laterallyClear: !IsWithinRolloutRunwayLaterally(lat, lon),
             stoppedNoticeGiven: _rolloutStoppedNoticeGiven);
 
-        // After a too-fast declined exit's overshoot — the only countdown entry that carries
-        // _rolloutTooFastNoExitSpokenUtc — the countdown's first STATUS (the stopped notice, a due milestone,
-        // the owed status) waits until "too fast to turn … Slow down." has been spoken
-        // (RolloutExitGate.CountdownStatusMaySpeak), so it never cuts that sentence off. Deferred, never
-        // dropped: a held stopped notice is re-decided on the first frame the hold allows (its latch is not
-        // set), and nothing below marks a milestone or the owed status spoken while it lasts. The state
-        // changes (vacated, backtracking) are not held: each leaves the countdown with its own instruction.
-        bool statusHeld = !Navigation.RolloutExitGate.CountdownStatusMaySpeak(
-            DateTime.UtcNow, _rolloutTooFastNoExitSpokenUtc);
-        if (statusHeld && action == Navigation.RunwayEndCountdownAction.StoppedMidRunwayNotice)
-            action = Navigation.RunwayEndCountdownAction.Continue;
-
         // Every action but Continue speaks its own sentence below, which settles any owed status.
         if (action != Navigation.RunwayEndCountdownAction.Continue)
             _rolloutCountdownStatusOwed = false;
@@ -2248,9 +2229,6 @@ public partial class TaxiGuidanceManager
                 AnnounceInstruction(ComposeRunwayEndStatus(distToEndFt, stopped: true));
                 return;
         }
-
-        // Held (see above): the milestones and the owed status wait for a later frame.
-        if (statusHeld) return;
 
         // Past the runway end already (overrun / off the pavement). The
         // three countdown callouts have either fired or been skipped past;
@@ -2294,9 +2272,8 @@ public partial class TaxiGuidanceManager
         }
 
         // The status owed when a too-fast declined exit was overshot with no exit left
-        // (_rolloutCountdownStatusOwed): once, on the countdown's first frame past the hold above, and only
-        // when nothing above spoke — rolling short of the first milestone, the countdown would otherwise say
-        // nothing at all.
+        // (_rolloutCountdownStatusOwed): once, on the countdown's first frame, and only when nothing above
+        // spoke — rolling short of the first milestone, the countdown would otherwise say nothing at all.
         if (_rolloutCountdownStatusOwed)
         {
             _rolloutCountdownStatusOwed = false;
