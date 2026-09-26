@@ -371,6 +371,72 @@ public class ExitBranchTests
         Assert.True(b.IsTurnaround);
     }
 
+    // --- The branch as the aircraft meets it at the exit's own node (ExitBranch.FromExitNode) ----------
+
+    // The SBGL 15 F shape (fs2024, nodes 581-691-577-576-578-675-857): the inward walk reaches the band at a
+    // node 44 m AHEAD of where the lead-in starts, so the branch runs 44 m back along the centreline before
+    // the lead-in heads forward, leaves the pavement at 47 degrees and turns to 72. North = LEFT in this frame.
+    internal static TaxiGraph BuildLeadInBehindJunction() => Build(
+        Seg(1044.0, 4.5, 1000.0, 6.1), Seg(1000.0, 6.1, 1044.3, 7.9), Seg(1044.3, 7.9, 1086.0, 8.3),
+        Seg(1086.0, 8.3, 1108.4, 12.5), Seg(1108.4, 12.5, 1125.4, 31.0, "F"), Seg(1125.4, 31.0, 1131.3, 49.0, "F"),
+        Seg(1131.3, 49.0, 1133.0, 90.0, "F"));
+
+    [Fact]
+    public void A_lead_in_starting_behind_its_junction_leaves_forward_from_the_exits_own_node()
+    {
+        var g = BuildLeadInBehindJunction();
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1125.4, 31.0), null, "F");
+        Assert.True(b.IsTurnaround);                              // read from its junction: 178 degrees back
+
+        var met = ExitBranch.FromExitNode(g, Axis, b, NodeAt(g, 1125.4, 31.0));
+
+        Assert.NotNull(met);
+        Assert.InRange(met!.Value.TurnToLeaveDeg, 46.0, 49.0);    // the stroke crossing the runway edge
+        Assert.InRange(met.Value.TurnToClearDeg, 71.0, 73.5);
+    }
+
+    // The MYAS 29 shape (fs2024, nodes 8-7-5-1): a connector leaves at 90 degrees, and the band node its
+    // inward walk reaches is 9 m further on, joined to it by an 11 m link back at 142 degrees.
+    private static TaxiGraph BuildConnectorBehindJunction() => Build(
+        Seg(1009.0, 0.4, 1000.0, 7.0), Seg(1000.0, 7.0, 1000.0, 12.0), Seg(1000.0, 12.0, 1000.0, 30.0),
+        Seg(1000.0, 30.0, 1000.0, 60.0));
+
+    [Fact]
+    public void A_connector_whose_junction_lies_past_it_leaves_at_90_degrees_from_its_own_node()
+    {
+        var g = BuildConnectorBehindJunction();
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000.0, 12.0));
+        Assert.True(b.IsTurnaround);
+
+        var met = ExitBranch.FromExitNode(g, Axis, b, NodeAt(g, 1000.0, 12.0));
+
+        Assert.NotNull(met);
+        Assert.InRange(met!.Value.TurnToLeaveDeg, 89.0, 91.0);
+        Assert.InRange(met.Value.TurnToClearDeg, 89.0, 91.0);
+    }
+
+    [Fact]
+    public void Met_at_the_junction_past_the_connector_the_branch_is_still_a_turnaround()
+    {
+        // Turning off at the junction itself means going back 142 degrees.
+        var g = BuildConnectorBehindJunction();
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1009.0, 0.4));
+
+        var met = ExitBranch.FromExitNode(g, Axis, b, NodeAt(g, 1009.0, 0.4));
+
+        Assert.NotNull(met);
+        Assert.InRange(met!.Value.TurnToLeaveDeg, 140.0, 144.0);
+    }
+
+    [Fact]
+    public void A_node_off_the_branch_has_no_reading_of_its_own()
+    {
+        var g = BuildConnectorBehindJunction();
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000.0, 12.0));
+
+        Assert.Null(ExitBranch.FromExitNode(g, Axis, b, -1));
+    }
+
     // --- Task 3b round 2, S3: the outward search stays on the exit's own taxiway -----------------
 
     // The KMIA 08R M7 shape: M7's lead line runs along the centreline from (900,0) through (1000,1) and

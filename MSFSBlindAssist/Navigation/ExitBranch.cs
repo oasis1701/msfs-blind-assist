@@ -797,11 +797,55 @@ public static class ExitBranch
     // The sharpest turn along `path` up to and including its first node beyond the runway half-width:
     // how the branch leaves the pavement (a measured path always reaches one - its clear node is beyond).
     private static double TurnToLeave(TaxiGraph graph, RunwayAxis axis, IReadOnlyList<int> path)
+        => SharpestTurn(graph, axis, path, 0, LeaveIndex(graph, axis, path));
+
+    // The first node of the path beyond the runway half-width (the last node when none is).
+    private static int LeaveIndex(TaxiGraph graph, RunwayAxis axis, IReadOnlyList<int> path)
     {
-        int leave = path.Count - 1;
         for (int i = 1; i < path.Count; i++)
-            if (Math.Abs(Lateral(graph, axis, path[i])) > axis.HalfWidthMetres) { leave = i; break; }
-        return SharpestTurn(graph, axis, path, 0, leave);
+            if (Math.Abs(Lateral(graph, axis, path[i])) > axis.HalfWidthMetres) return i;
+        return path.Count - 1;
+    }
+
+    /// <summary>
+    /// <paramref name="branch"/> as the aircraft meets it at the exit's own node - its turn to leave the
+    /// runway pavement and its turn to the clear line, read like the branch's own over strokes of at least
+    /// <see cref="MinStrokeMetres"/>, but from that node on: at or past the pavement edge, the stroke that
+    /// crosses it. Null when the node is not on the branch's path (the junction fallback measured another
+    /// node's branch).
+    /// <para>The branch's own turns are read from its junction, which is only the band node the inward walk
+    /// reached. Where that lies past the lead-in's own start, the path runs backward first, over pavement the
+    /// aircraft never drives: SBGL 15 F's runs 44 m back along the centreline (178 degrees) before its lead-in
+    /// leaves the runway at 47 and turns to 72; MYAS 29's junction lies 9 m past a 90-degree connector, joined
+    /// to it by an 11 m link back at 142. Read from the junction, both are turnarounds. Met at the exit's own
+    /// node, neither is.</para>
+    /// </summary>
+    internal static (double TurnToLeaveDeg, double TurnToClearDeg)? FromExitNode(
+        TaxiGraph graph, RunwayAxis axis, LandingExitBranch branch, int exitNodeId)
+    {
+        if (!branch.IsMeasured) return null;
+        var path = branch.Path;
+        int at = -1;
+        for (int i = 0; i < path.Count; i++)
+            if (path[i] == exitNodeId) { at = i; break; }
+        if (at < 0) return null;
+        int clear = -1;
+        for (int i = 0; i < path.Count; i++)
+            if (path[i] == branch.ClearNodeId) { clear = i; break; }
+        if (clear < 0) return null;
+        return (TurnsFrom(graph, axis, path, at, LeaveIndex(graph, axis, path)),
+                TurnsFrom(graph, axis, path, at, clear));
+    }
+
+    // The sharpest turn from the landing heading over the strokes of path[0..to] that end after `at` - the
+    // stretch from path[at] on, or the last stroke when path[at] is at or past path[to].
+    private static double TurnsFrom(TaxiGraph graph, RunwayAxis axis, IReadOnlyList<int> path, int at, int to)
+    {
+        int from = Math.Min(at, to - 1);
+        double max = 0.0;
+        foreach (var (a, b) in Strokes(graph, path, 0, to))
+            if (b > from) max = Math.Max(max, Math.Abs(Heading(graph, axis, path[a], path[b])));
+        return max;
     }
 
     private static double NodeDistance(TaxiGraph graph, int a, int b)

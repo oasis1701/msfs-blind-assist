@@ -104,6 +104,17 @@ public class LandingExit
     /// </summary>
     public bool VacatesRunway { get; set; } = true;
 
+    /// <summary>
+    /// True when the exit's branch is a turnaround as read from its junction and forward only as met at the
+    /// exit's own node (<see cref="ExitBranch.FromExitNode"/>): the junction the inward walk reached lies past
+    /// the lead-in's own start (SBGL 15 F). Such an exit only fills a gap in the planner list - its per-name
+    /// dedup takes it for its name only when no exit read forward from its junction holds the name, and it is
+    /// never coverage for one. Taking the name's place instead, KLIT 22R's D crossing near the threshold
+    /// displaced the D rapid exit 4,600 ft on, which came back 700 ft late on its own arc (whole-database
+    /// sweep, 2026-09-26).
+    /// </summary>
+    public bool ForwardOnlyFromItsNode { get; set; }
+
     public override string ToString()
     {
         string dist = MSFSBlindAssist.Services.DistanceFormatter.FromFeet(DistanceFromThresholdFeet, shortForm: true, round: false);

@@ -3365,12 +3365,38 @@ is replaced by its Y's forward arm when there is one:
   past the landing threshold, not within `END_BUFFER_FT`, 50 ft, of the pavement end, and beyond the
   rescue scan's cutoff). Its apron node is the sibling's corridor node when it has one.
 
+**A turnaround only from its junction is the forward exit it is** (`ExitBranch.FromExitNode`). The
+junction is only the band node the inward walk reached, and where that lies past the lead-in's own
+start the branch runs backward first over pavement the aircraft never drives. SBGL 15 F's runs 44 m
+back along the centreline (178°) before its lead-in leaves the runway at 47° and turns to 72°; MYAS
+29's junction lies 9 m past a 90° connector, joined to it by an 11 m link back at 142°. Both were
+recorded as 130° turnarounds: listed, never offered, dropped by the rescue scan. So when the sibling
+swap finds nothing, the branch is read again as the aircraft meets it at the exit's own node - its
+turn to leave the pavement over the strokes from that node (the stroke crossing the edge when the node
+is at or past it) and its turn to clear from there - and an exit that leaves forward that way is kept
+as a forward exit at its own node, with that angle, flagged `LandingExit.ForwardOnlyFromItsNode`.
+From the junction itself the reading is unchanged, so an exit whose node IS the junction stays a
+turnaround. The sibling is tried first, so every swap made before is made still: RJTT 34L A8, whose
+junction also lies past its lead-in's start, keeps its sibling, High-speed 23° at 6,374 ft, which
+read from its node would have been "Normal 90°" 450 ft on. A flagged exit only ever fills a gap - it
+never replaces or covers an exit read forward from its junction of its own name in the 50 ft window,
+the High-speed per-name dedup, the geometric path's per-name dedup or the coverage fill
+(`TaxiGraph.ReplacesInDedupWindow`); taking a name's place instead, KLIT 22R's D crossing near the
+threshold displaced the D rapid exit 4,600 ft on, which came back 700 ft late on its own arc, and
+WSAT 18's C right arm displaced its left arm. The hold-short gate keeps the junction reading (it
+counts a node forward when its branch is not a turnaround from its junction): read from the node,
+EGAA 35's F connector counted forward and hid every unmarked exit on the runway (5 exits to 1, ETSF
+27L 4 to 1, KMTN 15 4 to 1). Whole-database sweep, 2026-09-26: 299 exits on 289 runway directions
+stop being false turnarounds (274 become Normal, 6 High-speed, 27 change side as their bearing is
+measured where they leave); no exit is added, removed or lost, and usable exits rise by 299 with no
+direction losing one.
+
 **Nothing is silently dropped.**
 
 - An UNMEASURED branch — the exit's own taxiway never reaches the runway pavement, or never clears
   it within reach — leaves the exit exactly as it was, so thin navdata can never lose an exit here.
-- A turnaround with no sibling, or whose sibling fails the distance rules, is kept as 130° / "End"
-  at its own node. Dropping such turnarounds caused 111 of the 154 runway directions that lost every
+- A turnaround with no sibling, or whose sibling fails the distance rules, and which is a turnaround
+  from its own node too, is kept as 130° / "End" at its own node. Dropping such turnarounds caused 111 of the 154 runway directions that lost every
   exit in the first worldwide sweep (0KS5 09 among them). Only the rescue scan drops one: that scan
   never offered backtracks.
 - A recorded turnaround never hides or covers a forward exit of the same name: the geometric path's

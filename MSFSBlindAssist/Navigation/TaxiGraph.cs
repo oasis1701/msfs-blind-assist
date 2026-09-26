@@ -4537,7 +4537,9 @@ public partial class TaxiGraph
         // Deduplicate exits that share the same taxiway name and are within 50 ft of
         // each other along the runway (happens when both sides of a taxiway intersection
         // produce a hold-short node). Keep the one with the smaller angle (better RET
-        // candidate) or, if equal, the one closer to the threshold.
+        // candidate) or, if equal, the one closer to the threshold - except that an exit read
+        // forward only from its own node never replaces one read forward from its junction
+        // (ReplacesInDedupWindow; WSAT 18: C's right arm, re-read at 69.9°, displaced its left arm).
         exits.Sort((a, b) =>
         {
             int c = a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet);
@@ -4556,7 +4558,7 @@ public partial class TaxiGraph
                 if (string.Equals(d.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
                 {
                     // Keep the one with smaller exit angle.
-                    if (e.ExitAngleDegrees < d.ExitAngleDegrees)
+                    if (ReplacesInDedupWindow(e, d))
                         deduped[i] = e;
                     merged = true;
                     break;
@@ -4579,18 +4581,22 @@ public partial class TaxiGraph
         // The threshold-nearest node is the RET entry point; interior curve nodes are not
         // meaningful separate choices. Normal and End exits keep the 50 ft window only —
         // a Normal taxiway crossing the runway at 90° twice is a legitimate pair.
+        // An exit read forward only from its own node takes a name here only when no exit read forward from
+        // its junction does (LandingExit.ForwardOnlyFromItsNode).
         {
             var hsSeenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var hsKept = new HashSet<LandingExit>(ReferenceEqualityComparer.Instance);
+            foreach (bool gapFillers in new[] { false, true })
+                foreach (var e in deduped)
+                {
+                    if (e.ExitType != "High-speed" || string.IsNullOrEmpty(e.TaxiwayName)) continue;
+                    if (e.ForwardOnlyFromItsNode != gapFillers) continue;
+                    if (hsSeenNames.Add(e.TaxiwayName)) hsKept.Add(e);
+                }
             var hsDedupedList = new List<LandingExit>(deduped.Count);
             foreach (var e in deduped)
-            {
-                if (e.ExitType != "High-speed" || string.IsNullOrEmpty(e.TaxiwayName))
-                {
+                if (e.ExitType != "High-speed" || string.IsNullOrEmpty(e.TaxiwayName) || hsKept.Contains(e))
                     hsDedupedList.Add(e);
-                    continue;
-                }
-                if (hsSeenNames.Add(e.TaxiwayName)) hsDedupedList.Add(e);
-            }
             deduped = hsDedupedList;
         }
 
@@ -4734,7 +4740,7 @@ public partial class TaxiGraph
                             if (Math.Abs(d.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) > DEDUP_WINDOW_FT) break;
                             if (string.Equals(d.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
                             {
-                                if (e.ExitAngleDegrees < d.ExitAngleDegrees) deduped[i] = e;
+                                if (ReplacesInDedupWindow(e, d)) deduped[i] = e;
                                 wasMerged = true; break;
                             }
                         }
@@ -4811,17 +4817,22 @@ public partial class TaxiGraph
         // turnarounds. Worldwide sweep, 2026-09-26: ULWB 33 and YCAB 30 lost their only forward exit
         // to their own Y's recorded turnaround, nearer to the threshold by a few dozen feet. Every
         // other rule here is unchanged, and the list keeps its nearest-first order.
+        //
+        // An exit read forward only from its own node (LandingExit.ForwardOnlyFromItsNode) is treated the same
+        // way: it fills a gap, never takes a name's place from, or covers, an exit read forward from its
+        // junction (KLIT 22R: D's crossing near the threshold displaced the D rapid exit 4,600 ft on).
         static bool IsTurnaroundExit(LandingExit x) => x.ExitAngleDegrees > RolloutExitGate.MaxUsableExitTurnDeg;
+        static bool FillsAGapOnly(LandingExit x) => IsTurnaroundExit(x) || x.ForwardOnlyFromItsNode;
         var dedupedFinal = new List<LandingExit>(deduped.Count);
         if (onFallbackPath)
         {
             var keptByName = new HashSet<LandingExit>(ReferenceEqualityComparer.Instance);
             var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (bool turnarounds in new[] { false, true })
+            foreach (bool gapFillers in new[] { false, true })
             {
                 foreach (var e in deduped)
                 {
-                    if (IsTurnaroundExit(e) != turnarounds) continue;
+                    if (FillsAGapOnly(e) != gapFillers) continue;
                     if (string.IsNullOrEmpty(e.TaxiwayName) || seenNames.Add(e.TaxiwayName)) keptByName.Add(e);
                 }
             }
@@ -4848,8 +4859,9 @@ public partial class TaxiGraph
                 if (ReferenceEquals(kept, e)) { covered = true; break; }
                 if (Math.Abs(kept.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) > EXIT_COVERAGE_GAP_FT)
                     continue;
-                // A turnaround is never coverage for a forward exit of its own name (see above).
-                if (IsTurnaroundExit(kept) && !IsTurnaroundExit(e)
+                // A turnaround, or an exit read forward only from its own node, is never coverage for an
+                // exit read forward from its junction of its own name (see above).
+                if (FillsAGapOnly(kept) && !FillsAGapOnly(e)
                     && !string.IsNullOrEmpty(e.TaxiwayName)
                     && string.Equals(kept.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
                     continue;
@@ -4866,6 +4878,17 @@ public partial class TaxiGraph
             dedupedFinal.Sort((a, b) => a.DistanceFromThresholdFeet.CompareTo(b.DistanceFromThresholdFeet));
 
         return dedupedFinal;
+    }
+
+    // The 50 ft window's choice between two exits of one name: the smaller angle, except that an exit read
+    // forward only from its own node never replaces one read forward from its junction
+    // (LandingExit.ForwardOnlyFromItsNode) - a turnaround it may still replace.
+    private static bool ReplacesInDedupWindow(LandingExit e, LandingExit kept)
+    {
+        bool bothForward = e.ExitAngleDegrees <= RolloutExitGate.MaxUsableExitTurnDeg
+            && kept.ExitAngleDegrees <= RolloutExitGate.MaxUsableExitTurnDeg;
+        if (bothForward && e.ForwardOnlyFromItsNode != kept.ForwardOnlyFromItsNode) return !e.ForwardOnlyFromItsNode;
+        return e.ExitAngleDegrees < kept.ExitAngleDegrees;
     }
 
     private static bool HasLetterAndDigit(string s)

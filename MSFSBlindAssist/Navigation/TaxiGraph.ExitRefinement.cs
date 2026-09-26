@@ -28,9 +28,15 @@ public partial class TaxiGraph
     /// the runway pavement) is replaced by its forward sibling when one exists and the sibling's
     /// divergence node passes the distance rules (<see cref="SiblingExit"/>) - the one case in which an
     /// exit moves, and then to where the sibling arm leaves the centreline, not to its lead-in start.
-    /// Otherwise it is recorded as the turnaround it is (130°, "End") at its own node - never
-    /// dropped from the planner list (dropping it emptied 111 runway directions' lists, e.g. 0KS5 09) -
-    /// except that <paramref name="dropTurnarounds"/> (the rescue scan) drops it.</para>
+    /// Otherwise, when the branch met at the exit's own node leaves the runway forward
+    /// (<see cref="ExitBranch.FromExitNode"/>), it is a turnaround only as read from its junction, over
+    /// pavement the aircraft never drives, and is kept as the forward exit it is, with the angle it has from
+    /// its own node (SBGL 15 F: 178 degrees back from its junction, 47 off the runway and 72 to clear from its
+    /// own node; MYAS 29: a 90-degree connector whose junction lies 9 m past it). The sibling is tried first,
+    /// so every Y exit swapped before is swapped still. Otherwise it is recorded as the turnaround it is
+    /// (130°, "End") at its own node - never dropped from the planner list (dropping it emptied 111 runway
+    /// directions' lists, e.g. 0KS5 09) - except that <paramref name="dropTurnarounds"/> (the rescue scan)
+    /// drops it.</para>
     /// </summary>
     private LandingExit? RefineExitByBranch(
         LandingExit exit, int? seedNeighborId, bool dropTurnarounds,
@@ -46,13 +52,27 @@ public partial class TaxiGraph
             var atSibling = sibling == null ? null
                 : SiblingExit(sibling, exit.TaxiwayName, exit.ApronNodeId, rwy, axis, minDistanceFromThresholdFeet);
             if (atSibling != null) return atSibling;
+            if (ExitBranch.FromExitNode(this, axis, branch, exit.NodeId) is { } met
+                && met.TurnToLeaveDeg <= RolloutExitGate.TurnaroundAboveDeg)
+            {
+                exit.ForwardOnlyFromItsNode = true;
+                return AsForwardExit(exit, branch, met.TurnToClearDeg, rwy, axis);
+            }
             if (dropTurnarounds) return null;
             exit.ExitAngleDegrees = RolloutExitGate.TurnaroundExitAngleDeg;
             exit.ExitType = "End";
             return exit;
         }
 
-        double angle = Math.Min(branch.TurnToClearDeg, RolloutExitGate.MaxUsableExitTurnDeg);
+        return AsForwardExit(exit, branch, branch.TurnToClearDeg, rwy, axis);
+    }
+
+    // A forward exit at its own node: the given turn to clear as its angle (capped at 90°), its type classified
+    // where it stands, and its bearing and side measured there (PlaceOf).
+    private LandingExit AsForwardExit(LandingExit exit, LandingExitBranch branch, double turnToClearDeg,
+        Runway rwy, RunwayAxis axis)
+    {
+        double angle = Math.Min(turnToClearDeg, RolloutExitGate.MaxUsableExitTurnDeg);
         double alongFt = axis.Project(exit.Latitude, exit.Longitude).AlongMetres / 0.3048;
         var place = PlaceOf(branch, exit.NodeId, axis);
         exit.ExitAngleDegrees = angle;

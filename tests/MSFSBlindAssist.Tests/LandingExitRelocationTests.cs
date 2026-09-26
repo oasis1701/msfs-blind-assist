@@ -283,6 +283,55 @@ public class LandingExitRelocationTests
         Assert.True(m6.DistanceFromThresholdFeet >= 500.0);
     }
 
+    // The SBGL 15 F shape (ExitBranchTests.BuildLeadInBehindJunction): read from its junction, 44 m past the
+    // start of its lead-in, the branch turns 178 degrees back; met at the exit's own node it leaves the runway
+    // at 47 degrees and turns to 72. No other arm is a forward sibling, so it used to be recorded as a
+    // 130-degree turnaround - listed but never offered, and dropped by the rescue scan.
+    [Fact]
+    public void A_turnaround_only_from_its_junction_is_listed_as_the_forward_exit_it_is()
+    {
+        var g = ExitBranchTests.BuildLeadInBehindJunction();
+
+        var f = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "F");
+
+        Assert.InRange(f.ExitAngleDegrees, 45.0, 90.0);
+        Assert.Equal("Normal", f.ExitType);
+        Assert.Equal("Left", f.ExitSide);
+        Assert.True(f.ForwardOnlyFromItsNode);
+    }
+
+    [Fact]
+    public void An_exit_forward_only_from_its_own_node_never_displaces_one_forward_from_its_junction()
+    {
+        // The KLIT 22R shape: the SBGL-shaped F (forward only from its own node, 1,125 m) and, 175 m on, an
+        // ordinary 90-degree F connector - within the coverage window, so the planner lists one F. The one
+        // read forward from its junction keeps the name; the other only ever fills a gap.
+        var paths = new[]
+        {
+            Seg(1044.0, 4.5, 1000.0, 6.1), Seg(1000.0, 6.1, 1044.3, 7.9), Seg(1044.3, 7.9, 1086.0, 8.3),
+            Seg(1086.0, 8.3, 1108.4, 12.5), Seg(1108.4, 12.5, 1125.4, 31.0, "F"), Seg(1125.4, 31.0, 1131.3, 49.0, "F"),
+            Seg(1131.3, 49.0, 1133.0, 90.0, "F"),
+            Seg(1300.0, 0.0, 1300.0, 60.0, "F"),
+        };
+        var g = Build(paths);
+
+        var f = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "F");
+
+        Assert.Equal(NodeAt(g, 1300.0, 0.0).NodeId, f.NodeId);
+        Assert.False(f.ForwardOnlyFromItsNode);
+    }
+
+    [Fact]
+    public void The_rescue_scan_offers_a_turnaround_only_from_its_junction()
+    {
+        var g = ExitBranchTests.BuildLeadInBehindJunction();
+
+        var f = Assert.Single(g.FindDownfieldExits(Runway09(3000.0), afterDistanceFromThresholdFeet: 0.0),
+            e => e.TaxiwayName == "F");
+
+        Assert.InRange(f.ExitAngleDegrees, 45.0, 90.0);
+    }
+
     [Fact]
     public void The_rescue_scan_still_drops_a_turnaround_whose_forward_sibling_is_under_500_ft()
     {
