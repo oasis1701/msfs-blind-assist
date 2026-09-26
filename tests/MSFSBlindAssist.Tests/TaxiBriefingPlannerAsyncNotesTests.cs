@@ -14,13 +14,19 @@ public class TaxiBriefingPlannerAsyncNotesTests
     [Fact]
     public async Task An_unavailable_leg_made_before_planning_still_carries_its_runway_note()
     {
-        var request = Request(B738) with { OriginRunwayNote = "x-note" };
+        // Distinct notes per leg: PlanAsync must route each to its OWN leg, never cross the two -- a bug that
+        // passed both request.OriginRunwayNote and request.DestinationRunwayNote to PlanLegSafelyAsync as the
+        // same value would go undetected by a single shared note.
+        var request = Request(B738) with { OriginRunwayNote = "out-note", DestinationRunwayNote = "in-note" };
 
         var b = await TaxiBriefingPlanner.PlanAsync(request, null, null, TaxiBriefingPlanner.DefaultBudget);
 
         Assert.Equal("no navigation database loaded", b.TaxiOut.Unavailable);
         Assert.Equal("no navigation database loaded", b.TaxiIn.Unavailable);
-        Assert.Contains("x-note", b.TaxiOut.Notes);
+        Assert.Contains("out-note", b.TaxiOut.Notes);
+        Assert.DoesNotContain("in-note", b.TaxiOut.Notes);
+        Assert.Contains("in-note", b.TaxiIn.Notes);
+        Assert.DoesNotContain("out-note", b.TaxiIn.Notes);
     }
 
     [Fact]
