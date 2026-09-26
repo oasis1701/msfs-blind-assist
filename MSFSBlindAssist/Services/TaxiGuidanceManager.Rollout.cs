@@ -30,7 +30,9 @@ public partial class TaxiGuidanceManager
     /// <summary>
     /// Recomputes <c>_rolloutExitTurnWindowFeet</c> for the exit now targeted: its own lateral offset in
     /// the rollout runway's frame, its angle and the runway width (RolloutExitGate.TurnWindowFeetFor).
-    /// Called wherever _rolloutExit is (re)assigned for a rollout: both rollout entries and every retarget.
+    /// Called after EVERY assignment of _rolloutExit: both rollout entries, every retarget and the
+    /// early-vacate swap, and where it is cleared (EnterRunwayEndCountdown, StopGuidance), which falls
+    /// back to RolloutExitGate.TurnWindowFeet.
     /// </summary>
     private void UpdateRolloutExitTurnWindow()
     {
@@ -118,7 +120,8 @@ public partial class TaxiGuidanceManager
             {
                 _rolloutTurnNowAnnounced = true;
                 // The turn-now block's own side effect, reproduced because that block will not run.
-                if (exit.ExitType == "Normal" && exit.ExitBearingTrue > 0.0)
+                if (exit.ExitType == "Normal"
+                    && Navigation.RolloutExitGate.IsPlausibleExitBearing(exit.ExitBearingTrue, _rolloutRunwayHeadingTrue))
                     _headingErrorInitialized = false;
                 turnPhrase = ComposeExitTurnPhrase(touchdownLat, touchdownLon, _rolloutRunwayHeadingTrue);
             }
@@ -757,6 +760,7 @@ public partial class TaxiGuidanceManager
                     // Swap the exit so the destination, the post-handoff overshoot monitor
                     // and the arrival callout all name the taxiway the pilot is on.
                     _rolloutExit = vacatedAt;
+                    UpdateRolloutExitTurnWindow();
                     earlyVacateSwapped = true;
                 }
                 else
@@ -1086,7 +1090,9 @@ public partial class TaxiGuidanceManager
                                 // retiring it means that block will never run. Normal exits
                                 // (50–110°): reset the heading-error smoother so the
                                 // ExitBearingTrue-based tone starts with a sharp hard-pan.
-                                if (declineExit.ExitType == "Normal" && declineExit.ExitBearingTrue > 0.0)
+                                if (declineExit.ExitType == "Normal"
+                                    && Navigation.RolloutExitGate.IsPlausibleExitBearing(
+                                           declineExit.ExitBearingTrue, _rolloutRunwayHeadingTrue))
                                     _headingErrorInitialized = false;
                             }
 
@@ -1375,16 +1381,15 @@ public partial class TaxiGuidanceManager
             if (!_rolloutApproach500Announced && distToExitFeet <= xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot && distToExitFeet > ROLLOUT_TURN_NOW_FT)
             {
                 RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
-                // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
-                // approach speed for those exits; telling the pilot to slow down contradicts
-                // the reason they picked one. Since 2026-09 the suppression has a ceiling:
-                // high-speed exits only hear it above 60 kt (one of 45–50°, or of unmeasured
-                // angle, is steep by RolloutExitGate.ExitTurnOffSpeedKts and hears it above
-                // 30 kt like any sharp exit).
+                // "Slow down." when faster than this exit can be taken. The line is
+                // RolloutExitGate.SlowDownAboveKts: 60 kt for a shallow exit (below 45°), 30 kt for a
+                // sharp one (45° or more, or an unmeasured angle, steep by
+                // RolloutExitGate.ExitTurnOffSpeedKts) and for any end-of-runway exit. So a high-speed
+                // exit below 45° hears it only above 60 kt, where it cannot be taken.
                 //
-                // Faster than this exit can be taken (RolloutExitGate.SlowDownAboveKts): sharp exits and
-                // end-of-runway exits hear it above 30 kt, today's line for every non-high-speed exit, and
-                // a shallow exit above 60 kt; a high-speed exit used to get no warning at any speed.
+                // History: before 2026-09 a high-speed exit never heard it at any speed (40–80 kt was
+                // treated as its correct approach speed, and "slow down" as contradicting the reason
+                // it was picked), while every other exit heard it above 30 kt — still their line.
                 string slowSuffix = groundSpeedKts > Navigation.RolloutExitGate.SlowDownAboveKts(
                         _rolloutExit.ExitAngleDegrees, _rolloutExit.ExitType)
                     ? " Slow down." : "";
@@ -1426,7 +1431,9 @@ public partial class TaxiGuidanceManager
                 // so the ExitBearingTrue-based tone below starts with a sharp hard-pan
                 // rather than ramping up from the near-zero "bearing-to-junction ≈ runway
                 // heading" residual built up during the approach.
-                if (_rolloutExit.ExitType == "Normal" && _rolloutExit.ExitBearingTrue > 0.0)
+                if (_rolloutExit.ExitType == "Normal"
+                    && Navigation.RolloutExitGate.IsPlausibleExitBearing(
+                           _rolloutExit.ExitBearingTrue, _rolloutRunwayHeadingTrue))
                     _headingErrorInitialized = false;
             }
         }
@@ -1519,12 +1526,14 @@ public partial class TaxiGuidanceManager
             _rolloutToneMode = toneMode;
         }
 
-        string toneDiag;
+        // What the tone log line below reports for a live tone: kept as numbers and formatted only on a
+        // frame that line is written, so a stopped aircraft allocates nothing here per frame.
+        bool toneLive = false;
+        double toneDesiredHeading = 0.0, toneRawError = 0.0;
         if (toneMode == Navigation.RolloutToneMode.Silent)
         {
             _steeringTone.Pause();
             _headingErrorInitialized = false;
-            toneDiag = "desired=- raw=- smooth=-";
         }
         else
         {
@@ -1591,7 +1600,9 @@ public partial class TaxiGuidanceManager
                 _steeringTone.UpdateHeadingErrorWithThresholds(
                     _smoothedHeadingError, toneSilentDeg, toneActivationDeg, toneMaxPanDeg);
             }
-            toneDiag = $"desired={desiredHeading:F1} raw={rawError:+0.0;-0.0} smooth={_smoothedHeadingError:+0.0;-0.0}";
+            toneLive = true;
+            toneDesiredHeading = desiredHeading;
+            toneRawError = rawError;
         }
 
         // Rollout tone diagnostics: every frame the tone can be live, so a report of an erratic tone is
@@ -1608,6 +1619,9 @@ public partial class TaxiGuidanceManager
                               || !ReferenceEquals(_rolloutExit, _rolloutToneLogExit);
         if (toneLogMoving || toneLogChanged)
         {
+            string toneDiag = toneLive
+                ? $"desired={toneDesiredHeading:F1} raw={toneRawError:+0.0;-0.0} smooth={_smoothedHeadingError:+0.0;-0.0}"
+                : "desired=- raw=- smooth=-";
             double lateralSignedM = SignedLateralFromRunwayMeters(
                 lat, lon, _rolloutRunway!.StartLat, _rolloutRunway.StartLon, _rolloutRunwayHeadingTrue);
             RolloutDiag($"tone mode={toneMode} exit='{_rolloutExit!.TaxiwayName}' dist={distToExitFeet:F0}ft " +
@@ -2766,6 +2780,7 @@ public partial class TaxiGuidanceManager
         _currentSegmentIndex = 0;
         _originalTaxiwaySequence = null;
         _rolloutExit = null;
+        UpdateRolloutExitTurnWindow(); // no exit: back to the fixed TurnWindowFeet
         _isLandingExitRoute = false; // no exit route — runway-end countdown
         _landingExitOffPavement = true;
         // KEEP _rolloutRunway and _rolloutRunwayHeadingTrue — countdown needs them.

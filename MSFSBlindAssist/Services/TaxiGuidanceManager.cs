@@ -944,7 +944,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // treatment in both directions.
     private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutToneMode.Silent;
     // The targeted exit's own turn window (RolloutExitGate.TurnWindowFeetFor), recomputed whenever the
-    // targeted exit changes. Feeds IsExitTurnBegun and SelectToneMode in place of the fixed 1,000 ft.
+    // targeted exit changes, and back to the fixed TurnWindowFeet when there is none (every _rolloutExit
+    // assignment calls UpdateRolloutExitTurnWindow). Feeds IsExitTurnBegun and SelectToneMode in place
+    // of the fixed 1,000 ft.
     private double _rolloutExitTurnWindowFeet = Navigation.RolloutExitGate.TurnWindowFeet;
     // Tone mode and targeted exit of the last per-frame "tone mode=" line in landing_exit.log (null = none
     // yet). A stopped aircraft gets a line only when one of them changes, so a pilot held on the runway
@@ -1038,7 +1040,8 @@ public partial class TaxiGuidanceManager : IDisposable
     // guidance even if we haven't started the turn yet. 30 kt is a typical
     // taxi-fast cap (real-world SOPs cap straight-taxi at 30 kt; turns
     // get ~10-15 kt limits).
-    private const double ROLLOUT_TAXI_GS_KTS = 30.0;
+    // One 30 kt for the rollout: aliases RolloutExitGate.TaxiGroundSpeedKts (value unchanged).
+    private const double ROLLOUT_TAXI_GS_KTS = Navigation.RolloutExitGate.TaxiGroundSpeedKts;
 
     // Heading deviation from the runway centerline that signals "the
     // pilot has started the turn onto the exit". Once we see this, hand
@@ -3642,6 +3645,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // subsequent BeginLandingRollout caller assume a clean baseline
         // without depending on its own field assignments to overwrite.
         _rolloutExit = null;
+        UpdateRolloutExitTurnWindow(); // no exit: back to the fixed TurnWindowFeet
         _isLandingExitRoute = false;
         ResetLandingExitOutcomeFlags();   // fresh session: no failed handoff to remember
         _rolloutRunway = null;
