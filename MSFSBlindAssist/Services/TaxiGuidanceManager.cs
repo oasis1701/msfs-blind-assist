@@ -939,6 +939,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // which reset the smoother on exit-tone entry only — the drift tone needs the same
     // treatment in both directions.
     private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutToneMode.Silent;
+    // The targeted exit's own turn window (RolloutExitGate.TurnWindowFeetFor), recomputed whenever the
+    // targeted exit changes. Feeds IsExitTurnBegun and SelectToneMode in place of the fixed 1,000 ft.
+    private double _rolloutExitTurnWindowFeet = Navigation.RolloutExitGate.TurnWindowFeet;
     // Latches true after the one-shot TryEarlyExitHandoff attempt so we don't
     // retry on every subsequent frame. The attempt happens once: at the first
     // frame where GS ≤ ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS and dist ≤ ROLLOUT_EXIT_TONE_ARM_FT.

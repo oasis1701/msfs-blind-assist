@@ -25,6 +25,28 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// Recomputes <c>_rolloutExitTurnWindowFeet</c> for the exit now targeted: its own lateral offset in
+    /// the rollout runway's frame, its angle and the runway width (RolloutExitGate.TurnWindowFeetFor).
+    /// Called wherever _rolloutExit is (re)assigned for a rollout: both rollout entries and every retarget.
+    /// </summary>
+    private void UpdateRolloutExitTurnWindow()
+    {
+        if (_rolloutExit == null || _rolloutRunway == null)
+        {
+            _rolloutExitTurnWindowFeet = Navigation.RolloutExitGate.TurnWindowFeet;
+            return;
+        }
+        double lateralM = SignedLateralFromRunwayMeters(
+            _rolloutExit.Latitude, _rolloutExit.Longitude,
+            _rolloutRunway.StartLat, _rolloutRunway.StartLon, _rolloutRunwayHeadingTrue);
+        _rolloutExitTurnWindowFeet = Navigation.RolloutExitGate.TurnWindowFeetFor(
+            _rolloutRunway.Width, lateralM, _rolloutExit.ExitAngleDegrees);
+        RolloutDiag($"Turn window for '{_rolloutExit.TaxiwayName}': {_rolloutExitTurnWindowFeet:F0} ft " +
+            $"(node lateral {lateralM:+0.0;-0.0} m, angle {_rolloutExit.ExitAngleDegrees:F1} deg, " +
+            $"runway width {_rolloutRunway.Width:F0} ft)");
+    }
+
+    /// <summary>
     /// Resets the landing-exit OUTCOME flags that decide HandleArrival's closure. One owner for a
     /// block that was hand-copied into LoadRoute, StopGuidance and the no-route rollout entry and had
     /// already drifted (the rollout copy lacked the last two fields). The values are LoadRoute's:
@@ -170,6 +192,7 @@ public partial class TaxiGuidanceManager
             _rolloutRunwayHeadingTrue = runwayHeadingTrue;
             _rolloutRunway = runway;
             _rolloutAllExits = allExits;
+            UpdateRolloutExitTurnWindow();
             ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
@@ -363,6 +386,7 @@ public partial class TaxiGuidanceManager
             _rolloutRunwayHeadingTrue = runwayHeadingTrue;
             _rolloutRunway = runway;
             _rolloutAllExits = allExits;
+            UpdateRolloutExitTurnWindow();
             ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
@@ -405,7 +429,9 @@ public partial class TaxiGuidanceManager
     /// • <b>500 ft from exit</b> — "{name}, 500 feet, slow down." (the
     ///   "slow down" suffix is dropped if GS is already below
     ///   ROLLOUT_TAXI_GS_KTS, mirroring how the hold-short countdown is
-    ///   speed-aware.)
+    ///   speed-aware. Since 2026-09 the line is the exit's own
+    ///   RolloutExitGate.MaxTurnSpeedKts: 30 kt for a sharp exit, 60 kt for a
+    ///   rapid one.)
     /// • <b>~150 ft from exit</b> — "Turn {left/right} now, taxiway {name}."
     ///   Direction is computed from aircraft heading vs bearing-to-exit so
     ///   it matches what the pilot needs to do regardless of which side of
@@ -484,10 +510,11 @@ public partial class TaxiGuidanceManager
 
         // Speed-gated: above ROLLOUT_TURN_MAX_GS_KTS a heading deviation is touchdown yaw /
         // crab alignment, not a deliberate runway exit turn. Direction- and proximity-gated
-        // since 2026-08: see Navigation/RolloutExitGate.IsExitTurnBegun.
+        // since 2026-08: see Navigation/RolloutExitGate.IsExitTurnBegun; the proximity window
+        // is the targeted exit's own (TurnWindowFeetFor) since 2026-09.
         bool turnBegun = Navigation.RolloutExitGate.IsExitTurnBegun(
             hdgDelta, groundSpeedKts, distToExitFeet, pastExit, exitRelBearingDeg,
-            Navigation.RolloutExitGate.TurnWindowFeet);
+            _rolloutExitTurnWindowFeet);
         // Effectively stopped before reaching the exit — e.g. pilot braked
         // hard after an undershoot retarget left the exit 500+ ft away.
         // The atTaxiSpeed&&nearExit gate intentionally doesn't fire this far
@@ -1040,8 +1067,7 @@ public partial class TaxiGuidanceManager
                                 && distToExitFeet <= ROLLOUT_TURN_NOW_FT;
 
                             bool slowDown = retire500
-                                && declineExit.ExitType != "High-speed"
-                                && groundSpeedKts > ROLLOUT_TAXI_GS_KTS;
+                                && groundSpeedKts > Navigation.RolloutExitGate.MaxTurnSpeedKts(declineExit.ExitAngleDegrees);
 
                             if (retire1500) _rolloutApproach1500Announced = true;
                             if (retire900) _rolloutApproach900Announced = true;
@@ -1348,9 +1374,16 @@ public partial class TaxiGuidanceManager
                 RolloutDiag($"500-ft approach callout firing: distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}");
                 // Suppress "Slow down" for high-speed exits — 40–80 kt is the correct
                 // approach speed for those exits; telling the pilot to slow down contradicts
-                // the reason they picked one.
-                bool isHighSpeed = _rolloutExit.ExitType == "High-speed";
-                string slowSuffix = !isHighSpeed && groundSpeedKts > ROLLOUT_TAXI_GS_KTS ? " Slow down." : "";
+                // the reason they picked one. Since 2026-09 the suppression has a ceiling:
+                // high-speed exits only hear it above 60 kt (one of 45–50°, or of unmeasured
+                // angle, is steep by RolloutExitGate.ExitTurnOffSpeedKts and hears it above
+                // 30 kt like any sharp exit).
+                //
+                // Faster than this exit can be taken (RolloutExitGate.MaxTurnSpeedKts): 30 kt for a sharp
+                // exit — today's line for every non-high-speed exit — and 60 kt for a high-speed one, which
+                // used to get no warning at any speed.
+                string slowSuffix = groundSpeedKts > Navigation.RolloutExitGate.MaxTurnSpeedKts(_rolloutExit.ExitAngleDegrees)
+                    ? " Slow down." : "";
                 AnnounceInstruction($"{CapFirst(name2)}, {xm[2].Label}.{slowSuffix}");
                 _rolloutApproach500Announced = true;
             }
@@ -1423,7 +1456,10 @@ public partial class TaxiGuidanceManager
         // Exception, within RolloutExitGate.TurnWindowFeet of the exit: a heading deviation
         // that is toward a KNOWN exit side goes Silent instead of DriftCorrection — don't
         // fight a turn IsExitTurnBegun is about to accept just because it hasn't reached the
-        // 15° turnBegun threshold yet. See RolloutExitGate.SelectToneMode's doc.
+        // 15° turnBegun threshold yet. See RolloutExitGate.SelectToneMode's doc. Since 2026-09
+        // that window is the targeted exit's own (_rolloutExitTurnWindowFeet, TurnWindowFeetFor,
+        // never more than TurnWindowFeet): at KMEM 36L a leftover right turn 631 ft before M7,
+        // whose own window is 324 ft, silenced the tone; it now gets the drift tone instead.
         //
         // Within 300 ft (≤50 kt) the tone is ExitBearing: desired heading = bearing to the
         // exit junction node.
@@ -1443,7 +1479,7 @@ public partial class TaxiGuidanceManager
         //   an off-axis junction — appropriate directional pan without false alarms.
         var toneMode = Navigation.RolloutExitGate.SelectToneMode(
             groundSpeedKts, distToExitFeet, hdgDelta, exitRelBearingDeg,
-            Navigation.RolloutExitGate.TurnWindowFeet);
+            _rolloutExitTurnWindowFeet);
         if (toneMode != _rolloutToneMode)
         {
             // Start every mode from a clean filter so the pan is sharp and immediate rather
@@ -1452,10 +1488,12 @@ public partial class TaxiGuidanceManager
             _rolloutToneMode = toneMode;
         }
 
+        string toneDiag;
         if (toneMode == Navigation.RolloutToneMode.Silent)
         {
             _steeringTone.Pause();
             _headingErrorInitialized = false;
+            toneDiag = "desired=- raw=- smooth=-";
         }
         else
         {
@@ -1472,8 +1510,11 @@ public partial class TaxiGuidanceManager
                 // still ahead, so as the pilot turns off the runway the heading error
                 // flips toward the wrong side. ExitBearingTrue correctly decreases as
                 // the pilot aligns with the exit, telling them how much more to turn.
+                // Only a plausible exit direction (RolloutExitGate.IsPlausibleExitBearing): KMEM M6 carried
+                // 127° true on a 359° runway, and after "turn now" the tone demanded that hairpin at 49 kt.
                 if (_rolloutTurnNowAnnounced && _rolloutExit!.ExitType == "Normal"
-                    && _rolloutExit.ExitBearingTrue > 0.0)
+                    && Navigation.RolloutExitGate.IsPlausibleExitBearing(
+                           _rolloutExit.ExitBearingTrue, _rolloutRunwayHeadingTrue))
                 {
                     desiredHeading = _rolloutExit.ExitBearingTrue;
                 }
@@ -1519,6 +1560,18 @@ public partial class TaxiGuidanceManager
                 _steeringTone.UpdateHeadingErrorWithThresholds(
                     _smoothedHeadingError, toneSilentDeg, toneActivationDeg, toneMaxPanDeg);
             }
+            toneDiag = $"desired={desiredHeading:F1} raw={rawError:+0.0;-0.0} smooth={_smoothedHeadingError:+0.0;-0.0}";
+        }
+
+        // Rollout tone diagnostics: every frame the tone can be live, so a report of an erratic tone is
+        // read from landing_exit.log instead of being reconstructed from the code (KMEM 36L 2026-09-26).
+        if (groundSpeedKts <= ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS)
+        {
+            double lateralSignedM = SignedLateralFromRunwayMeters(
+                lat, lon, _rolloutRunway!.StartLat, _rolloutRunway.StartLon, _rolloutRunwayHeadingTrue);
+            RolloutDiag($"tone mode={toneMode} exit='{_rolloutExit!.TaxiwayName}' dist={distToExitFeet:F0}ft " +
+                $"window={_rolloutExitTurnWindowFeet:F0}ft hdgDelta={hdgDelta:+0.0;-0.0}deg " +
+                $"lateral={lateralSignedM:+0.0;-0.0}m gs={groundSpeedKts:F1}kt turnBegun={turnBegun} {toneDiag}");
         }
     }
 
@@ -2121,6 +2174,7 @@ public partial class TaxiGuidanceManager
                     _rolloutCrossingDeclineAnnounced = false;
 
                 _rolloutExit = candidate;
+                UpdateRolloutExitTurnWindow();
                 _isLandingExitRoute = true; // LoadRoute above cleared it; still a landing-exit route
                 ResetRolloutApproachLatches();
                 // Allow TryEarlyExitHandoff to fire for the newly targeted exit.
