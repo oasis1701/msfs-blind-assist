@@ -79,6 +79,10 @@ public partial class TaxiGuidanceManager : IDisposable
     private readonly ScreenReaderAnnouncer _announcer;
     private TaxiSteeringTone _steeringTone;
     private TaxiGraph? _graph;
+    // DatabaseGeneration when _graph's instance was installed (never restamped when a rollout
+    // re-route hands the same instance back). A database switch leaves a route's graph in place,
+    // so this is how the runway probe knows that graph belongs to the previous database.
+    private long _graphGeneration;
     private TaxiRoute? _route;
     private TaxiGuidanceState _state = TaxiGuidanceState.Inactive;
 
@@ -1386,18 +1390,29 @@ public partial class TaxiGuidanceManager : IDisposable
     // invalidated on aircraft/airport change.
     //
     // The token half exists because stand names are frozen into the graph's nodes at build
-    // time. Keyed on ICAO alone, a Where-Am-I pressed at spawn or on descent — before GSX
-    // published handlerData — cached a graph carrying navdata's BGL parking-enum letters, and
-    // nothing ever invalidated it: OnAirportDataUpdated fires only for the online taxiway-name
-    // fetch, and ClearWhereAmICache has no production caller. Once GSX published, the taxi
-    // dialog and the TCAS "at Gate …" label both moved to GSX's letter while Where-Am-I kept
-    // saying "Gate A 25" about the stand everything else called "Gate B 25" — the
-    // one-stand-two-names defect Services/ParkingSpotSource exists to remove. Its two sibling
-    // caches (GateResolver._parkingCache, TaxiAssistForm._cachedGateSpots) were given this
-    // token; this one was missed.
+    // time. Keyed on ICAO alone, a Where-Am-I pressed before GSX published handlerData cached
+    // navdata's BGL parking-enum letters for good, so once GSX published, Where-Am-I said
+    // "Gate A 25" about the stand the taxi dialog and the TCAS label called "Gate B 25" — the
+    // one-stand-two-names defect Services/ParkingSpotSource exists to remove.
     private TaxiGraph? _whereAmICachedGraph;
     private string _whereAmICachedIcao = "";
     private string _whereAmICachedToken = "";
+
+    // Moved (under _stateLock) by every invalidation of that cache — OnAirportDataUpdated and
+    // ClearWhereAmICache. DescribeCurrentLocation builds OUTSIDE the lock and publishes only if
+    // this has not moved meanwhile, so a taxiway-name fetch landing mid-build is never undone by
+    // a graph carrying the older names.
+    private long _whereAmICacheEpoch;
+
+    /// <summary>
+    /// Which database the runway geometry came from, as a number: moved by every database switch
+    /// (<see cref="ClearWhereAmICache"/>). Anything read through a provider is stored only while
+    /// the generation read WITH that provider is still current (<see cref="StoreWhereAmIGraph"/>,
+    /// <see cref="RunwayShapeSource.Publish"/>), so a lookup in flight across a switch never
+    /// caches the old database's geometry.
+    /// </summary>
+    public long DatabaseGeneration => Interlocked.Read(ref _databaseGeneration);
+    private long _databaseGeneration;
 
     /// <summary>
     /// The gate-list source token for an ICAO — <see cref="GateDataSource.GetGateListVersion"/>
@@ -1441,28 +1456,40 @@ public partial class TaxiGuidanceManager : IDisposable
     /// Reuses the active guidance graph if it matches the airport; otherwise builds and
     /// caches a graph for ad-hoc queries. Does NOT mutate any guidance state.
     /// </summary>
+    /// <param name="databaseGeneration"><see cref="DatabaseGeneration"/> read with
+    /// <paramref name="dataProvider"/>, in the same turn. Required: Alt+L captures its provider at
+    /// the press and calls this from a pool thread.</param>
     public string DescribeCurrentLocation(
         IAirportDataProvider dataProvider,
         string icao,
         double lat,
-        double lon)
+        double lon,
+        long databaseGeneration)
     {
         if (string.IsNullOrWhiteSpace(icao))
             return "No airport nearby.";
 
         TaxiGraph? graph;
+        string token;
+        long cacheEpoch;
 
-        // _stateLock serializes the cache read + build + write against the background-thread
+        // _stateLock serializes the cache read and the cache write against the background-thread
         // OnAirportDataUpdated (which nulls the cache) and the locked GetStatusAnnouncement
-        // overload — without it, OnAirportDataUpdated could null _whereAmICachedGraph between
-        // the read here and a later use, or tear the (graph, icao) pair. DescribeLocation runs
-        // OUTSIDE the lock on the local graph reference (a pure query, no shared state).
+        // overload, so the (graph, icao, token) triple is never torn. The BUILD runs between the
+        // two, outside the lock: Alt+L calls this from a pool thread, and a cold build (database
+        // reads plus TaxiGraph.Build, up to seconds at a hub) held under the lock froze every
+        // UI-thread caller of it — the passing-callout monitor's runway probe, taxi position
+        // updates. DescribeLocation runs OUTSIDE the lock on the local graph reference. That graph
+        // can be the active one, which the taxi form subdivides on the UI thread; TaxiGraph
+        // serialises that itself (_structureLock), taken only after _stateLock is released, so
+        // the two never nest.
         lock (_stateLock)
         {
             // ShouldRebuildGateList, not a plain compare: it rebuilds on an upgrade or a
             // refresh and never on the DOWNGRADE a transient GSX drop causes, so a good graph
             // survives a reconnect flap. Same treatment the two sibling caches give this token.
-            string token = ResolveParkingSpotVersion(icao);
+            token = ResolveParkingSpotVersion(icao);
+            cacheEpoch = _whereAmICacheEpoch;
 
             // Prefer the active guidance graph if it's for this airport
             if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
@@ -1473,31 +1500,38 @@ public partial class TaxiGuidanceManager : IDisposable
                 graph = _whereAmICachedGraph;
             else
                 graph = null;
+        }
 
-            if (graph == null)
+        if (graph == null)
+        {
+            try
             {
-                try
-                {
-                    var paths = dataProvider.GetTaxiPaths(icao);
-                    if (paths == null || paths.Count == 0)
-                        return $"No taxi data available for {icao}.";
+                var paths = dataProvider.GetTaxiPaths(icao);
+                if (paths == null || paths.Count == 0)
+                    return $"No taxi data available for {icao}.";
 
-                    var parking = ResolveParkingSpots(dataProvider, icao);
-                    var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
+                var parking = ResolveParkingSpots(dataProvider, icao);
+                var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
-                    // Runways let the builder repair laterally-bogus start rows before
-                    // they reach the centerlines this very call is about to query
-                    // (TaxiGraph.SnapStartToRunwayCenterline).
-                    graph = TaxiGraph.Build(paths, parking, runwayStarts,
-                                            dataProvider.GetRunways(icao));
-                    _whereAmICachedGraph = graph;
-                    _whereAmICachedIcao = icao;
-                    _whereAmICachedToken = token;
-                }
-                catch (Exception ex)
-                {
-                    return $"Could not load airport data for {icao}. {ex.Message}";
-                }
+                // Runways let the builder repair laterally-bogus start rows before
+                // they reach the centerlines this very call is about to query
+                // (TaxiGraph.SnapStartToRunwayCenterline).
+                graph = TaxiGraph.Build(paths, parking, runwayStarts,
+                                        dataProvider.GetRunways(icao));
+            }
+            catch (Exception ex)
+            {
+                return $"Could not load airport data for {icao}. {ex.Message}";
+            }
+
+            lock (_stateLock)
+            {
+                // The token stored is the one read BEFORE the build, so a GSX publish landing
+                // mid-build still reads as a token move on the next press and rebuilds.
+                if (cacheEpoch == _whereAmICacheEpoch)
+                    StoreWhereAmIGraph(graph, icao, token, databaseGeneration);
+                else
+                    Log.Debug("Taxi", $"Where-Am-I graph for {icao} answered, not cached: the cache was invalidated while it was built");
             }
         }
 
@@ -1509,12 +1543,101 @@ public partial class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Invalidates the "Where Am I" graph cache. Call on aircraft change or when the
-    /// user explicitly wants a fresh graph (rare). Takes _stateLock to serialize against
-    /// its twin OnAirportDataUpdated and the locked DescribeCurrentLocation/
-    /// GetStatusAnnouncement readers — both touch the same _whereAmICachedGraph/
-    /// _whereAmICachedIcao pair, so an unlocked write here could race a locked read/build
-    /// elsewhere and leave the pair inconsistent (graph set but ICAO stale, or vice versa).
+    /// Caches a Where-Am-I graph built under generation <paramref name="readUnder"/> — unless a
+    /// database switch has happened since, in which case the caller still answers from it but it
+    /// is not kept. Call under _stateLock.
+    /// </summary>
+    private void StoreWhereAmIGraph(TaxiGraph graph, string icao, string token, long readUnder)
+    {
+        if (!RunwayShapeSource.MayStore(readUnder, DatabaseGeneration))
+        {
+            Log.Debug("Taxi", $"Where-Am-I graph for {icao} answered, not cached: the database changed while it was built");
+            return;
+        }
+        _whereAmICachedGraph = graph;
+        _whereAmICachedIcao = icao;
+        _whereAmICachedToken = token;
+    }
+
+    // The runway shapes last memoised for one airport (RunwayShapeMemo). Keyed by airport so it
+    // OUTLIVES the Where-Am-I graph, which the taxiway-name fetch nulls seconds after it is built;
+    // runway pavement does not depend on taxiway names. Built once per graph instance, never per poll.
+    private RunwayShapeMemo? _runwayShapeMemo;
+    // The airport the probe was last asked about; a warm-up publishes only for it, so a late one
+    // for the previous airport cannot evict this one's memo. Under _stateLock.
+    private string _runwayProbeIcao = "";
+
+    /// <summary>
+    /// Is this point on any runway's pavement at <paramref name="icao"/>? Answers only from geometry
+    /// already in hand — the active graph (if installed under the current generation), else the
+    /// Where-Am-I graph, else the memo — and NEVER builds one: the caller is the passing-callout
+    /// monitor on the UI thread. Null means "nothing to ask". The whole step is
+    /// <see cref="RunwayShapeSource.Resolve"/>. Runway geometry does not depend on the gate-list
+    /// token, so that is not consulted.
+    /// </summary>
+    public bool? IsOnRunwayPavement(string icao, double lat, double lon)
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return null;
+
+        IReadOnlyList<RunwayShape>? shapes;
+        lock (_stateLock)
+        {
+            _runwayProbeIcao = icao;
+            (shapes, _runwayShapeMemo) = RunwayShapeSource.Resolve(icao, DatabaseGeneration,
+                _graph, _icao, _graphGeneration,
+                _whereAmICachedGraph, _whereAmICachedIcao,
+                _runwayShapeMemo);
+        }
+        // Outside the lock on a local reference — the shape list is immutable once built.
+        return shapes == null ? null : RunwayPavement.IsOnPavement(lat, lon, shapes);
+    }
+
+    /// <summary>
+    /// Captures, on the calling (UI) thread, the generation that goes with
+    /// <paramref name="dataProvider"/> and returns the warm-up to run on any thread. The warm-up
+    /// reads the runway rows alone — never a taxi graph — so it also answers at airports with no
+    /// taxi paths and never starts the taxiway-name fetch; an airport with no runways publishes an
+    /// empty list ("not on a runway"). It is stored only if the generation is unchanged and the
+    /// probe is still asked about this airport (<see cref="RunwayShapeSource.Publish"/>).
+    /// </summary>
+    public Action PrepareRunwayShapeWarmUp(IAirportDataProvider dataProvider, string icao)
+    {
+        long readUnder = DatabaseGeneration;
+        return () => WarmRunwayShapes(dataProvider, icao, readUnder);
+    }
+
+    private void WarmRunwayShapes(IAirportDataProvider dataProvider, string icao, long readUnder)
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return;
+        var starts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
+        var shapes = RunwayPavement.BuildShapesFromRunwayRows(starts, dataProvider.GetRunways(icao) ?? new List<Runway>());
+        lock (_stateLock)
+        {
+            var held = _runwayShapeMemo;
+            _runwayShapeMemo = RunwayShapeSource.Publish(
+                held: held,
+                icao: icao,
+                readUnder: readUnder,
+                currentGeneration: DatabaseGeneration,
+                shapes: shapes,
+                trackedIcao: _runwayProbeIcao);
+            if (ReferenceEquals(_runwayShapeMemo, held))
+            {
+                string why = !RunwayShapeSource.MayStore(readUnder, DatabaseGeneration)
+                    ? "the database changed while they were read"
+                    : $"the probe is now asked about {(string.IsNullOrEmpty(_runwayProbeIcao) ? "no airport" : _runwayProbeIcao)}";
+                Log.Debug("Surroundings", $"runway probe: {icao} runway rows read but not stored — {why}");
+                return;
+            }
+        }
+        Log.Debug("Surroundings", $"runway probe: {icao} warmed from its runway rows — {shapes.Count} runway(s) from {starts.Count} start row(s)");
+    }
+
+    /// <summary>
+    /// Invalidates the "Where Am I" graph cache and the runway-shape memo, and moves
+    /// <see cref="DatabaseGeneration"/>. Called by a database switch. Takes _stateLock like its
+    /// twin <see cref="OnAirportDataUpdated"/>. Active guidance keeps its own graph, but the
+    /// runway probe stops trusting it (its generation is now stale).
     /// </summary>
     public void ClearWhereAmICache()
     {
@@ -1523,22 +1646,25 @@ public partial class TaxiGuidanceManager : IDisposable
             _whereAmICachedGraph = null;
             _whereAmICachedIcao = "";
             _whereAmICachedToken = "";
+            _whereAmICacheEpoch++;
+            _runwayShapeMemo = null;
+            Interlocked.Increment(ref _databaseGeneration);
         }
     }
 
     /// <summary>
-    /// Online taxiway-name augmentation for <paramref name="icao"/> was just (re)fetched. Drop any
-    /// cached Where-Am-I graph built from the OLDER (pre-augmentation) data so the next query rebuilds
-    /// with the fresh names — keeps Where-Am-I real-time without a manual refresh. Invoked from the
-    /// background fetch thread, so it MUST take _stateLock to serialize against the UI-thread
-    /// Where-Am-I reader/writer (DescribeCurrentLocation) and the locked GetStatusAnnouncement
-    /// overload — both touch the same _whereAmICachedGraph/_whereAmICachedIcao pair.
+    /// Online taxiway-name augmentation for <paramref name="icao"/> was just (re)fetched: drop the
+    /// cached Where-Am-I graph so the next query picks up the new names. Called from the fetch
+    /// thread, so it takes _stateLock like every other user of the cached graph pair.
     /// </summary>
     public void OnAirportDataUpdated(string icao)
     {
         if (string.IsNullOrEmpty(icao)) return;
         lock (_stateLock)
         {
+            // Moved whatever the cache holds: a build of THIS airport in flight (which the cache
+            // does not show yet) must not publish the names this fetch just replaced.
+            _whereAmICacheEpoch++;
             if (string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
             {
                 _whereAmICachedGraph = null;
@@ -1601,7 +1727,7 @@ public partial class TaxiGuidanceManager : IDisposable
     /// gating on `_lastOnGround` (no callsite should ever ask this airborne).
     /// </summary>
     /// <param name="dataProvider">Airport data provider for graph rebuilds.</param>
-    /// <param name="icao">Airport ICAO (4-char canonical).</param>
+    /// <param name="icao">The airport <see cref="CurrentAirport.Resolve"/> named — an ident of any length; every provider lookup matches icao OR ident.</param>
     /// <param name="lat">Aircraft latitude (degrees).</param>
     /// <param name="lon">Aircraft longitude (degrees).</param>
     /// <param name="aircraftHeadingMag">Aircraft magnetic heading (degrees).</param>
@@ -1626,6 +1752,9 @@ public partial class TaxiGuidanceManager : IDisposable
         runwayId = ""; airportIcao = icao ?? "";
 
         if (string.IsNullOrWhiteSpace(icao)) return false;
+
+        // The generation that goes with dataProvider: this method's one caller read it this turn.
+        long databaseGeneration = DatabaseGeneration;
 
         lock (_stateLock)
         {
@@ -1657,9 +1786,7 @@ public partial class TaxiGuidanceManager : IDisposable
                     // (TaxiGraph.SnapStartToRunwayCenterline).
                     graph = TaxiGraph.Build(paths, parking, runwayStarts,
                                             dataProvider.GetRunways(icao));
-                    _whereAmICachedGraph = graph;
-                    _whereAmICachedIcao = icao;
-                    _whereAmICachedToken = token;
+                    StoreWhereAmIGraph(graph, icao, token, databaseGeneration);
                 }
                 catch (Exception ex)
                 {

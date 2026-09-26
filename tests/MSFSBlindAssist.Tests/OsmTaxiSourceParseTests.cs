@@ -2,10 +2,12 @@
 // (named-holding-point augmentation). Taxiway/parking parsing predates these
 // tests and is exercised implicitly by the mixed-payload case.
 
+using System.Collections.Concurrent;
 using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Tests;
 
+[Collection("OverpassMirrorState")]
 public class OsmTaxiSourceParseTests
 {
     private static string Element(string body) =>
@@ -247,7 +249,7 @@ public class OsmTaxiSourceParseTests
     // on de-DE / fr-FR / pt-BR / tr-TR, which turns `around:5000,51.4706,-0.4614` into a
     // five-token clause Overpass rejects with a 400 — silently killing the whole online
     // taxiway/holding-point/stand layer for every user on such a machine, and (since the
-    // per-mirror cooldown landed) blacklisting all seven mirrors while it does so.
+    // per-mirror cooldown landed) blacklisting every mirror while it does so.
 
     [Fact]
     public void The_overpass_query_uses_invariant_decimal_separators()
@@ -266,6 +268,64 @@ public class OsmTaxiSourceParseTests
             Assert.DoesNotContain("0,4614", q);
         }
         finally { System.Globalization.CultureInfo.CurrentCulture = prev; }
+    }
+
+    [Fact]
+    public void The_taxiway_query_asks_for_full_geometry_and_nothing_else()
+    {
+        string q = OsmTaxiSource.BuildQuery(47.2679, -122.5781);
+        Assert.EndsWith(");out tags geom;", q);
+        Assert.DoesNotContain("center", q);   // `geom center` = ways with NO geometry: every taxiway name lost
+        Assert.DoesNotContain("area[", q);    // a mirror without an area database fails the WHOLE query
+    }
+
+    [Fact]
+    public void The_taxiway_query_is_the_shipped_text_character_for_character()
+    {
+        // The one Overpass query that shipped before the surroundings feature. Its only change in
+        // that feature's history (`out tags geom center`) cost every OSM taxiway name at every
+        // airport, so it is pinned whole: the BUILDINGS queries moved to `out body geom;`, this one
+        // must never follow them. The text is BuildQuery's output at the PR's merge base (23b632ef)
+        // and at aa04a1cf, identical.
+        Assert.Equal(
+            "[out:json][timeout:50];(" +
+            "way[\"aeroway\"=\"taxiway\"](around:5000,47.2679,-122.5781);" +
+            "node[\"aeroway\"=\"parking_position\"](around:5000,47.2679,-122.5781);" +
+            "way[\"aeroway\"=\"parking_position\"](around:5000,47.2679,-122.5781);" +
+            "node[\"aeroway\"=\"gate\"](around:5000,47.2679,-122.5781);" +
+            "way[\"aeroway\"=\"gate\"](around:5000,47.2679,-122.5781);" +
+            "node[\"aeroway\"=\"holding_position\"](around:5000,47.2679,-122.5781);" +
+            ");out tags geom;",
+            OsmTaxiSource.BuildQuery(47.2679, -122.5781));
+    }
+
+    // ---- The fetch's "null on failure" contract -----------------------------------
+    //
+    // Its only caller awaits Task.WhenAll over this source AND the apt.dat one, so an
+    // exception out of here discards a SUCCESSFUL apt.dat result together with the cache
+    // write, the name merge and the AirportDataUpdated event — for pilots who never touch
+    // the surroundings feature. Before OverpassClient was extracted, Parse ran inside the
+    // per-mirror try, so a shapeless body simply failed that mirror.
+
+    private sealed class EveryMirrorAnswers : HttpMessageHandler
+    {
+        private readonly string _body;
+        public EveryMirrorAnswers(string body) { _body = body; }
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken ct)
+            => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StringContent(_body) });
+    }
+
+    [Theory]
+    // Each passes OverpassClient.ClassifyBody (an object with an `elements` array and no
+    // "runtime error" remark) and still throws inside Parse.
+    [InlineData("{\"elements\":[{\"id\":1}]}")]                                                        // no `type`
+    [InlineData("{\"elements\":[{\"type\":\"way\",\"tags\":{\"aeroway\":\"taxiway\",\"ref\":\"A\"},\"geometry\":7}]}")]   // `geometry` not an array
+    [InlineData("{\"elements\":[42]}")]                                                                // not even an object
+    public async Task A_body_that_is_shapeless_enough_to_break_the_parser_is_a_failed_fetch_not_a_throw(string body)
+    {
+        var source = new OsmTaxiSource(new OverpassClient(new HttpClient(new EveryMirrorAnswers(body)),
+            new ConcurrentDictionary<string, DateTime>()));
+        Assert.Null(await source.FetchAsync("KTIW", 47.2679, -122.5781, CancellationToken.None));
     }
 
     [Fact]

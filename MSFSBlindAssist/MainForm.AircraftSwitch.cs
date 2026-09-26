@@ -201,6 +201,49 @@ public partial class MainForm
         }
         _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
+        ScheduleCurrentAirportWarmUp();
+    }
+
+    /// <summary>How long after AircraftLoaded the aircraft's position is read for the warm-up: the
+    /// event fires as the aircraft file loads, before the flight's own position has settled.</summary>
+    private const int WarmUpAfterLoadMs = 10_000;
+    private System.Windows.Forms.Timer? _warmUpAfterLoadTimer;
+
+    /// <summary>Warms the airport the aircraft is at once a flight or aircraft load has settled; a
+    /// second load inside the wait restarts it.</summary>
+    private void ScheduleCurrentAirportWarmUp()
+    {
+        _warmUpAfterLoadTimer?.Stop();
+        _warmUpAfterLoadTimer?.Dispose();
+        _warmUpAfterLoadTimer = new System.Windows.Forms.Timer { Interval = WarmUpAfterLoadMs };
+        _warmUpAfterLoadTimer.Tick += (_, _) =>
+        {
+            _warmUpAfterLoadTimer?.Stop();
+            WarmCurrentAirport();
+        };
+        _warmUpAfterLoadTimer.Start();
+    }
+
+    /// <summary>
+    /// Asks the simulator where the aircraft is and, on the ground, readies that airport
+    /// (<see cref="MSFSBlindAssist.Services.AirportWarmUp.AtCurrentAirport"/>) — so the taxiway
+    /// names, OSM buildings and scenery are in hand before the taxi form, Where Am I or Look Around
+    /// asks. The position callback lands on the UI thread.
+    /// </summary>
+    private void WarmCurrentAirport()
+    {
+        var provider = airportDataProvider;
+        if (provider == null || _airportWarmUp == null || !simConnectManager.IsConnected) return;
+        simConnectManager.RequestAircraftPositionAsync(p =>
+        {
+            try
+            {
+                bool onGround = p.SimOnGround >= 0.5;
+                string? icao = onGround ? MSFSBlindAssist.Services.CurrentAirport.Resolve(provider, p.Latitude, p.Longitude) : null;
+                _airportWarmUp?.AtCurrentAirport(icao, onGround);
+            }
+            catch (Exception ex) { Log.Warn("Surroundings", $"current-airport warm-up failed: {ex.Message}"); }
+        });
     }
 
     /// <summary>
@@ -287,6 +330,9 @@ public partial class MainForm
             // Request all current values when connected
             RequestAllCurrentValues();
 
+            // The airport the aircraft is at, readied now rather than when first asked about.
+            WarmCurrentAirport();
+
             // Start a grace period before enabling continuous variable announcements
             // This prevents initial ECAM messages and other variables from being announced
             // when connecting to a cold and dark aircraft. Also mute the announcer's
@@ -330,6 +376,7 @@ public partial class MainForm
             _routeAdvisoryProximity.Reset();
             _emptyRouteFeedTicks = 0;
             _turnaroundDetector.Reset();
+            surroundingsMonitor?.Reset();
             // The aircraft definition's OWN baselines. MainForm's trackers above are reset for
             // exactly this reason; the definition object also survives a reconnect, so its
             // baseline-first announcers need the same treatment (A380 altitude mode, both
@@ -829,6 +876,7 @@ public partial class MainForm
         _routeAdvisoryProximity.Reset();
         _emptyRouteFeedTicks = 0;
         _turnaroundDetector.Reset();
+        surroundingsMonitor?.Reset();
 
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)
@@ -1353,6 +1401,31 @@ public partial class MainForm
             taxiAssistForm.Dispose();
             taxiAssistForm = null;
         }
+
+        // Every cached AirportFeatureCatalog was built from the OLD provider's navdata/GSX
+        // reads; a database switch changes what those reads return but moves neither the
+        // gate-list token nor anything else SurroundingsCatalogCache's staleness check
+        // watches, so without this an Alt+L after a switch kept describing the previous
+        // database's stands and buildings for the rest of the session.
+        surroundingsCache.Clear();
+
+        // And the passing-callout monitor, which holds the airport it resolved and what it has
+        // already announced there — both read off the provider this switch replaced.
+        surroundingsMonitor?.Reset();
+
+        // And the stored OSM buildings with it: a radius-sourced result is kept only inside the
+        // navdata airport box, which this switch has just changed.
+        onlineFeatures?.Clear();
+
+        // And the ad-hoc Where-Am-I graph, with the runway-shape memo beside it. Both were built
+        // from the provider this switch replaced, and the same airport can carry different runway
+        // geometry and different stand names in the two databases. The memo answers the
+        // passing-callout monitor's "am I on a runway?" and is deliberately built to OUTLIVE the
+        // taxiway-name fetch that drops the graph, so a database switch is the one thing left that
+        // has to say so. Active guidance's own graph is a different field and keeps flying its
+        // route — but this also moves the manager's database generation, and that graph records the
+        // one it was installed under, so the runway probe stops answering from it.
+        taxiGuidanceManager?.ClearWhereAmICache();
 
         // And anything holding runway GEOMETRY from the old database. Both of these captured a
         // whole runway list when the pilot set them up, and both now use it at touchdown to decide

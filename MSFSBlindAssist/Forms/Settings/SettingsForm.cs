@@ -14,7 +14,8 @@ public class SettingsForm : Form
     private ISettingsPanel? _currentPanel;
 
     public SettingsForm(Func<Task>? refreshTaxiwayNames = null,
-                        Func<Services.VPilot.VatsimStatus?>? vatsimStatus = null)
+                        Func<Services.VPilot.VatsimStatus?>? vatsimStatus = null,
+                        Func<string>? sceneryIndexStatus = null)
     {
         Text = "Settings";
         StartPosition = FormStartPosition.CenterParent;
@@ -39,7 +40,7 @@ public class SettingsForm : Form
         AddPanel(new AiSettingsPanel());
         AddPanel(new AudioPanel());
         AddPanel(new HandFlyPanel());
-        AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames));
+        AddPanel(new TaxiGuidancePanel(refreshTaxiwayNames, sceneryIndexStatus));
         AddPanel(new FirstOfficerPanel());
         AddPanel(new UpdatesPanel());
 

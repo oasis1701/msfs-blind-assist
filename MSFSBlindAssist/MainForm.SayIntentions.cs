@@ -1101,16 +1101,30 @@ public partial class MainForm
 
     private string? ResolveSayIntentionsAirport(
         SayIntentionsFlightContext context, SimConnectManager.AircraftPosition position)
-    {
-        string? icao = SelectImportAirport(
-            new[] { context.CurrentAirport, context.Origin, context.Destination }, KnownAirport);
-        if (string.IsNullOrWhiteSpace(icao))
-        {
-            icao = airportDataProvider!
-                .GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
-                .FirstOrDefault(c => c != null && c.Length == 4);
-        }
+        => ResolveImportAirport(
+            new[] { context.CurrentAirport, context.Origin, context.Destination }, KnownAirport,
+            airportDataProvider!, position.Latitude, position.Longitude);
 
+    /// <summary>The airport a SayIntentions import builds its route at. flight.json's own
+    /// candidates come first, in the caller's order, each validated against the navigation
+    /// database (<see cref="SelectImportAirport"/> — what keeps an ARTCC ident such as KZOA from
+    /// dead-ending the import). ONLY when every one of them is absent or unknown does position
+    /// decide, and then as the airport the aircraft is AT:
+    /// <see cref="MSFSBlindAssist.Services.CurrentAirport.Resolve"/>, the resolver Where Am I and
+    /// Look Around use. That fallback used to be the first four-character code nearest the
+    /// reference point — never a field with a three-character ident, and heliport 10CL at 111 of
+    /// KSNA's 201 stands, where the import would abort "No taxi path data available for 10CL."
+    /// Upper-cased; null when neither finds an airport.</summary>
+    internal static string? ResolveImportAirport(
+        IReadOnlyList<string?> candidates, Func<string, bool> isKnownAirport,
+        MSFSBlindAssist.Database.IAirportDataProvider provider, double lat, double lon)
+    {
+        string? icao = SelectImportAirport(candidates, isKnownAirport);
+        if (icao == null)
+        {
+            icao = MSFSBlindAssist.Services.CurrentAirport.Resolve(provider, lat, lon);
+            _siLog.Debug($"Import airport by position: {icao ?? "none"} (flight.json named none the navigation database knows).");
+        }
         return string.IsNullOrWhiteSpace(icao) ? null : icao.ToUpperInvariant();
     }
 

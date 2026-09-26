@@ -1,0 +1,1 @@
+A new optional callout, switched on under Taxi Guidance settings, tells you when the wheels leave the paved surface — "Off the pavement, on grass." — and when they regain it. Unlike the other callouts it still speaks during the takeoff roll and the landing rollout, because running off the side is worst exactly there.

@@ -118,6 +118,7 @@ public partial class SimConnectManager
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
+    public event EventHandler<Com1RadioData>? Com1RadioReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
     // assist. Fired only while StartFlareAssistMonitoring is active.
@@ -496,6 +497,9 @@ public partial class SimConnectManager
         // The FIRST of CameraReadIdCount (8) ids, 341-348: each read goes out under its own id
         // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
         REQUEST_CAMERA_VIEW = 341,
+        // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
+        // camera's rotating 341-348.
+        REQUEST_COM1_RADIO = 349,
         // FO background data requests — NOT announced by HandleSpecialAnnouncements
         REQUEST_FO_ALTITUDE_AGL  = 380,
         REQUEST_FO_AIRSPEED_IAS  = 381,
@@ -586,6 +590,7 @@ public partial class SimConnectManager
         // to CameraViewData, so a definition landing at 342 would have its SingleValue answer
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
+        DEF_COM1_RADIO = 349,
         // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
         DEF_FO_ALTITUDE_AGL = 380,
         DEF_FO_AIRSPEED_IAS = 381,
@@ -697,6 +702,14 @@ public partial class SimConnectManager
         public double GroundSpeedKnots;
         public double VerticalSpeedFPM;
         public double SimOnGround;
+        /// <summary>The sim's SURFACE TYPE enum under the wheels. Meaningful only while
+        /// <see cref="SurfaceInfoValid"/> is non-zero — classify it through
+        /// <c>Navigation.Surroundings.SurfaceFamilies</c>, never by comparing the raw number.
+        /// Measured live in MSFS 2024: 0 concrete, 1 grass, 4 asphalt.</summary>
+        public double SurfaceType;
+        /// <summary>SURFACE INFO VALID — false means <see cref="SurfaceType"/> says nothing at
+        /// all, not that the surface is of some default kind.</summary>
+        public double SurfaceInfoValid;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -793,6 +806,14 @@ public partial class SimConnectManager
         public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
         public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
         public double StructuralIcePct; // STRUCTURAL ICE PCT, ratio 0..1 ("percent over 100")
+    }
+
+    /// <summary>COM 1 as the sim holds it, in Hz (DEF_COM1_RADIO; order is the contract).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct Com1RadioData
+    {
+        public double ActiveHz;
+        public double StandbyHz;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

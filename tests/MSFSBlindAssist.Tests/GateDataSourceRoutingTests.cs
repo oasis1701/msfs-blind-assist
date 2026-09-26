@@ -634,6 +634,49 @@ public class GateDataSourceRoutingTests : IDisposable
         Assert.Empty(navdata.GetParkingSpotsCalls);
     }
 
+    [Fact]
+    public void ComputeGateListVersion_answers_what_GetGateListVersion_answers_without_a_GateDataSource()
+    {
+        // The surroundings catalog cache asks for this token on every position sample the
+        // passing-callout monitor handles (about every 2 s), and MainForm used to build a whole
+        // GateDataSource — two concurrent dictionaries and a GsxProfileLocator — to ask it once
+        // and throw it away (review item E8). The static reads only the four GSX signals, and the
+        // instance method is the same call on its own fields, so the two can never disagree.
+        var navdata = new FakeAirportDataProvider();
+        long version = 7;
+        JsonElement? current = null;
+        Func<bool> gsx = () => true;
+        Func<JsonElement?> airport = () => current;
+        Func<long> ver = () => version;
+        var source = Build(navdata, isGsxAvailable: true, capabilities: HasHandlerData,
+            getHandlerDataAirport: airport, handlerDataVersion: ver);
+
+        string Token(string icao) => GateDataSource.ComputeGateListVersion(icao, gsx, HasHandlerData, airport, ver);
+
+        Assert.Equal("ini", Token(Kjfk));                                   // GSX up, airport not published yet
+        Assert.Equal(source.GetGateListVersion(Kjfk), Token(Kjfk));
+        current = AirportJson(Kjfk, Parking("Gate 1", 10.0, 20.0, 90.0));
+        Assert.Equal("api:7", Token(Kjfk));                                 // published: the API path applies
+        Assert.Equal(source.GetGateListVersion(Kjfk), Token(Kjfk));
+        version = 8;
+        Assert.Equal("api:8", Token(Kjfk));                                 // a republish moves it
+        Assert.Equal(source.GetGateListVersion(Eddf), Token(Eddf));         // another airport stays "ini"
+        Assert.Empty(navdata.GetParkingSpotsCalls);                         // a token, never a list
+    }
+
+    [Fact]
+    public void ComputeGateListVersion_degrades_exactly_as_the_instance_method_does()
+    {
+        var airport = AirportJson(Kjfk, Parking("Gate 1", 10.0, 20.0, 90.0));
+        Assert.Equal("navdata", GateDataSource.ComputeGateListVersion(Kjfk, () => false));
+        Assert.Equal("navdata", GateDataSource.ComputeGateListVersion(" ", () => true, HasHandlerData, () => airport));
+        Assert.Equal("navdata", GateDataSource.ComputeGateListVersion(Kjfk, () => throw new InvalidOperationException("boom")));
+        Assert.Equal("ini", GateDataSource.ComputeGateListVersion(Kjfk, () => true, () => throw new InvalidOperationException("boom")));
+        Assert.Equal("api:0", GateDataSource.ComputeGateListVersion(Kjfk, () => true, HasHandlerData, () => airport));   // no version signal wired
+        Assert.Equal("api:0", GateDataSource.ComputeGateListVersion(Kjfk, () => true, HasHandlerData, () => airport,
+                                                                    () => throw new InvalidOperationException("boom")));
+    }
+
     // ── 16. An empty Remote API result falls back, and is never cached ─────────────────────
 
     [Fact]

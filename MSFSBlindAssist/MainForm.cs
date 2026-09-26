@@ -48,6 +48,21 @@ public partial class MainForm : Form
     // Typed reference to the augmentation decorator so Phase 6 can call PrefetchAsync.
     private MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider? _augmentingProvider;
 
+    // The surroundings feature's OSM building tier: its OWN Overpass request, cached per ICAO in
+    // memory. Separate from the taxiway fetch above so a mirror miss on the buildings can never
+    // cost the taxiway names (it once did — the two rode one query).
+    private MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore? onlineFeatures;
+
+    // Tier 3 of the surroundings feature: reads the installed scenery package's placement
+    // BGLs for named buildings, cached on disk per package under %APPDATA%.
+    private static readonly string SceneryIndexCacheDir =
+        System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "MSFSBlindAssist", "scenery-index");
+    private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageIndexer sceneryIndexer = new(SceneryIndexCacheDir);
+
+    // Which package models the airport, when navdata does not say — an MSFS 2024 database names
+    // none for any airport. Shares the indexer's cache folder; its own census.json there.
+    private readonly MSFSBlindAssist.Services.SceneryIndex.SceneryPackageCensus sceneryCensus = new(SceneryIndexCacheDir);
+
     private ChecklistForm? checklistForm;
 
     private FenixMonitorManagerForm? fenixMonitorManagerForm;
@@ -220,11 +235,15 @@ public partial class MainForm : Form
 
     private Forms.WeatherRadarForm? weatherRadarForm;
 
+    private MSFSBlindAssist.Forms.SayIntentionsInfoForm? surroundingsForm;
+
     private MSFSBlindAssist.Navigation.FlightPlanManager flightPlanManager = null!;
 
     private MSFSBlindAssist.Navigation.WaypointTracker waypointTracker = null!;
 
     private TaxiGuidanceManager taxiGuidanceManager = null!;
+
+    private readonly MSFSBlindAssist.Services.SurroundingsCatalogCache surroundingsCache = new();
 
     private DockingGuidanceManager dockingGuidanceManager = null!;
 
@@ -233,6 +252,7 @@ public partial class MainForm : Form
     private LandingExitPlanner landingExitPlanner = null!;
 
     private GroundTrafficMonitor groundTrafficMonitor = null!;
+    private MSFSBlindAssist.Services.AirportSurroundingsMonitor? surroundingsMonitor;
     private SayIntentionsService sayIntentionsService = null!;
 
     // Access GSX integration — owns its own SimConnect client (distinct
@@ -266,9 +286,13 @@ public partial class MainForm : Form
     private LandingExitForm? landingExitForm;
 
     // Per-session set of ICAOs already prefetched by AugmentingAirportDataProvider.
-    // Guards automatic departure/destination prefetches so each airport is fetched at most once
-    // per app session. Manual refresh (force:true) bypasses it.
+    // Guards the automatic taxiway-name prefetches (taxi form, ILS and visual guidance, the
+    // landing-exit planner, the airport warm-up) so each airport is fetched at most once per app
+    // session. The Settings "Refresh Taxiway Names" button calls PrefetchAsync directly, past it.
     private readonly HashSet<string> _augmentPrefetched = new(StringComparer.OrdinalIgnoreCase);
+    /// <summary>Readies the current and destination airports' online and scenery data before the pilot
+    /// asks for them (connect, flight load, Shift+D). Claims names in <see cref="_augmentPrefetched"/>.</summary>
+    private MSFSBlindAssist.Services.AirportWarmUp? _airportWarmUp;
 
     // MobiFlight end-to-end bridge probe state (see BridgeProbeTimer_Tick).
     private System.Windows.Forms.Timer? _bridgeProbeTimer;
@@ -755,10 +779,17 @@ public partial class MainForm : Form
         // into a graph's nodes at build time, so a Where-Am-I graph built before GSX published
         // this airport would otherwise keep navdata's concourse letters for the whole session
         // while every other readout moved to GSX's — see TaxiGuidanceManager._whereAmICachedToken.
-        // O(1) by contract (a capability lookup, a dictionary read, a field read), which is why
-        // it is affordable to ask on every Where-Am-I press.
-        taxiGuidanceManager.ParkingSpotVersionSupplier =
-            icao => BuildGateDataSource()?.GetGateListVersion(icao) ?? "none";
+        // O(1) and builds no GateDataSource (GateListVersion), so it is cheap per press.
+        taxiGuidanceManager.ParkingSpotVersionSupplier = GateListVersion;
+
+        // Same token as the Where-Am-I graph, so a GSX publish re-letters the inferred concourses
+        // too. Asked on every monitor sample, so it must stay as cheap as GateListVersion.
+        surroundingsCache.VersionSupplier = GateListVersion;
+        var catalogBuilder = new MSFSBlindAssist.Services.Surroundings.SurroundingsCatalogBuilder(
+            () => airportDataProvider, BuildGateDataSource, () => onlineFeatures, sceneryCensus, sceneryIndexer,
+            () => MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled,
+            () => MSFSBlindAssist.Settings.SettingsManager.Current.SimulatorVersion ?? "FS2020");
+        surroundingsCache.BuildSupplier = catalogBuilder.Build;
         sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager
@@ -850,6 +881,27 @@ public partial class MainForm : Form
                 provider.GetRunways(icao)).RunwayCenterlines;
         };
 
+        // Opt-in "Passing Concourse B, on the left." callouts while taxiing. Own 2 s poll
+        // timer (same shape as groundTrafficMonitor above) — the taxi position stream is
+        // taxi-scoped and off when no route is loaded, so this cannot ride it.
+        surroundingsMonitor = new MSFSBlindAssist.Services.AirportSurroundingsMonitor(announcer, simConnectManager, () => airportDataProvider, surroundingsCache)
+        {
+            Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.SurroundingsCalloutsEnabled,
+            SurfaceCalloutsEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.SurfaceChangeCalloutsEnabled,
+            SuppressCheck = () =>
+                takeoffAssistManager.IsActive
+                || dockingGuidanceManager.IsActive
+                || taxiGuidanceManager.State is TaxiGuidanceState.LandingRollout or TaxiGuidanceState.LiningUp
+                    or TaxiGuidanceState.HoldShort or TaxiGuidanceState.ProgressiveHold
+                    or TaxiGuidanceState.BacktrackingOnRunway or TaxiGuidanceState.BacktrackDeparture,
+            // A takeoff without Takeoff Assist or a landing without an exit plan sets none of the
+            // states above, so the pavement is asked directly.
+            RunwayProbe = (icao, lat, lon) => taxiGuidanceManager.IsOnRunwayPavement(icao, lat, lon),
+            // Runway rows only, never a taxi graph; prepared on the UI thread so it carries the
+            // provider's database generation.
+            PrepareRunwayProbeWarmUp = taxiGuidanceManager.PrepareRunwayShapeWarmUp,
+        };
+
         // Per-aircraft rollout-anticipation lead for the taxi steering tone
         // (see IAircraftDefinition.TaxiTurnLeadSeconds).
         taxiGuidanceManager.TurnLeadSeconds = currentAircraft.TaxiTurnLeadSeconds;
@@ -857,16 +909,40 @@ public partial class MainForm : Form
         // Initialize airport database provider (optional - can be null if database not built yet)
         airportDataProvider = DatabaseSelector.SelectProvider();
 
+        // Built unconditionally: the buildings tier needs no base provider, so a database built
+        // mid-session still gets it (a switch Clear()s the store, never rebuilds it).
+        var http = MSFSBlindAssist.Services.TaxiAugment.OverpassClient.CreateHttpClient(System.TimeSpan.FromSeconds(60));
+        // One Overpass client for both OSM readers (mirror cooldowns are process-wide anyway).
+        var overpassClient = new MSFSBlindAssist.Services.TaxiAugment.OverpassClient(http);
+
+        // Buildings have their own query, store and event; a catalog built before they landed is
+        // invalidated here.
+        var featureSource = new MSFSBlindAssist.Services.Surroundings.OsmFeatureSource(overpassClient);
+        onlineFeatures = new MSFSBlindAssist.Services.Surroundings.OnlineFeatureStore(featureSource.FetchAsync)
+        { Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled };
+        onlineFeatures.FeaturesUpdated += icao =>
+        {
+            surroundingsCache.Invalidate(icao);
+            // …and tell the taxi dialog, whose Place list has no other way to learn that FBOs and
+            // hangars (mostly OSM) arrived. Raised on a pool thread, so marshalled; the form stays
+            // silent unless its list really changes.
+            SafeBeginInvoke(() => taxiAssistForm?.OnSurroundingsInvalidated(icao));
+        };
+
+        // Seeded now, so the first Settings OK clears the catalog cache and OSM store only when
+        // one of these settings really changed (unseeded, every first OK threw them all away).
+        _appliedSceneryIndexEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled;
+        _appliedTaxiAugmentEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled;
+
         // Wrap with the taxi-data augmentation decorator (Phase 5).
         // The decorator is transparent: all IAirportDataProvider calls delegate to the base
         // except GetTaxiPaths, which enriches unnamed segments from OSM / X-Plane apt.dat.
         // Only wrap when a base provider is available — no DB means no decoration needed.
         if (airportDataProvider != null)
         {
-            var http = new System.Net.Http.HttpClient { Timeout = System.TimeSpan.FromSeconds(60) };
             var sources = new System.Collections.Generic.List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
             {
-                new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(http),
+                new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(overpassClient),
                 new MSFSBlindAssist.Services.TaxiAugment.XplaneAptDatSource(http),
             };
             var mergeOpt = new MSFSBlindAssist.Services.TaxiAugment.MergeOptions();
@@ -895,6 +971,13 @@ public partial class MainForm : Form
             _augmentingProvider = decorator;
             airportDataProvider = decorator;
         }
+
+        // Reads the fields at call time: a database switch replaces the providers behind them.
+        _airportWarmUp = new MSFSBlindAssist.Services.AirportWarmUp(
+            claimNames: icao => _augmentPrefetched.Add(icao),
+            onlineNamesEnabled: () => _augmentingProvider?.Enabled == true,
+            prefetchNames: icao => _ = _augmentingProvider?.PrefetchAsync(icao, force: true),
+            buildSurroundings: icao => _ = surroundingsCache.GetAsync(icao));
 
         // Initialize flight plan manager with navigation database
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
@@ -1123,6 +1206,9 @@ public partial class MainForm : Form
         _displayRepaintDebounce?.Stop();
         _displayRepaintDebounce?.Dispose();
 
+        _warmUpAfterLoadTimer?.Stop();
+        _warmUpAfterLoadTimer?.Dispose();
+
         _universalAutomationTimer?.Stop();
         _universalAutomationTimer?.Dispose();
 
@@ -1130,6 +1216,7 @@ public partial class MainForm : Form
         taxiGuidanceManager?.Dispose();
         dockingGuidanceManager?.Dispose();
         groundTrafficMonitor?.Dispose();
+        surroundingsMonitor?.Dispose();
         // Owns two tone generators — without this they keep sounding on shutdown.
         flareAssistManager?.Dispose();
 
