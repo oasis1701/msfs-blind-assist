@@ -53,10 +53,11 @@ public readonly record struct RunwayAxis(double StartLat, double StartLon, doubl
 /// <param name="ClearNodeId">First node beyond <see cref="RunwayAxis.ClearLateralMetres"/> along the branch; -1 = unmeasured.</param>
 /// <param name="CorridorNodeId">First node beyond <see cref="RunwayAxis.CorridorLateralMetres"/>; -1 when none within reach.</param>
 /// <param name="TurnToClearDeg">Sharpest turn from the landing heading along the whole of <paramref name="Path"/>,
-/// 0–180°. Sets the exit's angle (capped at 90°).</param>
+/// 0–180°, read over strokes of at least <see cref="ExitBranch.MinStrokeMetres"/>. Sets the exit's angle
+/// (capped at 90°).</param>
 /// <param name="TurnToLeaveDeg">Sharpest turn from the landing heading along <paramref name="Path"/> up to and
-/// including the first node beyond the runway half-width: how the branch LEAVES the pavement, 0–180°. Decides
-/// <see cref="IsTurnaround"/>.</param>
+/// including the first node beyond the runway half-width, read the same way: how the branch LEAVES the pavement,
+/// 0–180°. Decides <see cref="IsTurnaround"/>.</param>
 /// <param name="Path">Junction … clear node.</param>
 public sealed record LandingExitBranch(
     int JunctionNodeId, int ClearNodeId, int CorridorNodeId, double TurnToClearDeg, double TurnToLeaveDeg,
@@ -98,6 +99,17 @@ public static class ExitBranch
     public const double OutwardMaxMetres = 600.0;
     /// <summary>How far past the clear point the sibling search looks for a Y-exit's other arm.</summary>
     public const double SiblingSearchMaxMetres = 150.0;
+    /// <summary>
+    /// The shortest stretch of a branch a heading is read over. Navdata joins many lead-in lines to
+    /// their centreline node with a 2–4 m jog, and read edge by edge that jog set the whole branch's
+    /// angle, type and bearing: KPIT 28L F5 (fs2024) was "Normal 50.8°" from a 2.1 m row on a rapid exit
+    /// whose every other segment turns at most 21.4°, WSSS 20L MY6 81.3° from a 2.0 m row — too fast to
+    /// turn above 30 kt, no 900 ft call, no early handoff. Consecutive edges are merged until each
+    /// stretch is at least this long; a last stretch shorter than it joins the one before. Longer than
+    /// the graph's own 1.5 m node merge, shorter than any real exit segment; checked over the whole
+    /// database (docs/taxi-guidance.md, "Exits measured by branch").
+    /// </summary>
+    public const double MinStrokeMetres = 5.0;
     /// <summary>
     /// How far along the runway a Y exit's forward arm may meet it from its backward arm's junction.
     /// KMEM M6's two arms are 155 m apart; the spurious KMCI 01L "sibling" the sweep found was 384 m
@@ -189,7 +201,7 @@ public static class ExitBranch
             // leaves the runway pavement (LandingExitBranch.IsTurnaround).
             double leave = TurnToLeave(graph, axis, path);
             if (leave > RolloutExitGate.TurnaroundAboveDeg) return null;
-            double turn = TurnAlong(graph, axis, path);
+            double turn = SharpestTurn(graph, axis, path, 0, path.Count - 1);
             int corridorIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.CorridorLateralMetres);
             int corridor = corridorIdx >= 0 ? inward[corridorIdx] : backward.CorridorNodeId;
             return new LandingExitBranch(junction, path[^1], corridor, turn, leave, path);
@@ -316,7 +328,7 @@ public static class ExitBranch
             path.AddRange(ChainFrom(parents, candidate, clearNode));
         }
         return new LandingExitBranch(junction, path[^1], corridorNode,
-            TurnAlong(graph, axis, path), TurnToLeave(graph, axis, path), path);
+            SharpestTurn(graph, axis, path, 0, path.Count - 1), TurnToLeave(graph, axis, path), path);
     }
 
     // Dijkstra by path length from `from`, never entering `excluded` (the inward path) and - when
@@ -445,15 +457,38 @@ public static class ExitBranch
         return "";
     }
 
-    private static double TurnAlong(TaxiGraph graph, RunwayAxis axis, IReadOnlyList<int> path)
+    /// <summary>
+    /// The strokes of <c>path[from..to]</c> (inclusive node indices): consecutive edges merged until each
+    /// run is at least <see cref="MinStrokeMetres"/> long, a last run shorter than that joining the one
+    /// before it (or standing alone when it is the only one). Empty when <paramref name="from"/> is not
+    /// before <paramref name="to"/>.
+    /// </summary>
+    internal static List<(int From, int To)> Strokes(TaxiGraph graph, IReadOnlyList<int> path, int from, int to)
+    {
+        var strokes = new List<(int From, int To)>();
+        int i = from;
+        while (i < to)
+        {
+            int j = i;
+            double length = 0.0;
+            while (j < to && length < MinStrokeMetres)
+            {
+                length += NodeDistance(graph, path[j], path[j + 1]);
+                j++;
+            }
+            if (length < MinStrokeMetres && strokes.Count > 0) strokes[^1] = (strokes[^1].From, j);
+            else strokes.Add((i, j));
+            i = j;
+        }
+        return strokes;
+    }
+
+    /// <summary>The sharpest turn from the landing heading over the strokes of <c>path[from..to]</c>.</summary>
+    internal static double SharpestTurn(TaxiGraph graph, RunwayAxis axis, IReadOnlyList<int> path, int from, int to)
     {
         double max = 0.0;
-        for (int i = 0; i + 1 < path.Count; i++)
-        {
-            var a = graph.Nodes[path[i]];
-            var b = graph.Nodes[path[i + 1]];
-            max = Math.Max(max, Math.Abs(axis.RelativeHeadingDeg(a.Latitude, a.Longitude, b.Latitude, b.Longitude)));
-        }
+        foreach (var (a, b) in Strokes(graph, path, from, to))
+            max = Math.Max(max, Math.Abs(Heading(graph, axis, path[a], path[b])));
         return max;
     }
 
@@ -461,15 +496,25 @@ public static class ExitBranch
     // how the branch leaves the pavement (a measured path always reaches one - its clear node is beyond).
     private static double TurnToLeave(TaxiGraph graph, RunwayAxis axis, IReadOnlyList<int> path)
     {
-        double max = 0.0;
-        for (int i = 0; i + 1 < path.Count; i++)
-        {
-            var a = graph.Nodes[path[i]];
-            var b = graph.Nodes[path[i + 1]];
-            max = Math.Max(max, Math.Abs(axis.RelativeHeadingDeg(a.Latitude, a.Longitude, b.Latitude, b.Longitude)));
-            if (Math.Abs(Lateral(graph, axis, path[i + 1])) > axis.HalfWidthMetres) break;
-        }
-        return max;
+        int leave = path.Count - 1;
+        for (int i = 1; i < path.Count; i++)
+            if (Math.Abs(Lateral(graph, axis, path[i])) > axis.HalfWidthMetres) { leave = i; break; }
+        return SharpestTurn(graph, axis, path, 0, leave);
+    }
+
+    private static double NodeDistance(TaxiGraph graph, int a, int b)
+    {
+        var x = graph.Nodes[a];
+        var y = graph.Nodes[b];
+        return TaxiGraph.FastDistanceMeters(x.Latitude, x.Longitude, y.Latitude, y.Longitude);
+    }
+
+    // Heading of the step a→b relative to the landing heading, degrees, signed (+ right).
+    private static double Heading(TaxiGraph graph, RunwayAxis axis, int a, int b)
+    {
+        var x = graph.Nodes[a];
+        var y = graph.Nodes[b];
+        return axis.RelativeHeadingDeg(x.Latitude, x.Longitude, y.Latitude, y.Longitude);
     }
 
     // Never a fabricated stand bridge or a stand lead-in ("P"): neither is part of a way off the runway.

@@ -452,6 +452,41 @@ public class ExitBranchTests
         Assert.False(sibling.IsTurnaround);
     }
 
+    // --- PR #252 review fixes (2026-09-26) ---------------------------------------------------------
+
+    [Fact]
+    public void A_two_metre_jog_where_the_lead_in_meets_the_centreline_does_not_set_the_branch_angle()
+    {
+        // KPIT 28L F5 (fs2024, nodes 1888-1873): a 2.1 m row turning 50.8° joins the exit's first 56 m
+        // segment to its centreline node; every other segment turns at most 21.4°. Read edge by edge the
+        // jog made this rapid exit "Normal 50.8°" — too fast above 30 kt, no 900 ft call, no early handoff.
+        // Along / lateral from the fs2024 rows, lateral right = -north in this frame.
+        var g = Build(
+            Seg(2015.7, -0.4, 2017.1, -2.0, "F5"),
+            Seg(2017.1, -2.0, 2073.2, -1.8, "F5"),
+            Seg(2073.2, -1.8, 2105.5, -3.7, "F5"),
+            Seg(2105.5, -3.7, 2145.0, -7.9, "F5"),
+            Seg(2145.0, -7.9, 2192.4, -16.8, "F5"),
+            Seg(2192.4, -16.8, 2237.4, -29.7, "F5"),
+            Seg(2237.4, -29.7, 2285.1, -48.5, "F5"));
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 2015.7, -0.4), null, "F5");
+        Assert.True(b.IsMeasured);
+        Assert.False(b.IsTurnaround);
+        Assert.InRange(b.TurnToClearDeg, 20.5, 22.5);   // the real curve, never the jog's 50.8°
+        Assert.InRange(b.TurnToLeaveDeg, 15.0, 17.0);
+    }
+
+    [Fact]
+    public void A_short_last_stretch_is_read_with_the_stretch_before_it()
+    {
+        // A 90° exit whose clear node sits 2.5 m past a jog that, read alone, turns 99° (longer than
+        // the graph's 1.5 m node merge, shorter than a stroke).
+        var g = Build(Seg(1000, 0, 1000, -34.5, "K"), Seg(1000, -34.5, 999.6, -37.0, "K"));
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0), null, "K");
+        Assert.True(b.IsMeasured);
+        Assert.InRange(b.TurnToClearDeg, 89.0, 91.0);
+    }
+
     [Fact]
     public void A_sibling_arm_named_only_beyond_its_own_clear_point_is_rejected()
     {
