@@ -90,6 +90,11 @@ public static class ExitBranch
     {
         var inward = WalkToJunction(graph, axis, candidateNodeId, excluded: null);
         int junction = inward[0];
+        // The inward walk never actually reached the runway pavement (a dead end short of it, or the
+        // hop/distance budget ran out first) — this candidate's branch never meets the runway at all,
+        // so it must be reported unmeasured rather than silently measured from wherever the walk gave up.
+        if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres)
+            return new LandingExitBranch(junction, -1, -1, 0.0, inward);
         var branch = MeasureFrom(graph, axis, inward, junction == candidateNodeId ? seedNeighborId : null);
         if (branch.IsMeasured || junction == candidateNodeId) return branch;
         // Nothing leaves the runway from the candidate itself — it sits on a lead-in line beside the
@@ -106,16 +111,23 @@ public static class ExitBranch
     {
         if (!backward.IsTurnaround) return null;
         var own = new HashSet<int>(backward.Path);
-        foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own))
+        // Both the outward flood that finds candidate start nodes and the inward walk that measures
+        // each one stay ON exitName's own taxiway (or unnamed pavement): a physically-nearby but
+        // differently-named taxiway is a different exit system, not this one's other arm, however
+        // close its own pavement sits to this exit's clear point.
+        foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own, exitName))
         {
-            var inward = WalkToJunction(graph, axis, start, own);
+            var inward = WalkToJunction(graph, axis, start, own, exitName);
             int junction = inward[0];
             if (junction == start || own.Contains(junction)) continue;
             if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres) continue;
+            // Covers the WHOLE arm (junction..start), not just junction..clear — a name change beyond
+            // the clear point (still inside `inward`, out toward `start`) belongs to a different
+            // taxiway just as much as one before it, even though it plays no part in `path` below.
+            if (!IsNamedLike(graph, inward, exitName)) continue;
             int clearIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.ClearLateralMetres);
             if (clearIdx < 0) continue;
             var path = inward.GetRange(0, clearIdx + 1);
-            if (!IsNamedLike(graph, path, exitName)) continue;
             double turn = TurnAlong(graph, axis, path);
             if (turn > RolloutExitGate.TurnaroundAboveDeg) continue;
             int corridorIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.CorridorLateralMetres);
@@ -129,9 +141,11 @@ public static class ExitBranch
     /// Junction … start. Steps toward the centerline (each step at least <see cref="InwardStepMinMetres"/>
     /// closer, the closest neighbour first) until inside the band, then walks BACK along the band
     /// (toward the landing threshold) to where the lead-in line starts. Never enters
-    /// <paramref name="excluded"/>.
+    /// <paramref name="excluded"/>. When <paramref name="nameFilter"/> is set, only follows edges that
+    /// are unnamed or carry that name (<see cref="StringComparison.OrdinalIgnoreCase"/>) — the sibling
+    /// search's own walk stays on exitName's taxiway and can never wander home via someone else's.
     /// </summary>
-    internal static List<int> WalkToJunction(TaxiGraph graph, RunwayAxis axis, int startNodeId, ISet<int>? excluded)
+    internal static List<int> WalkToJunction(TaxiGraph graph, RunwayAxis axis, int startNodeId, ISet<int>? excluded, string? nameFilter = null)
     {
         var path = new List<int> { startNodeId };
         var visited = new HashSet<int> { startNodeId };
@@ -145,6 +159,7 @@ public static class ExitBranch
             foreach (var e in Walkable(graph, current))
             {
                 if (visited.Contains(e.ToNodeId) || (excluded != null && excluded.Contains(e.ToNodeId))) continue;
+                if (!MatchesNameFilter(e, nameFilter)) continue;
                 double lateral = Math.Abs(Lateral(graph, axis, e.ToNodeId));
                 if (lateral <= limit) { best = e; limit = lateral; }
             }
@@ -164,6 +179,7 @@ public static class ExitBranch
                 foreach (var e in Walkable(graph, current))
                 {
                     if (visited.Contains(e.ToNodeId) || (excluded != null && excluded.Contains(e.ToNodeId))) continue;
+                    if (!MatchesNameFilter(e, nameFilter)) continue;
                     if (Math.Abs(Lateral(graph, axis, e.ToNodeId)) > CenterlineBandMetres) continue;
                     double along = Along(graph, axis, e.ToNodeId);
                     if (along <= limit) { best = e; limit = along; }
@@ -253,8 +269,10 @@ public static class ExitBranch
         return chain;
     }
 
-    // `start` and every node within SiblingSearchMaxMetres of it that avoids `own`, nearest first.
-    private static IEnumerable<int> NodesOutwardFrom(TaxiGraph graph, int start, HashSet<int> own)
+    // `start` and every node within SiblingSearchMaxMetres of it that avoids `own`, nearest first. When
+    // `nameFilter` is set, the flood only crosses edges that are unnamed or carry that name — it can
+    // never leave onto a physically-nearby but differently-named taxiway to find a "sibling" there.
+    private static IEnumerable<int> NodesOutwardFrom(TaxiGraph graph, int start, HashSet<int> own, string? nameFilter = null)
     {
         var best = new Dictionary<int, double> { [start] = 0.0 };
         var queue = new PriorityQueue<int, double>();
@@ -267,6 +285,7 @@ public static class ExitBranch
             foreach (var e in Walkable(graph, node))
             {
                 if (own.Contains(e.ToNodeId) || done.Contains(e.ToNodeId)) continue;
+                if (!MatchesNameFilter(e, nameFilter)) continue;
                 double next = dist + e.DistanceMeters;
                 if (next > SiblingSearchMaxMetres) continue;
                 if (best.TryGetValue(e.ToNodeId, out double known) && known <= next) continue;
@@ -276,6 +295,15 @@ public static class ExitBranch
         }
     }
 
+    // True when `nameFilter` is unset, or `e` is unnamed, or `e` carries exactly that name.
+    private static bool MatchesNameFilter(TaxiEdge e, string? nameFilter)
+    {
+        if (nameFilter == null) return true;
+        string name = e.TaxiwayName ?? "";
+        return name.Length == 0 || string.Equals(name, nameFilter, StringComparison.OrdinalIgnoreCase);
+    }
+
+    // Whole-arm name check: every edge from path[0] to path[^1] must be unnamed or carry exitName.
     private static bool IsNamedLike(TaxiGraph graph, List<int> path, string exitName)
     {
         for (int i = 0; i + 1 < path.Count; i++)

@@ -152,4 +152,66 @@ public class ExitBranchTests
         Assert.Equal(north, ExitBranch.Analyze(g, Axis, j, north).ClearNodeId);
         Assert.Equal(south, ExitBranch.Analyze(g, Axis, j, south).ClearNodeId);
     }
+
+    // --- Review fix round 1 ---------------------------------------------------------------------
+
+    [Fact]
+    public void A_candidate_that_never_gets_closer_to_the_centerline_is_unmeasured()
+    {
+        // The candidate (1000,37) already sits beyond the runway half-width (25.0 m here); its only
+        // neighbour (1000,90) is even further out, so the inward walk can't step closer to the
+        // centerline at all and gives up right where it started — off the runway pavement. That must
+        // never be reported as a measured, 0-degree-turn exit.
+        var g = Build(Seg(1000, 37, 1000, 90, "A"));
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 37));
+        Assert.False(b.IsMeasured);
+    }
+
+    [Fact]
+    public void A_back_angled_stub_that_never_reaches_the_runway_is_unmeasured()
+    {
+        // Same shape as above but the one reachable neighbour is also back-angled (a would-be
+        // turnaround) rather than straight out — still off the pavement, still unmeasured.
+        var g = Build(Seg(1000, 37, 930, 100, "Z"));
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 37));
+        Assert.False(b.IsMeasured);
+    }
+
+    [Fact]
+    public void A_sibling_search_does_not_cross_a_differently_named_taxiway_to_reach_an_unrelated_connector()
+    {
+        // Z9 (1000,0)->(915,85) is the same turnaround stub as the no-sibling test above. Its clear
+        // node (915,85) also happens to be the west end of an unrelated NAMED taxiway "A", running
+        // east to (975,85); "A" in turn meets an unnamed connector that drops straight down to the
+        // runway centerline at (975,0). Physically the connector's mouth sits close to Z9's clear
+        // point, but it belongs to "A", not to Z9 — the flood must not cross "A" to reach it.
+        var g = Build(
+            Seg(1000, 0, 915, 85, "Z9"),
+            Seg(915, 85, 975, 85, "A"),
+            Seg(975, 85, 975, 0, ""));
+        var backward = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0));
+        Assert.True(backward.IsTurnaround);
+        Assert.Null(ExitBranch.FindForwardSibling(g, Axis, backward, "Z9"));
+    }
+
+    [Fact]
+    public void A_sibling_arm_named_only_beyond_its_own_clear_point_is_rejected()
+    {
+        // A second, unrelated arm reaches the runway at (945,0): unnamed from the runway up through
+        // (945,20) to (945,45) — its own first node beyond the 35 m clear boundary — then NAMED "B4"
+        // out to (945,65), then an unnamed bridge back to (915,80) and finally to Z9's own clear node
+        // (915,85). The near-runway portion (runway .. first-beyond-clear node) is entirely unnamed,
+        // so a check truncated at the clear boundary sees nothing wrong; only checking the WHOLE arm
+        // out to the point the search actually started from (its "start") crosses the "B4" edge.
+        var g = Build(
+            Seg(1000, 0, 915, 85, "Z9"),
+            Seg(915, 85, 915, 80, ""),
+            Seg(915, 80, 945, 65, ""),
+            Seg(945, 65, 945, 45, "B4"),
+            Seg(945, 45, 945, 20, ""),
+            Seg(945, 20, 945, 0, ""));
+        var backward = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0));
+        Assert.True(backward.IsTurnaround);
+        Assert.Null(ExitBranch.FindForwardSibling(g, Axis, backward, "Z9"));
+    }
 }
