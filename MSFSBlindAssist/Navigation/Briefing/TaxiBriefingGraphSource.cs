@@ -10,7 +10,8 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// exactly as LandingExitForm builds it — GetNamedSpots, never raw GetParkingSpots), tier 2 the
 /// OpenStreetMap planning-only graph when the database has NO taxiways for the airport, otherwise
 /// nothing with a pilot-readable reason. Runs on the caller's thread (PlanAsync puts it on a
-/// background one): every call is a database read or a graph build.
+/// background one): every call is a database read, a graph build or a bounded wait for the online
+/// taxiway names.
 /// </summary>
 public static class TaxiBriefingGraphSource
 {
