@@ -56,6 +56,16 @@ public class BriefingTurnsTests
     }
 
     [Fact]
+    public void A_bend_inside_a_short_taxiway_counts_toward_one_turn_only()
+    {
+        // B is 80 m long with a 30° right bend 50 m in. Each change reaches only halfway into B (40 m), so A→B sees B's
+        // first leg alone (a plain right) and the bend is counted once, in B→C. Reaching the whole 60 m into B would add
+        // the bend to A→B as well and make it a sharp right.
+        var route = Route((0, 0), ("A", 0, 300), ("B", 50, 300), ("B", 75.98, 285), ("C", 75.98, 585));
+        Assert.Equal(new string?[] { null, "right", "left" }, BriefingTurns.TaxiwayTurns(route));
+    }
+
+    [Fact]
     public void A_straight_continuation_says_straight_ahead()
         => Assert.Equal(new string?[] { null, "straight ahead" },
             BriefingTurns.TaxiwayTurns(Route((0, 0), ("A", 0, 300), ("B", 0, 600))));
