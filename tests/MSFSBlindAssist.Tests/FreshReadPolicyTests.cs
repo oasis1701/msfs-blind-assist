@@ -62,6 +62,43 @@ public class FreshReadPolicyTests
         Assert.False(FreshReadPolicy.CacheIsFresh(null));
     }
 
+    /// <summary>
+    /// A CHANGED stream never sends a value it has not seen change, and SimConnect's baseline starts
+    /// at zero: a lever resting at 0 when it subscribes (flaps up, speedbrake stowed) stays uncached
+    /// until it moves (measured live, 2026-09-26). An EMPTY cache is therefore not an answer — the
+    /// read must be asked once instead — while a cached 0 is.
+    /// </summary>
+    [Fact]
+    public void AnEmptyCache_IsNotAnAnswer_ACachedZeroIs()
+    {
+        var simFrame = Def(UpdateFrequency.Continuous, true, true, true);
+
+        Assert.False(FreshReadPolicy.AnswersFromCache(simFrame, null));
+        Assert.True(FreshReadPolicy.AnswersFromCache(simFrame, 0.0));
+        Assert.False(FreshReadPolicy.AnswersFromCache(Def(UpdateFrequency.OnRequest, false, false, false), 5.0));
+    }
+
+    /// <summary>
+    /// A PERIOD.ONCE under a periodic subscription's own data-definition id REPLACES the
+    /// subscription, so it is never issued there. Under a fresh read's own request id it cannot
+    /// replace anything — and for a SIM_FRAME + CHANGED stream it is the only way to learn a value
+    /// the stream will not send. A PERIOD.SECOND subscription keeps waiting for its next sample.
+    /// </summary>
+    [Fact]
+    public void AOnce_IsNeverIssuedUnderASubscriptionsOwnId_OnlyUnderAFreshReadsIdForASimFrameStream()
+    {
+        var plain = Def(UpdateFrequency.OnRequest, false, false, false);
+        var perSecond = Def(UpdateFrequency.Continuous, true, true, false);
+        var simFrame = Def(UpdateFrequency.Continuous, true, true, true);
+
+        Assert.True(FreshReadPolicy.MayIssueOnce(plain, underOwnRequestId: false));
+        Assert.True(FreshReadPolicy.MayIssueOnce(plain, underOwnRequestId: true));
+        Assert.False(FreshReadPolicy.MayIssueOnce(perSecond, underOwnRequestId: false));
+        Assert.False(FreshReadPolicy.MayIssueOnce(perSecond, underOwnRequestId: true));
+        Assert.False(FreshReadPolicy.MayIssueOnce(simFrame, underOwnRequestId: false));
+        Assert.True(FreshReadPolicy.MayIssueOnce(simFrame, underOwnRequestId: true));
+    }
+
     /// <summary>The real MD-11 definitions: the levers that walk are SIM_FRAME own subscriptions, the seat-belt switch a plain individual def.</summary>
     [Fact]
     public void TheMd11FlapLeverAndSpeedbrake_ReadFreshFromTheCache_TheSeatBeltSwitchFromItsOnceResponse()

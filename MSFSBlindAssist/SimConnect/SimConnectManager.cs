@@ -869,6 +869,7 @@ public partial class SimConnectManager
 
             SetupDataDefinitions();
             SetupEvents();
+            SeedChangeOnlySubscriptions();
             RegisterClientEvents();
 
             // Initialize MobiFlight WASM module

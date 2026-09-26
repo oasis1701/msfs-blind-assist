@@ -138,7 +138,10 @@ public partial class SimConnectManager
         if (!IsConnected || simConnect == null) return Task.FromResult<double?>(null);
         bool deliverable = variableDataDefinitions.ContainsKey(varKey) || continuousVariableIndexMap.ContainsKey(varKey);
         if (!deliverable) return Task.FromResult<double?>(null);
-        if (FreshReadPolicy.CacheIsFresh(DefinitionOf(varKey))) return Task.FromResult(GetCachedVariableValue(varKey));
+        // A SIM_FRAME stream's cache is the fresh value — once it holds one. An empty cache falls
+        // through to a ONCE under this read's own request id (FreshReadPolicy.AnswersFromCache).
+        var cached = GetCachedVariableValue(varKey);
+        if (FreshReadPolicy.AnswersFromCache(DefinitionOf(varKey), cached)) return Task.FromResult(cached);
         return _freshReads.WaitAsync(varKey,
             id => RequestVariable(varKey, forceUpdate: true, freshRequestId: id), timeoutMs, ct);
     }
@@ -216,10 +219,12 @@ public partial class SimConnectManager
         // every panel open, display refresh and force-read. Leave the subscription alone: the
         // force flag recorded above is honoured by the next periodic delivery, so a force-read
         // still fires SimVarUpdated within one period (1 s at PERIOD.SECOND).
+        // A fresh read's ONCE goes out under its OWN request id and cannot replace anything, so a
+        // SIM_FRAME + CHANGED stream may be asked that way — the only way to learn a value the
+        // stream will not send (FreshReadPolicy.MayIssueOnce).
         var defs = CurrentAircraft?.GetVariables();
         if (defs != null && defs.TryGetValue(varKey, out var periodicDef) &&
-            periodicDef.UpdateFrequency == UpdateFrequency.Continuous &&
-            periodicDef.IsAnnounced && periodicDef.ExcludeFromBatch)
+            !FreshReadPolicy.MayIssueOnce(periodicDef, underOwnRequestId: freshRequestId != null))
         {
             return;
         }

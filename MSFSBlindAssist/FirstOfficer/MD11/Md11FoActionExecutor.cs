@@ -600,7 +600,11 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     {
         int want = target > 0 ? 1 : 0;
         var pull = await ReadAsync(io, Md11SpeedbrakeSystem.ArmKey, LampReadTimeoutMs).ConfigureAwait(false);
-        switch (Md11FoSwitching.SpoilerAction(pull, io.ReadCached(Md11SpeedbrakeSystem.LeverKey), want))
+        var travel = await ReadAsync(io, Md11SpeedbrakeSystem.LeverKey, ControlReadTimeoutMs).ConfigureAwait(false);
+        var action = Md11FoSwitching.SpoilerAction(pull, travel, want);
+        if (action == Md11FoSpoilerAction.Refuse)
+            Log.Debug("MD11 FO", $"spoilers {want} refused: pull={pull?.ToString() ?? "unread"}, lever travel={travel?.ToString() ?? "unread"}");
+        switch (action)
         {
             case Md11FoSpoilerAction.None:
                 return true;
@@ -694,14 +698,22 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     /// </summary>
     private async Task<bool> FlapHandleAsync(IMd11FoTransport io, int targetIndex)
     {
-        if (_state?.OnGround != true) return false;                        // the pilot's in flight — never ours
+        if (_state?.OnGround != true)                                      // the pilot's in flight — never ours
+        {
+            Log.Debug("MD11 FO", $"flap handle refused: on ground={_state?.OnGround?.ToString() ?? "unread"}");
+            return false;
+        }
         if (targetIndex is not (0 or 2)) return false;                     // UP/RET or the Dial-A-Flap detent only
         int extend = _flapExtendEvent;
         bool flipped = false, flipUnproven = false, noted = false;
         for (int i = 0; i < 8; i++)
         {
-            int? idx = io.ReadCached(Md11FlapSystem.LeverKey) is double r ? Md11FoSwitching.FlapDetentIndex(r) : null;
-            if (idx is null) return false;
+            int? idx = await ReadAsync(io, Md11FlapSystem.LeverKey, ControlReadTimeoutMs).ConfigureAwait(false) is double r ? Md11FoSwitching.FlapDetentIndex(r) : null;
+            if (idx is null)
+            {
+                Log.Debug("MD11 FO", "flap handle refused: its position is unread");
+                return false;
+            }
             if (idx == targetIndex) return true;
             if (!noted) { io.NoteActuation(Md11FlapSystem.LeverKey); noted = true; }
             int dir = Math.Sign(targetIndex - idx.Value);
@@ -741,7 +753,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         if (_state?.OnGround != true)
         {
             // In flight the wheel moves the flaps whenever the handle sits in its detent.
-            int? idx = io.ReadCached(Md11FlapSystem.LeverKey) is double r ? Md11FoSwitching.FlapDetentIndex(r) : null;
+            int? idx = await ReadAsync(io, Md11FlapSystem.LeverKey, ControlReadTimeoutMs).ConfigureAwait(false) is double r ? Md11FoSwitching.FlapDetentIndex(r) : null;
             if (idx is null || idx == 2) return false;
         }
         double raw = Md11FoSwitching.DialRawFor(degrees);

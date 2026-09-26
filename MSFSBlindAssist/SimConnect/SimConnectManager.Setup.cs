@@ -748,6 +748,47 @@ public partial class SimConnectManager
     }
 
     /// <summary>
+    /// Asks once for every SIM_FRAME + CHANGED per-var subscription whose cache is still empty
+    /// (<see cref="FreshReadPolicy.CacheIsFresh"/>). A CHANGED stream never sends a value it has not
+    /// seen change, and SimConnect's baseline starts at zero, so a lever RESTING AT 0 when it
+    /// subscribes stays uncached until it moves: after an app start or an aircraft switch with the
+    /// MD-11's flaps up and speedbrake stowed, the flap handle and speedbrake positions were unread
+    /// (measured live 2026-09-26 — the First Officer's flap and spoiler steps refused, and the
+    /// panels' read-outs had nothing to read). Re-issuing the subscription does NOT help (tried: the
+    /// new request's baseline is zero too). Each seed is a fresh read under its OWN request id, which
+    /// cannot replace the subscription; its answer lands in the cache. Called once the receive handler
+    /// is attached (Connect after SetupEvents, and the aircraft-switch re-registration).
+    /// </summary>
+    private void SeedChangeOnlySubscriptions()
+    {
+        if (simConnect == null) return;
+        var defs = CurrentAircraft?.GetVariables();
+        if (defs == null) return;
+        int seeded = 0;
+        foreach (var kvp in variableDataDefinitions)
+        {
+            if (!defs.TryGetValue(kvp.Key, out var def) || !FreshReadPolicy.CacheIsFresh(def)) continue;
+            if (GetCachedVariableValue(kvp.Key) != null) continue;
+            _ = SeedOneAsync(kvp.Key);
+            seeded++;
+        }
+        if (seeded > 0) Log.Debug("SimConnect", $"Seeding {seeded} change-only subscription(s) with a one-time read");
+    }
+
+    private async Task SeedOneAsync(string varKey)
+    {
+        try
+        {
+            var v = await ReadFreshAsync(varKey, 3000);
+            if (v == null) Log.Debug("SimConnect", $"Seed read of {varKey} returned nothing");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Seed read of {varKey} failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>
     /// Re-register all variables for the current aircraft.
     /// Call this when switching aircraft to update variable registrations.
     /// </summary>
@@ -787,6 +828,7 @@ public partial class SimConnectManager
 
         // Re-register all variables for new aircraft
         RegisterAllVariables();
+        SeedChangeOnlySubscriptions();
     }
 
     private void SetupEvents()
