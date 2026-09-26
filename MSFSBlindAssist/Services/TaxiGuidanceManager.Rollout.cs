@@ -430,7 +430,8 @@ public partial class TaxiGuidanceManager
 
     /// <summary>
     /// "Off pavement." while the aircraft is off every mapped runway and taxiway during the landing roll
-    /// or the exit (Navigation.PavementMap / OffPavementAlert). Spoken with AnnounceImmediate directly —
+    /// or the exit (Navigation.PavementMap / OffPavementAlert), and off the runway being landed on
+    /// (<see cref="IsOnRolloutRunwayPavement"/>). Spoken with AnnounceImmediate directly —
     /// NOT AnnounceInstruction — so Ctrl+Y still replays the last guidance instruction. No direction word:
     /// the steering tone is the only direction authority. KMEM 36L 2026-09-26: ~13 s in the grass at
     /// 37-47 kt with nothing said.
@@ -443,7 +444,7 @@ public partial class TaxiGuidanceManager
             _pavementMap = Navigation.PavementMap.Build(_graph);
             _pavementMapGraph = _graph;
         }
-        bool off = !_pavementMap!.IsOnMappedPavement(lat, lon);
+        bool off = !IsOnRolloutRunwayPavement(lat, lon) && !_pavementMap!.IsOnMappedPavement(lat, lon);
         if (off != _offPavementLogged)
         {
             _offPavementLogged = off;
@@ -462,6 +463,39 @@ public partial class TaxiGuidanceManager
     {
         _offPavementAlert.Reset();
         _offPavementLogged = false;
+    }
+
+    /// <summary>
+    /// The runway being landed on always counts as pavement, from the runway TABLE's own geometry: laterally
+    /// within half-width + <see cref="Navigation.PavementMap.RunwayMarginMetres"/> (<see
+    /// cref="IsWithinRolloutRunwayLaterally"/> — the rollout's own line, its width fallback included) and
+    /// along-track within the runway's length (<see cref="IsWithinRunwayLength"/>). The pavement map knows a
+    /// runway only through a centerline paired from its two start rows, which a runway can lack: KDEN 07/25
+    /// has no start row for 07, so the map called that whole runway grass, and a simulated centerline landing
+    /// roll on 25 drew "Off pavement." 4 s after touchdown, at 122 kt. _rolloutRunway is set at all three
+    /// rollout entries, kept through the handoff, retargets and the countdown, and cleared only by
+    /// StopGuidance — so it covers the exit too.
+    /// </summary>
+    private bool IsOnRolloutRunwayPavement(double lat, double lon)
+        => _rolloutRunway != null
+           && IsWithinRolloutRunwayLaterally(lat, lon)
+           && IsWithinRunwayLength(_rolloutRunway, _rolloutRunwayHeadingTrue, lat, lon);
+
+    /// <summary>
+    /// The along-track half of <see cref="IsOnRolloutRunwayPavement"/>: from
+    /// <see cref="Navigation.PavementMap.RunwayMarginMetres"/> before <paramref name="runway"/>'s start to the
+    /// same margin past its length, measured with <see cref="SignedAlongRunwayMeters"/> (the companion of the
+    /// lateral projection IsWithinRolloutRunwayLaterally uses). The length is <see cref="Navigation.RunwayFrame"/>'s,
+    /// which falls back to the threshold-to-threshold distance on a row whose length is 0 — the rows that reach
+    /// the runway-end countdown.
+    /// </summary>
+    internal static bool IsWithinRunwayLength(
+        Database.Models.Runway runway, double runwayHeadingTrue, double lat, double lon)
+    {
+        double alongM = SignedAlongRunwayMeters(lat, lon, runway.StartLat, runway.StartLon, runwayHeadingTrue);
+        double lengthM = Navigation.RunwayFrame.For(runway, lat).LengthM;
+        return alongM >= -Navigation.PavementMap.RunwayMarginMetres
+            && alongM <= lengthM + Navigation.PavementMap.RunwayMarginMetres;
     }
 
     /// <summary>
