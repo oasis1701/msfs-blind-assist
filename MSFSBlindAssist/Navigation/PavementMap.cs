@@ -39,7 +39,7 @@ public sealed class PavementMap
             {
                 if (e.FromNodeId >= e.ToNodeId) continue;   // each undirected edge once
                 if (TaxiGraph.IsStandBridge(e)) continue;
-                if (string.Equals(e.PathType, "P", StringComparison.OrdinalIgnoreCase)) continue;
+                if (TaxiGraph.IsParkingLeadIn(e)) continue;
                 if (!graph.Nodes.TryGetValue(e.FromNodeId, out var a) || !graph.Nodes.TryGetValue(e.ToNodeId, out var b)) continue;
                 double halfWidth = e.WidthFeet > 0
                     ? Math.Min(e.WidthFeet * 0.3048 * 0.5, MaxTaxiwayHalfWidthMetres)

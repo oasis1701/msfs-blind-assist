@@ -1078,7 +1078,8 @@ public partial class TaxiGraph
         }
     }
 
-    private static bool IsParkingLeadIn(TaxiEdge edge) =>
+    /// <summary>A stand lead-in row (navdata path type "P"): never part of a runway exit or the taxi pavement map.</summary>
+    internal static bool IsParkingLeadIn(TaxiEdge edge) =>
         string.Equals(edge.PathType, "P", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>

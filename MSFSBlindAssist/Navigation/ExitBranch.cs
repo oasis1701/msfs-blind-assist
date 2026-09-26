@@ -179,7 +179,7 @@ public static class ExitBranch
         int bestHop = int.MaxValue;
         foreach (var e in Walkable(graph, inward[^1]))
         {
-            if (e.ToNodeId == seed || !string.Equals(e.TaxiwayName, nameFilter, StringComparison.OrdinalIgnoreCase)) continue;
+            if (e.ToNodeId == seed || !SameTaxiwayName(e.TaxiwayName, nameFilter)) continue;
             var half = MeasureFrom(graph, axis, inward, e.ToNodeId, nameFilter, exitOnPavement);
             if (!half.IsMeasured || half.IsTurnaround) continue;
             if (Math.Sign(Lateral(graph, axis, half.ClearNodeId)) != -seedSide) continue;
@@ -261,10 +261,9 @@ public static class ExitBranch
             if (junction == start) return null;
             if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres) return null;
             if (Math.Abs(Along(graph, axis, junction) - backwardAlong) > SiblingJunctionMaxMetres) return null;
-            // Covers the WHOLE arm (junction..start), not just junction..clear — a name change beyond
-            // the clear point (still inside `inward`, out toward `start`) belongs to a different
-            // taxiway just as much as one before it, even though it plays no part in `path` below.
-            if (!IsNamedLike(graph, inward, exitName)) return null;
+            // The WHOLE arm (junction..start) is on exitName's own taxiway or unnamed pavement: the walk and
+            // the flood that chose `start` only follow such edges. (A separate whole-arm check once read one
+            // row per node pair and rejected an arm followed on its own row beside another name's.)
             int clearIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.ClearLateralMetres);
             if (clearIdx < 0) return null;
             var path = inward.GetRange(0, clearIdx + 1);
@@ -314,7 +313,7 @@ public static class ExitBranch
     /// "Walkable neighbours" are the distinct neighbours <c>Walkable</c> returns, whatever their name.</para>
     /// <para>Both phases share <see cref="WalkMaxHops"/> and <see cref="WalkMaxMetres"/>, never enter
     /// <paramref name="excluded"/>, and - when <paramref name="nameFilter"/> is set - only follow edges
-    /// that are unnamed or carry that name (<see cref="StringComparison.OrdinalIgnoreCase"/>; an empty
+    /// that are unnamed or carry that name (<see cref="SameTaxiwayName"/>; an empty
     /// filter means unnamed edges only). The refinement's walk stays on its exit's own taxiway that
     /// way, and the sibling search's own walk can never wander home via someone else's.</para>
     /// </summary>
@@ -610,32 +609,35 @@ public static class ExitBranch
         }
     }
 
-    // True when `nameFilter` is unset, or `e` is unnamed, or `e` carries exactly that name.
+    // True when `nameFilter` is unset, or `e` is unnamed, or `e` carries that name (SameTaxiwayName).
     private static bool MatchesNameFilter(TaxiEdge e, string? nameFilter)
     {
         if (nameFilter == null) return true;
         string name = e.TaxiwayName ?? "";
-        return name.Length == 0 || string.Equals(name, nameFilter, StringComparison.OrdinalIgnoreCase);
+        return name.Length == 0 || SameTaxiwayName(name, nameFilter);
     }
 
-    // Whole-arm name check: every edge from path[0] to path[^1] must be unnamed or carry exitName.
-    private static bool IsNamedLike(TaxiGraph graph, List<int> path, string exitName)
+    /// <summary>
+    /// Two spellings of one taxiway name: equal letter for letter and digit for digit, ignoring case and
+    /// everything else - "M5", "M-5" and "m 5" are one taxiway. With online taxiway names on (the default),
+    /// an unnamed navdata row can be filled with an online spelling of a name navdata already uses beside
+    /// it (TaxiGraph.Build folds case variants only), and an exact test stopped the branch at that row: it
+    /// never cleared, and the exit kept the first-edge reading the branch exists to replace.
+    /// </summary>
+    internal static bool SameTaxiwayName(string? a, string? b)
     {
-        for (int i = 0; i + 1 < path.Count; i++)
+        a ??= "";
+        b ??= "";
+        int i = 0, j = 0;
+        while (true)
         {
-            string edgeName = EdgeName(graph, path[i], path[i + 1]);
-            if (edgeName.Length > 0 && !string.Equals(edgeName, exitName ?? "", StringComparison.OrdinalIgnoreCase))
-                return false;
+            while (i < a.Length && !char.IsLetterOrDigit(a[i])) i++;
+            while (j < b.Length && !char.IsLetterOrDigit(b[j])) j++;
+            if (i == a.Length || j == b.Length) return i == a.Length && j == b.Length;
+            if (char.ToUpperInvariant(a[i]) != char.ToUpperInvariant(b[j])) return false;
+            i++;
+            j++;
         }
-        return true;
-    }
-
-    private static string EdgeName(TaxiGraph graph, int from, int to)
-    {
-        if (graph.Adjacency.TryGetValue(from, out var edges))
-            foreach (var e in edges)
-                if (e.ToNodeId == to) return e.TaxiwayName ?? "";
-        return "";
     }
 
     /// <summary>
@@ -705,7 +707,7 @@ public static class ExitBranch
         foreach (var e in edges)
         {
             if (TaxiGraph.IsStandBridge(e)) continue;
-            if (string.Equals(e.PathType, "P", StringComparison.OrdinalIgnoreCase)) continue;
+            if (TaxiGraph.IsParkingLeadIn(e)) continue;
             if (!graph.Nodes.ContainsKey(e.ToNodeId)) continue;
             yield return e;
         }

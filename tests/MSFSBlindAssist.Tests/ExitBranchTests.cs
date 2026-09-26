@@ -590,4 +590,54 @@ public class ExitBranchTests
         Assert.InRange(b.TurnToClearDeg, 59.0, 61.0);
         Assert.True(g.Nodes[b.ClearNodeId].Latitude < 0);   // the right-hand, forward half
     }
+    [Fact]
+    public void An_online_spelling_of_the_exits_own_name_is_its_own_taxiway()
+    {
+        // KMEM M5's arm with its middle row named "M-5", as an online source spells it when it fills the
+        // row: the exact name test stopped the branch there, it never cleared, and the exit kept the
+        // producer's first-edge reading - the class of the "Normal 52°" hairpin the branch exists to fix.
+        var g = Build(
+            Seg(1000.0, 0.0, 1018.3, 4.5, "M5"),
+            Seg(1018.3, 4.5, 1039.6, 15.3, "M-5"),
+            Seg(1039.6, 15.3, 1057.0, 33.6, "M5"),
+            Seg(1057.0, 33.6, 1064.0, 56.0, "M5"));
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0), null, "M5");
+        Assert.True(b.IsMeasured);
+        Assert.InRange(b.TurnToClearDeg, 71.5, 73.7);
+    }
+
+    [Fact]
+    public void A_parallel_row_of_another_name_never_hides_a_Y_exits_forward_arm()
+    {
+        // BuildY with a second row between (976,15) and (994,33) named "Y", listed BEFORE the forward arm's
+        // own unnamed row: the whole-arm name check read whichever row came first and rejected an arm the
+        // name-filtered walk had followed on its own unnamed row.
+        var g = Build(
+            Seg(918, 0, 976, 15),
+            Seg(976, 15, 994, 33, "Y"),
+            Seg(976, 15, 994, 33),
+            Seg(994, 33, 1000, 55),
+            Seg(1072, 1, 1030, 16, "M6"),
+            Seg(1030, 16, 1015, 32, "M6"),
+            Seg(1015, 32, 1000, 55, "M6"),
+            Seg(1072, 1, 1104, -1, "M6"),
+            Seg(1000, 55, 1000, 85, "M6"));
+        var backward = ExitBranch.Analyze(g, Axis, NodeAt(g, 1030, 16));
+        Assert.True(backward.IsTurnaround);
+        Assert.NotNull(ExitBranch.FindForwardSibling(g, Axis, backward, "M6"));
+    }
+    [Theory]
+    [InlineData("M5", "M5", true)]
+    [InlineData("M5", "m-5", true)]
+    [InlineData("J 6", "J6", true)]
+    [InlineData("", "", true)]
+    [InlineData("B10", "B1", false)]    // never a shorter stand or taxiway by prefix
+    [InlineData("M5", "M50", false)]
+    [InlineData("A", "", false)]
+    [InlineData("I", "i", true)]        // invariant case: tr-TR must not fold I to a dotless i
+    public void Taxiway_names_compare_letter_for_letter_and_digit_for_digit(string a, string b, bool same)
+    {
+        Assert.Equal(same, ExitBranch.SameTaxiwayName(a, b));
+        Assert.Equal(same, ExitBranch.SameTaxiwayName(b, a));
+    }
 }
