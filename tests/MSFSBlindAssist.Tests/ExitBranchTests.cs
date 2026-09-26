@@ -253,6 +253,95 @@ public class ExitBranchTests
         Assert.Equal(NodeAt(g, 1160, 3), b.JunctionNodeId);
     }
 
+    // --- Task 3b R6: a Y exit's forward sibling is on the same side, nearby -----------------------
+
+    [Fact]
+    public void A_same_named_taxiway_crossing_to_a_connector_on_the_other_side_gives_no_sibling()
+    {
+        // The KMCI 01L shape. Backward stub "E" from (1000,0) out to (950,40); a taxiway also named
+        // "E" runs on from (950,40) to (900,40) and straight across the runway to (900,-40), where an
+        // unnamed connector drops forward onto the runway at (840,0). That connector is 160 m from the
+        // stub's junction but on the OTHER side: it is not the stub's other arm.
+        var g = Build(
+            Seg(1000, 0, 950, 40, "E"),
+            Seg(950, 40, 900, 40, "E"), Seg(900, 40, 900, -40, "E"),
+            Seg(900, -40, 870, -20), Seg(870, -20, 840, 0));
+        var backward = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0), NodeAt(g, 950, 40));
+        Assert.True(backward.IsTurnaround);
+
+        Assert.Null(ExitBranch.FindForwardSibling(g, Axis, backward, "E"));
+    }
+
+    [Fact]
+    public void A_same_named_parallel_taxiway_leading_to_a_connector_over_300_m_away_gives_no_sibling()
+    {
+        // Backward stub "E" from (1000,0) out to (950,40); a parallel taxiway also named "E" runs on
+        // to (830,40), where a connector drops forward onto the runway at (630,0) - 370 m along the
+        // runway from the stub's junction. Too far to be the other arm of the same exit.
+        var g = Build(
+            Seg(1000, 0, 950, 40, "E"),
+            Seg(950, 40, 830, 40, "E"),
+            Seg(830, 40, 730, 20), Seg(730, 20, 630, 0));
+        var backward = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0), NodeAt(g, 950, 40));
+        Assert.True(backward.IsTurnaround);
+
+        Assert.Null(ExitBranch.FindForwardSibling(g, Axis, backward, "E"));
+    }
+
+    // --- Task 3b R7: the refinement's inward walk stays on the exit's own taxiway ---------------
+
+    // The KATL 26L B4 shape: B4 and E3 share node N (1000,30). E3 comes in from its junction (900,0)
+    // through (960,10), B4 from its junction (970,0) through (985,20); E3's inward neighbour is the
+    // nearer the centreline, so an unfiltered walk from N follows E3.
+    private static TaxiGraph BuildSharedNode() => Build(
+        Seg(900, 0, 960, 10, "E3"), Seg(960, 10, 1000, 30, "E3"), Seg(1000, 30, 1040, 50, "E3"),
+        Seg(970, 0, 985, 20, "B4"), Seg(985, 20, 1000, 30, "B4"), Seg(1000, 30, 1000, 60, "B4"));
+
+    [Fact]
+    public void A_name_filtered_walk_from_a_shared_node_is_not_measured_along_the_other_exits_arm()
+    {
+        var g = BuildSharedNode();
+        int n = NodeAt(g, 1000, 30);
+
+        Assert.Equal(NodeAt(g, 900, 0), ExitBranch.Analyze(g, Axis, n).JunctionNodeId);   // unfiltered: E3's
+        var b4 = ExitBranch.Analyze(g, Axis, n, nameFilter: "b4");
+        Assert.Equal(NodeAt(g, 970, 0), b4.JunctionNodeId);
+        Assert.True(b4.IsMeasured);
+    }
+
+    [Fact]
+    public void A_name_filtered_walk_that_cannot_reach_the_runway_on_its_own_taxiway_is_unmeasured()
+    {
+        // "K" is only the outer end of N: nothing named K (or unnamed) leads from N to the runway.
+        var g = Build(
+            Seg(900, 0, 960, 10, "E3"), Seg(960, 10, 1000, 30, "E3"), Seg(1000, 30, 1000, 60, "K"));
+
+        Assert.False(ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 30), nameFilter: "K").IsMeasured);
+    }
+
+    // --- Task 3b R8: a Y exit whose arms merge inside the clear line ------------------------------
+
+    [Fact]
+    public void A_Y_exit_whose_arms_merge_inside_the_clear_line_finds_its_forward_sibling()
+    {
+        // The VADE 26 / KIXA 20 shape: the two arms merge at M (1000,30), inside the 35 m clear line
+        // of this 25 m half-width runway. The backward arm's path runs junction .. M .. stem (1000,85),
+        // so treating the whole path as its own arm walled the flood off from the forward arm at M.
+        var g = Build(
+            Seg(918, 0, 960, 12), Seg(960, 12, 985, 24), Seg(985, 24, 1000, 30),
+            Seg(1072, 1, 1030, 16, "M6"), Seg(1030, 16, 1015, 25, "M6"), Seg(1015, 25, 1000, 30, "M6"),
+            Seg(1072, 1, 1104, -1, "M6"), Seg(1000, 30, 1000, 85, "M6"));
+        var backward = ExitBranch.Analyze(g, Axis, NodeAt(g, 1030, 16));
+        Assert.Equal(NodeAt(g, 1072, 1), backward.JunctionNodeId);
+        Assert.True(backward.IsTurnaround);
+
+        var sibling = ExitBranch.FindForwardSibling(g, Axis, backward, "M6");
+
+        Assert.NotNull(sibling);
+        Assert.Equal(NodeAt(g, 918, 0), sibling!.JunctionNodeId);
+        Assert.False(sibling.IsTurnaround);
+    }
+
     [Fact]
     public void A_sibling_arm_named_only_beyond_its_own_clear_point_is_rejected()
     {

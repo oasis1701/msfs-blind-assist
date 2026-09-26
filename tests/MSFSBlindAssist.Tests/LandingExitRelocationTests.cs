@@ -108,4 +108,24 @@ public class LandingExitRelocationTests
         Assert.DoesNotContain(g.FindDownfieldExits(Runway09(3000.0), afterDistanceFromThresholdFeet: 0.0),
             e => e.TaxiwayName == "M6");
     }
+
+    [Fact]
+    public void An_exit_found_at_a_node_it_shares_with_another_exit_stays_on_its_own_taxiway()
+    {
+        // The KATL 26L B4 shape (worldwide sweep, 2026-09-26: B4 listed as a copy of E3 at 7,760 ft).
+        // B4 and E3 share node N (1000,30), where B4's 90-degree edge makes N a "B4" candidate. E3
+        // comes in from its junction (900,0) through (960,10), nearer the centreline than B4's own
+        // inward neighbour (985,20), so an unfiltered walk from N measured B4 along E3's arm and moved
+        // it onto E3's junction. B4 leaves the runway at its own junction, (970,0) - 3,182 ft.
+        var g = Build(
+            Seg(900, 0, 960, 10, "E3"), Seg(960, 10, 1000, 30, "E3"), Seg(1000, 30, 1040, 50, "E3"),
+            Seg(970, 0, 985, 20, "B4"), Seg(985, 20, 1000, 30, "B4"), Seg(1000, 30, 1000, 60, "B4"));
+
+        var exits = g.GetLandingExits(Runway09(3000.0));
+
+        var b4 = Assert.Single(exits, e => e.TaxiwayName == "B4");
+        var e3 = Assert.Single(exits, e => e.TaxiwayName == "E3");
+        Assert.InRange(b4.DistanceFromThresholdFeet, 3170.0, 3195.0);
+        Assert.InRange(e3.DistanceFromThresholdFeet, 2940.0, 2965.0);
+    }
 }

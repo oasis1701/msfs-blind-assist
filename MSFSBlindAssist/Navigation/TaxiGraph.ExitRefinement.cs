@@ -8,7 +8,11 @@ namespace MSFSBlindAssist.Navigation;
 public partial class TaxiGraph
 {
     /// <summary>
-    /// Refines a candidate exit by its branch.
+    /// Refines a candidate exit by its branch. The inward walk that finds the branch stays on the
+    /// exit's own taxiway (<see cref="ExitBranch.Analyze"/>'s name filter; unnamed edges only for an
+    /// unnamed exit), so a node shared with another exit is never measured along that exit's arm
+    /// (KATL 26L: B4 was listed as a copy of E3); a candidate whose own taxiway never reaches the
+    /// runway is unmeasured.
     /// <para>Unmeasured branches (nothing clears the runway within reach) leave the exit exactly as it
     /// was, so thin navdata can never lose an exit here.</para>
     /// <para>A turnaround is replaced by its forward sibling when one exists and the sibling's junction
@@ -29,7 +33,7 @@ public partial class TaxiGraph
         LandingExit exit, int? seedNeighborId, bool keepNode, bool dropTurnarounds,
         Runway rwy, RunwayAxis axis, double minDistanceFromThresholdFeet, out bool measured)
     {
-        var branch = ExitBranch.Analyze(this, axis, exit.NodeId, seedNeighborId);
+        var branch = ExitBranch.Analyze(this, axis, exit.NodeId, seedNeighborId, exit.TaxiwayName ?? "");
         measured = branch.IsMeasured;
         if (!measured) return exit;
 

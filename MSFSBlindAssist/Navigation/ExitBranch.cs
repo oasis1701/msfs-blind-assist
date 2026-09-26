@@ -86,15 +86,27 @@ public static class ExitBranch
     public const double OutwardMaxMetres = 600.0;
     /// <summary>How far past the clear point the sibling search looks for a Y-exit's other arm.</summary>
     public const double SiblingSearchMaxMetres = 150.0;
+    /// <summary>
+    /// How far along the runway a Y exit's forward arm may meet it from its backward arm's junction.
+    /// KMEM M6's two arms are 155 m apart; the spurious KMCI 01L "sibling" the sweep found was 384 m
+    /// away, on the other side of the runway.
+    /// </summary>
+    public const double SiblingJunctionMaxMetres = 300.0;
 
     /// <summary>
     /// Measures the branch <paramref name="candidateNodeId"/> lies on. <paramref name="seedNeighborId"/>
     /// picks the side when the candidate IS the junction (a taxiway crossing the runway): the outward
-    /// search's first hop is then only that neighbour.
+    /// search's first hop is then only that neighbour. <paramref name="nameFilter"/>, when set, keeps
+    /// the inward walk (<see cref="WalkToJunction"/>, both phases) on edges that are unnamed or carry
+    /// that name - an empty name means unnamed edges only - so a candidate at a node it shares with
+    /// another exit is never measured along that exit's arm (KATL 26L: B4 was listed as a copy of E3).
+    /// A candidate whose filtered walk cannot reach the runway is unmeasured. The outward search that
+    /// finds the clear node is never filtered.
     /// </summary>
-    public static LandingExitBranch Analyze(TaxiGraph graph, RunwayAxis axis, int candidateNodeId, int? seedNeighborId = null)
+    public static LandingExitBranch Analyze(TaxiGraph graph, RunwayAxis axis, int candidateNodeId,
+        int? seedNeighborId = null, string? nameFilter = null)
     {
-        var inward = WalkToJunction(graph, axis, candidateNodeId, excluded: null);
+        var inward = WalkToJunction(graph, axis, candidateNodeId, excluded: null, nameFilter);
         int junction = inward[0];
         // The inward walk never actually reached the runway pavement (a dead end short of it, or the
         // hop/distance budget ran out first) — this candidate's branch never meets the runway at all,
@@ -112,21 +124,37 @@ public static class ExitBranch
     /// The other arm of a Y-shaped exit whose <paramref name="backward"/> arm is a turnaround: an arm that
     /// reaches the same off-runway point from a different junction, carries no other taxiway's name, and
     /// is itself not a turnaround. Null when there is none.
+    /// <para>The search floods out from the backward arm's clear node, on <paramref name="exitName"/>'s
+    /// own taxiway (or unnamed pavement), through nodes on the SAME side of the runway as that clear
+    /// node and outside the runway half-width only - it never crosses the runway (KMCI 01L, USTN 25:
+    /// a same-named taxiway led it to a connector on the other side). The backward arm's own nodes
+    /// are walled off only up to where the arm meets other pavement (three or more walkable
+    /// neighbours, where a Y's two arms merge), so the flood can pass through a merge that lies
+    /// inside the clear line onto the forward arm (VADE 26, KIXA 20). A sibling's junction must lie
+    /// within <see cref="SiblingJunctionMaxMetres"/> along the runway of the backward arm's.</para>
     /// </summary>
     public static LandingExitBranch? FindForwardSibling(TaxiGraph graph, RunwayAxis axis, LandingExitBranch backward, string exitName)
     {
         if (!backward.IsTurnaround) return null;
-        var own = new HashSet<int>(backward.Path);
+        var own = OwnArmNodes(graph, backward.Path);
+        int side = Math.Sign(Lateral(graph, axis, backward.ClearNodeId));
+        double backwardAlong = Along(graph, axis, backward.JunctionNodeId);
+        bool OnThisSideOffTheRunway(int nodeId)
+        {
+            double lateral = Lateral(graph, axis, nodeId);
+            return Math.Sign(lateral) == side && Math.Abs(lateral) > axis.HalfWidthMetres;
+        }
         // Both the outward flood that finds candidate start nodes and the inward walk that measures
         // each one stay ON exitName's own taxiway (or unnamed pavement): a physically-nearby but
         // differently-named taxiway is a different exit system, not this one's other arm, however
         // close its own pavement sits to this exit's clear point.
-        foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own, exitName))
+        foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own, exitName, OnThisSideOffTheRunway))
         {
             var inward = WalkToJunction(graph, axis, start, own, exitName);
             int junction = inward[0];
             if (junction == start || own.Contains(junction)) continue;
             if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres) continue;
+            if (Math.Abs(Along(graph, axis, junction) - backwardAlong) > SiblingJunctionMaxMetres) continue;
             // Covers the WHOLE arm (junction..start), not just junction..clear — a name change beyond
             // the clear point (still inside `inward`, out toward `start`) belongs to a different
             // taxiway just as much as one before it, even though it plays no part in `path` below.
@@ -295,10 +323,27 @@ public static class ExitBranch
         return chain;
     }
 
-    // `start` and every node within SiblingSearchMaxMetres of it that avoids `own`, nearest first. When
-    // `nameFilter` is set, the flood only crosses edges that are unnamed or carry that name — it can
-    // never leave onto a physically-nearby but differently-named taxiway to find a "sibling" there.
-    private static IEnumerable<int> NodesOutwardFrom(TaxiGraph graph, int start, HashSet<int> own, string? nameFilter = null)
+    // The backward arm's own nodes, walled off from the sibling search: its path from the junction up
+    // to, but EXCLUDING, the first node after the junction with three or more walkable neighbours -
+    // where the arm meets other pavement, on a Y exit the merge with the forward arm. The whole path
+    // when there is no such node.
+    private static HashSet<int> OwnArmNodes(TaxiGraph graph, IReadOnlyList<int> path)
+    {
+        var own = new HashSet<int>();
+        for (int i = 0; i < path.Count; i++)
+        {
+            if (i >= 1 && WalkableDegree(graph, path[i]) >= 3) break;
+            own.Add(path[i]);
+        }
+        return own;
+    }
+
+    // `start` and every node within SiblingSearchMaxMetres of it that avoids `own` and that `admit`
+    // accepts, nearest first. When `nameFilter` is set, the flood only crosses edges that are unnamed or
+    // carry that name — it can never leave onto a physically-nearby but differently-named taxiway to
+    // find a "sibling" there.
+    private static IEnumerable<int> NodesOutwardFrom(
+        TaxiGraph graph, int start, HashSet<int> own, string? nameFilter, Func<int, bool> admit)
     {
         var best = new Dictionary<int, double> { [start] = 0.0 };
         var queue = new PriorityQueue<int, double>();
@@ -312,6 +357,7 @@ public static class ExitBranch
             {
                 if (own.Contains(e.ToNodeId) || done.Contains(e.ToNodeId)) continue;
                 if (!MatchesNameFilter(e, nameFilter)) continue;
+                if (!admit(e.ToNodeId)) continue;
                 double next = dist + e.DistanceMeters;
                 if (next > SiblingSearchMaxMetres) continue;
                 if (best.TryGetValue(e.ToNodeId, out double known) && known <= next) continue;
