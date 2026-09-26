@@ -511,6 +511,20 @@ The field values as captured:
 `SayIntentionsLiveClearanceTests` pins the captured clearance verbatim;
 `SayIntentionsLiveFlightJsonTests` pins the file shape and these field values.
 
+### Third capture: KMEM at the origin — the arrival gate only through getParking
+
+(2026-09-26, parked at KMEM before a KMEM→KATL flight.) `current_flight.assigned_gate`, `assigned_gate_lat` and
+`assigned_gate_lon` were all empty strings while SayIntentions itself showed an arrival gate on concourse B, and
+`getParking` answered with a named parking — as it has on every one of the 67 calls in the log, including every call
+made at an origin before any gate reached the file. `flight_plan_departing_runway` was 36L (SimBrief's plan said 18R)
+and `flight_plan_arriving_runway` 8L; `departure_wx.active_runways_departing` read "36L,36R,27". So at the origin the
+file does carry both assigned runways and does not carry the arrival gate: anything that wants the gate before the
+arrival must fall back to `getParking`, as `GetAssignedStatusAsync` does. The route briefing does since 2026-09-26
+(docs/gemini.md, "Taxi routes in the route briefing"). What `getParking` returned is now logged at Debug
+(`getParking: name='…' lat=… lon=… heading=…`); before, only the request was, and nothing could say which stand it had
+named. SAPI's documentation does not say whether `getParking` is the arrival gate or the current parking, so the
+briefing refuses a parking-service gate whose position is not at the arrival airport.
+
 ### Second capture: KBOS, on the ground, no flight plan
 
 **Measured 2026-07-28 — aircraft parked at KBOS, SayIntentions running, no flight plan

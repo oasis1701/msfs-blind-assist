@@ -413,6 +413,10 @@ TAXI IN at <ICAO> (<tier label>), landing runway <NN>
 
 ### 5.9 EFB wiring (`ElectronicFlightBagForm`)
 
+> Amended 2026-09-26: SayIntentions is read through `GetAssignedStatusAsync` (the parking-service fallback) and supplies
+> the runways when it is flying this flight — see
+> [2026-09-26-route-briefing-echo-si-runways-turns-design.md](2026-09-26-route-briefing-echo-si-runways-turns-design.md).
+
 - New constructor parameter `RouteBriefingDependencies? briefing` — a record of three delegates:
   `Func<IAirportDataProvider?> Provider` (a getter, because `RefreshDatabaseProvider` swaps the
   instance), `Func<GateDataSource?> GateSource`, `Func<Task<SayIntentionsFlightContext>> SayIntentions`.
@@ -432,6 +436,10 @@ TAXI IN at <ICAO> (<tier label>), landing runway <NN>
   as SayIntentions' assignment. No freshness timestamp is consulted.
 
 ### 5.10 Prompt (`GeminiService.GetRouteDescriptionPrompt`) and Gemini truncation
+
+> Amended 2026-09-26: the real-world question is asked, never shown; the prompt gains turn directions and the
+> SayIntentions-runway instruction — see
+> [2026-09-26-route-briefing-echo-si-runways-turns-design.md](2026-09-26-route-briefing-echo-si-runways-turns-design.md).
 
 Section 7 is appended after NOTAMS (both AI providers share this prompt):
 
