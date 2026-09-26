@@ -452,12 +452,16 @@ public partial class TaxiGuidanceManager
             _pavementMap = Navigation.PavementMap.Build(_graph);
             _pavementMapGraph = _graph;
         }
-        bool off = !IsOnRolloutRunwayPavement(lat, lon) && !_pavementMap!.IsOnMappedPavement(lat, lon);
+        bool onGround = OnGroundProvider?.Invoke() ?? true;
+        bool off = Navigation.OffPavementAlert.IsOffPavement(
+            onGround, IsOnRolloutRunwayPavement(lat, lon), _pavementMap!.IsOnMappedPavement(lat, lon));
         if (off != _offPavementLogged)
         {
             _offPavementLogged = off;
             if (off)
                 RolloutDiag($"Off pavement: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt state={_state}");
+            else if (!onGround)
+                RolloutDiag($"Off-pavement check idle, airborne: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt");
             else
                 RolloutDiag($"Back on pavement: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt");
         }

@@ -20,6 +20,16 @@ public sealed class OffPavementAlert
     private DateTime _onSince = DateTime.MinValue;
     private DateTime _lastSpoken = DateTime.MinValue;
 
+    /// <summary>
+    /// Is the aircraft off the pavement? Only ON THE GROUND: after a touch-and-go, or a go-around after
+    /// touchdown, the landing rollout keeps running into the climb-out (nothing ends it at liftoff), and past
+    /// the runway end the extended centreline is neither the rollout runway nor mapped pavement - "Off
+    /// pavement." was spoken, interrupting, every <see cref="RepeatSeconds"/> of the missed approach. Off is
+    /// beyond the runway being landed on AND beyond every mapped taxi edge.
+    /// </summary>
+    public static bool IsOffPavement(bool onGround, bool onRolloutRunway, bool onMappedPavement)
+        => onGround && !onRolloutRunway && !onMappedPavement;
+
     /// <summary>True when <see cref="Phrase"/> should be spoken now.</summary>
     public bool Update(bool offPavement, double groundSpeedKts, DateTime nowUtc)
     {

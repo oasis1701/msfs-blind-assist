@@ -62,4 +62,15 @@ public class OffPavementAlertTests
         Assert.False(a.Update(true, 40, At(1.2)));
         Assert.True(a.Update(true, 40, At(2.2)));
     }
+
+    [Theory]
+    // Airborne - a touch-and-go or a go-around after touchdown, with the rollout still running - is never off
+    // the pavement, whatever lies below the climb-out.
+    [InlineData(false, false, false, false)]
+    [InlineData(true, false, false, true)]
+    [InlineData(true, true, false, false)]
+    [InlineData(true, false, true, false)]
+    public void Only_an_aircraft_on_the_ground_can_be_off_the_pavement(
+        bool onGround, bool onRolloutRunway, bool onMappedPavement, bool off)
+        => Assert.Equal(off, OffPavementAlert.IsOffPavement(onGround, onRolloutRunway, onMappedPavement));
 }

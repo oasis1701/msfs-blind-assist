@@ -700,6 +700,10 @@ public partial class MainForm : Form
         // it is affordable to ask on every Where-Am-I press.
         taxiGuidanceManager.ParkingSpotVersionSupplier =
             icao => BuildGateDataSource()?.GetGateListVersion(icao) ?? "none";
+
+        // Air/ground for the landing rollout's off-pavement alert, which must not speak on a go-around's
+        // climb-out. Read on the position thread; the SIM_ON_GROUND handler writes it (a bool? field read).
+        taxiGuidanceManager.OnGroundProvider = () => simConnectManager?.LastKnownOnGround;
         sayIntentionsService = new SayIntentionsService();
 
         // Initialize docking guidance manager

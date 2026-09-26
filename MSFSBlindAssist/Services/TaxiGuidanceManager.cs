@@ -172,6 +172,14 @@ public partial class TaxiGuidanceManager : IDisposable
     public Func<string, List<ParkingSpot>>? ParkingSpotSupplier { get; set; }
 
     /// <summary>
+    /// The last SIM_ON_GROUND sample (null while none has arrived), read on the position thread by the
+    /// off-pavement alert, which speaks only on the ground (Navigation.OffPavementAlert.IsOffPavement).
+    /// MainForm wires it to SimConnectManager.LastKnownOnGround. Unwired or unknown counts as ON the ground:
+    /// the alert exists to catch a grass excursion, and missing air/ground data must not silence it.
+    /// </summary>
+    public Func<bool?>? OnGroundProvider { get; set; }
+
+    /// <summary>
     /// The parking list for <paramref name="icao"/> from <see cref="ParkingSpotSupplier"/>, or
     /// <paramref name="dataProvider"/>'s own when none is wired.
     ///
