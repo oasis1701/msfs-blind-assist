@@ -96,6 +96,10 @@ public class SimBriefOFP
     public string TakeoffHw          { get; set; } = "";
     public string TakeoffXw          { get; set; } = "";
     public string PerfLimitFactor    { get; set; } = "";
+    /// <summary>Engine thrust rating from SimBrief TLR (e.g. "TO", "TO1", "TO2").</summary>
+    public string TakeoffEngineRating { get; set; } = "";
+    /// <summary>Assumed/flex OAT temperature for reduced thrust (e.g. "55" for 55°C). Empty if not set.</summary>
+    public string TakeoffAssumedTemp  { get; set; } = "";
 
     // ── Performance – En Route ────────────────────────────────────────────────
     public string ClimbIas           { get; set; } = "";

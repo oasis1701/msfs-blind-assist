@@ -500,6 +500,14 @@ public partial class SimConnectManager
         // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
         // camera's rotating 341-348.
         REQUEST_COM1_RADIO = 349,
+        // FO background data requests — NOT announced by HandleSpecialAnnouncements
+        REQUEST_FO_ALTITUDE_AGL  = 380,
+        REQUEST_FO_AIRSPEED_IAS  = 381,
+        REQUEST_FO_ENG1_N2       = 382,
+        REQUEST_FO_ENG2_N2       = 383,
+        REQUEST_FO_CENTER_FUEL_LBS = 384,
+        // PMDG 777 FO only: the three stock gear-leg positions in one definition (Pmdg777GearConfirmation).
+        REQUEST_FO_GEAR_POSITIONS  = 385,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -583,6 +591,13 @@ public partial class SimConnectManager
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
         DEF_COM1_RADIO = 349,
+        // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
+        DEF_FO_ALTITUDE_AGL = 380,
+        DEF_FO_AIRSPEED_IAS = 381,
+        DEF_FO_ENG1_N2 = 382,
+        DEF_FO_ENG2_N2 = 383,
+        DEF_FO_CENTER_FUEL_LBS = 384,
+        DEF_FO_GEAR_POSITIONS = 385,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -992,6 +1007,25 @@ public partial class SimConnectManager
     public struct SingleValue
     {
         public double value;
+    }
+
+    /// <summary>Two doubles read in one data definition (e.g. the FO center-fuel request's
+    /// tank gallons + fuel weight per gallon, multiplied at dispatch into pounds).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValuePair
+    {
+        public double value1;
+        public double value2;
+    }
+
+    /// <summary>Three doubles read in one data definition (the FO gear request's left, center
+    /// and right gear-leg positions).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValueTriple
+    {
+        public double value1;
+        public double value2;
+        public double value3;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

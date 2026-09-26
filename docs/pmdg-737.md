@@ -192,6 +192,15 @@ PMDG NG3 mechanically locks fire handles in the "In" position unless a fire warn
 
 `FIRE_HandlePos[3]` array indexing: `[0]=Engine 1, [1]=APU, [2]=Engine 2`. Inferred from sequential SDK event-ID ordering (`EVT_FIRE_HANDLE_ENGINE_1_TOP=697`, `_APU_TOP=698`, `_ENGINE_2_TOP=699`; `EVT_FIRE_UNLOCK_SWITCH_ENGINE_1=976`, `_APU=977`, `_ENGINE_2=978`). Same convention applies to `FIRE_HandleIlluminated[3]`. Verify in sim under an active fire scenario; if a tester reports the wrong handle moves on a fire press, swap the `DisplayName` strings on `FIRE_HandlePos_1` / `_2` (and on `FIRE_HandleIlluminated_1` / `_2`).
 
+The OVHT/FIRE detection TEST switch, by contrast, needs no fire: `FIRE_DetTestSw` is
+0=FAULT/INOP / 1=neutral / 2=OVHT/FIRE, and a Control-CDA position write MOVES AND
+HOLDS the spring-loaded switch (live-probed 2026-07-11 — write 2: fire bell + both
+FIRE WARN masters + all three handle lights, staggered over ~1.7 s; the write back to
+1 is mandatory, nothing auto-releases). The aft-overhead stall / Mach-IAS warning-test
+buttons are the opposite: NO CDA state field and NO CDA actuation — transmit-only
+(`#id` LEFTSINGLE press … LEFTRELEASE), sound-only feedback (PMDG does not drive the
+stock `STALL WARNING`/`OVERSPEED WARNING` simvars).
+
 ## EFB support
 
 The PMDG 737-600 / -700 / -800 / -900 EFB has full parity with the PMDG 777. The 737 ships the
@@ -283,6 +292,225 @@ Key dispatch rules (all in the `0-cabin` region of `HandleUIVariableSet`):
   failed; the app's state-change announcement is the confirmation channel.
 - Seats themselves are **not movable** — `L:capt_seat` / `L:fo_seat` are model-variant
   visibility selectors, not positions. Headrests are the only adjustable seat part.
+
+### Manual warning-test panel toggles (stick shaker / overspeed clacker, 2026-07-13)
+
+The Overhead → **Warning Tests** panel section exposes four app-tracked toggle buttons —
+**Stick Shaker Test 1/2** and **Overspeed Clacker Test 1/2** — for manual engage/release of
+the aft-overhead P5 warning-test buttons (`EVT_OH_WARNING_TEST_STALL_1/2_PUSH`,
+`EVT_OH_WARNING_TEST_MACH_IAS_1/2_PUSH`). The NG3 SDK exposes NO state for these, so each
+button is a `RenderAsButton` toggle whose engaged/released state lives in the def
+(`_warnTestEngaged`); pressing fires a transmit **LEFTSINGLE** (engage — holds the spring
+switch so the shaker/clacker sounds continuously, live-verified open-ended) or **LEFTRELEASE**
+(release — stop), and the def announces the new state (the label is static). The keys are NOT
+in `_simpleEventMap` (the 4e branch in `HandleUIVariableSet` owns them). `SwitchAircraft`
+calls `ReleaseEngagedWarningTests` so a held test can't leak into the next aircraft. The FO
+preflight auto-timed stall/overspeed tests are unchanged.
+
+## First Officer: speedbrake ARM, and why the gear lever OFF is not attempted (live-probed 2026-08-25)
+
+A long live-sim session against the user's real PMDG 737-800 settled the following.
+Recorded here so the next reader does not repeat the probing.
+
+### Speedbrake ARM — one proven rung
+
+`CDA + MOUSE_FLAG_LEFTSINGLE` on `EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM` (id 76424)
+armed the lever on the first attempt: `MAIN_annunSPEEDBRAKE_ARMED` went `false → true`,
+audible to the pilot. `TransmitClientEvent + LEFTSINGLE` also arms it, and the DOWN
+sub-event disarms it the same way via either transport.
+
+`FirstOfficer/PMDG737/SpeedbrakeArmLadder.cs` used to escalate across three transports
+because it could not be established which one the NG3's CDA-deaf control family needed.
+Now that it has been, `Attempts` is deliberately collapsed to the single working rung
+(`SpeedbrakeArmTransport.CdaClick`) — do not restore the escalation; rungs 2 and 3 would
+only ever spend the pilot's time on an aircraft where rung 1 already failed for a real
+reason, which `DoNotArmField` (`MAIN_annunSPEEDBRAKE_DO_NOT_ARM`) already catches. The
+ladder still reads `MAIN_annunSPEEDBRAKE_ARMED` back after dispatching and reports
+honestly if it did not take — that read-back proof is what makes the step trustworthy
+and must stay regardless of how many rungs remain.
+
+### Gear lever OFF — removed from the First Officer (2026-09-22)
+
+The First Officer does **not** touch the gear lever's OFF detent: no After Takeoff step, no
+checklist item, nothing it says asks for OFF. Owner decision (2026-09-22) after a month of
+attempts — no write path moved the NG3 lever to OFF reliably.
+
+What was tried, so nobody re-probes it: 21 write shapes against `EVT_GEAR_LEVER` (70087),
+`EVT_GEAR_LEVER_OFF` (74183) and `EVT_GEAR_LEVER_UNLOCK` (74184) — CDA with plain parameters
+0/1/2 and with `MOUSE_FLAG_LEFTSINGLE`; `TransmitClientEvent` with plain parameters and with
+LEFTSINGLE / RIGHTSINGLE; the unlock pulsed before the move and held across it; the
+`K:ROTOR_BRAKE` encoded channel (`455101`, `455101`+`455104`, `45501`); and a direct write to
+`switch_455_73X`. None moved `MAIN_GearLever` (0 UP, 1 OFF, 2 DOWN — a live, trustworthy
+field) to OFF. The last full write-up, with the per-shape matrix, is
+`git show 1ad261be:docs/pmdg-737.md` (if your clone lacks that commit — e.g. after a
+squash merge — run `git fetch origin pull/160/head` first). A closed-loop "try each
+transport, read the lever back" ladder (`GearOffLadder` + `SetGearLeverOffAsync`)
+shipped briefly on PR #160 and was deleted with the step.
+
+Two traps, if anyone reopens this:
+
+- **Sound is not actuation.** `TransmitClientEvent` + `MOUSE_FLAG_LEFTSINGLE` on
+  `EVT_GEAR_LEVER` makes an audible click while the lever does not move. Read
+  `MAIN_GearLever` back; never accept the click.
+- **Other add-ons only appear to do it.** FSFO's `Gear;OFF` sends the stock `GEAR_UP` event,
+  waits, fires the same inert click and calls "Gear" regardless — UP and OFF sound alike by
+  ear. Talking Flight Monitor has no NG3 support at all.
+
+Do not re-add a gear-OFF step or item without a write path verified **in flight** by that
+read-back — weight-on-wheels latches the lever at DOWN, so ground tests settle nothing.
+
+**Known limitation — the cockpit panel, not the First Officer.** `PMDG737Definition.cs`
+still exposes the released panel control `Selector("MAIN_GearLever", "Gear Lever", "UP",
+"OFF", "DOWN")`. It is mapped through `_simpleEventMap` to `EVT_GEAR_LEVER` and, as a
+three-position selector, click-walked by `WalkPMDGSelector`: one `TransmitClientEvent` +
+`MOUSE_FLAG_LEFTSINGLE` per detent toward DOWN, `RIGHTSINGLE` toward UP — so picking OFF
+from UP sends exactly the audible-but-inert click described above. None of its positions
+has been verified moving the lever in flight. Left unchanged by owner decision
+(2026-09-22: First Officer only); changing it needs its own in-sim check.
+
+### Gear lines confirmed by the gear lights (2026-09-22)
+
+What replaced it (2026-09-22): the After Takeoff Checklist's "Landing gear: UP"
+(`ATC_GEAR`) is confirmed the way a crew confirms it — gear up, lights out — not from the
+lever. `GearConfirmation` (published as the synthetic field `FO_GEAR_UP`) reads up only
+when the lever is not DOWN AND all nine gear lights are out: the main-panel green
+DOWN-AND-LOCKED and red IN-TRANSIT lights for each gear, plus the aft-overhead greens. The
+lever half keeps a cold-and-dark aircraft (every light dark for want of power) from reading
+"up" on the ground, and a light test reads "not up", which is the safe direction. A lever a
+pilot moves to OFF by hand still satisfies it once the gear is up. The After Takeoff flow
+ends with a read-only step, "Landing gear: UP" (`AT_GEAR_UP_CHECK`), that waits up to 20 s
+for it and completes the line. If the gear is not confirmed up, the step says so ("Timed
+out waiting for… / Skipping…") and `FlowManager` keeps `ATC_GEAR` out of
+`MarkGroupComplete`'s latch. So finishing the flow no longer latches "Landing gear: UP"
+over gear that is still down (it used to, whatever the lever read) — unless the line was
+already ticked before the flow finished. That was the go-around case: the first
+approach's Landing flow latches "Landing gear: DOWN" ticked, and a re-run before gear
+down on the second approach speaks the timeout while the line stays ticked. It is now
+closed: `ChecklistManager.MarkGroupComplete`'s excluded
+branch also exempts a ticked line when its own live state reads definitively false
+(never on NaN), so the next `EvaluateAutoDetection()` un-ticks it instead of leaving it
+frozen under the latch. The gear readout hotkey still says "Gear lever off" when it
+finds the lever there, because reading the lever is reliable; only moving it to OFF is
+not.
+
+The Landing Checklist's "Landing gear: DOWN" (`LDC_GEAR`) is its mirror image and was
+latched the same way whenever the Landing flow finished before the gear came down. It now
+reads the synthetic `FO_GEAR_DOWN`, "three green": the lever DOWN, all three main-panel
+green DOWN-AND-LOCKED lights on, and no red. A red means a gear is in transit or disagrees,
+and a light test lights the reds too, so neither reads as "down". The overhead greens are
+the alternate indication and are deliberately not required. The Landing flow ends with a
+read-only "Landing gear: DOWN" wait (`LD_GEAR_DOWN_CHECK`, 20 s) that behaves exactly like
+the After Takeoff check. Both warnings are only heard because the flow engine's "flow
+complete" is now non-interrupting (see docs/first-officer.md).
+
+### The `ROTOR_BRAKE` encoded channel — an existing mechanism, re-confirmed on the 737
+
+This is not a new discovery: `MSFSBlindAssist/Aircraft/PMDG777Definition.cs:6188-6209`
+already drives three PMDG 777 soundpack switches (`switch_622_a`, `switch_623_a`,
+`switch_319_a`) through exactly this channel, crediting the FSCopilot PMDG 777 profile in
+its own comment — `switch_319_a`'s 3-position knob already uses the wheel codes
+(`toB ? 31907u : 31908u`, i.e. wheel-up/wheel-down). What the 2026-08-25 737 session added
+is an independent live re-confirmation of the mouse-code end of the encoding, on a
+different airframe:
+
+FSFO/FSCopilot drive PMDG discrete switches through the *stock* `ROTOR_BRAKE` K-event (id
+66587) carrying an encoded parameter:
+
+    param = (pmdgEventId - 69632) * 100 + mouseCode
+
+where `69632` is `THIRD_PARTY_EVENT_ID_MIN`. Mouse codes: `01` left-single, `02` right,
+`04` left-release, `07` wheel-up, `08` wheel-down.
+
+**Verified live (737, 2026-08-25):** `679201` armed the speedbrake and `679101` disarmed
+it, both via a plain `TransmitClientEvent` on `ROTOR_BRAKE` — no third-party event
+registration needed. RPN form: `679201 (>K:ROTOR_BRAKE)`.
+
+Confidence is not uniform across that list: the formula itself and mouse code `01` are
+**measured** on the 737. Codes `02`/`04` are still **inferred** from FSFO's own usage
+patterns and remain untested against this airframe. Codes `07`/`08` (wheel-up/wheel-down)
+are corroborated rather than purely inferred — they are the same codes already live in
+production on the 777's `switch_319_a` knob cited above — but that corroboration is from
+a different airframe and switch, not a 737 live test, so still do not present them as
+737-proven.
+
+This channel does **not** rescue the gear lever — it is one of the ruled-out shapes in
+"Gear lever OFF" above. It is recorded here so a future control that needs it is found
+rather than rediscovered from scratch.
+
+FSFO reads PMDG switch state back from the `switch_<eventOffset>_73X` L:var family (e.g.
+`switch_455_73X` for the gear lever, which it decodes as 0/30/60 for UP/OFF/DOWN). That
+family is a dead mirror for **writes** — a direct write to `switch_455_73X` read back `1.0`
+while `MAIN_GearLever` stayed at `0` — even though FSFO itself only ever reads it.
+
+## Transponder STBY is unreachable — the FO targets ALT RPTG OFF (live-probed 2026-08-27)
+
+`XPDR_ModeSel` is documented in the SDK header as `0: STBY  1: ALT RPTG OFF ... 4: TA/RA`,
+and STBY is a fully-implemented state — but **no input path can select it**. Probed live
+against a running NG3: every transport that reaches the knob steps it 4→3→2→1 and is then
+inert at 1.
+
+Tried and inert at position 1, all of them:
+
+- `TransmitClientEvent` on `EVT_TCAS_MODE` (70432) with `LEFTSINGLE`, `WHEEL_DOWN`,
+  `LEFTDOUBLE`, `MIDDLESINGLE`, `LEFTDRAG`, `DOWN_REPEAT`, `LEFTRELEASE`, and an absolute
+  parameter of 0
+- `K:ROTOR_BRAKE` action codes 0–9 on index 800 (`80000`–`80009`)
+- the CDA position write (a documented no-op on this rotary anyway)
+- the undocumented `+20000` alias event, `90432` (`keyEventHandler` opens with
+  `alt = eventId > 89632; if (alt) eventId -= 20000;`)
+- a direct write to `L:switch_800_73X` — reverts within a frame, PMDG-owned read-back
+- a write to `A:TRANSPONDER STATE:1` — reverts too; `CTCAS::updateSquawkbox` rewrites the
+  stock simvar every frame from PMDG's own state
+
+**This is not an MSFSBA transport bug, and re-probing it is wasted effort.** Three
+independent corroborations:
+
+1. **The VC's own click is the same code we send.** `73X_Cockpit_Behavior.xml` (readable,
+   not compiled) gives the knob's mouse rect as `800 100 * (>L:SwitchID)` then
+   `+1` for a left-half `LeftSingle` / `+2` right-half / `+7` `WheelUp` / `+8` `WheelDown`,
+   then `(L:SwitchID) (>K:ROTOR_BRAKE)`. A left-half click emits `ROTOR_BRAKE 80001` —
+   exactly what we send. A human clicking the knob cannot reach STBY either.
+2. **PMDG's own checklist never asks for STBY.** `B738_Checklist.xml`: "Transponder panel
+   — Set", "Transponder — As needed", "Transponder — As Required", "Transponder mode
+   selector — As needed".
+3. **FSFO V6 fails identically.** `FSFO_V6.Aircraft.PMDG_B737` calls
+   `RotateLeftRightSwitch("switch_800_73X", 0, 8000, 1000)` → `ROTOR_BRAKE 80001`, gives up
+   after 5 clicks, and verifies `switch_800_73X == 0` — a test that can never pass. It just
+   never says so.
+
+WASM disassembly (`737NG3.wasm`, C++ symbols intact) confirms 0 is real, not vestigial:
+`CTCAS::keyEventHandler` routes event 70432 to one of two `CPanelElement`s depending on
+`this->byte[39524] & 1` (digital transponder panel installed → `this+8728`, else
+`this+7096`); `CTCAS::setMode()`'s analog branch writes `XPDR_ModeSel = getValue(this+7096)`
+directly and has a live `case 0`; `CTCAS::update()` has a `mode == 0` branch; and `setMode`
+is the **only** writer of that field (`update`/`runTCAS` only read it).
+`CPanelElement::getMouseAction`'s decrement clamp is a literal `0`, not a min field. The
+value simply never arrives.
+
+**So the First Officer targets ALT RPTG OFF (1)** — the lowest reachable position and the
+real-world step above STBY: the transponder still replies to Mode A but suppresses Mode C
+altitude (measured: `A:TRANSPONDER STATE:1` reads 3 "On" at position 1 versus 4 "Alt" at
+every higher position). Be clear on the consequence — **there is no reachable
+non-transmitting state on this airframe**; "silence the transponder before pushback" is not
+achievable by any means.
+
+The accept predicate is `v < 1.5`, not `v < 0.5` and not `v == 1`: it admits STBY **and**
+ALT RPTG OFF so the item still passes on an airframe where STBY IS reachable, without a
+second code path. Do not narrow it.
+
+`BS_XPDR` / `BTKO_XPDR` (TA/RA, 4) are reachable and unaffected.
+
+**Untested lead, recorded so it is not re-derived from scratch:** a second, digital
+transponder panel is modelled — a `STBY/ON/AUTO` switch (`switch_1299`, event
+`THIRD_PARTY_EVENT_ID_MIN + 1299` = 70931, absent from the SDK header) plus a NUM 0–7
+keypad (`switch_1301`–`switch_1309`) — selected by the livery `options.ini` airframe key
+**`Transponder New Style Installed`** (the L:var `XpndrOption`; only 8 of the shipped
+liveries set it, 7 to 0 and 1 to 1). On an airframe without it, `switch_1299_73X` is frozen
+at 50 and ignores every input. Expect it NOT to fix this even where installed:
+`setMode()`'s digital branch maps that panel's four positions to modes 1, 2, 3, 4 and never
+produces 0, so the aircraft would likely enter standby while `XPDR_ModeSel` still reads 1 —
+a working STBY the verification field cannot see, which is worse than today. Measure before
+acting on it.
 
 ## AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I)
 
