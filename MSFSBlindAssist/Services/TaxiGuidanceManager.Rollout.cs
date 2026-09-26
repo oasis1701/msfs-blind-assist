@@ -118,7 +118,10 @@ public partial class TaxiGuidanceManager
             if (retired.Retire1500) _rolloutApproach1500Announced = true;
             if (retired.Retire900) _rolloutApproach900Announced = true;
             if (retired.Retire500) _rolloutApproach500Announced = true;
-            if (retired.RetireTurnNow)
+            // Never "turn now" folded in at a speed the turn cannot be made at: left unretired then, the turn-now
+            // block judges that point with its too-fast rule.
+            if (retired.RetireTurnNow
+                && !Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, exit.ExitAngleDegrees))
             {
                 _rolloutTurnNowAnnounced = true;
                 // The turn-now block's own side effect, reproduced because that block will not run.
@@ -1117,7 +1120,17 @@ public partial class TaxiGuidanceManager
                         // two-announcements-stomp-each-other pattern; see
                         // RolloutRunwayReCrossing.ComposeDeclineUtterance for why the house
                         // remedy (one utterance) beats the two alternatives here.
-                        if (!_rolloutCrossingDeclineAnnounced)
+                        // RolloutRunwayReCrossing.PlanDeclineSpeech: silent and unlatched inside the turn point
+                        // at a speed the exit cannot be taken at, so the turn-now block's too-fast rule speaks
+                        // on a following frame (the retry floor keeps the handoff block out of the way) and this
+                        // sentence still speaks once the aircraft is slow enough.
+                        var declinePlan = Navigation.RolloutRunwayReCrossing.PlanDeclineSpeech(
+                            _rolloutTurnNowAnnounced, distToExitFeet, ROLLOUT_TURN_NOW_FT,
+                            Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, _rolloutExit!.ExitAngleDegrees));
+                        if (!_rolloutCrossingDeclineAnnounced && !declinePlan.Speak)
+                            RolloutDiag($"Crossing decline held silent: too fast for the turn point " +
+                                $"(distToExit={distToExitFeet:F0}ft gs={groundSpeedKts:F1}kt)");
+                        if (!_rolloutCrossingDeclineAnnounced && declinePlan.Speak)
                         {
                             _rolloutCrossingDeclineAnnounced = true;
 
@@ -1155,8 +1168,7 @@ public partial class TaxiGuidanceManager
                             // taxiway A." carries the exit name AND the more urgent
                             // instruction, so the pilot is never left silent or uninformed —
                             // which is the state this whole announcement exists to prevent.
-                            bool retireTurnNow = !_rolloutTurnNowAnnounced
-                                && distToExitFeet <= ROLLOUT_TURN_NOW_FT;
+                            bool retireTurnNow = declinePlan.FoldTurnNow;
 
                             bool slowDown = retire500
                                 && groundSpeedKts > Navigation.RolloutExitGate.SlowDownAboveKts(
@@ -1182,12 +1194,15 @@ public partial class TaxiGuidanceManager
                                 $"gs={groundSpeedKts:F1}kt retire1500={retire1500} retire900={retire900} " +
                                 $"retire500={retire500} retireTurnNow={retireTurnNow} slowDown={slowDown}");
 
-                            AnnounceInstruction(
-                                Navigation.RolloutRunwayReCrossing.ComposeDeclineUtterance(
-                                    declineExit.TaxiwayName,
-                                    distToExitFeet,
-                                    slowDown,
-                                    retireTurnNow ? ComposeExitTurnPhrase(lat, lon, headingTrue) : null));
+                            string declineSentence = Navigation.RolloutRunwayReCrossing.ComposeDeclineUtterance(
+                                declineExit.TaxiwayName,
+                                distToExitFeet,
+                                slowDown,
+                                retireTurnNow ? ComposeExitTurnPhrase(lat, lon, headingTrue) : null);
+                            // After "Taxiway X, too fast to turn. Slow down." (4.39 s) the pilot can have slowed
+                            // below the line within it: queued, this follows the warning instead of cutting it off.
+                            if (_rolloutTooFastNoExit) AnnounceQueuedInstruction(declineSentence);
+                            else AnnounceInstruction(declineSentence);
                         }
 
                         SetState(TaxiGuidanceState.LandingRollout);
