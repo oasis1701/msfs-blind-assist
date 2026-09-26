@@ -281,8 +281,9 @@ public class BriefingStandPickerTests
     }
 
     [Fact]
-    public void Say_intentions_position_match_never_picks_an_excluded_type_or_deice_pad_and_names_the_label()
+    public void Say_intentions_position_match_prefers_an_ordinary_stand_to_a_nearer_excluded_one_and_names_the_label()
     {
+        // The fuel spot and the de-ice pad are nearer the point, but a stand of an ordinary kind is in reach.
         var fuel = Spot("F", 1, 16, 0, 0);
         var deice = Spot("D", 1, 10, 5, 0);
         deice.IsDeiceArea = true;
@@ -291,14 +292,73 @@ public class BriefingStandPickerTests
 
         Assert.Same(gate, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Contains("SayIntentions assigned Gate 99, which this scenery lists as G 1", choice.Notes);
+        Assert.Equal(new[] { "SayIntentions assigned Gate 99, which this scenery lists as G 1" }, choice.Notes);
+    }
+
+    [Theory]
+    [InlineData(16, false, "fuel stand")]
+    [InlineData(8, false, "military combat ramp")]
+    [InlineData(17, false, "vehicle stand")]
+    [InlineData(10, true, "de-icing pad")]
+    public void A_position_match_takes_an_excluded_stand_when_no_ordinary_stand_is_in_reach(int type, bool deicePad, string kind)
+    {
+        // Nothing answers to "Gate 99", and only a stand of an excluded kind is in reach of the point, as Taxi
+        // Assist's import would find it there: it is briefed, and its kind is said. "No stand at SayIntentions'
+        // position was found" would be untrue.
+        var excluded = Spot("F", 1, type, 0, 0);
+        excluded.IsDeiceArea = deicePad;
+        var g1 = Spot("G", 1, 10, 800, 0);
+        var choice = BriefingStandPicker.Pick(new[] { excluded, g1 }, B738, null, At("Gate 99", 10), Always)!;
+
+        Assert.Same(excluded, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Equal(new[]
+        {
+            "SayIntentions assigned Gate 99, which this scenery lists as F 1",
+            $"this scenery marks that stand as a {kind}",
+        }, choice.Notes);
+    }
+
+    [Fact]
+    public void An_excluded_stand_at_the_position_that_does_not_connect_is_said_with_its_kind()
+    {
+        var fuel = Spot("F", 1, 16, 0, 0);
+        var g1 = Spot("G", 1, 10, 800, 0);
+        var choice = BriefingStandPicker.Pick(new[] { fuel, g1 }, B738, null, At("Gate 99", 10), AllBut(fuel))!;
+
+        Assert.Same(g1, choice.Spot);
+        Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Equal(new[]
+        {
+            "SayIntentions assigned \"Gate 99\" was found by position as a fuel stand but does not connect to the " +
+            "taxiway network; using a representative stand instead",
+        }, choice.Notes);
+    }
+
+    [Fact]
+    public void A_position_match_that_does_not_connect_gives_way_to_the_next_stand_in_reach_and_says_so()
+    {
+        // "B 6" is 20 m from the point and "B 7" 30 m, both inside their 61 m reach. B 6 does not connect, so
+        // B 7 is briefed, and the note names both.
+        var b6 = Spot("B", 6, 10, 0, 0);
+        var b7 = Spot("B", 7, 10, 50, 0);
+        var choice = BriefingStandPicker.Pick(new[] { b6, b7 }, B738, null, At("Gate 99", 20), AllBut(b6))!;
+
+        Assert.Same(b7, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Equal(new[]
+        {
+            "the stand at SayIntentions' position (B 6) does not connect to the taxiway network; using B 7",
+            "SayIntentions assigned Gate 99, which this scenery lists as B 7",
+        }, choice.Notes);
     }
 
     // ── SayIntentions: a stand of an excluded kind ───────────────────────────────────────────
-    // Military Combat, Fuel and Vehicles stands and de-ice pads are never a representative stand and are
-    // never found by position. But when SayIntentions' own name for its gate, or an online alias, finds no
-    // stand of another kind, that stand is briefed, as Taxi Assist's import would seat it by that name
-    // (owner decision, 2026-09-26), and a note says what this scenery marks it as.
+    // Military Combat, Fuel and Vehicles stands and de-ice pads are never a representative stand. But when
+    // SayIntentions' own name for its gate, or an online alias, finds no stand of another kind — or, with
+    // nothing answering to either, no stand of another kind is in reach of its published position — that
+    // stand is briefed, as Taxi Assist's import would seat it (owner decision, 2026-09-26), and a note says
+    // what this scenery marks it as.
 
     [Theory]
     [InlineData(16, false, "fuel stand")]
@@ -340,17 +400,19 @@ public class BriefingStandPickerTests
     [Fact]
     public void An_excluded_stand_found_only_by_its_alias_is_briefed()
     {
-        // The fuel stand "F 1" answers to the online alias "105", and no stand is called 105.
-        var fuel = Spot("F", 1, 16, 0, 0);
-        fuel.Aliases.Add("105");
+        // The fuel stand "B 5A" answers to the online alias "B5" (GateAliasResolver only adopts an alias that
+        // carries the stand's own letter and number), and no stand is called B5.
+        var fuel = Spot("B", 5, 16, 0, 0);
+        fuel.Suffix = "A";
+        fuel.Aliases.Add("B5");
         var gate6 = Spot("", 6, 10, 400, 0);
-        var choice = BriefingStandPicker.Pick(new[] { fuel, gate6 }, B738, null, new SayIntentionsGateHint("Gate 105", null), Always)!;
+        var choice = BriefingStandPicker.Pick(new[] { fuel, gate6 }, B738, null, new SayIntentionsGateHint("Gate B5", null), Always)!;
 
         Assert.Same(fuel, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
         Assert.Equal(new[]
         {
-            "SayIntentions assigned Gate 105, which this scenery lists as F 1",
+            "SayIntentions assigned Gate B5, which this scenery lists as B 5A",
             "this scenery marks that stand as a fuel stand",
         }, choice.Notes);
     }
@@ -378,15 +440,41 @@ public class BriefingStandPickerTests
     [Fact]
     public void An_ordinary_stand_s_alias_beats_an_excluded_stand_s_name()
     {
-        // "Spot 105" is a fuel spot; the gate "B 5" answers to the online alias "105". The ordinary stand
-        // is looked for first, by its name and then by its aliases.
-        var fuel = Spot("", 105, 16, 0, 0, radiusFt: 26);
-        var b5 = Spot("B", 5, 10, 900, 0);
-        b5.Aliases.Add("105");
-        var choice = BriefingStandPicker.Pick(new[] { fuel, b5 }, B738, null, new SayIntentionsGateHint("Gate 105", null), Always)!;
+        // The fuel stand is called "B 5"; the gate "B 5A" answers to the online alias "B5". The ordinary stand
+        // is looked for first, by its name and then by its aliases — where Taxi Assist's import would take the
+        // name first, whatever kind of stand carries it.
+        var fuel = Spot("B", 5, 16, 0, 0, radiusFt: 26);
+        var b5a = Spot("B", 5, 10, 900, 0);
+        b5a.Suffix = "A";
+        b5a.Aliases.Add("B5");
+        var choice = BriefingStandPicker.Pick(new[] { fuel, b5a }, B738, null, new SayIntentionsGateHint("Gate B5", null), Always)!;
 
-        Assert.Same(b5, choice.Spot);
-        Assert.Equal(new[] { "SayIntentions assigned Gate 105, which this scenery lists as B 5" }, choice.Notes);
+        Assert.Same(b5a, choice.Spot);
+        Assert.Equal(new[] { "SayIntentions assigned Gate B5, which this scenery lists as B 5A" }, choice.Notes);
+    }
+
+    [Fact]
+    public void An_unconnected_ordinary_namesake_never_hands_the_label_to_a_connected_excluded_one()
+    {
+        // "Gate 7" does not connect; the fuel spot "Spot 7" beside it does. With no pin and with a pin inside
+        // both stands' reach, the ordinary namesake is SayIntentions' stand: it is reported, and a
+        // representative stand is used — never the fuel spot.
+        var gate7 = Spot("", 7, 10, 0, 0);
+        var fuel7 = Spot("", 7, 16, 20, 0);
+        var g1 = Spot("G", 1, 10, 600, 0);
+
+        foreach (var hint in new[] { new SayIntentionsGateHint("Gate 7", null), At("Gate 7", 10) })
+        {
+            var choice = BriefingStandPicker.Pick(new[] { gate7, fuel7, g1 }, B738, null, hint, AllBut(gate7))!;
+
+            Assert.Same(g1, choice.Spot);
+            Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
+            Assert.Equal(new[]
+            {
+                "SayIntentions assigned \"Gate 7\" was found but does not connect to the taxiway network; " +
+                "using a representative stand instead",
+            }, choice.Notes);
+        }
     }
 
     [Fact]
@@ -401,8 +489,8 @@ public class BriefingStandPickerTests
         Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
         Assert.Equal(new[]
         {
-            "SayIntentions assigned \"Spot 105\" was found but does not connect to the taxiway network; " +
-            "using a representative stand instead",
+            "SayIntentions assigned \"Spot 105\" was found as a fuel stand but does not connect to the taxiway " +
+            "network; using a representative stand instead",
         }, choice.Notes);
     }
 
@@ -555,6 +643,27 @@ public class BriefingStandPickerTests
         Assert.Same(twin, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
         Assert.Equal(new[] { "SayIntentions' position is 530 m from this stand" }, choice.Notes);
+    }
+
+    [Fact]
+    public void A_far_namesake_never_stands_in_for_an_unconnected_one_near_the_pin()
+    {
+        // Two "Gate 5" 3 km apart, the pin 70 m from the nearer one — just outside its 61 m reach — which does
+        // not connect. The pin points at neither, but the far one is kilometres beyond anything the pin could
+        // mean: it is never briefed as SayIntentions' gate, and a representative stand is used.
+        var near5 = Spot("", 5, 10, 0, 0);
+        var far5 = Spot("", 5, 10, 3000, 0);
+        var g1 = Spot("G", 1, 10, 100, 0);
+        var g2 = Spot("G", 2, 10, 200, 0);
+        var choice = BriefingStandPicker.Pick(new[] { near5, far5, g1, g2 }, B738, null, At("Gate 5", 70), AllBut(near5))!;
+
+        Assert.NotSame(far5, choice.Spot);
+        Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Equal(new[]
+        {
+            "SayIntentions assigned \"Gate 5\" was found but does not connect to the taxiway network; " +
+            "using a representative stand instead",
+        }, choice.Notes);
     }
 
     [Fact]
