@@ -635,15 +635,23 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
-    public void The_taxi_in_gives_the_turn_into_the_stand()
+    public void The_taxi_in_gives_the_turn_into_a_stand_at_the_end_of_a_short_lead_in()
     {
-        var toG1 = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: new SayIntentionsGateHint("Terminal 1 Gate G1", null)), Airport());
-        Assert.Equal(new[] { "A" }, toG1.Taxiways);
-        Assert.Equal(new string?[] { null }, toG1.TaxiwayTurns);
-        Assert.Equal("right", toG1.StandTurn);    // west along A, then north into G 1
+        // A 70 m lead-in north off A: west along A from exit C, then right into the stand.
+        var bundle = AirportWith(new[] { LeadIn(1000, 100, 1000, 170) }, new[] { Spot("", 5, 10, 1000, 170, 150) });
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: new SayIntentionsGateHint("Gate 5", null)), bundle);
+        Assert.Equal("SayIntentions assigned Gate 5", leg.EndpointDescription);
+        Assert.Equal("right", leg.StandTurn);
+    }
 
-        var toC1 = TaxiBriefingPlanner.PlanTaxiIn(Request(Md11F, airline: "UPS"), Airport());
-        Assert.Equal("left", toC1.StandTurn);     // east along A, then north into C 1
+    [Fact]
+    public void No_turn_into_the_stand_is_given_beyond_a_lead_in()
+    {
+        // G 1's and C 1's lead-ins in the TEST fixture are 150 m, longer than a stand lead-in (100 m).
+        var toG1 = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: new SayIntentionsGateHint("Terminal 1 Gate G1", null)), Airport());
+        Assert.Equal(new string?[] { null }, toG1.TaxiwayTurns);
+        Assert.Null(toG1.StandTurn);
+        Assert.Null(TaxiBriefingPlanner.PlanTaxiIn(Request(Md11F, airline: "UPS"), Airport()).StandTurn);
     }
 
     // ── SayIntentions' parking-service gate ─────────────────────────────────────────────────

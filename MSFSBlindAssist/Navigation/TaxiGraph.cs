@@ -864,7 +864,7 @@ public class TaxiGraph
     /// stand); short enough that a tiny airport whose only taxiway is one unbranched path is not
     /// excluded end to end.
     /// </summary>
-    private const double STAND_LEAD_IN_CHAIN_MAX_M = 100.0;
+    internal const double STAND_LEAD_IN_CHAIN_MAX_M = 100.0;
 
     /// <summary>
     /// Joins each stranded STAND STUB to the main (largest) taxi network with one fabricated edge

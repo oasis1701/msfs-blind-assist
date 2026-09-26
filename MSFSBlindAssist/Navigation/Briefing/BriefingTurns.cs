@@ -65,7 +65,10 @@ public static class BriefingTurns
     }
 
     /// <summary>The turn from the last named taxiway into the unnamed segments that end the route (the stand lead-in);
-    /// null when the route ends on a named segment, when there is nothing to measure, or when it runs straight in.</summary>
+    /// null when the route ends on a named segment, when there is nothing to measure, when it runs straight in, or
+    /// when the unnamed tail is longer than a stand lead-in (<see cref="TaxiGraph.STAND_LEAD_IN_CHAIN_MAX_M"/>,
+    /// 100 m) — beyond that the tail is apron taxilane and its first bend is not the turn into the stand (live
+    /// KATL C 22: 541 m of unnamed ramp beyond taxiway F).</summary>
     public static string? StandTurn(IReadOnlyList<TaxiRouteSegment>? segments)
     {
         if (segments == null) return null;
@@ -74,8 +77,10 @@ public static class BriefingTurns
         var last = runs[^1];
         int tailFirst = last.Last + 1;
         if (tailFirst >= segments.Count) return null;
+        double tail = Length(segments, tailFirst, segments.Count - 1);
+        if (tail > TaxiGraph.STAND_LEAD_IN_CHAIN_MAX_M) return null;
         double back = Math.Min(StretchMetres, last.Length / 2.0);
-        double ahead = Math.Min(StretchMetres, Length(segments, tailFirst, segments.Count - 1));
+        double ahead = Math.Min(StretchMetres, tail);
         if (TurnOver(segments, last.Last, back, tailFirst, ahead) is not double d) return null;
         return Math.Abs(d) < StraightBelowDeg ? null : Words(d);
     }

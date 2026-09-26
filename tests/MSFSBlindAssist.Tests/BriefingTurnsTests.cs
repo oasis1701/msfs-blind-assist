@@ -112,8 +112,8 @@ public class BriefingTurnsTests
     [Fact]
     public void The_turn_into_the_stand_is_measured_from_the_last_taxiway()
     {
-        Assert.Equal("right", BriefingTurns.StandTurn(Route((300, 0), ("A", 0, 0), ("", 0, 150))));     // west, then north
-        Assert.Equal("left", BriefingTurns.StandTurn(Route((0, 0), ("A", 300, 0), ("", 300, 150))));    // east, then north
+        Assert.Equal("right", BriefingTurns.StandTurn(Route((300, 0), ("A", 0, 0), ("", 0, 80))));     // west, then north
+        Assert.Equal("left", BriefingTurns.StandTurn(Route((0, 0), ("A", 300, 0), ("", 300, 80))));    // east, then north
     }
 
     [Fact]
@@ -123,6 +123,13 @@ public class BriefingTurnsTests
     [Fact]
     public void A_straight_run_into_the_stand_gives_no_stand_turn()
         => Assert.Null(BriefingTurns.StandTurn(Route((0, 0), ("A", 0, 300), ("", 0, 400))));
+
+    [Fact]
+    public void A_long_unnamed_approach_is_not_called_a_turn_into_the_stand()
+    {
+        // Live KATL C 22: 541 m of unnamed apron taxilane beyond taxiway F; the first bend off F is not the turn into the stand.
+        Assert.Null(BriefingTurns.StandTurn(Route((300, 0), ("A", 0, 0), ("", 0, 150), ("", -300, 150))));
+    }
 
     [Fact]
     public void No_route_means_no_turns()
