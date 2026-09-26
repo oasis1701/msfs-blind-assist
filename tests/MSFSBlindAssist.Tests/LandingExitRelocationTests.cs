@@ -174,6 +174,64 @@ public class LandingExitRelocationTests
     }
 
     [Fact]
+    public void A_shared_runway_node_nearer_the_centreline_never_hides_the_real_forward_arm()
+    {
+        // Review Minor 1, pinning FindForwardSibling's pass order (09GE 32, 0AK 08, 0AL1 36: the other
+        // order lost 267 runway directions' last usable exit). "Y"'s backward arm leaves from J (1060,1)
+        // straight to the merge M (1040,30), then the stem runs on to (1040,60); its unnamed forward arm
+        // leaves from its own junction F (1010,2) through (1030,15) to M. With M the backward arm's first
+        // node, the arm's own nodes are just J. A walk allowed to END on J from the start follows J - it
+        // is nearer the centreline than the forward arm - and measures the backward arm again.
+        var g = Build(
+            Seg(1060, 1, 1040, 30, "Y"), Seg(1040, 30, 1040, 60, "Y"),
+            Seg(1010, 2, 1030, 15), Seg(1030, 15, 1040, 30));
+
+        var y = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "Y");
+
+        Assert.Equal(NodeAt(g, 1010, 2).NodeId, y.NodeId);
+        Assert.True(y.ExitAngleDegrees <= RolloutExitGate.MaxUsableExitTurnDeg);
+    }
+
+    [Fact]
+    public void A_same_name_turnaround_is_never_coverage_for_a_forward_exit()
+    {
+        // Review Minor 2, pinning T3's coverage exception. "A" at 1,000 ft (forward, 90 degrees) takes the
+        // name's slot; A's isolated backward stub at 2,600 ft (a recorded turnaround) is re-admitted by the
+        // coverage fill, 1,600 ft from A 1,000; the forward A at 3,500 ft is 900 ft from that turnaround and
+        // 2,500 ft from A 1,000. It is listed: a turnaround of its own name does not cover it.
+        const double ftToM = 0.3048;
+        var g = Build(
+            Seg(1000 * ftToM, 0, 1000 * ftToM, 60, "A"),
+            Seg(2600 * ftToM, 0, 2600 * ftToM - 40, 40, "A"),
+            Seg(3500 * ftToM, 0, 3500 * ftToM, 60, "A"));
+
+        var exits = g.GetLandingExits(Runway09(3000.0));
+
+        Assert.Contains(exits, e => e.TaxiwayName == "A" && e.ExitAngleDegrees <= 90.0
+            && Math.Abs(e.DistanceFromThresholdFeet - 3500.0) < 5.0);
+    }
+
+    [Fact]
+    public void A_sibling_swap_is_judged_by_the_distance_rules_where_it_lands()
+    {
+        // Review Minor 2, pinning T1's distance rules at the divergence node. The sibling-swap fixture
+        // above moved 750 m toward the threshold: the forward arm's lead line now starts at (48,1),
+        // 157 ft - under the 500 ft MIN_DIST_FT - but the arm leaves the centreline at (168,0), 551 ft.
+        // Judged where it lands, the swap stands; judged at the lead-line start, it was refused and M6
+        // was recorded as a 130-degree turnaround.
+        var g = Build(
+            Seg(48, 1, 108, 1), Seg(108, 1, 168, 0),
+            Seg(168, 0, 226, 15), Seg(226, 15, 244, 33), Seg(244, 33, 250, 55),
+            Seg(322, 1, 280, 16, "M6"), Seg(280, 16, 265, 32, "M6"), Seg(265, 32, 250, 55, "M6"),
+            Seg(322, 1, 354, -1, "M6"), Seg(250, 55, 250, 85, "M6"));
+
+        var m6 = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "M6");
+
+        Assert.Equal(NodeAt(g, 168, 0).NodeId, m6.NodeId);
+        Assert.Equal("Normal", m6.ExitType);
+    }
+
+    [Fact]
     public void A_ninety_degree_exit_that_hooks_back_beyond_the_runway_edge_is_listed_as_normal()
     {
         // Round 2, S2 (CYVR 26L D1, SNOL 30, MURU 06): the exit leaves the pavement at 90 degrees and

@@ -430,6 +430,29 @@ public class ExitBranchTests
     }
 
     [Fact]
+    public void A_sibling_that_leaves_the_pavement_forward_and_hooks_back_beyond_the_edge_is_accepted()
+    {
+        // Review Minor 2, pinning S2 inside the sibling check. M6's backward arm meets the stem at
+        // (1000,45); its unnamed forward arm leaves the runway at 34 degrees to (960,28), past the 25 m
+        // half-width, then hooks back 138 degrees to (950,37), past the clear line, before joining the
+        // stem. Judged by its turn to the clear line (138) it was rejected; it leaves the pavement at 34.
+        var g = Build(
+            Seg(918, 0, 960, 28), Seg(960, 28, 950, 37), Seg(950, 37, 1000, 45),
+            Seg(1072, 1, 1030, 16, "M6"), Seg(1030, 16, 1015, 32, "M6"), Seg(1015, 32, 1000, 45, "M6"),
+            Seg(1072, 1, 1104, -1, "M6"), Seg(1000, 45, 1000, 85, "M6"));
+        var backward = ExitBranch.Analyze(g, Axis, NodeAt(g, 1030, 16), nameFilter: "M6");
+        Assert.True(backward.IsTurnaround);
+
+        var sibling = ExitBranch.FindForwardSibling(g, Axis, backward, "M6");
+
+        Assert.NotNull(sibling);
+        Assert.Equal(NodeAt(g, 918, 0), sibling!.JunctionNodeId);
+        Assert.True(sibling.TurnToClearDeg > RolloutExitGate.TurnaroundAboveDeg);
+        Assert.InRange(sibling.TurnToLeaveDeg, 32.0, 36.0);
+        Assert.False(sibling.IsTurnaround);
+    }
+
+    [Fact]
     public void A_sibling_arm_named_only_beyond_its_own_clear_point_is_rejected()
     {
         // A second, unrelated arm reaches the runway at (945,0): unnamed from the runway up through
