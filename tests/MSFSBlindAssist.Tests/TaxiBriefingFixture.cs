@@ -118,21 +118,35 @@ internal static class TaxiBriefingFixture
     /// TEST plus a stand SOUTH of runway 09/27, so the way to 09's threshold crosses 09 first — and the way
     /// in from a landing on 09 crosses it again:
     ///   north -250: stand S 1 (1500 E, gate, AAL, r=150 ft), its lead-in running north to S.
-    ///   north -100: taxiway S, east 0 → 2000 (nodes at 0, 1000, 1500, 2000) — no way onto 09 from this side.
+    ///   north -100: taxiway S, east 0 → 2000 (nodes at 0, 1000, 1500, 1800, 2000) — no way onto 09 from this
+    ///               side. The 1800 E node is where <see cref="AirportWithSouthStandAndTaxiwayY"/>'s Y meets S.
     ///   east 1000:  taxiway X from S north across 09 to A, hold bars (HS) at north -60 and +60 and a node on
     ///               09's centreline.
     /// S 1 to 09's threshold: S, X (crossing 09), A, E1 (entering 09).
     /// Landing 09, vacating at C (north side), to S 1: A (crossing 18/36), X (crossing 09 again), S.
     /// </summary>
-    public static GraphBundle AirportWithSouthStand() => AirportWith(
-        new[]
-        {
-            Path("S", 0, -100, 1000, -100), Path("S", 1000, -100, 1500, -100), Path("S", 1500, -100, 2000, -100),
-            Path("X", 1000, -100, 1000, -60, endType: "HS"), Path("X", 1000, -60, 1000, 0, startType: "HS"),
-            Path("X", 1000, 0, 1000, 60, endType: "HS"), Path("X", 1000, 60, 1000, 100, startType: "HS"),
-            LeadIn(1500, -100, 1500, -250),
-        },
-        new[] { Spot("S", 1, 10, 1500, -250, 150, "AAL") });
+    public static GraphBundle AirportWithSouthStand() => AirportWith(SouthStandPaths(), SouthStandSpots());
+
+    /// <summary>
+    /// <see cref="AirportWithSouthStand"/> plus taxiway Y: ONE edge from A at 1800 E — where C's exit comes
+    /// off the runway — straight south across 09 to S at 1800 E, with no node or hold bar between. Landing 09,
+    /// vacating at C, to S 1: Y (straight back across 09), S. With nothing between the vacate node and the
+    /// runway, the automatic pass can hold only at the route's FIRST node, so this crossing is the route's
+    /// START hold — named after 27's end, which it is nearer.
+    /// </summary>
+    public static GraphBundle AirportWithSouthStandAndTaxiwayY() =>
+        AirportWith(SouthStandPaths().Append(Path("Y", 1800, 100, 1800, -100)), SouthStandSpots());
+
+    private static TaxiPath[] SouthStandPaths() => new[]
+    {
+        Path("S", 0, -100, 1000, -100), Path("S", 1000, -100, 1500, -100),
+        Path("S", 1500, -100, 1800, -100), Path("S", 1800, -100, 2000, -100),
+        Path("X", 1000, -100, 1000, -60, endType: "HS"), Path("X", 1000, -60, 1000, 0, startType: "HS"),
+        Path("X", 1000, 0, 1000, 60, endType: "HS"), Path("X", 1000, 60, 1000, 100, startType: "HS"),
+        LeadIn(1500, -100, 1500, -250),
+    };
+
+    private static ParkingSpot[] SouthStandSpots() => new[] { Spot("S", 1, 10, 1500, -250, 150, "AAL") };
 
     /// <summary>
     /// TEST plus a stand whose lead-in stops 40 m short of taxiway A (a scenery gap): stand T 1 (1500 E,

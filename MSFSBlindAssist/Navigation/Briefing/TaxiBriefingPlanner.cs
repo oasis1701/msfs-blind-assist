@@ -77,7 +77,7 @@ public static partial class TaxiBriefingPlanner
                 $"no taxi route connects {endpoint} to runway {rwy.RunwayID} in this scenery", stand, endpoint, notes);
 
         var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, g.Graph.RunwayCenterlines, $"Runway {rwy.RunwayID}", aircraft: null);
-        var holds = CollectHoldShorts(route, events, landedRunway: null, notes);
+        var holds = CollectHoldShorts(route, events, notes);
         // The route ENDS on the departure runway, and the automatic pass never places a stop for a route's
         // own arrival onto its destination strip — so nothing CollectHoldShorts found is this hold (a hold it
         // found for this runway is a CROSSING of it on the way to the threshold). The hold before entering is
@@ -128,7 +128,7 @@ public static partial class TaxiBriefingPlanner
                 stand, endpoint, notes, vacating, choice);
 
         var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, g.Graph.RunwayCenterlines, "", aircraft: null);
-        var holds = CollectHoldShorts(route, events, landedRunway: rwy.RunwayID, notes);
+        var holds = CollectHoldShorts(route, events, notes);
 
         return new TaxiLegBriefing
         {
@@ -140,12 +140,16 @@ public static partial class TaxiBriefingPlanner
     }
 
     /// <summary>
-    /// Hold-short notes from the route's flagged segments and its start hold. A START hold naming the
-    /// runway just landed on (either end) is DISCARDED, as the route-briefing design (§5.6) specifies:
-    /// the aircraft has just vacated it. Only the start hold: a hold further along the route naming that
-    /// runway is the way in crossing it AGAIN, with landing traffic behind, and is briefed as a crossing
-    /// like any other. An event the pass could not hold becomes a note, never a silent gap — a re-crossing
-    /// of the landing runway included.
+    /// Hold-short notes from the route's flagged segments and its start hold. An event the pass could not
+    /// hold becomes a note, never a silent gap.
+    ///
+    /// <para>Nothing is discarded for the runway just landed on — not even the START hold, which the
+    /// route-briefing design (§5.6) says to drop because "the aircraft has just vacated it". That premise
+    /// is false: every briefed exit vacates the runway (<see cref="BriefingExitPicker"/> takes only
+    /// <see cref="LandingExit.VacatesRunway"/> exits), so the way in starts clear of it, and the pass never
+    /// holds for LEAVING a runway. A hold naming it — the start hold included — is the route crossing it
+    /// AGAIN with landing traffic behind, and is briefed as a crossing like any other; a start hold is
+    /// simply what that crossing becomes when nothing lies between the vacate node and the runway.</para>
     ///
     /// <para>Every hold found here is a CROSSING (<see cref="HoldShortNote.BeforeEntering"/> false), the
     /// departure runway's included: the automatic pass never places a stop for a route's own arrival onto
@@ -156,16 +160,13 @@ public static partial class TaxiBriefingPlanner
     /// runway at all.</para>
     /// </summary>
     internal static List<HoldShortNote> CollectHoldShorts(TaxiRoute route, IReadOnlyList<TaxiRouteRunwayEvent> events,
-                                                          string? landedRunway, List<string> notes)
+                                                          List<string> notes)
     {
         var holds = new List<HoldShortNote>();
         if (route.StartHoldRunway is string startHold)
         {
             foreach (var d in RouteRunwayCrossings.ExtractRunwayDesignators(startHold))
-            {
-                if (landedRunway != null && SameRunway(d, landedRunway)) continue;
                 holds.Add(new HoldShortNote(d, NamedTaxiwayAt(route, 0), BeforeEntering: false));
-            }
         }
         for (int i = 0; i < route.Segments.Count; i++)
         {
