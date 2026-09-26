@@ -66,6 +66,15 @@ public class BriefingTurnsTests
     }
 
     [Fact]
+    public void A_turn_reaches_back_only_halfway_into_a_short_taxiway()
+    {
+        // B is 80 m: 30 m east, then 50 m at 130°. B→C reaches back only 40 m, into the second leg alone, so its turn is
+        // -130° (sharp left); reaching the whole 60 m back would take in the first leg too and read -90° (left).
+        var route = Route((0, 0), ("A", 0, 300), ("B", 30, 300), ("B", 68.30, 267.86), ("C", 68.30, 567.86));
+        Assert.Equal(new string?[] { null, "sharp right", "sharp left" }, BriefingTurns.TaxiwayTurns(route));
+    }
+
+    [Fact]
     public void A_straight_continuation_says_straight_ahead()
         => Assert.Equal(new string?[] { null, "straight ahead" },
             BriefingTurns.TaxiwayTurns(Route((0, 0), ("A", 0, 300), ("B", 0, 600))));

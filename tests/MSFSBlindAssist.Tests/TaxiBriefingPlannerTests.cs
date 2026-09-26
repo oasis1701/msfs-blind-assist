@@ -707,6 +707,15 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void The_runway_note_comes_before_the_graph_s_own_note()
+    {
+        const string note = "runway 09 is the runway SayIntentions assigned; the flight plan names 27";
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738) with { OriginRunwayNote = note }, Airport() with { Note = "graph caveat" });
+        Assert.Equal(note, leg.Notes[0]);
+        Assert.Equal("graph caveat", leg.Notes[1]);
+    }
+
+    [Fact]
     public void The_runway_note_leads_the_taxi_in_notes()
     {
         var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738) with { DestinationRunwayNote = BriefingRunwayChoice.AgreesNote }, Airport());
