@@ -515,11 +515,8 @@ public class LandingExitForm : Form
         foreach (var exit in _exits)
             cmbExit.Items.Add(exit);
 
-        // Select a usable exit by default rather than blindly the first one — the
-        // flagged ones stay in the list (at some airports they are ALL that exists, so
-        // hiding them would leave nothing to pick), they just aren't the default.
-        int firstUsable = _exits.FindIndex(e => e.VacatesRunway);
-        cmbExit.SelectedIndex = firstUsable >= 0 ? firstUsable : 0;
+        // Never a turnaround (Navigation.LandingExitDefault), then the old "gets clear" preference.
+        cmbExit.SelectedIndex = Navigation.LandingExitDefault.Index(_exits);
 
         string warnSuffix = unusable > 0
             ? $" {unusable} of them ha{(unusable == 1 ? "s" : "ve")} no taxiway mapped clear of the runway."
