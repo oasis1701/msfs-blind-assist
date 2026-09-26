@@ -58,7 +58,7 @@ not complete in time. The owner chose to **keep that wait as before** (completen
   [Runway] to [Terminal/Gate] in a [Aircraft Type] …") and the compass-point runway test for
   `BriefingRunwayChoice`.
 - **Changed:** the prompt's section 7; one new line per leg in the TAXI ROUTES block — the airport's taxiway names
-  ("Taxiways at KATL (scenery navdata): A, A11, …"), taken from the graph the leg was planned on, so the list is
+  ("Taxiway names at KATL: A, A11, …"), taken from the graph the leg was planned on, so the list is
   exactly the names the route could use (the scenery's, OpenStreetMap-filled names included; the OpenStreetMap
   graph's names on that tier); the docs and CLAUDE.md bullets that describe two sections.
 - **Not changed otherwise:** the rest of the TAXI ROUTES block. Length is controlled by the prompt, and the block

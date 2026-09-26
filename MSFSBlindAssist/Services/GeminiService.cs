@@ -900,7 +900,7 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     }
 
     /// <summary>
-    /// The owner's real-world taxi question, asked for each leg under "Real-world practice". An INSTRUCTION to the AI,
+    /// The owner's real-world taxi question, asked for each taxi leg in the TAXI OUT AND TAXI IN section. An INSTRUCTION to the AI,
     /// never text for the briefing: the prompt forbids writing it out, and <see cref="RouteBriefingText"/> removes it
     /// if it comes back anyway (live KMEM→KATL, 2026-09-26).
     /// </summary>
