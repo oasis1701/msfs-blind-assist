@@ -933,6 +933,9 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutApproach900Announced = false;
     private bool _rolloutApproach500Announced = false;
     private bool _rolloutTurnNowAnnounced = false;
+    // Set when "too fast to turn" was spoken at the turn point with no exit left ahead: the tone then
+    // keeps steering at the junction instead of switching to the exit bearing's hard turn pan.
+    private bool _rolloutTooFastNoExit = false;
     // Which steering-tone behaviour the last rollout frame used. A change resets the
     // heading-error smoother so a DriftCorrection residual never leaks into the sharp
     // exit-bearing pan, and vice versa. Replaces the old _rolloutExitToneArmed latch,
