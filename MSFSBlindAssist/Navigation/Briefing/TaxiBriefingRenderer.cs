@@ -85,11 +85,18 @@ public static class TaxiBriefingRenderer
         foreach (var note in leg.Notes) lines.Add($"  Note: {note}");
     }
 
+    /// <summary>One entry per hold; a hold on no named taxiway (the whole route unnamed) names the runway alone,
+    /// never "on taxiway" followed by a blank.</summary>
     private static string HoldLine(IReadOnlyList<HoldShortNote> holds)
     {
         if (holds.Count == 0) return "  No runway crossings on this route.";
         var parts = holds.Select(h =>
-            $"runway {h.Runway} on taxiway {h.Taxiway} ({(h.BeforeEntering ? "before entering" : "crossing")})");
+        {
+            string kind = h.BeforeEntering ? "before entering" : "crossing";
+            return string.IsNullOrWhiteSpace(h.Taxiway)
+                ? $"runway {h.Runway} ({kind})"
+                : $"runway {h.Runway} on taxiway {h.Taxiway} ({kind})";
+        });
         return "  Hold short: " + string.Join("; ", parts);
     }
 

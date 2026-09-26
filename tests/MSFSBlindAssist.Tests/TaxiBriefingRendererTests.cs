@@ -109,6 +109,25 @@ public class TaxiBriefingRendererTests
     }
 
     [Fact]
+    public void A_hold_with_no_named_taxiway_names_the_runway_alone()
+    {
+        var taxiOut = new TaxiLegBriefing
+        {
+            Icao = "KMEM", Runway = "36L", Tier = BriefingTier.Navdata, EndpointDescription = "current position",
+            Taxiways = new[] { "M" }, DistanceMetres = 900,
+            HoldShorts = new[]
+            {
+                new HoldShortNote("27", "", false), new HoldShortNote("18R", " ", false),
+                new HoldShortNote("04", "M", false), new HoldShortNote("36L", "", true),
+            },
+        };
+        var taxiIn = TaxiLegBriefing.UnavailableLeg("KMEM", "36L", BriefingTier.Navdata, "x");
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn));
+
+        Assert.Contains("  Hold short: runway 27 (crossing); runway 18R (crossing); runway 04 on taxiway M (crossing); runway 36L (before entering)\n", text);
+    }
+
+    [Fact]
     public void Exits_list_is_capped_at_twelve()
     {
         var exits = Enumerable.Range(1, 15).Select(i => Exit($"X{i}", 2000 + i * 500, "Normal", "Left")).ToList();

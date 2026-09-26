@@ -153,6 +153,24 @@ public class TaxiBriefingPlannerTests
         Assert.Empty(leg.VacatingExits);
     }
 
+    [Fact]
+    public void A_re_crossing_of_the_runway_just_landed_on_is_briefed_as_a_crossing_hold()
+    {
+        // Landing 09 and vacating LEFT at C onto the north side, to stand S 1 SOUTH of 09: the way in crosses
+        // 09 again at X — with landing traffic behind, the hold short a pilot most needs briefed.
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, airline: "AAL"), AirportWithSouthStand());
+
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("C", leg.Exit!.Exit.TaxiwayName);
+        Assert.Equal("Left", leg.Exit.Exit.ExitSide);
+        Assert.StartsWith("representative stand S 1", leg.EndpointDescription);
+        Assert.Equal(new[] { "A", "X", "S" }, leg.Taxiways);
+        Assert.Contains(new HoldShortNote("09", "X", BeforeEntering: false), leg.HoldShorts);
+        Assert.Contains(leg.HoldShorts, h => (h.Runway == "18" || h.Runway == "36") && h.Taxiway == "A" && !h.BeforeEntering);
+        Assert.Equal(2, leg.HoldShorts.Count);
+        Assert.DoesNotContain(leg.Notes, n => n.Contains("no hold short point", StringComparison.Ordinal));
+    }
+
     // ── hold-short bookkeeping ───────────────────────────────────────────────────────────────
 
     private static TaxiRoute RouteWithHold(string? holdLabel, string? startHold)
@@ -168,12 +186,19 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
-    public void A_hold_for_the_runway_just_landed_on_is_discarded_including_its_reciprocal()
+    public void Only_a_start_hold_for_the_runway_just_landed_on_is_discarded_including_its_reciprocal()
     {
         var notes = new List<string>();
-        var route = RouteWithHold("runway 27 at A", startHold: null);
-        Assert.Empty(TaxiBriefingPlanner.CollectHoldShorts(route, Array.Empty<TaxiRouteRunwayEvent>(), null, landedRunway: "09", notes));
-        Assert.Single(TaxiBriefingPlanner.CollectHoldShorts(route, Array.Empty<TaxiRouteRunwayEvent>(), null, landedRunway: "18", notes));
+        var noEvents = Array.Empty<TaxiRouteRunwayEvent>();
+
+        // A START hold naming the runway just landed on (either end) sits where the aircraft has just vacated it.
+        Assert.Empty(TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, startHold: "runway 27"), noEvents, landedRunway: "09", notes));
+        Assert.Empty(TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, startHold: "runway 09"), noEvents, landedRunway: "09", notes));
+        Assert.Single(TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, startHold: "runway 27"), noEvents, landedRunway: "18", notes));
+
+        // A hold further along the route naming it is the route crossing that runway AGAIN: briefed, as a crossing.
+        var reCrossing = Assert.Single(TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold("runway 27 at A", startHold: null), noEvents, landedRunway: "09", notes));
+        Assert.Equal(new HoldShortNote("27", "A", BeforeEntering: false), reCrossing);
     }
 
     [Fact]
@@ -181,7 +206,7 @@ public class TaxiBriefingPlannerTests
     {
         var notes = new List<string>();
         var route = RouteWithHold(null, startHold: "runway 18");
-        var hold = Assert.Single(TaxiBriefingPlanner.CollectHoldShorts(route, Array.Empty<TaxiRouteRunwayEvent>(), departureRunway: "09", null, notes));
+        var hold = Assert.Single(TaxiBriefingPlanner.CollectHoldShorts(route, Array.Empty<TaxiRouteRunwayEvent>(), landedRunway: null, notes));
         Assert.Equal("18", hold.Runway);
         Assert.Equal("A", hold.Taxiway);
         Assert.False(hold.BeforeEntering);
@@ -192,8 +217,17 @@ public class TaxiBriefingPlannerTests
     {
         var notes = new List<string>();
         var events = new[] { new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = "06L", Held = false } };
-        TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, null), events, null, null, notes);
+        TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, null), events, landedRunway: null, notes);
         Assert.Contains(notes, n => n.Contains("06L", StringComparison.Ordinal) && n.Contains("no hold short point", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_unheld_re_crossing_of_the_runway_just_landed_on_still_becomes_a_note()
+    {
+        var notes = new List<string>();
+        var events = new[] { new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = "27", Held = false } };
+        TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, null), events, landedRunway: "09", notes);
+        Assert.Equal(new[] { "no hold short point could be placed for runway 27; cross with care" }, notes);
     }
 
     [Fact]
@@ -242,15 +276,17 @@ public class TaxiBriefingPlannerTests
     [Fact]
     public void A_hold_found_on_the_route_is_never_the_before_entering_hold_even_for_the_departure_runway()
     {
+        // CollectHoldShorts is not told the departure runway at all (PlanTaxiOut adds the entry hold itself),
+        // so a hold it finds for that runway — here 09, whose other end is 27 — can only ever be a crossing.
         var notes = new List<string>();
 
         var crossing = RouteWithHold("runway 27 at A", startHold: null);   // 27 is the departure runway's other end
-        var crossed = Assert.Single(TaxiBriefingPlanner.CollectHoldShorts(crossing, Array.Empty<TaxiRouteRunwayEvent>(), departureRunway: "09", null, notes));
+        var crossed = Assert.Single(TaxiBriefingPlanner.CollectHoldShorts(crossing, Array.Empty<TaxiRouteRunwayEvent>(), landedRunway: null, notes));
         Assert.Equal("27", crossed.Runway);
         Assert.False(crossed.BeforeEntering);
 
         var startHeld = RouteWithHold(null, startHold: "runway 09");
-        var held = Assert.Single(TaxiBriefingPlanner.CollectHoldShorts(startHeld, Array.Empty<TaxiRouteRunwayEvent>(), departureRunway: "09", null, notes));
+        var held = Assert.Single(TaxiBriefingPlanner.CollectHoldShorts(startHeld, Array.Empty<TaxiRouteRunwayEvent>(), landedRunway: null, notes));
         Assert.Equal("09", held.Runway);
         Assert.False(held.BeforeEntering);
     }
@@ -267,6 +303,28 @@ public class TaxiBriefingPlannerTests
 
         var atStand = new OwnPosition(Lat(250), Lon(2500), OnGround: true);
         Assert.StartsWith("current position, stand ", TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: atStand), Airport()).EndpointDescription);
+    }
+
+    [Fact]
+    public void Already_at_the_runway_entrance_the_taxi_out_says_so_instead_of_claiming_no_route()
+    {
+        // Stopped at E1's runway end: the very node a route to 09 would end on. There is nothing to route,
+        // and "no taxi route connects current position to runway 09" would tell the pilot something false.
+        var atEntrance = new OwnPosition(Lat(0), Lon(50), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: atEntrance), Airport(BriefingTier.OpenStreetMap));
+
+        Assert.Equal("the aircraft is already at the runway 09 entrance", leg.Unavailable);
+        Assert.Equal(BriefingTier.OpenStreetMap, leg.Tier);
+        Assert.Equal("09", leg.Runway);
+        Assert.Equal("current position", leg.EndpointDescription);
+        Assert.Null(leg.Stand);
+
+        // A REPRESENTATIVE stand whose node is that entrance is not the aircraft: never "already at".
+        var standAtEntrance = AirportWith(Array.Empty<TaxiPath>(), new[] { Spot("R", 1, 10, 50, 0, 150, "RWY") });
+        var fromStand = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, airline: "RWY"), standAtEntrance);
+        Assert.StartsWith("representative stand R 1", fromStand.EndpointDescription);
+        Assert.NotNull(fromStand.Unavailable);
+        Assert.DoesNotContain("already", fromStand.Unavailable, StringComparison.Ordinal);
     }
 
     [Fact]

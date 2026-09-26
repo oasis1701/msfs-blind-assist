@@ -115,12 +115,14 @@ internal static class TaxiBriefingFixture
     }
 
     /// <summary>
-    /// TEST plus a stand SOUTH of runway 09/27, so the way to 09's threshold crosses 09 first:
+    /// TEST plus a stand SOUTH of runway 09/27, so the way to 09's threshold crosses 09 first — and the way
+    /// in from a landing on 09 crosses it again:
     ///   north -250: stand S 1 (1500 E, gate, AAL, r=150 ft), its lead-in running north to S.
     ///   north -100: taxiway S, east 0 → 2000 (nodes at 0, 1000, 1500, 2000) — no way onto 09 from this side.
     ///   east 1000:  taxiway X from S north across 09 to A, hold bars (HS) at north -60 and +60 and a node on
     ///               09's centreline.
     /// S 1 to 09's threshold: S, X (crossing 09), A, E1 (entering 09).
+    /// Landing 09, vacating at C (north side), to S 1: A (crossing 18/36), X (crossing 09 again), S.
     /// </summary>
     public static GraphBundle AirportWithSouthStand() => AirportWith(
         new[]

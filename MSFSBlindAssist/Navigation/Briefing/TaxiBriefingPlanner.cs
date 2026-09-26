@@ -65,6 +65,11 @@ public static partial class TaxiBriefingPlanner
         if (target.EntryNode == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no taxiway reaches runway {rwy.RunwayID} in this scenery", stand, endpoint, notes);
+        // The aircraft already stands on the node the route would END on: there is nothing to route, and the
+        // zero-length "route" must not read as "no taxi route connects current position to runway …".
+        if (stand == null && startNode == target.EntryNode.NodeId)
+            return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
+                $"the aircraft is already at the runway {rwy.RunwayID} entrance", stand, endpoint, notes);
 
         var route = new TaxiRouter(g.Graph).FindShortestPath(startNode, target.EntryNode.NodeId);
         if (route == null || route.Segments.Count == 0)
@@ -72,7 +77,7 @@ public static partial class TaxiBriefingPlanner
                 $"no taxi route connects {endpoint} to runway {rwy.RunwayID} in this scenery", stand, endpoint, notes);
 
         var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, g.Graph.RunwayCenterlines, $"Runway {rwy.RunwayID}", aircraft: null);
-        var holds = CollectHoldShorts(route, events, departureRunway: rwy.RunwayID, landedRunway: null, notes);
+        var holds = CollectHoldShorts(route, events, landedRunway: null, notes);
         // The route ENDS on the departure runway, and the automatic pass never places a stop for a route's
         // own arrival onto its destination strip — so nothing CollectHoldShorts found is this hold (a hold it
         // found for this runway is a CROSSING of it on the way to the threshold). The hold before entering is
@@ -123,7 +128,7 @@ public static partial class TaxiBriefingPlanner
                 stand, endpoint, notes, vacating, choice);
 
         var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, g.Graph.RunwayCenterlines, "", aircraft: null);
-        var holds = CollectHoldShorts(route, events, departureRunway: null, landedRunway: rwy.RunwayID, notes);
+        var holds = CollectHoldShorts(route, events, landedRunway: rwy.RunwayID, notes);
 
         return new TaxiLegBriefing
         {
@@ -135,20 +140,23 @@ public static partial class TaxiBriefingPlanner
     }
 
     /// <summary>
-    /// Hold-short notes from the route's flagged segments and its start hold. A hold naming the runway
-    /// just landed on (either end) is DISCARDED — the aircraft has just vacated it. An event the pass
-    /// could not hold becomes a note, never a silent gap.
+    /// Hold-short notes from the route's flagged segments and its start hold. A START hold naming the
+    /// runway just landed on (either end) is DISCARDED, as the route-briefing design (§5.6) specifies:
+    /// the aircraft has just vacated it. Only the start hold: a hold further along the route naming that
+    /// runway is the way in crossing it AGAIN, with landing traffic behind, and is briefed as a crossing
+    /// like any other. An event the pass could not hold becomes a note, never a silent gap — a re-crossing
+    /// of the landing runway included.
     ///
     /// <para>Every hold found here is a CROSSING (<see cref="HoldShortNote.BeforeEntering"/> false), the
     /// departure runway's included: the automatic pass never places a stop for a route's own arrival onto
     /// its destination strip, so the hold before entering the departure runway is never on the route —
     /// <see cref="PlanTaxiOut"/> adds it. A hold for the departure runway found here is the route crossing
     /// that runway on its way to the threshold, and calling it "before entering" once let it stand in for
-    /// the real entry hold, which then went unbriefed. <paramref name="departureRunway"/> therefore flags
-    /// nothing; it stays so the taxi-out's call names the runway it collects for.</para>
+    /// the real entry hold, which then went unbriefed — which is why this method is not told the departure
+    /// runway at all.</para>
     /// </summary>
     internal static List<HoldShortNote> CollectHoldShorts(TaxiRoute route, IReadOnlyList<TaxiRouteRunwayEvent> events,
-                                                          string? departureRunway, string? landedRunway, List<string> notes)
+                                                          string? landedRunway, List<string> notes)
     {
         var holds = new List<HoldShortNote>();
         if (route.StartHoldRunway is string startHold)
@@ -165,7 +173,6 @@ public static partial class TaxiBriefingPlanner
             if (!seg.IsHoldShortPoint || string.IsNullOrEmpty(seg.HoldShortRunway)) continue;
             foreach (var d in RouteRunwayCrossings.ExtractRunwayDesignators(seg.HoldShortRunway))
             {
-                if (landedRunway != null && SameRunway(d, landedRunway)) continue;
                 if (holds.Any(h => SameRunway(h.Runway, d))) continue;
                 holds.Add(new HoldShortNote(d, NamedTaxiwayAt(route, i), BeforeEntering: false));
             }
@@ -173,7 +180,6 @@ public static partial class TaxiBriefingPlanner
         foreach (var e in events)
         {
             if (e.Held) continue;
-            if (landedRunway != null && SameRunway(e.Designator, landedRunway)) continue;
             notes.Add($"no hold short point could be placed for runway {e.Designator}; cross with care");
         }
         return holds;
