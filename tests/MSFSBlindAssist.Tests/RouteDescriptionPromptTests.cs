@@ -56,4 +56,12 @@ public class RouteDescriptionPromptTests
         Assert.Contains("SayIntentions assigned a different runway from the flight plan", prompt);
         Assert.Contains("DEPARTURE AND SID or ARRIVAL AND STAR section", prompt);
     }
+
+    [Fact]
+    public void The_real_world_route_uses_the_block_s_runway()
+    {
+        // A real-world route to SimBrief's 18R beside a computed route to SayIntentions' 36L is the confusion the runway
+        // choice removes.
+        Assert.Contains("from that leg's lines of the TAXI ROUTES block", GeminiService.GetRouteDescriptionPrompt("x"));
+    }
 }

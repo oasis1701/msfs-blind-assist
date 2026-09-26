@@ -975,8 +975,9 @@ Cover the following topics, using descriptive section headings separated by blan
       When a leg's note says SayIntentions assigned a different runway from the flight plan, say so
       here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
    b) Then, under the heading ""Real-world practice"", answer from your own knowledge of the
-      airport the question below, reading the bracketed items (the airport, the runway, the stand
-      or terminal, and the aircraft type) from the data for that leg:
+      airport the question below, taking the bracketed items (the airport, the runway, the stand
+      or terminal, and the aircraft type) from that leg's lines of the TAXI ROUTES block (the
+      runway there may be the one SayIntentions assigned rather than the flight plan's):
       ""{RealWorldTaxiQuestion}""
       That question is an instruction to you, not text for the pilot: write only your answer under
       the heading, and never write the question itself into the briefing, as shown here or with
