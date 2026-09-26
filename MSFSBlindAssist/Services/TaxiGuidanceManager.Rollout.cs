@@ -30,27 +30,30 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
-    /// Recomputes <c>_rolloutExitTurnWindowFeet</c> for the exit now targeted: its own lateral offset in
-    /// the rollout runway's frame, its angle and the runway width (RolloutExitGate.TurnWindowFeetFor).
-    /// Called after EVERY assignment of _rolloutExit: both rollout entries, every retarget and the
-    /// early-vacate swap, and where it is cleared (EnterRunwayEndCountdown, StopGuidance), which falls
-    /// back to RolloutExitGate.TurnWindowFeet.
+    /// The targeted exit's own turn window: its lateral offset in the rollout runway's frame, its angle and
+    /// the runway width (RolloutExitGate.TurnWindowFeetFor), or the fixed RolloutExitGate.TurnWindowFeet
+    /// with no exit targeted. Computed where it is read, from the exit and runway targeted NOW - a cached
+    /// copy had to be recomputed after every assignment of _rolloutExit or _rolloutRunway, and one missed
+    /// assignment would leave another exit's window judging this one. Feeds IsExitTurnBegun and
+    /// SelectToneMode in place of the fixed 1,000 ft. Each targeted exit's window is logged once.
     /// </summary>
-    private void UpdateRolloutExitTurnWindow()
+    private double RolloutExitTurnWindowFeet()
     {
         if (_rolloutExit == null || _rolloutRunway == null)
-        {
-            _rolloutExitTurnWindowFeet = Navigation.RolloutExitGate.TurnWindowFeet;
-            return;
-        }
+            return Navigation.RolloutExitGate.TurnWindowFeet;
         double lateralM = SignedLateralFromRunwayMeters(
             _rolloutExit.Latitude, _rolloutExit.Longitude,
             _rolloutRunway.StartLat, _rolloutRunway.StartLon, _rolloutRunwayHeadingTrue);
-        _rolloutExitTurnWindowFeet = Navigation.RolloutExitGate.TurnWindowFeetFor(
+        double window = Navigation.RolloutExitGate.TurnWindowFeetFor(
             _rolloutRunway.Width, lateralM, _rolloutExit.ExitAngleDegrees);
-        RolloutDiag($"Turn window for '{_rolloutExit.TaxiwayName}': {_rolloutExitTurnWindowFeet:F0} ft " +
-            $"(node lateral {lateralM:+0.0;-0.0} m, angle {_rolloutExit.ExitAngleDegrees:F1} deg, " +
-            $"runway width {_rolloutRunway.Width:F0} ft)");
+        if (!ReferenceEquals(_rolloutTurnWindowLoggedExit, _rolloutExit))
+        {
+            _rolloutTurnWindowLoggedExit = _rolloutExit;
+            RolloutDiag($"Turn window for '{_rolloutExit.TaxiwayName}': {window:F0} ft " +
+                $"(node lateral {lateralM:+0.0;-0.0} m, angle {_rolloutExit.ExitAngleDegrees:F1} deg, " +
+                $"runway width {_rolloutRunway.Width:F0} ft)");
+        }
+        return window;
     }
 
     /// <summary>
@@ -204,7 +207,6 @@ public partial class TaxiGuidanceManager
             _rolloutRunwayHeadingTrue = runwayHeadingTrue;
             _rolloutRunway = runway;
             _rolloutAllExits = allExits;
-            UpdateRolloutExitTurnWindow();
             ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
@@ -402,7 +404,6 @@ public partial class TaxiGuidanceManager
             _rolloutRunwayHeadingTrue = runwayHeadingTrue;
             _rolloutRunway = runway;
             _rolloutAllExits = allExits;
-            UpdateRolloutExitTurnWindow();
             ResetRolloutApproachLatches();
             _rolloutEarlyHandoffDone = false;
             _lastUndershootRetargetTime = DateTime.MinValue;
@@ -605,9 +606,10 @@ public partial class TaxiGuidanceManager
         // crab alignment, not a deliberate runway exit turn. Direction- and proximity-gated
         // since 2026-08: see Navigation/RolloutExitGate.IsExitTurnBegun; the proximity window
         // is the targeted exit's own (TurnWindowFeetFor) since 2026-09.
+        double turnWindowFeet = RolloutExitTurnWindowFeet();
         bool turnBegun = Navigation.RolloutExitGate.IsExitTurnBegun(
             hdgDelta, groundSpeedKts, distToExitFeet, pastExit, exitRelBearingDeg,
-            _rolloutExitTurnWindowFeet);
+            turnWindowFeet);
         // Effectively stopped before reaching the exit — e.g. pilot braked
         // hard after an undershoot retarget left the exit 500+ ft away.
         // The atTaxiSpeed&&nearExit gate intentionally doesn't fire this far
@@ -845,7 +847,6 @@ public partial class TaxiGuidanceManager
                     // Swap the exit so the destination, the post-handoff overshoot monitor
                     // and the arrival callout all name the taxiway the pilot is on.
                     _rolloutExit = vacatedAt;
-                    UpdateRolloutExitTurnWindow();
                     earlyVacateSwapped = true;
                 }
                 else
@@ -1033,7 +1034,7 @@ public partial class TaxiGuidanceManager
                     // Silent mode here would be naming the one silent state that cannot apply,
                     // since every trigger that reaches this branch is a slow-speed one. The two
                     // that CAN leave a stopped aircraft with no sound are: the turn-window Silent
-                    // (from 300 ft out to the targeted exit's own window, _rolloutExitTurnWindowFeet,
+                    // (from 300 ft out to the targeted exit's own window, RolloutExitTurnWindowFeet(),
                     // at most 1,000 ft; ≥ DriftToneSilentDeg of deviation toward a known exit
                     // side), and DriftCorrection itself, which is a heading cue and therefore
                     // zero volume for an aircraft aligned with the runway. Beyond
@@ -1577,7 +1578,7 @@ public partial class TaxiGuidanceManager
         // KSEA 34L 2026-08-21: a 15.1° drift built up here with no cue at all, and the
         // steering tone's first utterance was a 79° hard pan once ExitBearing took over.
         //
-        // Exception, within the targeted exit's own turn window (_rolloutExitTurnWindowFeet —
+        // Exception, within the targeted exit's own turn window (RolloutExitTurnWindowFeet() —
         // RolloutExitGate.TurnWindowFeetFor, never more than TurnWindowFeet): a heading deviation
         // that is toward a KNOWN exit side goes Silent instead of DriftCorrection — don't
         // fight a turn IsExitTurnBegun is about to accept just because it hasn't reached the
@@ -1609,7 +1610,7 @@ public partial class TaxiGuidanceManager
                 && Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, _rolloutExit.ExitAngleDegrees));
         var toneMode = Navigation.RolloutExitGate.SelectToneMode(
             groundSpeedKts, distToExitFeet, hdgDelta, exitRelBearingDeg,
-            _rolloutExitTurnWindowFeet, tooFastForExit: tooFastForExit);
+            turnWindowFeet, tooFastForExit: tooFastForExit);
         if (toneMode != _rolloutToneMode)
         {
             // Start every mode from a clean filter so the pan is sharp and immediate rather
@@ -1721,7 +1722,7 @@ public partial class TaxiGuidanceManager
             double lateralSignedM = SignedLateralFromRunwayMeters(
                 lat, lon, _rolloutRunway!.StartLat, _rolloutRunway.StartLon, _rolloutRunwayHeadingTrue);
             RolloutDiag($"tone mode={toneMode} exit='{_rolloutExit!.TaxiwayName}' dist={distToExitFeet:F0}ft " +
-                $"window={_rolloutExitTurnWindowFeet:F0}ft hdgDelta={hdgDelta:+0.0;-0.0}deg " +
+                $"window={turnWindowFeet:F0}ft hdgDelta={hdgDelta:+0.0;-0.0}deg " +
                 $"lateral={lateralSignedM:+0.0;-0.0}m gs={groundSpeedKts:F1}kt turnBegun={turnBegun} {toneDiag}");
             _rolloutToneLogMode = toneMode;
             _rolloutToneLogExit = _rolloutExit;
@@ -2385,7 +2386,6 @@ public partial class TaxiGuidanceManager
                     _rolloutCrossingDeclineAnnounced = false;
 
                 _rolloutExit = candidate;
-                UpdateRolloutExitTurnWindow();
                 _isLandingExitRoute = true; // LoadRoute above cleared it; still a landing-exit route
                 ResetRolloutApproachLatches();
                 // Allow TryEarlyExitHandoff to fire for the newly targeted exit.
@@ -2442,9 +2442,10 @@ public partial class TaxiGuidanceManager
             exit.ExitBearingTrue, _rolloutRunwayHeadingTrue);
         bool pastNewExit = SignedAlongRunwayMeters(
             lat, lon, exit.Latitude, exit.Longitude, _rolloutRunwayHeadingTrue) > 0.0;
+        double turnWindowFeet = RolloutExitTurnWindowFeet();
         bool straighten = reason != Navigation.RetargetReason.Earlier
             && Navigation.RolloutExitGate.ShouldStraightenAfterRetarget(
-                   hdgDelta, exitRelBearing, distAheadFt, pastNewExit, _rolloutExitTurnWindowFeet);
+                   hdgDelta, exitRelBearing, distAheadFt, pastNewExit, turnWindowFeet);
 
         var xm = DistanceMilestones.ExitApproach(); // far->near: [0]=1500ft/500m, [1]=900ft/300m, [2]=500ft/150m
         var retired = Navigation.RetargetCallout.Retire(
@@ -2459,7 +2460,7 @@ public partial class TaxiGuidanceManager
         if (retired.Retire500) _rolloutApproach500Announced = true;
 
         RolloutDiag($"Retarget ({reason}) '{previousTaxiwayName}' -> '{exit.TaxiwayName}' dist={distAheadFt}ft " +
-            $"gs={_lastGroundSpeedKts:F1}kt hdgDelta={hdgDelta:+0.0;-0.0}deg window={_rolloutExitTurnWindowFeet:F0}ft " +
+            $"gs={_lastGroundSpeedKts:F1}kt hdgDelta={hdgDelta:+0.0;-0.0}deg window={turnWindowFeet:F0}ft " +
             $"straighten={straighten} lead={Navigation.RetargetCallout.LeadSecondsFor(reason, straighten, retired.SlowDown):F1}s " +
             $"retire1500={retired.Retire1500} retire900={retired.Retire900} " +
             $"retire500={retired.Retire500} slowDown={retired.SlowDown} queued={queued}");
@@ -3017,7 +3018,6 @@ public partial class TaxiGuidanceManager
         _currentSegmentIndex = 0;
         _originalTaxiwaySequence = null;
         _rolloutExit = null;
-        UpdateRolloutExitTurnWindow(); // no exit: back to the fixed TurnWindowFeet
         _isLandingExitRoute = false; // no exit route — runway-end countdown
         _landingExitOffPavement = true;
         // KEEP _rolloutRunway and _rolloutRunwayHeadingTrue — countdown needs them.

@@ -91,20 +91,30 @@ public static class RolloutExitGate
     /// The CEILING on an exit's own turn window (<see cref="TurnWindowFeetFor"/>), the window used
     /// when no exit is targeted, and the straight-line bound in <see cref="IsVacateAwayFromPlannedExit"/>.
     /// Until 2026-09 it was the turn window for EVERY exit (how close to the exit a turn had to begin
-    /// to count as taking it), sized by the worst case derived below.
+    /// to count as taking it).
     ///
-    /// <para>Derived, not fitted. An exit node can sit forward of its actual pavement
-    /// junction by up to <c>lateralTolerance / tan(exitAngle)</c>, where lateralTolerance is
-    /// <c>halfWidth + 15 m</c> (see <c>TaxiGraph.GetLandingExits</c>). This gate can only fire
-    /// for an exit the aircraft can deviate 15° onto, so exitAngle ≥ 15°; the worst case is a
-    /// 200 ft runway: (30.5 + 15) / tan(15°) = 170 m = 558 ft. Add the app's own notion of
-    /// "at the exit" — the 300 ft tone-arm distance plus the 150 ft "turn now" cue — for
-    /// 1,008 ft, rounded to 1,000.</para>
+    /// <para>Derived, not fitted: it is <see cref="TurnWindowFeetFor"/>'s worst case. An exit node can
+    /// sit forward of its pavement junction by up to <c>lateralTolerance / tan(exitAngle)</c>, where
+    /// lateralTolerance is <c>halfWidth + 15 m</c> (see <c>TaxiGraph.GetLandingExits</c>); a turn
+    /// counts only from <see cref="TurnBegunHeadingDeg"/> (15°), so exitAngle ≥ 15°, and on a 200 ft
+    /// runway that displacement is (30.5 + 15) / tan 15° = 170 m = 558 ft - the figure
+    /// <see cref="EarlyVacateForwardSlackFeet"/> and <see cref="VacatedShortAlongTrackFeet"/> cite.
+    /// Add how far before the junction a 15° turn still stays on the pavement, 30.5 / tan 15° = 114 m =
+    /// 373 ft: 930 ft, rounded up to 1,000. (The first telling added the 300 ft tone-arm distance and
+    /// the 150 ft "turn now" cue to the 558 ft instead, for 1,008 ft; the per-exit window replaced
+    /// that sum in 2026-09 and this is now the one derivation.)</para>
     ///
     /// <para>Do NOT tighten this to <c>ROLLOUT_NEAR_EXIT_FT</c> (500): that would block
     /// legitimate turns at shallow-RET airports whose exits derive from hold-short nodes.</para>
     /// </summary>
     public const double TurnWindowFeet = 1000.0;
+
+    /// <summary>
+    /// How far before the targeted exit the rollout says "turn now" - and the FLOOR on that exit's turn
+    /// window (<see cref="TurnWindowFeetFor"/>): a turn begun at the cue is the turn the pilot was told
+    /// to make. <c>TaxiGuidanceManager.ROLLOUT_TURN_NOW_FT</c> aliases it.
+    /// </summary>
+    public const double TurnNowFeet = 150.0;
 
     /// <summary>
     /// Below this relative bearing an exit has no meaningful side and the direction test is
@@ -583,13 +593,19 @@ public static class RolloutExitGate
     /// <see cref="TurnWindowFeet"/>'s own derivation, evaluated for ONE exit instead of its worst case:
     /// how far before the junction a <see cref="TurnBegunHeadingDeg"/> turn still stays on the runway
     /// (half-width / tan 15°), plus how far the exit node can sit FORWARD of its pavement junction (its
-    /// own lateral offset / tan of the exit angle), capped at <see cref="TurnWindowFeet"/>.
+    /// own lateral offset / tan of the exit angle), never less than <see cref="TurnNowFeet"/> and never
+    /// more than <see cref="TurnWindowFeet"/>.
     ///
     /// <para>The fixed 1,000 ft was this sum's worst case (200 ft runway, a marker 45.5 m off, a 15° exit
     /// = 930 ft). For an exit whose node IS its centerline junction the forward offset is ~0 and the
     /// window is ~300 ft: KMEM M7 = 324 ft. With the fixed window, a leftover 8–15° right turn from a
     /// missed M6 was treated as the M7 turn 483 ft out — the tone went silent, then the handoff swung it
     /// hard left while the aircraft left the runway.</para>
+    ///
+    /// <para>The floor: on a runway narrower than about 80 ft the sum falls below the 150 ft "turn now"
+    /// cue (a 60 ft runway's centerline junction: 112 ft), so a pilot who turned when told was panned back
+    /// toward the runway heading until the aircraft reached the window. 13,287 of the 54,132 usable
+    /// exits in fs2024 (2026-09-26) had a window below the cue, nearly all on narrow GA strips.</para>
     /// </summary>
     /// <param name="runwayWidthFeet">Rollout runway width; ≤ 0 uses <see cref="DefaultRunwayWidthFeet"/>.</param>
     /// <param name="exitNodeLateralMetres">The exit node's lateral offset from the runway axis (sign ignored).</param>
@@ -602,7 +618,7 @@ public static class RolloutExitGate
         double angle = Math.Clamp(exitAngleDeg, TurnBegunHeadingDeg, MaxUsableExitTurnDeg);
         double angleTan = Math.Tan(angle * Math.PI / 180.0);
         double metres = halfWidthM / turnTan + Math.Abs(exitNodeLateralMetres) / angleTan;
-        return Math.Min(TurnWindowFeet, metres / 0.3048);
+        return Math.Min(TurnWindowFeet, Math.Max(TurnNowFeet, metres / 0.3048));
     }
 
     /// <summary>The fastest ground speed at which "turn now" onto an exit of <paramref name="exitAngleDeg"/> is still said.</summary>

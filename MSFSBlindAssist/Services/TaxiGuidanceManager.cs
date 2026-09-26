@@ -957,11 +957,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // which reset the smoother on exit-tone entry only — the drift tone needs the same
     // treatment in both directions.
     private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutToneMode.Silent;
-    // The targeted exit's own turn window (RolloutExitGate.TurnWindowFeetFor), recomputed whenever the
-    // targeted exit changes, and back to the fixed TurnWindowFeet when there is none (every _rolloutExit
-    // assignment calls UpdateRolloutExitTurnWindow). Feeds IsExitTurnBegun and SelectToneMode in place
-    // of the fixed 1,000 ft.
-    private double _rolloutExitTurnWindowFeet = Navigation.RolloutExitGate.TurnWindowFeet;
+    // The exit whose turn window RolloutExitTurnWindowFeet last logged, so landing_exit.log records each
+    // targeted exit's window once. Logging only: the window itself is computed where it is read.
+    private Navigation.LandingExit? _rolloutTurnWindowLoggedExit;
     // Tone mode and targeted exit of the last per-frame "tone mode=" line in landing_exit.log (null = none
     // yet). A stopped aircraft gets a line only when one of them changes, so a pilot held on the runway
     // cannot flood the log. Reset in ResetRolloutApproachLatches.
@@ -1199,8 +1197,9 @@ public partial class TaxiGuidanceManager : IDisposable
 
     // Distance from the chosen exit at which the rollout speaks "turn now". Not a
     // DistanceMilestones entry — it is the turn-now handoff boundary, and the 500 ft approach
-    // callout's lower bound is deliberately the same number so the two never overlap.
-    private const double ROLLOUT_TURN_NOW_FT = 150.0;
+    // callout's lower bound is deliberately the same number so the two never overlap. It is also
+    // the floor on every exit's turn window (RolloutExitGate.TurnNowFeet, which this aliases).
+    private const double ROLLOUT_TURN_NOW_FT = Navigation.RolloutExitGate.TurnNowFeet;
 
     // Distance from the chosen exit at which the rollout tone snaps from
     // runway-heading guidance (centreline tracking) to exit-bearing guidance.
@@ -3651,7 +3650,6 @@ public partial class TaxiGuidanceManager : IDisposable
         // subsequent BeginLandingRollout caller assume a clean baseline
         // without depending on its own field assignments to overwrite.
         _rolloutExit = null;
-        UpdateRolloutExitTurnWindow(); // no exit: back to the fixed TurnWindowFeet
         _isLandingExitRoute = false;
         ResetLandingExitOutcomeFlags();   // fresh session: no failed handoff to remember
         _rolloutRunway = null;

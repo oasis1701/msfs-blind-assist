@@ -12,6 +12,15 @@ public class RolloutExitGatePerExitRulesTests
     // ---- TurnWindowFeetFor ---------------------------------------------------------------
 
     [Fact]
+    public void A_narrow_runways_window_is_never_shorter_than_the_turn_now_cue()
+    {
+        // A 60 ft runway's centreline junction: 9.1 m / tan 15 deg = 112 ft, below the 150 ft "turn now" -
+        // a pilot who turned when told was panned back toward the runway heading until the window.
+        Assert.Equal(RolloutExitGate.TurnNowFeet, RolloutExitGate.TurnWindowFeetFor(60.0, 0.0, 90.0));
+        Assert.Equal(150.0, RolloutExitGate.TurnNowFeet);
+    }
+
+    [Fact]
     public void A_junction_on_the_centerline_gets_only_the_pavement_lead()
         => Assert.InRange(RolloutExitGate.TurnWindowFeetFor(164.0, 2.3, 22.7), 322.0, 326.0);
 
