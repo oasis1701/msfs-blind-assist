@@ -294,21 +294,118 @@ public class BriefingStandPickerTests
         Assert.Contains(choice.Notes, n => n.Contains("\"Gate 99\"", StringComparison.Ordinal) && n.Contains("matched by position", StringComparison.Ordinal));
     }
 
-    [Fact]
-    public void Say_intentions_gate_listed_only_as_a_stand_the_briefing_skips_is_said_not_denied()
+    [Theory]
+    [InlineData(16, false)]   // Fuel
+    [InlineData(8, false)]    // Military Combat
+    [InlineData(17, false)]   // Vehicles
+    [InlineData(10, true)]    // a de-ice pad
+    public void Say_intentions_gate_found_only_on_a_stand_the_briefing_never_routes_to_is_said_not_denied(int type, bool deicePad)
     {
-        // LEBB: jetway stands 101-106 are navdata UNKN, which reads as type 1 and is never briefed. The
-        // stand exists, so "not found" would be untrue, and the published position must not hand the
-        // label to the gate next door (inside that gate's reach here).
+        // The stand exists, so "not found" would be untrue, and the published position must not hand
+        // the label to the gate next door (inside that gate's reach here).
+        var skipped = Spot("", 105, type, 0, 0, radiusFt: 26);
+        skipped.IsDeiceArea = deicePad;
+        var gate6 = Spot("", 6, 10, 40, 0);
+
+        foreach (var hint in new[] { new SayIntentionsGateHint("Gate 105", null), At("Gate 105", 5) })
+        {
+            var choice = BriefingStandPicker.Pick(new[] { skipped, gate6 }, B738, null, hint, Always)!;
+
+            Assert.Same(gate6, choice.Spot);
+            Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
+            Assert.Contains(choice.Notes, n => n.Contains("\"Gate 105\" was found, but only as a stand the briefing does not route to", StringComparison.Ordinal));
+            Assert.DoesNotContain(choice.Notes, n => n.Contains("not found", StringComparison.Ordinal) || n.Contains("matched by position", StringComparison.Ordinal));
+        }
+    }
+
+    // ── SayIntentions: navdata's None type ───────────────────────────────────────────────────
+    // Navdata reads UNKN as type 1, and UNKN is not only "no stand": LEBB's jetway gates 101-106 are
+    // UNKN, and so is KGCN's helipad "Spot 101". SayIntentions may name one; it ranks after every
+    // stand of another type that the evidence cannot tell it from.
+
+    [Fact]
+    public void Say_intentions_gate_on_a_None_type_stand_is_briefed()
+    {
+        // LEBB: SayIntentions' "Gate 101" is a jetway stand navdata types UNKN, and the name alone finds it.
+        var unkn101 = Spot("", 101, 1, 0, 0, radiusFt: 33);
+        unkn101.HasJetway = true;
+        var gate6 = Spot("", 6, 10, 40, 0);
+        var choice = BriefingStandPicker.Pick(new[] { unkn101, gate6 }, B738, null, new SayIntentionsGateHint("Gate 101", null), Always)!;
+
+        Assert.Same(unkn101, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Empty(choice.Notes);
+    }
+
+    [Fact]
+    public void Say_intentions_gate_on_a_None_type_stand_is_not_handed_to_the_gate_next_door()
+    {
+        // The published point is inside the reach of the gate next door as well, but the name has found
+        // the stand, so the point is never used to hand the label to a neighbour.
         var unkn101 = Spot("", 101, 1, 0, 0, radiusFt: 33);
         unkn101.HasJetway = true;
         var gate6 = Spot("", 6, 10, 40, 0);
         var choice = BriefingStandPicker.Pick(new[] { unkn101, gate6 }, B738, null, At("Gate 101", 5), Always)!;
 
-        Assert.Same(gate6, choice.Spot);
-        Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Contains(choice.Notes, n => n.Contains("\"Gate 101\" was found, but only as a stand the briefing does not route to", StringComparison.Ordinal));
-        Assert.DoesNotContain(choice.Notes, n => n.Contains("not found", StringComparison.Ordinal) || n.Contains("matched by position", StringComparison.Ordinal));
+        Assert.Same(unkn101, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Empty(choice.Notes);
+    }
+
+    [Fact]
+    public void Say_intentions_gate_prefers_a_known_type_stand_to_a_None_type_one_of_the_same_name()
+    {
+        // KGCN: "Spot 101" is a 13 ft UNKN helipad listed ahead of "Parking 101" (Ramp GA Small). Both
+        // compare as "101"; with no published position, only the type tells them apart.
+        var helipad = Spot("", 101, 1, 0, 0, radiusFt: 13);
+        var parking = Spot("Parking", 101, 3, 900, 0, radiusFt: 23);
+        var choice = BriefingStandPicker.Pick(new[] { helipad, parking }, B738, null, new SayIntentionsGateHint("Parking 101", null), Always)!;
+
+        Assert.Same(parking, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+    }
+
+    [Fact]
+    public void A_None_type_stand_never_stands_in_for_an_unconnected_known_type_match()
+    {
+        // KGCN with "Parking 101" off the network: the helipad sharing its number ranks below it, so it
+        // is a different stand, not a fallback for SayIntentions' gate.
+        var helipad = Spot("", 101, 1, 0, 0, radiusFt: 13);
+        var parking101 = Spot("Parking", 101, 3, 900, 0, radiusFt: 23);
+        var parking102 = Spot("Parking", 102, 3, 950, 0, radiusFt: 23);
+
+        foreach (var hint in new[] { new SayIntentionsGateHint("Parking 101", null), At("Parking 101", 905) })
+        {
+            var choice = BriefingStandPicker.Pick(new[] { helipad, parking101, parking102 }, B738, null, hint, AllBut(parking101))!;
+
+            Assert.Same(parking102, choice.Spot);
+            Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
+            Assert.Contains(choice.Notes, n => n.Contains("\"Parking 101\"", StringComparison.Ordinal)
+                                            && n.Contains("does not connect to the taxiway network", StringComparison.Ordinal));
+        }
+    }
+
+    [Fact]
+    public void A_published_position_tie_goes_to_the_known_type_stand()
+    {
+        // One stand listed twice, once as UNKN, 0.6 m apart: the published point cannot tell the two
+        // listings apart, so the typed one is briefed, by name and by the position alone. Radius 33 ft
+        // (10 m) answers to 20 m, so every stand here is within reach of the point.
+        var unkn = Spot("", 101, 1, 0, 0, radiusFt: 33);
+        var twin = Spot("", 101, 10, 0.6, 0, radiusFt: 33);
+        var apart = Spot("", 101, 10, 1.5, 0, radiusFt: 33);
+
+        foreach (var label in new[] { "Gate 101", "Gate 99" })
+        {
+            var tie = BriefingStandPicker.Pick(new[] { unkn, twin }, B738, null, At(label, -15), Always)!;
+            Assert.Same(twin, tie.Spot);
+            Assert.Equal(StandChoiceSource.SayIntentions, tie.Source);
+
+            // More than a metre nearer, the UNKN stand is the one the point means.
+            var nearer = BriefingStandPicker.Pick(new[] { unkn, apart }, B738, null, At(label, -15), Always)!;
+            Assert.Same(unkn, nearer.Spot);
+            Assert.Equal(StandChoiceSource.SayIntentions, nearer.Source);
+        }
     }
 
     [Fact]
@@ -533,6 +630,24 @@ public class BriefingStandPickerTests
         var none = Spot("N", 1, 1, 0, 0);
         var combat = Spot("M", 1, 8, 10, 0);
         Assert.Null(BriefingStandPicker.Pick(new[] { none, combat }, B738, null, null, Always));
+    }
+
+    [Fact]
+    public void A_representative_stand_is_never_of_the_None_type()
+    {
+        // An UNKN stand may be SayIntentions' gate when the name finds it, but it is no basis for a
+        // "typical stand" guess. Here it is the only stand that connects, so whatever the SayIntentions
+        // step concludes (no gate assigned, a gate not found, a gate found off the network) there is
+        // no representative stand.
+        var unkn = Spot("", 101, 1, 0, 0, radiusFt: 33);
+        unkn.HasJetway = true;
+        var gate7 = Spot("", 7, 10, 500, 0);
+
+        foreach (var hint in new SayIntentionsGateHint?[]
+                 {
+                     null, new SayIntentionsGateHint("Gate 99", null), new SayIntentionsGateHint("Gate 7", null),
+                 })
+            Assert.Null(BriefingStandPicker.Pick(new[] { unkn, gate7 }, B738, null, hint, AllBut(gate7)));
     }
 
     [Fact]

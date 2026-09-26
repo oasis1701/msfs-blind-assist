@@ -7,20 +7,20 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// <summary>
 /// Which stand a briefing leg routes to, decided in this order:
 /// <list type="number">
-/// <item>Stands that are never briefed are removed first — the None (navdata's UNKN included),
-/// Military Combat, Fuel and Vehicles types, and de-ice pads — for the SayIntentions match as well as
-/// the representative choice.</item>
+/// <item>Military Combat, Fuel and Vehicles stands and de-ice pads are never briefed.</item>
 /// <item>SayIntentions' assigned gate, when its flight is this OFP's: by NAME (every stand whose
 /// identity matches the label, and only when none does, every stand whose online alias does); when
 /// several match, the evidence decides — the one nearest the position SayIntentions published, or
-/// with no position a gate before any other type, then list order. Only when the name matched nothing
-/// is the published POSITION used on its own. Either way the stand must connect to the taxiway
-/// network; a stand the name found but the briefing cannot use is reported, never swapped for a
-/// neighbour.</item>
-/// <item>Otherwise a representative stand among those that connect: category (freighter → cargo
-/// stands; code A → ramps, then gates, then cargo; everyone else → gates, then ramps, then cargo),
-/// wingspan fit, the SimBrief airline's own stands, then the stand at the centre of what is left so
-/// the route represents the terminal area.</item>
+/// with no position a gate before any other type, then list order. A stand of navdata's None type may
+/// be the one (navdata reads UNKN as None, and LEBB's jetway gates are UNKN), but it ranks after every
+/// other stand the evidence cannot tell it from: with no position, and within a metre when there is
+/// one. Only when the name matched nothing is the published POSITION used on its own. Either way the
+/// stand must connect to the taxiway network; a stand the name found but the briefing cannot use is
+/// reported, never swapped for a neighbour.</item>
+/// <item>Otherwise a representative stand among those that connect, never one of the None type:
+/// category (freighter → cargo stands; code A → ramps, then gates, then cargo; everyone else → gates,
+/// then ramps, then cargo), wingspan fit, the SimBrief airline's own stands, then the stand at the
+/// centre of what is left so the route represents the terminal area.</item>
 /// </list>
 /// Every fallback and every substitution leaves a pilot-readable note; nothing is silent. Pure: the
 /// caller supplies "has a graph node within 100 m" as a predicate.
@@ -49,12 +49,27 @@ public static class BriefingStandPicker
 
     private const double FeetToMetres = 0.3048;
 
-    // None (navdata maps UNKN there too), Military Combat, Fuel, Vehicles.
-    private static readonly HashSet<int> ExcludedTypes = new() { 1, 8, 16, 17 };
+    // Military Combat, Fuel, Vehicles: never briefed, not even as SayIntentions' gate.
+    private static readonly HashSet<int> NeverBriefedTypes = new() { 8, 16, 17 };
 
-    /// <summary>Whether the briefing may route to the stand at all — the one filter both the SayIntentions
-    /// match and the representative choice apply.</summary>
-    private static bool IsEligible(ParkingSpot s) => !ExcludedTypes.Contains(s.Type) && !s.IsDeiceArea;
+    /// <summary>
+    /// Navdata's None type, which is where navdata puts UNKN as well — and UNKN is not only "no stand": a
+    /// 2026-09 fs2024 build has 362 UNKN stands at 79 airports and no NONE, real jetway gates among them
+    /// (LEBB 101-106, GABS 152/153) but also KGCN's 13 ft helipad "Spot 101". So a None stand may be
+    /// SayIntentions' gate, ranked after every other type, but is no basis for a representative guess.
+    /// </summary>
+    private const int NoneType = 1;
+
+    /// <summary>How much farther from SayIntentions' published point a stand of another type may be and
+    /// still rank ahead of a None stand: the point cannot tell two listings a metre apart.</summary>
+    private const double NoneTypeTieMetres = 1.0;
+
+    /// <summary>Whether the briefing may route to the stand at all — the pool the SayIntentions step
+    /// matches in.</summary>
+    private static bool IsRoutable(ParkingSpot s) => !NeverBriefedTypes.Contains(s.Type) && !s.IsDeiceArea;
+
+    /// <summary>Whether the stand may be the representative one: routable, and not of the None type.</summary>
+    private static bool IsRepresentativeCandidate(ParkingSpot s) => IsRoutable(s) && s.Type != NoneType;
 
     /// <summary>A category the representative choice can prefer: the word a note uses for it and the
     /// navdata types it holds.</summary>
@@ -67,21 +82,22 @@ public static class BriefingStandPicker
     private static readonly StandKind Gate = new("gate", "gate", new() { 9, 10, 11, 13, 14 });
     private static readonly StandKind Ramp = new("ramp", "ramp", new() { 2, 3, 4, 5, 12, 15 });
 
-    /// <summary>The stand for one leg, or null when no eligible stand connects to the taxiway network
-    /// (or there are none). A null carries no notes on purpose: no stand is briefed, so there is nothing
-    /// for a caveat to qualify, and the caller reports the network reason instead.</summary>
+    /// <summary>The stand for one leg, or null when neither SayIntentions' gate nor a representative stand
+    /// connects to the taxiway network (or there are no stands). A null carries no notes on purpose: no
+    /// stand is briefed, so there is nothing for a caveat to qualify, and the caller reports the network
+    /// reason instead.</summary>
     public static StandChoice? Pick(IReadOnlyList<ParkingSpot> spots, AircraftProfile aircraft, string? airlineIcao,
                                     SayIntentionsGateHint? siGate, Func<ParkingSpot, bool> hasGraphNode)
     {
         if (spots == null || spots.Count == 0) return null;
         var notes = new List<string>();
-        var eligible = spots.Where(IsEligible).ToList();
 
-        if (siGate != null && MatchSayIntentionsGate(spots, eligible, siGate, hasGraphNode, notes) is { } assigned)
+        if (siGate != null && MatchSayIntentionsGate(spots, siGate, hasGraphNode, notes) is { } assigned)
             return new StandChoice(assigned, StandChoiceSource.SayIntentions, notes);
 
         // Every narrowing below judges the stands the route can reach, so a category, fit or airline
         // whose only stands are off the network falls back instead of leaving the leg with no stand.
+        var eligible = spots.Where(IsRepresentativeCandidate).ToList();
         var reachable = eligible.Where(hasGraphNode).ToList();
         if (reachable.Count == 0) return null;
 
@@ -123,23 +139,24 @@ public static class BriefingStandPicker
     /// navdata lists its unnamed spots (the GA ramps) first — at CYEG "Spot 8" is a GA ramp 1.2 km from
     /// "Gate 8". So every exact match is collected (and only when there is none, every alias match) and
     /// the evidence chooses among them; list order alone would brief the ramp as the controller's gate.
-    /// Once the name has found SayIntentions' stand — even one that does not connect, or one of a type
-    /// the briefing never routes to — the step ends there: the position is not then used to hand the
-    /// label to a differently named neighbour.
+    /// The pool is every stand the briefing may route to, None-type stands included (see
+    /// <see cref="NoneType"/>). Once the name has found SayIntentions' stand — even one that does not
+    /// connect, or one of a type the briefing never routes to — the step ends there: the position is not
+    /// then used to hand the label to a differently named neighbour.
     /// </summary>
-    private static ParkingSpot? MatchSayIntentionsGate(IReadOnlyList<ParkingSpot> spots, List<ParkingSpot> eligible,
-                                                       SayIntentionsGateHint hint, Func<ParkingSpot, bool> hasGraphNode,
-                                                       List<string> notes)
+    private static ParkingSpot? MatchSayIntentionsGate(IReadOnlyList<ParkingSpot> spots, SayIntentionsGateHint hint,
+                                                       Func<ParkingSpot, bool> hasGraphNode, List<string> notes)
     {
         string assigned = $"SayIntentions assigned gate \"{hint.Label}\"";
+        var pool = spots.Where(IsRoutable).ToList();
         string wanted = SayIntentionsClearanceParser.NormalizeParkingName(hint.Label);
         if (wanted.Length > 0)
         {
             bool viaAlias = false;
-            var named = eligible.Where(s => SameName(IdentityLabel(s), wanted)).ToList();
+            var named = pool.Where(s => SameName(IdentityLabel(s), wanted)).ToList();
             if (named.Count == 0)
             {
-                named = eligible.Where(s => HasAlias(s, wanted)).ToList();
+                named = pool.Where(s => HasAlias(s, wanted)).ToList();
                 viaAlias = named.Count > 0;
             }
 
@@ -155,10 +172,9 @@ public static class BriefingStandPicker
                 return chosen;
             }
 
-            // Only a stand the briefing never routes to carries the name. Type 1 is navdata's UNKN as
-            // well as NONE — fs2024 has 362 UNKN stands and no NONE, jetway gates LEBB 101-106 among them
-            // — so "not found" would be untrue.
-            if (spots.Any(s => !IsEligible(s) && (SameName(IdentityLabel(s), wanted) || HasAlias(s, wanted))))
+            // Only a stand the briefing never routes to (Military Combat, Fuel, Vehicles, a de-ice pad)
+            // carries the name. It exists, so "not found" would be untrue.
+            if (spots.Any(s => !IsRoutable(s) && (SameName(IdentityLabel(s), wanted) || HasAlias(s, wanted))))
             {
                 notes.Add($"{assigned} was found, but only as a stand the briefing does not route to; using a representative stand instead");
                 return null;
@@ -167,15 +183,10 @@ public static class BriefingStandPicker
 
         if (hint.Position is GeoPoint p)
         {
-            var inReach = eligible
-                .Select(s => (Spot: s, Metres: MetresTo(s, p)))
-                .Where(c => c.Metres <= AcceptanceMetres(c.Spot))
-                .OrderBy(c => c.Metres)
-                .Select(c => c.Spot)
-                .ToList();
+            var inReach = pool.Where(s => MetresTo(s, p) <= AcceptanceMetres(s)).ToList();
             if (inReach.Count > 0)
             {
-                var chosen = FirstConnected(inReach, p, hasGraphNode);
+                var chosen = FirstConnected(ByEvidence(inReach, p), p, hasGraphNode);
                 if (chosen == null)
                 {
                     notes.Add($"{assigned} was found by position but does not connect to the taxiway network; using a representative stand instead");
@@ -195,19 +206,31 @@ public static class BriefingStandPicker
 
     private static bool HasAlias(ParkingSpot s, string wanted) => s.Aliases.Any(a => SameName(a, wanted));
 
-    /// <summary>Several stands answer to the name: nearest the published position first; with no position,
-    /// gates before any other type. OrderBy is stable, so list order breaks every tie.</summary>
-    private static List<ParkingSpot> ByEvidence(List<ParkingSpot> named, GeoPoint? position) =>
+    /// <summary>How the evidence ranks stands SayIntentions' label cannot tell apart when no position was
+    /// published: a gate, then any other type, then the None type.</summary>
+    private static int RankWithoutPosition(ParkingSpot s) => Gate.Has(s) ? 0 : s.Type == NoneType ? 2 : 1;
+
+    /// <summary>
+    /// Several stands answer to the name, or reach the published point: nearest that point first, except
+    /// that a None stand gives way to a stand of any other type no more than
+    /// <see cref="NoneTypeTieMetres"/> farther. Ordering by distance less that margin for every other type
+    /// states exactly this and stays a consistent ordering, which a pairwise "within a metre" test is not.
+    /// With no position, <see cref="RankWithoutPosition"/>. OrderBy is stable, so list order breaks every
+    /// remaining tie.
+    /// </summary>
+    private static List<ParkingSpot> ByEvidence(List<ParkingSpot> candidates, GeoPoint? position) =>
         (position is GeoPoint p
-            ? named.OrderBy(s => MetresTo(s, p))
-            : named.OrderBy(s => Gate.Has(s) ? 0 : 1)).ToList();
+            ? candidates.OrderBy(s => MetresTo(s, p) - (s.Type == NoneType ? 0.0 : NoneTypeTieMetres))
+                        .ThenBy(s => s.Type == NoneType ? 1 : 0)
+            : candidates.OrderBy(RankWithoutPosition)).ToList();
 
     /// <summary>
     /// The first stand in <paramref name="ordered"/> that connects to the taxiway network. A later stand
     /// is tried only when the evidence that ordered them cannot tell it from the first — with a published
-    /// position, its own acceptance also reaches that point (a stand listed twice); with none, it is the
-    /// same kind, gate or not, as the first. A stand the evidence ranked below the first is a DIFFERENT
-    /// stand, and briefing it as SayIntentions' gate is the failure this match exists to prevent.
+    /// position, its own acceptance also reaches that point (a stand listed twice); with none, it ranks
+    /// the same as the first (<see cref="RankWithoutPosition"/>). A stand the evidence ranked below the
+    /// first is a DIFFERENT stand, and briefing it as SayIntentions' gate is the failure this match
+    /// exists to prevent.
     /// </summary>
     private static ParkingSpot? FirstConnected(List<ParkingSpot> ordered, GeoPoint? position,
                                                Func<ParkingSpot, bool> hasGraphNode)
@@ -216,7 +239,9 @@ public static class BriefingStandPicker
         foreach (var s in ordered)
         {
             bool indistinguishable = ReferenceEquals(s, first) ||
-                (position is GeoPoint p ? MetresTo(s, p) <= AcceptanceMetres(s) : Gate.Has(s) == Gate.Has(first));
+                (position is GeoPoint p
+                    ? MetresTo(s, p) <= AcceptanceMetres(s)
+                    : RankWithoutPosition(s) == RankWithoutPosition(first));
             if (indistinguishable && hasGraphNode(s)) return s;
         }
         return null;
