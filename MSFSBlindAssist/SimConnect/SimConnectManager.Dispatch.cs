@@ -1226,6 +1226,14 @@ public partial class SimConnectManager
         // Store aircraft dimensions
         AircraftWingSpan = info.wingSpan;
 
+        // Capture the TITLE simvar BEFORE raising ConnectionStatusChanged: that event is
+        // dispatched synchronously on the UI thread and its MainForm handler reads
+        // CurrentAircraftTitle (the PMDG SDK broadcast check keys its options.ini lookup on
+        // it). Assigned after the event, the handler saw "" on first connect and the PREVIOUS
+        // aircraft's title on every later one. Also feeds the aircraft.cfg catalog fallback
+        // below. info.title is the [FLTSIM.N] title.
+        currentAircraftTitle = info.title?.Trim() ?? "";
+
         // Announce full aircraft title with ATC identification
         ConnectionStatusChanged?.Invoke(this, $"Connected to {info.title}{identification}");
         wasConnected = true; // Mark that we're now successfully connected
@@ -1239,10 +1247,6 @@ public partial class SimConnectManager
         // rotaries, etc.) only exist in the catalog after the cockpit model is loaded.
         // This is the earliest reliable moment to enumerate them.
         RequestEnumerateInputEvents();
-
-        // Capture the TITLE simvar so the aircraft.cfg catalog fallback (below) can map it to
-        // an ICAO when the ATC MODEL doesn't resolve. info.title is the [FLTSIM.N] title.
-        currentAircraftTitle = info.title?.Trim() ?? "";
 
         // Extract and publish the ICAO type designator so subscribers (e.g. docking guidance)
         // can look up per-aircraft door offsets from GSX gsx.cfg files.
