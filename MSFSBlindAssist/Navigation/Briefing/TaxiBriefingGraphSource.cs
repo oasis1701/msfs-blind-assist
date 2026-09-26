@@ -37,7 +37,9 @@ public static class TaxiBriefingGraphSource
             return (null, noNav + " and online taxi data is disabled in settings");
 
         var online = await augmenting.GetOnlineTaxiDataAsync(icao, ct).ConfigureAwait(false);
-        if (online == null) return (null, noNav + " and OpenStreetMap data is not yet available");
+        // Null for three causes this cannot tell apart — the fetch did not finish in time, the machine is
+        // offline, or OpenStreetMap has nothing for this airport — so the reason must not promise a retry.
+        if (online == null) return (null, noNav + " and OpenStreetMap data is not available right now");
 
         var osm = OsmPlanningGraph.Build(online, runways, starts, airport);
         return osm == null ? (null, noNav + " and OpenStreetMap has no named taxiways for it") : (osm, null);
