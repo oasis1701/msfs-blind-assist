@@ -23,8 +23,8 @@ public class RolloutToneModeTests
     [Fact]
     public void AboveFiftyKnots_IsSilent()
     {
-        Assert.Equal(RolloutToneMode.Silent, RolloutExitGate.SelectToneMode(50.1, 2232.0, 0.0, 0.0));
-        Assert.Equal(RolloutToneMode.Silent, RolloutExitGate.SelectToneMode(149.1, 100.0, 0.0, 0.0));
+        Assert.Equal(RolloutToneMode.Silent, RolloutExitGate.SelectToneMode(50.1, 2232.0, 0.0, 0.0, RolloutExitGate.TurnWindowFeet));
+        Assert.Equal(RolloutToneMode.Silent, RolloutExitGate.SelectToneMode(149.1, 100.0, 0.0, 0.0, RolloutExitGate.TurnWindowFeet));
     }
 
     // At or below 50 kt and inside the 300 ft arm distance the exit-bearing tone owns
@@ -32,8 +32,8 @@ public class RolloutToneModeTests
     [Fact]
     public void InsideArmDistance_IsExitBearing()
     {
-        Assert.Equal(RolloutToneMode.ExitBearing, RolloutExitGate.SelectToneMode(50.0, 300.0, 0.0, 0.0));
-        Assert.Equal(RolloutToneMode.ExitBearing, RolloutExitGate.SelectToneMode(19.7, 12.0, 0.0, 0.0));
+        Assert.Equal(RolloutToneMode.ExitBearing, RolloutExitGate.SelectToneMode(50.0, 300.0, 0.0, 0.0, RolloutExitGate.TurnWindowFeet));
+        Assert.Equal(RolloutToneMode.ExitBearing, RolloutExitGate.SelectToneMode(19.7, 12.0, 0.0, 0.0, RolloutExitGate.TurnWindowFeet));
     }
 
     // The gap this fix exists to fill: slowed down, but the exit is still far away, and
@@ -41,8 +41,8 @@ public class RolloutToneModeTests
     [Fact]
     public void BelowFiftyKnotsAndOutsideArmDistance_IsDriftCorrection()
     {
-        Assert.Equal(RolloutToneMode.DriftCorrection, RolloutExitGate.SelectToneMode(29.7, 2349.0, 0.0, 0.0));
-        Assert.Equal(RolloutToneMode.DriftCorrection, RolloutExitGate.SelectToneMode(50.0, 300.1, 0.0, 0.0));
+        Assert.Equal(RolloutToneMode.DriftCorrection, RolloutExitGate.SelectToneMode(29.7, 2349.0, 0.0, 0.0, RolloutExitGate.TurnWindowFeet));
+        Assert.Equal(RolloutToneMode.DriftCorrection, RolloutExitGate.SelectToneMode(50.0, 300.1, 0.0, 0.0, RolloutExitGate.TurnWindowFeet));
     }
 
     // KSEA regression: 19.7 kt, 2,232 ft to go — the exact frame the old handoff fired
@@ -50,7 +50,7 @@ public class RolloutToneModeTests
     [Fact]
     public void Ksea34L_AtTheOldHandoffFrame_IsDriftCorrection()
     {
-        Assert.Equal(RolloutToneMode.DriftCorrection, RolloutExitGate.SelectToneMode(19.7, 2232.0, 0.0, 0.0));
+        Assert.Equal(RolloutToneMode.DriftCorrection, RolloutExitGate.SelectToneMode(19.7, 2232.0, 0.0, 0.0, RolloutExitGate.TurnWindowFeet));
     }
 
     // A turn TOWARD the exit, inside TurnWindowFeet, with a known exit side: the tone
@@ -60,7 +60,7 @@ public class RolloutToneModeTests
     public void TurnTowardExit_InsideWindow_IsSilent()
     {
         Assert.Equal(RolloutToneMode.Silent,
-            RolloutExitGate.SelectToneMode(20.0, 900.0, 8.0, 13.6));
+            RolloutExitGate.SelectToneMode(20.0, 900.0, 8.0, 13.6, RolloutExitGate.TurnWindowFeet));
     }
 
     // The identical turn-toward-exit heading geometry, but OUTSIDE TurnWindowFeet — too
@@ -70,7 +70,7 @@ public class RolloutToneModeTests
     public void TurnTowardExit_OutsideWindow_StaysDriftCorrection()
     {
         Assert.Equal(RolloutToneMode.DriftCorrection,
-            RolloutExitGate.SelectToneMode(20.0, RolloutExitGate.TurnWindowFeet + 1.0, 8.0, 13.6));
+            RolloutExitGate.SelectToneMode(20.0, RolloutExitGate.TurnWindowFeet + 1.0, 8.0, 13.6, RolloutExitGate.TurnWindowFeet));
     }
 
     // The KSEA 34L incident geometry itself: 15.1° LEFT drift with the exit 13.6° to the
@@ -80,7 +80,7 @@ public class RolloutToneModeTests
     public void TurnAwayFromExit_InsideWindow_StaysDriftCorrection()
     {
         Assert.Equal(RolloutToneMode.DriftCorrection,
-            RolloutExitGate.SelectToneMode(19.7, 900.0, -15.1, 13.6));
+            RolloutExitGate.SelectToneMode(19.7, 900.0, -15.1, 13.6, RolloutExitGate.TurnWindowFeet));
     }
 
     // Same heading deviation and window as the toward-exit case, but the exit's side is
@@ -93,7 +93,7 @@ public class RolloutToneModeTests
     public void UnknownExitSide_InsideWindow_StaysDriftCorrection()
     {
         Assert.Equal(RolloutToneMode.DriftCorrection,
-            RolloutExitGate.SelectToneMode(20.0, 900.0, 8.0, 0.0));
+            RolloutExitGate.SelectToneMode(20.0, 900.0, 8.0, 0.0, RolloutExitGate.TurnWindowFeet));
     }
 
     // A sub-deadband deviation (below DriftToneSilentDeg, where the drift tone is already
@@ -104,6 +104,6 @@ public class RolloutToneModeTests
     public void SubDeadbandDeviation_InsideWindow_StaysDriftCorrection()
     {
         Assert.Equal(RolloutToneMode.DriftCorrection,
-            RolloutExitGate.SelectToneMode(20.0, 900.0, 1.5, 13.6));
+            RolloutExitGate.SelectToneMode(20.0, 900.0, 1.5, 13.6, RolloutExitGate.TurnWindowFeet));
     }
 }

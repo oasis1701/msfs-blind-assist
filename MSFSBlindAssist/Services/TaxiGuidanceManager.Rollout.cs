@@ -486,7 +486,8 @@ public partial class TaxiGuidanceManager
         // crab alignment, not a deliberate runway exit turn. Direction- and proximity-gated
         // since 2026-08: see Navigation/RolloutExitGate.IsExitTurnBegun.
         bool turnBegun = Navigation.RolloutExitGate.IsExitTurnBegun(
-            hdgDelta, groundSpeedKts, distToExitFeet, pastExit, exitRelBearingDeg);
+            hdgDelta, groundSpeedKts, distToExitFeet, pastExit, exitRelBearingDeg,
+            Navigation.RolloutExitGate.TurnWindowFeet);
         // Effectively stopped before reaching the exit — e.g. pilot braked
         // hard after an undershoot retarget left the exit 500+ ft away.
         // The atTaxiSpeed&&nearExit gate intentionally doesn't fire this far
@@ -1441,7 +1442,8 @@ public partial class TaxiGuidanceManager
         //   while the aircraft is on centreline and only deviates as the aircraft nears
         //   an off-axis junction — appropriate directional pan without false alarms.
         var toneMode = Navigation.RolloutExitGate.SelectToneMode(
-            groundSpeedKts, distToExitFeet, hdgDelta, exitRelBearingDeg);
+            groundSpeedKts, distToExitFeet, hdgDelta, exitRelBearingDeg,
+            Navigation.RolloutExitGate.TurnWindowFeet);
         if (toneMode != _rolloutToneMode)
         {
             // Start every mode from a clean filter so the pan is sharp and immediate rather
