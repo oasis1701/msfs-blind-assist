@@ -1,0 +1,1 @@
+After a missed or too-fast landing exit, guidance now finds every way off the runway still ahead, never sends you to an exit already behind you or to a taxiway beside the runway, and no longer says you missed an exit you have not reached.
