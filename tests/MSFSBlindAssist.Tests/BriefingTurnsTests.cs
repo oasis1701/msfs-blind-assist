@@ -94,6 +94,23 @@ public class BriefingTurnsTests
     }
 
     [Fact]
+    public void A_long_unnamed_gap_inside_one_taxiway_does_not_hide_the_next_turn()
+    {
+        // 150 m unnamed inside A is part of A, not a connector: A north, then left onto B, is still a measured turn.
+        var route = Route((0, 0), ("A", 0, 300), ("", 0, 450), ("A", 0, 700), ("B", -300, 700));
+        Assert.Equal(new[] { "A", "B" }, RouteTaxiwaySequence.DistinctConsecutive(route));
+        Assert.Equal(new string?[] { null, "left" }, BriefingTurns.TaxiwayTurns(route));
+    }
+
+    [Fact]
+    public void A_long_lead_in_before_the_first_taxiway_does_not_hide_the_next_turn()
+    {
+        // 150 m of unnamed stand lead-in before A comes before the first run, not between two runs.
+        var route = Route((0, 0), ("", 0, 150), ("A", 300, 150), ("B", 300, 450));
+        Assert.Equal(new string?[] { null, "left" }, BriefingTurns.TaxiwayTurns(route));
+    }
+
+    [Fact]
     public void A_turn_back_on_itself_is_sharp()
         => Assert.Equal(new string?[] { null, "sharp right" },
             BriefingTurns.TaxiwayTurns(Route((0, 0), ("A", 0, 300), ("B", 150, 40.19))));

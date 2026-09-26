@@ -47,6 +47,8 @@ public class RouteDescriptionPromptTests
         string prompt = GeminiService.GetRouteDescriptionPrompt("x");
         Assert.Contains("with the turn at each change of taxiway and into the stand wherever the block gives one", prompt);
         Assert.Contains("repeat distances, sides and turn directions exactly as given", prompt);
+        // The long-unnamed-stretch rule leaves some taxiways with no turn word; this line stops the AI inventing one.
+        Assert.Contains("for a taxiway, give none", prompt);
     }
 
     [Fact]
