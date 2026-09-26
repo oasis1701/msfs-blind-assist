@@ -1,0 +1,1 @@
+On the FlyByWire A32NX, the accessible MCDU (Shift+M) now reads the screen and sends key presses straight from the aircraft's own display instead of through SimBridge. SimBridge no longer needs to be running for the MCDU to work, and a hung SimBridge can no longer freeze it mid-flight; SimBridge is still used for printouts, and as a fallback if the display cannot be reached.
