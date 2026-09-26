@@ -197,7 +197,8 @@ briefing.
   - `  Taxiways from the exit: AA, left onto E, right onto C, then right into the stand (3.1 km)`
 
   A taxiway whose turn is null is printed by name alone; a straight change reads "straight ahead onto E".
-- The `taxi_briefing` summary line gains `turns=[-,left,right,slight right]` and `standTurn=`.
+- The `taxi_briefing` summary line gains `turns=[-,left,right,slight right]` and `standTurn=`, plus a
+  trailing `notes="…"` (pipe-joined) whenever the leg carries any.
 - The prompt's section 7a adds: give the turn at each taxiway change and into the stand, repeating the
   directions exactly as given.
 
