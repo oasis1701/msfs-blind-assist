@@ -960,35 +960,22 @@ Cover the following topics, using descriptive section headings separated by blan
    - Skip routine or minor NOTAMs (e.g. crane notifications, wildlife warnings) unless they affect runway operations
 
 7. TAXI OUT AND TAXI IN
-   The flight plan data ends with a TAXI ROUTES block computed by the pilot's own simulator
-   scenery. For each of the two legs (taxi out at the departure airport, taxi in at the arrival
-   airport) do two things, in this order:
-   a) Describe the computed route in prose: the stand it starts from (say plainly when the block
-      calls it a representative stand rather than an assignment), the taxiways in order
-      with the turn at each change of taxiway and into the stand wherever the block gives one,
-      every hold-short point and which runway it protects, and for the arrival which side to leave
-      the runway (left or right), the exit taxiway and its distance from the threshold, and the
-      fallback exit if that one is missed.
-      Use ONLY the taxiway, exit and stand names given in the block for this part, and
-      repeat distances, sides and turn directions exactly as given; where the block gives no turn
-      for a taxiway, give none. If the block says a leg is unavailable, say so in one sentence.
-      Give every distance in this section, the real-world part included, in the unit the block's ""Distance unit"" line names,
-      and never mix units.
-      When a leg's note says SayIntentions assigned a different runway from the flight plan, say so
-      here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
-   b) Then, under the heading ""Real-world practice"", answer from your own knowledge of the
-      airport the question below, taking the bracketed items (the airport, the runway, the stand
-      or terminal, and the aircraft type) from that leg's lines of the TAXI ROUTES block (the
-      runway there may be the one SayIntentions assigned rather than the flight plan's):
+   The flight plan data ends with a TAXI ROUTES block worked out from the pilot's own simulator scenery.
+   Write this section as ONE short paragraph for the taxi out at the departure airport and ONE short paragraph for the taxi in at the arrival airport, in the voice of real-world operations.
+   For each leg, answer the question below from that leg's lines of the TAXI ROUTES block, taking the bracketed items (the airport, the runway, the stand or terminal, and the aircraft type) from them (the runway there may be the one SayIntentions assigned rather than the flight plan's):
       ""{RealWorldTaxiQuestion}""
-      That question is an instruction to you, not text for the pilot: write only your answer under
-      the heading, and never write the question itself into the briefing, as shown here or with
-      the items filled in. Answer it for the departure (from the stand to the runway) and for the
-      arrival (from the runway, via the expected exit, to the terminal or gate). Mention wingspan
-      or aircraft-type restrictions on taxiways and stands where you know of them. Where your route
-      differs from the computed one, say so and say which is which; never present your own route
-      as the computed one. When the block says no ground data exists for an airport, this
-      real-world route is the answer for that leg and should be given in full.
+   That question is an instruction to you, not text for the pilot: write only your answer, and never write the question itself into the briefing, as shown here or with the items filled in.
+   The route comes from the block only: the stand, the taxiways in order with the turn at each change of taxiway and into the stand wherever the block gives one, every hold-short point and the runway it protects, and for the arrival which side to leave the runway (left or right), the exit taxiway and its distance from the threshold, the next exit if that one is missed, every runway crossed, and the gate.
+   Use ONLY the taxiway, exit and stand names given in the block, and repeat distances, sides and turn directions exactly as given; where the block gives no turn for a taxiway, give none.
+   Give the total taxi distance for each leg.
+   For each leg, say in a short phrase that this is the expected route on the pilot's scenery and that SayIntentions or ATC will give the actual taxi clearance.
+   From your own knowledge you may add wingspan or aircraft-type restrictions, current operational information such as a NOTAM closing a taxiway, and usual practice, but only where it concerns a taxiway, runway or stand the block names; and at most one sentence per leg saying that controllers usually route differently there.
+   Any taxiway you name must appear in that leg's lines, including its ""Taxiway names at"" list; never give a full alternative route.
+   Keep it short: do not list every exit, do not describe where the data came from, and mention a note from the block only when it changes what the pilot does or hears: a runway SayIntentions assigned that differs from the flight plan, a representative stand (say it is typical, not assigned), a SayIntentions gate the scenery lists under another name or at a different position, a taxiway width or stand size note.
+   When a leg's route comes from OpenStreetMap, say so in a few words; taxi guidance cannot use it.
+   If the block says a leg is unavailable, say so in a few words and give that leg's usual route from your own knowledge, saying it is general knowledge and not checked against the scenery; where the leg has a ""Taxiway names at"" list, name only taxiways from it.
+   Give every distance in this section in the unit the block's ""Distance unit"" line names, and never mix units.
+   When a leg's note says SayIntentions assigned a different runway from the flight plan, say so here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
 
 IMPORTANT GUIDELINES:
 - Write in plain text with no markdown formatting
