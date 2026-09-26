@@ -2606,12 +2606,12 @@ public partial class TaxiGuidanceManager
     /// </summary>
     private string ComposeExitTurnPhrase(double lat, double lon, double headingTrue)
     {
-        // Direction = bearing-from-aircraft-to-exit minus aircraft heading.
-        // Sign tells us turn left vs right; magnitude is unused here.
+        // Direction = the side the exit leaves on (RolloutExitGate.TurnDirectionWord); the bearing from the
+        // aircraft to the exit's node decides only when that side is unknown.
         double bearingToExit = NavigationCalculator.CalculateBearing(
             lat, lon, _rolloutExit!.Latitude, _rolloutExit.Longitude);
-        double turnDelta = NormalizeAngle(bearingToExit - headingTrue);
-        string dir = turnDelta < 0 ? "left" : "right";
+        string dir = Navigation.RolloutExitGate.TurnDirectionWord(
+            _rolloutExit.ExitSide, NormalizeAngle(bearingToExit - headingTrue));
         // < 20°: chord taxiways and shallow curved-RET entries need a small
         // initial input, not a committed turn — "gentle" prevents over-rotation.
         // ≥ 20°: genuine RETs and normal exits warrant a deliberate turn input.

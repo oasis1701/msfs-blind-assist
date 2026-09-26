@@ -477,6 +477,76 @@ public class ExitBranchTests
     }
 
     [Fact]
+    public void A_node_whose_own_arm_is_blocked_is_never_measured_on_the_other_side()
+    {
+        // Review V3-c: "X" crosses at J(1000,0) and runs 60 m out on the LEFT; on the RIGHT, J-C(995,20)-
+        // D(995,30) is "X" and D-E(995,70) is "Y". C's own arm stops at D (the name changes), and measured
+        // from the junction without a side it took the left arm's angle, bearing and side "Left" for a node
+        // 20 m right of the centreline. Its own side has no way off on its own taxiway: unmeasured, so the
+        // exit keeps the producer's own reading (C->D, right).
+        var g = Build(Seg(1000, 0, 1000, 60, "X"), Seg(1000, 0, 995, -20, "X"),
+            Seg(995, -20, 995, -30, "X"), Seg(995, -30, 995, -70, "Y"));
+        var c = ExitBranch.Analyze(g, Axis, NodeAt(g, 995, -20), null, "X");
+        Assert.False(c.IsMeasured);
+    }
+
+    [Fact]
+    public void A_node_already_off_the_pavement_is_never_read_as_leaving_backward()
+    {
+        // 0D7 27 (fs2024, nodes 1-10): a taxi line drawn along a 7.6 m half-width runway humps out to a
+        // hold-short node 15.9 m right, where a parking lead-in leaves at 91°. The walk in chose the
+        // hump's downfield side by 0.5 m of lateral and read 178° back from there - a turnaround, which
+        // cost the runway its only exit. Nothing of its own clears the runway: unmeasured, as before.
+        var axis = new RunwayAxis(0.0, 0.0, 90.0, 7.6);
+        var g = Build(
+            Seg(287.6, -2.3, 292.2, -5.2), Seg(292.2, -5.2, 312.1, -5.5), Seg(312.1, -5.5, 319.2, -10.0),
+            Seg(319.2, -10.0, 323.1, -15.9), Seg(323.1, -15.9, 328.1, -9.5), Seg(328.1, -9.5, 335.2, -5.6),
+            Seg(335.2, -5.6, 353.1, -4.9), Seg(353.1, -4.9, 359.5, -1.5),
+            new TaxiPath
+            {
+                Type = "P", Width = 98.0, Name = "",
+                StartLat = -15.9 / M_PER_DEG, StartLon = 323.1 / M_PER_DEG,
+                EndLat = -39.7 / M_PER_DEG, EndLon = 322.7 / M_PER_DEG,
+            });
+        var b = ExitBranch.Analyze(g, axis, NodeAt(g, 323.1, -15.9), null, "");
+        Assert.False(b.IsMeasured);
+    }
+
+    [Fact]
+    public void A_branch_off_the_pavement_never_walks_back_over_the_runway()
+    {
+        // GMMN 17L A (fs2024, nodes 660-699, 275, 274): the lead line leaves LEFT and meets taxiway A 27 m out,
+        // where A carries on left to 150 m AND crosses back over the runway to the right. The crossing was
+        // 4.8 m shorter, so the branch cleared on the RIGHT - its clear node, corridor node and bearing, and
+        // "turn right" for an exit that turns off left. North = LEFT in this frame.
+        var g = Build(
+            Seg(1000, 0, 1065, 0, "A"), Seg(1065, 0, 1077, 7, "A"), Seg(1077, 7, 1085, 27, "A"),
+            Seg(1085, 27, 1086, 160, "A"),
+            Seg(1085, 27, 1086, -3, "A"), Seg(1086, -3, 1085, -100));
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0), null, "A");
+        Assert.True(b.IsMeasured);
+        Assert.False(b.IsTurnaround);
+        Assert.True(g.Nodes[b.ClearNodeId].Latitude > 0);      // cleared on its own, left, side
+        Assert.True(g.Nodes[b.CorridorNodeId].Latitude > 0);
+    }
+
+    [Fact]
+    public void The_corridor_node_lies_along_the_clear_nodes_own_arm()
+    {
+        // KACK 24 A (fs2024, nodes 238-172, 291): the exit cleared on its LEFT arm while the first node past
+        // the corridor line was on a RIGHT arm reached sooner, and the bearing's chord to it said "Right" for
+        // an exit to the left. North = LEFT in this frame.
+        var g = Build(
+            Seg(1000, 0, 1075, 17, "A"), Seg(1075, 17, 1094, 36, "A"), Seg(1094, 36, 1180, 39, "A"),
+            Seg(1180, 39, 1190, 50, "A"),
+            Seg(1000, 0, 1100, -10, "A"), Seg(1100, -10, 1110, -55, "A"));
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0), null, "A");
+        Assert.True(b.IsMeasured);
+        Assert.True(g.Nodes[b.ClearNodeId].Latitude > 0);
+        Assert.True(g.Nodes[b.CorridorNodeId].Latitude > 0);   // on the clear node's own, left, arm
+    }
+
+    [Fact]
     public void A_short_last_stretch_is_read_with_the_stretch_before_it()
     {
         // A 90° exit whose clear node sits 2.5 m past a jog that, read alone, turns 99° (longer than

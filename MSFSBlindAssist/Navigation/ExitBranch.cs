@@ -139,11 +139,40 @@ public static class ExitBranch
         // so it must be reported unmeasured rather than silently measured from wherever the walk gave up.
         if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres)
             return new LandingExitBranch(junction, -1, -1, 0.0, 0.0, inward);
-        var branch = MeasureFrom(graph, axis, inward, junction == candidateNodeId ? seedNeighborId : null, nameFilter);
+        // Decided once, for this measurement and the junction fallback alike (LeavingBackwardShortOfClear).
+        bool exitOnPavement = Math.Abs(Lateral(graph, axis, candidateNodeId)) <= axis.HalfWidthMetres;
+        var branch = MeasureFrom(graph, axis, inward, junction == candidateNodeId ? seedNeighborId : null,
+            nameFilter, exitOnPavement);
         if (branch.IsMeasured || junction == candidateNodeId) return branch;
         // Nothing leaves the runway from the candidate itself — it sits on a lead-in line beside the
-        // junction. Measure the junction's own branch instead.
-        return MeasureFrom(graph, axis, new List<int> { junction }, null, nameFilter);
+        // junction. Measure the junction's own branch instead: on the candidate's own side of the runway
+        // whenever the candidate has an arm of its own there (OwnSideToKeep).
+        return MeasureFrom(graph, axis, new List<int> { junction }, null, nameFilter, exitOnPavement,
+            OwnSideToKeep(graph, axis, candidateNodeId, nameFilter));
+    }
+
+    /// <summary>
+    /// The side (+1 right, -1 left) the junction fallback must stay on: the candidate's own, when it stands
+    /// outside the centreline band and its own taxiway (<paramref name="nameFilter"/>) carries on further out
+    /// on that side — an arm of its own that never cleared (a name change, a dead end, an arm leaving
+    /// backward). Measured on the other side, it took a different arm's angle, bearing and side: WSSS 20L
+    /// MY6's node 21.7 m RIGHT of the centreline, on the crossing's backward half, was listed "Left" with the
+    /// forward half's jog while "turn now" steered at the node on the right (review V3-c; 97 such exits over
+    /// the fs2024 database). 0 — either side — for a candidate in the band or at the start of a lead-in line
+    /// (nothing of its own further out), where measuring the branch it joins is right (ENGM 01R B4).
+    /// </summary>
+    private static int OwnSideToKeep(TaxiGraph graph, RunwayAxis axis, int candidateNodeId, string? nameFilter)
+    {
+        double lateral = Lateral(graph, axis, candidateNodeId);
+        if (Math.Abs(lateral) <= CenterlineBandMetres) return 0;
+        int side = Math.Sign(lateral);
+        foreach (var e in Walkable(graph, candidateNodeId))
+        {
+            if (!MatchesNameFilter(e, nameFilter)) continue;
+            double next = Lateral(graph, axis, e.ToNodeId);
+            if (Math.Sign(next) == side && Math.Abs(next) >= Math.Abs(lateral) + InwardStepMinMetres) return side;
+        }
+        return 0;
     }
 
     /// <summary>
@@ -308,48 +337,115 @@ public static class ExitBranch
     }
 
     private static LandingExitBranch MeasureFrom(
-        TaxiGraph graph, RunwayAxis axis, List<int> inward, int? seedNeighborId, string? nameFilter)
+        TaxiGraph graph, RunwayAxis axis, List<int> inward, int? seedNeighborId, string? nameFilter,
+        bool exitOnPavement, int requiredSide = 0)
     {
         int junction = inward[0];
         int candidate = inward[^1];
-        var (clearNode, corridorNode, parents) =
-            SearchOutward(graph, axis, candidate, new HashSet<int>(inward), seedNeighborId, nameFilter);
+        var (clearNode, corridorNode, edgeNode, parents) =
+            SearchOutward(graph, axis, candidate, new HashSet<int>(inward), seedNeighborId, nameFilter, requiredSide);
 
+        // The path always reaches the candidate, so the exit's own node is on it. When the walk in has
+        // already crossed the clear line (a hold-short node just outside it), the branch is measured to
+        // the first node beyond it and the path runs on to the candidate; the review's V3-a shape lost
+        // the candidate off the end of a path cut at the clear node, and its bearing was read from the
+        // lead-in start instead - the lead line's chord, 38.7 degrees off the runway for a 90-degree exit.
+        var path = new List<int>(inward);
         int clearIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.ClearLateralMetres);
-        List<int> path;
-        if (clearIdx >= 0)
+        if (clearIdx < 0)
         {
-            path = inward.GetRange(0, clearIdx + 1);
-        }
-        else
-        {
-            if (clearNode < 0) return new LandingExitBranch(junction, -1, corridorNode, 0.0, 0.0, inward);
-            path = new List<int>(inward);
+            if (clearNode < 0)
+                return exitOnPavement
+                    ? LeavingBackwardShortOfClear(graph, axis, inward, edgeNode, corridorNode, parents)
+                    : new LandingExitBranch(junction, -1, corridorNode, 0.0, 0.0, inward);
             path.AddRange(ChainFrom(parents, candidate, clearNode));
+            clearIdx = path.Count - 1;
         }
-        return new LandingExitBranch(junction, path[^1], corridorNode,
-            SharpestTurn(graph, axis, path, 0, path.Count - 1), TurnToLeave(graph, axis, path), path);
+        return new LandingExitBranch(junction, path[clearIdx], corridorNode,
+            SharpestTurn(graph, axis, path, 0, clearIdx), TurnToLeave(graph, axis, path), path);
+    }
+
+    // A branch whose own taxiway ends short of the clear line has no clear node and is unmeasured - except
+    // one that has already LEFT THE PAVEMENT turning back. A turnaround is judged where the branch leaves the
+    // pavement (TurnToLeaveDeg), never at the clear line, so it is one whether or not its own name reaches
+    // the clear line: WSSS 20L MY6's backward half leaves the pavement 168 degrees back and becomes A6/A7 a
+    // metre later. Left unmeasured, its nodes kept the producer's own reading - a coin toss between an
+    // 11.5-degree forward edge and an 11.4-degree backward one - which listed a node 12.5 m RIGHT of the
+    // centreline as MY6's forward exit, where MY6 turns off to the LEFT; "turn now" steered at that node.
+    // Reported to its first node beyond the half-width, which stands in for the clear node. Only while the
+    // exit's own node is still ON the pavement (Analyze decides it), so the way off is the outward search's,
+    // shortest first: from a node already off it, the walk in and the junction's way back out are picks
+    // between neighbours - 0D7 27 (fs2024) took a hump's downfield side by 0.5 m and read 178° back, and the
+    // junction's only way off ran up the same hump; 172 runway directions lost their only usable exit so.
+    private static LandingExitBranch LeavingBackwardShortOfClear(
+        TaxiGraph graph, RunwayAxis axis, List<int> inward, int edgeNode, int corridorNode, Dictionary<int, int> parents)
+    {
+        int junction = inward[0];
+        var unmeasured = new LandingExitBranch(junction, -1, corridorNode, 0.0, 0.0, inward);
+        if (edgeNode < 0) return unmeasured;
+        var path = new List<int>(inward);
+        path.AddRange(ChainFrom(parents, inward[^1], edgeNode));
+        int edgeIdx = path.Count - 1;
+        double leave = SharpestTurn(graph, axis, path, 0, edgeIdx);
+        if (leave <= RolloutExitGate.TurnaroundAboveDeg) return unmeasured;
+        return new LandingExitBranch(junction, path[edgeIdx], corridorNode, leave, leave, path);
     }
 
     // Dijkstra by path length from `from`, never entering `excluded` (the inward path) and - when
-    // `nameFilter` is set - following only edges that are unnamed or carry that name. Returns the first
-    // node beyond the clear boundary and the first beyond the corridor boundary (-1 when none in reach).
-    private static (int Clear, int Corridor, Dictionary<int, int> Parents) SearchOutward(
-        TaxiGraph graph, RunwayAxis axis, int from, HashSet<int> excluded, int? seedNeighborId, string? nameFilter)
+    // `nameFilter` is set - following only edges that are unnamed or carry that name, and - when
+    // `requiredSide` is set - never leaving the centreline band on the other side of the runway; from off
+    // the pavement, never back into the band or across to the runway's other side. Returns the
+    // first node beyond the clear boundary, the first beyond the corridor boundary and the first beyond the
+    // runway half-width (-1 when none in reach).
+    private static (int Clear, int Corridor, int Edge, Dictionary<int, int> Parents) SearchOutward(
+        TaxiGraph graph, RunwayAxis axis, int from, HashSet<int> excluded, int? seedNeighborId, string? nameFilter,
+        int requiredSide = 0)
     {
         var parents = new Dictionary<int, int>();
         var best = new Dictionary<int, double> { [from] = 0.0 };
         var queue = new PriorityQueue<int, double>();
-        int clear = -1, corridor = -1;
+        int clear = -1, corridor = -1, edge = -1;
 
+        // Once off the pavement, a branch never comes back to the centreline or crosses to the runway's other
+        // side - that is a taxiway crossing the runway, walked back over it. GMMN 17L A's crossing was 4.8 m
+        // shorter than its own left arm, so the exit took its clear node, corridor and bearing from the RIGHT
+        // and was told "turn right" for a turn-off to the left (66 branches over the fs2024 database left the
+        // pavement and came back onto it before clearing, 56 clearing on the far side). The side is carried
+        // along each path, so a wiggle back inside the edge cannot reopen the way across. On a strip narrower
+        // than the band (0IN9 09: 2.1 m half-width) a path has left only once it is past the band too.
+        var leftOn = new Dictionary<int, int>();
+        double leftBeyond = Math.Max(axis.HalfWidthMetres, CenterlineBandMetres);
+        int SideLeftOn(int at)
+        {
+            int inherited = leftOn.GetValueOrDefault(at);
+            if (inherited != 0) return inherited;
+            double l = Lateral(graph, axis, at);
+            return Math.Abs(l) > leftBeyond ? Math.Sign(l) : 0;
+        }
+        bool ReturnsToRunway(int side, int to)
+        {
+            if (side == 0) return false;
+            double there = Lateral(graph, axis, to);
+            return Math.Abs(there) <= CenterlineBandMetres || Math.Sign(there) != side;
+        }
+
+        // The corridor node lies further along the CLEAR node's own path, never on another arm the search
+        // happened to reach first: KACK 24 A cleared on its left arm while the first node past the corridor
+        // line was on a right-hand one, and the bearing's chord to it said "Right" for an exit to the left.
+        var throughClear = new HashSet<int>();
+
+        int fromSide = SideLeftOn(from);
         foreach (var e in Walkable(graph, from))
         {
             if (excluded.Contains(e.ToNodeId)) continue;
             if (!MatchesNameFilter(e, nameFilter)) continue;
             if (seedNeighborId.HasValue && e.ToNodeId != seedNeighborId.Value) continue;
+            if (!OnSide(graph, axis, e.ToNodeId, requiredSide)) continue;
+            if (ReturnsToRunway(fromSide, e.ToNodeId)) continue;
             if (best.TryGetValue(e.ToNodeId, out double known) && known <= e.DistanceMeters) continue;
             best[e.ToNodeId] = e.DistanceMeters;
             parents[e.ToNodeId] = from;
+            leftOn[e.ToNodeId] = fromSide;
             queue.Enqueue(e.ToNodeId, e.DistanceMeters);
         }
 
@@ -358,22 +454,65 @@ public static class ExitBranch
         {
             if (!done.Add(node)) continue;
             double lateral = Math.Abs(Lateral(graph, axis, node));
-            if (clear < 0 && lateral > axis.ClearLateralMetres) clear = node;
-            if (corridor < 0 && lateral > axis.CorridorLateralMetres) corridor = node;
+            if (edge < 0 && lateral > axis.HalfWidthMetres) edge = node;
+            if (clear < 0 && lateral > axis.ClearLateralMetres) { clear = node; throughClear.Add(node); }
+            if (corridor < 0 && lateral > axis.CorridorLateralMetres && throughClear.Contains(node)) corridor = node;
             if (clear >= 0 && corridor >= 0) break;
             if (dist >= OutwardMaxMetres) continue;
+            int side = SideLeftOn(node);
+            bool onClearPath = throughClear.Contains(node);
             foreach (var e in Walkable(graph, node))
             {
                 if (excluded.Contains(e.ToNodeId) || done.Contains(e.ToNodeId)) continue;
                 if (!MatchesNameFilter(e, nameFilter)) continue;
+                if (!OnSide(graph, axis, e.ToNodeId, requiredSide)) continue;
+                if (ReturnsToRunway(side, e.ToNodeId)) continue;
                 double next = dist + e.DistanceMeters;
                 if (best.TryGetValue(e.ToNodeId, out double known) && known <= next) continue;
                 best[e.ToNodeId] = next;
                 parents[e.ToNodeId] = node;
+                leftOn[e.ToNodeId] = side;
+                if (onClearPath) throughClear.Add(e.ToNodeId); else throughClear.Remove(e.ToNodeId);
                 queue.Enqueue(e.ToNodeId, next);
             }
         }
-        return (clear, corridor, parents);
+        return (clear, corridor, edge, parents);
+    }
+
+    // True when `side` is 0 (either), or the node lies inside the centreline band or on that side.
+    private static bool OnSide(TaxiGraph graph, RunwayAxis axis, int nodeId, int side)
+    {
+        if (side == 0) return true;
+        double lateral = Lateral(graph, axis, nodeId);
+        return Math.Abs(lateral) <= CenterlineBandMetres || Math.Sign(lateral) == side;
+    }
+
+    /// <summary>
+    /// The path indices a heading is read between AT <c>path[index]</c>: onward from it until at least
+    /// <see cref="MinStrokeMetres"/> of path lies between them (or the path ends), or - <paramref name="into"/>
+    /// - back from it by the same.
+    /// </summary>
+    internal static (int From, int To) StrokeAt(TaxiGraph graph, IReadOnlyList<int> path, int index, bool into)
+    {
+        if (into)
+        {
+            int k = index;
+            double back = 0.0;
+            while (k > 0 && back < MinStrokeMetres)
+            {
+                back += NodeDistance(graph, path[k - 1], path[k]);
+                k--;
+            }
+            return (k, index);
+        }
+        int j = index;
+        double on = 0.0;
+        while (j < path.Count - 1 && on < MinStrokeMetres)
+        {
+            on += NodeDistance(graph, path[j], path[j + 1]);
+            j++;
+        }
+        return (index, j);
     }
 
     // The nodes after `from` up to and including `to`, following Dijkstra parents.

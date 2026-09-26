@@ -655,6 +655,22 @@ public static class RolloutExitGate
     }
 
     /// <summary>
+    /// The direction word "turn now" speaks: the side the exit LEAVES the runway on — its
+    /// <c>LandingExit.ExitSide</c>, from the bearing its branch is measured by, which is also the side the tone
+    /// steers to once the cue has been given — never the bearing from the aircraft to the exit's NODE. That
+    /// bearing's sign is noise for a node on the centreline (most geometry-found exits: a metre of drift or a
+    /// degree of crab flips it) and wrong for a lead-in start across it (ENGM 01R B4, fs2024: a node 8.9 m right
+    /// of the centreline on a taxiway that leaves left — "Turn right now" while the tone panned left). The
+    /// bearing to the node decides only when the side is unknown.
+    /// </summary>
+    /// <param name="bearingToExitRelativeDeg">Bearing from the aircraft to the exit's node minus the aircraft's
+    /// heading, signed (+ right).</param>
+    public static string TurnDirectionWord(string? exitSide, double bearingToExitRelativeDeg)
+        => string.Equals(exitSide, "Left", StringComparison.OrdinalIgnoreCase) ? "left"
+           : string.Equals(exitSide, "Right", StringComparison.OrdinalIgnoreCase) ? "right"
+           : bearingToExitRelativeDeg < 0 ? "left" : "right";
+
+    /// <summary>
     /// May the tone steer to <paramref name="exitBearingTrue"/>? Only a KNOWN bearing (0 is the unknown
     /// sentinel) within <see cref="TurnaroundAboveDeg"/> of the runway heading. KMEM M6 (2026-09-26) had
     /// 127° true on a 359° runway — the tone demanded a hairpin at 49 kt.

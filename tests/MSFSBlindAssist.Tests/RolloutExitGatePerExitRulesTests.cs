@@ -221,4 +221,25 @@ public class RolloutExitGatePerExitRulesTests
         Assert.Equal(RolloutToneMode.Silent,
             RolloutExitGate.SelectToneMode(60.0, 200.0, 0.0, 30.0, 500.0, tooFastForExit: false));
     }
+
+    // ---- TurnDirectionWord ("turn now") ---------------------------------------------------
+
+    [Fact]
+    public void Turn_now_names_the_side_the_exit_leaves_on_not_the_side_its_node_sits()
+    {
+        // ENGM 01R B4 (fs2024): the node is a lead-in start 8.9 m RIGHT of the centreline, on a taxiway that
+        // crosses and leaves LEFT; 150 ft before it the node bears about 11° right.
+        Assert.Equal("left", RolloutExitGate.TurnDirectionWord("Left", 11.0));
+        // A centreline junction: a metre of drift or a degree of crab decides the sign of the bearing to the
+        // node, never the side the exit goes.
+        Assert.Equal("right", RolloutExitGate.TurnDirectionWord("Right", -0.4));
+    }
+
+    [Fact]
+    public void With_no_known_side_turn_now_follows_the_bearing_to_the_node()
+    {
+        Assert.Equal("left", RolloutExitGate.TurnDirectionWord("", -6.0));
+        Assert.Equal("right", RolloutExitGate.TurnDirectionWord(null, 6.0));
+    }
 }
+

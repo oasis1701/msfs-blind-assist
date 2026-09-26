@@ -18,7 +18,7 @@ public partial class TaxiGraph
     /// <para>A FORWARD exit keeps its own node - NodeId, position and distances unchanged, for every
     /// producer - and takes the branch's angle (its sharpest turn to clear, capped at 90°), its type
     /// (classified where the exit stands) and its bearing and side, measured where the exit stands
-    /// (<see cref="BranchExitBearing"/> from <see cref="EdgeIndexAt"/>; the producer's bearing can be a
+    /// (<see cref="BranchExitBearing"/> at <see cref="PlaceOf"/>; the producer's bearing can be a
     /// lead line's or a hold-short node's BACKWARD edge, and after "turn now" the rollout steers a
     /// Normal exit by its bearing). It is never moved to its junction: that is often its lead-in start,
     /// up to the 150 m of lead line R1 follows before the turn-off (worldwide sweep, 2026-09-26: KMIA
@@ -56,31 +56,31 @@ public partial class TaxiGraph
         double alongFt = axis.Project(exit.Latitude, exit.Longitude).AlongMetres / 0.3048;
         exit.ExitAngleDegrees = angle;
         exit.ExitType = ClassifyExit(angle, alongFt, rwy.Length);
-        exit.ExitBearingTrue = BranchExitBearing(branch, rwy.Heading, EdgeIndexAt(branch, exit.NodeId, axis));
+        exit.ExitBearingTrue = BranchExitBearing(branch, rwy.Heading, PlaceOf(branch, exit.NodeId, axis));
         exit.ExitSide = ExitSideFor(exit.ExitBearingTrue, rwy.Heading);
         return exit;
     }
 
-    // A kept exit's bearing is measured where the exit STANDS: from its own node's index in the
-    // branch's path, clamped to the path's last edge (a node at the clear line is the path's last node);
-    // 0, the junction, when the node is not on the path. From the junction - often a lead-in start up to
-    // 150 m behind the node - the edge onward is the lead line's own, so the bearing collapsed to the
-    // lead line's shallow chord (review, 2026-09-26: a 90° exit read -31°, KMEM M8 +43° for about +54°),
-    // and after "turn now" the rollout steers a Normal exit by it. A node already OFF the runway pavement
-    // was reached turning off it, so it is measured by the edge INTO it: the edge onward can run back
-    // along a parallel taxiway (OI19 11: a hold-short node reached turning 91° right read 180°, and its
-    // spoken side flipped to Left).
-    private int EdgeIndexAt(LandingExitBranch branch, int nodeId, RunwayAxis axis)
+    // Where a kept exit STANDS on its branch - its own node's index in the path, which always reaches the
+    // candidate (ExitBranch.Analyze) - and which way its heading is read there: onward from it while it is
+    // on the runway pavement, INTO it once it is off it. From the junction instead - often a lead-in start up
+    // to 150 m behind the node - the stretch onward is the lead line's own, and the bearing collapsed to the
+    // lead line's shallow chord (review, 2026-09-26: a 90° exit read -31°, KMEM M8 +43° for about +54°), and
+    // after "turn now" the rollout steers a Normal exit by it. A node already OFF the pavement was reached
+    // turning off it: the stretch onward can run back along a parallel taxiway (OI19 11: a hold-short node
+    // reached turning 91° right read 180°, and its spoken side flipped to Left). A node that is not on the
+    // path at all - the junction fallback measured the branch its lead-in line joins - stands where that
+    // branch leaves the centreline (DivergenceIndex), never at the junction.
+    private (int Index, bool Into) PlaceOf(LandingExitBranch branch, int nodeId, RunwayAxis axis)
     {
         for (int i = 0; i < branch.Path.Count; i++)
         {
             if (branch.Path[i] != nodeId) continue;
             var n = Nodes[nodeId];
-            if (i > 0 && Math.Abs(axis.Project(n.Latitude, n.Longitude).LateralMetres) > axis.HalfWidthMetres)
-                return i - 1;
-            return Math.Min(i, Math.Max(0, branch.Path.Count - 2));
+            bool offPavement = Math.Abs(axis.Project(n.Latitude, n.Longitude).LateralMetres) > axis.HalfWidthMetres;
+            return (i, i > 0 && (offPavement || i == branch.Path.Count - 1));
         }
-        return 0;
+        return (DivergenceIndex(branch, axis), false);
     }
 
     /// <summary>
@@ -106,7 +106,7 @@ public partial class TaxiGraph
         if (distFromThresholdFt <= minDistanceFromThresholdFeet) return null;
 
         double angle = Math.Min(branch.TurnToClearDeg, RolloutExitGate.MaxUsableExitTurnDeg);
-        double bearing = BranchExitBearing(branch, rwy.Heading, at);
+        double bearing = BranchExitBearing(branch, rwy.Heading, (at, false));
         return new LandingExit
         {
             NodeId = node.NodeId,
@@ -145,20 +145,25 @@ public partial class TaxiGraph
         return 0;
     }
 
-    // ExitBearingTrue by the existing rule, evaluated at path index `from` (the junction by default, a
-    // sibling's divergence node for a swap): the branch's edge onward from there, replaced by the chord
-    // from there to the corridor node when that edge is under 20° and the chord is wider and forward
-    // (≤ NORMAL_MAX_DEG, 110°, the producers' own apron-override guard). Due north is stored as 360 so
-    // 0 keeps meaning "unknown".
-    private double BranchExitBearing(LandingExitBranch branch, double rwyHeadingTrue, int from = 0)
+    // ExitBearingTrue by the existing rule, evaluated where the exit stands (PlaceOf; a sibling's divergence
+    // node for a swap): the branch's heading over at least ExitBranch.MinStrokeMetres there - never a
+    // single 2-4 m jog, which steered the tone 53-81 degrees off a ~20-degree exit after "turn now" (KPIT
+    // 28L F5, WSSS 20L MY6) - replaced by the chord from there to the corridor node when that heading is
+    // under 20° and the chord is wider and forward (≤ NORMAL_MAX_DEG, 110°, the producers' own apron-override
+    // guard). A branch with no corridor node within reach aims at its clear node instead, which every
+    // measured branch has: KSFB 36 C runs 67 m 0.1° right of the runway before turning off left, and with
+    // nothing to aim at its side was that 0.1°. Due north is stored as 360 so 0 keeps meaning "unknown".
+    private double BranchExitBearing(LandingExitBranch branch, double rwyHeadingTrue, (int Index, bool Into) place)
     {
-        if (from < 0 || from + 1 >= branch.Path.Count) return 0.0;
+        var (from, to) = ExitBranch.StrokeAt(this, branch.Path, place.Index, place.Into);
+        if (from == to) return 0.0;
         var a = Nodes[branch.Path[from]];
-        var b = Nodes[branch.Path[from + 1]];
+        var b = Nodes[branch.Path[to]];
         double first = NavigationCalculator.CalculateBearing(a.Latitude, a.Longitude, b.Latitude, b.Longitude);
         double firstRel = Math.Abs(NormalizeAngle(first - rwyHeadingTrue));
         double bearing = first;
-        if (firstRel < 20.0 && branch.CorridorNodeId > 0 && Nodes.TryGetValue(branch.CorridorNodeId, out var k))
+        int aimAt = branch.CorridorNodeId > 0 ? branch.CorridorNodeId : branch.ClearNodeId;
+        if (firstRel < 20.0 && aimAt > 0 && Nodes.TryGetValue(aimAt, out var k))
         {
             double chord = NavigationCalculator.CalculateBearing(a.Latitude, a.Longitude, k.Latitude, k.Longitude);
             double chordRel = Math.Abs(NormalizeAngle(chord - rwyHeadingTrue));
