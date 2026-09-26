@@ -946,8 +946,9 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutTooFastNoExit = false;
     // Set when such a declined exit is overshot with no exit left and the runway-end countdown begins
     // without "Missed last exit" (the pilot already heard "too fast to turn"). The countdown's first frame
-    // then speaks its own status once ("Runway end in …") unless the countdown itself spoke on that frame,
-    // so a pilot still rolling mid-runway is not left in silence until the 1,500 ft milestone.
+    // then speaks its own status once ("Runway end in …"), QUEUED behind that warning rather than over it,
+    // unless the countdown itself spoke on that frame, so a pilot still rolling mid-runway is not left in
+    // silence until the 1,500 ft milestone.
     private bool _rolloutCountdownStatusOwed = false;
     // Which steering-tone behaviour the last rollout frame used. A change resets the
     // heading-error smoother so a DriftCorrection residual never leaks into the sharp
@@ -1022,9 +1023,10 @@ public partial class TaxiGuidanceManager : IDisposable
     // LandingRollout so UpdatePosition continues to feed the per-frame
     // loop. Ends by POSITION, never on any stop or turn alone
     // (Navigation.RunwayEndCountdownGate): "Runway vacated" once laterally
-    // clear; backtracking when stopped or turning within the 500 ft / 150 m
-    // runway-end milestone, or after turning around anywhere; one stopped
-    // notice for a stop mid-runway.
+    // clear; backtracking when STOPPED within RolloutExitGate.NearRunwayEndFeet
+    // (500 ft — never on a turn there, where a turn-off and a turnaround look
+    // the same), or after turning around anywhere; one stopped notice for a
+    // stop mid-runway.
     private bool _rolloutNoExitMode;
     private bool _rolloutEnd1500Announced;
     private bool _rolloutEnd500Announced;

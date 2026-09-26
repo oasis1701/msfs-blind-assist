@@ -2274,11 +2274,21 @@ public partial class TaxiGuidanceManager
         // The status owed when a too-fast declined exit was overshot with no exit left
         // (_rolloutCountdownStatusOwed): once, on the countdown's first frame, and only when nothing above
         // spoke — rolling short of the first milestone, the countdown would otherwise say nothing at all.
+        // QUEUED, never interrupting: the overshoot fires at the node 0.7-3.75 s after "Taxiway X, too fast
+        // to turn. Slow down." (4.39 s) started, and an interrupting status cut that warning off, possibly
+        // before "too fast to turn" was heard. Queued, it follows the warning. The interrupting callouts —
+        // the distance milestones above, the stopped notice and the end-of-runway / turn-around sentence —
+        // outrank it and carry the same information when they come due first. Recorded for Ctrl+Y exactly
+        // as AnnounceInstruction records an instruction.
         if (_rolloutCountdownStatusOwed)
         {
             _rolloutCountdownStatusOwed = false;
             if (!milestoneSpoke)
-                AnnounceInstruction(ComposeRunwayEndStatus(distToEndFt, stopped: false));
+            {
+                string status = ComposeRunwayEndStatus(distToEndFt, stopped: false);
+                _lastInstruction = status;
+                _announcer.Announce(status);
+            }
         }
     }
 
@@ -2657,8 +2667,9 @@ public partial class TaxiGuidanceManager
 
     /// <summary>
     /// Enters <see cref="TaxiGuidanceState.BacktrackingOnRunway"/> from the runway-end countdown:
-    /// at the runway end (<paramref name="atRunwayEnd"/>: stopped or turning inside the last
-    /// milestone) or after turning around mid-runway, as decided by
+    /// at the runway end (<paramref name="atRunwayEnd"/>: stopped, or turned around, within
+    /// RolloutExitGate.NearRunwayEndFeet — never merely turning there) or after turning around
+    /// mid-runway, as decided by
     /// <see cref="Navigation.RunwayEndCountdownGate"/>. Announces the MAGNETIC backtrack heading —
     /// saying "End of runway" only when that is true — and begins steering-tone guidance on the
     /// true reciprocal runway heading.
