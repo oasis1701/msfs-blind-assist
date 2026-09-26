@@ -170,7 +170,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         try
         {
             bool ok = await DispatchCoreAsync(io, key, target).ConfigureAwait(false);
-            if (!ok) Log.Debug("MD11 FO", $"{key} -> {target}: not done");
+            Log.Debug("MD11 FO", $"{key} -> {target}: {(ok ? "done" : "not done")}");
             return ok;
         }
         catch (Exception ex)

@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer;
 
@@ -173,6 +174,7 @@ public class FlowManager<TExec, TState>
             if (step.SkipCondition != null && _state.IsAvailable && step.SkipCondition(_state))
             {
                 _announcer.Announce($"Already set: {step.AnnounceText}");
+                Log.Debug("FO", $"{flow.Id}.{step.Id}: already set");
                 StepCompleted?.Invoke(flow, step, i);
                 if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
                     _checklist.MarkComplete(step.CompletesChecklistItemId);
@@ -193,6 +195,7 @@ public class FlowManager<TExec, TState>
                 switch (step.FailurePolicy)
                 {
                     case FlowStepFailurePolicy.Stop:
+                        Log.Debug("FO", $"{flow.Id}.{step.Id}: failed, flow stopped");
                         FlowFailed?.Invoke(flow, $"Step '{step.Label}' failed");
                         _announcer.AnnounceImmediate($"{flow.Name} flow stopped. Unable to complete: {step.AnnounceText}");
                         return;
@@ -201,6 +204,7 @@ public class FlowManager<TExec, TState>
                         if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
                             _unfinishedChecklistItemIds.Add(step.CompletesChecklistItemId);
                         StepSkipped?.Invoke(flow, step, i);
+                        Log.Debug("FO", $"{flow.Id}.{step.Id}: failed, skipped");
                         _announcer.Announce($"Skipping: {step.AnnounceText}");
                         break;
 
@@ -223,6 +227,7 @@ public class FlowManager<TExec, TState>
             }
             else
             {
+                Log.Debug("FO", $"{flow.Id}.{step.Id}: done");
                 StepCompleted?.Invoke(flow, step, i);
 
                 // Auto-tick linked checklist item
