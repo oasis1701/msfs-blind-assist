@@ -862,6 +862,8 @@ public partial class MainForm : Form
             // A takeoff without Takeoff Assist or a landing without an exit plan sets none of the
             // states above, so the pavement is asked directly.
             RunwayProbe = (icao, lat, lon) => taxiGuidanceManager.IsOnRunwayPavement(icao, lat, lon),
+            // One excursion, one phrasing: the landing roll's "Off pavement." stands for it.
+            PavementExcursionAnnounced = () => taxiGuidanceManager.OffPavementAnnounced,
             // Runway rows only, never a taxi graph; prepared on the UI thread so it carries the
             // provider's database generation.
             PrepareRunwayProbeWarmUp = taxiGuidanceManager.PrepareRunwayShapeWarmUp,

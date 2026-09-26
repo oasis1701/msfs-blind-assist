@@ -1327,6 +1327,22 @@ public partial class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// True while the landing roll's off-pavement alert has told the pilot about the current excursion
+    /// (<see cref="Navigation.OffPavementAlert.HasSpokenThisExcursion"/>); false once it re-arms and after
+    /// guidance ends. The surface callout reads it so one excursion never gets two phrasings.
+    /// </summary>
+    public bool OffPavementAnnounced
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _offPavementAlert.HasSpokenThisExcursion;
+            }
+        }
+    }
+
+    /// <summary>
     /// True while landing-exit guidance runs: the rollout, runway-end countdown included, or taxi steering on
     /// the landing-exit route (<see cref="LandingExitGoAround.Arms"/>). MainForm arms the go-around check on a
     /// liftoff in this state.

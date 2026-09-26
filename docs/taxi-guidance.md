@@ -2000,6 +2000,18 @@ Queued, not immediate: `AnnounceImmediate` discards whatever is being spoken, an
 this codebase has been bitten repeatedly by one callout cutting another off
 mid-word.
 
+**One excursion, one phrasing.** On a landing roll and exit the rollout has its own
+"Off pavement." alert (see "Off-pavement alert"), immediate and repeating, judged
+from the navdata pavement map. With this callout switched on, a run into the grass
+there was announced twice in two phrasings. While that alert has told the pilot
+about the current excursion (`TaxiGuidanceManager.OffPavementAnnounced`, from
+`OffPavementAlert.HasSpokenThisExcursion`), the monitor withholds its own
+"Off the pavement, on …" sentence (`SurroundingsSample.LeavesPavement`) and logs
+it; the gate still records the surface, so "Back on pavement." completes the pair.
+Nothing else is withheld: where the rollout alert has not spoken (the wheels are
+within its map margin, or no landing guidance runs) this callout speaks as before,
+and the safety alert is never held back for it.
+
 **Measured and REJECTED beside it (2026-09-22): uphill/downhill callouts.**
 `GROUND_ALTITUDE` is an excellent sensor — 9x10^-10 m of drift over 10 s at rest,
 and it resolved a 0.19 % apron drainage camber cleanly — but airports are graded
@@ -3201,6 +3213,10 @@ right of the centreline, and nothing said so. Now *"Off pavement."* is spoken.
   would make it cry wolf), and not in route-less `Taxiing`, normal taxi, lineup or a hold. The alert
   state carries across the rollout-to-exit handoff, so the handoff never restarts the onset; every
   rollout entry and `StopGuidance` reset it.
+- **With the opt-in surface callout** (PR #230, "Off the pavement, on grass."): once this alert has
+  spoken for an excursion that callout withholds its own "Off the pavement" sentence, so the pilot
+  hears one phrasing, and its "Back on pavement." still marks the return (see "Surface-change
+  callout").
 - **How it speaks.** Through `_announcer.AnnounceImmediate` directly — NOT `AnnounceInstruction` — so
   Ctrl+Y still replays the last guidance instruction, including one the alert has just interrupted.
   The phrase names NO direction: the steering tone is the only direction authority, and a spoken

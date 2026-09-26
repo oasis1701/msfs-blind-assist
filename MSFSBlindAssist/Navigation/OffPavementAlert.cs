@@ -54,6 +54,14 @@ public sealed class OffPavementAlert
         return true;
     }
 
+    /// <summary>
+    /// True from the moment <see cref="Phrase"/> is spoken until the alert re-arms
+    /// (<see cref="RearmOnPavementSeconds"/> back on pavement): the pilot has been told about THIS excursion.
+    /// The opt-in surface callout (PR #230, <c>AirportSurroundingsMonitor</c>) reads it, so one excursion never
+    /// gets two phrasings - "Off pavement." and then "Off the pavement, on grass."
+    /// </summary>
+    public bool HasSpokenThisExcursion => _lastSpoken != DateTime.MinValue;
+
     public void Reset()
     {
         _offSince = DateTime.MinValue;

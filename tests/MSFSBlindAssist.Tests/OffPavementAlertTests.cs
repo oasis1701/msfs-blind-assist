@@ -21,6 +21,21 @@ public class OffPavementAlertTests
     }
 
     [Fact]
+    public void It_knows_it_has_told_the_pilot_until_it_rearms()
+    {
+        var a = new OffPavementAlert();
+        Assert.False(a.HasSpokenThisExcursion);
+        a.Update(true, 45, At(0.0));
+        Assert.False(a.HasSpokenThisExcursion);           // off, not yet said
+        Assert.True(a.Update(true, 45, At(1.0)));
+        Assert.True(a.HasSpokenThisExcursion);
+        a.Update(false, 45, At(2.0));
+        Assert.True(a.HasSpokenThisExcursion);            // back on, not yet re-armed
+        a.Update(false, 45, At(4.0));
+        Assert.False(a.HasSpokenThisExcursion);           // 2 s on pavement: re-armed
+    }
+
+    [Fact]
     public void Stopped_in_the_grass_is_not_spoken_until_moving_again()
     {
         var a = new OffPavementAlert();
