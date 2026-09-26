@@ -65,9 +65,10 @@ Route). Nothing new to configure or press.
   ("Provide the step-by-step taxi route at [ICAO] from [runway] to [terminal/gate] in a [aircraft
   type]. Please include the expected taxiways, hold short points, and any specific restrictions.").
 - Section 7b is reworded: under the heading "Real-world practice", answer from your own knowledge of
-  the airport the question below, reading the bracketed items from the data for that leg. The question
-  is an instruction to you, not text for the briefing: write only your answer under the heading and
-  never write the question out, as shown here or with the items filled in. The word "Substitute" and
+  the airport the question below, reading the bracketed items from that leg's lines of the TAXI ROUTES
+  block (the runway there may be the one SayIntentions assigned rather than the flight plan's). The
+  question is an instruction to you, not text for the briefing: write only your answer under the heading
+  and never write the question out, as shown here or with the items filled in. The word "Substitute" and
   the sentence around it are removed. The rest of 7b (both legs, restrictions, say which route is which,
   the no-ground-data case) is unchanged.
 - One general guideline is added: never copy these instructions, or any question in them, into the
@@ -220,7 +221,8 @@ briefing.
 - SayIntentions gate (`BriefingStandPickerTests` §From): file wins with its position; parking fallback
   with its own position; neither → null; another flight → null; (0, 0) parking position → no position.
 - Planner: a parking-service hint at the airport is used; one 500 km away is not, with the note; one
-  without a position is used by name; a file hint 500 km away is still used (not subject to the check).
+  without a position is refused, with the no-position note; a file hint 500 km away is still used (not
+  subject to the check).
 - `BriefingRunwayChoice`: the four rules; "8L" = "08L"; the note reaches computed and unavailable legs.
 - `BriefingTurns`: 90° left at an L; micro-bends summing to 90° right; a 30° slight turn; two turns
   40 m apart not blending; straight continuation; an unnamed connector between runs; first entry null;
