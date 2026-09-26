@@ -323,6 +323,21 @@ public class TaxiBriefingPlannerTests
         Assert.Empty(TaxiBriefingPlanner.NarrowTaxiways(route, AircraftSizeClass.Resolve("ZZZZ", "", null)));   // unknown letter → no minimum
     }
 
+    [Fact]
+    public void A_taxiway_that_reads_as_the_minimum_at_the_block_s_precision_is_not_narrower_than_it()
+    {
+        // 82 ft is 24.99 m: the most common taxiway width in navdata (62 % of fs2024 taxiway rows). It prints as
+        // "25.0 m", the code F minimum, so an A380 must never hear "25.0 m in the navdata, below the 25.0 m code F
+        // minimum" — on every such taxiway of its route. A width clearly below the minimum is still named.
+        var route = RouteWithHold(null, null);
+        route.Segments[0].TaxiwayName = "M"; route.Segments[0].PathWidth = 82.0;   // 24.99 m
+        route.Segments[1].TaxiwayName = "K"; route.Segments[1].PathWidth = 60.0;   // 18.29 m
+
+        var note = Assert.Single(TaxiBriefingPlanner.NarrowTaxiways(route, A388));
+        Assert.Equal("K", note.Taxiway);
+        Assert.Equal(18.3, note.WidthMetres, 1);
+    }
+
     // ── departure-runway holds, the current-position endpoint, runway identity ───────────────
 
     [Fact]

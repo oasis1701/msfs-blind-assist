@@ -183,8 +183,16 @@ public static partial class TaxiBriefingPlanner
         return holds;
     }
 
-    /// <summary>Advisory: taxiways on the route whose navdata width is below the code letter's Annex 14
-    /// minimum. Width 0 (unknown; every OpenStreetMap edge) never produces a note.</summary>
+    /// <summary>
+    /// Advisory: taxiways on the route whose navdata width is below the code letter's Annex 14
+    /// minimum. Width 0 (unknown; every OpenStreetMap edge) never produces a note.
+    ///
+    /// <para>Judged at the block's own precision (<see cref="WidthPrecisionMetres"/>): a width that
+    /// prints as the minimum is not below it. The most common taxiway width in navdata is 82 ft,
+    /// 24.99 m (62 % of fs2024 taxiway rows, 65 % of fs2020's), and compared raw it put
+    /// "24.99 m" — printed "25.0 m" — below the 25.0 m code F minimum on almost every taxiway of an
+    /// A380's route.</para>
+    /// </summary>
     internal static List<NarrowTaxiwayNote> NarrowTaxiways(TaxiRoute route, AircraftProfile aircraft)
     {
         var result = new List<NarrowTaxiwayNote>();
@@ -195,10 +203,13 @@ public static partial class TaxiBriefingPlanner
                      .GroupBy(s => s.TaxiwayName, StringComparer.OrdinalIgnoreCase))
         {
             double widthM = group.Min(s => s.PathWidth) * 0.3048;
-            if (widthM < min) result.Add(new NarrowTaxiwayNote(group.Key, widthM, min));
+            if (widthM < min - WidthPrecisionMetres / 2.0) result.Add(new NarrowTaxiwayNote(group.Key, widthM, min));
         }
         return result;
     }
+
+    /// <summary>The precision the block states a taxiway width to ("24.9 m").</summary>
+    private const double WidthPrecisionMetres = 0.1;
 
     /// <summary>One runway pavement: the same designator (<see cref="RunwayIdsMatch"/>) or its reciprocal.</summary>
     internal static bool SameRunway(string a, string b) =>
