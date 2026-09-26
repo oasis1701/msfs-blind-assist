@@ -941,6 +941,14 @@ public static class RolloutExitGate
     /// failed to reach, so a candidate within <see cref="EarlyVacateMaxPassedFeet"/> of a
     /// known exit sharing its name is dropped and the known one kept.</para>
     ///
+    /// <para>Except a known TURNAROUND (turning more than <see cref="MaxUsableExitTurnDeg"/>): it never
+    /// covers a forward candidate - the rule <c>GetLandingExits</c> keeps for its own coverage. Every
+    /// picker skips the turnaround, so dropping the forward exit beside it left the pilot with neither:
+    /// after "Taxiway B, too fast to turn." the runway-end countdown instead of the C still ahead. The
+    /// rescue scan keeps no turnaround without a forward sibling, so the forward exit it found there is a
+    /// different way off. Measured over every runway direction in fs2024 (2026-09-26), missing each
+    /// forward exit in turn: an exit is gained on UBGO 28 and KBKD 04, and none is lost or changed.</para>
+    ///
     /// <para>Everything downstream of the retarget - the fall-forward, the undershoot scan,
     /// the early-vacate matcher - reads this one list and assumes nearest-first ordering.</para>
     /// </summary>
@@ -958,10 +966,12 @@ public static class RolloutExitGate
             {
                 if (r == null) continue;
                 bool duplicate = false;
+                bool rescuedForward = r.ExitAngleDegrees <= MaxUsableExitTurnDeg;
                 foreach (var e in merged)
                 {
                     if (!string.Equals(e.TaxiwayName, r.TaxiwayName, StringComparison.OrdinalIgnoreCase))
                         continue;
+                    if (rescuedForward && e.ExitAngleDegrees > MaxUsableExitTurnDeg) continue;
                     if (Math.Abs(e.DistanceFromThresholdFeet - r.DistanceFromThresholdFeet)
                         <= EarlyVacateMaxPassedFeet)
                     { duplicate = true; break; }

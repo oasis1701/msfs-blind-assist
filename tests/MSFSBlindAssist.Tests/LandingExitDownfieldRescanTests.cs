@@ -220,6 +220,58 @@ public class LandingExitDownfieldRescanTests
     }
 
     [Fact]
+    public void Rescue_scan_never_offers_a_node_on_a_parallel_taxiway_beyond_the_pavement()
+    {
+        // S36 15 (fs2024): a 40 ft runway (half-width 6.1 m, corridor 21.1 m) with parallel A 20.9 m out,
+        // inside the corridor; here A bends away past the runway end. The corridor walk from any node on
+        // the straight stretch reaches the bend, and the scan offered the node as a 0.2-degree "high-speed
+        // exit" - turn-now pointing the pilot across the grass at a taxiway no connector joins there.
+        var runway = new Runway
+        {
+            RunwayID = "09", StartLat = 0.0, StartLon = 0.0, Heading = 90.0,
+            Length = 3005.0, Width = 40.0, ThresholdOffset = 0.0,
+        };
+        const double lateralM = 20.9;
+        double[] alongM = { 400.0, 500.0, 600.0, 700.0, 800.0, 905.0 };   // the bend is past the runway end
+        var paths = new List<TaxiPath>();
+        for (int i = 0; i + 1 < alongM.Length; i++)
+            paths.Add(new TaxiPath
+            {
+                StartLat = lateralM * DEG_PER_M, StartLon = alongM[i] * DEG_PER_M,
+                EndLat = lateralM * DEG_PER_M, EndLon = alongM[i + 1] * DEG_PER_M,
+                Name = "A",
+            });
+        paths.Add(new TaxiPath
+        {
+            StartLat = lateralM * DEG_PER_M, StartLon = 905.0 * DEG_PER_M,
+            EndLat = 60.0 * DEG_PER_M, EndLon = 925.0 * DEG_PER_M,
+            Name = "A",
+        });
+        var graph = TaxiGraph.Build(paths, new List<ParkingSpot>(), new List<StartPosition>());
+
+        var found = graph.FindDownfieldExits(runway, afterDistanceFromThresholdFeet: 1000.0);
+
+        Assert.Empty(found);
+    }
+
+    [Theory]
+    // S36 15 node 105: parallel A, 20.9 m out on a 6.1 m half-width, both edges within 0.2 degrees of the axis.
+    [InlineData(20.9, 6.1, 0.2, false)]
+    // 83FL 30 node 22: parallel A 22.2 m out on 8.5 m, its steepest edge 3.1 degrees.
+    [InlineData(22.2, 8.5, 3.1, false)]
+    // KBKD 04 node 44: on the pavement (3.7 m on 7.2 m) - always a candidate.
+    [InlineData(3.7, 7.2, 0.0, true)]
+    // KENV 26 node 338: taxiway B stopped 6.8 m beyond the pavement edge, leaving at 73 degrees.
+    [InlineData(29.7, 22.9, 73.2, true)]
+    // KSRQ 32 node 601: a fork just beyond the pavement, both arms leaving at about 76 degrees.
+    [InlineData(24.0, 22.9, 76.1, true)]
+    public void A_node_beyond_the_pavement_is_a_rescue_candidate_only_off_the_axis(
+        double absLateralM, double halfWidthM, double steepestEdgeOffAxisDeg, bool expected)
+    {
+        Assert.Equal(expected, TaxiGraph.IsRescueCandidateSite(absLateralM, halfWidthM, steepestEdgeOffAxisDeg));
+    }
+
+    [Fact]
     public void Rescue_scan_stops_at_the_runway_end()
     {
         // A turnoff at the very end of the pavement is a backtrack in disguise, and the
