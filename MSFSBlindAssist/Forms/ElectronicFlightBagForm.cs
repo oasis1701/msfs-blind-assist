@@ -872,25 +872,27 @@ public partial class ElectronicFlightBagForm : Form
                 return;
             }
 
+            var plan = _flightPlanManager.CurrentFlightPlan;
             _announcer.Announce("Generating route description, please wait");
             describeRouteButton.Enabled = false;
-            UpdateStatus("Generating route description...");
 
-            // Resolve the AI provider fresh on each briefing. The EFB form is REUSED across opens
-            // (MainForm keeps one instance to preserve flight-plan data), so a cached provider would
-            // keep calling whichever backend was active when the form was first created — ignoring a
-            // later provider switch in Settings. Display/scene reads already resolve per-call; match that.
             // The taxi section: computed from the pilot's own scenery for THIS press and appended to the
             // flight data for this AI call only — the stored ExtractedFlightData stays pure SimBrief,
             // since the facts change when a runway is edited or the aircraft moves. Never blocks the
             // briefing: every failure renders as an "unavailable" line inside the block.
             UpdateStatus("Computing taxi routes...");
-            string taxiBlock = await BuildTaxiRoutesBlockAsync();
+            string taxiBlock = await BuildTaxiRoutesBlockAsync(plan);
+            if (IsDisposed) return;
             UpdateStatus("Generating route description...");
-            string flightData = _flightPlanManager.CurrentFlightPlan.ExtractedFlightData + "\n\n" + taxiBlock;
+            string flightData = plan.ExtractedFlightData + "\n\n" + taxiBlock;
 
+            // Resolve the AI provider fresh on each briefing. The EFB form is REUSED across opens
+            // (MainForm keeps one instance to preserve flight-plan data), so a cached provider would
+            // keep calling whichever backend was active when the form was first created — ignoring a
+            // later provider switch in Settings. Display/scene reads already resolve per-call; match that.
             var aiProvider = AiProviderFactory.Create();
             string description = await aiProvider.DescribeRouteAsync(flightData);
+            if (IsDisposed) return;
 
             routeDescriptionTextBox.Text = description.Replace("\r\n", "\n").Replace("\n", "\r\n");
             routeDescriptionTextBox.Visible = true;
@@ -918,9 +920,8 @@ public partial class ElectronicFlightBagForm : Form
 
     private const int OwnPositionTimeoutMs = 1500;
 
-    private async Task<string> BuildTaxiRoutesBlockAsync()
+    private async Task<string> BuildTaxiRoutesBlockAsync(FlightPlan plan)
     {
-        var plan = _flightPlanManager.CurrentFlightPlan;
         var aircraft = AircraftSizeClass.Resolve(plan.AircraftTypeIcao, plan.AircraftName, plan.AircraftMaxPassengers);
         try
         {
