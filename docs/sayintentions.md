@@ -523,7 +523,9 @@ arrival must fall back to `getParking`, as `GetAssignedStatusAsync` does. The ro
 (docs/gemini.md, "Taxi routes in the route briefing"). What `getParking` returned is now logged at Debug
 (`getParking: name='…' lat=… lon=… heading=…`); before, only the request was, and nothing could say which stand it had
 named. SAPI's documentation does not say whether `getParking` is the arrival gate or the current parking, so the
-briefing refuses a parking-service gate whose position is not at the arrival airport.
+briefing refuses a parking-service gate whose position is not at the arrival airport, and refuses one with
+no position at all as well — nothing can confirm that one is at the arrival airport either (owner decision,
+2026-09-26).
 
 ### Second capture: KBOS, on the ground, no flight plan
 
