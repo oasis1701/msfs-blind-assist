@@ -31,9 +31,27 @@ public static class TaxiBriefingRenderer
         _ => "",
     };
 
-    public static string FormatDistance(double metres) => metres < 1000
+    /// <summary>Metres under a kilometre, else kilometres to one decimal. The switch is at 999.5 m, where whole metres
+    /// would round up to "1000 m".</summary>
+    public static string FormatDistance(double metres) => metres < 999.5
         ? $"{Math.Round(metres).ToString("0", CultureInfo.InvariantCulture)} m"
         : $"{(metres / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)} km";
+
+    /// <summary>What the block calls a taxiway or exit that has no name — LandingExit.ToString()'s own word.</summary>
+    public const string Unnamed = "(unnamed)";
+
+    /// <summary>An exit's taxiway name, or <see cref="Unnamed"/> — never a blank.</summary>
+    public static string ExitName(LandingExit exit) =>
+        string.IsNullOrEmpty(exit.TaxiwayName) ? Unnamed : exit.TaxiwayName;
+
+    /// <summary>
+    /// An exit's type in the block's words. "End" is GetLandingExits' class for an exit in the last 15 % of the runway
+    /// OR one turning more than 110°, and a bare "end" read as the former only.
+    /// </summary>
+    public static string ExitTypeText(LandingExit exit) =>
+        string.Equals(exit.ExitType, "End", StringComparison.OrdinalIgnoreCase)
+            ? "end-of-runway or sharp-angle"
+            : exit.ExitType.ToLowerInvariant();
 
     private static string AircraftLine(AircraftProfile a)
     {
@@ -70,7 +88,8 @@ public static class TaxiBriefingRenderer
             lines.Add($"TAXI IN at {leg.Icao}: taxi route unavailable — {leg.Unavailable}");
             if (leg.Exit != null) lines.Add(ExitLine(leg.Exit, aircraft));
             if (leg.EndpointDescription.Length > 0) lines.Add($"  Stand: {leg.EndpointDescription}");
-            lines.Add(ExitsListLine(leg));
+            // Only a search that ran can have found none (no database, a timeout or an unknown runway ran none).
+            if (leg.ExitsSearched) lines.Add(ExitsListLine(leg));
         }
         else
         {
@@ -108,12 +127,12 @@ public static class TaxiBriefingRenderer
     {
         var e = choice.Exit;
         var sb = new StringBuilder();
-        sb.Append($"  Expected exit: taxiway {e.TaxiwayName}, {e.ExitType.ToLowerInvariant()}, {SideUpper(e.ExitSide)}, {Feet(e.DistanceFromThresholdFeet)} ft from the threshold.");
+        sb.Append($"  Expected exit: taxiway {ExitName(e)}, {ExitTypeText(e)}, {SideUpper(e.ExitSide)}, {Feet(e.DistanceFromThresholdFeet)} ft from the threshold.");
         // The exit if missed is the next one on the SAME side at least NextExitMinSeparationFeet further along
         // (BriefingExitPicker), so "none" means none of those — never that no later exit exists at all.
         string minimum = Feet(BriefingExitPicker.NextExitMinSeparationFeet);
         sb.Append(choice.NextExit is { } n
-            ? $" Next exit if missed: {n.TaxiwayName}, {SideLower(n.ExitSide)}, {Feet(n.DistanceFromThresholdFeet)} ft"
+            ? $" Next exit if missed: {ExitName(n)}, {SideLower(n.ExitSide)}, {Feet(n.DistanceFromThresholdFeet)} ft"
             : string.IsNullOrEmpty(e.ExitSide)
                 ? $" No later exit is mapped at least {minimum} ft further along."
                 : $" No later exit on the same side is mapped at least {minimum} ft further along.");
@@ -131,8 +150,8 @@ public static class TaxiBriefingRenderer
         if (setAside.Count == 0)
             return $" This runway is short for this aircraft: no exit is comfortably reachable at {kt} kt; the last exit is briefed.";
         string names = setAside.Count == 1
-            ? setAside[0].TaxiwayName
-            : string.Join(", ", setAside.Take(setAside.Count - 1).Select(x => x.TaxiwayName)) + " and " + setAside[^1].TaxiwayName;
+            ? ExitName(setAside[0])
+            : string.Join(", ", setAside.Take(setAside.Count - 1).Select(ExitName)) + " and " + ExitName(setAside[^1]);
         string tail = setAside.Count == 1
             ? $"{names} is comfortably reachable, but its mapped route leaves the runway on the other side."
             : $"{names} are comfortably reachable, but their mapped routes leave the runway on the other side.";
@@ -144,14 +163,14 @@ public static class TaxiBriefingRenderer
     {
         if (leg.VacatingExits.Count == 0) return $"  Exits on {leg.Runway} that get clear of the runway: none found";
         var shown = leg.VacatingExits.Take(MaxListedExits)
-            .Select(e => $"{e.TaxiwayName} ({Feet(e.DistanceFromThresholdFeet)} ft, {SideLowerBare(e.ExitSide)}, {e.ExitType.ToLowerInvariant()})");
+            .Select(e => $"{ExitName(e)} ({Feet(e.DistanceFromThresholdFeet)} ft, {SideLowerBare(e.ExitSide)}, {ExitTypeText(e)})");
         string list = string.Join(", ", shown);
         int more = leg.VacatingExits.Count - MaxListedExits;
         if (more > 0) list += $", … and {more} more";
         return $"  Exits on {leg.Runway} that get clear of the runway: {list}";
     }
 
-    private static string JoinNames(IReadOnlyList<string> names) => names.Count == 0 ? "(unnamed)" : string.Join(", ", names);
+    private static string JoinNames(IReadOnlyList<string> names) => names.Count == 0 ? Unnamed : string.Join(", ", names);
     private static string Feet(double ft) => Math.Round(ft).ToString("N0", CultureInfo.InvariantCulture);
     private static string SideUpper(string side) => string.IsNullOrEmpty(side) ? "side unknown" : $"{side.ToUpperInvariant()} side";
     private static string SideLower(string side) => string.IsNullOrEmpty(side) ? "side unknown" : $"{side.ToLowerInvariant()} side";

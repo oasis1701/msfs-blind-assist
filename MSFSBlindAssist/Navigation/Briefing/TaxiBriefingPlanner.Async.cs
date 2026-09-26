@@ -125,7 +125,8 @@ public static partial class TaxiBriefingPlanner
             ? $"{head} unavailable=\"{leg.Unavailable}\""
             : $"{head} endpoint=\"{leg.EndpointDescription}\" taxiways=[{string.Join(",", leg.Taxiways)}] " +
               $"holds=[{string.Join(";", leg.HoldShorts.Select(h => $"{h.Runway}@{h.Taxiway}{(h.BeforeEntering ? "(entry)" : "")}"))}] " +
-              $"exit={leg.Exit?.Exit.TaxiwayName ?? "-"} next={leg.Exit?.NextExit?.TaxiwayName ?? "-"} " +
+              $"exit={(leg.Exit is { } x ? TaxiBriefingRenderer.ExitName(x.Exit) : "-")} " +
+              $"next={(leg.Exit?.NextExit is { } n ? TaxiBriefingRenderer.ExitName(n) : "-")} " +
               $"distM={leg.DistanceMetres.ToString("0", CultureInfo.InvariantCulture)}";
     }
 

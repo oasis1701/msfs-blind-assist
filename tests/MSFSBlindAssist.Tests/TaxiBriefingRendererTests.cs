@@ -70,7 +70,7 @@ public class TaxiBriefingRendererTests
             AircraftSizeClass.Resolve("ZZZZ", "", null),
             TaxiLegBriefing.UnavailableLeg("LOWI", "08", BriefingTier.None, "the navigation database has no taxiways for LOWI and OpenStreetMap data is not yet available"),
             TaxiLegBriefing.UnavailableLeg("LOWI", "26", BriefingTier.Navdata, "no exit taxiway is mapped clear of runway 26 in this scenery",
-                stand: Cargo(), endpoint: "representative stand C 1 (Ramp Cargo)"));
+                stand: Cargo(), endpoint: "representative stand C 1 (Ramp Cargo)", exitsSearched: true));
 
         const string expected =
             "TAXI ROUTES (computed by MSFS Blind Assist; each leg names its data source, and taxiway names are that source's own)\n" +
@@ -81,6 +81,56 @@ public class TaxiBriefingRendererTests
             "  Exits on 26 that get clear of the runway: none found";
 
         Assert.Equal(expected, TaxiBriefingRenderer.Render(b));
+    }
+
+    [Fact]
+    public void An_unavailable_taxi_in_lists_exits_only_when_they_were_searched()
+    {
+        // "Exits on 22L that get clear of the runway: none found" after "no navigation database loaded" (or a timeout, or
+        // a runway not in the database) reported a search that was never made. A real search that found nothing still
+        // says "none found".
+        var noDatabase = TaxiBriefing.Unavailable(B738, "EGLL", "27R", "KJFK", "22L", "no navigation database loaded");
+        Assert.DoesNotContain("Exits on", TaxiBriefingRenderer.Render(noDatabase), StringComparison.Ordinal);
+
+        var searched = new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("EGLL", "27R", BriefingTier.Navdata, "x"),
+            TaxiLegBriefing.UnavailableLeg("KJFK", "22L", BriefingTier.Navdata,
+                "no exit taxiway is mapped clear of runway 22L in this scenery", exitsSearched: true));
+        Assert.EndsWith("\n  Exits on 22L that get clear of the runway: none found", TaxiBriefingRenderer.Render(searched));
+    }
+
+    [Fact]
+    public void An_unnamed_exit_reads_as_unnamed_wherever_it_is_printed()
+    {
+        // KSDF 35R: "Expected exit: taxiway , normal, …" and " (3,082 ft, …)" with nothing before it.
+        var unnamed = Exit("", 3082, "Normal", "Right");
+        var later = Exit("", 7388, "Normal", "Right");
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "KSDF", Runway = "35R", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand Gate 57",
+            Taxiways = new[] { "E" }, DistanceMetres = 1900,
+            Exit = new ExitChoice(unnamed, later, true), VacatingExits = new[] { unnamed, later },
+        };
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("KSDF", "17R", BriefingTier.Navdata, "x"), taxiIn));
+
+        Assert.Contains("  Expected exit: taxiway (unnamed), normal, RIGHT side, 3,082 ft from the threshold. " +
+                        "Next exit if missed: (unnamed), right side, 7,388 ft\n", text);
+        Assert.Contains("  Exits on 35R that get clear of the runway: (unnamed) (3,082 ft, right, normal), (unnamed) (7,388 ft, right, normal)", text);
+    }
+
+    [Fact]
+    public void An_end_exit_reads_as_end_of_runway_or_sharp_angle()
+    {
+        // ExitType "End" is the last 15 % of the runway OR a turn of more than 110°; a bare "end" read as the former only.
+        var m3 = Exit("M3", 2106, "End", "Right");
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "OMDB", Runway = "12L", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand F 17",
+            Taxiways = new[] { "M3" }, DistanceMetres = 900, Exit = new ExitChoice(m3, null, true), VacatingExits = new[] { m3 },
+        };
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("OMDB", "12L", BriefingTier.Navdata, "x"), taxiIn));
+
+        Assert.Contains("  Expected exit: taxiway M3, end-of-runway or sharp-angle, RIGHT side, 2,106 ft from the threshold.", text);
+        Assert.Contains("M3 (2,106 ft, right, end-of-runway or sharp-angle)", text);
     }
 
     [Fact]
@@ -196,5 +246,12 @@ public class TaxiBriefingRendererTests
         Assert.Equal("640 m", TaxiBriefingRenderer.FormatDistance(640.4));
         Assert.Equal("1.0 km", TaxiBriefingRenderer.FormatDistance(1000));
         Assert.Equal("2.4 km", TaxiBriefingRenderer.FormatDistance(2449));
+    }
+
+    [Fact]
+    public void A_distance_that_rounds_to_a_thousand_metres_reads_in_kilometres()
+    {
+        Assert.Equal("999 m", TaxiBriefingRenderer.FormatDistance(999.4));
+        Assert.Equal("1.0 km", TaxiBriefingRenderer.FormatDistance(999.6));     // not "1000 m"
     }
 }

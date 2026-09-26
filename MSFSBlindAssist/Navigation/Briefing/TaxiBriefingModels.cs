@@ -49,16 +49,22 @@ public sealed class TaxiLegBriefing
     public ExitChoice? Exit { get; init; }
     /// <summary>Every exit that gets clear of the landing runway, nearest the threshold first.</summary>
     public IReadOnlyList<LandingExit> VacatingExits { get; init; } = Array.Empty<LandingExit>();
+    /// <summary>
+    /// Whether the taxi-in's exit search ran — true once its runway was found. An unavailable taxi-in lists the exits
+    /// only then, so "none found" is said of a search that found none and never of one that was not made (no
+    /// database, a timeout, a runway not in the database). A planned taxi-in always searched.
+    /// </summary>
+    public bool ExitsSearched { get; init; }
     public IReadOnlyList<NarrowTaxiwayNote> NarrowTaxiways { get; init; } = Array.Empty<NarrowTaxiwayNote>();
     public IReadOnlyList<string> Notes { get; init; } = Array.Empty<string>();
 
     public static TaxiLegBriefing UnavailableLeg(string icao, string runway, BriefingTier tier, string reason,
         StandChoice? stand = null, string endpoint = "", IReadOnlyList<string>? notes = null,
-        IReadOnlyList<LandingExit>? vacatingExits = null, ExitChoice? exit = null) => new()
+        IReadOnlyList<LandingExit>? vacatingExits = null, ExitChoice? exit = null, bool exitsSearched = false) => new()
     {
         Icao = icao, Runway = runway, Tier = tier, Unavailable = reason, Stand = stand,
         EndpointDescription = endpoint, Notes = notes ?? Array.Empty<string>(),
-        VacatingExits = vacatingExits ?? Array.Empty<LandingExit>(), Exit = exit,
+        VacatingExits = vacatingExits ?? Array.Empty<LandingExit>(), Exit = exit, ExitsSearched = exitsSearched,
     };
 }
 

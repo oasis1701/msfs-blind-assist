@@ -68,6 +68,38 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void A_flight_plan_without_a_runway_says_so_instead_of_naming_a_blank_one()
+    {
+        // An empty SimBrief runway gave "runway  is not in the navigation database for EGLL".
+        Assert.Equal("the flight plan names no departure runway",
+            TaxiBriefingPlanner.PlanTaxiOut(Request(B738, originRunway: ""), Airport()).Unavailable);
+        Assert.Equal("the flight plan names no arrival runway",
+            TaxiBriefingPlanner.PlanTaxiIn(Request(B738, destRunway: " "), Airport()).Unavailable);
+    }
+
+    [Fact]
+    public void A_taxi_in_says_its_exits_were_searched_only_once_its_runway_was_found()
+    {
+        Assert.False(TaxiBriefingPlanner.PlanTaxiIn(Request(B738, destRunway: "04"), Airport()).ExitsSearched);   // runway unknown
+        Assert.False(TaxiBriefingPlanner.PlanTaxiIn(Request(B738, destRunway: ""), Airport()).ExitsSearched);     // no runway at all
+        Assert.True(TaxiBriefingPlanner.PlanTaxiIn(Request(B738, destRunway: "18"), Airport()).ExitsSearched);    // searched, none found
+        Assert.True(TaxiBriefingPlanner.PlanTaxiIn(Request(B738), Airport()).ExitsSearched);                      // planned
+        var noStands = Airport() with { Spots = new List<ParkingSpot>() };
+        Assert.True(TaxiBriefingPlanner.PlanTaxiIn(Request(B738), noStands).ExitsSearched);                       // no stand
+    }
+
+    [Fact]
+    public void An_unnamed_exit_reads_as_unnamed_in_the_reason_it_cannot_be_routed()
+    {
+        // "no taxi route connects exit  to …" named a blank.
+        var c172 = AircraftSizeClass.Resolve("C172", "Cessna 172", 4);
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(c172), AirportWithUnnamedDeadEndExit());
+
+        Assert.Equal("", leg.Exit!.Exit.TaxiwayName);
+        Assert.StartsWith("no taxi route connects exit (unnamed) to ", leg.Unavailable);
+    }
+
+    [Fact]
     public void Runway_ids_match_without_leading_zeros()
     {
         var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, originRunway: "9"), Airport());

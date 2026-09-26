@@ -183,6 +183,14 @@ internal static class TaxiBriefingFixture
             Path("K", 1500, 0, 1500, 100, startType: "HS"),
         }, Array.Empty<ParkingSpot>());
 
+    /// <summary>
+    /// TEST plus an exit with no name: from 09's centreline (HS) at 1300 E an unnamed taxiway runs 80 m north and
+    /// stops 20 m short of A — a scenery gap, so nothing connects it to a stand. At 1300 m (4,265 ft) it is the first
+    /// exit a Cessna 172 can make comfortably.
+    /// </summary>
+    public static GraphBundle AirportWithUnnamedDeadEndExit() => AirportWith(
+        new[] { Path("", 1300, 0, 1300, 80, startType: "HS") }, Array.Empty<ParkingSpot>());
+
     private static TaxiPath[] SouthStandPaths() => new[]
     {
         Path("S", 0, -100, 1000, -100), Path("S", 1000, -100, 1500, -100),

@@ -25,6 +25,8 @@ public static partial class TaxiBriefingPlanner
         var notes = new List<string>();
         if (g.Note != null) notes.Add(g.Note);
 
+        if (string.IsNullOrWhiteSpace(r.OriginRunway))
+            return TaxiLegBriefing.UnavailableLeg(icao, r.OriginRunway, g.Tier, "the flight plan names no departure runway", notes: notes);
         var rwy = FindRunway(g.Runways, r.OriginRunway);
         if (rwy == null)
             return TaxiLegBriefing.UnavailableLeg(icao, r.OriginRunway, g.Tier,
@@ -99,6 +101,8 @@ public static partial class TaxiBriefingPlanner
         var notes = new List<string>();
         if (g.Note != null) notes.Add(g.Note);
 
+        if (string.IsNullOrWhiteSpace(r.DestinationRunway))
+            return TaxiLegBriefing.UnavailableLeg(icao, r.DestinationRunway, g.Tier, "the flight plan names no arrival runway", notes: notes);
         var rwy = FindRunway(g.Runways, r.DestinationRunway);
         if (rwy == null)
             return TaxiLegBriefing.UnavailableLeg(icao, r.DestinationRunway, g.Tier,
@@ -127,18 +131,20 @@ public static partial class TaxiBriefingPlanner
 
         var choice = BriefingExitPicker.Pick(exits.Where(routeStarts.ContainsKey).ToList(), r.Aircraft.TouchdownSpeedKts,
             standNode == null ? null : e => WayIn(e) is { CrossesLandingRunway: false });
+        // From here on the exits have been searched: every leg says so, "none found" included.
         if (choice == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
-                $"no exit taxiway is mapped clear of runway {rwy.RunwayID} in this scenery", stand, endpoint, notes, vacating);
+                $"no exit taxiway is mapped clear of runway {rwy.RunwayID} in this scenery", stand, endpoint, notes, vacating,
+                exitsSearched: true);
         choice = WithReachableExitsSetAside(choice, vacating, routeStarts.Keys, r.Aircraft.TouchdownSpeedKts);
         if (stand == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
-                $"no stand at {icao} connects to the taxiway network", null, endpoint, notes, vacating, choice);
+                $"no stand at {icao} connects to the taxiway network", null, endpoint, notes, vacating, choice, exitsSearched: true);
 
         if (WayIn(choice.Exit) is not { } way)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
-                $"no taxi route connects exit {choice.Exit.TaxiwayName} to {DescribeStand(stand, r.AirlineIcao)} in this scenery",
-                stand, endpoint, notes, vacating, choice);
+                $"no taxi route connects exit {TaxiBriefingRenderer.ExitName(choice.Exit)} to {DescribeStand(stand, r.AirlineIcao)} in this scenery",
+                stand, endpoint, notes, vacating, choice, exitsSearched: true);
 
         notes.AddRange(way.UnheldNotes);
         if (TaxiwayLeavingTheRunway(g.Graph, choice.Exit, routeStarts[choice.Exit], way.Route, rwy) is string leaving)
@@ -149,7 +155,7 @@ public static partial class TaxiBriefingPlanner
             Icao = icao, Runway = rwy.RunwayID, Tier = g.Tier, EndpointDescription = endpoint, Stand = stand,
             Taxiways = RouteTaxiwaySequence.DistinctConsecutive(way.Route.Segments),
             DistanceMetres = way.Route.TotalDistanceMeters, HoldShorts = way.Holds, Exit = choice, VacatingExits = vacating,
-            NarrowTaxiways = NarrowTaxiways(way.Route, r.Aircraft), Notes = notes,
+            ExitsSearched = true, NarrowTaxiways = NarrowTaxiways(way.Route, r.Aircraft), Notes = notes,
         };
     }
 
