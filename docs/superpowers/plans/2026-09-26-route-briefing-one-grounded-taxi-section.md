@@ -17,7 +17,7 @@
 - Tests: `dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64` (add `--filter "FullyQualifiedName~<Class>"` for one class).
 - The owner's question, verbatim: `Provide the step-by-step taxi route at [ICAO Code] from [Runway] to [Terminal/Gate] in a [Aircraft Type]. Please include the expected taxiways, hold short points, and any specific restrictions.`
 - The online taxiway-name wait stays exactly as it is (up to 8 s, `TaxiBriefingGraphSource.PrefetchWaitMs`) — owner's choice.
-- Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- Commit messages end with the committing agent's own `Co-Authored-By:` attribution line (each agent's own harness guidance governs; the controller's commits use `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`).
 - Files keep their existing line endings (the repo stores LF; do not convert).
 
 ---
@@ -122,7 +122,7 @@ git add -A && git commit -q -m "feat(briefing): the owner's taxi question in the
 
 Also pins compass-point runway ends in BriefingRunwayChoice.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+<your own Co-Authored-By attribution line>"
 ```
 
 ---
@@ -283,7 +283,7 @@ git add -A && git commit -q -m "feat(briefing): each taxi leg lists its airport'
 
 So the AI's own additions can be held to real names.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+<your own Co-Authored-By attribution line>"
 ```
 
 ---
@@ -399,7 +399,7 @@ git add -A && git commit -q -m "feat(briefing): one short taxi section built on 
 One paragraph per leg in the real-world voice, a preview phrase, at most
 one real-world note, and every taxiway held to the leg's names.
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+<your own Co-Authored-By attribution line>"
 ```
 
 ---
@@ -438,7 +438,7 @@ Expected: no output.
 ```bash
 git add CLAUDE.md docs/gemini.md && git add -f docs/superpowers/specs/2026-09-26-route-briefing-one-grounded-taxi-section-design.md && git commit -q -m "docs(briefing): one grounded taxi section
 
-Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
+<your own Co-Authored-By attribution line>"
 ```
 
 ---
