@@ -9,12 +9,14 @@ namespace MSFSBlindAssist.Tests;
 
 public class TaxiBriefingGraphSourceTests
 {
-    /// <summary>A navdata provider serving the TEST fixture airport, with or without taxi paths.</summary>
+    /// <summary>A navdata provider serving the TEST fixture airport, with or without taxi paths — and, like
+    /// LSZH's navdata, optionally with not one taxiway segment named.</summary>
     private sealed class FakeProvider : IAirportDataProvider
     {
         public bool HasTaxiPaths = true;
         public bool HasAirport = true;
         public bool HasDatabase = true;
+        public bool UnnamedTaxiways;
         public bool DatabaseExists => HasDatabase;
         public string DatabaseType => "Fake";
         public string DatabasePath => "";
@@ -28,8 +30,47 @@ public class TaxiBriefingGraphSourceTests
         public int GetParkingSpotCount() => 3;
         public HashSet<string> GetAllAirportICAOs() => new() { "TEST" };
         public List<string> GetNearbyAirportICAOs(double lat, double lon, double nm) => new();
-        public List<TaxiPath> GetTaxiPaths(string icao) => HasTaxiPaths ? Paths() : new List<TaxiPath>();
+        public List<TaxiPath> GetTaxiPaths(string icao)
+        {
+            if (!HasTaxiPaths) return new List<TaxiPath>();
+            var paths = Paths();
+            if (UnnamedTaxiways) foreach (var p in paths) p.Name = "";
+            return paths;
+        }
         public List<StartPosition> GetRunwayStarts(string icao) => Starts();
+    }
+
+    /// <summary>An online source that answers at once with a name for every one of the TEST airport's taxiway
+    /// segments, on the navdata's own geometry — as OpenStreetMap does for LSZH.</summary>
+    private sealed class NamingSource : ITaxiDataSource
+    {
+        public string Id => "osm";
+        public Task<AirportTaxiData?> FetchAsync(string icao, double airportLat, double airportLon, CancellationToken ct)
+        {
+            var data = new AirportTaxiData { Source = "osm" };
+            foreach (var p in Paths().Where(p => p.Type == "T"))
+                data.Taxiways.Add(new NamedTaxiSegment { Name = p.Name, Lat1 = p.StartLat, Lon1 = p.StartLon, Lat2 = p.EndLat, Lon2 = p.EndLon });
+            return Task.FromResult<AirportTaxiData?>(data);
+        }
+    }
+
+    [Fact]
+    public async Task The_first_briefing_of_a_session_waits_for_the_online_taxiway_names()
+    {
+        // LSZH's navdata names none of its taxiway segments: the names come from OpenStreetMap, whose cache is
+        // memory-only, so it is the FIRST briefing of a session that meets an airport nothing has fetched yet.
+        // Built from navdata at once, that briefing said "Taxiways: (unnamed)" and "no exit taxiway is mapped clear
+        // of runway 14" — and a second press, after the background fetch had landed, answered differently.
+        var augmenting = new AugmentingAirportDataProvider(new FakeProvider { UnnamedTaxiways = true }, new TaxiDataCache(ttlDays: 1),
+            new ITaxiDataSource[] { new NamingSource() }, new MergeOptions());
+        var md11F = AircraftSizeClass.Resolve("MD1F", "MD-11F", 0);
+
+        var (bundle, reason) = await TaxiBriefingGraphSource.BuildAsync(augmenting, null, "TEST", CancellationToken.None);
+
+        Assert.Null(reason);
+        Assert.Equal(BriefingTier.Navdata, bundle!.Tier);
+        Assert.Equal(new[] { "A", "E1" }, TaxiBriefingPlanner.PlanTaxiOut(Request(md11F, airline: "UPS"), bundle).Taxiways);
+        Assert.Equal("C", TaxiBriefingPlanner.PlanTaxiIn(Request(md11F, airline: "UPS"), bundle).Exit!.Exit.TaxiwayName);
     }
 
     [Fact]

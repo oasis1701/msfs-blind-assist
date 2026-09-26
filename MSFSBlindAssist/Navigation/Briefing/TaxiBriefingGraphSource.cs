@@ -14,11 +14,34 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// </summary>
 public static class TaxiBriefingGraphSource
 {
+    /// <summary>How long a leg waits for the online taxiway-name fetch before it builds from navdata anyway —
+    /// TaxiAssistForm's and LandingExitForm's own bound.</summary>
+    public const int PrefetchWaitMs = 8000;
+
     public static async Task<(GraphBundle? Bundle, string? Reason)> BuildAsync(
         IAirportDataProvider provider, GateDataSource? gateSource, string icao, CancellationToken ct)
     {
         var airport = provider.GetAirport(icao);
         if (airport == null) return (null, $"{icao} is not in the navigation database");
+
+        // The online taxiway NAMES must be in before the graph is built, exactly as TaxiAssistForm and
+        // LandingExitForm wait for them: a cache miss returns navdata alone and fetches in the background, and
+        // their cache is memory-only, so the first briefing of every session met an airport nothing had fetched.
+        // Where navdata names nothing (LSZH: 0 of 1,665 segments) that briefing said "Taxiways: (unnamed)" and found
+        // no exit at all — GetLandingExits only returns a node whose edges carry a name — while a second press,
+        // once the fetch had landed, answered differently. A cache hit returns at once; a fetch that has not landed
+        // within PrefetchWaitMs, or by the budget, is left running and the leg builds from navdata as before.
+        if (provider is AugmentingAirportDataProvider { Enabled: true } names)
+        {
+            try
+            {
+                await Task.WhenAny(names.PrefetchAsync(icao), Task.Delay(PrefetchWaitMs, ct)).ConfigureAwait(false);
+            }
+            catch
+            {
+                // Offline or the fetch failed: build from navdata names, as the forms do.
+            }
+        }
 
         var runways = provider.GetRunways(icao);
         var starts = provider.GetRunwayStarts(icao);
