@@ -22,7 +22,30 @@ public static partial class TaxiBriefingPlanner
     /// arrival airport's reference point — the same "at this airport" line as <see cref="OwnPositionMaxAirportDistanceMetres"/>.</summary>
     public const double ParkingServiceMaxAirportDistanceMetres = OwnPositionMaxAirportDistanceMetres;
 
-    public static TaxiLegBriefing PlanTaxiOut(TaxiBriefingRequest r, GraphBundle g)
+    public static TaxiLegBriefing PlanTaxiOut(TaxiBriefingRequest r, GraphBundle g) =>
+        WithAirportTaxiways(PlanTaxiOutLeg(r, g), g);
+
+    public static TaxiLegBriefing PlanTaxiIn(TaxiBriefingRequest r, GraphBundle g) =>
+        WithAirportTaxiways(PlanTaxiInLeg(r, g), g);
+
+    /// <summary>Every taxiway name on the graph a leg is planned on — exactly the names its route could use: the
+    /// scenery's, with OpenStreetMap-filled names, or the OpenStreetMap graph's on that tier. Edge names only, never
+    /// the graph's online alias labels. Sorted ignoring case.</summary>
+    internal static IReadOnlyList<string> AirportTaxiwayNames(TaxiGraph graph) =>
+        graph.Adjacency.Values.SelectMany(edges => edges)
+            .Select(e => e.TaxiwayName)
+            .Where(n => !string.IsNullOrWhiteSpace(n))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .OrderBy(n => n, StringComparer.OrdinalIgnoreCase)
+            .ToList();
+
+    private static TaxiLegBriefing WithAirportTaxiways(TaxiLegBriefing leg, GraphBundle g)
+    {
+        leg.AirportTaxiways = AirportTaxiwayNames(g.Graph);
+        return leg;
+    }
+
+    private static TaxiLegBriefing PlanTaxiOutLeg(TaxiBriefingRequest r, GraphBundle g)
     {
         string icao = r.OriginIcao;
         var notes = new List<string>();
@@ -101,7 +124,7 @@ public static partial class TaxiBriefingPlanner
         };
     }
 
-    public static TaxiLegBriefing PlanTaxiIn(TaxiBriefingRequest r, GraphBundle g)
+    private static TaxiLegBriefing PlanTaxiInLeg(TaxiBriefingRequest r, GraphBundle g)
     {
         string icao = r.DestinationIcao;
         var notes = new List<string>();

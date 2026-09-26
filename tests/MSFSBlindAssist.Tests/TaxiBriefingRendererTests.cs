@@ -357,4 +357,36 @@ public class TaxiBriefingRendererTests
         } };
         Assert.Contains("  Taxiways: N, straight ahead onto M (900 m)\n", TaxiBriefingRenderer.Render(straight, DistanceUnit.Metres));
     }
+
+    // ── the airport's taxiway names (owner, 2026-09-26) ──────────────────────────────────────
+
+    [Fact]
+    public void Each_leg_lists_its_airport_s_taxiway_names_before_its_notes()
+    {
+        var b = FullBriefing();
+        b.TaxiOut.AirportTaxiways = new[] { "A", "B", "M", "N" };
+        b.TaxiIn.AirportTaxiways = new[] { "AA", "AB", "C", "E" };
+        string text = TaxiBriefingRenderer.Render(b, DistanceUnit.Metres);
+
+        Assert.Contains("  Taxiway width note: taxiway K is 15.0 m in the navdata, below the 18.0 m code D minimum\n" +
+                        "  Taxiway names at KMEM: A, B, M, N\n" +
+                        "TAXI IN at KLAX", text);
+        Assert.Contains("  Exits on 25L that get clear of the runway: AA (1,890 m, right, high-speed), AB (2,164 m, right, normal)\n" +
+                        "  Taxiway names at KLAX: AA, AB, C, E\n" +
+                        "  Note: assigned gate matched by position", text);
+    }
+
+    [Fact]
+    public void An_unavailable_leg_lists_its_names_too_and_a_leg_without_any_lists_none()
+    {
+        var withNames = TaxiLegBriefing.UnavailableLeg("KMEM", "36L", BriefingTier.Navdata, "no stand at KMEM connects to the taxiway network");
+        withNames.AirportTaxiways = new[] { "J", "M2" };
+        var without = TaxiLegBriefing.UnavailableLeg("KATL", "08L", BriefingTier.None, "no navigation database loaded");
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, withNames, without), DistanceUnit.Feet);
+
+        Assert.Contains("TAXI OUT at KMEM: taxi route unavailable — no stand at KMEM connects to the taxiway network\n" +
+                        "  Taxiway names at KMEM: J, M2\n" +
+                        "TAXI IN at KATL", text);
+        Assert.DoesNotContain("Taxiway names at KATL", text);
+    }
 }

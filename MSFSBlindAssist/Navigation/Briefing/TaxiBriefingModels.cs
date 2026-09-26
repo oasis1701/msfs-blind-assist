@@ -81,6 +81,10 @@ public sealed class TaxiLegBriefing
     public bool ExitsSearched { get; init; }
     public IReadOnlyList<NarrowTaxiwayNote> NarrowTaxiways { get; init; } = Array.Empty<NarrowTaxiwayNote>();
     public IReadOnlyList<string> Notes { get; init; } = Array.Empty<string>();
+    /// <summary>Every taxiway name on the graph the leg was planned on (<see cref="TaxiBriefingPlanner.AirportTaxiwayNames"/>),
+    /// sorted; empty for a leg never planned on a graph (no database, no ground data, a timeout). The prompt holds any
+    /// taxiway the AI names to this list and the route, so its own additions use real names (owner, 2026-09-26).</summary>
+    public IReadOnlyList<string> AirportTaxiways { get; internal set; } = Array.Empty<string>();
 
     public static TaxiLegBriefing UnavailableLeg(string icao, string runway, BriefingTier tier, string reason,
         StandChoice? stand = null, string endpoint = "", IReadOnlyList<string>? notes = null,

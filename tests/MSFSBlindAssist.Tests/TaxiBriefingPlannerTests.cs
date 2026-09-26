@@ -762,4 +762,30 @@ public class TaxiBriefingPlannerTests
         Assert.NotNull(inLeg.Unavailable);
         Assert.Contains(note, inLeg.Notes);
     }
+
+    // ── the airport's taxiway names (owner, 2026-09-26) ──────────────────────────────────────
+
+    [Fact]
+    public void A_planned_leg_carries_every_taxiway_name_of_its_airport_sorted()
+    {
+        var bundle = Airport();
+        Assert.Equal(new[] { "A", "B", "C", "D", "E1" }, TaxiBriefingPlanner.PlanTaxiOut(Request(B738), bundle).AirportTaxiways);
+        Assert.Equal(new[] { "A", "B", "C", "D", "E1" }, TaxiBriefingPlanner.PlanTaxiIn(Request(B738), bundle).AirportTaxiways);
+    }
+
+    [Fact]
+    public void An_unavailable_leg_planned_on_a_graph_still_carries_the_names()
+    {
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, originRunway: "04"), Airport());
+        Assert.NotNull(leg.Unavailable);
+        Assert.Equal(new[] { "A", "B", "C", "D", "E1" }, leg.AirportTaxiways);
+    }
+
+    [Fact]
+    public async Task A_leg_never_planned_on_a_graph_has_no_names()
+    {
+        var b = await TaxiBriefingPlanner.PlanAsync(Request(B738), provider: null, gateSource: null, TimeSpan.FromSeconds(5));
+        Assert.Empty(b.TaxiOut.AirportTaxiways);
+        Assert.Empty(b.TaxiIn.AirportTaxiways);
+    }
 }

@@ -105,6 +105,7 @@ public static class TaxiBriefingRenderer
             lines.Add(HoldLine(leg.HoldShorts));
             foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter, unit));
         }
+        AddAirportTaxiways(leg, lines);
         foreach (var note in leg.Notes) lines.Add($"  Note: {note}");
     }
 
@@ -128,7 +129,16 @@ public static class TaxiBriefingRenderer
             foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter, unit));
             lines.Add(ExitsListLine(leg, unit));
         }
+        AddAirportTaxiways(leg, lines);
         foreach (var note in leg.Notes) lines.Add($"  Note: {note}");
+    }
+
+    /// <summary>Every taxiway name at the leg's airport: the prompt holds any taxiway the AI names to this line and the
+    /// route (owner, 2026-09-26). Absent for a leg never planned on a graph.</summary>
+    private static void AddAirportTaxiways(TaxiLegBriefing leg, List<string> lines)
+    {
+        if (leg.AirportTaxiways.Count > 0)
+            lines.Add($"  Taxiway names at {leg.Icao}: {string.Join(", ", leg.AirportTaxiways)}");
     }
 
     /// <summary>One entry per hold; a hold on no named taxiway (the whole route unnamed) names the runway alone,
