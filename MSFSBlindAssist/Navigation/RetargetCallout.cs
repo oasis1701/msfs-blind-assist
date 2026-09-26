@@ -13,23 +13,55 @@ public enum RetargetReason
 
 /// <summary>
 /// The ONE utterance a landing-exit retarget speaks. The caller retires every approach milestone the
-/// sentence supersedes first (<see cref="TouchdownCallout.RetireExitCallouts"/> with
-/// <see cref="LeadSeconds"/>), so no milestone can cut it off — KMEM 36L 2026-09-26: "Missed taxiway M6.
-/// Retargeting taxiway M7, 650 feet ahead." was cut off 65 ms later by a stale "Taxiway M7, 900 feet."
-/// at 631 ft. Pure — <c>RetargetCalloutTests</c>.
+/// sentence supersedes first (<see cref="Retire"/>), so no milestone can cut it off — KMEM 36L 2026-09-26:
+/// "Missed taxiway M6. Retargeting taxiway M7, 650 feet ahead." was cut off 65 ms later by a stale
+/// "Taxiway M7, 900 feet." at 631 ft. Pure — <c>RetargetCalloutTests</c>.
 /// </summary>
 public static class RetargetCallout
 {
     /// <summary>
-    /// How long the longest realistic retarget sentence takes to speak, MEASURED through System.Speech at
-    /// Rate 0 (what ScreenReaderAnnouncer uses) with trailing silence trimmed, plus about a fifth:
-    /// "Too fast for taxiway N12. Straighten. Continue to taxiway N14, 1250 feet. Slow down." = 10.76 s
-    /// → 13 s (2026-09-26). Without its "Slow down." the same sentence is 9.15 s, which sized the earlier
-    /// 11 s and was too short for the folded "Slow down."; the common "Missed taxiway M6. Straighten.
-    /// Retargeting taxiway M7, 650 feet ahead." is 8.25 s.
-    /// Never size this by estimate — re-measure when the wording changes.
+    /// How long THIS retarget sentence takes to speak, per variant: MEASURED through System.Speech at Rate 0
+    /// (what ScreenReaderAnnouncer uses) with trailing silence trimmed, the worst over every spoken distance up
+    /// to 3,550 ft (taxiways N12/N14; beyond that no milestone can come due inside the sentence), plus about a
+    /// fifth, rounded up to the half second (2026-09-26):
+    /// <list type="bullet">
+    /// <item>too fast: 10.96 s with "Straighten." and "Slow down." → 13.5; 9.37 / 9.50 with one of them → 11.5;
+    /// 7.90 bare → 9.5</item>
+    /// <item>missed: 10.77 → 13; 9.18 / 9.31 → 11.5; 7.72 → 9.5</item>
+    /// <item>earlier (never "Straighten."): 7.89 with "Slow down." → 9.5; 6.32 bare → 8</item>
+    /// </list>
+    /// One lead for every sentence - the longest's 13 s - retired milestones a short sentence was never going
+    /// to collide with: "Taking earlier exit, taxiway A5, 1000 feet ahead." at 30 kt lost A5's own 500 ft call,
+    /// which falls due 11 s later, and the pilot heard nothing more until the turn. Never size these by
+    /// estimate — re-measure when the wording changes.
     /// </summary>
-    public const double LeadSeconds = 13.0;
+    public static double LeadSecondsFor(RetargetReason reason, bool straighten, bool slowDown)
+    {
+        if (reason == RetargetReason.Earlier) return slowDown ? 9.5 : 8.0;
+        if (straighten && slowDown) return reason == RetargetReason.TooFast ? 13.5 : 13.0;
+        if (straighten || slowDown) return 11.5;
+        return 9.5;
+    }
+
+    /// <summary>
+    /// The milestones a retarget sentence supersedes (<see cref="TouchdownCallout.RetireExitCallouts"/>), judged
+    /// with the lead of the sentence that will actually be spoken. Whether it folds "Slow down." depends on
+    /// whether the 500 ft call is retired, which depends on the lead: so the sentence without it is judged
+    /// first, and only when that retires the 500 ft call above its slow-down line is it judged again with the
+    /// longer lead - which can only retire more, so the 500 ft call stays retired and "Slow down." stays in.
+    /// </summary>
+    public static ExitCalloutRetirement Retire(
+        RetargetReason reason, bool straighten, double distanceAheadFeet, double groundSpeedKts, string? exitType,
+        double trigger1500Feet, double trigger900Feet, double trigger500Feet, double turnNowFeet,
+        double slowDownAboveKts)
+    {
+        ExitCalloutRetirement Judge(bool slowDown) => TouchdownCallout.RetireExitCallouts(
+            distanceAheadFeet, groundSpeedKts, exitType, LeadSecondsFor(reason, straighten, slowDown),
+            trigger1500Feet, trigger900Feet, trigger500Feet, turnNowFeet, slowDownAboveKts);
+
+        var withoutSlowDown = Judge(slowDown: false);
+        return withoutSlowDown.SlowDown ? Judge(slowDown: true) : withoutSlowDown;
+    }
 
     public static string Compose(
         RetargetReason reason, string? fromTaxiwayName, string? toTaxiwayName,

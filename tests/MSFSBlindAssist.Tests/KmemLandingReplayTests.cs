@@ -53,7 +53,7 @@ public class KmemLandingReplayTests
         double window = M7Window();
         bool straighten = RolloutExitGate.ShouldStraightenAfterRetarget(8.4, M7RelativeBearing(), 631.0, false, window);
         Assert.True(straighten);
-        var r = TouchdownCallout.RetireExitCallouts(631, 48.1, Exit("M7").ExitType, RetargetCallout.LeadSeconds,
+        var r = RetargetCallout.Retire(RetargetReason.Missed, straighten, 631, 48.1, Exit("M7").ExitType,
             1500, 900, 500, 150, RolloutExitGate.SlowDownAboveKts(Exit("M7").ExitAngleDegrees, Exit("M7").ExitType));
         Assert.True(r.Retire900);
         Assert.True(r.Retire500);

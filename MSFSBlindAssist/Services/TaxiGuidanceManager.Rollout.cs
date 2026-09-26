@@ -2447,8 +2447,9 @@ public partial class TaxiGuidanceManager
     /// supersedes retired first so none can cut it off — KMEM 36L 2026-09-26: "Missed taxiway M6.
     /// Retargeting taxiway M7, 650 feet ahead." was cut off 65 ms later by a stale "Taxiway M7, 900 feet."
     /// at 631 ft. Same retirement rules as the touchdown correction (TouchdownCallout.RetireExitCallouts)
-    /// with the retarget sentence's measured lead. Turn-now is never retired here: "now" belongs to its own
-    /// point, where the too-fast rule judges it. "Straighten." per RolloutExitGate.ShouldStraightenAfterRetarget.
+    /// with the measured lead of the sentence actually spoken (Navigation.RetargetCallout.Retire). Turn-now is
+    /// never retired here: "now" belongs to its own point, where the too-fast rule judges it. "Straighten."
+    /// per RolloutExitGate.ShouldStraightenAfterRetarget.
     /// </summary>
     private void AnnounceRetarget(Navigation.RetargetReason reason, string previousTaxiwayName,
         Navigation.LandingExit exit, double lat, double lon, double headingTrue, bool queued = false)
@@ -2466,8 +2467,8 @@ public partial class TaxiGuidanceManager
                    hdgDelta, exitRelBearing, distAheadFt, pastNewExit, _rolloutExitTurnWindowFeet);
 
         var xm = DistanceMilestones.ExitApproach(); // far->near: [0]=1500ft/500m, [1]=900ft/300m, [2]=500ft/150m
-        var retired = Navigation.TouchdownCallout.RetireExitCallouts(
-            distAheadFt, _lastGroundSpeedKts, exit.ExitType, Navigation.RetargetCallout.LeadSeconds,
+        var retired = Navigation.RetargetCallout.Retire(
+            reason, straighten, distAheadFt, _lastGroundSpeedKts, exit.ExitType,
             xm[0].TriggerMetres / DistanceFormatter.MetresPerFoot,
             xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot,
             xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot,
@@ -2479,7 +2480,8 @@ public partial class TaxiGuidanceManager
 
         RolloutDiag($"Retarget ({reason}) '{previousTaxiwayName}' -> '{exit.TaxiwayName}' dist={distAheadFt}ft " +
             $"gs={_lastGroundSpeedKts:F1}kt hdgDelta={hdgDelta:+0.0;-0.0}deg window={_rolloutExitTurnWindowFeet:F0}ft " +
-            $"straighten={straighten} retire1500={retired.Retire1500} retire900={retired.Retire900} " +
+            $"straighten={straighten} lead={Navigation.RetargetCallout.LeadSecondsFor(reason, straighten, retired.SlowDown):F1}s " +
+            $"retire1500={retired.Retire1500} retire900={retired.Retire900} " +
             $"retire500={retired.Retire500} slowDown={retired.SlowDown} queued={queued}");
 
         string sentence = Navigation.RetargetCallout.Compose(

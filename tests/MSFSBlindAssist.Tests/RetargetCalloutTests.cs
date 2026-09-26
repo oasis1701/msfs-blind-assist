@@ -66,12 +66,53 @@ public class RetargetCalloutTests
     {
         // 631 ft to M7 at 48.1 kt, M7 high-speed 22.7 degrees: the stale "900 feet" and the
         // "500 feet" would both come due while the sentence is still being spoken.
-        var r = TouchdownCallout.RetireExitCallouts(631, 48.1, "High-speed", RetargetCallout.LeadSeconds,
+        var r = RetargetCallout.Retire(RetargetReason.Missed, straighten: true, 631, 48.1, "High-speed",
             1500, 900, 500, 150, RolloutExitGate.MaxTurnSpeedKts(22.7));
         Assert.True(r.Retire1500);
         Assert.True(r.Retire900);
         Assert.True(r.Retire500);
         Assert.False(r.RetireTurnNow);
         Assert.False(r.SlowDown);   // 48 kt is fine for a 23-degree exit
+    }
+
+    [Theory]
+    // Measured worst sentence durations (System.Speech Rate 0, every distance to 3,550 ft) plus a fifth,
+    // rounded up to the half second - see RetargetCallout.LeadSecondsFor.
+    [InlineData(RetargetReason.TooFast, true, true, 13.5)]
+    [InlineData(RetargetReason.TooFast, true, false, 11.5)]
+    [InlineData(RetargetReason.TooFast, false, true, 11.5)]
+    [InlineData(RetargetReason.TooFast, false, false, 9.5)]
+    [InlineData(RetargetReason.Missed, true, true, 13.0)]
+    [InlineData(RetargetReason.Missed, true, false, 11.5)]
+    [InlineData(RetargetReason.Missed, false, true, 11.5)]
+    [InlineData(RetargetReason.Missed, false, false, 9.5)]
+    [InlineData(RetargetReason.Earlier, false, true, 9.5)]
+    [InlineData(RetargetReason.Earlier, false, false, 8.0)]
+    public void Each_sentence_has_its_own_measured_lead(RetargetReason reason, bool straighten, bool slowDown, double lead)
+        => Assert.Equal(lead, RetargetCallout.LeadSecondsFor(reason, straighten, slowDown));
+
+    [Fact]
+    public void A_short_earlier_exit_sentence_leaves_the_new_exits_500_ft_call_to_speak()
+    {
+        // "Taking earlier exit, taxiway A5, 1000 feet ahead." at 30 kt: A5's 500 ft point is 11 s away and the
+        // sentence lasts about 6. The one 13 s lead retired that call, and the pilot heard nothing more until
+        // the turn.
+        var r = RetargetCallout.Retire(RetargetReason.Earlier, straighten: false, 1000, 30.0, "Normal",
+            1500, 900, 500, 150, RolloutExitGate.SlowDownAboveKts(90.0, "Normal"));
+        Assert.True(r.Retire1500);
+        Assert.False(r.Retire500);
+        Assert.False(r.SlowDown);
+    }
+
+    [Fact]
+    public void A_sentence_that_folds_slow_down_is_judged_with_its_longer_lead()
+    {
+        // Too fast, 900 ft to a 90-degree exit at 45 kt: the sentence without "Slow down." already retires the
+        // 500 ft call (above its 30 kt line), so "Slow down." folds in - and the call stays retired under the
+        // longer sentence's lead.
+        var r = RetargetCallout.Retire(RetargetReason.TooFast, straighten: true, 900, 45.0, "Normal",
+            1500, 900, 500, 150, RolloutExitGate.SlowDownAboveKts(90.0, "Normal"));
+        Assert.True(r.Retire500);
+        Assert.True(r.SlowDown);
     }
 }
