@@ -619,6 +619,27 @@ public static class RolloutExitGate
     public static double OvershootMarginFeet(double baseMarginFeet, bool tooFastDeclined)
         => tooFastDeclined ? 0.0 : baseMarginFeet;
 
+    /// <summary>
+    /// How long after "too fast to turn … Slow down." STARTED the runway-end countdown that exit's overshoot
+    /// begins holds its first status (the stopped notice, a due milestone, the owed "Runway end in N."), so
+    /// the status never cuts that sentence off. MEASURED: "Taxiway M9, too fast to turn. Slow down." is
+    /// 4.39 s through System.Speech at Rate 0 with trailing silence trimmed (2026-09-26), plus about a fifth.
+    /// A pilot averaging over ~20 kt across the last 150 ft reaches the node before it ends. Re-measure when
+    /// the wording changes; never size it by estimate.
+    /// </summary>
+    public const double TooFastNoExitSpeechHoldSeconds = 5.3;
+
+    /// <summary>
+    /// May the runway-end countdown speak its first status at <paramref name="nowUtc"/>? Always when no
+    /// "too fast to turn" sentence holds it (<paramref name="tooFastSpokenUtc"/> is
+    /// <see cref="DateTime.MinValue"/>: every countdown entry but a too-fast declined exit's overshoot);
+    /// otherwise once <see cref="TooFastNoExitSpeechHoldSeconds"/> have passed since that sentence started.
+    /// The hold only DEFERS: the caller speaks the status on the first frame this returns true.
+    /// </summary>
+    public static bool CountdownStatusMaySpeak(DateTime nowUtc, DateTime tooFastSpokenUtc)
+        => tooFastSpokenUtc == DateTime.MinValue
+           || (nowUtc - tooFastSpokenUtc).TotalSeconds >= TooFastNoExitSpeechHoldSeconds;
+
     /// <summary>True when the aircraft is too fast to make the turn: "turn now" must not be said.</summary>
     public static bool IsTooFastToTurn(double groundSpeedKts, double exitAngleDeg)
         => groundSpeedKts > MaxTurnSpeedKts(exitAngleDeg);
