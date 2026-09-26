@@ -8,20 +8,23 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// <summary>
 /// Which stand a briefing leg routes to, decided in this order:
 /// <list type="number">
-/// <item>Military Combat, Fuel and Vehicles stands and de-ice pads are never briefed.</item>
+/// <item>Military Combat, Fuel and Vehicles stands and de-ice pads — the EXCLUDED kinds — are briefed
+/// only as SayIntentions' gate, and only when its own name for that gate finds no stand of another kind:
+/// never by position, never as a representative stand.</item>
 /// <item>SayIntentions' assigned gate, when its flight is this OFP's, looked for in the order Taxi
 /// Assist's own SayIntentions import looks for it (TaxiAssistForm.TryResolveExternalDestination): by
 /// NAME (every stand whose identity matches the label), only when none does by the scenery's online
 /// ALIASES, and only when neither matches by the POSITION SayIntentions published. A name or alias counts
-/// wherever the stand is. When several match, the evidence decides — the one nearest the published
-/// position, or with none a gate before any other type, then list order — and when the published position
-/// is outside the chosen stand's own reach, a note says how far away it is. A stand of navdata's None
-/// type may be the one (navdata reads UNKN as None, and LEBB's jetway gates are UNKN), but it ranks after
-/// every other stand the evidence cannot tell it from: with no position, and within a metre when there
-/// is one. Either way the stand must connect to the taxiway network: a stand the name found that does not
-/// connect is reported, never swapped for a neighbour; a name found only on a stand the briefing never
-/// routes to is reported, and the published position is tried next, as the import tries it when the name
-/// seats nothing.</item>
+/// wherever the stand is, and whatever its kind, as it does in the import, but a stand of an ordinary kind
+/// always beats one of an excluded kind, which is briefed with a note naming its kind. When several match,
+/// the evidence decides — the one nearest the published position, or with none a gate before any other
+/// type, then list order — and when the published position is outside the chosen stand's own reach, a
+/// note says how far away it is. A stand of navdata's None type may be the one (navdata reads UNKN as
+/// None, and LEBB's jetway gates are UNKN), but it ranks after every other stand the evidence cannot tell
+/// it from: with no position, and within a metre when there is one. The position is used only when no
+/// name or alias matched at all, and never lands on an excluded kind. Either way the stand must connect
+/// to the taxiway network: a stand found that does not connect is reported, never swapped for a
+/// neighbour.</item>
 /// <item>Otherwise a representative stand among those that connect, never one of the None type:
 /// category (freighter → cargo stands; code A → ramps, then gates, then cargo; everyone else → gates,
 /// then ramps, then cargo), wingspan fit, the SimBrief airline's own stands, then the stand at the
@@ -58,8 +61,25 @@ public static class BriefingStandPicker
     /// OpenStreetMap graph's (<see cref="OsmPlanningGraph.Note"/>), so a leg that carries both can say it once.</summary>
     public const string StandTypesUnknown = "stand types unknown";
 
-    // Military Combat, Fuel, Vehicles: never briefed, not even as SayIntentions' gate.
-    private static readonly HashSet<int> NeverBriefedTypes = new() { 8, 16, 17 };
+    /// <summary>
+    /// The EXCLUDED navdata types — Military Combat, Fuel, Vehicles — in the words a note uses for them (de-ice
+    /// pads are excluded too, by their own flag). An excluded stand is never the representative choice and never
+    /// found by position; it is briefed only when SayIntentions' own name for its gate finds no stand of another
+    /// kind, as Taxi Assist's import would seat it by that name (owner decision, 2026-09-26), and then with
+    /// <see cref="KindNotePrefix"/> naming its kind.
+    /// </summary>
+    private static readonly Dictionary<int, string> ExcludedTypes = new()
+    {
+        [8] = "military combat ramp",   // Ramp Military Combat
+        [16] = "fuel stand",            // Fuel
+        [17] = "vehicle stand",         // Vehicles
+    };
+
+    private const string DeicePadWords = "de-icing pad";
+
+    /// <summary>How the note on a briefed stand of an excluded kind begins: "this scenery marks that stand as a
+    /// fuel stand".</summary>
+    private const string KindNotePrefix = "this scenery marks that stand as a ";
 
     /// <summary>
     /// Navdata's None type, which is where navdata puts UNKN as well — and UNKN is not only "no stand": a
@@ -73,12 +93,15 @@ public static class BriefingStandPicker
     /// still rank ahead of a None stand: the point cannot tell two listings a metre apart.</summary>
     private const double NoneTypeTieMetres = 1.0;
 
-    /// <summary>Whether the briefing may route to the stand at all — the pool the SayIntentions step
-    /// matches in.</summary>
-    private static bool IsRoutable(ParkingSpot s) => !NeverBriefedTypes.Contains(s.Type) && !s.IsDeiceArea;
+    /// <summary>Whether the stand is of an excluded kind (<see cref="ExcludedTypes"/>, or a de-ice pad).</summary>
+    private static bool IsExcludedKind(ParkingSpot s) => s.IsDeiceArea || ExcludedTypes.ContainsKey(s.Type);
 
-    /// <summary>Whether the stand may be the representative one: routable, and not of the None type.</summary>
-    private static bool IsRepresentativeCandidate(ParkingSpot s) => IsRoutable(s) && s.Type != NoneType;
+    /// <summary>"fuel stand", "de-icing pad": an excluded stand's kind in a note's words.</summary>
+    private static string ExcludedKindWords(ParkingSpot s) => s.IsDeiceArea ? DeicePadWords : ExcludedTypes[s.Type];
+
+    /// <summary>Whether the stand may be the representative one: not of an excluded kind, and not of the None
+    /// type.</summary>
+    private static bool IsRepresentativeCandidate(ParkingSpot s) => !IsExcludedKind(s) && s.Type != NoneType;
 
     /// <summary>A category the representative choice can prefer: the word a note uses for it and the
     /// navdata types it holds.</summary>
@@ -150,15 +173,12 @@ public static class BriefingStandPicker
     /// under which the published position overruled the name). NormalizeParkingName strips
     /// GATE/SPOT/PARKING/…, so a letterless "Gate 8", "Spot 8" and "Parking 8" all compare as "8", and
     /// navdata lists its unnamed spots (the GA ramps) first — at CYEG "Spot 8" is a GA ramp 1.2 km from
-    /// "Gate 8". So every exact match is collected (and only when there is none, every alias match),
-    /// wherever it is, and the evidence chooses among them; list order alone would brief the ramp as the
-    /// controller's gate. When the published position is outside the chosen stand's own reach, a note gives
-    /// the distance, so the pilot hears that SayIntentions put its gate somewhere else. The pool is every
-    /// stand the briefing may route to, None-type stands included (see <see cref="NoneType"/>). Once the
-    /// name has found a stand the briefing routes to — even one that does not connect — the step ends
-    /// there: the position is not then used to hand the label to a differently named neighbour. A name found
-    /// only on a stand the briefing never routes to is said, and the position, when SayIntentions published
-    /// one, is tried next.
+    /// "Gate 8". So every match is collected (<see cref="NameMatches"/>), wherever it is, and the evidence
+    /// chooses among them; list order alone would brief the ramp as the controller's gate. Stands of every
+    /// kind are matched, None-type stands included (see <see cref="NoneType"/>), but one of an excluded kind
+    /// only when no stand of another kind answers. Once the name has found a stand — even one that does not
+    /// connect — the step ends there: the position is used only when no name or alias matched at all, and
+    /// then never lands on an excluded kind.
     /// </summary>
     private static ParkingSpot? MatchSayIntentionsGate(IReadOnlyList<ParkingSpot> spots, SayIntentionsGateHint hint,
                                                        Func<ParkingSpot, bool> hasGraphNode, List<string> notes)
@@ -166,48 +186,24 @@ public static class BriefingStandPicker
         string assigned = LabelNamesItsKind(hint.Label)
             ? $"SayIntentions assigned \"{hint.Label}\""
             : $"SayIntentions assigned gate \"{hint.Label}\"";
-        var pool = spots.Where(IsRoutable).ToList();
         string wanted = SayIntentionsClearanceParser.NormalizeParkingName(hint.Label);
         GeoPoint? pin = hint.Position;
 
-        if (wanted.Length > 0)
+        var named = wanted.Length > 0 ? NameMatches(spots, wanted) : new List<ParkingSpot>();
+        if (named.Count > 0)
         {
-            var named = pool.Where(s => SameName(IdentityLabel(s), wanted)).ToList();
-            if (named.Count == 0)
-                named = pool.Where(s => HasAlias(s, wanted)).ToList();
-
-            if (named.Count > 0)
+            var chosen = FirstConnected(ByEvidence(named, pin), pin, hasGraphNode);
+            if (chosen == null)
             {
-                var chosen = FirstConnected(ByEvidence(named, pin), pin, hasGraphNode);
-                if (chosen == null)
-                {
-                    notes.Add($"{assigned} was found but does not connect to the taxiway network; using a representative stand instead");
-                    return null;
-                }
-                Assigned(chosen, hint.Label, wanted, notes);
-                if (pin is GeoPoint published && !Reaches(chosen, published))
-                    notes.Add(FarFromPin(chosen, published));
-                return chosen;
+                notes.Add($"{assigned} was found but does not connect to the taxiway network; using a representative stand instead");
+                return null;
             }
-
-            // Only a stand the briefing never routes to (Military Combat, Fuel, Vehicles, a de-ice pad)
-            // carries the name. It exists, so "not found" would be untrue; and the name has seated nothing,
-            // so the published position, when there is one, is tried next, as the import tries it.
-            if (spots.Any(s => !IsRoutable(s) && (SameName(IdentityLabel(s), wanted) || HasAlias(s, wanted))))
-            {
-                string found = $"{assigned} was found, but only as a stand the briefing does not route to";
-                if (pin is not GeoPoint)
-                {
-                    notes.Add($"{found}; using a representative stand instead");
-                    return null;
-                }
-                notes.Add(found);
-            }
+            return Assigned(chosen, hint.Label, wanted, pin, notes);
         }
 
         if (pin is GeoPoint p)
         {
-            var inReach = pool.Where(s => Reaches(s, p)).ToList();
+            var inReach = spots.Where(s => !IsExcludedKind(s) && Reaches(s, p)).ToList();
             if (inReach.Count > 0)
             {
                 var chosen = FirstConnected(ByEvidence(inReach, p), p, hasGraphNode);
@@ -216,36 +212,59 @@ public static class BriefingStandPicker
                     notes.Add($"{assigned} was found by position but does not connect to the taxiway network; using a representative stand instead");
                     return null;
                 }
-                return Assigned(chosen, hint.Label, wanted, notes);
+                return Assigned(chosen, hint.Label, wanted, pin, notes);
             }
         }
 
-        // With a published position the note speaks of that position, the last evidence tried: it holds whatever
-        // the name found (a stand the briefing does not route to, say), where "not found at this airport" need not.
+        // With a published position the note speaks of that position, the last evidence tried.
         notes.Add(pin is GeoPoint
             ? $"{assigned}, but no stand at SayIntentions' position was found in this scenery; using a representative stand instead"
             : $"{assigned} was not found at this airport; using a representative stand instead");
         return null;
     }
 
-    /// <summary>SayIntentions' stand, with a note whenever this scenery lists it under another name (an
-    /// alias or a position match), so the pilot hears why the briefed stand is not called what
-    /// SayIntentions called it. A label that names no stand at all ("Gate") matches nothing by name, so a stand
-    /// found for it was found by position alone and always gets the note — even one whose own label names no
-    /// stand either ("Parking"), which would otherwise compare as the same empty name.</summary>
-    private static ParkingSpot Assigned(ParkingSpot stand, string label, string wanted, List<string> notes)
+    /// <summary>
+    /// The stands SayIntentions' name finds, as the import's name and alias steps would find them: every stand
+    /// of an ordinary kind whose identity matches, else every one whose online alias does — and only when
+    /// neither finds one, the same two steps over the excluded kinds. An ordinary stand always beats an
+    /// excluded one, even one the published position is nearer.
+    /// </summary>
+    private static List<ParkingSpot> NameMatches(IReadOnlyList<ParkingSpot> spots, string wanted)
+    {
+        var ordinary = Matching(spots.Where(s => !IsExcludedKind(s)), wanted);
+        return ordinary.Count > 0 ? ordinary : Matching(spots.Where(IsExcludedKind), wanted);
+    }
+
+    /// <summary>Every stand whose identity matches, or when none does, every stand whose online alias does.</summary>
+    private static List<ParkingSpot> Matching(IEnumerable<ParkingSpot> stands, string wanted)
+    {
+        var pool = stands.ToList();
+        var named = pool.Where(s => SameName(IdentityLabel(s), wanted)).ToList();
+        return named.Count > 0 ? named : pool.Where(s => HasAlias(s, wanted)).ToList();
+    }
+
+    /// <summary>
+    /// SayIntentions' stand, with the notes the pilot needs to hear about it, in this order: that this scenery
+    /// lists it under another name (an alias or a position match); that it is of an excluded kind ("this
+    /// scenery marks that stand as a fuel stand"); and how far SayIntentions' published position is from it,
+    /// when that is outside the stand's own reach (<see cref="Reaches"/>), so the pilot hears that
+    /// SayIntentions put its gate somewhere other than the stand the name found. A stand found by position is
+    /// of an ordinary kind and in reach by construction, so it only ever carries the first. A label that
+    /// names no stand at all ("Gate") matches nothing by name, so a stand found for it was found by position
+    /// alone and always gets that first note — even one whose own label names no stand either ("Parking"),
+    /// which would otherwise compare as the same empty name.
+    /// </summary>
+    private static ParkingSpot Assigned(ParkingSpot stand, string label, string wanted, GeoPoint? pin, List<string> notes)
     {
         string listedAs = IdentityLabel(stand);
         if (wanted.Length == 0 || !SameName(listedAs, wanted))
             notes.Add($"SayIntentions assigned {label}, which this scenery lists as {listedAs}");
+        if (IsExcludedKind(stand))
+            notes.Add(KindNotePrefix + ExcludedKindWords(stand));
+        if (pin is GeoPoint published && !Reaches(stand, published))
+            notes.Add($"SayIntentions' position is {TaxiBriefingRenderer.FormatDistance(MetresTo(stand, published))} from this stand");
         return stand;
     }
-
-    /// <summary>"SayIntentions' position is 1.2 km from this stand": said of a stand found by name or alias when
-    /// the published position is outside the stand's own reach (<see cref="Reaches"/>), so the pilot hears
-    /// that SayIntentions put its gate somewhere other than the stand the name found.</summary>
-    private static string FarFromPin(ParkingSpot stand, GeoPoint pin) =>
-        $"SayIntentions' position is {TaxiBriefingRenderer.FormatDistance(MetresTo(stand, pin))} from this stand";
 
     /// <summary>Whether a stand label already says what kind of stand it is ("Gate 5", "Spot 12", "Parking"), so
     /// "gate" is not put in front of it ("SayIntentions assigned gate Gate 5").</summary>
@@ -278,12 +297,11 @@ public static class BriefingStandPicker
             : candidates.OrderBy(RankWithoutPosition)).ToList();
 
     /// <summary>
-    /// The first stand in <paramref name="ordered"/> that connects to the taxiway network. A later stand
-    /// is tried only when the evidence that ordered them cannot tell it from the first — with a published
-    /// position, its own acceptance also reaches that point (a stand listed twice); with none, it ranks
-    /// the same as the first (<see cref="RankWithoutPosition"/>). A stand the evidence ranked below the
-    /// first is a DIFFERENT stand, and briefing it as SayIntentions' gate is the failure this match
-    /// exists to prevent.
+    /// The first stand in <paramref name="ordered"/> that connects to the taxiway network. When the first
+    /// does not, a later stand is tried only when it is at least as plausible as SayIntentions' stand
+    /// (<see cref="AtLeastAsPlausible"/>). A less plausible one is a DIFFERENT stand — a same-numbered GA ramp
+    /// for an unconnected gate — and briefing it as SayIntentions' gate is the failure this match exists to
+    /// prevent.
     /// </summary>
     private static ParkingSpot? FirstConnected(List<ParkingSpot> ordered, GeoPoint? position,
                                                Func<ParkingSpot, bool> hasGraphNode)
@@ -291,14 +309,26 @@ public static class BriefingStandPicker
         var first = ordered[0];
         foreach (var s in ordered)
         {
-            bool indistinguishable = ReferenceEquals(s, first) ||
-                (position is GeoPoint p
-                    ? Reaches(s, p)
-                    : RankWithoutPosition(s) == RankWithoutPosition(first));
-            if (indistinguishable && hasGraphNode(s)) return s;
+            if (!ReferenceEquals(s, first) && !AtLeastAsPlausible(s, first, position)) continue;
+            if (hasGraphNode(s)) return s;
         }
         return null;
     }
+
+    /// <summary>
+    /// Whether <paramref name="later"/>, ranked below <paramref name="first"/>, is at least as plausible as
+    /// SayIntentions' stand. Where the published point is within the reach of either, the point decides: the
+    /// later stand is when the point is within its own reach — then the first is either at the point too (one
+    /// stand listed twice) or not there at all. Where it is within the reach of neither, the point says neither
+    /// is SayIntentions' stand, and the rule for no position decides: the later stand ranks the same as the
+    /// first (<see cref="RankWithoutPosition"/>). Name matches can lie anywhere now, so the first may be out of
+    /// reach; "the first was out of reach too" alone is NOT enough, or a pin far from a gate and a same-numbered
+    /// GA ramp would let the ramp stand in for the unconnected gate where no pin at all would not.
+    /// </summary>
+    private static bool AtLeastAsPlausible(ParkingSpot later, ParkingSpot first, GeoPoint? position) =>
+        position is GeoPoint p && (Reaches(later, p) || Reaches(first, p))
+            ? Reaches(later, p)
+            : RankWithoutPosition(later) == RankWithoutPosition(first);
 
     private static double MetresTo(ParkingSpot s, GeoPoint p) =>
         TaxiGraph.FastDistanceMeters(p.Latitude, p.Longitude, s.Latitude, s.Longitude);

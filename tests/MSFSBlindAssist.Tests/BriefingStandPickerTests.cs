@@ -294,50 +294,115 @@ public class BriefingStandPickerTests
         Assert.Contains("SayIntentions assigned Gate 99, which this scenery lists as G 1", choice.Notes);
     }
 
+    // ── SayIntentions: a stand of an excluded kind ───────────────────────────────────────────
+    // Military Combat, Fuel and Vehicles stands and de-ice pads are never a representative stand and are
+    // never found by position. But when SayIntentions' own name for its gate, or an online alias, finds no
+    // stand of another kind, that stand is briefed, as Taxi Assist's import would seat it by that name
+    // (owner decision, 2026-09-26), and a note says what this scenery marks it as.
+
     [Theory]
-    [InlineData(16, false)]   // Fuel
-    [InlineData(8, false)]    // Military Combat
-    [InlineData(17, false)]   // Vehicles
-    [InlineData(10, true)]    // a de-ice pad
-    public void Say_intentions_gate_found_only_on_a_stand_the_briefing_never_routes_to_is_said_not_denied(int type, bool deicePad)
+    [InlineData(16, false, "fuel stand")]
+    [InlineData(8, false, "military combat ramp")]
+    [InlineData(17, false, "vehicle stand")]
+    [InlineData(10, true, "de-icing pad")]
+    public void A_name_found_only_on_a_stand_of_an_excluded_kind_briefs_that_stand_and_says_its_kind(int type, bool deicePad, string kind)
     {
-        // The stand exists, so "not found" would be untrue. With no published position there is nothing
-        // else to try, so a representative stand is briefed.
         var skipped = Spot("", 105, type, 0, 0, radiusFt: 26);
         skipped.IsDeiceArea = deicePad;
         var gate6 = Spot("", 6, 10, 40, 0);
         var choice = BriefingStandPicker.Pick(new[] { skipped, gate6 }, B738, null, new SayIntentionsGateHint("Gate 105", null), Always)!;
 
-        Assert.Same(gate6, choice.Spot);
-        Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Equal(new[]
-        {
-            "SayIntentions assigned \"Gate 105\" was found, but only as a stand the briefing does not route to; " +
-            "using a representative stand instead",
-        }, choice.Notes);
+        Assert.Same(skipped, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Equal(new[] { $"this scenery marks that stand as a {kind}" }, choice.Notes);
     }
 
     [Theory]
-    [InlineData(16, false)]   // Fuel
-    [InlineData(8, false)]    // Military Combat
-    [InlineData(17, false)]   // Vehicles
-    [InlineData(10, true)]    // a de-ice pad
-    public void A_name_found_only_on_a_stand_the_briefing_never_routes_to_goes_on_to_the_published_position(int type, bool deicePad)
+    [InlineData(16, false, "fuel stand")]
+    [InlineData(8, false, "military combat ramp")]
+    [InlineData(17, false, "vehicle stand")]
+    [InlineData(10, true, "de-icing pad")]
+    public void An_excluded_kind_found_by_name_is_not_handed_to_the_gate_next_door_at_the_pin(int type, bool deicePad, string kind)
     {
-        // As Taxi Assist's import goes on to the published position when the name seats nothing, so does the
-        // briefing: the point sits inside the reach of the gate next door, which is briefed as SayIntentions'
-        // gate by position, after the note that the name was found on a stand the briefing does not route to.
+        // The published point is 5 m from the stand the name found, and inside the reach of the gate next
+        // door as well. The name has found SayIntentions' stand, so the point decides nothing; and it is
+        // within that stand's own reach, so no distance is said.
         var skipped = Spot("", 105, type, 0, 0, radiusFt: 26);
         skipped.IsDeiceArea = deicePad;
         var gate6 = Spot("", 6, 10, 40, 0);
         var choice = BriefingStandPicker.Pick(new[] { skipped, gate6 }, B738, null, At("Gate 105", 5), Always)!;
 
-        Assert.Same(gate6, choice.Spot);
+        Assert.Same(skipped, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Equal(new[] { $"this scenery marks that stand as a {kind}" }, choice.Notes);
+    }
+
+    [Fact]
+    public void An_excluded_stand_found_only_by_its_alias_is_briefed()
+    {
+        // The fuel stand "F 1" answers to the online alias "105", and no stand is called 105.
+        var fuel = Spot("F", 1, 16, 0, 0);
+        fuel.Aliases.Add("105");
+        var gate6 = Spot("", 6, 10, 400, 0);
+        var choice = BriefingStandPicker.Pick(new[] { fuel, gate6 }, B738, null, new SayIntentionsGateHint("Gate 105", null), Always)!;
+
+        Assert.Same(fuel, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
         Assert.Equal(new[]
         {
-            "SayIntentions assigned \"Gate 105\" was found, but only as a stand the briefing does not route to",
-            "SayIntentions assigned Gate 105, which this scenery lists as Gate 6",
+            "SayIntentions assigned Gate 105, which this scenery lists as F 1",
+            "this scenery marks that stand as a fuel stand",
+        }, choice.Notes);
+    }
+
+    [Fact]
+    public void An_ordinary_namesake_beats_an_excluded_one_even_at_the_pin()
+    {
+        // The fuel spot "Spot 7" is at the pin; "Parking 7" (595 m from it) and "Gate 7" (1,195 m) read
+        // "7" as well. An ordinary namesake always beats an excluded one; among the ordinary ones the pin
+        // decides, and with no pin the gate does.
+        var fuel7 = Spot("", 7, 16, 0, 0, radiusFt: 26);
+        var parking7 = Spot("Parking", 7, 3, 600, 0, radiusFt: 23);
+        var gate7 = Spot("", 7, 10, 1200, 0);
+
+        var pinned = BriefingStandPicker.Pick(new[] { fuel7, parking7, gate7 }, B738, null, At("Gate 7", 5), Always)!;
+        Assert.Same(parking7, pinned.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, pinned.Source);
+        Assert.Equal(new[] { "SayIntentions' position is 595 m from this stand" }, pinned.Notes);
+
+        var unpinned = BriefingStandPicker.Pick(new[] { fuel7, parking7, gate7 }, B738, null, new SayIntentionsGateHint("Gate 7", null), Always)!;
+        Assert.Same(gate7, unpinned.Spot);
+        Assert.Empty(unpinned.Notes);
+    }
+
+    [Fact]
+    public void An_ordinary_stand_s_alias_beats_an_excluded_stand_s_name()
+    {
+        // "Spot 105" is a fuel spot; the gate "B 5" answers to the online alias "105". The ordinary stand
+        // is looked for first, by its name and then by its aliases.
+        var fuel = Spot("", 105, 16, 0, 0, radiusFt: 26);
+        var b5 = Spot("B", 5, 10, 900, 0);
+        b5.Aliases.Add("105");
+        var choice = BriefingStandPicker.Pick(new[] { fuel, b5 }, B738, null, new SayIntentionsGateHint("Gate 105", null), Always)!;
+
+        Assert.Same(b5, choice.Spot);
+        Assert.Equal(new[] { "SayIntentions assigned Gate 105, which this scenery lists as B 5" }, choice.Notes);
+    }
+
+    [Fact]
+    public void An_excluded_namesake_that_does_not_connect_is_said_and_a_representative_stand_used()
+    {
+        // Like any stand the name finds, it must connect to the taxiway network; the pin is not then tried.
+        var fuel = Spot("", 105, 16, 0, 0, radiusFt: 26);
+        var b5 = Spot("B", 5, 10, 1210, 0);
+        var choice = BriefingStandPicker.Pick(new[] { fuel, b5 }, B738, null, At("Spot 105", 1200), AllBut(fuel))!;
+
+        Assert.Same(b5, choice.Spot);
+        Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Equal(new[]
+        {
+            "SayIntentions assigned \"Spot 105\" was found but does not connect to the taxiway network; " +
+            "using a representative stand instead",
         }, choice.Notes);
     }
 
@@ -447,11 +512,13 @@ public class BriefingStandPickerTests
     [Fact]
     public void A_same_numbered_ga_ramp_never_stands_in_for_an_unconnected_assigned_gate()
     {
+        // With no pin, with the pin at the gate, and with the pin in the reach of neither (500 m from the gate,
+        // 700 m from the ramp): a pin far from both must never let the ramp in where no pin would not.
         var gate9 = Spot("", 9, 9, 0, 0, radiusFt: 52);
         var spot9 = Spot("", 9, 4, 1200, 0, radiusFt: 39);
         var g1 = Spot("G", 1, 10, 600, 0);
 
-        foreach (var hint in new[] { new SayIntentionsGateHint("Gate 9", null), At("Gate 9", 10) })
+        foreach (var hint in new[] { new SayIntentionsGateHint("Gate 9", null), At("Gate 9", 10), At("Gate 9", 500) })
         {
             var choice = BriefingStandPicker.Pick(new[] { gate9, spot9, g1 }, B738, null, hint, AllBut(gate9))!;
             Assert.Same(g1, choice.Spot);
@@ -473,6 +540,36 @@ public class BriefingStandPickerTests
             Assert.Same(twin, choice.Spot);
             Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
         }
+    }
+
+    [Fact]
+    public void A_twin_listing_stands_in_when_the_pin_reaches_neither()
+    {
+        // The same gate listed twice, 30 m apart, with SayIntentions' pin 500 m from the nearer listing and
+        // in the reach of neither: the pin points at neither, so it cannot make the twin a different stand
+        // where no pin would not. The twin is briefed, and the distance said.
+        var first = Spot("", 5, 10, 0, 0);
+        var twin = Spot("", 5, 10, 30, 0);
+        var choice = BriefingStandPicker.Pick(new[] { first, twin }, B738, null, At("Gate 5", -500), AllBut(first))!;
+
+        Assert.Same(twin, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Equal(new[] { "SayIntentions' position is 530 m from this stand" }, choice.Notes);
+    }
+
+    [Fact]
+    public void A_nearer_namesake_out_of_reach_that_does_not_connect_gives_way_to_one_at_the_pin()
+    {
+        // The GA ramp "Spot 5" (13 ft, answering to 8 m) is 10 m from the pin and ranks first by distance, but
+        // the pin is outside its reach; "Gate 5" is 20 m from the pin and inside its 61 m reach. The ramp does
+        // not connect, and the gate — where the pin actually points — is at least as plausible, so it is used.
+        var spot5 = Spot("", 5, 4, 0, 0, radiusFt: 13);
+        var gate5 = Spot("", 5, 10, 30, 0);
+        var choice = BriefingStandPicker.Pick(new[] { spot5, gate5 }, B738, null, At("Gate 5", 10), AllBut(spot5))!;
+
+        Assert.Same(gate5, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Empty(choice.Notes);
     }
 
     [Fact]
@@ -527,44 +624,25 @@ public class BriefingStandPickerTests
     }
 
     [Fact]
-    public void An_excluded_namesake_is_said_and_the_position_match_follows()
+    public void An_excluded_namesake_far_from_the_pin_is_briefed_with_its_kind_and_the_distance()
     {
-        // The fuel spot "Spot 105" is 1.2 km from the pin; the gate "B 5" is 10 m from it. The name found only
-        // a stand the briefing never routes to, so — as the import does when the name seats nothing — the
-        // position decides. A stand found by position is in reach of the pin, so no distance is said.
+        // The fuel spot "Spot 105" is 1.2 km from the pin; the gate "B 5" is 10 m from it. The name has found
+        // SayIntentions' stand, as it would in Taxi Assist's import, so the pin decides nothing: its distance
+        // is said after the stand's kind.
         var fuel = Spot("", 105, 16, 0, 0, radiusFt: 26);
         var b5 = Spot("B", 5, 10, 1210, 0);
         foreach (var label in new[] { "Spot 105", "Parking 105" })
         {
             var choice = BriefingStandPicker.Pick(new[] { fuel, b5 }, B738, null, At(label, 1200), Always)!;
 
-            Assert.Same(b5, choice.Spot);
+            Assert.Same(fuel, choice.Spot);
             Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
             Assert.Equal(new[]
             {
-                $"SayIntentions assigned \"{label}\" was found, but only as a stand the briefing does not route to",
-                $"SayIntentions assigned {label}, which this scenery lists as B 5",
+                "this scenery marks that stand as a fuel stand",
+                "SayIntentions' position is 1.2 km from this stand",
             }, choice.Notes);
         }
-    }
-
-    [Fact]
-    public void An_excluded_namesake_with_nothing_at_the_pin_says_both()
-    {
-        // The name finds only the fuel spot, and the position finds no stand: both are said, and only the
-        // last note says a representative stand is used.
-        var fuel = Spot("", 105, 16, 0, 0, radiusFt: 26);
-        var g1 = Spot("G", 1, 10, 600, 0);
-        var choice = BriefingStandPicker.Pick(new[] { fuel, g1 }, B738, null, At("Spot 105", 1200), Always)!;
-
-        Assert.Same(g1, choice.Spot);
-        Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Equal(new[]
-        {
-            "SayIntentions assigned \"Spot 105\" was found, but only as a stand the briefing does not route to",
-            "SayIntentions assigned \"Spot 105\", but no stand at SayIntentions' position was found in this scenery; " +
-            "using a representative stand instead",
-        }, choice.Notes);
     }
 
     [Fact]
@@ -615,6 +693,37 @@ public class BriefingStandPickerTests
         Assert.Same(b6, outside.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, outside.Source);
         Assert.Equal(new[] { "SayIntentions' position is 62 m from this stand" }, outside.Notes);
+    }
+
+    [Fact]
+    public void The_distance_note_reads_a_gsx_radius_in_metres()
+    {
+        // A GSX radius is METRES: 30 m answers to 60 m. Read as feet (9.1 m) it would answer to 18 m, and a
+        // pin 55 m from its own stand would be said to be far from it.
+        var gsx = Spot("B", 6, 14, 0, 0, radiusFt: 30, source: GateSource.Gsx);
+
+        var inside = BriefingStandPicker.Pick(new[] { gsx }, B738, null, At("Gate B6", 55), Always)!;
+        Assert.Same(gsx, inside.Spot);
+        Assert.Empty(inside.Notes);
+
+        var outside = BriefingStandPicker.Pick(new[] { gsx }, B738, null, At("Gate B6", 65), Always)!;
+        Assert.Same(gsx, outside.Spot);
+        Assert.Equal(new[] { "SayIntentions' position is 65 m from this stand" }, outside.Notes);
+    }
+
+    [Fact]
+    public void The_distance_note_gives_a_stand_of_unknown_size_60_m()
+    {
+        // No radius — every OpenStreetMap stand — answers to 60 m, as it does for the position match.
+        var osm = Spot("B", 6, 0, 0, 0, radiusFt: 0);
+
+        var inside = BriefingStandPicker.Pick(new[] { osm }, B738, null, At("Gate B6", 55), Always)!;
+        Assert.Same(osm, inside.Spot);
+        Assert.Empty(inside.Notes);
+
+        var outside = BriefingStandPicker.Pick(new[] { osm }, B738, null, At("Gate B6", 65), Always)!;
+        Assert.Same(osm, outside.Spot);
+        Assert.Equal(new[] { "SayIntentions' position is 65 m from this stand" }, outside.Notes);
     }
 
     [Fact]
