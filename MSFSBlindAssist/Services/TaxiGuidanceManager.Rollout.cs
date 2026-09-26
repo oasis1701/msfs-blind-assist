@@ -84,7 +84,7 @@ public partial class TaxiGuidanceManager
                 xm[0].TriggerMetres / DistanceFormatter.MetresPerFoot,
                 xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot,
                 xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot,
-                ROLLOUT_TURN_NOW_FT, ROLLOUT_TAXI_GS_KTS);
+                ROLLOUT_TURN_NOW_FT, Navigation.RolloutExitGate.MaxTurnSpeedKts(exit.ExitAngleDegrees));
 
             if (retired.Retire1500) _rolloutApproach1500Announced = true;
             if (retired.Retire900) _rolloutApproach900Announced = true;
