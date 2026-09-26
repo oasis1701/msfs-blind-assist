@@ -200,7 +200,7 @@ briefing.
 - The `taxi_briefing` summary line gains `turns=[-,left,right,slight right]` and `standTurn=`, plus a
   trailing `notes="…"` (pipe-joined) whenever the leg carries any.
 - The prompt's section 7a adds: give the turn at each taxiway change and into the stand, repeating the
-  directions exactly as given.
+  directions exactly as given; where the block gives no turn for a taxiway, give none.
 
 ## 5. Error handling
 
@@ -228,7 +228,9 @@ briefing.
 - `BriefingTurns`: 90° left at an L; micro-bends summing to 90° right; a 30° slight turn; two turns
   40 m apart not blending; straight continuation; an unnamed connector between runs; first entry null;
   a 150° sharp turn; stand turn right; no stand turn when the route ends named; alignment with
-  `DistinctConsecutive` on a route that revisits a taxiway.
+  `DistinctConsecutive` on a route that revisits a taxiway; no turn word across an unnamed stretch
+  longer than 100 m between two taxiways; a long unnamed gap inside one taxiway, or a long lead-in
+  before the first, does not hide the next turn.
 - `TaxiBriefingRendererTests`: the exact new lines; the pinned full block updated.
 
 Sim-facing (owner runs, one scenario): this KMEM→KATL flight with SayIntentions running, press
