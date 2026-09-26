@@ -90,6 +90,25 @@ public class LandingExitHoldShortBranchTests
     }
 
     [Fact]
+    public void A_hold_short_exit_already_off_the_pavement_takes_the_bearing_it_was_reached_by()
+    {
+        // The OI19 11 shape (re-sweep after the review's I1 fix). Connector "C" leaves the runway at 90
+        // degrees, north (left), to hold-short node H (1000,30), already past the 25 m half-width; from H
+        // the taxiway runs BACK along a parallel line to (950,30) and on out to (900,45). Measured from
+        // H's own edge onward, the bearing pointed back down the runway and the spoken side flipped to
+        // the wrong one; H was reached turning 90 degrees left, and that is the exit's bearing.
+        var g = Build(
+            Seg(1000, 0, 1000, 30, "C", endType: "HSND"), Seg(1000, 30, 950, 30, "C"), Seg(950, 30, 900, 45, "C"));
+
+        var c = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "C");
+
+        Assert.Equal(NodeAt(g, 1000, 30).NodeId, c.NodeId);
+        double relative = ((c.ExitBearingTrue - 90.0) % 360.0 + 540.0) % 360.0 - 180.0;
+        Assert.InRange(relative, -93.0, -87.0);
+        Assert.Equal("Left", c.ExitSide);
+    }
+
+    [Fact]
     public void A_hold_short_turnaround_with_no_forward_arm_is_recorded_as_a_130_degree_end_exit()
     {
         var g = HoldShortRunway();

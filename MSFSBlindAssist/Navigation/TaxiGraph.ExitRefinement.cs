@@ -56,21 +56,30 @@ public partial class TaxiGraph
         double alongFt = axis.Project(exit.Latitude, exit.Longitude).AlongMetres / 0.3048;
         exit.ExitAngleDegrees = angle;
         exit.ExitType = ClassifyExit(angle, alongFt, rwy.Length);
-        exit.ExitBearingTrue = BranchExitBearing(branch, rwy.Heading, EdgeIndexAt(branch, exit.NodeId));
+        exit.ExitBearingTrue = BranchExitBearing(branch, rwy.Heading, EdgeIndexAt(branch, exit.NodeId, axis));
         exit.ExitSide = ExitSideFor(exit.ExitBearingTrue, rwy.Heading);
         return exit;
     }
 
-    // A kept exit's bearing is measured where the exit STANDS: its own node's index in the branch's
-    // path, clamped to the path's last edge (a node at the clear line is the path's last node); 0, the
-    // junction, when the node is not on the path. From the junction - often a lead-in start up to 150 m
-    // behind the node - the edge onward is the lead line's own, so the bearing collapsed to the lead
-    // line's shallow chord (review, 2026-09-26: a 90° exit read -31°, KMEM M8 +43° for about +54°), and
-    // after "turn now" the rollout steers a Normal exit by it.
-    private static int EdgeIndexAt(LandingExitBranch branch, int nodeId)
+    // A kept exit's bearing is measured where the exit STANDS: from its own node's index in the
+    // branch's path, clamped to the path's last edge (a node at the clear line is the path's last node);
+    // 0, the junction, when the node is not on the path. From the junction - often a lead-in start up to
+    // 150 m behind the node - the edge onward is the lead line's own, so the bearing collapsed to the
+    // lead line's shallow chord (review, 2026-09-26: a 90° exit read -31°, KMEM M8 +43° for about +54°),
+    // and after "turn now" the rollout steers a Normal exit by it. A node already OFF the runway pavement
+    // was reached turning off it, so it is measured by the edge INTO it: the edge onward can run back
+    // along a parallel taxiway (OI19 11: a hold-short node reached turning 91° right read 180°, and its
+    // spoken side flipped to Left).
+    private int EdgeIndexAt(LandingExitBranch branch, int nodeId, RunwayAxis axis)
     {
         for (int i = 0; i < branch.Path.Count; i++)
-            if (branch.Path[i] == nodeId) return Math.Min(i, Math.Max(0, branch.Path.Count - 2));
+        {
+            if (branch.Path[i] != nodeId) continue;
+            var n = Nodes[nodeId];
+            if (i > 0 && Math.Abs(axis.Project(n.Latitude, n.Longitude).LateralMetres) > axis.HalfWidthMetres)
+                return i - 1;
+            return Math.Min(i, Math.Max(0, branch.Path.Count - 2));
+        }
         return 0;
     }
 
