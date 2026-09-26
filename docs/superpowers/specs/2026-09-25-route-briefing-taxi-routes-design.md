@@ -158,13 +158,19 @@ as the assigned "Gate 8", because `NormalizeParkingName` strips the stand-type w
    then the published position (pin) only when neither matches — so the briefing and Taxi Assist
    pick the same stand; and when a pin is published and the stand chosen by name or alias is
    outside its own reach of it, the note says "SayIntentions' position is {distance} from this
-   stand".** Among several same-named matches the one nearest the pin wins (the import takes the
-   first in its own list — the one remaining difference); with no pin, a gate type (9, 10, 11, 13,
-   14) first, then list order. The chosen stand must connect to the taxiway network; a matched name
-   that does not connect is said so ("was found but does not connect"). A name found only on an
-   excluded stand is said so ("…only as a stand the briefing does not route to") and the pin is
-   then tried. By position only when no name or alias matched: the nearest stand whose reach
-   contains the pin. A found stand is `StandChoiceSource.SayIntentions`, and when its identity does
+   stand".** A name or alias that matches ONLY a stand of an excluded kind (military combat, fuel,
+   vehicles, de-icing pad) is followed like any other — the import would route there by name —
+   with the note "this scenery marks that stand as a {kind}" (owner decision, 2026-09-26). Among
+   several namesakes an ordinary stand beats an excluded one, then the one nearest the pin (no pin:
+   a gate type first, then list order); a later namesake is tried when the first does not connect
+   only if it is at least as plausible (reaches the pin when either does; otherwise the same kind
+   as the first). The chosen stand must connect to the taxiway network; a matched name that does
+   not connect is said so ("was found but does not connect"). By position only when no name or
+   alias matched at all: the nearest ordinary stand whose reach contains the pin. Differences from
+   the import that remain, deliberately: the namesake tie-break (the import takes the first in its
+   own list — never switch the briefing to list order, which briefs a GA "Spot 8" as "Gate 8" at
+   ~20 airports); the network-connection requirement; the 60 m acceptance for a stand of unknown
+   size; and the briefing's position match never lands on an excluded kind. A found stand is `StandChoiceSource.SayIntentions`, and when its identity does
    not normalise to SayIntentions' label the note says "SayIntentions assigned X, which this scenery
    lists as Y"; nothing found → a note naming the assigned label, and the inference below.
 1. **Eligible and reachable.** The representative choice excludes types 1, 8, 16, 17 and de-ice
