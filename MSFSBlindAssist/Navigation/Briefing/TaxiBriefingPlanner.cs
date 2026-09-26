@@ -140,16 +140,16 @@ public static partial class TaxiBriefingPlanner
     }
 
     /// <summary>
-    /// Hold-short notes from the route's flagged segments and its start hold. An event the pass could not
-    /// hold becomes a note, never a silent gap.
+    /// One hold-short note per stop the automatic pass placed — the route's start hold, then every flagged
+    /// segment — in route order. An event the pass could not hold becomes a note, never a silent gap.
     ///
-    /// <para>Nothing is discarded for the runway just landed on — not even the START hold, which the
-    /// route-briefing design (§5.6) says to drop because "the aircraft has just vacated it". That premise
-    /// is false: every briefed exit vacates the runway (<see cref="BriefingExitPicker"/> takes only
-    /// <see cref="LandingExit.VacatesRunway"/> exits), so the way in starts clear of it, and the pass never
-    /// holds for LEAVING a runway. A hold naming it — the start hold included — is the route crossing it
-    /// AGAIN with landing traffic behind, and is briefed as a crossing like any other; a start hold is
-    /// simply what that crossing becomes when nothing lies between the vacate node and the runway.</para>
+    /// <para>Every stop is briefed, each on its own. On a briefing route the pass is the only thing that
+    /// flags a stop (the router flags none), one per held crossing, so two stops naming one runway (either
+    /// end, or the start hold and a later stop) are two crossings, and the pilot must hear both. The runway just landed on is no exception: every briefed
+    /// exit vacates it (<see cref="BriefingExitPicker"/> takes only <see cref="LandingExit.VacatesRunway"/>
+    /// exits), so the way in starts clear of it, and the pass never holds for LEAVING a runway — a stop naming
+    /// it, the start hold included, is the route crossing it again with landing traffic behind. A start hold
+    /// is what such a crossing becomes when nothing lies between the vacate node and the runway.</para>
     ///
     /// <para>Every hold found here is a CROSSING (<see cref="HoldShortNote.BeforeEntering"/> false), the
     /// departure runway's included: the automatic pass never places a stop for a route's own arrival onto
@@ -173,10 +173,7 @@ public static partial class TaxiBriefingPlanner
             var seg = route.Segments[i];
             if (!seg.IsHoldShortPoint || string.IsNullOrEmpty(seg.HoldShortRunway)) continue;
             foreach (var d in RouteRunwayCrossings.ExtractRunwayDesignators(seg.HoldShortRunway))
-            {
-                if (holds.Any(h => SameRunway(h.Runway, d))) continue;
                 holds.Add(new HoldShortNote(d, NamedTaxiwayAt(route, i), BeforeEntering: false));
-            }
         }
         foreach (var e in events)
         {

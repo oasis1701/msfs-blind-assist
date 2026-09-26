@@ -158,6 +158,25 @@ internal static class TaxiBriefingFixture
         new[] { LeadIn(1500, 140, 1500, 260) },
         new[] { Spot("T", 1, 10, 1500, 260, 150, "JBU") });
 
+    /// <summary>
+    /// TEST plus a stand reachable only by crossing runway 18/36 a SECOND time:
+    ///   east 1000: taxiway V from A (north 100) north to north 600.
+    ///   north 600: taxiway Z from V east to 1500 E, across 18/36 (1200 E) with hold bars (HS) 50 m either side
+    ///              (1150 E, 1250 E) and a node on its centreline. Those bars are nearer 18's threshold, so
+    ///              they are named after 18; A's bars, 10 m from 36's end, after 36.
+    ///   north 750: stand W 1 (1500 E, gate, SWA, r=150 ft), its lead-in running south to Z's east end.
+    /// Landing 09, vacating at C, to W 1: A (held short of 36), V, Z (held short of 18) — two stops, one runway.
+    /// </summary>
+    public static GraphBundle AirportWithStandReachedByZ() => AirportWith(
+        new[]
+        {
+            Path("V", 1000, 100, 1000, 600),
+            Path("Z", 1000, 600, 1150, 600, endType: "HS"), Path("Z", 1150, 600, 1200, 600, startType: "HS"),
+            Path("Z", 1200, 600, 1250, 600, endType: "HS"), Path("Z", 1250, 600, 1500, 600, startType: "HS"),
+            LeadIn(1500, 600, 1500, 750),
+        },
+        new[] { Spot("W", 1, 10, 1500, 750, 150, "SWA") });
+
     public static TaxiBriefingRequest Request(AircraftProfile aircraft, string? airline = null, OwnPosition? own = null,
                                               SayIntentionsGateHint? gate = null, string originRunway = "09", string destRunway = "09") =>
         new("TEST", originRunway, "TEST", destRunway, aircraft, airline, own, gate);

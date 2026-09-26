@@ -187,6 +187,24 @@ public class TaxiBriefingPlannerTests
         Assert.DoesNotContain(leg.Notes, n => n.Contains("no hold short point", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void A_second_held_crossing_of_one_runway_is_briefed_too_in_route_order()
+    {
+        // Landing 09, vacating at C, to stand W 1: A crosses 18/36 at 36's end, then V and Z cross it again at 18's.
+        // The pass places one stop per held crossing — two stops, one runway — and the pilot needs to hear both.
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, airline: "SWA"), AirportWithStandReachedByZ());
+
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("C", leg.Exit!.Exit.TaxiwayName);
+        Assert.StartsWith("representative stand W 1", leg.EndpointDescription);
+        Assert.Equal(new[] { "A", "V", "Z" }, leg.Taxiways);
+        Assert.Equal(new[]
+        {
+            new HoldShortNote("36", "A", BeforeEntering: false),
+            new HoldShortNote("18", "Z", BeforeEntering: false),
+        }, leg.HoldShorts);
+    }
+
     // ── hold-short bookkeeping ───────────────────────────────────────────────────────────────
 
     private static TaxiRoute RouteWithHold(string? holdLabel, string? startHold)
@@ -216,6 +234,37 @@ public class TaxiBriefingPlannerTests
             TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, startHold: "runway 09"), noEvents, notes));
         Assert.Equal(new[] { new HoldShortNote("27", "A", BeforeEntering: false) },
             TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold("runway 27 at A", startHold: null), noEvents, notes));
+    }
+
+    [Fact]
+    public void Every_held_stop_is_its_own_hold_note_even_for_a_runway_already_held_short_of()
+    {
+        // Only the automatic pass flags a stop, one per held crossing, so two stops naming one runway — either
+        // end, or the start hold and a later stop — are two crossings, each briefed where it is.
+        var notes = new List<string>();
+        var noEvents = Array.Empty<TaxiRouteRunwayEvent>();
+
+        var n1 = RunwayFixture.Node(1, 0, 0);
+        var n2 = RunwayFixture.Node(2, 100, 0, holdShortName: "runway 36 at A");
+        var n3 = RunwayFixture.Node(3, 200, 0);
+        var n4 = RunwayFixture.Node(4, 300, 0, holdShortName: "runway 18 at Z");
+        var n5 = RunwayFixture.Node(5, 400, 0);
+        var twoStops = new TaxiRoute { Segments = RunwayFixture.Route(n1, n2, n3, n4, n5) };
+        string[] names = { "A", "A", "Z", "Z" };
+        for (int i = 0; i < names.Length; i++) twoStops.Segments[i].TaxiwayName = names[i];
+        twoStops.Segments[0].IsHoldShortPoint = true;
+        twoStops.Segments[2].IsHoldShortPoint = true;
+        Assert.Equal(new[]
+        {
+            new HoldShortNote("36", "A", BeforeEntering: false),
+            new HoldShortNote("18", "Z", BeforeEntering: false),
+        }, TaxiBriefingPlanner.CollectHoldShorts(twoStops, noEvents, notes));
+
+        Assert.Equal(new[]
+        {
+            new HoldShortNote("09", "A", BeforeEntering: false),
+            new HoldShortNote("27", "A", BeforeEntering: false),
+        }, TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold("runway 27 at A", startHold: "runway 09"), noEvents, notes));
     }
 
     [Fact]
