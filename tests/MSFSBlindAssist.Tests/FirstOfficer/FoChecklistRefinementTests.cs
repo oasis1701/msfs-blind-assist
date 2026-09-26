@@ -8,6 +8,7 @@ using Fenix = MSFSBlindAssist.FirstOfficer.Fenix;
 using A320 = MSFSBlindAssist.FirstOfficer.FBWA320;
 using A380 = MSFSBlindAssist.FirstOfficer.FBWA380;
 using HwA330 = MSFSBlindAssist.FirstOfficer.HWA330;
+using Md11 = MSFSBlindAssist.FirstOfficer.MD11;
 using B737 = MSFSBlindAssist.FirstOfficer.PMDG737;
 using IFly737 = MSFSBlindAssist.FirstOfficer.IFly737;
 
@@ -103,6 +104,10 @@ public class FoChecklistRefinementTests
     [Fact] public void A330_BeforeStartTail()
     { AssertBeforeStartTail(HwA330.HwA330ChecklistDefinitions.Build());
       AssertBeforeStartFlowTail(HwA330.HwA330FlowDefinitions.Build()); }
+
+    [Fact] public void Md11_BeforeStartTail()
+    { AssertBeforeStartTail(Md11.Md11FoChecklistDefinitions.Build());
+      AssertBeforeStartFlowTail(Md11.Md11FoFlowDefinitions.Build()); }
 
     // ---- Task 2: Airbus before/after-the-line separators ----
     [Fact] public void A320_BeforeStartCL_HasLine()

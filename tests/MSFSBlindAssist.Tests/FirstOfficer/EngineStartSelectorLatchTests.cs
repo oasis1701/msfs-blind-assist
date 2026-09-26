@@ -5,6 +5,7 @@ using Xunit;
 using B737 = MSFSBlindAssist.FirstOfficer.PMDG737;
 using IFly737 = MSFSBlindAssist.FirstOfficer.IFly737;
 using B777 = MSFSBlindAssist.FirstOfficer;
+using Md11 = MSFSBlindAssist.FirstOfficer.MD11;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
@@ -90,6 +91,21 @@ public class EngineStartSelectorLatchTests
     }
 
     /// <summary>
+    /// The MD-11 START switch is held electrically and pops in by itself at 45-52 % N2 — the
+    /// Boeing selector's physics — so its item latches on the engine RUNNING, never on the switch.
+    /// Three engines, started 3, 1, 2.
+    /// </summary>
+    [Fact]
+    public void Md11StartSwitchesLatchOnEngineRunning()
+    {
+        var groups = Md11.Md11FoChecklistDefinitions.Build();
+        var n2 = Md11.Md11FoStateEvaluator.EngineRunningN2;
+        AssertLatchesOnEngineRunning(Item(groups, "ES_E1_START"), "FO_ENG1_N2", n2);
+        AssertLatchesOnEngineRunning(Item(groups, "ES_E2_START"), "FO_ENG2_N2", n2);
+        AssertLatchesOnEngineRunning(Item(groups, "ES_E3_START"), "FO_ENG3_N2", n2);
+    }
+
+    /// <summary>
     /// The 777 evaluator discarded the N2 the shared FirstOfficerForm feeds every profile
     /// ("not used by the 777 evaluator"), so the field had to be wired before its selector
     /// items could detect anything. N2 arrives from SimConnect, NOT the PMDG CDA, so it must
@@ -130,5 +146,10 @@ public class EngineStartSelectorLatchTests
         var b777 = B777.PMDG777ChecklistDefinitions.Build();
         Assert.Equal(RevertBehavior.RevertToState, Item(b777, "ES_ENG1_FUEL_CTRL").RevertBehavior);
         Assert.Equal(RevertBehavior.RevertToState, Item(b777, "ES_ENG2_FUEL_CTRL").RevertBehavior);
+
+        var md11 = Md11.Md11FoChecklistDefinitions.Build();
+        Assert.Equal(RevertBehavior.RevertToState, Item(md11, "ES_E1_FUEL").RevertBehavior);
+        Assert.Equal(RevertBehavior.RevertToState, Item(md11, "ES_E2_FUEL").RevertBehavior);
+        Assert.Equal(RevertBehavior.RevertToState, Item(md11, "ES_E3_FUEL").RevertBehavior);
     }
 }

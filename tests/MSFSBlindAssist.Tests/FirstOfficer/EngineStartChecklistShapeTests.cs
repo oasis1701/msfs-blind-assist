@@ -39,4 +39,13 @@ public class EngineStartChecklistShapeTests
         Assert.Contains("ES_E1_GRD", ids);
         Assert.Contains("ES_E2_GRD", ids);
     }
+
+    [Fact]
+    public void Md11_EngineStart_IsStartAndFuelSwitchesOnly_ThreeOneTwo()
+    {
+        var ids = MSFSBlindAssist.FirstOfficer.MD11.Md11FoChecklistDefinitions.Build()
+            .First(g => g.Id == "ENGINE_START").Items.Select(i => i.Id).ToList();
+        Assert.Equal(new[] { "ES_E3_START", "ES_E3_FUEL", "ES_E1_START", "ES_E1_FUEL",
+                             "ES_E2_START", "ES_E2_FUEL", "ES_ANTI_ICE" }, ids);
+    }
 }

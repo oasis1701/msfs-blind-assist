@@ -23,6 +23,7 @@
         private System.Windows.Forms.ToolStripMenuItem fbwA320FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hwA330FirstOfficerMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem tfdiMd11FirstOfficerMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem flyByWireA380MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem pmdg737MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
@@ -65,6 +66,7 @@
             this.fbwA320FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hwA330FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.tfdiMd11FirstOfficerMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.flyByWireA380MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.pmdg737MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -104,6 +106,7 @@
             this.pmdg777FirstOfficerMenuItem,
             this.ifly737FirstOfficerMenuItem,
             this.hwA330FirstOfficerMenuItem,
+            this.tfdiMd11FirstOfficerMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
             this.suspendHotkeysMenuItem,
@@ -244,6 +247,15 @@
             this.hwA330FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
             this.hwA330FirstOfficerMenuItem.Text = "Headwind A330 &First Officer";
             this.hwA330FirstOfficerMenuItem.Click += new System.EventHandler(this.HwA330FirstOfficerMenuItem_Click);
+            //
+            // tfdiMd11FirstOfficerMenuItem
+            //
+            this.tfdiMd11FirstOfficerMenuItem.AccessibleName = "TFDi MD-11 First Officer";
+            this.tfdiMd11FirstOfficerMenuItem.AccessibleDescription = "Open the TFDi MD-11 First Officer checklists and flows window";
+            this.tfdiMd11FirstOfficerMenuItem.Name = "tfdiMd11FirstOfficerMenuItem";
+            this.tfdiMd11FirstOfficerMenuItem.Size = new System.Drawing.Size(280, 26);
+            this.tfdiMd11FirstOfficerMenuItem.Text = "TFDi MD-11 &First Officer";
+            this.tfdiMd11FirstOfficerMenuItem.Click += new System.EventHandler(this.TfdiMd11FirstOfficerMenuItem_Click);
             //
             // aircraftMenuItem
             //

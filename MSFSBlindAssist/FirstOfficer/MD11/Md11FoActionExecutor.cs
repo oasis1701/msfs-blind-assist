@@ -127,6 +127,9 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     public void SetTransport(IMd11FoTransport? io) => _io = io;
     public void SetFlightState(IMd11FoFlightState? state) => _state = state;
 
+    /// <summary>The flight state the safety rules read (tests pin that it is the window's evaluator).</summary>
+    internal IMd11FoFlightState? FlightState => _state;
+
     public bool IsAvailable => _io is { Ready: true };
 
     public async Task WaitForDispatchDrainAsync()
