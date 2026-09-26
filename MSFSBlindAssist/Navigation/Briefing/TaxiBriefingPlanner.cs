@@ -116,13 +116,22 @@ public static partial class TaxiBriefingPlanner
 
         // SAPI does not say whether its parking service means the arrival gate or the aircraft's current parking, and an
         // origin can share a concourse letter with the destination (KMEM and KATL both have a B): a parking-service gate
-        // whose own position is not at this airport is not briefed as SayIntentions' (live KMEM→KATL, 2026-09-26).
+        // is briefed as SayIntentions' only when its own position is at this airport — never with no position to check (owner
+        // decision, 2026-09-26) and never from beyond ParkingServiceMaxAirportDistanceMetres (live KMEM→KATL, 2026-09-26).
         var arrivalGate = r.ArrivalGate;
-        if (arrivalGate is { Source: SayIntentionsGateSource.ParkingService, Position: GeoPoint pin } && g.Airport != null &&
-            TaxiGraph.FastDistanceMeters(pin.Latitude, pin.Longitude, g.Airport.Latitude, g.Airport.Longitude) > ParkingServiceMaxAirportDistanceMetres)
+        if (arrivalGate is { Source: SayIntentionsGateSource.ParkingService })
         {
-            notes.Add($"SayIntentions' parking service named {arrivalGate.Label}, but its position is not at {icao}; using a representative stand instead");
-            arrivalGate = null;
+            if (arrivalGate.Position is not GeoPoint pin)
+            {
+                notes.Add($"SayIntentions' parking service named {arrivalGate.Label} but gave no position to confirm it is at {icao}; using a representative stand instead");
+                arrivalGate = null;
+            }
+            else if (g.Airport != null &&
+                     TaxiGraph.FastDistanceMeters(pin.Latitude, pin.Longitude, g.Airport.Latitude, g.Airport.Longitude) > ParkingServiceMaxAirportDistanceMetres)
+            {
+                notes.Add($"SayIntentions' parking service named {arrivalGate.Label}, but its position is not at {icao}; using a representative stand instead");
+                arrivalGate = null;
+            }
         }
 
         var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, s => StandNode(g.Graph, s) != null);

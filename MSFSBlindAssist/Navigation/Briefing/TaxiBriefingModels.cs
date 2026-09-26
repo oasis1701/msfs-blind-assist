@@ -16,7 +16,7 @@ public sealed record OwnPosition(double Lat, double Lon, bool OnGround);
 /// has none yet — its SAPI parking service (<c>getParking</c>), the fallback MSFS Blind Assist's SayIntentions window
 /// and Taxi Assist's import already use. SAPI does not say whether that service means the arrival gate or the
 /// aircraft's current parking, so the planner refuses a parking-service gate whose position is not at the arrival
-/// airport.</summary>
+/// airport, or that has no position to check.</summary>
 public enum SayIntentionsGateSource { FlightFile, ParkingService }
 
 /// <summary>SayIntentions' ARRIVAL gate — the label it published and, when it did, the stand's position, both from the

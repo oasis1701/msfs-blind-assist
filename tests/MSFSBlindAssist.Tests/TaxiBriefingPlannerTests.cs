@@ -676,10 +676,14 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
-    public void A_parking_service_gate_with_no_position_is_briefed_by_name()
+    public void A_parking_service_gate_with_no_position_is_not_briefed()
     {
+        // Nothing can confirm a position-less parking-service gate is at the arrival airport (owner decision, 2026-09-26).
         var gate = new SayIntentionsGateHint("Terminal 1 Gate G1", null, SayIntentionsGateSource.ParkingService);
-        Assert.Equal("SayIntentions assigned gate G 1", TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate), Airport()).EndpointDescription);
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate), Airport());
+
+        Assert.StartsWith("representative stand", leg.EndpointDescription);
+        Assert.Contains("SayIntentions' parking service named Terminal 1 Gate G1 but gave no position to confirm it is at TEST; using a representative stand instead", leg.Notes);
     }
 
     [Fact]
