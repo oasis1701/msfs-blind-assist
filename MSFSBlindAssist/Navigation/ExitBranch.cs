@@ -136,8 +136,10 @@ public static class ExitBranch
 
     /// <summary>
     /// The other arm of a Y-shaped exit whose <paramref name="backward"/> arm is a turnaround: an arm that
-    /// reaches the same off-runway point from a different junction, carries no other taxiway's name, and
-    /// is itself not a turnaround. Null when there is none.
+    /// reaches the same off-runway point along different pavement - from a junction of its own or, where
+    /// the Y's two arms leave the runway from one node, from the backward arm's junction - carries no
+    /// other taxiway's name, and is itself not a turnaround (judged, like every branch, by how it leaves
+    /// the pavement). Null when there is none.
     /// <para>The search floods out from the backward arm's clear node, on <paramref name="exitName"/>'s
     /// own taxiway (or unnamed pavement), through nodes on the SAME side of the runway as that clear
     /// node and outside the runway half-width only - it never crosses the runway (KMCI 01L, USTN 25:
@@ -170,8 +172,10 @@ public static class ExitBranch
         {
             var inward = WalkToJunction(graph, axis, start, wall, exitName);
             int junction = inward[0];
+            // The walk never enters `wall`, so it cannot end on the backward arm's own nodes: the start
+            // is the only one it can stand on (rejected here), and in the second pass the backward
+            // junction is the one own node outside the wall - which is exactly what that pass allows.
             if (junction == start) return null;
-            if (junction != backward.JunctionNodeId && own.Contains(junction)) return null;
             if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres) return null;
             if (Math.Abs(Along(graph, axis, junction) - backwardAlong) > SiblingJunctionMaxMetres) return null;
             // Covers the WHOLE arm (junction..start), not just junction..clear — a name change beyond

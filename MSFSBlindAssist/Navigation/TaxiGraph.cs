@@ -3720,11 +3720,11 @@ public partial class TaxiGraph
     /// <paramref name="afterDistanceFromThresholdFeet"/> whose named edges demonstrably leave
     /// the runway strip, stopping short of the pavement end - forward exits only, since a
     /// backtrack is what this exists to avoid. A candidate whose branch is measured is judged by
-    /// that whole branch (<see cref="ExitBranch"/>): a turnaround (sharpest turn to clear above
-    /// <see cref="RolloutExitGate.TurnaroundAboveDeg"/>, 110 degrees) is dropped unless its
-    /// forward sibling exists and that sibling's junction lies ahead of
-    /// <paramref name="afterDistanceFromThresholdFeet"/>, and a forward exit keeps the candidate's own
-    /// node with its branch's angle (capped at 90 degrees), type and bearing. Only an
+    /// that whole branch (<see cref="ExitBranch"/>): a turnaround (a branch that leaves the runway
+    /// pavement turning more than <see cref="RolloutExitGate.TurnaroundAboveDeg"/>, 110 degrees) is
+    /// dropped unless its forward sibling exists and the node where that sibling leaves the centreline
+    /// lies ahead of <paramref name="afterDistanceFromThresholdFeet"/>, and a forward exit keeps the
+    /// candidate's own node with its branch's angle (capped at 90 degrees), type and bearing. Only an
     /// UNMEASURED branch keeps the old first-edge rule (a turn past 90 degrees is dropped).
     /// Hold-short markers are ignored in BOTH directions - a marked node is as eligible as an
     /// unmarked one.</para>

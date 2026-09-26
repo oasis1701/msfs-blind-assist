@@ -17,16 +17,18 @@ public partial class TaxiGraph
     /// reach) leave the exit exactly as it was, so thin navdata can never lose an exit here.</para>
     /// <para>A FORWARD exit keeps its own node - NodeId, position and distances unchanged, for every
     /// producer - and takes the branch's angle (its sharpest turn to clear, capped at 90°), its type
-    /// (classified where the exit stands) and its bearing and side (<see cref="BranchExitBearing"/>;
-    /// the producer's bearing can be a lead line's or a hold-short node's BACKWARD edge, and after "turn
-    /// now" the rollout steers a Normal exit by its bearing). It is never moved to its junction: the
-    /// worldwide sweep (2026-09-26) found lead-in starts up to 150 m before the turn-off (KMIA 08R Z),
-    /// which put "turn now" hundreds of feet early, and moving exits back pushed distinct same-name
-    /// turnoffs inside the coverage window.</para>
+    /// (classified where the exit stands) and its bearing and side, measured where the exit stands
+    /// (<see cref="BranchExitBearing"/> from <see cref="EdgeIndexAt"/>; the producer's bearing can be a
+    /// lead line's or a hold-short node's BACKWARD edge, and after "turn now" the rollout steers a
+    /// Normal exit by its bearing). It is never moved to its junction: that is often its lead-in start,
+    /// up to the 150 m of lead line R1 follows before the turn-off (worldwide sweep, 2026-09-26: KMIA
+    /// 08R Z at 2,073 ft for a RET leaving the centreline at 2,369), which put "turn now" early, and
+    /// moving exits back pushed distinct same-name turnoffs inside the coverage window.</para>
     /// <para>A TURNAROUND (<see cref="LandingExitBranch.IsTurnaround"/>, judged by how the branch leaves
     /// the runway pavement) is replaced by its forward sibling when one exists and the sibling's
     /// divergence node passes the distance rules (<see cref="SiblingExit"/>) - the one case in which an
-    /// exit moves, and then to where the sibling arm leaves the centreline, not to its lead-in start. Otherwise it is recorded as the turnaround it is (130°, "End") at its own node - never
+    /// exit moves, and then to where the sibling arm leaves the centreline, not to its lead-in start.
+    /// Otherwise it is recorded as the turnaround it is (130°, "End") at its own node - never
     /// dropped from the planner list (dropping it emptied 111 runway directions' lists, e.g. 0KS5 09) -
     /// except that <paramref name="dropTurnarounds"/> (the rescue scan) drops it.</para>
     /// </summary>
@@ -76,8 +78,9 @@ public partial class TaxiGraph
     /// The exit on a forward SIBLING - the one case in which the refinement moves an exit (a turnaround
     /// replaced by its Y's other arm). It lands at the sibling's DIVERGENCE node, where the arm leaves
     /// the centreline band (<see cref="DivergenceIndex"/>), never at its junction: the junction is the
-    /// arm's lead-in start, up to 150 m earlier, which put "turn now" up to 777 ft early (worldwide sweep,
-    /// 2026-09-26: KMIA 08R Z at 2,073 ft for an arm leaving at 2,762). Null when that node fails the same
+    /// arm's lead-in start, at the far end of the up to 150 m of lead line R1 follows, which put "turn
+    /// now" that much early (worldwide sweep, 2026-09-26: KMIA 08R Z at 2,073 ft, its lead-line start, for
+    /// a RET leaving the centreline at 2,369). Null when that node fails the same
     /// distance rules every exit does (closer than MIN_DIST_FT, 500 ft, past the landing threshold,
     /// within END_BUFFER_FT, 50 ft, of the pavement end, or not beyond
     /// <paramref name="minDistanceFromThresholdFeet"/>).

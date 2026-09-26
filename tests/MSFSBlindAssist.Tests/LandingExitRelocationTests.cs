@@ -1,12 +1,13 @@
 // Where TaxiGraph.RefineExitByBranch places a landing exit (worldwide sweep, 2026-09-26, and the
 // round-2 rulings that followed it):
-//   - a FORWARD exit always keeps its own node, with its branch's angle, type and bearing. Moving it to
-//     its lead-in start put "turn now" up to 150 m early (KMIA 08R Z) and dropped exits whose lead-ins
-//     start under 500 ft (KMTC 19 B, LSGL 18 L);
-//   - a TURNAROUND moves only to its forward sibling's junction; when that junction fails a distance
-//     rule it is recorded as the turnaround, 130 degrees / End, at its own node - 111 of the 154
-//     directions that lost every exit, e.g. 0KS5 09. The rescue scan still drops it: a backtrack is
-//     what that scan exists to avoid.
+//   - a FORWARD exit always keeps its own node, with its branch's angle, type and bearing (the bearing
+//     measured where the exit stands). Moving it to its lead-in start put "turn now" early - R1 lets a
+//     lead line run up to 150 m - and dropped exits whose lead-ins start under 500 ft (KMTC 19 B,
+//     LSGL 18 L);
+//   - a TURNAROUND moves only to where its forward sibling leaves the centreline (the sibling's
+//     divergence node, never its lead-in start); when that node fails a distance rule it is recorded as
+//     the turnaround, 130 degrees / End, at its own node - 111 of the 154 directions that lost every
+//     exit, e.g. 0KS5 09. The rescue scan still drops it: a backtrack is what that scan exists to avoid.
 //
 // Fixture frame, as in ExitBranchTests: a due-east runway on the equator, threshold at (0,0), 164 ft
 // wide (half-width 25.0 m, clear boundary 35.0 m, corridor 40.0 m). Along-runway metres =
