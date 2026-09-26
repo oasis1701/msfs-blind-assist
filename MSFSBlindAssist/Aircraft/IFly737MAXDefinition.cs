@@ -1692,10 +1692,17 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // TakeoffVSpeedCallouts). Fed here from IFLY_IAS samples + the cached
     // SIM_ON_GROUND state; V-speed targets from the IFLY_V1/VR/V2 handlers.
     private readonly TakeoffVSpeedCallouts _takeoffCallouts = new();
+    // The roll callouts' feed and speeds, and their Ctrl+M rule (each call muted by its speed's row).
+    private static readonly TakeoffCalloutKeys TakeoffKeys = new("IFLY_IAS", "IFLY_V1", "IFLY_VR", "IFLY_V2");
     private bool _calloutOnGround = true; // last SIM_ON_GROUND sample (ramp default)
 
     /// <summary>The roll callouts' machine, for the tests that pin what a context reset does to it.</summary>
     internal TakeoffVSpeedCallouts TakeoffCallouts => _takeoffCallouts;
+
+    /// <inheritdoc />
+    public override string? TakeoffCalloutFeedKey => TakeoffKeys.IasKey;
+    /// <inheritdoc />
+    public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
 
     /// <summary>
     /// A SimConnect reconnect disarms the roll-callout machine: an arm from before the drop must
@@ -2010,16 +2017,9 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             if (callouts.Count > 0 && !announcer.Suppressed)
             {
                 var muted = Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet;
-                string? calloutSentence = TakeoffVSpeedCallouts.Compose(callouts, callout =>
-                {
-                    // An unknown callout maps to no row and is never muted — fail open, as the
-                    // MD-11 does for the same shared machine (a new call must be spoken until it
-                    // is given a row, never swallowed by the V2 checkbox).
-                    string gateKey = callout == "V1" ? "IFLY_V1"
-                                   : callout == "Rotate" ? "IFLY_VR"
-                                   : callout == "V2" ? "IFLY_V2" : "";
-                    return gateKey.Length != 0 && muted.Contains(gateKey);
-                });
+                // An unknown callout maps to no row and is never muted (fail open — TakeoffCalloutKeys).
+                string? calloutSentence = TakeoffVSpeedCallouts.Compose(callouts,
+                    callout => TakeoffKeys.IsMuted(callout, muted));
                 if (calloutSentence != null) announcer.AnnounceImmediate(calloutSentence);   // "V1, Rotate": one utterance, never two
             }
             return true;

@@ -215,8 +215,12 @@ siblings read a bit — but that reads as *not yet wired* rather than *not model
 stays and starts working the day FBW wires it.
 
 **⚠️ Source-verified, not sim-verified.** There was no A320 loaded when this was written. Every
-claim above is traced to the FBW tree; the live measurement behind the A380 half (bit 28 TRUE at
-FL360 with nothing armed) has no A32NX counterpart yet. (The dispatch-ordering measurement below
+claim above is traced to the FBW tree; the live measurement behind the A380 half has no A32NX
+counterpart yet. (That A380 measurement was recorded as "bit 28 TRUE at FL360 with nothing armed";
+decoded as FBW decodes a discrete word it was bits 29 and 20 — the CRUISE qualifier and ALT hold —
+see a380x.md, "Discrete ARINC words were read from the wrong bits". The A32NX FMGC discrete words
+this file reads — the LAND 2/3 capability bits among them — were misread by the same bug until
+2026-09-25.) (The dispatch-ordering measurement below
 is a separate matter — it is measured against MSFSBA's own registration, not the FBW source.)
 
 **The armed-ALT call-out is HELD until the qualifier settles, and the flush re-checks the Ctrl+M
@@ -300,6 +304,71 @@ the base PFD panel's FAC rows (`PFD_VSW`, `PFD_VALPHAPROT`, `PFD_VALPHAMAX`), wh
 **Requires a FlyByWire A32NX Development build from 11 Sep 2026 or later** for the plain
 L-vars to be gone; the FAC words predate #10890, so this migration also works on an older
 build.
+
+⚠️ **Known residual from #10890, NOT fixed (found 2026-09-25): the PFD status box's "Managed
+speed" row (`A32NX_SPEEDS_MANAGED_PFD`) no longer matches the PFD in two phases.** #10890 moved
+ground-speed mini and the SRS go-around target out of the FMS and into the FMGC, so in approach the
+L-var holds plain VAPP while the PFD's target is VAPP plus ground-speed mini (whenever a wind is
+entered on PERF APPR), and in an SRS go-around it holds green dot or the speed constraint. The PFD
+now draws `A32NX_FMGC_{1,2}_PFD_SELECTED_SPEED` (FMGC 2 when FMGC 1's word is invalid; FCU selected
+speed when neither is) and calls it managed when `A32NX_FMGC_x_DISCRETE_WORD_5` bit 19 is set and
+bit 20 clear (`SpeedIndicator.tsx`). The fix is to read that word the same way — keeping the old
+L-var for the Headwind A330, whose pre-#10890 FMS still writes the ground-speed-mini target. Display
+only: nothing announces this row.
+
+### Cleared V-speeds are spoken "not set" (2026-09-25)
+
+FBW #10855 (`1bbd304`, 18 Aug 2026 — the A32NX half of an A380 commit, in `A32NX_FMCMainDisplay.ts`)
+changed the FMS's cleared V1 and VR from 0 to -1 (V2 stays 0). The FMS clears all three itself as
+the flight phase passes TAKEOFF, and on a takeoff-runway change, so every climb-out was announced as
+"V1: -1 knots, VR: -1 knots, V2: 0 knots" (it was "0 knots" before, no better). `PFD_V1`/`PFD_VR`/
+`PFD_V2` now carry `SimVarDefinition.NotSetBelow = 1`, so `FormatVariableValue` says "V1: not set";
+a threshold rather than a `ValueDescriptions` key, because a sentinel written in knots and read back
+through the sim's base unit need not come back bit-exact. The A380 and the Headwind A330 (which
+inherits these definitions and still clears to 0) get the same wording. Pinned by
+`FbwVSpeedNotSetTests`.
+
+The status-box panels read "not set" too: MainForm's panel formatter and `FormatVariableValue` both
+ask `SimVarDefinition.IsNotSet`, the one test (the panel showed "V1: -1" while the readout already
+said "not set"). And the FMS's own post-takeoff clear is no longer SPOKEN on the A32NX (and the
+Headwind A330, which inherits it): `A32NX_FMCMainDisplay.ts` clears all three once the phase is past
+TAKEOFF, which made three "not set" lines on every climb-out. The definition consumes a cleared
+V-speed silently once `A32NX_FMGC_FLIGHT_PHASE` is TAKEOFF or later, and still leaves to the monitor
+a clear made before takeoff thrust (a runway change — the FMS's only other clear — when the pilot
+must re-enter them) or with the phase unknown. ⚠️ The gate is phase ≥ TAKEOFF, NOT past it: the
+phase rides continuous batch 1 and the V-speeds batch 2 (separate once-a-second requests, measured
+about 405 ms apart), and the FMS clears on its own 1-second throttle, so the clear can reach MSFSBA
+before the CLIMB phase does. It can never arrive with anything below TAKEOFF, which is set when
+takeoff thrust is. (A first version gated on "past TAKEOFF", reasoning from the name sort within one
+batch; a second review found the two ride different batches.)
+
+### Discrete-word readouts were decoded from the wrong bits (fixed 2026-09-25)
+
+The A32NX shares `Arinc429Word` with the A380, and until 2026-09-25 its `BitValueOr` tested a
+discrete word's RAW float bits instead of the bitfield the float's value carries (docs/a380x.md,
+"Discrete ARINC words were read from the wrong bits"). Every A32NX discrete readout read noise: the
+LAND 2 / LAND 3 capability (FMGC discrete word 4, bits 23/24/25), the active-CPC choice on the PRESS
+and CRUISE pages (CPC word bit 11) and the COND page's hot air valve / pushbutton and cabin fans (ACSC
+word 1, bits 20/23/25/26). The bit numbers themselves were checked against the FBW writers and SD
+pages and are right.
+
+**FWC word 124 was also mislabelled.** Bits 24 and 25 are an ALTITUDE discrepancy between the sides
+— one side's altitude off the other's by 250 ft for 5 s, with both sides in STD (24) or both in
+QNH/QFE (25) — which drives the PFD's CHECK ALT flag and ECAM "NAV ALT DISCREPANCY"
+(`PseudoFWC.ts`). MSFSBA spoke them as "Baro standard mode / reference discrepancy", a baro-setting
+mismatch neither bit can signal (FBW's real BARO REF DISCREPANCY drives an ECAM alert only and is in
+no word). It is now one call-out, "Altitude discrepancy between sides", on the rising edge of either
+bit, and the Ctrl+M row is "Altitude Discrepancy". Pinned by `A32nxAltitudeDiscrepancyTests`.
+
+**…and it had never fired at all.** PseudoFWC builds word 124 with
+`Arinc429RegisterSubject.createEmpty()` and never sets its SSM (word 126 beside it gets
+`setSsm(NormalOperation)`; 124 does not), so the L:var always carries Failure Warning and every
+SSM-gated read (`BitValueOr`) returns its fallback — silent before the decoder fix and after it. The
+PFD reads CHECK ALT from it with `bitValue`, which ignores the SSM, and so does MSFSBA now
+(`Arinc429Word.BitValue`, which is for exactly this kind of word and no other: everywhere else a
+failed word must say nothing). The call-out has therefore never been heard in the sim — it wants a
+live check, for example with the two sides' QNH set 10 hPa apart (about 280 ft; `PseudoFWC` compares
+each ADR's baro-corrected altitude with the other side's displayed one) for more than 5 s in flight.
 
 ### FCU hardware-dial callouts — speak only what the window SHOWS (PR #140, 2026-09)
 

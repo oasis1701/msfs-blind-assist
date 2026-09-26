@@ -67,7 +67,7 @@ Vertical:
   Ctrl+Shift+G  Read last landing peak g-force
 
 Approach:
-  Ctrl+0     Read Approach Capability (CAT rating)
+  Ctrl+0     Read Approach Capability (LAND 2 / LAND 3 single / LAND 3 dual)
 
 Weather:
   I          Wind Info
@@ -225,7 +225,7 @@ FCU Set Values (each opens a window: value entry, knob Push/Pull, mode toggles, 
   Ctrl+H     Heading window (set value; Push/Pull; HDG-V/S / TRK-FPA toggle)
   Ctrl+A     Altitude window (set value; Push/Pull; 100/1000; Metric toggle)
   Ctrl+V     Vertical Speed / FPA window (set value; Push/Pull)
-  Ctrl+P     Autopilot panel (AP1/AP2; A/THR engage + disconnect; APPR/LOC/EXPED; Flight Director status)
+  Ctrl+P     Autopilot panel (AP1/AP2; A/THR engage + disconnect; APPR/LOC; Flight Director pushbutton)
   Ctrl+B     Altimeter window (enter QNH once -> both sides; STD/QNH; hPa/inHg)
 
 Windows:

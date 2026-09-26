@@ -83,7 +83,7 @@ public class A380NdKnobSelectionTests
     [InlineData("A32NX_EFIS_L_OANS_RANGE")]
     [InlineData("A380X_EFIS_L_LS_BUTTON_IS_ON")]
     [InlineData("A380X_EFIS_R_ACTIVE_OVERLAY")]
-    [InlineData("XMLVAR_Baro_Selector_HPA_1")]
+    [InlineData("A32NX_FCU_EFIS_L_BARO_IS_INHG")]   // the baro-unit input since FBW #10855
     // A key that ENDS in _ND_RANGE but is not one of the four. IsZoomAttempt used to match on
     // that suffix alone, so it swallowed any such key and answered it with a sentence about the
     // OANS — and not one of the rows above ends that way, which made the Assert.False below

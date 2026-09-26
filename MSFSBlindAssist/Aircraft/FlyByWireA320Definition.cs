@@ -2681,12 +2681,14 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             IsAnnounced = true,
             ValueDescriptions = new Dictionary<double, string> { [0] = "off", [1] = "autopilot disconnect" }
         },
-        // FWC discrete word 124: baro-reference discrepancy between the two sides
-        // (bit 24 = STD discrepancy, bit 25 = baro discrepancy) — a blind pilot can't
-        // glance at both PFDs to compare. Decoded in ProcessSimVarUpdate.
+        // FWC discrete word 124: ALTITUDE discrepancy between the two sides — the PFD's CHECK ALT
+        // flag and ECAM "NAV ALT DISCREPANCY" (PseudoFWC.ts: bit 24 with both sides in STD, bit 25
+        // with both in QNH/QFE; one side's altitude off the other's by 250 ft for 5 s). NOT a
+        // baro-setting mismatch, which is what this was labelled until 2026-09-25 — neither bit can
+        // signal one. A blind pilot can't glance at both PFDs to compare. Decoded in ProcessSimVarUpdate.
         ["A32NX_FWC_1_DISCRETE_WORD_124"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_FWC_1_DISCRETE_WORD_124", DisplayName = "Baro Reference Discrepancy",
+            Name = "A32NX_FWC_1_DISCRETE_WORD_124", DisplayName = "Altitude Discrepancy",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true
         },
@@ -2903,8 +2905,10 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "knots"
         },
         // ---- Takeoff V-speeds (V1/VR/V2) — entered/computed on the MCDU PERF TAKEOFF page.
-        // The FBW FMC writes L:AIRLINER_V1/VR/V2_SPEED in knots (A32NX_FMCMainDisplay.ts);
-        // 0 = not set. Continuous + IsAnnounced (knots) so MSFSBA AUTO-ANNOUNCES the value
+        // The FBW FMC writes L:AIRLINER_V1/VR/V2_SPEED in knots (A32NX_FMCMainDisplay.ts); a
+        // cleared speed is -1 for V1/VR (0 before FBW #10855) and 0 for V2 — NotSetBelow speaks
+        // every one of those "not set", including the FMS's own clear as the flight phase passes
+        // TAKEOFF. Continuous + IsAnnounced (knots) so MSFSBA AUTO-ANNOUNCES the value
         // the instant the pilot enters/changes it — "V1: 125 knots" — mirroring the Fenix
         // MCDU V-speed entry confirmation. FormatVariableValue appends "knots" from Units;
         // the simVarMonitor baseline + connect-grace keep the initial values silent; listed
@@ -2913,19 +2917,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         {
             Name = "AIRLINER_V1_SPEED", DisplayName = "V1",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "knots"
+            IsAnnounced = true, Units = "knots", NotSetBelow = 1
         },
         ["PFD_VR"] = new SimConnect.SimVarDefinition
         {
             Name = "AIRLINER_VR_SPEED", DisplayName = "VR",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "knots"
+            IsAnnounced = true, Units = "knots", NotSetBelow = 1
         },
         ["PFD_V2"] = new SimConnect.SimVarDefinition
         {
             Name = "AIRLINER_V2_SPEED", DisplayName = "V2",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true, Units = "knots"
+            IsAnnounced = true, Units = "knots", NotSetBelow = 1
         },
         // ---- PFD: alpha-protection speeds (FAC1 ARINC429 words, knots; in-flight-only ----
         // -> "not available" on the ground is CORRECT). Auto-decoded by the generic ARINC path.
@@ -6699,7 +6703,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // EFIS baro (altimeter) state — auto-announced on knob turn + read on demand (B).
     private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
     private int _fmgcPhase = -1; // numeric FMGC flight phase (0 Preflight..7 Done); gates the capability announce
-    private bool _baroStdDiscrep, _baroRefDiscrep; // FWC word 124 bits 24/25 (announced edges)
+    private bool _altDiscrepancy; // FWC word 124 bit 24 or 25 (announced edge)
     private double _baroHpa = -1;          // last decoded captain baro, hectopascals (FBW quantizes to WHOLE hPa)
     private int _baroMode = -1;            // A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE: 0=STD,1=hPa,2=inHg
     private double _baroHpaR = -1;         // last decoded F/O baro, hectopascals
@@ -8190,6 +8194,19 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true; // Processed
         }
 
+        // The FMS's own post-takeoff clear of V1/VR/V2 (A32NX_FMCMainDisplay.ts clears all three
+        // once the phase is past TAKEOFF) is not news: it came on every climb-out, three lines
+        // at the busiest minute of the flight. Consumed silently — the status box still reads
+        // "not set" from the cache. A clear before takeoff thrust (a runway change, the FMS's only
+        // other clear) is left to the monitor, because there the pilot has to re-enter them.
+        // The gate is phase >= TAKEOFF, NOT past it: the phase rides continuous batch 1 and the
+        // V-speeds batch 2 — separate once-a-second requests — and the FMS clears on its own
+        // 1-second throttle, so the clear can arrive before the CLIMB phase does. The phase it
+        // can arrive with is always TAKEOFF at least. An unknown phase (-1) speaks, as before.
+        if ((varName == "PFD_V1" || varName == "PFD_VR" || varName == "PFD_V2")
+            && _fmgcPhase >= 1 && GetVariables()[varName].IsNotSet(value))
+            return true;
+
         // Autoland capability (FMGC FG discrete word 4, bits 23/24/25). Announce
         // decoded transitions only; suppress the raw ARINC word from the generic path.
         // GATED on the in-flight FMGC phases (Climb..Go-around): on the ground the
@@ -8211,14 +8228,16 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             return true;
         }
 
-        // FWC word 124: baro-reference discrepancy between the two sides. Rising edges only.
+        // FWC word 124: altitude discrepancy between the two sides (bits 24/25 are the same
+        // condition with the sides in STD or in QNH/QFE — the PFD ORs them into one CHECK ALT).
+        // Rising edge only. Read WITHOUT the SSM gate, as the PFD reads it: PseudoFWC never sets
+        // this word's SSM, so it stays Failure Warning and a gated read never sees a bit.
         if (varName == "A32NX_FWC_1_DISCRETE_WORD_124")
         {
             var w = new SimConnect.Arinc429Word(value);
-            bool stdD = w.BitValueOr(24, false), refD = w.BitValueOr(25, false);
-            if (stdD && !_baroStdDiscrep) announcer.Announce("Baro standard mode discrepancy between sides");
-            if (refD && !_baroRefDiscrep) announcer.Announce("Baro reference discrepancy between sides");
-            _baroStdDiscrep = stdD; _baroRefDiscrep = refD;
+            bool discrepancy = w.BitValue(24) || w.BitValue(25);
+            if (discrepancy && !_altDiscrepancy) announcer.Announce("Altitude discrepancy between sides");
+            _altDiscrepancy = discrepancy;
             return true;
         }
 

@@ -1330,6 +1330,7 @@ public partial class SimConnectManager
 
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();
+        _pausedSimFrameSubscriptions.Clear();
         requestIdToVarKey.Clear();
         _freshRequestIdToVarKey.Clear();
         // Definition ids are per connection: restart them as ReregisterAllVariables does, so they (and

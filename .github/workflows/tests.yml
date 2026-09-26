@@ -89,3 +89,10 @@ jobs:
         run: |
           npm ci --no-audit --no-fund
           npm test
+
+      # The A380 OANS agent's ARINC decode (the "runway ahead" advisory read the raw word's bits
+      # and never showed until 2026-09-25). It needs only SimVar, not a DOM, so it runs in a bare
+      # vm context: no dependencies, no lockfile, no npm ci.
+      - name: A380 OANS agent
+        working-directory: tools/oans-agent-test
+        run: npm test
