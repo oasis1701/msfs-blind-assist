@@ -35,6 +35,9 @@
          link set that a build now surfaces. Self-contained (TaxiGraph + Database.Models only, both
          already linked below), so pinning it here adds no further dependency. -->
     <Compile Include="..\..\MSFSBlindAssist\Navigation\NamedHoldingPointResolver.cs" Link="Linked\NamedHoldingPointResolver.cs" />
+    <!-- TaxiGraph.cs is now partial: its landing-exit producers call ExitBranch (via TaxiGraph.ExitRefinement.cs). -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\ExitBranch.cs"            Link="Linked\ExitBranch.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.ExitRefinement.cs" Link="Linked\TaxiGraph.ExitRefinement.cs" />
     <!-- Database models -->
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />

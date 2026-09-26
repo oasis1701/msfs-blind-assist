@@ -3698,9 +3698,14 @@ public partial class TaxiGraph
     ///
     /// <para>So this asks the graph directly: every corridor node beyond
     /// <paramref name="afterDistanceFromThresholdFeet"/> whose named edges demonstrably leave
-    /// the runway strip, forward-peeling only (a turn past 90 degrees is the backtrack this
-    /// exists to avoid), stopping short of the pavement end. Hold-short markers are ignored
-    /// in BOTH directions - a marked node is as eligible as an unmarked one.</para>
+    /// the runway strip, stopping short of the pavement end - forward exits only, since a
+    /// backtrack is what this exists to avoid. A candidate whose branch is measured is judged by
+    /// that whole branch (<see cref="ExitBranch"/>): a turnaround (sharpest turn to clear above
+    /// <see cref="RolloutExitGate.TurnaroundAboveDeg"/>, 110 degrees) is dropped unless its
+    /// forward sibling exists, and a forward branch's angle is capped at 90 degrees. Only an
+    /// UNMEASURED branch keeps the old first-edge rule (a turn past 90 degrees is dropped).
+    /// Hold-short markers are ignored in BOTH directions - a marked node is as eligible as an
+    /// unmarked one.</para>
     ///
     /// <para>Nodes of one curved RET arc collapse onto the arc entry point: a candidate is
     /// dropped when a nearer kept candidate shares its taxiway name within
@@ -3793,10 +3798,13 @@ public partial class TaxiGraph
                 // Equal off-axis angle: the adjacency list holds BOTH the forward exit edge
                 // and the reverse edge of the same taxiway segment, and the two fold to the
                 // SAME `off`, so without a tie-break first-encountered wins on navdata row
-                // order alone. That is not cosmetic here - the relBest > 90 guard below then
-                // discards the junction outright, so a real turnoff (a 60-degree crossing
-                // taxiway, say) is invisible to the rescue scan on roughly half of orderings
-                // and the pilot is told the runway has run out of exits. Same tie-break
+                // order alone. That is not cosmetic here - for an UNMEASURED branch the
+                // relBest > 90 guard below discards the junction outright, and for a measured
+                // one this edge is the seed that picks which side ExitBranch measures when the
+                // candidate is itself the junction (the wrong side can read as a turnaround and
+                // be dropped), so a real turnoff (a 60-degree crossing taxiway, say) is invisible
+                // to the rescue scan on roughly half of orderings and the pilot is told the
+                // runway has run out of exits. Same tie-break
                 // GetLandingExits carries: the correct edge moves the aircraft further
                 // off-runway on the SAME side as the junction (lateralM: + right, - left).
                 if (Math.Abs(lateralM) > 1.0)

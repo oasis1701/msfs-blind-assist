@@ -1,6 +1,6 @@
 // KMEM 36L exit list after branch measurement (the landing of 2026-09-26).
 // Before the fix this list read: M5 4,404 ft High-speed 14°, M6 6,596 ft Normal 52° (the 18R arm,
-// bearing ~127° true), M7 7,334 ft High-speed 15°, M8 8,840 ft Normal 71°.
+// bearing ~127° true), M7 7,334 ft High-speed 15°, M8 8,840 ft End 71°.
 
 using MSFSBlindAssist.Navigation;
 
@@ -59,7 +59,7 @@ public class LandingExitBranchKmemTests
     {
         var m8 = Exit("M8");
         Assert.InRange(m8.DistanceFromThresholdFeet, 8650.0, 8690.0);
-        Assert.Equal("Normal", m8.ExitType);
+        Assert.Equal("End", m8.ExitType); // past 85% of the 9,310 ft runway, as before
         Assert.InRange(m8.ExitAngleDegrees, 52.5, 55.5);
     }
 
