@@ -165,22 +165,49 @@ public class TaxiBriefingGraphSourceTests
     }
 
     [Fact]
-    public async Task A_departure_airport_that_overruns_the_budget_times_out_alone()
+    public async Task A_cancellation_neither_token_asked_for_is_a_failure_not_a_timeout()
     {
-        // The departure airport's read never returns inside the budget (as an OpenStreetMap fetch for an
-        // airport with no navdata taxiways can take); the arrival leg shares the budget, not a queue, so it
-        // is still planned instead of being reported as timed out without a single database read.
+        // The work itself throws OperationCanceledException while neither the caller nor the budget cancelled.
+        var request = Request(AircraftSizeClass.Resolve("B738", "Boeing 737-800", 189));
+        var cancelling = new ThrowingProvider(() => new OperationCanceledException());
+
+        var b = await TaxiBriefingPlanner.PlanAsync(request, cancelling, null, TaxiBriefingPlanner.DefaultBudget);
+
+        Assert.StartsWith("taxi route could not be computed (", b.TaxiOut.Unavailable);
+        Assert.StartsWith("taxi route could not be computed (", b.TaxiIn.Unavailable);
+    }
+
+    [Fact]
+    public async Task The_two_legs_are_planned_at_the_same_time()
+    {
+        // No clock is raced: the departure airport's read can only be released by the arrival leg's read while
+        // both are in progress (see OverlapProvider). Planned one after the other, in either order, neither read
+        // ever completes, the budget runs out and the arrival leg is reported as timed out.
         var request = Request(AircraftSizeClass.Resolve("B738", "Boeing 737-800", 189), airline: "DAL") with { OriginIcao = "SLOW" };
-        await WarmUpAsync();
+        var provider = new OverlapProvider();
+
+        var b = await TaxiBriefingPlanner.PlanAsync(request, provider, null, TaxiBriefingPlanner.DefaultBudget);
+
+        Assert.True(provider.SlowReleasedByArrivalRead, "the departure airport's read was not released by the arrival leg's read");
+        Assert.Equal("SLOW is not in the navigation database", b.TaxiOut.Unavailable);
+        Assert.Null(b.TaxiIn.Unavailable);
+        Assert.Equal("C", b.TaxiIn.Exit!.Exit.TaxiwayName);
+    }
+
+    [Fact]
+    public async Task A_leg_that_overruns_the_budget_times_out()
+    {
+        // SLOW's read does not return before this test's finally, so the budget is the only way that leg can end:
+        // a late timer slows the test down, it never changes the answer. The blank destination ends its own leg
+        // at once, on this thread.
+        var request = Request(AircraftSizeClass.Resolve("B738", "Boeing 737-800", 189)) with { OriginIcao = "SLOW", DestinationIcao = "" };
         var provider = new BlockingProvider(blockIcao: "SLOW");
         try
         {
             var b = await TaxiBriefingPlanner.PlanAsync(request, provider, null, TimeSpan.FromMilliseconds(300));
 
-            Assert.Equal("SLOW", b.TaxiOut.Icao);
             Assert.Equal("taxi route computation timed out", b.TaxiOut.Unavailable);
-            Assert.Null(b.TaxiIn.Unavailable);
-            Assert.Equal("C", b.TaxiIn.Exit!.Exit.TaxiwayName);
+            Assert.Equal("no airport in the flight plan", b.TaxiIn.Unavailable);
         }
         finally
         {
@@ -197,7 +224,7 @@ public class TaxiBriefingGraphSourceTests
         try
         {
             var planning = TaxiBriefingPlanner.PlanAsync(request, provider, null, TaxiBriefingPlanner.DefaultBudget, caller.Token);
-            await provider.Entered.Task.WaitAsync(TimeSpan.FromSeconds(10));
+            await provider.Entered.Task.WaitAsync(TimeSpan.FromSeconds(60));
             caller.Cancel();
 
             var ex = await Assert.ThrowsAnyAsync<OperationCanceledException>(() => planning);
@@ -221,39 +248,14 @@ public class TaxiBriefingGraphSourceTests
         Assert.Equal(caller.Token, ex.CancellationToken);
     }
 
-    /// <summary>One full plan of the TEST airport first, so a timing test's budget measures the leg's work
-    /// rather than the JIT compiling the graph build and the planner.</summary>
-    private static Task WarmUpAsync() => TaxiBriefingPlanner.PlanAsync(
-        Request(AircraftSizeClass.Resolve("B738", "Boeing 737-800", 189), airline: "DAL"), new FakeProvider(), null,
-        TaxiBriefingPlanner.DefaultBudget);
-
-    /// <summary>
-    /// The TEST airport, except that GetAirport for <c>blockIcao</c> (every ident when null) blocks until
-    /// <see cref="Release"/> is set — a read that overruns the budget. <see cref="Entered"/> completes when the
-    /// first blocking read starts. Each test sets Release in a finally, and the wait is bounded too, so a
-    /// failing test can never hold a pool thread for the rest of the run.
-    /// </summary>
-    private sealed class BlockingProvider : IAirportDataProvider
+    /// <summary>The TEST airport served through <see cref="FakeProvider"/>; a subclass overrides the read it controls.</summary>
+    private abstract class DelegatingProvider : IAirportDataProvider
     {
         private readonly FakeProvider _inner = new();
-        private readonly string? _blockIcao;
-        public readonly ManualResetEventSlim Release = new(false);
-        public readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        public BlockingProvider(string? blockIcao) => _blockIcao = blockIcao;
-
-        public Airport? GetAirport(string icao)
-        {
-            if (_blockIcao != null && !string.Equals(icao, _blockIcao, StringComparison.OrdinalIgnoreCase))
-                return _inner.GetAirport(icao);
-            Entered.TrySetResult();
-            Release.Wait(TimeSpan.FromSeconds(30));
-            return null;
-        }
-
         public bool DatabaseExists => true;
         public string DatabaseType => "Fake";
         public string DatabasePath => "";
+        public virtual Airport? GetAirport(string icao) => _inner.GetAirport(icao);
         public List<Runway> GetRunways(string icao) => _inner.GetRunways(icao);
         public ILSData? GetILSForRunway(string icao, string runwayName) => null;
         public List<ParkingSpot> GetParkingSpots(string icao) => _inner.GetParkingSpots(icao);
@@ -263,17 +265,75 @@ public class TaxiBriefingGraphSourceTests
         public int GetParkingSpotCount() => 3;
         public HashSet<string> GetAllAirportICAOs() => new() { "TEST" };
         public List<string> GetNearbyAirportICAOs(double lat, double lon, double nm) => new();
-        public List<TaxiPath> GetTaxiPaths(string icao) => _inner.GetTaxiPaths(icao);
+        public virtual List<TaxiPath> GetTaxiPaths(string icao) => _inner.GetTaxiPaths(icao);
         public List<StartPosition> GetRunwayStarts(string icao) => _inner.GetRunwayStarts(icao);
     }
 
+    /// <summary>
+    /// GetAirport for <c>blockIcao</c> (every ident when null) blocks until <see cref="Release"/> is set — a read
+    /// that overruns the budget. <see cref="Entered"/> completes when the first blocking read starts. Each test
+    /// sets Release in a finally, and the wait is bounded too, so a failing test can never hold a pool thread for
+    /// the rest of the run.
+    /// </summary>
+    private sealed class BlockingProvider : DelegatingProvider
+    {
+        private readonly string? _blockIcao;
+        public readonly ManualResetEventSlim Release = new(false);
+        public readonly TaskCompletionSource Entered = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public BlockingProvider(string? blockIcao) => _blockIcao = blockIcao;
+
+        public override Airport? GetAirport(string icao)
+        {
+            if (_blockIcao != null && !string.Equals(icao, _blockIcao, StringComparison.OrdinalIgnoreCase))
+                return base.GetAirport(icao);
+            Entered.TrySetResult();
+            Release.Wait(TimeSpan.FromSeconds(30));
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// The departure airport SLOW and the arrival airport TEST each wait inside a read for the other: GetAirport("SLOW")
+    /// says it has started, then waits (30 s cap) for the arrival leg's GetTaxiPaths("TEST"), which waits (30 s cap)
+    /// for SLOW's read to have started before it releases it. So <see cref="SlowReleasedByArrivalRead"/> is true only
+    /// when the two reads were in progress at the same time — never when the legs run one after the other, in either
+    /// order. GetAirport("SLOW") then returns null.
+    /// </summary>
+    private sealed class OverlapProvider : DelegatingProvider
+    {
+        private readonly ManualResetEventSlim _slowReadStarted = new(false);
+        private readonly ManualResetEventSlim _arrivalRead = new(false);
+        public volatile bool SlowReleasedByArrivalRead;
+
+        public override Airport? GetAirport(string icao)
+        {
+            if (!string.Equals(icao, "SLOW", StringComparison.OrdinalIgnoreCase))
+                return base.GetAirport(icao);
+            _slowReadStarted.Set();
+            SlowReleasedByArrivalRead = _arrivalRead.Wait(TimeSpan.FromSeconds(30));
+            return null;
+        }
+
+        public override List<TaxiPath> GetTaxiPaths(string icao)
+        {
+            if (string.Equals(icao, "TEST", StringComparison.OrdinalIgnoreCase) && _slowReadStarted.Wait(TimeSpan.FromSeconds(30)))
+                _arrivalRead.Set();
+            return base.GetTaxiPaths(icao);
+        }
+    }
+
+    /// <summary>Every airport read throws — by default an InvalidOperationException("boom").</summary>
     private sealed class ThrowingProvider : IAirportDataProvider
     {
+        private readonly Func<Exception> _exception;
+        public ThrowingProvider(Func<Exception>? exception = null) => _exception = exception ?? (() => new InvalidOperationException("boom"));
+
         public bool DatabaseExists => true;
         public string DatabaseType => "Fake";
         public string DatabasePath => "";
-        public Airport? GetAirport(string icao) => throw new InvalidOperationException("boom");
-        public List<Runway> GetRunways(string icao) => throw new InvalidOperationException("boom");
+        public Airport? GetAirport(string icao) => throw _exception();
+        public List<Runway> GetRunways(string icao) => throw _exception();
         public ILSData? GetILSForRunway(string icao, string runwayName) => null;
         public List<ParkingSpot> GetParkingSpots(string icao) => new();
         public bool AirportExists(string icao) => true;

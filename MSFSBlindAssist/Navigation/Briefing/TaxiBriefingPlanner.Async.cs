@@ -75,17 +75,19 @@ public static partial class TaxiBriefingPlanner
             // in the background and is discarded.
             return LogLeg(await work.WaitAsync(budget).ConfigureAwait(false));
         }
+        // In both abandon paths the summary line is written BEFORE the fault observer is attached: work that has
+        // already faulted runs the observer at once, and its line must follow the summary, never precede it.
         catch (OperationCanceledException) when (caller.IsCancellationRequested)
         {
-            ObserveAbandonedLeg(work, icao, runway);
             Log.Info(LogCategory, $"{LogField(icao)} {LogField(runway)}: cancelled by the caller");
+            ObserveAbandonedLeg(work, icao, runway);
             throw new OperationCanceledException(caller);
         }
         catch (OperationCanceledException) when (budget.IsCancellationRequested)
         {
-            ObserveAbandonedLeg(work, icao, runway);
             var timedOut = TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, "taxi route computation timed out");
             Log.Warn(LogCategory, Summarise(timedOut));
+            ObserveAbandonedLeg(work, icao, runway);
             return timedOut;
         }
         catch (Exception ex)
@@ -106,7 +108,7 @@ public static partial class TaxiBriefingPlanner
     /// <summary>
     /// Nothing awaits an abandoned computation any more, so a fault it hits later would surface only when
     /// the task is finalized — as an unobserved task exception in startup.log, at no particular time and
-    /// naming no airport. Observe it here and log it beside the leg's summary; the leg is not changed.
+    /// naming no airport. Observe it here and log it after the leg's summary; the leg is not changed.
     /// </summary>
     private static void ObserveAbandonedLeg(Task work, string icao, string runway) =>
         _ = work.ContinueWith(
