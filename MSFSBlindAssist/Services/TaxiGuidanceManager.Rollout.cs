@@ -456,9 +456,10 @@ public partial class TaxiGuidanceManager
         if (off != _offPavementLogged)
         {
             _offPavementLogged = off;
-            RolloutDiag(off
-                ? $"Off pavement: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt state={_state}"
-                : $"Back on pavement: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt");
+            if (off)
+                RolloutDiag($"Off pavement: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt state={_state}");
+            else
+                RolloutDiag($"Back on pavement: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt");
         }
         if (_offPavementAlert.Update(off, groundSpeedKts, DateTime.UtcNow))
         {
@@ -923,9 +924,10 @@ public partial class TaxiGuidanceManager
                     // below, if it fires, has it available for HandleArrival.
                     _landingExitVacatedEarlyPlannedName = vacatedEarlyPlannedNameAtHandoff;
                 }
-                RolloutDiag(rerouteErr == null
-                    ? $"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → {rerouteDestSrc}={rerouteDest}"
-                    : $"Handoff re-route failed ({rerouteErr}), continuing with original route");
+                if (rerouteErr == null)
+                    RolloutDiag($"Handoff re-route OK: lat={lat:F6} lon={lon:F6} → {rerouteDestSrc}={rerouteDest}");
+                else
+                    RolloutDiag($"Handoff re-route failed ({rerouteErr}), continuing with original route");
             }
 
             // An early-vacate swap with no route to show for it must CONCLUDE, never fall
@@ -1496,10 +1498,12 @@ public partial class TaxiGuidanceManager
             if (Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, _rolloutExit.ExitAngleDegrees))
             {
                 var next = FindTooFastAlternative(signedAlongPastFt, groundSpeedKts);
+                string tooFastOutcome = next != null
+                    ? $"continue to '{next.TaxiwayName}' at {next.DistanceFromThresholdFeet:F0}ft"
+                    : "no exit ahead";
                 RolloutDiag($"Too fast for '{_rolloutExit.TaxiwayName}': gs={groundSpeedKts:F1}kt " +
                     $"max={Navigation.RolloutExitGate.MaxTurnSpeedKts(_rolloutExit.ExitAngleDegrees):F0}kt " +
-                    $"dist={distToExitFeet:F0}ft -> " +
-                    (next != null ? $"continue to '{next.TaxiwayName}' at {next.DistanceFromThresholdFeet:F0}ft" : "no exit ahead"));
+                    $"dist={distToExitFeet:F0}ft -> {tooFastOutcome}");
                 if (next != null)
                 {
                     RetargetLandingExit(next, lat, lon, headingTrue, Navigation.RetargetReason.TooFast);
@@ -2580,10 +2584,11 @@ public partial class TaxiGuidanceManager
             }
         }
         // What the scan judged, so a "no reachable exit" can be answered from the log, not guessed at.
+        string scanOutcome = next != null
+            ? $"'{next.TaxiwayName}' at {next.DistanceFromThresholdFeet:F0}ft"
+            : $"none; considered {DescribeExits(_rolloutAllExits)}";
         RolloutDiag($"Too fast: alternative scan gs={groundSpeedKts:F1}kt aircraftFromThr={aircraftFromThresholdFt:F0}ft " +
-            $"pastDeclined={pastDeclinedFt:F0}ft leadCutoff={cutoffFt:F0}ft rescued={rescuedCount} -> " +
-            (next != null ? $"'{next.TaxiwayName}' at {next.DistanceFromThresholdFeet:F0}ft"
-                          : $"none; considered {DescribeExits(_rolloutAllExits)}"));
+            $"pastDeclined={pastDeclinedFt:F0}ft leadCutoff={cutoffFt:F0}ft rescued={rescuedCount} -> {scanOutcome}");
         return next;
     }
 
@@ -3396,6 +3401,16 @@ public partial class TaxiGuidanceManager
         try { _rolloutDiagLog.Info($"{msg}"); }
         catch { /* never fail on diag */ }
     }
+
+    /// <summary>
+    /// An interpolated landing_exit.log line, formatted with the invariant culture
+    /// (Utils.Logging.InvariantLogLine): "gs=44.1kt", never the "gs=44,1kt" a German or Turkish Windows
+    /// writes, so a log reads and parses the same from every pilot. C# binds every interpolated argument
+    /// here and every plain literal to the string overload; a conditional between two interpolated
+    /// strings is typed string first and misses it, so format its parts into the one interpolation.
+    /// </summary>
+    private static void RolloutDiag(ref MSFSBlindAssist.Utils.Logging.InvariantLogLine msg)
+        => RolloutDiag(msg.ToStringAndClear());
 
     /// <summary>
     /// Rate-limited per-frame diagnostic for the two backtrack states, mirroring
