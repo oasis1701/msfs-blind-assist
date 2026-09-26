@@ -90,11 +90,12 @@ public static partial class TaxiBriefingPlanner
         // always real and always the last leg: add it unconditionally.
         holds.Add(new HoldShortNote(rwy.RunwayID, LastNamedTaxiway(route), BeforeEntering: true));
 
+        var taxiways = RouteTaxiwaySequence.DistinctConsecutive(route.Segments);
         return new TaxiLegBriefing
         {
             Icao = icao, Runway = rwy.RunwayID, Tier = g.Tier, EndpointDescription = endpoint, Stand = stand,
-            Taxiways = RouteTaxiwaySequence.DistinctConsecutive(route.Segments),
-            TaxiwayTurns = BriefingTurns.TaxiwayTurns(route.Segments),
+            Taxiways = taxiways,
+            TaxiwayTurns = AlignedTurns(taxiways, BriefingTurns.TaxiwayTurns(route.Segments)),
             DistanceMetres = route.TotalDistanceMeters, HoldShorts = holds,
             NarrowTaxiways = NarrowTaxiways(route, r.Aircraft), Notes = notes,
         };
@@ -176,11 +177,12 @@ public static partial class TaxiBriefingPlanner
         if (TaxiwayLeavingTheRunway(g.Graph, choice.Exit, routeStarts[choice.Exit], rwy) is string leaving)
             notes.Add($"the mapped route leaves the runway on taxiway {leaving}");
 
+        var taxiways = RouteTaxiwaySequence.DistinctConsecutive(way.Route.Segments);
         return new TaxiLegBriefing
         {
             Icao = icao, Runway = rwy.RunwayID, Tier = g.Tier, EndpointDescription = endpoint, Stand = stand,
-            Taxiways = RouteTaxiwaySequence.DistinctConsecutive(way.Route.Segments),
-            TaxiwayTurns = BriefingTurns.TaxiwayTurns(way.Route.Segments),
+            Taxiways = taxiways,
+            TaxiwayTurns = AlignedTurns(taxiways, BriefingTurns.TaxiwayTurns(way.Route.Segments)),
             StandTurn = BriefingTurns.StandTurn(way.Route.Segments),
             DistanceMetres = way.Route.TotalDistanceMeters, HoldShorts = way.Holds, Exit = choice, VacatingExits = vacating,
             ExitsSearched = true, NarrowTaxiways = NarrowTaxiways(way.Route, r.Aircraft), Notes = notes,
@@ -447,6 +449,11 @@ public static partial class TaxiBriefingPlanner
         node.Type == TaxiNodeType.Parking &&
         !string.IsNullOrEmpty(node.ParkingName) &&
         !node.ParkingName.StartsWith("Runway", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The turns only when they line up one-for-one with the taxiway names; otherwise none, so a future drift in
+    /// how either groups a route loses the directions instead of attaching them to the wrong taxiways.</summary>
+    private static IReadOnlyList<string?> AlignedTurns(IReadOnlyList<string> taxiways, IReadOnlyList<string?> turns) =>
+        turns.Count == taxiways.Count ? turns : Array.Empty<string?>();
 
     private static string NamedTaxiwayAt(TaxiRoute route, int index)
     {
