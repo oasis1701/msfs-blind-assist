@@ -7,7 +7,7 @@ Date: 2026-09-26. Branch: `claude/route-briefing-real-world-only` (continued on 
 The Describe Route briefing's **TAXI OUT AND TAXI IN** section becomes ONE short part: a paragraph for the taxi
 out and a paragraph for the taxi in, written the way the old "Real-world practice" part read, but built on the
 route MSFS Blind Assist works out from the pilot's own scenery. There is no second "computed route" version any
-more, no list of every exit, and no talk about data sources.
+more, no list of every exit, and no talk about data sources beyond the short preview phrase below.
 
 - **Taxi out:** where the taxi starts (the stand the aircraft is parked at, or a typical stand when it is not at
   the origin yet — said to be typical, not assigned), the taxiways in order with the turn at each change, every
@@ -15,6 +15,16 @@ more, no list of every exit, and no talk about data sources.
 - **Taxi in:** which side to leave the landing runway, the exit taxiway and how far down it is, the next exit if
   that one is missed, the taxiways to the gate with their turns, every runway crossed on the way, the gate, and the
   total distance.
+- **It says it is a preview:** a short phrase per leg — the expected route on the pilot's scenery; SayIntentions (or
+  ATC) gives the actual clearance. The route is the SHORTEST route along the scenery's real taxiways, and
+  controllers do not always route that way (standard flows, one-way taxiways, end-around taxiways such as KATL's V,
+  which goes around the west end of 08R/26L). SayIntentions builds its own clearance on the day, which neither the
+  scenery nor real-world practice predicts; the pilot flies that clearance (Ctrl+Shift+Y imports it into Taxi
+  Assist).
+- **At most one real-world note per leg:** when the AI knows controllers usually route differently at that airport,
+  one sentence saying so — naming only taxiways that exist in that airport's scenery or OpenStreetMap data. The
+  block carries each airport's taxiway name list so the note can be held to real names; the claim itself remains
+  the AI's knowledge (owner's choice, 2026-09-26, over leaving it out).
 - **From the AI's own knowledge, but only about taxiways, runways and stands the route data names:** aircraft
   restrictions (for example an A380's wingspan limits, alongside the scenery's own stand sizes and taxiway-width
   notes), current operational information (for example a NOTAM closing a taxiway on the route), and usual practice
@@ -47,9 +57,13 @@ not complete in time. The owner chose to **keep that wait as before** (completen
 - **Carried over from the strip:** the owner's question in the owner's own wording ("… at [ICAO Code] from
   [Runway] to [Terminal/Gate] in a [Aircraft Type] …") and the compass-point runway test for
   `BriefingRunwayChoice`.
-- **Changed:** the prompt's section 7 only, plus the docs and CLAUDE.md bullets that describe two sections.
-- **Not changed:** the TAXI ROUTES block's content. Length is controlled by the prompt, and the block keeps what
-  the AI needs to judge restrictions (wingspan, stand, taxiway-width notes, the exits list).
+- **Changed:** the prompt's section 7; one new line per leg in the TAXI ROUTES block — the airport's taxiway names
+  ("Taxiways at KATL (scenery navdata): A, A11, …"), taken from the graph the leg was planned on, so the list is
+  exactly the names the route could use (the scenery's, OpenStreetMap-filled names included; the OpenStreetMap
+  graph's names on that tier); the docs and CLAUDE.md bullets that describe two sections.
+- **Not changed otherwise:** the rest of the TAXI ROUTES block. Length is controlled by the prompt, and the block
+  keeps what the AI needs to judge restrictions (wingspan, stand, taxiway-width notes, the exits list). A leg that
+  was never planned on a graph (no database, no ground data, a timeout) has no name list.
 
 ## 4. The prompt's section 7
 
@@ -60,13 +74,17 @@ One instruction set, replacing the old a) and b) parts:
 2. The route — stand, taxiways and their order, turns, hold-shorts, exit, next exit, crossings, gate, distances —
    comes from the block only: names exactly as given, turns and sides exactly as given, no turn where the block
    gives none, never a taxiway, exit or stand name the block does not contain.
-3. From its own knowledge the AI may add only restrictions, current operational information and usual practice
-   that concern a taxiway, runway or stand the block names; it never offers a different route.
-4. Brevity: a short paragraph per leg; do not list every exit; no data-source commentary except the two
-   exceptions in §1; mention a block note only when it changes what the pilot does or hears (a SayIntentions
+3. Each leg says, in a short phrase, that this is the expected route on the pilot's scenery and that SayIntentions
+   or ATC gives the actual clearance.
+4. From its own knowledge the AI may add restrictions, current operational information and usual practice that
+   concern a taxiway, runway or stand the block names, and AT MOST ONE sentence per leg saying controllers usually
+   route differently there. Any taxiway it names must be in that leg's taxiway list (or the route); it never gives
+   a full alternative route.
+5. Brevity: a short paragraph per leg; do not list every exit; no data-source commentary except the preview
+   phrase and the two exceptions in §1; mention a block note only when it changes what the pilot does or hears (a SayIntentions
    runway difference, a typical rather than assigned stand, a SayIntentions gate the scenery lists under another
    name or found at a different position, a width or size note).
-5. Unchanged rules: the distance unit; a SayIntentions runway difference named here and in the departure/arrival
+6. Unchanged rules: the distance unit; a SayIntentions runway difference named here and in the departure/arrival
    narrative; a representative stand called typical, not assigned; an unavailable leg with no ground data answered
    from general knowledge and said to be.
 
@@ -75,9 +93,12 @@ One instruction set, replacing the old a) and b) parts:
 ## 5. Testing
 
 - The restored planner, renderer, picker and turn tests come back with the revert.
+- New: a planned leg carries its airport's taxiway names (sorted, distinct, from the leg's graph) and the renderer
+  prints them on one line; an unavailable leg planned on a graph still carries them; a leg with no graph has none.
 - `RouteDescriptionPromptTests` pins: one section (no "Real-world practice" heading, no a)/b) parts); the question
-  verbatim from the constant and never written out; names only from the block; own-knowledge additions only about
-  named taxiways, runways and stands, never a different route; the brevity rules; the unit, SayIntentions runway,
+  verbatim from the constant and never written out; the preview phrase; names only from the block and the leg's
+  taxiway list; own-knowledge additions only about named taxiways, runways and stands; at most one real-world note
+  per leg and never a full alternative route; the brevity rules; the unit, SayIntentions runway,
   typical-stand and no-ground-data rules.
 - In-sim (owner): KMEM→KATL with SayIntentions — the taxi out names J, T, P, N, M, M2 to 36L; the taxi in names
   B11 on the right, D across 08R, E, F5, F to C50; one short section; no invented names; the question not read
