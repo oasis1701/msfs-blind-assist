@@ -70,6 +70,10 @@ public sealed class TaxiLegBriefing
     public string? StandTurn { get; init; }
     public double DistanceMetres { get; init; }
     public IReadOnlyList<HoldShortNote> HoldShorts { get; init; } = Array.Empty<HoldShortNote>();
+    /// <summary>The designators of the runway entries and crossings the automatic hold-short pass could not hold
+    /// (<see cref="TaxiRouteRunwayEvent.Held"/> false) — the same events that produce the "no hold short point
+    /// could be placed" notes.</summary>
+    public IReadOnlyList<string> UnheldRunways { get; init; } = Array.Empty<string>();
     public ExitChoice? Exit { get; init; }
     /// <summary>Every exit that gets clear of the landing runway, nearest the threshold first.</summary>
     public IReadOnlyList<LandingExit> VacatingExits { get; init; } = Array.Empty<LandingExit>();

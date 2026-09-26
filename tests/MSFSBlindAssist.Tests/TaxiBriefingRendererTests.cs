@@ -225,6 +225,25 @@ public class TaxiBriefingRendererTests
     }
 
     [Fact]
+    public void An_unheld_crossing_is_never_reported_as_no_crossings()
+    {
+        // A crossing the automatic hold-short pass could not hold is still a crossing: the block must never say
+        // "No runway crossings" over one, or the AI hears a contradiction against the leg's own note.
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "KATL", Runway = "08R", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand C 1",
+            Taxiways = new[] { "A" }, DistanceMetres = 500,
+            UnheldRunways = new[] { "08R" },
+            Notes = new[] { "no hold short point could be placed for runway 08R; cross with care" },
+        };
+        var taxiOut = TaxiLegBriefing.UnavailableLeg("KATL", "08R", BriefingTier.Navdata, "x");
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn), DistanceUnit.Feet);
+
+        Assert.Contains("  Hold short: none could be placed; see the notes.\n", text);
+        Assert.DoesNotContain("No runway crossings", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void With_no_exit_to_fall_back_on_the_line_says_none_is_mapped_on_the_same_side_500ft_on()
     {
         // "No later exit is mapped." was untrue beside a list of later exits. The exit to take if the briefed one is

@@ -965,15 +965,20 @@ Cover the following topics, using descriptive section headings separated by blan
    For each leg, answer the question below from that leg's lines of the TAXI ROUTES block, taking the bracketed items (the airport, the runway, the stand or terminal, and the aircraft type) from them (the runway there may be the one SayIntentions assigned rather than the flight plan's):
       ""{RealWorldTaxiQuestion}""
    That question is an instruction to you, not text for the pilot: write only your answer, and never write the question itself into the briefing, as shown here or with the items filled in.
+   For the taxi out, the route runs from the stand to the departure runway; for the taxi in, it runs from the landing runway, via the exit, to the stand.
    The route comes from the block only: the stand, the taxiways in order with the turn at each change of taxiway and into the stand wherever the block gives one, every hold-short point and the runway it protects, and for the arrival which side to leave the runway (left or right), the exit taxiway and its distance from the threshold, the next exit if that one is missed, every runway crossed, and the gate.
    Use ONLY the taxiway, exit and stand names given in the block, and repeat distances, sides and turn directions exactly as given; where the block gives no turn for a taxiway, give none.
-   Give the total taxi distance for each leg.
+   Give the total taxi distance for each leg the block gives one for, and never estimate one.
    For each leg, say in a short phrase that this is the expected route on the pilot's scenery and that SayIntentions or ATC will give the actual taxi clearance.
    From your own knowledge you may add wingspan or aircraft-type restrictions, current operational information such as a NOTAM closing a taxiway, and usual practice, but only where it concerns a taxiway, runway or stand the block names; and at most one sentence per leg saying that controllers usually route differently there.
    Any taxiway you name must appear in that leg's lines, including its ""Taxiway names at"" list; never give a full alternative route.
-   Keep it short: do not list every exit, do not describe where the data came from, and mention a note from the block only when it changes what the pilot does or hears: a runway SayIntentions assigned that differs from the flight plan, a representative stand (say it is typical, not assigned), a SayIntentions gate the scenery lists under another name or at a different position, a taxiway width or stand size note.
-   When a leg's route comes from OpenStreetMap, say so in a few words; taxi guidance cannot use it.
-   If the block says a leg is unavailable, say so in a few words and give that leg's usual route from your own knowledge, saying it is general knowledge and not checked against the scenery; where the leg has a ""Taxiway names at"" list, name only taxiways from it.
+   Keep it short: do not list every exit, and do not describe where the data came from.
+   Always give every runway the route crosses, including one a note says has no hold short point, and when a note says the mapped route leaves the runway on another taxiway, say which.
+   Mention any other note from the block only when it changes what the pilot does or hears, such as a runway SayIntentions assigned that differs from the flight plan, a representative stand (say it is typical, not assigned), a SayIntentions gate the scenery lists under another name or at a different position, a stand the scenery marks as a fuel or other special stand, or a taxiway width or stand size note.
+   When a leg's route comes from OpenStreetMap, say so in a few words, and call it the expected route on OpenStreetMap's map rather than on the pilot's scenery; taxi guidance cannot use it.
+   If the block says a leg is unavailable, say so in a few words, and still give whatever the block does give for that leg, such as the exit with its side and distance, and the stand.
+   When the reason is that the aircraft is already at the runway, give no route for that leg.
+   Otherwise you may give that leg's usual route from your own knowledge, saying it is general knowledge and not checked against the scenery; where the leg has a ""Taxiway names at"" list, name only taxiways from it, and only a leg with no such list may name taxiways the block does not give.
    Give every distance in this section in the unit the block's ""Distance unit"" line names, and never mix units.
    When a leg's note says SayIntentions assigned a different runway from the flight plan, say so here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
 

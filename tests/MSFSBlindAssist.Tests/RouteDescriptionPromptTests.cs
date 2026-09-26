@@ -14,6 +14,8 @@ public class RouteDescriptionPromptTests
         Assert.Contains("Provide the step-by-step taxi route at [ICAO Code] from [Runway] to [Terminal/Gate] in a [Aircraft Type]. " +
                         "Please include the expected taxiways, hold short points, and any specific restrictions.", prompt);
         Assert.DoesNotContain("Real-world practice", prompt);
+        // Controller decision, 2026-09-26: kept, not lowered — the owner found round 4's briefing length right, and
+        // round 4 ran under this same target with a one-part taxi section.
         Assert.Contains("Aim for 600 to 900 words", prompt);
         Assert.DoesNotContain("Aim for 300 to 500 words", prompt);
         Assert.EndsWith("FLIGHT DATA HERE", prompt);
@@ -76,6 +78,16 @@ public class RouteDescriptionPromptTests
     }
 
     [Fact]
+    public void Prompt_says_which_way_each_leg_runs()
+    {
+        // The owner's question reads "from [Runway] to [Terminal/Gate]", which only fits the taxi-in — without this
+        // clause the model is literally asked for a departure route "from 36L to Gate 17".
+        string prompt = GeminiService.GetRouteDescriptionPrompt("x");
+        Assert.Contains("For the taxi out, the route runs from the stand to the departure runway; for the taxi in, " +
+                        "it runs from the landing runway, via the exit, to the stand.", prompt);
+    }
+
+    [Fact]
     public void The_taxi_section_is_one_short_part_built_on_the_block()
     {
         // Owner, 2026-09-26: two sections were too long; the real-world-only form invented KMEM "V1" and KATL "V3"/"V4".
@@ -83,7 +95,7 @@ public class RouteDescriptionPromptTests
         Assert.Contains("ONE short paragraph for the taxi out at the departure airport and ONE short paragraph for the " +
                         "taxi in at the arrival airport, in the voice of real-world operations", prompt);
         Assert.Contains("The route comes from the block only", prompt);
-        Assert.Contains("Give the total taxi distance for each leg.", prompt);
+        Assert.Contains("Give the total taxi distance for each leg the block gives one for, and never estimate one.", prompt);
         Assert.DoesNotContain("do two things", prompt);
     }
 
@@ -116,10 +128,36 @@ public class RouteDescriptionPromptTests
     }
 
     [Fact]
+    public void An_OpenStreetMap_leg_is_never_called_the_scenery_route()
+    {
+        // "The expected route on the pilot's scenery" is false for an OSM-tier leg — a pilot could hear that AND
+        // "taxi guidance cannot use it" about the same route.
+        string prompt = GeminiService.GetRouteDescriptionPrompt("x");
+        Assert.Contains("call it the expected route on OpenStreetMap's map rather than on the pilot's scenery", prompt);
+    }
+
+    [Fact]
+    public void A_runway_crossing_is_never_filtered_out_of_the_briefing()
+    {
+        // The old filter read as exhaustive and omitted the "no hold short point" and "leaves the runway on
+        // taxiway X" notes, so an unheld crossing could be briefed as no crossing at all.
+        string prompt = GeminiService.GetRouteDescriptionPrompt("x");
+        Assert.Contains("Always give every runway the route crosses, including one a note says has no hold " +
+                        "short point", prompt);
+        Assert.Contains("when a note says the mapped route leaves the runway on another taxiway, say which", prompt);
+        Assert.Contains("a stand the scenery marks as a fuel or other special stand", prompt);
+    }
+
+    [Fact]
     public void An_unavailable_leg_is_answered_from_general_knowledge_and_says_so()
     {
         string prompt = GeminiService.GetRouteDescriptionPrompt("x");
         Assert.Contains("saying it is general knowledge and not checked against the scenery", prompt);
         Assert.Contains("where the leg has a \"Taxiway names at\" list, name only taxiways from it", prompt);
+        // Broader than a missing route: an unavailable taxi-in can still carry a computed exit and stand, and
+        // "usual knowledge" makes no sense when the aircraft is already sitting at the runway entrance.
+        Assert.Contains("still give whatever the block does give for that leg", prompt);
+        Assert.Contains("When the reason is that the aircraft is already at the runway, give no route for that leg.", prompt);
+        Assert.Contains("only a leg with no such list may name taxiways the block does not give", prompt);
     }
 }

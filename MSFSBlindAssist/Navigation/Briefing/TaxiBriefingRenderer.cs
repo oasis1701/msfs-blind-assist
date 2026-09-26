@@ -102,7 +102,7 @@ public static class TaxiBriefingRenderer
         {
             lines.Add($"TAXI OUT at {leg.Icao} ({TierLabel(leg.Tier)}): from {leg.EndpointDescription} to runway {leg.Runway}");
             lines.Add($"  Taxiways: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres, unit)})");
-            lines.Add(HoldLine(leg.HoldShorts));
+            lines.Add(HoldLine(leg.HoldShorts, leg.UnheldRunways));
             foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter, unit));
         }
         AddAirportTaxiways(leg, lines);
@@ -125,7 +125,7 @@ public static class TaxiBriefingRenderer
             if (leg.Exit != null) lines.Add(ExitLine(leg.Exit, aircraft, unit));
             lines.Add($"  Stand: {leg.EndpointDescription}");
             lines.Add($"  Taxiways from the exit: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres, unit)})");
-            lines.Add(HoldLine(leg.HoldShorts));
+            lines.Add(HoldLine(leg.HoldShorts, leg.UnheldRunways));
             foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter, unit));
             lines.Add(ExitsListLine(leg, unit));
         }
@@ -142,10 +142,14 @@ public static class TaxiBriefingRenderer
     }
 
     /// <summary>One entry per hold; a hold on no named taxiway (the whole route unnamed) names the runway alone,
-    /// never "on taxiway" followed by a blank.</summary>
-    private static string HoldLine(IReadOnlyList<HoldShortNote> holds)
+    /// never "on taxiway" followed by a blank. With no placed hold, an unheld runway (its own note is elsewhere in
+    /// the block) must never read as "No runway crossings" — that would contradict the note.</summary>
+    private static string HoldLine(IReadOnlyList<HoldShortNote> holds, IReadOnlyList<string> unheldRunways)
     {
-        if (holds.Count == 0) return "  No runway crossings on this route.";
+        if (holds.Count == 0)
+            return unheldRunways.Count == 0
+                ? "  No runway crossings on this route."
+                : "  Hold short: none could be placed; see the notes.";
         var parts = holds.Select(h =>
         {
             string kind = h.BeforeEntering ? "before entering" : "crossing";

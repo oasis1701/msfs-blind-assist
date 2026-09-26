@@ -449,9 +449,19 @@ public class TaxiBriefingPlannerTests
     {
         // Landing on 09 (other end 27): CollectHoldShorts is not told the landing runway, so nothing can silence this.
         var notes = new List<string>();
+        var unheldRunways = new List<string>();
         var events = new[] { new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = "27", Held = false } };
-        TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, null), events, notes);
+        TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, null), events, notes, unheldRunways);
         Assert.Equal(new[] { "no hold short point could be placed for runway 27; cross with care" }, notes);
+        Assert.Equal(new[] { "27" }, unheldRunways);
+
+        // A held-only call — the ordinary case — leaves the list empty: the renderer's hold line must not read a
+        // held crossing as one the automatic pass could not place.
+        var heldNotes = new List<string>();
+        var heldUnheldRunways = new List<string>();
+        var heldEvents = new[] { new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = "27", Held = true } };
+        TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, null), heldEvents, heldNotes, heldUnheldRunways);
+        Assert.Empty(heldUnheldRunways);
     }
 
     [Fact]
