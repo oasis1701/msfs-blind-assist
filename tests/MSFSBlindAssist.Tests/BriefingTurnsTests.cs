@@ -85,6 +85,15 @@ public class BriefingTurnsTests
             BriefingTurns.TaxiwayTurns(Route((0, 0), ("A", 0, 300), ("", 30, 300), ("B", 330, 300))));
 
     [Fact]
+    public void No_turn_word_across_a_long_unnamed_stretch_between_two_taxiways()
+    {
+        // 300 m of unnamed pavement with a right-then-left jog between A and B: the net heading change is zero, but "straight
+        // ahead onto B" would hide two real turns (live fs2024 cases: KJFK F to YA, 253 m; KATL L to F, 938 m).
+        var route = Route((0, 0), ("A", 0, 300), ("", 150, 300), ("", 150, 450), ("B", 150, 750));
+        Assert.Equal(new string?[] { null, null }, BriefingTurns.TaxiwayTurns(route));
+    }
+
+    [Fact]
     public void A_turn_back_on_itself_is_sharp()
         => Assert.Equal(new string?[] { null, "sharp right" },
             BriefingTurns.TaxiwayTurns(Route((0, 0), ("A", 0, 300), ("B", 150, 40.19))));

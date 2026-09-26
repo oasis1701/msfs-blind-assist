@@ -10,8 +10,9 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// <para>A turn is measured over a STRETCH of route around the change, never at one junction: navdata splits a real 90°
 /// turn into several small bends (the reason live guidance's "Straighten." cue cannot trust one junction either), so the
 /// sum of the bearing changes over the stretch is the turn. The stretch reaches <see cref="StretchMetres"/> into each
-/// taxiway but never past its middle — the other half belongs to the neighbouring change — and takes in any unnamed
-/// connector between the two.</para>
+/// taxiway but never past its middle — the other half belongs to the neighbouring change — and takes in an unnamed
+/// connector between the two of up to <see cref="MaxUnnamedStretchMetres"/>; across a longer unnamed stretch no turn
+/// is measured at all — a missing direction rather than a wrong one.</para>
 ///
 /// <para>Runs are exactly <see cref="RouteTaxiwaySequence.DistinctConsecutive"/>'s groups, so the turns line up with the
 /// taxiway names. The 20° and 60° lines are <see cref="TaxiRouter.GetTurnDirection"/>'s, so the briefing uses the same
@@ -27,6 +28,13 @@ public static class BriefingTurns
 {
     /// <summary>How far into each taxiway a change's stretch reaches, at most.</summary>
     public const double StretchMetres = 60.0;
+
+    /// <summary>The longest unnamed stretch a turn is measured across — a connector between two taxiways, or the lead-in
+    /// into the stand: the same 100 m a stand lead-in may run (<see cref="TaxiGraph.STAND_LEAD_IN_CHAIN_MAX_M"/>). Beyond it
+    /// the stretch is apron or an unnamed taxiway with bends of its own, and the heading change across it is not one turn
+    /// (fs2024, 60 hubs: without this limit 615 of 11,579 taxi-outs briefed a turn of 60° or more as straight ahead or the
+    /// wrong way).</summary>
+    public const double MaxUnnamedStretchMetres = TaxiGraph.STAND_LEAD_IN_CHAIN_MAX_M;
 
     /// <summary>A segment shorter than this is a point with no direction (GuidanceGeometry's rule).</summary>
     private const double DegenerateMetres = 1.0;
@@ -46,7 +54,8 @@ public static class BriefingTurns
     }
 
     /// <summary>One entry per name of <see cref="RouteTaxiwaySequence.DistinctConsecutive"/>, in order: null for the first
-    /// taxiway, then the turn onto each later one — null where it cannot be measured.</summary>
+    /// taxiway, then the turn onto each later one — null where it cannot be measured, including across an unnamed
+    /// stretch between two taxiways longer than <see cref="MaxUnnamedStretchMetres"/>.</summary>
     public static IReadOnlyList<string?> TaxiwayTurns(IReadOnlyList<TaxiRouteSegment>? segments)
     {
         var turns = new List<string?>();
@@ -55,6 +64,12 @@ public static class BriefingTurns
         for (int i = 0; i < runs.Count; i++)
         {
             if (i == 0)
+            {
+                turns.Add(null);
+                continue;
+            }
+            double unnamed = Length(segments, runs[i - 1].Last + 1, runs[i].First - 1);
+            if (unnamed > MaxUnnamedStretchMetres)
             {
                 turns.Add(null);
                 continue;
@@ -68,8 +83,8 @@ public static class BriefingTurns
 
     /// <summary>The turn from the last named taxiway into the unnamed segments that end the route (the stand lead-in);
     /// null when the route ends on a named segment, when there is nothing to measure, when it runs straight in, or
-    /// when the unnamed tail is longer than a stand lead-in (<see cref="TaxiGraph.STAND_LEAD_IN_CHAIN_MAX_M"/>,
-    /// 100 m) — beyond that the tail is apron taxilane and its first bend is not the turn into the stand (live
+    /// when the unnamed tail is longer than <see cref="MaxUnnamedStretchMetres"/> (100 m, a stand lead-in's own
+    /// length) — beyond that the tail is apron taxilane and its first bend is not the turn into the stand (live
     /// KATL C 22: 541 m of unnamed ramp beyond taxiway F).</summary>
     public static string? StandTurn(IReadOnlyList<TaxiRouteSegment>? segments)
     {
@@ -80,7 +95,7 @@ public static class BriefingTurns
         int tailFirst = last.Last + 1;
         if (tailFirst >= segments.Count) return null;
         double tail = Length(segments, tailFirst, segments.Count - 1);
-        if (tail > TaxiGraph.STAND_LEAD_IN_CHAIN_MAX_M) return null;
+        if (tail > MaxUnnamedStretchMetres) return null;
         double back = Math.Min(StretchMetres, last.Length / 2.0);
         double ahead = Math.Min(StretchMetres, tail);
         if (TurnOver(segments, last.Last, back, tailFirst, ahead) is not double d) return null;

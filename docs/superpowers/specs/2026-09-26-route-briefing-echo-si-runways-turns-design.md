@@ -169,11 +169,13 @@ briefing.
   - `string? StandTurn(IReadOnlyList<TaxiRouteSegment> segments)` — the turn from the last named run
     into the unnamed segments that end the route (the stand lead-in); null when the route ends on a named
     segment, when there is nothing to measure, when the turn is straight, or when the unnamed tail is
-    longer than a stand lead-in (`TaxiGraph.STAND_LEAD_IN_CHAIN_MAX_M`, 100 m).
+    longer than `BriefingTurns.MaxUnnamedStretchMetres` (100 m, a stand lead-in's own length).
 - **Measured over a stretch, not a junction.** A change's stretch runs from
   `min(StretchMetres, half the incoming run's length)` before the incoming run's end, through any unnamed
-  connector segments between the runs, to `min(StretchMetres, half the outgoing run's length)` into the
-  outgoing run; `StretchMetres` = 60. The turn is the sum of the signed bearing changes between
+  connector segments between the runs — but only up to `BriefingTurns.MaxUnnamedStretchMetres` (100 m);
+  across a longer unnamed stretch the entry is null (no turn word measured at all) — to
+  `min(StretchMetres, half the outgoing run's length)` into the outgoing run; `StretchMetres` = 60. The
+  turn is the sum of the signed bearing changes between
   consecutive segments inside the stretch, each normalised to ±180°, right positive, skipping segments
   shorter than 1 m (as `GuidanceGeometry.CumulativeTurnDeg` does). Navdata splits real turns into many
   small bends, so a single junction's angle is not the turn; halving at the neighbours keeps two close
