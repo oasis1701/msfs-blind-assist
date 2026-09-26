@@ -51,19 +51,9 @@ internal static partial class GroundTrafficLogic
         return d == -180.0 ? 180.0 : d;
     }
 
-    /// <summary>Plain-language relative direction: 0 = dead ahead, clockwise.</summary>
-    public static string DescribeDirection(double relBearing)
-    {
-        relBearing = ((relBearing % 360.0) + 360.0) % 360.0;
-        bool right = relBearing < 180.0;
-        double abs = right ? relBearing : (360.0 - relBearing);
-
-        if (abs <= 20.0) return "ahead";
-        if (abs <= 70.0) return right ? "ahead and to the right" : "ahead and to the left";
-        if (abs <= 110.0) return right ? "to the right" : "to the left";
-        if (abs <= 160.0) return right ? "behind and to the right" : "behind and to the left";
-        return "behind";
-    }
+    /// <summary>Plain-language relative direction: 0 = dead ahead, clockwise. The one phrasing
+    /// the app has (<see cref="RelativeDirection.Describe"/>), shared with the surroundings readout.</summary>
+    public static string DescribeDirection(double relBearing) => RelativeDirection.Describe(relBearing);
 
     /// <summary>"from the left" / "from the right" / "from ahead" / "from behind".</summary>
     public static string DescribeSide(double relBearing)

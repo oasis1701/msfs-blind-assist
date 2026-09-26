@@ -720,6 +720,34 @@ public partial class SimConnectManager
         }
     }
 
+    /// <summary>
+    /// COM 1 active and standby as the sim holds them now, or null when no answer arrives within
+    /// <paramref name="timeout"/> (not connected, or no reply). Call on the UI thread; the handler is
+    /// removed on every exit, so an unanswered read leaves nothing subscribed.
+    /// </summary>
+    public async Task<Com1RadioData?> ReadCom1RadioAsync(TimeSpan timeout)
+    {
+        if (!IsConnected || simConnect == null) return null;
+        var answer = new TaskCompletionSource<Com1RadioData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<Com1RadioData> handler = (_, data) => answer.TrySetResult(data);
+        Com1RadioReceived += handler;
+        try
+        {
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_COM1_RADIO,
+                DATA_DEFINITIONS.DEF_COM1_RADIO, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0);
+            return await answer.Task.WaitAsync(timeout);
+        }
+        catch (TimeoutException) { return null; }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error reading COM 1: {ex.Message}");
+            return null;
+        }
+        finally { Com1RadioReceived -= handler; }
+    }
+
     public void RequestWindInfo(Action<WindData> callback)
     {
         if (!IsConnected || callback == null) return;
