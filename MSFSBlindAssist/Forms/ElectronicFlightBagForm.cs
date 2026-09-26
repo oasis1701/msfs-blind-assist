@@ -924,6 +924,8 @@ public partial class ElectronicFlightBagForm : Form
     private async Task<string> BuildTaxiRoutesBlockAsync(FlightPlan plan)
     {
         var aircraft = AircraftSizeClass.Resolve(plan.AircraftTypeIcao, plan.AircraftName, plan.AircraftMaxPassengers);
+        // One unit for every distance in the block and its notes: the pilot's ground distance setting.
+        var unit = DistanceFormatter.UnitProvider();
         // SayIntentions is read while the aircraft position is: a web call to its parking service can take seconds.
         var siTask = ReadSayIntentionsAsync();
         // Hoisted so the catch can still name the runway SayIntentions assigned (and why) even when the leg itself
@@ -944,15 +946,15 @@ public partial class ElectronicFlightBagForm : Form
             var siGate = SayIntentionsArrivalGate.FromStatus(si, plan.DepartureICAO, plan.ArrivalICAO);
 
             var request = new TaxiBriefingRequest(plan.DepartureICAO, outChoice.Runway, plan.ArrivalICAO, inChoice.Runway,
-                                                  aircraft, plan.AirlineIcao, own, siGate, outChoice.Note, inChoice.Note);
+                                                  aircraft, plan.AirlineIcao, own, siGate, outChoice.Note, inChoice.Note, unit);
             var briefing = await TaxiBriefingPlanner.PlanAsync(request, provider, gateSource, TaxiBriefingPlanner.DefaultBudget);
-            return TaxiBriefingRenderer.Render(briefing);
+            return TaxiBriefingRenderer.Render(briefing, unit);
         }
         catch (Exception ex)
         {
             Log.Warn("taxi_briefing", $"taxi routes block failed: {ex}");
             return TaxiBriefingRenderer.Render(TaxiBriefing.Unavailable(aircraft, plan.DepartureICAO, outChoice.Runway,
-                plan.ArrivalICAO, inChoice.Runway, $"taxi route could not be computed ({ex.Message})", outChoice.Note, inChoice.Note));
+                plan.ArrivalICAO, inChoice.Runway, $"taxi route could not be computed ({ex.Message})", outChoice.Note, inChoice.Note), unit);
         }
     }
 

@@ -3,6 +3,7 @@ using System.Globalization;
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.SayIntentions;
+using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Navigation.Briefing;
 
@@ -129,13 +130,14 @@ public static class BriefingStandPicker
     /// stand is briefed, so there is nothing for a caveat to qualify, and the caller reports the network
     /// reason instead.</summary>
     public static StandChoice? Pick(IReadOnlyList<ParkingSpot> spots, AircraftProfile aircraft, string? airlineIcao,
-                                    SayIntentionsGateHint? siGate, Func<ParkingSpot, bool> hasGraphNode)
+                                    SayIntentionsGateHint? siGate, Func<ParkingSpot, bool> hasGraphNode,
+                                    DistanceUnit unit = DistanceUnit.Metres)
     {
         if (spots == null || spots.Count == 0) return null;
         var notes = new List<string>();
         IReadOnlyList<ParkingSpot> refused = Array.Empty<ParkingSpot>();
 
-        if (siGate != null && MatchSayIntentionsGate(spots, siGate, hasGraphNode, notes, out refused) is { } assigned)
+        if (siGate != null && MatchSayIntentionsGate(spots, siGate, hasGraphNode, notes, unit, out refused) is { } assigned)
             return new StandChoice(assigned, StandChoiceSource.SayIntentions, notes);
 
         // Every narrowing below judges the stands the route can reach, so a category, fit or airline
@@ -154,7 +156,7 @@ public static class BriefingStandPicker
             bool Fits(ParkingSpot s) => SizeUnknown(s) || s.FitsAircraft(spanFeet);
             var fitting = pool.Where(Fits).ToList();
             if (fitting.Count > 0) pool = fitting;
-            else notes.Add(NoneFits(kind, span, fitsOffNetwork: eligible.Any(s => InCategory(s, kind) && Fits(s))));
+            else notes.Add(NoneFits(kind, span, fitsOffNetwork: eligible.Any(s => InCategory(s, kind) && Fits(s)), unit));
         }
 
         var source = kind != null ? StandChoiceSource.Category : StandChoiceSource.Any;
@@ -197,7 +199,7 @@ public static class BriefingStandPicker
     /// </summary>
     private static ParkingSpot? MatchSayIntentionsGate(IReadOnlyList<ParkingSpot> spots, SayIntentionsGateHint hint,
                                                        Func<ParkingSpot, bool> hasGraphNode, List<string> notes,
-                                                       out IReadOnlyList<ParkingSpot> refused)
+                                                       DistanceUnit unit, out IReadOnlyList<ParkingSpot> refused)
     {
         refused = Array.Empty<ParkingSpot>();
         string assigned = LabelNamesItsKind(hint.Label)
@@ -217,7 +219,7 @@ public static class BriefingStandPicker
                 refused = named;
                 return null;
             }
-            return Assigned(chosen, ListedAs(chosen, hint.Label, wanted), pin, notes);
+            return Assigned(chosen, ListedAs(chosen, hint.Label, wanted), pin, notes, unit);
         }
 
         if (pin is GeoPoint p)
@@ -242,9 +244,9 @@ public static class BriefingStandPicker
                 string? identity = ReferenceEquals(chosen, ordered[0])
                     ? ListedAs(chosen, hint.Label, wanted)
                     : $"SayIntentions assigned {hint.Label}; the stand at its position, {IdentityLabel(ordered[0])} " +
-                      $"({Away(ordered[0], p)}), does not connect to the taxiway network, so {IdentityLabel(chosen)} " +
-                      $"({Away(chosen, p)}) is used";
-                return Assigned(chosen, identity, pin, notes);
+                      $"({Away(ordered[0], p, unit)}), does not connect to the taxiway network, so {IdentityLabel(chosen)} " +
+                      $"({Away(chosen, p, unit)}) is used";
+                return Assigned(chosen, identity, pin, notes, unit);
             }
         }
 
@@ -285,13 +287,13 @@ public static class BriefingStandPicker
     /// stand the name found. A stand found by position is in reach by construction, so it never carries the
     /// last.
     /// </summary>
-    private static ParkingSpot Assigned(ParkingSpot stand, string? identityNote, GeoPoint? pin, List<string> notes)
+    private static ParkingSpot Assigned(ParkingSpot stand, string? identityNote, GeoPoint? pin, List<string> notes, DistanceUnit unit)
     {
         if (identityNote != null) notes.Add(identityNote);
         if (IsExcludedKind(stand))
             notes.Add(KindNotePrefix + ExcludedKindWords(stand));
         if (pin is GeoPoint published && !Reaches(stand, published))
-            notes.Add($"SayIntentions' position is {TaxiBriefingRenderer.FormatDistance(MetresTo(stand, published))} from this stand");
+            notes.Add($"SayIntentions' position is {TaxiBriefingRenderer.FormatDistance(MetresTo(stand, published), unit)} from this stand");
         return stand;
     }
 
@@ -312,7 +314,7 @@ public static class BriefingStandPicker
     }
 
     /// <summary>"20 m away": how far the published position is from a stand, in the block's own distance words.</summary>
-    private static string Away(ParkingSpot s, GeoPoint p) => $"{TaxiBriefingRenderer.FormatDistance(MetresTo(s, p))} away";
+    private static string Away(ParkingSpot s, GeoPoint p, DistanceUnit unit) => $"{TaxiBriefingRenderer.FormatDistance(MetresTo(s, p), unit)} away";
 
     /// <summary>Whether a stand label already says what kind of stand it is ("Gate 5", "Spot 12", "Parking"), so
     /// "gate" is not put in front of it ("SayIntentions assigned gate Gate 5").</summary>
@@ -457,13 +459,13 @@ public static class BriefingStandPicker
 
     /// <summary>Names the stands the wingspan was judged against: the category's, or every stand when no
     /// category applied.</summary>
-    private static string NoneFits(StandKind? kind, double spanMetres, bool fitsOffNetwork)
+    private static string NoneFits(StandKind? kind, double spanMetres, bool fitsOffNetwork, DistanceUnit unit)
     {
         string noun = kind?.Noun ?? "stand";
-        string span = spanMetres.ToString("0.0", CultureInfo.InvariantCulture);
+        string span = TaxiBriefingRenderer.FormatSize(spanMetres, unit);
         return fitsOffNetwork
-            ? $"no {noun} that fits a {span} m wingspan connects to the taxiway network"
-            : $"no {noun} at this airport is marked as fitting a {span} m wingspan";
+            ? $"no {noun} that fits a {span} wingspan connects to the taxiway network"
+            : $"no {noun} at this airport is marked as fitting a {span} wingspan";
     }
 
     private static bool SizeUnknown(ParkingSpot s) => s.Radius <= 0 && !s.MaxWingspanMeters.HasValue;

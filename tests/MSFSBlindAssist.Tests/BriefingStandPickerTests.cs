@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Briefing;
 using MSFSBlindAssist.Services.SayIntentions;
+using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -792,6 +793,10 @@ public class BriefingStandPickerTests
         Assert.Same(spot7, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
         Assert.Equal(new[] { "SayIntentions' position is 1.2 km from this stand" }, choice.Notes);
+
+        // The same note in the pilot's feet setting.
+        var inFeet = BriefingStandPicker.Pick(new[] { spot7, gate7a }, B738, null, At("Gate 7", 10), Always, DistanceUnit.Feet)!;
+        Assert.Equal(new[] { "SayIntentions' position is 3,970 ft from this stand" }, inFeet.Notes);
     }
 
     [Fact]
@@ -1074,6 +1079,8 @@ public class BriefingStandPickerTests
         var small = Spot("G", 1, 13, 0, 0, radiusFt: 100);
         var gateChoice = BriefingStandPicker.Pick(new[] { small }, A388, null, null, Always)!;
         Assert.Contains(gateChoice.Notes, n => n.Contains("no gate at this airport is marked as fitting a 79.8 m wingspan", StringComparison.Ordinal));
+        var inFeet = BriefingStandPicker.Pick(new[] { small }, A388, null, null, Always, DistanceUnit.Feet)!;
+        Assert.Contains(inFeet.Notes, n => n.Contains("no gate at this airport is marked as fitting a 262 ft wingspan", StringComparison.Ordinal));
 
         // A freighter with no cargo stand judged every stand, and says "stand".
         var anyChoice = BriefingStandPicker.Pick(new[] { small }, B74F, null, null, Always)!;

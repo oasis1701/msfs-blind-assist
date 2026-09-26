@@ -3,6 +3,7 @@ using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.SayIntentions;
+using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Navigation.Briefing;
 
@@ -34,10 +35,12 @@ public sealed record StandChoice(ParkingSpot Spot, StandChoiceSource Source, IRe
 /// <param name="OriginRunwayNote">Where the departure runway came from (<see cref="BriefingRunwayChoice"/>); the leg's
 /// first note when set.</param>
 /// <param name="DestinationRunwayNote">Where the arrival runway came from; the leg's first note when set.</param>
+/// <param name="Unit">The pilot's ground distance setting, for the distances the planner writes into notes.</param>
 public sealed record TaxiBriefingRequest(
     string OriginIcao, string OriginRunway, string DestinationIcao, string DestinationRunway,
     AircraftProfile Aircraft, string? AirlineIcao, OwnPosition? Own, SayIntentionsGateHint? ArrivalGate,
-    string? OriginRunwayNote = null, string? DestinationRunwayNote = null);
+    string? OriginRunwayNote = null, string? DestinationRunwayNote = null,
+    DistanceUnit Unit = DistanceUnit.Metres);
 
 /// <summary>A hold-short point on the route: the runway it protects, the taxiway it is on, and whether it is
 /// the hold before entering the departure runway (true) or a crossing (false).</summary>

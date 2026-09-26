@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Navigation.Briefing;
+using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -49,20 +50,82 @@ public class TaxiBriefingRendererTests
     {
         const string expected =
             "TAXI ROUTES (computed by MSFS Blind Assist; each leg names its data source, and taxiway names are that source's own)\n" +
+            "Distance unit: metres (the pilot's setting); every distance below is in metres\n" +
             "Aircraft: MD-11F (SimBrief type MD1F), size class D, wingspan 51.7 m, freighter: cargo stands preferred\n" +
             "TAXI OUT at KMEM (scenery navdata): from representative stand C 1 (Ramp Cargo, UPS) to runway 36L\n" +
             "  Taxiways: N, left onto M, right onto A, slight right onto B (2.4 km)\n" +
             "  Hold short: runway 27 on taxiway M (crossing); runway 36L on taxiway B (before entering)\n" +
             "  Taxiway width note: taxiway K is 15.0 m in the navdata, below the 18.0 m code D minimum\n" +
             "TAXI IN at KLAX (scenery navdata), landing runway 25L\n" +
-            "  Expected exit: taxiway AA, high-speed, RIGHT side, 6,200 ft from the threshold. Next exit if missed: AB, right side, 7,100 ft\n" +
+            "  Expected exit: taxiway AA, high-speed, RIGHT side, 1,890 m from the threshold. Next exit if missed: AB, right side, 2,164 m\n" +
             "  Stand: SayIntentions assigned gate 52A\n" +
             "  Taxiways from the exit: AA, left onto E, right onto C, then right into the stand (3.1 km)\n" +
+            "  Hold short: runway 25R on taxiway AA (crossing)\n" +
+            "  Exits on 25L that get clear of the runway: AA (1,890 m, right, high-speed), AB (2,164 m, right, normal)\n" +
+            "  Note: assigned gate matched by position";
+
+        Assert.Equal(expected, TaxiBriefingRenderer.Render(FullBriefing(), DistanceUnit.Metres));
+    }
+
+    // ── Units: the pilot's distance setting, for EVERY distance in the block ──────────────────
+    // Live KMEM→KATL (2026-09-26): the block gave taxi distances in km and exit distances in feet, and the AI read
+    // "2.2 kilometers" beside "6,025 feet" in one section. The whole block now follows GroundDistanceUnit.
+
+    [Fact]
+    public void Feet_setting_gives_every_distance_in_feet()
+    {
+        const string expected =
+            "TAXI ROUTES (computed by MSFS Blind Assist; each leg names its data source, and taxiway names are that source's own)\n" +
+            "Distance unit: feet (the pilot's setting); every distance below is in feet\n" +
+            "Aircraft: MD-11F (SimBrief type MD1F), size class D, wingspan 170 ft, freighter: cargo stands preferred\n" +
+            "TAXI OUT at KMEM (scenery navdata): from representative stand C 1 (Ramp Cargo, UPS) to runway 36L\n" +
+            "  Taxiways: N, left onto M, right onto A, slight right onto B (7,874 ft)\n" +
+            "  Hold short: runway 27 on taxiway M (crossing); runway 36L on taxiway B (before entering)\n" +
+            "  Taxiway width note: taxiway K is 49 ft in the navdata, below the 59 ft code D minimum\n" +
+            "TAXI IN at KLAX (scenery navdata), landing runway 25L\n" +
+            "  Expected exit: taxiway AA, high-speed, RIGHT side, 6,200 ft from the threshold. Next exit if missed: AB, right side, 7,100 ft\n" +
+            "  Stand: SayIntentions assigned gate 52A\n" +
+            "  Taxiways from the exit: AA, left onto E, right onto C, then right into the stand (10,171 ft)\n" +
             "  Hold short: runway 25R on taxiway AA (crossing)\n" +
             "  Exits on 25L that get clear of the runway: AA (6,200 ft, right, high-speed), AB (7,100 ft, right, normal)\n" +
             "  Note: assigned gate matched by position";
 
-        Assert.Equal(expected, TaxiBriefingRenderer.Render(FullBriefing()));
+        Assert.Equal(expected, TaxiBriefingRenderer.Render(FullBriefing(), DistanceUnit.Feet));
+    }
+
+    [Fact]
+    public void Metres_setting_gives_every_distance_in_metres_exits_included()
+    {
+        string text = TaxiBriefingRenderer.Render(FullBriefing(), DistanceUnit.Metres);
+
+        Assert.Contains("Distance unit: metres (the pilot's setting); every distance below is in metres\n", text);
+        Assert.Contains("wingspan 51.7 m,", text);
+        Assert.Contains("  Taxiways: N, left onto M, right onto A, slight right onto B (2.4 km)\n", text);
+        Assert.Contains("taxiway K is 15.0 m in the navdata, below the 18.0 m code D minimum", text);
+        Assert.Contains("  Expected exit: taxiway AA, high-speed, RIGHT side, 1,890 m from the threshold. Next exit if missed: AB, right side, 2,164 m\n", text);
+        Assert.Contains("AA (1,890 m, right, high-speed), AB (2,164 m, right, normal)", text);
+        Assert.DoesNotContain(" ft", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void The_missed_exit_separation_follows_the_setting()
+    {
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "KSEA", Runway = "34L", Tier = BriefingTier.Navdata, EndpointDescription = "current position",
+            Taxiways = new[] { "A" }, DistanceMetres = 640,
+            Exit = new ExitChoice(Exit("H6", 5334, "High-speed", "Right"), null, true),
+        };
+        var b = FullBriefing() with { TaxiIn = taxiIn };
+        Assert.Contains("mapped at least 152 m further along.", TaxiBriefingRenderer.Render(b, DistanceUnit.Metres));
+        Assert.Contains("mapped at least 500 ft further along.", TaxiBriefingRenderer.Render(b, DistanceUnit.Feet));
+    }
+
+    [Fact]
+    public void Distances_in_feet_are_whole_feet_with_separators()
+    {
+        Assert.Equal("2,101 ft", TaxiBriefingRenderer.FormatDistance(640.4, DistanceUnit.Feet));
+        Assert.Equal("7,218 ft", TaxiBriefingRenderer.FormatDistance(2200, DistanceUnit.Feet));
     }
 
     [Fact]
@@ -76,13 +139,14 @@ public class TaxiBriefingRendererTests
 
         const string expected =
             "TAXI ROUTES (computed by MSFS Blind Assist; each leg names its data source, and taxiway names are that source's own)\n" +
+            "Distance unit: metres (the pilot's setting); every distance below is in metres\n" +
             "Aircraft: ZZZZ (SimBrief type ZZZZ), size class unknown, wingspan unknown (aircraft type not recognised), passenger\n" +
             "TAXI OUT at LOWI: taxi route unavailable — the navigation database has no taxiways for LOWI and OpenStreetMap data is not yet available\n" +
             "TAXI IN at LOWI: taxi route unavailable — no exit taxiway is mapped clear of runway 26 in this scenery\n" +
             "  Stand: representative stand C 1 (Ramp Cargo)\n" +
             "  Exits on 26 that get clear of the runway: none found";
 
-        Assert.Equal(expected, TaxiBriefingRenderer.Render(b));
+        Assert.Equal(expected, TaxiBriefingRenderer.Render(b, DistanceUnit.Metres));
     }
 
     [Fact]
@@ -92,12 +156,12 @@ public class TaxiBriefingRendererTests
         // a runway not in the database) reported a search that was never made. A real search that found nothing still
         // says "none found".
         var noDatabase = TaxiBriefing.Unavailable(B738, "EGLL", "27R", "KJFK", "22L", "no navigation database loaded");
-        Assert.DoesNotContain("Exits on", TaxiBriefingRenderer.Render(noDatabase), StringComparison.Ordinal);
+        Assert.DoesNotContain("Exits on", TaxiBriefingRenderer.Render(noDatabase, DistanceUnit.Metres), StringComparison.Ordinal);
 
         var searched = new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("EGLL", "27R", BriefingTier.Navdata, "x"),
             TaxiLegBriefing.UnavailableLeg("KJFK", "22L", BriefingTier.Navdata,
                 "no exit taxiway is mapped clear of runway 22L in this scenery", exitsSearched: true));
-        Assert.EndsWith("\n  Exits on 22L that get clear of the runway: none found", TaxiBriefingRenderer.Render(searched));
+        Assert.EndsWith("\n  Exits on 22L that get clear of the runway: none found", TaxiBriefingRenderer.Render(searched, DistanceUnit.Metres));
     }
 
     [Fact]
@@ -112,7 +176,7 @@ public class TaxiBriefingRendererTests
             Taxiways = new[] { "E" }, DistanceMetres = 1900,
             Exit = new ExitChoice(unnamed, later, true), VacatingExits = new[] { unnamed, later },
         };
-        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("KSDF", "17R", BriefingTier.Navdata, "x"), taxiIn));
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("KSDF", "17R", BriefingTier.Navdata, "x"), taxiIn), DistanceUnit.Feet);
 
         Assert.Contains("  Expected exit: taxiway (unnamed), normal, RIGHT side, 3,082 ft from the threshold. " +
                         "Next exit if missed: (unnamed), right side, 7,388 ft\n", text);
@@ -129,7 +193,7 @@ public class TaxiBriefingRendererTests
             Icao = "OMDB", Runway = "12L", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand F 17",
             Taxiways = new[] { "M3" }, DistanceMetres = 900, Exit = new ExitChoice(m3, null, true), VacatingExits = new[] { m3 },
         };
-        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("OMDB", "12L", BriefingTier.Navdata, "x"), taxiIn));
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("OMDB", "12L", BriefingTier.Navdata, "x"), taxiIn), DistanceUnit.Feet);
 
         Assert.Contains("  Expected exit: taxiway M3, end-of-runway or sharp-angle, RIGHT side, 2,106 ft from the threshold.", text);
         Assert.Contains("M3 (2,106 ft, right, end-of-runway or sharp-angle)", text);
@@ -150,14 +214,14 @@ public class TaxiBriefingRendererTests
             Taxiways = new[] { "A" }, DistanceMetres = 640,
             Exit = new ExitChoice(Exit("B", 3000, "Normal", ""), null, false), VacatingExits = new[] { Exit("B", 3000, "Normal", "") },
         };
-        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, leg, taxiIn));
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, leg, taxiIn), DistanceUnit.Feet);
 
         Assert.Contains("TAXI OUT at LOWI (OpenStreetMap, planning only — taxi guidance cannot use this): from representative stand 12 to runway 26\n", text);
-        Assert.Contains("  Taxiways: A (640 m)\n", text);
+        Assert.Contains("  Taxiways: A (2,100 ft)\n", text);
         Assert.Contains("  Note: stand types unknown (OpenStreetMap)\n", text);
         Assert.Contains("  Expected exit: taxiway B, normal, side unknown, 3,000 ft from the threshold. No later usable exit is mapped at least 500 ft further along. This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.\n", text);
         Assert.Contains("  No runway crossings on this route.\n", text);
-        Assert.Contains("wingspan 35.8 m, passenger", text);
+        Assert.Contains("wingspan 117 ft, passenger", text);
     }
 
     [Fact]
@@ -175,7 +239,7 @@ public class TaxiBriefingRendererTests
             VacatingExits = new[] { h6, Exit("H8", 7110, "High-speed", "Left"), Exit("A8", 7150, "End", "Right") },
         };
         var taxiOut = TaxiLegBriefing.UnavailableLeg("KSEA", "16L", BriefingTier.Navdata, "x");
-        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn));
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn), DistanceUnit.Feet);
 
         Assert.Contains("  Expected exit: taxiway H6, high-speed, RIGHT side, 5,334 ft from the threshold. " +
                         "No later usable exit on the same side is mapped at least 500 ft further along.\n", text);
@@ -198,7 +262,7 @@ public class TaxiBriefingRendererTests
                 Taxiways = new[] { "K" }, DistanceMetres = 1300,
                 Exit = new ExitChoice(e, null, false) { ReachableExitsSetAside = setAside }, VacatingExits = new[] { e, k, s },
             };
-            string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("KPHL", "17", BriefingTier.Navdata, "x"), taxiIn));
+            string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("KPHL", "17", BriefingTier.Navdata, "x"), taxiIn), DistanceUnit.Feet);
             return text.Split('\n').Single(l => l.StartsWith("  Expected exit:", StringComparison.Ordinal));
         }
 
@@ -234,7 +298,7 @@ public class TaxiBriefingRendererTests
             },
         };
         var taxiIn = TaxiLegBriefing.UnavailableLeg("KMEM", "36L", BriefingTier.Navdata, "x");
-        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn));
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn), DistanceUnit.Feet);
 
         Assert.Contains("  Hold short: runway 27 (crossing); runway 18R (crossing); runway 04 on taxiway M (crossing); runway 36L (before entering)\n", text);
     }
@@ -249,7 +313,7 @@ public class TaxiBriefingRendererTests
             Taxiways = new[] { "A" }, DistanceMetres = 1000, Exit = new ExitChoice(exits[5], exits[6], true), VacatingExits = exits,
         };
         var taxiOut = TaxiLegBriefing.UnavailableLeg("EGLL", "27R", BriefingTier.Navdata, "x");
-        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn));
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn), DistanceUnit.Feet);
 
         Assert.Contains("X12 (8,000 ft, left, normal), … and 3 more", text);
         Assert.DoesNotContain("X13", text);
@@ -258,16 +322,16 @@ public class TaxiBriefingRendererTests
     [Fact]
     public void Distances_format_invariantly()
     {
-        Assert.Equal("640 m", TaxiBriefingRenderer.FormatDistance(640.4));
-        Assert.Equal("1.0 km", TaxiBriefingRenderer.FormatDistance(1000));
-        Assert.Equal("2.4 km", TaxiBriefingRenderer.FormatDistance(2449));
+        Assert.Equal("640 m", TaxiBriefingRenderer.FormatDistance(640.4, DistanceUnit.Metres));
+        Assert.Equal("1.0 km", TaxiBriefingRenderer.FormatDistance(1000, DistanceUnit.Metres));
+        Assert.Equal("2.4 km", TaxiBriefingRenderer.FormatDistance(2449, DistanceUnit.Metres));
     }
 
     [Fact]
     public void A_distance_that_rounds_to_a_thousand_metres_reads_in_kilometres()
     {
-        Assert.Equal("999 m", TaxiBriefingRenderer.FormatDistance(999.4));
-        Assert.Equal("1.0 km", TaxiBriefingRenderer.FormatDistance(999.6));     // not "1000 m"
+        Assert.Equal("999 m", TaxiBriefingRenderer.FormatDistance(999.4, DistanceUnit.Metres));
+        Assert.Equal("1.0 km", TaxiBriefingRenderer.FormatDistance(999.6, DistanceUnit.Metres));     // not "1000 m"
     }
 
     [Fact]
@@ -279,7 +343,7 @@ public class TaxiBriefingRendererTests
             Icao = "KMEM", Runway = "36L", Tier = BriefingTier.Navdata, EndpointDescription = "current position",
             Taxiways = new[] { "N", "M" }, DistanceMetres = 900,
         } };
-        Assert.Contains("  Taxiways: N, M (900 m)\n", TaxiBriefingRenderer.Render(bare));
+        Assert.Contains("  Taxiways: N, M (900 m)\n", TaxiBriefingRenderer.Render(bare, DistanceUnit.Metres));
     }
 
     [Fact]
@@ -291,6 +355,6 @@ public class TaxiBriefingRendererTests
             Icao = "KMEM", Runway = "36L", Tier = BriefingTier.Navdata, EndpointDescription = "current position",
             Taxiways = new[] { "N", "M" }, TaxiwayTurns = new string?[] { null, "straight ahead" }, DistanceMetres = 900,
         } };
-        Assert.Contains("  Taxiways: N, straight ahead onto M (900 m)\n", TaxiBriefingRenderer.Render(straight));
+        Assert.Contains("  Taxiways: N, straight ahead onto M (900 m)\n", TaxiBriefingRenderer.Render(straight, DistanceUnit.Metres));
     }
 }

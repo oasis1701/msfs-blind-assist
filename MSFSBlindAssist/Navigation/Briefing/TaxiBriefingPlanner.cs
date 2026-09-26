@@ -56,7 +56,7 @@ public static partial class TaxiBriefingPlanner
         if (startNode < 0)
         {
             // SayIntentions never assigns a departure gate — no hint here by design.
-            stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, siGate: null, s => StandNode(g.Graph, s) != null);
+            stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, siGate: null, s => StandNode(g.Graph, s) != null, r.Unit);
             if (stand == null)
                 return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                     $"no stand at {icao} connects to the taxiway network", notes: notes);
@@ -135,7 +135,7 @@ public static partial class TaxiBriefingPlanner
             }
         }
 
-        var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, s => StandNode(g.Graph, s) != null);
+        var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, s => StandNode(g.Graph, s) != null, r.Unit);
         if (matchedByNameOnly && stand?.Source == StandChoiceSource.SayIntentions)
             notes.Add($"SayIntentions' parking service gave no position for {arrivalGate!.Label}, so it was matched by name in this scenery");
         if (stand != null) AddStandNotes(notes, stand, g.Note);

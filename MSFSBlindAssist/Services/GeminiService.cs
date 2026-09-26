@@ -972,6 +972,8 @@ Cover the following topics, using descriptive section headings separated by blan
       Use ONLY the taxiway, exit and stand names given in the block for this part, and
       repeat distances, sides and turn directions exactly as given; where the block gives no turn
       for a taxiway, give none. If the block says a leg is unavailable, say so in one sentence.
+      Give every distance in this section, the real-world part included, in the unit the block's ""Distance unit"" line names,
+      and never mix units.
       When a leg's note says SayIntentions assigned a different runway from the flight plan, say so
       here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
    b) Then, under the heading ""Real-world practice"", answer from your own knowledge of the

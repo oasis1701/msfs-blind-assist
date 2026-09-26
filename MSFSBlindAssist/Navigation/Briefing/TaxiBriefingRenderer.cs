@@ -1,5 +1,7 @@
 using System.Globalization;
 using System.Text;
+using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Navigation.Briefing;
 
@@ -7,7 +9,9 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// The plain-text TAXI ROUTES block the AI receives (appended to the SimBrief flight data for one
 /// Describe Route call). Every line is data for the prompt's section 7: it names the tier a leg came
 /// from, keeps taxiway/exit/stand names exactly as the source spells them, and states every caveat.
-/// InvariantCulture throughout; "\n" line ends; no markdown.
+/// InvariantCulture throughout; "\n" line ends; no markdown. EVERY distance, length and width is in ONE unit, the
+/// pilot's ground distance setting, and the block's second line names it: live KMEM→KATL (2026-09-26) the taxi
+/// distances were kilometres and the exit distances feet, and the AI read "2.2 kilometers" beside "6,025 feet".
 /// </summary>
 public static class TaxiBriefingRenderer
 {
@@ -16,12 +20,20 @@ public static class TaxiBriefingRenderer
     /// <summary>The exits list names the nearest this many and counts the rest.</summary>
     public const int MaxListedExits = 12;
 
-    public static string Render(TaxiBriefing b)
+    /// <param name="unit">The pilot's ground distance setting (<see cref="DistanceFormatter.UnitProvider"/>).</param>
+    public static string Render(TaxiBriefing b, DistanceUnit unit)
     {
-        var lines = new List<string> { Header, AircraftLine(b.Aircraft) };
-        RenderTaxiOut(b.TaxiOut, b.Aircraft, lines);
-        RenderTaxiIn(b.TaxiIn, b.Aircraft, lines);
+        var lines = new List<string> { Header, UnitLine(unit), AircraftLine(b.Aircraft, unit) };
+        RenderTaxiOut(b.TaxiOut, b.Aircraft, unit, lines);
+        RenderTaxiIn(b.TaxiIn, b.Aircraft, unit, lines);
         return string.Join("\n", lines);
+    }
+
+    /// <summary>The line the prompt tells the AI to take its unit from.</summary>
+    public static string UnitLine(DistanceUnit unit)
+    {
+        string word = unit == DistanceUnit.Feet ? "feet" : "metres";
+        return $"Distance unit: {word} (the pilot's setting); every distance below is in {word}";
     }
 
     public static string TierLabel(BriefingTier tier) => tier switch
@@ -31,11 +43,26 @@ public static class TaxiBriefingRenderer
         _ => "",
     };
 
-    /// <summary>Metres under a kilometre, else kilometres to one decimal. The switch is at 999.5 m, where whole metres
-    /// would round up to "1000 m".</summary>
-    public static string FormatDistance(double metres) => metres < 999.5
-        ? $"{Math.Round(metres).ToString("0", CultureInfo.InvariantCulture)} m"
-        : $"{(metres / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)} km";
+    /// <summary>A taxi distance. Feet: whole feet ("7,218 ft"). Metres: metres under a kilometre, else kilometres to one
+    /// decimal — the switch is at 999.5 m, where whole metres would round up to "1000 m".</summary>
+    public static string FormatDistance(double metres, DistanceUnit unit)
+    {
+        if (unit == DistanceUnit.Feet) return $"{Whole(metres * DistanceFormatter.FeetPerMetre)} ft";
+        return metres < 999.5
+            ? $"{Math.Round(metres).ToString("0", CultureInfo.InvariantCulture)} m"
+            : $"{(metres / 1000.0).ToString("0.0", CultureInfo.InvariantCulture)} km";
+    }
+
+    /// <summary>A distance along the runway, measured in feet by the exit finder: whole feet, or whole metres
+    /// ("1,890 m" — never kilometres, as a runway distance is read).</summary>
+    public static string FormatAlongRunway(double feet, DistanceUnit unit) => unit == DistanceUnit.Feet
+        ? $"{Whole(feet)} ft"
+        : $"{Whole(feet * DistanceFormatter.MetresPerFoot)} m";
+
+    /// <summary>A wingspan or a width: metres to one decimal, or whole feet.</summary>
+    public static string FormatSize(double metres, DistanceUnit unit) => unit == DistanceUnit.Feet
+        ? $"{Whole(metres * DistanceFormatter.FeetPerMetre)} ft"
+        : $"{metres.ToString("0.0", CultureInfo.InvariantCulture)} m";
 
     /// <summary>What the block calls a taxiway or exit that has no name — LandingExit.ToString()'s own word.</summary>
     public const string Unnamed = "(unnamed)";
@@ -53,18 +80,18 @@ public static class TaxiBriefingRenderer
             ? "end-of-runway or sharp-angle"
             : exit.ExitType.ToLowerInvariant();
 
-    private static string AircraftLine(AircraftProfile a)
+    private static string AircraftLine(AircraftProfile a, DistanceUnit unit)
     {
         string size = a.CodeLetter == IcaoCodeLetter.Unknown ? "size class unknown" : $"size class {a.CodeLetter}";
         string span = a.WingspanMetres is double m
-            ? $"wingspan {m.ToString("0.0", CultureInfo.InvariantCulture)} m"
+            ? $"wingspan {FormatSize(m, unit)}"
             : "wingspan unknown (aircraft type not recognised)";
         string role = a.IsFreighter ? "freighter: cargo stands preferred" : "passenger";
         string code = string.IsNullOrEmpty(a.TypeCode) ? "unknown" : a.TypeCode;
         return $"Aircraft: {a.DisplayName} (SimBrief type {code}), {size}, {span}, {role}";
     }
 
-    private static void RenderTaxiOut(TaxiLegBriefing leg, AircraftProfile aircraft, List<string> lines)
+    private static void RenderTaxiOut(TaxiLegBriefing leg, AircraftProfile aircraft, DistanceUnit unit, List<string> lines)
     {
         if (leg.Unavailable != null)
         {
@@ -74,32 +101,32 @@ public static class TaxiBriefingRenderer
         else
         {
             lines.Add($"TAXI OUT at {leg.Icao} ({TierLabel(leg.Tier)}): from {leg.EndpointDescription} to runway {leg.Runway}");
-            lines.Add($"  Taxiways: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres)})");
+            lines.Add($"  Taxiways: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres, unit)})");
             lines.Add(HoldLine(leg.HoldShorts));
-            foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter));
+            foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter, unit));
         }
         foreach (var note in leg.Notes) lines.Add($"  Note: {note}");
     }
 
-    private static void RenderTaxiIn(TaxiLegBriefing leg, AircraftProfile aircraft, List<string> lines)
+    private static void RenderTaxiIn(TaxiLegBriefing leg, AircraftProfile aircraft, DistanceUnit unit, List<string> lines)
     {
         if (leg.Unavailable != null)
         {
             lines.Add($"TAXI IN at {leg.Icao}: taxi route unavailable — {leg.Unavailable}");
-            if (leg.Exit != null) lines.Add(ExitLine(leg.Exit, aircraft));
+            if (leg.Exit != null) lines.Add(ExitLine(leg.Exit, aircraft, unit));
             if (leg.EndpointDescription.Length > 0) lines.Add($"  Stand: {leg.EndpointDescription}");
             // Only a search that ran can have found none (no database, a timeout or an unknown runway ran none).
-            if (leg.ExitsSearched) lines.Add(ExitsListLine(leg));
+            if (leg.ExitsSearched) lines.Add(ExitsListLine(leg, unit));
         }
         else
         {
             lines.Add($"TAXI IN at {leg.Icao} ({TierLabel(leg.Tier)}), landing runway {leg.Runway}");
-            if (leg.Exit != null) lines.Add(ExitLine(leg.Exit, aircraft));
+            if (leg.Exit != null) lines.Add(ExitLine(leg.Exit, aircraft, unit));
             lines.Add($"  Stand: {leg.EndpointDescription}");
-            lines.Add($"  Taxiways from the exit: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres)})");
+            lines.Add($"  Taxiways from the exit: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres, unit)})");
             lines.Add(HoldLine(leg.HoldShorts));
-            foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter));
-            lines.Add(ExitsListLine(leg));
+            foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter, unit));
+            lines.Add(ExitsListLine(leg, unit));
         }
         foreach (var note in leg.Notes) lines.Add($"  Note: {note}");
     }
@@ -119,26 +146,26 @@ public static class TaxiBriefingRenderer
         return "  Hold short: " + string.Join("; ", parts);
     }
 
-    private static string NarrowLine(NarrowTaxiwayNote n, IcaoCodeLetter letter) =>
-        $"  Taxiway width note: taxiway {n.Taxiway} is {n.WidthMetres.ToString("0.0", CultureInfo.InvariantCulture)} m in the navdata, " +
-        $"below the {n.MinimumMetres.ToString("0.0", CultureInfo.InvariantCulture)} m code {letter} minimum";
+    private static string NarrowLine(NarrowTaxiwayNote n, IcaoCodeLetter letter, DistanceUnit unit) =>
+        $"  Taxiway width note: taxiway {n.Taxiway} is {FormatSize(n.WidthMetres, unit)} in the navdata, " +
+        $"below the {FormatSize(n.MinimumMetres, unit)} code {letter} minimum";
 
-    private static string ExitLine(ExitChoice choice, AircraftProfile aircraft)
+    private static string ExitLine(ExitChoice choice, AircraftProfile aircraft, DistanceUnit unit)
     {
         var e = choice.Exit;
         var sb = new StringBuilder();
-        sb.Append($"  Expected exit: taxiway {ExitName(e)}, {ExitTypeText(e)}, {SideUpper(e.ExitSide)}, {Feet(e.DistanceFromThresholdFeet)} ft from the threshold.");
+        sb.Append($"  Expected exit: taxiway {ExitName(e)}, {ExitTypeText(e)}, {SideUpper(e.ExitSide)}, {FormatAlongRunway(e.DistanceFromThresholdFeet, unit)} from the threshold.");
         // The exit if missed is the next USABLE one (a briefable candidate: it turns no more than 90° and its route
         // leaves on its own side) on the SAME side at least NextExitMinSeparationFeet further along
         // (BriefingExitPicker), so "none" means none of those — never that no later exit exists at all: the exits list
         // can still show a later one on that side that turns further, or was set aside (named just below when
         // comfortably reachable).
-        string minimum = Feet(BriefingExitPicker.NextExitMinSeparationFeet);
+        string minimum = FormatAlongRunway(BriefingExitPicker.NextExitMinSeparationFeet, unit);
         sb.Append(choice.NextExit is { } n
-            ? $" Next exit if missed: {ExitName(n)}, {SideLower(n.ExitSide)}, {Feet(n.DistanceFromThresholdFeet)} ft"
+            ? $" Next exit if missed: {ExitName(n)}, {SideLower(n.ExitSide)}, {FormatAlongRunway(n.DistanceFromThresholdFeet, unit)}"
             : string.IsNullOrEmpty(e.ExitSide)
-                ? $" No later usable exit is mapped at least {minimum} ft further along."
-                : $" No later usable exit on the same side is mapped at least {minimum} ft further along.");
+                ? $" No later usable exit is mapped at least {minimum} further along."
+                : $" No later usable exit on the same side is mapped at least {minimum} further along.");
         if (!choice.ComfortablyReachable)
             sb.Append(UnreachableSentence(choice, aircraft.TouchdownSpeedKts.ToString("0", CultureInfo.InvariantCulture)));
         return sb.ToString();
@@ -164,11 +191,11 @@ public static class TaxiBriefingRenderer
                $"so the last one that does is briefed; {tail}";
     }
 
-    private static string ExitsListLine(TaxiLegBriefing leg)
+    private static string ExitsListLine(TaxiLegBriefing leg, DistanceUnit unit)
     {
         if (leg.VacatingExits.Count == 0) return $"  Exits on {leg.Runway} that get clear of the runway: none found";
         var shown = leg.VacatingExits.Take(MaxListedExits)
-            .Select(e => $"{ExitName(e)} ({Feet(e.DistanceFromThresholdFeet)} ft, {SideLowerBare(e.ExitSide)}, {ExitTypeText(e)})");
+            .Select(e => $"{ExitName(e)} ({FormatAlongRunway(e.DistanceFromThresholdFeet, unit)}, {SideLowerBare(e.ExitSide)}, {ExitTypeText(e)})");
         string list = string.Join(", ", shown);
         int more = leg.VacatingExits.Count - MaxListedExits;
         if (more > 0) list += $", … and {more} more";
@@ -191,7 +218,7 @@ public static class TaxiBriefingRenderer
         return string.Join(", ", parts);
     }
 
-    private static string Feet(double ft) => Math.Round(ft).ToString("N0", CultureInfo.InvariantCulture);
+    private static string Whole(double value) => Math.Round(value).ToString("N0", CultureInfo.InvariantCulture);
     private static string SideUpper(string side) => string.IsNullOrEmpty(side) ? "side unknown" : $"{side.ToUpperInvariant()} side";
     private static string SideLower(string side) => string.IsNullOrEmpty(side) ? "side unknown" : $"{side.ToLowerInvariant()} side";
     private static string SideLowerBare(string side) => string.IsNullOrEmpty(side) ? "side unknown" : side.ToLowerInvariant();

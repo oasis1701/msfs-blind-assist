@@ -52,6 +52,15 @@ public class RouteDescriptionPromptTests
     }
 
     [Fact]
+    public void Prompt_asks_for_every_taxi_distance_in_the_block_s_unit()
+    {
+        // Live KMEM→KATL: "2.2 kilometers" and "6,025 feet" in one taxi section. The block now states one unit.
+        string prompt = GeminiService.GetRouteDescriptionPrompt("x");
+        Assert.Contains("Give every distance in this section, the real-world part included, in the unit the block's " +
+                        "\"Distance unit\" line names", prompt);
+    }
+
+    [Fact]
     public void Prompt_asks_for_a_SayIntentions_runway_difference_to_be_named()
     {
         string prompt = GeminiService.GetRouteDescriptionPrompt("x");

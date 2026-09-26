@@ -4,6 +4,7 @@ using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Navigation.Briefing;
 using MSFSBlindAssist.Services.SayIntentions;
 using static MSFSBlindAssist.Tests.TaxiBriefingFixture;
+using MSFSBlindAssist.Settings;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -701,6 +702,15 @@ public class TaxiBriefingPlannerTests
         Assert.Contains(leg.Notes, n => n.Contains("Gate Q99", StringComparison.Ordinal) &&
                                         n.Contains("was not found at this airport", StringComparison.Ordinal));
         Assert.DoesNotContain(leg.Notes, n => n.Contains("matched by name", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_stand_notes_follow_the_pilot_s_distance_setting()
+    {
+        var gate = new SayIntentionsGateHint("Terminal 1 Gate G1", new GeoPoint(Lat(500_000), Lon(300)));
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate) with { Unit = DistanceUnit.Feet }, Airport());
+        Assert.Contains(leg.Notes, n => n.StartsWith("SayIntentions' position is ", StringComparison.Ordinal) &&
+                                        n.EndsWith(" ft from this stand", StringComparison.Ordinal));
     }
 
     [Fact]
