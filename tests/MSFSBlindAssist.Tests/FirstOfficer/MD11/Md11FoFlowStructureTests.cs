@@ -186,4 +186,36 @@ public class Md11FoFlowStructureTests
         Assert.Equal("SD_BATTERY", s[^1].Id);
         Assert.True(s.FindIndex(x => x.Id == "SD_APU_STOPPED") < s.Count - 1);
     }
+
+    /// <summary>
+    /// Power Up and Shutdown are cold-and-dark flows: started by mistake with the engines turning,
+    /// Power Up's first step cuts all three fuel switches and Shutdown switches the IRS and the
+    /// battery off (both seen live, 2026-09-26). Each must STOP before its first switch unless the
+    /// engines are stopped — and Shutdown also unless the aircraft is on the ground.
+    /// </summary>
+    [Theory]
+    [InlineData("POWER_UP")]
+    [InlineData("SHUTDOWN")]
+    public void ColdAndDarkFlows_StopBeforeAnySwitchUnlessTheEnginesAreStopped(string flowId)
+    {
+        var s = Flows.Single(f => f.Id == flowId).Steps;
+        int guard = s.FindIndex(x => x.ConditionFieldName == "FO_ENGINES_STOPPED");
+        int firstSwitch = s.FindIndex(x => x.ActionType is FlowStepActionType.SetSwitch or FlowStepActionType.SetSwitchMultiple);
+        Assert.True(guard >= 0, $"{flowId} has no engines-stopped guard");
+        Assert.Equal(FlowStepFailurePolicy.Stop, s[guard].FailurePolicy);
+        Assert.True(guard < firstSwitch, $"{flowId}: the guard must come before any switch");
+        Assert.False(s[guard].Condition!(double.NaN), "an unread engine state must not pass the guard");
+    }
+
+    [Fact]
+    public void Shutdown_StopsBeforeAnySwitchUnlessOnTheGround()
+    {
+        var s = Flows.Single(f => f.Id == "SHUTDOWN").Steps;
+        int guard = s.FindIndex(x => x.ConditionFieldName == "SIM_ON_GROUND");
+        int firstSwitch = s.FindIndex(x => x.ActionType is FlowStepActionType.SetSwitch or FlowStepActionType.SetSwitchMultiple);
+        Assert.True(guard >= 0 && guard < firstSwitch);
+        Assert.Equal(FlowStepFailurePolicy.Stop, s[guard].FailurePolicy);
+        Assert.False(s[guard].Condition!(0));
+        Assert.True(s[guard].Condition!(1));
+    }
 }

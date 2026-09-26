@@ -64,6 +64,9 @@ public static class Md11FoFlowDefinitions
         RelatedChecklistGroupIds = new[] { "POWER_UP", "COCKPIT_ENTRY_CL" },
         Steps = new()
         {
+            // A cold-and-dark flow: started by mistake with engines turning, the next step would
+            // cut all three fuel switches (seen live). Stop instead.
+            EnginesStoppedGuard("PU_ENGINES_STOPPED"),
             Done(Skip(Multi("PU_FUEL_OFF", "Fuel switches: OFF", (FuelL, 0), (FuelC, 0), (FuelR, 0)),
                 s => s.IsOn("FO_FUEL_SWITCHES_OFF")), "PU_FUEL_OFF"),
             Done(Skip(SW("PU_PARK", "Parking brake: SET", Park, 1), s => s.IsOn(Park)), "PU_PARK"),
@@ -354,6 +357,10 @@ public static class Md11FoFlowDefinitions
         RelatedChecklistGroupIds = new[] { "SHUTDOWN", "SHUTDOWN_CL" },
         Steps = new()
         {
+            // Switches the IRS and the battery off: never airborne, never with engines turning.
+            WaitForField("SD_ON_GROUND", "On the ground", "SIM_ON_GROUND", v => v > 0.5, 5,
+                onTimeout: FlowStepFailurePolicy.Stop),
+            EnginesStoppedGuard("SD_ENGINES_STOPPED"),
             Done(Skip(SW("SD_EMER_LTS", "Emergency lights: OFF", EmerLts, 0), s => s.IsPosition(EmerLts, 0)), "SD_EMER_LTS"),
             Done(Skip(SW("SD_EMER_PWR", "Emergency power: OFF", EmerPwr, 0), s => s.IsPosition(EmerPwr, 0)), "SD_EMER_PWR"),
             Done(Skip(Multi("SD_WINDSHIELD", "Windshield anti-ice and defog: OFF",
@@ -414,6 +421,15 @@ public static class Md11FoFlowDefinitions
         FailurePolicy = onTimeout,
         PostActionDelayMs = 0,
     };
+
+    /// <summary>
+    /// Stops a cold-and-dark flow unless every engine reads stopped (N2 below 10 %). Engine N2 is
+    /// fed each second by the window, so an unread value — NaN — fails the guard rather than
+    /// letting a destructive step through.
+    /// </summary>
+    private static Step EnginesStoppedGuard(string id)
+        => WaitForField(id, "Engines stopped", "FO_ENGINES_STOPPED", v => v > 0.5, 5,
+            onTimeout: FlowStepFailurePolicy.Stop);
 
     private static Step Captain(string id, string label, string? reminderText = null) => new()
     {
