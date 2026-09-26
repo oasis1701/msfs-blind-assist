@@ -103,6 +103,19 @@ public class LandingExitRelocationTests
         Assert.Equal("Left", k.ExitSide);
     }
 
+    [Fact]
+    public void A_ninety_degree_exit_that_hooks_back_beyond_the_runway_edge_is_listed_as_normal()
+    {
+        // Round 2, S2 (CYVR 26L D1, SNOL 30, MURU 06): the exit leaves the pavement at 90 degrees and
+        // hooks back 134 degrees onto the taxiway system only between the edge and the clear line.
+        var g = Build(Seg(1000, 0, 1000, 28, "D1"), Seg(1000, 28, 992, 36.3, "D1"), Seg(992, 36.3, 900, 40, "D1"));
+
+        var d1 = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "D1");
+
+        Assert.Equal("Normal", d1.ExitType);
+        Assert.Equal(90.0, d1.ExitAngleDegrees);
+    }
+
     // The KMEM M6 Y shape moved toward the threshold: the forward arm (unnamed) leaves the runway at
     // (68,0), 223 ft - under the 500 ft MIN_DIST_FT - and the backward arm (named M6, a 160-degree
     // turn) at (222,1), 728 ft, with a lead-in tail on to (254,-1); both meet the stem at (150,55).

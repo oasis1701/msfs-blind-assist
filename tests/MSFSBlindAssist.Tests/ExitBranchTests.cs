@@ -342,6 +342,35 @@ public class ExitBranchTests
         Assert.False(sibling.IsTurnaround);
     }
 
+    // --- Task 3b round 2, S2: a turnaround is judged by how the branch LEAVES the pavement -------
+
+    [Fact]
+    public void A_branch_that_leaves_the_pavement_at_90_degrees_and_hooks_back_beyond_the_edge_is_not_a_turnaround()
+    {
+        // The CYVR 26L D1 / SNOL 30 shape: straight out to (1000,28), 3 m past the 25 m half-width, then
+        // a 134-degree hook back to (992,36.3), past the 35 m clear line, onto the taxiway system.
+        var g = Build(Seg(1000, 0, 1000, 28, "D1"), Seg(1000, 28, 992, 36.3, "D1"), Seg(992, 36.3, 900, 40, "D1"));
+
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0), NodeAt(g, 1000, 28));
+
+        Assert.True(b.IsMeasured);
+        Assert.InRange(b.TurnToLeaveDeg, 89.0, 91.0);
+        Assert.InRange(b.TurnToClearDeg, 133.0, 135.0);
+        Assert.False(b.IsTurnaround);
+    }
+
+    [Fact]
+    public void An_arm_leaving_the_pavement_at_147_degrees_is_still_a_turnaround()
+    {
+        // KMEM M6's 18R arm leaves a 36L landing at about 147 degrees.
+        var g = Build(Seg(1000, 0, 958, 27, "M6"), Seg(958, 27, 950, 60, "M6"));
+
+        var b = ExitBranch.Analyze(g, Axis, NodeAt(g, 1000, 0), NodeAt(g, 958, 27));
+
+        Assert.InRange(b.TurnToLeaveDeg, 146.0, 148.5);
+        Assert.True(b.IsTurnaround);
+    }
+
     [Fact]
     public void A_sibling_arm_named_only_beyond_its_own_clear_point_is_rejected()
     {

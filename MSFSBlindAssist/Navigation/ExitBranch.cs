@@ -52,13 +52,25 @@ public readonly record struct RunwayAxis(double StartLat, double StartLon, doubl
 /// <param name="JunctionNodeId">Where the branch meets the runway.</param>
 /// <param name="ClearNodeId">First node beyond <see cref="RunwayAxis.ClearLateralMetres"/> along the branch; -1 = unmeasured.</param>
 /// <param name="CorridorNodeId">First node beyond <see cref="RunwayAxis.CorridorLateralMetres"/>; -1 when none within reach.</param>
-/// <param name="TurnToClearDeg">Sharpest turn from the landing heading along <paramref name="Path"/>, 0–180°.</param>
+/// <param name="TurnToClearDeg">Sharpest turn from the landing heading along the whole of <paramref name="Path"/>,
+/// 0–180°. Sets the exit's angle (capped at 90°).</param>
+/// <param name="TurnToLeaveDeg">Sharpest turn from the landing heading along <paramref name="Path"/> up to and
+/// including the first node beyond the runway half-width: how the branch LEAVES the pavement, 0–180°. Decides
+/// <see cref="IsTurnaround"/>.</param>
 /// <param name="Path">Junction … clear node.</param>
 public sealed record LandingExitBranch(
-    int JunctionNodeId, int ClearNodeId, int CorridorNodeId, double TurnToClearDeg, IReadOnlyList<int> Path)
+    int JunctionNodeId, int ClearNodeId, int CorridorNodeId, double TurnToClearDeg, double TurnToLeaveDeg,
+    IReadOnlyList<int> Path)
 {
     public bool IsMeasured => ClearNodeId >= 0;
-    public bool IsTurnaround => IsMeasured && TurnToClearDeg > RolloutExitGate.TurnaroundAboveDeg;
+
+    /// <summary>
+    /// The branch leaves the runway pavement turning more than <see cref="RolloutExitGate.TurnaroundAboveDeg"/>.
+    /// Judged on <see cref="TurnToLeaveDeg"/>, never on the turn to the clear line: a branch that leaves the
+    /// pavement at 90° and hooks back only on the taxiway system beyond the edge is a usable exit (worldwide
+    /// sweep, 2026-09-26: CYVR 26L D1, SNOL 30, MURU 06, O54 36 were lost as "turnarounds" that way).
+    /// </summary>
+    public bool IsTurnaround => IsMeasured && TurnToLeaveDeg > RolloutExitGate.TurnaroundAboveDeg;
 }
 
 /// <summary>
@@ -112,7 +124,7 @@ public static class ExitBranch
         // hop/distance budget ran out first) — this candidate's branch never meets the runway at all,
         // so it must be reported unmeasured rather than silently measured from wherever the walk gave up.
         if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres)
-            return new LandingExitBranch(junction, -1, -1, 0.0, inward);
+            return new LandingExitBranch(junction, -1, -1, 0.0, 0.0, inward);
         var branch = MeasureFrom(graph, axis, inward, junction == candidateNodeId ? seedNeighborId : null);
         if (branch.IsMeasured || junction == candidateNodeId) return branch;
         // Nothing leaves the runway from the candidate itself — it sits on a lead-in line beside the
@@ -162,11 +174,14 @@ public static class ExitBranch
             int clearIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.ClearLateralMetres);
             if (clearIdx < 0) continue;
             var path = inward.GetRange(0, clearIdx + 1);
+            // The sibling must not itself be a turnaround - judged, like every branch, by how it
+            // leaves the runway pavement (LandingExitBranch.IsTurnaround).
+            double leave = TurnToLeave(graph, axis, path);
+            if (leave > RolloutExitGate.TurnaroundAboveDeg) continue;
             double turn = TurnAlong(graph, axis, path);
-            if (turn > RolloutExitGate.TurnaroundAboveDeg) continue;
             int corridorIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.CorridorLateralMetres);
             int corridor = corridorIdx >= 0 ? inward[corridorIdx] : backward.CorridorNodeId;
-            return new LandingExitBranch(junction, path[^1], corridor, turn, path);
+            return new LandingExitBranch(junction, path[^1], corridor, turn, leave, path);
         }
         return null;
     }
@@ -265,11 +280,12 @@ public static class ExitBranch
         }
         else
         {
-            if (clearNode < 0) return new LandingExitBranch(junction, -1, corridorNode, 0.0, inward);
+            if (clearNode < 0) return new LandingExitBranch(junction, -1, corridorNode, 0.0, 0.0, inward);
             path = new List<int>(inward);
             path.AddRange(ChainFrom(parents, candidate, clearNode));
         }
-        return new LandingExitBranch(junction, path[^1], corridorNode, TurnAlong(graph, axis, path), path);
+        return new LandingExitBranch(junction, path[^1], corridorNode,
+            TurnAlong(graph, axis, path), TurnToLeave(graph, axis, path), path);
     }
 
     // Dijkstra by path length from `from`, never entering `excluded` (the inward path). Returns the first
@@ -403,6 +419,21 @@ public static class ExitBranch
             var a = graph.Nodes[path[i]];
             var b = graph.Nodes[path[i + 1]];
             max = Math.Max(max, Math.Abs(axis.RelativeHeadingDeg(a.Latitude, a.Longitude, b.Latitude, b.Longitude)));
+        }
+        return max;
+    }
+
+    // The sharpest turn along `path` up to and including its first node beyond the runway half-width:
+    // how the branch leaves the pavement (a measured path always reaches one - its clear node is beyond).
+    private static double TurnToLeave(TaxiGraph graph, RunwayAxis axis, IReadOnlyList<int> path)
+    {
+        double max = 0.0;
+        for (int i = 0; i + 1 < path.Count; i++)
+        {
+            var a = graph.Nodes[path[i]];
+            var b = graph.Nodes[path[i + 1]];
+            max = Math.Max(max, Math.Abs(axis.RelativeHeadingDeg(a.Latitude, a.Longitude, b.Latitude, b.Longitude)));
+            if (Math.Abs(Lateral(graph, axis, path[i + 1])) > axis.HalfWidthMetres) break;
         }
         return max;
     }
