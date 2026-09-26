@@ -111,7 +111,8 @@ public static partial class TaxiBriefingPlanner
         var exits = g.Graph.GetLandingExits(rwy);
         LandingExitVacateScreen.Mark(g.Graph, exits, rwy);
         var vacating = exits.Where(e => e.VacatesRunway).OrderBy(e => e.DistanceFromThresholdFeet).ToList();
-        var choice = BriefingExitPicker.Pick(exits, r.Aircraft.TouchdownSpeedKts);
+        var routeStarts = BriefableExitRouteStarts(g.Graph, exits, rwy);
+        var choice = BriefingExitPicker.Pick(exits.Where(routeStarts.ContainsKey).ToList(), r.Aircraft.TouchdownSpeedKts);
         if (choice == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no exit taxiway is mapped clear of runway {rwy.RunwayID} in this scenery", stand, endpoint, notes, vacating);
@@ -119,7 +120,7 @@ public static partial class TaxiBriefingPlanner
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no stand at {icao} connects to the taxiway network", null, endpoint, notes, vacating, choice);
 
-        int from = LandingExitDestination.Resolve(g.Graph, choice.Exit, exits, rwy, rwy.Heading, out _, out _, out _);
+        int from = routeStarts[choice.Exit];
         int to = StandNode(g.Graph, stand.Spot)!.NodeId;
         var route = new TaxiRouter(g.Graph).FindShortestPath(from, to);
         if (route == null || route.Segments.Count == 0)
@@ -129,6 +130,8 @@ public static partial class TaxiBriefingPlanner
 
         var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, g.Graph.RunwayCenterlines, "", aircraft: null);
         var holds = CollectHoldShorts(route, events, notes);
+        if (TaxiwayLeavingTheRunway(g.Graph, choice.Exit, from, route, rwy) is string leaving)
+            notes.Add($"the mapped route leaves the runway on taxiway {leaving}");
 
         return new TaxiLegBriefing
         {
@@ -137,6 +140,76 @@ public static partial class TaxiBriefingPlanner
             DistanceMetres = route.TotalDistanceMeters, HoldShorts = holds, Exit = choice, VacatingExits = vacating,
             NarrowTaxiways = NarrowTaxiways(route, r.Aircraft), Notes = notes,
         };
+    }
+
+    /// <summary>
+    /// The exits the briefing may name, each with the node its taxi-in route begins at — the node the rollout
+    /// hands over at (<see cref="LandingExitDestination.Resolve"/>, the same resolution the vacate screen judged).
+    ///
+    /// <para>An exit is left out when that node lies on the OTHER side of the runway from the side the exit turns
+    /// toward. The resolution can hand an exit another exit's clear-of-runway node — the furthest same-named exit
+    /// further down, or the corridor search's first node clear of the strip — and that node can be across the
+    /// runway: KLAX 25L briefed "A7, LEFT side" with the route starting on H6 north of the runway, and 33 of 428
+    /// hub arrivals measured the same way. The pilot is told to repeat the side exactly, so a briefed side must be
+    /// the side the route leaves by. (The resolution itself is shared with the rollout and is not changed here.)
+    /// An exit that names no side takes the side its route leaves by; one whose side cannot be told — its route
+    /// does not begin clear of the runway pavement — is left out.</para>
+    ///
+    /// <para>Only exits that get clear of the runway are offered (<see cref="LandingExit.VacatesRunway"/>).</para>
+    /// </summary>
+    internal static Dictionary<LandingExit, int> BriefableExitRouteStarts(TaxiGraph graph, IReadOnlyList<LandingExit> exits, Runway rwy)
+    {
+        var starts = new Dictionary<LandingExit, int>();
+        foreach (var exit in exits)
+        {
+            if (!exit.VacatesRunway) continue;
+            int node = LandingExitDestination.Resolve(graph, exit, exits, rwy, rwy.Heading, out _, out _, out _);
+            string? side = SideOfRunway(graph, node, rwy);
+            if (side == null) continue;
+            if (string.IsNullOrEmpty(exit.ExitSide)) exit.ExitSide = side;
+            else if (!string.Equals(exit.ExitSide, side, StringComparison.OrdinalIgnoreCase)) continue;
+            starts[exit] = node;
+        }
+        return starts;
+    }
+
+    /// <summary>"Right" or "Left" of the landing direction — <see cref="LandingExit.ExitSide"/>'s own words and
+    /// convention — for a node clear of the runway pavement; null for a node on it (or unknown), whose side says
+    /// nothing about how a route leaves the runway.</summary>
+    internal static string? SideOfRunway(TaxiGraph graph, int nodeId, Runway rwy)
+    {
+        if (!graph.Nodes.TryGetValue(nodeId, out var node)) return null;
+        double leftOfCentreline = RunwayFrame.For(rwy, rwy.StartLat).SignedCrossTrack(node.Latitude, node.Longitude);
+        if (!RunwayVacateResolver.IsOffPavement(Math.Abs(leftOfCentreline), rwy)) return null;
+        return leftOfCentreline < 0 ? "Right" : "Left";
+    }
+
+    /// <summary>
+    /// The taxiway the mapped route really leaves the runway on, when it is a named taxiway other than the exit's
+    /// own; otherwise null. It is the taxiway of the first segment, on the way from the exit's junction to the node
+    /// the route begins at, that ends clear of the runway pavement — the segment that takes the aircraft off it.
+    ///
+    /// <para>Neither simpler reading is right. The route's own first taxiway is usually NOT it: the route begins
+    /// clear of the runway, often where the exit meets a parallel taxiway (exit C, route "A" at the synthetic TEST
+    /// airport; KMEM 36L's M7, route "M, N, A, S"). Nor is the first NAMED taxiway from the junction: at KCLT 01R
+    /// the way from exit V4's junction runs 100 m down the runway centreline on edges named E6 before turning off
+    /// on V4 itself. Where the two taxiways genuinely differ it is worth saying — KMSP 17's junction sends L3 to
+    /// the right and K3 to the left, and the exit briefed on the left is K3's.</para>
+    /// </summary>
+    internal static string? TaxiwayLeavingTheRunway(TaxiGraph graph, LandingExit exit, int routeStart, TaxiRoute route, Runway rwy)
+    {
+        var lead = routeStart == exit.NodeId ? route : new TaxiRouter(graph).FindShortestPath(exit.NodeId, routeStart);
+        if (lead == null) return null;
+        var frame = RunwayFrame.For(rwy, rwy.StartLat);
+        foreach (var seg in lead.Segments)
+        {
+            double lateral = Math.Abs(frame.SignedCrossTrack(seg.ToNode.Latitude, seg.ToNode.Longitude));
+            if (!RunwayVacateResolver.IsOffPavement(lateral, rwy)) continue;
+            string name = seg.TaxiwayName;
+            return string.IsNullOrEmpty(name) || string.Equals(name, exit.TaxiwayName, StringComparison.OrdinalIgnoreCase)
+                ? null : name;
+        }
+        return null;
     }
 
     /// <summary>

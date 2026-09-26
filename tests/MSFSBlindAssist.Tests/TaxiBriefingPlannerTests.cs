@@ -205,6 +205,38 @@ public class TaxiBriefingPlannerTests
         }, leg.HoldShorts);
     }
 
+    [Fact]
+    public void An_exit_whose_route_begins_on_the_other_side_of_the_runway_is_not_briefed()
+    {
+        // The first Q turns off to the LEFT, but its mapped route begins on the RIGHT, on the second Q's south side
+        // (KLAX 25L "A7, LEFT side" with the route starting on H6 north of the runway). Briefed, the block told the
+        // pilot to plan to leave to the left and then gave a route that leaves to the right and crosses back over
+        // the runway just landed on. It is not a candidate; C, the next exit that leaves where it turns, is.
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, airline: "DAL"), AirportWithOppositeSideNamesake());
+
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("C", leg.Exit!.Exit.TaxiwayName);
+        Assert.Equal("Left", leg.Exit.Exit.ExitSide);
+        Assert.Equal(new[] { "A" }, leg.Taxiways);
+        Assert.DoesNotContain(leg.HoldShorts, h => TaxiBriefingPlanner.SameRunway(h.Runway, "09"));
+        // C's route begins where C meets A: it leaves the runway on C, so there is nothing to add.
+        Assert.DoesNotContain(leg.Notes, n => n.Contains("leaves the runway on taxiway", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_exit_whose_route_leaves_the_runway_on_another_taxiway_says_which()
+    {
+        // The exit is named R1, but the node its route begins at is reached from the runway by K: the block names the
+        // exit the pilot will see signed and says which taxiway the mapped route actually takes off the runway.
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, airline: "DAL"), AirportWithMisnamedExit());
+
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("R1", leg.Exit!.Exit.TaxiwayName);
+        Assert.Equal("Left", leg.Exit.Exit.ExitSide);
+        Assert.Equal(new[] { "A" }, leg.Taxiways);
+        Assert.Contains("the mapped route leaves the runway on taxiway K", leg.Notes);
+    }
+
     // ── hold-short bookkeeping ───────────────────────────────────────────────────────────────
 
     private static TaxiRoute RouteWithHold(string? holdLabel, string? startHold)

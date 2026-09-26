@@ -137,6 +137,39 @@ internal static class TaxiBriefingFixture
     public static GraphBundle AirportWithSouthStandAndTaxiwayY() =>
         AirportWith(SouthStandPaths().Append(Path("Y", 1800, 100, 1800, -100)), SouthStandSpots());
 
+    /// <summary>
+    /// <see cref="AirportWithSouthStand"/> plus taxiway Q, which leaves runway 09/27 twice, once to each side:
+    ///   east 1900: Q from 09's centreline (HS) north-east at 45° to A at 2000 E — a high-speed exit on the LEFT
+    ///              landing 09, 328 ft beyond C, so as the high-speed exit within 1,500 ft it is preferred to C.
+    ///   east 2300: Q from 09's centreline (HS) straight south to north -100, where S now continues east from 2000 E
+    ///              to meet it.
+    /// LandingExitDestination resolves the first Q to the furthest same-named exit further down the runway — the
+    /// second Q — and vacates that one to the SOUTH: the route of "the exit on the left" begins on the right, on S,
+    /// and to a stand north of the runway it crosses 09 back at X.
+    /// </summary>
+    public static GraphBundle AirportWithOppositeSideNamesake() => AirportWith(
+        SouthStandPaths().Concat(new[]
+        {
+            Path("Q", 1900, 0, 2000, 100, startType: "HS"),
+            Path("Q", 2300, 0, 2300, -100, startType: "HS"),
+            Path("S", 2000, -100, 2300, -100),
+        }), SouthStandSpots());
+
+    /// <summary>
+    /// TEST plus an exit named after a taxiway the route does not leave the runway on:
+    ///   east 1500: from 09's centreline (HS), R1 runs a 100 m stub east-north-east at 10° to a dead end 17.6 m off
+    ///              the centreline, and K runs straight north to A at 1500 E.
+    /// GetLandingExits names the exit after its connector-style edge, R1 — a high-speed exit on the LEFT landing 09,
+    /// 4,921 ft in, so the first one a 737 can make. Its shallow first edge sends the corridor search on to the first
+    /// node clear of the runway strip, which is K's end on A: the mapped route leaves the runway on K.
+    /// </summary>
+    public static GraphBundle AirportWithMisnamedExit() => AirportWith(
+        new[]
+        {
+            Path("R1", 1500, 0, 1600, 17.6, startType: "HS"),
+            Path("K", 1500, 0, 1500, 100, startType: "HS"),
+        }, Array.Empty<ParkingSpot>());
+
     private static TaxiPath[] SouthStandPaths() => new[]
     {
         Path("S", 0, -100, 1000, -100), Path("S", 1000, -100, 1500, -100),
