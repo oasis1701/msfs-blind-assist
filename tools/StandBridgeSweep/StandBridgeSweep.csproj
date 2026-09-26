@@ -45,6 +45,9 @@
     <Compile Include="..\..\MSFSBlindAssist\Utils\AppLogs.cs"                     Link="Linked\AppLogs.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\ExitBranch.cs"            Link="Linked\ExitBranch.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.ExitRefinement.cs" Link="Linked\TaxiGraph.ExitRefinement.cs" />
+    <!-- The whole-database bulk load, shared with the other sweep tool (linked, never copied). -->
+    <Compile Include="..\Shared\NavdataSweepLoader.cs" Link="Shared\NavdataSweepLoader.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\DatabasePathResolver.cs" Link="Linked\DatabasePathResolver.cs" />
     <!-- Database models -->
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />

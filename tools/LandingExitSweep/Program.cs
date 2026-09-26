@@ -61,171 +61,16 @@ static int Sweep(string dbPath, string outPath, int maxAirports)
         return 1;
     }
 
-    string connStr = $"Data Source={dbPath};Mode=ReadOnly;Pooling=false;";
-    using var conn = new SqliteConnection(connStr);
-    conn.Open();
+    using var conn = NavdataSweepLoader.OpenReadOnly(dbPath);
 
-    // -------------------------------------------------------------------------------------
-    // Bulk load, one pass per table, grouped by airport_id in memory — exactly as
-    // tools/StandBridgeSweep does, whose readers mirror LittleNavMapProvider's
-    // GetTaxiPaths / GetParkingSpots / GetRunwayStarts.
-    // -------------------------------------------------------------------------------------
+    // The bulk load, shared with tools/StandBridgeSweep (tools/Shared/NavdataSweepLoader.cs, linked).
+    var navdata = NavdataSweepLoader.Load(conn);
+    var airportLabel = navdata.AirportLabel;
+    var pathsByAirport = navdata.PathsByAirport;
+    var parkingByAirport = navdata.ParkingByAirport;
+    var startsByAirport = navdata.StartsByAirport;
+    var runwaysByAirport = navdata.RunwaysByAirport;
     var sw = Stopwatch.StartNew();
-
-    // airport_id -> (icao, ident) for labeling only.
-    var airportLabel = new Dictionary<int, (string Icao, string Ident)>();
-    using (var cmd = new SqliteCommand("SELECT airport_id, icao, ident FROM airport", conn))
-    using (var r = cmd.ExecuteReader())
-    {
-        while (r.Read())
-        {
-            int id = r.GetInt32(0);
-            string icao = r.IsDBNull(1) ? "" : r.GetString(1);
-            string ident = r.IsDBNull(2) ? "" : r.GetString(2);
-            airportLabel[id] = (icao, ident);
-        }
-    }
-    Console.WriteLine($"airport rows: {airportLabel.Count} ({sw.ElapsedMilliseconds} ms)");
-
-    // taxi_path — mirrors LittleNavMapProvider.GetTaxiPaths (same normalization, same trim).
-    sw.Restart();
-    var pathsByAirport = new Dictionary<int, List<TaxiPath>>();
-    using (var cmd = new SqliteCommand(@"
-        SELECT taxi_path_id, airport_id, type, surface, width, name,
-               start_type, start_dir, start_lonx, start_laty,
-               end_type, end_dir, end_lonx, end_laty
-        FROM taxi_path
-        ORDER BY airport_id, taxi_path_id", conn))
-    using (var r = cmd.ExecuteReader())
-    {
-        while (r.Read())
-        {
-            int apId = r.GetInt32(1);
-            var tp = new TaxiPath
-            {
-                TaxiPathId = r.GetInt32(0),
-                AirportId = apId,
-                Type = r.IsDBNull(2) ? "" : r.GetString(2),
-                Surface = r.IsDBNull(3) ? "" : r.GetString(3),
-                Width = r.IsDBNull(4) ? 0.0 : r.GetDouble(4),
-                Name = NormalizeTaxiwayName(r.IsDBNull(5) ? null : r.GetString(5)),
-                StartType = r.IsDBNull(6) ? "" : r.GetString(6),
-                StartDir = r.IsDBNull(7) ? "" : r.GetString(7),
-                StartLon = r.GetDouble(8),
-                StartLat = r.GetDouble(9),
-                EndType = r.IsDBNull(10) ? "" : r.GetString(10),
-                EndDir = r.IsDBNull(11) ? "" : r.GetString(11),
-                EndLon = r.GetDouble(12),
-                EndLat = r.GetDouble(13),
-            };
-            if (!pathsByAirport.TryGetValue(apId, out var list))
-                pathsByAirport[apId] = list = new List<TaxiPath>();
-            list.Add(tp);
-        }
-    }
-    Console.WriteLine($"taxi_path rows grouped: {pathsByAirport.Values.Sum(l => l.Count)} across {pathsByAirport.Count} airports ({sw.ElapsedMilliseconds} ms)");
-
-    // parking — mirrors LittleNavMapProvider.GetParkingSpots (MapParkingName copied verbatim;
-    // MapParkingType is NOT needed — TaxiGraph.Build never reads ParkingSpot.Type).
-    sw.Restart();
-    var parkingByAirport = new Dictionary<int, List<ParkingSpot>>();
-    using (var cmd = new SqliteCommand(@"
-        SELECT airport_id, type, name, number, suffix, heading, laty, lonx, radius, has_jetway, airline_codes
-        FROM parking
-        ORDER BY airport_id", conn))
-    using (var r = cmd.ExecuteReader())
-    {
-        while (r.Read())
-        {
-            int apId = r.GetInt32(0);
-            var spot = new ParkingSpot
-            {
-                Name = MapParkingName(r.IsDBNull(2) ? "" : r.GetString(2)),
-                Suffix = r.IsDBNull(4) ? "" : r.GetString(4),
-                Number = r.IsDBNull(3) ? 0 : r.GetInt32(3),
-                Type = 0,
-                Latitude = r.IsDBNull(6) ? 0.0 : r.GetDouble(6),
-                Longitude = r.IsDBNull(7) ? 0.0 : r.GetDouble(7),
-                Heading = r.IsDBNull(5) ? 0.0 : r.GetDouble(5),
-                Radius = r.IsDBNull(8) ? 0.0 : r.GetDouble(8),
-                HasJetway = !r.IsDBNull(9) && r.GetInt32(9) == 1,
-                AirlineCodes = r.IsDBNull(10) ? "" : r.GetString(10),
-            };
-            if (!parkingByAirport.TryGetValue(apId, out var list))
-                parkingByAirport[apId] = list = new List<ParkingSpot>();
-            list.Add(spot);
-        }
-    }
-    Console.WriteLine($"parking rows grouped: {parkingByAirport.Values.Sum(l => l.Count)} across {parkingByAirport.Count} airports ({sw.ElapsedMilliseconds} ms)");
-
-    // start (runway starts only, type='R') — mirrors LittleNavMapProvider.GetRunwayStarts.
-    sw.Restart();
-    var startsByAirport = new Dictionary<int, List<StartPosition>>();
-    using (var cmd = new SqliteCommand(@"
-        SELECT airport_id, runway_end_id, runway_name, type, heading, altitude, lonx, laty
-        FROM start
-        WHERE type = 'R' OR type = 'r'
-        ORDER BY airport_id", conn))
-    using (var r = cmd.ExecuteReader())
-    {
-        while (r.Read())
-        {
-            int apId = r.GetInt32(0);
-            var sp = new StartPosition
-            {
-                AirportId = apId,
-                RunwayEndId = r.IsDBNull(1) ? null : r.GetInt32(1),
-                RunwayName = (r.IsDBNull(2) ? "" : r.GetString(2)).Trim(),
-                Type = r.IsDBNull(3) ? "" : r.GetString(3),
-                Heading = r.IsDBNull(4) ? 0.0 : r.GetDouble(4),
-                Altitude = r.IsDBNull(5) ? 0.0 : r.GetDouble(5),
-                Longitude = r.IsDBNull(6) ? 0.0 : r.GetDouble(6),
-                Latitude = r.IsDBNull(7) ? 0.0 : r.GetDouble(7),
-            };
-            if (!startsByAirport.TryGetValue(apId, out var list))
-                startsByAirport[apId] = list = new List<StartPosition>();
-            list.Add(sp);
-        }
-    }
-    Console.WriteLine($"start(type=R) rows grouped: {startsByAirport.Values.Sum(l => l.Count)} across {startsByAirport.Count} airports ({sw.ElapsedMilliseconds} ms)");
-
-    // runway + runway_end, both ends, with length, per-end true heading and threshold offset —
-    // the fields GetLandingExits reads (LittleNavMapProvider.CreateRunwayFromReader's mapping).
-    sw.Restart();
-    var runwaysByAirport = new Dictionary<int, List<Runway>>();
-    using (var cmd = new SqliteCommand(@"
-        SELECT r.airport_id, r.width, r.length,
-               rep.name, rep.laty, rep.lonx, rep.heading, rep.offset_threshold,
-               res.name, res.laty, res.lonx, res.heading, res.offset_threshold
-        FROM runway r
-        JOIN runway_end rep ON r.primary_end_id = rep.runway_end_id
-        JOIN runway_end res ON r.secondary_end_id = res.runway_end_id
-        ORDER BY r.airport_id", conn))
-    using (var r = cmd.ExecuteReader())
-    {
-        while (r.Read())
-        {
-            int apId = r.GetInt32(0);
-            double width = r.IsDBNull(1) ? 0.0 : r.GetDouble(1);
-            double length = r.IsDBNull(2) ? 0.0 : r.GetDouble(2);
-            Runway End(int o, int other) => new Runway
-            {
-                RunwayID = r.IsDBNull(o) ? "" : r.GetString(o),
-                StartLat = r.IsDBNull(o + 1) ? 0.0 : r.GetDouble(o + 1),
-                StartLon = r.IsDBNull(o + 2) ? 0.0 : r.GetDouble(o + 2),
-                Heading = r.IsDBNull(o + 3) ? 0.0 : r.GetDouble(o + 3),
-                ThresholdOffset = r.IsDBNull(o + 4) ? 0.0 : r.GetDouble(o + 4),
-                EndLat = r.IsDBNull(other + 1) ? 0.0 : r.GetDouble(other + 1),
-                EndLon = r.IsDBNull(other + 2) ? 0.0 : r.GetDouble(other + 2),
-                Length = length,
-                Width = width,
-            };
-            if (!runwaysByAirport.TryGetValue(apId, out var list)) runwaysByAirport[apId] = list = new List<Runway>();
-            list.Add(End(3, 8));
-            list.Add(End(8, 3));
-        }
-    }
-    Console.WriteLine($"runway rows grouped: {runwaysByAirport.Values.Sum(l => l.Count)} runway-ends across {runwaysByAirport.Count} airports ({sw.ElapsedMilliseconds} ms)");
 
     // -------------------------------------------------------------------------------------
     // The sweep. Airports in ascending airport_id, runway ends in ordinal RunwayID order, so
@@ -357,59 +202,6 @@ static int Sweep(string dbPath, string outPath, int maxAirports)
     Console.WriteLine($"Total time:                  {overallSw.Elapsed}");
     Console.WriteLine($"CSV:                         {Path.GetFullPath(outPath)}");
     return 0;
-}
-
-// Mirrors LittleNavMapProvider.NormalizeTaxiwayName exactly (trim + collapse internal
-// whitespace runs) — pure string hygiene, not graph-building logic, so duplicating it here
-// carries no risk of diverging from what Build itself receives as TaxiPath.Name.
-static string NormalizeTaxiwayName(string? raw)
-{
-    if (string.IsNullOrWhiteSpace(raw)) return "";
-    string trimmed = raw.Trim();
-    var sb = new System.Text.StringBuilder(trimmed.Length);
-    bool prevSpace = false;
-    foreach (char c in trimmed)
-    {
-        if (char.IsWhiteSpace(c))
-        {
-            if (!prevSpace) { sb.Append(' '); prevSpace = true; }
-        }
-        else
-        {
-            sb.Append(c);
-            prevSpace = false;
-        }
-    }
-    return sb.ToString();
-}
-
-// Mirrors LittleNavMapProvider.MapParkingName exactly (copied verbatim from tools/StandBridgeSweep),
-// so the ParkingSpot list Build receives is the one production hands it. Exit finding never reads
-// the NAME; what it does depend on is the parking pass marking nearby nodes as Parking by position,
-// which takes a node out of GetLandingExits' Normal-node fallback — hence the parking load at all.
-static string MapParkingName(string name)
-{
-    switch (name.ToUpperInvariant())
-    {
-        case "NONE":
-        case "":
-            return "";
-        case "P": return "Parking";
-        case "NP": return "North";
-        case "NEP": return "Northeast";
-        case "EP": return "East";
-        case "SEP": return "Southeast";
-        case "SP": return "South";
-        case "SWP": return "Southwest";
-        case "WP": return "West";
-        case "NWP": return "Northwest";
-        case "G": return "";
-        case "D": return "Dock";
-        default:
-            if (name.Length >= 2 && name.StartsWith("G", StringComparison.OrdinalIgnoreCase))
-                return name.Substring(1);
-            return name;
-    }
 }
 
 // A CSV field: quoted (with doubled quotes) only when it contains a comma, quote or line break.

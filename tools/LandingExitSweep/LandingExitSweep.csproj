@@ -45,6 +45,9 @@
          link set that a build now surfaces. Self-contained (TaxiGraph + Database.Models only, both
          already linked below), so pinning it here adds no further dependency. -->
     <Compile Include="..\..\MSFSBlindAssist\Navigation\NamedHoldingPointResolver.cs" Link="Linked\NamedHoldingPointResolver.cs" />
+    <!-- The whole-database bulk load, shared with the other sweep tool (linked, never copied). -->
+    <Compile Include="..\Shared\NavdataSweepLoader.cs" Link="Shared\NavdataSweepLoader.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\DatabasePathResolver.cs" Link="Linked\DatabasePathResolver.cs" />
     <!-- Database models -->
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />
