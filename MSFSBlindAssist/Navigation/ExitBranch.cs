@@ -153,10 +153,6 @@ public static class ExitBranch
     {
         if (!backward.IsTurnaround) return null;
         var own = OwnArmNodes(graph, backward.Path);
-        // The inward walk may END on the backward arm's own junction - a Y whose two arms leave the
-        // runway from one node (KMIA 08R Z, ULWB 33) - but never uses the backward arm's other nodes.
-        var ownBeyondJunction = new HashSet<int>(own);
-        ownBeyondJunction.Remove(backward.JunctionNodeId);
         int side = Math.Sign(Lateral(graph, axis, backward.ClearNodeId));
         double backwardAlong = Along(graph, axis, backward.JunctionNodeId);
         bool OnThisSideOffTheRunway(int nodeId)
@@ -164,33 +160,54 @@ public static class ExitBranch
             double lateral = Lateral(graph, axis, nodeId);
             return Math.Sign(lateral) == side && Math.Abs(lateral) > axis.HalfWidthMetres;
         }
-        // Both the outward flood that finds candidate start nodes and the inward walk that measures
-        // each one stay ON exitName's own taxiway (or unnamed pavement): a physically-nearby but
-        // differently-named taxiway is a different exit system, not this one's other arm, however
-        // close its own pavement sits to this exit's clear point.
-        foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own, exitName, OnThisSideOffTheRunway))
+
+        // The arm the inward walk from `start` finds, when it is a valid sibling. The walk never enters
+        // `wall`. Both the outward flood that finds candidate start nodes and this inward walk stay ON
+        // exitName's own taxiway (or unnamed pavement): a physically-nearby but differently-named
+        // taxiway is a different exit system, not this one's other arm, however close its own pavement
+        // sits to this exit's clear point.
+        LandingExitBranch? SiblingFrom(int start, ISet<int> wall)
         {
-            var inward = WalkToJunction(graph, axis, start, ownBeyondJunction, exitName);
+            var inward = WalkToJunction(graph, axis, start, wall, exitName);
             int junction = inward[0];
-            if (junction == start) continue;
-            if (junction != backward.JunctionNodeId && own.Contains(junction)) continue;
-            if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres) continue;
-            if (Math.Abs(Along(graph, axis, junction) - backwardAlong) > SiblingJunctionMaxMetres) continue;
+            if (junction == start) return null;
+            if (junction != backward.JunctionNodeId && own.Contains(junction)) return null;
+            if (Math.Abs(Lateral(graph, axis, junction)) > axis.HalfWidthMetres) return null;
+            if (Math.Abs(Along(graph, axis, junction) - backwardAlong) > SiblingJunctionMaxMetres) return null;
             // Covers the WHOLE arm (junction..start), not just junction..clear — a name change beyond
             // the clear point (still inside `inward`, out toward `start`) belongs to a different
             // taxiway just as much as one before it, even though it plays no part in `path` below.
-            if (!IsNamedLike(graph, inward, exitName)) continue;
+            if (!IsNamedLike(graph, inward, exitName)) return null;
             int clearIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.ClearLateralMetres);
-            if (clearIdx < 0) continue;
+            if (clearIdx < 0) return null;
             var path = inward.GetRange(0, clearIdx + 1);
             // The sibling must not itself be a turnaround - judged, like every branch, by how it
             // leaves the runway pavement (LandingExitBranch.IsTurnaround).
             double leave = TurnToLeave(graph, axis, path);
-            if (leave > RolloutExitGate.TurnaroundAboveDeg) continue;
+            if (leave > RolloutExitGate.TurnaroundAboveDeg) return null;
             double turn = TurnAlong(graph, axis, path);
             int corridorIdx = inward.FindIndex(n => Math.Abs(Lateral(graph, axis, n)) > axis.CorridorLateralMetres);
             int corridor = corridorIdx >= 0 ? inward[corridorIdx] : backward.CorridorNodeId;
             return new LandingExitBranch(junction, path[^1], corridor, turn, leave, path);
+        }
+
+        // First pass: the backward arm's own nodes, its junction included, are walled off - a sibling
+        // leaves the runway from a junction of its own.
+        foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own, exitName, OnThisSideOffTheRunway))
+        {
+            var sibling = SiblingFrom(start, own);
+            if (sibling != null) return sibling;
+        }
+        // Only when that finds nothing: a Y whose two arms leave the runway from ONE node (KMIA 08R Z,
+        // ULWB 33). The walk may now end on the backward arm's junction, never on its other nodes.
+        // Second, so that it only ever ADDS a sibling: tried first, the shared node - often a few feet
+        // from an arm's own junction and nearer the centreline - drew walks away from real siblings.
+        var ownBeyondJunction = new HashSet<int>(own);
+        ownBeyondJunction.Remove(backward.JunctionNodeId);
+        foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own, exitName, OnThisSideOffTheRunway))
+        {
+            var sibling = SiblingFrom(start, ownBeyondJunction);
+            if (sibling != null) return sibling;
         }
         return null;
     }
