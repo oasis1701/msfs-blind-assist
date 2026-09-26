@@ -25,8 +25,9 @@ public partial class TaxiGraph
     /// <paramref name="keepNode"/> (hold-short-anchored exits), moves to its junction. Relocation
     /// never removes an exit: where the junction fails a distance rule the exit's own node passed
     /// (MIN_DIST_FT, END_BUFFER_FT, or the rescue scan's
-    /// <paramref name="minDistanceFromThresholdFeet"/>), the exit keeps its own node with the
-    /// refined angle and type - the keepNode behaviour (KMTC 19 B and LSGL 18 L, whose lead-ins
+    /// <paramref name="minDistanceFromThresholdFeet"/>), the exit keeps its own node, as keepNode
+    /// does, with the refined angle and type - and, unlike keepNode, the branch's bearing, because
+    /// the producer's can be a lead line's backward edge (KMTC 19 B and LSGL 18 L, whose lead-ins
     /// start under 500 ft, were dropped).</para>
     /// </summary>
     private LandingExit? RefineExitByBranch(
@@ -54,7 +55,13 @@ public partial class TaxiGraph
         {
             var atJunction = ExitAtJunction(branch, exit.TaxiwayName, exit.ApronNodeId, rwy, axis, minDistanceFromThresholdFeet);
             if (atJunction != null) return atJunction;
-            // The junction fails a distance rule the exit's own node passed: keep the node.
+            // The junction fails a distance rule the exit's own node passed: keep the node - with the
+            // branch's bearing as well as its angle and type. The producer's bearing at a node on a
+            // lead line can be the line's BACKWARD edge (it typed that node End, 130°), and after
+            // "turn now" the rollout steers a Normal exit by its bearing (worldwide sweep, 2026-09-26:
+            // 76 such exits, e.g. KMTC 19 B at 537 ft).
+            exit.ExitBearingTrue = BranchExitBearing(branch, rwy.Heading);
+            exit.ExitSide = ExitSideFor(exit.ExitBearingTrue, rwy.Heading);
         }
         exit.ExitAngleDegrees = angle;
         double alongFt = axis.Project(exit.Latitude, exit.Longitude).AlongMetres / 0.3048;
@@ -92,11 +99,16 @@ public partial class TaxiGraph
             ExitAngleDegrees = angle,
             ExitBearingTrue = bearing,
             ExitType = ClassifyExit(angle, alongFt, rwy.Length),
-            ExitSide = bearing != 0.0
-                ? (NormalizeAngle((bearing == 360.0 ? 0.0 : bearing) - rwy.Heading) >= 0 ? "Right" : "Left")
-                : "",
+            ExitSide = ExitSideFor(bearing, rwy.Heading),
         };
     }
+
+    // "Right"/"Left" of the landing heading for an ExitBearingTrue, "" for the 0.0 "unknown" sentinel -
+    // the producers' own side rule.
+    private static string ExitSideFor(double bearingTrue, double rwyHeadingTrue)
+        => bearingTrue != 0.0
+            ? (NormalizeAngle((bearingTrue == 360.0 ? 0.0 : bearingTrue) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
+            : "";
 
     // ExitBearingTrue by the existing rule, evaluated at the junction: the branch's first edge, replaced
     // by the junction→corridor-node chord when the first edge is under 20° and the chord is wider and

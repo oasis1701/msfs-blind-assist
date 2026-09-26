@@ -78,6 +78,31 @@ public class LandingExitRelocationTests
         Assert.InRange(a.ExitAngleDegrees, 15.5, 18.0);
     }
 
+    [Fact]
+    public void An_exit_kept_at_its_own_node_takes_its_branchs_bearing_not_a_backward_edges()
+    {
+        // The KMTC 19 B shape: exit "K"'s lead line starts at (120,0) - 394 ft, under the 500 ft
+        // MIN_DIST_FT - and runs along the centreline through (170,3) and (220,4) before its arm turns
+        // off left through (240,12), (250,30) and (255,50). The first node past 500 ft, (170,3), has a
+        // backward edge (3.4 degrees off the axis) that is more off-axis than its forward one (1.1),
+        // so the producer read it as a backward peel: 130 degrees, End, with a bearing pointing back
+        // down the runway. Kept at that node (its junction fails the 500 ft rule), the exit is now
+        // typed Normal by its branch - and after "turn now" the rollout steers a Normal exit by its
+        // bearing, so the bearing must be the branch's (forward, left), never the backward edge's.
+        var g = Build(
+            Seg(120, 0, 170, 3, "K"), Seg(170, 3, 220, 4, "K"), Seg(220, 4, 240, 12, "K"),
+            Seg(240, 12, 250, 30, "K"), Seg(250, 30, 255, 50, "K"), Seg(255, 50, 260, 90, "K"));
+
+        var k = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "K");
+
+        Assert.Equal(NodeAt(g, 170, 3).NodeId, k.NodeId);
+        Assert.Equal("Normal", k.ExitType);
+        double relative = ((k.ExitBearingTrue - 90.0) % 360.0 + 540.0) % 360.0 - 180.0;
+        Assert.True(RolloutExitGate.IsPlausibleExitBearing(k.ExitBearingTrue, 90.0), $"bearing {relative:F1} off the runway");
+        Assert.InRange(relative, -90.0, -5.0);   // forward and LEFT (north of an eastbound runway)
+        Assert.Equal("Left", k.ExitSide);
+    }
+
     // The KMEM M6 Y shape moved toward the threshold: the forward arm (unnamed) leaves the runway at
     // (68,0), 223 ft - under the 500 ft MIN_DIST_FT - and the backward arm (named M6, a 160-degree
     // turn) at (222,1), 728 ft, with a lead-in tail on to (254,-1); both meet the stem at (150,55).
