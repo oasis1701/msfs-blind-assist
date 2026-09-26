@@ -6,8 +6,11 @@
 // A320_Neo_CDU_MainDisplay.sendUpdate() builds the relay payload from plain fields on
 // the legacy display object (_labels, _lines, _title, _pageCurrent/_pageCount, _arrows,
 // scratchpadDisplay, annunciators) gated on the two MCDU power busses; read() rebuilds
-// EXACTLY that {left, right} object from the same fields, so the C# decoder
-// (FbwMcduFormat / FbwMcduUpdate) is shared by both transports byte for byte.
+// that {left, right} object from the same fields, so ONE C# decoder (FbwMcduFormat /
+// FbwMcduUpdate) serves both transports. Parity is on the fields the decoder READS —
+// the relay also carries integralBrightness / displayBrightness, which it ignores — and
+// the node test pins the agent against a transcription of sendUpdate(), not FBW's
+// source, so an FBW change to the payload shape must be re-transcribed here by hand.
 //
 // ONE instrument serves BOTH MCDU screens (panel.cfg declares a single mcdu.html gauge
 // on the shared MCDU texture), so — as over SimBridge — left and right carry the same

@@ -3,11 +3,14 @@
 // (MSFSBlindAssist/Resources/coherent-a32nx-mcdu-agent.js).
 //
 // The agent replaces SimBridge's MCDU relay as MSFSBA's read/key transport. Its read()
-// must produce the SAME {left, right} body A320_Neo_CDU_MainDisplay.sendUpdate() puts on
-// the relay, because the C# decoder is shared between the two transports — so these
-// tests replay sendUpdate()'s own construction against a stub of the legacy display
-// object and compare. No jsdom: the agent touches only document.querySelector, SimVar,
-// window and JSON, all supplied by a plain sandbox under node:vm.
+// must produce the {left, right} body A320_Neo_CDU_MainDisplay.sendUpdate() puts on the
+// relay, as far as the shared C# decoder reads it — so these tests compare the agent
+// against a HAND TRANSCRIPTION of sendUpdate() (expectedScreen below) over a stub of the
+// legacy display object. The transcription is not FBW's source: it omits the brightness
+// fields the decoder ignores, and an upstream change to sendUpdate() must be carried into
+// it and the agent by hand — this file catches the agent drifting from the transcription,
+// not the transcription drifting from FBW. No jsdom: the agent touches only
+// document.querySelector, SimVar, window and JSON, all supplied by a sandbox under node:vm.
 
 const test = require('node:test');
 const assert = require('node:assert');

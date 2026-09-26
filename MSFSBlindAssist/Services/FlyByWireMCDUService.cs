@@ -73,17 +73,17 @@ public class FlyByWireMCDUService : IDisposable
         _simBridge.PrintReceived += lines => PrintReceived?.Invoke(lines);
     }
 
+    /// <summary>
+    /// Start both transports. There is deliberately NO Disconnect(): the Coherent client
+    /// cannot be restarted (Start() after Stop() is a no-op), so a Disconnect/Connect pair
+    /// would silently leave the primary transport dead. The lifecycle is Connect once,
+    /// Dispose on aircraft switch — which is all MainForm ever did.
+    /// </summary>
     public void Connect()
     {
         if (_disposed) { return; }
         _coherent.Start();
         _simBridge.Connect();
-    }
-
-    public void Disconnect()
-    {
-        _coherent.Stop();
-        _simBridge.Disconnect();
     }
 
     /// <summary>
@@ -102,12 +102,6 @@ public class FlyByWireMCDUService : IDisposable
             // costs nothing and covers the moment right after SimBridge comes up.
             _ => _simBridge.SendButtonPress(key),
         };
-    }
-
-    public Task RequestUpdate()
-    {
-        _coherent.RequestRefresh();
-        return _simBridge.RequestUpdate();
     }
 
     /// <summary>Evaluate a self-contained expression on the MCDU view over the held socket.</summary>

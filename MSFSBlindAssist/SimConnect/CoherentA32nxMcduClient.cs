@@ -63,7 +63,7 @@ namespace MSFSBlindAssist.SimConnect
         private volatile bool _refreshRequested;
         private bool _readable;            // last read() answered ok:true (reported state)
         private int _emptyEvalStreak;
-        private string _lastRawHash = "";
+        private string _lastRaw = "";      // the last read() body handed to the window
         private bool _disposed;
 
         public CoherentA32nxMcduClient(string viewTitleNeedle)
@@ -72,11 +72,18 @@ namespace MSFSBlindAssist.SimConnect
             _syncContext = SynchronizationContext.Current;
         }
 
-        /// <summary>True while this client holds the MCDU view's inspector socket with the agent installed.</summary>
-        public bool HoldsView => _socketOpen && _agentInstalled;
+        /// <summary>
+        /// True while this client holds an OPEN inspector socket on the MCDU view — whether or
+        /// not the agent is installed yet. That is the property the D / Shift+D readout must
+        /// key on: Coherent GT allows one inspector socket per view, so a one-shot eval opened
+        /// beside a socket that is merely waiting for its agent install (up to
+        /// <see cref="EvalTimeoutMs"/>, or the 2 s retry after a failed install) would orphan
+        /// this one. <see cref="EvalForResultAsync"/> needs only the socket, not the agent.
+        /// </summary>
+        public bool HoldsView => _socketOpen;
 
-        /// <summary>True when the MCDU instrument answered the last read — what the window calls "connected".</summary>
-        public bool IsConnected => HoldsView && _readable;
+        /// <summary>True when the agent is installed and the MCDU instrument answered the last read — what the window calls "connected".</summary>
+        public bool IsConnected => _socketOpen && _agentInstalled && _readable;
 
         public void Start()
         {
@@ -104,7 +111,7 @@ namespace MSFSBlindAssist.SimConnect
         public void Stop()
         {
             _cts?.Cancel();
-            try { _ws?.Abort(); } catch { }
+            CloseSocket(_ws);
             _ws = null;
             _socketOpen = false;
             _agentInstalled = false;
@@ -118,13 +125,13 @@ namespace MSFSBlindAssist.SimConnect
         public void SetActive(bool active)
         {
             _active = active;
-            if (active) { _lastRawHash = ""; }
+            if (active) { _lastRaw = ""; }
         }
 
         /// <summary>Re-read the screen on the next loop pass even if unchanged.</summary>
         public void RequestRefresh()
         {
-            _lastRawHash = "";
+            _lastRaw = "";
             _refreshRequested = true;
         }
 
@@ -185,13 +192,25 @@ namespace MSFSBlindAssist.SimConnect
             }
         }
 
+        /// <summary>
+        /// Abort AND dispose: Abort alone releases the view but leaks the ClientWebSocket
+        /// (its native handle and the receive loop's buffer) on every dead-socket reconnect.
+        /// Safe on null and on a socket already closed.
+        /// </summary>
+        private static void CloseSocket(ClientWebSocket? ws)
+        {
+            if (ws == null) return;
+            try { ws.Abort(); } catch { }
+            try { ws.Dispose(); } catch { }
+        }
+
         private void DropSocket()
         {
             _socketOpen = false;
             _agentInstalled = false;
             _emptyEvalStreak = 0;
             SetReadable(false);
-            try { _ws?.Abort(); } catch { }
+            CloseSocket(_ws);
             _ws = null;
             foreach (var kv in _pending) kv.Value.TrySetCanceled();
             _pending.Clear();
@@ -201,13 +220,14 @@ namespace MSFSBlindAssist.SimConnect
         {
             if (_ws != null && _ws.State == WebSocketState.Open && _agentInstalled) return true;
 
-            // Socket still open but the agent went missing (the page re-evaluated) —
-            // re-install on the SAME socket rather than reconnecting.
+            // Socket still open but the agent went missing (the page re-evaluated), or its
+            // first install timed out — re-install on the SAME socket rather than
+            // reconnecting. The socket is still HELD throughout (HoldsView stays true).
             if (_ws != null && _ws.State == WebSocketState.Open && !string.IsNullOrEmpty(_agentJs))
             {
                 string reinstall = await EvalAsync(_agentJs, ct);
                 _agentInstalled = reinstall.IndexOf(InstalledMarker, StringComparison.Ordinal) >= 0;
-                if (_agentInstalled) { _socketOpen = true; return true; }
+                if (_agentInstalled) { _lastRaw = ""; return true; }
             }
 
             // Tear down any existing socket BEFORE opening a new one: Coherent GT allows only
@@ -215,9 +235,9 @@ namespace MSFSBlindAssist.SimConnect
             // orphans the healthy socket and blocks the view for the rest of the process.
             if (_ws != null)
             {
-                try { _ws.Abort(); } catch { }
-                try { _ws.Dispose(); } catch { }
+                CloseSocket(_ws);
                 _ws = null;
+                _socketOpen = false;
                 _agentInstalled = false;
             }
             if (string.IsNullOrEmpty(_agentJs)) { return false; }
@@ -236,11 +256,30 @@ namespace MSFSBlindAssist.SimConnect
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
             {
                 // A connect timeout, not shutdown — must not read as "stop the loop".
-                try { ws.Dispose(); } catch { }
+                CloseSocket(ws);
                 _socketOpen = false;
                 return false;
             }
+            catch
+            {
+                // Shutdown mid-connect, or the debugger refused: the local socket is nobody
+                // else's to close, so close it here before the exception reaches RunLoop.
+                CloseSocket(ws);
+                throw;
+            }
             _ws = ws;
+            // Stop() may have run between ConnectAsync completing and the assignment above —
+            // it aborted the OLD field and saw nothing of this socket. Re-check the token
+            // AFTER publishing it so a cancelled client never leaves a live socket holding
+            // the view (the next client for this aircraft could then never connect).
+            if (ct.IsCancellationRequested)
+            {
+                CloseSocket(ws);
+                if (ReferenceEquals(_ws, ws)) { _ws = null; }
+                _socketOpen = false;
+                return false;
+            }
+            _socketOpen = true;
             foreach (var kv in _pending) kv.Value.TrySetCanceled();
             _pending.Clear();
             _emptyEvalStreak = 0;
@@ -248,11 +287,10 @@ namespace MSFSBlindAssist.SimConnect
 
             string install = await EvalAsync(_agentJs, ct);
             _agentInstalled = install.IndexOf(InstalledMarker, StringComparison.Ordinal) >= 0;
-            _socketOpen = _agentInstalled;
             if (_agentInstalled)
             {
                 Log.Info("SimConnect", $"A32NX MCDU agent installed on view '{_viewTitleNeedle}' (page {pageId.Value}).");
-                _lastRawHash = "";
+                _lastRaw = "";
             }
             return _agentInstalled;
         }
@@ -309,10 +347,10 @@ namespace MSFSBlindAssist.SimConnect
 
             SetReadable(true);
 
-            // The screen is re-read every poll; only a CHANGED frame reaches the window.
-            string hash = Convert.ToHexString(System.Security.Cryptography.SHA1.HashData(Encoding.UTF8.GetBytes(raw)));
-            if (hash == _lastRawHash) { return; }
-            _lastRawHash = hash;
+            // The screen is re-read every poll; only a CHANGED frame reaches the window. A
+            // plain string compare against the kept body (a few KB) is the whole test.
+            if (raw == _lastRaw) { return; }
+            _lastRaw = raw;
 
             var data = FbwMcduUpdate.Parse(content);
             if (data == null) { return; }

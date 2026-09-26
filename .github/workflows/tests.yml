@@ -81,9 +81,10 @@ jobs:
           npm ci --no-audit --no-fund
           npm test
 
-      # The A32NX MCDU in-page agent rebuilds FBW's own SimBridge relay payload from the
-      # instrument's fields; this replays sendUpdate()'s construction against a stub and
-      # compares, so the shared C# decoder can never see two different shapes.
+      # The A32NX MCDU in-page agent rebuilds FBW's SimBridge relay payload from the
+      # instrument's fields; this compares it against a hand transcription of sendUpdate()
+      # on the fields the shared C# decoder reads. It pins the AGENT, not FBW: a change to
+      # sendUpdate() upstream has to be re-transcribed into the test and the agent.
       - name: A32NX MCDU agent
         working-directory: tools/a32nx-mcdu-agent-test
         run: |
