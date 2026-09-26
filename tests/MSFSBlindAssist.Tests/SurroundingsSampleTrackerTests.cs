@@ -88,6 +88,21 @@ public class SurroundingsSampleTrackerTests
         Assert.Equal("Back on pavement.", Poll(t, Concrete).SurfaceCallout);
     }
 
+    [Fact]
+    public void Only_the_sentence_leaving_the_pavement_says_so()
+    {
+        // The landing roll's own "Off pavement." may already have covered that one; nothing else.
+        var t = TaxiingOnAsphalt();
+        Assert.False(Poll(t, Grass).LeavesPavement);
+        var off = Poll(t, Grass);
+        Assert.Equal("Off the pavement, on grass.", off.SurfaceCallout);
+        Assert.True(off.LeavesPavement);
+        Assert.False(Poll(t, Concrete).LeavesPavement);
+        var back = Poll(t, Concrete);
+        Assert.Equal("Back on pavement.", back.SurfaceCallout);
+        Assert.False(back.LeavesPavement);
+    }
+
     // ---- first samples and teleports ----
 
     [Fact]
