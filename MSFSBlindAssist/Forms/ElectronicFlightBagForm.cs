@@ -877,12 +877,11 @@ public partial class ElectronicFlightBagForm : Form
             _announcer.Announce("Generating route description, please wait");
             describeRouteButton.Enabled = false;
 
-            // The taxi section: computed from the pilot's own scenery for THIS press and appended to the
-            // flight data for this AI call only — the stored ExtractedFlightData stays pure SimBrief,
-            // since the facts change when a runway is edited or the aircraft moves. Never blocks the
-            // briefing: every failure renders as an "unavailable" line inside the block.
-            UpdateStatus("Computing taxi routes...");
-            string taxiBlock = await BuildTaxiRoutesBlockAsync(plan);
+            // The taxi section's facts (runways, SayIntentions' gate, the stand the aircraft is parked at), read for
+            // THIS press and appended to the flight data for this AI call only — the stored ExtractedFlightData stays
+            // pure SimBrief, since the facts change when a runway is edited or the aircraft moves. No route is computed:
+            // the AI describes the typical real-world flow. Never blocks the briefing.
+            string taxiBlock = await BuildTaxiPlanningBlockAsync(plan);
             if (IsDisposed) return;
             UpdateStatus("Generating route description...");
             string flightData = plan.ExtractedFlightData + "\n\n" + taxiBlock;
@@ -921,46 +920,68 @@ public partial class ElectronicFlightBagForm : Form
 
     private const int OwnPositionTimeoutMs = 1500;
 
-    private async Task<string> BuildTaxiRoutesBlockAsync(FlightPlan plan)
+    private async Task<string> BuildTaxiPlanningBlockAsync(FlightPlan plan)
     {
         var aircraft = AircraftSizeClass.Resolve(plan.AircraftTypeIcao, plan.AircraftName, plan.AircraftMaxPassengers);
-        // One unit for every distance in the block and its notes: the pilot's ground distance setting.
+        // One unit for every distance in the taxi section: the pilot's ground distance setting.
         var unit = DistanceFormatter.UnitProvider();
         // SayIntentions is read while the aircraft position is: a web call to its parking service can take seconds.
         var siTask = ReadSayIntentionsAsync();
-        // Hoisted so the catch can still name the runway SayIntentions assigned (and why) even when the leg itself
-        // could not be computed -- defaults to the flight plan's own runway, with no note, until the try below picks.
-        BriefingRunway outChoice = new(plan.DepartureRunway, null), inChoice = new(plan.ArrivalRunway, null);
+        OwnPosition? own = null;
+        try
+        {
+            own = await ReadOwnPositionAsync();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("taxi_briefing", $"aircraft position read failed; briefing without it: {ex.Message}");
+        }
+        var si = await siTask;
+
+        // SayIntentions' runways and gate count only for THIS flight; its runway wins over the flight plan's and the
+        // leg says so (BriefingRunwayChoice).
+        bool siThisFlight = SayIntentionsArrivalGate.IsThisFlight(si?.Context, plan.DepartureICAO, plan.ArrivalICAO);
+        var outChoice = BriefingRunwayChoice.Choose(plan.DepartureRunway, si?.Context.DepartureRunway, siThisFlight);
+        var inChoice = BriefingRunwayChoice.Choose(plan.ArrivalRunway, si?.Context.ArrivalRunway, siThisFlight);
+        var siGate = SayIntentionsArrivalGate.FromStatus(si, plan.DepartureICAO, plan.ArrivalICAO);
+
+        string? stand = null;
+        var gate = new ArrivalGateChoice(siGate?.Label, null);
         try
         {
             var provider = _briefingDependencies?.Provider();
             var gateSource = _briefingDependencies?.GateSource();
-            var own = await ReadOwnPositionAsync();
-            var si = await siTask;
-
-            // SayIntentions' runways and gate count only for THIS flight; its runway wins over the flight plan's and the
-            // leg says so (BriefingRunwayChoice).
-            bool siThisFlight = SayIntentionsArrivalGate.IsThisFlight(si?.Context, plan.DepartureICAO, plan.ArrivalICAO);
-            outChoice = BriefingRunwayChoice.Choose(plan.DepartureRunway, si?.Context.DepartureRunway, siThisFlight);
-            inChoice = BriefingRunwayChoice.Choose(plan.ArrivalRunway, si?.Context.ArrivalRunway, siThisFlight);
-            var siGate = SayIntentionsArrivalGate.FromStatus(si, plan.DepartureICAO, plan.ArrivalICAO);
-
-            var request = new TaxiBriefingRequest(plan.DepartureICAO, outChoice.Runway, plan.ArrivalICAO, inChoice.Runway,
-                                                  aircraft, plan.AirlineIcao, own, siGate, outChoice.Note, inChoice.Note, unit);
-            var briefing = await TaxiBriefingPlanner.PlanAsync(request, provider, gateSource, TaxiBriefingPlanner.DefaultBudget);
-            return TaxiBriefingRenderer.Render(briefing, unit);
+            if (provider is { DatabaseExists: true })
+            {
+                // Database reads off the UI thread: the stand list is read only when the aircraft is on the ground at
+                // the origin.
+                (stand, gate) = await Task.Run(() =>
+                {
+                    var origin = string.IsNullOrWhiteSpace(plan.DepartureICAO) ? null : provider.GetAirport(plan.DepartureICAO);
+                    var destination = string.IsNullOrWhiteSpace(plan.ArrivalICAO) ? null : provider.GetAirport(plan.ArrivalICAO);
+                    string? parkedAt = TaxiPlanningBlock.ResolveDepartureStand(own, origin,
+                        () => ParkingSpotSource.GetNamedSpots(provider, gateSource, plan.DepartureICAO));
+                    return (parkedAt, TaxiPlanningBlock.ResolveArrivalGate(siGate, plan.ArrivalICAO, destination));
+                });
+            }
         }
         catch (Exception ex)
         {
-            Log.Warn("taxi_briefing", $"taxi routes block failed: {ex}");
-            return TaxiBriefingRenderer.Render(TaxiBriefing.Unavailable(aircraft, plan.DepartureICAO, outChoice.Runway,
-                plan.ArrivalICAO, inChoice.Runway, $"taxi route could not be computed ({ex.Message})", outChoice.Note, inChoice.Note), unit);
+            // A database failure costs the stand and the gate check only, never the briefing.
+            Log.Warn("taxi_briefing", $"taxi planning lookup failed: {ex}");
         }
+
+        var inputs = new TaxiPlanningInputs(aircraft, plan.AirlineIcao, plan.DepartureICAO, outChoice, stand,
+                                            plan.ArrivalICAO, inChoice, gate);
+        Log.Info("taxi_briefing",
+            $"out={plan.DepartureICAO} rwy={outChoice.Runway} stand={stand ?? "-"} in={plan.ArrivalICAO} rwy={inChoice.Runway} " +
+            $"gate={gate.Gate ?? "-"}{(gate.Note != null ? $" note=\"{gate.Note}\"" : "")}");
+        return TaxiPlanningBlock.Render(inputs, unit);
     }
 
     /// <summary>SayIntentions' status — the flight file and, when it has no gate, the parking service — or null when
     /// SayIntentions is not wired in or the read fails. A SayIntentions failure costs the briefing SayIntentions' data
-    /// only, never the taxi routes.</summary>
+    /// only, never the taxi section.</summary>
     private async Task<SayIntentionsStatusResult?> ReadSayIntentionsAsync()
     {
         if (_briefingDependencies == null) return null;

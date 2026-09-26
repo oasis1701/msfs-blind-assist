@@ -118,12 +118,6 @@ public class TaxiGraph
     /// mints on an edge interior to an already-bridged island inherits membership too, so a search
     /// that subdivides pavement (<see cref="InsertHoldingPointNodeOnEdge"/>) can't mint an
     /// unmarked escape hatch.</para>
-    ///
-    /// <para>One ratified exception, and it is planning-only: the route briefing's taxi-out from a
-    /// REPRESENTATIVE stand (<see cref="Briefing.TaxiBriefingPlanner"/>, whose <c>StandNode</c> passes no
-    /// exclusion) starts on that stand's own node, a stub included, because that route genuinely begins at
-    /// the stand, drives no steering tone and names no bridge edge — guidance must never cite it as
-    /// precedent.</para>
     /// </summary>
     public bool IsBridgeOnlyStandStub(int nodeId) => _bridgeOnlyStandStubNodes.Contains(nodeId);
 
@@ -891,12 +885,8 @@ public class TaxiGraph
     /// enough to cover a real multi-segment lead-in bend (the review's KJFK bend sat 45 m from its
     /// stand); short enough that a tiny airport whose only taxiway is one unbranched path is not
     /// excluded end to end.
-    ///
-    /// <para><see cref="Briefing.BriefingTurns.MaxUnnamedStretchMetres"/> reads this value too — it is the longest
-    /// unnamed stretch the route briefing states a turn across, so a change here moves the briefing's cut-off
-    /// as well.</para>
     /// </summary>
-    internal const double STAND_LEAD_IN_CHAIN_MAX_M = 100.0;
+    private const double STAND_LEAD_IN_CHAIN_MAX_M = 100.0;
 
     /// <summary>
     /// Joins each stranded STAND STUB to the main (largest) taxi network with one fabricated edge

@@ -5,16 +5,14 @@ namespace MSFSBlindAssist.Tests;
 public class AircraftSizeClassTests
 {
     [Fact]
-    public void A388_is_code_F_with_its_wingspan_and_a_heavy_touchdown_speed()
+    public void A388_is_code_F_with_its_wingspan()
     {
         var p = AircraftSizeClass.Resolve("A388", "Airbus A380-800", 500);
 
         Assert.Equal(IcaoCodeLetter.F, p.CodeLetter);
         Assert.Equal(79.75, p.WingspanMetres!.Value, 2);
-        Assert.Equal(140.0, p.TouchdownSpeedKts);
         Assert.False(p.IsFreighter);
         Assert.Equal("Airbus A380-800", p.DisplayName);
-        Assert.Equal(25.0, AircraftSizeClass.MinTaxiwayWidthMetres(p.CodeLetter));
     }
 
     [Fact]
@@ -23,18 +21,15 @@ public class AircraftSizeClassTests
         var p = AircraftSizeClass.Resolve("b738", "Boeing 737-800", 189);
         Assert.Equal(IcaoCodeLetter.C, p.CodeLetter);
         Assert.Equal("B738", p.TypeCode);
-        Assert.Equal(130.0, p.TouchdownSpeedKts);
-        Assert.Equal(15.0, AircraftSizeClass.MinTaxiwayWidthMetres(IcaoCodeLetter.C));
     }
 
     [Fact]
-    public void A_Cessna_152_is_code_A_with_a_GA_touchdown_speed()
+    public void A_Cessna_152_is_code_A()
     {
         // The review's KSEA sweep had a C152 briefed as "size class unknown ... aircraft type not recognised".
         var p = AircraftSizeClass.Resolve("C152", "Cessna 152", 1);
         Assert.Equal(IcaoCodeLetter.A, p.CodeLetter);
         Assert.Equal(10.2, p.WingspanMetres!.Value, 1);
-        Assert.Equal(70.0, p.TouchdownSpeedKts);
     }
 
     [Theory]
@@ -79,8 +74,6 @@ public class AircraftSizeClassTests
         var p = AircraftSizeClass.Resolve("ZZZZ", "", null);
         Assert.Null(p.WingspanMetres);
         Assert.Equal(IcaoCodeLetter.Unknown, p.CodeLetter);
-        Assert.Equal(130.0, p.TouchdownSpeedKts);
-        Assert.Equal(0.0, AircraftSizeClass.MinTaxiwayWidthMetres(IcaoCodeLetter.Unknown));
         Assert.Equal("ZZZZ", p.DisplayName);
     }
 
@@ -105,14 +98,4 @@ public class AircraftSizeClassTests
     [InlineData(88.4, IcaoCodeLetter.F)]
     public void Letter_boundaries_follow_annex_14(double metres, IcaoCodeLetter expected)
         => Assert.Equal(expected, AircraftSizeClass.LetterForWingspan(metres));
-
-    [Theory]
-    [InlineData(IcaoCodeLetter.A, 70.0)]
-    [InlineData(IcaoCodeLetter.B, 115.0)]
-    [InlineData(IcaoCodeLetter.C, 130.0)]
-    [InlineData(IcaoCodeLetter.D, 135.0)]
-    [InlineData(IcaoCodeLetter.E, 140.0)]
-    [InlineData(IcaoCodeLetter.F, 140.0)]
-    public void Touchdown_speed_per_letter(IcaoCodeLetter letter, double kts)
-        => Assert.Equal(kts, AircraftSizeClass.TouchdownSpeedKts(letter));
 }
