@@ -725,8 +725,11 @@ public partial class TaxiGuidanceManager
         // Normal/End exits keep the speed-gate: their hard turn is guided fine by the
         // post-handoff re-route and turnBegun (15°) fires almost immediately on a 90°
         // exit, so there is no equivalent preemption window to lose.
+        // Closed for an exit declared too fast at its turn point (_rolloutTooFastNoExit): slowing down
+        // as told must not re-offer it. The handoffs that follow what the pilot does stay open.
         bool speedNearExitHandoff = atTaxiSpeed && nearExit && !pastExit
-                                    && _rolloutExit.ExitType != "High-speed";
+                                    && _rolloutExit.ExitType != "High-speed"
+                                    && !_rolloutTooFastNoExit;
 
         // Retry floor after a runway-re-crossing decline. Every other exit from this block
         // leaves LandingRollout or stops guidance, so it is one-shot and needs no latch;
@@ -1481,7 +1484,7 @@ public partial class TaxiGuidanceManager
             // that ended in the grass.
             if (Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, _rolloutExit.ExitAngleDegrees))
             {
-                var next = FindTooFastAlternative(distToExitFeet, groundSpeedKts);
+                var next = FindTooFastAlternative(signedAlongPastFt, groundSpeedKts);
                 RolloutDiag($"Too fast for '{_rolloutExit.TaxiwayName}': gs={groundSpeedKts:F1}kt " +
                     $"max={Navigation.RolloutExitGate.MaxTurnSpeedKts(_rolloutExit.ExitAngleDegrees):F0}kt " +
                     $"dist={distToExitFeet:F0}ft -> " +
@@ -1536,9 +1539,11 @@ public partial class TaxiGuidanceManager
             && !pastExit
             && groundSpeedKts <= ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS
             && distToExitFeet <= ROLLOUT_EXIT_TONE_ARM_FT
-            && (_rolloutExit == null || _rolloutExit.ExitType == "High-speed")
+            && _rolloutExit.ExitType == "High-speed"
             // a high-speed exit of 45–50° is only flyable below 30 kt; the turn point decides otherwise
-            && !Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, _rolloutExit!.ExitAngleDegrees))
+            && !Navigation.RolloutExitGate.IsTooFastToTurn(groundSpeedKts, _rolloutExit.ExitAngleDegrees)
+            // declared too fast at its turn point: slowing down as told must not re-offer it
+            && !_rolloutTooFastNoExit)
         {
             _rolloutEarlyHandoffDone = true;
             if (TryEarlyExitHandoff(lat, lon, headingTrue))
@@ -2407,9 +2412,13 @@ public partial class TaxiGuidanceManager
     /// declined AND at least RolloutExitGate.ExitLeadFeet ahead of the aircraft (the undershoot scan's
     /// lead), with the graph rescue scan as the fallback exactly as the overshoot path uses it.
     /// </summary>
-    private Navigation.LandingExit? FindTooFastAlternative(double distToExitFeet, double groundSpeedKts)
+    /// <param name="signedAlongPastFt">The aircraft's along-track position relative to the declined exit
+    /// (positive = past it), as UpdateLandingRollout computed it. The exact projection, never the exit's
+    /// distance minus the straight-line range: beside a laterally offset node that puts the aircraft up to
+    /// about 100 ft further back than it is, and the lead with it.</param>
+    private Navigation.LandingExit? FindTooFastAlternative(double signedAlongPastFt, double groundSpeedKts)
     {
-        double aircraftFromThresholdFt = _rolloutExit!.DistanceFromThresholdFeet - distToExitFeet;
+        double aircraftFromThresholdFt = _rolloutExit!.DistanceFromThresholdFeet + signedAlongPastFt;
         double cutoffFt = Math.Max(
             _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT,
             aircraftFromThresholdFt + Navigation.RolloutExitGate.ExitLeadFeet(groundSpeedKts));
