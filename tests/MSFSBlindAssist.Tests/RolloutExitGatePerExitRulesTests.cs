@@ -1,7 +1,7 @@
 // Per-exit rollout rules added after the KMEM 36L grass excursion (2026-09-26): the exit's own turn
-// window, the too-fast line for "turn now", the retarget "Straighten." condition, and the exit-bearing
-// sanity check. Numbers come from the real KMEM geometry (runway 164 ft wide in navdata; M7's junction
-// 2.3 m off the centerline, its branch turns 22.7° before it is clear of the runway).
+// window, the too-fast line for "turn now", the "Slow down." line, the retarget "Straighten." condition,
+// and the exit-bearing sanity check. Numbers come from the real KMEM geometry (runway 164 ft wide in
+// navdata; M7's junction 2.3 m off the centerline, its branch turns 22.7° before it is clear of the runway).
 
 using MSFSBlindAssist.Navigation;
 
@@ -88,6 +88,29 @@ public class RolloutExitGatePerExitRulesTests
     {
         Assert.False(RolloutExitGate.IsTooFastToTurn(30.0, 90.0));
         Assert.True(RolloutExitGate.IsTooFastToTurn(30.1, 90.0));
+    }
+
+    // ---- The "Slow down." line ----------------------------------------------------------------
+
+    [Theory]
+    [InlineData(30.0, "Normal")]
+    [InlineData(30.0, "High-speed")]
+    [InlineData(90.0, "Normal")]
+    public void Any_exit_but_an_end_exit_hears_slow_down_above_its_max_turn_speed(double angle, string exitType)
+        => Assert.Equal(RolloutExitGate.MaxTurnSpeedKts(angle), RolloutExitGate.SlowDownAboveKts(angle, exitType));
+
+    [Theory]
+    [InlineData(30.0)]
+    [InlineData(54.0)]
+    [InlineData(130.0)]
+    public void An_end_exit_keeps_the_30_knot_line_whatever_its_angle(double angle)
+        => Assert.Equal(RolloutExitGate.TaxiGroundSpeedKts, RolloutExitGate.SlowDownAboveKts(angle, "End"));
+
+    [Fact]
+    public void A_shallow_end_exit_keeps_30_knots_where_its_angle_alone_would_allow_60()
+    {
+        Assert.Equal(60.0, RolloutExitGate.SlowDownAboveKts(30.0, "High-speed"));
+        Assert.Equal(RolloutExitGate.TaxiGroundSpeedKts, RolloutExitGate.SlowDownAboveKts(30.0, "End"));
     }
 
     // ---- Straighten -------------------------------------------------------------------------

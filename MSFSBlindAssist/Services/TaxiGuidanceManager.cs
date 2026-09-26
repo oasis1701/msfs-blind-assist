@@ -942,6 +942,11 @@ public partial class TaxiGuidanceManager : IDisposable
     // The targeted exit's own turn window (RolloutExitGate.TurnWindowFeetFor), recomputed whenever the
     // targeted exit changes. Feeds IsExitTurnBegun and SelectToneMode in place of the fixed 1,000 ft.
     private double _rolloutExitTurnWindowFeet = Navigation.RolloutExitGate.TurnWindowFeet;
+    // Tone mode and targeted exit of the last per-frame "tone mode=" line in landing_exit.log (null = none
+    // yet). A stopped aircraft gets a line only when one of them changes, so a pilot held on the runway
+    // cannot flood the log. Reset in ResetRolloutApproachLatches.
+    private Navigation.RolloutToneMode? _rolloutToneLogMode;
+    private Navigation.LandingExit? _rolloutToneLogExit;
     // Latches true after the one-shot TryEarlyExitHandoff attempt so we don't
     // retry on every subsequent frame. The attempt happens once: at the first
     // frame where GS ≤ ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS and dist ≤ ROLLOUT_EXIT_TONE_ARM_FT.

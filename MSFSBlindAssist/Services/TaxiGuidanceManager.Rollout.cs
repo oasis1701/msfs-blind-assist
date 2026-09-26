@@ -22,6 +22,8 @@ public partial class TaxiGuidanceManager
         _rolloutApproach500Announced = false;
         _rolloutTurnNowAnnounced = false;
         _rolloutToneMode = Navigation.RolloutToneMode.Silent;
+        _rolloutToneLogMode = null;
+        _rolloutToneLogExit = null;
     }
 
     /// <summary>
@@ -106,7 +108,7 @@ public partial class TaxiGuidanceManager
                 xm[0].TriggerMetres / DistanceFormatter.MetresPerFoot,
                 xm[1].TriggerMetres / DistanceFormatter.MetresPerFoot,
                 xm[2].TriggerMetres / DistanceFormatter.MetresPerFoot,
-                ROLLOUT_TURN_NOW_FT, Navigation.RolloutExitGate.MaxTurnSpeedKts(exit.ExitAngleDegrees));
+                ROLLOUT_TURN_NOW_FT, Navigation.RolloutExitGate.SlowDownAboveKts(exit.ExitAngleDegrees, exit.ExitType));
 
             if (retired.Retire1500) _rolloutApproach1500Announced = true;
             if (retired.Retire900) _rolloutApproach900Announced = true;
@@ -430,8 +432,8 @@ public partial class TaxiGuidanceManager
     ///   "slow down" suffix is dropped if GS is already below
     ///   ROLLOUT_TAXI_GS_KTS, mirroring how the hold-short countdown is
     ///   speed-aware. Since 2026-09 the line is the exit's own
-    ///   RolloutExitGate.MaxTurnSpeedKts: 30 kt for a sharp exit, 60 kt for a
-    ///   rapid one.)
+    ///   RolloutExitGate.SlowDownAboveKts: 30 kt for a sharp or end-of-runway
+    ///   exit, 60 kt for a rapid one.)
     /// • <b>~150 ft from exit</b> — "Turn {left/right} now, taxiway {name}."
     ///   Direction is computed from aircraft heading vs bearing-to-exit so
     ///   it matches what the pilot needs to do regardless of which side of
@@ -1067,7 +1069,8 @@ public partial class TaxiGuidanceManager
                                 && distToExitFeet <= ROLLOUT_TURN_NOW_FT;
 
                             bool slowDown = retire500
-                                && groundSpeedKts > Navigation.RolloutExitGate.MaxTurnSpeedKts(declineExit.ExitAngleDegrees);
+                                && groundSpeedKts > Navigation.RolloutExitGate.SlowDownAboveKts(
+                                       declineExit.ExitAngleDegrees, declineExit.ExitType);
 
                             if (retire1500) _rolloutApproach1500Announced = true;
                             if (retire900) _rolloutApproach900Announced = true;
@@ -1379,10 +1382,11 @@ public partial class TaxiGuidanceManager
                 // angle, is steep by RolloutExitGate.ExitTurnOffSpeedKts and hears it above
                 // 30 kt like any sharp exit).
                 //
-                // Faster than this exit can be taken (RolloutExitGate.MaxTurnSpeedKts): 30 kt for a sharp
-                // exit — today's line for every non-high-speed exit — and 60 kt for a high-speed one, which
-                // used to get no warning at any speed.
-                string slowSuffix = groundSpeedKts > Navigation.RolloutExitGate.MaxTurnSpeedKts(_rolloutExit.ExitAngleDegrees)
+                // Faster than this exit can be taken (RolloutExitGate.SlowDownAboveKts): sharp exits and
+                // end-of-runway exits hear it above 30 kt, today's line for every non-high-speed exit, and
+                // a shallow exit above 60 kt; a high-speed exit used to get no warning at any speed.
+                string slowSuffix = groundSpeedKts > Navigation.RolloutExitGate.SlowDownAboveKts(
+                        _rolloutExit.ExitAngleDegrees, _rolloutExit.ExitType)
                     ? " Slow down." : "";
                 AnnounceInstruction($"{CapFirst(name2)}, {xm[2].Label}.{slowSuffix}");
                 _rolloutApproach500Announced = true;
@@ -1565,13 +1569,25 @@ public partial class TaxiGuidanceManager
 
         // Rollout tone diagnostics: every frame the tone can be live, so a report of an erratic tone is
         // read from landing_exit.log instead of being reconstructed from the code (KMEM 36L 2026-09-26).
-        if (groundSpeedKts <= ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS)
+        // Every frame only while the aircraft is MOVING with the tone live (above
+        // RolloutExitGate.NoExitStoppedGroundSpeedKts, at or below the 50 kt tone line); otherwise only on a
+        // frame whose tone mode or targeted exit differs from the last line written, whatever the speed. A
+        // pilot held on the runway stays in LandingRollout indefinitely, and a line per frame would cycle
+        // landing_exit.log's 5 MB x 3 rotation within the hour, so a stopped aircraft logs nothing until
+        // something changes.
+        bool toneLogMoving = groundSpeedKts > Navigation.RolloutExitGate.NoExitStoppedGroundSpeedKts
+                             && groundSpeedKts <= ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS;
+        bool toneLogChanged = toneMode != _rolloutToneLogMode
+                              || !ReferenceEquals(_rolloutExit, _rolloutToneLogExit);
+        if (toneLogMoving || toneLogChanged)
         {
             double lateralSignedM = SignedLateralFromRunwayMeters(
                 lat, lon, _rolloutRunway!.StartLat, _rolloutRunway.StartLon, _rolloutRunwayHeadingTrue);
             RolloutDiag($"tone mode={toneMode} exit='{_rolloutExit!.TaxiwayName}' dist={distToExitFeet:F0}ft " +
                 $"window={_rolloutExitTurnWindowFeet:F0}ft hdgDelta={hdgDelta:+0.0;-0.0}deg " +
                 $"lateral={lateralSignedM:+0.0;-0.0}m gs={groundSpeedKts:F1}kt turnBegun={turnBegun} {toneDiag}");
+            _rolloutToneLogMode = toneMode;
+            _rolloutToneLogExit = _rolloutExit;
         }
     }
 

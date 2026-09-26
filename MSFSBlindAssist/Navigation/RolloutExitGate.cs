@@ -585,6 +585,19 @@ public static class RolloutExitGate
         => groundSpeedKts > MaxTurnSpeedKts(exitAngleDeg);
 
     /// <summary>
+    /// The ground speed above which a landing-exit callout appends "Slow down.": the exit's own
+    /// <see cref="MaxTurnSpeedKts"/> (faster than the exit can be taken), except that an "End" exit never goes
+    /// above <see cref="TaxiGroundSpeedKts"/>. An End exit is in the last 15% of the runway (or a turnaround),
+    /// so missing it leaves little runway to stop on: its "Slow down." keeps the pre-2026-09 30 kt line even
+    /// when its angle would allow 60 kt. One owner for the rollout's 500 ft callout and the two sentences that
+    /// fold its "Slow down." (the crossing decline and the touchdown correction).
+    /// </summary>
+    public static double SlowDownAboveKts(double exitAngleDeg, string? exitType)
+        => exitType == "End"
+            ? Math.Min(MaxTurnSpeedKts(exitAngleDeg), TaxiGroundSpeedKts)
+            : MaxTurnSpeedKts(exitAngleDeg);
+
+    /// <summary>
     /// Should a retarget sentence tell the pilot to "Straighten."? Yes when the aircraft carries at least
     /// <see cref="StraightenMinDeviationDeg"/> of heading off the runway that the NEW exit would not accept
     /// as its own turn — toward its side AND inside its window (<see cref="TurnWindowFeetFor"/>), or past it.

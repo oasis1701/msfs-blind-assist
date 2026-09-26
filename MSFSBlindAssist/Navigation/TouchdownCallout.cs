@@ -69,8 +69,8 @@ public static class TouchdownCallout
     /// <summary>The 1,500 / 900 / 500 ft milestones retire on <see cref="RolloutCalloutSupersession.Supersedes"/>
     /// (900 exists only for high-speed exits). Turn-now uses the strict inside test: "now" is
     /// time-critical and must never be spoken a lead window early. "Slow down." folds exactly when the
-    /// rollout's own 500 ft callout would say it — faster than the exit can be taken
-    /// (<see cref="RolloutExitGate.MaxTurnSpeedKts"/>), which the caller passes.</summary>
+    /// rollout's own 500 ft callout would say it — above the exit's slow-down line
+    /// (<see cref="RolloutExitGate.SlowDownAboveKts"/>), which the caller passes.</summary>
     public static ExitCalloutRetirement RetireExitCallouts(
         double distanceToExitFeet, double groundSpeedKts, string? exitType, double leadSeconds,
         double trigger1500Feet, double trigger900Feet, double trigger500Feet,
