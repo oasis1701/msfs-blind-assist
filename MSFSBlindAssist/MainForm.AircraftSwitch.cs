@@ -413,6 +413,9 @@ public partial class MainForm
             // bypass the debounce.
             _liftoffHandoffTimer?.Stop();
             _liftoffHandoffConfirmToken++;
+            // The same for a pending go-around check (LandingExitGoAround).
+            _goAroundTimer?.Stop();
+            _goAroundConfirmToken++;
 
             // The flare assist's SIM_FRAME request died with the connection: silence
             // any tone still sounding on its last frame, and clear the latched
@@ -802,6 +805,9 @@ public partial class MainForm
         // already-in-flight confirm callback.
         _liftoffHandoffTimer?.Stop();
         _liftoffHandoffConfirmToken++;
+        // The same for a pending go-around check (LandingExitGoAround).
+        _goAroundTimer?.Stop();
+        _goAroundConfirmToken++;
 
         // Update the aircraft instance
         currentAircraft = newAircraft;

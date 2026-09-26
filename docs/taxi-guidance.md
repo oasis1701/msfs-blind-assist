@@ -494,6 +494,7 @@ The Taxiing-phase steering tone feeds the pilot a **rate-lead projected error**,
 | Exit turn point (landing rollout) | 150 ft | `Turn right now, taxiway M7.` — or, faster than the exit can be taken, a retarget (`Too fast for taxiway M6. Continue to taxiway M8, 1250 feet.`) or, with no exit ahead, `Taxiway M6, too fast to turn. Slow down.` (see "Too fast to turn") |
 | Exit retarget (landing rollout) | overshoot / undershoot / too fast | ONE utterance: `Missed taxiway M6. Straighten. Retargeting taxiway M7, 650 feet ahead.` / `Taking earlier exit, taxiway A5, 900 feet ahead.` (see "Retargets are one utterance") |
 | Off pavement (landing roll and exit) | 1 s off mapped pavement at ≥ 5 kt, then every 6 s | `Off pavement.` — no direction word; not stored for Ctrl+Y (see "Off-pavement alert") |
+| Go-around or touch-and-go (landing roll and exit) | 5 s airborne after lifting off | `Exit guidance off, plan kept.` — guidance ends and the plan is armed for the next touchdown (see "Go-around or touch-and-go") |
 | Runway-end countdown (missed last exit, or no usable exit at touchdown) | 1500 / 500 / 100 ft **or** 500 / 150 / 30 m (per Distance units setting) | `Runway end in 500 metres.` / `Runway end in 150 metres. Slow down.` / `Runway end in 30 metres. Stop.` Unit-native spacing via `DistanceMilestones.RunwayEnd`. |
 | Ground traffic alert | live distance, unit-aware | `Slow down, traffic ahead, 150 metres.` (metres default) or `Slow down, traffic ahead, 500 feet.` (feet mode). Via `GroundTrafficMonitor`'s private `FormatDistance`, keyed on the independent `GroundTrafficUseMetres` toggle (see gsx.md: never fold it into `GroundDistanceUnit`). |
 | On-demand status | Output > `Y` | `Taxiway Bravo. In 400 metres turn right onto Kilo. 0.8 miles to destination.` (distances in active unit; NM used for totals over ~1 NM regardless of unit setting). |
@@ -3208,6 +3209,36 @@ right of the centreline, and nothing said so. Now *"Off pavement."* is spoken.
   and the next alert comes 6 s later. Guidance can conclude (Arrived) with the aircraft still in the
   grass — an early vacate that matches no exit, or a refused handoff route — and nothing more is
   said. A backtrack that puts a wheel in the grass is not covered.
+
+### Go-around or touch-and-go
+
+Nothing ended landing-exit guidance at liftoff. After a touch-and-go, or a go-around after
+touchdown, the rollout kept measuring the runway the aircraft was climbing away from, and its exit
+callouts could speak into the climb-out ("Missed taxiway …", the runway-end countdown). The exit
+plan stayed used up, so the next approach flew with no exit guidance.
+
+- **Held while airborne** (`LandingExitGoAround.HoldsRollout`): a KNOWN airborne sample
+  (`OnGroundProvider`, the last SIM_ON_GROUND) holds the rollout. It measures nothing and says
+  nothing. A bounce resumes on the next ground frame. An unknown air/ground state counts as the
+  ground: missing data must never silence the rollout. `landing_exit.log` records each hold and
+  resume.
+- **Ended when the aircraft stays up** (`LandingExitGoAround`). MainForm arms a one-shot check on the
+  liftoff edge while landing-exit guidance runs (`Arms`: `LandingRollout`, the runway-end countdown
+  included, or `Taxiing` on the landing-exit route), and the touchdown edge stops it as a bounce.
+  After `ConfirmMs` (5 s, a judgement value: a bounce is over in a second or two) it re-checks
+  against a FRESH position read, as the liftoff handoff does: SIM_ON_GROUND arrives once a second,
+  so a settle-back in the last second is invisible to the cache. Still airborne and still in
+  landing-exit guidance (`Ends`), guidance stops as `StopGuidance` stops it. The tone goes off,
+  and the Inactive state change stops the position stream.
+- **The plan is kept** (`LandingExitPlanner.RearmAfterGoAround`): armed again, so the next touchdown
+  starts guidance as the first did. The "runway not identified" latch stays, because that message is
+  once per plan and the plan is the same. Only the planner starts a landing rollout, so there is
+  always a plan to keep.
+- **One sentence**, interrupting: *"Exit guidance off, plan kept."* (2.28 s at System.Speech Rate
+  0), or *"Exit guidance off."* (1.20 s) with no plan. Anything the rollout was still saying is
+  obsolete by then.
+- A long bounce read as a go-around corrects itself: the plan is armed again, so the touchdown that
+  follows starts guidance again.
 
 ### Rollout diagnostics (landing_exit.log)
 

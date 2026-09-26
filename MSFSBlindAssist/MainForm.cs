@@ -352,6 +352,14 @@ public partial class MainForm : Form
     // so a stale callback aborts on entry.
     private int _liftoffHandoffConfirmToken;
 
+    // Go-around during landing-exit guidance (Services.LandingExitGoAround): ARMED on the liftoff edge while that
+    // guidance runs, stopped by the touchdown edge (a bounce), and confirmed against a fresh position read when it
+    // ticks - the liftoff handoff's pattern above. The token voids a confirm whose response lands after a
+    // touchdown, a disconnect or an aircraft switch: a lost response leaks its one-shot handler, which would
+    // otherwise fire on the next position response from any requester.
+    private System.Windows.Forms.Timer? _goAroundTimer;
+    private int _goAroundConfirmToken;
+
     // One-shot debounce that COALESCES status-list repaints. Many display vars can push within a
     // few ms of each other (the auto-refresh tick force-reads the whole panel at once), and each
     // push would otherwise rebuild + reconcile the entire list — O(N) work N times per cycle.
@@ -646,6 +654,11 @@ public partial class MainForm : Form
         // liftoff edge, stopped on touchdown; ticks once after the confirm window).
         _liftoffHandoffTimer = new System.Windows.Forms.Timer { Interval = LIFTOFF_HANDOFF_CONFIRM_MS };
         _liftoffHandoffTimer.Tick += (s, e) => PerformLiftoffHandoffIfValid();
+
+        // One-shot check for a go-around during landing-exit guidance (started on the liftoff edge, stopped on
+        // touchdown; ticks once after LandingExitGoAround.ConfirmMs).
+        _goAroundTimer = new System.Windows.Forms.Timer { Interval = LandingExitGoAround.ConfirmMs };
+        _goAroundTimer.Tick += (s, e) => EndLandingExitGuidanceIfGoAround();
 
         // Access GSX integration — separate SimConnect client (WM_USER 0x0403),
         // routed alongside the main client in WndProc. Started on connect and
@@ -1154,6 +1167,9 @@ public partial class MainForm : Form
 
         _liftoffHandoffTimer?.Stop();
         _liftoffHandoffTimer?.Dispose();
+
+        _goAroundTimer?.Stop();
+        _goAroundTimer?.Dispose();
 
         _displayRepaintDebounce?.Stop();
         _displayRepaintDebounce?.Dispose();

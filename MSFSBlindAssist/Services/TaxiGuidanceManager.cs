@@ -183,6 +183,9 @@ public partial class TaxiGuidanceManager : IDisposable
     /// </summary>
     public Func<bool?>? OnGroundProvider { get; set; }
 
+    // The rollout is held for an airborne sample (LandingExitGoAround.HoldsRollout); logged on each change only.
+    private bool _rolloutAirborneHold;
+
     /// <summary>
     /// The parking list for <paramref name="icao"/> from <see cref="ParkingSpotSupplier"/>, or
     /// <paramref name="dataProvider"/>'s own when none is wired.
@@ -1324,6 +1327,39 @@ public partial class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
+    /// True while landing-exit guidance runs: the rollout, runway-end countdown included, or taxi steering on
+    /// the landing-exit route (<see cref="LandingExitGoAround.Arms"/>). MainForm arms the go-around check on a
+    /// liftoff in this state.
+    /// </summary>
+    public bool IsLandingExitGuidance
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return LandingExitGoAround.Arms(_state, _isLandingExitRoute);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ends landing-exit guidance after a go-around or touch-and-go: when the fresh sample says the aircraft is
+    /// still airborne and landing-exit guidance still runs (<see cref="LandingExitGoAround.Ends"/>), stops it
+    /// as <see cref="StopGuidance"/> does - silently, the tone off, and the position stream with it through the
+    /// Inactive state change. True when it ended something.
+    /// </summary>
+    public bool EndLandingExitGuidanceIfGoAround(bool freshSampleOnGround)
+    {
+        lock (_stateLock)
+        {
+            if (!LandingExitGoAround.Ends(freshSampleOnGround, _state, _isLandingExitRoute)) return false;
+            RolloutDiag($"GO-AROUND: still airborne {LandingExitGoAround.ConfirmMs} ms after liftoff in {_state}; landing-exit guidance ended");
+            StopGuidance();   // re-enters _stateLock on this thread
+            return true;
+        }
+    }
+
+    /// <summary>
     /// True while a landing-exit rollout is steering at an exit: <c>LandingRollout</c> outside the
     /// runway-end countdown. Read by the manual-landing assist to decide whether an exit-steering
     /// tone will take over from its rollout tone. The countdown pauses the taxi tone, so it must
@@ -2099,6 +2135,18 @@ public partial class TaxiGuidanceManager : IDisposable
         // to Taxiing when the aircraft has decelerated or begun the turn.
         if (_state == TaxiGuidanceState.LandingRollout)
         {
+            // Airborne - a bounce, or the first seconds of a touch-and-go or go-around - holds the rollout
+            // (LandingExitGoAround.HoldsRollout); MainForm ends it if the aircraft stays up.
+            bool held = LandingExitGoAround.HoldsRollout(OnGroundProvider?.Invoke());
+            if (held != _rolloutAirborneHold)
+            {
+                _rolloutAirborneHold = held;
+                // Two calls, never one conditional: a conditional between interpolated strings is typed string
+                // and misses RolloutDiag's invariant-culture handler (InvariantLogLine).
+                if (held) RolloutDiag($"Rollout held, airborne: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt");
+                else RolloutDiag($"Rollout resumed, on the ground: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt");
+            }
+            if (held) return;
             CheckOffPavement(lat, lon, groundSpeedKts);
             UpdateLandingRollout(lat, lon, headingTrue, groundSpeedKts);
             return;
@@ -3786,6 +3834,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // without depending on its own field assignments to overwrite.
         _rolloutExit = null;
         _isLandingExitRoute = false;
+        _rolloutAirborneHold = false;
         ResetLandingExitOutcomeFlags();   // fresh session: no failed handoff to remember
         _rolloutRunway = null;
         _rolloutAllExits = new List<Navigation.LandingExit>();
