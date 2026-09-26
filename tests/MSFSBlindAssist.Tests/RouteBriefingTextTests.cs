@@ -88,7 +88,7 @@ public class RouteBriefingTextTests
         => Assert.Equal("Real-world practice\nAnswer.",
             RouteBriefingText.RemoveEchoedTaxiQuestion(
                 "Real-world practice\n" +
-                "Provide the step-by-step taxi route at [ICAO Code] from [Runway] to [Terminal/Gate] in a [Aircraft Type]. " +
+                "Provide the step-by-step taxi route at [ICAO] from [runway] to [terminal/gate] in a [aircraft type]. " +
                 "Please include the expected taxiways, hold short points, and any specific restrictions.\n" +
                 "Answer."));
 

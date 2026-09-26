@@ -59,14 +59,4 @@ public class BriefingRunwayChoiceTests
         Assert.Equal("", r.Runway);
         Assert.Null(r.Note);
     }
-
-    [Fact]
-    public void A_compass_point_runway_is_matched_as_a_runway()
-    {
-        // 204 fs2024 runway ends are compass points (N/S/E/W/NE/…); the match must read them, not only numbers.
-        Assert.Equal(BriefingRunwayChoice.AgreesNote, BriefingRunwayChoice.Choose("N", "N", siIsThisFlight: true).Note);
-        var r = BriefingRunwayChoice.Choose("N", "S", siIsThisFlight: true);
-        Assert.Equal("S", r.Runway);
-        Assert.Equal("runway S is the runway SayIntentions assigned; the flight plan names N", r.Note);
-    }
 }

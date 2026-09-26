@@ -1,3 +1,4 @@
+// tests/MSFSBlindAssist.Tests/RouteDescriptionPromptTests.cs
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
@@ -10,39 +11,19 @@ public class RouteDescriptionPromptTests
         string prompt = GeminiService.GetRouteDescriptionPrompt("FLIGHT DATA HERE");
 
         Assert.Contains("7. TAXI OUT AND TAXI IN", prompt);
-        Assert.Contains("Provide the step-by-step taxi route at [ICAO Code] from [Runway] to [Terminal/Gate] in a [Aircraft Type]. " +
+        Assert.Contains("Provide the step-by-step taxi route at [ICAO] from [runway] to [terminal/gate] in a [aircraft type]. " +
                         "Please include the expected taxiways, hold short points, and any specific restrictions.", prompt);
+        Assert.Contains("Real-world practice", prompt);
         Assert.Contains("Aim for 600 to 900 words", prompt);
         Assert.DoesNotContain("Aim for 300 to 500 words", prompt);
         Assert.EndsWith("FLIGHT DATA HERE", prompt);
     }
 
     [Fact]
-    public void The_taxi_section_asks_for_the_typical_real_world_flow_only()
-    {
-        // Owner, 2026-09-26: the scenery-computed route is gone; the taxi section is the real-world flow alone.
-        string prompt = GeminiService.GetRouteDescriptionPrompt("x");
-        Assert.Contains("from that leg's lines of the TAXI PLANNING block", prompt);
-        Assert.Contains("typical real-world taxi flow", prompt);
-        Assert.DoesNotContain("TAXI ROUTES", prompt);
-        Assert.DoesNotContain("computed route", prompt, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("Use ONLY the taxiway, exit and stand names given in the block", prompt);
-        Assert.DoesNotContain("Real-world practice", prompt);
-    }
-
-    [Fact]
-    public void The_arrival_leg_asks_for_the_usual_exit_and_side()
+    public void Prompt_forbids_inventing_taxiways_for_the_computed_route()
     {
         string prompt = GeminiService.GetRouteDescriptionPrompt("x");
-        Assert.Contains("which side the aircraft usually leaves the runway and the exit taxiway usually used", prompt);
-    }
-
-    [Fact]
-    public void A_missing_stand_or_gate_is_presented_as_typical_not_assigned()
-    {
-        string prompt = GeminiService.GetRouteDescriptionPrompt("x");
-        Assert.Contains("When the block gives no stand or gate", prompt);
-        Assert.Contains("say that it is typical, not assigned", prompt);
+        Assert.Contains("Use ONLY the taxiway, exit and stand names given in the block", prompt);
     }
 
     [Fact]
@@ -61,11 +42,22 @@ public class RouteDescriptionPromptTests
     }
 
     [Fact]
+    public void Prompt_asks_for_the_block_s_turn_directions_exactly()
+    {
+        string prompt = GeminiService.GetRouteDescriptionPrompt("x");
+        Assert.Contains("with the turn at each change of taxiway and into the stand wherever the block gives one", prompt);
+        Assert.Contains("repeat distances, sides and turn directions exactly as given", prompt);
+        // The long-unnamed-stretch rule leaves some taxiways with no turn word; this line stops the AI inventing one.
+        Assert.Contains("for a taxiway, give none", prompt);
+    }
+
+    [Fact]
     public void Prompt_asks_for_every_taxi_distance_in_the_block_s_unit()
     {
-        // Live KMEM→KATL: "2.2 kilometers" and "6,025 feet" in one taxi section. The block states one unit.
+        // Live KMEM→KATL: "2.2 kilometers" and "6,025 feet" in one taxi section. The block now states one unit.
         string prompt = GeminiService.GetRouteDescriptionPrompt("x");
-        Assert.Contains("Give every distance in this section in the unit the block's \"Distance unit\" line names", prompt);
+        Assert.Contains("Give every distance in this section, the real-world part included, in the unit the block's " +
+                        "\"Distance unit\" line names", prompt);
     }
 
     [Fact]
@@ -74,5 +66,13 @@ public class RouteDescriptionPromptTests
         string prompt = GeminiService.GetRouteDescriptionPrompt("x");
         Assert.Contains("SayIntentions assigned a different runway from the flight plan", prompt);
         Assert.Contains("DEPARTURE AND SID or ARRIVAL AND STAR section", prompt);
+    }
+
+    [Fact]
+    public void The_real_world_route_uses_the_block_s_runway()
+    {
+        // A real-world route to SimBrief's 18R beside a computed route to SayIntentions' 36L is the confusion the runway
+        // choice removes.
+        Assert.Contains("from that leg's lines of the TAXI ROUTES block", GeminiService.GetRouteDescriptionPrompt("x"));
     }
 }

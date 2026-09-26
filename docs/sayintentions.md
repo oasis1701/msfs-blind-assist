@@ -520,15 +520,15 @@ made at an origin before any gate reached the file. `flight_plan_departing_runwa
 and `flight_plan_arriving_runway` 8L; `departure_wx.active_runways_departing` read "36L,36R,27". So at the origin the
 file does carry both assigned runways and does not carry the arrival gate: anything that wants the gate before the
 arrival must fall back to `getParking`, as `GetAssignedStatusAsync` does. The route briefing does since 2026-09-26
-(docs/gemini.md, "Taxi section of the route briefing"). What `getParking` returned is now logged at Debug
+(docs/gemini.md, "Taxi routes in the route briefing"). What `getParking` returned is now logged at Debug
 (`getParking: name='…' lat=… lon=… heading=…`); before, only the request was, and nothing could say which stand it had
 named. SAPI's documentation does not say whether `getParking` is the arrival gate or the current parking, so the
 briefing refuses a parking-service gate whose position is not at the arrival airport. The first logged answer settled
 the no-position case (2026-09-26 14:03, KMEM→KATL): `getParking: name='B3' lat=- lon=-`, and nine seconds later the
 flight file itself read `gate=Gate B3`, with the aircraft parked at KMEM Gate 17 — the service named the ARRIVAL gate.
-So the briefing uses a parking-service gate with no position by name (owner, 2026-09-26, reversing that morning's
-refusal of every position-less parking-service gate). Since the briefing stopped computing a scenery route the same
-day, the name is handed to the AI as SayIntentions' gate and no longer looked up in the scenery.
+So a parking-service gate with no position is looked up by NAME in the arrival airport's scenery, as a flight-file gate
+is, and the leg says it was matched by name; only when no stand there carries the name does a representative stand
+stand in (owner, 2026-09-26, reversing that morning's refusal of every position-less parking-service gate).
 
 ### Second capture: KBOS, on the ground, no flight plan
 

@@ -12,7 +12,7 @@ public enum IcaoCodeLetter { Unknown, A, B, C, D, E, F }
 /// </summary>
 public sealed record AircraftProfile(
     string TypeCode, string DisplayName, double? WingspanMetres,
-    IcaoCodeLetter CodeLetter, bool IsFreighter);
+    IcaoCodeLetter CodeLetter, bool IsFreighter, double TouchdownSpeedKts);
 
 public static class AircraftSizeClass
 {
@@ -62,7 +62,8 @@ public static class AircraftSizeClass
                        : code.Length > 0 ? code : "unknown aircraft";
         double? span = TryGetWingspanMetres(code, out double metres) ? metres : null;
         var letter = span is double m ? LetterForWingspan(m) : IcaoCodeLetter.Unknown;
-        return new AircraftProfile(code, display, span, letter, LooksLikeFreighter(code, name, maxPassengers));
+        return new AircraftProfile(code, display, span, letter,
+            LooksLikeFreighter(code, name, maxPassengers), TouchdownSpeedKts(letter));
     }
 
     public static bool TryGetWingspanMetres(string? typeCode, out double metres)
@@ -80,6 +81,30 @@ public static class AircraftSizeClass
         < 52.0 => IcaoCodeLetter.D,
         < 65.0 => IcaoCodeLetter.E,
         _ => IcaoCodeLetter.F,
+    };
+
+    /// <summary>Typical touchdown ground speed used to judge which landing exit is comfortably reachable.</summary>
+    public static double TouchdownSpeedKts(IcaoCodeLetter letter) => letter switch
+    {
+        IcaoCodeLetter.A => 70.0,
+        IcaoCodeLetter.B => 115.0,
+        IcaoCodeLetter.C => 130.0,
+        IcaoCodeLetter.D => 135.0,
+        IcaoCodeLetter.E => 140.0,
+        IcaoCodeLetter.F => 140.0,
+        _ => 130.0,
+    };
+
+    /// <summary>Annex 14 minimum straight taxiway width per code letter; 0 = no advisory for an unknown type.</summary>
+    public static double MinTaxiwayWidthMetres(IcaoCodeLetter letter) => letter switch
+    {
+        IcaoCodeLetter.A => 7.5,
+        IcaoCodeLetter.B => 10.5,
+        IcaoCodeLetter.C => 15.0,
+        IcaoCodeLetter.D => 18.0,
+        IcaoCodeLetter.E => 23.0,
+        IcaoCodeLetter.F => 25.0,
+        _ => 0.0,
     };
 
     public static bool LooksLikeFreighter(string? typeCode, string? name, int? maxPassengers)

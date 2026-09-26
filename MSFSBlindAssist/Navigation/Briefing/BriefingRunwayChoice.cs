@@ -1,6 +1,4 @@
 // MSFSBlindAssist/Navigation/Briefing/BriefingRunwayChoice.cs
-using MSFSBlindAssist.Services.SayIntentions;
-
 namespace MSFSBlindAssist.Navigation.Briefing;
 
 /// <summary>The runway one briefing leg is planned to, and the note saying where it came from (null: the flight plan's
@@ -26,16 +24,8 @@ public static class BriefingRunwayChoice
         if (!siIsThisFlight || si.Length == 0) return new BriefingRunway(plan, null);
         if (plan.Length == 0)
             return new BriefingRunway(si, $"runway {si} is the runway SayIntentions assigned; the flight plan names no runway");
-        return RunwayIdsMatch(plan, si)
+        return TaxiBriefingPlanner.RunwayIdsMatch(plan, si)
             ? new BriefingRunway(plan, AgreesNote)
             : new BriefingRunway(si, $"runway {si} is the runway SayIntentions assigned; the flight plan names {plan}");
     }
-
-    /// <summary>The same runway END: "9" and "09" are one runway. CleanRunway pads the number; NormalizeDesignator is the
-    /// fallback for a compass-point designator ("N", "NE") it cannot parse.</summary>
-    private static bool RunwayIdsMatch(string a, string b) =>
-        string.Equals(Canon(a), Canon(b), StringComparison.OrdinalIgnoreCase);
-
-    private static string Canon(string d) =>
-        SayIntentionsClearanceParser.CleanRunway(d) ?? RouteRunwayCrossings.NormalizeDesignator(d);
 }
