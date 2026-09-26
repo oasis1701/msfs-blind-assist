@@ -816,6 +816,8 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Never reinstate a silent multi-model fallback for Gemini calls — the model used must be exactly `UserSettings.GeminiModel`; a silent fallback hides which model produced a response (explicitly rejected by the user). → [gemini.md](docs/gemini.md)
 - Do NOT send `thinkingConfig`/`thinkingBudget` to Gemini — `thinkingBudget` is deprecated/invalid on Gemini 3.x models (`thinking_level` is used instead) and can error if both are set. → [gemini.md](docs/gemini.md)
 - The Gemini HTTP timeout catch must NOT gate on `ex.CancellationToken.IsCancellationRequested` (false on a modern .NET HttpClient timeout) — catch `TaskCanceledException` as the timeout instead. → [gemini.md](docs/gemini.md)
+- The route briefing's OpenStreetMap graph (`Navigation/Briefing/OsmPlanningGraph`) is PLANNING-ONLY: built inside `TaxiBriefingPlanner`, labelled "planning only — taxi guidance cannot use this", never stored on a field a form or `TaxiGuidanceManager` can reach. It exists only because a briefing does not steer; the augmentation rule "never steer on online geometry" is unchanged. → [gemini.md](docs/gemini.md)
+- The briefing's taxi section always shows BOTH the scenery-computed route (names only from the block) and the AI's own real-world route (the owner's step-by-step template under "Real-world practice"), and never merges them — where they differ the AI says so and which is which. Aircraft classification for it is SimBrief-only (never the loaded aircraft or `WING SPAN`), and navdata taxiway widths are advisory notes, never a routing constraint (30 m scenery default on ~78 % of rows). → [gemini.md](docs/gemini.md)
 
 ## Quick Reference
 
