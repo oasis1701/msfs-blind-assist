@@ -34,6 +34,9 @@
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayPavement.cs"        Link="Linked\RunwayPavement.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayRouteClassifier.cs" Link="Linked\RunwayRouteClassifier.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RolloutExitGate.cs"       Link="Linked\RolloutExitGate.cs" />
+    <!-- RolloutExitGate's comfortable too-fast pick is the touchdown re-plan's own rule (LandingExitReplan,
+         pure: LandingExit + RolloutExitGate only). -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\LandingExitReplan.cs"     Link="Linked\LandingExitReplan.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\NamedHoldingPointResolver.cs" Link="Linked\NamedHoldingPointResolver.cs" />
     <!-- TaxiGraph logs through Utils/Logging/Log (missing here since before the landing-exit work, so
          this harness could not build), and TaxiGraph.cs is now partial: its landing-exit producers call

@@ -30,6 +30,9 @@
     <Compile Include="..\..\MSFSBlindAssist\Utils\AppLogs.cs"                     Link="Linked\AppLogs.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayRouteClassifier.cs" Link="Linked\RunwayRouteClassifier.cs" />
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RolloutExitGate.cs"       Link="Linked\RolloutExitGate.cs" />
+    <!-- RolloutExitGate's comfortable too-fast pick is the touchdown re-plan's own rule (LandingExitReplan,
+         pure: LandingExit + RolloutExitGate only). -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\LandingExitReplan.cs"     Link="Linked\LandingExitReplan.cs" />
     <!-- TaxiGraph.ResolveHoldingPointEntries calls NamedHoldingPointResolver.SnapOrInsert (added
          2026-08-16, unrelated to the runway classifier work) — pre-existing gap in this probe's
          link set that a build now surfaces. Self-contained (TaxiGraph + Database.Models only, both
