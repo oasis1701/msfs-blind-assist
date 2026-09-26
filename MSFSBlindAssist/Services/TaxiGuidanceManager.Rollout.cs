@@ -2544,7 +2544,10 @@ public partial class TaxiGuidanceManager
     /// <summary>
     /// The exit a too-fast pilot is told to continue to: the first suitable exit downfield of the one just
     /// declined that the aircraft can slow down for with COMFORTABLE braking, judged for that exit's own
-    /// angle (RolloutExitGate.FirstComfortableDownfieldExit — the touchdown re-plan's comfortable pass).
+    /// angle, preferring one mapped clear of the runway (RolloutExitGate.FirstComfortableDownfieldExit — the
+    /// touchdown re-plan's comfortable pass). The list is screened for that first
+    /// (Navigation.LandingExitVacateScreen): a landing on the planned runway starts from a fresh
+    /// GetLandingExits list whose every exit carries VacatesRunway's optimistic default.
     /// Only when none is, today's rule: the first one at least RolloutExitGate.ExitLeadFeet ahead of the
     /// aircraft (the undershoot scan's lead, tuned below 50 kt, which above about 60 kt could pick an exit
     /// itself too fast at its own turn point — a cascade of too-fast retargets). The graph rescue scan is
@@ -2561,6 +2564,7 @@ public partial class TaxiGuidanceManager
         double cutoffFt = Math.Max(
             pastDeclinedFt,
             aircraftFromThresholdFt + Navigation.RolloutExitGate.ExitLeadFeet(groundSpeedKts));
+        Navigation.LandingExitVacateScreen.Mark(_graph, _rolloutAllExits, _rolloutRunway);
         var next = PickTooFastAlternative(pastDeclinedFt, aircraftFromThresholdFt, cutoffFt, groundSpeedKts);
         int rescuedCount = 0;
         if (next == null && _graph != null && _rolloutRunway != null)
@@ -2570,6 +2574,7 @@ public partial class TaxiGuidanceManager
             if (rescued.Count > 0)
             {
                 RolloutDiag($"Too fast: planned list exhausted - graph rescan found {rescued.Count}: {DescribeExits(rescued)}");
+                Navigation.LandingExitVacateScreen.Mark(_graph, rescued, _rolloutRunway);
                 _rolloutAllExits = Navigation.RolloutExitGate.MergeRescueExits(_rolloutAllExits, rescued);
                 next = PickTooFastAlternative(pastDeclinedFt, aircraftFromThresholdFt, cutoffFt, groundSpeedKts);
             }

@@ -220,6 +220,27 @@ public class RolloutExitGatePerExitRulesTests
     }
 
     [Fact]
+    public void The_comfortable_pass_prefers_an_exit_mapped_clear_of_the_runway()
+    {
+        // The touchdown re-plan's own preference: B is nearer and comfortably reachable, but its taxiways never
+        // lead clear of the runway (SC99 09's hold-short stubs); C, further on, does.
+        var b = At("B", 6200.0, 90.0);
+        b.VacatesRunway = false;
+        var exits = new List<LandingExit> { b, At("C", 6600.0, 90.0) };
+        Assert.Equal("C",
+            RolloutExitGate.FirstComfortableDownfieldExit(exits, 5100.0, 5000.0, 65.0)?.TaxiwayName);
+    }
+
+    [Fact]
+    public void A_flagged_exit_is_still_offered_when_it_is_all_there_is()
+    {
+        var b = At("B", 6200.0, 90.0);
+        b.VacatesRunway = false;
+        Assert.Equal("B",
+            RolloutExitGate.FirstComfortableDownfieldExit(new List<LandingExit> { b }, 5100.0, 5000.0, 65.0)?.TaxiwayName);
+    }
+
+    [Fact]
     public void With_no_comfortable_exit_the_comfortable_pass_finds_none()
         => Assert.Null(RolloutExitGate.FirstComfortableDownfieldExit(
                new List<LandingExit> { At("B", 5900.0, 90.0) }, 5100.0, 5000.0, 65.0));

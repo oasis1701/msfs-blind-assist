@@ -920,12 +920,15 @@ public static class RolloutExitGate
     }
 
     /// <summary>
-    /// The nearest exit in <paramref name="exits"/> beyond <paramref name="afterDistanceFromThresholdFeet"/>,
-    /// suitable by <see cref="FirstSuitableDownfieldExit"/>'s own rules, that is at least
-    /// <see cref="ComfortableExitLeadFeet"/> ahead of the aircraft for its OWN angle — the touchdown re-plan's
-    /// comfortable pass (<c>LandingExitReplan.LeadFeet</c>, <c>LandingExitLeadTier.Comfortable</c>). Null when
-    /// none is. The too-fast alternative prefers this: <see cref="ExitLeadFeet"/> was tuned below 50 kt, so above
-    /// about 60 kt it can offer an exit that is itself too fast at its own turn point, one retarget after another.
+    /// The too-fast alternative's comfortable pass: the touchdown re-plan's own rule
+    /// (<c>LandingExitReplan</c>'s <see cref="LandingExitLeadTier.Comfortable"/> tier). Among the exits
+    /// beyond <paramref name="afterDistanceFromThresholdFeet"/> that <c>LandingExitReplan.IsUsable</c> admits
+    /// - a turn of at most <see cref="MaxUsableExitTurnDeg"/> and at least <see cref="ComfortableExitLeadFeet"/>
+    /// ahead of the aircraft for its OWN angle - the nearest one mapped clear of the runway
+    /// (<see cref="LandingExit.VacatesRunway"/>), else the nearest usable one: a flagged exit is still offered
+    /// when it is all there is, as the planner dialog and the re-plan offer it. Null when none is usable. The
+    /// too-fast alternative prefers this: <see cref="ExitLeadFeet"/> was tuned below 50 kt, so above about
+    /// 60 kt it can offer an exit that is itself too fast at its own turn point, one retarget after another.
     /// </summary>
     /// <param name="aircraftFromThresholdFeet">The aircraft's own along-track distance from the threshold.</param>
     public static LandingExit? FirstComfortableDownfieldExit(
@@ -935,16 +938,16 @@ public static class RolloutExitGate
         double groundSpeedKts)
     {
         if (exits == null) return null;
+        LandingExit? firstUsable = null;
         foreach (var e in exits)
         {
-            if (e == null) continue;
-            if (e.DistanceFromThresholdFeet <= afterDistanceFromThresholdFeet) continue;
-            if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > MaxUsableExitTurnDeg) continue;
-            if (e.DistanceFromThresholdFeet - aircraftFromThresholdFeet
-                    >= ComfortableExitLeadFeet(groundSpeedKts, e.ExitAngleDegrees))
-                return e;
+            if (e == null || e.DistanceFromThresholdFeet <= afterDistanceFromThresholdFeet) continue;
+            if (!LandingExitReplan.IsUsable(e, aircraftFromThresholdFeet, groundSpeedKts, LandingExitLeadTier.Comfortable))
+                continue;
+            if (e.VacatesRunway) return e;
+            firstUsable ??= e;
         }
-        return null;
+        return firstUsable;
     }
 
     /// <summary>
