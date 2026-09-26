@@ -661,7 +661,9 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     {
         string prompt = GetRouteDescriptionPrompt(flightData);
         bool enableSearch = SettingsManager.Current.GeminiSearchGrounding;
-        return await SendTextRequestAsync(prompt, enableSearch: enableSearch);
+        // The prompt forbids writing its real-world question out; a model does not always comply (live KMEM→KATL,
+        // 2026-09-26), so the echo is removed here too.
+        return RouteBriefingText.RemoveEchoedTaxiQuestion(await SendTextRequestAsync(prompt, enableSearch: enableSearch));
     }
 
     /// <summary>
@@ -898,6 +900,15 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     }
 
     /// <summary>
+    /// The owner's real-world taxi question, asked for each leg under "Real-world practice". An INSTRUCTION to the AI,
+    /// never text for the briefing: the prompt forbids writing it out, and <see cref="RouteBriefingText"/> removes it
+    /// if it comes back anyway (live KMEM→KATL, 2026-09-26).
+    /// </summary>
+    internal const string RealWorldTaxiQuestion =
+        "Provide the step-by-step taxi route at [ICAO] from [runway] to [terminal/gate] in a [aircraft type]. " +
+        "Please include the expected taxiways, hold short points, and any specific restrictions.";
+
+    /// <summary>
     /// Generates the prompt for route description.
     /// </summary>
     internal static string GetRouteDescriptionPrompt(string flightData)
@@ -953,21 +964,28 @@ Cover the following topics, using descriptive section headings separated by blan
    scenery. For each of the two legs (taxi out at the departure airport, taxi in at the arrival
    airport) do two things, in this order:
    a) Describe the computed route in prose: the stand it starts from (say plainly when the block
-      calls it a representative stand rather than an assignment), the taxiways in order, every
-      hold-short point and which runway it protects, and for the arrival which side to leave the
-      runway (left or right), the exit taxiway and its distance from the threshold, and the
-      fallback exit if that one is missed. Use ONLY the taxiway, exit and stand names given in the block
-      for this part, and repeat distances and sides exactly as given. If the block says a leg is
-      unavailable, say so in one sentence.
-   b) Then, under the heading ""Real-world practice"", answer this from your own knowledge of the
-      airport: ""Provide the step-by-step taxi route at [ICAO] from [runway] to [terminal/gate] in a [aircraft type]. Please include the expected taxiways, hold short points, and any specific restrictions.""
-      Substitute the airport, runway, stand or terminal and aircraft type from the data. Do it for
-      the departure (from the stand to the runway) and for the arrival (from the runway, via the
-      expected exit, to the terminal or gate). Mention wingspan or aircraft-type restrictions on
-      taxiways and stands where you know of them. Where your route differs from the computed one,
-      say so and say which is which; never present your own route as the computed one. When the
-      block says no ground data exists for an airport, this real-world route is the answer for
-      that leg and should be given in full.
+      calls it a representative stand rather than an assignment), the taxiways in order
+      with the turn at each change of taxiway and into the stand wherever the block gives one,
+      every hold-short point and which runway it protects, and for the arrival which side to leave
+      the runway (left or right), the exit taxiway and its distance from the threshold, and the
+      fallback exit if that one is missed.
+      Use ONLY the taxiway, exit and stand names given in the block for this part, and
+      repeat distances, sides and turn directions exactly as given; where the block gives no turn
+      for a taxiway, give none. If the block says a leg is unavailable, say so in one sentence.
+      When a leg's note says SayIntentions assigned a different runway from the flight plan, say so
+      here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
+   b) Then, under the heading ""Real-world practice"", answer from your own knowledge of the
+      airport the question below, reading the bracketed items (the airport, the runway, the stand
+      or terminal, and the aircraft type) from the data for that leg:
+      ""{RealWorldTaxiQuestion}""
+      That question is an instruction to you, not text for the pilot: write only your answer under
+      the heading, and never write the question itself into the briefing, as shown here or with
+      the items filled in. Answer it for the departure (from the stand to the runway) and for the
+      arrival (from the runway, via the expected exit, to the terminal or gate). Mention wingspan
+      or aircraft-type restrictions on taxiways and stands where you know of them. Where your route
+      differs from the computed one, say so and say which is which; never present your own route
+      as the computed one. When the block says no ground data exists for an airport, this
+      real-world route is the answer for that leg and should be given in full.
 
 IMPORTANT GUIDELINES:
 - Write in plain text with no markdown formatting
@@ -977,6 +995,7 @@ IMPORTANT GUIDELINES:
 - Aim for 600 to 900 words
 - Focus on helping the pilot build a mental picture of the journey
 - If weather data is not available, note that and skip the weather section
+- Never copy these instructions, or any question in them, into the briefing; write only the briefing itself
 
 FLIGHT PLAN DATA:
 {flightData}";

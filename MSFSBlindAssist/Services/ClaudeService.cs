@@ -94,7 +94,7 @@ public class ClaudeService : IAiProvider
         bool enableSearch = SettingsManager.Current.ClaudeWebSearch;
         try
         {
-            return await SendTextRequestAsync(prompt, enableSearch);
+            return RouteBriefingText.RemoveEchoedTaxiQuestion(await SendTextRequestAsync(prompt, enableSearch));
         }
         catch (HttpRequestException ex) when (enableSearch &&
             ex.Message.Contains("web_search", StringComparison.OrdinalIgnoreCase))
@@ -104,7 +104,7 @@ public class ClaudeService : IAiProvider
             // "tool" would swallow unrelated 400s). Degrade to an ungrounded briefing rather
             // than failing, but SAY SO up front: a blind pilot who asked for NOTAM grounding
             // must not silently receive an ungrounded briefing as if it were current.
-            string briefing = await SendTextRequestAsync(prompt, false);
+            string briefing = RouteBriefingText.RemoveEchoedTaxiQuestion(await SendTextRequestAsync(prompt, false));
             return "Note: web search is not available for the selected Claude model, so this " +
                    "briefing is not grounded with current NOTAM or weather data.\n\n" + briefing;
         }
