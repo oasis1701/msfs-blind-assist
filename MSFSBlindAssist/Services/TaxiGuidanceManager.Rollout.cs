@@ -1331,55 +1331,14 @@ public partial class TaxiGuidanceManager
             // high-speed exit is only declared missed up to ROLLOUT_HIGHSPEED_OVERSHOOT_FT
             // (500 ft) past it, so an exit-relative cutoff can call a turnoff several hundred
             // feet BEHIND the wing "downfield" and pan the tone back at it.
-            double downfieldCutoffFt = Navigation.RolloutExitGate.DownfieldCutoffFeet(
-                _rolloutExit.DistanceFromThresholdFeet, signedAlongPastFt, ROLLOUT_OVERSHOOT_FT);
-
-            var nextExit = Navigation.RolloutExitGate.FirstSuitableDownfieldExit(
-                _rolloutAllExits, downfieldCutoffFt);
-
-            // Nothing left in the planned list. That list came from GetLandingExits, which is
-            // built for the planner DIALOG and drops turnoffs on purpose - one entry per
-            // taxiway name, and no unmarked junction at all once the runway has a single
-            // hold-short marker. Rapid-exit taxiways are commonly modelled without a
-            // hold-short bar (they are one-way), so a marked crossing near the threshold can
-            // hide every RET behind it. Before telling a pilot at 90 kt that the runway has
-            // run out of exits - a verdict whose only remedy is a 180 on active pavement -
-            // ask the graph itself. CYYZ 23, 2026-08-23: the list held six exits ending at the
-            // missed one, while 5,400 ft of runway and three further turnoffs lay ahead.
-            if (nextExit == null && _graph != null && _rolloutRunway != null)
-            {
-                var rescued = _graph.FindDownfieldExits(_rolloutRunway, downfieldCutoffFt);
-                if (rescued.Count > 0)
-                {
-                    RolloutDiag($"OVERSHOOT planned list exhausted \u2014 graph rescan found " +
-                        $"{rescued.Count}: {DescribeExits(rescued)}");
-                    _rolloutAllExits = Navigation.RolloutExitGate.MergeRescueExits(
-                        _rolloutAllExits, rescued);
-                    nextExit = Navigation.RolloutExitGate.FirstSuitableDownfieldExit(
-                        _rolloutAllExits, downfieldCutoffFt);
-                }
-            }
-
+            var nextExit = PickOvershootRetarget(signedAlongPastFt, "OVERSHOOT");
             if (nextExit != null)
             {
-                RolloutDiag($"OVERSHOOT retarget to next exit: name='{nextExit.TaxiwayName}' distFromThr={nextExit.DistanceFromThresholdFeet:F0}ft");
                 RetargetLandingExit(nextExit, lat, lon, headingTrue);
                 return;
             }
 
-            // Genuinely nothing ahead. Record what was rejected, so a report of this can be
-            // answered from the log instead of guessed at - the CYYZ verdict was reached
-            // inside a loop that wrote down nothing about what it looked at.
-            RolloutDiag($"OVERSHOOT no downfield exit past {downfieldCutoffFt:F0}ft -> " +
-                $"EnterRunwayEndCountdown; considered {DescribeExits(_rolloutAllExits)}");
-
-            // No downfield exit. Announce, clear the route so the off-route
-            // recalc has nothing to chase, fall through to idle Taxiing.
-            string rwyLabel = _rolloutRunway != null && !string.IsNullOrEmpty(_rolloutRunway.RunwayID)
-                ? _rolloutRunway.RunwayID
-                : "this runway";
-            AnnounceInstruction($"Missed last exit on runway {rwyLabel}.");
-            EnterRunwayEndCountdown();
+            AnnounceMissedLastExit();
             return;
         }
 
@@ -2508,6 +2467,66 @@ public partial class TaxiGuidanceManager
         string sentence = Navigation.RetargetCallout.Compose(
             reason, previousTaxiwayName, exit.TaxiwayName, distAheadFt, straighten, retired.SlowDown);
         if (queued) AnnounceQueuedInstruction(sentence); else AnnounceInstruction(sentence);
+    }
+
+    /// <summary>
+    /// The exit to retarget to after an overshoot of <see cref="_rolloutExit"/> - the one rule for BOTH
+    /// overshoot sites, the LandingRollout detector and the post-handoff monitor, which had its own copy
+    /// that measured "downfield" from the missed exit alone and never asked the graph. Downfield is
+    /// measured from the aircraft as well as the missed exit (RolloutExitGate.DownfieldCutoffFeet): a
+    /// rapid exit is declared missed up to 500 ft past it, and a cutoff from the exit alone offers a
+    /// turnoff that is already behind the wing ("Retargeting taxiway Y, 50 feet ahead" with the tone
+    /// panning back at it). When the planned list has nothing left, the graph is asked before any "Missed
+    /// last exit": that list comes from GetLandingExits, built for the planner DIALOG, which keeps one
+    /// entry per taxiway name and no unmarked junction at all once the runway has one hold-short marker,
+    /// so a marked crossing near the threshold can hide every rapid exit behind it (CYYZ 23, 2026-08-23:
+    /// six exits ending at the missed one, with 5,400 ft of runway and three turnoffs ahead). Either
+    /// verdict is logged with what was considered. Null when nothing is ahead.
+    /// </summary>
+    /// <param name="signedAlongPastFt">The aircraft's along-track position relative to the missed exit
+    /// (positive = past it).</param>
+    /// <param name="site">Log tag of the calling site.</param>
+    private Navigation.LandingExit? PickOvershootRetarget(double signedAlongPastFt, string site)
+    {
+        double downfieldCutoffFt = Navigation.RolloutExitGate.DownfieldCutoffFeet(
+            _rolloutExit!.DistanceFromThresholdFeet, signedAlongPastFt, ROLLOUT_OVERSHOOT_FT);
+
+        var nextExit = Navigation.RolloutExitGate.FirstSuitableDownfieldExit(_rolloutAllExits, downfieldCutoffFt);
+        if (nextExit == null && _graph != null && _rolloutRunway != null)
+        {
+            var rescued = _graph.FindDownfieldExits(_rolloutRunway, downfieldCutoffFt);
+            if (rescued.Count > 0)
+            {
+                RolloutDiag($"{site} planned list exhausted \u2014 graph rescan found " +
+                    $"{rescued.Count}: {DescribeExits(rescued)}");
+                _rolloutAllExits = Navigation.RolloutExitGate.MergeRescueExits(_rolloutAllExits, rescued);
+                nextExit = Navigation.RolloutExitGate.FirstSuitableDownfieldExit(_rolloutAllExits, downfieldCutoffFt);
+            }
+        }
+
+        if (nextExit != null)
+            RolloutDiag($"{site} retarget to next exit: name='{nextExit.TaxiwayName}' " +
+                $"distFromThr={nextExit.DistanceFromThresholdFeet:F0}ft cutoff={downfieldCutoffFt:F0}ft");
+        else
+            // Genuinely nothing ahead. Record what was rejected, so a report of this can be answered from
+            // the log instead of guessed at - the CYYZ verdict was reached inside a loop that wrote down
+            // nothing about what it looked at.
+            RolloutDiag($"{site} no downfield exit past {downfieldCutoffFt:F0}ft -> " +
+                $"EnterRunwayEndCountdown; considered {DescribeExits(_rolloutAllExits)}");
+        return nextExit;
+    }
+
+    /// <summary>
+    /// The overshoot verdict with no way off ahead: "Missed last exit on runway X.", then the runway-end
+    /// countdown, which clears the route so the off-route recalc has nothing to chase.
+    /// </summary>
+    private void AnnounceMissedLastExit()
+    {
+        string rwyLabel = _rolloutRunway != null && !string.IsNullOrEmpty(_rolloutRunway.RunwayID)
+            ? _rolloutRunway.RunwayID
+            : "this runway";
+        AnnounceInstruction($"Missed last exit on runway {rwyLabel}.");
+        EnterRunwayEndCountdown();
     }
 
     /// <summary>

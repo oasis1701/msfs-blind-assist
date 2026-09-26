@@ -2117,27 +2117,16 @@ public partial class TaxiGuidanceManager : IDisposable
                 {
                     _rolloutHandoffActive = false;
 
-                    Navigation.LandingExit? nextExitPH = null;
-                    foreach (var e in _rolloutAllExits)
-                    {
-                        if (e.DistanceFromThresholdFeet <= _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT)
-                            continue;
-                        if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > 90.0)
-                            continue;
-                        nextExitPH = e;
-                        break;
-                    }
-
+                    // The rollout overshoot's own rule: downfield of the aircraft as well as the missed
+                    // exit, and the graph asked before any "Missed last exit".
+                    var nextExitPH = PickOvershootRetarget(signedAlongPastFtPH, "OVERSHOOT (post-handoff)");
                     if (nextExitPH != null)
                     {
                         RetargetLandingExit(nextExitPH, lat, lon, headingTrue);
                         return;
                     }
 
-                    string rwyLabelPH = !string.IsNullOrEmpty(_rolloutRunway.RunwayID)
-                        ? _rolloutRunway.RunwayID : "this runway";
-                    AnnounceInstruction($"Missed last exit on runway {rwyLabelPH}.");
-                    EnterRunwayEndCountdown();
+                    AnnounceMissedLastExit();
                     return;
                 }
             }
