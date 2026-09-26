@@ -23,6 +23,17 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     public HashSet<int> Inverted { get; } = new();
     public int FlapExtendEvent { get; set; } = 77830;
 
+    /// <summary>Keys whose reads come back null (a delivery that never arrives).</summary>
+    public HashSet<string> Unreadable { get; } = new(StringComparer.Ordinal);
+    /// <summary>The DC power gate reads UNPOWERED while the lamps still read their real values (its own lamp not yet delivered).</summary>
+    public bool GateUnpowered { get; set; }
+    /// <summary>The gear lever's travel speed in units per second; 0 = the click lands at the far end at once.</summary>
+    public double GearRatePerSec { get; set; }
+    /// <summary>A running hydraulic test was cut short (leaving AUTO, a fuel switch ON, or an AUX pump press).</summary>
+    public bool HydTestAborted { get; private set; }
+    /// <summary>The clock at the last AUX pump 1 press, or -1.</summary>
+    public long AuxPump1PressedAt { get; private set; } = -1;
+
     public Dictionary<string, double> Vars { get; } = new(StringComparer.Ordinal);
     public List<int> Events { get; } = new();
     public List<(int Down, int Up, int Ms)> Holds { get; } = new();
@@ -40,6 +51,7 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     private long _apuStartedAt = -1;
     private long _hydTestEndsAt = -1;
     private int _flapIndex;
+    private double _gearCommanded = 25;
     private static readonly double[] FlapRng = { 0, 20, 46.91, 70, 82, 100 };
 
     // Readable keys that are NOT lamps and are not in Vars until set are unread (null).
@@ -71,6 +83,7 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
             "MD11_OVHD_PNEU_PACK_1_OFF_LT", "MD11_OVHD_PNEU_PACK_2_OFF_LT", "MD11_OVHD_PNEU_PACK_3_OFF_LT",
         })
             Vars[k] = 0;
+        Vars["MD11_OVHD_AICE_SYSTEM_SEL_BT"] = 1;   // MANUAL: TFDi forces it without the autoAntiIce option
         Vars["MD11_AOVHD_GPWS_SW"] = 1;             // Normal
         Vars["MD11_CTR_AUTOBRAKE_SW"] = 1;          // Off
         Vars["MD11_MIP_GEAR_SW"] = 25;              // down
@@ -100,7 +113,7 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     // ---- IMd11FoTransport ----
     public int PendingWrites => 0;
     public long NowMs => Clock;
-    public bool IsPowered => Powered;
+    public bool IsPowered => Powered && !GateUnpowered;
 
     public bool Fire(int eventId)
     {
@@ -158,7 +171,7 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     // ---- semantics ----
     private double? Read(string key)
     {
-        if (NeverReadable.Contains(key)) return null;
+        if (NeverReadable.Contains(key) || Unreadable.Contains(key)) return null;
         if (key.EndsWith("_LT", StringComparison.Ordinal) || key == "MD11_LTS_DOME")
             return Powered ? (Vars.TryGetValue(key, out var lamp) ? lamp : 0) : 0;
         return Vars.TryGetValue(key, out var v) ? v : null;
@@ -183,7 +196,7 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
             case 90150: Toggle("MD11_OVHD_ELEC_BATT_BT"); break;
             case 90157: Toggle("MD11_OVHD_ELEC_SYSTEM_SEL_BT"); break;
             case 90212: Toggle("MD11_OVHD_FUEL_SYSTEM_SEL_BT"); break;
-            case 90177: Toggle("MD11_OVHD_HYD_SYSTEM_SEL_BT"); break;
+            case 90177: Toggle("MD11_OVHD_HYD_SYSTEM_SEL_BT"); if (Get("MD11_OVHD_HYD_SYSTEM_SEL_BT") > 0.5) AbortHydTest(); break;
             case 90295: Toggle("MD11_OVHD_PNEU_SYSTEM_SEL_BT"); break;
             case 90328: Toggle("MD11_OVHD_PNEU_CABIN_SYSTEM_SEL_BT"); break;
             case 90313: Toggle("MD11_OVHD_PNEU_APU_BLEED_BT"); break;
@@ -196,15 +209,19 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
             case 90112: Toggle("MD11_OVHD_IRS_1_KB"); break;
             case 90114: Toggle("MD11_OVHD_IRS_2_KB"); break;
             case 90116: Toggle("MD11_OVHD_IRS_3_KB"); break;
-            case 77834: Toggle("MD11_THR_L_FUEL_SW"); break;
-            case 77835: Toggle("MD11_THR_C_FUEL_SW"); break;
-            case 77836: Toggle("MD11_THR_R_FUEL_SW"); break;
+            case 77834: FuelSwitch("MD11_THR_L_FUEL_SW"); break;
+            case 77835: FuelSwitch("MD11_THR_C_FUEL_SW"); break;
+            case 77836: FuelSwitch("MD11_THR_R_FUEL_SW"); break;
             case 77837: Toggle("MD11_THR_L_START_SW"); break;
             case 77838: Toggle("MD11_THR_C_START_SW"); break;
             case 77839: Toggle("MD11_THR_R_START_SW"); break;
             case 77848: Toggle("MD11_THR_PARK_LVR"); break;
             case 69854: Toggle("MD11_PED_XPNDR_ALT_RPTG_KB"); break;
-            case 94976: Set("MD11_MIP_GEAR_SW", Get("MD11_MIP_GEAR_SW") >= 20 ? 0 : 25); break;
+            case 94976:
+                // LandingGear::MoveHandle toggles the COMMANDED position; the var is the travel.
+                if (GearRatePerSec <= 0) { _gearCommanded = Get("MD11_MIP_GEAR_SW") >= 20 ? 0 : 25; Set("MD11_MIP_GEAR_SW", _gearCommanded); }
+                else _gearCommanded = _gearCommanded >= 20 ? 0 : 25;
+                break;
             // stepped (raise id first)
             case 90160: case 90159: Step("MD11_OVHD_ELEC_EMER_PWR_KB", Dir(90160, ev), 0, 2); break;
             case 90243: case 90242: Step("MD11_OVHD_LTS_EMER_SW", Dir(90243, ev), 0, 2); break;
@@ -229,7 +246,7 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
                 else { _apuPowerRequested = !_apuPowerRequested; if (!_apuPowerRequested) Set("MD11_APU_STATE", 3); }
                 RecomputeLamps();
                 break;
-            case 90173: _auxPump1 = !_auxPump1; RecomputeLamps(); break;
+            case 90173: AbortHydTest(); AuxPump1PressedAt = Clock; _auxPump1 = !_auxPump1; RecomputeLamps(); break;
             case 90350: _ignitionBits ^= 1; RecomputeLamps(); break;
             case 90352: _ignitionBits ^= 2; RecomputeLamps(); break;
             case 90354: _ignitionBits ^= 4; RecomputeLamps(); break;
@@ -244,11 +261,11 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
             case 90263: ToggleLamp("MD11_OVHD_LTS_RWY_TURNOFF_L_LT"); break;
             case 90265: ToggleLamp("MD11_OVHD_LTS_RWY_TURNOFF_R_LT"); break;
             case 90236: ToggleLamp("MD11_LTS_DOME"); break;
-            case 90414: ToggleLamp("MD11_OVHD_AICE_ENG1_ON_LT"); break;
-            case 90416: ToggleLamp("MD11_OVHD_AICE_ENG2_ON_LT"); break;
-            case 90418: ToggleLamp("MD11_OVHD_AICE_ENG3_ON_LT"); break;
-            case 90420: ToggleLamp("MD11_OVHD_AICE_WING_ON_LT"); break;
-            case 90422: ToggleLamp("MD11_OVHD_AICE_TAIL_ON_LT"); break;
+            case 90414: AntiIce("MD11_OVHD_AICE_ENG1_ON_LT"); break;
+            case 90416: AntiIce("MD11_OVHD_AICE_ENG2_ON_LT"); break;
+            case 90418: AntiIce("MD11_OVHD_AICE_ENG3_ON_LT"); break;
+            case 90420: AntiIce("MD11_OVHD_AICE_WING_ON_LT"); break;
+            case 90422: AntiIce("MD11_OVHD_AICE_TAIL_ON_LT"); break;
             // one-shot presses
             case 90191:
                 if (Get("MD11_OVHD_HYD_SYSTEM_SEL_BT") < 0.5 && N2[1] < 5 && N2[2] < 5 && N2[3] < 5)
@@ -276,6 +293,26 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
 
     private void ToggleLamp(string lamp) => Set(lamp, Get(lamp) > 0.5 ? 0 : 1);
 
+    /// <summary>IceProtection: a press toggles the system only in MANUAL; in AUTO it flashes MANUAL and does nothing.</summary>
+    private void AntiIce(string lamp)
+    {
+        if (Get("MD11_OVHD_AICE_SYSTEM_SEL_BT") > 0.5) ToggleLamp(lamp);
+    }
+
+    private void FuelSwitch(string key)
+    {
+        Toggle(key);
+        if (Get(key) > 0.5) AbortHydTest();                 // a fuel switch ON ends the hydraulic test
+    }
+
+    private void AbortHydTest()
+    {
+        if (_hydTestEndsAt < 0) return;
+        _hydTestEndsAt = -1;
+        HydTestAborted = true;
+        Set("MD11_OVHD_HYD_TEST_LT", 0);
+    }
+
     private long _lastTick;
 
     private void Tick()
@@ -290,6 +327,15 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
             double next = Math.Max(0, travel - 50.0 * dt / 1000.0);
             Set("MD11_SPDBRK_HANDLE", next);
             if (next == 0 && pull != 0) Set("MD11_SPDBRK_ARM", 0);
+        }
+        if (GearRatePerSec > 0)
+        {
+            double g = Get("MD11_MIP_GEAR_SW");
+            if (g != _gearCommanded)
+            {
+                double step = GearRatePerSec * dt / 1000.0;
+                Set("MD11_MIP_GEAR_SW", g < _gearCommanded ? Math.Min(_gearCommanded, g + step) : Math.Max(_gearCommanded, g - step));
+            }
         }
         if (_apuStartedAt >= 0 && Get("MD11_APU_STATE") is 1 && Clock - _apuStartedAt >= 40_000)
             Set("MD11_APU_STATE", 2);
@@ -315,6 +361,8 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     public void ConnectExternalPower() { _extConnected = true; Powered = true; RecomputeLamps(); }
     public void StartApuRunningWithPower() { Set("MD11_APU_STATE", 2); _apuPowerRequested = true; RecomputeLamps(); }
     public void SelectIgnition(int bits) { _ignitionBits = bits; RecomputeLamps(); }
+    /// <summary>The pilot's own click: the lever starts travelling toward <paramref name="down"/> on the next tick.</summary>
+    public void PilotCommandsGear(bool down) => _gearCommanded = down ? 25 : 0;
     /// <summary>After touchdown: the pull locked aft at 2 and the lever at the ground-spoiler travel.</summary>
     public void DeployGroundSpoilers() { Set("MD11_SPDBRK_ARM", 2); Set("MD11_SPDBRK_HANDLE", 50); }
     public int FlapIndex { get => _flapIndex; set { _flapIndex = value; Set("MD11_FLAP_LATCH", FlapRng[value]); } }

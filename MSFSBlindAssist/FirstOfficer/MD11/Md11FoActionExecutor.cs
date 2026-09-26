@@ -18,7 +18,9 @@ namespace MSFSBlindAssist.FirstOfficer.MD11;
 /// Test↔Normal work cover-closed, and the closed cover is what makes ON / FLAP OVERRIDE
 /// unreachable); correct a wrong-way step at once, and learn a direction only from a move;
 /// never move the flap handle airborne; never walk the Dial-A-Flap wheel (one direct write);
-/// never set a landing autobrake; hold the annunciator light test only under a lamp-speech mute.
+/// never set a landing autobrake; hold the annunciator light test only under a lamp-speech mute;
+/// never disconnect external power without APU power on; never press the AUX hydraulic pump over
+/// a running hydraulic test; never press engine/wing/tail anti-ice in AUTO (it is TFDi's).
 /// There is NO fallback for an unmapped key — that is a mapping bug to surface, not a write to
 /// guess at.
 /// </summary>
@@ -71,6 +73,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     internal const int LightUpTimeoutMs = 60_000;         // spec: 60 s to 15 % N2
     internal const int StepReadCeilingMs = 1500;          // design §3.3: a step's read ceiling once it is expected to land
     internal const int GearRestTimeoutMs = 4000;          // a travelling gear lever must come to rest by then
+    internal const int HydTestWaitMs = 120_000;           // the flow's own budget for the ~100 s hydraulic test
 
     // The flap handle's wheel direction is not in TFDi's mechanical table (system-handled); this
     // default is learned-and-corrected on the ground. LIVE-VERIFY.
@@ -183,15 +186,23 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         if (Pseudo.TryGetValue(key, out var handler)) return handler(this, io, target);
         if (Md11FoControls.TryGet(key, out var c))
         {
-            if (c.Key == "MD11_OVHD_ANNUNLT_TEST_BT") return AnnunciatorTestAsync(io);   // only ever under the mute
+            // A flow or checklist that names a raw key still gets the guarded composite.
+            switch (c.Key)
+            {
+                case "MD11_OVHD_ANNUNLT_TEST_BT": return AnnunciatorTestAsync(io);      // only ever under the mute
+                case "MD11_OVHD_HYD_HYD_TEST_BT": return HydraulicTestAsync(io);        // its preconditions, verified
+                case "MD11_PED_WXR_TEST_BT": return WeatherRadarTestAsync(io);          // TEST always ends OFF
+                case "MD11_PED_WXR_OFF_BT": return WeatherRadarOffAsync(io);            // read first, verified
+                case "MD11_OVHD_HYD_AUX_PUMP_1_BT" when target > 0: return AuxPump1OnAsync(io, c);
+            }
             return c.Kind switch
             {
                 Md11FoKind.Latch => LatchAsync(io, c, target),
                 Md11FoKind.Toggle => ToggleAsync(io, c, target),
                 Md11FoKind.Stepped => SteppedAsync(io, c, target),
                 Md11FoKind.LampToggle => LampToggleAsync(io, c, target),
-                Md11FoKind.HoldTest => io.HoldAsync(c.Down, c.Up, Md11TestButtons.HoldMs),
-                Md11FoKind.PressOnce => Task.FromResult(io.Press(c.Down, c.Up)),
+                Md11FoKind.HoldTest => HoldTestAsync(io, c),
+                Md11FoKind.PressOnce => Task.FromResult(PressOnce(io, c)),
                 _ => Task.FromResult(false),
             };
         }
@@ -274,6 +285,20 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         if (!io.Press(c.Down, c.Up)) return false;
         return await WaitForAsync(io, c.ReadKey!, v => Md11FoSwitching.LampState(v, c.LitMeans) == want,
             LampVerifyTimeoutMs, LampReadTimeoutMs).ConfigureAwait(false);
+    }
+
+    /// <summary>DOWN, hold, UP — the test runs only while held. Its own lamps are the FO's to narrate.</summary>
+    private static Task<bool> HoldTestAsync(IMd11FoTransport io, Md11FoControl c)
+    {
+        io.NoteActuation(c.Key);
+        return io.HoldAsync(c.Down, c.Up, Md11TestButtons.HoldMs);
+    }
+
+    /// <summary>One press (a timed test, a reset, a page select). Never repeated: SD CONFIG steps pages.</summary>
+    private static bool PressOnce(IMd11FoTransport io, Md11FoControl c)
+    {
+        io.NoteActuation(c.Key);
+        return io.Press(c.Down, c.Up);
     }
 
     private static Task<bool> SteppedAsync(IMd11FoTransport io, Md11FoControl c, int target)
@@ -379,37 +404,46 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
 
     // ================= composite operations =================
 
+    /// <summary>
+    /// External power. Its button TOGGLES the connection, so every press is decided from the ON
+    /// lamp, read fresh and FIRST: a lit ON lamp means connected whatever the DC gate says (the
+    /// gate reads UNPOWERED until its own lamp is first delivered, and a press then would
+    /// DISCONNECT a connected GPU), and an unread one refuses — never toggle blind. Connect
+    /// presses only with AVAIL lit, or on the battery alone. Disconnect only with APU power ON:
+    /// a checklist hand-tick reaches this directly, and with nothing else on the busses the
+    /// aircraft would drop to battery.
+    /// </summary>
     private static async Task<bool> ExtPowerAsync(IMd11FoTransport io, int target)
     {
-        const string on = "MD11_OVHD_ELEC_EXT_PWR_ON_LT", avail = "MD11_OVHD_ELEC_EXT_PWR_AVAIL_LT";
+        const string on = "MD11_OVHD_ELEC_EXT_PWR_ON_LT", avail = "MD11_OVHD_ELEC_EXT_PWR_AVAIL_LT", apuOn = "MD11_OVHD_ELEC_APU_PWR_ON_LT";
         var c = Control("MD11_OVHD_ELEC_EXT_PWR_BT");
         if (target > 0)
         {
-            // The DC gate reads UNPOWERED until its lamp is first delivered, so "unpowered" can
-            // mean "not known yet" — and a press with external power already connected would
-            // DISCONNECT it. Wait out one lamp delivery before believing it.
-            if (!io.IsPowered) await io.ReadFreshAsync(on, LampReadTimeoutMs).ConfigureAwait(false);
+            bool? connected = Md11FoSwitching.LampState(await io.ReadFreshAsync(on, LampReadTimeoutMs).ConfigureAwait(false), 1);
+            if (connected is null) return false;
+            if (connected == true) return true;
             if (io.IsPowered)
             {
-                var onLamp = await io.ReadFreshAsync(on, LampReadTimeoutMs).ConfigureAwait(false);
-                if (Md11FoSwitching.LampState(onLamp, 1) == true) return true;
+                // Powered, and not connected: only a GPU that is there can be connected.
                 var availLamp = await io.ReadFreshAsync(avail, LampReadTimeoutMs).ConfigureAwait(false);
-                if (Md11FoSwitching.LampState(availLamp, 1) != true) return false;   // no ground power to connect
+                if (Md11FoSwitching.LampState(availLamp, 1) != true) return false;
             }
-            // Battery only: the annunciators are dark, so press once and watch the bus come alive.
+            // AVAIL lit, or the battery alone: press once and watch the ON lamp light.
             io.NoteActuation(c.Key);
             if (!io.Press(c.Down, c.Up)) return false;
-            long deadline = io.NowMs + LampVerifyTimeoutMs;
-            await io.DelayAsync(ReadBackDelay(io)).ConfigureAwait(false);
-            while (true)
-            {
-                if (io.IsPowered && Md11FoSwitching.LampState(await io.ReadFreshAsync(on, LampReadTimeoutMs).ConfigureAwait(false), 1) == true)
-                    return true;
-                if (io.NowMs >= deadline) return false;
-                await io.DelayAsync(PollMs).ConfigureAwait(false);
-            }
+            return await WaitForAsync(io, on, v => v > Md11ControlState.LitThreshold,
+                LampVerifyTimeoutMs, LampReadTimeoutMs).ConfigureAwait(false);
         }
         if (!io.IsPowered) return false;                                   // cannot tell: never press blind
+        bool? stillOn = Md11FoSwitching.LampState(await io.ReadFreshAsync(on, LampReadTimeoutMs).ConfigureAwait(false), 1);
+        if (stillOn is null) return false;
+        if (stillOn == false) return true;                                 // nothing to disconnect
+        bool? apuPower = Md11FoSwitching.LampState(await io.ReadFreshAsync(apuOn, LampReadTimeoutMs).ConfigureAwait(false), 1);
+        if (apuPower != true)
+        {
+            Log.Info("MD11 FO", "external power left connected: APU power is not on");
+            return false;
+        }
         return await LampToggleAsync(io, c, 0).ConfigureAwait(false);
     }
 
@@ -476,6 +510,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         var c = Control("MD11_OVHD_ANNUNLT_TEST_BT");
         // ~488 lamps light: mute lamp speech for the hold, the 1 Hz batch and the 1.5 s dark settle.
         io.MuteLampSpeech(AnnunciatorHoldMs + AnnunciatorMuteExtraMs);
+        io.NoteActuation(c.Key);
         return await io.HoldAsync(c.Down, c.Up, AnnunciatorHoldMs).ConfigureAwait(false);
     }
 
@@ -490,14 +525,39 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         // done. (The flow's later "wait for the test to finish" would pass at once on a dark lamp.)
         if (!io.IsPowered) return false;
         var c = Control("MD11_OVHD_HYD_HYD_TEST_BT");
+        io.NoteActuation(c.Key);
         if (!io.Press(c.Down, c.Up)) return false;                         // guarded, but a CEVENT press works cover-closed
-        return await WaitForAsync(io, "MD11_OVHD_HYD_TEST_LT", v => v > Md11ControlState.LitThreshold,
+        return await WaitForAsync(io, HydTestLamp, v => v > Md11ControlState.LitThreshold,
             LampVerifyTimeoutMs, LampReadTimeoutMs).ConfigureAwait(false);
+    }
+
+    private const string HydTestLamp = "MD11_OVHD_HYD_TEST_LT";
+
+    /// <summary>
+    /// AUX hydraulic pump 1 ON — never over a running hydraulic test, which TFDi aborts on an AUX
+    /// pump press. The flow waits for the TEST lamp to go dark before this step; a checklist
+    /// hand-tick reaches the pump directly, so the executor keeps the same rule, bounded at the
+    /// flow's own budget. Still lit then: refused, the test left to finish.
+    /// </summary>
+    private static async Task<bool> AuxPump1OnAsync(IMd11FoTransport io, Md11FoControl c)
+    {
+        if (!io.IsPowered) return false;
+        bool? on = Md11FoSwitching.LampState(await io.ReadFreshAsync(c.ReadKey!, LampReadTimeoutMs).ConfigureAwait(false), c.LitMeans);
+        if (on is null) return false;
+        if (on == true) return true;
+        if (!await WaitForAsync(io, HydTestLamp, v => v <= Md11ControlState.LitThreshold,
+                HydTestWaitMs, LampReadTimeoutMs).ConfigureAwait(false))
+        {
+            Log.Warn("MD11 FO", "AUX hydraulic pump 1 not switched on: the hydraulic test is still running");
+            return false;
+        }
+        return await LampToggleAsync(io, c, 1).ConfigureAwait(false);
     }
 
     private static async Task<bool> WeatherRadarTestAsync(IMd11FoTransport io)
     {
         var test = Control("MD11_PED_WXR_TEST_BT");
+        io.NoteActuation(test.Key);
         if (!io.Press(test.Down, test.Up)) return false;
         await io.DelayAsync(WeatherRadarTestMs).ConfigureAwait(false);
         return await WeatherRadarOffAsync(io).ConfigureAwait(false);
@@ -508,6 +568,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         var off = Control("MD11_PED_WXR_OFF_BT");
         var now = await ReadAsync(io, TFDiMD11Definition.FoWxrOffReadKey, ControlReadTimeoutMs).ConfigureAwait(false);
         if (now is double v && v > 0.5) return true;
+        io.NoteActuation(off.Key);
         if (!io.Press(off.Down, off.Up)) return false;                     // a discrete mode button: pressing OFF is idempotent
         if (now is null) return true;                                      // mode unreadable: nothing more to confirm
         return await WaitForAsync(io, TFDiMD11Definition.FoWxrOffReadKey, x => x > 0.5, VerifyTimeoutMs, ControlReadTimeoutMs).ConfigureAwait(false);
@@ -574,10 +635,10 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
 
     /// <summary>
     /// The gear lever. Its click TOGGLES the commanded position, and <c>MD11_MIP_GEAR_SW</c> is the
-    /// lever's animated travel, so a click while the lever is still moving would REVERSE the
-    /// movement under way — the pilot's own gear-down on approach put back up. The lever is
-    /// clicked only from rest at one end: one between its ends is waited out, and one that never
-    /// comes to rest is refused. Up only when definitely airborne.
+    /// lever's animated travel, so a click while the lever is moving would REVERSE the movement
+    /// under way — the pilot's own gear-down on approach put back up. The lever is clicked only
+    /// from rest at one end (<see cref="ReadGearAtRestAsync"/>): one between its ends is waited
+    /// out, and one that never comes to rest is refused. Up only when definitely airborne.
     /// </summary>
     private async Task<bool> GearAsync(IMd11FoTransport io, int target)
     {
@@ -592,31 +653,48 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
             v => down ? Md11GearLever.IsDown(v) : v < GearUpBelow, LampVerifyTimeoutMs, ControlReadTimeoutMs).ConfigureAwait(false);
     }
 
-    /// <summary>The gear lever's travel once it is at rest at one end; null when unread, or still travelling at the deadline.</summary>
+    /// <summary>
+    /// The gear lever's travel once it is AT REST at one end: two matching end readings one poll
+    /// apart. One reading is not enough — a lever the pilot has just clicked still reads its old
+    /// end for a moment before it starts to move, and a click then would reverse the pilot's
+    /// command. Null when unread, or still travelling at the deadline.
+    /// </summary>
     private static async Task<double?> ReadGearAtRestAsync(IMd11FoTransport io)
     {
         long deadline = io.NowMs + GearRestTimeoutMs;
+        double? previous = null;
         while (true)
         {
             var travel = await ReadAsync(io, Md11GearLever.Key, ControlReadTimeoutMs).ConfigureAwait(false);
             if (travel is null) return null;
-            if (travel.Value <= GearTravelUp + GearRestTolerance || travel.Value >= GearTravelDown - GearRestTolerance)
-                return travel;
+            bool atEnd = travel.Value <= GearTravelUp + GearRestTolerance || travel.Value >= GearTravelDown - GearRestTolerance;
+            if (atEnd && previous is double p && Math.Abs(p - travel.Value) <= GearRestMatch) return travel;
+            previous = atEnd ? travel : null;
             if (io.NowMs >= deadline)
             {
-                Log.Warn("MD11 FO", $"gear lever still travelling ({travel}); not clicked");
+                Log.Warn("MD11 FO", $"gear lever not at rest ({travel}); not clicked");
                 return null;
             }
             await io.DelayAsync(PollMs).ConfigureAwait(false);
         }
     }
 
+    /// <summary>Two readings of a lever at rest agree to within this.</summary>
+    private const double GearRestMatch = 0.1;
+
+    /// <summary>
+    /// The flap handle, on the ground only, one detent per wheel event. The wheel's direction is
+    /// not in TFDi's mechanical table, so it is learned: a detent the wrong way is undone at once
+    /// and remembered (that is evidence). A no-move at an end stop is ambiguous — a wrong
+    /// direction, or a lost write — so the other direction is tried once and remembered only when
+    /// it then moves the handle toward the target (the stepped walk's remember-on-proof rule).
+    /// </summary>
     private async Task<bool> FlapHandleAsync(IMd11FoTransport io, int targetIndex)
     {
         if (_state?.OnGround != true) return false;                        // the pilot's in flight — never ours
         if (targetIndex is not (0 or 2)) return false;                     // UP/RET or the Dial-A-Flap detent only
-        bool flipped = false;
-        bool noted = false;
+        int extend = _flapExtendEvent;
+        bool flipped = false, flipUnproven = false, noted = false;
         for (int i = 0; i < 8; i++)
         {
             int? idx = io.ReadCached(Md11FlapSystem.LeverKey) is double r ? Md11FoSwitching.FlapDetentIndex(r) : null;
@@ -624,7 +702,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
             if (idx == targetIndex) return true;
             if (!noted) { io.NoteActuation(Md11FlapSystem.LeverKey); noted = true; }
             int dir = Math.Sign(targetIndex - idx.Value);
-            int extend = _flapExtendEvent, retract = extend == FlapWheelDown ? FlapWheelUp : FlapWheelDown;
+            int retract = extend == FlapWheelDown ? FlapWheelUp : FlapWheelDown;
             int ev = dir > 0 ? extend : retract;
             if (!io.Fire(ev)) return false;
             int from = idx.Value;
@@ -634,14 +712,21 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
             if (now is null) return false;
             if (now == from)
             {
-                if (!flipped && (from == 0 || from == 5)) { flipped = true; _flapExtendEvent = retract; continue; }
+                if (!flipped && (from == 0 || from == 5)) { flipped = true; flipUnproven = true; extend = retract; continue; }
                 return false;
             }
             if (Math.Sign(now.Value - from) != dir)
             {
                 if (!io.Fire(ev == extend ? retract : extend)) return false;   // undo the wrong-way detent
                 await io.DelayAsync(ReadBackDelay(io)).ConfigureAwait(false);
-                _flapExtendEvent = retract;
+                extend = retract;
+                _flapExtendEvent = extend;                                    // a wrong-way detent is evidence
+                flipUnproven = false;
+            }
+            else if (flipUnproven)
+            {
+                _flapExtendEvent = extend;                                    // the flip moved it the right way: proven
+                flipUnproven = false;
             }
         }
         return false;
@@ -657,6 +742,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
             if (idx is null || idx == 2) return false;
         }
         double raw = Md11FoSwitching.DialRawFor(degrees);
+        io.NoteActuation(Md11FlapSystem.DialKey);
         if (!io.WriteExternal(Md11FlapSystem.DialKey, raw)) return false; // ONE write — never a CEVENT walk
         return await WaitForCachedAsync(io, Md11FlapSystem.DialKey, v => Math.Abs(v - raw) <= 1.0, 1500).ConfigureAwait(false);
     }
@@ -697,12 +783,40 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         }
     }
 
+    private static readonly string[] AntiIceButtons =
+    {
+        "MD11_OVHD_AICE_ENG1_BT", "MD11_OVHD_AICE_ENG2_BT", "MD11_OVHD_AICE_ENG3_BT",
+        "MD11_OVHD_AICE_WING_BT", "MD11_OVHD_AICE_TAIL_BT",
+    };
+
+    /// <summary>The anti-ice system mode: 0 AUTO, 1 MANUAL (TFDi forces MANUAL without its autoAntiIce option).</summary>
+    internal const string AntiIceModeKey = "MD11_OVHD_AICE_SYSTEM_SEL_BT";
+
+    /// <summary>
+    /// Engine, wing and tail anti-ice off. TFDi's IceProtection toggles them only in MANUAL; in
+    /// AUTO a press just flashes MANUAL and changes nothing. The First Officer never changes the
+    /// system mode, so in AUTO it presses nothing and reports what the automatic system has on
+    /// (every ON lamp dark = done).
+    /// </summary>
     private static async Task<bool> AntiIceOffAsync(IMd11FoTransport io)
     {
         if (!io.IsPowered) return false;
+        var mode = await ReadAsync(io, AntiIceModeKey, ControlReadTimeoutMs).ConfigureAwait(false);
+        if (mode is null) return false;
+        if (mode < 0.5)
+        {
+            bool allOff = true;
+            foreach (var k in AntiIceButtons)
+            {
+                var c = Control(k);
+                bool? state = Md11FoSwitching.LampState(await io.ReadFreshAsync(c.ReadKey!, LampReadTimeoutMs).ConfigureAwait(false), c.LitMeans);
+                if (state != false) allOff = false;
+            }
+            if (!allOff) Log.Info("MD11 FO", "anti-ice is in AUTO and the automatic system has some on; left to it");
+            return allOff;
+        }
         bool ok = true;
-        foreach (var k in new[] { "MD11_OVHD_AICE_ENG1_BT", "MD11_OVHD_AICE_ENG2_BT", "MD11_OVHD_AICE_ENG3_BT",
-                                  "MD11_OVHD_AICE_WING_BT", "MD11_OVHD_AICE_TAIL_BT" })
+        foreach (var k in AntiIceButtons)
             ok &= await LampToggleAsync(io, Control(k), 0).ConfigureAwait(false);
         return ok;
     }
@@ -752,7 +866,8 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
             await io.DelayAsync(PollMs).ConfigureAwait(false);
         }
         Log.Warn("MD11 FO", $"engine {engine}: no light-up within {LightUpTimeoutMs / 1000} s; pushing START in");
-        await EngineStartAsync(io, engine, 0).ConfigureAwait(false);
+        if (!await EngineStartAsync(io, engine, 0).ConfigureAwait(false))
+            Log.Warn("MD11 FO", $"engine {engine}: the START switch did not read back in — the starter may still be engaged");
         return false;
     }
 }

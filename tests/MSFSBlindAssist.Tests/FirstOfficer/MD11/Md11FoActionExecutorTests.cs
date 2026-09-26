@@ -302,6 +302,7 @@ public class Md11FoActionExecutorTests : IDisposable
         _ac.Set("MD11_OVHD_HYD_SYSTEM_SEL_BT", 0);
         Assert.True(await _exec.Set(Md11FoActionExecutor.HydraulicTest, 1));
         Assert.Equal(1, _ac.Get("MD11_OVHD_HYD_TEST_LT"));
+        Assert.Contains("MD11_OVHD_HYD_HYD_TEST_BT", _ac.Noted);      // its own TEST lamp stays quiet
     }
 
     [Fact]
@@ -310,6 +311,7 @@ public class Md11FoActionExecutorTests : IDisposable
         Assert.True(await _exec.Set("MD11_AOVHD_FIRETEST_BT", 1));
         Assert.Contains((73748, 73749, 3000), _ac.Holds);
         Assert.Equal(73749, _ac.Events.Last());
+        Assert.Contains("MD11_AOVHD_FIRETEST_BT", _ac.Noted);
     }
 
     [Fact]
@@ -326,6 +328,7 @@ public class Md11FoActionExecutorTests : IDisposable
     {
         Assert.True(await _exec.Set("MD11_PED_SD_CONFIG_BT", 1));
         Assert.Equal(new[] { 69844, 69845 }, _ac.Events);
+        Assert.Contains("MD11_PED_SD_CONFIG_BT", _ac.Noted);
     }
 
     [Fact]
@@ -334,6 +337,8 @@ public class Md11FoActionExecutorTests : IDisposable
         Assert.True(await _exec.Set(Md11FoActionExecutor.WeatherRadarTest, 1));
         Assert.Equal(new[] { 69885, 69886, 69883, 69884 }, _ac.Events);
         Assert.Equal(1, _ac.Get("MD11_FO_WXR_OFF"));
+        Assert.Contains("MD11_PED_WXR_TEST_BT", _ac.Noted);
+        Assert.Contains("MD11_PED_WXR_OFF_BT", _ac.Noted);
     }
 
     [Fact]
@@ -426,6 +431,7 @@ public class Md11FoActionExecutorTests : IDisposable
         Assert.Equal(("MD11_DIALAFLAP_WHEEL_RNG", 33.3335), (_ac.ExternalWrites.Single().Var,
             Math.Round(_ac.ExternalWrites.Single().Value, 4)));
         Assert.Empty(_ac.Events);                                     // never a CEVENT walk
+        Assert.Contains("MD11_DIALAFLAP_WHEEL_RNG", _ac.Noted);
     }
 
     [Fact]
@@ -497,8 +503,8 @@ public class Md11FoActionExecutorTests : IDisposable
     // The fake applies every event the instant it is fired. The real bus writes a CEVENT one
     // pacing gap behind whatever is queued, and the aircraft applies it a frame or more later,
     // so a single early read can see a step that has not landed yet as "no movement". The panel
-    // walker learned this the hard way (CLAUDE.md: its old sleep-then-read-once protocol "called
-    // real movement 'no movement', and mis-learned polarity").
+    // walker learned this the hard way (docs/md11.md: its old sleep-then-read protocol was "stale
+    // enough to call real movement 'no movement' and mis-learn polarity").
 
     /// <summary>
     /// A transport between the executor and the fake with the live app's failure shapes: a fired
@@ -615,6 +621,155 @@ public class Md11FoActionExecutorTests : IDisposable
         // reads dark unpowered: a press there can do nothing and could never be confirmed.
         _ac.Powered = false;
         Assert.False(await _exec.Set(Md11FoActionExecutor.HydraulicTest, 1));
+        Assert.Empty(_ac.Events);
+    }
+
+    // ---------------- external power: never drop the aircraft to battery ----------------
+
+    [Fact]
+    public async Task ExternalPower_DisconnectRefusedWithoutApuPower()
+    {
+        // A checklist hand-tick reaches the executor directly: disconnecting with nothing else on
+        // the busses would drop the aircraft to battery. Only with APU power ON.
+        _ac.ConnectExternalPower();
+        Assert.False(await _exec.Set(Md11FoActionExecutor.ExtPower, 0));
+        Assert.Empty(_ac.Events);
+        Assert.Equal(1, _ac.Get("MD11_OVHD_ELEC_EXT_PWR_ON_LT"));
+    }
+
+    [Fact]
+    public async Task ExternalPower_DisconnectAllowedWithApuPower()
+    {
+        _ac.ConnectExternalPower();
+        _ac.StartApuRunningWithPower();
+        Assert.True(await _exec.Set(Md11FoActionExecutor.ExtPower, 0));
+        Assert.Equal(new[] { 90142, 90143 }, _ac.Events);
+        Assert.Equal(0, _ac.Get("MD11_OVHD_ELEC_EXT_PWR_ON_LT"));
+    }
+
+    [Fact]
+    public async Task ExternalPower_AlreadyDisconnected_IsDoneWithoutApuPower()
+    {
+        Assert.True(await _exec.Set(Md11FoActionExecutor.ExtPower, 0));   // nothing to disconnect
+        Assert.Empty(_ac.Events);
+    }
+
+    [Fact]
+    public async Task ExternalPower_ConnectRefusedOnUnreadOnLamp()
+    {
+        _ac.Unreadable.Add("MD11_OVHD_ELEC_EXT_PWR_ON_LT");
+        Assert.False(await _exec.Set(Md11FoActionExecutor.ExtPower, 1));
+        Assert.Empty(_ac.Events);
+    }
+
+    [Fact]
+    public async Task ExternalPower_ConnectWithOnLampLit_PressesNothing()
+    {
+        // A lit ON lamp is trusted first, whatever the DC gate says: the gate can read unpowered
+        // before its own lamp is delivered, and a press now would DISCONNECT the connected GPU.
+        _ac.ConnectExternalPower();
+        _ac.GateUnpowered = true;
+        Assert.True(await _exec.Set(Md11FoActionExecutor.ExtPower, 1));
+        Assert.Empty(_ac.Events);
+    }
+
+    // ---------------- the hydraulic test is never cut short ----------------
+
+    [Fact]
+    public async Task AuxPump1_WaitsForTheHydraulicTestToFinish()
+    {
+        // An AUX pump press aborts TFDi's ~100 s hydraulic test. The flow waits for the TEST lamp,
+        // and so must a checklist hand-tick that reaches the pump directly.
+        Assert.True(await _exec.Set(Md11FoActionExecutor.HydraulicTest, 1));
+        Assert.True(await _exec.Set("MD11_OVHD_HYD_AUX_PUMP_1_BT", 1));
+        Assert.Equal(1, _ac.Get("MD11_OVHD_HYD_AUX_PUMP_1_ON_LT"));
+        Assert.False(_ac.HydTestAborted);                                  // the test ran its course
+        Assert.True(_ac.AuxPump1PressedAt >= 100_000);                      // pressed only after it ended
+    }
+
+    [Fact]
+    public async Task AuxPump1_RefusesWhileTheTestLampStaysLit()
+    {
+        _ac.Set("MD11_OVHD_HYD_TEST_LT", 1);                                // lit, and never ends
+        Assert.False(await _exec.Set("MD11_OVHD_HYD_AUX_PUMP_1_BT", 1));
+        Assert.Empty(_ac.Events);
+        Assert.True(_ac.Clock >= Md11FoActionExecutor.HydTestWaitMs);
+    }
+
+    // ---------------- anti-ice: the automatic system is TFDi's ----------------
+
+    [Fact]
+    public async Task AntiIceOff_InAuto_PressesNothing()
+    {
+        // In AUTO the engine/wing/tail buttons are inert (TFDi flashes MANUAL): the FO does not
+        // change the system mode, so it reports what the automatic system is doing.
+        _ac.Set("MD11_OVHD_AICE_SYSTEM_SEL_BT", 0);
+        Assert.True(await _exec.Set(Md11FoActionExecutor.AntiIceOff, 0));    // every ON lamp dark
+        _ac.Set("MD11_OVHD_AICE_WING_ON_LT", 1);                            // the automatic system has wing on
+        Assert.False(await _exec.Set(Md11FoActionExecutor.AntiIceOff, 0));
+        Assert.Empty(_ac.Events);
+    }
+
+    [Fact]
+    public async Task AntiIceOff_InManual_TurnsTheLitOnesOff()
+    {
+        _ac.Set("MD11_OVHD_AICE_ENG2_ON_LT", 1);
+        Assert.True(await _exec.Set(Md11FoActionExecutor.AntiIceOff, 0));
+        Assert.Equal(new[] { 90416, 90417 }, _ac.Events);
+        Assert.Equal(0, _ac.Get("MD11_OVHD_AICE_ENG2_ON_LT"));
+    }
+
+    [Fact]
+    public async Task AntiIceOff_RefusesAnUnreadMode()
+    {
+        _ac.Vars.Remove("MD11_OVHD_AICE_SYSTEM_SEL_BT");
+        Assert.False(await _exec.Set(Md11FoActionExecutor.AntiIceOff, 0));
+        Assert.Empty(_ac.Events);
+    }
+
+    // ---------------- gear and flap handle: act only on proof ----------------
+
+    [Fact]
+    public async Task Gear_ALeverThatHasNotStartedMoving_IsNotTakenForAtRest()
+    {
+        // The pilot has just clicked gear DOWN: the lever still reads UP for a moment. One read
+        // would call it "at rest up" and click — reversing the pilot's gear-down. Rest needs two
+        // matching end readings one poll apart.
+        _ac.GroundState = false;
+        _ac.GearRatePerSec = 10;
+        _ac.Set("MD11_MIP_GEAR_SW", 0);
+        _ac.PilotCommandsGear(down: true);
+        Assert.True(await _exec.Set(Md11FoActionExecutor.Gear, 1));
+        Assert.Empty(_ac.Events);
+        Assert.Equal(25, _ac.Get("MD11_MIP_GEAR_SW"));
+    }
+
+    [Fact]
+    public async Task FlapHandle_AStepLostAtAnEndStop_TeachesNoDirection()
+    {
+        _exec.SetTransport(new LiveBus(_ac) { DropFires = 1 });
+        Assert.False(await _exec.Set(Md11FoActionExecutor.FlapHandle, 2));  // lost; the other way is the stop
+        _exec.SetTransport(_ac);
+        _ac.Events.Clear();
+        Assert.True(await _exec.Set(Md11FoActionExecutor.FlapHandle, 2));
+        Assert.Equal(new[] { 77830, 77830 }, _ac.Events);                    // nothing was learned from the loss
+    }
+
+    // ---------------- raw keys get the guarded handlers ----------------
+
+    [Fact]
+    public async Task RawWeatherRadarTestKey_EndsWithTheRadarOff()
+    {
+        Assert.True(await _exec.Set("MD11_PED_WXR_TEST_BT", 1));
+        Assert.Equal(new[] { 69885, 69886, 69883, 69884 }, _ac.Events);
+        Assert.Equal(1, _ac.Get("MD11_FO_WXR_OFF"));
+    }
+
+    [Fact]
+    public async Task RawHydraulicTestKey_IsGuarded()
+    {
+        _ac.Set("MD11_OVHD_HYD_SYSTEM_SEL_BT", 1);                          // MANUAL: the test cannot start
+        Assert.False(await _exec.Set("MD11_OVHD_HYD_HYD_TEST_BT", 1));
         Assert.Empty(_ac.Events);
     }
 }
