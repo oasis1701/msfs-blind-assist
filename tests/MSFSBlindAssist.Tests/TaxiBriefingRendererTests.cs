@@ -103,9 +103,56 @@ public class TaxiBriefingRendererTests
         Assert.Contains("TAXI OUT at LOWI (OpenStreetMap, planning only — taxi guidance cannot use this): from representative stand 12 to runway 26\n", text);
         Assert.Contains("  Taxiways: A (640 m)\n", text);
         Assert.Contains("  Note: stand types unknown (OpenStreetMap)\n", text);
-        Assert.Contains("  Expected exit: taxiway B, normal, side unknown, 3,000 ft from the threshold. No later exit is mapped. This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.\n", text);
+        Assert.Contains("  Expected exit: taxiway B, normal, side unknown, 3,000 ft from the threshold. No later exit is mapped at least 500 ft further along. This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.\n", text);
         Assert.Contains("  No runway crossings on this route.\n", text);
         Assert.Contains("wingspan 35.8 m, passenger", text);
+    }
+
+    [Fact]
+    public void With_no_exit_to_fall_back_on_the_line_says_none_is_mapped_on_the_same_side_500ft_on()
+    {
+        // "No later exit is mapped." was untrue beside a list of later exits. The exit to take if the briefed one is
+        // missed is the next one on the SAME side at least 500 ft on, so "none" means none of those.
+        var h6 = Exit("H6", 5334, "High-speed", "Right");
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "KLAX", Runway = "25L", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand Gate 40",
+            Taxiways = new[] { "H6", "H" }, DistanceMetres = 1100,
+            Exit = new ExitChoice(h6, null, true), VacatingExits = new[] { h6, Exit("H8", 7110, "High-speed", "Left") },
+        };
+        var taxiOut = TaxiLegBriefing.UnavailableLeg("KSEA", "16L", BriefingTier.Navdata, "x");
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn));
+
+        Assert.Contains("  Expected exit: taxiway H6, high-speed, RIGHT side, 5,334 ft from the threshold. " +
+                        "No later exit on the same side is mapped at least 500 ft further along.\n", text);
+    }
+
+    [Fact]
+    public void An_unreachable_exit_line_does_not_call_the_runway_short_when_reachable_exits_were_set_aside()
+    {
+        // KPHL 17: S is comfortably reachable, but its mapped route leaves the runway on the other side from the one
+        // it turns toward, so it cannot be briefed — and "this runway is short for this aircraft" would be untrue.
+        var e = Exit("E", 4428, "High-speed", "Right");
+        var s = Exit("S", 6025, "End", "Right");
+        var k = Exit("K", 4939, "Normal", "Left");
+
+        string Line(params LandingExit[] setAside)
+        {
+            var taxiIn = new TaxiLegBriefing
+            {
+                Icao = "KPHL", Runway = "17", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand C 22",
+                Taxiways = new[] { "K" }, DistanceMetres = 1300,
+                Exit = new ExitChoice(e, null, false) { ReachableExitsSetAside = setAside }, VacatingExits = new[] { e, k, s },
+            };
+            string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, TaxiLegBriefing.UnavailableLeg("KPHL", "17", BriefingTier.Navdata, "x"), taxiIn));
+            return text.Split('\n').Single(l => l.StartsWith("  Expected exit:", StringComparison.Ordinal));
+        }
+
+        Assert.EndsWith(" No exit whose mapped route leaves the runway on the side it turns toward is comfortably reachable at 130 kt, " +
+                        "so the last one that does is briefed; S is comfortably reachable, but its mapped route leaves the runway on the other side.",
+                        Line(s));
+        Assert.EndsWith("; S and K are comfortably reachable, but their mapped routes leave the runway on the other side.", Line(s, k));
+        Assert.EndsWith(" This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.", Line());
     }
 
     [Fact]

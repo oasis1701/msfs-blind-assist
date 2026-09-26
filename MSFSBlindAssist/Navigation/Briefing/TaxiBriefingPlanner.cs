@@ -112,34 +112,68 @@ public static partial class TaxiBriefingPlanner
         LandingExitVacateScreen.Mark(g.Graph, exits, rwy);
         var vacating = exits.Where(e => e.VacatesRunway).OrderBy(e => e.DistanceFromThresholdFeet).ToList();
         var routeStarts = BriefableExitRouteStarts(g.Graph, exits, rwy);
-        var choice = BriefingExitPicker.Pick(exits.Where(routeStarts.ContainsKey).ToList(), r.Aircraft.TouchdownSpeedKts);
+
+        // Each candidate's way in is planned at most once: the picker asks about the exits in its preference order
+        // and stops at the first that stays clear of the runway just landed on, and the chosen one is then briefed
+        // from the same plan.
+        var standNode = stand == null ? null : StandNode(g.Graph, stand.Spot);
+        var inbound = new Dictionary<LandingExit, InboundRoute?>();
+        InboundRoute? WayIn(LandingExit exit)
+        {
+            if (!inbound.TryGetValue(exit, out var planned))
+                inbound[exit] = planned = PlanInbound(g.Graph, routeStarts[exit], standNode!.NodeId, rwy);
+            return planned;
+        }
+
+        var choice = BriefingExitPicker.Pick(exits.Where(routeStarts.ContainsKey).ToList(), r.Aircraft.TouchdownSpeedKts,
+            standNode == null ? null : e => WayIn(e) is { CrossesLandingRunway: false });
         if (choice == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no exit taxiway is mapped clear of runway {rwy.RunwayID} in this scenery", stand, endpoint, notes, vacating);
+        choice = WithReachableExitsSetAside(choice, vacating, routeStarts.Keys, r.Aircraft.TouchdownSpeedKts);
         if (stand == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no stand at {icao} connects to the taxiway network", null, endpoint, notes, vacating, choice);
 
-        int from = routeStarts[choice.Exit];
-        int to = StandNode(g.Graph, stand.Spot)!.NodeId;
-        var route = new TaxiRouter(g.Graph).FindShortestPath(from, to);
-        if (route == null || route.Segments.Count == 0)
+        if (WayIn(choice.Exit) is not { } way)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no taxi route connects exit {choice.Exit.TaxiwayName} to {DescribeStand(stand, r.AirlineIcao)} in this scenery",
                 stand, endpoint, notes, vacating, choice);
 
-        var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, g.Graph.RunwayCenterlines, "", aircraft: null);
-        var holds = CollectHoldShorts(route, events, notes);
-        if (TaxiwayLeavingTheRunway(g.Graph, choice.Exit, from, route, rwy) is string leaving)
+        notes.AddRange(way.UnheldNotes);
+        if (TaxiwayLeavingTheRunway(g.Graph, choice.Exit, routeStarts[choice.Exit], way.Route, rwy) is string leaving)
             notes.Add($"the mapped route leaves the runway on taxiway {leaving}");
 
         return new TaxiLegBriefing
         {
             Icao = icao, Runway = rwy.RunwayID, Tier = g.Tier, EndpointDescription = endpoint, Stand = stand,
-            Taxiways = RouteTaxiwaySequence.DistinctConsecutive(route.Segments),
-            DistanceMetres = route.TotalDistanceMeters, HoldShorts = holds, Exit = choice, VacatingExits = vacating,
-            NarrowTaxiways = NarrowTaxiways(route, r.Aircraft), Notes = notes,
+            Taxiways = RouteTaxiwaySequence.DistinctConsecutive(way.Route.Segments),
+            DistanceMetres = way.Route.TotalDistanceMeters, HoldShorts = way.Holds, Exit = choice, VacatingExits = vacating,
+            NarrowTaxiways = NarrowTaxiways(way.Route, r.Aircraft), Notes = notes,
         };
+    }
+
+    /// <summary>A way in from one exit to the stand: the route with its hold-short points placed, what the block
+    /// says about them, and whether it crosses the runway just landed on.</summary>
+    private sealed record InboundRoute(TaxiRoute Route, List<HoldShortNote> Holds, List<string> UnheldNotes,
+                                       bool CrossesLandingRunway);
+
+    /// <summary>
+    /// The shortest route from an exit's route start to the stand, with its holds placed exactly as the leg briefs
+    /// them, or null when none connects. It crosses the runway just landed on when any hold on it, or any runway
+    /// passage the automatic pass reported (held or not), names that runway at either end — every briefed exit
+    /// gets clear of that runway, so the route starts clear of it and a passage naming it can only be a crossing.
+    /// </summary>
+    private static InboundRoute? PlanInbound(TaxiGraph graph, int from, int to, Runway landing)
+    {
+        var route = new TaxiRouter(graph).FindShortestPath(from, to);
+        if (route == null || route.Segments.Count == 0) return null;
+        var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, graph.RunwayCenterlines, "", aircraft: null);
+        var unheld = new List<string>();
+        var holds = CollectHoldShorts(route, events, unheld);
+        bool crosses = holds.Any(h => SameRunway(h.Runway, landing.RunwayID)) ||
+                       events.Any(e => SameRunway(e.Designator, landing.RunwayID));
+        return new InboundRoute(route, holds, unheld, crosses);
     }
 
     /// <summary>
@@ -171,6 +205,23 @@ public static partial class TaxiBriefingPlanner
             starts[exit] = node;
         }
         return starts;
+    }
+
+    /// <summary>
+    /// A choice that is not comfortably reachable, with the comfortably reachable exits that
+    /// <see cref="BriefableExitRouteStarts"/> set aside attached (<see cref="ExitChoice.ReachableExitsSetAside"/>): with
+    /// any of those the runway is not short, and the block says why they are not briefed instead. KPHL 17 and KSFO
+    /// 01L: every exit a 737 can make comfortably leads off the other side in the scenery (2 of 428 hub arrivals).
+    /// </summary>
+    internal static ExitChoice WithReachableExitsSetAside(ExitChoice choice, IReadOnlyList<LandingExit> vacating,
+                                                          ICollection<LandingExit> briefable, double touchdownSpeedKts)
+    {
+        if (choice.ComfortablyReachable) return choice;
+        var setAside = vacating
+            .Where(e => !briefable.Contains(e) && e.ExitAngleDegrees <= RolloutExitGate.MaxUsableExitTurnDeg &&
+                        BriefingExitPicker.IsComfortablyReachable(e, touchdownSpeedKts))
+            .ToList();
+        return setAside.Count == 0 ? choice : choice with { ReachableExitsSetAside = setAside };
     }
 
     /// <summary>"Right" or "Left" of the landing direction — <see cref="LandingExit.ExitSide"/>'s own words and

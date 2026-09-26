@@ -138,6 +138,19 @@ internal static class TaxiBriefingFixture
         AirportWith(SouthStandPaths().Append(Path("Y", 1800, 100, 1800, -100)), SouthStandSpots());
 
     /// <summary>
+    /// <see cref="AirportWithSouthStand"/> plus exit CS, 30 ft beyond C on the OTHER side of runway 09/27:
+    ///   east 1809.1: CS from 09's centreline (HS) straight south to north -100, then 9 m west to S at 1800 E.
+    /// Landing 09 to stand S 1, south of the runway: C, the first exit a 737 can make, turns LEFT and its route to S 1
+    /// crosses 09 back at X; CS, 30 ft further on, turns RIGHT and reaches S 1 without crossing anything.
+    /// </summary>
+    public static GraphBundle AirportWithStandSideExit() => AirportWith(
+        SouthStandPaths().Concat(new[]
+        {
+            Path("CS", 1809.144, 0, 1809.144, -100, startType: "HS"),
+            Path("CS", 1809.144, -100, 1800, -100),
+        }), SouthStandSpots());
+
+    /// <summary>
     /// <see cref="AirportWithSouthStand"/> plus taxiway Q, which leaves runway 09/27 twice, once to each side:
     ///   east 1900: Q from 09's centreline (HS) north-east at 45° to A at 2000 E — a high-speed exit on the LEFT
     ///              landing 09, 328 ft beyond C, so as the high-speed exit within 1,500 ft it is preferred to C.

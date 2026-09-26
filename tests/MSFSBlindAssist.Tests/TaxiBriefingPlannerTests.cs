@@ -206,6 +206,23 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void Landing_toward_a_stand_across_the_runway_the_exit_on_the_stand_s_side_is_briefed()
+    {
+        // The OMDB 12L shape (owner decision, 2026-09-26): C turns left and its route to S 1 crosses 09 — the runway
+        // just landed on — at X, while CS, 30 ft further, turns right toward S 1. Briefing C sent the pilot back
+        // across the landing runway, with traffic behind, for the want of an exit 30 ft away.
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, airline: "AAL"), AirportWithStandSideExit());
+
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("CS", leg.Exit!.Exit.TaxiwayName);
+        Assert.Equal("Right", leg.Exit.Exit.ExitSide);
+        Assert.StartsWith("representative stand S 1", leg.EndpointDescription);
+        Assert.Equal(new[] { "CS", "S" }, leg.Taxiways);
+        Assert.Empty(leg.HoldShorts);
+        Assert.Null(leg.Exit.NextExit);     // no exit further on to the right
+    }
+
+    [Fact]
     public void An_exit_whose_route_begins_on_the_other_side_of_the_runway_is_not_briefed()
     {
         // The first Q turns off to the LEFT, but its mapped route begins on the RIGHT, on the second Q's south side
@@ -235,6 +252,33 @@ public class TaxiBriefingPlannerTests
         Assert.Equal("Left", leg.Exit.Exit.ExitSide);
         Assert.Equal(new[] { "A" }, leg.Taxiways);
         Assert.Contains("the mapped route leaves the runway on taxiway K", leg.Notes);
+    }
+
+    [Fact]
+    public void An_unreachable_choice_names_the_comfortable_exits_set_aside_for_leaving_on_the_other_side()
+    {
+        // KPHL 17 at 130 kt: E (the last exit that leaves on its own side) is not comfortably reachable, but S is —
+        // S was set aside because its mapped route leaves the runway on the other side. The block must not then
+        // call the runway short.
+        static LandingExit Ex(string name, double thresholdFt, double angle) => new()
+        {
+            TaxiwayName = name, DistanceFromThresholdFeet = thresholdFt, DistanceFromTouchdownFeet = thresholdFt - 1000,
+            ExitAngleDegrees = angle, ExitType = angle <= 50 ? "High-speed" : "Normal", ExitSide = "Right", VacatesRunway = true,
+        };
+        var e = Ex("E", 4428, 6);       // briefable; 3,428 ft from touchdown, needs 3,565
+        var k = Ex("K", 4939, 84);      // set aside; 3,939 ft, needs 4,020 — not reachable either
+        var s = Ex("S", 6025, 85);      // set aside; 5,025 ft — reachable
+        var vacating = new[] { e, k, s };
+        var briefable = new HashSet<LandingExit> { e };
+
+        var unreachable = new ExitChoice(e, null, ComfortablyReachable: false);
+        Assert.Equal(new[] { s }, TaxiBriefingPlanner.WithReachableExitsSetAside(unreachable, vacating, briefable, 130.0).ReachableExitsSetAside);
+
+        // A comfortably reachable choice needs no such caveat, and neither does an unreachable one with nothing set aside.
+        var x = Ex("X", 5500, 90);      // briefable and reachable
+        var reachable = new ExitChoice(x, null, ComfortablyReachable: true);
+        Assert.Empty(TaxiBriefingPlanner.WithReachableExitsSetAside(reachable, new[] { e, k, x, s }, new HashSet<LandingExit> { e, x }, 130.0).ReachableExitsSetAside);
+        Assert.Empty(TaxiBriefingPlanner.WithReachableExitsSetAside(unreachable, vacating, new HashSet<LandingExit> { e, k, s }, 130.0).ReachableExitsSetAside);
     }
 
     // ── hold-short bookkeeping ───────────────────────────────────────────────────────────────
