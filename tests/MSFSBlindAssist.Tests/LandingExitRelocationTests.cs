@@ -121,6 +121,23 @@ public class LandingExitRelocationTests
     }
 
     [Fact]
+    public void A_kept_exit_takes_its_bearing_where_it_stands_not_at_its_lead_in_start()
+    {
+        // Review I1. "X" leaves the runway at 90 degrees, north (left), from (1000,1); its unnamed lead
+        // line starts 100 m earlier, at (900,0), which is the branch's junction. Measured from the
+        // junction, the lead line's first edge is shallow, so the bearing fell back to the chord to the
+        // corridor node: -31 degrees, and after "turn now" the tone under-turned the pilot by 59.
+        var g = Build(Seg(900, 0, 1000, 1), Seg(1000, 1, 1000, 60, "X"));
+
+        var x = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "X");
+
+        Assert.Equal(NodeAt(g, 1000, 1).NodeId, x.NodeId);
+        double relative = ((x.ExitBearingTrue - 90.0) % 360.0 + 540.0) % 360.0 - 180.0;
+        Assert.InRange(relative, -93.0, -87.0);
+        Assert.Equal("Left", x.ExitSide);
+    }
+
+    [Fact]
     public void A_sibling_swap_lands_where_the_sibling_arm_leaves_the_centreline()
     {
         // Round 3, T1. The KMEM M6 Y shape, but the forward (unnamed) arm has a 120 m lead line along the
