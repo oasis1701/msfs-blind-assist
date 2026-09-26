@@ -491,7 +491,10 @@ public partial class TaxiGuidanceManager
     /// </summary>
     private bool IsOnRolloutRunwayPavement(double lat, double lon)
         => _rolloutRunway != null
-           && IsWithinRolloutRunwayLaterally(lat, lon)
+           && Navigation.RolloutExitGate.IsWithinRunwayPavementLaterally(
+                  AbsLateralFromRunwayMeters(lat, lon, _rolloutRunway.StartLat, _rolloutRunway.StartLon,
+                      _rolloutRunwayHeadingTrue),
+                  _rolloutRunway.Width, _rolloutRunway.Surface)
            && IsWithinRunwayLength(_rolloutRunway, _rolloutRunwayHeadingTrue, lat, lon);
 
     /// <summary>

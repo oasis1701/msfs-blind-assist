@@ -4,15 +4,13 @@ namespace MSFSBlindAssist.Navigation;
 /// "Is this point on mapped pavement?" for the landing roll and the exit (docs/taxi-guidance.md,
 /// "Off-pavement alert"). On a runway: within its shape plus <see cref="RunwayMarginMetres"/> (the
 /// codebase's one "off the runway" margin, which also absorbs paved shoulders). On a taxiway: within
-/// its half-width (capped, as the handoff reachability guard caps it) plus <see cref="TaxiwayMarginMetres"/>
-/// (the exit corridor's margin, which absorbs the unmapped pavement at taxiway corners). Built once per
-/// graph; a per-frame query tests the runways first and only scans edges (bounding boxes first) off them.
+/// <see cref="PavementTolerance.ForWidthFeet"/> of its centreline - the off-route detector's own tolerance,
+/// so "Off pavement." and "off route" can never disagree about the same taxiway. Built once per graph; a
+/// per-frame query tests the runways first and only scans edges (bounding boxes first) off them.
 /// </summary>
 public sealed class PavementMap
 {
     public const double RunwayMarginMetres = RolloutExitGate.RunwayClearMarginM;
-    public const double TaxiwayMarginMetres = RolloutExitGate.HandoffReachMarginM;
-    public const double MaxTaxiwayHalfWidthMetres = RolloutExitGate.HandoffReachDefaultHalfWidthM;
 
     private const double MetresPerDegLat = 111132.0;
 
@@ -41,10 +39,11 @@ public sealed class PavementMap
                 if (TaxiGraph.IsStandBridge(e)) continue;
                 if (TaxiGraph.IsParkingLeadIn(e)) continue;
                 if (!graph.Nodes.TryGetValue(e.FromNodeId, out var a) || !graph.Nodes.TryGetValue(e.ToNodeId, out var b)) continue;
-                double halfWidth = e.WidthFeet > 0
-                    ? Math.Min(e.WidthFeet * 0.3048 * 0.5, MaxTaxiwayHalfWidthMetres)
-                    : MaxTaxiwayHalfWidthMetres;
-                double reach = halfWidth + TaxiwayMarginMetres;
+                // The off-route detector's tolerance: half-width + 15 m, at least 25 m, a missing width read
+                // as 75 ft and a width capped at 300 ft. The map's own copy (half-width capped at, and
+                // defaulting to, 25 m, + 15 m) said 40 m where the detector said 26.4 m for an edge with no
+                // width, and 40 m where it said 60.7 m for a 300 ft apron edge.
+                double reach = PavementTolerance.ForWidthFeet(e.WidthFeet);
                 double dLat = reach / MetresPerDegLat;
                 double dLon = reach / (MetresPerDegLat * Math.Max(0.01, Math.Cos(a.Latitude * Math.PI / 180.0)));
                 segments.Add(new Segment(a.Latitude, a.Longitude, b.Latitude, b.Longitude, reach,

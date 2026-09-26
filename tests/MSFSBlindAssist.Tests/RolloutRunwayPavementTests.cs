@@ -65,4 +65,21 @@ public class RolloutRunwayPavementTests
         Assert.True(TaxiGuidanceManager.IsWithinRunwayLength(rwy, rwy.Heading, lat, lon));
         Assert.False(RolloutExitGate.IsLaterallyClearOfRunway(0.0, rwy.Width));
     }
+
+    [Theory]
+    // ZBAT: an asphalt runway recorded 546 ft wide. Capped at 400 ft for the alert: 61 m + 10 m = 71 m.
+    [InlineData(80.0, 546.0, 4, false)]
+    [InlineData(70.0, 546.0, 4, true)]
+    // A grass field that wide can be real, and keeps its width: 83.2 m + 10 m.
+    [InlineData(80.0, 546.0, 1, true)]
+    // An ordinary width is exactly the rollout's own line (the complement of IsLaterallyClearOfRunway).
+    [InlineData(32.8, 150.0, 4, true)]
+    [InlineData(32.95, 150.0, 4, false)]
+    public void The_alert_caps_a_malformed_paved_runways_width(
+        double absLateralM, double widthFt, int surface, bool within)
+    {
+        Assert.Equal(within, RolloutExitGate.IsWithinRunwayPavementLaterally(absLateralM, widthFt, surface));
+        if (widthFt <= 400.0)
+            Assert.Equal(within, !RolloutExitGate.IsLaterallyClearOfRunway(absLateralM, widthFt));
+    }
 }

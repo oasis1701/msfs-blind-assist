@@ -284,6 +284,30 @@ public static class RolloutExitGate
     }
 
     /// <summary>
+    /// A paved runway surface (<c>Runway.Surface</c>'s codes): concrete, asphalt, bituminous, macadam or
+    /// tarmac.
+    /// </summary>
+    public static bool IsPavedSurface(int surfaceCode) => surfaceCode is 0 or 4 or 17 or 19 or 23;
+
+    /// <summary>
+    /// Is the aircraft within the landing runway's pavement laterally, for the off-pavement alert: within
+    /// half-width + <see cref="RunwayClearMarginM"/>, the complement of <see cref="IsLaterallyClearOfRunway"/>,
+    /// except that a PAVED runway's width is capped as RunwayShape caps a malformed row
+    /// (<see cref="RunwayShape.MaxPlausibleHalfWidthMeters"/>, a 400 ft runway). fs2024 records three paved
+    /// runways wider than that (ZBAT 546 ft, YNSM 450 ft, USDB 447 ft); taken at face value, every point up to
+    /// 93 m out counted as pavement, so "Off pavement." could never fire beside them. Beyond 400 ft a grass,
+    /// dirt or water field can be real, so those keep their width. The rollout's own lateral line keeps the raw
+    /// width either way: its callers decide handoffs, and this is only the alert's question.
+    /// </summary>
+    public static bool IsWithinRunwayPavementLaterally(double absLateralMetres, double runwayWidthFeet, int surfaceCode)
+    {
+        double widthFt = runwayWidthFeet > 0.0 ? runwayWidthFeet : DefaultRunwayWidthFeet;
+        double halfWidthM = widthFt * 0.3048 * 0.5;
+        if (IsPavedSurface(surfaceCode)) halfWidthM = Math.Min(halfWidthM, RunwayShape.MaxPlausibleHalfWidthMeters);
+        return absLateralMetres <= halfWidthM + RunwayClearMarginM;
+    }
+
+    /// <summary>
     /// Which steering-tone behaviour applies this frame.
     ///
     /// <para><see cref="RolloutToneMode.Silent"/> (the ground-speed case) and
