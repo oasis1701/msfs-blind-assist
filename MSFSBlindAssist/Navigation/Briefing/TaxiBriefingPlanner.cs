@@ -147,7 +147,7 @@ public static partial class TaxiBriefingPlanner
                 stand, endpoint, notes, vacating, choice, exitsSearched: true);
 
         notes.AddRange(way.UnheldNotes);
-        if (TaxiwayLeavingTheRunway(g.Graph, choice.Exit, routeStarts[choice.Exit], way.Route, rwy) is string leaving)
+        if (TaxiwayLeavingTheRunway(g.Graph, choice.Exit, routeStarts[choice.Exit], rwy) is string leaving)
             notes.Add($"the mapped route leaves the runway on taxiway {leaving}");
 
         return new TaxiLegBriefing
@@ -253,9 +253,12 @@ public static partial class TaxiBriefingPlanner
     /// on V4 itself. Where the two taxiways genuinely differ it is worth saying — KMSP 17's junction sends L3 to
     /// the right and K3 to the left, and the exit briefed on the left is K3's.</para>
     /// </summary>
-    internal static string? TaxiwayLeavingTheRunway(TaxiGraph graph, LandingExit exit, int routeStart, TaxiRoute route, Runway rwy)
+    internal static string? TaxiwayLeavingTheRunway(TaxiGraph graph, LandingExit exit, int routeStart, Runway rwy)
     {
-        var lead = routeStart == exit.NodeId ? route : new TaxiRouter(graph).FindShortestPath(exit.NodeId, routeStart);
+        // A route that begins at the junction itself leaves nothing between the two to judge by, and reading the route's
+        // own first taxiway is the reading rejected above: say nothing.
+        if (routeStart == exit.NodeId) return null;
+        var lead = new TaxiRouter(graph).FindShortestPath(exit.NodeId, routeStart);
         if (lead == null) return null;
         var frame = RunwayFrame.For(rwy, rwy.StartLat);
         foreach (var seg in lead.Segments)

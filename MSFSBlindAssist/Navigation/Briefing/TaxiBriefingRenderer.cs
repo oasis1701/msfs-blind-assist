@@ -128,14 +128,17 @@ public static class TaxiBriefingRenderer
         var e = choice.Exit;
         var sb = new StringBuilder();
         sb.Append($"  Expected exit: taxiway {ExitName(e)}, {ExitTypeText(e)}, {SideUpper(e.ExitSide)}, {Feet(e.DistanceFromThresholdFeet)} ft from the threshold.");
-        // The exit if missed is the next one on the SAME side at least NextExitMinSeparationFeet further along
-        // (BriefingExitPicker), so "none" means none of those — never that no later exit exists at all.
+        // The exit if missed is the next USABLE one (a briefable candidate: it turns no more than 90° and its route
+        // leaves on its own side) on the SAME side at least NextExitMinSeparationFeet further along
+        // (BriefingExitPicker), so "none" means none of those — never that no later exit exists at all: the exits list
+        // can still show a later one on that side that turns further, or was set aside (named just below when
+        // comfortably reachable).
         string minimum = Feet(BriefingExitPicker.NextExitMinSeparationFeet);
         sb.Append(choice.NextExit is { } n
             ? $" Next exit if missed: {ExitName(n)}, {SideLower(n.ExitSide)}, {Feet(n.DistanceFromThresholdFeet)} ft"
             : string.IsNullOrEmpty(e.ExitSide)
-                ? $" No later exit is mapped at least {minimum} ft further along."
-                : $" No later exit on the same side is mapped at least {minimum} ft further along.");
+                ? $" No later usable exit is mapped at least {minimum} ft further along."
+                : $" No later usable exit on the same side is mapped at least {minimum} ft further along.");
         if (!choice.ComfortablyReachable)
             sb.Append(UnreachableSentence(choice, aircraft.TouchdownSpeedKts.ToString("0", CultureInfo.InvariantCulture)));
         return sb.ToString();
@@ -149,9 +152,11 @@ public static class TaxiBriefingRenderer
         var setAside = choice.ReachableExitsSetAside;
         if (setAside.Count == 0)
             return $" This runway is short for this aircraft: no exit is comfortably reachable at {kt} kt; the last exit is briefed.";
-        string names = setAside.Count == 1
-            ? ExitName(setAside[0])
-            : string.Join(", ", setAside.Take(setAside.Count - 1).Select(ExitName)) + " and " + ExitName(setAside[^1]);
+        // Capped like the exits list: the first MaxListedExits, then how many more.
+        string names = setAside.Count == 1 ? ExitName(setAside[0])
+            : setAside.Count > MaxListedExits
+                ? string.Join(", ", setAside.Take(MaxListedExits).Select(ExitName)) + $", … and {setAside.Count - MaxListedExits} more"
+                : string.Join(", ", setAside.Take(setAside.Count - 1).Select(ExitName)) + " and " + ExitName(setAside[^1]);
         string tail = setAside.Count == 1
             ? $"{names} is comfortably reachable, but its mapped route leaves the runway on the other side."
             : $"{names} are comfortably reachable, but their mapped routes leave the runway on the other side.";

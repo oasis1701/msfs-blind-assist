@@ -153,7 +153,7 @@ public class TaxiBriefingRendererTests
         Assert.Contains("TAXI OUT at LOWI (OpenStreetMap, planning only — taxi guidance cannot use this): from representative stand 12 to runway 26\n", text);
         Assert.Contains("  Taxiways: A (640 m)\n", text);
         Assert.Contains("  Note: stand types unknown (OpenStreetMap)\n", text);
-        Assert.Contains("  Expected exit: taxiway B, normal, side unknown, 3,000 ft from the threshold. No later exit is mapped at least 500 ft further along. This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.\n", text);
+        Assert.Contains("  Expected exit: taxiway B, normal, side unknown, 3,000 ft from the threshold. No later usable exit is mapped at least 500 ft further along. This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.\n", text);
         Assert.Contains("  No runway crossings on this route.\n", text);
         Assert.Contains("wingspan 35.8 m, passenger", text);
     }
@@ -162,19 +162,21 @@ public class TaxiBriefingRendererTests
     public void With_no_exit_to_fall_back_on_the_line_says_none_is_mapped_on_the_same_side_500ft_on()
     {
         // "No later exit is mapped." was untrue beside a list of later exits. The exit to take if the briefed one is
-        // missed is the next one on the SAME side at least 500 ft on, so "none" means none of those.
+        // missed is the next USABLE one on the SAME side at least 500 ft on, so "none" means none of those — the list
+        // can still show a later same-side exit that turns more than 90° (A8 here) or was set aside.
         var h6 = Exit("H6", 5334, "High-speed", "Right");
         var taxiIn = new TaxiLegBriefing
         {
             Icao = "KLAX", Runway = "25L", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand Gate 40",
             Taxiways = new[] { "H6", "H" }, DistanceMetres = 1100,
-            Exit = new ExitChoice(h6, null, true), VacatingExits = new[] { h6, Exit("H8", 7110, "High-speed", "Left") },
+            Exit = new ExitChoice(h6, null, true),
+            VacatingExits = new[] { h6, Exit("H8", 7110, "High-speed", "Left"), Exit("A8", 7150, "End", "Right") },
         };
         var taxiOut = TaxiLegBriefing.UnavailableLeg("KSEA", "16L", BriefingTier.Navdata, "x");
         string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn));
 
         Assert.Contains("  Expected exit: taxiway H6, high-speed, RIGHT side, 5,334 ft from the threshold. " +
-                        "No later exit on the same side is mapped at least 500 ft further along.\n", text);
+                        "No later usable exit on the same side is mapped at least 500 ft further along.\n", text);
     }
 
     [Fact]
@@ -198,11 +200,22 @@ public class TaxiBriefingRendererTests
             return text.Split('\n').Single(l => l.StartsWith("  Expected exit:", StringComparison.Ordinal));
         }
 
-        Assert.EndsWith(" No exit whose mapped route leaves the runway on the side it turns toward is comfortably reachable at 130 kt, " +
-                        "so the last one that does is briefed; S is comfortably reachable, but its mapped route leaves the runway on the other side.",
-                        Line(s));
+        // S also turns right, 1,597 ft further on: the line must not say there is no later exit on that side and then
+        // name S as reachable — S is not usable, and the line says so in both halves.
+        Assert.Equal("  Expected exit: taxiway E, high-speed, RIGHT side, 4,428 ft from the threshold. " +
+                     "No later usable exit on the same side is mapped at least 500 ft further along. " +
+                     "No exit whose mapped route leaves the runway on the side it turns toward is comfortably reachable at 130 kt, " +
+                     "so the last one that does is briefed; S is comfortably reachable, but its mapped route leaves the runway on the other side.",
+                     Line(s));
         Assert.EndsWith("; S and K are comfortably reachable, but their mapped routes leave the runway on the other side.", Line(s, k));
         Assert.EndsWith(" This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.", Line());
+
+        // Named like the exits list: the first twelve, then how many more.
+        var many = Enumerable.Range(1, 15).Select(i => Exit($"X{i}", 5000 + i * 100, "Normal", "Right")).ToArray();
+        string capped = Line(many);
+        Assert.EndsWith("; X1, X2, X3, X4, X5, X6, X7, X8, X9, X10, X11, X12, … and 3 more are comfortably reachable, " +
+                        "but their mapped routes leave the runway on the other side.", capped);
+        Assert.DoesNotContain("X13", capped, StringComparison.Ordinal);
     }
 
     [Fact]

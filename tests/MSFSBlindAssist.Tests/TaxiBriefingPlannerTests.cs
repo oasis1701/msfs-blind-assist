@@ -320,6 +320,20 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void A_route_that_starts_at_the_exit_s_own_junction_names_no_leaving_taxiway()
+    {
+        // With no way from the junction to judge, the only thing left to read is the route's own first taxiway — the
+        // reading TaxiwayLeavingTheRunway exists to avoid. It says nothing rather than guess.
+        // (A route from C's junction leaves the runway on C, so an exit named otherwise used to get a "C" note.)
+        var g = Airport();
+        var rwy = g.Runways.First(r => r.RunwayID == "09");
+        var c = g.Graph.GetLandingExits(rwy).First(e => e.TaxiwayName == "C");
+        var namedOtherwise = new LandingExit { NodeId = c.NodeId, TaxiwayName = "Q" };
+
+        Assert.Null(TaxiBriefingPlanner.TaxiwayLeavingTheRunway(g.Graph, namedOtherwise, c.NodeId, rwy));
+    }
+
+    [Fact]
     public void An_unreachable_choice_names_the_comfortable_exits_set_aside_for_leaving_on_the_other_side()
     {
         // KPHL 17 at 130 kt: E (the last exit that leaves on its own side) is not comfortably reachable, but S is —
