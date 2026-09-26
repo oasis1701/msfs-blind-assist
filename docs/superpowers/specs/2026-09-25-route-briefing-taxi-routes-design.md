@@ -144,10 +144,11 @@ database showed that at ~20 airports a same-numbered GA ramp ("Spot 8") would ha
 as the assigned "Gate 8", because `NormalizeParkingName` strips the stand-type word):
 
 0. **SayIntentions gate** (hint non-null; the caller has already checked the SI flight matches
-   this OFP, §5.9). The pool excludes types 8 (Military Combat), 16 (Fuel), 17 (Vehicles) and
-   de-ice pads; type 1 is KEPT here because navdata maps unknown-type stands to it, real jetway
-   gates included (LEBB 101–106), but it gives way to a known type (within 1 m of the pin, or
-   always when no pin is published). A stand's REACH is `min(150 m, radiusMetres × 2.0)` — the
+   this OFP, §5.9). Every stand kind can be SayIntentions' stand (owner decision 2026-09-26, below):
+   stands of the EXCLUDED kinds — types 8 (Military Combat), 16 (Fuel), 17 (Vehicles) and de-ice
+   pads — rank after every ordinary stand and carry a kind note; type 1 (navdata's unknown type,
+   which includes real jetway gates such as LEBB 101–106) is ordinary but gives way to a known
+   type (within 1 m of the pin, or always when no pin is published). A stand's REACH is `min(150 m, radiusMetres × 2.0)` — the
    values are `SayIntentionsGatePositionMatcher`'s own calibrated constants; radius is FEET for
    navdata, METRES for GSX — or 60 m for a stand of unknown radius (every OpenStreetMap stand).
    By name first: every stand whose identity label (`Describe()` before its first " - ")
@@ -164,15 +165,20 @@ as the assigned "Gate 8", because `NormalizeParkingName` strips the stand-type w
    several namesakes an ordinary stand beats an excluded one, then the one nearest the pin (no pin:
    a gate type first, then list order); a later namesake is tried when the first does not connect
    only if it is at least as plausible (reaches the pin when either does; otherwise the same kind
-   as the first). The chosen stand must connect to the taxiway network; a matched name that does
-   not connect is said so ("was found but does not connect"). By position only when no name or
-   alias matched at all: the nearest ordinary stand whose reach contains the pin. Differences from
-   the import that remain, deliberately: the namesake tie-break (the import takes the first in its
-   own list — never switch the briefing to list order, which briefs a GA "Spot 8" as "Gate 8" at
-   ~20 airports); the network-connection requirement; the 60 m acceptance for a stand of unknown
-   size; and the briefing's position match never lands on an excluded kind. A found stand is `StandChoiceSource.SayIntentions`, and when its identity does
-   not normalise to SayIntentions' label the note says "SayIntentions assigned X, which this scenery
-   lists as Y"; nothing found → a note naming the assigned label, and the inference below.
+   as the first, and no farther from the pin than the first plus the first's reach). The chosen
+   stand must connect to the taxiway network; a matched name that does not connect is said so
+   ("was found but does not connect", naming its kind when excluded). By position only when no name
+   or alias matched at all: the nearest ORDINARY stand whose reach contains the pin, else the nearest
+   excluded-kind stand in reach with its kind note (following the import onto it, as for names);
+   when the nearest stand in reach does not connect and the next is used, a note says so. Differences
+   from the import that remain, deliberately: the namesake tie-break (the import takes the first in
+   its own list — never switch the briefing to list order, which briefs a GA "Spot 8" as "Gate 8" at
+   ~20 airports); an ordinary stand is preferred over an excluded one both among namesakes and among
+   stands at the pin, and an ordinary stand's ALIAS beats an excluded stand's NAME (the import takes
+   the first/nearest of any kind); the network-connection requirement; and the 60 m acceptance for a
+   stand of unknown size. A found stand is `StandChoiceSource.SayIntentions`, and when its identity
+   does not normalise to SayIntentions' label the note says "SayIntentions assigned X, which this
+   scenery lists as Y"; nothing found → a note naming the assigned label, and the inference below.
 1. **Eligible and reachable.** The representative choice excludes types 1, 8, 16, 17 and de-ice
    pads, and keeps only stands with a graph node within 100 m (Taxi Assist's gate rule) — checked
    BEFORE the filters below, so a filter never leaves a leg without a stand while one connects.
