@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.SayIntentions;
 
@@ -50,6 +51,10 @@ public static class BriefingStandPicker
     public const double SiPositionUnknownRadiusMetres = 60.0;
 
     private const double FeetToMetres = 0.3048;
+
+    /// <summary>How every note that says the stands' types are unknown begins — the picker's own and the
+    /// OpenStreetMap graph's (<see cref="OsmPlanningGraph.Note"/>), so a leg that carries both can say it once.</summary>
+    public const string StandTypesUnknown = "stand types unknown";
 
     // Military Combat, Fuel, Vehicles: never briefed, not even as SayIntentions' gate.
     private static readonly HashSet<int> NeverBriefedTypes = new() { 8, 16, 17 };
@@ -151,7 +156,9 @@ public static class BriefingStandPicker
     private static ParkingSpot? MatchSayIntentionsGate(IReadOnlyList<ParkingSpot> spots, SayIntentionsGateHint hint,
                                                        Func<ParkingSpot, bool> hasGraphNode, List<string> notes)
     {
-        string assigned = $"SayIntentions assigned gate \"{hint.Label}\"";
+        string assigned = LabelNamesItsKind(hint.Label)
+            ? $"SayIntentions assigned \"{hint.Label}\""
+            : $"SayIntentions assigned gate \"{hint.Label}\"";
         var pool = spots.Where(IsRoutable).ToList();
         string wanted = SayIntentionsClearanceParser.NormalizeParkingName(hint.Label);
         GeoPoint? pin = hint.Position;
@@ -198,20 +205,33 @@ public static class BriefingStandPicker
             }
         }
 
-        notes.Add($"{assigned} was not found at this airport; using a representative stand instead");
+        // With a published position the only honest claim is about that position: a stand of the same name can be
+        // here, outside the pin's reach, and "not found at this airport" would then be untrue.
+        notes.Add(pin is GeoPoint
+            ? $"{assigned}, but no stand at SayIntentions' position was found in this scenery; using a representative stand instead"
+            : $"{assigned} was not found at this airport; using a representative stand instead");
         return null;
     }
 
     /// <summary>SayIntentions' stand, with a note whenever this scenery lists it under another name (an
     /// alias or a position match), so the pilot hears why the briefed stand is not called what
-    /// SayIntentions called it.</summary>
+    /// SayIntentions called it. A label that names no stand at all ("Gate") matches nothing by name, so a stand
+    /// found for it was found by position alone and always gets the note — even one whose own label names no
+    /// stand either ("Parking"), which would otherwise compare as the same empty name.</summary>
     private static ParkingSpot Assigned(ParkingSpot stand, string label, string wanted, List<string> notes)
     {
         string listedAs = IdentityLabel(stand);
-        if (!SameName(listedAs, wanted))
+        if (wanted.Length == 0 || !SameName(listedAs, wanted))
             notes.Add($"SayIntentions assigned {label}, which this scenery lists as {listedAs}");
         return stand;
     }
+
+    /// <summary>Whether a stand label already says what kind of stand it is ("Gate 5", "Spot 12", "Parking"), so
+    /// "gate" is not put in front of it ("SayIntentions assigned gate Gate 5").</summary>
+    internal static bool LabelNamesItsKind(string label) => KindWord.IsMatch(label);
+
+    private static readonly Regex KindWord = new(@"^\s*(?:gate|spot|parking)\b",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static bool SameName(string label, string wanted) =>
         string.Equals(SayIntentionsClearanceParser.NormalizeParkingName(label), wanted, StringComparison.Ordinal);
@@ -298,7 +318,7 @@ public static class BriefingStandPicker
         kind = null;
         if (reachable.All(s => s.Type == 0))
         {
-            notes.Add($"stand types unknown at this airport; the stand may not be a {preference[0].Noun}");
+            notes.Add($"{StandTypesUnknown} at this airport; the stand may not be a {preference[0].Noun}");
             return reachable;
         }
 

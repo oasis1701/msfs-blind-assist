@@ -27,6 +27,31 @@ public class AircraftSizeClassTests
         Assert.Equal(15.0, AircraftSizeClass.MinTaxiwayWidthMetres(IcaoCodeLetter.C));
     }
 
+    [Fact]
+    public void A_Cessna_152_is_code_A_with_a_GA_touchdown_speed()
+    {
+        // The review's KSEA sweep had a C152 briefed as "size class unknown ... aircraft type not recognised".
+        var p = AircraftSizeClass.Resolve("C152", "Cessna 152", 1);
+        Assert.Equal(IcaoCodeLetter.A, p.CodeLetter);
+        Assert.Equal(10.2, p.WingspanMetres!.Value, 1);
+        Assert.Equal(70.0, p.TouchdownSpeedKts);
+    }
+
+    [Theory]
+    [InlineData("C182", 11.0)]
+    [InlineData("PA28", 10.7)]
+    [InlineData("SR22", 11.7)]
+    [InlineData("DA40", 11.9)]
+    [InlineData("DA42", 13.4)]
+    [InlineData("DA62", 14.6)]
+    [InlineData("BE58", 11.5)]
+    public void Common_GA_types_are_code_A(string code, double wingspanMetres)
+    {
+        var p = AircraftSizeClass.Resolve(code, "", null);
+        Assert.Equal(wingspanMetres, p.WingspanMetres!.Value, 1);
+        Assert.Equal(IcaoCodeLetter.A, p.CodeLetter);
+    }
+
     [Theory]
     [InlineData("MD1F", "MD-11F", 0)]
     [InlineData("B77L", "Boeing 777F", 0)]

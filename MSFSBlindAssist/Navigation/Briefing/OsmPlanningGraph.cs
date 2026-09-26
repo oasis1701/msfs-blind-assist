@@ -20,7 +20,7 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 public static class OsmPlanningGraph
 {
     public const double HoldSnapMetres = 3.0;
-    public const string Note = "stand types unknown (OpenStreetMap)";
+    public const string Note = BriefingStandPicker.StandTypesUnknown + " (OpenStreetMap)";
 
     public static GraphBundle? Build(IReadOnlyList<AirportTaxiData>? sources, IReadOnlyList<Runway> runways,
                                      IReadOnlyList<StartPosition> starts, Airport? airport)

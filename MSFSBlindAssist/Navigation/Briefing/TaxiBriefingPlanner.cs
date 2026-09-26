@@ -56,7 +56,7 @@ public static partial class TaxiBriefingPlanner
             if (stand == null)
                 return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                     $"no stand at {icao} connects to the taxiway network", notes: notes);
-            notes.AddRange(stand.Notes);
+            AddStandNotes(notes, stand, g.Note);
             startNode = StandNode(g.Graph, stand.Spot)!.NodeId;
             endpoint = $"representative stand {DescribeStand(stand, r.AirlineIcao)}";
         }
@@ -109,7 +109,7 @@ public static partial class TaxiBriefingPlanner
                 $"runway {r.DestinationRunway} is not in the navigation database for {icao}", notes: notes);
 
         var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, r.ArrivalGate, s => StandNode(g.Graph, s) != null);
-        if (stand != null) notes.AddRange(stand.Notes);
+        if (stand != null) AddStandNotes(notes, stand, g.Note);
         string endpoint = stand == null ? "" : DescribeArrivalStand(stand, r.AirlineIcao);
 
         var exits = g.Graph.GetLandingExits(rwy);
@@ -275,11 +275,12 @@ public static partial class TaxiBriefingPlanner
     ///
     /// <para>Every stop is briefed, each on its own. On a briefing route the pass is the only thing that
     /// flags a stop (the router flags none), one per held crossing, so two stops naming one runway (either
-    /// end, or the start hold and a later stop) are two crossings, and the pilot must hear both. The runway just landed on is no exception: every briefed
-    /// exit vacates it (<see cref="BriefingExitPicker"/> takes only <see cref="LandingExit.VacatesRunway"/>
-    /// exits), so the way in starts clear of it, and the pass never holds for LEAVING a runway — a stop naming
-    /// it, the start hold included, is the route crossing it again with landing traffic behind. A start hold
-    /// is what such a crossing becomes when nothing lies between the vacate node and the runway.</para>
+    /// end, or the start hold and a later stop) are two crossings, and the pilot must hear both. The runway
+    /// just landed on is no exception: every briefed exit vacates it (<see cref="BriefingExitPicker"/> takes
+    /// only <see cref="LandingExit.VacatesRunway"/> exits), so the way in starts clear of it, and the pass
+    /// never holds for LEAVING a runway — a stop naming it, the start hold included, is the route crossing it
+    /// again with landing traffic behind. A start hold is what such a crossing becomes when nothing lies
+    /// between the vacate node and the runway.</para>
     ///
     /// <para>Every hold found here is a CROSSING (<see cref="HoldShortNote.BeforeEntering"/> false), the
     /// departure runway's included: the automatic pass never places a stop for a route's own arrival onto
@@ -386,10 +387,25 @@ public static partial class TaxiBriefingPlanner
         return parts.Count == 0 ? label : $"{label} ({string.Join(", ", parts)})";
     }
 
-    private static string DescribeArrivalStand(StandChoice stand, string? airlineIcao) =>
-        stand.Source == StandChoiceSource.SayIntentions
-            ? $"SayIntentions assigned gate {BriefingStandPicker.IdentityLabel(stand.Spot)}"
-            : $"representative stand {DescribeStand(stand, airlineIcao)}";
+    /// <summary>"SayIntentions assigned gate B 6", or "SayIntentions assigned Gate 5" for a label that already says
+    /// what it is — never "gate Gate 5".</summary>
+    private static string DescribeArrivalStand(StandChoice stand, string? airlineIcao)
+    {
+        if (stand.Source != StandChoiceSource.SayIntentions) return $"representative stand {DescribeStand(stand, airlineIcao)}";
+        string label = BriefingStandPicker.IdentityLabel(stand.Spot);
+        return BriefingStandPicker.LabelNamesItsKind(label) ? $"SayIntentions assigned {label}" : $"SayIntentions assigned gate {label}";
+    }
+
+    /// <summary>
+    /// The stand picker's notes, said once with the graph's own caveat: on the OpenStreetMap tier both say the stand
+    /// types are unknown, and the picker's also says what the stand may not be, so it replaces the graph's.
+    /// </summary>
+    private static void AddStandNotes(List<string> notes, StandChoice stand, string? graphNote)
+    {
+        static bool TypesUnknown(string n) => n.StartsWith(BriefingStandPicker.StandTypesUnknown, StringComparison.Ordinal);
+        if (graphNote != null && TypesUnknown(graphNote) && stand.Notes.Any(TypesUnknown)) notes.Remove(graphNote);
+        notes.AddRange(stand.Notes);
+    }
 
     /// <summary>
     /// Whether a node's <see cref="TaxiNode.ParkingName"/> names a STAND. TaxiGraph.Build also writes

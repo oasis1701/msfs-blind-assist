@@ -151,6 +151,39 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void A_say_intentions_gate_already_called_gate_is_not_called_gate_twice()
+    {
+        // "SayIntentions assigned gate Gate 5": a letterless gate's own label already says what it is.
+        var bundle = AirportWith(Array.Empty<TaxiPath>(), new[] { Spot("", 5, 10, 1000, 180, 150) });
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: new SayIntentionsGateHint("Gate 5", null)), bundle);
+
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("SayIntentions assigned Gate 5", leg.EndpointDescription);
+    }
+
+    [Fact]
+    public void An_OpenStreetMap_leg_says_its_stand_types_are_unknown_once()
+    {
+        // The OpenStreetMap graph's own caveat ("stand types unknown (OpenStreetMap)") and the stand picker's ("stand
+        // types unknown at this airport; the stand may not be a gate") were both briefed. The picker's, which also says
+        // what the stand may not be, is kept.
+        var osm = Airport(BriefingTier.OpenStreetMap) with
+        {
+            Note = OsmPlanningGraph.Note,
+            Spots = Spots().Select(s => { s.Type = 0; return s; }).ToList(),
+        };
+
+        foreach (var leg in new[] { TaxiBriefingPlanner.PlanTaxiOut(Request(B738), osm), TaxiBriefingPlanner.PlanTaxiIn(Request(B738), osm) })
+        {
+            Assert.Null(leg.Unavailable);
+            var note = Assert.Single(leg.Notes, n => n.StartsWith("stand types unknown", StringComparison.Ordinal));
+            Assert.Equal("stand types unknown at this airport; the stand may not be a gate", note);
+        }
+        // With no stand briefed, the graph's own caveat still says it.
+        Assert.Contains(OsmPlanningGraph.Note, TaxiBriefingPlanner.PlanTaxiIn(Request(B738, destRunway: "04"), osm).Notes);
+    }
+
+    [Fact]
     public void Say_intentions_gate_missing_at_the_airport_is_said_and_a_representative_stand_used()
     {
         var gate = new SayIntentionsGateHint("Terminal 4 Gate B99", null);

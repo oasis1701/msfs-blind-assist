@@ -527,7 +527,33 @@ public class BriefingStandPickerTests
 
         Assert.Same(g1, choice.Spot);
         Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Contains(choice.Notes, n => n.Contains("\"Gate 8\" was not found at this airport", StringComparison.Ordinal));
+        // Not "was not found at this airport": a stand called 8 IS here, only not where SayIntentions put its gate.
+        Assert.Contains("SayIntentions assigned \"Gate 8\", but no stand at SayIntentions' position was found in this scenery; " +
+                        "using a representative stand instead", choice.Notes);
+    }
+
+    [Fact]
+    public void With_no_position_and_no_name_match_the_gate_is_not_found_at_this_airport()
+    {
+        var g1 = Spot("G", 1, 10, 0, 0);
+        var choice = BriefingStandPicker.Pick(new[] { g1 }, B738, null, new SayIntentionsGateHint("Terminal 4 Gate B99", null), Always)!;
+
+        Assert.Contains("SayIntentions assigned gate \"Terminal 4 Gate B99\" was not found at this airport; using a representative stand instead",
+            choice.Notes);
+    }
+
+    [Fact]
+    public void A_stand_found_by_position_for_a_label_with_no_stand_id_is_never_a_silent_substitution()
+    {
+        // SayIntentions' label normalises to nothing ("Gate") and so does the stand's own ("Parking"): compared as names
+        // the two are "the same", and the stand was briefed as SayIntentions' gate with no word that it was found by
+        // position alone.
+        var unnamed = Spot("", 0, 10, 0, 0);
+        var choice = BriefingStandPicker.Pick(new[] { unnamed }, B738, null, At("Gate", 10), Always)!;
+
+        Assert.Same(unnamed, choice.Spot);
+        Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
+        Assert.Contains("SayIntentions assigned Gate, which this scenery lists as Parking", choice.Notes);
     }
 
     [Fact]
@@ -573,7 +599,7 @@ public class BriefingStandPickerTests
         var choice = BriefingStandPicker.Pick(new[] { b6 }, B738, null, At("Gate 99", 70), Always)!;
 
         Assert.NotEqual(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Contains(choice.Notes, n => n.Contains("not found", StringComparison.Ordinal));
+        Assert.Contains(choice.Notes, n => n.Contains("no stand at SayIntentions' position was found", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -1,4 +1,3 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
 
 namespace MSFSBlindAssist.Navigation.Briefing;
@@ -42,6 +41,8 @@ public static class AircraftSizeClass
         ["A124"] = 73.3, ["A225"] = 88.4, ["IL96"] = 60.1, ["C130"] = 40.4, ["C30J"] = 40.4, ["A400"] = 42.4, ["C17"] = 51.75,
         ["GL7T"] = 31.7, ["GLF6"] = 30.36, ["F900"] = 19.33, ["B350"] = 17.65, ["C56X"] = 17.17, ["C25C"] = 16.26,
         ["PC12"] = 16.28, ["C208"] = 15.88, ["TBM9"] = 12.68, ["C172"] = 11.0,
+        ["C152"] = 10.2, ["C182"] = 11.0, ["PA28"] = 10.7, ["SR22"] = 11.7, ["DA40"] = 11.9, ["DA42"] = 13.4,
+        ["DA62"] = 14.6, ["BE58"] = 11.5,
     };
 
     /// <summary>SimBrief-style codes that are freighters by definition (belt-and-braces beside the name test).</summary>

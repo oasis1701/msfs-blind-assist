@@ -36,7 +36,9 @@ public sealed class TaxiLegBriefing
 {
     public required string Icao { get; init; }
     public required string Runway { get; init; }
-    public BriefingTier Tier { get; init; }
+    /// <summary>Where the leg's ground data came from — required: the block names it on every leg, and a leg built
+    /// without one would silently claim the scenery navdata (the enum's default).</summary>
+    public required BriefingTier Tier { get; init; }
     /// <summary>Non-null when no route could be computed: the pilot-readable reason.</summary>
     public string? Unavailable { get; init; }
     /// <summary>Taxi-out: where the route STARTS ("current position, stand N12 (Ramp Cargo)" / "representative stand …").

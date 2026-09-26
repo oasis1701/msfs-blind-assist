@@ -23,7 +23,7 @@ namespace MSFSBlindAssist.Navigation;
 /// <para>The entry node is NOT a bare FindNearestNode: nothing guarantees a taxiway MEETS the
 /// runway at the lineup point (LPPT 20's start row sits on a 1955 ft displaced threshold with the
 /// nearest node 201 m OFF TO THE SIDE). FindRunwayLineupEntryNode resolves to a real runway
-/// ENTRANCE instead, preferring one at or behind the lineup point, and is identical to
+/// ENTRANCE instead, accepting only an entrance at or behind the lineup point, and is identical to
 /// FindNearestNode whenever that node is within RUNWAY_REACH_MAX_CROSS_M of the centerline.</para>
 /// </summary>
 public static class RunwayLineupTarget
@@ -31,8 +31,8 @@ public static class RunwayLineupTarget
     public sealed record Result(double LineupLat, double LineupLon, TaxiNode? EntryNode);
 
     /// <summary>Full runway width in feet assumed when the runway row carries none; halved
-    /// below to get the corridor half-width <see cref="TaxiGraph.FindRunwayLineupEntryNode"/>
-    /// searches within.</summary>
+    /// below, and <see cref="TaxiGraph.FindRunwayLineupEntryNode"/> searches within that
+    /// half-width plus 5 m.</summary>
     private const double FallbackRunwayWidthFeet = 150.0;
 
     /// <param name="startsForRunway">Every start row for this runway end (may be null/empty).</param>
