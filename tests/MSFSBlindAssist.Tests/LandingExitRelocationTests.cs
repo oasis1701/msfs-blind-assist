@@ -141,6 +141,22 @@ public class LandingExitRelocationTests
     }
 
     [Fact]
+    public void A_nearer_turnaround_never_hides_a_forward_exit_of_the_same_name()
+    {
+        // Round 3, T3 (ULWB 33, YCAB 30). "A" has a backward stub at 700 m (a turnaround with no forward
+        // arm, recorded as 130 degrees / End) and, 100 m on, a separate 90-degree exit at 800 m. The
+        // per-name dedup used to keep the nearer entry - the turnaround - and the coverage window then
+        // hid the forward exit behind it.
+        var g = Build(Seg(700, 0, 660, 40, "A"), Seg(800, 0, 800, 60, "A"));
+
+        var exits = g.GetLandingExits(Runway09(3000.0));
+
+        var a = Assert.Single(exits, e => e.TaxiwayName == "A");
+        Assert.Equal(NodeAt(g, 800, 0).NodeId, a.NodeId);
+        Assert.Equal(90.0, a.ExitAngleDegrees);
+    }
+
+    [Fact]
     public void A_ninety_degree_exit_that_hooks_back_beyond_the_runway_edge_is_listed_as_normal()
     {
         // Round 2, S2 (CYVR 26L D1, SNOL 30, MURU 06): the exit leaves the pavement at 90 degrees and

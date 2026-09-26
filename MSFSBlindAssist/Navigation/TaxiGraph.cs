@@ -4719,15 +4719,29 @@ public partial class TaxiGraph
         // drives TryEarlyExitHandoff, which fires for High-speed exits ONLY and has its own
         // hard-won invariant (the EGNX miss). Adding rows is safe; re-typing existing ones
         // in bulk is not.
+        //
+        // A TURNAROUND (an exit turning more than RolloutExitGate.MaxUsableExitTurnDeg - a recorded
+        // 130-degree backward arm) never takes a name's place INSTEAD OF a forward exit of that name,
+        // and never counts as coverage FOR one: a name's forward exits are considered before its
+        // turnarounds. Worldwide sweep, 2026-09-26: ULWB 33 and YCAB 30 lost their only forward exit
+        // to their own Y's recorded turnaround, nearer to the threshold by a few dozen feet. Every
+        // other rule here is unchanged, and the list keeps its nearest-first order.
+        static bool IsTurnaroundExit(LandingExit x) => x.ExitAngleDegrees > RolloutExitGate.MaxUsableExitTurnDeg;
         var dedupedFinal = new List<LandingExit>(deduped.Count);
         if (onFallbackPath)
         {
+            var keptByName = new HashSet<LandingExit>(ReferenceEqualityComparer.Instance);
             var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            foreach (var e in deduped)
+            foreach (bool turnarounds in new[] { false, true })
             {
-                if (string.IsNullOrEmpty(e.TaxiwayName)) { dedupedFinal.Add(e); continue; }
-                if (seenNames.Add(e.TaxiwayName)) dedupedFinal.Add(e);
+                foreach (var e in deduped)
+                {
+                    if (IsTurnaroundExit(e) != turnarounds) continue;
+                    if (string.IsNullOrEmpty(e.TaxiwayName) || seenNames.Add(e.TaxiwayName)) keptByName.Add(e);
+                }
             }
+            foreach (var e in deduped)
+                if (keptByName.Contains(e)) dedupedFinal.Add(e);
         }
         else
         {
@@ -4746,9 +4760,15 @@ public partial class TaxiGraph
             bool covered = false;
             foreach (var kept in dedupedFinal)
             {
-                if (ReferenceEquals(kept, e)
-                    || Math.Abs(kept.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) <= EXIT_COVERAGE_GAP_FT)
-                { covered = true; break; }
+                if (ReferenceEquals(kept, e)) { covered = true; break; }
+                if (Math.Abs(kept.DistanceFromThresholdFeet - e.DistanceFromThresholdFeet) > EXIT_COVERAGE_GAP_FT)
+                    continue;
+                // A turnaround is never coverage for a forward exit of its own name (see above).
+                if (IsTurnaroundExit(kept) && !IsTurnaroundExit(e)
+                    && !string.IsNullOrEmpty(e.TaxiwayName)
+                    && string.Equals(kept.TaxiwayName, e.TaxiwayName, StringComparison.OrdinalIgnoreCase))
+                    continue;
+                covered = true; break;
             }
             if (covered) continue;
             dedupedFinal.Add(e);
