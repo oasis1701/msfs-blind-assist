@@ -58,15 +58,6 @@ public sealed class FlyByWireSimBridgeMcduClient : IDisposable
         _ = ConnectLoop(_cts.Token);
     }
 
-    public void Disconnect()
-    {
-        _cts?.Cancel();
-        CloseWebSocket();
-        SetConnected(false);
-        _cts?.Dispose();
-        _cts = null;
-    }
-
     private async Task ConnectLoop(CancellationToken ct)
     {
         while (!ct.IsCancellationRequested)
@@ -74,6 +65,10 @@ public sealed class FlyByWireSimBridgeMcduClient : IDisposable
             try
             {
                 await ConnectAndReceive(ct);
+                // A graceful Close frame (SimBridge shut down cleanly) RETURNS rather than
+                // throws, and the socket is gone either way — report it, or the arbiter keeps
+                // routing keys to a closed relay while the window says "Connected".
+                if (!ct.IsCancellationRequested) { SetConnected(false); }
             }
             catch (Exception ex)
             {
@@ -83,7 +78,7 @@ public sealed class FlyByWireSimBridgeMcduClient : IDisposable
                     SetConnected(false);
                 }
                 // Cancellation-path exceptions (socket disposed under a pending
-                // ReceiveAsync during Disconnect) are expected — swallow so they
+                // ReceiveAsync during Dispose) are expected — swallow so they
                 // don't surface as unobserved task exceptions.
             }
 
@@ -129,7 +124,7 @@ public sealed class FlyByWireSimBridgeMcduClient : IDisposable
         {
             // Release THIS attempt's socket on every exit (close frame, exception,
             // cancellation). CompareExchange clears the field only when it still points at
-            // OUR socket — a concurrent Dispose/Disconnect may have claimed it first via
+            // OUR socket — a concurrent Dispose may have claimed it first via
             // Interlocked.Exchange, in which case it already aborted+disposed this same
             // instance and the calls below are idempotent no-ops.
             Interlocked.CompareExchange(ref _ws, null, ws);
@@ -194,8 +189,6 @@ public sealed class FlyByWireSimBridgeMcduClient : IDisposable
 
     /// <summary>Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU.</summary>
     public Task SendButtonPress(string key) => SendRaw($"event:{FbwMcduUpdate.CaptainSide}:{key}", CancellationToken.None);
-
-    public Task RequestUpdate() => SendRaw("requestUpdate", CancellationToken.None);
 
     private async Task SendRaw(string message, CancellationToken ct)
     {

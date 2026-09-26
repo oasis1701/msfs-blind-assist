@@ -18,7 +18,8 @@ public enum FbwMcduSource
 /// Coherent is down, and a frame from the transport that is not live is remembered but
 /// never published — two sockets narrating the same screen a poll apart would read as
 /// flicker. When the live transport changes, the newcomer's last frame is re-published
-/// so the window catches up without waiting for the screen to change. The window's
+/// so the window catches up without waiting for the screen to change — but only a frame
+/// taken while that transport was connected: a disconnect discards it. The window's
 /// connection state is "either transport connected" and is reported only on change.
 ///
 /// Pure and single-threaded by contract: both transports post their callbacks to the
@@ -42,10 +43,21 @@ public sealed class FbwMcduTransportArbiter
 
     public Decision SetConnected(FbwMcduSource source, bool connected)
     {
+        // A transport that disconnects FORGETS its last frame: the screen may move on while
+        // it is down, and re-publishing the pre-drop frame when it comes back would read the
+        // old page title first and the current one a poll later. Both transports push a
+        // fresh frame after reconnecting (SimBridge sends requestUpdate; the Coherent client
+        // clears its change filter on every agent install), so nothing is lost.
         switch (source)
         {
-            case FbwMcduSource.Coherent: _coherentConnected = connected; break;
-            case FbwMcduSource.SimBridge: _simBridgeConnected = connected; break;
+            case FbwMcduSource.Coherent:
+                _coherentConnected = connected;
+                if (!connected) { _lastCoherentFrame = null; }
+                break;
+            case FbwMcduSource.SimBridge:
+                _simBridgeConnected = connected;
+                if (!connected) { _lastSimBridgeFrame = null; }
+                break;
             default: return default;
         }
 

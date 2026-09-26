@@ -42,6 +42,30 @@ namespace MSFSBlindAssist.SimConnect
 
         private static readonly Regex KeyName = new("^[A-Z0-9_]{1,16}$", RegexOptions.Compiled);
 
+        // What read()/ping()/press() evaluate to when the page is up but the agent is gone
+        // (the page re-evaluated). Distinct from "" (no answer at all — a timeout or a dead
+        // socket) so an agent loss re-installs on the SAME socket instead of counting toward
+        // the dead-socket teardown.
+        private const string NoAgent = "no-agent";
+        // SendKeyAsync's answer when there was no open socket to send on.
+        private const string NoSocket = "no-socket";
+        // SendKeyAsync's answer for a key name that fails the whitelist.
+        private const string InvalidKey = "invalid-key";
+
+        /// <summary>
+        /// True when a <see cref="SendKeyAsync"/> result proves the key NEVER reached the
+        /// instrument, so resending it over another transport cannot press it twice: no
+        /// socket, no agent, no instrument, or no dispatch path. An empty result (the eval
+        /// timed out) and an "error: …" result (the dispatch threw part-way) are ambiguous and
+        /// are NOT undelivered — a resend could land a second press.
+        /// </summary>
+        public static bool IsUndeliveredKey(string result) =>
+            result == NoSocket || result == NoAgent || result == "no-instrument" || result == "no-dispatch-path";
+
+        /// <summary>True when a SendKeyAsync result names the dispatch path that delivered the key.</summary>
+        public static bool IsDeliveredKey(string result) =>
+            result == "dispatchHEvent" || result == "bus.pub" || result == "onEvent";
+
         /// <summary>The Captain screen changed (posted to the UI context).</summary>
         public event Action<MCDUDisplayData>? DisplayUpdated;
         /// <summary>The MCDU became readable, or stopped being (posted to the UI context).</summary>
@@ -81,9 +105,6 @@ namespace MSFSBlindAssist.SimConnect
         /// this one. <see cref="EvalForResultAsync"/> needs only the socket, not the agent.
         /// </summary>
         public bool HoldsView => _socketOpen;
-
-        /// <summary>True when the agent is installed and the MCDU instrument answered the last read — what the window calls "connected".</summary>
-        public bool IsConnected => _socketOpen && _agentInstalled && _readable;
 
         public void Start()
         {
@@ -128,26 +149,24 @@ namespace MSFSBlindAssist.SimConnect
             if (active) { _lastRaw = ""; }
         }
 
-        /// <summary>Re-read the screen on the next loop pass even if unchanged.</summary>
-        public void RequestRefresh()
-        {
-            _lastRaw = "";
-            _refreshRequested = true;
-        }
-
         /// <summary>
-        /// Press one Captain-MCDU key ("INIT", "L1", "DOT", "CLR" …). Fire-and-forget by the
-        /// caller; the next poll reflects the new screen. Returns the dispatch path the
-        /// agent used ("" when nothing was reachable).
+        /// Press one Captain-MCDU key ("INIT", "L1", "DOT", "CLR" …). The next poll reflects
+        /// the new screen. Returns the dispatch path the agent used, or why it could not
+        /// (<see cref="IsUndeliveredKey"/> tells a certain miss from an ambiguous one).
         /// </summary>
         public async Task<string> SendKeyAsync(string key)
         {
-            if (!KeyName.IsMatch(key)) { return ""; }
-            string result = await EvalAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.press(\"{key}\") : 'no-agent'");
+            if (!KeyName.IsMatch(key)) { return InvalidKey; }
+            var ws = _ws;
+            if (ws == null || ws.State != WebSocketState.Open) { return NoSocket; }
+            string result = await EvalAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.press(\"{key}\") : '{NoAgent}'");
             _refreshRequested = true;
-            if (!string.IsNullOrEmpty(result) && result.StartsWith("no-", StringComparison.Ordinal))
+            if (result == NoAgent) { _agentInstalled = false; }   // re-install on the next loop pass
+            if (!IsDeliveredKey(result))
             {
-                Log.Debug("SimConnect", $"A32NX MCDU key {key}: {result}");
+                // Every non-delivery is logged — "" (the eval timed out) and "error: …" too,
+                // not only the "no-" results: a key lost without a trace is undiagnosable.
+                Log.Debug("SimConnect", $"A32NX MCDU key {key}: {(result.Length == 0 ? "no answer" : result)}");
             }
             return result;
         }
@@ -325,9 +344,10 @@ namespace MSFSBlindAssist.SimConnect
         private async Task PollOnce(CancellationToken ct)
         {
             _refreshRequested = false;
-            string raw = await EvalAsync("window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.read() : ''", ct);
+            string raw = await EvalAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.read() : '{NoAgent}'", ct);
             if (string.IsNullOrEmpty(raw)) { _emptyEvalStreak++; return; }
             _emptyEvalStreak = 0;
+            if (raw == NoAgent) { AgentLost(); return; }
 
             JObject body;
             try { body = JObject.Parse(raw); }
@@ -359,10 +379,23 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task PingOnce(CancellationToken ct)
         {
-            string raw = await EvalAsync("window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.ping() : ''", ct);
+            string raw = await EvalAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.ping() : '{NoAgent}'", ct);
             if (string.IsNullOrEmpty(raw)) { _emptyEvalStreak++; return; }
             _emptyEvalStreak = 0;
+            if (raw == NoAgent) { AgentLost(); return; }
             SetReadable(raw == "ready");
+        }
+
+        /// <summary>
+        /// The page answered but the agent is gone (the page re-evaluated). The socket is
+        /// healthy, so EnsureConnected's re-install branch runs on the next loop pass — never
+        /// the dead-socket teardown, which would give up the one inspector slot this view has.
+        /// </summary>
+        private void AgentLost()
+        {
+            Log.Debug("SimConnect", "CoherentA32nxMcduClient: agent missing — re-installing on the open socket.");
+            _agentInstalled = false;
+            SetReadable(false);
         }
 
         private void SetReadable(bool readable)

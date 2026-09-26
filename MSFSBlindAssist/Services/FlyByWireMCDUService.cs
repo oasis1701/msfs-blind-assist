@@ -40,9 +40,6 @@ public class FlyByWireMCDUService : IDisposable
     /// <summary>Either transport is up — what the window shows as "MCDU: Connected".</summary>
     public bool IsConnected => _arbiter.AnyConnected;
 
-    /// <summary>The transport currently feeding the window (diagnostics).</summary>
-    public FbwMcduSource LiveSource => _arbiter.Live;
-
     /// <summary>
     /// True while the Coherent client holds the MCDU view's inspector socket. Coherent GT
     /// allows ONE socket per view, so any other eval against that view (the D / Shift+D
@@ -92,16 +89,32 @@ public class FlyByWireMCDUService : IDisposable
     /// </summary>
     public void SetActive(bool active) => _coherent.SetActive(active);
 
-    /// <summary>Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU over the live transport.</summary>
-    public Task SendButtonPress(string key)
+    /// <summary>
+    /// Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU over the
+    /// live transport. A Coherent press that provably never reached the instrument (the
+    /// socket just dropped, the agent is re-installing — <see cref="CoherentA32nxMcduClient.IsUndeliveredKey"/>)
+    /// is resent over the relay when SimBridge is up, since the arbiter only switches on a
+    /// posted state change and the key would otherwise vanish in that window. An AMBIGUOUS
+    /// result (a timeout, a dispatch that threw) is never resent: it may have landed, and a
+    /// second press on an MCDU key is its own error. Awaited in order by the typing loop, so
+    /// a resend keeps the scratchpad's character order.
+    /// </summary>
+    public async Task SendButtonPress(string key)
     {
-        return _arbiter.Live switch
+        if (_arbiter.Live != FbwMcduSource.Coherent)
         {
-            FbwMcduSource.Coherent => _coherent.SendKeyAsync(key),
             // No live transport: the relay send is a no-op on a closed socket, so trying
             // costs nothing and covers the moment right after SimBridge comes up.
-            _ => _simBridge.SendButtonPress(key),
-        };
+            await _simBridge.SendButtonPress(key);
+            return;
+        }
+
+        string result = await _coherent.SendKeyAsync(key);
+        if (CoherentA32nxMcduClient.IsUndeliveredKey(result) && _simBridge.IsConnected)
+        {
+            Log.Debug("Services", $"A32NX MCDU key {key} not delivered over Coherent ({result}) — resent over SimBridge.");
+            await _simBridge.SendButtonPress(key);
+        }
     }
 
     /// <summary>Evaluate a self-contained expression on the MCDU view over the held socket.</summary>

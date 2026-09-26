@@ -70,6 +70,41 @@ public class FbwMcduTransportArbiterTests
     }
 
     [Fact]
+    public void A_transport_that_reconnects_does_not_republish_its_pre_drop_frame()
+    {
+        // SimBridge covers while Coherent is down; the screen moves on. Coherent's frame from
+        // BEFORE the drop must not be re-published when it comes back — the window would read
+        // the old page title, then the current one a poll later.
+        var a = new FbwMcduTransportArbiter();
+        a.SetConnected(FbwMcduSource.SimBridge, true);
+        a.SetConnected(FbwMcduSource.Coherent, true);
+        a.Offer(FbwMcduSource.Coherent, Frame("INIT"));
+
+        a.SetConnected(FbwMcduSource.Coherent, false);
+        a.Offer(FbwMcduSource.SimBridge, Frame("PERF"));
+        var back = a.SetConnected(FbwMcduSource.Coherent, true);
+
+        Assert.Equal(FbwMcduSource.Coherent, a.Live);
+        Assert.Null(back.Publish);   // the fresh Coherent poll carries the current screen
+    }
+
+    [Fact]
+    public void A_simbridge_frame_from_before_its_drop_is_not_republished_either()
+    {
+        var a = new FbwMcduTransportArbiter();
+        a.SetConnected(FbwMcduSource.SimBridge, true);
+        a.Offer(FbwMcduSource.SimBridge, Frame("DATA"));
+        a.SetConnected(FbwMcduSource.SimBridge, false);
+        a.SetConnected(FbwMcduSource.Coherent, true);
+        a.SetConnected(FbwMcduSource.SimBridge, true);
+
+        var d = a.SetConnected(FbwMcduSource.Coherent, false);
+
+        Assert.Equal(FbwMcduSource.SimBridge, a.Live);
+        Assert.Null(d.Publish);
+    }
+
+    [Fact]
     public void A_switch_with_no_frame_yet_publishes_nothing()
     {
         var a = new FbwMcduTransportArbiter();
