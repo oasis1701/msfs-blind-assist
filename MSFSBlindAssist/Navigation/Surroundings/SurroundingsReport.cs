@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.SayIntentions;
 
@@ -159,14 +160,19 @@ public static class SurroundingsReport
         return string.Join(" ", parts);
     }
 
-    public static IReadOnlyList<InfoSection> BuildSections(AirportFeatureCatalog cat, string facts, double lat, double lon, double hdgTrue, Func<double, string> formatDistance)
+    /// <summary>
+    /// The surroundings window: "Airport" (the fuel line), "Frequencies" (one row per frequency, so
+    /// a pilot can arrow or first-letter-search to the one they need) and "Nearby". A section with
+    /// nothing in it is left out.
+    /// </summary>
+    public static IReadOnlyList<InfoSection> BuildSections(AirportFeatureCatalog cat, AirportFacts facts, double lat, double lon, double hdgTrue, Func<double, string> formatDistance)
     {
         var sections = new List<InfoSection>();
         var ranked = Rank(cat, lat, lon, hdgTrue, WindowRadiusMetres);
-        bool hasFacts = !string.IsNullOrWhiteSpace(facts);
         // Empty, so the caller speaks "Nothing within …" instead of opening an empty window.
-        if (!hasFacts && ranked.Count == 0) return sections;
-        if (hasFacts) sections.Add(new InfoSection("Airport", new[] { facts.Trim() }));
+        if (facts.IsEmpty && ranked.Count == 0) return sections;
+        if (facts.Fuel.Length > 0) sections.Add(new InfoSection("Airport", new[] { facts.Fuel }));
+        if (facts.Frequencies.Count > 0) sections.Add(new InfoSection("Frequencies", facts.Frequencies.ToList()));
 
         var items = ranked.Select(n =>
         {

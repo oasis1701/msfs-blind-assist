@@ -1963,7 +1963,7 @@ public partial class MainForm
         RunSurroundingsLookup(_surroundingsWindowRequests, needWhereAmI: false, l =>
         {
             string Fmt(double m) => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m);
-            if (l.Catalog == null || (l.Catalog.Features.Count == 0 && l.Catalog.Facts.Length == 0))
+            if (l.Catalog == null || (l.Catalog.Features.Count == 0 && l.Catalog.Facts.IsEmpty))
                 return () => SpeakLookupLine(l.PressedAt, $"No surroundings data for {l.Icao}.");
             var sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
                 l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt);

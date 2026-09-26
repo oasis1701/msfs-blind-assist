@@ -26,12 +26,20 @@ public class AirportFacilitiesTests
     }
 
     [Fact]
-    public void A_single_row_per_type_reads_as_before()
+    public void Every_frequency_is_its_own_row_in_the_order_a_pilot_uses_them()
     {
-        var f = new AirportFacilities { Icao = "KTIW", HasAvgas = true, HasJetFuel = true };
-        f.Coms.AddRange(new[] { new ComFrequency("ATIS", 124050000, "KTIW"), new ComFrequency("G", 121800000, "TACOMA"),
-                                new ComFrequency("T", 118500000, "TACOMA"), new ComFrequency("UC", 122950000, "TACOMA") });
-        Assert.Equal("Fuel available. Tower 118.5, Ground 121.8, ATIS 124.05, UNICOM 122.95.", f.DescribeFacts());
+        // KMEM's own rows (fs2024), shuffled. The one-line summary this replaced read only the first
+        // tower and ground frequency ("Tower 118.3 (3 listed)") and left clearance delivery out.
+        var f = With(new ComFrequency("T", 118300000, "MEMPHIS"), new ComFrequency("UC", 122950000, "MEMPHIS"),
+                     new ComFrequency("A", 119100000, "MEMPHIS"), new ComFrequency("G", 121000000, "MEMPHIS"),
+                     new ComFrequency("ASOS", 127750000, "KMEM"), new ComFrequency("C", 125200000, "MEMPHIS"),
+                     new ComFrequency("T", 119700000, "MEMPHIS"), new ComFrequency("D", 124150000, "MEMPHIS"),
+                     new ComFrequency("ATIS", 127750000, "KMEM"), new ComFrequency("G", 121900000, "MEMPHIS"));
+        Assert.Equal(new[]
+        {
+            "ATIS 127.75", "Clearance delivery 125.2", "Ground 121.0", "Ground 121.9", "Tower 118.3", "Tower 119.7",
+            "Departure 124.15", "Approach 119.1", "UNICOM 122.95", "ASOS 127.75",
+        }, f.DescribeFacts().Frequencies);
     }
 
     [Fact]
@@ -42,41 +50,55 @@ public class AirportFacilitiesTests
         // "Avgas and jet fuel." was spoken at 1,147 fields with no hard runway and a longest runway
         // under 2,500 ft (4II2 "Hangar Fly Ultralight Fly Club", 965 ft). A disk-built MSFS 2020
         // database sets the two independently, so one flag on its own still names its grade.
-        Assert.Equal("Fuel available.", new AirportFacilities { HasAvgas = true, HasJetFuel = true }.DescribeFacts());
-        Assert.Equal("Avgas.", new AirportFacilities { HasAvgas = true }.DescribeFacts());
-        Assert.Equal("Jet fuel.", new AirportFacilities { HasJetFuel = true }.DescribeFacts());
-        Assert.Equal("", new AirportFacilities().DescribeFacts());
+        Assert.Equal("Fuel available", new AirportFacilities { HasAvgas = true, HasJetFuel = true }.DescribeFacts().Fuel);
+        Assert.Equal("Avgas available", new AirportFacilities { HasAvgas = true }.DescribeFacts().Fuel);
+        Assert.Equal("Jet fuel available", new AirportFacilities { HasJetFuel = true }.DescribeFacts().Fuel);
+        Assert.True(new AirportFacilities().DescribeFacts().IsEmpty);
     }
 
     [Fact]
-    public void A_gates_frequency_is_not_read_out_as_Ground_when_a_plain_ground_row_exists()
+    public void A_gates_frequency_is_listed_after_the_ground_controllers_own_and_named()
     {
-        // KMIA, replayed on the real data: its nine G rows begin with "MIAMI GATES" at 120.35, so
-        // the readout named the ramp-gates frequency as the ground controller's.
+        // KMIA, replayed on the real data: its nine G rows begin with "MIAMI GATES" at 120.35. The
+        // names differ within the kind, so each row says whose frequency it is.
         var f = With(new ComFrequency("G", 120350000, "MIAMI GATES"), new ComFrequency("G", 121800000, "MIAMI"),
                      new ComFrequency("G", 128025000, "MIAMI GATES"), new ComFrequency("G", 132375000, "MIAMI GATES"));
-        Assert.Equal("Ground 121.8 (4 listed).", f.DescribeFacts());
+        Assert.Equal(new[] { "Ground 121.8, MIAMI", "Ground 120.35, MIAMI GATES", "Ground 128.025, MIAMI GATES", "Ground 132.375, MIAMI GATES" },
+                     f.DescribeFacts().Frequencies);
     }
 
     [Fact]
-    public void Apron_control_is_not_read_out_as_Ground_when_a_plain_ground_row_exists()
+    public void Apron_control_is_listed_after_ground_and_named()
     {
         var f = With(new ComFrequency("G", 121655000, "FRANKFURT APRON"), new ComFrequency("G", 121805000, "FRANKFURT"));
-        Assert.Equal("Ground 121.805 (2 listed).", f.DescribeFacts());
+        Assert.Equal(new[] { "Ground 121.805, FRANKFURT", "Ground 121.655, FRANKFURT APRON" }, f.DescribeFacts().Frequencies);
     }
 
     [Fact]
-    public void A_frequency_outside_the_com_band_is_never_read_out()
+    public void A_name_is_given_only_where_it_tells_the_rows_of_one_kind_apart()
     {
-        // EGLL lists VOR-broadcast ATIS at 113.75 / 117.0 beside the real one.
+        // KATL's ramp control rows are ground frequencies named differently from the controller's;
+        // its three towers all share "ATLANTA", which tells them apart from nothing.
+        var f = With(new ComFrequency("G", 121900000, "ATLANTA"), new ComFrequency("G", 129250000, "RAMP CONTROL"),
+                     new ComFrequency("T", 119100000, "ATLANTA"), new ComFrequency("T", 119500000, "ATLANTA"), new ComFrequency("T", 123850000, "ATLANTA"));
+        Assert.Equal(new[] { "Ground 121.9, ATLANTA", "Ground 129.25, RAMP CONTROL", "Tower 119.1", "Tower 119.5", "Tower 123.85" },
+                     f.DescribeFacts().Frequencies);
+    }
+
+    [Fact]
+    public void A_frequency_outside_the_com_band_is_never_listed()
+    {
+        // EGLL lists VOR-broadcast ATIS at 113.75 / 117.0 beside the real one. The name contrast is
+        // judged on the listed rows only, so the one ATIS left carries no name.
         var f = With(new ComFrequency("ATIS", 113750000, "HEATHROW"), new ComFrequency("ATIS", 128080000, "HEATHROW INFO"));
-        Assert.Equal("ATIS 128.08.", f.DescribeFacts());
+        Assert.Equal(new[] { "ATIS 128.08" }, f.DescribeFacts().Frequencies);
     }
 
     [Fact]
-    public void Several_rows_of_one_type_say_how_many()
+    public void A_duplicate_row_and_an_unknown_type_are_not_listed()
     {
-        var f = With(new ComFrequency("T", 119100000, "ATLANTA"), new ComFrequency("T", 119500000, "ATLANTA"), new ComFrequency("T", 123850000, "ATLANTA"));
-        Assert.Equal("Tower 119.1 (3 listed).", f.DescribeFacts());
+        var f = With(new ComFrequency("T", 118500000, "TACOMA"), new ComFrequency("T", 118500000, "TACOMA"),
+                     new ComFrequency("XYZ", 123450000, "TACOMA"));
+        Assert.Equal(new[] { "Tower 118.5" }, f.DescribeFacts().Frequencies);
     }
 }

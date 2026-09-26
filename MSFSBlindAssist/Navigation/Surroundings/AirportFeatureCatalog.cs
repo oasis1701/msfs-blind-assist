@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.TaxiAugment;
 
 namespace MSFSBlindAssist.Navigation.Surroundings;
@@ -11,10 +12,11 @@ public sealed class AirportFeatureCatalog
 {
     public string Version { get; }
     public IReadOnlyList<AirportFeature> Features { get; }
-    /// <summary>The airport's "fuel and frequencies" line (AirportFacilities.DescribeFacts), or "".</summary>
-    public string Facts { get; }
+    /// <summary>The airport's fuel line and frequencies (AirportFacilities.DescribeFacts), or
+    /// <see cref="AirportFacts.None"/>.</summary>
+    public AirportFacts Facts { get; }
 
-    private AirportFeatureCatalog(string version, List<AirportFeature> features, string facts)
+    private AirportFeatureCatalog(string version, List<AirportFeature> features, AirportFacts facts)
     {
         Version = version; Features = features; Facts = facts;
     }
@@ -191,8 +193,9 @@ public sealed class AirportFeatureCatalog
         return best;
     }
 
-    public static AirportFeatureCatalog Build(string version, IEnumerable<AirportFeature> features, string facts = "")
+    public static AirportFeatureCatalog Build(string version, IEnumerable<AirportFeature> features, AirportFacts? facts = null)
     {
+        facts ??= AirportFacts.None;
         var all = features.Where(f => f != null && (f.HasName || f.Kind != FeatureKind.Other)).ToList();
 
         // A navdata concourse is a guess from BGL gate letters; when a GSX feature is built from at

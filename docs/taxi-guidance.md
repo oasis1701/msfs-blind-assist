@@ -497,8 +497,8 @@ The Taxiing-phase steering tone feeds the pilot a **rate-lead projected error**,
 | Repeat last | Output > `Ctrl+Y` | Replays the most recent **actionable instruction** verbatim (turn callout, hold-short, taxiway change, lineup, arrival, distance countdown). Distinct from `Y` (status), which recomputes a snapshot from current position. Useful when the announcement was clipped by another sound. Returns `"No taxi instruction yet."` if guidance is active but nothing has fired; `"No taxi guidance active."` otherwise. Implemented via `TaxiGuidanceManager._lastInstruction`, populated only by `AnnounceInstruction()` — two peripheral sites still call plain `_announcer.Announce` without populating `_lastInstruction`: (a) the LoadRoute route summary, (b) the periodic ground-speed bucket announcer — so the Repeat-Last buffer keeps the most recent actionable callout. |
 | Where am I | Output > `Alt+Y` | `Taxiway Bravo at KJFK.` / `Gate A25 at KJFK.` / `Runway 22L at KJFK.` Works with or without active guidance. |
 | Look around | Output > `Alt+L` | `Taxiway A at KTIW. Narrows Aviation Hangar, to the right, 80 metres. Control Tower, ahead, 200 metres. Fuel, behind and to the left, 210 metres.` Where you are, the apron or concourse you are in, then the nearest features. Ground-only. |
-| Surroundings window | Output > `Ctrl+Shift+L` | Read-only list of everything within 1 km, nearest first, with the airport's fuel and frequencies on the first row. |
-| Taxi to a place | Taxi form, destination type **Place** | Lists every FBO, hangar, fuel island, terminal, cargo area the catalog knows that resolves onto a stand (or a taxi node) — "Narrows Aviation, FBO, Parking 12" — and routes there like a gate. |
+| Surroundings window | Output > `Ctrl+Shift+L` | Read-only lists: the airport's fuel, every frequency one per row, then everything within 1 km, nearest first. |
+| Taxi to a place | Taxi form, destination type **Place** | Lists every FBO, hangar, fuel island, terminal, cargo area the catalog knows that resolves onto a stand (or a taxi node) — "Narrows Aviation, FBO, Parking 12" — and routes there like a gate. A cargo ramp or concourse is listed only when OpenStreetMap, the scenery or GSX names it. |
 
 ### Verbal turn direction (heading-based, not route-static)
 
@@ -1236,7 +1236,8 @@ bearing is to the centroid.
 
 ### The catalog cache — `SurroundingsCatalogCache`
 
-One `AirportFeatureCatalog` per ICAO, plus the airport's facts line, so a
+One `AirportFeatureCatalog` per ICAO, plus the airport's facts (`AirportFacts`: the
+fuel line and one row per frequency), so a
 consumer reads it off the catalog instead of a second database lookup.
 Staleness is the same shape as the Where-Am-I graph cache: a version token
 (`GateDataSource.GetGateListVersion`'s, read through MainForm's
@@ -1463,20 +1464,37 @@ Reuses `SayIntentionsInfoForm` (the sectioned read-only ListBox window,
 title parameter set to "Surroundings at {icao}") rather than a new form — the
 same reasoning as the flight-information window: a list item brailles as a
 discrete unit and announces its position, and item 0 is pre-selected so
-tabbing in speaks the section and first row in one utterance. First row is
-"Airport" facts (the fuel flags + Tower/Ground/ATIS/CTAF/UNICOM/AWOS/ASOS
-frequencies from `com`, Hz converted to MHz) when the catalog carries a facts
-line, then "Nearby, N items" ("Nearby, 1 item" for one) — everything within
-1 km, nearest first. BOTH fuel
-flags together read "Fuel available.", never "Avgas and jet fuel.": on an MSFS
-2024 database the two are all-or-nothing (measured 2026-09-21: 17,079 airports
-carry both, 67,199 neither, not one carries a single flag), so "both" grades
-nothing and the old wording claimed jet fuel at 1,147 fields with no hard runway
-and under 2,500 ft of runway — 4II2 "Hangar Fly Ultralight Fly Club" is 965 ft.
-One flag alone still names its grade, because a disk-built MSFS 2020 database
-sets the two independently. A frequency row whose name says apron, ramp, GATES,
-delivery or clearance is not the one the label names: at KMIA the first of nine
-`G` rows is "MIAMI GATES", which read out as "Ground 120.35". With neither
+tabbing in speaks the section and first row in one utterance. Up to three
+sections, each left out when empty (`SurroundingsReport.BuildSections`):
+"Airport" (the fuel line), "Frequencies" (`AirportFacilities.DescribeFacts`:
+ONE ROW PER FREQUENCY from `com`, Hz converted to MHz), then "Nearby, N items"
+("Nearby, 1 item" for one) — everything within 1 km, nearest first.
+
+Frequencies are rows, never one summary line. The line this replaced read only
+the first frequency of each kind with a count — "Tower 118.3 (3 listed)" at
+KMEM, whose three tower rows are all named just "MEMPHIS", so the one read was
+simply the first in the database — and left clearance delivery, departure and
+approach out altogether; a pilot could neither hear the others nor find one in
+a single long row. Each row starts with its kind, so a list's first-letter
+search finds it ("G" jumps to ground), in the order a pilot uses them: ATIS,
+clearance delivery (and pre-taxi), ground, tower, departure, approach, center,
+CTAF, UNICOM, MULTICOM, flight service, AWOS, ASOS. VHF COM band only (navdata
+also lists VOR-broadcast ATIS); an exact duplicate row is listed once. A row
+carries its navdata NAME only where the rows of its kind do not all share one —
+then the name is what tells them apart ("Ground 129.25, RAMP CONTROL" at KATL,
+"Ground 131.375, DELTA" at KJFK, "Ground 121.655, FRANKFURT APRON"); where they
+all share it (every KMEM row says "MEMPHIS") it tells nothing and is left off.
+A row whose name says apron, ramp, GATES, delivery or clearance is listed after
+the controller's own rows of its kind: at KMIA the first of nine `G` rows is
+"MIAMI GATES".
+
+BOTH fuel flags together read "Fuel available", never "Avgas and jet fuel": on
+an MSFS 2024 database the two are all-or-nothing (measured 2026-09-21: 17,079
+airports carry both, 67,199 neither, not one carries a single flag), so "both"
+grades nothing and the old wording claimed jet fuel at 1,147 fields with no hard
+runway and under 2,500 ft of runway — 4II2 "Hangar Fly Ultralight Fly Club" is
+965 ft. One flag alone still names its grade ("Avgas available"), because a
+disk-built MSFS 2020 database sets the two independently. With neither
 facts nor features, nothing is opened: the caller SPEAKS "Nothing within …"
 instead of
 putting an empty window in front of the pilot, the same rule the flight-info
@@ -2003,6 +2021,20 @@ terminal or concourse — else the nearest non-vehicle stand. Routable kinds are
 Fbo, Hangar, Fuel, Terminal, Concourse, Cargo, FireStation and Office; never
 Tower, Helipad, Apron, DeicePad or Other. (De-ice pads have their own
 destination type.)
+
+**A cargo ramp or concourse that only the navdata describes is not a place**
+(`PlaceListBuilder.DuplicatesGateList`). `NavdataFeatureSource` builds a
+"Cargo ramp" from each cluster of civil cargo stands and a "Concourse B" from
+gate letters: each is a group of stands the Gate / Parking list already offers,
+under a vaguer name, and as a place it routed to the group's most central stand
+— which is not how a stand is assigned. KMEM listed 40 such "Cargo ramp" places,
+one per cluster of its 156 unnamed cargo stands (live 2026-09-26). Such a
+feature stays a place only when OSM, the scenery or GSX gives it a real name
+(`HasProperName`, with the catalog's merged winner coming from that source), which
+names somewhere the gate list cannot ("FedEx World Hub"). They are untouched as
+READOUT features: Alt+L, the window and the passing callouts still say "Cargo
+ramp, ahead and to the left". Fuel is deliberately exempt: with GSX supplying the
+gate list, fuel stands are not in it, so a fuel place is the only route to one.
 
 **Never resolve a place through a `(Name, Number, Suffix)` join.** The version
 this replaced resolved onto a navdata stand and then looked for "the same"

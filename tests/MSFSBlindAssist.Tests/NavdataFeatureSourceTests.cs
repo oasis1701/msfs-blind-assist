@@ -102,7 +102,7 @@ public class NavdataFeatureSourceTests
     }
 
     [Fact]
-    public void Facts_line_lists_fuel_and_the_common_frequencies_in_mhz()
+    public void Facts_list_fuel_and_every_frequency_in_mhz()
     {
         var fac = new AirportFacilities
         {
@@ -111,8 +111,10 @@ public class NavdataFeatureSourceTests
                      new ComFrequency("ATIS", 124050000, "KTIW"), new ComFrequency("UC", 122950000, "TACOMA"),
                      new ComFrequency("D", 120100000, "SEATTLE") }
         };
-        Assert.Equal("Avgas. Tower 118.5, Ground 121.8, ATIS 124.05, UNICOM 122.95.", fac.DescribeFacts());
-        Assert.Equal("", new AirportFacilities { Icao = "X" }.DescribeFacts());
+        var facts = fac.DescribeFacts();
+        Assert.Equal("Avgas available", facts.Fuel);
+        Assert.Equal(new[] { "ATIS 124.05", "Ground 121.8", "Tower 118.5", "Departure 120.1", "UNICOM 122.95" }, facts.Frequencies);
+        Assert.True(new AirportFacilities { Icao = "X" }.DescribeFacts().IsEmpty);
     }
 
     [Fact]

@@ -1,15 +1,16 @@
 using System.Diagnostics.CodeAnalysis;
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Services.Surroundings;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
 
-/// <summary>One build of an airport's surroundings: every tier's features, and the "fuel and
-/// frequencies" line. <paramref name="Degraded"/> means an optional tier was not served (timed out,
+/// <summary>One build of an airport's surroundings: every tier's features, and the airport's fuel
+/// line and frequencies. <paramref name="Degraded"/> means an optional tier was not served (timed out,
 /// refused, threw), so the cache gives the result a lifetime; it is never inferred from an empty
 /// list — an airport can really have no mapped buildings.</summary>
-public sealed record SurroundingsBuild(IReadOnlyList<AirportFeature> Features, string Facts, bool Degraded = false);
+public sealed record SurroundingsBuild(IReadOnlyList<AirportFeature> Features, AirportFacts Facts, bool Degraded = false);
 
 /// <summary>
 /// One AirportFeatureCatalog per ICAO.
@@ -47,7 +48,7 @@ public sealed class SurroundingsCatalogCache
     public SurroundingsCatalogCache(Func<DateTime>? utcNow = null) { _utcNow = utcNow ?? (() => DateTime.UtcNow); }
 
     /// <summary>Reads every tier for an ICAO. Always invoked on a pool thread.</summary>
-    public Func<string, SurroundingsBuild> BuildSupplier { get; set; } = _ => new SurroundingsBuild(Array.Empty<AirportFeature>(), "");
+    public Func<string, SurroundingsBuild> BuildSupplier { get; set; } = _ => new SurroundingsBuild(Array.Empty<AirportFeature>(), AirportFacts.None);
     /// <summary>Gate-list token (GateDataSource.GetGateListVersion) plus anything else that should force a rebuild; null → "none".</summary>
     public Func<string, string>? VersionSupplier { get; set; }
 

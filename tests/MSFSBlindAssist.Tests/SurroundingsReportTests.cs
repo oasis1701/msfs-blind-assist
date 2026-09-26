@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
 
 namespace MSFSBlindAssist.Tests;
@@ -71,16 +72,30 @@ public class SurroundingsReportTests
     }
 
     [Fact]
-    public void Sections_carry_facts_first_then_everything_within_1km_nearest_first_with_detail()
+    public void Sections_carry_fuel_then_one_row_per_frequency_then_everything_within_1km_nearest_first_with_detail()
     {
         var cat = Cat(
             new AirportFeature { Kind = FeatureKind.Concourse, Name = "Concourse B", Lat = Lat + 300 / 111_320.0, Lon = Lon, Source = FeatureSource.Navdata, Detail = "Delta gates" },
             F(FeatureKind.Tower, "Control Tower", 0, 150), F(FeatureKind.Hangar, "Far Hangar", 1200, 0));
-        var sections = SurroundingsReport.BuildSections(cat, "Avgas. Tower 118.5.", Lat, Lon, 0.0, Metres);
+        var facts = new AirportFacts("Avgas available", new[] { "Ground 121.8", "Tower 118.5", "Tower 119.7" });
+        var sections = SurroundingsReport.BuildSections(cat, facts, Lat, Lon, 0.0, Metres);
         Assert.Equal("Airport", sections[0].Heading);
-        Assert.Equal(new[] { "Avgas. Tower 118.5." }, sections[0].Items);
-        Assert.Equal("Nearby, 2 items", sections[1].Heading);
-        Assert.Equal(new[] { "Control Tower, to the right, 150 metres", "Concourse B, Delta gates, ahead, 300 metres" }, sections[1].Items);
+        Assert.Equal(new[] { "Avgas available" }, sections[0].Items);
+        // One row each, so a list can be arrowed or first-letter-searched to the frequency wanted.
+        Assert.Equal("Frequencies", sections[1].Heading);
+        Assert.Equal(new[] { "Ground 121.8", "Tower 118.5", "Tower 119.7" }, sections[1].Items);
+        Assert.Equal("Nearby, 2 items", sections[2].Heading);
+        Assert.Equal(new[] { "Control Tower, to the right, 150 metres", "Concourse B, Delta gates, ahead, 300 metres" }, sections[2].Items);
+    }
+
+    [Fact]
+    public void An_airport_with_frequencies_but_no_fuel_has_no_Airport_section()
+    {
+        // KMEM: navdata sets neither fuel flag, so its window opens on the frequencies.
+        var cat = Cat(F(FeatureKind.Tower, "Control Tower", 0, 150));
+        var facts = new AirportFacts("", new[] { "Tower 118.3" });
+        var sections = SurroundingsReport.BuildSections(cat, facts, Lat, Lon, 0.0, Metres);
+        Assert.Equal(new[] { "Frequencies", "Nearby, 1 item" }, sections.Select(s => s.Heading));
     }
 
     // NOTE: the file's existing Metres(double) helper above (rounds to the nearest 10) is reused
@@ -227,7 +242,7 @@ public class SurroundingsReportTests
         var cat = Cat(F(FeatureKind.Hangar, "Cessna Hangar", 0, 0, fp: ring));
         Assert.Equal("X. Cessna Hangar, here.", SurroundingsReport.Compose("X.", "X", cat, Lat, Lon, 0.0, Metres));
 
-        var sections = SurroundingsReport.BuildSections(cat, "", Lat, Lon, 0.0, Metres);
+        var sections = SurroundingsReport.BuildSections(cat, AirportFacts.None, Lat, Lon, 0.0, Metres);
         Assert.Equal(new[] { "Cessna Hangar, here" }, Assert.Single(sections).Items);
     }
 
@@ -242,9 +257,9 @@ public class SurroundingsReportTests
     public void The_window_never_has_an_empty_list_and_never_hard_codes_a_unit()
     {
         var far = AirportFeatureCatalog.Build("v", new[] { Pt(FeatureKind.Tower, "Control Tower", 0.5, 0.5) });   // ~78 km away
-        Assert.Empty(SurroundingsReport.BuildSections(far, "", 0, 0, 0, Metres));                                  // nothing to show: the caller SPEAKS instead
+        Assert.Empty(SurroundingsReport.BuildSections(far, AirportFacts.None, 0, 0, 0, Metres));   // nothing to show: the caller SPEAKS instead
 
-        var withFacts = SurroundingsReport.BuildSections(far, "Tower 118.5.", 0, 0, 0, Metres);
+        var withFacts = SurroundingsReport.BuildSections(far, new AirportFacts("", new[] { "Tower 118.5" }), 0, 0, 0, Metres);
         Assert.Equal(2, withFacts.Count);
         Assert.All(withFacts, s => Assert.NotEmpty(s.Items));
         Assert.Equal("Nothing within 1000 metres.", Assert.Single(withFacts[1].Items));
@@ -275,7 +290,7 @@ public class SurroundingsReportTests
         // The heading is what the screen reader says on tabbing into the list: "Nearby, 1 items" was
         // read aloud every time the window held a single feature.
         var cat = Cat(F(FeatureKind.Tower, "Control Tower", 0, 150));
-        var nearby = Assert.Single(SurroundingsReport.BuildSections(cat, "", Lat, Lon, 0.0, Metres));
+        var nearby = Assert.Single(SurroundingsReport.BuildSections(cat, AirportFacts.None, Lat, Lon, 0.0, Metres));
         Assert.Equal("Nearby, 1 item", nearby.Heading);
     }
 }

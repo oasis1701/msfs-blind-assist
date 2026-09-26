@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.Surroundings;
@@ -13,8 +14,9 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class SurroundingsCatalogCacheTests
 {
+    private static readonly AirportFacts TowerOnly = new("", new[] { "Tower 118.5" });
     private static SurroundingsBuild One(string name = "Narrows Aviation", bool degraded = false) => new(
-        new[] { new AirportFeature { Kind = FeatureKind.Fbo, Name = name, Lat = 47.27, Lon = -122.57, Source = FeatureSource.Osm } }, "Tower 118.5.", degraded);
+        new[] { new AirportFeature { Kind = FeatureKind.Fbo, Name = name, Lat = 47.27, Lon = -122.57, Source = FeatureSource.Osm } }, TowerOnly, degraded);
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);
     /// <summary>Continuations run asynchronously so completing a gate never drags the rest of the
     /// test onto the build thread that set it.</summary>
@@ -29,7 +31,7 @@ public class SurroundingsCatalogCacheTests
         release.Set();
         Assert.Same(await a, await b);
         Assert.Equal(1, builds);
-        Assert.Equal("Tower 118.5.", (await a)!.Facts);
+        Assert.Same(TowerOnly, (await a)!.Facts);
         Assert.True(cache.TryGetCached("KTIW", out var cached)); Assert.Same(await a, cached);
     }
 

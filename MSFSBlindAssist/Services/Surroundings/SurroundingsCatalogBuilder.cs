@@ -6,9 +6,9 @@ using MSFSBlindAssist.Services.SceneryIndex;
 namespace MSFSBlindAssist.Services.Surroundings;
 
 /// <summary>
-/// Reads every surroundings tier for one airport into one feature list plus the airport's facts
-/// line — <see cref="SurroundingsCatalogCache"/>'s BuildSupplier. Tiers, in merge order: navdata
-/// stands (the required base: the airport box and the facts line come from it), GSX terminals, OSM
+/// Reads every surroundings tier for one airport into one feature list plus the airport's fuel line
+/// and frequencies — <see cref="SurroundingsCatalogCache"/>'s BuildSupplier. Tiers, in merge order:
+/// navdata stands (the required base: the airport box and the facts come from it), GSX terminals, OSM
 /// buildings and the installed scenery package. The order matters because
 /// <see cref="AirportFeatureCatalog.Build"/>'s rank sort is stable.
 ///
@@ -50,7 +50,7 @@ public sealed class SurroundingsCatalogBuilder
         // another's gate list. (The cache discards such a build anyway; this keeps the one answer
         // it hands its own caller consistent.)
         var provider = _provider();
-        if (provider == null) return new(Array.Empty<AirportFeature>(), "");
+        if (provider == null) return new(Array.Empty<AirportFeature>(), AirportFacts.None);
 
         var features = new List<AirportFeature>();
         var gateSource = _gateSource(provider);
@@ -99,7 +99,7 @@ public sealed class SurroundingsCatalogBuilder
             features.AddRange(sceneryRead.Features);
             degraded |= sceneryRead.Failed || sceneryShort;
         }
-        return new(features, facilities?.DescribeFacts() ?? "", degraded);
+        return new(features, facilities?.DescribeFacts() ?? AirportFacts.None, degraded);
     }
 
     /// <summary>The package folders navdata names (an MSFS 2020 build), else the ones the Community

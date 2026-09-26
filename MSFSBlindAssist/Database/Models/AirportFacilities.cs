@@ -5,6 +5,15 @@ namespace MSFSBlindAssist.Database.Models;
 
 public readonly record struct ComFrequency(string Type, int FrequencyHz, string Name);
 
+/// <summary>What the surroundings window lists about the airport itself
+/// (<see cref="AirportFacilities.DescribeFacts"/>): the fuel line ("" when navdata says none),
+/// and one row per COM frequency.</summary>
+public sealed record AirportFacts(string Fuel, IReadOnlyList<string> Frequencies)
+{
+    public static readonly AirportFacts None = new("", Array.Empty<string>());
+    public bool IsEmpty => Fuel.Length == 0 && Frequencies.Count == 0;
+}
+
 /// <summary>
 /// The airport-level navdata columns only the surroundings feature reads: fuel flags, helipads,
 /// COM frequencies, bounding box, reference point, scenery_local_path, and the tower position
@@ -45,43 +54,70 @@ public sealed class AirportFacilities
     /// <summary>This box grown by <paramref name="marginMetres"/>: build it once when testing many points.</summary>
     public GrownBox Grown(double marginMetres) => GrownBox.Of(TopLat, BottomLat, LeftLon, RightLon, marginMetres);
 
-    /// <summary>A row naming a ramp position rather than the controller (KMIA's first G row is
-    /// "MIAMI GATES").</summary>
+    /// <summary>A row naming a ramp or delivery position rather than the controller (KMIA's first G
+    /// row is "MIAMI GATES"): listed after the controller's own rows of its kind.</summary>
     private static readonly System.Text.RegularExpressions.Regex NotThePrimaryFrequency = new(
         @"\b(apron|ramp|gates?|delivery|clearance)\b",
         System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
-    /// <summary>"Fuel available. Tower 118.5, Ground 121.8, ATIS 124.05, UNICOM 122.95." or "".
+    /// <summary>The navdata COM types that are listed, and what each is called, in the order a pilot
+    /// uses them: information, clearance, ground, tower, departure, approach, then the field's own
+    /// and weather frequencies. A type not named here is not listed.</summary>
+    private static readonly (string Type, string Label)[] FrequencyOrder =
+    {
+        ("ATIS", "ATIS"), ("C", "Clearance delivery"), ("CPT", "Clearance pre-taxi"), ("G", "Ground"), ("T", "Tower"),
+        ("D", "Departure"), ("A", "Approach"), ("CTR", "Center"), ("CTAF", "CTAF"), ("UC", "UNICOM"),
+        ("MC", "MULTICOM"), ("FSS", "Flight service"), ("AWOS", "AWOS"), ("ASOS", "ASOS"),
+    };
+
+    /// <summary>
+    /// The fuel line and one row per COM frequency, for the surroundings window's lists — every
+    /// frequency, so a pilot can arrow to the one they need (the one-line summary this replaced
+    /// read only the first of each kind: "Tower 118.3 (3 listed)" at KMEM, whose other two are
+    /// named exactly the same, and left clearance delivery out altogether).
     /// <para>Both fuel flags together say only "fuel": on fs2024 they are all-or-nothing (not one
     /// airport carries a single flag), so "Avgas and jet fuel" claimed jet fuel at 1,147 grass strips.
-    /// An MSFS 2020 build sets them independently, so one flag alone still names its grade.</para></summary>
-    public string DescribeFacts()
+    /// An MSFS 2020 build sets them independently, so one flag alone still names its grade.</para>
+    /// </summary>
+    public AirportFacts DescribeFacts()
     {
-        var parts = new List<string>();
         string fuel = (HasAvgas, HasJetFuel) switch
         {
             (true, true) => "Fuel available",
-            (true, false) => "Avgas",
-            (false, true) => "Jet fuel",
+            (true, false) => "Avgas available",
+            (false, true) => "Jet fuel available",
             _ => "",
         };
-        if (fuel.Length > 0) parts.Add(fuel + ".");
+        return new AirportFacts(fuel, DescribeFrequencies());
+    }
 
-        var freqs = new List<string>();
-        foreach (var (type, label) in new[] { ("T", "Tower"), ("G", "Ground"), ("ATIS", "ATIS"), ("CTAF", "CTAF"), ("UC", "UNICOM"), ("AWOS", "AWOS"), ("ASOS", "ASOS") })
+    /// <summary>
+    /// "Tower 118.3", one row per frequency, each starting with its kind so a list's first-letter
+    /// search finds it. VHF COM band only (navdata also lists VOR-broadcast ATIS). A row carries its
+    /// navdata name only where the rows of its kind do NOT all share one — then the name is what
+    /// tells them apart ("Ground 129.25, RAMP CONTROL" at KATL, "Ground 131.375, DELTA" at KJFK);
+    /// where they all share it (KMEM: every one "MEMPHIS") it says nothing.
+    /// </summary>
+    public List<string> DescribeFrequencies()
+    {
+        var rows = new List<string>();
+        foreach (var (type, label) in FrequencyOrder)
         {
-            // VHF COM band only (navdata also lists VOR-broadcast ATIS); several rows of one type are
-            // normal at a hub (KATL: 7 towers), so say how many.
-            var rows = Coms.Where(c => string.Equals(c.Type, type, StringComparison.OrdinalIgnoreCase)
-                                       && c.FrequencyHz >= 118_000_000 && c.FrequencyHz < 137_000_000).ToList();
-            if (rows.Count == 0) continue;
-            var plain = rows.Where(c => !NotThePrimaryFrequency.IsMatch(c.Name ?? "")).ToList();
-            var pick = plain.Count > 0 ? plain[0] : rows[0];
-            freqs.Add(rows.Count > 1 ? $"{label} {FormatMhz(pick.FrequencyHz)} ({rows.Count} listed)"
-                                     : $"{label} {FormatMhz(pick.FrequencyHz)}");
+            var ofType = Coms.Where(c => string.Equals(c.Type, type, StringComparison.OrdinalIgnoreCase)
+                                         && c.FrequencyHz >= 118_000_000 && c.FrequencyHz < 137_000_000).ToList();
+            if (ofType.Count == 0) continue;
+            bool namesDiffer = ofType.Select(c => (c.Name ?? "").Trim()).Distinct(StringComparer.OrdinalIgnoreCase).Count() > 1;
+            // OrderBy is stable, so each group keeps navdata's own order.
+            foreach (var c in ofType.OrderBy(c => NotThePrimaryFrequency.IsMatch(c.Name ?? "") ? 1 : 0))
+            {
+                string name = (c.Name ?? "").Trim();
+                string row = namesDiffer && name.Length > 0
+                    ? $"{label} {FormatMhz(c.FrequencyHz)}, {name}"
+                    : $"{label} {FormatMhz(c.FrequencyHz)}";
+                if (!rows.Contains(row)) rows.Add(row);
+            }
         }
-        if (freqs.Count > 0) parts.Add(string.Join(", ", freqs) + ".");
-        return string.Join(" ", parts);
+        return rows;
     }
 
     /// <summary>118500000 → "118.5"; 124050000 → "124.05"; 122950000 → "122.95" (trailing zeros trimmed, at least one decimal).</summary>

@@ -13,7 +13,8 @@ public sealed record PlaceEntry(string Label, AirportFeature Feature, ParkingSpo
 /// POSITION, never by name — else a stand only navdata lists, else a taxi node within 100 m, else it
 /// is not a place. A stand entry targets the stand's own position and heading exactly as the
 /// Gate / Parking destination does; a node entry has NO heading, so arrival simply stops (a heading
-/// toward the building steered the lineup tone off the taxiway). Pure.
+/// toward the building steered the lineup tone off the taxiway). A cargo ramp or concourse only the
+/// navdata describes is not a place at all (<see cref="DuplicatesGateList"/>). Pure.
 /// </summary>
 public static class PlaceListBuilder
 {
@@ -21,6 +22,19 @@ public static class PlaceListBuilder
 
     public static bool IsRoutable(FeatureKind kind) => kind is FeatureKind.Fbo or FeatureKind.Hangar or FeatureKind.Fuel
         or FeatureKind.Terminal or FeatureKind.Concourse or FeatureKind.Cargo or FeatureKind.FireStation or FeatureKind.Office;
+
+    /// <summary>
+    /// A cargo ramp or concourse that only the navdata describes is a group of stands the Gate /
+    /// Parking list already offers, under a vaguer name — a "Cargo ramp" per cluster of cargo stands,
+    /// a "Concourse B" inferred from gate letters — and routing to one went to the group's central
+    /// stand, which is not how a stand is assigned (KMEM listed 40 such "Cargo ramp" places, live
+    /// 2026-09-26). It stays a Place only when OSM, the scenery or GSX gives it a real name, which
+    /// names somewhere the gate list cannot ("FedEx hub"). Fuel is deliberately not affected: with GSX
+    /// supplying the gate list, a fuel place is the only route to a fuel stand.
+    /// </summary>
+    public static bool DuplicatesGateList(AirportFeature f)
+        => f.Kind is FeatureKind.Cargo or FeatureKind.Concourse
+           && (f.Source == FeatureSource.Navdata || !f.HasProperName);
 
     private static bool IsPreferredStand(FeatureKind kind, int type) => kind switch
     {
@@ -50,7 +64,7 @@ public static class PlaceListBuilder
     {
         var entries = new List<PlaceEntry>();
         var used = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var f in catalog.Features.Where(f => IsRoutable(f.Kind)).OrderBy(f => f.SpokenName, StringComparer.OrdinalIgnoreCase))
+        foreach (var f in catalog.Features.Where(f => IsRoutable(f.Kind) && !DuplicatesGateList(f)).OrderBy(f => f.SpokenName, StringComparer.OrdinalIgnoreCase))
         {
             var stand = BestStand(f, selectable, standAllowed) ?? BestStand(f, navdataOnly, standAllowed);
             PlaceEntry? entry = null;

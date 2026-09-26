@@ -149,6 +149,82 @@ public class PlaceListBuilderTests
         Assert.Null(n);
     }
 
+    private static AirportFeature Nav(FeatureKind k, string name, bool generic, params (double Lat, double Lon)[] members)
+    {
+        var pts = members.Select(m => new LatLon(m.Lat, m.Lon)).ToList();
+        return new() { Kind = k, Name = name, NameIsGeneric = generic, Lat = pts.Average(p => p.Lat), Lon = pts.Average(p => p.Lon),
+                       Source = FeatureSource.Navdata, Members = pts };
+    }
+
+    [Fact]
+    public void A_cargo_ramp_or_concourse_only_navdata_describes_is_not_a_place()
+    {
+        // KMEM listed 40 "Cargo ramp" places (live 2026-09-26): one per cluster of its 156 unnamed
+        // cargo stands, each routed to the cluster's central stand — a stand the Gate / Parking list
+        // already offers, under a vaguer name. A concourse inferred from gate letters is the same.
+        var cargo = new[] { Stand("", 1, 6, 35.0400, -89.9700), Stand("", 2, 6, 35.0402, -89.9700) };
+        var gates = new[] { Stand("B", 1, 10, 35.0500, -89.9800), Stand("B", 2, 10, 35.0502, -89.9800) };
+        var catalog = Cat(Nav(FeatureKind.Cargo, "Cargo ramp", true, (35.0400, -89.9700), (35.0402, -89.9700)),
+                          Nav(FeatureKind.Concourse, "Concourse B", false, (35.0500, -89.9800), (35.0502, -89.9800)));
+        Assert.Empty(PlaceListBuilder.Build(catalog, cargo.Concat(gates).ToList(), None, NoNode, Any));
+    }
+
+    [Fact]
+    public void Navdata_fuel_stays_a_place()
+    {
+        // With GSX supplying the gate list, fuel stands are not in it: a fuel place is the only route there.
+        var fuelStand = Stand("", 0, 16, 47.2702, -122.5700);
+        var entry = Assert.Single(PlaceListBuilder.Build(Cat(Nav(FeatureKind.Fuel, "Fuel", true, (47.2702, -122.5700))),
+            None, new[] { fuelStand }, NoNode, Any));
+        Assert.Same(fuelStand.Spot, entry.Spot);
+    }
+
+    [Theory]
+    [InlineData(FeatureSource.Osm)] [InlineData(FeatureSource.Scenery)] [InlineData(FeatureSource.Gsx)]
+    public void A_cargo_ramp_or_concourse_with_a_real_name_from_another_source_stays_a_place(FeatureSource source)
+    {
+        var stands = new[] { Stand("", 1, 6, 35.0400, -89.9700), Stand("B", 1, 10, 35.0500, -89.9800) };
+        var fedex = new AirportFeature { Kind = FeatureKind.Cargo, Name = "FedEx World Hub", Lat = 35.0401, Lon = -89.9700, Source = source };
+        var pier = new AirportFeature { Kind = FeatureKind.Concourse, Name = "Concourse B", Lat = 35.0501, Lon = -89.9800, Source = source };
+        Assert.Equal(2, PlaceListBuilder.Build(Cat(fedex, pier), stands, None, NoNode, Any).Count);
+
+        // The same source's bare kind word ("Cargo ramp") names nothing the gate list cannot.
+        var bare = new AirportFeature { Kind = FeatureKind.Cargo, Name = "Cargo ramp", NameIsGeneric = true, Lat = 35.0401, Lon = -89.9700, Source = source };
+        Assert.Empty(PlaceListBuilder.Build(Cat(bare), stands, None, NoNode, Any));
+    }
+
+    [Fact]
+    public void An_OSM_name_that_absorbs_a_navdata_concourse_keeps_the_place()
+    {
+        // The catalog merges the two into one feature under the OSM winner's name and source.
+        var gates = new[] { Stand("B", 1, 10, 35.0500, -89.9800), Stand("B", 2, 10, 35.0502, -89.9800) };
+        var navdata = Nav(FeatureKind.Concourse, "Concourse B", false, (35.0500, -89.9800), (35.0502, -89.9800));
+        var osm = new AirportFeature { Kind = FeatureKind.Concourse, Name = "Concourse B", Lat = 35.0501, Lon = -89.9801, Source = FeatureSource.Osm };
+        var entry = Assert.Single(PlaceListBuilder.Build(Cat(navdata, osm), gates, None, NoNode, Any));
+        Assert.Equal(FeatureSource.Osm, entry.Feature.Source);
+    }
+
+    [Fact]
+    public void KMEM_shaped_navdata_alone_lists_its_fuel_and_no_cargo_or_concourse_places()
+    {
+        // End to end from the stands: NavdataFeatureSource makes a Cargo ramp, a Concourse B and a
+        // Fuel feature; only the fuel one becomes a place.
+        var spots = new List<ParkingSpot>
+        {
+            new() { Name = "", Number = 1, Type = 6, Latitude = 35.0400, Longitude = -89.9700, Heading = 90 },
+            new() { Name = "", Number = 2, Type = 6, Latitude = 35.0402, Longitude = -89.9700, Heading = 90 },
+            new() { Name = "B", Number = 1, Type = 10, Latitude = 35.0500, Longitude = -89.9800, Heading = 90 },
+            new() { Name = "B", Number = 2, Type = 10, Latitude = 35.0502, Longitude = -89.9800, Heading = 90 },
+            new() { Name = "", Number = 0, Type = 16, Latitude = 35.0450, Longitude = -89.9750, Heading = 90 },
+        };
+        var features = NavdataFeatureSource.Read(spots, null);
+        Assert.Contains(features, f => f.Kind == FeatureKind.Cargo);
+        Assert.Contains(features, f => f.Kind == FeatureKind.Concourse);
+        var entries = PlaceListBuilder.Build(AirportFeatureCatalog.Build("v", features),
+            spots.Select(s => new StandCandidate(s, 7)).ToList(), None, NoNode, Any);
+        Assert.Equal(FeatureKind.Fuel, Assert.Single(entries).Feature.Kind);
+    }
+
     [Fact]
     public void A_named_office_kind_place_is_not_labelled_airport_office()
     {
