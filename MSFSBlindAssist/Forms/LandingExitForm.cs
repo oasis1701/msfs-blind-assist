@@ -595,18 +595,14 @@ public class LandingExitForm : Form
                 _graph = rebuilt;
 
                 int before = _exits.Count;
-                string? selectedName = (cmbExit.SelectedItem as LandingExit)?.TaxiwayName;
+                var selected = cmbExit.SelectedItem as LandingExit;
 
                 RepopulateExits(announce: false);
 
-                // Restore the pilot's pick when that taxiway is still offered. Matching by name
-                // (not index) because the merge can insert exits ahead of it in the list.
-                if (!string.IsNullOrEmpty(selectedName))
-                {
-                    int idx = _exits.FindIndex(e =>
-                        string.Equals(e.TaxiwayName, selectedName, StringComparison.OrdinalIgnoreCase));
-                    if (idx >= 0) cmbExit.SelectedIndex = idx;
-                }
+                // Restore the pilot's pick when it is still offered - by identity, not index, because the
+                // merge can insert exits ahead of it (Navigation.LandingExitDefault.RestoreIndex).
+                int idx = Navigation.LandingExitDefault.RestoreIndex(_exits, selected);
+                if (idx >= 0) cmbExit.SelectedIndex = idx;
 
                 if (_exits.Count != before && cmbRunway.SelectedItem is RunwayChoice choice)
                     _announcer.Announce(
