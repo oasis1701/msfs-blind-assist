@@ -12,9 +12,18 @@ public enum BriefingTier { Navdata, OpenStreetMap, None }
 /// <summary>The aircraft's own position when SimConnect reported one for this briefing.</summary>
 public sealed record OwnPosition(double Lat, double Lon, bool OnGround);
 
-/// <summary>SayIntentions' ARRIVAL gate — the label it published and, when it did, the stand's position.
-/// Only ever built by <see cref="SayIntentionsArrivalGate"/>, which checks the flight matches this OFP.</summary>
-public sealed record SayIntentionsGateHint(string Label, GeoPoint? Position);
+/// <summary>Where SayIntentions published the arrival gate: its flight file's <c>assigned_gate</c>, or — when the file
+/// has none yet — its SAPI parking service (<c>getParking</c>), the fallback MSFS Blind Assist's SayIntentions window
+/// and Taxi Assist's import already use. SAPI does not say whether that service means the arrival gate or the
+/// aircraft's current parking, so the planner refuses a parking-service gate whose position is not at the arrival
+/// airport.</summary>
+public enum SayIntentionsGateSource { FlightFile, ParkingService }
+
+/// <summary>SayIntentions' ARRIVAL gate — the label it published and, when it did, the stand's position, both from the
+/// same <see cref="Source"/>. Only ever built by <see cref="SayIntentionsArrivalGate"/>, which checks the flight matches
+/// this OFP.</summary>
+public sealed record SayIntentionsGateHint(string Label, GeoPoint? Position,
+    SayIntentionsGateSource Source = SayIntentionsGateSource.FlightFile);
 
 public enum StandChoiceSource { SayIntentions, AirlineMatch, Category, Any }
 
