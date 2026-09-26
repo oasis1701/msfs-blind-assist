@@ -146,18 +146,24 @@ as the assigned "Gate 8", because `NormalizeParkingName` strips the stand-type w
 0. **SayIntentions gate** (hint non-null; the caller has already checked the SI flight matches
    this OFP, §5.9). The pool excludes types 8 (Military Combat), 16 (Fuel), 17 (Vehicles) and
    de-ice pads; type 1 is KEPT here because navdata maps unknown-type stands to it, real jetway
-   gates included (LEBB 101–106), but it ranks after every known-type candidate. By name first:
-   every stand whose identity label (`Describe()` before its first " - ") normalises
-   (`SayIntentionsClearanceParser.NormalizeParkingName`) to the hint's label; only if none, every
-   stand with a matching online alias. Several matches → the one nearest the published position;
-   no position → a gate type (9, 10, 11, 13, 14) first, then list order. The chosen stand must
-   connect to the taxiway network; a matched name that does not connect is said so ("was found but
-   does not connect"), and the published position is never used to hand SayIntentions' label to a
-   neighbouring stand. By position only when the name matched nothing: the nearest stand within
-   `min(150 m, radiusMetres × 2.0)` — the values are `SayIntentionsGatePositionMatcher`'s own
-   calibrated constants; radius is FEET for navdata, METRES for GSX; 60 m for a stand of unknown
-   radius (every OpenStreetMap stand). A found stand is `StandChoiceSource.SayIntentions`; nothing
-   found → a note naming the assigned label, and the inference below.
+   gates included (LEBB 101–106), but it gives way to a known type (within 1 m of the pin, or
+   always when no pin is published). A stand's REACH is `min(150 m, radiusMetres × 2.0)` — the
+   values are `SayIntentionsGatePositionMatcher`'s own calibrated constants; radius is FEET for
+   navdata, METRES for GSX — or 60 m for a stand of unknown radius (every OpenStreetMap stand).
+   By name first: every stand whose identity label (`Describe()` before its first " - ")
+   normalises (`SayIntentionsClearanceParser.NormalizeParkingName`) to the hint's label; only if
+   none, every stand with a matching online alias. **Owner decision (2026-09-25): when SayIntentions
+   publishes its pin, a name or alias match counts only if the pin is within that stand's reach —
+   the stand at SayIntentions' pin wins, and a same-named stand far from it is never used.** Among
+   the matches that count, the nearest to the pin wins; with no pin, a gate type (9, 10, 11, 13, 14)
+   first, then list order. The chosen stand must connect to the taxiway network; a matched name
+   that does not connect is said so ("was found but does not connect"). By position alone only
+   when no name or alias match counts: the nearest stand whose reach contains the pin. A found stand
+   is `StandChoiceSource.SayIntentions`, and when its identity does not normalise to SayIntentions'
+   label the note says "SayIntentions assigned X, which this scenery lists as Y"; nothing found → a
+   note naming the assigned label, and the inference below. (Taxi Assist's SayIntentions import
+   still resolves name-first — a known divergence, tracked as a follow-up; do not "fix" the
+   briefing back to match it.)
 1. **Eligible and reachable.** The representative choice excludes types 1, 8, 16, 17 and de-ice
    pads, and keeps only stands with a graph node within 100 m (Taxi Assist's gate rule) — checked
    BEFORE the filters below, so a filter never leaves a leg without a stand while one connects.
