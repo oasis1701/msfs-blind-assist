@@ -4376,7 +4376,12 @@ public partial class TaxiGraph
         // In that case we run a second pass collecting Normal-node fallback exits, merge them
         // with the HS End exits, and return the combined deduplicated list.
         // Judged on each exit's PRODUCER type (producerExitTypes, recorded above), never its refined
-        // one: the branch refinement must not change whether the second pass runs.
+        // one: the branch refinement must not change whether the second pass runs. The list it reads is
+        // the REFINED one, though, de-duplicated by refined angle and type, so the refinement still picks
+        // WHICH exits are judged - and that is deliberate. Judged on the producer's own list instead (the
+        // pre-refinement decision), 16 runway directions go back to hold-short mode and lose 54 exits
+        // (KDTW 09L 11 -> 2, KPIA 31 6 -> 1, KLNK 14 5 -> 1) while none gains one (whole-database sweep,
+        // 2026-09-26). Do not "fix" it without a sweep showing the pilot gains.
         bool hsOnlyEnds = hasHoldShortOnRunway && deduped.Count > 0
             && deduped.TrueForAll(e =>
                 (producerExitTypes.TryGetValue(e, out var producerType) ? producerType : e.ExitType) == "End");
