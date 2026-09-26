@@ -655,4 +655,52 @@ public class RunwayRouteClassifierNodesFromTests
         Assert.True(prepended);
         Assert.Equal(3, nodes.Count);   // aircraft + FromNode(seg 1) + ToNode(seg 1)
     }
+    [Fact]
+    public void A_decline_inside_the_turn_point_when_too_fast_leaves_it_to_the_too_fast_rule()
+    {
+        // The KATL decline shape at 45 kt, 140 ft out: folded in, "Turn right now." bypassed the turn point's
+        // too-fast rule. Silent (and unlatched), the turn-now block speaks the too-fast outcome instead.
+        var plan = RolloutRunwayReCrossing.PlanDeclineSpeech(
+            turnNowSpoken: false, distanceAheadFeet: 140, turnNowFeet: 150, tooFastToTurn: true);
+        Assert.False(plan.Speak);
+        Assert.False(plan.FoldTurnNow);
+    }
+
+    [Fact]
+    public void A_decline_inside_the_turn_point_at_a_turnable_speed_folds_turn_now_in()
+    {
+        var plan = RolloutRunwayReCrossing.PlanDeclineSpeech(
+            turnNowSpoken: false, distanceAheadFeet: 140, turnNowFeet: 150, tooFastToTurn: false);
+        Assert.True(plan.Speak);
+        Assert.True(plan.FoldTurnNow);
+    }
+
+    [Fact]
+    public void A_decline_after_the_too_fast_rule_declined_the_exit_stays_silent_while_still_too_fast()
+    {
+        // "Taxiway X, too fast to turn. Slow down." has been spoken (turn-now latched), and the pilot is still
+        // turning toward X at a speed it cannot be taken at: "Continue rolling to taxiway X" would invite the
+        // exit just declined, and would cut the 4.39 s warning off a second into it.
+        var plan = RolloutRunwayReCrossing.PlanDeclineSpeech(
+            turnNowSpoken: true, distanceAheadFeet: 100, turnNowFeet: 150, tooFastToTurn: true);
+        Assert.False(plan.Speak);
+    }
+
+    [Fact]
+    public void A_decline_after_turn_now_at_a_turnable_speed_speaks_without_repeating_it()
+    {
+        var plan = RolloutRunwayReCrossing.PlanDeclineSpeech(
+            turnNowSpoken: true, distanceAheadFeet: 100, turnNowFeet: 150, tooFastToTurn: false);
+        Assert.True(plan.Speak);
+        Assert.False(plan.FoldTurnNow);
+    }
+
+    [Fact]
+    public void A_decline_short_of_the_turn_point_speaks_without_turn_now()
+    {
+        var plan = RolloutRunwayReCrossing.PlanDeclineSpeech(
+            turnNowSpoken: false, distanceAheadFeet: 400, turnNowFeet: 150, tooFastToTurn: true);
+        Assert.True(plan.Speak);
+        Assert.False(plan.FoldTurnNow);
+    }
 }

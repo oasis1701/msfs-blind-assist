@@ -1,0 +1,197 @@
+// Hold-short-anchored landing exits and the hold-short gate, judged by their whole branch
+// (ExitBranch, via TaxiGraph.RefineExitByBranch). The KMEM 36L fixture cannot reach these paths:
+// its four hold-short nodes sit 83-85 m out, beyond the 40 m corridor, so every KMEM exit is a
+// geometry-found one.
+//
+// Fixture frame, as in ExitBranchTests: a due-east runway on the equator, threshold at (0,0),
+// 164 ft wide (half-width 25.0 m, clear boundary 35.0 m, corridor 40.0 m). Along-runway metres =
+// longitude * 111132 and NORTH metres = latitude * 111132 (north = LEFT of the landing direction).
+
+using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Navigation;
+
+namespace MSFSBlindAssist.Tests;
+
+public class LandingExitHoldShortBranchTests
+{
+    private const double M_PER_DEG = 111132.0;
+
+    private static Runway Runway09(double lengthM) => new()
+    {
+        RunwayID = "09", StartLat = 0.0, StartLon = 0.0, Heading = 90.0,
+        Length = lengthM / 0.3048, Width = 164.0, ThresholdOffset = 0.0,
+    };
+
+    private static TaxiPath Seg(double a1, double n1, double a2, double n2, string name = "", string startType = "", string endType = "") => new()
+    {
+        Type = "T", Width = 98.0, Name = name, StartType = startType, EndType = endType,
+        StartLat = n1 / M_PER_DEG, StartLon = a1 / M_PER_DEG,
+        EndLat = n2 / M_PER_DEG, EndLon = a2 / M_PER_DEG,
+    };
+
+    private static TaxiGraph Build(params TaxiPath[] paths)
+        => TaxiGraph.Build(paths.ToList(), new List<ParkingSpot>(), new List<StartPosition>());
+
+    private static TaxiNode NodeAt(TaxiGraph g, double along, double north)
+        => g.Nodes.Values.OrderBy(n =>
+               Math.Abs(n.Longitude * M_PER_DEG - along) + Math.Abs(n.Latitude * M_PER_DEG - north))
+           .First();
+
+    // A 1,200 m runway (3,937 ft; its last 15% starts at 1,020 m) in hold-short mode, every hold-short
+    // node 36 m out, inside the corridor:
+    //   B  a plain 90-degree exit at 400 m;
+    //   C  a stub peeling BACK 119 degrees from 700 m, with no other arm;
+    //   A  a curved fillet from a junction at 1,000 m (83% of the runway) whose segments turn 11, 41
+    //      and 72 degrees to its hold-short node at 1,041 m (87%), then straight out at 90 degrees.
+    private static TaxiGraph HoldShortRunway() => Build(
+        Seg(400, 0, 400, 36, "B", endType: "HSND"), Seg(400, 36, 400, 80, "B"),
+        Seg(700, 0, 680, 36, "C", endType: "HSND"), Seg(680, 36, 640, 80, "C"),
+        Seg(1000, 0, 1020, 4, "A"), Seg(1020, 4, 1035, 17, "A"),
+        Seg(1035, 17, 1041, 36, "A", endType: "HSND"), Seg(1041, 36, 1041, 80, "A"));
+
+    [Fact]
+    public void A_hold_short_exit_keeps_its_node_takes_its_branch_turn_and_is_typed_where_it_stands()
+    {
+        var g = HoldShortRunway();
+        var a = g.GetLandingExits(Runway09(1200.0)).Single(e => e.TaxiwayName == "A");
+        var hold = NodeAt(g, 1041, 36);
+
+        Assert.Equal(hold.NodeId, a.NodeId);
+        Assert.Equal(hold.Latitude, a.Latitude);
+        Assert.Equal(hold.Longitude, a.Longitude);
+        // The fillet's sharpest turn to clear (72.5 degrees) - not the hold-short node's own
+        // 90-degree edge, which is what the node alone would have said.
+        Assert.InRange(a.ExitAngleDegrees, 71.5, 73.5);
+        // Typed at the hold-short node, 87% down the runway; typed at its junction (83%) it
+        // would read Normal.
+        Assert.Equal("End", a.ExitType);
+    }
+
+    [Fact]
+    public void A_hold_short_exit_takes_its_branchs_bearing_not_a_backward_edges()
+    {
+        // Round 2, S4 (FL86 10, KHON 36, EGMC 23). Hold-short node H (1045,36) sits on a forward fillet
+        // from (1000,0) that turns 11, 22, 41 and 65 degrees. At H itself the inward edge (115 degrees,
+        // pointing back) is more off-axis than the outward one (50 degrees), so the producer's bearing
+        // points back down the runway; after "turn now" the rollout steers a Normal exit by its bearing.
+        var g = Build(
+            Seg(1000, 0, 1010, 2, "A"), Seg(1010, 2, 1025, 8, "A"), Seg(1025, 8, 1036.5, 17.9, "A"),
+            Seg(1036.5, 17.9, 1045, 36, "A", endType: "HSND"), Seg(1045, 36, 1070.7, 66.6, "A"),
+            Seg(1070.7, 66.6, 1080, 100, "A"));
+
+        var a = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "A");
+
+        Assert.Equal(NodeAt(g, 1045, 36).NodeId, a.NodeId);
+        Assert.Equal("Normal", a.ExitType);
+        double relative = ((a.ExitBearingTrue - 90.0) % 360.0 + 540.0) % 360.0 - 180.0;
+        Assert.True(RolloutExitGate.IsPlausibleExitBearing(a.ExitBearingTrue, 90.0), $"bearing {relative:F1} off the runway");
+        Assert.InRange(relative, -90.0, -5.0);   // forward and LEFT (north of an eastbound runway)
+        Assert.Equal("Left", a.ExitSide);
+    }
+
+    [Fact]
+    public void A_hold_short_exit_already_off_the_pavement_takes_the_bearing_it_was_reached_by()
+    {
+        // The OI19 11 shape (re-sweep after the review's I1 fix). Connector "C" leaves the runway at 90
+        // degrees, north (left), to hold-short node H (1000,30), already past the 25 m half-width; from H
+        // the taxiway runs BACK along a parallel line to (950,30) and on out to (900,45). Measured from
+        // H's own edge onward, the bearing pointed back down the runway and the spoken side flipped to
+        // the wrong one; H was reached turning 90 degrees left, and that is the exit's bearing.
+        var g = Build(
+            Seg(1000, 0, 1000, 30, "C", endType: "HSND"), Seg(1000, 30, 950, 30, "C"), Seg(950, 30, 900, 45, "C"));
+
+        var c = Assert.Single(g.GetLandingExits(Runway09(3000.0)), e => e.TaxiwayName == "C");
+
+        Assert.Equal(NodeAt(g, 1000, 30).NodeId, c.NodeId);
+        double relative = ((c.ExitBearingTrue - 90.0) % 360.0 + 540.0) % 360.0 - 180.0;
+        Assert.InRange(relative, -93.0, -87.0);
+        Assert.Equal("Left", c.ExitSide);
+    }
+
+    [Fact]
+    public void A_hold_short_turnaround_with_no_forward_arm_is_recorded_as_a_130_degree_end_exit()
+    {
+        var g = HoldShortRunway();
+        var c = g.GetLandingExits(Runway09(1200.0)).Single(e => e.TaxiwayName == "C");
+
+        Assert.Equal(NodeAt(g, 680, 36).NodeId, c.NodeId);
+        Assert.Equal(RolloutExitGate.TurnaroundExitAngleDeg, c.ExitAngleDegrees);
+        Assert.Equal("End", c.ExitType);
+    }
+
+    [Fact]
+    public void A_lone_backward_hold_short_arm_with_a_forward_sibling_leaves_the_geometric_exits_listed()
+    {
+        // The CYVR 26L shape (worldwide sweep, 2026-09-26: its 12 exits became 1; EDDK 24 8 -> 3,
+        // KDCA 15 6 -> 1). The only hold-short node inside the corridor sits 38 m out on the stem of
+        // Y-shaped exit "Y". Its backward arm (named, junction downfield at 2,050 m, a 158-degree turn)
+        // is nearer the centreline, so the unseeded inward walk takes it; the forward arm (unnamed,
+        // junction at 1,930 m) is its sibling. D is an unmarked 90-degree taxiway at 1,000 m.
+        // The gate judges the node by its OWN branch - a turnaround - so the runway does not switch to
+        // hold-short mode, and the unmarked taxiway D stays listed.
+        var g = Build(
+            Seg(2000, 38, 2000, 90, "Y", startType: "HSND"),
+            Seg(2050, 0, 2030, 8, "Y"), Seg(2030, 8, 2000, 38, "Y"),
+            Seg(1930, 0, 1965, 12), Seg(1965, 12, 2000, 38),
+            Seg(1000, 0, 1000, 90, "D"));
+
+        var exits = g.GetLandingExits(Runway09(3000.0));
+
+        Assert.Contains(exits, e => e.TaxiwayName == "D");
+        // Y is still offered, by its forward arm's junction.
+        var y = Assert.Single(exits, e => e.TaxiwayName == "Y");
+        Assert.InRange(y.DistanceFromThresholdFeet, 1930.0 / 0.3048 - 30.0, 1930.0 / 0.3048 + 30.0);
+    }
+
+    [Fact]
+    public void A_lone_hold_short_exit_typed_End_before_refinement_still_brings_in_the_geometric_exits()
+    {
+        // The EIDW 28R / KPWK 34 shape (worldwide sweep, 2026-09-26: 5 exits became 1, 7 became 1).
+        // The runway's only hold-short node H (1050,29) sits on a shallow forward RET "N4" whose
+        // junction is at (900,0). H's inward edge (7.1 degrees off the axis, pointing back) is more
+        // off-axis than its outward one (4.6 degrees), so the producer reads H as a backward peel:
+        // 130 degrees, End. Measured by its branch H is Normal (a 56-degree turn off the runway at the
+        // junction). Whether the geometric second pass runs is decided on the PRODUCER's type, as it
+        // always was - so the unmarked taxiway D at 2,000 m is still listed.
+        var g = Build(
+            Seg(900, 0, 910, 15, "N4"), Seg(910, 15, 960, 20, "N4"), Seg(960, 20, 1010, 24, "N4"),
+            Seg(1010, 24, 1050, 29, "N4", endType: "HSND"), Seg(1050, 29, 1150, 37, "N4"),
+            Seg(1150, 37, 1250, 70, "N4"),
+            Seg(2000, 0, 2000, 90, "D"));
+
+        var exits = g.GetLandingExits(Runway09(3000.0));
+
+        Assert.Contains(exits, e => e.TaxiwayName == "D");
+        Assert.Contains(exits, e => e.TaxiwayName == "N4");
+    }
+    [Fact]
+    public void A_crossing_found_by_the_fallback_pass_is_its_forward_half_whatever_the_row_order()
+    {
+        // The runway's only hold-short node, H, is 100 m in - short of the 500 ft floor - so the list is
+        // built by the Normal-node fallback. X crosses at 1000 m, forward-right at 60°; its BACKWARD row is
+        // listed first, and the fallback's own best-edge copy had no tie-break for two rows that fold to the
+        // same 60°: the first-listed won, and a forward exit was measured as a 120° turnaround.
+        var g = Build(
+            Seg(100, 0, 100, 36, "H", endType: "HSND"), Seg(100, 36, 100, 80, "H"),
+            Seg(1000, 0, 970, 51.96, "X"), Seg(1000, 0, 1030, -51.96, "X"));
+        var x = g.GetLandingExits(Runway09(3000.0)).Single(e => e.TaxiwayName == "X");
+        Assert.Equal("Normal", x.ExitType);
+        Assert.InRange(x.ExitAngleDegrees, 57.0, 63.0);
+        Assert.Equal("Right", x.ExitSide);
+    }
+
+    [Fact]
+    public void A_kinked_crossing_is_measured_on_its_forward_half()
+    {
+        // No hold-short nodes, so X's centreline node is an implicit exit: forward-right at 60.0°, back-left at
+        // 119.5°. Folded off the axis the backward row reads 60.5°, wider than 60.0°, so the best-edge rule
+        // seeds it - and the forward exit was measured as a turnaround.
+        var g = Build(
+            Seg(1000, 0, 1030, -51.96, "X"),
+            Seg(1000, 0, 1000 + 60 * Math.Cos(119.5 * Math.PI / 180), 60 * Math.Sin(119.5 * Math.PI / 180), "X"));
+        var x = g.GetLandingExits(Runway09(3000.0)).Single(e => e.TaxiwayName == "X");
+        Assert.Equal("Normal", x.ExitType);
+        Assert.InRange(x.ExitAngleDegrees, 58.0, 62.0);
+        Assert.Equal("Right", x.ExitSide);
+    }
+}

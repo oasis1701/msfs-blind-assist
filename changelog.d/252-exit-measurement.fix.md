@@ -1,0 +1,1 @@
+Landing exits are now judged by where their pavement actually goes: the wrong-direction arm of a Y-shaped exit is never offered, a sharp curved exit is no longer called a high-speed one, and the Landing Exit planner no longer pre-selects a turnaround while another exit is listed.

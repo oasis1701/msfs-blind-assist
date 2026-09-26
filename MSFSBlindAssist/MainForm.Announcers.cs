@@ -781,6 +781,9 @@ public partial class MainForm
             {
                 _liftoffHandoffTimer?.Stop();
                 _liftoffHandoffConfirmToken++;
+                // Back on the ground inside the go-around window: that liftoff was a bounce.
+                _goAroundTimer?.Stop();
+                _goAroundConfirmToken++;
             }
 
             // Auto hand-off at rotation: when the pilot lifts off WHILE Takeoff
@@ -808,6 +811,15 @@ public partial class MainForm
             {
                 _liftoffHandoffTimer?.Stop();   // reset the debounce interval
                 _liftoffHandoffTimer?.Start();
+            }
+
+            // A liftoff during landing-exit guidance: a touch-and-go, a go-around - or a bounce. ARM the check; it
+            // decides when LandingExitGoAround.ConfirmMs is up, against a fresh sample
+            // (EndLandingExitGuidanceIfGoAround). Until then the rollout carries on, as it always did.
+            if (justLiftedOff && taxiGuidanceManager.IsLandingExitGuidance)
+            {
+                _goAroundTimer?.Stop();         // reset the window
+                _goAroundTimer?.Start();
             }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
@@ -1024,6 +1036,38 @@ public partial class MainForm
         }
 
         return false; // Not a special case, continue normal processing
+    }
+
+    /// <summary>
+    /// Fired by <c>_goAroundTimer</c> once the aircraft has been airborne for
+    /// <see cref="LandingExitGoAround.ConfirmMs"/> after lifting off during landing-exit guidance. Confirms
+    /// against a FRESH position read - a settle-back in the last second is invisible to the 1 Hz cache - then
+    /// ends that guidance silently, arms the pilot's plan for the next touchdown, and says one short sentence.
+    /// A response that never arrives ends nothing: the rollout guidance carries on, as it always did.
+    /// </summary>
+    private void EndLandingExitGuidanceIfGoAround()
+    {
+        _goAroundTimer?.Stop(); // one-shot
+
+        // Cheap pre-gates on cached state - each can only abort. _lastOnGround true means a touchdown already
+        // arrived; the timer's own stop covers that, and this covers the tick racing it.
+        if (_lastOnGround || !simConnectManager.IsConnected || !taxiGuidanceManager.IsLandingExitGuidance)
+            return;
+
+        int confirmToken = ++_goAroundConfirmToken;
+        simConnectManager.RequestAircraftPositionAsync(p =>
+        {
+            if (confirmToken != _goAroundConfirmToken) return;
+            if (!taxiGuidanceManager.EndLandingExitGuidanceIfGoAround(p.SimOnGround >= 0.5)) return;
+            bool planKept = landingExitPlanner.RearmAfterGoAround();
+            announcer.AnnounceImmediate(LandingExitGoAround.Message(planKept));
+            try
+            {
+                _landingExitLog.Info(FormattableString.Invariant(
+                    $"GO-AROUND: landing-exit guidance ended, plan {(planKept ? "armed again" : "none")} (gs={p.GroundSpeedKnots:F0} vs={p.VerticalSpeedFPM:F0})"));
+            }
+            catch { }
+        });
     }
 
     /// <summary>

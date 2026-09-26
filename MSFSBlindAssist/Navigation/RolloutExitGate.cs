@@ -88,20 +88,33 @@ public static class RolloutExitGate
     public const double NearRunwayEndFeet = 500.0;
 
     /// <summary>
-    /// How close to the exit a turn must begin to count as taking it.
+    /// The CEILING on an exit's own turn window (<see cref="TurnWindowFeetFor"/>), the window used
+    /// when no exit is targeted, and the straight-line bound in <see cref="IsVacateAwayFromPlannedExit"/>.
+    /// Until 2026-09 it was the turn window for EVERY exit (how close to the exit a turn had to begin
+    /// to count as taking it).
     ///
-    /// <para>Derived, not fitted. An exit node can sit forward of its actual pavement
-    /// junction by up to <c>lateralTolerance / tan(exitAngle)</c>, where lateralTolerance is
-    /// <c>halfWidth + 15 m</c> (see <c>TaxiGraph.GetLandingExits</c>). This gate can only fire
-    /// for an exit the aircraft can deviate 15° onto, so exitAngle ≥ 15°; the worst case is a
-    /// 200 ft runway: (30.5 + 15) / tan(15°) = 170 m = 558 ft. Add the app's own notion of
-    /// "at the exit" — the 300 ft tone-arm distance plus the 150 ft "turn now" cue — for
-    /// 1,008 ft, rounded to 1,000.</para>
+    /// <para>Derived, not fitted: it is <see cref="TurnWindowFeetFor"/>'s worst case. An exit node can
+    /// sit forward of its pavement junction by up to <c>lateralTolerance / tan(exitAngle)</c>, where
+    /// lateralTolerance is <c>halfWidth + 15 m</c> (see <c>TaxiGraph.GetLandingExits</c>); a turn
+    /// counts only from <see cref="TurnBegunHeadingDeg"/> (15°), so exitAngle ≥ 15°, and on a 200 ft
+    /// runway that displacement is (30.5 + 15) / tan 15° = 170 m = 558 ft - the figure
+    /// <see cref="EarlyVacateForwardSlackFeet"/> and <see cref="VacatedShortAlongTrackFeet"/> cite.
+    /// Add how far before the junction a 15° turn still stays on the pavement, 30.5 / tan 15° = 114 m =
+    /// 373 ft: 930 ft, rounded up to 1,000. (The first telling added the 300 ft tone-arm distance and
+    /// the 150 ft "turn now" cue to the 558 ft instead, for 1,008 ft; the per-exit window replaced
+    /// that sum in 2026-09 and this is now the one derivation.)</para>
     ///
     /// <para>Do NOT tighten this to <c>ROLLOUT_NEAR_EXIT_FT</c> (500): that would block
     /// legitimate turns at shallow-RET airports whose exits derive from hold-short nodes.</para>
     /// </summary>
     public const double TurnWindowFeet = 1000.0;
+
+    /// <summary>
+    /// How far before the targeted exit the rollout says "turn now" - and the FLOOR on that exit's turn
+    /// window (<see cref="TurnWindowFeetFor"/>): a turn begun at the cue is the turn the pilot was told
+    /// to make. <c>TaxiGuidanceManager.ROLLOUT_TURN_NOW_FT</c> aliases it.
+    /// </summary>
+    public const double TurnNowFeet = 150.0;
 
     /// <summary>
     /// Below this relative bearing an exit has no meaningful side and the direction test is
@@ -271,6 +284,30 @@ public static class RolloutExitGate
     }
 
     /// <summary>
+    /// A paved runway surface (<c>Runway.Surface</c>'s codes): concrete, asphalt, bituminous, macadam or
+    /// tarmac.
+    /// </summary>
+    public static bool IsPavedSurface(int surfaceCode) => surfaceCode is 0 or 4 or 17 or 19 or 23;
+
+    /// <summary>
+    /// Is the aircraft within the landing runway's pavement laterally, for the off-pavement alert: within
+    /// half-width + <see cref="RunwayClearMarginM"/>, the complement of <see cref="IsLaterallyClearOfRunway"/>,
+    /// except that a PAVED runway's width is capped as RunwayShape caps a malformed row
+    /// (<see cref="RunwayShape.MaxPlausibleHalfWidthMeters"/>, a 400 ft runway). fs2024 records three paved
+    /// runways wider than that (ZBAT 546 ft, YNSM 450 ft, USDB 447 ft); taken at face value, every point up to
+    /// 93 m out counted as pavement, so "Off pavement." could never fire beside them. Beyond 400 ft a grass,
+    /// dirt or water field can be real, so those keep their width. The rollout's own lateral line keeps the raw
+    /// width either way: its callers decide handoffs, and this is only the alert's question.
+    /// </summary>
+    public static bool IsWithinRunwayPavementLaterally(double absLateralMetres, double runwayWidthFeet, int surfaceCode)
+    {
+        double widthFt = runwayWidthFeet > 0.0 ? runwayWidthFeet : DefaultRunwayWidthFeet;
+        double halfWidthM = widthFt * 0.3048 * 0.5;
+        if (IsPavedSurface(surfaceCode)) halfWidthM = Math.Min(halfWidthM, RunwayShape.MaxPlausibleHalfWidthMeters);
+        return absLateralMetres <= halfWidthM + RunwayClearMarginM;
+    }
+
+    /// <summary>
     /// Which steering-tone behaviour applies this frame.
     ///
     /// <para><see cref="RolloutToneMode.Silent"/> (the ground-speed case) and
@@ -283,9 +320,15 @@ public static class RolloutExitGate
     /// <c>turnBegun</c> hasn't accepted the turn yet), more than <see cref="ExitToneArmFeet"/>
     /// from the exit NODE, was getting a "hold the runway heading" DriftCorrection tone
     /// that directly opposes a turn <see cref="IsExitTurnBegun"/> is about to accept — real,
-    /// not hypothetical, because <see cref="TurnWindowFeet"/>'s own derivation shows an exit
-    /// node can read up to 558 ft forward of its pavement junction. Silence, not opposition,
-    /// is correct here: don't fight a turn the gate is about to accept.</para>
+    /// not hypothetical, because an exit node can read forward of its pavement junction (up to
+    /// 558 ft in <see cref="TurnWindowFeet"/>'s worst case). Silence, not opposition, is correct
+    /// INSIDE the window: don't fight a turn the gate is about to accept.</para>
+    ///
+    /// <para>The window is a PARAMETER since 2026-09: the targeted exit's own
+    /// (<see cref="TurnWindowFeetFor"/>), never more than <see cref="TurnWindowFeet"/>. The fixed
+    /// 1,000 ft was far too wide for an exit whose node is its centreline junction: at KMEM 36L a
+    /// leftover 8° right turn 631 ft before M7, whose own window is 324 ft, went Silent instead of
+    /// getting the drift tone. Beyond the exit's own window a deviation toward its side is drift.</para>
     ///
     /// <para>A KNOWN exit side is required (<see cref="HasKnownExitSide"/>) — not merely
     /// deferred to <see cref="IsTurnTowardExit"/>'s own unknown-side degradation — because at
@@ -293,16 +336,31 @@ public static class RolloutExitGate
     /// indistinguishable, and there the drift tone must keep working rather than going
     /// silent.</para>
     /// </summary>
+    /// <param name="turnWindowFeet">
+    /// The targeted exit's own turn window (<see cref="TurnWindowFeetFor"/>). The turn-window Silent
+    /// only applies inside it; beyond it a deviation toward the exit side is drift.
+    /// </param>
+    /// <param name="tooFastForExit">
+    /// The aircraft is too fast for the targeted exit: <see cref="IsTooFastToTurn"/> before its turn
+    /// point, or the exit was declined as too fast there. Below the tone line the tone is then
+    /// DriftCorrection, the runway heading: never ExitBearing, and never the turn-window Silent. A turn
+    /// toward an exit the aircraft cannot make is opposed, not led or silenced — an ExitBearing pan
+    /// toward an off-centreline node at 35–50 kt led a pilot into a turn <c>turnBegun</c> then handed
+    /// off at speed (the KMEM 36L shape).
+    /// </param>
     public static RolloutToneMode SelectToneMode(
         double groundSpeedKts,
         double distToExitFeet,
         double headingDeltaSignedDeg,
-        double exitRelativeBearingDeg)
+        double exitRelativeBearingDeg,
+        double turnWindowFeet,
+        bool tooFastForExit = false)
     {
         if (groundSpeedKts > ToneActiveBelowGroundSpeedKts) return RolloutToneMode.Silent;
+        if (tooFastForExit) return RolloutToneMode.DriftCorrection;
         if (distToExitFeet <= ExitToneArmFeet) return RolloutToneMode.ExitBearing;
 
-        if (distToExitFeet <= TurnWindowFeet
+        if (distToExitFeet <= turnWindowFeet
             && Math.Abs(headingDeltaSignedDeg) >= DriftToneSilentDeg
             && HasKnownExitSide(exitRelativeBearingDeg)
             && IsTurnTowardExit(headingDeltaSignedDeg, exitRelativeBearingDeg))
@@ -338,6 +396,12 @@ public static class RolloutExitGate
     /// <para>A genuine early turn-off at a DIFFERENT exit is not this method's job and is not
     /// lost by tightening it: <c>exitedLaterally</c> catches that from position, which no
     /// heading test can fake.</para>
+    ///
+    /// <para>The distance clause's window is a PARAMETER since 2026-09: the targeted exit's own
+    /// (<see cref="TurnWindowFeetFor"/>), never more than the fixed <see cref="TurnWindowFeet"/> it
+    /// replaced. The fixed 1,000 ft accepted a leftover 15° right turn 483 ft before KMEM M7, whose
+    /// own window is 324 ft, as the M7 turn — and the handoff that followed swung the tone hard left
+    /// as the aircraft left the runway.</para>
     /// </summary>
     /// <param name="exitRelativeBearingDeg">
     /// From <see cref="ExitRelativeBearingDeg"/> — never a hand-written
@@ -345,16 +409,18 @@ public static class RolloutExitGate
     /// degrade the <c>ExitBearingTrue == 0.0</c> "unknown" sentinel and would hand this
     /// method a fabricated exit side on every runway not aligned near 360°.
     /// </param>
+    /// <param name="turnWindowFeet">The targeted exit's own turn window (<see cref="TurnWindowFeetFor"/>).</param>
     public static bool IsExitTurnBegun(
         double headingDeltaSignedDeg,
         double groundSpeedKts,
         double distToExitFeet,
         bool pastExit,
-        double exitRelativeBearingDeg)
+        double exitRelativeBearingDeg,
+        double turnWindowFeet)
     {
         if (Math.Abs(headingDeltaSignedDeg) < TurnBegunHeadingDeg) return false;
         if (groundSpeedKts >= TurnMaxGroundSpeedKts) return false;
-        if (!pastExit && distToExitFeet > TurnWindowFeet) return false;
+        if (!pastExit && distToExitFeet > turnWindowFeet) return false;
         return IsTurnTowardExit(headingDeltaSignedDeg, exitRelativeBearingDeg);
     }
 
@@ -518,6 +584,199 @@ public static class RolloutExitGate
         return crossTrackToFirstSegmentMetres <= halfWidthM + HandoffReachMarginM;
     }
 
+    // ---- Per-exit rules (KMEM 36L, 2026-09-26 — docs/taxi-guidance.md, "Exits measured by branch").
+
+    /// <summary>
+    /// A branch whose turn to LEAVE the runway pavement (<c>LandingExitBranch.TurnToLeaveDeg</c>: the
+    /// sharpest turn from the landing heading up to and including the first node beyond the runway
+    /// half-width) is more than this
+    /// leaves BACKWARD: for this landing direction it is a turnaround, not an exit. Judged at the
+    /// pavement edge, never at the clear line further out. The same 110° that divides "Normal" from
+    /// "End" in <c>TaxiGraph.GetLandingExits</c> (<c>NORMAL_MAX_DEG</c>).
+    /// </summary>
+    public const double TurnaroundAboveDeg = 110.0;
+
+    /// <summary>
+    /// The angle recorded for a turnaround: <c>NORMAL_MAX_DEG + 20</c>, the value <c>GetLandingExits</c>
+    /// has always forced for a backward-peeling stub, so every "&gt; 90°" filter (retarget, re-plan,
+    /// undershoot, the planner default) keeps skipping it.
+    /// </summary>
+    public const double TurnaroundExitAngleDeg = 130.0;
+
+    /// <summary>
+    /// How far above an exit's turn-off speed (<see cref="ExitTurnOffSpeedKts"/>) "turn now" stops being
+    /// a flyable instruction: 30 kt for an exit of 45° or more (or an unknown angle), 60 kt below 45°.
+    /// A judgement value (KMEM 36L: "Turn right now" at 49 kt onto a 52° exit), not a measurement.
+    /// </summary>
+    public const double TooFastMarginKts = 10.0;
+
+    /// <summary>A retarget sentence says "Straighten." only for at least this much heading off the runway.</summary>
+    public const double StraightenMinDeviationDeg = 5.0;
+
+    /// <summary>
+    /// <see cref="TurnWindowFeet"/>'s own derivation, evaluated for ONE exit instead of its worst case:
+    /// how far before the junction a <see cref="TurnBegunHeadingDeg"/> turn still stays on the runway
+    /// (half-width / tan 15°), plus how far the exit node can sit FORWARD of its pavement junction (its
+    /// own lateral offset / tan of the exit angle), never less than <see cref="TurnNowFeet"/> and never
+    /// more than <see cref="TurnWindowFeet"/>.
+    ///
+    /// <para>The fixed 1,000 ft was this sum's worst case (200 ft runway, a marker 45.5 m off, a 15° exit
+    /// = 930 ft). For an exit whose node IS its centerline junction the forward offset is ~0 and the
+    /// window is ~300 ft: KMEM M7 = 324 ft. With the fixed window, a leftover 8–15° right turn from a
+    /// missed M6 was treated as the M7 turn 483 ft out — the tone went silent, then the handoff swung it
+    /// hard left while the aircraft left the runway.</para>
+    ///
+    /// <para>The floor: on a runway narrower than about 80 ft the sum falls below the 150 ft "turn now"
+    /// cue (a 60 ft runway's centerline junction: 112 ft), so a pilot who turned when told was panned back
+    /// toward the runway heading until the aircraft reached the window. 13,287 of the 54,132 usable
+    /// exits in fs2024 (2026-09-26) had a window below the cue, nearly all on narrow GA strips.</para>
+    /// </summary>
+    /// <param name="runwayWidthFeet">Rollout runway width; ≤ 0 uses <see cref="DefaultRunwayWidthFeet"/>.</param>
+    /// <param name="exitNodeLateralMetres">The exit node's lateral offset from the runway axis (sign ignored).</param>
+    /// <param name="exitAngleDeg">The exit's angle; clamped to [15°, 90°] (0 = unknown counts as 15°).</param>
+    public static double TurnWindowFeetFor(double runwayWidthFeet, double exitNodeLateralMetres, double exitAngleDeg)
+    {
+        double widthFt = runwayWidthFeet > 0.0 ? runwayWidthFeet : DefaultRunwayWidthFeet;
+        double halfWidthM = widthFt * 0.3048 * 0.5;
+        double turnTan = Math.Tan(TurnBegunHeadingDeg * Math.PI / 180.0);
+        double angle = Math.Clamp(exitAngleDeg, TurnBegunHeadingDeg, MaxUsableExitTurnDeg);
+        double angleTan = Math.Tan(angle * Math.PI / 180.0);
+        double metres = halfWidthM / turnTan + Math.Abs(exitNodeLateralMetres) / angleTan;
+        return Math.Min(TurnWindowFeet, Math.Max(TurnNowFeet, metres / 0.3048));
+    }
+
+    /// <summary>The fastest ground speed at which "turn now" onto an exit of <paramref name="exitAngleDeg"/> is still said.</summary>
+    public static double MaxTurnSpeedKts(double exitAngleDeg) => ExitTurnOffSpeedKts(exitAngleDeg) + TooFastMarginKts;
+
+    /// <summary>
+    /// Whether the rollout's overshoot handler treats the aircraft as past the targeted exit:
+    /// <paramref name="signedAlongPastFt"/> at least <paramref name="marginFt"/> (the exit-type margin,
+    /// <see cref="OvershootMarginFor"/>) - or, once the exit was declined as too fast at its turn point,
+    /// stopped (at or below <see cref="NoExitStoppedGroundSpeedKts"/>) anywhere at or past its node. Every
+    /// handoff that could move a stopped aircraft on needs it short of the node or turning, so a pilot who
+    /// obeyed "too fast to turn", braked and stopped just past the node got no handoff, no overshoot and no
+    /// countdown: silent on an active runway. A declined exit is NOT overshot on passing its node while
+    /// still rolling: a zero margin there beat the 15° turn test to the node, and a pilot who slowed and
+    /// turned onto the exit anyway heard the runway-end countdown while turning off.
+    /// </summary>
+    public static bool IsPastExitForOvershoot(double signedAlongPastFt, double marginFt, bool tooFastDeclined,
+        double groundSpeedKts)
+        => signedAlongPastFt >= marginFt
+           || (tooFastDeclined && signedAlongPastFt >= 0.0 && groundSpeedKts <= NoExitStoppedGroundSpeedKts);
+
+    /// <summary>
+    /// Along-runway distance past an ordinary exit at which it is called missed: 100 ft at 30 kt is about
+    /// 2 s, by when a correct turn has already handed off.
+    /// </summary>
+    public const double ExitOvershootFeet = 100.0;
+
+    /// <summary>
+    /// The longest a high-speed exit's miss waits: a rapid exit curves away so gently (ICAO design radius
+    /// at least 550 m) that a correct turn is still near the centreline for hundreds of feet.
+    /// </summary>
+    public const double HighSpeedExitOvershootMaxFeet = 500.0;
+
+    /// <summary>
+    /// A genuine overshoot is still within this of the centreline; further out the aircraft is curving
+    /// onto the exit, not missing it.
+    /// </summary>
+    public const double OnCentrelineOvershootFeet = 30.0;
+
+    /// <summary>
+    /// The exit-type margin <see cref="IsPastExitForOvershoot"/> tests against. For a high-speed exit, how far a
+    /// correct turn along its first stretch (<paramref name="divergenceAngleDeg"/>,
+    /// <see cref="LandingExit.DivergenceAngleDegrees"/>) runs before it is more than
+    /// <see cref="OnCentrelineOvershootFeet"/> + 5 ft off the centreline, held between
+    /// <see cref="ExitOvershootFeet"/> and <see cref="HighSpeedExitOvershootMaxFeet"/>; a high-speed exit of
+    /// unknown angle waits the full 500 ft, any other exit 100 ft. Read at the branch's sharpest turn
+    /// instead, EDDB 24L M3 (24.3°, leaving its node at 6.9°) got 100 ft where it needs 291.
+    /// </summary>
+    public static double OvershootMarginFor(string exitType, double divergenceAngleDeg)
+    {
+        if (exitType != "High-speed") return ExitOvershootFeet;
+        if (divergenceAngleDeg <= 0.0) return HighSpeedExitOvershootMaxFeet;
+        double leavesCentrelineFt = (OnCentrelineOvershootFeet + 5.0) / Math.Sin(divergenceAngleDeg * Math.PI / 180.0);
+        return Math.Max(ExitOvershootFeet, Math.Min(leavesCentrelineFt, HighSpeedExitOvershootMaxFeet));
+    }
+
+    /// <summary>
+    /// The alignment handoff, for a correct turn onto a shallow exit that never reaches
+    /// <see cref="TurnBegunHeadingDeg"/>: past the exit's node, below <see cref="TurnMaxGroundSpeedKts"/>,
+    /// heading within 5° of <paramref name="exitBearingTrue"/> and turned at least 70% of the way the exit
+    /// leaves its node (<paramref name="divergenceAngleDeg"/>, floored at 2°) - so a crosswind correction
+    /// rolling straight past a shallow exit cannot satisfy it. An exit whose branch turns less than 3° in all
+    /// (<paramref name="exitAngleDeg"/>) is indistinguishable from rolling straight and is excluded.
+    /// </summary>
+    public static bool IsAlignedWithExit(double headingTrueDeg, double exitBearingTrue, double exitAngleDeg,
+        double divergenceAngleDeg, double headingDeltaAbsDeg, double groundSpeedKts, bool pastExit)
+    {
+        if (exitBearingTrue == 0.0 || exitAngleDeg < 3.0) return false;
+        return Math.Abs(NormalizeAngle(headingTrueDeg - exitBearingTrue)) <= 5.0
+            && headingDeltaAbsDeg >= Math.Max(2.0, divergenceAngleDeg * 0.7)
+            && groundSpeedKts < TurnMaxGroundSpeedKts
+            && pastExit;
+    }
+
+    /// <summary>True when the aircraft is too fast to make the turn: "turn now" must not be said.</summary>
+    public static bool IsTooFastToTurn(double groundSpeedKts, double exitAngleDeg)
+        => groundSpeedKts > MaxTurnSpeedKts(exitAngleDeg);
+
+    /// <summary>
+    /// The ground speed above which a landing-exit callout appends "Slow down.": the exit's own
+    /// <see cref="MaxTurnSpeedKts"/> (faster than the exit can be taken), except that an "End" exit never goes
+    /// above <see cref="TaxiGroundSpeedKts"/>. An End exit is in the last 15% of the runway (or a turnaround),
+    /// so missing it leaves little runway to stop on: its "Slow down." keeps the pre-2026-09 30 kt line even
+    /// when its angle would allow 60 kt. One owner for the rollout's 500 ft callout and the two sentences that
+    /// fold its "Slow down." (the crossing decline and the touchdown correction), and for the retarget
+    /// sentence (<c>RetargetCallout</c>), which folds it the same way.
+    /// </summary>
+    public static double SlowDownAboveKts(double exitAngleDeg, string? exitType)
+        => exitType == "End"
+            ? Math.Min(MaxTurnSpeedKts(exitAngleDeg), TaxiGroundSpeedKts)
+            : MaxTurnSpeedKts(exitAngleDeg);
+
+    /// <summary>
+    /// Should a retarget sentence tell the pilot to "Straighten."? Yes when the aircraft carries at least
+    /// <see cref="StraightenMinDeviationDeg"/> of heading off the runway that the NEW exit would not accept
+    /// as its own turn — toward its side AND inside its window (<see cref="TurnWindowFeetFor"/>), or past it.
+    /// </summary>
+    public static bool ShouldStraightenAfterRetarget(
+        double headingDeltaSignedDeg,
+        double newExitRelativeBearingDeg,
+        double distToNewExitFeet,
+        bool pastNewExit,
+        double newExitTurnWindowFeet)
+    {
+        if (Math.Abs(headingDeltaSignedDeg) < StraightenMinDeviationDeg) return false;
+        bool insideWindow = pastNewExit || distToNewExitFeet <= newExitTurnWindowFeet;
+        return !(insideWindow && IsTurnTowardExit(headingDeltaSignedDeg, newExitRelativeBearingDeg));
+    }
+
+    /// <summary>
+    /// The direction word "turn now" speaks: the side the exit LEAVES the runway on — its
+    /// <c>LandingExit.ExitSide</c>, from the bearing its branch is measured by, which is also the side the tone
+    /// steers to once the cue has been given — never the bearing from the aircraft to the exit's NODE. That
+    /// bearing's sign is noise for a node on the centreline (most geometry-found exits: a metre of drift or a
+    /// degree of crab flips it) and wrong for a lead-in start across it (ENGM 01R B4, fs2024: a node 8.9 m right
+    /// of the centreline on a taxiway that leaves left — "Turn right now" while the tone panned left). The
+    /// bearing to the node decides only when the side is unknown.
+    /// </summary>
+    /// <param name="bearingToExitRelativeDeg">Bearing from the aircraft to the exit's node minus the aircraft's
+    /// heading, signed (+ right).</param>
+    public static string TurnDirectionWord(string? exitSide, double bearingToExitRelativeDeg)
+        => string.Equals(exitSide, "Left", StringComparison.OrdinalIgnoreCase) ? "left"
+           : string.Equals(exitSide, "Right", StringComparison.OrdinalIgnoreCase) ? "right"
+           : bearingToExitRelativeDeg < 0 ? "left" : "right";
+
+    /// <summary>
+    /// May the tone steer to <paramref name="exitBearingTrue"/>? Only a KNOWN bearing (0 is the unknown
+    /// sentinel) within <see cref="TurnaroundAboveDeg"/> of the runway heading. KMEM M6 (2026-09-26) had
+    /// 127° true on a 359° runway — the tone demanded a hairpin at 49 kt.
+    /// </summary>
+    public static bool IsPlausibleExitBearing(double exitBearingTrue, double runwayHeadingTrue)
+        => exitBearingTrue != 0.0
+           && Math.Abs(NormalizeAngle(exitBearingTrue - runwayHeadingTrue)) <= TurnaroundAboveDeg;
+
     /// <summary>
     /// Decode a <c>LandingExit.ExitBearingTrue</c> into a bearing relative to the runway,
     /// POSITIVE = RIGHT, handling the <c>0.0</c> "unknown" sentinel.
@@ -588,9 +847,14 @@ public static class RolloutExitGate
 
     /// <summary>
     /// The speed a landing rollout is braking TOWARD, not through: below it the aircraft is at
-    /// normal taxi speed and is no longer shedding energy hard. Mirrors
-    /// <c>TaxiGuidanceManager.ROLLOUT_TAXI_GS_KTS</c>, the same 30 kt at which the rollout hands
-    /// over to ordinary taxi guidance and stops appending "Slow down."
+    /// normal taxi speed and is no longer shedding energy hard.
+    /// <c>TaxiGuidanceManager.ROLLOUT_TAXI_GS_KTS</c>, the 30 kt of the rollout's taxi-speed handoff
+    /// to ordinary taxi guidance, aliases it.
+    ///
+    /// <para>It is no longer the rollout's "Slow down." line for every exit: since 2026-09 that line is
+    /// <see cref="SlowDownAboveKts"/> — the exit's own <see cref="MaxTurnSpeedKts"/> — and this 30 kt
+    /// survives there only as an "End" exit's line. It is also the speed at or above which
+    /// ground-traffic callouts stay silent on a landing-exit route (<c>GroundTrafficSuppression</c>).</para>
     ///
     /// <para>Used by <see cref="RolloutCalloutSupersession.ReachFeet"/> so that assuming braking
     /// does not run away at the slow end: at 22 kt an aircraft is not decelerating at
@@ -680,6 +944,37 @@ public static class RolloutExitGate
     }
 
     /// <summary>
+    /// The too-fast alternative's comfortable pass: the touchdown re-plan's own rule
+    /// (<c>LandingExitReplan</c>'s <see cref="LandingExitLeadTier.Comfortable"/> tier). Among the exits
+    /// beyond <paramref name="afterDistanceFromThresholdFeet"/> that <c>LandingExitReplan.IsUsable</c> admits
+    /// - a turn of at most <see cref="MaxUsableExitTurnDeg"/> and at least <see cref="ComfortableExitLeadFeet"/>
+    /// ahead of the aircraft for its OWN angle - the nearest one mapped clear of the runway
+    /// (<see cref="LandingExit.VacatesRunway"/>), else the nearest usable one: a flagged exit is still offered
+    /// when it is all there is, as the planner dialog and the re-plan offer it. Null when none is usable. The
+    /// too-fast alternative prefers this: <see cref="ExitLeadFeet"/> was tuned below 50 kt, so above about
+    /// 60 kt it can offer an exit that is itself too fast at its own turn point, one retarget after another.
+    /// </summary>
+    /// <param name="aircraftFromThresholdFeet">The aircraft's own along-track distance from the threshold.</param>
+    public static LandingExit? FirstComfortableDownfieldExit(
+        IReadOnlyList<LandingExit>? exits,
+        double afterDistanceFromThresholdFeet,
+        double aircraftFromThresholdFeet,
+        double groundSpeedKts)
+    {
+        if (exits == null) return null;
+        LandingExit? firstUsable = null;
+        foreach (var e in exits)
+        {
+            if (e == null || e.DistanceFromThresholdFeet <= afterDistanceFromThresholdFeet) continue;
+            if (!LandingExitReplan.IsUsable(e, aircraftFromThresholdFeet, groundSpeedKts, LandingExitLeadTier.Comfortable))
+                continue;
+            if (e.VacatesRunway) return e;
+            firstUsable ??= e;
+        }
+        return firstUsable;
+    }
+
+    /// <summary>
     /// Folds the rescue scan's findings into the rollout's working exit list, nearest-first.
     ///
     /// <para>The rescue scan
@@ -688,6 +983,14 @@ public static class RolloutExitGate
     /// turnoff would let the fall-forward on a failed route retarget to the same place it just
     /// failed to reach, so a candidate within <see cref="EarlyVacateMaxPassedFeet"/> of a
     /// known exit sharing its name is dropped and the known one kept.</para>
+    ///
+    /// <para>Except a known TURNAROUND (turning more than <see cref="MaxUsableExitTurnDeg"/>): it never
+    /// covers a forward candidate - the rule <c>GetLandingExits</c> keeps for its own coverage. Every
+    /// picker skips the turnaround, so dropping the forward exit beside it left the pilot with neither:
+    /// after "Taxiway B, too fast to turn." the runway-end countdown instead of the C still ahead. The
+    /// rescue scan keeps no turnaround without a forward sibling, so the forward exit it found there is a
+    /// different way off. Measured over every runway direction in fs2024 (2026-09-26), missing each
+    /// forward exit in turn: an exit is gained on UBGO 28 and KBKD 04, and none is lost or changed.</para>
     ///
     /// <para>Everything downstream of the retarget - the fall-forward, the undershoot scan,
     /// the early-vacate matcher - reads this one list and assumes nearest-first ordering.</para>
@@ -706,10 +1009,12 @@ public static class RolloutExitGate
             {
                 if (r == null) continue;
                 bool duplicate = false;
+                bool rescuedForward = r.ExitAngleDegrees <= MaxUsableExitTurnDeg;
                 foreach (var e in merged)
                 {
                     if (!string.Equals(e.TaxiwayName, r.TaxiwayName, StringComparison.OrdinalIgnoreCase))
                         continue;
+                    if (rescuedForward && e.ExitAngleDegrees > MaxUsableExitTurnDeg) continue;
                     if (Math.Abs(e.DistanceFromThresholdFeet - r.DistanceFromThresholdFeet)
                         <= EarlyVacateMaxPassedFeet)
                     { duplicate = true; break; }

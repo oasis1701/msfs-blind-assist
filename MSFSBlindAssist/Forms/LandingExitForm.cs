@@ -515,11 +515,8 @@ public class LandingExitForm : Form
         foreach (var exit in _exits)
             cmbExit.Items.Add(exit);
 
-        // Select a usable exit by default rather than blindly the first one — the
-        // flagged ones stay in the list (at some airports they are ALL that exists, so
-        // hiding them would leave nothing to pick), they just aren't the default.
-        int firstUsable = _exits.FindIndex(e => e.VacatesRunway);
-        cmbExit.SelectedIndex = firstUsable >= 0 ? firstUsable : 0;
+        // Never a turnaround (Navigation.LandingExitDefault), then the old "gets clear" preference.
+        cmbExit.SelectedIndex = Navigation.LandingExitDefault.Index(_exits);
 
         string warnSuffix = unusable > 0
             ? $" {unusable} of them ha{(unusable == 1 ? "s" : "ve")} no taxiway mapped clear of the runway."
@@ -598,18 +595,14 @@ public class LandingExitForm : Form
                 _graph = rebuilt;
 
                 int before = _exits.Count;
-                string? selectedName = (cmbExit.SelectedItem as LandingExit)?.TaxiwayName;
+                var selected = cmbExit.SelectedItem as LandingExit;
 
                 RepopulateExits(announce: false);
 
-                // Restore the pilot's pick when that taxiway is still offered. Matching by name
-                // (not index) because the merge can insert exits ahead of it in the list.
-                if (!string.IsNullOrEmpty(selectedName))
-                {
-                    int idx = _exits.FindIndex(e =>
-                        string.Equals(e.TaxiwayName, selectedName, StringComparison.OrdinalIgnoreCase));
-                    if (idx >= 0) cmbExit.SelectedIndex = idx;
-                }
+                // Restore the pilot's pick when it is still offered - by identity, not index, because the
+                // merge can insert exits ahead of it (Navigation.LandingExitDefault.RestoreIndex).
+                int idx = Navigation.LandingExitDefault.RestoreIndex(_exits, selected);
+                if (idx >= 0) cmbExit.SelectedIndex = idx;
 
                 if (_exits.Count != before && cmbRunway.SelectedItem is RunwayChoice choice)
                     _announcer.Announce(

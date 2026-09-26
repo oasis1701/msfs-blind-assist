@@ -1,0 +1,1 @@
+After a go-around or a touch-and-go, landing exit guidance now stops with "Exit guidance off, plan kept." instead of talking about exits during the climb-out, and your planned exit comes back for the next landing.

@@ -52,6 +52,22 @@ public class LandingExit
     public double ExitAngleDegrees { get; set; }
 
     /// <summary>
+    /// How steeply the exit's path leaves its own node, in degrees off the runway heading: its first
+    /// stretch of at least <see cref="ExitBranch.MinStrokeMetres"/> from where the exit stands, never more
+    /// than <see cref="ExitAngleDegrees"/>. The overshoot margin and the alignment handoff read this: a
+    /// pilot correctly following a curved rapid exit is only as far off the runway as its first stretch
+    /// takes them - EDDB 24L M3 leaves at 6.9° where its branch's sharpest turn is 24.3°, and read at
+    /// 24.3° a correct turn was called missed 100 ft past the node. <see cref="ExitAngleDegrees"/> (type,
+    /// too-fast line) stays the sharpest turn. Unset, it is <see cref="ExitAngleDegrees"/>.
+    /// </summary>
+    public double DivergenceAngleDegrees
+    {
+        get => double.IsNaN(_divergenceAngleDegrees) ? ExitAngleDegrees : _divergenceAngleDegrees;
+        set => _divergenceAngleDegrees = value;
+    }
+    private double _divergenceAngleDegrees = double.NaN;
+
+    /// <summary>
     /// True bearing (0–360°) of the best taxiway edge leading away from the
     /// runway at this exit node. Used during landing rollout to blend the
     /// steering tone toward the actual exit direction as the aircraft closes
@@ -87,6 +103,17 @@ public class LandingExit
     /// and failed, so nothing is ever labelled as bad merely because it wasn't tested.</para>
     /// </summary>
     public bool VacatesRunway { get; set; } = true;
+
+    /// <summary>
+    /// True when the exit's branch is a turnaround as read from its junction and forward only as met at the
+    /// exit's own node (<see cref="ExitBranch.FromExitNode"/>): the junction the inward walk reached lies past
+    /// the lead-in's own start (SBGL 15 F). Such an exit only fills a gap in the planner list - its per-name
+    /// dedup takes it for its name only when no exit read forward from its junction holds the name, and it is
+    /// never coverage for one. Taking the name's place instead, KLIT 22R's D crossing near the threshold
+    /// displaced the D rapid exit 4,600 ft on, which came back 700 ft late on its own arc (whole-database
+    /// sweep, 2026-09-26).
+    /// </summary>
+    public bool ForwardOnlyFromItsNode { get; set; }
 
     public override string ToString()
     {

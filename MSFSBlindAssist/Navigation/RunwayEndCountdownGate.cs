@@ -23,9 +23,10 @@ public enum RunwayEndCountdownAction
 ///
 /// <para>Rules, in order: laterally clear of the runway → vacated; heading at least
 /// <see cref="TurnedAroundMinDeg"/> off → backtrack (at the end when near it); near the end and
-/// stopped or turning → backtrack at the end; stopped away from the end → one notice; otherwise
-/// keep counting down. A turn onto a taxiway mid-runway says nothing until the aircraft is clear.
-/// Pure — <c>RunwayEndCountdownGateTests</c>.</para>
+/// STOPPED → backtrack at the end; stopped away from the end → one notice; otherwise keep counting
+/// down. A TURN near the end is never a trigger — a turn-off and the start of a turnaround look the
+/// same there, and backtracking cannot be taken back — so a turn onto a taxiway, near the end or
+/// mid-runway, says nothing until the aircraft is clear. Pure — <c>RunwayEndCountdownGateTests</c>.</para>
 /// </summary>
 public static class RunwayEndCountdownGate
 {

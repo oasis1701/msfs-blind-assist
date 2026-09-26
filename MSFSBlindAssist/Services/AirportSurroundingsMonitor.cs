@@ -85,6 +85,13 @@ public sealed class AirportSurroundingsMonitor : IDisposable
     /// <summary>True while a feature (takeoff assist, docking, a taxi rollout/lineup/hold state,
     /// announcer suppression) requires silence.</summary>
     public Func<bool>? SuppressCheck { get; set; }
+    /// <summary>
+    /// True while the landing roll's own off-pavement alert has told the pilot about the current excursion
+    /// (TaxiGuidanceManager.OffPavementAnnounced). The surface callout then withholds its "Off the pavement"
+    /// sentence - one excursion, one phrasing - but still records the surface, so "Back on pavement." completes
+    /// it. Unset, nothing is withheld.
+    /// </summary>
+    public Func<bool>? PavementExcursionAnnounced { get; set; }
     /// <summary>True/false = on/off a runway; null = unknown (nothing read for this airport yet). Runs on the UI thread.</summary>
     public Func<string, double, double, bool?>? RunwayProbe { get; set; }
     /// <summary>Prepares the probe's warm-up on the UI thread, in the same turn that read the
@@ -177,8 +184,15 @@ public sealed class AirportSurroundingsMonitor : IDisposable
             // running off the side on a takeoff roll or rollout is the worst case.
             if (sample.SurfaceCallout is { } surfaceCall)
             {
-                PostAnnounce(surfaceCall);
-                Log.Debug("Surroundings", $"surface callout: {surfaceCall} (type={p.SurfaceType:F0} valid={p.SurfaceInfoValid:F0} gs={p.GroundSpeedKnots:F1})");
+                if (sample.LeavesPavement && PavementExcursionAnnounced?.Invoke() == true)
+                {
+                    Log.Debug("Surroundings", $"surface callout withheld, the landing roll already said off pavement: {surfaceCall}");
+                }
+                else
+                {
+                    PostAnnounce(surfaceCall);
+                    Log.Debug("Surroundings", $"surface callout: {surfaceCall} (type={p.SurfaceType:F0} valid={p.SurfaceInfoValid:F0} gs={p.GroundSpeedKnots:F1})");
+                }
             }
             if (!Enabled) return;   // the rest belongs to the passing callouts
 

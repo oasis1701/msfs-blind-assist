@@ -4,7 +4,8 @@
 // only: it reads the database read-only and writes nothing back to it or to production code.
 //
 // Usage: StandBridgeSweep.exe [databasePath] [maxAirports]
-//   databasePath  defaults to the user's fs2024.sqlite under %APPDATA%\MSFSBlindAssist\databases
+//   databasePath  defaults to the pilot's fs2024 database, resolved as the app resolves it
+//                 (NavdataSweepLoader.DefaultDatabasePath: canonical, then the legacy FBWBA folder)
 //   maxAirports   optional cap for a quick smoke run; omit (or 0) to sweep every airport
 
 using System.Diagnostics;
@@ -13,9 +14,7 @@ using Microsoft.Data.Sqlite;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 
-string dbPath = args.Length > 0
-    ? args[0]
-    : @"C:\Users\augus\AppData\Roaming\MSFSBlindAssist\databases\fs2024.sqlite";
+string dbPath = args.Length > 0 ? args[0] : NavdataSweepLoader.DefaultDatabasePath;
 int maxAirports = args.Length > 1 && int.TryParse(args[1], out var m) ? m : 0;
 
 var overallSw = Stopwatch.StartNew();
@@ -26,191 +25,16 @@ if (!File.Exists(dbPath))
     return 1;
 }
 
-string connStr = $"Data Source={dbPath};Mode=ReadOnly;Pooling=false;";
-using var conn = new SqliteConnection(connStr);
-conn.Open();
+using var conn = NavdataSweepLoader.OpenReadOnly(dbPath);
 
-// ---------------------------------------------------------------------------------------
-// Bulk load. One pass per table, grouped by airport_id in memory, so we never pay the
-// per-ICAO connection/round-trip cost LittleNavMapProvider's public methods incur (those
-// are designed for "load the one airport the pilot is at", not a 22k-airport sweep).
-// Column layouts and normalization match MSFSBlindAssist/Database/LittleNavMapProvider.cs's
-// GetTaxiPaths / GetParkingSpots / GetRunwayStarts / GetRunways exactly (see the code
-// comments below at each read for the specific method + line behavior being mirrored).
-// ---------------------------------------------------------------------------------------
-
+// The bulk load, shared with tools/LandingExitSweep (tools/Shared/NavdataSweepLoader.cs, linked).
+var navdata = NavdataSweepLoader.Load(conn);
+var airportLabel = navdata.AirportLabel;
+var pathsByAirport = navdata.PathsByAirport;
+var parkingByAirport = navdata.ParkingByAirport;
+var startsByAirport = navdata.StartsByAirport;
+var runwaysByAirport = navdata.RunwaysByAirport;
 var sw = Stopwatch.StartNew();
-
-// airport_id -> (icao, ident) for labeling only (ZBAT / OMDB lookups, report headers).
-var airportLabel = new Dictionary<int, (string Icao, string Ident)>();
-using (var cmd = new SqliteCommand("SELECT airport_id, icao, ident FROM airport", conn))
-using (var r = cmd.ExecuteReader())
-{
-    while (r.Read())
-    {
-        int id = r.GetInt32(0);
-        string icao = r.IsDBNull(1) ? "" : r.GetString(1);
-        string ident = r.IsDBNull(2) ? "" : r.GetString(2);
-        airportLabel[id] = (icao, ident);
-    }
-}
-Console.WriteLine($"airport rows: {airportLabel.Count} ({sw.ElapsedMilliseconds} ms)");
-
-// taxi_path — mirrors LittleNavMapProvider.GetTaxiPaths (same normalization, same trim).
-sw.Restart();
-var pathsByAirport = new Dictionary<int, List<TaxiPath>>();
-using (var cmd = new SqliteCommand(@"
-    SELECT taxi_path_id, airport_id, type, surface, width, name,
-           start_type, start_dir, start_lonx, start_laty,
-           end_type, end_dir, end_lonx, end_laty
-    FROM taxi_path
-    ORDER BY airport_id, taxi_path_id", conn))
-using (var r = cmd.ExecuteReader())
-{
-    while (r.Read())
-    {
-        int apId = r.GetInt32(1);
-        var tp = new TaxiPath
-        {
-            TaxiPathId = r.GetInt32(0),
-            AirportId = apId,
-            Type = r.IsDBNull(2) ? "" : r.GetString(2),
-            Surface = r.IsDBNull(3) ? "" : r.GetString(3),
-            Width = r.IsDBNull(4) ? 0.0 : r.GetDouble(4),
-            Name = NormalizeTaxiwayName(r.IsDBNull(5) ? null : r.GetString(5)),
-            StartType = r.IsDBNull(6) ? "" : r.GetString(6),
-            StartDir = r.IsDBNull(7) ? "" : r.GetString(7),
-            StartLon = r.GetDouble(8),
-            StartLat = r.GetDouble(9),
-            EndType = r.IsDBNull(10) ? "" : r.GetString(10),
-            EndDir = r.IsDBNull(11) ? "" : r.GetString(11),
-            EndLon = r.GetDouble(12),
-            EndLat = r.GetDouble(13),
-        };
-        if (!pathsByAirport.TryGetValue(apId, out var list))
-            pathsByAirport[apId] = list = new List<TaxiPath>();
-        list.Add(tp);
-    }
-}
-Console.WriteLine($"taxi_path rows grouped: {pathsByAirport.Values.Sum(l => l.Count)} across {pathsByAirport.Count} airports ({sw.ElapsedMilliseconds} ms)");
-
-// parking — mirrors LittleNavMapProvider.GetParkingSpots (MapParkingName copied verbatim;
-// MapParkingType is NOT needed — TaxiGraph.Build never reads ParkingSpot.Type).
-sw.Restart();
-var parkingByAirport = new Dictionary<int, List<ParkingSpot>>();
-using (var cmd = new SqliteCommand(@"
-    SELECT airport_id, type, name, number, suffix, heading, laty, lonx, radius, has_jetway, airline_codes
-    FROM parking
-    ORDER BY airport_id", conn))
-using (var r = cmd.ExecuteReader())
-{
-    while (r.Read())
-    {
-        int apId = r.GetInt32(0);
-        var spot = new ParkingSpot
-        {
-            Name = MapParkingName(r.IsDBNull(2) ? "" : r.GetString(2)),
-            Suffix = r.IsDBNull(4) ? "" : r.GetString(4),
-            Number = r.IsDBNull(3) ? 0 : r.GetInt32(3),
-            Type = 0,
-            Latitude = r.IsDBNull(6) ? 0.0 : r.GetDouble(6),
-            Longitude = r.IsDBNull(7) ? 0.0 : r.GetDouble(7),
-            Heading = r.IsDBNull(5) ? 0.0 : r.GetDouble(5),
-            Radius = r.IsDBNull(8) ? 0.0 : r.GetDouble(8),
-            HasJetway = !r.IsDBNull(9) && r.GetInt32(9) == 1,
-            AirlineCodes = r.IsDBNull(10) ? "" : r.GetString(10),
-        };
-        if (!parkingByAirport.TryGetValue(apId, out var list))
-            parkingByAirport[apId] = list = new List<ParkingSpot>();
-        list.Add(spot);
-    }
-}
-Console.WriteLine($"parking rows grouped: {parkingByAirport.Values.Sum(l => l.Count)} across {parkingByAirport.Count} airports ({sw.ElapsedMilliseconds} ms)");
-
-// start (runway starts only, type='R') — mirrors LittleNavMapProvider.GetRunwayStarts.
-sw.Restart();
-var startsByAirport = new Dictionary<int, List<StartPosition>>();
-using (var cmd = new SqliteCommand(@"
-    SELECT airport_id, runway_end_id, runway_name, type, heading, altitude, lonx, laty
-    FROM start
-    WHERE type = 'R' OR type = 'r'
-    ORDER BY airport_id", conn))
-using (var r = cmd.ExecuteReader())
-{
-    while (r.Read())
-    {
-        int apId = r.GetInt32(0);
-        var sp = new StartPosition
-        {
-            AirportId = apId,
-            RunwayEndId = r.IsDBNull(1) ? null : r.GetInt32(1),
-            RunwayName = (r.IsDBNull(2) ? "" : r.GetString(2)).Trim(),
-            Type = r.IsDBNull(3) ? "" : r.GetString(3),
-            Heading = r.IsDBNull(4) ? 0.0 : r.GetDouble(4),
-            Altitude = r.IsDBNull(5) ? 0.0 : r.GetDouble(5),
-            Longitude = r.IsDBNull(6) ? 0.0 : r.GetDouble(6),
-            Latitude = r.IsDBNull(7) ? 0.0 : r.GetDouble(7),
-        };
-        if (!startsByAirport.TryGetValue(apId, out var list))
-            startsByAirport[apId] = list = new List<StartPosition>();
-        list.Add(sp);
-    }
-}
-Console.WriteLine($"start(type=R) rows grouped: {startsByAirport.Values.Sum(l => l.Count)} across {startsByAirport.Count} airports ({sw.ElapsedMilliseconds} ms)");
-
-// runway + runway_end (both ends) — mirrors LittleNavMapProvider.GetRunways /
-// CreateRunwayFromReader's geometry fields exactly (RunwayID/StartLat/StartLon/EndLat/EndLon/
-// Width — the only fields TaxiGraph.Build reads). The ILS join machinery in the production
-// method is irrelevant here (Build never reads ILS fields) and is deliberately omitted.
-sw.Restart();
-var runwaysByAirport = new Dictionary<int, List<Runway>>();
-using (var cmd = new SqliteCommand(@"
-    SELECT r.airport_id, r.width,
-           rep.name AS primary_name, rep.laty AS primary_laty, rep.lonx AS primary_lonx,
-           res.name AS secondary_name, res.laty AS secondary_laty, res.lonx AS secondary_lonx
-    FROM runway r
-    JOIN runway_end rep ON r.primary_end_id = rep.runway_end_id
-    JOIN runway_end res ON r.secondary_end_id = res.runway_end_id
-    ORDER BY r.airport_id", conn))
-using (var r = cmd.ExecuteReader())
-{
-    while (r.Read())
-    {
-        int apId = r.GetInt32(0);
-        double width = r.IsDBNull(1) ? 0.0 : r.GetDouble(1);
-        string primaryName = r.IsDBNull(2) ? "" : r.GetString(2);
-        double primaryLat = r.IsDBNull(3) ? 0.0 : r.GetDouble(3);
-        double primaryLon = r.IsDBNull(4) ? 0.0 : r.GetDouble(4);
-        string secondaryName = r.IsDBNull(5) ? "" : r.GetString(5);
-        double secondaryLat = r.IsDBNull(6) ? 0.0 : r.GetDouble(6);
-        double secondaryLon = r.IsDBNull(7) ? 0.0 : r.GetDouble(7);
-
-        if (!runwaysByAirport.TryGetValue(apId, out var list))
-            runwaysByAirport[apId] = list = new List<Runway>();
-
-        list.Add(new Runway
-        {
-            AirportICAO = "",
-            RunwayID = primaryName,
-            StartLat = primaryLat,
-            StartLon = primaryLon,
-            EndLat = secondaryLat,
-            EndLon = secondaryLon,
-            Width = width,
-        });
-        list.Add(new Runway
-        {
-            AirportICAO = "",
-            RunwayID = secondaryName,
-            StartLat = secondaryLat,
-            StartLon = secondaryLon,
-            EndLat = primaryLat,
-            EndLon = primaryLon,
-            Width = width,
-        });
-    }
-}
-Console.WriteLine($"runway rows grouped: {runwaysByAirport.Values.Sum(l => l.Count)} runway-ends across {runwaysByAirport.Count} airports ({sw.ElapsedMilliseconds} ms)");
 
 // ---------------------------------------------------------------------------------------
 // Reflection handles for two TaxiGraph private members, invoked (never reimplemented) on the
@@ -375,58 +199,6 @@ static int CountDistinctBridges(TaxiGraph graph)
             if (TaxiGraph.IsStandBridge(e))
                 seen.Add((Math.Min(e.FromNodeId, e.ToNodeId), Math.Max(e.FromNodeId, e.ToNodeId)));
     return seen.Count;
-}
-
-// Mirrors LittleNavMapProvider.NormalizeTaxiwayName exactly (trim + collapse internal
-// whitespace runs) — pure string hygiene, not graph-building logic, so duplicating it here
-// carries no risk of diverging from what Build itself receives as TaxiPath.Name.
-static string NormalizeTaxiwayName(string? raw)
-{
-    if (string.IsNullOrWhiteSpace(raw)) return "";
-    string trimmed = raw.Trim();
-    var sb = new System.Text.StringBuilder(trimmed.Length);
-    bool prevSpace = false;
-    foreach (char c in trimmed)
-    {
-        if (char.IsWhiteSpace(c))
-        {
-            if (!prevSpace) { sb.Append(' '); prevSpace = true; }
-        }
-        else
-        {
-            sb.Append(c);
-            prevSpace = false;
-        }
-    }
-    return sb.ToString();
-}
-
-// Mirrors LittleNavMapProvider.MapParkingName exactly. Only used for the OMDB "C 51L"
-// identity lookup and report labeling — TaxiGraph.Build itself never reads ParkingSpot.Name
-// for any decision that affects bridge-building, only FindNearestNode's Latitude/Longitude.
-static string MapParkingName(string name)
-{
-    switch (name.ToUpperInvariant())
-    {
-        case "NONE":
-        case "":
-            return "";
-        case "P": return "Parking";
-        case "NP": return "North";
-        case "NEP": return "Northeast";
-        case "EP": return "East";
-        case "SEP": return "Southeast";
-        case "SP": return "South";
-        case "SWP": return "Southwest";
-        case "WP": return "West";
-        case "NWP": return "Northwest";
-        case "G": return "";
-        case "D": return "Dock";
-        default:
-            if (name.Length >= 2 && name.StartsWith("G", StringComparison.OrdinalIgnoreCase))
-                return name.Substring(1);
-            return name;
-    }
 }
 
 // Generic BFS + main-component tie-break over a TaxiGraph's own public Nodes/Adjacency.

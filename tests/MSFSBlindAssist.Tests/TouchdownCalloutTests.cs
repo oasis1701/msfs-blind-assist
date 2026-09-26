@@ -102,7 +102,7 @@ public class TouchdownCalloutTests
     public void Slow_down_folds_only_for_a_retired_500_on_a_non_high_speed_exit_above_taxi_speed()
     {
         Assert.True(TouchdownCallout.RetireExitCallouts(450, 40, "Normal", Lead, T1500, T900, T500, TurnNow, TaxiKts).SlowDown);
-        Assert.False(TouchdownCallout.RetireExitCallouts(450, 40, "High-speed", Lead, T1500, T900, T500, TurnNow, TaxiKts).SlowDown);
+        Assert.False(TouchdownCallout.RetireExitCallouts(450, 40, "High-speed", Lead, T1500, T900, T500, TurnNow, 60).SlowDown);
         Assert.False(TouchdownCallout.RetireExitCallouts(450, 20, "Normal", Lead, T1500, T900, T500, TurnNow, TaxiKts).SlowDown);
     }
 

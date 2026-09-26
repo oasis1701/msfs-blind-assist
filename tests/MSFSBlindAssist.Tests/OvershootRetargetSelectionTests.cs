@@ -136,6 +136,36 @@ public class OvershootRetargetSelectionTests
         Assert.Equal(new[] { "B", "H2", "H4", "J2" }, merged.Select(e => e.TaxiwayName).ToArray());
     }
 
+    [Fact]
+    public void A_same_name_turnaround_never_swallows_a_rescued_forward_exit()
+    {
+        // Hold-short mode: the planner list keeps B, a forward exit, and C's backward stub as a 130-degree
+        // turnaround; the unmarked forward C further down is not listed. Too fast at B, the rescue scan
+        // finds that C - and it must survive the merge beside its own turnaround, which every picker skips.
+        var planned = new[] { Exit("B", 1312, 90.0), Exit("C", 2231, 130.0) };
+        var rescued = new[] { Exit("C", 3281, 90.0) };
+
+        var merged = RolloutExitGate.MergeRescueExits(planned, rescued);
+        var next = RolloutExitGate.FirstSuitableDownfieldExit(merged, afterDistanceFromThresholdFeet: 1412);
+
+        Assert.Equal(new[] { 1312.0, 2231.0, 3281.0 }, merged.Select(e => e.DistanceFromThresholdFeet).ToArray());
+        Assert.Equal(3281.0, next?.DistanceFromThresholdFeet);
+    }
+
+    [Fact]
+    public void A_known_forward_exit_still_covers_its_own_rediscovered_turnoff()
+    {
+        // The exception is for turnarounds only: a forward exit of the same name inside the window is the
+        // same turnoff found twice, and the known entry wins.
+        var planned = new[] { Exit("C", 2231, 90.0) };
+        var rescued = new[] { Exit("C", 2300, 85.0) };
+
+        var merged = RolloutExitGate.MergeRescueExits(planned, rescued);
+
+        Assert.Single(merged);
+        Assert.Equal(2231.0, merged[0].DistanceFromThresholdFeet);
+    }
+
     // ---------------------------------------------------------------------------------
     // Where the "downfield" cutoff is measured FROM.
     // ---------------------------------------------------------------------------------
