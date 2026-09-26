@@ -3,7 +3,9 @@
 // MainForm can parse + announce both identically. Evaluated in the A32NX_MCDU Coherent
 // view (where the <a32nx-mcdu> element lives) via CoherentEvalClient — no agent install.
 // ES5 only (Coherent GT = Chromium 49: var, no arrow funcs, no String.includes, try/catch).
-//   distToDest : NM to destination (alongTrackDistancesToDestination.get(0); works in flight)
+//   distToDest : NM to destination (alongTrackDistancesToDestination.get(0) on FBW since
+//                #9627, else the older plain alongTrackDistanceToDestination — the Headwind
+//                A330 0.8.1 still ships the latter; undefined until a route has geometry)
 //   distToTD/TC: NM to Top of Descent / Top of Climb from the (T/D)/(T/C) pseudo-waypoint's
 //                flightPlanInfo.distanceFromAircraft (the FMS's own dist-to-go; vanishes once
 //                passed). NOT (DECEL) — a separate decel point that lingers ahead.
@@ -23,8 +25,14 @@
 
     var info = { ok: true, distToDest: null, distToTD: null, distToTC: null, timeToTD: null, timeToTC: null, timeToDest: null, flightPhase: null };
 
+    // Distance to destination. FBW #9627 (2025-11-25) turned this into a per-plan Map
+    // (alongTrackDistancesToDestination, 0 = active plan); before it the guidance
+    // controller carried one plain number, alongTrackDistanceToDestination (undefined
+    // with no active geometry). The Headwind A330 0.8.1 pins FBW at 2025-11-10, so its
+    // shipped mcdu.js has ONLY the old field — read the Map first, then the old number,
+    // or plain D says "not available" on the A330 for the whole flight (live 2026-09-26).
     var map = gc.alongTrackDistancesToDestination;
-    var dtd = (map && map.get) ? map.get(0) : null;   // 0 = active plan
+    var dtd = (map && typeof map.get === "function") ? map.get(0) : gc.alongTrackDistanceToDestination;
     if (typeof dtd === "number" && isFinite(dtd)) info.distToDest = dtd;
 
     // For the distance-to-go fallback (see the pseudo-waypoint loop): the Headwind
