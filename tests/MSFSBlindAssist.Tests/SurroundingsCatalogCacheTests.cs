@@ -14,7 +14,7 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class SurroundingsCatalogCacheTests
 {
-    private static readonly AirportFacts TowerOnly = new("", new[] { "Tower 118.5" });
+    private static readonly AirportFacts TowerOnly = new("", new[] { new FrequencyRow("Tower 118.5", 118500000) });
     private static SurroundingsBuild One(string name = "Narrows Aviation", bool degraded = false) => new(
         new[] { new AirportFeature { Kind = FeatureKind.Fbo, Name = name, Lat = 47.27, Lon = -122.57, Source = FeatureSource.Osm } }, TowerOnly, degraded);
     private static readonly TimeSpan Wait = TimeSpan.FromSeconds(10);

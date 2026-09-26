@@ -34,6 +34,19 @@ public class HotkeyGuideSurroundingsChordTests
     public void Every_guide_lists_the_Surroundings_window_under_the_registered_chord(string guide)
         => Assert.StartsWith(HotkeyManager.SurroundingsWindowChordText + " ", EntryFor(guide, SurroundingsWindowDescription));
 
+    [Theory, MemberData(nameof(AllGuides))]
+    public void Every_guide_says_what_Enter_and_Shift_Enter_do_in_the_Frequencies_list(string guide)
+    {
+        // The two lines right under the Surroundings window entry — the keys are only discoverable here
+        // and in the list's own accessible description.
+        var lines = File.ReadAllLines(Path.Combine(AppContext.BaseDirectory, "HotkeyGuides", guide));
+        int at = Array.FindIndex(lines, l => l.Contains(SurroundingsWindowDescription, StringComparison.Ordinal));
+        Assert.True(at >= 0, $"{guide} has no Surroundings window entry");
+        string continuation = string.Join(" ", lines.Skip(at + 1).Take(2));
+        Assert.Contains("Frequencies list", continuation, StringComparison.Ordinal);
+        Assert.Contains("Shift+Enter", continuation, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void There_are_guides_to_check() => Assert.NotEmpty(AllGuides());
 }

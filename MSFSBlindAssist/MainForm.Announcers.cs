@@ -1965,8 +1965,10 @@ public partial class MainForm
             string Fmt(double m) => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m);
             if (l.Catalog == null || (l.Catalog.Features.Count == 0 && l.Catalog.Facts.IsEmpty))
                 return () => SpeakLookupLine(l.PressedAt, $"No surroundings data for {l.Icao}.");
+            // Enter / Shift+Enter on a frequency tunes COM 1; the window calls this on the UI thread.
             var sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
-                l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt);
+                l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt,
+                tuneCom1: TuneCom1FromSurroundings);
             // Nothing to list: speak it rather than open an empty window.
             if (sections.Count == 0)
                 return () => SpeakLookupLine(l.PressedAt, $"Nothing within {Fmt(MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.WindowRadiusMetres)}.");
@@ -1988,6 +1990,53 @@ public partial class MainForm
                 surroundingsForm.Show();
             };
         });
+    }
+
+    /// <summary>The newest COM 1 tune from the surroundings window; only it speaks its read-back.</summary>
+    private int _com1TuneSeq;
+
+    /// <summary>
+    /// Enter (standby) or Shift+Enter (active) on a row of the surroundings window's Frequencies list:
+    /// tunes COM 1 with the stock events (<see cref="MSFSBlindAssist.Services.Com1Tuning"/>), then
+    /// reads COM 1 back and speaks what it holds — the pilot's only confirmation. An aircraft that
+    /// ignores the stock events says so instead (IAircraftDefinition.StockComTuningRefusal). On the UI
+    /// thread throughout, waits included: SendEvent's event map is not thread-safe.
+    /// </summary>
+    private async void TuneCom1FromSurroundings(int frequencyHz, bool active)
+    {
+        int ticket = ++_com1TuneSeq;
+        try
+        {
+            var sim = simConnectManager;
+            if (sim == null || !sim.IsConnected) { announcer.AnnounceImmediate("Not connected to the simulator."); return; }
+            if (currentAircraft?.StockComTuningRefusal is { } refusal) { announcer.AnnounceImmediate(refusal); return; }
+
+            sim.SendEvent(MSFSBlindAssist.Services.Com1Tuning.StandbySetEvent, (uint)frequencyHz);
+            if (active)
+            {
+                await Task.Delay(MSFSBlindAssist.Services.Com1Tuning.SwapGapMs);
+                sim.SendEvent(MSFSBlindAssist.Services.Com1Tuning.SwapEvent);
+            }
+
+            double? read = null;
+            for (int attempt = 0; attempt < MSFSBlindAssist.Services.Com1Tuning.ReadAttempts
+                                  && !MSFSBlindAssist.Services.Com1Tuning.Holds(read, frequencyHz); attempt++)
+            {
+                await Task.Delay(MSFSBlindAssist.Services.Com1Tuning.SettleMs);
+                if (await sim.ReadCom1RadioAsync(MSFSBlindAssist.Services.Com1Tuning.ReadTimeout) is { } radio)
+                    read = active ? radio.ActiveHz : radio.StandbyHz;
+            }
+
+            // A newer press speaks for itself.
+            if (ticket != _com1TuneSeq || IsDisposed) return;
+            string line = MSFSBlindAssist.Services.Com1Tuning.Describe(active, frequencyHz, read);
+            Log.Info("Surroundings", $"COM 1 {(active ? "active" : "standby")} tune {frequencyHz} Hz, read {read?.ToString("F0") ?? "none"}: {line}");
+            announcer.AnnounceImmediate(line);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Surroundings", $"COM 1 tune failed: {ex.Message}");
+        }
     }
 
     /// <summary>Speaks one lookup line as SurroundingsLookupNotice.Delivery decides from the time since

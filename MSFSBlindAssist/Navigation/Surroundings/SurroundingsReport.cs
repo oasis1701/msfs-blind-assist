@@ -160,19 +160,30 @@ public static class SurroundingsReport
         return string.Join(" ", parts);
     }
 
+    /// <summary>The Frequencies list's accessible description: what Enter and Shift+Enter do there.</summary>
+    public const string FrequencyEnterHint = "Enter tunes COM 1 standby, Shift+Enter tunes COM 1 active.";
+
     /// <summary>
     /// The surroundings window: "Airport" (the fuel line), "Frequencies" (one row per frequency, so
     /// a pilot can arrow or first-letter-search to the one they need) and "Nearby". A section with
-    /// nothing in it is left out.
+    /// nothing in it is left out. With <paramref name="tuneCom1"/> (Hz, true for active) the
+    /// Frequencies rows tune COM 1 on Enter (standby) and Shift+Enter (active).
     /// </summary>
-    public static IReadOnlyList<InfoSection> BuildSections(AirportFeatureCatalog cat, AirportFacts facts, double lat, double lon, double hdgTrue, Func<double, string> formatDistance)
+    public static IReadOnlyList<InfoSection> BuildSections(AirportFeatureCatalog cat, AirportFacts facts, double lat, double lon, double hdgTrue,
+        Func<double, string> formatDistance, Action<int, bool>? tuneCom1 = null)
     {
         var sections = new List<InfoSection>();
         var ranked = Rank(cat, lat, lon, hdgTrue, WindowRadiusMetres);
         // Empty, so the caller speaks "Nothing within …" instead of opening an empty window.
         if (facts.IsEmpty && ranked.Count == 0) return sections;
         if (facts.Fuel.Length > 0) sections.Add(new InfoSection("Airport", new[] { facts.Fuel }));
-        if (facts.Frequencies.Count > 0) sections.Add(new InfoSection("Frequencies", facts.Frequencies.ToList()));
+        if (facts.Frequencies.Count > 0)
+        {
+            var rows = facts.Frequencies.ToList();
+            sections.Add(new InfoSection("Frequencies", rows.Select(r => r.Text).ToList(),
+                tuneCom1 == null ? null : (index, active) => tuneCom1(rows[index].FrequencyHz, active),
+                tuneCom1 == null ? null : FrequencyEnterHint));
+        }
 
         var items = ranked.Select(n =>
         {

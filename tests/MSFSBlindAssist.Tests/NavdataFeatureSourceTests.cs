@@ -113,7 +113,7 @@ public class NavdataFeatureSourceTests
         };
         var facts = fac.DescribeFacts();
         Assert.Equal("Avgas available", facts.Fuel);
-        Assert.Equal(new[] { "ATIS 124.05", "Ground 121.8", "Tower 118.5", "Departure 120.1", "UNICOM 122.95" }, facts.Frequencies);
+        Assert.Equal(new[] { "ATIS 124.05", "Ground 121.8", "Tower 118.5", "Departure 120.1", "UNICOM 122.95" }, facts.Frequencies.Select(r => r.Text));
         Assert.True(new AirportFacilities { Icao = "X" }.DescribeFacts().IsEmpty);
     }
 

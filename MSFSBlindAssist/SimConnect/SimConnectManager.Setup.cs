@@ -324,6 +324,12 @@ public partial class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV OBS:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<NavRadioData>(DATA_DEFINITIONS.DEF_NAV_RADIO);
 
+        // COM 1 active + standby, read back after the surroundings window tunes a frequency
+        // (RequestCom1Radio). Hz, so a read compares exactly with the Hz the tune event sent.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_COM1_RADIO, "COM ACTIVE FREQUENCY:1", "Hz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_COM1_RADIO, "COM STANDBY FREQUENCY:1", "Hz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.RegisterDataDefineStruct<Com1RadioData>(DATA_DEFINITIONS.DEF_COM1_RADIO);
+
         // Fixed hotkey readout defs (altitude/airspeed/VS/mach/bank/pitch/OAT/squawk/heading —
         // SC-12, 2026-07): universal, non-aircraft-specific, so they register here with the rest
         // of the fixed/critical defs, still safely ahead of the per-aircraft bulk registration.

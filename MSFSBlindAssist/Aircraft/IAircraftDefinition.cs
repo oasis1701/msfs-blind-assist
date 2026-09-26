@@ -471,4 +471,12 @@ public interface IAircraftDefinition
     /// the same one-condition-one-call-out rule as the PB-light/ECAM-memo invariant.
     /// </summary>
     bool HasOwnIcingAnnouncer { get; }
+
+    /// <summary>
+    /// Null when this aircraft's COM 1 takes the stock tuning events (COM_STBY_RADIO_SET_HZ,
+    /// COM1_RADIO_SWAP) the surroundings window's Frequencies list sends on Enter / Shift+Enter;
+    /// otherwise the sentence to speak INSTEAD of sending them. The FBW A380 ignores them
+    /// (live-verified: its radios tune only through the RMP).
+    /// </summary>
+    string? StockComTuningRefusal { get; }
 }

@@ -497,7 +497,7 @@ The Taxiing-phase steering tone feeds the pilot a **rate-lead projected error**,
 | Repeat last | Output > `Ctrl+Y` | Replays the most recent **actionable instruction** verbatim (turn callout, hold-short, taxiway change, lineup, arrival, distance countdown). Distinct from `Y` (status), which recomputes a snapshot from current position. Useful when the announcement was clipped by another sound. Returns `"No taxi instruction yet."` if guidance is active but nothing has fired; `"No taxi guidance active."` otherwise. Implemented via `TaxiGuidanceManager._lastInstruction`, populated only by `AnnounceInstruction()` — two peripheral sites still call plain `_announcer.Announce` without populating `_lastInstruction`: (a) the LoadRoute route summary, (b) the periodic ground-speed bucket announcer — so the Repeat-Last buffer keeps the most recent actionable callout. |
 | Where am I | Output > `Alt+Y` | `Taxiway Bravo at KJFK.` / `Gate A25 at KJFK.` / `Runway 22L at KJFK.` Works with or without active guidance. |
 | Look around | Output > `Alt+L` | `Taxiway A at KTIW. Narrows Aviation Hangar, to the right, 80 metres. Control Tower, ahead, 200 metres. Fuel, behind and to the left, 210 metres.` Where you are, the apron or concourse you are in, then the nearest features. Ground-only. |
-| Surroundings window | Output > `Ctrl+Shift+L` | Read-only lists: the airport's fuel, every frequency one per row, then everything within 1 km, nearest first. |
+| Surroundings window | Output > `Ctrl+Shift+L` | Read-only lists: the airport's fuel, every frequency one per row (Enter tunes it into COM 1 standby, Shift+Enter into COM 1 active), then everything within 1 km, nearest first. |
 | Taxi to a place | Taxi form, destination type **Place** | Lists every FBO, hangar, fuel island, terminal, cargo area the catalog knows that resolves onto a stand (or a taxi node) — "Narrows Aviation, FBO, Parking 12" — and routes there like a gate. A cargo ramp or concourse is listed only when OpenStreetMap, the scenery or GSX names it. |
 
 ### Verbal turn direction (heading-based, not route-static)
@@ -680,7 +680,7 @@ Hotkeys are identical across all supported aircraft.
 | `Ctrl+Y` | Repeat current instruction |
 | `Alt+Y` | Where Am I — announces current taxiway, gate, or runway at nearest airport (works any time). On `Alt+Y` rather than `Shift+Y` because `Shift+Y` in output mode is `HOTKEY_STATUS_DISPLAY`. |
 | `Alt+L` | Look around — announces where you are, the apron/concourse you are in, then the nearest terminals, hangars, FBOs, tower, fuel and cargo with direction and distance. Ground-only; the whole DB/OSM/scenery lookup runs off the UI thread. |
-| `Ctrl+Shift+L` | Surroundings window — opens a read-only list of everything within 1 km, nearest first, reusing `SayIntentionsInfoForm`. |
+| `Ctrl+Shift+L` | Surroundings window — opens read-only lists (fuel, every frequency, then everything within 1 km, nearest first), reusing `SayIntentionsInfoForm`. In its Frequencies list, Enter tunes COM 1 standby and Shift+Enter COM 1 active. |
 
 Both `L` chords are output-mode keys like every other row above: press `]` first, then the
 chord. Three aircraft guides list the same chord for a WINDOW-LOCAL function (the FBW A380 MFD's
@@ -1499,6 +1499,25 @@ facts nor features, nothing is opened: the caller SPEAKS "Nothing within …"
 instead of
 putting an empty window in front of the pilot, the same rule the flight-info
 window follows. Not live-updating; reopen the chord for a fresh snapshot.
+
+**Enter on a frequency tunes COM 1** — standby with Enter, active with
+Shift+Enter; the window stays open so several can be tuned in turn. Each
+`FrequencyRow` carries its own Hz, so nothing parses the spoken text. The row's
+action is `InfoSection.OnEnter` (with `EnterHint` as the list's accessible
+description), run by `SayIntentionsInfoForm.ProcessDialogKey`; the Frequencies
+section is the only one that sets it. `MainForm.TuneCom1FromSurroundings` sends
+the pair the app's generic COM "set active" fields already send —
+`COM_STBY_RADIO_SET_HZ`, then after 100 ms `COM1_RADIO_SWAP` for active
+(`Com1Tuning`) — on the UI thread throughout, waits included (`SendEvent`'s event
+map is not thread-safe), then reads COM 1 back (`SimConnectManager.ReadCom1RadioAsync`,
+fixed definition `DEF_COM1_RADIO`, id 349) up to four times 300 ms apart and speaks
+what it holds: "COM 1 standby 121.9", "Could not tune COM 1 standby to 121.705. It
+reads 121.7." or "COM 1 did not report back after tuning …". The read-back is the
+pilot's only confirmation — a list says nothing when Enter is pressed on it — and
+confirming a number the pilot entered is an announcement the screen-reader rules
+allow. An aircraft that ignores the stock COM events says so instead of sending
+them (`IAircraftDefinition.StockComTuningRefusal`): the FBW A380, whose radios tune
+only through its RMP window.
 
 Escape hands the foreground back to the window that had it at the PRESS —
 captured then, because this window opens seconds later — and a re-press's

@@ -5,12 +5,16 @@ namespace MSFSBlindAssist.Database.Models;
 
 public readonly record struct ComFrequency(string Type, int FrequencyHz, string Name);
 
+/// <summary>One row of the surroundings window's Frequencies list: what is read, and the frequency
+/// Enter tunes (the value travels with the row, so nothing ever parses the spoken text).</summary>
+public readonly record struct FrequencyRow(string Text, int FrequencyHz);
+
 /// <summary>What the surroundings window lists about the airport itself
 /// (<see cref="AirportFacilities.DescribeFacts"/>): the fuel line ("" when navdata says none),
 /// and one row per COM frequency.</summary>
-public sealed record AirportFacts(string Fuel, IReadOnlyList<string> Frequencies)
+public sealed record AirportFacts(string Fuel, IReadOnlyList<FrequencyRow> Frequencies)
 {
-    public static readonly AirportFacts None = new("", Array.Empty<string>());
+    public static readonly AirportFacts None = new("", Array.Empty<FrequencyRow>());
     public bool IsEmpty => Fuel.Length == 0 && Frequencies.Count == 0;
 }
 
@@ -98,9 +102,9 @@ public sealed class AirportFacilities
     /// tells them apart ("Ground 129.25, RAMP CONTROL" at KATL, "Ground 131.375, DELTA" at KJFK);
     /// where they all share it (KMEM: every one "MEMPHIS") it says nothing.
     /// </summary>
-    public List<string> DescribeFrequencies()
+    public List<FrequencyRow> DescribeFrequencies()
     {
-        var rows = new List<string>();
+        var rows = new List<FrequencyRow>();
         foreach (var (type, label) in FrequencyOrder)
         {
             var ofType = Coms.Where(c => string.Equals(c.Type, type, StringComparison.OrdinalIgnoreCase)
@@ -111,10 +115,10 @@ public sealed class AirportFacilities
             foreach (var c in ofType.OrderBy(c => NotThePrimaryFrequency.IsMatch(c.Name ?? "") ? 1 : 0))
             {
                 string name = (c.Name ?? "").Trim();
-                string row = namesDiffer && name.Length > 0
+                string text = namesDiffer && name.Length > 0
                     ? $"{label} {FormatMhz(c.FrequencyHz)}, {name}"
                     : $"{label} {FormatMhz(c.FrequencyHz)}";
-                if (!rows.Contains(row)) rows.Add(row);
+                if (!rows.Any(r => r.Text == text)) rows.Add(new FrequencyRow(text, c.FrequencyHz));
             }
         }
         return rows;

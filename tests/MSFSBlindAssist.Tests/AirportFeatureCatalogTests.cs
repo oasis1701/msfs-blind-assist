@@ -514,7 +514,7 @@ public class AirportFeatureCatalogTests
     {
         Assert.True(AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Avfuel", 0, 0)) > AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Fuel", 0, 0, true, FeatureSource.Osm)));
         Assert.True(AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "Fuel", 0, 0, true)) > AirportFeatureCatalog.Rank(N(FeatureKind.Fuel, "", 0, 0, false, FeatureSource.Osm)));
-        var facts = new AirportFacts("", new[] { "Tower 118.5" });
+        var facts = new AirportFacts("", new[] { new FrequencyRow("Tower 118.5", 118500000) });
         Assert.Same(facts, AirportFeatureCatalog.Build("v", Array.Empty<AirportFeature>(), facts).Facts);
         Assert.True(AirportFeatureCatalog.Build("v", Array.Empty<AirportFeature>()).Facts.IsEmpty);
     }

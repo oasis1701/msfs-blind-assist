@@ -118,6 +118,7 @@ public partial class SimConnectManager
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
+    public event EventHandler<Com1RadioData>? Com1RadioReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
     // assist. Fired only while StartFlareAssistMonitoring is active.
@@ -496,6 +497,9 @@ public partial class SimConnectManager
         // The FIRST of CameraReadIdCount (8) ids, 341-348: each read goes out under its own id
         // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
         REQUEST_CAMERA_VIEW = 341,
+        // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
+        // camera's rotating 341-348.
+        REQUEST_COM1_RADIO = 349,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -578,6 +582,7 @@ public partial class SimConnectManager
         // to CameraViewData, so a definition landing at 342 would have its SingleValue answer
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
+        DEF_COM1_RADIO = 349,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -786,6 +791,14 @@ public partial class SimConnectManager
         public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
         public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
         public double StructuralIcePct; // STRUCTURAL ICE PCT, ratio 0..1 ("percent over 100")
+    }
+
+    /// <summary>COM 1 as the sim holds it, in Hz (DEF_COM1_RADIO; order is the contract).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct Com1RadioData
+    {
+        public double ActiveHz;
+        public double StandbyHz;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]

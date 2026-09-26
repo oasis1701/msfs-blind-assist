@@ -77,7 +77,7 @@ public class SurroundingsReportTests
         var cat = Cat(
             new AirportFeature { Kind = FeatureKind.Concourse, Name = "Concourse B", Lat = Lat + 300 / 111_320.0, Lon = Lon, Source = FeatureSource.Navdata, Detail = "Delta gates" },
             F(FeatureKind.Tower, "Control Tower", 0, 150), F(FeatureKind.Hangar, "Far Hangar", 1200, 0));
-        var facts = new AirportFacts("Avgas available", new[] { "Ground 121.8", "Tower 118.5", "Tower 119.7" });
+        var facts = new AirportFacts("Avgas available", Rows(("Ground 121.8", 121800000), ("Tower 118.5", 118500000), ("Tower 119.7", 119700000)));
         var sections = SurroundingsReport.BuildSections(cat, facts, Lat, Lon, 0.0, Metres);
         Assert.Equal("Airport", sections[0].Heading);
         Assert.Equal(new[] { "Avgas available" }, sections[0].Items);
@@ -88,14 +88,37 @@ public class SurroundingsReportTests
         Assert.Equal(new[] { "Control Tower, to the right, 150 metres", "Concourse B, Delta gates, ahead, 300 metres" }, sections[2].Items);
     }
 
+    private static FrequencyRow[] Rows(params (string Text, int Hz)[] rows) => rows.Select(r => new FrequencyRow(r.Text, r.Hz)).ToArray();
+
     [Fact]
     public void An_airport_with_frequencies_but_no_fuel_has_no_Airport_section()
     {
         // KMEM: navdata sets neither fuel flag, so its window opens on the frequencies.
         var cat = Cat(F(FeatureKind.Tower, "Control Tower", 0, 150));
-        var facts = new AirportFacts("", new[] { "Tower 118.3" });
+        var facts = new AirportFacts("", Rows(("Tower 118.3", 118300000)));
         var sections = SurroundingsReport.BuildSections(cat, facts, Lat, Lon, 0.0, Metres);
         Assert.Equal(new[] { "Frequencies", "Nearby, 1 item" }, sections.Select(s => s.Heading));
+    }
+
+    [Fact]
+    public void Enter_on_a_frequency_row_tunes_that_rows_frequency_standby_or_active()
+    {
+        var cat = Cat(F(FeatureKind.Tower, "Control Tower", 0, 150));
+        var facts = new AirportFacts("", Rows(("ATIS 127.75", 127750000), ("Clearance delivery 125.2", 125200000)));
+        var tuned = new List<(int Hz, bool Active)>();
+        var frequencies = SurroundingsReport.BuildSections(cat, facts, Lat, Lon, 0.0, Metres, (hz, active) => tuned.Add((hz, active)))[0];
+        Assert.Equal(SurroundingsReport.FrequencyEnterHint, frequencies.EnterHint);   // the list says it does something
+        frequencies.OnEnter!(1, false);   // Enter on clearance delivery
+        frequencies.OnEnter!(0, true);    // Shift+Enter on ATIS
+        Assert.Equal(new[] { (125200000, false), (127750000, true) }, tuned);
+    }
+
+    [Fact]
+    public void Without_a_tuner_no_list_claims_Enter_does_anything()
+    {
+        var cat = Cat(F(FeatureKind.Tower, "Control Tower", 0, 150));
+        var sections = SurroundingsReport.BuildSections(cat, new AirportFacts("Fuel available", Rows(("Tower 118.3", 118300000))), Lat, Lon, 0.0, Metres);
+        Assert.All(sections, s => { Assert.Null(s.OnEnter); Assert.Null(s.EnterHint); });
     }
 
     // NOTE: the file's existing Metres(double) helper above (rounds to the nearest 10) is reused
@@ -259,7 +282,7 @@ public class SurroundingsReportTests
         var far = AirportFeatureCatalog.Build("v", new[] { Pt(FeatureKind.Tower, "Control Tower", 0.5, 0.5) });   // ~78 km away
         Assert.Empty(SurroundingsReport.BuildSections(far, AirportFacts.None, 0, 0, 0, Metres));   // nothing to show: the caller SPEAKS instead
 
-        var withFacts = SurroundingsReport.BuildSections(far, new AirportFacts("", new[] { "Tower 118.5" }), 0, 0, 0, Metres);
+        var withFacts = SurroundingsReport.BuildSections(far, new AirportFacts("", Rows(("Tower 118.5", 118500000))), 0, 0, 0, Metres);
         Assert.Equal(2, withFacts.Count);
         Assert.All(withFacts, s => Assert.NotEmpty(s.Items));
         Assert.Equal("Nothing within 1000 metres.", Assert.Single(withFacts[1].Items));

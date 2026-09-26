@@ -84,6 +84,8 @@ public class SayIntentionsInfoForm : Form
     internal IntPtr PreviousWindow => _previousWindow;
 
     private readonly List<DisplayListBox> _sectionBoxes = new();
+    // The lists whose rows do something on Enter / Shift+Enter (InfoSection.OnEnter).
+    private readonly Dictionary<DisplayListBox, Action<int, bool>> _enterActions = new();
     private Panel _sectionPanel = null!;
     private Button _closeButton = null!;
 
@@ -166,6 +168,12 @@ public class SayIntentionsInfoForm : Form
             // instead of landing on a list that says nothing until they press Down.
             if (box.Items.Count > 0) box.SelectedIndex = 0;
 
+            if (section.OnEnter != null)
+            {
+                _enterActions[box] = section.OnEnter;
+                if (!string.IsNullOrWhiteSpace(section.EnterHint)) box.AccessibleDescription = section.EnterHint;
+            }
+
             y += box.Height + Gutter;
 
             _sectionPanel.Controls.Add(heading);
@@ -222,13 +230,25 @@ public class SayIntentionsInfoForm : Form
         return (Math.Clamp(itemCount, 1, MaxVisibleItems) * itemHeight) + 6;
     }
 
-    /// <summary>Escape closes, like every other read-only window in the app.</summary>
+    /// <summary>Escape closes, like every other read-only window in the app. Enter and
+    /// Shift+Enter run the focused list's row action (<see cref="InfoSection.OnEnter"/>), when it
+    /// has one; the window stays open, so several rows can be acted on in turn.</summary>
     protected override bool ProcessDialogKey(Keys keyData)
     {
         if (keyData == Keys.Escape)
         {
             Close();
             return true;
+        }
+
+        if ((keyData & ~Keys.Shift) == Keys.Enter)
+        {
+            foreach (var (box, onEnter) in _enterActions)
+            {
+                if (!box.Focused || box.SelectedIndex < 0) continue;
+                onEnter(box.SelectedIndex, (keyData & Keys.Shift) == Keys.Shift);
+                return true;
+            }
         }
 
         return base.ProcessDialogKey(keyData);

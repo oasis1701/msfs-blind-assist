@@ -113,6 +113,8 @@ Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
   Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
   Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
   Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
+                In its Frequencies list, Enter tunes the selected frequency into COM 1 standby
+                and Shift+Enter tunes it straight into COM 1 active; COM 1 is read back to confirm.
   (Open the form with Input mode > Shift+Y)
 
 Waypoint Tracking (use Fix Track window or EFB route viewer to add):

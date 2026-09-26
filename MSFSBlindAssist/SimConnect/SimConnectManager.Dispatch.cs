@@ -151,6 +151,10 @@ public partial class SimConnectManager
                 NavRadioReceived?.Invoke(this, navRadioData);
                 break;
 
+            case DATA_REQUESTS.REQUEST_COM1_RADIO:
+                Com1RadioReceived?.Invoke(this, (Com1RadioData)data.dwData[0]);
+                break;
+
             case DATA_REQUESTS.REQUEST_HEADING:
                 SingleValue headingData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs

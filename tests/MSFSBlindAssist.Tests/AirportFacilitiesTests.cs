@@ -39,7 +39,16 @@ public class AirportFacilitiesTests
         {
             "ATIS 127.75", "Clearance delivery 125.2", "Ground 121.0", "Ground 121.9", "Tower 118.3", "Tower 119.7",
             "Departure 124.15", "Approach 119.1", "UNICOM 122.95", "ASOS 127.75",
-        }, f.DescribeFacts().Frequencies);
+        }, f.DescribeFacts().Frequencies.Select(r => r.Text));
+    }
+
+    [Fact]
+    public void Each_row_carries_the_frequency_Enter_tunes()
+    {
+        // The value travels with the row: nothing parses "Clearance delivery 125.2" back into Hz.
+        var f = With(new ComFrequency("C", 125200000, "MEMPHIS"), new ComFrequency("T", 128425000, "MEMPHIS"));
+        Assert.Equal(new[] { new FrequencyRow("Clearance delivery 125.2", 125200000), new FrequencyRow("Tower 128.425", 128425000) },
+                     f.DescribeFacts().Frequencies);
     }
 
     [Fact]
@@ -64,14 +73,14 @@ public class AirportFacilitiesTests
         var f = With(new ComFrequency("G", 120350000, "MIAMI GATES"), new ComFrequency("G", 121800000, "MIAMI"),
                      new ComFrequency("G", 128025000, "MIAMI GATES"), new ComFrequency("G", 132375000, "MIAMI GATES"));
         Assert.Equal(new[] { "Ground 121.8, MIAMI", "Ground 120.35, MIAMI GATES", "Ground 128.025, MIAMI GATES", "Ground 132.375, MIAMI GATES" },
-                     f.DescribeFacts().Frequencies);
+                     f.DescribeFacts().Frequencies.Select(r => r.Text));
     }
 
     [Fact]
     public void Apron_control_is_listed_after_ground_and_named()
     {
         var f = With(new ComFrequency("G", 121655000, "FRANKFURT APRON"), new ComFrequency("G", 121805000, "FRANKFURT"));
-        Assert.Equal(new[] { "Ground 121.805, FRANKFURT", "Ground 121.655, FRANKFURT APRON" }, f.DescribeFacts().Frequencies);
+        Assert.Equal(new[] { "Ground 121.805, FRANKFURT", "Ground 121.655, FRANKFURT APRON" }, f.DescribeFacts().Frequencies.Select(r => r.Text));
     }
 
     [Fact]
@@ -82,7 +91,7 @@ public class AirportFacilitiesTests
         var f = With(new ComFrequency("G", 121900000, "ATLANTA"), new ComFrequency("G", 129250000, "RAMP CONTROL"),
                      new ComFrequency("T", 119100000, "ATLANTA"), new ComFrequency("T", 119500000, "ATLANTA"), new ComFrequency("T", 123850000, "ATLANTA"));
         Assert.Equal(new[] { "Ground 121.9, ATLANTA", "Ground 129.25, RAMP CONTROL", "Tower 119.1", "Tower 119.5", "Tower 123.85" },
-                     f.DescribeFacts().Frequencies);
+                     f.DescribeFacts().Frequencies.Select(r => r.Text));
     }
 
     [Fact]
@@ -91,7 +100,7 @@ public class AirportFacilitiesTests
         // EGLL lists VOR-broadcast ATIS at 113.75 / 117.0 beside the real one. The name contrast is
         // judged on the listed rows only, so the one ATIS left carries no name.
         var f = With(new ComFrequency("ATIS", 113750000, "HEATHROW"), new ComFrequency("ATIS", 128080000, "HEATHROW INFO"));
-        Assert.Equal(new[] { "ATIS 128.08" }, f.DescribeFacts().Frequencies);
+        Assert.Equal(new[] { "ATIS 128.08" }, f.DescribeFacts().Frequencies.Select(r => r.Text));
     }
 
     [Fact]
@@ -99,6 +108,6 @@ public class AirportFacilitiesTests
     {
         var f = With(new ComFrequency("T", 118500000, "TACOMA"), new ComFrequency("T", 118500000, "TACOMA"),
                      new ComFrequency("XYZ", 123450000, "TACOMA"));
-        Assert.Equal(new[] { "Tower 118.5" }, f.DescribeFacts().Frequencies);
+        Assert.Equal(new[] { "Tower 118.5" }, f.DescribeFacts().Frequencies.Select(r => r.Text));
     }
 }
