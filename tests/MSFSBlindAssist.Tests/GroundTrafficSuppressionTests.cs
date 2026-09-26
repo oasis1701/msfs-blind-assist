@@ -21,40 +21,40 @@ public class GroundTrafficSuppressionTests
     [Fact]
     public void The_takeoff_roll_silences_traffic_callouts_at_any_speed()
     {
-        Assert.True(GroundTrafficSuppression.Suppress(true, TaxiGuidanceState.Taxiing, Rolling, false));
-        Assert.True(GroundTrafficSuppression.Suppress(true, TaxiGuidanceState.Taxiing, Stopped, false));
+        Assert.True(GroundTrafficSuppression.Suppress(true, TaxiGuidanceState.Taxiing, Rolling));
+        Assert.True(GroundTrafficSuppression.Suppress(true, TaxiGuidanceState.Taxiing, Stopped));
     }
 
     [Fact]
     public void With_no_taxi_guidance_running_traffic_callouts_stay_off()
-        => Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Inactive, Stopped, false));
+        => Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Inactive, Stopped));
 
     [Fact]
     public void Traffic_callouts_are_silent_while_the_landing_rollout_is_still_rolling()
     {
-        Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, 120.0, false));
-        Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, Rolling, false));
+        Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, 120.0));
+        Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, Rolling));
     }
 
     [Fact]
     public void Stopping_on_the_runway_brings_traffic_callouts_back()
-        => Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, Stopped, false));
+        => Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, Stopped));
 
     [Fact]
     public void A_crawl_still_counts_as_rolling()
-        => Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, 5.0, false));
+        => Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, 5.0));
 
     [Fact]
     public void An_unknown_ground_speed_keeps_the_rollout_silent_as_before()
-        => Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, null, false));
+        => Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.LandingRollout, null));
 
     [Fact]
     public void Taxiing_backtracking_and_holding_all_get_traffic_callouts()
     {
-        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, Rolling, false));
-        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.BacktrackingOnRunway, Rolling, false));
-        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.HoldShort, Stopped, false));
-        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Arrived, Stopped, false));
+        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, Rolling));
+        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.BacktrackingOnRunway, Rolling));
+        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.HoldShort, Stopped));
+        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Arrived, Stopped));
     }
 
     // --- The runway watch's own gate (PR #247 review R1) -------------------------------------
@@ -67,58 +67,69 @@ public class GroundTrafficSuppressionTests
     [InlineData(0.0)]
     [InlineData(29.9)]
     public void The_line_up_wait_keeps_the_runway_watch(double gs)
-        => Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(true, TaxiGuidanceState.Inactive, gs, false));
+        => Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(true, TaxiGuidanceState.Inactive, gs));
 
     [Fact]
     public void The_takeoff_roll_silences_the_runway_watch()
         => Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(
-            true, TaxiGuidanceState.Inactive, GroundTrafficSuppression.RunwayWatchTakeoffCutoffKts, false));
+            true, TaxiGuidanceState.Inactive, GroundTrafficSuppression.RunwayWatchTakeoffCutoffKts));
 
     [Fact]
     public void Takeoff_assist_with_an_unknown_speed_silences_the_runway_watch()
-        => Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(true, TaxiGuidanceState.Inactive, null, false));
+        => Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(true, TaxiGuidanceState.Inactive, null));
 
     [Fact]
     public void Without_takeoff_assist_the_watch_follows_the_proximity_rule()
     {
-        Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.Inactive, Stopped, false));
-        Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.LandingRollout, Rolling, false));
-        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.LandingRollout, Stopped, false));
-        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.HoldShort, Stopped, false));
-        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.BacktrackDeparture, Rolling, false));
+        Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.Inactive, Stopped));
+        Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.LandingRollout, Rolling));
+        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.LandingRollout, Stopped));
+        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.HoldShort, Stopped));
+        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.BacktrackDeparture, Rolling));
     }
 
     [Fact]
     public void Proximity_suppression_is_unchanged_during_the_line_up_wait()
-        => Assert.True(GroundTrafficSuppression.Suppress(true, TaxiGuidanceState.Inactive, Stopped, false));
+        => Assert.True(GroundTrafficSuppression.Suppress(true, TaxiGuidanceState.Inactive, Stopped));
 
     // --- The landing exit (KMEM 36L 2026-09-26: "Slow down…", "Slow down…", "Stop…" interrupted the
     // --- exit at 44-47 kt the moment the rollout handed over to taxi steering) ----------------------
 
     [Fact]
-    public void Traffic_callouts_stay_silent_on_the_landing_exit_above_taxi_speed()
+    public void The_fast_landing_exit_no_longer_mutes_the_monitor()
     {
-        Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, 47.4, true));
-        Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, 30.0, true));
-        Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, null, true));
+        // The monitor keeps evaluating (and the runway watch keeps watching) - only what is spoken is filtered.
+        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, 44.1));
+        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.Taxiing, 44.1));
     }
 
     [Fact]
-    public void Below_taxi_speed_on_the_exit_they_come_back()
-        => Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, 29.9, true));
-
-    [Fact]
-    public void Once_exit_guidance_ends_they_come_back()
-        => Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Arrived, 35.7, true));
-
-    [Fact]
-    public void Ordinary_taxiing_is_unchanged()
-        => Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, 47.4, false));
-
-    [Fact]
-    public void The_runway_watch_follows_the_exit_mute_too()
+    public void Above_taxi_speed_on_the_exit_only_warnings_are_spoken()
     {
-        Assert.True(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.Taxiing, 47.4, true));
-        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.Taxiing, 20.0, true));
+        Assert.True(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 44.1, true));
+        Assert.True(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 30.0, true));
+        Assert.True(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, null, true));
     }
+
+    [Fact]
+    public void Below_taxi_speed_after_the_exit_or_on_an_ordinary_taxi_everything_is_spoken()
+    {
+        Assert.False(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 25.0, true));
+        Assert.False(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Arrived, 35.7, true));
+        Assert.False(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 47.4, false));
+    }
+
+    [Theory]
+    [InlineData(TrafficCalloutKind.Warning, true)]
+    [InlineData(TrafficCalloutKind.RunwayCritical, true)]
+    [InlineData(TrafficCalloutKind.RunwayInfo, true)]
+    [InlineData(TrafficCalloutKind.Caution, false)]
+    [InlineData(TrafficCalloutKind.Converging, false)]
+    [InlineData(TrafficCalloutKind.OnRoute, false)]
+    [InlineData(TrafficCalloutKind.Awareness, false)]
+    [InlineData(TrafficCalloutKind.QueueMoving, false)]
+    [InlineData(TrafficCalloutKind.MoveUp, false)]
+    [InlineData(TrafficCalloutKind.QueuePosition, false)]
+    public void On_the_fast_exit_only_stop_runway_events_and_the_runway_status_speak(TrafficCalloutKind kind, bool speaks)
+        => Assert.Equal(speaks, TrafficSpeechPolicy.SpeaksOnFastLandingExit(kind));
 }

@@ -99,6 +99,15 @@ public sealed class GroundTrafficMonitor : IDisposable
     /// <summary>Runway-watch gate (<see cref="GroundTrafficSuppression.SuppressRunwayWatch"/>). Unset → follows <see cref="SuppressCheck"/>.</summary>
     public Func<bool>? RunwayWatchSuppressCheck { get; set; }
 
+    /// <summary>
+    /// While it returns true (<see cref="GroundTrafficSuppression.LandingExitWarningsOnly"/>: the landing exit
+    /// above taxi speed) the monitor keeps evaluating as usual but speaks only
+    /// <see cref="TrafficSpeechPolicy.SpeaksOnFastLandingExit"/> lines; the rest are neither spoken nor latched.
+    /// </summary>
+    public Func<bool>? LandingExitWarningsOnlyCheck { get; set; }
+    private bool _exitFilterActive;
+    private int _exitFilterDropped;
+
     /// <summary>The taxi route in progress (route ahead, runways, hold facts), or null.</summary>
     public Func<GroundTrafficRouteContext?>? RouteContextProvider { get; set; }
 
@@ -893,7 +902,28 @@ public sealed class GroundTrafficMonitor : IDisposable
             if (proximity) EvaluateProximity(ctx, useMetres, now, candidates);
             if (runwayWatch && watch.IsActive) EvaluateRunwayWatch(ctx, watch, useMetres, now, candidates);
         }
+        FilterForFastLandingExit(candidates);
         Speak(candidates, now);
+    }
+
+    /// <summary>
+    /// On the landing exit above taxi speed, drops every candidate but <see cref="TrafficSpeechPolicy.SpeaksOnFastLandingExit"/>
+    /// lines before planning - unspoken, so not latched. Logged once when the filter starts and once, with
+    /// the number of lines it held back, when it ends: never per evaluation.
+    /// </summary>
+    private void FilterForFastLandingExit(List<TrafficCallout> candidates)
+    {
+        bool active = LandingExitWarningsOnlyCheck?.Invoke() == true;
+        if (active != _exitFilterActive)
+        {
+            _log.Info(active
+                ? "ev=exit-filter start"
+                : $"ev=exit-filter end held={_exitFilterDropped}");
+            _exitFilterActive = active;
+            _exitFilterDropped = 0;
+        }
+        if (active)
+            _exitFilterDropped += candidates.RemoveAll(c => !TrafficSpeechPolicy.SpeaksOnFastLandingExit(c.Kind));
     }
 
     /// <summary>

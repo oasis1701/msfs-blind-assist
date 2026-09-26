@@ -92,10 +92,15 @@ public class KmemLandingReplayTests
     }
 
     [Fact]
-    public void Traffic_callouts_are_muted_on_the_fast_exit_and_back_after_it()
+    public void On_the_fast_exit_only_warnings_speak_and_everything_is_back_after_it()
     {
-        Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, 47.4, true));  // 01:23:32
-        Assert.True(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, 44.1, true));  // 01:23:40
-        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Arrived, 35.0, true)); // 01:23:53
+        // 01:23:32 and 01:23:37: the two "Slow down" cautions are held back on the exit ...
+        Assert.True(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 47.4, true));
+        Assert.False(TrafficSpeechPolicy.SpeaksOnFastLandingExit(TrafficCalloutKind.Caution));
+        // ... 01:23:40: the "Stop" for the A380 near the route ahead still interrupts, by design ...
+        Assert.True(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 44.1, true));
+        Assert.True(TrafficSpeechPolicy.SpeaksOnFastLandingExit(TrafficCalloutKind.Warning));
+        // ... and 01:23:53, exit guidance over, everything speaks again.
+        Assert.False(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Arrived, 35.0, true));
     }
 }
