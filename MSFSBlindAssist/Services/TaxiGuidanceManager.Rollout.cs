@@ -186,6 +186,7 @@ public partial class TaxiGuidanceManager
                 $"runway.RunwayID='{runway.RunwayID}' runway.Length={runway.Length:F0} " +
                 $"runwayHeadingTrue={runwayHeadingTrue:F2} allExits.Count={allExits.Count} " +
                 $"allExits={DescribeExits(allExits)}");
+            ResetOffPavementAlert();
 
             if (_route == null || _route.Segments.Count == 0)
             {
@@ -264,6 +265,7 @@ public partial class TaxiGuidanceManager
         {
             RolloutDiag($"BeginRunwayEndCountdownRollout: runway={runway.RunwayID} " +
                 $"hdgTrue={runway.Heading:F2} len={runway.Length:F0} icao={icao} state={_state}");
+            ResetOffPavementAlert();
 
             _graph = graph;
             _dataProvider = dataProvider;
@@ -336,6 +338,8 @@ public partial class TaxiGuidanceManager
     {
         lock (_stateLock)
         {
+            ResetOffPavementAlert();
+
             // The caller (LandingExitPlanner.ActivateGuidance) supplies the graph, provider
             // and ICAO it just used for its own (failed) LoadRoute attempt directly, rather
             // than this method relying on a prior LoadRoute call having left them populated
@@ -422,6 +426,42 @@ public partial class TaxiGuidanceManager
             // position stream: ask for it, or UpdateLandingRollout would never run.
             PositionStreamRequired?.Invoke(this, EventArgs.Empty);
         }
+    }
+
+    /// <summary>
+    /// "Off pavement." while the aircraft is off every mapped runway and taxiway during the landing roll
+    /// or the exit (Navigation.PavementMap / OffPavementAlert). Spoken with AnnounceImmediate directly —
+    /// NOT AnnounceInstruction — so Ctrl+Y still replays the last guidance instruction. No direction word:
+    /// the steering tone is the only direction authority. KMEM 36L 2026-09-26: ~13 s in the grass at
+    /// 37-47 kt with nothing said.
+    /// </summary>
+    private void CheckOffPavement(double lat, double lon, double groundSpeedKts)
+    {
+        if (_graph == null) return;
+        if (!ReferenceEquals(_pavementMapGraph, _graph))
+        {
+            _pavementMap = Navigation.PavementMap.Build(_graph);
+            _pavementMapGraph = _graph;
+        }
+        bool off = !_pavementMap!.IsOnMappedPavement(lat, lon);
+        if (off != _offPavementLogged)
+        {
+            _offPavementLogged = off;
+            RolloutDiag(off
+                ? $"Off pavement: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt state={_state}"
+                : $"Back on pavement: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt");
+        }
+        if (_offPavementAlert.Update(off, groundSpeedKts, DateTime.UtcNow))
+        {
+            RolloutDiag("Off-pavement alert spoken");
+            _announcer.AnnounceImmediate(Navigation.OffPavementAlert.Phrase);
+        }
+    }
+
+    private void ResetOffPavementAlert()
+    {
+        _offPavementAlert.Reset();
+        _offPavementLogged = false;
     }
 
     /// <summary>

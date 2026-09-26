@@ -1018,6 +1018,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // _rolloutEnd*Announced: BeginLandingRollout, BeginLandingRolloutNoGraph,
     // EnterRunwayEndCountdown and StopGuidance.
     private bool _rolloutStoppedNoticeGiven;
+    // Off-pavement alert for the landing roll and the exit (Navigation.OffPavementAlert). The map is
+    // built lazily once per graph and dropped with it.
+    private readonly Navigation.OffPavementAlert _offPavementAlert = new();
+    private Navigation.PavementMap? _pavementMap;
+    private TaxiGraph? _pavementMapGraph;
+    private bool _offPavementLogged;
     // Backtrack state. Entered from runway-end countdown when the pilot has STOPPED within
     // RolloutExitGate.NearRunwayEndFeet of the end, or has turned around (150°+)
     // anywhere on the runway (Navigation.RunwayEndCountdownGate). Guides on the
@@ -1937,6 +1943,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // to Taxiing when the aircraft has decelerated or begun the turn.
         if (_state == TaxiGuidanceState.LandingRollout)
         {
+            CheckOffPavement(lat, lon, groundSpeedKts);
             UpdateLandingRollout(lat, lon, headingTrue, groundSpeedKts);
             return;
         }
@@ -2004,6 +2011,11 @@ public partial class TaxiGuidanceManager : IDisposable
             // _isRunwayLineup / _hasLineupTarget, which progressive never sets.)
             return;
         }
+
+        // The exit: from the handoff until exit guidance ends (Arrived) — not after, where unmapped
+        // aprons would make it cry wolf.
+        if (_isLandingExitRoute)
+            CheckOffPavement(lat, lon, groundSpeedKts);
 
         // Post-handoff overshoot monitor. After TryEarlyExitHandoff or the
         // turnBegun/exitedLaterally handoff from UpdateLandingRollout transitions
@@ -3659,6 +3671,9 @@ public partial class TaxiGuidanceManager : IDisposable
         _rolloutStoppedNoticeGiven = false;
         _rolloutCrossingDeclinedUtc = DateTime.MinValue;
         _rolloutCrossingDeclineAnnounced = false;
+        ResetOffPavementAlert();
+        _pavementMap = null;
+        _pavementMapGraph = null;
         _backtrackConnectionNodeId = 0;
         _backtrackApproachAnnounced = false;
         _backtrackDeparture = false;
