@@ -609,15 +609,20 @@ public static class RolloutExitGate
     public static double MaxTurnSpeedKts(double exitAngleDeg) => ExitTurnOffSpeedKts(exitAngleDeg) + TooFastMarginKts;
 
     /// <summary>
-    /// How far past the targeted exit the rollout's overshoot handler waits before calling it missed:
-    /// <paramref name="baseMarginFeet"/> (the exit-type margin), or 0 once the exit was declined as too
-    /// fast at its turn point. A declined exit is not going to be taken, and every handoff that could move
-    /// the aircraft on needs it short of the node or turning — so a pilot who obeyed "too fast to turn",
-    /// braked and stopped just past the node got no handoff, no overshoot and no countdown: silent on an
-    /// active runway. The handoffs still run first on the same frame, so a turn onto the exit is guided.
+    /// Whether the rollout's overshoot handler treats the aircraft as past the targeted exit:
+    /// <paramref name="signedAlongPastFt"/> at least <paramref name="marginFt"/> (the exit-type margin,
+    /// <see cref="OvershootMarginFor"/>) - or, once the exit was declined as too fast at its turn point,
+    /// stopped (at or below <see cref="NoExitStoppedGroundSpeedKts"/>) anywhere at or past its node. Every
+    /// handoff that could move a stopped aircraft on needs it short of the node or turning, so a pilot who
+    /// obeyed "too fast to turn", braked and stopped just past the node got no handoff, no overshoot and no
+    /// countdown: silent on an active runway. A declined exit is NOT overshot on passing its node while
+    /// still rolling: a zero margin there beat the 15° turn test to the node, and a pilot who slowed and
+    /// turned onto the exit anyway heard the runway-end countdown while turning off.
     /// </summary>
-    public static double OvershootMarginFeet(double baseMarginFeet, bool tooFastDeclined)
-        => tooFastDeclined ? 0.0 : baseMarginFeet;
+    public static bool IsPastExitForOvershoot(double signedAlongPastFt, double marginFt, bool tooFastDeclined,
+        double groundSpeedKts)
+        => signedAlongPastFt >= marginFt
+           || (tooFastDeclined && signedAlongPastFt >= 0.0 && groundSpeedKts <= NoExitStoppedGroundSpeedKts);
 
     /// <summary>
     /// Along-runway distance past an ordinary exit at which it is called missed: 100 ft at 30 kt is about
@@ -638,7 +643,7 @@ public static class RolloutExitGate
     public const double OnCentrelineOvershootFeet = 30.0;
 
     /// <summary>
-    /// The exit-type margin <see cref="OvershootMarginFeet"/> starts from. For a high-speed exit, how far a
+    /// The exit-type margin <see cref="IsPastExitForOvershoot"/> tests against. For a high-speed exit, how far a
     /// correct turn along its first stretch (<paramref name="divergenceAngleDeg"/>,
     /// <see cref="LandingExit.DivergenceAngleDegrees"/>) runs before it is more than
     /// <see cref="OnCentrelineOvershootFeet"/> + 5 ft off the centreline, held between

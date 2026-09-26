@@ -379,6 +379,16 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// An instruction that must FOLLOW whatever is being spoken rather than cut it off - recorded for Ctrl+Y
+    /// exactly as <see cref="AnnounceInstruction"/> records one, but queued.
+    /// </summary>
+    private void AnnounceQueuedInstruction(string text)
+    {
+        _lastInstruction = text;
+        _announcer.Announce(text);
+    }
+
+    /// <summary>
     /// Replays the most recent tactical instruction. Bound to Ctrl+Y in output
     /// mode. Returns a fallback string when no instruction has been recorded
     /// yet (e.g., guidance just started, or guidance is inactive).

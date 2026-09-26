@@ -939,10 +939,11 @@ public partial class TaxiGuidanceManager : IDisposable
     // or bearing, and the two SPEED-driven handoffs (speedNearExitHandoff and the High-speed early
     // handoff) stay closed for it, so slowing down as told never brings back "turn … taxiway X". The
     // handoffs that follow what the pilot DOES stay open (turnBegun, exitedLaterally, alignedWithExit,
-    // trulyStopped): a pilot who turns onto it anyway, or stops short of it, is still guided. Its overshoot
-    // margin is 0 (RolloutExitGate.OvershootMarginFeet), so a pilot who stops just PAST it is moved on to a
-    // downfield exit or the runway-end countdown instead of being left silent. Reset with the approach
-    // latches, so a later retarget restores normal behaviour.
+    // trulyStopped): a pilot who turns onto it anyway, or stops short of it, is still guided. It keeps the
+    // usual overshoot margin while the aircraft rolls, and a pilot who STOPS at or past it is moved on at
+    // once (RolloutExitGate.IsPastExitForOvershoot) - to an exit the too-fast scan now finds reachable,
+    // announced queued after the warning, or to the runway-end countdown - instead of being left silent.
+    // Reset with the approach latches, so a later retarget restores normal behaviour.
     private bool _rolloutTooFastNoExit = false;
     // Set when such a declined exit is overshot with no exit left and the runway-end countdown begins
     // without "Missed last exit" (the pilot already heard "too fast to turn"). The countdown's first frame

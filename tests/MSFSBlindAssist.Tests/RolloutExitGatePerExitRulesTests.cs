@@ -150,17 +150,23 @@ public class RolloutExitGatePerExitRulesTests
 
     // ---- An exit declined as too fast: overshoot margin and tone ----------------------------
 
-    [Theory]
-    [InlineData(100.0)]
-    [InlineData(500.0)]
-    public void A_declined_exit_is_overshot_as_soon_as_the_aircraft_is_past_it(double baseMargin)
-        => Assert.Equal(0.0, RolloutExitGate.OvershootMarginFeet(baseMargin, tooFastDeclined: true));
+    [Fact]
+    public void A_pilot_who_slowed_and_is_turning_onto_a_declined_exit_keeps_the_usual_allowance()
+        // 20 kt, 50 ft past, margin 100: at a zero margin this was an overshoot, and a pilot turning onto
+        // the exit anyway heard "Runway end in 4,500 feet" and then "Runway vacated. No route set".
+        => Assert.False(RolloutExitGate.IsPastExitForOvershoot(50.0, 100.0, tooFastDeclined: true, groundSpeedKts: 20.0));
 
-    [Theory]
-    [InlineData(100.0)]
-    [InlineData(500.0)]
-    public void Otherwise_the_exit_type_margin_is_unchanged(double baseMargin)
-        => Assert.Equal(baseMargin, RolloutExitGate.OvershootMarginFeet(baseMargin, tooFastDeclined: false));
+    [Fact]
+    public void A_pilot_who_stopped_just_past_a_declined_exit_is_moved_on_at_once()
+        => Assert.True(RolloutExitGate.IsPastExitForOvershoot(20.0, 100.0, tooFastDeclined: true, groundSpeedKts: 1.0));
+
+    [Fact]
+    public void Rolling_on_past_a_declined_exit_is_an_overshoot_at_the_usual_margin()
+        => Assert.True(RolloutExitGate.IsPastExitForOvershoot(120.0, 100.0, tooFastDeclined: true, groundSpeedKts: 20.0));
+
+    [Fact]
+    public void An_exit_not_declined_keeps_its_margin_even_stopped()
+        => Assert.False(RolloutExitGate.IsPastExitForOvershoot(20.0, 100.0, tooFastDeclined: false, groundSpeedKts: 1.0));
 
     [Fact]
     public void Too_fast_near_an_off_centreline_exit_holds_the_runway_heading()
