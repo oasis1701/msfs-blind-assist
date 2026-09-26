@@ -37,7 +37,7 @@ Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; *
 | `A32NX.FCU_ALT_SET` | `A32NX.FCU_ALT_SET` | SAME [api]. |
 | `A32NX.FCU_ALT_PUSH` | `A32NX.FCU_ALT_PUSH` | SAME. AltitudeManager fires `K:A32NX.FCU_ALT_PUSH` (+`K:ALTITUDE_SLOT_INDEX_SET 2`) [FCU-src AltitudeManager.onHEvent]. |
 | `A32NX.FCU_ALT_PULL` | `A32NX.FCU_ALT_PULL` | SAME [FCU-src AltitudeManager.onHEvent]. |
-| `A32NX.FCU_ALT_INCREMENT_SET` | `A32NX.FCU_ALT_INCREMENT_SET` (also `A32NX.FCU_ALT_INCREMENT_TOGGLE`) | SAME [api]. Selector value var `L:XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT` (100..1000) [api]. |
+| `A32NX.FCU_ALT_INCREMENT_SET` | `A32NX.FCU_ALT_INCREMENT_SET` (also `A32NX.FCU_ALT_INCREMENT_TOGGLE`) | SAME [api]. **CORRECTED post-#10855 (2026-09-25):** the selector var is `L:A32NX_FCU_ALT_INCREMENT_1000` (0 = 100 ft, 1 = 1000 ft), which the FCU reads; `XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT` has no reader any more. |
 | `A32NX.FCU_VS_SET` | `A32NX.FCU_VS_SET` | SAME [api]. In-sim: H-event `A320_Neo_FCU_VS_SET` → `L:A320_Neo_FCU_VS_SET_DATA` [FCU-src VerticalSpeedManager]. |
 | `A32NX.FCU_VS_PUSH` | `A32NX.FCU_VS_PUSH` | SAME (documented) [api]. Note: the in-sim VerticalSpeedManager handles VS PUSH internally; only PULL fires a key event. |
 | `A32NX.FCU_VS_PULL` | `A32NX.FCU_VS_PULL` | **CORRECTED post-#10855.** SAME name (`vs_fpa_knob.pulled`, SimConnectInterface.cpp:2460). |
@@ -49,14 +49,14 @@ Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; *
 | `A32NX.FCU_ATHR_PUSH` | **`K:AUTO_THROTTLE_ARM`** (stock) | CORRECTION: the A380X FCU A/THR button uses the STOCK `K:AUTO_THROTTLE_ARM`, not the FBW dot-event [fcu.xml:131, source audit]. |
 | `A32NX.FCU_AP_DISCONNECT_PUSH` | `A32NX.FCU_AP_DISCONNECT_PUSH` | SAME [api]. |
 | `A32NX.FCU_ATHR_DISCONNECT_PUSH` | `A32NX.FCU_ATHR_DISCONNECT_PUSH` | SAME [api]. |
-| `A32NX.FCU_SPD_MACH_TOGGLE_PUSH` | `A32NX.FCU_SPD_MACH_TOGGLE_PUSH` | SAME [api]. In-sim toggles via `K:AP_MANAGED_SPEED_IN_MACH_ON/OFF` [FCU-src SpeedManager.onSwitchSpeedMach]. |
+| `A32NX.FCU_SPD_MACH_TOGGLE_PUSH` | `A32NX.FCU_SPD_MACH_TOGGLE_PUSH` | SAME [api]. **CORRECTED post-#10855 (2026-09-25):** the WASM handles it (`spd_mach_button_pressed`) and the cockpit button fires it. `K:AP_MANAGED_SPEED_IN_MACH_ON/OFF` are now MASKED and mean the FMS's own speed/Mach crossover — never use them for the FCU button. |
 | `A32NX.FCU_TRK_FPA_TOGGLE_PUSH` | **(no event — direct L:var write)** | CORRECTION: NOT wired on the A380X. The cockpit button only runs RPN `(L:A32NX_TRK_FPA_MODE_ACTIVE) ! (>L:A32NX_TRK_FPA_MODE_ACTIVE)`. Drive it by writing `L:A32NX_TRK_FPA_MODE_ACTIVE` (0/1) directly [A32NX_Interior_FCU.xml:137, source audit]. |
 
 ## EFIS-CP events (FD / baro)
 
 | A320 item | A380X equivalent | Status / source |
 |---|---|---|
-| `A32NX.FCU_EFIS_L_FD_PUSH` (+ `_R_`) | **NO `A32NX.FCU_EFIS_*` event on A380, AND the FD is UNCONTROLLABLE on this build.** `TOGGLE_FLIGHT_DIRECTOR` (indexed or not), the `A320_Neo_FCU_FD_n_PUSH` H-event, and direct writes to `A380X_EFIS_L_FD_BUTTON_IS_ON` / `A32NX_FCU_LEFT_EIS_FD_ACTIVE` ALL fail — FBW recomputes the L-var every tick (verified live). The MSFSBA FD button + event were REMOVED. | FD-on STATE is still read-only via `AUTOPILOT FLIGHT DIRECTOR ACTIVE` (`FD_ACTIVE`, kept as a status readout). |
+| `A32NX.FCU_EFIS_L_FD_PUSH` (+ `_R_`) | `A32NX.FCU_FD_PUSH` — ONE event, ONE FD pushbutton on the FCU for both flight directors | **CORRECTED post-#10855 (2026-09-25).** The FD is controllable: the cockpit FD pb (`PUSH_FCU_FD`, fcu.xml) fires `A32NX.FCU_FD_PUSH` and its light `L:A32NX_FCU_FD_LIGHT_ON` is the state (FD 1 or FD 2 engaged in the master PRIM). The WASM MASKS `TOGGLE_FLIGHT_DIRECTOR` into a press of the same button, ignoring its side parameter, and nothing writes the stock `AUTOPILOT FLIGHT DIRECTOR ACTIVE:n` any more — the `FD_ACTIVE` readout this row used to point at is gone. Per-side engagement: `A32NX_PRIM_n_FG_DISCRETE_WORD_1` bits 13/14. See `A380FlightDirector`. |
 | `A32NX.FCU_EFIS_L_BARO_PUSH/PULL` (+ `_R_`) | `A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL}` | **CORRECTED post-#10855.** SAME names as the A32NX, OPPOSITE polarity: **PUSH=STD, PULL=QNH** (A380FcuComputer.cpp:2142-2150 clears `std_active` on pull, sets it on push). The `H:A380X_EFIS_CP_BARO_{PUSH,PULL}_{1,2}` events this row used to recommend were DELETED along with `MsfsBaroManager.ts` — firing them is a silent no-op. PULL is idempotent because `pin_prog_qfe_avail` is hardcoded false, so both may be fired unconditionally. |
 
 ---
@@ -78,7 +78,7 @@ Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; *
 | `A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED` | **`L:A32NX_FCU_HDG_MANAGED_DASHES`** (dashes). Selected-shown flag: `L:A320_FCU_SHOW_SELECTED_HEADING`. | No explicit HDG "dot" lvar written by A380 FCU; managed shown via dashes [FCU-src HeadingManager.refresh]. |
 | `A32NX_FCU_AFS_DISPLAY_LVL_CH_MANAGED` (ALT) | **`L:A32NX_FCU_ALT_MANAGED`** | A380-named lvar [FCU-src AltitudeManager.init]. |
 | (VS managed) | **`L:A32NX_FCU_VS_MANAGED`** | A380-named lvar [FCU-src VerticalSpeedManager.refresh]. |
-| `A32NX_FCU_AFS_DISPLAY_MACH_MODE` | **`AUTOPILOT MANAGED SPEED IN MACH`** (MSFS bool) | NO `AFS_DISPLAY` var. Mach-mode read from MSFS simvar [FCU-src SpeedManager, api]. |
+| `A32NX_FCU_AFS_DISPLAY_MACH_MODE` | `A32NX_FCU_AFS_DISPLAY_MACH_MODE` | **CORRECTED post-#10855 (2026-09-25):** the A380 WASM now writes this var (the FCU's own Mach mode). The stock `AUTOPILOT MANAGED SPEED IN MACH` this row pointed at has had no writer since #10855. |
 | `A32NX_TRK_FPA_MODE_ACTIVE` | `L:A32NX_TRK_FPA_MODE_ACTIVE` | SAME — reuses A32NX name [FCU-src FcuPublisher, multiple managers, api]. |
 
 ---
@@ -105,7 +105,7 @@ The A320 `A32NX_FCU_EFIS_L_*` baro family does **not exist** on the A380. Mappin
 
 | A320 item | A380X equivalent | Status / source |
 |---|---|---|
-| `A32NX_FCU_EFIS_L_BARO_IS_INHG` (unit) | **`L:XMLVAR_Baro_Selector_HPA_1`** (0=Hg/inHg, 1=hPa) — note inverted sense vs A320 | Unit selector read by BaroManager [FCU-src BaroManager], doc [api]. Also surfaced as bit 11 of `L:A32NX_FCU_LEFT_EIS_DISCRETE_WORD_1` / `_RIGHT_` (bit set = inHg) [FCU-src OutputBusManager]. |
+| `A32NX_FCU_EFIS_L_BARO_IS_INHG` (unit) | `A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG` (1 = inHg) — SAME name and sense as the A320 | **CORRECTED post-#10855 (2026-09-25):** the EFIS-CP selector writes it and the FCU reads it every frame; the FCU's echo is `..._DISPLAY_BARO_IS_INHG`. `L:XMLVAR_Baro_Selector_HPA_{1,2}` (what this row used to name) has no reader any more. |
 | `A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE` (QNH/STD label) | **Baro mode** via `L:XMLVAR_Baro1_Mode` (0=QFE,1=QNH,2=STD) [api]; FCU emits STD/QNH as bits 28/29 of `L:A32NX_FCU_LEFT_EIS_DISCRETE_WORD_2` (and `_RIGHT_`) | No `FCU_EFIS_L_DISPLAY_BARO_*` var. [FCU-src OutputBusManager], [api]. |
 | `A32NX_FCU_EFIS_L_DISPLAY_BARO_MODE` | (same as above — `XMLVAR_Baro1_Mode` / EIS DISCRETE WORD 2 bits) | NO dedicated A380 var. |
 | `KOHLSMAN SETTING MB:1` / `HG:1` | **`L:A32NX_FCU_LEFT_EIS_BARO_HPA`** (hPa) and **`L:A32NX_FCU_LEFT_EIS_BARO`** (inHg) — and `_RIGHT_` for F/O | A380 publishes its own EIS baro readout lvars [FCU-src OutputBusManager]. `KOHLSMAN SETTING MB:1`/`HG:1` MSFS simvars also still readable per [api]. |
@@ -118,8 +118,8 @@ The A320 `A32NX_FCU_EFIS_L_*` baro family does **not exist** on the A380. Mappin
 
 | A320 item | A380X equivalent | Status / source |
 |---|---|---|
-| Altitude increment (100/1000) selector | `L:XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT` (100..1000); set via `A32NX.FCU_ALT_INCREMENT_SET` / `_TOGGLE` | SAME as A320 [api]. |
-| Metric alt toggle | **`L:A32NX_METRIC_ALT_TOGGLE`** | Present in A380 (PFD publisher) [FCU-src PFDSimvarPublisher]. Reuses A32NX name. |
+| Altitude increment (100/1000) selector | `L:A32NX_FCU_ALT_INCREMENT_1000` (0 = 100 ft, 1 = 1000 ft); set via `A32NX.FCU_ALT_INCREMENT_SET` / `_TOGGLE` | **CORRECTED post-#10855 (2026-09-25).** Not `XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT` (no reader). |
+| Metric alt toggle | `A32NX.FCU_METRIC_ALT_TOGGLE_PUSH`; state = PRIM FG discrete word 5 bit 14 | **CORRECTED post-#10855 (2026-09-25).** `L:A32NX_METRIC_ALT_TOGGLE` survives only in tooltips and a leftover template; the FCU and the PFD read the PRIM bit. See `A380MetricAltitude`. |
 | EXPED present? | **YES** — A380 has EXPED [FCU-src AutopilotManager]. |
 | Separate AP1/AP2? | **YES** — separate AP1 and AP2 buttons/events [FCU-src AutopilotManager]. |
 
@@ -135,4 +135,4 @@ The A320 `A32NX_FCU_EFIS_L_*` baro family does **not exist** on the A380. Mappin
 
 1. **EFIS-CP baro H-event spelling** (`A380X_EFIS_CP_BARO_PUSH_/PULL_/SET_{index}`): inferred from the FBW catalog + local `BaroManager` behaviour, but NOT present in `a380x-input-events.md`. Confirm the exact token (and whether a `_SET_` form exists).
 2. **HDG/VS push-pull event names**: in-sim FCU fires the `A32NX.FCU_TO_AP_HDG_PUSH/PULL` and `A32NX.FCU_TO_AP_VS_PULL` variants, while the public API page documents the plain `A32NX.FCU_HDG_PUSH/PULL` / `A32NX.FCU_VS_PULL`. Both likely work; prefer the `_TO_AP_` variant to match in-sim behaviour, or test which the autoflight system reacts to.
-3. **EFIS unit var sense**: `XMLVAR_Baro_Selector_HPA_1` is `1=hPa, 0=inHg` (opposite polarity to the A320 `..._IS_INHG`). Adjust logic accordingly.
+3. ~~**EFIS unit var sense**: `XMLVAR_Baro_Selector_HPA_1` is `1=hPa, 0=inHg` (opposite polarity to the A320 `..._IS_INHG`).~~ **REVERSED by #10855:** the A380 selector is `A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG`, same name and sense as the A320 (1 = inHg).

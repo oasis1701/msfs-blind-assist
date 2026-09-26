@@ -212,7 +212,7 @@ public class A380EfisCpControlsTests
     [InlineData("A32NX_EFIS_L_ND_MODE")]
     [InlineData("A32NX_EFIS_L_ND_RANGE")]
     [InlineData("A32NX_OVHD_COND_PACK_1_PB_IS_ON")]
-    [InlineData("XMLVAR_Baro_Selector_HPA_1")]
+    [InlineData("A32NX_FCU_EFIS_L_BARO_IS_INHG")]   // the baro-unit input since FBW #10855
     [InlineData("ND_FILTER_L")]
     [InlineData("A32NX_EFIS_X_NAVAID_1_MODE")]
     [InlineData("A32NX_EFIS_LR_OANS_RANGE")]

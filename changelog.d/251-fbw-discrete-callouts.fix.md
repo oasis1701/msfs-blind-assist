@@ -1,0 +1,1 @@
+On both FlyByWire Airbuses, "FMA reversion" is no longer announced on ordinary speed changes, and the speed protection, runway overrun and "runway ahead" call-outs now speak when the aircraft raises them. The A32NX's altitude discrepancy warning (CHECK ALT) is now announced too.

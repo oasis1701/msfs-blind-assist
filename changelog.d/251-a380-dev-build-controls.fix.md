@@ -1,0 +1,1 @@
+On the latest FlyByWire A380 development build, the flight directors, SPD/MACH, the altitude increment, the baro unit and the metric-altitude button work again, and the approach capability is announced on approach. ECAM checklist and control-panel keys now register on every press instead of about one in three.

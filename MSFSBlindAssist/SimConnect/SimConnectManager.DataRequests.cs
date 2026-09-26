@@ -200,6 +200,44 @@ public partial class SimConnectManager
         return defs != null && defs.TryGetValue(varKey, out var def) ? def : null;
     }
 
+    // SIM_FRAME own subscriptions paused by SetSimFrameSubscriptionActive. Cleared wherever the data
+    // definitions are, because registration issues every subscription active again.
+    private readonly ConcurrentDictionary<string, byte> _pausedSimFrameSubscriptions = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Pause (<paramref name="active"/> false) or resume a SIM_FRAME + CHANGED own subscription — the
+    /// take-off callouts' airspeed feed, which is needed only on the ground and on a roll still armed
+    /// (<see cref="IAircraftDefinition.TakeoffCalloutFeedKey"/>), and otherwise delivered tens of times
+    /// a second through a whole flight for nothing. A no-op when the subscription is already in that
+    /// state, so it is safe to call on every delivery. Pausing re-issues the subscription's own
+    /// request id with PERIOD.NEVER (the codebase's cancel idiom, as SafelyClearDataDefinition);
+    /// resuming re-issues it exactly as registration did. The cache keeps the last value while paused.
+    /// </summary>
+    public void SetSimFrameSubscriptionActive(string varKey, bool active)
+    {
+        if (!IsConnected || simConnect == null) return;
+        if (_uiGate.PostIfOffThread(() => SetSimFrameSubscriptionActive(varKey, active))) return;
+        if (active != _pausedSimFrameSubscriptions.ContainsKey(varKey)) return;   // already there
+        if (!FreshReadPolicy.CacheIsFresh(DefinitionOf(varKey))) return;           // not a SIM_FRAME own subscription
+        if (!variableDataDefinitions.TryGetValue(varKey, out int dataDefId)) return;
+
+        try
+        {
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)dataDefId, (DATA_DEFINITIONS)dataDefId,
+                SIMCONNECT_OBJECT_ID_USER,
+                active ? SIMCONNECT_PERIOD.SIM_FRAME : SIMCONNECT_PERIOD.NEVER,
+                active ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0);
+            if (active) _pausedSimFrameSubscriptions.TryRemove(varKey, out _);
+            else _pausedSimFrameSubscriptions[varKey] = 0;
+            Log.Debug("SimConnect", $"SIM_FRAME subscription for {varKey} {(active ? "resumed" : "paused")}");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error {(active ? "resuming" : "pausing")} subscription {varKey}: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Request a single variable by key
     /// </summary>

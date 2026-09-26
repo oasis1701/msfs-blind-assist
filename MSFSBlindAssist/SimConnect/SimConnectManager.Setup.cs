@@ -793,6 +793,7 @@ public partial class SimConnectManager
 
         // Clear existing registrations
         variableDataDefinitions.Clear();
+        _pausedSimFrameSubscriptions.Clear();
         requestIdToVarKey.Clear();
         _freshRequestIdToVarKey.Clear();
         lastVariableValues.Clear();
