@@ -494,6 +494,9 @@ public partial class TaxiGuidanceManager
     internal static bool IsWithinRunwayLength(
         Database.Models.Runway runway, double runwayHeadingTrue, double lat, double lon)
     {
+        // Along-track by SignedAlongRunwayMeters - the projection (111,132 m per degree) the lateral half,
+        // IsWithinRolloutRunwayLaterally, uses - never RunwayFrame.Along (111,320), which would move this
+        // boundary about 5 m at the far end of a 2.8 km runway; only the LENGTH comes from RunwayFrame.
         double alongM = SignedAlongRunwayMeters(lat, lon, runway.StartLat, runway.StartLon, runwayHeadingTrue);
         double lengthM = Navigation.RunwayFrame.For(runway, lat).LengthM;
         return alongM >= -Navigation.PavementMap.RunwayMarginMetres

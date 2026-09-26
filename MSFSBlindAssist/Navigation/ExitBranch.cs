@@ -12,8 +12,17 @@ public readonly record struct RunwayAxis(double StartLat, double StartLon, doubl
 {
     private const double MetresPerDegLat = 111132.0;
 
-    /// <summary>The margin <c>GetLandingExits</c> adds to the half-width for its exit corridor.</summary>
-    public const double CorridorMarginMetres = 15.0;
+    /// <summary>
+    /// The margin <c>GetLandingExits</c> adds to the half-width for its exit corridor: the rollout's own
+    /// exit-node corridor margin (<see cref="RolloutExitGate.HandoffReachMarginM"/>), linked so the two can
+    /// never drift - the derived-constant tripwire's 5 m gap lives between this and the clear margin.
+    /// </summary>
+    public const double CorridorMarginMetres = RolloutExitGate.HandoffReachMarginM;
+
+    // Get-only (never init), so a `with` can never leave the cached trigonometry describing another heading.
+    public double HeadingTrueDeg { get; } = HeadingTrueDeg;
+    private readonly double _cosH = Math.Cos(HeadingTrueDeg * Math.PI / 180.0);
+    private readonly double _sinH = Math.Sin(HeadingTrueDeg * Math.PI / 180.0);
 
     /// <summary>Off the runway: half-width + <see cref="RolloutExitGate.RunwayClearMarginM"/>, the codebase's one definition.</summary>
     public double ClearLateralMetres => HalfWidthMetres + RolloutExitGate.RunwayClearMarginM;
@@ -34,9 +43,7 @@ public readonly record struct RunwayAxis(double StartLat, double StartLon, doubl
         double metresPerDegLon = MetresPerDegLat * Math.Cos(latRad);
         double dN = (lat - StartLat) * MetresPerDegLat;
         double dE = (lon - StartLon) * metresPerDegLon;
-        double h = HeadingTrueDeg * Math.PI / 180.0;
-        double cosH = Math.Cos(h), sinH = Math.Sin(h);
-        return (dE * sinH + dN * cosH, dE * cosH - dN * sinH);
+        return (dE * _sinH + dN * _cosH, dE * _cosH - dN * _sinH);
     }
 
     /// <summary>Heading of the step a→b relative to the landing heading, degrees, signed (+ right), (−180, 180].</summary>
@@ -278,9 +285,12 @@ public static class ExitBranch
         }
 
         // First pass: the backward arm's own nodes, its junction included, are walled off - a sibling
-        // leaves the runway from a junction of its own.
+        // leaves the runway from a junction of its own. The flood's order is recorded for the second pass,
+        // which reads the same nodes rather than flooding again.
+        var flooded = new List<int>();
         foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own, exitName, OnThisSideOffTheRunway))
         {
+            flooded.Add(start);
             var sibling = SiblingFrom(start, own);
             if (sibling != null) return sibling;
         }
@@ -290,7 +300,7 @@ public static class ExitBranch
         // from an arm's own junction and nearer the centreline - drew walks away from real siblings.
         var ownBeyondJunction = new HashSet<int>(own);
         ownBeyondJunction.Remove(backward.JunctionNodeId);
-        foreach (int start in NodesOutwardFrom(graph, backward.ClearNodeId, own, exitName, OnThisSideOffTheRunway))
+        foreach (int start in flooded)
         {
             var sibling = SiblingFrom(start, ownBeyondJunction);
             if (sibling != null) return sibling;
@@ -716,9 +726,18 @@ public static class ExitBranch
     // The number of distinct neighbours Walkable reaches from `nodeId`, whatever their names.
     private static int WalkableDegree(TaxiGraph graph, int nodeId)
     {
-        var neighbours = new HashSet<int>();
-        foreach (var e in Walkable(graph, nodeId)) neighbours.Add(e.ToNodeId);
-        return neighbours.Count;
+        // Counted up to 3: every caller asks "at most two", "exactly two" or "three or more". Node ids are
+        // positive (0 is TaxiGraph's "not set"), so -1 marks an empty slot.
+        int first = -1, second = -1;
+        foreach (var e in Walkable(graph, nodeId))
+        {
+            int n = e.ToNodeId;
+            if (n == first || n == second) continue;
+            if (first < 0) first = n;
+            else if (second < 0) second = n;
+            else return 3;
+        }
+        return second >= 0 ? 2 : first >= 0 ? 1 : 0;
     }
 
     private static double Lateral(TaxiGraph graph, RunwayAxis axis, int nodeId)

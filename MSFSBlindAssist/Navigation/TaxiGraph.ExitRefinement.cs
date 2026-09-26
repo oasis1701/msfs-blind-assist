@@ -63,6 +63,24 @@ public partial class TaxiGraph
         return exit;
     }
 
+    // The planner list's refinement (GetLandingExits' main and fallback passes): every candidate is kept - a
+    // turnaround without a forward sibling is recorded as the 130° "End" it is, never dropped.
+    private LandingExit RefineForPlanner(LandingExit exit, int? seedNeighborId, Runway rwy, RunwayAxis axis)
+        => RefineExitByBranch(exit, seedNeighborId, dropTurnarounds: false, rwy, axis,
+               double.NegativeInfinity, out _)!;
+
+    // The rescue scan's refinement (FindDownfieldExits): only exits a pilot can still take ahead of
+    // `afterDistanceFromThresholdFeet` - a turnaround without a forward sibling is dropped, and so is an
+    // unmeasured branch whose first edge (`firstEdgeRelDeg`) peels back past 90°, the backtrack this scan
+    // exists to avoid.
+    private LandingExit? RefineForRescue(LandingExit exit, int? seedNeighborId, Runway rwy, RunwayAxis axis,
+        double afterDistanceFromThresholdFeet, double firstEdgeRelDeg)
+    {
+        var refined = RefineExitByBranch(exit, seedNeighborId, dropTurnarounds: true, rwy, axis,
+            afterDistanceFromThresholdFeet, out bool measured);
+        return !measured && firstEdgeRelDeg > 90.0 ? null : refined;
+    }
+
     // Where a kept exit STANDS on its branch - its own node's index in the path, which always reaches the
     // candidate (ExitBranch.Analyze) - and which way its heading is read there: onward from it while it is
     // on the runway pavement, INTO it once it is off it. From the junction instead - often a lead-in start up

@@ -3696,7 +3696,7 @@ public partial class TaxiGraph
 
     // Classification thresholds (angle between exit edge and runway axis).
     private const double HIGH_SPEED_MAX_DEG = 50.0;   // RET geometry (≤50° off runway axis)
-    private const double NORMAL_MAX_DEG     = 110.0;  // beyond this → End
+    private const double NORMAL_MAX_DEG     = RolloutExitGate.TurnaroundAboveDeg;  // beyond this → End
     private const double END_RATIO          = 0.85;   // last 15% of runway → always End
 
     /// <summary>
@@ -3753,7 +3753,7 @@ public partial class TaxiGraph
         double cosH = Math.Cos(rwyHeadingTrue * Math.PI / 180.0);
         double sinH = Math.Sin(rwyHeadingTrue * Math.PI / 180.0);
         double halfWidthFt = rwy.Width > 0 ? rwy.Width * 0.5 : 75.0;
-        double lateralToleranceM = (halfWidthFt * 0.3048) + 15.0;
+        double lateralToleranceM = RunwayAxis.For(rwy).CorridorLateralMetres;
         double lengthM = rwy.Length * 0.3048;
         double maxDistFt = rwy.Length - END_BUFFER_FT;
         double landingThresholdOffsetFt = rwy.ThresholdOffset;
@@ -3844,16 +3844,13 @@ public partial class TaxiGraph
                 ExitAngleDegrees = exitAngle,
                 ExitBearingTrue = exitBearingTrue,
                 ExitType = exitType,
-                ExitSide = NormalizeAngle(
-                    (exitBearingTrue == 360.0 ? 0.0 : exitBearingTrue) - rwyHeadingTrue) >= 0
-                    ? "Right" : "Left"
+                ExitSide = ExitSideFor(exitBearingTrue, rwyHeadingTrue)
             };
             // Branch-measured like the planner list; turnarounds are dropped (this scan never offered
             // them) unless their forward sibling exists. An unmeasured branch keeps the scan's old rule:
             // a first edge peeling back past 90 degrees is the backtrack this scan exists to avoid.
-            var refinedExit = RefineExitByBranch(candidateExit, best.ToNodeId,
-                dropTurnarounds: true, rwy, axis, afterDistanceFromThresholdFeet, out bool measured);
-            if (!measured && relBest > 90.0) continue;
+            var refinedExit = RefineForRescue(candidateExit, best.ToNodeId, rwy, axis,
+                afterDistanceFromThresholdFeet, relBest);
             if (refinedExit != null) found.Add(refinedExit);
         }
 
@@ -3906,7 +3903,7 @@ public partial class TaxiGraph
         // lacks width (Width==0), fall back to 75 ft (23 m half-width → 60 ft total
         // which covers most Code C/D taxiway-runway intersections).
         double halfWidthFt = rwy.Width > 0 ? rwy.Width * 0.5 : 75.0;
-        double lateralToleranceM = (halfWidthFt * 0.3048) + 15.0;
+        double lateralToleranceM = RunwayAxis.For(rwy).CorridorLateralMetres;
 
         double lengthM = rwy.Length * 0.3048;
         // The branch-measurement frame (ExitBranch): same projection and half-width rule as this method.
@@ -4021,7 +4018,7 @@ public partial class TaxiGraph
                     double relAngle = Math.Abs(NormalizeAngle(he.BearingDegrees - rwyHeadingTrue));
                     bool peelsBack = relAngle > 90.0;
                     double ea = peelsBack ? 180.0 - relAngle : relAngle;
-                    if (peelsBack && ea < 50.0) ea = NORMAL_MAX_DEG + 20.0;
+                    if (peelsBack && ea < 50.0) ea = RolloutExitGate.TurnaroundExitAngleDeg;
                     if (ea <= NORMAL_MAX_DEG) { hasForwardExit = true; break; }
                 }
             }
@@ -4153,7 +4150,7 @@ public partial class TaxiGraph
                         // treat as end-style exit, not a high-speed. Forcing the
                         // angle above NORMAL_MAX_DEG pushes classification to
                         // "End" below regardless of along-runway position.
-                        exitAngle = NORMAL_MAX_DEG + 20.0;
+                        exitAngle = RolloutExitGate.TurnaroundExitAngleDeg;
                     }
                 }
             }
@@ -4287,18 +4284,12 @@ public partial class TaxiGraph
                 ExitAngleDegrees = exitAngle,
                 ExitBearingTrue = exitBearingTrue,
                 ExitType = exitType,
-                ExitSide = exitBearingTrue != 0.0
-                    ? (NormalizeAngle((exitBearingTrue == 360.0 ? 0.0 : exitBearingTrue) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
-                    : ""
+                ExitSide = ExitSideFor(exitBearingTrue, rwyHeadingTrue)
             };
             string producerExitType = candidateExit.ExitType;
-            var refinedExit = RefineExitByBranch(candidateExit, bestToNodeId,
-                dropTurnarounds: false, rwy, axis, double.NegativeInfinity, out _);
-            if (refinedExit != null)
-            {
-                exits.Add(refinedExit);
-                producerExitTypes[refinedExit] = producerExitType;
-            }
+            var refinedExit = RefineForPlanner(candidateExit, bestToNodeId, rwy, axis);
+            exits.Add(refinedExit);
+            producerExitTypes[refinedExit] = producerExitType;
         }
 
         // Deduplicate exits that share the same taxiway name and are within 50 ft of
@@ -4448,7 +4439,7 @@ public partial class TaxiGraph
                         double rel2 = Math.Abs(NormalizeAngle(best2.BearingDegrees - rwyHeadingTrue));
                         bool pb2 = rel2 > 90.0;
                         angle2 = pb2 ? 180.0 - rel2 : rel2;
-                        if (pb2 && angle2 < 50.0) angle2 = NORMAL_MAX_DEG + 20.0;
+                        if (pb2 && angle2 < 50.0) angle2 = RolloutExitGate.TurnaroundExitAngleDeg;
                     }
                     // Same targeted apron-bearing override: only for near-parallel first
                     // edges (< 5°) and only when the apron is in the forward direction.
@@ -4480,13 +4471,9 @@ public partial class TaxiGraph
                         ExitAngleDegrees = angle2,
                         ExitBearingTrue = best2Brg,
                         ExitType = et2,
-                        ExitSide = best2Brg != 0.0
-                            ? (NormalizeAngle((best2Brg == 360.0 ? 0.0 : best2Brg) - rwyHeadingTrue) >= 0 ? "Right" : "Left")
-                            : ""
+                        ExitSide = ExitSideFor(best2Brg, rwyHeadingTrue)
                     };
-                    var refinedFallback = RefineExitByBranch(candidateFallback, best2?.ToNodeId,
-                        dropTurnarounds: false, rwy, axis, double.NegativeInfinity, out _);
-                    if (refinedFallback != null) fallbackExits.Add(refinedFallback);
+                    fallbackExits.Add(RefineForPlanner(candidateFallback, best2?.ToNodeId, rwy, axis));
                 }
 
                 if (fallbackExits.Count > 0)
@@ -4548,7 +4535,7 @@ public partial class TaxiGraph
         // unnamed, zero numbered connectors), and every segment touching 02R/20L is named
         // "G". The runway's five real turnoffs — measured at ~1813, 3719, 4497, 6155 and
         // 7812 ft — therefore collapsed to one, and the survivor was the threshold-nearest
-        // node, which is a backward-peeling arc (angle forced to NORMAL_MAX_DEG + 20) at
+        // node, which is a backward-peeling arc (angle forced to RolloutExitGate.TurnaroundExitAngleDeg) at
         // 1467 ft: a 130-degree turn 1500 ft down a 7991 ft runway. 02R is the mirror image.
         // Airports whose connectors carry distinct names (KBOS, EGLL, KJFK, EIDW ...) never
         // showed the bug because their name dedup only ever collapsed arcs.
@@ -4674,7 +4661,7 @@ public partial class TaxiGraph
         double cosH, double sinH,
         double lateralToleranceM)
     {
-        const double MAX_RET_SEARCH_M = 600.0;
+        const double MAX_RET_SEARCH_M = ExitBranch.OutwardMaxMetres;
         const double METERS_PER_DEG_LAT = 111132.0;
 
         if (!Adjacency.TryGetValue(startNodeId, out var initEdges)) return -1;
