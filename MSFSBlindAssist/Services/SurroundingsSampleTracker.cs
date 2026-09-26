@@ -11,7 +11,10 @@ namespace MSFSBlindAssist.Services;
 /// <param name="Jumped">Too far from the previous position to have been taxied: the aircraft was put
 /// here. The surface baseline is already dropped; the caller drops its passing tracks.</param>
 /// <param name="SurfaceCallout">The surface sentence to speak (queued), or null.</param>
-internal readonly record struct SurroundingsSample(bool Usable, bool First, bool Jumped, string? SurfaceCallout)
+/// <param name="LeavesPavement">The surface sentence says the aircraft has LEFT the pavement ("Off the pavement,
+/// on grass.") - the one the landing roll's own "Off pavement." alert may already have covered.</param>
+internal readonly record struct SurroundingsSample(bool Usable, bool First, bool Jumped, string? SurfaceCallout,
+    bool LeavesPavement = false)
 {
     /// <summary>The answer for a sample whose position could not be read.</summary>
     public static readonly SurroundingsSample Unusable = new(false, false, false, null);
@@ -104,10 +107,17 @@ internal sealed class SurroundingsSampleTracker
 
         // A first sample has no distance to judge by; the surface baseline comes from the next.
         string? call = null;
+        bool leavesPavement = false;
         if (_surfaceEnabled && !first)
+        {
+            var before = _surface.AnnouncedFamily;
             call = _surface.Evaluate(SurfaceTypeOf(surfaceType), IsValid(surfaceInfoValid),
                                      onGround: true, groundSpeedKts, metres);
-        return new SurroundingsSample(Usable: true, First: first, Jumped: jumped, SurfaceCallout: call);
+            leavesPavement = call != null && before == SurfaceFamily.Paved
+                             && _surface.AnnouncedFamily != SurfaceFamily.Paved;
+        }
+        return new SurroundingsSample(Usable: true, First: first, Jumped: jumped, SurfaceCallout: call,
+            LeavesPavement: leavesPavement);
     }
 
     // A non-finite type is -1, i.e. Unknown. Never (int)NaN: .NET 9+ saturates it to 0, CONCRETE,

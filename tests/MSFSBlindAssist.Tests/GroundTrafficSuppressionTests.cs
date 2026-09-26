@@ -91,4 +91,45 @@ public class GroundTrafficSuppressionTests
     [Fact]
     public void Proximity_suppression_is_unchanged_during_the_line_up_wait()
         => Assert.True(GroundTrafficSuppression.Suppress(true, TaxiGuidanceState.Inactive, Stopped));
+
+    // --- The landing exit (KMEM 36L 2026-09-26: "Slow down…", "Slow down…", "Stop…" interrupted the
+    // --- exit at 44-47 kt the moment the rollout handed over to taxi steering) ----------------------
+
+    [Fact]
+    public void The_fast_landing_exit_no_longer_mutes_the_monitor()
+    {
+        // The monitor keeps evaluating (and the runway watch keeps watching) - only what is spoken is filtered.
+        Assert.False(GroundTrafficSuppression.Suppress(false, TaxiGuidanceState.Taxiing, 44.1));
+        Assert.False(GroundTrafficSuppression.SuppressRunwayWatch(false, TaxiGuidanceState.Taxiing, 44.1));
+    }
+
+    [Fact]
+    public void Above_taxi_speed_on_the_exit_only_warnings_are_spoken()
+    {
+        Assert.True(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 44.1, true));
+        Assert.True(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 30.0, true));
+        Assert.True(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, null, true));
+    }
+
+    [Fact]
+    public void Below_taxi_speed_after_the_exit_or_on_an_ordinary_taxi_everything_is_spoken()
+    {
+        Assert.False(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 25.0, true));
+        Assert.False(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Arrived, 35.7, true));
+        Assert.False(GroundTrafficSuppression.LandingExitWarningsOnly(TaxiGuidanceState.Taxiing, 47.4, false));
+    }
+
+    [Theory]
+    [InlineData(TrafficCalloutKind.Warning, true)]
+    [InlineData(TrafficCalloutKind.RunwayCritical, true)]
+    [InlineData(TrafficCalloutKind.RunwayInfo, true)]
+    [InlineData(TrafficCalloutKind.Caution, false)]
+    [InlineData(TrafficCalloutKind.Converging, false)]
+    [InlineData(TrafficCalloutKind.OnRoute, false)]
+    [InlineData(TrafficCalloutKind.Awareness, false)]
+    [InlineData(TrafficCalloutKind.QueueMoving, false)]
+    [InlineData(TrafficCalloutKind.MoveUp, false)]
+    [InlineData(TrafficCalloutKind.QueuePosition, false)]
+    public void On_the_fast_exit_only_stop_runway_events_and_the_runway_status_speak(TrafficCalloutKind kind, bool speaks)
+        => Assert.Equal(speaks, TrafficSpeechPolicy.SpeaksOnFastLandingExit(kind));
 }
