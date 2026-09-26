@@ -137,9 +137,10 @@ public class LandingExitDownfieldRescanTests
     }
 
     [Fact]
-    public void Rescue_scan_skips_turnoffs_that_would_need_a_turn_past_ninety_degrees()
+    public void Rescue_scan_skips_a_turnaround_turning_more_than_110_degrees_to_clear()
     {
-        // A stub peeling BACK toward the approach end. Taking it means turning around, which
+        // A stub peeling BACK toward the approach end (135 degrees here, past
+        // RolloutExitGate.TurnaroundAboveDeg). Taking it means turning around, which
         // is not an exit — it is the backtrack the rescue scan exists to avoid.
         double alongM = 6000.0 * 0.3048;
         var graph = TaxiGraph.Build(
@@ -161,6 +162,37 @@ public class LandingExitDownfieldRescanTests
         var found = graph.FindDownfieldExits(Runway09(), afterDistanceFromThresholdFeet: 2000.0);
 
         Assert.Empty(found);
+    }
+
+    [Fact]
+    public void Rescue_scan_offers_a_branch_turning_about_100_degrees_with_its_angle_capped_at_90()
+    {
+        // A stub leaving at 100 degrees to the landing heading: past the old first-edge "> 90"
+        // cut-off, but short of a turnaround (RolloutExitGate.TurnaroundAboveDeg, 110). Measured
+        // by its branch it IS a way off the runway, offered with its angle capped at 90.
+        double alongM = 6000.0 * 0.3048;
+        double backM = 120.0 * Math.Tan(10.0 * Math.PI / 180.0);   // 120 m out, 21 m back: 100 degrees
+        var graph = TaxiGraph.Build(
+            new List<TaxiPath>
+            {
+                Turnoff("B", 1700, startType: "HS"),
+                new TaxiPath
+                {
+                    StartLat = 0.0,
+                    StartLon = alongM * DEG_PER_M,
+                    EndLat = 120.0 * DEG_PER_M,
+                    EndLon = (alongM - backM) * DEG_PER_M,   // north and slightly back west
+                    Name = "Z1",
+                },
+            },
+            new List<ParkingSpot>(),
+            new List<StartPosition>());
+
+        var found = graph.FindDownfieldExits(Runway09(), afterDistanceFromThresholdFeet: 2000.0);
+
+        var z1 = Assert.Single(found);
+        Assert.Equal("Z1", z1.TaxiwayName);
+        Assert.Equal(90.0, z1.ExitAngleDegrees);
     }
 
     [Fact]

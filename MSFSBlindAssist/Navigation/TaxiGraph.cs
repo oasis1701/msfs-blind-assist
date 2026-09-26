@@ -3678,6 +3678,26 @@ public partial class TaxiGraph
 
     #region Landing Exit Planning
 
+    // Shared by every landing-exit producer - GetLandingExits' main and fallback passes,
+    // FindDownfieldExits and the branch refinement (TaxiGraph.ExitRefinement.cs) - so planned,
+    // rescued and refined exits share one list under ONE rule: these consts, applied by ClassifyExit.
+    //
+    // Cutoffs: usable exits lie past the jet touchdown zone and before the runway end.
+    // MIN_DIST_FT is a conservative floor (still captures very-early RETs at some
+    // airports and "reject take-off" spots; also avoids false positives from
+    // threshold hold-short lines). END_BUFFER_FT is a small margin against nodes
+    // literally on the runway-end markings; the geometric corridor + named-edge
+    // filters are the real protection, so 50 ft is enough (200 ft was excluding
+    // legitimate end-of-runway vacate exits like S7 at EIDW 28L).
+    private const double MIN_DIST_FT = 500.0;
+    private const double END_BUFFER_FT = 50.0;
+    private const double TOUCHDOWN_AIM_FT = 1000.0;  // typical jet aim point past landing threshold
+
+    // Classification thresholds (angle between exit edge and runway axis).
+    private const double HIGH_SPEED_MAX_DEG = 50.0;   // RET geometry (≤50° off runway axis)
+    private const double NORMAL_MAX_DEG     = 110.0;  // beyond this → End
+    private const double END_RATIO          = 0.85;   // last 15% of runway → always End
+
     /// <summary>
     /// Last-resort scan for a way off <paramref name="rwy"/> ahead of the aircraft, used by
     /// the landing rollout when the planned exit has been missed and
@@ -3720,12 +3740,9 @@ public partial class TaxiGraph
         if (rwy == null || rwy.Length <= 0) return found;
 
         // Same frame, tolerances and classification thresholds as GetLandingExits - a rescue
-        // candidate must describe the same geometry a planned one would.
+        // candidate must describe the same geometry a planned one would. The cutoffs and
+        // thresholds are the class-scope consts both share (ClassifyExit applies them).
         const double MIN_FALLBACK_EXIT_ANGLE_DEG = 20.0;
-        const double HIGH_SPEED_MAX_DEG = 50.0;
-        const double NORMAL_MAX_DEG     = 110.0;
-        const double END_RATIO          = 0.85;
-        const double END_BUFFER_FT      = 50.0;
         const double METERS_PER_DEG_LAT = 111132.0;
         const double COVERAGE_GAP_FT    = RolloutExitGate.EarlyVacateMaxPassedFeet;
 
@@ -3829,10 +3846,7 @@ public partial class TaxiGraph
             double relBest = Math.Abs(NormalizeAngle(best.BearingDegrees - rwyHeadingTrue));
             double exitAngle = relBest;
 
-            double endRatio = alongFt / rwy.Length;
-            string exitType = endRatio > END_RATIO ? "End"
-                : exitAngle <= HIGH_SPEED_MAX_DEG ? "High-speed"
-                : exitAngle <= NORMAL_MAX_DEG ? "Normal" : "End";
+            string exitType = ClassifyExit(exitAngle, alongFt, rwy.Length);
 
             double exitBearingTrue = best.BearingDegrees == 0.0 ? 360.0 : best.BearingDegrees;
 
@@ -3868,7 +3882,7 @@ public partial class TaxiGraph
                 Latitude = node.Latitude,
                 Longitude = node.Longitude,
                 DistanceFromThresholdFeet = distFromThresholdFt,
-                DistanceFromTouchdownFeet = distFromThresholdFt - 1000.0,
+                DistanceFromTouchdownFeet = distFromThresholdFt - TOUCHDOWN_AIM_FT,
                 TaxiwayName = best.TaxiwayName,
                 ExitAngleDegrees = exitAngle,
                 ExitBearingTrue = exitBearingTrue,
@@ -3953,21 +3967,10 @@ public partial class TaxiGraph
         // navdatareader DB have non-zero offset; this matters at every major hub.
         double landingThresholdOffsetFt = rwy.ThresholdOffset;
 
-        // Cutoffs: usable exits lie past the jet touchdown zone and before the runway end.
-        // MIN_DIST_FT is a conservative floor (still captures very-early RETs at some
-        // airports and "reject take-off" spots; also avoids false positives from
-        // threshold hold-short lines). END_BUFFER_FT is a small margin against nodes
-        // literally on the runway-end markings; the geometric corridor + named-edge
-        // filters are the real protection, so 50 ft is enough (200 ft was excluding
-        // legitimate end-of-runway vacate exits like S7 at EIDW 28L).
-        const double MIN_DIST_FT = 500.0;
-        const double END_BUFFER_FT = 50.0;
-        const double TOUCHDOWN_AIM_FT = 1000.0;  // typical jet aim point past landing threshold
-
-        // Classification thresholds (angle between exit edge and runway axis).
-        const double HIGH_SPEED_MAX_DEG = 50.0;   // RET geometry (≤50° off runway axis)
-        const double NORMAL_MAX_DEG     = 110.0;  // beyond this → End
-        const double END_RATIO          = 0.85;   // last 15% of runway → always End
+        // Cutoffs (MIN_DIST_FT, END_BUFFER_FT, TOUCHDOWN_AIM_FT) and classification thresholds
+        // (HIGH_SPEED_MAX_DEG, NORMAL_MAX_DEG, END_RATIO - applied by ClassifyExit) are the
+        // class-scope consts at the top of this region, shared with FindDownfieldExits and the
+        // branch refinement.
 
         // Dedup window: exits within this along-runway distance that share a
         // taxiway name are collapsed to a single entry.
@@ -4039,13 +4042,26 @@ public partial class TaxiGraph
             if (!hasNamedEdge) continue;
 
             // Branch-measured (ExitBranch): a hold-short node counts only when its branch leaves the
-            // runway FORWARD for this landing direction. An unmeasured branch keeps the old per-edge
-            // test, so thin navdata behaves exactly as before.
+            // runway FORWARD for this landing direction, or - on the stem of a Y exit, where the
+            // unseeded inward walk can take the backward arm - when that arm's forward sibling exists
+            // under one of the node's taxiway names, the same substitution the main loop makes
+            // (RefineExitByBranch). An unmeasured branch keeps the old per-edge test, so thin navdata
+            // behaves exactly as before.
             var hsBranch = ExitBranch.Analyze(this, axis, n.NodeId);
             bool hasForwardExit;
             if (hsBranch.IsMeasured)
             {
                 hasForwardExit = !hsBranch.IsTurnaround;
+                if (!hasForwardExit)
+                {
+                    var triedNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var he in hsEdges)
+                    {
+                        if (string.IsNullOrEmpty(he.TaxiwayName) || !triedNames.Add(he.TaxiwayName)) continue;
+                        if (ExitBranch.FindForwardSibling(this, axis, hsBranch, he.TaxiwayName) != null)
+                        { hasForwardExit = true; break; }
+                    }
+                }
             }
             else
             {
@@ -4255,7 +4271,7 @@ public partial class TaxiGraph
                     exitAngle = peelsBackward ? 180.0 - rel : rel;
 
                     // Backward-peel nodes are almost always end-of-runway turnoffs
-                    // (handled by the endRatio>0.85 check below). But if a backward
+                    // (handled by ClassifyExit's END_RATIO check below). But if a backward
                     // peel appears mid-runway, we should NOT classify it as
                     // "High-speed" — exiting through it requires turning around,
                     // which is not a high-speed RET. Forcing exitAngle to an
@@ -4377,17 +4393,8 @@ public partial class TaxiGraph
 
             // End-of-runway classification: if the exit is within the last 15% of the
             // runway, label it "End" regardless of angle — exiting there means rolling
-            // out the full length.
-            double endRatio = alongFt / rwy.Length;
-            string exitType;
-            if (endRatio > END_RATIO)
-                exitType = "End";
-            else if (exitAngle <= HIGH_SPEED_MAX_DEG)
-                exitType = "High-speed";
-            else if (exitAngle <= NORMAL_MAX_DEG)
-                exitType = "Normal";
-            else
-                exitType = "End";
+            // out the full length. ClassifyExit is the one rule every producer shares.
+            string exitType = ClassifyExit(exitAngle, alongFt, rwy.Length);
 
             var candidateExit = new LandingExit
             {
@@ -4593,11 +4600,7 @@ public partial class TaxiGraph
                             best2Brg = apronBrg2 == 0.0 ? 360.0 : apronBrg2;
                     }
 
-                    double er2 = aFt2 / rwy.Length;
-                    string et2 = er2 > END_RATIO ? "End"
-                        : angle2 <= HIGH_SPEED_MAX_DEG ? "High-speed"
-                        : angle2 <= NORMAL_MAX_DEG ? "Normal"
-                        : "End";
+                    string et2 = ClassifyExit(angle2, aFt2, rwy.Length);
 
                     var candidateFallback = new LandingExit
                     {

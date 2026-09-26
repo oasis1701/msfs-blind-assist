@@ -10,8 +10,10 @@ public partial class TaxiGraph
     /// <summary>
     /// Refines a candidate exit by its branch. Unmeasured branches (nothing clears the runway within
     /// reach) leave the exit exactly as it was, so thin navdata can never lose an exit here.
-    /// A turnaround is replaced by its forward sibling when one exists; otherwise it is recorded as a
-    /// turnaround (130°, "End") — or dropped when <paramref name="dropTurnarounds"/> (the rescue scan).
+    /// A turnaround is replaced by its forward sibling when one exists, and that substitution
+    /// relocates the exit to the sibling's junction even when <paramref name="keepNode"/> is set;
+    /// otherwise it is recorded as a turnaround (130°, "End") — or dropped when
+    /// <paramref name="dropTurnarounds"/> (the rescue scan).
     /// A forward branch gets its sharpest turn to clear (capped at 90°) and, unless
     /// <paramref name="keepNode"/> (hold-short-anchored exits), moves to its junction.
     /// </summary>
@@ -47,17 +49,14 @@ public partial class TaxiGraph
 
     /// <summary>
     /// The exit at <paramref name="branch"/>'s junction, or null when that junction fails the same
-    /// distance rules every exit does (under 500 ft past the landing threshold, within 50 ft of the
-    /// pavement end, or not beyond <paramref name="minDistanceFromThresholdFeet"/>).
+    /// distance rules every exit does (closer than MIN_DIST_FT, 500 ft, past the landing threshold,
+    /// within END_BUFFER_FT, 50 ft, of the pavement end, or not beyond
+    /// <paramref name="minDistanceFromThresholdFeet"/>).
     /// </summary>
     private LandingExit? ExitAtJunction(
         LandingExitBranch branch, string name, int fallbackApronNodeId,
         Runway rwy, RunwayAxis axis, double minDistanceFromThresholdFeet)
     {
-        const double MIN_DIST_FT = 500.0;
-        const double END_BUFFER_FT = 50.0;
-        const double TOUCHDOWN_AIM_FT = 1000.0;
-
         if (!Nodes.TryGetValue(branch.JunctionNodeId, out var junction)) return null;
         double alongFt = axis.Project(junction.Latitude, junction.Longitude).AlongMetres / 0.3048;
         double distFromThresholdFt = alongFt - rwy.ThresholdOffset;
@@ -86,7 +85,8 @@ public partial class TaxiGraph
 
     // ExitBearingTrue by the existing rule, evaluated at the junction: the branch's first edge, replaced
     // by the junction→corridor-node chord when the first edge is under 20° and the chord is wider and
-    // forward (≤ 110°). Due north is stored as 360 so 0 keeps meaning "unknown".
+    // forward (≤ NORMAL_MAX_DEG, 110°, the producers' own apron-override guard). Due north is stored
+    // as 360 so 0 keeps meaning "unknown".
     private double BranchExitBearing(LandingExitBranch branch, double rwyHeadingTrue)
     {
         if (branch.Path.Count < 2) return 0.0;
@@ -99,17 +99,21 @@ public partial class TaxiGraph
         {
             double chord = NavigationCalculator.CalculateBearing(a.Latitude, a.Longitude, k.Latitude, k.Longitude);
             double chordRel = Math.Abs(NormalizeAngle(chord - rwyHeadingTrue));
-            if (chordRel <= 110.0 && chordRel > firstRel) bearing = chord;
+            if (chordRel <= NORMAL_MAX_DEG && chordRel > firstRel) bearing = chord;
         }
         return bearing == 0.0 ? 360.0 : bearing;
     }
 
-    // The existing classification thresholds (HIGH_SPEED_MAX_DEG 50, NORMAL_MAX_DEG 110, END_RATIO 0.85).
+    // The ONE exit classification rule, used by every producer (GetLandingExits' main and fallback
+    // passes, FindDownfieldExits, and the refinement above) with the class-scope thresholds: past
+    // END_RATIO of the runway is always End; otherwise High-speed up to HIGH_SPEED_MAX_DEG, Normal up
+    // to NORMAL_MAX_DEG, End beyond. The Length guard is moot for the producers, which all return
+    // early on Length <= 0.
     private static string ClassifyExit(double angleDeg, double alongFt, double runwayLengthFt)
     {
-        if (runwayLengthFt > 0 && alongFt / runwayLengthFt > 0.85) return "End";
-        if (angleDeg <= 50.0) return "High-speed";
-        if (angleDeg <= 110.0) return "Normal";
+        if (runwayLengthFt > 0 && alongFt / runwayLengthFt > END_RATIO) return "End";
+        if (angleDeg <= HIGH_SPEED_MAX_DEG) return "High-speed";
+        if (angleDeg <= NORMAL_MAX_DEG) return "Normal";
         return "End";
     }
 }
