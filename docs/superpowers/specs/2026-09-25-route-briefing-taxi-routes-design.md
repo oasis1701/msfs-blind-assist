@@ -275,13 +275,19 @@ data is not available / not yet available / disabled in settings" as applicable)
    `RouteRunwayCrossings.InsertRunwayHoldShorts(route, graph.RunwayCenterlines, $"Runway {id}",
    aircraft: null)`.
 5. `Taxiways` = `RouteTaxiwaySequence.DistinctConsecutive(route.Segments)` (unnamed segments
-   dropped); `DistanceMetres` = `route.TotalDistanceMeters`; `HoldShorts` = one note per segment
-   with `IsHoldShortPoint`: runway = `HoldShortRunway`, taxiway = the segment's `TaxiwayName`
-   (or the previous named segment's), `BeforeEntering` = the runway is the departure runway
-   (reciprocal-aware via `RouteRunwayCrossings.Reciprocal`). A `RunwayEvent` with `Held == false`
-   adds the note "no hold short point could be placed for runway X (cross with care)". If the
-   route's start hold (`TaxiRoute.StartHoldRunway`) names a runway, a hold note is emitted for it
-   at the first taxiway.
+   dropped); `DistanceMetres` = `route.TotalDistanceMeters`; `HoldShorts` = one note per runway
+   named on each segment with `IsHoldShortPoint` (runway = `HoldShortRunway`, taxiway = the
+   segment's `TaxiwayName` or the previous named segment's), in route order and never
+   de-duplicated — a runway crossed twice is briefed twice. Every such note is a crossing
+   (`BeforeEntering = false`), including one naming the departure runway: the pass skips the
+   route's own arrival onto the departure runway, so a hold it records for that runway is a
+   crossing on the way to its threshold. The "before entering" hold is ALWAYS appended as the
+   last note, on the route's last named taxiway (revised during review: the first version marked
+   any departure-runway hold as "before entering", which briefed such a crossing as the entry and
+   dropped the real entry hold). A `RunwayEvent` with `Held == false` adds the note "no hold short
+   point could be placed for runway X (cross with care)". If the route's start hold
+   (`TaxiRoute.StartHoldRunway`) names a runway, a hold note is emitted for it at the first
+   taxiway.
 6. `NarrowTaxiways`: for each distinct taxiway on the route, the minimum `WidthFeet` of its edges
    on the route; when `> 0` and below `MinTaxiwayWidthMetres(aircraft.CodeLetter)` (converted),
    one note. Width 0 (unknown, and every OSM edge) never produces a note.
