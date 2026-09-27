@@ -12,24 +12,32 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 ///    for an open window only. The window keeps reading the screen while closed precisely so
 ///    these messages still reach the pilot, as they did when SimBridge was the only transport.
 ///
-/// Typed entries are held (<see cref="HoldForTyping"/>) so a half-typed scratchpad is never read
-/// back: over the Coherent transport a frame arrives only every 250 ms plus the eval round trip,
-/// longer than the window's old 300 ms debounce could bridge.
+/// A changed scratchpad is spoken once it has shown for <see cref="StableMs"/>, and typed entries
+/// are held (<see cref="HoldForTyping"/>) while their keys land, so neither a value the window saw
+/// in a single read nor a half-typed entry is read back. Over the Coherent transport a frame
+/// arrives only every 250 ms plus the eval round trip, which the window's old 300 ms debounce
+/// could not bridge.
 /// </summary>
 internal sealed class FbwMcduReadBack
 {
     public const string ClearedText = "Scratchpad cleared";
 
-    /// <summary>The window's read-back tick. A change is spoken once it has read the same on two
-    /// consecutive ticks (150-300 ms, the old debounce's 300 ms), so a one-tick flicker is not.</summary>
-    public const int TickMs = 150;
+    /// <summary>The window's read-back tick. It re-samples the LAST frame the window received, so a
+    /// count of ticks measures how long a value has shown, not how many reads saw it.</summary>
+    public const int TickMs = 100;
+
+    /// <summary>How long a changed scratchpad must show before it is spoken: longer than one Coherent
+    /// read (the 250 ms poll plus an eval round trip of up to 150 ms), so a value the window saw in a
+    /// single read is never spoken — a redraw caught mid-way, or the 150 ms blank FBW leaves before
+    /// showing the next queued message.</summary>
+    public const int StableMs = 400;
 
     /// <summary>How long after each typed key the read-back holds: FBW's keypad applies a key
     /// 150-200 ms after it arrives, and the window may see the change only on the next 250 ms
     /// Coherent read.</summary>
     public const int TypingSettleMs = 600;
 
-    private readonly CduScratchpadAnnouncer _scratchpad = new(ClearedText, stablePolls: 2);
+    private readonly CduScratchpadAnnouncer _scratchpad = new(ClearedText, stablePolls: StableMs / TickMs + 1);
     private string _lastTitle = "";
 
     public FbwMcduReadBack()

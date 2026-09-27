@@ -5,6 +5,10 @@
 // page changes or "Scratchpad cleared". And over the Coherent transport a frame arrives only
 // every 250 ms plus the eval round trip, while FBW's keypad applies each key 150-200 ms after
 // it lands, so a typed entry must be held until it has landed or its halves are read back.
+//
+// The window's timer re-samples the LAST frame on every tick, so these tests play frames by
+// how long each one showed, not by ticks: what a pilot hears must not depend on where the
+// tick happened to fall.
 
 using MSFSBlindAssist.Forms.FlyByWireA320;
 
@@ -15,18 +19,33 @@ public class FbwMcduReadBackTests
     private static readonly DateTime T0 = new(2026, 9, 27, 12, 0, 0, DateTimeKind.Utc);
     private static DateTime At(int ms) => T0.AddMilliseconds(ms);
 
-    /// <summary>Feed one scratchpad value per window tick, starting at <paramref name="fromMs"/>;
-    /// returns everything the read-back said.</summary>
-    private static List<string> Ticks(FbwMcduReadBack readBack, bool windowVisible, int fromMs, params string[] scratchpadPerTick)
+    /// <summary>
+    /// Show each scratchpad for its duration, starting at <paramref name="fromMs"/>, and tick the
+    /// read-back as the window's timer does — the first tick <paramref name="phaseMs"/> after the
+    /// first frame. Returns everything the read-back said.
+    /// </summary>
+    private static List<string> Play(FbwMcduReadBack readBack, bool windowVisible, int fromMs, int phaseMs,
+        params (string Scratchpad, int Ms)[] frames)
     {
         var said = new List<string>();
-        for (int i = 0; i < scratchpadPerTick.Length; i++)
+        int end = frames.Sum(f => f.Ms);
+        for (int t = phaseMs; t < end; t += FbwMcduReadBack.TickMs)
         {
-            var say = readBack.OnScratchpadTick(scratchpadPerTick[i], windowVisible, At(fromMs + i * FbwMcduReadBack.TickMs));
+            int startsAt = 0;
+            string showing = frames[^1].Scratchpad;
+            foreach (var frame in frames)
+            {
+                if (t < startsAt + frame.Ms) { showing = frame.Scratchpad; break; }
+                startsAt += frame.Ms;
+            }
+            var say = readBack.OnScratchpadTick(showing, windowVisible, At(fromMs + t));
             if (say != null) { said.Add(say); }
         }
         return said;
     }
+
+    private static List<string> Play(FbwMcduReadBack readBack, bool windowVisible, params (string Scratchpad, int Ms)[] frames)
+        => Play(readBack, windowVisible, fromMs: 0, phaseMs: 0, frames);
 
     // ------------------------------------------------------------------ page titles
 
@@ -63,7 +82,7 @@ public class FbwMcduReadBackTests
     {
         var readBack = new FbwMcduReadBack();
         Assert.Equal(new[] { "DEST EFOB BELOW MIN" },
-            Ticks(readBack, windowVisible: false, 0, "", "DEST EFOB BELOW MIN", "DEST EFOB BELOW MIN"));
+            Play(readBack, windowVisible: false, ("", 500), ("DEST EFOB BELOW MIN", 1500)));
     }
 
     [Fact]
@@ -71,11 +90,11 @@ public class FbwMcduReadBackTests
     {
         var readBack = new FbwMcduReadBack();
         Assert.Equal(new[] { "CHECK DEST DATA" },
-            Ticks(readBack, windowVisible: false, 0, "CHECK DEST DATA", "CHECK DEST DATA", "", "", ""));
+            Play(readBack, windowVisible: false, ("CHECK DEST DATA", 1500), ("", 1500)));
 
         // ...and the next message is still spoken.
         Assert.Equal(new[] { "SET HOLD SPEED" },
-            Ticks(readBack, windowVisible: false, 1000, "SET HOLD SPEED", "SET HOLD SPEED"));
+            Play(readBack, windowVisible: false, fromMs: 3000, phaseMs: 0, ("SET HOLD SPEED", 1500)));
     }
 
     [Fact]
@@ -83,7 +102,7 @@ public class FbwMcduReadBackTests
     {
         var readBack = new FbwMcduReadBack();
         Assert.Equal(new[] { "KJFK", FbwMcduReadBack.ClearedText },
-            Ticks(readBack, windowVisible: true, 0, "KJFK", "KJFK", "", ""));
+            Play(readBack, windowVisible: true, ("KJFK", 1500), ("", 1500)));
     }
 
     [Fact]
@@ -91,14 +110,48 @@ public class FbwMcduReadBackTests
     {
         var readBack = new FbwMcduReadBack();
         Assert.Equal(new[] { "CHECK DEST DATA" },
-            Ticks(readBack, windowVisible: true, 0, "CHECK DEST DATA", "CHECK DEST DATA"));
+            Play(readBack, windowVisible: true, ("CHECK DEST DATA", 1500)));
     }
 
     [Fact]
     public void A_one_tick_flicker_is_not_spoken()
     {
         var readBack = new FbwMcduReadBack();
-        Assert.Empty(Ticks(readBack, windowVisible: true, 0, "", "NOT ALLOWED", "", "NOT ALLOWED", ""));
+        Assert.Empty(Play(readBack, windowVisible: true,
+            ("", 1500), ("NOT ALLOWED", FbwMcduReadBack.TickMs), ("", 1500)));
+    }
+
+    /// <summary>One Coherent read: the 250 ms poll plus an eval round trip of 20, 50 or 100 ms. A
+    /// value the window saw in one read shows in the window for that long.</summary>
+    public static TheoryData<int> OneReadMs => new() { 270, 300, 350 };
+
+    [Theory]
+    [MemberData(nameof(OneReadMs))]
+    public void A_blank_seen_for_one_read_between_the_same_message_is_not_spoken(int oneReadMs)
+    {
+        // A redraw caught mid-way: whatever the tick's phase, the pilot hears the message once.
+        for (int phase = 0; phase < FbwMcduReadBack.TickMs; phase += 10)
+        {
+            var readBack = new FbwMcduReadBack();
+            Assert.Equal(new[] { "NOT ALLOWED" },
+                Play(readBack, windowVisible: true, fromMs: 0, phaseMs: phase,
+                    ("NOT ALLOWED", 1500), ("", oneReadMs), ("NOT ALLOWED", 1500)));
+        }
+    }
+
+    [Theory]
+    [MemberData(nameof(OneReadMs))]
+    public void The_next_queued_message_follows_a_one_read_blank_without_scratchpad_cleared(int oneReadMs)
+    {
+        // FBW blanks the scratchpad for 150 ms before showing the next queued message; a read that
+        // lands in that gap must not put "Scratchpad cleared" between the two messages.
+        for (int phase = 0; phase < FbwMcduReadBack.TickMs; phase += 10)
+        {
+            var readBack = new FbwMcduReadBack();
+            Assert.Equal(new[] { "CHECK DEST DATA", "SET HOLD SPEED" },
+                Play(readBack, windowVisible: true, fromMs: 0, phaseMs: phase,
+                    ("CHECK DEST DATA", 1500), ("", oneReadMs), ("SET HOLD SPEED", 1500)));
+        }
     }
 
     [Fact]
@@ -122,8 +175,7 @@ public class FbwMcduReadBackTests
             }
         }
 
-        said.AddRange(Ticks(readBack, windowVisible: true, lastKeyMs + 10,
-            Enumerable.Repeat("KJFK/EGLL", 8).ToArray()));
+        said.AddRange(Play(readBack, windowVisible: true, fromMs: lastKeyMs + 10, phaseMs: 0, ("KJFK/EGLL", 2000)));
 
         Assert.Equal(new[] { "KJFK/EGLL" }, said);
     }
