@@ -68,15 +68,15 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // mid-move), and continuous monitoring only fires on change, so a value that
     // settles at a detent produces one final event then silence. We therefore
     // announce on a trailing-edge SETTLE timer: every change restarts the timer
-    // and the resting detent is announced once movement stops. The detents live
-    // in PmdgSpeedBrakeLever.Ng3, shared with the Control Stand combo. Positions
-    // that come to rest between detents say nothing.
-    private readonly object _speedBrakeLock = new object();
-    private double _speedBrakeLatestValue = double.NaN;
-    private int _lastSpeedBrakeDetentAnnounced = int.MinValue;
-    private System.Threading.Timer? _speedBrakeSettleTimer;
-    private ScreenReaderAnnouncer? _speedBrakeAnnouncer;
-    private const int SpeedBrakeSettleMs = 300;
+    // and the resting detent is announced once movement stops. The detents and
+    // the settle announcer (shared with the 777) live in PmdgSpeedBrakeLever.cs;
+    // the announcer also honours the Ctrl+M mute and silences the pilot's own
+    // combo pick, since its timer speaks outside MainForm's suppression wrap.
+    // Positions that come to rest between detents say nothing. The first settle
+    // is the lever's position at load, so it is recorded silently.
+    private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
+        PmdgSpeedBrakeLever.Ng3, PmdgSpeedBrakeLever.Ng3SettleTolerance, PmdgSpeedBrakeLever.Ng3SettleMs,
+        muteKey: "MON_PMDG737_SpeedBrake", speakFirst: false);
 
     // EFIS Minimums knob step sizes per click on the PMDG NG3 737. RADIO mode
     // (DH) clicks in 1-ft increments; BARO mode (DA) clicks in 20-ft increments.
@@ -86,48 +86,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private const int MINS_STEP_FT_BARO  = 20;
     // Safety cap on a single Set operation. ~40 seconds worst-case at 40ms/click.
     private const int MINS_MAX_CLICKS_PER_SET = 1000;
-
-    // The detent index the handle is resting at (within tolerance), or -1 if it
-    // came to rest between named detents.
-    private static int SettledSpeedBrakeDetent(double value)
-        => PmdgSpeedBrakeLever.SettledIndex(
-            PmdgSpeedBrakeLever.Ng3, value, PmdgSpeedBrakeLever.Ng3SettleTolerance);
-
-    // Fires SpeedBrakeSettleMs after the handle stops moving (the timer is
-    // restarted on every value change). Announces the resting detent once,
-    // skipping the initial baseline and unchanged positions. Runs on a
-    // thread-pool thread; ScreenReaderAnnouncer.Announce is queue-locked and
-    // safe to call off the UI thread.
-    private void OnSpeedBrakeSettle(object? state)
-    {
-        // Runs on a threadpool thread (System.Threading.Timer). An unhandled throw
-        // here would crash the process, so guard the whole callback.
-        try
-        {
-            double value;
-            ScreenReaderAnnouncer? announcer;
-            lock (_speedBrakeLock)
-            {
-                value = _speedBrakeLatestValue;
-                announcer = _speedBrakeAnnouncer;
-            }
-            if (announcer == null || double.IsNaN(value)) return;
-
-            int idx = SettledSpeedBrakeDetent(value);
-            if (idx < 0) return;  // resting between detents — say nothing
-
-            bool announce;
-            lock (_speedBrakeLock)
-            {
-                if (idx == _lastSpeedBrakeDetentAnnounced) return;
-                announce = _lastSpeedBrakeDetentAnnounced != int.MinValue;  // skip baseline
-                _lastSpeedBrakeDetentAnnounced = idx;
-            }
-            if (announce)
-                announcer.Announce(PmdgSpeedBrakeLever.Ng3[idx].Spoken!);
-        }
-        catch { /* never let a timer callback take down the app */ }
-    }
 
     // Flap-position announcement state. The NG3 SDK exposes only the analog
     // trailing-edge needle (MAIN_TEFlapsNeedle, degrees) — no commanded-detent
@@ -4168,11 +4126,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         //     detent the lever already rests at does nothing, and the 1 Hz
         //     cached read-back cannot say where the lever is NOW (a guard on it
         //     dropped a quick correction made while the lever was still moving).
-        //     The commanded detent is recorded as ALREADY ANNOUNCED, silently:
-        //     the screen reader has just read the pick, and the settle timer
+        //     A click that was SENT is recorded as a pick: the settle timer
         //     that announces the lever runs outside MainForm's UI-echo
-        //     suppression, so without this the pick was spoken twice. A lever
-        //     that comes to rest anywhere ELSE still announces.
+        //     suppression, so the lever arriving at the picked detent is
+        //     recorded silently (the screen reader has just read the pick).
+        //     A lever that comes to rest anywhere ELSE still announces, and so
+        //     does a later arrival once the pick's memory lapses. With no PMDG
+        //     data manager the click cannot go out at all, so that is said.
         // ------------------------------------------------------------------
         if (varKey == "MON_PMDG737_SpeedBrake")
         {
@@ -4182,8 +4142,14 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 string sbDetentEvent = PmdgSpeedBrakeLever.Ng3[sbIdx].EventName;
                 if (EventIds.TryGetValue(sbDetentEvent, out int sbEvId))
                 {
-                    lock (_speedBrakeLock) _lastSpeedBrakeDetentAnnounced = sbIdx;
-                    simConnect.SendPMDGEvent(sbDetentEvent, (uint)sbEvId, PmdgSpeedBrakeLever.MouseFlagLeftSingle);
+                    var sbDm = simConnect.PMDGDataManager;
+                    if (sbDm == null || !sbDm.IsReady)
+                    {
+                        announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                        return true;
+                    }
+                    simConnect.SendPMDGEvent(sbDetentEvent, (uint)sbEvId, PmdgMouseFlags.LeftSingle);
+                    _speedBrakeCallout.RecordPick(sbIdx);
                 }
             }
             return true;
@@ -4947,7 +4913,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             // SPOILERS HANDLE POSITION SimVar, so this is the only source for
             // the full position (down / armed / 50% / flight / fully deployed).
             // The L-var sweeps as the lever animates; the resting detent is
-            // announced via the trailing-edge settle timer (OnSpeedBrakeSettle).
+            // announced via the trailing-edge settle timer (PmdgSpeedBrakeCallout).
             // Replaces the old 3-state annunciator-derived callout.
             // -------------------------------------------------------------
             case "MON_PMDG737_SpeedBrake":
@@ -4955,13 +4921,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 // The L-var sweeps as the lever animates; defer the callout to a
                 // trailing-edge settle timer (restarted on every change) so we
                 // announce only the resting detent, not values swept through.
-                lock (_speedBrakeLock)
-                {
-                    _speedBrakeLatestValue = value;
-                    _speedBrakeAnnouncer = announcer;
-                }
-                (_speedBrakeSettleTimer ??= new System.Threading.Timer(OnSpeedBrakeSettle))
-                    .Change(SpeedBrakeSettleMs, System.Threading.Timeout.Infinite);
+                _speedBrakeCallout.OnSample(value, announcer);
                 return true;
             }
 

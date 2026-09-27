@@ -5495,6 +5495,19 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private int _prevCockpitDoorOpen = -1;
     private DateTime _cockpitDoorSetEcho = DateTime.MinValue;
 
+    // Speed-brake lever callout — the settle announcer shared with the 737
+    // (PmdgSpeedBrakeLever.cs). FCTL_Speedbrake_Lever sweeps through every value
+    // while the lever moves and the CDA is polled once a second, so each sample
+    // restarts a timer that outlasts one poll and only the resting position is
+    // spoken. It reads the one detent table, honours the Ctrl+M mute itself (its
+    // timer speaks outside MainForm's suppression wrap) and silences the arrival
+    // of the pilot's own combo pick. The CDA's initial snapshot never reaches
+    // ProcessSimVarUpdate, so the first sample it does see is a real change.
+    private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
+        PmdgSpeedBrakeLever.B777, PmdgSpeedBrakeLever.B777SettleTolerance, PmdgSpeedBrakeLever.B777SettleMs,
+        muteKey: "FCTL_Speedbrake", speakFirst: true,
+        betweenDetents: PmdgSpeedBrakeLever.B777PartialDeployment);
+
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
     private double _lastComActiveFreq1;
@@ -6355,7 +6368,9 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         //     _ARM lit the ARMED annunciator; the bare param was silent).
         //     No already-there guard: a click into the current detent does
         //     nothing, and the polled read-back cannot say where a moving
-        //     lever is now.
+        //     lever is now. A SENT click is recorded as a pick, so the settle
+        //     announcer stays silent when the lever arrives there (the screen
+        //     reader has just read the pick). Not ready: said, like FCTL_Flaps.
         // ------------------------------------------------------------------
         if (varKey == "FCTL_Speedbrake")
         {
@@ -6364,7 +6379,16 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 string sbDetentEvent = PmdgSpeedBrakeLever.B777[sbIdx].EventName;
                 if (EventIds.TryGetValue(sbDetentEvent, out int sbEvId))
-                    simConnect.SendPMDGEvent(sbDetentEvent, (uint)sbEvId, PmdgSpeedBrakeLever.MouseFlagLeftSingle);
+                {
+                    var sbDm = simConnect.PMDGDataManager;
+                    if (sbDm == null || !sbDm.IsReady)
+                    {
+                        announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                        return true;
+                    }
+                    simConnect.SendPMDGEvent(sbDetentEvent, (uint)sbEvId, PmdgMouseFlags.LeftSingle);
+                    _speedBrakeCallout.RecordPick(sbIdx);
+                }
             }
             return true;
         }
@@ -6485,8 +6509,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             string detentEvent = "EVT_CONTROL_STAND_FLAPS_LEVER" + detentSuffix;
             if (EventIds.TryGetValue(detentEvent, out int detentId))
             {
-                const int MOUSE_FLAG_LEFTSINGLE = 0x20000000;
-                simConnect.SendPMDGEvent(detentEvent, (uint)detentId, MOUSE_FLAG_LEFTSINGLE);
+                simConnect.SendPMDGEvent(detentEvent, (uint)detentId, PmdgMouseFlags.LeftSingle);
             }
             return true;
         }
@@ -6645,20 +6668,11 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             return true;
         }
 
-        // Speed brake — custom formatting for lever position
+        // Speed brake — the resting lever position, from the one detent table,
+        // on a trailing-edge settle timer (see _speedBrakeCallout).
         if (varName == "FCTL_Speedbrake")
         {
-            int lever = (int)Math.Round(value);
-            if (lever <= 0)
-                announcer.Announce("Speed brake down");
-            else if (lever <= 50)
-                announcer.Announce("Speed brake armed");
-            else
-            {
-                // 51-100 = deployed, map to percentage
-                int pct = (int)Math.Round((lever - 50.0) / 50.0 * 100);
-                announcer.Announce($"Speed brake {pct} percent");
-            }
+            _speedBrakeCallout.OnSample(value, announcer);
             return true;
         }
 
