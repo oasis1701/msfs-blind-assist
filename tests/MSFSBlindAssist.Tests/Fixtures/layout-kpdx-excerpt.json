@@ -1,0 +1,19 @@
+{
+  "content": [
+    {
+      "path": "bglindex.bout",
+      "size": 61544,
+      "date": 133986151050006009
+    },
+    {
+      "path": "scenery/global/scenery/modellib.bgl",
+      "size": 423623764,
+      "date": 133986151050000006
+    },
+    {
+      "path": "scenery/world/scenery/flightbeam-airport-kpdx-addl-objects.bgl",
+      "size": 27804,
+      "date": 133916062620000006
+    }
+  ]
+}

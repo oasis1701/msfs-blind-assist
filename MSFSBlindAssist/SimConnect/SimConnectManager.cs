@@ -142,6 +142,7 @@ public partial class SimConnectManager
     public event EventHandler<FlightAttitudeData>? FlightAttitudeReceived;
 
     internal void SetLastGpsWaypoint(GpsWaypointData data) => LastGpsWaypoint = data;
+    public event EventHandler<Com1RadioData>? Com1RadioReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
     // assist. Fired only while StartFlareAssistMonitoring is active.
@@ -520,8 +521,11 @@ public partial class SimConnectManager
         // The FIRST of CameraReadIdCount (8) ids, 341-348: each read goes out under its own id
         // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
         REQUEST_CAMERA_VIEW = 341,
-        REQUEST_GPS_WAYPOINT = 349,
+        REQUEST_GPS_WAYPOINT = 351,   // NOT 341-349: 341-348 are the camera read's rotating ids, 349 is COM 1
         REQUEST_FLIGHT_ATTITUDE = 350,
+        // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
+        // camera's rotating 341-348.
+        REQUEST_COM1_RADIO = 349,
         REQUEST_AI_TRAFFIC = 500,
         // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
         // radius), on their OWN ids so a completion can never be confused with a TCAS or other
@@ -604,8 +608,9 @@ public partial class SimConnectManager
         // to CameraViewData, so a definition landing at 342 would have its SingleValue answer
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
-        DEF_GPS_WAYPOINT = 349,
+        DEF_GPS_WAYPOINT = 351,   // NOT 341-349: 341-348 are the camera read's rotating ids, 349 is COM 1
         DEF_FLIGHT_ATTITUDE = 350,
+        DEF_COM1_RADIO = 349,
         DEF_AI_TRAFFIC = 500,
         // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
         // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
@@ -710,6 +715,14 @@ public partial class SimConnectManager
         public double GroundSpeedKnots;
         public double VerticalSpeedFPM;
         public double SimOnGround;
+        /// <summary>The sim's SURFACE TYPE enum under the wheels. Meaningful only while
+        /// <see cref="SurfaceInfoValid"/> is non-zero — classify it through
+        /// <c>Navigation.Surroundings.SurfaceFamilies</c>, never by comparing the raw number.
+        /// Measured live in MSFS 2024: 0 concrete, 1 grass, 4 asphalt.</summary>
+        public double SurfaceType;
+        /// <summary>SURFACE INFO VALID — false means <see cref="SurfaceType"/> says nothing at
+        /// all, not that the surface is of some default kind.</summary>
+        public double SurfaceInfoValid;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -869,6 +882,14 @@ public partial class SimConnectManager
         /// </summary>
         public double RouteEteSeconds;
         public double GroundSpeedKnots;
+    }
+
+    /// <summary>COM 1 as the sim holds it, in Hz (DEF_COM1_RADIO; order is the contract).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct Com1RadioData
+    {
+        public double ActiveHz;
+        public double StandbyHz;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -1421,6 +1442,7 @@ public partial class SimConnectManager
 
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();
+        _pausedSimFrameSubscriptions.Clear();
         requestIdToVarKey.Clear();
         _freshRequestIdToVarKey.Clear();
         // Definition ids are per connection: restart them as ReregisterAllVariables does, so they (and

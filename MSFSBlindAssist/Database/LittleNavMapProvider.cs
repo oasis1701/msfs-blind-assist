@@ -7,7 +7,7 @@ namespace MSFSBlindAssist.Database;
 /// Airport data provider using navdatareader-generated databases.
 /// Supports both FS2020 and FS2024 databases using the Little Navmap schema.
 /// </summary>
-public class LittleNavMapProvider : IAirportDataProvider
+public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProvider
 {
     private readonly string _connectionString;
     private readonly string _simulatorVersion;
@@ -496,6 +496,70 @@ public class LittleNavMapProvider : IAirportDataProvider
         return parkingSpots;
     }
 
+    public AirportFacilities? GetAirportFacilities(string icao)
+    {
+        if (!DatabaseExists) return null;
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+
+        // The same row the stands, runways and taxi paths come from (GetAirportId), so the facts
+        // spoken beside them always describe that airport.
+        int airportId = GetAirportId(connection, icao);
+        if (airportId == -1) return null;
+
+        bool avgas, jet, towerObject; double left, right, top, bottom; string sceneryPath;
+        double refLat, refLon; int helipads; double? towerLat = null, towerLon = null;
+        using (var cmd = new SqliteCommand(@"
+            SELECT has_avgas, has_jetfuel, has_tower_object, left_lonx, right_lonx, top_laty, bottom_laty,
+                   scenery_local_path, tower_laty, tower_lonx, laty, lonx, num_helipad
+            FROM airport WHERE airport_id = @Id", connection))
+        {
+            cmd.Parameters.AddWithValue("@Id", airportId);
+            using var r = cmd.ExecuteReader();
+            if (!r.Read()) return null;
+            avgas = SafeReadInt(r, "has_avgas", 0) == 1;
+            jet = SafeReadInt(r, "has_jetfuel", 0) == 1;
+            // NULL reads as "no tower". A table without the column fails the SELECT, exactly as a
+            // table without tower_laty always has.
+            towerObject = SafeReadInt(r, "has_tower_object", 0) == 1;
+            left = SafeReadDouble(r, "left_lonx", 0.0);   right = SafeReadDouble(r, "right_lonx", 0.0);
+            top = SafeReadDouble(r, "top_laty", 0.0);     bottom = SafeReadDouble(r, "bottom_laty", 0.0);
+            sceneryPath = r["scenery_local_path"] is string s ? s : "";
+            refLat = SafeReadDouble(r, "laty", 0.0);      refLon = SafeReadDouble(r, "lonx", 0.0);
+            helipads = SafeReadInt(r, "num_helipad", 0);
+            int tLat = r.GetOrdinal("tower_laty"), tLon = r.GetOrdinal("tower_lonx");
+            if (!r.IsDBNull(tLat) && !r.IsDBNull(tLon)) { towerLat = r.GetDouble(tLat); towerLon = r.GetDouble(tLon); }
+        }
+
+        var fac = new AirportFacilities
+        {
+            Icao = icao.ToUpperInvariant(), HasAvgas = avgas, HasJetFuel = jet, HasTowerObject = towerObject,
+            LeftLon = left, RightLon = right, TopLat = top, BottomLat = bottom, SceneryLocalPath = sceneryPath,
+            TowerLat = towerLat, TowerLon = towerLon, RefLat = refLat, RefLon = refLon,
+        };
+
+        // helipad has no airport_id index — a 64,265-row scan for the (common) airport with none.
+        if (helipads > 0)
+        {
+            using (var cmd = new SqliteCommand("SELECT laty, lonx FROM helipad WHERE airport_id = @Id AND is_closed = 0", connection))
+            {
+                cmd.Parameters.AddWithValue("@Id", airportId);
+                using var r = cmd.ExecuteReader();
+                while (r.Read())
+                    fac.Helipads.Add(new Navigation.Surroundings.LatLon(Convert.ToDouble(r["laty"]), Convert.ToDouble(r["lonx"])));
+            }
+        }
+
+        using (var cmd = new SqliteCommand("SELECT type, frequency, name FROM com WHERE airport_id = @Id ORDER BY com_id", connection))
+        {
+            cmd.Parameters.AddWithValue("@Id", airportId);
+            using var r = cmd.ExecuteReader();
+            while (r.Read())
+                fac.Coms.Add(new ComFrequency(r["type"]?.ToString() ?? "", SafeReadInt(r, "frequency", 0), r["name"]?.ToString() ?? ""));
+        }
+        return fac;
+    }
+
     public bool AirportExists(string icao)
     {
         if (!DatabaseExists)
@@ -533,10 +597,10 @@ public class LittleNavMapProvider : IAirportDataProvider
             // (no `icao`) — common at small fields and many third-party scenery
             // packs — still come back. This method was originally added for
             // GateResolver.GetCandidateAirports (TCAS gate lookup), which depends
-            // on the ident fallback to find the user's parking field. Callers
-            // that need a strict 4-char ICAO (e.g. the taxi-graph builder, which
-            // queries by canonical ICAO) must filter the result list themselves —
-            // do NOT push the LENGTH(icao)=4 filter back into this SQL.
+            // on the ident fallback to find the user's parking field. Never use it for
+            // which airport our own aircraft is at — that is CurrentAirport.Resolve (this
+            // list is ordered by raw degrees). Never add a LENGTH(icao)=4 filter: short
+            // idents are real airports.
             var sql = @"SELECT COALESCE(NULLIF(icao, ''), ident) AS code, laty, lonx
                         FROM airport
                         WHERE laty BETWEEN @MinLat AND @MaxLat
@@ -565,6 +629,39 @@ public class LittleNavMapProvider : IAirportDataProvider
             }
         }
 
+        return results;
+    }
+
+    /// <summary>
+    /// Airports within <paramref name="radiusNm"/>, with box, reference point and taxi-path count, for
+    /// <c>CurrentAirportResolver</c>. Unfiltered (heliports included), unlike <see cref="GetNearbyAirportICAOs"/>.
+    /// </summary>
+    public IReadOnlyList<AirportCandidate> GetNearbyAirportCandidates(double latitude, double longitude, double radiusNm)
+    {
+        var results = new List<AirportCandidate>();
+        if (!DatabaseExists) return results;
+        double latDelta = radiusNm / 60.0;
+        double lonDelta = radiusNm / (60.0 * Math.Max(0.05, Math.Cos(latitude * Math.PI / 180.0)));
+
+        using var connection = new SqliteConnection(_connectionString);
+        connection.Open();
+        using var cmd = new SqliteCommand(@"
+            SELECT ident, laty, lonx, left_lonx, right_lonx, top_laty, bottom_laty, num_taxi_path
+            FROM airport
+            WHERE laty BETWEEN @MinLat AND @MaxLat AND lonx BETWEEN @MinLon AND @MaxLon
+              AND ident IS NOT NULL AND ident != ''", connection);
+        cmd.Parameters.AddWithValue("@MinLat", latitude - latDelta);
+        cmd.Parameters.AddWithValue("@MaxLat", latitude + latDelta);
+        cmd.Parameters.AddWithValue("@MinLon", longitude - lonDelta);
+        cmd.Parameters.AddWithValue("@MaxLon", longitude + lonDelta);
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+            results.Add(new AirportCandidate(
+                r["ident"]?.ToString() ?? "",
+                SafeReadDouble(r, "laty", 0.0), SafeReadDouble(r, "lonx", 0.0),
+                SafeReadDouble(r, "left_lonx", 0.0), SafeReadDouble(r, "right_lonx", 0.0),
+                SafeReadDouble(r, "top_laty", 0.0), SafeReadDouble(r, "bottom_laty", 0.0),
+                SafeReadInt(r, "num_taxi_path", 0)));
         return results;
     }
 
@@ -705,17 +802,20 @@ public class LittleNavMapProvider : IAirportDataProvider
 
     #region Helper Methods
 
+    /// <summary>
+    /// The airport-row lookup for every airport_id-keyed read (runways, stands, taxi paths, starts, the
+    /// orphan-ILS relink, surroundings facilities), so none of them can describe different rows.
+    /// GetAirport and AirportExists keep their own scan. Indexed columns against an upper-cased
+    /// PARAMETER, never UPPER(column), which scanned the table (14.3 ms against 0.10 ms on fs2024,
+    /// same row for every code). Returns -1 when nothing matches.
+    /// </summary>
     private int GetAirportId(SqliteConnection connection, string icao)
     {
-        var sql = "SELECT airport_id FROM airport WHERE UPPER(icao) = UPPER(@ICAO) OR UPPER(ident) = UPPER(@ICAO) LIMIT 1";
-
-        using (var command = new SqliteCommand(sql, connection))
-        {
-            command.Parameters.AddWithValue("@ICAO", icao);
-
-            var result = command.ExecuteScalar();
-            return result != null ? Convert.ToInt32(result) : -1;
-        }
+        using var command = new SqliteCommand(
+            "SELECT airport_id FROM airport WHERE ident = @Code OR icao = @Code LIMIT 1", connection);
+        command.Parameters.AddWithValue("@Code", icao.ToUpperInvariant());
+        var result = command.ExecuteScalar();
+        return result != null ? Convert.ToInt32(result) : -1;
     }
 
     private Runway CreateRunwayFromReader(SqliteDataReader reader, string icao, bool isPrimary, double magVar, OrphanIlsLookup orphanIls)

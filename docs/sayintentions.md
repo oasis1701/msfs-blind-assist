@@ -1696,9 +1696,16 @@ returns thousands of rows, and never a graph build just to validate an ident). A
 candidate skipped for not being in the database is logged at **Debug**
 (`Import airport candidate 'KZOA' is not in the navigation database; trying the
 next.`) rather than Info — it is normal traffic on a cruise-phase read, not a problem.
-Only once every candidate has been tried and rejected does `ResolveSayIntentionsAirport`
-fall back to the nearest airport by position, exactly as it did before this validation
-existed.
+Only once every candidate has been tried and rejected does `ResolveImportAirport`
+fall back to position, and then to the airport the aircraft is AT —
+`CurrentAirport.Resolve`, the resolver Where Am I and Look Around use.
+`MainForm.ResolveImportAirport` owns that order and is xUnit-pinned
+(`SayIntentionsImportAirportTests`); `ResolveSayIntentionsAirport` only hands it
+flight.json's three candidates and the position. The fallback used to be the
+first four-character code nearest the reference point, which at 111 of KSNA's
+201 stands is heliport 10CL — no taxi paths, so the import would abort with
+*"No taxi path data available for 10CL."* — and which could never name a field
+with a three-character ident.
 
 This is the fix behind the ARTCC-facility finding above: preferring `current_airport`
 unvalidated dead-ended the import on a controlling-center ident with *"No taxi path
