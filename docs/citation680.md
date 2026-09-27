@@ -19,27 +19,42 @@ never decides, gates or auto-completes a pilot action.
   so each MSFSBA window owns its view's client and the definition holds the one MFD client the
   engine strip and the synoptic reader share.
 - **The vendor plugin intercepts several stock events** (generators, APU generator, autopilot
-  disconnect, autothrottle) with passthrough off and keeps the switch state privately. The
-  stock switch SimVars never move; generator state is read from the bus lines the plugin
-  closes (`LINE CONNECTION ON:n`).
+  disconnect, autothrottle, pitch trim) and keeps some switch state privately. The generator
+  and APU generator switches are driven through their own input events
+  (`B:ELECTRICAL_Alternator_n_On|Off|Reset`, `B:ELECTRICAL_APU_Generator_1_Set`), and the
+  bus lines they close (`LINE CONNECTION ON:n`) say whether each is on line.
+- **Switch positions the app cannot read are mirrored.** A SimConnect data definition cannot
+  read a `B:` input-event value or a named circuit, so `C680SwitchMirror` runs one calculator
+  string per continuous-batch cycle (about once a second) that copies them into
+  `L:MSFSBA_C680_*`: the GEN, APU GEN and Cabin Internet switches, the DUMP cover, the two
+  master lamps (active and not yet acknowledged, as the glareshield draws them) and the course
+  each PFD shows.
+- **Every write is built in one place.** `C680Commands.For(key, value)` returns the calculator
+  strings the cockpit's own click code runs, guard covers included, and is pinned by tests.
 
 ## Panels (the cockpit, in the checklist's words)
 
 | Section | Panels |
 |---|---|
-| Glareshield | Autopilot and Flight Director (the GMC 7200), Warning and Fire, Standby Instrument |
+| Glareshield | Autopilot and Flight Director (the GMC 7200, XFR, both COURSE knobs), Warning and Fire, Standby Instrument (MENU button and baro knob) |
 | Left Tilt Panel | Electrical, APU, Engine Start, Anti-Ice, Exterior Lights, Interior Lighting |
-| Right Tilt Panel | Pressurization and Bleed, Cabin Environment, Hydraulics, Fuel, Oxygen and Emergency |
-| Pedestal | Thrust and Autothrottle, Flaps Speedbrakes and Trim, Gear and Brakes, Flight Controls, Yoke, Passenger Signs and Cabin |
-| Avionics | Pilot Touchscreen (radio, squawk and baro readouts with set entries), MFD Touchscreen (FMS rows), Displays |
-| Side Consoles | Circuit Breakers (all 111, generated from the model by `tools/c680-gen/gen-breakers.js`) |
-| Cabin and Ground | Doors and Service Panels, Ground Equipment (the EFB Services cards), Payload and Fuel Load, Water and Waste |
-| Simulation | Crew Seat, EFB Options |
+| Right Tilt Panel | Pressurization and Bleed (DUMP under its cover), Cabin Environment, Hydraulics, Fuel, Oxygen and Emergency |
+| Pedestal | Thrust and Autothrottle (reverse levers, per-lever thrust), Flaps Speedbrakes and Trim (typed trims), Gear and Brakes, Flight Controls, Yoke (MIC, COM 121.5), Passenger Signs and Cabin |
+| Circuit Breakers | One panel per bus (Left ELEC Bus 3, Left EMER Bus 2, STBY EQUIP Bus, and so on): all 111 breakers, generated from the model by `tools/c680-gen/gen-breakers.js` and grouped by `C680BreakerBuses` |
+| Simulation | Crew Seat |
 
-Rules that hold everywhere: a combo shows the aircraft's live state (a generator switch shows
-its bus connection, because that is all the aircraft publishes); a momentary button is a pulse
-the model itself makes; a control the aircraft refuses is refused out loud (the gear on the
-ground; engine covers with an engine running revert by the aircraft's own rule).
+Rules that hold everywhere: a combo shows the aircraft's live switch position; a spring-loaded
+position springs back as it does in the cockpit (STBY PWR TEST is held three seconds, GEN and
+APU GEN RESET return to OFF); a guarded control acts only with its cover open (DUMP, the
+hydraulic switches, rudder bias, every fire button); a momentary button is the press and
+release the model itself makes. MSFSBA sends the pilot's input and lets the model decide: when
+the model keeps the gear handle down (the anti-retraction solenoid is not energised), MSFSBA
+says so.
+
+Not panels, by design: whatever a touchscreen or the vendor EFB owns. Radios, squawk, baro and
+the FMS are on the touchscreen windows (the hotkeys still read them); doors and service panels,
+ground equipment, fuel and payload loading, water and the EFB's own options are the EFB's
+Access, Services, Payload and Settings tabs, in the EFB window (Shift+T).
 
 ## Windows
 
@@ -161,9 +176,18 @@ altimeters (or `std`).
 - Not settable by event on this avionics, measured: the autopilot bank limit, the IAS/Mach
   units, the transponder mode (the touchscreen pages own them); the ADF frequency entry
   (BCD layout unverified); the next-waypoint ident (a string SimVar the app cannot register).
+- The autopilot BANK button: its model code is `AP_MAX_BANK_SET` over `AUTOPILOT MAX BANK ID`,
+  and on the ground (flight director on) neither that, `AP_MAX_BANK_INC` nor the button's own
+  input event moved the bank limit (2026-09-27). To be measured airborne before it is offered.
+- The display reversion "buttons": lamp-only variables with no clickable and no reader.
+- The standby instrument's EFB settings (backlight mode, units, overlays). Its configured speed
+  and altitude limits read 0 unless the EFB sets them, so no limits row is shown.
 
 ## Development notes
 
+- Verify a write by reading it back through a Coherent view, not the SimConnect MCP's
+  calculator results: after K-events the MCP's reads came back stale or garbage (the pitch trim
+  read 0 % while Coherent showed 100 %), and its execute mode silently drops writes.
 - Names come from the package XML (`docs/citation680-variables.md` has the one-liner);
   values are read through a Coherent view (`tools/coherent-eval.ps1 -Title WTG3000_MFD
   -ExprFile …`) or SimConnect data definitions — never through the MCP's MobiFlight list,

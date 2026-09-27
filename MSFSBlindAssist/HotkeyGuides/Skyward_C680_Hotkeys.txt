@@ -118,8 +118,10 @@ INPUT MODE - Press left bracket to activate
   Ctrl+L     NAV mode
 
 COLD AND DARK TO APU, IN THE CHECKLIST'S ORDER (Left Tilt Panel section)
-  Electrical: STBY PWR on, Left and Right BATT on, Left and Right AVN on.
-  APU: APU knob On, then Start (it springs back to On); watch RPM to 100 percent; APU GEN on;
+  Electrical: STBY PWR Test (held three seconds; the green light shows a good test, then the
+  switch springs to Off), STBY PWR On, Left and Right BATT on, Left and Right AVN on.
+  APU: APU knob On; wait a few seconds for its self test, then Start (it springs back to On);
+  watch RPM to 100 percent; APU GEN On;
   APU BLEED AIR on. Electrical: INTERIOR on. The bus tie closes itself on the ground.
   The touchscreens and the CAS come alive once the avionics have power.
 

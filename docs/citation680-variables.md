@@ -204,3 +204,38 @@ debugger (`tools/coherent-eval.ps1 -Title WTG3000_MFD -ExprFile …` with
 EFB walk (2026-09-10, airborne, every page and tab): Home is a dashboard (clock, ROUTE EGNX / LOWW, time 03:01, AIRCRAFT HB-SOV C680+, FLIGHT GS / ALT, WEATHER, FUEL KG) whose labels and values fall on separate rows — needs column pairing. Services → Access is NOT card markup: door titles ("Left Avionics | Right Avionics"), bare "off" checkbox rows and "[Electrical]" category badges come out separately — needs its own builder. Payload: TOT fuel, weights, CG, a "[0] kg" cargo entry and "SimBrief Import: [Fuel] [Payload]" buttons. Electrical / Hydraulics / Vanity / O2-N2 are readouts with FILL / REFILL / SERVICE buttons; the O2 gauges leak their tick labels (0, 5, 10, 15, 20, 1264) as rows. Flight: "[Fetch SimBrief OFP]" (the EFB's own OFP view), "[Fetch SimBrief Weather]", Navigraph Charts sign-in. Checklists: Normal (Short) 155 rows, Normal 639, Abnormal 3109, Emergency 2558 — the section list (a left column) and the items interleave by y, so the reading order is jumbled; needs the two columns separated. Settings tabs read well ("Label: A* / B" selectors, "Label: on/off" toggles); In Flight has Pause at Top of Descent and Sim Rate.
 
 Settings account and key cards (3rd Party Options): the SimBrief User ID is a BUTTON (`.simbrief-id-button`, shown as "*") that opens a keypad popup (`.payload-keyboard-overlay` outside the page container: header "Set SimBrief User ID", a `.keyboard-display`, `.keyboard-button`s 0-9, Clear, Cancel, Set ID); the Navigraph account and Hoppie key cards use the same card markup with buttons ("Log In / Go to Charts", "Insert Key here"). The window lists a popup's rows in place of the page while it is up, and typed digits press its keys.
+
+## Audit corrections (2026-09-27, engines and APU running at the gate)
+
+Every row below was measured on the live aircraft and is what `C680Commands` now sends.
+
+| Control | Measured |
+|---|---|
+| RUN/STOP | State is `GENERAL ENG MIXTURE LEVER POSITION:n` (0 stop, 100 run); `GENERAL ENG FUEL VALVE` reads 1 at rest, so it cannot gate the press. Write `(>B:FUEL_RunStop_n_Toggle)` when the mixture disagrees. |
+| Thrust reversers | A negative `THROTTLEn_SET` deploys the nozzle (-2000 gave a -20 % lever); the lever stops at -30 %. `THROTTLEn_DECR` is forward thrust (it moved the lever to +22 %). Detents: 0 stowed, -1638 idle reverse, -4915 maximum reverse. |
+| STARTER DISENG | `(>B:ENGINE_Starter_Disengage_Push)` plus `1 (>L:SW_SOV_STARTER_DISENGAGE, bool)`, the variable the plugin reads. |
+| STBY PWR | `L:XMLVAR_BatterySTBY_SwitchState` 0 ON / 1 OFF / 2 TEST; write `N (>B:ELECTRICAL_Battery_STBY_3_Set)`. TEST must be held (repeat every 50 ms); the green LED lights on a good test. |
+| GEN L/R, APU GEN | `(B:ELECTRICAL_Alternator_n)` and `(B:ELECTRICAL_APU_Generator_1)`, 0 ON / 1 OFF / 2 RESET. The plugin's `ALTERNATOR_SET` intercept switches the generator but leaves this switch where it was. |
+| EMER LTS | `SW_SOV_SAFETY_LIGHTS_POSITION` 0 ARM / 1 ON / 2 OFF. |
+| Cabin Internet | Circuit `ATG_4000_BROADBAND_UT580`: `'ATG_4000_BROADBAND_UT580'_n (>K:ELECTRICAL_CIRCUIT_TOGGLE)`, state `CIRCUIT SWITCH ON` on the same named circuit. |
+| TAIL FLOOD | `SW_SOV_LIGHTS_LOGO` (the plugin's `tail_flood_sw`); `SW_SOV_LIGHTS_FLOOD_ON` holds no write. |
+| MFD touchscreens backlight | Writes `L:WTG3000_Gtc_Backlight:2` and `:3` together (the knob's `LVAR_NAME` and `LVAR_2_NAME`). |
+| PRESS SOURCE | 0 EMER / 1 L / 2 NORM / 3 R / 4 OFF. BLEED AIR knobs OFF / LP / NORM / HP. |
+| PASS OXY | 0 OFF / 1 NORM / 2 ON, and the knob also writes `Oxy_Flow` / `Oxy_Flow_Force` (0/0, 1/0, 0/1). |
+| DUMP | Cover `1 (>B:PRESSURIZATION_Dump_Cover_Set)`, push `N (>B:PRESSURIZATION_Dump_Set)`, state `PRESSURIZATION DUMP SWITCH`. |
+| Hydraulic switches | Act only with `L:HYDRAULICS_Switch_n_Cover` = 1 (the model's click code). |
+| ECS temperature buttons | `B:SOV_ECS_n_Temp_Inc/Dec` change nothing; the MFD touchscreen owns cabin temperature. |
+| Course knobs | `H:AS3000_PFD_n_CRS_INC/DEC/PUSH`, one degree a press. The course shown is the knob's own `(A:GPS OBS VALUE) (A:NAV OBS:2) (A:NAV OBS:1) 3 (L:WTGarmin_Nav_ActiveNavSource:n) case`. |
+| XFR | `L:XMLVAR_PushXFR`, 0 left side / 1 right side. |
+| Fire buttons | ENG FIRE latches; APU FIRE, BAGGAGE FIRE and the second bag bottle are held pushes; all four need their cover open. BOTTLE ARMED is a held push with no cover. |
+| Master lamps | Lit while `MASTER WARNING/CAUTION ACTIVE` and not `… ACKNOWLEDGED`. |
+| Standby instrument | MENU `L:LW_SAI_MOD_MENU_OPEN`; the knob turns `3 (>K:KOHLSMAN_INC/DEC)` or, menu open, `±1 (>L:LW_SAI_MOD_SELECTION)`; its push toggles `KOHLSMAN SETTING STD:3` or confirms the menu. A typed setting is `3 (hPa × 16) (>K:2:KOHLSMAN_SET)` (16208 gave 1013). `SW_SOV_GH3900_SPD_*` / `_ALT_MAX` read 0 unless the EFB configures them. |
+| Gear handle | The model lifts it only with `L:SW_SOV_SOLENOID_ENERGIZED` = 1. |
+| MIC buttons | Latching toggles of `INSTRUMENT_Push_Microphone_n`. |
+| COM 121.5 | `NAVCOM_Push_COM_n_Tune`: swaps the active frequency to 121.5 and back to the one saved in `L:SW_SOV_COM_n_Prev`. |
+| Pitch trim | The plugin intercepts `ELEVATOR_TRIM_SET` and re-issues a NON-ZERO value clamped to the stops (1.2° nose down to 6.9° nose up, -17.4 % to 100 %); a zero is dropped. 4915 gave 30.0 %. Any trim input disconnects the autopilot. |
+| Rudder and aileron trim | `RUDDER_TRIM_SET` / `AILERON_TRIM_SET` take percent directly (-10 gave -10 %). |
+| FADEC N1 | `FADEC_TGT_N1_n` / `FADEC_MAX_N1_n` are fractions (0.984 = 98.4 %). |
+| Oxygen gauges | `Oxygen_Tank_L/R_Gauge` read in psi (1918 psi). |
+| Always zero | Fuel temperature, battery amps, `APU EGT`, `GENERAL_APU_COMBUSTION`, `Bag_Heat_Temp`: the plugin keeps them internally (the APU EGT is on the MFD engine strip). |
+| Parking brake | `BRAKE PARKING POSITION` is also set by the wheel chocks (the plugin applies the brake for lever or chocks). |
