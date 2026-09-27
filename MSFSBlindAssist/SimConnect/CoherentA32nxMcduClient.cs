@@ -91,6 +91,7 @@ namespace MSFSBlindAssist.SimConnect
         private bool _readable;            // last read() answered ok:true (reported state)
         private int _emptyEvalStreak;
         private string _lastRaw = "";      // the last read() body handed to the window
+        private IDisposable? _viewClaim;
         private bool _disposed;
 
         public CoherentA32nxMcduClient(string viewTitleNeedle)
@@ -122,6 +123,9 @@ namespace MSFSBlindAssist.SimConnect
             }
             _cts = new CancellationTokenSource();
             _loopToken = _cts.Token;
+            // Own the view from now until Stop — reconnect gaps included — so no one-shot eval
+            // (CoherentEvalClient) ever opens a second inspector socket on it.
+            _viewClaim = CoherentViewOwnership.Claim(_viewTitleNeedle);
             try
             {
                 _agentJs = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Resources", AgentFile));
@@ -141,6 +145,8 @@ namespace MSFSBlindAssist.SimConnect
             _socketOpen = false;
             _agentInstalled = false;
             SetReadable(false);
+            _viewClaim?.Dispose();
+            _viewClaim = null;
         }
 
         /// <summary>
@@ -281,6 +287,11 @@ namespace MSFSBlindAssist.SimConnect
                 _agentInstalled = false;
             }
             if (string.IsNullOrEmpty(_agentJs)) { return false; }
+
+            // A one-shot eval that started before this client claimed the view (D pressed just
+            // before the MCDU window first opened) may still hold it: connecting now would be the
+            // second socket Coherent refuses. Retry on the next pass.
+            if (CoherentViewOwnership.OneShotInFlight(_viewTitleNeedle)) { return false; }
 
             int? pageId = await ResolvePageId(ct);
             if (pageId == null) { _socketOpen = false; return false; }

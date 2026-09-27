@@ -46,13 +46,6 @@ public class FlyByWireMCDUService : IDisposable
     /// <summary>Either transport is up — what the window shows as "MCDU: Connected".</summary>
     public bool IsConnected => _arbiter.AnyConnected;
 
-    /// <summary>
-    /// True while the Coherent client holds the MCDU view's inspector socket. Coherent GT
-    /// allows ONE socket per view, so any other eval against that view (the D / Shift+D
-    /// flight-info readout) must go through <see cref="EvalOnMcduViewAsync"/> meanwhile.
-    /// </summary>
-    public bool HoldsMcduView => _coherent.HoldsView;
-
     /// <param name="mcduViewTitle">The MCDU's Coherent view title needle: "A32NX_MCDU", or
     /// "A339X_MCDU" on the Headwind A330 (<c>FlyByWireA320Definition.FlightInfoMcduView</c>).</param>
     /// <param name="simBridgeHost">SimBridge host:port for the relay fallback.</param>
@@ -162,7 +155,12 @@ public class FlyByWireMCDUService : IDisposable
         return wait > TimeSpan.Zero ? _delay(wait) : Task.CompletedTask;
     }
 
-    /// <summary>Evaluate a self-contained expression on the MCDU view over the held socket.</summary>
+    /// <summary>
+    /// Evaluate a self-contained expression on the MCDU view over the service's own socket.
+    /// While the service exists it OWNS that view (<see cref="CoherentViewOwnership"/>), so this
+    /// is the only way to evaluate on it: a one-shot eval is refused. Returns "" while the
+    /// socket is down (e.g. reconnecting after a flight reload) or when the eval times out.
+    /// </summary>
     public Task<string> EvalOnMcduViewAsync(string expression) => _coherent.EvalForResultAsync(expression);
 
     private void Apply(FbwMcduTransportArbiter.Decision decision)

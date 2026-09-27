@@ -1684,9 +1684,10 @@ public partial class MainForm
     /// A32NX equivalent. We read the FMS guidanceController directly with the self-contained
     /// coherent-a32nx-flightinfo.js evaluated on the MCDU's Coherent view, then announce
     /// identically to the A380 (PMDG-format TOD). Coherent GT allows ONE inspector socket per
-    /// view: once the MCDU window has been opened, FlyByWireMCDUService holds that view's
-    /// socket for the rest of the aircraft session, so the script rides THAT socket; only
-    /// before the MCDU window has ever been opened is a one-shot eval used.
+    /// view: once the MCDU window has been opened, FlyByWireMCDUService owns that view for the
+    /// rest of the aircraft session (reconnect gaps included — CoherentViewOwnership), so the
+    /// script always rides ITS socket and says "not ready" while that socket is reconnecting;
+    /// only before the MCDU window has ever been opened is a one-shot eval used.
     /// </summary>
     public async void AnnounceA32NXFlightInfo(bool tod)
     {
@@ -1701,7 +1702,7 @@ public partial class MainForm
         try
         {
             var mcduService = flyByWireMCDUService;
-            raw = mcduService is { HoldsMcduView: true }
+            raw = mcduService != null
                 ? await mcduService.EvalOnMcduViewAsync(js)
                 : await SimConnect.CoherentEvalClient.EvalAsync(mcduView, js);
         }
