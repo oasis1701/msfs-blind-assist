@@ -167,8 +167,8 @@ match.
   exit" and "do not describe where the data came from"; the word target; no "Real-world practice" heading.
 - **New pins:** the three parts per leg, in order, each on its own line; nothing in the route paragraph from the AI's
   own knowledge except the general-knowledge route; the two exact check-line openings and "current charts" only when
-  a search found them; agreement, difference and "does not know the airport" wording, and never an unsupported
-  agreement; the check line left out when the block gives nothing to check; the exact suggestions opening, at most
+  a search found and read them; agreement, difference and "does not know the airport" wording, and never an
+  unsupported agreement or difference; the check line left out when the block gives nothing to check; the exact suggestions opening, at most
   three short sentences, left out when there is nothing to add; the suggestion kinds (preferred exit from the charts,
   size restrictions from the Aircraft line, current operational information, at most one routing sentence) and never a
   full alternative route; a suggested exit's side and distance from the exits list; the unknown-size rule; the name
