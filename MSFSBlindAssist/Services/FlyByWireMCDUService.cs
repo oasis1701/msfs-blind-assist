@@ -166,7 +166,9 @@ public class FlyByWireMCDUService : IDisposable
     /// Evaluate a self-contained expression on the MCDU view over the service's own socket.
     /// While the service exists it OWNS that view (<see cref="CoherentViewOwnership"/>), so this
     /// is the only way to evaluate on it: a one-shot eval is refused. Returns "" while the
-    /// socket is down (e.g. reconnecting after a flight reload) or when the eval times out.
+    /// socket is down (e.g. reconnecting after a flight reload) or when the eval times out. If
+    /// the Coherent client could not load its page agent it owns nothing, and the expression
+    /// goes out as a one-shot eval instead.
     /// </summary>
     public Task<string> EvalOnMcduViewAsync(string expression) => _coherent.EvalForResultAsync(expression);
 

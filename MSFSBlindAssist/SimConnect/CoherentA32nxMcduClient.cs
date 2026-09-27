@@ -24,7 +24,9 @@ namespace MSFSBlindAssist.SimConnect
     /// Coherent GT accepts only ONE inspector socket per view. This client CLAIMS its view
     /// (<see cref="CoherentViewOwnership"/>) from Start to Stop, so a one-shot
     /// <see cref="CoherentEvalClient"/> eval on it is refused and the D / Shift+D flight-info
-    /// readout goes through <see cref="EvalForResultAsync"/>. The socket and the agent are
+    /// readout goes through <see cref="EvalForResultAsync"/>. A client that could not load its
+    /// agent never connects and claims nothing, so that readout then goes out as a one-shot
+    /// instead of saying "not ready" for the whole flight. The socket and the agent are
     /// KEPT WARM while the window is closed, so that readout works with the window closed and
     /// reopening needs no reconnect. Restart is not supported: dispose and create a new instance.
     /// </summary>
@@ -115,10 +117,24 @@ namespace MSFSBlindAssist.SimConnect
         private string _lastRaw = "";      // the last read() body handed to the window
         private IDisposable? _viewClaim;
         private bool _disposed;
+        private readonly Func<string> _readAgent;
+        private readonly Func<string, string, Task<string>> _oneShotEval;
 
         public CoherentA32nxMcduClient(string viewTitleNeedle)
+            : this(viewTitleNeedle,
+                   () => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Resources", AgentFile)),
+                   (view, expression) => CoherentEvalClient.EvalAsync(view, expression))
+        {
+        }
+
+        /// <param name="readAgent">Reads the page agent's source (the Resources file by default).</param>
+        /// <param name="oneShotEval">Evaluates on a view this client does not own
+        /// (<see cref="CoherentEvalClient.EvalAsync"/> by default).</param>
+        internal CoherentA32nxMcduClient(string viewTitleNeedle, Func<string> readAgent, Func<string, string, Task<string>> oneShotEval)
         {
             _viewTitleNeedle = viewTitleNeedle;
+            _readAgent = readAgent;
+            _oneShotEval = oneShotEval;
             _syncContext = SynchronizationContext.Current;
             // Readable changes are posted under the link's lock, so they reach the window in the
             // order they happened.
@@ -145,17 +161,25 @@ namespace MSFSBlindAssist.SimConnect
             }
             _cts = new CancellationTokenSource();
             _loopToken = _cts.Token;
-            // Own the view from now until Stop — reconnect gaps included — so no one-shot eval
-            // (CoherentEvalClient) ever opens a second inspector socket on it.
-            _viewClaim = CoherentViewOwnership.Claim(_viewTitleNeedle);
             try
             {
-                _agentJs = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Resources", AgentFile));
+                _agentJs = _readAgent();
             }
             catch (Exception ex)
             {
                 Log.Warn("SimConnect", $"Could not load {AgentFile}: {ex.Message}");
             }
+            if (string.IsNullOrEmpty(_agentJs))
+            {
+                // Without its agent this client can neither read nor drive the MCDU, so it never
+                // opens a socket — and it must not claim the view either, or the D / Shift+D
+                // readout would be refused for the whole flight. Nothing owns the view, and that
+                // readout goes out as a one-shot (EvalForResultAsync), as before this client.
+                return;
+            }
+            // Own the view from now until Stop — reconnect gaps included — so no one-shot eval
+            // (CoherentEvalClient) ever opens a second inspector socket on it.
+            _viewClaim = CoherentViewOwnership.Claim(_viewTitleNeedle);
             _ = Task.Run(() => RunLoop(_cts.Token));
         }
 
@@ -228,11 +252,13 @@ namespace MSFSBlindAssist.SimConnect
         }
 
         /// <summary>
-        /// Evaluate an arbitrary self-contained expression on the MCDU view over this
-        /// client's socket — the D / Shift+D flight-info script rides here while the view
-        /// is held. Returns "" when the socket is down or the eval times out.
+        /// Evaluate an arbitrary self-contained expression on the MCDU view — the D / Shift+D
+        /// flight-info script. While this client owns the view it goes over the client's socket
+        /// ("" while that is down or when the eval times out); when it owns nothing (not started,
+        /// stopped, or its agent could not be loaded) it goes out as a one-shot.
         /// </summary>
-        public Task<string> EvalForResultAsync(string expression) => EvalAsync(expression);
+        public Task<string> EvalForResultAsync(string expression) =>
+            _viewClaim != null ? EvalAsync(expression) : _oneShotEval(_viewTitleNeedle, expression);
 
         private async Task RunLoop(CancellationToken ct)
         {
