@@ -931,8 +931,8 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
 
     /// <summary>Section 7's search sentence when the request carrying the prompt has web search.</summary>
     internal const string RouteSearchOnSentence =
-        "Web search is on for this briefing: you may look up each airport's current airport diagram and chart notes, " +
-        "and a check line says current charts only when that search found them.";
+        "Web search is on for this briefing: do any lookups before you start writing, and you may look up each airport's " +
+        "current airport diagram and chart notes; a check line says current charts only when that search found and read them.";
 
     /// <summary>
     /// Generates the prompt for route description.
@@ -1007,17 +1007,19 @@ Cover the following topics, using descriptive section headings separated by blan
    If the block says a leg is unavailable, say so in a few words, and still give whatever the block does give for that leg, such as the exit with its side and distance, and the stand.
    When the reason is that the aircraft is already at the runway, give no route for that leg.
    Otherwise you may give that leg's usual route from your own knowledge, saying it is general knowledge and not checked against the scenery; where the leg has a ""Taxiway names at"" list, name only taxiways from it, and only a leg with no such list may name taxiways the block does not give.
+   The scenery phrase belongs only to a route the block gives: end a general-knowledge route by saying only that SayIntentions or ATC will give the actual taxi clearance, never that it is the expected route on the pilot's scenery, and give no scenery phrase for a leg with no route.
    The check line is one sentence after each route paragraph that checks the block's route, exit and stand for that leg against the real airport as you know it.
-   Begin it with ""{RouteCheckFromMemory}"", or with ""{RouteCheckAgainstCharts}"" only when a web search in this briefing found that airport's current airport diagram or chart notes.
+   Begin it with ""{RouteCheckFromMemory}"", or with ""{RouteCheckAgainstCharts}"" only when a web search in this briefing found and read that airport's current airport diagram or chart notes.
    {searchSentence}
-   When they agree, say so in a few words; when something differs, name what differs instead; when you do not know the airport well enough to check it, say so, and never claim an agreement you cannot support.
+   When they agree, say so in a few words; when something differs, name what differs instead; when you do not know the airport well enough to check it, say so; never claim an agreement or a difference you cannot support.
    Leave the check line out for a leg the block gives no route, exit or stand for.
-   The suggestions paragraph comes after the check line, only when you have something to add that the scenery cannot provide, and otherwise is left out; it begins ""{RouteSuggestionsOpening}"" and has at most three short sentences.
+   The suggestions paragraph comes after the check line (or after the route paragraph when there is none), only when you have something to add that the scenery cannot provide, and otherwise is left out; it begins ""{RouteSuggestionsOpening}"" and has at most three short sentences.
    It may give a preferred exit from the real airport's charts, restrictions that apply to this aircraft's size (from the block's Aircraft line, such as a wide-body kept off a taxiway, a wingspan limit or a full-length departure requirement), current operational information such as a NOTAM closing a taxiway on the route, and at most one sentence saying that controllers usually route differently there; never give a full alternative route.
    A suggested exit takes its side and distance from the block's exits list, and gets none when the list does not give them.
    When the block gives no size class for the aircraft, say which aircraft a size restriction applies to.
    Any taxiway, exit or stand you name in the check line or the suggestions must appear in that leg's lines, including its ""Taxiway names at"" list; when a point could only be made with a name that is not there, leave the point out.
-   Keep it short: do not list every exit, and do not describe where the data came from beyond the preview phrase, the check line's opening and the OpenStreetMap and general-knowledge wording above.
+   When you leave a point out of a check line, do not call that leg an agreement: say that not everything could be checked, without naming what.
+   Keep it short: do not list every exit, and do not describe where the data came from beyond the wording this section asks for.
    Give every distance in this section in the unit the block's ""Distance unit"" line names, and never mix units.
    When a leg's note says SayIntentions assigned a different runway from the flight plan, say so here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
 

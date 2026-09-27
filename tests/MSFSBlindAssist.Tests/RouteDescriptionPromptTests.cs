@@ -108,6 +108,7 @@ public class RouteDescriptionPromptTests
         Assert.Contains("The route paragraph is one short paragraph per leg, in the voice of real-world operations, and apart " +
                         "from the general-knowledge route described below, nothing in it comes from your own knowledge.", prompt);
         Assert.DoesNotContain("From your own knowledge you may add", prompt);
+        Assert.DoesNotContain("but only where it concerns a taxiway, runway or stand the block names", prompt);
     }
 
     [Fact]
@@ -130,14 +131,15 @@ public class RouteDescriptionPromptTests
         Assert.Contains("The check line is one sentence after each route paragraph that checks the block's route, exit and " +
                         "stand for that leg against the real airport as you know it.", prompt);
         Assert.Contains($"Begin it with \"{GeminiService.RouteCheckFromMemory}\", or with \"{GeminiService.RouteCheckAgainstCharts}\" " +
-                        "only when a web search in this briefing found that airport's current airport diagram or chart notes.", prompt);
+                        "only when a web search in this briefing found and read that airport's current airport diagram or chart " +
+                        "notes.", prompt);
     }
 
     [Fact]
-    public void The_check_line_never_claims_an_agreement_it_cannot_support()
+    public void The_check_line_never_claims_an_agreement_or_a_difference_it_cannot_support()
         => Assert.Contains("When they agree, say so in a few words; when something differs, name what differs instead; when you " +
-                           "do not know the airport well enough to check it, say so, and never claim an agreement you cannot " +
-                           "support.", Prompt());
+                           "do not know the airport well enough to check it, say so; never claim an agreement or a difference you " +
+                           "cannot support.", Prompt());
 
     [Fact]
     public void The_check_line_is_left_out_only_when_the_block_gives_nothing_to_check()
@@ -145,9 +147,10 @@ public class RouteDescriptionPromptTests
 
     [Fact]
     public void Suggestions_are_a_labelled_paragraph_only_when_there_is_something_to_add()
-        => Assert.Contains("The suggestions paragraph comes after the check line, only when you have something to add that the " +
-                           "scenery cannot provide, and otherwise is left out; it begins " +
-                           $"\"{GeminiService.RouteSuggestionsOpening}\" and has at most three short sentences.", Prompt());
+        => Assert.Contains("The suggestions paragraph comes after the check line (or after the route paragraph when there is " +
+                           "none), only when you have something to add that the scenery cannot provide, and otherwise is left " +
+                           $"out; it begins \"{GeminiService.RouteSuggestionsOpening}\" and has at most three short sentences.",
+                           Prompt());
 
     [Fact]
     public void Suggestions_cover_chart_exits_size_restrictions_and_usual_routing_but_never_a_full_route()
@@ -173,6 +176,8 @@ public class RouteDescriptionPromptTests
         Assert.Contains("Any taxiway, exit or stand you name in the check line or the suggestions must appear in that leg's " +
                         "lines, including its \"Taxiway names at\" list; when a point could only be made with a name that is not " +
                         "there, leave the point out.", prompt);
+        Assert.Contains("When you leave a point out of a check line, do not call that leg an agreement: say that not everything " +
+                        "could be checked, without naming what.", prompt);
         Assert.DoesNotContain("Any taxiway you name must appear", prompt);
     }
 
@@ -181,9 +186,21 @@ public class RouteDescriptionPromptTests
     {
         Assert.Equal("Web search is off for this briefing, so every check line begins " +
                      "\"Real-world check, from memory rather than live charts:\".", GeminiService.RouteSearchOffSentence);
-        Assert.Equal("Web search is on for this briefing: you may look up each airport's current airport diagram and chart " +
-                     "notes, and a check line says current charts only when that search found them.",
+        Assert.Equal("Web search is on for this briefing: do any lookups before you start writing, and you may look up each " +
+                     "airport's current airport diagram and chart notes; a check line says current charts only when that search " +
+                     "found and read them.",
                      GeminiService.RouteSearchOnSentence);
+    }
+
+    [Fact]
+    public void The_search_sentence_follows_the_check_line_opening_rule()
+    {
+        // The "Begin it with" rule and the search sentence must read as one unit: nothing about looking things up should
+        // sit apart from the rule it qualifies.
+        string off = GeminiService.GetRouteDescriptionPrompt("DATA", webSearch: false).Replace("\r\n", "\n");
+        string on = GeminiService.GetRouteDescriptionPrompt("DATA", webSearch: true).Replace("\r\n", "\n");
+        Assert.Contains("chart notes.\n   " + GeminiService.RouteSearchOffSentence, off);
+        Assert.Contains("chart notes.\n   " + GeminiService.RouteSearchOnSentence, on);
     }
 
     [Fact]
@@ -214,8 +231,7 @@ public class RouteDescriptionPromptTests
     {
         string prompt = Prompt();
         Assert.Contains("do not list every exit", prompt);
-        Assert.Contains("do not describe where the data came from beyond the preview phrase, the check line's opening and the " +
-                        "OpenStreetMap and general-knowledge wording above", prompt);
+        Assert.Contains("do not describe where the data came from beyond the wording this section asks for", prompt);
         Assert.Contains("a representative stand (say it is typical, not assigned)", prompt);
         Assert.Contains("When a leg's route comes from OpenStreetMap, say so in a few words", prompt);
     }
@@ -252,4 +268,12 @@ public class RouteDescriptionPromptTests
         Assert.Contains("When the reason is that the aircraft is already at the runway, give no route for that leg.", prompt);
         Assert.Contains("only a leg with no such list may name taxiways the block does not give", prompt);
     }
+
+    [Fact]
+    public void A_general_knowledge_route_is_never_called_the_scenery_route()
+        // Owner fix, 2026-09-27: the "expected route on the pilot's scenery" phrase only fits a route the block
+        // actually gives; a general-knowledge route (or a leg with no route at all) must never carry it.
+        => Assert.Contains("The scenery phrase belongs only to a route the block gives: end a general-knowledge route by " +
+                           "saying only that SayIntentions or ATC will give the actual taxi clearance, never that it is the " +
+                           "expected route on the pilot's scenery, and give no scenery phrase for a leg with no route.", Prompt());
 }
