@@ -67,6 +67,8 @@ internal sealed class FbwMcduReadBack
         return say;
     }
 
-    /// <summary>A key is being typed: hold the read-back until it has landed.</summary>
+    /// <summary>A key is being typed: hold the read-back for <see cref="TypingSettleMs"/>. A later
+    /// hold extends an earlier one — the window holds before each key is sent and again once it
+    /// has been delivered.</summary>
     public void HoldForTyping(DateTime nowUtc) => _scratchpad.SuppressUntil = nowUtc.AddMilliseconds(TypingSettleMs);
 }

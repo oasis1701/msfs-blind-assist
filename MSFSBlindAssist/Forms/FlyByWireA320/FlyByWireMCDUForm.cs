@@ -320,10 +320,12 @@ public class FlyByWireMCDUForm : Form
             };
             if (buttonName != null)
             {
-                // Hold the scratchpad read-back until this key has landed, so the entry is read
-                // back once, whole.
+                // Hold the scratchpad read-back while this key lands, so the entry is read back
+                // once, whole: from before it is sent, and again once it has been delivered — a
+                // key can wait out the relay settle (FlyByWireMCDUService.RelaySettleMs) first.
                 _readBack.HoldForTyping(DateTime.UtcNow);
                 await _service.SendButtonPress(buttonName);
+                _readBack.HoldForTyping(DateTime.UtcNow);
                 // Load-bearing: FBW's keypad applies each key 150-200 ms after it arrives (a
                 // random delay), so keys stay in order only when they arrive >= 50 ms apart.
                 await Task.Delay(50);

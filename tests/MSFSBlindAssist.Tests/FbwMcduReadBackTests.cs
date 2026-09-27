@@ -155,6 +155,20 @@ public class FbwMcduReadBackTests
     }
 
     [Fact]
+    public void A_later_hold_extends_an_earlier_one()
+    {
+        // The window holds before each key is sent AND again once it has been delivered: a key
+        // can wait out the relay settle before it goes, and the entry before it keeps showing
+        // until the key lands and is read. The second hold must extend the first.
+        var readBack = new FbwMcduReadBack();
+        readBack.HoldForTyping(At(0));
+        readBack.HoldForTyping(At(300));
+
+        Assert.Equal(new[] { "KJFK/EGLL" },
+            Play(readBack, windowVisible: true, ("KJFK/EG", 1150), ("KJFK/EGLL", 2000)));
+    }
+
+    [Fact]
     public void A_half_typed_entry_is_never_read_back_and_the_settled_one_is_read_once()
     {
         // "KJFK/EGLL" typed one key every 70 ms (the typing loop's 50 ms plus the eval); the
