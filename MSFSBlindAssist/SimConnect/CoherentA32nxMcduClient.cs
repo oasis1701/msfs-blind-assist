@@ -105,7 +105,9 @@ namespace MSFSBlindAssist.SimConnect
         // _cts.Token, captured at Start: reading .Token off the source after Dispose throws, and
         // a UI-thread eval (a key, the D / Shift+D script) can still arrive during teardown.
         private CancellationToken _loopToken = CancellationToken.None;
-        private ClientWebSocket? _ws;
+        // Read on the UI thread (a key, the D / Shift+D script) as well as the loop, so volatile:
+        // together with _wsGeneration, a reader that sees a new generation sees no older socket.
+        private volatile ClientWebSocket? _ws;
         // The link state's generation for _ws: every event reports on the socket it happened on.
         private volatile int _wsGeneration;
         private readonly CoherentLinkState _link;
@@ -290,7 +292,8 @@ namespace MSFSBlindAssist.SimConnect
                 {
                     Log.Debug("SimConnect", $"CoherentA32nxMcduClient loop: {ex.Message}");
                     DropSocket();
-                    try { await Task.Delay(ReconnectDelayMs, ct); } catch { break; }
+                    // Wakeable like every other wait here: showing the window retries at once.
+                    try { await _wake.WaitAsync(TimeSpan.FromMilliseconds(ReconnectDelayMs), ct); } catch { break; }
                 }
             }
         }
@@ -382,8 +385,11 @@ namespace MSFSBlindAssist.SimConnect
                 CloseSocket(ws);
                 throw;
             }
-            // The generation is published before the socket, so an event reported against the
-            // new socket can never carry the old socket's generation.
+            // The generation is published before the socket (both fields volatile), and any old
+            // socket was dropped above, so a reader that sees the new generation can never be
+            // holding the old socket. A key that read the old generation just before may still go
+            // out on the new socket; what it reports is then ignored as stale — harmless, since
+            // this loop checks the agent on the new socket itself.
             generation = _link.OnSocketOpened();
             _wsGeneration = generation;
             _ws = ws;
