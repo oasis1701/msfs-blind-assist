@@ -1,0 +1,638 @@
+using System.Net.WebSockets;
+using System.Text;
+using System.Text.Json;
+using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
+using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Utils.Logging;
+
+namespace MSFSBlindAssist.SimConnect
+{
+    /// <summary>
+    /// Reads and drives the FlyByWire A32NX MCDU over the MSFS Coherent GT remote debugger
+    /// (127.0.0.1:19999), the same transport the A380's MFD/MCDU uses, in place of
+    /// SimBridge's relay websocket. A persistent inspector socket is held on the MCDU view
+    /// ("A32NX_MCDU"; the Headwind A330's is "A339X_MCDU" — the needle is per airframe),
+    /// <c>Resources/coherent-a32nx-mcdu-agent.js</c> is installed once into the page, and
+    /// <c>read()</c> is polled every <see cref="PollIntervalMs"/> ms while the MCDU window is
+    /// visible and every <see cref="IdleIntervalMs"/> ms while it is closed — a closed window
+    /// still speaks FMS scratchpad messages, and stays current for when it is reopened.
+    /// Showing the window, or a request for a fresh frame, wakes the loop at once. Its answer
+    /// is the SAME <c>{left, right}</c> body the relay streams, decoded by the shared
+    /// <see cref="FbwMcduUpdate"/>.
+    ///
+    /// Coherent GT accepts only ONE inspector socket per view. This client CLAIMS its view
+    /// (<see cref="CoherentViewOwnership"/>) from Start to Stop, so a one-shot
+    /// <see cref="CoherentEvalClient"/> eval on it is refused and the D / Shift+D flight-info
+    /// readout goes through <see cref="EvalForResultAsync"/>. A client that could not load its
+    /// agent never connects and claims nothing, so that readout then goes out as a one-shot
+    /// instead of saying "not ready" for the whole flight. The socket and the agent are
+    /// KEPT WARM while the window is closed, so that readout works with the window closed and
+    /// reopening needs no reconnect. Restart is not supported: dispose and create a new instance.
+    /// </summary>
+    public sealed class CoherentA32nxMcduClient : IFbwMcduCoherentTransport
+    {
+        private const string DebuggerBase = "http://127.0.0.1:19999";
+        private const string AgentFile = "coherent-a32nx-mcdu-agent.js";
+        private const string InstalledMarker = "MSFSBA_A32NX_MCDU_INSTALLED";
+        private const int PollIntervalMs = 250;
+        private const int IdleIntervalMs = 1000;
+        private const int ReconnectDelayMs = 2000;
+        private const int EvalTimeoutMs = 5000;
+        private const int ConnectTimeoutMs = 4000;
+        // Consecutive evals answered by nothing (timeout) before the socket is presumed dead
+        // and torn down for a reconnect — a half-open socket never sends a Close frame.
+        private const int DeadSocketEvalFailures = 3;
+
+        private static readonly Regex KeyName = new("^[A-Z0-9_]{1,16}$", RegexOptions.Compiled);
+
+        // What read()/press() evaluate to when the page is up but the agent is gone
+        // (the page re-evaluated). Distinct from "" (no answer at all — a timeout or a dead
+        // socket) so an agent loss re-installs on the SAME socket instead of counting toward
+        // the dead-socket teardown.
+        private const string NoAgent = "no-agent";
+        // SendKeyAsync's answer when there was no open socket to send on.
+        private const string NoSocket = "no-socket";
+        // SendKeyAsync's answer for a key name that fails the whitelist.
+        private const string InvalidKey = "invalid-key";
+
+        /// <summary>
+        /// True when a <see cref="SendKeyAsync"/> result proves the key NEVER reached the
+        /// instrument, so resending it over another transport cannot press it twice: no
+        /// socket, no agent, no instrument, or no dispatch path. An empty result (the eval
+        /// timed out) and an "error: …" result (the dispatch threw part-way) are ambiguous and
+        /// are NOT undelivered — a resend could land a second press.
+        /// </summary>
+        public static bool IsUndeliveredKey(string result) =>
+            result == NoSocket || result == NoAgent || result == "no-instrument" || result == "no-dispatch-path";
+
+        /// <summary>The results the agent's press() gives when the instrument took the key.</summary>
+        internal static readonly string[] DeliveredPaths = { "dispatchHEvent", "bus.pub", "onEvent" };
+
+        /// <summary>True when a SendKeyAsync result names the dispatch path that delivered the key.</summary>
+        public static bool IsDeliveredKey(string result) => Array.IndexOf(DeliveredPaths, result) >= 0;
+
+        /// <summary>
+        /// The Runtime.evaluate script for one key press. The agent presses the key; then, only
+        /// if the instrument took it, the cockpit key's push-animation variable is set
+        /// (<see cref="FbwMcduKeyAnimation"/>) — as FBW's own relay handler does, which also plays
+        /// the key's click. The write is a TOP-LEVEL statement of this script, never inside the
+        /// agent: Coherent silently drops a SetSimVarValue made from a stored agent function, while
+        /// the same call at the top level of an evaluate writes (docs/flypad.md). It is wrapped so
+        /// a failed write can never turn a delivered press into an unanswered one. The script's
+        /// value is the press result.
+        /// </summary>
+        internal static string BuildPressExpression(string key)
+        {
+            string delivered = string.Join(" || ", DeliveredPaths.Select(p => $"__msfsbaMcduKey === '{p}'"));
+            return $"var __msfsbaMcduKey = window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.press(\"{key}\") : '{NoAgent}';"
+                 + $" if ({delivered}) {{ try {{ SimVar.SetSimVarValue(\"{FbwMcduKeyAnimation.VarFor(key)}\", \"Number\", 1); }} catch (e) {{ }} }}"
+                 + " __msfsbaMcduKey;";
+        }
+
+        /// <summary>The Captain screen changed (posted to the UI context).</summary>
+        public event Action<MCDUDisplayData>? DisplayUpdated;
+        /// <summary>The MCDU became readable, or stopped being (posted to the UI context).</summary>
+        public event Action<bool>? ConnectionStatusChanged;
+
+        private readonly string _viewTitleNeedle;
+        private readonly SynchronizationContext? _syncContext;
+        private readonly HttpClient _http = new() { Timeout = TimeSpan.FromSeconds(4) };
+        private readonly SemaphoreSlim _sendLock = new(1, 1);
+        private readonly System.Collections.Concurrent.ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
+
+        private CancellationTokenSource? _cts;
+        // _cts.Token, captured at Start: reading .Token off the source after Dispose throws, and
+        // a UI-thread eval (a key, the D / Shift+D script) can still arrive during teardown.
+        private CancellationToken _loopToken = CancellationToken.None;
+        // Read on the UI thread (a key, the D / Shift+D script) as well as the loop, so volatile:
+        // together with _wsGeneration, a reader that sees a new generation sees no older socket.
+        private volatile ClientWebSocket? _ws;
+        // The link state's generation for _ws: every event reports on the socket it happened on.
+        private volatile int _wsGeneration;
+        private readonly CoherentLinkState _link;
+        private string _agentJs = "";
+        private int _msgId;
+        private volatile bool _active;
+        private readonly WakeableDelay _wake = new();
+        private int _emptyEvalStreak;
+        private string _lastRaw = "";      // the last read() body handed to the window
+        private IDisposable? _viewClaim;
+        private bool _disposed;
+        private readonly Func<string> _readAgent;
+        private readonly Func<string, string, Task<string>> _oneShotEval;
+
+        public CoherentA32nxMcduClient(string viewTitleNeedle)
+            : this(viewTitleNeedle,
+                   () => File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Resources", AgentFile)),
+                   (view, expression) => CoherentEvalClient.EvalAsync(view, expression))
+        {
+        }
+
+        /// <param name="readAgent">Reads the page agent's source (the Resources file by default).</param>
+        /// <param name="oneShotEval">Evaluates on a view this client does not own
+        /// (<see cref="CoherentEvalClient.EvalAsync"/> by default).</param>
+        internal CoherentA32nxMcduClient(string viewTitleNeedle, Func<string> readAgent, Func<string, string, Task<string>> oneShotEval)
+        {
+            _viewTitleNeedle = viewTitleNeedle;
+            _readAgent = readAgent;
+            _oneShotEval = oneShotEval;
+            _syncContext = SynchronizationContext.Current;
+            // Readable changes are posted under the link's lock, so they reach the window in the
+            // order they happened.
+            _link = new CoherentLinkState(readable => PostToUI(() => ConnectionStatusChanged?.Invoke(readable)));
+        }
+
+        /// <summary>
+        /// True while this client holds an OPEN inspector socket on the MCDU view — whether or
+        /// not the agent is installed yet. A key press goes over Coherent whenever this is true
+        /// (the agent answering "no-agent" is a certain miss the service can resend).
+        /// </summary>
+        public bool HoldsView => _link.SocketOpen;
+
+        public void Start()
+        {
+            if (_cts != null)
+            {
+                if (_cts.IsCancellationRequested)
+                {
+                    Log.Debug("SimConnect", "CoherentA32nxMcduClient.Start() after Stop() — not supported; create a new instance.");
+                    System.Diagnostics.Debug.Assert(false, "CoherentA32nxMcduClient: Start() after Stop() is a no-op.");
+                }
+                return;
+            }
+            _cts = new CancellationTokenSource();
+            _loopToken = _cts.Token;
+            try
+            {
+                _agentJs = _readAgent();
+                // A truncated install: logged like an unreadable one, or "why does Coherent never
+                // connect" leaves no trace.
+                if (string.IsNullOrEmpty(_agentJs)) { Log.Warn("SimConnect", $"{AgentFile} is empty."); }
+            }
+            catch (Exception ex)
+            {
+                Log.Warn("SimConnect", $"Could not load {AgentFile}: {ex.Message}");
+            }
+            if (string.IsNullOrEmpty(_agentJs))
+            {
+                // Without its agent this client can neither read nor drive the MCDU, so it never
+                // opens a socket — and it must not claim the view either, or the D / Shift+D
+                // readout would be refused for the whole flight. Nothing owns the view, and that
+                // readout goes out as a one-shot (EvalForResultAsync), as before this client.
+                return;
+            }
+            // Own the view from now until Stop — reconnect gaps included — so no one-shot eval
+            // (CoherentEvalClient) ever opens a second inspector socket on it. A one-shot that was
+            // already running when the claim was made wakes the loop as it ends.
+            _viewClaim = CoherentViewOwnership.Claim(_viewTitleNeedle, onOneShotDone: _wake.Wake);
+            _ = Task.Run(() => RunLoop(_cts.Token));
+        }
+
+        public void Stop()
+        {
+            _cts?.Cancel();
+            var ws = _ws;
+            _ws = null;
+            CloseSocket(ws);
+            _link.Stop();
+            _viewClaim?.Dispose();
+            _viewClaim = null;
+        }
+
+        /// <summary>
+        /// Poll fast while the MCDU window is visible, at the idle rate while it is closed (see
+        /// the class remarks). Activation re-pushes the whole screen at once — the loop is woken
+        /// rather than left to finish its idle sleep, or the screen reader would read the list
+        /// the window last showed.
+        /// </summary>
+        public void SetActive(bool active)
+        {
+            _active = active;
+            if (active) { RequestFreshFrame(); }
+        }
+
+        /// <summary>
+        /// Push the current screen on the next read, and read now — asked for when this
+        /// transport becomes the live one (so the window is not left on a frame from the other
+        /// transport) and when the window is shown.
+        /// </summary>
+        public void RequestFreshFrame()
+        {
+            _lastRaw = "";
+            _wake.Wake();
+        }
+
+        /// <summary>
+        /// Press one Captain-MCDU key ("INIT", "L1", "DOT", "CLR" …). The next poll reflects
+        /// the new screen. Returns the dispatch path the agent used, or why it could not
+        /// (<see cref="IsUndeliveredKey"/> tells a certain miss from an ambiguous one).
+        /// </summary>
+        public async Task<string> SendKeyAsync(string key)
+        {
+            if (!KeyName.IsMatch(key))
+            {
+                Log.Debug("SimConnect", $"A32NX MCDU key {key}: not a key name — not sent.");
+                return InvalidKey;
+            }
+            int generation = _wsGeneration;
+            var (sent, result) = await EvalCoreAsync(BuildPressExpression(key), _loopToken);
+            if (!sent)
+            {
+                // The expression never left (no open socket, or the send threw): the page cannot
+                // have pressed it, so this is a CERTAIN miss the service may resend — not the
+                // ambiguous "" of an answer that never came.
+                Log.Debug("SimConnect", $"A32NX MCDU key {key}: {NoSocket}");
+                return NoSocket;
+            }
+            // Reported (not just flagged): the link is no longer readable until the next loop
+            // pass re-installs the agent on the same socket.
+            if (result == NoAgent) { AgentLost(generation); }
+            if (!IsDeliveredKey(result))
+            {
+                // Every non-delivery is logged — "" (the eval timed out) and "error: …" too,
+                // not only the "no-" results: a key lost without a trace is undiagnosable.
+                Log.Debug("SimConnect", $"A32NX MCDU key {key}: {(result.Length == 0 ? "no answer" : result)}");
+            }
+            return result;
+        }
+
+        /// <summary>
+        /// Evaluate an arbitrary self-contained expression on the MCDU view — the D / Shift+D
+        /// flight-info script. While this client owns the view it goes over the client's socket
+        /// ("" while that is down or when the eval times out); when it owns nothing (not started,
+        /// stopped, or its agent could not be loaded) it goes out as a one-shot.
+        /// </summary>
+        public Task<string> EvalForResultAsync(string expression) =>
+            _viewClaim != null ? EvalAsync(expression) : _oneShotEval(_viewTitleNeedle, expression);
+
+        private async Task RunLoop(CancellationToken ct)
+        {
+            while (!ct.IsCancellationRequested)
+            {
+                try
+                {
+                    if (!await EnsureConnected(ct))
+                    {
+                        await _wake.WaitAsync(TimeSpan.FromMilliseconds(ReconnectDelayMs), ct);
+                        continue;
+                    }
+
+                    // Read whether the window is open or not: a closed window still speaks FMS
+                    // scratchpad messages ("DEST EFOB BELOW MIN") and stays current for reopening.
+                    await PollOnce(ct);
+
+                    if (_emptyEvalStreak >= DeadSocketEvalFailures)
+                    {
+                        Log.Debug("SimConnect", "CoherentA32nxMcduClient: no eval answered — reconnecting.");
+                        DropSocket();
+                        continue;
+                    }
+                    await _wake.WaitAsync(TimeSpan.FromMilliseconds(_active ? PollIntervalMs : IdleIntervalMs), ct);
+                }
+                catch (OperationCanceledException) { break; }
+                catch (Exception ex)
+                {
+                    Log.Debug("SimConnect", $"CoherentA32nxMcduClient loop: {ex.Message}");
+                    DropSocket();
+                    // Wakeable like every other wait here: showing the window retries at once.
+                    try { await _wake.WaitAsync(TimeSpan.FromMilliseconds(ReconnectDelayMs), ct); } catch { break; }
+                }
+            }
+        }
+
+        /// <summary>
+        /// Abort AND dispose: Abort alone releases the view but leaks the ClientWebSocket
+        /// (its native handle and the receive loop's buffer) on every dead-socket reconnect.
+        /// Safe on null and on a socket already closed.
+        /// </summary>
+        private static void CloseSocket(ClientWebSocket? ws)
+        {
+            if (ws == null) return;
+            try { ws.Abort(); } catch { }
+            try { ws.Dispose(); } catch { }
+        }
+
+        /// <summary>
+        /// The ONE teardown path: closes the socket, reports it to the link state (so the window
+        /// stops calling the MCDU connected), and fails the evals that were waiting on it.
+        /// </summary>
+        private void DropSocket()
+        {
+            var ws = _ws;
+            _ws = null;
+            _link.OnSocketClosed(_wsGeneration);
+            _emptyEvalStreak = 0;
+            CloseSocket(ws);
+            foreach (var kv in _pending) kv.Value.TrySetCanceled();
+            _pending.Clear();
+        }
+
+        private async Task<bool> EnsureConnected(CancellationToken ct)
+        {
+            var current = _ws;
+            int generation = _wsGeneration;
+            bool open = current != null && current.State == WebSocketState.Open;
+            if (open && _link.IsAgentInstalled(generation)) return true;
+
+            // Socket still open but the agent went missing (the page re-evaluated), or its
+            // first install timed out — re-install on the SAME socket rather than
+            // reconnecting. The socket is still HELD throughout (HoldsView stays true).
+            if (open && !string.IsNullOrEmpty(_agentJs))
+            {
+                string reinstall = await EvalAsync(_agentJs, ct);
+                if (reinstall.IndexOf(InstalledMarker, StringComparison.Ordinal) >= 0)
+                {
+                    _link.OnAgentInstalled(generation);
+                    _lastRaw = "";
+                    return true;
+                }
+            }
+
+            // Tear down any existing socket BEFORE opening a new one: Coherent GT allows only
+            // ONE inspector connection per view, and a second one while the first is alive
+            // orphans the healthy socket and blocks the view for the rest of the process.
+            // Through DropSocket, so the teardown is REPORTED: closed silently here, a link still
+            // marked readable stayed that way for as long as the view was gone.
+            if (_ws != null) { DropSocket(); }
+            if (string.IsNullOrEmpty(_agentJs)) { return false; }
+
+            // A one-shot eval that started before this client claimed the view (D pressed just
+            // before the MCDU window first opened) may still hold it: connecting now would be the
+            // second socket Coherent refuses. It wakes the loop as it ends (the claim's
+            // onOneShotDone), so the retry comes then, not after the 2 s reconnect wait — which
+            // the window's own 2 s check would have announced as "MCDU disconnected".
+            if (CoherentViewOwnership.OneShotInFlight(_viewTitleNeedle)) { return false; }
+
+            int? pageId = await ResolvePageId(ct);
+            if (pageId == null) { return false; }
+
+            var ws = new ClientWebSocket();
+            var url = new Uri($"ws://127.0.0.1:19999/devtools/inspector/{pageId.Value}");
+            try
+            {
+                using var connectCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+                connectCts.CancelAfter(ConnectTimeoutMs);
+                await ws.ConnectAsync(url, connectCts.Token);
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                // A connect timeout, not shutdown — must not read as "stop the loop".
+                CloseSocket(ws);
+                return false;
+            }
+            catch
+            {
+                // Shutdown mid-connect, or the debugger refused: the local socket is nobody
+                // else's to close, so close it here before the exception reaches RunLoop.
+                CloseSocket(ws);
+                throw;
+            }
+            // The generation is published before the socket (both fields volatile), and any old
+            // socket was dropped above, so a reader that sees the new generation can never be
+            // holding the old socket. A key that read the old generation just before may still go
+            // out on the new socket; what it reports is then ignored as stale — harmless, since
+            // this loop checks the agent on the new socket itself.
+            generation = _link.OnSocketOpened();
+            _wsGeneration = generation;
+            _ws = ws;
+            // Stop() may have run between ConnectAsync completing and the assignment above —
+            // it aborted the OLD field and saw nothing of this socket. Re-check the token
+            // AFTER publishing it so a cancelled client never leaves a live socket holding
+            // the view (the next client for this aircraft could then never connect).
+            if (ct.IsCancellationRequested)
+            {
+                CloseSocket(ws);
+                if (ReferenceEquals(_ws, ws)) { _ws = null; }
+                _link.OnSocketClosed(generation);
+                return false;
+            }
+            foreach (var kv in _pending) kv.Value.TrySetCanceled();
+            _pending.Clear();
+            _emptyEvalStreak = 0;
+            int receiveGeneration = generation;
+            _ = Task.Run(() => ReceiveLoop(ws, receiveGeneration, ct));
+
+            string install = await EvalAsync(_agentJs, ct);
+            if (install.IndexOf(InstalledMarker, StringComparison.Ordinal) < 0) { return false; }
+            _link.OnAgentInstalled(generation);
+            Log.Info("SimConnect", $"A32NX MCDU agent installed on view '{_viewTitleNeedle}' (page {pageId.Value}).");
+            _lastRaw = "";
+            return true;
+        }
+
+        private async Task<int?> ResolvePageId(CancellationToken ct)
+        {
+            try
+            {
+                string json = await _http.GetStringAsync($"{DebuggerBase}/pagelist.json", ct);
+                using var doc = JsonDocument.Parse(json);
+                foreach (var view in doc.RootElement.EnumerateArray())
+                {
+                    if (!view.TryGetProperty("title", out var titleEl)) continue;
+                    string title = titleEl.GetString() ?? "";
+                    if (title.IndexOf(_viewTitleNeedle, StringComparison.OrdinalIgnoreCase) >= 0
+                        && view.TryGetProperty("id", out var idEl))
+                    {
+                        if (idEl.ValueKind == JsonValueKind.Number) return idEl.GetInt32();
+                        if (int.TryParse(idEl.GetString(), out var n)) return n;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                // The debugger is not up, or the view is not loaded (another aircraft, the
+                // menu). Routine while the SimBridge fallback carries the window.
+                Log.Debug("SimConnect", $"CoherentA32nxMcduClient.ResolvePageId: {ex.Message}");
+            }
+            return null;
+        }
+
+        private async Task PollOnce(CancellationToken ct)
+        {
+            int generation = _wsGeneration;
+            string raw = await EvalAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.read() : '{NoAgent}'", ct);
+            if (string.IsNullOrEmpty(raw)) { _emptyEvalStreak++; return; }
+            _emptyEvalStreak = 0;
+            if (raw == NoAgent) { AgentLost(generation); return; }
+
+            // The screen is re-read every poll; only a CHANGED frame reaches the window, and an
+            // unchanged one is not even parsed (~35 KB of garbage per poll otherwise). _lastRaw
+            // only ever holds a body that parsed ok with content, so an identical answer is ok.
+            if (raw == _lastRaw)
+            {
+                _link.OnReadAnswered(generation, ok: true);
+                return;
+            }
+
+            JObject body;
+            try { body = JObject.Parse(raw); }
+            catch (Exception ex)
+            {
+                Log.Debug("SimConnect", $"A32NX MCDU read parse error: {ex.Message}");
+                return;
+            }
+
+            if (body["ok"]?.Value<bool>() != true)
+            {
+                // The view is up but the instrument is not (still loading, or unloading).
+                _link.OnReadAnswered(generation, ok: false);
+                return;
+            }
+            if (body["content"] is not JObject content) { _link.OnReadAnswered(generation, ok: false); return; }
+
+            // Tagged with the socket this read went out on: an answer that arrives after that
+            // socket closed changes nothing.
+            _link.OnReadAnswered(generation, ok: true);
+            _lastRaw = raw;
+
+            var data = FbwMcduUpdate.Parse(content);
+            if (data == null) { return; }
+            PostToUI(() => DisplayUpdated?.Invoke(data));
+        }
+
+        /// <summary>
+        /// The page answered but the agent is gone (the page re-evaluated). The socket is
+        /// healthy, so EnsureConnected's re-install branch runs on the next loop pass — never
+        /// the dead-socket teardown, which would give up the one inspector slot this view has.
+        /// </summary>
+        private void AgentLost(int generation)
+        {
+            Log.Debug("SimConnect", "CoherentA32nxMcduClient: agent missing — re-installing on the open socket.");
+            _link.OnAgentLost(generation);
+        }
+
+        private Task<string> EvalAsync(string expression) => EvalAsync(expression, _loopToken);
+
+        private async Task<string> EvalAsync(string expression, CancellationToken ct) => (await EvalCoreAsync(expression, ct)).Value;
+
+        /// <summary>
+        /// Runtime.evaluate over the held socket. <c>Sent</c> is false when the expression never
+        /// left — no open socket, or the send threw — so the page cannot have run it; a key press
+        /// needs to tell that apart from an answer that never came (<c>Sent</c> true, <c>""</c>).
+        /// </summary>
+        private async Task<(bool Sent, string Value)> EvalCoreAsync(string expression, CancellationToken ct)
+        {
+            var ws = _ws;
+            if (ws == null || ws.State != WebSocketState.Open) return (false, "");
+
+            int id = Interlocked.Increment(ref _msgId);
+            var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
+            _pending[id] = tcs;
+
+            var msg = JsonSerializer.Serialize(new
+            {
+                id,
+                method = "Runtime.evaluate",
+                @params = new { expression, returnByValue = true }
+            });
+
+            byte[] bytes = Encoding.UTF8.GetBytes(msg);
+            try
+            {
+                await _sendLock.WaitAsync(ct);
+                try { await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct); }
+                finally { _sendLock.Release(); }
+            }
+            catch (Exception)
+            {
+                _pending.TryRemove(id, out _);
+                return (false, "");
+            }
+
+            using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeout.CancelAfter(EvalTimeoutMs);
+            using (timeout.Token.Register(() => tcs.TrySetCanceled()))
+            {
+                try
+                {
+                    JsonElement root = await tcs.Task;
+                    return (true, ExtractValue(root));
+                }
+                catch (OperationCanceledException) { return (true, ""); }
+                finally { _pending.TryRemove(id, out _); }
+            }
+        }
+
+        private static string ExtractValue(JsonElement root)
+        {
+            // {"id":N,"result":{"result":{"type":"string","value":"..."},"wasThrown":false}}
+            if (root.TryGetProperty("result", out var outer)
+                && outer.TryGetProperty("result", out var inner)
+                && inner.TryGetProperty("value", out var val))
+            {
+                return val.ValueKind == JsonValueKind.String ? (val.GetString() ?? "") : val.ToString();
+            }
+            return "";
+        }
+
+        private async Task ReceiveLoop(ClientWebSocket ws, int generation, CancellationToken ct)
+        {
+            var buf = new byte[131072];
+            // Accumulate raw bytes and decode once at EndOfMessage — decoding each read
+            // separately corrupts a multibyte UTF-8 char (°, arrows) split across reads.
+            var ms = new MemoryStream();
+            try
+            {
+                while (!ct.IsCancellationRequested && ws.State == WebSocketState.Open)
+                {
+                    ms.SetLength(0);
+                    WebSocketReceiveResult res;
+                    do
+                    {
+                        res = await ws.ReceiveAsync(new ArraySegment<byte>(buf), ct);
+                        if (res.MessageType == WebSocketMessageType.Close) { return; }
+                        ms.Write(buf, 0, res.Count);
+                    } while (!res.EndOfMessage);
+
+                    DispatchMessage(Encoding.UTF8.GetString(ms.GetBuffer(), 0, (int)ms.Length));
+                }
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception ex)
+            {
+                Log.Debug("SimConnect", $"CoherentA32nxMcduClient receive: {ex.Message}");
+            }
+            finally
+            {
+                // Reported against THIS socket's generation: if it has since been replaced, the
+                // link state ignores it; if not, the link stops being readable at once.
+                _link.OnSocketClosed(generation);
+            }
+        }
+
+        private void DispatchMessage(string text)
+        {
+            try
+            {
+                using var doc = JsonDocument.Parse(text);
+                var root = doc.RootElement;
+                if (root.TryGetProperty("id", out var idEl) && idEl.TryGetInt32(out int id)
+                    && _pending.TryGetValue(id, out var tcs))
+                {
+                    tcs.TrySetResult(root.Clone());   // clone: the value must outlive the JsonDocument
+                }
+                // Unsolicited protocol events (no matching id) are ignored.
+            }
+            catch { /* malformed frame — ignore */ }
+        }
+
+        private void PostToUI(Action action)
+        {
+            if (_syncContext != null) { _syncContext.Post(_ => action(), null); }
+            else { action(); }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed) return;
+            _disposed = true;
+            Stop();
+            _cts?.Dispose();
+            _http.Dispose();
+            // _sendLock is deliberately not disposed: RunLoop is not joined and may be waiting
+            // on it; Stop() cancelled _cts, which releases the waiter, and the wait handle is
+            // never materialised, so nothing leaks (the sibling Coherent clients do the same).
+        }
+    }
+}

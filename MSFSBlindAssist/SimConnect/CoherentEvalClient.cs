@@ -11,11 +11,14 @@ namespace MSFSBlindAssist.SimConnect
     /// <summary>
     /// One-shot Coherent GT remote-debugger eval: resolve a cockpit view by title needle,
     /// evaluate a JS expression in it, and return the string result. For lightweight,
-    /// on-demand reads — e.g. the A32NX D / Shift+D flight-info readout, where the full
-    /// <see cref="CoherentDebuggerClient"/> MCDU bridge (A380-specific, persistent socket +
-    /// scrape loop) is overkill. Connect → eval → close each call; no persistent socket,
-    /// no injected agent, no lifecycle to manage. Returns "" on any failure (caller decides
-    /// the spoken fallback). Same transport coherent-eval.ps1 uses.
+    /// on-demand reads of a view no persistent client holds — e.g. the A32NX DCDU window, or
+    /// the A32NX D / Shift+D flight-info readout before the MCDU window has ever been opened
+    /// (after that the MCDU service owns the view and the readout rides its socket, unless its
+    /// Coherent client could not load its agent and so owns nothing). Connect →
+    /// eval → close each call; no persistent socket, no injected agent, no lifecycle to manage.
+    /// Returns "" on any failure (caller decides the spoken fallback), and at once for a view a
+    /// persistent client has claimed (<see cref="CoherentViewOwnership"/>): Coherent GT accepts
+    /// one inspector socket per view. Same transport coherent-eval.ps1 uses.
     /// </summary>
     public static class CoherentEvalClient
     {
@@ -24,6 +27,11 @@ namespace MSFSBlindAssist.SimConnect
 
         public static async Task<string> EvalAsync(string titleNeedle, string js, CancellationToken ct = default)
         {
+            // Never a second socket on a view a persistent client owns; while this one runs, the
+            // owner-to-be waits for it instead of connecting on top of it.
+            using var oneShot = CoherentViewOwnership.TryEnterOneShot(titleNeedle);
+            if (oneShot == null) return "";
+
             int pageId;
             try
             {
