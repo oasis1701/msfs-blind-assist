@@ -28,16 +28,16 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
     // switch groups a Sovereign pilot names. Panel names key a FLAT dictionary, so none repeats.
     // ==================================================================================
 
+    // Not panels: what a touchscreen or the vendor EFB owns (radios, FMS, doors, ground equipment,
+    // fuel and payload, water, the EFB's options) - the touchscreen windows and the EFB window do those.
     public override Dictionary<string, List<string>> GetPanelStructure() => new()
     {
         ["Glareshield"] = new() { AutopilotPanel, WarningPanel, StandbyPanel },
         ["Left Tilt Panel"] = new() { ElectricalPanel, ApuPanel, StartPanel, AntiIcePanel, ExteriorLightsPanel, InteriorLightingPanel },
         ["Right Tilt Panel"] = new() { PressPanel, EnvironmentPanel, HydraulicsPanel, FuelPanel, OxygenPanel },
         ["Pedestal"] = new() { ThrustPanel, FlapsPanel, GearPanel, FlightControlsPanel, YokePanel, SignsPanel },
-        ["Avionics"] = new() { PilotGtcPanel, MfdGtcPanel, DisplaysPanel },
-        ["Side Consoles"] = new() { BreakersPanel },
-        ["Cabin and Ground"] = new() { DoorsPanel, GroundPanel, PayloadPanel, WaterPanel },
-        ["Simulation"] = new() { SeatPanel, EfbOptionsPanel }
+        ["Circuit Breakers"] = C680BreakerBuses.Panels().Select(p => p.Title).ToList(),
+        ["Simulation"] = new() { SeatPanel }
     };
 
     private const string AutopilotPanel = "Autopilot and Flight Director", WarningPanel = "Warning and Fire", StandbyPanel = "Standby Instrument",
@@ -47,10 +47,7 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
         FuelPanel = "Fuel", OxygenPanel = "Oxygen and Emergency",
         ThrustPanel = "Thrust and Autothrottle", FlapsPanel = "Flaps Speedbrakes and Trim", GearPanel = "Gear and Brakes",
         FlightControlsPanel = "Flight Controls", YokePanel = "Yoke", SignsPanel = "Passenger Signs and Cabin",
-        PilotGtcPanel = "Pilot Touchscreen", MfdGtcPanel = "MFD Touchscreen", DisplaysPanel = "Displays",
-        BreakersPanel = "Circuit Breakers",
-        DoorsPanel = "Doors and Service Panels", GroundPanel = "Ground Equipment", PayloadPanel = "Payload and Fuel Load", WaterPanel = "Water and Waste",
-        SeatPanel = "Crew Seat", EfbOptionsPanel = "EFB Options";
+        SeatPanel = "Crew Seat";
 
     // ==================================================================================
     // Panel controls. EVERY panel gets an entry even while empty — MainForm's panel build
@@ -83,16 +80,8 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
         controls[FlightControlsPanel] = new(FlightControlsControls);
         controls[YokePanel] = new(YokeControls);
         controls[SignsPanel] = new(SignsControls);
-        controls[PilotGtcPanel] = new(PilotGtcControls);
-        controls[MfdGtcPanel] = new(MfdGtcControls);
-        controls[DisplaysPanel] = new(DisplaysControls);
-        controls[BreakersPanel] = new(BreakersControls);
-        controls[DoorsPanel] = new(DoorsControls);
-        controls[GroundPanel] = new(GroundControls);
-        controls[PayloadPanel] = new(PayloadControls);
-        controls[WaterPanel] = new(WaterControls);
+        foreach (var bus in C680BreakerBuses.Panels()) controls[bus.Title] = new(bus.Keys);
         controls[SeatPanel] = new(SeatControls);
-        controls[EfbOptionsPanel] = new(EfbOptionsControls);
         return controls;
     }
 
@@ -131,12 +120,7 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
         [FlapsPanel] = new(FlapsDisplay),
         [GearPanel] = new(GearDisplay),
         [FlightControlsPanel] = new(FlightControlsDisplay),
-        [YokePanel] = new(YokeDisplay),
-        [PilotGtcPanel] = new(PilotGtcDisplay),
-        [MfdGtcPanel] = new(MfdGtcDisplay),
-        [DoorsPanel] = new(DoorsDisplay),
-        [PayloadPanel] = new(PayloadDisplay),
-        [WaterPanel] = new(WaterDisplay)
+        [YokePanel] = new(YokeDisplay)
     };
     public override Dictionary<string, string> GetButtonStateMapping() => new();
 
@@ -185,7 +169,6 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
         if (HandlePedestalSet(varKey, value, simConnect, announcer)) return true;
         if (HandleAvionicsSet(varKey, value, simConnect)) return true;
         if (HandleBreakerSet(varKey, value, simConnect)) return true;
-        if (HandleCabinSet(varKey, value, simConnect)) return true;
         if (HandleSimulationSet(varKey, value, simConnect)) return true;
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
     }
@@ -257,7 +240,6 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
                 return true;
         }
         if (TryAvionicsDisplay(varKey, value, out displayText)) return true;
-        if (TryCabinDisplay(varKey, out displayText)) return true;
         if (TrySimulationDisplay(varKey, out displayText)) return true;
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }

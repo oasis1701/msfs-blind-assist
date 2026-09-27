@@ -17,6 +17,8 @@ public class C680InteractionSurfaceTests
     /// <summary>Model node (NODE_ID, ANIM_NAME, ID, or "(template)") → the definition key that drives it.</summary>
     public static readonly Dictionary<string, string> Surface = new(StringComparer.Ordinal)
     {
+        ["AUTOPILOT_Push_Transfer1"] = "C680_XFR", ["(SW_SOV_SplitScreen_Course_Knobs_Template)"] = "C680_CRS1_INC",
+        ["HYDRAULICS_Switch_1_Cover"] = "C680_HYD_SW_1_COVER", ["HYDRAULICS_Switch_2_Cover"] = "C680_HYD_SW_2_COVER",
         // Electrical
         ["ELECTRICAL_Switch_Battery_Master_1"] = "C680_BATT_L", ["ELECTRICAL_Switch_Battery_Master_2"] = "C680_BATT_R",
         ["ELECTRICAL_Switch_Battery_STBY_1"] = "C680_STBY_PWR",
@@ -87,19 +89,7 @@ public class C680InteractionSurfaceTests
         ["INSTRUMENT_Push_Microphone_1"] = "C680_MIC_L", ["INSTRUMENT_Push_Microphone_2"] = "C680_MIC_R",
         ["NAVCOM_Push_COM_1_Tune"] = "C680_COM1_121", ["NAVCOM_Push_COM_2_Tune"] = "C680_COM2_121",
         // Cabin and ground
-        ["door_clickspot_inside"] = "C680_DOOR_MAIN", ["door_clickspot_outside"] = "C680_DOOR_MAIN", ["door_Handle_2"] = "C680_DOOR_MAIN_HANDLE",
-        ["door_inside_handle"] = "C680_DOOR_MAIN_HANDLE", ["door_inside_handle_inv"] = "C680_DOOR_MAIN_HANDLE", ["door_outside_handle"] = "C680_DOOR_MAIN_HANDLE",
-        ["door_outside_pusher"] = "C680_PANEL_PUSHER", ["Baggage_Door_Clickspot"] = "C680_DOOR_BAG", ["Baggage_Handle"] = "C680_DOOR_BAG_HANDLE",
-        ["Avionics_door_L"] = "C680_PANEL_AVN_L", ["Avionics_door_R"] = "C680_PANEL_AVN_R",
-        ["BAT_DISC_L_2"] = "C680_BAT_DISC_L", ["BAT_DISC_R_2"] = "C680_BAT_DISC_R",
-        ["Bat_Disc_L_door_clickspot"] = "C680_PANEL_BAT_L", ["Bat_Disc_R_door_clickspot"] = "C680_PANEL_BAT_R",
-        ["External_Power_Door_clickspot"] = "C680_PANEL_GPU", ["Hydraulic_Door_clickspot"] = "C680_PANEL_HYD", ["Oxygen_Door_clickspot"] = "C680_PANEL_OXY",
-        ["Loo_drain_door_clickspot"] = "C680_PANEL_LOO", ["Singlepoint_refuel_clickspot"] = "C680_PANEL_FUEL", ["Singlepoint_refuel_lid"] = "C680_FUEL_LID",
-        ["Fuel_Switch_1"] = "C680_FUEL_SW_1", ["Fuel_Switch_2"] = "C680_FUEL_SW_2",
-        ["Water_tank_sink_lid"] = "C680_WATER_LID", ["Water_tank_sink_water"] = "C680_WATER_FILL",
-        ["Fuel_Connector"] = "C680_FUEL_TRUCK", ["Oxy_fill_L"] = "C680_OXY_CART", ["Oxy_fill_R"] = "C680_OXY_CART",
-        ["PLUG_1"] = "C680_GPU_CART", ["PLUG_1_HANDLE"] = "C680_GPU_CART", ["PLUG_2"] = "C680_HYD_CART", ["PLUG_2_HANDLE"] = "C680_HYD_CART",
-        ["ELECTRICAL_Switch_Cabin_Internet"] = "C680_OPT_WIFI",
+                                                                                                        ["ELECTRICAL_Switch_Cabin_Internet"] = "C680_CABIN_INTERNET",
     };
 
     /// <summary>Nodes deliberately left out, by pattern, with the reason a pilot would be given.</summary>
@@ -107,15 +97,13 @@ public class C680InteractionSurfaceTests
     {
         (new Regex(@"^(Armrest_|SeatSwivel|table_|galley_|Curtain_|Sunvisor_|Window_|Cockpit_Seat_|storage_door|loo_lid|toilet_door|Flush_loo|swith_sink|Lav_Light|business|Bruce_|Cow_|Model_IDK|Valcro|Orange_Thing)"), "cabin animation toy: a plain L:var toggle no pilot needs"),
         (new Regex(@"^(Ipad|Text_Station_|View_)"), "camera, view or tablet placement"),
-        (new Regex(@"^HANDLING_(Yoke_Hider|Throttle_Hider)"), "model visibility toggles; the Simulation options cover them"),
+        (new Regex(@"^HANDLING_(Yoke_Hider|Throttle_Hider)"), "model visibility toggles; the EFB Settings page covers them"),
+        (new Regex(@"^(door_|Baggage_|Avionics_door_|BAT_DISC_|Bat_Disc_|External_Power_Door|Hydraulic_Door|Oxygen_Door|Loo_drain|Singlepoint_refuel|Fuel_Switch_|Water_tank_sink|Fuel_Connector|Oxy_fill_|PLUG_)"), "a door, service panel or ground cart; the vendor EFB's Access and Services tabs operate it (EFB window)"),
         (new Regex(@"^(HANDLING_Wheel_Steering|\(ASOBO_HANDLING_RudderPedals_Template\))$"), "a control axis, not a switch"),
-        (new Regex(@"^Cover_clickspot_"), "the ground-cover clickspots; the Ground Equipment panel places every cover"),
-        (new Regex(@"^Fuel_wing_"), "over-wing refuel clickspots; the Payload panel sets the fuel"),
+        (new Regex(@"^Cover_clickspot_"), "the ground-cover clickspots; the EFB Services tab places every cover"),
+        (new Regex(@"^Fuel_wing_"), "over-wing refuel clickspots; the EFB Payload tab sets the fuel"),
         (new Regex(@"^RADIO_PANEL_"), "the headset ANC jacks; the EFB Settings page owns ANC"),
-        (new Regex(@"^AUTOPILOT_Push_Transfer1$"), "the XFR button (which side flies the FD); read on the PFD"),
-        (new Regex(@"^\(SW_SOV_SplitScreen_Course_Knobs_Template\)$"), "course knobs; the touchscreen sets the course"),
         (new Regex(@"^\(ASOBO_INSTRUMENT_Indicator_AOA_Template\)$"), "an indicator, not a control"),
-        (new Regex(@"^HYDRAULICS_Switch_[12]_Cover$"), "the guard over a switch that has its own row"),
         (new Regex(@"^CB_J$"), "a breaker the model declares without an electrical line"),
     };
 

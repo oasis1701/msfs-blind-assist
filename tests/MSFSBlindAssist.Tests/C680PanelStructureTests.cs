@@ -32,7 +32,7 @@ public class C680PanelStructureTests
     [Fact]
     public void SectionsFollowTheCockpit()
     {
-        var expected = new[] { "Glareshield", "Left Tilt Panel", "Right Tilt Panel", "Pedestal", "Avionics", "Side Consoles", "Cabin and Ground", "Simulation" };
+        var expected = new[] { "Glareshield", "Left Tilt Panel", "Right Tilt Panel", "Pedestal", "Circuit Breakers", "Simulation" };
         Assert.Equal(expected, Def().GetPanelStructure().Keys.ToArray());
     }
 

@@ -261,4 +261,36 @@ public class C680AuditFixTests
     [InlineData("C680_BAG_TMP")]
     public void RowsTheAircraftNeverWritesAreGone(string key)
         => Assert.False(Vars.ContainsKey(key));
+
+    // ---- Panel structure (Task 9)
+
+    [Fact]
+    public void SectionsAreTheCockpitAreasTheBreakersAndTheSeat()
+        => Assert.Equal(new[] { "Glareshield", "Left Tilt Panel", "Right Tilt Panel", "Pedestal", "Circuit Breakers", "Simulation" },
+                        new SkywardC680Definition().GetPanelStructure().Keys);
+
+    [Theory]
+    [InlineData("Ground Equipment")]
+    [InlineData("EFB Options")]
+    [InlineData("Payload and Fuel Load")]
+    [InlineData("Doors and Service Panels")]
+    [InlineData("Water and Waste")]
+    [InlineData("Pilot Touchscreen")]
+    [InlineData("MFD Touchscreen")]
+    [InlineData("Displays")]
+    public void PanelsTheEfbOrATouchscreenOwnsAreGone(string panel)
+        => Assert.DoesNotContain(panel, new SkywardC680Definition().GetPanelStructure().Values.SelectMany(p => p));
+
+    [Fact]
+    public void TheBreakersSectionIsOnePanelPerBus()
+        => Assert.Equal(C680BreakerBuses.Panels().Select(p => p.Title), new SkywardC680Definition().GetPanelStructure()["Circuit Breakers"]);
+
+    [Theory]
+    [InlineData("C680_COM1_ACT")]
+    [InlineData("C680_XPDR_CODE")]
+    [InlineData("C680_BARO_1")]
+    [InlineData("C680_FMS_ACTIVE")]
+    [InlineData("C680_GROSS_WEIGHT")]
+    public void VariablesTheHotkeysReadStayRegistered(string key)
+        => Assert.True(Vars.ContainsKey(key));
 }

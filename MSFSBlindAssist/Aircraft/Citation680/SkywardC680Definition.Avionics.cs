@@ -48,7 +48,6 @@ public partial class SkywardC680Definition
         AddSimReadout(v, "C680_FMS_GS", "GPS GROUND SPEED", "Ground Speed", "knots", "F0");
 
         // ---- Displays
-        AddSelector(v, "C680_BARO_SYNC", "SW_SOV_CONFIG_Baro_Sync", "Baro Sync", new[] { "Off", "PFDs", "PFDs and Standby" });
 
         foreach (var k in new[] { "C680_COM1_ACT", "C680_COM1_STBY", "C680_COM2_ACT", "C680_COM2_STBY", "C680_NAV1_ACT", "C680_NAV2_ACT",
             "C680_XPDR_CODE", "C680_XPDR_STATE", "C680_BARO_1", "C680_BARO_2", "C680_FMS_DIST", "C680_FMS_ETE", "C680_FMS_DEST_ETE" })
@@ -56,11 +55,6 @@ public partial class SkywardC680Definition
         return v;
     }
 
-    private static readonly List<string> PilotGtcControls = new() { "C680_COM1_STBY_SET", "C680_COM1_SWAP", "C680_COM2_STBY_SET", "C680_COM2_SWAP", "C680_NAV1_SET", "C680_NAV2_SET", "C680_XPDR_SET", "C680_BARO_SET", "C680_BARO_STD" };
-    private static readonly List<string> PilotGtcDisplay = new() { "C680_COM1_ACT", "C680_COM1_STBY", "C680_COM2_ACT", "C680_COM2_STBY", "C680_NAV1_ACT", "C680_NAV2_ACT", "C680_ADF_ACT", "C680_XPDR_CODE", "C680_XPDR_STATE", "C680_BARO_1", "C680_BARO_2" };
-    private static readonly List<string> MfdGtcControls = new();
-    private static readonly List<string> MfdGtcDisplay = new() { "C680_FMS_ACTIVE", "C680_FMS_DIST", "C680_FMS_ETE", "C680_FMS_DEST_ETE", "C680_FMS_GS" };
-    private static readonly List<string> DisplaysControls = new() { "C680_BARO_SYNC" };
 
     private bool HandleAvionicsSet(string varKey, double value, SimConnectManager sc)
     {
@@ -87,7 +81,6 @@ public partial class SkywardC680Definition
                 return true;
             }
             case "C680_BARO_STD": sc.ExecuteCalculatorCode("1 (>K:BAROMETRIC_STD_PRESSURE) 2 (>K:BAROMETRIC_STD_PRESSURE)"); return true;
-            case "C680_BARO_SYNC": sc.SetLVar("SW_SOV_CONFIG_Baro_Sync", value); return true;
         }
         return false;
     }

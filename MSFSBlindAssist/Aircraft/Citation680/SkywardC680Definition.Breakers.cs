@@ -18,7 +18,6 @@ public partial class SkywardC680Definition
         return v;
     }
 
-    private static readonly List<string> BreakersControls = C680BreakerTable.Rows.Select(r => r.Key).ToList();
 
     private static readonly Dictionary<string, (string LVar, string Line)> BreakerByKey =
         C680BreakerTable.Rows.ToDictionary(r => r.Key, r => (r.LVar, r.Line), StringComparer.Ordinal);
