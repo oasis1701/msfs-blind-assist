@@ -73,7 +73,7 @@ public class C680InteractionSurfaceTests
         ["(WT_G3000_Knob_Speed_Template)"] = "C680_AP_SPD_SET", ["AUTOPILOT_Knob_VerticalSpeed_Visual"] = "C680_AP_VS_SET",
         ["AUTOPILOT_Push_CWS_1"] = "C680_CWS", ["AUTOPILOT_Push_CWS_2"] = "C680_CWS",
         ["AUTOPILOT_Push_Ident_1"] = "C680_IDENT", ["AUTOPILOT_Push_Ident_2"] = "C680_IDENT",
-        ["SAI_AUTOPILOT_Knob_Baro"] = "C680_BARO_SET", ["SAI_Btn_Main_Panel_B_26"] = "C680_SAI_BL_MODE",
+        ["SAI_AUTOPILOT_Knob_Baro"] = "C680_SAI_KNOB_PUSH", ["SAI_Btn_Main_Panel_B_26"] = "C680_SAI_MENU",
         // Pedestal
         ["(ASOBO_HANDLING_Lever_Flaps_Template)"] = "C680_FLAPS", ["HANDLING_Push_FlapsReset"] = "C680_FLAPS_RESET",
         ["HANDLING_Switch_Trim"] = "C680_TRIM_NU", ["(ASOBO_HANDLING_Switch_ElevatorTrim_Template)"] = "C680_TRIM_NU",

@@ -99,4 +99,73 @@ public class C680AuditFixTests
     [InlineData("C680_CABIN_CONTROL")]
     public void DeadTemperatureControlsAreGoneTheTouchscreenOwnsThem(string key)
         => Assert.False(Vars.ContainsKey(key));
+
+    // ---- Glareshield (Task 6)
+
+    [Fact]
+    public void XfrIsTheModelsLatch()
+        => Assert.Equal("XMLVAR_PushXFR", Vars["C680_XFR"].Name);
+
+    [Theory]
+    [InlineData("C680_CRS1_INC", "(>H:AS3000_PFD_1_CRS_INC)")]
+    [InlineData("C680_CRS1_DEC", "(>H:AS3000_PFD_1_CRS_DEC)")]
+    [InlineData("C680_CRS1_SYNC", "(>H:AS3000_PFD_1_CRS_PUSH)")]
+    [InlineData("C680_CRS2_INC", "(>H:AS3000_PFD_2_CRS_INC)")]
+    [InlineData("C680_CRS2_SYNC", "(>H:AS3000_PFD_2_CRS_PUSH)")]
+    public void CourseKnobsAreTheG3000CourseEvents(string key, string code)
+    {
+        var c = C680Commands.For(key, 1).Single();
+        Assert.Equal(code, c.Code);
+        Assert.True(c.Unique);
+    }
+
+    [Theory]
+    [InlineData("C680_FIRE_L", "(L:SAFETY_Push_Extinguisher_1_Cover) 1 == if{ 1 (>L:SAFETY_Push_Extinguisher_1) }")]
+    [InlineData("C680_FIRE_R", "(L:SAFETY_Push_Extinguisher_2_Cover) 1 == if{ 1 (>L:SAFETY_Push_Extinguisher_2) }")]
+    [InlineData("C680_FIRE_APU", "(L:SAFETY_Push_Extinguisher_APU_Cover) 1 == if{ 1 (>L:SAFETY_Push_Extinguisher_APU) }")]
+    [InlineData("C680_BAG_FIRE", "(L:SAFETY_Push_Baggage_Fire_Cover) 1 == if{ 1 (>L:SAFETY_Push_Baggage_Fire) }")]
+    [InlineData("C680_BAG_BOTTLE", "(L:SAFETY_Push_Sec_Bag_Bottle_Cover) 1 == if{ 1 (>L:SAFETY_Push_Sec_Bag_Bottle) }")]
+    [InlineData("C680_BOTTLE_L", "1 (>L:SAFETY_Push_Extinguisher_Arm_1)")]
+    public void FireButtonsActOnlyAsTheModelLetsThem(string key, string code)
+        => Assert.Equal(code, C680Commands.For(key, 1).Single().Code);
+
+    [Theory]
+    [InlineData("C680_FIRE_APU", "0 (>L:SAFETY_Push_Extinguisher_APU)")]
+    [InlineData("C680_BAG_FIRE", "0 (>L:SAFETY_Push_Baggage_Fire)")]
+    [InlineData("C680_BOTTLE_R", "0 (>L:SAFETY_Push_Extinguisher_Arm_2)")]
+    [InlineData("C680_FIRE_L", null)]   // the engine fire buttons latch
+    public void HeldFirePushesAreReleased(string key, string? release)
+        => Assert.Equal(release, C680Commands.ReleaseOf(key));
+
+    [Theory]
+    [InlineData("C680_MASTER_WARN", "MSFSBA_C680_MASTER_WARN")]
+    [InlineData("C680_MASTER_CAUT", "MSFSBA_C680_MASTER_CAUT")]
+    public void MasterLampsAreActiveAndNotAcknowledged(string key, string lvar)
+    {
+        Assert.Equal(lvar, Vars[key].Name);
+        Assert.Contains($"(A:MASTER {(key.EndsWith("WARN") ? "WARNING" : "CAUTION")} ACTIVE, Bool) (A:MASTER {(key.EndsWith("WARN") ? "WARNING" : "CAUTION")} ACKNOWLEDGED, Bool) ! and (>L:{lvar})", C680SwitchMirror.Code);
+    }
+
+    [Fact]
+    public void StandbyBaroSetIsTheIndexedKohlsmanSet()
+        => Assert.Equal("3 16208 (>K:2:KOHLSMAN_SET)", C680Commands.For("C680_SAI_BARO_SET", 1013).Single().Code);
+
+    [Fact]
+    public void StandbyKnobIsTheModelsKnob()
+    {
+        Assert.Equal("(L:LW_SAI_MOD_MENU_OPEN, Bool) 0 == if{ 3 (>K:KOHLSMAN_INC) } els{ 1 (>L:LW_SAI_MOD_SELECTION) }",
+                     C680Commands.For("C680_SAI_KNOB_INC", 1).Single().Code);
+        Assert.Equal("(L:LW_SAI_MOD_MENU_OPEN, Bool) 0 == if{ (A:KOHLSMAN SETTING STD:3, Bool) ! (>A:KOHLSMAN SETTING STD:3, Bool) } els{ (L:LW_SAI_MOD_MENU_INDEX, number) 0 == if{ 1 (>L:LW_SAI_MOD_SELECTION_CONFIRM, Bool) } }",
+                     C680Commands.For("C680_SAI_KNOB_PUSH", 1).Single().Code);
+    }
+
+    [Theory]
+    [InlineData("C680_SAI_BL_MODE")]
+    [InlineData("C680_SAI_QNH_UNIT")]
+    [InlineData("C680_SAI_METER")]
+    [InlineData("C680_SAI_TURN")]
+    [InlineData("C680_SAI_GS")]
+    [InlineData("C680_SAI_LIMITS")]
+    public void StandbyEfbSettingsAreNotCockpitControls(string key)
+        => Assert.False(Vars.ContainsKey(key));
 }

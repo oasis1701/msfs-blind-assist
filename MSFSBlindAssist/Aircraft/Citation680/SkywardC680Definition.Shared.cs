@@ -150,15 +150,16 @@ public partial class SkywardC680Definition
         v[key].UpdateFrequency = UpdateFrequency.Continuous;
         v[key].IsAnnounced = true;
         v[key].ExcludeFromMonitorManager = true;
-        SilentCachedReadouts.Add(key);
+        SilentCachedReadouts.TryAdd(key, 0);
     }
 
-    private static readonly HashSet<string> SilentCachedReadouts = new(StringComparer.Ordinal);
+    // Filled as each definition builds its variables; definitions can be built on several threads at once.
+    private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, byte> SilentCachedReadouts = new(StringComparer.Ordinal);
 
     /// <summary>The truthful answer to "will this speak" for the tests.</summary>
-    public static IReadOnlyCollection<string> SilentCachedReadoutKeys => SilentCachedReadouts;
+    public static IReadOnlyCollection<string> SilentCachedReadoutKeys => SilentCachedReadouts.Keys.ToArray();
 
-    private static bool IsSilentCachedReadout(string key) => SilentCachedReadouts.Contains(key);
+    private static bool IsSilentCachedReadout(string key) => SilentCachedReadouts.ContainsKey(key);
 
     /// <summary>Cache read for the hotkeys and derived rows. Null until the variable has been delivered.</summary>
     private static double? ReadNow(SimConnectManager simConnect, string key) => simConnect.GetCachedVariableValue(key);

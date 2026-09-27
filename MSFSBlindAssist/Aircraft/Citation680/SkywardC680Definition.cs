@@ -168,6 +168,7 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
         if (RunCommands(varKey, value, simConnect))
         {
             if (C680Commands.SpringsFromResetToOff(varKey) && value > 1.5) After(1000, () => RunCommands(varKey, 1, simConnect));
+            if (C680Commands.ReleaseOf(varKey) is { } release) After(500, () => simConnect.ExecuteCalculatorCodeUnique(release));
             return true;
         }
         if (HandleLeftTiltSet(varKey, value, simConnect)) return true;
@@ -242,7 +243,6 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
     {
         switch (varKey)
         {
-            case "C680_SAI_LIMITS": displayText = "Low 100 knots, Vne 305, Mmo 0.80, altitude max 47000"; return true;
         }
         if (TryAvionicsDisplay(varKey, value, out displayText)) return true;
         if (TryCabinDisplay(varKey, out displayText)) return true;

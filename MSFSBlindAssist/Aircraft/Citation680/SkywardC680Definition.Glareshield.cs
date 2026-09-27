@@ -34,6 +34,18 @@ public partial class SkywardC680Definition
         AddButton(v, "C680_AP_VNAV", "VNAV Button", "Arms or disarms VNAV; the armed vertical mode reads on the PFD flight mode annunciator.");
         AddButton(v, "C680_AT_ARM", "AT Button", "Arms the autothrottle, or disconnects it when it is armed or on.");
         AddButton(v, "C680_AT_DISC", "AT Disconnect (throttle)");
+        AddSwitch(v, "C680_XFR", "XMLVAR_PushXFR", "XFR Button", "Left side", "Right side",
+            "Which side's flight guidance the autopilot and flight directors couple to.");
+        AddButton(v, "C680_CRS1_DEC", "Left COURSE Knob, one degree left");
+        AddButton(v, "C680_CRS1_INC", "Left COURSE Knob, one degree right");
+        AddButton(v, "C680_CRS1_SYNC", "Left COURSE Knob Push (sync)");
+        AddButton(v, "C680_CRS2_DEC", "Right COURSE Knob, one degree left");
+        AddButton(v, "C680_CRS2_INC", "Right COURSE Knob, one degree right");
+        AddButton(v, "C680_CRS2_SYNC", "Right COURSE Knob Push (sync)");
+        AddReadout(v, "C680_CRS1", C680SwitchMirror.Course1, "Left PFD Course", "number", "000");
+        AddReadout(v, "C680_CRS2", C680SwitchMirror.Course2, "Right PFD Course", "number", "000");
+        Cache(v, "C680_CRS1");
+        Cache(v, "C680_CRS2");
         AddTyped(v, "C680_AP_ALT_SET", "Altitude Preselect", "feet", "100 to 47000, rounded to 100", currentKey: "C680_AP_ALT_SEL");
         AddTyped(v, "C680_AP_HDG_SET", "Heading Bug", "degrees", "0 to 359", currentKey: "C680_AP_HDG_BUG");
         AddTyped(v, "C680_AP_VS_SET", "Vertical Speed Target", "feet per minute", "-6000 to 6000, rounded to 100", currentKey: "C680_AP_VS_TGT");
@@ -57,10 +69,9 @@ public partial class SkywardC680Definition
         // ---- Warning and Fire (stock master lamps; the vendor's fire panel L:vars)
         AddButton(v, "C680_MASTER_WARN_ACK", "MASTER WARNING Acknowledge");
         AddButton(v, "C680_MASTER_CAUT_ACK", "MASTER CAUTION Acknowledge");
-        AddAnnounced(v, "C680_MASTER_WARN", "MASTER WARNING ACTIVE", "Master Warning", "Master warning cleared", "Master warning");
-        AddAnnounced(v, "C680_MASTER_CAUT", "MASTER CAUTION ACTIVE", "Master Caution", "Master caution cleared", "Master caution");
-        v["C680_MASTER_WARN"].Type = SimVarType.SimVar; v["C680_MASTER_WARN"].Units = "bool";
-        v["C680_MASTER_CAUT"].Type = SimVarType.SimVar; v["C680_MASTER_CAUT"].Units = "bool";
+        // The lamp is lit while active AND unacknowledged; C680SwitchMirror composes it from the two stock flags.
+        AddAnnounced(v, "C680_MASTER_WARN", C680SwitchMirror.MasterWarn, "Master Warning", "Master warning out", "Master warning");
+        AddAnnounced(v, "C680_MASTER_CAUT", C680SwitchMirror.MasterCaut, "Master Caution", "Master caution out", "Master caution");
         AddSwitch(v, "C680_FIRE_L_COVER", "SAFETY_Push_Extinguisher_1_Cover", "Left ENG FIRE Cover", "Closed", "Open");
         AddSwitch(v, "C680_FIRE_L", "SAFETY_Push_Extinguisher_1", "Left ENG FIRE Button", "Normal", "Pushed", "Needs the cover open. Pushing arms the bottles and closes the fuel and hydraulic shutoffs.");
         AddButton(v, "C680_BOTTLE_L", "Left BOTTLE ARMED Button (discharge)");
@@ -83,32 +94,32 @@ public partial class SkywardC680Definition
         AddSwitch(v, "C680_TEST_ANNUN", "SW_SOV_TEST_ANNUNCIATOR", "Annunciator Test", "Off", "Testing");
 
         // ---- Standby Instrument (GH-3900; the EFB Settings page writes the same L:vars)
-        AddSwitch(v, "C680_SAI_BL_MODE", "SW_SOV_SAI_BACKLIGHT_MODE", "Standby Backlight Mode", "Auto", "Manual");
-        AddKnob(v, "C680_SAI_BL", "SW_SOV_GH3900_BL", "Standby Backlight", max: 1);
-        AddSwitch(v, "C680_SAI_QNH_UNIT", "SW_SOV_GH3900_QNH", "Standby QNH Unit", "hPa", "inHg");
-        AddSwitch(v, "C680_SAI_METER", "SW_SOV_GH3900_METER", "Standby Meter Overlay");
-        AddSwitch(v, "C680_SAI_TURN", "SW_SOV_GH3900_TURN_IND", "Standby Turn Indicator");
-        AddSwitch(v, "C680_SAI_GS", "SW_SOV_GH3900_GS", "Standby Ground Speed");
+        AddSwitch(v, "C680_SAI_MENU", "LW_SAI_MOD_MENU_OPEN", "Standby MENU Button", "Menu closed", "Menu open",
+            "With the menu open the knob moves the selection and its push confirms.");
+        AddButton(v, "C680_SAI_KNOB_DEC", "Standby Knob, one step left");
+        AddButton(v, "C680_SAI_KNOB_INC", "Standby Knob, one step right");
+        AddButton(v, "C680_SAI_KNOB_PUSH", "Standby Knob Push", "Toggles standard pressure, or confirms the menu selection while the menu is open.");
+        AddTyped(v, "C680_SAI_BARO_SET", "Standby Baro", "hectopascals", "850 to 1100", currentKey: "C680_SAI_BARO");
         AddSimReadout(v, "C680_SAI_BARO", "KOHLSMAN SETTING MB:3", "Standby Baro", "millibars", "F0");
-        AddDerived(v, "C680_SAI_LIMITS", "Standby Limits");
+        AddFlag(v, "C680_SAI_STD", "KOHLSMAN SETTING STD:3", "Standby Standard Pressure", "Off", "STD", simvar: true);
+        AddReadout(v, "C680_SAI_MENU_INDEX", "LW_SAI_MOD_MENU_INDEX", "Standby Menu Item", "number", "F0");
 
         foreach (var k in new[] { "C680_AP_ALT_SEL", "C680_AP_HDG_BUG", "C680_AP_VS_TGT", "C680_AP_SPD_TGT", "C680_AP_MACH_TGT", "C680_AP_SPD_IS_MACH", "C680_AT_STATUS" })
             Cache(v, k);
         return v;
     }
 
-    private static readonly List<string> AutopilotControls = new() { "C680_AP_MASTER", "C680_AP_YD", "C680_AP_FD_L", "C680_AP_FD_R", "C680_AP_HDG", "C680_AP_NAV", "C680_AP_APR", "C680_AP_BC", "C680_AP_ALT", "C680_AP_VS", "C680_AP_FLC", "C680_AP_VNAV", "C680_AT_ARM", "C680_AT_DISC", "C680_AP_ALT_SET", "C680_AP_HDG_SET", "C680_AP_VS_SET", "C680_AP_SPD_SET", "C680_AP_SPD_MANUAL", "C680_TOGA", "C680_AP_DISC", "C680_CWS" };
-    private static readonly List<string> AutopilotDisplay = new() { "C680_AP_ALT_SEL", "C680_AP_HDG_BUG", "C680_AP_VS_TGT", "C680_AP_SPD_TGT", "C680_AP_MACH_TGT", "C680_AP_SPD_IS_MACH", "C680_AP_SPD_MANUAL", "C680_AT_STATUS", "C680_AP_APR_ARMED", "C680_AP_GS" };
+    private static readonly List<string> AutopilotControls = new() { "C680_XFR", "C680_CRS1_DEC", "C680_CRS1_INC", "C680_CRS1_SYNC", "C680_CRS2_DEC", "C680_CRS2_INC", "C680_CRS2_SYNC", "C680_AP_MASTER", "C680_AP_YD", "C680_AP_FD_L", "C680_AP_FD_R", "C680_AP_HDG", "C680_AP_NAV", "C680_AP_APR", "C680_AP_BC", "C680_AP_ALT", "C680_AP_VS", "C680_AP_FLC", "C680_AP_VNAV", "C680_AT_ARM", "C680_AT_DISC", "C680_AP_ALT_SET", "C680_AP_HDG_SET", "C680_AP_VS_SET", "C680_AP_SPD_SET", "C680_AP_SPD_MANUAL", "C680_TOGA", "C680_AP_DISC", "C680_CWS" };
+    private static readonly List<string> AutopilotDisplay = new() { "C680_CRS1", "C680_CRS2", "C680_AP_ALT_SEL", "C680_AP_HDG_BUG", "C680_AP_VS_TGT", "C680_AP_SPD_TGT", "C680_AP_MACH_TGT", "C680_AP_SPD_IS_MACH", "C680_AP_SPD_MANUAL", "C680_AT_STATUS", "C680_AP_APR_ARMED", "C680_AP_GS" };
     private static readonly List<string> WarningControls = new() { "C680_MASTER_WARN_ACK", "C680_MASTER_CAUT_ACK", "C680_FIRE_L_COVER", "C680_FIRE_L", "C680_BOTTLE_L", "C680_FIRE_R_COVER", "C680_FIRE_R", "C680_BOTTLE_R", "C680_FIRE_APU_COVER", "C680_FIRE_APU", "C680_BAG_FIRE_COVER", "C680_BAG_FIRE", "C680_BAG_BOTTLE_COVER", "C680_BAG_BOTTLE", "C680_TEST_ANNUN" };
     private static readonly List<string> WarningDisplay = new() { "C680_MASTER_WARN", "C680_MASTER_CAUT", "C680_FIRE_L_LIT", "C680_BOTTLE_L_LIT", "C680_FIRE_R_LIT", "C680_BOTTLE_R_LIT", "C680_FIRE_APU_LIT", "C680_BAG_FIRE_LIT", "C680_BAG_BOTTLE_LIT" };
-    private static readonly List<string> StandbyControls = new() { "C680_SAI_BL_MODE", "C680_SAI_BL", "C680_SAI_QNH_UNIT", "C680_SAI_METER", "C680_SAI_TURN", "C680_SAI_GS" };
-    private static readonly List<string> StandbyDisplay = new() { "C680_SAI_BARO", "C680_SAI_LIMITS" };
+    private static readonly List<string> StandbyControls = new() { "C680_SAI_MENU", "C680_SAI_KNOB_DEC", "C680_SAI_KNOB_INC", "C680_SAI_KNOB_PUSH", "C680_SAI_BARO_SET" };
+    private static readonly List<string> StandbyDisplay = new() { "C680_SAI_BARO", "C680_SAI_STD", "C680_SAI_MENU_INDEX" };
 
     private static readonly HashSet<string> GlareshieldPlainLVars = new(StringComparer.Ordinal)
     {
-        "C680_CWS", "C680_FIRE_L_COVER", "C680_FIRE_L", "C680_FIRE_R_COVER", "C680_FIRE_R", "C680_FIRE_APU_COVER",
-        "C680_BAG_FIRE_COVER", "C680_BAG_BOTTLE_COVER", "C680_TEST_ANNUN",
-        "C680_SAI_BL_MODE", "C680_SAI_BL", "C680_SAI_QNH_UNIT", "C680_SAI_METER", "C680_SAI_TURN", "C680_SAI_GS"
+        "C680_CWS", "C680_XFR", "C680_FIRE_L_COVER", "C680_FIRE_R_COVER", "C680_FIRE_APU_COVER",
+        "C680_BAG_FIRE_COVER", "C680_BAG_BOTTLE_COVER", "C680_TEST_ANNUN", "C680_SAI_MENU"
     };
 
     /// <summary>
@@ -160,11 +171,6 @@ public partial class SkywardC680Definition
 
             case "C680_MASTER_WARN_ACK": sc.ExecuteCalculatorCodeUnique("(>K:MASTER_WARNING_ACKNOWLEDGE)"); return true;
             case "C680_MASTER_CAUT_ACK": sc.ExecuteCalculatorCodeUnique("(>K:MASTER_CAUTION_ACKNOWLEDGE)"); return true;
-            case "C680_BOTTLE_L": Pulse(sc, "SAFETY_Push_Extinguisher_Arm_1", 500); return true;
-            case "C680_BOTTLE_R": Pulse(sc, "SAFETY_Push_Extinguisher_Arm_2", 500); return true;
-            case "C680_FIRE_APU": Pulse(sc, "SAFETY_Push_Extinguisher_APU", 500); return true;
-            case "C680_BAG_FIRE": Pulse(sc, "SAFETY_Push_Baggage_Fire", 500); return true;
-            case "C680_BAG_BOTTLE": Pulse(sc, "SAFETY_Push_Sec_Bag_Bottle", 500); return true;
         }
         return false;
     }

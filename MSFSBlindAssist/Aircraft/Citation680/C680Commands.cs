@@ -53,6 +53,28 @@ public static class C680Commands
             // The hydraulic switches act only with their covers open (LEFT_SINGLE_CODE).
             case "C680_HYD_SW_1": return One($"(L:HYDRAULICS_Switch_1_Cover) 1 == if{{ {OnOff(value)} (>L:SW_SOV_HYDRAULICS_Switch_1) }}");
             case "C680_HYD_SW_2": return One($"(L:HYDRAULICS_Switch_2_Cover) 1 == if{{ {OnOff(value)} (>L:SW_SOV_HYDRAULICS_Switch_2) }}");
+            // Course knobs (WT_G3000_Knob_Course_Template): one detent per press, push = sync.
+            case "C680_CRS1_INC": return One("(>H:AS3000_PFD_1_CRS_INC)", unique: true);
+            case "C680_CRS1_DEC": return One("(>H:AS3000_PFD_1_CRS_DEC)", unique: true);
+            case "C680_CRS1_SYNC": return One("(>H:AS3000_PFD_1_CRS_PUSH)", unique: true);
+            case "C680_CRS2_INC": return One("(>H:AS3000_PFD_2_CRS_INC)", unique: true);
+            case "C680_CRS2_DEC": return One("(>H:AS3000_PFD_2_CRS_DEC)", unique: true);
+            case "C680_CRS2_SYNC": return One("(>H:AS3000_PFD_2_CRS_PUSH)", unique: true);
+            // Fire buttons: the engine ones latch, the rest are held pushes; every covered one needs its cover open.
+            case "C680_FIRE_L": return One(Covered("SAFETY_Push_Extinguisher_1", OnOff(value)));
+            case "C680_FIRE_R": return One(Covered("SAFETY_Push_Extinguisher_2", OnOff(value)));
+            case "C680_FIRE_APU": return One(Covered("SAFETY_Push_Extinguisher_APU", 1), unique: true);
+            case "C680_BAG_FIRE": return One(Covered("SAFETY_Push_Baggage_Fire", 1), unique: true);
+            case "C680_BAG_BOTTLE": return One(Covered("SAFETY_Push_Sec_Bag_Bottle", 1), unique: true);
+            case "C680_BOTTLE_L": return One("1 (>L:SAFETY_Push_Extinguisher_Arm_1)", unique: true);
+            case "C680_BOTTLE_R": return One("1 (>L:SAFETY_Push_Extinguisher_Arm_2)", unique: true);
+            // Standby instrument (GH3900): the baro knob turns the baro, or moves the menu selection while the menu is open.
+            case "C680_SAI_BARO_SET":
+                return One($"3 {Math.Round(Math.Clamp(value, 850, 1100) * 16).ToString("0", CultureInfo.InvariantCulture)} (>K:2:KOHLSMAN_SET)");
+            case "C680_SAI_KNOB_INC": return One("(L:LW_SAI_MOD_MENU_OPEN, Bool) 0 == if{ 3 (>K:KOHLSMAN_INC) } els{ 1 (>L:LW_SAI_MOD_SELECTION) }", unique: true);
+            case "C680_SAI_KNOB_DEC": return One("(L:LW_SAI_MOD_MENU_OPEN, Bool) 0 == if{ 3 (>K:KOHLSMAN_DEC) } els{ -1 (>L:LW_SAI_MOD_SELECTION) }", unique: true);
+            case "C680_SAI_KNOB_PUSH":
+                return One("(L:LW_SAI_MOD_MENU_OPEN, Bool) 0 == if{ (A:KOHLSMAN SETTING STD:3, Bool) ! (>A:KOHLSMAN SETTING STD:3, Bool) } els{ (L:LW_SAI_MOD_MENU_INDEX, number) 0 == if{ 1 (>L:LW_SAI_MOD_SELECTION_CONFIRM, Bool) } }", unique: true);
             case "C680_STARTER_DISENG":
                 return new[]
                 {
@@ -62,6 +84,19 @@ public static class C680Commands
         }
         return Array.Empty<C680Command>();
     }
+
+    /// <summary>The release of a held push (ASOBO_GT_Push_Button_Held), sent after the press; null for a control that latches.</summary>
+    public static string? ReleaseOf(string key) => key switch
+    {
+        "C680_FIRE_APU" => "0 (>L:SAFETY_Push_Extinguisher_APU)",
+        "C680_BAG_FIRE" => "0 (>L:SAFETY_Push_Baggage_Fire)",
+        "C680_BAG_BOTTLE" => "0 (>L:SAFETY_Push_Sec_Bag_Bottle)",
+        "C680_BOTTLE_L" => "0 (>L:SAFETY_Push_Extinguisher_Arm_1)",
+        "C680_BOTTLE_R" => "0 (>L:SAFETY_Push_Extinguisher_Arm_2)",
+        _ => null
+    };
+
+    private static string Covered(string lvar, int value) => $"(L:{lvar}_Cover) 1 == if{{ {value} (>L:{lvar}) }}";
 
     public const string CabinInternetCircuit = "ATG_4000_BROADBAND_UT580";
 
