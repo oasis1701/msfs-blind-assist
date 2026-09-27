@@ -16,8 +16,9 @@ public class FlyByWireMCDUServiceTests
         public int FreshFrameRequests { get; private set; }
         public Queue<string> KeyResults { get; } = new();
         public List<string> KeysSent { get; } = new();
+        public List<bool> ActiveCalls { get; } = new();
         public void Start() { }
-        public void SetActive(bool active) { }
+        public void SetActive(bool active) => ActiveCalls.Add(active);
         public void RequestFreshFrame() => FreshFrameRequests++;
         public Task<string> SendKeyAsync(string key)
         {
@@ -109,6 +110,56 @@ public class FlyByWireMCDUServiceTests
         coherent.Connected(true);
 
         Assert.Equal(1, coherent.FreshFrameRequests);
+    }
+
+    // ------------------------------------------------------------------ showing the window
+
+    [Fact]
+    public void Showing_the_window_asks_SimBridge_for_a_fresh_frame_while_it_carries_the_screen()
+    {
+        // SimBridge pushes only when the screen changes, so without this a page reached while
+        // the window was closed was never spoken when it opened.
+        var coherent = new FakeCoherent();
+        var relay = new FakeRelay();
+        var service = new FlyByWireMCDUService(coherent, relay);
+        relay.Connected(true);
+        int before = relay.FreshFrameRequests;
+
+        service.SetActive(true);
+
+        Assert.Equal(before + 1, relay.FreshFrameRequests);
+    }
+
+    [Fact]
+    public void Showing_the_window_while_Coherent_carries_the_screen_leaves_SimBridge_alone()
+    {
+        // The Coherent client re-reads at once on activation; SimBridge's frame would be dropped.
+        var coherent = new FakeCoherent();
+        var relay = new FakeRelay();
+        var service = new FlyByWireMCDUService(coherent, relay);
+        relay.Connected(true);
+        coherent.Connected(true);
+        int before = relay.FreshFrameRequests;
+
+        service.SetActive(true);
+
+        Assert.Equal(before, relay.FreshFrameRequests);
+        Assert.Equal(new[] { true }, coherent.ActiveCalls);
+    }
+
+    [Fact]
+    public void Hiding_the_window_asks_no_transport_for_a_frame()
+    {
+        var coherent = new FakeCoherent();
+        var relay = new FakeRelay();
+        var service = new FlyByWireMCDUService(coherent, relay);
+        relay.Connected(true);
+        int before = relay.FreshFrameRequests;
+
+        service.SetActive(false);
+
+        Assert.Equal(before, relay.FreshFrameRequests);
+        Assert.Equal(new[] { false }, coherent.ActiveCalls);
     }
 
     // ------------------------------------------------------------------ key presses

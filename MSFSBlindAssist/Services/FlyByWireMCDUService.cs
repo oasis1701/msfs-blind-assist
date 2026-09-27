@@ -94,10 +94,16 @@ public class FlyByWireMCDUService : IDisposable
 
     /// <summary>
     /// Poll the Coherent screen fast while the MCDU window is visible, at the idle rate while
-    /// it is closed (a closed window still speaks FMS messages); showing it re-reads at once.
-    /// The SimBridge relay pushes on its own and needs no gate.
+    /// it is closed (a closed window still speaks FMS messages). Showing it re-reads at once on
+    /// whichever transport carries the screen, so a page reached while it was closed is spoken
+    /// when it opens: the Coherent client re-reads on activation, and SimBridge — which pushes
+    /// only when the screen changes — is asked for the current screen.
     /// </summary>
-    public void SetActive(bool active) => _coherent.SetActive(active);
+    public void SetActive(bool active)
+    {
+        _coherent.SetActive(active);
+        if (active && _arbiter.Live == FbwMcduSource.SimBridge) { _simBridge.RequestFreshFrame(); }
+    }
 
     /// <summary>
     /// Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU. It goes
