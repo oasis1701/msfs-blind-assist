@@ -113,6 +113,23 @@ public class CoherentViewOwnershipTests
     }
 
     [Fact]
+    public void An_owner_that_throws_neither_fails_the_one_shot_nor_keeps_the_others_from_being_told()
+    {
+        // The one-shot is D / Shift+D's flight-info read: an owner's wake-up failing must not turn
+        // a finished read into an exception, and must not cost another owner its wake-up.
+        var view = NewView();
+        var oneShot = CoherentViewOwnership.TryEnterOneShot(view)!;
+        int told = 0;
+        using var throwing = CoherentViewOwnership.Claim(view, onOneShotDone: () => throw new InvalidOperationException("owner failed"));
+        using var listening = CoherentViewOwnership.Claim(view, onOneShotDone: () => told++);
+
+        var thrown = Record.Exception(() => oneShot.Dispose());
+
+        Assert.Null(thrown);
+        Assert.Equal(1, told);
+    }
+
+    [Fact]
     public void Disposing_a_claim_twice_releases_it_once()
     {
         var view = NewView();

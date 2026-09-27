@@ -6,8 +6,9 @@
 // worked as a one-shot before the client existed.
 //
 // The ownership registry is process-wide and xUnit runs test classes in parallel, so every
-// test uses a view name of its own. No debugger answers on these names, so a started client
-// never connects.
+// test uses a view name of its own. No Coherent view has these names, so a started client never
+// opens a socket — even on a machine with the simulator running, where its page-list request
+// reaches the real debugger.
 
 using MSFSBlindAssist.SimConnect;
 

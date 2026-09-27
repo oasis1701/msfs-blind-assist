@@ -166,6 +166,9 @@ namespace MSFSBlindAssist.SimConnect
             try
             {
                 _agentJs = _readAgent();
+                // A truncated install: logged like an unreadable one, or "why does Coherent never
+                // connect" leaves no trace.
+                if (string.IsNullOrEmpty(_agentJs)) { Log.Warn("SimConnect", $"{AgentFile} is empty."); }
             }
             catch (Exception ex)
             {
