@@ -28,8 +28,8 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public class FlyByWireMCDUService : IDisposable
 {
-    private readonly CoherentA32nxMcduClient _coherent;
-    private readonly FlyByWireSimBridgeMcduClient _simBridge;
+    private readonly IFbwMcduCoherentTransport _coherent;
+    private readonly IFbwMcduRelayTransport _simBridge;
     private readonly FbwMcduTransportArbiter _arbiter = new();
     private bool _disposed;
 
@@ -51,8 +51,14 @@ public class FlyByWireMCDUService : IDisposable
     /// "A339X_MCDU" on the Headwind A330 (<c>FlyByWireA320Definition.FlightInfoMcduView</c>).</param>
     /// <param name="simBridgeHost">SimBridge host:port for the relay fallback.</param>
     public FlyByWireMCDUService(string mcduViewTitle = "A32NX_MCDU", string simBridgeHost = "localhost:8380")
+        : this(new CoherentA32nxMcduClient(mcduViewTitle), new FlyByWireSimBridgeMcduClient(simBridgeHost))
     {
-        _coherent = new CoherentA32nxMcduClient(mcduViewTitle);
+    }
+
+    /// <summary>The two transports, injected (the public constructor builds the real ones).</summary>
+    internal FlyByWireMCDUService(IFbwMcduCoherentTransport coherent, IFbwMcduRelayTransport simBridge)
+    {
+        _coherent = coherent;
         _coherent.DisplayUpdated += d => Apply(_arbiter.Offer(FbwMcduSource.Coherent, d));
         _coherent.ConnectionStatusChanged += c =>
         {
@@ -60,14 +66,14 @@ public class FlyByWireMCDUService : IDisposable
             Apply(_arbiter.SetConnected(FbwMcduSource.Coherent, c));
         };
 
-        _simBridge = new FlyByWireSimBridgeMcduClient(simBridgeHost);
+        _simBridge = simBridge;
         _simBridge.DisplayUpdated += d => Apply(_arbiter.Offer(FbwMcduSource.SimBridge, d));
         _simBridge.ConnectionStatusChanged += c =>
         {
             Log.Info("Services", $"A32NX MCDU over SimBridge: {(c ? "connected" : "disconnected")}");
             Apply(_arbiter.SetConnected(FbwMcduSource.SimBridge, c));
         };
-        _simBridge.PrintReceived += lines => PrintReceived?.Invoke(lines);
+        _simBridge.PrintReceived += lines => { if (!_disposed) { PrintReceived?.Invoke(lines); } };
     }
 
     /// <summary>
@@ -122,6 +128,16 @@ public class FlyByWireMCDUService : IDisposable
 
     private void Apply(FbwMcduTransportArbiter.Decision decision)
     {
+        // Both transports post their callbacks, so some are still queued when the service is
+        // disposed — at app exit the message pump then delivered the Coherent client's own
+        // "not readable" to a window still subscribed, and it said "MCDU disconnected" on the way
+        // out. A disposed service tells the window nothing.
+        if (_disposed) { return; }
+        switch (decision.RequestFreshFrom)
+        {
+            case FbwMcduSource.Coherent: _coherent.RequestFreshFrame(); break;
+            case FbwMcduSource.SimBridge: _simBridge.RequestFreshFrame(); break;
+        }
         if (decision.ConnectionChangedTo is bool connected) { ConnectionStatusChanged?.Invoke(connected); }
         if (decision.Publish != null) { DisplayUpdated?.Invoke(decision.Publish); }
     }

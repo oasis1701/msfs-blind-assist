@@ -1,7 +1,12 @@
 // FbwMcduTransportArbiter chooses between the FlyByWire MCDU's two transports — the
 // Coherent debugger socket (primary) and SimBridge's relay (fallback) — so the MCDU
 // window sees one MCDU. These pin the precedence, the silence of the non-live transport,
-// the catch-up re-publish on a switch, and the once-per-change connection report.
+// the fresh-frame request on a switch, and the once-per-change connection report.
+//
+// A switch never replays a frame the arbiter remembered (PR #253 review): a hung SimBridge
+// keeps its socket open, and FBW's MCDU sends SimBridge a blank screen when it detaches,
+// so the relay's last frame could be hours old or empty — and it was put back on screen,
+// title spoken, whenever Coherent dropped. The newcomer is asked for a fresh frame instead.
 
 using MSFSBlindAssist.Services;
 
@@ -42,22 +47,34 @@ public class FbwMcduTransportArbiterTests
     }
 
     [Fact]
-    public void Losing_coherent_hands_the_window_to_simbridge_with_its_last_frame()
+    public void Losing_coherent_asks_simbridge_for_a_fresh_frame_instead_of_replaying_its_last_one()
     {
         var a = new FbwMcduTransportArbiter();
         a.SetConnected(FbwMcduSource.SimBridge, true);
         a.SetConnected(FbwMcduSource.Coherent, true);
-        a.Offer(FbwMcduSource.SimBridge, Frame("PERF"));   // remembered, not published
+        a.Offer(FbwMcduSource.SimBridge, Frame("INIT"));   // the relay's last frame — possibly stale
 
         var d = a.SetConnected(FbwMcduSource.Coherent, false);
 
         Assert.Equal(FbwMcduSource.SimBridge, a.Live);
-        Assert.Equal("PERF", d.Publish?.Title);      // catch-up without waiting for a change
-        Assert.Null(d.ConnectionChangedTo);          // still connected overall — no announcement
+        Assert.Null(d.Publish);                              // the window keeps what it showed
+        Assert.Equal(FbwMcduSource.SimBridge, d.RequestFreshFrom);
+        Assert.Null(d.ConnectionChangedTo);                  // still connected overall — no announcement
     }
 
     [Fact]
-    public void Coherent_coming_up_takes_over_and_republishes_its_last_frame()
+    public void The_fresh_frame_from_the_new_live_transport_is_published()
+    {
+        var a = new FbwMcduTransportArbiter();
+        a.SetConnected(FbwMcduSource.SimBridge, true);
+        a.SetConnected(FbwMcduSource.Coherent, true);
+        a.SetConnected(FbwMcduSource.Coherent, false);
+
+        Assert.Equal("PERF", a.Offer(FbwMcduSource.SimBridge, Frame("PERF")).Publish?.Title);
+    }
+
+    [Fact]
+    public void Coherent_coming_up_takes_over_and_asks_for_a_fresh_frame()
     {
         var a = new FbwMcduTransportArbiter();
         a.SetConnected(FbwMcduSource.SimBridge, true);
@@ -66,50 +83,45 @@ public class FbwMcduTransportArbiterTests
         var d = a.SetConnected(FbwMcduSource.Coherent, true);
 
         Assert.Equal(FbwMcduSource.Coherent, a.Live);
-        Assert.Equal("F-PLN", d.Publish?.Title);
+        Assert.Null(d.Publish);                              // never a frame from before it was live
+        Assert.Equal(FbwMcduSource.Coherent, d.RequestFreshFrom);
     }
 
     [Fact]
-    public void A_transport_that_reconnects_does_not_republish_its_pre_drop_frame()
-    {
-        // SimBridge covers while Coherent is down; the screen moves on. Coherent's frame from
-        // BEFORE the drop must not be re-published when it comes back — the window would read
-        // the old page title, then the current one a poll later.
-        var a = new FbwMcduTransportArbiter();
-        a.SetConnected(FbwMcduSource.SimBridge, true);
-        a.SetConnected(FbwMcduSource.Coherent, true);
-        a.Offer(FbwMcduSource.Coherent, Frame("INIT"));
-
-        a.SetConnected(FbwMcduSource.Coherent, false);
-        a.Offer(FbwMcduSource.SimBridge, Frame("PERF"));
-        var back = a.SetConnected(FbwMcduSource.Coherent, true);
-
-        Assert.Equal(FbwMcduSource.Coherent, a.Live);
-        Assert.Null(back.Publish);   // the fresh Coherent poll carries the current screen
-    }
-
-    [Fact]
-    public void A_simbridge_frame_from_before_its_drop_is_not_republished_either()
-    {
-        var a = new FbwMcduTransportArbiter();
-        a.SetConnected(FbwMcduSource.SimBridge, true);
-        a.Offer(FbwMcduSource.SimBridge, Frame("DATA"));
-        a.SetConnected(FbwMcduSource.SimBridge, false);
-        a.SetConnected(FbwMcduSource.Coherent, true);
-        a.SetConnected(FbwMcduSource.SimBridge, true);
-
-        var d = a.SetConnected(FbwMcduSource.Coherent, false);
-
-        Assert.Equal(FbwMcduSource.SimBridge, a.Live);
-        Assert.Null(d.Publish);
-    }
-
-    [Fact]
-    public void A_switch_with_no_frame_yet_publishes_nothing()
+    public void The_first_connect_asks_that_transport_for_a_frame()
     {
         var a = new FbwMcduTransportArbiter();
         var d = a.SetConnected(FbwMcduSource.Coherent, true);
+
         Assert.Null(d.Publish);
+        Assert.True(d.ConnectionChangedTo);
+        Assert.Equal(FbwMcduSource.Coherent, d.RequestFreshFrom);
+    }
+
+    [Fact]
+    public void Losing_the_last_transport_asks_nobody_for_a_frame()
+    {
+        var a = new FbwMcduTransportArbiter();
+        a.SetConnected(FbwMcduSource.Coherent, true);
+
+        var d = a.SetConnected(FbwMcduSource.Coherent, false);
+
+        Assert.Equal(FbwMcduSource.None, a.Live);
+        Assert.Equal(FbwMcduSource.None, d.RequestFreshFrom);
+        Assert.False(d.ConnectionChangedTo);
+    }
+
+    [Fact]
+    public void A_connection_change_of_the_transport_that_is_not_live_asks_for_nothing()
+    {
+        var a = new FbwMcduTransportArbiter();
+        a.SetConnected(FbwMcduSource.Coherent, true);
+
+        var up = a.SetConnected(FbwMcduSource.SimBridge, true);
+        var down = a.SetConnected(FbwMcduSource.SimBridge, false);
+
+        Assert.Equal(FbwMcduSource.None, up.RequestFreshFrom);
+        Assert.Equal(FbwMcduSource.None, down.RequestFreshFrom);
     }
 
     [Fact]
@@ -131,5 +143,6 @@ public class FbwMcduTransportArbiterTests
         var d = a.SetConnected(FbwMcduSource.Coherent, true);
         Assert.Null(d.Publish);
         Assert.Null(d.ConnectionChangedTo);
+        Assert.Equal(FbwMcduSource.None, d.RequestFreshFrom);
     }
 }

@@ -26,7 +26,7 @@ namespace MSFSBlindAssist.SimConnect
     /// stops — so that readout works with the window closed and reopening needs no
     /// reconnect. Restart is not supported: dispose and create a new instance.
     /// </summary>
-    public sealed class CoherentA32nxMcduClient : IDisposable
+    public sealed class CoherentA32nxMcduClient : IFbwMcduCoherentTransport
     {
         private const string DebuggerBase = "http://127.0.0.1:19999";
         private const string AgentFile = "coherent-a32nx-mcdu-agent.js";
@@ -148,6 +148,13 @@ namespace MSFSBlindAssist.SimConnect
             _active = active;
             if (active) { _lastRaw = ""; }
         }
+
+        /// <summary>
+        /// Push the current screen on the next read even if it has not changed — asked for when
+        /// this transport becomes the live one, so the window is not left on a frame from the
+        /// other transport.
+        /// </summary>
+        public void RequestFreshFrame() { _lastRaw = ""; }
 
         /// <summary>
         /// Press one Captain-MCDU key ("INIT", "L1", "DOT", "CLR" …). The next poll reflects

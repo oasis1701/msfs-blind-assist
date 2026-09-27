@@ -18,7 +18,7 @@ namespace MSFSBlindAssist.Services;
 /// message to every client, so the receive loop filters on type. Only the Captain side
 /// is ever driven — see <see cref="FlyByWireMCDUService"/> for why no side selector exists.
 /// </summary>
-public sealed class FlyByWireSimBridgeMcduClient : IDisposable
+public sealed class FlyByWireSimBridgeMcduClient : IFbwMcduRelayTransport
 {
     private readonly string _host;
 
@@ -187,23 +187,36 @@ public sealed class FlyByWireSimBridgeMcduClient : IDisposable
         }
     }
 
-    /// <summary>Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU.</summary>
-    public Task SendButtonPress(string key) => SendRaw($"event:{FbwMcduUpdate.CaptainSide}:{key}", CancellationToken.None);
+    /// <summary>
+    /// Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU. True when
+    /// it was written to an open relay socket — which says nothing about whether the aircraft
+    /// received it (a hung SimBridge takes the write and delivers nothing).
+    /// </summary>
+    public Task<bool> SendButtonPress(string key) => SendRaw($"event:{FbwMcduUpdate.CaptainSide}:{key}", CancellationToken.None);
 
-    private async Task SendRaw(string message, CancellationToken ct)
+    /// <summary>
+    /// Ask the aircraft to send its current screen now (<c>requestUpdate</c>, the relay's own
+    /// message). Used when this transport becomes the live one, so the window gets a fresh
+    /// frame instead of whatever the relay last carried.
+    /// </summary>
+    public void RequestFreshFrame() => _ = SendRaw("requestUpdate", CancellationToken.None);
+
+    private async Task<bool> SendRaw(string message, CancellationToken ct)
     {
         var ws = _ws;
-        if (ws == null || ws.State != WebSocketState.Open) { return; }
+        if (ws == null || ws.State != WebSocketState.Open) { return false; }
         var bytes = Encoding.UTF8.GetBytes(message);
         try
         {
             await _sendLock.WaitAsync(ct);
             try { await ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct); }
             finally { _sendLock.Release(); }
+            return true;
         }
         catch (Exception ex)
         {
             Log.Debug("Services", $"SimBridge MCDU send error ({message}): {ex.Message}");
+            return false;
         }
     }
 
