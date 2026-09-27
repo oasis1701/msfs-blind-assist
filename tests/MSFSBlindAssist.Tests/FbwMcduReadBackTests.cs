@@ -4,7 +4,7 @@
 // ("DEST EFOB BELOW MIN") — the one thing a pilot with the window closed needs — but not
 // page changes or "Scratchpad cleared". And over the Coherent transport a frame arrives only
 // every 250 ms plus the eval round trip, while FBW's keypad applies each key 150-200 ms after
-// it lands, so a typed entry must be held until it has landed or its halves are read back.
+// it lands, so the read-back holds while a typed entry's keys land or its halves are read back.
 //
 // The window's timer re-samples the LAST frame on every tick, so these tests play frames by
 // how long each one showed, not by ticks: what a pilot hears must not depend on where the
@@ -121,9 +121,18 @@ public class FbwMcduReadBackTests
             ("", 1500), ("NOT ALLOWED", FbwMcduReadBack.TickMs), ("", 1500)));
     }
 
-    /// <summary>One Coherent read: the 250 ms poll plus an eval round trip of 20, 50 or 100 ms. A
-    /// value the window saw in one read shows in the window for that long.</summary>
-    public static TheoryData<int> OneReadMs => new() { 270, 300, 350 };
+    /// <summary>One Coherent read with the window open: the 250 ms poll plus an eval round trip of
+    /// 20, 50, 100 or 150 ms — the last is the documented limit. A value the window saw in one read
+    /// shows in the window for that long.</summary>
+    public static TheoryData<int> OneReadMs => new() { 270, 300, 350, 400 };
+
+    [Fact]
+    public void The_stability_window_is_never_shorter_than_StableMs()
+    {
+        // The count is of ticks, so it must round UP: with a tick that does not divide StableMs,
+        // rounding down would speak a value that showed for less than StableMs.
+        Assert.True((FbwMcduReadBack.StablePolls - 1) * FbwMcduReadBack.TickMs >= FbwMcduReadBack.StableMs);
+    }
 
     [Theory]
     [MemberData(nameof(OneReadMs))]

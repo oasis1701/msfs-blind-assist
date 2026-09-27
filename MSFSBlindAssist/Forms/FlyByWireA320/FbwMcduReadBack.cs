@@ -13,10 +13,10 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 ///    these messages still reach the pilot, as they did when SimBridge was the only transport.
 ///
 /// A changed scratchpad is spoken once it has shown for <see cref="StableMs"/>, and typed entries
-/// are held (<see cref="HoldForTyping"/>) while their keys land, so neither a value the window saw
-/// in a single read nor a half-typed entry is read back. Over the Coherent transport a frame
-/// arrives only every 250 ms plus the eval round trip, which the window's old 300 ms debounce
-/// could not bridge.
+/// are held (<see cref="HoldForTyping"/>) while their keys land, so a half-typed entry is not read
+/// back and, with the window open, neither is a value seen in a single read. Over the Coherent
+/// transport an open window reads the screen every 250 ms plus the eval round trip, which the
+/// window's old 300 ms debounce could not bridge; a closed one reads it once a second.
 /// </summary>
 internal sealed class FbwMcduReadBack
 {
@@ -27,9 +27,10 @@ internal sealed class FbwMcduReadBack
     public const int TickMs = 100;
 
     /// <summary>How long a changed scratchpad must show before it is spoken: longer than one Coherent
-    /// read (the 250 ms poll plus an eval round trip of up to 150 ms), so a value the window saw in a
-    /// single read is never spoken — a redraw caught mid-way, or the 150 ms blank FBW leaves before
-    /// showing the next queued message.</summary>
+    /// read with the window open (the 250 ms poll plus an eval round trip of up to 150 ms), so there a
+    /// value seen in a single read is not spoken — a redraw caught mid-way, or the 150 ms blank FBW
+    /// leaves before showing the next queued message. A closed window reads once a second, and only
+    /// an FMS message is spoken then.</summary>
     public const int StableMs = 400;
 
     /// <summary>How long after each typed key the read-back holds: FBW's keypad applies a key
@@ -37,7 +38,11 @@ internal sealed class FbwMcduReadBack
     /// Coherent read.</summary>
     public const int TypingSettleMs = 600;
 
-    private readonly CduScratchpadAnnouncer _scratchpad = new(ClearedText, stablePolls: StableMs / TickMs + 1);
+    /// <summary>How many ticks in a row a change must read the same: the first sees it, and the
+    /// rest must span at least <see cref="StableMs"/>, so the count rounds UP.</summary>
+    internal const int StablePolls = (StableMs + TickMs - 1) / TickMs + 1;
+
+    private readonly CduScratchpadAnnouncer _scratchpad = new(ClearedText, stablePolls: StablePolls);
     private string _lastTitle = "";
 
     public FbwMcduReadBack()
