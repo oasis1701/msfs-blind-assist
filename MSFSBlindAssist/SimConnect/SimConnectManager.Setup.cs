@@ -156,6 +156,16 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SIM ON GROUND", "bool",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
+        // The surface under the wheels rides the position stream rather than taking a definition
+        // and a request of its own: every consumer of it (the "off the pavement" callout) already
+        // needs the position and the ground flag in the same sample, and pairing a surface read
+        // with a position from a different tick is how a callout ends up naming the wrong place.
+        // ORDER IS THE CONTRACT — these two must stay last here and last in AircraftPosition, in
+        // the same order, or every field after the divergence is read from the wrong offset.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SURFACE TYPE", "enum",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)8);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SURFACE INFO VALID", "bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)9);
         sc.RegisterDataDefineStruct<AircraftPosition>(DATA_DEFINITIONS.AIRCRAFT_POSITION);
 
         // Register AI traffic data (used by RequestDataOnSimObjectType → OnRecvSimobjectDataBytype)
@@ -313,6 +323,12 @@ public partial class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV NAME:2", null, SIMCONNECT_DATATYPE.STRING256, 0.0f, SIMCONNECT_UNUSED);
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV OBS:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<NavRadioData>(DATA_DEFINITIONS.DEF_NAV_RADIO);
+
+        // COM 1 active + standby, read back after the surroundings window tunes a frequency
+        // (RequestCom1Radio). Hz, so a read compares exactly with the Hz the tune event sent.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_COM1_RADIO, "COM ACTIVE FREQUENCY:1", "Hz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_COM1_RADIO, "COM STANDBY FREQUENCY:1", "Hz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.RegisterDataDefineStruct<Com1RadioData>(DATA_DEFINITIONS.DEF_COM1_RADIO);
 
         // Fixed hotkey readout defs (altitude/airspeed/VS/mach/bank/pitch/OAT/squawk/heading —
         // SC-12, 2026-07): universal, non-aircraft-specific, so they register here with the rest

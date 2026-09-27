@@ -1,0 +1,1 @@
+At add-on airports the surroundings readout also knows what the installed scenery actually models — named hangars, concourses, cargo buildings and the tower are read from the package on disk, so a hangar OpenStreetMap leaves unnamed can still be called by name.

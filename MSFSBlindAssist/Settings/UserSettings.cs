@@ -418,12 +418,31 @@ public class UserSettings
         public int TaxiGuidanceGroundSpeedAnnounceInterval { get; set; } = 0;
 
         /// <summary>
-        /// When true (default), the augmenting provider fetches taxiway names from
-        /// OpenStreetMap and the X-Plane Scenery Gateway to enrich unnamed navdata
-        /// segments. Disabling this reverts to pure-navdata names only, with no
-        /// online requests. Requires app restart to take effect.
+        /// When true (default), the app fetches airport data navdata lacks: taxiway names and gate
+        /// aliases (OpenStreetMap, X-Plane Scenery Gateway) and the OSM buildings the surroundings
+        /// features use. Off means navdata and installed scenery only, no online requests. Applied
+        /// live by <c>MainForm.ApplyRuntimeSettings</c>.
         /// </summary>
         public bool TaxiAugmentEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Read the installed scenery package's placement BGLs for named buildings (hangars,
+        /// concourses, tower…) at add-on airports. Offline; cached under %APPDATA%\MSFSBlindAssist\scenery-index.
+        /// </summary>
+        public bool SceneryIndexEnabled { get; set; } = true;
+
+        /// <summary>
+        /// Opt-in "Passing Concourse B, on the left." callouts while taxiing (AirportSurroundingsMonitor).
+        /// Default OFF like every other automatic announcement. Applies immediately.
+        /// </summary>
+        public bool SurroundingsCalloutsEnabled { get; set; } = false;
+
+        /// <summary>
+        /// "Off the pavement, on grass." — separate from <see cref="SurroundingsCalloutsEnabled"/> on
+        /// purpose: a safety callout must not hide behind a switch people turn off for chattiness.
+        /// Default OFF like every other automatic announcement. Applies immediately.
+        /// </summary>
+        public bool SurfaceChangeCalloutsEnabled { get; set; } = false;
 
         /// <summary>
         /// Ground-speed announcement cadence used WHILE TAKEOFF ASSIST IS ACTIVE,
