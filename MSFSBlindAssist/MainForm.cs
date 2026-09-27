@@ -1219,6 +1219,13 @@ public partial class MainForm : Form
         coherentEWDClient?.Dispose();
         coherentFwsFailureClient?.Dispose();
 
+        // FlyByWire A32NX / Headwind A330 MCDU: its Coherent socket and poll loop, and the
+        // SimBridge relay's reconnect loop (otherwise only disposed on aircraft swap). The window
+        // first, then the service, as on the swap path: the window's timers would otherwise
+        // tick through Disconnect()'s DoEvents pump below and could still speak.
+        if (flyByWireMCDUForm != null && !flyByWireMCDUForm.IsDisposed) flyByWireMCDUForm.Dispose();
+        flyByWireMCDUService?.Dispose();
+
         // Clean up PMDG EFB Coherent clients (otherwise only disposed on aircraft swap —
         // a user who opens the EFB then quits without switching aircraft leaks the socket + poll loop).
         coherentPmdgEfbCaptain?.Dispose();

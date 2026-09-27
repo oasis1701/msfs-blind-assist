@@ -285,8 +285,11 @@ General:
   Escape     Exit active hotkey mode
 
 MCDU Window (open with [ then Shift+M):
-  This is the A32NX MCDU (Captain side — the SimBridge remote protocol does not
-  expose the First Officer MCDU separately).
+  This is the A32NX MCDU (Captain side — the aircraft draws both MCDU screens
+  from one instrument, so there is no separate First Officer MCDU to show).
+  Once you have opened this window, it keeps reading out FMS messages such
+  as DEST EFOB BELOW MIN after you close it. SimBridge is optional: it is
+  only needed for MCDU printouts.
 
 Navigation:
   Up/Down        Read the screen line by line
