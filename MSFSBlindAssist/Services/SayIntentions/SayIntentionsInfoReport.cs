@@ -10,8 +10,14 @@ namespace MSFSBlindAssist.Services.SayIntentions;
 /// field was missing is dropped whole rather than emitted as a bare heading, so the
 /// caller can hand each section straight to a control without checking for one that
 /// has nothing in it.
+///
+/// <para><see cref="OnEnter"/>, when set, is what Enter (false) and Shift+Enter (true) do on
+/// the selected row, called with the row's index — the surroundings window's Frequencies list
+/// tunes COM 1 with it. <see cref="EnterHint"/> becomes that list's accessible description, so
+/// a screen reader can say the list does something.</para>
 /// </summary>
-public sealed record InfoSection(string Heading, IReadOnlyList<string> Items);
+public sealed record InfoSection(string Heading, IReadOnlyList<string> Items,
+    Action<int, bool>? OnEnter = null, string? EnterHint = null);
 
 /// <summary>
 /// Builds the SayIntentions information readout as headed SECTIONS.

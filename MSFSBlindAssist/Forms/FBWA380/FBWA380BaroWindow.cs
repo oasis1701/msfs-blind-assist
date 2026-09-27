@@ -15,8 +15,9 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 //               polarity evidence live on BaroModeEvent). State is read back from
 //               KOHLSMAN SETTING STD:1 via the re-keyed def (IS_STD L:vars removed
 //               in dev FBW).
-//   Unit      : aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_1", ...)
-//               + "_2" (dev FBW honors only _1 — upstream FIXME; set both).
+//   Unit      : aircraft.ApplyUIVariable("A32NX_FCU_EFIS_L_BARO_IS_INHG", ...) + "_R_" — the
+//               EFIS-CP selector's own var since FBW #10855 (1 = inHg), which the FCU reads
+//               every frame. NOT XMLVAR_Baro_Selector_HPA_{1,2}: nothing reads that any more.
 public class FBWA380BaroWindow : FBWA380FCUWindowBase
 {
     private readonly ComboBox modeCombo;
@@ -92,8 +93,8 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
             // STD state: read from KOHLSMAN SETTING STD:1 via the re-keyed IS_STD def.
             bool std = (simConnect.GetCachedVariableValue("A32NX_FCU_LEFT_EIS_BARO_IS_STD") ?? 0) > 0.5;
             modeCombo.SelectedIndex = std ? 1 : 0;
-            // Unit: XMLVAR_Baro_Selector_HPA_1 (1=hPa, 0=inHg). Keep last unit in STD mode.
-            bool inHg = (simConnect.GetCachedVariableValue("XMLVAR_Baro_Selector_HPA_1") ?? 1) < 0.5;
+            // Unit: the captain's selector, A32NX_FCU_EFIS_L_BARO_IS_INHG (1 = inHg). Keep last unit in STD mode.
+            bool inHg = (simConnect.GetCachedVariableValue("A32NX_FCU_EFIS_L_BARO_IS_INHG") ?? 0) > 0.5;
             if (!std)
                 unitCombo.SelectedIndex = inHg ? 1 : 0;
             else if (unitCombo.SelectedIndex < 0)
@@ -128,9 +129,9 @@ public class FBWA380BaroWindow : FBWA380FCUWindowBase
         if (suppressUiEvents) return;
         _lastUserChangeUtc = DateTime.UtcNow;
         bool inHg = unitCombo.SelectedIndex == 1;
-        // XMLVAR_Baro_Selector_HPA_1/2: 1=hPa, 0=inHg. Dev FBW honors _1; set _2 anyway.
-        aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_1", inHg ? 0 : 1, simConnect, announcer);
-        aircraft.ApplyUIVariable("XMLVAR_Baro_Selector_HPA_2", inHg ? 0 : 1, simConnect, announcer);
+        // Both EFIS-CP unit selectors (1 = inHg), the way the Baro window sets both altimeters.
+        aircraft.ApplyUIVariable("A32NX_FCU_EFIS_L_BARO_IS_INHG", inHg ? 1 : 0, simConnect, announcer);
+        aircraft.ApplyUIVariable("A32NX_FCU_EFIS_R_BARO_IS_INHG", inHg ? 1 : 0, simConnect, announcer);
         // No announcement: the screen reader already announces the combo change.
     }
 

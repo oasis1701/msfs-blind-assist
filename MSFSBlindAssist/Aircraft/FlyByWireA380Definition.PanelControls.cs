@@ -269,12 +269,10 @@ public partial class FlyByWireA380Definition
             "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_L_ND_RANGE",
             "A380X_EFIS_L_ACTIVE_OVERLAY",
             "A32NX_EFIS_L_NAVAID_1_MODE", "A32NX_EFIS_L_NAVAID_2_MODE",
-            "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "CAPT_QNH_SET", "XMLVAR_Baro_Selector_HPA_1",
-            "A32NX_EFIS_L_OANS_RANGE",
-            // Flight Director 1 (captain). The earlier removal said writes "fail",
-            // but the engage-state L:var IS settable and HOLDS via the calculator
-            // path (re-verified live: set 1 → still 1 after 2.5 s).
-            "FD_1_CTL"
+            "A32NX_FCU_LEFT_EIS_BARO_IS_STD", "CAPT_QNH_SET", "A32NX_FCU_EFIS_L_BARO_IS_INHG",
+            "A32NX_EFIS_L_OANS_RANGE"
+            // (No flight director here: the A380 has ONE FD pushbutton, on the FCU, driving
+            //  both flight directors — it is the "Flight Directors" row of the FCU panel.)
         };
         p["EFIS First Officer"] = new List<string>
         {
@@ -287,25 +285,27 @@ public partial class FlyByWireA380Definition
             "A32NX_EFIS_R_ND_MODE", "A32NX_EFIS_R_ND_RANGE",
             "A380X_EFIS_R_ACTIVE_OVERLAY",
             "A32NX_EFIS_R_NAVAID_1_MODE", "A32NX_EFIS_R_NAVAID_2_MODE",
-            "A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "FO_QNH_SET", "XMLVAR_Baro_Selector_HPA_2",
-            "A32NX_EFIS_R_OANS_RANGE",
-            "FD_2_CTL"   // Flight Director 2 (F/O) — see captain side
+            "A32NX_FCU_RIGHT_EIS_BARO_IS_STD", "FO_QNH_SET", "A32NX_FCU_EFIS_R_BARO_IS_INHG",
+            "A32NX_EFIS_R_OANS_RANGE"
+            // (Flight directors: the FCU panel — see the captain side.)
         };
         p["FCU"] = new List<string>
         {
             // Engage/mode controls as stateful combos (show live state, pick to
             // toggle) instead of blind buttons — see HandleUIVariableSet.
             "A32NX_AUTOPILOT_1_ACTIVE", "A32NX_AUTOPILOT_2_ACTIVE", "A32NX_AUTOTHRUST_STATUS",
+            // The one FD pushbutton (both flight directors) — see A380FlightDirector.
+            A380FlightDirector.StateKey,
             "A32NX_FCU_LOC_LIGHT_ON", "A32NX_FCU_APPR_LIGHT_ON",
             "A32NX_TRK_FPA_MODE_ACTIVE",
             // Genuine momentary knob push/pulls stay as buttons.
             "A32NX.FCU_HDG_PUSH", "A32NX.FCU_HDG_PULL",
             "A32NX.FCU_SPD_PUSH", "A32NX.FCU_SPD_PULL",
-            "A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PULL", "XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT",
+            "A32NX.FCU_ALT_PUSH", "A32NX.FCU_ALT_PULL", "A32NX_FCU_ALT_INCREMENT_1000",
             "A32NX.FCU_VS_PUSH", "A32NX.FCU_VS_PULL",
             "A32NX.FCU_SPD_MACH_TOGGLE_PUSH",
             "A32NX.FCU_AP_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH",
-            "A32NX_METRIC_ALT_TOGGLE"
+            A380MetricAltitude.ControlKey
         };
         p["OIT"] = new List<string> { "A380X_SWITCH_OIT_SIDE_LEFT", "A380X_SWITCH_OIT_SIDE_RIGHT" };
 
@@ -607,15 +607,15 @@ public partial class FlyByWireA380Definition
         d["Status"] = new List<string> { "A32NX_FMGC_FLIGHT_PHASE" };
         d["FCU"] = new List<string>
         {
-            // AP1/AP2/ATHR/LOC/APPR/EXPED/TRK-FPA are now stateful combos in the
-            // FCU control panel, so they're not duplicated here as readouts.
+            // AP1/AP2/ATHR/FD/LOC/APPR/TRK-FPA are stateful combos in the FCU control panel,
+            // so they're not duplicated here as readouts. (The stock combined flight-director
+            // row that sat here read a SimVar nothing has written since FBW #10855.)
             "A32NX_FMA_LATERAL_MODE", "A32NX_FMA_VERTICAL_MODE",
             // Managed/Selected for the FCU altitude, decoded in TryGetDisplayOverride off the
             // derived AltitudeModeTracker (_altMode) — this key's own raw value is the dead
             // L:var again and is ignored. Listed here only so the row exists to read, and so
             // Ctrl+M has something to mute.
-            "A32NX_FCU_ALT_MANAGED",
-            "FD_ACTIVE"
+            "A32NX_FCU_ALT_MANAGED"
         };
         // The EIS baro value is an ARINC429 word — NOT shown as a raw display field
         // (it reads ~14 billion) — but TryGetDisplayOverride decodes it to clean

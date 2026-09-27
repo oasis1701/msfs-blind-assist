@@ -233,6 +233,12 @@ public partial class SimConnectManager
             return $"{varDef.DisplayName}: {varDef.ValueDescriptions[value]}";
         }
 
+        // A cleared sentinel (see SimVarDefinition.NotSetBelow) is "not set", never a number.
+        if (varDef.IsNotSet(value))
+        {
+            return $"{varDef.DisplayName}: not set";
+        }
+
         // Special formatting for FMA armed modes (bitmask decoding)
         if (varKey == "A32NX_FMA_LATERAL_ARMED")
         {
