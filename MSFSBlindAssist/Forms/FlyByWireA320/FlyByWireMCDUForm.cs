@@ -26,9 +26,10 @@ public class FlyByWireMCDUForm : Form
     private TextBox scratchpadInput = null!;
     private Label connectionStatus = null!;
 
-    private System.Windows.Forms.Timer? _scratchpadDebounceTimer;
-    private string _lastAnnouncedScratchpad = "";
-    private string _lastAnnouncedTitle = "";
+    // What the window says: page titles only while open, FMS scratchpad messages open or closed,
+    // typed entries only once they have landed (FbwMcduReadBack, pure and tested).
+    private readonly FbwMcduReadBack _readBack = new();
+    private System.Windows.Forms.Timer? _readBackTimer;
     private MCDUDisplayData? _currentDisplay;
 
     // Function/page keys: (button label with Alt-accelerator, FBW key name). The page
@@ -157,19 +158,18 @@ public class FlyByWireMCDUForm : Form
             if (previousWindow != IntPtr.Zero) { SetForegroundWindow(previousWindow); }
         };
 
-        _scratchpadDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
-        _scratchpadDebounceTimer.Tick += (s, e) =>
+        // Ticks whether the window is open or not: the service keeps reading the screen while
+        // the window is closed so FMS messages still reach the pilot (the read-back decides what
+        // a closed window may say). Over the Coherent transport a frame arrives only every 250 ms
+        // plus the eval, so a per-frame debounce would read typed entries back in halves.
+        _readBackTimer = new System.Windows.Forms.Timer { Interval = FbwMcduReadBack.TickMs };
+        _readBackTimer.Tick += (s, e) =>
         {
-            _scratchpadDebounceTimer.Stop();
-            if (_currentDisplay != null && _currentDisplay.Scratchpad != _lastAnnouncedScratchpad)
-            {
-                _lastAnnouncedScratchpad = _currentDisplay.Scratchpad;
-                string announcement = string.IsNullOrEmpty(_currentDisplay.Scratchpad)
-                    ? "Scratchpad cleared"
-                    : _currentDisplay.Scratchpad;
-                _announcer.Announce(announcement);
-            }
+            if (_currentDisplay == null) { return; }
+            string? say = _readBack.OnScratchpadTick(_currentDisplay.Scratchpad, Visible, DateTime.UtcNow);
+            if (say != null) { _announcer.Announce(say); }
         };
+        _readBackTimer.Start();
     }
 
     private void SetupEventHandlers()
@@ -320,7 +320,12 @@ public class FlyByWireMCDUForm : Form
             };
             if (buttonName != null)
             {
+                // Hold the scratchpad read-back until this key has landed, so the entry is read
+                // back once, whole.
+                _readBack.HoldForTyping(DateTime.UtcNow);
                 await _service.SendButtonPress(buttonName);
+                // Load-bearing: FBW's keypad applies each key 150-200 ms after it arrives (a
+                // random delay), so keys stay in order only when they arrive >= 50 ms apart.
                 await Task.Delay(50);
             }
         }
@@ -362,23 +367,17 @@ public class FlyByWireMCDUForm : Form
         // page force-select wins.
         Forms.DisplayList.UpdateInPlace(mcduDisplay, lines);
 
-        string trimmedTitle = data.Title.Trim();
-        bool titleChanged = !string.IsNullOrEmpty(trimmedTitle) && trimmedTitle != _lastAnnouncedTitle;
-        if (titleChanged)
+        // A page change is spoken only while the window is open; one reached while it was closed
+        // is spoken when the window shows it again. The scratchpad is read back by the timer.
+        string? title = _readBack.OnTitle(data.Title, Visible);
+        if (title != null)
         {
-            _lastAnnouncedTitle = trimmedTitle;
-            _announcer.Announce(trimmedTitle);
+            _announcer.Announce(title);
             if (mcduDisplay.Items.Count > 1) { mcduDisplay.SelectedIndex = 1; }
         }
         else if (savedIndex >= 0 && savedIndex < mcduDisplay.Items.Count && mcduDisplay.SelectedIndex != savedIndex)
         {
             mcduDisplay.SelectedIndex = savedIndex;
-        }
-
-        if (data.Scratchpad != _lastAnnouncedScratchpad)
-        {
-            _scratchpadDebounceTimer?.Stop();
-            _scratchpadDebounceTimer?.Start();
         }
     }
 
@@ -448,7 +447,7 @@ public class FlyByWireMCDUForm : Form
             _service.DisplayUpdated -= OnDisplayUpdated;
             _service.ConnectionStatusChanged -= OnConnectionStatusChanged;
             _service.PrintReceived -= OnPrintReceived;
-            _scratchpadDebounceTimer?.Dispose();
+            _readBackTimer?.Dispose();
             _disconnectedOnShowTimer?.Dispose();
         }
         base.Dispose(disposing);
