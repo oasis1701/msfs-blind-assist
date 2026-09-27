@@ -161,7 +161,11 @@ public class FlyByWireA380EventContractTests
     {
         "TOGGLE_STRUCTURAL_DEICE",   // WING_ANTI_ICE_OVHD  → A:STRUCTURAL DEICE SWITCH
         "TOGGLE_MASTER_ALTERNATOR",  // ELEC_ENG_GEN:n      → GENERAL ENG MASTER ALTERNATOR:n
-        "TOGGLE_FLIGHT_DIRECTOR",    // FD_n_CTL            → AUTOPILOT FLIGHT DIRECTOR ACTIVE:n
+        // (TOGGLE_FLIGHT_DIRECTOR is GONE from this list: since FBW #10855 the WASM masks it into
+        //  a press of the ONE FCU FD pushbutton, ignoring the side parameter, and nothing writes
+        //  the AUTOPILOT FLIGHT DIRECTOR ACTIVE:n it used to be read back from. The flight
+        //  directors are A380FlightDirector.PushEvent over A380FlightDirector.StateKey, pinned in
+        //  A380FlightDirectorTests.)
     };
 
     [Fact]

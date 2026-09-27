@@ -1062,6 +1062,13 @@ public partial class TFDiMD11Definition
     /// <summary>The roll callouts' machine, for the tests that pin what a context reset does to it (as <see cref="SeedPassPending"/> is for the seed gate).</summary>
     internal TakeoffVSpeedCallouts TakeoffCallouts => _takeoffCallouts;
 
+    /// <inheritdoc />
+    public override string? TakeoffCalloutFeedKey => Md11TakeoffCallouts.IasKey;
+    /// <inheritdoc />
+    /// <remarks>The N1 70 percent cue rides the same feed, and it only ever arms and fires on the
+    /// ground, which this already covers.</remarks>
+    public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
+
     /// <summary>"N1 70 percent" once per take-off roll — see <see cref="Md11N1Cue"/>. Fed IAS per frame and N1 per delivery below; its arm is dropped on a context reset, never on the reconnect.</summary>
     private readonly Md11N1Cue _n1Cue = new();
 
@@ -1120,7 +1127,7 @@ public partial class TFDiMD11Definition
             if (callouts.Count > 0 && !announcer.Suppressed)
             {
                 var muted = Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet;
-                string? calloutSentence = TakeoffVSpeedCallouts.Compose(callouts, callout => Md11TakeoffCallouts.IsMuted(callout, muted));
+                string? calloutSentence = TakeoffVSpeedCallouts.Compose(callouts, callout => Md11TakeoffCallouts.Keys.IsMuted(callout, muted));
                 if (calloutSentence != null) announcer.AnnounceImmediate(calloutSentence);   // "V1, Rotate": one utterance, never two
             }
             return true;
@@ -1140,7 +1147,7 @@ public partial class TFDiMD11Definition
         // branch that consumes them, so the feed does not hinge on those exports' registration
         // shape — an export given ValueDescriptions one day would leave the silent set, and the
         // callouts would go quietly dead with every test still green.
-        if (Md11TakeoffCallouts.IsVSpeedKey(varName)) Md11TakeoffCallouts.Feed(_takeoffCallouts, varName, value);
+        if (Md11TakeoffCallouts.Keys.IsVSpeedKey(varName)) Md11TakeoffCallouts.Keys.Feed(_takeoffCallouts, varName, value);
 
         // The FMS setting the take-off speeds is news, spoken the way the PMDGs speak it and as
         // ONE sentence in V1 / VR / V2 order once the batch's burst has settled

@@ -63,6 +63,14 @@ public static class TrafficSpeechPolicy
     public static bool IsInfo(TrafficCalloutKind kind)
         => kind is TrafficCalloutKind.RunwayInfo or TrafficCalloutKind.QueuePosition;
 
+    /// <summary>
+    /// What may still be spoken on the landing exit above taxi speed
+    /// (<see cref="GroundTrafficSuppression.LandingExitWarningsOnly"/>): "Stop", a runway event while on a
+    /// runway, and the runway watch's status (queued). Never "Slow down", awareness or queue lines.
+    /// </summary>
+    public static bool SpeaksOnFastLandingExit(TrafficCalloutKind kind)
+        => kind is TrafficCalloutKind.Warning or TrafficCalloutKind.RunwayCritical or TrafficCalloutKind.RunwayInfo;
+
     public static SpeechPlan Plan(IReadOnlyList<TrafficCallout> candidates, DateTime nowUtc,
         DateTime lastAlertLineUtc, bool announcerSuppressed,
         TrafficCalloutKind? lastInterruptKind = null, DateTime lastInterruptUtc = default)

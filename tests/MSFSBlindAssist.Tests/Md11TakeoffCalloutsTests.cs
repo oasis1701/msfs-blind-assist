@@ -41,8 +41,8 @@ public class Md11TakeoffCalloutsTests
     [InlineData("V2", "MD11_V2", "V2")]
     public void EachCallout_IsMutedByItsVSpeedRow(string callout, string key, string rowName)
     {
-        Assert.Equal(key, Md11TakeoffCallouts.MuteKeyFor(callout));
-        Assert.True(Md11TakeoffCallouts.IsVSpeedKey(key));
+        Assert.Equal(key, Md11TakeoffCallouts.Keys.MuteKeyFor(callout));
+        Assert.True(Md11TakeoffCallouts.Keys.IsVSpeedKey(key));
         var row = Vars[key];
         Assert.Equal(rowName, row.DisplayName);
         Assert.Equal(UpdateFrequency.Continuous, row.UpdateFrequency);   // delivered in the background at all
@@ -57,8 +57,8 @@ public class Md11TakeoffCalloutsTests
     [Fact]
     public void AnUnknownCallout_IsNeverMuted()
     {
-        Assert.DoesNotContain(Md11TakeoffCallouts.MuteKeyFor("Vfs"), Md11VSpeeds.Keys);
-        Assert.False(Md11TakeoffCallouts.IsVSpeedKey("MD11_ENG1_N1"));
+        Assert.DoesNotContain(Md11TakeoffCallouts.Keys.MuteKeyFor("Vfs"), Md11VSpeeds.Keys);
+        Assert.False(Md11TakeoffCallouts.Keys.IsVSpeedKey("MD11_ENG1_N1"));
     }
 
     /// <summary>
@@ -70,15 +70,15 @@ public class Md11TakeoffCalloutsTests
     public void TheExports_ArmTheMachine_AndARollSpeaksInOrder()
     {
         var m = new TakeoffVSpeedCallouts();
-        Md11TakeoffCallouts.Feed(m, "MD11_V1", 0);
-        Md11TakeoffCallouts.Feed(m, "MD11_VR", 0);
+        Md11TakeoffCallouts.Keys.Feed(m, "MD11_V1", 0);
+        Md11TakeoffCallouts.Keys.Feed(m, "MD11_VR", 0);
         Assert.Empty(m.ProcessSample(0, onGround: true));
         Assert.Empty(m.ProcessSample(160, onGround: true));   // no speeds yet: silent
 
-        Md11TakeoffCallouts.Feed(m, "MD11_V1", 145);
-        Md11TakeoffCallouts.Feed(m, "MD11_VR", 150);
-        Md11TakeoffCallouts.Feed(m, "MD11_V2", 158);
-        Md11TakeoffCallouts.Feed(m, "MD11_ENG1_N1", 95);     // not a V-speed: must change no speed below
+        Md11TakeoffCallouts.Keys.Feed(m, "MD11_V1", 145);
+        Md11TakeoffCallouts.Keys.Feed(m, "MD11_VR", 150);
+        Md11TakeoffCallouts.Keys.Feed(m, "MD11_V2", 158);
+        Md11TakeoffCallouts.Keys.Feed(m, "MD11_ENG1_N1", 95);     // not a V-speed: must change no speed below
         Assert.Empty(m.ProcessSample(10, onGround: true));    // arms below 40 kt on the ground
         Assert.Empty(m.ProcessSample(60, onGround: true));
         Assert.Empty(m.ProcessSample(100, onGround: true));   // a V-speed of 95 from the N1 feed would fire here
@@ -98,14 +98,14 @@ public class Md11TakeoffCalloutsTests
     public void AMutedRow_DropsOnlyItsOwnCall_FromTheOneSentence()
     {
         var rotateMuted = new HashSet<string> { Md11TakeoffCallouts.VrKey };
-        Assert.True(Md11TakeoffCallouts.IsMuted("Rotate", rotateMuted));
-        Assert.False(Md11TakeoffCallouts.IsMuted("V1", rotateMuted));
+        Assert.True(Md11TakeoffCallouts.Keys.IsMuted("Rotate", rotateMuted));
+        Assert.False(Md11TakeoffCallouts.Keys.IsMuted("V1", rotateMuted));
         Assert.Equal("V1, V2", TakeoffVSpeedCallouts.Compose(new[] { "V1", "Rotate", "V2" },
-            c => Md11TakeoffCallouts.IsMuted(c, rotateMuted)));
+            c => Md11TakeoffCallouts.Keys.IsMuted(c, rotateMuted)));
 
         var allMuted = new HashSet<string> { Md11TakeoffCallouts.V1Key, Md11TakeoffCallouts.VrKey, Md11TakeoffCallouts.V2Key, "" };
-        Assert.Null(TakeoffVSpeedCallouts.Compose(new[] { "V1", "Rotate", "V2" }, c => Md11TakeoffCallouts.IsMuted(c, allMuted)));
-        Assert.False(Md11TakeoffCallouts.IsMuted("Vfs", allMuted));   // no row: spoken, whatever is ticked
+        Assert.Null(TakeoffVSpeedCallouts.Compose(new[] { "V1", "Rotate", "V2" }, c => Md11TakeoffCallouts.Keys.IsMuted(c, allMuted)));
+        Assert.False(Md11TakeoffCallouts.Keys.IsMuted("Vfs", allMuted));   // no row: spoken, whatever is ticked
     }
 
     /// <summary>
@@ -120,9 +120,9 @@ public class Md11TakeoffCalloutsTests
     {
         var def = new TFDiMD11Definition();
         var machine = def.TakeoffCallouts;
-        Md11TakeoffCallouts.Feed(machine, Md11TakeoffCallouts.V1Key, 150);
-        Md11TakeoffCallouts.Feed(machine, Md11TakeoffCallouts.VrKey, 155);
-        Md11TakeoffCallouts.Feed(machine, Md11TakeoffCallouts.V2Key, 162);
+        Md11TakeoffCallouts.Keys.Feed(machine, Md11TakeoffCallouts.V1Key, 150);
+        Md11TakeoffCallouts.Keys.Feed(machine, Md11TakeoffCallouts.VrKey, 155);
+        Md11TakeoffCallouts.Keys.Feed(machine, Md11TakeoffCallouts.V2Key, 162);
         Assert.Empty(machine.ProcessSample(0, onGround: true));    // parked with the speeds set: armed
 
         def.OnSimContextReset();                                    // the flight load

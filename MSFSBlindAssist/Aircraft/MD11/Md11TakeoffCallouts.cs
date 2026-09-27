@@ -18,43 +18,6 @@ public static class Md11TakeoffCallouts
     public const string VrKey = "MD11_VR";
     public const string V2Key = "MD11_V2";
 
-    /// <summary>
-    /// The Ctrl+M key whose mute silences <paramref name="callout"/> ("V1", "Rotate" or "V2"). A
-    /// callout this table does not know maps to NO row and is therefore never muted — fail open:
-    /// a new call the machine grows one day is spoken until someone gives it a row, never
-    /// silently swallowed by the V2 checkbox.
-    /// </summary>
-    public static string MuteKeyFor(string callout) => callout switch
-    {
-        "V1" => V1Key,
-        "Rotate" => VrKey,
-        "V2" => V2Key,
-        _ => "",
-    };
-
-    /// <summary>
-    /// Whether the pilot muted <paramref name="callout"/> in Ctrl+M — its row
-    /// (<see cref="MuteKeyFor"/>) is in <paramref name="muted"/> — the test the definition hands
-    /// <see cref="TakeoffVSpeedCallouts.Compose"/>. A callout with no row is never muted (fail
-    /// open), whatever the set holds.
-    /// </summary>
-    public static bool IsMuted(string callout, IReadOnlySet<string> muted)
-    {
-        var row = MuteKeyFor(callout);
-        return row.Length != 0 && muted.Contains(row);
-    }
-
-    /// <summary>True for the three FMS V-speed exports that arm the machine.</summary>
-    public static bool IsVSpeedKey(string varName) => varName is V1Key or VrKey or V2Key;
-
-    /// <summary>Hands a delivered V-speed export to the machine; anything else is ignored.</summary>
-    public static void Feed(TakeoffVSpeedCallouts machine, string varName, double value)
-    {
-        switch (varName)
-        {
-            case V1Key: machine.SetV1(value); break;
-            case VrKey: machine.SetVR(value); break;
-            case V2Key: machine.SetV2(value); break;
-        }
-    }
+    /// <summary>The feed, the speeds and their Ctrl+M rule (each call muted by its speed's row).</summary>
+    public static readonly TakeoffCalloutKeys Keys = new(IasKey, V1Key, VrKey, V2Key);
 }

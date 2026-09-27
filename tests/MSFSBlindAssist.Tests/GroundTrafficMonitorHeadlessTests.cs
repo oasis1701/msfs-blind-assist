@@ -95,4 +95,37 @@ public class GroundTrafficMonitorHeadlessTests
 
         Assert.Contains(h.Said.All, m => m.StartsWith("Stop,"));
     }
+
+    [Fact]
+    public void On_the_fast_landing_exit_a_caution_waits_but_a_stop_does_not()
+    {
+        // 40 kt: the Caution band ends 400 + 473 = 873 ft out, the Warning band 250 + 473 = 723 ft.
+        var caution = Monitor(East(1000), null, ownEastM: 0, ownGs: 40, departure: false);
+        caution.Monitor.LandingExitWarningsOnlyCheck = () => true;
+        caution.Sim.Traffic.Add(Ac(1, 240, 0, 0, "British Airways", "BAW1"));   // 787 ft: Caution band
+        caution.Tick(3);
+        Assert.Empty(caution.Said.All);
+
+        var stop = Monitor(East(1000), null, ownEastM: 0, ownGs: 40, departure: false);
+        stop.Monitor.LandingExitWarningsOnlyCheck = () => true;
+        stop.Sim.Traffic.Add(Ac(1, 100, 0, 0, "British Airways", "BAW1"));      // 328 ft: Warning band
+        stop.Tick(3);
+        Assert.Contains(stop.Said.All, m => m.StartsWith("Stop,"));
+    }
+
+    [Fact]
+    public void The_caution_held_back_on_the_fast_exit_is_said_once_the_aircraft_is_at_taxi_speed()
+    {
+        // Not spoken means not latched: still true at taxi speed, it is said then.
+        bool fast = true;
+        var h = Monitor(East(1000), null, ownEastM: 0, ownGs: 40, departure: false);
+        h.Monitor.LandingExitWarningsOnlyCheck = () => fast;
+        h.Sim.Traffic.Add(Ac(1, 240, 0, 0, "British Airways", "BAW1"));
+        h.Tick(3);
+        Assert.Empty(h.Said.All);
+
+        fast = false;
+        h.Tick(3);
+        Assert.Contains(h.Said.All, m => m.StartsWith("Slow down"));
+    }
 }
