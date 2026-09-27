@@ -1786,7 +1786,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
     // Speedbrake lever detents (Control Stand registration comment: 0 = DOWN,
     // 35 = ARMED, 149 = FLIGHT DETENT, 224 = UP). Labels are transcribed verbatim
-    // from PMDG737Definition.SpeedBrakeDetents for fleet-wide announce parity
+    // from the PMDG 737's settle sentences (PmdgSpeedBrakeLever.Ng3) for fleet-wide announce parity
     // (the iFly lever has no analog to PMDG's "50 percent" mid-detent).
     private static readonly (double Value, string Label)[] SpeedbrakeDetentTable =
     {

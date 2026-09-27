@@ -1,0 +1,1 @@
+On the Headwind A330, pressing D (distance to destination) no longer answers "Destination distance not available" for the whole flight. The A330 ships an older FlyByWire flight-management core that keeps that distance in a different place, and the readout now looks there too.

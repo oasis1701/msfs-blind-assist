@@ -1,0 +1,1 @@
+var __msfsbaMcduKey = window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.press("DIV") : 'no-agent'; if (__msfsbaMcduKey === 'dispatchHEvent' || __msfsbaMcduKey === 'bus.pub' || __msfsbaMcduKey === 'onEvent') { try { SimVar.SetSimVarValue("L:A32NX_MCDU_PUSH_ANIM_1_SLASH", "Number", 1); } catch (e) { } } __msfsbaMcduKey;

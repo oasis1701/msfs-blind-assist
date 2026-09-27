@@ -114,8 +114,11 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     public override string AircraftName => "FlyByWire Airbus A320neo";
     public override string AircraftCode => "A320";
 
-    // Coherent GT view title-needle hosting the MCDU instrument, used by the
-    // D / Shift+D FMS flight-info eval (CoherentEvalClient → coherent-a32nx-flightinfo.js).
+    // Coherent GT view title-needle hosting the MCDU instrument: the view the MCDU window's
+    // Coherent client holds (FlyByWireMCDUService) AND the one the D / Shift+D flight-info
+    // eval (coherent-a32nx-flightinfo.js) runs on — over that client's socket once the MCDU
+    // window has been opened (a one-shot before, or if that client could not load its agent).
+    // Changing it moves both.
     // Overridden by the Headwind A330 fork, whose view is "A339X_MCDU".
     public virtual string FlightInfoMcduView => "A32NX_MCDU";
 
@@ -6386,8 +6389,9 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
                 return true;
             // D / Shift+D: distance + time to destination / Top of Descent. The A32NX FMS
             // exposes the same guidanceController as the A380 over the Coherent debugger
-            // (A32NX_MCDU view) — read it via the one-shot CoherentEvalClient and announce
-            // identically to the A380 (PMDG-format TOD). MainForm owns the eval + readout.
+            // (A32NX_MCDU view) — read it on that view (over the MCDU service's socket once the
+            // MCDU window has been opened; one view, one socket) and announce identically to the
+            // A380 (PMDG-format TOD). MainForm owns the eval + readout.
             case HotkeyAction.ReadDistanceToDest:
                 if (parentForm is MainForm mfDestA32) mfDestA32.AnnounceA32NXFlightInfo(false);
                 return true;
