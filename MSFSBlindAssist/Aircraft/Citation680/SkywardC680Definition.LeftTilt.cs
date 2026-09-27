@@ -78,8 +78,13 @@ public partial class SkywardC680Definition
         AddButton(v, "C680_STARTER_L", "Left ENGINE STARTER Button", "Cranks the left engine; at 9 percent N2 press the left RUN/STOP to Run. The starter drops out itself.");
         AddButton(v, "C680_STARTER_R", "Right ENGINE STARTER Button", "Cranks the right engine; at 9 percent N2 press the right RUN/STOP to Run. The starter drops out itself.");
         AddButton(v, "C680_STARTER_DISENG", "STARTER DISENG Button");
-        AddSimSwitch(v, "C680_RUN_L", "GENERAL ENG FUEL VALVE:1", "Left RUN/STOP Button", "Stop", "Run");
-        AddSimSwitch(v, "C680_RUN_R", "GENERAL ENG FUEL VALVE:2", "Right RUN/STOP Button", "Stop", "Run");
+        // The model's RunStop state is the mixture lever (0 Stop / 100 Run); the fuel valve reads 1 at rest.
+        AddSimState(v, "C680_RUN_L", "GENERAL ENG MIXTURE LEVER POSITION:1", "Left RUN/STOP Button",
+            new() { [0] = "Stop", [1] = "Run" }, "percent");
+        AddSimState(v, "C680_RUN_R", "GENERAL ENG MIXTURE LEVER POSITION:2", "Right RUN/STOP Button",
+            new() { [0] = "Stop", [1] = "Run" }, "percent");
+        v["C680_RUN_L"].ValueToDescriptionKey = RunStopKey;
+        v["C680_RUN_R"].ValueToDescriptionKey = RunStopKey;
         AddButton(v, "C680_FADEC_RESET_L", "Left FADEC RESET Button");
         AddButton(v, "C680_FADEC_RESET_R", "Right FADEC RESET Button");
         AddSwitch(v, "C680_TR_STOW_L", "SW_SOV_TR_EMER_STOW_L", "Left T/R EMER STOW Button");
@@ -225,11 +230,6 @@ public partial class SkywardC680Definition
             case "C680_APU_KNOB": SetApuKnob(sc, (int)Math.Round(value)); return true;
             case "C680_STARTER_L": sc.ExecuteCalculatorCode("(>B:ENGINE_Starter_1_On)"); return true;
             case "C680_STARTER_R": sc.ExecuteCalculatorCode("(>B:ENGINE_Starter_2_On)"); return true;
-            case "C680_STARTER_DISENG":
-                sc.ExecuteCalculatorCode("(A:GENERAL ENG STARTER:1, Bool) if{ (>K:TOGGLE_STARTER1) } (A:GENERAL ENG STARTER:2, Bool) if{ (>K:TOGGLE_STARTER2) }");
-                return true;
-            case "C680_RUN_L": sc.ExecuteCalculatorCode($"(A:GENERAL ENG FUEL VALVE:1, Bool) {(value > 0.5 ? 0 : 1)} == if{{ (>B:FUEL_RunStop_1_Toggle) }}"); return true;
-            case "C680_RUN_R": sc.ExecuteCalculatorCode($"(A:GENERAL ENG FUEL VALVE:2, Bool) {(value > 0.5 ? 0 : 1)} == if{{ (>B:FUEL_RunStop_2_Toggle) }}"); return true;
             case "C680_FADEC_RESET_L": Pulse(sc, "FADEC_RESET_L", 600); return true;
             case "C680_FADEC_RESET_R": Pulse(sc, "FADEC_RESET_R", 600); return true;
             case "C680_NAV_LT": ToggleTo(sc, "LIGHT NAV", "Bool", value > 0.5, "TOGGLE_NAV_LIGHTS"); return true;
@@ -237,6 +237,8 @@ public partial class SkywardC680Definition
         }
         return false;
     }
+
+    private static double RunStopKey(double mixturePercent) => mixturePercent >= 50 ? 1 : 0;
 
     /// <summary>
     /// The APU knob is the stock ASOBO_ELECTRICAL_Switch_APU_Starter_Template (0 Off, 1 On,

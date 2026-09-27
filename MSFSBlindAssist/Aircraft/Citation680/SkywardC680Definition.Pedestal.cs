@@ -25,8 +25,23 @@ public partial class SkywardC680Definition
         AddSimReadout(v, "C680_THR_L", "GENERAL ENG THROTTLE LEVER POSITION:1", "Left Thrust Lever", "percent", "F0");
         AddSimReadout(v, "C680_THR_R", "GENERAL ENG THROTTLE LEVER POSITION:2", "Right Thrust Lever", "percent", "F0");
         AddTyped(v, "C680_THR_SET", "Both Thrust Levers", "percent", "0 to 100", currentKey: "C680_THR_L");
-        AddSimSwitch(v, "C680_REV_L", "TURB ENG REVERSE NOZZLE PERCENT:1", "Left Thrust Reverser", "Stowed", "Deployed", units: "percent");
-        AddSimSwitch(v, "C680_REV_R", "TURB ENG REVERSE NOZZLE PERCENT:2", "Right Thrust Reverser", "Stowed", "Deployed", units: "percent");
+        AddTyped(v, "C680_THR_L_SET", "Left Thrust Lever", "percent", "0 to 100", currentKey: "C680_THR_L");
+        AddTyped(v, "C680_THR_R_SET", "Right Thrust Lever", "percent", "0 to 100", currentKey: "C680_THR_R");
+        // The reverse levers are the thrust levers below idle (-10 % idle reverse, -30 % the stop).
+        var reverse = new Dictionary<double, string> { [0] = "Stowed", [1] = "Idle reverse", [2] = "Maximum reverse" };
+        AddSimState(v, "C680_REV_L", "GENERAL ENG THROTTLE LEVER POSITION:1", "Left Thrust Reverser Lever", new(reverse), "percent",
+            "Stowed puts the thrust lever back to idle.");
+        AddSimState(v, "C680_REV_R", "GENERAL ENG THROTTLE LEVER POSITION:2", "Right Thrust Reverser Lever", new(reverse), "percent",
+            "Stowed puts the thrust lever back to idle.");
+        foreach (var k in new[] { "C680_REV_L", "C680_REV_R" })
+        {
+            v[k].ValueToDescriptionKey = C680Commands.ReverserKey;
+            // The pilot's own lever: every forward-thrust movement would otherwise re-announce "Stowed".
+            v[k].UpdateFrequency = UpdateFrequency.OnRequest;
+            v[k].IsAnnounced = false;
+        }
+        AddSimReadout(v, "C680_REV_NOZZLE_L", "TURB ENG REVERSE NOZZLE PERCENT:1", "Left Reverser Deployed", "percent", "F0");
+        AddSimReadout(v, "C680_REV_NOZZLE_R", "TURB ENG REVERSE NOZZLE PERCENT:2", "Right Reverser Deployed", "percent", "F0");
         AddSwitch(v, "C680_AT_LOCK", "SW_SOV_CONFIG_LOCK_THROTTLE_ON_AT", "Lock Throttle On Autothrottle");
         AddSimReadout(v, "C680_N1_TGT_L", "TURB ENG N1:1", "Left N1", "percent", "F1");
         AddSimReadout(v, "C680_N1_TGT_R", "TURB ENG N1:2", "Right N1", "percent", "F1");
@@ -104,8 +119,8 @@ public partial class SkywardC680Definition
         return v;
     }
 
-    private static readonly List<string> ThrustControls = new() { "C680_THR_SET", "C680_REV_L", "C680_REV_R", "C680_AT_LOCK" };
-    private static readonly List<string> ThrustDisplay = new() { "C680_THR_L", "C680_THR_R", "C680_N1_TGT_L", "C680_N1_TGT_R", "C680_AT_STATUS" };
+    private static readonly List<string> ThrustControls = new() { "C680_THR_SET", "C680_THR_L_SET", "C680_THR_R_SET", "C680_REV_L", "C680_REV_R", "C680_AT_LOCK" };
+    private static readonly List<string> ThrustDisplay = new() { "C680_THR_L", "C680_THR_R", "C680_REV_NOZZLE_L", "C680_REV_NOZZLE_R", "C680_N1_TGT_L", "C680_N1_TGT_R", "C680_AT_STATUS" };
     private static readonly List<string> FlapsControls = new() { "C680_FLAPS", "C680_SPEEDBRAKE", "C680_FLAPS_RESET", "C680_TRIM_NU", "C680_TRIM_ND", "C680_TRIM_AIL_L", "C680_TRIM_AIL_R", "C680_TRIM_RUD_L", "C680_TRIM_RUD_R", "C680_SEC_TRIM_COVER", "C680_SEC_TRIM" };
     private static readonly List<string> FlapsDisplay = new() { "C680_FLAP_DEG", "C680_SPOILER", "C680_TRIM_PITCH", "C680_TRIM_AIL", "C680_TRIM_RUD" };
     private static readonly List<string> GearControls = new() { "C680_GEAR", "C680_PARK_BRAKE", "C680_EMER_BRAKE", "C680_GRAV_GEAR_MAIN", "C680_GRAV_GEAR_NOSE", "C680_GEAR_BLOWDOWN" };
@@ -134,8 +149,6 @@ public partial class SkywardC680Definition
         switch (varKey)
         {
             case "C680_THR_SET": sc.ExecuteCalculatorCode($"{Rpn(Math.Clamp(value, 0, 100) * 163.84)} (>K:THROTTLE_SET)"); return true;
-            case "C680_REV_L": sc.ExecuteCalculatorCodeUnique(value > 0.5 ? "(>K:THROTTLE1_DECR)" : "(>K:THROTTLE1_CUT)"); return true;
-            case "C680_REV_R": sc.ExecuteCalculatorCodeUnique(value > 0.5 ? "(>K:THROTTLE2_DECR)" : "(>K:THROTTLE2_CUT)"); return true;
             case "C680_FLAPS":
                 sc.ExecuteCalculatorCodeUnique((int)Math.Round(value) switch { 0 => "(>K:FLAPS_UP)", 1 => "(>K:FLAPS_1)", 2 => "(>K:FLAPS_2)", _ => "(>K:FLAPS_DOWN)" });
                 return true;

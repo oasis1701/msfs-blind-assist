@@ -164,6 +164,7 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        if (RunCommands(varKey, value, simConnect)) return true;
         if (HandleLeftTiltSet(varKey, value, simConnect)) return true;
         if (HandleRightTiltSet(varKey, value, simConnect)) return true;
         if (HandleGlareshieldSet(varKey, value, simConnect)) return true;
@@ -173,6 +174,19 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
         if (HandleCabinSet(varKey, value, simConnect)) return true;
         if (HandleSimulationSet(varKey, value, simConnect)) return true;
         return base.HandleUIVariableSet(varKey, value, varDef, simConnect, announcer);
+    }
+
+    /// <summary>Runs <see cref="C680Commands"/>' writes for a key it owns; false hands the key to the older handlers.</summary>
+    private static bool RunCommands(string varKey, double value, SimConnectManager sc)
+    {
+        var commands = C680Commands.For(varKey, value);
+        if (commands.Count == 0) return false;
+        foreach (var c in commands)
+        {
+            if (c.Unique) sc.ExecuteCalculatorCodeUnique(c.Code);
+            else sc.ExecuteCalculatorCode(c.Code);
+        }
+        return true;
     }
 
     // ==================================================================================
