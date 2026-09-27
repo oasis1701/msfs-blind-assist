@@ -78,6 +78,9 @@ namespace MSFSBlindAssist.SimConnect
         private readonly System.Collections.Concurrent.ConcurrentDictionary<int, TaskCompletionSource<JsonElement>> _pending = new();
 
         private CancellationTokenSource? _cts;
+        // _cts.Token, captured at Start: reading .Token off the source after Dispose throws, and
+        // a UI-thread eval (a key, the D / Shift+D script) can still arrive during teardown.
+        private CancellationToken _loopToken = CancellationToken.None;
         private ClientWebSocket? _ws;
         private string _agentJs = "";
         private int _msgId;
@@ -118,6 +121,7 @@ namespace MSFSBlindAssist.SimConnect
                 return;
             }
             _cts = new CancellationTokenSource();
+            _loopToken = _cts.Token;
             try
             {
                 _agentJs = File.ReadAllText(Path.Combine(AppContext.BaseDirectory, "Resources", AgentFile));
@@ -163,10 +167,20 @@ namespace MSFSBlindAssist.SimConnect
         /// </summary>
         public async Task<string> SendKeyAsync(string key)
         {
-            if (!KeyName.IsMatch(key)) { return InvalidKey; }
-            var ws = _ws;
-            if (ws == null || ws.State != WebSocketState.Open) { return NoSocket; }
-            string result = await EvalAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.press(\"{key}\") : '{NoAgent}'");
+            if (!KeyName.IsMatch(key))
+            {
+                Log.Debug("SimConnect", $"A32NX MCDU key {key}: not a key name — not sent.");
+                return InvalidKey;
+            }
+            var (sent, result) = await EvalCoreAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.press(\"{key}\") : '{NoAgent}'", _loopToken);
+            if (!sent)
+            {
+                // The expression never left (no open socket, or the send threw): the page cannot
+                // have pressed it, so this is a CERTAIN miss the service may resend — not the
+                // ambiguous "" of an answer that never came.
+                Log.Debug("SimConnect", $"A32NX MCDU key {key}: {NoSocket}");
+                return NoSocket;
+            }
             _refreshRequested = true;
             if (result == NoAgent) { _agentInstalled = false; }   // re-install on the next loop pass
             if (!IsDeliveredKey(result))
@@ -412,12 +426,19 @@ namespace MSFSBlindAssist.SimConnect
             PostToUI(() => ConnectionStatusChanged?.Invoke(readable));
         }
 
-        private Task<string> EvalAsync(string expression) => EvalAsync(expression, _cts?.Token ?? CancellationToken.None);
+        private Task<string> EvalAsync(string expression) => EvalAsync(expression, _loopToken);
 
-        private async Task<string> EvalAsync(string expression, CancellationToken ct)
+        private async Task<string> EvalAsync(string expression, CancellationToken ct) => (await EvalCoreAsync(expression, ct)).Value;
+
+        /// <summary>
+        /// Runtime.evaluate over the held socket. <c>Sent</c> is false when the expression never
+        /// left — no open socket, or the send threw — so the page cannot have run it; a key press
+        /// needs to tell that apart from an answer that never came (<c>Sent</c> true, <c>""</c>).
+        /// </summary>
+        private async Task<(bool Sent, string Value)> EvalCoreAsync(string expression, CancellationToken ct)
         {
             var ws = _ws;
-            if (ws == null || ws.State != WebSocketState.Open) return "";
+            if (ws == null || ws.State != WebSocketState.Open) return (false, "");
 
             int id = Interlocked.Increment(ref _msgId);
             var tcs = new TaskCompletionSource<JsonElement>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -440,7 +461,7 @@ namespace MSFSBlindAssist.SimConnect
             catch (Exception)
             {
                 _pending.TryRemove(id, out _);
-                return "";
+                return (false, "");
             }
 
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -450,9 +471,9 @@ namespace MSFSBlindAssist.SimConnect
                 try
                 {
                     JsonElement root = await tcs.Task;
-                    return ExtractValue(root);
+                    return (true, ExtractValue(root));
                 }
-                catch (OperationCanceledException) { return ""; }
+                catch (OperationCanceledException) { return (true, ""); }
                 finally { _pending.TryRemove(id, out _); }
             }
         }

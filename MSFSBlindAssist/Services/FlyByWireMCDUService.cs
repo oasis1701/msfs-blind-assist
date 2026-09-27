@@ -28,9 +28,15 @@ namespace MSFSBlindAssist.Services;
 /// </summary>
 public class FlyByWireMCDUService : IDisposable
 {
+    /// <summary>How long a key sent straight over Coherent waits after a key sent over the relay.</summary>
+    internal const int RelaySettleMs = 300;
+
     private readonly IFbwMcduCoherentTransport _coherent;
     private readonly IFbwMcduRelayTransport _simBridge;
     private readonly FbwMcduTransportArbiter _arbiter = new();
+    private readonly Func<DateTime> _utcNow;
+    private readonly Func<TimeSpan, Task> _delay;
+    private DateTime _lastRelayedKeyUtc = DateTime.MinValue;
     private bool _disposed;
 
     public event Action<MCDUDisplayData>? DisplayUpdated;
@@ -55,9 +61,13 @@ public class FlyByWireMCDUService : IDisposable
     {
     }
 
-    /// <summary>The two transports, injected (the public constructor builds the real ones).</summary>
-    internal FlyByWireMCDUService(IFbwMcduCoherentTransport coherent, IFbwMcduRelayTransport simBridge)
+    /// <summary>The two transports, injected (the public constructor builds the real ones), and the
+    /// clock and wait the relay-settle rule uses (real ones by default).</summary>
+    internal FlyByWireMCDUService(IFbwMcduCoherentTransport coherent, IFbwMcduRelayTransport simBridge,
+        Func<DateTime>? utcNow = null, Func<TimeSpan, Task>? delay = null)
     {
+        _utcNow = utcNow ?? (() => DateTime.UtcNow);
+        _delay = delay ?? (wait => Task.Delay(wait));
         _coherent = coherent;
         _coherent.DisplayUpdated += d => Apply(_arbiter.Offer(FbwMcduSource.Coherent, d));
         _coherent.ConnectionStatusChanged += c =>
@@ -96,31 +106,60 @@ public class FlyByWireMCDUService : IDisposable
     public void SetActive(bool active) => _coherent.SetActive(active);
 
     /// <summary>
-    /// Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU over the
-    /// live transport. A Coherent press that provably never reached the instrument (the
-    /// socket just dropped, the agent is re-installing — <see cref="CoherentA32nxMcduClient.IsUndeliveredKey"/>)
-    /// is resent over the relay when SimBridge is up, since the arbiter only switches on a
-    /// posted state change and the key would otherwise vanish in that window. An AMBIGUOUS
+    /// Send a single MCDU key (e.g. "L1", "INIT", "DOT", "CLR") to the Captain MCDU. It goes
+    /// over Coherent whenever that socket holds the view; a Coherent press that provably never
+    /// reached the instrument (no socket, the agent re-installing, no instrument —
+    /// <see cref="CoherentA32nxMcduClient.IsUndeliveredKey"/>) is resent over the relay when
+    /// SimBridge is up, and so is any key while Coherent does not hold the view. An AMBIGUOUS
     /// result (a timeout, a dispatch that threw) is never resent: it may have landed, and a
-    /// second press on an MCDU key is its own error. Awaited in order by the typing loop, so
-    /// a resend keeps the scratchpad's character order.
+    /// second press on an MCDU key is its own error. A key nothing could take is logged. The
+    /// typing loop awaits each key, and a Coherent key after a relayed one waits out
+    /// <see cref="RelaySettleMs"/>, so a resend cannot swap two characters of an entry.
     /// </summary>
-    public async Task SendButtonPress(string key)
+    public async Task<FbwMcduKeyOutcome> SendButtonPress(string key)
     {
-        if (_arbiter.Live != FbwMcduSource.Coherent)
+        if (_disposed) { return FbwMcduKeyOutcome.NotDelivered; }
+
+        // Routed by what can deliver the key NOW, not by the arbiter's Live — that follows a
+        // POSTED state change, so right after the window opens (or during an agent re-install)
+        // it still said "not Coherent" while the socket could already take the key.
+        string? coherentResult = null;
+        if (_coherent.HoldsView)
         {
-            // No live transport: the relay send is a no-op on a closed socket, so trying
-            // costs nothing and covers the moment right after SimBridge comes up.
-            await _simBridge.SendButtonPress(key);
-            return;
+            await WaitForRelayedKeyToLand();
+            coherentResult = await _coherent.SendKeyAsync(key);
+            if (CoherentA32nxMcduClient.IsDeliveredKey(coherentResult)) { return FbwMcduKeyOutcome.Delivered; }
+            // Ambiguous (a timeout, a dispatch that threw): it may have landed, and a second
+            // press on an MCDU key is its own error. The client has logged it.
+            if (!CoherentA32nxMcduClient.IsUndeliveredKey(coherentResult)) { return FbwMcduKeyOutcome.Ambiguous; }
         }
 
-        string result = await _coherent.SendKeyAsync(key);
-        if (CoherentA32nxMcduClient.IsUndeliveredKey(result) && _simBridge.IsConnected)
+        if (_simBridge.IsConnected && await _simBridge.SendButtonPress(key))
         {
-            Log.Debug("Services", $"A32NX MCDU key {key} not delivered over Coherent ({result}) — resent over SimBridge.");
-            await _simBridge.SendButtonPress(key);
+            _lastRelayedKeyUtc = _utcNow();
+            if (coherentResult != null)
+            {
+                Log.Debug("Services", $"A32NX MCDU key {key} not delivered over Coherent ({coherentResult}) — resent over SimBridge.");
+            }
+            return FbwMcduKeyOutcome.SentOverRelay;
         }
+
+        Log.Debug("Services", $"A32NX MCDU key {key} not delivered: {(coherentResult != null ? $"Coherent answered {coherentResult}" : "no Coherent view")}, and SimBridge is not connected.");
+        return FbwMcduKeyOutcome.NotDelivered;
+    }
+
+    /// <summary>
+    /// FBW's keypad applies each key 150-200 ms after it arrives (a random delay), so keys stay
+    /// in order only when they ARRIVE at least 50 ms apart. A relayed key still has to cross
+    /// SimBridge, the aircraft's relay client and an H-event frame after the relay send returns,
+    /// so a key sent straight over Coherent just after it could arrive first and a typed "250"
+    /// would read "205". The first Coherent key after a relayed one therefore waits until
+    /// <see cref="RelaySettleMs"/> has passed since the relay send (8 fps covers the frame hops).
+    /// </summary>
+    private Task WaitForRelayedKeyToLand()
+    {
+        var wait = _lastRelayedKeyUtc + TimeSpan.FromMilliseconds(RelaySettleMs) - _utcNow();
+        return wait > TimeSpan.Zero ? _delay(wait) : Task.CompletedTask;
     }
 
     /// <summary>Evaluate a self-contained expression on the MCDU view over the held socket.</summary>

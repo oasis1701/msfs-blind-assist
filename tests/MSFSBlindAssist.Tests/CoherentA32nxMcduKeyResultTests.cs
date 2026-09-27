@@ -39,4 +39,22 @@ public class CoherentA32nxMcduKeyResultTests
         Assert.True(CoherentA32nxMcduClient.IsDeliveredKey(result));
         Assert.False(CoherentA32nxMcduClient.IsUndeliveredKey(result));
     }
+
+    [Fact]
+    public async Task A_key_that_never_left_is_a_certain_miss()
+    {
+        // No socket, so the press expression is never sent: that must come back as "no-socket"
+        // (resendable), never as the ambiguous "" of an answer that did not arrive.
+        using var client = new CoherentA32nxMcduClient("A32NX_MCDU_TEST_UNSTARTED");
+        string result = await client.SendKeyAsync("INIT");
+        Assert.Equal("no-socket", result);
+        Assert.True(CoherentA32nxMcduClient.IsUndeliveredKey(result));
+    }
+
+    [Fact]
+    public async Task A_name_that_is_not_a_key_is_never_sent()
+    {
+        using var client = new CoherentA32nxMcduClient("A32NX_MCDU_TEST_UNSTARTED");
+        Assert.Equal("invalid-key", await client.SendKeyAsync("init\"); x("));
+    }
 }

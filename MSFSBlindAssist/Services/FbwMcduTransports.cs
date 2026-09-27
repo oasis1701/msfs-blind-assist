@@ -37,3 +37,17 @@ internal interface IFbwMcduRelayTransport : IFbwMcduScreenSource
     /// (which says nothing about whether the aircraft received it).</summary>
     Task<bool> SendButtonPress(string key);
 }
+
+/// <summary>How a key press sent through <see cref="FlyByWireMCDUService.SendButtonPress"/> ended.</summary>
+public enum FbwMcduKeyOutcome
+{
+    /// <summary>The instrument took the key over the Coherent debugger.</summary>
+    Delivered,
+    /// <summary>Written to the SimBridge relay (which cannot confirm the aircraft received it).</summary>
+    SentOverRelay,
+    /// <summary>Sent over Coherent with no confirmation either way (a timeout, a dispatch that
+    /// threw): it may have landed, so it is not resent — a second press is its own error.</summary>
+    Ambiguous,
+    /// <summary>Nothing could take the key; it was dropped and logged.</summary>
+    NotDelivered,
+}
