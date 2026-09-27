@@ -325,7 +325,7 @@
   <li><strong>Vertical mode</strong>: ALT, ALT*, OP CLB, OP DES, V/S, FPA, CLB, DES, FINAL, G/S, LAND, FLARE, ROLL OUT, SRS, TCAS, and so on.</li>
   <li><strong>Lateral mode</strong>: HDG, TRACK, NAV, LOC*, LOC, LAND, FLARE, ROLL OUT, RWY, GA TRK.</li>
   <li><strong>Autothrust mode</strong>: Man TOGA/Flex/MCT/Thrust, Speed, Mach, Thrust Climb, Thrust Idle, Alpha Floor, TOGA Lock, and the lever prompts (Levers Climb, Thrust Lock, etc.).</li>
-  <li><strong>Approach capability</strong>: CAT 1, CAT 2, CAT 3 Single, CAT 3 Dual.</li>
+  <li><strong>Approach capability</strong>: LAND 2, LAND 3 single, LAND 3 dual — spoken as it changes in flight, and on demand with (OUTPUT) <kbd>Ctrl</kbd>+<kbd>0</kbd>.</li>
   <li><strong>Flight phase</strong>: Preflight, Takeoff, Climb, Cruise, Descent, Approach, Go Around, Done. And the FCU managed/selected indicators when you push or pull a knob.</li>
 </ul>
 
@@ -333,7 +333,10 @@
 <p>MSFSBA announces TCAS state changes: <strong>"traffic advisory"</strong> (TA), <strong>"resolution advisory"</strong> (RA) and <strong>"clear of conflict"</strong>. During a resolution advisory it also speaks the <strong>guidance</strong> — the manoeuvre and the vertical-speed band to fly — as one sentence, for example: <em>"TCAS: Climb. Fly vertical speed plus 1500 to plus 2000 feet per minute."</em> The sentence re-announces if the RA strengthens or reverses, and a preventive RA reads its do-not limits instead. Resolution advisories are <strong>inhibited on the ground</strong> and at very low altitude by design — hearing only traffic advisories while taxiing is correct, not a fault. Mute via the Monitor Manager's TCAS entry. (Separately, <kbd>R</kbd> in OUTPUT mode reads the tracked traffic on demand and <kbd>Ctrl</kbd>+<kbd>R</kbd> opens the TCAS traffic window.)</p>
 
 <h3>Runway-overrun protection (ROW/ROP)</h3>
-<p>The A380's runway-overrun warning/protection call-outs are spoken as the aircraft raises them: <strong>"Runway too short"</strong> and <strong>"If wet, runway too short"</strong> on approach (the landing distance does not fit), <strong>"Maximum braking"</strong> during the rollout when ROP commands full autobrake, <strong>"Max braking"</strong> when ROP wants maximum <em>manual</em> braking, and <strong>"Runway ahead"</strong> when taxiing toward a runway.</p>
+<p>The A380's runway-overrun warning/protection call-outs are spoken as the aircraft raises them: <strong>"Runway too short"</strong> and <strong>"If wet, runway too short"</strong> on approach (the landing distance does not fit); during the rollout <strong>"Max braking"</strong> when ROP wants maximum braking, <strong>"Set max reverse"</strong> when it wants full reverse thrust, and <strong>"Keep max reverse"</strong> while you must hold it; and <strong>"Runway ahead"</strong> when taxiing toward a runway. The aircraft calls these aloud too; MSFSBA's words arrive alongside.</p>
+
+<h3>Take-off roll: V1, Rotate, V2</h3>
+<p>On the take-off roll MSFSBA calls <strong>"V1"</strong>, <strong>"Rotate"</strong> and <strong>"V2"</strong> the moment the airspeed reaches the speeds you entered on the MFD PERF page, cutting off anything else being spoken. They arm when you are on the ground below 40 knots with V1 and VR entered. When V1 and VR are the same you hear one call, "V1, Rotate". If the FMS clears the speeds (a departure-runway change does), nothing is called until you enter them again. The aircraft calls "V1" aloud too; MSFSBA's call arrives alongside. Each call is muted with its speed's row in the Monitor Manager ("V1", "VR", "V2") — the same row that mutes the speed being read out as you enter it.</p>
 
 <h3>Numeric callouts</h3>
 <p>Altimeter setting on the knob and on STD↔QNH / hPa↔inHg changes; the approach minimums; thrust-lever detents ("All thrust levers Idle"); flaps and gear. Periodic <strong>ground-speed callouts</strong> while on the ground (taxi, takeoff roll and landing rollout) — the interval (off / 5 / 10 knots) is set in the Taxi Guidance options.</p>
@@ -384,7 +387,7 @@
 <h4>Engine start — watchdog protected</h4>
 <p>The <strong>engine masters</strong> are ordinary Off/On combos and the <strong>engine mode selector</strong> (Crank / Norm / Ignition-Start) is a combo, all in the Engines panel. The FlyByWire cockpit's physical start-selector has a known bug where it only feeds ignition to engines 1 and 2, leaving engines 3 and 4 motoring without ever lighting. MSFSBA runs an automatic <strong>watchdog</strong> that mirrors the selector onto engines 3 and 4, so all four engines start normally no matter how the selector was moved — the MSFSBA combo, the cockpit knob, a preset or a checklist. You do not need to do anything; just start the engines as normal.</p>
 
-<div class="note">A few overhead pushbuttons (Flight Director, some packs/bleeds/bus-ties and the like) are <strong>computed outputs</strong> on this build: the FBW systems recompute them every frame, so an external "set" reverts. MSFSBA still reads their true state and announces changes; they are simply not settable from outside until FBW provides a control. This is a platform limitation, not a missing feature.</div>
+<div class="note">The flight directors are one <strong>Flight Directors</strong> pushbutton on the FCU panel (and the FD button in the Ctrl+P Autopilot panel), as on the real aircraft: one press switches both.</div>
 
 <!-- ===================================================================== -->
 <h2 id="part11">11. OANS airport map and Brake-To-Vacate (BTV)</h2>
@@ -478,7 +481,7 @@
 <tr><td><kbd>F</kbd> / <kbd>Shift</kbd>+<kbd>F</kbd></td><td>Total fuel on board, pounds / kilograms</td></tr>
 <tr><td><kbd>W</kbd> / <kbd>Shift</kbd>+<kbd>W</kbd></td><td>Gross weight + centre of gravity, pounds / kilograms</td></tr>
 <tr><td><kbd>L</kbd> / <kbd>Shift</kbd>+<kbd>G</kbd> / <kbd>B</kbd></td><td>Flaps / Landing gear / Altimeter setting (baro)</td></tr>
-<tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd> / <kbd>N</kbd></td><td>Approach capability (CAT rating) / NAV radio tuning</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>0</kbd> / <kbd>N</kbd></td><td>Approach capability (LAND 2 / LAND 3 single / LAND 3 dual) / NAV radio tuning</td></tr>
 <tr><td><kbd>1</kbd>…<kbd>5</kbd></td><td>Read waypoint tracking slots 1–5 (set from the Fix tracking window, INPUT <kbd>Shift</kbd>+<kbd>F</kbd>)</td></tr>
 <tr><td><kbd>I</kbd> / <kbd>O</kbd> / <kbd>Z</kbd> / <kbd>Shift</kbd>+<kbd>Z</kbd> / <kbd>X</kbd> / <kbd>C</kbd></td><td>Wind / Outside Temp / Local Time / Zulu Time / Squawk / Nearest City</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>L</kbd> / <kbd>Shift</kbd>+<kbd>T</kbd></td><td>Location Info / Toggle trim announcements</td></tr>
@@ -508,7 +511,7 @@
 <tr><td><kbd>Ctrl</kbd>+<kbd>J</kbd> / <kbd>Ctrl</kbd>+<kbd>L</kbd></td><td>Toggle Autothrust (A/THR arm / disconnect) / Toggle Localizer (LOC arm)</td></tr>
 <tr><td><kbd>Shift</kbd>+<kbd>1</kbd>…<kbd>4</kbd> / <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>4</kbd></td><td>Push / Pull the Heading, Altitude, Speed, VS knobs</td></tr>
 <tr><td><kbd>Ctrl</kbd>+<kbd>H</kbd> / <kbd>Ctrl</kbd>+<kbd>S</kbd> / <kbd>Ctrl</kbd>+<kbd>A</kbd> / <kbd>Ctrl</kbd>+<kbd>V</kbd></td><td>Set Heading / Speed / Altitude / VS — each opens a window with value entry, knob Push/Pull and mode toggles (Altitude includes the 100/1000 increment and the Metric toggle; the value is in metres when metric altitude is on)</td></tr>
-<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Autopilot panel (AP1/AP2, A/THR engage + disconnect, APPR/LOC/EXPED, Flight Director status) / Altimeter window (enter QNH once for both sides; STD/QNH; hPa/inHg)</td></tr>
+<tr><td><kbd>Ctrl</kbd>+<kbd>P</kbd> / <kbd>Ctrl</kbd>+<kbd>B</kbd></td><td>Autopilot panel (AP1/AP2, A/THR engage + disconnect, APPR/LOC, Flight Director pushbutton) / Altimeter window (enter QNH once for both sides; STD/QNH; hPa/inHg)</td></tr>
 <tr><td><kbd>Alt</kbd>+<kbd>G</kbd></td><td>Open GSX window</td></tr>
 </table>
 

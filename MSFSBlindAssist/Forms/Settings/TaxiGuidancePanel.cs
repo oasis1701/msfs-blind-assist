@@ -47,10 +47,18 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
     private Label sayIntentionsHeadingLabel = null!;
     private CheckBox sayIntentionsAutoStartCheckBox = null!;
     private Label taxiAugmentAttributionLabel = null!;
+    private CheckBox sceneryIndexEnabledCheckBox = null!;
+    private TextBox sceneryIndexStatusTextBox = null!;
+    private CheckBox surroundingsCalloutsCheckBox = null!;
+    private CheckBox surfaceChangeCalloutsCheckBox = null!;
 
     // Optional callback for the manual taxiway-names refresh. Null when the caller doesn't
     // supply augmenting-provider support — the button disables itself in that case.
     private readonly Func<Task>? _onRefreshTaxiwayNames;
+
+    // Optional supplier for the scenery indexer's last-run status line (package name, feature
+    // count, placement/base-library counts) — read once when the panel loads, never polled.
+    private readonly Func<string>? _sceneryIndexStatus;
 
     // Four seconds of tone at TestTonePlayer's 100 ms tick — the steering tone is what the
     // pilot will be following for a whole taxi, so its preview is deliberately longer than the
@@ -68,9 +76,10 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
 
     public string TabTitle => "Taxi Guidance";
 
-    public TaxiGuidancePanel(Func<Task>? refreshTaxiwayNames)
+    public TaxiGuidancePanel(Func<Task>? refreshTaxiwayNames, Func<string>? sceneryIndexStatus = null)
     {
         _onRefreshTaxiwayNames = refreshTaxiwayNames;
+        _sceneryIndexStatus = sceneryIndexStatus;
         InitializeComponent();
         SetupAccessibility();
     }
@@ -409,18 +418,18 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             Size = new Size(200, 35),
             Enabled = _onRefreshTaxiwayNames != null,
             AccessibleName = "Refresh Taxiway Names",
-            AccessibleDescription = "Download fresh taxiway-name data for the nearest airport and announce when complete"
+            AccessibleDescription = "Download fresh taxiway-name data for the airport you are at (within 5 NM) and announce when complete"
         };
         refreshTaxiwayNamesButton.Click += RefreshTaxiwayNamesButton_Click;
 
         // Online taxiway/gate-name augmentation enable toggle.
         taxiAugmentEnabledCheckBox = new CheckBox
         {
-            Text = "Online taxiway and gate names (OpenStreetMap + X-Plane)",
+            Text = "Online taxiway, gate and airport building names (OpenStreetMap + X-Plane)",
             Location = new Point(20, 755),
             Size = new Size(450, 25),
-            AccessibleName = "Online taxiway and gate names",
-            AccessibleDescription = "When enabled, fetches real-world taxiway and gate names from OpenStreetMap and the X-Plane Scenery Gateway to enrich your navdata, on demand for departure and destination. Disable to use navdata names only with no online requests. Applies immediately."
+            AccessibleName = "Online taxiway, gate and airport building names",
+            AccessibleDescription = "When enabled, fetches real-world taxiway and gate names, and airport buildings such as terminals, hangars, the tower and fuel, from OpenStreetMap and the X-Plane Scenery Gateway for the departure and destination. Disable to use navdata only with no online requests. Applies immediately."
         };
 
         // ODbL / source attribution (required for OSM-derived data).
@@ -432,13 +441,65 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleName = "Online taxiway name data attribution"
         };
 
+        // Reads the installed scenery package on disk for named buildings (hangars,
+        // concourses, tower…) at add-on airports, offline, cached under %APPDATA%.
+        // Placed after the online-names attribution and directly above its own status box;
+        // the passing-callouts checkbox follows that.
+        sceneryIndexEnabledCheckBox = new CheckBox
+        {
+            Text = "Read installed scenery for airport buildings (offline)",
+            Location = new Point(20, 815),
+            Size = new Size(450, 40),
+            AccessibleName = "Read installed scenery for airport buildings (offline)",
+            AccessibleDescription = "When enabled, reads the add-on airport package on disk for named "
+                + "hangars, concourses, the tower and other modeled buildings and includes them in the "
+                + "surroundings readout. No network use. With an MSFS 2024 database the package is found "
+                + "by a one-time scan of the Community folder's scenery headers. Applies immediately."
+        };
+
+        // Read-only TextBox, not a Label, so a screen-reader user can tab to it.
+        sceneryIndexStatusTextBox = new TextBox
+        {
+            Location = new Point(20, 858),
+            Size = new Size(450, 44),
+            ReadOnly = true,
+            Multiline = true,
+            AccessibleName = "Scenery index status"
+        };
+        // The box follows the checkbox (the pilot's current choice), not the saved setting.
+        // Setting its Text announces nothing, so this is no UI-interaction echo.
+        sceneryIndexEnabledCheckBox.CheckedChanged += (_, _) => RefreshSceneryIndexStatusText();
+
+        // Opt-in "Passing Concourse B, on the left." callouts, from the surroundings catalog.
+        surroundingsCalloutsCheckBox = new CheckBox
+        {
+            Text = "Announce airport buildings as you taxi past them",
+            Location = new Point(20, 905),
+            Size = new Size(450, 40),
+            AccessibleName = "Announce airport buildings as you taxi past them",
+            AccessibleDescription = "When enabled, says for example Passing Concourse B, on the left, as a terminal, hangar, tower, fuel or cargo area comes abeam while taxiing. Queued behind taxi guidance, never during takeoff, landing rollout or docking. Applies immediately."
+        };
+
+        // Its own switch: leaving the taxiway is a safety callout and must survive someone turning
+        // the chatty passing callouts off. Deliberately not silenced on takeoff or rollout.
+        // It spans y 950-990 and the SayIntentions heading below starts at 995:
+        // TaxiGuidancePanelLayoutTests measures that no two controls on this tab overlap.
+        surfaceChangeCalloutsCheckBox = new CheckBox
+        {
+            Text = "Tell me when I leave the paved surface",
+            Location = new Point(20, 950),
+            Size = new Size(450, 40),
+            AccessibleName = "Tell me when I leave the paved surface",
+            AccessibleDescription = "When enabled, says Off the pavement, on grass, if the wheels leave the paved surface while taxiing, and Back on pavement when they regain it. Ignores changes between paved surfaces such as asphalt to concrete. Still speaks during takeoff roll and landing rollout. Applies immediately."
+        };
+
         // SayIntentions route import. It lives here rather than on a tab of its own:
         // the setting decides what happens to a TAXI ROUTE, which is this tab's
         // subject, and it was the only option left once the API key was retired.
         sayIntentionsHeadingLabel = new Label
         {
             Text = "SayIntentions",
-            Location = new Point(20, 830),
+            Location = new Point(20, 995),
             Size = new Size(450, 20),
             AccessibleName = "SayIntentions section"
         };
@@ -452,7 +513,7 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         sayIntentionsAutoStartCheckBox = new CheckBox
         {
             Text = "SayIntentions import starts taxi &guidance immediately",
-            Location = new Point(20, 855),
+            Location = new Point(20, 1020),
             Size = new Size(450, 40),
             AccessibleName = "SayIntentions import starts taxi guidance immediately",
             AccessibleDescription = "When checked, a SayIntentions import starts guidance immediately "
@@ -475,6 +536,9 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             dockingGroup,
             refreshTaxiwayNamesButton,
             taxiAugmentEnabledCheckBox, taxiAugmentAttributionLabel,
+            sceneryIndexEnabledCheckBox, sceneryIndexStatusTextBox,
+            surroundingsCalloutsCheckBox,
+            surfaceChangeCalloutsCheckBox,
             sayIntentionsHeadingLabel,
             sayIntentionsAutoStartCheckBox
         });
@@ -505,6 +569,10 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         dockingSpeedCalloutsCheckBox.TabIndex = 4;
         refreshTaxiwayNamesButton.TabIndex = tabIdx++;
         taxiAugmentEnabledCheckBox.TabIndex = tabIdx++;
+        sceneryIndexEnabledCheckBox.TabIndex = tabIdx++;
+        sceneryIndexStatusTextBox.TabIndex = tabIdx++;
+        surroundingsCalloutsCheckBox.TabIndex = tabIdx++;
+        surfaceChangeCalloutsCheckBox.TabIndex = tabIdx++;
         sayIntentionsAutoStartCheckBox.TabIndex = tabIdx++;
     }
 
@@ -659,8 +727,28 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         dockingBeepVolumeValueLabel.Text = $"{dockingBeepVolumeTrackBar.Value}%";
 
         taxiAugmentEnabledCheckBox.Checked = settings.TaxiAugmentEnabled;
+        sceneryIndexEnabledCheckBox.Checked = settings.SceneryIndexEnabled;
+        RefreshSceneryIndexStatusText();
+        surroundingsCalloutsCheckBox.Checked = settings.SurroundingsCalloutsEnabled;
+        surfaceChangeCalloutsCheckBox.Checked = settings.SurfaceChangeCalloutsEnabled;
         sayIntentionsAutoStartCheckBox.Checked = settings.SayIntentionsAutoStartTaxiGuidance;
     }
+
+    private void RefreshSceneryIndexStatusText()
+        => sceneryIndexStatusTextBox.Text =
+            DescribeSceneryIndexStatus(sceneryIndexEnabledCheckBox.Checked, _sceneryIndexStatus?.Invoke());
+
+    /// <summary>
+    /// What the scenery-index status box holds — never empty, since an empty edit field reads as a
+    /// broken control. Before the session's first build, or with the index off, it says so.
+    /// </summary>
+    /// <param name="enabled">The checkbox's current state, not the saved setting.</param>
+    /// <param name="lastStatus"><c>SceneryPackageIndexer.LastStatus</c>: the last build's whole
+    /// sentence, or empty when none has run this session.</param>
+    internal static string DescribeSceneryIndexStatus(bool enabled, string? lastStatus)
+        => !enabled ? "Scenery index is off."
+         : string.IsNullOrWhiteSpace(lastStatus) ? "No airport scanned yet this session."
+         : lastStatus;
 
     public bool Validate(out string error, out Control? focus)
     {
@@ -701,6 +789,9 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
         settings.DockingBeepVolume = dockingBeepVolumeTrackBar.Value / 100.0;
 
         settings.TaxiAugmentEnabled = taxiAugmentEnabledCheckBox.Checked;
+        settings.SceneryIndexEnabled = sceneryIndexEnabledCheckBox.Checked;
+        settings.SurroundingsCalloutsEnabled = surroundingsCalloutsCheckBox.Checked;
+        settings.SurfaceChangeCalloutsEnabled = surfaceChangeCalloutsCheckBox.Checked;
         settings.SayIntentionsAutoStartTaxiGuidance = sayIntentionsAutoStartCheckBox.Checked;
     }
 

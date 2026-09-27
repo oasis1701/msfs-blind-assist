@@ -421,6 +421,12 @@ public partial class MainForm
             case HotkeyAction.TaxiWhereAmI:
                 AnnounceWhereAmI();
                 break;
+            case HotkeyAction.LookAround:
+                AnnounceLookAround();
+                break;
+            case HotkeyAction.ShowSurroundings:
+                ShowSurroundingsWindow();
+                break;
             case HotkeyAction.AnnounceGroundTraffic:
                 groundTrafficMonitor.AnnounceNearestTrafficSummary();
                 break;
@@ -696,8 +702,8 @@ public partial class MainForm
             if (waypointFdManager.IsActive)
                 waypointFdManager.Stop(announce: false);
 
-            // Task 1 — Destination prefetch (silent, fire-and-forget)
-            if (_augmentPrefetched.Add(airport.ICAO))
+            // Task 1 — Destination prefetch (silent, fire-and-forget; claimed only while online data is on)
+            if (_augmentingProvider?.Enabled == true && _augmentPrefetched.Add(airport.ICAO))
                 _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
 
             // Get user preferences from settings

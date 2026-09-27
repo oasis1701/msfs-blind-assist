@@ -1,0 +1,89 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Platforms>x64</Platforms>
+  </PropertyGroup>
+  <ItemGroup>
+    <!--
+      Standalone measurement harness: every runway direction's GetLandingExits list over the REAL
+      production TaxiGraph (linked, never reimplemented), before and after a change to how landing
+      exits are measured. The link set is tools/ProgressiveTaxiProbe's, which is proven to compile
+      as a set; the two files new in the branch-measurement change are linked CONDITIONALLY further
+      down so this same project also builds against the pre-change sources.
+    -->
+    <!-- Navigation -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.cs"             Link="Linked\TaxiGraph.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\NavigationCalculator.cs"  Link="Linked\NavigationCalculator.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\LandingExit.cs"           Link="Linked\LandingExit.cs" />
+    <!-- TaxiLeadIn is pure (Database.Models only); it does NOT link TaxiRouter, so
+         pinning it here does not touch the shared taxi_router.log (the reason the
+         old TaxiLeadInProbe was removed). -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiLeadIn.cs"            Link="Linked\TaxiLeadIn.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\HoldShortNodeResolver.cs" Link="Linked\HoldShortNodeResolver.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RouteRunwayCrossings.cs"  Link="Linked\RouteRunwayCrossings.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayFrame.cs"           Link="Linked\RunwayFrame.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayShape.cs"           Link="Linked\RunwayShape.cs" />
+    <!-- TaxiGraph.BridgeOrphanParkingIslands calls RunwayPavement (a fabricated bridge must never
+         end on or cross a runway) - pre-existing gap in this link set that left the probe unable
+         to BUILD, i.e. unrunnable, on main. Self-contained (RunwayShape + Database.Models, both
+         already linked), so pinning it here adds no further dependency. -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayPavement.cs"        Link="Linked\RunwayPavement.cs" />
+    <!-- TaxiGraph logs a relocated start row through Utils/Logging/Log (CLAUDE.md: every diagnostic
+         write goes through it), so the logger and its path authority ride along. -->
+    <Compile Include="..\..\MSFSBlindAssist\Utils\Logging\*.cs"                  Link="Linked\Logging\%(Filename)%(Extension)" />
+    <Compile Include="..\..\MSFSBlindAssist\Utils\AppLogs.cs"                     Link="Linked\AppLogs.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayRouteClassifier.cs" Link="Linked\RunwayRouteClassifier.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\RolloutExitGate.cs"       Link="Linked\RolloutExitGate.cs" />
+    <!-- RolloutExitGate's comfortable too-fast pick is the touchdown re-plan's own rule (LandingExitReplan,
+         pure: LandingExit + RolloutExitGate only). -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\LandingExitReplan.cs"     Link="Linked\LandingExitReplan.cs" />
+    <!-- TaxiGraph.ResolveHoldingPointEntries calls NamedHoldingPointResolver.SnapOrInsert (added
+         2026-08-16, unrelated to the runway classifier work) — pre-existing gap in this probe's
+         link set that a build now surfaces. Self-contained (TaxiGraph + Database.Models only, both
+         already linked below), so pinning it here adds no further dependency. -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\NamedHoldingPointResolver.cs" Link="Linked\NamedHoldingPointResolver.cs" />
+    <!-- The whole-database bulk load, shared with the other sweep tool (linked, never copied). -->
+    <Compile Include="..\Shared\NavdataSweepLoader.cs" Link="Shared\NavdataSweepLoader.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\DatabasePathResolver.cs" Link="Linked\DatabasePathResolver.cs" />
+    <!-- Database models -->
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiNode.cs"         Link="Linked\TaxiNode.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiPath.cs"         Link="Linked\TaxiPath.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingSpot.cs"      Link="Linked\ParkingSpot.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\ParkingTypes.cs"     Link="Linked\ParkingTypes.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\GateSource.cs"       Link="Linked\GateSource.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\StartPosition.cs"    Link="Linked\StartPosition.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\Runway.cs"           Link="Linked\Runway.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Database\Models\TaxiRoute.cs"        Link="Linked\TaxiRoute.cs" />
+    <!-- Services -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\DistanceFormatter.cs"       Link="Linked\DistanceFormatter.cs" />
+    <!--
+      TaxiDataMerger.NormalizeTaxiwayName is called from TaxiGraph (alias resolution).
+      Include the three self-contained TaxiAugment files it depends on; exclude
+      AugmentingAirportDataProvider.cs (which pulls in IAirportDataProvider and other
+      types not available in this probe's stripped compilation unit).
+    -->
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\AirportTaxiData.cs"  Link="Linked\AirportTaxiData.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\TaxiGeo.cs"          Link="Linked\TaxiGeo.cs" />
+    <Compile Include="..\..\MSFSBlindAssist\Services\TaxiAugment\TaxiDataMerger.cs"   Link="Linked\TaxiDataMerger.cs" />
+    <!-- Settings -->
+    <Compile Include="..\..\MSFSBlindAssist\Settings\DistanceUnit.cs"            Link="Linked\DistanceUnit.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- New in the branch-measurement change; conditional so the SAME project also builds against the
+         pre-change sources for the "before" run (those files do not exist there). -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\ExitBranch.cs" Link="Linked\ExitBranch.cs"
+             Condition="Exists('..\..\MSFSBlindAssist\Navigation\ExitBranch.cs')" />
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\TaxiGraph.ExitRefinement.cs" Link="Linked\TaxiGraph.ExitRefinement.cs"
+             Condition="Exists('..\..\MSFSBlindAssist\Navigation\TaxiGraph.ExitRefinement.cs')" />
+    <!-- ExitBranch's rescue-site walk caps a taxiway's width with PavementTolerance.WidthCapFeet. -->
+    <Compile Include="..\..\MSFSBlindAssist\Navigation\PavementTolerance.cs" Link="Linked\PavementTolerance.cs"
+             Condition="Exists('..\..\MSFSBlindAssist\Navigation\ExitBranch.cs')" />
+  </ItemGroup>
+  <!-- SimConnectStub.cs is auto-included by the SDK glob — no explicit entry needed. -->
+</Project>

@@ -215,4 +215,20 @@ public class GateResolverTests : IDisposable
         var resolver = new GateResolver(navdata, () => null);
         Assert.Equal("Gate A 25", resolver.Resolve(ParkedAtGate25()));
     }
+
+    // ── The label follows the one set of parking-type families ─────────────────────────────
+
+    [Theory]
+    [InlineData(7, "Military Ramp 18")]          // RAMP_MIL_CARGO — military, never "Cargo Ramp"
+    [InlineData(8, "Military Ramp 18")]          // RAMP_MIL_COMBAT
+    [InlineData(6, "Cargo Ramp Parking 18")]     // RAMP_CARGO
+    public void A_ramp_stand_is_labelled_by_its_family(int type, string expected)
+    {
+        var navdata = new FakeAirportDataProvider(_ => new List<ParkingSpot>
+        {
+            new() { AirportICAO = Kjfk, Name = "Parking", Number = 18, Type = type,
+                    Latitude = Gate25Lat, Longitude = Gate25Lon, Radius = 60, Source = GateSource.Navdata },
+        });
+        Assert.Equal(expected, new GateResolver(navdata).Resolve(ParkedAtGate25()));
+    }
 }

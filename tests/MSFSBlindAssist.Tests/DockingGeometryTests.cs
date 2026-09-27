@@ -22,6 +22,9 @@ public class DockingGeometryTests
     [InlineData(0.0, 0.0)]
     [InlineData(180.0, 180.0)]
     [InlineData(-180.0, 180.0)]
+    [InlineData(270.0, -90.0)]     // a 0..360 relative bearing lands on its side: PassingCalloutGate's side key relies on it
+    [InlineData(540.0, 180.0)]
+    [InlineData(-540.0, 180.0)]
     public void NormalizeDeg180_wraps_into_range(double input, double expected)
     {
         Assert.Equal(expected, DockingGeometry.NormalizeDeg180(input), Eps);

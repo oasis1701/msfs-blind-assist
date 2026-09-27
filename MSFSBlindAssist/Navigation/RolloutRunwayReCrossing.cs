@@ -213,6 +213,28 @@ public static class RolloutRunwayReCrossing
     }
 
     /// <summary>
+    /// What the declining frame says: whether to speak <see cref="ComposeDeclineUtterance"/> at all, and whether
+    /// to fold the turn-now cue into it (inside the turn-now distance, with turn-now not yet said).
+    ///
+    /// <para>Inside the turn-now distance at a speed the exit cannot be taken at
+    /// (<c>RolloutExitGate.IsTooFastToTurn</c>) it says NOTHING. That turn point belongs to the too-fast rule,
+    /// which moves the pilot on to a later exit or says "too fast to turn": folded here, "Continue rolling to
+    /// taxiway X, 140 feet ahead. Turn right now." at 45 kt bypassed it, and the tone led a turn the pilot
+    /// could not make. Silent, and unlatched: the turn-now block speaks the too-fast outcome on a following
+    /// frame, and the decline speaks once the aircraft is slow enough - the premise it exists to state (the
+    /// exit is still ahead; keep rolling to it) is true again only then. That holds after the too-fast rule
+    /// has spoken as well, when "Continue rolling to taxiway X" would invite an exit just declined and would
+    /// cut the too-fast warning off.</para>
+    /// </summary>
+    public static (bool Speak, bool FoldTurnNow) PlanDeclineSpeech(
+        bool turnNowSpoken, double distanceAheadFeet, double turnNowFeet, bool tooFastToTurn)
+    {
+        bool insideTurnNow = distanceAheadFeet <= turnNowFeet;
+        if (insideTurnNow && tooFastToTurn) return (false, false);
+        return (true, insideTurnNow && !turnNowSpoken);
+    }
+
+    /// <summary>
     /// True when a rollout callout armed at <paramref name="calloutTriggerFeet"/> is superseded
     /// by a crossing-decline utterance spoken at <paramref name="distanceAheadFeet"/> — i.e.
     /// the caller should mark it announced and fold whatever it uniquely adds into that one

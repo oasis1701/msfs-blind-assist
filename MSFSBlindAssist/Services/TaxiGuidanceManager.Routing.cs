@@ -180,6 +180,14 @@ public partial class TaxiGuidanceManager
                 _graph = TaxiGraph.Build(paths, parking, starts, dataProvider.GetRunways(icao!));
             }
 
+            // Which database this graph belongs to — the runway probe stops trusting it once a
+            // database switch has moved the generation (see _graphGeneration). Stamped only for a
+            // NEW instance: the rollout re-routes hand back `prebuiltGraph: _graph`, the SAME graph,
+            // and restamping it after a database switch mid-rollout would file the previous
+            // database's graph under the new generation. `rollback` (captured at the top of this
+            // method, before _graph was touched) holds the instance that was installed until now.
+            if (!ReferenceEquals(_graph, rollback.Graph)) _graphGeneration = DatabaseGeneration;
+
             if (_graph.Nodes.Count == 0)
                 return "Could not build taxi graph for this airport.";
 
@@ -830,14 +838,15 @@ public partial class TaxiGuidanceManager
         bool HasLineupTarget,
         bool AutoActivateFired,
         double PostHighSpeedExitMinBearing,
-        TaxiGraph? Graph);
+        TaxiGraph? Graph,
+        long GraphGeneration);
 
     private LoadRouteRollback CaptureLoadRouteRollback() => new(
         _dataProvider, _destinationNodeId, _destinationName, _icao, _originalTaxiwaySequence,
         _preferIlsHold, _backtrackDeparture, _backtrackDepApproachAnnounced, _holdingPointHoldNodeId,
         _isRunwayLineup, _progressiveTerminator, _lineupTargetLat, _lineupTargetLon,
         _lineupHeadingMag, _lineupHeadingTrue, _hasLineupTarget, _autoActivateFired,
-        _postHighSpeedExitMinBearing, _graph);
+        _postHighSpeedExitMinBearing, _graph, _graphGeneration);
 
     private void RestoreLoadRouteRollback(LoadRouteRollback r)
     {
@@ -860,6 +869,7 @@ public partial class TaxiGuidanceManager
         _autoActivateFired = r.AutoActivateFired;
         _postHighSpeedExitMinBearing = r.PostHighSpeedExitMinBearing;
         _graph = r.Graph;
+        _graphGeneration = r.GraphGeneration;
     }
 
     /// <summary>

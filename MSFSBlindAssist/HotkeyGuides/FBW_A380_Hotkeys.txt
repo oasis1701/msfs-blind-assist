@@ -67,7 +67,7 @@ Vertical:
   Ctrl+Shift+G  Read last landing peak g-force
 
 Approach:
-  Ctrl+0     Read Approach Capability (CAT rating)
+  Ctrl+0     Read Approach Capability (LAND 2 / LAND 3 single / LAND 3 dual)
 
 Weather:
   I          Wind Info
@@ -119,6 +119,10 @@ Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
   Y          Taxi Status (current taxiway, next turn, distance to destination)
   Ctrl+Y     Repeat Current Taxi Instruction
   Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
+                In its Frequencies list, Enter and Shift+Enter only tell you that this aircraft
+                tunes COM 1 through its RMP window (Input mode > Ctrl+Shift+R).
   (Open the form with Input mode > Shift+Y)
 
 Waypoint Tracking (use Fix Track window or EFB route viewer to add):
@@ -233,7 +237,7 @@ FCU Set Values (each opens a window: value entry, knob Push/Pull, mode toggles, 
   Ctrl+H     Heading window (set value; Push/Pull; HDG-V/S / TRK-FPA toggle)
   Ctrl+A     Altitude window (set value; Push/Pull; 100/1000; Metric toggle)
   Ctrl+V     Vertical Speed / FPA window (set value; Push/Pull)
-  Ctrl+P     Autopilot panel (AP1/AP2; A/THR engage + disconnect; APPR/LOC/EXPED; Flight Director status)
+  Ctrl+P     Autopilot panel (AP1/AP2; A/THR engage + disconnect; APPR/LOC; Flight Director pushbutton)
   Ctrl+B     Altimeter window (enter QNH once -> both sides; STD/QNH; hPa/inHg)
 
 Windows:

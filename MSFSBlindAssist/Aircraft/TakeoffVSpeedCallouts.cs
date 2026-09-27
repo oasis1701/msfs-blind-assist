@@ -80,6 +80,14 @@ public sealed class TakeoffVSpeedCallouts
         _firedV1 = _firedVR = _firedV2 = false;
     }
 
+    /// <summary>
+    /// Whether the machine still needs airspeed samples: always on the ground (a roll can start at any
+    /// moment), and airborne only while a roll is still armed (V2 not yet called). Airborne and
+    /// disarmed, no sample can make it speak until the next ground sample, so the caller may pause a
+    /// per-frame feed until touchdown.
+    /// </summary>
+    public bool NeedsSamples(bool onGround) => onGround || _armed;
+
     private static double Sanitize(double knots) =>
         double.IsNaN(knots) || knots < ArmBelowKnots ? 0 : knots;
 
