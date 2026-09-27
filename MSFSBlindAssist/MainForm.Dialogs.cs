@@ -422,8 +422,9 @@ public partial class MainForm
         if (flyByWireMCDUForm == null || flyByWireMCDUForm.IsDisposed)
         {
             flyByWireMCDUForm = new MSFSBlindAssist.Forms.FlyByWireA320.FlyByWireMCDUForm(flyByWireMCDUService, announcer);
-            // Poll the Coherent screen only while the window is visible (Escape hides it);
-            // the socket stays warm for the D / Shift+D readout, as the A380's MCDU does.
+            // Poll the Coherent screen fast while the window is visible and at the idle rate
+            // while it is closed (closing hides it: FormClosing → Hide); a closed window still
+            // speaks FMS messages, and the socket stays warm for the D / Shift+D readout.
             var form = flyByWireMCDUForm;
             form.VisibleChanged += (_, _) => flyByWireMCDUService?.SetActive(!form.IsDisposed && form.Visible);
         }

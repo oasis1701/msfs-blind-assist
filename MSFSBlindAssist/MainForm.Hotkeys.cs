@@ -236,9 +236,9 @@ public partial class MainForm
                 }
                 else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
-                    // The Headwind A330 MCDU broadcasts over the same FBW SimBridge
-                    // relay (ws://localhost:8380/interfaces/v1/mcdu) the A32NX uses,
-                    // so the A320 MCDU service/form serve it unchanged.
+                    // The Headwind A330 MCDU is the same FBW instrument (the Coherent view
+                    // "A339X_MCDU" — FlightInfoMcduView — and the same SimBridge relay), so
+                    // the A320 MCDU service/form serve it with only the view name changed.
                     ShowFlyByWireMCDUDialog();
                 }
                 else

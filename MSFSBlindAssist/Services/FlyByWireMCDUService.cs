@@ -93,8 +93,9 @@ public class FlyByWireMCDUService : IDisposable
     }
 
     /// <summary>
-    /// Poll the Coherent screen only while the MCDU window is visible; the socket stays
-    /// warm while it is closed. The SimBridge relay pushes on its own and needs no gate.
+    /// Poll the Coherent screen fast while the MCDU window is visible, at the idle rate while
+    /// it is closed (a closed window still speaks FMS messages); showing it re-reads at once.
+    /// The SimBridge relay pushes on its own and needs no gate.
     /// </summary>
     public void SetActive(bool active) => _coherent.SetActive(active);
 
