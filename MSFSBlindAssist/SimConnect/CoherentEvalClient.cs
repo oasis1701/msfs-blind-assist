@@ -13,7 +13,8 @@ namespace MSFSBlindAssist.SimConnect
     /// evaluate a JS expression in it, and return the string result. For lightweight,
     /// on-demand reads of a view no persistent client holds — e.g. the A32NX DCDU window, or
     /// the A32NX D / Shift+D flight-info readout before the MCDU window has ever been opened
-    /// (after that the MCDU service owns the view and the readout rides its socket). Connect →
+    /// (after that the MCDU service owns the view and the readout rides its socket, unless its
+    /// Coherent client could not load its agent and so owns nothing). Connect →
     /// eval → close each call; no persistent socket, no injected agent, no lifecycle to manage.
     /// Returns "" on any failure (caller decides the spoken fallback), and at once for a view a
     /// persistent client has claimed (<see cref="CoherentViewOwnership"/>): Coherent GT accepts

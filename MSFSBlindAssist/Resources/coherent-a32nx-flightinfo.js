@@ -1,8 +1,8 @@
 // FMS flight-progress for the A32NX D / Shift+D readouts. Self-contained IIFE that
 // returns the SAME JSON shape as the A380 coherent-a380-agent.js flightInfo(), so
 // MainForm can parse + announce both identically. Evaluated in the A32NX_MCDU Coherent
-// view (where the <a32nx-mcdu> element lives) — over the MCDU service's socket once the MCDU
-// window has been opened (it owns the view), else a one-shot CoherentEvalClient eval. No
+// view (where the <a32nx-mcdu> element lives) — over the MCDU service's socket while it owns
+// the view (once the MCDU window has been opened), else a one-shot CoherentEvalClient eval. No
 // agent install: the script is self-contained.
 // ES5 only (Coherent GT = Chromium 49: var, no arrow funcs, no String.includes, try/catch).
 //   distToDest : NM to destination (alongTrackDistancesToDestination.get(0) on FBW since

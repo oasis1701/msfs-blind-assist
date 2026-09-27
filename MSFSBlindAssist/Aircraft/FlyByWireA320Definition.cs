@@ -117,7 +117,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // Coherent GT view title-needle hosting the MCDU instrument: the view the MCDU window's
     // Coherent client holds (FlyByWireMCDUService) AND the one the D / Shift+D flight-info
     // eval (coherent-a32nx-flightinfo.js) runs on — over that client's socket once the MCDU
-    // window has been opened, a one-shot before. Changing it moves both.
+    // window has been opened (a one-shot before, or if that client could not load its agent).
+    // Changing it moves both.
     // Overridden by the Headwind A330 fork, whose view is "A339X_MCDU".
     public virtual string FlightInfoMcduView => "A32NX_MCDU";
 

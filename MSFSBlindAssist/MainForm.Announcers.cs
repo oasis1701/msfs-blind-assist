@@ -1687,7 +1687,8 @@ public partial class MainForm
     /// view: once the MCDU window has been opened, FlyByWireMCDUService owns that view for the
     /// rest of the aircraft session (reconnect gaps included — CoherentViewOwnership), so the
     /// script always rides ITS socket and says "not ready" while that socket is reconnecting;
-    /// only before the MCDU window has ever been opened is a one-shot eval used.
+    /// only before the MCDU window has ever been opened (or when its Coherent client could not
+    /// load its agent, and so owns nothing) is a one-shot eval used.
     /// </summary>
     public async void AnnounceA32NXFlightInfo(bool tod)
     {
