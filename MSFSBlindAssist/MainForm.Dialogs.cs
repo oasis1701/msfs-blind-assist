@@ -421,16 +421,26 @@ public partial class MainForm
 
         if (flyByWireMCDUService == null)
         {
-            flyByWireMCDUService = new MSFSBlindAssist.Services.FlyByWireMCDUService();
+            // The service reads the MCDU over the Coherent debugger (primary) with the
+            // SimBridge relay as fallback. The MCDU's Coherent view title is per airframe
+            // ("A32NX_MCDU"; the Headwind A330's is "A339X_MCDU").
+            string mcduView = (currentAircraft as Aircraft.FlyByWireA320Definition)?.FlightInfoMcduView ?? "A32NX_MCDU";
+            flyByWireMCDUService = new MSFSBlindAssist.Services.FlyByWireMCDUService(mcduView);
             flyByWireMCDUService.Connect();
         }
 
         if (flyByWireMCDUForm == null || flyByWireMCDUForm.IsDisposed)
         {
             flyByWireMCDUForm = new MSFSBlindAssist.Forms.FlyByWireA320.FlyByWireMCDUForm(flyByWireMCDUService, announcer);
+            // Poll the Coherent screen fast while the window is visible and at the idle rate
+            // while it is closed (closing hides it: FormClosing → Hide); a closed window still
+            // speaks FMS messages, and the socket stays warm for the D / Shift+D readout.
+            var form = flyByWireMCDUForm;
+            form.VisibleChanged += (_, _) => flyByWireMCDUService?.SetActive(!form.IsDisposed && form.Visible);
         }
 
         flyByWireMCDUForm.ShowForm();
+        flyByWireMCDUService.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
     }
 
     private void ShowPMDGCDUDialog()
