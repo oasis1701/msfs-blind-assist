@@ -25,7 +25,8 @@ public class RolloutExitTurnGateTests
             groundSpeedKts: 19.7,
             distToExitFeet: 2232.0,
             pastExit: false,
-            exitRelativeBearingDeg: 13.6));
+            exitRelativeBearingDeg: 13.6,
+            turnWindowFeet: RolloutExitGate.TurnWindowFeet));
     }
 
     // The ordinary case this gate exists for: a hard turn onto a right-hand exit,
@@ -38,7 +39,8 @@ public class RolloutExitTurnGateTests
             groundSpeedKts: 20.0,
             distToExitFeet: 150.0,
             pastExit: false,
-            exitRelativeBearingDeg: 13.6));
+            exitRelativeBearingDeg: 13.6,
+            turnWindowFeet: RolloutExitGate.TurnWindowFeet));
     }
 
     // Same turn, same exit, but 2,232 ft short of it. You cannot be turning onto an
@@ -51,7 +53,8 @@ public class RolloutExitTurnGateTests
             groundSpeedKts: 20.0,
             distToExitFeet: 2232.0,
             pastExit: false,
-            exitRelativeBearingDeg: 13.6));
+            exitRelativeBearingDeg: 13.6,
+            turnWindowFeet: RolloutExitGate.TurnWindowFeet));
     }
 
     // Window boundary: 1,000 ft is derived from a 558 ft worst-case exit-node
@@ -59,8 +62,8 @@ public class RolloutExitTurnGateTests
     [Fact]
     public void TurnWindowBoundaryIsInclusiveAtOneThousandFeet()
     {
-        Assert.True(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 1000.0, false, 13.6));
-        Assert.False(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 1000.1, false, 13.6));
+        Assert.True(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 1000.0, false, 13.6, RolloutExitGate.TurnWindowFeet));
+        Assert.False(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 1000.1, false, 13.6, RolloutExitGate.TurnWindowFeet));
     }
 
     // pastExit bypasses the window entirely: an overshooting aircraft is beyond the
@@ -68,25 +71,25 @@ public class RolloutExitTurnGateTests
     [Fact]
     public void PastExit_BypassesTheDistanceWindow()
     {
-        Assert.True(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 5000.0, true, 13.6));
+        Assert.True(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 5000.0, true, 13.6, RolloutExitGate.TurnWindowFeet));
     }
 
     // Left-hand exits are the mirror image; nothing here is right-hand-specific.
     [Fact]
     public void LeftTurnAtALeftHandExit_IsATurn()
     {
-        Assert.True(RolloutExitGate.IsExitTurnBegun(-16.0, 20.0, 150.0, false, -30.0));
-        Assert.False(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 150.0, false, -30.0));
+        Assert.True(RolloutExitGate.IsExitTurnBegun(-16.0, 20.0, 150.0, false, -30.0, RolloutExitGate.TurnWindowFeet));
+        Assert.False(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 150.0, false, -30.0, RolloutExitGate.TurnWindowFeet));
     }
 
     // The existing 15° and 90 kt gates are unchanged.
     [Fact]
     public void BelowFifteenDegreesOrAboveNinetyKnots_IsNotATurn()
     {
-        Assert.False(RolloutExitGate.IsExitTurnBegun(14.9, 20.0, 150.0, false, 13.6));
-        Assert.True(RolloutExitGate.IsExitTurnBegun(15.0, 20.0, 150.0, false, 13.6));
-        Assert.False(RolloutExitGate.IsExitTurnBegun(16.0, 90.0, 150.0, false, 13.6));
-        Assert.True(RolloutExitGate.IsExitTurnBegun(16.0, 89.9, 150.0, false, 13.6));
+        Assert.False(RolloutExitGate.IsExitTurnBegun(14.9, 20.0, 150.0, false, 13.6, RolloutExitGate.TurnWindowFeet));
+        Assert.True(RolloutExitGate.IsExitTurnBegun(15.0, 20.0, 150.0, false, 13.6, RolloutExitGate.TurnWindowFeet));
+        Assert.False(RolloutExitGate.IsExitTurnBegun(16.0, 90.0, 150.0, false, 13.6, RolloutExitGate.TurnWindowFeet));
+        Assert.True(RolloutExitGate.IsExitTurnBegun(16.0, 89.9, 150.0, false, 13.6, RolloutExitGate.TurnWindowFeet));
     }
 
     // ExitBearingTrue == 0.0 is the rollout code's "unknown bearing" sentinel. The 0.0
@@ -98,10 +101,10 @@ public class RolloutExitTurnGateTests
     [Fact]
     public void UnknownExitSide_SkipsTheDirectionTest()
     {
-        Assert.True(RolloutExitGate.IsExitTurnBegun(-16.0, 20.0, 150.0, false, 0.0));
-        Assert.True(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 150.0, false, 2.9));
+        Assert.True(RolloutExitGate.IsExitTurnBegun(-16.0, 20.0, 150.0, false, 0.0, RolloutExitGate.TurnWindowFeet));
+        Assert.True(RolloutExitGate.IsExitTurnBegun(16.0, 20.0, 150.0, false, 2.9, RolloutExitGate.TurnWindowFeet));
         // At 3.0° the exit has a side again and the wrong-way turn is rejected.
-        Assert.False(RolloutExitGate.IsExitTurnBegun(-16.0, 20.0, 150.0, false, 3.0));
+        Assert.False(RolloutExitGate.IsExitTurnBegun(-16.0, 20.0, 150.0, false, 3.0, RolloutExitGate.TurnWindowFeet));
     }
 
     // IsTurnTowardExit is exposed separately for the post-handoff overshoot monitor,

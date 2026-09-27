@@ -1,4 +1,4 @@
-namespace MSFSBlindAssist
+﻿namespace MSFSBlindAssist
 {
     partial class MainForm
     {
@@ -21,6 +21,7 @@ namespace MSFSBlindAssist
         private System.Windows.Forms.ToolStripMenuItem horizonSim787MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem headwindA330MenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem ifly737MaxMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem tfdiMd11MenuItem = null!;
         private System.Windows.Forms.ListBox sectionsListBox = null!;
         private System.Windows.Forms.ListBox panelsListBox = null!;
         private System.Windows.Forms.Panel controlsContainer = null!;
@@ -55,6 +56,7 @@ namespace MSFSBlindAssist
             this.horizonSim787MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.headwindA330MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.ifly737MaxMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.tfdiMd11MenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.sectionsListBox = new System.Windows.Forms.ListBox();
             this.panelsListBox = new System.Windows.Forms.ListBox();
             this.controlsContainer = new System.Windows.Forms.Panel();
@@ -171,7 +173,8 @@ namespace MSFSBlindAssist
             this.pmdg737MenuItem,
             this.pmdg777MenuItem,
             this.horizonSim787MenuItem,
-            this.ifly737MaxMenuItem});
+            this.ifly737MaxMenuItem,
+            this.tfdiMd11MenuItem});
             this.aircraftMenuItem.Name = "aircraftMenuItem";
             this.aircraftMenuItem.Size = new System.Drawing.Size(75, 24);
             this.aircraftMenuItem.Text = "&Aircraft";
@@ -255,6 +258,16 @@ namespace MSFSBlindAssist
             this.ifly737MaxMenuItem.Text = "&iFly Boeing 737 MAX8";
             this.ifly737MaxMenuItem.Checked = false;
             this.ifly737MaxMenuItem.Click += new System.EventHandler(this.IFly737MAXMenuItem_Click);
+            // 
+            // tfdiMd11MenuItem
+            // 
+            this.tfdiMd11MenuItem.AccessibleName = "TFDi Design MD-11";
+            this.tfdiMd11MenuItem.AccessibleDescription = "Switch to the TFDi Design MD-11";
+            this.tfdiMd11MenuItem.Name = "tfdiMd11MenuItem";
+            this.tfdiMd11MenuItem.Size = new System.Drawing.Size(240, 26);
+            this.tfdiMd11MenuItem.Text = "TFDi Design &MD-11";
+            this.tfdiMd11MenuItem.Checked = false;
+            this.tfdiMd11MenuItem.Click += new System.EventHandler(this.TFDiMD11MenuItem_Click);
             //
             // sectionsListBox
             // 

@@ -379,6 +379,16 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// An instruction that must FOLLOW whatever is being spoken rather than cut it off - recorded for Ctrl+Y
+    /// exactly as <see cref="AnnounceInstruction"/> records one, but queued.
+    /// </summary>
+    private void AnnounceQueuedInstruction(string text)
+    {
+        _lastInstruction = text;
+        _announcer.Announce(text);
+    }
+
+    /// <summary>
     /// Replays the most recent tactical instruction. Bound to Ctrl+Y in output
     /// mode. Returns a fallback string when no instruction has been recorded
     /// yet (e.g., guidance just started, or guidance is inactive).
@@ -486,17 +496,28 @@ public partial class TaxiGuidanceManager
 
         if (_state == TaxiGuidanceState.HoldShort)
         {
+            // Part-way through a STAGED hold (a stop guarding more than one runway), the status must
+            // say which runway the NEXT press authorises — found in flight at KJFK 31L+04L, where it
+            // answered "Press continue when cleared." and named both runways as though nothing had
+            // been cleared. The destination hold is never staged, so its branch is untouched.
+            string? stagedNext = !_holdShortAtDestination && _holdStageIndex < _holdStages.Count
+                ? _holdStages[_holdStageIndex]
+                : null;
+
             if (_holdShortAtDestination)
                 return $"Holding short of {_destinationName}. Press continue when cleared.";
-            if (_currentSegmentIndex == 0 && !string.IsNullOrEmpty(_route.StartHoldRunway))
-                return $"Holding short of {_route.StartHoldRunway}. Press continue when cleared.";
-            if (_currentSegmentIndex > 0 && _currentSegmentIndex <= _route.Segments.Count)
-            {
-                var holdSeg = _route.Segments[_currentSegmentIndex - 1];
-                if (!string.IsNullOrEmpty(holdSeg.HoldShortRunway))
-                    return $"Holding short of {holdSeg.HoldShortRunway}. Press continue when cleared.";
-            }
-            return "Holding short. Press continue when cleared.";
+
+            // The same derivation the ground-traffic runway watch uses (Navigation.HeldRunwayLabel).
+            string? held = Navigation.HeldRunwayLabel.Resolve(
+                false, _destinationName, _currentSegmentIndex, _route.StartHoldRunway,
+                _route.Segments.Select(s => s.HoldShortRunway).ToList());
+            if (held != null)
+                return stagedNext != null
+                    ? Navigation.RunwayHoldStages.ComposeStatus(held, stagedNext)
+                    : $"Holding short of {held}. Press continue when cleared.";
+            return stagedNext != null
+                ? Navigation.RunwayHoldStages.ComposeStatus(null, stagedNext)
+                : "Holding short. Press continue when cleared.";
         }
 
         if (_state == TaxiGuidanceState.LiningUp)

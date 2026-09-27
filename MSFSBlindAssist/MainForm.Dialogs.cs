@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -224,11 +224,10 @@ public partial class MainForm
             if (dialog.SelectedRunway != null && dialog.SelectedAirport != null)
             {
                 simConnectManager.SetDestinationRunway(dialog.SelectedRunway, dialog.SelectedAirport);
-                // Destination just set → force-fresh the online taxiway names + gate aliases NOW, so
-                // they're ready well before the approach (instead of waiting until ILS guidance or the
-                // landing-exit planner is opened).
-                if (_augmentPrefetched.Add(dialog.SelectedAirport.ICAO))
-                    _ = _augmentingProvider?.PrefetchAsync(dialog.SelectedAirport.ICAO, force: true);
+                // Destination just set → ready its online taxiway names + gate aliases, OSM buildings
+                // and scenery NOW, in the air or on the ground, so they are in hand well before the
+                // approach (instead of waiting until ILS guidance or the landing-exit planner opens).
+                _airportWarmUp?.AtDestination(dialog.SelectedAirport.ICAO);
 
                 // Manual-landing checkbox: arm (or clear) the flare/rollout assist for this
                 // destination. A re-selection WITHOUT the checkbox must disarm — the pilot's
@@ -411,16 +410,26 @@ public partial class MainForm
 
         if (flyByWireMCDUService == null)
         {
-            flyByWireMCDUService = new MSFSBlindAssist.Services.FlyByWireMCDUService();
+            // The service reads the MCDU over the Coherent debugger (primary) with the
+            // SimBridge relay as fallback. The MCDU's Coherent view title is per airframe
+            // ("A32NX_MCDU"; the Headwind A330's is "A339X_MCDU").
+            string mcduView = (currentAircraft as Aircraft.FlyByWireA320Definition)?.FlightInfoMcduView ?? "A32NX_MCDU";
+            flyByWireMCDUService = new MSFSBlindAssist.Services.FlyByWireMCDUService(mcduView);
             flyByWireMCDUService.Connect();
         }
 
         if (flyByWireMCDUForm == null || flyByWireMCDUForm.IsDisposed)
         {
             flyByWireMCDUForm = new MSFSBlindAssist.Forms.FlyByWireA320.FlyByWireMCDUForm(flyByWireMCDUService, announcer);
+            // Poll the Coherent screen fast while the window is visible and at the idle rate
+            // while it is closed (closing hides it: FormClosing → Hide); a closed window still
+            // speaks FMS messages, and the socket stays warm for the D / Shift+D readout.
+            var form = flyByWireMCDUForm;
+            form.VisibleChanged += (_, _) => flyByWireMCDUService?.SetActive(!form.IsDisposed && form.Visible);
         }
 
         flyByWireMCDUForm.ShowForm();
+        flyByWireMCDUService.SetActive(true);   // covers the already-visible re-Show path (no VisibleChanged)
     }
 
     private void ShowPMDGCDUDialog()
@@ -516,7 +525,7 @@ public partial class MainForm
 
         if (firstOfficer)
         {
-            if (coherentPmdgEfbFirstOfficer == null) { coherentPmdgEfbFirstOfficer = new CoherentPmdgEfbClient(side); coherentPmdgEfbFirstOfficer.Start(); }
+            if (coherentPmdgEfbFirstOfficer == null) { coherentPmdgEfbFirstOfficer = CoherentPmdgEfbClient.ForPmdg(side); coherentPmdgEfbFirstOfficer.Start(); }
             if (pmdgCoherentEfbFirstOfficerForm == null || pmdgCoherentEfbFirstOfficerForm.IsDisposed)
             {
                 pmdgCoherentEfbFirstOfficerForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbFirstOfficer, announcer, title, "EFB", "Universal Flight Tablet");
@@ -531,7 +540,7 @@ public partial class MainForm
         }
         else
         {
-            if (coherentPmdgEfbCaptain == null) { coherentPmdgEfbCaptain = new CoherentPmdgEfbClient(side); coherentPmdgEfbCaptain.Start(); }
+            if (coherentPmdgEfbCaptain == null) { coherentPmdgEfbCaptain = CoherentPmdgEfbClient.ForPmdg(side); coherentPmdgEfbCaptain.Start(); }
             if (pmdgCoherentEfbCaptainForm == null || pmdgCoherentEfbCaptainForm.IsDisposed)
             {
                 pmdgCoherentEfbCaptainForm = new Forms.FBWA380.FbwEfbForm(coherentPmdgEfbCaptain, announcer, title, "EFB", "Universal Flight Tablet");
@@ -653,6 +662,19 @@ public partial class MainForm
         });
     }
 
+    // The four GSX signals every GateDataSource is given, and the gate-list token is derived from.
+    // Methods, so a GsxService started or replaced later is seen. "Couatl started" is EITHER the
+    // Remote API flag OR L:FSDT_GSX_COUATL_STARTED, which every GSX build publishes — the .ini
+    // overlay, deice pads and stop positions are local-file features and not a version floor.
+    private bool GsxCouatlRunning()
+        => (_gsxService != null && _gsxService.CouatlStarted)
+           || (simConnectManager != null && simConnectManager.GsxCouatlStartedLVar);
+    private IReadOnlyCollection<string> GsxCapabilities() => _gsxService?.Capabilities ?? Array.Empty<string>();
+    private System.Text.Json.JsonElement? GsxHandlerDataAirport() => _gsxService?.GetHandlerDataAirport();
+    // The staleness token behind GateDataSource.GetGateListVersion — a field read, so a per-ICAO
+    // gate cache can notice GSX (re)publishing this airport per keystroke.
+    private long GsxHandlerDataVersion() => _gsxService?.HandlerDataVersion ?? 0;
+
     /// <summary>
     /// Wires <see cref="Services.GateDataSource"/> to live GSX data: the pre-existing
     /// <c>.ini</c>/navdata path (unchanged, gated on <c>CouatlStarted</c> + a matching
@@ -665,26 +687,25 @@ public partial class MainForm
     /// matter what GSX publishes.
     /// </summary>
     private Services.GateDataSource? BuildGateDataSource()
-    {
-        if (airportDataProvider == null) return null;
-        // GSX gates (.ini/navdata path) only when GSX is running this session (Couatl
-        // started) AND a profile matches. "Couatl started" is EITHER signal: the Remote
-        // API's own flag OR the L:FSDT_GSX_COUATL_STARTED L:var read over the main
-        // SimConnect connection. The L:var is what every GSX build publishes, Remote API or
-        // not — the .ini overlay, deice pads and profile stop positions are local-file
-        // features that never needed the WebSocket, and gating them on the Remote flag
-        // alone silently switched them off for any GSX build older than 4.0.1 (docs/gsx.md:
-        // "neither is a version floor").
-        return new Services.GateDataSource(
-            airportDataProvider,
-            () => (_gsxService != null && _gsxService.CouatlStarted)
-                  || (simConnectManager != null && simConnectManager.GsxCouatlStartedLVar),
-            capabilities: () => _gsxService?.Capabilities ?? Array.Empty<string>(),
-            getHandlerDataAirport: () => _gsxService?.GetHandlerDataAirport(),
-            // The staleness token behind GateDataSource.GetGateListVersion — a field read, so a
-            // per-ICAO gate cache can notice GSX (re)publishing this airport per keystroke.
-            handlerDataVersion: () => _gsxService?.HandlerDataVersion ?? 0);
-    }
+        => airportDataProvider is { } provider ? BuildGateDataSource(provider) : null;
+
+    /// <summary>A GateDataSource over an already-captured <paramref name="provider"/>, so a pool-thread
+    /// caller's gate and navdata reads come from one database even across a switch.</summary>
+    private Services.GateDataSource BuildGateDataSource(IAirportDataProvider provider)
+        => new(provider, GsxCouatlRunning,
+               capabilities: GsxCapabilities,
+               getHandlerDataAirport: GsxHandlerDataAirport,
+               handlerDataVersion: GsxHandlerDataVersion);
+
+    /// <summary>
+    /// GateDataSource.GetGateListVersion's token without constructing a GateDataSource — it is asked
+    /// on every monitor sample. The same four signals BuildGateDataSource uses, so they cannot drift;
+    /// "none" with no database.
+    /// </summary>
+    private string GateListVersion(string icao)
+        => airportDataProvider == null ? "none"
+           : Services.GateDataSource.ComputeGateListVersion(icao, GsxCouatlRunning, GsxCapabilities,
+                                                            GsxHandlerDataAirport, GsxHandlerDataVersion);
 
     /// <summary>
     /// Constructs a <see cref="Services.Gsx.Remote.GsxRemoteGateSelector"/> when GSX is
@@ -739,6 +760,14 @@ public partial class MainForm
                 airportDataProvider!, announcer, taxiGuidanceManager, simConnectManager, tcasService,
                 simConnectManager.AircraftWingSpan, BuildGateDataSource(), BuildGsxGateSelector(), dockingGuidanceManager,
                 importFromSayIntentions: BuildTaxiRouteFromSayIntentionsAsync);
+            // Cached-only (never triggers a build on the UI thread) plus the building read the
+            // form awaits itself when nothing is cached yet — see
+            // TaxiAssistForm.SurroundingsCatalogCached/SurroundingsCatalogAsync.
+            taxiAssistForm.SurroundingsCatalogCached = icao =>
+                surroundingsCache.TryGetCached(icao, out var cached) ? cached : null;
+            // GetAsync does the Task.Run itself and is single-flight, so this never stacks a
+            // second build on top of one already running for the same airport.
+            taxiAssistForm.SurroundingsCatalogAsync = icao => surroundingsCache.GetAsync(icao);
         }
 
         return taxiAssistForm;
@@ -748,23 +777,21 @@ public partial class MainForm
     {
         taxiAssistForm = GetOrCreateTaxiAssistForm();
 
-        // Find nearest airport. Filter to 4-char canonical ICAO at the call site —
-        // GetNearbyAirportICAOs may return 3-char idents (used by GateResolver's
-        // TCAS lookup). The taxi-graph builder needs canonical ICAOs.
-        string nearestIcao = "";
-        var nearbyAirports = airportDataProvider!.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
-            .Where(c => c != null && c.Length == 4)
-            .ToList();
-        if (nearbyAirports.Count > 0)
-            nearestIcao = nearbyAirports[0];
+        // The airport the aircraft is AT (CurrentAirport.Resolve), so the form opens on the field
+        // Where Am I just named — the old nearest-code rule disagreed at 19,700 fs2024 stands.
+        string airportIcao = MSFSBlindAssist.Services.CurrentAirport.Resolve(
+            airportDataProvider!, position.Latitude, position.Longitude) ?? "";
 
-        // Task 2 — Departure prefetch: when on the ground and we've resolved a nearest
-        // airport, prefetch once per session so taxiway names are cached before taxi starts.
-        // SILENT (fire-and-forget, debounced via _augmentPrefetched).
-        if (_lastOnGround && !string.IsNullOrEmpty(nearestIcao) && _augmentPrefetched.Add(nearestIcao))
-            _ = _augmentingProvider?.PrefetchAsync(nearestIcao, force: true);
+        // Task 2 — Departure prefetch: when on the ground and we've resolved the airport,
+        // prefetch once per session so taxiway names are cached before taxi starts.
+        // SILENT (fire-and-forget, debounced via _augmentPrefetched). Claimed only while online taxi
+        // data is on — PrefetchAsync fetches nothing otherwise, and a claim with no fetch would
+        // keep this airport from ever being prefetched once the setting is switched on.
+        if (_lastOnGround && !string.IsNullOrEmpty(airportIcao) && _augmentingProvider?.Enabled == true
+            && _augmentPrefetched.Add(airportIcao))
+            _ = _augmentingProvider?.PrefetchAsync(airportIcao, force: true);
 
-        taxiAssistForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, nearestIcao);
+        taxiAssistForm.SetAircraftPosition(position.Latitude, position.Longitude, position.HeadingMagnetic, airportIcao);
 
         // (StateChanged is subscribed once in InitializeManagers. We deliberately do NOT
         // re-subscribe here — re-subscribing on every form open would either double-fire
@@ -806,8 +833,8 @@ public partial class MainForm
             hasIlsDestination ? simConnectManager.GetDestinationRunway()?.RunwayID : null,
             arrivalPlan?.ArrivalICAO,
             arrivalPlan?.ArrivalRunway);
-        // Task 1 — Destination prefetch (silent, fire-and-forget)
-        if (!string.IsNullOrEmpty(preset.Icao) && _augmentPrefetched.Add(preset.Icao))
+        // Task 1 — Destination prefetch (silent, fire-and-forget; claimed only while online data is on)
+        if (!string.IsNullOrEmpty(preset.Icao) && _augmentingProvider?.Enabled == true && _augmentPrefetched.Add(preset.Icao))
             _ = _augmentingProvider?.PrefetchAsync(preset.Icao, force: true);
 
         // Always rebuild the form so the preset (ICAO + runway from the current

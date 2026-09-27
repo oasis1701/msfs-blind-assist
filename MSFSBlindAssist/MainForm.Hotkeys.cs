@@ -1,4 +1,4 @@
-using System.Collections.Concurrent;
+﻿using System.Collections.Concurrent;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.Database;
@@ -229,11 +229,16 @@ public partial class MainForm
                     // iFly 737 MAX8 — CDU screen from the iFly SDK shared memory.
                     ShowIFlyCDUDialog();
                 }
+                else if (currentAircraft?.AircraftCode == "TFDI_MD11")
+                {
+                    // MD-11 — all three MCDUs as text from the MD11MCDU client data area.
+                    ShowMd11McduDialog();
+                }
                 else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
                 {
-                    // The Headwind A330 MCDU broadcasts over the same FBW SimBridge
-                    // relay (ws://localhost:8380/interfaces/v1/mcdu) the A32NX uses,
-                    // so the A320 MCDU service/form serve it unchanged.
+                    // The Headwind A330 MCDU is the same FBW instrument (the Coherent view
+                    // "A339X_MCDU" — FlightInfoMcduView — and the same SimBridge relay), so
+                    // the A320 MCDU service/form serve it with only the view name changed.
                     ShowFlyByWireMCDUDialog();
                 }
                 else
@@ -253,6 +258,12 @@ public partial class MainForm
                 else if (currentAircraft?.AircraftCode == "HS_787")
                 {
                     announcer.AnnounceImmediate("787 E F B not available.");
+                }
+                else if (currentAircraft?.AircraftCode == "TFDI_MD11")
+                {
+                    // MD-11 EFB — a Coherent view from the separate tfdidesign-aircraft-efb
+                    // package, read through the same debugger transport as the PMDG tablet.
+                    ShowMd11EfbDialog();
                 }
                 else if (currentAircraft?.AircraftCode == "IFLY_737MAX8")
                 {
@@ -399,6 +410,12 @@ public partial class MainForm
                 break;
             case HotkeyAction.TaxiWhereAmI:
                 AnnounceWhereAmI();
+                break;
+            case HotkeyAction.LookAround:
+                AnnounceLookAround();
+                break;
+            case HotkeyAction.ShowSurroundings:
+                ShowSurroundingsWindow();
                 break;
             case HotkeyAction.AnnounceGroundTraffic:
                 groundTrafficMonitor.AnnounceNearestTrafficSummary();
@@ -669,8 +686,8 @@ public partial class MainForm
                 return;
             }
 
-            // Task 1 — Destination prefetch (silent, fire-and-forget)
-            if (_augmentPrefetched.Add(airport.ICAO))
+            // Task 1 — Destination prefetch (silent, fire-and-forget; claimed only while online data is on)
+            if (_augmentingProvider?.Enabled == true && _augmentPrefetched.Add(airport.ICAO))
                 _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
 
             // Get user preferences from settings

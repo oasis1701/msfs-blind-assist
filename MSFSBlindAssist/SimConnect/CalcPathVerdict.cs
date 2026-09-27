@@ -10,6 +10,27 @@ namespace MSFSBlindAssist.SimConnect;
 /// </summary>
 public static class CalcPathVerdict
 {
+    /// <summary>
+    /// Whether an AIRCRAFT SWITCH should re-arm the probe, given the verdict standing on this
+    /// connection. True for "no verdict yet" and for "concluded UNVERIFIED"; false once VERIFIED.
+    ///
+    /// What the probe establishes is that the MobiFlight WASM executes an RPN write and it lands
+    /// (<c>L:MSFSBA_BRIDGE_PROBE</c> through <c>MF.SimVars.Set</c>) — a property of the MODULE and
+    /// the connection, neither of which an aircraft switch touches. The aircraft supplies only the
+    /// data-def registration the read-back uses, which decides whether a verdict can be REACHED,
+    /// not whether writes land once one has been.
+    ///
+    /// So the negative verdict is the one that must not be inherited: a profile registering no
+    /// probe target (PMDG 737/777, HS787, iFly, Fenix) concludes UNVERIFIED and silently, and that
+    /// standing made every write on the aircraft picked next refuse "unavailable" with a healthy
+    /// path. Clearing a POSITIVE verdict as well cost a guaranteed degraded window on every switch
+    /// — at least two probe ticks of FBW <c>SetLVar</c> falling back to the data-def write that
+    /// reverts silently, and up to ~60 s of queued dotted events on a machine with no WASM module
+    /// — and prevented no named failure: a path that died mid-connection fails its writes whether
+    /// or not the flag says so, and the probe does not re-run once concluded.
+    /// </summary>
+    public static bool ShouldRearmOnAircraftSwitch(bool calcPathVerified) => !calcPathVerified;
+
     /// <summary>One line for debug.log, on success AND on give-up — the good case has to be
     /// confirmable too, or "is the path up?" stays unanswerable from a log.</summary>
     public static string LogLine(bool verified, int attempts) =>

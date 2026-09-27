@@ -46,7 +46,17 @@ public sealed class GateDataSource
     private readonly Func<JsonElement?> _getHandlerDataAirport;
     private readonly Func<long> _handlerDataVersion;
 
-    private readonly Dictionary<string, (string path, DateTime stamp, List<ParkingSpot> spots)> _cache
+    // ⚠ THREAD-SAFE ON PURPOSE (PR #238 deferred finding §8a). These were plain Dictionaries, which
+    // is why CLAUDE.md said never to hand one GateDataSource to two threads — and why
+    // LandingExitForm evaluated a full GetNamedSpots, GetRunwayStarts and GetRunways INLINE ON THE
+    // UI THREAD while a screen-reader user was arrowing the exit combo, with only TaxiGraph.Build
+    // itself off-thread. A concurrent dictionary makes every read and write here atomic; two callers
+    // racing a miss may both compute, and the last write wins over an equivalent value.
+    //
+    // This does NOT make the LISTS thread-safe: a list handed back is the SAME instance held in the
+    // cache, and nobody may mutate it (.Clear()/.Remove/.Sort) — that rule is unchanged and is
+    // stated on GetSelectableGates.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (string path, DateTime stamp, List<ParkingSpot> spots)> _cache
         = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -69,7 +79,7 @@ public sealed class GateDataSource
     /// snapshot remains the authority whenever the counter cannot be trusted.
     /// </para>
     /// </summary>
-    private readonly Dictionary<string, (long version, string airportSnapshot, List<ParkingSpot> spots)> _apiCache
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long version, string airportSnapshot, List<ParkingSpot> spots)> _apiCache
         = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
@@ -77,9 +87,12 @@ public sealed class GateDataSource
     /// wired. Never throws — same degradation as <see cref="GetGateListVersion"/>, which folds the
     /// same value into its token.
     /// </summary>
-    private long ReadHandlerDataVersion(string icao)
+    private long ReadHandlerDataVersion(string icao) => ReadHandlerDataVersion(icao, _handlerDataVersion);
+
+    private static long ReadHandlerDataVersion(string icao, Func<long>? handlerDataVersion)
     {
-        try { return _handlerDataVersion(); }
+        if (handlerDataVersion == null) return 0;
+        try { return handlerDataVersion(); }
         catch (Exception ex)
         {
             Log.Debug("Gsx", $"gate list: handlerData version read failed for {icao}: {ex.Message}");
@@ -159,18 +172,35 @@ public sealed class GateDataSource
     /// </para>
     /// </summary>
     public string GetGateListVersion(string icao)
+        => ComputeGateListVersion(icao, _isGsxAvailable, _capabilities, _getHandlerDataAirport, _handlerDataVersion);
+
+    /// <summary>
+    /// <see cref="GetGateListVersion"/>'s token WITHOUT a GateDataSource. It reads only the four
+    /// O(1) GSX signals every GateDataSource is built with — never the navdata provider, the profile
+    /// locator or either gate cache — so a caller that needs ONLY the token, and asks for it often
+    /// (the surroundings catalog cache, on every position sample the passing-callout monitor
+    /// handles), must not construct a whole GateDataSource (two concurrent dictionaries and a
+    /// <see cref="GsxProfileLocator"/>, whose constructor resolves %APPDATA% through the shell) just
+    /// to throw it away (review item E8). ONE derivation: the instance method is this call on its
+    /// own fields, so the two can never disagree. A null supplier means what the constructor's
+    /// default means — nothing advertised, nothing published, version 0. Never throws.
+    /// </summary>
+    public static string ComputeGateListVersion(string icao, Func<bool> isGsxAvailable,
+        Func<IReadOnlyCollection<string>>? capabilities = null,
+        Func<JsonElement?>? getHandlerDataAirport = null,
+        Func<long>? handlerDataVersion = null)
     {
         if (string.IsNullOrWhiteSpace(icao)) return "navdata";
         icao = NormalizeIcao(icao);
 
-        if (TryGetCurrentAirportHandlerData(icao, out _))
+        if (TryGetCurrentAirportHandlerData(icao, capabilities, getHandlerDataAirport, out _))
         {
-            long version = ReadHandlerDataVersion(icao);
+            long version = ReadHandlerDataVersion(icao, handlerDataVersion);
             return "api:" + version.ToString(System.Globalization.CultureInfo.InvariantCulture);
         }
 
         bool gsxAvailable;
-        try { gsxAvailable = _isGsxAvailable(); }
+        try { gsxAvailable = isGsxAvailable(); }
         catch { gsxAvailable = false; }
         return gsxAvailable ? "ini" : "navdata";
     }
@@ -343,15 +373,24 @@ public sealed class GateDataSource
     /// exactly like the capability genuinely being absent.
     /// </summary>
     private bool TryGetCurrentAirportHandlerData(string icao, out JsonElement airport)
+        => TryGetCurrentAirportHandlerData(icao, _capabilities, _getHandlerDataAirport, out airport);
+
+    /// <summary>The eligibility test itself, on the two suppliers alone — shared by the instance
+    /// overload above (so GetGates, GetActiveSource and GetGateListVersion keep one answer) and by
+    /// <see cref="ComputeGateListVersion"/>. A null supplier is "nothing advertised"/"nothing
+    /// published". Never throws.</summary>
+    private static bool TryGetCurrentAirportHandlerData(string icao, Func<IReadOnlyCollection<string>>? capabilities,
+        Func<JsonElement?>? getHandlerDataAirport, out JsonElement airport)
     {
         airport = default;
+        if (capabilities == null || getHandlerDataAirport == null) return false;
         try
         {
-            IReadOnlyCollection<string>? caps = _capabilities();
+            IReadOnlyCollection<string>? caps = capabilities();
             if (caps is null || !caps.Contains(HandlerDataCapability, StringComparer.Ordinal))
                 return false;
 
-            JsonElement? handlerDataAirport = _getHandlerDataAirport();
+            JsonElement? handlerDataAirport = getHandlerDataAirport();
             if (handlerDataAirport is not { } a || a.ValueKind != JsonValueKind.Object)
                 return false;
 

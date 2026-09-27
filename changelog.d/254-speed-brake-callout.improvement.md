@@ -1,0 +1,1 @@
+On the PMDG 777, the speed brake is now announced once, where the lever comes to rest, instead of at every point it passes on the way. On both PMDG jets, turning the speed brake off in the Ctrl+M monitor manager now keeps it quiet.

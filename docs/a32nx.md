@@ -19,11 +19,11 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 - **Air-conditioning ZONE TEMP selectors** (5th-audit gap): Cockpit / Fwd Cabin / Aft Cabin are numeric °C inputs (`COND_*_TEMP_SET`) → `HandleUIVariableSet` converts to the `A32NX_OVHD_COND_{CKPT,FWD,AFT}_SELECTOR_KNOB` (0..300 ↔ 18-30 °C, live-verified). Actual zone temps `A32NX_COND_*_TEMP` read in the display. **APU AVAIL** (`A32NX_OVHD_APU_START_PB_IS_AVAILABLE`) is a read-only APU-panel field (not auto-announced — the EWD memo speaks it).
 - **EFIS baro (altimeter) is per-side + silent on first detect.** Captain = `A32NX_FCU_LEFT_EIS_BARO_HPA` + `_EFIS_L_DISPLAY_BARO_VALUE_MODE`; First Officer = the `RIGHT`/`_R_` equivalents (announced with a "First Officer" prefix). BOTH the HPA and the value-MODE handlers **seed their cache silently on the first read** — otherwise each announced on first detect, which was the "altimeter spoken twice on start" bug. Brake "triple indicator" (`A32NX_HYD_BRAKE_{NORM,ALTN}_{LEFT,RIGHT}_PRESS` + `_ALTN_ACC_PRESS`) + Brakes Hot + GPWS Test were added for A380 parity.
 - **Feature parity with the A380:** the A32NX now also has **rudder trim** (FCC display reads `A32NX_FAC_1_RUDDER_TRIM_POS`, an ARINC degrees word, positive = nose-Left, + a Reset combo firing `RUDDER_TRIM_RESET`) and **metric/imperial weight units** (gross-weight + fuel-info readouts follow the EFB `A32NX_EFB_USING_METRIC_UNIT` setting via `WeightUser(kg)`; the EFB "US Units" toggle, Shift+T → Settings, is the control — no separate hotkey). NOT ported (the A320 genuinely can't): **metric ALTITUDE / MTRS** (the real A320 has no MTRS button — A330+/A380 only; NOTE: dev FBW registers a metric-alt-toggle event on the A32NX, but it is INERT on the installed build — the L:var never moves and no consumer exists in any installed bundle, only the ISIS/EFB metric settings do — so it is deliberately NOT exposed, resolved 2026-06-12), and **BTV / OANS / ROW-ROP** (A380/A350 systems).
-- **FCU value-entry windows ported (Ctrl+S/H/A/V/P/B).** The A32NX now has its own Fenix-style FCU windows (`Forms/FBWA320/FBWA320{Speed,Heading,Altitude,VS,Autopilot,Baro}Window` + shared `FBWA320FCUWindowBase`), mirroring the A380's — value entry + knob Push/Pull + mode toggles + spoken read-out, replacing the deleted single-field `ShowA320*InputDialog` / `ShowFBWBaroSetDialog`. Thin UI delegating to public `FlyByWireA320Definition` methods: `SetFCU{Heading,Speed,Altitude,VS}Value`, `FireFCUButton(evt)` (readback via an inline event→`RequestFCU*` switch — the A320 has no `OnPanelButtonFired` override), `RequestFCU{Heading,Speed,Altitude,VS}Readout` (wrappers over the existing private `RequestFCU*WithStatus`/`RequestFCUVerticalSpeedFPA`, which read the `A32NX_FCU_AFS_DISPLAY_*` combine vars), `RequestAutopilotStates`, `SetAltIncrement`. Differences from the A380: **no MTRS/metric toggle** in the Altitude window (real A320 has none); the **Baro** window sets QNH via the proven `A32NX.FCU_EFIS_L/R_BARO_SET` (hPa×16) events (not `CAPT_QNH_SET`/`KOHLSMAN_SET`), **STD/QNH via the `A32NX.FCU_EFIS_L/R_BARO_PULL` (STD) / `_BARO_PUSH` (QNH) knob events — live-verified round-trip 2026-06; the `A32NX_FCU_{LEFT,RIGHT}_EIS_BARO_IS_STD` L:vars are DEAD on the new-FCU A32NX (hold a write but drive nothing, and stay 0 even while actually in STD — the original "STD button doesn't work" bug; dev FBW removed them on the A380 TOO — its STD is now the `A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL}` K-events, read back from `A32NX_FCU_EFIS_{L,R}_DISPLAY_BARO_IS_STD`. **This sentence used to name `H:A380X_EFIS_CP_BARO` + the stock `KOHLSMAN SETTING STD:n` readback; FBW #10855 deleted those H-events, and the A380 now reads the FCU's own per-frame flag instead. The stock mirror is NOT dead — it still tracks both directions — it is simply no longer what MSFSBA reads. See [a380x.md](a380x.md).** CAUTION, the two jets are OPPOSITE: A380 PUSH=STD/PULL=QNH (live-verified 2026-06-11 in the installed fcu.js onPush/onPull), A32NX PULL=STD/PUSH=QNH — never harmonise them). STD state reads `A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE == 0`** (mode 0=STD/1=hPa/2=inHg; the mode carries no unit info while in STD, so the window keeps the last known entry unit), unit via `A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG` (dev FBW REMOVED `XMLVAR_Baro_Selector_HPA_*` from the A32NX — exactly inverted vs the A380, where the XMLVAR is live and IS_INHG is stuck). The Ctrl+B window is now Fenix-style (Mode/Unit combos + value box, 2026-06). **Autopilot panel (Ctrl+P)** identical to the A380 (shared `A32NX.FCU_*` events + `A32NX_*` state vars). The A380 FCU windows are Gus's; these are the A32NX mirror.
+- **FCU value-entry windows ported (Ctrl+S/H/A/V/P/B).** The A32NX now has its own Fenix-style FCU windows (`Forms/FBWA320/FBWA320{Speed,Heading,Altitude,VS,Autopilot,Baro}Window` + shared `FBWA320FCUWindowBase`), mirroring the A380's — value entry + knob Push/Pull + mode toggles + spoken read-out, replacing the deleted single-field `ShowA320*InputDialog` / `ShowFBWBaroSetDialog`. Thin UI delegating to public `FlyByWireA320Definition` methods: `SetFCU{Heading,Speed,Altitude,VS}Value`, `FireFCUButton(evt)` (readback via an inline event→`RequestFCU*` switch — the A320 overrides `OnPanelButtonFiring` to arm the FCU echo before a panel button's event is sent, but `FireFCUButton` still runs its own readback switch rather than `OnPanelButtonFired`), `RequestFCU{Heading,Speed,Altitude,VS}Readout` (wrappers over the existing private `RequestFCU*WithStatus`/`RequestFCUVerticalSpeedFPA`, which read the `A32NX_FCU_AFS_DISPLAY_*` combine vars), `RequestAutopilotStates`, `SetAltIncrement`. Differences from the A380: **no MTRS/metric toggle** in the Altitude window (real A320 has none); the **Baro** window sets QNH via the proven `A32NX.FCU_EFIS_L/R_BARO_SET` (hPa×16) events (not `CAPT_QNH_SET`/`KOHLSMAN_SET`), **STD/QNH via the `A32NX.FCU_EFIS_L/R_BARO_PULL` (STD) / `_BARO_PUSH` (QNH) knob events — live-verified round-trip 2026-06; the `A32NX_FCU_{LEFT,RIGHT}_EIS_BARO_IS_STD` L:vars are DEAD on the new-FCU A32NX (hold a write but drive nothing, and stay 0 even while actually in STD — the original "STD button doesn't work" bug; dev FBW removed them on the A380 TOO — its STD is now the `A32NX.FCU_EFIS_{L,R}_BARO_{PUSH,PULL}` K-events, read back from `A32NX_FCU_EFIS_{L,R}_DISPLAY_BARO_IS_STD`. **This sentence used to name `H:A380X_EFIS_CP_BARO` + the stock `KOHLSMAN SETTING STD:n` readback; FBW #10855 deleted those H-events, and the A380 now reads the FCU's own per-frame flag instead. The stock mirror is NOT dead — it still tracks both directions — it is simply no longer what MSFSBA reads. See [a380x.md](a380x.md).** CAUTION, the two jets are OPPOSITE: A380 PUSH=STD/PULL=QNH (live-verified 2026-06-11 in the installed fcu.js onPush/onPull), A32NX PULL=STD/PUSH=QNH — never harmonise them). STD state reads `A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE == 0`** (mode 0=STD/1=hPa/2=inHg; the mode carries no unit info while in STD, so the window keeps the last known entry unit), unit via `A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG` (dev FBW REMOVED `XMLVAR_Baro_Selector_HPA_*` from the A32NX — exactly inverted vs the A380, where the XMLVAR is live and IS_INHG is stuck). The Ctrl+B window is now Fenix-style (Mode/Unit combos + value box, 2026-06). **Autopilot panel (Ctrl+P)** identical to the A380 (shared `A32NX.FCU_*` events + `A32NX_*` state vars). The A380 FCU windows are Gus's; these are the A32NX mirror.
 - **Engine Mode selector display-sync.** The A32NX combo (MainForm special-case) already reads/writes the **stock ignition simvar** `TURB ENG IGNITION SWITCH EX1:1` (via `TURBINE_IGNITION_SWITCH_SET1/2`), so it never had the A380's read-`XMLVAR_ENG_MODE_SEL` staleness bug (fixed in 7b0f661); the A32NX now also nudges `XMLVAR_ENG_MODE_SEL` on set so the cockpit/EWD display matches (the events don't touch it) — the applicable half of that A380 fix.
 - **A32NX System Display now has 12 pages (added ENG + F/CTL).** The `A32NX_MSFSBA_SD_PAGE` combo offers E/WD(0), ELEC, HYD, PRESS, APU, COND, WHEEL, BLEED, FUEL, DOOR, **Engine(10)**, **Flight Controls(11)**. Content is decoded SimVars per page (`SdSystemRows`), NOT scraped — the A32NX SD page index is read-only so a page can't be forced (only the E/WD, page 0, is scraped). ENG page reads the stock simvars the FBW SD ENG page uses (`GENERAL ENG OIL TEMPERATURE`/`ENG OIL PRESSURE`/`ENG OIL QUANTITY`/`TURB ENG VIBRATION :n` + `A32NX_FADEC_IGNITER_{A,B}_ACTIVE_ENGn`) — pre-declared as **SimVar** (key underscored, Name spaced, like `ENG_ANTI_ICE:1`) so the SD auto-register loop (now pages 1-11) doesn't mis-register them as L:vars. F/CTL page decodes surface positions from the **FCDC/FAC ARINC429** words (`A32NX_FCDC_1_{ELEVATOR,AILERON}_{LEFT,RIGHT}_POS`, `_ELEVATOR_TRIM_POS`, `A32NX_FAC_1_RUDDER_{TRIM,TRAVEL_LIMIT}*`) + rudder percent + spoiler handle. **STS** (computed inop text — not SimVar-decodable, unscrapable) and **CRUISE** (redundant) are intentionally absent. Source-parity adds to existing pages: ELEC gained DC ESS / AC ESS shed / DC ESS shed buses + APU/emer gen frequency; COND gained pack 1/2 flow valves.
 - **A32NX autobrake set uses the calc path.** The Autobrake combo (`AUTOBRAKE_MODE` → `HandleUIVariableSet`) writes `A32NX_AUTOBRAKES_ARMED_MODE_SET` via the MobiFlight **calculator** path (`ExecuteCalculatorCode`), NOT `SetLVar` (the data-def write is unreliable for FBW L:vars). Verified live: `2 (>L:A32NX_AUTOBRAKES_ARMED_MODE_SET)` arms MED, the SET var auto-resets to -1. The FCU value-set events likewise work via the calc-K path (live-verified: HDG/SPD/ALT/VS incl. signed VS round-trip through the `A32NX_FCU_AFS_DISPLAY_*` readback vars).
-- **Phase 4 — the two FBW jets share identical keyboard shortcuts.** Both handle the same `HotkeyAction`s: the A320 gained **ReadFlaps (L)** + **ReadGear (Shift+G)**; the A380 gained **ReadFuelInfo** + a **Ctrl+B Set-Altimeter** dialog (`ShowA380BaroSetDialog`, which uses the stock `KOHLSMAN_SET` = hPa×16, NOT the A320's `A32NX.FCU_EFIS_*_BARO_SET`). NEW on both: **A/THR = Ctrl+J** and **LOC = Ctrl+L** (input mode) → `A32NX.FCU_ATHR_PUSH` / `A32NX.FCU_LOC_PUSH`. **D / Shift+D (distance + time to destination / Top of Descent) now works on BOTH jets** — the A320 reads its FMS `guidanceController` via a one-shot `CoherentEvalClient` eval of `coherent-a32nx-flightinfo.js` (it uses the SimBridge MCDU relay, not the Coherent MCDU bridge, so it can't reuse the A380's persistent client). Both share `MainForm.AnnounceFlightInfoJson` for an identical readout. See the "D / Shift+D distance hotkeys" section above.
+- **Phase 4 — the two FBW jets share identical keyboard shortcuts.** Both handle the same `HotkeyAction`s: the A320 gained **ReadFlaps (L)** + **ReadGear (Shift+G)**; the A380 gained **ReadFuelInfo** + a **Ctrl+B Set-Altimeter** dialog (`ShowA380BaroSetDialog`, which uses the stock `KOHLSMAN_SET` = hPa×16, NOT the A320's `A32NX.FCU_EFIS_*_BARO_SET`). NEW on both: **A/THR = Ctrl+J** and **LOC = Ctrl+L** (input mode) → `A32NX.FCU_ATHR_PUSH` / `A32NX.FCU_LOC_PUSH`. **D / Shift+D (distance + time to destination / Top of Descent) now works on BOTH jets** — the A320 reads its FMS `guidanceController` by evaluating `coherent-a32nx-flightinfo.js` on the `A32NX_MCDU` view — once the MCDU window has been opened the MCDU service OWNS that view (`CoherentViewOwnership`, reconnect gaps included) and the script rides its socket (`EvalOnMcduViewAsync`; "Flight management not ready." while it reconnects), and only before that is a one-shot `CoherentEvalClient` eval used (since 2026-09; see Transport below — the two must never both hold the view, and `CoherentEvalClient` refuses a claimed view). ⚠️ The script reads the distance to destination from FBW's per-plan Map (`alongTrackDistancesToDestination`, #9627, 2025-11-25) AND, when that is absent, the older plain `alongTrackDistanceToDestination`: the Headwind A330 0.8.1 (built 2026-01-04) pins FBW at 2025-11-10 and ships only the old field, so with the Map alone plain D said "Destination distance not available" for a whole A330 flight (live 2026-09-26). Check the INSTALLED package's `mcdu.js` before assuming the fork matches its source head — the clone's head pinned FBW 2026-05-10 and would have hidden this. Both share `MainForm.AnnounceFlightInfoJson` for an identical readout. See the "D / Shift+D distance hotkeys" section above.
 
 - **Status-display boxes refresh live — F5 AND auto, without yanking the reader cursor (both jets).** The SD-page status box renders the aircraft def's `_sdPageContent`, an OnRequest **snapshot** that is ONLY rebuilt by `OnDisplayPanelShown → RefreshSdPageDisplayAsync` (which re-reads the underlying SimVars: FOB, engine N1/N2/N3, per-tank fuel, …). **The core bug:** the F5 / Refresh handler re-requested the panel's display vars and re-rendered, but never rebuilt `_sdPageContent` — so it re-printed the SAME stale snapshot and "FOB 13400 KG" never moved, *even on a manual F5*. Fix: the refresh handler now calls `OnDisplayPanelShown(currentPanel)` (fire-and-forget; it pushes its own `UpdateDisplayText` ~0.6 s later when the fresh read completes). Non-SD panels no-op (each def gates on its own panel key: A380 = "ECAM Control Panel", A32NX = "System Display").
   - **The status display is a LISTBOX, not a TextBox (2026-07 rework).** The generic `_DISPLAY_` control is a read-only navigable `ListBox` (one synoptic row per item); every write goes through `MainForm.UpdateDisplayText(ListBox)` → **`Forms.DisplayList.UpdateInPlace`**, which rewrites ONLY the rows whose text changed, grows/shrinks the tail in place (never `Items.Clear()`), and restores the selection by ROW CONTENT — matching the occurrence **nearest the old index** (status lists contain duplicate/blank rows) and **clamping to the last row** when the list shrinks past the cursor (never dropping the selection to -1). A ListBox item-text update never touches a caret, so NVDA's cursor stays on the row being read; a row whose value actually changes re-announces while focused (intended live behaviour). The old TextBox path + its `SetDisplayTextPreserveCaret` wrapper were REMOVED from MainForm. All MCDU/CDU/DCDU forms, the pop-out windows (E/WD, OANS, RMP, HS787 display + EICAS, GSX menu, Weather Radar — via the shared `Forms/DisplayListBox` control), and the ECL now reconcile through `DisplayList.UpdateInPlace`; per-form selection semantics (title/page force-select, CDU positional index restore, ECL FWS cursor-follow) run caller-side after the call. `DisplayText.SetPreserveCaret` survives with a single caller (the OANS Airport tab's one-line box); the GSX status/tooltip boxes keep plain unchanged-guarded `.Text` writes.
@@ -38,7 +38,7 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
   - **2026-06-18 control fixes (live, in the A380):** (a) **Rudder Trim Reset** is now a **button** (user request — a momentary action) instead of an `Act` combo: a `RenderAsButton` def NOT in `_momentaryButtons`, so the dedicated `HandleUIVariableSet` branch fires `(>K:RUDDER_TRIM_RESET)` on press (the generic `_momentaryButtons` pulse would hit the dead L:var). (b) **Pedal disconnect** corrected to write the L:var (see its bullet above). (c) **RTO Autobrake Arm is working-as-designed, not a bug** — `determine_mode` (autobrakes.rs) only arms RTO when `!should_reject_rto_mode_after_time_in_flight`, i.e. RTO is **rejected for a while after a flight**; on a fresh ground spawn the `Btn` pulse arms it (`A32NX_AUTOBRAKES_RTO_ARMED`→1, auto-announced). The "does nothing" the user saw was arming right after flying. (d) **Clock panel verified** — `A32NX_CHRONO_TOGGLE` H-event live-started the chrono (elapsed 0→9.2 s); start/stop + reset are correct buttons, ET switch is a correct 3-position combo; clock date stays omitted (encoding unclear, cosmetic).
 
 - **A32NX 2026-06-12 live-session adds (all live-verified at a powered gate via the calc path + MCP read-backs):** (1) **Decision Height + Baro Minimum readouts** (`A32NX_FM1_DECISION_HEIGHT` / `_FM1_MINIMUM_DESCENT_ALTITUDE`, ARINC FM words flagged `IsArinc429` — before the flag the announce would speak the raw ~4.29-billion word on change); both are also in the **PFD display set** for on-demand reading (the FM2 MDA entry was a dead registration, removed in the 2026-06-12 bug pass). (2) **Predicted takeoff pitch trim** `A32NX_FM1_TO_PITCH_TRIM` (ARINC degrees, decoded "X.X degrees up/down" / "Not computed" in TryGetDisplayOverride, FCC panel). **⚠️ SIGN IS INVERTED vs the A380:** the A32NX FMS writes `-ths` (`A32NX_FMCMainDisplay.ts:4133 setBnrValue(ths ? -ths : 0)`), so NEGATIVE = nose UP — the first decode copied the A380's `deg > 0 = up` and read UP entries as "down" (caught in the bug pass; never copy a sign convention between the two FMSes without checking the writer). (3) **FUEL MODE SEL** combo (Fuel panel): the cockpit click toggles `A32NX_OVHD_FUEL_MODESEL_MANUAL` AND routes center-tank junctions 4+5. **⚠️ JUNCTION OPTIONS ARE 1-BASED** — the cockpit XML sends `1 l0 +` (= 1+toggled; flight_model.cfg Junction.4/5: Option 1 = auto valve routing, Option 2 = manual direct), so the junction value is **t+1, NOT t** (the first version sent t: "Manual" selected the AUTO routing and "Auto" sent invalid option 0 while the L:var and light claimed otherwise — the earlier "junction 4 follows" live-check only saw THAT a value landed, not WHICH option; full Manual→2/2, Auto→1/1 round-trip live-verified 2026-06-12). (4) **Evacuation horn shut-off** (Evacuation panel): write `1 (>L:PUSH_OVHD_EVAC_HORN)` ONE-WAY — the sound gate plays while the var <= 0 and the EVAC COMMAND re-arm resets it; never pulse it back to 0 (that resumes the horn). (5) **Blue electric pump override** (Hydraulics panel): momentary press-to-TOGGLE — state reads `A32NX_OVHD_HYD_EPUMPY_OVRD_IS_ON` (latches), set pulses `_IS_PRESSED` as TWO SEPARATE calc calls (live-verified: a same-frame `1 (>L:X) 0 (>L:X)` single calc string is NOT seen by the Rust sampler; separated calls toggle reliably — general rule for momentary FBW L:var buttons), and a **delayed (400 ms) forceUpdate read-back** re-syncs the OnRequest latch cache so the desired-vs-current guard can't act on a stale value next time. (6) **SD PRESS manual-mode fallback**: when the active CPC's `CABIN_ALTITUDE` ARINC word goes invalid (MODE SEL → MAN — exactly when the pilot hand-flies cabin V/S), the rows switch to the plain `A32NX_PRESS_MAN_*` L:vars (live-verified plain values, cabin alt −408 ft at the gate). **Colon-indexed L:var injection caveat:** MobiFlight RPN writes AND external Coherent `SetSimVarValue` writes to `L:NAME:1`-style names both no-op (live-tested) — only FBW-internal writers create/update them, so the TCAS VSPEED `:1/:2` band reads can only be verified during a REAL RA; the detail-var (plain names) guidance path was injection-verified end-to-end. **Deferred:** the ACP transmit/volume controls (stock COM events; needs design care).
-- **A32NX DCDU (CPDLC) window — Ctrl+Shift+D, input mode (2026-06-12).** `Forms/FlyByWireA320/FlyByWireDcduForm.cs` — live CPDLC uplinks can only be ANSWERED on the DCDU (WILCO/STANDBY/UNABLE/CLOSE/RECALL; the MCDU MSG RECORD only reads history). Transport = **one-shot `CoherentEvalClient` evals** of `Resources/coherent-a32nx-dcdu.js` against the `DCDU` Coherent view (NO persistent A32NX socket by policy); refresh on open + 2 s poll + F5 + ~1.5 s after a soft key (the FBW Button component delays its action 1 s for its visual confirm). The scrape collects the SVG `<text>` elements and returns MCDU-style rows: a soft key folds INTO its row (`{t:'keys', l, c, r}`) and the form renders it positionally via the shared `FbwMcduFormat.PositionLine` (24 cols — matched to the MCDU window's default width), so the unit's own star convention marks the adjacent key ("RECALL*" right-aligned = right key; "*STBY" at line start = left key). **The display is a `ListBox` (one accessible row per line), NOT a multiline `TextBox`** (2026-06-16): the TextBox presented the rows so a right-aligned key label (e.g. "RECALL>") read on a SEPARATE braille line from its leading key number; the ListBox keeps each line one discrete row, matching the MCDU window (which uses a ListBox and reads correctly on braille). `SetText` splits on newline and reconciles items in place (BeginUpdate/EndUpdate, preserving `SelectedIndex`, via `DisplayList.UpdateInPlace`) so the 1 s poll never yanks the braille reading position; an unchanged poll is a no-op via the `_lastText` guard. **Multi-line CPDLC message bodies are split into the unit's own display lines** (2026-06-16): the body is ONE `<text class="message-content">` whose word `<tspan>`s WRAP into the DCDU's visual lines, but `getBoundingClientRect` reports the SAME top for every word tspan in the headless Coherent view, so the generic rect-based row clustering collapsed the whole clearance (plus the `OPEN <time> FROM <stn>` header) onto one line. The agent detects the unit's OWN line breaks from the SVG markers — a tspan that resets `x` (has an `x` attr) or steps the baseline (has a `dy` attr) starts a new line (FBW `MessageVisualization` emits a leading x+dy tspan per wrapped line) — and emits each line as its own row with a synthetic increasing `y` so rows keep order between the header above and the soft keys below. Result: one braille line per DCDU display line (e.g. a PDC reads "OPEN 1601Z FROM LPPT" / "CLRD TO EDDB. IXID1N" / "DEPARTURE. MNTN 10000." / … each ≤~23 chars), exactly as a sighted pilot sees it. Do NOT revert the message body to a single rect-clustered line — NO separate key-map listing (the "Left 1 (Ctrl+1): …" lines were rejected in review). **Soft-key SLOT is mapped by POSITION, not Y-order** (`Button.tsx` slot-1 text at y=2240, slot-2 at 2720 of the ~2880 view → normalized 0.86 threshold against the dcdu svg rect): order-mapping is WRONG when only one key renders on a side — the empty-state RECALL is alone on the right but lives on **R2** (`RecallButtons.tsx`), and firing R1 presses nothing (live-caught). Soft keys fire the REAL DCDU H-events via the calc path — `(>H:A32NX_DCDU_BTN_MPL_{L1,L2,R1,R2})` (each Button listens for both units, MPL_ suffices); message nav = `POEPLUS/POEMINUS` (scroll within the displayed message) on **plain PageUp/Down** and `MS0PLUS/MS0MINUS` (older/newer message) on Ctrl+PageUp/Down. **Every DCDU H-event string is SEQUENCE-UNIQUIFIED** (`FireDcduEvent`: `{seq} 0 * (>H:…)`) — MobiFlight client-data coalesces two CONSECUTIVE IDENTICAL command strings, so the WILCO→SEND flow (the SAME R2 slot pressed twice in a row) silently dropped the SEND press (the seat-motor lesson, re-bitten live 2026-06-12; an app restart "fixed" it only because it reset the client-data bytes). **Answering is the real unit's TWO-STEP flow**: first R2 press arms WILCO (keys → L1 CANCEL / R2 SEND), second R2 press transmits, then R2 = CLOSE (source: `WilcoUnableButtons.tsx` showAnswers/showSend states). A "press again to send" auto-announce on the SEND-appears edge was tried and REMOVED at the user's request — the key-row change in the display is enough. Window keys MIRROR THE MCDU LSK SCHEME incl. the shared `MCDUUseAlternateLSKKeys` setting: standard Ctrl+1/2 = left + Alt+1/2 = right; alternate F1/F2 + F7/F8. Display format (final, user-specced): the key NUMBER leads the line with an arrow for the side — `"1 <STBY"` (left key 1) / `"2                RECALL>"` (right key 2, right-aligned within 24 cols); the unit's own `*` armed-marker is stripped. NO explicit "2L"/"2R" labels — position (left-packed vs right-aligned) conveys the side, exactly like the MCDU. Opening releases both hotkey modes (RMP/OANS precedent) so the chords reach the form; disposed on aircraft swap. **Live-verified end-to-end with a real SayIntentions CPDLC session (VCCF):** uplink renders, WILCO arm + SEND transmit work. **ATSU logon gotcha (the user's "can't connect"):** the MCDU NOTIFY key needs ATC FLT NBR + ATC CENTER **+ a FROM/TO destination on INIT** (`fromToAvail` in `A320_Neo_CDU_ATC_ConnectionNotification.ts`) — without a flight plan it shows NOTIFICATION UNAVAILABLE / ENTER MANDATORY FIELDS. **2026-06-12 bug-pass hardening:** (a) **page directions** — DOWN = forward everywhere: PageDown = `POEPLUS` (next page of the displayed message; `POEMINUS` = pageIndex−1 in `MessageVisualization.tsx`), Ctrl+PageDown = `MS0PLUS` (newer message; messages sort oldest-first) — the first version had both inverted, and the within-message direction is LOAD-BEARING: **the answer keys stay INACTIVE until the pilot has paged to the END of a multi-page uplink** (`reachedEndOfMessage` gates `buttonsBlocked`); (b) **per-key ACTIVE flags** — the scrape's stripped `*` is Button.tsx's active marker (an inactive Button ignores its H-event), carried as `act:{L1..R2}`; `FireButton` on an inactive key never falsely confirms, and also guards on `IsMobiFlightConnected` ("Sim connection not ready") — see the stuck-answer-key fix below for what it does now instead; (c) **lifecycle** — `_pollTimer.Start()` after the first await is `IsDisposed`-guarded (restarting a disposed WinForms timer silently re-creates the native timer = zombie 1 Hz eval loop); eval/parse failure on the FIRST render shows "DCDU unavailable. Retrying..." instead of a silent blank window; `ok:false` clears the cached soft keys so chords can't fire a stale layout; a transient scrape-js read failure is no longer cached forever.
+- **A32NX DCDU (CPDLC) window — Ctrl+Shift+D, input mode (2026-06-12).** `Forms/FlyByWireA320/FlyByWireDcduForm.cs` — live CPDLC uplinks can only be ANSWERED on the DCDU (WILCO/STANDBY/UNABLE/CLOSE/RECALL; the MCDU MSG RECORD only reads history). Transport = **one-shot `CoherentEvalClient` evals** of `Resources/coherent-a32nx-dcdu.js` against the `DCDU` Coherent view (a one-shot is fine here because nothing else holds the `DCDU` view — the old "no persistent A32NX socket" policy is retired, the MCDU now holds `A32NX_MCDU` persistently); refresh on open + 2 s poll + F5 + ~1.5 s after a soft key (the FBW Button component delays its action 1 s for its visual confirm). The scrape collects the SVG `<text>` elements and returns MCDU-style rows: a soft key folds INTO its row (`{t:'keys', l, c, r}`) and the form renders it positionally via the shared `FbwMcduFormat.PositionLine` (24 cols — matched to the MCDU window's default width), so the unit's own star convention marks the adjacent key ("RECALL*" right-aligned = right key; "*STBY" at line start = left key). **The display is a `ListBox` (one accessible row per line), NOT a multiline `TextBox`** (2026-06-16): the TextBox presented the rows so a right-aligned key label (e.g. "RECALL>") read on a SEPARATE braille line from its leading key number; the ListBox keeps each line one discrete row, matching the MCDU window (which uses a ListBox and reads correctly on braille). `SetText` splits on newline and reconciles items in place (BeginUpdate/EndUpdate, preserving `SelectedIndex`, via `DisplayList.UpdateInPlace`) so the 1 s poll never yanks the braille reading position; an unchanged poll is a no-op via the `_lastText` guard. **Multi-line CPDLC message bodies are split into the unit's own display lines** (2026-06-16): the body is ONE `<text class="message-content">` whose word `<tspan>`s WRAP into the DCDU's visual lines, but `getBoundingClientRect` reports the SAME top for every word tspan in the headless Coherent view, so the generic rect-based row clustering collapsed the whole clearance (plus the `OPEN <time> FROM <stn>` header) onto one line. The agent detects the unit's OWN line breaks from the SVG markers — a tspan that resets `x` (has an `x` attr) or steps the baseline (has a `dy` attr) starts a new line (FBW `MessageVisualization` emits a leading x+dy tspan per wrapped line) — and emits each line as its own row with a synthetic increasing `y` so rows keep order between the header above and the soft keys below. Result: one braille line per DCDU display line (e.g. a PDC reads "OPEN 1601Z FROM LPPT" / "CLRD TO EDDB. IXID1N" / "DEPARTURE. MNTN 10000." / … each ≤~23 chars), exactly as a sighted pilot sees it. Do NOT revert the message body to a single rect-clustered line — NO separate key-map listing (the "Left 1 (Ctrl+1): …" lines were rejected in review). **Soft-key SLOT is mapped by POSITION, not Y-order** (`Button.tsx` slot-1 text at y=2240, slot-2 at 2720 of the ~2880 view → normalized 0.86 threshold against the dcdu svg rect): order-mapping is WRONG when only one key renders on a side — the empty-state RECALL is alone on the right but lives on **R2** (`RecallButtons.tsx`), and firing R1 presses nothing (live-caught). Soft keys fire the REAL DCDU H-events via the calc path — `(>H:A32NX_DCDU_BTN_MPL_{L1,L2,R1,R2})` (each Button listens for both units, MPL_ suffices); message nav = `POEPLUS/POEMINUS` (scroll within the displayed message) on **plain PageUp/Down** and `MS0PLUS/MS0MINUS` (older/newer message) on Ctrl+PageUp/Down. **Every DCDU H-event string is SEQUENCE-UNIQUIFIED** (`FireDcduEvent`: `{seq} 0 * (>H:…)`) — MobiFlight client-data coalesces two CONSECUTIVE IDENTICAL command strings, so the WILCO→SEND flow (the SAME R2 slot pressed twice in a row) silently dropped the SEND press (the seat-motor lesson, re-bitten live 2026-06-12; an app restart "fixed" it only because it reset the client-data bytes). **Answering is the real unit's TWO-STEP flow**: first R2 press arms WILCO (keys → L1 CANCEL / R2 SEND), second R2 press transmits, then R2 = CLOSE (source: `WilcoUnableButtons.tsx` showAnswers/showSend states). A "press again to send" auto-announce on the SEND-appears edge was tried and REMOVED at the user's request — the key-row change in the display is enough. Window keys MIRROR THE MCDU LSK SCHEME incl. the shared `MCDUUseAlternateLSKKeys` setting: standard Ctrl+1/2 = left + Alt+1/2 = right; alternate F1/F2 + F7/F8. Display format (final, user-specced): the key NUMBER leads the line with an arrow for the side — `"1 <STBY"` (left key 1) / `"2                RECALL>"` (right key 2, right-aligned within 24 cols); the unit's own `*` armed-marker is stripped. NO explicit "2L"/"2R" labels — position (left-packed vs right-aligned) conveys the side, exactly like the MCDU. Opening releases both hotkey modes (RMP/OANS precedent) so the chords reach the form; disposed on aircraft swap. **Live-verified end-to-end with a real SayIntentions CPDLC session (VCCF):** uplink renders, WILCO arm + SEND transmit work. **ATSU logon gotcha (the user's "can't connect"):** the MCDU NOTIFY key needs ATC FLT NBR + ATC CENTER **+ a FROM/TO destination on INIT** (`fromToAvail` in `A320_Neo_CDU_ATC_ConnectionNotification.ts`) — without a flight plan it shows NOTIFICATION UNAVAILABLE / ENTER MANDATORY FIELDS. **2026-06-12 bug-pass hardening:** (a) **page directions** — DOWN = forward everywhere: PageDown = `POEPLUS` (next page of the displayed message; `POEMINUS` = pageIndex−1 in `MessageVisualization.tsx`), Ctrl+PageDown = `MS0PLUS` (newer message; messages sort oldest-first) — the first version had both inverted, and the within-message direction is LOAD-BEARING: **the answer keys stay INACTIVE until the pilot has paged to the END of a multi-page uplink** (`reachedEndOfMessage` gates `buttonsBlocked`); (b) **per-key ACTIVE flags** — the scrape's stripped `*` is Button.tsx's active marker (an inactive Button ignores its H-event), carried as `act:{L1..R2}`; `FireButton` on an inactive key never falsely confirms, and also guards on `IsMobiFlightConnected` ("Sim connection not ready") — see the stuck-answer-key fix below for what it does now instead; (c) **lifecycle** — `_pollTimer.Start()` after the first await is `IsDisposed`-guarded (restarting a disposed WinForms timer silently re-creates the native timer = zombie 1 Hz eval loop); eval/parse failure on the FIRST render shows "DCDU unavailable. Retrying..." instead of a silent blank window; `ok:false` clears the cached soft keys so chords can't fire a stale layout; a transient scrape-js read failure is no longer cached forever.
 
 - **DCDU stuck answer keys — the lost `reachedEndOfMessage` flag (2026-07-28).** A live CPDLC uplink ("CONTACT ROME MILITARY CENTER ON 123.225", one page) rendered normally but refused WILCO/UNABLE/STBY forever; MSFSBA correctly reported "not available yet. Read to the end of the message first." even though there was nothing left to read. **Root cause is FBW-side, and hits sighted pilots identically** (the DCDU buttons are H-event-only — there is no DOM click path — so a mouse click is refused the same way). Every answer key folds the displayed message's `reachedEndOfMessage` flag into `buttonsBlocked` (`WilcoUnableButtons` / `AffirmNegativeButtons` / `OutputButtons` / `SemanticResponseButtons`), and an inactive `Button` drops its H-event on the floor. That flag is raised in exactly **two** places, both in `MessageVisualization`: the render-time page-count **transition** (`if (messageView.pageCount !== pageCount) reachedEndOfMessage(uid, messageView.pageCount === 1)`) and the `POEMINUS`/`POEPLUS` page-key handlers. `pageCount` is component STATE that survives a message swap, so a new message whose page count MATCHES the one the visualization last rendered never trips the transition — its block keeps the initial `reachedEndOfMessage = false` and every answer key is dead, with nothing on screen to say why. Measured live in the stuck state (React fiber walk over the `DCDU` view): `pageIndex 0, pageCount 1`, block `reachedEndOfMessage: false`, `UNABLE/STBY/WILCO` all `active:false`, and no `*` on any label in the SVG. Firing a single `(>H:A32NX_DCDU_BTN_MPL_POEPLUS)` flipped the flag to `true` and all three keys to `act:true` — confirming both the mechanism and the recovery.
   **Fix** (`FlyByWireDcduForm.ReassertEndOfMessageAndFireAsync` + the scrape's new `page:{idx,cnt}`): an inactive key no longer dead-ends. `POEPLUS` sets the flag from `pageCount <= pageIndex + 2` and does **not** advance the page once the last page is displayed, so at the end of a message it is a pure re-assert that can only unblock — MSFSBA sends it, re-scrapes (`ForceRefreshAsync`, because `RefreshDisplayAsync` no-ops while the 1 s poll is in flight), and presses the key if it came alive **and still carries the same label** (a message arriving in between re-labels the slot; pressing it then would answer something the pilot never chose). The decision needs the unit's own page counter, which `MessageVisualization` renders as two `class="status-atsu"` texts ("PG" + "`<idx> / <cnt>`") and **only when the message spans more than one page** — the scrape now parses it into `page:{idx,cnt}` (0/0 = single page). With pages genuinely unread (`cnt > 1 && idx < cnt`) MSFSBA still refuses, but names the position: *"WILCO not available yet. Page 1 of 2. Press control page down to read on."* — **never** page past unread text on the pilot's behalf. If the key is still refused after the re-assert, the remaining known blocker is a response already transmitting (`ComStatus === Sending`), which no key press can shorten, and the announcement says so. The Headwind A330 (A339X) DCDU is a fork of this code with byte-identical gating, page-key math and `status-atsu` markup, so the same form + scrape fix it there too.
@@ -51,14 +51,14 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 
 **Feature:** Screen-reader-accessible MCDU for the FlyByWire A32NX, opened with **Shift+M** (input mode) — same shared `HotkeyAction.ShowFenixMCDU` dispatch as the other CDUs, selected by `AircraftCode == "A320"` (Fenix is `FENIX_A320CEO`, so no collision). **Single MCDU (Captain) by design** — see the protocol limitation below.
 
-**CRITICAL — the protocol cannot separate Captain and First Officer MCDUs.** FBW's `A320_Neo_CDU_MainDisplay.sendUpdate()` builds ONE `screenState` from its own display and assigns that same object to BOTH the `left` and `right` keys of every `update` message (only `annunciators`/brightness differ). Each MCDU instrument (Captain + FO) runs its own broadcaster that writes its own screen into both keys, with no sender tag, interleaved. So `content.left == content.right` in every message (verified live: 100% of messages) and a Left/Right selector cannot pick one MCDU — it only drives the two physical MCDUs apart, making the shared display flip last-writer-wins (this was the "adjusting one side changes the other" bug). We therefore mirror FBW's own web remote MCDU exactly: **only ever control the Captain MCDU (`event:left`) and read the single shared screen (`content.left`).** Do NOT reintroduce a side selector or `event:right` — the separation is not achievable over this transport.
+**CRITICAL — the protocol cannot separate Captain and First Officer MCDUs.** FBW's `A320_Neo_CDU_MainDisplay.sendUpdate()` builds ONE `screenState` from its own display and assigns that same object to BOTH the `left` and `right` keys of every `update` message (only `annunciators`/brightness differ). (Earlier notes described one broadcaster per MCDU writing interleaved; the current FBW build runs a SINGLE MCDU instrument — see below — and the no-separation conclusion is unchanged.) So `content.left == content.right` in every message (verified live: 100% of messages) and a Left/Right selector cannot pick one MCDU — it only drives the two physical MCDUs apart, making the shared display flip last-writer-wins (this was the "adjusting one side changes the other" bug). We therefore mirror FBW's own web remote MCDU exactly: **only ever control the Captain MCDU (`event:left`) and read the single shared screen (`content.left`).** Do NOT reintroduce a side selector or `event:right` — the separation is not achievable over this transport. **The Coherent transport cannot separate them either:** FBW's `panel.cfg` declares ONE `A32NX/MCDU/mcdu.html` gauge on the shared MCDU texture, so a single instrument (a single `A32NX_MCDU` Coherent view) draws both screens — there is no second view to read.
 
-**Transport:** Connects to SimBridge's existing MCDU relay websocket `ws://localhost:8380/interfaces/v1/mcdu` — the same socket the FBW remote-MCDU web UI uses. Sim → client: `update:{left:{...},right:{...}}` (each side carries `lines` 12×3 `[left,right,center]` even=label/odd=value, `scratchpad`, `title`, `page`, `arrows` `[up,down,left,right]`, `annunciators`; **left and right are identical** per above — read `left`). Client → sim: `event:left:<KEY>` and `requestUpdate`. The gateway echoes every message to all clients, so the receive loop filters on `type == "update"`. No press/release pair is needed — the sim sets the `H:A320_Neo_CDU_1_BTN_{KEY}` event directly.
+**Transport (2026-09 — Coherent primary, SimBridge fallback):** `Services/FlyByWireMCDUService` is a facade over TWO transports the window never sees, injected through `Services/FbwMcduTransports` (`IFbwMcduCoherentTransport` / `IFbwMcduRelayTransport`) so its routing is tested over fakes (`FlyByWireMCDUServiceTests`). PRIMARY is `SimConnect/CoherentA32nxMcduClient`, a persistent Coherent debugger socket on the MCDU view (`A32NX_MCDU`; the Headwind A330's `A339X_MCDU` — `FlyByWireA320Definition.FlightInfoMcduView`), which installs `Resources/coherent-a32nx-mcdu-agent.js` once and polls its `read()` every 250 ms while the window is visible and every 1 s while it is closed (`SetActive`, wired to `VisibleChanged` in `ShowFlyByWireMCDUDialog`) — a closed window still speaks FMS scratchpad messages and stays current for reopening; showing the window, or a request for a fresh frame, wakes the loop at once (`SimConnect/WakeableDelay`), and when SimBridge carries the screen, showing the window asks it for the current screen too (it pushes only on a change), so a page reached while the window was closed is spoken when it opens. The client CLAIMS its view from Start to Stop (`SimConnect/CoherentViewOwnership`) once its agent has loaded: `CoherentEvalClient` refuses a one-shot eval on a claimed view, and the client does not open its socket while a one-shot started before the claim is still running — it is woken the moment that one-shot ends (`Claim(view, onOneShotDone)`), not a 2 s reconnect pass later. A client that could not load its agent (a damaged install, an antivirus quarantining the file) never connects and claims nothing, and its `EvalForResultAsync` sends the D / Shift+D script as a one-shot instead (`CoherentA32nxMcduClientViewTests`). Its "readable" state — what makes Coherent live and the window say "Connected" — is owned by `SimConnect/CoherentLinkState`: socket open, agent installed and last read ok under ONE lock, every event tagged with its socket's generation (a late answer or close from a replaced socket changes nothing), changes posted in order, every teardown through `DropSocket`. `read()` rebuilds `A320_Neo_CDU_MainDisplay.sendUpdate()`'s relay payload from the SAME fields on `document.querySelector("a32nx-mcdu").fsInstrument.legacyFms` (`_labels`/`_lines`/`_title`/`_pageCurrent`/`_pageCount`/`_arrows`/`scratchpadDisplay`/`annunciators`, power-gated on `A32NX_ELEC_AC_ESS_SHED_BUS_IS_POWERED` / `AC_2`) and answers not-ready — never a confident blank screen, which would keep Coherent live over a working SimBridge — when `_labels`/`_lines`/`scratchpadDisplay` are missing; so ONE parser, `Services/FbwMcduUpdate`, decodes both transports. `tools/a32nx-mcdu-agent-test` (node, CI) pins the agent against a HAND TRANSCRIPTION of `sendUpdate()` on the fields the decoder reads — it catches the agent drifting from the transcription, not FBW changing the payload, which must be re-transcribed by hand. Keys go through `press(key)`, which dispatches `A320_Neo_CDU_1_BTN_<KEY>` on the instrument's OWN H-event publisher (`fsInstrument.hEventPublisher.dispatchHEvent`), falling back to `bus.pub("hEvent", …, false, false)` (dispatchHEvent's own flags: not synced, not cached) and then `legacyFms.onEvent` — no MobiFlight dependency. The press script (`CoherentA32nxMcduClient.BuildPressExpression`; golden fixture `tests/MSFSBlindAssist.Tests/Fixtures/a32nx-mcdu-press-DIV.js`, executed against the agent by the node suite) then sets the key's cockpit push-animation variable (`Services/FbwMcduKeyAnimation`: `L:A32NX_MCDU_PUSH_ANIM_1_<model name>`, DIV→SLASH, UP/DOWN/PREVPAGE/NEXTPAGE→UARROW/DARROW/LARROW/RARROW) only after a delivered press, as a TOP-LEVEL statement of the evaluate, because Coherent silently drops a SetSimVarValue made inside a stored agent function (docs/flypad.md). It is the variable FBW's relay handler sets on a press, and FBW's model (`A32NX_Interior_MCDU.xml`) plays the key's push animation from it, whose `mcdubuttons` sound is the key's click — traced in source, not yet heard in the sim. The service routes a key over Coherent whenever that socket holds the view (`HoldsView`, never the arbiter's posted `Live`, which lags), resends a press that provably never reached the instrument (`IsUndeliveredKey`: no socket — including a send that threw — no agent, no instrument, no dispatch path) over the relay when SimBridge is up, never resends an ambiguous one (a timeout, a dispatch that threw: a second press is its own error), logs a key nothing could take, and makes the first Coherent key after a relayed one wait `RelaySettleMs` (300 ms) from the relay send — FBW's keypad applies each key 150-200 ms after it arrives (random) and keeps keys in order only when they ARRIVE ≥ 50 ms apart, so a relayed key could otherwise be overtaken ("250" read as "205"). For the same reason the form's typing loop's 50 ms spacing is load-bearing. `SendButtonPress` returns an `FbwMcduKeyOutcome`. When the page re-evaluates and loses the agent, `read()` answers `no-agent` rather than nothing, so the agent is re-installed on the SAME socket; only evals answered by nothing count toward the dead-socket teardown. FALLBACK is `Services/FlyByWireSimBridgeMcduClient`, the SimBridge relay websocket `ws://localhost:8380/interfaces/v1/mcdu` this window used exclusively before (sim → client `update:{left:{...},right:{...}}`, each side `lines` 12×3 `[left,right,center]` even=label/odd=value, `scratchpad`, `title`, `page`, `arrows` `[up,down,left,right]`, `annunciators`; client → sim `event:left:<KEY>` / `requestUpdate`; the gateway echoes every message to every client). It feeds the window only while the Coherent socket is down, and it is still the ONLY source of MCDU printouts (`print:` exists nowhere but on the relay). `Services/FbwMcduTransportArbiter` (pure, `FbwMcduTransportArbiterTests`) decides which is live: Coherent whenever connected; a frame from the non-live transport is dropped (two sockets narrating one screen a poll apart reads as flicker); on a switch the newcomer is asked for a FRESH frame (`Decision.RequestFreshFrom` — SimBridge sends `requestUpdate`, Coherent clears its change filter and wakes) and NO remembered frame is ever replayed: a hung SimBridge keeps its socket open while its last frame grows hours old, and FBW's MCDU sends SimBridge a blank screen when it detaches, so replaying spoke a stale or empty page even to a closed window. Until the fresh frame arrives the window keeps what it showed. The window's "MCDU connected" is "either transport up", reported on change only; a disposed service passes nothing on (app exit disposes the MCDU window, then the service, as the aircraft switch does). WHY: SimBridge is a separate process the sim never launches, it crashes or hangs on long sessions, and a hung SimBridge still reads as connected to the aircraft (`McduServerClient` reconnects only on socket close), so the MCDU was simply gone until it was restarted. ⚠️ Coherent GT allows ONE inspector socket per view: once the MCDU window has been opened the service OWNS the `A32NX_MCDU` view for the aircraft session, reconnect gaps included, so the D / Shift+D flight-info script always rides `FlyByWireMCDUService.EvalOnMcduViewAsync` (`MainForm.AnnounceA32NXFlightInfo`; "Flight management not ready." while it reconnects) and a one-shot `CoherentEvalClient` eval is used only before the window has ever been opened, or when the Coherent client could not load its agent. The old "no persistent Coherent socket on the A32NX" policy was retired by the maintainers on 2026-09-25.
 
 **Key components:**
-- **`Services/FlyByWireMCDUService.cs`** — `ClientWebSocket` client with connect-loop + backoff + `SynchronizationContext` UI marshalling (mirrors `FenixMCDUService`'s shape, single socket for both directions). Reads/controls the Captain MCDU only (`const CaptainSide = "left"`); the class remarks document the no-separation protocol limitation.
+- **`Services/FlyByWireMCDUService.cs`** — the facade (see Transport): owns `SimConnect/CoherentA32nxMcduClient` + `Services/FlyByWireSimBridgeMcduClient`, drives `FbwMcduTransportArbiter` on the UI context (both clients post there), forwards `DisplayUpdated`/`ConnectionStatusChanged`/`PrintReceived`, routes `SendButtonPress` by what can deliver the key (Coherent whenever it holds the view, the relay otherwise — see Transport), and exposes `EvalOnMcduViewAsync` for the one-socket-per-view rule (the view itself is owned through `CoherentViewOwnership`). The class remarks document the no-separation limitation for BOTH transports.
 - **`Services/FbwMcduFormat.cs`** — decodes curly-brace cell markup (`{green}`/`{small}`/`{sp}`/`{end}`/…) into accessible text and builds the shared `MCDUDisplayData` (extended with `Page`/`Arrows`/`Annunciators`). Mixed-color lines with a green segment mark the active option with `*` (same convention as Fenix). **This is a 1:1 mirror of `tools/fbw-mcdu-probe/mcdu-format.js` — keep both in sync.** **CRITICAL — `{`/`}` are overloaded.** They delimit `{tag}` markup AND are the MCDU's literal LSK arrow/bracket glyphs (e.g. a selectable runway renders as `{08L{small}-ILS{end}`). `parseSegments` therefore consumes ONLY *known* tags (colors / `small` / `big` / `left` / `right` / `sp` / `end`); a lone `{` or `}` is the glyph — dropped, with its content kept. Do NOT revert to greedy "`{`…`}` is always a tag" parsing — it ate the runway designators (`08L` etc.) and broke the DEP/ARR pages. **Lines are reconstructed positionally** via `PositionLine` (24 cols: left-aligned left, right-aligned right, centred centre), NOT by dropping blank columns — otherwise a right-only cell collapses onto the left of the line.
-- **`Forms/FlyByWireA320/FlyByWireMCDUForm.cs`** — ListBox display + scratchpad TextBox + page buttons (no side selector — single Captain MCDU). LSK keys use the shared `MCDUUseAlternateLSKKeys` setting (Ctrl/Alt+1–6 or F1–F12). Annunciators + page number + ▲▼◄► page-arrow hints render into the display. Only background-state changes are announced (title change, scratchpad debounce, connection) per the screen-reader rule.
+- **`Forms/FlyByWireA320/FlyByWireMCDUForm.cs`** — ListBox display + scratchpad TextBox + page buttons (no side selector — single Captain MCDU). LSK keys use the shared `MCDUUseAlternateLSKKeys` setting (Ctrl/Alt+1–6 or F1–F12). Annunciators + page number + ▲▼◄► page-arrow hints render into the display. Only background-state changes are announced per the screen-reader rule, decided by the pure `Forms/FlyByWireA320/FbwMcduReadBack` (`FbwMcduReadBackTests`): a page title once per page and only while the window is OPEN (a page reached while it was closed is spoken when it next shows); the scratchpad through the shared `CduScratchpadAnnouncer` on a 100 ms tick, spoken once it has shown for 400 ms — the tick re-samples the LAST frame, so a count of ticks is a duration, not a count of reads, and 400 ms is longer than one Coherent read with the window open (250 ms plus an eval of up to 150 ms), so there a value seen in a single read (a redraw caught mid-way, or FBW's 150 ms blank before the next queued message) is not spoken — a closed window reads once a second and speaks only FMS messages; each typed key holds the read-back 600 ms, from before it is sent and again once it is delivered, so an entry is read back once, whole; and while the window is CLOSED only an FMS message (a scratchpad that gains text, e.g. DEST EFOB BELOW MIN) — never a page title or "Scratchpad cleared". Connection changes are spoken only while the window is visible.
 - **`tools/fbw-mcdu-probe/`** — standalone Node CLI (`watch`/`press`/`type`/`replay`, `--export` JSONL captures) to inspect, drive, and capture the MCDU over the websocket without the C# app. `replay` re-renders an exported capture offline (shareable for diagnosing a page without a live sim). `mcdu-format.js` is the authoritative decode reference; `node --test` covers it.
 
 
@@ -215,13 +215,18 @@ siblings read a bit — but that reads as *not yet wired* rather than *not model
 stays and starts working the day FBW wires it.
 
 **⚠️ Source-verified, not sim-verified.** There was no A320 loaded when this was written. Every
-claim above is traced to the FBW tree; the live measurement behind the A380 half (bit 28 TRUE at
-FL360 with nothing armed) has no A32NX counterpart yet. (The dispatch-ordering measurement below
+claim above is traced to the FBW tree; the live measurement behind the A380 half has no A32NX
+counterpart yet. (That A380 measurement was recorded as "bit 28 TRUE at FL360 with nothing armed";
+decoded as FBW decodes a discrete word it was bits 29 and 20 — the CRUISE qualifier and ALT hold —
+see a380x.md, "Discrete ARINC words were read from the wrong bits". The A32NX FMGC discrete words
+this file reads — the LAND 2/3 capability bits among them — were misread by the same bug until
+2026-09-25.) (The dispatch-ordering measurement below
 is a separate matter — it is measured against MSFSBA's own registration, not the FBW source.)
 
 **The armed-ALT call-out is HELD until the qualifier settles, and the flush re-checks the Ctrl+M
-mute ITSELF.** `A32NX_FMA_VERTICAL_ARMED` sits at continuous-batch 1 index 164 while the two FMGC
-constraint words sit at 167/168 — three slots later in the SAME batch — so naming the ALT bit
+mute ITSELF.** `A32NX_FMA_VERTICAL_ARMED` sits at continuous-batch 1 index 169 while the two FMGC
+constraint words sit at 172/173 — three slots later in the SAME batch (164/167/168 before PR
+#140's FCU sources sorted in ahead of them) — so naming the ALT bit
 inline read the PREVIOUS sample's constraint. Only the ALT entry is held, and it is released by
 the DELIVERY of the batch carrying the constraint words, not by a timer and not by those words'
 own `ProcessSimVarUpdate` branches (which run only when a value CHANGED, and so cannot report an
@@ -247,3 +252,336 @@ the `OnDeferredFlushBatchDelivered` batch hook — runs OUTSIDE that wrap and mu
 via the shared `ArmedAltitudeMode.ShouldSpeakHeldAlt`. The A380 has no such trap: its armed branch
 checks `A380DisabledMonitorVariablesSet` locally, so its flush inherits the same check by writing
 it the same way.
+
+### VFE and VS now read the FAC bus — FBW #10890 deleted the plain L-vars (2026-09-22)
+
+**FBW #10890 (`c0421a9`, 11 Sep 2026, "various AFS fixes") stopped the A32NX publishing
+`A32NX_SPEEDS_VFEN` and `A32NX_SPEEDS_VS` at all.** The writes were deleted from
+`A32NX_Speeds.ts`; the values still exist inside `NXSpeeds` but nothing puts them on an
+L-var any more. Nothing was renamed, so a name-diff sweep finds nothing — the vars simply
+stop being written and read a stale `0` forever. That is the failure mode to fear: the VFE
+and VS readouts did not go silent, they confidently said a wrong number.
+
+The readouts now take the FAC's own characteristic speeds, which is what the PFD tape uses:
+
+| Readout | Was | Now |
+| --- | --- | --- |
+| VFE | `A32NX_SPEEDS_VFEN` | `A32NX_FAC_1_V_FE_NEXT`, else `A32NX_FAC_2_V_FE_NEXT` |
+| VS | `A32NX_SPEEDS_VS` | `A32NX_FAC_1_V_STALL_1G`, else `A32NX_FAC_2_V_STALL_1G` |
+
+VS keeps its meaning: `V_STALL_1G` is the 1g stall speed, the same quantity the deleted
+`A32NX_SPEEDS_VS` carried, and the call-out still says "Stall Speed". Like the PFD, FAC 1 is
+read first and FAC 2 is the fallback when FAC 1 has nothing to say (failed, or switched off).
+
+Both are **ARINC429 words**. They are NOT read through the hardcoded temp-def/dispatch path
+(ids 330-337, which hands the value on as a plain number): each `SpeedRequestTable` entry
+carries its encoding — `PlainSpeed` for that path, `FacSpeed` for a FAC word — and a
+`FacSpeed` is read through its registered `IsArinc429` definition (`FAC_n_V_FE_NEXT`,
+`FAC_n_V_STALL_1G`) with `ReadFreshAsync` and decoded by `TryDecodeArinc429`, the same decode
+the panel rows use. A bad SSM is spoken as "not available" rather than as a number. Never add
+ARINC decoding to dispatch cases 335/337: they still carry a plain number for the Headwind
+A330 (below).
+
+⚠️ **VFE and VS are now IN-FLIGHT ONLY.** The deleted plain L-vars were valid on the ground;
+a FAC word carries a no-computed-data SSM until the FACs have air data, so both say "not
+available" on stand. That is a real behaviour change — and not one worth avoiding, because the
+variable it replaces reads a stale 0 on the ground too, it just says it with a number.
+
+⚠️ **The A380 is NOT affected and must not be "fixed" to match.** The A380X still writes
+both plain L-vars (`FmcAircraftInterface.ts`), and `FlyByWireA380Definition` derives from
+`BaseAircraftDefinition` — not from `FlyByWireA320Definition` — so it reads them through its
+own `RequestReadout` path and shares none of this.
+
+⚠️ **The Headwind A330 inherits this table and must KEEP the plain L-vars.** Checked against
+`headwindsim/aircraft` @ `41eace7` (14 Aug 2026), not assumed: it still writes both from the
+pre-#10890 `A32NX_Speeds.ts` it forked (lines 22/29/69/75), and its FACs publish **six**
+variables in total — `DISCRETE_WORD_2`, `HEALTHY`, `RUDDER_TRIM_POS` per side — **not one of
+them a characteristic speed**. None of the FAC speed words exist on that airframe, so
+`HeadwindA330Definition` overrides `SpeedRequestTable` with all-`PlainSpeed` sources, and drops
+the base PFD panel's FAC rows (`PFD_VSW`, `PFD_VALPHAPROT`, `PFD_VALPHAMAX`), which would read
+"not available" all flight. Revisit only if Headwind syncs #10890.
+
+**Requires a FlyByWire A32NX Development build from 11 Sep 2026 or later** for the plain
+L-vars to be gone; the FAC words predate #10890, so this migration also works on an older
+build.
+
+⚠️ **Known residual from #10890, NOT fixed (found 2026-09-25): the PFD status box's "Managed
+speed" row (`A32NX_SPEEDS_MANAGED_PFD`) no longer matches the PFD in two phases.** #10890 moved
+ground-speed mini and the SRS go-around target out of the FMS and into the FMGC, so in approach the
+L-var holds plain VAPP while the PFD's target is VAPP plus ground-speed mini (whenever a wind is
+entered on PERF APPR), and in an SRS go-around it holds green dot or the speed constraint. The PFD
+now draws `A32NX_FMGC_{1,2}_PFD_SELECTED_SPEED` (FMGC 2 when FMGC 1's word is invalid; FCU selected
+speed when neither is) and calls it managed when `A32NX_FMGC_x_DISCRETE_WORD_5` bit 19 is set and
+bit 20 clear (`SpeedIndicator.tsx`). The fix is to read that word the same way — keeping the old
+L-var for the Headwind A330, whose pre-#10890 FMS still writes the ground-speed-mini target. Display
+only: nothing announces this row.
+
+### Cleared V-speeds are spoken "not set" (2026-09-25)
+
+FBW #10855 (`1bbd304`, 18 Aug 2026 — the A32NX half of an A380 commit, in `A32NX_FMCMainDisplay.ts`)
+changed the FMS's cleared V1 and VR from 0 to -1 (V2 stays 0). The FMS clears all three itself as
+the flight phase passes TAKEOFF, and on a takeoff-runway change, so every climb-out was announced as
+"V1: -1 knots, VR: -1 knots, V2: 0 knots" (it was "0 knots" before, no better). `PFD_V1`/`PFD_VR`/
+`PFD_V2` now carry `SimVarDefinition.NotSetBelow = 1`, so `FormatVariableValue` says "V1: not set";
+a threshold rather than a `ValueDescriptions` key, because a sentinel written in knots and read back
+through the sim's base unit need not come back bit-exact. The A380 and the Headwind A330 (which
+inherits these definitions and still clears to 0) get the same wording. Pinned by
+`FbwVSpeedNotSetTests`.
+
+The status-box panels read "not set" too: MainForm's panel formatter and `FormatVariableValue` both
+ask `SimVarDefinition.IsNotSet`, the one test (the panel showed "V1: -1" while the readout already
+said "not set"). And the FMS's own post-takeoff clear is no longer SPOKEN on the A32NX (and the
+Headwind A330, which inherits it): `A32NX_FMCMainDisplay.ts` clears all three once the phase is past
+TAKEOFF, which made three "not set" lines on every climb-out. The definition consumes a cleared
+V-speed silently once `A32NX_FMGC_FLIGHT_PHASE` is TAKEOFF or later, and still leaves to the monitor
+a clear made before takeoff thrust (a runway change — the FMS's only other clear — when the pilot
+must re-enter them) or with the phase unknown. ⚠️ The gate is phase ≥ TAKEOFF, NOT past it: the
+phase rides continuous batch 1 and the V-speeds batch 2 (separate once-a-second requests, measured
+about 405 ms apart), and the FMS clears on its own 1-second throttle, so the clear can reach MSFSBA
+before the CLIMB phase does. It can never arrive with anything below TAKEOFF, which is set when
+takeoff thrust is. (A first version gated on "past TAKEOFF", reasoning from the name sort within one
+batch; a second review found the two ride different batches.)
+
+### Discrete-word readouts were decoded from the wrong bits (fixed 2026-09-25)
+
+The A32NX shares `Arinc429Word` with the A380, and until 2026-09-25 its `BitValueOr` tested a
+discrete word's RAW float bits instead of the bitfield the float's value carries (docs/a380x.md,
+"Discrete ARINC words were read from the wrong bits"). Every A32NX discrete readout read noise: the
+LAND 2 / LAND 3 capability (FMGC discrete word 4, bits 23/24/25), the active-CPC choice on the PRESS
+and CRUISE pages (CPC word bit 11) and the COND page's hot air valve / pushbutton and cabin fans (ACSC
+word 1, bits 20/23/25/26). The bit numbers themselves were checked against the FBW writers and SD
+pages and are right.
+
+**FWC word 124 was also mislabelled.** Bits 24 and 25 are an ALTITUDE discrepancy between the sides
+— one side's altitude off the other's by 250 ft for 5 s, with both sides in STD (24) or both in
+QNH/QFE (25) — which drives the PFD's CHECK ALT flag and ECAM "NAV ALT DISCREPANCY"
+(`PseudoFWC.ts`). MSFSBA spoke them as "Baro standard mode / reference discrepancy", a baro-setting
+mismatch neither bit can signal (FBW's real BARO REF DISCREPANCY drives an ECAM alert only and is in
+no word). It is now one call-out, "Altitude discrepancy between sides", on the rising edge of either
+bit, and the Ctrl+M row is "Altitude Discrepancy". Pinned by `A32nxAltitudeDiscrepancyTests`.
+
+**…and it had never fired at all.** PseudoFWC builds word 124 with
+`Arinc429RegisterSubject.createEmpty()` and never sets its SSM (word 126 beside it gets
+`setSsm(NormalOperation)`; 124 does not), so the L:var always carries Failure Warning and every
+SSM-gated read (`BitValueOr`) returns its fallback — silent before the decoder fix and after it. The
+PFD reads CHECK ALT from it with `bitValue`, which ignores the SSM, and so does MSFSBA now
+(`Arinc429Word.BitValue`, which is for exactly this kind of word and no other: everywhere else a
+failed word must say nothing). The call-out has therefore never been heard in the sim — it wants a
+live check, for example with the two sides' QNH set 10 hPa apart (about 280 ft; `PseudoFWC` compares
+each ADR's baro-corrected altitude with the other side's displayed one) for more than 5 s in flight.
+
+### FCU hardware-dial callouts — speak only what the window SHOWS (PR #140, 2026-09)
+
+Turning an FCU knob on hardware (MobiFlight, FSUIPC, the 3-D cockpit) speaks the new value on the
+A32NX, the Headwind A330 and the A380X — the PMDG 777's MCP callouts. The definition composes a
+phrase per delivery (`TryComposeFcuValuePhrase` → `FcuValuePhrases`) and `FcuValueAnnouncer`
+decides whether it is spoken. Pinned by `FbwFcuDialAnnounceTests`, `FcuValuePhrasesTests` and
+`FcuValueAnnouncerTests`. The A330 inherits the A32NX path unchanged and its fbw.wasm carries every
+source name below, but on this alpha airframe "present in the wasm" has not always meant
+"delivered" (see the baro note in `HeadwindA330Definition`) — unverified in the sim; the failure mode
+is silence.
+
+**⚠️ The sources are the whole feature.** While a window shows dashes, the A32NX FCU keeps copying
+the aircraft's LIVE data into its plain display values (`FcuComputer.cpp`: the dashes branches set
+the heading value from the ADIRS heading or track, the speed from CAS or Mach clamped 100-399, and
+the V/S from the current vertical speed rounded to 100 fpm). The first version announced
+`A32NX_FCU_AFS_DISPLAY_{HDG_TRK,SPD_MACH,VS_FPA}_VALUE`, so the heading was read out as the
+aircraft turned on the ground (the report that found it), and the airspeed and vertical speed
+would have been narrated through every take-off roll and managed climb. Pairing those values with
+the separate `…_DASHES` flags does not fix it either: the flag and the value arrive on different
+SimConnect deliveries, so the order races. Every source must say ON ITS OWN whether its window
+shows a selection:
+
+| | A32NX / A330 | A380X |
+| --- | --- | --- |
+| Heading | `A32NX_AUTOPILOT_HEADING_SELECTED` (shim, -1 while dashed or the FCU failed) | the same name (-1 while dashed; the A380 writer has no FCU-failed term) |
+| Speed | `A32NX_AUTOPILOT_SPEED_SELECTED` (shim, -1 while dashed; Mach below 10, knots above) | the same name |
+| Altitude | `A32NX_FCU_SELECTED_ALTITUDE` (FCU bus ARINC429 word; Failure Warning when the FCU has failed) | stock `AUTOPILOT ALTITUDE LOCK VAR:3` (`FCU_ALT_VALUE`), metric under MTRS |
+| V/S | `A32NX_FCU_SELECTED_VERTICAL_SPEED` (FCU bus word) | `A32NX_PRIM_1_SELECTED_VERTICAL_SPEED` (PRIM FG word) |
+| FPA | `A32NX_FCU_SELECTED_FPA` | `A32NX_PRIM_1_SELECTED_FPA` |
+
+The V/S word is Normal Operation only while the V/S window shows a V/S selection — No Computed
+Data while dashed or in TRK/FPA — and the FPA word the reverse (`FcuComputer.cpp` bus-output SSMs;
+the A380 PRIM's `A380PrimComputerFctl.cpp` mirrors them, and its FCU shows dashes exactly when the
+master PRIM's word for the active mode is not Normal Operation). So neither needs the TRK/FPA mode,
+and a selected V/S of 0 (a push-to-level-off) is spoken while dashes are not. The
+`A32NX_AUTOPILOT_{VS,FPA}_SELECTED` shims are NOT sources on either airframe: on the A380 they read
+0 while dashed, on the A32NX they carry the LIVE vertical speed or FPA while dashed, and both read 0
+in the other mode. The A32NX altitude comes from its word rather than
+`A32NX_FCU_AFS_DISPLAY_ALT_VALUE` because a failed FCU zeroes the display value, which spoke
+"Altitude 0 feet". The A380's PRIM 1 words carry the same single-source limitation as its PRIM 1
+envelope speeds: with PRIM 1 not the master they go silent rather than follow PRIM 2/3. Batched
+sources are registered with Units `"number"` — a batched L:var is read in its registered unit, and a
+unit conversion would destroy a packed word (individual defs always read an L:var as `"number"`,
+whatever Units says).
+
+**FCU availability.** A callout is only released while the FCU itself is producing values —
+`A32NX_FCU_HEALTHY` (A32NX/A330) or `A32NX_FCU_AFS_CP_ACTIVE` (A380, `fcu1||fcu2 afs_cp_active`).
+It rides the SAME continuous batch as the heading/speed shims and (A380) `FCU_ALT_VALUE`, pinned by
+`FcuHealthBatchMembershipTests` against the production layout (`ContinuousBatchLayout`). Within the
+batch it sorts AFTER the shims but BEFORE the A32NX `A32NX_FCU_SELECTED_*` words, and the A380's
+stock altitude sorts first of all; the A380's PRIM 1 V/S and FPA words sort so late they currently
+ride the NEXT batch and are judged against the health delivered one batch earlier. Either order is
+safe because nothing is spoken until the batch ends: a health drop clears whatever was staged
+before it and blocks anything staged after it, and a return starts a settle. Every source
+above also composes `FcuValuePhrases.Unavailable` on its own when its word reads Failure
+Warning/Functional Test (self-test); on the A380 only, so do the speed shim's and `FCU_ALT_VALUE`'s
+own impossible zeros (the FCU never selects 0 kt/Mach, and its selected altitude is never below
+100 ft, so 0 can only mean "off"). The HEADING shim's zero is NOT one of these:
+`FcuValuePhrases.Heading`/`HeadingDegrees` has no zero case — 0° is a real heading — so a dead A380
+FCU's zero heading composes an ordinary "Heading 000 degrees" and is kept silent only by the
+health-var gate above, never by `Unavailable`. `Unavailable` is recorded like dashes, silently, but
+a delivery FROM `Unavailable` (the health var returning, or a source leaving `Unavailable`) begins
+a settle: the A380 zeroes every output rather than dashing it, so without this a battery-on read as
+nine knob turns at once. A power-DOWN is silent outright (staged phrases are dropped).
+
+**Callouts are STAGED, not spoken on delivery, and released at the batch's end.** Whether a change
+is a knob turn depends on the FCU health var of the same sample too, which may sort before or after
+the value in its batch (above) — so `AnnounceFcuValue` only records a change; `BaseAircraftDefinition.
+OnContinuousBatchDelivered` (fired from `SimConnectManager.ContinuousBatchDelivered`, after every
+`SimVarUpdated` that batch message carried) speaks whatever `FcuValueAnnouncer.OnBatchDelivered`
+released. That release runs OUTSIDE MainForm's `announcer.Suppressed` wrap (which only wraps
+`ProcessSimVarUpdate`), so each airframe checks its own Ctrl+M mute set itself before staging
+(`A32NXDisabledMonitorVariablesSet` / `A380DisabledMonitorVariablesSet`) — the same reason the
+armed-ALT hold above has to.
+
+**The speak/stay-silent rules (`FcuValueAnnouncer`).** Phrases are compared, not numbers: the
+first sample of a key is a silent baseline; a dashed window (null phrase) is recorded but silent,
+so pulling back out of managed speaks the value even when it equals the last selection, and a key
+first seen dashed still speaks its first selection (an FMS departure). A Ctrl+M mute, and a
+readout about to speak the same value, still RECORD the value — skipping the call left a stale
+baseline that swallowed a later turn back to the old value. Callouts yield when the shared
+announcement queue is backed up.
+
+**Every MSFSBA-origin write arms its echo from ONE table, `FcuEchoKeys.For(evt, sources,
+confirmation)`, BEFORE the send.** `FcuConfirmation` says what else already confirms the write, so
+the table decides which value vars are left for the dial callout to confirm: `ModeFeedback`
+(MainForm's press feedback, `GetButtonStateMapping` — the A32NX's input-mode hotkeys and its
+plain-event FCU panel buttons, armed in `HandleHotkeyAction` and the A32NX's `OnPanelButtonFiring`),
+`ValueReadout` (a readout is about to speak the value — `FireFCUButton(readback:true)` on either
+airframe, and every A380 panel button, whose own `OnPanelButtonFiring` arms it unconditionally),
+and `None` (nothing else confirms the write, so the callout must — the `SetFCU*Value` methods' own
+readback, `SetTrkFpaMode`, and `FireFCUButton(readback:false)`). V/S push/pull get special
+treatment: nothing announces a V/S level-off on its own (the FMA stays V/S), so `FcuEchoKeys.For`
+only mutes the vertical channel for those two events under `ValueReadout` — otherwise (`None`/
+`ModeFeedback`) it leaves them unmuted so the dial's own batch-released callout confirms the
+level-off. `MainForm` calls `OnPanelButtonFiring` on every panel Event-type button BEFORE its event
+is sent, so an echo armed there can never lose the race to the sim's answer.
+
+**A dotted A32NX event queued behind the calc-path probe re-arms its echo when it is finally
+sent.** `SendEvent` can hold a dotted/`H:` event for the probe's whole run (`CalcPathVerdict`, up
+to ~60 s) — long past the 2.5 s window the call site armed. `SimConnectManager.
+QueuedEventDispatched` fires from `FlushPendingCalcEvents`, and the base `OnQueuedEventDispatched`
+restarts that event's echo window (`FcuValueAnnouncer.RearmEcho`) the moment it actually reaches
+the sim.
+
+**After a context reset** — a reconnect (`OnVariableCacheCleared`, called right after
+`OnSimContextReset`), a flight load, or an Aircraft-menu switch made within 60 s of
+`AircraftLoaded` (`MainForm.AircraftLoadSettleWindowMs`, a judgement value with no captured timing)
+— changes are absorbed until an FCU value the AIRCRAFT publishes has moved and then five
+first-batch deliveries pass quietly, or thirty pass regardless (the MD-11's `Md11SeedGate`
+numbers). A reconnect's re-fire of every cached var IS that evidence (`refireIsEvidence`), so a
+reconnect settle ends in about 5-6 batches, not thirty; a flight load still waits for a genuinely
+NEW value — a stock SimVar source (the A380's `FCU_ALT_VALUE`) moving is not that evidence, since
+the sim core can restore it from the flight file before the FBW WASM has run, though it still
+restarts the quiet count. The baselines are kept, never wiped: a value the load leaves alone is
+never re-delivered, and a wiped baseline would take the pilot's first turn as its silent seed.
+Accepted residual: the settle only guarantees the FIRST burst of power-up churn is absorbed — a
+LATER transient, such as the FMGC's own AP-engage self-test pulse (on the order of 25 s), can
+arrive after the settle has already ended on ordinary evidence and is spoken like a real knob turn.
+
+**The A380's readouts (Shift+H/S/V) and FCU panel buttons now say "managed"/"not available"
+instead of a live value.** Reading the display values while dashed spoke a live heading/airspeed
+(and, on the A380, a vertical speed of 0) as though it were selected. `FcuWindowStateOf(key)`
+(`BaseAircraftDefinition`, reading `FcuValueAnnouncer`'s own recorded state) answers
+Dashes/Value/Unavailable for a readout to render, and every A380 Shift+H/S/V branch and
+`FireFCUButton`'s value readback go through it; each also arms `SuppressFcuValueChangeEcho` for the
+var it is about to speak, so the same value arriving with the next batch is not spoken twice. On
+the A32NX the readouts instead mute the matching dial source WHILE their own pending flag
+(`isRequestingHeading` etc.) is set (`readoutPending` in `ProcessSimVarUpdate`) and still compose
+their own words via `Compose{Heading,Speed,Altitude,Vertical}Readout` — same result (no double
+speech, "managed"/"not available" instead of a live number), reached by muting the callout rather
+than asking the callout's own tracker for the words.
+
+**A32NX/A330 FCU panel number fields go through the same setters and validation as the FCU
+windows.** `HandleUIVariableSet`'s `A32NX.FCU_{HDG,SPD,ALT}_SET` branches now call
+`FcuValueEntry.Try{Heading,Speed,Altitude}` and the matching `SetFCU*Value` directly, and
+`return true` (handled) instead of falling through to the generic panel path — which sent
+`(uint)value`, truncating a typed Mach (0.78 → 0) and snapping an altitude to its 1000-ft
+increment, and spoke "<name> set to <value>" for whatever was typed rather than what actually
+reached the aircraft. `FcuValueEntry` (a new pure class, `FcuValueEntryTests`) is the one place
+both the panel fields and `FBWA320{Heading,Speed,Altitude}Window` validate a typed value and
+encode it (Mach travels ×100), so an out-of-range entry reads the same error either way.
+
+**The heading window's TRK/FPA label reads the batch, not a poll.** `A32NX_TRK_FPA_MODE_ACTIVE`
+itself stays OnRequest on the A32NX — streaming it as announced spoke every panel TRK/FPA press
+twice (the press feedback plus the generic monitor) — but FBW mirrors the same value into
+`A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE`, which the hardware-dial announcer already streams in the
+batch and consumes silently (`ExcludeFromMonitorManager`, never spoken). `FBWA320HeadingWindow`'s
+500 ms label timer now just reads that cache instead of calling `RequestVariable` on a timer
+(`RequestTrkMode` is gone). The A380's Ctrl+H window never polled: `A32NX_TRK_FPA_MODE_ACTIVE`
+streams there on its own per-var subscription (Continuous + `ExcludeFromBatch`), and the window's
+timer only reads the cache that subscription feeds — through the definition's commanded-or-cached
+view (`TrkFpaModeCommandedOrCached`), so a mode just pressed shows, and a quick second press asks
+for the other mode, before the sim confirms the first.
+
+**The five streamed A32NX value vars carry `FCU … Value` `DisplayName`s** (`FCU Heading Value`,
+not `Selected Heading`) so a Ctrl+M search for "heading" does not surface a row named with the
+exact words the MANAGED/SELECTED mode callout speaks — muting THAT row silenced the mode feedback
+instead of the dial callout it looked like it would mute. Pinned by
+`A32nx_callout_mute_rows_never_read_like_a_mode_callout`. The A380's equivalent rows still carry
+their older `Selected …` names — unreviewed for the same collision.
+
+### Fenix A320 AI display reads — the camera indices are MEASURED (2026-09-21)
+
+Five reads, a table of `Aircraft/AiDisplayRead.cs` in `Aircraft/FenixA320DisplayReads.cs`,
+dispatched by `BaseAircraftDefinition.HandleHotkeyAction` from the definition's `DisplayReads`
+override. The app moves the simulator camera to the view that frames the display, captures with
+`PrintWindow`, puts the camera back, and only then makes the AI call.
+
+| Key | Display | Instrument view |
+|---|---|---|
+| Alt+P | PFD (the FIRST OFFICER'S) | view 9 (index 8) |
+| Alt+N | ND (the CAPTAIN'S) | view 8 (index 7) |
+| Alt+E | E/WD | view 8 (index 7) |
+| Alt+S | SD | view 8 (index 7) |
+| Alt+I | Standby instruments | view 8 (index 7) |
+
+**Measured on the live aircraft** (MSFS 2024 1.8.16.0, FenixA320 IAE WF) by writing each index and
+capturing the frame. On this aircraft `cameras.cfg` is wrong TWICE over, so do not "correct" the
+table from it:
+
+- The titles mislead, as always. The camera framing the CENTRE panel is titled "Main Panel (Left)"
+  and the one framing the FIRST OFFICER'S side is titled "Main Panel (Center)".
+- ⚠️ **The live index is not the camera's position in the file.** File position 7,
+  "Main Panel (Left)" — the captain's side — is absent from the live list entirely, so every
+  camera after it shifts down one. `CAMERA VIEW TYPE AND INDEX MAX:2` reads 18 for 18 usable
+  views, 0..17 (writing 18 is refused), which is exactly the 19 definitions minus the missing one.
+  Live index 9 is the upper overhead and 10 the rear circuit-breaker wall, not main-panel views.
+
+⚠️ **The camera list is in `common/config/cameras.cfg`** (84 KB). All four presets — CFM_SL,
+CFM_WF, IAE_SL, IAE_WF — are 45-byte `[MODULAR_MERGE] auto = true` stubs. That is the OPPOSITE of
+the PMDG 737-800 layout (per-livery-preset files, `common` a stub) and the same as the PMDG 737-900,
+so one measurement covers every Fenix variant.
+
+**The captain's PFD cannot be read, and Alt+N deliberately does not match Alt+P's side.** No live
+view frames the captain's PFD: the centre view clips BOTH PFDs to slivers at its edges, and the
+only view holding a whole PFD is the first officer's. The ND is the display where the side
+genuinely matters, because range and mode are set per side (`S_FCU_EFIS1_ND_MODE` /
+`S_FCU_EFIS2_ND_MODE`), so Alt+N reads the captain's; a PFD differs between sides only in the
+altimeter setting and in side-specific FD/AP annunciation. Owner's ruling, 2026-09-21.
+
+**Two prompts are Fenix-specific and must not be folded back into the shared ones.**
+`DisplayType.NDFenix` exists because the centre view frames BOTH NDs and the shared
+`DisplayType.ND` prompt says only "ONLY describe the Navigation Display" — ambiguous with two side
+by side — so it names the left-hand one. `DisplayType.StandbyFenix` exists because Fenix ships
+BOTH kinds of standby: this airframe has three round dial gauges (airspeed, altimeter with a
+Kollsman baro window, attitude) plus a DME/VOR indicator, other variants a single digital ISIS.
+The prompt identifies which is fitted and reports it, the way the PMDG 737's lower-DU prompt names
+which of its two pages it found. `DisplayType.ISIS` is shared with the HorizonSim 787, which has a
+real digital ISFD, so it could not be edited in place. A digital ISIS occupies the same panel
+location as the round gauges, so view 8 serves both.
+
+⚠️ The old hotkey-guide line said the ISIS needs "default camera view 9". That is wrong: view 9
+(index 8) holds the first officer's ND and PFD with the ECAM clipped at its left edge, and no
+standby instruments at all. The standby is in view 8 (index 7), measured.

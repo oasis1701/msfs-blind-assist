@@ -118,7 +118,7 @@ public static class A380EfisCpControls
     /// the first batch after a connect or an aircraft switch). The absolute setters ignore it
     /// and work regardless, which the old cycling navaid path could not. The TOGGLES fire
     /// anyway — matching the `?? (desiredOn ? 0.0 : 1.0)` convention every other
-    /// toggle-if-differs branch in `HandleUIVariableSet` uses (FD_1_CTL, ELEC_ENG_GEN,
+    /// toggle-if-differs branch in `HandleUIVariableSet` uses (A380ToggleCommand: the flight directors, ELEC_ENG_GEN,
     /// SEATBELT_SIGN, the fuel-pump circuits) — because reading unknown as 0 makes "Off"
     /// permanently unsendable while "On" toggles an already-on control back OFF. The overlay
     /// is the one exception: CLEARING it means re-pressing whichever button is shown, so with

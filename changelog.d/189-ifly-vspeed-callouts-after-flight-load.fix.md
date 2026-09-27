@@ -1,0 +1,1 @@
+The iFly 737 MAX no longer calls "V1", "Rotate" and "V2" in the cruise after you load a flight while it was parked with speeds already set. The callouts now re-arm with each flight rather than carrying over from the last one.

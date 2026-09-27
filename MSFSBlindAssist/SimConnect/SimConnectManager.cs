@@ -65,6 +65,13 @@ public partial class SimConnectManager
     public event EventHandler<int>? ContinuousBatchDelivered;
 
     /// <summary>
+    /// A dotted/H: event that SendEvent queued while the calc-path probe was running has just been sent
+    /// by FlushPendingCalcEvents — possibly a minute after the caller asked for it. Lets a definition
+    /// re-arm whatever it armed for the original call (the FCU value echo).
+    /// </summary>
+    public event EventHandler<string>? QueuedEventDispatched;
+
+    /// <summary>
     /// The continuous batch a monitored variable is carried in, or false when the key is not
     /// batch-covered (individual data def, PMDG CDA, or not registered at all).
     /// </summary>
@@ -78,15 +85,40 @@ public partial class SimConnectManager
         batchNum = 0;
         return false;
     }
+
+    /// <summary>
+    /// The continuous batches currently registered — the 1-based batch numbers holding at least
+    /// one variable, ascending — so a subscriber of <see cref="ContinuousBatchDelivered"/> can
+    /// tell when it has seen a full cycle. Empty while disconnected and until
+    /// StartContinuousMonitoring has run. Built per call — a list of at most five — and asked for
+    /// per batch delivery only while a definition is counting a cycle (the MD-11's seed pass,
+    /// for the seconds after a context reset); not a per-frame path.
+    /// </summary>
+    public IReadOnlyCollection<int> ActiveContinuousBatches
+    {
+        get
+        {
+            var active = new List<int>(batchVarArrays.Length);
+            for (int batch = 1; batch < batchVarArrays.Length; batch++)
+                if (batchVarArrays[batch].Length > 0) active.Add(batch);
+            return active;
+        }
+    }
     public event EventHandler<AircraftPosition>? AircraftPositionReceived;
     public event EventHandler<AiTrafficDataEventArgs>? AiTrafficReceived;
     // Fired when a RequestAiTrafficData sweep delivers its final entry
     // (dwentrynumber == dwoutof). Lets callers announce/process a COMPLETE
     // traffic snapshot instead of racing the per-aircraft responses.
     public event EventHandler? AiTrafficSweepCompleted;
+    // Fired when a RequestGroundTrafficData sweep delivers its final entry. Separate from
+    // AiTrafficSweepCompleted so the ground-traffic monitor can tell ITS sweep from a TCAS one; the
+    // args carry the sweep's own request id, so a late completion of an abandoned sweep is not taken
+    // for the newer one.
+    public event EventHandler<GroundTrafficSweepEventArgs>? GroundTrafficSweepCompleted;
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
+    public event EventHandler<Com1RadioData>? Com1RadioReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
     // assist. Fired only while StartFlareAssistMonitoring is active.
@@ -96,6 +128,28 @@ public partial class SimConnectManager
     /// The string is the extracted ICAO code (e.g. "B77W", "A20N") — may be empty if unresolved.
     /// </summary>
     public event EventHandler<string>? AircraftIcaoTypeDetected;
+
+    /// <summary>
+    /// The AircraftLoaded system event: a flight or aircraft was loaded (or reloaded) on a live
+    /// connection. The string is the aircraft file SimConnect names. Raised BEFORE the aircraft
+    /// info re-request, i.e. as early as the app can know that the variables it is about to
+    /// receive describe a new situation — MainForm hands it to the definition's
+    /// OnSimContextReset so baseline-first announcers re-seed silently instead of narrating a
+    /// cockpit that merely loaded.
+    /// </summary>
+    public event EventHandler<string>? AircraftLoaded;
+
+    /// <summary>
+    /// The connection is going down — raised on EVERY drop, not only after a completed aircraft
+    /// detection (the "Disconnected from simulator" status is gated on that, so a drop during a
+    /// stalled load raised nothing). MainForm hands it to the definition's OnSimContextReset: the
+    /// values that arrive after a reconnect describe a new situation whether or not detection had
+    /// finished before the drop. A failed connection ATTEMPT is not a drop: the reconnect timer
+    /// retries every 5 s while the sim is down, and raising this on each retry wiped the
+    /// definition's baselines and logged a context reset twelve times a minute for nothing —
+    /// only a handle that existed can be lost.
+    /// </summary>
+    public event EventHandler? ConnectionLost;
 
     // Aircraft definition
     private IAircraftDefinition? _currentAircraft;
@@ -175,7 +229,10 @@ public partial class SimConnectManager
     //     "Timeout - Using Fallback" state) while the DEFAULT MobiFlight.Command
     //     channel works fine — the calc path needs no registration.
     //   - HasModuleResponded (any inbound response): on a real install the module's
-    //     RESPONSE side was completely silent (no registration Finished, no MF.Pong)
+    //     RESPONSE side looked completely silent (no registration Finished, no MF.Pong).
+    //     Root cause found 2026-09-06: the module DOES answer, but MobiFlightWasmModule
+    //     never RegisterStruct's ResponseData, so every reply is dropped by a caught cast
+    //     failure ("Unable to cast … 'System.UInt32' to type 'ResponseData'") —
     //     while the one-way COMMAND side executed everything — response-based
     //     evidence can never open the gate there.
     // So: module object initialized → fire the calc path. The no-WASM-install case
@@ -188,7 +245,8 @@ public partial class SimConnectManager
     public bool IsMobiFlightConnected => mobiFlightWasm?.IsConnected == true;
 
     // End-to-end calc-path verification: MainForm's bridge probe calc-writes a nonce
-    // L:var (MSFSBA_BRIDGE_PROBE, registered by the FBW defs) and reads it back over
+    // L:var (MSFSBA_BRIDGE_PROBE, registered by the aircraft that opt in — the FBW defs
+    // and the TFDi MD-11; MainForm's timer gates on that registration) and reads it back over
     // the independent data-def channel. A match PROVES the WASM module executed our
     // RPN — the only presence signal that works when the module's response side is
     // silent (IsMobiFlightConnected is true even when no WASM module is installed,
@@ -215,7 +273,7 @@ public partial class SimConnectManager
     /// <summary>
     /// Called by MainForm's bridge probe when verification cannot succeed: either the
     /// probe gave up (module absent or data-def read failing) or the loaded aircraft
-    /// doesn't register the probe var (non-FBW). Queued dotted events are released to
+    /// doesn't register the probe var (an aircraft with its own transport). Queued dotted events are released to
     /// the legacy TransmitClientEvent transport; queued H: events are fired at the
     /// MobiFlight channel anyway (there is no alternative transport for H: events).
     /// </summary>
@@ -254,6 +312,16 @@ public partial class SimConnectManager
     // PMDG data manager (generic slot; populated by InitializePMDG factory)
     private IPMDGDataManager? pmdgDataManager;
     public IPMDGDataManager? PMDGDataManager => pmdgDataManager;
+
+    // TFDi MD-11 MCDU client data area. Kept in its own slot rather than folded into the PMDG
+    // slot: it is not an IPMDGDataManager, and the MD-11 packs all three MCDUs into ONE area
+    // instead of PMDG's area-per-CDU. NOT the PMDG manager's lifecycle: there is ONE per
+    // SimConnect connection — created by the first MD-11 InitializePMDG on a handle, reused by
+    // every later one (its client-data name and definition ids can be mapped only once per
+    // connection), untouched by DisposePMDG, and torn down only when the connection ends —
+    // Disconnect with the handle, or the drop path in Connect's catch.
+    private MD11.Md11McduDataManager? md11McduDataManager;
+    public MD11.Md11McduDataManager? Md11McduDataManager => md11McduDataManager;
 
     // ECAM data collection via MobiFlight
     private Dictionary<string, string> ecamStringData = new Dictionary<string, string>();
@@ -295,7 +363,9 @@ public partial class SimConnectManager
     // Batched continuous variable monitoring (using unsafe pointers instead of reflection)
     // Multi-batch system: Maps variable key -> (batchNumber, indexWithinBatch)
     // batchNumber: 1-5, indexWithinBatch: 0-99
-    private Dictionary<string, (int batchNum, int index)> continuousVariableIndexMap = new Dictionary<string, (int batchNum, int index)>();
+    // Concurrent: ReadFreshAsync reads it from the MD-11's pool-thread walks and read-backs, while
+    // StartContinuousMonitoring rebuilds it on the UI thread.
+    private readonly ConcurrentDictionary<string, (int batchNum, int index)> continuousVariableIndexMap = new();
 
     // Prebuilt per-batch arrays mirroring continuousVariableIndexMap, built once in
     // StartContinuousMonitoring (SimConnectManager.Setup.cs) and reused by every 1 Hz batch
@@ -432,12 +502,36 @@ public partial class SimConnectManager
         REQUEST_ZULU_TIME = 339,
         // GSX's L:FSDT_GSX_COUATL_STARTED, periodic (SECOND, every second) — see GsxCouatlStartedLVar.
         REQUEST_GSX_COUATL_STARTED = 340,
+        // The simulator camera (CAMERA STATE + CAMERA VIEW TYPE AND INDEX:0/:1), one-shot —
+        // see SimConnectManager.Camera.cs. Backs the instrument-view switch of AI display reads.
+        // The FIRST of CameraReadIdCount (8) ids, 341-348: each read goes out under its own id
+        // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
+        REQUEST_CAMERA_VIEW = 341,
+        // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
+        // camera's rotating 341-348.
+        REQUEST_COM1_RADIO = 349,
         REQUEST_AI_TRAFFIC = 500,
+        // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
+        // radius), on their OWN ids so a completion can never be confused with a TCAS or other
+        // REQUEST_AI_TRAFFIC sweep (PR #247 review L5) — see GroundTrafficSweepCompleted. The FIRST
+        // of GroundTrafficRequestIdCount (8) ids, 600-607: each sweep goes out under the next one, so
+        // KEEP 601-607 FREE (pinned by GroundTrafficRequestIdTests). Not 501-508: 505-508 are the
+        // hand-numbered guidance frames ((DATA_REQUESTS)505..508 in Monitoring.cs), and a request
+        // issued under an id already in use REPLACES that request.
+        REQUEST_GROUND_TRAFFIC = 600,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
+
+    /// <summary>Ground-traffic sweeps rotate over this many request ids from REQUEST_GROUND_TRAFFIC (600-607), so a late completion of an abandoned sweep is never credited to a newer one.</summary>
+    public const uint GroundTrafficRequestIdCount = 8;
+
+    /// <summary>True for any id in the ground-traffic sweep range.</summary>
+    public static bool IsGroundTrafficRequestId(uint requestId)
+        => requestId >= (uint)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC
+           && requestId < (uint)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC + GroundTrafficRequestIdCount;
 
     internal enum DATA_DEFINITIONS
     {
@@ -492,7 +586,16 @@ public partial class SimConnectManager
         DEF_SQUAWK_CODE = 329,
         // 330-337 hardcoded V-speed definitions, 338/339 time-of-day (see DATA_REQUESTS).
         DEF_GSX_COUATL_STARTED = 340,
+        // 341 and KEEP 342-348 FREE. This enum is a request-id namespace as well as a definition
+        // one (RequestSingleValue issues a DEF_* as its request id), and 341-348 is the camera
+        // read's rotating request-id range: the dispatcher matches it BY RANGE and casts the answer
+        // to CameraViewData, so a definition landing at 342 would have its SingleValue answer
+        // mis-cast. Pinned by CameraReadWaitersTests.
+        DEF_CAMERA_VIEW = 341,
+        DEF_COM1_RADIO = 349,
         DEF_AI_TRAFFIC = 500,
+        // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
+        // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
@@ -594,6 +697,14 @@ public partial class SimConnectManager
         public double GroundSpeedKnots;
         public double VerticalSpeedFPM;
         public double SimOnGround;
+        /// <summary>The sim's SURFACE TYPE enum under the wheels. Meaningful only while
+        /// <see cref="SurfaceInfoValid"/> is non-zero — classify it through
+        /// <c>Navigation.Surroundings.SurfaceFamilies</c>, never by comparing the raw number.
+        /// Measured live in MSFS 2024: 0 concrete, 1 grass, 4 asphalt.</summary>
+        public double SurfaceType;
+        /// <summary>SURFACE INFO VALID — false means <see cref="SurfaceType"/> says nothing at
+        /// all, not that the surface is of some default kind.</summary>
+        public double SurfaceInfoValid;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -690,6 +801,14 @@ public partial class SimConnectManager
         public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
         public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
         public double StructuralIcePct; // STRUCTURAL ICE PCT, ratio 0..1 ("percent over 100")
+    }
+
+    /// <summary>COM 1 as the sim holds it, in Hz (DEF_COM1_RADIO; order is the contract).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct Com1RadioData
+    {
+        public double ActiveHz;
+        public double StandbyHz;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -797,6 +916,9 @@ public partial class SimConnectManager
 
             SetupDataDefinitions();
             SetupEvents();
+            // Only now: the pump inside SetupDataDefinitions drained whatever answered before the
+            // handler existed, the SIM_FRAME subscriptions' first deliveries included.
+            SeedSimFrameSubscriptions();
             RegisterClientEvents();
 
             // Initialize MobiFlight WASM module
@@ -828,8 +950,19 @@ public partial class SimConnectManager
         }
         catch (COMException)
         {
+            bool hadConnection = IsConnected;   // set the instant the handle exists: false means the attempt itself failed
             IsConnected = false;
             GsxCouatlStartedLVar = false;
+
+            // The MD-11 MCDU manager ends with its connection — here exactly as in Disconnect, and
+            // as there before ConnectionLost — so the window's status text changes to "not
+            // connected" (Md11McduForm.Poll returns on a null manager without touching the list, so
+            // the last rendered page stays showing under that status). The next connection's
+            // InitializePMDG builds a new one.
+            md11McduDataManager?.Dispose();
+            md11McduDataManager = null;
+
+            if (hadConnection) ConnectionLost?.Invoke(this, EventArgs.Empty);   // a drop, not a failed attempt
 
             // Only announce disconnection if we were previously connected
             if (wasConnected)
@@ -1047,12 +1180,44 @@ public partial class SimConnectManager
         };
 
         pmdgDataManager?.Initialize(simConnect, mobiFlightWasm);
+
+        if (aircraft.AircraftCode == "TFDI_MD11")
+        {
+            // One manager per connection. A manager bound to THIS handle is reused: its
+            // MapClientDataNameToID / AddToClientDataDefinition already stand on the server and
+            // must not be issued again (DUPLICATE_ID, or a definition changed under the first
+            // load's still-live subscriptions). A manager left over from a dead handle is
+            // replaced — both ends of a connection (Disconnect, and the drop path in Connect's
+            // catch) null it, so this arm guards a future ordering change rather than a path in
+            // use today.
+            if (md11McduDataManager == null || !md11McduDataManager.IsBoundTo(simConnect))
+            {
+                md11McduDataManager?.Dispose();
+                md11McduDataManager = new MD11.Md11McduDataManager(simConnect);
+                Log.Debug("SimConnect", "MD-11 MCDU manager created for this connection");
+            }
+            else
+            {
+                // Same connection, MD-11 loaded again: forget the previous load's pages so the
+                // window reports "no data" until the re-issued snapshot answers.
+                md11McduDataManager.Reset();
+                Log.Debug("SimConnect", "MD-11 MCDU manager reused; re-issuing the snapshot");
+            }
+            md11McduDataManager.Register();     // a no-op once complete on this connection; resumes a partial one
+            md11McduDataManager.RequestAll();   // same ids = a replacement of the subscriptions, plus a fresh ONCE snapshot
+        }
     }
 
     public void DisposePMDG()
     {
         pmdgDataManager?.Dispose();
         pmdgDataManager = null;
+
+        // The MD-11 MCDU manager is deliberately NOT disposed here. Its registration is
+        // once-per-connection, so it stays on the connection across a switch away from the
+        // MD-11 (its subscriptions are idle — nothing writes MD11MCDU with the aircraft unloaded)
+        // and is reused by the next MD-11 InitializePMDG. The end of the connection tears it
+        // down: Disconnect, or the drop path in Connect's catch.
     }
 
     public void Disconnect()
@@ -1073,6 +1238,8 @@ public partial class SimConnectManager
             lock (pendingCalcEvents) pendingCalcEvents.Clear();   // don't carry queued events across a teardown
             Log.Debug("SimConnect", "MobiFlight WASM module disconnected");
         }
+
+        bool hadHandle = simConnect != null;    // a drop or a shutdown of a live connection, as opposed to a shutdown that never connected
 
         if (simConnect != null)
         {
@@ -1187,15 +1354,28 @@ public partial class SimConnectManager
             Log.Debug("SimConnect", "SimConnect disposed");
         }
 
+        // The MD-11 MCDU manager is bound to the handle just released (its registration is
+        // once-per-connection — see InitializePMDG); the next connection gets a new one.
+        md11McduDataManager?.Dispose();
+        md11McduDataManager = null;
+
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();
+        _pausedSimFrameSubscriptions.Clear();
         requestIdToVarKey.Clear();
+        _freshRequestIdToVarKey.Clear();
+        // Definition ids are per connection: restart them as ReregisterAllVariables does, so they (and
+        // the seed ids derived from them, FreshReadPolicy.SeedRequestId) never climb toward the
+        // fresh-read range across reconnects.
+        nextDataDefinitionId = 1000;
         lastVariableValues.Clear();
         continuousVariableIndexMap.Clear();
         for (int i = 0; i < batchVarArrays.Length; i++)
             batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
         eventIds.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        _freshReads.FailAll();
+        FailCameraViewRead();
         ecamStringData.Clear();
         ecamAnnouncementData.Clear();
         previousECAMMessages.Clear();
@@ -1204,6 +1384,8 @@ public partial class SimConnectManager
         IsConnected = false;
         IsFullyConnected = false;
         GsxCouatlStartedLVar = false;
+
+        if (hadHandle) ConnectionLost?.Invoke(this, EventArgs.Empty);   // every drop; nothing to lose otherwise
 
         // Only announce disconnection if we were previously connected
         if (wasConnected)
@@ -1252,6 +1434,15 @@ public class AiTrafficDataEventArgs : EventArgs
     public string FromAirport      { get; set; } = "";
     public string ToAirport        { get; set; } = "";
     public string Airline          { get; set; } = "";
+}
+
+/// <summary>A ground-traffic sweep completed; <see cref="RequestId"/> is the id it was requested under.</summary>
+public sealed class GroundTrafficSweepEventArgs : EventArgs
+{
+    public GroundTrafficSweepEventArgs(uint requestId) => RequestId = requestId;
+
+    /// <summary>The request id the completed sweep went out under (<see cref="SimConnectManager.IsGroundTrafficRequestId"/>).</summary>
+    public uint RequestId { get; }
 }
 
 public class SimVarUpdateEventArgs : EventArgs

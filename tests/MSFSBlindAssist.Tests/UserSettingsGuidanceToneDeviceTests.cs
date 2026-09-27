@@ -1,7 +1,8 @@
-// The guidance-tone device selection is two plain strings, but the clone round-trip is the
-// part that silently breaks: UserSettings.Clone() is a hand-written member-by-member
-// initializer, so a property added without a matching clone entry is dropped on every copy
-// and the pilot's chosen device quietly reverts to the Windows default.
+// The guidance-tone device selection is two plain strings, but the clone round-trip was the
+// part that silently broke: UserSettings.Clone() used to be a hand-written member-by-member
+// initializer, so a property added without a matching clone entry was dropped on every copy
+// and the pilot's chosen device quietly reverted to the Windows default. Clone is now a
+// serializer round-trip (see UserSettingsCloneTests); this stays as that regression's pin.
 
 using MSFSBlindAssist.Settings;
 

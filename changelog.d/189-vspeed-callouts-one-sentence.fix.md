@@ -1,0 +1,1 @@
+When two take-off calls come due at the same moment — V1 and Rotate on a runway where V1 equals the rotation speed — you now hear them together as "V1, Rotate" instead of Rotate cutting V1 off. This applies to the iFly 737 MAX and the MD-11.

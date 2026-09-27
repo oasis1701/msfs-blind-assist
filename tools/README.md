@@ -28,7 +28,7 @@ For the *methodology* of proving a control works (calculator-path write-stick te
 | Project | Job |
 |---|---|
 | [`fbw-mcdu-probe/`](fbw-mcdu-probe/README.md) | Inspect/drive/capture the **A32NX** MCDU over the SimBridge websocket (no C# app). `mcdu-format.js` = authoritative decode ref (sync with `Services/FbwMcduFormat.cs`). |
-| [`flypad-shell-test/`](flypad-shell-test/) | Canonical keyed-DOM-reconcile spec for the flyPad WebView2 shell (jsdom). |
+| [`flypad-shell-test/`](flypad-shell-test/) | Canonical keyed-DOM-reconcile spec for the flyPad WebView2 shell (jsdom; also run in CI). |
 | [`efb-dom-tool.js`](efb-dom-tool.js) | Node CDP scraper/clicker for the **A32NX** EFB. |
 
 ## Reference catalogs (`*.md`)

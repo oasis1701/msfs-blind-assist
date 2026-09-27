@@ -156,6 +156,16 @@ public partial class SimConnectManager
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)6);
         sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SIM ON GROUND", "bool",
             SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)7);
+        // The surface under the wheels rides the position stream rather than taking a definition
+        // and a request of its own: every consumer of it (the "off the pavement" callout) already
+        // needs the position and the ground flag in the same sample, and pairing a surface read
+        // with a position from a different tick is how a callout ends up naming the wrong place.
+        // ORDER IS THE CONTRACT — these two must stay last here and last in AircraftPosition, in
+        // the same order, or every field after the divergence is read from the wrong offset.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SURFACE TYPE", "enum",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)8);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.AIRCRAFT_POSITION, "SURFACE INFO VALID", "bool",
+            SIMCONNECT_DATATYPE.FLOAT64, 0.0f, (uint)9);
         sc.RegisterDataDefineStruct<AircraftPosition>(DATA_DEFINITIONS.AIRCRAFT_POSITION);
 
         // Register AI traffic data (used by RequestDataOnSimObjectType → OnRecvSimobjectDataBytype)
@@ -314,6 +324,12 @@ public partial class SimConnectManager
         sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_NAV_RADIO, "NAV OBS:2", "Degrees", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
         sc.RegisterDataDefineStruct<NavRadioData>(DATA_DEFINITIONS.DEF_NAV_RADIO);
 
+        // COM 1 active + standby, read back after the surroundings window tunes a frequency
+        // (RequestCom1Radio). Hz, so a read compares exactly with the Hz the tune event sent.
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_COM1_RADIO, "COM ACTIVE FREQUENCY:1", "Hz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.AddToDataDefinition(DATA_DEFINITIONS.DEF_COM1_RADIO, "COM STANDBY FREQUENCY:1", "Hz", SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
+        sc.RegisterDataDefineStruct<Com1RadioData>(DATA_DEFINITIONS.DEF_COM1_RADIO);
+
         // Fixed hotkey readout defs (altitude/airspeed/VS/mach/bank/pitch/OAT/squawk/heading —
         // SC-12, 2026-07): universal, non-aircraft-specific, so they register here with the rest
         // of the fixed/critical defs, still safely ahead of the per-aircraft bulk registration.
@@ -326,6 +342,11 @@ public partial class SimConnectManager
         // try/catch: GSX absent means the L:var never delivers (harmless), and a
         // registration failure must not take the bulk registration below down with it.
         RegisterGsxCouatlStartedDefinition();
+
+        // The simulator camera — one fixed def, read one-shot by AI display reads that move the
+        // camera to an instrument view (SimConnectManager.Camera.cs). Universal, so it registers
+        // here with the fixed defs, in its own try/catch like the GSX one above.
+        RegisterCameraViewDefinition();
 
         // Bulk per-aircraft variable registration runs LAST — see the resilience note at the
         // top of this method. Everything above (detection, position, AI, VG, weather, nav) is
@@ -426,6 +447,8 @@ public partial class SimConnectManager
                         varDef.HighFrequency ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
                         0, 0, 0);
                     Log.Debug("SimConnect", $"Individual continuous subscription set up for {kvp.Key} -> ID {dataDefId}{(varDef.HighFrequency ? " (SIM_FRAME)" : "")}");
+                    // A SIM_FRAME one is seeded later, once the handler is attached — see
+                    // SeedSimFrameSubscriptions.
                 }
 
                 // Log visual guidance variables specifically
@@ -457,6 +480,28 @@ public partial class SimConnectManager
         catch { }
     }
 
+    /// <summary>
+    /// Seeds every SIM_FRAME + CHANGED own subscription's cache with one PERIOD.ONCE on its seed id
+    /// (<see cref="FreshReadPolicy.SeedRequestId"/>): such a subscription delivers nothing while its
+    /// value stands still, so its cache is only ever as good as its INITIAL delivery. Must run with
+    /// OnRecvSimobjectData attached — on a connect, the DoEvents pump inside SetupDataDefinitions
+    /// drains every answer that lands before SetupEvents (the drain the GSX note above describes),
+    /// the subscriptions' own first deliveries included, which left the MD-11 speedbrake lever
+    /// uncached for whole sessions. So Connect() calls this after SetupEvents(), and
+    /// ReregisterAllVariables after re-registering (the handler is attached by then). Goes through
+    /// RequestVariable, so it takes the UI-thread gate and skips a var already cached.
+    /// </summary>
+    private void SeedSimFrameSubscriptions()
+    {
+        var defs = CurrentAircraft?.GetVariables();
+        if (defs == null) return;
+        foreach (var key in variableDataDefinitions.Keys)
+        {
+            if (defs.TryGetValue(key, out var def) && FreshReadPolicy.CacheIsFresh(def))
+                RequestVariable(key);
+        }
+    }
+
     private void StartContinuousMonitoring()
     {
         batchSetupCounter++;
@@ -480,33 +525,12 @@ public partial class SimConnectManager
 
         // Get all continuous variables from current aircraft
         var variables = CurrentAircraft?.GetVariables() ?? new Dictionary<string, SimVarDefinition>();
-        var continuousVariables = new List<KeyValuePair<string, SimVarDefinition>>();
 
-        foreach (var kvp in variables)
-        {
-            if (kvp.Value.UpdateFrequency == UpdateFrequency.Continuous &&
-                kvp.Value.IsAnnounced)
-            {
-                // Skip PMDGVar - these are monitored by IPMDGDataManager, not SimConnect batches
-                if (kvp.Value.Type == SimVarType.PMDGVar)
-                    continue;
-
-                // Skip vars flagged ExcludeFromBatch — they use per-var continuous subscriptions
-                // set up in RegisterAllVariables, avoiding any batch-struct alignment risk.
-                if (kvp.Value.ExcludeFromBatch)
-                    continue;
-
-                continuousVariables.Add(kvp);
-            }
-        }
-
-        // CRITICAL: Sort variables alphabetically by FULL NAME (with prefix) to match SimConnect's internal ordering
-        continuousVariables.Sort((a, b) =>
-        {
-            string aFullName = a.Value.Type == SimVarType.LVar ? $"L:{a.Value.Name}" : a.Value.Name;
-            string bFullName = b.Value.Type == SimVarType.LVar ? $"L:{b.Value.Name}" : b.Value.Name;
-            return string.CompareOrdinal(aFullName, bFullName);
-        });
+        // Continuous + IsAnnounced, minus PMDGVar (monitored by IPMDGDataManager, not SimConnect
+        // batches) and ExcludeFromBatch (per-var continuous subscriptions set up in
+        // RegisterAllVariables), sorted by FULL NAME to match SimConnect's internal ordering.
+        // ContinuousBatchLayout is pure so which batch a var lands in can be pinned by tests.
+        var continuousVariables = ContinuousBatchLayout.Order(variables);
 
         Log.Debug("SimConnect", $"Aircraft: {CurrentAircraft?.AircraftName ?? "null"}");
         Log.Debug("SimConnect", $"Found {continuousVariables.Count} continuous+announced variables (out of {variables.Count} total)");
@@ -526,7 +550,7 @@ public partial class SimConnectManager
         // Split variables into 5 batches (up to 300 variables per batch = 1500 total).
         // The GenericBatch1-5 structs each hold 300 doubles to match BATCH_SIZE.
         // (Headroom: the A380 currently uses ~700 continuous+announced vars.)
-        const int BATCH_SIZE = 300;
+        const int BATCH_SIZE = ContinuousBatchLayout.BatchSize;
         const int NUM_BATCHES = 5;
 
         // Batch configuration: (batchNum, dataDefinition, dataRequest, structType)
@@ -581,7 +605,7 @@ public partial class SimConnectManager
                     var kvp = continuousVariables[i];
                     var varDef = kvp.Value;
 
-                    string simVarName = varDef.Type == SimVarType.LVar ? $"L:{varDef.Name}" : varDef.Name;
+                    string simVarName = ContinuousBatchLayout.FullName(varDef);
                     string units = varDef.Units ?? "number";
 
                     sc.AddToDataDefinition(
@@ -661,7 +685,7 @@ public partial class SimConnectManager
                 // read from a batch that won't fire — better to have the var be silently
                 // un-monitored than to dereference a stale (batchNum, index) pair forever.
                 foreach (var key in batchMapKeys)
-                    continuousVariableIndexMap.Remove(key);
+                    continuousVariableIndexMap.TryRemove(key, out _);
                 // batchVarArrays[batchNum] was never assigned from batchArrayEntries on this path
                 // (the assignment above only runs after a successful try), so it's still whatever
                 // the top-of-method reset left it at (empty) — no separate rollback needed here.
@@ -769,9 +793,13 @@ public partial class SimConnectManager
 
         // Clear existing registrations
         variableDataDefinitions.Clear();
+        _pausedSimFrameSubscriptions.Clear();
         requestIdToVarKey.Clear();
+        _freshRequestIdToVarKey.Clear();
         lastVariableValues.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
+        _freshReads.FailAll();
+        FailCameraViewRead();
 
         // Reset ID counter to avoid accumulating stale ID ranges over multiple switches
         nextDataDefinitionId = 1000;
@@ -779,6 +807,7 @@ public partial class SimConnectManager
 
         // Re-register all variables for new aircraft
         RegisterAllVariables();
+        SeedSimFrameSubscriptions();   // the handler is attached on this path, so the seeds answer at once
     }
 
     private void SetupEvents()

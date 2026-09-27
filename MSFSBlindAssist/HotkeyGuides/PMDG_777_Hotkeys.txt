@@ -99,6 +99,10 @@ Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
   Y          Taxi Status (current taxiway, next turn, distance to destination)
   Ctrl+Y     Repeat Current Taxi Instruction
   Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
+                In its Frequencies list, Enter tunes the selected frequency into COM 1 standby
+                and Shift+Enter tunes it straight into COM 1 active; COM 1 is read back to confirm.
   (Open the form with Input mode > Shift+Y)
 
 Waypoint Tracking (use Fix Track window or EFB route viewer to add):
@@ -109,11 +113,25 @@ Waypoint Tracking (use Fix Track window or EFB route viewer to add):
   5          Track Slot 5
 
 AI Display Reading (requires an AI API key — Gemini or Claude — in File > Settings > AI tab):
-  Alt+P      Read PFD (use Ctrl+2 cockpit view first)
-  Alt+N      Read Navigation Display (use Ctrl+2 cockpit view first)
-  Alt+I      Read ISFD backup instruments (use Ctrl+2 cockpit view first)
-  Alt+E      Read EICAS display (use Ctrl+2 cockpit view first)
+  Alt+P      Read PFD
+  Alt+N      Read Navigation Display
+  Alt+I      Read ISFD backup instruments
+  Alt+E      Read upper EICAS display
+  Alt+S      Read lower display (secondary engine data, a synoptic page, or
+             the navigation display, whichever it is set to)
   Alt+D      Describe outside scene
+
+  You no longer need to select a cockpit view first: the app moves the
+  simulator camera to the display it is reading and puts your own view back
+  afterwards — including a saved custom camera such as a cabin or wing view.
+  The camera is away for well under a second, and your view is back before the
+  AI is even asked.
+  The app checks that your view really came back rather than assuming it. If
+  it could not get you back it says "Could not return to your previous view"
+  instead of leaving you somewhere you did not choose, and the next display
+  read you take will try again to return you there.
+  From an outside or drone view it says "Switch to a cockpit view first" and
+  does nothing.
 
 Traffic and Weather:
   R          Announce Tracked TCAS Traffic

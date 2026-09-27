@@ -281,11 +281,23 @@ public static class RouteRunwayCrossings
     /// <summary>
     /// Where the aircraft stands, for the passes that judge a route from the aircraft's own position:
     /// the route's first point for classification, whether a stop is already passed
-    /// (<see cref="RouteProgressMeters"/>) and whether the aircraft is on a runway. Callers with no
+    /// (<see cref="RouteProgressMeters"/>), and whether it is clear of every runway. Callers with no
     /// position to offer (tests, the probe) pass null: classification then starts at node 0 and
     /// nothing is passed.
     /// </summary>
-    public readonly record struct AircraftPosition(double Lat, double Lon);
+    /// <param name="MayStartHeld">
+    /// False for a RECALCULATION, the one route built while the aircraft is already committed to
+    /// where it is going (off-route detection fires only above <c>OFF_ROUTE_MIN_GS_KTS</c>): a start
+    /// hold stops the aircraft where it stands, and on a recalc that is a stop the pilot never asked
+    /// for, spoken on top of "Route changed". Every other adopter leaves it true — a landing-rollout
+    /// route is refused a start hold by <see cref="RunwayWithinClearMargin"/> while the aircraft is
+    /// still on or beside the pavement, and by <see cref="RouteProgressMeters"/> once it has rolled
+    /// on. A ground-speed gate was tried here first (PR #243) and withdrawn: the manager's speed is 0
+    /// on every fresh Calculate and live only mid-guidance, and 3 kt is the codebase's "stopped"
+    /// line, not a "committed" one — a pilot re-importing a clearance at 8 kt thirty metres short of
+    /// a runway can still stop, and lost the hold that told them to.
+    /// </param>
+    public readonly record struct AircraftPosition(double Lat, double Lon, bool MayStartHeld = true);
 
     /// <summary>
     /// How far past a stop point, measured along the route, the aircraft must be before no hold is
@@ -600,10 +612,15 @@ public static class RouteRunwayCrossings
             if (walked > CrossingHoldLookbackMetres) break;
 
             var node = NodeAt(segments, k);
+            // Projected ONCE per node: walk 1 asks two different questions of the same point (is it
+            // on the pavement, and is a hold line here usable) and used to re-project for the second.
+            (double Along, double Lateral) at = node == null
+                ? (0.0, 0.0)
+                : shape.Project(node.Latitude, node.Longitude);
             if (node != null && k < walkStart)
             {
-                var (onAlong, onLateral) = shape.Project(node.Latitude, node.Longitude);
-                if (shape.ContainsAlongLateral(onAlong, onLateral, 0.0) || IsOnAnyRunway(others, node)) break;
+                if (shape.ContainsAlongLateral(at.Along, at.Lateral, 0.0)
+                    || IsOnAnyRunway(others, node)) break;
             }
             if (node != null && (node.Type == TaxiNodeType.HoldShort || node.Type == TaxiNodeType.ILSHoldShort))
             {
@@ -611,8 +628,12 @@ public static class RouteRunwayCrossings
                 if (guards.Count > 0 && !guards.Any(d => CenterlineHasDesignator(passage.Runway, d)))
                     break;
                 // Never a hold line on another runway's pavement — also at the walk's own starting node, which
-                // the pavement break above does not test.
-                if (Math.Abs(shape.Project(node.Latitude, node.Longitude).Lateral) > shape.HalfWidthMeters
+                // the pavement break above does not test. The BARE half-width (margin 0) is deliberate and
+                // is an owner ruling: a painted line hugging the pavement edge must stay usable (SC99's is
+                // 7.2 m out on a 4.0 m half-width), where walk 2 below, which invents a stop of its own,
+                // demands the full clear margin. Extent-aware since PR #238 §3 — an on-axis scenery hold
+                // line BEYOND the runway end used to read as a node on the pavement and be rejected.
+                if (shape.IsClearOfAt(at.Along, at.Lateral, 0.0)
                     && !IsOnAnyRunway(others, node))
                     return new HoldStop(k, IsExistingStop(segments, k));
             }
@@ -634,7 +655,15 @@ public static class RouteRunwayCrossings
                     crossedOther = true;   // never a stop; behind it only an existing stop may be shared
                     continue;
                 }
-                if (!crossedOther && shape.IsClearOf(lateral)) return new HoldStop(k, existing);
+                // Extent-aware (PR #238 §3): a node beyond the runway's along-track extent but near
+                // its axis used to be neither "on the runway" (Contains bounds the extent) nor
+                // "clear of" it (IsClearOf tested |lateral| only), so this walk stepped over it and
+                // every node behind it and fell through to a START hold — "Stop. Hold short of
+                // runway 09" before moving, hundreds of metres from the real hold line, with no hold
+                // where the route actually meets the pavement.
+                if (!crossedOther
+                    && shape.IsClearOfAt(along, lateral, RolloutExitGate.RunwayClearMarginM))
+                    return new HoldStop(k, existing);
             }
             if (existing) return new HoldStop(k, true);
         }
@@ -656,9 +685,28 @@ public static class RouteRunwayCrossings
     }
 
     /// <summary>
-    /// The first runway whose pavement (no margin) holds the point, or null. A start hold is never set
-    /// while the aircraft stands on one: the pass and <c>TaxiGuidanceManager</c>'s per-frame start-hold
-    /// entry both ask this.
+    /// The runway the aircraft is on or within <see cref="RolloutExitGate.RunwayClearMarginM"/> of —
+    /// by <see cref="RunwayShape.IsClearOfAt"/>, so along the axis past an end as well as laterally —
+    /// else null. The start hold's "not on a runway" test, asked by the pass and by
+    /// <c>TaxiGuidanceManager</c>'s per-frame start-hold entry: a stop where the aircraft stands is
+    /// only safe where the pass would itself place a stop (PR #243 review).
+    /// </summary>
+    public static TaxiGraph.RunwayCenterline? RunwayWithinClearMargin(
+        IReadOnlyList<TaxiGraph.RunwayCenterline>? runways, double lat, double lon)
+    {
+        if (runways is null) return null;
+        foreach (var rwy in runways)
+        {
+            var shape = RunwayShape.For(rwy);
+            if (shape.IsDegenerate) continue;
+            var (along, lateral) = shape.Project(lat, lon);
+            if (!shape.IsClearOfAt(along, lateral, RolloutExitGate.RunwayClearMarginM)) return rwy;
+        }
+        return null;
+    }
+
+    /// <summary>
+    /// The first runway whose pavement (no margin) holds the point, or null.
     /// </summary>
     internal static TaxiGraph.RunwayCenterline? RunwayUnder(
         IEnumerable<TaxiGraph.RunwayCenterline>? runways, double lat, double lon)
@@ -689,13 +737,16 @@ public static class RouteRunwayCrossings
     /// is not placed.</para>
     /// </summary>
     /// <param name="destinationName">The runway destination as spoken ("Runway 33L"), or "" for other routes.</param>
-    /// <param name="allowStartHold">True only when <c>LoadRoute</c> adopts a fresh route (phase "load"); false on a recalculation and on a route adopted for the landing rollout (phase "touchdown").</param>
-    /// <param name="aircraft">Where the aircraft stands. Null (tests, the probe): classification starts at node 0 and nothing is passed.</param>
+    /// <param name="aircraft">
+    /// Where the aircraft stands, and whether this route may start held at all. Null (tests, the
+    /// probe): classification starts at node 0, nothing is passed and a start hold is allowed. There
+    /// is no <c>allowStartHold</c> flag any more — see <see cref="AircraftPosition.MayStartHeld"/>
+    /// and PR #238 deferred finding §2.
+    /// </param>
     public static IReadOnlyList<TaxiRouteRunwayEvent> InsertRunwayHoldShorts(
         TaxiRoute route,
         IReadOnlyList<TaxiGraph.RunwayCenterline> runways,
         string destinationName,
-        bool allowStartHold,
         AircraftPosition? aircraft = null)
     {
         // A null runway list is a wiring error; returning "no runways met" would present it as a
@@ -708,7 +759,8 @@ public static class RouteRunwayCrossings
         string destBare = StripRunwayPrefix(destinationName);
         var nodes = ClassificationNodes(route, aircraft, out bool aircraftPrepended);
         var passages = RunwayRouteClassifier.ClassifyAll(nodes, runways)
-            .Select(p => ToRouteIndices(p, aircraftPrepended));
+            .Select(p => ToRouteIndices(p, aircraftPrepended))
+            .ToList();
         foreach (var passage in passages)
         {
             bool destinationStrip = destBare.Length > 0 && CenterlineHasDesignator(passage.Runway, destBare);
@@ -717,7 +769,7 @@ public static class RouteRunwayCrossings
 
             string? preferred = destinationStrip ? destBare : null;
             bool held = PlaceHold(route, passage, preferred, userLabel: null,
-                allowStartHold, runways, aircraft, out string announcedDesignator);
+                runways, aircraft, out string announcedDesignator);
             route.RunwayEvents.Add(new TaxiRouteRunwayEvent
             {
                 Kind = passage.Kind,
@@ -728,7 +780,59 @@ public static class RouteRunwayCrossings
                 Held = held,
             });
         }
+        ReorderSharedLabels(route, passages);
         return route.RunwayEvents;
+    }
+
+    /// <summary>
+    /// A shared stop's label ("runway 09 and runway 01") in ROUTE order — the runway the aircraft
+    /// meets first named first — whichever pass placed which half. <see cref="ComposeSharedLabel"/>
+    /// appends in PLACEMENT order, and the pilot's explicit picks are placed BEFORE this pass runs, so
+    /// a picked runway always came first even when the route crossed the other one first; the staged
+    /// hold (<see cref="RunwayHoldStages"/>) reads the label in order and would then ask for the far
+    /// runway's clearance while the aircraft sat at the near one (PR #243 review). Only a label that
+    /// is nothing but a runway list is touched; a kept scenery label is left as the scenery wrote it.
+    /// </summary>
+    private static void ReorderSharedLabels(TaxiRoute route, IReadOnlyList<RunwayPassage> passages)
+    {
+        if (passages.Count < 2) return;
+        // Route order of a passage: the node it reaches, then how far along the edge before it the
+        // route meets the centerline — two runways met on ONE edge share a reach index and only the
+        // meet point tells them apart. Same pavement both ends, first passage wins.
+        var order = new Dictionary<string, (int Reach, double Meet)>(StringComparer.OrdinalIgnoreCase);
+        foreach (var p in passages)
+        {
+            double meet = 0.0;
+            var entry = NodeAt(route.Segments, Math.Max(0, p.EntryIndex));
+            var next = NodeAt(route.Segments, Math.Max(0, p.EntryIndex) + 1);
+            if (entry != null && next != null) meet = ProjectOntoSegment(entry, next, p.MeetLat, p.MeetLon).Along;
+            string d = NormalizeDesignator(p.Designator);
+            if (!order.ContainsKey(d)) order[d] = (p.ReachIndex, meet);
+            string r = Reciprocal(d);
+            if (!order.ContainsKey(r)) order[r] = (p.ReachIndex, meet);
+        }
+        (int, double) OrderOf(string raw) =>
+            order.TryGetValue(NormalizeDesignator(raw), out var k) ? k : (int.MaxValue, 0.0);
+
+        route.StartHoldRunway = ReorderSharedLabel(route.StartHoldRunway, OrderOf);
+        foreach (var seg in route.Segments)
+            if (seg.IsHoldShortPoint) seg.HoldShortRunway = ReorderSharedLabel(seg.HoldShortRunway, OrderOf);
+    }
+
+    // Exactly the shape ComposeSharedLabel builds: "runway X and runway Y[ and runway Z...]".
+    private static readonly Regex SharedRunwayList = new(
+        @"^runway\s+\S+(?:\s+and\s+runway\s+\S+)+$",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+    private static readonly Regex SharedRunwayToken = new(
+        @"runway\s+(\S+)", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+    internal static string? ReorderSharedLabel(string? label, Func<string, (int Reach, double Meet)> orderOf)
+    {
+        if (string.IsNullOrEmpty(label) || !SharedRunwayList.IsMatch(label)) return label;
+        var tokens = SharedRunwayToken.Matches(label).Select(m => m.Groups[1].Value).ToList();
+        // Stable: two runways met at the same reach keep the order they were written in.
+        var sorted = tokens.Select((t, i) => (t, i)).OrderBy(x => orderOf(x.t)).ThenBy(x => x.i).Select(x => x.t);
+        return string.Join(" and ", sorted.Select(t => $"runway {t}"));
     }
 
     /// <summary>What became of an explicit per-row runway pick (<see cref="ApplyUserRunwayHold"/>).</summary>
@@ -756,13 +860,36 @@ public static class RouteRunwayCrossings
         IReadOnlyList<TaxiGraph.RunwayCenterline> runways,
         string runwayId,
         int runStartSegmentIndex,
-        bool allowStartHold,
+        AircraftPosition? aircraft = null)
+        => ApplyUserRunwayHold(route, runway, runways, runwayId, runStartSegmentIndex, out _, aircraft);
+
+    /// <summary>
+    /// As above, reporting the passage the pick bound to so the caller can MERGE it into the route's
+    /// recorded events (<see cref="MergeUserPickEvents"/>).
+    /// </summary>
+    /// <param name="placed">
+    /// The event for an honoured pick, else null. PR #238 deferred finding §7: this pass recorded no
+    /// event at all and <see cref="InsertRunwayHoldShorts"/> then RESETS
+    /// <see cref="TaxiRoute.RunwayEvents"/>, so when the automatic pass skips the same passage — the
+    /// destination-strip arrival skip — the pick was named NOWHERE. <see cref="DescribeRunwayEvents"/>
+    /// said nothing and <see cref="CountNonRunwayHoldShorts"/> skipped it too, because its label DOES
+    /// name a runway: the pilot picked "hold short of runway 04R" on a route to 04R, heard no mention
+    /// of it in the summary, and was then stopped by a hold they were never told about.
+    /// </param>
+    public static UserRunwayHoldResult ApplyUserRunwayHold(
+        TaxiRoute route,
+        TaxiGraph.RunwayCenterline runway,
+        IReadOnlyList<TaxiGraph.RunwayCenterline> runways,
+        string runwayId,
+        int runStartSegmentIndex,
+        out TaxiRouteRunwayEvent? placed,
         AircraftPosition? aircraft = null)
     {
         ArgumentNullException.ThrowIfNull(route);
         ArgumentNullException.ThrowIfNull(runway);
         ArgumentNullException.ThrowIfNull(runways);
 
+        placed = null;
         var nodes = ClassificationNodes(route, aircraft, out bool aircraftPrepended);
         var passage = RunwayRouteClassifier.Classify(nodes, RunwayShape.For(runway))
             .Select(p => ToRouteIndices(p, aircraftPrepended))
@@ -770,10 +897,47 @@ public static class RouteRunwayCrossings
         if (passage is null) return UserRunwayHoldResult.NotOnRoute;
 
         string pick = runwayId.Trim();
-        return PlaceHold(route, passage, preferred: pick, userLabel: $"runway {pick}",
-                allowStartHold, runways, aircraft, out _)
-            ? UserRunwayHoldResult.Held
-            : UserRunwayHoldResult.NotHeld;
+        if (!PlaceHold(route, passage, preferred: pick, userLabel: $"runway {pick}",
+                runways, aircraft, out string announcedDesignator))
+            return UserRunwayHoldResult.NotHeld;
+
+        placed = new TaxiRouteRunwayEvent
+        {
+            Kind = passage.Kind,
+            Designator = announcedDesignator,
+            Held = true,
+        };
+        return UserRunwayHoldResult.Held;
+    }
+
+    /// <summary>
+    /// Adds each honoured explicit pick's event to <paramref name="route"/>'s recorded events unless
+    /// the automatic pass already recorded that passage — the same runway (either end) met the same
+    /// way.
+    ///
+    /// <para>PR #238 deferred finding §7. The automatic pass owns the events and RESETS them, so a
+    /// pick it skips has to be merged back in afterwards. The destination-strip arrival skip itself
+    /// is deliberately untouched: it has its own incident history (a blanket same-runway skip once
+    /// dropped genuine mid-route crossings of the active runway, 2026-08-24) and must keep skipping
+    /// ONLY the route's own final arrival.</para>
+    ///
+    /// <para>The de-duplication is by runway AND kind, not by runway alone: the same pavement met
+    /// twice, once crossed and once entered, is two passages and the pilot needs to hear both.</para>
+    /// </summary>
+    public static void MergeUserPickEvents(TaxiRoute? route, IReadOnlyList<TaxiRouteRunwayEvent>? userEvents)
+    {
+        if (route?.RunwayEvents is null || userEvents is null) return;
+        foreach (var ev in userEvents)
+        {
+            if (ev is null) continue;
+            string want = NormalizeDesignator(ev.Designator);
+            string recip = Reciprocal(want);
+            bool already = route.RunwayEvents.Any(e =>
+                e.Kind == ev.Kind &&
+                (NormalizeDesignator(e.Designator).Equals(want, StringComparison.OrdinalIgnoreCase) ||
+                 NormalizeDesignator(e.Designator).Equals(recip, StringComparison.OrdinalIgnoreCase)));
+            if (!already) route.RunwayEvents.Add(ev);
+        }
     }
 
     /// <summary>
@@ -782,22 +946,15 @@ public static class RouteRunwayCrossings
     /// a runway then still meets that runway from where the aircraft stands; an aircraft standing on a runway
     /// starts on it, so a route leaving it meets nothing. An aircraft already on the route is not prepended:
     /// one past a runway would invent a crossing from where it stands back to node 0.
+    ///
+    /// <para>The rule itself lives on <see cref="RunwayRouteClassifier.NodesFrom"/> (PR #238 deferred
+    /// finding §1) because the landing re-crossing guard needs the SAME question asked the same way —
+    /// it had no prepend at all, and the classifier's "started on the runway and vacated" branch made
+    /// that silently accept a route back across the landing runway.</para>
     /// </summary>
     private static IReadOnlyList<TaxiNode?> ClassificationNodes(
         TaxiRoute route, AircraftPosition? aircraft, out bool aircraftPrepended)
-    {
-        var nodes = RunwayRouteClassifier.NodesFrom(route.Segments, 0);
-        aircraftPrepended = aircraft is { } candidate
-            && RouteProgressMeters(route.Segments, candidate.Lat, candidate.Lon) <= StopPassedToleranceMetres;
-        if (!aircraftPrepended || aircraft is not { } position) return nodes;
-        // Node id 0 is the graph's "not set" sentinel: right for a point that never enters a graph.
-        var withAircraft = new List<TaxiNode?>(nodes.Count + 1)
-        {
-            new TaxiNode { NodeId = 0, Latitude = position.Lat, Longitude = position.Lon },
-        };
-        withAircraft.AddRange(nodes);
-        return withAircraft;
-    }
+        => RunwayRouteClassifier.NodesFrom(route.Segments, 0, aircraft, out aircraftPrepended);
 
     /// <summary>
     /// A passage classified with the aircraft prepended, back in the route's own node indices. An emitted
@@ -838,7 +995,7 @@ public static class RouteRunwayCrossings
     /// </param>
     private static bool PlaceHold(
         TaxiRoute route, RunwayPassage passage, string? preferred, string? userLabel,
-        bool allowStartHold, IReadOnlyList<TaxiGraph.RunwayCenterline> runways, AircraftPosition? aircraft,
+        IReadOnlyList<TaxiGraph.RunwayCenterline> runways, AircraftPosition? aircraft,
         out string announcedDesignator)
     {
         string announceAs = preferred ?? passage.Designator;
@@ -857,10 +1014,28 @@ public static class RouteRunwayCrossings
 
         if (stop.NodeIndex == 0)
         {
-            // A start hold stops the aircraft where it stands: never on a runway's pavement, and not
-            // once the aircraft has rolled past the start node.
-            if (!allowStartHold || IsPassed(route.Segments, 0, aircraft)
-                || (aircraft is { } position && RunwayUnder(runways, position.Lat, position.Lon) != null))
+            // A start hold stops the aircraft where it stands: never on a runway's pavement, not once
+            // the aircraft has rolled past the start node, and only while it is actually standing.
+            //
+            // Those three are ONE question each, asked of the aircraft's own state, and they replace
+            // the deleted allowStartHold bool (PR #238 deferred finding §2). That bool was computed at
+            // the landing-handoff sites as !IsWithinRolloutRunwayLaterally — lateral-only,
+            // single-runway, along-track unbounded, +10 m margin, 200 ft default width — and then
+            // RunwayUnder asked the same question again, extent-bounded, zero-margin, 75 ft default.
+            // Every disagreement cost a legitimate start hold: an aircraft off the far END of the
+            // runway is still inside the infinite strip, one 5 m outside the pavement edge is inside
+            // the margin, and on a width-less centreline the two disagree over a 7.6 m band by
+            // construction. Since PR #238 a refused start hold is also SPOKEN ("with no hold short
+            // point for runway X"), so each of those is audible.
+            if (IsPassed(route.Segments, 0, aircraft)) return false;
+            // Clear of every runway by the SAME margin walk 2 demands of a stop it invents (half-width
+            // + RunwayClearMarginM, along the axis as well): the deleted handoff gate was
+            // !IsWithinRolloutRunwayLaterally, half-width + 10 m, and a zero-margin RunwayUnder in its
+            // place let an aircraft stopped 4 m outside the pavement edge — tail still over the
+            // runway it just landed on — be told to hold short right there (PR #243 review).
+            if (aircraft is { } position
+                && (!position.MayStartHeld
+                    || RunwayWithinClearMargin(runways, position.Lat, position.Lon) != null))
                 return false;
             route.StartHoldRunway = route.StartHoldRunway is null
                 ? userLabel ?? $"runway {announceAs}"

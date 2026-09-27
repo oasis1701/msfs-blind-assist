@@ -1,0 +1,1 @@
+The landing rollout no longer says "turn now" when you are too fast to make the exit. It tells you to continue to the next exit or to slow down, and a missed-exit retarget is now one sentence that no distance callout can cut off.

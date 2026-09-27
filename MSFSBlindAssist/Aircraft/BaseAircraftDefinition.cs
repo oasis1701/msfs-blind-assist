@@ -313,6 +313,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         Form parentForm,
         HotkeyManager hotkeyManager)
     {
+        // AI display reads (Alt+P / Alt+N / Alt+E / Alt+S / Alt+I in output mode), from the
+        // aircraft's own DisplayReads table. A derived switch has already had its say by the time
+        // we get here, so an aircraft that means something else by one of these keys keeps it.
+        if (TryReadDisplayFor(action, simConnect, announcer, parentForm)) return true;
+
         // Try simple variable mapping first
         var variableMap = GetHotkeyVariableMap();
         if (variableMap.TryGetValue(action, out string? eventName))
@@ -548,6 +553,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Called just BEFORE a panel Event-type button's event is sent, so an aircraft can arm anything
+    /// that must be in place before the sim can answer (the FCU value echo). Default: no-op.
+    /// </summary>
+    public virtual void OnPanelButtonFiring(string varKey)
+    {
+    }
+
+    /// <summary>
     /// Called once after a panel's controls are built/shown. Aircraft with a
     /// multi-page status box driven by a page combo override this to POPULATE the box
     /// with the combo's CURRENT page immediately — so the user doesn't have to cycle
@@ -569,6 +582,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Default: no composed state — MainForm labels the control from StateVariable /
+    /// ValueDescriptions as before. Aircraft whose state lives in several variables (MD-11
+    /// legend lamps) override this.
+    /// </summary>
+    public virtual bool TryDescribeControlState(string varKey, out string stateText)
+    {
+        stateText = "";
+        return false;
+    }
+
+    /// <summary>
     /// Generic ARINC429 decode. If the var is flagged <see cref="SimConnect.SimVarDefinition.IsArinc429"/>,
     /// decode the raw double via <see cref="SimConnect.Arinc429Word"/> and return "&lt;value&gt; &lt;unit&gt;"
     /// (SSM NormalOperation/FunctionalTest) or the not-available text. Returns false for non-ARINC vars so
@@ -580,11 +604,84 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         text = "";
         if (!GetVariables().TryGetValue(varKey, out var def) || !def.IsArinc429) return false;
         var w = new SimConnect.Arinc429Word(value);
-        if (!(w.IsNormalOperation || w.IsFunctionalTest)) { text = def.Arinc429NotAvailableText; return true; }
+        if (!w.HasData) { text = def.Arinc429NotAvailableText; return true; }
         string v = w.Value.ToString(def.Arinc429Format, System.Globalization.CultureInfo.InvariantCulture);
         text = string.IsNullOrEmpty(def.Arinc429Unit) ? v : $"{v} {def.Arinc429Unit}";
         return true;
     }
+
+    // ---- Shared MCP/FCU selected-value change announcer (777-MCP parity) ----
+    // The PMDG 777 speaks every MCP value change ("MCP heading 250", "MCP altitude 10000
+    // feet", ...) as the pilot dials hardware. The FlyByWire jets get the same behaviour through
+    // AnnounceFcuValue: the definition composes the PHRASE for each delivery of a value var
+    // (FcuValuePhrases — null while the window shows dashes) and FcuValueAnnouncer decides whether
+    // it is spoken: the first sample of a key is a silent baseline, a dashed window or an unavailable
+    // FCU is recorded but silent, a muted or echoed change is absorbed, a change is STAGED and spoken
+    // only once its batch has finished dispatching (judged with the FCU health var of that sample,
+    // whichever side of the value it sorts on),
+    // and after a flight load, a reconnect or an FCU power-up changes are absorbed until the aircraft
+    // has published and gone quiet (OnSimContextReset / OnVariableCacheCleared +
+    // OnContinuousBatchDelivered below).
+    private readonly FcuValueAnnouncer _fcuValues = new();
+
+    /// <summary>The announcer the last FCU value delivery used; the batch-end release speaks through it.</summary>
+    private ScreenReaderAnnouncer? _fcuAnnouncer;
+
+    /// <summary>Depth of the shared announcement queue at which a released FCU callout is dropped. A knob
+    /// position is perishable — a stale one spoken behind an ECAM backlog is worse than silence — and
+    /// <see cref="ScreenReaderAnnouncer.Announce"/> speaks past the queue. Deliberately LOWER than
+    /// VatsimAnnouncementService.MaxSharedQueueDepth (5): a callout is dropped as soon as a real backlog
+    /// forms, where VATSIM chatter is only capped so it never blocks ECAM.</summary>
+    private const int FcuMaxSharedQueueDepth = 3;
+
+    /// <summary>Mute the FCU value-change announcer for the named keys for a short window after
+    /// MSFSBA itself set them (the set method already speaks its own confirmation). Pass every
+    /// key the write actually moves and NO others — a knob push/pull that touches no value var
+    /// must pass none. Arm it BEFORE the write, so its echo can never arrive first.</summary>
+    protected void SuppressFcuValueChangeEcho(params string[] keys) =>
+        _fcuValues.SuppressEcho(keys, Environment.TickCount64);
+
+    /// <summary>Arm the FCU echo window for the value vars an MSFSBA-origin FCU event moves (from
+    /// <see cref="FcuEchoKeys.For"/>). Call it BEFORE the event is sent.</summary>
+    protected void ArmFcuEcho(string evt, IReadOnlyList<string> keys) =>
+        _fcuValues.SuppressEcho(keys, Environment.TickCount64, forEvent: evt);
+
+    /// <summary>Whether a delivery of this FCU value var proves the aircraft itself has published
+    /// after a flight load (<see cref="FcuValueAnnouncer"/>'s settle). A stock SimVar does not: the
+    /// sim core can restore it from the flight file before the aircraft's WASM has run.</summary>
+    internal static bool CountsAsFcuLoadEvidence(SimConnect.SimVarDefinition? def) =>
+        def?.Type != SimConnect.SimVarType.SimVar;
+
+    /// <summary>
+    /// Record an MCP/FCU selected value for the hardware-dial callouts. <paramref name="phrase"/> is null
+    /// while the window shows dashes and <see cref="FcuValuePhrases.Unavailable"/> while the FCU is off —
+    /// call it for EVERY delivery of the var. The callout is released by <see cref="OnContinuousBatchDelivered"/>,
+    /// OUTSIDE MainForm's announcer.Suppressed wrap, so <paramref name="muted"/> must carry the aircraft's
+    /// own Ctrl+M mute (and a readout that is about to speak this very value).
+    /// </summary>
+    protected void AnnounceFcuValue(string key, string? phrase, ScreenReaderAnnouncer announcer, bool muted = false)
+    {
+        _fcuAnnouncer = announcer;
+        GetVariables().TryGetValue(key, out var def);
+        _fcuValues.Observe(key, phrase, muted, Environment.TickCount64,
+            countsAsLoadEvidence: CountsAsFcuLoadEvidence(def));
+    }
+
+    /// <summary>The aircraft's FCU health var was delivered (true = the FCU publishes real values).</summary>
+    protected void ObserveFcuHealth(bool healthy) => _fcuValues.ObserveFcuHealth(healthy);
+
+    /// <summary>Record an FCU value's phrase silently (its words changed, its value did not).</summary>
+    protected void RebaselineFcuValue(string key, string? phrase) => _fcuValues.Rebaseline(key, phrase);
+
+    /// <summary>What the FCU window for <paramref name="key"/> last showed (for the readouts).</summary>
+    internal FcuWindowState FcuWindowStateOf(string key) => _fcuValues.StateOf(key);
+
+    /// <summary>Begin the FCU callouts' settle (MainForm: a profile switched while a flight loads).</summary>
+    internal void BeginFcuValueSettle() => _fcuValues.BeginSettle();
+
+    /// <summary>A flight load, reconnect or FCU power-up is still settling: the values arriving now
+    /// describe a new situation, not a change anyone made.</summary>
+    protected bool IsFcuValueSettling => _fcuValues.IsSettling;
 
     // Variable Update Processing
 
@@ -734,6 +831,48 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual void ResetAnnouncementBaselines() { }
 
     /// <inheritdoc />
+    /// <remarks>The base starts the FCU value announcer's settle: an override on an aircraft that uses
+    /// <see cref="AnnounceFcuValue"/> must call base.</remarks>
+    public virtual void OnSimContextReset() => _fcuValues.BeginSettle();
+
+    /// <inheritdoc />
+    /// <remarks>The base upgrades the FCU settle so the reconnect's re-fire counts as the aircraft
+    /// publishing (the cache was cleared on the way down).</remarks>
+    public virtual void OnVariableCacheCleared() => _fcuValues.BeginSettle(refireIsEvidence: true);
+
+    /// <inheritdoc />
+    /// <remarks>The base counts the delivery toward the FCU settle and speaks the FCU callouts this batch
+    /// completed: an override on an aircraft that uses <see cref="AnnounceFcuValue"/> must call base.</remarks>
+    public virtual void OnContinuousBatchDelivered(int batchNum)
+    {
+        IReadOnlyList<string> due = _fcuValues.OnBatchDelivered(batchNum);
+        if (due.Count == 0 || _fcuAnnouncer is not { } announcer) return;
+        foreach (string phrase in due)
+        {
+            if (announcer.QueuedAnnouncementCount >= FcuMaxSharedQueueDepth) return;
+            announcer.Announce(phrase);
+        }
+    }
+
+    /// <inheritdoc />
+    /// <remarks>The base restarts the FCU value echo the event was armed with (Task 3 of the PR #140
+    /// fixes): the A32NX queues dotted FCU events until the calc-path probe concludes, which can be a
+    /// minute after the echo armed at the call site expired.</remarks>
+    public virtual void OnQueuedEventDispatched(string eventName) =>
+        _fcuValues.RearmEcho(eventName, Environment.TickCount64);
+
+    /// <inheritdoc />
+    /// <remarks>None by default: a branch's call-outs are its own row's.</remarks>
+    public virtual bool IsMuteWrapExempt(string varName) => false;
+
+    /// <inheritdoc />
+    /// <remarks>None by default: only the airframes with take-off roll callouts have a feed.</remarks>
+    public virtual string? TakeoffCalloutFeedKey => null;
+
+    /// <inheritdoc />
+    public virtual bool TakeoffCalloutFeedNeeded => true;
+
+    /// <inheritdoc />
     /// <remarks>Most definitions hold nothing, so the batch hook never fires for them.</remarks>
     public virtual string? DeferredFlushWatchVariable => null;
 
@@ -752,64 +891,174 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     public virtual bool HasOwnIcingAnnouncer => false;
 
+    public virtual string? StockComTuningRefusal => null;
+
+    // One capture at a time, app-wide — the scene description takes the same gate, because the
+    // camera both of them capture is the SIMULATOR's, not this definition's. See
+    // Services/DisplayReadGate for why it is shared and why it must be released before any dialog.
+
     /// <summary>
-    /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via Gemini AI.
-    /// Shared by all aircraft definitions that support Gemini display capture.
+    /// Captures an MSFS window screenshot and analyzes the indicated cockpit display via the
+    /// selected AI provider. Shared by all aircraft definitions that support display capture.
+    ///
+    /// With <paramref name="instrumentView"/>, the simulator camera is first moved to that
+    /// instrument view (0-based index into the aircraft's cameras.cfg instrument cameras) — the
+    /// pilot presses nothing in the sim to get the display on screen.
+    /// The camera is put back after the capture and before the AI call — verified by read-back,
+    /// and a failure is spoken once rather than assumed. A restore was removed on 2026-09-09 and
+    /// reinstated on 2026-09-18; see <see cref="Services.InstrumentViewPlan"/> for what that
+    /// removal got wrong.
+    /// Without it the flow is exactly what it always was: the current view is captured.
     /// </summary>
     protected async void ReadDisplay(Services.GeminiService.DisplayType displayType,
                                       string displayName,
                                       ScreenReaderAnnouncer announcer,
-                                      System.Windows.Forms.Form parentForm)
+                                      System.Windows.Forms.Form parentForm,
+                                      Services.InstrumentViewRequest? instrumentView = null)
     {
+        if (!Services.DisplayReadGate.Shared.TryEnter())
+        {
+            announcer.Announce(Services.DisplayReadGate.BusyMessage);
+            return;
+        }
+
+        // Held until the gate is released BELOW. MessageBox.Show does not return until the pilot
+        // dismisses the dialog, so showing one inside the guarded region held the gate for as long
+        // as it stood — and every later display read, on every aircraft, then answered "already in
+        // progress" when nothing was.
+        (string Caption, string Body, System.Windows.Forms.MessageBoxIcon Icon)? dialog = null;
         try
         {
-            announcer.Announce($"Capturing {displayName}...");
-
-            var screenshotService = new Services.ScreenshotService();
-            var aiProvider = Services.AiProviderFactory.Create();
-
-            if (!screenshotService.IsMsfsWindowAvailable())
+            try
             {
-                announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
-                return;
-            }
+                announcer.Announce($"Capturing {displayName}...");
 
-            byte[]? screenshot = await screenshotService.CaptureAsync();
-            if (screenshot == null || screenshot.Length == 0)
+                var screenshotService = new Services.ScreenshotService();
+                var aiProvider = Services.AiProviderFactory.Create();
+
+                if (!screenshotService.IsMsfsWindowAvailable())
+                {
+                    announcer.Announce("Microsoft Flight Simulator window not found. Make sure the simulator is running.");
+                    return;
+                }
+
+                Services.InstrumentViewSwitcher? switcher = null;
+                Services.InstrumentViewSession? view = null;
+                if (instrumentView != null)
+                {
+                    switcher = new Services.InstrumentViewSwitcher(instrumentView.Camera);
+                    view = await switcher.EnterAsync(instrumentView.ViewIndex);
+                    if (view.Outcome == Services.InstrumentViewOutcome.NotInCockpit)
+                    {
+                        announcer.Announce("Switch to a cockpit view first.");
+                        return;
+                    }
+                    if (!view.Verified)
+                    {
+                        // "Could not confirm", never "could not switch": Switch and Unknown both ATTEMPT the
+                        // write before verifying — and InstrumentViewSwitcher swallows a write that THROWS
+                        // and polls anyway — so either the write or the read-back failed, and the camera may
+                        // or may not have moved. "Could not confirm" is the honest claim in both cases.
+                        announcer.Announce("Could not confirm the cockpit view switch; reading what is on screen.");
+                    }
+                }
+
+                byte[]? screenshot = null;
+                try
+                {
+                    screenshot = await screenshotService.CaptureAsync();
+                }
+                finally
+                {
+                    // Put the camera back BEFORE the AI call, not after: that call is a network
+                    // round-trip of several seconds and the camera only has to be on the display
+                    // for the capture itself, so the pilot's own view is gone for well under a
+                    // second. In a finally so a capture that returned nothing — or threw —
+                    // restores too. RestoreAsync never throws, so it cannot swallow an exception
+                    // on its way out.
+                    if (switcher != null && view != null && !await switcher.RestoreAsync(view))
+                        announcer.Announce("Could not return to your previous view.");
+                }
+
+                if (screenshot == null || screenshot.Length == 0)
+                {
+                    announcer.Announce($"Failed to capture {displayName} screenshot.");
+                    return;
+                }
+
+                string analysis = await aiProvider.AnalyzeDisplayAsync(screenshot, displayType);
+
+                var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
+                resultForm.ShowForm();
+
+                announcer.Announce($"{displayName} analysis ready.");
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
             {
-                announcer.Announce($"Failed to capture {displayName} screenshot.");
-                return;
+                announcer.Announce("AI provider API key not configured. Please go to File menu, Settings, AI tab.");
+                dialog = ("API Key Required",
+                    "AI provider API key is not configured.\n\n" +
+                    "Please choose a provider (Gemini or Claude) and configure its API key in:\n" +
+                    "File > Settings > AI tab",
+                    System.Windows.Forms.MessageBoxIcon.Warning);
             }
-
-            string analysis = await aiProvider.AnalyzeDisplayAsync(screenshot, displayType);
-
-            var resultForm = new Forms.DisplayReadingResultForm(displayName, analysis);
-            resultForm.ShowForm();
-
-            announcer.Announce($"{displayName} analysis ready.");
+            catch (Exception ex)
+            {
+                announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
+                dialog = ("Error",
+                    $"Error analyzing {displayName}:\n\n{ex.Message}",
+                    System.Windows.Forms.MessageBoxIcon.Error);
+            }
         }
-        catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
+        finally
         {
-            announcer.Announce("AI provider API key not configured. Please go to File menu, Settings, AI tab.");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                "AI provider API key is not configured.\n\n" +
-                "Please choose a provider (Gemini or Claude) and configure its API key in:\n" +
-                "File > Settings > AI tab",
-                "API Key Required",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Warning);
+            Services.DisplayReadGate.Shared.Exit();
         }
-        catch (Exception ex)
+
+        if (dialog is { } pending)
         {
-            announcer.Announce($"Error analyzing {displayName}: {ex.Message}");
-            System.Windows.Forms.MessageBox.Show(
-                parentForm,
-                $"Error analyzing {displayName}:\n\n{ex.Message}",
-                "Error",
-                System.Windows.Forms.MessageBoxButtons.OK,
-                System.Windows.Forms.MessageBoxIcon.Error);
+            System.Windows.Forms.MessageBox.Show(parentForm, pending.Body, pending.Caption,
+                System.Windows.Forms.MessageBoxButtons.OK, pending.Icon);
         }
+    }
+
+    /// <summary>
+    /// This aircraft's AI display reads — the hotkey, the prompt, the spoken name and the
+    /// instrument camera view each one needs. Empty means the aircraft has none.
+    ///
+    /// <para>
+    /// An aircraft gains display reads by supplying a measured table and NOTHING else: the base
+    /// dispatches it from <see cref="HandleHotkeyAction"/>, so there is no per-aircraft dispatch
+    /// line to copy and no second way to wire a display read. A derived override's own switch
+    /// still runs first, so an aircraft that means something different by one of these hotkeys —
+    /// the FlyByWire A320/A380 open their E/WD window on Alt+E, the HorizonSim 787 announces CAS
+    /// alerts on Alt+E and opens a Coherent synoptic on Alt+S — keeps its own arm untouched.
+    /// </para>
+    ///
+    /// <para>
+    /// A row with a null <see cref="AiDisplayRead.InstrumentViewIndex"/> captures whatever is on
+    /// screen, which is what an aircraft whose camera views have never been measured wants.
+    /// </para>
+    /// </summary>
+    protected virtual IReadOnlyList<AiDisplayRead> DisplayReads => Array.Empty<AiDisplayRead>();
+
+    /// <summary>
+    /// Dispatches <paramref name="action"/> when it is one of <see cref="DisplayReads"/>: captures
+    /// that display and reads it back, first moving the simulator camera to the instrument view
+    /// that frames it when the row names one.
+    /// </summary>
+    private bool TryReadDisplayFor(HotkeyAction action,
+                                   SimConnect.SimConnectManager simConnect,
+                                   ScreenReaderAnnouncer announcer,
+                                   System.Windows.Forms.Form parentForm)
+    {
+        if (!AiDisplayRead.TryGet(DisplayReads, action, out var read)) return false;
+
+        ReadDisplay(read.DisplayType, read.SpokenName, announcer, parentForm,
+            read.InstrumentViewIndex is { } view
+                ? new Services.InstrumentViewRequest(simConnect, view)
+                : null);
+        return true;
     }
 
     // ---- Tracked single-instance hotkey windows (FCU value windows, Baro, E/WD pop-out,
@@ -945,7 +1194,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // instance method (not static) because it's invoked externally via an aircraft-typed
     // instance reference (FBWA320AltitudeWindow/FBWA380AltitudeWindow), which a static
     // member can't be called through.
-    public void SetAltIncrement(int inc, SimConnect.SimConnectManager s)
+    public virtual void SetAltIncrement(int inc, SimConnect.SimConnectManager s)
     {
         if (!s.IsConnected) return;
         s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", (uint)inc);

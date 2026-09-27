@@ -33,6 +33,42 @@ public partial class SimConnectManager
         }
     }
 
+    // The next of the GroundTrafficRequestIdCount sweep ids to use, 0..7 (UI thread: the monitor's
+    // timer and the Alt+G summary).
+    private uint _groundTrafficSlot;
+
+    /// <summary>
+    /// The ground-traffic monitor's sweep: every aircraft within <paramref name="radiusMeters"/>
+    /// (the monitor passes just past what it can use — about 1-17 km — instead of TCAS's 150 nm).
+    /// Entries arrive via AiTrafficReceived like any other sweep's; the last one raises
+    /// GroundTrafficSweepCompleted with the sweep's request id. The user's own aircraft is always
+    /// inside any radius, so the sweep always completes. Each sweep goes out under the NEXT id of the
+    /// rotating range (<see cref="IsGroundTrafficRequestId"/>), so a late completion of a sweep the
+    /// monitor gave up on can be told from the one it is waiting for. Returns the request id used, or
+    /// 0 when nothing was sent (not connected, or the request threw).
+    /// </summary>
+    public uint RequestGroundTrafficData(uint radiusMeters)
+    {
+        if (!IsConnected || simConnect == null) return 0;
+        try
+        {
+            uint slot = _groundTrafficSlot;
+            _groundTrafficSlot = (slot + 1) % GroundTrafficRequestIdCount;
+            var requestId = (DATA_REQUESTS)((uint)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC + slot);
+            simConnect.RequestDataOnSimObjectType(
+                requestId,
+                DATA_DEFINITIONS.DEF_AI_TRAFFIC,
+                Math.Max(1u, radiusMeters),
+                SIMCONNECT_SIMOBJECT_TYPE.AIRCRAFT);
+            return (uint)requestId;
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"RequestGroundTrafficData error: {ex.Message}");
+            return 0;
+        }
+    }
+
     public void RequestAircraftInfo()
     {
         if (IsConnected && simConnect != null)
@@ -82,17 +118,157 @@ public partial class SimConnectManager
         }
     }
 
+    // Awaitable fresh reads (see FreshReadWaiters). Completed from the two delivery paths in
+    // SimConnectManager.VarCache.cs — the individual-def response (by request id) and the
+    // continuous batch (a period sample) — and failed on disconnect / aircraft switch beside
+    // forceUpdateVariables.Clear().
+    //
+    // Every fresh read's PERIOD.ONCE goes out under its OWN request id from this range (the
+    // definition id is unchanged), so its answer can be told from an abandoned earlier read's.
+    // Dispatch routes any id >= INDIVIDUAL_VARIABLE_BASE to ProcessIndividualVariableResponse;
+    // data-definition ids start at 1000 and reset per connection and per aircraft switch, so a range
+    // starting at one million can never collide with them (pinned by FreshReadWaitersTests).
+    // _freshRequestIdToVarKey maps an issued id to its var key until the ONCE answers (consumed on
+    // delivery) or the connection/aircraft resets (cleared beside requestIdToVarKey) — it is
+    // deliberately NOT folded into requestIdToVarKey, whose contract is exact sync with
+    // variableDataDefinitions. A SEED read (FreshReadPolicy.SeedRequestId, def id + 900000) sits
+    // between the two ranges and needs no map: the dispatch maps it back to its definition id.
+    internal const int FreshRequestIdBase = 1_000_000;
+    private readonly FreshReadWaiters _freshReads = new(FreshRequestIdBase);
+    private readonly ConcurrentDictionary<int, string> _freshRequestIdToVarKey = new();
+
+    // SimConnect is not thread-safe. This gate covers the one off-thread path that issues a data
+    // REQUEST and touches the maps below; the client-data WRITES a pool thread already makes (the
+    // MD-11's CEVENT pump, the A380's seat-motion Task.Run, both through ExecuteCalculatorCode)
+    // are a separate, older exception it does not cover. The manager is built on the UI thread
+    // (MainForm's constructor, through
+    // InitializeManagers), so this initializer captures the UI thread's WinForms context and id at
+    // construction — as MobiFlightWasmModule captures its own for its heartbeat — and the core
+    // RequestVariable below moves an off-thread call onto it. Only a WinForms context: it runs
+    // every post on the thread that created it, which is what makes "posted" mean "on the UI
+    // thread"; anything else (a test runner's context) leaves the gate inert — today's behaviour.
+    private readonly UiThreadGate _uiGate = new(
+        SynchronizationContext.Current as System.Windows.Forms.WindowsFormsSynchronizationContext,
+        Environment.CurrentManagedThreadId);
+
+    /// <summary>
+    /// True when a <see cref="ReadFreshAsync"/> of <paramref name="varKey"/> reflects the aircraft
+    /// within about a frame — see <see cref="FreshReadPolicy.SupportsFreshReads"/>. The MD-11
+    /// walker picks its read protocol on this.
+    /// </summary>
+    public bool SupportsFreshReads(string varKey)
+        => FreshReadPolicy.SupportsFreshReads(variableDataDefinitions.ContainsKey(varKey), DefinitionOf(varKey));
+
+    /// <summary>
+    /// Force-reads <paramref name="varKey"/> and completes on the NEXT delivery of it: the
+    /// PERIOD.ONCE response of an individual-def var (a frame or two), or the next continuous batch
+    /// of a batch-covered one (up to one period; the force flag makes an unchanged value re-fire).
+    /// A var on its own SIM_FRAME + CHANGED subscription gets its CACHE back at once instead — that
+    /// cache is at most a frame old and an unchanged value would never deliver
+    /// (<see cref="FreshReadPolicy.CacheIsFresh"/>) — unless the cache is EMPTY, when the read goes
+    /// out under its own fresh id beside the subscription (<see cref="FreshReadPolicy.AnswerFromCache"/>). Returns null when nothing
+    /// is delivered within <paramref name="timeoutMs"/>, when not connected, or when the key cannot
+    /// be delivered at all; throws <see cref="OperationCanceledException"/> on <paramref name="ct"/>.
+    /// The MD-11 walker reads through this instead of sleeping and polling the cache — the delivery
+    /// is the only fresh signal there is.
+    /// </summary>
+    public Task<double?> ReadFreshAsync(string varKey, int timeoutMs, CancellationToken ct = default)
+    {
+        if (!IsConnected || simConnect == null) return Task.FromResult<double?>(null);
+        bool deliverable = variableDataDefinitions.ContainsKey(varKey) || continuousVariableIndexMap.ContainsKey(varKey);
+        if (!deliverable) return Task.FromResult<double?>(null);
+        var freshDef = DefinitionOf(varKey);
+        if (FreshReadPolicy.CacheIsFresh(freshDef))
+        {
+            var cached = GetCachedVariableValue(varKey);
+            if (FreshReadPolicy.AnswerFromCache(freshDef, cached)) return Task.FromResult(cached);
+            // Never delivered — the SIM_FRAME + CHANGED subscription's initial delivery did not
+            // land (whole MD-11 sessions, 2026-09-09 and 2026-09-10: the speedbrake lever set up
+            // and never once delivered, every walk "state var unreadable"). The subscription itself
+            // must not be touched, so fall through and ask under this read's OWN request id: a ONCE
+            // on a separate id answers within a frame and leaves the subscription alive (measured
+            // live). RequestVariable issues it because freshRequestId is set — see the SIM_FRAME
+            // branch there.
+        }
+        return _freshReads.WaitAsync(varKey,
+            id => RequestVariable(varKey, forceUpdate: true, freshRequestId: id), timeoutMs, ct);
+    }
+
+    private SimVarDefinition? DefinitionOf(string varKey)
+    {
+        var defs = CurrentAircraft?.GetVariables();
+        return defs != null && defs.TryGetValue(varKey, out var def) ? def : null;
+    }
+
+    // SIM_FRAME own subscriptions paused by SetSimFrameSubscriptionActive. Cleared wherever the data
+    // definitions are, because registration issues every subscription active again.
+    private readonly ConcurrentDictionary<string, byte> _pausedSimFrameSubscriptions = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// Pause (<paramref name="active"/> false) or resume a SIM_FRAME + CHANGED own subscription — the
+    /// take-off callouts' airspeed feed, which is needed only on the ground and on a roll still armed
+    /// (<see cref="IAircraftDefinition.TakeoffCalloutFeedKey"/>), and otherwise delivered tens of times
+    /// a second through a whole flight for nothing. A no-op when the subscription is already in that
+    /// state, so it is safe to call on every delivery. Pausing re-issues the subscription's own
+    /// request id with PERIOD.NEVER (the codebase's cancel idiom, as SafelyClearDataDefinition);
+    /// resuming re-issues it exactly as registration did. The cache keeps the last value while paused.
+    /// </summary>
+    public void SetSimFrameSubscriptionActive(string varKey, bool active)
+    {
+        if (!IsConnected || simConnect == null) return;
+        if (_uiGate.PostIfOffThread(() => SetSimFrameSubscriptionActive(varKey, active))) return;
+        if (active != _pausedSimFrameSubscriptions.ContainsKey(varKey)) return;   // already there
+        if (!FreshReadPolicy.CacheIsFresh(DefinitionOf(varKey))) return;           // not a SIM_FRAME own subscription
+        if (!variableDataDefinitions.TryGetValue(varKey, out int dataDefId)) return;
+
+        try
+        {
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)dataDefId, (DATA_DEFINITIONS)dataDefId,
+                SIMCONNECT_OBJECT_ID_USER,
+                active ? SIMCONNECT_PERIOD.SIM_FRAME : SIMCONNECT_PERIOD.NEVER,
+                active ? SIMCONNECT_DATA_REQUEST_FLAG.CHANGED : SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0);
+            if (active) _pausedSimFrameSubscriptions.TryRemove(varKey, out _);
+            else _pausedSimFrameSubscriptions[varKey] = 0;
+            Log.Debug("SimConnect", $"SIM_FRAME subscription for {varKey} {(active ? "resumed" : "paused")}");
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error {(active ? "resuming" : "pausing")} subscription {varKey}: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Request a single variable by key
     /// </summary>
     /// <param name="varKey">The variable key to request</param>
     /// <param name="forceUpdate">If true, will always fire SimVarUpdated event even if value hasn't changed</param>
     public void RequestVariable(string varKey, bool forceUpdate = false)
+        => RequestVariable(varKey, forceUpdate, freshRequestId: null);
+
+    /// <summary>
+    /// <paramref name="freshRequestId"/>: a <see cref="ReadFreshAsync"/> issues its PERIOD.ONCE
+    /// under this id instead of the data-definition id, so its answer can be told from any other
+    /// delivery of the var (see <see cref="FreshReadWaiters"/>). The id is recorded in
+    /// <see cref="_freshRequestIdToVarKey"/> only once the request is actually issued — a var this
+    /// method issues no ONCE for (batch-covered, or on its own PERIOD.SECOND subscription) is
+    /// answered by its next sample instead. A SIM_FRAME own subscription is issued on the fresh id
+    /// like any individual def — never on its subscription's own id (<see cref="FreshReadPolicy.RouteRequest"/>).
+    /// </summary>
+    private void RequestVariable(string varKey, bool forceUpdate, int? freshRequestId)
     {
         if (!IsConnected || simConnect == null)
         {
             return;
         }
+
+        // Off the UI thread — the MD-11's walks and read-backs call in from ConfigureAwait(false)
+        // pool-thread continuations — hand the whole request to the UI thread, where SimConnect and
+        // the maps below are otherwise only ever touched. The posted run re-enters here and
+        // re-checks the connection above. A ReadFreshAsync caller loses nothing: FreshReadWaiters
+        // registers its waiter before it calls in, and the id mapping below is written by the
+        // posted run itself, before the request it names can be answered.
+        if (_uiGate.PostIfOffThread(() => RequestVariable(varKey, forceUpdate, freshRequestId))) return;
 
         // Record the force flag BEFORE the individual-def check below. Batch-covered vars
         // (Continuous+IsAnnounced, no ExcludeFromBatch) have NO individual data def, so they take
@@ -130,23 +306,35 @@ public partial class SimConnectManager
         // every panel open, display refresh and force-read. Leave the subscription alone: the
         // force flag recorded above is honoured by the next periodic delivery, so a force-read
         // still fires SimVarUpdated within one period (1 s at PERIOD.SECOND).
-        var defs = CurrentAircraft?.GetVariables();
-        if (defs != null && defs.TryGetValue(varKey, out var periodicDef) &&
-            periodicDef.UpdateFrequency == UpdateFrequency.Continuous &&
-            periodicDef.IsAnnounced && periodicDef.ExcludeFromBatch)
-        {
-            return;
-        }
+        //
+        // A SIM_FRAME + CHANGED subscription has no "next periodic delivery" while the value
+        // stands still, so a force-read of an unchanged var would otherwise never answer — and
+        // if its initial delivery never landed, the cache stays empty for the session (the
+        // MD-11 speedbrake, 2026-09-09/10). Answer through a SEPARATE request id instead: a
+        // ONCE there delivers within a frame, honours the force flag recorded above, and leaves
+        // the subscription untouched (measured live). A ReadFreshAsync caller supplied its own
+        // fresh id; any other read goes out on the seed id — but only to fill an EMPTY cache or to
+        // answer a force-read (the walk-end refresh, whose re-fired SimVarUpdated corrects MainForm's
+        // stored value after a walk that did not land). With a value cached the subscription keeps
+        // it current, and an unforced re-read (a panel open) would only come back unchanged and be
+        // dropped. PERIOD.SECOND subscriptions keep waiting for their next delivery as before.
+        var route = FreshReadPolicy.RouteRequest(DefinitionOf(varKey), freshRequestId != null);
+        if (route == VarRequestRoute.AwaitNextDelivery) return;
+        if (route == VarRequestRoute.SeedId && !forceUpdate && lastVariableValues.ContainsKey(varKey)) return;
 
         try
         {
             int dataDefId = variableDataDefinitions[varKey];
-            simConnect.RequestDataOnSimObject((DATA_REQUESTS)dataDefId,
+            int requestId = freshRequestId
+                ?? (route == VarRequestRoute.SeedId ? FreshReadPolicy.SeedRequestId(dataDefId) : dataDefId);
+            if (freshRequestId is int freshId) _freshRequestIdToVarKey[freshId] = varKey;
+            simConnect.RequestDataOnSimObject((DATA_REQUESTS)requestId,
                 (DATA_DEFINITIONS)dataDefId, SIMCONNECT_OBJECT_ID_USER,
                 SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
         }
         catch (Exception ex)
         {
+            if (freshRequestId is int failedId) _freshRequestIdToVarKey.TryRemove(failedId, out _);
             Log.Debug("SimConnect", $"Error requesting variable {varKey}: {ex.Message}");
         }
     }
@@ -530,6 +718,34 @@ public partial class SimConnectManager
         {
             Log.Debug("SimConnect", $"Error requesting NAV radio info: {ex.Message}");
         }
+    }
+
+    /// <summary>
+    /// COM 1 active and standby as the sim holds them now, or null when no answer arrives within
+    /// <paramref name="timeout"/> (not connected, or no reply). Call on the UI thread; the handler is
+    /// removed on every exit, so an unanswered read leaves nothing subscribed.
+    /// </summary>
+    public async Task<Com1RadioData?> ReadCom1RadioAsync(TimeSpan timeout)
+    {
+        if (!IsConnected || simConnect == null) return null;
+        var answer = new TaskCompletionSource<Com1RadioData>(TaskCreationOptions.RunContinuationsAsynchronously);
+        EventHandler<Com1RadioData> handler = (_, data) => answer.TrySetResult(data);
+        Com1RadioReceived += handler;
+        try
+        {
+            simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_COM1_RADIO,
+                DATA_DEFINITIONS.DEF_COM1_RADIO, SIMCONNECT_OBJECT_ID_USER,
+                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT,
+                0, 0, 0);
+            return await answer.Task.WaitAsync(timeout);
+        }
+        catch (TimeoutException) { return null; }
+        catch (Exception ex)
+        {
+            Log.Debug("SimConnect", $"Error reading COM 1: {ex.Message}");
+            return null;
+        }
+        finally { Com1RadioReceived -= handler; }
     }
 
     public void RequestWindInfo(Action<WindData> callback)

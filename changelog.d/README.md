@@ -28,7 +28,7 @@ one of:
 | `feature` | New features | Something the app could not do before |
 | `improvement` | Improvements | An existing capability made better |
 | `fix` | Fixes | Something that was wrong and now is not |
-| `internal` | *(nothing)* | Refactors, CI, tests — recorded, never published |
+| `internal` | *(nothing)* | Refactors, CI, tests — recorded, never published (its contributors are still credited) |
 
 ## Content
 
@@ -48,6 +48,10 @@ opened it plus everyone with a commit in it (`tools/changelog-contributors.sh`, 
 the `<pr>` prefix in the filename). So write only the change itself — a hand-written
 "thanks to X" line would double up with the automatic credit. Bot accounts and AI
 co-author trailers are filtered out.
+
+A PR whose fragments are all `internal` publishes no entry, so anyone it would leave
+uncredited is named once on a closing "Also contributed to this release" line instead,
+with their PR numbers.
 
 ## No user-facing change?
 

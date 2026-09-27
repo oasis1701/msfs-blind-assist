@@ -49,6 +49,65 @@ public static class RunwayRouteClassifier
         return nodes;
     }
 
+    /// <summary>
+    /// The nodes to classify with the AIRCRAFT prepended while it is still the route's first point
+    /// — it has not rolled more than <see cref="RouteRunwayCrossings.StopPassedToleranceMetres"/>
+    /// along the segments being judged.
+    ///
+    /// <para>ONE definition of that rule, for both callers. The hold pass had it privately
+    /// (<c>RouteRunwayCrossings.ClassificationNodes</c>) while
+    /// <see cref="RolloutRunwayReCrossing.RouteReCrossesRunway"/> had none, and the classifier
+    /// emits NO passage when the first node it judges is already on the runway ("the route started
+    /// on the runway and vacated"). A handoff route whose A* anchor node sits on the pavement — the
+    /// normal case while the aircraft is still on or beside the landing runway — therefore opened
+    /// its run with no preceding clear node, so a first edge straight to the far side produced no
+    /// passage at all and the handoff back across the landing runway was ACCEPTED.</para>
+    ///
+    /// <para>Progress is measured from <paramref name="fromSegmentIndex"/>, not from the whole
+    /// route: the landing guard judges from the live segment cursor, and an aircraft standing at
+    /// that node is the first point of what it is about to fly however far it has already
+    /// taxied.</para>
+    /// </summary>
+    /// <param name="aircraftPrepended">
+    /// True when the returned list carries the aircraft as node 0 — the caller must shift the
+    /// classified indices back into the route's own numbering.
+    /// </param>
+    public static IReadOnlyList<TaxiNode?> NodesFrom(
+        IReadOnlyList<TaxiRouteSegment>? segments, int fromSegmentIndex,
+        RouteRunwayCrossings.AircraftPosition? aircraft, out bool aircraftPrepended)
+    {
+        var nodes = NodesFrom(segments, fromSegmentIndex);
+        aircraftPrepended = false;
+        if (segments is null || nodes.Count == 0 || aircraft is not { } position) return nodes;
+
+        var judged = fromSegmentIndex <= 0 ? segments : Tail(segments, fromSegmentIndex);
+        if (RouteRunwayCrossings.RouteProgressMeters(judged, position.Lat, position.Lon)
+            > RouteRunwayCrossings.StopPassedToleranceMetres)
+            return nodes;
+
+        aircraftPrepended = true;
+        // Node id 0 is the graph's "not set" sentinel: right for a point that never enters a graph.
+        var withAircraft = new List<TaxiNode?>(nodes.Count + 1)
+        {
+            new TaxiNode { NodeId = 0, Latitude = position.Lat, Longitude = position.Lon },
+        };
+        withAircraft.AddRange(nodes);
+        return withAircraft;
+    }
+
+    /// <summary>Overload for callers that do not need to shift indices back (the landing guard).</summary>
+    public static IReadOnlyList<TaxiNode?> NodesFrom(
+        IReadOnlyList<TaxiRouteSegment>? segments, int fromSegmentIndex,
+        RouteRunwayCrossings.AircraftPosition? aircraft)
+        => NodesFrom(segments, fromSegmentIndex, aircraft, out _);
+
+    private static List<TaxiRouteSegment> Tail(IReadOnlyList<TaxiRouteSegment> segments, int from)
+    {
+        var tail = new List<TaxiRouteSegment>(Math.Max(0, segments.Count - from));
+        for (int i = from; i < segments.Count; i++) tail.Add(segments[i]);
+        return tail;
+    }
+
     public static List<RunwayPassage> ClassifyAll(
         IReadOnlyList<TaxiNode?> nodes, IEnumerable<TaxiGraph.RunwayCenterline> runways)
     {

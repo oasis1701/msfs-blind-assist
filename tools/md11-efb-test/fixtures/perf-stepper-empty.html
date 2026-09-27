@@ -1,0 +1,19 @@
+<!-- Source-built from efb.js Select (src/components/Select.tsx), in the state it renders BEFORE its
+     list exists: the EFB mounts the component with an empty `options` array and a blank field (the
+     runway picker before an airport has been entered). data-options="" seeds that empty array; the
+     field carries no value. Both halves must degrade: the arrows stay, and the value reads (empty)
+     rather than trailing off after the colon. -->
+<div class="flex items-center justify-between bg-zinc-700 p-2 px-4 text-lg">
+  <div class="flex w-full items-center justify-between text-xs">
+    <span>Runway</span>
+    <div class="flex w-1/2">
+      <div class="w-1/2">
+        <div class="relative">
+          <input disabled data-options="" class="w-full rounded-l-lg border border-white bg-zinc-700 px-3 py-2 text-white" value="">
+          <button type="button" class="absolute right-2 top-0 border-t bg-zinc-700 text-white" disabled><svg class="lucide lucide-chevron-up"></svg></button>
+          <button type="button" class="absolute bottom-0 right-2 border-b bg-zinc-700 text-white"><svg class="lucide lucide-chevron-down"></svg></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

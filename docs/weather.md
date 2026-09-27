@@ -893,8 +893,9 @@ here instead. There is no route-advisory equivalent of `ClearAnnouncedKeys()` an
 Approach/Enter/Leave zone events ARE the reminder mechanism now, tied to real proximity, not a
 clock.
 
-**(e) Settings.** `UserSettings.AnnounceRouteAdvisoriesEnabled` (bool, default `true`, both the
-property and `Clone()`) backs a new checkbox in the Weather panel's Announcements group,
+**(e) Settings.** `UserSettings.AnnounceRouteAdvisoriesEnabled` (bool, default `true`; `Clone()` is
+a serializer round-trip since PR #189 and needs no per-property edit) backs a new checkbox in the
+Weather panel's Announcements group,
 `"Announce route advisories by proximity (ActiveSky)"` (caption updated 2026-07-14 alongside the
 proximity-event redesign in §12 above — the old text/AccessibleName described the superseded
 key-novelty semantics), placed with the SIGMET/PIREP proximity rows
@@ -909,7 +910,8 @@ unconditionally either way.
 **Approach-ring distance is a setting (2026-07-14, same-day revision).** The design doc's §0
 decision — "The 100 nm threshold is a fixed constant (no setting)" — was revised the same day at
 Robin's request after seeing the settings tab: `UserSettings.RouteAdvisoryProximityNm` (int,
-default `100`, both the property and `Clone()`) is a new "En-route advisory distance (nautical
+default `100`; `Clone()` is a serializer round-trip since PR #189 and needs no per-property edit)
+is a new "En-route advisory distance (nautical
 miles)" `NumericUpDown` row placed directly below the existing SIGMET/PIREP "Proximity range"
 row, `Min/Max = 10/500` matching that sibling control. It is **route-advisory-only**, so its
 Label + `NumericUpDown` are gated exactly like the `_routeAdvisoryAlerts` checkbox itself

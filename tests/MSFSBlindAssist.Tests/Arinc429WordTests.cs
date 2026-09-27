@@ -29,10 +29,14 @@ public class Arinc429WordTests
         (double)(((ulong)ssm << 32) | BitConverter.SingleToUInt32Bits(payload));
 
     /// <summary>
-    /// Same packing, but for tests that care about the raw low-32 bit pattern
-    /// directly (BitValueOr) rather than its meaning as a float.
+    /// A DISCRETE word packed the way FBW packs one: the bitfield converted NUMERICALLY to a
+    /// float, and that float's IEEE-754 bits in the low 32 (C++ Arinc429Utils::setBit +
+    /// toSimVar, TS Arinc429Register.setBitValue + writeToSimVar, Rust `as f32` + to_bits).
     /// </summary>
-    private static double WordBits(uint ssm, uint raw32) =>
+    private static double DiscreteWord(uint ssm, uint bitfield) => Word(ssm, (float)bitfield);
+
+    /// <summary>A raw low-32 pattern, for the captures that were recorded that way.</summary>
+    private static double RawWord(uint ssm, uint raw32) =>
         (double)(((ulong)ssm << 32) | raw32);
 
     // --- SSM state mapping -------------------------------------------------
@@ -121,16 +125,17 @@ public class Arinc429WordTests
     [Fact]
     public void BitValueOr_reads_set_bit_for_NormalOp_word()
     {
-        // raw32 = 0b101 -> bit 1 and bit 3 (1-based) set, bit 2 clear.
-        var w = new Arinc429Word(WordBits(0b11, 0b101));
+        // bitfield 0b101 -> bit 1 and bit 3 (1-based) set, bit 2 clear.
+        var w = new Arinc429Word(DiscreteWord(0b11, 0b101));
 
         Assert.True(w.BitValueOr(1, false));
+        Assert.True(w.BitValueOr(3, false));
     }
 
     [Fact]
     public void BitValueOr_reads_clear_bit_for_NormalOp_word()
     {
-        var w = new Arinc429Word(WordBits(0b11, 0b101));
+        var w = new Arinc429Word(DiscreteWord(0b11, 0b101));
 
         Assert.False(w.BitValueOr(2, true));
     }
@@ -138,10 +143,90 @@ public class Arinc429WordTests
     [Fact]
     public void BitValueOr_returns_fallback_for_invalid_ssm()
     {
-        var w = new Arinc429Word(WordBits(0b00, 0b101));
+        var w = new Arinc429Word(DiscreteWord(0b00, 0b101));
 
         Assert.True(w.BitValueOr(1, true));
         Assert.False(w.BitValueOr(1, false));
+    }
+
+    [Theory]
+    [InlineData(11)]
+    [InlineData(13)]
+    [InlineData(18)]
+    [InlineData(28)]
+    [InlineData(29)]
+    public void BitValueOr_reads_every_data_bit_alone_and_nothing_else(int bit)
+    {
+        // Pins the numeric reading bit by bit across FBW's data bits (11-29). The raw-bit
+        // reading missed 11, 13, 18 and 29 alone, and read 28 right only because the float
+        // for 2^27 happens to have that exponent bit set — it also "found" 28 for 18 and 29.
+        var w = new Arinc429Word(DiscreteWord(0b11, 1u << (bit - 1)));
+
+        for (int n = 1; n <= 32; n++)
+            Assert.Equal(n == bit, w.BitValueOr(n, false));
+    }
+
+    [Fact]
+    public void BitValueOr_reads_the_widest_span_FBW_uses_exactly()
+    {
+        // Bits 11 and 29 together: the widest span a discrete word carries, still inside a
+        // float's 24-bit significand, so the conversion rounds nothing away.
+        var w = new Arinc429Word(DiscreteWord(0b11, (1u << 10) | (1u << 28)));
+
+        Assert.True(w.BitValueOr(11, false));
+        Assert.True(w.BitValueOr(29, false));
+        Assert.Equal((1u << 10) | (1u << 28), w.DiscreteBits);
+    }
+
+    [Fact]
+    public void The_word_5_capture_at_rest_is_manual_speed_not_a_reversion()
+    {
+        // PRIM FG word 5, measured on a cold parked A380: raw 0x48000000 with SSM Normal
+        // Operation. That is the float 131072 = bit 18, manual_spd_control_active — NOT bits 28
+        // and 31, which is how the raw-bit reading had it ("reversion asserted at rest").
+        var w = new Arinc429Word(RawWord(0b11, 0x48000000));
+
+        Assert.Equal(131072f, w.Value);
+        Assert.True(w.BitValueOr(18, false));
+        Assert.False(w.BitValueOr(28, true));
+        Assert.False(w.BitValueOr(31, true));
+    }
+
+    [Fact]
+    public void The_word_3_capture_in_cruise_is_alt_hold_and_cruise()
+    {
+        // PRIM FG word 3, measured level at FL360 after a step climb: raw 0x4D804000. That is
+        // 2^28 + 2^19 = bits 29 (cruise, the PFD's altIsCrzAlt) and 20 (ALT hold) — level cruise
+        // exactly. The raw-bit reading had it as the constraint qualifier (bit 28) and not bit 29.
+        var w = new Arinc429Word(RawWord(0b11, 0x4D804000));
+
+        Assert.True(w.BitValueOr(29, false));
+        Assert.True(w.BitValueOr(20, false));
+        Assert.False(w.BitValueOr(28, true));
+    }
+
+    [Fact]
+    public void BitValue_reads_a_bit_whatever_the_ssm_says()
+    {
+        // FBW's own bitValue, for the one kind of word whose writer never sets its SSM (the A32NX
+        // FWC word 124 stays Failure Warning for good; the PFD reads CHECK ALT with bitValue).
+        var w = new Arinc429Word(DiscreteWord(0b00, 1u << 23));
+
+        Assert.True(w.BitValue(24));
+        Assert.False(w.BitValue(25));
+        Assert.False(w.BitValueOr(24, false));   // the gated read still refuses it
+    }
+
+    [Theory]
+    [InlineData(-4096f)]
+    [InlineData(float.NaN)]
+    [InlineData(float.PositiveInfinity)]
+    public void A_value_no_discrete_word_carries_reads_no_bits(float payload)
+    {
+        var w = new Arinc429Word(Word(0b11, payload));
+
+        Assert.Equal(0u, w.DiscreteBits);
+        Assert.False(w.BitValueOr(13, false));
     }
 
     // --- ToReadout ---------------------------------------------------------

@@ -87,13 +87,14 @@ public partial class TaxiGuidanceManager
         // RIGHT to come around", contradicting the tone on the exact flight being fixed.
         // Do not remove this conversion.
         double aircraftHeadingMagVar = 0.0,
-        // Whether the route may start held (TaxiRoute.StartHoldRunway). Not while the aircraft is still
-        // on the landing runway, where the hold would stop it: LandingExitPlanner's touchdown route and
-        // RetargetLandingExit's route to another exit pass false; both landing handoff re-routes
-        // (UpdateLandingRollout's and TryEarlyExitHandoff's) pass offRunwayAtHandoff. A false route's
-        // crossings log line reads phase=touchdown. Whatever this says, the pass sets no start hold
-        // while the aircraft stands on any runway's pavement.
-        bool allowStartHold = true)
+        // Whether this route is being adopted FOR THE LANDING ROLLOUT — LandingExitPlanner's
+        // touchdown route, RetargetLandingExit's route to another exit, and both landing-handoff
+        // re-routes. It LABELS the "Route crossings:" log line (phase=touchdown) and does nothing
+        // else: whether the route may start held is now decided by the pass, from the aircraft's own
+        // position and ground speed, which is the whole of PR #238 deferred finding §2. The old
+        // `allowStartHold` bool travelled bool -> "load"/"touchdown" string -> bool, so a fourth
+        // phase or a typo silently disabled start holds with no compile error.
+        bool landingRolloutRoute = false)
     {
         lock (_stateLock)
         {
@@ -178,6 +179,14 @@ public partial class TaxiGuidanceManager
                 // reach the centerlines (TaxiGraph.SnapStartToRunwayCenterline).
                 _graph = TaxiGraph.Build(paths, parking, starts, dataProvider.GetRunways(icao!));
             }
+
+            // Which database this graph belongs to — the runway probe stops trusting it once a
+            // database switch has moved the generation (see _graphGeneration). Stamped only for a
+            // NEW instance: the rollout re-routes hand back `prebuiltGraph: _graph`, the SAME graph,
+            // and restamping it after a database switch mid-rollout would file the previous
+            // database's graph under the new generation. `rollback` (captured at the top of this
+            // method, before _graph was touched) holds the instance that was installed until now.
+            if (!ReferenceEquals(_graph, rollback.Graph)) _graphGeneration = DatabaseGeneration;
 
             if (_graph.Nodes.Count == 0)
                 return "Could not build taxi graph for this airport.";
@@ -488,10 +497,13 @@ public partial class TaxiGuidanceManager
             // we collect a warning to announce alongside the route summary so the
             // pilot knows their explicit pick was a clearance/route mismatch.
             string? runwayHoldShortWarning = null;
+            // Each honoured pick's own recorded event, merged back in by AdoptRoute after the
+            // automatic pass has reset the list (PR #238 deferred finding §7).
+            var userPickEvents = new List<TaxiRouteRunwayEvent>();
             if (userRunwayHoldShorts != null && userRunwayHoldShorts.Count > 0 && taxiwaySequence != null)
             {
                 runwayHoldShortWarning = ApplyUserRunwayHoldShorts(
-                    route, taxiwaySequence, userRunwayHoldShorts, aircraftLat, aircraftLon, allowStartHold);
+                    route, taxiwaySequence, userRunwayHoldShorts, aircraftLat, aircraftLon, userPickEvents);
             }
 
             // Capture the FULL constrained-route length BEFORE TruncateToHoldShort
@@ -618,7 +630,8 @@ public partial class TaxiGuidanceManager
 
             AdoptRoute(
                 route, isRunwayDestination, destinationName,
-                aircraftLat, aircraftLon, phase: allowStartHold ? "load" : "touchdown");
+                aircraftLat, aircraftLon, phase: landingRolloutRoute ? "touchdown" : "load",
+                userPickEvents: userPickEvents);
             _currentSegmentIndex = 0;
             // Cleared for every fresh route; BeginLandingRollout / RetargetLandingExit
             // re-set it true when this is a Landing Exit Planner route.
@@ -825,14 +838,15 @@ public partial class TaxiGuidanceManager
         bool HasLineupTarget,
         bool AutoActivateFired,
         double PostHighSpeedExitMinBearing,
-        TaxiGraph? Graph);
+        TaxiGraph? Graph,
+        long GraphGeneration);
 
     private LoadRouteRollback CaptureLoadRouteRollback() => new(
         _dataProvider, _destinationNodeId, _destinationName, _icao, _originalTaxiwaySequence,
         _preferIlsHold, _backtrackDeparture, _backtrackDepApproachAnnounced, _holdingPointHoldNodeId,
         _isRunwayLineup, _progressiveTerminator, _lineupTargetLat, _lineupTargetLon,
         _lineupHeadingMag, _lineupHeadingTrue, _hasLineupTarget, _autoActivateFired,
-        _postHighSpeedExitMinBearing, _graph);
+        _postHighSpeedExitMinBearing, _graph, _graphGeneration);
 
     private void RestoreLoadRouteRollback(LoadRouteRollback r)
     {
@@ -855,6 +869,7 @@ public partial class TaxiGuidanceManager
         _autoActivateFired = r.AutoActivateFired;
         _postHighSpeedExitMinBearing = r.PostHighSpeedExitMinBearing;
         _graph = r.Graph;
+        _graphGeneration = r.GraphGeneration;
     }
 
     /// <summary>
@@ -1412,7 +1427,8 @@ public partial class TaxiGuidanceManager
         // with every intermediate crossing untagged (PHNL 2026-09-03 — see AdoptRoute). It sits
         // BELOW the no-op guard so a discarded recalc neither re-tags a route nobody adopts nor
         // writes a crossings line claiming it did.
-        AdoptRoute(newRoute, _isRunwayLineup, _destinationName, lat, lon, phase: "recalc");
+        AdoptRoute(newRoute, _isRunwayLineup, _destinationName, lat, lon, phase: "recalc",
+            recalculation: true);
 
         // Re-probe reachability, using the SAME core LoadRoute uses. This must sit BELOW
         // the no-op guard above: the verdict describes `newRoute`, so computing it earlier
@@ -1867,23 +1883,39 @@ public partial class TaxiGuidanceManager
     /// </summary>
     /// <param name="phase">"load", "recalc" or "touchdown" (a route adopted for the landing rollout) — recorded in the log line so they are
     /// separable. The recalc produced no line at all before, which is why it took a segment-
-    /// cursor reset to prove it had even happened. The phase also gates the start hold
-    /// (<see cref="TaxiRoute.StartHoldRunway"/>): only "load" may set one.</param>
+    /// cursor reset to prove it had even happened. It is a LABEL and nothing else: the start hold
+    /// (<see cref="TaxiRoute.StartHoldRunway"/>) is decided by the pass itself, from the aircraft's
+    /// position and <paramref name="recalculation"/> (PR #238 deferred finding §2). The old
+    /// re-derivation (<c>allowStartHold: phase == "load"</c>) made a typo in this string silently
+    /// disable start holds with no compile error.</param>
+    /// <param name="recalculation">True from <see cref="TryRecalculateRoute"/> only: a recalculated
+    /// route never starts held (<see cref="RouteRunwayCrossings.AircraftPosition.MayStartHeld"/>). An
+    /// explicit bool, not the phase string, and not a ground-speed gate — that gate read a speed the
+    /// manager holds at 0 on every fresh Calculate, and sat 1 kt above the off-route threshold, so a
+    /// recalc at 2-3 kt could still start held (PR #243 review).</param>
     private void ApplyAutoHoldShortPasses(
         TaxiRoute route, bool isRunwayDestination, string destinationName,
-        double aircraftLat, double aircraftLon, string phase)
+        double aircraftLat, double aircraftLon, string phase,
+        IReadOnlyList<TaxiRouteRunwayEvent>? userPickEvents = null,
+        bool recalculation = false)
     {
         // Entries and crossings of every runway, one hold each, all recorded on route.RunwayEvents.
-        // The start hold is allowed only when LoadRoute adopts the route: a recalculation is built
-        // from a moving aircraft that may already be committed to the crossing. The aircraft's
-        // position is the route's first point and decides which stops it has already passed.
+        // The aircraft's position is the route's first point and decides which stops it has already
+        // passed; a start hold is refused while it stands within the clear margin of any runway, and
+        // on a recalculation outright — that route is built from an aircraft already committed to
+        // where it is going, and a stop where it stands would land on top of "Route changed".
         if (_graph != null)
         {
             RouteRunwayCrossings.InsertRunwayHoldShorts(
                 route, _graph.RunwayCenterlines,
                 isRunwayDestination ? destinationName : "",
-                allowStartHold: phase == "load",
-                new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon));
+                new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon, MayStartHeld: !recalculation));
+
+            // The pilot's own picks, merged back in: this pass OWNS the event list and resets it, so
+            // a pick it skips — the destination-strip arrival — would otherwise be named nowhere and
+            // stop the pilot at a hold they were never told about (PR #238 §7). De-duplicated by
+            // runway and kind, so a passage the pass did record is not counted twice.
+            RouteRunwayCrossings.MergeUserPickEvents(route, userPickEvents);
         }
 
         // One line per route ADOPTED. Answering "did that route really drive across 08L?" for the
@@ -1926,10 +1958,13 @@ public partial class TaxiGuidanceManager
     /// </summary>
     private void AdoptRoute(
         TaxiRoute route, bool isRunwayDestination, string destinationName,
-        double aircraftLat, double aircraftLon, string phase)
+        double aircraftLat, double aircraftLon, string phase,
+        IReadOnlyList<TaxiRouteRunwayEvent>? userPickEvents = null,
+        bool recalculation = false)
     {
         ApplyAutoHoldShortPasses(
-            route, isRunwayDestination, destinationName, aircraftLat, aircraftLon, phase);
+            route, isRunwayDestination, destinationName, aircraftLat, aircraftLon, phase, userPickEvents,
+            recalculation);
         LogStandBridgeSegments(route, phase);
         // A start-hold sentence belongs to the route it was composed for; a new route composes its own.
         LastRouteStartHoldCue = null;
@@ -1974,7 +2009,7 @@ public partial class TaxiGuidanceManager
         Dictionary<int, string> userRunwayHoldShorts,
         double aircraftLat,
         double aircraftLon,
-        bool allowStartHold)
+        List<TaxiRouteRunwayEvent> placedEvents)
     {
         if (_graph == null) return null;
 
@@ -2057,9 +2092,15 @@ public partial class TaxiGuidanceManager
 
             switch (RouteRunwayCrossings.ApplyUserRunwayHold(
                         route, targetRwy, _graph.RunwayCenterlines, runwayId, runStart,
-                        allowStartHold: allowStartHold,
+                        placed: out var placedEvent,
                         aircraft: new RouteRunwayCrossings.AircraftPosition(aircraftLat, aircraftLon)))
             {
+                // The pick's own event, merged back in after the automatic pass RESETS the list —
+                // without it a pick on the destination strip, whose arrival that pass skips, was
+                // named nowhere at all (PR #238 deferred finding §7).
+                case RouteRunwayCrossings.UserRunwayHoldResult.Held when placedEvent != null:
+                    placedEvents.Add(placedEvent);
+                    break;
                 case RouteRunwayCrossings.UserRunwayHoldResult.NotOnRoute:
                     unmatched.Add($"runway {runwayId} (route does not cross it after taxiway {taxiwayName})");
                     break;

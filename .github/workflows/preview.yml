@@ -128,13 +128,18 @@ jobs:
             echo
             echo "---"
             echo
-            # ChangelogBuilder renders nothing for 'internal' fragments, so a run of
-            # internal-only merges leaves this file empty. Say so in words — a blank
-            # section reads as a broken build.
-            if [ -s fragment-notes.md ]; then
+            # ChangelogBuilder renders no entry for an 'internal' fragment — only a closing
+            # "Also contributed…" line crediting its people — so a run of internal-only
+            # merges leaves no section heading. Say so in words (a blank section reads as a
+            # broken build) and keep that credit line under the sentence.
+            if grep -q '^## ' fragment-notes.md; then
               cat fragment-notes.md
             else
               echo "No user-facing changes since ${SINCE} yet; this preview contains internal changes only."
+              if [ -s fragment-notes.md ]; then
+                echo
+                cat fragment-notes.md
+              fi
             fi
           } > preview-notes.md
           echo "--- preview notes ---"

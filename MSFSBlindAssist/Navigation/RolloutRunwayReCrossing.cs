@@ -49,12 +49,69 @@ public static class RolloutRunwayReCrossing
         IReadOnlyList<TaxiRouteSegment>? segments,
         int fromSegmentIndex,
         TaxiGraph.RunwayCenterline? runway)
+        => RouteReCrossesRunway(segments, fromSegmentIndex, runway, aircraft: null);
+
+    /// <summary>
+    /// As above, with the aircraft as the route's first point while it has not rolled 10 m along
+    /// the segments being judged (<see cref="RunwayRouteClassifier.NodesFrom"/>'s position
+    /// overload — the SAME rule the automatic hold pass uses, which is the point of the overload).
+    ///
+    /// <para>PR #238 deferred finding §1. Without the aircraft, the node list starts at
+    /// <c>segments[fromSegmentIndex].FromNode</c> — the node BEHIND the aircraft — and the
+    /// classifier emits nothing at all when that node is already on the runway. The A* anchor
+    /// routinely IS on the pavement while the aircraft is on or beside the landing runway (the
+    /// KATL fixture's B1 sits about 2.5 m from the 26R centreline), so a first edge straight to
+    /// the far side produced no passage, the guard returned false and the re-crossing handoff was
+    /// accepted — the very KATL 26R failure this guard exists to refuse.</para>
+    ///
+    /// <para>An aircraft still ON the pavement prepends a node on the runway, so the route starts
+    /// on it and vacates: nothing is reported, exactly as before. That is the KORD 10R W5 end-exit
+    /// case, and it must stay that way.</para>
+    /// </summary>
+    public static bool RouteReCrossesRunway(
+        IReadOnlyList<TaxiRouteSegment>? segments,
+        int fromSegmentIndex,
+        TaxiGraph.RunwayCenterline? runway,
+        RouteRunwayCrossings.AircraftPosition? aircraft)
     {
         if (segments is null || runway is null) return false;
         if (fromSegmentIndex < 0 || fromSegmentIndex >= segments.Count) return false;
 
-        var nodes = RunwayRouteClassifier.NodesFrom(segments, fromSegmentIndex);
-        return RunwayRouteClassifier.Classify(nodes, RunwayShape.For(runway)).Count > 0;
+        var shape = RunwayShape.For(runway);
+        var nodes = RunwayRouteClassifier.NodesFrom(segments, fromSegmentIndex, aircraft, out bool prepended);
+        foreach (var passage in RunwayRouteClassifier.Classify(nodes, shape))
+        {
+            if (prepended && IsAnchorBehindClearAircraft(passage, nodes, shape)) continue;
+            return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// True for the one passage the prepend can invent: the aircraft is already clear of the runway,
+    /// the route's anchor node — its only on-pavement node — is the node the aircraft has just left,
+    /// and the route is clear again at the next node. Judged by DIRECTION: the aircraft lies ahead of
+    /// the anchor along the anchor→next edge, so the leg back to the anchor is history, not a route
+    /// onto the runway. A 90° exit whose junction node sits inside the pavement is this shape on
+    /// every vacate once the aircraft is laterally clear, and refusing it concluded guidance with
+    /// "Stop and hold position" on a hand-off that used to proceed (PR #243 review). A route whose
+    /// anchor is AHEAD of the aircraft, or that goes on across the runway, is still refused.
+    /// </summary>
+    private static bool IsAnchorBehindClearAircraft(
+        RunwayPassage passage, IReadOnlyList<TaxiNode?> nodes, RunwayShape shape)
+    {
+        if (passage.Kind != RunwayEventKind.Entry) return false;
+        if (passage.EntryIndex != 0 || passage.FirstOnIndex != 1 || passage.ExitIndex != 2) return false;
+        if (nodes.Count < 3 || nodes[0] is not { } aircraft || nodes[1] is not { } anchor || nodes[2] is not { } next)
+            return false;
+
+        // In the runway's own (along, lateral) frame, which is planar enough for a direction test.
+        var a = shape.Project(aircraft.Latitude, aircraft.Longitude);
+        var p = shape.Project(anchor.Latitude, anchor.Longitude);
+        var n = shape.Project(next.Latitude, next.Longitude);
+        double ex = n.Along - p.Along, ey = n.Lateral - p.Lateral;      // the exit's own direction
+        double vx = a.Along - p.Along, vy = a.Lateral - p.Lateral;      // anchor → aircraft
+        return ex * vx + ey * vy > 0.0;                                  // aircraft is ahead of the anchor
     }
 
     /// <summary>
@@ -153,6 +210,28 @@ public static class RolloutRunwayReCrossing
         if (slowDown) s += " Slow down.";
         if (!string.IsNullOrWhiteSpace(turnPhrase)) s += $" {turnPhrase.Trim()} now.";
         return s;
+    }
+
+    /// <summary>
+    /// What the declining frame says: whether to speak <see cref="ComposeDeclineUtterance"/> at all, and whether
+    /// to fold the turn-now cue into it (inside the turn-now distance, with turn-now not yet said).
+    ///
+    /// <para>Inside the turn-now distance at a speed the exit cannot be taken at
+    /// (<c>RolloutExitGate.IsTooFastToTurn</c>) it says NOTHING. That turn point belongs to the too-fast rule,
+    /// which moves the pilot on to a later exit or says "too fast to turn": folded here, "Continue rolling to
+    /// taxiway X, 140 feet ahead. Turn right now." at 45 kt bypassed it, and the tone led a turn the pilot
+    /// could not make. Silent, and unlatched: the turn-now block speaks the too-fast outcome on a following
+    /// frame, and the decline speaks once the aircraft is slow enough - the premise it exists to state (the
+    /// exit is still ahead; keep rolling to it) is true again only then. That holds after the too-fast rule
+    /// has spoken as well, when "Continue rolling to taxiway X" would invite an exit just declined and would
+    /// cut the too-fast warning off.</para>
+    /// </summary>
+    public static (bool Speak, bool FoldTurnNow) PlanDeclineSpeech(
+        bool turnNowSpoken, double distanceAheadFeet, double turnNowFeet, bool tooFastToTurn)
+    {
+        bool insideTurnNow = distanceAheadFeet <= turnNowFeet;
+        if (insideTurnNow && tooFastToTurn) return (false, false);
+        return (true, insideTurnNow && !turnNowSpoken);
     }
 
     /// <summary>

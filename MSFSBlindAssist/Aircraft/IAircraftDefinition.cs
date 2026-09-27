@@ -244,6 +244,10 @@ public interface IAircraftDefinition
     /// </summary>
     void OnPanelButtonFired(string varKey, SimConnect.SimConnectManager simConnect, Accessibility.ScreenReaderAnnouncer announcer);
 
+    /// <summary>Called just before a panel Event-type button's event is sent, so an aircraft can arm
+    /// anything that must be in place before the sim can answer (the FCU value echo).</summary>
+    void OnPanelButtonFiring(string varKey);
+
     /// <summary>
     /// Called once after a panel is built/shown, so an aircraft with a multi-page
     /// status box (driven by a page combo) can populate the box with the combo's
@@ -260,6 +264,18 @@ public interface IAircraftDefinition
     /// </summary>
     bool TryGetDisplayOverride(string varKey, double value, out string displayText);
 
+    /// <summary>
+    /// Lets an aircraft compose the SPOKEN STATE of a panel control (a button's label suffix or a
+    /// read-only status row's text) from several variables it reads itself — the TFDi MD-11's
+    /// legend lamps plus latching var plus DC-power gate. Return true and set
+    /// <paramref name="stateText"/> ("On", "Available, On", "unpowered"); return false to fall
+    /// through to the StateVariable / ValueDescriptions labelling. Called on the UI thread when a
+    /// panel is built and whenever a key in the control's
+    /// <see cref="SimConnect.SimVarDefinition.StateVariables"/> updates; must read cached values
+    /// only, never request.
+    /// </summary>
+    bool TryDescribeControlState(string varKey, out string stateText);
+
     // Variable Update Processing
 
     /// <summary>
@@ -273,6 +289,29 @@ public interface IAircraftDefinition
     /// <param name="announcer">Screen reader announcer for user feedback</param>
     /// <returns>True if the update was fully processed and no further generic processing needed, false otherwise</returns>
     bool ProcessSimVarUpdate(string varName, double value, Accessibility.ScreenReaderAnnouncer announcer);
+
+    /// <summary>
+    /// True when <see cref="ProcessSimVarUpdate"/> for <paramref name="varName"/> speaks a call-out that
+    /// ANOTHER Ctrl+M row owns. MainForm's mute wrap (<see cref="Services.DefAnnounceMuteSets"/>)
+    /// skips such a variable: applied there, muting this variable's row would also silence the
+    /// other row's call-out. Its branch checks each call-out's own row itself, and anything the
+    /// variable says for ITSELF either falls through to the generic monitor, which checks this row
+    /// after the return, or checks it locally. Only the mute half of the wrap is skipped; the
+    /// UI-echo half still applies.
+    /// </summary>
+    bool IsMuteWrapExempt(string varName);
+
+    /// <summary>
+    /// The per-SIM_FRAME airspeed feed of this aircraft's take-off roll callouts
+    /// (<see cref="TakeoffVSpeedCallouts"/>), or null when it has none. MainForm pauses that one
+    /// subscription while <see cref="TakeoffCalloutFeedNeeded"/> is false and resumes it when it turns
+    /// true again, checked after every delivery of the feed and of <c>SIM_ON_GROUND</c>.
+    /// </summary>
+    string? TakeoffCalloutFeedKey { get; }
+
+    /// <summary>Whether the callouts need the feed now — on the ground, or on a roll still armed
+    /// (<see cref="TakeoffVSpeedCallouts.NeedsSamples"/>). Meaningless without a feed key.</summary>
+    bool TakeoffCalloutFeedNeeded { get; }
 
     // UI Variable Setting (Panel Controls)
 
@@ -319,12 +358,79 @@ public interface IAircraftDefinition
     ///
     /// ⚠️ A definition that adds a tracker gated on a "not yet seen" sentinel — a -1, a
     /// bool?, a _prev*/_last* consulted before announcing, a ??= latch, an absent-key
-    /// check on a Dictionary — MUST reset it here. This list is maintained BY HAND, not
+    /// check on a Dictionary — MUST reset it. This list is maintained BY HAND, not
     /// generated: two separate review sweeps of FlyByWireA380Definition/
     /// FlyByWireA320Definition have each found it incomplete, so it is only ever as
     /// complete as the last person who remembered to extend it when they added a tracker.
+    /// ⚠️ But reset it in <see cref="OnSimContextReset"/>, not here: this runs on the Connected
+    /// branch AFTER the reconnect's first batch has re-fired every variable, so a sentinel reset
+    /// here eats the next real change (see OnSimContextReset). What belongs here is what must not
+    /// survive into the new session whatever the ordering — latches, pending timers, an armed
+    /// state machine.
     /// </summary>
     void ResetAnnouncementBaselines();
+
+    /// <summary>
+    /// The values about to arrive describe a DIFFERENT situation from the ones before: the
+    /// simulator connection has just dropped (SimConnectManager.ConnectionLost, raised on every
+    /// drop — never on a failed connection attempt), or a flight or aircraft has just been
+    /// loaded (the AircraftLoaded system event, which fires before the new aircraft's variables
+    /// settle). This — not <see cref="ResetAnnouncementBaselines"/> — is
+    /// where a baseline-first tracker (a "not yet seen" sentinel, a first-sample seed) is wiped,
+    /// so the next delivery of each variable re-seeds it silently and the change AFTER that
+    /// speaks. Ordering is the whole point: after a reconnect the cache is cleared, so every
+    /// variable re-fires once into ProcessSimVarUpdate, and that first delivery lands BEFORE the
+    /// Connected branch calls ResetAnnouncementBaselines; a tracker wiped there loses the
+    /// baseline it has just taken and eats the NEXT real change as its baseline — on the MD-11
+    /// that was the first master caution, the first COM tune, the first altimeter wind and the
+    /// pilot's first perf entry of every reconnected session (found 2026-09-08). The base
+    /// (BaseAircraftDefinition) starts the FCU hardware-dial announcer's settle here (a drop then
+    /// upgrades it through <see cref="OnVariableCacheCleared"/>), so an override on an aircraft that
+    /// uses AnnounceFcuValue must call base; otherwise definitions with no such trackers need not
+    /// override it. ⚠️ The two callers differ: a
+    /// disconnect clears the cache, so the reconnect re-fires EVERY variable and a wiped tracker
+    /// re-seeds on delivery; a flight load clears nothing and the batch fires only on a CHANGED
+    /// value, so a tracker wiped for it must be re-seeded from the cache once the values have
+    /// settled (the MD-11's SeedFromCache, released by its Md11SeedGate on the batch deliveries'
+    /// evidence — a full cycle, a change of the aircraft's own, then quiet — through
+    /// <see cref="OnContinuousBatchDelivered"/>;
+    /// never a wall clock) or the wipe eats its first change.
+    ///
+    /// ⚠️ Both halves of that ordering are shared code, so the finding APPLIES to the FBW and
+    /// iFly definitions too: each sentinel they reset in ResetAnnouncementBaselines eats its
+    /// first post-reconnect change (a COM tune, a baro wind, a squawk, a thrust detent…). Only
+    /// the per-tracker consequences are unreviewed; moving those resets here is the fix.
+    /// </summary>
+    void OnSimContextReset();
+
+    /// <summary>
+    /// The SimConnect variable cache was cleared on a connection drop, so the reconnect re-fires every
+    /// variable. Called right after <see cref="OnSimContextReset"/> by MainForm.OnConnectionLost. The base
+    /// makes the FCU callouts' settle treat that re-fire as the aircraft publishing (Md11SeedGate's rule).
+    /// </summary>
+    void OnVariableCacheCleared();
+
+    /// <summary>
+    /// A continuous batch has finished dispatching: every SimVarUpdated it carried has reached
+    /// ProcessSimVarUpdate, whether or not anything in it moved. Raised on the UI thread after
+    /// that batch's updates, for every delivery the UI thread can vouch for — MainForm skips one
+    /// it would be servicing off-thread or with updates still queued, and the next delivery of
+    /// that batch is a period later — so it is evidence that the cache is current for a sample,
+    /// not a guarantee of one call per period. The MD-11's context-reset seed pass waits on a
+    /// full cycle of these and on the deliveries going quiet (Md11SeedGate);
+    /// <see cref="DeferredFlushWatchVariable"/> is the narrower "the batch carrying THIS
+    /// variable arrived" form. The base counts the delivery toward the FCU hardware-dial announcer's
+    /// settle and speaks the FCU callouts staged while this batch dispatched (a callout is judged on
+    /// the whole sample, with the FCU health var wherever it sorts in the batch), so an override on an
+    /// aircraft that uses AnnounceFcuValue must call base.
+    /// </summary>
+    void OnContinuousBatchDelivered(int batchNum);
+
+    /// <summary>
+    /// An event SimConnectManager queued while the calc-path probe was pending has just been sent
+    /// (SimConnectManager.QueuedEventDispatched). Default (base): restart that event's FCU echo window.
+    /// </summary>
+    void OnQueuedEventDispatched(string eventName);
 
     /// <summary>
     /// The monitored variable whose continuous-batch delivery completes an announcement this
@@ -388,4 +494,12 @@ public interface IAircraftDefinition
     /// the same one-condition-one-call-out rule as the PB-light/ECAM-memo invariant.
     /// </summary>
     bool HasOwnIcingAnnouncer { get; }
+
+    /// <summary>
+    /// Null when this aircraft's COM 1 takes the stock tuning events (COM_STBY_RADIO_SET_HZ,
+    /// COM1_RADIO_SWAP) the surroundings window's Frequencies list sends on Enter / Shift+Enter;
+    /// otherwise the sentence to speak INSTEAD of sending them. The FBW A380 ignores them
+    /// (live-verified: its radios tune only through the RMP).
+    /// </summary>
+    string? StockComTuningRefusal { get; }
 }

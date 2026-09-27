@@ -77,8 +77,15 @@
       .replace(/\s*\((active|called|selected|current page|expanded|collapsed)\)\s*$/i, "")
       .replace(/:\s*(placed|not placed)\s*$/i, "");
   }
+  // An element may carry an EXPLICIT key, stamped by the agent that knows which part of its label
+  // is state (the MD-11 reader keys "GPU: Connect" / "GPU: Disconnect" as "tile:GPU"). The key wins
+  // over the label. Never use a text heuristic instead: an after-colon strip once keyed the ATC
+  // page's "UNICOM 122.800: Set Active" and "...: Set Standby" alike, held apart only by DOM order.
+  // With no key, the rule above applies. Mirrors keyOf in FbwEfbForm.cs, whose rk() plays the part
+  // of kind|controlType here.
   function keyOf(e){
-    return e.kind + "|" + (e.controlType || "") + "|" + baseLabel(e.text);
+    var kind = e.kind + "|" + (e.controlType || "");
+    return (typeof e.key === "string" && e.key) ? kind + "|k:" + e.key : kind + "|" + baseLabel(e.text);
   }
 
   function buildEl(e){

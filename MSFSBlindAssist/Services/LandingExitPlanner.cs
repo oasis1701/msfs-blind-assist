@@ -154,6 +154,21 @@ public class LandingExitPlanner
     }
 
     /// <summary>
+    /// A go-around or touch-and-go ended the guidance this plan started (<see cref="LandingExitGoAround"/>): the
+    /// plan is armed again, so the next touchdown starts guidance as the first one did. The aircraft is
+    /// airborne, so the touchdown edge is armed too. The "runway not identified" latch stays - it is once per
+    /// plan, and the plan is the same. True when there is a plan to keep.
+    /// </summary>
+    public bool RearmAfterGoAround()
+    {
+        DiagLog($"RearmAfterGoAround HasPendingExit={HasPendingExit} _activatedThisLanding={_activatedThisLanding}");
+        if (!HasPendingExit) return false;
+        _activatedThisLanding = false;
+        _wasAirborne = true;
+        return true;
+    }
+
+    /// <summary>
     /// Feeds the airborne/on-ground state. Call on every SIM_ON_GROUND update (or,
     /// equivalently, whenever a position update arrives and the ground bit is known).
     /// Returns true if this call triggered guidance activation.
@@ -383,8 +398,9 @@ public class LandingExitPlanner
             isRunwayDestination: false,
             prebuiltGraph: _graph,
             announceSummary: false,
-            // The aircraft is still rolling at landing speed: this route never starts held.
-            allowStartHold: false);
+            // The aircraft is still rolling at landing speed, so the pass sets no start hold; this
+            // labels the crossings log line phase=touchdown.
+            landingRolloutRoute: true);
 
         if (error != null)
         {

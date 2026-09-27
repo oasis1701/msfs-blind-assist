@@ -13136,6 +13136,12 @@ public class FenixA320Definition : BaseAircraftDefinition
             announcer.Announce($"Error executing {displayName}");
         }
     }
+    /// <summary>
+    /// No camera move: this aircraft's instrument view indices are unmeasured, so every read
+    /// captures the current view (FenixA320DisplayReads).
+    /// </summary>
+    protected override IReadOnlyList<AiDisplayRead> DisplayReads => FenixA320DisplayReads.All;
+
 
     /// <summary>
     /// Handle hotkey actions for Fenix A320 (including AI display reading).
@@ -13149,25 +13155,8 @@ public class FenixA320Definition : BaseAircraftDefinition
         // Handle display reading actions
         switch (action)
         {
-            case HotkeyAction.ReadDisplayPFD:
-                ReadDisplay(Services.GeminiService.DisplayType.PFD, "PFD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayLowerECAM:
-                ReadDisplay(Services.GeminiService.DisplayType.LowerECAM, "SD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayUpperECAM:
-                ReadDisplay(Services.GeminiService.DisplayType.UpperECAM, "E/WD", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayND:
-                ReadDisplay(Services.GeminiService.DisplayType.ND, "ND", announcer, parentForm);
-                return true;
-
-            case HotkeyAction.ReadDisplayISIS:
-                ReadDisplay(Services.GeminiService.DisplayType.ISIS, "ISIS", announcer, parentForm);
-                return true;
+            // Alt+P / Alt+N / Alt+E / Alt+S / Alt+I are dispatched from FenixA320DisplayReads by
+            // the base. No camera move: this aircraft's instrument view indices are unmeasured.
 
             // FCU knob push/pull actions (use increment/decrement, not button transitions)
             case HotkeyAction.FCUHeadingPush:

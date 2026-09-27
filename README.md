@@ -43,7 +43,7 @@ Full accessibility support for the free FlyByWire A32NX.
 - The PFD, ND, ISIS and System Display pages are read through the accessible panel status boxes; the E/WD also opens as a pop-out window (Alt+E).
 - All FCU controls accessible, with dedicated value-entry windows (speed, heading, altitude, V/S, autopilot, altimeter) and knob push/pull.
 - Fuel, payload, weight and balance details fully supported.
-- MCDU accessible directly through FBW's SimBridge for full FMS programming.
+- MCDU accessible straight from the aircraft's own display for full FMS programming (FBW's SimBridge is optional: used for printouts, and as a fallback).
 - Accessible **DCDU (CPDLC datalink) window**, opened with Ctrl+Shift+D: read ATC uplinks and answer them — WILCO, STANDBY, UNABLE, and the real two-step send — with any FBW ACARS provider (Hoppie, SayIntentions, BeyondATC).
 - Spoken **TCAS guidance**: traffic and resolution advisories announce as they happen, including the "what to fly" vertical-speed instruction during a resolution advisory.
 - Accessible flyPad EFB (Electronic Flight Bag), opened with Shift+T: the live flyPad tablet is rendered as a browsable document you read and operate with your screen reader — Dashboard, Ground Services, Payload, Fuel, Settings, Navigraph, Checklists and more. (This supersedes the old mouse-coordinate workaround — the EFB is now fully accessible.)
