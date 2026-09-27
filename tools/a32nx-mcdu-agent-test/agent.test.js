@@ -61,23 +61,35 @@ function install(opts) {
   const instrument = {
     legacyFms: o.fms,
     hEventPublisher: o.noPublisher ? undefined : { dispatchHEvent: (name) => dispatched.push(['dispatchHEvent', name]) },
-    bus: o.noBus ? undefined : { pub: (topic, name, sync) => dispatched.push(['bus.pub', topic, name, sync]) },
+    bus: o.noBus ? undefined : { pub: (topic, name, sync, isCached) => dispatched.push(['bus.pub', topic, name, sync, isCached]) },
   };
   const el = o.fms ? { fsInstrument: instrument } : null;
   const simVars = {
     'L:A32NX_ELEC_AC_ESS_SHED_BUS_IS_POWERED': o.powered1,
     'L:A32NX_ELEC_AC_2_BUS_IS_POWERED': o.powered2,
   };
-  const window = {};
+  const writes = [];
   const sandbox = {
-    window,
     document: { querySelector: (sel) => (sel === o.element ? el : null) },
-    SimVar: { GetSimVarValue: (name) => simVars[name] },
+    SimVar: {
+      GetSimVarValue: (name) => simVars[name],
+      SetSimVarValue: (name, unit, value) => { writes.push([name, unit, value]); return Promise.resolve(); },
+    },
     JSON, Object, String,
   };
+  // As in the MCDU page, window IS the global object: the app's scripts name the agent both
+  // as window.__MSFSBA_A32NX_MCDU and as a bare global.
+  sandbox.window = sandbox;
   const marker = vm.runInNewContext(source, sandbox);
-  return { marker, agent: window.__MSFSBA_A32NX_MCDU, dispatched };
+  // Evaluate a script the app sends (Runtime.evaluate) in the same page; returns its value.
+  const run = (script) => vm.runInContext(script, sandbox);
+  return { marker, agent: sandbox.__MSFSBA_A32NX_MCDU, dispatched, writes, run };
 }
+
+// The script the app sends for one key press (CoherentA32nxMcduClient.BuildPressExpression),
+// pinned byte-for-byte by the xUnit suite. Executing it here checks it as JavaScript.
+const PRESS_DIV = fs.readFileSync(
+  path.join(__dirname, '..', '..', 'tests', 'MSFSBlindAssist.Tests', 'Fixtures', 'a32nx-mcdu-press-DIV.js'), 'utf8');
 
 test('installs itself on window and returns the marker the C# client looks for', () => {
   const { marker, agent } = install();
@@ -127,6 +139,27 @@ test('no page counter when the page has no pages', () => {
   assert.strictEqual(JSON.parse(agent.read()).content.left.page, '');
 });
 
+test('read() reports not-ready when the display fields it rebuilds the screen from are missing', () => {
+  // If an FBW update moves these fields while legacyFms stays, read() must not answer ok:true
+  // with a blank screen: that keeps Coherent "readable", so the window shows an empty MCDU
+  // labelled Connected while SimBridge — whose payload FBW maintains — is never used.
+  for (const missing of ['_labels', '_lines', 'scratchpadDisplay']) {
+    const fms = makeFms();
+    delete fms[missing];
+    const { agent } = install({ fms });
+    assert.strictEqual(JSON.parse(agent.read()).ok, false, missing);
+  }
+});
+
+test('read() stays ok while the page has no title yet', () => {
+  // FBW leaves _title undefined until the first setTitle — that is a loading page, not a
+  // missing field.
+  const fms = makeFms();
+  fms._title = undefined;
+  const { agent } = install({ fms });
+  assert.strictEqual(JSON.parse(agent.read()).ok, true);
+});
+
 test('read() reports not-ready, never throws, while the instrument is absent', () => {
   const { agent } = install({ fms: null });
   const body = JSON.parse(agent.read());
@@ -154,7 +187,10 @@ test('press() dispatches the Captain H-event through the instrument\'s own publi
 test('press() falls back to a bus publish, then to onEvent, and names what it used', () => {
   const viaBus = install({ noPublisher: true });
   assert.strictEqual(viaBus.agent.press('L1'), 'bus.pub');
-  assert.deepStrictEqual(viaBus.dispatched, [['bus.pub', 'hEvent', 'A320_Neo_CDU_1_BTN_L1', true]]);
+  // Exactly what HEventPublisher.dispatchHEvent publishes: sync false, isCached false. Synced,
+  // the key would be broadcast to every other instrument; cached, it would be replayed to any
+  // hEvent subscriber that subscribes later — a phantom key press.
+  assert.deepStrictEqual(viaBus.dispatched, [['bus.pub', 'hEvent', 'A320_Neo_CDU_1_BTN_L1', false, false]]);
 
   const fms = makeFms();
   const seen = [];
@@ -162,6 +198,34 @@ test('press() falls back to a bus publish, then to onEvent, and names what it us
   const direct = install({ fms, noPublisher: true, noBus: true });
   assert.strictEqual(direct.agent.press('CLR'), 'onEvent');
   assert.deepStrictEqual(seen, ['1_BTN_CLR']);
+});
+
+test('the app\'s press script presses the key and then clicks the cockpit key under its model name', () => {
+  // FBW's relay handler sets L:A32NX_MCDU_PUSH_ANIM_<n>_<key> on every press — the key's
+  // animation and its click. The script sets it at its TOP LEVEL (Coherent drops a write made
+  // from inside a stored agent function), and "/" (H-event DIV) animates as SLASH.
+  const { run, dispatched, writes } = install();
+  assert.strictEqual(run(PRESS_DIV), 'dispatchHEvent');
+  assert.deepStrictEqual(dispatched, [['dispatchHEvent', 'A320_Neo_CDU_1_BTN_DIV']]);
+  assert.deepStrictEqual(writes, [['L:A32NX_MCDU_PUSH_ANIM_1_SLASH', 'Number', 1]]);
+});
+
+test('the press script clicks nothing when the instrument did not take the key', () => {
+  const noPath = install({ noPublisher: true, noBus: true, fms: Object.assign(makeFms(), { onEvent: undefined }) });
+  assert.strictEqual(noPath.run(PRESS_DIV), 'no-dispatch-path');
+  assert.deepStrictEqual(noPath.writes, []);
+
+  const noInstrument = install({ fms: null });
+  assert.strictEqual(noInstrument.run(PRESS_DIV), 'no-instrument');
+  assert.deepStrictEqual(noInstrument.writes, []);
+});
+
+test('the press script answers no-agent, and clicks nothing, on a page that lost the agent', () => {
+  const { run, writes, agent } = install();
+  delete agent.press;                        // stand-in for a page re-evaluated without the agent
+  run('window.__MSFSBA_A32NX_MCDU = undefined;');
+  assert.strictEqual(run(PRESS_DIV), 'no-agent');
+  assert.deepStrictEqual(writes, []);
 });
 
 test('press() with no instrument reports it instead of throwing', () => {

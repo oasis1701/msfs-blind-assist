@@ -64,9 +64,29 @@ namespace MSFSBlindAssist.SimConnect
         public static bool IsUndeliveredKey(string result) =>
             result == NoSocket || result == NoAgent || result == "no-instrument" || result == "no-dispatch-path";
 
+        /// <summary>The results the agent's press() gives when the instrument took the key.</summary>
+        internal static readonly string[] DeliveredPaths = { "dispatchHEvent", "bus.pub", "onEvent" };
+
         /// <summary>True when a SendKeyAsync result names the dispatch path that delivered the key.</summary>
-        public static bool IsDeliveredKey(string result) =>
-            result == "dispatchHEvent" || result == "bus.pub" || result == "onEvent";
+        public static bool IsDeliveredKey(string result) => Array.IndexOf(DeliveredPaths, result) >= 0;
+
+        /// <summary>
+        /// The Runtime.evaluate script for one key press. The agent presses the key; then, only
+        /// if the instrument took it, the cockpit key's push-animation variable is set
+        /// (<see cref="FbwMcduKeyAnimation"/>) — as FBW's own relay handler does, which also plays
+        /// the key's click. The write is a TOP-LEVEL statement of this script, never inside the
+        /// agent: Coherent silently drops a SetSimVarValue made from a stored agent function, while
+        /// the same call at the top level of an evaluate writes (docs/flypad.md). It is wrapped so
+        /// a failed write can never turn a delivered press into an unanswered one. The script's
+        /// value is the press result.
+        /// </summary>
+        internal static string BuildPressExpression(string key)
+        {
+            string delivered = string.Join(" || ", DeliveredPaths.Select(p => $"__msfsbaMcduKey === '{p}'"));
+            return $"var __msfsbaMcduKey = window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.press(\"{key}\") : '{NoAgent}';"
+                 + $" if ({delivered}) {{ try {{ SimVar.SetSimVarValue(\"{FbwMcduKeyAnimation.VarFor(key)}\", \"Number\", 1); }} catch (e) {{ }} }}"
+                 + " __msfsbaMcduKey;";
+        }
 
         /// <summary>The Captain screen changed (posted to the UI context).</summary>
         public event Action<MCDUDisplayData>? DisplayUpdated;
@@ -186,7 +206,7 @@ namespace MSFSBlindAssist.SimConnect
                 return InvalidKey;
             }
             int generation = _wsGeneration;
-            var (sent, result) = await EvalCoreAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.press(\"{key}\") : '{NoAgent}'", _loopToken);
+            var (sent, result) = await EvalCoreAsync(BuildPressExpression(key), _loopToken);
             if (!sent)
             {
                 // The expression never left (no open socket, or the send threw): the page cannot

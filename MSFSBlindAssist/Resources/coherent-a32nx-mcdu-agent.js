@@ -120,6 +120,15 @@
     try {
       var fms = A.fms();
       if (!fms) return JSON.stringify({ ok: false, error: "MCDU not ready" });
+      // The fields the screen is rebuilt from. If an FBW update moves them while legacyFms
+      // stays, answer not-ready rather than a confident blank screen: ok:true would keep
+      // Coherent "readable", so the window would show an empty MCDU labelled Connected while
+      // SimBridge (whose payload FBW maintains) stayed unused. _title is not checked: FBW
+      // leaves it undefined until the first setTitle.
+      if (!Array.isArray(fms._labels) || !Array.isArray(fms._lines) ||
+          !fms.scratchpadDisplay || typeof fms.scratchpadDisplay.getText !== "function") {
+        return JSON.stringify({ ok: false, error: "MCDU display fields missing" });
+      }
 
       var mcdu1Powered = isTrue(simVar("L:A32NX_ELEC_AC_ESS_SHED_BUS_IS_POWERED", "bool"));
       var mcdu2Powered = isTrue(simVar("L:A32NX_ELEC_AC_2_BUS_IS_POWERED", "bool"));
@@ -153,8 +162,10 @@
       var pub = inst.hEventPublisher;
       if (pub && typeof pub.dispatchHEvent === "function") { pub.dispatchHEvent(name); return "dispatchHEvent"; }
 
+      // Exactly as dispatchHEvent publishes: not synced to other instruments, not cached (a
+      // cached key would be replayed to any hEvent subscriber that subscribes later).
       var bus = inst.bus;
-      if (bus && typeof bus.pub === "function") { bus.pub("hEvent", name, true); return "bus.pub"; }
+      if (bus && typeof bus.pub === "function") { bus.pub("hEvent", name, false, false); return "bus.pub"; }
 
       var fms = inst.legacyFms;
       if (fms && typeof fms.onEvent === "function") { fms.onEvent("1_BTN_" + key); return "onEvent"; }
