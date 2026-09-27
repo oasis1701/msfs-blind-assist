@@ -1,0 +1,7 @@
+{
+  "name": "a32nx-mcdu-agent-test",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Regression tests for the FlyByWire A32NX MCDU in-page agent (MSFSBlindAssist/Resources/coherent-a32nx-mcdu-agent.js): its read() must rebuild FBW's own sendUpdate() relay payload field for field, and press() must reach the instrument's H-event bus.",
+  "scripts": { "test": "node --test" }
+}

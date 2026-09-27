@@ -87,6 +87,19 @@ public partial class MainForm
         currentAircraft?.OnQueuedEventDispatched(eventName);
     }
 
+    /// <summary>
+    /// Pause the take-off callouts' per-frame airspeed feed while the aircraft does not need it
+    /// (airborne, no roll armed) and resume it when it does (touchdown) — judged after each delivery of
+    /// the feed and of SIM_ON_GROUND, the only two things that change the answer. The manager ignores a
+    /// call that changes nothing, so this costs a dictionary lookup per frame while the feed runs.
+    /// </summary>
+    private void UpdateTakeoffCalloutFeed(string varName)
+    {
+        string? feed = currentAircraft?.TakeoffCalloutFeedKey;
+        if (feed == null || (varName != feed && varName != "SIM_ON_GROUND")) return;
+        simConnectManager?.SetSimFrameSubscriptionActive(feed, currentAircraft!.TakeoffCalloutFeedNeeded);
+    }
+
     private void OnSimVarUpdated(object? sender, SimVarUpdateEventArgs e)
     {
         if (InvokeRequired)
@@ -173,41 +186,19 @@ public partial class MainForm
         // Step 2.5: Allow aircraft-specific variable processing (e.g., FCU display combining)
         // This lets each aircraft handle complex variables before generic processing.
         //
-        // The HS787 auto-announces ~100 of its vars from INSIDE ProcessSimVarUpdate, which returns
-        // true and exits this method (line below) BEFORE reaching either the generic disabled-monitor
-        // gate OR the generic _uiSetEcho gate further down. So two suppressions that work for every
-        // other aircraft (which announce on the generic path) silently never fire on the 787:
-        //   (1) monitor-manager mute (Ctrl+M),
-        //   (2) UI-set echo — don't re-announce a value the user JUST set via a combo (the screen
-        //       reader already spoke the combo selection).
-        // Both are fixed here the same way: ProcessSimVarUpdate auto-announces ONLY via the
-        // suppressible announcer.Announce(...) (its AnnounceImmediate calls are all hotkey readouts),
-        // so suppress the announcer just for this var's processing — the per-branch state/baseline
-        // updates still run, only the speech is dropped.
-        bool hs787 = currentAircraft!.AircraftCode == "HS_787";
-        bool hs787Muted = hs787 &&
-            Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName);
-        // Same silent-no-op class for the A32NX family: the A320 (EFIS baro) and the
-        // Headwind A330 (stock-Kohlsman altimeter) announce those vars from INSIDE
-        // ProcessSimVarUpdate, which returns true and exits before the generic
-        // A32NXDisabledMonitorVariables gate below — so a Ctrl+M un-tick never muted
-        // them. Suppress right here, exactly like the HS787.
-        bool a32nxMuted = (currentAircraft.AircraftCode == "A320" || currentAircraft.AircraftCode == "HW_A330") &&
-            Settings.SettingsManager.Current.A32NXDisabledMonitorVariablesSet.Contains(e.VarName);
-        // The iFly def has the same self-announcing shape as the HS787 (annunciators,
-        // MCP mode lights, warning push lights, ALTIMETER_SETTING and the SYN_* MCP
-        // windows all announce from INSIDE ProcessSimVarUpdate) — same wrap, same
-        // reason. The def's off-sweep timer still checks the list itself because it
-        // runs outside this method entirely.
-        bool iflyMuted = currentAircraft.AircraftCode == "IFLY_737MAX8" &&
-            Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName);
-        // The PMDG defs share the shape: the base class's Shift+T trim callout (MON_ElevatorTrim),
-        // the 737's own Stab Trim row and ~40 PMDG 777 callouts (MCP windows, altimeter, cockpit
-        // door, …) all announce from INSIDE ProcessSimVarUpdate, so a PMDG Announcement Monitor
-        // un-tick never reached them through the generic PMDG gate further down — "Elevator Trim"
-        // was a dead checkbox on the 777. Same wrap, same reason; same PMDG_ prefix test as below.
-        bool pmdgMuted = currentAircraft.AircraftCode.StartsWith("PMDG_", StringComparison.Ordinal) &&
-            Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(e.VarName);
+        // A definition that announces from INSIDE ProcessSimVarUpdate returns true and exits this
+        // method BEFORE the generic disabled-monitor gate and the generic _uiSetEcho gate further
+        // down, so two suppressions that work for every generic announcement silently never fire
+        // for it: (1) the Ctrl+M mute, (2) the UI-set echo. Both are applied here the same way —
+        // suppress the announcer for this var's processing: the per-branch state updates still run,
+        // only the queued speech is dropped (AnnounceImmediate, kept for hotkey readouts, is not
+        // affected). Which Ctrl+M list applies to which airframe — the HS787, the A32NX family, the
+        // iFly, the PMDGs, the MD-11 and the FBW A380, all of this self-announcing shape — is
+        // DefAnnounceMuteSets' (the A380 was the one left out until 2026-09-25, so its baro call-outs
+        // ignored their rows). A variable whose branch also speaks ANOTHER row's call-out is left
+        // unwrapped (IAircraftDefinition.IsMuteWrapExempt), or its mute would silence that row too.
+        bool defMuted = Services.DefAnnounceMuteSets.ShouldWrap(currentAircraft!, e.VarName,
+            Settings.SettingsManager.Current);
         // UI-set echo suppression — applies to EVERY aircraft, not just the HS787 (was the bug).
         // A def that auto-announces from INSIDE ProcessSimVarUpdate (the PMDG APU selector + the
         // Boris Audio Works soundpack switches, the HS787, the A380, ...) returns true and exits
@@ -221,12 +212,7 @@ public partial class MainForm
         // guards the non-def-handled announce path and its own baseline accuracy.
         bool uiEcho = _uiSetEcho.TryGetValue(e.VarName, out var ue)
             && Environment.TickCount64 - ue.tick < UiSetEchoSuppressMs;
-        // Same pattern for the MD-11: it composes its flap read-out from INSIDE
-        // ProcessSimVarUpdate (two vars, one spoken fact) and returns true, so the generic
-        // gate below never sees those vars and a Ctrl+M mute of them would silently do nothing.
-        bool md11Muted = currentAircraft.AircraftCode == "TFDI_MD11" &&
-            Settings.SettingsManager.Current.Md11DisabledMonitorVariablesSet.Contains(e.VarName);
-        bool suppressDefAnnounce = hs787Muted || a32nxMuted || iflyMuted || pmdgMuted || md11Muted || uiEcho;
+        bool suppressDefAnnounce = defMuted || uiEcho;
         bool prevSuppressed = announcer.Suppressed;
         if (suppressDefAnnounce) announcer.Suppressed = true;
         bool wasProcessedByAircraft;
@@ -238,6 +224,7 @@ public partial class MainForm
         {
             if (suppressDefAnnounce) announcer.Suppressed = prevSuppressed;
         }
+        UpdateTakeoffCalloutFeed(e.VarName);
 
         // Complete any pending display request for BOTH branches, before the def-handled early
         // return below. A var whose ProcessSimVarUpdate returns true still ARRIVED, and the panel
@@ -386,7 +373,7 @@ public partial class MainForm
 
                 // Check if disabled in the iFly 737 Monitor Manager. Self-announced iFly
                 // vars (lights, MCP windows, altimeter) are muted by the Step-2.5
-                // iflyMuted wrap above; the deferred off-sweep in the def checks the list
+                // DefAnnounceMuteSets wrap above; the deferred off-sweep in the def checks the list
                 // itself. This gate covers the plain switch/selector combos that announce
                 // on the generic path.
                 if (currentAircraft.AircraftCode == "IFLY_737MAX8" &&
@@ -597,19 +584,16 @@ public partial class MainForm
                         }
                     }
 
-                    // (2) Under-aircraft detection — only when on the ground. Same
-                    //     ICAO-resolution pattern as Where-Am-I (canonical 4-char
-                    //     ICAOs only; the 3-char idents the DB also returns are for
-                    //     fields the taxi-graph layer can't load).
+                    // (2) Under-aircraft detection — only when on the ground, at the airport
+                    //     CurrentAirport.Resolve names (the nearest reference point put KSNA's
+                    //     runway 02L at heliport 10CL, which has no runways to find).
                     if (!seeded && _lastOnGround && airportDataProvider != null)
                     {
-                        var nearby = airportDataProvider
-                            .GetNearbyAirportICAOs(pos.Latitude, pos.Longitude, 5.0)
-                            .Where(c => c != null && c.Length == 4)
-                            .ToList();
-                        if (nearby.Count > 0 &&
+                        string? airportIcao = MSFSBlindAssist.Services.CurrentAirport.Resolve(
+                            airportDataProvider, pos.Latitude, pos.Longitude);
+                        if (airportIcao != null &&
                             taxiGuidanceManager.TryDetectRunwayUnderAircraft(
-                                airportDataProvider, nearby[0],
+                                airportDataProvider, airportIcao,
                                 pos.Latitude, pos.Longitude,
                                 pos.HeadingMagnetic, pos.MagneticVariation,
                                 out double detLat, out double detLon,
@@ -773,6 +757,7 @@ public partial class MainForm
             {
                 _routeAdvisoryProximity.Reset();
                 _emptyRouteFeedTicks = 0;
+                surroundingsMonitor?.Reset();
                 Log.Debug("MainForm", "route-advisory proximity reset (turnaround liftoff)");
             }
 
@@ -805,6 +790,9 @@ public partial class MainForm
             {
                 _liftoffHandoffTimer?.Stop();
                 _liftoffHandoffConfirmToken++;
+                // Back on the ground inside the go-around window: that liftoff was a bounce.
+                _goAroundTimer?.Stop();
+                _goAroundConfirmToken++;
             }
 
             // Auto hand-off at rotation: when the pilot lifts off WHILE Takeoff
@@ -832,6 +820,15 @@ public partial class MainForm
             {
                 _liftoffHandoffTimer?.Stop();   // reset the debounce interval
                 _liftoffHandoffTimer?.Start();
+            }
+
+            // A liftoff during landing-exit guidance: a touch-and-go, a go-around - or a bounce. ARM the check; it
+            // decides when LandingExitGoAround.ConfirmMs is up, against a fresh sample
+            // (EndLandingExitGuidanceIfGoAround). Until then the rollout carries on, as it always did.
+            if (justLiftedOff && taxiGuidanceManager.IsLandingExitGuidance)
+            {
+                _goAroundTimer?.Stop();         // reset the window
+                _goAroundTimer?.Start();
             }
 
             // Feed SIM_ON_GROUND transitions to the landing-exit planner so it
@@ -982,7 +979,7 @@ public partial class MainForm
         }
 
         // Handle aircraft variable hotkey announcements
-        // A380 metric-altitude mode (FCU MTRS / A32NX_METRIC_ALT_TOGGLE): when active, the
+        // A380 metric-altitude mode (FCU MTRS — PRIM FG word 5 bit 14, A380MetricAltitude): when active, the
         // current-altitude readouts (A = MSL, Q = AGL) speak metres instead of feet. Gated to
         // the A380 by both the aircraft-type check and the MetricAlt flag — no other aircraft
         // and no non-metric A380 state reach this branch, so feet behaviour is unchanged.
@@ -1048,6 +1045,38 @@ public partial class MainForm
         }
 
         return false; // Not a special case, continue normal processing
+    }
+
+    /// <summary>
+    /// Fired by <c>_goAroundTimer</c> once the aircraft has been airborne for
+    /// <see cref="LandingExitGoAround.ConfirmMs"/> after lifting off during landing-exit guidance. Confirms
+    /// against a FRESH position read - a settle-back in the last second is invisible to the 1 Hz cache - then
+    /// ends that guidance silently, arms the pilot's plan for the next touchdown, and says one short sentence.
+    /// A response that never arrives ends nothing: the rollout guidance carries on, as it always did.
+    /// </summary>
+    private void EndLandingExitGuidanceIfGoAround()
+    {
+        _goAroundTimer?.Stop(); // one-shot
+
+        // Cheap pre-gates on cached state - each can only abort. _lastOnGround true means a touchdown already
+        // arrived; the timer's own stop covers that, and this covers the tick racing it.
+        if (_lastOnGround || !simConnectManager.IsConnected || !taxiGuidanceManager.IsLandingExitGuidance)
+            return;
+
+        int confirmToken = ++_goAroundConfirmToken;
+        simConnectManager.RequestAircraftPositionAsync(p =>
+        {
+            if (confirmToken != _goAroundConfirmToken) return;
+            if (!taxiGuidanceManager.EndLandingExitGuidanceIfGoAround(p.SimOnGround >= 0.5)) return;
+            bool planKept = landingExitPlanner.RearmAfterGoAround();
+            announcer.AnnounceImmediate(LandingExitGoAround.Message(planKept));
+            try
+            {
+                _landingExitLog.Info(FormattableString.Invariant(
+                    $"GO-AROUND: landing-exit guidance ended, plan {(planKept ? "armed again" : "none")} (gs={p.GroundSpeedKnots:F0} vs={p.VerticalSpeedFPM:F0})"));
+            }
+            catch { }
+        });
     }
 
     /// <summary>
@@ -1471,6 +1500,12 @@ public partial class MainForm
                         {
                             displayValue = varDef.ValueDescriptions[value];
                         }
+                        // A cleared sentinel (SimVarDefinition.NotSetBelow — the FBW V-speeds' -1/0)
+                        // reads "not set" here as it is spoken; the numeric branch showed "V1: -1".
+                        else if (varDef.IsNotSet(value))
+                        {
+                            displayValue = "not set";
+                        }
                         else
                         {
                             // Use numeric formatting for values without descriptions
@@ -1697,10 +1732,14 @@ public partial class MainForm
     }
 
     /// <summary>
-    /// A32NX equivalent. The A320 has no D/Shift+D path of its own and drives its MCDU over
-    /// the SimBridge relay (not the Coherent MCDU bridge), so we read its FMS guidanceController
-    /// directly via a ONE-SHOT Coherent eval of the self-contained coherent-a32nx-flightinfo.js,
-    /// then announce identically to the A380 (PMDG-format TOD).
+    /// A32NX equivalent. We read the FMS guidanceController directly with the self-contained
+    /// coherent-a32nx-flightinfo.js evaluated on the MCDU's Coherent view, then announce
+    /// identically to the A380 (PMDG-format TOD). Coherent GT allows ONE inspector socket per
+    /// view: once the MCDU window has been opened, FlyByWireMCDUService owns that view for the
+    /// rest of the aircraft session (reconnect gaps included — CoherentViewOwnership), so the
+    /// script always rides ITS socket and says "not ready" while that socket is reconnecting;
+    /// only before the MCDU window has ever been opened (or when its Coherent client could not
+    /// load its agent, and so owns nothing) is a one-shot eval used.
     /// </summary>
     public async void AnnounceA32NXFlightInfo(bool tod)
     {
@@ -1712,7 +1751,13 @@ public partial class MainForm
         string mcduView = (currentAircraft as Aircraft.FlyByWireA320Definition)?.FlightInfoMcduView
             ?? "A32NX_MCDU";
         string raw = "";
-        try { raw = await SimConnect.CoherentEvalClient.EvalAsync(mcduView, js); }
+        try
+        {
+            var mcduService = flyByWireMCDUService;
+            raw = mcduService != null
+                ? await mcduService.EvalOnMcduViewAsync(js)
+                : await SimConnect.CoherentEvalClient.EvalAsync(mcduView, js);
+        }
         catch (Exception ex) { Log.Debug("MainForm", $"{ex.Message}"); }
         AnnounceFlightInfoJson(raw, tod);
     }
@@ -1807,7 +1852,7 @@ public partial class MainForm
 
     /// <summary>
     /// "Where Am I" — tells the pilot which taxiway/runway/gate they're currently on at
-    /// the nearest airport. Works whether or not taxi guidance is active. Format:
+    /// the airport they are AT (CurrentAirport.Resolve). Works whether or not taxi guidance is active. Format:
     /// "Taxiway Bravo at KJFK." / "Gate A25 at KJFK." / "Runway 22L at KJFK."
     /// </summary>
     private void AnnounceWhereAmI()
@@ -1835,24 +1880,23 @@ public partial class MainForm
             string announcement;
             try
             {
-                // GetNearbyAirportICAOs may return 3-char idents for small fields with
-                // no canonical ICAO (kept for the GateResolver TCAS-gate use case). The
-                // taxi-graph lookup needs canonical 4-char ICAOs, so filter here at the
-                // call site — do NOT add the filter to the SQL or it breaks GateResolver.
-                var nearby = airportDataProvider.GetNearbyAirportICAOs(position.Latitude, position.Longitude, 5.0)
-                    .Where(c => c != null && c.Length == 4)
-                    .ToList();
-                if (nearby == null || nearby.Count == 0)
+                // Which airport the aircraft is AT — the resolver Alt+L uses, since it speaks this
+                // same line. Short idents are fine: every provider lookup matches icao OR ident.
+                string? icao = MSFSBlindAssist.Services.CurrentAirport.Resolve(
+                    airportDataProvider, position.Latitude, position.Longitude);
+                if (icao == null)
                 {
                     announcement = "No airport nearby.";
                 }
                 else
                 {
+                    // The generation read WITH the provider, in this same UI-thread turn.
                     announcement = taxiGuidanceManager.DescribeCurrentLocation(
                         airportDataProvider,
-                        nearby[0],
+                        icao,
                         position.Latitude,
-                        position.Longitude);
+                        position.Longitude,
+                        taxiGuidanceManager.DatabaseGeneration);
                 }
             }
             catch (Exception ex)
@@ -1865,6 +1909,209 @@ public partial class MainForm
             else
                 announcer.AnnounceImmediate(announcement);
         });
+    }
+
+
+    /// <summary>The foreground window at the press, which Escape hands back to.</summary>
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    /// <summary>Newest request wins: a slow first lookup must not speak (or open a window) after
+    /// the pilot has already pressed again.</summary>
+    private sealed class LatestRequest
+    {
+        private int _seq;
+        public int Next() => Interlocked.Increment(ref _seq);
+        public bool IsLatest(int ticket) => Volatile.Read(ref _seq) == ticket;
+    }
+    private readonly LatestRequest _lookAroundRequests = new(), _surroundingsWindowRequests = new();
+
+    private sealed record SurroundingsLookup(string Icao, MSFSBlindAssist.Navigation.Surroundings.AirportFeatureCatalog? Catalog,
+        SimConnectManager.AircraftPosition Position, double HeadingTrue, string WhereAmI, long PressedAt);
+
+    /// <summary>
+    /// The one path both surroundings hotkeys take: guards, the press's timestamp, position, then on a
+    /// pool thread the airport, the catalog and the Where-Am-I line side by side, then the UI action
+    /// <paramref name="compose"/> returns. Every spoken line is timed from the press
+    /// (<see cref="SpeakLookupLine"/>). The provider and its DatabaseGeneration are captured on the UI
+    /// thread, so a database switch mid-lookup neither swaps the provider nor lets a stale Where-Am-I
+    /// graph be cached; the catalog cache discards a build that straddled a switch on its own.
+    /// </summary>
+    private void RunSurroundingsLookup(LatestRequest requests, bool needWhereAmI, Func<SurroundingsLookup, Action> compose)
+    {
+        var provider = airportDataProvider;
+        if (provider == null) { announcer.AnnounceImmediate("Airport database not available."); return; }
+        // Read with the provider, in this same turn.
+        long databaseGeneration = taxiGuidanceManager.DatabaseGeneration;
+        if (!_lastOnGround) { announcer.AnnounceImmediate("In flight."); return; }
+
+        // The press, before anything is asked of the simulator; every line is timed from here.
+        long pressedAt = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        simConnectManager.RequestAircraftPositionAsync(position =>
+        {
+            // The ticket is taken here, not at the press: a press whose position never arrives must
+            // not suppress the previous press's answer (two presses once gave total silence).
+            int ticket = requests.Next();
+
+            // Everything below runs on a pool thread, or a first scenery scan would stall the UI thread.
+            Task.Run(async () =>
+            {
+                Action ui;
+                try
+                {
+                    string? icao = MSFSBlindAssist.Services.CurrentAirport.Resolve(provider, position.Latitude, position.Longitude);
+                    if (icao == null) ui = () => SpeakLookupLine(pressedAt, "No airport nearby.");
+                    else
+                    {
+                        // Both start now, side by side, so a cold taxi graph and a cold catalog overlap.
+                        var catalogTask = surroundingsCache.GetAsync(icao);
+                        var whereTask = needWhereAmI
+                            ? Task.Run(() => taxiGuidanceManager.DescribeCurrentLocation(provider, icao, position.Latitude, position.Longitude, databaseGeneration))
+                            : Task.FromResult("");
+                        var answer = Task.WhenAll(catalogTask, whereTask);
+                        // "Looking around." once, queued, only when the whole answer is slow counted
+                        // from the press, and only for the newest press.
+                        if (await MSFSBlindAssist.Services.SurroundingsLookupNotice.IsSlowAsync(answer,
+                                MSFSBlindAssist.Services.SurroundingsLookupNotice.NoticeWait(
+                                    System.Diagnostics.Stopwatch.GetElapsedTime(pressedAt))).ConfigureAwait(false))
+                            SafeBeginInvoke(() => { if (requests.IsLatest(ticket)) announcer.Announce("Looking around."); });
+                        // Awaited as one task first, so a failure of either is observed and caught below.
+                        await answer.ConfigureAwait(false);
+                        var catalog = await catalogTask.ConfigureAwait(false);
+                        string where = await whereTask.ConfigureAwait(false);
+                        // AircraftPosition carries degrees (GroundTrafficMonitor adds these two the same way).
+                        double hdgTrue = MSFSBlindAssist.Services.RelativeDirection.Normalize360(position.HeadingMagnetic + position.MagneticVariation);
+                        ui = compose(new SurroundingsLookup(icao, catalog, position, hdgTrue, where, pressedAt));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn("Surroundings", $"lookup failed: {ex.Message}");
+                    ui = () => SpeakLookupLine(pressedAt, "Surroundings lookup failed.");
+                }
+                SafeBeginInvoke(() => { if (requests.IsLatest(ticket)) ui(); });
+            });
+        });
+    }
+
+    /// <summary>
+    /// Alt+L (output mode): "Look around." One utterance — the Where-Am-I line, the zone, the
+    /// nearest features with direction and distance. Ground-only like Where Am I.
+    /// </summary>
+    private void AnnounceLookAround() => RunSurroundingsLookup(_lookAroundRequests, needWhereAmI: true, l =>
+    {
+        string text = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.Compose(
+            l.WhereAmI, l.Icao, l.Catalog, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue,
+            m => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m));
+        return () => SpeakLookupLine(l.PressedAt, text);
+    });
+
+    /// <summary>
+    /// Ctrl+Shift+L (output mode): everything within 1 km as a browsable list, in the SayIntentions
+    /// sectioned window. No spoken summary on open; a fresh press replaces the previous window.
+    /// </summary>
+    private void ShowSurroundingsWindow()
+    {
+        // Where Escape hands the foreground back to, captured at the press: this window opens
+        // seconds later, when the foreground may be something else. Re-checked for life on open.
+        IntPtr atPress = GetForegroundWindow();
+        RunSurroundingsLookup(_surroundingsWindowRequests, needWhereAmI: false, l =>
+        {
+            string Fmt(double m) => MSFSBlindAssist.Services.DistanceFormatter.FromMetres(m);
+            if (l.Catalog == null || (l.Catalog.Features.Count == 0 && l.Catalog.Facts.IsEmpty))
+                return () => SpeakLookupLine(l.PressedAt, $"No surroundings data for {l.Icao}.");
+            // Enter / Shift+Enter on a frequency tunes COM 1; the window calls this on the UI thread.
+            var sections = MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.BuildSections(
+                l.Catalog, l.Catalog.Facts, l.Position.Latitude, l.Position.Longitude, l.HeadingTrue, Fmt,
+                tuneCom1: TuneCom1FromSurroundings);
+            // Nothing to list: speak it rather than open an empty window.
+            if (sections.Count == 0)
+                return () => SpeakLookupLine(l.PressedAt, $"Nothing within {Fmt(MSFSBlindAssist.Navigation.Surroundings.SurroundingsReport.WindowRadiusMetres)}.");
+            return () =>
+            {
+                // One window at a time; the replacement inherits the old window's return handle (the
+                // old window may itself hold the foreground), and a candidate closed meanwhile gives
+                // way to the foreground now — never the window being replaced.
+                var old = surroundingsForm is { IsDisposed: false } open ? open : null;
+                IntPtr focusReturn = MSFSBlindAssist.Forms.SayIntentionsInfoForm.ChooseFocusReturn(
+                    preferred: old?.PreviousWindow ?? atPress,
+                    foregroundNow: GetForegroundWindow(),
+                    replacing: old is { IsHandleCreated: true } ? old.Handle : IntPtr.Zero,
+                    isLive: MSFSBlindAssist.Forms.SayIntentionsInfoForm.IsLiveWindow);
+                if (old != null) { try { old.Close(); } catch { } }
+                surroundingsForm = new MSFSBlindAssist.Forms.SayIntentionsInfoForm(
+                    sections, focusReturn, $"Surroundings at {l.Icao}", "Close the surroundings window");
+                surroundingsForm.FormClosed += (_, _) => surroundingsForm = null;
+                surroundingsForm.Show();
+            };
+        });
+    }
+
+    /// <summary>The newest COM 1 tune from the surroundings window; only it speaks its read-back.</summary>
+    private int _com1TuneSeq;
+
+    /// <summary>
+    /// Enter (standby) or Shift+Enter (active) on a row of the surroundings window's Frequencies list:
+    /// tunes COM 1 with the stock events (<see cref="MSFSBlindAssist.Services.Com1Tuning"/>), then
+    /// reads COM 1 back and speaks what it holds — the pilot's only confirmation. An aircraft that
+    /// ignores the stock events says so instead (IAircraftDefinition.StockComTuningRefusal). On the UI
+    /// thread throughout, waits included: SendEvent's event map is not thread-safe.
+    /// </summary>
+    private async void TuneCom1FromSurroundings(int frequencyHz, bool active)
+    {
+        int ticket = ++_com1TuneSeq;
+        try
+        {
+            var sim = simConnectManager;
+            if (sim == null || !sim.IsConnected) { announcer.AnnounceImmediate("Not connected to the simulator."); return; }
+            if (currentAircraft?.StockComTuningRefusal is { } refusal) { announcer.AnnounceImmediate(refusal); return; }
+
+            sim.SendEvent(MSFSBlindAssist.Services.Com1Tuning.StandbySetEvent, (uint)frequencyHz);
+            if (active)
+            {
+                await Task.Delay(MSFSBlindAssist.Services.Com1Tuning.SwapGapMs);
+                sim.SendEvent(MSFSBlindAssist.Services.Com1Tuning.SwapEvent);
+            }
+
+            double? read = null;
+            for (int attempt = 0; attempt < MSFSBlindAssist.Services.Com1Tuning.ReadAttempts
+                                  && !MSFSBlindAssist.Services.Com1Tuning.Holds(read, frequencyHz); attempt++)
+            {
+                await Task.Delay(MSFSBlindAssist.Services.Com1Tuning.SettleMs);
+                if (await sim.ReadCom1RadioAsync(MSFSBlindAssist.Services.Com1Tuning.ReadTimeout) is { } radio)
+                    read = active ? radio.ActiveHz : radio.StandbyHz;
+            }
+
+            // A newer press speaks for itself.
+            if (ticket != _com1TuneSeq || IsDisposed) return;
+            string line = MSFSBlindAssist.Services.Com1Tuning.Describe(active, frequencyHz, read);
+            Log.Info("Surroundings", $"COM 1 {(active ? "active" : "standby")} tune {frequencyHz} Hz, read {read?.ToString("F0") ?? "none"}: {line}");
+            announcer.AnnounceImmediate(line);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("Surroundings", $"COM 1 tune failed: {ex.Message}");
+        }
+    }
+
+    /// <summary>Speaks one lookup line as SurroundingsLookupNotice.Delivery decides from the time since
+    /// the press: interrupting while it is still the press's moment, queued after. UI thread only.</summary>
+    private void SpeakLookupLine(long pressedAt, string text)
+    {
+        var delivery = MSFSBlindAssist.Services.SurroundingsLookupNotice.Delivery(
+            System.Diagnostics.Stopwatch.GetElapsedTime(pressedAt), announcer.Suppressed);
+        if (delivery == MSFSBlindAssist.Services.SurroundingsLookupDelivery.Immediate) announcer.AnnounceImmediate(text);
+        else announcer.Announce(text);
+    }
+
+    /// <summary>Marshals to the UI thread, tolerating the form being torn down meanwhile (shutdown or
+    /// aircraft swap mid-lookup). Same pattern as FBWA380MCDUForm.SafeBeginInvoke.</summary>
+    private void SafeBeginInvoke(Action action)
+    {
+        // ObjectDisposedException derives from InvalidOperationException, so one catch covers both.
+        try { if (IsHandleCreated && !IsDisposed) BeginInvoke(action); }
+        catch (InvalidOperationException) { }
     }
 
     private void OnTaxiGuidanceStateChanged(object? sender, TaxiGuidanceState newState)
@@ -2006,8 +2253,8 @@ public partial class MainForm
             return;
         }
 
-        // Task 1 — Destination prefetch (silent, fire-and-forget)
-        if (_augmentPrefetched.Add(airport.ICAO))
+        // Task 1 — Destination prefetch (silent, fire-and-forget; claimed only while online data is on)
+        if (_augmentingProvider?.Enabled == true && _augmentPrefetched.Add(airport.ICAO))
             _ = _augmentingProvider?.PrefetchAsync(airport.ICAO, force: true);
 
         // Query ILS data from database
@@ -2163,8 +2410,9 @@ public partial class MainForm
             {
                 var destinationAirport = simConnectManager.GetDestinationAirport();
 
-                // Task 1 — Destination prefetch (silent, fire-and-forget)
-                if (destinationAirport != null && _augmentPrefetched.Add(destinationAirport.ICAO))
+                // Task 1 — Destination prefetch (silent, fire-and-forget; claimed only while online data is on)
+                if (destinationAirport != null && _augmentingProvider?.Enabled == true
+                    && _augmentPrefetched.Add(destinationAirport.ICAO))
                     _ = _augmentingProvider?.PrefetchAsync(destinationAirport.ICAO, force: true);
 
                 // Get destination wind from VATSIM API

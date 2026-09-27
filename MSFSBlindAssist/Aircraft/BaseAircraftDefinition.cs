@@ -688,6 +688,10 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <summary>Begin the FCU callouts' settle (MainForm: a profile switched while a flight loads).</summary>
     internal void BeginFcuValueSettle() => _fcuValues.BeginSettle();
 
+    /// <summary>A flight load, reconnect or FCU power-up is still settling: the values arriving now
+    /// describe a new situation, not a change anyone made.</summary>
+    protected bool IsFcuValueSettling => _fcuValues.IsSettling;
+
     // Variable Update Processing
 
     /// <summary>
@@ -867,6 +871,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         _fcuValues.RearmEcho(eventName, Environment.TickCount64);
 
     /// <inheritdoc />
+    /// <remarks>None by default: a branch's call-outs are its own row's.</remarks>
+    public virtual bool IsMuteWrapExempt(string varName) => false;
+
+    /// <inheritdoc />
+    /// <remarks>None by default: only the airframes with take-off roll callouts have a feed.</remarks>
+    public virtual string? TakeoffCalloutFeedKey => null;
+
+    /// <inheritdoc />
+    public virtual bool TakeoffCalloutFeedNeeded => true;
+
+    /// <inheritdoc />
     /// <remarks>Most definitions hold nothing, so the batch hook never fires for them.</remarks>
     public virtual string? DeferredFlushWatchVariable => null;
 
@@ -884,6 +899,8 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     public virtual double TaxiTurnLeadSeconds => 1.2;   // neutral default; airframes tune via override
 
     public virtual bool HasOwnIcingAnnouncer => false;
+
+    public virtual string? StockComTuningRefusal => null;
 
     // One capture at a time, app-wide — the scene description takes the same gate, because the
     // camera both of them capture is the SIMULATOR's, not this definition's. See
@@ -1186,7 +1203,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // instance method (not static) because it's invoked externally via an aircraft-typed
     // instance reference (FBWA320AltitudeWindow/FBWA380AltitudeWindow), which a static
     // member can't be called through.
-    public void SetAltIncrement(int inc, SimConnect.SimConnectManager s)
+    public virtual void SetAltIncrement(int inc, SimConnect.SimConnectManager s)
     {
         if (!s.IsConnected) return;
         s.SendEvent("A32NX.FCU_ALT_INCREMENT_SET", (uint)inc);

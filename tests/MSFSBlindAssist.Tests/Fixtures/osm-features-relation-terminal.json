@@ -1,0 +1,58 @@
+{
+ "_attribution": "Hand-built, NOT a captured response: the ids and coordinates are made up (a hexagon near EDDF). The SHAPE is exactly what Overpass returns for `out body geom;`, verified live 2026-09-22 against KATL relation 10189710 (\"Domestic Terminal\"): a relation carries `bounds`, a `members` array whose way members each hold their own `geometry` of {lat, lon} objects, and `tags` - no top-level geometry. The outer ring is split across two ways that share both end nodes, and the second is stored in the OPPOSITE direction, so joining it needs a reversal. The inner way (a courtyard) must not become part of the outline.",
+ "version": 0.6,
+ "elements": [
+  {
+   "type": "relation",
+   "id": 900000001,
+   "bounds": {
+    "minlat": 50.0440000,
+    "minlon": 8.5920000,
+    "maxlat": 50.0460000,
+    "maxlon": 8.5960000
+   },
+   "members": [
+    {
+     "type": "way",
+     "ref": 900000011,
+     "role": "outer",
+     "geometry": [
+      { "lat": 50.0460000, "lon": 8.5930000 },
+      { "lat": 50.0460000, "lon": 8.5950000 },
+      { "lat": 50.0450000, "lon": 8.5960000 },
+      { "lat": 50.0440000, "lon": 8.5950000 }
+     ]
+    },
+    {
+     "type": "way",
+     "ref": 900000012,
+     "role": "outer",
+     "geometry": [
+      { "lat": 50.0460000, "lon": 8.5930000 },
+      { "lat": 50.0450000, "lon": 8.5920000 },
+      { "lat": 50.0440000, "lon": 8.5930000 },
+      { "lat": 50.0440000, "lon": 8.5950000 }
+     ]
+    },
+    {
+     "type": "way",
+     "ref": 900000013,
+     "role": "inner",
+     "geometry": [
+      { "lat": 50.0457000, "lon": 8.5934000 },
+      { "lat": 50.0457000, "lon": 8.5938000 },
+      { "lat": 50.0455000, "lon": 8.5938000 },
+      { "lat": 50.0455000, "lon": 8.5934000 },
+      { "lat": 50.0457000, "lon": 8.5934000 }
+     ]
+    }
+   ],
+   "tags": {
+    "aeroway": "terminal",
+    "building": "yes",
+    "name": "Terminal 3",
+    "type": "multipolygon"
+   }
+  }
+ ]
+}

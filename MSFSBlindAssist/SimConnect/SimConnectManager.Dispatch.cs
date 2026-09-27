@@ -151,6 +151,10 @@ public partial class SimConnectManager
                 NavRadioReceived?.Invoke(this, navRadioData);
                 break;
 
+            case DATA_REQUESTS.REQUEST_COM1_RADIO:
+                Com1RadioReceived?.Invoke(this, (Com1RadioData)data.dwData[0]);
+                break;
+
             case DATA_REQUESTS.REQUEST_HEADING:
                 SingleValue headingData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -659,7 +663,10 @@ public partial class SimConnectManager
                     HeadingMagnetic = vgData.HeadingMagnetic,
                     MagneticVariation = vgData.MagneticVariation,
                     GroundSpeedKnots = vgData.GroundSpeedKnots,
-                    VerticalSpeedFPM = vgData.VerticalSpeedFPM
+                    VerticalSpeedFPM = vgData.VerticalSpeedFPM,
+                    // Carried forward, never defaulted — see the surface note on the mirrors below.
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0,
                 };
 
                 // Mirror to lastKnownPosition so the LandingExitPlanner has a fresh
@@ -741,6 +748,11 @@ public partial class SimConnectManager
                     // preserve the previous value. AltitudeMslFt is the same
                     // "PLANE ALTITUDE"/feet SimVar AIRCRAFT_POSITION.Altitude reads.
                     Altitude = faData.AltitudeMslFt,
+                    // SURFACE fields exist only on the AIRCRAFT_POSITION frame (case 4): carried
+                    // forward, never defaulted, or every other reader of lastKnownPosition would see
+                    // "unknown" whenever this stream wrote last. (A frame without Altitude likewise.)
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0,
                     SimOnGround = faData.OnGround
                 };
 
@@ -767,7 +779,12 @@ public partial class SimConnectManager
                     // WeatherRadarForm shows altitude) don't see a hard-zero just
                     // because the most recent position update was a taxi sample.
                     Altitude = lastKnownPosition?.Altitude ?? 0,
-                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0
+                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0,
+                    // SURFACE fields exist only on the AIRCRAFT_POSITION frame (case 4): carried
+                    // forward, never defaulted, or every other reader of lastKnownPosition would see
+                    // "unknown" whenever this stream wrote last. (A frame without Altitude likewise.)
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0
                 };
 
                 // Mirror to lastKnownPosition so other features (LandingExitPlanner,
@@ -803,7 +820,12 @@ public partial class SimConnectManager
                     // WeatherRadarForm shows altitude) don't see a hard-zero just
                     // because the most recent position update was a takeoff-assist sample.
                     Altitude = lastKnownPosition?.Altitude ?? 0,
-                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0
+                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0,
+                    // SURFACE fields exist only on the AIRCRAFT_POSITION frame (case 4): carried
+                    // forward, never defaulted, or every other reader of lastKnownPosition would see
+                    // "unknown" whenever this stream wrote last. (A frame without Altitude likewise.)
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0
                 };
 
                 // Mirror to lastKnownPosition so cross-feature consumers read a fresh
