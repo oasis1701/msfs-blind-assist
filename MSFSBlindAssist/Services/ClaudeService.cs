@@ -90,10 +90,11 @@ public class ClaudeService : IAiProvider
 
     public async Task<string> DescribeRouteAsync(string flightData)
     {
-        string prompt = GeminiService.GetRouteDescriptionPrompt(flightData);
         bool enableSearch = SettingsManager.Current.ClaudeWebSearch;
         try
         {
+            // The prompt is told whether THIS request can search, so a taxi leg's check line never claims current charts.
+            string prompt = GeminiService.GetRouteDescriptionPrompt(flightData, webSearch: enableSearch);
             return RouteBriefingText.RemoveEchoedTaxiQuestion(await SendTextRequestAsync(prompt, enableSearch));
         }
         catch (HttpRequestException ex) when (enableSearch &&
@@ -103,8 +104,11 @@ public class ClaudeService : IAiProvider
             // the rejected tool type, so it always contains "web_search" — a broader match like
             // "tool" would swallow unrelated 400s). Degrade to an ungrounded briefing rather
             // than failing, but SAY SO up front: a blind pilot who asked for NOTAM grounding
-            // must not silently receive an ungrounded briefing as if it were current.
-            string briefing = RouteBriefingText.RemoveEchoedTaxiQuestion(await SendTextRequestAsync(prompt, false));
+            // must not silently receive an ungrounded briefing as if it were current. The retry
+            // has no search, so its prompt must say so too, or the taxi section's check lines
+            // could claim current charts the model never looked at.
+            string briefing = RouteBriefingText.RemoveEchoedTaxiQuestion(
+                await SendTextRequestAsync(GeminiService.GetRouteDescriptionPrompt(flightData, webSearch: false), false));
             return "Note: web search is not available for the selected Claude model, so this " +
                    "briefing is not grounded with current NOTAM or weather data.\n\n" + briefing;
         }

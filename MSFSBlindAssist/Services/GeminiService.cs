@@ -659,8 +659,9 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     /// <returns>Text description of the route</returns>
     public async Task<string> DescribeRouteAsync(string flightData)
     {
-        string prompt = GetRouteDescriptionPrompt(flightData);
         bool enableSearch = SettingsManager.Current.GeminiSearchGrounding;
+        // The prompt is told whether THIS request can search, so a taxi leg's check line never claims current charts.
+        string prompt = GetRouteDescriptionPrompt(flightData, webSearch: enableSearch);
         // The prompt forbids writing its real-world question out; a model does not always comply (live KMEM→KATL,
         // 2026-09-26), so the echo is removed here too.
         return RouteBriefingText.RemoveEchoedTaxiQuestion(await SendTextRequestAsync(prompt, enableSearch: enableSearch));
@@ -909,10 +910,39 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
         "Please include the expected taxiways, hold short points, and any specific restrictions.";
 
     /// <summary>
+    /// How each taxi leg's check line begins when the AI checked the scenery's route against its own knowledge of the airport
+    /// — always so when the request has no web search (<see cref="GetRouteDescriptionPrompt"/>'s <c>webSearch</c>). Heard by
+    /// the pilot, so it says what the check was made against (owner, 2026-09-27).
+    /// </summary>
+    internal const string RouteCheckFromMemory = "Real-world check, from memory rather than live charts:";
+
+    /// <summary>How a check line begins only when a web search in that briefing found the airport's current charts.</summary>
+    internal const string RouteCheckAgainstCharts = "Real-world check, against current charts:";
+
+    /// <summary>
+    /// How each taxi leg's optional suggestions paragraph begins: what the scenery cannot provide — preferred exits from the
+    /// charts, size restrictions, usual routing — flagged so it is never mistaken for the scenery's route (owner, 2026-09-27).
+    /// </summary>
+    internal const string RouteSuggestionsOpening = "Real-world suggestions, not from your scenery:";
+
+    /// <summary>Section 7's search sentence when the request carrying the prompt has no web search.</summary>
+    internal const string RouteSearchOffSentence =
+        $"Web search is off for this briefing, so every check line begins \"{RouteCheckFromMemory}\".";
+
+    /// <summary>Section 7's search sentence when the request carrying the prompt has web search.</summary>
+    internal const string RouteSearchOnSentence =
+        "Web search is on for this briefing: you may look up each airport's current airport diagram and chart notes, " +
+        "and a check line says current charts only when that search found them.";
+
+    /// <summary>
     /// Generates the prompt for route description.
     /// </summary>
-    internal static string GetRouteDescriptionPrompt(string flightData)
+    /// <param name="webSearch">Whether the request carrying this prompt has web search (Gemini's grounding, Claude's
+    /// web_search tool). It chooses section 7's search sentence and nothing else, so a taxi leg's check line can never
+    /// claim current charts the AI could not have looked at.</param>
+    internal static string GetRouteDescriptionPrompt(string flightData, bool webSearch)
     {
+        string searchSentence = webSearch ? RouteSearchOnSentence : RouteSearchOffSentence;
         return $@"You are writing a flight briefing for a blind flight simulator pilot. Based on the flight plan data below, write a narrative description of the route that helps the pilot understand what they will experience during this flight.
 
 Cover the following topics, using descriptive section headings separated by blank lines:
@@ -961,24 +991,33 @@ Cover the following topics, using descriptive section headings separated by blan
 
 7. TAXI OUT AND TAXI IN
    The flight plan data ends with a TAXI ROUTES block worked out from the pilot's own simulator scenery.
-   Write this section as ONE short paragraph for the taxi out at the departure airport and ONE short paragraph for the taxi in at the arrival airport, in the voice of real-world operations.
+   Write this section as two legs, the taxi out at the departure airport and then the taxi in at the arrival airport, each in up to three parts in this order: the route paragraph, the check line and the suggestions paragraph, each part on its own line.
    For each leg, answer the question below from that leg's lines of the TAXI ROUTES block, taking the bracketed items (the airport, the runway, the stand or terminal, and the aircraft type) from them (the runway there may be the one SayIntentions assigned rather than the flight plan's):
       ""{RealWorldTaxiQuestion}""
    That question is an instruction to you, not text for the pilot: write only your answer, and never write the question itself into the briefing, as shown here or with the items filled in.
    For the taxi out, the route runs from the stand to the departure runway; for the taxi in, it runs from the landing runway, via the exit, to the stand.
+   The route paragraph is one short paragraph per leg, in the voice of real-world operations, and apart from the general-knowledge route described below, nothing in it comes from your own knowledge.
    The route comes from the block only: the stand, the taxiways in order with the turn at each change of taxiway and into the stand wherever the block gives one, every hold-short point and the runway it protects, and for the arrival which side to leave the runway (left or right), the exit taxiway and its distance from the threshold, the next exit if that one is missed, every runway crossed, and the gate.
    Use ONLY the taxiway, exit and stand names given in the block, and repeat distances, sides and turn directions exactly as given; where the block gives no turn for a taxiway, give none.
    Give the total taxi distance for each leg the block gives one for, and never estimate one.
-   For each leg, say in a short phrase that this is the expected route on the pilot's scenery and that SayIntentions or ATC will give the actual taxi clearance.
-   From your own knowledge you may add wingspan or aircraft-type restrictions, current operational information such as a NOTAM closing a taxiway, and usual practice, but only where it concerns a taxiway, runway or stand the block names; and at most one sentence per leg saying that controllers usually route differently there.
-   Any taxiway you name must appear in that leg's lines, including its ""Taxiway names at"" list; never give a full alternative route.
-   Keep it short: do not list every exit, and do not describe where the data came from.
+   At the end of each route paragraph, say in a short phrase that this is the expected route on the pilot's scenery and that SayIntentions or ATC will give the actual taxi clearance.
    Always give every runway the route crosses, including one a note says has no hold short point, and when a note says the mapped route leaves the runway on another taxiway, say which.
    Mention any other note from the block only when it changes what the pilot does or hears, such as a runway SayIntentions assigned that differs from the flight plan, a representative stand (say it is typical, not assigned), a SayIntentions gate the scenery lists under another name or at a different position, a stand the scenery marks as a fuel or other special stand, or a taxiway width or stand size note.
    When a leg's route comes from OpenStreetMap, say so in a few words, and call it the expected route on OpenStreetMap's map rather than on the pilot's scenery; taxi guidance cannot use it.
    If the block says a leg is unavailable, say so in a few words, and still give whatever the block does give for that leg, such as the exit with its side and distance, and the stand.
    When the reason is that the aircraft is already at the runway, give no route for that leg.
    Otherwise you may give that leg's usual route from your own knowledge, saying it is general knowledge and not checked against the scenery; where the leg has a ""Taxiway names at"" list, name only taxiways from it, and only a leg with no such list may name taxiways the block does not give.
+   The check line is one sentence after each route paragraph that checks the block's route, exit and stand for that leg against the real airport as you know it.
+   Begin it with ""{RouteCheckFromMemory}"", or with ""{RouteCheckAgainstCharts}"" only when a web search in this briefing found that airport's current airport diagram or chart notes.
+   {searchSentence}
+   When they agree, say so in a few words; when something differs, name what differs instead; when you do not know the airport well enough to check it, say so, and never claim an agreement you cannot support.
+   Leave the check line out for a leg the block gives no route, exit or stand for.
+   The suggestions paragraph comes after the check line, only when you have something to add that the scenery cannot provide, and otherwise is left out; it begins ""{RouteSuggestionsOpening}"" and has at most three short sentences.
+   It may give a preferred exit from the real airport's charts, restrictions that apply to this aircraft's size (from the block's Aircraft line, such as a wide-body kept off a taxiway, a wingspan limit or a full-length departure requirement), current operational information such as a NOTAM closing a taxiway on the route, and at most one sentence saying that controllers usually route differently there; never give a full alternative route.
+   A suggested exit takes its side and distance from the block's exits list, and gets none when the list does not give them.
+   When the block gives no size class for the aircraft, say which aircraft a size restriction applies to.
+   Any taxiway, exit or stand you name in the check line or the suggestions must appear in that leg's lines, including its ""Taxiway names at"" list; when a point could only be made with a name that is not there, leave the point out.
+   Keep it short: do not list every exit, and do not describe where the data came from beyond the preview phrase, the check line's opening and the OpenStreetMap and general-knowledge wording above.
    Give every distance in this section in the unit the block's ""Distance unit"" line names, and never mix units.
    When a leg's note says SayIntentions assigned a different runway from the flight plan, say so here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
 
