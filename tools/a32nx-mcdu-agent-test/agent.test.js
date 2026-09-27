@@ -131,13 +131,18 @@ test('read() reports not-ready, never throws, while the instrument is absent', (
   const { agent } = install({ fms: null });
   const body = JSON.parse(agent.read());
   assert.strictEqual(body.ok, false);
-  assert.strictEqual(agent.ping(), 'loading');
 });
 
 test('the Headwind A330 element name is accepted too', () => {
   const { agent } = install({ element: 'a339x-mcdu' });
   assert.strictEqual(JSON.parse(agent.read()).ok, true);
-  assert.strictEqual(agent.ping(), 'ready');
+});
+
+test('the agent has no separate liveness ping: a closed MCDU window reads the screen too', () => {
+  // FMS messages ("DEST EFOB BELOW MIN") must still reach a pilot whose MCDU window is closed,
+  // so the client reads the screen at the idle rate instead of pinging (PR #253 review).
+  const { agent } = install();
+  assert.strictEqual(agent.ping, undefined);
 });
 
 test('press() dispatches the Captain H-event through the instrument\'s own publisher', () => {

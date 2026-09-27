@@ -1,6 +1,8 @@
 // In-page agent for the FlyByWire A32NX MCDU, installed once into the "A32NX_MCDU"
 // Coherent view (the Headwind A330 fork's "A339X_MCDU" hosts the same instrument under
-// <a339x-mcdu>) by CoherentA32nxMcduClient via Runtime.evaluate, then called per poll.
+// <a339x-mcdu>) by CoherentA32nxMcduClient via Runtime.evaluate, then read() is called per
+// poll: every 250 ms while the MCDU window is open, every second while it is closed (a
+// closed window still speaks FMS scratchpad messages).
 //
 // It replaces the SimBridge MCDU relay as the READ and KEY transport. FBW's own
 // A320_Neo_CDU_MainDisplay.sendUpdate() builds the relay payload from plain fields on
@@ -161,12 +163,6 @@
     } catch (e) {
       return "error: " + ((e && e.message) ? e.message : String(e));
     }
-  };
-
-  // Cheap liveness check while the MCDU window is closed (socket kept warm for
-  // D / Shift+D). "ready" when the instrument is reachable, "loading" otherwise.
-  A.ping = function () {
-    try { return A.fms() ? "ready" : "loading"; } catch (e) { return "loading"; }
   };
 
   window.__MSFSBA_A32NX_MCDU = A;

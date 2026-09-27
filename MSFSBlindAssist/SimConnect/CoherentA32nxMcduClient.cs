@@ -14,17 +14,19 @@ namespace MSFSBlindAssist.SimConnect
     /// SimBridge's relay websocket. A persistent inspector socket is held on the MCDU view
     /// ("A32NX_MCDU"; the Headwind A330's is "A339X_MCDU" — the needle is per airframe),
     /// <c>Resources/coherent-a32nx-mcdu-agent.js</c> is installed once into the page, and
-    /// while the MCDU window is visible <c>read()</c> is polled every
-    /// <see cref="PollIntervalMs"/> ms. Its answer is the SAME <c>{left, right}</c> body the
-    /// relay streams, decoded by the shared <see cref="FbwMcduUpdate"/>.
+    /// <c>read()</c> is polled every <see cref="PollIntervalMs"/> ms while the MCDU window is
+    /// visible and every <see cref="IdleIntervalMs"/> ms while it is closed — a closed window
+    /// still speaks FMS scratchpad messages, and stays current for when it is reopened.
+    /// Showing the window, or a request for a fresh frame, wakes the loop at once. Its answer
+    /// is the SAME <c>{left, right}</c> body the relay streams, decoded by the shared
+    /// <see cref="FbwMcduUpdate"/>.
     ///
-    /// Coherent GT accepts only ONE inspector socket per view. The D / Shift+D flight-info
-    /// readout evaluates against this very view, so while this client holds it that
-    /// readout must go through <see cref="EvalForResultAsync"/> rather than a one-shot
-    /// <see cref="CoherentEvalClient"/> eval (which would be refused). Like the A380 client,
-    /// the socket and the agent are KEPT WARM while the window is closed — only the poll
-    /// stops — so that readout works with the window closed and reopening needs no
-    /// reconnect. Restart is not supported: dispose and create a new instance.
+    /// Coherent GT accepts only ONE inspector socket per view. This client CLAIMS its view
+    /// (<see cref="CoherentViewOwnership"/>) from Start to Stop, so a one-shot
+    /// <see cref="CoherentEvalClient"/> eval on it is refused and the D / Shift+D flight-info
+    /// readout goes through <see cref="EvalForResultAsync"/>. The socket and the agent are
+    /// KEPT WARM while the window is closed, so that readout works with the window closed and
+    /// reopening needs no reconnect. Restart is not supported: dispose and create a new instance.
     /// </summary>
     public sealed class CoherentA32nxMcduClient : IFbwMcduCoherentTransport
     {
@@ -42,7 +44,7 @@ namespace MSFSBlindAssist.SimConnect
 
         private static readonly Regex KeyName = new("^[A-Z0-9_]{1,16}$", RegexOptions.Compiled);
 
-        // What read()/ping()/press() evaluate to when the page is up but the agent is gone
+        // What read()/press() evaluate to when the page is up but the agent is gone
         // (the page re-evaluated). Distinct from "" (no answer at all — a timeout or a dead
         // socket) so an agent loss re-installs on the SAME socket instead of counting toward
         // the dead-socket teardown.
@@ -88,7 +90,7 @@ namespace MSFSBlindAssist.SimConnect
         private string _agentJs = "";
         private int _msgId;
         private volatile bool _active;
-        private volatile bool _refreshRequested;
+        private readonly WakeableDelay _wake = new();
         private int _emptyEvalStreak;
         private string _lastRaw = "";      // the last read() body handed to the window
         private IDisposable? _viewClaim;
@@ -149,21 +151,27 @@ namespace MSFSBlindAssist.SimConnect
         }
 
         /// <summary>
-        /// Poll only while the MCDU window is visible. The socket and agent stay warm while
-        /// idle (see the class remarks); re-activation forces a full re-push.
+        /// Poll fast while the MCDU window is visible, at the idle rate while it is closed (see
+        /// the class remarks). Activation re-pushes the whole screen at once — the loop is woken
+        /// rather than left to finish its idle sleep, or the screen reader would read the list
+        /// the window last showed.
         /// </summary>
         public void SetActive(bool active)
         {
             _active = active;
-            if (active) { _lastRaw = ""; }
+            if (active) { RequestFreshFrame(); }
         }
 
         /// <summary>
-        /// Push the current screen on the next read even if it has not changed — asked for when
-        /// this transport becomes the live one, so the window is not left on a frame from the
-        /// other transport.
+        /// Push the current screen on the next read, and read now — asked for when this
+        /// transport becomes the live one (so the window is not left on a frame from the other
+        /// transport) and when the window is shown.
         /// </summary>
-        public void RequestFreshFrame() { _lastRaw = ""; }
+        public void RequestFreshFrame()
+        {
+            _lastRaw = "";
+            _wake.Wake();
+        }
 
         /// <summary>
         /// Press one Captain-MCDU key ("INIT", "L1", "DOT", "CLR" …). The next poll reflects
@@ -187,7 +195,6 @@ namespace MSFSBlindAssist.SimConnect
                 Log.Debug("SimConnect", $"A32NX MCDU key {key}: {NoSocket}");
                 return NoSocket;
             }
-            _refreshRequested = true;
             // Reported (not just flagged): the link is no longer readable until the next loop
             // pass re-installs the agent on the same socket.
             if (result == NoAgent) { AgentLost(generation); }
@@ -215,12 +222,13 @@ namespace MSFSBlindAssist.SimConnect
                 {
                     if (!await EnsureConnected(ct))
                     {
-                        await Task.Delay(ReconnectDelayMs, ct);
+                        await _wake.WaitAsync(TimeSpan.FromMilliseconds(ReconnectDelayMs), ct);
                         continue;
                     }
 
-                    if (_active || _refreshRequested) { await PollOnce(ct); }
-                    else { await PingOnce(ct); }
+                    // Read whether the window is open or not: a closed window still speaks FMS
+                    // scratchpad messages ("DEST EFOB BELOW MIN") and stays current for reopening.
+                    await PollOnce(ct);
 
                     if (_emptyEvalStreak >= DeadSocketEvalFailures)
                     {
@@ -228,7 +236,7 @@ namespace MSFSBlindAssist.SimConnect
                         DropSocket();
                         continue;
                     }
-                    await Task.Delay(_active ? PollIntervalMs : IdleIntervalMs, ct);
+                    await _wake.WaitAsync(TimeSpan.FromMilliseconds(_active ? PollIntervalMs : IdleIntervalMs), ct);
                 }
                 catch (OperationCanceledException) { break; }
                 catch (Exception ex)
@@ -384,12 +392,20 @@ namespace MSFSBlindAssist.SimConnect
 
         private async Task PollOnce(CancellationToken ct)
         {
-            _refreshRequested = false;
             int generation = _wsGeneration;
             string raw = await EvalAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.read() : '{NoAgent}'", ct);
             if (string.IsNullOrEmpty(raw)) { _emptyEvalStreak++; return; }
             _emptyEvalStreak = 0;
             if (raw == NoAgent) { AgentLost(generation); return; }
+
+            // The screen is re-read every poll; only a CHANGED frame reaches the window, and an
+            // unchanged one is not even parsed (~35 KB of garbage per poll otherwise). _lastRaw
+            // only ever holds a body that parsed ok with content, so an identical answer is ok.
+            if (raw == _lastRaw)
+            {
+                _link.OnReadAnswered(generation, ok: true);
+                return;
+            }
 
             JObject body;
             try { body = JObject.Parse(raw); }
@@ -410,25 +426,11 @@ namespace MSFSBlindAssist.SimConnect
             // Tagged with the socket this read went out on: an answer that arrives after that
             // socket closed changes nothing.
             _link.OnReadAnswered(generation, ok: true);
-
-            // The screen is re-read every poll; only a CHANGED frame reaches the window. A
-            // plain string compare against the kept body (a few KB) is the whole test.
-            if (raw == _lastRaw) { return; }
             _lastRaw = raw;
 
             var data = FbwMcduUpdate.Parse(content);
             if (data == null) { return; }
             PostToUI(() => DisplayUpdated?.Invoke(data));
-        }
-
-        private async Task PingOnce(CancellationToken ct)
-        {
-            int generation = _wsGeneration;
-            string raw = await EvalAsync($"window.__MSFSBA_A32NX_MCDU ? __MSFSBA_A32NX_MCDU.ping() : '{NoAgent}'", ct);
-            if (string.IsNullOrEmpty(raw)) { _emptyEvalStreak++; return; }
-            _emptyEvalStreak = 0;
-            if (raw == NoAgent) { AgentLost(generation); return; }
-            _link.OnReadAnswered(generation, raw == "ready");
         }
 
         /// <summary>
