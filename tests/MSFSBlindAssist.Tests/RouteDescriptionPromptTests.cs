@@ -176,8 +176,8 @@ public class RouteDescriptionPromptTests
         Assert.Contains("Any taxiway, exit or stand you name in the check line or the suggestions must appear in that leg's " +
                         "lines, including its \"Taxiway names at\" list; when a point could only be made with a name that is not " +
                         "there, leave the point out.", prompt);
-        Assert.Contains("When you leave a point out of a check line, do not call that leg an agreement: say that not everything " +
-                        "could be checked, without naming what.", prompt);
+        Assert.Contains("When the name rule above makes you leave a point out of a check line, do not call that leg an " +
+                        "agreement: say that not everything could be checked, without naming what.", prompt);
         Assert.DoesNotContain("Any taxiway you name must appear", prompt);
     }
 
@@ -186,9 +186,11 @@ public class RouteDescriptionPromptTests
     {
         Assert.Equal("Web search is off for this briefing, so every check line begins " +
                      "\"Real-world check, from memory rather than live charts:\".", GeminiService.RouteSearchOffSentence);
-        Assert.Equal("Web search is on for this briefing: do any lookups before you start writing, and you may look up each " +
-                     "airport's current airport diagram and chart notes; a check line says current charts only when that search " +
-                     "found and read them.",
+        // "before you start writing" could be read as "before this section" — with Claude, only the text after the
+        // last tool block survives ParseResponse, so a lookup delayed until section 7 would drop sections 1-6.
+        Assert.Equal("Web search is on for this briefing: do any lookups before you write any part of the briefing, and you " +
+                     "may look up each airport's current airport diagram and chart notes; a check line says current charts " +
+                     "only when that search found and read them.",
                      GeminiService.RouteSearchOnSentence);
     }
 

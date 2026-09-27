@@ -916,7 +916,7 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     /// </summary>
     internal const string RouteCheckFromMemory = "Real-world check, from memory rather than live charts:";
 
-    /// <summary>How a check line begins only when a web search in that briefing found the airport's current charts.</summary>
+    /// <summary>How a check line begins only when a web search in that briefing found and read the airport's current charts.</summary>
     internal const string RouteCheckAgainstCharts = "Real-world check, against current charts:";
 
     /// <summary>
@@ -929,10 +929,16 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     internal const string RouteSearchOffSentence =
         $"Web search is off for this briefing, so every check line begins \"{RouteCheckFromMemory}\".";
 
-    /// <summary>Section 7's search sentence when the request carrying the prompt has web search.</summary>
+    /// <summary>
+    /// Section 7's search sentence when the request carrying the prompt has web search. "Before you write any part of the
+    /// briefing" is deliberate, not "before you start writing" — the latter reads as "before this section", and with
+    /// Claude only the text after the last tool block survives <see cref="ClaudeService"/>'s response parsing, so a
+    /// lookup delayed until section 7 would drop sections 1-6 of the briefing entirely.
+    /// </summary>
     internal const string RouteSearchOnSentence =
-        "Web search is on for this briefing: do any lookups before you start writing, and you may look up each airport's " +
-        "current airport diagram and chart notes; a check line says current charts only when that search found and read them.";
+        "Web search is on for this briefing: do any lookups before you write any part of the briefing, and you may look up " +
+        "each airport's current airport diagram and chart notes; a check line says current charts only when that search " +
+        "found and read them.";
 
     /// <summary>
     /// Generates the prompt for route description.
@@ -1018,7 +1024,7 @@ Cover the following topics, using descriptive section headings separated by blan
    A suggested exit takes its side and distance from the block's exits list, and gets none when the list does not give them.
    When the block gives no size class for the aircraft, say which aircraft a size restriction applies to.
    Any taxiway, exit or stand you name in the check line or the suggestions must appear in that leg's lines, including its ""Taxiway names at"" list; when a point could only be made with a name that is not there, leave the point out.
-   When you leave a point out of a check line, do not call that leg an agreement: say that not everything could be checked, without naming what.
+   When the name rule above makes you leave a point out of a check line, do not call that leg an agreement: say that not everything could be checked, without naming what.
    Keep it short: do not list every exit, and do not describe where the data came from beyond the wording this section asks for.
    Give every distance in this section in the unit the block's ""Distance unit"" line names, and never mix units.
    When a leg's note says SayIntentions assigned a different runway from the flight plan, say so here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.

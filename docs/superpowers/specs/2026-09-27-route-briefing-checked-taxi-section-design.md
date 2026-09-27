@@ -22,9 +22,10 @@ parts, in this order:
    own knowledge (the one exception is below).
 2. **One check line** — always there when the scenery gave that leg something to check (a route, an exit or a
    stand). It says what the AI checked against — *"Real-world check, from memory rather than live charts: …"*, or
-   *"Real-world check, against current charts: …"* only when web search actually found that airport's charts for
-   this briefing — and then, in a few words, that the scenery agrees with the real airport, or what differs, or
-   that the AI does not know the airport well enough to check it. It never claims an agreement it cannot support.
+   *"Real-world check, against current charts: …"* only when web search actually found and read that airport's
+   charts for this briefing — and then, in a few words, that the scenery agrees with the real airport, or what
+   differs, or that the AI does not know the airport well enough to check it. It never claims an agreement or a
+   difference it cannot support.
 3. **"Real-world suggestions, not from your scenery:"** — a paragraph of at most three short sentences, only
    when there is something to add that the scenery cannot provide: a preferred exit from the real airport's charts
    (its side and distance taken from your scenery's exit list), restrictions that apply to your aircraft's size (a
@@ -121,7 +122,7 @@ interpolated). Lines are indented three spaces like the rest of the prompt, with
    A suggested exit takes its side and distance from the block's exits list, and gets none when the list does not give them.
    When the block gives no size class for the aircraft, say which aircraft a size restriction applies to.
    Any taxiway, exit or stand you name in the check line or the suggestions must appear in that leg's lines, including its ""Taxiway names at"" list; when a point could only be made with a name that is not there, leave the point out.
-   When you leave a point out of a check line, do not call that leg an agreement: say that not everything could be checked, without naming what.
+   When the name rule above makes you leave a point out of a check line, do not call that leg an agreement: say that not everything could be checked, without naming what.
    Keep it short: do not list every exit, and do not describe where the data came from beyond the wording this section asks for.
    Give every distance in this section in the unit the block's ""Distance unit"" line names, and never mix units.
    When a leg's note says SayIntentions assigned a different runway from the flight plan, say so here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
@@ -130,7 +131,7 @@ interpolated). Lines are indented three spaces like the rest of the prompt, with
 The search sentence (`{searchSentence}`):
 
 - `webSearch` false: `Web search is off for this briefing, so every check line begins ""Real-world check, from memory rather than live charts:"".`
-- `webSearch` true: `Web search is on for this briefing: do any lookups before you start writing, and you may look up each airport's current airport diagram and chart notes; a check line says current charts only when that search found and read them.`
+- `webSearch` true: `Web search is on for this briefing: do any lookups before you write any part of the briefing, and you may look up each airport's current airport diagram and chart notes; a check line says current charts only when that search found and read them.`
 
 What moved relative to round 5: the AI's own additions (restrictions, current operational information, the one
 "controllers usually route differently" sentence) leave the route paragraph for the labelled suggestions paragraph,
@@ -144,6 +145,15 @@ claimed difference as well as a claimed agreement; leaving a point out of a chec
 everything could be checked," never as an agreement; the search-on sentence now tells the AI to do its lookups
 before it starts writing, and "current charts" needs the material found and read, not merely found; and the
 suggestions paragraph falls after the route paragraph, not the check line, on a leg with no check line at all.
+
+Amended again 2026-09-27 (fix wave 2): "before you start writing" could be read as "before this section" rather
+than "before this briefing," and with Claude only the text after the last tool block survives `ParseResponse`, so a
+lookup delayed to section 7 would drop sections 1-6 — the search-on sentence now reads "before you write any part
+of the briefing." And "when you leave a point out of a check line" was read too broadly: a one-sentence check line
+always leaves detail out for brevity, so the rule is now explicitly tied to the name rule two lines above it —
+"when the name rule above makes you leave a point out of a check line." Neither change touches wording pinned
+elsewhere in this section; the exact strings quoted throughout §4 above and the pin list in §5 are updated to
+match.
 
 ## 5. Testing
 
@@ -163,6 +173,12 @@ suggestions paragraph falls after the route paragraph, not the check line, on a 
   size restrictions from the Aircraft line, current operational information, at most one routing sentence) and never a
   full alternative route; a suggested exit's side and distance from the exits list; the unknown-size rule; the name
   rule for the check line and suggestions, with the point left out rather than a name invented.
+- **Two more pins, added in fix wave 1 (final-review coverage the original brief's items didn't reach on their own):**
+  `A_general_knowledge_route_is_never_called_the_scenery_route` — a general-knowledge route ends only with the
+  "SayIntentions or ATC will give the actual taxi clearance" phrase and never with the scenery-route preview phrase,
+  and a leg with no route at all gets neither; `The_search_sentence_follows_the_check_line_opening_rule` — the search
+  sentence sits immediately after the "Begin it with …" check-line-opening rule, as one unit, in both the
+  search-off and search-on prompts.
 - **The search flag:** off gives the off sentence and never the on sentence, and on the reverse; with each sentence
   removed, the two prompts are identical (the flag changes nothing else); both contain the flight data and the
   question.
@@ -170,6 +186,11 @@ suggestions paragraph falls after the route paragraph, not the check line, on a 
   short paragraph for the taxi in …", "From your own knowledge you may add …", "at most one sentence per leg saying
   that controllers usually route differently there", "but only where it concerns a taxiway, runway or stand the block
   names", "Any taxiway you name must appear in that leg's lines …".
+- **Fix wave 2** re-pinned two of the strings above to their tightened wording rather than adding new tests: the
+  search-on sentence ("before you write any part of the briefing" in place of "before you start writing") in
+  `The_search_sentences_are_exact`, and the omission rule ("When the name rule above makes you leave a point out of
+  a check line…" in place of the unscoped "When you leave a point out of a check line…") in
+  `The_check_line_and_suggestions_name_only_what_the_scenery_has`. No test was added or removed by wave 2.
 
 The provider wiring (which flag each request passes, and `false` on Claude's retry) is a one-argument change per call
 site with no unit seam; it is covered by review and by the in-sim check with search off and on. The full suite must
