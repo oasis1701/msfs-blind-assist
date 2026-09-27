@@ -43,6 +43,16 @@ public static class C680Commands
             case "C680_KNOB_GTC_MFD":
                 string bl = Math.Clamp(value, 0, 100).ToString("0.###", CultureInfo.InvariantCulture);
                 return One($"{bl} (>L:WTG3000_Gtc_Backlight:2) {bl} (>L:WTG3000_Gtc_Backlight:3)");
+            // PASS OXY knob: the model's SET_STATE also drives the flow (0/0, 1/0, 0/1).
+            case "C680_PASS_OXY":
+                int oxy = Position(value);
+                return One($"{oxy} (>L:Mask_Selector_Position) {(oxy == 1 ? 1 : 0)} (>L:Oxy_Flow) {(oxy == 2 ? 1 : 0)} (>L:Oxy_Flow_Force)");
+            // DUMP is guarded: the push acts only with its cover open.
+            case "C680_PRESS_DUMP_COVER": return One($"{OnOff(value)} (>B:PRESSURIZATION_Dump_Cover_Set)");
+            case "C680_PRESS_DUMP": return One($"(B:PRESSURIZATION_Dump_Cover) if{{ {OnOff(value)} (>B:PRESSURIZATION_Dump_Set) }}");
+            // The hydraulic switches act only with their covers open (LEFT_SINGLE_CODE).
+            case "C680_HYD_SW_1": return One($"(L:HYDRAULICS_Switch_1_Cover) 1 == if{{ {OnOff(value)} (>L:SW_SOV_HYDRAULICS_Switch_1) }}");
+            case "C680_HYD_SW_2": return One($"(L:HYDRAULICS_Switch_2_Cover) 1 == if{{ {OnOff(value)} (>L:SW_SOV_HYDRAULICS_Switch_2) }}");
             case "C680_STARTER_DISENG":
                 return new[]
                 {
@@ -59,6 +69,7 @@ public static class C680Commands
     public static bool SpringsFromResetToOff(string key)
         => key is "C680_GEN_L" or "C680_GEN_R" or "C680_APU_GEN";
 
+    private static int OnOff(double v) => v > 0.5 ? 1 : 0;
     private static int Position(double v) => Math.Clamp((int)Math.Round(v), 0, 2);
     private static string GenWord(double v) => Position(v) switch { 0 => "On", 1 => "Off", _ => "Reset" };
 

@@ -48,4 +48,55 @@ public class C680AuditFixTests
         Assert.NotNull(Vars[key].ValueDescriptions);
         Assert.Equal("On", Vars[key].ValueDescriptions![1]);
     }
+
+    // ---- Right tilt (Task 5)
+
+    [Fact]
+    public void PressureSourceUsesTheModelsEncoding()
+        => Assert.Equal(new[] { "EMER", "L", "NORM", "R", "OFF" }, Vars["C680_PRESS_SRC"].ValueDescriptions!.OrderBy(p => p.Key).Select(p => p.Value));
+
+    [Theory]
+    [InlineData("C680_BLEED_L")]
+    [InlineData("C680_BLEED_R")]
+    public void BleedKnobsUseThePluginsWords(string key)
+        => Assert.Equal(new[] { "OFF", "LP", "NORM", "HP" }, Vars[key].ValueDescriptions!.OrderBy(p => p.Key).Select(p => p.Value));
+
+    [Fact]
+    public void PassengerOxygenUsesTheModelsEncoding()
+        => Assert.Equal(new[] { "OFF", "NORM", "ON" }, Vars["C680_PASS_OXY"].ValueDescriptions!.OrderBy(p => p.Key).Select(p => p.Value));
+
+    [Theory]
+    [InlineData(0, "0 (>L:Mask_Selector_Position) 0 (>L:Oxy_Flow) 0 (>L:Oxy_Flow_Force)")]
+    [InlineData(1, "1 (>L:Mask_Selector_Position) 1 (>L:Oxy_Flow) 0 (>L:Oxy_Flow_Force)")]
+    [InlineData(2, "2 (>L:Mask_Selector_Position) 0 (>L:Oxy_Flow) 1 (>L:Oxy_Flow_Force)")]
+    public void PassengerOxygenSetsTheFlowAsTheKnobDoes(double position, string code)
+        => Assert.Equal(code, C680Commands.For("C680_PASS_OXY", position).Single().Code);
+
+    [Fact]
+    public void DumpNeedsItsCoverOpenAsInTheCockpit()
+    {
+        Assert.Equal("(B:PRESSURIZATION_Dump_Cover) if{ 1 (>B:PRESSURIZATION_Dump_Set) }", C680Commands.For("C680_PRESS_DUMP", 1).Single().Code);
+        Assert.Equal("1 (>B:PRESSURIZATION_Dump_Cover_Set)", C680Commands.For("C680_PRESS_DUMP_COVER", 1).Single().Code);
+        Assert.Equal("PRESSURIZATION DUMP SWITCH", Vars["C680_PRESS_DUMP"].Name);
+        Assert.Equal(C680SwitchMirror.DumpCover, Vars["C680_PRESS_DUMP_COVER"].Name);
+    }
+
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void HydraulicSwitchesNeedTheirCoverOpen(int n)
+    {
+        Assert.Equal($"(L:HYDRAULICS_Switch_{n}_Cover) 1 == if{{ 1 (>L:SW_SOV_HYDRAULICS_Switch_{n}) }}",
+                     C680Commands.For($"C680_HYD_SW_{n}", 1).Single().Code);
+        Assert.Equal($"HYDRAULICS_Switch_{n}_Cover", Vars[$"C680_HYD_SW_{n}_COVER"].Name);
+    }
+
+    [Theory]
+    [InlineData("C680_CKPT_TMP_UP")]
+    [InlineData("C680_CKPT_TMP_DN")]
+    [InlineData("C680_CABIN_TMP_UP")]
+    [InlineData("C680_CABIN_TMP_DN")]
+    [InlineData("C680_CABIN_CONTROL")]
+    public void DeadTemperatureControlsAreGoneTheTouchscreenOwnsThem(string key)
+        => Assert.False(Vars.ContainsKey(key));
 }

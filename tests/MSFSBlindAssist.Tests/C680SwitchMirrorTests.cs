@@ -16,7 +16,8 @@ public class C680SwitchMirrorTests
             "(B:ELECTRICAL_Alternator_1) (>L:MSFSBA_C680_GEN_L_POS) " +
             "(B:ELECTRICAL_Alternator_2) (>L:MSFSBA_C680_GEN_R_POS) " +
             "(B:ELECTRICAL_APU_Generator_1) (>L:MSFSBA_C680_APU_GEN_POS) " +
-            "(A:CIRCUIT SWITCH ON:'ATG_4000_BROADBAND_UT580'_n, Bool) (>L:MSFSBA_C680_CABIN_INTERNET)",
+            "(A:CIRCUIT SWITCH ON:'ATG_4000_BROADBAND_UT580'_n, Bool) (>L:MSFSBA_C680_CABIN_INTERNET) " +
+            "(B:PRESSURIZATION_Dump_Cover) (>L:MSFSBA_C680_DUMP_COVER)",
             C680SwitchMirror.Code);
 
     [Fact]
