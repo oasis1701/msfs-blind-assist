@@ -3776,13 +3776,32 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // =================================================================
             // PEDESTAL — CONTROL STAND
             // =================================================================
+            // Speed-brake lever: announced in ProcessSimVarUpdate AND the Control
+            // Stand lever COMBO, one key for both. FCTL_Speedbrake_Lever is a
+            // 0-100 lever POSITION that sweeps between detents while the lever
+            // moves; it rests at DOWN 0 / ARM 50 / half 75 / UP 100 — re-measured
+            // live 2026-09-27, NOT PMDG_777X_SDK.h's "25: ARMED". The combo keys
+            // are those rest values and the classifier seeds it with the NEAREST
+            // detent (PmdgSpeedBrakeLever.B777). One key matters: it is what
+            // MainForm's UI-echo suppression is keyed on, so a pick is not spoken
+            // a second time as the lever travels; and a second key on this field
+            // would evict this one from the one-field-one-key _pmdgFieldToKeyMap.
+            // A pick is dispatched to the per-detent click events in
+            // HandleUIVariableSet; the 777 has no flight-detent click (only
+            // DOWN/ARM/50/UP), so four positions where the 737 has five.
+            // NOTE: the open combo does NOT follow a lever moved by anything else
+            // (the sim shortcut, auto speed brake) — ProcessSimVarUpdate handles
+            // this var and MainForm's def-handled branch refreshes button labels
+            // only. It re-reads the field whenever the panel is rebuilt.
             ["FCTL_Speedbrake"] = new SimConnect.SimVarDefinition
             {
                 Name = "FCTL_Speedbrake_Lever",
                 DisplayName = "Speed Brake",
                 Type = SimConnect.SimVarType.PMDGVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true
+                IsAnnounced = true,
+                ValueDescriptions = PmdgSpeedBrakeLever.ComboDescriptions(PmdgSpeedBrakeLever.B777),
+                ValueToDescriptionKey = v => PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.B777, v)
             },
             ["FCTL_Flaps"] = new SimConnect.SimVarDefinition
             {
@@ -5335,6 +5354,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // Pedestal — Control Stand
             ["Control Stand"] = new List<string>
             {
+                "FCTL_Speedbrake",
                 "FCTL_Flaps",
                 "FCTL_AltnFlapsArm", "FCTL_AltnFlapsControl",
                 "FCTL_StabCutout_C", "FCTL_StabCutout_R",
@@ -5474,6 +5494,19 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // background changes (cockpit click, ground crew) still announce.
     private int _prevCockpitDoorOpen = -1;
     private DateTime _cockpitDoorSetEcho = DateTime.MinValue;
+
+    // Speed-brake lever callout — the settle announcer shared with the 737
+    // (PmdgSpeedBrakeLever.cs). FCTL_Speedbrake_Lever sweeps through every value
+    // while the lever moves and the CDA is polled once a second, so each sample
+    // restarts a timer that outlasts one poll and only the resting position is
+    // spoken. It reads the one detent table, honours the Ctrl+M mute itself (its
+    // timer speaks outside MainForm's suppression wrap) and silences the arrival
+    // of the pilot's own combo pick. The CDA's initial snapshot never reaches
+    // ProcessSimVarUpdate, so the first sample it does see is a real change.
+    private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
+        PmdgSpeedBrakeLever.B777, PmdgSpeedBrakeLever.B777SettleTolerance, PmdgSpeedBrakeLever.B777SettleMs,
+        muteKey: "FCTL_Speedbrake", speakFirst: true,
+        betweenDetents: PmdgSpeedBrakeLever.B777PartialDeployment);
 
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
@@ -5826,7 +5859,11 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             ["ISFD_HP_IN"]              = "EVT_ISFD_HP_IN",
 
             // --- Control Stand (pedestal) ---
-            ["FCTL_Speedbrake"]         = "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER",
+            // NOTE: no FCTL_Speedbrake entry — the base
+            // EVT_CONTROL_STAND_SPEED_BRAKE_LEVER is a drag event (same trap
+            // as the flap lever's base event, see branch 2f); the panel's
+            // FCTL_Speedbrake combo is dispatched to the per-detent click
+            // events in its own HandleUIVariableSet branch (1-speedbrake).
             ["FCTL_Flaps"]              = "EVT_CONTROL_STAND_FLAPS_LEVER",
             ["FCTL_AltnFlapsArm"]       = "EVT_ALTN_FLAPS_ARM",
             ["FCTL_AltnFlapsControl"]   = "EVT_ALTN_FLAPS_POS",
@@ -6318,6 +6355,45 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         }
 
         // ------------------------------------------------------------------
+        // 1-speedbrake. Speed-brake lever detents (Control Stand combo on
+        //     FCTL_Speedbrake — deliberately NOT in _simpleEventMap, so this
+        //     must run before the section-2 lookup). The combo values ARE the
+        //     lever's detent rest values (one table, PmdgSpeedBrakeLever.B777).
+        //     The base EVT_CONTROL_STAND_SPEED_BRAKE_LEVER is a drag event
+        //     (same trap as the flap lever, branch 2f); use the SDK's
+        //     per-detent click events, which commit ONLY with
+        //     MOUSE_FLAG_LEFTSINGLE as the CDA parameter — the proven
+        //     FCTL_Flaps convention, and the same click family live-verified
+        //     on the NG3 speed-brake detents (2026-07-03: CDA+LEFTSINGLE on
+        //     _ARM lit the ARMED annunciator; the bare param was silent).
+        //     No already-there guard: a click into the current detent does
+        //     nothing, and the polled read-back cannot say where a moving
+        //     lever is now. A SENT click is recorded as a pick, so the settle
+        //     announcer stays silent when the lever arrives there (the screen
+        //     reader has just read the pick). Not ready: said, like FCTL_Flaps.
+        // ------------------------------------------------------------------
+        if (varKey == "FCTL_Speedbrake")
+        {
+            int sbIdx = PmdgSpeedBrakeLever.IndexOfComboValue(PmdgSpeedBrakeLever.B777, value);
+            if (sbIdx >= 0)
+            {
+                string sbDetentEvent = PmdgSpeedBrakeLever.B777[sbIdx].EventName;
+                if (EventIds.TryGetValue(sbDetentEvent, out int sbEvId))
+                {
+                    var sbDm = simConnect.PMDGDataManager;
+                    if (sbDm == null || !sbDm.IsReady)
+                    {
+                        announcer.AnnounceImmediate("Switch not ready, please try again in a moment.");
+                        return true;
+                    }
+                    simConnect.SendPMDGEvent(sbDetentEvent, (uint)sbEvId, PmdgMouseFlags.LeftSingle);
+                    _speedBrakeCallout.RecordPick(sbIdx);
+                }
+            }
+            return true;
+        }
+
+        // ------------------------------------------------------------------
         // 2. Look up the event name for this variable key
         // ------------------------------------------------------------------
         if (!_simpleEventMap.TryGetValue(varKey, out string? eventName))
@@ -6433,8 +6509,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             string detentEvent = "EVT_CONTROL_STAND_FLAPS_LEVER" + detentSuffix;
             if (EventIds.TryGetValue(detentEvent, out int detentId))
             {
-                const int MOUSE_FLAG_LEFTSINGLE = 0x20000000;
-                simConnect.SendPMDGEvent(detentEvent, (uint)detentId, MOUSE_FLAG_LEFTSINGLE);
+                simConnect.SendPMDGEvent(detentEvent, (uint)detentId, PmdgMouseFlags.LeftSingle);
             }
             return true;
         }
@@ -6593,20 +6668,11 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             return true;
         }
 
-        // Speed brake — custom formatting for lever position
+        // Speed brake — the resting lever position, from the one detent table,
+        // on a trailing-edge settle timer (see _speedBrakeCallout).
         if (varName == "FCTL_Speedbrake")
         {
-            int lever = (int)Math.Round(value);
-            if (lever <= 0)
-                announcer.Announce("Speed brake down");
-            else if (lever <= 50)
-                announcer.Announce("Speed brake armed");
-            else
-            {
-                // 51-100 = deployed, map to percentage
-                int pct = (int)Math.Round((lever - 50.0) / 50.0 * 100);
-                announcer.Announce($"Speed brake {pct} percent");
-            }
+            _speedBrakeCallout.OnSample(value, announcer);
             return true;
         }
 
