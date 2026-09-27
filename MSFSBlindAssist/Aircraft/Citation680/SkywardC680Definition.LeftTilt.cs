@@ -128,8 +128,8 @@ public partial class SkywardC680Definition
         AddFlag(v, "C680_ENG_AI_L", "ENG ANTI ICE:1", "Left Engine Anti-Ice", "Off", "On", simvar: true);
         AddFlag(v, "C680_ENG_AI_R", "ENG ANTI ICE:2", "Right Engine Anti-Ice", "Off", "On", simvar: true);
         AddFlag(v, "C680_STRUCT_AI", "STRUCTURAL DEICE SWITCH", "Wing Anti-Ice System", "Off", "On", simvar: true);
-        AddReadout(v, "C680_AI_BOOST_L", "SW_SOV_AI_N1_BOOST_1", "Left Anti-Ice N1 Boost", "number", "F2");
-        AddReadout(v, "C680_AI_BOOST_R", "SW_SOV_AI_N1_BOOST_2", "Right Anti-Ice N1 Boost", "number", "F2");
+        AddFlag(v, "C680_AI_BOOST_L", "SW_SOV_AI_N1_BOOST_1", "Left Anti-Ice N1 Boost", "Off", "On");
+        AddFlag(v, "C680_AI_BOOST_R", "SW_SOV_AI_N1_BOOST_2", "Right Anti-Ice N1 Boost", "Off", "On");
         AddSimReadout(v, "C680_OAT", "AMBIENT TEMPERATURE", "Outside Air Temperature", "celsius", "F0");
 
         // ---- Exterior Lights
@@ -140,10 +140,11 @@ public partial class SkywardC680Definition
         AddSwitch(v, "C680_PULSE", "SW_SOV_LIGHTS_PULSE", "PULSE Light");
         AddSwitch(v, "C680_ANTI_COLL", "SW_SOV_LIGHTS_STROBE", "ANTI COLL Light");
         AddSwitch(v, "C680_WING_LT", "SW_SOV_LIGHTS_WING", "WING Inspection Light");
-        AddSwitch(v, "C680_LOGO", "SW_SOV_LIGHTS_LOGO", "LOGO Light");
-        AddSimSwitch(v, "C680_NAV_LT", "LIGHT NAV", "NAV Light");
-        AddSimSwitch(v, "C680_BEACON", "LIGHT BEACON", "BEACON Light");
-        AddSwitch(v, "C680_TAIL_FLOOD", "SW_SOV_LIGHTS_FLOOD_ON", "TAIL FLOOD Light");
+        // The plugin names SW_SOV_LIGHTS_LOGO tail_flood_sw; SW_SOV_LIGHTS_FLOOD_ON holds no write.
+        AddSwitch(v, "C680_TAIL_FLOOD", "SW_SOV_LIGHTS_LOGO", "TAIL FLOOD Light");
+        // No cockpit switch: navigation and beacon lights are set on the MFD touchscreen's Exterior Lights page.
+        AddFlag(v, "C680_NAV_LT", "LIGHT NAV", "Navigation Lights", "Off", "On", simvar: true);
+        AddFlag(v, "C680_BEACON", "LIGHT BEACON", "Beacon", "Off", "On", simvar: true);
         AddFlag(v, "C680_LDG_STATE", "LIGHT LANDING", "Landing Lights", "Off", "On", simvar: true);
         AddFlag(v, "C680_TAXI_STATE", "LIGHT TAXI", "Taxi Light", "Off", "On", simvar: true);
         AddFlag(v, "C680_STROBE_STATE", "LIGHT STROBE", "Anti-Collision Lights", "Off", "On", simvar: true);
@@ -162,7 +163,6 @@ public partial class SkywardC680Definition
         AddKnob(v, "C680_KNOB_GTC_L", "WTG3000_Gtc_Backlight:1", "Left PFD Touchscreen Backlight");
         AddKnob(v, "C680_KNOB_GTC_MFD", "WTG3000_Gtc_Backlight:2", "MFD Touchscreens Backlight");
         AddKnob(v, "C680_KNOB_GTC_R", "WTG3000_Gtc_Backlight:4", "Right PFD Touchscreen Backlight");
-        AddSwitch(v, "C680_AMBIENT", "SW_SOV_GARMIN_AMBIENT_LIGHT", "Garmin Ambient Light Sensor");
         AddSwitch(v, "C680_LIGHT_ENTRY", "SW_SOV_LIGHT_ENTRY", "Entry Light");
 
         foreach (var k in new[] { "C680_EXT_PWR_ON", "C680_APU_RPM", "C680_COMB_L", "C680_COMB_R",
@@ -199,9 +199,9 @@ public partial class SkywardC680Definition
     };
     private static readonly List<string> AntiIceControls = new() { "C680_PITOT_L", "C680_PITOT_R", "C680_AI_ENG_L", "C680_AI_ENG_R", "C680_AI_WING_L", "C680_AI_WING_R", "C680_WING_XFLOW", "C680_WS_FAN" };
     private static readonly List<string> AntiIceDisplay = new() { "C680_PITOT_HEAT_L", "C680_PITOT_HEAT_R", "C680_ENG_AI_L", "C680_ENG_AI_R", "C680_STRUCT_AI", "C680_AI_BOOST_L", "C680_AI_BOOST_R", "C680_OAT" };
-    private static readonly List<string> ExteriorLightsControls = new() { "C680_LDG_L", "C680_LDG_R", "C680_TAXI", "C680_RECOG", "C680_PULSE", "C680_ANTI_COLL", "C680_WING_LT", "C680_LOGO", "C680_NAV_LT", "C680_BEACON", "C680_TAIL_FLOOD" };
-    private static readonly List<string> ExteriorLightsDisplay = new() { "C680_LDG_STATE", "C680_TAXI_STATE", "C680_STROBE_STATE" };
-    private static readonly List<string> InteriorLightingControls = new() { "C680_KNOB_PANEL", "C680_KNOB_FLOOD", "C680_KNOB_AUX", "C680_KNOB_MAP_L", "C680_KNOB_MAP_R", "C680_KNOB_CKPT_L", "C680_KNOB_CKPT_R", "C680_KNOB_PFD_L", "C680_KNOB_PFD_R", "C680_KNOB_MFD", "C680_KNOB_GTC_L", "C680_KNOB_GTC_MFD", "C680_KNOB_GTC_R", "C680_AMBIENT", "C680_LIGHT_ENTRY" };
+    private static readonly List<string> ExteriorLightsControls = new() { "C680_LDG_L", "C680_LDG_R", "C680_TAXI", "C680_RECOG", "C680_PULSE", "C680_ANTI_COLL", "C680_WING_LT", "C680_TAIL_FLOOD" };
+    private static readonly List<string> ExteriorLightsDisplay = new() { "C680_LDG_STATE", "C680_TAXI_STATE", "C680_STROBE_STATE", "C680_NAV_LT", "C680_BEACON" };
+    private static readonly List<string> InteriorLightingControls = new() { "C680_KNOB_PANEL", "C680_KNOB_FLOOD", "C680_KNOB_AUX", "C680_KNOB_MAP_L", "C680_KNOB_MAP_R", "C680_KNOB_CKPT_L", "C680_KNOB_CKPT_R", "C680_KNOB_PFD_L", "C680_KNOB_PFD_R", "C680_KNOB_MFD", "C680_KNOB_GTC_L", "C680_KNOB_GTC_MFD", "C680_KNOB_GTC_R", "C680_LIGHT_ENTRY" };
 
     /// <summary>Keys whose write is simply the L:var the definition reads (the vendor switch shape).</summary>
     private static readonly HashSet<string> LeftTiltPlainLVars = new(StringComparer.Ordinal)
@@ -209,16 +209,18 @@ public partial class SkywardC680Definition
         "C680_BATT_L", "C680_BATT_R", "C680_AVN_L", "C680_AVN_R", "C680_ELEC_L", "C680_ELEC_R", "C680_TRU_L", "C680_TRU_R",
         "C680_INTERIOR", "C680_EMER_LTS", "C680_APU_BLEED", "C680_MAX_COOL", "C680_TR_STOW_L", "C680_TR_STOW_R",
         "C680_PITOT_L", "C680_PITOT_R", "C680_AI_ENG_L", "C680_AI_ENG_R", "C680_AI_WING_L", "C680_AI_WING_R", "C680_WING_XFLOW", "C680_WS_FAN",
-        "C680_LDG_L", "C680_LDG_R", "C680_TAXI", "C680_RECOG", "C680_PULSE", "C680_ANTI_COLL", "C680_WING_LT", "C680_LOGO", "C680_TAIL_FLOOD",
+        "C680_LDG_L", "C680_LDG_R", "C680_TAXI", "C680_RECOG", "C680_PULSE", "C680_ANTI_COLL", "C680_WING_LT", "C680_TAIL_FLOOD",
         "C680_KNOB_PANEL", "C680_KNOB_FLOOD", "C680_KNOB_AUX", "C680_KNOB_MAP_L", "C680_KNOB_MAP_R", "C680_KNOB_CKPT_L", "C680_KNOB_CKPT_R",
-        "C680_KNOB_PFD_L", "C680_KNOB_PFD_R", "C680_KNOB_MFD", "C680_KNOB_GTC_L", "C680_KNOB_GTC_MFD", "C680_KNOB_GTC_R", "C680_AMBIENT", "C680_LIGHT_ENTRY"
+        "C680_KNOB_PFD_L", "C680_KNOB_PFD_R", "C680_KNOB_MFD", "C680_KNOB_GTC_L", "C680_KNOB_GTC_R", "C680_LIGHT_ENTRY"
     };
 
     private bool HandleLeftTiltSet(string varKey, double value, SimConnectManager sc)
     {
         if (LeftTiltPlainLVars.Contains(varKey))
         {
-            sc.SetLVar(GetVariables()[varKey].Name, value);
+            string lvar = GetVariables()[varKey].Name;
+            if (lvar.Contains(':')) sc.ExecuteCalculatorCode($"{Rpn(value)} (>L:{lvar})");
+            else sc.SetLVar(lvar, value);
             return true;
         }
         switch (varKey)
@@ -230,8 +232,6 @@ public partial class SkywardC680Definition
             case "C680_STARTER_R": sc.ExecuteCalculatorCode("(>B:ENGINE_Starter_2_On)"); return true;
             case "C680_FADEC_RESET_L": Pulse(sc, "FADEC_RESET_L", 600); return true;
             case "C680_FADEC_RESET_R": Pulse(sc, "FADEC_RESET_R", 600); return true;
-            case "C680_NAV_LT": ToggleTo(sc, "LIGHT NAV", "Bool", value > 0.5, "TOGGLE_NAV_LIGHTS"); return true;
-            case "C680_BEACON": ToggleTo(sc, "LIGHT BEACON", "Bool", value > 0.5, "TOGGLE_BEACON_LIGHTS"); return true;
         }
         return false;
     }

@@ -38,8 +38,8 @@ public class C680InteractionSurfaceTests
         ["DEICE_Push_WING_XFLOW"] = "C680_WING_XFLOW", ["DEICE_Push_WS_FAN"] = "C680_WS_FAN",
         // Lights
         ["LIGHTING_Switch_Landing_1"] = "C680_LDG_L", ["LIGHTING_Switch_Landing_2"] = "C680_LDG_R", ["LIGHTING_Switch_Taxi"] = "C680_TAXI",
-        ["LIGHTING_Switch_Recognition"] = "C680_RECOG", ["LIGHTING_Switch_Pulse"] = "C680_PULSE", ["LIGHTING_Switch_Beacon"] = "C680_BEACON",
-        ["LIGHTING_Switch_Wing"] = "C680_WING_LT", ["LIGHTING_Switch_Logo"] = "C680_LOGO",
+        ["LIGHTING_Switch_Recognition"] = "C680_RECOG", ["LIGHTING_Switch_Pulse"] = "C680_PULSE", ["LIGHTING_Switch_Beacon"] = "C680_ANTI_COLL",
+        ["LIGHTING_Switch_Wing"] = "C680_WING_LT", ["LIGHTING_Switch_Logo"] = "C680_TAIL_FLOOD",
         ["LIGHTING_Knob_Panel"] = "C680_KNOB_PANEL", ["LIGHTING_Knob_Flood"] = "C680_KNOB_FLOOD", ["LIGHTING_Knob_Aux"] = "C680_KNOB_AUX",
         ["LIGHTING_Knob_Map_1"] = "C680_KNOB_MAP_L", ["LIGHTING_Knob_Map_2"] = "C680_KNOB_MAP_R",
         ["Cockpit_Light_L"] = "C680_KNOB_CKPT_L", ["Cockpit_Light_R"] = "C680_KNOB_CKPT_R",

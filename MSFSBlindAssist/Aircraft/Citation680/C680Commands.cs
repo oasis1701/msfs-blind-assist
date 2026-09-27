@@ -39,6 +39,10 @@ public static class C680Commands
             case "C680_APU_GEN": return One($"{Position(value)} (>B:ELECTRICAL_APU_Generator_1_Set)", unique: true);
             case "C680_CABIN_INTERNET":
                 return One($"(A:CIRCUIT SWITCH ON:'{CabinInternetCircuit}'_n, Bool) {(value > 0.5 ? 0 : 1)} == if{{ '{CabinInternetCircuit}'_n (>K:ELECTRICAL_CIRCUIT_TOGGLE) }}");
+            // The MFD touchscreens' knob drives both of them (the model's LVAR_NAME and LVAR_2_NAME).
+            case "C680_KNOB_GTC_MFD":
+                string bl = Math.Clamp(value, 0, 100).ToString("0.###", CultureInfo.InvariantCulture);
+                return One($"{bl} (>L:WTG3000_Gtc_Backlight:2) {bl} (>L:WTG3000_Gtc_Backlight:3)");
             case "C680_STARTER_DISENG":
                 return new[]
                 {
