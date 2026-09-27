@@ -68,6 +68,51 @@ public class CoherentViewOwnershipTests
     }
 
     [Fact]
+    public void The_owner_is_told_when_the_last_one_shot_on_its_view_ends()
+    {
+        // A one-shot that began before the owner claimed the view (D pressed just before the
+        // MCDU window first opened) keeps the owner from connecting. It must hear the moment it
+        // can, not on its next 2 s reconnect pass — the window says "disconnected" at 2 s.
+        var view = NewView();
+        var first = CoherentViewOwnership.TryEnterOneShot(view)!;
+        var second = CoherentViewOwnership.TryEnterOneShot(view)!;
+        int told = 0;
+        using var claim = CoherentViewOwnership.Claim(view, onOneShotDone: () => told++);
+
+        first.Dispose();
+        Assert.Equal(0, told);
+
+        second.Dispose();
+        Assert.Equal(1, told);
+    }
+
+    [Fact]
+    public void A_released_claim_is_not_told()
+    {
+        var view = NewView();
+        var oneShot = CoherentViewOwnership.TryEnterOneShot(view)!;
+        int told = 0;
+        CoherentViewOwnership.Claim(view, onOneShotDone: () => told++).Dispose();
+
+        oneShot.Dispose();
+
+        Assert.Equal(0, told);
+    }
+
+    [Fact]
+    public void Only_the_owner_of_that_view_is_told()
+    {
+        var view = NewView();
+        var oneShot = CoherentViewOwnership.TryEnterOneShot(view)!;
+        int told = 0;
+        using var claim = CoherentViewOwnership.Claim(NewView(), onOneShotDone: () => told++);
+
+        oneShot.Dispose();
+
+        Assert.Equal(0, told);
+    }
+
+    [Fact]
     public void Disposing_a_claim_twice_releases_it_once()
     {
         var view = NewView();

@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Utils.Logging;
+
 namespace MSFSBlindAssist.SimConnect;
 
 /// <summary>
@@ -9,7 +11,8 @@ namespace MSFSBlindAssist.SimConnect;
 ///    lifetime — reconnect gaps included, which is exactly when a "does it hold a socket right
 ///    now?" check said no and let a one-shot in beside the reconnect;
 ///  • a ONE-SHOT eval (<see cref="CoherentEvalClient"/>) is refused on a claimed view, and while it
-///    runs it is registered, so the persistent client does not open its socket on top of it.
+///    runs it is registered, so the persistent client does not open its socket on top of it — and
+///    the owner is told the moment the last one ends, so it connects then, not a reconnect pass later.
 ///
 /// Views are compared by their title needle, ignoring case. Process-wide and thread-safe: the
 /// persistent client's loop runs on the thread pool, one-shots on the UI thread's continuations.
@@ -19,12 +22,37 @@ internal static class CoherentViewOwnership
     private static readonly object Gate = new();
     private static readonly Dictionary<string, int> Claims = new(StringComparer.OrdinalIgnoreCase);
     private static readonly Dictionary<string, int> OneShots = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Dictionary<string, List<Action>> Owners = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>Claim a view for a persistent client; dispose to release it.</summary>
-    public static IDisposable Claim(string viewNeedle)
+    /// <summary>
+    /// Claim a view for a persistent client; dispose to release it. <paramref name="onOneShotDone"/>
+    /// is called when the last one-shot eval on the view ends — one that began before the claim —
+    /// so the owner can open its socket at once instead of on its next reconnect pass. It runs on
+    /// the thread that ended the one-shot, outside the registry's lock.
+    /// </summary>
+    public static IDisposable Claim(string viewNeedle, Action? onOneShotDone = null)
     {
-        lock (Gate) { Increment(Claims, viewNeedle); }
-        return new Release(() => { lock (Gate) { Decrement(Claims, viewNeedle); } });
+        lock (Gate)
+        {
+            Increment(Claims, viewNeedle);
+            if (onOneShotDone != null)
+            {
+                if (!Owners.TryGetValue(viewNeedle, out var owners)) { Owners[viewNeedle] = owners = new List<Action>(); }
+                owners.Add(onOneShotDone);
+            }
+        }
+        return new Release(() =>
+        {
+            lock (Gate)
+            {
+                Decrement(Claims, viewNeedle);
+                if (onOneShotDone != null && Owners.TryGetValue(viewNeedle, out var owners))
+                {
+                    owners.Remove(onOneShotDone);
+                    if (owners.Count == 0) { Owners.Remove(viewNeedle); }
+                }
+            }
+        });
     }
 
     public static bool IsClaimed(string viewNeedle)
@@ -43,7 +71,23 @@ internal static class CoherentViewOwnership
             if (Claims.ContainsKey(viewNeedle)) { return null; }
             Increment(OneShots, viewNeedle);
         }
-        return new Release(() => { lock (Gate) { Decrement(OneShots, viewNeedle); } });
+        return new Release(() =>
+        {
+            Action[] toTell;
+            lock (Gate)
+            {
+                Decrement(OneShots, viewNeedle);
+                toTell = !OneShots.ContainsKey(viewNeedle) && Owners.TryGetValue(viewNeedle, out var owners)
+                    ? owners.ToArray()
+                    : Array.Empty<Action>();
+            }
+            foreach (var tell in toTell)
+            {
+                // An owner's wake-up must never fail the one-shot that has just finished.
+                try { tell(); }
+                catch (Exception ex) { Log.Debug("SimConnect", $"CoherentViewOwnership: owner of '{viewNeedle}' threw on wake-up: {ex.Message}"); }
+            }
+        });
     }
 
     /// <summary>True while a one-shot eval holds (or is opening) a socket on the view.</summary>

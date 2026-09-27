@@ -178,8 +178,9 @@ namespace MSFSBlindAssist.SimConnect
                 return;
             }
             // Own the view from now until Stop — reconnect gaps included — so no one-shot eval
-            // (CoherentEvalClient) ever opens a second inspector socket on it.
-            _viewClaim = CoherentViewOwnership.Claim(_viewTitleNeedle);
+            // (CoherentEvalClient) ever opens a second inspector socket on it. A one-shot that was
+            // already running when the claim was made wakes the loop as it ends.
+            _viewClaim = CoherentViewOwnership.Claim(_viewTitleNeedle, onOneShotDone: _wake.Wake);
             _ = Task.Run(() => RunLoop(_cts.Token));
         }
 
@@ -352,7 +353,9 @@ namespace MSFSBlindAssist.SimConnect
 
             // A one-shot eval that started before this client claimed the view (D pressed just
             // before the MCDU window first opened) may still hold it: connecting now would be the
-            // second socket Coherent refuses. Retry on the next pass.
+            // second socket Coherent refuses. It wakes the loop as it ends (the claim's
+            // onOneShotDone), so the retry comes then, not after the 2 s reconnect wait — which
+            // the window's own 2 s check would have announced as "MCDU disconnected".
             if (CoherentViewOwnership.OneShotInFlight(_viewTitleNeedle)) { return false; }
 
             int? pageId = await ResolvePageId(ct);
