@@ -46,8 +46,6 @@ public partial class SkywardC680Definition
         AddSwitch(v, "C680_CABIN_INTERNET", C680SwitchMirror.CabinInternet, "Cabin Internet Button");
         AddSimReadout(v, "C680_BATT_L_V", "ELECTRICAL BATTERY VOLTAGE:1", "Left Battery Volts", "volts", "F1");
         AddSimReadout(v, "C680_BATT_R_V", "ELECTRICAL BATTERY VOLTAGE:2", "Right Battery Volts", "volts", "F1");
-        AddSimReadout(v, "C680_BATT_L_A", "ELECTRICAL BATTERY LOAD:1", "Left Battery Amps", "amperes", "F0");
-        AddSimReadout(v, "C680_BATT_R_A", "ELECTRICAL BATTERY LOAD:2", "Right Battery Amps", "amperes", "F0");
         AddSimReadout(v, "C680_GEN_L_V", "ELECTRICAL GENERATOR VOLTAGE:1", "Left Generator Volts", "volts", "F1");
         AddSimReadout(v, "C680_GEN_R_V", "ELECTRICAL GENERATOR VOLTAGE:2", "Right Generator Volts", "volts", "F1");
         AddSimReadout(v, "C680_GEN_L_A", "ELECTRICAL GENERATOR AMPS:1", "Left Generator Amps", "amperes", "F0");
@@ -70,8 +68,6 @@ public partial class SkywardC680Definition
         AddSwitch(v, "C680_APU_BLEED", "SW_SOV_APU_BLEED", "APU BLEED AIR Button");
         AddSwitch(v, "C680_MAX_COOL", "SW_SOV_MAX_COOL", "MAX COOL Button");
         AddSimReadout(v, "C680_APU_RPM", "APU PCT RPM", "APU RPM", "percent", "F0");
-        AddSimReadout(v, "C680_APU_EGT", "APU EGT", "APU EGT", "celsius", "F0");
-        AddFlag(v, "C680_APU_COMB", "GENERAL_APU_COMBUSTION", "APU", "Not running", "Running");
         AddFlag(v, "C680_APU_GEN_ON", "LINE CONNECTION ON:639", "APU Generator", "Off line", "On line", simvar: true);
         AddFlag(v, "C680_APU_FIRE", "SW_SOV_APU_FIRE_LIGHT", "APU FIRE Light", "Out", "Lit");
         AddFlag(v, "C680_APU_BLEED_ON", "ELECTRICAL_APU_Bleed", "APU Bleed", "Closed", "Open");
@@ -107,10 +103,10 @@ public partial class SkywardC680Definition
         AddSimReadout(v, "C680_OIL_P_R", "GENERAL ENG OIL PRESSURE:2", "Right Oil Pressure", "psi", "F0");
         AddSimReadout(v, "C680_OIL_T_L", "GENERAL ENG OIL TEMPERATURE:1", "Left Oil Temperature", "celsius", "F0");
         AddSimReadout(v, "C680_OIL_T_R", "GENERAL ENG OIL TEMPERATURE:2", "Right Oil Temperature", "celsius", "F0");
-        AddReadout(v, "C680_FADEC_TGT_L", "FADEC_TGT_N1_1", "Left FADEC Target N1", "number", "F1");
-        AddReadout(v, "C680_FADEC_TGT_R", "FADEC_TGT_N1_2", "Right FADEC Target N1", "number", "F1");
-        AddReadout(v, "C680_FADEC_MAX_L", "FADEC_MAX_N1_1", "Left FADEC Max N1", "number", "F1");
-        AddReadout(v, "C680_FADEC_MAX_R", "FADEC_MAX_N1_2", "Right FADEC Max N1", "number", "F1");
+        AddReadout(v, "C680_FADEC_TGT_L", "FADEC_TGT_N1_1", "Left FADEC Target N1", "number", "F3");
+        AddReadout(v, "C680_FADEC_TGT_R", "FADEC_TGT_N1_2", "Right FADEC Target N1", "number", "F3");
+        AddReadout(v, "C680_FADEC_MAX_L", "FADEC_MAX_N1_1", "Left FADEC Max N1", "number", "F3");
+        AddReadout(v, "C680_FADEC_MAX_R", "FADEC_MAX_N1_2", "Right FADEC Max N1", "number", "F3");
         AddFlag(v, "C680_ENG_RUN_L", "SW_SOV_ENGINE_RUN:1", "Left Engine Run Logic", "Stopped", "Run");
         AddFlag(v, "C680_ENG_RUN_R", "SW_SOV_ENGINE_RUN:2", "Right Engine Run Logic", "Stopped", "Run");
 
@@ -180,13 +176,13 @@ public partial class SkywardC680Definition
     };
     private static readonly List<string> ElectricalDisplay = new()
     {
-        "C680_BATT_L_V", "C680_BATT_L_A", "C680_BATT_R_V", "C680_BATT_R_A",
+        "C680_BATT_L_V", "C680_BATT_R_V",
         "C680_GEN_L_ON", "C680_GEN_L_V", "C680_GEN_L_A", "C680_GEN_R_ON", "C680_GEN_R_V", "C680_GEN_R_A", "C680_APU_V", "C680_APU_A",
         "C680_EXT_PWR_AVAIL", "C680_EXT_PWR_ON", "C680_EXT_PWR_V", "C680_BUS_TIE_CONN", "C680_AVN_POWER",
         "C680_STBY_LED_G", "C680_STBY_LED_A"
     };
     private static readonly List<string> ApuControls = new() { "C680_APU_KNOB", "C680_APU_BLEED", "C680_MAX_COOL" };
-    private static readonly List<string> ApuDisplay = new() { "C680_APU_COMB", "C680_APU_RPM", "C680_APU_EGT", "C680_APU_GEN_ON", "C680_APU_BLEED_ON", "C680_APU_FIRE" };
+    private static readonly List<string> ApuDisplay = new() { "C680_APU_RPM", "C680_APU_GEN_ON", "C680_APU_BLEED_ON", "C680_APU_FIRE" };
     private static readonly List<string> StartControls = new()
     {
         "C680_STARTER_L", "C680_RUN_L", "C680_STARTER_R", "C680_RUN_R", "C680_STARTER_DISENG",

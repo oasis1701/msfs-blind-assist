@@ -42,7 +42,6 @@ public partial class SkywardC680Definition
         AddSwitch(v, "C680_BAG_HEAT", "SW_SOV_BLEED_BAGHEAT_MODE", "BAG HEAT Button");
         AddReadout(v, "C680_CKPT_TMP", "SW_SOV_CKPT_TMP_CUR", "Cockpit Temperature", "number", "F0");
         AddReadout(v, "C680_CABIN_TMP", "SW_SOV_CABIN_TMP_CUR", "Cabin Temperature", "number", "F0");
-        AddReadout(v, "C680_BAG_TMP", "Bag_Heat_Temp", "Baggage Temperature", "number", "F0");
         AddReadout(v, "C680_CKPT_FAN", "SW_SOV_Cockpit_Fan_1_Speed", "Cockpit Fan Speed", "number", "F0");
         AddReadout(v, "C680_AVN_FAN", "SW_SOV_Avionics_Fan_1_Speed", "Avionics Fan Speed", "number", "F0");
 
@@ -66,7 +65,6 @@ public partial class SkywardC680Definition
         AddSimReadout(v, "C680_FUEL_L_LB", "FUELSYSTEM TANK WEIGHT:1", "Left Tank", "pounds", "F0");
         AddSimReadout(v, "C680_FUEL_R_LB", "FUELSYSTEM TANK WEIGHT:2", "Right Tank", "pounds", "F0");
         AddSimReadout(v, "C680_FUEL_TOTAL_LB", "FUEL TOTAL QUANTITY WEIGHT", "Total Fuel", "pounds", "F0");
-        AddSimReadout(v, "C680_FUEL_TEMP", "FUELSYSTEM TANK TEMPERATURE:1", "Fuel Temperature", "celsius", "F0");
         AddStateReadout(v, "C680_FUEL_LOW", "SW_SOV_FUEL_LEVEL_LOW", "Fuel Level Low",
             new Dictionary<double, string> { [0] = "No", [1] = "Left", [2] = "Right", [3] = "Both" });
         AddFlag(v, "C680_FUEL_IMBAL", "SW_SOV_FUEL_IMBALANCE_ACTIVE", "Fuel Imbalance", "No", "Yes");
@@ -82,8 +80,8 @@ public partial class SkywardC680Definition
         AddButton(v, "C680_OXY_TEST_L", "Left Oxygen Test Button");
         AddButton(v, "C680_OXY_TEST_R", "Right Oxygen Test Button");
         AddSwitch(v, "C680_OXY_TWO", "SW_SOV_OXYGEN_TWO_BOTTLES", "Second Oxygen Bottle", "Not installed", "Installed");
-        AddReadout(v, "C680_OXY_L_PSI", "Oxygen_Tank_L_Gauge", "Left Oxygen Pressure (raw)", "number", "F0");
-        AddReadout(v, "C680_OXY_R_PSI", "Oxygen_Tank_R_Gauge", "Right Oxygen Pressure (raw)", "number", "F0");
+        AddReadout(v, "C680_OXY_L_PSI", "Oxygen_Tank_L_Gauge", "Left Oxygen Pressure", "psi", "F0");
+        AddReadout(v, "C680_OXY_R_PSI", "Oxygen_Tank_R_Gauge", "Right Oxygen Pressure", "psi", "F0");
         AddReadout(v, "C680_OXY_FLOW", "Oxy_Flow", "Oxygen Flow", "number", "F1");
         AddSwitch(v, "C680_CVR_HEADSET", "SW_SOV_CVR_headset_button", "CVR Headset Button");
         AddButton(v, "C680_CVR_TEST", "CVR Test Button (hold)");
@@ -100,11 +98,11 @@ public partial class SkywardC680Definition
     private static readonly List<string> PressControls = new() { "C680_PRESS_SRC", "C680_BLEED_L", "C680_BLEED_R", "C680_PRESS_MODE", "C680_CABIN_ALT_SW", "C680_PRESS_DUMP_COVER", "C680_PRESS_DUMP", "C680_PRESS_RATE" };
     private static readonly List<string> PressDisplay = new() { "C680_CABIN_ALT", "C680_CABIN_RATE", "C680_CABIN_DIFF", "C680_LDG_ELEV", "C680_PRESS_EMER", "C680_DUCT_CKPT", "C680_DUCT_CABIN", "C680_BLEED_ENG_L", "C680_BLEED_ENG_R", "C680_ECS_ACTIVE" };
     private static readonly List<string> EnvironmentControls = new() { "C680_BAG_HEAT" };
-    private static readonly List<string> EnvironmentDisplay = new() { "C680_CKPT_TMP_SEL", "C680_CKPT_TMP", "C680_CABIN_TMP_SEL", "C680_CABIN_TMP", "C680_BAG_TMP", "C680_CKPT_FAN", "C680_AVN_FAN" };
+    private static readonly List<string> EnvironmentDisplay = new() { "C680_CKPT_TMP_SEL", "C680_CKPT_TMP", "C680_CABIN_TMP_SEL", "C680_CABIN_TMP", "C680_CKPT_FAN", "C680_AVN_FAN" };
     private static readonly List<string> HydraulicsControls = new() { "C680_HYD_AUX", "C680_HYD_SW_1_COVER", "C680_HYD_SW_1", "C680_HYD_SW_2_COVER", "C680_HYD_SW_2" };
     private static readonly List<string> HydraulicsDisplay = new() { "C680_HYD_PSI", "C680_HYD_QTY", "C680_HYD_PUMP_L", "C680_HYD_PUMP_R", "C680_HYD_AUX_ON" };
     private static readonly List<string> FuelControls = new() { "C680_BOOST_L", "C680_BOOST_R", "C680_CROSSFEED" };
-    private static readonly List<string> FuelDisplay = new() { "C680_FUEL_L_LB", "C680_FUEL_R_LB", "C680_FUEL_TOTAL_LB", "C680_FUEL_TEMP", "C680_FUEL_LOW", "C680_FUEL_IMBAL", "C680_BOOST_L_ON", "C680_BOOST_R_ON", "C680_FUEL_USED_L", "C680_FUEL_USED_R" };
+    private static readonly List<string> FuelDisplay = new() { "C680_FUEL_L_LB", "C680_FUEL_R_LB", "C680_FUEL_TOTAL_LB", "C680_FUEL_LOW", "C680_FUEL_IMBAL", "C680_BOOST_L_ON", "C680_BOOST_R_ON", "C680_FUEL_USED_L", "C680_FUEL_USED_R" };
     private static readonly List<string> OxygenControls = new() { "C680_PASS_OXY", "C680_MASK_L", "C680_MASK_R", "C680_OXY_TEST_L", "C680_OXY_TEST_R", "C680_OXY_TWO", "C680_CVR_HEADSET", "C680_CVR_TEST", "C680_CVR_ERASE", "C680_ELT" };
     private static readonly List<string> OxygenDisplay = new() { "C680_OXY_L_PSI", "C680_OXY_R_PSI", "C680_OXY_FLOW", "C680_CVR_IND" };
 

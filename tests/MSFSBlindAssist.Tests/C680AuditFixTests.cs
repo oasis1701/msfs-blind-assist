@@ -231,4 +231,34 @@ public class C680AuditFixTests
     [Fact]
     public void TheBrakeRowSaysChocksHoldTheAircraftToo()
         => Assert.Contains("chocks", Vars["C680_PARK_BRAKE_STATE"].DisplayName);
+
+    // ---- Readouts (Task 8)
+
+    [Theory]
+    [InlineData("C680_FADEC_TGT_L", 0.25, "25.0 percent")]
+    [InlineData("C680_FADEC_MAX_R", 0.984, "98.4 percent")]
+    public void FadecN1IsAFractionSpokenAsPercent(string key, double raw, string text)
+    {
+        Assert.True(new SkywardC680Definition().TryGetDisplayOverride(key, raw, out var shown));
+        Assert.Equal(text, shown);
+    }
+
+    [Theory]
+    [InlineData("C680_OXY_L_PSI")]
+    [InlineData("C680_OXY_R_PSI")]
+    public void OxygenGaugesReadInPsi(string key)
+    {
+        Assert.Equal("psi", Vars[key].Units);
+        Assert.DoesNotContain("raw", Vars[key].DisplayName);
+    }
+
+    [Theory]
+    [InlineData("C680_FUEL_TEMP")]
+    [InlineData("C680_BATT_L_A")]
+    [InlineData("C680_BATT_R_A")]
+    [InlineData("C680_APU_EGT")]
+    [InlineData("C680_APU_COMB")]
+    [InlineData("C680_BAG_TMP")]
+    public void RowsTheAircraftNeverWritesAreGone(string key)
+        => Assert.False(Vars.ContainsKey(key));
 }

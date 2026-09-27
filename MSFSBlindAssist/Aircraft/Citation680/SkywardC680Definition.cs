@@ -251,6 +251,10 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
     {
         switch (varKey)
         {
+            // The FADEC publishes N1 targets as fractions of 100 percent.
+            case "C680_FADEC_TGT_L": case "C680_FADEC_TGT_R": case "C680_FADEC_MAX_L": case "C680_FADEC_MAX_R":
+                displayText = (value * 100).ToString("0.0", System.Globalization.CultureInfo.InvariantCulture) + " percent";
+                return true;
         }
         if (TryAvionicsDisplay(varKey, value, out displayText)) return true;
         if (TryCabinDisplay(varKey, out displayText)) return true;
