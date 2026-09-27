@@ -164,7 +164,12 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        if (RunCommands(varKey, value, simConnect)) return true;
+        if (varKey == "C680_STBY_PWR" && value > 1.5) { HoldStandbyTest(simConnect); return true; }
+        if (RunCommands(varKey, value, simConnect))
+        {
+            if (C680Commands.SpringsFromResetToOff(varKey) && value > 1.5) After(1000, () => RunCommands(varKey, 1, simConnect));
+            return true;
+        }
         if (HandleLeftTiltSet(varKey, value, simConnect)) return true;
         if (HandleRightTiltSet(varKey, value, simConnect)) return true;
         if (HandleGlareshieldSet(varKey, value, simConnect)) return true;
@@ -187,6 +192,34 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
             else sc.ExecuteCalculatorCode(c.Code);
         }
         return true;
+    }
+
+    /// <summary>
+    /// STBY PWR TEST is spring-loaded: the aircraft reads it only while it is held, so the write
+    /// repeats every 50 ms for three seconds (the green LED stays lit through a good test) and the
+    /// switch is then released to OFF, where the spring leaves it.
+    /// </summary>
+    private static void HoldStandbyTest(SimConnectManager sc)
+    {
+        var test = C680Commands.For("C680_STBY_PWR", 2)[0].Code;
+        var started = DateTime.UtcNow;
+        var t = new System.Windows.Forms.Timer { Interval = 50 };
+        t.Tick += (_, _) =>
+        {
+            if ((DateTime.UtcNow - started).TotalMilliseconds < 3000) { sc.ExecuteCalculatorCodeUnique(test); return; }
+            t.Stop(); t.Dispose();
+            RunCommands("C680_STBY_PWR", 1, sc);
+        };
+        sc.ExecuteCalculatorCodeUnique(test);
+        t.Start();
+    }
+
+    /// <summary>One-shot on the UI thread's timer (SimConnect writes never come from a pool thread in this app).</summary>
+    private static void After(int ms, Action action)
+    {
+        var t = new System.Windows.Forms.Timer { Interval = ms };
+        t.Tick += (_, _) => { t.Stop(); t.Dispose(); action(); };
+        t.Start();
     }
 
     // ==================================================================================

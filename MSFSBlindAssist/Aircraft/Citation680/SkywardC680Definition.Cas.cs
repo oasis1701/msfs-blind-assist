@@ -34,16 +34,31 @@ public partial class SkywardC680Definition
     public bool IsCasClassMuted(string cls)
         => Settings.SettingsManager.Current.C680DisabledMonitorVariablesSet.Contains("C680_CAS_" + cls.ToUpperInvariant());
 
-    /// <summary>MainForm starts the monitor when the Sovereign+ is selected; it runs for as long as the aircraft is current.</summary>
-    public void StartCasMonitor(ScreenReaderAnnouncer announcer)
+    /// <summary>
+    /// MainForm starts the CAS monitor and the switch mirror when the Sovereign+ is selected; both
+    /// run for as long as the aircraft is current.
+    /// </summary>
+    public void Start(ScreenReaderAnnouncer announcer, SimConnectManager simConnect)
     {
+        _mirrorTarget = simConnect;
         if (_casMonitor != null) return;
         _casMonitor = new C680CasMonitor(announcer, IsCasClassMuted);
         _casMonitor.Start();
     }
 
+    private SimConnectManager? _mirrorTarget;
+
+    /// <summary>Copies the B:-only switch positions into their L:vars once per batch cycle (<see cref="C680SwitchMirror"/>).</summary>
+    public override void OnContinuousBatchDelivered(int batchNum)
+    {
+        base.OnContinuousBatchDelivered(batchNum);
+        if (C680SwitchMirror.RunsOn(batchNum) && _mirrorTarget is { IsConnected: true } sc)
+            sc.ExecuteCalculatorCodeUnique(C680SwitchMirror.Code);
+    }
+
     public void StopCasMonitor()
     {
+        _mirrorTarget = null;
         _casMonitor?.Dispose(); _casMonitor = null;
         _mfdClient?.Dispose(); _mfdClient = null;
     }

@@ -66,4 +66,54 @@ public class C680CommandsTests
     [Fact]
     public void ValuelessCommandsAreUnique()
         => Assert.True(C680Commands.For("C680_STARTER_DISENG", 1).All(c => c.Unique));
+
+    // ---- Electrical (Task 2)
+
+    [Theory]
+    [InlineData(0, "0 (>B:ELECTRICAL_Battery_STBY_3_Set)")]
+    [InlineData(1, "1 (>B:ELECTRICAL_Battery_STBY_3_Set)")]
+    [InlineData(2, "2 (>B:ELECTRICAL_Battery_STBY_3_Set)")]
+    public void StandbyPowerIsTheThreePositionSwitch(double position, string code)
+    {
+        var c = C680Commands.For("C680_STBY_PWR", position).Single();
+        Assert.Equal(code, c.Code);
+        Assert.True(c.Unique);   // TEST is held by repeating the same write every 50 ms
+    }
+
+    [Theory]
+    [InlineData("C680_GEN_L", 0, "(>B:ELECTRICAL_Alternator_1_On)")]
+    [InlineData("C680_GEN_L", 1, "(>B:ELECTRICAL_Alternator_1_Off)")]
+    [InlineData("C680_GEN_L", 2, "(>B:ELECTRICAL_Alternator_1_Reset)")]
+    [InlineData("C680_GEN_R", 0, "(>B:ELECTRICAL_Alternator_2_On)")]
+    [InlineData("C680_GEN_R", 2, "(>B:ELECTRICAL_Alternator_2_Reset)")]
+    public void GeneratorsMoveTheCockpitSwitchNotTheBusLine(string key, double position, string code)
+    {
+        var c = C680Commands.For(key, position).Single();
+        Assert.Equal(code, c.Code);
+        Assert.True(c.Unique);
+    }
+
+    [Fact]
+    public void ApuGeneratorIsTheThreePositionSwitch()
+    {
+        Assert.Equal("0 (>B:ELECTRICAL_APU_Generator_1_Set)", C680Commands.For("C680_APU_GEN", 0).Single().Code);
+        Assert.Equal("2 (>B:ELECTRICAL_APU_Generator_1_Set)", C680Commands.For("C680_APU_GEN", 2).Single().Code);
+    }
+
+    [Fact]
+    public void CabinInternetTogglesItsCircuitOnlyWhenItDisagrees()
+    {
+        Assert.Equal("(A:CIRCUIT SWITCH ON:'ATG_4000_BROADBAND_UT580'_n, Bool) 0 == if{ 'ATG_4000_BROADBAND_UT580'_n (>K:ELECTRICAL_CIRCUIT_TOGGLE) }",
+                     C680Commands.For("C680_CABIN_INTERNET", 1).Single().Code);
+        Assert.Equal("(A:CIRCUIT SWITCH ON:'ATG_4000_BROADBAND_UT580'_n, Bool) 1 == if{ 'ATG_4000_BROADBAND_UT580'_n (>K:ELECTRICAL_CIRCUIT_TOGGLE) }",
+                     C680Commands.For("C680_CABIN_INTERNET", 0).Single().Code);
+    }
+
+    [Theory]
+    [InlineData("C680_GEN_L", true)]
+    [InlineData("C680_GEN_R", true)]
+    [InlineData("C680_APU_GEN", true)]
+    [InlineData("C680_STBY_PWR", false)]
+    public void ResetPositionsSpringBackToOff(string key, bool springs)
+        => Assert.Equal(springs, C680Commands.SpringsFromResetToOff(key));
 }

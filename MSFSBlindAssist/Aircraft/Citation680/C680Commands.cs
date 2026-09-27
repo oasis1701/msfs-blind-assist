@@ -31,6 +31,14 @@ public static class C680Commands
             case "C680_REV_R": return One($"{ReverseSet(value)} (>K:THROTTLE2_SET)");
             case "C680_THR_L_SET": return One($"{LeverSet(value)} (>K:THROTTLE1_SET)");
             case "C680_THR_R_SET": return One($"{LeverSet(value)} (>K:THROTTLE2_SET)");
+            // STBY PWR: 0 ON / 1 OFF / 2 TEST (momentary — the definition holds TEST by repeating this write).
+            case "C680_STBY_PWR": return One($"{Position(value)} (>B:ELECTRICAL_Battery_STBY_3_Set)", unique: true);
+            // GEN: 0 ON / 1 OFF / 2 RESET. The plugin's ALTERNATOR_SET intercept works but leaves this switch unsynced.
+            case "C680_GEN_L": return One($"(>B:ELECTRICAL_Alternator_1_{GenWord(value)})", unique: true);
+            case "C680_GEN_R": return One($"(>B:ELECTRICAL_Alternator_2_{GenWord(value)})", unique: true);
+            case "C680_APU_GEN": return One($"{Position(value)} (>B:ELECTRICAL_APU_Generator_1_Set)", unique: true);
+            case "C680_CABIN_INTERNET":
+                return One($"(A:CIRCUIT SWITCH ON:'{CabinInternetCircuit}'_n, Bool) {(value > 0.5 ? 0 : 1)} == if{{ '{CabinInternetCircuit}'_n (>K:ELECTRICAL_CIRCUIT_TOGGLE) }}");
             case "C680_STARTER_DISENG":
                 return new[]
                 {
@@ -40,6 +48,15 @@ public static class C680Commands
         }
         return Array.Empty<C680Command>();
     }
+
+    public const string CabinInternetCircuit = "ATG_4000_BROADBAND_UT580";
+
+    /// <summary>The ON/OFF/RESET switches whose RESET is spring-loaded back to OFF.</summary>
+    public static bool SpringsFromResetToOff(string key)
+        => key is "C680_GEN_L" or "C680_GEN_R" or "C680_APU_GEN";
+
+    private static int Position(double v) => Math.Clamp((int)Math.Round(v), 0, 2);
+    private static string GenWord(double v) => Position(v) switch { 0 => "On", 1 => "Off", _ => "Reset" };
 
     /// <summary>
     /// The reverser combo's position from the signed lever (GENERAL ENG THROTTLE LEVER POSITION,

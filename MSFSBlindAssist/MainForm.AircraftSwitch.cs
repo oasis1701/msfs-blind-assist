@@ -1169,7 +1169,7 @@ public partial class MainForm
         if (oldAircraft is Aircraft.Citation680.SkywardC680Definition oldC680 && oldAircraft != newAircraft)
             oldC680.DisposeWindows();
         if (newAircraft is Aircraft.Citation680.SkywardC680Definition newC680)
-            newC680.StartCasMonitor(announcer);
+            newC680.Start(announcer, simConnectManager);
 
         // The iFly def owns the shared-memory SDK client — stop its poll and close the
         // mapping so it doesn't keep firing events at the new aircraft.

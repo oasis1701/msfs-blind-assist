@@ -26,22 +26,24 @@ public partial class SkywardC680Definition
         // ---- Electrical
         AddSwitch(v, "C680_BATT_L", "SW_SOV_ELEC_BATT_1", "Left BATT Button");
         AddSwitch(v, "C680_BATT_R", "SW_SOV_ELEC_BATT_2", "Right BATT Button");
-        AddSimSwitch(v, "C680_STBY_PWR", "ELECTRICAL MASTER BATTERY:3", "STBY PWR Switch",
-            help: "The standby display battery. On before the APU or an engine start; verify the standby instrument initialises.");
+        AddSelector(v, "C680_STBY_PWR", "XMLVAR_BatterySTBY_SwitchState", "STBY PWR Switch", new[] { "On", "Off", "Test" },
+            "Test is momentary: it is held for three seconds (the green light shows a good test), then the switch springs back to Off.");
         AddSwitch(v, "C680_AVN_L", "SW_SOV_ELEC_AVN_1", "Left AVN Button");
         AddSwitch(v, "C680_AVN_R", "SW_SOV_ELEC_AVN_2", "Right AVN Button");
         AddSwitch(v, "C680_ELEC_L", "SW_SOV_ELEC_ELEC_L", "Left ELEC Button", "Emer", "Norm");
         AddSwitch(v, "C680_ELEC_R", "SW_SOV_ELEC_ELEC_R", "Right ELEC Button", "Emer", "Norm");
         AddSwitch(v, "C680_TRU_L", "SW_SOV_ELEC_TRU_1", "Left TRU Button");
         AddSwitch(v, "C680_TRU_R", "SW_SOV_ELEC_TRU_2", "Right TRU Button");
-        AddSimSwitch(v, "C680_GEN_L", "LINE CONNECTION ON:409", "Left GEN Switch", help: "Reads back the generator's connection to its bus, so it shows On only once the generator is on line. Off then On again is the reset.");
-        AddSimSwitch(v, "C680_GEN_R", "LINE CONNECTION ON:86", "Right GEN Switch", help: "Reads back the generator's connection to its bus, so it shows On only once the generator is on line. Off then On again is the reset.");
+        // The switch positions live in B: input events the app cannot read; C680SwitchMirror copies them into these L:vars.
+        AddSelector(v, "C680_GEN_L", C680SwitchMirror.GenLeft, "Left GEN Switch", new[] { "On", "Off", "Reset" }, "On, Off and Reset. Reset is momentary and springs back to Off. The Generator rows below say whether it is on line.");
+        AddSelector(v, "C680_GEN_R", C680SwitchMirror.GenRight, "Right GEN Switch", new[] { "On", "Off", "Reset" }, "On, Off and Reset. Reset is momentary and springs back to Off. The Generator rows below say whether it is on line.");
         AddButton(v, "C680_EXT_PWR", "EXT PWR Button", "Connects or disconnects external power. Needs the GPU cart placed (Ground Equipment) and its door open.");
-        AddSimSwitch(v, "C680_APU_GEN", "LINE CONNECTION ON:639", "APU GEN Switch",
-            help: "Reads back the APU generator's bus connection. The aircraft puts it on line only with the APU at 100 percent, the left generator off line and no engine start in progress.");
+        AddSelector(v, "C680_APU_GEN", C680SwitchMirror.ApuGen, "APU GEN Switch", new[] { "On", "Off", "Reset" },
+            "Reset is momentary and springs back to Off. The aircraft puts the APU generator on line only with the APU at 100 percent, the left generator off line and no engine start in progress.");
         AddButton(v, "C680_BUS_TIE", "BUS TIE Button", "The aircraft only answers this button airborne; on the ground the bus tie is automatic.");
         AddSwitch(v, "C680_INTERIOR", "SW_SOV_ELEC_CABIN_PWR", "INTERIOR Button");
-        AddSelector(v, "C680_EMER_LTS", "SW_SOV_SAFETY_LIGHTS_POSITION", "EMER LTS Switch", new[] { "Off", "Arm", "On" });
+        AddSelector(v, "C680_EMER_LTS", "SW_SOV_SAFETY_LIGHTS_POSITION", "EMER LTS Switch", new[] { "Arm", "On", "Off" });
+        AddSwitch(v, "C680_CABIN_INTERNET", C680SwitchMirror.CabinInternet, "Cabin Internet Button");
         AddSimReadout(v, "C680_BATT_L_V", "ELECTRICAL BATTERY VOLTAGE:1", "Left Battery Volts", "volts", "F1");
         AddSimReadout(v, "C680_BATT_R_V", "ELECTRICAL BATTERY VOLTAGE:2", "Right Battery Volts", "volts", "F1");
         AddSimReadout(v, "C680_BATT_L_A", "ELECTRICAL BATTERY LOAD:1", "Left Battery Amps", "amperes", "F0");
@@ -174,7 +176,7 @@ public partial class SkywardC680Definition
     {
         "C680_BATT_L", "C680_BATT_R", "C680_STBY_PWR", "C680_AVN_L", "C680_AVN_R", "C680_ELEC_L", "C680_ELEC_R",
         "C680_TRU_L", "C680_TRU_R", "C680_GEN_L", "C680_GEN_R", "C680_EXT_PWR", "C680_APU_GEN", "C680_BUS_TIE",
-        "C680_INTERIOR", "C680_EMER_LTS"
+        "C680_INTERIOR", "C680_EMER_LTS", "C680_CABIN_INTERNET"
     };
     private static readonly List<string> ElectricalDisplay = new()
     {
@@ -221,11 +223,7 @@ public partial class SkywardC680Definition
         }
         switch (varKey)
         {
-            case "C680_STBY_PWR": sc.ExecuteCalculatorCode($"(A:ELECTRICAL MASTER BATTERY:3, Bool) {(value > 0.5 ? 0 : 1)} == if{{ 3 (>K:TOGGLE_MASTER_BATTERY) }}"); return true;
-            case "C680_GEN_L": sc.ExecuteCalculatorCode($"1 {Rpn(value)} (>K:2:ALTERNATOR_SET)"); return true;
-            case "C680_GEN_R": sc.ExecuteCalculatorCode($"2 {Rpn(value)} (>K:2:ALTERNATOR_SET)"); return true;
             case "C680_EXT_PWR": sc.ExecuteCalculatorCodeUnique("(>H:SW_SOV_ELEC_EXT_PWR)"); return true;
-            case "C680_APU_GEN": sc.ExecuteCalculatorCode($"3 {Rpn(value)} (>K:2:APU_GENERATOR_SWITCH_SET)"); return true;
             case "C680_BUS_TIE": sc.ExecuteCalculatorCodeUnique("(>H:SW_SOV_ELEC_BUS_TIE)"); return true;
             case "C680_APU_KNOB": SetApuKnob(sc, (int)Math.Round(value)); return true;
             case "C680_STARTER_L": sc.ExecuteCalculatorCode("(>B:ENGINE_Starter_1_On)"); return true;
