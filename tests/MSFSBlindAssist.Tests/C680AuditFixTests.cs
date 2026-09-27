@@ -168,4 +168,67 @@ public class C680AuditFixTests
     [InlineData("C680_SAI_LIMITS")]
     public void StandbyEfbSettingsAreNotCockpitControls(string key)
         => Assert.False(Vars.ContainsKey(key));
+
+    // ---- Pedestal (Task 7)
+
+    [Fact]
+    public void GearGoesUpOnlyWithTheAntiRetractionSolenoidEnergised()
+    {
+        Assert.Equal("(L:SW_SOV_SOLENOID_ENERGIZED, Bool) 1 == if{ 0 (>L:SW_SOV_LANDING_GEAR_LEVER, Bool) }", C680Commands.For("C680_GEAR", 0).Single().Code);
+        Assert.Equal("1 (>L:SW_SOV_LANDING_GEAR_LEVER, Bool)", C680Commands.For("C680_GEAR", 1).Single().Code);
+    }
+
+    [Theory]
+    [InlineData(0.0, 0.0, true)]    // up, solenoid dead: the aircraft keeps the handle down
+    [InlineData(0.0, 1.0, false)]
+    [InlineData(1.0, 0.0, false)]   // down is never refused
+    public void GearRefusalIsReportedFromTheSolenoid(double requested, double solenoid, bool refused)
+        => Assert.Equal(refused, C680Commands.GearRefusal(requested, solenoid) != null);
+
+    [Fact]
+    public void GearRefusalIsSilentUntilTheSolenoidIsKnown()
+        => Assert.Null(C680Commands.GearRefusal(0, null));
+
+    [Theory]
+    [InlineData("C680_MIC_L", "INSTRUMENT_Push_Microphone_1")]
+    [InlineData("C680_MIC_R", "INSTRUMENT_Push_Microphone_2")]
+    public void MicButtonsLatchAsInTheModel(string key, string lvar)
+    {
+        Assert.Equal(lvar, Vars[key].Name);
+        Assert.False(Vars[key].IsMomentary);
+    }
+
+    [Fact]
+    public void Com121TuneIsTheModelsCodeVerbatim()
+        => Assert.Equal("(A:COM ACTIVE FREQUENCY:1, Hz) 121500000 != if{ (A:COM ACTIVE FREQUENCY:1, Hz) (>L:SW_SOV_COM_1_Prev, HZ) 121500000 (>K:COM_RADIO_SET_HZ) } els{ (L:SW_SOV_COM_1_Prev, HZ) 0 == if{ 124850000 (>K:COM_RADIO_SET_HZ) } els{ (L:SW_SOV_COM_1_Prev, HZ) (>K:COM_RADIO_SET_HZ) } }",
+                        C680Commands.For("C680_COM1_121", 1).Single().Code);
+
+    [Fact]
+    public void RudderBiasNeedsItsCoverOpen()
+        => Assert.Equal("(L:HANDLING_Push_RudderBias_Cover) 1 == if{ 1 (>L:HANDLING_Push_RudderBias) }", C680Commands.For("C680_RUDDER_BIAS", 1).Single().Code);
+
+    [Theory]
+    [InlineData(30, "4915 (>K:ELEVATOR_TRIM_SET)")]
+    [InlineData(0, "1 (>K:ELEVATOR_TRIM_SET)")]          // the plugin drops a zero ELEVATOR_TRIM_SET
+    [InlineData(-50, "-2851 (>K:ELEVATOR_TRIM_SET)")]    // nose-down stop 1.2 of 6.9 degrees
+    public void TypedPitchTrimIsTheSetThePluginPassesThrough(double percent, string code)
+        => Assert.Equal(code, C680Commands.For("C680_TRIM_PITCH_SET", percent).Single().Code);
+
+    [Fact]
+    public void TypedRudderAndAileronTrimArePercentSets()
+    {
+        Assert.Equal("-10 (>K:RUDDER_TRIM_SET)", C680Commands.For("C680_TRIM_RUD_SET", -10).Single().Code);
+        Assert.Equal("5 (>K:AILERON_TRIM_SET)", C680Commands.For("C680_TRIM_AIL_SET", 5).Single().Code);
+    }
+
+    [Fact]
+    public void DisplayReversionLampsAreNotButtons()
+    {
+        Assert.False(Vars.ContainsKey("C680_DISPLAY_REV_L"));
+        Assert.False(Vars.ContainsKey("C680_DISPLAY_REV_R"));
+    }
+
+    [Fact]
+    public void TheBrakeRowSaysChocksHoldTheAircraftToo()
+        => Assert.Contains("chocks", Vars["C680_PARK_BRAKE_STATE"].DisplayName);
 }

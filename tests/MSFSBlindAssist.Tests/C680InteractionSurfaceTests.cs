@@ -85,6 +85,7 @@ public class C680InteractionSurfaceTests
         ["Handle_Gravity_Gear_Main"] = "C680_GRAV_GEAR_MAIN", ["SW_SOV_HANDLING_Gravity_Gear_Nose"] = "C680_GRAV_GEAR_NOSE", ["SW_SOV_HANDLING_GEAR_BLOWDOWN"] = "C680_GEAR_BLOWDOWN",
         ["SW_CSF_Disconnect"] = "C680_CSF_DISC", ["SW_CSF_Lock"] = "C680_CONTROL_LOCK",
         ["INSTRUMENT_Push_Microphone_1"] = "C680_MIC_L", ["INSTRUMENT_Push_Microphone_2"] = "C680_MIC_R",
+        ["NAVCOM_Push_COM_1_Tune"] = "C680_COM1_121", ["NAVCOM_Push_COM_2_Tune"] = "C680_COM2_121",
         // Cabin and ground
         ["door_clickspot_inside"] = "C680_DOOR_MAIN", ["door_clickspot_outside"] = "C680_DOOR_MAIN", ["door_Handle_2"] = "C680_DOOR_MAIN_HANDLE",
         ["door_inside_handle"] = "C680_DOOR_MAIN_HANDLE", ["door_inside_handle_inv"] = "C680_DOOR_MAIN_HANDLE", ["door_outside_handle"] = "C680_DOOR_MAIN_HANDLE",
@@ -111,7 +112,6 @@ public class C680InteractionSurfaceTests
         (new Regex(@"^Cover_clickspot_"), "the ground-cover clickspots; the Ground Equipment panel places every cover"),
         (new Regex(@"^Fuel_wing_"), "over-wing refuel clickspots; the Payload panel sets the fuel"),
         (new Regex(@"^RADIO_PANEL_"), "the headset ANC jacks; the EFB Settings page owns ANC"),
-        (new Regex(@"^NAVCOM_Push_COM_"), "a radio tune push; the PFD touchscreen tunes the radios"),
         (new Regex(@"^AUTOPILOT_Push_Transfer1$"), "the XFR button (which side flies the FD); read on the PFD"),
         (new Regex(@"^\(SW_SOV_SplitScreen_Course_Knobs_Template\)$"), "course knobs; the touchscreen sets the course"),
         (new Regex(@"^\(ASOBO_INSTRUMENT_Indicator_AOA_Template\)$"), "an indicator, not a control"),

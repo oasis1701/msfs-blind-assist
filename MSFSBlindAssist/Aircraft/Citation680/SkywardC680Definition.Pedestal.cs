@@ -57,6 +57,9 @@ public partial class SkywardC680Definition
         AddButton(v, "C680_TRIM_AIL_R", "Aileron Trim Right");
         AddButton(v, "C680_TRIM_RUD_L", "Rudder Trim Left");
         AddButton(v, "C680_TRIM_RUD_R", "Rudder Trim Right");
+        AddTyped(v, "C680_TRIM_PITCH_SET", "Pitch Trim", "percent", "-17 (nose-down stop) to 100 (nose-up stop)", currentKey: "C680_TRIM_PITCH");
+        AddTyped(v, "C680_TRIM_AIL_SET", "Aileron Trim", "percent", "-100 (left) to 100 (right)", currentKey: "C680_TRIM_AIL");
+        AddTyped(v, "C680_TRIM_RUD_SET", "Rudder Trim", "percent", "-100 (left) to 100 (right)", currentKey: "C680_TRIM_RUD");
         AddSwitch(v, "C680_SEC_TRIM_COVER", "HANDLING_Push_ElevatorTrim_Secondary_Cover", "Secondary Trim Cover", "Closed", "Open");
         AddSwitch(v, "C680_SEC_TRIM", "SW_SOV_HANDLING_Push_ElevatorTrim_Secondary", "Secondary Pitch Trim", "Off", "On", "Needs the cover open.");
         AddSimReadout(v, "C680_FLAP_DEG", "TRAILING EDGE FLAPS LEFT ANGLE", "Flap Angle", "degrees", "F0");
@@ -80,7 +83,7 @@ public partial class SkywardC680Definition
         AddFlag(v, "C680_GEAR_LOCK_L", "SW_SOV_HANDLING_GEAR_LOCKED:2", "Left Gear Lock", "Not locked", "Locked");
         AddFlag(v, "C680_GEAR_LOCK_R", "SW_SOV_HANDLING_GEAR_LOCKED:3", "Right Gear Lock", "Not locked", "Locked");
         AddFlag(v, "C680_GEAR_POWER", "SW_SOV_HANDLING_GEAR_POWER_ON", "Gear Power", "Off", "On");
-        AddFlag(v, "C680_PARK_BRAKE_STATE", "BRAKE PARKING POSITION", "Parking Brake", "Released", "Set", simvar: true);
+        AddFlag(v, "C680_PARK_BRAKE_STATE", "BRAKE PARKING POSITION", "Brakes Held (parking brake or chocks)", "Released", "Held", simvar: true);
         AddFlag(v, "C680_ANTISKID", "CIRCUIT ON:126", "Anti-Skid Circuit", "Off", "On", simvar: true);
         AddFlag(v, "C680_ON_GROUND", "SIM ON GROUND", "On Ground", "No", "Yes", simvar: true);
 
@@ -100,8 +103,12 @@ public partial class SkywardC680Definition
 
         // ---- Yoke
         AddButton(v, "C680_IDENT", "IDENT Button");
-        AddButton(v, "C680_MIC_L", "Left MIC Button");
-        AddButton(v, "C680_MIC_R", "Right MIC Button");
+        AddSwitch(v, "C680_MIC_L", "INSTRUMENT_Push_Microphone_1", "Left MIC Button");
+        AddSwitch(v, "C680_MIC_R", "INSTRUMENT_Push_Microphone_2", "Right MIC Button");
+        AddButton(v, "C680_COM1_121", "COM 1 121.5 Button", "Tunes COM 1 to 121.5; press again for the frequency it replaced.");
+        AddButton(v, "C680_COM2_121", "COM 2 121.5 Button", "Tunes COM 2 to 121.5; press again for the frequency it replaced.");
+        AddFlag(v, "C680_GEAR_SOLENOID", "SW_SOV_SOLENOID_ENERGIZED", "Gear Anti-Retraction Solenoid", "Locked (on ground)", "Released");
+        Cache(v, "C680_GEAR_SOLENOID");
         AddFlag(v, "C680_WHO_FLIES", "SW_SOV_Pilot_CoPilot_Control", "Control Seat", "Pilot", "Copilot");
 
         // ---- Passenger Signs and Cabin (checklist: SEAT BELTS and PAX SAFETY buttons)
@@ -121,13 +128,13 @@ public partial class SkywardC680Definition
 
     private static readonly List<string> ThrustControls = new() { "C680_THR_SET", "C680_THR_L_SET", "C680_THR_R_SET", "C680_REV_L", "C680_REV_R", "C680_AT_LOCK" };
     private static readonly List<string> ThrustDisplay = new() { "C680_THR_L", "C680_THR_R", "C680_REV_NOZZLE_L", "C680_REV_NOZZLE_R", "C680_N1_TGT_L", "C680_N1_TGT_R", "C680_AT_STATUS" };
-    private static readonly List<string> FlapsControls = new() { "C680_FLAPS", "C680_SPEEDBRAKE", "C680_FLAPS_RESET", "C680_TRIM_NU", "C680_TRIM_ND", "C680_TRIM_AIL_L", "C680_TRIM_AIL_R", "C680_TRIM_RUD_L", "C680_TRIM_RUD_R", "C680_SEC_TRIM_COVER", "C680_SEC_TRIM" };
+    private static readonly List<string> FlapsControls = new() { "C680_FLAPS", "C680_SPEEDBRAKE", "C680_FLAPS_RESET", "C680_TRIM_NU", "C680_TRIM_ND", "C680_TRIM_AIL_L", "C680_TRIM_AIL_R", "C680_TRIM_RUD_L", "C680_TRIM_RUD_R", "C680_TRIM_PITCH_SET", "C680_TRIM_AIL_SET", "C680_TRIM_RUD_SET", "C680_SEC_TRIM_COVER", "C680_SEC_TRIM" };
     private static readonly List<string> FlapsDisplay = new() { "C680_FLAP_DEG", "C680_SPOILER", "C680_TRIM_PITCH", "C680_TRIM_AIL", "C680_TRIM_RUD" };
     private static readonly List<string> GearControls = new() { "C680_GEAR", "C680_PARK_BRAKE", "C680_EMER_BRAKE", "C680_GRAV_GEAR_MAIN", "C680_GRAV_GEAR_NOSE", "C680_GEAR_BLOWDOWN" };
-    private static readonly List<string> GearDisplay = new() { "C680_GEAR_C", "C680_GEAR_LOCK_C", "C680_GEAR_L", "C680_GEAR_LOCK_L", "C680_GEAR_R", "C680_GEAR_LOCK_R", "C680_GEAR_POWER", "C680_PARK_BRAKE_STATE", "C680_ANTISKID", "C680_ON_GROUND" };
+    private static readonly List<string> GearDisplay = new() { "C680_GEAR_C", "C680_GEAR_LOCK_C", "C680_GEAR_L", "C680_GEAR_LOCK_L", "C680_GEAR_R", "C680_GEAR_LOCK_R", "C680_GEAR_POWER", "C680_PARK_BRAKE_STATE", "C680_GEAR_SOLENOID", "C680_ANTISKID", "C680_ON_GROUND" };
     private static readonly List<string> FlightControlsControls = new() { "C680_CONTROL_LOCK", "C680_RUDDER_BIAS_COVER", "C680_RUDDER_BIAS", "C680_CSF_DISC", "C680_TILLER" };
     private static readonly List<string> FlightControlsDisplay = new() { "C680_RB_POWERED", "C680_AIL_DISC", "C680_ELEV_DISC", "C680_SHAKER_L", "C680_SHAKER_R", "C680_OVERSPEED" };
-    private static readonly List<string> YokeControls = new() { "C680_IDENT", "C680_MIC_L", "C680_MIC_R" };
+    private static readonly List<string> YokeControls = new() { "C680_IDENT", "C680_MIC_L", "C680_MIC_R", "C680_COM1_121", "C680_COM2_121" };
     private static readonly List<string> YokeDisplay = new() { "C680_WHO_FLIES" };
     private static readonly List<string> SignsControls = new() { "C680_SEAT_BELTS", "C680_PAX_SAFETY", "C680_CABIN_OVERHEAD", "C680_CABIN_OVERHEAD_BRT", "C680_LIGHT_VANITY", "C680_LIGHT_BAG", "C680_MUSIC_VOL" };
 
@@ -135,7 +142,7 @@ public partial class SkywardC680Definition
     {
         "C680_AT_LOCK", "C680_SPEEDBRAKE", "C680_SEC_TRIM_COVER", "C680_SEC_TRIM", "C680_PARK_BRAKE",
         "C680_GRAV_GEAR_MAIN", "C680_GRAV_GEAR_NOSE", "C680_GEAR_BLOWDOWN", "C680_CONTROL_LOCK", "C680_RUDDER_BIAS_COVER",
-        "C680_RUDDER_BIAS", "C680_CSF_DISC", "C680_TILLER", "C680_SEAT_BELTS", "C680_PAX_SAFETY", "C680_CABIN_OVERHEAD",
+        "C680_CSF_DISC", "C680_MIC_L", "C680_MIC_R", "C680_TILLER", "C680_SEAT_BELTS", "C680_PAX_SAFETY", "C680_CABIN_OVERHEAD",
         "C680_CABIN_OVERHEAD_BRT", "C680_LIGHT_VANITY", "C680_LIGHT_BAG", "C680_MUSIC_VOL"
     };
 
@@ -159,19 +166,8 @@ public partial class SkywardC680Definition
             case "C680_TRIM_AIL_R": sc.ExecuteCalculatorCodeUnique("(>K:AILERON_TRIM_RIGHT)"); return true;
             case "C680_TRIM_RUD_L": sc.ExecuteCalculatorCodeUnique("(>K:RUDDER_TRIM_LEFT)"); return true;
             case "C680_TRIM_RUD_R": sc.ExecuteCalculatorCodeUnique("(>K:RUDDER_TRIM_RIGHT)"); return true;
-            case "C680_GEAR":
-                if (value < 0.5 && (!Has("C680_ON_GROUND") || Live("C680_ON_GROUND") > 0.5))
-                {
-                    announcer.AnnounceImmediate("Refused. The gear stays down on the ground.");
-                    sc.RequestVariable("C680_GEAR", forceUpdate: true);
-                    return true;
-                }
-                sc.SetLVar("SW_SOV_LANDING_GEAR_LEVER", value);
-                return true;
             case "C680_EMER_BRAKE": Pulse(sc, "SW_SOV_HANDLING_SW_SOV_EMER_BRAKE", 1500); return true;
             case "C680_IDENT": sc.ExecuteCalculatorCodeUnique("(>K:XPNDR_IDENT_TOGGLE)"); return true;
-            case "C680_MIC_L": Pulse(sc, "INSTRUMENT_Push_Microphone_1", 300); return true;
-            case "C680_MIC_R": Pulse(sc, "INSTRUMENT_Push_Microphone_2", 300); return true;
         }
         return false;
     }

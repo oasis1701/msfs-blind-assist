@@ -164,6 +164,14 @@ public partial class SkywardC680Definition : BaseAircraftDefinition
     public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
         SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
+        if (varKey == "C680_GEAR" && C680Commands.GearRefusal(value, ReadNow(simConnect, "C680_GEAR_SOLENOID")) is { } refusal)
+        {
+            // The aircraft keeps the handle down; send the pilot's input anyway (it is the model's to refuse) and say why.
+            RunCommands(varKey, value, simConnect);
+            announcer.AnnounceImmediate(refusal);
+            simConnect.RequestVariable("C680_GEAR", forceUpdate: true);
+            return true;
+        }
         if (varKey == "C680_STBY_PWR" && value > 1.5) { HoldStandbyTest(simConnect); return true; }
         if (RunCommands(varKey, value, simConnect))
         {

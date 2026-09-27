@@ -75,6 +75,22 @@ public static class C680Commands
             case "C680_SAI_KNOB_DEC": return One("(L:LW_SAI_MOD_MENU_OPEN, Bool) 0 == if{ 3 (>K:KOHLSMAN_DEC) } els{ -1 (>L:LW_SAI_MOD_SELECTION) }", unique: true);
             case "C680_SAI_KNOB_PUSH":
                 return One("(L:LW_SAI_MOD_MENU_OPEN, Bool) 0 == if{ (A:KOHLSMAN SETTING STD:3, Bool) ! (>A:KOHLSMAN SETTING STD:3, Bool) } els{ (L:LW_SAI_MOD_MENU_INDEX, number) 0 == if{ 1 (>L:LW_SAI_MOD_SELECTION_CONFIRM, Bool) } }", unique: true);
+            // Gear handle: the model lifts it only while the anti-retraction solenoid is energised.
+            case "C680_GEAR":
+                return One(value > 0.5 ? "1 (>L:SW_SOV_LANDING_GEAR_LEVER, Bool)"
+                                        : "(L:SW_SOV_SOLENOID_ENERGIZED, Bool) 1 == if{ 0 (>L:SW_SOV_LANDING_GEAR_LEVER, Bool) }");
+            // COM 121.5 pushes: the model's own code (swap to 121.5 and back to the frequency it saved).
+            case "C680_COM1_121": return One(Com121(1, "COM_RADIO_SET_HZ"), unique: true);
+            case "C680_COM2_121": return One(Com121(2, "COM2_RADIO_SET_HZ"), unique: true);
+            case "C680_RUDDER_BIAS": return One($"(L:HANDLING_Push_RudderBias_Cover) 1 == if{{ {OnOff(value)} (>L:HANDLING_Push_RudderBias) }}");
+            // Pitch trim: the plugin re-issues a NON-ZERO ELEVATOR_TRIM_SET clamped to the trim stops
+            // (1.2 nose down to 6.9 nose up = -17.4 % to 100 %); a zero is dropped, so 0 % is sent as 1.
+            case "C680_TRIM_PITCH_SET":
+                double units = Math.Round(Math.Clamp(value, MinPitchTrimPercent, 100) * 163.84);
+                return One($"{(units == 0 ? 1 : units).ToString("0", CultureInfo.InvariantCulture)} (>K:ELEVATOR_TRIM_SET)");
+            // Rudder and aileron trim sets take percent directly (-10 gave -10 %).
+            case "C680_TRIM_RUD_SET": return One($"{Pct(value)} (>K:RUDDER_TRIM_SET)");
+            case "C680_TRIM_AIL_SET": return One($"{Pct(value)} (>K:AILERON_TRIM_SET)");
             case "C680_STARTER_DISENG":
                 return new[]
                 {
@@ -97,6 +113,23 @@ public static class C680Commands
     };
 
     private static string Covered(string lvar, int value) => $"(L:{lvar}_Cover) 1 == if{{ {value} (>L:{lvar}) }}";
+
+    public const double MinPitchTrimPercent = -17.4;
+
+    /// <summary>
+    /// What the pilot hears when the gear handle stays down: the model refuses the lift without the
+    /// anti-retraction solenoid (weight on wheels). Null when the lift is allowed or not yet known.
+    /// </summary>
+    public static string? GearRefusal(double requested, double? solenoid)
+        => requested < 0.5 && solenoid is < 0.5
+            ? "Gear handle stays down. The anti-retraction solenoid is not energised."
+            : null;
+
+    private static string Com121(int n, string setEvent)
+        => $"(A:COM ACTIVE FREQUENCY:{n}, Hz) 121500000 != if{{ (A:COM ACTIVE FREQUENCY:{n}, Hz) (>L:SW_SOV_COM_{n}_Prev, HZ) 121500000 (>K:{setEvent}) }} " +
+           $"els{{ (L:SW_SOV_COM_{n}_Prev, HZ) 0 == if{{ 124850000 (>K:{setEvent}) }} els{{ (L:SW_SOV_COM_{n}_Prev, HZ) (>K:{setEvent}) }} }}";
+
+    private static string Pct(double v) => Math.Round(Math.Clamp(v, -100, 100), 1).ToString("0.#", CultureInfo.InvariantCulture);
 
     public const string CabinInternetCircuit = "ATG_4000_BROADBAND_UT580";
 
