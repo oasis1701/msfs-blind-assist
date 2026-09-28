@@ -246,6 +246,23 @@ internal static class TaxiBriefingFixture
         new[] { Spot("J", 1, 10, 1550, 190, 150, "JBU") });
 
     /// <summary>
+    /// TEST plus a second piece of taxiway SOUTH of runway 09/27 that meets the rest only across the runway, which
+    /// the graph has no edges for (LFBP, VIJU, ENAT, UKHH, KPRC: taxiway pieces joined by runway pavement alone):
+    ///   east 2200:  taxiway P from 09's centreline (HS) straight south to north -100, then east to 2500 E.
+    ///   north -200: stand K 1 (2500 E, gate, SWA, r=150 ft), its lead-in running north to P's east end.
+    /// The piece is not the graph's largest component, and no node of the largest lies within 150 m of K 1 (the
+    /// nearest, D's runway end at 2700 E, is 283 m away). From K 1 the way onto 09 is P, 2,190 m down the runway;
+    /// landing 09, P is an exit on the RIGHT that leads to K 1.
+    /// </summary>
+    public static GraphBundle AirportWithSouthPieceAcrossTheRunway() => AirportWith(
+        new[]
+        {
+            Path("P", 2200, 0, 2200, -100, startType: "HS"), Path("P", 2200, -100, 2500, -100),
+            LeadIn(2500, -100, 2500, -200),
+        },
+        new[] { Spot("K", 1, 10, 2500, -200, 150, "SWA") });
+
+    /// <summary>
     /// TEST plus the south stand's taxiways (<see cref="AirportWithSouthStand"/>) and exit Z, which leads straight
     /// onto a stand:
     ///   east 2200: Z from 09's centreline (HS) straight south to north -150, where S now continues from 2000 E.

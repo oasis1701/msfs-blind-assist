@@ -810,6 +810,63 @@ public class TaxiBriefingPlannerTests
         Assert.Equal("current position", leg.EndpointDescription);
     }
 
+    // ── a second piece of taxi network, reached only across a runway (I-1) ────────────────────
+
+    [Fact]
+    public void Parked_on_a_piece_that_meets_the_rest_only_across_a_runway_the_taxi_out_starts_from_the_aircraft()
+    {
+        var bundle = AirportWithSouthPieceAcrossTheRunway();
+        // Preconditions: the aircraft's nearest node is on the south piece, which is not the largest component, and no
+        // node of the largest lies within the 150 m own-position reach.
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var nearest = bundle.Graph.FindNearestNode(Lat(-200), Lon(2500), excludeBridgeOnlyStandStubs: true)!;
+        Assert.NotEqual(network, nearest.ComponentId);
+        var onNetwork = bundle.Graph.FindNearestNode(Lat(-200), Lon(2500), requiredComponentId: network)!;
+        Assert.True(TaxiGraph.FastDistanceMeters(Lat(-200), Lon(2500), onNetwork.Latitude, onNetwork.Longitude) > 150);
+
+        var own = new OwnPosition(Lat(-200), Lon(2500), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
+
+        Assert.Null(leg.Unavailable);
+        Assert.StartsWith("current position", leg.EndpointDescription);
+        Assert.Null(leg.Stand);
+        Assert.Equal(new[] { "P" }, leg.Taxiways);
+        Assert.Contains(leg.HoldShorts, h => h.Runway == "09" && h.Taxiway == "P" && h.BeforeEntering);
+        Assert.Contains(leg.Notes, n => n.Contains("backtracking", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void SayIntentions_gate_on_a_piece_that_meets_the_rest_only_across_a_runway_is_reached_by_that_piece_s_exit()
+    {
+        var bundle = AirportWithSouthPieceAcrossTheRunway();
+        // Precondition: K 1 is off the largest component, with none of its nodes within the 100 m stand reach.
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var k1 = bundle.Spots.Single(s => s.Name == "K");
+        Assert.Null(TaxiBriefingPlanner.StandNode(bundle.Graph, k1, network, asRouteStart: false));
+
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: new SayIntentionsGateHint("K 1", null)), bundle);
+
+        Assert.Null(leg.Unavailable);
+        Assert.Equal(StandChoiceSource.SayIntentions, leg.Stand!.Source);
+        Assert.Equal("K", leg.Stand.Spot.Name);
+        Assert.Equal("P", leg.Exit!.Exit.TaxiwayName);
+        Assert.Equal(new[] { "P" }, leg.Taxiways);
+        Assert.DoesNotContain(leg.Notes, n => n.Contains("does not connect", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_island_that_reaches_no_runway_is_still_never_a_leg_s_end()
+    {
+        // The fallback to the largest component stands for a piece that reaches neither end of the leg (KTUL G 19).
+        var bundle = AirportWithIslandStand();
+        var own = new OwnPosition(Lat(190), Lon(1550), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
+        Assert.Null(leg.Unavailable);
+        Assert.DoesNotContain("GI", leg.Taxiways);
+        var inbound = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: new SayIntentionsGateHint("J 1", null)), bundle);
+        Assert.NotEqual("J", inbound.Stand?.Spot.Name);
+    }
+
     [Fact]
     public void An_exit_that_leads_straight_onto_the_stand_is_a_route_with_no_taxiways()
     {

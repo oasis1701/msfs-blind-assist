@@ -79,13 +79,22 @@ public static partial class TaxiBriefingPlanner
         string endpoint = "";
         StandChoice? stand = null;
         int network = NetworkComponentId(g.Graph);
+        // A piece of the taxi network other than the largest is a leg's start when it reaches this runway itself — the
+        // entrance resolved from one of its nodes lies on it (LegEndNode) — judged once per piece.
+        var reachesByPiece = new Dictionary<int, bool>();
+        bool ReachesTheRunway(TaxiNode anchor)
+        {
+            if (!reachesByPiece.TryGetValue(anchor.ComponentId, out bool reaches))
+                reachesByPiece[anchor.ComponentId] = reaches = RunwayEntry(g, rwy, anchor).Entry?.ComponentId == anchor.ComponentId;
+            return reaches;
+        }
 
         if (r.Own is { OnGround: true } own && AtAirport(g, own.Lat, own.Lon))
         {
-            // A route START from a SENSED position: on the taxi network, and bridge-only stand stubs excluded, as
+            // A route START from a SENSED position: on the leg's taxi network, and bridge-only stand stubs excluded, as
             // TaxiGuidanceManager.LoadRoute does, so the position is never snapped onto an island or a stub.
-            var node = g.Graph.FindNearestNode(own.Lat, own.Lon, requiredComponentId: network, excludeBridgeOnlyStandStubs: true);
-            if (node != null && TaxiGraph.FastDistanceMeters(own.Lat, own.Lon, node.Latitude, node.Longitude) <= OwnPositionMaxNodeDistanceMetres)
+            var node = LegEndNode(g.Graph, own.Lat, own.Lon, OwnPositionMaxNodeDistanceMetres, network, asRouteStart: true, ReachesTheRunway);
+            if (node != null)
             {
                 startNode = node.NodeId;
                 endpoint = IsStandNode(node) &&
@@ -97,33 +106,20 @@ public static partial class TaxiBriefingPlanner
         if (startNode < 0)
         {
             // The stand is the route's START: on the network, never a bridge-only stand stub.
-            bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s, network, asRouteStart: true) != null;
+            bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s, network, asRouteStart: true, ReachesTheRunway) != null;
             // SayIntentions never assigns a departure gate — no hint here by design.
             stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, siGate: null, HasStandNode, r.Unit);
             if (stand == null)
                 return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                     BriefingStandPicker.NoStandReason(g.Spots, HasStandNode, icao), notes: notes);
             AddStandNotes(notes, stand, g.Note);
-            startNode = StandNode(g.Graph, stand.Spot, network, asRouteStart: true)!.NodeId;
+            startNode = StandNode(g.Graph, stand.Spot, network, asRouteStart: true, ReachesTheRunway)!.NodeId;
             endpoint = $"representative stand {DescribeStand(stand, r.AirlineIcao)}";
         }
 
         var startNodeObj = g.Graph.Nodes[startNode];
-        var startsForRunway = g.Starts.Where(s => RunwayIdsMatch(s.RunwayName, rwy.RunwayID)).ToList();
-        var target = RunwayLineupTarget.Resolve(g.Graph, rwy, startsForRunway, startNodeObj.Latitude, startNodeObj.Longitude);
-        var entry = target.EntryNode;
+        var (target, entry) = RunwayEntry(g, rwy, startNodeObj);
         var frame = RunwayFrame.For(rwy, rwy.StartLat);
-        // With no entrance at or behind the lineup point, FindRunwayLineupEntryNode hands back the plain nearest node for
-        // guidance's reach warning to catch (RUNWAY_REACH_MAX_CROSS_M — LTAC 21L: 931 m off the centreline). The briefing
-        // asks for the entrance a full-length departure backtracks from instead, Taxi Assist's own backtrack search. It is
-        // anchored on the route's start node, which is on the taxi network, so the entrance it finds is on that network
-        // too (the search keeps to the anchor's component).
-        if (entry != null && Math.Abs(frame.SignedCrossTrack(entry.Latitude, entry.Longitude)) > Services.TaxiGuidanceManager.RUNWAY_REACH_MAX_CROSS_M)
-        {
-            double halfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
-            entry = g.Graph.FindBacktrackEntryNode(rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM,
-                                                   startNodeObj.Latitude, startNodeObj.Longitude);
-        }
         if (entry == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no taxiway reaches runway {rwy.RunwayID} in this scenery", stand, endpoint, notes);
@@ -210,9 +206,16 @@ public static partial class TaxiBriefingPlanner
             }
         }
 
-        // The stand is the route's DESTINATION: on the network, and a bridged stand stays reachable.
+        IReadOnlyList<LandingExit> exits = g.Graph.GetLandingExits(rwy);
+        LandingExitVacateScreen.Mark(g.Graph, exits, rwy);
+        var routeStarts = BriefableExitRouteStarts(g.Graph, exits, rwy);
+
+        // The stand is the route's DESTINATION: on the leg's taxi network, and a bridged stand stays reachable. A piece
+        // other than the largest is the leg's when a briefable exit's route begins on it (LegEndNode).
         int network = NetworkComponentId(g.Graph);
-        bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s, network, asRouteStart: false) != null;
+        var exitPieces = routeStarts.Values.Select(n => g.Graph.Nodes[n].ComponentId).ToHashSet();
+        bool AnExitReaches(TaxiNode node) => exitPieces.Contains(node.ComponentId);
+        bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s, network, asRouteStart: false, AnExitReaches) != null;
         var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, HasStandNode, r.Unit);
         // "Using a representative stand instead" only when one is: 205 fs2024 airports have taxi paths and no parking.
         if (refused != null) notes.Add(stand != null ? refused + "; using a representative stand instead" : refused);
@@ -221,14 +224,10 @@ public static partial class TaxiBriefingPlanner
         if (stand != null) AddStandNotes(notes, stand, g.Note);
         string endpoint = stand == null ? "" : DescribeArrivalStand(stand, r.AirlineIcao);
 
-        IReadOnlyList<LandingExit> exits = g.Graph.GetLandingExits(rwy);
-        LandingExitVacateScreen.Mark(g.Graph, exits, rwy);
-        var routeStarts = BriefableExitRouteStarts(g.Graph, exits, rwy);
-
         // Each candidate's way in is planned at most once: the picker asks about the exits in its preference order
         // and stops at the first that stays clear of the runway just landed on, and the chosen one is then briefed
         // from the same plan.
-        var standNode = stand == null ? null : StandNode(g.Graph, stand.Spot, network, asRouteStart: false);
+        var standNode = stand == null ? null : StandNode(g.Graph, stand.Spot, network, asRouteStart: false, AnExitReaches);
         var inbound = new Dictionary<LandingExit, InboundRoute?>();
         InboundRoute? WayIn(LandingExit exit)
         {
@@ -561,26 +560,75 @@ public static partial class TaxiBriefingPlanner
         runways.Where(r => RunwayIdsMatch(r.RunwayID, id)).OrderBy(r => r.IsClosed ? 1 : 0).FirstOrDefault();
 
     /// <summary>
-    /// The taxi network a leg is planned on: the graph's largest connected component. An island — an isolated taxiway
-    /// (GCLP S5) or a stand whose lead-in meets nothing (KTUL G 19, a 3-node island 72 m from the network) — is never a
-    /// stand's node or a route's start, as Taxi Assist's LoadRoute keeps its start in the destination's component. −1
-    /// for an empty graph (no node matches it).
+    /// The graph's largest connected component — the taxi network a leg falls back to (<see cref="LegEndNode"/>). An
+    /// island — an isolated taxiway (GCLP S5) or a stand whose lead-in meets nothing (KTUL G 19, a 3-node island 72 m
+    /// from the network) — is never a stand's node or a route's start, as Taxi Assist's LoadRoute keeps its start in
+    /// the destination's component. −1 for an empty graph (no node matches it).
     /// </summary>
     internal static int NetworkComponentId(TaxiGraph graph) => graph.Nodes.Count == 0 ? -1
         : graph.Nodes.Values.GroupBy(n => n.ComponentId).OrderByDescending(c => c.Count()).ThenBy(c => c.Key).First().Key;
 
     /// <summary>
-    /// The node a stand is left from or reached at: the nearest node of the network (<see cref="NetworkComponentId"/>)
-    /// within <see cref="StandNodeMaxDistanceMetres"/>. As the taxi-out's route START it is never a bridge-only stand
-    /// stub — the rule every route start follows (<see cref="TaxiGraph.IsBridgeOnlyStandStub"/>); as the taxi-in's
-    /// DESTINATION it may be one, so a bridged stand stays reachable.
+    /// The node one end of a leg — a stand or the aircraft — is at: the nearest node within <paramref name="maxMetres"/>
+    /// when its piece of the taxi network also holds the leg's OTHER end (<paramref name="reachesOtherEnd"/>: the
+    /// taxi-out's runway entrance, a briefable exit's route start on the taxi-in), otherwise the nearest node of the
+    /// largest component (<paramref name="network"/>) within that reach, or null.
+    /// <para>The graph has no runway edges, so taxiway pieces that meet only across a runway are separate components
+    /// (LFBP, VIJU, ENAT, UKHH, KPRC). Measured on the real fs2024 database (2026-09-28): 1,677 airports have two or more
+    /// pieces that each hold stands and reach a runway entrance, and 7,987 stands sit on such a piece off the largest
+    /// one — 6,967 of them with no node of the largest within 100 m, so each was briefed "does not connect" or replaced
+    /// by a representative stand. A piece that reaches neither end (KTUL G 19's island) still never is a leg's end.</para>
+    /// <para>As a route START the node is never a bridge-only stand stub — the rule every route start follows
+    /// (<see cref="TaxiGraph.IsBridgeOnlyStandStub"/>); as a DESTINATION it may be one, so a bridged stand stays
+    /// reachable.</para>
     /// </summary>
-    internal static TaxiNode? StandNode(TaxiGraph graph, ParkingSpot spot, int networkComponentId, bool asRouteStart)
+    internal static TaxiNode? LegEndNode(TaxiGraph graph, double lat, double lon, double maxMetres, int network,
+                                         bool asRouteStart, Func<TaxiNode, bool>? reachesOtherEnd)
     {
-        var node = graph.FindNearestNode(spot.Latitude, spot.Longitude, requiredComponentId: networkComponentId,
-                                         excludeBridgeOnlyStandStubs: asRouteStart);
-        if (node == null) return null;
-        return TaxiGraph.FastDistanceMeters(spot.Latitude, spot.Longitude, node.Latitude, node.Longitude) <= StandNodeMaxDistanceMetres ? node : null;
+        bool InReach(TaxiNode? n) => n != null && TaxiGraph.FastDistanceMeters(lat, lon, n.Latitude, n.Longitude) <= maxMetres;
+        if (reachesOtherEnd != null)
+        {
+            var nearest = graph.FindNearestNode(lat, lon, excludeBridgeOnlyStandStubs: asRouteStart);
+            if (InReach(nearest) && nearest!.ComponentId != network && reachesOtherEnd(nearest)) return nearest;
+        }
+        var onNetwork = graph.FindNearestNode(lat, lon, requiredComponentId: network, excludeBridgeOnlyStandStubs: asRouteStart);
+        return InReach(onNetwork) ? onNetwork : null;
+    }
+
+    /// <summary>
+    /// The node a stand is left from or reached at: <see cref="LegEndNode"/> within <see cref="StandNodeMaxDistanceMetres"/>,
+    /// or — with no <paramref name="reachesOtherEnd"/> — the nearest node of the largest component only.
+    /// </summary>
+    internal static TaxiNode? StandNode(TaxiGraph graph, ParkingSpot spot, int networkComponentId, bool asRouteStart,
+                                        Func<TaxiNode, bool>? reachesOtherEnd = null) =>
+        LegEndNode(graph, spot.Latitude, spot.Longitude, StandNodeMaxDistanceMetres, networkComponentId, asRouteStart, reachesOtherEnd);
+
+    /// <summary>
+    /// Where a taxi-out from <paramref name="anchor"/> meets the departure runway: the entrance <see cref="RunwayLineupTarget"/>
+    /// resolves. With no entrance at or behind the lineup point that is the plain nearest node, kept for guidance's reach
+    /// warning (RUNWAY_REACH_MAX_CROSS_M — LTAC 21L: 931 m off the centreline); the briefing asks Taxi Assist's own
+    /// backtrack search (anchored on <paramref name="anchor"/>, whose piece of the taxi network it keeps to) for the
+    /// entrance a full-length departure backtracks from instead, and has none when that finds none. The plain nearest
+    /// node can also lie on ANOTHER piece of the network from the anchor's — a piece meeting the rest only across the
+    /// runway: the backtrack search is asked then too, and the plain node kept when it finds nothing, so the leg still
+    /// says no taxi route connects.
+    /// </summary>
+    private static (RunwayLineupTarget.Result Target, TaxiNode? Entry) RunwayEntry(GraphBundle g, Runway rwy, TaxiNode anchor)
+    {
+        var startsForRunway = g.Starts.Where(s => RunwayIdsMatch(s.RunwayName, rwy.RunwayID)).ToList();
+        var target = RunwayLineupTarget.Resolve(g.Graph, rwy, startsForRunway, anchor.Latitude, anchor.Longitude);
+        var entry = target.EntryNode;
+        if (entry == null) return (target, null);
+        var frame = RunwayFrame.For(rwy, rwy.StartLat);
+        bool offTheRunway = Math.Abs(frame.SignedCrossTrack(entry.Latitude, entry.Longitude)) > Services.TaxiGuidanceManager.RUNWAY_REACH_MAX_CROSS_M;
+        if (offTheRunway || entry.ComponentId != anchor.ComponentId)
+        {
+            double halfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
+            var backtrack = g.Graph.FindBacktrackEntryNode(rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM,
+                                                           anchor.Latitude, anchor.Longitude);
+            if (backtrack != null || offTheRunway) entry = backtrack;
+        }
+        return (target, entry);
     }
 
     /// <summary>"C 1 (Ramp Cargo, UPS)" — identity, then the type when known, then the airline when it decided.</summary>
