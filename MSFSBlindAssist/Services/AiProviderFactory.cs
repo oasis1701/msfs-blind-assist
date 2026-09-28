@@ -16,4 +16,12 @@ public static class AiProviderFactory
             ? new ClaudeService()
             : new GeminiService();
     }
+
+    /// <summary>Whether the selected provider has an API key — the same test its own request makes
+    /// (string.IsNullOrEmpty), asked BEFORE any work is done for it.</summary>
+    public static bool HasApiKey() => HasApiKey(SettingsManager.Current.AiProvider,
+        SettingsManager.Current.GeminiApiKey, SettingsManager.Current.ClaudeApiKey);
+
+    internal static bool HasApiKey(AiProvider provider, string? geminiKey, string? claudeKey) =>
+        !string.IsNullOrEmpty(provider == AiProvider.Claude ? claudeKey : geminiKey);
 }
