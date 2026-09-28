@@ -1360,6 +1360,9 @@ public partial class MainForm
             electronicFlightBagForm.Close();
             electronicFlightBagForm = null;
         }
+        // A route description still being prepared was computed against the old database and the old flight plan
+        // manager: discard it when it finishes (the kept description itself stays).
+        if (routeDescriptionSession.IsGenerating) routeDescriptionSession.Abandon();
 
         // Same for the TCAS window, and for the same reason: its GateResolver is built ONCE in
         // OpenTcasWindow from DatabaseSelector.SelectProvider() and captures that provider in a
@@ -1452,6 +1455,8 @@ public partial class MainForm
                 electronicFlightBagForm.Close();
                 electronicFlightBagForm = null;
             }
+            // Same for a route description still being prepared: it reads the database being released.
+            if (routeDescriptionSession.IsGenerating) routeDescriptionSession.Abandon();
 
             // Set providers to null to release connections — through WithTaxiAugmentation, so the augmenting decorator
             // (_augmentingProvider, which holds the navdata provider) is released with it.

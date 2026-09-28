@@ -766,6 +766,7 @@ public partial class MainForm
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
             electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, waypointTracker,
                 settings.SimbriefUsername ?? "",
+                routeDescriptionSession,
                 new MSFSBlindAssist.Navigation.Briefing.RouteBriefingDependencies(
                     () => airportDataProvider,            // a getter: RefreshDatabaseProvider swaps the instance (re-wrapped by WithTaxiAugmentation)
                     BuildGateDataSource,

@@ -40,25 +40,24 @@ public class DescribeRouteGuardTests
     }
 
     [Fact]
-    public void A_failed_briefing_never_writes_the_status_of_a_closed_window()
+    public void A_briefing_never_writes_the_status_of_a_closed_window()
     {
-        // The finally block already checks IsDisposed before touching the form; the two catch blocks must too — a
-        // database switch closes the flight bag while the briefing is still running (RBR Task 3 follow-up).
-        string body = Method(Efb(), "private async Task DescribeRouteAsync()");
-        int catches = body.IndexOf("        catch (", StringComparison.Ordinal);
-        int fin = body.IndexOf("        finally", StringComparison.Ordinal);
-        Assert.True(catches >= 0 && fin > catches, "the catch blocks were not found");
-        string handlers = body[catches..fin];
-        var calls = Regex.Matches(handlers, @"UpdateStatus\(");
-        Assert.NotEmpty(calls);
-        Assert.All(calls, m => Assert.EndsWith("if (!IsDisposed) ", handlers[..m.Index]));
+        // A briefing now runs on after its flight bag closed (a database switch closes it), so every UpdateStatus it
+        // makes -- the catch blocks' included -- must land on a window that may be gone: UpdateStatus itself returns
+        // first thing when the form is disposed, before it touches the status label or Invoke.
+        string body = Method(Efb(), "private void UpdateStatus(string message)");
+        int guard = body.IndexOf("if (IsDisposed) return;", StringComparison.Ordinal);
+        int touch = body.IndexOf("InvokeRequired", StringComparison.Ordinal);
+        Assert.True(guard >= 0 && guard < touch, "UpdateStatus must return when disposed, before InvokeRequired");
     }
 
     [Fact]
-    public void Loading_a_plan_never_re_enables_Describe_while_a_briefing_runs()
+    public void Loading_a_plan_leaves_Describe_Route_to_the_session()
     {
-        string body = Method(Efb(), "private void LoadSimBriefFlightPlan()");
-        Assert.Matches(new Regex(@"describeRouteButton\.Enabled\s*=\s*!_describingRoute\s*&&"), body);
+        // Describe Route's enabled state has ONE owner, ApplyDescriptionSession, reached through the session's Changed
+        // event (Clear() raises it); a second hand-written copy of the rule here could drift from it.
+        string body = Method(Efb(), "private void LoadSimBriefFlightPlan(");
+        Assert.DoesNotMatch(new Regex(@"describeRouteButton\.Enabled\s*="), body);
     }
 
     [Fact]
@@ -74,5 +73,30 @@ public class DescribeRouteGuardTests
         string body = Method(Efb(), "private async Task<OwnPosition?> ReadOwnPositionAsync()");
         Assert.Contains(".WaitAsync(", body);
         Assert.DoesNotContain("Task.WhenAny", body);
+    }
+
+    [Fact]
+    public void Only_a_successful_SimBrief_load_erases_the_route_description()
+    {
+        // The one place the kept description is erased is Load SimBrief, and only once the plan was actually replaced
+        // (checked after LoadFromSimBrief, in its finally, so a throw after the swap still erases it).
+        string efb = Efb();
+        Assert.Single(Regex.Matches(efb, Regex.Escape("_descriptionSession.Clear()")));
+
+        string root = Path.Combine(RepoRoot(), "MSFSBlindAssist");
+        foreach (string file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) ||
+                file.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar)) continue;
+            if (Path.GetFileName(file) == "ElectronicFlightBagForm.cs") continue;
+            string text = File.ReadAllText(file);
+            Assert.DoesNotContain("routeDescriptionSession.Clear()", text);
+            Assert.DoesNotContain("_descriptionSession.Clear()", text);
+        }
+
+        string body = Method(efb, "private void LoadSimBriefFlightPlan(");
+        int load = body.IndexOf("LoadFromSimBrief(", StringComparison.Ordinal);
+        int clear = body.IndexOf("_descriptionSession.Clear()", StringComparison.Ordinal);
+        Assert.True(load >= 0 && clear > load, "Clear must come after LoadFromSimBrief( inside LoadSimBriefFlightPlan");
     }
 }
