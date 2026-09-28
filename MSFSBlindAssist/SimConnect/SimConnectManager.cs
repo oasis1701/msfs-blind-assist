@@ -357,6 +357,10 @@ public partial class SimConnectManager
     private readonly Queue<(string eventName, uint data)> pendingCalcEvents = new();
     private const int MaxPendingCalcEvents = 64;
     private ConcurrentDictionary<string, double> lastVariableValues = new ConcurrentDictionary<string, double>();  // Cache last values for change detection
+    // Vars whose first UNCHANGED, unforced individual delivery has been written to debug.log
+    // (VarCache: later ones are not, to keep the Fenix's ~50 1 Hz vars from flooding the log).
+    // Same lifetime as lastVariableValues — cleared wherever that is.
+    private readonly HashSet<string> unchangedDeliveryLogged = new();
     private int nextDataDefinitionId = 1000;  // Start IDs from 1000 to avoid conflicts
     private static int nextTempDefId = 50000;  // Counter for temporary definition IDs (SetLVar/SetSimVar)
 
@@ -1359,6 +1363,7 @@ public partial class SimConnectManager
         // fresh-read range across reconnects.
         nextDataDefinitionId = 1000;
         lastVariableValues.Clear();
+        unchangedDeliveryLogged.Clear();
         continuousVariableIndexMap.Clear();
         for (int i = 0; i < batchVarArrays.Length; i++)
             batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
