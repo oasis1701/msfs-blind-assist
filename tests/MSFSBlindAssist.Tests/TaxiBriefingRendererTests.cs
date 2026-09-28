@@ -423,6 +423,28 @@ public class TaxiBriefingRendererTests
     }
 
     [Fact]
+    public void On_the_no_route_path_a_missing_next_exit_says_none_later_has_a_mapped_route_to_the_stand()
+    {
+        // Fix wave 4 (M-1): on this path the exit if missed must route to the stand (BriefingExitPicker), so a later
+        // usable exit on the same side can exist with no route — "No later usable exit … is mapped" was false there.
+        var s = Exit("S", 4900, "Normal", "Right");
+        foreach (bool behind in new[] { true, false })
+        {
+            string line = ExitLineFor(B738, new ExitChoice(s, null, false)
+                { ReachableExitsHaveNoRoute = true, BriefedExitBehindReachable = behind, RunwayLength = UnreachableRunway.Short });
+            Assert.Contains(" No later exit on the same side with a mapped route to the stand is at least 500 ft further along.", line);
+            Assert.DoesNotContain("No later usable exit", line, StringComparison.Ordinal);
+        }
+        // Without a side the clause drops "on the same side", as the ordinary sentence does.
+        string noSide = ExitLineFor(B738, new ExitChoice(Exit("S", 4900, "Normal", ""), null, false)
+            { ReachableExitsHaveNoRoute = true, RunwayLength = UnreachableRunway.Short });
+        Assert.Contains(" No later exit with a mapped route to the stand is at least 500 ft further along.", noSide);
+        // Off that path the ordinary sentence stands.
+        Assert.Contains(" No later usable exit on the same side is mapped at least 500 ft further along.",
+                        ExitLineFor(B738, new ExitChoice(s, null, false) { RunwayLength = UnreachableRunway.Short }));
+    }
+
+    [Fact]
     public void With_no_stand_known_the_unreachable_sentence_says_the_last_exit_is_briefed()
     {
         // Minor 2: with no stand nothing was routed — the picker briefs the last exit, so "the last one with a mapped

@@ -194,13 +194,16 @@ public static class TaxiBriefingRenderer
         // leaves on its own side) on the SAME side at least NextExitMinSeparationFeet further along
         // (BriefingExitPicker), so "none" means none of those — never that no later exit exists at all: the exits list
         // can still show a later one on that side that turns further, or was set aside (named just below when
-        // comfortably reachable).
+        // comfortably reachable). When the comfortable exits have no route to the stand
+        // (ExitChoice.ReachableExitsHaveNoRoute) the exit if missed must route to the stand too, so "none" means none
+        // WITH A ROUTE — a later usable exit may exist without one (fix wave 4, M-1).
         string minimum = FormatAlongRunway(BriefingExitPicker.NextExitMinSeparationFeet, unit);
+        string sameSide = string.IsNullOrEmpty(e.ExitSide) ? "" : " on the same side";
         sb.Append(choice.NextExit is { } n
             ? $" Next exit if missed: {ExitName(n)}, {SideLower(n.ExitSide)}, {FormatAlongRunway(n.DistanceFromThresholdFeet, unit)}"
-            : string.IsNullOrEmpty(e.ExitSide)
-                ? $" No later usable exit is mapped at least {minimum} further along."
-                : $" No later usable exit on the same side is mapped at least {minimum} further along.");
+            : choice.ReachableExitsHaveNoRoute
+                ? $" No later exit{sameSide} with a mapped route to the stand is at least {minimum} further along."
+                : $" No later usable exit{sameSide} is mapped at least {minimum} further along.");
         if (!choice.ComfortablyReachable)
             sb.Append(UnreachableSentence(choice, aircraft.TouchdownSpeedKts.ToString("0", CultureInfo.InvariantCulture),
                 aircraft.CodeLetter == IcaoCodeLetter.Unknown,
