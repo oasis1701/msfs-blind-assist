@@ -797,6 +797,7 @@ public partial class SimConnectManager
         requestIdToVarKey.Clear();
         _freshRequestIdToVarKey.Clear();
         lastVariableValues.Clear();
+        unchangedDeliveryLogged.Clear();
         lock (forceUpdateVariables) { forceUpdateVariables.Clear(); }
         _freshReads.FailAll();
         FailCameraViewRead();

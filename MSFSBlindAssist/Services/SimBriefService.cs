@@ -89,7 +89,7 @@ public class SimBriefService
     /// <summary>
     /// Parses SimBrief XML OFP into a FlightPlan object
     /// </summary>
-    private FlightPlan ParseSimBriefXML(string xmlContent, string username)
+    internal FlightPlan ParseSimBriefXML(string xmlContent, string username)
     {
         XmlDocument doc = new XmlDocument();
         doc.LoadXml(xmlContent);
@@ -100,6 +100,17 @@ public class SimBriefService
             LoadedTime = DateTime.Now,
             ExtractedFlightData = ExtractFlightData(doc)
         };
+
+        // Aircraft + airline for the route briefing's taxi section (see FlightPlan for why these
+        // four and no others). max_passengers is a freighter signal: SimBrief publishes 0 for one.
+        XmlNode? aircraftNode = doc.SelectSingleNode("//aircraft");
+        XmlNode? generalNode = doc.SelectSingleNode("//general");
+        flightPlan.AircraftTypeIcao = GetNodeValue(aircraftNode, "icaocode") ?? "";
+        flightPlan.AircraftName = GetNodeValue(aircraftNode, "name") ?? "";
+        flightPlan.AircraftMaxPassengers = int.TryParse(GetNodeValue(aircraftNode, "max_passengers"),
+            System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture,
+            out int maxPax) ? maxPax : null;
+        flightPlan.AirlineIcao = GetNodeValue(generalNode, "icao_airline") ?? "";
 
         // Parse origin and destination
         XmlNode? originNode = doc.SelectSingleNode("//origin");

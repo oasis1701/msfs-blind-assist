@@ -48,20 +48,27 @@ public class FlightPlanManager
         try
         {
             StatusChanged?.Invoke(this, "Fetching flight plan from SimBrief...");
-
-            CurrentFlightPlan = _simbriefService.FetchFlightPlan(username);
-
-            // Calculate leg distances for all waypoints after loading
-            CurrentFlightPlan.CalculateLegDistances();
-
-            StatusChanged?.Invoke(this, $"Loaded flight plan: {CurrentFlightPlan.GetSummary()}");
-            FlightPlanUpdated?.Invoke(this, CurrentFlightPlan);
+            AdoptSimBriefPlan(_simbriefService.FetchFlightPlan(username));
         }
         catch (Exception ex)
         {
             StatusChanged?.Invoke(this, $"Error loading from SimBrief: {ex.Message}");
             throw;
         }
+    }
+
+    /// <summary>Makes a fetched SimBrief plan current and starts fetching both airports' online taxiway names, as
+    /// LoadDeparture and LoadArrival do: the route briefing waits for those names, and an OFP loaded without them made
+    /// the first Describe Route of every flight wait up to 8 s per airport.</summary>
+    internal void AdoptSimBriefPlan(FlightPlan plan)
+    {
+        CurrentFlightPlan = plan;
+        CurrentFlightPlan.CalculateLegDistances();
+        PrefetchTaxiData(plan.DepartureICAO);
+        if (!string.Equals(plan.ArrivalICAO, plan.DepartureICAO, StringComparison.OrdinalIgnoreCase))
+            PrefetchTaxiData(plan.ArrivalICAO);
+        StatusChanged?.Invoke(this, $"Loaded flight plan: {CurrentFlightPlan.GetSummary()}");
+        FlightPlanUpdated?.Invoke(this, CurrentFlightPlan);
     }
 
     /// <summary>
