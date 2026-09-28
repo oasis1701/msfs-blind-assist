@@ -147,12 +147,22 @@ public partial class SimConnectManager
 
             string description = FormatVariableValue(varKey, varDef, currentValue);
 
-            // Skip the per-fire debug line (and its string interpolation) for HighFrequency vars
-            // (SIM_FRAME-rate, e.g. G_FORCE) — this path can fire 30-60x/sec and would otherwise
-            // churn the 5MB debug.log rotation continuously for the whole flight.
-            if (!varDef.HighFrequency)
+            // Which line (if any) this delivery writes is DeliveryLogPolicy's: never the per-fire
+            // line for a SIM_FRAME var, always for a change, a forced read or the answer to a fresh
+            // or seed read someone is waiting on, and for any other UNCHANGED delivery only the
+            // first per var per cache lifetime (the Fenix's ~50 1 Hz vars once held the whole
+            // 20 MB debug.log retention to ~35 minutes of flying). The event still fires regardless.
+            switch (DeliveryLogPolicy.For(varDef.HighFrequency, hasChanged, isForceUpdate,
+                        targetedRead: freshRequest || seedRequest,
+                        unchangedAlreadyLogged: unchangedDeliveryLogged.Contains(varKey)))
             {
-                Log.Debug("SimConnect", $"Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
+                case DeliveryLogLine.Firing:
+                    Log.Debug("SimConnect", $"Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}, Request={(freshRequest ? "fresh" : seedRequest ? "seed" : "periodic")}");
+                    break;
+                case DeliveryLogLine.FirstUnchanged:
+                    unchangedDeliveryLogged.Add(varKey);
+                    Log.Debug("SimConnect", $"First unchanged delivery for {varKey}: Value={currentValue} (later unchanged periodic deliveries are not logged)");
+                    break;
             }
 
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs

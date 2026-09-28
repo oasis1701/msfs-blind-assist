@@ -33,10 +33,14 @@ public class ClaudeService : IAiProvider
     // selected model rejects it (e.g. Haiku 4.5), DescribeRouteAsync degrades to an ungrounded briefing.
     private const string WEB_SEARCH_TOOL_TYPE = "web_search_20260209";
 
-    // Cap searches per briefing. Without this the model can run 10+ searches for a multi-airport
-    // NOTAM/weather briefing, which is slow (risking the HttpClient timeout) and costs $10/1000
-    // searches. ~5 covers departure + arrival NOTAMs + weather + SIGMETs without runaway latency.
-    private const int WEB_SEARCH_MAX_USES = 5;
+    // Cap searches per briefing. Without a cap the model can run 10+ searches, which is slow
+    // (risking the HttpClient timeout) and costs $10/1000 searches. 8 covers both airports'
+    // NOTAMs, the weather and SIGMETs, and one chart lookup per airport, which the
+    // route-description prompt now invites; at 5 the chart lookups crowded out the NOTAM
+    // searches and the briefing said no notable NOTAMs were found. The prompt asks for NOTAMs
+    // first (GeminiService.RouteSearchOnSentence) so a budget that still runs out drops charts,
+    // not NOTAMs.
+    private const int WEB_SEARCH_MAX_USES = 8;
 
     // The Messages API REQUIRES max_tokens (it cannot be omitted), so "no cap" means a value
     // the response never reaches: 16000 is ~30x a 300-500 word briefing, within every current
@@ -90,11 +94,12 @@ public class ClaudeService : IAiProvider
 
     public async Task<string> DescribeRouteAsync(string flightData)
     {
-        string prompt = GeminiService.GetRouteDescriptionPrompt(flightData);
         bool enableSearch = SettingsManager.Current.ClaudeWebSearch;
         try
         {
-            return await SendTextRequestAsync(prompt, enableSearch);
+            // The prompt is told whether THIS request can search, so a taxi leg's check line never claims current charts.
+            string prompt = GeminiService.GetRouteDescriptionPrompt(flightData, webSearch: enableSearch);
+            return RouteBriefingText.RemoveEchoedTaxiQuestion(await SendTextRequestAsync(prompt, enableSearch));
         }
         catch (HttpRequestException ex) when (enableSearch &&
             ex.Message.Contains("web_search", StringComparison.OrdinalIgnoreCase))
@@ -103,8 +108,11 @@ public class ClaudeService : IAiProvider
             // the rejected tool type, so it always contains "web_search" — a broader match like
             // "tool" would swallow unrelated 400s). Degrade to an ungrounded briefing rather
             // than failing, but SAY SO up front: a blind pilot who asked for NOTAM grounding
-            // must not silently receive an ungrounded briefing as if it were current.
-            string briefing = await SendTextRequestAsync(prompt, false);
+            // must not silently receive an ungrounded briefing as if it were current. The retry
+            // has no search, so its prompt must say so too, or the taxi section's check lines
+            // could claim current charts the model never looked at.
+            string briefing = RouteBriefingText.RemoveEchoedTaxiQuestion(
+                await SendTextRequestAsync(GeminiService.GetRouteDescriptionPrompt(flightData, webSearch: false), false));
             return "Note: web search is not available for the selected Claude model, so this " +
                    "briefing is not grounded with current NOTAM or weather data.\n\n" + briefing;
         }

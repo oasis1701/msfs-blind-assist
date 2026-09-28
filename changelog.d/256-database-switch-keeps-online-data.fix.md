@@ -1,0 +1,1 @@
+After you change or automatically switch the navigation database, online taxiway names and stand aliases no longer disappear for the rest of the session, and your loaded SimBrief plan is kept instead of having to be loaded again.

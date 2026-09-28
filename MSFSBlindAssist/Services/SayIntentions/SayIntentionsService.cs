@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Net.Http;
 using System.Text.Json;
 using MSFSBlindAssist.Utils.Logging;
@@ -618,6 +619,10 @@ public sealed class SayIntentionsService
                         parking = null;
                         error = "No SayIntentions parking assignment found for the active flight.";
                     }
+                    else
+                    {
+                        _log.Debug($"getParking: {DescribeParking(parking)}");
+                    }
                 }
             }
         }
@@ -644,6 +649,15 @@ public sealed class SayIntentionsService
         if (error != null) _log.Warn(error);
         return new SayIntentionsParkingResult(parking, error);
     }
+
+    /// <summary>What the parking service returned, for sayintentions.log — its name and position, nothing personal.
+    /// Before, only the request was logged, so a briefing that missed the gate (live KMEM→KATL, 2026-09-26) could not
+    /// be traced to what the service had said.</summary>
+    internal static string DescribeParking(SayIntentionsParking parking) =>
+        $"name='{parking.Name}' lat={LogNumber(parking.Latitude)} lon={LogNumber(parking.Longitude)} heading={LogNumber(parking.Heading)}";
+
+    private static string LogNumber(double? value) =>
+        value is double v ? v.ToString("0.######", CultureInfo.InvariantCulture) : "-";
 
     /// <summary>The key SayIntentions publishes in flight.json during an active
     /// flight (<c>flight_details.api_key</c>), which a live capture confirms is

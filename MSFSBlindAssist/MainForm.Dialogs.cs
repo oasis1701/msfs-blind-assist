@@ -629,7 +629,13 @@ public partial class MainForm
         if (electronicFlightBagForm == null || electronicFlightBagForm.IsDisposed)
         {
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-            electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, settings.SimbriefUsername ?? "");
+            electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer,
+                settings.SimbriefUsername ?? "",
+                routeDescriptionSession,
+                new MSFSBlindAssist.Navigation.Briefing.RouteBriefingDependencies(
+                    () => airportDataProvider,            // a getter: RefreshDatabaseProvider swaps the instance (re-wrapped by WithTaxiAugmentation)
+                    BuildGateDataSource,
+                    () => sayIntentionsService.GetAssignedStatusAsync()));
             // "Track Slot N" on a route waypoint opens the Track Fix dialog pre-populated (so the
             // mapped altitude/constraint/course is visible + editable) instead of tracking silently.
             electronicFlightBagForm.TrackToSlotRequested += OnEfbTrackToSlotRequested;
