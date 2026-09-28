@@ -349,8 +349,10 @@ public class TaxiBriefingRendererTests
 
         Assert.EndsWith(" This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.",
                         Line(B738, UnreachableRunway.Short));
+        // "to the briefed exit", not "to the last exit": the briefed one is the last that ROUTES to the stand
+        // (BriefingExitPicker), and a later exit with no route may exist (review M-5).
         Assert.EndsWith(" No mapped exit is comfortably reachable at 130 kt, but the runway is long enough to stop on: " +
-                        "expect to backtrack on the runway to the last exit, which is briefed.",
+                        "expect to backtrack on the runway to the briefed exit.",
                         Line(B738, UnreachableRunway.LongEnoughToBacktrack));
         Assert.EndsWith(" No exit is comfortably reachable at 130 kt; the last exit is briefed.",
                         Line(B738, UnreachableRunway.LengthUnknown));
@@ -359,7 +361,7 @@ public class TaxiBriefingRendererTests
         const string assumed = "an assumed 130 kt (the aircraft type is not recognised)";
         Assert.EndsWith($" No exit is comfortably reachable at {assumed}; the last exit is briefed.", Line(unknown, UnreachableRunway.Short));
         Assert.EndsWith($" No mapped exit is comfortably reachable at {assumed}, but the runway is long enough to stop on: " +
-                        "expect to backtrack on the runway to the last exit, which is briefed.",
+                        "expect to backtrack on the runway to the briefed exit.",
                         Line(unknown, UnreachableRunway.LongEnoughToBacktrack));
         Assert.EndsWith($" No exit is comfortably reachable at {assumed}; the last exit is briefed.", Line(unknown, UnreachableRunway.LengthUnknown));
         Assert.DoesNotContain("short for this aircraft", Line(unknown, UnreachableRunway.Short), StringComparison.Ordinal);
@@ -368,6 +370,30 @@ public class TaxiBriefingRendererTests
         var s = Exit("S", 6025, "End", "Right");
         foreach (var verdict in new[] { UnreachableRunway.Short, UnreachableRunway.LongEnoughToBacktrack, UnreachableRunway.LengthUnknown })
             Assert.EndsWith("; S is comfortably reachable, but its mapped route leaves the runway on the other side.", Line(B738, verdict, s));
+    }
+
+    [Theory]
+    [InlineData("C172", "Cessna 172", IcaoCodeLetter.A, "70")]
+    [InlineData("C56X", "Citation Excel", IcaoCodeLetter.B, "115")]
+    public void A_code_A_or_B_aircraft_is_never_told_the_runway_is_short(string type, string name, IcaoCodeLetter letter, string kt)
+    {
+        // The "short" verdict is the jet touchdown re-plan's rule (2 s, then 2.0 m/s² from the touchdown speed): a C172
+        // on a 1,500 ft strip was told "This runway is short for this aircraft" (review I-2). Code A and B get the neutral
+        // sentence the unrecognised type gets, with their own speed.
+        var aircraft = AircraftSizeClass.Resolve(type, name, null);
+        Assert.Equal(letter, aircraft.CodeLetter);   // precondition
+        var e = Exit("W", 656, "Normal", "Left");
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "TEST", Runway = "05", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand W 1",
+            Taxiways = new[] { "W" }, DistanceMetres = 150,
+            Exit = new ExitChoice(e, null, false) { RunwayLength = UnreachableRunway.Short }, VacatingExits = new[] { e },
+        };
+        string text = TaxiBriefingRenderer.Render(
+            new TaxiBriefing(aircraft, TaxiLegBriefing.UnavailableLeg("TEST", "05", BriefingTier.Navdata, "x"), taxiIn), DistanceUnit.Feet);
+
+        Assert.Contains($" No exit is comfortably reachable at {kt} kt; the last exit is briefed.", text);
+        Assert.DoesNotContain("short for this aircraft", text);
     }
 
     [Fact]

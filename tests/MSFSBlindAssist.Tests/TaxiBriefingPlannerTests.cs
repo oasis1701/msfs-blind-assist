@@ -1080,6 +1080,22 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void A_Cessna_on_a_1500_ft_strip_is_never_briefed_that_the_runway_is_short()
+    {
+        // Review I-2: the planner's "short" verdict is the jet re-plan's rule (≈1,250 ft of lead plus a 492 ft aim at
+        // 70 kt), so on a 457 m (1,500 ft) strip a C172 gets it — and the block must not say so.
+        var c172 = AircraftSizeClass.Resolve("C172", "Cessna 172", 4);
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(c172, destRunway: "05"), AirportWithOnlyEarlyExits(457.2));
+        Assert.False(leg.Exit!.ComfortablyReachable);                  // preconditions: nothing comfortable,
+        Assert.Equal(UnreachableRunway.Short, leg.Exit.RunwayLength);  // and the jet rule's verdict is "short"
+
+        var taxiOut = TaxiLegBriefing.UnavailableLeg("TEST", "05", BriefingTier.Navdata, "x");
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(c172, taxiOut, leg), DistanceUnit.Feet);
+        Assert.Contains("No exit is comfortably reachable at 70 kt; the last exit is briefed.", text);
+        Assert.DoesNotContain("short for this aircraft", text);
+    }
+
+    [Fact]
     public void Before_calling_no_exit_comfortable_the_graph_is_asked_for_exits_the_list_left_out()
     {
         var bundle = AirportWithUnmarkedExit(600);   // C at 1,969 ft: too early for a 737

@@ -8,9 +8,11 @@ public enum ExitRoute { None, CrossesLandingRunway, Clear }
 /// <summary>What the block says about the runway when no exit is comfortably reachable.</summary>
 public enum UnreachableRunway
 {
-    /// <summary>The aircraft cannot stop on it with comfortable braking from its typical touchdown speed.</summary>
+    /// <summary>The aircraft cannot stop on it with comfortable braking from its typical touchdown speed — by the jet
+    /// re-plan's rule, so the block never says so to an unrecognised type or a code A or B aircraft
+    /// (TaxiBriefingRenderer.UnreachableSentence).</summary>
     Short,
-    /// <summary>It can stop on it: the exits all lie behind the touchdown, and it backtracks to the last one.</summary>
+    /// <summary>It can stop on it: the exits all lie behind the touchdown, and it backtracks to the briefed one.</summary>
     LongEnoughToBacktrack,
     /// <summary>The runway's length is not in the navdata.</summary>
     LengthUnknown,

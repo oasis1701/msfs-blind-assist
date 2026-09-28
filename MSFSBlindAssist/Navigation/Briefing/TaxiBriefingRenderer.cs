@@ -197,7 +197,8 @@ public static class TaxiBriefingRenderer
                 : $" No later usable exit on the same side is mapped at least {minimum} further along.");
         if (!choice.ComfortablyReachable)
             sb.Append(UnreachableSentence(choice, aircraft.TouchdownSpeedKts.ToString("0", CultureInfo.InvariantCulture),
-                aircraft.CodeLetter == IcaoCodeLetter.Unknown));
+                aircraft.CodeLetter == IcaoCodeLetter.Unknown,
+                aircraft.CodeLetter is IcaoCodeLetter.A or IcaoCodeLetter.B));
         return sb.ToString();
     }
 
@@ -206,8 +207,13 @@ public static class TaxiBriefingRenderer
     /// runway (<see cref="ExitChoice.RunwayLength"/>) decides: short only when the aircraft cannot stop on it comfortably,
     /// a backtrack when it can and every exit lies behind the touchdown, and no claim at all when its length is unknown.
     /// An unrecognised SimBrief type has no measured touchdown speed — the 130 kt used is an assumption, not a
-    /// runway-length fact, so it is never blamed on the runway being "short for this aircraft".</summary>
-    private static string UnreachableSentence(ExitChoice choice, string kt, bool typeUnknown)
+    /// runway-length fact, so it is never blamed on the runway being "short for this aircraft". Nor is a code A or B
+    /// aircraft (<paramref name="smallAircraft"/>): the verdict is the jet touchdown re-plan's rule (2 s, then 2.0 m/s²
+    /// down to a 90° exit's turn-off speed), which puts a Cessna 172 at 70 kt at about 1,700 ft and so called every
+    /// short GA strip "short" (review I-2) — it gets the neutral sentence instead. The briefed exit on a backtrack is
+    /// the last one that ROUTES to the stand (<see cref="BriefingExitPicker"/>), not necessarily the runway's last
+    /// exit, so the sentence names it as "the briefed exit".</summary>
+    private static string UnreachableSentence(ExitChoice choice, string kt, bool typeUnknown, bool smallAircraft)
     {
         string ktPhrase = typeUnknown ? $"an assumed {kt} kt (the aircraft type is not recognised)" : $"{kt} kt";
         var setAside = choice.ReachableExitsSetAside;
@@ -216,8 +222,8 @@ public static class TaxiBriefingRenderer
             {
                 UnreachableRunway.LongEnoughToBacktrack =>
                     $" No mapped exit is comfortably reachable at {ktPhrase}, but the runway is long enough to stop on: " +
-                    "expect to backtrack on the runway to the last exit, which is briefed.",
-                UnreachableRunway.Short when !typeUnknown =>
+                    "expect to backtrack on the runway to the briefed exit.",
+                UnreachableRunway.Short when !typeUnknown && !smallAircraft =>
                     $" This runway is short for this aircraft: no exit is comfortably reachable at {ktPhrase}; the last exit is briefed.",
                 _ => $" No exit is comfortably reachable at {ktPhrase}; the last exit is briefed.",
             };
