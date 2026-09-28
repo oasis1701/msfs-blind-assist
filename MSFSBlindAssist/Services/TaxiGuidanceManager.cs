@@ -668,6 +668,23 @@ public partial class TaxiGuidanceManager : IDisposable
     // Closest the aircraft has come to the route line while it has yet to join it.
     // Feeds the never-joined escape in the off-route detector; MaxValue = no sample yet.
     private double _minPerpWhileUnjoinedM = double.MaxValue;
+    // Hold-short nodes the incursion guard has already logged as "in range but not ahead"
+    // (RunwayIncursionWatch.IsApproaching false) — one log line per node per route, never one
+    // per frame: two hold lines at near-equal range can swap places as the nearest on every
+    // position sample. Cleared with the warned-node latch, only by ResetIncursionNodeMemory.
+    private readonly HashSet<int> _incursionWithheldLoggedNodes = new();
+    // Per-frame scratch for the incursion guard, reused so the ~30 Hz guard allocates nothing.
+    private readonly List<RunwayIncursionWatch.HoldShortCandidate> _incursionCandidates = new();
+    // What the guard knows about each hold-short node that depends only on the map, built with
+    // _cachedHoldShortNodes (same lifetime): the path segments leading into the node on its
+    // TAXIWAY side (a chain that runs onto pavement is the runway side of the hold line), and
+    // the runway the node guards — the one its spoken name comes from. A node the form inserts
+    // after the cache was built (a projected holding point, SplitEdgeAt) is missing here exactly
+    // as it is missing from _cachedHoldShortNodes; a split of an existing edge leaves every
+    // cached segment's line where it was.
+    private readonly Dictionary<int, IncursionNodeGeometry> _incursionNodeGeometry = new();
+    private sealed record IncursionNodeGeometry(
+        RunwayIncursionWatch.PathSegment[] PathsIntoNode, RunwayShape? GuardedRunway);
     // Timestamp of the last segment advance (AdvanceSegment or
     // AdvanceToNearestSegment). Used with POST_TURN_OFFROUTE_GRACE_SEC to
     // suppress off-route detection briefly after we cross a turn node.
@@ -2224,7 +2241,7 @@ public partial class TaxiGuidanceManager : IDisposable
             // countdown's "Runway vacated" close-out and both backtrack endings, all of which land
             // in Taxiing. See Services/RunwayIncursionWatch for why the map, not the state, decides.
             if (RunwayIncursionWatch.RunsWithoutARoute(_state, _graph != null))
-                CheckRunwayIncursion(lat, lon);
+                CheckRunwayIncursion(lat, lon, headingTrue);
             // ProgressiveHold is a terminal no-op: tone is off, the aircraft holds,
             // the pilot sets the next leg. No tone, no recalc, no movement logic.
             // (The unreachable-runway safety net and lineup path are gated on
@@ -2758,7 +2775,7 @@ public partial class TaxiGuidanceManager : IDisposable
         CheckSpeedWarnings(distToTarget, currentSeg);
 
         // Runway incursion: warn if approaching any off-route hold-short node
-        CheckRunwayIncursion(lat, lon);
+        CheckRunwayIncursion(lat, lon, headingTrue);
 
         // Parking countdown on the final segment (50/20/10 ft)
         CheckParkingCountdown(distToTarget);
@@ -3224,8 +3241,12 @@ public partial class TaxiGuidanceManager : IDisposable
     ///      → "Warning: approaching runway X, off route" (red flag — wrong turn)
     /// The scheduled-hold-short (user-checked) case is silent here because
     /// CheckHoldShortCountdown owns those callouts.
+    /// "Approaching", for case 2, is the node being AHEAD on the aircraft's own heading line
+    /// (RunwayIncursionWatch.IsApproaching), not merely within the 40 m radius: at KMEM every
+    /// hold line along taxiway M sits 34-38 m from M's centreline, and by proximity alone a
+    /// pilot correctly taxiing M heard the warning at every connector.
     /// </summary>
-    private void CheckRunwayIncursion(double lat, double lon)
+    private void CheckRunwayIncursion(double lat, double lon, double headingTrue)
     {
         if (_graph == null) return;
 
@@ -3282,7 +3303,12 @@ public partial class TaxiGuidanceManager : IDisposable
         }
         var onRouteHsNodes = _cachedOnRouteHsNodes;
 
-        // Per-graph HS/ILS-HS candidate list, cached (see field comments above).
+        // Per-graph HS/ILS-HS candidate list, cached (see field comments above). A NEW graph is
+        // a new airport with its own node numbering (ids restart at 1 per graph), so the
+        // per-node memory — the warned-node latch and the withheld-log set — goes with it:
+        // the departure airport's node 17 must not silence the arrival airport's node 17.
+        // LoadRoute/StopGuidance are not the only handovers; the rollout entries install a
+        // graph without passing through either.
         if (!ReferenceEquals(_holdShortNodesGraph, _graph))
         {
             var list = new List<TaxiNode>();
@@ -3293,30 +3319,87 @@ public partial class TaxiGuidanceManager : IDisposable
             }
             _cachedHoldShortNodes = list;
             _holdShortNodesGraph = _graph;
+            // Everything the guard knows about a node that depends only on the map — the paths
+            // leading into it and the runway it guards — is built once here, not per frame.
+            var shapes = RunwayPavement.BuildShapes(_graph.RunwayCenterlines);
+            _incursionNodeGeometry.Clear();
+            foreach (var node in list)
+            {
+                _incursionNodeGeometry[node.NodeId] = new IncursionNodeGeometry(
+                    CollectPathsIntoNode(node, shapes),
+                    RunwayIncursionWatch.GuardedRunway(node.Latitude, node.Longitude, shapes));
+            }
+            ResetIncursionNodeMemory();
         }
 
-        // Scan only the cached HS/ILS-HS candidates (not every graph node)
-        TaxiNode? nearestHs = null;
-        double bestDist = INCURSION_WARN_DISTANCE_M;
+        // Judge every cached HS/ILS-HS node in range (not every graph node) and speak about the
+        // nearest that is on the route or genuinely ahead — never simply the nearest: an abeam
+        // node a few metres closer than the one dead ahead would otherwise shadow it
+        // (RunwayIncursionWatch.Pick).
+        //
+        // In range is not the same as ahead: a hold line beside the taxiway being followed
+        // (KMEM's M1-M9, 34-38 m abeam of M) is judged against the aircraft's own heading and
+        // against the path segments that lead into the node, and left alone. Nothing is latched
+        // for a node that is not ahead, so it is judged again next frame and the moment the
+        // aircraft turns toward it the warning fires, from the full radius.
+        //
+        // Leaving a runway is not approaching one: an aircraft on the runway side of a hold line,
+        // on the pavement of the runway THAT line guards (vacating on a route-less taxi, or a
+        // backtrack ending), is not warned about it (RunwayIncursionWatch.IsLeavingThroughHoldLine).
+        // Only that runway, and only from its side: rolling along one runway toward another
+        // runway's hold line, or entering through a hold line drawn on the pavement, is judged
+        // like any other approach. Planned crossings ("Crossing runway X.") are unaffected.
+        //
+        // The candidate list is a field, cleared per use, and only touched once a node is in
+        // range: on the >99 % of frames with nothing in range this allocates nothing and does
+        // no runway geometry at all (this runs every position frame inside _stateLock).
+        _incursionCandidates.Clear();
         foreach (var node in _cachedHoldShortNodes!)
         {
             if (node.NodeId == scheduledHsNodeId)
                 continue; // countdown owns this one
 
             double d = TaxiGraph.FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
-            if (d < bestDist)
+            if (d >= INCURSION_WARN_DISTANCE_M) continue;
+
+            string name = !string.IsNullOrEmpty(node.HoldShortName) ? node.HoldShortName : "runway";
+            bool onRoute = onRouteHsNodes.Contains(node.NodeId);
+            bool approached = false;
+            _incursionNodeGeometry.TryGetValue(node.NodeId, out var geometry);
+            if (!onRoute && !RunwayIncursionWatch.IsLeavingThroughHoldLine(
+                    lat, lon, node.Latitude, node.Longitude, geometry?.GuardedRunway))
             {
-                bestDist = d;
-                nearestHs = node;
+                double bearingToNode = NavigationCalculator.CalculateBearing(
+                    lat, lon, node.Latitude, node.Longitude);
+                approached = RunwayIncursionWatch.IsApproaching(d, bearingToNode, headingTrue);
+                var pathsIntoNode = geometry?.PathsIntoNode ?? Array.Empty<RunwayIncursionWatch.PathSegment>();
+                if (!approached)
+                {
+                    approached = RunwayIncursionWatch.IsApproachingAlongAPath(
+                        lat, lon, headingTrue, node.Latitude, node.Longitude, pathsIntoNode);
+                }
+                // A turn onto a connector whose hold line is close to its junction is seen by
+                // neither test until the nose is nearly round; the yaw rate UpdatePosition already
+                // keeps (low-passed, right-positive) says where the turn is taking the aircraft.
+                if (!approached)
+                {
+                    approached = RunwayIncursionWatch.IsApproachingWhileTurning(
+                        lat, lon, headingTrue, _lastGroundSpeedKts * StartWarningChatterGate.MetersPerSecondPerKnot, _yawRateDegSec,
+                        node.Latitude, node.Longitude, pathsIntoNode);
+                }
+                if (!approached && _incursionWithheldLoggedNodes.Add(node.NodeId))
+                    _guidanceLog.Info(
+                        $"Incursion warning withheld: {name} {d:F0} m away, bearing {bearingToNode:F0} vs heading {headingTrue:F0} — not ahead.");
             }
+            _incursionCandidates.Add(new RunwayIncursionWatch.HoldShortCandidate(node.NodeId, d, onRoute, approached, name));
         }
 
-        if (nearestHs == null || nearestHs.NodeId == _lastIncursionWarnedNodeId)
+        var pick = RunwayIncursionWatch.Pick(_incursionCandidates);
+        if (pick == null || pick.Value.NodeId == _lastIncursionWarnedNodeId)
             return;
 
-        string rwy = !string.IsNullOrEmpty(nearestHs.HoldShortName) ? nearestHs.HoldShortName : "runway";
-
-        if (onRouteHsNodes.Contains(nearestHs.NodeId))
+        string rwy = pick.Value.SpokenName;
+        if (pick.Value.OnRoute)
         {
             // Planned crossing — informational, not a warning
             _announcer.AnnounceImmediate($"Crossing {rwy}.");
@@ -3326,8 +3409,71 @@ public partial class TaxiGuidanceManager : IDisposable
             _announcer.AnnounceImmediate($"Warning: approaching {rwy}, off route.");
         }
 
-        _lastIncursionWarnedNodeId = nearestHs.NodeId;
+        _lastIncursionWarnedNodeId = pick.Value.NodeId;
         _lastIncursionWarningTime = DateTime.UtcNow;
+        // Re-arm the once-per-node withheld log for this node: a later pass that withholds it
+        // again is a new judgement and deserves its own line.
+        _incursionWithheldLoggedNodes.Remove(pick.Value.NodeId);
+    }
+
+    /// <summary>
+    /// Forgets which hold-short nodes the incursion guard has spoken or logged about: the
+    /// warned-node latch AND the once-per-node "Incursion warning withheld" log set, always
+    /// together (a new route, a recalculation, a stop, or a new graph whose node ids restart).
+    /// The only place the latch is re-armed — <c>IncursionGuardResetTests</c>: the accepted
+    /// recalculation once re-armed the latch alone and left the log set holding the old route's
+    /// withheld nodes.
+    /// </summary>
+    private void ResetIncursionNodeMemory()
+    {
+        _lastIncursionWarnedNodeId = -1;
+        _incursionWithheldLoggedNodes.Clear();
+    }
+
+    /// <summary>
+    /// Builds every segment of every path that leads into a
+    /// hold-short node, for <see cref="RunwayIncursionWatch.IsApproachingAlongAPath"/>: from each
+    /// incident edge, back through degree-two nodes for up to
+    /// <see cref="RunwayIncursionWatch.PathLookBackMetres"/>, so a fillet drawn as micro-bend
+    /// segments is seen whole — on the TAXIWAY side only: a chain whose first node beyond the
+    /// hold line is on runway pavement is the runway side, and an aircraft on it is leaving the
+    /// runway, not approaching it. Called once per node when the hold-short cache is built for a
+    /// graph, never per frame.
+    /// </summary>
+    private RunwayIncursionWatch.PathSegment[] CollectPathsIntoNode(
+        TaxiNode node, IReadOnlyList<RunwayShape> runwayShapes)
+    {
+        var into = new List<RunwayIncursionWatch.PathSegment>();
+        if (_graph == null || !_graph.Adjacency.TryGetValue(node.NodeId, out var incident)) return into.ToArray();
+        const int MaxStepsPerChain = 8;
+        foreach (var first in incident)
+        {
+            var near = node;
+            int farId = first.FromNodeId == node.NodeId ? first.ToNodeId : first.FromNodeId;
+            double widthFeet = first.WidthFeet;
+            double walked = 0;
+            if (_graph.Nodes.TryGetValue(farId, out var beyond)
+                && RunwayPavement.IsOnPavement(beyond.Latitude, beyond.Longitude, runwayShapes))
+                continue; // the runway side of the hold line
+            for (int step = 0; step < MaxStepsPerChain; step++)
+            {
+                if (!_graph.Nodes.TryGetValue(farId, out var far) || far.NodeId == node.NodeId) break;
+                into.Add(new RunwayIncursionWatch.PathSegment(
+                    far.Latitude, far.Longitude, near.Latitude, near.Longitude, widthFeet));
+                walked += TaxiGraph.FastDistanceMeters(far.Latitude, far.Longitude, near.Latitude, near.Longitude);
+                if (walked >= RunwayIncursionWatch.PathLookBackMetres) break;
+                // Continue only through a plain degree-two node (a bend, not a junction).
+                if (!_graph.Adjacency.TryGetValue(far.NodeId, out var farEdges) || farEdges.Count != 2) break;
+                var onward = farEdges[0].FromNodeId == near.NodeId || farEdges[0].ToNodeId == near.NodeId
+                    ? farEdges[1] : farEdges[0];
+                int nextId = onward.FromNodeId == far.NodeId ? onward.ToNodeId : onward.FromNodeId;
+                if (nextId == near.NodeId) break;
+                widthFeet = onward.WidthFeet;
+                near = far;
+                farId = nextId;
+            }
+        }
+        return into.ToArray();
     }
 
     /// <summary>
@@ -3823,7 +3969,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _pendingTaxiwayAnnouncement = null;
         _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
         _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
-        _lastIncursionWarnedNodeId = -1;
+        ResetIncursionNodeMemory();
         // Reset cooldowns so a freshly-loaded route after Stop gets prompt warnings
         // instead of inheriting a stale cooldown from the prior session.
         _lastRecalculationTime = DateTime.MinValue;
