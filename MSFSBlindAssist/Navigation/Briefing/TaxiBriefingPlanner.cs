@@ -608,9 +608,10 @@ public static partial class TaxiBriefingPlanner
     /// (the aircraft's own position) the largest component's node is judged the same way: across a runway it is never
     /// the answer, and the other piece's nearer node on the point's side is taken instead, else null (fix wave 4, I-1:
     /// on a small piece's taxiway beside a runway, a main-network node within reach ACROSS it was the start). A stand's
-    /// lookup leaves it unjudged, so the stand figures below are unchanged. Residual: when the nearest node of all is the
-    /// largest component's, across the runway, the point's own small-piece node is not searched for — null, and the
-    /// taxi-out falls back to a representative stand (the safe direction).
+    /// lookup leaves it unjudged, so the stand figures below are unchanged. Residual: when the nearest node of all lies
+    /// across the runway (the largest component's, or a third piece's), the point's own node on its side — of any piece,
+    /// the largest included — is not searched for: null, and the taxi-out falls back to a representative stand (the
+    /// safe direction).
     /// <para>The graph has no runway edges, so taxiway pieces that meet only across a runway are separate components
     /// (LFBP, VIJU, ENAT, UKHH, KPRC). Measured on the real fs2024 database (2026-09-28): by the lineup search alone 1,677
     /// airports have two or more pieces that each hold stands and reach a runway entrance, and 7,987 stands at 1,857
