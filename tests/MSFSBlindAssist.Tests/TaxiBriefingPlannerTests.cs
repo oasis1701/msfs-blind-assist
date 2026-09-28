@@ -1115,6 +1115,29 @@ public class TaxiBriefingPlannerTests
         Assert.Equal("U", leg.Exit.NextExit!.TaxiwayName);
     }
 
+    [Fact]
+    public void A_rescue_for_the_next_exit_never_replaces_a_comfortable_briefed_exit()
+    {
+        // Review M-1: C (6,562 ft) is comfortable with no next exit in the list, so the graph is asked from C on. It finds
+        // U, a HIGH-SPEED exit 1,312 ft further — inside the preference window, where a fresh pick prefers it to C. The
+        // rescue answers only "what follows C"; it never swaps the exit the pilot is briefed to take.
+        var bundle = AirportWithUnmarkedExit(2000, unmarkedExitAngled: true);
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
+        var listed = bundle.Graph.GetLandingExits(rwy);
+        Assert.DoesNotContain(listed, e => e.TaxiwayName == "U");                                   // preconditions: U is
+        var c = listed.Single(e => e.TaxiwayName == "C");                                            // left out of the list,
+        var rescued = bundle.Graph.FindDownfieldExits(rwy, c.DistanceFromThresholdFeet);
+        var u = Assert.Single(rescued, e => e.TaxiwayName == "U");                                   // the graph finds it,
+        Assert.Equal("High-speed", u.ExitType);                                                      // high-speed,
+        Assert.InRange(u.DistanceFromThresholdFeet - c.DistanceFromThresholdFeet,
+                       BriefingExitPicker.NextExitMinSeparationFeet, BriefingExitPicker.PreferenceWindowFeet); // in the window
+
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), bundle);
+        Assert.Equal("C", leg.Exit!.Exit.TaxiwayName);
+        Assert.True(leg.Exit.ComfortablyReachable);
+        Assert.Equal("U", leg.Exit.NextExit!.TaxiwayName);
+    }
+
     // ── notes and holds that say what is true ────────────────────────────────────────────────
 
     [Fact]

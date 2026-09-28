@@ -267,7 +267,12 @@ public static partial class TaxiBriefingPlanner
                 foreach (var known in inbound.Keys.ToList())
                     if (!routeStarts.TryGetValue(known, out int now) || previousStarts[known] != now)
                         inbound.Remove(known);
-                choice = PickExit();
+                // A comfortable choice asked only what follows it: the rescued exits answer that and nothing else, so a
+                // rescued exit inside the preference window (a high-speed one, say) never replaces the exit already
+                // briefed. A choice that was not comfortable, or that the merged list no longer briefs, is made again.
+                choice = choice is { ComfortablyReachable: true } kept && routeStarts.ContainsKey(kept.Exit)
+                    ? kept with { NextExit = BriefingExitPicker.NextExit(exits.Where(routeStarts.ContainsKey).ToList(), kept.Exit) }
+                    : PickExit();
             }
         }
         var vacating = exits.Where(e => e.VacatesRunway).OrderBy(e => e.DistanceFromThresholdFeet).ToList();

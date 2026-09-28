@@ -89,13 +89,7 @@ public static class BriefingExitPicker
     {
         if (exits == null || exits.Count == 0) return null;
 
-        var candidates = exits
-            .Where(e => e.VacatesRunway && e.ExitAngleDegrees <= RolloutExitGate.MaxUsableExitTurnDeg)
-            .OrderBy(e => e.DistanceFromThresholdFeet)
-            .ToList();
-        if (candidates.Count == 0)
-            candidates = exits.Where(e => e.VacatesRunway)
-                .OrderBy(e => e.DistanceFromThresholdFeet).ToList();
+        var candidates = Candidates(exits);
         if (candidates.Count == 0) return null;
 
         var reachable = candidates.Where(e => IsComfortablyReachable(e, touchdownSpeedKts, aimFeet)).ToList();
@@ -121,11 +115,31 @@ public static class BriefingExitPicker
               ?? reachable.FirstOrDefault(e => route(e) != ExitRoute.None)
               ?? preferred[0];
 
-        var next = candidates.FirstOrDefault(e =>
+        return new ExitChoice(chosen, NextAfter(candidates, chosen), ComfortablyReachable: true);
+    }
+
+    /// <summary>The exit to take if <paramref name="chosen"/> is missed, among <paramref name="exits"/> — the rule
+    /// <see cref="Pick"/> applies: the next candidate on the same side at least <see cref="NextExitMinSeparationFeet"/>
+    /// further along. For a choice already made, when only the exits after it were looked for again.</summary>
+    public static LandingExit? NextExit(IReadOnlyList<LandingExit> exits, LandingExit chosen) =>
+        exits == null || exits.Count == 0 ? null : NextAfter(Candidates(exits), chosen);
+
+    /// <summary>The exits that may be briefed, in runway order: those that vacate the runway and turn no more than
+    /// <see cref="RolloutExitGate.MaxUsableExitTurnDeg"/>, or — when none does — every one that vacates it.</summary>
+    private static List<LandingExit> Candidates(IReadOnlyList<LandingExit> exits)
+    {
+        var candidates = exits
+            .Where(e => e.VacatesRunway && e.ExitAngleDegrees <= RolloutExitGate.MaxUsableExitTurnDeg)
+            .OrderBy(e => e.DistanceFromThresholdFeet)
+            .ToList();
+        return candidates.Count > 0 ? candidates
+            : exits.Where(e => e.VacatesRunway).OrderBy(e => e.DistanceFromThresholdFeet).ToList();
+    }
+
+    private static LandingExit? NextAfter(List<LandingExit> candidates, LandingExit chosen) =>
+        candidates.FirstOrDefault(e =>
             e.DistanceFromThresholdFeet - chosen.DistanceFromThresholdFeet >= NextExitMinSeparationFeet &&
             OnTheSameSide(e, chosen));
-        return new ExitChoice(chosen, next, ComfortablyReachable: true);
-    }
 
     /// <summary>Whether the aircraft can slow to the exit's turn-off speed before it with comfortable braking from its
     /// typical touchdown speed — the touchdown re-plan's own rule (<see cref="RolloutExitGate.ComfortableExitLeadFeet"/>),
