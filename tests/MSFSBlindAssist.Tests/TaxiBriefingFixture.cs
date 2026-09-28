@@ -213,6 +213,31 @@ internal static class TaxiBriefingFixture
         new[] { Spot("T", 1, 10, 1500, 260, 150, "JBU") });
 
     /// <summary>
+    /// TEST plus an unbridged island: taxiway GI (a NAMED stub, so the bridging pass leaves it alone) from
+    /// (1500 E, north 150) to (1550 E, north 150), a lead-in north to stand J 1 (1550 E, north 190, gate, JBU,
+    /// r=150 ft). J 1's nearest node is its own lead-in end, but the nearest node of the taxi network is A's at
+    /// 1500 E, 103 m away — beyond the 100 m stand reach. (KTUL G 19: a 3-node island 72–77 m from the network.)
+    /// </summary>
+    public static GraphBundle AirportWithIslandStand() => AirportWith(
+        new[] { Path("GI", 1500, 150, 1550, 150), LeadIn(1550, 150, 1550, 190) },
+        new[] { Spot("J", 1, 10, 1550, 190, 150, "JBU") });
+
+    /// <summary>
+    /// TEST plus the south stand's taxiways (<see cref="AirportWithSouthStand"/>) and exit Z, which leads straight
+    /// onto a stand:
+    ///   east 2200: Z from 09's centreline (HS) straight south to north -150, where S now continues from 2000 E.
+    ///   stand Z 1 (2200 E, north -150, gate, r=150 ft) — its nearest node is Z's own end node, which is where
+    ///   exit Z's route begins. (N16 exit A to stand P 1.)
+    /// S joins Z to the network (through X, across 09); without it Z would be an island of its own.
+    /// </summary>
+    public static GraphBundle AirportWithExitStraightOntoStand() => AirportWith(
+        SouthStandPaths().Concat(new[]
+        {
+            Path("Z", 2200, 0, 2200, -150, startType: "HS"),
+            Path("S", 2000, -100, 2200, -150),
+        }), SouthStandSpots().Append(Spot("Z", 1, 10, 2200, -150, 150)));
+
+    /// <summary>
     /// TEST plus a stand reachable only by crossing runway 18/36 a SECOND time:
     ///   east 1000: taxiway V from A (north 100) north to north 600.
     ///   north 600: taxiway Z from V east to 1500 E, across 18/36 (1200 E) with hold bars (HS) 50 m either side

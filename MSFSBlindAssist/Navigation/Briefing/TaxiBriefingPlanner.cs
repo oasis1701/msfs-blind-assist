@@ -62,13 +62,14 @@ public static partial class TaxiBriefingPlanner
         int startNode = -1;
         string endpoint = "";
         StandChoice? stand = null;
+        int network = NetworkComponentId(g.Graph);
 
         if (r.Own is { OnGround: true } own && g.Airport != null &&
             TaxiGraph.FastDistanceMeters(own.Lat, own.Lon, g.Airport.Latitude, g.Airport.Longitude) <= OwnPositionMaxAirportDistanceMetres)
         {
-            // A route START from a SENSED position: bridge-only stand stubs excluded, as
-            // TaxiGuidanceManager.LoadRoute does, so the position is never snapped onto one.
-            var node = g.Graph.FindNearestNode(own.Lat, own.Lon, excludeBridgeOnlyStandStubs: true);
+            // A route START from a SENSED position: on the taxi network, and bridge-only stand stubs excluded, as
+            // TaxiGuidanceManager.LoadRoute does, so the position is never snapped onto an island or a stub.
+            var node = g.Graph.FindNearestNode(own.Lat, own.Lon, requiredComponentId: network, excludeBridgeOnlyStandStubs: true);
             if (node != null && TaxiGraph.FastDistanceMeters(own.Lat, own.Lon, node.Latitude, node.Longitude) <= OwnPositionMaxNodeDistanceMetres)
             {
                 startNode = node.NodeId;
@@ -78,14 +79,15 @@ public static partial class TaxiBriefingPlanner
 
         if (startNode < 0)
         {
-            bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s) != null;
+            // The stand is the route's START: on the network, never a bridge-only stand stub.
+            bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s, network, asRouteStart: true) != null;
             // SayIntentions never assigns a departure gate — no hint here by design.
             stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, siGate: null, HasStandNode, r.Unit);
             if (stand == null)
                 return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                     BriefingStandPicker.NoStandReason(g.Spots, HasStandNode, icao), notes: notes);
             AddStandNotes(notes, stand, g.Note);
-            startNode = StandNode(g.Graph, stand.Spot)!.NodeId;
+            startNode = StandNode(g.Graph, stand.Spot, network, asRouteStart: true)!.NodeId;
             endpoint = $"representative stand {DescribeStand(stand, r.AirlineIcao)}";
         }
 
@@ -160,7 +162,9 @@ public static partial class TaxiBriefingPlanner
             }
         }
 
-        bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s) != null;
+        // The stand is the route's DESTINATION: on the network, and a bridged stand stays reachable.
+        int network = NetworkComponentId(g.Graph);
+        bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s, network, asRouteStart: false) != null;
         var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, HasStandNode, r.Unit);
         if (matchedByNameOnly && stand?.Source == StandChoiceSource.SayIntentions)
             notes.Add($"SayIntentions' parking service gave no position for {arrivalGate!.Label}, so it was matched by name in this scenery");
@@ -174,7 +178,7 @@ public static partial class TaxiBriefingPlanner
         // Each candidate's way in is planned at most once: the picker asks about the exits in its preference order
         // and stops at the first that stays clear of the runway just landed on, and the chosen one is then briefed
         // from the same plan.
-        var standNode = stand == null ? null : StandNode(g.Graph, stand.Spot);
+        var standNode = stand == null ? null : StandNode(g.Graph, stand.Spot, network, asRouteStart: false);
         var inbound = new Dictionary<LandingExit, InboundRoute?>();
         InboundRoute? WayIn(LandingExit exit)
         {
@@ -268,11 +272,17 @@ public static partial class TaxiBriefingPlanner
     /// them, or null when none connects. It crosses the runway just landed on when any hold on it, or any runway
     /// passage the automatic pass reported (held or not), names that runway at either end — every briefed exit
     /// gets clear of that runway, so the route starts clear of it and a passage naming it can only be a crossing.
+    /// An exit whose route begins ON the stand's node is a route with no taxiways, never "no route".
     /// </summary>
     private static InboundRoute? PlanInbound(TaxiGraph graph, int from, int to, Runway landing)
     {
+        if (graph.Nodes[from].ComponentId != graph.Nodes[to].ComponentId) return null;   // no A* drain across components
         var route = new TaxiRouter(graph).FindShortestPath(from, to);
-        if (route == null || route.Segments.Count == 0) return null;
+        if (route == null) return null;
+        // The exit's route begins ON the stand's node: the exit leads straight onto the stand — a route with no
+        // taxiways, not "no route" (N16 exit A to stand P 1).
+        if (route.Segments.Count == 0)
+            return new InboundRoute(route, new List<HoldShortNote>(), new List<string>(), new List<string>(), CrossesLandingRunway: false);
         var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, graph.RunwayCenterlines, "", aircraft: null);
         var unheldNotes = new List<string>();
         var unheldRunways = new List<string>();
@@ -475,18 +485,24 @@ public static partial class TaxiBriefingPlanner
         runways.FirstOrDefault(r => RunwayIdsMatch(r.RunwayID, id));
 
     /// <summary>
-    /// A DESTINATION lookup: bridge-only stand stubs must stay reachable, so no exclusion here.
-    ///
-    /// <para>It is also the taxi-out's START when that leg begins at a representative stand, and that is
-    /// deliberate: the route then genuinely starts AT the stand, so the stand's own node — a bridged stub
-    /// included — is the right first point (the lead-in and the bridge are unnamed, so the taxiways named do
-    /// not change). The route-start exclusion (<see cref="TaxiGraph.IsBridgeOnlyStandStub"/>) guards a
-    /// SENSED position being snapped onto a stub; the own-position start in <see cref="PlanTaxiOut"/> passes
-    /// it. Excluding stubs here would make a bridged stand unusable in the briefing.</para>
+    /// The taxi network a leg is planned on: the graph's largest connected component. An island — an isolated taxiway
+    /// (GCLP S5) or a stand whose lead-in meets nothing (KTUL G 19, a 3-node island 72 m from the network) — is never a
+    /// stand's node or a route's start, as Taxi Assist's LoadRoute keeps its start in the destination's component. −1
+    /// for an empty graph (no node matches it).
     /// </summary>
-    internal static TaxiNode? StandNode(TaxiGraph graph, ParkingSpot spot)
+    internal static int NetworkComponentId(TaxiGraph graph) => graph.Nodes.Count == 0 ? -1
+        : graph.Nodes.Values.GroupBy(n => n.ComponentId).OrderByDescending(c => c.Count()).ThenBy(c => c.Key).First().Key;
+
+    /// <summary>
+    /// The node a stand is left from or reached at: the nearest node of the network (<see cref="NetworkComponentId"/>)
+    /// within <see cref="StandNodeMaxDistanceMetres"/>. As the taxi-out's route START it is never a bridge-only stand
+    /// stub — the rule every route start follows (<see cref="TaxiGraph.IsBridgeOnlyStandStub"/>); as the taxi-in's
+    /// DESTINATION it may be one, so a bridged stand stays reachable.
+    /// </summary>
+    internal static TaxiNode? StandNode(TaxiGraph graph, ParkingSpot spot, int networkComponentId, bool asRouteStart)
     {
-        var node = graph.FindNearestNode(spot.Latitude, spot.Longitude);
+        var node = graph.FindNearestNode(spot.Latitude, spot.Longitude, requiredComponentId: networkComponentId,
+                                         excludeBridgeOnlyStandStubs: asRouteStart);
         if (node == null) return null;
         return TaxiGraph.FastDistanceMeters(spot.Latitude, spot.Longitude, node.Latitude, node.Longitude) <= StandNodeMaxDistanceMetres ? node : null;
     }

@@ -628,14 +628,19 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
-    public void A_bridged_stand_is_briefed_from_and_to_its_own_node_but_a_sensed_position_is_never_snapped_onto_it()
+    public void A_bridged_stand_is_reached_by_the_taxi_in_but_no_route_starts_on_its_stub()
     {
         var bundle = AirportWithBridgedStand();
+        var t1 = bundle.Spots.Single(s => s.Name == "T");
+        var nearest = bundle.Graph.FindNearestNode(t1.Latitude, t1.Longitude)!;
+        Assert.True(bundle.Graph.IsBridgeOnlyStandStub(nearest.NodeId));                                  // precondition: T 1 sits on a stub
 
+        // The taxi-out STARTS at its stand, so T 1's stub is never its start: the nearest node that is not a stub is
+        // A's, 160 m away — beyond the 100 m stand reach — so another stand is the representative.
         var outbound = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, airline: "JBU"), bundle);
         Assert.Null(outbound.Unavailable);
-        Assert.StartsWith("representative stand T 1", outbound.EndpointDescription);
-        Assert.Equal(new[] { "A", "E1" }, outbound.Taxiways);
+        Assert.StartsWith("representative stand", outbound.EndpointDescription);
+        Assert.DoesNotContain("T 1", outbound.EndpointDescription);
 
         var inbound = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, airline: "JBU"), bundle);
         Assert.Null(inbound.Unavailable);
@@ -647,7 +652,59 @@ public class TaxiBriefingPlannerTests
         var parkedAtT1 = new OwnPosition(Lat(260), Lon(1500), OnGround: true);
         var own = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, airline: "JBU", own: parkedAtT1), bundle);
         Assert.Null(own.Unavailable);
-        Assert.StartsWith("representative stand T 1", own.EndpointDescription);
+        Assert.StartsWith("representative stand", own.EndpointDescription);
+        Assert.DoesNotContain("T 1", own.EndpointDescription);
+    }
+
+    // ── the taxi network: never an island ───────────────────────────────────────────────────
+
+    [Fact]
+    public void A_stand_on_an_island_is_never_the_representative_stand()
+    {
+        var bundle = AirportWithIslandStand();
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var j1 = bundle.Spots.Single(s => s.Name == "J");
+        Assert.NotNull(bundle.Graph.FindNearestNode(j1.Latitude, j1.Longitude));                         // a node is near…
+        Assert.Null(TaxiBriefingPlanner.StandNode(bundle.Graph, j1, network, asRouteStart: false));       // …but off the network
+
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, airline: "JBU"), bundle);
+        Assert.Null(leg.Unavailable);
+        Assert.DoesNotContain("J 1", leg.EndpointDescription);
+    }
+
+    [Fact]
+    public void Parked_on_an_island_the_taxi_out_starts_from_the_network()
+    {
+        var bundle = AirportWithIslandStand();
+        // Precondition: the node nearest the aircraft is on the island, not the network.
+        var nearest = bundle.Graph.FindNearestNode(Lat(190), Lon(1550))!;
+        Assert.NotEqual(TaxiBriefingPlanner.NetworkComponentId(bundle.Graph), nearest.ComponentId);
+
+        var own = new OwnPosition(Lat(190), Lon(1550), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("current position", leg.EndpointDescription);
+    }
+
+    [Fact]
+    public void An_exit_that_leads_straight_onto_the_stand_is_a_route_with_no_taxiways()
+    {
+        var bundle = AirportWithExitStraightOntoStand();
+        // Precondition: exit Z's route begins on the very node stand Z 1 is reached at.
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
+        var exits = bundle.Graph.GetLandingExits(rwy);
+        LandingExitVacateScreen.Mark(bundle.Graph, exits, rwy);
+        var starts = TaxiBriefingPlanner.BriefableExitRouteStarts(bundle.Graph, exits, rwy);
+        var z = starts.Keys.Single(e => e.TaxiwayName == "Z");
+        var z1 = bundle.Spots.Single(s => s.Name == "Z");
+        Assert.Equal(TaxiBriefingPlanner.StandNode(bundle.Graph, z1, network, asRouteStart: false)!.NodeId, starts[z]);
+
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: new SayIntentionsGateHint("Z 1", null)), bundle);
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("Z", leg.Exit!.Exit.TaxiwayName);
+        Assert.Empty(leg.Taxiways);
+        Assert.Equal(0.0, leg.DistanceMetres);
     }
 
     // ── turn directions ─────────────────────────────────────────────────────────────────────

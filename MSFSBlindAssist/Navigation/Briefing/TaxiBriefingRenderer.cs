@@ -124,7 +124,10 @@ public static class TaxiBriefingRenderer
             lines.Add($"TAXI IN at {leg.Icao} ({TierLabel(leg.Tier)}), landing runway {leg.Runway}");
             if (leg.Exit != null) lines.Add(ExitLine(leg.Exit, aircraft, unit));
             lines.Add($"  Stand: {leg.EndpointDescription}");
-            lines.Add($"  Taxiways from the exit: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres, unit)})");
+            // An exit whose route begins on the stand's own node leads straight onto it: a route with no taxiways.
+            lines.Add(leg.Taxiways.Count == 0 && leg.DistanceMetres < 1.0
+                ? "  Taxiways from the exit: none (the exit leads straight to the stand)"
+                : $"  Taxiways from the exit: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres, unit)})");
             lines.Add(HoldLine(leg.HoldShorts, leg.UnheldRunways));
             foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter, unit));
             lines.Add(ExitsListLine(leg, unit));

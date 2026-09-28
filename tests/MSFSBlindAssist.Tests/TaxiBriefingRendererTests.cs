@@ -108,6 +108,21 @@ public class TaxiBriefingRendererTests
     }
 
     [Fact]
+    public void An_exit_that_leads_straight_to_the_stand_says_so_rather_than_naming_no_taxiways()
+    {
+        var z = Exit("Z", 7218, "Normal", "Right");
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "N16", Runway = "09", Tier = BriefingTier.Navdata, EndpointDescription = "SayIntentions assigned Z 1",
+            Taxiways = Array.Empty<string>(), TaxiwayTurns = Array.Empty<string?>(), DistanceMetres = 0,
+            HoldShorts = Array.Empty<HoldShortNote>(),
+            Exit = new ExitChoice(z, null, true), VacatingExits = new[] { z },
+        };
+        string text = TaxiBriefingRenderer.Render(FullBriefing() with { TaxiIn = taxiIn }, DistanceUnit.Metres);
+        Assert.Contains("\n  Taxiways from the exit: none (the exit leads straight to the stand)\n", text);
+    }
+
+    [Fact]
     public void The_missed_exit_separation_follows_the_setting()
     {
         var taxiIn = new TaxiLegBriefing
