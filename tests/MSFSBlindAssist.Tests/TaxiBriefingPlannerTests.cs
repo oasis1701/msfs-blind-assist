@@ -520,11 +520,12 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
-    public void A_taxiway_that_reads_as_the_minimum_at_the_block_s_precision_is_not_narrower_than_it()
+    public void A_taxiway_of_the_minimum_width_in_whole_feet_is_not_narrower_than_it()
     {
-        // 82 ft is 24.99 m: the most common taxiway width in navdata (62 % of fs2024 taxiway rows). It prints as
-        // "25.0 m", the code F minimum, so an A380 must never hear "25.0 m in the navdata, below the 25.0 m code F
-        // minimum" — on every such taxiway of its route. A width clearly below the minimum is still named.
+        // 82 ft is 24.99 m: the most common taxiway width in navdata (62 % of fs2024 taxiway rows). Judged in whole
+        // feet — the unit navdata stores widths in — 82 ft IS the code F minimum (25 m), so an A380 must never hear
+        // "24.99 m in the navdata, below the 25.0 m code F minimum" on every such taxiway of its route. A width
+        // clearly below the minimum is still named.
         var route = RouteWithHold(null, null);
         route.Segments[0].TaxiwayName = "M"; route.Segments[0].PathWidth = 82.0;   // 24.99 m
         route.Segments[1].TaxiwayName = "K"; route.Segments[1].PathWidth = 60.0;   // 18.29 m
