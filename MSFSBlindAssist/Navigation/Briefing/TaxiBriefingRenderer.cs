@@ -25,7 +25,7 @@ public static class TaxiBriefingRenderer
     {
         var lines = new List<string> { Header, UnitLine(unit), AircraftLine(b.Aircraft, unit) };
         RenderTaxiOut(b.TaxiOut, b.Aircraft, unit, lines);
-        RenderTaxiIn(b.TaxiIn, b.Aircraft, unit, lines);
+        RenderTaxiIn(b.TaxiIn, b.TaxiOut, b.Aircraft, unit, lines);
         return string.Join("\n", lines);
     }
 
@@ -110,7 +110,7 @@ public static class TaxiBriefingRenderer
         foreach (var note in leg.Notes) lines.Add($"  Note: {note}");
     }
 
-    private static void RenderTaxiIn(TaxiLegBriefing leg, AircraftProfile aircraft, DistanceUnit unit, List<string> lines)
+    private static void RenderTaxiIn(TaxiLegBriefing leg, TaxiLegBriefing taxiOut, AircraftProfile aircraft, DistanceUnit unit, List<string> lines)
     {
         if (leg.Unavailable != null)
         {
@@ -134,16 +134,24 @@ public static class TaxiBriefingRenderer
             foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter, unit));
             lines.Add(ExitsListLine(leg, unit));
         }
-        AddAirportTaxiways(leg, lines);
+        AddAirportTaxiways(leg, lines, taxiOut);
         foreach (var note in leg.Notes) lines.Add($"  Note: {note}");
     }
 
     /// <summary>Every taxiway name at the leg's airport: the prompt holds any taxiway the AI names to this line and the
-    /// route (owner, 2026-09-26). Absent for a leg never planned on a graph.</summary>
-    private static void AddAirportTaxiways(TaxiLegBriefing leg, List<string> lines)
+    /// route (owner, 2026-09-26). Absent for a leg never planned on a graph. The taxi-in of a flight whose origin and
+    /// destination are the SAME airport (<paramref name="taxiOut"/>) shares the taxi-out's graph and so its identical
+    /// list — printed once already, on the taxi-out — rather than repeated verbatim.</summary>
+    private static void AddAirportTaxiways(TaxiLegBriefing leg, List<string> lines, TaxiLegBriefing? taxiOut = null)
     {
-        if (leg.AirportTaxiways.Count > 0)
-            lines.Add($"  Taxiway names at {leg.Icao}: {string.Join(", ", leg.AirportTaxiways)}");
+        if (leg.AirportTaxiways.Count == 0) return;
+        if (taxiOut != null && string.Equals(leg.Icao, taxiOut.Icao, StringComparison.OrdinalIgnoreCase) &&
+            taxiOut.AirportTaxiways.Count > 0 && leg.AirportTaxiways.SequenceEqual(taxiOut.AirportTaxiways))
+        {
+            lines.Add($"  Taxiway names at {leg.Icao}: as listed for the taxi out");
+            return;
+        }
+        lines.Add($"  Taxiway names at {leg.Icao}: {string.Join(", ", leg.AirportTaxiways)}");
     }
 
     /// <summary>One entry per hold; a hold on no named taxiway (the whole route unnamed) names the runway alone,

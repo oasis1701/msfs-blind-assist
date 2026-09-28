@@ -17,6 +17,10 @@ public class TaxiBriefingGraphSourceTests
         public bool HasAirport = true;
         public bool HasDatabase = true;
         public bool UnnamedTaxiways;
+        /// <summary>GetTaxiPaths returns only the stand lead-ins ("P" rows), as EDDA/LSZU/EGBH's navdata does.</summary>
+        public bool OnlyLeadIns;
+        /// <summary>Counts every call to <see cref="GetTaxiPaths"/> — a shared build reads it once for both legs.</summary>
+        public int TaxiPathReads;
         public bool DatabaseExists => HasDatabase;
         public string DatabaseType => "Fake";
         public string DatabasePath => "";
@@ -32,9 +36,11 @@ public class TaxiBriefingGraphSourceTests
         public List<string> GetNearbyAirportICAOs(double lat, double lon, double nm) => new();
         public List<TaxiPath> GetTaxiPaths(string icao)
         {
+            TaxiPathReads++;
             if (!HasTaxiPaths) return new List<TaxiPath>();
             var paths = Paths();
             if (UnnamedTaxiways) foreach (var p in paths) p.Name = "";
+            if (OnlyLeadIns) paths = paths.Where(p => p.Type == "P").ToList();
             return paths;
         }
         public List<StartPosition> GetRunwayStarts(string icao) => Starts();
@@ -61,6 +67,66 @@ public class TaxiBriefingGraphSourceTests
                 data.Taxiways.Add(new NamedTaxiSegment { Name = p.Name, Lat1 = p.StartLat, Lon1 = p.StartLon, Lat2 = p.EndLat, Lon2 = p.EndLon });
             return Task.FromResult<AirportTaxiData?>(data);
         }
+    }
+
+    /// <summary>An online source whose fetch never completes — a spent budget must not leave a leg waiting on it
+    /// past its own bound.</summary>
+    private sealed class NeverSource : ITaxiDataSource
+    {
+        public string Id => "never";
+        public Task<AirportTaxiData?> FetchAsync(string icao, double airportLat, double airportLon, CancellationToken ct) =>
+            new TaskCompletionSource<AirportTaxiData?>().Task;
+    }
+
+    [Fact]
+    public void Stand_lead_ins_alone_are_no_taxiways()
+    {
+        Assert.False(TaxiBriefingGraphSource.HasTaxiways(new[] { LeadIn(300, 100, 300, 250) }));
+        Assert.True(TaxiBriefingGraphSource.HasTaxiways(Paths()));
+    }
+
+    [Fact]
+    public async Task An_airport_with_only_stand_lead_ins_is_planned_on_OpenStreetMap()
+    {
+        // 66 fs2024 airports (EDDA, LSZU, EGBH, EDHW, SAWS…) have navdata with only stand lead-ins — no real
+        // taxiway — and taking that as "has taxiways" briefed an unnamed route ending on grass while
+        // OpenStreetMap was never asked.
+        var augmenting = new AugmentingAirportDataProvider(new FakeProvider { OnlyLeadIns = true }, new TaxiDataCache(1),
+            new ITaxiDataSource[] { new NamingSource() }, new MergeOptions());
+
+        var (bundle, reason) = await TaxiBriefingGraphSource.BuildAsync(augmenting, null, "TEST", CancellationToken.None);
+
+        Assert.Null(reason);
+        Assert.Equal(BriefingTier.OpenStreetMap, bundle!.Tier);
+    }
+
+    [Fact]
+    public async Task The_budget_running_out_during_the_names_wait_ends_the_leg()
+    {
+        // NeverSource.FetchAsync never completes: the old Task.WhenAny(prefetch, Task.Delay(8000, ct)) swallowed
+        // the Delay's cancellation inside a catch-all, and the abandoned leg went on to read the database and
+        // build a graph nobody would use. A spent budget must end the leg instead.
+        var augmenting = new AugmentingAirportDataProvider(new FakeProvider(), new TaxiDataCache(1),
+            new ITaxiDataSource[] { new NeverSource() }, new MergeOptions());
+        using var cts = new CancellationTokenSource(TimeSpan.FromMilliseconds(100));
+
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => TaxiBriefingGraphSource.BuildAsync(augmenting, null, "TEST", cts.Token));
+    }
+
+    [Fact]
+    public async Task One_airport_for_both_legs_is_built_once()
+    {
+        // Origin and destination are both TEST (TaxiBriefingFixture.Request's default): the two legs would
+        // otherwise build the identical graph twice at the same moment, and nothing in the planner shares a
+        // graph between threads.
+        var provider = new FakeProvider();
+        var request = Request(AircraftSizeClass.Resolve("B738", "Boeing 737-800", 189), airline: "DAL");
+
+        var briefing = await TaxiBriefingPlanner.PlanAsync(request, provider, null, TimeSpan.FromSeconds(20));
+
+        Assert.Null(briefing.TaxiOut.Unavailable);
+        Assert.Null(briefing.TaxiIn.Unavailable);
+        Assert.Equal(1, provider.TaxiPathReads);
     }
 
     [Fact]

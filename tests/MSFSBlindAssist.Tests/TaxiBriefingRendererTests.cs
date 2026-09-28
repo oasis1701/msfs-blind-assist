@@ -475,6 +475,54 @@ public class TaxiBriefingRendererTests
     }
 
     [Fact]
+    public void Both_legs_at_the_same_airport_with_the_same_taxiway_list_says_so_once()
+    {
+        // A flight whose origin and destination are the same airport builds one graph — so both legs' taxiway
+        // list is identical, and the taxi-in's line must not repeat it verbatim.
+        var taxiOut = new TaxiLegBriefing
+        {
+            Icao = "TEST", Runway = "09", Tier = BriefingTier.Navdata, EndpointDescription = "current position",
+            Taxiways = new[] { "N", "M" }, DistanceMetres = 900,
+        };
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "TEST", Runway = "09", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand 1",
+            Taxiways = new[] { "N" }, DistanceMetres = 100,
+        };
+        taxiOut.AirportTaxiways = new[] { "A", "B", "M", "N" };
+        taxiIn.AirportTaxiways = new[] { "A", "B", "M", "N" };
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn), DistanceUnit.Metres);
+
+        Assert.Contains("  Taxiway names at TEST: A, B, M, N\n", text);
+        Assert.Contains("  Taxiway names at TEST: as listed for the taxi out", text);
+        Assert.DoesNotContain("  Taxiway names at TEST: A, B, M, N\n  Taxiway names at TEST: A, B, M, N", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void A_different_taxiway_list_at_the_same_airport_is_still_listed_in_full()
+    {
+        // Same ICAO on both legs is not enough by itself — the lists must actually agree, or the taxi-in still
+        // names its own.
+        var taxiOut = new TaxiLegBriefing
+        {
+            Icao = "TEST", Runway = "09", Tier = BriefingTier.Navdata, EndpointDescription = "current position",
+            Taxiways = new[] { "N" }, DistanceMetres = 900,
+        };
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "TEST", Runway = "09", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand 1",
+            Taxiways = new[] { "N" }, DistanceMetres = 100,
+        };
+        taxiOut.AirportTaxiways = new[] { "A", "B" };
+        taxiIn.AirportTaxiways = new[] { "A", "B", "M", "N" };
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, taxiOut, taxiIn), DistanceUnit.Metres);
+
+        Assert.Contains("  Taxiway names at TEST: A, B\n", text);
+        Assert.EndsWith("  Taxiway names at TEST: A, B, M, N", text);
+        Assert.DoesNotContain("as listed for the taxi out", text, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void An_unavailable_leg_lists_its_names_too_and_a_leg_without_any_lists_none()
     {
         var withNames = TaxiLegBriefing.UnavailableLeg("KMEM", "36L", BriefingTier.Navdata, "no stand at KMEM connects to the taxiway network");

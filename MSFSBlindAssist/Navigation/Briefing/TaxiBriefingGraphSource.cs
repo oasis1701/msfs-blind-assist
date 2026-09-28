@@ -1,5 +1,6 @@
 // MSFSBlindAssist/Navigation/Briefing/TaxiBriefingGraphSource.cs
 using MSFSBlindAssist.Database;
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.TaxiAugment;
 
@@ -19,6 +20,12 @@ public static class TaxiBriefingGraphSource
     /// TaxiAssistForm's and LandingExitForm's own bound.</summary>
     public const int PrefetchWaitMs = 8000;
 
+    /// <summary>Whether the navdata rows include a real taxiway: stand lead-ins ("P") alone are not one. 66 fs2024
+    /// airports have only lead-ins (EDDA, LSZU, EGBH…), and taking them as the navdata tier briefed EDDA an unnamed
+    /// 17 m "route" to 09 ending on grass while OpenStreetMap was never asked.</summary>
+    internal static bool HasTaxiways(IReadOnlyList<TaxiPath> paths) =>
+        paths.Any(p => !string.Equals(p.Type, "P", StringComparison.OrdinalIgnoreCase));
+
     public static async Task<(GraphBundle? Bundle, string? Reason)> BuildAsync(
         IAirportDataProvider provider, GateDataSource? gateSource, string icao, CancellationToken ct)
     {
@@ -31,16 +38,23 @@ public static class TaxiBriefingGraphSource
         // Where navdata names nothing (LSZH: 0 of 1,665 segments) that briefing said "Taxiways: (unnamed)" and found
         // no exit at all — GetLandingExits only returns a node whose edges carry a name — while a second press,
         // once the fetch had landed, answered differently. A cache hit returns at once; a fetch that has not landed
-        // within PrefetchWaitMs, or by the budget, is left running and the leg builds from navdata as before.
+        // within PrefetchWaitMs is left running and the leg builds from navdata as before. A budget that runs out
+        // FIRST ends the leg outright (rethrown below) — the old Task.WhenAny(prefetch, Task.Delay(…, ct)) swallowed
+        // that cancellation inside the catch-all and let the abandoned leg go on to read the database and build a
+        // graph nobody would ever use.
         if (provider is AugmentingAirportDataProvider { Enabled: true } names)
         {
             try
             {
-                await Task.WhenAny(names.PrefetchAsync(icao), Task.Delay(PrefetchWaitMs, ct)).ConfigureAwait(false);
+                await names.PrefetchAsync(icao).WaitAsync(TimeSpan.FromMilliseconds(PrefetchWaitMs), ct).ConfigureAwait(false);
+            }
+            catch (OperationCanceledException) when (ct.IsCancellationRequested)
+            {
+                throw;   // the budget ran out: the leg is over, so no database read and no graph build for nobody
             }
             catch
             {
-                // Offline or the fetch failed: build from navdata names, as the forms do.
+                // Timed out, offline, or the fetch failed: build from navdata names, as the forms do.
             }
         }
 
@@ -52,7 +66,7 @@ public static class TaxiBriefingGraphSource
         var runways = provider.GetRunways(icao);
         var starts = provider.GetRunwayStarts(icao);
         var paths = provider.GetTaxiPaths(icao);
-        if (paths.Count > 0)
+        if (HasTaxiways(paths))
         {
             var spots = ParkingSpotSource.GetNamedSpots(provider, gateSource, icao);
             var graph = TaxiGraph.Build(paths, spots, starts, runways);

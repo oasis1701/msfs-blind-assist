@@ -36,17 +36,43 @@ public static partial class TaxiBriefingPlanner
         cts.CancelAfter(budget);
         var token = cts.Token;
 
+        // A flight whose origin and destination are the SAME airport builds ONE graph for both legs, never two
+        // — built twice at once, they were the identical graph, and nothing in the planner shares a graph
+        // between threads. The shared build is cached in the Lazy, so a slow or cancelled build is awaited by
+        // both legs rather than started twice; oneLegAtATime then serializes the two plan(bundle) calls, since
+        // a bundle's graph is not safe to read from two threads at once.
+        Func<string, Task<(GraphBundle? Bundle, string? Reason)>> build =
+            icao => TaxiBriefingGraphSource.BuildAsync(provider!, gateSource, icao, token);
+        SemaphoreSlim? oneLegAtATime = null;
+        if (provider != null && SameAirport(request.OriginIcao, request.DestinationIcao))
+        {
+            // buildOne is a SEPARATE local holding today's build delegate: a lambda captures a LOCAL VARIABLE by
+            // reference, not its value at the time the lambda is created, so closing the shared factory over
+            // `build` itself (then reassigning `build` below) would make the factory call itself the first time
+            // it runs — Lazy<T> throws on that re-entrant access. Capturing a variable that is never reassigned
+            // avoids it.
+            var buildOne = build;
+            var shared = new Lazy<Task<(GraphBundle? Bundle, string? Reason)>>(() => buildOne(request.OriginIcao));
+            build = _ => shared.Value;
+            oneLegAtATime = new SemaphoreSlim(1, 1);
+        }
+
         // Both legs are STARTED before either is awaited. Awaited one after the other, a departure airport
         // that used the whole budget (an OpenStreetMap fetch for an airport with no navdata taxiways can)
         // left the arrival leg to start on an already-cancelled token: it was reported as timed out without
         // a single database read.
-        var taxiOut = PlanLegSafelyAsync(request.OriginIcao, request.OriginRunway, request.OriginRunwayNote, provider, gateSource, token, ct,
+        var taxiOut = PlanLegSafelyAsync(request.OriginIcao, request.OriginRunway, request.OriginRunwayNote, provider, build, oneLegAtATime, token, ct,
             g => PlanTaxiOut(request, g));
-        var taxiIn = PlanLegSafelyAsync(request.DestinationIcao, request.DestinationRunway, request.DestinationRunwayNote, provider, gateSource, token, ct,
+        var taxiIn = PlanLegSafelyAsync(request.DestinationIcao, request.DestinationRunway, request.DestinationRunwayNote, provider, build, oneLegAtATime, token, ct,
             g => PlanTaxiIn(request, g));
         await Task.WhenAll(taxiOut, taxiIn).ConfigureAwait(false);
         return new TaxiBriefing(request.Aircraft, await taxiOut.ConfigureAwait(false), await taxiIn.ConfigureAwait(false));
     }
+
+    /// <summary>Both ICAOs non-blank and equal ignoring case — the flight's two legs share one graph.</summary>
+    private static bool SameAirport(string? a, string? b) =>
+        !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) &&
+        string.Equals(a.Trim(), b.Trim(), StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// One leg, which writes exactly one summary line to debug.log: the outcome the AI is told. It is
@@ -54,8 +80,13 @@ public static partial class TaxiBriefingPlanner
     /// at the budget keeps running (a graph build cannot be cancelled) and must not log a result after the
     /// leg has been reported as timed out. Throws only for the caller's own cancellation.
     /// </summary>
+    /// <param name="build">Builds the leg's <see cref="GraphBundle"/> — shared with the other leg (and its own
+    /// build serialized behind <paramref name="oneLegAtATime"/>) when both legs are the same airport.</param>
+    /// <param name="oneLegAtATime">Non-null only when both legs share one airport: taken around <c>plan(bundle)</c>
+    /// so the two legs never read the shared bundle's graph from two threads at once.</param>
     private static async Task<TaxiLegBriefing> PlanLegSafelyAsync(string icao, string runway, string? runwayNote,
-        IAirportDataProvider? provider, GateDataSource? gateSource, CancellationToken budget, CancellationToken caller,
+        IAirportDataProvider? provider, Func<string, Task<(GraphBundle? Bundle, string? Reason)>> build,
+        SemaphoreSlim? oneLegAtATime, CancellationToken budget, CancellationToken caller,
         Func<GraphBundle, TaxiLegBriefing> plan)
     {
         // A leg made unavailable HERE -- before PlanTaxiOut/PlanTaxiIn ever runs -- would otherwise carry no notes at
@@ -70,11 +101,19 @@ public static partial class TaxiBriefingPlanner
 
         var work = Task.Run(async () =>
         {
-            var (bundle, reason) = await TaxiBriefingGraphSource.BuildAsync(provider, gateSource, icao, budget).ConfigureAwait(false);
+            var (bundle, reason) = await build(icao).ConfigureAwait(false);
             if (bundle == null)
                 return TaxiLegBriefing.UnavailableLeg(icao, runway, BriefingTier.None, reason ?? "no ground data for this airport", notes: notes);
             budget.ThrowIfCancellationRequested();
-            return plan(bundle);
+            if (oneLegAtATime != null) await oneLegAtATime.WaitAsync(budget).ConfigureAwait(false);
+            try
+            {
+                return plan(bundle);
+            }
+            finally
+            {
+                oneLegAtATime?.Release();
+            }
         }, budget);
 
         try
