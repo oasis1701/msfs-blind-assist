@@ -689,7 +689,7 @@ public partial class TaxiGuidanceManager
             // stale value. Recalc-softening is unaffected: recalcs never reach here.
             _toneErrorInitialized = false;
             _smoothedHeadingError = 0;
-            _lastIncursionWarnedNodeId = -1;
+            ResetIncursionNodeMemory();
             _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
             _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
             // Reset lineup/cooldown state so an ATC-amendment reload mid-taxi doesn't
@@ -1467,7 +1467,7 @@ public partial class TaxiGuidanceManager
         // callouts on the NEW route. Safety-critical.
         _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
         _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
-        _lastIncursionWarnedNodeId = -1;
+        ResetIncursionNodeMemory();
         // Re-arm the incursion callout for the new route, but START its cooldown: the
         // "Route changed … crossing runways …" sentence below is spoken immediately and would
         // otherwise be cut off by "Crossing runway 28R." on the very next frame. That sentence
