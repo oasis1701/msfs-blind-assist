@@ -1,6 +1,7 @@
 // MSFSBlindAssist/Navigation/Briefing/TaxiBriefingGraphSource.cs
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.TaxiAugment;
 
@@ -84,7 +85,10 @@ public static class TaxiBriefingGraphSource
         // offline, or OpenStreetMap has nothing for this airport — so the reason must not promise a retry.
         if (online == null) return (null, noNav + " and OpenStreetMap data is not available right now");
 
-        var osm = OsmPlanningGraph.Build(online, runways, starts, airport);
+        // Kept to the airport: the online fetch reaches 5 km from the reference point, and a neighbouring hub's stands
+        // and taxiways must not become this airport's route. No box in the database keeps everything, as before.
+        var box = (provider as IAirportFacilitiesProvider)?.GetAirportFacilities(icao)?.Grown(CurrentAirportResolver.BoxMarginMetres);
+        var osm = OsmPlanningGraph.Build(online, runways, starts, airport, box);
         return osm == null ? (null, noNav + " and OpenStreetMap has no named taxiways for it") : (osm with { IsAtAirport = atAirport }, null);
     }
 }

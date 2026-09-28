@@ -243,7 +243,7 @@ public class RouteDescriptionPromptTests
         Assert.Contains("do not list every exit", prompt);
         Assert.Contains("do not describe where the data came from beyond the wording this section asks for", prompt);
         Assert.Contains("a representative stand (say it is typical, not assigned)", prompt);
-        Assert.Contains("When a leg's route comes from OpenStreetMap, say so in a few words", prompt);
+        Assert.Contains("When a leg's route comes from OpenStreetMap or from X-Plane's airport data, say so in a few words", prompt);
     }
 
     [Fact]
@@ -251,7 +251,8 @@ public class RouteDescriptionPromptTests
     {
         // "The expected route on the pilot's scenery" is false for an OSM-tier leg — a pilot could hear that AND
         // "taxi guidance cannot use it" about the same route.
-        Assert.Contains("call it the expected route on OpenStreetMap's map rather than on the pilot's scenery", Prompt());
+        Assert.Contains("When a leg's route comes from OpenStreetMap or from X-Plane's airport data, say so in a few words, and call it " +
+                        "the expected route on that map rather than on the pilot's scenery; taxi guidance cannot use it.", Prompt());
     }
 
     [Fact]

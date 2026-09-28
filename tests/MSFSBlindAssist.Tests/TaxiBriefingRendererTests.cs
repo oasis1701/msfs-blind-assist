@@ -16,6 +16,14 @@ public class TaxiBriefingRendererTests
         ExitType = type, ExitSide = side, VacatesRunway = true,
     };
 
+    [Fact]
+    public void Each_online_tier_names_its_own_source()
+    {
+        Assert.Equal(TaxiBriefingRenderer.OsmLabel, TaxiBriefingRenderer.TierLabel(BriefingTier.OpenStreetMap));
+        Assert.Equal(TaxiBriefingRenderer.XPlaneLabel, TaxiBriefingRenderer.TierLabel(BriefingTier.XPlane));
+        Assert.Equal("X-Plane airport data, planning only — taxi guidance cannot use this", TaxiBriefingRenderer.XPlaneLabel);
+    }
+
     private static StandChoice Cargo() =>
         new(new ParkingSpot { Name = "C", Number = 1, Type = 6 }, StandChoiceSource.AirlineMatch, Array.Empty<string>());
 

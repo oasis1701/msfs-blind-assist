@@ -17,6 +17,7 @@ public static class TaxiBriefingRenderer
 {
     public const string Header = "TAXI ROUTES (computed by MSFS Blind Assist; each leg names its data source, and taxiway names are that source's own)";
     public const string OsmLabel = "OpenStreetMap, planning only — taxi guidance cannot use this";
+    public const string XPlaneLabel = "X-Plane airport data, planning only — taxi guidance cannot use this";
     /// <summary>The exits list names the nearest this many and counts the rest.</summary>
     public const int MaxListedExits = 12;
 
@@ -40,6 +41,7 @@ public static class TaxiBriefingRenderer
     {
         BriefingTier.Navdata => "scenery navdata",
         BriefingTier.OpenStreetMap => OsmLabel,
+        BriefingTier.XPlane => XPlaneLabel,
         _ => "",
     };
 

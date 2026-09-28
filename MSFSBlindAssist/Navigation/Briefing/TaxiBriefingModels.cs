@@ -8,7 +8,7 @@ using MSFSBlindAssist.Settings;
 namespace MSFSBlindAssist.Navigation.Briefing;
 
 /// <summary>Where a leg's ground data came from. The block names it on every leg.</summary>
-public enum BriefingTier { Navdata, OpenStreetMap, None }
+public enum BriefingTier { Navdata, OpenStreetMap, XPlane, None }
 
 /// <summary>The aircraft's own position when SimConnect reported one for this briefing.</summary>
 public sealed record OwnPosition(double Lat, double Lon, bool OnGround);

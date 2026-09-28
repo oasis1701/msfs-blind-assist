@@ -1,6 +1,9 @@
 using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Navigation;
+using MSFSBlindAssist.Navigation.Surroundings;
 using MSFSBlindAssist.Navigation.Briefing;
 using MSFSBlindAssist.Services.TaxiAugment;
+using static MSFSBlindAssist.Tests.TaxiBriefingFixture;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -26,7 +29,10 @@ public class OsmPlanningGraphTests
         var bundle = OsmPlanningGraph.Build(new[] { osm }, new List<Runway>(), new List<StartPosition>(), null)!;
 
         Assert.Equal(BriefingTier.OpenStreetMap, bundle.Tier);
-        Assert.Equal(3, bundle.Graph.Nodes.Count);
+        // Each way segment is cut into pieces no longer than DensifyMetres; the two segments share their node at 100 E.
+        Assert.All(bundle.Graph.Adjacency.Values.SelectMany(e => e),
+                   e => Assert.True(e.DistanceMeters <= OsmPlanningGraph.DensifyMetres + 1e-6, $"{e.DistanceMeters} m"));
+        Assert.Single(bundle.Graph.Nodes.Values, n => Math.Abs(n.Longitude - Lon(100)) < 1e-9);
         var middle = bundle.Graph.Nodes.Values.Single(n => Math.Abs(n.Longitude - Lon(100)) < 1e-9);
         Assert.Equal(2, bundle.Graph.Adjacency[middle.NodeId].Count);
         Assert.Equal(OsmPlanningGraph.Note, bundle.Note);
@@ -88,5 +94,66 @@ public class OsmPlanningGraphTests
         var bigger = Osm(("A", 0, 0, 100, 0), ("B", 0, 0, 0, 100));
         bigger.GetType().GetProperty("Source")!.SetValue(bigger, "aptdat");
         Assert.Same(bigger, OsmPlanningGraph.PickSource(new[] { osm, bigger }));
+    }
+
+    [Fact]
+    public void Online_stands_never_retype_a_taxiway_node()
+    {
+        var data = Osm(("A", 0, 100, 400, 100));
+        data.HoldingPoints.Add(("", Lat(100), Lon(400), "runway"));
+        data.Parking.Add(("12", Lat(104), Lon(400)));          // 4 m from the hold vertex
+        var bundle = OsmPlanningGraph.Build(new[] { data }, Runways(), Starts(), AirportRef())!;
+        // Build's runway-start pass still names the node nearest runway 09's start row "Runway 09" (no stand, and
+        // IsStandNode skips it); what must never appear is a stand stamped onto a taxiway vertex.
+        Assert.All(bundle.Graph.Nodes.Values, n =>
+        {
+            Assert.NotEqual(TaxiNodeType.Parking, n.Type);
+            Assert.True(n.ParkingName == null || n.ParkingName.StartsWith("Runway ", StringComparison.Ordinal), n.ParkingName);
+        });
+        Assert.Contains(bundle.Graph.Nodes.Values, n => n.Type == TaxiNodeType.HoldShort);
+        Assert.Single(bundle.Spots);
+    }
+
+    [Fact]
+    public void A_stand_beside_a_long_straight_way_has_a_node()
+    {
+        var data = Osm(("A", 0, 100, 400, 100));                 // one 400 m segment
+        data.Parking.Add(("7", Lat(160), Lon(200)));             // 60 m beside its middle
+        var bundle = OsmPlanningGraph.Build(new[] { data }, Runways(), Starts(), AirportRef())!;
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        Assert.NotNull(TaxiBriefingPlanner.StandNode(bundle.Graph, bundle.Spots[0], network, asRouteStart: false));
+    }
+
+    [Fact]
+    public void Online_data_outside_the_airport_box_is_left_out()
+    {
+        var data = Osm(("A", 0, 100, 400, 100), ("FAR", 0, 5000, 400, 5000));
+        data.Parking.Add(("1", Lat(150), Lon(100)));
+        data.Parking.Add(("99", Lat(5050), Lon(100)));
+        var box = GrownBox.Of(Lat(1000), Lat(-100), Lon(-100), Lon(3100), 300.0);
+        var bundle = OsmPlanningGraph.Build(new[] { data }, Runways(), Starts(), AirportRef(), box)!;
+        Assert.DoesNotContain("FAR", TaxiBriefingPlanner.AirportTaxiwayNames(bundle.Graph));
+        Assert.Single(bundle.Spots);
+    }
+
+    [Fact]
+    public void X_Plane_data_is_labelled_as_X_Plane()
+    {
+        var data = Osm(("A", 0, 100, 400, 100));
+        var xplane = new AirportTaxiData { Source = "aptdat" };
+        xplane.Taxiways.AddRange(data.Taxiways);
+        var bundle = OsmPlanningGraph.Build(new[] { xplane }, Runways(), Starts(), AirportRef())!;
+        Assert.Equal(BriefingTier.XPlane, bundle.Tier);
+        Assert.Equal(OsmPlanningGraph.XPlaneNote, bundle.Note);
+    }
+
+    [Theory]
+    [InlineData("Apron 2 Stand 5", "Apron 2 Stand 5", 0, "")]
+    [InlineData("Stand 12A", "", 12, "A")]
+    [InlineData("B 6", "B", 6, "")]
+    public void A_stand_name_with_two_numbers_keeps_its_own_words(string raw, string name, int number, string suffix)
+    {
+        var spot = OsmPlanningGraph.ToSpot((raw, 0, 0));
+        Assert.Equal((name, number, suffix), (spot.Name, spot.Number, spot.Suffix));
     }
 }

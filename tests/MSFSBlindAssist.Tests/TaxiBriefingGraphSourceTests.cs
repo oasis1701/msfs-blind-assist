@@ -55,6 +55,17 @@ public class TaxiBriefingGraphSourceTests
             new[] { new AirportCandidate("TEST", Lat(500), Lon(1500), Lon(-1000), Lon(4000), Lat(1500), Lat(-500), NumTaxiPaths: 1) };
     }
 
+    /// <summary>FakeProvider whose navdata box is the TEST fixture's own hull (north -100 to 1000, east -100 to 3100),
+    /// as a real navdata provider answers <c>GetAirportFacilities</c>.</summary>
+    private sealed class BoxedFakeProvider : FakeProvider, IAirportFacilitiesProvider
+    {
+        public AirportFacilities? GetAirportFacilities(string icao) => new()
+        {
+            Icao = "TEST", TopLat = Lat(1000), BottomLat = Lat(-100), LeftLon = Lon(-100), RightLon = Lon(3100),
+            RefLat = Lat(500), RefLon = Lon(1500),
+        };
+    }
+
     /// <summary>An online source that answers at once with a name for every one of the TEST airport's taxiway
     /// segments, on the navdata's own geometry — as OpenStreetMap does for LSZH.</summary>
     private sealed class NamingSource : ITaxiDataSource
@@ -201,6 +212,26 @@ public class TaxiBriefingGraphSourceTests
         Assert.Null(reason);
         Assert.Equal(BriefingTier.OpenStreetMap, bundle!.Tier);
         Assert.Equal(OsmPlanningGraph.Note, bundle.Note);
+    }
+
+    [Fact]
+    public async Task Online_data_beyond_the_airport_box_is_not_planned_on()
+    {
+        // The fetch reaches 5 km from the reference point: a neighbouring hub's taxiways (4NY2 beside KLGA) must not
+        // become this airport's route. Kept only inside the navdata box grown CurrentAirportResolver's 300 m.
+        var cache = new TaxiDataCache(ttlDays: 1);
+        var osm = new AirportTaxiData { Source = "osm" };
+        osm.Taxiways.Add(new NamedTaxiSegment { Name = "A", Lat1 = Lat(100), Lon1 = Lon(0), Lat2 = Lat(100), Lon2 = Lon(3000) });
+        osm.Taxiways.Add(new NamedTaxiSegment { Name = "FAR", Lat1 = Lat(5000), Lon1 = Lon(0), Lat2 = Lat(5000), Lon2 = Lon(400) });
+        cache.Save("TEST", new[] { osm });
+        var augmenting = new AugmentingAirportDataProvider(new BoxedFakeProvider { HasTaxiPaths = false }, cache,
+            Array.Empty<ITaxiDataSource>(), new MergeOptions());
+
+        var (bundle, reason) = await TaxiBriefingGraphSource.BuildAsync(augmenting, null, "TEST", CancellationToken.None);
+
+        Assert.Null(reason);
+        Assert.Equal(new[] { "A" }, TaxiBriefingPlanner.AirportTaxiwayNames(bundle!.Graph));
+        Assert.NotNull(bundle.IsAtAirport);
     }
 
     [Fact]
