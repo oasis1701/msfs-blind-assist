@@ -901,6 +901,53 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void A_piece_whose_own_full_length_entrance_is_near_the_threshold_departs_from_it_not_by_backtracking()
+    {
+        // Re-review N-1: the lineup search's plain nearest node is on ANOTHER piece (N1, 8 m away), and the backtrack
+        // search skips an entrance under 40 m along — so the south piece was told to backtrack from S2, 1,000 m down.
+        var bundle = AirportWithTwoThresholdStubs();
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var nearest = bundle.Graph.FindNearestNode(Lat(-160), Lon(300), excludeBridgeOnlyStandStubs: true)!;
+        Assert.NotEqual(network, nearest.ComponentId);                                   // precondition: the south piece
+        var plain = bundle.Graph.FindNearestNode(Lat(0), Lon(10))!;
+        Assert.Equal(network, plain.ComponentId);                                        // precondition: N1 is nearest the lineup point
+        var onNetwork = bundle.Graph.FindNearestNode(Lat(-160), Lon(300), requiredComponentId: network)!;
+        Assert.True(TaxiGraph.FastDistanceMeters(Lat(-160), Lon(300), onNetwork.Latitude, onNetwork.Longitude) > 150);
+
+        var own = new OwnPosition(Lat(-160), Lon(300), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
+
+        Assert.Null(leg.Unavailable);
+        Assert.StartsWith("current position", leg.EndpointDescription);
+        Assert.Equal(new[] { "S", "S1" }, leg.Taxiways);
+        Assert.Contains(leg.HoldShorts, h => h.Runway == "09" && h.Taxiway == "S1" && h.BeforeEntering);
+        Assert.DoesNotContain(leg.Notes, n => n.Contains("backtracking", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_island_whose_node_nearest_the_lineup_point_is_off_the_runway_pavement_does_not_reach_it()
+    {
+        // Re-review N-2: RP's end is the node nearest 27's lineup point, 70 m off the centreline — within the 120 m the
+        // lineup search returns a plain node for, but no entrance: a run-up pad beside the runway, meeting nothing.
+        var bundle = AirportWithRunUpPadIsland();
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var plain = bundle.Graph.FindNearestNode(Lat(0), Lon(2990))!;
+        Assert.NotEqual(network, plain.ComponentId);                                     // precondition: RP's end
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "27")!;
+        double offCentre = Math.Abs(RunwayFrame.For(rwy, rwy.StartLat).SignedCrossTrack(plain.Latitude, plain.Longitude));
+        Assert.InRange(offCentre, 60, 100);
+        var onNetwork = bundle.Graph.FindNearestNode(Lat(-210), Lon(2990), requiredComponentId: network)!;
+        Assert.True(TaxiGraph.FastDistanceMeters(Lat(-210), Lon(2990), onNetwork.Latitude, onNetwork.Longitude) > 150);
+
+        var own = new OwnPosition(Lat(-210), Lon(2990), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own, originRunway: "27"), bundle);
+
+        Assert.StartsWith("representative stand", leg.EndpointDescription);
+        Assert.DoesNotContain("RP", leg.Taxiways);
+        Assert.NotEqual("K", leg.Stand?.Spot.Name);
+    }
+
+    [Fact]
     public void An_exit_that_leads_straight_onto_the_stand_is_a_route_with_no_taxiways()
     {
         var bundle = AirportWithExitStraightOntoStand();

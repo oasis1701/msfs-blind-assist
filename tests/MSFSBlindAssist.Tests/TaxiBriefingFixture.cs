@@ -263,6 +263,62 @@ internal static class TaxiBriefingFixture
         new[] { Spot("K", 1, 10, 2500, -200, 150, "SWA") });
 
     /// <summary>
+    /// <see cref="AirportWithSouthPieceAcrossTheRunway"/> plus, on the largest piece, taxiway PN from A at 2000 E down to
+    /// north 30 at 2100 E and east along north 30 to 2400 E — a parallel 30 m north of 09's centreline, just off its
+    /// pavement. An aircraft at (2200 E, north 30) sits on PN between its nodes: the nearest node, 30 m away, is P's
+    /// runway node on the south piece; PN's own nearest node is 100 m away. With <paramref name="standBesideTheRunway"/>
+    /// the south piece also carries stand M 1 at (2230 E, north -30), its lead-in running from P at north -100.
+    /// </summary>
+    public static GraphBundle AirportWithSouthPieceAndParallelBesideTheRunway(bool standBesideTheRunway = false) => AirportWith(
+        new[]
+        {
+            Path("P", 2200, 0, 2200, -100, startType: "HS"), Path("P", 2200, -100, 2500, -100),
+            LeadIn(2500, -100, 2500, -200),
+            Path("PN", 2000, 100, 2100, 30), Path("PN", 2100, 30, 2400, 30),
+        }.Concat(standBesideTheRunway ? new[] { LeadIn(2200, -100, 2230, -30) } : Array.Empty<TaxiPath>()),
+        new[] { Spot("K", 1, 10, 2500, -200, 150, "SWA") }
+            .Concat(standBesideTheRunway ? new[] { Spot("M", 1, 10, 2230, -30, 150) } : Array.Empty<ParkingSpot>()));
+
+    /// <summary>
+    /// TEST plus an island beside 27's departure end that meets no runway (a run-up pad and its stand): taxiway RP (a
+    /// NAMED stub, so the bridging pass leaves it alone) from (2990 E, north -70) south to north -150, and stand K 2
+    /// (2990 E, north -210, gate, r=150 ft) on its lead-in. RP's north end — 70 m off 09/27's centreline, beyond its
+    /// pavement — is the node nearest 27's lineup point; A's east end (3000 E, north 100) is 100 m away.
+    /// </summary>
+    public static GraphBundle AirportWithRunUpPadIsland() => AirportWith(
+        new[] { Path("RP", 2990, -70, 2990, -150), LeadIn(2990, -150, 2990, -210) },
+        new[] { Spot("K", 2, 10, 2990, -210, 150) });
+
+    /// <summary>
+    /// A standalone airport where two pieces of taxi network each meet runway 09 at its start, a few metres apart:
+    ///   north 0:    runway 09/27, east 0 → 2000 (150 ft wide), start rows 10 m inside each end.
+    ///   north piece (the largest): N1 from 09's centreline at 12 E (HS) north to north 100; A along north 100 from 12 E
+    ///               to 1500 E (nodes at 12, 200, 500, 800, 1000, 1500); stand G 1 (500 E, north 160) on its lead-in.
+    ///   south piece: S1 from 09's centreline at 20 E (HS) south to north -100; S along north -100 from 20 E to 1000 E
+    ///               (a node at 300 E); S2 from 09's centreline at 1000 E (HS) south to S; stand K 1 (300 E, north -160)
+    ///               on its lead-in.
+    /// The node nearest 09's lineup point is N1's, on the north piece; the south piece's own full-length entrance, S1,
+    /// is 20 m along — inside the backtrack search's 40 m floor — and its only other one, S2, is 1,000 m along.
+    /// </summary>
+    public static GraphBundle AirportWithTwoThresholdStubs()
+    {
+        var runways = new List<Runway> { Runway("09", 0, 0, 2000, 0, 90), Runway("27", 2000, 0, 0, 0, 270) };
+        var starts = new List<StartPosition> { Start("09", 10, 0, 90), Start("27", 1990, 0, 270) };
+        var paths = new List<TaxiPath> { Path("N1", 12, 0, 12, 100, startType: "HS") };
+        double[] xs = { 12, 200, 500, 800, 1000, 1500 };
+        for (int i = 1; i < xs.Length; i++) paths.Add(Path("A", xs[i - 1], 100, xs[i], 100));
+        paths.Add(LeadIn(500, 100, 500, 160));
+        paths.Add(Path("S1", 20, 0, 20, -100, startType: "HS"));
+        paths.Add(Path("S", 20, -100, 300, -100));
+        paths.Add(Path("S", 300, -100, 1000, -100));
+        paths.Add(Path("S2", 1000, 0, 1000, -100, startType: "HS"));
+        paths.Add(LeadIn(300, -100, 300, -160));
+        var spots = new List<ParkingSpot> { Spot("G", 1, 10, 500, 160, 150), Spot("K", 1, 10, 300, -160, 150) };
+        var graph = TaxiGraph.Build(paths, spots, starts, runways);
+        return new GraphBundle(graph, BriefingTier.Navdata, runways, starts, spots, null, AirportRef());
+    }
+
+    /// <summary>
     /// TEST plus the south stand's taxiways (<see cref="AirportWithSouthStand"/>) and exit Z, which leads straight
     /// onto a stand:
     ///   east 2200: Z from 09's centreline (HS) straight south to north -150, where S now continues from 2000 E.

@@ -80,12 +80,17 @@ public static partial class TaxiBriefingPlanner
         StandChoice? stand = null;
         int network = NetworkComponentId(g.Graph);
         // A piece of the taxi network other than the largest is a leg's start when it reaches this runway itself — the
-        // entrance resolved from one of its nodes lies on it (LegEndNode) — judged once per piece.
+        // entrance resolved from one of its nodes lies on it, AND on the runway pavement (LegEndNode, EntersTheRunway) —
+        // judged once per piece.
         var reachesByPiece = new Dictionary<int, bool>();
         bool ReachesTheRunway(TaxiNode anchor)
         {
             if (!reachesByPiece.TryGetValue(anchor.ComponentId, out bool reaches))
-                reachesByPiece[anchor.ComponentId] = reaches = RunwayEntry(g, rwy, anchor).Entry?.ComponentId == anchor.ComponentId;
+            {
+                var (target, entry) = RunwayEntry(g, rwy, anchor);
+                reachesByPiece[anchor.ComponentId] = reaches =
+                    entry != null && entry.ComponentId == anchor.ComponentId && EntersTheRunway(rwy, target, entry);
+            }
             return reaches;
         }
 
@@ -627,8 +632,12 @@ public static partial class TaxiBriefingPlanner
     /// backtrack search (anchored on <paramref name="anchor"/>, whose piece of the taxi network it keeps to) for the
     /// entrance a full-length departure backtracks from instead, and has none when that finds none. The plain nearest
     /// node can also lie on ANOTHER piece of the network from the anchor's — a piece meeting the rest only across the
-    /// runway: the backtrack search is asked then too, and the plain node kept when it finds nothing, so the leg still
-    /// says no taxi route connects.
+    /// runway: the anchor's own piece is then searched for an entrance at or behind the lineup point first
+    /// (<see cref="TaxiGraph.FindRunwayLineupEntryNode"/> with no plain-node shortcut, anchored on
+    /// <paramref name="anchor"/>) — the plain node lies within the 120 m that shortcut returns it for, so Resolve never
+    /// searched, and the backtrack search skips an entrance under 40 m along, which told a piece with its own
+    /// full-length entrance 20 m in to backtrack from 1,000 m down (re-review N-1). Then the backtrack search, and the
+    /// plain node kept when it finds nothing, so the leg still says no taxi route connects.
     /// </summary>
     private static (RunwayLineupTarget.Result Target, TaxiNode? Entry) RunwayEntry(GraphBundle g, Runway rwy, TaxiNode anchor)
     {
@@ -640,12 +649,41 @@ public static partial class TaxiBriefingPlanner
         bool offTheRunway = Math.Abs(frame.SignedCrossTrack(entry.Latitude, entry.Longitude)) > Services.TaxiGuidanceManager.RUNWAY_REACH_MAX_CROSS_M;
         if (offTheRunway || entry.ComponentId != anchor.ComponentId)
         {
-            double halfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
+            double halfWidthM = RunwayHalfWidthMetres(rwy);
+            if (!offTheRunway)
+            {
+                // Beyond 120 m Resolve already searched the anchor's piece this way; within it, it returned the plain node.
+                var own = g.Graph.FindRunwayLineupEntryNode(target.LineupLat, target.LineupLon,
+                    rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM, maxAcceptableCrossM: -1,
+                    anchor.Latitude, anchor.Longitude);
+                if (own != null && own.ComponentId == anchor.ComponentId) return (target, own);
+            }
             var backtrack = g.Graph.FindBacktrackEntryNode(rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM,
                                                            anchor.Latitude, anchor.Longitude);
             if (backtrack != null || offTheRunway) entry = backtrack;
         }
         return (target, entry);
+    }
+
+    /// <summary>Half the runway's width in metres, 150 ft assumed when the row carries none (RunwayLineupTarget's own
+    /// fallback).</summary>
+    private static double RunwayHalfWidthMetres(Runway rwy) => (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
+
+    /// <summary>
+    /// Whether <paramref name="entry"/> lies ON the runway pavement: within half the width plus the 5 m both entrance
+    /// searches allow, and along the runway from where a departure begins (the pavement end, or the lineup point when
+    /// that lies behind it — a starter extension) to its far end. The lineup search returns its plain nearest node
+    /// anywhere within 120 m of the centreline, so a piece whose nearest node is a run-up pad or an unconnected lead-in
+    /// beside the runway would otherwise "reach" it (re-review N-2). Asked only of a piece other than the largest.
+    /// </summary>
+    private static bool EntersTheRunway(Runway rwy, RunwayLineupTarget.Result target, TaxiNode entry)
+    {
+        const double SlopMetres = 5.0;
+        var frame = RunwayFrame.For(rwy, rwy.StartLat);
+        double along = frame.Along(entry.Latitude, entry.Longitude);
+        double from = Math.Min(0.0, frame.Along(target.LineupLat, target.LineupLon)) - SlopMetres;
+        return Math.Abs(frame.SignedCrossTrack(entry.Latitude, entry.Longitude)) <= RunwayHalfWidthMetres(rwy) + SlopMetres &&
+               along >= from && along <= frame.LengthM + SlopMetres;
     }
 
     /// <summary>"C 1 (Ramp Cargo, UPS)" — identity, then the type when known, then the airline when it decided.</summary>
