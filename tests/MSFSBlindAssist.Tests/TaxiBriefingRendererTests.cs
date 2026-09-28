@@ -242,7 +242,7 @@ public class TaxiBriefingRendererTests
         Assert.Contains("TAXI OUT at LOWI (OpenStreetMap, planning only — taxi guidance cannot use this): from representative stand 12 to runway 26\n", text);
         Assert.Contains("  Taxiways: A (2,100 ft)\n", text);
         Assert.Contains("  Note: stand types unknown (OpenStreetMap)\n", text);
-        Assert.Contains("  Expected exit: taxiway B, normal, side unknown, 3,000 ft from the threshold. No later usable exit is mapped at least 500 ft further along. This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.\n", text);
+        Assert.Contains("  Expected exit: taxiway B, normal, side unknown, 3,000 ft from the threshold. No later usable exit is mapped at least 500 ft further along. This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the briefed exit is the last one with a mapped route.\n", text);
         Assert.Contains("  No runway crossings on this route.\n", text);
         Assert.Contains("wingspan 117 ft, passenger", text);
     }
@@ -308,15 +308,16 @@ public class TaxiBriefingRendererTests
             return text.Split('\n').Single(l => l.StartsWith("  Expected exit:", StringComparison.Ordinal));
         }
 
+        // Re-review N-3: the briefed exit is the last one WITH A MAPPED ROUTE (on its own side), never simply "the last exit".
         // S also turns right, 1,597 ft further on: the line must not say there is no later exit on that side and then
         // name S as reachable — S is not usable, and the line says so in both halves.
         Assert.Equal("  Expected exit: taxiway E, high-speed, RIGHT side, 4,428 ft from the threshold. " +
                      "No later usable exit on the same side is mapped at least 500 ft further along. " +
                      "No exit whose mapped route leaves the runway on the side it turns toward is comfortably reachable at 130 kt, " +
-                     "so the last one that does is briefed; S is comfortably reachable, but its mapped route leaves the runway on the other side.",
+                     "so the briefed exit is the last one whose mapped route leaves on that side; S is comfortably reachable, but its mapped route leaves the runway on the other side.",
                      Line(s));
         Assert.EndsWith("; S and K are comfortably reachable, but their mapped routes leave the runway on the other side.", Line(s, k));
-        Assert.EndsWith(" This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.", Line());
+        Assert.EndsWith(" This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the briefed exit is the last one with a mapped route.", Line());
 
         // Named like the exits list: the first twelve, then how many more.
         var many = Enumerable.Range(1, 15).Select(i => Exit($"X{i}", 5000 + i * 100, "Normal", "Right")).ToArray();
@@ -347,23 +348,24 @@ public class TaxiBriefingRendererTests
             return text.Split('\n').Single(l => l.StartsWith("  Expected exit:", StringComparison.Ordinal));
         }
 
-        Assert.EndsWith(" This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.",
+        // Re-review N-3: "the last exit is briefed" was false — the pick is the last candidate with a mapped route.
+        Assert.EndsWith(" This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the briefed exit is the last one with a mapped route.",
                         Line(B738, UnreachableRunway.Short));
         // "to the briefed exit", not "to the last exit": the briefed one is the last that ROUTES to the stand
         // (BriefingExitPicker), and a later exit with no route may exist (review M-5).
         Assert.EndsWith(" No mapped exit is comfortably reachable at 130 kt, but the runway is long enough to stop on: " +
                         "expect to backtrack on the runway to the briefed exit.",
                         Line(B738, UnreachableRunway.LongEnoughToBacktrack));
-        Assert.EndsWith(" No exit is comfortably reachable at 130 kt; the last exit is briefed.",
+        Assert.EndsWith(" No exit is comfortably reachable at 130 kt; the briefed exit is the last one with a mapped route.",
                         Line(B738, UnreachableRunway.LengthUnknown));
 
         // An unrecognised type: the same shapes with the assumed speed, and never "short".
         const string assumed = "an assumed 130 kt (the aircraft type is not recognised)";
-        Assert.EndsWith($" No exit is comfortably reachable at {assumed}; the last exit is briefed.", Line(unknown, UnreachableRunway.Short));
+        Assert.EndsWith($" No exit is comfortably reachable at {assumed}; the briefed exit is the last one with a mapped route.", Line(unknown, UnreachableRunway.Short));
         Assert.EndsWith($" No mapped exit is comfortably reachable at {assumed}, but the runway is long enough to stop on: " +
                         "expect to backtrack on the runway to the briefed exit.",
                         Line(unknown, UnreachableRunway.LongEnoughToBacktrack));
-        Assert.EndsWith($" No exit is comfortably reachable at {assumed}; the last exit is briefed.", Line(unknown, UnreachableRunway.LengthUnknown));
+        Assert.EndsWith($" No exit is comfortably reachable at {assumed}; the briefed exit is the last one with a mapped route.", Line(unknown, UnreachableRunway.LengthUnknown));
         Assert.DoesNotContain("short for this aircraft", Line(unknown, UnreachableRunway.Short), StringComparison.Ordinal);
 
         // Exits set aside for leading off the other side still win over all three.
@@ -392,7 +394,7 @@ public class TaxiBriefingRendererTests
         string text = TaxiBriefingRenderer.Render(
             new TaxiBriefing(aircraft, TaxiLegBriefing.UnavailableLeg("TEST", "05", BriefingTier.Navdata, "x"), taxiIn), DistanceUnit.Feet);
 
-        Assert.Contains($" No exit is comfortably reachable at {kt} kt; the last exit is briefed.", text);
+        Assert.Contains($" No exit is comfortably reachable at {kt} kt; the briefed exit is the last one with a mapped route.", text);
         Assert.DoesNotContain("short for this aircraft", text);
     }
 
@@ -412,7 +414,7 @@ public class TaxiBriefingRendererTests
         var taxiOut = TaxiLegBriefing.UnavailableLeg("KPHL", "17", BriefingTier.Navdata, "x");
         string text = TaxiBriefingRenderer.Render(new TaxiBriefing(unknown, taxiOut, taxiIn), DistanceUnit.Feet);
 
-        Assert.Contains("No exit is comfortably reachable at an assumed 130 kt (the aircraft type is not recognised); the last exit is briefed.", text);
+        Assert.Contains("No exit is comfortably reachable at an assumed 130 kt (the aircraft type is not recognised); the briefed exit is the last one with a mapped route.", text);
         Assert.DoesNotContain("short for this aircraft", text);
     }
 

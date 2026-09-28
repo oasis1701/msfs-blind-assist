@@ -216,9 +216,10 @@ public static class TaxiBriefingRenderer
     /// runway-length fact, so it is never blamed on the runway being "short for this aircraft". Nor is a code A or B
     /// aircraft (<paramref name="smallAircraft"/>): the verdict is the jet touchdown re-plan's rule (2 s, then 2.0 m/s²
     /// down to a 90° exit's turn-off speed), which puts a Cessna 172 at 70 kt at about 1,700 ft and so called every
-    /// short GA strip "short" (review I-2) — it gets the neutral sentence instead. The briefed exit on a backtrack is
-    /// the last one that ROUTES to the stand (<see cref="BriefingExitPicker"/>), not necessarily the runway's last
-    /// exit, so the sentence names it as "the briefed exit".</summary>
+    /// short GA strip "short" (review I-2) — it gets the neutral sentence instead. The briefed exit is the last one
+    /// that ROUTES to the stand (<see cref="BriefingExitPicker"/>) — on its own side, when exits were set aside — not
+    /// necessarily the runway's last exit, so every arm names it as "the briefed exit" and says which one it is
+    /// (re-review N-3: "the last exit is briefed" was false wherever a later exit had no route).</summary>
     private static string UnreachableSentence(ExitChoice choice, string kt, bool typeUnknown, bool smallAircraft)
     {
         string ktPhrase = typeUnknown ? $"an assumed {kt} kt (the aircraft type is not recognised)" : $"{kt} kt";
@@ -230,8 +231,8 @@ public static class TaxiBriefingRenderer
                     $" No mapped exit is comfortably reachable at {ktPhrase}, but the runway is long enough to stop on: " +
                     "expect to backtrack on the runway to the briefed exit.",
                 UnreachableRunway.Short when !typeUnknown && !smallAircraft =>
-                    $" This runway is short for this aircraft: no exit is comfortably reachable at {ktPhrase}; the last exit is briefed.",
-                _ => $" No exit is comfortably reachable at {ktPhrase}; the last exit is briefed.",
+                    $" This runway is short for this aircraft: no exit is comfortably reachable at {ktPhrase}; the briefed exit is the last one with a mapped route.",
+                _ => $" No exit is comfortably reachable at {ktPhrase}; the briefed exit is the last one with a mapped route.",
             };
         // Capped like the exits list: the first MaxListedExits, then how many more.
         string names = setAside.Count == 1 ? ExitName(setAside[0])
@@ -242,7 +243,7 @@ public static class TaxiBriefingRenderer
             ? $"{names} is comfortably reachable, but its mapped route leaves the runway on the other side."
             : $"{names} are comfortably reachable, but their mapped routes leave the runway on the other side.";
         return $" No exit whose mapped route leaves the runway on the side it turns toward is comfortably reachable at {ktPhrase}, " +
-               $"so the last one that does is briefed; {tail}";
+               $"so the briefed exit is the last one whose mapped route leaves on that side; {tail}";
     }
 
     private static string ExitsListLine(TaxiLegBriefing leg, DistanceUnit unit)

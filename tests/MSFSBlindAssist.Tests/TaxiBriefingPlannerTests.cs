@@ -1171,7 +1171,7 @@ public class TaxiBriefingPlannerTests
 
         var taxiOut = TaxiLegBriefing.UnavailableLeg("TEST", "05", BriefingTier.Navdata, "x");
         string text = TaxiBriefingRenderer.Render(new TaxiBriefing(c172, taxiOut, leg), DistanceUnit.Feet);
-        Assert.Contains("No exit is comfortably reachable at 70 kt; the last exit is briefed.", text);
+        Assert.Contains("No exit is comfortably reachable at 70 kt; the briefed exit is the last one with a mapped route.", text);
         Assert.DoesNotContain("short for this aircraft", text);
     }
 
