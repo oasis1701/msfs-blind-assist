@@ -79,7 +79,7 @@ public class DescribeRouteGuardTests
         // The one place the kept description is erased is Load SimBrief, and only once LoadFromSimBrief has returned
         // (it throws on failure without replacing the plan, so a failed load must leave the description alone).
         string efb = Efb();
-        Assert.Equal(1, Regex.Matches(efb, Regex.Escape("_descriptionSession.Clear()")).Count);
+        Assert.Single(Regex.Matches(efb, Regex.Escape("_descriptionSession.Clear()")));
 
         string root = Path.Combine(RepoRoot(), "MSFSBlindAssist");
         foreach (string file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
