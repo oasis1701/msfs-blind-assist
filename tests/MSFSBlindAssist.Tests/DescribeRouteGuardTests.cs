@@ -72,4 +72,29 @@ public class DescribeRouteGuardTests
         Assert.Contains(".WaitAsync(", body);
         Assert.DoesNotContain("Task.WhenAny", body);
     }
+
+    [Fact]
+    public void Only_a_successful_SimBrief_load_erases_the_route_description()
+    {
+        // The one place the kept description is erased is Load SimBrief, and only once LoadFromSimBrief has returned
+        // (it throws on failure without replacing the plan, so a failed load must leave the description alone).
+        string efb = Efb();
+        Assert.Equal(1, Regex.Matches(efb, Regex.Escape("_descriptionSession.Clear()")).Count);
+
+        string root = Path.Combine(RepoRoot(), "MSFSBlindAssist");
+        foreach (string file in Directory.EnumerateFiles(root, "*.cs", SearchOption.AllDirectories))
+        {
+            if (file.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) ||
+                file.Contains(Path.DirectorySeparatorChar + "bin" + Path.DirectorySeparatorChar)) continue;
+            if (Path.GetFileName(file) == "ElectronicFlightBagForm.cs") continue;
+            string text = File.ReadAllText(file);
+            Assert.DoesNotContain("routeDescriptionSession.Clear()", text);
+            Assert.DoesNotContain("_descriptionSession.Clear()", text);
+        }
+
+        string body = Method(efb, "private void LoadSimBriefFlightPlan()");
+        int load = body.IndexOf("LoadFromSimBrief(", StringComparison.Ordinal);
+        int clear = body.IndexOf("_descriptionSession.Clear()", StringComparison.Ordinal);
+        Assert.True(load >= 0 && clear > load, "Clear must come after LoadFromSimBrief( inside LoadSimBriefFlightPlan");
+    }
 }

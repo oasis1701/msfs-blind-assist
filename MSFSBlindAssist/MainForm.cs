@@ -202,7 +202,7 @@ public partial class MainForm : Form
 
     private ElectronicFlightBagForm? electronicFlightBagForm;
     // The flight bag's route description, kept for the whole session: the flight bag is disposed on close (and closed
-    // by a database/aircraft switch), so the description must outlive it. Erased only by Load SimBrief.
+    // by a database switch or rebuild), so the description must outlive it. Erased only by Load SimBrief.
     private readonly MSFSBlindAssist.Services.RouteDescriptionSession routeDescriptionSession = new();
 
     private TrackFixForm? trackFixForm;

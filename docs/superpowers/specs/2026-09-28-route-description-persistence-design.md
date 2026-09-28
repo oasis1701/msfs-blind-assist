@@ -8,14 +8,14 @@
 The flight bag's (Shift+E) Describe Route result lives only in the window's `routeDescriptionTextBox`.
 Closing the flight bag disposes the form (`MainForm.ShowElectronicFlightBagDialog` then builds a new one),
 so the description — which costs an AI call plus up to ~25 s of taxi-route computation — is lost. A database
-switch and an aircraft switch also close the flight bag (and recreate `FlightPlanManager`).
+switch or rebuild also closes the flight bag (and recreates `FlightPlanManager`); an aircraft switch does not.
 
 ## Requirement
 
 - The generated description is retained while the app runs, across flight-bag close/reopen, database
-  switches and aircraft switches.
-- It is erased ONLY when Load SimBrief is pressed (including the constructor's auto-load, which is the same
-  action). It is kept in memory only: closing the app forgets it.
+  switches and rebuilds.
+- It is erased ONLY when Load SimBrief actually loads a new plan (a failed load keeps it), including the constructor's auto-load, which is the same
+  action. It is kept in memory only: closing the app forgets it.
 - A description still generating when the flight bag closes finishes in the background, is kept, and
   "Route description ready" is announced (a background state change — allowed by the announcement rules).
 
@@ -41,7 +41,7 @@ Created once by MainForm, passed to every `ElectronicFlightBagForm`.
   (visible); Describe Route is enabled only when `!IsGenerating` and the plan has `ExtractedFlightData`.
 - Subscribes to `Changed` to refresh the box and the button; unsubscribes on `FormClosed` so the
   app-lifetime session never keeps a closed form alive.
-- `LoadSimBriefFlightPlan` calls `session.Clear()` where it used to blank the box.
+- `LoadSimBriefFlightPlan` calls `session.Clear()` right after `LoadFromSimBrief` returns (a failed load throws first and keeps the description), where it used to blank the box.
 - `DescribeRouteAsync`:
   - The per-form `_describingRoute` guard becomes `session.IsGenerating` (one at a time across windows).
   - Captures `BeginGenerating()`'s generation; `EndGenerating()` in `finally`.
@@ -55,7 +55,7 @@ Created once by MainForm, passed to every `ElectronicFlightBagForm`.
 ### MainForm
 
 Owns one `RouteDescriptionSession` field for the app's lifetime and passes it in `ShowElectronicFlightBagDialog`.
-Nothing on the database/aircraft switch paths touches it.
+Nothing on the database switch/rebuild paths touches it.
 
 ## Testing
 

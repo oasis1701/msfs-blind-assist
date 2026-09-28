@@ -879,10 +879,11 @@ public partial class ElectronicFlightBagForm : Form
             }
 
             UpdateStatus("Loading flight plan from SimBrief...");
-            // The ONE place the kept description is erased: a new plan makes it wrong. Also discards a briefing still
+            _flightPlanManager.LoadFromSimBrief(_simbriefUsername);
+            // The ONE place the kept description is erased, and only once a new plan has actually loaded (a failed
+            // load throws above and leaves the plan and its description untouched). Also discards a briefing still
             // running for the plan being replaced (its generation is no longer current).
             _descriptionSession.Clear();
-            _flightPlanManager.LoadFromSimBrief(_simbriefUsername);
             _announcer.Announce("SimBrief flight plan loaded");
             // Never re-enable while a briefing is running: a stale briefing for the plan just replaced would
             // otherwise show up under a button that looks free to press again for the new one.
@@ -923,8 +924,8 @@ public partial class ElectronicFlightBagForm : Form
             }
 
             var plan = _flightPlanManager.CurrentFlightPlan;
+            began = true;   // before BeginGenerating: if a Changed subscriber throws, the finally must still EndGenerating
             int generation = _descriptionSession.BeginGenerating();   // disables Describe Route via Changed
-            began = true;
             _announcer.Announce("Generating route description, please wait");
 
             // Whether the briefing must be thrown away, said out loud when so: Load SimBrief was pressed while it ran
@@ -950,16 +951,14 @@ public partial class ElectronicFlightBagForm : Form
             UpdateStatus("Generating route description...");
             string flightData = plan.ExtractedFlightData + "\n\n" + taxiBlock;
 
-            // Resolve the AI provider fresh on each briefing. The EFB form is REUSED across opens
-            // (MainForm keeps one instance to preserve flight-plan data), so a cached provider would
-            // keep calling whichever backend was active when the form was first created — ignoring a
-            // later provider switch in Settings. Display/scene reads already resolve per-call; match that.
+            // Resolve the AI provider fresh on each briefing, so a provider switch in Settings takes effect on the
+            // next briefing. Display/scene reads already resolve per-call; match that.
             var aiProvider = AiProviderFactory.Create();
             string description = await aiProvider.DescribeRouteAsync(flightData);
             if (Discarded()) return;
 
             // Stored in the session, which redraws whichever flight bag is open (this one, or one reopened meanwhile).
-            _descriptionSession.TryStore(generation, description);
+            if (!_descriptionSession.TryStore(generation, description)) return;
             if (!IsDisposed)
             {
                 // The window the pilot pressed Describe Route in is still open: take them to the description.

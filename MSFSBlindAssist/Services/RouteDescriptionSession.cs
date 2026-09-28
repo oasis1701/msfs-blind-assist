@@ -2,7 +2,7 @@ namespace MSFSBlindAssist.Services;
 
 /// <summary>
 /// The flight bag's AI route description, kept for the whole app session. The flight bag (Shift+E) is disposed when
-/// it closes, and a database or aircraft switch closes it too, so a description held in the window's own text box
+/// it closes, and a database switch or rebuild closes it too, so a description held in the window's own text box
 /// was lost on every reopen -- an AI call plus up to ~25 s of taxi-route computation, gone. MainForm owns ONE of these
 /// for the app's lifetime and hands it to every flight bag it opens.
 /// Erased only by <see cref="Clear"/>, which Load SimBrief calls: a new plan makes the old briefing wrong. Memory
