@@ -33,10 +33,14 @@ public class ClaudeService : IAiProvider
     // selected model rejects it (e.g. Haiku 4.5), DescribeRouteAsync degrades to an ungrounded briefing.
     private const string WEB_SEARCH_TOOL_TYPE = "web_search_20260209";
 
-    // Cap searches per briefing. Without this the model can run 10+ searches for a multi-airport
-    // NOTAM/weather briefing, which is slow (risking the HttpClient timeout) and costs $10/1000
-    // searches. ~5 covers departure + arrival NOTAMs + weather + SIGMETs without runaway latency.
-    private const int WEB_SEARCH_MAX_USES = 5;
+    // Cap searches per briefing. Without a cap the model can run 10+ searches, which is slow
+    // (risking the HttpClient timeout) and costs $10/1000 searches. 8 covers both airports'
+    // NOTAMs, the weather and SIGMETs, and one chart lookup per airport, which the
+    // route-description prompt now invites; at 5 the chart lookups crowded out the NOTAM
+    // searches and the briefing said no notable NOTAMs were found. The prompt asks for NOTAMs
+    // first (GeminiService.RouteSearchOnSentence) so a budget that still runs out drops charts,
+    // not NOTAMs.
+    private const int WEB_SEARCH_MAX_USES = 8;
 
     // The Messages API REQUIRES max_tokens (it cannot be omitted), so "no cap" means a value
     // the response never reaches: 16000 is ~30x a 300-500 word briefing, within every current

@@ -856,7 +856,14 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     /// see that a briefing just stops. Mirrors ClaudeService's max_tokens note.</summary>
     internal const string IncompleteNote = "\n\n(Response may be incomplete — Gemini stopped before finishing.)";
 
-    /// <summary>The response parsing formerly inline in SendRequestAsync; internal so GeminiResponseTests can pin it.</summary>
+    /// <summary>What a reply that stopped before any text says: a thinking model can spend its whole token budget
+    /// before writing a word, and then MAX_TOKENS arrives with no parts at all.</summary>
+    internal const string StoppedBeforeResponse = "Gemini stopped before completing a response. Please try again.";
+
+    /// <summary>The response parsing formerly inline in SendRequestAsync; internal so GeminiResponseTests can pin it.
+    /// The finish reason is read BEFORE the parts check — a thinking model can spend its whole token budget before
+    /// writing a word, so the common MAX_TOKENS shape is content with no parts at all (or no content at all), and
+    /// that must reach <see cref="StoppedBeforeResponse"/> rather than the generic "no content" exception.</summary>
     internal static string ParseResponse(string responseJson)
     {
         var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
@@ -866,9 +873,11 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
         }
 
         var candidate = result.Candidates[0];
+        bool truncated = string.Equals(candidate.FinishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase);
         var candidateContent = candidate.Content;
         if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
         {
+            if (truncated) return StoppedBeforeResponse;
             throw new InvalidOperationException("Gemini API returned no content in response.");
         }
 
@@ -876,12 +885,9 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
         string combined = string.Concat(candidateContent.Parts
             .Where(p => !string.IsNullOrEmpty(p.Text))
             .Select(p => p.Text));
-        bool truncated = string.Equals(candidate.FinishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(combined))
         {
-            return truncated
-                ? "Gemini stopped before completing a response. Please try again."
-                : "No description available.";
+            return truncated ? StoppedBeforeResponse : "No description available.";
         }
         return truncated ? combined + IncompleteNote : combined;
     }
@@ -933,12 +939,14 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     /// Section 7's search sentence when the request carrying the prompt has web search. "Before you write any part of the
     /// briefing" is deliberate, not "before you start writing" — the latter reads as "before this section", and with
     /// Claude only the text after the last tool block survives <see cref="ClaudeService"/>'s response parsing, so a
-    /// lookup delayed until section 7 would drop sections 1-6 of the briefing entirely.
+    /// lookup delayed until section 7 would drop sections 1-6 of the briefing entirely. NOTAMs are named FIRST, ahead of
+    /// the chart lookup: <see cref="ClaudeService"/>'s search budget is shared across both airports' NOTAMs, the weather
+    /// and SIGMETs, and now one chart lookup per airport too, so a budget that still runs out drops charts, not NOTAMs.
     /// </summary>
     internal const string RouteSearchOnSentence =
-        "Web search is on for this briefing: do any lookups before you write any part of the briefing, and you may look up " +
-        "each airport's current airport diagram and chart notes; a check line says current charts only when that search " +
-        "found and read them.";
+        "Web search is on for this briefing: do any lookups before you write any part of the briefing, looking up both " +
+        "airports' current NOTAMs first; you may also look up each airport's current airport diagram and chart notes; a " +
+        "check line says current charts only when that search found and read them.";
 
     /// <summary>
     /// Generates the prompt for route description.

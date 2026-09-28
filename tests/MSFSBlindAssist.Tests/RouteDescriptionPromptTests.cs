@@ -188,10 +188,18 @@ public class RouteDescriptionPromptTests
                      "\"Real-world check, from memory rather than live charts:\".", GeminiService.RouteSearchOffSentence);
         // "before you start writing" could be read as "before this section" — with Claude, only the text after the
         // last tool block survives ParseResponse, so a lookup delayed until section 7 would drop sections 1-6.
-        Assert.Equal("Web search is on for this briefing: do any lookups before you write any part of the briefing, and you " +
-                     "may look up each airport's current airport diagram and chart notes; a check line says current charts " +
-                     "only when that search found and read them.",
+        Assert.Equal("Web search is on for this briefing: do any lookups before you write any part of the briefing, looking up both " +
+                     "airports' current NOTAMs first; you may also look up each airport's current airport diagram and chart notes; a " +
+                     "check line says current charts only when that search found and read them.",
                      GeminiService.RouteSearchOnSentence);
+    }
+
+    [Fact]
+    public void With_web_search_the_NOTAM_lookups_come_before_the_chart_lookups()
+    {
+        string on = GeminiService.RouteSearchOnSentence;
+        Assert.True(on.IndexOf("NOTAMs", StringComparison.Ordinal) >= 0 &&
+                    on.IndexOf("NOTAMs", StringComparison.Ordinal) < on.IndexOf("airport diagram", StringComparison.Ordinal));
     }
 
     [Fact]

@@ -38,4 +38,19 @@ public class GeminiResponseTests
     [Fact]
     public void No_candidates_throws()
         => Assert.Throws<InvalidOperationException>(() => GeminiService.ParseResponse("""{"candidates":[]}"""));
+
+    [Fact]
+    public void Max_tokens_with_no_parts_says_Gemini_stopped()
+        => Assert.Equal(GeminiService.StoppedBeforeResponse, GeminiService.ParseResponse(
+            """{"candidates":[{"content":{"role":"model"},"finishReason":"MAX_TOKENS"}]}"""));
+
+    [Fact]
+    public void Max_tokens_with_no_content_at_all_says_Gemini_stopped()
+        => Assert.Equal(GeminiService.StoppedBeforeResponse, GeminiService.ParseResponse(
+            """{"candidates":[{"finishReason":"MAX_TOKENS"}]}"""));
+
+    [Fact]
+    public void No_parts_without_max_tokens_still_throws()
+        => Assert.Throws<InvalidOperationException>(() => GeminiService.ParseResponse(
+            """{"candidates":[{"content":{"role":"model"},"finishReason":"STOP"}]}"""));
 }
