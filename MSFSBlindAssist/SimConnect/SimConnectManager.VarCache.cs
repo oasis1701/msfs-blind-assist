@@ -149,10 +149,22 @@ public partial class SimConnectManager
 
             // Skip the per-fire debug line (and its string interpolation) for HighFrequency vars
             // (SIM_FRAME-rate, e.g. G_FORCE) — this path can fire 30-60x/sec and would otherwise
-            // churn the 5MB debug.log rotation continuously for the whole flight.
+            // churn the 5MB debug.log rotation continuously for the whole flight — and for an
+            // UNCHANGED, unforced delivery of any var beyond its FIRST: non-announced
+            // individual-def vars fire the event on every response (the Fenix registers ~50 of
+            // them at 1 Hz), and logging each one wrote ~3,000 lines a minute, so the whole 20 MB
+            // debug.log retention held about 35 minutes of Fenix flying (measured 2026-09-27: a
+            // morning KMEM departure's debug log was gone by the afternoon). The event still
+            // fires; only the line is skipped. The first unchanged delivery per var per cache
+            // lifetime IS still written, so the log keeps one line's evidence that a read-back of
+            // an unchanged value arrived at all — "the sim answered with the old value" and "the
+            // sim never answered" must not look the same.
             if (!varDef.HighFrequency)
             {
-                Log.Debug("SimConnect", $"Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
+                if (hasChanged || isForceUpdate)
+                    Log.Debug("SimConnect", $"Firing SimVarUpdated for {varKey}: Value={currentValue}, IsAnnounced={varDef.IsAnnounced}, HasChanged={hasChanged}, ForceUpdate={isForceUpdate}");
+                else if (unchangedDeliveryLogged.Add(varKey))
+                    Log.Debug("SimConnect", $"First unchanged delivery for {varKey}: Value={currentValue} (later unchanged deliveries are not logged)");
             }
 
             SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
