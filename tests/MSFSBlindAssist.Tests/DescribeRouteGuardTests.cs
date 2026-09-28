@@ -40,25 +40,22 @@ public class DescribeRouteGuardTests
     }
 
     [Fact]
-    public void A_failed_briefing_never_writes_the_status_of_a_closed_window()
+    public void A_briefing_never_writes_the_status_of_a_closed_window()
     {
-        // The finally block already checks IsDisposed before touching the form; the two catch blocks must too — a
-        // database switch closes the flight bag while the briefing is still running (RBR Task 3 follow-up).
-        string body = Method(Efb(), "private async Task DescribeRouteAsync()");
-        int catches = body.IndexOf("        catch (", StringComparison.Ordinal);
-        int fin = body.IndexOf("        finally", StringComparison.Ordinal);
-        Assert.True(catches >= 0 && fin > catches, "the catch blocks were not found");
-        string handlers = body[catches..fin];
-        var calls = Regex.Matches(handlers, @"UpdateStatus\(");
-        Assert.NotEmpty(calls);
-        Assert.All(calls, m => Assert.EndsWith("if (!IsDisposed) ", handlers[..m.Index]));
+        // A briefing now runs on after its flight bag closed (a database switch closes it), so every UpdateStatus it
+        // makes -- the catch blocks' included -- must land on a window that may be gone: UpdateStatus itself returns
+        // first thing when the form is disposed, before it touches the status label or Invoke.
+        string body = Method(Efb(), "private void UpdateStatus(string message)");
+        int guard = body.IndexOf("if (IsDisposed) return;", StringComparison.Ordinal);
+        int touch = body.IndexOf("InvokeRequired", StringComparison.Ordinal);
+        Assert.True(guard >= 0 && guard < touch, "UpdateStatus must return when disposed, before InvokeRequired");
     }
 
     [Fact]
     public void Loading_a_plan_never_re_enables_Describe_while_a_briefing_runs()
     {
         string body = Method(Efb(), "private void LoadSimBriefFlightPlan()");
-        Assert.Matches(new Regex(@"describeRouteButton\.Enabled\s*=\s*!_describingRoute\s*&&"), body);
+        Assert.Matches(new Regex(@"describeRouteButton\.Enabled\s*=\s*!_descriptionSession\.IsGenerating\s*&&"), body);
     }
 
     [Fact]
