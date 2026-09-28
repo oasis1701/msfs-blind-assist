@@ -622,7 +622,7 @@ public partial class MainForm
             electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, waypointTracker,
                 settings.SimbriefUsername ?? "",
                 new MSFSBlindAssist.Navigation.Briefing.RouteBriefingDependencies(
-                    () => airportDataProvider,            // a getter: RefreshDatabaseProvider swaps the instance
+                    () => airportDataProvider,            // a getter: RefreshDatabaseProvider swaps the instance (re-wrapped by WithTaxiAugmentation)
                     BuildGateDataSource,
                     () => sayIntentionsService.GetAssignedStatusAsync()));
         }

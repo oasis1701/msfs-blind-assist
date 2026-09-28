@@ -175,6 +175,40 @@ public class FlightPlan
     }
 
     /// <summary>
+    /// Takes every piece of <paramref name="other"/> — the SimBrief data (the text the route
+    /// briefing sends, the aircraft and airline it classifies from) as well as the procedures and
+    /// waypoints — so a plan carried across a database switch is the plan the pilot loaded. Lists
+    /// are copied, never shared. A property added later must be copied here too:
+    /// <c>FlightPlanCopyTests</c> fails until it is.
+    /// </summary>
+    public void CopyFrom(FlightPlan other)
+    {
+        DepartureICAO = other.DepartureICAO;
+        DepartureRunway = other.DepartureRunway;
+        ArrivalICAO = other.ArrivalICAO;
+        ArrivalRunway = other.ArrivalRunway;
+        SIDName = other.SIDName;
+        STARName = other.STARName;
+        ApproachName = other.ApproachName;
+
+        DepartureAirportWaypoints = new List<WaypointFix>(other.DepartureAirportWaypoints);
+        SIDWaypoints = new List<WaypointFix>(other.SIDWaypoints);
+        EnrouteWaypoints = new List<WaypointFix>(other.EnrouteWaypoints);
+        STARWaypoints = new List<WaypointFix>(other.STARWaypoints);
+        ApproachWaypoints = new List<WaypointFix>(other.ApproachWaypoints);
+        ArrivalAirportWaypoints = new List<WaypointFix>(other.ArrivalAirportWaypoints);
+
+        SimBriefUsername = other.SimBriefUsername;
+        LoadedTime = other.LoadedTime;
+        ExtractedFlightData = other.ExtractedFlightData;
+
+        AircraftTypeIcao = other.AircraftTypeIcao;
+        AircraftName = other.AircraftName;
+        AircraftMaxPassengers = other.AircraftMaxPassengers;
+        AirlineIcao = other.AirlineIcao;
+    }
+
+    /// <summary>
     /// Calculates leg distances for all waypoints in the flight plan.
     /// Leg distance = distance from each waypoint to its previous waypoint in the flight plan sequence.
     /// This is called automatically when sections are updated, so leg distances stay current.
