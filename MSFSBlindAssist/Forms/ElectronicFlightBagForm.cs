@@ -852,7 +852,9 @@ public partial class ElectronicFlightBagForm : Form
             routeDescriptionTextBox.Visible = false;
             _flightPlanManager.LoadFromSimBrief(_simbriefUsername);
             _announcer.Announce("SimBrief flight plan loaded");
-            describeRouteButton.Enabled = !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
+            // Never re-enable while a briefing is running: a stale briefing for the plan just replaced would
+            // otherwise show up under a button that looks free to press again for the new one.
+            describeRouteButton.Enabled = !_describingRoute && !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
         }
         catch (Exception ex)
         {
@@ -862,8 +864,15 @@ public partial class ElectronicFlightBagForm : Form
         }
     }
 
+    private const string ApiKeyMissingMessage = "AI provider API key not configured. Please configure it in File menu, Settings, AI tab.";
+
+    /// <summary>A briefing is running. One at a time: Load SimBrief used to re-enable the button mid-briefing, and a
+    /// second press ran two briefings at once, the first then showing a briefing of the plan just replaced.</summary>
+    private bool _describingRoute;
+
     private async Task DescribeRouteAsync()
     {
+        if (_describingRoute) return;
         try
         {
             if (_flightPlanManager.CurrentFlightPlan.IsEmpty() ||
@@ -872,10 +881,39 @@ public partial class ElectronicFlightBagForm : Form
                 _announcer.Announce("No SimBrief flight plan loaded. Please load a flight plan first.");
                 return;
             }
+            // Before any work is done for it: the taxi section alone can take ~25 s of reads and online
+            // fetches (position, SayIntentions, online taxiway names, both graph builds). Checked here, a
+            // missing key is reported at once instead of after that whole computation.
+            if (!AiProviderFactory.HasApiKey())
+            {
+                _announcer.Announce(ApiKeyMissingMessage);
+                UpdateStatus("AI provider API key not configured");
+                return;
+            }
 
             var plan = _flightPlanManager.CurrentFlightPlan;
+            _describingRoute = true;
             _announcer.Announce("Generating route description, please wait");
             describeRouteButton.Enabled = false;
+
+            // Whether the briefing can no longer be shown, said out loud when so: the window closed under
+            // it (a database switch closes the flight bag), or a different flight plan was loaded while it
+            // ran. Never silent — the pilot pressed Describe Route and is waiting for it.
+            bool EndedUnderUs()
+            {
+                if (IsDisposed)
+                {
+                    _announcer.Announce("Route description cancelled because the flight bag closed.");
+                    return true;
+                }
+                if (!ReferenceEquals(plan, _flightPlanManager.CurrentFlightPlan))
+                {
+                    _announcer.Announce("The flight plan changed while the route description was prepared. Press Describe Route again.");
+                    UpdateStatus("Route description discarded: the flight plan changed");
+                    return true;
+                }
+                return false;
+            }
 
             // The taxi section: computed from the pilot's own scenery for THIS press and appended to the
             // flight data for this AI call only — the stored ExtractedFlightData stays pure SimBrief,
@@ -883,7 +921,7 @@ public partial class ElectronicFlightBagForm : Form
             // briefing: every failure renders as an "unavailable" line inside the block.
             UpdateStatus("Computing taxi routes...");
             string taxiBlock = await BuildTaxiRoutesBlockAsync(plan);
-            if (IsDisposed) return;
+            if (EndedUnderUs()) return;
             UpdateStatus("Generating route description...");
             string flightData = plan.ExtractedFlightData + "\n\n" + taxiBlock;
 
@@ -893,7 +931,7 @@ public partial class ElectronicFlightBagForm : Form
             // later provider switch in Settings. Display/scene reads already resolve per-call; match that.
             var aiProvider = AiProviderFactory.Create();
             string description = await aiProvider.DescribeRouteAsync(flightData);
-            if (IsDisposed) return;
+            if (EndedUnderUs()) return;
 
             routeDescriptionTextBox.Text = description.Replace("\r\n", "\n").Replace("\n", "\r\n");
             routeDescriptionTextBox.Visible = true;
@@ -905,7 +943,7 @@ public partial class ElectronicFlightBagForm : Form
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            _announcer.Announce("AI provider API key not configured. Please configure it in File menu, Settings, AI tab.");
+            _announcer.Announce(ApiKeyMissingMessage);
             UpdateStatus("AI provider API key not configured");
         }
         catch (Exception ex)
@@ -915,7 +953,9 @@ public partial class ElectronicFlightBagForm : Form
         }
         finally
         {
-            describeRouteButton.Enabled = true;
+            _describingRoute = false;
+            if (!IsDisposed)
+                describeRouteButton.Enabled = !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
         }
     }
 
@@ -984,8 +1024,14 @@ public partial class ElectronicFlightBagForm : Form
         var tcs = new TaskCompletionSource<OwnPosition?>(TaskCreationOptions.RunContinuationsAsynchronously);
         _simConnectManager.RequestAircraftPositionAsync(p =>
             tcs.TrySetResult(new OwnPosition(p.Latitude, p.Longitude, p.SimOnGround > 0.5)));
-        var completed = await Task.WhenAny(tcs.Task, Task.Delay(OwnPositionTimeoutMs));
-        return completed == tcs.Task ? tcs.Task.Result : null;
+        try
+        {
+            return await tcs.Task.WaitAsync(TimeSpan.FromMilliseconds(OwnPositionTimeoutMs));
+        }
+        catch (TimeoutException)
+        {
+            return null;
+        }
     }
 
     private void RefreshAircraftPosition()

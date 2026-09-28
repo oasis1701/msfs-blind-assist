@@ -8,9 +8,11 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 
 public static partial class TaxiBriefingPlanner
 {
-    /// <summary>Whole-briefing budget for both airports' database reads, graph builds and routing. The two
-    /// legs run at the same time under it: a leg that overruns reports "timed out" on its own, and the AI
-    /// briefing never waits longer than this.</summary>
+    /// <summary>Budget for both airports' database reads, graph builds and routing. The two legs run at the
+    /// same time under it: a leg that overruns reports "timed out" on its own, and the taxi section's
+    /// computation never runs longer than this. The aircraft-position read (at most 1.5 s) and the
+    /// SayIntentions read (bounded by its own timeouts) happen before it, so the whole taxi section can
+    /// take a few seconds more.</summary>
     public static readonly TimeSpan DefaultBudget = TimeSpan.FromSeconds(20);
 
     private const string LogCategory = "taxi_briefing";
