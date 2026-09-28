@@ -52,10 +52,12 @@ public class DescribeRouteGuardTests
     }
 
     [Fact]
-    public void Loading_a_plan_never_re_enables_Describe_while_a_briefing_runs()
+    public void Loading_a_plan_leaves_Describe_Route_to_the_session()
     {
-        string body = Method(Efb(), "private void LoadSimBriefFlightPlan()");
-        Assert.Matches(new Regex(@"describeRouteButton\.Enabled\s*=\s*!_descriptionSession\.IsGenerating\s*&&"), body);
+        // Describe Route's enabled state has ONE owner, ApplyDescriptionSession, reached through the session's Changed
+        // event (Clear() raises it); a second hand-written copy of the rule here could drift from it.
+        string body = Method(Efb(), "private void LoadSimBriefFlightPlan(");
+        Assert.DoesNotMatch(new Regex(@"describeRouteButton\.Enabled\s*="), body);
     }
 
     [Fact]
@@ -76,8 +78,8 @@ public class DescribeRouteGuardTests
     [Fact]
     public void Only_a_successful_SimBrief_load_erases_the_route_description()
     {
-        // The one place the kept description is erased is Load SimBrief, and only once LoadFromSimBrief has returned
-        // (it throws on failure without replacing the plan, so a failed load must leave the description alone).
+        // The one place the kept description is erased is Load SimBrief, and only once the plan was actually replaced
+        // (checked after LoadFromSimBrief, in its finally, so a throw after the swap still erases it).
         string efb = Efb();
         Assert.Single(Regex.Matches(efb, Regex.Escape("_descriptionSession.Clear()")));
 
@@ -92,7 +94,7 @@ public class DescribeRouteGuardTests
             Assert.DoesNotContain("_descriptionSession.Clear()", text);
         }
 
-        string body = Method(efb, "private void LoadSimBriefFlightPlan()");
+        string body = Method(efb, "private void LoadSimBriefFlightPlan(");
         int load = body.IndexOf("LoadFromSimBrief(", StringComparison.Ordinal);
         int clear = body.IndexOf("_descriptionSession.Clear()", StringComparison.Ordinal);
         Assert.True(load >= 0 && clear > load, "Clear must come after LoadFromSimBrief( inside LoadSimBriefFlightPlan");

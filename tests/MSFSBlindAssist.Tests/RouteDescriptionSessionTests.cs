@@ -71,10 +71,10 @@ public class RouteDescriptionSessionTests
     {
         var session = new RouteDescriptionSession();
 
-        session.BeginGenerating();
+        int generation = session.BeginGenerating();
         Assert.True(session.IsGenerating);
 
-        session.EndGenerating();
+        session.EndGenerating(generation);
         Assert.False(session.IsGenerating);
     }
 
@@ -97,7 +97,7 @@ public class RouteDescriptionSessionTests
 
         int generation = session.BeginGenerating();
         session.TryStore(generation, "Briefing.");
-        session.EndGenerating();
+        session.EndGenerating(generation);
         session.Clear();
 
         Assert.Equal(4, raised);
@@ -115,5 +115,51 @@ public class RouteDescriptionSessionTests
         session.TryStore(stale, "Stale briefing.");
 
         Assert.Equal(0, raised);
+    }
+
+    [Fact]
+    public void Abandon_keeps_the_description_but_discards_a_running_briefing_and_frees_the_flag()
+    {
+        // A database switch mid-briefing: the running briefing was computed against the old database.
+        var session = new RouteDescriptionSession();
+        int first = session.BeginGenerating();
+        session.TryStore(first, "Kept briefing.");
+        int running = session.BeginGenerating();
+
+        session.Abandon();
+
+        Assert.False(session.IsGenerating);
+        Assert.Equal("Kept briefing.", session.Text);
+        Assert.False(session.TryStore(running, "Old-database briefing."));
+    }
+
+    [Fact]
+    public void A_superseded_briefing_ending_never_frees_a_newer_one()
+    {
+        var session = new RouteDescriptionSession();
+        int stale = session.BeginGenerating();
+        session.Clear();                       // Load SimBrief releases the flag and moves the generation on
+        int current = session.BeginGenerating();
+
+        session.EndGenerating(stale);
+
+        Assert.True(session.IsGenerating);
+        session.EndGenerating(current);
+        Assert.False(session.IsGenerating);
+    }
+
+    [Fact]
+    public void IsFor_matches_only_the_plan_the_kept_description_was_stored_for()
+    {
+        var session = new RouteDescriptionSession();
+        Assert.False(session.IsFor("OFP-1"));
+
+        session.TryStore(session.BeginGenerating(), "Briefing.", "OFP-1");
+
+        Assert.True(session.IsFor("OFP-1"));
+        Assert.False(session.IsFor("OFP-2"));
+        Assert.False(session.IsFor(""));
+        session.Clear();
+        Assert.False(session.IsFor("OFP-1"));
     }
 }

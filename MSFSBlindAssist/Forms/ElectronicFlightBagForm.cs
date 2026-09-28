@@ -33,6 +33,9 @@ public partial class ElectronicFlightBagForm : Form
     // without it (tests), in which case the block says no navigation database is loaded.
     private readonly RouteBriefingDependencies? _briefingDependencies;
     private readonly RouteDescriptionSession _descriptionSession;
+    // This window opened while a briefing started in an earlier (closed) flight bag was still running: its status line
+    // says so, and says so again when that briefing ends, since its own status updates went to the closed window.
+    private bool _awaitingEarlierBriefing;
     private IntPtr previousWindow;
 
     // Navigation tab controls
@@ -107,7 +110,9 @@ public partial class ElectronicFlightBagForm : Form
         // This preserves user modifications (SID, STAR, approaches) across window open/close
         if (!string.IsNullOrEmpty(_simbriefUsername) && _flightPlanManager.CurrentFlightPlan.IsEmpty())
         {
-            LoadSimBriefFlightPlan();
+            // A database rebuild drops the plan, so this reload usually fetches the very OFP the kept description was
+            // made for: keep it then, and erase it only when the reload brought a different plan.
+            LoadSimBriefFlightPlan(keepDescriptionForSamePlan: true);
         }
         else if (!_flightPlanManager.CurrentFlightPlan.IsEmpty())
         {
@@ -117,12 +122,22 @@ public partial class ElectronicFlightBagForm : Form
 
         // Show a description kept from an earlier flight bag, and whether Describe Route can be pressed.
         ApplyDescriptionSession();
+        if (_descriptionSession.IsGenerating)
+        {
+            _awaitingEarlierBriefing = true;
+            UpdateStatus("A route description is still being prepared. Describe Route is available again when it finishes.");
+        }
     }
 
     private void OnDescriptionSessionChanged(object? sender, EventArgs e)
     {
         if (IsDisposed) return;
         ApplyDescriptionSession();
+        if (_awaitingEarlierBriefing && !_descriptionSession.IsGenerating)
+        {
+            _awaitingEarlierBriefing = false;
+            UpdateStatus("Describe Route is available again");
+        }
     }
 
     /// <summary>
@@ -867,8 +882,9 @@ public partial class ElectronicFlightBagForm : Form
         _announcer.Announce($"Waypoint {waypoint.Ident} tracked in slot {slotNumber}");
     }
 
-    private void LoadSimBriefFlightPlan()
+    private void LoadSimBriefFlightPlan(bool keepDescriptionForSamePlan = false)
     {
+        var planBefore = _flightPlanManager.CurrentFlightPlan;
         try
         {
             if (string.IsNullOrEmpty(_simbriefUsername))
@@ -880,20 +896,24 @@ public partial class ElectronicFlightBagForm : Form
 
             UpdateStatus("Loading flight plan from SimBrief...");
             _flightPlanManager.LoadFromSimBrief(_simbriefUsername);
-            // The ONE place the kept description is erased, and only once a new plan has actually loaded (a failed
-            // load throws above and leaves the plan and its description untouched). Also discards a briefing still
-            // running for the plan being replaced (its generation is no longer current).
-            _descriptionSession.Clear();
             _announcer.Announce("SimBrief flight plan loaded");
-            // Never re-enable while a briefing is running: a stale briefing for the plan just replaced would
-            // otherwise show up under a button that looks free to press again for the new one.
-            describeRouteButton.Enabled = !_descriptionSession.IsGenerating && !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
         }
         catch (Exception ex)
         {
             MessageBox.Show($"Error loading SimBrief flight plan: {ex.Message}",
                           "SimBrief Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
             _announcer.Announce("Error loading SimBrief flight plan");
+        }
+        finally
+        {
+            // The ONE place the kept description is erased: whenever the plan was actually replaced -- even if the
+            // load threw afterwards (a failed fetch throws before replacing it, and keeps the description). Also
+            // discards a briefing still running for the replaced plan and frees Describe Route for the new one; the
+            // button follows through Changed.
+            var planNow = _flightPlanManager.CurrentFlightPlan;
+            if (!ReferenceEquals(planBefore, planNow) &&
+                !(keepDescriptionForSamePlan && _descriptionSession.IsFor(planNow.ExtractedFlightData ?? "")))
+                _descriptionSession.Clear();
         }
     }
 
@@ -903,8 +923,13 @@ public partial class ElectronicFlightBagForm : Form
     {
         // One at a time, across flight-bag windows: a briefing now finishes even after its window closed, so a
         // reopened flight bag must not start a second one alongside it.
-        if (_descriptionSession.IsGenerating) return;
+        if (_descriptionSession.IsGenerating)
+        {
+            _announcer.Announce("A route description is already being prepared.");
+            return;
+        }
         bool began = false;
+        int generation = 0;
         try
         {
             if (_flightPlanManager.CurrentFlightPlan.IsEmpty() ||
@@ -924,20 +949,27 @@ public partial class ElectronicFlightBagForm : Form
             }
 
             var plan = _flightPlanManager.CurrentFlightPlan;
-            began = true;   // before BeginGenerating: if a Changed subscriber throws, the finally must still EndGenerating
-            int generation = _descriptionSession.BeginGenerating();   // disables Describe Route via Changed
+            // Both before BeginGenerating: if a Changed subscriber throws, the finally must still end THIS generation.
+            generation = _descriptionSession.Generation;
+            began = true;
+            _descriptionSession.BeginGenerating();   // disables Describe Route via Changed
             _announcer.Announce("Generating route description, please wait");
 
-            // Whether the briefing must be thrown away, said out loud when so: Load SimBrief was pressed while it ran
-            // (the session's generation moved on) or this window's plan was replaced. Closing the window does NOT
-            // end it -- the briefing finishes, is kept in the session and shows when the flight bag reopens.
+            // Whether the briefing must be thrown away, said out loud when so: Load SimBrief was pressed or the
+            // database was switched while it ran (the session's generation moved on), or this window's plan was
+            // replaced. Closing the window does NOT end it -- the briefing finishes, is kept in the session and shows
+            // when the flight bag reopens.
+            void AnnounceDiscarded()
+            {
+                _announcer.Announce("The flight plan or database changed while the route description was prepared. Press Describe Route again.");
+                UpdateStatus("Route description discarded: the flight plan or database changed");
+            }
             bool Discarded()
             {
                 if (generation == _descriptionSession.Generation &&
                     ReferenceEquals(plan, _flightPlanManager.CurrentFlightPlan))
                     return false;
-                _announcer.Announce("The flight plan changed while the route description was prepared. Press Describe Route again.");
-                UpdateStatus("Route description discarded: the flight plan changed");
+                AnnounceDiscarded();
                 return true;
             }
 
@@ -958,7 +990,11 @@ public partial class ElectronicFlightBagForm : Form
             if (Discarded()) return;
 
             // Stored in the session, which redraws whichever flight bag is open (this one, or one reopened meanwhile).
-            if (!_descriptionSession.TryStore(generation, description)) return;
+            if (!_descriptionSession.TryStore(generation, description, plan.ExtractedFlightData ?? ""))
+            {
+                AnnounceDiscarded();
+                return;
+            }
             if (!IsDisposed)
             {
                 // The window the pilot pressed Describe Route in is still open: take them to the description.
@@ -982,7 +1018,7 @@ public partial class ElectronicFlightBagForm : Form
         finally
         {
             // Re-enables Describe Route in whichever flight bag is open, via Changed.
-            if (began) _descriptionSession.EndGenerating();
+            if (began) _descriptionSession.EndGenerating(generation);
         }
     }
 
