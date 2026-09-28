@@ -19,9 +19,6 @@ public static partial class TaxiBriefingPlanner
     public const double OwnPositionMaxNodeDistanceMetres = 150.0;
     /// <summary>A stand resolves to its nearest graph node within this distance (Taxi Assist's gate rule).</summary>
     public const double StandNodeMaxDistanceMetres = 100.0;
-    /// <summary>A SayIntentions parking-service gate is briefed only when its position lies within this distance of the
-    /// arrival airport's reference point — the same "at this airport" line as <see cref="OwnPositionMaxAirportDistanceMetres"/>.</summary>
-    public const double ParkingServiceMaxAirportDistanceMetres = OwnPositionMaxAirportDistanceMetres;
     /// <summary>How far down the runway from where a full-length departure begins the route's entrance must be before the
     /// leg says a full-length departure means backtracking: past connector geometry's slop, well short of any real
     /// intersection departure.</summary>
@@ -30,6 +27,13 @@ public static partial class TaxiBriefingPlanner
     /// <see cref="TaxiGraph.DescribeLocation"/> names a stand within (its <c>PARKING_RADIUS_M</c>). The parking pass
     /// stamps a stand's name on a node up to 100 m from it, and the route start may be 150 m from the aircraft.</summary>
     public const double OwnPositionStandMaxMetres = 40.0;
+
+    /// <summary>Whether a point is at the leg's airport: the app's one answer (<see cref="GraphBundle.IsAtAirport"/>,
+    /// CurrentAirport.Resolve), else within <see cref="OwnPositionMaxAirportDistanceMetres"/> of the reference point.
+    /// The circle alone missed 53 fs2024 stands beyond 5 km (OMDW: 21; UNNT G35 at 5,028 m).</summary>
+    internal static bool AtAirport(GraphBundle g, double lat, double lon) =>
+        g.IsAtAirport?.Invoke(lat, lon)
+        ?? (g.Airport != null && TaxiGraph.FastDistanceMeters(lat, lon, g.Airport.Latitude, g.Airport.Longitude) <= OwnPositionMaxAirportDistanceMetres);
 
     public static TaxiLegBriefing PlanTaxiOut(TaxiBriefingRequest r, GraphBundle g) =>
         WithAirportTaxiways(PlanTaxiOutLeg(r, g), g);
@@ -75,8 +79,7 @@ public static partial class TaxiBriefingPlanner
         StandChoice? stand = null;
         int network = NetworkComponentId(g.Graph);
 
-        if (r.Own is { OnGround: true } own && g.Airport != null &&
-            TaxiGraph.FastDistanceMeters(own.Lat, own.Lon, g.Airport.Latitude, g.Airport.Longitude) <= OwnPositionMaxAirportDistanceMetres)
+        if (r.Own is { OnGround: true } own && AtAirport(g, own.Lat, own.Lon))
         {
             // A route START from a SENSED position: on the taxi network, and bridge-only stand stubs excluded, as
             // TaxiGuidanceManager.LoadRoute does, so the position is never snapped onto an island or a stub.
@@ -186,8 +189,8 @@ public static partial class TaxiBriefingPlanner
         if (rwy.IsClosed)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier, $"runway {rwy.RunwayID} is marked closed in this scenery", notes: notes);
 
-        // A parking-service gate whose position is published is refused when that position is beyond
-        // ParkingServiceMaxAirportDistanceMetres of this airport: it then names somewhere else. With no position it is
+        // A parking-service gate whose position is published is refused when that position is not
+        // AtAirport(g, …): it then names somewhere else. With no position it is
         // looked up by NAME in this airport's scenery, as a flight-file gate is (owner, 2026-09-26, reversing that
         // morning's refusal): live KMEM→KATL, getParking answered "B3" with no position and the flight file said
         // "Gate B3" nine seconds later with the aircraft at KMEM Gate 17 — the service meant the ARRIVAL gate, and
@@ -199,8 +202,7 @@ public static partial class TaxiBriefingPlanner
         {
             if (arrivalGate.Position is not GeoPoint pin)
                 matchedByNameOnly = true;
-            else if (g.Airport != null &&
-                     TaxiGraph.FastDistanceMeters(pin.Latitude, pin.Longitude, g.Airport.Latitude, g.Airport.Longitude) > ParkingServiceMaxAirportDistanceMetres)
+            else if (!AtAirport(g, pin.Latitude, pin.Longitude))
             {
                 refused = $"SayIntentions' parking service named {arrivalGate.Label}, but its position is not at {icao}";
                 arrivalGate = null;

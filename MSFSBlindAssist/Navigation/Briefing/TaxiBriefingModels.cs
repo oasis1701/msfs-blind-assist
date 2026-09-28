@@ -116,9 +116,12 @@ public sealed record TaxiBriefing(AircraftProfile Aircraft, TaxiLegBriefing Taxi
 }
 
 /// <summary>One airport's graph and the data it was built from. <see cref="Note"/> is a caveat the tier
-/// carries (OSM: stand types unknown). <see cref="Airport"/> is the reference point for the 5 km own-position test.</summary>
+/// carries (OSM: stand types unknown). <see cref="IsAtAirport"/> is whether a point is at this airport —
+/// <c>CurrentAirport.Resolve</c>'s answer — or null when the database cannot say, when the 5 km circle round
+/// <see cref="Airport"/> decides instead (<see cref="TaxiBriefingPlanner.AtAirport"/>).</summary>
 public sealed record GraphBundle(TaxiGraph Graph, BriefingTier Tier, IReadOnlyList<Runway> Runways,
-    IReadOnlyList<StartPosition> Starts, IReadOnlyList<ParkingSpot> Spots, string? Note, Airport? Airport);
+    IReadOnlyList<StartPosition> Starts, IReadOnlyList<ParkingSpot> Spots, string? Note, Airport? Airport,
+    Func<double, double, bool>? IsAtAirport = null);
 
 /// <summary>What the EFB needs from MainForm to compute the taxi section: a provider GETTER (the instance is
 /// swapped on a database switch), the gate source and SayIntentions' status — the flight file, and its parking service

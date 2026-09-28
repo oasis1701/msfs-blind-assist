@@ -44,6 +44,11 @@ public static class TaxiBriefingGraphSource
             }
         }
 
+        // "At this airport" is the app's one answer (CurrentAirport.Resolve), where the database can give it.
+        Func<double, double, bool>? atAirport = provider is IAirportFacilitiesProvider
+            ? (lat, lon) => string.Equals(CurrentAirport.Resolve(provider, lat, lon), icao, StringComparison.OrdinalIgnoreCase)
+            : null;
+
         var runways = provider.GetRunways(icao);
         var starts = provider.GetRunwayStarts(icao);
         var paths = provider.GetTaxiPaths(icao);
@@ -51,7 +56,7 @@ public static class TaxiBriefingGraphSource
         {
             var spots = ParkingSpotSource.GetNamedSpots(provider, gateSource, icao);
             var graph = TaxiGraph.Build(paths, spots, starts, runways);
-            return (new GraphBundle(graph, BriefingTier.Navdata, runways, starts, spots, null, airport), null);
+            return (new GraphBundle(graph, BriefingTier.Navdata, runways, starts, spots, null, airport, atAirport), null);
         }
 
         string noNav = $"the navigation database has no taxiways for {icao}";
@@ -66,6 +71,6 @@ public static class TaxiBriefingGraphSource
         if (online == null) return (null, noNav + " and OpenStreetMap data is not available right now");
 
         var osm = OsmPlanningGraph.Build(online, runways, starts, airport);
-        return osm == null ? (null, noNav + " and OpenStreetMap has no named taxiways for it") : (osm, null);
+        return osm == null ? (null, noNav + " and OpenStreetMap has no named taxiways for it") : (osm with { IsAtAirport = atAirport }, null);
     }
 }

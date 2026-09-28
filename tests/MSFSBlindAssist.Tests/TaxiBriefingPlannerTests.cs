@@ -55,6 +55,18 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void The_airport_s_own_answer_decides_where_the_aircraft_is()
+    {
+        var own = new OwnPosition(Lat(250), Lon(2500), OnGround: true);
+        var nowhere = Airport() with { IsAtAirport = (_, _) => false };
+        Assert.StartsWith("representative stand", TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), nowhere).EndpointDescription);
+    }
+
+    [Fact]
+    public void Without_the_airport_s_answer_the_5_km_circle_still_decides()
+        => Assert.False(TaxiBriefingPlanner.AtAirport(Airport(), Lat(20000), Lon(0)));
+
+    [Fact]
     public void Airliner_taxis_out_from_its_airline_s_gate()
     {
         var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, airline: "DAL"), Airport());
@@ -871,6 +883,14 @@ public class TaxiBriefingPlannerTests
 
         Assert.StartsWith("representative stand", leg.EndpointDescription);
         Assert.Contains("SayIntentions' parking service named Terminal 1 Gate G1, but its position is not at TEST; using a representative stand instead", leg.Notes);
+    }
+
+    [Fact]
+    public void A_parking_service_gate_beyond_5_km_is_briefed_when_the_airport_says_it_is_there()
+    {
+        var gate = new SayIntentionsGateHint("G 1", new GeoPoint(Lat(6000), Lon(300)), SayIntentionsGateSource.ParkingService);
+        var here = Airport() with { IsAtAirport = (_, _) => true };
+        Assert.Equal(StandChoiceSource.SayIntentions, TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: gate), here).Stand!.Source);
     }
 
     [Fact]

@@ -11,7 +11,7 @@ public class TaxiBriefingGraphSourceTests
 {
     /// <summary>A navdata provider serving the TEST fixture airport, with or without taxi paths — and, like
     /// LSZH's navdata, optionally with not one taxiway segment named.</summary>
-    private sealed class FakeProvider : IAirportDataProvider
+    private class FakeProvider : IAirportDataProvider
     {
         public bool HasTaxiPaths = true;
         public bool HasAirport = true;
@@ -38,6 +38,15 @@ public class TaxiBriefingGraphSourceTests
             return paths;
         }
         public List<StartPosition> GetRunwayStarts(string icao) => Starts();
+    }
+
+    /// <summary>FakeProvider plus <see cref="IAirportFacilitiesProvider"/>, its one candidate a box covering the
+    /// fixture — as a real navdata provider would answer <c>CurrentAirport.Resolve</c>.</summary>
+    private sealed class FacilitiesFakeProvider : FakeProvider, IAirportFacilitiesProvider
+    {
+        public AirportFacilities? GetAirportFacilities(string icao) => null;
+        public IReadOnlyList<AirportCandidate> GetNearbyAirportCandidates(double latitude, double longitude, double radiusNm) =>
+            new[] { new AirportCandidate("TEST", Lat(500), Lon(1500), Lon(-1000), Lon(4000), Lat(1500), Lat(-500), NumTaxiPaths: 1) };
     }
 
     /// <summary>An online source that answers at once with a name for every one of the TEST airport's taxiway
@@ -82,6 +91,18 @@ public class TaxiBriefingGraphSourceTests
         Assert.Equal(BriefingTier.Navdata, bundle!.Tier);
         Assert.Equal(3, bundle.Spots.Count);
         Assert.Equal("TEST", bundle.Airport!.ICAO);
+    }
+
+    [Fact]
+    public async Task IsAtAirport_is_the_facilities_providers_own_answer_and_null_without_one()
+    {
+        var (withFacilities, _) = await TaxiBriefingGraphSource.BuildAsync(new FacilitiesFakeProvider(), null, "TEST", CancellationToken.None);
+        Assert.NotNull(withFacilities!.IsAtAirport);
+        Assert.True(withFacilities.IsAtAirport!(Lat(250), Lon(2500)));
+        Assert.False(withFacilities.IsAtAirport!(Lat(50000), Lon(0)));
+
+        var (plain, _) = await TaxiBriefingGraphSource.BuildAsync(new FakeProvider(), null, "TEST", CancellationToken.None);
+        Assert.Null(plain!.IsAtAirport);
     }
 
     [Fact]
