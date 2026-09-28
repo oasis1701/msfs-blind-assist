@@ -191,6 +191,29 @@ internal static class TaxiBriefingFixture
     public static GraphBundle AirportWithUnnamedDeadEndExit() => AirportWith(
         new[] { Path("", 1300, 0, 1300, 80, startType: "HS") }, Array.Empty<ParkingSpot>());
 
+    /// <summary>
+    /// <see cref="AirportWithSouthStand"/>'s taxiways plus a second runway SOUTH of 09/27, reachable from the north
+    /// only by crossing 09 on X:
+    ///   north -300: runway 07, east 0 → 2000 (150 ft wide, heading 90), its start row 10 m inside its west end.
+    ///   east 0:     taxiway Y7 from S's west end (north -100) south to 07's west end (north -300).
+    /// An aircraft at (1000 E, north 28) — north of 09, off its pavement but inside its clear margin — has X's node on
+    /// 09's centreline as its nearest network node, so its taxi-out to 07 starts ON 09: X, S, Y7.
+    /// </summary>
+    public static GraphBundle AirportWithSouthRunway()
+    {
+        var runways = Runways();
+        runways.Add(Runway("07", 0, -300, 2000, -300, 90));
+        var starts = Starts();
+        starts.Add(Start("07", 10, -300, 90));
+        var paths = Paths();
+        paths.AddRange(SouthStandPaths());
+        paths.Add(Path("Y7", 0, -100, 0, -300));
+        var spots = Spots();
+        spots.AddRange(SouthStandSpots());
+        var graph = TaxiGraph.Build(paths, spots, starts, runways);
+        return new GraphBundle(graph, BriefingTier.Navdata, runways, starts, spots, null, AirportRef());
+    }
+
     private static TaxiPath[] SouthStandPaths() => new[]
     {
         Path("S", 0, -100, 1000, -100), Path("S", 1000, -100, 1500, -100),

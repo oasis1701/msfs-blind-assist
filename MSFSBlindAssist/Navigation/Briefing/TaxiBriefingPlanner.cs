@@ -26,6 +26,10 @@ public static partial class TaxiBriefingPlanner
     /// leg says a full-length departure means backtracking: past connector geometry's slop, well short of any real
     /// intersection departure.</summary>
     public const double BacktrackNoteMinMetres = 150.0;
+    /// <summary>"current position, stand X" names a stand only when the aircraft is this close to its node: the reach
+    /// <see cref="TaxiGraph.DescribeLocation"/> names a stand within (its <c>PARKING_RADIUS_M</c>). The parking pass
+    /// stamps a stand's name on a node up to 100 m from it, and the route start may be 150 m from the aircraft.</summary>
+    public const double OwnPositionStandMaxMetres = 40.0;
 
     public static TaxiLegBriefing PlanTaxiOut(TaxiBriefingRequest r, GraphBundle g) =>
         WithAirportTaxiways(PlanTaxiOutLeg(r, g), g);
@@ -80,7 +84,9 @@ public static partial class TaxiBriefingPlanner
             if (node != null && TaxiGraph.FastDistanceMeters(own.Lat, own.Lon, node.Latitude, node.Longitude) <= OwnPositionMaxNodeDistanceMetres)
             {
                 startNode = node.NodeId;
-                endpoint = IsStandNode(node) ? $"current position, stand {node.ParkingName}" : "current position";
+                endpoint = IsStandNode(node) &&
+                           TaxiGraph.FastDistanceMeters(own.Lat, own.Lon, node.Latitude, node.Longitude) <= OwnPositionStandMaxMetres
+                    ? $"current position, stand {node.ParkingName}" : "current position";
             }
         }
 
@@ -128,7 +134,12 @@ public static partial class TaxiBriefingPlanner
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no taxi route connects {endpoint} to runway {rwy.RunwayID} in this scenery", stand, endpoint, notes);
 
-        var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, g.Graph.RunwayCenterlines, $"Runway {rwy.RunwayID}", aircraft: null);
+        // The aircraft is the route's first point (RouteRunwayCrossings' contract): a route from its nearest node, which can
+        // lie ON a runway, otherwise opens on that runway and never reports crossing it. A stand start has no sensed
+        // position, so it keeps the pass's position-free rules.
+        RouteRunwayCrossings.AircraftPosition? sensed = stand == null && r.Own is { } at
+            ? new RouteRunwayCrossings.AircraftPosition(at.Lat, at.Lon) : null;
+        var events = RouteRunwayCrossings.InsertRunwayHoldShorts(route, g.Graph.RunwayCenterlines, $"Runway {rwy.RunwayID}", aircraft: sensed);
         var unheldRunways = new List<string>();
         var holds = CollectHoldShorts(route, events, notes, unheldRunways);
         // The route ENDS on the departure runway, and the automatic pass never places a stop for a route's
@@ -183,6 +194,7 @@ public static partial class TaxiBriefingPlanner
         // refusing it briefed a representative stand the pilot was never assigned.
         var arrivalGate = r.ArrivalGate;
         bool matchedByNameOnly = false;
+        string? refused = null;
         if (arrivalGate is { Source: SayIntentionsGateSource.ParkingService })
         {
             if (arrivalGate.Position is not GeoPoint pin)
@@ -190,7 +202,7 @@ public static partial class TaxiBriefingPlanner
             else if (g.Airport != null &&
                      TaxiGraph.FastDistanceMeters(pin.Latitude, pin.Longitude, g.Airport.Latitude, g.Airport.Longitude) > ParkingServiceMaxAirportDistanceMetres)
             {
-                notes.Add($"SayIntentions' parking service named {arrivalGate.Label}, but its position is not at {icao}; using a representative stand instead");
+                refused = $"SayIntentions' parking service named {arrivalGate.Label}, but its position is not at {icao}";
                 arrivalGate = null;
             }
         }
@@ -199,6 +211,8 @@ public static partial class TaxiBriefingPlanner
         int network = NetworkComponentId(g.Graph);
         bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s, network, asRouteStart: false) != null;
         var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, HasStandNode, r.Unit);
+        // "Using a representative stand instead" only when one is: 205 fs2024 airports have taxi paths and no parking.
+        if (refused != null) notes.Add(stand != null ? refused + "; using a representative stand instead" : refused);
         if (matchedByNameOnly && stand?.Source == StandChoiceSource.SayIntentions)
             notes.Add($"SayIntentions' parking service gave no position for {arrivalGate!.Label}, so it was matched by name in this scenery");
         if (stand != null) AddStandNotes(notes, stand, g.Note);
@@ -258,8 +272,8 @@ public static partial class TaxiBriefingPlanner
         // From here on the exits have been searched: every leg says so, "none found" included.
         if (choice == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
-                $"no exit taxiway is mapped clear of runway {rwy.RunwayID} in this scenery", stand, endpoint, notes, vacating,
-                exitsSearched: true);
+                NoExitReason(icao, rwy.RunwayID, vacating.Count, routeStarts.Count, AirportTaxiwayNames(g.Graph).Count > 0),
+                stand, endpoint, notes, vacating, exitsSearched: true);
         choice = WithReachableExitsSetAside(choice, vacating, routeStarts.Keys, r.Aircraft.TouchdownSpeedKts, aim);
         if (!choice.ComfortablyReachable)
             choice = choice with
@@ -292,6 +306,21 @@ public static partial class TaxiBriefingPlanner
             Exit = choice, VacatingExits = vacating,
             ExitsSearched = true, NarrowTaxiways = NarrowTaxiways(way.Route, r.Aircraft), Notes = notes,
         };
+    }
+
+    /// <summary>
+    /// Why no exit is briefed, naming what is really missing: the scenery names no taxiway at all (the exits may exist,
+    /// unnamed); no exit gets clear of the runway; or every one that does was set aside by
+    /// <see cref="BriefableExitRouteStarts"/> (its route leaves by the other side), while the block's exits line lists them.
+    /// </summary>
+    internal static string NoExitReason(string icao, string runwayId, int vacatingCount, int briefableCount, bool airportNamesTaxiways)
+    {
+        if (!airportNamesTaxiways)
+            return $"this scenery names none of {icao}'s taxiways, so no exit off runway {runwayId} can be named";
+        if (vacatingCount > 0 && briefableCount == 0)
+            return $"every exit clear of runway {runwayId} in this scenery has its mapped route leave the runway on the other side " +
+                   "from the one it turns toward, so none is briefed";
+        return $"no exit taxiway is mapped clear of runway {runwayId} in this scenery";
     }
 
     /// <summary>A way in from one exit to the stand: the route with its hold-short points placed, what the block
@@ -462,11 +491,16 @@ public static partial class TaxiBriefingPlanner
             foreach (var d in RouteRunwayCrossings.ExtractRunwayDesignators(seg.HoldShortRunway))
                 holds.Add(new HoldShortNote(d, NamedTaxiwayAt(route, i), BeforeEntering: false));
         }
+        // One note per runway PAVEMENT: 10L and 28R are one runway, and the pilot hears it once.
+        var seen = new List<string>();
         foreach (var e in events)
         {
             if (e.Held) continue;
-            notes.Add($"no hold short point could be placed for runway {e.Designator}; cross with care");
-            unheldRunways?.Add(e.Designator);
+            string designator = RouteRunwayCrossings.NormalizeDesignator(e.Designator);
+            if (seen.Any(d => SameRunway(d, designator))) continue;
+            seen.Add(designator);
+            notes.Add($"no hold short point could be placed for runway {designator}; cross with care");
+            unheldRunways?.Add(designator);
         }
         return holds;
     }
@@ -475,11 +509,12 @@ public static partial class TaxiBriefingPlanner
     /// Advisory: taxiways on the route whose navdata width is below the code letter's Annex 14
     /// minimum. Width 0 (unknown; every OpenStreetMap edge) never produces a note.
     ///
-    /// <para>Judged at the block's own precision (<see cref="WidthPrecisionMetres"/>): a width that
-    /// prints as the minimum is not below it. The most common taxiway width in navdata is 82 ft,
-    /// 24.99 m (62 % of fs2024 taxiway rows, 65 % of fs2020's), and compared raw it put
-    /// "24.99 m" — printed "25.0 m" — below the 25.0 m code F minimum on almost every taxiway of an
-    /// A380's route.</para>
+    /// <para>Judged in whole feet, the unit navdata stores widths in: the minimum's own whole-foot
+    /// value is the minimum, never "below" it. The most common taxiway width in navdata is 82 ft,
+    /// 24.99 m (62 % of fs2024 taxiway rows, 65 % of fs2020's), which compared raw was below the
+    /// 25 m code F minimum on almost every taxiway of an A380's route; and 49 ft, the third
+    /// commonest width and code C's 15 m in whole feet, judged at the metres display's 0.1 m told
+    /// a 737 in feet mode "49 ft in the navdata, below the 49 ft code C minimum".</para>
     /// </summary>
     internal static List<NarrowTaxiwayNote> NarrowTaxiways(TaxiRoute route, AircraftProfile aircraft)
     {
@@ -490,14 +525,15 @@ public static partial class TaxiBriefingPlanner
                      .Where(s => !string.IsNullOrEmpty(s.TaxiwayName) && s.PathWidth > 0)
                      .GroupBy(s => s.TaxiwayName, StringComparer.OrdinalIgnoreCase))
         {
-            double widthM = group.Min(s => s.PathWidth) * 0.3048;
-            if (widthM < min - WidthPrecisionMetres / 2.0) result.Add(new NarrowTaxiwayNote(group.Key, widthM, min));
+            double widthFeet = group.Min(s => s.PathWidth);
+            // Whole feet, the unit navdata stores widths in: the minimum's own whole-foot value (49 ft for 15 m, 75 ft for
+            // 23 m, 82 ft for 25 m) IS the minimum. Judged at the metres display's 0.1 m, a feet-mode block said
+            // "49 ft in the navdata, below the 49 ft code C minimum".
+            if (Math.Round(widthFeet) < Math.Round(min / 0.3048))
+                result.Add(new NarrowTaxiwayNote(group.Key, widthFeet * 0.3048, min));
         }
         return result;
     }
-
-    /// <summary>The precision the block states a taxiway width to ("24.9 m").</summary>
-    private const double WidthPrecisionMetres = 0.1;
 
     /// <summary>One runway pavement: the same designator (<see cref="RunwayIdsMatch"/>) or its reciprocal.</summary>
     internal static bool SameRunway(string a, string b) =>

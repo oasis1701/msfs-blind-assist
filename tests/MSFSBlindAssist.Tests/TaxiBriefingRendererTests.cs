@@ -156,8 +156,8 @@ public class TaxiBriefingRendererTests
             "TAXI ROUTES (computed by MSFS Blind Assist; each leg names its data source, and taxiway names are that source's own)\n" +
             "Distance unit: metres (the pilot's setting); every distance below is in metres\n" +
             "Aircraft: ZZZZ (SimBrief type ZZZZ), size class unknown, wingspan unknown (aircraft type not recognised), passenger\n" +
-            "TAXI OUT at LOWI: taxi route unavailable — the navigation database has no taxiways for LOWI and OpenStreetMap data is not yet available\n" +
-            "TAXI IN at LOWI: taxi route unavailable — no exit taxiway is mapped clear of runway 26 in this scenery\n" +
+            "TAXI OUT at LOWI to runway 08: taxi route unavailable — the navigation database has no taxiways for LOWI and OpenStreetMap data is not yet available\n" +
+            "TAXI IN at LOWI, landing runway 26: taxi route unavailable — no exit taxiway is mapped clear of runway 26 in this scenery\n" +
             "  Stand: representative stand C 1 (Ramp Cargo)\n" +
             "  Exits on 26 that get clear of the runway: none found";
 
@@ -482,9 +482,24 @@ public class TaxiBriefingRendererTests
         var without = TaxiLegBriefing.UnavailableLeg("KATL", "08L", BriefingTier.None, "no navigation database loaded");
         string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, withNames, without), DistanceUnit.Feet);
 
-        Assert.Contains("TAXI OUT at KMEM: taxi route unavailable — no stand at KMEM connects to the taxiway network\n" +
+        Assert.Contains("TAXI OUT at KMEM to runway 36L: taxi route unavailable — no stand at KMEM connects to the taxiway network\n" +
                         "  Taxiway names at KMEM: J, M2\n" +
                         "TAXI IN at KATL", text);
         Assert.DoesNotContain("Taxiway names at KATL", text);
+    }
+
+    [Fact]
+    public void An_unavailable_leg_s_header_names_its_runway_when_it_has_one()
+    {
+        var withRunway = TaxiLegBriefing.UnavailableLeg("TEST", "09", BriefingTier.Navdata, "no stand at TEST connects to the taxiway network");
+        var noRunway = TaxiLegBriefing.UnavailableLeg("TEST", "", BriefingTier.Navdata, "the flight plan names no departure runway");
+        var taxiIn = TaxiLegBriefing.UnavailableLeg("TEST", "09", BriefingTier.Navdata, "no exit taxiway is mapped clear of runway 09 in this scenery");
+
+        Assert.Contains("TAXI OUT at TEST to runway 09: taxi route unavailable — no stand at TEST connects",
+            TaxiBriefingRenderer.Render(new TaxiBriefing(B738, withRunway, taxiIn), DistanceUnit.Metres));
+        Assert.Contains("TAXI OUT at TEST: taxi route unavailable — the flight plan names no departure runway",
+            TaxiBriefingRenderer.Render(new TaxiBriefing(B738, noRunway, taxiIn), DistanceUnit.Metres));
+        Assert.Contains("TAXI IN at TEST, landing runway 09: taxi route unavailable — no exit taxiway",
+            TaxiBriefingRenderer.Render(new TaxiBriefing(B738, withRunway, taxiIn), DistanceUnit.Metres));
     }
 }

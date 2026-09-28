@@ -95,7 +95,8 @@ public static class TaxiBriefingRenderer
     {
         if (leg.Unavailable != null)
         {
-            lines.Add($"TAXI OUT at {leg.Icao}: taxi route unavailable — {leg.Unavailable}");
+            string toRunway = string.IsNullOrWhiteSpace(leg.Runway) ? "" : $" to runway {leg.Runway}";
+            lines.Add($"TAXI OUT at {leg.Icao}{toRunway}: taxi route unavailable — {leg.Unavailable}");
             if (leg.EndpointDescription.Length > 0) lines.Add($"  Start: {leg.EndpointDescription}");
         }
         else
@@ -113,7 +114,8 @@ public static class TaxiBriefingRenderer
     {
         if (leg.Unavailable != null)
         {
-            lines.Add($"TAXI IN at {leg.Icao}: taxi route unavailable — {leg.Unavailable}");
+            string landing = string.IsNullOrWhiteSpace(leg.Runway) ? "" : $", landing runway {leg.Runway}";
+            lines.Add($"TAXI IN at {leg.Icao}{landing}: taxi route unavailable — {leg.Unavailable}");
             if (leg.Exit != null) lines.Add(ExitLine(leg.Exit, aircraft, unit));
             if (leg.EndpointDescription.Length > 0) lines.Add($"  Stand: {leg.EndpointDescription}");
             // Only a search that ran can have found none (no database, a timeout or an unknown runway ran none).

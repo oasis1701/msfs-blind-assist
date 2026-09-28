@@ -502,7 +502,8 @@ public class TaxiBriefingPlannerTests
         Assert.Equal(14.9, k.WidthMetres, 1);
         Assert.Equal(25.0, k.MinimumMetres);
 
-        Assert.Single(TaxiBriefingPlanner.NarrowTaxiways(route, B738));                                   // 14.9 m < code C's 15 m
+        // 49 ft is code C's 15 m in whole feet, the unit navdata stores widths in: it IS the minimum, not below it.
+        Assert.Empty(TaxiBriefingPlanner.NarrowTaxiways(route, B738));
         Assert.Empty(TaxiBriefingPlanner.NarrowTaxiways(route, AircraftSizeClass.Resolve("ZZZZ", "", null)));   // unknown letter → no minimum
     }
 
@@ -1018,5 +1019,88 @@ public class TaxiBriefingPlannerTests
         var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), AirportWithUnmarkedExit(1800));   // C at 5,906 ft
         Assert.Equal("C", leg.Exit!.Exit.TaxiwayName);
         Assert.Equal("U", leg.Exit.NextExit!.TaxiwayName);
+    }
+
+    // ── notes and holds that say what is true ────────────────────────────────────────────────
+
+    [Fact]
+    public void A_refused_parking_service_gate_says_representative_only_when_one_is_used()
+    {
+        var far = new SayIntentionsGateHint("B3", new GeoPoint(Lat(20000), Lon(0)), SayIntentionsGateSource.ParkingService);
+        var noStands = Airport() with { Spots = new List<ParkingSpot>() };
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: far), noStands);
+        Assert.Null(leg.Stand);   // precondition: no stand to stand in
+        Assert.Contains("SayIntentions' parking service named B3, but its position is not at TEST", leg.Notes);
+        Assert.DoesNotContain(leg.Notes, n => n.Contains("using a representative stand", StringComparison.Ordinal));
+        Assert.Contains("SayIntentions' parking service named B3, but its position is not at TEST; using a representative stand instead",
+            TaxiBriefingPlanner.PlanTaxiIn(Request(B738, gate: far), Airport()).Notes);
+    }
+
+    [Fact]
+    public void The_no_exit_reason_names_what_is_really_missing()
+    {
+        Assert.Equal("this scenery names none of TEST's taxiways, so no exit off runway 09 can be named",
+            TaxiBriefingPlanner.NoExitReason("TEST", "09", vacatingCount: 0, briefableCount: 0, airportNamesTaxiways: false));
+        Assert.Equal("no exit taxiway is mapped clear of runway 09 in this scenery",
+            TaxiBriefingPlanner.NoExitReason("TEST", "09", 0, 0, true));
+        Assert.Equal("every exit clear of runway 09 in this scenery has its mapped route leave the runway on the other side from the one it turns toward, so none is briefed",
+            TaxiBriefingPlanner.NoExitReason("TEST", "09", 3, 0, true));
+    }
+
+    [Fact]
+    public void One_unheld_note_per_runway_pavement()
+    {
+        var notes = new List<string>(); var unheld = new List<string>();
+        var events = new[]
+        {
+            new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = "10L", Held = false },
+            new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = "28R", Held = false },
+            new TaxiRouteRunwayEvent { Kind = RunwayEventKind.Crossing, Designator = "18", Held = false },
+        };
+        TaxiBriefingPlanner.CollectHoldShorts(RouteWithHold(null, null), events, notes, unheld);
+        Assert.Equal(new[] { "10L", "18" }, unheld);
+        Assert.Equal(2, notes.Count);
+    }
+
+    [Fact]
+    public void Current_position_names_a_stand_only_within_forty_metres_of_it()
+    {
+        // C 1's node is at (2500, 250); 100 m east of it the nearest node is still that one, within the 150 m start reach.
+        var beside = new OwnPosition(Lat(250), Lon(2600), OnGround: true);
+        var bundle = Airport();
+        var nearest = bundle.Graph.FindNearestNode(beside.Lat, beside.Lon,
+            requiredComponentId: TaxiBriefingPlanner.NetworkComponentId(bundle.Graph), excludeBridgeOnlyStandStubs: true)!;
+        Assert.Equal("C 1", nearest.ParkingName);   // precondition: the start node is the stand's own, 100 m away
+        Assert.InRange(TaxiGraph.FastDistanceMeters(beside.Lat, beside.Lon, nearest.Latitude, nearest.Longitude),
+            TaxiBriefingPlanner.OwnPositionStandMaxMetres + 1, TaxiBriefingPlanner.OwnPositionMaxNodeDistanceMetres);
+        Assert.Equal("current position", TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: beside), bundle).EndpointDescription);
+    }
+
+    [Fact]
+    public void Narrow_is_judged_in_whole_feet()
+    {
+        var route = RouteWithHold(null, null);
+        route.Segments[0].TaxiwayName = "K"; route.Segments[0].PathWidth = 49.0;   // code C's 15 m in whole feet
+        route.Segments[1].TaxiwayName = "L"; route.Segments[1].PathWidth = 48.0;
+        var note = Assert.Single(TaxiBriefingPlanner.NarrowTaxiways(route, B738));
+        Assert.Equal("L", note.Taxiway);
+    }
+
+    [Fact]
+    public void A_taxi_out_from_the_aircraft_s_position_never_drops_the_crossing_it_starts_on()
+    {
+        var own = new OwnPosition(Lat(28), Lon(1000), OnGround: true);
+        var bundle = AirportWithSouthRunway();
+        // Precondition: the route's first node — the aircraft's nearest network node — is X's node on 09's centreline.
+        var first = bundle.Graph.FindNearestNode(own.Lat, own.Lon,
+            requiredComponentId: TaxiBriefingPlanner.NetworkComponentId(bundle.Graph), excludeBridgeOnlyStandStubs: true)!;
+        Assert.Equal(Lat(0), first.Latitude, 6);
+        Assert.Equal(Lon(1000), first.Longitude, 6);
+
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own, originRunway: "07"), bundle);
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("X", leg.Taxiways[0]);
+        Assert.True(leg.HoldShorts.Any(h => h.Runway is "09" or "27") || leg.UnheldRunways.Any(r => r is "09" or "27"),
+            "the crossing of 09/27 must be briefed, held or not");
     }
 }
