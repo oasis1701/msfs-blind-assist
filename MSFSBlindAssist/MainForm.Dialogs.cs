@@ -629,7 +629,12 @@ public partial class MainForm
         if (electronicFlightBagForm == null || electronicFlightBagForm.IsDisposed)
         {
             var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
-            electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, waypointTracker, settings.SimbriefUsername ?? "");
+            electronicFlightBagForm = new ElectronicFlightBagForm(flightPlanManager, simConnectManager, announcer, waypointTracker,
+                settings.SimbriefUsername ?? "",
+                new MSFSBlindAssist.Navigation.Briefing.RouteBriefingDependencies(
+                    () => airportDataProvider,            // a getter: RefreshDatabaseProvider swaps the instance (re-wrapped by WithTaxiAugmentation)
+                    BuildGateDataSource,
+                    () => sayIntentionsService.GetAssignedStatusAsync()));
         }
 
         // Show the form (reuses same instance to preserve flight plan data)
