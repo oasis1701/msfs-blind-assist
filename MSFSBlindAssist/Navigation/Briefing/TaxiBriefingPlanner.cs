@@ -130,9 +130,18 @@ public static partial class TaxiBriefingPlanner
                 $"the aircraft is already at the runway {rwy.RunwayID} entrance", stand, endpoint, notes);
 
         var route = new TaxiRouter(g.Graph).FindShortestPath(startNode, entry.NodeId);
-        if (route == null || route.Segments.Count == 0)
+        if (route == null || (route.Segments.Count == 0 && startNode != entry.NodeId))
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no taxi route connects {endpoint} to runway {rwy.RunwayID} in this scenery", stand, endpoint, notes);
+        // A stand whose node IS the runway entrance leads straight onto the runway: a route with no taxiways, not "no
+        // route" — the taxi-in's rule for an exit leading straight onto its stand. (The aircraft standing there
+        // returned "already at the entrance" above.) Only the hold before entering is on it.
+        if (route.Segments.Count == 0)
+            return new TaxiLegBriefing
+            {
+                Icao = icao, Runway = rwy.RunwayID, Tier = g.Tier, EndpointDescription = endpoint, Stand = stand,
+                HoldShorts = new[] { new HoldShortNote(rwy.RunwayID, "", BeforeEntering: true) }, Notes = notes,
+            };
 
         // The aircraft is the route's first point (RouteRunwayCrossings' contract): a route from its nearest node, which can
         // lie ON a runway, otherwise opens on that runway and never reports crossing it. A stand start has no sensed
@@ -546,10 +555,13 @@ public static partial class TaxiBriefingPlanner
     internal static bool SameRunway(string a, string b) =>
         RunwayIdsMatch(a, b) || RunwayIdsMatch(RouteRunwayCrossings.Reciprocal(a), b);
 
-    private static readonly Regex RunwayWord = new(@"^\s*(?:runway|rwy)\b\s*",
+    /// <summary>A leading "Runway", "RWY" or "RW", with or without a space before the designator ("RW09L", "rwy27"):
+    /// with a word boundary after it, the glued forms kept their prefix and matched nothing (review M-2). No runway
+    /// designator begins with an R, so the bare "rw" can never eat part of one.</summary>
+    private static readonly Regex RunwayWord = new(@"^\s*(?:runway|rwy|rw)\s*",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    /// <summary>"9" and "09" are one runway, and so are "Runway 9L" and "09L"; any suffix is part of the identity — "16W"
+    /// <summary>"9" and "09" are one runway, and so are "Runway 9L", "RW09L" and "09L"; any suffix is part of the identity — "16W"
     /// (a water lane) is not "16", and "22A" is not "22". CleanRunway, which reads only L/C/R, made both the land
     /// runway: W55's "16" found the water lane, and fs2020 BGGH's "22" lined up at a closed "22A" start row.</summary>
     private static string Canon(string d) => RouteRunwayCrossings.NormalizeDesignator(RunwayWord.Replace(d, ""));

@@ -1021,6 +1021,7 @@ Cover the following topics, using descriptive section headings separated by blan
    If the block says a leg is unavailable, say so in a few words, and still give whatever the block does give for that leg, such as the exit with its side and distance, and the stand.
    When the reason is that the aircraft is already at the runway, give no route for that leg.
    Otherwise you may give that leg's usual route from your own knowledge, saying it is general knowledge and not checked against the scenery; where the leg has a ""Taxiway names at"" list, name only taxiways from it, and only a leg with no such list may name taxiways the block does not give.
+   A ""Taxiway names at"" line that reads ""{MSFSBlindAssist.Navigation.Briefing.TaxiBriefingRenderer.SameListAsTaxiOut}"" gives that leg the taxi out's list, and that list counts as the leg's own wherever this section speaks of a leg's list.
    The scenery phrase belongs only to a route the block gives: end a general-knowledge route by saying only that SayIntentions or ATC will give the actual taxi clearance, never that it is the expected route on the pilot's scenery, and give no scenery phrase for a leg with no route.
    The check line is one sentence after each route paragraph that checks the block's route, exit and stand for that leg against the real airport as you know it.
    Begin it with ""{RouteCheckFromMemory}"", or with ""{RouteCheckAgainstCharts}"" only when a web search in this briefing found and read that airport's current airport diagram or chart notes.

@@ -40,6 +40,21 @@ public class DescribeRouteGuardTests
     }
 
     [Fact]
+    public void A_failed_briefing_never_writes_the_status_of_a_closed_window()
+    {
+        // The finally block already checks IsDisposed before touching the form; the two catch blocks must too — a
+        // database switch closes the flight bag while the briefing is still running (RBR Task 3 follow-up).
+        string body = Method(Efb(), "private async Task DescribeRouteAsync()");
+        int catches = body.IndexOf("        catch (", StringComparison.Ordinal);
+        int fin = body.IndexOf("        finally", StringComparison.Ordinal);
+        Assert.True(catches >= 0 && fin > catches, "the catch blocks were not found");
+        string handlers = body[catches..fin];
+        var calls = Regex.Matches(handlers, @"UpdateStatus\(");
+        Assert.NotEmpty(calls);
+        Assert.All(calls, m => Assert.EndsWith("if (!IsDisposed) ", handlers[..m.Index]));
+    }
+
+    [Fact]
     public void Loading_a_plan_never_re_enables_Describe_while_a_briefing_runs()
     {
         string body = Method(Efb(), "private void LoadSimBriefFlightPlan()");

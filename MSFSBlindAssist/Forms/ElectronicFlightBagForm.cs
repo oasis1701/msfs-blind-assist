@@ -944,12 +944,13 @@ public partial class ElectronicFlightBagForm : Form
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
             _announcer.Announce(ApiKeyMissingMessage);
-            UpdateStatus("AI provider API key not configured");
+            // A database switch can close the flight bag while the briefing runs (as the finally below checks).
+            if (!IsDisposed) UpdateStatus("AI provider API key not configured");
         }
         catch (Exception ex)
         {
             _announcer.Announce($"Error generating route description: {ex.Message}");
-            UpdateStatus("Error generating route description");
+            if (!IsDisposed) UpdateStatus("Error generating route description");
         }
         finally
         {

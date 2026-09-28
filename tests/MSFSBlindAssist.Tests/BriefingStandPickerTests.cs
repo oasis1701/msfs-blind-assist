@@ -1411,7 +1411,8 @@ public class BriefingStandPickerTests
     // admission rule; nothing but this test ties the two together. ──────────────────────────────────────────────
 
     [Theory]
-    [InlineData(10.0)] [InlineData(30.0)] [InlineData(75.0)] [InlineData(90.0)]
+    // 10, 30 and 40 m exercise the radius factor (below the cap), 75 m meets the 150 m cap exactly and 90 m exceeds it.
+    [InlineData(10.0)] [InlineData(30.0)] [InlineData(40.0)] [InlineData(75.0)] [InlineData(90.0)]
     public void A_stand_answers_to_SayIntentions_position_exactly_as_far_as_the_import_s_matcher_admits(double radiusMetres)
     {
         var gsx = new ParkingSpot { Name = "G", Number = 1, Type = 10, Radius = radiusMetres, Source = GateSource.Gsx };

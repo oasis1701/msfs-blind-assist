@@ -598,12 +598,14 @@ public class TaxiBriefingPlannerTests
         Assert.Equal("current position", leg.EndpointDescription);
         Assert.Null(leg.Stand);
 
-        // A REPRESENTATIVE stand whose node is that entrance is not the aircraft: never "already at".
+        // A REPRESENTATIVE stand whose node is that entrance is not the aircraft: never "already at". Since review T10(2)
+        // it is a route with no taxiways (it was "no taxi route connects", which was false), like the taxi-in's exit
+        // leading straight onto its stand.
         var standAtEntrance = AirportWith(Array.Empty<TaxiPath>(), new[] { Spot("R", 1, 10, 50, 0, 150, "RWY") });
         var fromStand = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, airline: "RWY"), standAtEntrance);
         Assert.StartsWith("representative stand R 1", fromStand.EndpointDescription);
-        Assert.NotNull(fromStand.Unavailable);
-        Assert.DoesNotContain("already", fromStand.Unavailable, StringComparison.Ordinal);
+        Assert.Null(fromStand.Unavailable);
+        Assert.Empty(fromStand.Taxiways);
     }
 
     // ── the departure runway: closed records, runway identity, reaching the runway ──────────
@@ -646,6 +648,9 @@ public class TaxiBriefingPlannerTests
     [InlineData("16W", "16", false)] [InlineData("22A", "22", false)] [InlineData("9", "09", true)]
     [InlineData("09L", "9L", true)] [InlineData("Runway 9L", "09L", true)] [InlineData("rwy 27", "27", true)]
     [InlineData("N", "n", true)]
+    // Review M-2: the "RW"/"RWY" prefix glued to the designator, as navdata and start rows write it.
+    [InlineData("RW09L", "09L", true)] [InlineData("rwy27", "27", true)] [InlineData("RWY 27", "27", true)]
+    [InlineData("RW09L", "09R", false)]
     public void A_runway_suffix_is_part_of_its_identity(string a, string b, bool same)
         => Assert.Equal(same, TaxiBriefingPlanner.RunwayIdsMatch(a, b));
 
@@ -808,6 +813,34 @@ public class TaxiBriefingPlannerTests
         var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
         Assert.Null(leg.Unavailable);
         Assert.Equal("current position", leg.EndpointDescription);
+    }
+
+    [Fact]
+    public void A_stand_that_leads_straight_onto_the_runway_is_a_route_with_no_taxiways()
+    {
+        // Review T10(2): the taxi-in's rule for an exit leading straight onto the stand, on the taxi-out. Stand R 1 sits
+        // 22 m from E1's runway node — the node 09's departure begins from — with no lead-in of its own.
+        var bundle = AirportWith(Array.Empty<TaxiPath>(), new[] { Spot("R", 1, 10, 60, 20, 150, "RRR") });
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
+        var standNode = TaxiBriefingPlanner.StandNode(bundle.Graph, bundle.Spots.Single(s => s.Name == "R"), network, asRouteStart: true)!;
+        var target = RunwayLineupTarget.Resolve(bundle.Graph, rwy, bundle.Starts.Where(s => s.RunwayName == "09"),
+                                                standNode.Latitude, standNode.Longitude);
+        Assert.Equal(target.EntryNode!.NodeId, standNode.NodeId);   // precondition: the stand's node IS the entrance
+
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, airline: "RRR"), bundle);
+        Assert.Null(leg.Unavailable);
+        Assert.StartsWith("representative stand R 1", leg.EndpointDescription);
+        Assert.Empty(leg.Taxiways);
+        Assert.Equal(0.0, leg.DistanceMetres);
+        var hold = Assert.Single(leg.HoldShorts);
+        Assert.True(hold.BeforeEntering);
+        Assert.Equal("09", hold.Runway);
+
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738, leg,
+            TaxiLegBriefing.UnavailableLeg("TEST", "09", BriefingTier.Navdata, "x")), DistanceUnit.Feet);
+        Assert.Contains("  Taxiways: none (the stand leads straight onto the runway)\n", text);
+        Assert.DoesNotContain("no taxi route connects", text);
     }
 
     // ── a second piece of taxi network, reached only across a runway (I-1) ────────────────────

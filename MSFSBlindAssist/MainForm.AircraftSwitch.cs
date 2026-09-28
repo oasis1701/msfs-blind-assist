@@ -1413,8 +1413,9 @@ public partial class MainForm
                 electronicFlightBagForm = null;
             }
 
-            // Set providers to null to release connections
-            airportDataProvider = null;
+            // Set providers to null to release connections — through WithTaxiAugmentation, so the augmenting decorator
+            // (_augmentingProvider, which holds the navdata provider) is released with it.
+            airportDataProvider = WithTaxiAugmentation(null);
             flightPlanManager = null!;
 
             // Force garbage collection to ensure connections are fully released

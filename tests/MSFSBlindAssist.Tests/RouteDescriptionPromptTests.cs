@@ -1,4 +1,5 @@
 // tests/MSFSBlindAssist.Tests/RouteDescriptionPromptTests.cs
+using MSFSBlindAssist.Navigation.Briefing;
 using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Tests;
@@ -182,12 +183,25 @@ public class RouteDescriptionPromptTests
     }
 
     [Fact]
+    public void A_taxi_in_list_given_as_the_taxi_out_s_counts_as_the_leg_s_own_list()
+    {
+        // The renderer prints a same-airport taxi-in's list once, as "as listed for the taxi out" (RBR Task 14); the name
+        // rules speak of "that leg's" list, so the prompt must say that line gives the leg the taxi-out's list. The prompt
+        // quotes the renderer's own constant, so the two cannot drift.
+        Assert.Equal("as listed for the taxi out", TaxiBriefingRenderer.SameListAsTaxiOut);
+        Assert.Contains("A \"Taxiway names at\" line that reads \"as listed for the taxi out\" gives that leg the taxi out's " +
+                        "list, and that list counts as the leg's own wherever this section speaks of a leg's list.", Prompt());
+    }
+
+    [Fact]
     public void The_search_sentences_are_exact()
     {
         Assert.Equal("Web search is off for this briefing, so every check line begins " +
                      "\"Real-world check, from memory rather than live charts:\".", GeminiService.RouteSearchOffSentence);
         // "before you start writing" could be read as "before this section" — with Claude, only the text after the
         // last tool block survives ParseResponse, so a lookup delayed until section 7 would drop sections 1-6.
+        // NOTAMs FIRST (RBR Task 2): a budget that runs out must drop the chart lookups, never the NOTAMs — at
+        // max_uses 5 the chart lookups crowded the NOTAMs out and the briefing said there were none.
         Assert.Equal("Web search is on for this briefing: do any lookups before you write any part of the briefing, looking up both " +
                      "airports' current NOTAMs first; you may also look up each airport's current airport diagram and chart notes; a " +
                      "check line says current charts only when that search found and read them.",

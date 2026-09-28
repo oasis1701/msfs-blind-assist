@@ -30,6 +30,17 @@ public class ProviderWrapGuardTests
                 found.Add($"{Path.GetFileName(file)}: {m.Groups[1].Value.Trim()}");
 
         Assert.NotEmpty(found);
-        Assert.All(found, f => Assert.Matches(new Regex(@": (?:null|WithTaxiAugmentation\()"), f));
+        Assert.All(found, f => Assert.True(IsWrapped(f[(f.IndexOf(": ", StringComparison.Ordinal) + 2)..]), f));
     }
+
+    /// <summary>Whether an assignment's right-hand side is exactly <c>null</c> or a WithTaxiAugmentation(…) call —
+    /// anchored on the TRIMMED text (review M-3): unanchored, "nullableProvider" or "raw ?? WithTaxiAugmentation(x)"
+    /// passed.</summary>
+    private static bool IsWrapped(string rhs) => Regex.IsMatch(rhs.Trim(), @"^(?:null$|WithTaxiAugmentation\()");
+
+    [Theory]
+    [InlineData("null", true)] [InlineData(" WithTaxiAugmentation(DatabaseSelector.SelectProvider())", true)]
+    [InlineData("WithTaxiAugmentation(null)", true)]
+    [InlineData("nullableProvider", false)] [InlineData("raw ?? WithTaxiAugmentation(x)", false)] [InlineData("null ?? raw", false)]
+    public void The_guard_accepts_only_null_or_the_wrapper(string rhs, bool wrapped) => Assert.Equal(wrapped, IsWrapped(rhs));
 }

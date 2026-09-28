@@ -18,6 +18,9 @@ public static class TaxiBriefingRenderer
     public const string Header = "TAXI ROUTES (computed by MSFS Blind Assist; each leg names its data source, and taxiway names are that source's own)";
     public const string OsmLabel = "OpenStreetMap, planning only — taxi guidance cannot use this";
     public const string XPlaneLabel = "X-Plane airport data, planning only — taxi guidance cannot use this";
+    /// <summary>What a taxi-in's "Taxiway names at" line says when its list is the taxi-out's, already printed; the
+    /// prompt quotes it so the AI treats that list as the leg's own.</summary>
+    public const string SameListAsTaxiOut = "as listed for the taxi out";
     /// <summary>The exits list names the nearest this many and counts the rest.</summary>
     public const int MaxListedExits = 12;
 
@@ -104,7 +107,10 @@ public static class TaxiBriefingRenderer
         else
         {
             lines.Add($"TAXI OUT at {leg.Icao} ({TierLabel(leg.Tier)}): from {leg.EndpointDescription} to runway {leg.Runway}");
-            lines.Add($"  Taxiways: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres, unit)})");
+            // A stand whose node is the runway entrance leads straight onto it: a route with no taxiways.
+            lines.Add(leg.Taxiways.Count == 0 && leg.DistanceMetres < 1.0
+                ? "  Taxiways: none (the stand leads straight onto the runway)"
+                : $"  Taxiways: {RouteText(leg)} ({FormatDistance(leg.DistanceMetres, unit)})");
             lines.Add(HoldLine(leg.HoldShorts, leg.UnheldRunways));
             foreach (var n in leg.NarrowTaxiways) lines.Add(NarrowLine(n, aircraft.CodeLetter, unit));
         }
@@ -150,7 +156,7 @@ public static class TaxiBriefingRenderer
         if (taxiOut != null && string.Equals(leg.Icao, taxiOut.Icao, StringComparison.OrdinalIgnoreCase) &&
             taxiOut.AirportTaxiways.Count > 0 && leg.AirportTaxiways.SequenceEqual(taxiOut.AirportTaxiways))
         {
-            lines.Add($"  Taxiway names at {leg.Icao}: as listed for the taxi out");
+            lines.Add($"  Taxiway names at {leg.Icao}: {SameListAsTaxiOut}");
             return;
         }
         lines.Add($"  Taxiway names at {leg.Icao}: {string.Join(", ", leg.AirportTaxiways)}");
