@@ -1,4 +1,5 @@
 // MSFSBlindAssist/Navigation/Briefing/TaxiBriefingPlanner.cs
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.SayIntentions;
 
@@ -21,6 +22,10 @@ public static partial class TaxiBriefingPlanner
     /// <summary>A SayIntentions parking-service gate is briefed only when its position lies within this distance of the
     /// arrival airport's reference point — the same "at this airport" line as <see cref="OwnPositionMaxAirportDistanceMetres"/>.</summary>
     public const double ParkingServiceMaxAirportDistanceMetres = OwnPositionMaxAirportDistanceMetres;
+    /// <summary>How far down the runway from where a full-length departure begins the route's entrance must be before the
+    /// leg says a full-length departure means backtracking: past connector geometry's slop, well short of any real
+    /// intersection departure.</summary>
+    public const double BacktrackNoteMinMetres = 150.0;
 
     public static TaxiLegBriefing PlanTaxiOut(TaxiBriefingRequest r, GraphBundle g) =>
         WithAirportTaxiways(PlanTaxiOutLeg(r, g), g);
@@ -58,6 +63,8 @@ public static partial class TaxiBriefingPlanner
         if (rwy == null)
             return TaxiLegBriefing.UnavailableLeg(icao, r.OriginRunway, g.Tier,
                 $"runway {r.OriginRunway} is not in the navigation database for {icao}", notes: notes);
+        if (rwy.IsClosed)
+            return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier, $"runway {rwy.RunwayID} is marked closed in this scenery", notes: notes);
 
         int startNode = -1;
         string endpoint = "";
@@ -94,16 +101,29 @@ public static partial class TaxiBriefingPlanner
         var startNodeObj = g.Graph.Nodes[startNode];
         var startsForRunway = g.Starts.Where(s => RunwayIdsMatch(s.RunwayName, rwy.RunwayID)).ToList();
         var target = RunwayLineupTarget.Resolve(g.Graph, rwy, startsForRunway, startNodeObj.Latitude, startNodeObj.Longitude);
-        if (target.EntryNode == null)
+        var entry = target.EntryNode;
+        var frame = RunwayFrame.For(rwy, rwy.StartLat);
+        // With no entrance at or behind the lineup point, FindRunwayLineupEntryNode hands back the plain nearest node for
+        // guidance's reach warning to catch (RUNWAY_REACH_MAX_CROSS_M — LTAC 21L: 931 m off the centreline). The briefing
+        // asks for the entrance a full-length departure backtracks from instead, Taxi Assist's own backtrack search. It is
+        // anchored on the route's start node, which is on the taxi network, so the entrance it finds is on that network
+        // too (the search keeps to the anchor's component).
+        if (entry != null && Math.Abs(frame.SignedCrossTrack(entry.Latitude, entry.Longitude)) > Services.TaxiGuidanceManager.RUNWAY_REACH_MAX_CROSS_M)
+        {
+            double halfWidthM = (rwy.Width > 0 ? rwy.Width : 150.0) * 0.3048 / 2.0;
+            entry = g.Graph.FindBacktrackEntryNode(rwy.StartLat, rwy.StartLon, rwy.EndLat, rwy.EndLon, halfWidthM,
+                                                   startNodeObj.Latitude, startNodeObj.Longitude);
+        }
+        if (entry == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no taxiway reaches runway {rwy.RunwayID} in this scenery", stand, endpoint, notes);
         // The aircraft already stands on the node the route would END on: there is nothing to route, and the
         // zero-length "route" must not read as "no taxi route connects current position to runway …".
-        if (stand == null && startNode == target.EntryNode.NodeId)
+        if (stand == null && startNode == entry.NodeId)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"the aircraft is already at the runway {rwy.RunwayID} entrance", stand, endpoint, notes);
 
-        var route = new TaxiRouter(g.Graph).FindShortestPath(startNode, target.EntryNode.NodeId);
+        var route = new TaxiRouter(g.Graph).FindShortestPath(startNode, entry.NodeId);
         if (route == null || route.Segments.Count == 0)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no taxi route connects {endpoint} to runway {rwy.RunwayID} in this scenery", stand, endpoint, notes);
@@ -116,6 +136,17 @@ public static partial class TaxiBriefingPlanner
         // found for this runway is a CROSSING of it on the way to the threshold). The hold before entering is
         // always real and always the last leg: add it unconditionally.
         holds.Add(new HoldShortNote(rwy.RunwayID, LastNamedTaxiway(route), BeforeEntering: true));
+
+        // The route enters the runway well down from where a full-length departure begins: say so, or the block reads as
+        // a full-length departure from the first taxiway to the threshold.
+        double entryAlong = frame.Along(entry.Latitude, entry.Longitude) - frame.Along(target.LineupLat, target.LineupLon);
+        if (entryAlong > BacktrackNoteMinMetres)
+        {
+            string entering = LastNamedTaxiway(route) is { Length: > 0 } via ? $"the route enters it on taxiway {via}" : "the route enters it";
+            notes.Add($"no taxiway meets runway {rwy.RunwayID} where a full-length departure begins in this scenery: {entering}, " +
+                      $"{TaxiBriefingRenderer.FormatAlongRunway(entryAlong / 0.3048, r.Unit)} along, so a full-length departure " +
+                      "means backtracking on the runway");
+        }
 
         var taxiways = RouteTaxiwaySequence.DistinctConsecutive(route.Segments);
         return new TaxiLegBriefing
@@ -141,6 +172,8 @@ public static partial class TaxiBriefingPlanner
         if (rwy == null)
             return TaxiLegBriefing.UnavailableLeg(icao, r.DestinationRunway, g.Tier,
                 $"runway {r.DestinationRunway} is not in the navigation database for {icao}", notes: notes);
+        if (rwy.IsClosed)
+            return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier, $"runway {rwy.RunwayID} is marked closed in this scenery", notes: notes);
 
         // A parking-service gate whose position is published is refused when that position is beyond
         // ParkingServiceMaxAirportDistanceMetres of this airport: it then names somewhere else. With no position it is
@@ -470,10 +503,13 @@ public static partial class TaxiBriefingPlanner
     internal static bool SameRunway(string a, string b) =>
         RunwayIdsMatch(a, b) || RunwayIdsMatch(RouteRunwayCrossings.Reciprocal(a), b);
 
-    /// <summary>"9" and "09" are one runway: CleanRunway pads the number; NormalizeDesignator is the fallback for a
-    /// compass-point designator it cannot parse.</summary>
-    private static string Canon(string d) =>
-        SayIntentionsClearanceParser.CleanRunway(d) ?? RouteRunwayCrossings.NormalizeDesignator(d);
+    private static readonly Regex RunwayWord = new(@"^\s*(?:runway|rwy)\b\s*",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    /// <summary>"9" and "09" are one runway, and so are "Runway 9L" and "09L"; any suffix is part of the identity — "16W"
+    /// (a water lane) is not "16", and "22A" is not "22". CleanRunway, which reads only L/C/R, made both the land
+    /// runway: W55's "16" found the water lane, and fs2020 BGGH's "22" lined up at a closed "22A" start row.</summary>
+    private static string Canon(string d) => RouteRunwayCrossings.NormalizeDesignator(RunwayWord.Replace(d, ""));
 
     /// <summary>The same runway END, by <see cref="Canon"/> — the ONE identity rule both this and
     /// <see cref="SameRunway"/> use, so a compass-point end ("N", "NE") is found as well as a numbered one.</summary>
@@ -481,8 +517,9 @@ public static partial class TaxiBriefingPlanner
         !string.IsNullOrWhiteSpace(a) && !string.IsNullOrWhiteSpace(b) &&
         string.Equals(Canon(a), Canon(b), StringComparison.OrdinalIgnoreCase);
 
+    /// <summary>The runway end by <see cref="RunwayIdsMatch"/>, an open record before a closed one of the same name.</summary>
     internal static Runway? FindRunway(IReadOnlyList<Runway> runways, string id) =>
-        runways.FirstOrDefault(r => RunwayIdsMatch(r.RunwayID, id));
+        runways.Where(r => RunwayIdsMatch(r.RunwayID, id)).OrderBy(r => r.IsClosed ? 1 : 0).FirstOrDefault();
 
     /// <summary>
     /// The taxi network a leg is planned on: the graph's largest connected component. An island — an isolated taxiway

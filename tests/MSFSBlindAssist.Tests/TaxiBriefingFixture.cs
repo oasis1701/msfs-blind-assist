@@ -308,6 +308,31 @@ internal static class TaxiBriefingFixture
         return new GraphBundle(graph, BriefingTier.Navdata, runways, starts, spots, null, AirportRef());
     }
 
+    /// <summary>
+    /// A standalone airport whose only taxiway onto the runway meets it well down from where a departure begins
+    /// (LTAC 21L: its only connector is ~1,770 m down the runway):
+    ///   north 0:   runway 10/28, east 0 → 2000 (150 ft wide), start rows 10 m inside each end.
+    ///   east 1500: taxiway F from 10's centreline (HS) north to north 300 — or, with
+    ///              <paramref name="entranceTouchesRunway"/> false, from north 100, touching no runway.
+    ///   north 300: taxiway G from F's north end west to 0 E.
+    ///   north 360: stand F 1 (0 E, gate, r=150 ft), its lead-in running south to G's west end.
+    /// The node nearest 10's lineup point is G's west end, 300 m off the centreline.
+    /// </summary>
+    public static GraphBundle AirportWithEntranceOnlyDownTheRunway(bool entranceTouchesRunway = true)
+    {
+        var runways = new List<Runway> { Runway("10", 0, 0, 2000, 0, 90), Runway("28", 2000, 0, 0, 0, 270) };
+        var starts = new List<StartPosition> { Start("10", 10, 0, 90), Start("28", 1990, 0, 270) };
+        var paths = new List<TaxiPath>
+        {
+            entranceTouchesRunway ? Path("F", 1500, 0, 1500, 300, startType: "HS") : Path("F", 1500, 100, 1500, 300),
+            Path("G", 1500, 300, 0, 300),
+            LeadIn(0, 300, 0, 360),
+        };
+        var spots = new List<ParkingSpot> { Spot("F", 1, 10, 0, 360, 150) };
+        var graph = TaxiGraph.Build(paths, spots, starts, runways);
+        return new GraphBundle(graph, BriefingTier.Navdata, runways, starts, spots, null, AirportRef());
+    }
+
     public static TaxiBriefingRequest Request(AircraftProfile aircraft, string? airline = null, OwnPosition? own = null,
                                               SayIntentionsGateHint? gate = null, string originRunway = "09", string destRunway = "09") =>
         new("TEST", originRunway, "TEST", destRunway, aircraft, airline, own, gate);

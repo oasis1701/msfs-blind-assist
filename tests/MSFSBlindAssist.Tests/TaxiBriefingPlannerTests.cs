@@ -592,6 +592,116 @@ public class TaxiBriefingPlannerTests
         Assert.DoesNotContain("already", fromStand.Unavailable, StringComparison.Ordinal);
     }
 
+    // ── the departure runway: closed records, runway identity, reaching the runway ──────────
+
+    private static Runway CloneClosed(Runway r) => new()
+    {
+        Id = r.Id, AirportICAO = r.AirportICAO, RunwayID = r.RunwayID, Heading = r.Heading, HeadingMag = r.HeadingMag,
+        StartLat = r.StartLat, StartLon = r.StartLon, EndLat = r.EndLat, EndLon = r.EndLon,
+        Length = r.Length, Width = r.Width, Surface = r.Surface, ILSFreq = r.ILSFreq, ILSHeading = r.ILSHeading,
+        ThresholdOffset = r.ThresholdOffset, ThresholdElevation = r.ThresholdElevation, GlideslopeAngleDeg = r.GlideslopeAngleDeg,
+        IsLanding = r.IsLanding, IsTakeoff = r.IsTakeoff, IsClosed = true,
+    };
+
+    [Fact]
+    public void A_closed_runway_is_reported_not_planned()
+    {
+        var bundle = Airport();
+        var runways = bundle.Runways.Select(r => r.RunwayID == "09" ? CloneClosed(r) : r).ToList();
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738), bundle with { Runways = runways });
+        Assert.Equal("runway 09 is marked closed in this scenery", leg.Unavailable);
+    }
+
+    [Fact]
+    public void A_closed_arrival_runway_is_reported_not_planned()
+    {
+        var bundle = Airport();
+        var runways = bundle.Runways.Select(r => r.RunwayID == "09" ? CloneClosed(r) : r).ToList();
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), bundle with { Runways = runways });
+        Assert.Equal("runway 09 is marked closed in this scenery", leg.Unavailable);
+    }
+
+    [Fact]
+    public void An_open_record_wins_over_a_closed_one_of_the_same_runway()
+    {
+        var open = new Runway { RunwayID = "09" }; var closed = new Runway { RunwayID = "09", IsClosed = true };
+        Assert.Same(open, TaxiBriefingPlanner.FindRunway(new[] { closed, open }, "09"));
+    }
+
+    [Theory]
+    [InlineData("16W", "16", false)] [InlineData("22A", "22", false)] [InlineData("9", "09", true)]
+    [InlineData("09L", "9L", true)] [InlineData("Runway 9L", "09L", true)] [InlineData("rwy 27", "27", true)]
+    [InlineData("N", "n", true)]
+    public void A_runway_suffix_is_part_of_its_identity(string a, string b, bool same)
+        => Assert.Equal(same, TaxiBriefingPlanner.RunwayIdsMatch(a, b));
+
+    [Fact]
+    public void With_no_entrance_at_the_runway_start_the_taxi_out_enters_down_the_runway_and_says_so()
+    {
+        var bundle = AirportWithEntranceOnlyDownTheRunway();
+        // Precondition: the lineup search hands back the plain nearest node, well off the centreline.
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "10")!;
+        var starts = bundle.Starts.Where(s => s.RunwayName == "10").ToList();
+        var target = RunwayLineupTarget.Resolve(bundle.Graph, rwy, starts, Lat(360), Lon(0));
+        Assert.NotNull(target.EntryNode);
+        Assert.True(Math.Abs(RunwayFrame.For(rwy, rwy.StartLat).SignedCrossTrack(target.EntryNode!.Latitude, target.EntryNode.Longitude))
+                    > Services.TaxiGuidanceManager.RUNWAY_REACH_MAX_CROSS_M);
+
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, originRunway: "10"), bundle);
+        Assert.Null(leg.Unavailable);
+        Assert.Equal(new[] { "G", "F" }, leg.Taxiways);
+        Assert.Contains(new HoldShortNote("10", "F", BeforeEntering: true), leg.HoldShorts);
+        Assert.Contains(leg.Notes, n => n.Contains("backtracking", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void The_backtrack_note_names_the_taxiway_and_the_distance_in_the_pilots_unit()
+    {
+        // F meets the runway 1,490 fixture metres past the start row; RunwayFrame measures with 111,320 m per degree of
+        // latitude against the fixture's 111,132, so it reads 1,492.5 m (4,897 ft).
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, originRunway: "10"), AirportWithEntranceOnlyDownTheRunway());
+        Assert.Contains("no taxiway meets runway 10 where a full-length departure begins in this scenery: the route enters it " +
+                        "on taxiway F, 1,493 m along, so a full-length departure means backtracking on the runway", leg.Notes);
+
+        var inFeet = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, originRunway: "10") with { Unit = DistanceUnit.Feet },
+                                                     AirportWithEntranceOnlyDownTheRunway());
+        Assert.Contains(inFeet.Notes, n => n.Contains("on taxiway F, 4,897 ft along,", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void An_entrance_at_the_runway_start_gets_no_backtrack_note()
+    {
+        // E1 meets 09 40 m past the start row: connector slop, not a backtrack.
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738), Airport());
+        Assert.Null(leg.Unavailable);
+        Assert.DoesNotContain(leg.Notes, n => n.Contains("backtracking", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void With_no_taxiway_reaching_the_runway_the_taxi_out_is_unavailable()
+    {
+        var bundle = AirportWithEntranceOnlyDownTheRunway(entranceTouchesRunway: false);
+        // Precondition: the plain nearest node is well off the centreline, and no node of the graph touches the runway.
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "10")!;
+        var frame = RunwayFrame.For(rwy, rwy.StartLat);
+        var target = RunwayLineupTarget.Resolve(bundle.Graph, rwy, bundle.Starts.Where(s => s.RunwayName == "10"), Lat(360), Lon(0));
+        Assert.True(Math.Abs(frame.SignedCrossTrack(target.EntryNode!.Latitude, target.EntryNode.Longitude))
+                    > Services.TaxiGuidanceManager.RUNWAY_REACH_MAX_CROSS_M);
+        Assert.All(bundle.Graph.Nodes.Values, n => Assert.True(Math.Abs(frame.SignedCrossTrack(n.Latitude, n.Longitude)) > 50));
+
+        Assert.Equal("no taxiway reaches runway 10 in this scenery",
+            TaxiBriefingPlanner.PlanTaxiOut(Request(B738, originRunway: "10"), bundle).Unavailable);
+    }
+
+    [Fact]
+    public void Parked_at_the_node_nearest_the_lineup_point_is_not_being_at_the_entrance()
+    {
+        var own = new OwnPosition(Lat(300), Lon(0), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, originRunway: "10", own: own), AirportWithEntranceOnlyDownTheRunway());
+        Assert.Null(leg.Unavailable);
+        Assert.Equal(new[] { "G", "F" }, leg.Taxiways);
+    }
+
     [Fact]
     public void Compass_point_runways_are_found_and_matched_to_their_reciprocal()
     {
