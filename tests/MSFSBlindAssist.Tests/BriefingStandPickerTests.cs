@@ -228,7 +228,7 @@ public class BriefingStandPickerTests
 
         Assert.Same(b6, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Contains("SayIntentions assigned Gate 99, which this scenery lists as B 6", choice.Notes);
+        Assert.Contains("SayIntentions assigned Gate 99, which this scenery does not have; the stand nearest SayIntentions' position is B 6", choice.Notes);
     }
 
     [Fact]
@@ -256,6 +256,13 @@ public class BriefingStandPickerTests
         Assert.Equal("A 24A", BriefingStandPicker.IdentityLabel(new ParkingSpot { Name = "A", Number = 24, Suffix = "A", Type = 10 }));
         Assert.Equal("Gate 5", BriefingStandPicker.IdentityLabel(new ParkingSpot { Number = 5, Type = 10 }));
     }
+
+    [Theory]
+    [InlineData("Terminal 3 Gate J1", true)] [InlineData("Stand 204", true)] [InlineData("Ramp 5", true)]
+    [InlineData("Gate5", true)] [InlineData("Gate 5", true)] [InlineData("Spot 12", true)] [InlineData("Parking", true)]
+    [InlineData("Position 7", true)] [InlineData("B6", false)] [InlineData("A-9", false)] [InlineData("Gateway 3", false)]
+    public void A_label_names_its_kind_anywhere_in_it(string label, bool namesIt)
+        => Assert.Equal(namesIt, BriefingStandPicker.LabelNamesItsKind(label));
 
     // ── SayIntentions: which stand the assigned gate IS ─────────────────────────────────────
     // NormalizeParkingName strips GATE/SPOT/PARKING/…, so a letterless "Gate 9", "Spot 9" and
@@ -343,7 +350,7 @@ public class BriefingStandPickerTests
 
         Assert.Same(gate, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Equal(new[] { "SayIntentions assigned Gate 99, which this scenery lists as G 1" }, choice.Notes);
+        Assert.Equal(new[] { "SayIntentions assigned Gate 99, which this scenery does not have; the stand nearest SayIntentions' position is G 1" }, choice.Notes);
     }
 
     [Theory]
@@ -365,7 +372,7 @@ public class BriefingStandPickerTests
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
         Assert.Equal(new[]
         {
-            "SayIntentions assigned Gate 99, which this scenery lists as F 1",
+            "SayIntentions assigned Gate 99, which this scenery does not have; the stand nearest SayIntentions' position is F 1",
             $"this scenery marks that stand as a {kind}",
         }, choice.Notes);
     }
@@ -988,7 +995,7 @@ public class BriefingStandPickerTests
         var g1 = Spot("G", 1, 10, 0, 0);
         var choice = BriefingStandPicker.Pick(new[] { g1 }, B738, null, new SayIntentionsGateHint("Terminal 4 Gate B99", null), Always)!;
 
-        Assert.Contains("SayIntentions assigned gate \"Terminal 4 Gate B99\" was not found at this airport; using a representative stand instead",
+        Assert.Contains("SayIntentions assigned \"Terminal 4 Gate B99\" was not found at this airport; using a representative stand instead",
             choice.Notes);
     }
 
@@ -1003,7 +1010,7 @@ public class BriefingStandPickerTests
 
         Assert.Same(unnamed, choice.Spot);
         Assert.Equal(StandChoiceSource.SayIntentions, choice.Source);
-        Assert.Contains("SayIntentions assigned Gate, which this scenery lists as Parking", choice.Notes);
+        Assert.Contains("SayIntentions assigned Gate, which names no stand; the stand nearest SayIntentions' position is Parking", choice.Notes);
     }
 
     [Fact]
@@ -1278,17 +1285,17 @@ public class BriefingStandPickerTests
 
     [Fact]
     public void No_flight_json_means_no_hint()
-        => Assert.Null(SayIntentionsArrivalGate.From(Ctx(false, "EGLL", "KJFK", "Gate 6"), "EGLL", "KJFK"));
+        => Assert.Null(SayIntentionsArrivalGate.From(Ctx(false, "EGLL", "KJFK", "Gate 6"), null, "EGLL", "KJFK"));
 
     [Fact]
     public void Null_context_means_no_hint()
-        => Assert.Null(SayIntentionsArrivalGate.From(null, "EGLL", "KJFK"));
+        => Assert.Null(SayIntentionsArrivalGate.From(null, null, "EGLL", "KJFK"));
 
     [Fact]
     public void Another_flight_s_gate_is_ignored()
     {
-        Assert.Null(SayIntentionsArrivalGate.From(Ctx(true, "EGLL", "KLAX", "Gate 6"), "EGLL", "KJFK"));
-        Assert.Null(SayIntentionsArrivalGate.From(Ctx(true, "LMML", "KJFK", "Gate 6"), "EGLL", "KJFK"));
+        Assert.Null(SayIntentionsArrivalGate.From(Ctx(true, "EGLL", "KLAX", "Gate 6"), null, "EGLL", "KJFK"));
+        Assert.Null(SayIntentionsArrivalGate.From(Ctx(true, "LMML", "KJFK", "Gate 6"), null, "EGLL", "KJFK"));
     }
 
     [Fact]
@@ -1296,7 +1303,7 @@ public class BriefingStandPickerTests
     {
         var ctx = Ctx(true, "egll", "kjfk ", "Terminal 1 Gate 6");
         ctx.AssignedGatePosition = new GeoPoint(40.64, -73.78);
-        var hint = SayIntentionsArrivalGate.From(ctx, "EGLL", "KJFK")!;
+        var hint = SayIntentionsArrivalGate.From(ctx, null, "EGLL", "KJFK")!;
 
         Assert.Equal("Terminal 1 Gate 6", hint.Label);
         Assert.Equal(40.64, hint.Position!.Value.Latitude);
@@ -1304,11 +1311,11 @@ public class BriefingStandPickerTests
 
     [Fact]
     public void Blank_gate_means_no_hint()
-        => Assert.Null(SayIntentionsArrivalGate.From(Ctx(true, "EGLL", "KJFK", " "), "EGLL", "KJFK"));
+        => Assert.Null(SayIntentionsArrivalGate.From(Ctx(true, "EGLL", "KJFK", " "), null, "EGLL", "KJFK"));
 
     [Fact]
     public void The_assigned_gate_label_is_trimmed()
-        => Assert.Equal("Gate 6", SayIntentionsArrivalGate.From(Ctx(true, "EGLL", "KJFK", "  Gate 6 \t"), "EGLL", "KJFK")!.Label);
+        => Assert.Equal("Gate 6", SayIntentionsArrivalGate.From(Ctx(true, "EGLL", "KJFK", "  Gate 6 \t"), null, "EGLL", "KJFK")!.Label);
 
     // ── SayIntentionsArrivalGate: the parking-service fallback ─────────────────────────────
 
@@ -1365,6 +1372,22 @@ public class BriefingStandPickerTests
     [Fact]
     public void Another_flight_s_parking_gate_is_ignored()
         => Assert.Null(SayIntentionsArrivalGate.From(Ctx(true, "KMEM", "KDFW", null), Parking("B 12"), "KMEM", "KATL"));
+
+    [Theory]
+    [InlineData(double.NaN, 1.0)] [InlineData(1.0, double.PositiveInfinity)] [InlineData(0.0, 0.0)] [InlineData(95.0, 1.0)]
+    public void A_parking_service_position_that_cannot_be_measured_is_no_position(double lat, double lon)
+    {
+        var hint = SayIntentionsArrivalGate.From(Ctx(true, "KMEM", "KATL", null), Parking("B3", lat, lon), "KMEM", "KATL")!;
+        Assert.Null(hint.Position);
+    }
+
+    [Fact]
+    public void A_flight_file_position_that_cannot_be_measured_is_no_position()
+    {
+        var ctx = Ctx(true, "KMEM", "KATL", "Gate B3");
+        ctx.AssignedGatePosition = new GeoPoint(double.NaN, -84.4);
+        Assert.Null(SayIntentionsArrivalGate.From(ctx, null, "KMEM", "KATL")!.Position);
+    }
 
     [Fact]
     public void The_status_overload_reads_the_file_and_the_parking_service()

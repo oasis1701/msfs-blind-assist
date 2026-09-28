@@ -258,7 +258,7 @@ public static class BriefingStandPicker
                 // used instead — never a second note calling the stand used SayIntentions' gate — with the
                 // distances that tell the two apart where this scenery calls them the same ("Gate 5", "Parking").
                 string? identity = ReferenceEquals(chosen, ordered[0])
-                    ? ListedAs(chosen, hint.Label, wanted)
+                    ? FoundByPosition(chosen, hint.Label, wanted)
                     : $"SayIntentions assigned {hint.Label}; the stand at its position, {IdentityLabel(ordered[0])} " +
                       $"({Away(ordered[0], p, unit)}), does not connect to the taxiway network, so {IdentityLabel(chosen)} " +
                       $"({Away(chosen, p, unit)}) is used";
@@ -315,11 +315,10 @@ public static class BriefingStandPicker
 
     /// <summary>
     /// "SayIntentions assigned Gate 99, which this scenery lists as B 6" — whenever this scenery lists the stand
-    /// under another name (an alias or a position match), so the pilot hears why the briefed stand is not called
-    /// what SayIntentions called it; null when the names agree. A label that names no stand at all ("Gate")
-    /// matches nothing by name, so a stand found for it was found by position alone and always gets the note —
-    /// even one whose own label names no stand either ("Parking"), which would otherwise compare as the same
-    /// empty name.
+    /// under another NAME (an alias match, since a name match compares the identity label itself), so the pilot
+    /// hears why the briefed stand is not called what SayIntentions called it; null when the names agree. Never
+    /// for a POSITION match — the scenery does not call that stand SayIntentions' label at all, it is merely the
+    /// nearest one to the published point, and that is <see cref="FoundByPosition"/>'s note, not this one.
     /// </summary>
     private static string? ListedAs(ParkingSpot stand, string label, string wanted)
     {
@@ -329,14 +328,25 @@ public static class BriefingStandPicker
             : null;
     }
 
+    /// <summary>The note for a stand found by SayIntentions' published POSITION alone — no stand answered to the name or
+    /// an alias — in Taxi Assist's import's own terms: the scenery does not have that gate, and this is the nearest
+    /// stand to where SayIntentions put it. Never "lists as", which says the scenery calls the stand by SayIntentions'
+    /// name: that is the alias step's note (<see cref="ListedAs"/>).</summary>
+    private static string FoundByPosition(ParkingSpot stand, string label, string wanted) => wanted.Length == 0
+        ? $"SayIntentions assigned {label}, which names no stand; the stand nearest SayIntentions' position is {IdentityLabel(stand)}"
+        : $"SayIntentions assigned {label}, which this scenery does not have; the stand nearest SayIntentions' position is {IdentityLabel(stand)}";
+
     /// <summary>"20 m away": how far the published position is from a stand, in the block's own distance words.</summary>
     private static string Away(ParkingSpot s, GeoPoint p, DistanceUnit unit) => $"{TaxiBriefingRenderer.FormatDistance(MetresTo(s, p), unit)} away";
 
     /// <summary>Whether a stand label already says what kind of stand it is ("Gate 5", "Spot 12", "Parking"), so
-    /// "gate" is not put in front of it ("SayIntentions assigned gate Gate 5").</summary>
+    /// "gate" is not put in front of it ("SayIntentions assigned gate Gate 5"). Anywhere in the label, not only
+    /// its start: SayIntentions' own labels read "Terminal 3 Gate J1", "Stand 204", "Ramp 5".</summary>
     internal static bool LabelNamesItsKind(string label) => KindWord.IsMatch(label);
 
-    private static readonly Regex KindWord = new(@"^\s*(?:gate|spot|parking)\b",
+    // A kind word anywhere in the label, glued to a number too ("Gate5"): SayIntentions' own labels read
+    // "Terminal 3 Gate J1". The words are NormalizeParkingName's keywords.
+    private static readonly Regex KindWord = new(@"\b(?:gate|stand|parking|spot|ramp|position)(?=\b|\d)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static bool SameName(string label, string wanted) =>
@@ -521,24 +531,27 @@ public static class SayIntentionsArrivalGate
         ctx != null && ctx.FlightJsonExists &&
         IcaoEquals(ctx.Origin, departureIcao) && IcaoEquals(ctx.Destination, arrivalIcao);
 
-    /// <summary>The flight file's gate only.</summary>
-    public static SayIntentionsGateHint? From(SayIntentionsFlightContext? ctx, string departureIcao, string arrivalIcao) =>
-        From(ctx, null, departureIcao, arrivalIcao);
-
     /// <summary>The flight file's gate, else the parking service's.</summary>
     public static SayIntentionsGateHint? From(SayIntentionsFlightContext? ctx, SayIntentionsParking? parking,
                                               string departureIcao, string arrivalIcao)
     {
         if (!IsThisFlight(ctx, departureIcao, arrivalIcao)) return null;
         if (!string.IsNullOrWhiteSpace(ctx.AssignedGate))
-            return new SayIntentionsGateHint(ctx.AssignedGate.Trim(), ctx.AssignedGatePosition);
+            return new SayIntentionsGateHint(ctx.AssignedGate.Trim(), Usable(ctx.AssignedGatePosition));
         if (parking == null || string.IsNullOrWhiteSpace(parking.Name)) return null;
-        // (0, 0) is what two absent numbers look like once read as zero — the flight-file reader refuses it too.
-        GeoPoint? position = parking.Latitude is double lat && parking.Longitude is double lon && (lat != 0 || lon != 0)
-            ? new GeoPoint(lat, lon)
+        GeoPoint? position = parking.Latitude is double lat && parking.Longitude is double lon
+            ? Usable(new GeoPoint(lat, lon))
             : null;
         return new SayIntentionsGateHint(parking.Name.Trim(), position, SayIntentionsGateSource.ParkingService);
     }
+
+    /// <summary>A published position the briefing can measure from: finite, on the globe and not (0, 0) — what two
+    /// absent numbers look like once read as zero. double.TryParse reads "NaN" and "Infinity", and a NaN pin passed every
+    /// distance test (NaN &gt; x is false) and printed "position is NaN km from this stand".</summary>
+    internal static GeoPoint? Usable(GeoPoint? p) =>
+        p is GeoPoint g && double.IsFinite(g.Latitude) && double.IsFinite(g.Longitude) &&
+        Math.Abs(g.Latitude) <= 90 && Math.Abs(g.Longitude) <= 180 && (g.Latitude != 0 || g.Longitude != 0)
+            ? g : null;
 
     /// <summary>What <c>SayIntentionsService.GetAssignedStatusAsync</c> returned: the flight file and, when the file had
     /// no gate, the parking service.</summary>
