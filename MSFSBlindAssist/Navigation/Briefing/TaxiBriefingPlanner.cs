@@ -601,10 +601,11 @@ public static partial class TaxiBriefingPlanner
     /// ACROSS the runway — snapped to it, it was briefed from the other side. A stand is where the aircraft is parked,
     /// so its own piece stays the answer however near the main network runs.
     /// <para>The graph has no runway edges, so taxiway pieces that meet only across a runway are separate components
-    /// (LFBP, VIJU, ENAT, UKHH, KPRC). Measured on the real fs2024 database (2026-09-28): 1,677 airports have two or more
-    /// pieces that each hold stands and reach a runway entrance, and 7,987 stands sit on such a piece off the largest
-    /// one — 6,967 of them with no node of the largest within 100 m, so each was briefed "does not connect" or replaced
-    /// by a representative stand. A piece that reaches neither end (KTUL G 19's island) still never is a leg's end.</para>
+    /// (LFBP, VIJU, ENAT, UKHH, KPRC). Measured on the real fs2024 database by the taxi-out's rule (2026-09-28): 1,677
+    /// airports have two or more pieces that each hold stands and reach a runway entrance, and 7,987 stands sit on such a
+    /// piece off the largest one — 6,967 of them with no node of the largest within 100 m, so each was briefed "does not
+    /// connect" or replaced by a representative stand, and 1,020 briefed from a node of the largest piece, the wrong side.
+    /// A piece that reaches neither end (KTUL G 19's island) still never is a leg's end.</para>
     /// <para>As a route START the node is never a bridge-only stand stub — the rule every route start follows
     /// (<see cref="TaxiGraph.IsBridgeOnlyStandStub"/>); as a DESTINATION it may be one, so a bridged stand stays
     /// reachable.</para>
