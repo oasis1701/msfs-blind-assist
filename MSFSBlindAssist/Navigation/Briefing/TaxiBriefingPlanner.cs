@@ -99,7 +99,7 @@ public static partial class TaxiBriefingPlanner
             // A route START from a SENSED position: on the leg's taxi network, and bridge-only stand stubs excluded, as
             // TaxiGuidanceManager.LoadRoute does, so the position is never snapped onto an island or a stub.
             var node = LegEndNode(g.Graph, own.Lat, own.Lon, OwnPositionMaxNodeDistanceMetres, network, asRouteStart: true, ReachesTheRunway,
-                                  standExemptionMaxMetres: OwnPositionStandMaxMetres);
+                                  standExemptionMaxMetres: OwnPositionStandMaxMetres, refuseNetworkAcrossARunway: true);
             if (node != null)
             {
                 startNode = node.NodeId;
@@ -604,7 +604,13 @@ public static partial class TaxiBriefingPlanner
     /// within <paramref name="standExemptionMaxMetres"/> of that node (<see cref="OwnPositionStandMaxMetres"/>: only
     /// there is it AT the stand). And never a node whose piece lies across a runway from the point
     /// (<see cref="PieceLiesAcrossARunway"/>): with no node of the largest component in reach that leaves null — no
-    /// start node — never a start across the runway (fix wave 3, Minor 3).
+    /// start node — never a start across the runway (fix wave 3, Minor 3). With <paramref name="refuseNetworkAcrossARunway"/>
+    /// (the aircraft's own position) the largest component's node is judged the same way: across a runway it is never
+    /// the answer, and the other piece's nearer node on the point's side is taken instead, else null (fix wave 4, I-1:
+    /// on a small piece's taxiway beside a runway, a main-network node within reach ACROSS it was the start). A stand's
+    /// lookup leaves it unjudged, so the stand figures below are unchanged. Residual: when the nearest node of all is the
+    /// largest component's, across the runway, the point's own small-piece node is not searched for — null, and the
+    /// taxi-out falls back to a representative stand (the safe direction).
     /// <para>The graph has no runway edges, so taxiway pieces that meet only across a runway are separate components
     /// (LFBP, VIJU, ENAT, UKHH, KPRC). Measured on the real fs2024 database (2026-09-28): by the lineup search alone 1,677
     /// airports have two or more pieces that each hold stands and reach a runway entrance, and 7,987 stands at 1,857
@@ -618,7 +624,8 @@ public static partial class TaxiBriefingPlanner
     /// </summary>
     internal static TaxiNode? LegEndNode(TaxiGraph graph, double lat, double lon, double maxMetres, int network,
                                          bool asRouteStart, Func<TaxiNode, bool>? reachesOtherEnd,
-                                         double standExemptionMaxMetres = double.PositiveInfinity)
+                                         double standExemptionMaxMetres = double.PositiveInfinity,
+                                         bool refuseNetworkAcrossARunway = false)
     {
         double DistanceTo(TaxiNode n) => TaxiGraph.FastDistanceMeters(lat, lon, n.Latitude, n.Longitude);
         bool InReach(TaxiNode? n) => n != null && DistanceTo(n) <= maxMetres;
@@ -626,10 +633,15 @@ public static partial class TaxiBriefingPlanner
         bool networkInReach = InReach(onNetwork);
         if (reachesOtherEnd != null)
         {
+            // For the aircraft's own position the largest component's node is judged too (fix wave 4, I-1): across a
+            // runway it is no start, and the small piece's node on this side is taken instead — or none at all.
+            bool networkUsable = networkInReach &&
+                                 !(refuseNetworkAcrossARunway && PieceLiesAcrossARunway(graph, lat, lon, onNetwork!));
             var nearest = graph.FindNearestNode(lat, lon, excludeBridgeOnlyStandStubs: asRouteStart);
             if (InReach(nearest) && nearest!.ComponentId != network &&
-                (!networkInReach || (IsStandOrLeadInNode(graph, nearest) && DistanceTo(nearest) <= standExemptionMaxMetres)) &&
+                (!networkUsable || (IsStandOrLeadInNode(graph, nearest) && DistanceTo(nearest) <= standExemptionMaxMetres)) &&
                 reachesOtherEnd(nearest) && !PieceLiesAcrossARunway(graph, lat, lon, nearest)) return nearest;
+            return networkUsable ? onNetwork : null;
         }
         return networkInReach ? onNetwork : null;
     }
