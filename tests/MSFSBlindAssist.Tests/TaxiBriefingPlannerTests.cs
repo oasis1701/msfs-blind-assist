@@ -948,6 +948,96 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void A_stand_whose_node_is_a_downfield_entrance_still_hears_that_a_full_length_departure_means_backtracking()
+    {
+        // Re-review N-4: the route with no taxiways returned before the backtrack note was written.
+        var bundle = AirportWithEntranceOnlyDownTheRunway(standAtTheEntrance: true);
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var standNode = TaxiBriefingPlanner.StandNode(bundle.Graph, bundle.Spots.Single(s => s.Name == "R"), network, asRouteStart: true)!;
+        var entrance = bundle.Graph.FindNearestNode(Lat(0), Lon(1500))!;
+        Assert.Equal(entrance.NodeId, standNode.NodeId);                                 // precondition: the stand's node is F's runway node
+
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, airline: "RRR", originRunway: "10"), bundle);
+
+        Assert.Null(leg.Unavailable);
+        Assert.StartsWith("representative stand R 1", leg.EndpointDescription);
+        Assert.Empty(leg.Taxiways);
+        Assert.Contains(leg.Notes, n => n.Contains("the route enters it, ", StringComparison.Ordinal) &&
+                                        n.EndsWith("so a full-length departure means backtracking on the runway", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Beside_a_runway_on_the_main_network_the_taxi_out_never_starts_from_the_piece_across_it()
+    {
+        // Re-review N-5: on PN, 30 m north of 09's centreline, the nearest node is P's runway node on the south piece —
+        // which reaches the runway — while PN's own node is 100 m away. The aircraft is on the main network.
+        var bundle = AirportWithSouthPieceAndParallelBesideTheRunway();
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var nearest = bundle.Graph.FindNearestNode(Lat(30), Lon(2200), excludeBridgeOnlyStandStubs: true)!;
+        Assert.NotEqual(network, nearest.ComponentId);                                   // precondition: P's node, across the runway
+        var onNetwork = bundle.Graph.FindNearestNode(Lat(30), Lon(2200), requiredComponentId: network)!;
+        Assert.True(TaxiGraph.FastDistanceMeters(Lat(30), Lon(2200), onNetwork.Latitude, onNetwork.Longitude) <= 150);
+
+        var own = new OwnPosition(Lat(30), Lon(2200), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
+
+        Assert.Null(leg.Unavailable);
+        Assert.StartsWith("current position", leg.EndpointDescription);
+        Assert.Equal("PN", leg.Taxiways[0]);
+        Assert.DoesNotContain("P", leg.Taxiways);
+    }
+
+    [Fact]
+    public void Parked_at_a_stand_on_the_piece_across_the_runway_the_taxi_out_starts_from_that_stand()
+    {
+        // The other side of N-5: the nearest node is a stand's own node on the south piece, and a main-network node is
+        // within reach too — a stand is where the aircraft is, so its piece still wins.
+        var bundle = AirportWithSouthPieceAndParallelBesideTheRunway(standBesideTheRunway: true);
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var nearest = bundle.Graph.FindNearestNode(Lat(-30), Lon(2230), excludeBridgeOnlyStandStubs: true)!;
+        Assert.NotEqual(network, nearest.ComponentId);                                   // precondition: M 1's node
+        Assert.Equal(TaxiNodeType.Parking, nearest.Type);
+        var onNetwork = bundle.Graph.FindNearestNode(Lat(-30), Lon(2230), requiredComponentId: network)!;
+        Assert.True(TaxiGraph.FastDistanceMeters(Lat(-30), Lon(2230), onNetwork.Latitude, onNetwork.Longitude) <= 150);
+
+        var own = new OwnPosition(Lat(-30), Lon(2230), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
+
+        Assert.Null(leg.Unavailable);
+        Assert.StartsWith("current position", leg.EndpointDescription);
+        Assert.Contains("P", leg.Taxiways);
+        Assert.DoesNotContain("PN", leg.Taxiways);
+    }
+
+    [Fact]
+    public void A_stand_whose_only_exit_is_not_comfortable_is_briefed_by_that_exit_not_by_one_with_no_route()
+    {
+        // Re-review N-6: the comfortable exits (C, D) lead north and have no route to K 1; the picker fell back to the
+        // first of them, and the leg said "no taxi route connects exit C to K 1". P, the one exit that routes, is briefed
+        // — flagged, with the reason the pilot needs.
+        var bundle = AirportWithEarlySouthPiece();
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
+        var exits = bundle.Graph.GetLandingExits(rwy);
+        double aim = BriefingExitPicker.AimPointFeet(rwy);
+        var p = exits.Single(e => e.TaxiwayName == "P");
+        Assert.False(BriefingExitPicker.IsComfortablyReachable(p, B738.TouchdownSpeedKts, aim));     // precondition
+        Assert.Contains(exits, e => BriefingExitPicker.IsComfortablyReachable(e, B738.TouchdownSpeedKts, aim));
+
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, airline: "SWA"), bundle);
+
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("K", leg.Stand!.Spot.Name);
+        Assert.Equal("P", leg.Exit!.Exit.TaxiwayName);
+        Assert.False(leg.Exit.ComfortablyReachable);
+        Assert.Contains("P", leg.Taxiways);
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738,
+            TaxiLegBriefing.UnavailableLeg("TEST", "09", BriefingTier.Navdata, "x"), leg), DistanceUnit.Feet);
+        string kt = B738.TouchdownSpeedKts.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
+        Assert.Contains($" No exit comfortably reachable at {kt} kt has a mapped route to the stand: expect to backtrack " +
+                        "on the runway to the briefed exit, the last one with a mapped route.", text);
+    }
+
+    [Fact]
     public void An_exit_that_leads_straight_onto_the_stand_is_a_route_with_no_taxiways()
     {
         var bundle = AirportWithExitStraightOntoStand();

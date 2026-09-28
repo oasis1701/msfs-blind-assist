@@ -223,6 +223,10 @@ public static class TaxiBriefingRenderer
     private static string UnreachableSentence(ExitChoice choice, string kt, bool typeUnknown, bool smallAircraft)
     {
         string ktPhrase = typeUnknown ? $"an assumed {kt} kt (the aircraft type is not recognised)" : $"{kt} kt";
+        // Reachable exits exist, but none routes to the stand (re-review N-6): say so, never that none is reachable.
+        if (choice.ReachableExitsHaveNoRoute)
+            return $" No exit comfortably reachable at {ktPhrase} has a mapped route to the stand: expect to backtrack on the " +
+                   "runway to the briefed exit, the last one with a mapped route.";
         var setAside = choice.ReachableExitsSetAside;
         if (setAside.Count == 0)
             return choice.RunwayLength switch

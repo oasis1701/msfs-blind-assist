@@ -27,6 +27,11 @@ public sealed record ExitChoice(LandingExit Exit, LandingExit? NextExit, bool Co
     /// the block must not say so.</summary>
     public IReadOnlyList<LandingExit> ReachableExitsSetAside { get; init; } = Array.Empty<LandingExit>();
 
+    /// <summary>Comfortably reachable exits exist, but none has a mapped route to the stand: the briefed exit is the last
+    /// one that does, and cannot be made comfortably (re-review N-6: a stand on a piece of the taxi network whose only
+    /// exit comes early). The block then says that, never that no exit is comfortably reachable.</summary>
+    public bool ReachableExitsHaveNoRoute { get; init; }
+
     /// <summary>Whether the runway is short, long enough to stop on and backtrack, or of unknown length
     /// (<see cref="TaxiBriefingPlanner.RunwayLongEnoughToStop"/>). Meaningful only when
     /// <see cref="ComfortablyReachable"/> is false.</summary>
@@ -43,8 +48,10 @@ public sealed record ExitChoice(LandingExit Exit, LandingExit? NextExit, bool Co
 /// runway just landed on, else the first that <see cref="ExitRoute.CrossesLandingRunway"/> — an exit with NO
 /// route at all (<see cref="ExitRoute.None"/>) is never preferred over one with a route, in or out of the
 /// window: with nothing routable inside it, any routable exit anywhere reachable is briefed ahead of a dead
-/// end inside the window. With nothing reachable the furthest candidate that routes is briefed and flagged,
-/// or the furthest of all when no stand is known.
+/// end inside the window — and with no reachable exit routable at all, the furthest candidate that routes is
+/// briefed and flagged (<see cref="ExitChoice.ReachableExitsHaveNoRoute"/>) rather than a reachable dead end.
+/// With nothing reachable the furthest candidate that routes is briefed and flagged, or the furthest of all when
+/// no stand is known.
 /// <para>The exit to take if that one is missed is the next candidate on the SAME side at least
 /// <see cref="NextExitMinSeparationFeet"/> further along: a pilot who misses a left turn-off looks for the next
 /// one on the left, and one a few feet on — or across the runway at the same junction (KPIT 32: 1 ft) — is
@@ -106,14 +113,22 @@ public static class BriefingExitPicker
             .Where(e => e.DistanceFromThresholdFeet - first <= PreferenceWindowFeet)
             .OrderBy(e => IsHighSpeed(e) ? 0 : 1)
             .ToList();
-        LandingExit chosen = route == null ? preferred[0]
+        LandingExit? chosen = route == null ? preferred[0]
             // Within the window the gate side first (a route clear of the runway just landed on), then any route; an exit
             // with NO route is never briefed while one with a route exists anywhere reachable — a dead end made the whole
             // leg unavailable with a routable exit a few hundred feet on.
             : preferred.FirstOrDefault(e => route(e) == ExitRoute.Clear)
               ?? preferred.FirstOrDefault(e => route(e) == ExitRoute.CrossesLandingRunway)
-              ?? reachable.FirstOrDefault(e => route(e) != ExitRoute.None)
-              ?? preferred[0];
+              ?? reachable.FirstOrDefault(e => route(e) != ExitRoute.None);
+        if (chosen == null)
+        {
+            // No reachable exit routes to the stand, but one the aircraft cannot make comfortably does (re-review N-6):
+            // that one, flagged, as with nothing reachable — never a reachable dead end ("no taxi route connects").
+            var routed = candidates.LastOrDefault(e => route!(e) != ExitRoute.None);
+            if (routed != null)
+                return new ExitChoice(routed, NextAfter(candidates, routed), ComfortablyReachable: false) { ReachableExitsHaveNoRoute = true };
+            chosen = preferred[0];
+        }
 
         return new ExitChoice(chosen, NextAfter(candidates, chosen), ComfortablyReachable: true);
     }

@@ -280,6 +280,22 @@ internal static class TaxiBriefingFixture
             .Concat(standBesideTheRunway ? new[] { Spot("M", 1, 10, 2230, -30, 150) } : Array.Empty<ParkingSpot>()));
 
     /// <summary>
+    /// TEST plus a second piece of taxiway SOUTH of runway 09/27, meeting the rest only across the runway, whose one exit
+    /// comes early:
+    ///   east 300:   taxiway P from 09's centreline (HS) south to north -100, then east to 600 E — 984 ft in landing 09,
+    ///               behind a 737's touchdown, so never comfortably reachable.
+    ///   north -200: stand K 1 (600 E, gate, SWA, r=150 ft), its lead-in running north to P's east end.
+    /// Landing 09 the comfortable exits, C and D, lead north and have no route to K 1; P is the only one that does.
+    /// </summary>
+    public static GraphBundle AirportWithEarlySouthPiece() => AirportWith(
+        new[]
+        {
+            Path("P", 300, 0, 300, -100, startType: "HS"), Path("P", 300, -100, 600, -100),
+            LeadIn(600, -100, 600, -200),
+        },
+        new[] { Spot("K", 1, 10, 600, -200, 150, "SWA") });
+
+    /// <summary>
     /// TEST plus an island beside 27's departure end that meets no runway (a run-up pad and its stand): taxiway RP (a
     /// NAMED stub, so the bridging pass leaves it alone) from (2990 E, north -70) south to north -150, and stand K 2
     /// (2990 E, north -210, gate, r=150 ft) on its lead-in. RP's north end — 70 m off 09/27's centreline, beyond its
@@ -414,9 +430,11 @@ internal static class TaxiBriefingFixture
     ///              <paramref name="entranceTouchesRunway"/> false, from north 100, touching no runway.
     ///   north 300: taxiway G from F's north end west to 0 E.
     ///   north 360: stand F 1 (0 E, gate, r=150 ft), its lead-in running south to G's west end.
-    /// The node nearest 10's lineup point is G's west end, 300 m off the centreline.
+    /// The node nearest 10's lineup point is G's west end, 300 m off the centreline. With
+    /// <paramref name="standAtTheEntrance"/> stand R 1 (1500 E, north 20, gate, RRR, r=150 ft) sits beside F's runway node,
+    /// which is its nearest node — the stand's node IS the entrance, 1,490 m down from the lineup point.
     /// </summary>
-    public static GraphBundle AirportWithEntranceOnlyDownTheRunway(bool entranceTouchesRunway = true)
+    public static GraphBundle AirportWithEntranceOnlyDownTheRunway(bool entranceTouchesRunway = true, bool standAtTheEntrance = false)
     {
         var runways = new List<Runway> { Runway("10", 0, 0, 2000, 0, 90), Runway("28", 2000, 0, 0, 0, 270) };
         var starts = new List<StartPosition> { Start("10", 10, 0, 90), Start("28", 1990, 0, 270) };
@@ -427,6 +445,7 @@ internal static class TaxiBriefingFixture
             LeadIn(0, 300, 0, 360),
         };
         var spots = new List<ParkingSpot> { Spot("F", 1, 10, 0, 360, 150) };
+        if (standAtTheEntrance) spots.Add(Spot("R", 1, 10, 1500, 20, 150, "RRR"));
         var graph = TaxiGraph.Build(paths, spots, starts, runways);
         return new GraphBundle(graph, BriefingTier.Navdata, runways, starts, spots, null, AirportRef());
     }

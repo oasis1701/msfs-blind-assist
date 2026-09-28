@@ -138,6 +138,18 @@ public static partial class TaxiBriefingPlanner
         if (route == null || (route.Segments.Count == 0 && startNode != entry.NodeId))
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no taxi route connects {endpoint} to runway {rwy.RunwayID} in this scenery", stand, endpoint, notes);
+
+        // The route enters the runway well down from where a full-length departure begins: say so, or the block reads as
+        // a full-length departure from the first taxiway to the threshold. Written before the route with no taxiways
+        // returns (re-review N-4): a stand whose node IS a downfield entrance backtracks too.
+        double entryAlong = frame.Along(entry.Latitude, entry.Longitude) - frame.Along(target.LineupLat, target.LineupLon);
+        if (entryAlong > BacktrackNoteMinMetres)
+        {
+            string entering = LastNamedTaxiway(route) is { Length: > 0 } via ? $"the route enters it on taxiway {via}" : "the route enters it";
+            notes.Add($"no taxiway meets runway {rwy.RunwayID} where a full-length departure begins in this scenery: {entering}, " +
+                      $"{TaxiBriefingRenderer.FormatAlongRunway(entryAlong / 0.3048, r.Unit)} along, so a full-length departure " +
+                      "means backtracking on the runway");
+        }
         // A stand whose node IS the runway entrance leads straight onto the runway: a route with no taxiways, not "no
         // route" — the taxi-in's rule for an exit leading straight onto its stand. (The aircraft standing there
         // returned "already at the entrance" above.) Only the hold before entering is on it.
@@ -161,17 +173,6 @@ public static partial class TaxiBriefingPlanner
         // found for this runway is a CROSSING of it on the way to the threshold). The hold before entering is
         // always real and always the last leg: add it unconditionally.
         holds.Add(new HoldShortNote(rwy.RunwayID, LastNamedTaxiway(route), BeforeEntering: true));
-
-        // The route enters the runway well down from where a full-length departure begins: say so, or the block reads as
-        // a full-length departure from the first taxiway to the threshold.
-        double entryAlong = frame.Along(entry.Latitude, entry.Longitude) - frame.Along(target.LineupLat, target.LineupLon);
-        if (entryAlong > BacktrackNoteMinMetres)
-        {
-            string entering = LastNamedTaxiway(route) is { Length: > 0 } via ? $"the route enters it on taxiway {via}" : "the route enters it";
-            notes.Add($"no taxiway meets runway {rwy.RunwayID} where a full-length departure begins in this scenery: {entering}, " +
-                      $"{TaxiBriefingRenderer.FormatAlongRunway(entryAlong / 0.3048, r.Unit)} along, so a full-length departure " +
-                      "means backtracking on the runway");
-        }
 
         var taxiways = RouteTaxiwaySequence.DistinctConsecutive(route.Segments);
         return new TaxiLegBriefing
@@ -593,8 +594,12 @@ public static partial class TaxiBriefingPlanner
     /// <summary>
     /// The node one end of a leg — a stand or the aircraft — is at: the nearest node within <paramref name="maxMetres"/>
     /// when its piece of the taxi network also holds the leg's OTHER end (<paramref name="reachesOtherEnd"/>: the
-    /// taxi-out's runway entrance, a briefable exit's route start on the taxi-in), otherwise the nearest node of the
-    /// largest component (<paramref name="network"/>) within that reach, or null.
+    /// taxi-out's runway entrance, a briefable exit's route start on the taxi-in) AND either no node of the largest
+    /// component (<paramref name="network"/>) is within that reach or the nearer node is a stand's or a stand lead-in's;
+    /// otherwise the nearest node of the largest component within that reach, or null. The second condition (re-review
+    /// N-5): an aircraft on the main network beside a narrow runway, between two nodes, can be nearer a node of the piece
+    /// ACROSS the runway — snapped to it, it was briefed from the other side. A stand is where the aircraft is parked,
+    /// so its own piece stays the answer however near the main network runs.
     /// <para>The graph has no runway edges, so taxiway pieces that meet only across a runway are separate components
     /// (LFBP, VIJU, ENAT, UKHH, KPRC). Measured on the real fs2024 database (2026-09-28): 1,677 airports have two or more
     /// pieces that each hold stands and reach a runway entrance, and 7,987 stands sit on such a piece off the largest
@@ -608,14 +613,21 @@ public static partial class TaxiBriefingPlanner
                                          bool asRouteStart, Func<TaxiNode, bool>? reachesOtherEnd)
     {
         bool InReach(TaxiNode? n) => n != null && TaxiGraph.FastDistanceMeters(lat, lon, n.Latitude, n.Longitude) <= maxMetres;
+        var onNetwork = graph.FindNearestNode(lat, lon, requiredComponentId: network, excludeBridgeOnlyStandStubs: asRouteStart);
+        bool networkInReach = InReach(onNetwork);
         if (reachesOtherEnd != null)
         {
             var nearest = graph.FindNearestNode(lat, lon, excludeBridgeOnlyStandStubs: asRouteStart);
-            if (InReach(nearest) && nearest!.ComponentId != network && reachesOtherEnd(nearest)) return nearest;
+            if (InReach(nearest) && nearest!.ComponentId != network &&
+                (!networkInReach || IsStandOrLeadInNode(graph, nearest)) && reachesOtherEnd(nearest)) return nearest;
         }
-        var onNetwork = graph.FindNearestNode(lat, lon, requiredComponentId: network, excludeBridgeOnlyStandStubs: asRouteStart);
-        return InReach(onNetwork) ? onNetwork : null;
+        return networkInReach ? onNetwork : null;
     }
+
+    /// <summary>A stand's own node (<see cref="IsStandNode"/>) or a node on a stand lead-in (navdata path type "P").</summary>
+    private static bool IsStandOrLeadInNode(TaxiGraph graph, TaxiNode node) =>
+        IsStandNode(node) ||
+        (graph.Adjacency.TryGetValue(node.NodeId, out var edges) && edges.Any(TaxiGraph.IsParkingLeadIn));
 
     /// <summary>
     /// The node a stand is left from or reached at: <see cref="LegEndNode"/> within <see cref="StandNodeMaxDistanceMetres"/>,

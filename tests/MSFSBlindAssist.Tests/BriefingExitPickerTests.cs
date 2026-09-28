@@ -156,6 +156,18 @@ public class BriefingExitPickerTests
     }
 
     [Fact]
+    public void With_no_reachable_exit_routable_the_furthest_exit_that_routes_is_briefed_and_flagged()
+    {
+        // Re-review N-6: A and B are comfortable but lead away from the stand; P, too early to make comfortably, routes.
+        var p = Exit("P", 900); var a = Exit("A", 5100); var b = Exit("B", 5500);
+        var choice = BriefingExitPicker.Pick(new[] { p, a, b }, 130, Routes((p, ExitRoute.Clear)))!;
+        Assert.Same(p, choice.Exit);
+        Assert.False(choice.ComfortablyReachable);
+        Assert.True(choice.ReachableExitsHaveNoRoute);
+        Assert.Same(a, choice.NextExit);
+    }
+
+    [Fact]
     public void With_nothing_comfortable_the_furthest_exit_that_routes_is_briefed()
     {
         var p = Exit("P", 500); var q = Exit("Q", 900);
