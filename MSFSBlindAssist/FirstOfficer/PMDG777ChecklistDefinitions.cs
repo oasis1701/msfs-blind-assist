@@ -551,7 +551,7 @@ public static class PMDG777ChecklistDefinitions
         {
             // Flap target depends on SimBrief perf data — no fixed action value
             Auto("BTKOF_FLAPS", "BEFORE_TKOF_CL", "Flaps: Set for takeoff",
-                "FCTL_Flaps_Lever", v => v >= 1 && v <= 3),
+                "FCTL_Flaps_Lever", v => v >= 1 && v <= 4),   // 1, 5, 15 or 20 (detents 1-4)
             Manual("BTKOF_V_SPEEDS", "BEFORE_TKOF_CL", "V speeds: Checked"),
             Manual("BTKOF_ALT", "BEFORE_TKOF_CL", "Altitude: Set initial climb"),
         }
@@ -590,8 +590,10 @@ public static class PMDG777ChecklistDefinitions
         Id = "AFTER_TKOF_CL", Name = "After Takeoff Checklist",
         Items = new()
         {
+            // Gear CONFIRMED up: lever UP and all three legs retracted (Pmdg777GearConfirmation,
+            // stock GEAR x POSITION SimVars — the 777 SDK has no gear lights). NaN until known.
             Auto("ATKOF_GEAR", "AFTER_TKOF_CL", "Landing Gear: UP",
-                "GEAR_Lever", v => v < 0.5,
+                Pmdg777GearConfirmation.UpField, v => v > 0.5,
                 action: null),
             Auto("ATKOF_FLAPS", "AFTER_TKOF_CL", "Flaps: UP",
                 "FCTL_Flaps_Lever", v => v < 0.5,
@@ -681,8 +683,10 @@ public static class PMDG777ChecklistDefinitions
             Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
                 "FCTL_Speedbrake_Lever", Pmdg777SpeedbrakeLever.IsArmed,
                 action: (e, s) => { if (!s.IsSpeedbrakeDeployed()) e.SetSpeedbrakeArmed(); }),
+            // Gear CONFIRMED down: lever DOWN and all three legs fully extended
+            // (Pmdg777GearConfirmation). NaN until known.
             Auto("LDG_GEAR", "LANDING_CL", "Landing Gear: DOWN",
-                "GEAR_Lever", v => Math.Abs(v - 1) < 0.1,
+                Pmdg777GearConfirmation.DownField, v => v > 0.5,
                 action: null),
             // Landing flap target depends on approach — no fixed action value
             Auto("LDG_FLAPS", "LANDING_CL", "Flaps: Set for landing",

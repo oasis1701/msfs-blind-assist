@@ -324,7 +324,7 @@ public static class FenixFlowDefinitions
     private static Flow BuildAfterTakeoff() => new()
     {
         Id = "AFTER_TAKEOFF", Name = "After Takeoff",
-        Description = "Spoilers disarm, packs on, turn-off lights off. Gear and autopilot are handled by the auto-managers; 10,000 ft lights and transition-altitude STD by the phase monitor.",
+        Description = "Spoilers disarm, packs on, turn-off lights off. Gear and autopilot are handled by the auto-managers; 10,000 ft lights and transition-altitude STD by the phase monitor. Ends by confirming the gear is up (lights out).",
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF" },
         Steps = new()
         {
@@ -335,6 +335,18 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("S_OH_PNEUMATIC_PACK_1") && s.IsOn("S_OH_PNEUMATIC_PACK_2")), "AT_PACKS"),
             Done(Skip(SW("AT_TURNOFF_OFF", "Runway turn-off lights: OFF", "S_OH_EXT_LT_RWY_TURNOFF", 0),
                 s => s.IsPosition("S_OH_EXT_LT_RWY_TURNOFF", 0)), "AT_TURNOFF_OFF"),
+            // Read-only gear-up confirmation — the gear lever itself is retracted by the
+            // UniversalAutomationService's auto-gear-up (see this flow's own Description),
+            // not by this flow. Confirms the gear the way a crew does, "gear up, lights
+            // out" (FenixGearConfirmation: the lever plus all seven LDG GEAR indicator
+            // lights, never the lever alone — owner decision 2026-09-22), and completes the
+            // After Takeoff Checklist's "Landing gear: UP". LAST, so gear still retracting
+            // does not hold up the steps above; waits up to 20 s. If the gear is not
+            // confirmed up the step is announced as skipped and FlowManager keeps ATC_GEAR
+            // out of MarkGroupComplete's latch, so the line keeps mirroring the real gear
+            // instead of reading complete over gear that is still down.
+            Done(Skip(WaitForField("AT_GEAR_UP_CHECK", "Landing gear: UP", FenixGearConfirmation.UpField, v => v > 0.5, 20),
+                    s => s.GetValue(FenixGearConfirmation.UpField) > 0.5), "ATC_GEAR"),
         }
     };
 

@@ -174,6 +174,17 @@ public partial class MainForm
         announcer.Announce(version);
     }
 
+    /// <summary>When AircraftLoaded last fired (Environment.TickCount64), or null if it never has.</summary>
+    private long? _lastAircraftLoadedTick;
+
+    /// <summary>An Aircraft-menu switch within this long of AircraftLoaded is treated as made during the
+    /// load: the new definition's FCU callouts settle until the aircraft publishes. A judgement value,
+    /// not a measurement — there is no captured timing for how long a manual switch can trail a load.
+    /// The cost of picking it too wide: a switch made AFTER the aircraft has already published, but
+    /// still inside the window, gets a settle it does not need and absorbs the pilot's own knob turns
+    /// until the settle's SettleMaxDeliveries ceiling releases it.</summary>
+    private const long AircraftLoadSettleWindowMs = 60_000;
+
     /// <summary>
     /// A flight or aircraft was loaded on a live connection. The definition's baseline-first
     /// announcers re-seed from the new situation rather than narrate it — the second job the
@@ -188,7 +199,51 @@ public partial class MainForm
             BeginInvoke(new Action(() => OnAircraftLoaded(sender, file)));
             return;
         }
+        _lastAircraftLoadedTick = Environment.TickCount64;
         currentAircraft?.OnSimContextReset();
+        ScheduleCurrentAirportWarmUp();
+    }
+
+    /// <summary>How long after AircraftLoaded the aircraft's position is read for the warm-up: the
+    /// event fires as the aircraft file loads, before the flight's own position has settled.</summary>
+    private const int WarmUpAfterLoadMs = 10_000;
+    private System.Windows.Forms.Timer? _warmUpAfterLoadTimer;
+
+    /// <summary>Warms the airport the aircraft is at once a flight or aircraft load has settled; a
+    /// second load inside the wait restarts it.</summary>
+    private void ScheduleCurrentAirportWarmUp()
+    {
+        _warmUpAfterLoadTimer?.Stop();
+        _warmUpAfterLoadTimer?.Dispose();
+        _warmUpAfterLoadTimer = new System.Windows.Forms.Timer { Interval = WarmUpAfterLoadMs };
+        _warmUpAfterLoadTimer.Tick += (_, _) =>
+        {
+            _warmUpAfterLoadTimer?.Stop();
+            WarmCurrentAirport();
+        };
+        _warmUpAfterLoadTimer.Start();
+    }
+
+    /// <summary>
+    /// Asks the simulator where the aircraft is and, on the ground, readies that airport
+    /// (<see cref="MSFSBlindAssist.Services.AirportWarmUp.AtCurrentAirport"/>) — so the taxiway
+    /// names, OSM buildings and scenery are in hand before the taxi form, Where Am I or Look Around
+    /// asks. The position callback lands on the UI thread.
+    /// </summary>
+    private void WarmCurrentAirport()
+    {
+        var provider = airportDataProvider;
+        if (provider == null || _airportWarmUp == null || !simConnectManager.IsConnected) return;
+        simConnectManager.RequestAircraftPositionAsync(p =>
+        {
+            try
+            {
+                bool onGround = p.SimOnGround >= 0.5;
+                string? icao = onGround ? MSFSBlindAssist.Services.CurrentAirport.Resolve(provider, p.Latitude, p.Longitude) : null;
+                _airportWarmUp?.AtCurrentAirport(icao, onGround);
+            }
+            catch (Exception ex) { Log.Warn("Surroundings", $"current-airport warm-up failed: {ex.Message}"); }
+        });
     }
 
     /// <summary>
@@ -204,6 +259,7 @@ public partial class MainForm
             return;
         }
         currentAircraft?.OnSimContextReset();
+        currentAircraft?.OnVariableCacheCleared();
     }
 
     private void OnConnectionStatusChanged(object? sender, string status)
@@ -274,6 +330,9 @@ public partial class MainForm
             // Request all current values when connected
             RequestAllCurrentValues();
 
+            // The airport the aircraft is at, readied now rather than when first asked about.
+            WarmCurrentAirport();
+
             // Start a grace period before enabling continuous variable announcements
             // This prevents initial ECAM messages and other variables from being announced
             // when connecting to a cold and dark aircraft. Also mute the announcer's
@@ -317,6 +376,7 @@ public partial class MainForm
             _routeAdvisoryProximity.Reset();
             _emptyRouteFeedTicks = 0;
             _turnaroundDetector.Reset();
+            surroundingsMonitor?.Reset();
             // The aircraft definition's OWN baselines. MainForm's trackers above are reset for
             // exactly this reason; the definition object also survives a reconnect, so its
             // baseline-first announcers need the same treatment (A380 altitude mode, both
@@ -356,6 +416,9 @@ public partial class MainForm
             // bypass the debounce.
             _liftoffHandoffTimer?.Stop();
             _liftoffHandoffConfirmToken++;
+            // The same for a pending go-around check (LandingExitGoAround).
+            _goAroundTimer?.Stop();
+            _goAroundConfirmToken++;
 
             // The flare assist's SIM_FRAME request died with the connection: silence
             // any tone still sounding on its last frame, and clear the latched
@@ -750,9 +813,19 @@ public partial class MainForm
         // already-in-flight confirm callback.
         _liftoffHandoffTimer?.Stop();
         _liftoffHandoffConfirmToken++;
+        // The same for a pending go-around check (LandingExitGoAround).
+        _goAroundTimer?.Stop();
+        _goAroundConfirmToken++;
 
         // Update the aircraft instance
         currentAircraft = newAircraft;
+
+        // A profile picked while a flight is still loading (AircraftLoaded fired, the new aircraft has not
+        // published yet) would take the pre-publish values as its FCU callout baselines and then speak the
+        // published ones as knob turns. Settle the new definition until the aircraft publishes.
+        if (_lastAircraftLoadedTick is long loadedTick
+            && Environment.TickCount64 - loadedTick < AircraftLoadSettleWindowMs)
+            (newAircraft as BaseAircraftDefinition)?.BeginFcuValueSettle();
 
         // The MD-11's composed-state hook reads the SimConnect cache through the handle Attach
         // captures. Without this the first panel opens before any control has been pressed and
@@ -809,6 +882,7 @@ public partial class MainForm
         _routeAdvisoryProximity.Reset();
         _emptyRouteFeedTicks = 0;
         _turnaroundDetector.Reset();
+        surroundingsMonitor?.Reset();
 
         // Re-register variables and restart continuous monitoring for new aircraft
         if (simConnectManager.IsConnected)
@@ -1336,6 +1410,31 @@ public partial class MainForm
             taxiAssistForm = null;
         }
 
+        // Every cached AirportFeatureCatalog was built from the OLD provider's navdata/GSX
+        // reads; a database switch changes what those reads return but moves neither the
+        // gate-list token nor anything else SurroundingsCatalogCache's staleness check
+        // watches, so without this an Alt+L after a switch kept describing the previous
+        // database's stands and buildings for the rest of the session.
+        surroundingsCache.Clear();
+
+        // And the passing-callout monitor, which holds the airport it resolved and what it has
+        // already announced there — both read off the provider this switch replaced.
+        surroundingsMonitor?.Reset();
+
+        // And the stored OSM buildings with it: a radius-sourced result is kept only inside the
+        // navdata airport box, which this switch has just changed.
+        onlineFeatures?.Clear();
+
+        // And the ad-hoc Where-Am-I graph, with the runway-shape memo beside it. Both were built
+        // from the provider this switch replaced, and the same airport can carry different runway
+        // geometry and different stand names in the two databases. The memo answers the
+        // passing-callout monitor's "am I on a runway?" and is deliberately built to OUTLIVE the
+        // taxiway-name fetch that drops the graph, so a database switch is the one thing left that
+        // has to say so. Active guidance's own graph is a different field and keeps flying its
+        // route — but this also moves the manager's database generation, and that graph records the
+        // one it was installed under, so the runway probe stops answering from it.
+        taxiGuidanceManager?.ClearWhereAmICache();
+
         // And anything holding runway GEOMETRY from the old database. Both of these captured a
         // whole runway list when the pilot set them up, and both now use it at touchdown to decide
         // which runway the aircraft is on — the landing-exit plan to choose the rollout's
@@ -1348,6 +1447,10 @@ public partial class MainForm
         // otherwise expect to still be armed on the approach.
         landingExitPlanner?.Clear();
         flareAssistManager?.Disarm(announce: true);
+
+        // The ground-traffic runway watch caches an airport's runways too (the line-up wait needs them
+        // after taxi guidance has stopped). Silent: the next route or takeoff-assist runway reloads them.
+        groundTrafficMonitor?.ClearRunwayCache();
 
         UpdateDatabaseStatusDisplay();
     }

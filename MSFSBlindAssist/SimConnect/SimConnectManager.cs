@@ -65,6 +65,13 @@ public partial class SimConnectManager
     public event EventHandler<int>? ContinuousBatchDelivered;
 
     /// <summary>
+    /// A dotted/H: event that SendEvent queued while the calc-path probe was running has just been sent
+    /// by FlushPendingCalcEvents — possibly a minute after the caller asked for it. Lets a definition
+    /// re-arm whatever it armed for the original call (the FCU value echo).
+    /// </summary>
+    public event EventHandler<string>? QueuedEventDispatched;
+
+    /// <summary>
     /// The continuous batch a monitored variable is carried in, or false when the key is not
     /// batch-covered (individual data def, PMDG CDA, or not registered at all).
     /// </summary>
@@ -103,9 +110,15 @@ public partial class SimConnectManager
     // (dwentrynumber == dwoutof). Lets callers announce/process a COMPLETE
     // traffic snapshot instead of racing the per-aircraft responses.
     public event EventHandler? AiTrafficSweepCompleted;
+    // Fired when a RequestGroundTrafficData sweep delivers its final entry. Separate from
+    // AiTrafficSweepCompleted so the ground-traffic monitor can tell ITS sweep from a TCAS one; the
+    // args carry the sweep's own request id, so a late completion of an abandoned sweep is not taken
+    // for the newer one.
+    public event EventHandler<GroundTrafficSweepEventArgs>? GroundTrafficSweepCompleted;
     public event EventHandler<WindData>? WindReceived;
     public event EventHandler<AmbientWeatherData>? WeatherDataReceived;
     public event EventHandler<NavRadioData>? NavRadioReceived;
+    public event EventHandler<Com1RadioData>? Com1RadioReceived;
     public event EventHandler<TakeoffRunwayReferenceEventArgs>? TakeoffRunwayReferenceSet;
     // High-rate (SIM_FRAME) consolidated frame for the manual-landing flare/rollout
     // assist. Fired only while StartFlareAssistMonitoring is active.
@@ -344,6 +357,10 @@ public partial class SimConnectManager
     private readonly Queue<(string eventName, uint data)> pendingCalcEvents = new();
     private const int MaxPendingCalcEvents = 64;
     private ConcurrentDictionary<string, double> lastVariableValues = new ConcurrentDictionary<string, double>();  // Cache last values for change detection
+    // Vars whose first UNCHANGED, unforced individual delivery has been written to debug.log
+    // (VarCache: later ones are not, to keep the Fenix's ~50 1 Hz vars from flooding the log).
+    // Same lifetime as lastVariableValues — cleared wherever that is.
+    private readonly HashSet<string> unchangedDeliveryLogged = new();
     private int nextDataDefinitionId = 1000;  // Start IDs from 1000 to avoid conflicts
     private static int nextTempDefId = 50000;  // Counter for temporary definition IDs (SetLVar/SetSimVar)
 
@@ -484,19 +501,41 @@ public partial class SimConnectManager
         // The FIRST of CameraReadIdCount (8) ids, 341-348: each read goes out under its own id
         // (CameraReadWaiters), so keep 342-348 free (pinned by CameraReadWaitersTests).
         REQUEST_CAMERA_VIEW = 341,
+        // COM 1 active + standby, one-shot (RequestCom1Radio). 349: the first id past the
+        // camera's rotating 341-348.
+        REQUEST_COM1_RADIO = 349,
         // FO background data requests — NOT announced by HandleSpecialAnnouncements
         REQUEST_FO_ALTITUDE_AGL  = 380,
         REQUEST_FO_AIRSPEED_IAS  = 381,
         REQUEST_FO_ENG1_N2       = 382,
         REQUEST_FO_ENG2_N2       = 383,
         REQUEST_FO_CENTER_FUEL_LBS = 384,
-        REQUEST_FO_ENG3_N2       = 385,
+        // PMDG 777 FO only: the three stock gear-leg positions in one definition (Pmdg777GearConfirmation).
+        REQUEST_FO_GEAR_POSITIONS  = 385,
+        // Engine 3 N2 (RequestFOEngineN2): asked for every aircraft, read only by three-engine FO profiles (the MD-11).
+        REQUEST_FO_ENG3_N2       = 386,
         REQUEST_AI_TRAFFIC = 500,
+        // The ground-traffic monitor's own by-type sweeps (same DEF_AI_TRAFFIC definition, a small
+        // radius), on their OWN ids so a completion can never be confused with a TCAS or other
+        // REQUEST_AI_TRAFFIC sweep (PR #247 review L5) — see GroundTrafficSweepCompleted. The FIRST
+        // of GroundTrafficRequestIdCount (8) ids, 600-607: each sweep goes out under the next one, so
+        // KEEP 601-607 FREE (pinned by GroundTrafficRequestIdTests). Not 501-508: 505-508 are the
+        // hand-numbered guidance frames ((DATA_REQUESTS)505..508 in Monitoring.cs), and a request
+        // issued under an id already in use REPLACES that request.
+        REQUEST_GROUND_TRAFFIC = 600,
         // Aircraft-specific InputEvent (B:) catalog enumeration.
         REQUEST_ENUMERATE_INPUT_EVENTS = 700,
         // Individual variable requests start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
+
+    /// <summary>Ground-traffic sweeps rotate over this many request ids from REQUEST_GROUND_TRAFFIC (600-607), so a late completion of an abandoned sweep is never credited to a newer one.</summary>
+    public const uint GroundTrafficRequestIdCount = 8;
+
+    /// <summary>True for any id in the ground-traffic sweep range.</summary>
+    public static bool IsGroundTrafficRequestId(uint requestId)
+        => requestId >= (uint)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC
+           && requestId < (uint)DATA_REQUESTS.REQUEST_GROUND_TRAFFIC + GroundTrafficRequestIdCount;
 
     internal enum DATA_DEFINITIONS
     {
@@ -557,14 +596,18 @@ public partial class SimConnectManager
         // to CameraViewData, so a definition landing at 342 would have its SingleValue answer
         // mis-cast. Pinned by CameraReadWaitersTests.
         DEF_CAMERA_VIEW = 341,
+        DEF_COM1_RADIO = 349,
         // FO background data definitions — paired with REQUEST_FO_* IDs, NOT announced
         DEF_FO_ALTITUDE_AGL = 380,
         DEF_FO_AIRSPEED_IAS = 381,
         DEF_FO_ENG1_N2 = 382,
         DEF_FO_ENG2_N2 = 383,
         DEF_FO_CENTER_FUEL_LBS = 384,
-        DEF_FO_ENG3_N2 = 385,
+        DEF_FO_GEAR_POSITIONS = 385,
+        DEF_FO_ENG3_N2 = 386,
         DEF_AI_TRAFFIC = 500,
+        // KEEP 600-607 FREE: the ground-traffic sweeps' rotating request ids (DATA_REQUESTS
+        // .REQUEST_GROUND_TRAFFIC), and this enum is a request-id namespace too.
         // Individual variable definitions start from 1000
         INDIVIDUAL_VARIABLE_BASE = 1000
     }
@@ -666,6 +709,14 @@ public partial class SimConnectManager
         public double GroundSpeedKnots;
         public double VerticalSpeedFPM;
         public double SimOnGround;
+        /// <summary>The sim's SURFACE TYPE enum under the wheels. Meaningful only while
+        /// <see cref="SurfaceInfoValid"/> is non-zero — classify it through
+        /// <c>Navigation.Surroundings.SurfaceFamilies</c>, never by comparing the raw number.
+        /// Measured live in MSFS 2024: 0 concrete, 1 grass, 4 asphalt.</summary>
+        public double SurfaceType;
+        /// <summary>SURFACE INFO VALID — false means <see cref="SurfaceType"/> says nothing at
+        /// all, not that the surface is of some default kind.</summary>
+        public double SurfaceInfoValid;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -762,6 +813,14 @@ public partial class SimConnectManager
         public double WindDirection;   // AMBIENT WIND DIRECTION, degrees
         public double WindSpeed;       // AMBIENT WIND VELOCITY, knots
         public double StructuralIcePct; // STRUCTURAL ICE PCT, ratio 0..1 ("percent over 100")
+    }
+
+    /// <summary>COM 1 as the sim holds it, in Hz (DEF_COM1_RADIO; order is the contract).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct Com1RadioData
+    {
+        public double ActiveHz;
+        public double StandbyHz;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -869,7 +928,9 @@ public partial class SimConnectManager
 
             SetupDataDefinitions();
             SetupEvents();
-            SeedChangeOnlySubscriptions();
+            // Only now: the pump inside SetupDataDefinitions drained whatever answered before the
+            // handler existed, the SIM_FRAME subscriptions' first deliveries included.
+            SeedSimFrameSubscriptions();
             RegisterClientEvents();
 
             // Initialize MobiFlight WASM module
@@ -962,6 +1023,16 @@ public partial class SimConnectManager
     {
         public double value1;
         public double value2;
+    }
+
+    /// <summary>Three doubles read in one data definition (the FO gear request's left, center
+    /// and right gear-leg positions).</summary>
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
+    public struct DoubleValueTriple
+    {
+        public double value1;
+        public double value2;
+        public double value3;
     }
 
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Ansi, Pack = 1)]
@@ -1321,9 +1392,15 @@ public partial class SimConnectManager
 
         // Clear all internal state dictionaries to ensure clean reconnection
         variableDataDefinitions.Clear();
+        _pausedSimFrameSubscriptions.Clear();
         requestIdToVarKey.Clear();
         _freshRequestIdToVarKey.Clear();
+        // Definition ids are per connection: restart them as ReregisterAllVariables does, so they (and
+        // the seed ids derived from them, FreshReadPolicy.SeedRequestId) never climb toward the
+        // fresh-read range across reconnects.
+        nextDataDefinitionId = 1000;
         lastVariableValues.Clear();
+        unchangedDeliveryLogged.Clear();
         continuousVariableIndexMap.Clear();
         for (int i = 0; i < batchVarArrays.Length; i++)
             batchVarArrays[i] = Array.Empty<(string key, int index, SimVarDefinition def)>();
@@ -1389,6 +1466,15 @@ public class AiTrafficDataEventArgs : EventArgs
     public string FromAirport      { get; set; } = "";
     public string ToAirport        { get; set; } = "";
     public string Airline          { get; set; } = "";
+}
+
+/// <summary>A ground-traffic sweep completed; <see cref="RequestId"/> is the id it was requested under.</summary>
+public sealed class GroundTrafficSweepEventArgs : EventArgs
+{
+    public GroundTrafficSweepEventArgs(uint requestId) => RequestId = requestId;
+
+    /// <summary>The request id the completed sweep went out under (<see cref="SimConnectManager.IsGroundTrafficRequestId"/>).</summary>
+    public uint RequestId { get; }
 }
 
 public class SimVarUpdateEventArgs : EventArgs

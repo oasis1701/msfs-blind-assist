@@ -114,7 +114,12 @@ public class FlowManager<TExec, TState>
     {
         if (!IsRunning || _paused) return;
         _paused = true;
-        _pauseTcs = new TaskCompletionSource<bool>();
+        // RunContinuationsAsynchronously: Resume() is a UI-thread click and the flow awaits on
+        // the UI thread, so a default TCS would run the rest of the flow INLINE inside
+        // TrySetResult — before FlowResumed and the "resumed" announcement. A flow paused in its
+        // final wait then sent "flow complete" (non-interrupting) and had it cut off by the
+        // interrupting "resumed", with the status overwritten to "Resumed".
+        _pauseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
         if (CurrentFlow != null) FlowPaused?.Invoke(CurrentFlow);
         _announcer.AnnounceImmediate($"{CurrentFlow?.Name ?? "Flow"} paused");
     }
@@ -141,6 +146,20 @@ public class FlowManager<TExec, TState>
     // Private execution engine
     // -----------------------------------------------------------------------
 
+    // Waits out an active Pause. Factored out of the original top-of-loop check (still
+    // called there, unchanged behaviour) so the same wait can ALSO run (1) on every
+    // iteration of the WaitForCondition loop, before the condition is read, and (2) once
+    // more immediately before FlowCompleted fires — see those call sites for the bugs
+    // each closes. Cancellation is NOT caught here: it propagates as
+    // OperationCanceledException so each call site can handle it the way it already
+    // handles cancellation elsewhere in that same method.
+    private Task WaitWhilePausedAsync(CancellationToken ct)
+    {
+        if (_paused && _pauseTcs != null)
+            return _pauseTcs.Task.WaitAsync(ct);
+        return Task.CompletedTask;
+    }
+
     private async Task RunFlowAsync(FlowDefinition<TState> flow, CancellationToken ct)
     {
         _unfinishedChecklistItemIds.Clear();
@@ -157,14 +176,11 @@ public class FlowManager<TExec, TState>
             }
 
             // Pause check
-            if (_paused && _pauseTcs != null)
+            try { await WaitWhilePausedAsync(ct); }
+            catch (OperationCanceledException)
             {
-                try { await _pauseTcs.Task.WaitAsync(ct); }
-                catch (OperationCanceledException)
-                {
-                    FlowCancelled?.Invoke(flow);
-                    return;
-                }
+                FlowCancelled?.Invoke(flow);
+                return;
             }
 
             CurrentStepIndex = i;
@@ -176,8 +192,8 @@ public class FlowManager<TExec, TState>
                 _announcer.Announce($"Already set: {step.AnnounceText}");
                 Log.Debug("FO", $"{flow.Id}.{step.Id}: already set");
                 StepCompleted?.Invoke(flow, step, i);
-                if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
-                    _checklist.MarkComplete(step.CompletesChecklistItemId);
+                foreach (var itemId in step.LinkedChecklistItemIds)
+                    _checklist.MarkComplete(itemId);
                 if (i < flow.Steps.Count - 1)
                 {
                     try { await Task.Delay(InterStepPauseMs, ct); }
@@ -201,8 +217,11 @@ public class FlowManager<TExec, TState>
                         return;
 
                     case FlowStepFailurePolicy.Skip:
-                        if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
-                            _unfinishedChecklistItemIds.Add(step.CompletesChecklistItemId);
+                        // EVERY linked item, not just CompletesChecklistItemId — a step that
+                        // delivers a line in both the action group and the read-back checklist
+                        // (AlsoCompletesChecklistItemIds) must keep both out of the latch.
+                        foreach (var itemId in step.LinkedChecklistItemIds)
+                            _unfinishedChecklistItemIds.Add(itemId);
                         StepSkipped?.Invoke(flow, step, i);
                         Log.Debug("FO", $"{flow.Id}.{step.Id}: failed, skipped");
                         _announcer.Announce($"Skipping: {step.AnnounceText}");
@@ -231,8 +250,8 @@ public class FlowManager<TExec, TState>
                 StepCompleted?.Invoke(flow, step, i);
 
                 // Auto-tick linked checklist item
-                if (!string.IsNullOrEmpty(step.CompletesChecklistItemId))
-                    _checklist.MarkComplete(step.CompletesChecklistItemId);
+                foreach (var itemId in step.LinkedChecklistItemIds)
+                    _checklist.MarkComplete(itemId);
 
                 // Delay between steps — at least InterStepPauseMs so flows read at
                 // a human pace; a longer per-step PostActionDelayMs still wins.
@@ -245,8 +264,28 @@ public class FlowManager<TExec, TState>
             }
         }
 
+        // Pause check before completion: without this, a flow paused during its own final
+        // step (e.g. the 737/iFly 20 s gear-check wait) still fell through here and
+        // completed — announcing "flow complete" and latching the checklist group — while
+        // the window still showed Paused. Wait out any active pause first, same as the
+        // top-of-loop check above.
+        try { await WaitWhilePausedAsync(ct); }
+        catch (OperationCanceledException)
+        {
+            FlowCancelled?.Invoke(flow);
+            return;
+        }
+
         FlowCompleted?.Invoke(flow);
-        _announcer.AnnounceImmediate($"{flow.Name} flow complete");
+        // NON-INTERRUPTING (Announce), never AnnounceImmediate (owner decision 2026-09-22).
+        // This runs straight after the last step with no pause, and AnnounceImmediate
+        // interrupts the screen reader and cancels its buffered speech — so the last step of
+        // a flow was routinely cut off, including a skipped wait's "Timed out waiting for: … /
+        // Skipping: …" (the PMDG 737 gear checks), which a blind pilot then heard as silence
+        // followed by "flow complete": success. Non-interrupting, the step's own words are
+        // heard first and "flow complete" follows them. Pinned by the source-text guard
+        // FlowManager_FlowComplete_IsNonInterrupting (FoPr160ProcedureFixTests).
+        _announcer.Announce($"{flow.Name} flow complete");
     }
 
     private async Task<bool> ExecuteStepAsync(FlowDefinition<TState> flow, FlowStep<TState> step, int index, CancellationToken ct)
@@ -281,6 +320,15 @@ public class FlowManager<TExec, TState>
                     while (elapsed < step.TimeoutSeconds)
                     {
                         ct.ThrowIfCancellationRequested();
+                        // Pause check, before the condition is read: without this, Pause
+                        // during a flow's FINAL wait (e.g. the 737/iFly 20 s gear checks)
+                        // was announced but had no effect — elapsed kept advancing and the
+                        // wait still timed out (and the flow still went on to complete and
+                        // latch) while the window showed Paused. Cancellation here
+                        // propagates like ct.ThrowIfCancellationRequested above — caught by
+                        // this method's own catch block below, same as everywhere else in
+                        // this loop.
+                        await WaitWhilePausedAsync(ct);
                         double v = _state.GetValue(step.ConditionFieldName);
                         if (step.Condition(v)) return true;
                         await Task.Delay(1000, ct);

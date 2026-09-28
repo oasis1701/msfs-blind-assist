@@ -8,8 +8,9 @@ using ChangelogBuilder;
 // paths are for local use and the dry run. Both may be combined.
 //
 // --contributors takes the <pr>=<login>,<login> map written by
-// tools/changelog-contributors.sh; entries gain " — @login" attribution. Omitting the
-// flag renders unattributed (local/dry-run use).
+// tools/changelog-contributors.sh; entries gain " — @login" attribution, and anyone no
+// entry credits (a PR whose fragments are all internal) is named on a closing line.
+// Omitting the flag renders unattributed (local/dry-run use).
 //
 // An empty input is NOT an error: a release with no fragments publishes with GitHub's
 // generated notes alone.

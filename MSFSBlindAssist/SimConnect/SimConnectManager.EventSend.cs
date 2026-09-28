@@ -354,6 +354,15 @@ public partial class SimConnectManager
                 FireCalcEvent(e.eventName, e.data);
             else
                 SendEvent(e.eventName, e.data); // re-enters; CalcPathProbeConcluded routes it to TransmitClientEvent
+
+            try
+            {
+                QueuedEventDispatched?.Invoke(this, e.eventName);
+            }
+            catch (Exception ex)
+            {
+                Log.Debug("SimConnect", $"QueuedEventDispatched subscriber threw for {e.eventName}: {ex.Message}");
+            }
         }
     }
 

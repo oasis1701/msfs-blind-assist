@@ -93,7 +93,6 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private Button _pauseResumeBtn = null!;
     private Button _stopFlowBtn = null!;
     private Button _loadSimBriefBtn = null!;
-    private CheckBox _speakProgressCheck = null!;
 
     // ------------------------------------------------------------------
     // State
@@ -172,6 +171,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
                 // (pushed back via OnSimVarUpdated -> SetSimCenterFuelLbs).
                 if (_stateEval is MSFSBlindAssist.FirstOfficer.IFly737.IFly737StateEvaluator)
                     _simConnect.RequestFOCenterFuelLbs();
+
+                // PMDG 777 only: its SDK exposes no gear lights, so the checklist gear lines
+                // confirm the physical gear from the stock GEAR x POSITION SimVars
+                // (Pmdg777GearConfirmation; pushed back via OnSimVarUpdated -> SetGearPosition).
+                if (_stateEval is MSFSBlindAssist.FirstOfficer.AircraftStateEvaluator)
+                    _simConnect.RequestFOGearPositions();
 
                 // LVar-based profiles (Fenix/FBW): poll OnRequest-registered control vars
                 // onto the cache so checklist auto-detection can read them. PMDG evaluators
@@ -304,6 +309,12 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             case "FO_ENG3_N2":
                 if (_stateEval is MSFSBlindAssist.FirstOfficer.IFoEngine3N2Sink eng3Sink)
                     eng3Sink.SetEngine3N2(e.Value);
+                break;
+            case "FO_GEAR_LEFT_POS":
+            case "FO_GEAR_CENTER_POS":
+            case "FO_GEAR_RIGHT_POS":
+                if (_stateEval is MSFSBlindAssist.FirstOfficer.AircraftStateEvaluator eval777)
+                    eval777.SetGearPosition(e.VarName, e.Value);
                 break;
             case "FO_CENTER_FUEL_LBS":
                 if (_stateEval is MSFSBlindAssist.FirstOfficer.IFly737.IFly737StateEvaluator iflyEval)
@@ -501,17 +512,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         _stopFlowBtn     = MakeButton("Stop Flow",     "Stop and cancel the running flow", StopFlow);
         _loadSimBriefBtn = MakeButton("Load SimBrief", "Load SimBrief flight plan and set transition altitudes", LoadSimBrief);
 
-        _speakProgressCheck = new CheckBox
-        {
-            Text = "Speak flow progress",
-            Checked = true,
-            AutoSize = true,
-            AccessibleName = "Speak flow progress",
-        };
-
+        // A "Speak flow progress" checkbox sat here until 2026-09: nothing ever read it,
+        // so unticking it silenced nothing. Removed rather than wired up (owner decision).
         btnPanel.Controls.AddRange(new Control[] {
-            _startFlowBtn, _pauseResumeBtn, _stopFlowBtn, _loadSimBriefBtn,
-            _speakProgressCheck });
+            _startFlowBtn, _pauseResumeBtn, _stopFlowBtn, _loadSimBriefBtn });
         layout.Controls.Add(btnPanel, 0, 3);
 
         _flowsTab.Controls.Add(layout);
@@ -862,14 +866,8 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     /// action group (Id == flow.Id) and the readback group (flow.Id + "_CL") when those
     /// exist. Used to mark every related checklist section complete when the flow finishes.
     /// </summary>
-    private IEnumerable<string> RelatedGroupIdsFor(FlowDefinition<TState> flow)
-    {
-        var ids = new HashSet<string>(flow.RelatedChecklistGroupIds, StringComparer.Ordinal);
-        if (_checklistGroups.Any(g => g.Id == flow.Id)) ids.Add(flow.Id);
-        string cl = flow.Id + "_CL";
-        if (_checklistGroups.Any(g => g.Id == cl)) ids.Add(cl);
-        return ids;
-    }
+    private IEnumerable<string> RelatedGroupIdsFor(FlowDefinition<TState> flow) =>
+        flow.CompletionGroupIds(id => _checklistGroups.Any(g => g.Id == id));
 
     // ------------------------------------------------------------------
     // Flow list population
@@ -991,10 +989,17 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         }
     }
 
-    private void UpdateFlowButtonStates()
+    // runningOverride lets a caller assert "not running" even while FlowManager.IsRunning
+    // is technically still true — see OnFlowCompleted/OnFlowCancelled/OnFlowFailed below,
+    // which fire from inside RunFlowAsync before the run task has actually unwound.
+    // This is safe only because StartSelectedFlow refuses to start a new flow while
+    // FlowManager.IsRunning is still true. If a flow could ever be restarted while one is
+    // already running, a late FlowCancelled/FlowCompleted/FlowFailed from the OLD run could
+    // still fire after the new run has started and stamp "not running" over it.
+    private void UpdateFlowButtonStates(bool? runningOverride = null)
     {
-        bool running = _flowMgr.IsRunning;
-        bool paused  = _flowMgr.IsPaused;
+        bool running = runningOverride ?? _flowMgr.IsRunning;
+        bool paused  = running && _flowMgr.IsPaused;
 
         _startFlowBtn.Enabled    = !running;
         _pauseResumeBtn.Enabled  = running;
@@ -1030,21 +1035,26 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         foreach (var groupId in RelatedGroupIdsFor(flow))
             _checklistMgr.MarkGroupComplete(groupId, unfinished);
 
-        UpdateFlowButtonStates();
+        // These three events fire from INSIDE RunFlowAsync, while FlowManager.IsRunning is
+        // still true (the run task hasn't unwound yet) — the bare call read that as "still
+        // running" and left Start Flow disabled until the pilot changed the flow selection.
+        UpdateFlowButtonStates(runningOverride: false);
     }
 
     private void OnFlowCancelled(FlowDefinition<TState> flow)
     {
         if (InvokeRequired) { Invoke(() => OnFlowCancelled(flow)); return; }
         _flowStatusLabel.Text = $"Cancelled: {flow.Name}";
-        UpdateFlowButtonStates();
+        // See the comment in OnFlowCompleted: fires while IsRunning is still true.
+        UpdateFlowButtonStates(runningOverride: false);
     }
 
     private void OnFlowFailed(FlowDefinition<TState> flow, string reason)
     {
         if (InvokeRequired) { Invoke(() => OnFlowFailed(flow, reason)); return; }
         _flowStatusLabel.Text = $"Failed: {flow.Name} — {reason}";
-        UpdateFlowButtonStates();
+        // See the comment in OnFlowCompleted: fires while IsRunning is still true.
+        UpdateFlowButtonStates(runningOverride: false);
     }
 
     private void OnFlowPaused(FlowDefinition<TState> flow)

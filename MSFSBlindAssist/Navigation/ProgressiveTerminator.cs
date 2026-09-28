@@ -30,10 +30,19 @@ public sealed class ProgressiveTerminator
     public ProgressiveTerminatorType Type { get; }
     public string Target { get; }   // runway ("09"), taxiway ("C"), or named holding point ("VIKAS") designator; "" for EndOfTaxiway
 
-    public ProgressiveTerminator(ProgressiveTerminatorType type, string target)
+    /// <summary>
+    /// For <see cref="ProgressiveTerminatorType.HoldAtNamedPoint"/>: the point's OSM
+    /// <c>holding_position:type</c> ("runway", "ILS", "intermediate", or "" when untagged), trimmed.
+    /// Carried so the ground-traffic runway watch never treats an intermediate hold as a runway hold
+    /// (PR #247 review R13).
+    /// </summary>
+    public string HoldingPointKind { get; }
+
+    public ProgressiveTerminator(ProgressiveTerminatorType type, string target, string holdingPointKind = "")
     {
         Type = type;
         Target = target ?? "";
+        HoldingPointKind = (holdingPointKind ?? "").Trim();
     }
 
     /// <summary>The spoken end-of-leg callout.</summary>

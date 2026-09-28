@@ -50,6 +50,12 @@ public class HwA330ParityTests
                                + "The A339X has one 2-position ganged switch and never writes it.",
         ["LIGHT LANDING:2"] = "A339X only: the stock simvar its single ganged landing-light "
                             + "switch reads back, standing in for L:LIGHTING_LANDING_2.",
+        ["FAC_1_V_FE_NEXT"] = "A32NX only: VFE-next now comes from the FAC word (FBW #10890 "
+                            + "stopped publishing A32NX_SPEEDS_VFEN). The A339X's FACs publish "
+                            + "no characteristic speeds.",
+        ["FAC_2_V_FE_NEXT"] = "A32NX only: FAC 2, the fallback when FAC 1 has no data. Same reason.",
+        ["A32NX_SPEEDS_VFEN"] = "A339X only: Headwind still publishes the plain L-var (its "
+                              + "A32NX_Speeds.ts predates FBW #10890); the A32NX no longer does.",
     };
 
     /// <summary>

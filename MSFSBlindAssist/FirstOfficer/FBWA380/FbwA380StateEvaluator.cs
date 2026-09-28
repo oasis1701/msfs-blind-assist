@@ -50,8 +50,10 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "A32NX_COCKPIT_DOOR_LOCKED", "A32NX_AUTOBRAKES_SELECTED_MODE",
         "A32NX_EFIS_L_ND_MODE", "A32NX_EFIS_R_ND_MODE",
         "A32NX_EFIS_L_ND_RANGE", "A32NX_EFIS_R_ND_RANGE",
-        "XMLVAR_Baro_Selector_HPA_1", "XMLVAR_Baro_Selector_HPA_2",
-        "FD_1_CTL", "FD_2_CTL",
+        // FBW #10855: the baro unit is the EFIS-CP's BARO_IS_INHG (1 = inHg) and the flight
+        // directors are ONE FCU pushbutton, read from its light (A380FlightDirector.StateKey).
+        "A32NX_FCU_EFIS_L_BARO_IS_INHG", "A32NX_FCU_EFIS_R_BARO_IS_INHG",
+        MSFSBlindAssist.Aircraft.A380FlightDirector.StateKey,
         "ELEC_APU_GEN:1", "ELEC_APU_GEN:2",
         // Auto-flap schedule inputs (speed tape + landing config + flaps handle).
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",

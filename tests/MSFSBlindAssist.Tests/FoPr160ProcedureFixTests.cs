@@ -179,7 +179,9 @@ public class FoPr160ProcedureFixTests
         var flows = Pmdg777Flows.Build();
         var landing = flows.Single(f => f.Id == "LANDING");
 
-        Assert.Equal(new[] { "LD_SPEEDBRAKE_ARM", "LD_MISSED" },
+        // LD_GEAR_DOWN_CHECK (PR #160 follow-up, Task C) is the flow's read-only,
+        // lever-based gear-down confirmation — see Pmdg777LandingGearCheckTests.
+        Assert.Equal(new[] { "LD_SPEEDBRAKE_ARM", "LD_MISSED", "LD_GEAR_DOWN_CHECK" },
                      landing.Steps.Select(s => s.Id).ToArray());
         Assert.Contains("LANDING_CL", landing.RelatedChecklistGroupIds);
 
@@ -251,7 +253,10 @@ public class FoPr160ProcedureFixTests
 
         Assert.Equal(SbLadder.PseudoKey, step.EventName);
         Assert.Equal(SbLadder.ArmedField, step.VerifyFieldName);
-        Assert.Equal("LDC_SPDBRK", step.CompletesChecklistItemId);
+        // Completes its own group's line AND the Landing Checklist read-back, so a failed
+        // arm leaves neither latched (Pmdg737FlowChecklistLinkTests).
+        Assert.Equal("LDA_SPDBRK", step.CompletesChecklistItemId);
+        Assert.Equal(new[] { "LDA_SPDBRK", "LDC_SPDBRK" }, step.LinkedChecklistItemIds.ToArray());
         Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
     }
 
@@ -317,18 +322,20 @@ public class FoPr160ProcedureFixTests
     }
 
     [Fact]
-    public void Pmdg737_AfterTakeoffChecklistGear_AsksForUp_AndStillTicksForAnythingButDown()
+    public void Pmdg737_AfterTakeoffChecklistGear_AsksForUp_AndReadsTheGearLights()
     {
+        // Owner decision 2026-09-22: "Landing gear: UP" is confirmed by the gear lights
+        // (GearConfirmation — lever not DOWN and every gear light out), not the lever alone.
         var item = Pmdg737Checklist.Build()
             .Single(g => g.Id == "AFTER_TAKEOFF_CL").Items
             .Single(i => i.Id == "ATC_GEAR");
 
         Assert.Equal("Landing gear: UP", item.Label);
-        Assert.Equal("MAIN_GearLever", item.StateFieldName);
+        Assert.Equal(MSFSBlindAssist.FirstOfficer.PMDG737.GearConfirmation.UpField, item.StateFieldName);
         Assert.NotNull(item.StateCondition);
-        Assert.True(item.StateCondition!(0));   // UP
-        Assert.True(item.StateCondition!(1));   // OFF, if a pilot moved it there by hand — gear still up
-        Assert.False(item.StateCondition!(2));  // DOWN
+        Assert.True(item.StateCondition!(1));
+        Assert.False(item.StateCondition!(0));
+        Assert.False(item.StateCondition!(double.NaN));
     }
 
     // -- 5. Fenix APU: wrong pushbutton lamp --------------------------------
@@ -442,4 +449,35 @@ public class FoPr160ProcedureFixTests
         Path.GetFullPath(Path.Combine(
             Path.GetDirectoryName(thisTestFilePath)!,
             "..", "..", "MSFSBlindAssist", "FirstOfficer", "Fenix", fileName));
+
+    // FlowManager is not unit-testable (its ScreenReaderAnnouncer drives a real screen
+    // reader), so its one global announcement rule is pinned on the source text, the same
+    // way as the Fenix lamp guard above: "<flow> flow complete" runs straight after the last
+    // step and must NOT interrupt, or it cuts that step off — a timed-out gear check's
+    // warning, a flow-final Captain reminder (owner decision 2026-09-22).
+    [Fact]
+    public void FlowManager_FlowComplete_IsNonInterrupting()
+    {
+        string source = File.ReadAllText(FirstOfficerSourcePath("FlowManager.cs"));
+        Assert.Contains("_announcer.Announce($\"{flow.Name} flow complete\");", source);
+        Assert.DoesNotContain("AnnounceImmediate($\"{flow.Name} flow complete\")", source);
+    }
+
+    // Resume() completes the pause gate on the UI thread; with a default TaskCompletionSource
+    // the rest of the flow runs INLINE inside TrySetResult — before "resumed" is announced —
+    // so a flow paused in its final wait sent its non-interrupting "flow complete" and then had
+    // it cut off by the interrupting "resumed". The gate must run continuations asynchronously.
+    [Fact]
+    public void FlowManager_PauseGate_RunsContinuationsAsynchronously()
+    {
+        string source = File.ReadAllText(FirstOfficerSourcePath("FlowManager.cs"));
+        Assert.Contains("new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously)", source);
+        Assert.DoesNotContain("_pauseTcs = new TaskCompletionSource<bool>();", source);
+    }
+
+    private static string FirstOfficerSourcePath(string fileName,
+        [CallerFilePath] string thisTestFilePath = "") =>
+        Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(thisTestFilePath)!,
+            "..", "..", "MSFSBlindAssist", "FirstOfficer", fileName));
 }

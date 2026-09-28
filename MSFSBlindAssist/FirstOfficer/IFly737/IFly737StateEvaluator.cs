@@ -81,6 +81,10 @@ public class IFly737StateEvaluator : IFoStateEvaluator
         if (field == "FO_PRESS_LAND_ALT_MATCH") return PressLandAltMatchSynthetic();
         if (field == "FO_FUEL_PUMPS_BS_OK") return FuelPumpsBeforeStartSynthetic();
         if (field == "FO_CENTER_QTY_LBS") return ReadySource() ? CenterQtyLbs() : double.NaN;
+        // "Gear up, lights out" / "three green" (IFly737GearConfirmation, GearLightRules) —
+        // never the lever alone.
+        if (field == IFly737GearConfirmation.UpField) return IFly737GearConfirmation.UpValue(GetValue);
+        if (field == IFly737GearConfirmation.DownField) return IFly737GearConfirmation.DownValue(GetValue);
 
         // Raw SDK field: INDETERMINATE (NaN) until the SDK is ready (shared memory open AND the
         // plugin reports the MAX running) — before that there is no live snapshot to read at all.

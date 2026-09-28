@@ -35,7 +35,11 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
         AcceptButton = setButton;
         CancelButton = closeButton;
 
-        // Reflect the live HDG·V/S vs TRK·FPA mode in the toggle button label.
+        // Reflect the live HDG·V/S vs TRK·FPA mode in the toggle button label. A32NX_TRK_FPA_MODE_ACTIVE
+        // itself stays OnRequest (streaming it as announced spoke every panel TRK/FPA press twice), but
+        // FBW mirrors the same value into A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE, which the hardware-dial
+        // announcer already streams in the batch and consumes silently — so the window just reads that
+        // cache on a timer instead of polling the sim itself.
         _modeTimer = new System.Windows.Forms.Timer { Interval = 500 };
         _modeTimer.Tick += (s, e) => UpdateTrkLabel();
     }
@@ -45,7 +49,7 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
 
     private void UpdateTrkLabel()
     {
-        bool isTrk = (simConnect.GetCachedVariableValue("A32NX_TRK_FPA_MODE_ACTIVE") ?? 0) > 0.5;
+        bool isTrk = (simConnect.GetCachedVariableValue("A32NX_FCU_AFS_DISPLAY_TRK_FPA_MODE") ?? 0) > 0.5;
         string text = isTrk
             ? "TRK·FPA / HDG·V/S toggle — now TRK·FPA (press for HDG·V/S)"
             : "HDG·V/S / TRK·FPA toggle — now HDG·V/S (press for TRK·FPA)";
@@ -62,8 +66,8 @@ public class FBWA320HeadingWindow : FBWA320FCUWindowBase
     {
         string input = headingTextBox.Text.Trim();
         if (!double.TryParse(input, System.Globalization.NumberStyles.Float | System.Globalization.NumberStyles.AllowLeadingSign, System.Globalization.CultureInfo.InvariantCulture, out double v)) { announcer.AnnounceImmediate("Invalid number format"); headingTextBox.SelectAll(); return; }
-        if (v < 0 || v > 360) { announcer.AnnounceImmediate("Heading must be between 0 and 360 degrees"); headingTextBox.SelectAll(); return; }
-        aircraft.SetFCUHeadingValue((int)Math.Round(v) % 360, simConnect, announcer);
+        if (!FcuValueEntry.TryHeading(v, out int heading, out string? error)) { announcer.AnnounceImmediate(error!); headingTextBox.SelectAll(); return; }
+        aircraft.SetFCUHeadingValue(heading, simConnect, announcer);
         headingTextBox.SelectAll();
     }
 }

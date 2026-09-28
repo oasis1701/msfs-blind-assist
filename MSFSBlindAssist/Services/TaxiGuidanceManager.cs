@@ -79,6 +79,10 @@ public partial class TaxiGuidanceManager : IDisposable
     private readonly ScreenReaderAnnouncer _announcer;
     private TaxiSteeringTone _steeringTone;
     private TaxiGraph? _graph;
+    // DatabaseGeneration when _graph's instance was installed (never restamped when a rollout
+    // re-route hands the same instance back). A database switch leaves a route's graph in place,
+    // so this is how the runway probe knows that graph belongs to the previous database.
+    private long _graphGeneration;
     private TaxiRoute? _route;
     private TaxiGuidanceState _state = TaxiGuidanceState.Inactive;
 
@@ -170,6 +174,17 @@ public partial class TaxiGuidanceManager : IDisposable
     /// </para>
     /// </summary>
     public Func<string, List<ParkingSpot>>? ParkingSpotSupplier { get; set; }
+
+    /// <summary>
+    /// The last SIM_ON_GROUND sample (null while none has arrived), read on the position thread by the
+    /// off-pavement alert, which speaks only on the ground (Navigation.OffPavementAlert.IsOffPavement).
+    /// MainForm wires it to SimConnectManager.LastKnownOnGround. Unwired or unknown counts as ON the ground:
+    /// the alert exists to catch a grass excursion, and missing air/ground data must not silence it.
+    /// </summary>
+    public Func<bool?>? OnGroundProvider { get; set; }
+
+    // The rollout is held for an airborne sample (LandingExitGoAround.HoldsRollout); logged on each change only.
+    private bool _rolloutAirborneHold;
 
     /// <summary>
     /// The parking list for <paramref name="icao"/> from <see cref="ParkingSpotSupplier"/>, or
@@ -653,6 +668,23 @@ public partial class TaxiGuidanceManager : IDisposable
     // Closest the aircraft has come to the route line while it has yet to join it.
     // Feeds the never-joined escape in the off-route detector; MaxValue = no sample yet.
     private double _minPerpWhileUnjoinedM = double.MaxValue;
+    // Hold-short nodes the incursion guard has already logged as "in range but not ahead"
+    // (RunwayIncursionWatch.IsApproaching false) — one log line per node per route, never one
+    // per frame: two hold lines at near-equal range can swap places as the nearest on every
+    // position sample. Cleared with the warned-node latch, only by ResetIncursionNodeMemory.
+    private readonly HashSet<int> _incursionWithheldLoggedNodes = new();
+    // Per-frame scratch for the incursion guard, reused so the ~30 Hz guard allocates nothing.
+    private readonly List<RunwayIncursionWatch.HoldShortCandidate> _incursionCandidates = new();
+    // What the guard knows about each hold-short node that depends only on the map, built with
+    // _cachedHoldShortNodes (same lifetime): the path segments leading into the node on its
+    // TAXIWAY side (a chain that runs onto pavement is the runway side of the hold line), and
+    // the runway the node guards — the one its spoken name comes from. A node the form inserts
+    // after the cache was built (a projected holding point, SplitEdgeAt) is missing here exactly
+    // as it is missing from _cachedHoldShortNodes; a split of an existing edge leaves every
+    // cached segment's line where it was.
+    private readonly Dictionary<int, IncursionNodeGeometry> _incursionNodeGeometry = new();
+    private sealed record IncursionNodeGeometry(
+        RunwayIncursionWatch.PathSegment[] PathsIntoNode, RunwayShape? GuardedRunway);
     // Timestamp of the last segment advance (AdvanceSegment or
     // AdvanceToNearestSegment). Used with POST_TURN_OFFROUTE_GRACE_SEC to
     // suppress off-route detection briefly after we cross a turn node.
@@ -933,12 +965,42 @@ public partial class TaxiGuidanceManager : IDisposable
     private bool _rolloutApproach900Announced = false;
     private bool _rolloutApproach500Announced = false;
     private bool _rolloutTurnNowAnnounced = false;
+    // Set when "too fast to turn" was spoken at the turn point with no exit left ahead. That exit is then
+    // not offered again: the tone holds the runway heading (SelectToneMode's tooFastForExit —
+    // DriftCorrection, never ExitBearing or the turn-window Silent) and never steers toward its junction
+    // or bearing, and the two SPEED-driven handoffs (speedNearExitHandoff and the High-speed early
+    // handoff) stay closed for it, so slowing down as told never brings back "turn … taxiway X". The
+    // handoffs that follow what the pilot DOES stay open (turnBegun, exitedLaterally, alignedWithExit,
+    // trulyStopped): a pilot who turns onto it anyway, or stops short of it, is still guided. It keeps the
+    // usual overshoot margin while the aircraft rolls, and a pilot who STOPS at or past it is moved on at
+    // once (RolloutExitGate.IsPastExitForOvershoot) - to an exit the too-fast scan now finds reachable,
+    // announced queued after the warning, or to the runway-end countdown - instead of being left silent.
+    // Reset with the approach latches, so a later retarget restores normal behaviour.
+    private bool _rolloutTooFastNoExit = false;
+    // Set when such a declined exit is overshot with no exit left and the runway-end countdown begins
+    // without "Missed last exit" (the pilot already heard "too fast to turn"). The countdown's first frame
+    // then speaks its own status once ("Runway end in …"), QUEUED behind that warning rather than over it,
+    // unless the countdown itself spoke on that frame, so a pilot still rolling mid-runway is not left in
+    // silence until the 1,500 ft milestone.
+    private bool _rolloutCountdownStatusOwed = false;
     // Which steering-tone behaviour the last rollout frame used. A change resets the
     // heading-error smoother so a DriftCorrection residual never leaks into the sharp
     // exit-bearing pan, and vice versa. Replaces the old _rolloutExitToneArmed latch,
     // which reset the smoother on exit-tone entry only — the drift tone needs the same
     // treatment in both directions.
     private Navigation.RolloutToneMode _rolloutToneMode = Navigation.RolloutToneMode.Silent;
+    // The exit whose turn window RolloutExitTurnWindowFeet last logged, so landing_exit.log records each
+    // targeted exit's window once. Logging only: the window itself is computed where it is read.
+    private Navigation.LandingExit? _rolloutTurnWindowLoggedExit;
+    // Tone mode and targeted exit of the last per-frame "tone mode=" line in landing_exit.log (null = none
+    // yet). A stopped aircraft gets a line only when one of them changes, so a pilot held on the runway
+    // cannot flood the log. Reset in ResetRolloutApproachLatches.
+    private Navigation.RolloutToneMode? _rolloutToneLogMode;
+    private Navigation.LandingExit? _rolloutToneLogExit;
+    // When the last "tone mode=" line was written (MinValue = none yet): a MOVING frame logs at most one
+    // line per ROLLOUT_TONE_LOG_MIN_INTERVAL_MS, a mode or exit change always logs. Reset with the latches.
+    private DateTime _rolloutToneLogUtc = DateTime.MinValue;
+    private const double ROLLOUT_TONE_LOG_MIN_INTERVAL_MS = 100.0;
     // Latches true after the one-shot TryEarlyExitHandoff attempt so we don't
     // retry on every subsequent frame. The attempt happens once: at the first
     // frame where GS ≤ ROLLOUT_TONE_ACTIVE_BELOW_GS_KTS and dist ≤ ROLLOUT_EXIT_TONE_ARM_FT.
@@ -967,6 +1029,9 @@ public partial class TaxiGuidanceManager : IDisposable
     // yet this rollout. Guards against rapid cascade retargeting when multiple
     // earlier exits are within ROLLOUT_UNDERSHOOT_RANGE_FT.
     private DateTime _lastUndershootRetargetTime = DateTime.MinValue;
+    // Exits RetargetLandingExit could not route to this rollout. The undershoot scan skips them, or it would
+    // offer the same earlier exit again after every cooldown. Cleared at both rollout entries.
+    private readonly HashSet<int> _rolloutUnroutableExitNodes = new();
     // Timestamp of the last handoff declined because the re-routed path re-crossed
     // the landing runway (RolloutRunwayReCrossing). DateTime.MinValue = no decline
     // yet this rollout. See ROLLOUT_CROSSING_RETRY_FLOOR_SEC for why this exists.
@@ -992,9 +1057,10 @@ public partial class TaxiGuidanceManager : IDisposable
     // LandingRollout so UpdatePosition continues to feed the per-frame
     // loop. Ends by POSITION, never on any stop or turn alone
     // (Navigation.RunwayEndCountdownGate): "Runway vacated" once laterally
-    // clear; backtracking when stopped or turning within the 500 ft / 150 m
-    // runway-end milestone, or after turning around anywhere; one stopped
-    // notice for a stop mid-runway.
+    // clear; backtracking when STOPPED within RolloutExitGate.NearRunwayEndFeet
+    // (500 ft — never on a turn there, where a turn-off and a turnaround look
+    // the same), or after turning around anywhere; one stopped notice for a
+    // stop mid-runway.
     private bool _rolloutNoExitMode;
     private bool _rolloutEnd1500Announced;
     private bool _rolloutEnd500Announced;
@@ -1004,6 +1070,12 @@ public partial class TaxiGuidanceManager : IDisposable
     // _rolloutEnd*Announced: BeginLandingRollout, BeginLandingRolloutNoGraph,
     // EnterRunwayEndCountdown and StopGuidance.
     private bool _rolloutStoppedNoticeGiven;
+    // Off-pavement alert for the landing roll and the exit (Navigation.OffPavementAlert). The map is
+    // built lazily once per graph and dropped with it.
+    private readonly Navigation.OffPavementAlert _offPavementAlert = new();
+    private Navigation.PavementMap? _pavementMap;
+    private TaxiGraph? _pavementMapGraph;
+    private bool _offPavementLogged;
     // Backtrack state. Entered from runway-end countdown when the pilot has STOPPED within
     // RolloutExitGate.NearRunwayEndFeet of the end, or has turned around (150°+)
     // anywhere on the runway (Navigation.RunwayEndCountdownGate). Guides on the
@@ -1026,7 +1098,8 @@ public partial class TaxiGuidanceManager : IDisposable
     // guidance even if we haven't started the turn yet. 30 kt is a typical
     // taxi-fast cap (real-world SOPs cap straight-taxi at 30 kt; turns
     // get ~10-15 kt limits).
-    private const double ROLLOUT_TAXI_GS_KTS = 30.0;
+    // One 30 kt for the rollout: aliases RolloutExitGate.TaxiGroundSpeedKts (value unchanged).
+    private const double ROLLOUT_TAXI_GS_KTS = Navigation.RolloutExitGate.TaxiGroundSpeedKts;
 
     // Heading deviation from the runway centerline that signals "the
     // pilot has started the turn onto the exit". Once we see this, hand
@@ -1055,7 +1128,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // and "starting the turn" on a normal exit. 100 ft @ 30 kt = ~2 s — the
     // tone resume / turn-began handoff has already fired by then in the
     // normal case, so an actual overshoot is unambiguous when this fires.
-    private const double ROLLOUT_OVERSHOOT_FT = 100.0;
+    private const double ROLLOUT_OVERSHOOT_FT = Navigation.RolloutExitGate.ExitOvershootFeet;
 
     // Overshoot margin for a HIGH-SPEED (rapid-exit) taxiway. A RET curves away
     // from the runway so gently (ICAO design radius >= 550 m) that at 100 ft
@@ -1064,13 +1137,13 @@ public partial class TaxiGuidanceManager : IDisposable
     // flat 100 ft margin therefore mistakes a correct RET turn for a miss and
     // retargets, cascading exit-to-exit down the runway. ~500 ft gives the turn
     // room to register before an overshoot can be declared.
-    private const double ROLLOUT_HIGHSPEED_OVERSHOOT_FT = 500.0;
+    private const double ROLLOUT_HIGHSPEED_OVERSHOOT_FT = Navigation.RolloutExitGate.HighSpeedExitOvershootMaxFeet;
 
     // Cross-track-from-centerline gate for overshoot detection: a genuine
     // overshoot is past the exit AND still tracking the runway. Once the
     // aircraft has moved this far off the centerline it is curving onto the
     // exit, not missing it — not an overshoot regardless of distance past.
-    private const double OVERSHOOT_ON_CENTERLINE_FT = 30.0;
+    private const double OVERSHOOT_ON_CENTERLINE_FT = Navigation.RolloutExitGate.OnCentrelineOvershootFeet;
 
     // If the aircraft is within this distance of an earlier exit while below
     // the undershoot speed threshold, retarget to minimise runway occupancy.
@@ -1156,8 +1229,9 @@ public partial class TaxiGuidanceManager : IDisposable
 
     // Distance from the chosen exit at which the rollout speaks "turn now". Not a
     // DistanceMilestones entry — it is the turn-now handoff boundary, and the 500 ft approach
-    // callout's lower bound is deliberately the same number so the two never overlap.
-    private const double ROLLOUT_TURN_NOW_FT = 150.0;
+    // callout's lower bound is deliberately the same number so the two never overlap. It is also
+    // the floor on every exit's turn window (RolloutExitGate.TurnNowFeet, which this aliases).
+    private const double ROLLOUT_TURN_NOW_FT = Navigation.RolloutExitGate.TurnNowFeet;
 
     // Distance from the chosen exit at which the rollout tone snaps from
     // runway-heading guidance (centreline tracking) to exit-bearing guidance.
@@ -1266,6 +1340,55 @@ public partial class TaxiGuidanceManager : IDisposable
             {
                 return _state == TaxiGuidanceState.Taxiing && _isLandingExitRoute;
             }
+        }
+    }
+
+    /// <summary>
+    /// True while the landing roll's off-pavement alert has told the pilot about the current excursion
+    /// (<see cref="Navigation.OffPavementAlert.HasSpokenThisExcursion"/>); false once it re-arms and after
+    /// guidance ends. The surface callout reads it so one excursion never gets two phrasings.
+    /// </summary>
+    public bool OffPavementAnnounced
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return _offPavementAlert.HasSpokenThisExcursion;
+            }
+        }
+    }
+
+    /// <summary>
+    /// True while landing-exit guidance runs: the rollout, runway-end countdown included, or taxi steering on
+    /// the landing-exit route (<see cref="LandingExitGoAround.Arms"/>). MainForm arms the go-around check on a
+    /// liftoff in this state.
+    /// </summary>
+    public bool IsLandingExitGuidance
+    {
+        get
+        {
+            lock (_stateLock)
+            {
+                return LandingExitGoAround.Arms(_state, _isLandingExitRoute);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Ends landing-exit guidance after a go-around or touch-and-go: when the fresh sample says the aircraft is
+    /// still airborne and landing-exit guidance still runs (<see cref="LandingExitGoAround.Ends"/>), stops it
+    /// as <see cref="StopGuidance"/> does - silently, the tone off, and the position stream with it through the
+    /// Inactive state change. True when it ended something.
+    /// </summary>
+    public bool EndLandingExitGuidanceIfGoAround(bool freshSampleOnGround)
+    {
+        lock (_stateLock)
+        {
+            if (!LandingExitGoAround.Ends(freshSampleOnGround, _state, _isLandingExitRoute)) return false;
+            RolloutDiag($"GO-AROUND: still airborne {LandingExitGoAround.ConfirmMs} ms after liftoff in {_state}; landing-exit guidance ended");
+            StopGuidance();   // re-enters _stateLock on this thread
+            return true;
         }
     }
 
@@ -1386,18 +1509,29 @@ public partial class TaxiGuidanceManager : IDisposable
     // invalidated on aircraft/airport change.
     //
     // The token half exists because stand names are frozen into the graph's nodes at build
-    // time. Keyed on ICAO alone, a Where-Am-I pressed at spawn or on descent — before GSX
-    // published handlerData — cached a graph carrying navdata's BGL parking-enum letters, and
-    // nothing ever invalidated it: OnAirportDataUpdated fires only for the online taxiway-name
-    // fetch, and ClearWhereAmICache has no production caller. Once GSX published, the taxi
-    // dialog and the TCAS "at Gate …" label both moved to GSX's letter while Where-Am-I kept
-    // saying "Gate A 25" about the stand everything else called "Gate B 25" — the
-    // one-stand-two-names defect Services/ParkingSpotSource exists to remove. Its two sibling
-    // caches (GateResolver._parkingCache, TaxiAssistForm._cachedGateSpots) were given this
-    // token; this one was missed.
+    // time. Keyed on ICAO alone, a Where-Am-I pressed before GSX published handlerData cached
+    // navdata's BGL parking-enum letters for good, so once GSX published, Where-Am-I said
+    // "Gate A 25" about the stand the taxi dialog and the TCAS label called "Gate B 25" — the
+    // one-stand-two-names defect Services/ParkingSpotSource exists to remove.
     private TaxiGraph? _whereAmICachedGraph;
     private string _whereAmICachedIcao = "";
     private string _whereAmICachedToken = "";
+
+    // Moved (under _stateLock) by every invalidation of that cache — OnAirportDataUpdated and
+    // ClearWhereAmICache. DescribeCurrentLocation builds OUTSIDE the lock and publishes only if
+    // this has not moved meanwhile, so a taxiway-name fetch landing mid-build is never undone by
+    // a graph carrying the older names.
+    private long _whereAmICacheEpoch;
+
+    /// <summary>
+    /// Which database the runway geometry came from, as a number: moved by every database switch
+    /// (<see cref="ClearWhereAmICache"/>). Anything read through a provider is stored only while
+    /// the generation read WITH that provider is still current (<see cref="StoreWhereAmIGraph"/>,
+    /// <see cref="RunwayShapeSource.Publish"/>), so a lookup in flight across a switch never
+    /// caches the old database's geometry.
+    /// </summary>
+    public long DatabaseGeneration => Interlocked.Read(ref _databaseGeneration);
+    private long _databaseGeneration;
 
     /// <summary>
     /// The gate-list source token for an ICAO — <see cref="GateDataSource.GetGateListVersion"/>
@@ -1441,28 +1575,40 @@ public partial class TaxiGuidanceManager : IDisposable
     /// Reuses the active guidance graph if it matches the airport; otherwise builds and
     /// caches a graph for ad-hoc queries. Does NOT mutate any guidance state.
     /// </summary>
+    /// <param name="databaseGeneration"><see cref="DatabaseGeneration"/> read with
+    /// <paramref name="dataProvider"/>, in the same turn. Required: Alt+L captures its provider at
+    /// the press and calls this from a pool thread.</param>
     public string DescribeCurrentLocation(
         IAirportDataProvider dataProvider,
         string icao,
         double lat,
-        double lon)
+        double lon,
+        long databaseGeneration)
     {
         if (string.IsNullOrWhiteSpace(icao))
             return "No airport nearby.";
 
         TaxiGraph? graph;
+        string token;
+        long cacheEpoch;
 
-        // _stateLock serializes the cache read + build + write against the background-thread
+        // _stateLock serializes the cache read and the cache write against the background-thread
         // OnAirportDataUpdated (which nulls the cache) and the locked GetStatusAnnouncement
-        // overload — without it, OnAirportDataUpdated could null _whereAmICachedGraph between
-        // the read here and a later use, or tear the (graph, icao) pair. DescribeLocation runs
-        // OUTSIDE the lock on the local graph reference (a pure query, no shared state).
+        // overload, so the (graph, icao, token) triple is never torn. The BUILD runs between the
+        // two, outside the lock: Alt+L calls this from a pool thread, and a cold build (database
+        // reads plus TaxiGraph.Build, up to seconds at a hub) held under the lock froze every
+        // UI-thread caller of it — the passing-callout monitor's runway probe, taxi position
+        // updates. DescribeLocation runs OUTSIDE the lock on the local graph reference. That graph
+        // can be the active one, which the taxi form subdivides on the UI thread; TaxiGraph
+        // serialises that itself (_structureLock), taken only after _stateLock is released, so
+        // the two never nest.
         lock (_stateLock)
         {
             // ShouldRebuildGateList, not a plain compare: it rebuilds on an upgrade or a
             // refresh and never on the DOWNGRADE a transient GSX drop causes, so a good graph
             // survives a reconnect flap. Same treatment the two sibling caches give this token.
-            string token = ResolveParkingSpotVersion(icao);
+            token = ResolveParkingSpotVersion(icao);
+            cacheEpoch = _whereAmICacheEpoch;
 
             // Prefer the active guidance graph if it's for this airport
             if (_graph != null && string.Equals(_icao, icao, StringComparison.OrdinalIgnoreCase))
@@ -1473,31 +1619,38 @@ public partial class TaxiGuidanceManager : IDisposable
                 graph = _whereAmICachedGraph;
             else
                 graph = null;
+        }
 
-            if (graph == null)
+        if (graph == null)
+        {
+            try
             {
-                try
-                {
-                    var paths = dataProvider.GetTaxiPaths(icao);
-                    if (paths == null || paths.Count == 0)
-                        return $"No taxi data available for {icao}.";
+                var paths = dataProvider.GetTaxiPaths(icao);
+                if (paths == null || paths.Count == 0)
+                    return $"No taxi data available for {icao}.";
 
-                    var parking = ResolveParkingSpots(dataProvider, icao);
-                    var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
+                var parking = ResolveParkingSpots(dataProvider, icao);
+                var runwayStarts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
 
-                    // Runways let the builder repair laterally-bogus start rows before
-                    // they reach the centerlines this very call is about to query
-                    // (TaxiGraph.SnapStartToRunwayCenterline).
-                    graph = TaxiGraph.Build(paths, parking, runwayStarts,
-                                            dataProvider.GetRunways(icao));
-                    _whereAmICachedGraph = graph;
-                    _whereAmICachedIcao = icao;
-                    _whereAmICachedToken = token;
-                }
-                catch (Exception ex)
-                {
-                    return $"Could not load airport data for {icao}. {ex.Message}";
-                }
+                // Runways let the builder repair laterally-bogus start rows before
+                // they reach the centerlines this very call is about to query
+                // (TaxiGraph.SnapStartToRunwayCenterline).
+                graph = TaxiGraph.Build(paths, parking, runwayStarts,
+                                        dataProvider.GetRunways(icao));
+            }
+            catch (Exception ex)
+            {
+                return $"Could not load airport data for {icao}. {ex.Message}";
+            }
+
+            lock (_stateLock)
+            {
+                // The token stored is the one read BEFORE the build, so a GSX publish landing
+                // mid-build still reads as a token move on the next press and rebuilds.
+                if (cacheEpoch == _whereAmICacheEpoch)
+                    StoreWhereAmIGraph(graph, icao, token, databaseGeneration);
+                else
+                    Log.Debug("Taxi", $"Where-Am-I graph for {icao} answered, not cached: the cache was invalidated while it was built");
             }
         }
 
@@ -1509,12 +1662,101 @@ public partial class TaxiGuidanceManager : IDisposable
     }
 
     /// <summary>
-    /// Invalidates the "Where Am I" graph cache. Call on aircraft change or when the
-    /// user explicitly wants a fresh graph (rare). Takes _stateLock to serialize against
-    /// its twin OnAirportDataUpdated and the locked DescribeCurrentLocation/
-    /// GetStatusAnnouncement readers — both touch the same _whereAmICachedGraph/
-    /// _whereAmICachedIcao pair, so an unlocked write here could race a locked read/build
-    /// elsewhere and leave the pair inconsistent (graph set but ICAO stale, or vice versa).
+    /// Caches a Where-Am-I graph built under generation <paramref name="readUnder"/> — unless a
+    /// database switch has happened since, in which case the caller still answers from it but it
+    /// is not kept. Call under _stateLock.
+    /// </summary>
+    private void StoreWhereAmIGraph(TaxiGraph graph, string icao, string token, long readUnder)
+    {
+        if (!RunwayShapeSource.MayStore(readUnder, DatabaseGeneration))
+        {
+            Log.Debug("Taxi", $"Where-Am-I graph for {icao} answered, not cached: the database changed while it was built");
+            return;
+        }
+        _whereAmICachedGraph = graph;
+        _whereAmICachedIcao = icao;
+        _whereAmICachedToken = token;
+    }
+
+    // The runway shapes last memoised for one airport (RunwayShapeMemo). Keyed by airport so it
+    // OUTLIVES the Where-Am-I graph, which the taxiway-name fetch nulls seconds after it is built;
+    // runway pavement does not depend on taxiway names. Built once per graph instance, never per poll.
+    private RunwayShapeMemo? _runwayShapeMemo;
+    // The airport the probe was last asked about; a warm-up publishes only for it, so a late one
+    // for the previous airport cannot evict this one's memo. Under _stateLock.
+    private string _runwayProbeIcao = "";
+
+    /// <summary>
+    /// Is this point on any runway's pavement at <paramref name="icao"/>? Answers only from geometry
+    /// already in hand — the active graph (if installed under the current generation), else the
+    /// Where-Am-I graph, else the memo — and NEVER builds one: the caller is the passing-callout
+    /// monitor on the UI thread. Null means "nothing to ask". The whole step is
+    /// <see cref="RunwayShapeSource.Resolve"/>. Runway geometry does not depend on the gate-list
+    /// token, so that is not consulted.
+    /// </summary>
+    public bool? IsOnRunwayPavement(string icao, double lat, double lon)
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return null;
+
+        IReadOnlyList<RunwayShape>? shapes;
+        lock (_stateLock)
+        {
+            _runwayProbeIcao = icao;
+            (shapes, _runwayShapeMemo) = RunwayShapeSource.Resolve(icao, DatabaseGeneration,
+                _graph, _icao, _graphGeneration,
+                _whereAmICachedGraph, _whereAmICachedIcao,
+                _runwayShapeMemo);
+        }
+        // Outside the lock on a local reference — the shape list is immutable once built.
+        return shapes == null ? null : RunwayPavement.IsOnPavement(lat, lon, shapes);
+    }
+
+    /// <summary>
+    /// Captures, on the calling (UI) thread, the generation that goes with
+    /// <paramref name="dataProvider"/> and returns the warm-up to run on any thread. The warm-up
+    /// reads the runway rows alone — never a taxi graph — so it also answers at airports with no
+    /// taxi paths and never starts the taxiway-name fetch; an airport with no runways publishes an
+    /// empty list ("not on a runway"). It is stored only if the generation is unchanged and the
+    /// probe is still asked about this airport (<see cref="RunwayShapeSource.Publish"/>).
+    /// </summary>
+    public Action PrepareRunwayShapeWarmUp(IAirportDataProvider dataProvider, string icao)
+    {
+        long readUnder = DatabaseGeneration;
+        return () => WarmRunwayShapes(dataProvider, icao, readUnder);
+    }
+
+    private void WarmRunwayShapes(IAirportDataProvider dataProvider, string icao, long readUnder)
+    {
+        if (string.IsNullOrWhiteSpace(icao)) return;
+        var starts = dataProvider.GetRunwayStarts(icao) ?? new List<StartPosition>();
+        var shapes = RunwayPavement.BuildShapesFromRunwayRows(starts, dataProvider.GetRunways(icao) ?? new List<Runway>());
+        lock (_stateLock)
+        {
+            var held = _runwayShapeMemo;
+            _runwayShapeMemo = RunwayShapeSource.Publish(
+                held: held,
+                icao: icao,
+                readUnder: readUnder,
+                currentGeneration: DatabaseGeneration,
+                shapes: shapes,
+                trackedIcao: _runwayProbeIcao);
+            if (ReferenceEquals(_runwayShapeMemo, held))
+            {
+                string why = !RunwayShapeSource.MayStore(readUnder, DatabaseGeneration)
+                    ? "the database changed while they were read"
+                    : $"the probe is now asked about {(string.IsNullOrEmpty(_runwayProbeIcao) ? "no airport" : _runwayProbeIcao)}";
+                Log.Debug("Surroundings", $"runway probe: {icao} runway rows read but not stored — {why}");
+                return;
+            }
+        }
+        Log.Debug("Surroundings", $"runway probe: {icao} warmed from its runway rows — {shapes.Count} runway(s) from {starts.Count} start row(s)");
+    }
+
+    /// <summary>
+    /// Invalidates the "Where Am I" graph cache and the runway-shape memo, and moves
+    /// <see cref="DatabaseGeneration"/>. Called by a database switch. Takes _stateLock like its
+    /// twin <see cref="OnAirportDataUpdated"/>. Active guidance keeps its own graph, but the
+    /// runway probe stops trusting it (its generation is now stale).
     /// </summary>
     public void ClearWhereAmICache()
     {
@@ -1523,22 +1765,25 @@ public partial class TaxiGuidanceManager : IDisposable
             _whereAmICachedGraph = null;
             _whereAmICachedIcao = "";
             _whereAmICachedToken = "";
+            _whereAmICacheEpoch++;
+            _runwayShapeMemo = null;
+            Interlocked.Increment(ref _databaseGeneration);
         }
     }
 
     /// <summary>
-    /// Online taxiway-name augmentation for <paramref name="icao"/> was just (re)fetched. Drop any
-    /// cached Where-Am-I graph built from the OLDER (pre-augmentation) data so the next query rebuilds
-    /// with the fresh names — keeps Where-Am-I real-time without a manual refresh. Invoked from the
-    /// background fetch thread, so it MUST take _stateLock to serialize against the UI-thread
-    /// Where-Am-I reader/writer (DescribeCurrentLocation) and the locked GetStatusAnnouncement
-    /// overload — both touch the same _whereAmICachedGraph/_whereAmICachedIcao pair.
+    /// Online taxiway-name augmentation for <paramref name="icao"/> was just (re)fetched: drop the
+    /// cached Where-Am-I graph so the next query picks up the new names. Called from the fetch
+    /// thread, so it takes _stateLock like every other user of the cached graph pair.
     /// </summary>
     public void OnAirportDataUpdated(string icao)
     {
         if (string.IsNullOrEmpty(icao)) return;
         lock (_stateLock)
         {
+            // Moved whatever the cache holds: a build of THIS airport in flight (which the cache
+            // does not show yet) must not publish the names this fetch just replaced.
+            _whereAmICacheEpoch++;
             if (string.Equals(_whereAmICachedIcao, icao, StringComparison.OrdinalIgnoreCase))
             {
                 _whereAmICachedGraph = null;
@@ -1601,7 +1846,7 @@ public partial class TaxiGuidanceManager : IDisposable
     /// gating on `_lastOnGround` (no callsite should ever ask this airborne).
     /// </summary>
     /// <param name="dataProvider">Airport data provider for graph rebuilds.</param>
-    /// <param name="icao">Airport ICAO (4-char canonical).</param>
+    /// <param name="icao">The airport <see cref="CurrentAirport.Resolve"/> named — an ident of any length; every provider lookup matches icao OR ident.</param>
     /// <param name="lat">Aircraft latitude (degrees).</param>
     /// <param name="lon">Aircraft longitude (degrees).</param>
     /// <param name="aircraftHeadingMag">Aircraft magnetic heading (degrees).</param>
@@ -1626,6 +1871,9 @@ public partial class TaxiGuidanceManager : IDisposable
         runwayId = ""; airportIcao = icao ?? "";
 
         if (string.IsNullOrWhiteSpace(icao)) return false;
+
+        // The generation that goes with dataProvider: this method's one caller read it this turn.
+        long databaseGeneration = DatabaseGeneration;
 
         lock (_stateLock)
         {
@@ -1657,9 +1905,7 @@ public partial class TaxiGuidanceManager : IDisposable
                     // (TaxiGraph.SnapStartToRunwayCenterline).
                     graph = TaxiGraph.Build(paths, parking, runwayStarts,
                                             dataProvider.GetRunways(icao));
-                    _whereAmICachedGraph = graph;
-                    _whereAmICachedIcao = icao;
-                    _whereAmICachedToken = token;
+                    StoreWhereAmIGraph(graph, icao, token, databaseGeneration);
                 }
                 catch (Exception ex)
                 {
@@ -1922,6 +2168,19 @@ public partial class TaxiGuidanceManager : IDisposable
         // to Taxiing when the aircraft has decelerated or begun the turn.
         if (_state == TaxiGuidanceState.LandingRollout)
         {
+            // Airborne - a bounce, or the first seconds of a touch-and-go or go-around - holds the rollout
+            // (LandingExitGoAround.HoldsRollout); MainForm ends it if the aircraft stays up.
+            bool held = LandingExitGoAround.HoldsRollout(OnGroundProvider?.Invoke());
+            if (held != _rolloutAirborneHold)
+            {
+                _rolloutAirborneHold = held;
+                // Two calls, never one conditional: a conditional between interpolated strings is typed string
+                // and misses RolloutDiag's invariant-culture handler (InvariantLogLine).
+                if (held) RolloutDiag($"Rollout held, airborne: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt");
+                else RolloutDiag($"Rollout resumed, on the ground: lat={lat:F6} lon={lon:F6} gs={groundSpeedKts:F1}kt");
+            }
+            if (held) return;
+            CheckOffPavement(lat, lon, groundSpeedKts);
             UpdateLandingRollout(lat, lon, headingTrue, groundSpeedKts);
             return;
         }
@@ -1982,13 +2241,18 @@ public partial class TaxiGuidanceManager : IDisposable
             // countdown's "Runway vacated" close-out and both backtrack endings, all of which land
             // in Taxiing. See Services/RunwayIncursionWatch for why the map, not the state, decides.
             if (RunwayIncursionWatch.RunsWithoutARoute(_state, _graph != null))
-                CheckRunwayIncursion(lat, lon);
+                CheckRunwayIncursion(lat, lon, headingTrue);
             // ProgressiveHold is a terminal no-op: tone is off, the aircraft holds,
             // the pilot sets the next leg. No tone, no recalc, no movement logic.
             // (The unreachable-runway safety net and lineup path are gated on
             // _isRunwayLineup / _hasLineupTarget, which progressive never sets.)
             return;
         }
+
+        // The exit: from the handoff until exit guidance ends (Arrived) — not after, where unmapped
+        // aprons would make it cry wolf.
+        if (_isLandingExitRoute)
+            CheckOffPavement(lat, lon, groundSpeedKts);
 
         // Post-handoff overshoot monitor. After TryEarlyExitHandoff or the
         // turnBegun/exitedLaterally handoff from UpdateLandingRollout transitions
@@ -2030,10 +2294,6 @@ public partial class TaxiGuidanceManager : IDisposable
             // suffer the same false-positive mode.
             bool exitedLaterallyPH = lateralFtPH >= halfWidthFtPH + 30.0;
 
-            double exitBrgErrPH = _rolloutExit.ExitBearingTrue != 0.0
-                ? Math.Abs(NormalizeAngle(headingTrue - _rolloutExit.ExitBearingTrue))
-                : double.MaxValue;
-
             double signedAlongPastFtPH = SignedAlongRunwayMeters(
                 lat, lon,
                 _rolloutExit.Latitude, _rolloutExit.Longitude,
@@ -2043,13 +2303,10 @@ public partial class TaxiGuidanceManager : IDisposable
             // count as committed. Without the pastExit guard, A/P jitter on shallow
             // exits (e.g. 7.6° at LGAV 03R D8/D9) falsely satisfies this check while
             // the aircraft is still hundreds of feet short, killing the overshoot monitor
-            // prematurely. Thresholds match alignedWithExit in UpdateLandingRollout.
-            bool alignedWithExitPH = _rolloutExit.ExitBearingTrue != 0.0
-                && _rolloutExit.ExitAngleDegrees >= 3.0
-                && exitBrgErrPH <= 5.0
-                && hdgDeltaAbsPH >= Math.Max(2.0, _rolloutExit.ExitAngleDegrees * 0.7)
-                && groundSpeedKts < ROLLOUT_TURN_MAX_GS_KTS
-                && signedAlongPastFtPH >= 0.0;
+            // prematurely. The same rule as alignedWithExit in UpdateLandingRollout.
+            bool alignedWithExitPH = Navigation.RolloutExitGate.IsAlignedWithExit(
+                headingTrue, _rolloutExit.ExitBearingTrue, _rolloutExit.ExitAngleDegrees,
+                _rolloutExit.DivergenceAngleDegrees, hdgDeltaAbsPH, groundSpeedKts, signedAlongPastFtPH >= 0.0);
 
             if (turnBegunPH || exitedLaterallyPH || alignedWithExitPH)
             {
@@ -2066,46 +2323,25 @@ public partial class TaxiGuidanceManager : IDisposable
                 // past the junction, giving counterproductive left pan for
                 // hundreds of feet. Use an angle-proportional formula:
                 // fire as soon as the lateral displacement of a committed
-                // aircraft would exceed OVERSHOOT_ON_CENTERLINE_FT + 5 ft.
-                double overshootMarginPH;
-                if (_rolloutExit.ExitType == "High-speed" && _rolloutExit.ExitAngleDegrees > 0.0)
-                {
-                    double radPH = _rolloutExit.ExitAngleDegrees * Math.PI / 180.0;
-                    double angleBasedFtPH = (OVERSHOOT_ON_CENTERLINE_FT + 5.0) / Math.Sin(radPH);
-                    overshootMarginPH = Math.Max(ROLLOUT_OVERSHOOT_FT,
-                                        Math.Min(angleBasedFtPH, ROLLOUT_HIGHSPEED_OVERSHOOT_FT));
-                }
-                else
-                {
-                    overshootMarginPH = _rolloutExit.ExitType == "High-speed"
-                        ? ROLLOUT_HIGHSPEED_OVERSHOOT_FT : ROLLOUT_OVERSHOOT_FT;
-                }
+                // aircraft would exceed OVERSHOOT_ON_CENTERLINE_FT + 5 ft, read at how
+                // steeply the exit leaves its node (RolloutExitGate.OvershootMarginFor).
+                double overshootMarginPH = Navigation.RolloutExitGate.OvershootMarginFor(
+                    _rolloutExit.ExitType, _rolloutExit.DivergenceAngleDegrees);
                 if (signedAlongPastFtPH >= overshootMarginPH
                     && lateralFtPH < OVERSHOOT_ON_CENTERLINE_FT)
                 {
                     _rolloutHandoffActive = false;
 
-                    Navigation.LandingExit? nextExitPH = null;
-                    foreach (var e in _rolloutAllExits)
-                    {
-                        if (e.DistanceFromThresholdFeet <= _rolloutExit.DistanceFromThresholdFeet + ROLLOUT_OVERSHOOT_FT)
-                            continue;
-                        if (e.ExitAngleDegrees > 0.0 && e.ExitAngleDegrees > 90.0)
-                            continue;
-                        nextExitPH = e;
-                        break;
-                    }
-
+                    // The rollout overshoot's own rule: downfield of the aircraft as well as the missed
+                    // exit, and the graph asked before any "Missed last exit".
+                    var nextExitPH = PickOvershootRetarget(signedAlongPastFtPH, "OVERSHOOT (post-handoff)");
                     if (nextExitPH != null)
                     {
                         RetargetLandingExit(nextExitPH, lat, lon, headingTrue);
                         return;
                     }
 
-                    string rwyLabelPH = !string.IsNullOrEmpty(_rolloutRunway.RunwayID)
-                        ? _rolloutRunway.RunwayID : "this runway";
-                    AnnounceInstruction($"Missed last exit on runway {rwyLabelPH}.");
-                    EnterRunwayEndCountdown();
+                    AnnounceMissedLastExit();
                     return;
                 }
             }
@@ -2539,7 +2775,7 @@ public partial class TaxiGuidanceManager : IDisposable
         CheckSpeedWarnings(distToTarget, currentSeg);
 
         // Runway incursion: warn if approaching any off-route hold-short node
-        CheckRunwayIncursion(lat, lon);
+        CheckRunwayIncursion(lat, lon, headingTrue);
 
         // Parking countdown on the final segment (50/20/10 ft)
         CheckParkingCountdown(distToTarget);
@@ -3005,8 +3241,12 @@ public partial class TaxiGuidanceManager : IDisposable
     ///      → "Warning: approaching runway X, off route" (red flag — wrong turn)
     /// The scheduled-hold-short (user-checked) case is silent here because
     /// CheckHoldShortCountdown owns those callouts.
+    /// "Approaching", for case 2, is the node being AHEAD on the aircraft's own heading line
+    /// (RunwayIncursionWatch.IsApproaching), not merely within the 40 m radius: at KMEM every
+    /// hold line along taxiway M sits 34-38 m from M's centreline, and by proximity alone a
+    /// pilot correctly taxiing M heard the warning at every connector.
     /// </summary>
-    private void CheckRunwayIncursion(double lat, double lon)
+    private void CheckRunwayIncursion(double lat, double lon, double headingTrue)
     {
         if (_graph == null) return;
 
@@ -3063,7 +3303,12 @@ public partial class TaxiGuidanceManager : IDisposable
         }
         var onRouteHsNodes = _cachedOnRouteHsNodes;
 
-        // Per-graph HS/ILS-HS candidate list, cached (see field comments above).
+        // Per-graph HS/ILS-HS candidate list, cached (see field comments above). A NEW graph is
+        // a new airport with its own node numbering (ids restart at 1 per graph), so the
+        // per-node memory — the warned-node latch and the withheld-log set — goes with it:
+        // the departure airport's node 17 must not silence the arrival airport's node 17.
+        // LoadRoute/StopGuidance are not the only handovers; the rollout entries install a
+        // graph without passing through either.
         if (!ReferenceEquals(_holdShortNodesGraph, _graph))
         {
             var list = new List<TaxiNode>();
@@ -3074,30 +3319,87 @@ public partial class TaxiGuidanceManager : IDisposable
             }
             _cachedHoldShortNodes = list;
             _holdShortNodesGraph = _graph;
+            // Everything the guard knows about a node that depends only on the map — the paths
+            // leading into it and the runway it guards — is built once here, not per frame.
+            var shapes = RunwayPavement.BuildShapes(_graph.RunwayCenterlines);
+            _incursionNodeGeometry.Clear();
+            foreach (var node in list)
+            {
+                _incursionNodeGeometry[node.NodeId] = new IncursionNodeGeometry(
+                    CollectPathsIntoNode(node, shapes),
+                    RunwayIncursionWatch.GuardedRunway(node.Latitude, node.Longitude, shapes));
+            }
+            ResetIncursionNodeMemory();
         }
 
-        // Scan only the cached HS/ILS-HS candidates (not every graph node)
-        TaxiNode? nearestHs = null;
-        double bestDist = INCURSION_WARN_DISTANCE_M;
+        // Judge every cached HS/ILS-HS node in range (not every graph node) and speak about the
+        // nearest that is on the route or genuinely ahead — never simply the nearest: an abeam
+        // node a few metres closer than the one dead ahead would otherwise shadow it
+        // (RunwayIncursionWatch.Pick).
+        //
+        // In range is not the same as ahead: a hold line beside the taxiway being followed
+        // (KMEM's M1-M9, 34-38 m abeam of M) is judged against the aircraft's own heading and
+        // against the path segments that lead into the node, and left alone. Nothing is latched
+        // for a node that is not ahead, so it is judged again next frame and the moment the
+        // aircraft turns toward it the warning fires, from the full radius.
+        //
+        // Leaving a runway is not approaching one: an aircraft on the runway side of a hold line,
+        // on the pavement of the runway THAT line guards (vacating on a route-less taxi, or a
+        // backtrack ending), is not warned about it (RunwayIncursionWatch.IsLeavingThroughHoldLine).
+        // Only that runway, and only from its side: rolling along one runway toward another
+        // runway's hold line, or entering through a hold line drawn on the pavement, is judged
+        // like any other approach. Planned crossings ("Crossing runway X.") are unaffected.
+        //
+        // The candidate list is a field, cleared per use, and only touched once a node is in
+        // range: on the >99 % of frames with nothing in range this allocates nothing and does
+        // no runway geometry at all (this runs every position frame inside _stateLock).
+        _incursionCandidates.Clear();
         foreach (var node in _cachedHoldShortNodes!)
         {
             if (node.NodeId == scheduledHsNodeId)
                 continue; // countdown owns this one
 
             double d = TaxiGraph.FastDistanceMeters(lat, lon, node.Latitude, node.Longitude);
-            if (d < bestDist)
+            if (d >= INCURSION_WARN_DISTANCE_M) continue;
+
+            string name = !string.IsNullOrEmpty(node.HoldShortName) ? node.HoldShortName : "runway";
+            bool onRoute = onRouteHsNodes.Contains(node.NodeId);
+            bool approached = false;
+            _incursionNodeGeometry.TryGetValue(node.NodeId, out var geometry);
+            if (!onRoute && !RunwayIncursionWatch.IsLeavingThroughHoldLine(
+                    lat, lon, node.Latitude, node.Longitude, geometry?.GuardedRunway))
             {
-                bestDist = d;
-                nearestHs = node;
+                double bearingToNode = NavigationCalculator.CalculateBearing(
+                    lat, lon, node.Latitude, node.Longitude);
+                approached = RunwayIncursionWatch.IsApproaching(d, bearingToNode, headingTrue);
+                var pathsIntoNode = geometry?.PathsIntoNode ?? Array.Empty<RunwayIncursionWatch.PathSegment>();
+                if (!approached)
+                {
+                    approached = RunwayIncursionWatch.IsApproachingAlongAPath(
+                        lat, lon, headingTrue, node.Latitude, node.Longitude, pathsIntoNode);
+                }
+                // A turn onto a connector whose hold line is close to its junction is seen by
+                // neither test until the nose is nearly round; the yaw rate UpdatePosition already
+                // keeps (low-passed, right-positive) says where the turn is taking the aircraft.
+                if (!approached)
+                {
+                    approached = RunwayIncursionWatch.IsApproachingWhileTurning(
+                        lat, lon, headingTrue, _lastGroundSpeedKts * StartWarningChatterGate.MetersPerSecondPerKnot, _yawRateDegSec,
+                        node.Latitude, node.Longitude, pathsIntoNode);
+                }
+                if (!approached && _incursionWithheldLoggedNodes.Add(node.NodeId))
+                    _guidanceLog.Info(
+                        $"Incursion warning withheld: {name} {d:F0} m away, bearing {bearingToNode:F0} vs heading {headingTrue:F0} — not ahead.");
             }
+            _incursionCandidates.Add(new RunwayIncursionWatch.HoldShortCandidate(node.NodeId, d, onRoute, approached, name));
         }
 
-        if (nearestHs == null || nearestHs.NodeId == _lastIncursionWarnedNodeId)
+        var pick = RunwayIncursionWatch.Pick(_incursionCandidates);
+        if (pick == null || pick.Value.NodeId == _lastIncursionWarnedNodeId)
             return;
 
-        string rwy = !string.IsNullOrEmpty(nearestHs.HoldShortName) ? nearestHs.HoldShortName : "runway";
-
-        if (onRouteHsNodes.Contains(nearestHs.NodeId))
+        string rwy = pick.Value.SpokenName;
+        if (pick.Value.OnRoute)
         {
             // Planned crossing — informational, not a warning
             _announcer.AnnounceImmediate($"Crossing {rwy}.");
@@ -3107,8 +3409,71 @@ public partial class TaxiGuidanceManager : IDisposable
             _announcer.AnnounceImmediate($"Warning: approaching {rwy}, off route.");
         }
 
-        _lastIncursionWarnedNodeId = nearestHs.NodeId;
+        _lastIncursionWarnedNodeId = pick.Value.NodeId;
         _lastIncursionWarningTime = DateTime.UtcNow;
+        // Re-arm the once-per-node withheld log for this node: a later pass that withholds it
+        // again is a new judgement and deserves its own line.
+        _incursionWithheldLoggedNodes.Remove(pick.Value.NodeId);
+    }
+
+    /// <summary>
+    /// Forgets which hold-short nodes the incursion guard has spoken or logged about: the
+    /// warned-node latch AND the once-per-node "Incursion warning withheld" log set, always
+    /// together (a new route, a recalculation, a stop, or a new graph whose node ids restart).
+    /// The only place the latch is re-armed — <c>IncursionGuardResetTests</c>: the accepted
+    /// recalculation once re-armed the latch alone and left the log set holding the old route's
+    /// withheld nodes.
+    /// </summary>
+    private void ResetIncursionNodeMemory()
+    {
+        _lastIncursionWarnedNodeId = -1;
+        _incursionWithheldLoggedNodes.Clear();
+    }
+
+    /// <summary>
+    /// Builds every segment of every path that leads into a
+    /// hold-short node, for <see cref="RunwayIncursionWatch.IsApproachingAlongAPath"/>: from each
+    /// incident edge, back through degree-two nodes for up to
+    /// <see cref="RunwayIncursionWatch.PathLookBackMetres"/>, so a fillet drawn as micro-bend
+    /// segments is seen whole — on the TAXIWAY side only: a chain whose first node beyond the
+    /// hold line is on runway pavement is the runway side, and an aircraft on it is leaving the
+    /// runway, not approaching it. Called once per node when the hold-short cache is built for a
+    /// graph, never per frame.
+    /// </summary>
+    private RunwayIncursionWatch.PathSegment[] CollectPathsIntoNode(
+        TaxiNode node, IReadOnlyList<RunwayShape> runwayShapes)
+    {
+        var into = new List<RunwayIncursionWatch.PathSegment>();
+        if (_graph == null || !_graph.Adjacency.TryGetValue(node.NodeId, out var incident)) return into.ToArray();
+        const int MaxStepsPerChain = 8;
+        foreach (var first in incident)
+        {
+            var near = node;
+            int farId = first.FromNodeId == node.NodeId ? first.ToNodeId : first.FromNodeId;
+            double widthFeet = first.WidthFeet;
+            double walked = 0;
+            if (_graph.Nodes.TryGetValue(farId, out var beyond)
+                && RunwayPavement.IsOnPavement(beyond.Latitude, beyond.Longitude, runwayShapes))
+                continue; // the runway side of the hold line
+            for (int step = 0; step < MaxStepsPerChain; step++)
+            {
+                if (!_graph.Nodes.TryGetValue(farId, out var far) || far.NodeId == node.NodeId) break;
+                into.Add(new RunwayIncursionWatch.PathSegment(
+                    far.Latitude, far.Longitude, near.Latitude, near.Longitude, widthFeet));
+                walked += TaxiGraph.FastDistanceMeters(far.Latitude, far.Longitude, near.Latitude, near.Longitude);
+                if (walked >= RunwayIncursionWatch.PathLookBackMetres) break;
+                // Continue only through a plain degree-two node (a bend, not a junction).
+                if (!_graph.Adjacency.TryGetValue(far.NodeId, out var farEdges) || farEdges.Count != 2) break;
+                var onward = farEdges[0].FromNodeId == near.NodeId || farEdges[0].ToNodeId == near.NodeId
+                    ? farEdges[1] : farEdges[0];
+                int nextId = onward.FromNodeId == far.NodeId ? onward.ToNodeId : onward.FromNodeId;
+                if (nextId == near.NodeId) break;
+                widthFeet = onward.WidthFeet;
+                near = far;
+                farId = nextId;
+            }
+        }
+        return into.ToArray();
     }
 
     /// <summary>
@@ -3604,7 +3969,7 @@ public partial class TaxiGuidanceManager : IDisposable
         _pendingTaxiwayAnnouncement = null;
         _holdShortOuterAnnounced = _holdShortSlowDownAnnounced = _holdShortStopAnnounced = false;
         _parkingAnnounce50 = _parkingAnnounce20 = _parkingAnnounce10 = false;
-        _lastIncursionWarnedNodeId = -1;
+        ResetIncursionNodeMemory();
         // Reset cooldowns so a freshly-loaded route after Stop gets prompt warnings
         // instead of inheriting a stale cooldown from the prior session.
         _lastRecalculationTime = DateTime.MinValue;
@@ -3631,6 +3996,7 @@ public partial class TaxiGuidanceManager : IDisposable
         // without depending on its own field assignments to overwrite.
         _rolloutExit = null;
         _isLandingExitRoute = false;
+        _rolloutAirborneHold = false;
         ResetLandingExitOutcomeFlags();   // fresh session: no failed handoff to remember
         _rolloutRunway = null;
         _rolloutAllExits = new List<Navigation.LandingExit>();
@@ -3643,6 +4009,9 @@ public partial class TaxiGuidanceManager : IDisposable
         _rolloutStoppedNoticeGiven = false;
         _rolloutCrossingDeclinedUtc = DateTime.MinValue;
         _rolloutCrossingDeclineAnnounced = false;
+        ResetOffPavementAlert();
+        _pavementMap = null;
+        _pavementMapGraph = null;
         _backtrackConnectionNodeId = 0;
         _backtrackApproachAnnounced = false;
         _backtrackDeparture = false;

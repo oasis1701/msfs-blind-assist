@@ -7,15 +7,20 @@ namespace MSFSBlindAssist.Tests.FirstOfficer.MD11;
 
 /// <summary>
 /// Engine 3's N2 rides the same one-shot FO request as engines 1 and 2, on the next free id pair
-/// (385), and reaches only evaluators that opt in through IFoEngine3N2Sink.
+/// (386 — 385 is the PMDG 777 FO's gear-position request), and reaches only evaluators that opt in
+/// through IFoEngine3N2Sink.
 /// </summary>
 public class FoEngine3N2PlumbingTests
 {
     [Fact]
-    public void RequestAndDefinitionIds_Are385()
+    public void RequestAndDefinitionIds_Are386_BesideTheGearPositionsAt385()
     {
-        Assert.Equal(385, (int)SimConnectManager.DATA_REQUESTS.REQUEST_FO_ENG3_N2);
-        Assert.Equal(385, (int)SimConnectManager.DATA_DEFINITIONS.DEF_FO_ENG3_N2);
+        Assert.Equal(386, (int)SimConnectManager.DATA_REQUESTS.REQUEST_FO_ENG3_N2);
+        Assert.Equal(386, (int)SimConnectManager.DATA_DEFINITIONS.DEF_FO_ENG3_N2);
+        Assert.NotEqual((int)SimConnectManager.DATA_REQUESTS.REQUEST_FO_GEAR_POSITIONS,
+            (int)SimConnectManager.DATA_REQUESTS.REQUEST_FO_ENG3_N2);
+        Assert.NotEqual((int)SimConnectManager.DATA_DEFINITIONS.DEF_FO_GEAR_POSITIONS,
+            (int)SimConnectManager.DATA_DEFINITIONS.DEF_FO_ENG3_N2);
     }
 
     [Fact]

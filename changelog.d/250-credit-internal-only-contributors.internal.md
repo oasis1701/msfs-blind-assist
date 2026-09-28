@@ -1,0 +1,1 @@
+Release notes credit contributors whose only change in a release is internal, on a closing "Also contributed to this release" line, and the preview keeps its "internal changes only" sentence when that line is all its notes hold.

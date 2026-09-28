@@ -108,6 +108,10 @@ Taxi Guidance (turn-by-turn taxi assistance with audio steering tone):
   Y          Taxi Status (current taxiway, next turn, distance to destination)
   Ctrl+Y     Repeat Current Taxi Instruction
   Alt+Y      Where Am I (announces current taxiway, gate, or runway at nearest airport)
+  Alt+L      Look Around (where you are, the apron or concourse you are in, and the nearest buildings with direction and distance)
+  Ctrl+Shift+L  Surroundings window (everything nearby as a list, with the airport's fuel and frequencies)
+                In its Frequencies list, Enter tunes the selected frequency into COM 1 standby
+                and Shift+Enter tunes it straight into COM 1 active; COM 1 is read back to confirm.
   (Open the form with Input mode > Shift+Y)
 
 Waypoint Tracking (use Fix Track window or EFB route viewer to add):
@@ -281,8 +285,11 @@ General:
   Escape     Exit active hotkey mode
 
 MCDU Window (open with [ then Shift+M):
-  This is the A32NX MCDU (Captain side — the SimBridge remote protocol does not
-  expose the First Officer MCDU separately).
+  This is the A32NX MCDU (Captain side — the aircraft draws both MCDU screens
+  from one instrument, so there is no separate First Officer MCDU to show).
+  Once you have opened this window, it keeps reading out FMS messages such
+  as DEST EFOB BELOW MIN after you close it. SimBridge is optional: it is
+  only needed for MCDU printouts.
 
 Navigation:
   Up/Down        Read the screen line by line

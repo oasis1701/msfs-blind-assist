@@ -151,6 +151,10 @@ public partial class SimConnectManager
                 NavRadioReceived?.Invoke(this, navRadioData);
                 break;
 
+            case DATA_REQUESTS.REQUEST_COM1_RADIO:
+                Com1RadioReceived?.Invoke(this, (Com1RadioData)data.dwData[0]);
+                break;
+
             case DATA_REQUESTS.REQUEST_HEADING:
                 SingleValue headingData = (SingleValue)data.dwData[0];
                 SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
@@ -271,6 +275,23 @@ public partial class SimConnectManager
                     Value = foCtrFuelLbs,
                     Description = $"{foCtrFuelLbs:0}"
                 });
+                break;
+
+            case DATA_REQUESTS.REQUEST_FO_GEAR_POSITIONS:
+                // Left, center, right gear-leg positions (percent) — see RequestFOGearPositions.
+                DoubleValueTriple foGear = (DoubleValueTriple)data.dwData[0];
+                foreach (var (name, pct) in new[] {
+                    ("FO_GEAR_LEFT_POS", foGear.value1),
+                    ("FO_GEAR_CENTER_POS", foGear.value2),
+                    ("FO_GEAR_RIGHT_POS", foGear.value3) })
+                {
+                    SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
+                    {
+                        VarName = name,
+                        Value = pct,
+                        Description = $"{pct:0}"
+                    });
+                }
                 break;
 
             case DATA_REQUESTS.REQUEST_AIRSPEED_TAS:
@@ -721,7 +742,10 @@ public partial class SimConnectManager
                     HeadingMagnetic = vgData.HeadingMagnetic,
                     MagneticVariation = vgData.MagneticVariation,
                     GroundSpeedKnots = vgData.GroundSpeedKnots,
-                    VerticalSpeedFPM = vgData.VerticalSpeedFPM
+                    VerticalSpeedFPM = vgData.VerticalSpeedFPM,
+                    // Carried forward, never defaulted — see the surface note on the mirrors below.
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0,
                 };
 
                 // Mirror to lastKnownPosition so the LandingExitPlanner has a fresh
@@ -803,6 +827,11 @@ public partial class SimConnectManager
                     // preserve the previous value. AltitudeMslFt is the same
                     // "PLANE ALTITUDE"/feet SimVar AIRCRAFT_POSITION.Altitude reads.
                     Altitude = faData.AltitudeMslFt,
+                    // SURFACE fields exist only on the AIRCRAFT_POSITION frame (case 4): carried
+                    // forward, never defaulted, or every other reader of lastKnownPosition would see
+                    // "unknown" whenever this stream wrote last. (A frame without Altitude likewise.)
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0,
                     SimOnGround = faData.OnGround
                 };
 
@@ -829,7 +858,12 @@ public partial class SimConnectManager
                     // WeatherRadarForm shows altitude) don't see a hard-zero just
                     // because the most recent position update was a taxi sample.
                     Altitude = lastKnownPosition?.Altitude ?? 0,
-                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0
+                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0,
+                    // SURFACE fields exist only on the AIRCRAFT_POSITION frame (case 4): carried
+                    // forward, never defaulted, or every other reader of lastKnownPosition would see
+                    // "unknown" whenever this stream wrote last. (A frame without Altitude likewise.)
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0
                 };
 
                 // Mirror to lastKnownPosition so other features (LandingExitPlanner,
@@ -865,7 +899,12 @@ public partial class SimConnectManager
                     // WeatherRadarForm shows altitude) don't see a hard-zero just
                     // because the most recent position update was a takeoff-assist sample.
                     Altitude = lastKnownPosition?.Altitude ?? 0,
-                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0
+                    VerticalSpeedFPM = lastKnownPosition?.VerticalSpeedFPM ?? 0,
+                    // SURFACE fields exist only on the AIRCRAFT_POSITION frame (case 4): carried
+                    // forward, never defaulted, or every other reader of lastKnownPosition would see
+                    // "unknown" whenever this stream wrote last. (A frame without Altitude likewise.)
+                    SurfaceType = lastKnownPosition?.SurfaceType ?? 0,
+                    SurfaceInfoValid = lastKnownPosition?.SurfaceInfoValid ?? 0
                 };
 
                 // Mirror to lastKnownPosition so cross-feature consumers read a fresh
@@ -1403,7 +1442,8 @@ public partial class SimConnectManager
 
     private void SimConnect_OnRecvSimobjectDataBytype(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA_BYTYPE data)
     {
-        if ((int)data.dwRequestID != (int)DATA_REQUESTS.REQUEST_AI_TRAFFIC) return;
+        bool groundSweep = IsGroundTrafficRequestId(data.dwRequestID);
+        if (!groundSweep && (int)data.dwRequestID != (int)DATA_REQUESTS.REQUEST_AI_TRAFFIC) return;
         try
         {
             ProcessAiTrafficEntry(data);
@@ -1419,12 +1459,19 @@ public partial class SimConnectManager
         // may be one the per-entry filters drop (e.g. the user's own aircraft,
         // which the AIRCRAFT object type always includes — which also means a
         // sweep always has at least one entry, so the marker always arrives).
+        // Each request id raises its OWN event, so a TCAS sweep can never be
+        // taken for the ground-traffic monitor's (PR #247 review L5), and a ground
+        // sweep's completion names the id it went out under (PR #247 B2).
         if (data.dwentrynumber >= data.dwoutof)
         {
-            try { AiTrafficSweepCompleted?.Invoke(this, EventArgs.Empty); }
+            try
+            {
+                if (groundSweep) GroundTrafficSweepCompleted?.Invoke(this, new GroundTrafficSweepEventArgs(data.dwRequestID));
+                else AiTrafficSweepCompleted?.Invoke(this, EventArgs.Empty);
+            }
             catch (Exception ex)
             {
-                Log.Debug("SimConnect", $"AiTrafficSweepCompleted handler error: {ex.Message}");
+                Log.Debug("SimConnect", $"Traffic sweep-completed handler error: {ex.Message}");
             }
         }
     }

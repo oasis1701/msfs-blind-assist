@@ -1,0 +1,301 @@
+using MSFSBlindAssist.Navigation;
+
+namespace MSFSBlindAssist.Services;
+
+/// <summary>Where an aircraft is relative to one runway.</summary>
+internal enum RunwayTrafficKind
+{
+    None,
+    OnRunway,
+    OnFinal,
+    Landing,
+    /// <summary>
+    /// Over the pavement, low and aligned, not recently on the ground, but its climb rate is not known
+    /// yet — landing or departing is decided on its next sample. Never spoken; it only holds back a
+    /// watch's first status.
+    /// </summary>
+    LandingPending,
+}
+
+internal readonly record struct RunwayTrafficFix(
+    RunwayTrafficKind Kind,
+    string Designator,      // OnFinal / Landing / LandingPending: the runway end it is (or may be) landing on
+    double DistanceNm);     // OnFinal: distance to that end's threshold; Landing / LandingPending: 0
+
+/// <summary>A fix attributed to one runway, by index into the shapes the caller passed.</summary>
+internal readonly record struct RunwayAssignment(int ShapeIndex, RunwayTrafficFix Fix);
+
+internal static partial class GroundTrafficLogic
+{
+    // Final-approach classification
+    public const double FinalMaxNm = 6.0;
+    private const double FinalHeadingToleranceDeg = 30.0;
+    private const double FinalLateralBaseM = 300.0;     // cone half-width at the threshold
+    private const double FinalLateralSlope = 0.12;       // + per metre out (≈ 7°)
+    private const double FinalMaxHeightPerNmFt = 500.0;  // well above a 3° path (318 ft/nm)
+    private const double FinalMaxHeightBaseFt = 800.0;
+
+    // Airborne over the pavement: the flare, a displaced threshold, the touchdown zone (R6).
+    private const double LandingLateralMarginM = 60.0;
+    private const double LandingMaxHeightFt = 300.0;
+
+    /// <summary>
+    /// An aircraft climbing faster than this is departing or going around — never landing and never on
+    /// final (PR #247 B1 review: a departure just after liftoff was announced "landing runway 27L",
+    /// interrupting a pilot lined up behind it). Over the pavement the heading cannot tell a departure
+    /// from an arrival, so LANDING needs a KNOWN climb rate: an aircraft first seen over the pavement is
+    /// not called landing until its second sample (about a second later at the watch's cadence) — until
+    /// then it is <see cref="RunwayTrafficKind.LandingPending"/>.
+    /// </summary>
+    public const double LandingMaxClimbFpm = 300.0;
+
+    /// <summary>
+    /// An aircraft seen ON THE GROUND within this long is taking off (or touching and going), never
+    /// landing — the guard for the first samples after liftoff, before its climb rate shows.
+    /// </summary>
+    public const double LandingGroundMemorySec = 60.0;
+
+    /// <summary>
+    /// Classifies one aircraft against one runway: on the pavement (on the ground); landing (airborne,
+    /// low, over the pavement, aligned with it); on final to either end (airborne, inside the approach
+    /// cone, pointing at the runway, not too high); or neither.
+    /// <paramref name="heightAboveFieldFt"/> is the traffic altitude minus the field elevation.
+    /// On-final distance is measured to the landing end's THRESHOLD (its paired <c>start</c> row, which
+    /// sits inside the pavement at a displaced threshold), not to the pavement end.
+    /// <para><paramref name="climbFpm"/> is the aircraft's vertical speed, null when not yet known.
+    /// Over the pavement, once the lateral, height and alignment tests have picked the end: seen on the
+    /// ground within <see cref="LandingGroundMemorySec"/> (<paramref name="recentlyOnGround"/> — the
+    /// first samples after liftoff, before the climb shows) is nothing; an UNKNOWN climb is
+    /// <see cref="RunwayTrafficKind.LandingPending"/> on that end — nothing else separates a departure
+    /// just after liftoff from an arrival in the flare, so it is decided on the next sample (PR #247 B2
+    /// review: the first status of a watch sees every airborne aircraft on its first sample, and an
+    /// aircraft in the flare was missing from it); a KNOWN climb of at most
+    /// <see cref="LandingMaxClimbFpm"/> is LANDING, anything above it nothing.
+    /// ON FINAL is ruled out only by a KNOWN climb above the limit; an unknown one does not rule it out
+    /// (far out, a sample of delay costs nothing), and <paramref name="recentlyOnGround"/> does not
+    /// affect it.</para>
+    /// </summary>
+    public static RunwayTrafficFix ClassifyAgainstRunway(
+        RunwayShape shape, double lat, double lon, bool onGround,
+        double headingTrue, double heightAboveFieldFt, double? climbFpm = null, bool recentlyOnGround = false)
+    {
+        var none = new RunwayTrafficFix(RunwayTrafficKind.None, "", 0);
+        if (shape.IsDegenerate) return none;
+
+        var (along, lateral) = shape.Project(lat, lon);
+        if (onGround)
+        {
+            return shape.ContainsAlongLateral(along, lateral, 0.0)
+                ? new RunwayTrafficFix(RunwayTrafficKind.OnRunway, "", 0)
+                : none;
+        }
+
+        double axisHdg = shape.HeadingFromEnd1Deg;
+        double reciprocalHdg = (axisHdg + 180.0) % 360.0;
+
+        // Over the pavement: landing when low, near the centreline, aligned (R6) — and known not to be
+        // climbing, and not just off the ground (a departure after liftoff has the same geometry). An
+        // unknown climb (the aircraft's first sample) is pending: decided on its next sample.
+        if (along >= shape.ExtentMinMeters && along <= shape.ExtentMaxMeters)
+        {
+            if (Math.Abs(lateral) > shape.HalfWidthMeters + LandingLateralMarginM
+                || heightAboveFieldFt > LandingMaxHeightFt)
+                return none;
+            string end;
+            if (Math.Abs(AngleDiff(headingTrue, axisHdg)) <= FinalHeadingToleranceDeg) end = shape.Name1;
+            else if (Math.Abs(AngleDiff(headingTrue, reciprocalHdg)) <= FinalHeadingToleranceDeg) end = shape.Name2;
+            else return none;
+            if (recentlyOnGround) return none;
+            if (climbFpm is not double c) return new RunwayTrafficFix(RunwayTrafficKind.LandingPending, end, 0);
+            return c <= LandingMaxClimbFpm ? new RunwayTrafficFix(RunwayTrafficKind.Landing, end, 0) : none;
+        }
+
+        // Off the pavement only a final is left, and a KNOWN climb is never on final.
+        if (climbFpm is double climb && climb > LandingMaxClimbFpm) return none;
+
+        // Short of end 1, flying toward end 2 → landing on Name1.
+        if (along < shape.ExtentMinMeters)
+        {
+            double outM = shape.ExtentMinMeters - along;
+            if (IsOnFinal(outM, lateral, headingTrue, axisHdg, heightAboveFieldFt))
+                return new RunwayTrafficFix(RunwayTrafficKind.OnFinal, shape.Name1,
+                    ThresholdDistanceNm(shape, along, axisHdg));
+        }
+        // Beyond end 2, flying toward end 1 → landing on Name2.
+        else
+        {
+            double outM = along - shape.ExtentMaxMeters;
+            if (IsOnFinal(outM, lateral, headingTrue, reciprocalHdg, heightAboveFieldFt))
+                return new RunwayTrafficFix(RunwayTrafficKind.OnFinal, shape.Name2,
+                    ThresholdDistanceNm(shape, along, reciprocalHdg));
+        }
+        return none;
+    }
+
+    /// <summary>
+    /// Classifies one aircraft against EVERY runway. On the ground it is on each runway whose pavement
+    /// holds it (an intersection is on both). Airborne it is attributed to AT MOST ONE runway — the
+    /// on-final, landing or landing-pending fix with the smallest lateral offset (then the smaller
+    /// heading error) — so an arrival to a close parallel, or an aircraft over its pavement whose climb
+    /// rate is not known yet, is never reported against the pilot's runway (R4).
+    /// <paramref name="climbFpm"/> and <paramref name="recentlyOnGround"/> reach every per-runway
+    /// classification (<see cref="ClassifyAgainstRunway"/>): a departure climbing over the pavement, or
+    /// seen on the ground within <see cref="LandingGroundMemorySec"/>, is landing on no runway.
+    /// </summary>
+    public static IReadOnlyList<RunwayAssignment> ClassifyAgainstRunways(
+        IReadOnlyList<RunwayShape> shapes, double lat, double lon, bool onGround,
+        double headingTrue, double heightAboveFieldFt, double? climbFpm = null, bool recentlyOnGround = false)
+    {
+        var result = new List<RunwayAssignment>();
+        if (shapes == null) return result;
+
+        if (onGround)
+        {
+            for (int i = 0; i < shapes.Count; i++)
+            {
+                var fix = ClassifyAgainstRunway(shapes[i], lat, lon, true, headingTrue, heightAboveFieldFt,
+                    climbFpm, recentlyOnGround);
+                if (fix.Kind == RunwayTrafficKind.OnRunway) result.Add(new RunwayAssignment(i, fix));
+            }
+            return result;
+        }
+
+        int best = -1;
+        RunwayTrafficFix bestFix = default;
+        double bestLateral = double.MaxValue, bestHeadingError = double.MaxValue;
+        for (int i = 0; i < shapes.Count; i++)
+        {
+            var fix = ClassifyAgainstRunway(shapes[i], lat, lon, false, headingTrue, heightAboveFieldFt,
+                climbFpm, recentlyOnGround);
+            if (fix.Kind is not (RunwayTrafficKind.OnFinal or RunwayTrafficKind.Landing
+                                 or RunwayTrafficKind.LandingPending)) continue;
+
+            double lateral = Math.Abs(shapes[i].Project(lat, lon).Lateral);
+            double axis = shapes[i].HeadingFromEnd1Deg;
+            double headingError = Math.Min(
+                Math.Abs(AngleDiff(headingTrue, axis)),
+                Math.Abs(AngleDiff(headingTrue, (axis + 180.0) % 360.0)));
+            bool better = lateral < bestLateral - 0.5
+                          || (Math.Abs(lateral - bestLateral) <= 0.5 && headingError < bestHeadingError);
+            if (better)
+            {
+                best = i;
+                bestFix = fix;
+                bestLateral = lateral;
+                bestHeadingError = headingError;
+            }
+        }
+        if (best >= 0) result.Add(new RunwayAssignment(best, bestFix));
+        return result;
+    }
+
+    private static bool IsOnFinal(double outM, double lateral, double headingTrue, double landingHdg,
+                                  double heightFt)
+    {
+        double nm = outM / MetresPerNm;
+        if (nm > FinalMaxNm) return false;
+        if (Math.Abs(lateral) > FinalLateralBaseM + FinalLateralSlope * outM) return false;
+        if (Math.Abs(AngleDiff(headingTrue, landingHdg)) > FinalHeadingToleranceDeg) return false;
+        if (heightFt > FinalMaxHeightBaseFt + FinalMaxHeightPerNmFt * nm) return false;
+        return true;
+    }
+
+    /// <summary>Along-axis distance (nm) from the aircraft to the threshold of the end it lands on.</summary>
+    private static double ThresholdDistanceNm(RunwayShape shape, double along, double landingHeadingTrue)
+    {
+        var anchor = shape.DepartureEndFor(landingHeadingTrue);
+        double thresholdAlong = shape.Project(anchor.ThresholdLat, anchor.ThresholdLon).Along;
+        return Math.Abs(thresholdAlong - along) / MetresPerNm;
+    }
+
+    /// <summary>A runway status sentence opening, "Runway 27" — designators already bare.</summary>
+    public static string RunwayLabel(IEnumerable<string> designators)
+        => "Runway " + string.Join(" and ", designators);
+
+    /// <summary>A known runway occupant or final is forgotten only after being unseen this long (G5).</summary>
+    public const double KnownAbsenceGraceMs = 3000.0;
+
+    /// <summary>
+    /// Forgets from <paramref name="known"/> only the ids unseen for <see cref="KnownAbsenceGraceMs"/>;
+    /// <paramref name="absentSince"/> records when each known id was first missed and is cleared when it is
+    /// seen again. Returns the ids forgotten this call.
+    /// </summary>
+    public static IReadOnlyList<uint> ForgetAbsent(HashSet<uint> known, IReadOnlySet<uint> seen,
+        Dictionary<uint, DateTime> absentSince, DateTime now)
+    {
+        var forgotten = new List<uint>();
+        foreach (uint id in known.ToList())
+        {
+            if (seen.Contains(id)) { absentSince.Remove(id); continue; }
+            if (!absentSince.TryGetValue(id, out var since)) { absentSince[id] = now; continue; }
+            if ((now - since).TotalMilliseconds < KnownAbsenceGraceMs) continue;
+            known.Remove(id);
+            absentSince.Remove(id);
+            forgotten.Add(id);
+        }
+        return forgotten;
+    }
+
+    /// <summary>
+    /// The known ids (<paramref name="knownIds"/>) whose recorded runway KEY (<paramref name="knownRunwayOf"/>,
+    /// the <c>WatchedRunway.Key</c> — both ends, "09/27" — of the runway status each was last seen under)
+    /// is no longer among this evaluation's scanned keys (<paramref name="scopeKeys"/>) — never the ones
+    /// simply missing this evaluation, that is <see cref="ForgetAbsent"/>'s job.
+    ///
+    /// <para>The runway watch widens what it scans for a runway the aircraft is merely on, without
+    /// changing the watch's identity (PR #247 final review H3): backtracking through an intersection, or
+    /// waiting inside another runway's pavement, adds that runway to the scan. Once the aircraft leaves
+    /// its pavement, that runway drops out of the scan entirely — its known occupant is not "unseen for a
+    /// while", the watch simply stopped scanning it — so it must be forgotten SILENTLY rather than through
+    /// the grace-timed absence that reports "no traffic seen on the runway now" of a runway that was never
+    /// occupied in the first place (PR #247 B5 follow-up K3).</para>
+    ///
+    /// <para>Keys, never spoken designators: a position-only watch names the NEARER end, which flips at
+    /// mid-runway, and comparing designators purged — and so announced again — the same runway's known
+    /// traffic (PR #247 re-review Important 2). An id with NO recorded key is NOT out of scope: nothing
+    /// says its runway left the scan, so it is left to <see cref="ForgetAbsent"/> (PR #247 re-review
+    /// Critical 1 — a missing entry read as out of scope purged every landing aircraft's occupant record,
+    /// and it was announced again).</para>
+    /// </summary>
+    public static IReadOnlyList<uint> IdsOutOfScope(IEnumerable<uint> knownIds,
+        IReadOnlyDictionary<uint, string> knownRunwayOf, IReadOnlySet<string> scopeKeys)
+    {
+        var result = new List<uint>();
+        foreach (uint id in knownIds)
+            if (knownRunwayOf.TryGetValue(id, out string? key) && !scopeKeys.Contains(key))
+                result.Add(id);
+        return result;
+    }
+
+    /// <summary>
+    /// The runway keys whose LAST known occupant <see cref="ForgetAbsent"/> has just forgotten — each is
+    /// announced by name ("Runway 27: no traffic seen on the runway now."), once, the moment its OWN last
+    /// known occupant has been unseen for <see cref="KnownAbsenceGraceMs"/>, not only when every runway
+    /// the watch scans has emptied (PR #247 re-review M2).
+    ///
+    /// <para><paramref name="forgotten"/>: the occupants forgotten this evaluation.
+    /// <paramref name="occupantRunwayOf"/>: each known occupant's recorded runway key, read BEFORE the
+    /// forgotten ids' entries are removed. <paramref name="stillKnown"/>: the known occupants that remain —
+    /// one recorded under a runway keeps it occupied. <paramref name="keysWithOccupantsSeen"/>: the runways
+    /// with an aircraft on them this evaluation, known or not — a runway with an aircraft on it now is
+    /// not empty, whatever the bookkeeping says. A forgotten id with no recorded key names no runway.
+    /// Distinct keys, in the order of their first forgotten occupant.</para>
+    ///
+    /// <para>Only grace-timed absence feeds this: an occupant purged because its runway left the scan
+    /// (<see cref="IdsOutOfScope"/>) never reaches it, so a runway that merely left the scan is never
+    /// reported as emptied (PR #247 B5 follow-up K3).</para>
+    /// </summary>
+    public static IReadOnlyList<string> EmptiedRunwayKeys(IEnumerable<uint> forgotten,
+        IReadOnlyDictionary<uint, string> occupantRunwayOf, IEnumerable<uint> stillKnown,
+        IReadOnlySet<string> keysWithOccupantsSeen)
+    {
+        var occupied = new HashSet<string>(keysWithOccupantsSeen, StringComparer.Ordinal);
+        foreach (uint id in stillKnown)
+            if (occupantRunwayOf.TryGetValue(id, out string? key)) occupied.Add(key);
+        var result = new List<string>();
+        foreach (uint id in forgotten)
+            if (occupantRunwayOf.TryGetValue(id, out string? key) && !occupied.Contains(key) && !result.Contains(key))
+                result.Add(key);
+        return result;
+    }
+}

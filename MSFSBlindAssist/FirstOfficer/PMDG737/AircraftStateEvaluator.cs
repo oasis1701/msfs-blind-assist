@@ -78,6 +78,18 @@ public class AircraftStateEvaluator : IFoStateEvaluator
                        AreWingFuelPumpsOn(), IsEitherCenterPumpOn(),
                        FuelCenterLbs() > CenterFuelPumpAutomation.OffThresholdLbs) ? 1 : 0);
 
+        // Landing gear confirmed UP — "gear up, lights out" (GearConfirmation): the lever
+        // not DOWN and every gear indication light out. Read by the After Takeoff Checklist's
+        // "Landing gear: UP" and the After Takeoff flow's read-only AT_GEAR_UP_CHECK step.
+        if (field == GearConfirmation.UpField)
+            return !CdaReady ? double.NaN : (GearConfirmation.IsConfirmedUp(RawValue) ? 1 : 0);
+
+        // Landing gear confirmed DOWN — "three green" (GearConfirmation): the lever DOWN,
+        // all three main-panel greens on, no red. Read by the Landing Checklist's "Landing
+        // gear: DOWN" and the Landing flow's read-only LD_GEAR_DOWN_CHECK step.
+        if (field == GearConfirmation.DownField)
+            return !CdaReady ? double.NaN : (GearConfirmation.IsConfirmedDown(RawValue) ? 1 : 0);
+
         // CDA fields: INDETERMINATE (NaN) until the first snapshot arrives — GetFieldValue
         // returns 0.0 for EVERY field before then (interface contract), which false-matched
         // every OFF/closed checklist condition at startup and latched items complete.
@@ -92,6 +104,15 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     {
         try { return (_dm?.GetFieldValue(field) ?? 0) > 0.5; }
         catch { return false; }
+    }
+
+    // Raw CDA value for composing synthetic fields — NaN when absent or unreadable (a NaN
+    // light reads as "off" and a NaN lever as neither UP nor DOWN, both the safe direction).
+    // Only call when CdaReady.
+    private double RawValue(string field)
+    {
+        try { return _dm?.GetFieldValue(field) ?? double.NaN; }
+        catch { return double.NaN; }
     }
 
     public bool IsOn(string field) => GetValue(field) > 0.5;

@@ -426,9 +426,23 @@ public class Pmdg777FlowOrderingTests
         {
             // Group the flow's linked ticks by the group each item belongs to, keeping
             // flow order, then assert each group's indices only ever increase.
+            //
+            // ONE item is left out, deliberately: the After Takeoff flow completes
+            // AFTER_TKOF_CL's ATKOF_GEAR ("Landing Gear: UP", listed first) from its LAST step,
+            // a read-only up-to-20 s check that the gear is physically up (lever plus the stock
+            // gear-leg positions — the 777 SDK has no gear lights), placed last so a slow gear
+            // confirmation never holds up the flaps — so it ticks after ATKOF_FLAPS.
+            // Only that one item is excused; every other item in every group, including any
+            // later added to AFTER_TKOF_CL, is still checked.
             var linked = flow.Steps
                 .Select(s => s.CompletesChecklistItemId)
                 .Where(id => !string.IsNullOrEmpty(id))
+                .Where(id => !(flow.Id == "AFTER_TAKEOFF" && id == "ATKOF_GEAR"))
+                // A line several steps deliver (both wiper sides → one "Wiper selectors: OFF";
+                // left FD, both A/T ARMs, right FD in physical MCP order → "Flight Director
+                // switches: ON" and "Autothrottle arm switches: ARM") is placed by the FIRST
+                // step that names it.
+                .Distinct()
                 .ToList();
 
             foreach (var group in groups)

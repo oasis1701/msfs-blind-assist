@@ -534,8 +534,15 @@ public static class FenixChecklistDefinitions
         Id = "AFTER_TAKEOFF_CL", Name = "After Takeoff Checklist",
         Items = new()
         {
+            // "Landing gear: UP" is confirmed the way a crew confirms it — gear up, lights
+            // out — through the FenixGearConfirmation synthetic (lever UP and all seven
+            // LDG GEAR indicator lights out), never the lever alone (owner decision
+            // 2026-09-22). The After Takeoff flow's read-only AT_GEAR_UP_CHECK step waits
+            // for the same field and completes this line; when it times out it is skipped
+            // aloud and FlowManager keeps this line out of MarkGroupComplete's latch, so it
+            // never reads complete over gear that is still down.
             Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP",
-                "S_MIP_GEAR", v => v < 0.5, action: null),
+                FenixGearConfirmation.UpField, v => v > 0.5, action: null),
             Auto("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: RETRACTED",
                 "S_FC_FLAPS", v => v < 0.5, action: null),
             Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: ON",
@@ -564,8 +571,13 @@ public static class FenixChecklistDefinitions
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
         {
+            // "Landing gear: DOWN" is confirmed the way a crew confirms it — three green, no
+            // red — through the FenixGearConfirmation synthetic (lever DOWN, each wheel's
+            // lower legend lit, its upper legend and the red arrow out — the greens measured
+            // live 2026-09-25), never the lever alone (owner decision 2026-09-22). The Fenix
+            // has no Landing flow, so nothing latches this line: it ticks from its own state.
             Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN",
-                "S_MIP_GEAR", v => v > 0.5, action: null),
+                FenixGearConfirmation.DownField, v => v > 0.5, action: null),
             Auto("LDC_SIGNS", "LANDING_CL", "Signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
             Auto("LDC_SPOILERS", "LANDING_CL", "Ground spoilers: ARMED",

@@ -104,8 +104,8 @@ electrical/pneumatic systems already configured for taxi).
 
 ## Part D — Auto managers
 
-1. In **File → Settings… → First Officer**, enable **Auto Gear Up**, **Auto Gear Down**, and
-   **Auto AP** for the Fenix.
+1. In **File → Settings… → First Officer**, enable **Auto-raise gear on climb**,
+   **Auto-lower gear on descent**, and **Auto-engage autopilot** for the Fenix.
 2. Fly a takeoff and confirm:
    - Positive rate of climb above ~50 ft AGL with gear down → gear auto-raises, "Positive
      rate. Gear up." announced.
@@ -114,8 +114,9 @@ electrical/pneumatic systems already configured for taxi).
      configured number (e.g. "350 feet. Autopilot one engaged.").
 3. On approach/descent, confirm gear auto-lowers between 2000 ft and 100 ft AGL while
    descending (not already down), "Two thousand feet. Gear down." announced.
-4. **Confirm the Auto Flaps checkbox has NO effect on the Fenix.** Enable "Auto Flaps" in
-   the Settings dialog's First Officer tab; fly a climb/descent and confirm flaps never move automatically —
+4. **Confirm the Auto-manage flaps checkbox has NO effect on the Fenix.** Enable
+   "Auto-manage flaps" in the Settings dialog's First Officer tab; fly a climb/descent and
+   confirm flaps never move automatically —
    the Fenix `FenixFOAutoManager` deliberately stores `AutoFlapsEnabled` but never acts on
    it (the Fenix exposes no V1/VR/V2/VAPP L:vars outside the MCDU display, so a speed-based
    auto-flap schedule would be weight-blind guesswork). This is a documented non-feature,
@@ -175,7 +176,8 @@ Securing the Aircraft Checklist).
 5. **LANDING_CL auto-ticks on approach configuration** — during the approach (before
    touchdown), configure landing gear DOWN, signs ON, ground spoilers ARMED, flaps to
    landing setting, and confirm the **Landing Checklist** (`LANDING_CL`) group's matching
-   items auto-tick from live state as each is set — "Landing gear: DOWN", "Signs: ON",
+   items auto-tick from live state as each is set — "Landing gear: DOWN" (only once the gear
+   shows three green — see the gear-down section below), "Signs: ON",
    "Ground spoilers: ARMED", "Flaps: SET" (checked via `A_FC_SPEEDBRAKE < 0.5` for spoilers
    armed and `S_FC_FLAPS > 2.5` for flaps set — confirm these thresholds match your actual
    flap lever detent for a landing configuration).
@@ -289,3 +291,31 @@ One change: the Before Start "Waiting for APU available" wait now ABORTS the flo
    ~3 minutes, with external power still on the bus. Fix the cause, re-run the flow —
    completed steps announce "Already set" and the flow proceeds.
 3. After Landing APU block: unchanged (timeout announces and continues).
+
+---
+
+## "Landing gear: UP" by lights out, not the lever (2026-09-22)
+
+1. In flight, after takeoff, with the gear still DOWN (disable **Auto-raise gear on climb**
+   first), run the **After Takeoff** flow. Expect
+   "Timed out waiting for: Landing gear: UP" then "Skipping: Landing gear: UP" spoken
+   *before* "After Takeoff flow complete" (non-interrupting, so both are heard). Open the
+   Checklists tab — the After Takeoff Checklist's "Landing gear: UP" line must stay
+   **unticked**. Raise the gear (by hand or via the auto-manager) and confirm the line ticks
+   itself once the lever reads UP **and** every LDG GEAR indicator (all three wheels' upper
+   and lower legends, plus the lever's red arrow) is dark — not merely once the lever moves.
+
+---
+
+## "Landing gear: DOWN" by three green, not the lever (2026-09-25)
+
+1. On approach, with **Auto-lower gear on descent** disabled, open the Checklists tab and
+   put the gear lever DOWN by hand. The Landing Checklist's "Landing gear: DOWN" line must
+   stay **unticked** while the gear is still travelling, and tick itself only once all three
+   gear show down and locked — not the moment the lever moves.
+2. Parked on the ground on a fresh flight load, gear down, aircraft powered, without ticking
+   any Landing Checklist line by hand (a hand-worked group that reaches 100% freezes and no
+   longer un-ticks): the line reads ticked. Set the
+   annunciator light switch (overhead, ANN LT) to **TEST** — the line must **un-tick** (the
+   test lights every gear legend, which never counts as "three green"). Return the switch to
+   BRT and confirm the line ticks again.

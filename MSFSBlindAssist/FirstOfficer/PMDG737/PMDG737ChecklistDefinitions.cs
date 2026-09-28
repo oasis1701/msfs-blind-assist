@@ -519,11 +519,14 @@ public static class PMDG737ChecklistDefinitions
         {
             Auto("ATC_BLEEDS", "AFTER_TAKEOFF_CL", "Engine bleeds: ON", "AIR_BleedAirSwitch_0", v => v > 0.5, new[] { "AIR_BleedAirSwitch_1" }, action: null),
             Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: AUTO", "AIR_PackSwitch_0", v => v > 0.5 && v < 1.5, new[] { "AIR_PackSwitch_1" }, action: null),
-            // Anything but DOWN (2) ticks it: UP (0) is the normal after-takeoff state, and
-            // OFF (1) is still gear up if a pilot moved the lever there by hand. The First
-            // Officer itself never moves the lever to OFF (removed 2026-09-22 — no write
-            // path was reliable; see docs/pmdg-737.md), so the line asks for UP only.
-            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP", "MAIN_GearLever", v => v < 1.5, action: null),
+            // "Landing gear: UP" is confirmed the way a crew confirms it — gear up, lights
+            // out — through the GearConfirmation synthetic (lever not DOWN AND every gear
+            // light out), never the lever alone (owner decision 2026-09-22). A lever a pilot
+            // moves to OFF by hand still satisfies it once the gear is up. The After Takeoff
+            // flow's read-only AT_GEAR_UP_CHECK step waits for the same field and completes
+            // this line; when it times out it is skipped aloud and FlowManager keeps this line
+            // out of MarkGroupComplete's latch, so it never reads complete over gear still down.
+            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP", GearConfirmation.UpField, v => v > 0.5, action: null),
             Reminder("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: UP, no lights"),
         }
     };
@@ -562,7 +565,14 @@ public static class PMDG737ChecklistDefinitions
             // are what actuate. Mirrors the 777's LDG_SPEEDBRAKE.
             Auto("LDC_SPDBRK", "LANDING_CL", "Speedbrake: ARMED",
                 SpeedbrakeArmLadder.ArmedField, v => v > 0.5, action: null),
-            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN", "MAIN_GearLever", v => v > 1.5, action: null),
+            // "Landing gear: DOWN" is confirmed the way a crew confirms it — three green —
+            // through the GearConfirmation synthetic (lever DOWN, all three main-panel greens
+            // on, no red), never the lever alone (owner decision 2026-09-22). The Landing
+            // flow's read-only LD_GEAR_DOWN_CHECK step waits for the same field and completes
+            // this line; when it times out it is skipped aloud and FlowManager keeps this line
+            // out of MarkGroupComplete's latch, so finishing the flow before the gear is down
+            // no longer reads "Landing gear: DOWN" complete over gear that is still up.
+            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN", GearConfirmation.DownField, v => v > 0.5, action: null),
             Reminder("LDC_FLAPS", "LANDING_CL", "Flaps: set for landing"),
         }
     };

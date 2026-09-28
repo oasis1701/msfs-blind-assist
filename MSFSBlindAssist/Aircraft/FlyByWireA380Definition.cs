@@ -53,6 +53,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // block) is this airframe's single icing voice; the generic announcer yields.
     public override bool HasOwnIcingAnnouncer => true;
 
+    // The FBW A380 ignores the stock COM events (live-verified: COM_STBY_RADIO_SET_HZ to 119.000
+    // left COM1 standby at 121.95), so the surroundings window's Enter must not pretend to tune.
+    public override string? StockComTuningRefusal =>
+        "This aircraft tunes its radios only through its RMP window, input mode Ctrl+Shift+R.";
+
     // A380 FCU uses the same direct-set dialog pattern as the A320.
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
     public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
@@ -1196,10 +1201,30 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // knots" — mirroring the Fenix MCDU V-speed entry confirmation. FormatVariableValue
         // appends "knots" from Units; the simVarMonitor baseline + connect-grace keep the
         // initial values silent. Listed in the Ctrl+M monitor for opt-out like every other
-        // announced var. (Was OnRequest/display-only before the Fenix-parity pass.)
-        vars["PFD_V1"] = new SimVarDefinition { Name = "AIRLINER_V1_SPEED", DisplayName = "V1", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "knots" };
-        vars["PFD_VR"] = new SimVarDefinition { Name = "AIRLINER_VR_SPEED", DisplayName = "VR", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "knots" };
-        vars["PFD_V2"] = new SimVarDefinition { Name = "AIRLINER_V2_SPEED", DisplayName = "V2", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "knots" };
+        // announced var. (Was OnRequest/display-only before the Fenix-parity pass.) A cleared speed
+        // (-1 for V1/VR, 0 for V2 — an FMS reset, or a departure-runway change sending the speeds
+        // back for confirmation) is spoken "not set" through NotSetBelow, never as a number.
+        vars["PFD_V1"] = new SimVarDefinition { Name = "AIRLINER_V1_SPEED", DisplayName = "V1", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "knots", NotSetBelow = 1 };
+        vars["PFD_VR"] = new SimVarDefinition { Name = "AIRLINER_VR_SPEED", DisplayName = "VR", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "knots", NotSetBelow = 1 };
+        vars["PFD_V2"] = new SimVarDefinition { Name = "AIRLINER_V2_SPEED", DisplayName = "V2", Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true, Units = "knots", NotSetBelow = 1 };
+        // Take-off roll "V1" / "Rotate" / "V2" as those speeds are reached (A380TakeoffCallouts).
+        // Indicated airspeed fed per SIM_FRAME — the MD-11 / iFly G_FORCE pattern: IsAnnounced to be
+        // monitored at all, ExcludeFromBatch + HighFrequency for a per-var SIM_FRAME subscription (the
+        // 1 Hz batch would call "Rotate" up to a second, ~5 kt, late). Consumed, never spoken, hidden
+        // from Ctrl+M: each call is muted through its V1 / VR / V2 row above, which also mutes that
+        // speed's set-announce. One individual data definition; the batch layout is unchanged.
+        vars[A380TakeoffCallouts.IasKey] = new SimVarDefinition
+        {
+            Name = "AIRSPEED INDICATED",
+            DisplayName = "Take-off callout airspeed",
+            Type = SimVarType.SimVar,
+            Units = "knots",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromBatch = true,
+            HighFrequency = true,
+            ExcludeFromMonitorManager = true,
+        };
         Stock("PFD_MACH", "AIRSPEED MACH", "Mach", "mach");          // decoded in TryGetDisplayOverride
         Stock("PFD_TRACK", "GPS GROUND MAGNETIC TRACK", "Track", "degrees");
         Stock("PFD_ILS_FREQ", "NAV ACTIVE FREQUENCY:3", "ILS Frequency", "MHz");
@@ -1284,9 +1309,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             Name = "A32NX_FM1_TRANS_LVL", DisplayName = "Transition level",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
         };
-        // FCU selected altitude + heading targets (stock autopilot simvars; the A380 has no
-        // A32NX_FCU_*_DISPLAY var for these). On the PFD status box next to the FMA.
-        Stock("FCU_SEL_ALT", "AUTOPILOT ALTITUDE LOCK VAR:3", "FCU selected altitude", "feet");
+        // FCU selected heading target (stock autopilot simvar; the A380 has no
+        // A32NX_FCU_*_DISPLAY var for it). On the PFD status box next to the FMA.
+        // The selected ALTITUDE is not registered here — it is FCU_ALT_VALUE, registered once
+        // further down with the rest of the FCU selected values. A second key on the same
+        // AUTOPILOT ALTITUDE LOCK VAR:3 gave one number two pollers and two spoken names.
         Stock("FCU_SEL_HDG", "AUTOPILOT HEADING LOCK DIR", "FCU selected heading", "degrees");
         // Static + total air temperature (ADIRS ADR-1 ARINC429 words, celsius) — what the SD
         // permanent footer shows. Auto-decoded by the generic ARINC path.
@@ -1362,17 +1389,26 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Read("A32NX_SPEEDS_MANAGED_PFD", "Managed speed", "knots");
         Read("A32NX_SpeedPreselVal", "Preselected speed", "knots");
         Read("A32NX_MachPreselVal", "Preselected Mach", "mach");
-        Stock("FD_1", "AUTOPILOT FLIGHT DIRECTOR ACTIVE:1", "Flight director 1", "bool",
-            new Dictionary<double, string> { [0] = "off", [1] = "on" });
-        Stock("FD_2", "AUTOPILOT FLIGHT DIRECTOR ACTIVE:2", "Flight director 2", "bool",
-            new Dictionary<double, string> { [0] = "off", [1] = "on" });
+        // Per-side flight directors as the PRIM engages them — the PFD FMA's "1FD2" cell, from
+        // PRIM FG discrete word 1 (bits 13/14 engaged, 17/18 inop), decoded in
+        // TryGetDisplayOverride. NOT the stock AUTOPILOT FLIGHT DIRECTOR ACTIVE:n these used to
+        // read: nothing has written that since FBW #10855 (see A380FlightDirector). Two keys on
+        // one Name is fine here because both are OnRequest, never batched.
+        foreach (var (fdKey, fdLabel) in new[] { ("FD_1", "Flight director 1"), ("FD_2", "Flight director 2") })
+        {
+            vars[fdKey] = new SimVarDefinition
+            {
+                Name = A380FlightDirector.PrimFgWord1, DisplayName = fdLabel,
+                Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
+            };
+        }
         // Autoland capability (the PFD D1/D2 cell: LAND2 / LAND3 SINGLE / LAND3 DUAL) — decoded
-        // from the FCDC flight-guidance discrete word 4 (bit 23 = LAND2, 24 = LAND3 fail-passive
-        // "single", 25 = LAND3 fail-operational "dual"). NCD until on an ILS approach with the
-        // capability computed → "none" on the ground. Decoded in TryGetDisplayOverride.
+        // by A380ApproachCapability from FCDC FG discrete word 1 (bits 24/25/26). FBW #10855
+        // deleted word 4, which this read until 2026-09-25 and which nothing writes now. Reports
+        // no capability until on an approach with it computed → "none" on the ground.
         vars["PFD_AUTOLAND"] = new SimVarDefinition
         {
-            Name = "A32NX_FCDC_1_FG_DISCRETE_WORD_4", DisplayName = "Autoland capability",
+            Name = A380ApproachCapability.Word, DisplayName = "Autoland capability",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous,
             IsAnnounced = true
         };
@@ -1411,7 +1447,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // the FMS/EFB display conversion — registering this lets every MSFSBA weight
         // readout honour the pilot's choice (gross weight, total fuel, fuel flow).
         // Per FBW `NXUnits`, the toggle ONLY affects WEIGHTS (kg/lb) and short
-        // distances (m/ft) — NOT altitude (that's A32NX_METRIC_ALT_TOGGLE), speed,
+        // distances (m/ft) — NOT altitude (that's the FCU MTRS mode, A380MetricAltitude), speed,
         // or NM route distance. Continuous so it tracks live; announce handled in
         // ProcessSimVarUpdate ("Weight units kilograms/pounds" on change).
         vars["A32NX_EFB_USING_METRIC_UNIT"] = new SimVarDefinition
@@ -2001,20 +2037,33 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         Evt("A32NX.FCU_ATHR_DISCONNECT_PUSH", "A32NX.FCU_ATHR_DISCONNECT_PUSH", "Autothrust Disconnect");
         Evt("A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "A32NX.FCU_SPD_MACH_TOGGLE_PUSH", "Speed / Mach Toggle");
         Evt("A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "A32NX.FCU_TRK_FPA_TOGGLE_PUSH", "TRK / FPA Toggle");
-        Sel("XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT", "Altitude Increment",
-            new Dictionary<double, string> { [100] = "100", [1000] = "1000" });
-        // Metric altitude (the FCU MTRS button). Settable combo AND continuously
-        // monitored so MSFSBA's altitude read-outs can switch to metres when it's on
-        // (cached into _metricAlt in ProcessSimVarUpdate). A380-only feature.
-        vars["A32NX_METRIC_ALT_TOGGLE"] = new SimVarDefinition
+        // Altitude increment, 100 / 1000 ft (CORRECTED 2026-09 for FBW #10855). The FCU reads
+        // L:A32NX_FCU_ALT_INCREMENT_1000 (0 = 100 ft, 1 = 1000 ft — what the cockpit knob writes);
+        // the XMLVAR_AUTOPILOT_ALTITUDE_INCREMENT this combo used to read and write has had no
+        // reader since #10855, so a pick changed nothing and the combo showed only MSFSBA's own
+        // last write. Set through A32NX.FCU_ALT_INCREMENT_SET 100/1000 (HandleUIVariableSet), the
+        // event the Altitude window's increment buttons already use.
+        Sel("A32NX_FCU_ALT_INCREMENT_1000", "Altitude Increment",
+            new Dictionary<double, string> { [0] = "100", [1] = "1000" });
+        // Metric altitude (the FCU MTRS button; A380-only). CORRECTED 2026-09 for FBW #10855: the
+        // mode is the PRIM's FG discrete word 5 bit 14 and the button fires
+        // A32NX.FCU_METRIC_ALT_TOGGLE_PUSH — L:A32NX_METRIC_ALT_TOGGLE, which this combo used to
+        // read and write, has no reader since #10855 (see A380MetricAltitude). The combo reads the
+        // word ON REQUEST and shows bit 14 through a classifier: FMA_FG_ALERTS already carries the
+        // same word in the continuous batch, and a second Continuous key on one Name shifts every
+        // later slot. MSFSBA's own metric flag (_metricAlt, which the altitude read-outs and the
+        // Altitude window's input unit follow) is decoded from FMA_FG_ALERTS in ProcessSimVarUpdate.
+        vars[A380MetricAltitude.ControlKey] = new SimVarDefinition
         {
-            Name = "A32NX_METRIC_ALT_TOGGLE", DisplayName = "Metric Altitude",
-            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+            Name = A380MetricAltitude.PrimFgWord5, DisplayName = "Metric Altitude",
+            Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest,
+            ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" },
+            ValueToDescriptionKey = A380MetricAltitude.DescriptionKey
         };
 
-        // Selected value readouts (OnRequest; read on demand via Shift+H/S/A/V).
-        // NB: units MUST be "number" — this is an L:var. Reading it with the
+        // Selected value readouts. Registered OnRequest here; the heading and speed shims are then
+        // streamed for the hardware-dial announcer (below), while V/S and FPA stay on demand
+        // (Shift+V). NB: units MUST be "number" — this is an L:var. Reading it with the
         // SimVar angle-unit "degrees" returns a wrong/normalised value (e.g. 300
         // read back as 005), since the L:var read path doesn't apply SimVar units.
         Read("A32NX_AUTOPILOT_HEADING_SELECTED", "Selected Heading", "number");
@@ -2024,6 +2073,44 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // either the SimConnect side or ours. See the FCU readout in .SimVarUpdate.cs.
         Read("A32NX_AUTOPILOT_VS_SELECTED", "Selected Vertical Speed", "number");
         Read("A32NX_AUTOPILOT_FPA_SELECTED", "Selected FPA", "number");
+        // FCU selected values the hardware-dial announcer speaks as they change — 777-MCP parity
+        // (TryComposeFcuValuePhrase in .SimVarUpdate.cs). Heading and speed are the shims above:
+        // the FCU writes them as -1 while the window shows dashes, so a dashed window is silent
+        // by construction (and 0 while the FCU is off — every output zeroed). Batch-covered so each
+        // sample is judged together with A32NX_FCU_AFS_CP_ACTIVE at the batch end; the Shift+H/S
+        // readouts' force-read of a batch-covered var is honoured by the next batch delivery.
+        //
+        // V/S and FPA are NOT the shims: both read 0 while the window shows dashes and in the
+        // other mode, so a level-off spoke "Vertical speed 0 feet per minute", and 0 is also a
+        // real selection. They stay OnRequest for the Shift+V readout; the announcer reads PRIM 1's
+        // selected-V/S and selected-FPA ARINC429 words below instead.
+        foreach (var fcuValKey in new[] { "A32NX_AUTOPILOT_HEADING_SELECTED", "A32NX_AUTOPILOT_SPEED_SELECTED" })
+        {
+            vars[fcuValKey].UpdateFrequency = UpdateFrequency.Continuous;
+            vars[fcuValKey].IsAnnounced = true;
+        }
+        // The FCU shows the MASTER PRIM's selected V/S or FPA word, and shows dashes exactly when
+        // the word for the active mode is not Normal Operation (A380FcuComputer); the PRIM marks
+        // selected_vs_ft_min No Computed Data while dashed or in TRK/FPA, and selected_fpa_deg the
+        // reverse (A380PrimComputerFctl). So each word says on its own whether its value is on
+        // the FCU — no separate dashes flag to race. KNOWN LIMITATION, the same as the PRIM 1
+        // envelope speeds above: PRIM 1 single-sourced, so with PRIM 1 not the master these go
+        // silent rather than follow PRIM 2/3. Batch-covered, units "number": a batched L:var is
+        // read in its registered unit, and a unit conversion would destroy a packed word. They
+        // carry the pilot-facing names because their Ctrl+M rows are the callout mutes; the OnRequest
+        // shims above keep the same names on the PFD panel rows, the only place those appear.
+        foreach (var (primWordKey, display) in new[]
+        {
+            ("A32NX_PRIM_1_SELECTED_VERTICAL_SPEED", "Selected Vertical Speed"),
+            ("A32NX_PRIM_1_SELECTED_FPA", "Selected FPA"),
+        })
+            MonNum(primWordKey, display);
+        // FCU health for the hardware-dial callouts: fcu1||fcu2 afs_cp_active, 0 exactly when the
+        // FCU publishes all-zero outputs (unpowered or failed). A callout is released only while it
+        // is 1, and its return starts a settle, so a power-up is never read out as knob turns.
+        // Consumed silently in ProcessSimVarUpdate.
+        MonNum("A32NX_FCU_AFS_CP_ACTIVE", "FCU AFS control panel active");
+        vars["A32NX_FCU_AFS_CP_ACTIVE"].ExcludeFromMonitorManager = true;
         // Managed-vs-selected indicators — AUTO-ANNOUNCED so a knob PUSH (managed)
         // or PULL (selected) speaks the resulting mode. Previously OnRequest/silent,
         // so pushing/pulling speed/heading/altitude/VS gave no audible feedback.
@@ -2043,18 +2130,20 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // the session. ValueDescriptions is empty because the row renders from
         // TryGetDisplayOverride, not from a 0/1 flag.
         Mon("A32NX_FCU_ALT_MANAGED", "Altitude Mode", new Dictionary<double, string>());
-        // Settable toggle combo — fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH on change.
+        // Settable toggle combo — SetTrkFpaMode fires A32NX.FCU_TRK_FPA_TOGGLE_PUSH when the pick differs.
         Sel("A32NX_TRK_FPA_MODE_ACTIVE", "Track FPA Mode",
             new Dictionary<double, string> { [0] = "HDG V/S", [1] = "TRK FPA" });
         // Keep an individual data def for the three managed-status legs the OUTPUT-mode FCU
         // readouts (Shift+H/S/V) force-read via RequestVariable(forceUpdate). This is no longer
         // load-bearing the way it once looked: 929be066 fixed RequestVariable(forceUpdate) to
         // also re-fire an unchanged batch-covered var (DataRequests.cs/VarCache.cs), so dropping
-        // ExcludeFromBatch here would NOT silence Shift+H/S/V. What it costs is latency, not
-        // silence: with ExcludeFromBatch, the forced re-read gets an immediate PERIOD.ONCE reply;
-        // without it, the value+managed pair-gate in ProcessSimVarUpdate would only close on the
-        // next 1 Hz continuous-batch delivery. Mirrors the A320 fix (FlyByWireA320Definition's
-        // *_MANAGED vars). 3 extra defs, well within the A380's data-def headroom.
+        // ExcludeFromBatch here would NOT silence Shift+H/S/V. Nor does it buy an immediate
+        // answer: with ExcludeFromBatch each has its own PERIOD.SECOND subscription, and a
+        // force-read of that is honoured by its NEXT delivery (SimConnectManager.RequestVariable
+        // never re-issues a subscription's own request id), so either way the value+managed
+        // pair-gate in ProcessSimVarUpdate closes within about a second. Mirrors the A320 fix
+        // (FlyByWireA320Definition's *_MANAGED vars). 3 extra defs, well within the A380's
+        // data-def headroom.
         // (A32NX_FCU_VS_MANAGED is not force-read by any readout — VS keys on
         // TRK_FPA_MODE_ACTIVE — so it intentionally stays batch-covered.)
         //
@@ -2068,8 +2157,21 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         vars["A32NX_FCU_SPD_MANAGED_DOT"].ExcludeFromBatch = true;
         vars["A32NX_TRK_FPA_MODE_ACTIVE"].ExcludeFromBatch = true;
         // SimVars (key != Name — ProcessSimVarUpdate matches on the key).
+        // ⚠️ ONE key per underlying simvar: FCU_ALT_VALUE *is* the A380's selected-altitude var.
+        // There is deliberately no second FCU_SEL_ALT registration of AUTOPILOT ALTITUDE LOCK VAR:3
+        // — two keys meant two pollers for one number and, worse, two different spoken names for it
+        // ("Selected Altitude" in Ctrl+M vs "FCU selected altitude" in the PFD panel). This key is
+        // the one that carries the metric-altitude (MTRS) display override in .Displays.cs.
         Stock("FCU_ALT_VALUE", "AUTOPILOT ALTITUDE LOCK VAR:3", "Selected Altitude", "feet");
-        Stock("FCU_MACH_MODE", "AUTOPILOT MANAGED SPEED IN MACH", "Mach Mode", "bool", onOff);
+        // Streamed for the hardware-dial announcer like heading and speed above, batch-covered so
+        // each sample is judged with A32NX_FCU_AFS_CP_ACTIVE at the batch end (the Shift+A readout's
+        // force-read is answered by the next batch delivery). The altitude window never shows
+        // dashes, so the stock value is enough; it reads 0 while the FCU is off.
+        vars["FCU_ALT_VALUE"].UpdateFrequency = UpdateFrequency.Continuous;
+        vars["FCU_ALT_VALUE"].IsAnnounced = true;
+        // (No stock AUTOPILOT MANAGED SPEED IN MACH read here any more: nothing has moved it since FBW
+        //  #10855 masked the two stock events that were its only writers — see the SPD/MACH branch in
+        //  HandleUIVariableSet. The FCU's own flag is L:A32NX_FCU_AFS_DISPLAY_MACH_MODE.)
 
         // ---- PFD / FMA live mode annunciations (ported from the A320; the
         //      A380X publishes these under the same A32NX_ names). Auto-announced
@@ -2120,30 +2222,17 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         {
             [0] = "None", [1] = "CLB", [2] = "MCT", [3] = "FLEX", [4] = "TOGA", [5] = "Max Reverse"
         });
-        // Flight Director 1 / 2 (CORRECTED 2026-06). The A32NX_FCU_EFIS_L/R_FD_ACTIVE
-        // L:vars are DEAD on the A380X — live-verified the FD stayed ON with the lvar at
-        // 0 (fully decoupled), and writing the lvar actuated nothing (the earlier
-        // "sticks via the calculator path" note was the stickiness trap — it holds but
-        // drives nothing). The real control is the cockpit FD button, which fires
-        // K:TOGGLE_FLIGHT_DIRECTOR with the SIDE as the PARAMETER (1 = Capt, 2 = F/O) —
-        // live-verified: param 1 flips FD1, param 2 flips FD2, per-side. (The earlier
-        // attempt used param 0, which only ever turned the FD off and never on.) Back
-        // the combos on the stock AUTOPILOT FLIGHT DIRECTOR ACTIVE:n and toggle-if-differs
-        // via HandleUIVariableSet — same pattern as ENG GEN / taxi light.
-        vars["FD_1_CTL"] = new SimVarDefinition
-        {
-            Name = "AUTOPILOT FLIGHT DIRECTOR ACTIVE:1", DisplayName = "Flight Director 1",
-            Type = SimVarType.SimVar, Units = "bool",
-            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
-            ValueDescriptions = onOff
-        };
-        vars["FD_2_CTL"] = new SimVarDefinition
-        {
-            Name = "AUTOPILOT FLIGHT DIRECTOR ACTIVE:2", DisplayName = "Flight Director 2",
-            Type = SimVarType.SimVar, Units = "bool",
-            UpdateFrequency = UpdateFrequency.Continuous, IsAnnounced = true,
-            ValueDescriptions = onOff
-        };
+        // Flight directors (CORRECTED 2026-09 for FBW #10855). ONE pushbutton on the FCU drives
+        // both flight directors: the combo reads its light and a set presses A32NX.FCU_FD_PUSH
+        // only when the pick differs (HandleUIVariableSet). The stock
+        // AUTOPILOT FLIGHT DIRECTOR ACTIVE:n + K:TOGGLE_FLIGHT_DIRECTOR pair this used to be is
+        // DEAD since #10855 — nothing writes the var, and the WASM masks the event into a press
+        // of the one button, so the old per-side combos read a frozen state and their two
+        // presses cancelled. See A380FlightDirector before changing any of this.
+        // The per-side keys of the stock-var era (FD_1_CTL / FD_2_CTL) are gone: a key per side
+        // for one button would be two presses that cancel. Anything that sets the flight
+        // directors sets this one key.
+        Sel(A380FlightDirector.StateKey, "Flight Directors", onOff);
         // Monitored (so ProcessSimVarUpdate sees changes) + Ctrl+M-muteable; the raw
         // generic announce is suppressed by the decoded handler returning true.
         Mon("A32NX_FMA_VERTICAL_ARMED", "Armed Vertical Modes", new Dictionary<double, string>());
@@ -2155,7 +2244,8 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // (alt_cstr_applicable), which names the armed ALT call-out — see ArmedAltitudeMode —
         // so it has to be live rather than read-on-panel-open. ProcessSimVarUpdate caches both
         // bits and returns true; nothing about this word is ever spoken on its own, because
-        // neither bit is an armed state (bit 28 was measured TRUE at FL360 with nothing armed).
+        // neither bit is an armed state (the cruise bit, 29, was measured TRUE at FL360 with
+        // nothing armed — a capture once misread as bit 28, see Arinc429Word.BitValueOr).
         vars["FMA_CRUISE_ALT_MODE"] = new SimVarDefinition
         {
             Name = "A32NX_PRIM_1_FG_DISCRETE_WORD_3", DisplayName = "Cruise Altitude Mode",
@@ -2192,14 +2282,13 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // "exped" in the A380 cockpit XML, and A32NX_FMA_EXPEDITE_MODE is gone from the
         // A380 source entirely. It remains a real A32NX control, so the A320 def keeps it.)
 
-        // ---- EFIS Control Panel: flight director + baro (per side) ----
-        // FD control is the FD_1_CTL / FD_2_CTL combos registered above: per-side stock
-        // AUTOPILOT FLIGHT DIRECTOR ACTIVE:n state, actuated by K:TOGGLE_FLIGHT_DIRECTOR
-        // with the SIDE as the parameter (1 = Capt, 2 = F/O). The A32NX_FCU_EFIS_L/R_FD_ACTIVE
-        // L:vars are DEAD on the A380X (read 0 while the FD is on; a calc-path write holds but
-        // drives nothing — the stickiness trap), so DO NOT switch the combos back to them.
-        // FD_ACTIVE below is the stock COMBINED FD state, a read-only status readout only.
-        Stock("FD_ACTIVE", "AUTOPILOT FLIGHT DIRECTOR ACTIVE", "Flight Director", "bool", onOff);
+        // ---- EFIS Control Panel: baro (per side) ----
+        // (No flight director here: the A380's one FD pushbutton is on the FCU — see the
+        //  "Flight directors" registration above. The old A32NX_FCU_EFIS_L/R_FD_ACTIVE L:vars
+        //  are DEAD on the A380X too — they read 0 while the FD is on, and a calc-path write
+        //  holds but drives nothing, the stickiness trap. The stock combined
+        //  AUTOPILOT FLIGHT DIRECTOR ACTIVE readout that sat here went with the per-side combos:
+        //  nothing has written it since FBW #10855.)
         // (Legacy XMLVAR_BaroN_Mode combos are DEAD on the A380X — verified live
         //  that writing them changes nothing. STD/QNH is the IS_STD combo below.)
         // Auto-announced live as the pilot turns the baro knob (the EFIS baro
@@ -2256,11 +2345,10 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             Name = "MSFSBA_BRIDGE_PROBE", DisplayName = "Bridge Probe",
             Type = SimVarType.LVar, UpdateFrequency = UpdateFrequency.OnRequest
         };
-        // hPa/inHg unit per side: the real selector is XMLVAR_Baro_Selector_HPA_
-        // {1,2} (registered as the "Baro Unit" combo in the EFIS-CP section).
-        // A32NX_FCU_EFIS_*_BARO_IS_INHG is stuck at 0 on the A380X (verified live:
-        // F/O reads XMLVAR=0/inHg while IS_INHG stays 0), so it is NOT used — the
-        // unit flag is tracked off the XMLVAR in ProcessSimVarUpdate.
+        // hPa/inHg unit per side: the selector is A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG since FBW
+        // #10855 (registered as the "Baro Unit" combo in the EFIS-CP section) and the unit flag is
+        // tracked off it in ProcessSimVarUpdate. (XMLVAR_Baro_Selector_HPA_{1,2}, what this used
+        // before, has no reader any more.)
         // Baro PRESELECT (the descent-QNH preselect shown while in STD) was removed entirely:
         // the FBW marks A380X_EFIS_{side}_BARO_PRESELECTED "Not for FBW systems use!" — it's a
         // display-only output, not settable by any L:var/K-event we can reach (proven live), so
@@ -2564,16 +2652,17 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
             // On/Off controls registered in the EFIS Control Panel block above.)
             Sel($"A380X_EFIS_{side}_ACTIVE_OVERLAY", $"{who} ND Overlay",
                 new Dictionary<double, string> { [0] = "Off", [1] = "Weather", [2] = "Terrain" });
-            // A380 baro unit lives on XMLVAR_Baro_Selector_HPA_{1|2} (1=hPa, 0=inHg),
-            // not A32NX_FCU_EFIS_*_BARO_IS_INHG (which doesn't exist on the A380).
-            // #60 NOTE (verified in FBW source extras-host/BaroUnitSelector.ts):
-            // the unit is NOT a freely-settable cockpit control — FBW derives it
-            // from the flyPad config + the aircraft's GEOGRAPHIC POSITION (inHg in
-            // N. America, hPa elsewhere) and the systems code re-writes this XMLVAR
-            // from that, so a SimConnect write to it reverts. Kept as a combo for
-            // the live READOUT (which is correct); a set is best-effort only.
-            Sel($"XMLVAR_Baro_Selector_HPA_{(side == "L" ? "1" : "2")}", $"{who} Baro Unit",
-                new Dictionary<double, string> { [0] = "inHg", [1] = "hPa" });
+            // Baro unit, per side (CORRECTED 2026-09 for FBW #10855). The EFIS-CP hPa/inHg
+            // selector writes L:A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG (1 = inHg, 0 = hPa) and the FCU
+            // reads it every frame (efis-cp.xml; FlyByWireInterface.cpp efis_inputs.baro_is_inhg),
+            // so writing it IS the selector — the generic A32NX_ calculator catch-all makes the same
+            // write the cockpit does. XMLVAR_Baro_Selector_HPA_{1,2}, which this combo and the unit
+            // tracking used before, has had no reader since #10855: only extras-host's flight-load
+            // default still writes it (an FBW leftover — the FCU no longer takes that default), so a
+            // pick changed nothing and the spoken unit could disagree with the cockpit.
+            // (The old "IS_INHG is stuck at 0 / doesn't exist on the A380" notes predate #10855.)
+            Sel($"A32NX_FCU_EFIS_{side}_BARO_IS_INHG", $"{who} Baro Unit",
+                new Dictionary<double, string> { [0] = "hPa", [1] = "inHg" });
         }
 
         // ECAM control panel — checklist buttons + SD more. Silent: the ECL window
@@ -2875,8 +2964,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
         // ---- Runway Overrun Warning / Protection (ROW/ROP) + OANS RWY AHEAD ----
         // Landing-rollout and taxi safety call-outs. Both are ARINC429 discrete
         // words (plain L-vars, no colon index); each warning is a single bit,
-        // decoded + announced on its rising edge in ProcessSimVarUpdate. Bits from
-        // the FBW PFD AttitudeIndicatorWarnings: ROW_ROP_WORD_1 13=MAX BRAKING,
+        // decoded + announced on its rising edge in ProcessSimVarUpdate. Bits (FBW #10699's
+        // layout — autobrakes.rs, the PFD's AttitudeIndicatorWarnings, the FWS aurals):
+        // ROW_ROP_WORD_1 11=BRAKE MAX BRAKING, 12=SET MAX REVERSE, 13=KEEP MAX REVERSE,
         // 14=IF WET RWY TOO SHORT, 15=RWY TOO SHORT; OANS_WORD_1 11=RWY AHEAD.
         vars["A32NX_ROW_ROP_WORD_1"] = new SimVarDefinition
         {
@@ -3107,6 +3197,21 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     private bool? _antiskidOn;
     private string? _lastAutolandCap; // last decoded LAND capability ("none"/"LAND 2"/...)
     private int _fmgcPhaseA380 = -1; // numeric FMGC flight phase; gates the capability announce (taxi flicker spam)
+
+    // Take-off roll "V1" / "Rotate" / "V2" (A380TakeoffCallouts, on the shared TakeoffVSpeedCallouts
+    // machine). Its ARM is dropped on every context reset and on a reconnect — never the speeds —
+    // exactly as the MD-11 and the iFly drop theirs: a second user of a shared machine needs every
+    // reset the first one has.
+    private readonly TakeoffVSpeedCallouts _takeoffCallouts = new();
+    // The last SIM_ON_GROUND sample. Starts true: a ramp start is the norm, and an airborne start is
+    // harmless, because the machine arms only on a sample below 40 kt, which the air never delivers.
+    private bool _calloutOnGround = true;
+    /// <summary>The roll callouts' machine, for tests.</summary>
+    internal TakeoffVSpeedCallouts TakeoffCallouts => _takeoffCallouts;
+    /// <inheritdoc />
+    public override string? TakeoffCalloutFeedKey => A380TakeoffCallouts.IasKey;
+    /// <inheritdoc />
+    public override bool TakeoffCalloutFeedNeeded => _takeoffCallouts.NeedsSamples(_calloutOnGround);
     private readonly int[] _gpuAvail = { -1, -1, -1, -1 };   // last external-power-available state per GPU (-1 = unseen)
     private readonly HashSet<int> _btvExitSpoken = new();
     private readonly HashSet<int> _btvRwyEndSpoken = new();
@@ -3304,9 +3409,11 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     //    H:A320_Neo_FCU_*_PUSH H-events translate to these).
     //  - A/THR uses the STOCK K:AUTO_THROTTLE_ARM (A32NX.FCU_ATHR_PUSH is not the
     //    event the A380X FCU button uses).
-    //  - TRK/FPA has NO event on the A380X — the button writes the L:var directly,
-    //    so it's intentionally NOT in this map: the combo's default L:var write
-    //    (A32NX_TRK_FPA_MODE_ACTIVE = 0/1) drives it.
+    //  - TRK/FPA is intentionally NOT in this map: its state var is an FCU-shim OUTPUT
+    //    (see the "since FBW #10855" comment on SetTrkFpaMode), so switching it also
+    //    means the mode, V/S and FPA windows re-sync from the aircraft — SetTrkFpaMode
+    //    arms the FCU echo window for that resync before firing
+    //    A32NX.FCU_TRK_FPA_TOGGLE_PUSH, which this map's generic callers don't do.
     private static readonly Dictionary<string, string> _fcuToggleEvents = new()
     {
         ["A32NX_AUTOPILOT_1_ACTIVE"] = "A32NX.FCU_AP_1_PUSH",
@@ -3392,8 +3499,28 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
 
 
-    // Metric ALTITUDE state (the A380 FCU MTRS button, A32NX_METRIC_ALT_TOGGLE).
+    // Metric ALTITUDE state (the A380 FCU MTRS button): PRIM FG word 5 bit 14, the last word read.
+    // Kept across every reset — the read-outs and the Altitude window use the last known unit until
+    // the next word says otherwise.
     private bool _metricAlt;
+    // Whether a word has arrived in THIS context (cleared by OnSimContextReset). Until one does, or
+    // the FCU settle ends with none (the word was unchanged, so a flight load never re-delivered it),
+    // the mode is unknown — and an unknown mode is not a "same" mode: a pick presses MTRS. See
+    // MetricAltIsKnown.
+    private bool _metricAltKnown;
+    // Whether the MTRS call-out has its session baseline: the first word ever read is recorded, never
+    // spoken. NOT cleared by any reset — a flight load re-delivers only CHANGED vars, so a baseline
+    // cleared there stayed cleared until the next REAL change, which was then swallowed. A reset's
+    // new-situation words are absorbed by the FCU settle instead (UpdateMetricAltitude).
+    private bool _metricAltBaselined;
+    // The MTRS mode MSFSBA just commanded, until the PRIM confirms it or CommandedValueMs lapses.
+    private (bool Value, long Tick)? _metricCommanded;
+    // A combo pick's confirmation is a PRIM word the screen reader has already spoken: silent until then.
+    private long _metricEchoUntilTick;
+
+    // The last FCU_ALT_VALUE delivered (feet), so an MTRS flip can re-express the recorded
+    // altitude callout in the new unit without speaking it.
+    private double? _lastFcuAltFeet;
 
     // Render-time SimConnect handle so A380SdRows fmt closures can read sibling ARINC words
     // (B1→B4 CPCS source selection, SEC1↔SEC3 rudder-trim) at paint time.
@@ -3442,10 +3569,23 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
 
 
-    // Brief window after a window-driven altitude set during which the side-effect
-    // "Altitude Increment: 100" auto-announce is suppressed (the user set an altitude,
-    // not the increment). Only armed when SetFCUAltitudeValue actually changes the increment.
+    // Brief window during which the "Altitude Increment: N" auto-announce is suppressed: after a
+    // window-driven altitude set that forces 100-ft granularity (the user set an altitude, not the
+    // increment), and after the Altitude window's own Increment 100/1000 buttons (the screen reader
+    // has read the button — SetAltIncrement below).
     private DateTime _altIncrAnnounceSuppressUntil = DateTime.MinValue;
+
+    /// <summary>
+    /// The Altitude window's Increment 100/1000 buttons. Since FBW #10855 the increment MSFSBA reads
+    /// back is the FCU's own (A32NX_FCU_ALT_INCREMENT_1000, an announced combo), so the press came
+    /// back about a second later as "Altitude Increment: N" over the button the screen reader had
+    /// just read — a direct-UI echo. Same time-boxed mute as SetFCUAltitudeValue's side effect.
+    /// </summary>
+    public override void SetAltIncrement(int inc, SimConnectManager s)
+    {
+        _altIncrAnnounceSuppressUntil = DateTime.UtcNow.AddMilliseconds(2500);
+        base.SetAltIncrement(inc, s);
+    }
 
 
 
@@ -3515,14 +3655,6 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
 
 
-    // The A380's NEW FCU ignores the legacy dotted "A32NX.FCU_SPD_MACH_TOGGLE_PUSH" H-event the
-    // A320 used — live-verified that firing it (either dot or underscore form) does NOTHING. Its
-    // SpeedManager (FCU/Managers/SpeedManager.ts) switches SPD<->MACH via the STOCK K-events
-    // AP_MANAGED_SPEED_IN_MACH_ON / _OFF. This one conditional RPN reads the current mode (the
-    // stock SimVar AUTOPILOT MANAGED SPEED IN MACH) and fires the opposite — verified live to flip
-    // the mode. (Used by both the FCU Speed window MACH button and the panel Speed/Mach toggle.)
-    private const string SpdMachToggleRpn =
-        "(A:AUTOPILOT MANAGED SPEED IN MACH, Bool) if{ 1 (>K:AP_MANAGED_SPEED_IN_MACH_OFF) } els{ 1 (>K:AP_MANAGED_SPEED_IN_MACH_ON) }";
 
 
 

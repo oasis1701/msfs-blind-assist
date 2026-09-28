@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer.FBWA380;
@@ -126,8 +127,9 @@ public static class FbwA380FlowDefinitions
             Multi("CP_HOTAIR", "Hot air: ON",
                 ("A32NX_OVHD_COND_HOT_AIR_1_PB_IS_ON", 1), ("A32NX_OVHD_COND_HOT_AIR_2_PB_IS_ON", 1)),
             Captain("CP_AIRTEMP", "Cabin temperature: set as required"),
+            // EFIS-CP hPa/inHg selector since FBW #10855: 1 = inHg, so hectopascals is 0.
             Multi("CP_BARO", "Baro reference: hectopascals",
-                ("XMLVAR_Baro_Selector_HPA_1", 1), ("XMLVAR_Baro_Selector_HPA_2", 1)),
+                ("A32NX_FCU_EFIS_L_BARO_IS_INHG", 0), ("A32NX_FCU_EFIS_R_BARO_IS_INHG", 0)),
             Captain("CP_ALTIMETERS", "Altimeters: set QNH"),
             Skip(SW("CP_ANTISKID", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE", 1), s => s.IsOn("ANTISKID_BRAKES_ACTIVE")),
             Captain("CP_ALTRPT", "Altitude reporting: on"),
@@ -136,7 +138,9 @@ public static class FbwA380FlowDefinitions
             Captain("CP_XPDR", "Transponder: standby"),
             Multi("CP_EFISMODE", "EFIS mode: ARC", ("A32NX_EFIS_L_ND_MODE", 3), ("A32NX_EFIS_R_ND_MODE", 3)),
             Multi("CP_EFISRANGE", "EFIS range: 40", ("A32NX_EFIS_L_ND_RANGE", 3), ("A32NX_EFIS_R_ND_RANGE", 3)),
-            Multi("CP_FD", "Flight directors: ON", ("FD_1_CTL", 1), ("FD_2_CTL", 1)),
+            // One FCU pushbutton since FBW #10855 — see A380FlightDirector. A toggle, so skip it when lit.
+            Skip(SW("CP_FD", "Flight directors: ON", A380FlightDirector.StateKey, 1),
+                s => s.IsOn(A380FlightDirector.StateKey)),
             Captain("CP_CLOCK", "Clock: reset"),
             // ECAM SD page selection — real ECP write (A32NX_ECAM_SD_CURRENT_PAGE_INDEX:
             // door=5, APU=1, engine=0, F/Ctl=11). Selecting a manual page overrides the

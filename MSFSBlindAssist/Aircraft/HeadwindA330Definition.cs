@@ -7,8 +7,8 @@ namespace MSFSBlindAssist.Aircraft;
 /// HeadwindSim A330-900neo ("A339X") accessibility definition.
 ///
 /// The Headwind A330neo is a fork of the FlyByWire A32NX — it shares the A32NX L-var
-/// surface, the same systems model, FCU, ECAM/E-WD, MCDU (broadcast over the FBW
-/// SimBridge relay), and the shared <c>fbw-common</c> flyPad EFB (Coherent "- EFB"
+/// surface, the same systems model, FCU, ECAM/E-WD, MCDU (read over the Coherent debugger,
+/// with the FBW SimBridge relay as fallback), and the shared <c>fbw-common</c> flyPad EFB (Coherent "- EFB"
 /// view). It is modelled with the A32NX 2-spool engine vars
 /// (<c>A32NX_ENGINE_N1/N2:1|2</c>), NOT the A380's 4-engine / N3 surface — so the
 /// A320 definition is the correct, near-complete base.
@@ -97,8 +97,9 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     };
 
     // The A330's Coherent instruments are A339X-named; the <a339x-mcdu> custom element
-    // lives in this view. coherent-a32nx-flightinfo.js queries both element names, so the
-    // only thing that changes is which view CoherentEvalClient evaluates against.
+    // lives in this view. The MCDU agent and coherent-a32nx-flightinfo.js query both element
+    // names, so the only thing that changes is the view the MCDU client holds and the
+    // D / Shift+D script runs on.
     public override string FlightInfoMcduView => "A339X_MCDU";
 
     // Visual-guidance profile — A330-900neo (widebody). Heavier and faster on approach

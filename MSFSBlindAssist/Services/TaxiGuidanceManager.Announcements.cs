@@ -379,6 +379,16 @@ public partial class TaxiGuidanceManager
     }
 
     /// <summary>
+    /// An instruction that must FOLLOW whatever is being spoken rather than cut it off - recorded for Ctrl+Y
+    /// exactly as <see cref="AnnounceInstruction"/> records one, but queued.
+    /// </summary>
+    private void AnnounceQueuedInstruction(string text)
+    {
+        _lastInstruction = text;
+        _announcer.Announce(text);
+    }
+
+    /// <summary>
     /// Replays the most recent tactical instruction. Bound to Ctrl+Y in output
     /// mode. Returns a fallback string when no instruction has been recorded
     /// yet (e.g., guidance just started, or guidance is inactive).
@@ -496,18 +506,15 @@ public partial class TaxiGuidanceManager
 
             if (_holdShortAtDestination)
                 return $"Holding short of {_destinationName}. Press continue when cleared.";
-            if (_currentSegmentIndex == 0 && !string.IsNullOrEmpty(_route.StartHoldRunway))
+
+            // The same derivation the ground-traffic runway watch uses (Navigation.HeldRunwayLabel).
+            string? held = Navigation.HeldRunwayLabel.Resolve(
+                false, _destinationName, _currentSegmentIndex, _route.StartHoldRunway,
+                _route.Segments.Select(s => s.HoldShortRunway).ToList());
+            if (held != null)
                 return stagedNext != null
-                    ? Navigation.RunwayHoldStages.ComposeStatus(_route.StartHoldRunway, stagedNext)
-                    : $"Holding short of {_route.StartHoldRunway}. Press continue when cleared.";
-            if (_currentSegmentIndex > 0 && _currentSegmentIndex <= _route.Segments.Count)
-            {
-                var holdSeg = _route.Segments[_currentSegmentIndex - 1];
-                if (!string.IsNullOrEmpty(holdSeg.HoldShortRunway))
-                    return stagedNext != null
-                        ? Navigation.RunwayHoldStages.ComposeStatus(holdSeg.HoldShortRunway, stagedNext)
-                        : $"Holding short of {holdSeg.HoldShortRunway}. Press continue when cleared.";
-            }
+                    ? Navigation.RunwayHoldStages.ComposeStatus(held, stagedNext)
+                    : $"Holding short of {held}. Press continue when cleared.";
             return stagedNext != null
                 ? Navigation.RunwayHoldStages.ComposeStatus(null, stagedNext)
                 : "Holding short. Press continue when cleared.";

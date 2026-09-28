@@ -48,13 +48,16 @@ own narration.
    3-position switch (On/Auto/Off, PR #139): confirm the FO drives the SWITCH to the ON
    position (not Auto) and that the actual sign (the stock `CABIN SEATBELTS ALERT SWITCH`
    readout, "Seat Belts Sign") illuminates**, no-smoking AUTO, emergency exit lighting ARM,
-   wing anti-ice OFF (now backed by the real cockpit button var
-   `A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION`), wing lights OFF, **packs 1/2 ON**, crossbleed
-   AUTO, pack flow NORMAL, **hot air 1/2 ON**, **baro reference to hectopascals (both
-   sides)**, anti-skid ON, **EFIS mode ARC (both sides)**, **EFIS range 40 (both sides)**,
-   **flight directors 1/2 ON** (now actuated via `K:TOGGLE_FLIGHT_DIRECTOR` per side — the
-   old `A32NX_FCU_EFIS_L/R_FD_ACTIVE` L:var is dead on the A380X; confirm both FDs actually
-   engage on the PFDs). Confirm the flow waits for the seatbelt SIGN to actually read ON
+   wing anti-ice OFF (the stock switch, `STRUCTURAL DEICE SWITCH` — the A32NX's
+   `A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION` is a dead mirror on the A380), wing lights OFF,
+   **packs 1/2 ON**, crossbleed AUTO, pack flow NORMAL, **hot air 1/2 ON**, **baro reference to
+   hectopascals (both sides)** (the EFIS-CP's `A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG` = 0 since FBW
+   #10855; confirm the "Capt Baro Unit" and "F/O Baro Unit" rows on the two EFIS panels
+   read hPa), anti-skid ON,
+   **EFIS mode ARC (both sides)**, **EFIS range 40 (both sides)**, **flight directors ON** (ONE
+   FCU pushbutton since FBW #10855 — the FO presses `A32NX.FCU_FD_PUSH` only when the FD light
+   `A32NX_FCU_FD_LIGHT_ON` is out and says "Already set" when it is lit; confirm the PFD status
+   box reads flight director 1 and 2 "on"). Confirm the flow waits for the seatbelt SIGN to actually read ON
    (`WaitForField` on the sign light, up to 60 s) before continuing to the final captain
    reminders (IFR clearance, payload, MCDU). If the switch was already in AUTO with the sign
    lit (engines running), the seatbelt step skips as "already set" — also correct.

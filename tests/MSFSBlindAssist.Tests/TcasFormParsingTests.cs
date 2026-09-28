@@ -40,9 +40,14 @@ public class TcasFormParsingTests
         => Assert.Equal(raw, TcasForm.FormatCallsign(raw));
 
     [Fact]
-    public void FormatCallsign_unrecognized_shape_is_returned_unchanged()
-        // Doesn't match ^([A-Z]{2,4})(\d{1,4}[A-Z]?)$ (5 digits) -> falls through unchanged.
-        => Assert.Equal("UAL12345", TcasForm.FormatCallsign("UAL12345"));
+    public void FormatCallsign_now_spaces_five_digit_and_two_letter_suffix_callsigns()
+    {
+        // TCAS shares the ground-traffic formatter (PR #247 review L8): five-digit flight numbers and
+        // VATSIM two-letter suffixes are spaced too, so a screen reader reads the airline and number.
+        Assert.Equal("UAL 12345", TcasForm.FormatCallsign("UAL12345"));
+        Assert.Equal("EZY 45MR", TcasForm.FormatCallsign("EZY45MR"));
+        Assert.Equal("NOTACALLSIGN", TcasForm.FormatCallsign("NOTACALLSIGN"));
+    }
 
     // --- ShortenAircraftType -------------------------------------------------------------
 

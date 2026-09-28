@@ -359,11 +359,6 @@ Two traps, if anyone reopens this:
 Do not re-add a gear-OFF step or item without a write path verified **in flight** by that
 read-back — weight-on-wheels latches the lever at DOWN, so ground tests settle nothing.
 
-Kept deliberately: the After Takeoff Checklist's "Landing gear: UP" (`ATC_GEAR`) ticks for
-anything but DOWN (`v < 1.5`), so a lever a pilot moves to OFF by hand still reads complete;
-and the gear readout hotkey still says "Gear lever off" when it finds the lever there —
-reading the lever is reliable, only moving it to OFF is not.
-
 **Known limitation — the cockpit panel, not the First Officer.** `PMDG737Definition.cs`
 still exposes the released panel control `Selector("MAIN_GearLever", "Gear Lever", "UP",
 "OFF", "DOWN")`. It is mapped through `_simpleEventMap` to `EVT_GEAR_LEVER` and, as a
@@ -372,6 +367,41 @@ three-position selector, click-walked by `WalkPMDGSelector`: one `TransmitClient
 from UP sends exactly the audible-but-inert click described above. None of its positions
 has been verified moving the lever in flight. Left unchanged by owner decision
 (2026-09-22: First Officer only); changing it needs its own in-sim check.
+
+### Gear lines confirmed by the gear lights (2026-09-22)
+
+What replaced it (2026-09-22): the After Takeoff Checklist's "Landing gear: UP"
+(`ATC_GEAR`) is confirmed the way a crew confirms it — gear up, lights out — not from the
+lever. `GearConfirmation` (published as the synthetic field `FO_GEAR_UP`) reads up only
+when the lever is not DOWN AND all nine gear lights are out: the main-panel green
+DOWN-AND-LOCKED and red IN-TRANSIT lights for each gear, plus the aft-overhead greens. The
+lever half keeps a cold-and-dark aircraft (every light dark for want of power) from reading
+"up" on the ground, and a light test reads "not up", which is the safe direction. A lever a
+pilot moves to OFF by hand still satisfies it once the gear is up. The After Takeoff flow
+ends with a read-only step, "Landing gear: UP" (`AT_GEAR_UP_CHECK`), that waits up to 20 s
+for it and completes the line. If the gear is not confirmed up, the step says so ("Timed
+out waiting for… / Skipping…") and `FlowManager` keeps `ATC_GEAR` out of
+`MarkGroupComplete`'s latch. So finishing the flow no longer latches "Landing gear: UP"
+over gear that is still down (it used to, whatever the lever read) — unless the line was
+already ticked before the flow finished. That was the go-around case: the first
+approach's Landing flow latches "Landing gear: DOWN" ticked, and a re-run before gear
+down on the second approach speaks the timeout while the line stays ticked. It is now
+closed: `ChecklistManager.MarkGroupComplete`'s excluded
+branch also exempts a ticked line when its own live state reads definitively false
+(never on NaN), so the next `EvaluateAutoDetection()` un-ticks it instead of leaving it
+frozen under the latch. The gear readout hotkey still says "Gear lever off" when it
+finds the lever there, because reading the lever is reliable; only moving it to OFF is
+not.
+
+The Landing Checklist's "Landing gear: DOWN" (`LDC_GEAR`) is its mirror image and was
+latched the same way whenever the Landing flow finished before the gear came down. It now
+reads the synthetic `FO_GEAR_DOWN`, "three green": the lever DOWN, all three main-panel
+green DOWN-AND-LOCKED lights on, and no red. A red means a gear is in transit or disagrees,
+and a light test lights the reds too, so neither reads as "down". The overhead greens are
+the alternate indication and are deliberately not required. The Landing flow ends with a
+read-only "Landing gear: DOWN" wait (`LD_GEAR_DOWN_CHECK`, 20 s) that behaves exactly like
+the After Takeoff check. Both warnings are only heard because the flow engine's "flow
+complete" is now non-interrupting (see docs/first-officer.md).
 
 ### The `ROTOR_BRAKE` encoded channel — an existing mechanism, re-confirmed on the 737
 

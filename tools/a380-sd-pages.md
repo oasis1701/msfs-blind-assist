@@ -39,31 +39,39 @@ Important nuance: the *value* is the full 32-bit float — FBW does **not** use 
 field with a per-label scale factor. The encoder simply stores a `float` in the low word, so there is
 **no scaling to apply**: the decoded float is already in engineering units (kg, °C, psi, ft, %, etc.).
 
-Discrete words: same container, but the low 32 bits are an integer bitfield (stored via float). To test
-a bit, reinterpret the low word as uint and read bit `(n-1)` (FBW uses 1-based bit numbers, ARINC labels
-bits 1..32): `bool b = ((u32 >> (n-1)) & 1) != 0;`. FBW's `bitValueOr(n, default)` returns the bit only
-when SSM is NormalOperation or FunctionalTest, else the default.
+Discrete words: same container, and the bitfield is stored as the float's VALUE — FBW converts the
+integer bitfield to a float numerically, then packs that float's bits. So decode the float first, convert
+it back to an integer, then read bit `(n-1)` (FBW uses 1-based bit numbers, ARINC labels bits 1..32):
+`uint bits = (uint)value; bool b = ((bits >> (n-1)) & 1) != 0;` — exactly what FBW's own readers do
+(C++ `static_cast<uint32_t>(word.Data)`, TS `this.value >> (bit - 1)`, Rust `f32::from_bits(v) as u32`).
+FBW's `bitValueOr(n, default)` returns the bit only when SSM is NormalOperation or FunctionalTest, else
+the default.
 
-Minimal C# helper:
+⚠️ CORRECTED 2026-09-25: this note used to say "reinterpret the low word as uint and read bit (n-1)",
+and `Arinc429Word` was written from it. That tests the float's exponent and mantissa bits, not the
+bitfield — bit 28 read true for any word with a bit at 18 or above, bit 29 never did. See
+docs/a380x.md, "Discrete ARINC words were read from the wrong bits".
+
+Minimal C# helper (the shipped one is `MSFSBlindAssist/SimConnect/Arinc429Word.cs`):
 
 ```csharp
 public readonly struct Arinc429Word {
     public readonly uint Ssm;      // 0..3
     public readonly float Value;   // engineering units, already scaled
-    private readonly uint _raw32;  // low word as integer (for discretes)
 
     public Arinc429Word(double simVar) {
         ulong u64 = (ulong)simVar;            // numeric truncation, matches FBW
-        _raw32 = (uint)(u64 & 0xFFFFFFFF);
-        Value  = BitConverter.Int32BitsToSingle((int)_raw32);
+        Value  = BitConverter.Int32BitsToSingle((int)(uint)(u64 & 0xFFFFFFFF));
         Ssm    = (uint)(u64 >> 32);
     }
     public bool IsNormalOperation => Ssm == 0b11;
     public bool IsFailureWarning  => Ssm == 0b00;
     public bool IsNoComputedData  => Ssm == 0b01;
     public float ValueOr(float d) => (Ssm == 0b11 || Ssm == 0b10) ? Value : d;
+    // A discrete word's bitfield is the float's VALUE, not its bit pattern.
+    public uint DiscreteBits => Value >= 0f && Value < 4294967296f ? (uint)Value : 0u;
     public bool BitValueOr(int n, bool d) =>
-        (Ssm == 0b11 || Ssm == 0b10) ? ((_raw32 >> (n - 1)) & 1) != 0 : d;
+        (Ssm == 0b11 || Ssm == 0b10) ? ((DiscreteBits >> (n - 1)) & 1) != 0 : d;
 }
 ```
 

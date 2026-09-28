@@ -46,10 +46,10 @@ Pre-condition for the ground flows: start cold-and-dark (or at the matching phas
 | Engine Start | Packs OFF; ENG 2 start switch GRD + start lever IDLE → **waits for ENG 2 start valve to close**; then ENG 1 the same |
 | Before Taxi | **After-start power transfer first** (generators ON, APU bleed OFF, APU OFF), then probe heat ON; packs AUTO; isolation AUTO; start switches CONT; taxi + turnoff lights ON; lower DU SYS; captain reminders for anti-ice and takeoff flaps |
 | Before Takeoff | Landing lights ON; strobes ON; **A/T arm**; transponder TA/RA |
-| After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; autobrake OFF |
+| After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; autobrake OFF; confirms gear up (lights out) |
 | Descent | Seatbelt sign ON; captain reminders for autobrake, ILS, landing data |
 | Approach | EFIS APP / range 20; altimeter reminder |
-| Landing | Start switches CONT; speedbrake ARMED; missed-altitude reminder |
+| Landing | Start switches CONT; speedbrake ARMED; missed-altitude reminder; confirms gear down (three green) |
 | After Landing | Landing lights retract; taxi light ON; strobes steady; anti-ice OFF; probe heat OFF; APU ON; start switches OFF; autobrake OFF |
 | Shutdown | APU gen ON; **start levers CUTOFF then waits for engine spool-down**; signs/lights off; fuel pumps OFF; window heat OFF; transponder STBY |
 | Secure | IRS OFF; emergency exit OFF; window heat OFF; packs OFF |
@@ -286,10 +286,20 @@ After H3/H5, run Before Taxi → the APU selector goes **OFF** and the "APU: OFF
 Tick **"Probe heat: ON"** (or run Before Taxi): **BOTH** probe-heat switches turn ON (spaced writes),
 and the checklist "Probe heat: ON" ticks.
 
-### H8. Landing gear "UP" auto-ticks (After Takeoff)
-After takeoff, once the gear is up, the **After Takeoff Checklist → "Landing gear: UP"** item ticks by
-itself. The After Takeoff flow and action group no longer mention the gear lever OFF detent at all
-(removed 2026-09-22 — no write path moved the lever there reliably).
+### H8. The gear lines are confirmed by the gear lights (After Takeoff and Landing)
+1. After a normal takeoff and gear retraction, run the After Takeoff flow: it ends with
+   "Already set: Landing gear: UP" (or a short wait while the gear is still retracting), and
+   the **After Takeoff Checklist → "Landing gear: UP"** line is ticked.
+2. With **Auto-raise gear on climb** OFF, run the After Takeoff flow while the gear is still
+   DOWN: after about 20 s it says "Timed out waiting for: Landing gear: UP" and "Skipping:
+   Landing gear: UP", and the line stays unticked. Raise the gear: once all gear lights go
+   out, the line ticks by itself.
+3. On approach, with **Auto-lower gear on descent** OFF (otherwise it lowers the gear
+   at 2000 ft AGL mid-wait), run the Landing flow before lowering the gear: after the
+   missed-approach reminder it says "Waiting for: Landing gear: DOWN", then after about 20 s
+   "Timed out waiting for: Landing gear: DOWN", "Skipping: Landing gear: DOWN", and only then
+   "Landing flow complete". The **Landing Checklist → "Landing gear: DOWN"** line stays
+   unticked until you lower the gear and all three greens are on.
 
 ### H9. Altimeters auto-set to STANDARD above transition (requires SimBrief)
 Load a SimBrief OFP with a transition altitude, then climb through it: the FO sets **both** altimeters

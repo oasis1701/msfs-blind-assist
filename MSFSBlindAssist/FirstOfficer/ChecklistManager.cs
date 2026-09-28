@@ -174,7 +174,19 @@ public class ChecklistManager<TExec, TState>
                 // exemption state at MarkGroupComplete — frozen by the latch below with
                 // no way back to a live mirror, silently defeating both the exemption
                 // and the failed-tick announcement.
-                if (!item.IsChecked || item.AwaitingActionConfirmation)
+                //
+                // A THIRD way in: a ticked item whose own live state reads definitively
+                // FALSE is a stale tick — above all a GO-AROUND re-running the Landing
+                // flow before gear down, where the first approach's MarkGroupComplete
+                // already latched the gear line ticked. Neither "unchecked" nor
+                // "AwaitingActionConfirmation" is true for it — the tick is already
+                // sitting there from the earlier run — so without this the latch would
+                // freeze it over a state the flow just failed to deliver a second time.
+                // NaN (unknown) is not enough; only a definite false is evidence the
+                // switch has actually moved away, matching EvaluateAutoDetection's own
+                // "indeterminate is not a failure" contract.
+                if (!item.IsChecked || item.AwaitingActionConfirmation
+                    || (item.IsAutoDetectable && EvaluateItemState(item) == false))
                     item.ExemptFromCompletionLatch = true;
                 continue;
             }

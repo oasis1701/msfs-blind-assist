@@ -29,20 +29,23 @@ using Act = System.Action<IFly737ActionExecutor, IFly737StateEvaluator>;
 ///  - Engine start is pilot-paced (PMDG 737 convention) exactly as the template, but the start
 ///    lever's "idle" detection is Engine_Start_Lever_Status_{0,1} &gt;= 3 (a 0-5 switch+fire-light
 ///    composite: 0-2 = Cutoff, 3-5 = Idle), not a derived 1=RUN field.
-///  - Speedbrake ARM (Landing) is a Captain reminder here, not an ActionManual press — this
+///  - Speedbrake ARM (Landing) is a Captain item here, not an ActionManual press — this
 ///    aircraft's speedbrake-lever write has an unverified scale mismatch and is deliberately
-///    read-only. Its Landing Checklist twin (LDC_SPDBRK) auto-detects on
-///    SPEED_BRAKE_ARMED_Light_Status instead of staying a reminder, since the iFly DOES expose
-///    that readback (the PMDG NG3 struct has none at all).
+///    read-only. BOTH its lines — the Landing group's LDA_SPDBRK and the Landing Checklist's
+///    LDC_SPDBRK — are action-free auto-detects on SPEED_BRAKE_ARMED_Light_Status, since the
+///    iFly DOES expose that readback; the Landing flow's read-only LD_SPDBRK_CHECK completes
+///    both, and a timeout keeps both out of the flow-completion latch.
 ///  - Weather radar test: REMOVED from this aircraft's checklist and flow entirely (user
 ///    decision 2026-08-18 — do not re-add). The command exists (`FMS_WXR_SYS_CTRL_SET`,
 ///    Value2 0 TEST/1 NORM, readable back via `Weather_Radar_System_Control_Switch_Status`)
 ///    but remains deliberately unwired — see IFly737ActionExecutor.PseudoKeys.
 ///  - Gear lever has only Up(0)/Down(1) — no OFF detent (RegisterLandingGear,
 ///    IFly737MAXDefinition.ForwardPedestal.cs:24-25 — `new[] { "Up", "Down" }`). ATKO_GEAR_OFF
-///    and its After Takeoff Checklist twin ATC_GEAR command/detect GearUp only and are labelled
-///    "Gear lever: UP" / "Landing gear: UP" (Fix pass 1, 2026-08) — the PMDG-ported "OFF"/
-///    "UP and OFF" wording named a position this airframe's switch does not have.
+///    commands GearUp and is labelled "Gear lever: UP" (Fix pass 1, 2026-08) — the PMDG-ported
+///    "OFF"/"UP and OFF" wording named a position this airframe's switch does not have. Its
+///    After Takeoff Checklist twin ATC_GEAR keeps the "Landing gear: UP" label but no longer
+///    detects off the lever at all — see its own comment, and GearLightRules/
+///    IFly737GearConfirmation, for the 2026-09-22 gear-lights fix.
 ///  - Transponder STBY wording was likewise ported wrong: this airframe's resting/ground
 ///    position is ALT OFF, not STBY (RegisterTransponder, IFly737MAXDefinition.cs:596-597 —
 ///    `new[] { "ALT OFF", "XPNDR", "TA Only", "TA/RA" }`). PF_XPDR and SD_XPDR are labelled
@@ -418,9 +421,15 @@ public static class IFly737ChecklistDefinitions
                 v => v > 1.5 && v < 2.5, new[] { "Engine_Start_Switch_Status_1" },
                 (e, _) => { e.SetEngStartSelector1(IFly737ActionExecutor.EngStartContinuous);
                             e.SetEngStartSelector2(IFly737ActionExecutor.EngStartContinuous); }),
-            // Speedbrake ARM is a Captain reminder on this aircraft — the lever write has an
-            // unverified scale mismatch and is deliberately read-only (see class doc).
-            Reminder("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED"),
+            // Speedbrake ARM is a Captain item on this aircraft — the lever write has an
+            // unverified scale mismatch and is deliberately read-only (see class doc), so this
+            // line has NO action. It mirrors the SPEED BRAKE ARMED light like its Landing
+            // Checklist twin LDC_SPDBRK (it used to be a plain reminder, which the Landing
+            // flow's MarkGroupComplete ticked and latched whether or not the lever was armed).
+            // The flow's read-only LD_SPDBRK_CHECK completes both lines when the light is on,
+            // and on a timeout FlowManager keeps both out of the latch, so they stay live.
+            Auto("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED", "SPEED_BRAKE_ARMED_Light_Status", v => v > 0.5,
+                action: null),
             Reminder("LDA_MISSED", "LANDING", "Set the missed approach altitude"),
         }
     };
@@ -650,8 +659,14 @@ public static class IFly737ChecklistDefinitions
                 v => v > 0.5, new[] { "Engine_Bleed_Air_Switch_Status_1" }, action: null),
             Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: AUTO", "Pack_Switch_Status_0", v => v > 0.5 && v < 1.5,
                 new[] { "Pack_Switch_Status_1" }, action: null),
-            // No OFF detent exists (Gear_Lever_Status is 0 Up/1 Down only) — see ATKO_GEAR_OFF.
-            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP", "Gear_Lever_Status", v => v < 0.5,
+            // "Landing gear: UP" is confirmed the way a crew confirms it — gear up, lights
+            // out — through the IFly737GearConfirmation synthetic (lever not Down AND every
+            // gear light out), never the lever alone (owner decision 2026-09-22). The After
+            // Takeoff flow's read-only AT_GEAR_UP_CHECK step waits for the same field and
+            // completes this line; when it times out it is skipped aloud and FlowManager
+            // keeps this line out of MarkGroupComplete's latch, so it never reads complete
+            // over gear that is still down.
+            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP", IFly737GearConfirmation.UpField, v => v > 0.5,
                 action: null),
             Reminder("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: UP, no lights"),
         }
@@ -691,7 +706,16 @@ public static class IFly737ChecklistDefinitions
             // upgrades from a reminder to a live auto-detect.
             Auto("LDC_SPDBRK", "LANDING_CL", "Speedbrake: ARMED", "SPEED_BRAKE_ARMED_Light_Status", v => v > 0.5,
                 action: null),
-            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN", "Gear_Lever_Status", v => v > 0.5, action: null),
+            // "Landing gear: DOWN" is confirmed the way a crew confirms it — three green —
+            // through the IFly737GearConfirmation synthetic (lever Down, all three
+            // main-panel greens on, no red), never the lever alone (owner decision
+            // 2026-09-22). The Landing flow's read-only LD_GEAR_DOWN_CHECK step waits for
+            // the same field and completes this line; when it times out it is skipped aloud
+            // and FlowManager keeps this line out of MarkGroupComplete's latch, so finishing
+            // the flow before the gear is down no longer reads "Landing gear: DOWN" complete
+            // over gear that is still up.
+            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN", IFly737GearConfirmation.DownField, v => v > 0.5,
+                action: null),
             Reminder("LDC_FLAPS", "LANDING_CL", "Flaps: set for landing"),
         }
     };

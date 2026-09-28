@@ -182,7 +182,11 @@ public sealed class FbwA320FOAutoManager : IFoAutoManager
         // VFE-next protected) ----
         if (_extensionArmed && !climbing && agl < 5000)
         {
-            double vfeNext = _state.GetValue("A32NX_SPEEDS_VFEN");
+            // FO_VFE_NEXT: VFE of the next flap configuration, resolved by the evaluator from
+            // the source its airframe publishes — the FAC word on the A32NX, where FBW #10890
+            // stopped publishing A32NX_SPEEDS_VFEN, and the plain L-var on the A339X. NaN means
+            // unknown, so the FO holds.
+            double vfeNext = _state.GetValue("FO_VFE_NEXT");
             if (double.IsNaN(vfeNext) || ias >= vfeNext - VfeNextMarginKts)
                 return;   // unknown or too fast for the next config — hold
 

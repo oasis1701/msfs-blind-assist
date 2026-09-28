@@ -6,9 +6,9 @@ namespace MSFSBlindAssist.Forms.FlyByWireA320;
 
 /// <summary>
 /// Accessible MCDU for the FlyByWire A32NX (ListBox display, scratchpad input, page
-/// buttons) over the SimBridge websocket. Single MCDU (Captain) by design — the remote
-/// protocol cannot separate Captain and First Officer screens (both keys carry the same
-/// screen); see <see cref="FlyByWireMCDUService"/> remarks. This matches FBW's own remote.
+/// buttons) over the Coherent debugger, SimBridge's websocket as the fallback. Single
+/// MCDU (Captain) by design — one instrument draws both screens, so neither transport
+/// can separate Captain and First Officer; see <see cref="FlyByWireMCDUService"/> remarks.
 /// </summary>
 public class FlyByWireMCDUForm : Form
 {
@@ -26,9 +26,10 @@ public class FlyByWireMCDUForm : Form
     private TextBox scratchpadInput = null!;
     private Label connectionStatus = null!;
 
-    private System.Windows.Forms.Timer? _scratchpadDebounceTimer;
-    private string _lastAnnouncedScratchpad = "";
-    private string _lastAnnouncedTitle = "";
+    // What the window says: page titles only while open, FMS scratchpad messages open or closed,
+    // typed entries only once they have landed (FbwMcduReadBack, pure and tested).
+    private readonly FbwMcduReadBack _readBack = new();
+    private System.Windows.Forms.Timer? _readBackTimer;
     private MCDUDisplayData? _currentDisplay;
 
     // Function/page keys: (button label with Alt-accelerator, FBW key name). The page
@@ -157,19 +158,18 @@ public class FlyByWireMCDUForm : Form
             if (previousWindow != IntPtr.Zero) { SetForegroundWindow(previousWindow); }
         };
 
-        _scratchpadDebounceTimer = new System.Windows.Forms.Timer { Interval = 300 };
-        _scratchpadDebounceTimer.Tick += (s, e) =>
+        // Ticks whether the window is open or not: the service keeps reading the screen while
+        // the window is closed so FMS messages still reach the pilot (the read-back decides what
+        // a closed window may say). Over the Coherent transport a frame arrives only every 250 ms
+        // plus the eval, so a per-frame debounce would read typed entries back in halves.
+        _readBackTimer = new System.Windows.Forms.Timer { Interval = FbwMcduReadBack.TickMs };
+        _readBackTimer.Tick += (s, e) =>
         {
-            _scratchpadDebounceTimer.Stop();
-            if (_currentDisplay != null && _currentDisplay.Scratchpad != _lastAnnouncedScratchpad)
-            {
-                _lastAnnouncedScratchpad = _currentDisplay.Scratchpad;
-                string announcement = string.IsNullOrEmpty(_currentDisplay.Scratchpad)
-                    ? "Scratchpad cleared"
-                    : _currentDisplay.Scratchpad;
-                _announcer.Announce(announcement);
-            }
+            if (_currentDisplay == null) { return; }
+            string? say = _readBack.OnScratchpadTick(_currentDisplay.Scratchpad, Visible, DateTime.UtcNow);
+            if (say != null) { _announcer.Announce(say); }
         };
+        _readBackTimer.Start();
     }
 
     private void SetupEventHandlers()
@@ -320,7 +320,14 @@ public class FlyByWireMCDUForm : Form
             };
             if (buttonName != null)
             {
+                // Hold the scratchpad read-back while this key lands, so the entry is read back
+                // once, whole: from before it is sent, and again once it has been delivered — a
+                // key can wait out the relay settle (FlyByWireMCDUService.RelaySettleMs) first.
+                _readBack.HoldForTyping(DateTime.UtcNow);
                 await _service.SendButtonPress(buttonName);
+                _readBack.HoldForTyping(DateTime.UtcNow);
+                // Load-bearing: FBW's keypad applies each key 150-200 ms after it arrives (a
+                // random delay), so keys stay in order only when they arrive >= 50 ms apart.
                 await Task.Delay(50);
             }
         }
@@ -362,23 +369,17 @@ public class FlyByWireMCDUForm : Form
         // page force-select wins.
         Forms.DisplayList.UpdateInPlace(mcduDisplay, lines);
 
-        string trimmedTitle = data.Title.Trim();
-        bool titleChanged = !string.IsNullOrEmpty(trimmedTitle) && trimmedTitle != _lastAnnouncedTitle;
-        if (titleChanged)
+        // A page change is spoken only while the window is open; one reached while it was closed
+        // is spoken when the window shows it again. The scratchpad is read back by the timer.
+        string? title = _readBack.OnTitle(data.Title, Visible);
+        if (title != null)
         {
-            _lastAnnouncedTitle = trimmedTitle;
-            _announcer.Announce(trimmedTitle);
+            _announcer.Announce(title);
             if (mcduDisplay.Items.Count > 1) { mcduDisplay.SelectedIndex = 1; }
         }
         else if (savedIndex >= 0 && savedIndex < mcduDisplay.Items.Count && mcduDisplay.SelectedIndex != savedIndex)
         {
             mcduDisplay.SelectedIndex = savedIndex;
-        }
-
-        if (data.Scratchpad != _lastAnnouncedScratchpad)
-        {
-            _scratchpadDebounceTimer?.Stop();
-            _scratchpadDebounceTimer?.Start();
         }
     }
 
@@ -393,7 +394,13 @@ public class FlyByWireMCDUForm : Form
     {
         if (IsDisposed || !IsHandleCreated) return;
         connectionStatus.Text = isConnected ? "MCDU: Connected" : "MCDU: Disconnected";
-        _announcer.Announce(isConnected ? "MCDU connected" : "MCDU disconnected");
+        // Spoken only while the window is open. With the Coherent transport primary, a
+        // flight reload or the debugger re-attaching drops and re-establishes the socket
+        // as a matter of course; with SimBridge absent (the normal case now) each of those
+        // flipped the state, and a HIDDEN window narrated "disconnected" then "connected"
+        // over whatever the pilot was listening to, for nothing they could act on. The
+        // label keeps the state, and ShowForm speaks it if the window opens disconnected.
+        if (Visible) { _announcer.Announce(isConnected ? "MCDU connected" : "MCDU disconnected"); }
     }
 
     public void ShowForm()
@@ -406,7 +413,34 @@ public class FlyByWireMCDUForm : Form
         TopMost = false;
         this.ActiveControl = mcduDisplay;
         mcduDisplay.Focus();
+        ArmDisconnectedOnShowCheck();
     }
+
+    /// <summary>
+    /// A window opened onto a dead transport says so — once, after the transports have had
+    /// a moment. The check is DEFERRED because the very first open creates the service and
+    /// connects it, and the Coherent socket takes ~100 ms to come up: an immediate check
+    /// would speak "disconnected" on every first open and be contradicted a beat later
+    /// (the "connected" transition itself announces while the window is visible).
+    /// </summary>
+    private void ArmDisconnectedOnShowCheck()
+    {
+        if (_service.IsConnected) return;
+        _disconnectedOnShowTimer ??= new System.Windows.Forms.Timer { Interval = 2000 };
+        _disconnectedOnShowTimer.Tick -= DisconnectedOnShowTick;
+        _disconnectedOnShowTimer.Tick += DisconnectedOnShowTick;
+        _disconnectedOnShowTimer.Stop();
+        _disconnectedOnShowTimer.Start();
+    }
+
+    private void DisconnectedOnShowTick(object? sender, EventArgs e)
+    {
+        _disconnectedOnShowTimer?.Stop();
+        if (IsDisposed || !Visible || _service.IsConnected) return;
+        _announcer.Announce("MCDU disconnected");
+    }
+
+    private System.Windows.Forms.Timer? _disconnectedOnShowTimer;
 
     protected override void Dispose(bool disposing)
     {
@@ -415,7 +449,8 @@ public class FlyByWireMCDUForm : Form
             _service.DisplayUpdated -= OnDisplayUpdated;
             _service.ConnectionStatusChanged -= OnConnectionStatusChanged;
             _service.PrintReceived -= OnPrintReceived;
-            _scratchpadDebounceTimer?.Dispose();
+            _readBackTimer?.Dispose();
+            _disconnectedOnShowTimer?.Dispose();
         }
         base.Dispose(disposing);
     }
