@@ -156,4 +156,35 @@ public class RouteBriefingTextTests
         Assert.Contains(RouteBriefingText.SecondSentenceOpening, GeminiService.RealWorldTaxiQuestion, StringComparison.Ordinal);
         Assert.Contains(RouteBriefingText.QuestionEnding, GeminiService.RealWorldTaxiQuestion, StringComparison.Ordinal);
     }
+
+    [Theory]
+    [InlineData("Ground will provide the step-by-step taxi route after you vacate, so expect B, M and the ramp.")]
+    [InlineData("I will provide the step-by-step taxi route for each leg below. Taxi out via J, N, M.")]
+    [InlineData("Real-world check, from memory rather than live charts: I cannot provide the step-by-step taxi route with confidence, and I am not aware of any specific restrictions.")]
+    [InlineData("Real-world check, from memory rather than live charts: we would provide the step-by-step taxi route on request.")]
+    public void The_AI_s_own_sentences_that_use_the_question_s_words_are_untouched(string line)
+        => Assert.Equal(line, RouteBriefingText.RemoveEchoedTaxiQuestion(line));
+
+    [Fact]
+    public void An_answer_after_a_first_sentence_echo_keeps_its_own_mention_of_restrictions()
+        => Assert.Equal("Expect J and N; ATC will state any specific restrictions.",
+            RouteBriefingText.RemoveEchoedTaxiQuestion(
+                "Provide the step-by-step taxi route at KMEM from stand 12 to runway 18R in a FENIX A320. " +
+                "Expect J and N; ATC will state any specific restrictions."));
+
+    [Theory]
+    [InlineData("'Provide the step-by-step taxi route at KMEM from stand 12 to runway 18R in a FENIX A320. Please include the expected taxiways, hold short points, and any specific restrictions.'")]
+    [InlineData("‘Provide the step-by-step taxi route at KMEM from stand 12 to runway 18R in a FENIX A320. Please include the expected taxiways, hold short points, and any specific restrictions.’")]
+    [InlineData("- Provide the step-by-step taxi route at KMEM from stand 12 to runway 18R in a FENIX A320. Please include the expected taxiways, hold short points, and any specific restrictions.")]
+    [InlineData("1. Provide the step-by-step taxi route at KMEM from stand 12 to runway 18R in a FENIX A320. Please include the expected taxiways, hold short points, and any specific restrictions.")]
+    public void A_bulleted_or_single_quoted_question_is_removed_with_its_line(string echo)
+        => Assert.Equal("Real-world practice\nAnswer.",
+            RouteBriefingText.RemoveEchoedTaxiQuestion("Real-world practice\n" + echo + "\nAnswer."));
+
+    [Fact]
+    public void The_question_after_a_bold_heading_is_removed_and_the_heading_kept()
+        => Assert.Equal("**Real-world practice:** Answer.",
+            RouteBriefingText.RemoveEchoedTaxiQuestion(
+                "**Real-world practice:** Provide the step-by-step taxi route at KMEM from stand 12 to runway 18R in a FENIX A320. " +
+                "Please include the expected taxiways, hold short points, and any specific restrictions. Answer."));
 }
