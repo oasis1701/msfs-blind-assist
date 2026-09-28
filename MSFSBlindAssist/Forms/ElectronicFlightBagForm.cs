@@ -5,9 +5,12 @@ using MSFSBlindAssist.Controls;
 using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
+using MSFSBlindAssist.Navigation.Briefing;
 using MSFSBlindAssist.Services;
+using MSFSBlindAssist.Services.SayIntentions;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Settings;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Forms;
 /// <summary>
@@ -26,6 +29,9 @@ public partial class ElectronicFlightBagForm : Form
     private readonly ScreenReaderAnnouncer _announcer;
     private readonly WaypointTracker _waypointTracker;
     private readonly string _simbriefUsername;
+    // What the taxi section of the route briefing needs from MainForm; null when the form is built
+    // without it (tests), in which case the block says no navigation database is loaded.
+    private readonly RouteBriefingDependencies? _briefingDependencies;
     private IntPtr previousWindow;
 
     // Navigation tab controls
@@ -75,13 +81,15 @@ public partial class ElectronicFlightBagForm : Form
     private SimBriefPlannerForm? _simbriefPlannerForm;
 
     public ElectronicFlightBagForm(FlightPlanManager flightPlanManager, SimConnectManager simConnectManager,
-                                   ScreenReaderAnnouncer announcer, WaypointTracker waypointTracker, string simbriefUsername)
+                                   ScreenReaderAnnouncer announcer, WaypointTracker waypointTracker, string simbriefUsername,
+                                   RouteBriefingDependencies? briefingDependencies = null)
     {
         _flightPlanManager = flightPlanManager;
         _simConnectManager = simConnectManager;
         _announcer = announcer;
         _waypointTracker = waypointTracker;
         _simbriefUsername = simbriefUsername;
+        _briefingDependencies = briefingDependencies;
 
         InitializeComponent();
         SetupEventHandlers();
@@ -844,7 +852,9 @@ public partial class ElectronicFlightBagForm : Form
             routeDescriptionTextBox.Visible = false;
             _flightPlanManager.LoadFromSimBrief(_simbriefUsername);
             _announcer.Announce("SimBrief flight plan loaded");
-            describeRouteButton.Enabled = !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
+            // Never re-enable while a briefing is running: a stale briefing for the plan just replaced would
+            // otherwise show up under a button that looks free to press again for the new one.
+            describeRouteButton.Enabled = !_describingRoute && !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
         }
         catch (Exception ex)
         {
@@ -854,8 +864,15 @@ public partial class ElectronicFlightBagForm : Form
         }
     }
 
+    private const string ApiKeyMissingMessage = "AI provider API key not configured. Please configure it in File menu, Settings, AI tab.";
+
+    /// <summary>A briefing is running. One at a time: Load SimBrief used to re-enable the button mid-briefing, and a
+    /// second press ran two briefings at once, the first then showing a briefing of the plan just replaced.</summary>
+    private bool _describingRoute;
+
     private async Task DescribeRouteAsync()
     {
+        if (_describingRoute) return;
         try
         {
             if (_flightPlanManager.CurrentFlightPlan.IsEmpty() ||
@@ -864,18 +881,57 @@ public partial class ElectronicFlightBagForm : Form
                 _announcer.Announce("No SimBrief flight plan loaded. Please load a flight plan first.");
                 return;
             }
+            // Before any work is done for it: the taxi section alone can take ~25 s of reads and online
+            // fetches (position, SayIntentions, online taxiway names, both graph builds). Checked here, a
+            // missing key is reported at once instead of after that whole computation.
+            if (!AiProviderFactory.HasApiKey())
+            {
+                _announcer.Announce(ApiKeyMissingMessage);
+                UpdateStatus("AI provider API key not configured");
+                return;
+            }
 
+            var plan = _flightPlanManager.CurrentFlightPlan;
+            _describingRoute = true;
             _announcer.Announce("Generating route description, please wait");
             describeRouteButton.Enabled = false;
+
+            // Whether the briefing can no longer be shown, said out loud when so: the window closed under
+            // it (a database switch closes the flight bag), or a different flight plan was loaded while it
+            // ran. Never silent — the pilot pressed Describe Route and is waiting for it.
+            bool EndedUnderUs()
+            {
+                if (IsDisposed)
+                {
+                    _announcer.Announce("Route description cancelled because the flight bag closed.");
+                    return true;
+                }
+                if (!ReferenceEquals(plan, _flightPlanManager.CurrentFlightPlan))
+                {
+                    _announcer.Announce("The flight plan changed while the route description was prepared. Press Describe Route again.");
+                    UpdateStatus("Route description discarded: the flight plan changed");
+                    return true;
+                }
+                return false;
+            }
+
+            // The taxi section: computed from the pilot's own scenery for THIS press and appended to the
+            // flight data for this AI call only — the stored ExtractedFlightData stays pure SimBrief,
+            // since the facts change when a runway is edited or the aircraft moves. Never blocks the
+            // briefing: every failure renders as an "unavailable" line inside the block.
+            UpdateStatus("Computing taxi routes...");
+            string taxiBlock = await BuildTaxiRoutesBlockAsync(plan);
+            if (EndedUnderUs()) return;
             UpdateStatus("Generating route description...");
+            string flightData = plan.ExtractedFlightData + "\n\n" + taxiBlock;
 
             // Resolve the AI provider fresh on each briefing. The EFB form is REUSED across opens
             // (MainForm keeps one instance to preserve flight-plan data), so a cached provider would
             // keep calling whichever backend was active when the form was first created — ignoring a
             // later provider switch in Settings. Display/scene reads already resolve per-call; match that.
             var aiProvider = AiProviderFactory.Create();
-            string description = await aiProvider.DescribeRouteAsync(
-                _flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
+            string description = await aiProvider.DescribeRouteAsync(flightData);
+            if (EndedUnderUs()) return;
 
             routeDescriptionTextBox.Text = description.Replace("\r\n", "\n").Replace("\n", "\r\n");
             routeDescriptionTextBox.Visible = true;
@@ -887,17 +943,95 @@ public partial class ElectronicFlightBagForm : Form
         }
         catch (InvalidOperationException ex) when (ex.Message.Contains("API key"))
         {
-            _announcer.Announce("AI provider API key not configured. Please configure it in File menu, Settings, AI tab.");
-            UpdateStatus("AI provider API key not configured");
+            _announcer.Announce(ApiKeyMissingMessage);
+            // A database switch can close the flight bag while the briefing runs (as the finally below checks).
+            if (!IsDisposed) UpdateStatus("AI provider API key not configured");
         }
         catch (Exception ex)
         {
             _announcer.Announce($"Error generating route description: {ex.Message}");
-            UpdateStatus("Error generating route description");
+            if (!IsDisposed) UpdateStatus("Error generating route description");
         }
         finally
         {
-            describeRouteButton.Enabled = true;
+            _describingRoute = false;
+            if (!IsDisposed)
+                describeRouteButton.Enabled = !string.IsNullOrEmpty(_flightPlanManager.CurrentFlightPlan.ExtractedFlightData);
+        }
+    }
+
+    private const int OwnPositionTimeoutMs = 1500;
+
+    private async Task<string> BuildTaxiRoutesBlockAsync(FlightPlan plan)
+    {
+        var aircraft = AircraftSizeClass.Resolve(plan.AircraftTypeIcao, plan.AircraftName, plan.AircraftMaxPassengers);
+        // One unit for every distance in the block and its notes: the pilot's ground distance setting.
+        var unit = DistanceFormatter.UnitProvider();
+        // SayIntentions is read while the aircraft position is: a web call to its parking service can take seconds.
+        var siTask = ReadSayIntentionsAsync();
+        // Hoisted so the catch can still name the runway SayIntentions assigned (and why) even when the leg itself
+        // could not be computed -- defaults to the flight plan's own runway, with no note, until the try below picks.
+        BriefingRunway outChoice = new(plan.DepartureRunway, null), inChoice = new(plan.ArrivalRunway, null);
+        try
+        {
+            var provider = _briefingDependencies?.Provider();
+            var gateSource = _briefingDependencies?.GateSource();
+            var own = await ReadOwnPositionAsync();
+            var si = await siTask;
+
+            // SayIntentions' runways and gate count only for THIS flight; its runway wins over the flight plan's and the
+            // leg says so (BriefingRunwayChoice).
+            bool siThisFlight = SayIntentionsArrivalGate.IsThisFlight(si?.Context, plan.DepartureICAO, plan.ArrivalICAO);
+            outChoice = BriefingRunwayChoice.Choose(plan.DepartureRunway, si?.Context.DepartureRunway, siThisFlight);
+            inChoice = BriefingRunwayChoice.Choose(plan.ArrivalRunway, si?.Context.ArrivalRunway, siThisFlight);
+            var siGate = SayIntentionsArrivalGate.FromStatus(si, plan.DepartureICAO, plan.ArrivalICAO);
+
+            var request = new TaxiBriefingRequest(plan.DepartureICAO, outChoice.Runway, plan.ArrivalICAO, inChoice.Runway,
+                                                  aircraft, plan.AirlineIcao, own, siGate, outChoice.Note, inChoice.Note, unit);
+            var briefing = await TaxiBriefingPlanner.PlanAsync(request, provider, gateSource, TaxiBriefingPlanner.DefaultBudget);
+            return TaxiBriefingRenderer.Render(briefing, unit);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("taxi_briefing", $"taxi routes block failed: {ex}");
+            return TaxiBriefingRenderer.Render(TaxiBriefing.Unavailable(aircraft, plan.DepartureICAO, outChoice.Runway,
+                plan.ArrivalICAO, inChoice.Runway, $"taxi route could not be computed ({ex.Message})", outChoice.Note, inChoice.Note), unit);
+        }
+    }
+
+    /// <summary>SayIntentions' status — the flight file and, when it has no gate, the parking service — or null when
+    /// SayIntentions is not wired in or the read fails. A SayIntentions failure costs the briefing SayIntentions' data
+    /// only, never the taxi routes.</summary>
+    private async Task<SayIntentionsStatusResult?> ReadSayIntentionsAsync()
+    {
+        if (_briefingDependencies == null) return null;
+        try
+        {
+            return await _briefingDependencies.SayIntentions();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn("taxi_briefing", $"SayIntentions read failed; briefing without it: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>The aircraft's position for the "parked at the origin" test — null when not connected or
+    /// when SimConnect does not answer within <see cref="OwnPositionTimeoutMs"/> (the callback lands on the
+    /// UI message pump, which this await yields to).</summary>
+    private async Task<OwnPosition?> ReadOwnPositionAsync()
+    {
+        if (_simConnectManager?.IsConnected != true) return null;
+        var tcs = new TaskCompletionSource<OwnPosition?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        _simConnectManager.RequestAircraftPositionAsync(p =>
+            tcs.TrySetResult(new OwnPosition(p.Latitude, p.Longitude, p.SimOnGround > 0.5)));
+        try
+        {
+            return await tcs.Task.WaitAsync(TimeSpan.FromMilliseconds(OwnPositionTimeoutMs));
+        }
+        catch (TimeoutException)
+        {
+            return null;
         }
     }
 

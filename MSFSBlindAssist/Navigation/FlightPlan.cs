@@ -28,6 +28,15 @@ public class FlightPlan
     public DateTime? LoadedTime { get; set; }
     public string ExtractedFlightData { get; set; } = "";
 
+    // Aircraft and airline exactly as SimBrief filed them (aircraft/icaocode, aircraft/name,
+    // aircraft/max_passengers, general/icao_airline). The route briefing's taxi section classifies
+    // the aircraft from these ALONE (owner's choice: SimBrief-only, never the loaded aircraft).
+    // Empty / null when the OFP did not carry them.
+    public string AircraftTypeIcao { get; set; } = "";
+    public string AircraftName { get; set; } = "";
+    public int? AircraftMaxPassengers { get; set; }
+    public string AirlineIcao { get; set; } = "";
+
     /// <summary>
     /// Gets all waypoints in flight plan order (A through F)
     /// </summary>
@@ -163,6 +172,40 @@ public class FlightPlan
         summary += $" ({GetTotalWaypointCount()} waypoints)";
 
         return summary;
+    }
+
+    /// <summary>
+    /// Takes every piece of <paramref name="other"/> — the SimBrief data (the text the route
+    /// briefing sends, the aircraft and airline it classifies from) as well as the procedures and
+    /// waypoints — so a plan carried across a database switch is the plan the pilot loaded. Lists
+    /// are copied, never shared. A property added later must be copied here too:
+    /// <c>FlightPlanCopyTests</c> fails until it is.
+    /// </summary>
+    public void CopyFrom(FlightPlan other)
+    {
+        DepartureICAO = other.DepartureICAO;
+        DepartureRunway = other.DepartureRunway;
+        ArrivalICAO = other.ArrivalICAO;
+        ArrivalRunway = other.ArrivalRunway;
+        SIDName = other.SIDName;
+        STARName = other.STARName;
+        ApproachName = other.ApproachName;
+
+        DepartureAirportWaypoints = new List<WaypointFix>(other.DepartureAirportWaypoints);
+        SIDWaypoints = new List<WaypointFix>(other.SIDWaypoints);
+        EnrouteWaypoints = new List<WaypointFix>(other.EnrouteWaypoints);
+        STARWaypoints = new List<WaypointFix>(other.STARWaypoints);
+        ApproachWaypoints = new List<WaypointFix>(other.ApproachWaypoints);
+        ArrivalAirportWaypoints = new List<WaypointFix>(other.ArrivalAirportWaypoints);
+
+        SimBriefUsername = other.SimBriefUsername;
+        LoadedTime = other.LoadedTime;
+        ExtractedFlightData = other.ExtractedFlightData;
+
+        AircraftTypeIcao = other.AircraftTypeIcao;
+        AircraftName = other.AircraftName;
+        AircraftMaxPassengers = other.AircraftMaxPassengers;
+        AirlineIcao = other.AirlineIcao;
     }
 
     /// <summary>

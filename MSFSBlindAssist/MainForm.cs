@@ -48,6 +48,15 @@ public partial class MainForm : Form
     // Typed reference to the augmentation decorator so Phase 6 can call PrefetchAsync.
     private MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider? _augmentingProvider;
 
+    // The taxi-data augmentation sources/cache/merge-options, built ONCE at startup — see
+    // WithTaxiAugmentation. Hoisted into fields (rather than locals built inline with the
+    // decorator, as before) so a LATER wrap — RefreshDatabaseProvider's, after a database switch
+    // or a Database Settings visit — can reuse the same online-data cache instead of starting
+    // cold, and so WithTaxiAugmentation can wrap even when no database existed yet at startup.
+    private List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>? _taxiAugmentSources;
+    private MSFSBlindAssist.Services.TaxiAugment.MergeOptions? _taxiAugmentMergeOptions;
+    private MSFSBlindAssist.Services.TaxiAugment.TaxiDataCache? _taxiAugmentCache;
+
     // The surroundings feature's OSM building tier: its OWN Overpass request, cached per ICAO in
     // memory. Separate from the taxiway fetch above so a mirror miss on the buildings can never
     // cost the taxiway names (it once did — the two rode one query).
@@ -932,8 +941,10 @@ public partial class MainForm : Form
         // (see IAircraftDefinition.TaxiTurnLeadSeconds).
         taxiGuidanceManager.TurnLeadSeconds = currentAircraft.TaxiTurnLeadSeconds;
 
-        // Initialize airport database provider (optional - can be null if database not built yet)
-        airportDataProvider = DatabaseSelector.SelectProvider();
+        // Read the raw navdata provider into a LOCAL, not the field: the field is assigned exactly
+        // once below, through WithTaxiAugmentation — see its doc comment and ProviderWrapGuardTests.
+        // (optional - navdata can be null if the database isn't built yet)
+        var navdata = DatabaseSelector.SelectProvider();
 
         // Built unconditionally: the buildings tier needs no base provider, so a database built
         // mid-session still gets it (a switch Clear()s the store, never rebuilds it).
@@ -960,43 +971,29 @@ public partial class MainForm : Form
         _appliedSceneryIndexEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.SceneryIndexEnabled;
         _appliedTaxiAugmentEnabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled;
 
-        // Wrap with the taxi-data augmentation decorator (Phase 5).
-        // The decorator is transparent: all IAirportDataProvider calls delegate to the base
-        // except GetTaxiPaths, which enriches unnamed segments from OSM / X-Plane apt.dat.
-        // Only wrap when a base provider is available — no DB means no decoration needed.
-        if (airportDataProvider != null)
+        // The taxi-data augmentation sources/cache/merge-options — built ONCE here, UNCONDITIONALLY
+        // (none of the three depends on whether a database is currently configured), so
+        // WithTaxiAugmentation can wrap a database built or switched to LATER in the session even
+        // when navdata is null right now (RefreshDatabaseProvider calls it too — see its doc
+        // comment for why a raw, never-rewrapped provider was the bug this exists to fix).
+        //
+        // IN-MEMORY cache only — nothing written to the user's disk. It just holds an async
+        // fetch's result for the route build that follows + avoids re-fetching one airport
+        // repeatedly in a session. Everything is real-time: the active flight's dep/dest are
+        // force-refreshed, and the cache is gone on exit. (7-day TTL is moot in-session.) Shared
+        // across a database switch on purpose: it holds ONLINE data only, never navdata, so the
+        // switch does not invalidate it and nothing is fetched twice.
+        _taxiAugmentSources = new List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
         {
-            var sources = new System.Collections.Generic.List<MSFSBlindAssist.Services.TaxiAugment.ITaxiDataSource>
-            {
-                new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(overpassClient),
-                new MSFSBlindAssist.Services.TaxiAugment.XplaneAptDatSource(http),
-            };
-            var mergeOpt = new MSFSBlindAssist.Services.TaxiAugment.MergeOptions();
+            new MSFSBlindAssist.Services.TaxiAugment.OsmTaxiSource(overpassClient),
+            new MSFSBlindAssist.Services.TaxiAugment.XplaneAptDatSource(http),
+        };
+        _taxiAugmentMergeOptions = new MSFSBlindAssist.Services.TaxiAugment.MergeOptions();
+        _taxiAugmentCache = new MSFSBlindAssist.Services.TaxiAugment.TaxiDataCache(ttlDays: 7);
 
-            // IN-MEMORY cache only — nothing written to the user's disk. It just holds an async
-            // fetch's result for the route build that follows + avoids re-fetching one airport
-            // repeatedly in a session. Everything is real-time: the active flight's dep/dest are
-            // force-refreshed, and the cache is gone on exit. (7-day TTL is moot in-session.)
-            var augCache  = new MSFSBlindAssist.Services.TaxiAugment.TaxiDataCache(ttlDays: 7);
-            var decorator = new MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider(
-                airportDataProvider, augCache, sources, mergeOpt);
-
-            // Phase 8: honour the user's on/off setting.
-            decorator.Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled;
-
-            decorator.AirportDataUpdated += icao =>
-            {
-                // Real-time: drop any cached graph built from the older (pre-augmentation) data so
-                // Where-Am-I and friends pick up the fresh names on next use — no manual refresh.
-                taxiGuidanceManager?.OnAirportDataUpdated(icao);
-
-                try { _taxiAugmentLog.Info($"taxi-augment: data updated for {icao}"); }
-                catch { /* log failure must never surface */ }
-            };
-
-            _augmentingProvider = decorator;
-            airportDataProvider = decorator;
-        }
+        // Wrap with the taxi-data augmentation decorator (Phase 5). WithTaxiAugmentation is the
+        // ONLY place that constructs AugmentingAirportDataProvider (ProviderWrapGuardTests).
+        airportDataProvider = WithTaxiAugmentation(navdata);
 
         // Reads the fields at call time: a database switch replaces the providers behind them.
         _airportWarmUp = new MSFSBlindAssist.Services.AirportWarmUp(
@@ -1101,6 +1098,39 @@ public partial class MainForm : Form
             simConnectManager.Connect();
         };
         connectTimer.Start();
+    }
+
+    /// <summary>
+    /// The provider every reader gets: <paramref name="navdata"/> wrapped in the taxi-data augmentation decorator (online
+    /// taxiway names, aliases, the route briefing's OpenStreetMap tier), which also becomes <see cref="_augmentingProvider"/>.
+    /// EVERY non-null assignment of <see cref="airportDataProvider"/> goes through here (ProviderWrapGuardTests):
+    /// RefreshDatabaseProvider once assigned the raw provider, and after a database switch — every Database Settings visit —
+    /// the session silently lost online names, aliases and the briefing's OpenStreetMap tier. The cache holds online data
+    /// only, never navdata, so it is shared across the switch and nothing is fetched twice.
+    /// </summary>
+    private IAirportDataProvider? WithTaxiAugmentation(IAirportDataProvider? navdata)
+    {
+        if (navdata == null || _taxiAugmentSources == null || _taxiAugmentCache == null || _taxiAugmentMergeOptions == null)
+        {
+            _augmentingProvider = null;
+            return navdata;
+        }
+        var decorator = new MSFSBlindAssist.Services.TaxiAugment.AugmentingAirportDataProvider(
+            navdata, _taxiAugmentCache, _taxiAugmentSources, _taxiAugmentMergeOptions)
+        {
+            Enabled = MSFSBlindAssist.Settings.SettingsManager.Current.TaxiAugmentEnabled,
+        };
+        decorator.AirportDataUpdated += icao =>
+        {
+            // Real-time: drop any cached graph built from the older (pre-augmentation) data so
+            // Where-Am-I and friends pick up the fresh names on next use — no manual refresh.
+            taxiGuidanceManager?.OnAirportDataUpdated(icao);
+
+            try { _taxiAugmentLog.Info($"taxi-augment: data updated for {icao}"); }
+            catch { /* log failure must never surface */ }
+        };
+        _augmentingProvider = decorator;
+        return decorator;
     }
 
     // --- User-set auto-announce de-dup (GLOBAL, all aircraft + all combo types) ---
