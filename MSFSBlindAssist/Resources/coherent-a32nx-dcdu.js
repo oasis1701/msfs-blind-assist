@@ -1,6 +1,7 @@
 // MSFSBA — one-shot DCDU scrape for the FlyByWire A32NX (CPDLC display).
-// Evaluated via CoherentEvalClient against the "DCDU" Coherent view (no
-// persistent socket on the A32NX by policy — each refresh is a fresh eval).
+// Evaluated via CoherentEvalClient against the "DCDU" Coherent view — each refresh is a
+// fresh one-shot eval (nothing else holds this view; the MCDU window's persistent socket
+// is on the separate MCDU view).
 // ES5 only (Coherent GT = Chromium 49).
 //
 // Output mirrors the MCDU-window model: rows in screen order, with the soft
