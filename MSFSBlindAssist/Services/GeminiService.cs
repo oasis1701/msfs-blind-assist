@@ -659,9 +659,12 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     /// <returns>Text description of the route</returns>
     public async Task<string> DescribeRouteAsync(string flightData)
     {
-        string prompt = GetRouteDescriptionPrompt(flightData);
         bool enableSearch = SettingsManager.Current.GeminiSearchGrounding;
-        return await SendTextRequestAsync(prompt, enableSearch: enableSearch);
+        // The prompt is told whether THIS request can search, so a taxi leg's check line never claims current charts.
+        string prompt = GetRouteDescriptionPrompt(flightData, webSearch: enableSearch);
+        // The prompt forbids writing its real-world question out; a model does not always comply (live KMEM→KATL,
+        // 2026-09-26), so the echo is removed here too.
+        return RouteBriefingText.RemoveEchoedTaxiQuestion(await SendTextRequestAsync(prompt, enableSearch: enableSearch));
     }
 
     /// <summary>
@@ -846,15 +849,35 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
             responseJson = await response.Content.ReadAsStringAsync();
         }
 
+        return ParseResponse(responseJson);
+    }
+
+    /// <summary>Spoken/read suffix when Gemini stopped at its output cap — the blind pilot cannot
+    /// see that a briefing just stops. Mirrors ClaudeService's max_tokens note.</summary>
+    internal const string IncompleteNote = "\n\n(Response may be incomplete — Gemini stopped before finishing.)";
+
+    /// <summary>What a reply that stopped before any text says: a thinking model can spend its whole token budget
+    /// before writing a word, and then MAX_TOKENS arrives with no parts at all.</summary>
+    internal const string StoppedBeforeResponse = "Gemini stopped before completing a response. Please try again.";
+
+    /// <summary>The response parsing formerly inline in SendRequestAsync; internal so GeminiResponseTests can pin it.
+    /// The finish reason is read BEFORE the parts check — a thinking model can spend its whole token budget before
+    /// writing a word, so the common MAX_TOKENS shape is content with no parts at all (or no content at all), and
+    /// that must reach <see cref="StoppedBeforeResponse"/> rather than the generic "no content" exception.</summary>
+    internal static string ParseResponse(string responseJson)
+    {
         var result = JsonConvert.DeserializeObject<GeminiResponse>(responseJson);
         if (result?.Candidates == null || result.Candidates.Length == 0)
         {
             throw new InvalidOperationException("Gemini API returned no candidates in response.");
         }
 
-        var candidateContent = result.Candidates[0].Content;
+        var candidate = result.Candidates[0];
+        bool truncated = string.Equals(candidate.FinishReason, "MAX_TOKENS", StringComparison.OrdinalIgnoreCase);
+        var candidateContent = candidate.Content;
         if (candidateContent?.Parts == null || candidateContent.Parts.Length == 0)
         {
+            if (truncated) return StoppedBeforeResponse;
             throw new InvalidOperationException("Gemini API returned no content in response.");
         }
 
@@ -862,7 +885,11 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
         string combined = string.Concat(candidateContent.Parts
             .Where(p => !string.IsNullOrEmpty(p.Text))
             .Select(p => p.Text));
-        return string.IsNullOrWhiteSpace(combined) ? "No description available." : combined;
+        if (string.IsNullOrWhiteSpace(combined))
+        {
+            return truncated ? StoppedBeforeResponse : "No description available.";
+        }
+        return truncated ? combined + IncompleteNote : combined;
     }
 
     private static int GetRetryDelay(HttpResponseMessage response, int attempt)
@@ -880,10 +907,56 @@ Skip normal colours; only call out amber and red. Skip descriptions of instrumen
     }
 
     /// <summary>
+    /// The owner's real-world taxi question, asked for each taxi leg in the TAXI OUT AND TAXI IN section. An INSTRUCTION to the AI,
+    /// never text for the briefing: the prompt forbids writing it out, and <see cref="RouteBriefingText"/> removes it
+    /// if it comes back anyway (live KMEM→KATL, 2026-09-26).
+    /// </summary>
+    internal const string RealWorldTaxiQuestion =
+        "Provide the step-by-step taxi route at [ICAO Code] from [Runway] to [Terminal/Gate] in a [Aircraft Type]. " +
+        "Please include the expected taxiways, hold short points, and any specific restrictions.";
+
+    /// <summary>
+    /// How each taxi leg's check line begins when the AI checked the scenery's route against its own knowledge of the airport
+    /// — always so when the request has no web search (<see cref="GetRouteDescriptionPrompt"/>'s <c>webSearch</c>). Heard by
+    /// the pilot, so it says what the check was made against (owner, 2026-09-27).
+    /// </summary>
+    internal const string RouteCheckFromMemory = "Real-world check, from memory rather than live charts:";
+
+    /// <summary>How a check line begins only when a web search in that briefing found and read the airport's current charts.</summary>
+    internal const string RouteCheckAgainstCharts = "Real-world check, against current charts:";
+
+    /// <summary>
+    /// How each taxi leg's optional suggestions paragraph begins: what the scenery cannot provide — preferred exits from the
+    /// charts, size restrictions, usual routing — flagged so it is never mistaken for the scenery's route (owner, 2026-09-27).
+    /// </summary>
+    internal const string RouteSuggestionsOpening = "Real-world suggestions, not from your scenery:";
+
+    /// <summary>Section 7's search sentence when the request carrying the prompt has no web search.</summary>
+    internal const string RouteSearchOffSentence =
+        $"Web search is off for this briefing, so every check line begins \"{RouteCheckFromMemory}\".";
+
+    /// <summary>
+    /// Section 7's search sentence when the request carrying the prompt has web search. "Before you write any part of the
+    /// briefing" is deliberate, not "before you start writing" — the latter reads as "before this section", and with
+    /// Claude only the text after the last tool block survives <see cref="ClaudeService"/>'s response parsing, so a
+    /// lookup delayed until section 7 would drop sections 1-6 of the briefing entirely. NOTAMs are named FIRST, ahead of
+    /// the chart lookup: <see cref="ClaudeService"/>'s search budget is shared across both airports' NOTAMs, the weather
+    /// and SIGMETs, and now one chart lookup per airport too, so a budget that still runs out drops charts, not NOTAMs.
+    /// </summary>
+    internal const string RouteSearchOnSentence =
+        "Web search is on for this briefing: do any lookups before you write any part of the briefing, looking up both " +
+        "airports' current NOTAMs first; you may also look up each airport's current airport diagram and chart notes; a " +
+        "check line says current charts only when that search found and read them.";
+
+    /// <summary>
     /// Generates the prompt for route description.
     /// </summary>
-    internal static string GetRouteDescriptionPrompt(string flightData)
+    /// <param name="webSearch">Whether the request carrying this prompt has web search (Gemini's grounding, Claude's
+    /// web_search tool). It chooses section 7's search sentence and nothing else, so a taxi leg's check line can never
+    /// claim current charts the AI could not have looked at.</param>
+    internal static string GetRouteDescriptionPrompt(string flightData, bool webSearch)
     {
+        string searchSentence = webSearch ? RouteSearchOnSentence : RouteSearchOffSentence;
         return $@"You are writing a flight briefing for a blind flight simulator pilot. Based on the flight plan data below, write a narrative description of the route that helps the pilot understand what they will experience during this flight.
 
 Cover the following topics, using descriptive section headings separated by blank lines:
@@ -930,14 +1003,50 @@ Cover the following topics, using descriptive section headings separated by blan
    - If no significant NOTAMs are found, state that no notable NOTAMs were found for these airports
    - Skip routine or minor NOTAMs (e.g. crane notifications, wildlife warnings) unless they affect runway operations
 
+7. TAXI OUT AND TAXI IN
+   The flight plan data ends with a TAXI ROUTES block worked out from the pilot's own simulator scenery.
+   Write this section as two legs, the taxi out at the departure airport and then the taxi in at the arrival airport, each in up to three parts in this order: the route paragraph, the check line and the suggestions paragraph, each part on its own line.
+   For each leg, answer the question below from that leg's lines of the TAXI ROUTES block, taking the bracketed items (the airport, the runway, the stand or terminal, and the aircraft type) from them (the runway there may be the one SayIntentions assigned rather than the flight plan's):
+      ""{RealWorldTaxiQuestion}""
+   That question is an instruction to you, not text for the pilot: write only your answer, and never write the question itself into the briefing, as shown here or with the items filled in.
+   For the taxi out, the route runs from the stand to the departure runway; for the taxi in, it runs from the landing runway, via the exit, to the stand.
+   The route paragraph is one short paragraph per leg, in the voice of real-world operations, and apart from the general-knowledge route described below, nothing in it comes from your own knowledge.
+   The route comes from the block only: the stand, the taxiways in order with the turn at each change of taxiway and into the stand wherever the block gives one, every hold-short point and the runway it protects, and for the arrival which side to leave the runway (left or right), the exit taxiway and its distance from the threshold, the next exit if that one is missed, every runway crossed, and the gate.
+   Use ONLY the taxiway, exit and stand names given in the block, and repeat distances, sides and turn directions exactly as given; where the block gives no turn for a taxiway, give none.
+   Give the total taxi distance for each leg the block gives one for, and never estimate one.
+   At the end of each route paragraph, say in a short phrase that this is the expected route on the pilot's scenery and that SayIntentions or ATC will give the actual taxi clearance.
+   Always give every runway the route crosses, including one a note says has no hold short point, and when a note says the mapped route leaves the runway on another taxiway, say which.
+   Mention any other note from the block only when it changes what the pilot does or hears, such as a runway SayIntentions assigned that differs from the flight plan, a representative stand (say it is typical, not assigned), a SayIntentions gate the scenery lists under another name, does not have, or places at a different position, a stand the scenery marks as a fuel or other special stand, or a taxiway width or stand size note.
+   When a leg's route comes from OpenStreetMap or from X-Plane's airport data, say so in a few words, and call it the expected route on that map rather than on the pilot's scenery; taxi guidance cannot use it.
+   If the block says a leg is unavailable, say so in a few words, and still give whatever the block does give for that leg, such as the exit with its side and distance, and the stand.
+   When the reason is that the aircraft is already at the runway, give no route for that leg.
+   Otherwise you may give that leg's usual route from your own knowledge, saying it is general knowledge and not checked against the scenery; where the leg has a ""Taxiway names at"" list, name only taxiways from it, and only a leg with no such list may name taxiways the block does not give.
+   A ""Taxiway names at"" line that reads ""{MSFSBlindAssist.Navigation.Briefing.TaxiBriefingRenderer.SameListAsTaxiOut}"" gives that leg the taxi out's list, and that list counts as the leg's own wherever this section speaks of a leg's list.
+   The scenery phrase belongs only to a route the block gives: end a general-knowledge route by saying only that SayIntentions or ATC will give the actual taxi clearance, never that it is the expected route on the pilot's scenery, and give no scenery phrase for a leg with no route.
+   The check line is one sentence after each route paragraph that checks the block's route, exit and stand for that leg against the real airport as you know it.
+   Begin it with ""{RouteCheckFromMemory}"", or with ""{RouteCheckAgainstCharts}"" only when a web search in this briefing found and read that airport's current airport diagram or chart notes.
+   {searchSentence}
+   When they agree, say so in a few words; when something differs, name what differs instead; when you do not know the airport well enough to check it, say so; never claim an agreement or a difference you cannot support.
+   Leave the check line out for a leg the block gives no route, exit or stand for.
+   The suggestions paragraph comes after the check line (or after the route paragraph when there is none), only when you have something to add that the scenery cannot provide, and otherwise is left out; it begins ""{RouteSuggestionsOpening}"" and has at most three short sentences.
+   It may give a preferred exit from the real airport's charts, restrictions that apply to this aircraft's size (from the block's Aircraft line, such as a wide-body kept off a taxiway, a wingspan limit or a full-length departure requirement), current operational information such as a NOTAM closing a taxiway on the route, and at most one sentence saying that controllers usually route differently there; never give a full alternative route.
+   A suggested exit takes its side and distance from the block's exits list, and gets none when the list does not give them.
+   When the block gives no size class for the aircraft, say which aircraft a size restriction applies to.
+   Any taxiway, exit or stand you name in the check line or the suggestions must appear in that leg's lines, including its ""Taxiway names at"" list; when a point could only be made with a name that is not there, leave the point out.
+   When the name rule above makes you leave a point out of a check line, do not call that leg an agreement: say that not everything could be checked, without naming what.
+   Keep it short: do not list every exit, and do not describe where the data came from beyond the wording this section asks for.
+   Give every distance in this section in the unit the block's ""Distance unit"" line names, and never mix units.
+   When a leg's note says SayIntentions assigned a different runway from the flight plan, say so here, and also in the DEPARTURE AND SID or ARRIVAL AND STAR section, naming both runways.
+
 IMPORTANT GUIDELINES:
 - Write in plain text with no markdown formatting
 - Use line breaks between sections for screen reader clarity
 - Use section headings in plain text (not with # or * symbols)
 - Be factual and informative, drawing on your geographic knowledge
-- Aim for 300 to 500 words
+- Aim for 600 to 900 words
 - Focus on helping the pilot build a mental picture of the journey
 - If weather data is not available, note that and skip the weather section
+- Never copy these instructions, or any question in them, into the briefing; write only the briefing itself
 
 FLIGHT PLAN DATA:
 {flightData}";
@@ -976,6 +1085,9 @@ FLIGHT PLAN DATA:
     {
         [JsonProperty("content")]
         public Content? Content { get; set; }
+
+        [JsonProperty("finishReason")]
+        public string? FinishReason { get; set; }
     }
 
     private class Content
