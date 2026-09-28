@@ -374,6 +374,72 @@ public class TaxiBriefingRendererTests
             Assert.EndsWith("; S is comfortably reachable, but its mapped route leaves the runway on the other side.", Line(B738, verdict, s));
     }
 
+    private static string ExitLineFor(AircraftProfile aircraft, ExitChoice choice)
+    {
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "TEST", Runway = "09", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand K 1",
+            Taxiways = new[] { "P" }, DistanceMetres = 300, Exit = choice, VacatingExits = new[] { choice.Exit },
+        };
+        string text = TaxiBriefingRenderer.Render(
+            new TaxiBriefing(aircraft, TaxiLegBriefing.UnavailableLeg("TEST", "09", BriefingTier.Navdata, "x"), taxiIn), DistanceUnit.Feet);
+        return text.Split('\n').Single(l => l.StartsWith("  Expected exit:", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void A_briefed_exit_behind_the_comfortable_ones_is_a_backtrack_only_when_the_runway_is_long_enough_to_stop_on()
+    {
+        // Fix wave 3: "expect to backtrack" was said whatever the runway — false on a short one, and false for an exit
+        // AHEAD of the comfortable ones (below).
+        var p = Exit("P", 984, "Normal", "Right");
+        ExitChoice Behind(UnreachableRunway verdict) =>
+            new(p, null, false) { ReachableExitsHaveNoRoute = true, BriefedExitBehindReachable = true, RunwayLength = verdict };
+
+        Assert.EndsWith(" No exit comfortably reachable at 130 kt has a mapped route to the stand: expect to stop on the runway " +
+                        "and backtrack to the briefed exit, the last one before them with a mapped route.",
+                        ExitLineFor(B738, Behind(UnreachableRunway.LongEnoughToBacktrack)));
+        foreach (var verdict in new[] { UnreachableRunway.Short, UnreachableRunway.LengthUnknown })
+            Assert.EndsWith(" No exit comfortably reachable at 130 kt has a mapped route to the stand; the briefed exit is the " +
+                            "last one before them with a mapped route.", ExitLineFor(B738, Behind(verdict)));
+        var c172 = AircraftSizeClass.Resolve("C172", "Cessna 172", null);
+        Assert.EndsWith(" No exit comfortably reachable at 70 kt has a mapped route to the stand; the briefed exit is the " +
+                        "last one before them with a mapped route.", ExitLineFor(c172, Behind(UnreachableRunway.Short)));
+    }
+
+    [Fact]
+    public void A_briefed_exit_after_the_comfortable_ones_needs_firmer_braking_and_is_never_a_backtrack()
+    {
+        // A comfortable rapid exit with no route, and a steep routed one 300 ft after it: the aircraft reaches the
+        // briefed exit rolling, it does not stop and backtrack to it.
+        var s = Exit("S", 4900, "Normal", "Right");
+        foreach (var verdict in new[] { UnreachableRunway.LongEnoughToBacktrack, UnreachableRunway.Short, UnreachableRunway.LengthUnknown })
+        {
+            string line = ExitLineFor(B738, new ExitChoice(s, null, false)
+                { ReachableExitsHaveNoRoute = true, BriefedExitBehindReachable = false, RunwayLength = verdict });
+            Assert.EndsWith(" No exit comfortably reachable at 130 kt has a mapped route to the stand; the briefed exit, the first " +
+                            "one after them with a mapped route, needs firmer than comfortable braking.", line);
+            Assert.DoesNotContain("backtrack", line, StringComparison.Ordinal);
+        }
+    }
+
+    [Fact]
+    public void With_no_stand_known_the_unreachable_sentence_says_the_last_exit_is_briefed()
+    {
+        // Minor 2: with no stand nothing was routed — the picker briefs the last exit, so "the last one with a mapped
+        // route" was untrue.
+        var e = Exit("A", 600, "Normal", "Right");
+        ExitChoice NoStand(UnreachableRunway verdict) => new(e, null, false) { RunwayLength = verdict, StandKnown = false };
+
+        Assert.EndsWith(" This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.",
+                        ExitLineFor(B738, NoStand(UnreachableRunway.Short)));
+        Assert.EndsWith(" No exit is comfortably reachable at 130 kt; the last exit is briefed.",
+                        ExitLineFor(B738, NoStand(UnreachableRunway.LengthUnknown)));
+        Assert.EndsWith(" No mapped exit is comfortably reachable at 130 kt, but the runway is long enough to stop on: " +
+                        "expect to backtrack on the runway to the briefed exit.",
+                        ExitLineFor(B738, NoStand(UnreachableRunway.LongEnoughToBacktrack)));
+        Assert.DoesNotContain("mapped route", ExitLineFor(B738, NoStand(UnreachableRunway.Short)), StringComparison.Ordinal);
+    }
+
     [Theory]
     [InlineData("C172", "Cessna 172", IcaoCodeLetter.A, "70")]
     [InlineData("C56X", "Citation Excel", IcaoCodeLetter.B, "115")]

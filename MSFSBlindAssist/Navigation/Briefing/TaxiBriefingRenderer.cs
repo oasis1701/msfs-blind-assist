@@ -219,14 +219,28 @@ public static class TaxiBriefingRenderer
     /// short GA strip "short" (review I-2) — it gets the neutral sentence instead. The briefed exit is the last one
     /// that ROUTES to the stand (<see cref="BriefingExitPicker"/>) — on its own side, when exits were set aside — not
     /// necessarily the runway's last exit, so every arm names it as "the briefed exit" and says which one it is
-    /// (re-review N-3: "the last exit is briefed" was false wherever a later exit had no route).</summary>
+    /// (re-review N-3: "the last exit is briefed" was false wherever a later exit had no route) — except with no stand
+    /// known (<see cref="ExitChoice.StandKnown"/>), when nothing was routed and the last exit IS the one briefed. When
+    /// comfortable exits exist but none routes to the stand (<see cref="ExitChoice.ReachableExitsHaveNoRoute"/>), the
+    /// sentence says whether the briefed exit lies behind them — a backtrack only on a runway long enough to stop on — or
+    /// after them, needing firmer than comfortable braking.</summary>
     private static string UnreachableSentence(ExitChoice choice, string kt, bool typeUnknown, bool smallAircraft)
     {
         string ktPhrase = typeUnknown ? $"an assumed {kt} kt (the aircraft type is not recognised)" : $"{kt} kt";
-        // Reachable exits exist, but none routes to the stand (re-review N-6): say so, never that none is reachable.
+        // Reachable exits exist, but none routes to the stand (re-review N-6): say so, never that none is reachable. A
+        // briefed exit behind them is a backtrack only on a runway long enough to stop on; one after them is reached
+        // rolling, with firmer braking (fix wave 3).
         if (choice.ReachableExitsHaveNoRoute)
-            return $" No exit comfortably reachable at {ktPhrase} has a mapped route to the stand: expect to backtrack on the " +
-                   "runway to the briefed exit, the last one with a mapped route.";
+            return !choice.BriefedExitBehindReachable
+                ? $" No exit comfortably reachable at {ktPhrase} has a mapped route to the stand; the briefed exit, the first one " +
+                  "after them with a mapped route, needs firmer than comfortable braking."
+                : choice.RunwayLength == UnreachableRunway.LongEnoughToBacktrack
+                    ? $" No exit comfortably reachable at {ktPhrase} has a mapped route to the stand: expect to stop on the runway " +
+                      "and backtrack to the briefed exit, the last one before them with a mapped route."
+                    : $" No exit comfortably reachable at {ktPhrase} has a mapped route to the stand; the briefed exit is the last " +
+                      "one before them with a mapped route.";
+        // With no stand known nothing was routed: the picker briefs the last exit (Minor 2).
+        string which = choice.StandKnown ? "the briefed exit is the last one with a mapped route" : "the last exit is briefed";
         var setAside = choice.ReachableExitsSetAside;
         if (setAside.Count == 0)
             return choice.RunwayLength switch
@@ -235,8 +249,8 @@ public static class TaxiBriefingRenderer
                     $" No mapped exit is comfortably reachable at {ktPhrase}, but the runway is long enough to stop on: " +
                     "expect to backtrack on the runway to the briefed exit.",
                 UnreachableRunway.Short when !typeUnknown && !smallAircraft =>
-                    $" This runway is short for this aircraft: no exit is comfortably reachable at {ktPhrase}; the briefed exit is the last one with a mapped route.",
-                _ => $" No exit is comfortably reachable at {ktPhrase}; the briefed exit is the last one with a mapped route.",
+                    $" This runway is short for this aircraft: no exit is comfortably reachable at {ktPhrase}; {which}.",
+                _ => $" No exit is comfortably reachable at {ktPhrase}; {which}.",
             };
         // Capped like the exits list: the first MaxListedExits, then how many more.
         string names = setAside.Count == 1 ? ExitName(setAside[0])

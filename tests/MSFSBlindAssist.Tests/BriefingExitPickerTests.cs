@@ -164,7 +164,67 @@ public class BriefingExitPickerTests
         Assert.Same(p, choice.Exit);
         Assert.False(choice.ComfortablyReachable);
         Assert.True(choice.ReachableExitsHaveNoRoute);
-        Assert.Same(a, choice.NextExit);
+        Assert.True(choice.BriefedExitBehindReachable);
+        // Fix wave 3 (Minor 4): A has no route to the stand, so it is never the exit to take if P is missed.
+        Assert.Null(choice.NextExit);
+    }
+
+    [Fact]
+    public void With_routed_exits_behind_the_first_comfortable_one_the_last_of_them_is_briefed_not_one_ahead()
+    {
+        // At 130 kt: R (30°, 3,700 ft from touchdown) is comfortable, S (90°, 4,000 ft) is not (needs 4,021). P and Q
+        // route to the stand behind R, S routes ahead of it: the aircraft stops and backtracks to Q, the last one before R.
+        var p = Exit("P", 900); var q = Exit("Q", 2000); var r = Exit("R", 4700, angle: 30); var s = Exit("S", 5000);
+        var t = Exit("T", 6000);
+        Assert.True(BriefingExitPicker.IsComfortablyReachable(r, 130));    // precondition
+        Assert.False(BriefingExitPicker.IsComfortablyReachable(s, 130));   // precondition
+
+        var choice = BriefingExitPicker.Pick(new[] { p, q, r, s, t }, 130,
+            Routes((p, ExitRoute.Clear), (q, ExitRoute.Clear), (s, ExitRoute.Clear)))!;
+
+        Assert.Same(q, choice.Exit);
+        Assert.False(choice.ComfortablyReachable);
+        Assert.True(choice.ReachableExitsHaveNoRoute);
+        Assert.True(choice.BriefedExitBehindReachable);
+        Assert.Same(s, choice.NextExit);   // the next ROUTED exit on that side, 3,000 ft on
+    }
+
+    [Fact]
+    public void With_routed_exits_only_after_the_first_comfortable_one_the_first_of_them_is_briefed()
+    {
+        // A comfortable rapid exit R with no route, then two steep routed exits S (300 ft after it) and V, neither
+        // comfortable at 130 kt: the first, S, is briefed — the aircraft reaches it before V — and it is AHEAD of R.
+        var r = Exit("R", 4600, angle: 30); var s = Exit("S", 4900); var v = Exit("V", 5000);
+        Assert.True(BriefingExitPicker.IsComfortablyReachable(r, 130));    // precondition
+        Assert.False(BriefingExitPicker.IsComfortablyReachable(s, 130));   // precondition
+        Assert.False(BriefingExitPicker.IsComfortablyReachable(v, 130));   // precondition
+
+        var choice = BriefingExitPicker.Pick(new[] { r, s, v }, 130, Routes((s, ExitRoute.Clear), (v, ExitRoute.Clear)))!;
+
+        Assert.Same(s, choice.Exit);
+        Assert.False(choice.ComfortablyReachable);
+        Assert.True(choice.ReachableExitsHaveNoRoute);
+        Assert.False(choice.BriefedExitBehindReachable);
+        Assert.Null(choice.NextExit);      // V is only 100 ft on
+    }
+
+    [Fact]
+    public void On_the_no_route_path_the_next_exit_is_never_one_without_a_route()
+    {
+        // Minor 4: Q, 600 ft past P on the same side, has no route to the stand — never "Next exit if missed".
+        var p = Exit("P", 900); var q = Exit("Q", 1500); var a = Exit("A", 5100);
+        var choice = BriefingExitPicker.Pick(new[] { p, q, a }, 130, Routes((p, ExitRoute.Clear)))!;
+        Assert.Same(p, choice.Exit);
+        Assert.Null(choice.NextExit);
+    }
+
+    [Fact]
+    public void With_no_stand_known_the_choice_says_so()
+    {
+        var p = Exit("P", 500); var q = Exit("Q", 900);
+        Assert.False(BriefingExitPicker.Pick(new[] { p, q }, 130)!.StandKnown);
+        Assert.True(BriefingExitPicker.Pick(new[] { p, q }, 130, Routes((p, ExitRoute.Clear)))!.StandKnown);
+        Assert.False(BriefingExitPicker.Pick(new[] { Exit("A", 6000) }, 130)!.StandKnown);   // a comfortable one too
     }
 
     [Fact]

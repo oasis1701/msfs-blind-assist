@@ -1033,8 +1033,11 @@ public class TaxiBriefingPlannerTests
         string text = TaxiBriefingRenderer.Render(new TaxiBriefing(B738,
             TaxiLegBriefing.UnavailableLeg("TEST", "09", BriefingTier.Navdata, "x"), leg), DistanceUnit.Feet);
         string kt = B738.TouchdownSpeedKts.ToString("0", System.Globalization.CultureInfo.InvariantCulture);
-        Assert.Contains($" No exit comfortably reachable at {kt} kt has a mapped route to the stand: expect to backtrack " +
-                        "on the runway to the briefed exit, the last one with a mapped route.", text);
+        // Fix wave 3: P lies BEHIND the comfortable exits on a runway long enough to stop on — a backtrack, said so only then.
+        Assert.True(leg.Exit.BriefedExitBehindReachable);
+        Assert.Equal(UnreachableRunway.LongEnoughToBacktrack, leg.Exit.RunwayLength);
+        Assert.Contains($" No exit comfortably reachable at {kt} kt has a mapped route to the stand: expect to stop on the " +
+                        "runway and backtrack to the briefed exit, the last one before them with a mapped route.", text);
     }
 
     [Fact]
