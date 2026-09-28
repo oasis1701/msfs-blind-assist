@@ -103,7 +103,8 @@ public static class BriefingStandPicker
     /// <summary>
     /// An EXCLUDED kind in a note's words, by its ParkingTypes family, or null: military ramps (7 military cargo counted
     /// as cargo briefed freighters onto them at 48 fs2024 airports), seaplane docks (12, once a "ramp": a C172 at KBNA
-    /// was briefed to a dock), fuel and vehicle stands. (Replaces ExcludedTypes; the rest of that summary stands.)
+    /// was briefed to a dock), fuel and vehicle stands. De-ice pads are the one excluded kind that is not a type
+    /// family here: <see cref="IsExcludedKind"/> adds them.
     /// </summary>
     internal static string? ExcludedTypeWords(int type) =>
         ParkingTypes.IsMilitary(type) ? "military ramp"

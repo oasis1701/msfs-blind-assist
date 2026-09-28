@@ -4564,7 +4564,7 @@ List<TaxiPath>  (names written back BY INDEX — no object rebuild, no field los
 
 ### Wiring in MainForm
 
-The decorator is constructed immediately after `DatabaseSelector.SelectProvider()` returns. Only constructed when a base provider is available (no DB = no decoration). The typed `_augmentingProvider` field is kept for Phase 6's `PrefetchAsync` calls.
+Every assignment of `airportDataProvider` goes through `MainForm.WithTaxiAugmentation` (pinned by `ProviderWrapGuardTests`): at startup, and again on EVERY database switch (`RefreshDatabaseProvider`), which builds a fresh decorator over the new navdata provider — the raw, never-rewrapped assignment there once lost online names, aliases and the route briefing's OpenStreetMap tier for the rest of the session. The online sources, the online-data cache and the merge options are fields built once at startup, so every decorator shares ONE cache across switches (online data only, never navdata). Only constructed when a base provider is available (no DB = no decoration); a database close (`CloseDatabaseConnections`, before a build) releases the provider through `WithTaxiAugmentation(null)`, which clears the decorator too. The typed `_augmentingProvider` field (the current decorator, or null) is kept for Phase 6's `PrefetchAsync` calls.
 
 Cache: **in-memory only** (`TaxiDataCache` = a `ConcurrentDictionary` with a TTL). There is no disk cache — every session fetches fresh, so data is never stale (the user explicitly did not want a disk cache). The active flight's departure + destination are fetched force-fresh; geofenced nearby airports ride the in-session cache.
 

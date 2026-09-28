@@ -8,9 +8,9 @@ namespace MSFSBlindAssist.Tests;
 /// <summary>
 /// FlightPlanManager.AdoptSimBriefPlan force-refreshes the online taxiway-name augmentation for
 /// both airports a loaded OFP names, as LoadDeparture/LoadArrival already do — without this the
-/// first Describe Route of every flight waited up to 8 s per cold airport (see
-/// AugmentingAirportDataProvider.PrefetchAsync/FetchCoreAsync's 60 s network timeout — 8 s is the
-/// typical settle, not a hard bound). internal, reached via InternalsVisibleTo (see
+/// first Describe Route of every flight waited up to 8 s per cold airport — TaxiBriefingGraphSource.PrefetchWaitMs,
+/// a hard bound on the briefing's wait; the fetch itself runs on behind it under
+/// AugmentingAirportDataProvider.FetchCoreAsync's 60 s network timeout. internal, reached via InternalsVisibleTo (see
 /// MSFSBlindAssist/Properties/InternalsVisibleTo.cs).
 /// </summary>
 public class FlightPlanManagerPrefetchTests
@@ -89,11 +89,10 @@ public class FlightPlanManagerPrefetchTests
 
         manager.AdoptSimBriefPlan(new FlightPlan { DepartureICAO = "KMEM", ArrivalICAO = "KMEM" });
 
-        // Wait for the one expected fetch, then a bounded settle: a stray SECOND fetch for the
-        // same field (a regression of the departure/arrival equality guard) would have landed
-        // well within this window rather than needing a fixed sleep before the first fetch even
-        // starts (flaky under load).
-        await source.Signal.WaitAsync(TimeSpan.FromSeconds(5));
+        // Wait for the one expected fetch, then a bounded settle in which a second fetch would land. This pins the
+        // OUTCOME — one fetch for the field — not the departure/arrival equality guard itself: the provider also
+        // coalesces a fetch already in flight for the same airport, so a missing guard could still yield one fetch here.
+        Assert.True(await source.Signal.WaitAsync(TimeSpan.FromSeconds(5)), "the one expected fetch never came");
         await Task.Delay(300);
 
         Assert.Equal(new[] { "KMEM" }, source.Seen);
