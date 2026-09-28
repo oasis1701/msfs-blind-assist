@@ -12,6 +12,7 @@
 
 using System;
 using System.Collections.Generic;
+using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Services;
 using static MSFSBlindAssist.Services.RunwayIncursionWatch;
 
@@ -200,6 +201,18 @@ public class RunwayIncursionWatchTests
     }
 
     [Fact]
+    public void A_malformed_navdata_width_is_capped_like_every_other_pavement_width()
+    {
+        // fs2024 carries 20 path segments into hold nodes wider than 300 ft, the widest over
+        // 1,000 ft: taken raw, a 1,000 ft width is a 157 m corridor, and an aircraft on a
+        // neighbouring parallel taxiway 60 m off the line, pointing the same way, read as on it.
+        // Capped at PavementTolerance.WidthCapFeet (300 ft) the corridor is 50.7 m.
+        var malformed = Seg(-60.0, 0.0, 0.0, 0.0, widthFeet: 1000.0);
+        Assert.False(AlongAPath(-30.0, -60.0, 90.0, malformed));
+        Assert.True(AlongAPath(-30.0, -50.0, 90.0, malformed));
+    }
+
+    [Fact]
     public void Past_the_node_or_too_far_off_the_path_is_not_on_it()
     {
         Assert.False(AlongAPath(5.0, 0.0, 90.0, Connector90));      // 5 m beyond the node
@@ -210,6 +223,103 @@ public class RunwayIncursionWatchTests
     [Fact]
     public void A_node_with_no_path_is_never_on_one()
         => Assert.False(AlongAPath(-20.0, 0.0, 90.0));
+
+    // --- Turning toward a hold line: the pose a few seconds ahead. fs2024 (PR #255 review): of
+    // 516,026 approaches driven into a hold node, 14,162 were first warned at 10-20 m and 262
+    // inside 10 m (KDTW 22L at Y10) — a hold line close to its junction is off the heading line
+    // and off the connector's heading until the turn is nearly done. A turning aircraft is judged
+    // ALSO where it will be, and which way it will point, TurnLookaheadSeconds ahead.
+    //
+    // A short connector: taxiway M runs north-south 15 m west of the node, the connector runs
+    // east from its junction on M (-15, 0) straight into the node.
+    private static readonly PathSegment ShortConnector = Seg(-15.0, 0.0, 0.0, 0.0);
+
+    private static bool Turning(double eastM, double northM, double heading, double gsMps, double yawDegSec)
+    {
+        var (lat, lon) = At(eastM, northM);
+        return IsApproachingWhileTurning(lat, lon, heading, gsMps, yawDegSec, NodeLat, NodeLon, new[] { ShortConnector });
+    }
+
+    [Fact]
+    public void Beginning_a_turn_onto_a_short_connector_is_not_yet_ahead_on_either_test()
+    {
+        // Southbound on M, 18 m north of the junction, 5° into a left turn: 23 m from the
+        // node, 13 m off the heading line, pointing 85° off the connector.
+        var (lat, lon) = At(-15.0, 18.0);
+        double dist = Math.Sqrt(15.0 * 15.0 + 18.0 * 18.0);
+        double bearing = Math.Atan2(15.0, -18.0) * 180.0 / Math.PI;
+        Assert.False(IsApproaching(dist, bearing, 175.0));
+        Assert.False(IsApproachingAlongAPath(lat, lon, 175.0, NodeLat, NodeLon, new[] { ShortConnector }));
+    }
+
+    [Fact]
+    public void Turning_onto_a_short_connector_is_ahead_where_the_turn_is_taking_the_aircraft()
+        // The same place, turning left at 15°/s at 10 kt: in 3 s the nose is at 130° and the
+        // aircraft 8 m short of the node with it 9° off the nose.
+        => Assert.True(Turning(-15.0, 18.0, 175.0, gsMps: 5.0, yawDegSec: -15.0));
+
+    [Fact]
+    public void Taxiing_straight_past_is_judged_exactly_as_before()
+        => Assert.False(Turning(-15.0, 18.0, 180.0, gsMps: 5.0, yawDegSec: 0.0));
+
+    [Fact]
+    public void A_steering_correction_is_not_a_turn()
+        // 3°/s is a pilot holding the centreline, below the rate a real turn reaches.
+        => Assert.False(Turning(-15.0, 18.0, 180.0, gsMps: 5.0, yawDegSec: -3.0));
+
+    [Fact]
+    public void Turning_the_other_way_is_not_turning_toward_the_hold_line()
+        => Assert.False(Turning(-15.0, 18.0, 185.0, gsMps: 5.0, yawDegSec: 15.0));
+
+    [Fact]
+    public void A_hold_line_abeam_of_the_parallel_stays_quiet_through_a_turn_onto_the_parallel()
+    {
+        // KMEM: M8's hold line 35 m east of M. Joining M southbound out of a westbound
+        // connector 60 m north (turning left, 270 → 180): the turn points the aircraft down M,
+        // past the hold line, never at it.
+        var (lat, lon) = At(-35.0, 60.0);
+        Assert.False(IsApproachingWhileTurning(lat, lon, 225.0, 5.0, -15.0, NodeLat, NodeLon, new[] { Connector90 }));
+    }
+
+    [Fact]
+    public void A_turn_that_carries_the_aircraft_away_from_the_hold_line_is_not_approaching_it()
+    {
+        // Southbound on M, 6 m PAST the connector's junction, turning left hard (30°/s): in 3 s the
+        // aircraft is heading east 15 m south of the node — beside the connector, inside its wide
+        // corridor and pointing along it, but farther from the hold line than it is now. The
+        // turn is taking it somewhere else. Measured on fs2024 with a turning motion model,
+        // requiring the prediction to CLOSE on the node cut 279 false warnings on passes near
+        // hold lines (3,835 → 3,556) and warned no approach later.
+        Assert.False(Turning(-15.0, -6.0, 180.0, gsMps: 5.0, yawDegSec: -30.0));
+    }
+
+    [Fact]
+    public void The_predicted_pose_follows_the_arc_being_flown()
+    {
+        // 5 m/s turning left at 15°/s for 3 s: 45° of turn along a 19.1 m radius, a 14.6 m chord
+        // leaving at the mean heading (175 - 22.5 = 152.5°).
+        var (lat, lon) = At(-15.0, 18.0);
+        var (pLat, pLon, pHdg) = PredictPose(lat, lon, 175.0, 5.0, -15.0, 3.0);
+        double east = (pLon - NodeLon) * MetresPerDegLon, north = (pLat - NodeLat) * MetresPerDegLat;
+        Assert.Equal(130.0, pHdg, 3);
+        Assert.Equal(-15.0 + 14.6 * Math.Sin(152.5 * Math.PI / 180.0), east, 0);
+        Assert.Equal(18.0 + 14.6 * Math.Cos(152.5 * Math.PI / 180.0), north, 0);
+    }
+
+    [Fact]
+    public void Without_yaw_the_predicted_pose_runs_straight_ahead()
+    {
+        var (lat, lon) = At(0.0, 0.0);
+        var (pLat, pLon, pHdg) = PredictPose(lat, lon, 90.0, 5.0, 0.0, 3.0);
+        Assert.Equal(90.0, pHdg, 6);
+        Assert.Equal(15.0, (pLon - NodeLon) * MetresPerDegLon, 1);
+        Assert.Equal(0.0, (pLat - NodeLat) * MetresPerDegLat, 1);
+    }
+
+    [Fact]
+    public void The_predicted_turn_is_capped()
+        // A spin in place at 60°/s would otherwise predict a full circle and back.
+        => Assert.Equal(270.0, PredictPose(NodeLat, NodeLon, 0.0, 0.0, -60.0, 3.0).HeadingTrueDeg, 6);
 
     // --- Which node the guard speaks about.
 
@@ -238,4 +348,98 @@ public class RunwayIncursionWatchTests
             new HoldShortCandidate(1, 32.0, OnRoute: false, Approached: false),
             new HoldShortCandidate(2, 36.0, OnRoute: false, Approached: false),
         }));
+
+    // --- Leaving a runway is not approaching one — but only THE runway the hold line guards,
+    // and only from the runway side of it. PR #255 review, measured on fs2024 navdata: "on ANY
+    // runway's pavement" silenced another runway's hold line ahead at 420 airports (704 pairs,
+    // 90 dead ahead — EGER on 24/06 toward runway 28's hold line), and 3,020 of 80,864 hold
+    // nodes are drawn ON pavement, so an aircraft ENTERING reached the pavement first and 35
+    // approach paths were never warned at all (EHAM 18C at W5).
+    //
+    // Same local frame as the path tests (node at the origin, metres east/north).
+
+    // An east-west runway whose centreline runs <northM> north of the node, 45 m wide.
+    private static RunwayShape EastWestRunway(double northM, string name1 = "09", string name2 = "27")
+    {
+        var (lat1, lon1) = At(-1500.0, northM);
+        var (lat2, lon2) = At(1500.0, northM);
+        return RunwayShape.For(new TaxiGraph.RunwayCenterline
+        {
+            Name1 = name1, Name2 = name2,
+            Lat1 = lat1, Lon1 = lon1, Lat2 = lat2, Lon2 = lon2,
+            HeadingDeg1 = 90, HalfWidthMeters = 22.5,
+        });
+    }
+
+    // A north-south runway whose centreline runs <eastM> east of the node, 45 m wide.
+    private static RunwayShape NorthSouthRunway(double eastM, string name1 = "36", string name2 = "18")
+    {
+        var (lat1, lon1) = At(eastM, -1500.0);
+        var (lat2, lon2) = At(eastM, 1500.0);
+        return RunwayShape.For(new TaxiGraph.RunwayCenterline
+        {
+            Name1 = name1, Name2 = name2,
+            Lat1 = lat1, Lon1 = lon1, Lat2 = lat2, Lon2 = lon2,
+            HeadingDeg1 = 0, HalfWidthMeters = 22.5,
+        });
+    }
+
+    private static bool Leaving(double aircraftEastM, double aircraftNorthM, RunwayShape? guarded)
+    {
+        var (lat, lon) = At(aircraftEastM, aircraftNorthM);
+        return IsLeavingThroughHoldLine(lat, lon, NodeLat, NodeLon, guarded);
+    }
+
+    [Fact]
+    public void The_runway_a_hold_line_guards_is_the_one_its_name_comes_from()
+    {
+        // The node is 60 m from 09/27's centreline and 80 m from 36/18's: the graph names it
+        // after 09/27 (TaxiGraph.MatchHoldShortRunwayName), so that is the runway it guards.
+        var ew = EastWestRunway(60.0);
+        var ns = NorthSouthRunway(-80.0);
+        var guarded = GuardedRunway(NodeLat, NodeLon, new[] { ns, ew });
+        Assert.Same(ew, guarded);
+        Assert.Equal(
+            TaxiGraph.MatchHoldShortRunwayName(NodeLat, NodeLon, new[] { ns.Centerline, ew.Centerline }, TaxiGraph.HOLDSHORT_RUNWAY_MATCH_M),
+            guarded!.NameAt(guarded.Project(NodeLat, NodeLon).Along));
+    }
+
+    [Fact]
+    public void A_hold_line_with_no_runway_near_enough_to_name_guards_none()
+        => Assert.Null(GuardedRunway(NodeLat, NodeLon, new[] { EastWestRunway(400.0) }));
+
+    [Fact]
+    public void Vacating_the_guarded_runway_through_its_hold_line_is_leaving_it()
+        // 09/27 60 m north (pavement edge 37.5 m north of the node); the aircraft is on the
+        // runway, 10 m south of its centreline, heading for the hold line.
+        => Assert.True(Leaving(0.0, 50.0, EastWestRunway(60.0)));
+
+    [Fact]
+    public void On_another_runways_pavement_the_hold_line_ahead_is_not_being_left()
+    {
+        // Rolling north on 36/18 (80 m west) toward the intersection with 09/27, whose hold
+        // line is the node: the aircraft is on a runway, but not on the one this line guards.
+        var ew = EastWestRunway(60.0);
+        var ns = NorthSouthRunway(-80.0);
+        Assert.False(Leaving(-80.0, -30.0, GuardedRunway(NodeLat, NodeLon, new[] { ns, ew })));
+    }
+
+    [Fact]
+    public void Entering_a_runway_whose_hold_line_is_drawn_on_its_pavement_is_not_leaving_it()
+    {
+        // 09/27's centreline 15 m north: its pavement reaches 7.5 m SOUTH of the node, so the
+        // node lies 7.5 m inside the pavement. Coming from the taxiway to the south, the
+        // aircraft touches the pavement 7.5 m before it reaches the hold line.
+        var ew = EastWestRunway(15.0);
+        Assert.False(Leaving(0.0, -5.0, ew));   // on the pavement, 2.5 m in: still short of the line
+        Assert.True(Leaving(0.0, 10.0, ew));    // 17.5 m in, beyond the line: on the runway side
+    }
+
+    [Fact]
+    public void Off_the_pavement_nothing_is_being_left()
+        => Assert.False(Leaving(0.0, -20.0, EastWestRunway(60.0)));
+
+    [Fact]
+    public void A_hold_line_that_guards_no_runway_is_never_being_left()
+        => Assert.False(Leaving(0.0, 50.0, guarded: null));
 }
