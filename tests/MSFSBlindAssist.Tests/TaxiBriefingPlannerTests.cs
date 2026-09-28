@@ -814,4 +814,42 @@ public class TaxiBriefingPlannerTests
         Assert.Empty(b.TaxiOut.AirportTaxiways);
         Assert.Empty(b.TaxiIn.AirportTaxiways);
     }
+
+    // ── "short" only when true: the downfield rescue and backtrack runways ─────────────────────
+
+    [Fact]
+    public void A_long_runway_whose_exits_are_all_behind_the_touchdown_is_a_backtrack_not_short()
+    {
+        var bundle = AirportWithOnlyEarlyExits(2500);
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, destRunway: "05"), bundle);
+        Assert.False(leg.Exit!.ComfortablyReachable);
+        Assert.Equal(UnreachableRunway.LongEnoughToBacktrack, leg.Exit.RunwayLength);
+    }
+
+    [Fact]
+    public void A_runway_too_short_to_stop_on_comfortably_is_short()
+    {
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738, destRunway: "05"), AirportWithOnlyEarlyExits(1200));
+        Assert.Equal(UnreachableRunway.Short, leg.Exit!.RunwayLength);
+    }
+
+    [Fact]
+    public void Before_calling_no_exit_comfortable_the_graph_is_asked_for_exits_the_list_left_out()
+    {
+        var bundle = AirportWithUnmarkedExit(600);   // C at 1,969 ft: too early for a 737
+        var rwy = TaxiBriefingPlanner.FindRunway(bundle.Runways, "09")!;
+        Assert.DoesNotContain(bundle.Graph.GetLandingExits(rwy), e => e.TaxiwayName == "U");   // the list is lossy here
+
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), bundle);
+        Assert.Equal("U", leg.Exit!.Exit.TaxiwayName);
+        Assert.True(leg.Exit.ComfortablyReachable);
+    }
+
+    [Fact]
+    public void Before_saying_no_exit_follows_the_briefed_one_the_graph_is_asked_too()
+    {
+        var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(B738), AirportWithUnmarkedExit(1800));   // C at 5,906 ft
+        Assert.Equal("C", leg.Exit!.Exit.TaxiwayName);
+        Assert.Equal("U", leg.Exit.NextExit!.TaxiwayName);
+    }
 }

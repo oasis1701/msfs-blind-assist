@@ -167,9 +167,8 @@ public static partial class TaxiBriefingPlanner
         if (stand != null) AddStandNotes(notes, stand, g.Note);
         string endpoint = stand == null ? "" : DescribeArrivalStand(stand, r.AirlineIcao);
 
-        var exits = g.Graph.GetLandingExits(rwy);
+        IReadOnlyList<LandingExit> exits = g.Graph.GetLandingExits(rwy);
         LandingExitVacateScreen.Mark(g.Graph, exits, rwy);
-        var vacating = exits.Where(e => e.VacatesRunway).OrderBy(e => e.DistanceFromThresholdFeet).ToList();
         var routeStarts = BriefableExitRouteStarts(g.Graph, exits, rwy);
 
         // Each candidate's way in is planned at most once: the picker asks about the exits in its preference order
@@ -185,19 +184,53 @@ public static partial class TaxiBriefingPlanner
         }
 
         double aim = BriefingExitPicker.AimPointFeet(rwy);
-        var choice = BriefingExitPicker.Pick(exits.Where(routeStarts.ContainsKey).ToList(), r.Aircraft.TouchdownSpeedKts,
-            standNode == null ? null : e => WayIn(e) switch
+        ExitChoice? PickExit() =>
+            BriefingExitPicker.Pick(exits.Where(routeStarts.ContainsKey).ToList(), r.Aircraft.TouchdownSpeedKts,
+                standNode == null ? null : e => WayIn(e) switch
+                {
+                    null => ExitRoute.None,
+                    { CrossesLandingRunway: true } => ExitRoute.CrossesLandingRunway,
+                    _ => ExitRoute.Clear,
+                }, aim);
+        var choice = PickExit();
+
+        // GetLandingExits is lossy on purpose — one entry per name, and one marked hold short switches its geometric
+        // fallback off for the whole runway — so before the block says no exit is comfortable, or that none follows the
+        // briefed one, the graph is asked, as the rollout asks it before "Missed last exit" (FindDownfieldExits, merged
+        // by RolloutExitGate.MergeRescueExits). KCOS: the list ended at 821 ft with 10,172 ft and taxiway H still ahead.
+        double? rescueFrom = choice == null || !choice.ComfortablyReachable ? aim
+                           : choice.NextExit == null ? choice.Exit.DistanceFromThresholdFeet : null;
+        if (rescueFrom is double from)
+        {
+            var rescued = g.Graph.FindDownfieldExits(rwy, from);
+            if (rescued.Count > 0)
             {
-                null => ExitRoute.None,
-                { CrossesLandingRunway: true } => ExitRoute.CrossesLandingRunway,
-                _ => ExitRoute.Clear,
-            }, aim);
+                exits = RolloutExitGate.MergeRescueExits(exits, rescued);
+                LandingExitVacateScreen.Mark(g.Graph, exits, rwy);
+                var previousStarts = routeStarts;
+                routeStarts = BriefableExitRouteStarts(g.Graph, exits, rwy);
+                // MergeRescueExits keeps the known instances, but a known exit's route start is resolved against the
+                // whole list, so a way in planned from a start that has since moved is planned again.
+                foreach (var known in inbound.Keys.ToList())
+                    if (!routeStarts.TryGetValue(known, out int now) || previousStarts[known] != now)
+                        inbound.Remove(known);
+                choice = PickExit();
+            }
+        }
+        var vacating = exits.Where(e => e.VacatesRunway).OrderBy(e => e.DistanceFromThresholdFeet).ToList();
         // From here on the exits have been searched: every leg says so, "none found" included.
         if (choice == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no exit taxiway is mapped clear of runway {rwy.RunwayID} in this scenery", stand, endpoint, notes, vacating,
                 exitsSearched: true);
         choice = WithReachableExitsSetAside(choice, vacating, routeStarts.Keys, r.Aircraft.TouchdownSpeedKts, aim);
+        if (!choice.ComfortablyReachable)
+            choice = choice with
+            {
+                RunwayLength = rwy.Length <= 0 ? UnreachableRunway.LengthUnknown
+                    : RunwayLongEnoughToStop(rwy, r.Aircraft.TouchdownSpeedKts, aim) ? UnreachableRunway.LongEnoughToBacktrack
+                    : UnreachableRunway.Short,
+            };
         if (stand == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 BriefingStandPicker.NoStandReason(g.Spots, HasStandNode, icao), null, endpoint, notes, vacating, choice, exitsSearched: true);
@@ -297,6 +330,15 @@ public static partial class TaxiBriefingPlanner
             .ToList();
         return setAside.Count == 0 ? choice : choice with { ReachableExitsSetAside = setAside };
     }
+
+    /// <summary>Whether the aircraft can stop on the runway with comfortable braking from its typical touchdown speed:
+    /// the landing distance available covers the aim point plus the comfortable lead to a 90° exit's turn-off speed
+    /// (RolloutExitGate.ComfortableExitLeadFeet, the touchdown re-plan's own rule) — 20 kt, where the rest of the stop
+    /// is a few feet. Such a runway is not "short" when its exits all lie behind the touchdown: the aircraft stops and
+    /// backtracks (CYYQ 15: 9,167 ft, its only taxiway at 113–600 ft).</summary>
+    internal static bool RunwayLongEnoughToStop(Runway rwy, double touchdownSpeedKts, double aimFeet) =>
+        rwy.Length > 0 &&
+        rwy.Length - rwy.ThresholdOffset >= aimFeet + RolloutExitGate.ComfortableExitLeadFeet(touchdownSpeedKts, RolloutExitGate.MaxUsableExitTurnDeg);
 
     /// <summary>"Right" or "Left" of the landing direction — <see cref="LandingExit.ExitSide"/>'s own words and
     /// convention — for a node clear of the runway pavement; null for a node on it (or unknown), whose side says

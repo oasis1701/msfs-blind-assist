@@ -186,18 +186,26 @@ public static class TaxiBriefingRenderer
         return sb.ToString();
     }
 
-    /// <summary>Why the briefed exit is one the aircraft cannot comfortably make. The runway is short only when no exit
-    /// is comfortably reachable at all; when the ones that are were set aside for leading off the other side, that is
-    /// what the pilot is told. An unrecognised SimBrief type has no measured touchdown speed — the 130 kt used is an
-    /// assumption, not a runway-length fact, so it is never blamed on the runway being "short for this aircraft".</summary>
+    /// <summary>Why the briefed exit is one the aircraft cannot comfortably make. When comfortably reachable exits were
+    /// set aside for leading off the other side, that is what the pilot is told. Otherwise the planner's verdict on the
+    /// runway (<see cref="ExitChoice.RunwayLength"/>) decides: short only when the aircraft cannot stop on it comfortably,
+    /// a backtrack when it can and every exit lies behind the touchdown, and no claim at all when its length is unknown.
+    /// An unrecognised SimBrief type has no measured touchdown speed — the 130 kt used is an assumption, not a
+    /// runway-length fact, so it is never blamed on the runway being "short for this aircraft".</summary>
     private static string UnreachableSentence(ExitChoice choice, string kt, bool typeUnknown)
     {
         string ktPhrase = typeUnknown ? $"an assumed {kt} kt (the aircraft type is not recognised)" : $"{kt} kt";
         var setAside = choice.ReachableExitsSetAside;
         if (setAside.Count == 0)
-            return typeUnknown
-                ? $" No exit is comfortably reachable at {ktPhrase}; the last exit is briefed."
-                : $" This runway is short for this aircraft: no exit is comfortably reachable at {ktPhrase}; the last exit is briefed.";
+            return choice.RunwayLength switch
+            {
+                UnreachableRunway.LongEnoughToBacktrack =>
+                    $" No mapped exit is comfortably reachable at {ktPhrase}, but the runway is long enough to stop on: " +
+                    "expect to backtrack on the runway to the last exit, which is briefed.",
+                UnreachableRunway.Short when !typeUnknown =>
+                    $" This runway is short for this aircraft: no exit is comfortably reachable at {ktPhrase}; the last exit is briefed.",
+                _ => $" No exit is comfortably reachable at {ktPhrase}; the last exit is briefed.",
+            };
         // Capped like the exits list: the first MaxListedExits, then how many more.
         string names = setAside.Count == 1 ? ExitName(setAside[0])
             : setAside.Count > MaxListedExits

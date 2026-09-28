@@ -5,6 +5,17 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// <summary>Whether an exit's taxi route to the stand exists, and whether it crosses the runway just landed on.</summary>
 public enum ExitRoute { None, CrossesLandingRunway, Clear }
 
+/// <summary>What the block says about the runway when no exit is comfortably reachable.</summary>
+public enum UnreachableRunway
+{
+    /// <summary>The aircraft cannot stop on it with comfortable braking from its typical touchdown speed.</summary>
+    Short,
+    /// <summary>It can stop on it: the exits all lie behind the touchdown, and it backtracks to the last one.</summary>
+    LongEnoughToBacktrack,
+    /// <summary>The runway's length is not in the navdata.</summary>
+    LengthUnknown,
+}
+
 /// <summary>The exit the briefing expects the aircraft to take, and the next one if it is missed.</summary>
 public sealed record ExitChoice(LandingExit Exit, LandingExit? NextExit, bool ComfortablyReachable)
 {
@@ -13,6 +24,11 @@ public sealed record ExitChoice(LandingExit Exit, LandingExit? NextExit, bool Co
     /// (<see cref="TaxiBriefingPlanner.BriefableExitRouteStarts"/>). While any is listed the runway is not short, and
     /// the block must not say so.</summary>
     public IReadOnlyList<LandingExit> ReachableExitsSetAside { get; init; } = Array.Empty<LandingExit>();
+
+    /// <summary>Whether the runway is short, long enough to stop on and backtrack, or of unknown length
+    /// (<see cref="TaxiBriefingPlanner.RunwayLongEnoughToStop"/>). Meaningful only when
+    /// <see cref="ComfortablyReachable"/> is false.</summary>
+    public UnreachableRunway RunwayLength { get; init; } = UnreachableRunway.Short;
 }
 
 /// <summary>

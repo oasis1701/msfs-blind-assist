@@ -231,6 +231,58 @@ internal static class TaxiBriefingFixture
         },
         new[] { Spot("W", 1, 10, 1500, 750, 150, "SWA") });
 
+    /// <summary>
+    /// A standalone airport whose one runway has its only exit near the start:
+    ///   north 0:   runway 05/23, east 0 → <paramref name="runwayMetres"/> (150 ft wide), start rows 10 m inside each end.
+    ///   east 200:  taxiway W from 05's centreline (HS) north to north 100, then east to 300 E.
+    ///   north 160: stand W 1 (300 E, gate, r=150 ft), its lead-in running south to W's east end.
+    /// Landing 05 the only exit is 656 ft in (clear of GetLandingExits' 500 ft floor, which 150 m would not be) —
+    /// behind a jet's touchdown, so never comfortably reachable.
+    /// </summary>
+    public static GraphBundle AirportWithOnlyEarlyExits(double runwayMetres)
+    {
+        var runways = new List<Runway>
+        {
+            Runway("05", 0, 0, runwayMetres, 0, 90),
+            Runway("23", runwayMetres, 0, 0, 0, 270),
+        };
+        var starts = new List<StartPosition> { Start("05", 10, 0, 90), Start("23", runwayMetres - 10, 0, 270) };
+        var paths = new List<TaxiPath>
+        {
+            Path("W", 200, 0, 200, 100, startType: "HS"),
+            Path("W", 200, 100, 300, 100),
+            LeadIn(300, 100, 300, 160),
+        };
+        var spots = new List<ParkingSpot> { Spot("W", 1, 10, 300, 160, 150) };
+        var graph = TaxiGraph.Build(paths, spots, starts, runways);
+        return new GraphBundle(graph, BriefingTier.Navdata, runways, starts, spots, null, AirportRef());
+    }
+
+    /// <summary>
+    /// A standalone airport where GetLandingExits leaves an exit out:
+    ///   north 100: taxiway A, east 0 → 3000 (nodes at 0, 300, <paramref name="markedExitEastMetres"/>, 2400, 3000).
+    ///   north 0:   runway 09/27, east 0 → 3000 as at TEST. Exit C from 09's centreline at
+    ///              <paramref name="markedExitEastMetres"/> (HS) north to A; exit U at 2400 E north to A with NO
+    ///              hold-short mark.
+    ///   north 250: stand G 1 (300 E, gate, r=150 ft), its lead-in running south to A.
+    /// With one exit marked, GetLandingExits' geometric fallback is off for the whole runway and U is left out;
+    /// TaxiGraph.FindDownfieldExits finds it.
+    /// </summary>
+    public static GraphBundle AirportWithUnmarkedExit(double markedExitEastMetres)
+    {
+        var runways = new List<Runway> { Runway("09", 0, 0, 3000, 0, 90), Runway("27", 3000, 0, 0, 0, 270) };
+        var starts = new List<StartPosition> { Start("09", 10, 0, 90), Start("27", 2990, 0, 270) };
+        var paths = new List<TaxiPath>();
+        double[] xs = { 0, 300, markedExitEastMetres, 2400, 3000 };
+        for (int i = 1; i < xs.Length; i++) paths.Add(Path("A", xs[i - 1], 100, xs[i], 100));
+        paths.Add(Path("C", markedExitEastMetres, 0, markedExitEastMetres, 100, startType: "HS"));
+        paths.Add(Path("U", 2400, 0, 2400, 100));
+        paths.Add(LeadIn(300, 100, 300, 250));
+        var spots = new List<ParkingSpot> { Spot("G", 1, 10, 300, 250, 150) };
+        var graph = TaxiGraph.Build(paths, spots, starts, runways);
+        return new GraphBundle(graph, BriefingTier.Navdata, runways, starts, spots, null, AirportRef());
+    }
+
     public static TaxiBriefingRequest Request(AircraftProfile aircraft, string? airline = null, OwnPosition? own = null,
                                               SayIntentionsGateHint? gate = null, string originRunway = "09", string destRunway = "09") =>
         new("TEST", originRunway, "TEST", destRunway, aircraft, airline, own, gate);

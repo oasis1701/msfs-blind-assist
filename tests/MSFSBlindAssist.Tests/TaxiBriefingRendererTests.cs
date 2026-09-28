@@ -304,6 +304,50 @@ public class TaxiBriefingRendererTests
     }
 
     [Fact]
+    public void An_unreachable_exit_line_says_whether_the_runway_is_short_long_enough_to_backtrack_or_of_unknown_length()
+    {
+        // "Short" only when true: a runway long enough to stop on, whose exits all lie behind the touchdown, is a
+        // backtrack (CYYQ 15); one of unknown length is neither.
+        var unknown = AircraftSizeClass.Resolve("ZZZZ", "", null);
+        var e = Exit("A", 600, "Normal", "Right");
+
+        string Line(AircraftProfile aircraft, UnreachableRunway verdict, params LandingExit[] setAside)
+        {
+            var taxiIn = new TaxiLegBriefing
+            {
+                Icao = "CYYQ", Runway = "15", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand 1",
+                Taxiways = new[] { "A" }, DistanceMetres = 300,
+                Exit = new ExitChoice(e, null, false) { RunwayLength = verdict, ReachableExitsSetAside = setAside },
+                VacatingExits = new[] { e },
+            };
+            string text = TaxiBriefingRenderer.Render(new TaxiBriefing(aircraft, TaxiLegBriefing.UnavailableLeg("CYYQ", "15", BriefingTier.Navdata, "x"), taxiIn), DistanceUnit.Feet);
+            return text.Split('\n').Single(l => l.StartsWith("  Expected exit:", StringComparison.Ordinal));
+        }
+
+        Assert.EndsWith(" This runway is short for this aircraft: no exit is comfortably reachable at 130 kt; the last exit is briefed.",
+                        Line(B738, UnreachableRunway.Short));
+        Assert.EndsWith(" No mapped exit is comfortably reachable at 130 kt, but the runway is long enough to stop on: " +
+                        "expect to backtrack on the runway to the last exit, which is briefed.",
+                        Line(B738, UnreachableRunway.LongEnoughToBacktrack));
+        Assert.EndsWith(" No exit is comfortably reachable at 130 kt; the last exit is briefed.",
+                        Line(B738, UnreachableRunway.LengthUnknown));
+
+        // An unrecognised type: the same shapes with the assumed speed, and never "short".
+        const string assumed = "an assumed 130 kt (the aircraft type is not recognised)";
+        Assert.EndsWith($" No exit is comfortably reachable at {assumed}; the last exit is briefed.", Line(unknown, UnreachableRunway.Short));
+        Assert.EndsWith($" No mapped exit is comfortably reachable at {assumed}, but the runway is long enough to stop on: " +
+                        "expect to backtrack on the runway to the last exit, which is briefed.",
+                        Line(unknown, UnreachableRunway.LongEnoughToBacktrack));
+        Assert.EndsWith($" No exit is comfortably reachable at {assumed}; the last exit is briefed.", Line(unknown, UnreachableRunway.LengthUnknown));
+        Assert.DoesNotContain("short for this aircraft", Line(unknown, UnreachableRunway.Short), StringComparison.Ordinal);
+
+        // Exits set aside for leading off the other side still win over all three.
+        var s = Exit("S", 6025, "End", "Right");
+        foreach (var verdict in new[] { UnreachableRunway.Short, UnreachableRunway.LongEnoughToBacktrack, UnreachableRunway.LengthUnknown })
+            Assert.EndsWith("; S is comfortably reachable, but its mapped route leaves the runway on the other side.", Line(B738, verdict, s));
+    }
+
+    [Fact]
     public void An_unrecognised_type_is_never_told_the_runway_is_short()
     {
         // The review's KSEA sweep briefed nearly every GA field "short for this aircraft ... at 130 kt" for an
