@@ -189,4 +189,40 @@ public class BriefingTurnsTests
     [InlineData(-179, "sharp left")]
     public void Words_follow_live_guidance_s_lines(double degrees, string words)
         => Assert.Equal(words, BriefingTurns.Words(degrees));
+
+    // ── Guards against drift (Task 16 / RBR-16): nothing ties BriefingTurns' groupings and wording to the
+    // originals they mirror except these two tests. ──────────────────────────────────────────────────────
+
+    [Fact]
+    public void The_turns_line_up_with_the_taxiway_names_for_every_route_shape()
+    {
+        string[] alphabet = { "", "A", "a", "B" };
+        foreach (var names in Sequences(alphabet, maxLength: 6))
+        {
+            var segments = names.Select((n, i) => new TaxiRouteSegment
+                { TaxiwayName = n, DistanceMeters = 30, BearingDegrees = (i * 37) % 360 }).ToList();
+            Assert.Equal(RouteTaxiwaySequence.DistinctConsecutive(segments).Count, BriefingTurns.TaxiwayTurns(segments).Count);
+        }
+    }
+
+    private static IEnumerable<string[]> Sequences(string[] alphabet, int maxLength)
+    {
+        IEnumerable<string[]> level = new[] { Array.Empty<string>() };
+        for (int length = 1; length <= maxLength; length++)
+        {
+            level = level.SelectMany(prefix => alphabet.Select(a => prefix.Append(a).ToArray())).ToList();
+            foreach (var s in level) yield return s;
+        }
+    }
+
+    [Fact]
+    public void The_turn_words_use_live_guidance_s_lines()
+    {
+        for (int a = -179; a <= 179; a++)
+        {
+            string live = TaxiRouter.GetTurnDirection(a);
+            string expected = Math.Abs(a) >= 120 ? "sharp " + live : live == "straight" ? "straight ahead" : live;
+            Assert.Equal(expected, BriefingTurns.Words(a));
+        }
+    }
 }

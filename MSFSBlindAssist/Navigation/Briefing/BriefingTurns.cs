@@ -19,7 +19,9 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// 20° and 60° lines as live taxi guidance (which judges a single junction from the aircraft's heading, so the two can
 /// still differ where a junction's bend and the stretch disagree); the 120° line is TaxiRouter's documented split
 /// between a normal and a sharp turn. Live guidance adds "sharp" and the angle from 60° up; a briefing keeps plain
-/// words.</para>
+/// words. Both copies — the grouping and the wording lines — are pinned against their originals by
+/// <c>BriefingTurnsTests</c>, so a future drift in either fails there rather than silently misattaching a turn to the
+/// wrong taxiway.</para>
 ///
 /// <para>No direction is given for joining the first taxiway: after pushback the aircraft's heading is not known, and on
 /// the taxi-in the landing exit's side is already briefed.</para>

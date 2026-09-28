@@ -1406,4 +1406,18 @@ public class BriefingStandPickerTests
         Assert.False(SayIntentionsArrivalGate.IsThisFlight(Ctx(true, null, "KATL", null), "KMEM", "KATL"));
         Assert.False(SayIntentionsArrivalGate.IsThisFlight(null, "KMEM", "KATL"));
     }
+
+    // ── Guard against drift (Task 16 / RBR-16): AcceptanceMetres restates SayIntentionsGatePositionMatcher's own
+    // admission rule; nothing but this test ties the two together. ──────────────────────────────────────────────
+
+    [Theory]
+    [InlineData(10.0)] [InlineData(30.0)] [InlineData(75.0)] [InlineData(90.0)]
+    public void A_stand_answers_to_SayIntentions_position_exactly_as_far_as_the_import_s_matcher_admits(double radiusMetres)
+    {
+        var gsx = new ParkingSpot { Name = "G", Number = 1, Type = 10, Radius = radiusMetres, Source = GateSource.Gsx };
+        double expected = Math.Min(SayIntentionsGatePositionMatcher.MaxMatchMetres, radiusMetres * SayIntentionsGatePositionMatcher.NoseStopRadiusFactor);
+        Assert.Equal(expected, BriefingStandPicker.AcceptanceMetres(gsx), 6);
+        var navdata = new ParkingSpot { Name = "G", Number = 1, Type = 10, Radius = radiusMetres / 0.3048, Source = GateSource.Navdata };
+        Assert.Equal(expected, BriefingStandPicker.AcceptanceMetres(navdata), 6);
+    }
 }

@@ -424,8 +424,10 @@ public static class BriefingStandPicker
 
     /// <summary>How far the published point may sit from a stand and still be that stand: twice its
     /// radius, capped by the backstop, or <see cref="SiPositionUnknownRadiusMetres"/> when its size is
-    /// unknown.</summary>
-    private static double AcceptanceMetres(ParkingSpot s)
+    /// unknown. Internal so <c>BriefingStandPickerTests</c> can pin it against
+    /// <see cref="SayIntentionsGatePositionMatcher"/>'s own admission rule directly, rather than only
+    /// through this picker's behaviour.</summary>
+    internal static double AcceptanceMetres(ParkingSpot s)
     {
         // A navdata radius is FEET and a GSX one METRES — the rule ParkingSpot.FitsAircraft and
         // TaxiAssistForm's own position match apply.

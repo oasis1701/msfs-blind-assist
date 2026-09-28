@@ -2,6 +2,7 @@
 using System.Text.RegularExpressions;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.SayIntentions;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Navigation.Briefing;
 
@@ -622,10 +623,15 @@ public static partial class TaxiBriefingPlanner
         !string.IsNullOrEmpty(node.ParkingName) &&
         !node.ParkingName.StartsWith("Runway", StringComparison.OrdinalIgnoreCase);
 
-    /// <summary>The turns only when they line up one-for-one with the taxiway names; otherwise none, so a future drift in
-    /// how either groups a route loses the directions instead of attaching them to the wrong taxiways.</summary>
-    private static IReadOnlyList<string?> AlignedTurns(IReadOnlyList<string> taxiways, IReadOnlyList<string?> turns) =>
-        turns.Count == taxiways.Count ? turns : Array.Empty<string?>();
+    /// <summary>The turns only when they line up one-for-one with the taxiway names; otherwise none, logged, so a future
+    /// drift in how either groups a route loses the directions visibly instead of attaching them to the wrong taxiways
+    /// (BriefingTurnsTests pins the two groupings together).</summary>
+    private static IReadOnlyList<string?> AlignedTurns(IReadOnlyList<string> taxiways, IReadOnlyList<string?> turns)
+    {
+        if (turns.Count == taxiways.Count) return turns;
+        Log.Warn(LogCategory, $"turns dropped: {turns.Count} turns for {taxiways.Count} taxiways [{string.Join(",", taxiways)}]");
+        return Array.Empty<string?>();
+    }
 
     private static string NamedTaxiwayAt(TaxiRoute route, int index)
     {
