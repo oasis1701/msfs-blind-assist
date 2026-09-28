@@ -91,14 +91,13 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
-    public void An_unnamed_exit_reads_as_unnamed_in_the_reason_it_cannot_be_routed()
+    public void A_dead_end_exit_gives_way_to_one_that_routes()
     {
-        // "no taxi route connects exit  to …" named a blank.
+        // The unnamed exit at 1300 E stops 20 m short of A; C, beyond the preference window, routes to every stand.
         var c172 = AircraftSizeClass.Resolve("C172", "Cessna 172", 4);
         var leg = TaxiBriefingPlanner.PlanTaxiIn(Request(c172), AirportWithUnnamedDeadEndExit());
-
-        Assert.Equal("", leg.Exit!.Exit.TaxiwayName);
-        Assert.StartsWith("no taxi route connects exit (unnamed) to ", leg.Unavailable);
+        Assert.Null(leg.Unavailable);
+        Assert.Equal("C", leg.Exit!.Exit.TaxiwayName);
     }
 
     [Fact]
@@ -370,13 +369,13 @@ public class TaxiBriefingPlannerTests
         var briefable = new HashSet<LandingExit> { e };
 
         var unreachable = new ExitChoice(e, null, ComfortablyReachable: false);
-        Assert.Equal(new[] { s }, TaxiBriefingPlanner.WithReachableExitsSetAside(unreachable, vacating, briefable, 130.0).ReachableExitsSetAside);
+        Assert.Equal(new[] { s }, TaxiBriefingPlanner.WithReachableExitsSetAside(unreachable, vacating, briefable, 130.0, BriefingExitPicker.JetAimPointFeet).ReachableExitsSetAside);
 
         // A comfortably reachable choice needs no such caveat, and neither does an unreachable one with nothing set aside.
         var x = Ex("X", 5500, 90);      // briefable and reachable
         var reachable = new ExitChoice(x, null, ComfortablyReachable: true);
-        Assert.Empty(TaxiBriefingPlanner.WithReachableExitsSetAside(reachable, new[] { e, k, x, s }, new HashSet<LandingExit> { e, x }, 130.0).ReachableExitsSetAside);
-        Assert.Empty(TaxiBriefingPlanner.WithReachableExitsSetAside(unreachable, vacating, new HashSet<LandingExit> { e, k, s }, 130.0).ReachableExitsSetAside);
+        Assert.Empty(TaxiBriefingPlanner.WithReachableExitsSetAside(reachable, new[] { e, k, x, s }, new HashSet<LandingExit> { e, x }, 130.0, BriefingExitPicker.JetAimPointFeet).ReachableExitsSetAside);
+        Assert.Empty(TaxiBriefingPlanner.WithReachableExitsSetAside(unreachable, vacating, new HashSet<LandingExit> { e, k, s }, 130.0, BriefingExitPicker.JetAimPointFeet).ReachableExitsSetAside);
     }
 
     // ── hold-short bookkeeping ───────────────────────────────────────────────────────────────

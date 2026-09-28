@@ -1,3 +1,4 @@
+using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation;
 using MSFSBlindAssist.Navigation.Briefing;
 
@@ -17,6 +18,26 @@ public class BriefingExitPickerTests
         ExitSide = side,
         VacatesRunway = vacates,
     };
+
+    private static Runway Rwy(double lengthFt, double thresholdOffsetFt = 0) =>
+        new() { RunwayID = "09", Length = lengthFt, ThresholdOffset = thresholdOffsetFt };
+
+    // ── the aim point (ICAO Annex 14 Table 5-2 on a short runway) ─────────────────────────────
+
+    [Theory]
+    [InlineData(2000, 0, 492.1)] [InlineData(3500, 0, 820.2)] [InlineData(5000, 0, 1000.0)]
+    [InlineData(4500, 1000, 820.2)] [InlineData(0, 0, 1000.0)]
+    public void The_aim_point_is_Annex_14_s_on_a_short_runway(double lengthFt, double offsetFt, double aimFt)
+        => Assert.Equal(aimFt, BriefingExitPicker.AimPointFeet(Rwy(lengthFt, offsetFt)), 1);
+
+    [Fact]
+    public void A_Cessna_makes_the_last_exit_of_a_2000_ft_strip_comfortably()
+    {
+        var last = Exit("A", 1950);
+        double aim = BriefingExitPicker.AimPointFeet(Rwy(2000));
+        Assert.True(BriefingExitPicker.Pick(new[] { last }, 70, null, aim)!.ComfortablyReachable);
+        Assert.False(BriefingExitPicker.Pick(new[] { last }, 70)!.ComfortablyReachable);   // the old 1,000 ft aim
+    }
 
     [Fact]
     public void A_heavy_skips_an_exit_it_cannot_slow_down_for()
@@ -100,12 +121,55 @@ public class BriefingExitPickerTests
         Assert.Null(BriefingExitPicker.Pick(new[] { Exit("A", 6000, vacates: false) }, 140.0));
     }
 
+    // ── route reachability (a route always beats no route, task 8) ────────────────────────────
+
+    [Fact]
+    public void An_exit_that_routes_beats_one_that_does_not_even_when_it_crosses()
+    {
+        var a = Exit("A", 5000); var b = Exit("B", 6000);
+        var choice = BriefingExitPicker.Pick(new[] { a, b }, 130, Routes((b, ExitRoute.CrossesLandingRunway)))!;
+        Assert.Same(b, choice.Exit);
+    }
+
+    [Fact]
+    public void A_routable_exit_beyond_the_window_beats_routeless_ones_inside_it()
+    {
+        var a = Exit("A", 5100); var b = Exit("B", 5500); var c = Exit("C", 9000);
+        Assert.Same(c, BriefingExitPicker.Pick(new[] { a, b, c }, 130, Routes((c, ExitRoute.CrossesLandingRunway)))!.Exit);
+    }
+
+    [Fact]
+    public void Inside_the_window_a_clear_route_still_beats_a_crossing_one_and_a_crossing_one_beats_one_beyond()
+    {
+        var a = Exit("A", 5100); var b = Exit("B", 5500); var c = Exit("C", 9000);
+        Assert.Same(b, BriefingExitPicker.Pick(new[] { a, b, c }, 130,
+            Routes((a, ExitRoute.CrossesLandingRunway), (b, ExitRoute.Clear), (c, ExitRoute.Clear)))!.Exit);
+        Assert.Same(a, BriefingExitPicker.Pick(new[] { a, b, c }, 130,
+            Routes((a, ExitRoute.CrossesLandingRunway), (c, ExitRoute.Clear)))!.Exit);
+    }
+
+    [Fact]
+    public void With_nothing_routable_the_first_preferred_exit_is_still_briefed()
+    {
+        var a = Exit("A", 5100); var b = Exit("B", 5500);
+        Assert.Same(a, BriefingExitPicker.Pick(new[] { a, b }, 130, Routes())!.Exit);
+    }
+
+    [Fact]
+    public void With_nothing_comfortable_the_furthest_exit_that_routes_is_briefed()
+    {
+        var p = Exit("P", 500); var q = Exit("Q", 900);
+        Assert.Same(p, BriefingExitPicker.Pick(new[] { p, q }, 130, Routes((p, ExitRoute.Clear)))!.Exit);
+        Assert.Same(q, BriefingExitPicker.Pick(new[] { p, q }, 130)!.Exit);   // no stand known: the furthest
+    }
+
     // ── the gate side (owner decision, 2026-09-26) ────────────────────────────────────────────
 
-    /// <summary>The planner's answer to "does this exit's route to the stand stay clear of the runway just landed
-    /// on": every exit but the ones named.</summary>
-    private static Func<LandingExit, bool> AvoidsAllBut(params LandingExit[] crossing) =>
-        e => !crossing.Any(c => ReferenceEquals(c, e));
+    /// <summary>The planner's answer to "what does this exit's route to the stand do about the runway just
+    /// landed on" — every exit named crosses it, every other one supplied is clear. Unlisted exits read as
+    /// <see cref="ExitRoute.None"/> (no route at all), so every exit a test cares about must be named.</summary>
+    private static Func<LandingExit, ExitRoute> Routes(params (LandingExit Exit, ExitRoute Route)[] map) =>
+        e => map.FirstOrDefault(m => ReferenceEquals(m.Exit, e)).Route;   // unlisted → None
 
     [Fact]
     public void The_exit_on_the_stand_s_side_wins_over_one_whose_route_crosses_back_over_the_runway()
@@ -120,7 +184,8 @@ public class BriefingExitPickerTests
 
         Assert.Same(n5a, BriefingExitPicker.Pick(exits, 140.0)!.Exit);
 
-        var choice = BriefingExitPicker.Pick(exits, 140.0, routeAvoidsLandingRunway: AvoidsAllBut(n5a))!;
+        var choice = BriefingExitPicker.Pick(exits, 140.0,
+            Routes((n5a, ExitRoute.CrossesLandingRunway), (m7a, ExitRoute.Clear), (n6, ExitRoute.Clear), (m9, ExitRoute.Clear)))!;
         Assert.Same(m7a, choice.Exit);
         Assert.Same(m9, choice.NextExit);    // the next exit on the RIGHT, 1,116 ft further
         Assert.True(choice.ComfortablyReachable);
@@ -131,7 +196,7 @@ public class BriefingExitPickerTests
     {
         var a = Exit("A", 6000);
         var h = Exit("H", 7200, angle: 30);
-        var choice = BriefingExitPicker.Pick(new[] { a, h }, 140.0, routeAvoidsLandingRunway: _ => false)!;
+        var choice = BriefingExitPicker.Pick(new[] { a, h }, 140.0, _ => ExitRoute.CrossesLandingRunway)!;
 
         Assert.Same(h, choice.Exit);          // the high-speed exit within 1,500 ft, exactly as with no stand known
     }
@@ -141,10 +206,12 @@ public class BriefingExitPickerTests
     {
         var a = Exit("A", 6000, side: "Left");
         var atEdge = Exit("B", 7500, side: "Right");      // exactly 1,500 ft further: inside the window
-        Assert.Same(atEdge, BriefingExitPicker.Pick(new[] { a, atEdge }, 140.0, AvoidsAllBut(a))!.Exit);
+        Assert.Same(atEdge, BriefingExitPicker.Pick(new[] { a, atEdge }, 140.0,
+            Routes((a, ExitRoute.CrossesLandingRunway), (atEdge, ExitRoute.Clear)))!.Exit);
 
         var beyond = Exit("B", 7501, side: "Right");      // 1,501 ft: outside, so A stands although it crosses back
-        Assert.Same(a, BriefingExitPicker.Pick(new[] { a, beyond }, 140.0, AvoidsAllBut(a))!.Exit);
+        Assert.Same(a, BriefingExitPicker.Pick(new[] { a, beyond }, 140.0,
+            Routes((a, ExitRoute.CrossesLandingRunway), (beyond, ExitRoute.Clear)))!.Exit);
     }
 
     [Fact]
@@ -164,9 +231,11 @@ public class BriefingExitPickerTests
         var exits = new[] { n, h1, h2 };
 
         Assert.Same(h1, BriefingExitPicker.Pick(exits, 140.0)!.Exit);
-        Assert.Same(h2, BriefingExitPicker.Pick(exits, 140.0, AvoidsAllBut(h1))!.Exit);
+        Assert.Same(h2, BriefingExitPicker.Pick(exits, 140.0,
+            Routes((h1, ExitRoute.CrossesLandingRunway), (n, ExitRoute.Clear), (h2, ExitRoute.Clear)))!.Exit);
         // Both high-speed exits cross back: the normal one that stays clear beats them.
-        Assert.Same(n, BriefingExitPicker.Pick(exits, 140.0, AvoidsAllBut(h1, h2))!.Exit);
+        Assert.Same(n, BriefingExitPicker.Pick(exits, 140.0,
+            Routes((h1, ExitRoute.CrossesLandingRunway), (h2, ExitRoute.CrossesLandingRunway), (n, ExitRoute.Clear)))!.Exit);
     }
 
     [Fact]

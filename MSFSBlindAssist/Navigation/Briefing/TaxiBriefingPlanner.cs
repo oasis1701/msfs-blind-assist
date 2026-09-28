@@ -184,14 +184,20 @@ public static partial class TaxiBriefingPlanner
             return planned;
         }
 
+        double aim = BriefingExitPicker.AimPointFeet(rwy);
         var choice = BriefingExitPicker.Pick(exits.Where(routeStarts.ContainsKey).ToList(), r.Aircraft.TouchdownSpeedKts,
-            standNode == null ? null : e => WayIn(e) is { CrossesLandingRunway: false });
+            standNode == null ? null : e => WayIn(e) switch
+            {
+                null => ExitRoute.None,
+                { CrossesLandingRunway: true } => ExitRoute.CrossesLandingRunway,
+                _ => ExitRoute.Clear,
+            }, aim);
         // From here on the exits have been searched: every leg says so, "none found" included.
         if (choice == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 $"no exit taxiway is mapped clear of runway {rwy.RunwayID} in this scenery", stand, endpoint, notes, vacating,
                 exitsSearched: true);
-        choice = WithReachableExitsSetAside(choice, vacating, routeStarts.Keys, r.Aircraft.TouchdownSpeedKts);
+        choice = WithReachableExitsSetAside(choice, vacating, routeStarts.Keys, r.Aircraft.TouchdownSpeedKts, aim);
         if (stand == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
                 BriefingStandPicker.NoStandReason(g.Spots, HasStandNode, icao), null, endpoint, notes, vacating, choice, exitsSearched: true);
@@ -281,12 +287,13 @@ public static partial class TaxiBriefingPlanner
     /// 01L: every exit a 737 can make comfortably leads off the other side in the scenery (2 of 428 hub arrivals).
     /// </summary>
     internal static ExitChoice WithReachableExitsSetAside(ExitChoice choice, IReadOnlyList<LandingExit> vacating,
-                                                          ICollection<LandingExit> briefable, double touchdownSpeedKts)
+                                                          ICollection<LandingExit> briefable, double touchdownSpeedKts,
+                                                          double aimFeet)
     {
         if (choice.ComfortablyReachable) return choice;
         var setAside = vacating
             .Where(e => !briefable.Contains(e) && e.ExitAngleDegrees <= RolloutExitGate.MaxUsableExitTurnDeg &&
-                        BriefingExitPicker.IsComfortablyReachable(e, touchdownSpeedKts))
+                        BriefingExitPicker.IsComfortablyReachable(e, touchdownSpeedKts, aimFeet))
             .ToList();
         return setAside.Count == 0 ? choice : choice with { ReachableExitsSetAside = setAside };
     }
