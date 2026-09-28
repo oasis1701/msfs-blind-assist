@@ -98,7 +98,8 @@ public static partial class TaxiBriefingPlanner
         {
             // A route START from a SENSED position: on the leg's taxi network, and bridge-only stand stubs excluded, as
             // TaxiGuidanceManager.LoadRoute does, so the position is never snapped onto an island or a stub.
-            var node = LegEndNode(g.Graph, own.Lat, own.Lon, OwnPositionMaxNodeDistanceMetres, network, asRouteStart: true, ReachesTheRunway);
+            var node = LegEndNode(g.Graph, own.Lat, own.Lon, OwnPositionMaxNodeDistanceMetres, network, asRouteStart: true, ReachesTheRunway,
+                                  standExemptionMaxMetres: OwnPositionStandMaxMetres);
             if (node != null)
             {
                 startNode = node.NodeId;
@@ -599,30 +600,61 @@ public static partial class TaxiBriefingPlanner
     /// otherwise the nearest node of the largest component within that reach, or null. The second condition (re-review
     /// N-5): an aircraft on the main network beside a narrow runway, between two nodes, can be nearer a node of the piece
     /// ACROSS the runway — snapped to it, it was briefed from the other side. A stand is where the aircraft is parked,
-    /// so its own piece stays the answer however near the main network runs.
+    /// so its own piece stays the answer however near the main network runs — for the aircraft's own position only
+    /// within <paramref name="standExemptionMaxMetres"/> of that node (<see cref="OwnPositionStandMaxMetres"/>: only
+    /// there is it AT the stand). And never a node whose piece lies across a runway from the point
+    /// (<see cref="PieceLiesAcrossARunway"/>): with no node of the largest component in reach that leaves null — no
+    /// start node — never a start across the runway (fix wave 3, Minor 3).
     /// <para>The graph has no runway edges, so taxiway pieces that meet only across a runway are separate components
-    /// (LFBP, VIJU, ENAT, UKHH, KPRC). Measured on the real fs2024 database by the taxi-out's rule (2026-09-28): 1,677
-    /// airports have two or more pieces that each hold stands and reach a runway entrance, and 7,987 stands sit on such a
-    /// piece off the largest one — 6,967 of them with no node of the largest within 100 m, so each was briefed "does not
-    /// connect" or replaced by a representative stand, and 1,020 briefed from a node of the largest piece, the wrong side.
+    /// (LFBP, VIJU, ENAT, UKHH, KPRC). Measured on the real fs2024 database (2026-09-28): by the lineup search alone 1,677
+    /// airports have two or more pieces that each hold stands and reach a runway entrance, and 7,987 stands at 1,857
+    /// airports sit on such a piece off the largest one — 6,967 with no node of the largest within 100 m, briefed "does
+    /// not connect" or replaced by a representative stand, and 1,020 briefed from a node of the largest piece, i.e. from
+    /// the wrong piece — and 12,088 once the planner's backtrack search and runway-pavement test are counted.
     /// A piece that reaches neither end (KTUL G 19's island) still never is a leg's end.</para>
     /// <para>As a route START the node is never a bridge-only stand stub — the rule every route start follows
     /// (<see cref="TaxiGraph.IsBridgeOnlyStandStub"/>); as a DESTINATION it may be one, so a bridged stand stays
     /// reachable.</para>
     /// </summary>
     internal static TaxiNode? LegEndNode(TaxiGraph graph, double lat, double lon, double maxMetres, int network,
-                                         bool asRouteStart, Func<TaxiNode, bool>? reachesOtherEnd)
+                                         bool asRouteStart, Func<TaxiNode, bool>? reachesOtherEnd,
+                                         double standExemptionMaxMetres = double.PositiveInfinity)
     {
-        bool InReach(TaxiNode? n) => n != null && TaxiGraph.FastDistanceMeters(lat, lon, n.Latitude, n.Longitude) <= maxMetres;
+        double DistanceTo(TaxiNode n) => TaxiGraph.FastDistanceMeters(lat, lon, n.Latitude, n.Longitude);
+        bool InReach(TaxiNode? n) => n != null && DistanceTo(n) <= maxMetres;
         var onNetwork = graph.FindNearestNode(lat, lon, requiredComponentId: network, excludeBridgeOnlyStandStubs: asRouteStart);
         bool networkInReach = InReach(onNetwork);
         if (reachesOtherEnd != null)
         {
             var nearest = graph.FindNearestNode(lat, lon, excludeBridgeOnlyStandStubs: asRouteStart);
             if (InReach(nearest) && nearest!.ComponentId != network &&
-                (!networkInReach || IsStandOrLeadInNode(graph, nearest)) && reachesOtherEnd(nearest)) return nearest;
+                (!networkInReach || (IsStandOrLeadInNode(graph, nearest) && DistanceTo(nearest) <= standExemptionMaxMetres)) &&
+                reachesOtherEnd(nearest) && !PieceLiesAcrossARunway(graph, lat, lon, nearest)) return nearest;
         }
         return networkInReach ? onNetwork : null;
+    }
+
+    /// <summary>
+    /// Whether <paramref name="node"/>'s piece of the taxi network lies across a runway from the point: the way from the
+    /// point to the node and on along every one of its edges crosses a runway (<see cref="RunwayRouteClassifier"/>,
+    /// the route classifier's own side-of-the-runway test). A node on the runway pavement is judged by where its edges
+    /// lead — a runway entrance whose piece lies on the point's side is not across — and a point on the pavement is
+    /// across nothing (fix wave 3, Minor 3a).
+    /// </summary>
+    private static bool PieceLiesAcrossARunway(TaxiGraph graph, double lat, double lon, TaxiNode node)
+    {
+        if (graph.RunwayCenterlines.Count == 0) return false;
+        var point = new TaxiNode { Latitude = lat, Longitude = lon };
+        bool Crosses(IReadOnlyList<TaxiNode?> path) =>
+            RunwayRouteClassifier.ClassifyAll(path, graph.RunwayCenterlines)
+                .Any(p => p.Kind == RunwayEventKind.Crossing && p.EntryIndex == 0);
+        var onward = graph.Adjacency.TryGetValue(node.NodeId, out var edges)
+            ? edges.Select(e => e.ToNodeId == node.NodeId ? e.FromNodeId : e.ToNodeId)
+                   .Where(graph.Nodes.ContainsKey).Select(id => graph.Nodes[id]).ToList()
+            : new List<TaxiNode>();
+        return onward.Count == 0
+            ? Crosses(new TaxiNode?[] { point, node })
+            : onward.All(next => Crosses(new TaxiNode?[] { point, node, next }));
     }
 
     /// <summary>A stand's own node (<see cref="IsStandNode"/>) or a node on a stand lead-in (navdata path type "P").</summary>

@@ -1010,6 +1010,64 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void With_no_main_network_node_in_reach_the_taxi_out_never_starts_from_the_piece_across_the_runway()
+    {
+        // Fix wave 3 (Minor 3a): north of 09, clear of its pavement, the nearest node is P's runway node — its piece lies
+        // SOUTH — and no node of the largest piece is within 150 m. Snapped to it, the route began across the runway.
+        var bundle = AirportWithSouthPieceAcrossTheRunway();
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var nearest = bundle.Graph.FindNearestNode(Lat(40), Lon(2230), excludeBridgeOnlyStandStubs: true)!;
+        Assert.NotEqual(network, nearest.ComponentId);                                   // precondition: P's runway node
+        Assert.True(TaxiGraph.FastDistanceMeters(Lat(40), Lon(2230), nearest.Latitude, nearest.Longitude) <= 150);
+        var onNetwork = bundle.Graph.FindNearestNode(Lat(40), Lon(2230), requiredComponentId: network)!;
+        Assert.True(TaxiGraph.FastDistanceMeters(Lat(40), Lon(2230), onNetwork.Latitude, onNetwork.Longitude) > 150);
+
+        var own = new OwnPosition(Lat(40), Lon(2230), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
+
+        Assert.StartsWith("representative stand", leg.EndpointDescription);
+    }
+
+    [Fact]
+    public void On_the_piece_s_own_side_of_the_runway_the_taxi_out_still_starts_from_it()
+    {
+        // The other side of Minor 3a: on P, south of 09, its runway node is the nearest and its piece lies on this side.
+        var bundle = AirportWithSouthPieceAcrossTheRunway();
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var nearest = bundle.Graph.FindNearestNode(Lat(-30), Lon(2200), excludeBridgeOnlyStandStubs: true)!;
+        Assert.NotEqual(network, nearest.ComponentId);                                   // precondition: P's runway node
+        Assert.Equal(0.0, TaxiGraph.FastDistanceMeters(Lat(0), Lon(2200), nearest.Latitude, nearest.Longitude), 1);
+
+        var own = new OwnPosition(Lat(-30), Lon(2200), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
+
+        Assert.StartsWith("current position", leg.EndpointDescription);
+    }
+
+    [Fact]
+    public void Well_away_from_a_stand_on_the_other_piece_the_taxi_out_starts_from_the_main_network()
+    {
+        // Fix wave 3 (Minor 3b): the stand exemption is for an aircraft AT the stand. Here, on 09's northern half, the
+        // nearest node is M 1's stand node 54 m away — beyond OwnPositionStandMaxMetres — and PN is within reach.
+        var bundle = AirportWithSouthPieceAndParallelBesideTheRunway(standBesideTheRunway: true);
+        int network = TaxiBriefingPlanner.NetworkComponentId(bundle.Graph);
+        var nearest = bundle.Graph.FindNearestNode(Lat(15), Lon(2260), excludeBridgeOnlyStandStubs: true)!;
+        Assert.NotEqual(network, nearest.ComponentId);                                   // precondition: M 1's node
+        Assert.Equal(TaxiNodeType.Parking, nearest.Type);
+        Assert.True(TaxiGraph.FastDistanceMeters(Lat(15), Lon(2260), nearest.Latitude, nearest.Longitude)
+                    > TaxiBriefingPlanner.OwnPositionStandMaxMetres);
+        var onNetwork = bundle.Graph.FindNearestNode(Lat(15), Lon(2260), requiredComponentId: network)!;
+        Assert.True(TaxiGraph.FastDistanceMeters(Lat(15), Lon(2260), onNetwork.Latitude, onNetwork.Longitude) <= 150);
+
+        var own = new OwnPosition(Lat(15), Lon(2260), OnGround: true);
+        var leg = TaxiBriefingPlanner.PlanTaxiOut(Request(B738, own: own), bundle);
+
+        Assert.StartsWith("current position", leg.EndpointDescription);
+        Assert.Equal("PN", leg.Taxiways[0]);
+        Assert.DoesNotContain("P", leg.Taxiways);
+    }
+
+    [Fact]
     public void A_stand_whose_only_exit_is_not_comfortable_is_briefed_by_that_exit_not_by_one_with_no_route()
     {
         // Re-review N-6: the comfortable exits (C, D) lead north and have no route to K 1; the picker fell back to the
