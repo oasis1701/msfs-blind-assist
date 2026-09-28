@@ -304,6 +304,26 @@ public class TaxiBriefingRendererTests
     }
 
     [Fact]
+    public void An_unrecognised_type_is_never_told_the_runway_is_short()
+    {
+        // The review's KSEA sweep briefed nearly every GA field "short for this aircraft ... at 130 kt" for an
+        // unrecognised SimBrief type — an assumed speed misreported as a runway-length fact.
+        var unknown = AircraftSizeClass.Resolve("ZZZZ", "", null);
+        var e = Exit("E", 4428, "High-speed", "Right");
+        var taxiIn = new TaxiLegBriefing
+        {
+            Icao = "KPHL", Runway = "17", Tier = BriefingTier.Navdata, EndpointDescription = "representative stand C 22",
+            Taxiways = new[] { "K" }, DistanceMetres = 1300,
+            Exit = new ExitChoice(e, null, false), VacatingExits = new[] { e },
+        };
+        var taxiOut = TaxiLegBriefing.UnavailableLeg("KPHL", "17", BriefingTier.Navdata, "x");
+        string text = TaxiBriefingRenderer.Render(new TaxiBriefing(unknown, taxiOut, taxiIn), DistanceUnit.Feet);
+
+        Assert.Contains("No exit is comfortably reachable at an assumed 130 kt (the aircraft type is not recognised); the last exit is briefed.", text);
+        Assert.DoesNotContain("short for this aircraft", text);
+    }
+
+    [Fact]
     public void A_hold_with_no_named_taxiway_names_the_runway_alone()
     {
         var taxiOut = new TaxiLegBriefing

@@ -181,18 +181,23 @@ public static class TaxiBriefingRenderer
                 ? $" No later usable exit is mapped at least {minimum} further along."
                 : $" No later usable exit on the same side is mapped at least {minimum} further along.");
         if (!choice.ComfortablyReachable)
-            sb.Append(UnreachableSentence(choice, aircraft.TouchdownSpeedKts.ToString("0", CultureInfo.InvariantCulture)));
+            sb.Append(UnreachableSentence(choice, aircraft.TouchdownSpeedKts.ToString("0", CultureInfo.InvariantCulture),
+                aircraft.CodeLetter == IcaoCodeLetter.Unknown));
         return sb.ToString();
     }
 
     /// <summary>Why the briefed exit is one the aircraft cannot comfortably make. The runway is short only when no exit
     /// is comfortably reachable at all; when the ones that are were set aside for leading off the other side, that is
-    /// what the pilot is told.</summary>
-    private static string UnreachableSentence(ExitChoice choice, string kt)
+    /// what the pilot is told. An unrecognised SimBrief type has no measured touchdown speed — the 130 kt used is an
+    /// assumption, not a runway-length fact, so it is never blamed on the runway being "short for this aircraft".</summary>
+    private static string UnreachableSentence(ExitChoice choice, string kt, bool typeUnknown)
     {
+        string ktPhrase = typeUnknown ? $"an assumed {kt} kt (the aircraft type is not recognised)" : $"{kt} kt";
         var setAside = choice.ReachableExitsSetAside;
         if (setAside.Count == 0)
-            return $" This runway is short for this aircraft: no exit is comfortably reachable at {kt} kt; the last exit is briefed.";
+            return typeUnknown
+                ? $" No exit is comfortably reachable at {ktPhrase}; the last exit is briefed."
+                : $" This runway is short for this aircraft: no exit is comfortably reachable at {ktPhrase}; the last exit is briefed.";
         // Capped like the exits list: the first MaxListedExits, then how many more.
         string names = setAside.Count == 1 ? ExitName(setAside[0])
             : setAside.Count > MaxListedExits
@@ -201,7 +206,7 @@ public static class TaxiBriefingRenderer
         string tail = setAside.Count == 1
             ? $"{names} is comfortably reachable, but its mapped route leaves the runway on the other side."
             : $"{names} are comfortably reachable, but their mapped routes leave the runway on the other side.";
-        return $" No exit whose mapped route leaves the runway on the side it turns toward is comfortably reachable at {kt} kt, " +
+        return $" No exit whose mapped route leaves the runway on the side it turns toward is comfortably reachable at {ktPhrase}, " +
                $"so the last one that does is briefed; {tail}";
     }
 

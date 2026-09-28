@@ -43,6 +43,13 @@ public static class AircraftSizeClass
         ["PC12"] = 16.28, ["C208"] = 15.88, ["TBM9"] = 12.68, ["C172"] = 11.0,
         ["C152"] = 10.2, ["C182"] = 11.0, ["PA28"] = 10.7, ["SR22"] = 11.7, ["DA40"] = 11.9, ["DA42"] = 13.4,
         ["DA62"] = 14.6, ["BE58"] = 11.5,
+        // Common GA and bizjet SimBrief/ICAO codes (PA28's own true ICAO forms, plus other frequently-flown MSFS
+        // default and popular add-on types) — an unknown one otherwise resolved to Unknown and was briefed an
+        // assumed 130 kt touchdown reported as a runway-length fact ("short for this aircraft").
+        ["P28A"] = 10.67, ["P28B"] = 10.67, ["P28R"] = 10.8, ["P28T"] = 10.8, ["BE36"] = 10.21, ["C150"] = 10.16,
+        ["C700"] = 21.0, ["DHC2"] = 14.63, ["DHC6"] = 19.81, ["E135"] = 20.04, ["E145"] = 20.04, ["PA24"] = 10.97,
+        ["PA31"] = 12.4, ["PA34"] = 11.85, ["PA44"] = 11.77, ["P46T"] = 13.11, ["R182"] = 10.92, ["S22T"] = 11.68,
+        ["SF50"] = 11.79, ["HDJT"] = 12.12, ["PC6T"] = 15.87, ["DV20"] = 10.87,
     };
 
     /// <summary>SimBrief-style codes that are freighters by definition (belt-and-braces beside the name test).</summary>

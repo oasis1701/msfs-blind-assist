@@ -115,4 +115,26 @@ public class AircraftSizeClassTests
     [InlineData(IcaoCodeLetter.F, 140.0)]
     public void Touchdown_speed_per_letter(IcaoCodeLetter letter, double kts)
         => Assert.Equal(kts, AircraftSizeClass.TouchdownSpeedKts(letter));
+
+    [Theory]
+    [InlineData("P28A", 10.67)] [InlineData("P28B", 10.67)] [InlineData("P28R", 10.8)] [InlineData("P28T", 10.8)]
+    [InlineData("BE36", 10.21)] [InlineData("C150", 10.16)] [InlineData("C700", 21.0)] [InlineData("DHC2", 14.63)]
+    [InlineData("DHC6", 19.81)] [InlineData("E135", 20.04)] [InlineData("E145", 20.04)] [InlineData("PA24", 10.97)]
+    [InlineData("PA31", 12.4)] [InlineData("PA34", 11.85)] [InlineData("PA44", 11.77)] [InlineData("P46T", 13.11)]
+    [InlineData("R182", 10.92)] [InlineData("S22T", 11.68)] [InlineData("SF50", 11.79)] [InlineData("HDJT", 12.12)]
+    [InlineData("PC6T", 15.87)] [InlineData("DV20", 10.87)]
+    public void Common_general_aviation_and_business_types_are_known(string code, double spanMetres)
+    {
+        var p = AircraftSizeClass.Resolve(code, "", null);
+        Assert.Equal(spanMetres, p.WingspanMetres);
+        Assert.NotEqual(IcaoCodeLetter.Unknown, p.CodeLetter);
+    }
+
+    [Fact]
+    public void The_code_letter_uses_the_same_wingspan_lines_as_GSX_s_ARC()
+    {
+        // GsxAircraftIdMap (not GsxAircraftId, the record) is the static class that carries ArcFromWingspanMetres.
+        for (double m = 1.0; m <= 90.0; m += 0.25)
+            Assert.Equal(MSFSBlindAssist.Services.Gsx.GsxAircraftIdMap.ArcFromWingspanMetres(m), "ARC-" + AircraftSizeClass.LetterForWingspan(m));
+    }
 }
