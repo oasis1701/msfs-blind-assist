@@ -704,6 +704,7 @@ public partial class TaxiGuidanceManager
             _offRouteSince = DateTime.MinValue;
             _hasJoinedRoute = false;
             _minPerpWhileUnjoinedM = double.MaxValue;
+            _incursionWithheldLoggedNodes.Clear();
             _lastSegmentAdvanceTime = DateTime.MinValue;
             _holdShortAtDestination = false;
 
