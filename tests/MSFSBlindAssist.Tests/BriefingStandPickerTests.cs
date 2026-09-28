@@ -54,6 +54,56 @@ public class BriefingStandPickerTests
     }
 
     [Fact]
+    public void The_families_are_ParkingTypes_own()
+    {
+        for (int t = 0; t <= 20; t++)
+        {
+            string? expected = ParkingTypes.IsCargo(t) ? "cargo" : ParkingTypes.IsGate(t) ? "gate" : ParkingTypes.IsGaRamp(t) ? "ramp" : null;
+            Assert.Equal(expected, BriefingStandPicker.CategoryOf(t));
+            bool excluded = ParkingTypes.IsMilitary(t) || ParkingTypes.IsDock(t) || ParkingTypes.IsFuel(t) || ParkingTypes.IsVehicle(t);
+            Assert.Equal(excluded, BriefingStandPicker.ExcludedTypeWords(t) != null);
+        }
+    }
+
+    [Fact]
+    public void A_freighter_is_never_briefed_to_a_military_cargo_ramp()
+    {
+        // Type 7 (RAMP_MIL_CARGO) is IsMilitary, not IsCargo — counting it as cargo briefed freighters onto
+        // 48 fs2024 airports' military ramps.
+        var military = Spot("M", 1, 7, 0, 0);
+        var gate = Spot("G", 1, 10, 500, 0);
+        var choice = BriefingStandPicker.Pick(new[] { military, gate }, B74F, null, null, Always)!;
+        Assert.Same(gate, choice.Spot);
+        Assert.Contains("no cargo stands at this airport", choice.Notes);
+    }
+
+    [Fact]
+    public void A_code_A_aircraft_is_never_briefed_to_a_seaplane_dock()
+    {
+        // Type 12 (seaplane dock) is IsDock, no longer counted in the Ramp family — a C172 at KBNA was
+        // briefed to "Northeast 12 (Dock GA)".
+        var dock = Spot("Northeast", 12, 12, 0, 0);
+        var ramp = Spot("R", 1, 2, 800, 0);
+        Assert.Same(ramp, BriefingStandPicker.Pick(new[] { dock, ramp }, C172, null, null, Always)!.Spot);
+        Assert.Null(BriefingStandPicker.Pick(new[] { dock }, C172, null, null, Always));
+    }
+
+    [Fact]
+    public void With_no_stand_the_reason_says_why()
+    {
+        Assert.Equal("this scenery has no stands at TEST",
+            BriefingStandPicker.NoStandReason(Array.Empty<ParkingSpot>(), Always, "TEST"));
+        Assert.Equal("the only stands at TEST in this scenery are military ramps and fuel stands, and none of them is briefed as a representative stand",
+            BriefingStandPicker.NoStandReason(new[] { Spot("M", 1, 8, 0, 0), Spot("F", 1, 16, 50, 0), Spot("M", 2, 7, 90, 0) }, Always, "TEST"));
+        Assert.Equal("no stand at TEST connects to the taxiway network",
+            BriefingStandPicker.NoStandReason(new[] { Spot("G", 1, 10, 0, 0) }, _ => false, "TEST"));
+        // Navdata's None type (1) — real jetway gates land in it too (LEBB 101-106) — counts here as "stands
+        // of no stated type", never as a representative candidate.
+        Assert.Equal("the only stands at TEST in this scenery are stands of no stated type, and none of them is briefed as a representative stand",
+            BriefingStandPicker.NoStandReason(new[] { Spot("U", 1, 1, 0, 0) }, Always, "TEST"));
+    }
+
+    [Fact]
     public void An_airliner_prefers_gates_over_ramps_and_cargo()
     {
         var cargo = Spot("C", 1, 6, 0, 0);
@@ -298,7 +348,7 @@ public class BriefingStandPickerTests
 
     [Theory]
     [InlineData(16, false, "fuel stand")]
-    [InlineData(8, false, "military combat ramp")]
+    [InlineData(8, false, "military ramp")]  // was "military combat ramp" — ParkingTypes.IsMilitary's word (7 or 8) now
     [InlineData(17, false, "vehicle stand")]
     [InlineData(10, true, "de-icing pad")]
     public void A_position_match_takes_an_excluded_stand_when_no_ordinary_stand_is_in_reach(int type, bool deicePad, string kind)
@@ -393,7 +443,8 @@ public class BriefingStandPickerTests
     }
 
     // ── SayIntentions: a stand of an excluded kind ───────────────────────────────────────────
-    // Military Combat, Fuel and Vehicles stands and de-ice pads are never a representative stand. But when
+    // Military ramps, seaplane docks, fuel and vehicle stands (ParkingTypes' families) and de-ice pads are
+    // never a representative stand. But when
     // SayIntentions' own name for its gate, or an online alias, finds no stand of another kind — or, with
     // nothing answering to either, no stand of another kind is in reach of its published position — that
     // stand is briefed, as Taxi Assist's import would seat it where its list carries one (owner decision,
@@ -403,7 +454,7 @@ public class BriefingStandPickerTests
 
     [Theory]
     [InlineData(16, false, "fuel stand")]
-    [InlineData(8, false, "military combat ramp")]
+    [InlineData(8, false, "military ramp")]  // was "military combat ramp" — ParkingTypes.IsMilitary's word (7 or 8) now
     [InlineData(17, false, "vehicle stand")]
     [InlineData(10, true, "de-icing pad")]
     public void A_name_found_only_on_a_stand_of_an_excluded_kind_briefs_that_stand_and_says_its_kind(int type, bool deicePad, string kind)
@@ -420,7 +471,7 @@ public class BriefingStandPickerTests
 
     [Theory]
     [InlineData(16, false, "fuel stand")]
-    [InlineData(8, false, "military combat ramp")]
+    [InlineData(8, false, "military ramp")]  // was "military combat ramp" — ParkingTypes.IsMilitary's word (7 or 8) now
     [InlineData(17, false, "vehicle stand")]
     [InlineData(10, true, "de-icing pad")]
     public void An_excluded_kind_found_by_name_is_not_handed_to_the_gate_next_door_at_the_pin(int type, bool deicePad, string kind)

@@ -210,6 +210,23 @@ public class TaxiBriefingPlannerTests
     }
 
     [Fact]
+    public void When_every_stand_is_an_excluded_kind_both_legs_say_why_not_that_none_connect()
+    {
+        // KTCM/KSKA/RJTI/EGVG/KNUW: every stand at the airport is a military ramp or a fuel/vehicle stand —
+        // "no stand … connects to the taxiway network" would be false; the reason must name the kinds instead.
+        var bundle = Airport();
+        var onlyExcluded = bundle with
+        {
+            Spots = new List<ParkingSpot> { Spot("M", 1, 8, 0, 0, 100), Spot("F", 1, 16, 50, 0, 100) },
+        };
+        string expected = "the only stands at TEST in this scenery are military ramps and fuel stands, " +
+                           "and none of them is briefed as a representative stand";
+
+        Assert.Equal(expected, TaxiBriefingPlanner.PlanTaxiOut(Request(B738), onlyExcluded).Unavailable);
+        Assert.Equal(expected, TaxiBriefingPlanner.PlanTaxiIn(Request(B738), onlyExcluded).Unavailable);
+    }
+
+    [Fact]
     public void Landing_runway_with_no_exit_is_reported_with_the_stand()
     {
         // Runway 18 has no turn-offs at all.

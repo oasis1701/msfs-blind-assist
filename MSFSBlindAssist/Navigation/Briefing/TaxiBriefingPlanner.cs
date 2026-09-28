@@ -78,11 +78,12 @@ public static partial class TaxiBriefingPlanner
 
         if (startNode < 0)
         {
+            bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s) != null;
             // SayIntentions never assigns a departure gate — no hint here by design.
-            stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, siGate: null, s => StandNode(g.Graph, s) != null, r.Unit);
+            stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, siGate: null, HasStandNode, r.Unit);
             if (stand == null)
                 return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
-                    $"no stand at {icao} connects to the taxiway network", notes: notes);
+                    BriefingStandPicker.NoStandReason(g.Spots, HasStandNode, icao), notes: notes);
             AddStandNotes(notes, stand, g.Note);
             startNode = StandNode(g.Graph, stand.Spot)!.NodeId;
             endpoint = $"representative stand {DescribeStand(stand, r.AirlineIcao)}";
@@ -159,7 +160,8 @@ public static partial class TaxiBriefingPlanner
             }
         }
 
-        var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, s => StandNode(g.Graph, s) != null, r.Unit);
+        bool HasStandNode(ParkingSpot s) => StandNode(g.Graph, s) != null;
+        var stand = BriefingStandPicker.Pick(g.Spots, r.Aircraft, r.AirlineIcao, arrivalGate, HasStandNode, r.Unit);
         if (matchedByNameOnly && stand?.Source == StandChoiceSource.SayIntentions)
             notes.Add($"SayIntentions' parking service gave no position for {arrivalGate!.Label}, so it was matched by name in this scenery");
         if (stand != null) AddStandNotes(notes, stand, g.Note);
@@ -192,7 +194,7 @@ public static partial class TaxiBriefingPlanner
         choice = WithReachableExitsSetAside(choice, vacating, routeStarts.Keys, r.Aircraft.TouchdownSpeedKts);
         if (stand == null)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,
-                $"no stand at {icao} connects to the taxiway network", null, endpoint, notes, vacating, choice, exitsSearched: true);
+                BriefingStandPicker.NoStandReason(g.Spots, HasStandNode, icao), null, endpoint, notes, vacating, choice, exitsSearched: true);
 
         if (WayIn(choice.Exit) is not { } way)
             return TaxiLegBriefing.UnavailableLeg(icao, rwy.RunwayID, g.Tier,

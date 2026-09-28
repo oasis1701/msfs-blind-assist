@@ -10,9 +10,10 @@ namespace MSFSBlindAssist.Navigation.Briefing;
 /// <summary>
 /// Which stand a briefing leg routes to, decided in this order:
 /// <list type="number">
-/// <item>Military Combat, Fuel and Vehicles stands and de-ice pads — the EXCLUDED kinds — are never a
-/// representative stand; as SayIntentions' gate one is briefed only when no stand of another kind answers,
-/// as Taxi Assist's import would seat it where its list carries one (see ExcludedTypes).</item>
+/// <item>Military ramps, seaplane docks, fuel and vehicle stands (ParkingTypes' own families) and de-ice
+/// pads — the EXCLUDED kinds — are never a representative stand; as SayIntentions' gate one is briefed only
+/// when no stand of another kind answers, as Taxi Assist's import would seat it where its list carries one
+/// (see ExcludedTypeWords).</item>
 /// <item>SayIntentions' assigned gate, when its flight is this OFP's, looked for in the order Taxi
 /// Assist's own SayIntentions import looks for it (TaxiAssistForm.TryResolveExternalDestination): by
 /// NAME (every stand whose identity matches the label), only when none does by the scenery's online
@@ -65,23 +66,6 @@ public static class BriefingStandPicker
     /// OpenStreetMap graph's (<see cref="OsmPlanningGraph.Note"/>), so a leg that carries both can say it once.</summary>
     public const string StandTypesUnknown = "stand types unknown";
 
-    /// <summary>
-    /// The EXCLUDED navdata types — Military Combat, Fuel, Vehicles — in the words a note uses for them (de-ice
-    /// pads are excluded too, by their own flag). An excluded stand is never the representative choice. As
-    /// SayIntentions' gate it is taken only when no stand of another kind answers — to the name, to an alias,
-    /// or, with nothing answering to either, within reach of the published position — as Taxi Assist's import
-    /// would seat it where its list carries one (owner decision, 2026-09-26; applied to the position the same
-    /// day), and then with <see cref="KindNotePrefix"/> naming its kind. The import's gate list carries fuel and
-    /// vehicle stands only when it comes from navdata: GSX's gate list never carries them (it can carry a
-    /// military combat ramp), and de-ice pads are a destination type of their own there.
-    /// </summary>
-    private static readonly Dictionary<int, string> ExcludedTypes = new()
-    {
-        [8] = "military combat ramp",   // Ramp Military Combat
-        [16] = "fuel stand",            // Fuel
-        [17] = "vehicle stand",         // Vehicles
-    };
-
     private const string DeicePadWords = "de-icing pad";
 
     /// <summary>How the note on a briefed stand of an excluded kind begins: "this scenery marks that stand as a
@@ -100,11 +84,39 @@ public static class BriefingStandPicker
     /// still rank ahead of a None stand: the point cannot tell two listings a metre apart.</summary>
     private const double NoneTypeTieMetres = 1.0;
 
-    /// <summary>Whether the stand is of an excluded kind (<see cref="ExcludedTypes"/>, or a de-ice pad).</summary>
-    private static bool IsExcludedKind(ParkingSpot s) => s.IsDeiceArea || ExcludedTypes.ContainsKey(s.Type);
+    /// <summary>A category the representative choice can prefer: the word a note uses for it and the
+    /// ParkingTypes family it holds.</summary>
+    private sealed record StandKind(string Adjective, string Noun, Func<int, bool> IsType)
+    {
+        public bool Has(ParkingSpot s) => IsType(s.Type);
+    }
+
+    // ParkingTypes owns the families; they are never typed here.
+    private static readonly StandKind Cargo = new("cargo", "cargo stand", ParkingTypes.IsCargo);
+    private static readonly StandKind Gate = new("gate", "gate", ParkingTypes.IsGate);
+    private static readonly StandKind Ramp = new("ramp", "ramp", ParkingTypes.IsGaRamp);
+
+    /// <summary>The category a navdata type belongs to — "cargo", "gate", "ramp" — or null.</summary>
+    internal static string? CategoryOf(int type) =>
+        Cargo.IsType(type) ? Cargo.Adjective : Gate.IsType(type) ? Gate.Adjective : Ramp.IsType(type) ? Ramp.Adjective : null;
+
+    /// <summary>
+    /// An EXCLUDED kind in a note's words, by its ParkingTypes family, or null: military ramps (7 military cargo counted
+    /// as cargo briefed freighters onto them at 48 fs2024 airports), seaplane docks (12, once a "ramp": a C172 at KBNA
+    /// was briefed to a dock), fuel and vehicle stands. (Replaces ExcludedTypes; the rest of that summary stands.)
+    /// </summary>
+    internal static string? ExcludedTypeWords(int type) =>
+        ParkingTypes.IsMilitary(type) ? "military ramp"
+        : ParkingTypes.IsDock(type) ? "seaplane dock"
+        : ParkingTypes.IsFuel(type) ? "fuel stand"
+        : ParkingTypes.IsVehicle(type) ? "vehicle stand"
+        : null;
+
+    /// <summary>Whether the stand is of an excluded kind (<see cref="ExcludedTypeWords"/>, or a de-ice pad).</summary>
+    private static bool IsExcludedKind(ParkingSpot s) => s.IsDeiceArea || ExcludedTypeWords(s.Type) != null;
 
     /// <summary>"fuel stand", "de-icing pad": an excluded stand's kind in a note's words.</summary>
-    private static string ExcludedKindWords(ParkingSpot s) => s.IsDeiceArea ? DeicePadWords : ExcludedTypes[s.Type];
+    private static string ExcludedKindWords(ParkingSpot s) => s.IsDeiceArea ? DeicePadWords : ExcludedTypeWords(s.Type)!;
 
     /// <summary>" as a fuel stand" for a stand of an excluded kind, nothing for any other: what a "was found …
     /// but does not connect" note says of the stand it found.</summary>
@@ -114,16 +126,20 @@ public static class BriefingStandPicker
     /// type.</summary>
     private static bool IsRepresentativeCandidate(ParkingSpot s) => !IsExcludedKind(s) && s.Type != NoneType;
 
-    /// <summary>A category the representative choice can prefer: the word a note uses for it and the
-    /// navdata types it holds.</summary>
-    private sealed record StandKind(string Adjective, string Noun, HashSet<int> Types)
+    /// <summary>Why <see cref="Pick"/> found no stand, in the block's words: no stands at all, only kinds never briefed as a
+    /// representative stand, or none that connects to the taxiway network.</summary>
+    internal static string NoStandReason(IReadOnlyList<ParkingSpot> spots, Func<ParkingSpot, bool> hasGraphNode, string icao)
     {
-        public bool Has(ParkingSpot s) => Types.Contains(s.Type);
+        if (spots.Count == 0) return $"this scenery has no stands at {icao}";
+        if (!spots.Any(IsRepresentativeCandidate))
+        {
+            var kinds = spots.Select(s => IsExcludedKind(s) ? ExcludedKindWords(s) + "s" : "stands of no stated type")
+                             .Distinct(StringComparer.Ordinal).ToList();
+            string list = kinds.Count == 1 ? kinds[0] : string.Join(", ", kinds.Take(kinds.Count - 1)) + " and " + kinds[^1];
+            return $"the only stands at {icao} in this scenery are {list}, and none of them is briefed as a representative stand";
+        }
+        return $"no stand at {icao} connects to the taxiway network";
     }
-
-    private static readonly StandKind Cargo = new("cargo", "cargo stand", new() { 6, 7 });
-    private static readonly StandKind Gate = new("gate", "gate", new() { 9, 10, 11, 13, 14 });
-    private static readonly StandKind Ramp = new("ramp", "ramp", new() { 2, 3, 4, 5, 12, 15 });
 
     /// <summary>The stand for one leg, or null when neither SayIntentions' gate nor a representative stand
     /// connects to the taxiway network (or there are no stands). A null carries no notes on purpose: no
@@ -225,7 +241,7 @@ public static class BriefingStandPicker
         if (pin is GeoPoint p)
         {
             // A stand of an ordinary kind in reach first; one of an excluded kind only when none is, as the
-            // import would find it there when its list carries one (a navdata-sourced list; see ExcludedTypes).
+            // import would find it there when its list carries one (a navdata-sourced list; see ExcludedTypeWords).
             var inReach = spots.Where(s => !IsExcludedKind(s) && Reaches(s, p)).ToList();
             if (inReach.Count == 0) inReach = spots.Where(s => IsExcludedKind(s) && Reaches(s, p)).ToList();
             if (inReach.Count > 0)
