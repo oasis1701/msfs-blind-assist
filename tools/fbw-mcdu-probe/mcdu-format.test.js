@@ -159,3 +159,26 @@ test('positionLine honours right-cell trailing padding (F-PLN ditto row)', () =>
   const out = fmt.positionLine('DANGR', '2053    ', '.78/   "  ');
   assert.ok(/^DANGR +2053 +\.78\/ +"$/.test(out), JSON.stringify(out));
 });
+
+test('renderLines keeps the right-hand value when green markers precede it', () => {
+  // Live INIT FUEL PRED line 2: the whole row, BLOCK included, arrives in cell 0 padded
+  // to exactly 24 columns. The '*' markers must not cost columns, or "5.1" is clipped.
+  const sp = (n) => '{sp}'.repeat(n);
+  const row = '{white}{sp}{sp}{small}{green}3.1{end}{end}{small}{green}/{end}{end}'
+    + '{small}{green}0137{end}{end}' + sp(11) + '{cyan}5.1{end}{small}{end}{big}{end}{end}';
+  const lines = [['', '', ''], [row, '', '']];
+  for (let k = 1; k < 6; k++) { lines.push(['', '', ''], ['', '', '']); }
+  const d = fmt.decodeSide({ title: 'INIT', lines });
+  // The first marker takes the blank padding column in front of "3.1".
+  const expected = ' *3.1*/*0137' + ' '.repeat(11) + '5.1';
+  assert.strictEqual(d.rows[0].valueText, expected);
+  assert.strictEqual(d.rows[0].valueLeft, '  *3.1*/*0137' + ' '.repeat(11) + '5.1');
+  assert.ok(fmt.renderLines(d).includes('1: ' + expected));
+});
+
+test('a marked right cell still ends at column 24', () => {
+  const lines = [['', '', ''], ['A', '{green}ON{end}/OFF', '']];
+  for (let k = 1; k < 6; k++) { lines.push(['', '', ''], ['', '', '']); }
+  const d = fmt.decodeSide({ title: 'X', lines });
+  assert.strictEqual(d.rows[0].valueText, 'A' + ' '.repeat(16) + '*ON/OFF');
+});

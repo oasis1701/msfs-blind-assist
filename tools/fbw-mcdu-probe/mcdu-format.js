@@ -63,33 +63,75 @@ function parseSegments(cell) {
   return segments;
 }
 
+// Decoded cell text with its green-selection markers held beside it rather than in it:
+// marks[j] is true when a '*' belongs in front of text[j]; marks is null when the cell has
+// none. FBW pads a whole row to exactly 24 columns (INIT FUEL PRED sends ZFW/ZFWCG, the
+// padding AND the BLOCK value in cell 0), so a '*' counted as a column pushed the
+// right-hand value past column 24 and the clip deleted it ("*3.1*/*0137" with BLOCK fuel
+// missing); positionMarked lays the columns out first and places the markers after.
+function withStars(m) {
+  if (!m.marks) { return m.text; }
+  var out = '';
+  for (var j = 0; j < m.text.length; j++) { out += (m.marks[j] ? '*' : '') + m.text[j]; }
+  return out;
+}
+
 // Reconstruct an MCDU line positionally (24 cols): left-aligned left, right-aligned
 // right, centred centre. Cells keep their own {sp} padding — FBW pads cells to
 // column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
 // trimming the padding and re-centring used to run the time into the speed
 // ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
 // neighbouring cell's text. Trailing whitespace of the finished line is trimmed.
+// A '*' in the text is an ordinary column (the DCDU's key stars are real content).
 function positionLine(left, center, right, width) {
+  return positionMarked({ text: left || '', marks: null }, { text: center || '', marks: null },
+    { text: right || '', marks: null }, width);
+}
+
+// positionLine for decoded cells. The columns are laid out without the green-selection
+// markers; each marker then takes the blank column in front of its text when that column
+// is free and is not right after other text (so "ALT *FL370" keeps its space), and is
+// inserted only when it is not — so a right-aligned or padded value keeps its column
+// wherever there is room.
+function positionMarked(l, c, r, width) {
   width = width || 24;
   var buf = new Array(width);
+  var marked = null;
   for (var i = 0; i < width; i++) { buf[i] = ' '; }
-  function place(s, start) {
-    for (var j = 0; j < s.length; j++) {
+  function place(m, start) {
+    for (var j = 0; j < m.text.length; j++) {
       var p = start + j;
-      if (s[j] !== ' ' && p >= 0 && p < width) { buf[p] = s[j]; }
+      if (m.text[j] !== ' ' && p >= 0 && p < width) {
+        buf[p] = m.text[j];
+        var mark = !!(m.marks && m.marks[j]);
+        if (mark && !marked) { marked = new Array(width).fill(false); }
+        if (marked) { marked[p] = mark; }
+      }
     }
   }
-  var l = left || '';
-  var c = center || '';
-  var r = right || '';
   place(l, 0);
-  if (c.replace(/\s/g, '').length) { place(c, Math.max(0, Math.floor((width - c.length) / 2))); }
-  if (r.replace(/\s/g, '').length) { place(r, Math.max(0, width - r.length)); }
-  return buf.join('').replace(/\s+$/, '');
+  if (c.text.replace(/\s/g, '').length) { place(c, Math.max(0, Math.floor((width - c.text.length) / 2))); }
+  if (r.text.replace(/\s/g, '').length) { place(r, Math.max(0, width - r.text.length)); }
+  if (!marked) { return buf.join('').replace(/\s+$/, ''); }
+  var out = [];
+  for (var k = 0; k < width; k++) {
+    if (marked[k]) {
+      var freeColumnBefore = k > 0 && buf[k - 1] === ' ' && (k === 1 || buf[k - 2] === ' ');
+      if (freeColumnBefore) { out[out.length - 1] = '*'; } else { out.push('*'); }
+    }
+    out.push(buf[k]);
+  }
+  return out.join('').replace(/\s+$/, '');
 }
 
 function decodeCell(cell) {
-  if (!cell) { return ''; }
+  return withStars(decodeCellMarked(cell));
+}
+
+// decodeCell with the green-selection markers kept beside the text, for cells that still
+// have to go through positionMarked.
+function decodeCellMarked(cell) {
+  if (!cell) { return { text: '', marks: null }; }
   var segments = parseSegments(cell);
   var colors = {};
   for (var s = 0; s < segments.length; s++) {
@@ -98,17 +140,23 @@ function decodeCell(cell) {
   var colorCount = Object.keys(colors).length;
   var mixedGreen = colorCount > 1 && colors['green'];
   var out = '';
+  var markAt = null;
   for (var k = 0; k < segments.length; k++) {
     var seg = segments[k];
     if (mixedGreen && seg.color === 'green' && seg.text.trim().length > 0) {
       var trimmed = seg.text.replace(/^\s+/, '');
       var leading = seg.text.slice(0, seg.text.length - trimmed.length);
-      out += leading + '*' + trimmed;
+      out += leading;
+      (markAt = markAt || []).push(out.length);
+      out += trimmed;
     } else {
       out += seg.text;
     }
   }
-  return out;
+  if (!markAt) { return { text: out, marks: null }; }
+  var marks = new Array(out.length).fill(false);
+  markAt.forEach(function (j) { marks[j] = true; });
+  return { text: out, marks: marks };
 }
 
 function litAnnunciators(ann) {
@@ -132,13 +180,24 @@ function decodeSide(side) {
   for (var k = 0; k < 6; k++) {
     var label = lines[2 * k] || ['', '', ''];
     var value = lines[2 * k + 1] || ['', '', ''];
+    // Kept marked so positionMarked lays out the true 24 columns.
+    var m = {
+      labelLeft: decodeCellMarked(cell(label, 0)),
+      labelRight: decodeCellMarked(cell(label, 1)),
+      labelCenter: decodeCellMarked(cell(label, 2)),
+      valueLeft: decodeCellMarked(cell(value, 0)),
+      valueRight: decodeCellMarked(cell(value, 1)),
+      valueCenter: decodeCellMarked(cell(value, 2)),
+    };
     rows.push({
-      labelLeft: decodeCell(cell(label, 0)),
-      labelRight: decodeCell(cell(label, 1)),
-      labelCenter: decodeCell(cell(label, 2)),
-      valueLeft: decodeCell(cell(value, 0)),
-      valueRight: decodeCell(cell(value, 1)),
-      valueCenter: decodeCell(cell(value, 2)),
+      labelLeft: withStars(m.labelLeft),
+      labelRight: withStars(m.labelRight),
+      labelCenter: withStars(m.labelCenter),
+      valueLeft: withStars(m.valueLeft),
+      valueRight: withStars(m.valueRight),
+      valueCenter: withStars(m.valueCenter),
+      labelText: positionMarked(m.labelLeft, m.labelCenter, m.labelRight),
+      valueText: positionMarked(m.valueLeft, m.valueCenter, m.valueRight),
     });
   }
   return {
@@ -171,8 +230,10 @@ function renderLines(decoded) {
   out.push(titleLine);
   for (var k = 0; k < 6; k++) {
     var r = decoded.rows[k] || { labelLeft: '', labelRight: '', labelCenter: '', valueLeft: '', valueRight: '', valueCenter: '' };
-    var labelText = positionLine(r.labelLeft, r.labelCenter, r.labelRight);
-    var valueText = positionLine(r.valueLeft, r.valueCenter, r.valueRight);
+    // decodeSide positions the lines from the marked cells; a recording made before it did
+    // falls back to positioning the '*'-bearing cells (the old, clipping behaviour).
+    var labelText = r.labelText != null ? r.labelText : positionLine(r.labelLeft, r.labelCenter, r.labelRight);
+    var valueText = r.valueText != null ? r.valueText : positionLine(r.valueLeft, r.valueCenter, r.valueRight);
     if (labelText.trim().length) { out.push('   ' + labelText); }
     out.push((k + 1) + ': ' + valueText);
   }
