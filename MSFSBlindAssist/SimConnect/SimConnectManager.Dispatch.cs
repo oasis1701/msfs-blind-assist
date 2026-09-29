@@ -50,6 +50,12 @@ public partial class SimConnectManager
     
     private void SimConnect_OnRecvSimobjectData(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
     {
+        // Every per-object request this app makes targets SIMCONNECT_OBJECT_ID_USER, and each
+        // answer carries the user aircraft's REAL object id — the one a traffic sweep reports it
+        // under. Learn it here so ProcessAiTrafficEntry can drop the pilot's own aircraft.
+        if (_ownAircraft.Observe(data.dwObjectID))
+            Log.Debug("SimConnect", $"User aircraft object id: {data.dwObjectID}");
+
         // Handle responses from individual variable registrations
         if ((int)data.dwRequestID >= (int)DATA_REQUESTS.INDIVIDUAL_VARIABLE_BASE)
         {
@@ -1401,13 +1407,9 @@ public partial class SimConnectManager
     {
         var raw = (AiTrafficData)data.dwData[0];
 
-        // Filter out own aircraft (object ID 0 = SIMCONNECT_OBJECT_ID_USER)
-        if (data.dwObjectID == 0) return;
-
-        // Also filter by callsign match to own aircraft as a second guard
-        if (!string.IsNullOrEmpty(currentAircraftAtcId) &&
-            string.Equals(raw.AtcId, currentAircraftAtcId, StringComparison.OrdinalIgnoreCase))
-            return;
+        // Filter out own aircraft: by its learned object id (a sweep never reports it as 0,
+        // the SIMCONNECT_OBJECT_ID_USER alias), with the callsign match as a second guard.
+        if (_ownAircraft.IsOwnAircraft(data.dwObjectID, raw.AtcId, currentAircraftAtcId)) return;
 
         var eventArgs = new AiTrafficDataEventArgs
         {
