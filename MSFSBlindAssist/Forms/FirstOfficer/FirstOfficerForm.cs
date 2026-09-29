@@ -282,6 +282,8 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         int? cruiseFt   = int.TryParse(ofp.InitialAltitude, out int crz) && crz > 0 ? crz : null;
         int? destElevFt = int.TryParse(ofp.DestElevation, out int elev) ? Math.Max(0, elev) : null;  // below-sea-level out of scope (min 0, matches evaluator clamp)
         _stateEval.SetPlannedPressurizationAltitudes(cruiseFt, destElevFt);
+        // The TOC/TOD seat-belt automation calls a level-off "cruise" only near this.
+        _flightPhaseMon.SetPlannedCruiseAltitude(cruiseFt);
         if (cruiseFt != null || destElevFt != null)
         {
             var pressParts = new List<string>();
@@ -294,7 +296,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void OnAircraftPositionReceived(object? sender, SimConnectManager.AircraftPosition pos)
     {
         // Forward to both monitors (called on SimConnect message thread)
-        _flightPhaseMon.Update(pos.Altitude, pos.VerticalSpeedFPM);
+        _flightPhaseMon.Update(pos.Altitude, pos.VerticalSpeedFPM, pos.SimOnGround >= 0.5);
         _foAutoMgr.Update(pos.Altitude, pos.VerticalSpeedFPM, _latestAgl, _latestIas, pos.SimOnGround >= 0.5);
     }
 

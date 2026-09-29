@@ -61,7 +61,10 @@ public sealed class FbwA320FlightPhaseMonitor : IFoPhaseMonitor
         set => _seatbelt.Mode = value;
     }
 
-    public void Update(double altitudeFt, double verticalSpeedFpm)
+    /// <summary>SimBrief cruise altitude for the TOC/TOD seat-belt automation (null = no plan).</summary>
+    public void SetPlannedCruiseAltitude(int? cruiseFt) => _seatbelt.PlannedCruiseFt = cruiseFt;
+
+    public void Update(double altitudeFt, double verticalSpeedFpm, bool onGround)
     {
         if (!_executor.IsAvailable) return;
 
@@ -71,7 +74,7 @@ public sealed class FbwA320FlightPhaseMonitor : IFoPhaseMonitor
         Check10kCrossing(altitudeFt, climbing, descending);
 
         // ---- Auto seat-belt-sign automation ----
-        _seatbelt.Update(altitudeFt, verticalSpeedFpm);
+        _seatbelt.Update(altitudeFt, verticalSpeedFpm, onGround);
 
         if (_trans.HasThresholds)
             CheckTransitionCrossing(altitudeFt, climbing, descending);

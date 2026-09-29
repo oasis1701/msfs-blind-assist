@@ -14,5 +14,12 @@ public interface IFoPhaseMonitor
 
     void SetThresholds(int transAltFt, int transLevelFt);
     void Reset();
-    void Update(double altitudeFt, double verticalSpeedFpm);
+    /// <summary>The SimBrief cruise altitude (feet), or null with no plan. The TOC/TOD
+    /// seat-belt automation only calls a level-off "cruise" near it (SeatbeltAutomation).
+    /// Survives <see cref="Reset"/>.</summary>
+    void SetPlannedCruiseAltitude(int? cruiseFt);
+
+    /// <summary>One position sample. <paramref name="onGround"/> re-arms the seat-belt
+    /// automation for the next leg — the ONLY thing that does.</summary>
+    void Update(double altitudeFt, double verticalSpeedFpm, bool onGround);
 }
