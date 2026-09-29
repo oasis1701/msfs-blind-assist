@@ -1,3 +1,4 @@
+using System.Globalization;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Utils.Logging;
@@ -694,13 +695,17 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// <para>
     /// The default is degrees with an up/down word, which is the only thing a generic aircraft
     /// can say; an airframe with its own trim scale overrides it (e.g. <see cref="PMDG777Definition"/>).
+    /// It steps in TENTHS of a degree, as the Airbus ECAM shows the THS and as the PMDG 737's own
+    /// trim call-out does. Hundredths re-announced every 0.01° of hydraulic jitter on a parked
+    /// aircraft ("Trim up 1.43", "1.44", "1.43"…) and talked over everything else. The number is
+    /// invariant-formatted: a trim value reads with a dot, as the cockpit writes it.
     /// </para>
     /// </summary>
     protected virtual (double Key, string Phrase) DescribeElevatorTrim(double degrees)
     {
-        double rounded = Math.Round(degrees, 2);
+        double rounded = Math.Round(degrees, 1);
         string direction = rounded >= 0 ? "up" : "down";
-        return (rounded, $"Trim {direction} {Math.Abs(rounded):F2}");
+        return (rounded, string.Create(CultureInfo.InvariantCulture, $"Trim {direction} {Math.Abs(rounded):F1}"));
     }
 
     /// <summary>
