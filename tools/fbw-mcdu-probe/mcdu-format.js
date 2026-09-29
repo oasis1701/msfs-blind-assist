@@ -63,32 +63,70 @@ function parseSegments(cell) {
   return segments;
 }
 
+// Stand-in for the '*' green-selection marker while a line is being laid out. It takes
+// no column: positionLine attaches it to the character that follows and writes it out
+// as '*' only after the columns are fixed. FBW pads a whole row to exactly 24 columns
+// (INIT FUEL PRED sends ZFW/ZFWCG, the padding AND the BLOCK value in cell 0), so a real
+// '*' counted as a column pushed the right-hand value past column 24 and the clip
+// deleted it ("*3.1*/*0137" with BLOCK fuel missing).
+var MARKER = '\u0001';
+
 // Reconstruct an MCDU line positionally (24 cols): left-aligned left, right-aligned
 // right, centred centre. Cells keep their own {sp} padding — FBW pads cells to
 // column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
 // trimming the padding and re-centring used to run the time into the speed
 // ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
 // neighbouring cell's text. Trailing whitespace of the finished line is trimmed.
+// Green-selection markers take no column (see MARKER), so the finished line can be
+// longer than `width` by one '*' per marker.
 function positionLine(left, center, right, width) {
   width = width || 24;
   var buf = new Array(width);
-  for (var i = 0; i < width; i++) { buf[i] = ' '; }
-  function place(s, start) {
+  var marked = new Array(width);
+  for (var i = 0; i < width; i++) { buf[i] = ' '; marked[i] = false; }
+  function strip(s) {
+    var text = '';
+    var marks = [];
+    var pending = false;
     for (var j = 0; j < s.length; j++) {
+      if (s[j] === MARKER) { pending = true; continue; }
+      text += s[j];
+      marks.push(pending);
+      pending = false;
+    }
+    return { text: text, marks: marks };
+  }
+  function place(cellText, start) {
+    for (var j = 0; j < cellText.text.length; j++) {
       var p = start + j;
-      if (s[j] !== ' ' && p >= 0 && p < width) { buf[p] = s[j]; }
+      if (cellText.text[j] !== ' ' && p >= 0 && p < width) {
+        buf[p] = cellText.text[j];
+        marked[p] = cellText.marks[j];
+      }
     }
   }
-  var l = left || '';
-  var c = center || '';
-  var r = right || '';
+  var l = strip(left || '');
+  var c = strip(center || '');
+  var r = strip(right || '');
   place(l, 0);
-  if (c.replace(/\s/g, '').length) { place(c, Math.max(0, Math.floor((width - c.length) / 2))); }
-  if (r.replace(/\s/g, '').length) { place(r, Math.max(0, width - r.length)); }
-  return buf.join('').replace(/\s+$/, '');
+  if (c.text.replace(/\s/g, '').length) { place(c, Math.max(0, Math.floor((width - c.text.length) / 2))); }
+  if (r.text.replace(/\s/g, '').length) { place(r, Math.max(0, width - r.text.length)); }
+  var out = '';
+  for (var k = 0; k < width; k++) { out += (marked[k] ? '*' : '') + buf[k]; }
+  return out.replace(/\s+$/, '');
+}
+
+function unmark(s) {
+  return s.split(MARKER).join('*');
 }
 
 function decodeCell(cell) {
+  return unmark(decodeCellMarked(cell));
+}
+
+// decodeCell with each green-selection marker left as the zero-width MARKER, for text
+// that still has to go through positionLine.
+function decodeCellMarked(cell) {
   if (!cell) { return ''; }
   var segments = parseSegments(cell);
   var colors = {};
@@ -103,7 +141,7 @@ function decodeCell(cell) {
     if (mixedGreen && seg.color === 'green' && seg.text.trim().length > 0) {
       var trimmed = seg.text.replace(/^\s+/, '');
       var leading = seg.text.slice(0, seg.text.length - trimmed.length);
-      out += leading + '*' + trimmed;
+      out += leading + MARKER + trimmed;
     } else {
       out += seg.text;
     }
@@ -132,13 +170,24 @@ function decodeSide(side) {
   for (var k = 0; k < 6; k++) {
     var label = lines[2 * k] || ['', '', ''];
     var value = lines[2 * k + 1] || ['', '', ''];
+    // Kept marked (zero-width markers) so positionLine lays out the true 24 columns.
+    var m = {
+      labelLeft: decodeCellMarked(cell(label, 0)),
+      labelRight: decodeCellMarked(cell(label, 1)),
+      labelCenter: decodeCellMarked(cell(label, 2)),
+      valueLeft: decodeCellMarked(cell(value, 0)),
+      valueRight: decodeCellMarked(cell(value, 1)),
+      valueCenter: decodeCellMarked(cell(value, 2)),
+    };
     rows.push({
-      labelLeft: decodeCell(cell(label, 0)),
-      labelRight: decodeCell(cell(label, 1)),
-      labelCenter: decodeCell(cell(label, 2)),
-      valueLeft: decodeCell(cell(value, 0)),
-      valueRight: decodeCell(cell(value, 1)),
-      valueCenter: decodeCell(cell(value, 2)),
+      labelLeft: unmark(m.labelLeft),
+      labelRight: unmark(m.labelRight),
+      labelCenter: unmark(m.labelCenter),
+      valueLeft: unmark(m.valueLeft),
+      valueRight: unmark(m.valueRight),
+      valueCenter: unmark(m.valueCenter),
+      labelText: positionLine(m.labelLeft, m.labelCenter, m.labelRight),
+      valueText: positionLine(m.valueLeft, m.valueCenter, m.valueRight),
     });
   }
   return {
@@ -171,8 +220,10 @@ function renderLines(decoded) {
   out.push(titleLine);
   for (var k = 0; k < 6; k++) {
     var r = decoded.rows[k] || { labelLeft: '', labelRight: '', labelCenter: '', valueLeft: '', valueRight: '', valueCenter: '' };
-    var labelText = positionLine(r.labelLeft, r.labelCenter, r.labelRight);
-    var valueText = positionLine(r.valueLeft, r.valueCenter, r.valueRight);
+    // decodeSide positions the lines from the marked cells; a recording made before it did
+    // falls back to positioning the '*'-bearing cells (the old, clipping behaviour).
+    var labelText = r.labelText != null ? r.labelText : positionLine(r.labelLeft, r.labelCenter, r.labelRight);
+    var valueText = r.valueText != null ? r.valueText : positionLine(r.valueLeft, r.valueCenter, r.valueRight);
     if (labelText.trim().length) { out.push('   ' + labelText); }
     out.push((k + 1) + ': ' + valueText);
   }

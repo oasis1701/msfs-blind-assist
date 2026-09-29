@@ -192,4 +192,51 @@ public class FbwMcduFormatTests
         Assert.Empty(data.Annunciators);
         Assert.Equal(new[] { false, false, false, false }, data.Arrows);
     }
+
+    // --- Green markers must not cost a column --------------------------------------------
+
+    private static string Sp(int n) => string.Concat(Enumerable.Repeat("{sp}", n));
+
+    private static MCDUDisplayData SingleValueRow(string valueCell) => FbwMcduFormat.BuildDisplayData(new JObject
+    {
+        ["lines"] = new JArray
+        {
+            new JArray { "", "", "" },
+            new JArray { valueCell, "", "" },
+        },
+    });
+
+    [Fact]
+    public void BuildDisplayData_keeps_the_right_hand_value_when_green_markers_precede_it()
+    {
+        // Live INIT FUEL PRED line 2 (2026-09-26): FBW sends the whole row, BLOCK included,
+        // in cell 0, padded to exactly 24 columns. The three '*' markers once counted as
+        // columns and pushed "5.1" past column 24, so BLOCK fuel was clipped away.
+        string cell = "{white}{sp}{sp}{small}{green}3.1{end}{end}{small}{green}/{end}{end}"
+                    + "{small}{green}0137{end}{end}" + Sp(11)
+                    + "{cyan}5.1{end}{small}{end}{big}{end}{end}";
+
+        var data = SingleValueRow(cell);
+
+        Assert.Equal("  *3.1*/*0137" + new string(' ', 11) + "5.1", data.RawLines[2]);
+        Assert.Equal("  *3.1*/*0137" + new string(' ', 11) + "5.1", data.Lines[0].LeftValue);
+    }
+
+    [Fact]
+    public void BuildDisplayData_does_not_truncate_a_placeholder_after_green_markers()
+    {
+        // Same page, line 4: LW "---.-" at the right came out as "--".
+        string cell = "{small}{green}0.8{end}{small}{green}/{end}{small}{green}0022{end}"
+                    + Sp(11) + "{cyan}---.-{end}"; // 8 + 11 + 5 = FBW's 24 columns
+
+        var data = SingleValueRow(cell);
+
+        Assert.EndsWith("---.-", data.RawLines[2]);
+        Assert.StartsWith("*0.8*/*0022", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void PositionLine_leaves_a_literal_asterisk_as_an_ordinary_column()
+        // Callers outside BuildDisplayData (the DCDU) pass text in which '*' is real content.
+        => Assert.Equal("INSERT*   X", FbwMcduFormat.PositionLine("INSERT*", "", "X", 11));
 }

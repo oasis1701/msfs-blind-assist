@@ -88,35 +88,81 @@ public static class FbwMcduFormat
     }
 
     /// <summary>
+    /// Stand-in for the '*' green-selection marker while a line is being laid out. It takes
+    /// no column: <see cref="PositionLine"/> attaches it to the character that follows and
+    /// writes it out as '*' only after the columns are fixed. FBW pads a whole row to
+    /// exactly 24 columns (INIT FUEL PRED sends ZFW/ZFWCG, the padding AND the BLOCK value
+    /// in cell 0), so a real '*' counted as a column pushed the right-hand value past
+    /// column 24 and the clip deleted it ("*3.1*/*0137" with BLOCK fuel missing).
+    /// </summary>
+    private const char Marker = '\u0001';
+
+    /// <summary>
     /// Reconstruct an MCDU line positionally (24 cols): left-aligned left, right-aligned
     /// right, centred centre. Cells keep their own {sp} padding — FBW pads cells to
     /// column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
     /// trimming the padding and re-centring used to run the time into the speed
     /// ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
     /// neighbouring cell's text. Trailing whitespace of the finished line is trimmed.
+    /// Green-selection markers take no column (see <see cref="Marker"/>), so the finished
+    /// line can be longer than <paramref name="width"/> by one '*' per marker.
     /// </summary>
     public static string PositionLine(string left, string center, string right, int width = 24)
     {
         var buf = new char[width];
+        var marked = new bool[width];
         for (int i = 0; i < width; i++) { buf[i] = ' '; }
-        Place(buf, left ?? "", 0);
-        string c = center ?? "";
-        if (c.Trim().Length > 0) { Place(buf, c, Math.Max(0, (width - c.Length) / 2)); }
-        string r = right ?? "";
-        if (r.Trim().Length > 0) { Place(buf, r, Math.Max(0, width - r.Length)); }
-        return new string(buf).TrimEnd();
+        Place(Strip(left ?? ""), 0);
+        var c = Strip(center ?? "");
+        if (c.Text.Trim().Length > 0) { Place(c, Math.Max(0, (width - c.Text.Length) / 2)); }
+        var r = Strip(right ?? "");
+        if (r.Text.Trim().Length > 0) { Place(r, Math.Max(0, width - r.Text.Length)); }
 
-        static void Place(char[] dst, string s, int start)
+        var sb = new StringBuilder(width + 4);
+        for (int i = 0; i < width; i++)
         {
-            for (int j = 0; j < s.Length; j++)
+            if (marked[i]) { sb.Append('*'); }
+            sb.Append(buf[i]);
+        }
+        return sb.ToString().TrimEnd();
+
+        void Place((string Text, bool[] Marks) cell, int start)
+        {
+            for (int j = 0; j < cell.Text.Length; j++)
             {
                 int p = start + j;
-                if (s[j] != ' ' && p >= 0 && p < dst.Length) { dst[p] = s[j]; }
+                if (cell.Text[j] != ' ' && p >= 0 && p < width)
+                {
+                    buf[p] = cell.Text[j];
+                    marked[p] = cell.Marks[j];
+                }
             }
+        }
+
+        static (string Text, bool[] Marks) Strip(string s)
+        {
+            if (s.IndexOf(Marker) < 0) { return (s, new bool[s.Length]); }
+            var text = new StringBuilder(s.Length);
+            var marks = new List<bool>(s.Length);
+            bool pending = false;
+            foreach (char ch in s)
+            {
+                if (ch == Marker) { pending = true; continue; }
+                text.Append(ch);
+                marks.Add(pending);
+                pending = false;
+            }
+            return (text.ToString(), marks.ToArray());
         }
     }
 
-    public static string DecodeCell(string? cell)
+    public static string DecodeCell(string? cell) => DecodeCellMarked(cell).Replace(Marker, '*');
+
+    /// <summary>
+    /// <see cref="DecodeCell"/> with each green-selection marker left as the zero-width
+    /// <see cref="Marker"/>, for text that still has to go through <see cref="PositionLine"/>.
+    /// </summary>
+    private static string DecodeCellMarked(string? cell)
     {
         if (string.IsNullOrEmpty(cell)) { return ""; }
         var segments = ParseSegments(cell);
@@ -133,7 +179,7 @@ public static class FbwMcduFormat
             {
                 string trimmed = seg.Text.TrimStart();
                 string leading = seg.Text.Substring(0, seg.Text.Length - trimmed.Length);
-                sb.Append(leading).Append('*').Append(trimmed);
+                sb.Append(leading).Append(Marker).Append(trimmed);
             }
             else
             {
@@ -195,19 +241,20 @@ public static class FbwMcduFormat
             JArray? label = lines != null && 2 * k < lines.Count ? lines[2 * k] as JArray : null;
             JArray? value = lines != null && 2 * k + 1 < lines.Count ? lines[2 * k + 1] as JArray : null;
 
-            string labelLeft = DecodeCell(Cell(label, 0));
-            string labelRight = DecodeCell(Cell(label, 1));
-            string labelCenter = DecodeCell(Cell(label, 2));
-            string valueLeft = DecodeCell(Cell(value, 0));
-            string valueRight = DecodeCell(Cell(value, 1));
-            string valueCenter = DecodeCell(Cell(value, 2));
+            // Kept marked (zero-width markers) so PositionLine lays out the true 24 columns.
+            string labelLeft = DecodeCellMarked(Cell(label, 0));
+            string labelRight = DecodeCellMarked(Cell(label, 1));
+            string labelCenter = DecodeCellMarked(Cell(label, 2));
+            string valueLeft = DecodeCellMarked(Cell(value, 0));
+            string valueRight = DecodeCellMarked(Cell(value, 1));
+            string valueCenter = DecodeCellMarked(Cell(value, 2));
 
             data.Lines[k] = new MCDULinePair
             {
-                LeftLabel = labelLeft,
-                RightLabel = labelRight,
-                LeftValue = valueLeft,
-                RightValue = valueRight,
+                LeftLabel = labelLeft.Replace(Marker, '*'),
+                RightLabel = labelRight.Replace(Marker, '*'),
+                LeftValue = valueLeft.Replace(Marker, '*'),
+                RightValue = valueRight.Replace(Marker, '*'),
             };
             data.RawLines[1 + 2 * k] = PositionLine(labelLeft, labelCenter, labelRight);
             data.RawLines[2 + 2 * k] = PositionLine(valueLeft, valueCenter, valueRight);
