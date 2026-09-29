@@ -145,8 +145,8 @@ public class Pmdg777StabTrimTests
     }
 
     // ---- the seam: what ProcessSimVarUpdate actually receives ---------------------------------
-    // The debounce itself runs inside ProcessSimVarUpdate against a real ScreenReaderAnnouncer and
-    // is sim-verified; the protected virtual it keys on is pure, so probe subclasses pin it here.
+    // The protected virtual the debounce keys on is pure, so probe subclasses pin it here; the
+    // debounce itself is driven through ProcessSimVarUpdate with a SpeechCapture further down.
 
     private sealed class Probe777 : PMDG777Definition
     {
@@ -173,22 +173,96 @@ public class Pmdg777StabTrimTests
         Assert.Equal("Trim 4.25 units", probe.Trim(0.50).Phrase);
     }
 
-    [Fact]
-    public void Every_other_aircraft_still_speaks_rounded_degrees_with_a_direction_word()
+    [Theory]
+    [InlineData("sv-SE")]   // comma decimal separator
+    [InlineData("de-DE")]   // comma decimal separator
+    [InlineData("en-US")]
+    public void Every_other_aircraft_speaks_degrees_in_tenths_with_a_direction_word(string cultureName)
     {
-        // The base default is the pre-PR behaviour, byte for byte: Math.Round(deg, 2) as the key,
-        // "Trim up/down N.NN" as the phrase (-0.0 reads "up 0.00"). Pinned under the invariant
-        // culture because that phrase, unlike the 777's, still formats with the ambient culture.
+        // The base default: Math.Round(deg, 1) as the key, "Trim up/down N.N" as the phrase
+        // (-0.0 reads "up 0.0"), always with a dot. Swapped cultures so a comma machine is covered.
         var previous = CultureInfo.CurrentCulture;
         try
         {
-            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            CultureInfo.CurrentCulture = new CultureInfo(cultureName);
             var probe = new ProbeDefault();
-            Assert.Equal((1.23, "Trim up 1.23"), probe.Trim(1.234));
-            Assert.Equal((-2.5, "Trim down 2.50"), probe.Trim(-2.5));
-            var (key, phrase) = probe.Trim(-0.004);
+            Assert.Equal((1.2, "Trim up 1.2"), probe.Trim(1.234));
+            Assert.Equal((-2.5, "Trim down 2.5"), probe.Trim(-2.5));
+            var (key, phrase) = probe.Trim(-0.04);
             Assert.Equal(0.0, key);
-            Assert.Equal("Trim up 0.00", phrase);
+            Assert.Equal("Trim up 0.0", phrase);
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    [Fact]
+    public void Hundredth_of_a_degree_jitter_does_not_move_the_debounce_key()
+    {
+        // Live A380 at FACT, engines running, trim untouched: 1.43 / 1.44 / 1.43 was spoken as
+        // three announcements. The debounce compares keys exactly, so one key = one silence.
+        var probe = new ProbeDefault();
+        Assert.Equal(probe.Trim(1.43).Key, probe.Trim(1.44).Key);
+        Assert.NotEqual(probe.Trim(1.4).Key, probe.Trim(1.5).Key);
+    }
+
+    // ---- the debounce, through ProcessSimVarUpdate ---------------------------------------------
+
+    private static List<string> Feed(IAircraftDefinition def, string key, params double[] values)
+    {
+        var speech = new SpeechCapture();
+        foreach (double v in values) def.ProcessSimVarUpdate(key, v, speech);
+        return speech.All;
+    }
+
+    [Fact]
+    public void Jitter_inside_one_step_is_silent_on_an_aircraft_that_uses_the_base_default()
+    {
+        // The reported case, on the reported airframe: the first sample is the silent baseline.
+        Assert.Empty(Feed(new FlyByWireA380Definition(), "MON_ElevatorTrim", 1.43, 1.44, 1.43, 1.42, 1.44));
+    }
+
+    [Fact]
+    public void Jitter_across_a_step_boundary_is_silent_until_the_trim_really_moves()
+    {
+        // Resting on 1.45°: the raw rounding flips 1.4 / 1.5 on every sample. The hysteresis holds
+        // the announced step until the value is TrimHysteresis past the boundary.
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("sv-SE");
+            Assert.Empty(Feed(new FlyByWireA380Definition(), "MON_ElevatorTrim", 1.44, 1.46, 1.44, 1.46, 1.45));
+            Assert.Equal(new[] { "Trim up 1.5", "Trim up 1.4" },
+                Feed(new FlyByWireA380Definition(), "MON_ElevatorTrim", 1.44, 1.46, 1.49, 1.46, 1.44, 1.41));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = previous;
+        }
+    }
+
+    [Fact]
+    public void The_777_quarter_unit_boundary_gets_the_same_hysteresis()
+    {
+        // 0.375° is units 4.125, the 4.00 / 4.25 boundary.
+        Assert.Empty(Feed(new PMDG777Definition(), "MON_ElevatorTrim", 0.365, 0.385, 0.365, 0.385));
+        Assert.Equal(new[] { "Trim 4.25 units" },
+            Feed(new PMDG777Definition(), "MON_ElevatorTrim", 0.365, 0.385, 0.60));
+    }
+
+    [Fact]
+    public void The_737_stab_trim_callout_has_the_hysteresis_and_reads_with_a_dot()
+    {
+        var previous = CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("de-DE");
+            // 5.0 announced baseline; 5.06 rounds to 5.1 but is only 0.06 past it: silent.
+            Assert.Empty(Feed(new PMDG737Definition(), "MON_PMDG737_StabTrim", 5.03, 5.06, 5.04, 5.06));
+            Assert.Equal(new[] { "Trim 5.3" },
+                Feed(new PMDG737Definition(), "MON_PMDG737_StabTrim", 5.03, 5.06, 5.3));
         }
         finally
         {

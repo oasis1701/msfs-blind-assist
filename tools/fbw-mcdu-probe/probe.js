@@ -109,7 +109,9 @@ function cmdReplay(args) {
   lines.forEach(function (line) {
     try {
       var rec = JSON.parse(line);
-      var decoded = rec.decoded || fmt.decodeSide(rec.raw || {});
+      // Re-decode the raw frame when the recording has it, so an old recording is shown
+      // with the current formatter rather than the one it was captured with.
+      var decoded = rec.raw ? fmt.decodeSide(rec.raw) : (rec.decoded || fmt.decodeSide({}));
       console.log('\n===== ' + (rec.side || '?').toUpperCase() + ' @ ' + new Date(rec.ts).toISOString() + ' =====');
       fmt.renderLines(decoded).forEach(function (l) { console.log(l); });
     } catch (e) { /* skip malformed line */ }

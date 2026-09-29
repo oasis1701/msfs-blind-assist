@@ -42,6 +42,9 @@ public partial class SimConnectManager
         if ((SYSTEM_EVENT_ID)data.uEventID == SYSTEM_EVENT_ID.AircraftLoaded)
         {
             Log.Debug("SimConnect", $"AircraftLoaded system event: {data.szFileName}");
+            // A load can hand the user aircraft a new object id: forget the old one so the callsign
+            // guard applies until the next answer re-learns it (OwnAircraftFilter).
+            _ownAircraft.Reset();
             AircraftLoaded?.Invoke(this, data.szFileName ?? string.Empty);
             // Re-read ATC MODEL so AircraftIcaoTypeDetected fires for the newly loaded aircraft.
             RequestAircraftInfo();
@@ -50,6 +53,12 @@ public partial class SimConnectManager
     
     private void SimConnect_OnRecvSimobjectData(Microsoft.FlightSimulator.SimConnect.SimConnect sender, SIMCONNECT_RECV_SIMOBJECT_DATA data)
     {
+        // Every per-object request this app makes targets SIMCONNECT_OBJECT_ID_USER, and each
+        // answer carries the user aircraft's REAL object id — the one a traffic sweep reports it
+        // under. Learn it here so ProcessAiTrafficEntry can drop the pilot's own aircraft.
+        if (_ownAircraft.Observe(data.dwObjectID))
+            Log.Debug("SimConnect", $"User aircraft object id: {data.dwObjectID}");
+
         // Handle responses from individual variable registrations
         if ((int)data.dwRequestID >= (int)DATA_REQUESTS.INDIVIDUAL_VARIABLE_BASE)
         {
@@ -1470,13 +1479,14 @@ public partial class SimConnectManager
     {
         var raw = (AiTrafficData)data.dwData[0];
 
-        // Filter out own aircraft (object ID 0 = SIMCONNECT_OBJECT_ID_USER)
-        if (data.dwObjectID == 0) return;
-
-        // Also filter by callsign match to own aircraft as a second guard
-        if (!string.IsNullOrEmpty(currentAircraftAtcId) &&
-            string.Equals(raw.AtcId, currentAircraftAtcId, StringComparison.OrdinalIgnoreCase))
-            return;
+        // Filter out own aircraft: by its learned object id (a sweep never reports it as 0, the
+        // SIMCONNECT_OBJECT_ID_USER alias). The callsign match is used ONLY until that id is learned
+        // (after a connect or an aircraft load) and is ignored once it is. Independent of both, an
+        // entry on the ground at the own aircraft's own position is the own aircraft.
+        if (_ownAircraft.IsOwnAircraft(data.dwObjectID, raw.AtcId, currentAircraftAtcId)) return;
+        var own = lastKnownPosition;
+        if (OwnAircraftFilter.SharesOwnPosition(raw.Latitude, raw.Longitude, raw.SimOnGround >= 0.5,
+                own?.Latitude, own?.Longitude, own is { SimOnGround: >= 0.5 })) return;
 
         var eventArgs = new AiTrafficDataEventArgs
         {
