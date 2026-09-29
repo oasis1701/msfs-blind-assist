@@ -22,11 +22,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // N2 (percent) at/above which an engine is treated as RUNNING (≈ stabilised near idle).
     // Public so the engine-start checklist detection references the same value (tune in-sim).
     public const double EngineRunningN2 = 50.0;
-    // N2 (percent) the engine must reach while motoring before the start lever introduces
-    // fuel (real-procedure ~25%; 20 gives margin). Below this a fuel intro hangs the start.
-    // Shared by the Engine Start flow AND the checklist StartEngineAsync so the two paths
-    // can never disagree on when fuel is introduced.
-    public const double EngStartFuelN2 = 20.0;
+    // There is deliberately NO "N2 before fuel" constant here any more: the NG3 writes the
+    // stock TURB ENG N2 only from light-off (0.0 throughout motoring, measured 2026-09-28),
+    // so the Engine Start flow motors each engine for a fixed time instead
+    // (PMDG737FlowDefinitions.EngStartMotorSeconds). EngineRunningN2 above is unaffected —
+    // once fuel is in, the stock N2 is live and the running checks read it as before.
 
     /// <summary>Update the data-manager reference (called on connect/disconnect).</summary>
     public void SetDataManager(PMDGNG3DataManager? dm) => _dm = dm;

@@ -73,6 +73,12 @@ public class FlowManager<TExec, TState>
     // silently un-ticks a later flow's items, with no test to catch it.
     private readonly HashSet<string> _unfinishedChecklistItemIds = new(StringComparer.Ordinal);
 
+    // Ids of the steps THIS run skipped — a Skip-policy step that failed or timed out, or a
+    // step skipped because its FlowStep.RequiresStepId is in here already (so a dependency
+    // chain propagates). Read by the dependency gate at the top of the step loop; cleared
+    // with _unfinishedChecklistItemIds when the next run starts. Same testing caveat as above.
+    private readonly HashSet<string> _skippedStepIds = new(StringComparer.Ordinal);
+
     /// <summary>Checklist item ids the most recent run could not deliver. Valid to read
     /// from the FlowCompleted handler; cleared when the next run starts. Returns a
     /// snapshot, not the live set, so a caller may hold onto or enumerate the result
@@ -162,6 +168,7 @@ public class FlowManager<TExec, TState>
     private async Task RunFlowAsync(FlowDefinition<TState> flow, CancellationToken ct)
     {
         _unfinishedChecklistItemIds.Clear();
+        _skippedStepIds.Clear();
         FlowStarted?.Invoke(flow);
         _announcer.AnnounceImmediate($"{flow.Name} flow started");
 
@@ -200,6 +207,27 @@ public class FlowManager<TExec, TState>
                 continue;
             }
 
+            // A step that builds on an earlier step this run could not complete
+            // (FlowStep.RequiresStepId) is skipped like a failed Skip-policy step: its
+            // linked items stay out of the latch, and its own id joins the skipped set so
+            // a chain of dependent steps stays skipped. After the SkipCondition above on
+            // purpose — "Already set" is the truer answer when the aircraft is already
+            // there, and a skip text that says what stays as it is would be wrong then.
+            if (step.RequiresStepId != null && _skippedStepIds.Contains(step.RequiresStepId))
+            {
+                foreach (var itemId in step.LinkedChecklistItemIds)
+                    _unfinishedChecklistItemIds.Add(itemId);
+                _skippedStepIds.Add(step.Id);
+                StepSkipped?.Invoke(flow, step, i);
+                _announcer.Announce(step.RequiresStepSkipText ?? $"Skipping: {step.AnnounceText}");
+                if (i < flow.Steps.Count - 1)
+                {
+                    try { await Task.Delay(InterStepPauseMs, ct); }
+                    catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return; }
+                }
+                continue;
+            }
+
             StepStarted?.Invoke(flow, step, i);
 
             bool success = await ExecuteStepAsync(flow, step, i, ct);
@@ -219,6 +247,7 @@ public class FlowManager<TExec, TState>
                         // (AlsoCompletesChecklistItemIds) must keep both out of the latch.
                         foreach (var itemId in step.LinkedChecklistItemIds)
                             _unfinishedChecklistItemIds.Add(itemId);
+                        _skippedStepIds.Add(step.Id);
                         StepSkipped?.Invoke(flow, step, i);
                         _announcer.Announce($"Skipping: {step.AnnounceText}");
                         break;

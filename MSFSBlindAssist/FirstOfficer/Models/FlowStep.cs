@@ -198,6 +198,39 @@ public class FlowStep<TState> : IFlowStepDispatch
     public Func<TState, bool>? SkipCondition { get; set; }
 
     // -----------------------------------------------------------------------
+    // Dependency on an earlier step of the same run
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// The id of an earlier step in the same flow that this step builds on. When that step
+    /// was SKIPPED in this run (its failure policy was Skip and it failed or timed out, or it
+    /// was itself skipped through its own dependency), FlowManager skips this step too —
+    /// announcing <see cref="RequiresStepSkipText"/> — and keeps its linked checklist items
+    /// out of the completion latch, exactly as a skipped step of its own does. A step whose
+    /// <see cref="SkipCondition"/> reads true is still "Already set" first: the aircraft's own
+    /// state outranks the dependency.
+    ///
+    /// Why it exists: a Skip-policy WAIT lets the flow carry on past a condition it could not
+    /// confirm, and nothing downstream knew. The PMDG 737 Before Start flow's generator wait
+    /// (the blue APU GEN OFF BUS light) timed out on a healthy but slow start, and the flow
+    /// then pressed the APU GEN buttons to no effect and dropped GROUND POWER with nothing
+    /// else on the buses — the pilot landed on batteries with the flow still narrating
+    /// (live report, 2026-09-28). The state alone cannot express "the generator was
+    /// confirmed": the light is off both before the generator is up and after a completed
+    /// transfer. What the flow itself knows — that its own wait failed — is the only
+    /// discriminator, and this carries it forward.
+    /// </summary>
+    public string? RequiresStepId { get; set; }
+
+    /// <summary>
+    /// What is spoken when this step is skipped because <see cref="RequiresStepId"/> did not
+    /// complete. Say what stays as it is ("… so ground power stays connected."), never only
+    /// that something was skipped: a blind pilot has no other way to learn what the flow
+    /// left alone. Defaults to "Skipping: {AnnounceText}".
+    /// </summary>
+    public string? RequiresStepSkipText { get; set; }
+
+    // -----------------------------------------------------------------------
     // Helper
     // -----------------------------------------------------------------------
 
