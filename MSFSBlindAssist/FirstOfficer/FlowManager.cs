@@ -60,23 +60,21 @@ public class FlowManager<TExec, TState>
     // raise FlowFailed and return, so FlowCompleted never fires on those runs, and the
     // "Already set" early-continue is a SUCCESS (it raises StepCompleted and marks the item).
     //
-    // NOT UNIT-TESTED, and not for want of trying: reaching this bookkeeping needs a real
-    // FlowManager run, and the constructor takes a concrete ScreenReaderAnnouncer — no
-    // parameterless ctor, no interface, no virtual members, and a real ctor that loads the
-    // Tolk native DLL and starts an NVDA client, so a test process would drive whatever
-    // screen reader is running on the machine. Passing null! fails immediately: RunFlowAsync
-    // announces "flow started" before it examines a single step. The same blocker is already
-    // recorded in IFly737AutoManagerTests / IFly737ExecutorTests. The CONSUMER half is
-    // covered — FoFlowCompletionExclusionTests pins what MarkGroupComplete does with this
-    // set — so what rests on reading is only which ids land in it and when it clears.
-    // Treat the Clear() below and the Skip branch's Add() as load-bearing: deleting either
-    // silently un-ticks a later flow's items, with no test to catch it.
+    // Pinned by BEHAVIOUR tests on a real FlowManager run (FlowManagerStepDependencyTests):
+    // the announce entry points are virtual, so a recording ScreenReaderAnnouncer subclass
+    // (GatedSpeechCapture, tests/MuteWrapHarness.cs) replaces the screen reader. They pin
+    // which ids land here on a Skip-policy failure and on a dependency skip, that an
+    // "Already set" step lands nothing, and that the set clears between runs. The CONSUMER
+    // half — what MarkGroupComplete does with this set — is FoFlowCompletionExclusionTests.
     private readonly HashSet<string> _unfinishedChecklistItemIds = new(StringComparer.Ordinal);
 
     // Ids of the steps THIS run skipped — a Skip-policy step that failed or timed out, or a
     // step skipped because its FlowStep.RequiresStepId is in here already (so a dependency
     // chain propagates). Read by the dependency gate at the top of the step loop; cleared
-    // with _unfinishedChecklistItemIds when the next run starts. Same testing caveat as above.
+    // with _unfinishedChecklistItemIds when the next run starts. Both Add()s (the Skip
+    // branch's and the dependency gate's) are pinned by FlowManagerStepDependencyTests;
+    // FlowStepDependencyIdTests pins that every profile's RequiresStepId names an earlier
+    // step of the same flow.
     private readonly HashSet<string> _skippedStepIds = new(StringComparer.Ordinal);
 
     /// <summary>Checklist item ids the most recent run could not deliver. Valid to read

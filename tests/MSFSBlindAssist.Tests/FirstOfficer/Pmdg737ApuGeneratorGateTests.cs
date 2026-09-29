@@ -11,11 +11,11 @@ namespace MSFSBlindAssist.Tests;
 /// generator wait timed out on a healthy start and the flow then dropped ground power
 /// with nothing else on the buses).
 ///
-/// FlowManager itself is not unit-testable (its ScreenReaderAnnouncer drives a real
-/// screen reader), so what is pinned here is the DEFINITION the engine reads: the wait's
-/// budget stays above the measured cutout-to-light interval, both steps that act on the
-/// generator depend on the wait's own outcome, and the dependency points at a step that
-/// really precedes them in the same flow.
+/// What is pinned here is the DEFINITION the engine reads: the wait's budget stays above
+/// the measured cutout-to-light interval, both steps that act on the generator depend on
+/// the wait's own outcome, and the dependency points at a step that really precedes them
+/// in the same flow. The engine's half — a dependent step really is skipped, says its own
+/// text and sends nothing — is FlowManagerStepDependencyTests.
 /// </summary>
 public class Pmdg737ApuGeneratorGateTests
 {
