@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Navigation;
+
 namespace MSFSBlindAssist.SimConnect;
 
 /// <summary>
@@ -16,9 +18,25 @@ namespace MSFSBlindAssist.SimConnect;
 /// and multiplayer aircraft share placeholder callsigns ("ASXGSA" on a 737, a 717 and an MD80 in
 /// one live session), and a dropped aircraft never earns its "Stop".</para>
 ///
-/// <para>Unmeasured residual: if MSFS 2024's walkaround makes the user object the pilot's avatar,
-/// the learned id follows it and the parked aircraft may be reported as traffic until the pilot
-/// is back aboard, when the next answer re-learns the aircraft's id.</para>
+/// <para>The id is forgotten on every disconnect AND on every aircraft or flight load
+/// (<see cref="Reset"/>): a reload can hand the user aircraft a new id, and a stale one both lets the
+/// own aircraft through (the callsign fallback is off while any id is held) and hides whichever AI
+/// aircraft is given the old id. Until the next answer re-learns it, the callsign decides again.</para>
+///
+/// <para>Backstop, independent of the id: a sweep entry on the ground within
+/// <see cref="SamePositionMetres"/> of the own aircraft's last known position, itself on the ground,
+/// is the own aircraft (<see cref="SharesOwnPosition"/>). Two real aircraft's reference points
+/// cannot be that close, and every gap the id leaves open (before it is learned with no callsign, a
+/// sweep landing between a load and the re-learn) reports the own aircraft at exactly that spot —
+/// the live symptom was "0 feet".</para>
+///
+/// <para>Known regression, unmeasured: if MSFS 2024's walkaround makes the user object the pilot's
+/// avatar, the learned id follows it, and the parked aircraft may be reported as traffic until the
+/// pilot is back aboard, when the next answer re-learns the aircraft's id. The old code filtered
+/// that aircraft whenever its ATC ID was set; this one does not, because the callsign is ignored
+/// while an id is held, and the position backstop does not reach it once the avatar walks away.
+/// Restoring the callsign match would bring back the dropped-traffic failure above, so it stays
+/// off until a walkaround is measured.</para>
 /// </summary>
 public sealed class OwnAircraftFilter
 {
@@ -36,7 +54,14 @@ public sealed class OwnAircraftFilter
         return true;
     }
 
-    /// <summary>Forgets the id — the next connection may hand out a different one.</summary>
+    /// <summary>
+    /// Within this distance of the own aircraft's last known position, a sweep entry on the ground is
+    /// the own aircraft. Far below any two real aircraft's datum separation, and small enough that a
+    /// position a second or two stale during a taxi simply misses (the id is the primary guard).
+    /// </summary>
+    public const double SamePositionMetres = 5.0;
+
+    /// <summary>Forgets the id — the next connection, or the next aircraft or flight load, may hand out a different one.</summary>
     public void Reset() => UserObjectId = 0;
 
     /// <summary>True when a sweep entry is the pilot's own aircraft and must not be treated as traffic.</summary>
@@ -57,5 +82,19 @@ public sealed class OwnAircraftFilter
         string own = ownAtcId?.Trim() ?? "";
         return entry.Length > 0 && own.Length > 0 &&
                string.Equals(entry, own, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
+    /// True when a sweep entry on the ground sits within <see cref="SamePositionMetres"/> of the own
+    /// aircraft's last known position, itself on the ground — the own aircraft, whatever the id says.
+    /// No own position yet, or either side airborne, never matches.
+    /// </summary>
+    public static bool SharesOwnPosition(double entryLat, double entryLon, bool entryOnGround,
+                                         double? ownLat, double? ownLon, bool ownOnGround)
+    {
+        if (!entryOnGround || !ownOnGround || ownLat is not double lat || ownLon is not double lon) return false;
+        if (!double.IsFinite(entryLat) || !double.IsFinite(entryLon) || !double.IsFinite(lat) || !double.IsFinite(lon)) return false;
+        if (lat == 0 && lon == 0) return false;   // an unset position, never a real stand
+        return TaxiGraph.FastDistanceMeters(entryLat, entryLon, lat, lon) <= SamePositionMetres;
     }
 }
