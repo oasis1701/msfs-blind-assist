@@ -5,7 +5,7 @@ namespace MSFSBlindAssist.SimConnect;
 /// pilot's OWN aircraft, which the AIRCRAFT object type always includes.
 ///
 /// <para><c>SIMCONNECT_OBJECT_ID_USER</c> (0) is only an alias for a REQUEST — a sweep reports the
-/// user aircraft under its real object id (usually 1), so the old <c>dwObjectID == 0</c> test never
+/// user aircraft under its real object id (measured live: 524288), so the old <c>dwObjectID == 0</c> test never
 /// matched and the callsign comparison was the only guard. That guard fails whenever the aircraft's
 /// ATC ID is empty or differs from the one read at load: a FlyByWire A320 was announced to its own
 /// pilot as "Stop, Fly By Wire A320 very close, ahead, 0 feet." (live 2026-09-29).</para>
