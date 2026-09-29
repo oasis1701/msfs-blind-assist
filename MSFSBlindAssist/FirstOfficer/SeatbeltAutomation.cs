@@ -18,12 +18,16 @@ public enum FoSeatbeltMode { Disabled = 0, TenThousand = 1, TocTod = 2 }
 ///   - above 10,000 ft;
 ///   - at the highest altitude this leg has reached (within 500 ft) — a level-off below
 ///     the peak is a step on the arrival, never a cruise;
-///   - before the descent: once the aircraft is 1,000 ft below a peak above 10,000 ft the leg is in its
-///     descent and no level-off can be Top of Climb any more;
-///   - at cruise: with the SimBrief cruise known (<see cref="PlannedCruiseFt"/>), within
-///     2,000 ft of it and held 20 s; without a plan, after a climb of at least 3,000 ft
-///     has been seen this leg and held 3 minutes (a climb step is usually shorter; a
-///     cruise worth automating is much longer — a judgement, not a measurement).
+///   - after a real climb: at least 3,000 ft gained this leg, so a state started at
+///     cruise or in the descent (the FO window first opened there, or a SimBrief load,
+///     which resets it) never switches signs the pilot may have set for a reason;
+///   - held long enough: 20 s within 2,000 ft of the SimBrief cruise
+///     (<see cref="PlannedCruiseFt"/>); 10 minutes when the plan is known but the level is
+///     further below it (ATC kept the aircraft low); 3 minutes with no plan. A climb step
+///     is usually shorter than those — a judgement, not a measurement.
+/// The plan is for ONE flight: it is forgotten on the first ground sample after the
+/// aircraft has been airborne, so a stale plan's cruise cannot match the next flight's
+/// climb step (a new SimBrief load sets it again).
 /// Top of Descent: after Top of Climb, 15 s of VS &lt; -500 fpm AND 1,000 ft lost from the
 /// peak (the altitude loss defeats turbulence VS spikes).
 ///
@@ -55,6 +59,7 @@ public sealed class SeatbeltAutomation
     private const double TocLevelVsFpm = 200;
     private const double TocLevelSeconds = 20;            // with a SimBrief cruise altitude
     private const double UnplannedTocLevelSeconds = 180;  // without one
+    private const double OffPlanTocLevelSeconds = 600;    // plan known, level well below it
     private const double PlannedCruiseBandFt = 2_000;     // ATC's assigned cruise vs the plan
     private const double PeakToleranceFt = 500;
     private const double ClimbEvidenceFt = 3_000;
@@ -67,7 +72,7 @@ public sealed class SeatbeltAutomation
     // TOC/TOD leg state — cleared on the ground and by Reset().
     private bool _tocDone;
     private bool _todDone;
-    private bool _inDescent;
+    private bool _airborneSeen;   // this flight has flown — the plan is forgotten on landing
     private double _peakAltFt = double.NaN;
     private double _lowAltFt = double.NaN;
     private double _maxRiseFt;
@@ -91,7 +96,6 @@ public sealed class SeatbeltAutomation
     {
         _tocDone = false;
         _todDone = false;
-        _inDescent = false;
         _peakAltFt = double.NaN;
         _lowAltFt = double.NaN;
         _maxRiseFt = 0;
@@ -135,34 +139,37 @@ public sealed class SeatbeltAutomation
     {
         // On the ground the next leg starts. Never actuates signs there (belts for taxi,
         // takeoff and landing are the pilot's / the flows' job).
-        if (onGround) { ResetLeg(); return; }
-        if (double.IsNaN(alt) || double.IsNaN(vs)) return;
+        if (onGround)
+        {
+            if (_airborneSeen) { PlannedCruiseFt = null; _airborneSeen = false; }
+            ResetLeg();
+            return;
+        }
+        // Airborne at or below 0 ft MSL is a bogus reading (flight load, teleport), and
+        // nothing actuates that low anyway; kept out so it cannot fake a climb.
+        if (double.IsNaN(alt) || double.IsNaN(vs) || alt <= 0) return;
+        _airborneSeen = true;
 
         DateTime now = _utcNow();
         if (double.IsNaN(_peakAltFt) || alt > _peakAltFt) _peakAltFt = alt;
         if (double.IsNaN(_lowAltFt) || alt < _lowAltFt) _lowAltFt = alt;
         _maxRiseFt = Math.Max(_maxRiseFt, alt - _lowAltFt);   // the climb seen this leg
-        // The descent from cruise: only once the leg has been above the floor. A descent on
-        // the climb-out below 10,000 ft (ATC stepping the aircraft down before clearing it
-        // higher) must not end the climb, or the real top of climb is never seen.
-        if (_peakAltFt >= FloorFt && alt <= _peakAltFt - TodAltLossFt) _inDescent = true;
 
         if (!_tocDone)
         {
-            if (_inDescent) return;   // the leg is descending: no level-off is a cruise now
-
-            bool planned = PlannedCruiseFt is > 0;
-            bool atCruise = planned
-                ? alt >= PlannedCruiseFt!.Value - PlannedCruiseBandFt
-                : _maxRiseFt >= ClimbEvidenceFt;
+            // A level-off below the peak is a step on the way down (or a climb stepped down
+            // for traffic), never the cruise — that alone keeps arrival level-offs silent.
             bool levelAtTop = alt >= FloorFt
                 && Math.Abs(vs) < TocLevelVsFpm
                 && alt >= _peakAltFt - PeakToleranceFt;
+            bool climbSeen = _maxRiseFt >= ClimbEvidenceFt;
 
-            if (!(atCruise && levelAtTop)) { _levelSince = null; return; }
+            if (!(levelAtTop && climbSeen)) { _levelSince = null; return; }
 
             _levelSince ??= now;
-            double required = planned ? TocLevelSeconds : UnplannedTocLevelSeconds;
+            double required = PlannedCruiseFt is int plan && plan > 0
+                ? (alt >= plan - PlannedCruiseBandFt ? TocLevelSeconds : OffPlanTocLevelSeconds)
+                : UnplannedTocLevelSeconds;
             if ((now - _levelSince.Value).TotalSeconds >= required)
             {
                 _setSign(false);

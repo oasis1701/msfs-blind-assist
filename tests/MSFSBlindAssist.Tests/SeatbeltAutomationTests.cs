@@ -186,6 +186,75 @@ public class SeatbeltAutomationTests
         Assert.Equal(new[] { false }, signs);
     }
 
+    [Fact]
+    public void TocTod_AClimbSteppedDownAndBackUpStillFindsTheRealTopOfClimb()
+    {
+        // Held at FL310, taken down to FL290 for traffic, then cleared to FL350.
+        var s = Make(FoSeatbeltMode.TocTod, plannedCruiseFt: 35_000);
+        ClimbTo(s, 0, 31_000);
+        Hold(s, 31_000, 0, 120);
+        DescendTo(s, 31_000, 29_000);
+        Hold(s, 29_000, 0, 120);
+        ClimbTo(s, 29_000, 35_000);
+        Hold(s, 35_000, 0, 25);
+        Assert.Equal(new[] { false }, signs);
+    }
+
+    [Fact]
+    public void TocTod_ACruiseFarBelowThePlanCountsAfterTenMinutesLevelAtTheTop()
+    {
+        var s = Make(FoSeatbeltMode.TocTod, plannedCruiseFt: 35_000);
+        ClimbTo(s, 0, 31_000);
+        Hold(s, 31_000, 0, 300);          // five minutes: still possibly a climb hold
+        Assert.Empty(signs);
+        Hold(s, 31_000, 0, 301);          // past ten minutes level at the top: the cruise
+        Assert.Equal(new[] { false }, signs);
+    }
+
+    [Fact]
+    public void TocTod_AStateStartedAtCruiseDoesNotTurnTheSignsOff()
+    {
+        // SimBrief loaded (which resets the automation) or the FO window first opened in
+        // cruise: no climb seen, so it cannot know the pilot has not set the signs on for a
+        // reason — it leaves them alone.
+        var s = Make(FoSeatbeltMode.TocTod, plannedCruiseFt: 35_000);
+        Hold(s, 35_000, 0, 120);
+        Assert.Empty(signs);
+    }
+
+    [Fact]
+    public void TocTod_ThePlanIsForgottenOnLandingSoAStalePlanCannotMatchAClimbStep()
+    {
+        // Flight 1 filed FL200; flight 2 flies without reloading SimBrief.
+        var s = Make(FoSeatbeltMode.TocTod, plannedCruiseFt: 20_000);
+        ClimbTo(s, 0, 20_000);
+        Hold(s, 20_000, 0, 25);                   // flight 1 TOC
+        DescendTo(s, 20_000, 1_000);              // flight 1 TOD
+        Hold(s, 0, 0, 60, onGround: true);
+        Assert.Null(s.PlannedCruiseFt);
+        ClimbTo(s, 0, 20_000);
+        Hold(s, 20_000, 0, 90);                   // flight 2's climb held at FL200
+        Assert.Equal(new[] { false, true }, signs);
+    }
+
+    [Fact]
+    public void TocTod_APlanLoadedOnTheGroundBeforeTheFirstFlightIsKept()
+    {
+        var s = Make(FoSeatbeltMode.TocTod, plannedCruiseFt: 35_000);
+        Hold(s, 0, 0, 60, onGround: true);
+        Assert.Equal(35_000, s.PlannedCruiseFt);
+    }
+
+    [Fact]
+    public void TocTod_AnAirborneZeroAltitudeSampleIsIgnored()
+    {
+        // A bogus reading must not fake a climb for a state started at cruise.
+        var s = Make(FoSeatbeltMode.TocTod, plannedCruiseFt: 35_000);
+        Tick(s, 0, 0);
+        Hold(s, 35_000, 0, 60);
+        Assert.Empty(signs);
+    }
+
     // ---- TOC/TOD mode, no SimBrief plan ----
     [Fact]
     public void TocTod_WithoutAPlanAShortLevelOffInTheClimbIsNotTopOfClimb()
@@ -229,6 +298,7 @@ public class SeatbeltAutomationTests
         Hold(s, 35_000, 0, 25);
         DescendTo(s, 35_000, 1_000);
         Hold(s, 0, 0, 60, onGround: true);        // landed, turnaround
+        s.PlannedCruiseFt = 35_000;               // next flight's SimBrief plan loaded
         ClimbTo(s, 0, 35_000);
         Hold(s, 35_000, 0, 25);
         DescendTo(s, 35_000, 30_000);
