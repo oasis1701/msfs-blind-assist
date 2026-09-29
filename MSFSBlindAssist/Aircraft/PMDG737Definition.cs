@@ -4839,10 +4839,12 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     _lastAnnouncedStabTrim = rounded;
                     return true;
                 }
-                if (Math.Abs(rounded - _lastAnnouncedStabTrim) < 0.05)
+                // Judged on the RAW value, with the shared hysteresis past the 0.05 midpoint:
+                // comparing two rounded values let a trim resting on x.x5 flip every sample.
+                if (Math.Abs(value - _lastAnnouncedStabTrim) < 0.05 + TrimHysteresis)
                     return true;
                 _lastAnnouncedStabTrim = rounded;
-                announcer.Announce($"Trim {rounded:F1}");
+                announcer.Announce(FormattableString.Invariant($"Trim {rounded:F1}"));
                 return true;
             }
 
