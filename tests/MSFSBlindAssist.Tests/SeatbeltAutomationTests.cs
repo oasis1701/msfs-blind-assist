@@ -171,6 +171,21 @@ public class SeatbeltAutomationTests
         Assert.Empty(signs);
     }
 
+    [Fact]
+    public void TocTod_ADescentOnTheClimbOutBelowTenThousandDoesNotEndTheClimb()
+    {
+        // Climbed to 8,000 ft, ATC then sends the aircraft down to 6,000 ft before
+        // clearing it higher: the leg has not started its descent from cruise.
+        var s = Make(FoSeatbeltMode.TocTod, plannedCruiseFt: 35_000);
+        ClimbTo(s, 0, 8_000);
+        Hold(s, 8_000, 0, 60);
+        DescendTo(s, 8_000, 6_000);
+        Hold(s, 6_000, 0, 120);
+        ClimbTo(s, 6_000, 35_000);
+        Hold(s, 35_000, 0, 25);
+        Assert.Equal(new[] { false }, signs);
+    }
+
     // ---- TOC/TOD mode, no SimBrief plan ----
     [Fact]
     public void TocTod_WithoutAPlanAShortLevelOffInTheClimbIsNotTopOfClimb()

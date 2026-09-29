@@ -18,7 +18,7 @@ public enum FoSeatbeltMode { Disabled = 0, TenThousand = 1, TocTod = 2 }
 ///   - above 10,000 ft;
 ///   - at the highest altitude this leg has reached (within 500 ft) — a level-off below
 ///     the peak is a step on the arrival, never a cruise;
-///   - before the descent: once the aircraft is 1,000 ft below its peak the leg is in its
+///   - before the descent: once the aircraft is 1,000 ft below a peak above 10,000 ft the leg is in its
 ///     descent and no level-off can be Top of Climb any more;
 ///   - at cruise: with the SimBrief cruise known (<see cref="PlannedCruiseFt"/>), within
 ///     2,000 ft of it and held 20 s; without a plan, after a climb of at least 3,000 ft
@@ -142,7 +142,10 @@ public sealed class SeatbeltAutomation
         if (double.IsNaN(_peakAltFt) || alt > _peakAltFt) _peakAltFt = alt;
         if (double.IsNaN(_lowAltFt) || alt < _lowAltFt) _lowAltFt = alt;
         _maxRiseFt = Math.Max(_maxRiseFt, alt - _lowAltFt);   // the climb seen this leg
-        if (alt <= _peakAltFt - TodAltLossFt) _inDescent = true;
+        // The descent from cruise: only once the leg has been above the floor. A descent on
+        // the climb-out below 10,000 ft (ATC stepping the aircraft down before clearing it
+        // higher) must not end the climb, or the real top of climb is never seen.
+        if (_peakAltFt >= FloorFt && alt <= _peakAltFt - TodAltLossFt) _inDescent = true;
 
         if (!_tocDone)
         {
