@@ -61,4 +61,17 @@ public class Pmdg737ApuGeneratorGateTests
         var gpu = BeforeStart().Steps.Single(s => s.Id == "BS_GPU_OFF");
         Assert.Contains("ground power stays connected", gpu.RequiresStepSkipText);
     }
+
+    [Theory]
+    [InlineData("BS_APUGEN")]
+    [InlineData("BS_GPU_OFF")]
+    public void Skip_text_says_the_flow_could_not_confirm_it_not_that_the_generator_failed(string stepId)
+    {
+        // On a RE-RUN after a completed transfer the blue light is legitimately off, so the
+        // wait times out with the APU generator powering the buses. The skip text must say
+        // what the FLOW could not do, never assert a fault: "was not confirmed" read as one.
+        var step = BeforeStart().Steps.Single(s => s.Id == stepId);
+        Assert.Contains("The flow could not confirm the APU generator", step.RequiresStepSkipText);
+        Assert.DoesNotContain("was not confirmed", step.RequiresStepSkipText);
+    }
 }
