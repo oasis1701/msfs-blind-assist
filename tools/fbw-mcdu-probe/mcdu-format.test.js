@@ -169,9 +169,16 @@ test('renderLines keeps the right-hand value when green markers precede it', () 
   const lines = [['', '', ''], [row, '', '']];
   for (let k = 1; k < 6; k++) { lines.push(['', '', ''], ['', '', '']); }
   const d = fmt.decodeSide({ title: 'INIT', lines });
-  const expected = '  *3.1*/*0137' + ' '.repeat(11) + '5.1';
+  // The first marker takes the blank padding column in front of "3.1".
+  const expected = ' *3.1*/*0137' + ' '.repeat(11) + '5.1';
   assert.strictEqual(d.rows[0].valueText, expected);
-  assert.strictEqual(d.rows[0].valueLeft, expected);
+  assert.strictEqual(d.rows[0].valueLeft, '  *3.1*/*0137' + ' '.repeat(11) + '5.1');
   assert.ok(fmt.renderLines(d).includes('1: ' + expected));
-  assert.ok(!JSON.stringify(d).includes('\u0001'), 'placeholder leaked into decoded JSON');
+});
+
+test('a marked right cell still ends at column 24', () => {
+  const lines = [['', '', ''], ['A', '{green}ON{end}/OFF', '']];
+  for (let k = 1; k < 6; k++) { lines.push(['', '', ''], ['', '', '']); }
+  const d = fmt.decodeSide({ title: 'X', lines });
+  assert.strictEqual(d.rows[0].valueText, 'A' + ' '.repeat(16) + '*ON/OFF');
 });

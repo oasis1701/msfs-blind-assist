@@ -197,30 +197,53 @@ public class FbwMcduFormatTests
 
     private static string Sp(int n) => string.Concat(Enumerable.Repeat("{sp}", n));
 
-    private static MCDUDisplayData SingleValueRow(string valueCell) => FbwMcduFormat.BuildDisplayData(new JObject
-    {
-        ["lines"] = new JArray
+    private static MCDUDisplayData SingleValueRow(string valueCell, string right = "", string center = "")
+        => FbwMcduFormat.BuildDisplayData(new JObject
         {
-            new JArray { "", "", "" },
-            new JArray { valueCell, "", "" },
-        },
-    });
+            ["lines"] = new JArray
+            {
+                new JArray { "", "", "" },
+                new JArray { valueCell, right, center },
+            },
+        });
 
     [Fact]
     public void BuildDisplayData_keeps_the_right_hand_value_when_green_markers_precede_it()
     {
         // Live INIT FUEL PRED line 2 (2026-09-26): FBW sends the whole row, BLOCK included,
         // in cell 0, padded to exactly 24 columns. The three '*' markers once counted as
-        // columns and pushed "5.1" past column 24, so BLOCK fuel was clipped away.
+        // columns and pushed "5.1" past column 24, so BLOCK fuel was clipped away. The first
+        // marker now takes the blank padding column in front of "3.1"; the two with text right
+        // before them are inserted.
         string cell = "{white}{sp}{sp}{small}{green}3.1{end}{end}{small}{green}/{end}{end}"
                     + "{small}{green}0137{end}{end}" + Sp(11)
                     + "{cyan}5.1{end}{small}{end}{big}{end}{end}";
 
         var data = SingleValueRow(cell);
 
-        Assert.Equal("  *3.1*/*0137" + new string(' ', 11) + "5.1", data.RawLines[2]);
+        Assert.Equal(" *3.1*/*0137" + new string(' ', 11) + "5.1", data.RawLines[2]);
         Assert.Equal("  *3.1*/*0137" + new string(' ', 11) + "5.1", data.Lines[0].LeftValue);
     }
+
+    [Fact]
+    public void BuildDisplayData_keeps_a_marked_right_cell_on_the_right_edge()
+    {
+        // The '*' takes the blank column in front, so the value still ends at column 24 like
+        // every unmarked right value, and the line stays 24 wide.
+        var data = SingleValueRow("A", right: "{green}ON{end}/OFF");
+
+        Assert.Equal("A" + new string(' ', 16) + "*ON/OFF", data.RawLines[2]);
+        Assert.Equal("*ON/OFF", data.Lines[0].RightValue);
+    }
+
+    [Fact]
+    public void BuildDisplayData_centres_a_marked_centre_cell_on_its_text()
+        => Assert.Equal(new string(' ', 8) + "*ON/OFF", SingleValueRow("", center: "{green}ON{end}/OFF").RawLines[2]);
+
+    [Fact]
+    public void BuildDisplayData_keeps_the_space_between_text_and_a_marker()
+        // The blank column right after "ALT" is a word gap, not free padding: insert the '*'.
+        => Assert.Equal("ALT *FL370", SingleValueRow("ALT {green}FL370{end}").RawLines[2]);
 
     [Fact]
     public void BuildDisplayData_does_not_truncate_a_placeholder_after_green_markers()

@@ -88,14 +88,31 @@ public static class FbwMcduFormat
     }
 
     /// <summary>
-    /// Stand-in for the '*' green-selection marker while a line is being laid out. It takes
-    /// no column: <see cref="PositionLine"/> attaches it to the character that follows and
-    /// writes it out as '*' only after the columns are fixed. FBW pads a whole row to
-    /// exactly 24 columns (INIT FUEL PRED sends ZFW/ZFWCG, the padding AND the BLOCK value
-    /// in cell 0), so a real '*' counted as a column pushed the right-hand value past
-    /// column 24 and the clip deleted it ("*3.1*/*0137" with BLOCK fuel missing).
+    /// Decoded cell text with its green-selection markers held beside it rather than in it:
+    /// <c>Marks[j]</c> is true when a '*' belongs in front of <c>Text[j]</c>. <c>Marks</c> is
+    /// null when the cell has none. FBW pads a whole row to exactly 24 columns (INIT FUEL
+    /// PRED sends ZFW/ZFWCG, the padding AND the BLOCK value in cell 0), so a '*' counted as
+    /// a column pushed the right-hand value past column 24 and the clip deleted it
+    /// ("*3.1*/*0137" with BLOCK fuel missing); <see cref="PositionLine"/> lays the columns
+    /// out first and places the markers after.
     /// </summary>
-    private const char Marker = '\u0001';
+    private readonly record struct MarkedText(string Text, bool[]? Marks)
+    {
+        public bool IsMarked(int j) => Marks != null && Marks[j];
+
+        /// <summary>The text with each marker written out as '*' in front of its character.</summary>
+        public string WithStars()
+        {
+            if (Marks == null) { return Text; }
+            var sb = new StringBuilder(Text.Length + 4);
+            for (int j = 0; j < Text.Length; j++)
+            {
+                if (Marks[j]) { sb.Append('*'); }
+                sb.Append(Text[j]);
+            }
+            return sb.ToString();
+        }
+    }
 
     /// <summary>
     /// Reconstruct an MCDU line positionally (24 cols): left-aligned left, right-aligned
@@ -104,29 +121,43 @@ public static class FbwMcduFormat
     /// trimming the padding and re-centring used to run the time into the speed
     /// ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
     /// neighbouring cell's text. Trailing whitespace of the finished line is trimmed.
-    /// Green-selection markers take no column (see <see cref="Marker"/>), so the finished
-    /// line can be longer than <paramref name="width"/> by one '*' per marker.
+    /// A '*' in the text is an ordinary column (the DCDU's key stars are real content).
     /// </summary>
     public static string PositionLine(string left, string center, string right, int width = 24)
+        => PositionLine(new MarkedText(left ?? "", null), new MarkedText(center ?? "", null),
+                        new MarkedText(right ?? "", null), width);
+
+    /// <summary>
+    /// <see cref="PositionLine(string, string, string, int)"/> for decoded cells. The columns
+    /// are laid out without the green-selection markers; each marker then takes the blank
+    /// column in front of its text when that column is free and is not right after other
+    /// text (so "ALT *FL370" keeps its space), and is inserted only when it is not — so a
+    /// right-aligned or padded value keeps its column wherever there is room.
+    /// </summary>
+    private static string PositionLine(MarkedText left, MarkedText center, MarkedText right, int width = 24)
     {
         var buf = new char[width];
-        var marked = new bool[width];
+        bool[]? marked = null;
         for (int i = 0; i < width; i++) { buf[i] = ' '; }
-        Place(Strip(left ?? ""), 0);
-        var c = Strip(center ?? "");
-        if (c.Text.Trim().Length > 0) { Place(c, Math.Max(0, (width - c.Text.Length) / 2)); }
-        var r = Strip(right ?? "");
-        if (r.Text.Trim().Length > 0) { Place(r, Math.Max(0, width - r.Text.Length)); }
+        Place(left, 0);
+        if (center.Text.Trim().Length > 0) { Place(center, Math.Max(0, (width - center.Text.Length) / 2)); }
+        if (right.Text.Trim().Length > 0) { Place(right, Math.Max(0, width - right.Text.Length)); }
+        if (marked == null) { return new string(buf).TrimEnd(); }
 
         var sb = new StringBuilder(width + 4);
         for (int i = 0; i < width; i++)
         {
-            if (marked[i]) { sb.Append('*'); }
+            if (marked[i])
+            {
+                bool freeColumnBefore = i > 0 && buf[i - 1] == ' ' && (i == 1 || buf[i - 2] == ' ');
+                if (freeColumnBefore) { sb[sb.Length - 1] = '*'; }
+                else { sb.Append('*'); }
+            }
             sb.Append(buf[i]);
         }
         return sb.ToString().TrimEnd();
 
-        void Place((string Text, bool[] Marks) cell, int start)
+        void Place(MarkedText cell, int start)
         {
             for (int j = 0; j < cell.Text.Length; j++)
             {
@@ -134,37 +165,23 @@ public static class FbwMcduFormat
                 if (cell.Text[j] != ' ' && p >= 0 && p < width)
                 {
                     buf[p] = cell.Text[j];
-                    marked[p] = cell.Marks[j];
+                    bool mark = cell.IsMarked(j);
+                    if (mark) { marked ??= new bool[width]; }
+                    if (marked != null) { marked[p] = mark; }
                 }
             }
         }
-
-        static (string Text, bool[] Marks) Strip(string s)
-        {
-            if (s.IndexOf(Marker) < 0) { return (s, new bool[s.Length]); }
-            var text = new StringBuilder(s.Length);
-            var marks = new List<bool>(s.Length);
-            bool pending = false;
-            foreach (char ch in s)
-            {
-                if (ch == Marker) { pending = true; continue; }
-                text.Append(ch);
-                marks.Add(pending);
-                pending = false;
-            }
-            return (text.ToString(), marks.ToArray());
-        }
     }
 
-    public static string DecodeCell(string? cell) => DecodeCellMarked(cell).Replace(Marker, '*');
+    public static string DecodeCell(string? cell) => DecodeCellMarked(cell).WithStars();
 
     /// <summary>
-    /// <see cref="DecodeCell"/> with each green-selection marker left as the zero-width
-    /// <see cref="Marker"/>, for text that still has to go through <see cref="PositionLine"/>.
+    /// <see cref="DecodeCell"/> with the green-selection markers kept beside the text, for
+    /// cells that still have to go through <see cref="PositionLine(MarkedText, MarkedText, MarkedText, int)"/>.
     /// </summary>
-    private static string DecodeCellMarked(string? cell)
+    private static MarkedText DecodeCellMarked(string? cell)
     {
-        if (string.IsNullOrEmpty(cell)) { return ""; }
+        if (string.IsNullOrEmpty(cell)) { return new MarkedText("", null); }
         var segments = ParseSegments(cell);
         var colors = new HashSet<string>();
         foreach (var s in segments)
@@ -173,20 +190,26 @@ public static class FbwMcduFormat
         }
         bool mixedGreen = colors.Count > 1 && colors.Contains("green");
         var sb = new StringBuilder();
+        List<int>? markAt = null;
         foreach (var seg in segments)
         {
             if (mixedGreen && seg.Color == "green" && !string.IsNullOrWhiteSpace(seg.Text))
             {
                 string trimmed = seg.Text.TrimStart();
                 string leading = seg.Text.Substring(0, seg.Text.Length - trimmed.Length);
-                sb.Append(leading).Append(Marker).Append(trimmed);
+                sb.Append(leading);
+                (markAt ??= new List<int>()).Add(sb.Length);
+                sb.Append(trimmed);
             }
             else
             {
                 sb.Append(seg.Text);
             }
         }
-        return sb.ToString();
+        if (markAt == null) { return new MarkedText(sb.ToString(), null); }
+        var marks = new bool[sb.Length];
+        foreach (int j in markAt) { marks[j] = true; }
+        return new MarkedText(sb.ToString(), marks);
     }
 
     public static List<string> LitAnnunciators(JToken? ann)
@@ -241,20 +264,20 @@ public static class FbwMcduFormat
             JArray? label = lines != null && 2 * k < lines.Count ? lines[2 * k] as JArray : null;
             JArray? value = lines != null && 2 * k + 1 < lines.Count ? lines[2 * k + 1] as JArray : null;
 
-            // Kept marked (zero-width markers) so PositionLine lays out the true 24 columns.
-            string labelLeft = DecodeCellMarked(Cell(label, 0));
-            string labelRight = DecodeCellMarked(Cell(label, 1));
-            string labelCenter = DecodeCellMarked(Cell(label, 2));
-            string valueLeft = DecodeCellMarked(Cell(value, 0));
-            string valueRight = DecodeCellMarked(Cell(value, 1));
-            string valueCenter = DecodeCellMarked(Cell(value, 2));
+            // Kept marked so PositionLine lays out the true 24 columns.
+            var labelLeft = DecodeCellMarked(Cell(label, 0));
+            var labelRight = DecodeCellMarked(Cell(label, 1));
+            var labelCenter = DecodeCellMarked(Cell(label, 2));
+            var valueLeft = DecodeCellMarked(Cell(value, 0));
+            var valueRight = DecodeCellMarked(Cell(value, 1));
+            var valueCenter = DecodeCellMarked(Cell(value, 2));
 
             data.Lines[k] = new MCDULinePair
             {
-                LeftLabel = labelLeft.Replace(Marker, '*'),
-                RightLabel = labelRight.Replace(Marker, '*'),
-                LeftValue = valueLeft.Replace(Marker, '*'),
-                RightValue = valueRight.Replace(Marker, '*'),
+                LeftLabel = labelLeft.WithStars(),
+                RightLabel = labelRight.WithStars(),
+                LeftValue = valueLeft.WithStars(),
+                RightValue = valueRight.WithStars(),
             };
             data.RawLines[1 + 2 * k] = PositionLine(labelLeft, labelCenter, labelRight);
             data.RawLines[2 + 2 * k] = PositionLine(valueLeft, valueCenter, valueRight);
