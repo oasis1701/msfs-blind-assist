@@ -11,8 +11,14 @@ namespace MSFSBlindAssist.SimConnect;
 /// pilot as "Stop, Fly By Wire A320 very close, ahead, 0 feet." (live 2026-09-29).</para>
 ///
 /// <para>The real id is learned from the answers to our own requests on the user aircraft
-/// (<see cref="Observe"/>), every one of which carries it; the callsign comparison stays as a
-/// second guard for the moments before an id has been learned.</para>
+/// (<see cref="Observe"/>), every one of which carries it. The callsign comparison applies ONLY
+/// until an id has been learned: once the id is known it can only drop real traffic, because AI
+/// and multiplayer aircraft share placeholder callsigns ("ASXGSA" on a 737, a 717 and an MD80 in
+/// one live session), and a dropped aircraft never earns its "Stop".</para>
+///
+/// <para>Unmeasured residual: if MSFS 2024's walkaround makes the user object the pilot's avatar,
+/// the learned id follows it and the parked aircraft may be reported as traffic until the pilot
+/// is back aboard, when the next answer re-learns the aircraft's id.</para>
 /// </summary>
 public sealed class OwnAircraftFilter
 {
@@ -38,13 +44,14 @@ public sealed class OwnAircraftFilter
         IsOwnAircraft(entryObjectId, UserObjectId, entryAtcId, ownAtcId);
 
     /// <summary>
-    /// Pure form of <see cref="IsOwnAircraft(uint, string?, string?)"/>. An empty callsign on either
+    /// Pure form of <see cref="IsOwnAircraft(uint, string?, string?)"/>. Once the user object id is
+    /// known it alone decides; before that, a matching callsign does. An empty callsign on either
     /// side never matches: two aircraft that both lack one are not therefore the same aircraft.
     /// </summary>
     public static bool IsOwnAircraft(uint entryObjectId, uint userObjectId, string? entryAtcId, string? ownAtcId)
     {
         if (entryObjectId == 0) return true;
-        if (userObjectId != 0 && entryObjectId == userObjectId) return true;
+        if (userObjectId != 0) return entryObjectId == userObjectId;
 
         string entry = entryAtcId?.Trim() ?? "";
         string own = ownAtcId?.Trim() ?? "";

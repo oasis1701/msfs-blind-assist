@@ -30,10 +30,22 @@ public class OwnAircraftFilterTests
     }
 
     [Fact]
+    public void Once_an_id_is_learned_a_shared_callsign_no_longer_filters()
+    {
+        // AI and multiplayer aircraft share placeholder callsigns; one matching the pilot's must
+        // still be reported as traffic once the pilot's own object id is known.
+        var filter = new OwnAircraftFilter();
+        filter.Observe(524288);
+
+        Assert.False(filter.IsOwnAircraft(700000, "G-NPTD", "G-NPTD"));
+        Assert.True(filter.IsOwnAircraft(524288, "", "G-NPTD"));
+    }
+
+    [Fact]
     public void Two_empty_callsigns_are_not_the_same_aircraft()
     {
-        Assert.False(OwnAircraftFilter.IsOwnAircraft(5, userObjectId: 1, "", ""));
-        Assert.False(OwnAircraftFilter.IsOwnAircraft(5, userObjectId: 1, null, "  "));
+        Assert.False(OwnAircraftFilter.IsOwnAircraft(5, userObjectId: 0, "", ""));
+        Assert.False(OwnAircraftFilter.IsOwnAircraft(5, userObjectId: 0, null, "  "));
     }
 
     [Fact]

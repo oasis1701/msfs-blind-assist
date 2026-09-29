@@ -1385,6 +1385,8 @@ public partial class SimConnectManager
         IsFullyConnected = false;
         GsxCouatlStartedLVar = false;
 
+        _ownAircraft.Reset();   // the next connection may hand the user aircraft a different object id
+
         if (hadHandle) ConnectionLost?.Invoke(this, EventArgs.Empty);   // every drop; nothing to lose otherwise
 
         // Only announce disconnection if we were previously connected
