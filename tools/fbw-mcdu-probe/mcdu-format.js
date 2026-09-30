@@ -18,6 +18,8 @@ var ANNUNCIATOR_LABELS = {
   fm1: 'FM1', fm2: 'FM2', ind: 'IND', rdy: 'RDY',
 };
 
+var NO_BREAK_SPACE = '\u00a0';
+
 function parseSegments(cell) {
   var segments = [];
   var color = 'white';
@@ -56,7 +58,9 @@ function parseSegments(cell) {
       i++;
       continue;
     }
-    text += ch;
+    // FBW pads cells and draws its entry boxes ("[\xa0\xa0]") with U+00A0. It is a blank
+    // like {sp}, so it becomes one here and nothing downstream has to know it exists.
+    text += ch === NO_BREAK_SPACE ? ' ' : ch;
     i++;
   }
   if (text.length > 0) { segments.push({ color: color, text: text }); }
@@ -81,18 +85,27 @@ function withStars(m) {
 // column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
 // trimming the padding and re-centring used to run the time into the speed
 // ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
-// neighbouring cell's text. Trailing whitespace of the finished line is trimmed.
+// neighbouring cell's text. The text here is not decoded (the DCDU's), so a U+00A0 is
+// made a plain space first, as parseSegments does for decoded cells.
+// Trailing whitespace of the finished line is trimmed.
 // A '*' in the text is an ordinary column (the DCDU's key stars are real content).
 function positionLine(left, center, right, width) {
-  return positionMarked({ text: left || '', marks: null }, { text: center || '', marks: null },
-    { text: right || '', marks: null }, width);
+  return positionMarked(undecoded(left), undecoded(center), undecoded(right), width);
+}
+
+function undecoded(text) {
+  return { text: (text || '').split(NO_BREAK_SPACE).join(' '), marks: null };
 }
 
 // positionLine for decoded cells. The columns are laid out without the green-selection
-// markers; each marker then takes the blank column in front of its text when that column
-// is free and is not right after other text (so "ALT *FL370" keeps its space), and is
-// inserted only when it is not — so a right-aligned or padded value keeps its column
-// wherever there is room.
+// markers, then each marker is written in: into the blank column in front of its text when
+// the gap there has one to spare (a gap after text keeps one blank, so "ALT *FL370" keeps
+// its space), otherwise inserted, and an inserted '*' is paid back by the next gap with a
+// blank to spare. So everything after a gap stays in its FBW column — the right-hand
+// values line up down the page, which a braille display depends on — and the line is
+// wider than `width` only when no gap can pay. The blanks inside an entry box ("[  ]",
+// which FBW draws from the same U+00A0 it pads with) are the width of the field, never a
+// gap to pay from.
 function positionMarked(l, c, r, width) {
   width = width || 24;
   var buf = new Array(width);
@@ -113,15 +126,33 @@ function positionMarked(l, c, r, width) {
   if (c.text.replace(/\s/g, '').length) { place(c, Math.max(0, Math.floor((width - c.text.length) / 2))); }
   if (r.text.replace(/\s/g, '').length) { place(r, Math.max(0, width - r.text.length)); }
   if (!marked) { return buf.join('').replace(/\s+$/, ''); }
-  var out = [];
-  for (var k = 0; k < width; k++) {
-    if (marked[k]) {
-      var freeColumnBefore = k > 0 && buf[k - 1] === ' ' && (k === 1 || buf[k - 2] === ' ');
-      if (freeColumnBefore) { out[out.length - 1] = '*'; } else { out.push('*'); }
+  var out = '';
+  var owed = 0; // inserted stars not yet paid back by a gap
+  var k = 0;
+  while (k < width) {
+    if (buf[k] !== ' ') {
+      // A value that follows a gap had its '*' written by the gap.
+      if (marked[k] && (k === 0 || buf[k - 1] !== ' ')) { out += '*'; owed++; }
+      out += buf[k];
+      k++;
+      continue;
     }
-    out.push(buf[k]);
+    var end = k;
+    while (end < width && buf[end] === ' ') { end++; }
+    if (end === width) { break; }
+    // Blanks the gap can give up: all of a leading gap, all but one after text, and none
+    // inside an entry box ("[  ]"), whose blanks are the width of the field.
+    var box = k > 0 && buf[k - 1] === '[' && buf[end] === ']';
+    var spare = box ? 0 : end - k - (k === 0 ? 0 : 1);
+    var taken = marked[end] && spare > 0 ? 1 : 0; // the '*' takes a blank
+    if (marked[end] && taken === 0) { owed++; } // or is inserted
+    var repay = Math.min(owed, spare - taken);
+    owed -= repay;
+    out += ' '.repeat(end - k - taken - repay);
+    if (marked[end]) { out += '*'; }
+    k = end;
   }
-  return out.join('').replace(/\s+$/, '');
+  return out.replace(/\s+$/, '');
 }
 
 function decodeCell(cell) {
@@ -141,17 +172,22 @@ function decodeCellMarked(cell) {
   var mixedGreen = colorCount > 1 && colors['green'];
   var out = '';
   var markAt = null;
+  // FBW sends one green value as touching pieces ("10.2", "/", "0213"). A pilot sees one
+  // green value, so a piece that continues a green run gets no '*' of its own.
+  var inGreenRun = false;
   for (var k = 0; k < segments.length; k++) {
     var seg = segments[k];
-    if (mixedGreen && seg.color === 'green' && seg.text.trim().length > 0) {
+    var green = mixedGreen && seg.color === 'green' && seg.text.trim().length > 0;
+    if (green) {
       var trimmed = seg.text.replace(/^\s+/, '');
       var leading = seg.text.slice(0, seg.text.length - trimmed.length);
       out += leading;
-      (markAt = markAt || []).push(out.length);
+      if (!(inGreenRun && leading.length === 0)) { (markAt = markAt || []).push(out.length); }
       out += trimmed;
     } else {
       out += seg.text;
     }
+    inGreenRun = !!green && !/\s$/.test(seg.text);
   }
   if (!markAt) { return { text: out, marks: null }; }
   var marks = new Array(out.length).fill(false);

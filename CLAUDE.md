@@ -33,6 +33,42 @@ describe an in-sim test plan in the PR — the human owner of the repo runs it. 
 (formatters, parsers, geometry, classifiers) should get characterization tests; don't add
 speculative tests for sim-driven paths.
 
+## Before changing behaviour
+
+**Check before calling it an oversight.** Before changing how something BEHAVES (wording,
+rounding, what a control shows, a checklist step, a default), rather than fixing a clear defect,
+read the Invariants section below and the aircraft's own doc: many differences between aircraft
+are deliberate and pinned there ("never harmonize"). Then compare:
+
+- For how an aircraft SYSTEM behaves, compare only against another add-on of the same type: the
+  FBW A32NX against the Fenix, the PMDG 737 against the iFly 737. Different types differ by
+  design, even from the same maker (a 787 is not a 737, an A380 is not an A320), so a difference
+  there is not an oversight.
+- For how the APP presents things (whether a window shows a control's state, wording, number
+  formatting), compare across all aircraft.
+
+If the comparison shows this aircraft is the odd one out, fix it and say in the PR which aircraft
+you compared against. If not, it is a design choice: write the PR as a proposal the reviewer can
+adjust or drop. Worked example: #264. The FBW A320 and A380 autopilot windows showed a fixed
+"Autothrust engage" button, while every other button in those windows, and the autothrottle
+buttons of the HS787, iFly 737 and MD-11 windows, showed state. That is a presentation question,
+so comparing across types was valid. The Fenix window shows state on none of its buttons, so it
+was left alone.
+
+**Fix the aircraft the request is about.** If the same problem shows up on another aircraft, fix
+it in the same PR only when the code is shared (#264: the A320 and A380 read the same
+`A32NX_AUTOTHRUST_STATUS` through one helper). When the other aircraft keeps its own code, name it
+in the PR as "also seen on …" and leave it for its own issue or PR, so it gets its own in-sim test
+and review. The other aircraft shows what is missing; it is not a template for the fix. Build each
+aircraft's fix from its own variables and behaviour.
+
+**Check the whole of what you touched.** For a display, check the whole page, not only the broken
+line (#259 fixed one MCDU line and pushed the others off the 24-column grid, fixed in #262). For
+shared code, check every aircraft that uses it, including those that override it (#260's shared
+trim debounce also had to hold on the PMDG 777's override). For anything spoken or formatted, add a
+test that sets a comma-decimal culture (de-DE or sv-SE): CI runs under en-US, so a test that does
+not set one cannot catch it.
+
 ## Git Workflow
 
 The `main` branch is protected. Always create a new branch for changes and open a pull request — never commit directly to main.
@@ -282,7 +318,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - Every `ExecuteCalculatorCode` call embedding a computed double must use invariant fixed-point formatting — never default `{0}`/`$"{double}"` interpolation; both can emit scientific notation or comma-decimal output the MSFS RPN parser rejects. → [architecture.md](docs/architecture.md)
 - **An FBW ARINC DISCRETE word carries its bitfield as the float's VALUE — read a bit from `Arinc429Word.DiscreteBits` (`BitValueOr` does), NEVER from the raw low 32 bits.** FBW builds the bitfield as an integer, converts it to a float NUMERICALLY and packs the float's IEEE bits; all three of its readers convert back (C++ `static_cast<uint32_t>(word.Data)`, TS `this.value >> (bit - 1)`, Rust `f32::from_bits(v) as u32`). Until 2026-09-25 `BitValueOr` tested the raw bits — the float's exponent and mantissa — so bit 28 read true for any word with a bit at 18 or above, bit 29 never read true, and bits 11-23 read true only by accident: FMA Reversion fired on selected/managed speed changes, Speed Protection and the A380 cruise-altitude qualifier never fired, every ROW/ROP and RWY AHEAD call-out was dead, and every discrete row on both FBW jets read noise. `coherent-oans-agent.js` carried the same raw test in JavaScript (`A.rwyAheadActive` — decode through `A.arinc` first). `BitValue` (NO SSM gate, FBW's own `bitValue`) is ONLY for a word whose writer never sets its SSM, so its own readers ignore it — the A32NX FWC word 124 (PseudoFWC builds it with `createEmpty()`, it stays Failure Warning for good, and the PFD reads CHECK ALT with `bitValue`), whose call-out a gated read had silenced from the day it was written; everywhere else a failed word must say nothing. A test that builds a discrete word must pack it the FBW way — `BitConverter.SingleToUInt32Bits((float)bitfield)` — never `(ulong)ssm << 32 | bitfield`, which is how the old tests agreed with the old bug. Two "live captures" recorded as puzzles were this bug (FG word 5 `0x48000000` = bit 18, not "reversion at rest"; FG word 3 `0x4D804000` = bits 29 and 20, not "constraint with nothing armed"); an older raw capture in any doc must be re-decoded before it is believed. Pinned by `Arinc429WordTests`. → [a380x.md](docs/a380x.md)
 - H: events must always go to the MobiFlight channel whenever `IsMobiFlightConnected`; dotted events must wait for `CalcPathVerified` (queued, bounded, flushed on verify or probe-conclude) — never fire a dotted event before the probe concludes. → [architecture.md](docs/architecture.md)
-- When adding a Continuous+IsAnnounced background-monitoring variable, do NOT also add it to `BuildPanelControls()` — batched monitoring registration is automatic. The ONE sanctioned exception is a monitored var that IS a panel control's own read-back, where one key must carry both so MainForm's UI-echo suppression matches the pick (the PMDG 737/777 speed-brake levers, `MON_PMDG737_SpeedBrake` / `FCTL_Speedbrake`): it stays batch-covered (setup gives it no individual def), and because its `ProcessSimVarUpdate` returns true an open combo on it does NOT follow a change made elsewhere — it re-reads on the next panel build. Never add a monitoring var to a panel merely to have it registered. → [architecture.md](docs/architecture.md)
+- When adding a Continuous+IsAnnounced background-monitoring variable, do NOT also add it to `BuildPanelControls()` — batched monitoring registration is automatic. The ONE sanctioned exception is a monitored var that IS a panel control's own read-back, where one key must carry both so MainForm's UI-echo suppression matches the pick (the PMDG 737/777 speed-brake levers, `MON_PMDG737_SpeedBrake` / `FCTL_Speedbrake`): it stays batch-covered (setup gives it no individual def), and because its `ProcessSimVarUpdate` returns true an open combo on it does NOT follow a change made elsewhere — it re-reads on the next panel build. The iFly 737 MAX lever (`Spoiler_Lever_Status`) has the same shape on its OWN transport — an SDK shared-memory field, never in a SimConnect batch — and, unlike the PMDG ones, its open combo DOES follow a change, but only at a position: it sets `SimVarDefinition.RefreshControlWhenDefHandled` to a per-value predicate (`IFly737SpeedBrakeLever.IsAtPosition`), which MainForm's def-handled branch honours — never accept the values a lever sweeps through, or a focused combo is narrated at every one. Never add a monitoring var to a panel merely to have it registered. → [architecture.md](docs/architecture.md)
 - The status-display auto-refresh repaint must be a LEADING-edge one-shot coalesce, never a restart-per-push trailing debounce — a trailing debounce starves under high-frequency PFD/ISIS streams (hand-fly posts per SIM_FRAME). → [architecture.md](docs/architecture.md)
 - `UpdateDisplayText` must always refresh `displayValues` from `GetCachedVariableValue` first — relying on stale cached `displayValues` alone goes stale for any def that returns `true` from `ProcessSimVarUpdate` (A32NX COM freqs, A380 EFIS baro, HS787 flight data all skip the generic write). → [architecture.md](docs/architecture.md)
 - The per-event "is this var in any panel display" gate must use the cached `GetDisplayVarNamesCached()` HashSet — never call a def's `GetPanelDisplayVariables()` per SimVar event; it rebuilds its whole dictionary on every call. → [architecture.md](docs/architecture.md)
@@ -654,6 +690,7 @@ Every bullet below is a condensed guardrail ("do NOT / NEVER / CRITICAL / gotcha
 - The emergency-exit light guard MUST be driven (`EVT_OH_EMER_EXIT_LIGHT_GUARD`, 0=closed/1=open; ARMED is the guard-closed position) — the old "opening the guard leaves the switch unusable" belief was wrong, and without the guard OFF/ON are unreachable. → [pmdg-777.md](docs/pmdg-777.md)
 - The emergency-lights guard→switch 80 ms settle gap is load-bearing (the two writes use DIFFERENT transports — CDA vs TransmitClientEvent — and arrive out of order without it, forcing the pilot to pick the position twice) — never drop it to zero; and the sequence must stay SERIALIZED (`_emerLightsGate`, latest-selection-wins) and fired as a plain async local function, NEVER `Task.Run` (which would race `SimConnectManager.SendEvent`'s unlocked `eventIds` dictionary from a pool thread). → [pmdg-777.md](docs/pmdg-777.md)
 - `RequestVariable(key, forceUpdate: true)` is a NO-OP for any `PMDGVar` (CDA-broadcast, so in neither the data-def nor the continuous-batch map) — never use it to snap a PMDG combo back; that trick only works for the L:var-typed controls (e.g. the temp-knob variant guards). → [pmdg-777.md](docs/pmdg-777.md)
+- **Speed-brake ARM is EXACT on the PMDG 737, the PMDG 777 and the iFly 737 MAX** (`PmdgLeverDetent.Tolerance`, 0.25) — never widen it back into the table's settle band. Measured 2026-09-30 with hydraulics pressurised: one step past ARM the PMDG spoilers are already 34 percent up (737 `L:switch_679_73X` 101, 777 `L:switch_498_a` 201), and the iFly's deploy in step with the lever from 34, so the old bands announced "Speed brake armed" over deployed speed brakes; past ARM speaks a percentage, never "0 percent", and the Control Stand combo seeds the nearest DEPLOYED detent, never "Armed" (`PmdgSpeedBrakeLever.NearestDetentValue`). The 777 lever must be read from `L:switch_498_a` (0-400), NEVER the SDK's `FCTL_Speedbrake_Lever` byte — a quarter of it, TRUNCATED, so 201-203 read exactly 50. Both PMDG levers ride the 1 Hz L-var batch with a 1500 ms settle, which must outlast one batch now that a lever between detents is spoken. → [pmdg-777.md](docs/pmdg-777.md)
 
 ### PMDG 737-800 NG3 (→ [pmdg-737.md](docs/pmdg-737.md))
 

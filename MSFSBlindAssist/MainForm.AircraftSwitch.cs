@@ -789,6 +789,11 @@ public partial class MainForm
         // EventIds tables use different event_base + N numberings) and actuate an arbitrary
         // wrong control. Idempotent, so the FBW double-call above is a no-op.
         (oldAircraft as BaseAircraftDefinition)?.DisposeTrackedWindows();
+        // Every def's own timers that could still SPEAK over the next aircraft (the PMDG
+        // speed-brake settle announcer). Unconditional for the same reason as the line above —
+        // never a per-type line — but never on the instance being switched TO.
+        if (!ReferenceEquals(oldAircraft, newAircraft))
+            (oldAircraft as BaseAircraftDefinition)?.OnSwitchedAway();
 
         // A manually-engaged 737 warning test (stick shaker / overspeed clacker) holds its
         // spring switch open-ended via a transmit press — release it on swap so it can't
