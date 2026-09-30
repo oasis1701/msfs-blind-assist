@@ -33,27 +33,45 @@ describe an in-sim test plan in the PR — the human owner of the repo runs it. 
 (formatters, parsers, geometry, classifiers) should get characterization tests; don't add
 speculative tests for sim-driven paths.
 
+## Before changing behaviour
+
+**Check before calling it an oversight.** Before changing how something BEHAVES (wording,
+rounding, what a control shows, a checklist step, a default), rather than fixing a clear defect,
+read the Invariants section below and the aircraft's own doc: many differences between aircraft
+are deliberate and pinned there ("never harmonize"). Then compare:
+
+- For how an aircraft SYSTEM behaves, compare only against another add-on of the same type: the
+  FBW A32NX against the Fenix, the PMDG 737 against the iFly 737. Different types differ by
+  design, even from the same maker (a 787 is not a 737, an A380 is not an A320), so a difference
+  there is not an oversight.
+- For how the APP presents things (whether a window shows a control's state, wording, number
+  formatting), compare across all aircraft.
+
+If the comparison shows this aircraft is the odd one out, fix it and say in the PR which aircraft
+you compared against. If not, it is a design choice: write the PR as a proposal the reviewer can
+adjust or drop. Worked example: #264. The FBW A320 and A380 autopilot windows showed a fixed
+"Autothrust engage" button, while every other button in those windows, and the autothrottle
+buttons of the HS787, iFly 737 and MD-11 windows, showed state. That is a presentation question,
+so comparing across types was valid. The Fenix window shows state on none of its buttons, so it
+was left alone.
+
+**Fix the aircraft the request is about.** If the same problem shows up on another aircraft, fix
+it in the same PR only when the code is shared (#264: the A320 and A380 read the same
+`A32NX_AUTOTHRUST_STATUS` through one helper). When the other aircraft keeps its own code, name it
+in the PR as "also seen on …" and leave it for its own issue or PR, so it gets its own in-sim test
+and review. The other aircraft shows what is missing; it is not a template for the fix. Build each
+aircraft's fix from its own variables and behaviour.
+
+**Check the whole of what you touched.** For a display, check the whole page, not only the broken
+line (#259 fixed one MCDU line and pushed the others off the 24-column grid, fixed in #262). For
+shared code, check every aircraft that uses it, including those that override it (#260's shared
+trim debounce also had to hold on the PMDG 777's override). For anything spoken or formatted, add a
+test that sets a comma-decimal culture (de-DE or sv-SE): CI runs under en-US, so a test that does
+not set one cannot catch it.
+
 ## Git Workflow
 
 The `main` branch is protected. Always create a new branch for changes and open a pull request — never commit directly to main.
-
-### Behaviour changes — check the other aircraft first
-
-Before changing how something BEHAVES (wording, rounding, what a control shows, a checklist
-step, a default), rather than fixing a clear defect, find how the other aircraft handle the same
-thing. If most of them do it one way and the aircraft you're working on doesn't, it is probably an
-oversight: fix it to match, and say which aircraft you compared against. If they differ on
-purpose, or none of them do it, it is a design choice: write the PR as a proposal the reviewer
-can adjust or drop, not as a fix. Worked example: the FBW A320 and A380 autopilot windows show a
-fixed "Autothrust engage" button, while the HS787, iFly 737 and MD-11 windows show the
-autothrottle's state — an oversight, not a preference.
-
-The same fix often lives in more than one place, so check beyond the one case reported. For a
-display, check the whole page, not only the broken line (PR #259 fixed one MCDU line and pushed
-the others off the 24-column grid — fixed in #262). For shared logic, check the other aircraft
-that keep their own copy (PR #260's trim fix needed a follow-up to reach the PMDG 737's own call-out and the 777's). And for
-anything spoken or formatted, check a comma-decimal Windows number format — CI runs en-US and
-cannot see it.
 
 ### Release notes — every PR adds a changelog fragment
 
