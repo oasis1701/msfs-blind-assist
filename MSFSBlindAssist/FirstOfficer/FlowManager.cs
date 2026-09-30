@@ -53,28 +53,31 @@ public class FlowManager<TExec, TState>
     public FlowDefinition<TState>? CurrentFlow { get; private set; }
     public int CurrentStepIndex { get; private set; }
 
-    // Checklist items belonging to steps this run announced as SKIPPED — i.e. the step
-    // failed and its FailurePolicy let the flow continue. FirstOfficerForm passes these to
+    // Checklist items belonging to steps this run announced as SKIPPED — a step that failed
+    // and whose FailurePolicy let the flow continue, a step skipped by the dependency gate,
+    // or a step left alone by its LeaveAloneWhen rule. FirstOfficerForm passes these to
     // MarkGroupComplete so flow completion cannot tick and latch an item the flow never
-    // delivered. Only the Skip branch contributes: Stop and an exhausted RetryThenStop both
+    // delivered. Only those three contribute: Stop and an exhausted RetryThenStop both
     // raise FlowFailed and return, so FlowCompleted never fires on those runs, and the
     // "Already set" early-continue is a SUCCESS (it raises StepCompleted and marks the item).
     //
-    // Pinned by BEHAVIOUR tests on a real FlowManager run (FlowManagerStepDependencyTests):
-    // the announce entry points are virtual, so a recording ScreenReaderAnnouncer subclass
-    // (GatedSpeechCapture, tests/MuteWrapHarness.cs) replaces the screen reader. They pin
-    // which ids land here on a Skip-policy failure and on a dependency skip, that an
-    // "Already set" step lands nothing, and that the set clears between runs. The CONSUMER
-    // half — what MarkGroupComplete does with this set — is FoFlowCompletionExclusionTests.
+    // Pinned by BEHAVIOUR tests on a real FlowManager run (FlowManagerStepDependencyTests,
+    // FlowManagerLeaveAloneTests): the announce entry points are virtual, so a recording
+    // ScreenReaderAnnouncer subclass (GatedSpeechCapture, tests/MuteWrapHarness.cs) replaces
+    // the screen reader. They pin which ids land here on a Skip-policy failure, on a
+    // dependency skip and on a leave-alone skip, that an "Already set" step lands nothing,
+    // and that the set clears between runs. The CONSUMER half — what MarkGroupComplete does
+    // with this set — is FoFlowCompletionExclusionTests.
     private readonly HashSet<string> _unfinishedChecklistItemIds = new(StringComparer.Ordinal);
 
-    // Ids of the steps THIS run skipped — a Skip-policy step that failed or timed out, or a
-    // step skipped because its FlowStep.RequiresStepId is in here already (so a dependency
-    // chain propagates). Read by the dependency gate at the top of the step loop; cleared
-    // with _unfinishedChecklistItemIds when the next run starts. Both Add()s (the Skip
-    // branch's and the dependency gate's) are pinned by FlowManagerStepDependencyTests;
-    // FlowStepDependencyIdTests pins that every profile's RequiresStepId names an earlier
-    // step of the same flow.
+    // Ids of the steps THIS run skipped — a Skip-policy step that failed or timed out, a
+    // step left alone by its LeaveAloneWhen rule, or a step skipped because its
+    // FlowStep.RequiresStepId is in here already (so a dependency chain propagates). Read by
+    // the dependency gate at the top of the step loop; cleared with
+    // _unfinishedChecklistItemIds when the next run starts. All three Add()s (the Skip
+    // branch's, the leave-alone rule's and the dependency gate's) are pinned by
+    // FlowManagerStepDependencyTests / FlowManagerLeaveAloneTests; FlowStepDependencyIdTests
+    // pins that every profile's RequiresStepId names an earlier step of the same flow.
     private readonly HashSet<string> _skippedStepIds = new(StringComparer.Ordinal);
 
     /// <summary>Checklist item ids the most recent run could not deliver. Valid to read
@@ -163,6 +166,27 @@ public class FlowManager<TExec, TState>
         return Task.CompletedTask;
     }
 
+    /// <summary>A step skipped WITHOUT running (leave-alone rule, dependency gate): keeps its
+    /// linked checklist lines out of the completion latch, records its id as skipped, raises
+    /// StepSkipped, speaks <paramref name="spokenText"/> (queued), and pauses
+    /// <see cref="InterStepPauseMs"/> unless it is the last step. Returns false when the flow was
+    /// cancelled during that pause (FlowCancelled already raised), true otherwise.</summary>
+    private async Task<bool> SkipWithoutRunningAsync(
+        FlowDefinition<TState> flow, FlowStep<TState> step, int index, string spokenText, CancellationToken ct)
+    {
+        foreach (var itemId in step.LinkedChecklistItemIds)
+            _unfinishedChecklistItemIds.Add(itemId);
+        _skippedStepIds.Add(step.Id);
+        StepSkipped?.Invoke(flow, step, index);
+        _announcer.Announce(spokenText);
+        if (index < flow.Steps.Count - 1)
+        {
+            try { await Task.Delay(InterStepPauseMs, ct); }
+            catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return false; }
+        }
+        return true;
+    }
+
     private async Task RunFlowAsync(FlowDefinition<TState> flow, CancellationToken ct)
     {
         _unfinishedChecklistItemIds.Clear();
@@ -213,16 +237,9 @@ public class FlowManager<TExec, TState>
             // the aircraft is already there.
             if (step.LeaveAloneWhen != null && _state.IsAvailable && step.LeaveAloneWhen(_state))
             {
-                foreach (var itemId in step.LinkedChecklistItemIds)
-                    _unfinishedChecklistItemIds.Add(itemId);
-                _skippedStepIds.Add(step.Id);
-                StepSkipped?.Invoke(flow, step, i);
-                _announcer.Announce(step.LeaveAloneText ?? $"Skipping: {step.AnnounceText}");
-                if (i < flow.Steps.Count - 1)
-                {
-                    try { await Task.Delay(InterStepPauseMs, ct); }
-                    catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return; }
-                }
+                if (!await SkipWithoutRunningAsync(flow, step, i,
+                        step.LeaveAloneText ?? $"Skipping: {step.AnnounceText}", ct))
+                    return;
                 continue;
             }
 
@@ -234,16 +251,9 @@ public class FlowManager<TExec, TState>
             // there, and a skip text that says what stays as it is would be wrong then.
             if (step.RequiresStepId != null && _skippedStepIds.Contains(step.RequiresStepId))
             {
-                foreach (var itemId in step.LinkedChecklistItemIds)
-                    _unfinishedChecklistItemIds.Add(itemId);
-                _skippedStepIds.Add(step.Id);
-                StepSkipped?.Invoke(flow, step, i);
-                _announcer.Announce(step.RequiresStepSkipText ?? $"Skipping: {step.AnnounceText}");
-                if (i < flow.Steps.Count - 1)
-                {
-                    try { await Task.Delay(InterStepPauseMs, ct); }
-                    catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return; }
-                }
+                if (!await SkipWithoutRunningAsync(flow, step, i,
+                        step.RequiresStepSkipText ?? $"Skipping: {step.AnnounceText}", ct))
+                    return;
                 continue;
             }
 
