@@ -85,6 +85,11 @@ public class IFly737StateEvaluator : IFoStateEvaluator
         // never the lever alone.
         if (field == IFly737GearConfirmation.UpField) return IFly737GearConfirmation.UpValue(GetValue);
         if (field == IFly737GearConfirmation.DownField) return IFly737GearConfirmation.DownValue(GetValue);
+        // "Speedbrake: ARMED" — the lever exactly at ARM (34) AND the SPEED BRAKE ARMED light;
+        // the light alone is lit from 34 all the way to 224 (measured 2026-09-30, PR #261).
+        if (field == SpeedbrakeLeverState.ArmedField)
+            return SpeedbrakeLeverState.ArmedValue(SpeedbrakeLeverState.IFly737,
+                GetValue(IFly737SpeedBrakeLever.FieldName), GetValue(SpeedbrakeArmedLight));
 
         // Raw SDK field: INDETERMINATE (NaN) until the SDK is ready (shared memory open AND the
         // plugin reports the MAX running) — before that there is no live snapshot to read at all.
@@ -95,6 +100,17 @@ public class IFly737StateEvaluator : IFoStateEvaluator
 
     public bool IsOn(string field) => GetValue(field) > 0.5;
     public bool IsPosition(string field, int position) => Math.Abs(GetValue(field) - position) < 0.1;
+
+    /// <summary>The SPEED BRAKE ARMED light (0 Off / 1 DIM / 2 BRIGHT).</summary>
+    public const string SpeedbrakeArmedLight = "SPEED_BRAKE_ARMED_Light_Status";
+
+    /// <summary>The SPEEDBRAKES EXTENDED light.</summary>
+    public const string SpeedbrakeExtendedLight = "SPEEDBRAKES_EXTENDED_Light_Status";
+
+    public SpeedbrakeLeverPosition SpeedbrakePosition() =>
+        SpeedbrakeLeverState.Classify(SpeedbrakeLeverState.IFly737, GetValue(IFly737SpeedBrakeLever.FieldName));
+    public bool IsSpeedbrakeArmed()    => GetValue(SpeedbrakeLeverState.ArmedField) > 0.5;
+    public bool IsSpeedbrakeDeployed() => SpeedbrakePosition() == SpeedbrakeLeverPosition.Deployed;
 
     // NOTE: there is deliberately no IsLit(field) helper here. GetValue(field) > 0.5-style
     // collapsing of NaN (unknown) to "not lit" is exactly the trap the auto-manager avoids —

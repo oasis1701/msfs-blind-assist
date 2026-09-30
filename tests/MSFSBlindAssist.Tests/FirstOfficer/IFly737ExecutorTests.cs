@@ -31,7 +31,7 @@ public class IFly737ExecutorTests
     private static readonly string[] Expected =
     {
         "FIRE_TEST", "STALL_TEST_1", "STALL_TEST_2", "OVSPD_TEST_1", "OVSPD_TEST_2",
-        "TCAS_TEST", "GPWS_TEST", "APU_START", "BARO_STD_BOTH", "PRESS_ALTS",
+        "TCAS_TEST", "GPWS_TEST", "APU_START", "BARO_STD_BOTH", "PRESS_ALTS", "SPEEDBRAKE_ARM",
     };
 
     [Fact]
@@ -134,6 +134,7 @@ public class IFly737ExecutorTests
         Assert.False(await exec.SetCenterFuelPumps(1));
         Assert.False(await exec.SetWingFuelPumps(1));
         Assert.False(await exec.SetAltimetersStandardAsync());
+        Assert.False(await exec.ArmSpeedbrakeAsync());
         Assert.False(await exec.SetPressurizationAltitudesAsync(new IFly737StateEvaluator()));
         Assert.False(await exec.CabinCall());
     }
@@ -179,6 +180,17 @@ public class IFly737ExecutorTests
 
         Assert.True(exec.IsDeclaredPosition("BTN_ATTENDANT_CALL", 1));
         Assert.True(exec.IsDeclaredPosition("BTN_ATTENDANT_CALL", 42)); // still nothing to check against
+    }
+
+    // The verified arm writes ARM (34) through ApplySilent, which refuses any value that is not
+    // one of the lever combo's declared positions — ARM must be one.
+    [Fact]
+    public void Speedbrake_ARM_is_a_declared_lever_position()
+    {
+        var exec = new IFly737ActionExecutor();
+        exec.SetDefinition(new MSFSBlindAssist.Aircraft.IFly737MAXDefinition());
+        Assert.True(exec.IsDeclaredPosition(MSFSBlindAssist.Aircraft.IFly737SpeedBrakeLever.FieldName,
+            SpeedbrakeLeverState.IFly737.ArmValue));
     }
 
     // An unrecognised key is also accepted by the range check itself — ApplyUIVariable's

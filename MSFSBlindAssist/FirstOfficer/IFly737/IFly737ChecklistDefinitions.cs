@@ -421,15 +421,15 @@ public static class IFly737ChecklistDefinitions
                 v => v > 1.5 && v < 2.5, new[] { "Engine_Start_Switch_Status_1" },
                 (e, _) => { e.SetEngStartSelector1(IFly737ActionExecutor.EngStartContinuous);
                             e.SetEngStartSelector2(IFly737ActionExecutor.EngStartContinuous); }),
-            // Speedbrake ARM is a Captain item on this aircraft — the lever write has an
-            // unverified scale mismatch and is deliberately read-only (see class doc), so this
-            // line has NO action. It mirrors the SPEED BRAKE ARMED light like its Landing
-            // Checklist twin LDC_SPDBRK (it used to be a plain reminder, which the Landing
-            // flow's MarkGroupComplete ticked and latched whether or not the lever was armed).
-            // The flow's read-only LD_SPDBRK_CHECK completes both lines when the light is on,
-            // and on a timeout FlowManager keeps both out of the latch, so they stay live.
-            Auto("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED", "SPEED_BRAKE_ARMED_Light_Status", v => v > 0.5,
-                action: null),
+            // Ticking it arms the speed brake (the PMDG 737's shape): a verified write of ARM
+            // through the panel's own lever path (IFly737ActionExecutor.ArmSpeedbrakeAsync).
+            // Detected on the lever exactly at ARM AND the SPEED BRAKE ARMED light
+            // (FO_SPEEDBRAKE_ARMED) — the light alone stays lit to the end of the travel. A
+            // tick over a deployed speed brake is refused with its reason, and nothing is written.
+            LeaveAlone(AutoAsync("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED",
+                SpeedbrakeLeverState.ArmedField, v => v > 0.5,
+                (e, _) => e.ArmSpeedbrakeAsync()),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
             Reminder("LDA_MISSED", "LANDING", "Set the missed approach altitude"),
         }
     };
@@ -701,10 +701,10 @@ public static class IFly737ChecklistDefinitions
         {
             Auto("LDC_START", "LANDING_CL", "Engine start switches: CONT", "Engine_Start_Switch_Status_0",
                 v => v > 1.5 && v < 2.5, new[] { "Engine_Start_Switch_Status_1" }, action: null),
-            // Unlike the PMDG (no state field at all), the iFly HAS a readback —
-            // SPEED_BRAKE_ARMED_Light_Status (0 Off / nonzero DIM|BRIGHT = armed) — so this
-            // upgrades from a reminder to a live auto-detect.
-            Auto("LDC_SPDBRK", "LANDING_CL", "Speedbrake: ARMED", "SPEED_BRAKE_ARMED_Light_Status", v => v > 0.5,
+            // A live auto-detect on the lever exactly at ARM AND the SPEED BRAKE ARMED light
+            // (FO_SPEEDBRAKE_ARMED) — the light alone stays lit to 224. Action-free like every
+            // read-back line; the Landing flow's verified arm completes it.
+            Auto("LDC_SPDBRK", "LANDING_CL", "Speedbrake: ARMED", SpeedbrakeLeverState.ArmedField, v => v > 0.5,
                 action: null),
             // "Landing gear: DOWN" is confirmed the way a crew confirms it — three green —
             // through the IFly737GearConfirmation synthetic (lever Down, all three
@@ -868,4 +868,13 @@ public static class IFly737ChecklistDefinitions
         ManualCompletionAllowed = true,
         ReminderText = text,
     };
+
+    // A line whose hand-tick the First Officer refuses in the aircraft's current state
+    // (ChecklistItem.LeaveAloneWhen), speaking `text` instead.
+    private static Item LeaveAlone(Item item, Func<IFly737StateEvaluator, bool> when, string text)
+    {
+        item.LeaveAloneWhen = when;
+        item.LeaveAloneText = text;
+        return item;
+    }
 }

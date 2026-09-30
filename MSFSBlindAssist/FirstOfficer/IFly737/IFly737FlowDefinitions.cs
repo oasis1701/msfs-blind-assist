@@ -542,35 +542,23 @@ public static class IFly737FlowDefinitions
     private static Flow BuildLanding() => new()
     {
         Id = "LANDING", Name = "Landing",
-        Description = "Start switches CONT, speedbrake armed, missed approach altitude, then confirms the speedbrake is armed and the gear is down.",
+        Description = "Start switches CONT, speedbrake armed, missed approach altitude, then confirms the gear is down.",
         RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
         Steps = new()
         {
             Also(Multi("LD_START_CONT", "Engine start switches: CONT", "LDA_START",
                 ("Engine_Start_Switch_Status_0", IFly737ActionExecutor.EngStartContinuous),
                 ("Engine_Start_Switch_Status_1", IFly737ActionExecutor.EngStartContinuous)), "LDC_START"),
-            // Speedbrake ARM is a Captain reminder on this aircraft — the lever's write path
-            // is deliberately read-only (see class doc). LD_SPDBRK_CHECK below confirms it.
-            Captain("LD_SPDBRK", "Speedbrake: ARMED"),
+            // Verified arm via the SPEEDBRAKE_ARM pseudo-key (IFly737ActionExecutor.
+            // ArmSpeedbrakeCoreAsync), the PMDG 737's shape: it writes ARM through main's
+            // measured lever write and proves it against the lever AND the ARMED light. It
+            // completes BOTH "Speedbrake: ARMED" lines, so a failed arm leaves neither latched.
+            // Armed is "Already set"; a deployed speed brake is left alone with its reason.
+            LeaveAlone(Skip(Also(SW("LD_SPDBRK", "Speedbrake: ARMED", IFly737ActionExecutor.KeySpeedbrakeArm, null,
+                    "LDA_SPDBRK"), "LDC_SPDBRK"),
+                s => s.IsSpeedbrakeArmed()),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
             Captain("LD_MISSED", "Set the missed approach altitude."),
-            // Read-only speedbrake confirmation — it never touches the lever (the FO has no
-            // write for it, see class doc); it only waits for the SPEED BRAKE ARMED light the
-            // Captain was just asked for (0 Off / 1 DIM / 2 BRIGHT, DIM counts as armed like
-            // the gear lights). Completes BOTH "Speedbrake: ARMED" lines — the Landing
-            // Checklist's LDC_SPDBRK and this action group's LDA_SPDBRK — so when the light
-            // never comes on the step is announced as skipped and FlowManager keeps both out of
-            // MarkGroupComplete's latch: they keep mirroring the light instead of reading
-            // complete over a lever that is not armed. Before this step, finishing the flow
-            // ticked and latched them whatever the lever was doing.
-            // 15 s, not the gear checks' 20: the reminder was spoken two steps ago (with the
-            // missed-approach reminder and the inter-step pauses in between, the Captain has
-            // had ~20 s since being asked by the time this times out), and the gear check is
-            // queued behind it — a longer wait only delays "three green". A timeout costs
-            // nothing but the "Skipping" line: the checklist line stays live and ticks itself
-            // the moment the Captain arms the lever.
-            Skip(WaitForField("LD_SPDBRK_CHECK", "Speedbrake: ARMED", "SPEED_BRAKE_ARMED_Light_Status", v => v > 0.5, 15,
-                    checklistItemId: "LDC_SPDBRK", alsoChecklistItemIds: new[] { "LDA_SPDBRK" }),
-                s => s.GetValue("SPEED_BRAKE_ARMED_Light_Status") > 0.5),
             // Read-only gear-down confirmation — this flow writes no gear lever at all.
             // Confirms the gear the way a crew does, "three green" (IFly737GearConfirmation),
             // and completes the Landing Checklist's "Landing gear: DOWN". LAST, so the steps
@@ -755,6 +743,15 @@ public static class IFly737FlowDefinitions
     private static Step Skip(Step step, Func<IFly737StateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
+        return step;
+    }
+
+    // A step the First Officer must not perform in the aircraft's current state
+    // (FlowStep.LeaveAloneWhen): nothing is sent, `text` is spoken, its lines stay open.
+    private static Step LeaveAlone(Step step, Func<IFly737StateEvaluator, bool> when, string text)
+    {
+        step.LeaveAloneWhen = when;
+        step.LeaveAloneText = text;
         return step;
     }
 

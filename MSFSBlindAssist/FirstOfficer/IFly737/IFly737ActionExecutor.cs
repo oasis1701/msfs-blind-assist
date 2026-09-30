@@ -107,6 +107,14 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// premise this bypass exists to avoid. A flow step now targets THIS pseudo-key instead.</summary>
     public const string KeyPressAlts = "PRESS_ALTS";
 
+    /// <summary>Speed brake to ARMED, verified (<see cref="ArmSpeedbrakeAsync"/>) — the PMDG 737's
+    /// shape: armed is left as it is, a deployed or unread lever is never written.</summary>
+    public const string KeySpeedbrakeArm = SpeedbrakeLeverState.ArmPseudoKey;
+
+    /// <summary>The lever write lands at once (measured, PR #261); the SDK is polled every 250 ms.</summary>
+    public const int SpeedbrakeArmVerifyMs = 1500;
+    private const int SpeedbrakeArmPollMs = 100;
+
     /// <summary>THE one place a pseudo-key is wired to its handler. <see cref="PseudoKeys"/>
     /// and <see cref="IsPseudoKey"/> are both DERIVED from this map's keys rather than
     /// spelled out separately, closing the gap a review found: PseudoKeys used to be a
@@ -131,6 +139,7 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
             [KeyApuStart] = e => e.StartApuCoreAsync(),
             [KeyBaroStdBoth] = e => e.SetAltimetersStandardCoreAsync(),
             [KeyPressAlts] = e => e.SetPressurizationAltitudesCoreAsync(e._state),
+            [KeySpeedbrakeArm] = e => e.ArmSpeedbrakeCoreAsync(),
         };
 
     /// <summary>Every pseudo-key this executor handles — the keys of <see cref="PseudoKeyHandlers"/>.
@@ -503,6 +512,64 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
         ok = ApplySilent(ApuSelectorKey, ApuStart);
         _lastWriteUtc = DateTime.UtcNow;
         return ok;
+    }
+
+    // -----------------------------------------------------------------------
+    // Speed brake ARM — verified, through the panel's own lever write
+    // -----------------------------------------------------------------------
+
+    /// <summary>Speed brake to ARMED for a checklist tick — takes the gate (see
+    /// <see cref="ArmSpeedbrakeCoreAsync"/>).</summary>
+    public async Task<bool> ArmSpeedbrakeAsync()
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            if (!IsAvailable) return false;
+            await PaceAsync();
+            return await ArmSpeedbrakeCoreAsync();
+        }
+        finally { _gate.Release(); }
+    }
+
+    /// <summary>
+    /// Armed already (lever at ARM and the ARMED light lit): true, no write. Deployed, the
+    /// EXTENDED light lit, or unread: false and no write — writing ARM over a deployed speed
+    /// brake retracts it. Otherwise the lever is written to ARM through the panel's own write
+    /// path (FLTCTRL_SPOILER, which records the pick so the settle announcer stays silent) and
+    /// must read armed within <see cref="SpeedbrakeArmVerifyMs"/>.
+    /// </summary>
+    private async Task<bool> ArmSpeedbrakeCoreAsync()
+    {
+        var state = _state;
+        if (state == null) return false;
+        var decision = SpeedbrakeLeverState.DecideArm(state.SpeedbrakePosition(),
+            state.GetValue(IFly737StateEvaluator.SpeedbrakeArmedLight) > 0.5,
+            state.GetValue(IFly737StateEvaluator.SpeedbrakeExtendedLight) > 0.5);
+        switch (decision)
+        {
+            case SpeedbrakeArmDecision.AlreadyArmed:
+                return true;
+            case SpeedbrakeArmDecision.LeaveAlone:
+                Log.Debug("ifly_fo", "speedbrake arm not attempted: the speed brake is extended");
+                return false;
+            case SpeedbrakeArmDecision.Unreadable:
+                Log.Warn("ifly_fo", $"speedbrake arm not attempted: {IFly737SpeedBrakeLever.FieldName} unreadable");
+                return false;
+        }
+
+        if (!ApplySilent(IFly737SpeedBrakeLever.FieldName, SpeedbrakeLeverState.IFly737.ArmValue)) return false;
+        _lastWriteUtc = DateTime.UtcNow;
+
+        var deadline = DateTime.UtcNow.AddMilliseconds(SpeedbrakeArmVerifyMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (state.IsSpeedbrakeArmed()) return true;
+            await Task.Delay(SpeedbrakeArmPollMs);
+        }
+        if (state.IsSpeedbrakeArmed()) return true;
+        Log.Warn("ifly_fo", $"speedbrake arm did not take (lever {state.GetValue(IFly737SpeedBrakeLever.FieldName)})");
+        return false;
     }
 
     // -----------------------------------------------------------------------
