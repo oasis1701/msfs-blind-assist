@@ -25,6 +25,17 @@ public sealed class StabTrimUnitsCallout
     public void Reset() => _last = double.NaN;
 
     /// <summary>
+    /// Take <paramref name="units"/> as the baseline without speaking it. For a source whose
+    /// opening value never arrives as a sample (the iFly SDK's initial snapshot is dropped before
+    /// the call-out sees it): without a seed, the pilot's first real move would become the silent
+    /// baseline instead of being spoken.
+    /// </summary>
+    public void Seed(double units)
+    {
+        if (double.IsFinite(units)) _last = Math.Round(units, 1);
+    }
+
+    /// <summary>
     /// A new trim sample in units. Returns the sentence to speak, or null when nothing is said.
     /// </summary>
     /// <param name="hysteresis">How far past a step boundary the value must travel

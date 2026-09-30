@@ -57,12 +57,12 @@ public static class IFly737SpeedBrakeLever
     /// spoilers are. Below ARMED it says nothing, as on both PMDG jets.
     /// </summary>
     public static string? PartialDeployment(double value)
-    {
-        double armed = Detents[1].Value, up = Detents[^1].Value;
-        if (value <= armed || value > up) return null;
-        int pct = (int)Math.Round((value - armed) / (up - armed) * 100);
-        return $"Speed brake {pct} percent";
-    }
+        => PmdgSpeedBrakeLever.PartialDeployment(Detents, value);
+
+    /// <summary>The detent a lever at <paramref name="value"/> is resting at, or -1 between
+    /// detents — the settle announcer's own test.</summary>
+    public static int SettledIndex(double value)
+        => PmdgSpeedBrakeLever.SettledIndex(Detents, value, SettleTolerance);
 
     /// <summary>The combo's ValueDescriptions: each detent's value to its label.</summary>
     public static Dictionary<double, string> ComboDescriptions()

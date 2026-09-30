@@ -55,17 +55,41 @@ public class IFly737StabTrimUnitsTests
     }
 
     [Fact]
-    public void A_context_reset_re_baselines_so_a_loaded_flights_trim_is_not_spoken()
+    public void A_context_reset_never_empties_the_baseline_so_the_next_move_is_spoken()
     {
+        // The SDK's re-seed after a flight load arrives as an initial snapshot the call-out never
+        // sees; emptying the baseline would swallow the pilot's first real move as the new one.
+        // (With a live SDK the reset re-seeds from the snapshot; here there is none, so it keeps.)
         var def = new IFly737MAXDefinition();
         var speech = new SpeechCapture();
-        def.ProcessSimVarUpdate(IFly737MAXDefinition.StabTrimUnitsKey, 5.6, speech);
+        def.ProcessSimVarUpdate(IFly737MAXDefinition.StabTrimUnitsKey, 5.6, speech);   // baseline
 
         def.OnSimContextReset();
 
-        def.ProcessSimVarUpdate(IFly737MAXDefinition.StabTrimUnitsKey, 7.0, speech);   // the loaded flight
-        def.ProcessSimVarUpdate(IFly737MAXDefinition.StabTrimUnitsKey, 7.5, speech);   // a real move
-        Assert.Equal(new[] { "Trim 7.5" }, speech.All);
+        def.ProcessSimVarUpdate(IFly737MAXDefinition.StabTrimUnitsKey, 6.5, speech);   // a real move
+        Assert.Equal(new[] { "Trim 6.5" }, speech.All);
+    }
+
+    [Fact]
+    public void A_seeded_baseline_speaks_the_first_sample_that_moves()
+    {
+        // The iFly seeds from the live snapshot on connect, because its opening value is never a
+        // sample: the first sample the call-out sees is already a move.
+        var callout = new StabTrimUnitsCallout();
+        callout.Seed(5.58);
+        Assert.Equal("Trim 6.0", callout.Next(6.0, 0.03));
+        Assert.Null(callout.Next(6.02, 0.03));
+    }
+
+    [Fact]
+    public void A_mute_on_the_old_degrees_row_moves_to_the_units_row()
+    {
+        var settings = new Settings.UserSettings();
+        settings.IFlyDisabledMonitorVariables.Add("MON_ElevatorTrim");
+
+        Assert.True(Settings.SettingsManager.CarryRenamedMonitorMutes(settings));
+        Assert.Equal(new[] { IFly737MAXDefinition.StabTrimUnitsKey }, settings.IFlyDisabledMonitorVariables);
+        Assert.False(Settings.SettingsManager.CarryRenamedMonitorMutes(settings));   // idempotent
     }
 
     [Fact]

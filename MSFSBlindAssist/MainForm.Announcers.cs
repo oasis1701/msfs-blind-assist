@@ -257,16 +257,17 @@ public partial class MainForm
             // an open panel's button labels froze on background state changes. The Button
             // branch of UpdateControlFromSimVar is a pure label update — no user-action
             // handler can fire (the combo caveat in the comment above is combo-specific),
-            // so refreshing it here is safe. The iFly speed-brake lever COMBO joins them:
-            // it self-announces on a settle timer, and without this refresh an open combo
-            // kept the position it was built with — "Armed" while the auto speed brake had
-            // the lever up, or "Down" while it was deployed, where picking Down commits
-            // nothing because the item is already selected. Its generic combo writes only
-            // on SelectionChangeCommitted under !updatingFromSim, so a refresh sends
-            // nothing. Everything else keeps the StateVariable-only path.
-            if (currentAircraft is IFly737MAXDefinition &&
-                currentAircraft.GetVariables().TryGetValue(e.VarName, out var iflyBtnDef) &&
-                (iflyBtnDef.RenderAsButton || e.VarName == IFly737SpeedBrakeLever.FieldName))
+            // so refreshing it here is safe. A control flagged RefreshControlWhenDefHandled
+            // joins them on any aircraft (first user: the iFly speed-brake lever COMBO, which
+            // self-announces on a settle timer): without this refresh an open combo kept the
+            // position it was built with — "Armed" while the auto speed brake had the lever
+            // up, or "Down" while it was deployed, where picking Down commits nothing because
+            // the item is already selected. The flag is only set where the write fires on a
+            // user commit alone, so a refresh sends nothing. Everything else keeps the
+            // StateVariable-only path.
+            if (currentAircraft.GetVariables().TryGetValue(e.VarName, out var iflyBtnDef) &&
+                ((currentAircraft is IFly737MAXDefinition && iflyBtnDef.RenderAsButton)
+                 || iflyBtnDef.RefreshControlWhenDefHandled))
             {
                 UpdateControlFromSimVar(e.VarName, e.Value);
             }

@@ -853,13 +853,18 @@ public partial class IFly737MAXDefinition
         // see IFly737SpeedBrakeLever, the one table). The classifier seeds the combo
         // with the NEAREST detent, so a lever resting between detents never opens it
         // blank. The lever self-announces on a settle timer from ProcessSimVarUpdate
-        // (which returns true, skipping MainForm's generic control refresh), so MainForm's
-        // iFly def-handled branch refreshes this combo by name to keep an open panel
-        // following a lever moved from the cockpit or by the auto speed brake.
+        // (which returns true, skipping MainForm's generic control refresh), so it is
+        // flagged RefreshControlWhenDefHandled to keep an open panel following a lever
+        // moved from the cockpit or by the auto speed brake.
+        // Known limit (PMDG levers share it): a lever resting BETWEEN detents (a hardware
+        // axis) shows the nearest detent, and picking that same item commits nothing —
+        // the settle announcer speaks its real travel ("Speed brake 35 percent"), and
+        // arrowing to another detent and back moves it.
         SwD(P, IFly737SpeedBrakeLever.FieldName, "Speed Brake",
             IFlyKeyCommand.FLTCTRL_SPOILER,
             IFly737SpeedBrakeLever.ComboDescriptions());
         _vars[IFly737SpeedBrakeLever.FieldName].ValueToDescriptionKey = IFly737SpeedBrakeLever.NearestDetentValue;
+        _vars[IFly737SpeedBrakeLever.FieldName].RefreshControlWhenDefHandled = true;
 
         Annun(P, "SPEED_BRAKE_ARMED_Light_Status", "Speed Brake Armed light");
         Annun(P, "SPEED_BRAKE_DO_NOT_ARM_Light_Status", "Speed Brake Do Not Arm light");

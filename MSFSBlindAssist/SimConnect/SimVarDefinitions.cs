@@ -158,6 +158,17 @@ public class SimVarDefinition
     /// <summary>The ValueDescriptions key for <paramref name="value"/>: through <see cref="ValueToDescriptionKey"/> when set, else the value itself.</summary>
     public double DescriptionKeyFor(double value) => ValueToDescriptionKey?.Invoke(value) ?? value;
 
+    /// <summary>
+    /// A panel control whose definition announces it from INSIDE <c>ProcessSimVarUpdate</c> (which
+    /// returns true, so MainForm skips its generic control refresh) but whose open control must
+    /// still FOLLOW a change made elsewhere. MainForm's def-handled branch refreshes it anyway. Set
+    /// only where the control's write fires on a user commit alone (a combo's
+    /// SelectionChangeCommitted under <c>updatingFromSim</c>), so a refresh can never send anything
+    /// — the HS787-style controls whose write handler reacts to programmatic updates must never set
+    /// it. First user: the iFly 737 MAX speed-brake lever, which the auto speed brake moves.
+    /// </summary>
+    public bool RefreshControlWhenDefHandled { get; set; }
+
     // ----- ARINC429 auto-decode -----
     // When true, the raw double is a FlyByWire ARINC429 word (numeric-truncate to u64; low
     // 32 bits = IEEE-754 float in engineering units, bits 32-33 = SSM). The generic decode

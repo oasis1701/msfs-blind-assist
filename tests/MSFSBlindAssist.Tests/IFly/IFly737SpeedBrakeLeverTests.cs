@@ -51,6 +51,7 @@ public class IFly737SpeedBrakeLeverTests
         Assert.False(v.RenderAsReadOnlyStatus);
         Assert.NotNull(v.ValueToDescriptionKey);
         Assert.True(v.IsAnnounced);
+        Assert.True(v.RefreshControlWhenDefHandled);   // an open combo follows the auto speed brake
         Assert.Contains(IFly737SpeedBrakeLever.FieldName, def.GetPanelControls()["Control Stand"]);
         Assert.DoesNotContain(IFly737SpeedBrakeLever.FieldName,
             def.GetPanelDisplayVariables().GetValueOrDefault("Control Stand") ?? new List<string>());

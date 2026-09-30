@@ -71,9 +71,17 @@ public static class PmdgSpeedBrakeLever
     /// the deployment as a percentage of ARMED to UP, measured on the table's own rest values, so the
     /// 50-percent detent reads the same either way. Below ARMED it says nothing, as the 737 does.
     /// </summary>
-    public static string? B777PartialDeployment(double value)
+    public static string? B777PartialDeployment(double value) => PartialDeployment(B777, value);
+
+    /// <summary>
+    /// The deployment of a lever resting between detents above ARMED, as a percentage of ARMED to
+    /// UP measured on <paramref name="detents"/>' own rest values (ARMED is the second row, UP the
+    /// last): "Speed brake 35 percent". Null at or below ARMED and above UP. The ONE formula every
+    /// lever that speaks a partial deployment uses (the 777, the iFly 737 MAX).
+    /// </summary>
+    public static string? PartialDeployment(IReadOnlyList<PmdgLeverDetent> detents, double value)
     {
-        double armed = B777[1].Value, up = B777[^1].Value;
+        double armed = detents[1].Value, up = detents[^1].Value;
         if (value <= armed || value > up) return null;
         int pct = (int)Math.Round((value - armed) / (up - armed) * 100);
         return $"Speed brake {pct} percent";

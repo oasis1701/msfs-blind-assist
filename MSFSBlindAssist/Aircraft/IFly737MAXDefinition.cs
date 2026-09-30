@@ -953,7 +953,8 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             bool leverAlreadyThere = varKey == IFly737SpeedBrakeLever.FieldName
                 && Sdk.Snapshot is { } leverSnap
                 && ReadRawField(leverSnap, varKey) is { } leverNow
-                && Math.Abs(leverNow - value) <= IFly737SpeedBrakeLever.SettleTolerance;
+                && IFly737SpeedBrakeLever.IndexOfComboValue(value) is var pickIdx && pickIdx >= 0
+                && IFly737SpeedBrakeLever.SettledIndex(leverNow) == pickIdx;
             if (!Sdk.SendCommand(w.Command, v2, w.Value3))
             {
                 announcer.AnnounceImmediate("iFly plugin not responding.");
@@ -1766,8 +1767,20 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // The speed-brake callout's last sentence must not outlive the flight: carried over, the
         // first genuine settle at that same detent would be swallowed as a repeat.
         _speedBrakeCallout.Reset();
-        // A flight load's trim is the loaded aircraft's setting, not a change: re-baseline.
-        _stabTrimCallout.Reset();
+        // A flight load's trim is the loaded aircraft's setting, not a change: re-baseline from
+        // the live value. Never Reset() to "no baseline": the SDK's re-seed after a load arrives
+        // as an initial snapshot the call-out never sees, so the pilot's first real move would
+        // become the silent baseline.
+        SeedStabTrimFromSnapshot();
+    }
+
+    /// <summary>Baselines the trim call-out on the live SDK value (connect, re-seed, flight load),
+    /// because the SDK's initial snapshot never reaches ProcessSimVarUpdate. With no snapshot the
+    /// baseline is left as it is.</summary>
+    private void SeedStabTrimFromSnapshot()
+    {
+        if (Sdk.Snapshot is { } snap && ReadRawField(snap, StabTrimUnitsKey) is { } units)
+            _stabTrimCallout.Seed(units);
     }
 
     // Speed-brake lever announcer: the trailing-edge settle timer the PMDG jets use,
@@ -1901,6 +1914,9 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         Seed(_disengageLightKeys, v => v > 0.5);
 
         _pendingOff.Clear();
+
+        // The trim call-out is baselined the same way, for the same reason.
+        SeedStabTrimFromSnapshot();
     }
 
     /// <summary>Flash-filtered light announce. Announces "on" once at the first lit
