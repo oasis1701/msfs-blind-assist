@@ -54,10 +54,28 @@ public class IFly737SpeedBrakeLeverTests
         Assert.False(v.RenderAsReadOnlyStatus);
         Assert.NotNull(v.ValueToDescriptionKey);
         Assert.True(v.IsAnnounced);
-        Assert.True(v.RefreshControlWhenDefHandled);   // an open combo follows the auto speed brake
+        Assert.True(v.RefreshesControlWhenDefHandled(224));   // an open combo follows the auto speed brake
         Assert.Contains(IFly737SpeedBrakeLever.FieldName, def.GetPanelControls()["Control Stand"]);
         Assert.DoesNotContain(IFly737SpeedBrakeLever.FieldName,
             def.GetPanelDisplayVariables().GetValueOrDefault("Control Stand") ?? new List<string>());
+    }
+
+    // The open combo follows the lever only where it RESTS. Refreshed on every 250 ms sample, a
+    // focused combo was narrated at each detent a travelling lever passed ("Flight detent", "Fully
+    // deployed") before the settle announcer spoke the resting one again, and a sample between
+    // detents re-selected the nearest detent, which the lever was not at.
+    [Theory]
+    [InlineData(0, true)]
+    [InlineData(22, true)]      // short of ARMED: Down, the position it is at
+    [InlineData(34, true)]
+    [InlineData(180, true)]
+    [InlineData(224, true)]
+    [InlineData(120, false)]    // between detents above ARMED: travelling, or a partial deployment
+    [InlineData(60, false)]
+    public void The_open_combo_follows_the_lever_only_at_a_position(double lever, bool refreshes)
+    {
+        var v = new IFly737MAXDefinition().GetVariables()[IFly737SpeedBrakeLever.FieldName];
+        Assert.Equal(refreshes, v.RefreshesControlWhenDefHandled(lever));
     }
 
     [Fact]

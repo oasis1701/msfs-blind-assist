@@ -161,13 +161,19 @@ public class SimVarDefinition
     /// <summary>
     /// A panel control whose definition announces it from INSIDE <c>ProcessSimVarUpdate</c> (which
     /// returns true, so MainForm skips its generic control refresh) but whose open control must
-    /// still FOLLOW a change made elsewhere. MainForm's def-handled branch refreshes it anyway. Set
-    /// only where the control's write fires on a user commit alone (a combo's
-    /// SelectionChangeCommitted under <c>updatingFromSim</c>), so a refresh can never send anything
-    /// — the HS787-style controls whose write handler reacts to programmatic updates must never set
-    /// it. First user: the iFly 737 MAX speed-brake lever, which the auto speed brake moves.
+    /// still FOLLOW a change made elsewhere: MainForm's def-handled branch refreshes it for each
+    /// delivered value this predicate accepts. Accept only values the control can truthfully show —
+    /// a lever's resting positions, never the values it sweeps through, or a focused combo is
+    /// narrated at every one. Set only where the control's write fires on a user commit alone (a
+    /// combo's SelectionChangeCommitted under <c>updatingFromSim</c>), so a refresh can never send
+    /// anything — the HS787-style controls whose write handler reacts to programmatic updates must
+    /// never set it. First user: the iFly 737 MAX speed-brake lever, which the auto speed brake moves.
     /// </summary>
-    public bool RefreshControlWhenDefHandled { get; set; }
+    public Func<double, bool>? RefreshControlWhenDefHandled { get; set; }
+
+    /// <summary>Whether MainForm's def-handled branch refreshes this control for <paramref name="value"/>
+    /// (<see cref="RefreshControlWhenDefHandled"/>; never when that is unset).</summary>
+    public bool RefreshesControlWhenDefHandled(double value) => RefreshControlWhenDefHandled?.Invoke(value) == true;
 
     // ----- ARINC429 auto-decode -----
     // When true, the raw double is a FlyByWire ARINC429 word (numeric-truncate to u64; low

@@ -59,6 +59,12 @@ public static class IFly737SpeedBrakeLever
     public static string? PartialDeployment(double value)
         => PmdgSpeedBrakeLever.PartialDeployment(Detents, value);
 
+    /// <summary>Whether a lever at <paramref name="value"/> is AT a position the combo names — a detent
+    /// within the settle tolerance, or Down short of ARMED — and not between detents above ARMED, where
+    /// it is travelling or partially deployed. The open combo follows the lever only here.</summary>
+    public static bool IsAtPosition(double value)
+        => PmdgSpeedBrakeLever.PositionIndex(Detents, value, SettleTolerance) >= 0;
+
     /// <summary>The combo's ValueDescriptions: each detent's value to its label.</summary>
     public static Dictionary<double, string> ComboDescriptions()
         => PmdgSpeedBrakeLever.ComboDescriptions(Detents);
