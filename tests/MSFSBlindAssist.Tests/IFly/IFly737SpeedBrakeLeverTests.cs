@@ -75,6 +75,7 @@ public class IFly737SpeedBrakeLeverTests
     [InlineData(0, true)]
     [InlineData(22, true)]      // short of ARMED: Down, the position it is at
     [InlineData(34, true)]
+    [InlineData(36, false)]     // a little past ARMED: a partial deployment, not a position
     [InlineData(180, true)]
     [InlineData(224, true)]
     [InlineData(120, false)]    // between detents above ARMED: travelling, or a partial deployment
@@ -132,11 +133,17 @@ public class IFly737SpeedBrakeLeverTests
         Assert.Equal("Speed brake down", callout.Settle(lever, 0, muted: false));
     }
 
-    [Fact]
-    public void Only_the_iFly_ARMED_detent_refuses_the_tolerance_below_it()
+    // ARMED is exact above as well as below: the spoilers deploy in step with the lever from 34
+    // (ground deflection (lever - 34) / 190, measured 2026-09-30), so 35-39 is a little speed brake,
+    // not armed — the 777's lesson (its spoilers are 34 percent up at one step past ARM).
+    [Theory]
+    [InlineData(35, "Speed brake 1 percent")]
+    [InlineData(39, "Speed brake 3 percent")]
+    public void A_lever_a_little_past_ARMED_speaks_its_travel_not_armed(double lever, string expected)
     {
-        Assert.True(IFly737SpeedBrakeLever.Detents[1].NoToleranceBelow);
-        Assert.DoesNotContain(IFly737SpeedBrakeLever.Detents.Where((_, i) => i != 1), d => d.NoToleranceBelow);
+        var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
+        Assert.Equal("Speed brake armed", callout.Settle(34, 0, muted: false));
+        Assert.Equal(expected, callout.Settle(lever, 0, muted: false));
     }
 
     // A pick always lands at once on the iFly (the write reads back exactly, with no travel), so a

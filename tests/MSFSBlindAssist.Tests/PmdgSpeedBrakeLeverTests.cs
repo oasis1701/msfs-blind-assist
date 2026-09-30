@@ -8,9 +8,45 @@ namespace MSFSBlindAssist.Tests;
 public class PmdgSpeedBrakeLeverTests
 {
     [Fact]
+    // Measured 2026-09-30 on L:switch_498_a, the 777 lever's own 0-400 read-back: the combo's
+    // Down / Armed / 50 percent / Up picks land exactly on 0 / 200 / 300 / 400.
     public void The_777_rests_at_the_measured_values_not_the_header_25()
     {
-        Assert.Equal(new double[] { 0, 50, 75, 100 }, PmdgSpeedBrakeLever.B777.Select(d => d.Value));
+        Assert.Equal(new double[] { 0, 200, 300, 400 }, PmdgSpeedBrakeLever.B777.Select(d => d.Value));
+    }
+
+    // The 777 reads the lever from its own L:var, never the SDK's FCTL_Speedbrake_Lever byte: that
+    // byte truncates, so a lever a fraction past ARM (spoilers already 34 percent up, measured
+    // 2026-09-30) still read exactly 50 and was announced "Speed brake armed".
+    [Fact]
+    public void The_777_lever_is_read_from_its_own_L_var_not_the_truncating_SDK_byte()
+    {
+        var v = new PMDG777Definition().GetVariables()["FCTL_Speedbrake"];
+        Assert.Equal("switch_498_a", v.Name);
+        Assert.Equal(MSFSBlindAssist.SimConnect.SimVarType.LVar, v.Type);
+    }
+
+    // Measured 2026-09-30 with hydraulics pressurised: 200 is armed (spoilers 0 percent), and 201,
+    // 202 and 203 all have the spoilers 34 percent up. Nothing past 200 is armed.
+    [Theory]
+    [InlineData(200, "Speed brake armed")]
+    [InlineData(201, "Speed brake 1 percent")]
+    [InlineData(203, "Speed brake 2 percent")]
+    [InlineData(208, "Speed brake 4 percent")]
+    [InlineData(282, "Speed brake 41 percent")]
+    [InlineData(22, "Speed brake down")]      // where a hardware axis parks the lever for Down
+    public void Nothing_past_the_777_ARM_detent_is_armed(double lever, string expected)
+    {
+        var c = New777();
+        c.Settle(lever == 400 ? 0 : 400, 0, muted: false);                   // position at load
+        Assert.Equal(expected, c.Settle(lever, 1000, muted: false));
+    }
+
+    [Fact]
+    public void A_lever_past_ARM_never_speaks_zero_percent()
+    {
+        // (201 - 200) / 200 is half a percent, which banker's rounding makes 0: the spoilers are up.
+        Assert.Equal("Speed brake 1 percent", PmdgSpeedBrakeLever.B777PartialDeployment(201));
     }
 
     [Fact]
@@ -21,13 +57,13 @@ public class PmdgSpeedBrakeLeverTests
 
     [Theory]
     [InlineData(0, 0)]
-    [InlineData(49, 50)]
-    [InlineData(50, 50)]
-    [InlineData(62, 50)]    // nearer ARM than half
-    [InlineData(63, 75)]
-    [InlineData(99, 100)]
-    [InlineData(25, 0)]     // short of ARM: Down (PositionIndex), never the old tie
-    [InlineData(62.5, 50)]  // a tie between two detents above ARM goes to the LOWER one
+    [InlineData(22, 0)]     // a hardware axis's Down
+    [InlineData(200, 200)]
+    [InlineData(248, 200)]  // nearer ARM than half (a lever between detents shows the nearest)
+    [InlineData(252, 300)]
+    [InlineData(396, 400)]
+    [InlineData(100, 0)]    // short of ARM: Down (PositionIndex), never the old tie
+    [InlineData(250, 200)]  // a tie between two detents above ARM goes to the LOWER one
     public void The_777_combo_seeds_with_the_nearest_detent(double lever, double expectedKey)
     {
         Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
@@ -76,9 +112,9 @@ public class PmdgSpeedBrakeLeverTests
     // and nothing was spoken — the one position a blind pilot most needs to hear the truth about
     // before landing. Within the settle tolerance of ARM it still reads Armed.
     [Theory]
-    [InlineData(30, 0)]
-    [InlineData(47, 0)]
-    [InlineData(48, 50)]     // within B777SettleTolerance of ARM
+    [InlineData(120, 0)]
+    [InlineData(199, 0)]     // short of ARM is not armed, however close
+    [InlineData(200, 200)]
     public void A_777_lever_short_of_ARM_reads_down(double lever, double expectedKey)
     {
         Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
@@ -86,10 +122,11 @@ public class PmdgSpeedBrakeLeverTests
     }
 
     [Theory]
-    [InlineData(30, 0)]
-    [InlineData(47, 0)]
-    [InlineData(49, 1)]
-    [InlineData(60, -1)]     // above ARM, between detents: still "between" (the percentage speaks)
+    [InlineData(120, 0)]
+    [InlineData(199, 0)]
+    [InlineData(200, 1)]
+    [InlineData(201, -1)]    // past ARM: between detents (the percentage speaks)
+    [InlineData(240, -1)]
     public void The_777s_resting_position_treats_short_of_ARM_as_down(double lever, int expectedIndex)
     {
         Assert.Equal(expectedIndex, PmdgSpeedBrakeLever.PositionIndex(
@@ -100,8 +137,9 @@ public class PmdgSpeedBrakeLeverTests
     public void A_777_lever_that_leaves_ARM_and_rests_short_of_it_says_down()
     {
         var callout = New777();
-        Assert.Equal("Speed brake armed", callout.Settle(50, 0, muted: false));
-        Assert.Equal("Speed brake down", callout.Settle(30, 0, muted: false));
+        Assert.Null(callout.Settle(0, 0, muted: false));                   // position at load
+        Assert.Equal("Speed brake armed", callout.Settle(200, 0, muted: false));
+        Assert.Equal("Speed brake down", callout.Settle(22, 0, muted: false));
         Assert.Null(callout.Settle(0, 0, muted: false));   // the same position: no repeat
     }
 
@@ -140,7 +178,7 @@ public class PmdgSpeedBrakeLeverTests
 
     private static PmdgSpeedBrakeCallout New777() => new(
         PmdgSpeedBrakeLever.B777, PmdgSpeedBrakeLever.B777SettleTolerance, PmdgSpeedBrakeLever.B777SettleMs,
-        "PMDG_777", "FCTL_Speedbrake", speakFirst: true, betweenDetents: PmdgSpeedBrakeLever.B777PartialDeployment);
+        "PMDG_777", "FCTL_Speedbrake", speakFirst: false, betweenDetents: PmdgSpeedBrakeLever.B777PartialDeployment);
 
     [Fact]
     public void The_737_records_its_first_settle_silently_then_speaks_changes_once()
@@ -153,22 +191,27 @@ public class PmdgSpeedBrakeLeverTests
     }
 
     [Fact]
-    public void The_777_speaks_its_first_sample_and_reads_the_table()
+    // The lever now rides the 1 Hz L-var batch like the 737's, whose first sample is the lever's
+    // position at load, not a change.
+    public void The_777_records_its_first_settle_silently_then_reads_the_table()
     {
         var c = New777();
-        Assert.Equal("Speed brake armed", c.Settle(50, 0, muted: false));
-        Assert.Equal("Speed brake 50 percent", c.Settle(75, 1000, muted: false));
-        Assert.Equal("Speed brake 100 percent", c.Settle(100, 2000, muted: false));
-        Assert.Equal("Speed brake down", c.Settle(0, 3000, muted: false));
+        Assert.Null(c.Settle(0, 0, muted: false));                            // position at load
+        Assert.Equal("Speed brake armed", c.Settle(200, 1000, muted: false));
+        Assert.Equal("Speed brake 50 percent", c.Settle(300, 2000, muted: false));
+        Assert.Equal("Speed brake 100 percent", c.Settle(400, 3000, muted: false));
+        Assert.Equal("Speed brake down", c.Settle(0, 4000, muted: false));
     }
 
     [Theory]
-    [InlineData(60, "Speed brake 20 percent")]
-    [InlineData(90, "Speed brake 80 percent")]
-    [InlineData(30, "Speed brake down")]   // short of ARMED is not armed: Down (PositionIndex)
+    [InlineData(240, "Speed brake 20 percent")]
+    [InlineData(360, "Speed brake 80 percent")]
+    [InlineData(120, "Speed brake down")]   // short of ARMED is not armed: Down (PositionIndex)
     public void The_777_reads_a_lever_resting_between_detents(double lever, string? expected)
     {
-        Assert.Equal(expected, New777().Settle(lever, 0, muted: false));
+        var c = New777();
+        c.Settle(200, 0, muted: false);                                      // position at load
+        Assert.Equal(expected, c.Settle(lever, 1000, muted: false));
     }
 
     // The 737's L-var rides a 1 Hz batch and settles after 300 ms, so a travelling lever SETTLES
@@ -186,19 +229,18 @@ public class PmdgSpeedBrakeLeverTests
         Assert.Null(c.Settle(100, t, muted: false));         // arrival: the pilot's own pick
     }
 
-    // The 777's CDA initial snapshot never reaches the announcer, so after a flight load or a
-    // reconnect the lever can have moved in silence. Carried over, the last sentence swallowed the
-    // first genuine settle at that detent as a repeat — the iFly's fix, which the 777 lacked.
+    // The 777 lever is an L-var now, like the 737's: a flight load re-delivers only CHANGED
+    // L-vars, so a reset would make the first real move after it a silent baseline. The context
+    // reset leaves the callout alone, as the 737's does.
     [Fact]
-    public void A_777_context_reset_forgets_the_last_sentence()
+    public void A_777_context_reset_does_not_swallow_the_next_move()
     {
         var def = new PMDG777Definition();
-        Assert.Equal("Speed brake armed", def.SpeedBrakeCallout.Settle(50, 0, muted: false));
-        Assert.Null(def.SpeedBrakeCallout.Settle(50, 0, muted: false));
+        Assert.Null(def.SpeedBrakeCallout.Settle(0, 0, muted: false));        // position at load
 
         def.OnSimContextReset();
 
-        Assert.Equal("Speed brake armed", def.SpeedBrakeCallout.Settle(50, 0, muted: false));
+        Assert.Equal("Speed brake armed", def.SpeedBrakeCallout.Settle(200, 1000, muted: false));
     }
 
     [Fact]
@@ -207,8 +249,8 @@ public class PmdgSpeedBrakeLeverTests
         var c = New777();
         c.Settle(0, 0, muted: false);
         c.RecordPick(3);
-        Assert.Null(c.Settle(100, Environment.TickCount64, muted: false));    // arrived where picked
-        Assert.Equal("Speed brake armed", c.Settle(50, Environment.TickCount64, muted: false));
+        Assert.Null(c.Settle(400, Environment.TickCount64, muted: false));    // arrived where picked
+        Assert.Equal("Speed brake armed", c.Settle(200, Environment.TickCount64, muted: false));
     }
 
     [Fact]
@@ -217,9 +259,9 @@ public class PmdgSpeedBrakeLeverTests
         var c = New777();
         c.Settle(0, 0, muted: false);
         c.RecordPick(3);
-        Assert.Equal("Speed brake armed", c.Settle(50, Environment.TickCount64, muted: false));
+        Assert.Equal("Speed brake armed", c.Settle(200, Environment.TickCount64, muted: false));
         // The pick was answered: a later arrival at UP is someone else's move.
-        Assert.Equal("Speed brake 100 percent", c.Settle(100, Environment.TickCount64, muted: false));
+        Assert.Equal("Speed brake 100 percent", c.Settle(400, Environment.TickCount64, muted: false));
     }
 
     // The 737 answers a pick only at a detent: the ARM arrival still clears the ARM pick but keeps the
@@ -270,9 +312,10 @@ public class PmdgSpeedBrakeLeverTests
     public void A_muted_lever_is_recorded_but_not_spoken()
     {
         var c = New777();
-        Assert.Null(c.Settle(50, 0, muted: true));
+        c.Settle(400, 0, muted: false);                                      // position at load
+        Assert.Null(c.Settle(200, 500, muted: true));
         // Unmuted at the same position: nothing stale is spoken.
-        Assert.Null(c.Settle(50, 1000, muted: false));
+        Assert.Null(c.Settle(200, 1000, muted: false));
         Assert.Equal("Speed brake down", c.Settle(0, 2000, muted: false));
     }
 }

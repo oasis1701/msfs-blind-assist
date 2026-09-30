@@ -37,14 +37,15 @@ public static class IFly737SpeedBrakeLever
     public static readonly IReadOnlyList<PmdgLeverDetent> Detents = new PmdgLeverDetent[]
     {
         new(0,   "Down",           Command, "Speed brake down"),
-        // The ARMED light is off at 33 and on at 34 (measured 2026-09-30, tools/IFlySdkProbe), so
-        // nothing short of 34 is armed: the settle tolerance applies above this detent only.
-        new(34,  "Armed",          Command, "Speed brake armed", NoToleranceBelow: true),
+        // Exact. The ARMED light is off at 33 and on at 34 (measured 2026-09-30, tools/IFlySdkProbe),
+        // so nothing short of 34 is armed; and the spoilers deploy in step with the lever from 34
+        // ((lever - 34) / 190), so nothing past it is either — it is a little speed brake.
+        new(34,  "Armed",          Command, "Speed brake armed", Tolerance: 0.25),
         new(180, "Flight detent",  Command, "Speed brake flight"),
         new(224, "Fully deployed", Command, "Speed brake fully deployed"),
     };
 
-    /// <summary>A lever within this distance of a detent is resting there (above ARMED only — see its
+    /// <summary>A lever within this distance of a detent is resting there (ARMED is exact — see its
     /// row). A pick or a stock event lands exactly on the value.</summary>
     public const double SettleTolerance = 5.0;
 

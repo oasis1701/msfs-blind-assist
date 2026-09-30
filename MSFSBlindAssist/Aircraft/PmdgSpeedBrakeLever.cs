@@ -5,12 +5,11 @@ namespace MSFSBlindAssist.Aircraft;
 /// <summary>One detent of a PMDG speed-brake lever: where the lever's read-back RESTS there, the
 /// Control Stand combo's label for it, the SDK click event that moves the lever there, and the
 /// sentence the settle announcer (<see cref="PmdgSpeedBrakeCallout"/>) speaks when the lever comes
-/// to rest there. <paramref name="NoToleranceBelow"/> makes the settle tolerance one-sided: the lever
-/// counts as resting at this detent only at or above <paramref name="Value"/>, never short of it —
-/// for a detent whose state the aircraft itself switches exactly at that value (the iFly's ARMED
-/// light, measured off at 33 and on at 34).</summary>
+/// to rest there. <paramref name="Tolerance"/>, when set, replaces the table's settle tolerance for
+/// this one detent: ARM is exact on the 777 (at 201 its spoilers are already 34 percent up) and on the
+/// iFly (its ARMED light comes on at 34, and its spoilers deploy in step with the lever from there).</summary>
 public sealed record PmdgLeverDetent(double Value, string Label, string EventName, string? Spoken = null,
-    bool NoToleranceBelow = false);
+    double? Tolerance = null);
 
 /// <summary>
 /// The PMDG 737 NG3 and 777 speed-brake levers, as ONE table per aircraft. Everything that reads or
@@ -27,10 +26,14 @@ public sealed record PmdgLeverDetent(double Value, string Label, string EventNam
 /// <list type="bullet">
 /// <item>737: <c>L:switch_679_73X</c> — 0 / 100 / 250 / 337 / 400, verified against the MSFS NG3.
 /// The NG3 SDK has no lever field. TFM's 272 for the flight detent was a P3D value.</item>
-/// <item>777: <c>FCTL_Speedbrake_Lever</c> — 0 / 50 / 75 / 100, re-measured 2026-09-27 (MSFS 2024,
-/// in cruise, lever moved through every stop), exact integers at each.
-/// PMDG_777X_SDK.h's "25: ARMED" is WRONG; the lever rests at 50 armed. The 777 SDK has no
-/// flight-detent click event, so it has four detents where the 737 has five.</item>
+/// <item>777: <c>L:switch_498_a</c> — 0 / 200 / 300 / 400, measured 2026-09-30 (MSFS 2024): the
+/// combo's Down / Armed / 50 percent / Up picks land exactly there. It is 4 x the SDK's
+/// <c>FCTL_Speedbrake_Lever</c> byte (0 / 50 / 75 / 100), which TRUNCATES: a lever at 201-203 has
+/// the spoilers 34 percent up (hydraulics pressurised) yet the byte still reads exactly 50, so it
+/// cannot tell armed from extended. ARM is therefore exact (<see cref="PmdgLeverDetent.Tolerance"/>).
+/// A hardware axis parks the lever at 22 for Down; the lever never rests between Down and ARM.
+/// PMDG_777X_SDK.h's "25: ARMED" is WRONG. The 777 SDK has no flight-detent click event, so it has
+/// four detents where the 737 has five.</item>
 /// </list>
 /// Both read-backs sweep through every value in between while the lever animates.
 /// </summary>
@@ -56,18 +59,19 @@ public static class PmdgSpeedBrakeLever
     public static readonly IReadOnlyList<PmdgLeverDetent> B777 = new PmdgLeverDetent[]
     {
         new(0,   "Down",       "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", "Speed brake down"),
-        new(50,  "Armed",      "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM",  "Speed brake armed"),
-        new(75,  "50 percent", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_50",   "Speed brake 50 percent"),
-        new(100, "Up (full)",  "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_UP",   "Speed brake 100 percent"),
+        // Exact: at 201 the spoilers are already 34 percent up (measured 2026-09-30).
+        new(200, "Armed",      "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM",  "Speed brake armed", Tolerance: 0.25),
+        new(300, "50 percent", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_50",   "Speed brake 50 percent"),
+        new(400, "Up (full)",  "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_UP",   "Speed brake 100 percent"),
     };
 
-    /// <summary>The 777's rest values are exact integers; this only absorbs a CDA byte caught one
-    /// step off.</summary>
-    public const double B777SettleTolerance = 2.0;
+    /// <summary>The 777's picks land exactly on their rest values; this absorbs a hardware axis resting
+    /// a little off the 50-percent or Up detent. ARM carries its own exact tolerance.</summary>
+    public const double B777SettleTolerance = 8.0;
 
-    /// <summary>The 777 settle delay. The CDA is POLLED once a second
-    /// (PMDG777DataManager._pollTimer) and a field fires only when it changes, so the trailing
-    /// edge must outlast one poll or a lever still travelling would be announced mid-sweep.</summary>
+    /// <summary>The 777 settle delay. Its lever L-var rides the 1 Hz continuous batch and the lever
+    /// takes about ten seconds end to end, so a travelling lever produces a sample every second: the
+    /// trailing edge must outlast one batch or it would be announced mid-sweep.</summary>
     public const int B777SettleMs = 1500;
 
     /// <summary>
@@ -87,7 +91,8 @@ public static class PmdgSpeedBrakeLever
     {
         double armed = detents[1].Value, up = detents[^1].Value;
         if (value <= armed || value > up) return null;
-        int pct = (int)Math.Round((value - armed) / (up - armed) * 100);
+        // Never "0 percent" past ARM: on the 777 the spoilers are 34 percent up a hair past it.
+        int pct = Math.Max(1, (int)Math.Round((value - armed) / (up - armed) * 100));
         return $"Speed brake {pct} percent";
     }
 
@@ -144,7 +149,7 @@ public static class PmdgSpeedBrakeLever
         {
             var d = detents[i];
             double off = value - d.Value;
-            if (d.NoToleranceBelow ? off >= 0 && off <= tolerance : Math.Abs(off) <= tolerance) return i;
+            if (Math.Abs(off) <= (d.Tolerance ?? tolerance)) return i;
         }
         return -1;
     }
@@ -211,8 +216,8 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     /// <param name="aircraftCode">The owning definition's <c>AircraftCode</c>, which picks its
     /// Ctrl+M list in <see cref="Services.DefAnnounceMuteSets"/>.</param>
     /// <param name="speakFirst">False where the first sample is the value at load rather than a
-    /// change (the 737's L-var batch); true where the initial snapshot never reaches the announcer
-    /// (the 777's CDA and the iFly's SDK).</param>
+    /// change (the 737's and 777's L-var batch); true where the initial snapshot never reaches the
+    /// announcer (the iFly's SDK).</param>
     /// <param name="picksLandAtOnce">True where a pick's write reads back exactly and at once, with no
     /// travel (the iFly): then ANY settle answers a pending pick, because a lever resting anywhere but
     /// the picked detent has gone somewhere else. False where a settle can fall mid-travel (the 737's

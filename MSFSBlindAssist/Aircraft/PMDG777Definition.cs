@@ -3777,15 +3777,17 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // PEDESTAL — CONTROL STAND
             // =================================================================
             // Speed-brake lever: announced in ProcessSimVarUpdate AND the Control
-            // Stand lever COMBO, one key for both. FCTL_Speedbrake_Lever is a
-            // 0-100 lever POSITION that sweeps between detents while the lever
-            // moves; it rests at DOWN 0 / ARM 50 / half 75 / UP 100 — re-measured
-            // live 2026-09-27, NOT PMDG_777X_SDK.h's "25: ARMED". The combo keys
-            // are those rest values and the classifier seeds it with the NEAREST
-            // detent (PmdgSpeedBrakeLever.B777). One key matters: it is what
-            // MainForm's UI-echo suppression is keyed on, so a pick is not spoken
-            // a second time as the lever travels; and a second key on this field
-            // would evict this one from the one-field-one-key _pmdgFieldToKeyMap.
+            // Stand lever COMBO, one key for both. Read from the lever's own
+            // L-var switch_498_a (0-400: DOWN 0 / ARM 200 / half 300 / UP 400,
+            // measured 2026-09-30), NOT the SDK's FCTL_Speedbrake_Lever byte:
+            // that byte is a quarter of it TRUNCATED, so a lever a fraction past
+            // ARM — spoilers already 34 percent up — still read exactly 50 and
+            // was announced "Speed brake armed". The L-var sweeps between
+            // detents while the lever moves, like the 737's switch_679_73X. The
+            // combo keys are the rest values and the classifier seeds it with
+            // the NEAREST detent (PmdgSpeedBrakeLever.B777). One key matters: it
+            // is what MainForm's UI-echo suppression is keyed on, so a pick is
+            // not spoken a second time as the lever travels.
             // A pick is dispatched to the per-detent click events in
             // HandleUIVariableSet; the 777 has no flight-detent click (only
             // DOWN/ARM/50/UP), so four positions where the 737 has five.
@@ -3795,9 +3797,9 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
             // only. It re-reads the field whenever the panel is rebuilt.
             ["FCTL_Speedbrake"] = new SimConnect.SimVarDefinition
             {
-                Name = "FCTL_Speedbrake_Lever",
+                Name = "switch_498_a",
                 DisplayName = "Speed Brake",
-                Type = SimConnect.SimVarType.PMDGVar,
+                Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = PmdgSpeedBrakeLever.ComboDescriptions(PmdgSpeedBrakeLever.B777),
@@ -5496,33 +5498,22 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     private DateTime _cockpitDoorSetEcho = DateTime.MinValue;
 
     // Speed-brake lever callout — the settle announcer shared with the 737
-    // (PmdgSpeedBrakeLever.cs). FCTL_Speedbrake_Lever sweeps through every value
-    // while the lever moves and the CDA is polled once a second, so each sample
-    // restarts a timer that outlasts one poll and only the resting position is
-    // spoken. It reads the one detent table, honours the Ctrl+M mute itself (its
-    // timer speaks outside MainForm's suppression wrap) and silences the arrival
-    // of the pilot's own combo pick. The CDA's initial snapshot never reaches
-    // ProcessSimVarUpdate, so the first sample it does see is a real change.
+    // (PmdgSpeedBrakeLever.cs). The lever's L-var sweeps through every value
+    // while the lever moves (slowly: ~10 s end to end) and rides the 1 Hz
+    // continuous batch, so each sample restarts a timer that outlasts one batch
+    // and only the resting position is spoken. It reads the one detent table,
+    // honours the Ctrl+M mute itself (its timer speaks outside MainForm's
+    // suppression wrap) and silences the arrival of the pilot's own combo pick.
+    // As on the 737, the first sample is the lever's position at load, recorded
+    // silently, and there is NO reset on a context reset: a load re-delivers only
+    // CHANGED L-vars, so a reset would make the first real move a silent baseline.
     private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
         PmdgSpeedBrakeLever.B777, PmdgSpeedBrakeLever.B777SettleTolerance, PmdgSpeedBrakeLever.B777SettleMs,
-        aircraftCode: "PMDG_777", muteKey: "FCTL_Speedbrake", speakFirst: true,
+        aircraftCode: "PMDG_777", muteKey: "FCTL_Speedbrake", speakFirst: false,
         betweenDetents: PmdgSpeedBrakeLever.B777PartialDeployment);
 
-    /// <summary>The speed-brake lever's settle announcer, for the tests that pin its resets.</summary>
+    /// <summary>The speed-brake lever's settle announcer, for the tests that pin its behaviour.</summary>
     internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
-
-    /// <summary>
-    /// A flight load or SimConnect drop. The speed-brake callout forgets its last sentence: the CDA's
-    /// initial snapshot never reaches it, so the lever can have moved in silence, and a carried-over
-    /// sentence would swallow the first genuine settle at that detent as a repeat (the iFly's reset,
-    /// the same shared callout). Not on the 737: its first sample is a silent baseline and a load
-    /// re-delivers only CHANGED L-vars, so a reset there would swallow the first real move instead.
-    /// </summary>
-    public override void OnSimContextReset()
-    {
-        base.OnSimContextReset();
-        _speedBrakeCallout.Reset();
-    }
 
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
