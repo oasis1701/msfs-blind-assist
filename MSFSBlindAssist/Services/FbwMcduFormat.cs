@@ -26,6 +26,8 @@ public static class FbwMcduFormat
     // Size/align tags affect styling only; we drop them but still consume the {tag}.
     private static readonly HashSet<string> DropTags = new() { "small", "big", "left", "right" };
 
+    private const char NoBreakSpace = '\u00A0';
+
     private static bool IsKnownTag(string tag)
         => tag == "sp" || tag == "end" || ColorTags.Contains(tag) || DropTags.Contains(tag);
 
@@ -80,7 +82,9 @@ public static class FbwMcduFormat
                 i++;
                 continue;
             }
-            text.Append(ch);
+            // FBW pads cells and draws its entry boxes ("[\xa0\xa0]") with U+00A0. It is a blank
+            // like {sp}, so it becomes one here and nothing downstream has to know it exists.
+            text.Append(ch == NoBreakSpace ? ' ' : ch);
             i++;
         }
         if (text.Length > 0) { segments.Add(new Segment(color, text.ToString())); }
@@ -119,14 +123,17 @@ public static class FbwMcduFormat
     /// right, centred centre. Cells keep their own {sp} padding — FBW pads cells to
     /// column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
     /// trimming the padding and re-centring used to run the time into the speed
-    /// ("2053.78"). Blanks never overwrite, so overlapping padding can't erase a
-    /// neighbouring cell's text — and FBW pads with U+00A0 as well as ' ', so both are
-    /// blank and both come out as ' '. Trailing whitespace of the finished line is trimmed.
+    /// ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
+    /// neighbouring cell's text. The text here is not decoded (the DCDU's), so a U+00A0 is
+    /// made a plain space first, as <see cref="ParseSegments"/> does for decoded cells.
+    /// Trailing whitespace of the finished line is trimmed.
     /// A '*' in the text is an ordinary column (the DCDU's key stars are real content).
     /// </summary>
     public static string PositionLine(string left, string center, string right, int width = 24)
-        => PositionLine(new MarkedText(left ?? "", null), new MarkedText(center ?? "", null),
-                        new MarkedText(right ?? "", null), width);
+        => PositionLine(Undecoded(left), Undecoded(center), Undecoded(right), width);
+
+    private static MarkedText Undecoded(string? text)
+        => new((text ?? "").Replace(NoBreakSpace, ' '), null);
 
     /// <summary>
     /// <see cref="PositionLine(string, string, string, int)"/> for decoded cells. The columns
@@ -136,7 +143,8 @@ public static class FbwMcduFormat
     /// an inserted '*' is paid back by the next gap with a blank to spare. So everything after
     /// a gap stays in its FBW column — the right-hand values line up down the page, which a
     /// braille display depends on — and the line is wider than <paramref name="width"/> only
-    /// when no gap can pay.
+    /// when no gap can pay. The blanks inside an entry box ("[  ]", which FBW draws from the
+    /// same U+00A0 it pads with) are the width of the field, never a gap to pay from.
     /// </summary>
     private static string PositionLine(MarkedText left, MarkedText center, MarkedText right, int width = 24)
     {
@@ -150,27 +158,29 @@ public static class FbwMcduFormat
 
         var sb = new StringBuilder(width + 4);
         int owed = 0;          // inserted stars not yet paid back by a gap
-        bool starWritten = false;
         for (int i = 0; i < width;)
         {
             if (buf[i] != ' ')
             {
-                if (marked[i] && !starWritten) { sb.Append('*'); owed++; }
+                // A value that follows a gap had its '*' written by the gap.
+                if (marked[i] && (i == 0 || buf[i - 1] != ' ')) { sb.Append('*'); owed++; }
                 sb.Append(buf[i]);
-                starWritten = false;
                 i++;
                 continue;
             }
             int end = i;
             while (end < width && buf[end] == ' ') { end++; }
             if (end == width) { break; }
-            int spare = end - i - (i == 0 ? 0 : 1);
-            int star = marked[end] && spare > 0 ? 1 : 0;
-            int repay = Math.Min(owed, spare - star);
+            // Blanks the gap can give up: all of a leading gap, all but one after text, and none
+            // inside an entry box ("[  ]"), whose blanks are the width of the field.
+            bool box = i > 0 && buf[i - 1] == '[' && buf[end] == ']';
+            int spare = box ? 0 : end - i - (i == 0 ? 0 : 1);
+            int taken = marked[end] && spare > 0 ? 1 : 0;   // the '*' takes a blank
+            if (marked[end] && taken == 0) { owed++; }      // or is inserted
+            int repay = Math.Min(owed, spare - taken);
             owed -= repay;
-            sb.Append(' ', end - i - star - repay);
-            if (star == 1) { sb.Append('*'); }
-            starWritten = star == 1;
+            sb.Append(' ', end - i - taken - repay);
+            if (marked[end]) { sb.Append('*'); }
             i = end;
         }
         return sb.ToString().TrimEnd();
@@ -180,7 +190,7 @@ public static class FbwMcduFormat
             for (int j = 0; j < cell.Text.Length; j++)
             {
                 int p = start + j;
-                if (!IsBlank(cell.Text[j]) && p >= 0 && p < width)
+                if (cell.Text[j] != ' ' && p >= 0 && p < width)
                 {
                     buf[p] = cell.Text[j];
                     bool mark = cell.IsMarked(j);
@@ -190,8 +200,6 @@ public static class FbwMcduFormat
             }
         }
     }
-
-    private static bool IsBlank(char ch) => ch == ' ' || ch == ' ';
 
     public static string DecodeCell(string? cell) => DecodeCellMarked(cell).WithStars();
 

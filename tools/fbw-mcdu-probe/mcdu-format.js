@@ -18,6 +18,8 @@ var ANNUNCIATOR_LABELS = {
   fm1: 'FM1', fm2: 'FM2', ind: 'IND', rdy: 'RDY',
 };
 
+var NO_BREAK_SPACE = '\u00a0';
+
 function parseSegments(cell) {
   var segments = [];
   var color = 'white';
@@ -56,7 +58,9 @@ function parseSegments(cell) {
       i++;
       continue;
     }
-    text += ch;
+    // FBW pads cells and draws its entry boxes ("[\xa0\xa0]") with U+00A0. It is a blank
+    // like {sp}, so it becomes one here and nothing downstream has to know it exists.
+    text += ch === NO_BREAK_SPACE ? ' ' : ch;
     i++;
   }
   if (text.length > 0) { segments.push({ color: color, text: text }); }
@@ -80,13 +84,17 @@ function withStars(m) {
 // right, centred centre. Cells keep their own {sp} padding — FBW pads cells to
 // column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
 // trimming the padding and re-centring used to run the time into the speed
-// ("2053.78"). Blanks never overwrite, so overlapping padding can't erase a
-// neighbouring cell's text — and FBW pads with U+00A0 as well as ' ', so both are
-// blank and both come out as ' '. Trailing whitespace of the finished line is trimmed.
+// ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
+// neighbouring cell's text. The text here is not decoded (the DCDU's), so a U+00A0 is
+// made a plain space first, as parseSegments does for decoded cells.
+// Trailing whitespace of the finished line is trimmed.
 // A '*' in the text is an ordinary column (the DCDU's key stars are real content).
 function positionLine(left, center, right, width) {
-  return positionMarked({ text: left || '', marks: null }, { text: center || '', marks: null },
-    { text: right || '', marks: null }, width);
+  return positionMarked(undecoded(left), undecoded(center), undecoded(right), width);
+}
+
+function undecoded(text) {
+  return { text: (text || '').split(NO_BREAK_SPACE).join(' '), marks: null };
 }
 
 // positionLine for decoded cells. The columns are laid out without the green-selection
@@ -95,7 +103,9 @@ function positionLine(left, center, right, width) {
 // its space), otherwise inserted, and an inserted '*' is paid back by the next gap with a
 // blank to spare. So everything after a gap stays in its FBW column — the right-hand
 // values line up down the page, which a braille display depends on — and the line is
-// wider than `width` only when no gap can pay.
+// wider than `width` only when no gap can pay. The blanks inside an entry box ("[  ]",
+// which FBW draws from the same U+00A0 it pads with) are the width of the field, never a
+// gap to pay from.
 function positionMarked(l, c, r, width) {
   width = width || 24;
   var buf = new Array(width);
@@ -104,7 +114,7 @@ function positionMarked(l, c, r, width) {
   function place(m, start) {
     for (var j = 0; j < m.text.length; j++) {
       var p = start + j;
-      if (!isBlank(m.text[j]) && p >= 0 && p < width) {
+      if (m.text[j] !== ' ' && p >= 0 && p < width) {
         buf[p] = m.text[j];
         var mark = !!(m.marks && m.marks[j]);
         if (mark && !marked) { marked = new Array(width).fill(false); }
@@ -118,33 +128,31 @@ function positionMarked(l, c, r, width) {
   if (!marked) { return buf.join('').replace(/\s+$/, ''); }
   var out = '';
   var owed = 0; // inserted stars not yet paid back by a gap
-  var starWritten = false;
   var k = 0;
   while (k < width) {
     if (buf[k] !== ' ') {
-      if (marked[k] && !starWritten) { out += '*'; owed++; }
+      // A value that follows a gap had its '*' written by the gap.
+      if (marked[k] && (k === 0 || buf[k - 1] !== ' ')) { out += '*'; owed++; }
       out += buf[k];
-      starWritten = false;
       k++;
       continue;
     }
     var end = k;
     while (end < width && buf[end] === ' ') { end++; }
     if (end === width) { break; }
-    var spare = end - k - (k === 0 ? 0 : 1);
-    var star = marked[end] && spare > 0 ? 1 : 0;
-    var repay = Math.min(owed, spare - star);
+    // Blanks the gap can give up: all of a leading gap, all but one after text, and none
+    // inside an entry box ("[  ]"), whose blanks are the width of the field.
+    var box = k > 0 && buf[k - 1] === '[' && buf[end] === ']';
+    var spare = box ? 0 : end - k - (k === 0 ? 0 : 1);
+    var taken = marked[end] && spare > 0 ? 1 : 0; // the '*' takes a blank
+    if (marked[end] && taken === 0) { owed++; } // or is inserted
+    var repay = Math.min(owed, spare - taken);
     owed -= repay;
-    out += ' '.repeat(end - k - star - repay);
-    if (star) { out += '*'; }
-    starWritten = star === 1;
+    out += ' '.repeat(end - k - taken - repay);
+    if (marked[end]) { out += '*'; }
     k = end;
   }
   return out.replace(/\s+$/, '');
-}
-
-function isBlank(ch) {
-  return ch === ' ' || ch === '\u00a0';
 }
 
 function decodeCell(cell) {

@@ -221,3 +221,38 @@ test('the right cell stays in place after an inserted star (PERF TAKE OFF line 2
       '{white}{inop}{small}[M]{end}[\u00a0\u00a0]*{end}{end}'),
     '149    S=*201   [M][  ]*');
 });
+
+// Mirrors of the C# INIT FUEL PRED cases (FbwMcduFormatTests) — the two formatters must agree.
+
+function sp(n) { return '{sp}'.repeat(n); }
+
+test('INIT FUEL PRED block fuel stays on the right edge (line 2)', () => {
+  assert.strictEqual(
+    valueRow('{white}{sp}{small}{green}10.2{end}{end}{small}{green}/{end}{end}'
+      + '{small}{green}0213{end}{end}' + sp(10) + '{cyan}14.0{end}{small}{end}{big}{end}{end}'),
+    '*10.2/0213' + ' '.repeat(10) + '14.0');
+});
+
+test('INIT FUEL PRED extra time stays on the right edge (line 6)', () => {
+  assert.strictEqual(
+    valueRow('{white}{sp}{sp}{small}{cyan}2.9{end}{end}' + sp(11)
+      + '{small}{green}0.0{end}{end}{small}{green}/{end}{end}{small}{green}0000{end}{end}'
+      + '{small}{end}{big}{end}{end}'),
+    '  2.9' + ' '.repeat(10) + '*0.0/0000');
+});
+
+test('an inserted star is paid back so a placeholder still ends at column 24', () => {
+  assert.strictEqual(
+    valueRow('{small}{green}0.8{end}{small}{green}/{end}{small}{green}0022{end}' + sp(11) + '{cyan}---.-{end}'),
+    '*0.8/0022' + ' '.repeat(10) + '---.-');
+});
+
+test('a star is never paid back from inside an entry box', () => {
+  assert.strictEqual(
+    valueRow('{white}S={end}{green}201{end}{white}/[\u00a0\u00a0\u00a0]{end}' + sp(10) + '{cyan}ABC{end}'),
+    'S=*201/[   ]' + ' '.repeat(9) + 'ABC');
+});
+
+test('decodeCell turns a non-breaking space into a plain space', () => {
+  assert.strictEqual(fmt.decodeCell('{white}NOT\u00a0ALLOWED{end}'), 'NOT ALLOWED');
+});

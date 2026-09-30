@@ -274,13 +274,13 @@ public class FbwMcduFormatTests
     [Fact]
     public void PositionLine_non_breaking_padding_never_overwrites_text()
         // FBW pads its cells with U+00A0, not ' '. Padding is blank whichever space it is.
-        => Assert.Equal("ABCDX", FbwMcduFormat.PositionLine("ABCD", "", "  X", 5));
+        => Assert.Equal("ABCDX", FbwMcduFormat.PositionLine("ABCD", "", "\u00A0\u00A0X", 5));
 
     [Fact]
     public void BuildDisplayData_lets_a_star_take_non_breaking_padding()
     {
         // PERF APPR line 5 (VAPP/VLS): the gap before VLS is four U+00A0.
-        var data = SingleValueRow("{white}{cyan}{small}136{end}{end}    {green}131{end}{end}",
+        var data = SingleValueRow("{white}{cyan}{small}136{end}{end}\u00A0\u00A0\u00A0\u00A0{green}131{end}{end}",
                                   right: "{white}{cyan}FULL/{end}{small}CONF3{end}*{end}");
 
         Assert.Equal("136   *131   FULL/CONF3*", data.RawLines[2]);
@@ -325,14 +325,73 @@ public class FbwMcduFormatTests
     {
         // PERF TAKE OFF line 2 (VR, SLT RETR, TO SHIFT): "S=" leaves no free column for the
         // '*' in front of 201, and the gap before TO SHIFT gives one back.
-        var data = SingleValueRow("{white}{cyan}149{end}{small}   {end} S={green}201{end}{end}",
-                                  right: "{white}{inop}{small}[M]{end}[  ]*{end}{end}");
+        var data = SingleValueRow("{white}{cyan}149{end}{small}\u00A0\u00A0\u00A0{end}\u00A0S={green}201{end}{end}",
+                                  right: "{white}{inop}{small}[M]{end}[\u00A0\u00A0]*{end}{end}");
 
         Assert.Equal("149    S=*201   [M][  ]*", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_never_pays_a_star_back_from_inside_an_entry_box()
+    {
+        // FBW draws an entry box from the same U+00A0 it pads with ("[\xa0\xa0\xa0]", PERF TAKE
+        // OFF FLAPS/THS "/[\xa0\xa0\xa0]", the ATC pages' "[\xa0\xa0]"). Its blanks are the box's
+        // width, not a gap: the '*' inserted after "S=" is paid back by the padding after the box,
+        // and the box keeps all three columns.
+        var data = SingleValueRow("{white}S={end}{green}201{end}{white}/[\u00A0\u00A0\u00A0]{end}"
+                                + Sp(10) + "{cyan}ABC{end}");
+
+        Assert.Equal("S=*201/[   ]" + new string(' ', 9) + "ABC", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void DecodeCell_turns_a_non_breaking_space_into_a_plain_space()
+        // The scratchpad, title and page go through DecodeCell alone, never PositionLine.
+        => Assert.Equal("NOT ALLOWED", FbwMcduFormat.DecodeCell("{white}NOT\u00A0ALLOWED{end}"));
+
+    [Fact]
+    public void BuildDisplayData_cell_values_use_plain_spaces()
+    {
+        var data = SingleValueRow("{cyan}[\u00A0\u00A0]{end}", right: "{cyan}[\u00A0]{end}");
+
+        Assert.Equal("[  ]", data.Lines[0].LeftValue);
+        Assert.Equal("[ ]", data.Lines[0].RightValue);
     }
 
     [Fact]
     public void PositionLine_leaves_a_literal_asterisk_as_an_ordinary_column()
         // Callers outside BuildDisplayData (the DCDU) pass text in which '*' is real content.
         => Assert.Equal("INSERT*   X", FbwMcduFormat.PositionLine("INSERT*", "", "X", 11));
+
+    // --- Source hygiene ------------------------------------------------------------------
+
+    [Theory]
+    [InlineData("MSFSBlindAssist/Services/FbwMcduFormat.cs")]
+    [InlineData("tests/MSFSBlindAssist.Tests/FbwMcduFormatTests.cs")]
+    [InlineData("tools/fbw-mcdu-probe/mcdu-format.js")]
+    [InlineData("tools/fbw-mcdu-probe/mcdu-format.test.js")]
+    public void Source_spells_the_no_break_space_as_an_escape(string relativePath)
+    {
+        // A literal U+00A0 looks exactly like a space: "ch == ' ' || ch == ' '" reads as a
+        // duplicate compare that a tidy-up deletes, and an editor that normalises it turns the
+        // tests that use it into tests of an ordinary space. Both happen with no compile error.
+        const char noBreakSpace = (char)0xA0;
+        string path = Path.Combine(RepoRoot(), relativePath.Replace('/', Path.DirectorySeparatorChar));
+        string[] lines = File.ReadAllLines(path);
+        var offending = new List<int>();
+        for (int n = 0; n < lines.Length; n++)
+        {
+            if (lines[n].IndexOf(noBreakSpace) >= 0) { offending.Add(n + 1); }
+        }
+
+        Assert.True(offending.Count == 0,
+            $"{relativePath} has a literal U+00A0 on line(s) {string.Join(", ", offending)}; write it as an escape.");
+    }
+
+    private static string RepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
+        throw new InvalidOperationException($"MSFSBlindAssist.sln was not found above {AppContext.BaseDirectory}");
+    }
 }
