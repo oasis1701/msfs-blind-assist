@@ -59,18 +59,54 @@ public class IFly737SpeedBrakeLeverTests
     [Fact]
     public void The_settle_announcer_speaks_only_a_resting_detent_and_not_the_pilots_own_pick()
     {
-        var callout = new PmdgSpeedBrakeCallout(IFly737SpeedBrakeLever.CalloutDetents,
-            IFly737SpeedBrakeLever.SettleTolerance, IFly737SpeedBrakeLever.SettleMs,
-            muteKey: IFly737SpeedBrakeLever.FieldName, speakFirst: true,
-            muteSet: s => s.IFlyDisabledMonitorVariablesSet);
+        var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
 
         Assert.Equal("Speed brake armed", callout.Settle(34, 0, muted: false));
-        Assert.Null(callout.Settle(100, 100, muted: false));            // between detents: nothing
 
         callout.RecordPick(IFly737SpeedBrakeLever.IndexOfComboValue(224));
         Assert.Null(callout.Settle(224, Environment.TickCount64, muted: false));
 
         Assert.Equal("Speed brake down", callout.Settle(0, Environment.TickCount64, muted: false));
         Assert.Null(callout.Settle(180, Environment.TickCount64, muted: true));
+    }
+
+    [Theory]
+    [InlineData(100, "Speed brake 35 percent")]   // (100 - 34) / 190 of the ARMED→UP travel
+    [InlineData(120, "Speed brake 45 percent")]
+    [InlineData(20, null)]                          // below ARMED: nothing, as on both PMDG jets
+    public void A_lever_resting_between_detents_speaks_its_travel_above_armed(double lever, string? expected)
+    {
+        var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
+        Assert.Equal(expected, callout.Settle(lever, 0, muted: false));
+    }
+
+    [Fact]
+    public void The_mute_is_read_from_the_iFly_Ctrl_M_list_not_the_PMDG_one()
+    {
+        var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
+
+        var ifly = new Settings.UserSettings();
+        ifly.IFlyDisabledMonitorVariables.Add(IFly737SpeedBrakeLever.FieldName);
+        ifly.RebuildDisabledMonitorVariableCaches();
+        Assert.True(callout.IsMuted(ifly));
+
+        var pmdg = new Settings.UserSettings();
+        pmdg.PMDGDisabledMonitorVariables.Add(IFly737SpeedBrakeLever.FieldName);
+        pmdg.RebuildDisabledMonitorVariableCaches();
+        Assert.False(callout.IsMuted(pmdg));
+    }
+
+    [Fact]
+    public void A_context_reset_forgets_the_last_sentence_so_the_same_detent_speaks_again()
+    {
+        // A flight load or SimConnect drop: carried over, the last sentence would swallow the
+        // first genuine settle at that detent as a repeat.
+        var def = new IFly737MAXDefinition();
+        Assert.Equal("Speed brake armed", def.SpeedBrakeCallout.Settle(34, 0, muted: false));
+        Assert.Null(def.SpeedBrakeCallout.Settle(34, 0, muted: false));
+
+        def.OnSimContextReset();
+
+        Assert.Equal("Speed brake armed", def.SpeedBrakeCallout.Settle(34, 0, muted: false));
     }
 }

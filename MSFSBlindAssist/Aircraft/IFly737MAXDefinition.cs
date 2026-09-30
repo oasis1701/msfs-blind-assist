@@ -67,6 +67,9 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         _progPollTimer?.Stop();
         _progPollTimer?.Dispose();
         _progPollTimer = null;
+        // Speed-brake settle timer: a lever moved just before the swap must not be
+        // announced over the next aircraft.
+        _speedBrakeCallout.Dispose();
         Sdk.Dispose();
     }
 
@@ -940,6 +943,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 }
             }
             double v2 = w.Map?.Invoke(value) ?? value;
+            // Read BEFORE sending: a lever already resting at the picked detent will not move,
+            // so no sample would ever answer a recorded pick.
+            bool leverAlreadyThere = varKey == IFly737SpeedBrakeLever.FieldName
+                && Sdk.Snapshot is { } leverSnap
+                && ReadRawField(leverSnap, varKey) is { } leverNow
+                && Math.Abs(leverNow - value) <= IFly737SpeedBrakeLever.SettleTolerance;
             if (!Sdk.SendCommand(w.Command, v2, w.Value3))
             {
                 announcer.AnnounceImmediate("iFly plugin not responding.");
@@ -947,8 +956,10 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             }
             // The speed-brake lever's settle timer speaks outside MainForm's UI-echo
             // suppression, so a SENT pick is recorded: the lever arriving at that
-            // detent is then silent (the screen reader already read the pick).
-            if (varKey == IFly737SpeedBrakeLever.FieldName)
+            // detent is then silent (the screen reader already read the pick). Not
+            // recorded when the lever is already there: the pick memory would then sit
+            // armed for PickMemoryMs and swallow a real move back to that detent.
+            if (varKey == IFly737SpeedBrakeLever.FieldName && !leverAlreadyThere)
                 _speedBrakeCallout.RecordPick(IFly737SpeedBrakeLever.IndexOfComboValue(value));
             // Guarded switches whose SET has no working Value3 guard-bypass need the
             // command TWICE: the first send only OPENS the guard, the second moves
@@ -1704,6 +1715,9 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// <summary>The roll callouts' machine, for the tests that pin what a context reset does to it.</summary>
     internal TakeoffVSpeedCallouts TakeoffCallouts => _takeoffCallouts;
 
+    /// <summary>The speed-brake lever's settle announcer, for the tests that pin its wiring.</summary>
+    internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
+
     /// <inheritdoc />
     public override string? TakeoffCalloutFeedKey => TakeoffKeys.IasKey;
     /// <inheritdoc />
@@ -1731,12 +1745,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// already held V-speeds delivered a 280 kt sample while the ground flag still read true, and
     /// the arm from the ramp called "V1, Rotate, V2" at altitude. The speeds are kept, for the
     /// same reason as above. Same fix, same reason and the same shared machine as the MD-11's
-    /// (TFDiMD11Definition.OnSimContextReset); nothing else of this definition's state is touched.
+    /// (TFDiMD11Definition.OnSimContextReset). It also resets the speed-brake callout (below);
+    /// nothing else of this definition's state is touched.
     /// </summary>
     public override void OnSimContextReset()
     {
         base.OnSimContextReset();
         _takeoffCallouts.Reset();
+        // The speed-brake callout's last sentence must not outlive the flight: carried over, the
+        // first genuine settle at that same detent would be swallowed as a repeat.
+        _speedBrakeCallout.Reset();
     }
 
     // Speed-brake lever announcer: the trailing-edge settle timer the PMDG jets use,
@@ -1745,11 +1763,14 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // initial snapshot sweep never reaches ProcessSimVarUpdate, so the first call
     // is always a genuine change. The timer speaks outside MainForm's suppression
     // wrap, so the announcer applies this aircraft's Ctrl+M mute and the pilot's
-    // own combo pick (RecordPick, in HandleUIVariableSet) itself.
+    // own combo pick (RecordPick, in HandleUIVariableSet) itself. A lever resting
+    // between detents above ARMED (a hardware axis) speaks its percentage.
+    // Reset on every context reset (OnSimContextReset) and disposed in Shutdown.
     private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
-        IFly737SpeedBrakeLever.CalloutDetents, IFly737SpeedBrakeLever.SettleTolerance,
-        IFly737SpeedBrakeLever.SettleMs, muteKey: IFly737SpeedBrakeLever.FieldName, speakFirst: true,
-        muteSet: s => s.IFlyDisabledMonitorVariablesSet);
+        IFly737SpeedBrakeLever.Detents, IFly737SpeedBrakeLever.SettleTolerance,
+        IFly737SpeedBrakeLever.SettleMs, aircraftCode: "IFLY_737MAX8",
+        muteKey: IFly737SpeedBrakeLever.FieldName, speakFirst: true,
+        betweenDetents: IFly737SpeedBrakeLever.PartialDeployment);
 
     /// <summary>FLAP_Status / FLTCTRL_FLAP_SET lever detent 0-8 → its label ("up",
     /// "1", "2", "5", "10", "15", "25", "30", "40"). Used by the L hotkey readout

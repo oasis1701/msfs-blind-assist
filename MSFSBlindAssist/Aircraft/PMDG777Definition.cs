@@ -5505,7 +5505,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
     // ProcessSimVarUpdate, so the first sample it does see is a real change.
     private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
         PmdgSpeedBrakeLever.B777, PmdgSpeedBrakeLever.B777SettleTolerance, PmdgSpeedBrakeLever.B777SettleMs,
-        muteKey: "FCTL_Speedbrake", speakFirst: true,
+        aircraftCode: "PMDG_777", muteKey: "FCTL_Speedbrake", speakFirst: true,
         betweenDetents: PmdgSpeedBrakeLever.B777PartialDeployment);
 
     // Track last known radio/squawk values to suppress initial load announcement.

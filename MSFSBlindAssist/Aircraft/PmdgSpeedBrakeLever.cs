@@ -119,17 +119,20 @@ public static class PmdgSpeedBrakeLever
 /// the resting position is spoken, once. The timer speaks OUTSIDE MainForm's announcer.Suppressed
 /// wrap, so this class applies the two suppressions that wrap would have applied itself:
 /// <list type="bullet">
-/// <item>the Ctrl+M mute: the lever's row in the aircraft's disabled-monitor set
-/// (<c>PMDGDisabledMonitorVariablesSet</c> unless the constructor names another) silences it
-/// (the position is still recorded, so unmuting never speaks a stale one);</item>
+/// <item>the Ctrl+M mute: the lever's row in the aircraft's Ctrl+M list, looked up through
+/// <see cref="Services.DefAnnounceMuteSets"/> (the one aircraft→list table MainForm's wrap uses),
+/// silences it (the position is still recorded, so unmuting never speaks a stale one);</item>
 /// <item>the pilot's own pick: <see cref="RecordPick"/>, called after a click is SENT, marks that
 /// detent, and the lever arriving there within <see cref="PickMemoryMs"/> is recorded silently (the
 /// screen reader already read the pick, and MainForm's echo window is used up by the first sample
 /// of a sweep). A lever that stops anywhere else, or reaches the picked detent only after the memory
 /// lapses (a click the aircraft ignored), is announced as usual.</item>
 /// </list>
+/// The timer fires on a pool thread, so the settle decision and the speech are POSTED back to the
+/// UI thread the samples arrive on: the announcer is not safe to call from a pool thread, and
+/// reading <c>Suppressed</c> there raced MainForm toggling it for another variable.
 /// </summary>
-public sealed class PmdgSpeedBrakeCallout
+public sealed class PmdgSpeedBrakeCallout : IDisposable
 {
     /// <summary>How long a pick suppresses its own arrival. Covers the lever's travel plus the
     /// settle delay on either jet.</summary>
@@ -141,33 +144,38 @@ public sealed class PmdgSpeedBrakeCallout
     private readonly string _muteKey;
     private readonly bool _speakFirst;
     private readonly Func<double, string?>? _betweenDetents;
-    private readonly Func<Settings.UserSettings, HashSet<string>> _muteSet;
+    private readonly string _aircraftCode;
     private readonly object _lock = new();
 
     private double _latest = double.NaN;
     private ScreenReaderAnnouncer? _announcer;
+    private SynchronizationContext? _uiContext;
     private System.Threading.Timer? _timer;
     private string? _lastSpoken;
     private bool _hasBaseline;
     private int _pickIndex = -1;
     private long _pickTick;
 
+    /// <param name="aircraftCode">The owning definition's <c>AircraftCode</c>, which picks its
+    /// Ctrl+M list in <see cref="Services.DefAnnounceMuteSets"/>.</param>
     /// <param name="speakFirst">False where the first sample is the value at load rather than a
     /// change (the 737's L-var batch); true where the initial snapshot never reaches the announcer
     /// (the 777's CDA and the iFly's SDK).</param>
-    /// <param name="muteSet">The aircraft's Ctrl+M disabled-monitor set; the PMDG one when null.</param>
     public PmdgSpeedBrakeCallout(IReadOnlyList<PmdgLeverDetent> detents, double tolerance, int settleMs,
-        string muteKey, bool speakFirst, Func<double, string?>? betweenDetents = null,
-        Func<Settings.UserSettings, HashSet<string>>? muteSet = null)
+        string aircraftCode, string muteKey, bool speakFirst, Func<double, string?>? betweenDetents = null)
     {
-        _muteSet = muteSet ?? (s => s.PMDGDisabledMonitorVariablesSet);
         _detents = detents;
         _tolerance = tolerance;
         _settleMs = settleMs;
+        _aircraftCode = aircraftCode;
         _muteKey = muteKey;
         _speakFirst = speakFirst;
         _betweenDetents = betweenDetents;
     }
+
+    /// <summary>Whether the pilot muted the lever's row in this aircraft's Ctrl+M list.</summary>
+    public bool IsMuted(Settings.UserSettings settings)
+        => Services.DefAnnounceMuteSets.IsMuted(_aircraftCode, _muteKey, settings);
 
     /// <summary>A new read-back sample (UI thread): restarts the settle timer.</summary>
     public void OnSample(double value, ScreenReaderAnnouncer announcer)
@@ -176,9 +184,41 @@ public sealed class PmdgSpeedBrakeCallout
         {
             _latest = value;
             _announcer = announcer;
+            _uiContext = SynchronizationContext.Current;
         }
         (_timer ??= new System.Threading.Timer(OnSettle))
             .Change(_settleMs, System.Threading.Timeout.Infinite);
+    }
+
+    /// <summary>The value of the last sample, or NaN before the first.</summary>
+    public double Latest
+    {
+        get { lock (_lock) return _latest; }
+    }
+
+    /// <summary>
+    /// A reconnect or flight load: forget the last sentence, any pending pick and a pending settle,
+    /// so the first genuine change afterwards is spoken even when it names the detent last spoken.
+    /// </summary>
+    public void Reset()
+    {
+        _timer?.Change(System.Threading.Timeout.Infinite, System.Threading.Timeout.Infinite);
+        lock (_lock)
+        {
+            _latest = double.NaN;
+            _lastSpoken = null;
+            _hasBaseline = false;
+            _pickIndex = -1;
+        }
+    }
+
+    /// <summary>Stops the settle timer for good (aircraft swap), so it never speaks over the next
+    /// aircraft.</summary>
+    public void Dispose()
+    {
+        lock (_lock) _announcer = null;
+        _timer?.Dispose();
+        _timer = null;
     }
 
     /// <summary>A click to detent <paramref name="index"/> was SENT. Call only after sending.</summary>
@@ -191,8 +231,21 @@ public sealed class PmdgSpeedBrakeCallout
         }
     }
 
-    // Thread-pool timer callback: an unhandled throw here would crash the process.
+    // Thread-pool timer callback: hands the settle to the UI thread. An unhandled throw here would
+    // crash the process.
     private void OnSettle(object? state)
+    {
+        try
+        {
+            SynchronizationContext? ui;
+            lock (_lock) ui = _uiContext;
+            if (ui != null) ui.Post(_ => SettleAndSpeak(), null);
+            else SettleAndSpeak();  // no UI context (headless): speak where we are
+        }
+        catch { /* never let a timer callback take down the app */ }
+    }
+
+    private void SettleAndSpeak()
     {
         try
         {
@@ -203,12 +256,11 @@ public sealed class PmdgSpeedBrakeCallout
                 value = _latest;
                 announcer = _announcer;
             }
-            if (announcer == null) return;
-            bool muted = _muteSet(Settings.SettingsManager.Current).Contains(_muteKey);
-            string? say = Settle(value, Environment.TickCount64, muted);
+            if (announcer == null) return;  // disposed, or no sample yet
+            string? say = Settle(value, Environment.TickCount64, IsMuted(Settings.SettingsManager.Current));
             if (say != null) announcer.Announce(say);
         }
-        catch { /* never let a timer callback take down the app */ }
+        catch { /* a posted callback must not take down the message loop */ }
     }
 
     /// <summary>

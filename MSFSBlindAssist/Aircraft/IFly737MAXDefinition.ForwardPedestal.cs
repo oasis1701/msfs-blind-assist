@@ -851,9 +851,9 @@ public partial class IFly737MAXDefinition
         // see IFly737SpeedBrakeLever, the one table). The classifier seeds the combo
         // with the NEAREST detent, so a lever resting between detents never opens it
         // blank. The lever self-announces on a settle timer from ProcessSimVarUpdate
-        // (which returns true), so an open combo does not follow a lever moved from
-        // the cockpit; it re-syncs when the panel is rebuilt — the PMDG 737 lever's
-        // accepted limitation.
+        // (which returns true, skipping MainForm's generic control refresh), so MainForm's
+        // iFly def-handled branch refreshes this combo by name to keep an open panel
+        // following a lever moved from the cockpit or by the auto speed brake.
         SwD(P, IFly737SpeedBrakeLever.FieldName, "Speed Brake",
             IFlyKeyCommand.FLTCTRL_SPOILER,
             IFly737SpeedBrakeLever.ComboDescriptions());

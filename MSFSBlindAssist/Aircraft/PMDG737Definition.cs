@@ -76,7 +76,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // is the lever's position at load, so it is recorded silently.
     private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
         PmdgSpeedBrakeLever.Ng3, PmdgSpeedBrakeLever.Ng3SettleTolerance, PmdgSpeedBrakeLever.Ng3SettleMs,
-        muteKey: "MON_PMDG737_SpeedBrake", speakFirst: false);
+        aircraftCode: "PMDG_737", muteKey: "MON_PMDG737_SpeedBrake", speakFirst: false);
 
     // EFIS Minimums knob step sizes per click on the PMDG NG3 737. RADIO mode
     // (DH) clicks in 1-ft increments; BARO mode (DA) clicks in 20-ft increments.

@@ -2,16 +2,13 @@ using MSFSBlindAssist.SimConnect.IFly;
 
 namespace MSFSBlindAssist.Aircraft;
 
-/// <summary>One detent of the iFly 737 MAX speed-brake lever: its position on the lever's 0-224
-/// scale, the Control Stand combo's label, and the sentence spoken when the lever comes to rest there.</summary>
-public sealed record IFlyLeverDetent(double Value, string Label, string Spoken);
-
 /// <summary>
 /// The iFly 737 MAX speed-brake lever as ONE table: the Control Stand combo's labels, the
 /// value→position classifier behind it, the value each pick writes and the settle announcer's
-/// sentences all come from here.
+/// sentences all come from here. Every detent is written with the same command,
+/// <see cref="IFlyKeyCommand.FLTCTRL_SPOILER"/>, whose Value2 is the detent's value.
 ///
-/// Measured live 2026-09-30 (MSFS 2024, on the ground, hydraulics pressurised, IFlySdkProbe):
+/// Measured live 2026-09-30 (MSFS 2024, IFlySdkProbe):
 /// <list type="bullet">
 /// <item><c>FLTCTRL_SPOILER</c> Value2 and the <c>Spoiler_Lever_Status</c> read-back are the SAME
 /// scale. A write of any value 0-224 reads back exactly (34, 100, 149, 180, 200, 224 all did),
@@ -35,39 +32,49 @@ public static class IFly737SpeedBrakeLever
     /// <summary>The SDK field the lever is read from, and the combo's variable key.</summary>
     public const string FieldName = "Spoiler_Lever_Status";
 
-    public static readonly IReadOnlyList<IFlyLeverDetent> Detents = new IFlyLeverDetent[]
+    private const string Command = nameof(IFlyKeyCommand.FLTCTRL_SPOILER);
+
+    public static readonly IReadOnlyList<PmdgLeverDetent> Detents = new PmdgLeverDetent[]
     {
-        new(0,   "Down",           "Speed brake down"),
-        new(34,  "Armed",          "Speed brake armed"),
-        new(180, "Flight detent",  "Speed brake flight"),
-        new(224, "Fully deployed", "Speed brake fully deployed"),
+        new(0,   "Down",           Command, "Speed brake down"),
+        new(34,  "Armed",          Command, "Speed brake armed"),
+        new(180, "Flight detent",  Command, "Speed brake flight"),
+        new(224, "Fully deployed", Command, "Speed brake fully deployed"),
     };
 
-    /// <summary>The detents in the shape the shared settle announcer reads (value and sentence).
-    /// The event-name slot is unused on this aircraft; it names the one command every detent sends.</summary>
-    public static readonly IReadOnlyList<PmdgLeverDetent> CalloutDetents = Detents
-        .Select(d => new PmdgLeverDetent(d.Value, d.Label, nameof(IFlyKeyCommand.FLTCTRL_SPOILER), d.Spoken))
-        .ToArray();
-
-    /// <summary>A lever within this distance of a detent is resting there; further from every
-    /// detent it says nothing. A pick or a stock event lands exactly on the value.</summary>
+    /// <summary>A lever within this distance of a detent is resting there. A pick or a stock event
+    /// lands exactly on the value.</summary>
     public const double SettleTolerance = 5.0;
 
     /// <summary>The settle delay. A write lands at once, but a hardware axis moves the lever
     /// through the 250 ms SDK polls, so the trailing edge must outlast more than one poll.</summary>
     public const int SettleMs = 600;
 
+    /// <summary>
+    /// What is spoken for a lever resting BETWEEN detents above ARMED (a hardware axis): how far it
+    /// is from ARMED to UP, as a percentage of that travel — "Speed brake 35 percent". Without it
+    /// such a lever said nothing while the combo named the nearest detent, which is not where the
+    /// spoilers are. Below ARMED it says nothing, as on both PMDG jets.
+    /// </summary>
+    public static string? PartialDeployment(double value)
+    {
+        double armed = Detents[1].Value, up = Detents[^1].Value;
+        if (value <= armed || value > up) return null;
+        int pct = (int)Math.Round((value - armed) / (up - armed) * 100);
+        return $"Speed brake {pct} percent";
+    }
+
     /// <summary>The combo's ValueDescriptions: each detent's value to its label.</summary>
     public static Dictionary<double, string> ComboDescriptions()
-        => Detents.ToDictionary(d => d.Value, d => d.Label);
+        => PmdgSpeedBrakeLever.ComboDescriptions(Detents);
 
     /// <summary>The combo's <c>ValueToDescriptionKey</c>: the nearest detent's value, so a lever
     /// resting between detents never opens the combo with nothing selected (where the first arrow
     /// press would commit "Down" and retract the speed brakes).</summary>
     public static double NearestDetentValue(double value)
-        => PmdgSpeedBrakeLever.NearestDetentValue(CalloutDetents, value);
+        => PmdgSpeedBrakeLever.NearestDetentValue(Detents, value);
 
     /// <summary>The index of the detent a combo pick names (its value IS a detent's value), or -1.</summary>
     public static int IndexOfComboValue(double value)
-        => PmdgSpeedBrakeLever.IndexOfComboValue(CalloutDetents, value);
+        => PmdgSpeedBrakeLever.IndexOfComboValue(Detents, value);
 }

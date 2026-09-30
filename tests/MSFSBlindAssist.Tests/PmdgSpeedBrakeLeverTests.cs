@@ -97,11 +97,11 @@ public class PmdgSpeedBrakeLeverTests
 
     private static PmdgSpeedBrakeCallout New737() => new(
         PmdgSpeedBrakeLever.Ng3, PmdgSpeedBrakeLever.Ng3SettleTolerance, PmdgSpeedBrakeLever.Ng3SettleMs,
-        "MON_PMDG737_SpeedBrake", speakFirst: false);
+        "PMDG_737", "MON_PMDG737_SpeedBrake", speakFirst: false);
 
     private static PmdgSpeedBrakeCallout New777() => new(
         PmdgSpeedBrakeLever.B777, PmdgSpeedBrakeLever.B777SettleTolerance, PmdgSpeedBrakeLever.B777SettleMs,
-        "FCTL_Speedbrake", speakFirst: true, PmdgSpeedBrakeLever.B777PartialDeployment);
+        "PMDG_777", "FCTL_Speedbrake", speakFirst: true, betweenDetents: PmdgSpeedBrakeLever.B777PartialDeployment);
 
     [Fact]
     public void The_737_records_its_first_settle_silently_then_speaks_changes_once()
