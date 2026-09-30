@@ -5508,6 +5508,22 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
         aircraftCode: "PMDG_777", muteKey: "FCTL_Speedbrake", speakFirst: true,
         betweenDetents: PmdgSpeedBrakeLever.B777PartialDeployment);
 
+    /// <summary>The speed-brake lever's settle announcer, for the tests that pin its resets.</summary>
+    internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
+
+    /// <summary>
+    /// A flight load or SimConnect drop. The speed-brake callout forgets its last sentence: the CDA's
+    /// initial snapshot never reaches it, so the lever can have moved in silence, and a carried-over
+    /// sentence would swallow the first genuine settle at that detent as a repeat (the iFly's reset,
+    /// the same shared callout). Not on the 737: its first sample is a silent baseline and a load
+    /// re-delivers only CHANGED L-vars, so a reset there would swallow the first real move instead.
+    /// </summary>
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _speedBrakeCallout.Reset();
+    }
+
     // Track last known radio/squawk values to suppress initial load announcement.
     // Value 0 means "not yet seen" — first update stores silently, subsequent updates announce.
     private double _lastComActiveFreq1;

@@ -185,6 +185,21 @@ public class PmdgSpeedBrakeLeverTests
         Assert.Null(c.Settle(100, t, muted: false));         // arrival: the pilot's own pick
     }
 
+    // The 777's CDA initial snapshot never reaches the announcer, so after a flight load or a
+    // reconnect the lever can have moved in silence. Carried over, the last sentence swallowed the
+    // first genuine settle at that detent as a repeat — the iFly's fix, which the 777 lacked.
+    [Fact]
+    public void A_777_context_reset_forgets_the_last_sentence()
+    {
+        var def = new PMDG777Definition();
+        Assert.Equal("Speed brake armed", def.SpeedBrakeCallout.Settle(50, 0, muted: false));
+        Assert.Null(def.SpeedBrakeCallout.Settle(50, 0, muted: false));
+
+        def.OnSimContextReset();
+
+        Assert.Equal("Speed brake armed", def.SpeedBrakeCallout.Settle(50, 0, muted: false));
+    }
+
     [Fact]
     public void A_pick_silences_its_own_arrival_only()
     {
