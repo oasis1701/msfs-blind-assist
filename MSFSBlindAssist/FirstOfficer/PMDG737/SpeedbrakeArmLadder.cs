@@ -31,12 +31,10 @@ public enum SpeedbrakeArmTransport
 /// Split out from the executor so the read-back and the early exits are testable without
 /// SimConnect; the executor owns the I/O and the read-back timing.
 ///
-/// NOTE: <see cref="ArmedField"/> reflects the auto-speedbrake system being ARMED, not raw
-/// lever position, so it will not light cold-and-dark. Every consumer lives in the Landing
-/// phase, where the aircraft is powered and configured. The NG3 exposes no lever-position
-/// field at all — the analog position is only readable through the L-var switch_679_73X
-/// (ARM = 100), which the FO state evaluator cannot reach (it reads the CDA struct and
-/// synthetics only).
+/// NOTE: <see cref="ArmedField"/> alone does not prove ARMED: it stays lit from ARM to about 342
+/// on <c>L:switch_679_73X</c> (measured 2026-09-30, PR #261), i.e. with the spoilers already up.
+/// "Armed" is the lever exactly at ARM AND this light (<see cref="SpeedbrakeLeverState.ArmedField"/>);
+/// the evaluator reads the lever from SimConnect's cache (main's MON_PMDG737_SpeedBrake).
 /// </summary>
 public static class SpeedbrakeArmLadder
 {
@@ -57,7 +55,7 @@ public static class SpeedbrakeArmLadder
     /// <summary>Flow-step EventName that AircraftActionExecutor.ExecuteStepAsync
     /// intercepts (same mechanism as FIRE_TEST / GPWS_TEST / TCAS_TEST). Not a real
     /// PMDG event name — it must never appear in PMDG737Definition.EventIds.</summary>
-    public const string PseudoKey = "SPEEDBRAKE_ARM";
+    public const string PseudoKey = SpeedbrakeLeverState.ArmPseudoKey;
 
     /// <summary>
     /// Live-verified against a PMDG 737-800 in flight (2026-08-25): a single CDA +

@@ -442,16 +442,20 @@ public static class PMDG737FlowDefinitions
             // Verified arm via the SPEEDBRAKE_ARM pseudo-key (intercepted in
             // AircraftActionExecutor.ExecuteStepAsync, same mechanism as GPWS_TEST /
             // TCAS_TEST). A bare dispatch of the real event reported success whether or
-            // not the lever moved; this one proves it against the ARMED annunciator, and
-            // the Skip failure policy means a genuine failure is announced without
+            // not the lever moved; this one proves it against the lever at ARM and the ARMED
+            // light, and the Skip failure policy means a genuine failure is announced without
             // aborting the rest of the Landing flow.
             // Completes BOTH "Speedbrake: ARMED" lines — its own group's LDA_SPDBRK and the
             // Landing Checklist's LDC_SPDBRK — since the verified arm achieves both (same
-            // ARMED annunciator). It used to name only LDC_SPDBRK, so a failed arm left
+            // lever-and-light field). It used to name only LDC_SPDBRK, so a failed arm left
             // LDA_SPDBRK to MarkGroupComplete's blanket sweep, latched complete over a lever
             // that never armed.
-            Also(SW("LD_SPDBRK", "Speedbrake: ARMED", SpeedbrakeArmLadder.PseudoKey, null,
-               SpeedbrakeArmLadder.ArmedField, v => v > 0.5, "LDA_SPDBRK"), "LDC_SPDBRK"),
+            // An armed speed brake (the lever at ARM with the light) is "Already set", and a
+            // deployed one is left alone with its reason: clicking ARM over it retracts it.
+            LeaveAlone(Skip(Also(SW("LD_SPDBRK", "Speedbrake: ARMED", SpeedbrakeArmLadder.PseudoKey, null,
+               SpeedbrakeLeverState.ArmedField, v => v > 0.5, "LDA_SPDBRK"), "LDC_SPDBRK"),
+                s => s.IsSpeedbrakeArmed()),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
             Captain("LD_MISSED", "Set the missed approach altitude."),
             // Read-only gear-down confirmation — it never moves the lever (the First Officer
             // writes no gear lever; see docs/pmdg-737.md). Confirms the gear the way a crew
@@ -674,6 +678,15 @@ public static class PMDG737FlowDefinitions
     private static Step Skip(Step step, Func<AircraftStateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
+        return step;
+    }
+
+    // A step the First Officer must not perform in the aircraft's current state
+    // (FlowStep.LeaveAloneWhen): nothing is sent, `text` is spoken, its lines stay open.
+    private static Step LeaveAlone(Step step, Func<AircraftStateEvaluator, bool> when, string text)
+    {
+        step.LeaveAloneWhen = when;
+        step.LeaveAloneText = text;
         return step;
     }
 

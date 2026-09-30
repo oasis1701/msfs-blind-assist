@@ -225,19 +225,21 @@ public class FoPr160ProcedureFixTests
     // -- 4. PMDG 737 speedbrake: verified arm -------------------------------
 
     // All three sites used to be unverified, resting on a comment claiming no
-    // lever state field exists in the NG3 CDA struct. MAIN_annunSPEEDBRAKE_ARMED
-    // does exist (PMDGNG3DataStruct.cs, and PMDG_NG3_SDK.h) - so a failed arm was
-    // reported as success and the pilot landed with the lever down.
+    // lever state field exists in the NG3 CDA struct, so a failed arm was reported as
+    // success and the pilot landed with the lever down. The lines now read the lever
+    // exactly at ARM AND the ARMED light (SpeedbrakeLeverState.ArmedField): the light
+    // alone (MAIN_annunSPEEDBRAKE_ARMED) stays lit to about 342 on the lever, i.e. with
+    // the spoilers already up, so it cannot say "armed" by itself.
 
     [Fact]
-    public void Pmdg737_LandingGroupSpeedbrake_AutoDetectsFromTheArmedAnnunciator()
+    public void Pmdg737_LandingGroupSpeedbrake_AutoDetectsFromTheLeverAndTheArmedLight()
     {
         var item = Pmdg737Checklist.Build()
             .Single(g => g.Id == "LANDING").Items
             .Single(i => i.Id == "LDA_SPDBRK");
 
         Assert.Equal(ChecklistItemType.AutoDetectable, item.Type);
-        Assert.Equal("MAIN_annunSPEEDBRAKE_ARMED", item.StateFieldName);
+        Assert.Equal(SpeedbrakeLeverState.ArmedField, item.StateFieldName);
         Assert.NotNull(item.CheckAction);
     }
 
@@ -249,7 +251,7 @@ public class FoPr160ProcedureFixTests
             .Single(i => i.Id == "LDC_SPDBRK");
 
         Assert.Equal(ChecklistItemType.AutoDetectable, item.Type);
-        Assert.Equal("MAIN_annunSPEEDBRAKE_ARMED", item.StateFieldName);
+        Assert.Equal(SpeedbrakeLeverState.ArmedField, item.StateFieldName);
         Assert.Null(item.CheckAction);
     }
 
@@ -261,7 +263,7 @@ public class FoPr160ProcedureFixTests
             .Single(s => s.Id == "LD_SPDBRK");
 
         Assert.Equal(SbLadder.PseudoKey, step.EventName);
-        Assert.Equal(SbLadder.ArmedField, step.VerifyFieldName);
+        Assert.Equal(SpeedbrakeLeverState.ArmedField, step.VerifyFieldName);
         // Completes its own group's line AND the Landing Checklist read-back, so a failed
         // arm leaves neither latched (Pmdg737FlowChecklistLinkTests).
         Assert.Equal("LDA_SPDBRK", step.CompletesChecklistItemId);

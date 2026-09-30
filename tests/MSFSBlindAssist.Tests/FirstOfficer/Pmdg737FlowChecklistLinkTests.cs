@@ -6,6 +6,11 @@ using Xunit;
 using MSFSBlindAssist.FirstOfficer.Models;
 using MSFSBlindAssist.FirstOfficer.PMDG737;
 
+// An alias, not `using MSFSBlindAssist.FirstOfficer;`: that namespace also holds the 777's
+// AircraftStateEvaluator / AircraftActionExecutor, which would make this file's unqualified
+// 737 names ambiguous.
+using SpeedbrakeLeverState = MSFSBlindAssist.FirstOfficer.SpeedbrakeLeverState;
+
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
@@ -104,9 +109,9 @@ public class Pmdg737FlowChecklistLinkTests
         // Per-detent flap lever event: flaps UP → TE flap needle 0 degrees.
         m["EVT_CONTROL_STAND_FLAPS_LEVER_0"] = new (string, Func<int, double>)[]
         { ("MAIN_TEFlapsNeedle_0", _ => 0) };
-        // Closed-loop verified arm (ArmSpeedbrakeAsync) → the ARMED annunciator.
+        // Closed-loop verified arm (ArmSpeedbrakeAsync) → the lever at ARM with the ARMED light.
         m[SpeedbrakeArmLadder.PseudoKey] = new (string, Func<int, double>)[]
-        { (SpeedbrakeArmLadder.ArmedField, _ => 1) };
+        { (SpeedbrakeLeverState.ArmedField, _ => 1) };
         return m;
     }
 
