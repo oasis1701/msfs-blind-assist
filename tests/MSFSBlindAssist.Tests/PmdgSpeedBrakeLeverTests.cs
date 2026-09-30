@@ -222,6 +222,23 @@ public class PmdgSpeedBrakeLeverTests
         Assert.Equal("Speed brake 100 percent", c.Settle(100, Environment.TickCount64, muted: false));
     }
 
+    // The 737 answers a pick only at a detent: the ARM arrival still clears the ARM pick but keeps the
+    // 50 percent pick sent after that sample arrived, so neither arrival is read back.
+    [Fact]
+    public void A_737_pick_sent_before_the_previous_arrival_settled_is_kept()
+    {
+        var c = New737();
+        long t = Environment.TickCount64;
+        Assert.Null(c.Settle(0, t, muted: false, c.NoteSample(0)));          // the load-time baseline
+
+        c.RecordPick(1);                                                     // ARM
+        long arm = c.NoteSample(100);
+        c.RecordPick(2);                                                     // 50 percent
+        Assert.Null(c.Settle(100, t, muted: false, arm));
+        Assert.Null(c.Settle(250, t, muted: false, c.NoteSample(250)));
+        Assert.Equal("Speed brake down", c.Settle(0, t, muted: false, c.NoteSample(0)));
+    }
+
     [Fact]
     public void A_pick_the_aircraft_ignored_expires()
     {

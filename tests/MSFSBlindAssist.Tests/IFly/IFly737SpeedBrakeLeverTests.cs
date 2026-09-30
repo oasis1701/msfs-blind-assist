@@ -129,6 +129,26 @@ public class IFly737SpeedBrakeLeverTests
         Assert.Equal("Speed brake down", callout.Settle(0, t, muted: false));   // a real move back
     }
 
+    // Arrowing through the combo: the Flight pick is sent after Armed read back but before that
+    // reading settled. With only the newest pick remembered, the Armed settle cleared the Flight pick
+    // and both arrivals were read back over the screen reader's own reading of the picks.
+    [Fact]
+    public void Arrowing_through_the_combo_speaks_neither_arrival()
+    {
+        var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
+        long t = Environment.TickCount64;
+        Assert.Equal("Speed brake down", callout.Settle(0, t, muted: false, callout.NoteSample(0)));
+
+        callout.RecordPick(1);                               // Armed
+        long armed = callout.NoteSample(34);
+        callout.RecordPick(2);                               // Flight detent, before Armed settled
+        Assert.Null(callout.Settle(34, t, muted: false, armed));
+        long flight = callout.NoteSample(180);
+        Assert.Null(callout.Settle(180, t, muted: false, flight));
+
+        Assert.Equal("Speed brake down", callout.Settle(0, t, muted: false, callout.NoteSample(0)));
+    }
+
     [Fact]
     public void The_mute_is_read_from_the_iFly_Ctrl_M_list_not_the_PMDG_one()
     {

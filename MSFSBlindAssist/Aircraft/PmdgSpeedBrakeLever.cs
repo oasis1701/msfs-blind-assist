@@ -118,9 +118,17 @@ public static class PmdgSpeedBrakeLever
     /// were not armed and nothing was spoken.
     /// </summary>
     public static int PositionIndex(IReadOnlyList<PmdgLeverDetent> detents, double value, double tolerance)
+        => PositionIndex(detents, value, tolerance, out _);
+
+    /// <summary><see cref="PositionIndex(IReadOnlyList{PmdgLeverDetent}, double, double)"/>, also
+    /// saying whether the lever rests AT that detent (<paramref name="atDetent"/>) rather than being
+    /// read as Down for resting short of ARMED.</summary>
+    public static int PositionIndex(IReadOnlyList<PmdgLeverDetent> detents, double value, double tolerance,
+        out bool atDetent)
     {
         int idx = SettledIndex(detents, value, tolerance);
-        if (idx >= 0) return idx;
+        atDetent = idx >= 0;
+        if (atDetent) return idx;
         return value < detents[1].Value ? 0 : -1;
     }
 
@@ -151,11 +159,14 @@ public static class PmdgSpeedBrakeLever
 /// detent, and the lever arriving there within <see cref="PickMemoryMs"/> is recorded silently (the
 /// screen reader already read the pick, and MainForm's echo window is used up by the first sample
 /// of a sweep). A lever that stops anywhere else, or reaches the picked detent only after the memory
-/// lapses (a click the aircraft ignored), is announced as usual.</item>
+/// lapses (a click the aircraft ignored), is announced as usual. Every pick waiting for its arrival
+/// is remembered, not only the last: arrowing through the combo sends the next pick before the
+/// previous one's arrival has settled.</item>
 /// </list>
 /// The timer fires on a pool thread, so the settle decision and the speech are POSTED back to the
 /// UI thread the samples arrive on: the announcer is not safe to call from a pool thread, and
-/// reading <c>Suppressed</c> there raced MainForm toggling it for another variable.
+/// reading <c>Suppressed</c> there raced MainForm toggling it for another variable. A posted settle
+/// whose sample a newer one has overtaken does nothing: the newer sample's own settle follows.
 /// </summary>
 public sealed class PmdgSpeedBrakeCallout : IDisposable
 {
@@ -179,8 +190,14 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     private System.Threading.Timer? _timer;
     private string? _lastSpoken;
     private bool _hasBaseline;
-    private int _pickIndex = -1;
-    private long _pickTick;
+    // Every sample OnSample has seen, counted: a pick records how many came before it, and a posted
+    // settle records which sample it was timed for.
+    private long _sampleCount;
+    // The picks still waiting for their arrival — more than one: a pilot arrowing through the combo
+    // sends a new pick before the previous one's arrival has settled.
+    private readonly List<PendingPick> _picks = new();
+
+    private readonly record struct PendingPick(int Index, long Tick, long SamplesBefore);
 
     /// <param name="aircraftCode">The owning definition's <c>AircraftCode</c>, which picks its
     /// Ctrl+M list in <see cref="Services.DefAnnounceMuteSets"/>.</param>
@@ -212,14 +229,25 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     /// <summary>A new read-back sample (UI thread): restarts the settle timer.</summary>
     public void OnSample(double value, ScreenReaderAnnouncer announcer)
     {
+        NoteSample(value);
         lock (_lock)
         {
-            _latest = value;
             _announcer = announcer;
             _uiContext = SynchronizationContext.Current;
         }
         (_timer ??= new System.Threading.Timer(OnSettle))
             .Change(_settleMs, System.Threading.Timeout.Infinite);
+    }
+
+    /// <summary>Records a sample and returns its number (the <c>sample</c> a settle of it passes to
+    /// <see cref="Settle"/>). <see cref="OnSample"/>'s bookkeeping without the timer.</summary>
+    internal long NoteSample(double value)
+    {
+        lock (_lock)
+        {
+            _latest = value;
+            return ++_sampleCount;
+        }
     }
 
     /// <summary>
@@ -234,7 +262,7 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
             _latest = double.NaN;
             _lastSpoken = null;
             _hasBaseline = false;
-            _pickIndex = -1;
+            _picks.Clear();
         }
     }
 
@@ -250,11 +278,9 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     /// <summary>A click to detent <paramref name="index"/> was SENT. Call only after sending.</summary>
     public void RecordPick(int index)
     {
+        if (index < 0) return;
         lock (_lock)
-        {
-            _pickIndex = index;
-            _pickTick = Environment.TickCount64;
-        }
+            _picks.Add(new PendingPick(index, Environment.TickCount64, _sampleCount));
     }
 
     // Thread-pool timer callback: hands the settle to the UI thread. An unhandled throw here would
@@ -264,14 +290,21 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
         try
         {
             SynchronizationContext? ui;
-            lock (_lock) ui = _uiContext;
-            if (ui != null) ui.Post(_ => SettleAndSpeak(), null);
-            else SettleAndSpeak();  // no UI context (headless): speak where we are
+            long sample;
+            lock (_lock)
+            {
+                ui = _uiContext;
+                sample = _sampleCount;
+            }
+            if (ui != null) ui.Post(_ => SettleAndSpeak(sample), null);
+            else SettleAndSpeak(sample);  // no UI context (headless): speak where we are
         }
         catch { /* never let a timer callback take down the app */ }
     }
 
-    private void SettleAndSpeak()
+    // Settles the sample the timer was timed for. A newer sample that reached the UI thread first has
+    // restarted the timer, and its own settle follows: this one would speak a lever still moving.
+    private void SettleAndSpeak(long sample)
     {
         try
         {
@@ -279,11 +312,12 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
             ScreenReaderAnnouncer? announcer;
             lock (_lock)
             {
+                if (sample != _sampleCount) return;
                 value = _latest;
                 announcer = _announcer;
             }
             if (announcer == null) return;  // disposed, or no sample yet
-            string? say = Settle(value, Environment.TickCount64, IsMuted(Settings.SettingsManager.Current));
+            string? say = Settle(value, Environment.TickCount64, IsMuted(Settings.SettingsManager.Current), sample);
             if (say != null) announcer.Announce(say);
         }
         catch { /* a posted callback must not take down the message loop */ }
@@ -292,20 +326,29 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     /// <summary>
     /// The settle decision, pure apart from this instance's own state: the sentence to speak for a
     /// lever resting at <paramref name="value"/>, or null. Records the resting position either way.
+    /// <paramref name="sample"/> is which sample (counted by <see cref="OnSample"/>) is settling; a
+    /// pick sent after it arrived is not answered by it. The default is the newest sample there is.
     /// </summary>
-    public string? Settle(double value, long nowTick, bool muted)
+    public string? Settle(double value, long nowTick, bool muted, long sample = long.MaxValue)
     {
         if (double.IsNaN(value)) return null;
-        int idx = PmdgSpeedBrakeLever.PositionIndex(_detents, value, _tolerance);
-        bool atDetent = PmdgSpeedBrakeLever.SettledIndex(_detents, value, _tolerance) >= 0;
+        int idx = PmdgSpeedBrakeLever.PositionIndex(_detents, value, _tolerance, out bool atDetent);
         string? text = idx >= 0 ? _detents[idx].Spoken : _betweenDetents?.Invoke(value);
 
         lock (_lock)
         {
-            bool picked = _pickIndex >= 0 && idx == _pickIndex && nowTick - _pickTick <= PickMemoryMs;
-            // A lever resting AT a detent answers the pick. Anywhere else it may still be travelling
-            // (a mid-travel 737 sample short of ARM reads as Down), unless picks land at once.
-            if (atDetent || _picksLandAtOnce) _pickIndex = -1;
+            _picks.RemoveAll(p => nowTick - p.Tick > PickMemoryMs);
+            int match = _picks.FindIndex(p => p.Index == idx);
+            bool picked = match >= 0;
+            // A lever resting AT a detent answers the pick it matches and every pick sent before this
+            // sample arrived. Anywhere else it may still be travelling (a mid-travel 737 sample short
+            // of ARM reads as Down), unless picks land at once. A pick sent AFTER the sample arrived
+            // waits for its own arrival.
+            if (atDetent || _picksLandAtOnce)
+            {
+                if (picked) _picks.RemoveAt(match);
+                _picks.RemoveAll(p => p.SamplesBefore < sample);
+            }
             if (text == null) return null;  // resting between detents with nothing to say
 
             bool first = !_hasBaseline;
