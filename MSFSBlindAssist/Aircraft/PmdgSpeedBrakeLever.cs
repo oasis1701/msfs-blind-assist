@@ -114,12 +114,13 @@ public static class PmdgSpeedBrakeLever
 }
 
 /// <summary>
-/// The trailing-edge SETTLE announcer both PMDG jets use for their speed-brake lever. The read-back
+/// The trailing-edge SETTLE announcer both PMDG jets and the iFly 737 MAX use for their speed-brake lever. The read-back
 /// sweeps through every value while the lever animates, so every sample restarts a timer and only
 /// the resting position is spoken, once. The timer speaks OUTSIDE MainForm's announcer.Suppressed
 /// wrap, so this class applies the two suppressions that wrap would have applied itself:
 /// <list type="bullet">
-/// <item>the Ctrl+M mute: the lever's row in <c>PMDGDisabledMonitorVariablesSet</c> silences it
+/// <item>the Ctrl+M mute: the lever's row in the aircraft's disabled-monitor set
+/// (<c>PMDGDisabledMonitorVariablesSet</c> unless the constructor names another) silences it
 /// (the position is still recorded, so unmuting never speaks a stale one);</item>
 /// <item>the pilot's own pick: <see cref="RecordPick"/>, called after a click is SENT, marks that
 /// detent, and the lever arriving there within <see cref="PickMemoryMs"/> is recorded silently (the
@@ -140,6 +141,7 @@ public sealed class PmdgSpeedBrakeCallout
     private readonly string _muteKey;
     private readonly bool _speakFirst;
     private readonly Func<double, string?>? _betweenDetents;
+    private readonly Func<Settings.UserSettings, HashSet<string>> _muteSet;
     private readonly object _lock = new();
 
     private double _latest = double.NaN;
@@ -152,10 +154,13 @@ public sealed class PmdgSpeedBrakeCallout
 
     /// <param name="speakFirst">False where the first sample is the value at load rather than a
     /// change (the 737's L-var batch); true where the initial snapshot never reaches the announcer
-    /// (the 777's CDA).</param>
+    /// (the 777's CDA and the iFly's SDK).</param>
+    /// <param name="muteSet">The aircraft's Ctrl+M disabled-monitor set; the PMDG one when null.</param>
     public PmdgSpeedBrakeCallout(IReadOnlyList<PmdgLeverDetent> detents, double tolerance, int settleMs,
-        string muteKey, bool speakFirst, Func<double, string?>? betweenDetents = null)
+        string muteKey, bool speakFirst, Func<double, string?>? betweenDetents = null,
+        Func<Settings.UserSettings, HashSet<string>>? muteSet = null)
     {
+        _muteSet = muteSet ?? (s => s.PMDGDisabledMonitorVariablesSet);
         _detents = detents;
         _tolerance = tolerance;
         _settleMs = settleMs;
@@ -199,7 +204,7 @@ public sealed class PmdgSpeedBrakeCallout
                 announcer = _announcer;
             }
             if (announcer == null) return;
-            bool muted = Settings.SettingsManager.Current.PMDGDisabledMonitorVariablesSet.Contains(_muteKey);
+            bool muted = _muteSet(Settings.SettingsManager.Current).Contains(_muteKey);
             string? say = Settle(value, Environment.TickCount64, muted);
             if (say != null) announcer.Announce(say);
         }

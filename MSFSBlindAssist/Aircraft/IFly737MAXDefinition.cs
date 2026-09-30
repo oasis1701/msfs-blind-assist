@@ -945,6 +945,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 announcer.AnnounceImmediate("iFly plugin not responding.");
                 return true;
             }
+            // The speed-brake lever's settle timer speaks outside MainForm's UI-echo
+            // suppression, so a SENT pick is recorded: the lever arriving at that
+            // detent is then silent (the screen reader already read the pick).
+            if (varKey == IFly737SpeedBrakeLever.FieldName)
+                _speedBrakeCallout.RecordPick(IFly737SpeedBrakeLever.IndexOfComboValue(value));
             // Guarded switches whose SET has no working Value3 guard-bypass need the
             // command TWICE: the first send only OPENS the guard, the second moves
             // the switch (probe-verified 2026-08-18 on the stab-trim cutouts, nose
@@ -1734,11 +1739,17 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         _takeoffCallouts.Reset();
     }
 
-    // Speedbrake lever announce state (PR #163, minor 9). null initial means the
-    // first post-launch event announces (announceInitialChange semantics for this
-    // aircraft — the initial snapshot sweep never reaches ProcessSimVarUpdate, so
-    // the first call here is always a genuine change).
-    private string? _lastSpeedbrakeDetentName;
+    // Speed-brake lever announcer: the trailing-edge settle timer the PMDG jets use,
+    // over IFly737SpeedBrakeLever's detents, so only the RESTING detent is spoken
+    // (not the ones a travelling lever sweeps through). speakFirst: true — the
+    // initial snapshot sweep never reaches ProcessSimVarUpdate, so the first call
+    // is always a genuine change. The timer speaks outside MainForm's suppression
+    // wrap, so the announcer applies this aircraft's Ctrl+M mute and the pilot's
+    // own combo pick (RecordPick, in HandleUIVariableSet) itself.
+    private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
+        IFly737SpeedBrakeLever.CalloutDetents, IFly737SpeedBrakeLever.SettleTolerance,
+        IFly737SpeedBrakeLever.SettleMs, muteKey: IFly737SpeedBrakeLever.FieldName, speakFirst: true,
+        muteSet: s => s.IFlyDisabledMonitorVariablesSet);
 
     /// <summary>FLAP_Status / FLTCTRL_FLAP_SET lever detent 0-8 → its label ("up",
     /// "1", "2", "5", "10", "15", "25", "30", "40"). Used by the L hotkey readout
@@ -1751,32 +1762,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         _ => detent.ToString(),
     };
 
-    // Speedbrake lever detents (Control Stand registration comment: 0 = DOWN,
-    // 35 = ARMED, 149 = FLIGHT DETENT, 224 = UP). Labels are transcribed verbatim
-    // from the PMDG 737's settle sentences (PmdgSpeedBrakeLever.Ng3) for fleet-wide announce parity
-    // (the iFly lever has no analog to PMDG's "50 percent" mid-detent).
-    private static readonly (double Value, string Label)[] SpeedbrakeDetentTable =
-    {
-        (0,   "Speed brake down"),
-        (35,  "Speed brake armed"),
-        (149, "Speed brake flight"),
-        (224, "Speed brake fully deployed"),
-    };
-
-    /// <summary>Nearest-anchor decode of the raw 0-225 Spoiler_Lever_Status value.
-    /// Used by both the background self-announce (full PMDG label) and the panel
-    /// display override (short word, prefix stripped).</summary>
-    private static string SpeedbrakeDetentName(double v)
-    {
-        int best = 0;
-        double bestDist = double.MaxValue;
-        for (int i = 0; i < SpeedbrakeDetentTable.Length; i++)
-        {
-            double d = Math.Abs(v - SpeedbrakeDetentTable[i].Value);
-            if (d < bestDist) { bestDist = d; best = i; }
-        }
-        return SpeedbrakeDetentTable[best].Label;
-    }
 
     // Flash-aware light announce state. Several 737 lights FLASH rather than hold
     // steady (IRS ALIGN blinks through alignment; the A/P and A/T disengage warning
@@ -2155,17 +2140,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // Speedbrake lever: nearest-detent PMDG-parity wording. Announce only when
-        // the resolved detent NAME changes, so lever motion between anchors (which
-        // moves the raw 0-225 value continuously) stays quiet.
-        if (varName == "Spoiler_Lever_Status")
+        // Speed-brake lever: every sample restarts the settle timer; the resting
+        // detent is spoken once, in PMDG 737 wording (see _speedBrakeCallout).
+        if (varName == IFly737SpeedBrakeLever.FieldName)
         {
-            string name = SpeedbrakeDetentName(value);
-            if (_lastSpeedbrakeDetentName != name)
-            {
-                _lastSpeedbrakeDetentName = name;
-                announcer.Announce(name);
-            }
+            _speedBrakeCallout.OnSample(value, announcer);
             return true;
         }
 
@@ -2337,21 +2316,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 // value = live gross weight in kg (the registration's Units).
                 displayText = IFly737FlapSpeeds.ComposePanelText(value);
                 return true;
-            case "Spoiler_Lever_Status":
-            {
-                // The T10 self-announce (ProcessSimVarUpdate, "Speedbrake lever" case)
-                // returns true, so MainForm's Step-3 displayValues cache is never written
-                // for this var and the passed-in `value` freezes at its launch reading.
-                // Read the LIVE snapshot instead, same as the SYN_* window cases above.
-                // "--" with no connection, matching MainForm's own no-data convention.
-                if (snap == null) { displayText = "--"; return true; }
-                double raw = ReadRawField(snap, "Spoiler_Lever_Status") ?? value;
-                string label = SpeedbrakeDetentName(raw);
-                displayText = label.StartsWith("Speed brake ", StringComparison.Ordinal)
-                    ? label["Speed brake ".Length..]
-                    : label;
-                return true;
-            }
             case "Rudder_Trim_Pointer_Status":
             {
                 // SDK reports -1.0 (full LEFT) .. 0 (CENTER) .. +1.0 (full RIGHT).
