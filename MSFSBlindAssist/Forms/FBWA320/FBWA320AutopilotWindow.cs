@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.Forms.FBWA320;
 // from the live cache. Mirrors the A380 panel (shared A32NX FCU events/vars).
 public class FBWA320AutopilotWindow : FBWA320FCUWindowBase
 {
-    private readonly Button ap1, ap2, appr, loc, exped;
+    private readonly Button ap1, ap2, appr, loc, exped, athr;
     private readonly Label fdLabel;
     private readonly System.Windows.Forms.Timer refreshTimer;
 
@@ -25,7 +25,7 @@ public class FBWA320AutopilotWindow : FBWA320FCUWindowBase
         appr = MakeToggle("APPR", 210, 65, "A32NX.FCU_APPR_PUSH", 3);
         exped = MakeToggle("EXPED", 20, 110, "A32NX.FCU_EXPED_PUSH", 4);
 
-        var athr = new Button { Text = "A/THR engage", Location = new Point(210, 110), Size = new Size(180, 35), TabIndex = 5, AccessibleName = "Autothrust engage" };
+        athr = new Button { Text = "A/THR", Location = new Point(210, 110), Size = new Size(180, 35), TabIndex = 5, AccessibleName = "Autothrust" };
         athr.Click += (s, e) => { simConnect.SendEvent("AUTO_THROTTLE_ARM"); RefreshStates(); };
         var apDisc = new Button { Text = "AP disconnect", Location = new Point(20, 155), Size = new Size(180, 35), TabIndex = 6, AccessibleName = "Autopilot disconnect" };
         apDisc.Click += (s, e) => { simConnect.SendEvent("A32NX.FCU_AP_DISCONNECT_PUSH"); RefreshStates(); };
@@ -72,9 +72,19 @@ public class FBWA320AutopilotWindow : FBWA320FCUWindowBase
         SetState(loc, "LOC", aircraft.LocLightVar);
         SetState(appr, "APPR", aircraft.ApprLightVar);
         SetState(exped, "EXPED", "A32NX_FMA_EXPEDITE_MODE");
+        SetAthrState();
         bool fdL = (simConnect.GetCachedVariableValue(aircraft.FdLeftLightVar) ?? 0) > 0.5;
         bool fdR = (simConnect.GetCachedVariableValue(aircraft.FdRightLightVar) ?? 0) > 0.5;
         fdLabel.Text = $"Flight Director: Captain {(fdL ? "on" : "off")}, First Officer {(fdR ? "on" : "off")}";
+    }
+
+    // A/THR has three states (Disengaged / Armed / Active), not on/off.
+    private void SetAthrState()
+    {
+        var label = FbwAutothrustButton.Label(
+            simConnect.GetCachedVariableValue(FbwAutothrustButton.StatusVar), aircraft.GetVariables());
+        athr.Text = label.Text;
+        athr.AccessibleName = label.AccessibleName;
     }
 
     private void SetState(Button b, string name, string stateVar)
