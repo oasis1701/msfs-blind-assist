@@ -17,6 +17,9 @@ public class IFly737SpeedBrakeLeverTests
 
     [Theory]
     [InlineData(33.5, 34)]   // a hair off a detent must never open the combo blank
+    [InlineData(29, 34)]     // within the settle tolerance of ARMED
+    [InlineData(22, 0)]      // short of ARMED is not armed: Down, never "Armed"
+    [InlineData(28, 0)]
     [InlineData(100, 34)]    // a hardware axis between detents, nearer ARMED
     [InlineData(149, 180)]
     [InlineData(210, 224)]
@@ -74,11 +77,21 @@ public class IFly737SpeedBrakeLeverTests
     [Theory]
     [InlineData(100, "Speed brake 35 percent")]   // (100 - 34) / 190 of the ARMED→UP travel
     [InlineData(120, "Speed brake 45 percent")]
-    [InlineData(20, null)]                          // below ARMED: nothing, as on both PMDG jets
-    public void A_lever_resting_between_detents_speaks_its_travel_above_armed(double lever, string? expected)
+    [InlineData(20, "Speed brake down")]            // short of ARMED is not armed: Down
+    public void A_lever_resting_between_detents_speaks_its_travel_or_down(double lever, string? expected)
     {
         var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
         Assert.Equal(expected, callout.Settle(lever, 0, muted: false));
+    }
+
+    [Fact]
+    public void A_lever_that_leaves_ARMED_and_rests_short_of_it_says_down()
+    {
+        // A hardware axis drifting from ARMED to 22: the pilot last heard "armed" and must hear
+        // that it no longer is.
+        var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
+        Assert.Equal("Speed brake armed", callout.Settle(34, 0, muted: false));
+        Assert.Equal("Speed brake down", callout.Settle(22, 0, muted: false));
     }
 
     [Fact]

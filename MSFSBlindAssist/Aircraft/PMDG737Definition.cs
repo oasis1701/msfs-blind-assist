@@ -361,7 +361,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,  // custom announcement in ProcessSimVarUpdate
             ValueDescriptions = PmdgSpeedBrakeLever.ComboDescriptions(PmdgSpeedBrakeLever.Ng3),
-            ValueToDescriptionKey = v => PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.Ng3, v)
+            ValueToDescriptionKey = v => PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.Ng3, v, PmdgSpeedBrakeLever.Ng3SettleTolerance)
         };
 
         // =================================================================

@@ -92,19 +92,36 @@ public static class PmdgSpeedBrakeLever
         => detents.ToDictionary(d => d.Value, d => d.Label);
 
     /// <summary>
-    /// The combo's <c>SimVarDefinition.ValueToDescriptionKey</c>: the rest value of the detent NEAREST
-    /// the lever. Always a key, never "no match": MainForm's combo lookup is an exact key match, and a
-    /// combo opened with nothing selected commits row 0 ("Down") on the pilot's first arrow press — a
-    /// lever caught mid-travel, or resting a hair off its detent, would otherwise retract the speed
-    /// brakes the moment the pilot touched the control (the MD-11 flap combos' exact-key-seed trap).
-    /// A tie between two detents goes to the lower one.
+    /// The combo's <c>SimVarDefinition.ValueToDescriptionKey</c>: the rest value of the lever's
+    /// <see cref="PositionIndex"/> position, else of the detent NEAREST the lever. Always a key, never
+    /// "no match": MainForm's combo lookup is an exact key match, and a combo opened with nothing
+    /// selected commits row 0 ("Down") on the pilot's first arrow press — a lever caught mid-travel,
+    /// or resting a hair off its detent, would otherwise retract the speed brakes the moment the pilot
+    /// touched the control (the MD-11 flap combos' exact-key-seed trap). A tie between two detents goes
+    /// to the lower one.
     /// </summary>
-    public static double NearestDetentValue(IReadOnlyList<PmdgLeverDetent> detents, double value)
+    public static double NearestDetentValue(IReadOnlyList<PmdgLeverDetent> detents, double value, double tolerance)
     {
+        int idx = PositionIndex(detents, value, tolerance);
+        if (idx >= 0) return detents[idx].Value;
         var best = detents[0];
         foreach (var d in detents)
             if (Math.Abs(value - d.Value) < Math.Abs(value - best.Value)) best = d;
         return best.Value;
+    }
+
+    /// <summary>
+    /// Where the lever IS, as a detent index: the detent it rests at within
+    /// <paramref name="tolerance"/>; DOWN (0) for a lever short of ARMED (the second row) and not
+    /// within tolerance of it, because such a lever is not armed; else -1, between detents above ARMED.
+    /// The nearest-detent rule alone called a lever resting short of ARMED "Armed" while the spoilers
+    /// were not armed and nothing was spoken.
+    /// </summary>
+    public static int PositionIndex(IReadOnlyList<PmdgLeverDetent> detents, double value, double tolerance)
+    {
+        int idx = SettledIndex(detents, value, tolerance);
+        if (idx >= 0) return idx;
+        return value < detents[1].Value ? 0 : -1;
     }
 
     /// <summary>The index of the detent the lever is resting at within <paramref name="tolerance"/>,
@@ -278,7 +295,7 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     public string? Settle(double value, long nowTick, bool muted)
     {
         if (double.IsNaN(value)) return null;
-        int idx = PmdgSpeedBrakeLever.SettledIndex(_detents, value, _tolerance);
+        int idx = PmdgSpeedBrakeLever.PositionIndex(_detents, value, _tolerance);
         string? text = idx >= 0 ? _detents[idx].Spoken : _betweenDetents?.Invoke(value);
         if (text == null) return null;  // resting between detents with nothing to say
 

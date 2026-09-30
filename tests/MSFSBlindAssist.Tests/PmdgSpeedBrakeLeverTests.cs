@@ -29,28 +29,32 @@ public class PmdgSpeedBrakeLeverTests
     [InlineData(25, 0)]     // a tie goes to the LOWER detent
     public void The_777_combo_seeds_with_the_nearest_detent(double lever, double expectedKey)
     {
-        Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.B777, lever));
+        Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
+            PmdgSpeedBrakeLever.B777, lever, PmdgSpeedBrakeLever.B777SettleTolerance));
     }
 
     [Theory]
     [InlineData(336.5, 337)]  // a hair off a detent must never open the combo blank
-    [InlineData(62, 100)]     // mid-travel (seen live)
+    [InlineData(62, 0)]       // mid-travel short of ARM (seen live): not armed, so Down
     [InlineData(300, 337)]
     [InlineData(420, 400)]
     public void The_737_combo_seeds_with_the_nearest_detent(double lever, double expectedKey)
     {
-        Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.Ng3, lever));
+        Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
+            PmdgSpeedBrakeLever.Ng3, lever, PmdgSpeedBrakeLever.Ng3SettleTolerance));
     }
 
     [Fact]
     public void Every_classified_value_is_a_combo_key()
     {
         // The whole point of the classifier: MainForm's lookup is an exact key match.
-        foreach (var table in new[] { PmdgSpeedBrakeLever.Ng3, PmdgSpeedBrakeLever.B777 })
+        foreach (var (table, tolerance) in new[] {
+            (PmdgSpeedBrakeLever.Ng3, PmdgSpeedBrakeLever.Ng3SettleTolerance),
+            (PmdgSpeedBrakeLever.B777, PmdgSpeedBrakeLever.B777SettleTolerance) })
         {
             var keys = PmdgSpeedBrakeLever.ComboDescriptions(table);
             for (double v = -20; v <= 450; v += 0.5)
-                Assert.True(keys.ContainsKey(PmdgSpeedBrakeLever.NearestDetentValue(table, v)), $"{v}");
+                Assert.True(keys.ContainsKey(PmdgSpeedBrakeLever.NearestDetentValue(table, v, tolerance)), $"{v}");
         }
     }
 
@@ -64,6 +68,40 @@ public class PmdgSpeedBrakeLeverTests
     {
         Assert.Equal(expectedIndex, PmdgSpeedBrakeLever.SettledIndex(
             PmdgSpeedBrakeLever.Ng3, lever, PmdgSpeedBrakeLever.Ng3SettleTolerance));
+    }
+
+    // A lever resting short of the ARM detent (a hardware axis, or a lever caught mid-travel) is not
+    // armed. The nearest-detent rule called 30 on the 777 "Armed" while the spoilers were not armed
+    // and nothing was spoken — the one position a blind pilot most needs to hear the truth about
+    // before landing. Within the settle tolerance of ARM it still reads Armed.
+    [Theory]
+    [InlineData(30, 0)]
+    [InlineData(47, 0)]
+    [InlineData(48, 50)]     // within B777SettleTolerance of ARM
+    public void A_777_lever_short_of_ARM_reads_down(double lever, double expectedKey)
+    {
+        Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
+            PmdgSpeedBrakeLever.B777, lever, PmdgSpeedBrakeLever.B777SettleTolerance));
+    }
+
+    [Theory]
+    [InlineData(30, 0)]
+    [InlineData(47, 0)]
+    [InlineData(49, 1)]
+    [InlineData(60, -1)]     // above ARM, between detents: still "between" (the percentage speaks)
+    public void The_777s_resting_position_treats_short_of_ARM_as_down(double lever, int expectedIndex)
+    {
+        Assert.Equal(expectedIndex, PmdgSpeedBrakeLever.PositionIndex(
+            PmdgSpeedBrakeLever.B777, lever, PmdgSpeedBrakeLever.B777SettleTolerance));
+    }
+
+    [Fact]
+    public void A_777_lever_that_leaves_ARM_and_rests_short_of_it_says_down()
+    {
+        var callout = New777();
+        Assert.Equal("Speed brake armed", callout.Settle(50, 0, muted: false));
+        Assert.Equal("Speed brake down", callout.Settle(30, 0, muted: false));
+        Assert.Null(callout.Settle(0, 0, muted: false));   // the same position: no repeat
     }
 
     [Fact]
@@ -126,7 +164,7 @@ public class PmdgSpeedBrakeLeverTests
     [Theory]
     [InlineData(60, "Speed brake 20 percent")]
     [InlineData(90, "Speed brake 80 percent")]
-    [InlineData(30, null)]     // below ARMED: between detents, nothing to say
+    [InlineData(30, "Speed brake down")]   // short of ARMED is not armed: Down (PositionIndex)
     public void The_777_reads_a_lever_resting_between_detents(double lever, string? expected)
     {
         Assert.Equal(expected, New777().Settle(lever, 0, muted: false));

@@ -3801,7 +3801,7 @@ public partial class PMDG777Definition : BaseAircraftDefinition, IPMDGAircraft
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
                 ValueDescriptions = PmdgSpeedBrakeLever.ComboDescriptions(PmdgSpeedBrakeLever.B777),
-                ValueToDescriptionKey = v => PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.B777, v)
+                ValueToDescriptionKey = v => PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.B777, v, PmdgSpeedBrakeLever.B777SettleTolerance)
             },
             ["FCTL_Flaps"] = new SimConnect.SimVarDefinition
             {

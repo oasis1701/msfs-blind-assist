@@ -72,7 +72,7 @@ public static class IFly737SpeedBrakeLever
     /// resting between detents never opens the combo with nothing selected (where the first arrow
     /// press would commit "Down" and retract the speed brakes).</summary>
     public static double NearestDetentValue(double value)
-        => PmdgSpeedBrakeLever.NearestDetentValue(Detents, value);
+        => PmdgSpeedBrakeLever.NearestDetentValue(Detents, value, SettleTolerance);
 
     /// <summary>The index of the detent a combo pick names (its value IS a detent's value), or -1.</summary>
     public static int IndexOfComboValue(double value)
