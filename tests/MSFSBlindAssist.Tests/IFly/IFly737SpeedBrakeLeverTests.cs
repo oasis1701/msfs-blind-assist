@@ -10,8 +10,8 @@ public class IFly737SpeedBrakeLeverTests
     [Fact]
     public void The_detents_are_the_measured_values_not_either_headers_other_guesses()
     {
-        // 34 and 224 measured (stock SPOILERS_ARM_ON / SPOILERS_ON); 180 is key_command.h's.
-        // Never 35 (SDK_Defines.h) or 254 (key_command.h — ignored by the aircraft).
+        // All four measured (180 in flight). Never 35 or 149 (SDK_Defines.h) or 254
+        // (key_command.h — ignored by the aircraft).
         Assert.Equal(new double[] { 0, 34, 180, 224 }, IFly737SpeedBrakeLever.Detents.Select(d => d.Value));
     }
 

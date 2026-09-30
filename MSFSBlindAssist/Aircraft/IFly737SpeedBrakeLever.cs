@@ -20,12 +20,12 @@ public sealed record IFlyLeverDetent(double Value, string Label, string Spoken);
 /// <item>DOWN = 0 and UP = 224: the stock SPOILERS_ON event parks the lever at 224.</item>
 /// <item>ARMED = 34: the stock SPOILERS_ARM_ON event parks the lever at 34 (key_command.h's value;
 /// SDK_Defines.h's "35" is off by one).</item>
-/// <item>FLIGHT DETENT = 180 is NOT measured. The two vendor headers disagree (key_command.h 180,
-/// SDK_Defines.h 149), the lever takes any value, and on the ground the spoiler deflection is
-/// linear from ARMED to UP (<c>SPOILERS HANDLE POSITION</c> = (lever - 34) / 190: 60.5 % at 149,
-/// 76.8 % at 180), so neither shows a detent. 180 is taken because key_command.h is the header
-/// that got ARMED right, and because 76.8 % sits where the PMDG 737 NG3's measured flight detent
-/// does (79 % of ARMED→UP, <see cref="PmdgSpeedBrakeLever.Ng3"/>); 149 would be 60.5 %.</item>
+/// <item>FLIGHT DETENT = 180 (key_command.h; SDK_Defines.h's 149 is wrong), measured IN FLIGHT
+/// (FL271, 283 kt): at 180 and at 224 the aircraft holds <c>SPOILERS HANDLE POSITION</c> at the
+/// same in-flight maximum, 78.4 %, approached from above or below, while 149 gives 60.5 % — so
+/// the detent that reaches the flight maximum is 180, not 149. On the GROUND the deflection is
+/// linear all the way to UP ((lever - 34) / 190, 100 % at 224), which is why a ground test shows
+/// no detent at all.</item>
 /// </list>
 /// The spoken sentences are the PMDG 737's for fleet parity. The iFly has no 50 percent detent, so
 /// it has four where the NG3 has five.
