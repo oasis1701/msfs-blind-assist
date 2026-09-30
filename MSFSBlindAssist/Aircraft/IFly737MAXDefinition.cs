@@ -1912,6 +1912,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
         // The trim call-out is baselined the same way, for the same reason.
         SeedStabTrimFromSnapshot();
+
+        // The speed-brake callout forgets its last sentence for the same reason: a lever moved while
+        // the SDK was down or stale arrives in the snapshot the callout never sees, and a carried-over
+        // sentence would swallow the first genuine settle at that detent as a repeat.
+        _speedBrakeCallout.Reset();
     }
 
     /// <summary>Flash-filtered light announce. Announces "on" once at the first lit

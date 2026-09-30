@@ -239,6 +239,23 @@ public class PmdgSpeedBrakeLeverTests
         Assert.Equal("Speed brake down", c.Settle(0, t, muted: false, c.NoteSample(0)));
     }
 
+    // Both picks sent before the 1 Hz batch sample: the batch catches the lever AT the first on its
+    // way to the second. That answers the first pick only — clearing every pick sent before the
+    // sample dropped the second, and its arrival was read back over the pilot's pick.
+    [Fact]
+    public void A_737_lever_caught_at_one_pick_on_its_way_to_the_next_keeps_the_next()
+    {
+        var c = New737();
+        long t = Environment.TickCount64;
+        Assert.Null(c.Settle(0, t, muted: false, c.NoteSample(0)));          // the load-time baseline
+
+        c.RecordPick(1);                                                     // ARM
+        c.RecordPick(2);                                                     // 50 percent
+        Assert.Null(c.Settle(100, t, muted: false, c.NoteSample(100)));      // passing ARM
+        Assert.Null(c.Settle(250, t, muted: false, c.NoteSample(250)));      // arrival
+        Assert.Equal("Speed brake down", c.Settle(0, t, muted: false, c.NoteSample(0)));
+    }
+
     [Fact]
     public void A_pick_the_aircraft_ignored_expires()
     {

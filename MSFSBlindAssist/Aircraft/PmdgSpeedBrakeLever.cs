@@ -185,6 +185,7 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     private readonly object _lock = new();
 
     private double _latest = double.NaN;
+    private long _latestTick;
     private ScreenReaderAnnouncer? _announcer;
     private SynchronizationContext? _uiContext;
     private System.Threading.Timer? _timer;
@@ -246,6 +247,7 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
         lock (_lock)
         {
             _latest = value;
+            _latestTick = Environment.TickCount64;
             return ++_sampleCount;
         }
     }
@@ -313,6 +315,9 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
             lock (_lock)
             {
                 if (sample != _sampleCount) return;
+                // The timer armed for an earlier sample can fire between OnSample counting this one
+                // and re-arming it: this sample has not rested yet, and its own settle follows.
+                if (Environment.TickCount64 - _latestTick < _settleMs / 2) return;
                 value = _latest;
                 announcer = _announcer;
             }
@@ -340,14 +345,16 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
             _picks.RemoveAll(p => nowTick - p.Tick > PickMemoryMs);
             int match = _picks.FindIndex(p => p.Index == idx);
             bool picked = match >= 0;
-            // A lever resting AT a detent answers the pick it matches and every pick sent before this
-            // sample arrived. Anywhere else it may still be travelling (a mid-travel 737 sample short
-            // of ARM reads as Down), unless picks land at once. A pick sent AFTER the sample arrived
-            // waits for its own arrival.
+            // A lever resting AT a detent answers picks. Anywhere else it may still be travelling (a
+            // mid-travel 737 sample short of ARM reads as Down), unless picks land at once. Arriving
+            // at a picked detent answers that pick and the ones sent before it, which it superseded,
+            // and nothing after it: the 737's 1 Hz batch can catch the lever AT one pick on its way
+            // to the next. Resting at an unpicked detent answers every pick sent before this sample
+            // arrived (the lever went somewhere else); one sent after it waits for its own arrival.
             if (atDetent || _picksLandAtOnce)
             {
-                if (picked) _picks.RemoveAt(match);
-                _picks.RemoveAll(p => p.SamplesBefore < sample);
+                if (picked) _picks.RemoveRange(0, match + 1);
+                else _picks.RemoveAll(p => p.SamplesBefore < sample);
             }
             if (text == null) return null;  // resting between detents with nothing to say
 
