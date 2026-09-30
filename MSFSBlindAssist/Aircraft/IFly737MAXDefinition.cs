@@ -948,13 +948,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 }
             }
             double v2 = w.Map?.Invoke(value) ?? value;
-            // Read BEFORE sending: a lever already resting at the picked detent will not move,
-            // so no sample would ever answer a recorded pick.
-            bool leverAlreadyThere = varKey == IFly737SpeedBrakeLever.FieldName
-                && Sdk.Snapshot is { } leverSnap
-                && ReadRawField(leverSnap, varKey) is { } leverNow
-                && IFly737SpeedBrakeLever.IndexOfComboValue(value) is var pickIdx && pickIdx >= 0
-                && IFly737SpeedBrakeLever.SettledIndex(leverNow) == pickIdx;
             if (!Sdk.SendCommand(w.Command, v2, w.Value3))
             {
                 announcer.AnnounceImmediate("iFly plugin not responding.");
@@ -962,10 +955,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             }
             // The speed-brake lever's settle timer speaks outside MainForm's UI-echo
             // suppression, so a SENT pick is recorded: the lever arriving at that
-            // detent is then silent (the screen reader already read the pick). Not
-            // recorded when the lever is already there: the pick memory would then sit
-            // armed for PickMemoryMs and swallow a real move back to that detent.
-            if (varKey == IFly737SpeedBrakeLever.FieldName && !leverAlreadyThere)
+            // detent is then silent (the screen reader already read the pick). Always
+            // recorded, even when the lever already rests there: the callout is built
+            // with picksLandAtOnce, so its next settle anywhere answers the pick and it
+            // cannot sit armed to swallow a later move back (judging "already there"
+            // from the snapshot instead read a lever up to one 250 ms poll stale).
+            if (varKey == IFly737SpeedBrakeLever.FieldName)
                 _speedBrakeCallout.RecordPick(IFly737SpeedBrakeLever.IndexOfComboValue(value));
             // Guarded switches whose SET has no working Value3 guard-bypass need the
             // command TWICE: the first send only OPENS the guard, the second moves
@@ -1796,7 +1791,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         IFly737SpeedBrakeLever.Detents, IFly737SpeedBrakeLever.SettleTolerance,
         IFly737SpeedBrakeLever.SettleMs, aircraftCode: "IFLY_737MAX8",
         muteKey: IFly737SpeedBrakeLever.FieldName, speakFirst: true,
-        betweenDetents: IFly737SpeedBrakeLever.PartialDeployment);
+        betweenDetents: IFly737SpeedBrakeLever.PartialDeployment, picksLandAtOnce: true);
 
     /// <summary>FLAP_Status / FLTCTRL_FLAP_SET lever detent 0-8 → its label ("up",
     /// "1", "2", "5", "10", "15", "25", "30", "40"). Used by the L hotkey readout

@@ -170,6 +170,21 @@ public class PmdgSpeedBrakeLeverTests
         Assert.Equal(expected, New777().Settle(lever, 0, muted: false));
     }
 
+    // The 737's L-var rides a 1 Hz batch and settles after 300 ms, so a travelling lever SETTLES
+    // mid-travel. A mid-travel sample short of ARM reads as Down; it must not answer a pick of ARM,
+    // or the lever arriving at ARM is announced over the pilot's own pick.
+    [Fact]
+    public void A_737_pick_survives_a_mid_travel_sample_short_of_ARM()
+    {
+        var c = New737();
+        long t = Environment.TickCount64;
+        Assert.Null(c.Settle(0, t, muted: false));           // the load-time baseline
+
+        c.RecordPick(1);                                     // pick ARM
+        Assert.Null(c.Settle(62, t, muted: false));          // mid-travel (seen live)
+        Assert.Null(c.Settle(100, t, muted: false));         // arrival: the pilot's own pick
+    }
+
     [Fact]
     public void A_pick_silences_its_own_arrival_only()
     {

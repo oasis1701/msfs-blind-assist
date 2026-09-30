@@ -59,11 +59,6 @@ public static class IFly737SpeedBrakeLever
     public static string? PartialDeployment(double value)
         => PmdgSpeedBrakeLever.PartialDeployment(Detents, value);
 
-    /// <summary>The detent a lever at <paramref name="value"/> is resting at, or -1 between
-    /// detents — the settle announcer's own test.</summary>
-    public static int SettledIndex(double value)
-        => PmdgSpeedBrakeLever.SettledIndex(Detents, value, SettleTolerance);
-
     /// <summary>The combo's ValueDescriptions: each detent's value to its label.</summary>
     public static Dictionary<double, string> ComboDescriptions()
         => PmdgSpeedBrakeLever.ComboDescriptions(Detents);

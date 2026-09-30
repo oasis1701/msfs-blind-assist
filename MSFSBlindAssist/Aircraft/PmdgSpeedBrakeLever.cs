@@ -170,6 +170,7 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     private readonly bool _speakFirst;
     private readonly Func<double, string?>? _betweenDetents;
     private readonly string _aircraftCode;
+    private readonly bool _picksLandAtOnce;
     private readonly object _lock = new();
 
     private double _latest = double.NaN;
@@ -186,8 +187,13 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     /// <param name="speakFirst">False where the first sample is the value at load rather than a
     /// change (the 737's L-var batch); true where the initial snapshot never reaches the announcer
     /// (the 777's CDA and the iFly's SDK).</param>
+    /// <param name="picksLandAtOnce">True where a pick's write reads back exactly and at once, with no
+    /// travel (the iFly): then ANY settle answers a pending pick, because a lever resting anywhere but
+    /// the picked detent has gone somewhere else. False where a settle can fall mid-travel (the 737's
+    /// 1 Hz batch settles after 300 ms): there only a lever resting AT a detent answers it.</param>
     public PmdgSpeedBrakeCallout(IReadOnlyList<PmdgLeverDetent> detents, double tolerance, int settleMs,
-        string aircraftCode, string muteKey, bool speakFirst, Func<double, string?>? betweenDetents = null)
+        string aircraftCode, string muteKey, bool speakFirst, Func<double, string?>? betweenDetents = null,
+        bool picksLandAtOnce = false)
     {
         _detents = detents;
         _tolerance = tolerance;
@@ -196,6 +202,7 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
         _muteKey = muteKey;
         _speakFirst = speakFirst;
         _betweenDetents = betweenDetents;
+        _picksLandAtOnce = picksLandAtOnce;
     }
 
     /// <summary>Whether the pilot muted the lever's row in this aircraft's Ctrl+M list.</summary>
@@ -213,12 +220,6 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
         }
         (_timer ??= new System.Threading.Timer(OnSettle))
             .Change(_settleMs, System.Threading.Timeout.Infinite);
-    }
-
-    /// <summary>The value of the last sample, or NaN before the first.</summary>
-    public double Latest
-    {
-        get { lock (_lock) return _latest; }
     }
 
     /// <summary>
@@ -296,14 +297,16 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     {
         if (double.IsNaN(value)) return null;
         int idx = PmdgSpeedBrakeLever.PositionIndex(_detents, value, _tolerance);
+        bool atDetent = PmdgSpeedBrakeLever.SettledIndex(_detents, value, _tolerance) >= 0;
         string? text = idx >= 0 ? _detents[idx].Spoken : _betweenDetents?.Invoke(value);
-        if (text == null) return null;  // resting between detents with nothing to say
 
         lock (_lock)
         {
             bool picked = _pickIndex >= 0 && idx == _pickIndex && nowTick - _pickTick <= PickMemoryMs;
-            // A lever resting at ANY detent answers the pick; between detents it may still be travelling.
-            if (idx >= 0) _pickIndex = -1;
+            // A lever resting AT a detent answers the pick. Anywhere else it may still be travelling
+            // (a mid-travel 737 sample short of ARM reads as Down), unless picks land at once.
+            if (atDetent || _picksLandAtOnce) _pickIndex = -1;
+            if (text == null) return null;  // resting between detents with nothing to say
 
             bool first = !_hasBaseline;
             _hasBaseline = true;

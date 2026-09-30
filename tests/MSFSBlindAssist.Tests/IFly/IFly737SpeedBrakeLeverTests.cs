@@ -94,6 +94,23 @@ public class IFly737SpeedBrakeLeverTests
         Assert.Equal("Speed brake down", callout.Settle(22, 0, muted: false));
     }
 
+    // A pick always lands at once on the iFly (the write reads back exactly, with no travel), so a
+    // pick of the detent the lever already rests at produces NO sample and nothing answers it at
+    // once. Any later settle answers it: a lever resting between detents has gone somewhere else.
+    // Without that the armed pick swallowed the lever's return to that detent — which is why the
+    // pick used to be skipped when a (possibly stale) snapshot said the lever was already there.
+    [Fact]
+    public void A_settle_between_detents_answers_a_pending_pick()
+    {
+        var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
+        long t = Environment.TickCount64;
+        Assert.Equal("Speed brake down", callout.Settle(0, t, muted: false));
+
+        callout.RecordPick(0);                               // picked Down while already down
+        Assert.Equal("Speed brake 35 percent", callout.Settle(100, t, muted: false));
+        Assert.Equal("Speed brake down", callout.Settle(0, t, muted: false));   // a real move back
+    }
+
     [Fact]
     public void The_mute_is_read_from_the_iFly_Ctrl_M_list_not_the_PMDG_one()
     {
