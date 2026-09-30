@@ -23,7 +23,7 @@ public static class FbwAutothrustButton
         string? state = null;
         if (value is double v
             && variables.TryGetValue(StatusVar, out var def)
-            && def.ValueDescriptions.TryGetValue(Math.Round(v), out var described))
+            && def.ValueDescriptions.TryGetValue(def.DescriptionKeyFor(v), out var described))
             state = described;
 
         return state == null

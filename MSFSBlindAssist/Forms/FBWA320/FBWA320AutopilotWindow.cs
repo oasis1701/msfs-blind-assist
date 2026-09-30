@@ -4,7 +4,7 @@ using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.FBWA320;
 
-// A320 Autopilot panel: AP1/AP2, A/THR engage + disconnect, AP disconnect,
+// A320 Autopilot panel: AP1/AP2, A/THR (labelled with its state) + disconnect, AP disconnect,
 // APPR/LOC/EXPED, and a read-only Flight Director status. State labels refresh
 // from the live cache. Mirrors the A380 panel (shared A32NX FCU events/vars).
 public class FBWA320AutopilotWindow : FBWA320FCUWindowBase

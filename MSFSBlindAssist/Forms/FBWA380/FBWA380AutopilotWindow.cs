@@ -4,7 +4,7 @@ using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Forms.FBWA380;
 
-// A380 Autopilot panel: AP1/AP2, the flight-director pushbutton, A/THR engage +
+// A380 Autopilot panel: AP1/AP2, the flight-director pushbutton, A/THR (labelled with its state) +
 // disconnect, AP disconnect, APPR/LOC. State labels refresh from the live cache.
 public class FBWA380AutopilotWindow : FBWA380FCUWindowBase
 {
