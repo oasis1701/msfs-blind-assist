@@ -25,7 +25,9 @@ public sealed record PmdgLeverDetent(double Value, string Label, string EventNam
 /// Rest values, measured live:
 /// <list type="bullet">
 /// <item>737: <c>L:switch_679_73X</c> — 0 / 100 / 250 / 337 / 400, verified against the MSFS NG3.
-/// The NG3 SDK has no lever field. TFM's 272 for the flight detent was a P3D value.</item>
+/// The NG3 SDK has no lever field. TFM's 272 for the flight detent was a P3D value. ARM is exact:
+/// measured 2026-09-30 (hydraulics pressurised), the spoilers are down at 100 and 34 / 34 / 37 percent
+/// up at 101 / 105 / 137. A hardware axis snaps the lever from Down straight to ARM.</item>
 /// <item>777: <c>L:switch_498_a</c> — 0 / 200 / 300 / 400, measured 2026-09-30 (MSFS 2024): the
 /// combo's Down / Armed / 50 percent / Up picks land exactly there. It is 4 x the SDK's
 /// <c>FCTL_Speedbrake_Lever</c> byte (0 / 50 / 75 / 100), which TRUNCATES: a lever at 201-203 has
@@ -42,19 +44,26 @@ public static class PmdgSpeedBrakeLever
     public static readonly IReadOnlyList<PmdgLeverDetent> Ng3 = new PmdgLeverDetent[]
     {
         new(0,   "Down",           "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN",    "Speed brake down"),
-        new(100, "Armed",          "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM",     "Speed brake armed"),
+        // Exact: at 101 the spoilers are already 34 percent up (measured 2026-09-30).
+        new(100, "Armed",          "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM",     "Speed brake armed", Tolerance: 0.25),
         new(250, "50 percent",     "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_50PCT",   "Speed brake 50 percent"),
         new(337, "Flight detent",  "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_FLT_DET", "Speed brake flight"),
         new(400, "Fully deployed", "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_UP",      "Speed brake fully deployed"),
     };
 
     /// <summary>The 737's settle announcer treats a lever within this distance of a detent as resting
-    /// there, and says nothing for a lever that comes to rest further from every detent.</summary>
+    /// there (ARM is exact — see its row); further from every detent it speaks the deployment
+    /// (<see cref="Ng3PartialDeployment"/>).</summary>
     public const double Ng3SettleTolerance = 10.0;
 
-    /// <summary>The 737 settle delay: the L-var rides the 1 Hz continuous batch and a resting lever
-    /// produces one final change, so a short trailing edge is enough.</summary>
-    public const int Ng3SettleMs = 300;
+    /// <summary>The 737 settle delay. The L-var rides the 1 Hz continuous batch and the lever travels
+    /// for one to two seconds, so a travelling lever is caught between detents: with a percentage
+    /// spoken there, the trailing edge must outlast one batch, as the 777's does.</summary>
+    public const int Ng3SettleMs = 1500;
+
+    /// <summary>What the 737 says for a lever resting BETWEEN detents above ARMED: the deployment as a
+    /// percentage of ARMED to UP (the 50-percent detent reads the same either way).</summary>
+    public static string? Ng3PartialDeployment(double value) => PartialDeployment(Ng3, value);
 
     public static readonly IReadOnlyList<PmdgLeverDetent> B777 = new PmdgLeverDetent[]
     {
@@ -221,7 +230,8 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     /// <param name="picksLandAtOnce">True where a pick's write reads back exactly and at once, with no
     /// travel (the iFly): then ANY settle answers a pending pick, because a lever resting anywhere but
     /// the picked detent has gone somewhere else. False where a settle can fall mid-travel (the 737's
-    /// 1 Hz batch settles after 300 ms): there only a lever resting AT a detent answers it.</param>
+    /// and 777's 1 Hz L-var batch can deliver a travelling lever as its last sample): there only a
+    /// lever resting AT a detent answers it.</param>
     public PmdgSpeedBrakeCallout(IReadOnlyList<PmdgLeverDetent> detents, double tolerance, int settleMs,
         string aircraftCode, string muteKey, bool speakFirst, Func<double, string?>? betweenDetents = null,
         bool picksLandAtOnce = false)

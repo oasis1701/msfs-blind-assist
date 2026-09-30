@@ -71,11 +71,16 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // the settle announcer (shared with the 777) live in PmdgSpeedBrakeLever.cs;
     // the announcer also honours the Ctrl+M mute and silences the pilot's own
     // combo pick, since its timer speaks outside MainForm's suppression wrap.
-    // Positions that come to rest between detents say nothing. The first settle
-    // is the lever's position at load, so it is recorded silently.
+    // A lever resting between detents above ARMED speaks its deployment as a
+    // percentage, as the 777 and the iFly do. The first settle is the lever's
+    // position at load, so it is recorded silently.
     private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
         PmdgSpeedBrakeLever.Ng3, PmdgSpeedBrakeLever.Ng3SettleTolerance, PmdgSpeedBrakeLever.Ng3SettleMs,
-        aircraftCode: "PMDG_737", muteKey: "MON_PMDG737_SpeedBrake", speakFirst: false);
+        aircraftCode: "PMDG_737", muteKey: "MON_PMDG737_SpeedBrake", speakFirst: false,
+        betweenDetents: PmdgSpeedBrakeLever.Ng3PartialDeployment);
+
+    /// <summary>The speed-brake lever's settle announcer, for the tests that pin its behaviour.</summary>
+    internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
 
     // EFIS Minimums knob step sizes per click on the PMDG NG3 737. RADIO mode
     // (DH) clicks in 1-ft increments; BARO mode (DA) clicks in 20-ft increments.

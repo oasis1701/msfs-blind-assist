@@ -96,10 +96,12 @@ public class PmdgSpeedBrakeLeverTests
     }
 
     [Theory]
-    [InlineData(85, -1)]    // between detents: the settle announcer says nothing
-    [InlineData(95, 1)]     // within 10 of ARM
-    [InlineData(105, 1)]
-    [InlineData(328, 3)]
+    [InlineData(85, -1)]    // between detents
+    [InlineData(95, -1)]    // ARM is exact: short of it is not armed
+    [InlineData(100, 1)]
+    [InlineData(101, -1)]   // ARM is exact: at 101 the spoilers are 34 percent up
+    [InlineData(105, -1)]
+    [InlineData(328, 3)]    // the other detents keep the tolerance
     [InlineData(400, 4)]
     public void The_737_settle_announcer_uses_a_tolerance(double lever, int expectedIndex)
     {
@@ -172,9 +174,33 @@ public class PmdgSpeedBrakeLeverTests
             Assert.All(table, d => Assert.False(string.IsNullOrEmpty(d.Spoken)));
     }
 
-    private static PmdgSpeedBrakeCallout New737() => new(
-        PmdgSpeedBrakeLever.Ng3, PmdgSpeedBrakeLever.Ng3SettleTolerance, PmdgSpeedBrakeLever.Ng3SettleMs,
-        "PMDG_737", "MON_PMDG737_SpeedBrake", speakFirst: false);
+    private static PmdgSpeedBrakeCallout New737() => new PMDG737Definition().SpeedBrakeCallout;
+
+    // Measured 2026-09-30 (PMDG 737-800, hydraulics pressurised): ARM is 100 with the spoilers down,
+    // and at 101, 105 and 137 they are 34, 34 and 37 percent up. Past ARM is a speed brake, never
+    // "armed", and a lever resting there says how far it is deployed, as on the 777 and the iFly.
+    [Theory]
+    [InlineData(100, "Speed brake armed")]
+    [InlineData(101, "Speed brake 1 percent")]
+    [InlineData(105, "Speed brake 2 percent")]
+    [InlineData(137, "Speed brake 12 percent")]
+    [InlineData(250, "Speed brake 50 percent")]
+    [InlineData(337, "Speed brake flight")]
+    public void Nothing_past_the_737_ARM_detent_is_armed(double lever, string expected)
+    {
+        var c = New737();
+        Assert.Null(c.Settle(0, 0, muted: false));                            // position at load
+        Assert.Equal(expected, c.Settle(lever, 1000, muted: false));
+    }
+
+    // A 737 lever travels in one to two seconds across the 1 Hz L-var batch: with a percentage now
+    // spoken between detents, the settle must outlast one batch or a lever still travelling would
+    // be read out at the sample it happened to be caught at.
+    [Fact]
+    public void The_737_settle_outlasts_one_batch()
+    {
+        Assert.True(PmdgSpeedBrakeLever.Ng3SettleMs > 1000);
+    }
 
     private static PmdgSpeedBrakeCallout New777() => new(
         PmdgSpeedBrakeLever.B777, PmdgSpeedBrakeLever.B777SettleTolerance, PmdgSpeedBrakeLever.B777SettleMs,
@@ -186,8 +212,8 @@ public class PmdgSpeedBrakeLeverTests
         var c = New737();
         Assert.Null(c.Settle(0, 0, muted: false));                            // position at load
         Assert.Equal("Speed brake armed", c.Settle(100, 1000, muted: false));
-        Assert.Null(c.Settle(101, 2000, muted: false));                       // same detent
-        Assert.Null(c.Settle(170, 3000, muted: false));                       // between detents
+        Assert.Null(c.Settle(100, 2000, muted: false));                       // same detent
+        Assert.Equal("Speed brake 23 percent", c.Settle(170, 3000, muted: false));   // between detents
     }
 
     [Fact]
@@ -214,7 +240,7 @@ public class PmdgSpeedBrakeLeverTests
         Assert.Equal(expected, c.Settle(lever, 1000, muted: false));
     }
 
-    // The 737's L-var rides a 1 Hz batch and settles after 300 ms, so a travelling lever SETTLES
+    // The 737's L-var rides a 1 Hz batch, so a travelling lever can SETTLE
     // mid-travel. A mid-travel sample short of ARM reads as Down; it must not answer a pick of ARM,
     // or the lever arriving at ARM is announced over the pilot's own pick.
     [Fact]
