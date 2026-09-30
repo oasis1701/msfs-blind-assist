@@ -2063,6 +2063,7 @@ Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 - Modify: `tests/MSFSBlindAssist.Tests/FirstOfficer/IFly737ExecutorTests.cs` (comment ~line 295)
 - Modify: `tests/MSFSBlindAssist.Tests/FirstOfficer/Pmdg777FlowOrderingTests.cs` (any remaining mention of `SpeeedbrakeLeverPos` / "25" / 0-100)
 - Modify: `docs/first-officer.md`, `docs/pmdg-777.md`, `docs/pmdg-737.md`, `docs/ifly-737.md`, `docs/ifly-737-first-officer-test-plan.md`, `docs/pmdg-737-first-officer-test-plan.md`
+- Modify: `CLAUDE.md` — two Invariants bullets PR #160 added that are now false: the one starting "**`FCTL_Speedbrake_Lever` is an ANALOG 0–100 POSITION…**" (PMDG 777 group) and the one starting "iFly 737 MAX8 speedbrake ARM, takeoff flaps and landing autobrake are Captain items…"
 
 **Interfaces:** none (comments and docs only).
 
@@ -2087,6 +2088,8 @@ Every hit that describes the FIRST OFFICER's speed brake must be corrected per S
 - `docs/first-officer.md` lines ~83-84 ("speedbrake ARM and landing autobrake stay Captain reminders … unverified scale mismatch"): speedbrake ARM is now a First Officer action on the iFly too; landing autobrake stays a Captain reminder. Near the "737 speed-brake lever detents are SDK mouse-click events" bullet, add one bullet: **Speed brake is judged by the lever, and a deployed one is left alone (2026-09-30).** Summarise the three jets' rule (`SpeedbrakeLeverState` over main's tables), the leave-alone rule on `FlowStep`/`ChecklistItem` (`LeaveAloneWhen`/`LeaveAloneText`, checked after `SkipCondition`, hand-tick refused with the reason spoken in place of the status line), and that a CAPTAIN REMINDER note elsewhere in this file about the iFly "Speedbrake: ARMED" is history.
 - `docs/ifly-737-first-officer-test-plan.md`: the Landing table row, section B7 and the lines ~275-280 and ~430-440 describe the Captain reminder. Rewrite B7 as "Speedbrake — the First Officer arms it" with two in-sim checks: (1) lever DOWN, run Landing → "Speedbrake: ARMED" and both lines tick; (2) lever at the FLIGHT detent → "Speedbrake extended, not armed. Left as it is.", the lever does not move, both lines stay open and tick once the pilot arms. Keep the scale-mismatch history as one sentence (PR #261 measured the write: same 0-224 scale as the read, ARM 34).
 - `docs/pmdg-737-first-officer-test-plan.md`: where Landing's speedbrake is described, add the flight-detent leave-alone check (same two scenarios as above).
+- `CLAUDE.md`, PMDG 777 bullet "**`FCTL_Speedbrake_Lever` is an ANALOG 0–100 POSITION…**": rewrite it as ONE bullet (keep it an invariant, keep the `→ [pmdg-777.md](docs/pmdg-777.md)` pointer) stating: the First Officer reads the 777 speed-brake lever from main's `L:switch_498_a` (key `FCTL_Speedbrake`, 0 / 200 / 300 / 400) through `FirstOfficer/Pmdg777SpeedbrakeLever` → `SpeedbrakeLeverState` over main's `PmdgSpeedBrakeLever.B777`, NEVER the SDK byte `FCTL_Speedbrake_Lever` (that value / 4, truncated: 201-203 read 50 "armed" with the spoilers 34 % up, and an axis DOWN at 22 read 5); keep, as history in one sentence each, that the SDK header's "25: ARMED" is wrong and that the profile once tested `v > 0.5 && v < 1.5`; ARM is exact, DOWN is anything short of ARM; armed is "Already set", a deployed lever is left alone with "Speedbrake extended, not armed. Left as it is." (flow step via `FlowStep.LeaveAloneWhen`, hand-tick via `ChecklistItem.LeaveAloneWhen`) and the executor's `DispatchCoreAsync` never clicks ARM over a lever not known to be DOWN; the Landing step goes through the verified `SPEEDBRAKE_ARM` (`ArmSpeedbrakeAsync`, up to 8 s) because the lever takes about 5 s DOWN→ARM and a flow step's own verify reads after 600 ms. Remove the claim that "every arm path must skip on armed-OR-deployed" (a deployed lever is now left alone with a reason, not skipped as "Already set").
+- `CLAUDE.md`, iFly bullet "iFly 737 MAX8 speedbrake ARM, takeoff flaps and landing autobrake are Captain items…": rewrite as: takeoff flaps and landing autobrake are Captain items; the speed brake is ARMED BY THE FIRST OFFICER since main's PR #261 measured the lever write (`FLTCTRL_SPOILER`, same 0-224 scale as `Spoiler_Lever_Status`, ARM exactly 34), through the verified `SPEEDBRAKE_ARM` (parity with the PMDG 737, same aircraft type); both "Speedbrake: ARMED" lines read `FO_SPEEDBRAKE_ARMED` = lever exactly at ARM AND the ARMED light (the light alone is lit 34-224); a deployed speed brake is left alone with its reason; `LD_SPDBRK_CHECK` and the Captain reminder are gone. Keep the `→ [first-officer.md](docs/first-officer.md), [ifly-737.md](docs/ifly-737.md)` pointer.
 
 - [ ] **Step 3: Verify nothing stale is left and the build is clean**
 
@@ -2096,7 +2099,7 @@ Run: `dotnet build MSFSBlindAssist.sln -c Debug` → 0 errors.
 - [ ] **Step 4: Commit**
 
 ```bash
-git add -A MSFSBlindAssist tests docs
+git add -A MSFSBlindAssist tests docs CLAUDE.md
 git commit -m "docs(fo): the speed brake notes say what the First Officer does now
 
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
