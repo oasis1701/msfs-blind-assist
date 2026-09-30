@@ -225,6 +225,19 @@ public class ChecklistItem<TExec, TState>
     /// </summary>
     public Func<TExec, TState, Task>? CheckAction { get; set; }
 
+    /// <summary>
+    /// If set and it returns true when the pilot ticks this line ON by hand, the First Officer
+    /// does NOT run <see cref="CheckAction"/>: the tick is refused (the line stays unticked) and
+    /// <see cref="LeaveAloneText"/> is handed back for the window to speak. The hand-tick
+    /// counterpart of FlowStep.LeaveAloneWhen (arming a speed brake that is already deployed
+    /// would retract it). Unticking is never refused.
+    /// </summary>
+    public Func<TState, bool>? LeaveAloneWhen { get; set; }
+
+    /// <summary>The reason spoken when <see cref="LeaveAloneWhen"/> refuses a tick. Say what stays
+    /// as it is. Defaults to "Skipping: {Label}".</summary>
+    public string? LeaveAloneText { get; set; }
+
     // -----------------------------------------------------------------------
     // Linking to flows
     // -----------------------------------------------------------------------

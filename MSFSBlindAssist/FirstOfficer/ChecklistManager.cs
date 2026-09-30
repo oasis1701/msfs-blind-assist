@@ -46,11 +46,27 @@ public class ChecklistManager<TExec, TState>
     /// Toggle the IsChecked state of an item. Only works if ManualCompletionAllowed.
     /// Returns the new checked state, or null if toggling was not permitted.
     /// </summary>
-    public bool? ToggleItem(string groupId, string itemId)
+    public bool? ToggleItem(string groupId, string itemId) => ToggleItem(groupId, itemId, out _);
+
+    /// <param name="leftAloneText">Set when a tick ON was refused because the item's
+    /// <see cref="ChecklistItem{TExec,TState}.LeaveAloneWhen"/> holds: the item stays unchecked,
+    /// nothing ran, and this is what to say. Null otherwise.</param>
+    public bool? ToggleItem(string groupId, string itemId, out string? leftAloneText)
     {
+        leftAloneText = null;
         var group = FindGroup(groupId);
         var item  = group?.Items.FirstOrDefault(i => i.Id == itemId);
         if (group == null || item == null || !item.ManualCompletionAllowed) return null;
+
+        // A tick ON that the aircraft's state says the First Officer must not act on (the
+        // speed-brake arm over a deployed speed brake): refuse it outright — no action, no
+        // grace stamp, nothing owed — and hand back the reason, so it is spoken now rather
+        // than as "Unable to complete" when the revert catches up ten seconds later.
+        if (!item.IsChecked && item.LeaveAloneWhen != null && _state.IsAvailable && item.LeaveAloneWhen(_state))
+        {
+            leftAloneText = item.LeaveAloneText ?? $"Skipping: {item.Label}";
+            return false;
+        }
 
         item.IsChecked = !item.IsChecked;
 

@@ -617,7 +617,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         if (e.Node.Checked == item.IsChecked) return; // Prevent loop
 
         _suppressTreeEvents = true;
-        if (_checklistMgr.ToggleItem(groupId, itemId) == null)
+        if (_checklistMgr.ToggleItem(groupId, itemId, out string? leftAloneText) == null)
         {
             // Toggle rejected — revert the checkbox
             e.Node.Checked = item.IsChecked;
@@ -625,8 +625,11 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         else
         {
             e.Node.Checked = item.IsChecked;
+            // A tick the First Officer refused (ChecklistItem.LeaveAloneWhen) speaks its reason
+            // IN PLACE of the status line — one utterance, so the interrupting status line can
+            // never cut the reason off.
             string status = item.IsChecked ? "checked" : "unchecked";
-            _announcer.AnnounceImmediate($"{item.Label}: {status}");
+            _announcer.AnnounceImmediate(leftAloneText ?? $"{item.Label}: {status}");
         }
         _suppressTreeEvents = false;
     }
