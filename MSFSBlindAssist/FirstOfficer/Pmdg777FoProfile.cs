@@ -19,7 +19,10 @@ public sealed class Pmdg777FoProfile : IFoProfile<AircraftActionExecutor, Aircra
     public AircraftStateEvaluator CreateEvaluator() => new();
 
     public void BindDataManager(AircraftStateEvaluator state, SimConnectManager sc)
-        => state.SetDataManager(sc.PMDGDataManager as PMDG777DataManager);
+    {
+        state.SetDataManager(sc.PMDGDataManager as PMDG777DataManager);
+        state.SetCachedValueSource(sc.GetCachedVariableValue);
+    }
 
     public void SetExecutorSimConnect(AircraftActionExecutor exec, SimConnectManager? sc)
         => exec.SetSimConnect(sc);

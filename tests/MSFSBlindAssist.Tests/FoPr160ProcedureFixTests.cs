@@ -186,8 +186,8 @@ public class FoPr160ProcedureFixTests
         Assert.Contains("LANDING_CL", landing.RelatedChecklistGroupIds);
 
         var arm = landing.Steps.Single(s => s.Id == "LD_SPEEDBRAKE_ARM");
-        Assert.Equal("EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", arm.EventName);
-        Assert.Equal("FCTL_Speedbrake_Lever", arm.VerifyFieldName);
+        Assert.Equal(SpeedbrakeLeverState.ArmPseudoKey, arm.EventName);
+        Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, arm.VerifyFieldName);
         Assert.Equal("LDG_SPEEDBRAKE", arm.CompletesChecklistItemId);
     }
 
@@ -210,7 +210,16 @@ public class FoPr160ProcedureFixTests
             .Single(g => g.Id == "LANDING_CL").Items
             .Single(i => i.Id == "LDG_SPEEDBRAKE");
         Assert.NotNull(item.CheckAction);
-        Assert.Equal("FCTL_Speedbrake_Lever", item.StateFieldName);
+        Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, item.StateFieldName);
+    }
+
+    // The 777 flow's verified arm is intercepted before the event table is consulted, so it
+    // must never collide with a real PMDG event name.
+    [Fact]
+    public void Pmdg777_SpeedbrakePseudoKey_IsNotARealPmdgEvent()
+    {
+        Assert.False(MSFSBlindAssist.Aircraft.PMDG777Definition.EventIds
+            .ContainsKey(SpeedbrakeLeverState.ArmPseudoKey));
     }
 
     // -- 4. PMDG 737 speedbrake: verified arm -------------------------------

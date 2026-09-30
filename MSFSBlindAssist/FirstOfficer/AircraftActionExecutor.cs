@@ -87,6 +87,7 @@ public class AircraftActionExecutor : IFoActionExecutor
                 case "WXR_TEST":       return WxrTestAsync();
                 case "OXY_TEST_CAPT":  return OxygenTestCaptAsync();
                 case "OXY_TEST_FO":    return OxygenTestFOAsync();
+                case SpeedbrakeLeverState.ArmPseudoKey: return ArmSpeedbrakeAsync();
                 // Guarded switch — the guard and the settle gap can't be expressed as
                 // a plain SetSwitch dispatch. See SetEmerExitLightsAsync.
                 case "EMER_EXIT_LIGHTS":
@@ -143,6 +144,20 @@ public class AircraftActionExecutor : IFoActionExecutor
         {
             usesMouseFlag = true;
             isMomentary = false;
+        }
+
+        // Never click ARM over a speed brake that is not known to be DOWN: over a deployed one
+        // the ARM detent RETRACTS it, and an unread lever may be deployed. An armed one needs
+        // no click. This guards every caller (the verified arm, the checklist tick).
+        if (eventName == SpeedbrakeArmEvent)
+        {
+            var decision = SpeedbrakeArmDecisionNow();
+            if (decision == SpeedbrakeArmDecision.AlreadyArmed) return true;
+            if (decision != SpeedbrakeArmDecision.Arm)
+            {
+                Log.Debug("FirstOfficer", $"777 speedbrake ARM not sent: {decision}.");
+                return false;
+            }
         }
 
         // RULING A (§6): suppress a center-pump ON write on an empty tank — BEFORE PaceAsync,
@@ -680,7 +695,53 @@ public class AircraftActionExecutor : IFoActionExecutor
 
     // Speedbrake lever
     public bool SetSpeedbrakeDown()  => ExecuteSingle("EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN", null, false, true);
-    public bool SetSpeedbrakeArmed() => ExecuteSingle("EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", null, false, true);
+    public bool SetSpeedbrakeArmed() => ExecuteSingle(SpeedbrakeArmEvent, null, false, true);
+
+    private const string SpeedbrakeArmEvent = "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM";
+
+    /// <summary>The verified arm waits this long for the lever to reach ARM: it takes about five
+    /// seconds from DOWN (ten end to end, measured 2026-09-30) and rides the 1 Hz L-var batch.
+    /// A flow step's own verify reads only 600 ms after dispatch, which is why this waits.</summary>
+    public const int SpeedbrakeArmVerifyMs = 8000;
+    private const int SpeedbrakeArmPollMs = 250;
+
+    private double SpeedbrakeLever() =>
+        _simConnect?.GetCachedVariableValue(SpeedbrakeLeverState.Pmdg777.LeverKey) ?? double.NaN;
+
+    // The 777 SDK has no speed-brake ARMED or EXTENDED light: the lever alone decides.
+    private SpeedbrakeArmDecision SpeedbrakeArmDecisionNow() =>
+        SpeedbrakeLeverState.DecideArm(Pmdg777SpeedbrakeLever.Position(SpeedbrakeLever()),
+            armedLightLit: true, extendedLightLit: false);
+
+    /// <summary>
+    /// Speed brake to ARM, verified: an armed lever is left as it is (true), a deployed or unread
+    /// one is never clicked (false — the flow's leave-alone rule has normally spoken already),
+    /// otherwise ARM is clicked and the lever must reach ARM within
+    /// <see cref="SpeedbrakeArmVerifyMs"/>. The wait runs outside the dispatch gate so a hand-tick
+    /// elsewhere is not held behind it.
+    /// </summary>
+    public async Task<bool> ArmSpeedbrakeAsync()
+    {
+        if (!IsAvailable) return false;
+        var decision = SpeedbrakeArmDecisionNow();
+        if (decision == SpeedbrakeArmDecision.AlreadyArmed) return true;
+        if (decision != SpeedbrakeArmDecision.Arm)
+        {
+            Log.Debug("FirstOfficer", $"777 speedbrake arm not attempted: {decision}.");
+            return false;
+        }
+        if (!await DispatchAsync(SpeedbrakeArmEvent, null, false, true)) return false;
+
+        var deadline = DateTime.UtcNow.AddMilliseconds(SpeedbrakeArmVerifyMs);
+        while (DateTime.UtcNow < deadline)
+        {
+            if (Pmdg777SpeedbrakeLever.IsArmed(SpeedbrakeLever())) return true;
+            await Task.Delay(SpeedbrakeArmPollMs);
+        }
+        bool armed = Pmdg777SpeedbrakeLever.IsArmed(SpeedbrakeLever());
+        if (!armed) Log.Debug("FirstOfficer", $"777 speedbrake arm: the lever did not reach ARM ({SpeedbrakeLever()}).");
+        return armed;
+    }
 
     // Parking brake
     public bool SetParkingBrake(int position) => ExecuteSingle("EVT_CONTROL_STAND_PARK_BRAKE_LEVER", position, false, false);

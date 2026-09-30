@@ -602,18 +602,16 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "LANDING_CL" },
         Steps = new()
         {
-            // Moved out of Approach Setup: too early there. The ARM detent is an ABSOLUTE
-            // mouse-click position, not a toggle, so re-arming an already-armed lever is a
-            // harmless no-op — but clicking it over a lever the pilot has RAISED would
-            // retract the speedbrake, so the step skips on armed-or-deployed (the same
-            // guard PMDG737.SpeedbrakeArmLadder applies through ExtendedField).
-            // The verify condition reads the SDK's ARMED value (25) via
-            // Pmdg777SpeedbrakeLever; it used to test "v > 0.5 && v < 1.5", which this
-            // analog 0–100 lever can never satisfy — so the flow armed the lever and then
-            // announced "Skipping: Speedbrake: ARM" and left the checklist item unfinished.
-            Skip(SW("LD_SPEEDBRAKE_ARM",   "Speedbrake: ARM",   "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM", null,
-               true, "FCTL_Speedbrake_Lever", Pmdg777SpeedbrakeLever.IsArmed, "LDG_SPEEDBRAKE"),
-                s => s.IsSpeedbrakeArmed() || s.IsSpeedbrakeDeployed()),
+            // Moved out of Approach Setup: too early there. The step goes through the verified
+            // arm (AircraftActionExecutor.ArmSpeedbrakeAsync), which waits for the lever to
+            // reach ARM — the flow's own verify reads only 600 ms after dispatch and the lever
+            // takes about five seconds from DOWN. An armed lever is "Already set"; a DEPLOYED
+            // one is left alone with its reason, because clicking ARM over a lever the pilot
+            // has raised retracts it.
+            LeaveAlone(Skip(SW("LD_SPEEDBRAKE_ARM", "Speedbrake: ARM", SpeedbrakeLeverState.ArmPseudoKey, null,
+               true, Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsArmed, "LDG_SPEEDBRAKE"),
+                s => s.IsSpeedbrakeArmed()),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
             // The 737's "Engine start switches: CONT" is deliberately NOT mirrored here —
             // 777 ignition is automatic and needs no CONT selection for landing.
             Captain("LD_MISSED",      "Set the missed approach altitude"),
@@ -884,6 +882,16 @@ public static class PMDG777FlowDefinitions
     private static FlowStep<AircraftStateEvaluator> Skip(FlowStep<AircraftStateEvaluator> step, Func<AircraftStateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
+        return step;
+    }
+
+    // A step the First Officer must not perform in the aircraft's current state
+    // (FlowStep.LeaveAloneWhen): nothing is sent, `text` is spoken, its lines stay open.
+    private static FlowStep<AircraftStateEvaluator> LeaveAlone(FlowStep<AircraftStateEvaluator> step,
+        Func<AircraftStateEvaluator, bool> when, string text)
+    {
+        step.LeaveAloneWhen = when;
+        step.LeaveAloneText = text;
         return step;
     }
 

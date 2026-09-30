@@ -670,19 +670,15 @@ public static class PMDG777ChecklistDefinitions
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
         {
-            // Ticking this ARMS the lever — it used to verify but never actuate, so a
-            // pilot who ticked it on an unarmed lever got a tick and nothing else. The
-            // ARM detent is absolute (not a toggle), so a tick on an already-armed lever
-            // is a harmless no-op.
-            // The condition reads the SDK's ARMED value (25) through
-            // Pmdg777SpeedbrakeLever. It used to test "v > 0.5 && v < 1.5" — a detent
-            // index this analog 0–100 lever never produces — so ticking the item armed
-            // the lever, failed the check, reverted, and spoke "Unable to complete".
-            // The action no-ops on an already-DEPLOYED lever: the ARM detent is an
-            // absolute click position, so clicking it over a raised lever RETRACTS it.
-            Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
-                "FCTL_Speedbrake_Lever", Pmdg777SpeedbrakeLever.IsArmed,
-                action: (e, s) => { if (!s.IsSpeedbrakeDeployed()) e.SetSpeedbrakeArmed(); }),
+            // Ticking this ARMS the lever. It reads main's lever L-var (exactly ARM, never the
+            // truncating SDK byte, which reads a lever at 201-203 as armed). A tick over a
+            // DEPLOYED lever is refused with its reason (LeaveAloneWhen); the executor never
+            // clicks ARM over one either, because the ARM detent is an absolute click position
+            // and clicking it over a raised lever retracts it.
+            LeaveAlone(Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
+                Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsArmed,
+                action: (e, _) => e.SetSpeedbrakeArmed()),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
             // Gear CONFIRMED down: lever DOWN and all three legs fully extended
             // (Pmdg777GearConfirmation). NaN until known.
             Auto("LDG_GEAR", "LANDING_CL", "Landing Gear: DOWN",
@@ -703,7 +699,7 @@ public static class PMDG777ChecklistDefinitions
         Items = new()
         {
             Auto("AL_SPEEDBRAKE", "AFTER_LANDING", "Speed Brake lever: DOWN",
-                "FCTL_Speedbrake_Lever", Pmdg777SpeedbrakeLever.IsDown,
+                Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsDown,
                 action: (e, _) => e.SetSpeedbrakeDown()),
             Auto("AL_EXT_LIGHTS", "AFTER_LANDING", "Landing and turnoff lights: OFF",
                 "LTS_LandingLights_Sw_ON_0", v => v < 0.5,
@@ -973,6 +969,15 @@ public static class PMDG777ChecklistDefinitions
         ManualCompletionAllowed = true,
         CheckAction = action,
     };
+
+    /// <summary>A line whose hand-tick the First Officer refuses in the aircraft's current state
+    /// (ChecklistItem.LeaveAloneWhen), speaking <paramref name="text"/> instead.</summary>
+    private static Item LeaveAlone(Item item, Func<AircraftStateEvaluator, bool> when, string text)
+    {
+        item.LeaveAloneWhen = when;
+        item.LeaveAloneText = text;
+        return item;
+    }
 
     /// <summary>Captain reminder — user reads/confirms and manually ticks. No sim action.</summary>
     private static Item Reminder(string id, string groupId, string text) => new()

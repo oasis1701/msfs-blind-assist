@@ -50,6 +50,13 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     /// <summary>Update the data manager reference (called when sim connects/disconnects).</summary>
     public void SetDataManager(PMDG777DataManager? dm) => _dm = dm;
 
+    // Values the PMDG CDA does not carry come from SimConnect's variable cache (a
+    // ConcurrentDictionary, safe from the flow's pool threads) — the speed-brake lever's main
+    // L-var. Set by Pmdg777FoProfile.BindDataManager; a test injects its own.
+    private Func<string, double?>? _cachedValue;
+
+    public void SetCachedValueSource(Func<string, double?>? source) => _cachedValue = source;
+
     public bool IsAvailable => _dm != null;
 
     // -----------------------------------------------------------------------
@@ -86,6 +93,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         // CDA snapshot has not landed, which is precisely when an engine start happens.
         if (fieldName == "FO_ENG1_N2") return System.Threading.Volatile.Read(ref _eng1N2);
         if (fieldName == "FO_ENG2_N2") return System.Threading.Volatile.Read(ref _eng2N2);
+
+        // The speed-brake lever comes from SimConnect too (main's L:switch_498_a) — served
+        // ahead of the CdaReady gate like N2.
+        if (fieldName == SpeedbrakeLeverState.LeverField) return SpeedbrakeLeverPos();
 
         // Gear-leg positions come from SimConnect too (stock GEAR x POSITION, percent) —
         // served ahead of the CdaReady gate for the same reason as N2.
@@ -250,14 +261,12 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool AreFlapsForTakeoff()      => FlapsLeverPosition() >= 1 && FlapsLeverPosition() <= 3;
     public bool AreFlapsForLanding()      => FlapsLeverPosition() >= 4;
 
-    // SpeedBrakeLever is an ANALOG 0–100 position (0 DOWN, 25 ARMED, 26–100 DEPLOYED),
-    // NOT a detent index — see Pmdg777SpeedbrakeLever, which owns the scale. The comment
-    // that used to sit here said "0=Down, 1=Armed, 2–7 = deployed positions", and every
-    // 777 speedbrake condition was written against it.
-    public double SpeeedbrakeLeverPos()   => GetValue("FCTL_Speedbrake_Lever");
-    public bool IsSpeedbrakeDown()        => Pmdg777SpeedbrakeLever.IsDown(SpeeedbrakeLeverPos());
-    public bool IsSpeedbrakeArmed()       => Pmdg777SpeedbrakeLever.IsArmed(SpeeedbrakeLeverPos());
-    public bool IsSpeedbrakeDeployed()    => Pmdg777SpeedbrakeLever.IsDeployed(SpeeedbrakeLeverPos());
+    // The speed-brake lever is main's L:switch_498_a (0 / 200 / 300 / 400), never the SDK's
+    // truncating FCTL_Speedbrake_Lever byte — see Pmdg777SpeedbrakeLever. NaN until read.
+    public double SpeedbrakeLeverPos()    => _cachedValue?.Invoke(SpeedbrakeLeverState.Pmdg777.LeverKey) ?? double.NaN;
+    public bool IsSpeedbrakeDown()        => Pmdg777SpeedbrakeLever.IsDown(SpeedbrakeLeverPos());
+    public bool IsSpeedbrakeArmed()       => Pmdg777SpeedbrakeLever.IsArmed(SpeedbrakeLeverPos());
+    public bool IsSpeedbrakeDeployed()    => Pmdg777SpeedbrakeLever.IsDeployed(SpeedbrakeLeverPos());
 
     // -----------------------------------------------------------------------
     // Gear / brakes
