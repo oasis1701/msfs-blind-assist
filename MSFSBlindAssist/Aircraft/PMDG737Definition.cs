@@ -13,7 +13,9 @@ namespace MSFSBlindAssist.Aircraft;
 public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 {
     public override string AircraftName => "PMDG 737";
-    public override string AircraftCode => "PMDG_737";
+    // One spelling, shared with the speed-brake callout's Ctrl+M lookup (DefAnnounceMuteSets).
+    private const string Code = "PMDG_737";
+    public override string AircraftCode => Code;
 
     // EFB accessibility is supported on the 738 — it renders the identical EFB app as the 777,
     // so the same Coherent in-page agent (coherent-pmdg-efb-agent.js) reads it. Opened with
@@ -60,8 +62,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private readonly StabTrimUnitsCallout _stabTrimCallout = new();
 
     // Speed-brake lever position. The NG3 SDK exposes no lever-position field
-    // (the 777 has FCTL_Speedbrake_Lever; the 737 does not) and PMDG does not
-    // drive the stock SPOILERS HANDLE POSITION SimVar, so the analog handle
+    // and PMDG does not drive the stock SPOILERS HANDLE POSITION SimVar (the
+    // 777 reads its own L-var switch_498_a the same way), so the analog handle
     // position comes from the PMDG L-var switch_679_73X. The L-var sweeps
     // CONTINUOUSLY as the lever animates (verified live — e.g. 62 / 337 caught
     // mid-move), and continuous monitoring only fires on change, so a value that
@@ -73,14 +75,17 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // combo pick, since its timer speaks outside MainForm's suppression wrap.
     // A lever resting between detents above ARMED speaks its deployment as a
     // percentage, as the 777 and the iFly do. The first settle is the lever's
-    // position at load, so it is recorded silently.
+    // position at load, so it is recorded silently. Stopped when the pilot
+    // switches aircraft (OnSwitchedAway), so it never speaks over the next one.
     private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
         PmdgSpeedBrakeLever.Ng3, PmdgSpeedBrakeLever.Ng3SettleTolerance, PmdgSpeedBrakeLever.Ng3SettleMs,
-        aircraftCode: "PMDG_737", muteKey: "MON_PMDG737_SpeedBrake", speakFirst: false,
-        betweenDetents: PmdgSpeedBrakeLever.Ng3PartialDeployment);
+        aircraftCode: Code, muteKey: "MON_PMDG737_SpeedBrake", speakFirst: false);
 
     /// <summary>The speed-brake lever's settle announcer, for the tests that pin its behaviour.</summary>
     internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
+
+    /// <inheritdoc />
+    public override void OnSwitchedAway() => _speedBrakeCallout.Dispose();
 
     // EFIS Minimums knob step sizes per click on the PMDG NG3 737. RADIO mode
     // (DH) clicks in 1-ft increments; BARO mode (DA) clicks in 20-ft increments.

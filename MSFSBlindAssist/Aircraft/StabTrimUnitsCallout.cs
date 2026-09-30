@@ -21,9 +21,6 @@ public sealed class StabTrimUnitsCallout
 {
     private double _last = double.NaN;
 
-    /// <summary>Forget the last value spoken, so the next sample is a silent baseline again.</summary>
-    public void Reset() => _last = double.NaN;
-
     /// <summary>
     /// Take <paramref name="units"/> as the baseline without speaking it. For a source whose
     /// opening value never arrives as a sample (the iFly SDK's initial snapshot is dropped before

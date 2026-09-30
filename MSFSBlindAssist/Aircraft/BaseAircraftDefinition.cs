@@ -1136,6 +1136,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Called by MainForm.SwitchAircraft on the OUTGOING definition, for every aircraft type, beside
+    /// <see cref="DisposeTrackedWindows"/>: stop every timer this definition owns that could still
+    /// speak against the aircraft that follows (the PMDG speed-brake settle announcer — a lever moved
+    /// just before the switch was otherwise announced over the next aircraft). Base: nothing.
+    /// </summary>
+    public virtual void OnSwitchedAway() { }
+
+    /// <summary>
     /// Shows the PMDG Ctrl+P autopilot engage-cluster window. Shared by the 737 and 777,
     /// which differ only in their row table and window title — the binder, the echo
     /// suppression and the tracked-window lifecycle are identical, so they live here

@@ -851,14 +851,15 @@ public partial class IFly737MAXDefinition
         // Speed-brake lever: a combo over Spoiler_Lever_Status, written with
         // FLTCTRL_SPOILER, whose Value2 is the SAME 0-224 scale (measured live —
         // see IFly737SpeedBrakeLever, the one table). The classifier seeds the combo
-        // with the NEAREST detent, so a lever resting between detents never opens it
-        // blank. The lever self-announces on a settle timer from ProcessSimVarUpdate
+        // with the lever's position — Down short of ARMED, and past ARMED the nearest
+        // DEPLOYED detent, never Armed — so a lever resting between detents never opens
+        // it blank. The lever self-announces on a settle timer from ProcessSimVarUpdate
         // (which returns true, skipping MainForm's generic control refresh), so it sets
         // RefreshControlWhenDefHandled to keep an open panel following a lever moved from
         // the cockpit or by the auto speed brake — at a POSITION only (IsAtPosition): per
         // sample, a focused combo was narrated at every detent a travelling lever passed.
         // Known limit (PMDG levers share it): a lever resting BETWEEN detents (a hardware
-        // axis) shows the nearest detent, and picking that same item commits nothing —
+        // axis) shows the nearest deployed detent, and picking that same item commits nothing —
         // the settle announcer speaks its real travel ("Speed brake 35 percent"), and
         // arrowing to another detent and back moves it.
         SwD(P, IFly737SpeedBrakeLever.FieldName, "Speed Brake",

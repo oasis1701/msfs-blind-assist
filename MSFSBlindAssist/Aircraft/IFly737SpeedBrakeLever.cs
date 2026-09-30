@@ -53,15 +53,6 @@ public static class IFly737SpeedBrakeLever
     /// through the 250 ms SDK polls, so the trailing edge must outlast more than one poll.</summary>
     public const int SettleMs = 600;
 
-    /// <summary>
-    /// What is spoken for a lever resting BETWEEN detents above ARMED (a hardware axis): how far it
-    /// is from ARMED to UP, as a percentage of that travel — "Speed brake 35 percent". Without it
-    /// such a lever said nothing while the combo named the nearest detent, which is not where the
-    /// spoilers are. Below ARMED it says nothing, as on both PMDG jets.
-    /// </summary>
-    public static string? PartialDeployment(double value)
-        => PmdgSpeedBrakeLever.PartialDeployment(Detents, value);
-
     /// <summary>Whether a lever at <paramref name="value"/> is AT a position the combo names — a detent
     /// within the settle tolerance, or Down short of ARMED — and not between detents above ARMED, where
     /// it is travelling or partially deployed. The open combo follows the lever only here.</summary>

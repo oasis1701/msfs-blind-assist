@@ -6,8 +6,9 @@ namespace MSFSBlindAssist.Aircraft;
 /// Control Stand combo's label for it, the SDK click event that moves the lever there, and the
 /// sentence the settle announcer (<see cref="PmdgSpeedBrakeCallout"/>) speaks when the lever comes
 /// to rest there. <paramref name="Tolerance"/>, when set, replaces the table's settle tolerance for
-/// this one detent: ARM is exact on the 777 (at 201 its spoilers are already 34 percent up) and on the
-/// iFly (its ARMED light comes on at 34, and its spoilers deploy in step with the lever from there).</summary>
+/// this one detent: ARM is exact on the 737 and the 777 (one step past it their spoilers are already
+/// 34 percent up) and on the iFly (its ARMED light comes on at 34, and its spoilers deploy in step
+/// with the lever from there).</summary>
 public sealed record PmdgLeverDetent(double Value, string Label, string EventName, string? Spoken = null,
     double? Tolerance = null);
 
@@ -53,17 +54,13 @@ public static class PmdgSpeedBrakeLever
 
     /// <summary>The 737's settle announcer treats a lever within this distance of a detent as resting
     /// there (ARM is exact — see its row); further from every detent it speaks the deployment
-    /// (<see cref="Ng3PartialDeployment"/>).</summary>
+    /// (<see cref="PartialDeployment"/>).</summary>
     public const double Ng3SettleTolerance = 10.0;
 
     /// <summary>The 737 settle delay. The L-var rides the 1 Hz continuous batch and the lever travels
     /// for one to two seconds, so a travelling lever is caught between detents: with a percentage
     /// spoken there, the trailing edge must outlast one batch, as the 777's does.</summary>
     public const int Ng3SettleMs = 1500;
-
-    /// <summary>What the 737 says for a lever resting BETWEEN detents above ARMED: the deployment as a
-    /// percentage of ARMED to UP (the 50-percent detent reads the same either way).</summary>
-    public static string? Ng3PartialDeployment(double value) => PartialDeployment(Ng3, value);
 
     public static readonly IReadOnlyList<PmdgLeverDetent> B777 = new PmdgLeverDetent[]
     {
@@ -83,18 +80,17 @@ public static class PmdgSpeedBrakeLever
     /// trailing edge must outlast one batch or it would be announced mid-sweep.</summary>
     public const int B777SettleMs = 1500;
 
-    /// <summary>
-    /// What the 777 says for a lever resting BETWEEN detents above ARMED (a hardware axis in flight):
-    /// the deployment as a percentage of ARMED to UP, measured on the table's own rest values, so the
-    /// 50-percent detent reads the same either way. Below ARMED it says nothing, as the 737 does.
-    /// </summary>
-    public static string? B777PartialDeployment(double value) => PartialDeployment(B777, value);
+    /// <summary>How long the 777 lever takes from Down to Up, measured 2026-09-30 (about ten seconds):
+    /// the slowest lever this table serves.</summary>
+    public const int B777FullTravelMs = 10_000;
 
     /// <summary>
-    /// The deployment of a lever resting between detents above ARMED, as a percentage of ARMED to
-    /// UP measured on <paramref name="detents"/>' own rest values (ARMED is the second row, UP the
-    /// last): "Speed brake 35 percent". Null at or below ARMED and above UP. The ONE formula every
-    /// lever that speaks a partial deployment uses (the 777, the iFly 737 MAX).
+    /// What is said for a lever resting BETWEEN detents above ARMED (a hardware axis): the deployment
+    /// as a percentage of ARMED to UP, measured on <paramref name="detents"/>' own rest values (ARMED
+    /// is the second row, UP the last), so a table's 50-percent detent reads the same either way —
+    /// "Speed brake 35 percent". Null at or below ARMED and above UP (a lever short of ARMED is spoken
+    /// as Down, from <see cref="PositionIndex(IReadOnlyList{PmdgLeverDetent}, double, double)"/>). The
+    /// ONE formula: <see cref="PmdgSpeedBrakeCallout"/> applies it to its own table, for every lever.
     /// </summary>
     public static string? PartialDeployment(IReadOnlyList<PmdgLeverDetent> detents, double value)
     {
@@ -111,20 +107,24 @@ public static class PmdgSpeedBrakeLever
 
     /// <summary>
     /// The combo's <c>SimVarDefinition.ValueToDescriptionKey</c>: the rest value of the lever's
-    /// <see cref="PositionIndex"/> position, else of the detent NEAREST the lever. Always a key, never
-    /// "no match": MainForm's combo lookup is an exact key match, and a combo opened with nothing
-    /// selected commits row 0 ("Down") on the pilot's first arrow press — a lever caught mid-travel,
-    /// or resting a hair off its detent, would otherwise retract the speed brakes the moment the pilot
-    /// touched the control (the MD-11 flap combos' exact-key-seed trap). A tie between two detents goes
-    /// to the lower one.
+    /// <see cref="PositionIndex"/> position, else — past ARM, between detents — of the nearest DEPLOYED
+    /// detent, never ARM (the combo is read aloud, and a lever past the exact ARM detent is deployed).
+    /// Always a key, never "no match": MainForm's combo lookup is an exact key match, and a combo
+    /// opened with nothing selected commits row 0 ("Down") on the pilot's first arrow press — a lever
+    /// caught mid-travel, or resting a hair off its detent, would otherwise retract the speed brakes
+    /// the moment the pilot touched the control (the MD-11 flap combos' exact-key-seed trap). A tie
+    /// between two deployed detents goes to the lower one.
     /// </summary>
     public static double NearestDetentValue(IReadOnlyList<PmdgLeverDetent> detents, double value, double tolerance)
     {
         int idx = PositionIndex(detents, value, tolerance);
         if (idx >= 0) return detents[idx].Value;
-        var best = detents[0];
-        foreach (var d in detents)
-            if (Math.Abs(value - d.Value) < Math.Abs(value - best.Value)) best = d;
+        // Past ARM (which is exact) and at no detent: the lever is DEPLOYED, so the nearest deployed
+        // detent — never "Armed" (the 777's spoilers are 34 percent up at 201) and never "Down" (the
+        // 737 at 101 is nearer Down than 50 percent).
+        var best = detents[2];
+        for (int i = 3; i < detents.Count; i++)
+            if (Math.Abs(value - detents[i].Value) < Math.Abs(value - best.Value)) best = detents[i];
         return best.Value;
     }
 
@@ -192,16 +192,18 @@ public static class PmdgSpeedBrakeLever
 /// </summary>
 public sealed class PmdgSpeedBrakeCallout : IDisposable
 {
-    /// <summary>How long a pick suppresses its own arrival. Covers the lever's travel plus the
-    /// settle delay on either jet.</summary>
-    public const int PickMemoryMs = 10_000;
+    /// <summary>How long a pick suppresses its own arrival. It must cover the slowest lever's whole
+    /// journey to its settle: the 777's full travel (<see cref="PmdgSpeedBrakeLever.B777FullTravelMs"/>),
+    /// up to one 1 Hz batch before the arrival is sampled, and the 777 settle — 12.5 s — rounded up,
+    /// because the travel is measured only approximately. At 10 s a Down-to-Up pick on the 777 had
+    /// expired before its arrival settled, and the arrival was read back over the pilot's pick.</summary>
+    public const int PickMemoryMs = 15_000;
 
     private readonly IReadOnlyList<PmdgLeverDetent> _detents;
     private readonly double _tolerance;
     private readonly int _settleMs;
     private readonly string _muteKey;
     private readonly bool _speakFirst;
-    private readonly Func<double, string?>? _betweenDetents;
     private readonly string _aircraftCode;
     private readonly bool _picksLandAtOnce;
     private readonly object _lock = new();
@@ -233,8 +235,7 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     /// and 777's 1 Hz L-var batch can deliver a travelling lever as its last sample): there only a
     /// lever resting AT a detent answers it.</param>
     public PmdgSpeedBrakeCallout(IReadOnlyList<PmdgLeverDetent> detents, double tolerance, int settleMs,
-        string aircraftCode, string muteKey, bool speakFirst, Func<double, string?>? betweenDetents = null,
-        bool picksLandAtOnce = false)
+        string aircraftCode, string muteKey, bool speakFirst, bool picksLandAtOnce = false)
     {
         _detents = detents;
         _tolerance = tolerance;
@@ -242,7 +243,6 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
         _aircraftCode = aircraftCode;
         _muteKey = muteKey;
         _speakFirst = speakFirst;
-        _betweenDetents = betweenDetents;
         _picksLandAtOnce = picksLandAtOnce;
     }
 
@@ -288,6 +288,23 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
             _lastSpoken = null;
             _hasBaseline = false;
             _picks.Clear();
+        }
+    }
+
+    /// <summary>
+    /// <see cref="Reset"/> with the lever's live position known (a context reset or reconnect whose
+    /// opening value never arrives as a sample): that position becomes the one last spoken, so the
+    /// lever then arriving there as a change is not news, while the next genuine move is.
+    /// </summary>
+    public void Seed(double value)
+    {
+        Reset();
+        if (double.IsNaN(value)) return;
+        string? text = SentenceFor(PmdgSpeedBrakeLever.PositionIndex(_detents, value, _tolerance), value);
+        lock (_lock)
+        {
+            _lastSpoken = text;
+            _hasBaseline = true;
         }
     }
 
@@ -361,12 +378,14 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
     {
         if (double.IsNaN(value)) return null;
         int idx = PmdgSpeedBrakeLever.PositionIndex(_detents, value, _tolerance, out bool atDetent);
-        string? text = idx >= 0 ? _detents[idx].Spoken : _betweenDetents?.Invoke(value);
+        string? text = SentenceFor(idx, value);
 
         lock (_lock)
         {
             _picks.RemoveAll(p => nowTick - p.Tick > PickMemoryMs);
-            int match = _picks.FindIndex(p => p.Index == idx);
+            // The LATEST pick of this detent: overshooting and coming back (Armed, 50 percent, Armed)
+            // rests only once, and that rest answers all three.
+            int match = _picks.FindLastIndex(p => p.Index == idx);
             bool picked = match >= 0;
             // A lever resting AT a detent answers picks. Anywhere else it may still be travelling (a
             // mid-travel 737 sample short of ARM reads as Down), unless picks land at once. Arriving
@@ -389,4 +408,9 @@ public sealed class PmdgSpeedBrakeCallout : IDisposable
             return text;
         }
     }
+
+    // The sentence for a lever at position idx (PositionIndex): the detent's own, else its deployment
+    // between detents.
+    private string? SentenceFor(int idx, double value)
+        => idx >= 0 ? _detents[idx].Spoken : PmdgSpeedBrakeLever.PartialDeployment(_detents, value);
 }

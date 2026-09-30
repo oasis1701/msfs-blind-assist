@@ -27,7 +27,9 @@ namespace MSFSBlindAssist.Aircraft;
 public partial class IFly737MAXDefinition : BaseAircraftDefinition
 {
     public override string AircraftName => "iFly 737 MAX8";
-    public override string AircraftCode => "IFLY_737MAX8";
+    // One spelling, shared with the speed-brake callout's Ctrl+M lookup (DefAnnounceMuteSets).
+    private const string Code = "IFLY_737MAX8";
+    public override string AircraftCode => Code;
 
     // Measured on the PMDG 737 and validated in-sim; same airframe class.
     public override double TaxiTurnLeadSeconds => 0.4;
@@ -1751,19 +1753,20 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// already held V-speeds delivered a 280 kt sample while the ground flag still read true, and
     /// the arm from the ramp called "V1, Rotate, V2" at altitude. The speeds are kept, for the
     /// same reason as above. Same fix, same reason and the same shared machine as the MD-11's
-    /// (TFDiMD11Definition.OnSimContextReset). It also resets the speed-brake callout (below) and
-    /// re-baselines the stabiliser-trim call-out, so a flight load's trim is not spoken as a
-    /// change; nothing else of this definition's state is touched.
+    /// (TFDiMD11Definition.OnSimContextReset). It also re-baselines the speed-brake callout and the
+    /// stabiliser-trim call-out on their live values, so a flight load's lever and trim are not
+    /// spoken as changes; nothing else of this definition's state is touched.
     /// </summary>
     public override void OnSimContextReset()
     {
         base.OnSimContextReset();
         _takeoffCallouts.Reset();
         // The speed-brake callout's last sentence must not outlive the flight: carried over, the
-        // first genuine settle at that same detent would be swallowed as a repeat.
-        _speedBrakeCallout.Reset();
+        // first genuine settle at that same detent would be swallowed as a repeat. Seeded, like the
+        // trim below, so the loaded lever is not announced as a change either.
+        SeedSpeedBrakeFromSnapshot();
         // A flight load's trim is the loaded aircraft's setting, not a change: re-baseline from
-        // the live value. Never Reset() to "no baseline": the SDK's re-seed after a load arrives
+        // the live value. Never empty the baseline: the SDK's re-seed after a load arrives
         // as an initial snapshot the call-out never sees, so the pilot's first real move would
         // become the silent baseline.
         SeedStabTrimFromSnapshot();
@@ -1778,6 +1781,17 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             _stabTrimCallout.Seed(units);
     }
 
+    /// <summary>Baselines the speed-brake callout on the live lever (connect, re-seed, flight load):
+    /// its last sentence becomes the lever's real position, so neither a stale sentence nor the
+    /// loaded lever arriving as a change is spoken. With no snapshot the callout just forgets.</summary>
+    private void SeedSpeedBrakeFromSnapshot()
+    {
+        if (Sdk.Snapshot is { } snap && ReadRawField(snap, IFly737SpeedBrakeLever.FieldName) is { } lever)
+            _speedBrakeCallout.Seed(lever);
+        else
+            _speedBrakeCallout.Reset();
+    }
+
     // Speed-brake lever announcer: the trailing-edge settle timer the PMDG jets use,
     // over IFly737SpeedBrakeLever's detents, so only the RESTING detent is spoken
     // (not the ones a travelling lever sweeps through). speakFirst: true — the
@@ -1786,12 +1800,12 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // wrap, so the announcer applies this aircraft's Ctrl+M mute and the pilot's
     // own combo pick (RecordPick, in HandleUIVariableSet) itself. A lever resting
     // between detents above ARMED (a hardware axis) speaks its percentage.
-    // Reset on every context reset (OnSimContextReset) and disposed in Shutdown.
+    // Re-baselined on every context reset and SDK reconnect (SeedSpeedBrakeFromSnapshot) and
+    // disposed in Shutdown.
     private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
         IFly737SpeedBrakeLever.Detents, IFly737SpeedBrakeLever.SettleTolerance,
-        IFly737SpeedBrakeLever.SettleMs, aircraftCode: "IFLY_737MAX8",
-        muteKey: IFly737SpeedBrakeLever.FieldName, speakFirst: true,
-        betweenDetents: IFly737SpeedBrakeLever.PartialDeployment, picksLandAtOnce: true);
+        IFly737SpeedBrakeLever.SettleMs, aircraftCode: Code,
+        muteKey: IFly737SpeedBrakeLever.FieldName, speakFirst: true, picksLandAtOnce: true);
 
     /// <summary>FLAP_Status / FLTCTRL_FLAP_SET lever detent 0-8 → its label ("up",
     /// "1", "2", "5", "10", "15", "25", "30", "40"). Used by the L hotkey readout
@@ -1913,10 +1927,10 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // The trim call-out is baselined the same way, for the same reason.
         SeedStabTrimFromSnapshot();
 
-        // The speed-brake callout forgets its last sentence for the same reason: a lever moved while
-        // the SDK was down or stale arrives in the snapshot the callout never sees, and a carried-over
+        // The speed-brake callout is re-baselined for the same reason: a lever moved while the SDK
+        // was down or stale arrives in the snapshot the callout never sees, and a carried-over
         // sentence would swallow the first genuine settle at that detent as a repeat.
-        _speedBrakeCallout.Reset();
+        SeedSpeedBrakeFromSnapshot();
     }
 
     /// <summary>Flash-filtered light announce. Announces "on" once at the first lit

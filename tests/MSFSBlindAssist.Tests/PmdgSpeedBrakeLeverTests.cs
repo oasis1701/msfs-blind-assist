@@ -46,7 +46,7 @@ public class PmdgSpeedBrakeLeverTests
     public void A_lever_past_ARM_never_speaks_zero_percent()
     {
         // (201 - 200) / 200 is half a percent, which banker's rounding makes 0: the spoilers are up.
-        Assert.Equal("Speed brake 1 percent", PmdgSpeedBrakeLever.B777PartialDeployment(201));
+        Assert.Equal("Speed brake 1 percent", PmdgSpeedBrakeLever.PartialDeployment(PmdgSpeedBrakeLever.B777, 201));
     }
 
     [Fact]
@@ -59,11 +59,11 @@ public class PmdgSpeedBrakeLeverTests
     [InlineData(0, 0)]
     [InlineData(22, 0)]     // a hardware axis's Down
     [InlineData(200, 200)]
-    [InlineData(248, 200)]  // nearer ARM than half (a lever between detents shows the nearest)
+    [InlineData(248, 300)]  // past ARM: deployed, so the nearest deployed detent, never Armed
     [InlineData(252, 300)]
     [InlineData(396, 400)]
     [InlineData(100, 0)]    // short of ARM: Down (PositionIndex), never the old tie
-    [InlineData(250, 200)]  // a tie between two detents above ARM goes to the LOWER one
+    [InlineData(350, 300)]  // a tie between two deployed detents goes to the LOWER one
     public void The_777_combo_seeds_with_the_nearest_detent(double lever, double expectedKey)
     {
         Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
@@ -76,6 +76,29 @@ public class PmdgSpeedBrakeLeverTests
     [InlineData(300, 337)]
     [InlineData(420, 400)]
     public void The_737_combo_seeds_with_the_nearest_detent(double lever, double expectedKey)
+    {
+        Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
+            PmdgSpeedBrakeLever.Ng3, lever, PmdgSpeedBrakeLever.Ng3SettleTolerance));
+    }
+
+    // ARM is exact, so a lever resting past it is DEPLOYED (777: spoilers 34 percent up at 201; 737:
+    // 34 percent at 101). The combo is read aloud when focused, so it must never say "Armed" there —
+    // the same failure the exact ARM detent removed from the settle announcer — and must never say
+    // "Down" either (the 737 at 101 is nearer Down than 50 percent). It names the nearest DEPLOYED
+    // detent, which also makes picking "Armed" a real pick that moves the lever back to ARM.
+    [Theory]
+    [InlineData(201, 300)]
+    [InlineData(205, 300)]
+    public void A_777_lever_past_ARM_never_seeds_the_combo_Armed(double lever, double expectedKey)
+    {
+        Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
+            PmdgSpeedBrakeLever.B777, lever, PmdgSpeedBrakeLever.B777SettleTolerance));
+    }
+
+    [Theory]
+    [InlineData(101, 250)]
+    [InlineData(137, 250)]
+    public void A_737_lever_past_ARM_never_seeds_the_combo_Armed_or_Down(double lever, double expectedKey)
     {
         Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
             PmdgSpeedBrakeLever.Ng3, lever, PmdgSpeedBrakeLever.Ng3SettleTolerance));
@@ -204,7 +227,7 @@ public class PmdgSpeedBrakeLeverTests
 
     private static PmdgSpeedBrakeCallout New777() => new(
         PmdgSpeedBrakeLever.B777, PmdgSpeedBrakeLever.B777SettleTolerance, PmdgSpeedBrakeLever.B777SettleMs,
-        "PMDG_777", "FCTL_Speedbrake", speakFirst: false, betweenDetents: PmdgSpeedBrakeLever.B777PartialDeployment);
+        "PMDG_777", "FCTL_Speedbrake", speakFirst: false);
 
     [Fact]
     public void The_737_records_its_first_settle_silently_then_speaks_changes_once()
@@ -324,6 +347,39 @@ public class PmdgSpeedBrakeLeverTests
         Assert.Equal("Speed brake down", c.Settle(0, t, muted: false, c.NoteSample(0)));
     }
 
+    // Overshooting while arrowing — Armed, 50 percent, back to Armed — sends three picks, and the lever
+    // rests only at the last. That rest answers every one of them. Answering only the OLDEST Armed pick
+    // left the 50 percent and second Armed picks pending, and they swallowed a genuine move to either
+    // detent for the rest of their memory.
+    [Fact]
+    public void A_rest_at_a_detent_picked_twice_answers_every_pick_up_to_the_latest()
+    {
+        var c = New737();
+        Assert.Null(c.Settle(0, 0, muted: false));                            // position at load
+
+        c.RecordPick(1);                                                     // Armed
+        c.RecordPick(2);                                                     // 50 percent (overshoot)
+        c.RecordPick(1);                                                     // back to Armed
+        long t = Environment.TickCount64;
+        Assert.Null(c.Settle(100, t, muted: false));                          // the pilot's own pick
+        Assert.Equal("Speed brake 50 percent", c.Settle(250, t, muted: false));   // someone else's move
+    }
+
+    // The 777 lever takes about ten seconds end to end (measured 2026-09-30), and its arrival settles
+    // up to one 1 Hz batch after it lands plus the settle delay. A pick of the far end must still be
+    // remembered then, or its own arrival is read back over the screen reader's reading of the pick.
+    [Fact]
+    public void A_777_pick_across_the_full_travel_is_still_the_pilots_own()
+    {
+        const int OneBatchMs = 1000;
+        var c = New777();
+        c.Settle(0, 0, muted: false);                                         // position at load
+        c.RecordPick(3);                                                     // Up, from Down
+        long arrivalSettles = Environment.TickCount64
+            + PmdgSpeedBrakeLever.B777FullTravelMs + OneBatchMs + PmdgSpeedBrakeLever.B777SettleMs;
+        Assert.Null(c.Settle(400, arrivalSettles, muted: false));
+    }
+
     [Fact]
     public void A_pick_the_aircraft_ignored_expires()
     {
@@ -332,6 +388,65 @@ public class PmdgSpeedBrakeLeverTests
         c.RecordPick(1);
         long later = Environment.TickCount64 + PmdgSpeedBrakeCallout.PickMemoryMs + 1;
         Assert.Equal("Speed brake armed", c.Settle(100, later, muted: false));
+    }
+
+    // The settle timer really speaks through the announcer — the path the switch-away test below
+    // proves silent, so that test cannot pass merely because nothing in the harness ever speaks.
+    [Fact]
+    public void A_lever_left_to_settle_is_spoken()
+    {
+        UnmuteSpeedBrakes();
+        var def = new PMDG737Definition();
+        var speech = new SpeechCapture();
+        def.SpeedBrakeCallout.Settle(0, 0, muted: false);                    // position at load
+        def.SpeedBrakeCallout.OnSample(100, speech);
+        Assert.True(SpinWait.SpinUntil(() => speech.All.Count > 0, TimeSpan.FromSeconds(5)),
+            "the settle never spoke");
+        Assert.Equal("Speed brake armed", speech.All[0]);
+    }
+
+    // A lever moved just before the pilot switches aircraft must not be announced over the aircraft
+    // that follows: MainForm tells the outgoing definition it was switched away from, and both PMDG
+    // jets stop their settle timer there, as the iFly does in its Shutdown.
+    [Fact]
+    public void A_PMDG_jet_switched_away_never_speaks_a_lever_still_settling()
+    {
+        UnmuteSpeedBrakes();
+        var ng3 = new PMDG737Definition();
+        var b777 = new PMDG777Definition();
+        var speech = new SpeechCapture();
+        ng3.SpeedBrakeCallout.Settle(0, 0, muted: false);                    // positions at load
+        b777.SpeedBrakeCallout.Settle(0, 0, muted: false);
+        ng3.SpeedBrakeCallout.OnSample(100, speech);                         // moved just before the swap
+        b777.SpeedBrakeCallout.OnSample(200, speech);
+
+        ng3.OnSwitchedAway();
+        b777.OnSwitchedAway();
+
+        Thread.Sleep(Math.Max(PmdgSpeedBrakeLever.Ng3SettleMs, PmdgSpeedBrakeLever.B777SettleMs) + 1000);
+        Assert.Empty(speech.All);
+    }
+
+    // The callout's Ctrl+M mute is looked up by its OWN definition's aircraft code
+    // (DefAnnounceMuteSets): built with any other code it reads another list, or none, and the
+    // Speed Brake row mutes nothing.
+    [Fact]
+    public void Each_PMDG_callout_is_muted_through_its_own_definitions_Ctrl_M_list()
+    {
+        var settings = new Settings.UserSettings();
+        settings.PMDGDisabledMonitorVariables.AddRange(new[] { "MON_PMDG737_SpeedBrake", "FCTL_Speedbrake" });
+        settings.RebuildDisabledMonitorVariableCaches();
+        Assert.True(new PMDG737Definition().SpeedBrakeCallout.IsMuted(settings));
+        Assert.True(new PMDG777Definition().SpeedBrakeCallout.IsMuted(settings));
+    }
+
+    // The timer reads the live Ctrl+M lists: clear the two rows in memory (never saved), so a mute in
+    // the settings of whoever runs the suite cannot decide these tests.
+    private static void UnmuteSpeedBrakes()
+    {
+        var settings = Settings.SettingsManager.Current;
+        settings.PMDGDisabledMonitorVariables.RemoveAll(k => k is "MON_PMDG737_SpeedBrake" or "FCTL_Speedbrake");
+        settings.RebuildDisabledMonitorVariableCaches();
     }
 
     [Fact]

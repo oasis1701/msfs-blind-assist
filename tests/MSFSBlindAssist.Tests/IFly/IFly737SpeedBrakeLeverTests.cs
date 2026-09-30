@@ -17,8 +17,11 @@ public class IFly737SpeedBrakeLeverTests
 
     [Theory]
     [InlineData(34, 34)]
-    [InlineData(34.5, 34)]   // a hair past ARMED must never open the combo blank
-    [InlineData(39, 34)]     // within the settle tolerance above ARMED
+    // ARMED is exact and the spoilers deploy in step with the lever from 34, so a lever past it is
+    // deployed: the combo names the nearest DEPLOYED detent, never "Armed" (and never opens blank).
+    [InlineData(34.5, 180)]
+    [InlineData(35, 180)]
+    [InlineData(39, 180)]
     // Measured 2026-09-30 (IFlySdkProbe): the ARMED light is on at 34 and above and off at
     // 30 and 33, so anything short of 34 is not armed — no tolerance below the detent.
     [InlineData(33.5, 0)]
@@ -27,7 +30,7 @@ public class IFly737SpeedBrakeLeverTests
     [InlineData(29, 0)]
     [InlineData(22, 0)]      // short of ARMED is not armed: Down, never "Armed"
     [InlineData(28, 0)]
-    [InlineData(100, 34)]    // a hardware axis between detents, nearer ARMED
+    [InlineData(100, 180)]   // a hardware axis between detents: deployed, however near ARMED
     [InlineData(149, 180)]
     [InlineData(210, 224)]
     [InlineData(225, 224)]
@@ -197,6 +200,18 @@ public class IFly737SpeedBrakeLeverTests
         pmdg.PMDGDisabledMonitorVariables.Add(IFly737SpeedBrakeLever.FieldName);
         pmdg.RebuildDisabledMonitorVariableCaches();
         Assert.False(callout.IsMuted(pmdg));
+    }
+
+    // A context reset or SDK reconnect SEEDS the callout at the lever's live position, as the trim is
+    // seeded: the loaded lever then arriving as a change is not news, while the next genuine move is.
+    // Resetting instead (speakFirst) announced the loaded aircraft's lever as if the pilot had moved it.
+    [Fact]
+    public void A_seeded_callout_is_silent_at_its_seed_and_speaks_the_next_move()
+    {
+        var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
+        callout.Seed(34);
+        Assert.Null(callout.Settle(34, 0, muted: false));
+        Assert.Equal("Speed brake down", callout.Settle(0, 0, muted: false));
     }
 
     [Fact]
