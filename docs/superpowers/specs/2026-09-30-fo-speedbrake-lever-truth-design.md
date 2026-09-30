@@ -79,10 +79,12 @@ name.
   - the step's linked checklist lines are kept out of the completion latch;
   - its id joins the skipped set, so dependent steps skip;
   - `StepSkipped` is raised and the flow continues.
-- **Checklist items** get the same pair. `ChecklistManager.ToggleItem`: when a hand-tick's
-  condition holds, the action is not run, the tick is undone at once, and a new `ItemLeftAlone`
-  event is raised. The First Officer window speaks the item's text on it. This is an
-  error-condition announcement, allowed by the screen-reader rules.
+- **Checklist items** get the same pair. `ChecklistManager.ToggleItem` gains an overload with
+  `out string? leftAloneText`. When a hand-tick's condition holds, the action is not run, the
+  tick is refused (the line stays unticked), and the reason comes back through that parameter.
+  The First Officer window speaks it in place of its "Label: checked" line, as one utterance.
+  An event was rejected: its queued speech would be cut off by the window's interrupting status
+  line. This is an error-condition announcement, allowed by the screen-reader rules.
 - **Sentence:** one constant, `SpeedbrakeLeverState.LeaveAloneText` = "Speedbrake extended, not
   armed. Left as it is."
 - The condition is "Deployed" only. An Unknown lever reaches the arm action, whose backstop
@@ -106,7 +108,10 @@ name.
 **PMDG 777**
 - `Pmdg777SpeedbrakeLever` re-pointed at main's `B777` table and `FO_SPEEDBRAKE_LEVER`. The SDK
   byte is not read.
-- Landing `LD_SPEEDBRAKE_ARM`:
+- Landing `LD_SPEEDBRAKE_ARM` goes through a verified `SPEEDBRAKE_ARM`
+  (`ArmSpeedbrakeAsync`, waiting up to 8 s for the lever). The lever takes about 5 s from DOWN
+  to ARM, and a flow step's own verify reads only 600 ms after dispatch, so the old step said
+  "Skipping" over a lever that armed a moment later.
   - `SkipCondition` armed;
   - `LeaveAloneWhen` deployed;
   - verify field `FO_SPEEDBRAKE_LEVER`.
