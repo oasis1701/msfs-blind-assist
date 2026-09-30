@@ -55,10 +55,9 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private byte _lastAttendPressCount;
     private byte _lastGrdCallPressCount;
 
-    // Stabilizer trim, in units. Last announced value rounded to 0.1 unit, or
-    // NaN until the baseline is absorbed silently on connect. See the
-    // MON_PMDG737_StabTrim case in ProcessSimVarUpdate.
-    private double _lastAnnouncedStabTrim = double.NaN;
+    // Stabilizer trim, in units: the one rule both 737s speak with
+    // (StabTrimUnitsCallout). See the MON_PMDG737_StabTrim case in ProcessSimVarUpdate.
+    private readonly StabTrimUnitsCallout _stabTrimCallout = new();
 
     // Speed-brake lever position. The NG3 SDK exposes no lever-position field
     // (the 777 has FCTL_Speedbrake_Lever; the 737 does not) and PMDG does not
@@ -4833,18 +4832,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 if (!_trimAnnouncementsEnabled)
                     return true;
-                double rounded = Math.Round(value, 1);
-                if (double.IsNaN(_lastAnnouncedStabTrim))
-                {
-                    _lastAnnouncedStabTrim = rounded;
-                    return true;
-                }
-                // Judged on the RAW value, with the shared hysteresis past the 0.05 midpoint:
-                // comparing two rounded values let a trim resting on x.x5 flip every sample.
-                if (Math.Abs(value - _lastAnnouncedStabTrim) < 0.05 + TrimHysteresis)
-                    return true;
-                _lastAnnouncedStabTrim = rounded;
-                announcer.Announce(FormattableString.Invariant($"Trim {rounded:F1}"));
+                if (_stabTrimCallout.Next(value, TrimHysteresis) is { } trimPhrase)
+                    announcer.Announce(trimPhrase);
                 return true;
             }
 

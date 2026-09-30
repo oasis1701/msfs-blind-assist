@@ -381,6 +381,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         if (_cachedVariables != null) return _cachedVariables;
         EnsureRegistered();
         var variables = GetBaseVariables();
+        // The shared trim call-out reads the stock ELEVATOR TRIM POSITION in DEGREES ("Trim
+        // down 2.3" while the indicator showed 5.6 units, live 2026-09-30). The iFly publishes
+        // the stabiliser trim in UNITS itself (Stabilizer_Trim_Pointer_Status), so that field is
+        // what is spoken, as on the PMDG 737 — see its case in ProcessSimVarUpdate.
+        variables.Remove("MON_ElevatorTrim");
         foreach (var kvp in _vars)
             variables[kvp.Key] = kvp.Value;
         _cachedVariables = variables;
@@ -1712,6 +1717,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private static readonly TakeoffCalloutKeys TakeoffKeys = new("IFLY_IAS", "IFLY_V1", "IFLY_VR", "IFLY_V2");
     private bool _calloutOnGround = true; // last SIM_ON_GROUND sample (ramp default)
 
+    /// <summary>The SDK field carrying the stabiliser trim in units, spoken in place of the
+    /// shared degrees call-out (see BuildVariables).</summary>
+    internal const string StabTrimUnitsKey = "Stabilizer_Trim_Pointer_Status";
+    private readonly StabTrimUnitsCallout _stabTrimCallout = new();
+
     /// <summary>The roll callouts' machine, for the tests that pin what a context reset does to it.</summary>
     internal TakeoffVSpeedCallouts TakeoffCallouts => _takeoffCallouts;
 
@@ -1745,8 +1755,9 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// already held V-speeds delivered a 280 kt sample while the ground flag still read true, and
     /// the arm from the ramp called "V1, Rotate, V2" at altitude. The speeds are kept, for the
     /// same reason as above. Same fix, same reason and the same shared machine as the MD-11's
-    /// (TFDiMD11Definition.OnSimContextReset). It also resets the speed-brake callout (below);
-    /// nothing else of this definition's state is touched.
+    /// (TFDiMD11Definition.OnSimContextReset). It also resets the speed-brake callout (below) and
+    /// re-baselines the stabiliser-trim call-out, so a flight load's trim is not spoken as a
+    /// change; nothing else of this definition's state is touched.
     /// </summary>
     public override void OnSimContextReset()
     {
@@ -1755,6 +1766,8 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         // The speed-brake callout's last sentence must not outlive the flight: carried over, the
         // first genuine settle at that same detent would be swallowed as a repeat.
         _speedBrakeCallout.Reset();
+        // A flight load's trim is the loaded aircraft's setting, not a change: re-baseline.
+        _stabTrimCallout.Reset();
     }
 
     // Speed-brake lever announcer: the trailing-edge settle timer the PMDG jets use,
@@ -2143,6 +2156,18 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
+        // Stabilizer trim, in the UNITS the indicator shows (0-17), spoken exactly as the
+        // PMDG 737 speaks it (StabTrimUnitsCallout: "Trim 5.3"). Gated by the shared Shift+T
+        // trim toggle; the Ctrl+M row mutes it through MainForm's wrap (the iFly is wrapped,
+        // DefAnnounceMuteSets). Returns true, so the panel row reads the live snapshot in
+        // TryGetDisplayOverride rather than the frozen passed-in value.
+        if (varName == StabTrimUnitsKey)
+        {
+            if (_trimAnnouncementsEnabled && _stabTrimCallout.Next(value, TrimHysteresis) is { } trimPhrase)
+                announcer.Announce(trimPhrase);
+            return true;
+        }
+
         // Engine bowed rotor motoring (see the BrmLvar registration note): edge
         // announces only, both directions — the "complete" edge is the go-ahead
         // that the start sequence is moving again.
@@ -2347,10 +2372,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                     : $"{(value < 0 ? "Left" : "Right")} {mag * 100:0} percent";
                 return true;
             }
-            case "Stabilizer_Trim_Pointer_Status":
-                // 0-17 stab trim units; one decimal so small changes are audible.
-                displayText = $"{value:0.0} units";
+            case StabTrimUnitsKey:
+            {
+                // 0-17 stab trim units; one decimal so small changes are audible. The trim
+                // call-out in ProcessSimVarUpdate returns true, so MainForm's display cache is
+                // never written and the passed-in value would freeze at its first reading —
+                // read the LIVE snapshot instead, as the speed-brake row does.
+                double units = (snap != null ? ReadRawField(snap, StabTrimUnitsKey) : null) ?? value;
+                displayText = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{units:0.0} units");
                 return true;
+            }
         }
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }

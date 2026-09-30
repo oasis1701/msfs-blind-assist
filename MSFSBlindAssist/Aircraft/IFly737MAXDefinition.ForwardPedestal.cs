@@ -793,8 +793,10 @@ public partial class IFly737MAXDefinition
 
         // Rudder trim indicator: -1.0 full left / 0 center / +1.0 full right.
         Disp(P, "Rudder_Trim_Pointer_Status", "Rudder Trim Indicator");
-        // Stabilizer trim indicator: 0-17 units.
-        Disp(P, "Stabilizer_Trim_Pointer_Status", "Stabilizer Trim Units");
+        // Stabilizer trim indicator: 0-17 units. Announced ("Trim 5.3", the PMDG 737's
+        // wording) in place of the shared degrees call-out, which BuildVariables drops;
+        // its Ctrl+M row mutes it. See StabTrimUnitsKey in ProcessSimVarUpdate.
+        Disp(P, StabTrimUnitsKey, "Stabilizer Trim Units", announced: true);
 
         Annun(P, "STAB_OUT_TRIM_Light_Status", "Stabilizer Out of Trim light");
         // 0/1 flag (0 = flag hidden, 1 = flag shown) — Annun handles 0/1 fine.
