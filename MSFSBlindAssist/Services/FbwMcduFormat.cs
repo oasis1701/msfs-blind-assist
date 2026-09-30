@@ -119,8 +119,9 @@ public static class FbwMcduFormat
     /// right, centred centre. Cells keep their own {sp} padding — FBW pads cells to
     /// column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
     /// trimming the padding and re-centring used to run the time into the speed
-    /// ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
-    /// neighbouring cell's text. Trailing whitespace of the finished line is trimmed.
+    /// ("2053.78"). Blanks never overwrite, so overlapping padding can't erase a
+    /// neighbouring cell's text — and FBW pads with U+00A0 as well as ' ', so both are
+    /// blank and both come out as ' '. Trailing whitespace of the finished line is trimmed.
     /// A '*' in the text is an ordinary column (the DCDU's key stars are real content).
     /// </summary>
     public static string PositionLine(string left, string center, string right, int width = 24)
@@ -129,10 +130,13 @@ public static class FbwMcduFormat
 
     /// <summary>
     /// <see cref="PositionLine(string, string, string, int)"/> for decoded cells. The columns
-    /// are laid out without the green-selection markers; each marker then takes the blank
-    /// column in front of its text when that column is free and is not right after other
-    /// text (so "ALT *FL370" keeps its space), and is inserted only when it is not — so a
-    /// right-aligned or padded value keeps its column wherever there is room.
+    /// are laid out without the green-selection markers, then each marker is written in:
+    /// into the blank column in front of its text when the gap there has one to spare (a gap
+    /// after text keeps one blank, so "ALT *FL370" keeps its space), otherwise inserted, and
+    /// an inserted '*' is paid back by the next gap with a blank to spare. So everything after
+    /// a gap stays in its FBW column — the right-hand values line up down the page, which a
+    /// braille display depends on — and the line is wider than <paramref name="width"/> only
+    /// when no gap can pay.
     /// </summary>
     private static string PositionLine(MarkedText left, MarkedText center, MarkedText right, int width = 24)
     {
@@ -145,15 +149,29 @@ public static class FbwMcduFormat
         if (marked == null) { return new string(buf).TrimEnd(); }
 
         var sb = new StringBuilder(width + 4);
-        for (int i = 0; i < width; i++)
+        int owed = 0;          // inserted stars not yet paid back by a gap
+        bool starWritten = false;
+        for (int i = 0; i < width;)
         {
-            if (marked[i])
+            if (buf[i] != ' ')
             {
-                bool freeColumnBefore = i > 0 && buf[i - 1] == ' ' && (i == 1 || buf[i - 2] == ' ');
-                if (freeColumnBefore) { sb[sb.Length - 1] = '*'; }
-                else { sb.Append('*'); }
+                if (marked[i] && !starWritten) { sb.Append('*'); owed++; }
+                sb.Append(buf[i]);
+                starWritten = false;
+                i++;
+                continue;
             }
-            sb.Append(buf[i]);
+            int end = i;
+            while (end < width && buf[end] == ' ') { end++; }
+            if (end == width) { break; }
+            int spare = end - i - (i == 0 ? 0 : 1);
+            int star = marked[end] && spare > 0 ? 1 : 0;
+            int repay = Math.Min(owed, spare - star);
+            owed -= repay;
+            sb.Append(' ', end - i - star - repay);
+            if (star == 1) { sb.Append('*'); }
+            starWritten = star == 1;
+            i = end;
         }
         return sb.ToString().TrimEnd();
 
@@ -162,7 +180,7 @@ public static class FbwMcduFormat
             for (int j = 0; j < cell.Text.Length; j++)
             {
                 int p = start + j;
-                if (cell.Text[j] != ' ' && p >= 0 && p < width)
+                if (!IsBlank(cell.Text[j]) && p >= 0 && p < width)
                 {
                     buf[p] = cell.Text[j];
                     bool mark = cell.IsMarked(j);
@@ -172,6 +190,8 @@ public static class FbwMcduFormat
             }
         }
     }
+
+    private static bool IsBlank(char ch) => ch == ' ' || ch == ' ';
 
     public static string DecodeCell(string? cell) => DecodeCellMarked(cell).WithStars();
 
@@ -191,20 +211,25 @@ public static class FbwMcduFormat
         bool mixedGreen = colors.Count > 1 && colors.Contains("green");
         var sb = new StringBuilder();
         List<int>? markAt = null;
+        // FBW sends one green value as touching pieces ("10.2", "/", "0213"). A pilot sees one
+        // green value, so a piece that continues a green run gets no '*' of its own.
+        bool inGreenRun = false;
         foreach (var seg in segments)
         {
-            if (mixedGreen && seg.Color == "green" && !string.IsNullOrWhiteSpace(seg.Text))
+            bool green = mixedGreen && seg.Color == "green" && !string.IsNullOrWhiteSpace(seg.Text);
+            if (green)
             {
                 string trimmed = seg.Text.TrimStart();
                 string leading = seg.Text.Substring(0, seg.Text.Length - trimmed.Length);
                 sb.Append(leading);
-                (markAt ??= new List<int>()).Add(sb.Length);
+                if (!(inGreenRun && leading.Length == 0)) { (markAt ??= new List<int>()).Add(sb.Length); }
                 sb.Append(trimmed);
             }
             else
             {
                 sb.Append(seg.Text);
             }
+            inGreenRun = green && !char.IsWhiteSpace(seg.Text[^1]);
         }
         if (markAt == null) { return new MarkedText(sb.ToString(), null); }
         var marks = new bool[sb.Length];

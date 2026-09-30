@@ -169,10 +169,10 @@ test('renderLines keeps the right-hand value when green markers precede it', () 
   const lines = [['', '', ''], [row, '', '']];
   for (let k = 1; k < 6; k++) { lines.push(['', '', ''], ['', '', '']); }
   const d = fmt.decodeSide({ title: 'INIT', lines });
-  // The first marker takes the blank padding column in front of "3.1".
-  const expected = ' *3.1*/*0137' + ' '.repeat(11) + '5.1';
+  // One '*' for the one green value, in the blank padding column in front of "3.1".
+  const expected = ' *3.1/0137' + ' '.repeat(11) + '5.1';
   assert.strictEqual(d.rows[0].valueText, expected);
-  assert.strictEqual(d.rows[0].valueLeft, '  *3.1*/*0137' + ' '.repeat(11) + '5.1');
+  assert.strictEqual(d.rows[0].valueLeft, '  *3.1/0137' + ' '.repeat(11) + '5.1');
   assert.ok(fmt.renderLines(d).includes('1: ' + expected));
 });
 
@@ -181,4 +181,43 @@ test('a marked right cell still ends at column 24', () => {
   for (let k = 1; k < 6; k++) { lines.push(['', '', ''], ['', '', '']); }
   const d = fmt.decodeSide({ title: 'X', lines });
   assert.strictEqual(d.rows[0].valueText, 'A' + ' '.repeat(16) + '*ON/OFF');
+});
+
+// --- Live pages, 2026-09-30 (FBW A320 at KIAH, cells as captured) ------------------------
+
+function valueRow(left, right, center) {
+  const lines = [['', '', ''], [left, right || '', center || '']];
+  for (let k = 1; k < 6; k++) { lines.push(['', '', ''], ['', '', '']); }
+  return fmt.decodeSide({ title: 'X', lines }).rows[0].valueText;
+}
+
+test('touching green pieces get one star', () => {
+  assert.strictEqual(fmt.decodeCell('{cyan}0.8{end}{green}/{end}{green}0011{end}'), '0.8*/0011');
+  assert.strictEqual(fmt.decodeCell('{green}A{end} {green}B{end}{white}C{end}'), '*A *BC');
+});
+
+test('non-breaking padding never overwrites text', () => {
+  assert.strictEqual(fmt.positionLine('ABCD', '', '\u00a0\u00a0X', 5), 'ABCDX');
+});
+
+test('a star takes non-breaking padding (PERF APPR line 5)', () => {
+  assert.strictEqual(
+    valueRow('{white}{cyan}{small}136{end}{end}\u00a0\u00a0\u00a0\u00a0{green}131{end}{end}',
+      '{white}{cyan}FULL/{end}{small}CONF3{end}*{end}'),
+    '136   *131   FULL/CONF3*');
+});
+
+test('an inserted star is paid back by the next gap (INIT FUEL PRED line 4)', () => {
+  assert.strictEqual(
+    valueRow('{white}{sp}{sp}{small}{cyan}0.8{end}{end}{small}{green}/{end}{end}'
+      + '{small}{green}0011{end}{end}{sp}{sp}{sp}{small}{green}155.3{end}{end}'
+      + '{small}{green}/{end}{end}{small}{green}145.1{end}{end}{small}{end}{big}{end}{end}'),
+    '  0.8*/0011 *155.3/145.1');
+});
+
+test('the right cell stays in place after an inserted star (PERF TAKE OFF line 2)', () => {
+  assert.strictEqual(
+    valueRow('{white}{cyan}149{end}{small}\u00a0\u00a0\u00a0{end}\u00a0S={green}201{end}{end}',
+      '{white}{inop}{small}[M]{end}[\u00a0\u00a0]*{end}{end}'),
+    '149    S=*201   [M][  ]*');
 });

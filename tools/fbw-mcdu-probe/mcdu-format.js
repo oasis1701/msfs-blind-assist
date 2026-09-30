@@ -80,8 +80,9 @@ function withStars(m) {
 // right, centred centre. Cells keep their own {sp} padding — FBW pads cells to
 // column-align the display (e.g. F-PLN time "2053    " + speed ".78/ FL370");
 // trimming the padding and re-centring used to run the time into the speed
-// ("2053.78"). Spaces never overwrite, so overlapping padding can't erase a
-// neighbouring cell's text. Trailing whitespace of the finished line is trimmed.
+// ("2053.78"). Blanks never overwrite, so overlapping padding can't erase a
+// neighbouring cell's text — and FBW pads with U+00A0 as well as ' ', so both are
+// blank and both come out as ' '. Trailing whitespace of the finished line is trimmed.
 // A '*' in the text is an ordinary column (the DCDU's key stars are real content).
 function positionLine(left, center, right, width) {
   return positionMarked({ text: left || '', marks: null }, { text: center || '', marks: null },
@@ -89,10 +90,12 @@ function positionLine(left, center, right, width) {
 }
 
 // positionLine for decoded cells. The columns are laid out without the green-selection
-// markers; each marker then takes the blank column in front of its text when that column
-// is free and is not right after other text (so "ALT *FL370" keeps its space), and is
-// inserted only when it is not — so a right-aligned or padded value keeps its column
-// wherever there is room.
+// markers, then each marker is written in: into the blank column in front of its text when
+// the gap there has one to spare (a gap after text keeps one blank, so "ALT *FL370" keeps
+// its space), otherwise inserted, and an inserted '*' is paid back by the next gap with a
+// blank to spare. So everything after a gap stays in its FBW column — the right-hand
+// values line up down the page, which a braille display depends on — and the line is
+// wider than `width` only when no gap can pay.
 function positionMarked(l, c, r, width) {
   width = width || 24;
   var buf = new Array(width);
@@ -101,7 +104,7 @@ function positionMarked(l, c, r, width) {
   function place(m, start) {
     for (var j = 0; j < m.text.length; j++) {
       var p = start + j;
-      if (m.text[j] !== ' ' && p >= 0 && p < width) {
+      if (!isBlank(m.text[j]) && p >= 0 && p < width) {
         buf[p] = m.text[j];
         var mark = !!(m.marks && m.marks[j]);
         if (mark && !marked) { marked = new Array(width).fill(false); }
@@ -113,15 +116,35 @@ function positionMarked(l, c, r, width) {
   if (c.text.replace(/\s/g, '').length) { place(c, Math.max(0, Math.floor((width - c.text.length) / 2))); }
   if (r.text.replace(/\s/g, '').length) { place(r, Math.max(0, width - r.text.length)); }
   if (!marked) { return buf.join('').replace(/\s+$/, ''); }
-  var out = [];
-  for (var k = 0; k < width; k++) {
-    if (marked[k]) {
-      var freeColumnBefore = k > 0 && buf[k - 1] === ' ' && (k === 1 || buf[k - 2] === ' ');
-      if (freeColumnBefore) { out[out.length - 1] = '*'; } else { out.push('*'); }
+  var out = '';
+  var owed = 0; // inserted stars not yet paid back by a gap
+  var starWritten = false;
+  var k = 0;
+  while (k < width) {
+    if (buf[k] !== ' ') {
+      if (marked[k] && !starWritten) { out += '*'; owed++; }
+      out += buf[k];
+      starWritten = false;
+      k++;
+      continue;
     }
-    out.push(buf[k]);
+    var end = k;
+    while (end < width && buf[end] === ' ') { end++; }
+    if (end === width) { break; }
+    var spare = end - k - (k === 0 ? 0 : 1);
+    var star = marked[end] && spare > 0 ? 1 : 0;
+    var repay = Math.min(owed, spare - star);
+    owed -= repay;
+    out += ' '.repeat(end - k - star - repay);
+    if (star) { out += '*'; }
+    starWritten = star === 1;
+    k = end;
   }
-  return out.join('').replace(/\s+$/, '');
+  return out.replace(/\s+$/, '');
+}
+
+function isBlank(ch) {
+  return ch === ' ' || ch === '\u00a0';
 }
 
 function decodeCell(cell) {
@@ -141,17 +164,22 @@ function decodeCellMarked(cell) {
   var mixedGreen = colorCount > 1 && colors['green'];
   var out = '';
   var markAt = null;
+  // FBW sends one green value as touching pieces ("10.2", "/", "0213"). A pilot sees one
+  // green value, so a piece that continues a green run gets no '*' of its own.
+  var inGreenRun = false;
   for (var k = 0; k < segments.length; k++) {
     var seg = segments[k];
-    if (mixedGreen && seg.color === 'green' && seg.text.trim().length > 0) {
+    var green = mixedGreen && seg.color === 'green' && seg.text.trim().length > 0;
+    if (green) {
       var trimmed = seg.text.replace(/^\s+/, '');
       var leading = seg.text.slice(0, seg.text.length - trimmed.length);
       out += leading;
-      (markAt = markAt || []).push(out.length);
+      if (!(inGreenRun && leading.length === 0)) { (markAt = markAt || []).push(out.length); }
       out += trimmed;
     } else {
       out += seg.text;
     }
+    inGreenRun = !!green && !/\s$/.test(seg.text);
   }
   if (!markAt) { return { text: out, marks: null }; }
   var marks = new Array(out.length).fill(false);

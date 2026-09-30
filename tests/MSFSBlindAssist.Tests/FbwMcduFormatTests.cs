@@ -212,17 +212,17 @@ public class FbwMcduFormatTests
     {
         // Live INIT FUEL PRED line 2 (2026-09-26): FBW sends the whole row, BLOCK included,
         // in cell 0, padded to exactly 24 columns. The three '*' markers once counted as
-        // columns and pushed "5.1" past column 24, so BLOCK fuel was clipped away. The first
-        // marker now takes the blank padding column in front of "3.1"; the two with text right
-        // before them are inserted.
+        // columns and pushed "5.1" past column 24, so BLOCK fuel was clipped away. The three
+        // touching green pieces are one value with one '*', which takes the blank padding
+        // column in front of "3.1".
         string cell = "{white}{sp}{sp}{small}{green}3.1{end}{end}{small}{green}/{end}{end}"
                     + "{small}{green}0137{end}{end}" + Sp(11)
                     + "{cyan}5.1{end}{small}{end}{big}{end}{end}";
 
         var data = SingleValueRow(cell);
 
-        Assert.Equal(" *3.1*/*0137" + new string(' ', 11) + "5.1", data.RawLines[2]);
-        Assert.Equal("  *3.1*/*0137" + new string(' ', 11) + "5.1", data.Lines[0].LeftValue);
+        Assert.Equal(" *3.1/0137" + new string(' ', 11) + "5.1", data.RawLines[2]);
+        Assert.Equal("  *3.1/0137" + new string(' ', 11) + "5.1", data.Lines[0].LeftValue);
     }
 
     [Fact]
@@ -254,8 +254,81 @@ public class FbwMcduFormatTests
 
         var data = SingleValueRow(cell);
 
-        Assert.EndsWith("---.-", data.RawLines[2]);
-        Assert.StartsWith("*0.8*/*0022", data.RawLines[2]);
+        // No blank column in front of "0.8", so the '*' is inserted and the gap after the value
+        // gives the column back: "---.-" still ends at column 24.
+        Assert.Equal("*0.8/0022" + new string(' ', 10) + "---.-", data.RawLines[2]);
+    }
+
+    // --- Live pages, 2026-09-30 (FBW A320 at KIAH, cells as captured) ------------------------
+
+    [Fact]
+    public void DecodeCell_gives_touching_green_pieces_one_star()
+        // FBW sends a green value as separate pieces ("0.8" cyan, "/" green, "0011" green); a
+        // pilot sees one green value, so it is marked once, not "0.8*/*0011".
+        => Assert.Equal("0.8*/0011", FbwMcduFormat.DecodeCell("{cyan}0.8{end}{green}/{end}{green}0011{end}"));
+
+    [Fact]
+    public void DecodeCell_keeps_a_star_for_each_green_value_a_gap_separates()
+        => Assert.Equal("*A *BC", FbwMcduFormat.DecodeCell("{green}A{end} {green}B{end}{white}C{end}"));
+
+    [Fact]
+    public void PositionLine_non_breaking_padding_never_overwrites_text()
+        // FBW pads its cells with U+00A0, not ' '. Padding is blank whichever space it is.
+        => Assert.Equal("ABCDX", FbwMcduFormat.PositionLine("ABCD", "", "  X", 5));
+
+    [Fact]
+    public void BuildDisplayData_lets_a_star_take_non_breaking_padding()
+    {
+        // PERF APPR line 5 (VAPP/VLS): the gap before VLS is four U+00A0.
+        var data = SingleValueRow("{white}{cyan}{small}136{end}{end}    {green}131{end}{end}",
+                                  right: "{white}{cyan}FULL/{end}{small}CONF3{end}*{end}");
+
+        Assert.Equal("136   *131   FULL/CONF3*", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_keeps_init_fuel_pred_block_fuel_on_the_right_edge()
+    {
+        // INIT FUEL PRED line 2 (TRIP/TIME ... BLOCK), whole row in cell 0.
+        var data = SingleValueRow("{white}{sp}{small}{green}10.2{end}{end}{small}{green}/{end}{end}"
+                                + "{small}{green}0213{end}{end}" + Sp(10) + "{cyan}14.0{end}{small}{end}{big}{end}{end}");
+
+        Assert.Equal("*10.2/0213" + new string(' ', 10) + "14.0", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_repays_an_inserted_star_from_the_next_gap()
+    {
+        // INIT FUEL PRED line 4 (ALTN/TIME, TOW/LW): the '*' in front of "/0011" has text right
+        // before it, so it is inserted; the gap after it gives that column back and still leaves
+        // room for the '*' in front of TOW, so LW ends at column 24.
+        var data = SingleValueRow("{white}{sp}{sp}{small}{cyan}0.8{end}{end}{small}{green}/{end}{end}"
+                                + "{small}{green}0011{end}{end}{sp}{sp}{sp}{small}{green}155.3{end}{end}"
+                                + "{small}{green}/{end}{end}{small}{green}145.1{end}{end}{small}{end}{big}{end}{end}");
+
+        Assert.Equal("  0.8*/0011 *155.3/145.1", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_keeps_extra_time_on_the_right_edge()
+    {
+        // INIT FUEL PRED line 6 (MIN DEST FOB, EXTRA/TIME).
+        var data = SingleValueRow("{white}{sp}{sp}{small}{cyan}2.9{end}{end}" + Sp(11)
+                                + "{small}{green}0.0{end}{end}{small}{green}/{end}{end}{small}{green}0000{end}{end}"
+                                + "{small}{end}{big}{end}{end}");
+
+        Assert.Equal("  2.9" + new string(' ', 10) + "*0.0/0000", data.RawLines[2]);
+    }
+
+    [Fact]
+    public void BuildDisplayData_keeps_the_right_cell_in_place_after_an_inserted_star()
+    {
+        // PERF TAKE OFF line 2 (VR, SLT RETR, TO SHIFT): "S=" leaves no free column for the
+        // '*' in front of 201, and the gap before TO SHIFT gives one back.
+        var data = SingleValueRow("{white}{cyan}149{end}{small}   {end} S={green}201{end}{end}",
+                                  right: "{white}{inop}{small}[M]{end}[  ]*{end}{end}");
+
+        Assert.Equal("149    S=*201   [M][  ]*", data.RawLines[2]);
     }
 
     [Fact]
