@@ -26,7 +26,8 @@ public class PmdgSpeedBrakeLeverTests
     [InlineData(62, 50)]    // nearer ARM than half
     [InlineData(63, 75)]
     [InlineData(99, 100)]
-    [InlineData(25, 0)]     // a tie goes to the LOWER detent
+    [InlineData(25, 0)]     // short of ARM: Down (PositionIndex), never the old tie
+    [InlineData(62.5, 50)]  // a tie between two detents above ARM goes to the LOWER one
     public void The_777_combo_seeds_with_the_nearest_detent(double lever, double expectedKey)
     {
         Assert.Equal(expectedKey, PmdgSpeedBrakeLever.NearestDetentValue(
