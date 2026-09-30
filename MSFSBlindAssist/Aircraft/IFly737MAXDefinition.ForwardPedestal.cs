@@ -846,18 +846,17 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.FLTCTRL_FLAP_SET,
             new[] { "Up", "1", "2", "5", "10", "15", "25", "30", "40" });
 
-        // Speed-brake lever: a combo over Spoiler_Lever_Status (read 0-225), written
-        // with FLTCTRL_SPOILER (Value2 0-254 — a DIFFERENT scale, so the map converts
-        // each pick to its detent's write value). One table: IFly737SpeedBrakeLever.
-        // The classifier seeds the combo with the NEAREST detent, so a lever caught
-        // mid-travel never opens it blank. The lever self-announces on a settle timer
-        // from ProcessSimVarUpdate (which returns true), so an open combo does not
-        // follow a lever moved from the cockpit; it re-syncs when the panel is rebuilt
-        // — the PMDG 737 lever's accepted limitation.
+        // Speed-brake lever: a combo over Spoiler_Lever_Status, written with
+        // FLTCTRL_SPOILER, whose Value2 is the SAME 0-224 scale (measured live —
+        // see IFly737SpeedBrakeLever, the one table). The classifier seeds the combo
+        // with the NEAREST detent, so a lever resting between detents never opens it
+        // blank. The lever self-announces on a settle timer from ProcessSimVarUpdate
+        // (which returns true), so an open combo does not follow a lever moved from
+        // the cockpit; it re-syncs when the panel is rebuilt — the PMDG 737 lever's
+        // accepted limitation.
         SwD(P, IFly737SpeedBrakeLever.FieldName, "Speed Brake",
             IFlyKeyCommand.FLTCTRL_SPOILER,
-            IFly737SpeedBrakeLever.ComboDescriptions(),
-            map: IFly737SpeedBrakeLever.WriteValueFor);
+            IFly737SpeedBrakeLever.ComboDescriptions());
         _vars[IFly737SpeedBrakeLever.FieldName].ValueToDescriptionKey = IFly737SpeedBrakeLever.NearestDetentValue;
 
         Annun(P, "SPEED_BRAKE_ARMED_Light_Status", "Speed Brake Armed light");
