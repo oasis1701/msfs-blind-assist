@@ -205,6 +205,27 @@ public class FlowManager<TExec, TState>
                 continue;
             }
 
+            // A step the aircraft's state says the First Officer must NOT perform
+            // (FlowStep.LeaveAloneWhen — arming a speed brake that is already deployed would
+            // retract it): nothing is sent, the step's reason is spoken, and it is kept out of
+            // the completion latch exactly like a skipped step, so its lines keep mirroring the
+            // aircraft. After SkipCondition on purpose — "Already set" is the truer answer when
+            // the aircraft is already there.
+            if (step.LeaveAloneWhen != null && _state.IsAvailable && step.LeaveAloneWhen(_state))
+            {
+                foreach (var itemId in step.LinkedChecklistItemIds)
+                    _unfinishedChecklistItemIds.Add(itemId);
+                _skippedStepIds.Add(step.Id);
+                StepSkipped?.Invoke(flow, step, i);
+                _announcer.Announce(step.LeaveAloneText ?? $"Skipping: {step.AnnounceText}");
+                if (i < flow.Steps.Count - 1)
+                {
+                    try { await Task.Delay(InterStepPauseMs, ct); }
+                    catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return; }
+                }
+                continue;
+            }
+
             // A step that builds on an earlier step this run could not complete
             // (FlowStep.RequiresStepId) is skipped like a failed Skip-policy step: its
             // linked items stay out of the latch, and its own id joins the skipped set so

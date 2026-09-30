@@ -231,6 +231,25 @@ public class FlowStep<TState> : IFlowStepDispatch
     public string? RequiresStepSkipText { get; set; }
 
     // -----------------------------------------------------------------------
+    // Leave alone (the aircraft's state says the First Officer must not act)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// If set and it returns true, the First Officer does NOT perform this step: nothing is sent,
+    /// <see cref="LeaveAloneText"/> is spoken, and the step's checklist lines are kept out of the
+    /// completion latch, so they keep mirroring the aircraft and tick themselves once the pilot
+    /// does it. Checked after <see cref="SkipCondition"/> ("Already set" is the truer answer when
+    /// the aircraft is already there) and before <see cref="RequiresStepId"/>; the step's id joins
+    /// the run's skipped set, so a step that requires it is skipped too. The speed-brake arm
+    /// steps use it for a speed brake that is already deployed, which clicking ARM would retract.
+    /// </summary>
+    public Func<TState, bool>? LeaveAloneWhen { get; set; }
+
+    /// <summary>What is spoken when <see cref="LeaveAloneWhen"/> holds. Say what stays as it is.
+    /// Defaults to "Skipping: {AnnounceText}".</summary>
+    public string? LeaveAloneText { get; set; }
+
+    // -----------------------------------------------------------------------
     // Helper
     // -----------------------------------------------------------------------
 
