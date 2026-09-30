@@ -16,8 +16,15 @@ public class IFly737SpeedBrakeLeverTests
     }
 
     [Theory]
-    [InlineData(33.5, 34)]   // a hair off a detent must never open the combo blank
-    [InlineData(29, 34)]     // within the settle tolerance of ARMED
+    [InlineData(34, 34)]
+    [InlineData(34.5, 34)]   // a hair past ARMED must never open the combo blank
+    [InlineData(39, 34)]     // within the settle tolerance above ARMED
+    // Measured 2026-09-30 (IFlySdkProbe): the ARMED light is on at 34 and above and off at
+    // 30 and 33, so anything short of 34 is not armed — no tolerance below the detent.
+    [InlineData(33.5, 0)]
+    [InlineData(33, 0)]
+    [InlineData(30, 0)]
+    [InlineData(29, 0)]
     [InlineData(22, 0)]      // short of ARMED is not armed: Down, never "Armed"
     [InlineData(28, 0)]
     [InlineData(100, 34)]    // a hardware axis between detents, nearer ARMED
@@ -110,6 +117,26 @@ public class IFly737SpeedBrakeLeverTests
         var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
         Assert.Equal("Speed brake armed", callout.Settle(34, 0, muted: false));
         Assert.Equal("Speed brake down", callout.Settle(22, 0, muted: false));
+    }
+
+    // Measured 2026-09-30 with tools/IFlySdkProbe: SPEED_BRAKE_ARMED_Light_Status is off at 30
+    // and 33 and on at 34 and every value above. A lever resting a few units short of the
+    // detent is therefore NOT armed, however close — the ±tolerance applies above it only.
+    [Theory]
+    [InlineData(30)]
+    [InlineData(33)]
+    public void A_lever_a_little_short_of_ARMED_is_down_not_armed(double lever)
+    {
+        var callout = new IFly737MAXDefinition().SpeedBrakeCallout;
+        Assert.Equal("Speed brake armed", callout.Settle(34, 0, muted: false));
+        Assert.Equal("Speed brake down", callout.Settle(lever, 0, muted: false));
+    }
+
+    [Fact]
+    public void Only_the_iFly_ARMED_detent_refuses_the_tolerance_below_it()
+    {
+        Assert.True(IFly737SpeedBrakeLever.Detents[1].NoToleranceBelow);
+        Assert.DoesNotContain(IFly737SpeedBrakeLever.Detents.Where((_, i) => i != 1), d => d.NoToleranceBelow);
     }
 
     // A pick always lands at once on the iFly (the write reads back exactly, with no travel), so a

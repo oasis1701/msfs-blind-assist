@@ -5,8 +5,12 @@ namespace MSFSBlindAssist.Aircraft;
 /// <summary>One detent of a PMDG speed-brake lever: where the lever's read-back RESTS there, the
 /// Control Stand combo's label for it, the SDK click event that moves the lever there, and the
 /// sentence the settle announcer (<see cref="PmdgSpeedBrakeCallout"/>) speaks when the lever comes
-/// to rest there.</summary>
-public sealed record PmdgLeverDetent(double Value, string Label, string EventName, string? Spoken = null);
+/// to rest there. <paramref name="NoToleranceBelow"/> makes the settle tolerance one-sided: the lever
+/// counts as resting at this detent only at or above <paramref name="Value"/>, never short of it —
+/// for a detent whose state the aircraft itself switches exactly at that value (the iFly's ARMED
+/// light, measured off at 33 and on at 34).</summary>
+public sealed record PmdgLeverDetent(double Value, string Label, string EventName, string? Spoken = null,
+    bool NoToleranceBelow = false);
 
 /// <summary>
 /// The PMDG 737 NG3 and 777 speed-brake levers, as ONE table per aircraft. Everything that reads or
@@ -137,7 +141,11 @@ public static class PmdgSpeedBrakeLever
     public static int SettledIndex(IReadOnlyList<PmdgLeverDetent> detents, double value, double tolerance)
     {
         for (int i = 0; i < detents.Count; i++)
-            if (Math.Abs(value - detents[i].Value) <= tolerance) return i;
+        {
+            var d = detents[i];
+            double off = value - d.Value;
+            if (d.NoToleranceBelow ? off >= 0 && off <= tolerance : Math.Abs(off) <= tolerance) return i;
+        }
         return -1;
     }
 
