@@ -1,0 +1,1 @@
+iFly 737 MAX: the speed brake lever can now be moved from the Control Stand panel (Down, Armed, Flight detent, Fully deployed). The lever is announced once it comes to rest rather than at every position it passes, a lever resting between positions speaks how far it is deployed, and the panel follows the lever when the auto speed brake moves it on landing.
