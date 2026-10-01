@@ -61,8 +61,19 @@ public partial class CowsDA40Definition
     /// </summary>
     private const double FuelIndicationCapGal = 14.0;
 
-    /// <summary>AFM 2.14.4: maximum permissible difference between the two tanks.</summary>
-    private const double FuelMaxTankDifferenceGal = 9.0;
+    /// <summary>
+    /// Maximum permissible difference between the two tanks: 9 US gallons on the NG (AFM
+    /// 2.14.4), 10 on the XLS (AFM 2.14.2). ⚠️ It was one constant, so the XLS's Shift+F
+    /// measured its tanks against the NG's limit.
+    /// </summary>
+    internal double FuelMaxTankDifferenceGal => IsNG ? 9.0 : 10.0;
+
+    /// <summary>
+    /// The fuel-flow INDICATION each variant reads (both are DISP_FF, under one key per
+    /// variant). ⚠️ Shift+F read the NG's key on both, which the XLS does not register, so
+    /// the XLS always heard "engine not burning, no endurance figure".
+    /// </summary>
+    internal string FuelFlowKey => IsNG ? "DA40_POWER_FUEL_FLOW" : "DA40_XLS_FUEL_FLOW";
 
     /// <summary>
     /// What one tank holds. Both are the same size on both variants - the NG's asymmetry is

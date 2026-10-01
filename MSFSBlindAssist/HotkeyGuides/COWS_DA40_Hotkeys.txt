@@ -72,7 +72,8 @@ Fuel:
              the MFD's Aux System Setup page; while that is the default gallons
              the AFM's litres figure is given beside it, as the AFM does.
   Shift+F    How long that fuel LASTS - current flow, endurance at that flow, and
-             the difference between the tanks against the 9 gallon AFM limit.
+             the difference between the tanks against the AFM limit (9 gallons on
+             the NG, 10 on the XLS).
              On the NG the tanks drift apart on their own: fuel is burnt from the
              main and returned through the aux.
 

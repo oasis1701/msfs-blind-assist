@@ -420,7 +420,7 @@ public partial class CowsDA40Definition
             {
                 double? mainOpt = ReadNow(simConnect, "DA40_FUEL_MAIN_ACTUAL");
                 double? auxOpt = ReadNow(simConnect, "DA40_FUEL_AUX_ACTUAL");
-                double? flowOpt = ReadNow(simConnect, "DA40_POWER_FUEL_FLOW");
+                double? flowOpt = ReadNow(simConnect, FuelFlowKey);
 
                 if (mainOpt is null || auxOpt is null)
                 {
