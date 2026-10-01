@@ -104,7 +104,11 @@ public class CowsDA40G1000AgentContractTests
         // or losing a field silently shifts every one of them. It has grown once already.
         Assert.Contains("\"ok|\" + cursor + \"|\" + key + \"|\" + focus + \"|\" + summary",
             Agent(), StringComparison.Ordinal);
-        Assert.Contains("if (parts.Length < 5)", Form(), StringComparison.Ordinal);
+        Assert.Contains("if (parts.Length < 5", Form(), StringComparison.Ordinal);
+
+        // And ONE parser reads it: the page jump kept its own four-field split after the
+        // answer grew, and spoke the focus index in front of every page name.
+        Assert.Single(System.Text.RegularExpressions.Regex.Matches(Form(), @"result\.Split\('\|'\)"));
     }
 
     [Fact]

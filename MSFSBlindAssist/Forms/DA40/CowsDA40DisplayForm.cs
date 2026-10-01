@@ -1088,7 +1088,7 @@ public sealed class CowsDA40DisplayForm : Form
 
     /// <summary>
     /// Fires a bezel key (or just re-reads, when <paramref name="name"/> is null) and
-    /// unpacks the agent's "ok|cursor|summary" answer.
+    /// unpacks the agent's "ok|cursor|view|focus|summary" answer.
     /// </summary>
     private async Task<(bool CursorOn, string View, string Focus, string Summary, bool Accepted)> FireAndRead(string? name)
     {
@@ -1116,11 +1116,22 @@ public sealed class CowsDA40DisplayForm : Form
         // The FOCUS index is which field the cursor is on. The G1000's knob does NOT wrap
         // at the end of a page, so without it a pilot at the bottom of a setup page heard
         // the same field read back a dozen times with nothing to say it was the last one.
-        var parts = result.Split('|');
-        if (parts.Length < 5) return (false, "", "", "", true);
+        var state = ParseAgentState(result);
+        if (state is null) return (false, "", "", "", true);
+        return (state.Value.Cursor, state.Value.View, state.Value.Focus, state.Value.Summary, true);
+    }
 
+    /// <summary>
+    /// The agent's state answer, "ok|cursor|view|focus|summary", or null when it is not one.
+    /// ONE parser for every caller: the page jump had its own, still counting the four fields
+    /// the answer had before the focus index was added, and spoke "0|Aux - System Setup 1".
+    /// </summary>
+    internal static (bool Cursor, string View, string Focus, string Summary)? ParseAgentState(string result)
+    {
+        var parts = result.Split('|');
+        if (parts.Length < 5 || parts[0] != "ok") return null;
         return (parts[1] == "1", parts[2].Trim(), parts[3].Trim(),
-            string.Join("|", parts, 4, parts.Length - 4).Trim(), true);
+            string.Join("|", parts, 4, parts.Length - 4).Trim());
     }
 
     /// <summary>What was last read back, so a repeat can be told from a stale read.</summary>
@@ -1214,12 +1225,11 @@ public sealed class CowsDA40DisplayForm : Form
             "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.goPage('" + key + "')");
         if (_disposed) return;
 
-        var parts = result.Split('|');
-        if (parts.Length >= 4)
+        if (ParseAgentState(result) is { } jumped)
         {
-            _lastCursorOn = parts[1] == "1";
-            _lastView = parts[2].Trim();
-            _lastSpokenSummary = string.Join("|", parts, 3, parts.Length - 3).Trim();
+            _lastCursorOn = jumped.Cursor;
+            _lastView = jumped.View;
+            _lastSpokenSummary = jumped.Summary;
             _announcer.AnnounceImmediate(_lastSpokenSummary);
         }
         else
