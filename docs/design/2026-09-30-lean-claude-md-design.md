@@ -1,7 +1,7 @@
 # Lean CLAUDE.md with on-demand rules — Design
 
 **Date:** 2026-09-30
-**Status:** Draft for review
+**Status:** Implemented (plan: [2026-10-01-lean-claude-md-plan.md](2026-10-01-lean-claude-md-plan.md))
 **Builds on:** [docs/design/2026-07-06-codebase-cleanup-and-docs-restructure-design.md](2026-07-06-codebase-cleanup-and-docs-restructure-design.md) (the July cleanup)
 
 ## Problem
@@ -103,11 +103,13 @@ Kept in order. Every part that shortens has its prose moved verbatim to the name
 9. **Technology stack**, as now.
 
 These sections leave the core verbatim, with no rule ID:
-- the Flight-Planning EFB section → `docs/architecture.md`, where its rules already point;
+- the Flight-Planning EFB section → the Background section of `docs/invariants/flight-planning-efb.md`, beside its rules (as built; the core CRITICAL sections likewise went to the Background section of `docs/invariants/core.md`);
 - the Quick Reference "Adding …" recipes → `docs/QUICK-REFERENCE.md`;
 - the long log-folder and database-path history → `docs/architecture.md`.
 
 ### 4. Area split (initial)
+
+**As built:** 39 areas (CORE plus 38 rule files). The table below grew where the per-file budget needed it: taxi guidance split further into routing, runway holds, steering, landing exits, landing rollout, ground traffic, surroundings, augmentation and takeoff; SayIntentions into clearance, import and readouts (SIC, SI, SIR); the A380 into FCU, Coherent and systems (A380F, A380C, A380); and the cross-aircraft definition rules, the FBW ARINC words and the troubleshooting playbook got files of their own (VAR, ARINC, DBG). `tools/claude-md-split/split.py` holds the final table and globs.
 
 Each existing bullet is assigned by **its own doc link**, not by the heading it sits under. About ten weather rules currently sit under the taxi heading, and the camera and display-read rules sit under Core SimConnect. Initial areas, all prefixes unique:
 
@@ -180,7 +182,7 @@ The test needs a small glob matcher (`*`, `**`). Braces are forbidden, so the ma
 
   The changelog fragment is `internal`.
 - **Area owners skim their own rule file.** The one-liners are the only judgement in the PR, and a weak one-liner is recoverable because its full text is one hop away.
-- **Open PRs.** The description carries a "porting a CLAUDE.md change" section: the added prose goes under new IDs in `docs/invariants/`, with one line in the rule file. #160 is ported here. For #242, #244, #116, #231 and #233, offer to port when main is next merged into them, and post a heads-up comment before this PR merges.
+- **Open PRs.** The description carries a "porting a CLAUDE.md change" section: the added prose goes under new IDs in `docs/invariants/`, with one line in the rule file. #160 is ported on its own branch after this merges, never merged into this one. For #242, #244, #116, #231 and #233, offer to port when main is next merged into them, and post a heads-up comment before this PR merges.
 - **After merge, re-run the probes:**
   - an idle general-purpose subagent's token count;
   - a taxi rule loading on reading a taxi file in the main session, a general-purpose agent and an Explore agent;
