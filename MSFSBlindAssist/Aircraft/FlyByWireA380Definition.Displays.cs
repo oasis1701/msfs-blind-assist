@@ -443,7 +443,7 @@ public partial class FlyByWireA380Definition
                 double deg = value;
                 displayText = Math.Abs(deg) < 0.05
                     ? "Neutral"
-                    : $"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}";
+                    : FormattableString.Invariant($"{Math.Abs(deg):0.0} degrees {(deg > 0 ? "up" : "down")}");
                 return true;
             }
             case "A32NX_CHRONO_ELAPSED_TIME":
@@ -1147,7 +1147,7 @@ public partial class FlyByWireA380Definition
                     r.Add(($"Left spoiler {sp}", $"A32NX_HYD_SPOILER_{sp}_LEFT_DEFLECTION", Defl));
                     r.Add(($"Right spoiler {sp}", $"A32NX_HYD_SPOILER_{sp}_RIGHT_DEFLECTION", Defl));
                 }
-                r.Add(("Pitch trim (THS)", "ELEVATOR_TRIM", v => $"{Math.Abs(v):0.0} degrees {(v >= 0 ? "up" : "down")}"));
+                r.Add(("Pitch trim (THS)", "ELEVATOR_TRIM", v => FormattableString.Invariant($"{Math.Abs(v):0.0} degrees {(v >= 0 ? "up" : "down")}")));
                 // Rudder trim — the SEC ARINC429 degrees word (positive = nose-LEFT), same
                 // source + convention as the FCC-panel "Rudder Trim" readout (the SD F/CTL page
                 // shows it but A380SdRows previously omitted it).

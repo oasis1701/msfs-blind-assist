@@ -1,3 +1,4 @@
+using System.Globalization;
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Utils.Logging;
@@ -24,6 +25,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // units on the PMDG 777, rounded degrees by default).
     protected bool _trimAnnouncementsEnabled = true;
     private double _lastAnnouncedTrimKey = double.NaN;
+
+    /// <summary>
+    /// How far past a step boundary a trim value must travel before the new step is spoken, in
+    /// the scale the value ARRIVES in (degrees for <c>MON_ElevatorTrim</c>, units for the PMDG
+    /// 737's own path). Three times the 0.01 hydraulic jitter seen live, and far below any step
+    /// (0.1° default, 0.25 unit on the 777), so a genuine step is never swallowed.
+    /// </summary>
+    protected const double TrimHysteresis = 0.03;
 
     // Glideslope alive/lost tracking
     private bool _previousGlideSlopeAlive = false;
@@ -689,18 +698,24 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// Renders <c>ELEVATOR TRIM POSITION</c> (degrees) for announcement, returning BOTH the
     /// spoken phrase and the key the debounce compares — the two must move together, or a type
     /// announcing a coarser scale would re-speak the same phrase on every sub-step change.
-    /// The key is compared EXACTLY against the last announced key (no tolerance), so it must
-    /// already be quantised to the announcement step (a <c>Math.Round</c> product), never raw.
+    /// The key is compared EXACTLY against the last announced key, so it must already be
+    /// quantised to the announcement step (a <c>Math.Round</c> product), never raw, and must not
+    /// decrease as the degrees increase (the <see cref="TrimHysteresis"/> band pulls the value
+    /// back toward the last key and re-describes it).
     /// <para>
     /// The default is degrees with an up/down word, which is the only thing a generic aircraft
     /// can say; an airframe with its own trim scale overrides it (e.g. <see cref="PMDG777Definition"/>).
+    /// It steps in TENTHS of a degree, as the Airbus ECAM shows the THS and as the PMDG 737's own
+    /// trim call-out does. Hundredths re-announced every 0.01° of hydraulic jitter on a parked
+    /// aircraft ("Trim up 1.43", "1.44", "1.43"…) and talked over everything else. The number is
+    /// invariant-formatted: a trim value reads with a dot, as the cockpit writes it.
     /// </para>
     /// </summary>
     protected virtual (double Key, string Phrase) DescribeElevatorTrim(double degrees)
     {
-        double rounded = Math.Round(degrees, 2);
+        double rounded = Math.Round(degrees, 1);
         string direction = rounded >= 0 ? "up" : "down";
-        return (rounded, $"Trim {direction} {Math.Abs(rounded):F2}");
+        return (rounded, string.Create(CultureInfo.InvariantCulture, $"Trim {direction} {Math.Abs(rounded):F1}"));
     }
 
     /// <summary>
@@ -737,12 +752,20 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
                 return true;
             }
 
-            // Exact compare, not a tolerance: the key is already quantised by DescribeElevatorTrim
-            // (a Math.Round product — equal decimals are bit-identical, and -0.0 == 0.0), so
-            // "unchanged" is simply "same key". A tolerance here would silently swallow genuine
-            // steps of an override that keys on a finer scale.
+            // Exact compare: the key is already quantised by DescribeElevatorTrim (a Math.Round
+            // product — equal decimals are bit-identical, and -0.0 == 0.0), so "unchanged" is
+            // simply "same key".
             if (key == _lastAnnouncedTrimKey)
                 return true; // Debounce — skip when the reported value has not moved
+
+            // Hysteresis: a new step is spoken only once the value is TrimHysteresis past the
+            // boundary, i.e. the key still differs with the value pulled that far back toward the
+            // last announced one. Without it a trim resting on a boundary (1.45°, ±0.01° jitter)
+            // flips 1.4 / 1.5 every sample. Done here, on the raw degrees every override receives,
+            // so each override's own step gets the same band.
+            double pullBack = key > _lastAnnouncedTrimKey ? -TrimHysteresis : TrimHysteresis;
+            if (DescribeElevatorTrim(value + pullBack).Key == _lastAnnouncedTrimKey)
+                return true;
 
             _lastAnnouncedTrimKey = key;
             announcer.Announce(phrase);
@@ -1115,6 +1138,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
         }
         _trackedWindows.Clear();
     }
+
+    /// <summary>
+    /// Called by MainForm.SwitchAircraft on the OUTGOING definition, for every aircraft type, beside
+    /// <see cref="DisposeTrackedWindows"/>: stop every timer this definition owns that could still
+    /// speak against the aircraft that follows (the PMDG speed-brake settle announcer — a lever moved
+    /// just before the switch was otherwise announced over the next aircraft). Base: nothing.
+    /// </summary>
+    public virtual void OnSwitchedAway() { }
 
     /// <summary>
     /// Shows the PMDG Ctrl+P autopilot engage-cluster window. Shared by the 737 and 777,

@@ -1,0 +1,1 @@
+FlyByWire A320, Headwind A330 and FlyByWire A380: the A/THR button in the autopilot window (Ctrl+P) now says whether autothrust is Disengaged, Armed or Active, instead of always reading "Autothrust engage".
