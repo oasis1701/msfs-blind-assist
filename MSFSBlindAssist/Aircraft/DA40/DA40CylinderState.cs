@@ -59,6 +59,44 @@ public static class DA40CylinderState
             : $"Plug fouling worsening, {plugName} at {worst:F0} percent";
     }
 
+    /// <summary>
+    /// The damage call-out for cylinder <paramref name="i"/>, or null. A fall of five points on
+    /// a cylinder already seen - damage happens during something.
+    ///
+    /// ⚠️ EACH CYLINDER'S FIRST READING IS ITS OWN BASELINE. A batch delivers its variables
+    /// one at a time, so a baseline cloned from the whole array on the first delivery holds
+    /// zeros for every cylinder not delivered yet, and damage persisted from the last flight
+    /// was then announced as new on every connect. A reading BELOW the baseline is a repair
+    /// (Reset: Damage) and lowers it, so damage done after a repair is heard.
+    /// </summary>
+    public static string? NextDamageCallout(double?[] spoken, int i, double damage)
+    {
+        if (spoken[i] is not double was || damage < was) { spoken[i] = damage; return null; }
+        if (damage - was < 5) return null;
+        spoken[i] = damage;
+        return damage > DeadDamage ? $"Cylinder {i + 1} dead" : $"Cylinder {i + 1} damaged, {100 - damage:F0} percent";
+    }
+
+    /// <summary>
+    /// The fouling call-out after plug <paramref name="plug"/> reported, or null. Same
+    /// first-reading rule as <see cref="NextDamageCallout"/>: a plug's first reading only
+    /// raises the baseline, so fouling persisted from the last flight is never announced as new.
+    /// </summary>
+    public static string? NextFoulingCallout(bool[] seen, ref double worstSpoken, double[] plugs, int plug)
+    {
+        int w = WorstPlug(plugs);
+        double worst = Math.Min(100, plugs[w]);
+        if (!seen[plug])
+        {
+            seen[plug] = true;
+            worstSpoken = Math.Max(worstSpoken, Math.Min(100, plugs[plug]));
+            return null;
+        }
+        string? callout = FoulingCallout(Math.Max(0, worstSpoken), worst, PlugName(w));
+        worstSpoken = Math.Max(worstSpoken, worst);
+        return callout;
+    }
+
     public static string DescribeShockCooling(double[] tempInc)
     {
         var hit = Where(tempInc, v => v < ShockCoolingInc);
@@ -96,4 +134,26 @@ public static class DA40CylinderState
     }
 
     private static string Words(int n) => n switch { 4 => "four", 2 => "two", 6 => "six", _ => n.ToString() };
+}
+
+/// <summary>
+/// Which members of a group of variables have delivered at least once. A state composed from
+/// several variables is baselined only once every member has reported, because a batch
+/// delivers them one at a time.
+/// </summary>
+public sealed class DA40SeenMask
+{
+    private readonly bool[] _seen;
+    private int _count;
+
+    public DA40SeenMask(int size) => _seen = new bool[size];
+
+    /// <summary>Records member <paramref name="i"/>; true once every member has been seen.</summary>
+    public bool Mark(int i)
+    {
+        if (!_seen[i]) { _seen[i] = true; _count++; }
+        return _count == _seen.Length;
+    }
+
+    public void Reset() { Array.Clear(_seen); _count = 0; }
 }

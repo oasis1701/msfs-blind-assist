@@ -378,7 +378,15 @@ public partial class CowsDA40Definition
     private string? _redBoxSpoken;
     private double _foulWorstSpoken = -1;
     private bool _shockSpoken;
-    private double[]? _damageSpoken;
+    private readonly double?[] _damageSpoken = new double?[DA40CylinderState.CylinderCount];
+    private readonly bool[] _plugSeen = new bool[DA40CylinderState.CylinderCount * 2];
+
+    /// <summary>
+    /// The red box is composed from every cylinder's air/fuel ratio AND heat output (slots 0-3
+    /// and 4-7), so it is baselined only once all eight have reported — a batch delivers them
+    /// one at a time, and a box judged on half its inputs read as a change at connect.
+    /// </summary>
+    private readonly DA40SeenMask _redBoxInputs = new(DA40CylinderState.CylinderCount * 2);
 
     /// <summary>
     /// Captures the Mixture panel's inputs and speaks its states on their crossings.
@@ -397,21 +405,21 @@ public partial class CowsDA40Definition
                 if (on != _leanAssistOn) { _leanAssistOn = on; Array.Clear(_leanPeakSpoken); }
                 return false;
             case "DA40_XLS_CHT_HOT_CYL": _chtHotCyl = (int)Math.Round(value); return false;
-            case "DA40_XLS_RED_BOX": _afr[0] = value; NoteRedBox(announcer); return false;
-            case "DA40_XLS_FOULING": _plugs[0] = value; NoteFouling(announcer); return false;
+            case "DA40_XLS_RED_BOX": _afr[0] = value; NoteRedBox(0, announcer); return false;
+            case "DA40_XLS_FOULING": _plugs[0] = value; NoteFouling(0, announcer); return false;
             case "DA40_XLS_SHOCK_COOLING": _cooling[0] = value; NoteShockCooling(announcer); return false;
-            case "DA40_XLS_CYL_HEALTH": _damage[0] = value; NoteDamage(announcer); return false;
+            case "DA40_XLS_CYL_HEALTH": _damage[0] = value; NoteDamage(0, announcer); return false;
         }
 
         if (TryCyl(varKey, "DA40_XLS_LEAN_PEAK_", out n)) { _leanPeak[n] = value; return false; }
         if (TryCyl(varKey, "DA40_XLS_LEAN_DELTA_", out n)) { _leanDelta[n] = value; NotePeak(n, announcer); return false; }
         if (TryCyl(varKey, "DA40_XLS_EGT_", out n)) { _egt[n] = value; return false; }
         if (TryCyl(varKey, "DA40_XLS_CHT_", out n)) { _cht[n] = value; return false; }
-        if (TryCyl(varKey, "DA40_XLS_AFR_", out n)) { _afr[n] = value; NoteRedBox(announcer); return false; }
-        if (TryCyl(varKey, "DA40_XLS_HEAT_", out n)) { _heatKw[n] = value; NoteRedBox(announcer); return false; }
+        if (TryCyl(varKey, "DA40_XLS_AFR_", out n)) { _afr[n] = value; NoteRedBox(n, announcer); return false; }
+        if (TryCyl(varKey, "DA40_XLS_HEAT_", out n)) { _heatKw[n] = value; NoteRedBox(DA40CylinderState.CylinderCount + n, announcer); return false; }
         if (TryCyl(varKey, "DA40_XLS_COOLING_", out n)) { _cooling[n] = value; NoteShockCooling(announcer); return false; }
-        if (TryCyl(varKey, "DA40_XLS_DAMAGE_", out n)) { _damage[n] = value; NoteDamage(announcer); return false; }
-        if (TryPlug(varKey, out int p)) { _plugs[p] = value; NoteFouling(announcer); return false; }
+        if (TryCyl(varKey, "DA40_XLS_DAMAGE_", out n)) { _damage[n] = value; NoteDamage(n, announcer); return false; }
+        if (TryPlug(varKey, out int p)) { _plugs[p] = value; NoteFouling(p, announcer); return false; }
         return false;
     }
 
@@ -447,23 +455,20 @@ public partial class CowsDA40Definition
         announcer.Announce($"Cylinder {n + 1} peaked at {Fahrenheit(_leanPeak[n])}");
     }
 
-    private void NoteRedBox(ScreenReaderAnnouncer announcer)
+    private void NoteRedBox(int input, ScreenReaderAnnouncer announcer)
     {
         string state = DA40RedBox.Describe(_heatKw, _afr);
-        if (_redBoxSpoken == null) { _redBoxSpoken = state; return; }   // baseline-first
+        // Baseline-first, and the baseline is not taken until every input has reported.
+        if (!_redBoxInputs.Mark(input) || _redBoxSpoken == null) { _redBoxSpoken = state; return; }
         if (state == _redBoxSpoken) return;
         _redBoxSpoken = state;
         if (Muted("DA40_XLS_RED_BOX")) return;
         announcer.AnnounceImmediate(state == "Clear" ? "Red box clear" : state + (_damageEnabled == false ? ", engine damage is off" : ""));
     }
 
-    private void NoteFouling(ScreenReaderAnnouncer announcer)
+    private void NoteFouling(int plug, ScreenReaderAnnouncer announcer)
     {
-        int w = DA40CylinderState.WorstPlug(_plugs);
-        double worst = Math.Min(100, _plugs[w]);
-        if (_foulWorstSpoken < 0) { _foulWorstSpoken = worst; return; }
-        string? callout = DA40CylinderState.FoulingCallout(_foulWorstSpoken, worst, DA40CylinderState.PlugName(w));
-        _foulWorstSpoken = Math.Max(_foulWorstSpoken, worst);
+        string? callout = DA40CylinderState.NextFoulingCallout(_plugSeen, ref _foulWorstSpoken, _plugs, plug);
         if (callout == null || Muted("DA40_XLS_FOULING")) return;
         announcer.Announce(callout);
     }
@@ -478,19 +483,12 @@ public partial class CowsDA40Definition
         announcer.AnnounceImmediate(state);
     }
 
-    /// <summary>A fall of five points on any cylinder - damage happens during something.</summary>
-    private void NoteDamage(ScreenReaderAnnouncer announcer)
+    /// <summary>A fall of five points on a cylinder - damage happens during something.</summary>
+    private void NoteDamage(int i, ScreenReaderAnnouncer announcer)
     {
-        if (_damageSpoken == null) { _damageSpoken = (double[])_damage.Clone(); return; }
-        for (int i = 0; i < _damage.Length; i++)
-        {
-            if (_damage[i] - _damageSpoken[i] < 5) continue;
-            _damageSpoken[i] = _damage[i];
-            if (Muted("DA40_XLS_CYL_HEALTH")) continue;
-            announcer.Announce(_damage[i] > DA40CylinderState.DeadDamage
-                ? $"Cylinder {i + 1} dead"
-                : $"Cylinder {i + 1} damaged, {100 - _damage[i]:F0} percent");
-        }
+        string? callout = DA40CylinderState.NextDamageCallout(_damageSpoken, i, _damage[i]);
+        if (callout == null || Muted("DA40_XLS_CYL_HEALTH")) return;
+        announcer.Announce(callout);
     }
 
     private string Fahrenheit(double f) => TryUnitText("fahrenheit", f, "F0", out string t) ? t : $"{f:F0}";
@@ -611,7 +609,9 @@ public partial class CowsDA40Definition
         _redBoxSpoken = null;
         _foulWorstSpoken = -1;
         _shockSpoken = false;
-        _damageSpoken = null;
+        Array.Clear(_damageSpoken);
+        Array.Clear(_plugSeen);
+        _redBoxInputs.Reset();
         _automixtureSpoken = null;
     }
 }
