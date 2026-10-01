@@ -449,6 +449,9 @@ public partial class SimConnectManager
     public bool? LastKnownOnGround { get; internal set; }
 
     // Aircraft identification
+    // The user aircraft's real object id, learned from the answers to our own requests on it,
+    // so a traffic sweep never reports the pilot's own aircraft as traffic (OwnAircraftFilter).
+    private readonly OwnAircraftFilter _ownAircraft = new();
     private string currentAircraftAtcId = "";
     private string currentAircraftAirline = "";
     private string currentAircraftFlightNumber = "";
@@ -1047,6 +1050,8 @@ public partial class SimConnectManager
             md11McduDataManager?.Dispose();
             md11McduDataManager = null;
 
+            _ownAircraft.Reset();
+
             if (hadConnection) ConnectionLost?.Invoke(this, EventArgs.Empty);   // a drop, not a failed attempt
 
             // Only announce disconnection if we were previously connected
@@ -1470,6 +1475,8 @@ public partial class SimConnectManager
         IsConnected = false;
         IsFullyConnected = false;
         GsxCouatlStartedLVar = false;
+
+        _ownAircraft.Reset();   // the next connection may hand the user aircraft a different object id
 
         if (hadHandle) ConnectionLost?.Invoke(this, EventArgs.Empty);   // every drop; nothing to lose otherwise
 

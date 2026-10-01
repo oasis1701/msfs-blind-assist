@@ -1,0 +1,1 @@
+The FlyByWire A320 MCDU window reads green values more cleanly: each green value now has one star in front of it instead of one on every piece (INIT FUEL PRED said "star 10.2 star slash star 0213", now "star 10.2/0213"), and values at the right-hand end of a line stay lined up in one column on a braille display instead of drifting a few characters to the right on some rows.
