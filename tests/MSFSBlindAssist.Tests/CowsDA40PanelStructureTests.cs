@@ -1229,6 +1229,22 @@ public class CowsDA40PanelStructureTests
             "flap asymmetry must render after both sides");
     }
 
+    [Theory]
+    [InlineData("DA40_FLAPS_TRANSIT")]
+    [InlineData("DA40_FLAPS_LIMIT_SPEED")]
+    public void EveryRowComputedFromTheTravelsIsListedAfterBothSides(string key)
+    {
+        // The transit row was listed FIRST, so it described the previous refresh's travel:
+        // "Travelling, 0 percent" while both side rows below it already read 40.
+        var display = Ng().GetPanelDisplayVariables()["Flaps"];
+
+        int left = display.IndexOf("DA40_FLAPS_TRAVEL_LEFT");
+        int right = display.IndexOf("DA40_FLAPS_TRAVEL_RIGHT");
+        int row = display.IndexOf(key);
+
+        Assert.True(row > left && row > right, $"{key} must render after both sides");
+    }
+
     [Fact]
     public void FlapLimitSpeedsDifferBetweenVariants()
     {

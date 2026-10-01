@@ -159,13 +159,14 @@ public partial class CowsDA40Definition
         "DA40_FLAPS_POSITION"
     };
 
-    // ORDER MATTERS: the asymmetry row is computed from the two travels as they render,
-    // so it must come after both. Pinned by a test.
+    // ORDER MATTERS: the transit, asymmetry and limit-speed rows are computed from the two
+    // travels as they render, so all three must come after both - listed first, the transit
+    // row described the previous refresh. Pinned by a test.
     private static readonly List<string> FlapsDisplay = new()
     {
-        "DA40_FLAPS_TRANSIT",
         "DA40_FLAPS_TRAVEL_LEFT",
         "DA40_FLAPS_TRAVEL_RIGHT",
+        "DA40_FLAPS_TRANSIT",
         "DA40_FLAPS_ASYMMETRY",
         "DA40_FLAPS_LIMIT_SPEED",
         "DA40_FLAPS_MOTOR_LOAD",
