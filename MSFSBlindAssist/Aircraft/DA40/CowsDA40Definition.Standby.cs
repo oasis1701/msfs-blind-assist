@@ -387,8 +387,8 @@ public partial class CowsDA40Definition
             {
                 double inHg = Math.Clamp(value > 100 ? value / 33.8639 : value, 28.00, 31.50);
                 double mb = inHg * 33.8639;
-                simConnect.ExecuteCalculatorCode(
-                    $"{mb * 16:0.###} (>K:KOHLSMAN_SET)".Replace(",", "."));
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"{mb * 16:0.###} (>K:KOHLSMAN_SET)"));
                 MarkBaroSetByUs();
                 announcer.AnnounceImmediate(
                     $"Altimeter {mb:0} hectopascals, {inHg:0.00} inches");

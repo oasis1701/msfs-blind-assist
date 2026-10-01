@@ -274,9 +274,8 @@ public partial class CowsDA40Definition
 
             case "DA40_ELEC_AVIONICS_MASTER":
                 // Index 1, not 2 — AVIONICS_MASTER_2_SET is inert on this aircraft.
-                simConnect.ExecuteCalculatorCode(
-                    $"(A:AVIONICS MASTER SWITCH:1, Bool) {(on ? 0 : 1)} == " +
-                    "if{ 1 (>K:TOGGLE_AVIONICS_MASTER) }");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"(A:AVIONICS MASTER SWITCH:1, Bool) {(on ? 0 : 1)} == if{{ 1 (>K:TOGGLE_AVIONICS_MASTER) }}"));
                 return true;
 
             case "DA40_ELEC_ESS_BUS":

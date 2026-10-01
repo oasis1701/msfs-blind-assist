@@ -140,7 +140,7 @@ public partial class CowsDA40Definition
         // sixteen; the standby is a real L:var written through the calculator.
         if (doMain)
         {
-            simConnect.ExecuteCalculatorCode(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+            simConnect.ExecuteCalculatorCodeUnique(string.Create(System.Globalization.CultureInfo.InvariantCulture,
                 $"{mainInHg * 33.8639 * 16:0.###} (>K:KOHLSMAN_SET)"));
         }
         if (doStby) SetStandbyBaro(simConnect, stbyInHg);
@@ -244,7 +244,7 @@ public partial class CowsDA40Definition
             }
 
             long hz = (long)Math.Round(mhz * 1_000_000.0);
-            simConnect.ExecuteCalculatorCode($"{hz} (>K:NAV{radio}_STBY_SET_HZ)");
+            simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:NAV{radio}_STBY_SET_HZ)"));
             set.Add($"NAV {radio} standby {mhz:0.00}");
         }
 

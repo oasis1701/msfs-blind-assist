@@ -452,7 +452,7 @@ public partial class CowsDA40Definition
                 // refuses, not MSFSBA — but a combo that silently snaps back with no
                 // explanation is indistinguishable from a broken control, and the reason
                 // is not something a blind pilot can see.
-                simConnect.ExecuteCalculatorCode($"{pos} (>L:FUEL_SELECTOR)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{pos} (>L:FUEL_SELECTOR)"));
 
                 bool unlocked = (simConnect.GetCachedVariableValue("FUEL_SELECTOR_WIRE_CUT") ?? 0) >= 0.5;
                 if (!unlocked && pos != 0)
@@ -500,14 +500,13 @@ public partial class CowsDA40Definition
                 // by comparing in RPN — reading in C# and writing back would race the
                 // 10 Hz model loop that also touches it.
                 int target = value >= 0.5 ? 1 : 0;
-                simConnect.ExecuteCalculatorCode(
-                    $"(A:GENERAL ENG FUEL PUMP SWITCH:1, Bool) {target} != " +
-                    "if{ (>K:TOGGLE_ELECT_FUEL_PUMP1) }");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"(A:GENERAL ENG FUEL PUMP SWITCH:1, Bool) {target} != if{{ (>K:TOGGLE_ELECT_FUEL_PUMP1) }}"));
                 return true;
             }
 
             case "DA40_FUEL_TRANSFER":
-                simConnect.ExecuteCalculatorCode($"{(value >= 0.5 ? 1 : 0)} (>L:XFER_SWITCH)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{(value >= 0.5 ? 1 : 0)} (>L:XFER_SWITCH)"));
                 return true;
         }
 

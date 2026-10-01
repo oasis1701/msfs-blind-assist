@@ -172,7 +172,7 @@ public partial class CowsDA40Definition
                 }
                 if (position < DA40MagnetoCheck.PositionOff || position > DA40MagnetoCheck.PositionBoth)
                     return true;
-                simConnect.ExecuteCalculatorCodeUnique($"{position} (>L:STARTER_SWITCH)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{position} (>L:STARTER_SWITCH)"));
                 return true;
 
             case "DA40_MAG_RELEASE":

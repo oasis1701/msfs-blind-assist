@@ -210,13 +210,13 @@ public partial class CowsDA40Definition
             case "DA40_XLS_FUEL_SELECTOR":
                 int pos = Math.Clamp((int)Math.Round(value), 0, 2);
                 // The same position twice running is a byte-identical string.
-                simConnect.ExecuteCalculatorCodeUnique($"{pos} (>L:FUEL_SELECTOR)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{pos} (>L:FUEL_SELECTOR)"));
                 return true;
 
             case "DA40_XLS_FUEL_PUMP":
                 // The stock set event, measured to land: the pump reported ON and stock fuel
                 // pressure rose to 6.9 psi with the engine stopped.
-                simConnect.ExecuteCalculatorCodeUnique($"{(value >= 0.5 ? 1 : 0)} (>K:ELECT_FUEL_PUMP1_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{(value >= 0.5 ? 1 : 0)} (>K:ELECT_FUEL_PUMP1_SET)"));
                 return true;
 
             case "DA40_XLS_FUEL_LEFT_LOAD_SET":

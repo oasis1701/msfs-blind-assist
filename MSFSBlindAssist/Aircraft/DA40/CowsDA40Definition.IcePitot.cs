@@ -155,7 +155,7 @@ public partial class CowsDA40Definition
         switch (varKey)
         {
             case "DA40_ICE_PITOT_HEAT":
-                simConnect.ExecuteCalculatorCode(on ? "(>K:PITOT_HEAT_ON)" : "(>K:PITOT_HEAT_OFF)");
+                simConnect.ExecuteCalculatorCodeUnique(on ? "(>K:PITOT_HEAT_ON)" : "(>K:PITOT_HEAT_OFF)");
                 return true;
 
             case "DA40_ICE_ALTERNATE_AIR":
@@ -164,9 +164,8 @@ public partial class CowsDA40Definition
 
             case "DA40_ICE_ALTERNATE_STATIC":
                 // Only a toggle exists, so compare first and the combo stays idempotent.
-                simConnect.ExecuteCalculatorCode(
-                    $"(A:ALTERNATE STATIC SOURCE OPEN, Bool) {(on ? 0 : 1)} == " +
-                    "if{ (>K:TOGGLE_ALTERNATE_STATIC) }");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"(A:ALTERNATE STATIC SOURCE OPEN, Bool) {(on ? 0 : 1)} == if{{ (>K:TOGGLE_ALTERNATE_STATIC) }}"));
                 return true;
         }
 

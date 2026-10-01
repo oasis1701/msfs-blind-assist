@@ -57,7 +57,7 @@ public partial class CowsDA40Definition
 
         if (wantOn != current >= 1)
         {
-            simConnect.ExecuteCalculatorCode("1 (>K:TOGGLE_ELT)");
+            simConnect.ExecuteCalculatorCodeUnique("1 (>K:TOGGLE_ELT)");
         }
 
         return true;

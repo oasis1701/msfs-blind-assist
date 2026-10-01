@@ -194,7 +194,7 @@ public partial class CowsDA40Definition
             _ => "FLAPS_DOWN"
         };
 
-        simConnect.ExecuteCalculatorCode($"1 (>K:{evt})");
+        simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"1 (>K:{evt})"));
 
         // Overspeed is an ERROR condition, which is the one thing a combo set is allowed
         // to speak. Selecting flaps above the limit is a real way to bend the aeroplane

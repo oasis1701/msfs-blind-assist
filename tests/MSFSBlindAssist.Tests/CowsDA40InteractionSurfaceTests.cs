@@ -253,7 +253,7 @@ public class CowsDA40InteractionSurfaceTests
         string src = File.ReadAllText(Path.Combine(dir!.FullName, "MSFSBlindAssist",
             "Aircraft", "DA40", "CowsDA40Definition.Doors.cs"));
 
-        Assert.Contains("ExecuteCalculatorCodeUnique($\"{exit} (>K:TOGGLE_AIRCRAFT_EXIT)\")",
+        Assert.Contains("ExecuteCalculatorCodeUnique(FormattableString.Invariant($\"{exit} (>K:TOGGLE_AIRCRAFT_EXIT)\"))",
             src, StringComparison.Ordinal);
     }
 

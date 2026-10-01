@@ -102,7 +102,7 @@ public partial class CowsDA40Definition
         double pct = Math.Clamp(value, 0, 100);
         int axis = (int)Math.Round(pct / 100.0 * ThrottleAxisMax);
 
-        simConnect.ExecuteCalculatorCode($"{axis} (>K:THROTTLE_SET)");
+        simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{axis} (>K:THROTTLE_SET)"));
 
         // A typed numeric entry confirms, and the commanded RPM is worth hearing with it —
         // it is the half of the setting the lever percentage does not tell you.

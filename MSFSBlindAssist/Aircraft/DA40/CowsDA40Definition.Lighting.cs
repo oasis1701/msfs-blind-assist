@@ -158,54 +158,52 @@ public partial class CowsDA40Definition
         switch (varKey)
         {
             case "DA40_LIGHT_LANDING":
-                simConnect.ExecuteCalculatorCode(
-                    $"(A:LIGHT LANDING, Bool) {1 - on} == if{{ (>K:LANDING_LIGHTS_TOGGLE) }}");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"(A:LIGHT LANDING, Bool) {1 - on} == if{{ (>K:LANDING_LIGHTS_TOGGLE) }}"));
                 return true;
 
             case "DA40_LIGHT_TAXI":
-                simConnect.ExecuteCalculatorCode(
-                    $"(A:LIGHT TAXI, Bool) {1 - on} == if{{ (>K:TOGGLE_TAXI_LIGHTS) }}");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"(A:LIGHT TAXI, Bool) {1 - on} == if{{ (>K:TOGGLE_TAXI_LIGHTS) }}"));
                 return true;
 
             case "DA40_LIGHT_POSITION":
-                simConnect.ExecuteCalculatorCode(
-                    $"(A:LIGHT NAV, Bool) {1 - on} == if{{ (>K:TOGGLE_NAV_LIGHTS) }}");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"(A:LIGHT NAV, Bool) {1 - on} == if{{ (>K:TOGGLE_NAV_LIGHTS) }}"));
                 return true;
 
             case "DA40_LIGHT_STROBE":
-                simConnect.ExecuteCalculatorCode(
-                    $"(A:LIGHT STROBE, Bool) {1 - on} == if{{ (>K:STROBES_TOGGLE) }}");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"(A:LIGHT STROBE, Bool) {1 - on} == if{{ (>K:STROBES_TOGGLE) }}"));
                 return true;
 
             // Percentage knobs. PANEL_LIGHTS_SET / GLARESHIELD_LIGHTS_SET are written
             // alongside so the boolean companion the model also reads stays consistent.
             case "DA40_LIGHT_INSTRUMENT_SET":
-                simConnect.ExecuteCalculatorCode(
-                    $"{value:0} (>K:LIGHT_POTENTIOMETER_3_SET) " +
-                    $"{(value > 0 ? 1 : 0)} (>K:PANEL_LIGHTS_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"{value:0} (>K:LIGHT_POTENTIOMETER_3_SET) {(value > 0 ? 1 : 0)} (>K:PANEL_LIGHTS_SET)"));
                 return true;
 
             case "DA40_LIGHT_FLOOD_SET":
-                simConnect.ExecuteCalculatorCode(
-                    $"{value:0} (>K:LIGHT_POTENTIOMETER_5_SET) " +
-                    $"{(value > 0 ? 1 : 0)} (>K:GLARESHIELD_LIGHTS_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"{value:0} (>K:LIGHT_POTENTIOMETER_5_SET) {(value > 0 ? 1 : 0)} (>K:GLARESHIELD_LIGHTS_SET)"));
                 return true;
 
             // Indexed cabin lights: the event takes index then value.
             case "DA40_LIGHT_CABIN_RIGHT":
-                simConnect.ExecuteCalculatorCode($"1 {on} (>K:2:CABIN_LIGHTS_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"1 {on} (>K:2:CABIN_LIGHTS_SET)"));
                 return true;
 
             case "DA40_LIGHT_CABIN_LEFT":
-                simConnect.ExecuteCalculatorCode($"2 {on} (>K:2:CABIN_LIGHTS_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"2 {on} (>K:2:CABIN_LIGHTS_SET)"));
                 return true;
 
             case "DA40_LIGHT_CABIN_BAGGAGE":
-                simConnect.ExecuteCalculatorCode($"3 {on} (>K:2:CABIN_LIGHTS_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"3 {on} (>K:2:CABIN_LIGHTS_SET)"));
                 return true;
 
             case "DA40_LIGHT_CABIN_ALL":
-                simConnect.ExecuteCalculatorCode("(>K:TOGGLE_CABIN_LIGHTS)");
+                simConnect.ExecuteCalculatorCodeUnique("(>K:TOGGLE_CABIN_LIGHTS)");
                 return true;
         }
 

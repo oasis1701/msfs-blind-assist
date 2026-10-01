@@ -427,7 +427,7 @@ public partial class CowsDA40Definition
         {
             // Unique, because a mode selected twice running is the same string twice and
             // MobiFlight coalesces byte-identical consecutive commands.
-            simConnect.ExecuteCalculatorCodeUnique($"1 (>K:{onOff})");
+            simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"1 (>K:{onOff})"));
             return true;
         }
 
@@ -437,9 +437,8 @@ public partial class CowsDA40Definition
             // RPN rather than read in C# and written back - the same shape the electrical
             // switches use, and for the same reason.
             case "DA40_AP_FD":
-                simConnect.ExecuteCalculatorCode(
-                    $"(A:AUTOPILOT FLIGHT DIRECTOR ACTIVE:1, Bool) {(on ? 0 : 1)} == " +
-                    "if{ 1 (>K:TOGGLE_FLIGHT_DIRECTOR) }");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"(A:AUTOPILOT FLIGHT DIRECTOR ACTIVE:1, Bool) {(on ? 0 : 1)} == if{{ 1 (>K:TOGGLE_FLIGHT_DIRECTOR) }}"));
                 return true;
 
             case "DA40_AP_ALT_SET":
@@ -461,7 +460,7 @@ public partial class CowsDA40Definition
                 // same pass and every one landed on the value asked for (700, 90, 123, 45),
                 // so do not "harmonise" them onto the A: form on the strength of this one.
                 simConnect.ExecuteCalculatorCodeUnique(
-                    $"{feet} (>A:AUTOPILOT ALTITUDE LOCK VAR, feet)");
+                    FormattableString.Invariant($"{feet} (>A:AUTOPILOT ALTITUDE LOCK VAR, feet)"));
                 announcer.AnnounceImmediate($"Selected altitude {feet} feet");
                 return true;
             }
@@ -470,7 +469,7 @@ public partial class CowsDA40Definition
             {
                 MarkRadioSetByUs("DA40_AP_VS_SET");
                 int fpm = (int)Math.Clamp(Math.Round(value / 100.0) * 100.0, -2000, 2000);
-                simConnect.ExecuteCalculatorCodeUnique($"{fpm} (>K:AP_VS_VAR_SET_ENGLISH)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{fpm} (>K:AP_VS_VAR_SET_ENGLISH)"));
                 announcer.AnnounceImmediate(fpm == 0
                     ? "Selected vertical speed level"
                     : $"Selected vertical speed {Math.Abs(fpm)} feet per minute {(fpm > 0 ? "up" : "down")}");
@@ -484,7 +483,7 @@ public partial class CowsDA40Definition
                 // pitches for this speed, so a value outside the envelope is a command to
                 // stall or to overspeed.
                 int kt = (int)Math.Clamp(Math.Round(value), 60, 172);
-                simConnect.ExecuteCalculatorCodeUnique($"{kt} (>K:AP_SPD_VAR_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{kt} (>K:AP_SPD_VAR_SET)"));
                 announcer.AnnounceImmediate($"Selected airspeed {kt} knots");
                 return true;
             }
@@ -493,7 +492,7 @@ public partial class CowsDA40Definition
             {
                 MarkRadioSetByUs("DA40_AP_HDG_SET");
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
-                simConnect.ExecuteCalculatorCodeUnique($"{deg} (>K:HEADING_BUG_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{deg} (>K:HEADING_BUG_SET)"));
                 announcer.AnnounceImmediate($"Heading bug {deg:000}");
                 return true;
             }
@@ -502,7 +501,7 @@ public partial class CowsDA40Definition
             {
                 MarkRadioSetByUs("DA40_AP_CRS_SET");
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
-                simConnect.ExecuteCalculatorCodeUnique($"{deg} (>K:VOR1_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{deg} (>K:VOR1_SET)"));
                 announcer.AnnounceImmediate($"Course {deg:000}");
                 return true;
             }

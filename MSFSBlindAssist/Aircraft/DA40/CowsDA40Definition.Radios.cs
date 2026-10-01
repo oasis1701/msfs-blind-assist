@@ -210,7 +210,7 @@ public partial class CowsDA40Definition
         // UNIQUE, not plain. Two swaps of one radio in a row are two byte-identical
         // calculator strings and MobiFlight drops the second - which is exactly why a
         // second press announced a swap that never happened.
-        simConnect.ExecuteCalculatorCodeUnique($"1 (>K:{swapEvent})");
+        simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"1 (>K:{swapEvent})"));
 
         // Say only what we KNOW: that the swap was commanded. The frequency is NOT
         // predicted from the standby any more - that prediction was wrong whenever the
@@ -248,7 +248,7 @@ public partial class CowsDA40Definition
                 // now differ only in the event name.
                 string evt = radio == 1 ? "COM_STBY_RADIO_SET_HZ" : "COM2_STBY_RADIO_SET_HZ";
                 long hz = (long)Math.Round(mhz * 1_000_000.0);
-                simConnect.ExecuteCalculatorCodeUnique($"{hz} (>K:{evt})");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:{evt})"));
                 MarkRadioSetByUs(varKey);   // the case falls through COM1/COM2
                 announcer.AnnounceImmediate($"COM {radio} standby {mhz:0.000}");
                 return true;
@@ -260,7 +260,7 @@ public partial class CowsDA40Definition
                 int radio = varKey.Contains('2') ? 2 : 1;
                 double mhz = Math.Clamp(value, 108.0, 117.95);
                 long hz = (long)Math.Round(mhz * 1_000_000.0);
-                simConnect.ExecuteCalculatorCode($"{hz} (>K:NAV{radio}_STBY_SET_HZ)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{hz} (>K:NAV{radio}_STBY_SET_HZ)"));
                 MarkRadioSetByUs(varKey);   // the case falls through NAV1/NAV2
                 announcer.AnnounceImmediate($"NAV {radio} standby {mhz:0.00}");
                 return true;

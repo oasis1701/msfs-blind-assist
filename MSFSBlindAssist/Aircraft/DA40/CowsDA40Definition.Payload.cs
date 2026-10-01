@@ -163,9 +163,8 @@ public partial class CowsDA40Definition
 
             // The SimVar, not an event: the indexed PAYLOAD_STATION_WEIGHT_SET event was
             // tried live and left the station untouched.
-            simConnect.ExecuteCalculatorCode(
-                $"{lb.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture)} " +
-                $"(>A:PAYLOAD STATION WEIGHT:{station}, pounds)");
+            simConnect.ExecuteCalculatorCodeUnique(
+                FormattableString.Invariant($"{lb:0.##} (>A:PAYLOAD STATION WEIGHT:{station}, pounds)"));
 
             // A typed numeric entry confirms, in both units - the AFM quotes both and the
             // aeroplane is loaded in whichever the operator uses.

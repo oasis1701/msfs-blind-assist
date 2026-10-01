@@ -264,7 +264,7 @@ public partial class CowsDA40Definition
         switch (varKey)
         {
             case "DA40_START_ENGINE_MASTER":
-                simConnect.ExecuteCalculatorCode($"{(value >= 0.5 ? 1 : 0)} (>K:ENGINE_MASTER_1_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{(value >= 0.5 ? 1 : 0)} (>K:ENGINE_MASTER_1_SET)"));
                 return true;
 
             case "DA40_START_ENGINE_MASTER_COVER":

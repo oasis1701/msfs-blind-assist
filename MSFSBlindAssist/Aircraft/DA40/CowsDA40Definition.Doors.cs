@@ -173,7 +173,7 @@ public partial class CowsDA40Definition
         // This codebase's own invariant already said every valueless calc write goes
         // through the unique form. This call was the exception that proved it, again - the
         // same trap as the squawk keypad, the softkeys and the wiper switch.
-        simConnect.ExecuteCalculatorCodeUnique($"{exit} (>K:TOGGLE_AIRCRAFT_EXIT)");
+        simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{exit} (>K:TOGGLE_AIRCRAFT_EXIT)"));
         return true;
     }
 

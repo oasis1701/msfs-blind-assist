@@ -312,17 +312,17 @@ public partial class CowsDA40Definition
         {
             case "DA40_XLS_THROTTLE_SET":
                 int axis = (int)Math.Round(pct / 100.0 * ThrottleAxisMax);
-                simConnect.ExecuteCalculatorCode($"{axis} (>K:THROTTLE1_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{axis} (>K:THROTTLE1_SET)"));
                 announcer.AnnounceImmediate($"Throttle {pct:0} percent");
                 return true;
 
             case "DA40_XLS_PROP_SET":
-                simConnect.ExecuteCalculatorCodeUnique($"{pct:0} (>L:INPUT_PROPELLER)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{pct:0} (>L:INPUT_PROPELLER)"));
                 announcer.AnnounceImmediate($"Propeller {pct:0} percent");
                 return true;
 
             case "DA40_XLS_MIXTURE_SET":
-                simConnect.ExecuteCalculatorCodeUnique($"{pct:0} (>L:INPUT_MIXTURE)");
+                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{pct:0} (>L:INPUT_MIXTURE)"));
                 announcer.AnnounceImmediate(pct <= 0 ? "Mixture idle cut-off"
                     : pct >= 100 ? "Mixture full rich"
                     : $"Mixture {pct:0} percent");

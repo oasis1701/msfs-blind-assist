@@ -151,13 +151,13 @@ public partial class CowsDA40Definition
         switch (varKey)
         {
             case "DA40_AUDIO_TRANSMIT":
-                simConnect.ExecuteCalculatorCode(
+                simConnect.ExecuteCalculatorCodeUnique(
                     value >= 0.5 ? "1 (>K:COM2_TRANSMIT_SELECT)" : "1 (>K:COM1_TRANSMIT_SELECT)");
                 return true;
 
             case "DA40_AUDIO_MONITOR_BOTH":
-                simConnect.ExecuteCalculatorCode(
-                    $"{(value >= 0.5 ? 1 : 0)} (>K:COM_RECEIVE_ALL_SET)");
+                simConnect.ExecuteCalculatorCodeUnique(
+                    FormattableString.Invariant($"{(value >= 0.5 ? 1 : 0)} (>K:COM_RECEIVE_ALL_SET)"));
                 return true;
 
             case "DA40_AUDIO_HEADSET":

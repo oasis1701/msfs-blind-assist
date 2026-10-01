@@ -343,7 +343,7 @@ public partial class CowsDA40Definition
 
         StopPropCycle();
         _propCycleSim?.ExecuteCalculatorCodeUnique(
-            $"{_propCycleReturn.ToString("F0", System.Globalization.CultureInfo.InvariantCulture)} (>L:INPUT_PROPELLER)");
+            FormattableString.Invariant($"{_propCycleReturn:F0} (>L:INPUT_PROPELLER)"));
         _propCycleAnnouncer?.AnnounceImmediate(dropped
             ? $"Propeller cycled, {_propCycleStartRpm:F0} down to {_propCycleMinRpm:F0}, lever back"
             : $"Propeller did not respond, {_propCycleStartRpm:F0} down to {_propCycleMinRpm:F0} in five seconds, lever back");
