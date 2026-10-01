@@ -194,7 +194,7 @@ public sealed class CowsDA40DisplayForm : Form
             // so it has to let go before this window can read the same screen - and the
             // window wins, because a pilot who deliberately opened the display is already
             // reading it.
-            if (_side == "PFD") _owner?.SuspendCasMonitor(true);
+            if (_side == "PFD") _owner?.SuspendCasMonitor(true, _client.InvokeAsync);
             _client.Start();
             _connectWatchdog.Start();
         };

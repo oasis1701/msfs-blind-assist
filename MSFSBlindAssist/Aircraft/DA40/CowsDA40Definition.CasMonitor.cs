@@ -112,30 +112,61 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>
-    /// The PFD window calls this while it is open, to hand over the SOCKET only. The
-    /// announcements do not stop - the window feeds <see cref="ProcessCasRows"/> instead.
-    /// </summary>
-    /// <summary>
-    /// Run one expression on the CAS monitor's own Coherent socket, or return empty.
+    /// Run one expression on the AS1000_PFD socket, or return empty.
     ///
     /// Shared rather than opening a second connection, because Coherent allows ONE inspector
     /// socket per view - a second would be refused, which is the whole reason the PFD window
     /// and this monitor hand the socket back and forth in the first place.
+    ///
+    /// ⚠️ WHILE THE PFD WINDOW HOLDS THE SOCKET, THE EXPRESSION RIDES THE WINDOW'S CLIENT.
+    /// <c>CoherentDisplayClient.InvokeAsync</c> reconnects whether or not the client is active,
+    /// so sending through the suspended monitor client pulled the socket back from the window
+    /// the pilot was reading on every waypoint poll. With no window client to borrow, nothing
+    /// is sent at all.
     /// </summary>
     internal async System.Threading.Tasks.Task<string> InvokeOnCasClientAsync(string expression)
     {
         var c = _casClient;
-        if (c == null) return "";
-        try { return await c.InvokeAsync(expression); }
+        var lender = _casLender;
+        try
+        {
+            switch (RouteCasInvoke(_casSuspended, c != null, lender != null))
+            {
+                case CasInvokeRoute.Own: return await c!.InvokeAsync(expression);
+                case CasInvokeRoute.Lender: return await lender!(expression);
+                default: return "";
+            }
+        }
         catch { return ""; }
     }
 
-    public void SuspendCasMonitor(bool suspended)
+    internal enum CasInvokeRoute { None, Own, Lender }
+
+    /// <summary>Which socket a one-shot expression may use. Pure so the handover is pinned.</summary>
+    internal static CasInvokeRoute RouteCasInvoke(bool suspended, bool hasOwnClient, bool hasLender)
+    {
+        if (suspended) return hasLender ? CasInvokeRoute.Lender : CasInvokeRoute.None;
+        return hasOwnClient ? CasInvokeRoute.Own : CasInvokeRoute.None;
+    }
+
+    private volatile bool _casSuspended;
+    private Func<string, System.Threading.Tasks.Task<string>>? _casLender;
+
+    /// <summary>
+    /// The PFD window calls this while it is open, to hand over the SOCKET only. The
+    /// announcements do not stop - the window feeds <see cref="ProcessCasRows"/> instead -
+    /// and one-shot expressions go through <paramref name="invokeWhileSuspended"/>, the
+    /// window's own client.
+    /// </summary>
+    public void SuspendCasMonitor(bool suspended,
+        Func<string, System.Threading.Tasks.Task<string>>? invokeWhileSuspended = null)
     {
         // Only the SOCKET is handed over. The detector keeps running on the window's rows,
         // so there is no gap in coverage and deliberately NO re-baseline: the known set is
         // continuous across the handover, which is what stops a message that appeared
         // while the window was open being re-announced when the monitor takes back over.
+        _casLender = suspended ? invokeWhileSuspended : null;
+        _casSuspended = suspended;
         _casClient?.SetActive(!suspended);
     }
 
