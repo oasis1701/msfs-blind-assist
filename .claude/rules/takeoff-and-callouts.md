@@ -6,6 +6,8 @@ paths:
   - "MSFSBlindAssist/Aircraft/TakeoffVSpeedCallouts.cs"
   - "MSFSBlindAssist/Aircraft/TakeoffCalloutKeys.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Takeoff*.cs"
+  - "MSFSBlindAssist/Aircraft/A380TakeoffCallouts.cs"
+  - "MSFSBlindAssist/Aircraft/MD11/Md11TakeoffCallouts.cs"
 ---
 # Takeoff assist and flight callouts rules
 

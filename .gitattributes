@@ -1,0 +1,4 @@
+# Claude Code path-scoped rule files: keep their YAML front matter LF on every checkout.
+# If Claude Code failed to parse a CRLF front matter it would load the file in EVERY session,
+# which is exactly what these files exist to avoid (docs/design/2026-09-30-lean-claude-md-design.md).
+.claude/rules/*.md text eol=lf

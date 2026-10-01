@@ -13,12 +13,12 @@ dotnet build MSFSBlindAssist.sln -c Debug
 dotnet build MSFSBlindAssist.sln -c Release
 ```
 
-The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds five projects; the standalone probes under `tools/` build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
+The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds five projects, `tools/PMDGDispatchTester` and `tools/ChangelogBuilder` among them; the standalone probes (`tools/CDUTest`, `IFlySdkProbe`, `StandBridgeSweep`, `LandingExitSweep`) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
 
 - [CORE-1] Always build the `.sln` or pass `-p:Platform=x64`; never the bare `.csproj`, which defaults to AnyCPU and writes to `bin\Debug\…`, so the x64 exe the app runs from never updates. Full: docs/invariants/core.md#core-1
 - [CORE-2] `-r win-x64` (or `dotnet publish -r win-x64`) writes a separate `net10.0-windows\win-x64\` tree a plain build never touches: build to, and check the timestamp in, the folder the app launches from. Full: docs/invariants/core.md#core-2
 - [CORE-3] The exe is file-locked while MSFSBA runs (MSB3021): close the app before building an exe the user will run. Full: docs/invariants/core.md#core-3
-- [CORE-4] `tools/CDUTest` and the other standalone probes under `tools/` build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
+- [CORE-4] `tools/CDUTest` and the other standalone probes (`IFlySdkProbe`, `StandBridgeSweep`, `LandingExitSweep`) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
 
 ## Testing
 
@@ -87,11 +87,14 @@ Screen readers already announce every UI control interaction, so the app NEVER a
 
 ### Everywhere else
 
+- [CORE-16] Area rules (`.claude/rules/`) load only when a file is opened with the Read tool, never through `cat`, `sed`, `rg` or Grep: Read a file before changing it, or its area's rules never reach you. Full: docs/invariants/core.md#core-16
 - [CORE-11] In `SimConnectManager`, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`: `StartContinuousMonitoring()` guards on it. Full: docs/invariants/core.md#core-11
-- [CORE-12] Never use `TreeView` directly in a form: use `NativeAccessibleTreeView` (the .NET UIA tree gives NVDA a wrong order), with children populated lazily on `BeforeExpand`. Full: docs/invariants/core.md#core-12
+- [CORE-12] Never use `TreeView` directly in a form: use `NativeAccessibleTreeView` (the .NET UIA tree gives NVDA a wrong order); a tree with detail data populates its children lazily on `BeforeExpand`. Full: docs/invariants/core.md#core-12
 - [CORE-13] Never hardcode the FBWBA/MSFSBlindAssist database path: reads go through `DatabasePathResolver.ResolveExistingDatabasePath`, writes through `GetCanonicalDatabasePath`. Full: docs/invariants/core.md#core-13
 - [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one. Full: docs/invariants/core.md#core-14
 - [CORE-15] Never hand-build a log write (`File.AppendAllText`, a raw path): use `Log.Debug/Info/Warn/Error(category, msg)` for debug.log, or `Log.Channel(name)` for a named log. Full: docs/invariants/core.md#core-15
+- [VAT-13] Status/diagnostic text in any settings panel is a read-only `TextBox`, never a `Label`: a `Label` is not in the tab order, so a screen-reader user has to hunt for it with the review cursor. Full: docs/invariants/vatsim.md#vat-13
+- [A380C-6] Every form marshaling a background bridge push to the UI thread must wrap `BeginInvoke` in try/catch(InvalidOperationException) (`SafeBeginInvoke`); an `IsHandleCreated` check alone races handle destruction. Full: docs/invariants/a380-coherent.md#a380c-6
 
 ## Multi-Aircraft Architecture
 
@@ -178,7 +181,7 @@ A rule is a guardrail a future change could break: a "never", a "must", a measur
 
 `- [PREFIX-n] <the rule, naming the key type or method> Full: docs/invariants/<stem>.md#<prefix-n>`
 
-Take the next unused number for that prefix; IDs are never renumbered or reused, so code comments and commit messages can cite them. The explanation, measurements and history go under `## PREFIX-n` in `docs/invariants/<stem>.md`. A new aircraft or subsystem gets its own rule file, with `paths:` globs for its code, and its own full-text file, plus a row above. CLAUDE.md takes only rules that apply to ANY file in the repository. To change a rule, edit its line and its full text together; to retire one, delete both and leave the number unused. `ClaudeContextBudgetTests` (CI) enforces the limits and says what to do when one is hit.
+Take the next unused number for that prefix; IDs are never renumbered or reused, so code comments and commit messages can cite them. The explanation, measurements and history go under `## PREFIX-n` in `docs/invariants/<stem>.md`. A new aircraft or subsystem gets its own rule file, with `paths:` globs for its code, and its own full-text file, plus a row above; after changing globs, `python tools/claude-md-split/check_coverage.py` lists rules whose own code no glob covers. When a rule's code is also called from another area's files, MIRROR its line word for word into a rule file scoped to those files (see `mainform-call-sites.md`). CLAUDE.md takes only rules that apply to ANY file in the repository (two area rules are mirrored here for that reason). To change a rule, edit its line, every mirror and its full text together. To retire one, delete its lines and rename its heading `## PREFIX-n (retired: <why>)` so the number is never taken again. `ClaudeContextBudgetTests` (CI) enforces the limits and says what to do when one is hit.
 
 ## Technology Stack
 

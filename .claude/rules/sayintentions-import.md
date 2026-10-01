@@ -5,6 +5,7 @@ paths:
   - "MSFSBlindAssist/MainForm.SayIntentions.cs"
   - "MSFSBlindAssist/Forms/TaxiAssistForm.cs"
   - "MSFSBlindAssist/Hotkeys/HotkeyManager.cs"
+  - "MSFSBlindAssist/Services/SayIntentions/SayIntentionsService.cs"
 ---
 # SayIntentions taxi-route import rules
 

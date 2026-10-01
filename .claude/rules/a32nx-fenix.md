@@ -10,6 +10,9 @@ paths:
   - "MSFSBlindAssist/Forms/FBWA320/**"
   - "MSFSBlindAssist/Forms/Fenix*/**"
   - "MSFSBlindAssist/Aircraft/Fcu*.cs"
+  - "MSFSBlindAssist/SimConnect/CoherentEvalClient.cs"
+  - "MSFSBlindAssist/SimConnect/CoherentLinkState.cs"
+  - "MSFSBlindAssist/SimConnect/CoherentViewOwnership.cs"
 ---
 # FlyByWire A32NX and Fenix A320 rules
 

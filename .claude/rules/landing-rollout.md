@@ -11,6 +11,7 @@ paths:
   - "MSFSBlindAssist/Services/LandingExitGoAround.cs"
   - "MSFSBlindAssist/Services/LandingFlareAssistManager.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Rollout*.cs"
+  - "MSFSBlindAssist/Navigation/PavementTolerance.cs"
 ---
 # Landing rollout guidance rules
 

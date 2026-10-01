@@ -11,6 +11,8 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*Docking*.cs"
   - "MSFSBlindAssist/Services/Gsx/Remote/GsxRemoteParkingReader.cs"
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
+  - "MSFSBlindAssist/Services/Gsx/Remote/GsxConcourseLetterFiller.cs"
+  - "MSFSBlindAssist/Services/Gsx/Remote/GsxTerminalDisambiguator.cs"
 ---
 # Stands, gate lists and docking guidance rules
 

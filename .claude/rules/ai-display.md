@@ -8,6 +8,7 @@ paths:
   - "MSFSBlindAssist/Services/CameraHome*.cs"
   - "MSFSBlindAssist/SimConnect/SimConnectManager.Camera.cs"
   - "MSFSBlindAssist/Aircraft/AiDisplayRead.cs"
+  - "MSFSBlindAssist/SimConnect/CameraReadWaiters.cs"
 ---
 # AI display reads, the camera and screenshots rules
 

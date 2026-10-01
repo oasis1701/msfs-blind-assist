@@ -28,7 +28,8 @@ public class ClaudeContextBudgetTests
         @"^- \[(?<id>[A-Z][A-Z0-9]*-\d+)\] (?<text>\S.*?) Full: (?<file>docs/invariants/[a-z0-9-]+\.md)#(?<anchor>[a-z0-9-]+)$",
         RegexOptions.CultureInvariant);
     private static readonly Regex IdHeading = new(@"^## (?<id>[A-Z][A-Z0-9]*-\d+)$", RegexOptions.CultureInvariant);
-    private static readonly Regex MarkdownLink = new(@"\]\((?<target>[^)\s]+)\)", RegexOptions.CultureInvariant);
+    private static readonly Regex QuotedPathItem = new("^\\s+- \"[^\"]+\"$", RegexOptions.CultureInvariant);
+    private static readonly Regex MarkdownLink =new(@"\]\((?<target>[^)\s]+)\)", RegexOptions.CultureInvariant);
     private static readonly HashSet<string> PrunedDirectories = new(StringComparer.OrdinalIgnoreCase)
         { ".git", "bin", "obj", "node_modules", ".vs", "TestResults" };
 
@@ -64,11 +65,22 @@ public class ClaudeContextBudgetTests
         foreach (RuleFile rf in RuleFiles())
         {
             if (rf.Globs is null || rf.Globs.Count == 0)
-                problems.Add($"{rf.Name}: no 'paths:' front matter. A rule file without paths loads in EVERY session; "
-                    + "scope it to the code it guards, or, if it truly applies to any file, move it into CLAUDE.md.");
+                problems.Add($"{rf.Name}: no 'paths:' list. A rule file without paths loads in EVERY session; "
+                    + "scope it to the code it guards, one '  - \"<glob>\"' line per glob (the comma-separated form is not "
+                    + "accepted here), or, if it truly applies to any file, move it into CLAUDE.md.");
+            foreach (string item in rf.PathItems)
+                if (!QuotedPathItem.IsMatch(item))
+                    problems.Add($"{rf.Name}: paths item '{item.Trim()}' must be a double-quoted glob, '  - \"<glob>\"'. "
+                        + "Unquoted, YAML can read '*' as an alias or '#' as a comment; Claude Code then ignores the front "
+                        + "matter and loads the file in EVERY session.");
             foreach (string g in rf.Globs ?? new List<string>())
+            {
                 if (g.Contains('{') || g.Contains('['))
                     problems.Add($"{rf.Name}: glob '{g}' uses braces or brackets; list each pattern separately.");
+                if (g.Split('/').Any(seg => seg.Contains("**", StringComparison.Ordinal) && seg != "**"))
+                    problems.Add($"{rf.Name}: glob '{g}' uses '**' inside a path segment; '**' must be a whole segment "
+                        + "('a/**/b'), anything else is read as '*'.");
+            }
             if (rf.Text.Length > RuleFileMaxChars)
                 problems.Add($"{rf.Name}: {rf.Text.Length:N0} characters, over {RuleFileMaxChars:N0}. Split the area into "
                     + "two rule files with narrower paths, or shorten its lines.");
@@ -104,6 +116,7 @@ public class ClaudeContextBudgetTests
         string root = RepoRoot();
         var problems = new List<string>();
         var rules = new Dictionary<string, string>(StringComparer.Ordinal);   // id -> full-text file
+        var firstLine = new Dictionary<string, (string Name, string Line)>(StringComparer.Ordinal);
         IEnumerable<(string Name, string Line)> lines = RuleFiles()
             .SelectMany(rf => rf.Body.Split('\n').Select(l => (rf.Name, l)))
             .Concat(Read(Path.Combine(root, "CLAUDE.md")).Split('\n').Select(l => ("CLAUDE.md", l)));
@@ -112,8 +125,18 @@ public class ClaudeContextBudgetTests
             Match m = RuleLine.Match(line);
             if (!m.Success) continue;
             string id = m.Groups["id"].Value, file = m.Groups["file"].Value;
-            if (!rules.TryAdd(id, file))
-                problems.Add($"{name}: [{id}] is used twice. IDs are never reused; take the next unused number.");
+            // A rule whose code spans areas may be MIRRORED: the same line, word for word, in a second rule
+            // file (or CLAUDE.md) so it also loads with that code. A second line under the same ID that is
+            // not identical is either drift or a reused ID.
+            if (firstLine.TryGetValue(id, out var first))
+            {
+                if (first.Line != line)
+                    problems.Add($"{name}: [{id}] differs from its line in {first.Name}. A mirrored rule must be the same "
+                        + "line word for word; a new rule takes the next unused number.");
+                continue;
+            }
+            firstLine[id] = (name, line);
+            rules[id] = file;
             if (m.Groups["anchor"].Value != id.ToLowerInvariant())
                 problems.Add($"{name}: [{id}] points at #{m.Groups["anchor"].Value}; the anchor must be #{id.ToLowerInvariant()}.");
             string path = Path.Combine(root, file.Replace('/', Path.DirectorySeparatorChar));
@@ -215,7 +238,8 @@ public class ClaudeContextBudgetTests
         return new Regex(sb.Append('$').ToString(), RegexOptions.CultureInvariant);
     }
 
-    private sealed record RuleFile(string Path, string Name, string Text, string Body, List<string>? Globs);
+    private sealed record RuleFile(string Path, string Name, string Text, string Body, List<string>? Globs,
+        List<string> PathItems);
 
     private static IEnumerable<RuleFile> RuleFiles()
     {
@@ -225,16 +249,18 @@ public class ClaudeContextBudgetTests
         foreach (string path in Directory.EnumerateFiles(dir, "*.md", SearchOption.AllDirectories).OrderBy(p => p, StringComparer.Ordinal))
         {
             string text = Read(path);
-            (List<string>? globs, string body) = SplitFrontMatter(text);
-            yield return new RuleFile(path, Rel(root, path), text, body, globs);
+            (List<string>? globs, string body, List<string> items) = SplitFrontMatter(text);
+            yield return new RuleFile(path, Rel(root, path), text, body, globs, items);
         }
     }
 
-    private static (List<string>? Globs, string Body) SplitFrontMatter(string text)
+    /// <summary>The globs, the body after the front matter, and the raw paths item lines (for the quoting check).</summary>
+    private static (List<string>? Globs, string Body, List<string> Items) SplitFrontMatter(string text)
     {
-        if (!text.StartsWith("---\n", StringComparison.Ordinal)) return (null, text);
+        var items = new List<string>();
+        if (!text.StartsWith("---\n", StringComparison.Ordinal)) return (null, text, items);
         int end = text.IndexOf("\n---\n", 3, StringComparison.Ordinal);
-        if (end < 0) return (null, text);
+        if (end < 0) return (null, text, items);
         var globs = new List<string>();
         bool inPaths = false;
         foreach (string raw in text[4..end].Split('\n'))
@@ -243,11 +269,14 @@ public class ClaudeContextBudgetTests
             if (line.StartsWith("paths:", StringComparison.Ordinal)) { inPaths = true; continue; }
             string trimmed = line.TrimStart();
             if (inPaths && trimmed.StartsWith("- ", StringComparison.Ordinal))
+            {
+                items.Add(line);
                 globs.Add(trimmed[2..].Trim().Trim('"', '\''));
+            }
             else if (line.Length > 0 && !char.IsWhiteSpace(line[0]))
                 inPaths = false;
         }
-        return (globs, text[(end + 5)..]);
+        return (globs, text[(end + 5)..], items);
     }
 
     private static IEnumerable<string> InvariantFiles()

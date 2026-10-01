@@ -4,6 +4,8 @@ paths:
   - "MSFSBlindAssist/Services/RouteBriefingText.cs"
   - "MSFSBlindAssist/Services/RouteDescriptionSession.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Briefing*.cs"
+  - "MSFSBlindAssist/Services/GeminiService.cs"
+  - "MSFSBlindAssist/Services/ClaudeService.cs"
 ---
 # Route briefing rules
 

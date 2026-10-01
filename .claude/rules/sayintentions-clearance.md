@@ -2,6 +2,7 @@
 paths:
   - "MSFSBlindAssist/Services/SayIntentions/SayIntentionsClearance*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentions*.cs"
+  - "MSFSBlindAssist/Services/SayIntentions/SayIntentionsService.cs"
 ---
 # SayIntentions clearance parsing rules
 

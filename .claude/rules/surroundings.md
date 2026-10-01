@@ -10,6 +10,7 @@ paths:
   - "MSFSBlindAssist/Database/Models/ParkingTypes.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Surroundings*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Scenery*.cs"
+  - "MSFSBlindAssist/Navigation/RunwayShapeSource.cs"
 ---
 # Airport surroundings, places and passing callouts rules
 

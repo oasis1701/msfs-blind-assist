@@ -147,6 +147,8 @@ Each existing bullet is assigned by **its own doc link**, not by the heading it 
 
 The exact globs are produced during implementation by a coverage step. For each bullet, it lists the source files that define the code names the bullet mentions, and confirms that the rule file's globs match every one of them. A rule may name a `MainForm` partial only when that partial is specific to the area. `MainForm.cs` itself belongs to `core-simconnect` alone, and the per-file load budget (section 5) enforces it.
 
+**As built (after review):** two refinements. A few small rule files glob the specific `MainForm` partial their code lives in (the ARINC decoder hook, the augmentation wrapper). A rule whose code is CALLED from a file its own area does not cover is MIRRORED: its line is copied word for word into a rule file scoped to that file (`mainform-call-sites.md` for `MainForm.Announcers.cs` and `MainForm.AircraftSwitch.cs`; CLAUDE.md for the two rules that apply to any form). The test keeps mirrors identical, and the per-file budget bounds what any one file loads. `tools/claude-md-split/check_coverage.py` lists rules a code name of which no carrying rule file covers.
+
 ### 5. The guard: `ClaudeContextBudgetTests`
 
 A new xUnit test class in `tests/MSFSBlindAssist.Tests`, run by the existing CI job on every PR. It finds the repo root the same way the existing source-scanning tests do. Each check fails with a message that says what to do, in the style of the changelog check:

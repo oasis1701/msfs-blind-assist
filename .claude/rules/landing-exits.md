@@ -8,6 +8,8 @@ paths:
   - "MSFSBlindAssist/Forms/LandingExitForm.cs"
   - "tests/MSFSBlindAssist.Tests/**/*LandingExit*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*ExitBranch*.cs"
+  - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Rollout.cs"
 ---
 # Landing exits: measurement, planner and re-plan rules
 

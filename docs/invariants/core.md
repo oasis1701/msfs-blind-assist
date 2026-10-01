@@ -63,6 +63,10 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - Never hand-build a log write (`File.AppendAllText`/raw path) — every diagnostic log goes through `Utils/Logging/Log` (`Log.Debug/Info/Warn/Error(category,msg)` → debug.log, or `Log.Channel(name)` → named file); `AppLogs.PathFor` is the PATH layer only. → CLAUDE.md
 
+## CORE-16
+
+Added 2026-10 with the move to path-scoped rules, not carried over from CLAUDE.md. Claude Code loads a `.claude/rules/<area>.md` file only when the Read tool reads a file its `paths:` globs match; the docs say path-scoped rules trigger "when Claude reads files matching the pattern". Measured 2026-09-30 and 2026-10-01: a probe rule and `ground-traffic.md` were absent before a Read of a matching file and injected right after it, in the main session, in a general-purpose subagent and in an Explore subagent. Reading or editing through the shell (`cat`, `sed`, `rg`) or the Grep tool loads nothing, so a change made that way sees none of the area's rules. Before this layout every rule sat in CLAUDE.md and was always loaded, so this is the one habit the layout asks for. The Edit tool requires a Read of the file first, which is what makes it safe.
+
 ## Background: the former CLAUDE.md core sections
 
 These sections stood in CLAUDE.md's core until 2026-10; CLAUDE.md now keeps the rules as CORE one-liners. Kept here word for word.

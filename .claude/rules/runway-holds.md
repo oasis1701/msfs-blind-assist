@@ -9,6 +9,9 @@ paths:
   - "MSFSBlindAssist/Services/RunwayIncursionWatch.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Hold*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Incursion*.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager*.cs"
+  - "MSFSBlindAssist/Database/Models/TaxiRoute.cs"
+  - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
 ---
 # Runway hold-shorts, crossings and runway shape rules
 

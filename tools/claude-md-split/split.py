@@ -36,9 +36,7 @@ AREAS = OrderedDict([
     ("VAR", ("variable-definitions", "Aircraft variable definitions", "aircraft-definitions.md",
              [M + "Aircraft/*.cs", M + "Services/DefAnnounceMuteSets.cs", T + "*VarNameCollision*.cs"])),
     ("ARINC", ("fbw-arinc", "FlyByWire ARINC 429 words", "a380x.md",
-               [M + "SimConnect/Arinc429Word.cs", M + "Aircraft/FlyByWire*.cs",
-                M + "Aircraft/HeadwindA330Definition.cs", M + "Resources/coherent-oans-agent.js",
-                T + "*Arinc*.cs", M + "MainForm*.cs"])),
+               [M + "SimConnect/Arinc429Word.cs", M + "Aircraft/FlyByWire*.cs", M + "Aircraft/HeadwindA330Definition.cs", M + "Resources/coherent-oans-agent.js", T + "*Arinc*.cs", M + "MainForm.Announcers.cs"])),
     ("MON", ("monitor-manager", "Monitor Manager dialogs (Ctrl+M)", "architecture.md",
              [M + "Forms/*MonitorManager*.cs", M + "Forms/**/*MonitorManager*.cs",
               M + "Services/MonitorRowBuilder.cs", M + "Services/MonitorVariableFilter.cs",
@@ -62,42 +60,23 @@ AREAS = OrderedDict([
               M + "Navigation/TaxiwayChangeGate.cs", M + "Services/StartWarningChatterGate.cs",
               M + "Forms/TaxiAssistForm.cs", T + "*TaxiGraph*.cs", T + "*Route*.cs"])),
     ("HLD", ("runway-holds", "Runway hold-shorts, crossings and runway shape", "taxi-guidance.md",
-             [M + "Navigation/RouteRunwayCrossings.cs", M + "Navigation/RunwayRouteClassifier.cs",
-              M + "Navigation/RunwayShape*.cs", M + "Navigation/RunwayPavement.cs",
-              M + "Navigation/*Hold*.cs", M + "Navigation/Progressive*.cs",
-              M + "Services/RunwayIncursionWatch.cs", T + "*Hold*.cs", T + "*Incursion*.cs"])),
+             [M + "Navigation/RouteRunwayCrossings.cs", M + "Navigation/RunwayRouteClassifier.cs", M + "Navigation/RunwayShape*.cs", M + "Navigation/RunwayPavement.cs", M + "Navigation/*Hold*.cs", M + "Navigation/Progressive*.cs", M + "Services/RunwayIncursionWatch.cs", T + "*Hold*.cs", T + "*Incursion*.cs", M + "Services/TaxiGuidanceManager*.cs", M + "Database/Models/TaxiRoute.cs", M + "Navigation/TaxiGraph.cs"])),
     ("STR", ("taxi-steering", "Taxi steering tone, lineup and turn cues", "taxi-guidance.md",
-             [M + "Services/TaxiGuidanceManager.cs", M + "Services/TaxiGuidanceManager.Announcements.cs",
-              M + "Services/TaxiGuidanceManager.MathUtils.cs", M + "Services/TaxiSteeringTone.cs",
-              M + "Navigation/GuidanceGeometry.cs", M + "Navigation/RunwayLineupTarget.cs",
-              M + "Navigation/RouteStartTurnCue.cs", T + "*GuidanceGeometry*.cs", T + "*Lineup*.cs"])),
+             [M + "Services/TaxiSteeringTone.cs", M + "Navigation/GuidanceGeometry.cs", M + "Navigation/RunwayLineupTarget.cs", M + "Navigation/RouteStartTurnCue.cs", T + "*GuidanceGeometry*.cs", T + "*Lineup*.cs", M + "Services/TaxiGuidanceManager*.cs"])),
     ("EXIT", ("landing-exits", "Landing exits: measurement, planner and re-plan", "taxi-guidance.md",
-              [M + "Navigation/ExitBranch.cs", M + "Navigation/LandingExit*.cs",
-               M + "Navigation/LandingRunwayMatch.cs", M + "Navigation/TaxiGraph.ExitRefinement.cs",
-               M + "Services/LandingExitPlanner*.cs", M + "Forms/LandingExitForm.cs",
-               T + "*LandingExit*.cs", T + "*ExitBranch*.cs"])),
+              [M + "Navigation/ExitBranch.cs", M + "Navigation/LandingExit*.cs", M + "Navigation/LandingRunwayMatch.cs", M + "Navigation/TaxiGraph.ExitRefinement.cs", M + "Services/LandingExitPlanner*.cs", M + "Forms/LandingExitForm.cs", T + "*LandingExit*.cs", T + "*ExitBranch*.cs", M + "Navigation/TaxiGraph.cs", M + "Services/TaxiGuidanceManager.Rollout.cs"])),
     ("ROL", ("landing-rollout", "Landing rollout guidance", "taxi-guidance.md",
-             [M + "Services/TaxiGuidanceManager.Rollout.cs", M + "Navigation/Rollout*.cs",
-              M + "Navigation/RunwayEndCountdownGate.cs", M + "Navigation/RetargetCallout.cs",
-              M + "Navigation/TouchdownCallout.cs", M + "Navigation/OffPavementAlert.cs",
-              M + "Navigation/PavementMap.cs", M + "Navigation/RunwayVacateResolver.cs",
-              M + "Services/LandingExitGoAround.cs", M + "Services/LandingFlareAssistManager.cs",
-              T + "*Rollout*.cs"])),
+             [M + "Services/TaxiGuidanceManager.Rollout.cs", M + "Navigation/Rollout*.cs", M + "Navigation/RunwayEndCountdownGate.cs", M + "Navigation/RetargetCallout.cs", M + "Navigation/TouchdownCallout.cs", M + "Navigation/OffPavementAlert.cs", M + "Navigation/PavementMap.cs", M + "Navigation/RunwayVacateResolver.cs", M + "Services/LandingExitGoAround.cs", M + "Services/LandingFlareAssistManager.cs", T + "*Rollout*.cs", M + "Navigation/PavementTolerance.cs"])),
     ("TRF", ("ground-traffic", "Ground traffic and the runway watch", "taxi-guidance.md",
              [M + "Services/GroundTraffic*.cs", M + "Services/TrafficSpeechPolicy.cs",
               M + "Services/QueueMovementPolicy.cs", M + "Services/RunwayWatch*.cs",
               M + "Services/TaxiGuidanceManager.TrafficContext.cs", T + "*GroundTraffic*.cs"])),
     ("SUR", ("surroundings", "Airport surroundings, places and passing callouts", "taxi-guidance.md",
-             [M + "Navigation/Surroundings/**", M + "Services/Surroundings/**", M + "Services/SceneryIndex/**",
-              M + "Services/AirportSurroundingsMonitor.cs", M + "Services/Surroundings*.cs",
-              M + "Services/CurrentAirport.cs", M + "Services/AirportWarmUp.cs",
-              M + "Database/Models/ParkingTypes.cs", T + "*Surroundings*.cs", T + "*Scenery*.cs"])),
+             [M + "Navigation/Surroundings/**", M + "Services/Surroundings/**", M + "Services/SceneryIndex/**", M + "Services/AirportSurroundingsMonitor.cs", M + "Services/Surroundings*.cs", M + "Services/CurrentAirport.cs", M + "Services/AirportWarmUp.cs", M + "Database/Models/ParkingTypes.cs", T + "*Surroundings*.cs", T + "*Scenery*.cs", M + "Navigation/RunwayShapeSource.cs"])),
     ("AUG", ("taxi-augmentation", "Online taxi-data augmentation", "taxi-guidance.md",
-             [M + "Services/TaxiAugment/**", T + "*ProviderWrap*.cs", M + "MainForm*.cs"])),
+             [M + "Services/TaxiAugment/**", T + "*ProviderWrap*.cs", M + "MainForm.cs", M + "MainForm.AircraftSwitch.cs"])),
     ("TKO", ("takeoff-and-callouts", "Takeoff assist and flight callouts", "taxi-guidance.md",
-             [M + "Services/TakeoffAssistManager.cs", M + "Services/GroundSpeedAnnouncer.cs",
-              M + "Services/AltitudeCalloutAnnouncer.cs", M + "Aircraft/TakeoffVSpeedCallouts.cs",
-              M + "Aircraft/TakeoffCalloutKeys.cs", T + "*Takeoff*.cs"])),
+             [M + "Services/TakeoffAssistManager.cs", M + "Services/GroundSpeedAnnouncer.cs", M + "Services/AltitudeCalloutAnnouncer.cs", M + "Aircraft/TakeoffVSpeedCallouts.cs", M + "Aircraft/TakeoffCalloutKeys.cs", T + "*Takeoff*.cs", M + "Aircraft/A380TakeoffCallouts.cs", M + "Aircraft/MD11/Md11TakeoffCallouts.cs"])),
     ("WX", ("weather", "Weather and ActiveSky", "weather.md",
             [M + "Services/ActiveSky*.cs", M + "Services/WeatherService.cs",
              M + "Services/TurbulenceCategoryTracker.cs", M + "Services/IceAccretionTracker.cs",
@@ -107,16 +86,11 @@ AREAS = OrderedDict([
              [M + "Services/GsxService.cs", M + "Services/Gsx/Remote/**", M + "Forms/AccessGSXForm.cs",
               M + "Forms/GsxSettingsForm.cs", T + "*Gsx*.cs"])),
     ("DCK", ("gsx-stands-docking", "Stands, gate lists and docking guidance", "gsx.md",
-             [M + "Services/Gsx/*.cs", M + "Services/Docking*.cs", M + "Services/GateDataSource.cs",
-              M + "Services/GateResolver.cs", M + "Services/ParkingSpotSource.cs",
-              M + "Services/DistanceFormatter.cs", M + "Database/Models/ParkingSpot.cs",
-              M + "Forms/GateTeleportForm.cs", T + "*Docking*.cs", M + "Services/Gsx/Remote/GsxRemoteParkingReader.cs", M + "Navigation/TaxiGraph.cs"])),
+             [M + "Services/Gsx/*.cs", M + "Services/Docking*.cs", M + "Services/GateDataSource.cs", M + "Services/GateResolver.cs", M + "Services/ParkingSpotSource.cs", M + "Services/DistanceFormatter.cs", M + "Database/Models/ParkingSpot.cs", M + "Forms/GateTeleportForm.cs", T + "*Docking*.cs", M + "Services/Gsx/Remote/GsxRemoteParkingReader.cs", M + "Navigation/TaxiGraph.cs", M + "Services/Gsx/Remote/GsxConcourseLetterFiller.cs", M + "Services/Gsx/Remote/GsxTerminalDisambiguator.cs"])),
     ("SIC", ("sayintentions-clearance", "SayIntentions clearance parsing", "sayintentions.md",
-             [M + "Services/SayIntentions/SayIntentionsClearance*.cs", T + "*SayIntentions*.cs"])),
+             [M + "Services/SayIntentions/SayIntentionsClearance*.cs", T + "*SayIntentions*.cs", M + "Services/SayIntentions/SayIntentionsService.cs"])),
     ("SI", ("sayintentions-import", "SayIntentions taxi-route import", "sayintentions.md",
-            [M + "Services/SayIntentions/SayIntentionsTaxiPathSnapper.cs",
-             M + "Services/SayIntentions/SayIntentionsGatePositionMatcher.cs",
-             M + "MainForm.SayIntentions.cs", M + "Forms/TaxiAssistForm.cs", M + "Hotkeys/HotkeyManager.cs"])),
+            [M + "Services/SayIntentions/SayIntentionsTaxiPathSnapper.cs", M + "Services/SayIntentions/SayIntentionsGatePositionMatcher.cs", M + "MainForm.SayIntentions.cs", M + "Forms/TaxiAssistForm.cs", M + "Hotkeys/HotkeyManager.cs", M + "Services/SayIntentions/SayIntentionsService.cs"])),
     ("SIR", ("sayintentions-readouts", "SayIntentions readouts and flight data", "sayintentions.md",
              [M + "Services/SayIntentions/SayIntentionsService.cs",
               M + "Services/SayIntentions/SayIntentionsInfoReport.cs",
@@ -124,7 +98,7 @@ AREAS = OrderedDict([
               M + "Services/SayIntentions/SayIntentionsTransmissionClassifier.cs",
               M + "Forms/SayIntentionsInfoForm.cs", M + "Services/SayIntentions/SayIntentionsClearanceSelector.cs"])),
     ("VAT", ("vatsim", "VATSIM and the vPilot plugin", "vatsim.md",
-             [M + "Services/VPilot/**", M + "Services/VATSIMService.cs", "plugins/**", M + "MainForm.Hotkeys.cs"])),
+             [M + "Services/VPilot/**", M + "Services/VATSIMService.cs", "plugins/**", M + "MainForm.Hotkeys.cs", M + "Forms/Settings/VatsimPanel.cs"])),
     ("VG", ("visual-guidance", "Visual guidance, hand fly and the liftoff handoff", "visual-guidance.md",
             [M + "Services/VisualGuidanceManager.cs", M + "Services/HandFlyManager.cs",
              M + "Services/LiftoffHandoffBreadcrumb.cs", M + "Hotkeys/**", M + "MainForm.Hotkeys.cs"])),
@@ -154,21 +128,13 @@ AREAS = OrderedDict([
             [M + "Aircraft/HorizonSim787*.cs", M + "Aircraft/HS787*.cs", M + "SimConnect/CoherentHS787*.cs",
              M + "Forms/HS787/**"])),
     ("MD11", ("md11", "TFDi MD-11", "md11.md",
-              [M + "Aircraft/MD11/**", M + "Aircraft/TFDiMD11*.cs", M + "SimConnect/MD11/**",
-               M + "MainForm.MD11.cs", M + "Forms/MD11/**", M + "Resources/coherent-md11*.js",
-               T + "*Md11*.cs", M + "Forms/**/FbwEfbForm*.cs"])),
+              [M + "Aircraft/MD11/**", M + "Aircraft/TFDiMD11*.cs", M + "SimConnect/MD11/**", M + "MainForm.MD11.cs", M + "Forms/MD11/**", M + "Resources/coherent-md11*.js", T + "*Md11*.cs", M + "Forms/**/FbwEfbForm*.cs", M + "SimConnect/CoherentPmdgEfbClient.cs"])),
     ("A320", ("a32nx-fenix", "FlyByWire A32NX and Fenix A320", "a32nx.md",
-              [M + "Aircraft/FlyByWireA320Definition.cs", M + "Aircraft/FenixA320*.cs",
-               M + "Aircraft/HeadwindA330Definition.cs", M + "Services/FbwMcdu*.cs", M + "Services/Fenix*.cs",
-               M + "Services/FlyByWire*.cs", M + "SimConnect/CoherentA32nxMcduClient.cs",
-               M + "Forms/FBWA320/**", M + "Forms/Fenix*/**", M + "Aircraft/Fcu*.cs"])),
+              [M + "Aircraft/FlyByWireA320Definition.cs", M + "Aircraft/FenixA320*.cs", M + "Aircraft/HeadwindA330Definition.cs", M + "Services/FbwMcdu*.cs", M + "Services/Fenix*.cs", M + "Services/FlyByWire*.cs", M + "SimConnect/CoherentA32nxMcduClient.cs", M + "Forms/FBWA320/**", M + "Forms/Fenix*/**", M + "Aircraft/Fcu*.cs", M + "SimConnect/CoherentEvalClient.cs", M + "SimConnect/CoherentLinkState.cs", M + "SimConnect/CoherentViewOwnership.cs"])),
     ("AI", ("ai-display", "AI display reads, the camera and screenshots", "gemini.md",
-            [M + "Services/GeminiService.cs", M + "Services/ClaudeService.cs", M + "Services/Screenshot*.cs",
-             M + "Services/DisplayReadGate.cs", M + "Services/InstrumentView*.cs", M + "Services/CameraHome*.cs",
-             M + "SimConnect/SimConnectManager.Camera.cs", M + "Aircraft/AiDisplayRead.cs"])),
+            [M + "Services/GeminiService.cs", M + "Services/ClaudeService.cs", M + "Services/Screenshot*.cs", M + "Services/DisplayReadGate.cs", M + "Services/InstrumentView*.cs", M + "Services/CameraHome*.cs", M + "SimConnect/SimConnectManager.Camera.cs", M + "Aircraft/AiDisplayRead.cs", M + "SimConnect/CameraReadWaiters.cs"])),
     ("BRF", ("route-briefing", "Route briefing", "gemini.md",
-             [M + "Navigation/Briefing/**", M + "Services/RouteBriefingText.cs",
-              M + "Services/RouteDescriptionSession.cs", T + "*Briefing*.cs"])),
+             [M + "Navigation/Briefing/**", M + "Services/RouteBriefingText.cs", M + "Services/RouteDescriptionSession.cs", T + "*Briefing*.cs", M + "Services/GeminiService.cs", M + "Services/ClaudeService.cs"])),
 ])
 
 
@@ -304,7 +270,10 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--base", default=BASE)
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--force", action="store_true",
+                    help="overwrite an existing docs/invariants/ (discards every edit made since the split)")
     args = ap.parse_args()
+    sys.stdout.reconfigure(encoding="utf-8")
     rows = build(args.base)
     by_prefix = OrderedDict((p, []) for p in AREAS)
     for row in rows:
@@ -319,6 +288,10 @@ def main():
         return
     inv_dir = os.path.join(ROOT, "docs", "invariants")
     rules_dir = os.path.join(ROOT, ".claude", "rules")
+    if os.path.isdir(inv_dir) and os.listdir(inv_dir) and not args.force:
+        sys.exit("docs/invariants/ already exists. It is the source of truth now: rewriting it from the old "
+                 "CLAUDE.md would discard every rule edit, the moved Background sections and CORE-16. "
+                 "Use --dry-run to inspect the split, or --force if you really mean to regenerate.")
     os.makedirs(inv_dir, exist_ok=True)
     os.makedirs(rules_dir, exist_ok=True)
     for prefix, rs in by_prefix.items():

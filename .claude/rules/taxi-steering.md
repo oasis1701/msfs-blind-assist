@@ -1,14 +1,12 @@
 ---
 paths:
-  - "MSFSBlindAssist/Services/TaxiGuidanceManager.cs"
-  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Announcements.cs"
-  - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
   - "MSFSBlindAssist/Services/TaxiSteeringTone.cs"
   - "MSFSBlindAssist/Navigation/GuidanceGeometry.cs"
   - "MSFSBlindAssist/Navigation/RunwayLineupTarget.cs"
   - "MSFSBlindAssist/Navigation/RouteStartTurnCue.cs"
   - "tests/MSFSBlindAssist.Tests/**/*GuidanceGeometry*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Lineup*.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager*.cs"
 ---
 # Taxi steering tone, lineup and turn cues rules
 
