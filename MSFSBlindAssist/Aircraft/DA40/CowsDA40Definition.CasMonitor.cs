@@ -1,3 +1,4 @@
+using System.Linq;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
 using MSFSBlindAssist.Utils.Logging;
@@ -196,27 +197,54 @@ public partial class CowsDA40Definition
             return;
         }
 
+        var appeared = new List<string>();
         foreach (string message in cas)
-        {
-            if (_knownCas.Add(message)) _casAnnouncer.AnnounceImmediate(message);
-        }
+            if (_knownCas.Add(message)) appeared.Add(message);
 
-        // A message that CLEARED is worth one word, not silence: a caution going away is
-        // how a pilot learns the thing they just did worked.
+        var cleared = new List<string>();
         _knownCas.RemoveWhere(known =>
         {
             if (cas.Contains(known)) return false;
-            _casAnnouncer.Announce(known.Replace("Caution: ", "").Replace("WARNING: ", "")
-                                        .Replace("Advisory: ", "").Replace("Status: ", "") + " cleared");
+            cleared.Add(known);
             return true;
         });
 
+        string? fmaChange = null;
         if (fma != _lastFma)
         {
             _lastFma = fma;
-            // "off" is the resting state and announcing it on every disconnect would be
-            // noise; the modes themselves are the news.
-            if (fma != "off") _casAnnouncer.AnnounceImmediate("Autopilot " + fma);
+            fmaChange = fma;
         }
+
+        var (immediate, queued) = ComposeCasSpeech(appeared, cleared, fmaChange);
+        if (immediate.Length > 0) _casAnnouncer.AnnounceImmediate(immediate);
+        foreach (string line in queued) _casAnnouncer.Announce(line);
+    }
+
+    /// <summary>
+    /// What one CAS/FMA poll says.
+    ///
+    /// ⚠️ ONE INTERRUPTING UTTERANCE, NEVER ONE PER MESSAGE. Each new message used to be its
+    /// own <c>AnnounceImmediate</c>, and each one cuts off the one before it — so two
+    /// cautions appearing together (a failure usually raises more than one) were heard as
+    /// the LAST alone, and an autopilot mode change in the same poll cut all of them off.
+    /// New messages and the mode change are one sentence, in display order (warnings sit on
+    /// top); a message that CLEARED is queued behind it, because a caution going away is how a
+    /// pilot learns that what they just did worked, and it must not cut off a new one.
+    /// "off" is the autopilot's resting state and announcing it on every disconnect would be
+    /// noise; the modes themselves are the news.
+    /// </summary>
+    internal static (string Immediate, List<string> Queued) ComposeCasSpeech(
+        IReadOnlyList<string> appeared, IReadOnlyList<string> cleared, string? fmaChange)
+    {
+        var parts = new List<string>(appeared);
+        if (fmaChange != null && fmaChange != "off") parts.Add("Autopilot " + fmaChange);
+
+        var queued = new List<string>();
+        foreach (string known in cleared)
+            queued.Add(known.Replace("Caution: ", "").Replace("WARNING: ", "")
+                            .Replace("Advisory: ", "").Replace("Status: ", "") + " cleared");
+
+        return (string.Join(". ", parts.Select(p => p.TrimEnd('.'))) is { Length: > 0 } t ? t + "." : "", queued);
     }
 }
