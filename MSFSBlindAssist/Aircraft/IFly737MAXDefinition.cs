@@ -27,7 +27,9 @@ namespace MSFSBlindAssist.Aircraft;
 public partial class IFly737MAXDefinition : BaseAircraftDefinition
 {
     public override string AircraftName => "iFly 737 MAX8";
-    public override string AircraftCode => "IFLY_737MAX8";
+    // One spelling, shared with the speed-brake callout's Ctrl+M lookup (DefAnnounceMuteSets).
+    private const string Code = "IFLY_737MAX8";
+    public override string AircraftCode => Code;
 
     // Measured on the PMDG 737 and validated in-sim; same airframe class.
     public override double TaxiTurnLeadSeconds => 0.4;
@@ -100,6 +102,9 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         _progPollTimer?.Stop();
         _progPollTimer?.Dispose();
         _progPollTimer = null;
+        // Speed-brake settle timer: a lever moved just before the swap must not be
+        // announced over the next aircraft.
+        _speedBrakeCallout.Dispose();
         Sdk.Dispose();
     }
 
@@ -411,6 +416,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         if (_cachedVariables != null) return _cachedVariables;
         EnsureRegistered();
         var variables = GetBaseVariables();
+        // The shared trim call-out reads the stock ELEVATOR TRIM POSITION in DEGREES ("Trim
+        // down 2.3" while the indicator showed 5.6 units, live 2026-09-30). The iFly publishes
+        // the stabiliser trim in UNITS itself (Stabilizer_Trim_Pointer_Status), so that field is
+        // what is spoken, as on the PMDG 737 — see its case in ProcessSimVarUpdate.
+        variables.Remove("MON_ElevatorTrim");
         foreach (var kvp in _vars)
             variables[kvp.Key] = kvp.Value;
         _cachedVariables = variables;
@@ -978,6 +988,15 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 announcer.AnnounceImmediate("iFly plugin not responding.");
                 return true;
             }
+            // The speed-brake lever's settle timer speaks outside MainForm's UI-echo
+            // suppression, so a SENT pick is recorded: the lever arriving at that
+            // detent is then silent (the screen reader already read the pick). Always
+            // recorded, even when the lever already rests there: the callout is built
+            // with picksLandAtOnce, so its next settle anywhere answers the pick and it
+            // cannot sit armed to swallow a later move back (judging "already there"
+            // from the snapshot instead read a lever up to one 250 ms poll stale).
+            if (varKey == IFly737SpeedBrakeLever.FieldName)
+                _speedBrakeCallout.RecordPick(IFly737SpeedBrakeLever.IndexOfComboValue(value));
             // Guarded switches whose SET has no working Value3 guard-bypass need the
             // command TWICE: the first send only OPENS the guard, the second moves
             // the switch (probe-verified 2026-08-18 on the stab-trim cutouts, nose
@@ -1729,8 +1748,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     private static readonly TakeoffCalloutKeys TakeoffKeys = new("IFLY_IAS", "IFLY_V1", "IFLY_VR", "IFLY_V2");
     private bool _calloutOnGround = true; // last SIM_ON_GROUND sample (ramp default)
 
+    /// <summary>The SDK field carrying the stabiliser trim in units, spoken in place of the
+    /// shared degrees call-out (see BuildVariables).</summary>
+    internal const string StabTrimUnitsKey = "Stabilizer_Trim_Pointer_Status";
+    private readonly StabTrimUnitsCallout _stabTrimCallout = new();
+
     /// <summary>The roll callouts' machine, for the tests that pin what a context reset does to it.</summary>
     internal TakeoffVSpeedCallouts TakeoffCallouts => _takeoffCallouts;
+
+    /// <summary>The speed-brake lever's settle announcer, for the tests that pin its wiring.</summary>
+    internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
 
     /// <inheritdoc />
     public override string? TakeoffCalloutFeedKey => TakeoffKeys.IasKey;
@@ -1759,19 +1786,59 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// already held V-speeds delivered a 280 kt sample while the ground flag still read true, and
     /// the arm from the ramp called "V1, Rotate, V2" at altitude. The speeds are kept, for the
     /// same reason as above. Same fix, same reason and the same shared machine as the MD-11's
-    /// (TFDiMD11Definition.OnSimContextReset); nothing else of this definition's state is touched.
+    /// (TFDiMD11Definition.OnSimContextReset). It also re-baselines the speed-brake callout and the
+    /// stabiliser-trim call-out on their live values, so a flight load's lever and trim are not
+    /// spoken as changes; nothing else of this definition's state is touched.
     /// </summary>
     public override void OnSimContextReset()
     {
         base.OnSimContextReset();
         _takeoffCallouts.Reset();
+        // The speed-brake callout's last sentence must not outlive the flight: carried over, the
+        // first genuine settle at that same detent would be swallowed as a repeat. Seeded, like the
+        // trim below, so the loaded lever is not announced as a change either.
+        SeedSpeedBrakeFromSnapshot();
+        // A flight load's trim is the loaded aircraft's setting, not a change: re-baseline from
+        // the live value. Never empty the baseline: the SDK's re-seed after a load arrives
+        // as an initial snapshot the call-out never sees, so the pilot's first real move would
+        // become the silent baseline.
+        SeedStabTrimFromSnapshot();
     }
 
-    // Speedbrake lever announce state (PR #163, minor 9). null initial means the
-    // first post-launch event announces (announceInitialChange semantics for this
-    // aircraft — the initial snapshot sweep never reaches ProcessSimVarUpdate, so
-    // the first call here is always a genuine change).
-    private string? _lastSpeedbrakeDetentName;
+    /// <summary>Baselines the trim call-out on the live SDK value (connect, re-seed, flight load),
+    /// because the SDK's initial snapshot never reaches ProcessSimVarUpdate. With no snapshot the
+    /// baseline is left as it is.</summary>
+    private void SeedStabTrimFromSnapshot()
+    {
+        if (Sdk.Snapshot is { } snap && ReadRawField(snap, StabTrimUnitsKey) is { } units)
+            _stabTrimCallout.Seed(units);
+    }
+
+    /// <summary>Baselines the speed-brake callout on the live lever (connect, re-seed, flight load):
+    /// its last sentence becomes the lever's real position, so neither a stale sentence nor the
+    /// loaded lever arriving as a change is spoken. With no snapshot the callout just forgets.</summary>
+    private void SeedSpeedBrakeFromSnapshot()
+    {
+        if (Sdk.Snapshot is { } snap && ReadRawField(snap, IFly737SpeedBrakeLever.FieldName) is { } lever)
+            _speedBrakeCallout.Seed(lever);
+        else
+            _speedBrakeCallout.Reset();
+    }
+
+    // Speed-brake lever announcer: the trailing-edge settle timer the PMDG jets use,
+    // over IFly737SpeedBrakeLever's detents, so only the RESTING detent is spoken
+    // (not the ones a travelling lever sweeps through). speakFirst: true — the
+    // initial snapshot sweep never reaches ProcessSimVarUpdate, so the first call
+    // is always a genuine change. The timer speaks outside MainForm's suppression
+    // wrap, so the announcer applies this aircraft's Ctrl+M mute and the pilot's
+    // own combo pick (RecordPick, in HandleUIVariableSet) itself. A lever resting
+    // between detents above ARMED (a hardware axis) speaks its percentage.
+    // Re-baselined on every context reset and SDK reconnect (SeedSpeedBrakeFromSnapshot) and
+    // disposed in Shutdown.
+    private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
+        IFly737SpeedBrakeLever.Detents, IFly737SpeedBrakeLever.SettleTolerance,
+        IFly737SpeedBrakeLever.SettleMs, aircraftCode: Code,
+        muteKey: IFly737SpeedBrakeLever.FieldName, speakFirst: true, picksLandAtOnce: true);
 
     /// <summary>FLAP_Status / FLTCTRL_FLAP_SET lever detent 0-8 → its label ("up",
     /// "1", "2", "5", "10", "15", "25", "30", "40"). Used by the L hotkey readout
@@ -1784,32 +1851,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         _ => detent.ToString(),
     };
 
-    // Speedbrake lever detents (Control Stand registration comment: 0 = DOWN,
-    // 35 = ARMED, 149 = FLIGHT DETENT, 224 = UP). Labels are transcribed verbatim
-    // from the PMDG 737's settle sentences (PmdgSpeedBrakeLever.Ng3) for fleet-wide announce parity
-    // (the iFly lever has no analog to PMDG's "50 percent" mid-detent).
-    private static readonly (double Value, string Label)[] SpeedbrakeDetentTable =
-    {
-        (0,   "Speed brake down"),
-        (35,  "Speed brake armed"),
-        (149, "Speed brake flight"),
-        (224, "Speed brake fully deployed"),
-    };
-
-    /// <summary>Nearest-anchor decode of the raw 0-225 Spoiler_Lever_Status value.
-    /// Used by both the background self-announce (full PMDG label) and the panel
-    /// display override (short word, prefix stripped).</summary>
-    private static string SpeedbrakeDetentName(double v)
-    {
-        int best = 0;
-        double bestDist = double.MaxValue;
-        for (int i = 0; i < SpeedbrakeDetentTable.Length; i++)
-        {
-            double d = Math.Abs(v - SpeedbrakeDetentTable[i].Value);
-            if (d < bestDist) { bestDist = d; best = i; }
-        }
-        return SpeedbrakeDetentTable[best].Label;
-    }
 
     // Flash-aware light announce state. Several 737 lights FLASH rather than hold
     // steady (IRS ALIGN blinks through alignment; the A/P and A/T disengage warning
@@ -1915,6 +1956,14 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
         Seed(_disengageLightKeys, v => v > 0.5);
 
         _pendingOff.Clear();
+
+        // The trim call-out is baselined the same way, for the same reason.
+        SeedStabTrimFromSnapshot();
+
+        // The speed-brake callout is re-baselined for the same reason: a lever moved while the SDK
+        // was down or stale arrives in the snapshot the callout never sees, and a carried-over
+        // sentence would swallow the first genuine settle at that detent as a repeat.
+        SeedSpeedBrakeFromSnapshot();
     }
 
     /// <summary>Flash-filtered light announce. Announces "on" once at the first lit
@@ -2170,6 +2219,18 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
+        // Stabilizer trim, in the UNITS the indicator shows (0-17), spoken exactly as the
+        // PMDG 737 speaks it (StabTrimUnitsCallout: "Trim 5.3"). Gated by the shared Shift+T
+        // trim toggle; the Ctrl+M row mutes it through MainForm's wrap (the iFly is wrapped,
+        // DefAnnounceMuteSets). Returns true, so the panel row reads the live snapshot in
+        // TryGetDisplayOverride rather than the frozen passed-in value.
+        if (varName == StabTrimUnitsKey)
+        {
+            if (_trimAnnouncementsEnabled && _stabTrimCallout.Next(value, TrimHysteresis) is { } trimPhrase)
+                announcer.Announce(trimPhrase);
+            return true;
+        }
+
         // Engine bowed rotor motoring (see the BrmLvar registration note): edge
         // announces only, both directions — the "complete" edge is the go-ahead
         // that the start sequence is moving again.
@@ -2188,17 +2249,11 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             return true;
         }
 
-        // Speedbrake lever: nearest-detent PMDG-parity wording. Announce only when
-        // the resolved detent NAME changes, so lever motion between anchors (which
-        // moves the raw 0-225 value continuously) stays quiet.
-        if (varName == "Spoiler_Lever_Status")
+        // Speed-brake lever: every sample restarts the settle timer; the resting
+        // detent is spoken once, in PMDG 737 wording (see _speedBrakeCallout).
+        if (varName == IFly737SpeedBrakeLever.FieldName)
         {
-            string name = SpeedbrakeDetentName(value);
-            if (_lastSpeedbrakeDetentName != name)
-            {
-                _lastSpeedbrakeDetentName = name;
-                announcer.Announce(name);
-            }
+            _speedBrakeCallout.OnSample(value, announcer);
             return true;
         }
 
@@ -2370,21 +2425,6 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                 // value = live gross weight in kg (the registration's Units).
                 displayText = IFly737FlapSpeeds.ComposePanelText(value);
                 return true;
-            case "Spoiler_Lever_Status":
-            {
-                // The T10 self-announce (ProcessSimVarUpdate, "Speedbrake lever" case)
-                // returns true, so MainForm's Step-3 displayValues cache is never written
-                // for this var and the passed-in `value` freezes at its launch reading.
-                // Read the LIVE snapshot instead, same as the SYN_* window cases above.
-                // "--" with no connection, matching MainForm's own no-data convention.
-                if (snap == null) { displayText = "--"; return true; }
-                double raw = ReadRawField(snap, "Spoiler_Lever_Status") ?? value;
-                string label = SpeedbrakeDetentName(raw);
-                displayText = label.StartsWith("Speed brake ", StringComparison.Ordinal)
-                    ? label["Speed brake ".Length..]
-                    : label;
-                return true;
-            }
             case "Rudder_Trim_Pointer_Status":
             {
                 // SDK reports -1.0 (full LEFT) .. 0 (CENTER) .. +1.0 (full RIGHT).
@@ -2395,10 +2435,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
                     : $"{(value < 0 ? "Left" : "Right")} {mag * 100:0} percent";
                 return true;
             }
-            case "Stabilizer_Trim_Pointer_Status":
-                // 0-17 stab trim units; one decimal so small changes are audible.
-                displayText = $"{value:0.0} units";
+            case StabTrimUnitsKey:
+            {
+                // 0-17 stab trim units; one decimal so small changes are audible. The trim
+                // call-out in ProcessSimVarUpdate returns true, so MainForm's display cache is
+                // never written and the passed-in value would freeze at its first reading —
+                // read the LIVE snapshot instead, as the speed-brake row does.
+                double units = (snap != null ? ReadRawField(snap, StabTrimUnitsKey) : null) ?? value;
+                displayText = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{units:0.0} units");
                 return true;
+            }
         }
         return base.TryGetDisplayOverride(varKey, value, out displayText);
     }

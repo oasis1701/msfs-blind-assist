@@ -1,0 +1,1 @@
+The FlyByWire A320 MCDU window no longer drops the value at the right-hand end of a line when the line also has green text. On INIT FUEL PRED you now hear the block fuel after TRIP/TIME instead of nothing.

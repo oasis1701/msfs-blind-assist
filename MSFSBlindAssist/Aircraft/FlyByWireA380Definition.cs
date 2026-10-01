@@ -3480,8 +3480,9 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
     // Names verified against the A380X cockpit XML + FCU AutopilotManager source:
     //  - AP1/AP2/LOC/APPR/EXPED fire the A32NX.FCU_*_PUSH key events (the A380X
     //    H:A320_Neo_FCU_*_PUSH H-events translate to these).
-    //  - A/THR uses the STOCK K:AUTO_THROTTLE_ARM (A32NX.FCU_ATHR_PUSH is not the
-    //    event the A380X FCU button uses).
+    //  - A/THR uses the STOCK K:AUTO_THROTTLE_ARM. The cockpit button itself fires
+    //    A32NX.FCU_ATHR_PUSH (fcu.xml), but the WASM maps BOTH to the same input
+    //    (simInputThrottles.ATHR_push = 1, SimConnectInterface.cpp), so either works.
     //  - TRK/FPA is intentionally NOT in this map: its state var is an FCU-shim OUTPUT
     //    (see the "since FBW #10855" comment on SetTrkFpaMode), so switching it also
     //    means the mode, V/S and FPA windows re-sync from the aircraft — SetTrkFpaMode

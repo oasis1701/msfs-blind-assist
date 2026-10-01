@@ -793,8 +793,10 @@ public partial class IFly737MAXDefinition
 
         // Rudder trim indicator: -1.0 full left / 0 center / +1.0 full right.
         Disp(P, "Rudder_Trim_Pointer_Status", "Rudder Trim Indicator");
-        // Stabilizer trim indicator: 0-17 units.
-        Disp(P, "Stabilizer_Trim_Pointer_Status", "Stabilizer Trim Units");
+        // Stabilizer trim indicator: 0-17 units. Announced ("Trim 5.3", the PMDG 737's
+        // wording) in place of the shared degrees call-out, which BuildVariables drops;
+        // its Ctrl+M row mutes it. See StabTrimUnitsKey in ProcessSimVarUpdate.
+        Disp(P, StabTrimUnitsKey, "Stabilizer Trim Units", announced: true);
 
         Annun(P, "STAB_OUT_TRIM_Light_Status", "Stabilizer Out of Trim light");
         // 0/1 flag (0 = flag hidden, 1 = flag shown) — Annun handles 0/1 fine.
@@ -846,10 +848,25 @@ public partial class IFly737MAXDefinition
             IFlyKeyCommand.FLTCTRL_FLAP_SET,
             new[] { "Up", "1", "2", "5", "10", "15", "25", "30", "40" });
 
-        // Speedbrake lever raw position (int 0-225): 0 = DOWN, 35 = ARMED,
-        // 149 = FLIGHT DETENT, 224 = UP. Nearest-detent decode + PMDG-parity
-        // announce/display live in IFly737MAXDefinition.SpeedbrakeDetentName.
-        Disp(P, "Spoiler_Lever_Status", "Speedbrake Lever Position", announced: true);
+        // Speed-brake lever: a combo over Spoiler_Lever_Status, written with
+        // FLTCTRL_SPOILER, whose Value2 is the SAME 0-224 scale (measured live —
+        // see IFly737SpeedBrakeLever, the one table). The classifier seeds the combo
+        // with the lever's position — Down short of ARMED, and past ARMED the nearest
+        // DEPLOYED detent, never Armed — so a lever resting between detents never opens
+        // it blank. The lever self-announces on a settle timer from ProcessSimVarUpdate
+        // (which returns true, skipping MainForm's generic control refresh), so it sets
+        // RefreshControlWhenDefHandled to keep an open panel following a lever moved from
+        // the cockpit or by the auto speed brake — at a POSITION only (IsAtPosition): per
+        // sample, a focused combo was narrated at every detent a travelling lever passed.
+        // Known limit (PMDG levers share it): a lever resting BETWEEN detents (a hardware
+        // axis) shows the nearest deployed detent, and picking that same item commits nothing —
+        // the settle announcer speaks its real travel ("Speed brake 35 percent"), and
+        // arrowing to another detent and back moves it.
+        SwD(P, IFly737SpeedBrakeLever.FieldName, "Speed Brake",
+            IFlyKeyCommand.FLTCTRL_SPOILER,
+            IFly737SpeedBrakeLever.ComboDescriptions());
+        _vars[IFly737SpeedBrakeLever.FieldName].ValueToDescriptionKey = IFly737SpeedBrakeLever.NearestDetentValue;
+        _vars[IFly737SpeedBrakeLever.FieldName].RefreshControlWhenDefHandled = IFly737SpeedBrakeLever.IsAtPosition;
 
         Annun(P, "SPEED_BRAKE_ARMED_Light_Status", "Speed Brake Armed light");
         Annun(P, "SPEED_BRAKE_DO_NOT_ARM_Light_Status", "Speed Brake Do Not Arm light");
