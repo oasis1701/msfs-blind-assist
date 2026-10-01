@@ -258,11 +258,15 @@ public partial class CowsDA40Definition
             }
 
             case "DA40_TRIM_NOSE_UP":
+                // The two directions are one rocker: holding both at once is not a press a
+                // pilot can make, so one direction lets go of the other.
+                ReleaseHeldLVar("INPUT_TRIM_DN");
                 HoldLVar("INPUT_TRIM_UP", TrimNudgeHoldMs, simConnect,
                     () => AnnounceTrimAfterNudge(simConnect, announcer));
                 return true;
 
             case "DA40_TRIM_NOSE_DOWN":
+                ReleaseHeldLVar("INPUT_TRIM_UP");
                 HoldLVar("INPUT_TRIM_DN", TrimNudgeHoldMs, simConnect,
                     () => AnnounceTrimAfterNudge(simConnect, announcer));
                 return true;

@@ -314,15 +314,10 @@ public partial class CowsDA40Definition
     /// <summary>When the press ended, so "finished" reports time since the END.</summary>
     private long _ecuTestEndedTicks;
 
+    /// <summary>One timer for every held control; it runs while anything is held.</summary>
     private System.Windows.Forms.Timer? _holdTimer;
-    private string _holdVar = "";
-    private long _holdUntilTicks;
-
-    /// <summary>
-    /// Run when a hold reaches its full duration — NOT when one hold pre-empts another,
-    /// because a cancelled press did not complete the action.
-    /// </summary>
-    private Action? _holdOnComplete;
+    private SimConnectManager? _holdSim;
+    private readonly DA40HoldSet _holds = new();
 
     /// <summary>
     /// Holds an L:var at 1 for <paramref name="holdMs"/> by re-writing it every ~40 ms,
@@ -336,64 +331,78 @@ public partial class CowsDA40Definition
     /// Measured: ATT_CAGE written once read back 0; re-written every 40 ms it held at 1
     /// and drove ATT_GYRO_CAGE_SET 0 to 1.
     ///
-    /// One hold at a time: a second call releases the first, so a stray double-press
-    /// cannot leave a control stuck down.
+    /// One hold PER VAR (<see cref="DA40HoldSet"/>): a second press of the same control
+    /// replaces the first, so a stray double-press cannot leave it stuck down, while a
+    /// press of a DIFFERENT control no longer cuts the ECU test short.
     /// </summary>
     private void HoldLVar(string lvar, int holdMs, SimConnectManager simConnect,
         Action? onComplete = null)
     {
-        ReleaseHeldLVar(simConnect);
-
-        _holdVar = lvar;
-        _holdUntilTicks = Environment.TickCount64 + holdMs;
-        _holdOnComplete = onComplete;
+        _holdSim = simConnect;
+        if (_holds.Start(lvar, Environment.TickCount64 + holdMs, onComplete))
+            Log.Debug("DA40", $"Re-pressed L:{lvar}; the earlier press does not complete");
 
         simConnect.SetLVar(lvar, 1);
 
-        _holdTimer = new System.Windows.Forms.Timer { Interval = 40 };
-        _holdTimer.Tick += (_, _) =>
+        if (_holdTimer == null)
         {
-            try
-            {
-                if (Environment.TickCount64 >= _holdUntilTicks || !simConnect.IsConnected)
-                {
-                    // Capture before releasing — ReleaseHeldLVar clears it so a
-                    // pre-empted hold cannot fire someone else's completion.
-                    var done = _holdOnComplete;
-                    ReleaseHeldLVar(simConnect);
-                    if (simConnect.IsConnected) done?.Invoke();
-                    return;
-                }
-                simConnect.SetLVar(_holdVar, 1);
-            }
-            catch (Exception ex)
-            {
-                Log.Debug("DA40", $"Held-write tick failed for {_holdVar}: {ex.Message}");
-                ReleaseHeldLVar(simConnect);
-            }
-        };
-        _holdTimer.Start();
+            _holdTimer = new System.Windows.Forms.Timer { Interval = 40 };
+            _holdTimer.Tick += (_, _) => TickHolds();
+            _holdTimer.Start();
+        }
 
         Log.Debug("DA40", $"Holding L:{lvar} for {holdMs} ms");
     }
 
-    private void ReleaseHeldLVar(SimConnectManager simConnect)
+    private void TickHolds()
+    {
+        var sim = _holdSim;
+        if (sim == null) { StopHoldTimer(); return; }
+
+        try
+        {
+            var (write, release, complete) = _holds.Tick(Environment.TickCount64, sim.IsConnected);
+            foreach (string lvar in write) sim.SetLVar(lvar, 1);
+            foreach (string lvar in release) WriteReleased(sim, lvar);
+            if (_holds.IsEmpty) StopHoldTimer();
+            foreach (var done in complete) done();
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("DA40", $"Held-write tick failed: {ex.Message}");
+            ReleaseAllHeldLVars();
+        }
+    }
+
+    private void WriteReleased(SimConnectManager sim, string lvar)
+    {
+        if (lvar == "ECU_TEST:1") _ecuTestEndedTicks = Environment.TickCount64;
+        try { if (sim.IsConnected) sim.SetLVar(lvar, 0); } catch { /* release must never throw */ }
+        Log.Debug("DA40", $"Released L:{lvar}");
+    }
+
+    private void StopHoldTimer()
     {
         if (_holdTimer == null) return;
-
         _holdTimer.Stop();
         _holdTimer.Dispose();
         _holdTimer = null;
-        _holdOnComplete = null;
+    }
 
-        if (_holdVar == "ECU_TEST:1") _ecuTestEndedTicks = Environment.TickCount64;
+    /// <summary>Lets go of one held control without completing it.</summary>
+    private void ReleaseHeldLVar(string lvar)
+    {
+        if (_holds.Release(lvar) && _holdSim != null) WriteReleased(_holdSim, lvar);
+        if (_holds.IsEmpty) StopHoldTimer();
+    }
 
-        if (!string.IsNullOrEmpty(_holdVar))
-        {
-            try { simConnect.SetLVar(_holdVar, 0); } catch { /* release must never throw */ }
-            Log.Debug("DA40", $"Released L:{_holdVar}");
-            _holdVar = "";
-        }
+    /// <summary>Lets go of everything held, completing nothing — the aircraft is being left.</summary>
+    private void ReleaseAllHeldLVars()
+    {
+        StopHoldTimer();
+        var sim = _holdSim;
+        foreach (string lvar in _holds.ReleaseAll())
+            if (sim != null) WriteReleased(sim, lvar);
     }
 
     /// <summary>
