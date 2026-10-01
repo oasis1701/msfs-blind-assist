@@ -754,6 +754,21 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         => new Dictionary<string, string>();
 
     /// <summary>
+    /// The keys that open the G1000 MFD window: Alt+M, Alt+N, and input mode Shift+M.
+    ///
+    /// ⚠️ Shift+M is the MCDU key on every airliner (<see cref="Hotkeys.HotkeyAction.ShowFenixMCDU"/>,
+    /// named for the aircraft that had it first) and this aeroplane has no MCDU. Unanswered
+    /// here it fell through MainForm's routing to its old bare <c>else</c> and opened a
+    /// FENIX A320 MCDU window over the Diamond. The G1000 keeps the flight plan, Direct-To
+    /// and procedures on the MFD — the job the MCDU does on the airliners — so the key opens
+    /// that, the same remapping Alt+S, Alt+I and Alt+E already make for this aeroplane.
+    /// </summary>
+    public static bool OpensMfdWindow(Hotkeys.HotkeyAction action) =>
+        action is Hotkeys.HotkeyAction.ReadDisplayND
+            or Hotkeys.HotkeyAction.ReadDisplayMFD
+            or Hotkeys.HotkeyAction.ShowFenixMCDU;
+
+    /// <summary>
     /// Ctrl+M opens this aircraft's Monitor Manager, where the pilot ticks and un-ticks
     /// which background changes speak. Everything else falls through to the base.
     /// </summary>
@@ -790,11 +805,14 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
 
         // Alt+M and Alt+N both open it. M is the obvious letter on a G1000 - the aeroplane
         // has a PFD and an MFD and no ND at all - and N is kept because the docs have said
-        // so since the window was built.
-        if (action == Hotkeys.HotkeyAction.ReadDisplayND ||
-            action == Hotkeys.HotkeyAction.ReadDisplayMFD)
+        // so since the window was built. Input mode Shift+M, the MCDU key on every
+        // airliner, opens it too: see OpensMfdWindow.
+        if (OpensMfdWindow(action))
         {
-            hotkeyManager?.ExitOutputHotkeyMode();
+            if (action == Hotkeys.HotkeyAction.ShowFenixMCDU)
+                hotkeyManager?.ExitInputHotkeyMode();
+            else
+                hotkeyManager?.ExitOutputHotkeyMode();
             ShowTrackedWindow("DA40_MFD",
                 () => new Forms.DA40.CowsDA40DisplayForm(
                     "G1000 MFD", "AS1000_MFD", "MFD", simConnect, announcer, this),
