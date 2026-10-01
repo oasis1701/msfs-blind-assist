@@ -1909,7 +1909,7 @@ In `MSFSBlindAssist/FirstOfficer/IFly737/IFly737ActionExecutor.cs`:
     public const string KeySpeedbrakeArm = SpeedbrakeLeverState.ArmPseudoKey;
 
     /// <summary>The lever write lands at once (measured, PR #261); the SDK is polled every 250 ms.</summary>
-    public const int SpeedbrakeArmVerifyMs = 1500;
+    public const int SpeedbrakeArmVerifyMs = 3000;
     private const int SpeedbrakeArmPollMs = 100;
 ```
 (ii) Add to `PseudoKeyHandlers`:

@@ -317,7 +317,7 @@ pressurised:
    (the 777's takes about five seconds to get there — the arm waits up to 8 s), and the
    **Landing Checklist → "Speedbrake: ARMED"** line ticks (on the 737 the Landing group's line
    too). Run the flow again → "Already set".
-2. Lever at the FLIGHT detent (or further) → the flow says "Speedbrake extended, not armed. Left
+2. Lever at the FLIGHT detent (737) / the 50 percent detent (777), or further → the flow says "Speedbrake extended, not armed. Left
    as it is." The lever does NOT move (clicking ARM over it would retract it), the speedbrake
    lines stay unticked, and the flow goes on. Ticking "Speedbrake: ARMED" by hand says the same
    sentence and ticks nothing. Move the lever to ARM yourself → the lines tick.

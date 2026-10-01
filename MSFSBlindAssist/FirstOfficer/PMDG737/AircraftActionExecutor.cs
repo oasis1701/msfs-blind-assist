@@ -234,9 +234,10 @@ public class AircraftActionExecutor : IFoActionExecutor
         // no-op — the Landing flow's "Speedbrake: ARMED" never armed.
         // 2026-08-25: live-verified against a real 737-800 — a single CDA + LEFTSINGLE
         // click on EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM armed the lever on the first
-        // attempt. The FO path (ArmSpeedbrakeAsync / SpeedbrakeArmLadder) still reads
-        // MAIN_annunSPEEDBRAKE_ARMED back afterward and reports honestly if it does not
-        // take, but no longer escalates across transports — see SpeedbrakeArmLadder's
+        // attempt. The FO path (ArmSpeedbrakeAsync / SpeedbrakeArmLadder) still confirms
+        // afterward that the lever sits exactly at ARM AND that MAIN_annunSPEEDBRAKE_ARMED is
+        // lit, and reports honestly if it does not take, but no longer escalates across
+        // transports — see SpeedbrakeArmLadder's
         // class comment for why the other two proven transports stay documented on the
         // enum without being tried. These rows still serve the sibling detent events
         // reached through the normal dispatch path (e.g. _DOWN, via SetSpeedbrakeDown());
@@ -652,9 +653,14 @@ public class AircraftActionExecutor : IFoActionExecutor
         && FieldOn(SpeedbrakeArmLadder.ArmedField);
 
     // No IsReady gate needed: pre-snapshot every field reads 0.0, so an unready data
-    // manager reads as "not armed" / "not lit" — the ladder tries every rung and honestly
-    // reports failure, which is the fail-safe direction here (unlike CenterQty(), where a
-    // false-0 must BLOCK an on-write, this is a read-only verification check).
+    // manager reads as "not armed" / "not lit". For the read-back check that is the fail-safe
+    // direction (the ladder tries every rung and honestly reports failure; unlike CenterQty(),
+    // where a false-0 must BLOCK an on-write, this is a read-only verification check). It is
+    // NOT fail-safe by itself where FieldOn also feeds the EXTENDED-light input of the arm
+    // decision (ArmSpeedbrakeAsync): there an unready 0 reads "not extended". What keeps that
+    // safe is the lever classification, which comes from SimConnect's cache and not from this
+    // data manager: a deployed lever classifies Deployed (left alone) and an unread one
+    // Unknown (never clicked blind), whatever this returns.
     private bool FieldOn(string field)
         => (_sc?.PMDGDataManager?.GetFieldValue(field) ?? 0.0) > 0.5;
 

@@ -382,6 +382,10 @@ public class IFly737ExecutorTests
         // wrapper — see PF_YD/AL_FLAPS's own comments), but still part of the executor's
         // write surface and named explicitly by the review.
         "FLAP_Status",
+
+        // The speed-brake lever: ArmSpeedbrakeCoreAsync (the verified SPEEDBRAKE_ARM
+        // pseudo-key) writes it through ApplySilent, to ARM exactly.
+        MSFSBlindAssist.Aircraft.IFly737SpeedBrakeLever.FieldName,
     };
 
     [Fact]

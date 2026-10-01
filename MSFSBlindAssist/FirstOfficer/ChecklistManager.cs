@@ -42,12 +42,17 @@ public class ChecklistManager<TExec, TState>
     // Manual toggle
     // -----------------------------------------------------------------------
 
-    /// <summary>
-    /// Toggle the IsChecked state of an item. Only works if ManualCompletionAllowed.
-    /// Returns the new checked state, or null if toggling was not permitted.
-    /// </summary>
+    /// <summary>The same as the three-argument overload, without the reason a tick was refused
+    /// by <see cref="ChecklistItem{TExec,TState}.LeaveAloneWhen"/>.</summary>
     public bool? ToggleItem(string groupId, string itemId) => ToggleItem(groupId, itemId, out _);
 
+    /// <summary>
+    /// Toggle the IsChecked state of an item. Only works if ManualCompletionAllowed.
+    /// Returns the new checked state, or null if toggling was not permitted. A tick ON refused
+    /// because the item's <see cref="ChecklistItem{TExec,TState}.LeaveAloneWhen"/> holds returns
+    /// <c>false</c> (not <c>null</c>: the item stays unchecked), with the reason in
+    /// <paramref name="leftAloneText"/>.
+    /// </summary>
     /// <param name="leftAloneText">Set when a tick ON was refused because the item's
     /// <see cref="ChecklistItem{TExec,TState}.LeaveAloneWhen"/> holds: the item stays unchecked,
     /// nothing ran, and this is what to say. Null otherwise.</param>

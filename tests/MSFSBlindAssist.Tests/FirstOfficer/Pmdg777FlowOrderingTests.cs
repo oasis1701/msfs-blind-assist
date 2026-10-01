@@ -102,12 +102,27 @@ public class Pmdg777FlowOrderingTests
         Assert.False(item.EvaluateState(201));
     }
 
+    // A 777 evaluator whose speed-brake lever reads `lever` (null = never delivered), the same
+    // shape as Pmdg777SpeedbrakeLeverReadTests.With. The leave-alone and already-set predicates
+    // are pinned through it, so swapping IsSpeedbrakeArmed and IsSpeedbrakeDeployed fails.
+    private static AircraftStateEvaluator LeverReading(double? lever)
+    {
+        var eval = new AircraftStateEvaluator();
+        eval.SetCachedValueSource(key => key == SpeedbrakeLeverState.Pmdg777.LeverKey ? lever : null);
+        return eval;
+    }
+
     [Fact]
     public void LandingChecklist_speedbrake_leaves_a_deployed_lever_alone()
     {
         var item = Item("LANDING_CL", "LDG_SPEEDBRAKE");
         Assert.NotNull(item.LeaveAloneWhen);
         Assert.Equal(SpeedbrakeLeverState.LeaveAloneText, item.LeaveAloneText);
+
+        Assert.True(item.LeaveAloneWhen!(LeverReading(201)), "spoilers 34 percent up: leave it");
+        Assert.False(item.LeaveAloneWhen!(LeverReading(200)), "ARMED is not deployed");
+        Assert.False(item.LeaveAloneWhen!(LeverReading(0)), "DOWN is not deployed");
+        Assert.False(item.LeaveAloneWhen!(LeverReading(null)), "an unread lever is not known deployed");
     }
 
     [Fact]
@@ -131,6 +146,18 @@ public class Pmdg777FlowOrderingTests
         Assert.NotNull(arm.SkipCondition);
         Assert.NotNull(arm.LeaveAloneWhen);
         Assert.Equal(SpeedbrakeLeverState.LeaveAloneText, arm.LeaveAloneText);
+
+        // Already set: exactly the ARM detent.
+        Assert.True(arm.SkipCondition!(LeverReading(200)));
+        Assert.False(arm.SkipCondition!(LeverReading(201)), "deployed is not 'Already set'");
+        Assert.False(arm.SkipCondition!(LeverReading(0)));
+        Assert.False(arm.SkipCondition!(LeverReading(null)));
+
+        // Left alone: anything past ARM.
+        Assert.True(arm.LeaveAloneWhen!(LeverReading(201)));
+        Assert.False(arm.LeaveAloneWhen!(LeverReading(200)));
+        Assert.False(arm.LeaveAloneWhen!(LeverReading(0)));
+        Assert.False(arm.LeaveAloneWhen!(LeverReading(null)));
     }
 
     [Fact]

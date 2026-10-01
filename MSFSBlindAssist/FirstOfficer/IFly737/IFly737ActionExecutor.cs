@@ -111,8 +111,12 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// shape: armed is left as it is, a deployed or unread lever is never written.</summary>
     public const string KeySpeedbrakeArm = SpeedbrakeLeverState.ArmPseudoKey;
 
-    /// <summary>The lever write lands at once (measured, PR #261); the SDK is polled every 250 ms.</summary>
-    public const int SpeedbrakeArmVerifyMs = 1500;
+    /// <summary>How long the arm waits for the lever AND the ARMED light to agree. The lever write
+    /// lands at once (measured, PR #261), but how quickly the ARMED light follows was not
+    /// measured. The wait returns as soon as both agree, so a long ceiling costs nothing when the
+    /// arm works, and it avoids a false "Skipping: Speedbrake: ARMED" if the light lags. The wait
+    /// polls every <c>SpeedbrakeArmPollMs</c>.</summary>
+    public const int SpeedbrakeArmVerifyMs = 3000;
     private const int SpeedbrakeArmPollMs = 100;
 
     /// <summary>THE one place a pseudo-key is wired to its handler. <see cref="PseudoKeys"/>

@@ -129,7 +129,7 @@ name.
   - Unknown or Deployed: false, no write;
   - Down: write `Spoiler_Lever_Status` = ARM through the panel's own `ApplyUIVariable` path
     (`FLTCTRL_SPOILER`, which records the pick, so main's settle announcer stays quiet), then
-    confirm armed within 1.5 s (SDK polled every 250 ms).
+    confirm armed within 3 s (SDK polled every 250 ms).
 - Landing flow: `Captain("LD_SPDBRK")` and the 15 s `LD_SPDBRK_CHECK` wait are replaced by one
   step, `Also(SW("LD_SPDBRK", …, SPEEDBRAKE_ARM, …, FO_SPEEDBRAKE_ARMED, "LDA_SPDBRK"),
   "LDC_SPDBRK")`, with the same skip and leave-alone rules as the 737.

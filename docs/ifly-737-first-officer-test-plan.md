@@ -212,7 +212,7 @@ actually was at the moment the flow proceeded.
 ### B7. Speedbrake — the First Officer arms it
 Landing's "Speedbrake: ARMED" step arms the lever through the verified `SPEEDBRAKE_ARM`
 (the PMDG 737's shape): it writes ARM, then requires the lever exactly at ARM AND the SPEED
-BRAKE ARMED light within 1.5 s. It completes BOTH "Speedbrake: ARMED" lines — the Landing
+BRAKE ARMED light within 3 s. It completes BOTH "Speedbrake: ARMED" lines — the Landing
 group's and the Landing Checklist's — and the gear check still comes last. History: until
 PR #261 measured the write, this step was a Captain reminder because the two vendor headers
 disagreed on the lever's scale (write `0~254`, read `0~225`); measured, it is one 0-224 scale

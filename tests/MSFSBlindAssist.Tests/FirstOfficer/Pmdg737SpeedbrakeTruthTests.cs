@@ -80,6 +80,22 @@ public class Pmdg737SpeedbrakeTruthTests
     }
 
     [Fact]
+    public void No_737_flow_step_sends_the_raw_ARM_event()
+    {
+        // The 777 executor refuses a raw EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM over a lever not
+        // known to be down; the 737 has no such guard because only ArmSpeedbrakeAsync sends ARM
+        // (through the verified pseudo-key). A raw ARM click over a raised lever retracts it, so
+        // pin that no flow step names the raw event.
+        const string rawArm = "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM";
+        var offenders = Pmdg737Flows.Build()
+            .SelectMany(f => f.Steps.Select(s => (Flow: f.Id, Step: s)))
+            .Where(x => x.Step.EventName == rawArm || x.Step.MultiActions.Any(a => a.EventName == rawArm))
+            .Select(x => $"{x.Flow}/{x.Step.Id}")
+            .ToList();
+        Assert.Empty(offenders);
+    }
+
+    [Fact]
     public void Both_lines_read_the_armed_field_and_only_the_landing_group_line_arms()
     {
         var group = Line("LANDING", "LDA_SPDBRK");
