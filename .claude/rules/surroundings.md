@@ -15,13 +15,13 @@ paths:
 
 Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full text of each rule: docs/invariants/surroundings.md.
 
-- [SUR-1] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-1
-- [SUR-2] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-2
-- [SUR-3] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-3
-- [SUR-4] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-4
-- [SUR-5] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-5
-- [SUR-6] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-6
-- [SUR-7] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-7
-- [SUR-8] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-8
-- [SUR-9] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-9
-- [SUR-10] <<ONE-LINER>> Full: docs/invariants/surroundings.md#sur-10
+- [SUR-1] Surroundings features are READOUT ONLY, never a `TaxiGraph.Build` input; a place becomes a destination only via `PlaceListBuilder`, BY POSITION (never a `(Name, Number, Suffix)` join); after a rebuild restore the pick or select NOTHING, never item 0 (more: see full). Full: docs/invariants/surroundings.md#sur-1
+- [SUR-2] OSM buildings keep their OWN query, store and event (`OsmFeatureSource` + `OnlineFeatureStore`), never fused with the taxiway-name query; they use `out body geom;` over one bounding box (never the `icao=` area query), and `FetchAsync` never throws on a bad body (more: see full). Full: docs/invariants/surroundings.md#sur-2
+- [SUR-3] Feature identity needs NAME and DISTANCE together (`AirportFeatureCatalog.SameFeature`); distance and bearing go to the SAME point (`SurroundingsGeometry.Nearest`); geometry is donated only where it describes the winner, and a `GeometryMayBeOneBody` refusal refuses the merge (more: see full). Full: docs/invariants/surroundings.md#sur-3
+- [SUR-4] "Which airport am I at" is always `CurrentAirport.Resolve` -> `CurrentAirportResolver.Pick` (four true-distance passes, order load-bearing), never `GetNearbyAirportICAOs`; the catalog is never built on the UI thread (`SurroundingsCatalogCache.GetAsync` only) (more: see full). Full: docs/invariants/surroundings.md#sur-4
+- [SUR-5] `AirportWarmUp` readies online taxiway names and the surroundings catalog before the pilot asks (current airport on the ground only, Shift+D destination anywhere); name prefetches share `_augmentPrefetched`, and `PrefetchAsync` returns at once while online taxi data is off. Full: docs/invariants/surroundings.md#sur-5
+- [SUR-6] A scenery model name reaches speech ONLY through `SceneryModelNameClassifier`; ground equipment needs BOTH the lexical and the structural (`SceneryPackageIndexer`) nets; every tier classifies via `FeatureLexicon.NamedKind`; widening kind keywords needs a `CurrentSchemaVersion` bump (more: see full). Full: docs/invariants/surroundings.md#sur-6
+- [SUR-7] Neither `SceneryPackageCensus` nor the indexer ever PERSISTS a scan that could not read every file its `layout.json` lists; both walks use the ONE `SceneryPackageDisk.BglFiles`; the census reads Community only and never `InstalledPackagesPathNextBoot` (more: see full). Full: docs/invariants/surroundings.md#sur-7
+- [SUR-8] A navdata parking type belongs to at most ONE family in `Database/Models/ParkingTypes`, and every consumer reads the families from there, never hand-typed; `IsCargo` is civil cargo only (6), while 7 and 8 are `IsMilitary`. Full: docs/invariants/surroundings.md#sur-8
+- [SUR-9] Passing callouts are queued and fire at the closest point of approach, abeam at the minimum, with NO start-up baseline; identity is kind + name + position (`SameFeatureMetres` 40 m, never widen); silent on runway pavement, and the probe never uses `Monitor.TryEnter` (more: see full). Full: docs/invariants/surroundings.md#sur-9
+- [SUR-10] The surface-change callout (`SurfaceChangeGate`) has its own switch, is not behind `SuppressCheck`, speaks only a surface FAMILY change confirmed by `ConfirmMetres` from its first reading; other `lastKnownPosition` writers must carry the surface fields forward (more: see full). Full: docs/invariants/surroundings.md#sur-10

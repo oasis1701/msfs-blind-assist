@@ -1,7 +1,7 @@
 # Landing rollout guidance — rules in full
 
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/landing-rollout.md`, which Claude Code loads when it reads matching code. Background: [taxi-guidance.md](../taxi-guidance.md).
-The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's.
+The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
 
 ## ROL-1
 

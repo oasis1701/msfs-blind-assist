@@ -1,7 +1,7 @@
 # FlyByWire flyPad EFB (A320 and A380) — rules in full
 
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/flypad.md`, which Claude Code loads when it reads matching code. Background: [flypad.md](../flypad.md).
-The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's.
+The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
 
 ## FPD-1
 

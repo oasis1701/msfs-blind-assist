@@ -283,7 +283,9 @@ def full_text_file(prefix, rows, base):
     bg = f" Background: [{background}](../{background})." if background else ""
     lines = [f"# {title} — rules in full", "",
              f"Each section is the complete text of one rule. Its one-line form, under the same ID, is {where}.{bg}",
-             f"The text is verbatim from CLAUDE.md as of `{base}`; a trailing \"→ doc\" pointer is the original's.", ""]
+             f"The text is verbatim from CLAUDE.md as of `{base}`; a trailing \"→ doc\" pointer is the original's. "
+             "Cross-references such as \"the bullet below\", \"above\" or \"under Core\" point at CLAUDE.md's old single list, "
+             "whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.", ""]
     for rid, _, _, _, bullet in rows:
         lines += [f"## {rid}", "", rewrite_links(bullet), ""]
     return "\n".join(lines)

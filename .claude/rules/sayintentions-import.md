@@ -9,34 +9,34 @@ paths:
 
 Loaded when Claude reads matching code. Background: docs/sayintentions.md. Full text of each rule: docs/invariants/sayintentions-import.md.
 
-- [SI-1] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-1
-- [SI-2] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-2
-- [SI-3] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-3
-- [SI-4] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-4
-- [SI-5] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-5
-- [SI-6] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-6
-- [SI-7] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-7
-- [SI-8] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-8
-- [SI-9] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-9
-- [SI-10] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-10
-- [SI-11] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-11
-- [SI-12] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-12
-- [SI-13] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-13
-- [SI-14] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-14
-- [SI-15] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-15
-- [SI-16] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-16
-- [SI-17] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-17
-- [SI-18] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-18
-- [SI-19] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-19
-- [SI-20] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-20
-- [SI-21] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-21
-- [SI-22] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-22
-- [SI-23] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-23
-- [SI-24] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-24
-- [SI-25] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-25
-- [SI-26] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-26
-- [SI-27] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-27
-- [SI-28] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-28
-- [SI-29] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-29
-- [SI-30] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-30
-- [SI-31] <<ONE-LINER>> Full: docs/invariants/sayintentions-import.md#si-31
+- [SI-1] `assigned_gate` is always an ARRIVAL gate at `flight_destination`: never infer its role from where the aircraft stands, and use it in destination resolution (and the parked-at-stand check) only when the routed airport IS the destination. Full: docs/invariants/sayintentions-import.md#si-1
+- [SI-2] `assigned_gate` is the FULL label ("Terminal 3 Gate J1"): the stand id is what follows the LAST gate/stand keyword, and a label with no keyword is used whole; never strip noise words instead. Full: docs/invariants/sayintentions-import.md#si-2
+- [SI-3] A gate candidate resolves by name, then online ALIASES, then the published `assigned_gate_lat`/`assigned_gate_lon`, both fallbacks INSIDE `TryResolveExternalDestination`'s candidate loop, never after it (the arrival runway would win). Full: docs/invariants/sayintentions-import.md#si-3
+- [SI-4] `TryResolveExternalDestination` must neutralise EVERY gate-list filter before probing (search box, `_suppressOccupiedFilter`, `_suppressFitFilter`); latch them on a successful seat, restore them on a failed probe, never untick `chkFitFilter`. Full: docs/invariants/sayintentions-import.md#si-4
+- [SI-5] On a KNOWN ARRIVAL (routed airport is `flight_destination` and a gate is assigned), `BuildSayIntentionsDestinationCandidates` carries GATE candidates ONLY; an unresolvable gate fails loudly (`ComposeUnresolvedArrivalGateMessage`), never seats a runway. Full: docs/invariants/sayintentions-import.md#si-5
+- [SI-6] The ALIAS step compares the EXACT normalized alias with the exact normalized identifier, never `Contains` ("A2" must never seat A24); it exists because `NormalizeParkingName` cuts the combo label before the alias. Full: docs/invariants/sayintentions-import.md#si-6
+- [SI-7] The coordinate step attaches to the assigned gate ALONE, behind the `flight_destination` check: admit within radius × `NoseStopRadiusFactor` (2.0), take the NEAREST, convert `ParkingSpot.Radius` by `Source`. (more: see full) Full: docs/invariants/sayintentions-import.md#si-7
+- [SI-8] The pilot must HEAR either substitution, right after the lead: alias says the scenery lists the gate under another name, position says the airport lacks it; an alias route must never claim the airport lacks the stand. Full: docs/invariants/sayintentions-import.md#si-8
+- [SI-9] `current_flight.taxi_path` is GEOMETRY: read its coordinates only, never a name-ish member (`id`/`label`/`name`); taxiway names come from the TaxiGraph, never from SI. Full: docs/invariants/sayintentions-import.md#si-9
+- [SI-10] Take the imported sequence from SI's snapped `taxi_path` ONLY when the parsed clearance runs through it IN ORDER (gaps allowed), never by set overlap; otherwise the clearance wins and the disagreement is spoken, never silent. Full: docs/invariants/sayintentions-import.md#si-10
+- [SI-11] The taxi-path snap takes the nearest edge within `SnapToleranceMetres` whose bearing agrees with the point's `heading` within `MaxHeadingDisagreementDeg` (25°), else the plain nearest; never turn that fallback into a rejection. Full: docs/invariants/sayintentions-import.md#si-11
+- [SI-12] The junction-artifact filter's sandwich must be CONTIGUOUS in `runs`, and the filter stays SANDWICH-ONLY, never a blanket revisit rejection; its escaping shapes and cleared-name limitation are deliberate: do not re-fix from reasoning alone. Full: docs/invariants/sayintentions-import.md#si-12
+- [SI-13] A timestamp can NEVER be the trust signal for `taxi_path` (`flight_details.timestamp` is when SI wrote the file): never rebuild a freshness gate on it or on file mtime, and keep `TaxiPathStampUtc` diagnostic only. Full: docs/invariants/sayintentions-import.md#si-13
+- [SI-14] The agreement walk runs against the COLLAPSED clearance (`CollapseConsecutive`, adjacent repeats only), but the RAW list, with a taxiway repeated across a hold-short, is what reaches the form. Full: docs/invariants/sayintentions-import.md#si-14
+- [SI-15] The walk needs the `2n + 1` length guard (`TrackIsShortEnoughToDescribe`), counting the COLLAPSED clearance; a track rejected on length is reported as a disagreement, never dropped quietly. Full: docs/invariants/sayintentions-import.md#si-15
+- [SI-16] The CLEARANCE always owns the destination and hold-shorts, whichever source wins the taxiway sequence; on the geometry path a hold-short anchor naming a taxiway the track lacks maps to -1 and is announced as unsettable. Full: docs/invariants/sayintentions-import.md#si-16
+- [SI-17] Never assume what `taxi_path` does with pavement already flown; `TrimToPointsAhead` makes a late press safe (snap from the point nearest the aircraft, untouched beyond 25 m, ties to the EARLIER index), and a trim is never announced. Full: docs/invariants/sayintentions-import.md#si-17
+- [SI-18] The Ctrl+Shift+Y chord has ONE definition (`HotkeyManager.SayIntentionsBuildTaxiRouteChordText` + its registration consts), used by the registration AND the guide test; never spell it independently. Full: docs/invariants/sayintentions-import.md#si-18
+- [SI-19] The snapper's `MinRunPoints` filter keeps OSM connector names ("Link 5") out; compute run-lengths over the RAW per-point sequence, a null BREAKING a run, BEFORE consecutive duplicates collapse. Full: docs/invariants/sayintentions-import.md#si-19
+- [SI-20] The snapper takes an already-built `TaxiGraph` (`GetNamedEdges()`) and never fetches names itself; `GetNamedEdges` must stay sorted on an INTRINSIC key (name + endpoint coordinates), never node id. Full: docs/invariants/sayintentions-import.md#si-20
+- [SI-21] On a GEOMETRY route never announce the clearance's unresolved words as "could not apply", and cap both leg lists ("Via …" and unapplied) at 3 names plus a count; a CLEARANCE route names every one, uncapped. Full: docs/invariants/sayintentions-import.md#si-21
+- [SI-22] The import summary reaches the pilot as ONE utterance, WARNINGS FIRST, folded into the standstill announcement via `TaxiAssistForm.StartImportedRoute`; aborts join via `AnnounceCalculateAbort`; name the destination only once it seated. Full: docs/invariants/sayintentions-import.md#si-22
+- [SI-23] A failed destination probe must restore the route-shaping boxes as well as the destination, setting the intersection state DIRECTLY with its `CheckedChanged` handler detached so nothing moves focus or speaks. Full: docs/invariants/sayintentions-import.md#si-23
+- [SI-24] The import and `LoadAirportDataAsync` each need their own reentrancy guard: airport loads CHAIN (never dropped), and a second import is refused out loud, never silently. Full: docs/invariants/sayintentions-import.md#si-24
+- [SI-25] The snapper's nearest-edge scan (20–90 ms, on the UI thread) must never move onto a per-frame path; it is acceptable only once per import at a standstill. `SnapToleranceMetres` (25 m) is re-measured and stays. Full: docs/invariants/sayintentions-import.md#si-25
+- [SI-26] An imported route must reset the route-shaping controls first (`ResetRouteShapingControls`), or a hand-built intersection departure or CAT III hold survives and moves the lineup point; `chkFitFilter` stays exempt. Full: docs/invariants/sayintentions-import.md#si-26
+- [SI-27] MainForm must never build its own `TaxiGraph` for a SayIntentions route: load via `TaxiAssistForm.LoadAirportForExternalRouteAsync` and resolve against the names it returns; the form owns its label formats. Full: docs/invariants/sayintentions-import.md#si-27
+- [SI-28] `TaxiAssistForm.LoadAirportDataAsync` must drop `_graph` before its awaits and claim `_currentIcao` only after a graph is built, so no failure exit leaves the previous airport's graph standing. Full: docs/invariants/sayintentions-import.md#si-28
+- [SI-29] A ground-track route accepted with NO clearance (`ChooseTaxiwaySource` rule 2) must SAY it is SayIntentions' own plan, not ATC's, and must never discard `GetLastTaxiClearanceAsync`'s `Error`. Full: docs/invariants/sayintentions-import.md#si-29
+- [SI-30] `BuildTaxiRouteFromSayIntentionsAsync` runs as a discarded Task, so EVERY statement (the DB-provider guard and `ValidateDatabaseSimulatorMatch()` included) must sit inside its top-level try, or failures vanish silently. Full: docs/invariants/sayintentions-import.md#si-30
+- [SI-31] `current_airport` holds the ARTCC ident in the cruise: validate every airport candidate against the navdata and fall through, never filter on the KZ prefix alone, and never let an unvalidated `current_airport` dead-end the import. Full: docs/invariants/sayintentions-import.md#si-31
