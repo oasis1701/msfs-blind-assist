@@ -125,7 +125,7 @@ public partial class CowsDA40Definition
         if (_lampTimer == null)
         {
             _lampTimer = new System.Windows.Forms.Timer { Interval = LampSettleMs };
-            _lampTimer.Tick += (_, _) => FlushLampWatch();
+            _lampTimer.Tick += (_, _) => UnderLoadSettle(_lampAnnouncer, FlushLampWatch);
         }
 
         // Stop-then-start: only the state the pair comes to REST in is judged.

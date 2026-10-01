@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using MSFSBlindAssist.Accessibility;
 
 namespace MSFSBlindAssist.Aircraft.DA40;
@@ -45,6 +46,21 @@ public partial class CowsDA40Definition
     private string _powerPendingLabel = "";
     private bool _powerPendingOn;
 
+    /// <summary>The last position each master was seen in; absent until its first reading.</summary>
+    private readonly Dictionary<string, bool> _powerSwitchSeen = new(StringComparer.Ordinal);
+
+    /// <summary>
+    /// True when <paramref name="value"/> MOVES a switch already seen; records it either way.
+    /// The first reading only records — it is how the switch stood, not something it did.
+    /// </summary>
+    internal static bool PowerSwitchMoved(Dictionary<string, bool> seen, string varKey, double value)
+    {
+        bool on = value > 0.5;
+        bool known = seen.TryGetValue(varKey, out bool was);
+        seen[varKey] = on;
+        return known && was != on;
+    }
+
     /// <summary>The two switches whose consequence is worth reading back.</summary>
     private bool NotePowerSwitchChange(string varKey, double value, ScreenReaderAnnouncer announcer)
     {
@@ -68,6 +84,11 @@ public partial class CowsDA40Definition
             default: return false;
         }
 
+        // ⚠️ A FIRST READING IS NOT A FLICK OF THE SWITCH. The first batch after a connect
+        // delivers the master as it stands, and arming on it read the bus voltages out with
+        // AnnounceImmediate over the connect announcements, for a switch nobody had touched.
+        if (!PowerSwitchMoved(_powerSwitchSeen, varKey, value)) return false;
+
         // ⚠️ Returns FALSE, never true. This is an ADDITION to the switch's own announcement,
         // not a replacement for it - the generic monitor still says "Electric Master: On" the
         // moment the switch moves, and this follows a second later with what happened. A pilot
@@ -79,7 +100,7 @@ public partial class CowsDA40Definition
         if (_powerSettleTimer == null)
         {
             _powerSettleTimer = new System.Windows.Forms.Timer { Interval = PowerSettleMs };
-            _powerSettleTimer.Tick += (_, _) => FlushPowerSettle();
+            _powerSettleTimer.Tick += (_, _) => UnderLoadSettle(_powerAnnouncer, FlushPowerSettle);
         }
 
         _powerSettleTimer.Stop();

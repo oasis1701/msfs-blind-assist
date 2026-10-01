@@ -190,8 +190,10 @@ public partial class CowsDA40Definition
             if (row.StartsWith("Autopilot: ", StringComparison.Ordinal)) fma = row.Substring(11);
         }
 
-        // First pass after a connect is the baseline and is never spoken.
-        if (!_casBaselined)
+        // First pass after a connect is the baseline and is never spoken — and so is every
+        // pass in the quiet period after a flight load, when the G1000 restarts and raises its
+        // start-up messages (see DA40LoadSettle).
+        if (!_casBaselined || _loadSettle.Settling)
         {
             _casBaselined = true;
             _knownCas.Clear();

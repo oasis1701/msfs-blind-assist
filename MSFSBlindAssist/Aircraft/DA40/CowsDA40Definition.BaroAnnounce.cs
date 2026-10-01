@@ -98,7 +98,7 @@ public partial class CowsDA40Definition
         if (_baroSettleTimer == null)
         {
             _baroSettleTimer = new System.Windows.Forms.Timer { Interval = BaroSettleMs };
-            _baroSettleTimer.Tick += (_, _) => FlushBaroSettle();
+            _baroSettleTimer.Tick += (_, _) => UnderLoadSettle(_baroAnnouncer, FlushBaroSettle);
         }
 
         // Stop-then-start is what makes it a SETTLE rather than a repeat: each further

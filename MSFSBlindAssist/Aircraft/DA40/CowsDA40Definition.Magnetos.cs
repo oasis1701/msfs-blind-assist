@@ -266,7 +266,7 @@ public partial class CowsDA40Definition
         if (_magSettleTimer == null)
         {
             _magSettleTimer = new System.Windows.Forms.Timer { Interval = MagnetoSettleMs };
-            _magSettleTimer.Tick += (_, _) => FlushMagnetoSettle();
+            _magSettleTimer.Tick += (_, _) => UnderLoadSettle(_magAnnouncer, FlushMagnetoSettle);
         }
 
         _magSettleTimer.Stop();

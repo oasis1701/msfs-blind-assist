@@ -182,7 +182,7 @@ public partial class CowsDA40Definition
         if (_radioSettleTimer == null)
         {
             _radioSettleTimer = new System.Windows.Forms.Timer { Interval = RadioSettleMs };
-            _radioSettleTimer.Tick += (_, _) => FlushRadioSettle();
+            _radioSettleTimer.Tick += (_, _) => UnderLoadSettle(_radioAnnouncer, FlushRadioSettle);
         }
 
         // Stop-then-start is what makes it a settle rather than a repeat.

@@ -61,7 +61,7 @@ public partial class CowsDA40Definition
         if (_doorTimer == null)
         {
             _doorTimer = new System.Windows.Forms.Timer { Interval = DoorSettleMs };
-            _doorTimer.Tick += (_, _) => FlushDoorSettle();
+            _doorTimer.Tick += (_, _) => UnderLoadSettle(_doorAnnouncer, FlushDoorSettle);
         }
 
         // Stop-then-start is what makes it a settle rather than a running commentary.

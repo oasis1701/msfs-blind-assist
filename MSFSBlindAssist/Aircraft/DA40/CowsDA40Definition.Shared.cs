@@ -271,6 +271,57 @@ public partial class CowsDA40Definition
     public override bool ProcessSimVarUpdate(string varName, double value,
         Accessibility.ScreenReaderAnnouncer announcer)
     {
+        // ⚠️ After a flight load or a reconnect every tracker below RECORDS but does not
+        // speak, and the generic announcer is kept out too (return true) — see DA40LoadSettle.
+        if (!_loadSettle.Settling) return ProcessSimVarUpdateCore(varName, value, announcer);
+
+        _loadSettle.NoteChange();
+        UnderLoadSettle(announcer, () => ProcessSimVarUpdateCore(varName, value, announcer));
+        return true;
+    }
+
+    private readonly DA40LoadSettle _loadSettle = new();
+
+    /// <summary>
+    /// Runs <paramref name="work"/> with <paramref name="announcer"/> muted while the load
+    /// settle runs (<see cref="Accessibility.ScreenReaderAnnouncer.OwnerMute"/>, which silences
+    /// AnnounceImmediate as well); otherwise runs it as it is. Every timer-driven announcer goes
+    /// through this too, because a settle timer armed during the quiet period fires after it.
+    /// </summary>
+    private void UnderLoadSettle(Accessibility.ScreenReaderAnnouncer? announcer, Action work)
+    {
+        if (!_loadSettle.Settling || announcer == null) { work(); return; }
+
+        bool previous = announcer.OwnerMute;
+        announcer.OwnerMute = true;
+        try { work(); }
+        finally { announcer.OwnerMute = previous; }
+    }
+
+    /// <inheritdoc />
+    public override void OnSimContextReset()
+    {
+        base.OnSimContextReset();
+        _loadSettle.Begin();
+    }
+
+    /// <inheritdoc />
+    public override void OnVariableCacheCleared()
+    {
+        base.OnVariableCacheCleared();
+        _loadSettle.Begin();
+    }
+
+    /// <inheritdoc />
+    public override void OnContinuousBatchDelivered(int batchNum)
+    {
+        base.OnContinuousBatchDelivered(batchNum);
+        _loadSettle.OnBatchDelivered(batchNum);
+    }
+
+    private bool ProcessSimVarUpdateCore(string varName, double value,
+        Accessibility.ScreenReaderAnnouncer announcer)
+    {
         // Captured BEFORE the silence gate: the stick is silent by design, and a gate that
         // returns first would leave the elevator comparison with nothing to compare against.
         NoteFlightControlValue(varName, value);

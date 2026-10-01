@@ -88,4 +88,20 @@ public class CowsDA40PowerUpAnnounceTests
             Assert.False(d.ExcludeFromBatch, $"{key} must not be excluded from the batch");
         }
     }
+
+    /// <summary>
+    /// ⚠️ The first batch after a connect delivers the master as it stands, and arming the
+    /// read-back on it spoke the bus voltages over the connect announcements for a switch
+    /// nobody had touched.
+    /// </summary>
+    [Fact]
+    public void TheFirstReadingOfTheMasterIsNotAFlickOfTheSwitch()
+    {
+        var seen = new System.Collections.Generic.Dictionary<string, bool>();
+
+        Assert.False(CowsDA40Definition.PowerSwitchMoved(seen, "DA40_ELEC_MASTER_BATTERY", 1));
+        Assert.False(CowsDA40Definition.PowerSwitchMoved(seen, "DA40_ELEC_MASTER_BATTERY", 1));
+        Assert.True(CowsDA40Definition.PowerSwitchMoved(seen, "DA40_ELEC_MASTER_BATTERY", 0));
+        Assert.True(CowsDA40Definition.PowerSwitchMoved(seen, "DA40_ELEC_MASTER_BATTERY", 1));
+    }
 }
