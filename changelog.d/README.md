@@ -69,3 +69,71 @@ describing something already released, or it will appear in the next release's n
 
 Actions → **Changelog** → *Run workflow* renders the notes for everything unreleased and
 prints them to the run summary. Nothing is published.
+
+## From the former CLAUDE.md section
+
+CLAUDE.md carried this text until 2026-10 and now keeps a short summary; it is kept here word for word.
+
+**After opening the PR, add `changelog.d/<pr>-<slug>.<category>.md`** describing the
+change in user-facing terms — `<pr>` is this PR's own number, so the file cannot be
+named, let alone added, until the PR exists. Do not try to pre-create it before opening
+the PR. A required CI check fails without it. Full convention:
+[changelog.d/README.md](README.md).
+
+**The procedure — the number is READ, never guessed:**
+
+1. Commit the code changes and push the branch.
+2. Open the PR (`gh pr create …`). It prints the PR URL; the trailing number IS `<pr>`.
+3. Add `changelog.d/<pr>-<slug>.<category>.md`, commit, push.
+
+**NEVER infer the next number.** GitHub draws issue and PR numbers from ONE shared
+sequence — in this repo issue #172 sits between PRs #171 and #173, issue #169 between
+#168 and #170 — so anyone filing an *issue* between your guess and `gh pr create` shifts
+it, as does a second PR opened in that window (four people contribute here). A fragment
+carrying the WRONG number is worse than one carrying none: it looks authoritative, so
+nobody re-checks it, and the archive quietly attributes a change to a PR that never made
+it. Step 2 costs nothing and cannot be wrong. If a number does end up wrong or missing,
+CI prints the exact `git mv` — that is the backstop, not the detection mechanism.
+
+- `<pr>` — this pull request's own number, no leading zero. Traces every fragment to the
+  PR that added it and stops two PRs on the same area from colliding on a file name. CI
+  checks this against the real PR number and, if it's wrong or missing, fails with the
+  exact `git mv` to fix it.
+- `<slug>` — lower-case letters/digits/dashes, starting with a letter or digit, short and
+  descriptive, unique within the PR.
+- `<category>` — `aircraft` (new airframe), `feature` (new capability), `improvement`
+  (existing capability made better), `fix`, or `internal` (validated, never published —
+  for refactors/CI/tests; its contributors are still credited, on the notes' closing line).
+- Content — markdown prose, no heading, becomes a bullet. **Write for a pilot, not a
+  reviewer**: say what is different when they fly, not which code path moved. Compare
+  "Docking no longer says complete when you are parked askew — it tells you to back up
+  and try again" against "fix(docking): require squareness before completion".
+
+Nothing user-facing? Add an `internal` fragment, or apply the `skip-changelog` label.
+Prefer the fragment — it needs no repository permissions.
+
+**A RELEASED fragment is never deleted.** A release is defined by the fragments *added*
+between two tags (`git diff --diff-filter=A <prev>..<tag>`), so `changelog.d/` is a
+permanent per-change archive of what has SHIPPED. Two consequences that are easy to get
+wrong: never tidy away a fragment that is already between two tags, and never add a
+fragment for something already released — it would appear in the next release's notes.
+
+**Before it merges, a long-running PR's own fragments may be CONDENSED, and a big one
+should be.** Nothing in an unmerged PR is between two tags, so nothing is lost from the
+archive. The rule for what survives: a release note describes what changed for a PILOT
+between the last release and this one, so a fragment that documents ITERATION ON CODE
+THIS SAME PR INTRODUCED has no reader — no version ever shipped without it, and the
+capability it repairs is simply part of the feature. What survives is the feature itself
+and anything the work changed OUTSIDE it. PR #189 (the TFDi MD-11) is the worked example:
+80 fragments became 8 — one `aircraft` entry naming what the MD-11 support provides, five
+fixes and an improvement that reach OTHER aircraft (the AI capture path, the calc-path
+verdict across an aircraft switch, the iFly's take-off callouts, the unit suffix, the
+MobiFlight log flood) and one `internal`. ⚠️ Judge "iteration" by what SHIPPED, not by the
+fragment's category: several of the deleted ones were written as `fix` but repaired the
+PrintWindow capture, the display-read latch and the EFB disabled-flip — all three added by
+that same PR, so a pilot upgrading never saw the defect.
+
+At tag time `.github/workflows/release.yml` renders the fragments with
+`tools/ChangelogBuilder` and passes them as `body_path`, which the release action
+prepends to GitHub's generated PR list. Preview any time from Actions → Changelog →
+Run workflow; it publishes nothing.
