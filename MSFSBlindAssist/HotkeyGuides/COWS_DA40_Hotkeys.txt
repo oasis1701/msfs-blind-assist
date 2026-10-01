@@ -59,6 +59,14 @@ Navigation:
              Untick "Waypoint Passing Call" in Ctrl+M to stop the automatic
              announcement. Ctrl+W keeps working either way.
 
+Checklist:
+  Shift+C    Open the checklist window. It shows the aeroplane's own checklist,
+             read from the COWS package, when MSFSBA can find the package (it looks
+             in the packages folder the simulator's settings name, and in the
+             default Community folders). Otherwise it shows MSFSBA's own DA40-NG or
+             DA40-XLS checklist, which names the MSFSBA panel for each step.
+             Space ticks an item; the ticks last for the session. Escape closes.
+
 Fuel:
   F          Fuel in the TANKS - total and each tank. Answers in the units set on
              the MFD's Aux System Setup page; while that is the default gallons

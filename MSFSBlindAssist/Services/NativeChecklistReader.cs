@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Xml.Linq;
+using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Services;
@@ -19,11 +20,12 @@ namespace MSFSBlindAssist.Services;
 /// how to reset failures and charge the batteries. Days of this project were spent deriving
 /// by probe what was written down in the package the whole time.
 ///
-/// It is also the fix for a quieter fault. <see cref="Forms.ChecklistForm"/> reads a
-/// hand-written text file per aircraft and falls back to the A320's when it has none — so on
+/// It was also the fix for a quieter fault. <see cref="Forms.ChecklistForm"/> read a
+/// hand-written text file per aircraft and fell back to the A320's when it had none — so on
 /// the DA40 the checklist window was showing an AIRBUS checklist. Reading the aeroplane's own
 /// is both more correct and less to maintain: nothing to transcribe, and it follows the
-/// aircraft through updates.
+/// aircraft through updates. <see cref="ChecklistContent"/> owns the order: this reader
+/// first, MSFSBA's bundled file when the package cannot be found or ships none.
 ///
 /// THE SHAPE OF THE FILE, which is Asobo's rather than ours:
 /// <code>
@@ -40,20 +42,54 @@ namespace MSFSBlindAssist.Services;
 public static class NativeChecklistReader
 {
     /// <summary>
-    /// Where MSFS keeps Community packages. Both simulators, and the Store layout, because
-    /// which one a pilot has is not something MSFSBA gets to choose.
+    /// Every folder an aircraft package may sit in, Community before Official: the packages
+    /// root each simulator's UserCfg.opt names, then the default Community folders of both
+    /// simulators and the Store layout, which cover a config that is missing or unreadable.
+    ///
+    /// ⚠️ THE DEFAULTS ALONE MISSED EVERY PILOT WHO CHOSE WHERE PACKAGES GO — the simulator
+    /// asks on first launch, so that is common — and the checklist window then said the
+    /// aeroplane ships no checklist. The root is read the way the scenery census reads it:
+    /// the ACTIVE key only, never <c>InstalledPackagesPathNextBoot</c>, because the
+    /// simulator writes that line the moment a new folder is picked, before anything has
+    /// moved there. Official holds a Marketplace copy (Official\OneStore, Official\Steam)
+    /// and comes last: a pilot's own Community copy wins, and the scan of a large Official
+    /// folder is paid only when nothing was found before it.
     /// </summary>
-    private static IEnumerable<string> CommunityRoots()
+    internal static IEnumerable<string> PackageRoots(string roamingAppData, string localAppData)
     {
-        string local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-        string roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
+        var configured = new List<string>();
+        foreach (string sim in new[] { "FS2024", "FS2020" })
+        {
+            string? root = MsfsPackagesLocator.TryGetInstalledPackagesPath(
+                sim, roamingAppData, localAppData, includeNextBoot: false, out _);
+            if (root != null) configured.Add(root);
+        }
 
-        yield return Path.Combine(local, "Packages",
+        var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (string root in configured)
+        {
+            string community = Path.Combine(root, "Community");
+            if (seen.Add(community)) yield return community;
+        }
+
+        foreach (string community in DefaultCommunityRoots(roamingAppData, localAppData))
+            if (seen.Add(community)) yield return community;
+
+        foreach (string root in configured)
+            foreach (string official in SafeDirectories(Path.Combine(root, "Official")))
+                if (seen.Add(official)) yield return official;
+    }
+
+    /// <summary>Where each simulator keeps Community when nobody chose otherwise.</summary>
+    private static IEnumerable<string> DefaultCommunityRoots(string roamingAppData, string localAppData)
+    {
+        yield return Path.Combine(localAppData, "Packages",
             "Microsoft.Limitless_8wekyb3d8bbwe", "LocalCache", "Packages", "Community");
-        yield return Path.Combine(local, "Packages",
+        yield return Path.Combine(localAppData, "Packages",
             "Microsoft.FlightSimulator_8wekyb3d8bbwe", "LocalCache", "Packages", "Community");
-        yield return Path.Combine(roaming, "Microsoft Flight Simulator 2024", "Packages", "Community");
-        yield return Path.Combine(roaming, "Microsoft Flight Simulator", "Packages", "Community");
+        yield return Path.Combine(roamingAppData, "Microsoft Flight Simulator 2024", "Packages", "Community");
+        yield return Path.Combine(roamingAppData, "Microsoft Flight Simulator", "Packages", "Community");
     }
 
     /// <summary>
@@ -64,17 +100,24 @@ public static class NativeChecklistReader
     /// genuinely different documents.
     /// </summary>
     public static string? FindChecklistFile(string simObjectFolder)
-    {
-        foreach (string community in CommunityRoots())
-        {
-            if (!Directory.Exists(community)) continue;
+        => FindChecklistFile(simObjectFolder,
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
 
-            foreach (string package in SafeDirectories(community))
+    /// <summary>Test seam: the two roots Windows would otherwise supply.</summary>
+    internal static string? FindChecklistFile(string simObjectFolder, string roamingAppData, string localAppData)
+    {
+        foreach (string folder in PackageRoots(roamingAppData, localAppData))
+        {
+            if (!Directory.Exists(folder)) continue;
+
+            foreach (string package in SafeDirectories(folder))
             {
                 string dir = Path.Combine(package, "SimObjects", "Airplanes", simObjectFolder, "Checklist");
                 if (!Directory.Exists(dir)) continue;
 
-                string? file = SafeFiles(dir, "*.xml").FirstOrDefault();
+                // Sorted, so a package carrying more than one file reads the same one every time.
+                string? file = SafeFiles(dir, "*.xml").OrderBy(f => f, StringComparer.OrdinalIgnoreCase).FirstOrDefault();
                 if (file != null) return file;
             }
         }

@@ -107,95 +107,17 @@ public partial class ChecklistForm : Form
     }
 
     private string GetChecklistText()
-    {
-        // ⚠️ THE AIRCRAFT'S OWN CHECKLIST FIRST. Every MSFS aeroplane may ship one as plain
-        // XML inside its package, and it is better than anything hand-transcribed here: it
-        // is the vendor's, it is complete, and it follows the aircraft through updates. The
-        // COWS DA40's also carries a "Tips and help" page with the warm-up times, the
-        // rotate speeds, the traffic-pattern power settings and how to reset failures and
-        // charge the batteries - operating knowledge this project spent days deriving by
-        // probe while it sat in the package unread.
-        string? native = Services.NativeChecklistReader.Render(aircraftCode);
-        if (!string.IsNullOrWhiteSpace(native)) return native;
-
-        // Map aircraft codes to checklist filenames
-        var filenameMap = new Dictionary<string, string>
-        {
-            { "A320", "FBW_A320_Checklist.txt" },
-            { "HW_A330", "FBW_A330_Checklist.txt" },
-            { "FENIX_A320CEO", "Fenix_A320_Checklist.txt" },
-            { "FBW_A380", "FBW_A380_Checklist.txt" },
-            { "IFLY_737MAX8", "iFly_737MAX8_Checklist.txt" }
-        };
-
-        // ⚠️ NO AIRBUS FALLBACK. An aeroplane with no checklist of its own used to be shown
-        // the A320's, so the DA40's checklist window was listing an Airbus procedure - which
-        // is worse than an empty window, because it looks authoritative and is wrong about
-        // an aeroplane the pilot is flying.
-        if (!filenameMap.TryGetValue(aircraftCode, out string? filename))
-        {
-            return "[No checklist for this aircraft]\n" +
-                   "This aeroplane ships no checklist of its own and MSFSBA carries none " +
-                   "for it. Use the aircraft's own documentation.";
-        }
-
-        // Construct file path
-        string appPath = AppDomain.CurrentDomain.BaseDirectory;
-        string filePath = Path.Combine(appPath, "Checklists", filename);
-
-        try
-        {
-            if (File.Exists(filePath))
-            {
-                return File.ReadAllText(filePath);
-            }
-            else
-            {
-                return $"[Error]\nChecklist file not found: {filePath}";
-            }
-        }
-        catch (Exception ex)
-        {
-            return $"[Error]\nError loading checklist: {ex.Message}";
-        }
-    }
-
-    private Dictionary<string, List<string>> ParseChecklistText(string text)
-    {
-        var checklistItems = new Dictionary<string, List<string>>();
-        string? currentCategory = null;
-
-        var lines = text.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-
-        foreach (var line in lines)
-        {
-            var trimmedLine = line.Trim();
-
-            // Skip empty lines
-            if (string.IsNullOrWhiteSpace(trimmedLine))
-                continue;
-
-            // Check if line is a category (starts with [ and ends with ])
-            if (trimmedLine.StartsWith("[") && trimmedLine.EndsWith("]"))
-            {
-                currentCategory = trimmedLine.Substring(1, trimmedLine.Length - 2);
-                checklistItems[currentCategory] = new List<string>();
-            }
-            else if (currentCategory != null)
-            {
-                // Add item to current category
-                checklistItems[currentCategory].Add(trimmedLine);
-            }
-        }
-
-        return checklistItems;
-    }
+        // The aircraft's own checklist first, MSFSBA's bundled file second, never another
+        // aircraft's — see ChecklistContent, which owns the order and the file map.
+        => Services.ChecklistContent.Load(
+            aircraftCode,
+            Services.NativeChecklistReader.Render,
+            Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Checklists"));
 
     private void PopulateChecklist()
     {
         // Load and parse checklist from aircraft-specific text file
-        string checklistText = GetChecklistText();
-        var checklistItems = ParseChecklistText(checklistText);
+        var sections = Services.ChecklistContent.Parse(GetChecklistText());
 
         // Clear existing controls and views
         scrollPanel.Controls.Clear();
@@ -204,11 +126,11 @@ public partial class ChecklistForm : Form
         int yPosition = 10;
         int tabIndex = 0;
 
-        // Create a CheckedListBox for each category from the file
-        foreach (var categoryEntry in checklistItems)
+        // Create a CheckedListBox for each category, in the checklist's own order
+        foreach (var section in sections)
         {
-            string category = categoryEntry.Key;
-            var items = categoryEntry.Value;
+            string category = section.Title;
+            var items = section.Items;
 
             // Create label for the category
             var label = new Label
@@ -262,9 +184,7 @@ public partial class ChecklistForm : Form
     }
 
     private string GetItemKey(string category, string itemText)
-    {
-        return $"{category}|{itemText}";
-    }
+        => Services.ChecklistContent.ItemKey(aircraftCode, category, itemText);
 
     private void CheckedListBox_ItemCheck(object? sender, ItemCheckEventArgs e)
     {

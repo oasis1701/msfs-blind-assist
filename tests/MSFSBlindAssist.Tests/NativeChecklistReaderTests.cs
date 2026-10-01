@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Xml.Linq;
 using MSFSBlindAssist.Services;
@@ -13,8 +14,33 @@ namespace MSFSBlindAssist.Tests;
 /// aircraft, so it runs on any machine; the one test that does touch the real package skips
 /// itself when it is not there.
 /// </summary>
-public class NativeChecklistReaderTests
+public class NativeChecklistReaderTests : IDisposable
 {
+    private readonly string _root = Path.Combine(Path.GetTempPath(), "msfsba-checklist-" + Guid.NewGuid().ToString("N"));
+    public void Dispose() { try { Directory.Delete(_root, true); } catch { } }
+
+    private string Roaming => Path.Combine(_root, "Roaming");
+    private string Local => Path.Combine(_root, "Local");
+
+    /// <summary>A UserCfg.opt for one simulator naming <paramref name="packages"/> as its packages root.</summary>
+    private void WriteUserCfg(string simFolder, string packages, string key = "InstalledPackagesPath")
+    {
+        string dir = Path.Combine(Roaming, simFolder);
+        Directory.CreateDirectory(dir);
+        Directory.CreateDirectory(packages);
+        File.WriteAllLines(Path.Combine(dir, "UserCfg.opt"), new[] { "{Graphics", $"{key} \"{packages}\"", "}" });
+    }
+
+    /// <summary>An aircraft package under <paramref name="folder"/> carrying a checklist for <paramref name="simObject"/>.</summary>
+    private static string WritePackage(string folder, string package, string simObject)
+    {
+        string dir = Path.Combine(folder, package, "SimObjects", "Airplanes", simObject, "Checklist");
+        Directory.CreateDirectory(dir);
+        string file = Path.Combine(dir, "Checklist.xml");
+        File.WriteAllText(file, "<Checklist/>");
+        return file;
+    }
+
     private static XDocument Sample() => XDocument.Parse("""
         <Checklist>
           <Step ChecklistStepId="PREFLIGHT_GATE">
@@ -221,6 +247,91 @@ public class NativeChecklistReaderTests
         Assert.Contains("Weights", text, StringComparison.Ordinal);
         Assert.Contains("Operating speeds", text, StringComparison.Ordinal);
         Assert.Contains("High Altitude operations", text, StringComparison.Ordinal);
+    }
+
+    /// <summary>
+    /// ⚠️ THE READER ONLY KNEW THE FOUR DEFAULT COMMUNITY FOLDERS. The simulator asks where
+    /// packages go on first launch, so a pilot who picked another drive — common — got "this
+    /// aeroplane ships no checklist" for an aeroplane that does. The packages root is read from
+    /// UserCfg.opt the way the scenery census reads it.
+    /// </summary>
+    [Fact]
+    public void AChecklistInACustomPackagesFolderIsFound()
+    {
+        string packages = Path.Combine(_root, "D-drive", "MSFS");
+        WriteUserCfg("Microsoft Flight Simulator 2024", packages);
+        string expected = WritePackage(Path.Combine(packages, "Community"), "cows-da40", "COWS_DA40NG");
+
+        Assert.Equal(expected, NativeChecklistReader.FindChecklistFile("COWS_DA40NG", Roaming, Local));
+    }
+
+    [Fact]
+    public void TheFs2020PackagesFolderIsSearchedToo()
+    {
+        string packages = Path.Combine(_root, "E-drive", "MSFS2020");
+        WriteUserCfg("Microsoft Flight Simulator", packages);
+        string expected = WritePackage(Path.Combine(packages, "Community"), "cows-da40", "COWS_DA40XLS");
+
+        Assert.Equal(expected, NativeChecklistReader.FindChecklistFile("COWS_DA40XLS", Roaming, Local));
+    }
+
+    /// <summary>A Marketplace copy lives under Official (OneStore or Steam), not Community.</summary>
+    [Fact]
+    public void AMarketplaceCopyUnderOfficialIsFound()
+    {
+        string packages = Path.Combine(_root, "MSFS");
+        WriteUserCfg("Microsoft Flight Simulator 2024", packages);
+        string expected = WritePackage(Path.Combine(packages, "Official", "OneStore"), "cows-da40", "COWS_DA40NG");
+
+        Assert.Equal(expected, NativeChecklistReader.FindChecklistFile("COWS_DA40NG", Roaming, Local));
+    }
+
+    /// <summary>
+    /// The simulator writes the NextBoot line the moment a new folder is PICKED, before
+    /// anything has moved there — the folder it is loading from is the active key's.
+    /// </summary>
+    [Fact]
+    public void TheNextBootFolderIsNotWhereTheAircraftIs()
+    {
+        string packages = Path.Combine(_root, "Pending");
+        WriteUserCfg("Microsoft Flight Simulator 2024", packages, key: "InstalledPackagesPathNextBoot");
+        WritePackage(Path.Combine(packages, "Community"), "cows-da40", "COWS_DA40NG");
+
+        Assert.Null(NativeChecklistReader.FindChecklistFile("COWS_DA40NG", Roaming, Local));
+    }
+
+    /// <summary>A pilot with no readable UserCfg.opt still has the default folders searched.</summary>
+    [Fact]
+    public void TheDefaultCommunityFolderIsStillSearched()
+    {
+        string community = Path.Combine(Local, "Packages", "Microsoft.Limitless_8wekyb3d8bbwe", "LocalCache", "Packages", "Community");
+        string expected = WritePackage(community, "cows-da40", "COWS_DA40NG");
+
+        Assert.Equal(expected, NativeChecklistReader.FindChecklistFile("COWS_DA40NG", Roaming, Local));
+    }
+
+    /// <summary>
+    /// Community is searched before Official on every simulator, so a pilot's own copy wins
+    /// over a Marketplace one and the slow Official scan is paid only when nothing is found.
+    /// </summary>
+    [Fact]
+    public void EveryCommunityFolderComesBeforeAnyOfficialOne()
+    {
+        string p2024 = Path.Combine(_root, "MSFS2024");
+        string p2020 = Path.Combine(_root, "MSFS2020");
+        WriteUserCfg("Microsoft Flight Simulator 2024", p2024);
+        WriteUserCfg("Microsoft Flight Simulator", p2020);
+        Directory.CreateDirectory(Path.Combine(p2024, "Official", "OneStore"));
+        Directory.CreateDirectory(Path.Combine(p2020, "Official", "Steam"));
+
+        var roots = NativeChecklistReader.PackageRoots(Roaming, Local).ToList();
+        int lastCommunity = roots.FindLastIndex(r => Path.GetFileName(r) == "Community");
+        int firstOfficial = roots.FindIndex(r => Path.GetFileName(Path.GetDirectoryName(r)!) == "Official");
+
+        Assert.Contains(Path.Combine(p2024, "Community"), roots);
+        Assert.Contains(Path.Combine(p2020, "Community"), roots);
+        Assert.True(firstOfficial > lastCommunity, $"official at {firstOfficial}, last community at {lastCommunity}");
+        Assert.Equal(roots.Count, roots.Distinct(StringComparer.OrdinalIgnoreCase).Count());
     }
 }
 

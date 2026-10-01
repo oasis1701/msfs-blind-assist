@@ -179,6 +179,12 @@
     <None Update="Checklists\iFly_737MAX8_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
+    <None Update="Checklists\COWS_DA40NG_Checklist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Checklists\COWS_DA40XLS_Checklist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <!-- User-facing guides/manuals. Shipped in full (whole folder) so the in-app
          hotkey lists' "see Guides\..." references resolve next to the exe, and any
          future per-aircraft manual added here ships automatically. -->
