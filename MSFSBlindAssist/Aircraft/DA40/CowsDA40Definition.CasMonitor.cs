@@ -97,6 +97,7 @@ public partial class CowsDA40Definition
         StopLampWatch();
         StopDoorAnnounce();
         StopWaypointSequencer();
+        CloseEngineGlance();
         // A press still being held must be let go, or its timer keeps writing an L:var into
         // whatever aircraft comes next.
         ReleaseAllHeldLVars();

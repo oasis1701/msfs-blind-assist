@@ -843,6 +843,18 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>
+    /// Closes the Alt+S window. Called when the aircraft is switched away: the window reads
+    /// through THIS definition, so left open it would keep refreshing against an aircraft that
+    /// is no longer loaded and show nothing, or the other DA40 variant's empty keys.
+    /// </summary>
+    private void CloseEngineGlance()
+    {
+        var f = _engineGlance;
+        _engineGlance = null;
+        try { if (f != null && !f.IsDisposed) f.Close(); } catch { /* teardown must not throw */ }
+    }
+
+    /// <summary>
     /// One row per reading, from the SAME keys and the SAME display overrides the spoken
     /// form used - so the window and the panels can never disagree, and every gauge with a
     /// published arc still reports its arc, because the arc IS the reading a sighted pilot
