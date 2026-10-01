@@ -846,7 +846,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
                 return ShowApButtonsDialog(simConnect, announcer, parentForm, hotkeyManager);
         }
 
-        return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
+        // The base contract is non-nullable; MainForm, the only caller, always passes both.
+        return base.HandleHotkeyAction(action, simConnect, announcer, parentForm!, hotkeyManager!);
     }
 
     /// <summary>
@@ -974,7 +975,6 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandlePrimingSet(varKey, value, simConnect, announcer)) return true;
         if (HandleXlsFuelSet(varKey, value, simConnect, announcer)) return true;
         if (HandleXlsStartSet(varKey, value, simConnect, announcer)) return true;
-        if (HandleXlsMixtureSet(varKey, value, simConnect, announcer)) return true;
         if (HandleXlsMixtureSet(varKey, value, simConnect, announcer)) return true;
         if (HandleOptionSet(varKey, value, simConnect)) return true;
         if (HandleEcuSet(varKey, value, simConnect, announcer)) return true;
