@@ -161,7 +161,7 @@ public class FlowStep<TState> : IFlowStepDispatch
     /// <summary>
     /// Further checklist items this step delivers, beyond <see cref="CompletesChecklistItemId"/>
     /// — for a line that appears in BOTH a phase's action group and its read-back checklist and
-    /// is delivered by one step (the iFly 737 Landing flow's read-only speedbrake check completes
+    /// is delivered by one step (the iFly 737 Landing flow's verified speed-brake arm completes
     /// "Speedbrake: ARMED" in both). FlowManager marks, and on a skipped step EXCLUDES, every id
     /// in <see cref="LinkedChecklistItemIds"/>: a line the step delivers but does not name would
     /// otherwise be ticked and latched by MarkGroupComplete even when the step was skipped.

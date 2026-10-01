@@ -329,6 +329,16 @@ ladder still reads `MAIN_annunSPEEDBRAKE_ARMED` back after dispatching and repor
 honestly if it did not take — that read-back proof is what makes the step trustworthy
 and must stay regardless of how many rungs remain.
 
+**What counts as armed, and what is left alone (2026-09-30).** The ARMED light alone does
+not prove ARMED: on `L:switch_679_73X` it is lit from 100 (ARM) to about 342, well into
+deployed travel (measured in PR #261). "Armed" is now the lever exactly at ARM AND the
+light, with the lever read from SimConnect's cache (main's `MON_PMDG737_SpeedBrake`) and
+the light from the CDA. A deployed speed brake, or a lit EXTENDED light, is never clicked
+(the click would retract it), and the arm reports NOT done; it used to count "extended" as
+done. The flow and the hand-tick say *"Speedbrake extended, not armed. Left as it is."*
+(`FlowStep.LeaveAloneWhen` / `ChecklistItem.LeaveAloneWhen`). The verify window is 3 s,
+because the lever rides the 1 Hz L-var batch.
+
 ### Gear lever OFF — removed from the First Officer (2026-09-22)
 
 The First Officer does **not** touch the gear lever's OFF detent: no After Takeoff step, no

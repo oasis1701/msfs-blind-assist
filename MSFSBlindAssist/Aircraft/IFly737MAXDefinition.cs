@@ -1054,15 +1054,16 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     /// (SwPerValue) — as opposed to merely being a registered key at all. Closes the hole
     /// Task 6's review found in the flow totality test: <see cref="ApplyUIVariable"/> (via
     /// <see cref="HandleUIVariableSet"/>) returns TRUE for a registered but read-only key
-    /// (Annun/AnnunD/Disp — display-only, e.g. Spoiler_Lever_Status) after merely speaking
-    /// "X is a read-only indicator" and re-firing state, so a flow step pointed at one
-    /// resolves as "writable" under a membership-only check and then silently does nothing
-    /// in the sim. <see cref="SimConnect.SimVarDefinition.RenderAsReadOnlyStatus"/> is NOT a
-    /// substitute — that flag is only ever set true by the SwD path (a null `set` command);
-    /// Disp/Annun/AnnunD leave it false with no write command at all, which is exactly the
-    /// gap a mutation probe proved (pointing a step at Spoiler_Lever_Status passed the old
-    /// RenderAsReadOnlyStatus-based test). Internal and decoupled from a live SDK — only
-    /// needs registration, same as <see cref="IFly737ActionExecutor.IsDeclaredPosition"/>.</summary>
+    /// (Annun/AnnunD/Disp — display-only, e.g. Hydraulic_Brake_Pressure_Status, a Disp field)
+    /// after merely speaking "X is a read-only indicator" and re-firing state, so a flow step
+    /// pointed at one resolves as "writable" under a membership-only check and then silently
+    /// does nothing in the sim. <see cref="SimConnect.SimVarDefinition.RenderAsReadOnlyStatus"/>
+    /// is NOT a substitute — that flag is only ever set true by the SwD path (a null `set`
+    /// command); Disp/Annun/AnnunD leave it false with no write command at all, which is exactly
+    /// the gap a mutation probe proved (pointing a step at Spoiler_Lever_Status passed the old
+    /// RenderAsReadOnlyStatus-based test; PR #261 has since given that field a real write,
+    /// FLTCTRL_SPOILER). Internal and decoupled from a live SDK — only needs registration,
+    /// same as <see cref="IFly737ActionExecutor.IsDeclaredPosition"/>.</summary>
     internal bool HasWriteCommand(string varKey)
     {
         EnsureRegistered();

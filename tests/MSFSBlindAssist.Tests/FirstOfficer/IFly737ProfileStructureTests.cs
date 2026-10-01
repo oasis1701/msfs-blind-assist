@@ -341,20 +341,21 @@ public class IFly737ProfileStructureTests
     /// definition that has a REAL write command. Membership alone is not enough — Task 4's
     /// review found that <see cref="IFly737MAXDefinition.ApplyUIVariable"/> returns true for a
     /// registered but READ-ONLY key (it speaks "X is a read-only indicator" and re-fires
-    /// state), so a flow step targeting e.g. Spoiler_Lever_Status would resolve as "valid"
-    /// and then silently do nothing in the sim.
+    /// state), so a flow step targeting e.g. Hydraulic_Brake_Pressure_Status (a Disp field)
+    /// would resolve as "valid" and then silently do nothing in the sim.
     ///
     /// Fix pass 1 (2026-08), Fix 2: writability is now read off
     /// <see cref="IFly737MAXDefinition.HasWriteCommand"/> rather than
     /// <see cref="SimConnect.SimVarDefinition.RenderAsReadOnlyStatus"/>. The flag is set true
     /// ONLY by the SwD registration path (a field registered with a null write command) — the
-    /// Disp/Annun/AnnunD paths (display-only fields, e.g. Spoiler_Lever_Status) leave it FALSE
-    /// with no write command at all, so the flag-based check passed a step pointed at one of
-    /// those fields. A mutation probe proved this: pointing a step at Spoiler_Lever_Status (a
-    /// Disp registration — the very key a step was demoted to a Captain reminder to avoid)
-    /// PASSED the old RenderAsReadOnlyStatus-based test. HasWriteCommand checks BOTH write
-    /// dictionaries the definition actually dispatches through (_writes, _perValueWrites), so
-    /// it can't miss a Disp/Annun/AnnunD field the way the flag did.
+    /// Disp/Annun/AnnunD paths (display-only fields, e.g. Hydraulic_Brake_Pressure_Status)
+    /// leave it FALSE with no write command at all, so the flag-based check passed a step
+    /// pointed at one of those fields. A mutation probe proved this: pointing a step at
+    /// Spoiler_Lever_Status (then a Disp registration; PR #261 has since given it a real
+    /// write, FLTCTRL_SPOILER) PASSED the old RenderAsReadOnlyStatus-based test.
+    /// HasWriteCommand checks BOTH write dictionaries the definition actually dispatches
+    /// through (_writes, _perValueWrites), so it can't miss a Disp/Annun/AnnunD field the
+    /// way the flag did.
     /// </summary>
     [Fact]
     public void EverySetSwitchStep_Resolves()

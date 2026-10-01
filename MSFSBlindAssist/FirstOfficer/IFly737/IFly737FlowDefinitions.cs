@@ -83,13 +83,15 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///    0=Reset, spring-loaded — Overhead.cs:553-555) — not a Captain reminder.
 ///  - Flight directors (PF_FD1/PF_FD2) and autothrottle arm (BTO_AT) are plain absolute SW
 ///    writes — no skip guard needed (see class doc).
-///  - Speedbrake ARM (LD_SPDBRK) is a Captain reminder — Spoiler_Lever_Status is registered
-///    read-only (Disp, ForwardPedestal.cs:822: "raw position (int 0-225) ... nearest-detent
-///    decode" — no write command exists at all) and the executor deliberately exposes no write
-///    for it (unverified scale mismatch). A READ-ONLY wait on SPEED_BRAKE_ARMED_Light_Status
-///    (LD_SPDBRK_CHECK, 15 s, Skip, before the gear check) then confirms the Captain armed it
-///    and completes both "Speedbrake: ARMED" lines, so an unarmed lever is never latched
-///    complete by the flow finishing.
+///  - Speedbrake ARM (LD_SPDBRK) is a verified First Officer arm through the SPEEDBRAKE_ARM
+///    pseudo-key (IFly737ActionExecutor.ArmSpeedbrakeCoreAsync), the PMDG 737's shape. It
+///    writes ARM through main's measured lever write (FLTCTRL_SPOILER, the same 0-224 scale as
+///    Spoiler_Lever_Status, ARM exactly 34 — PR #261) and is judged by the lever at ARM AND
+///    the SPEED BRAKE ARMED light (FO_SPEEDBRAKE_ARMED; the light alone is lit from 34 to
+///    224). It completes both "Speedbrake: ARMED" lines. A deployed speed brake is left
+///    alone ("Speedbrake extended, not armed. Left as it is."). History: this step was a
+///    Captain reminder plus a read-only LD_SPDBRK_CHECK wait while the write scale was
+///    unverified; both are gone.
 ///  - Weather radar test: REMOVED from this aircraft's flow and checklist entirely (user
 ///    decision 2026-08-18 — do not re-add). A WXR TEST command does exist
 ///    (`FMS_WXR_SYS_CTRL_SET`, Value2 0 TEST/1 NORM, readable back via

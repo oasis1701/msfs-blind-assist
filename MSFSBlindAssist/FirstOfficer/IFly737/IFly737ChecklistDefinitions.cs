@@ -29,12 +29,12 @@ using Act = System.Action<IFly737ActionExecutor, IFly737StateEvaluator>;
 ///  - Engine start is pilot-paced (PMDG 737 convention) exactly as the template, but the start
 ///    lever's "idle" detection is Engine_Start_Lever_Status_{0,1} &gt;= 3 (a 0-5 switch+fire-light
 ///    composite: 0-2 = Cutoff, 3-5 = Idle), not a derived 1=RUN field.
-///  - Speedbrake ARM (Landing) is a Captain item here, not an ActionManual press — this
-///    aircraft's speedbrake-lever write has an unverified scale mismatch and is deliberately
-///    read-only. BOTH its lines — the Landing group's LDA_SPDBRK and the Landing Checklist's
-///    LDC_SPDBRK — are action-free auto-detects on SPEED_BRAKE_ARMED_Light_Status, since the
-///    iFly DOES expose that readback; the Landing flow's read-only LD_SPDBRK_CHECK completes
-///    both, and a timeout keeps both out of the flow-completion latch.
+///  - Speedbrake ARM (Landing) is arming by the First Officer, as on the PMDG 737: LDA_SPDBRK
+///    arms on tick (ArmSpeedbrakeAsync, verified, with the leave-alone rule — a tick over a
+///    deployed speed brake is refused with its reason and writes nothing), and LDC_SPDBRK is
+///    check-only. Both read FO_SPEEDBRAKE_ARMED (lever exactly at ARM AND the ARMED light;
+///    the light alone is lit 34-224). The Landing flow's verified SPEEDBRAKE_ARM step
+///    completes both, and a failed arm keeps both out of the flow-completion latch.
 ///  - Weather radar test: REMOVED from this aircraft's checklist and flow entirely (user
 ///    decision 2026-08-18 — do not re-add). The command exists (`FMS_WXR_SYS_CTRL_SET`,
 ///    Value2 0 TEST/1 NORM, readable back via `Weather_Radar_System_Control_Switch_Status`)

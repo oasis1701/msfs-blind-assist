@@ -304,10 +304,11 @@ public class IFly737ExecutorTests
     // pseudo-key handler bodies and every typed public method's Set/MultiAsync call — checked
     // against IFly737MAXDefinition.HasWriteCommand (the same "really writable" check
     // EverySetSwitchStep_Resolves uses; a registered-but-read-only key would pass a bare
-    // ContainsKey the same way Spoiler_Lever_Status once did there). Some of these ARE also
-    // reachable via a flow step and so are already covered above — re-checking them here is
-    // harmless and keeps this list a complete, self-contained inventory of the executor's write
-    // surface rather than a hand-picked diff against the flow test.
+    // ContainsKey the same way Spoiler_Lever_Status once did there; it was read-only until
+    // PR #261 gave it a write, and is writable now). Some of these ARE also reachable via a
+    // flow step and so are already covered above — re-checking them here is harmless and
+    // keeps this list a complete, self-contained inventory of the executor's write surface
+    // rather than a hand-picked diff against the flow test.
     private static readonly string[] ExecutorWriteKeys =
     {
         // Pseudo-key handler bodies (FireTestCoreAsync, ClickAndSettleCoreAsync, and the two
