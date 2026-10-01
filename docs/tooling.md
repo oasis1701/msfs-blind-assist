@@ -2,7 +2,7 @@
 
 A detailed reference to every dev/debug tool in `tools/`, written for **agents (Claude/Codex) and human contributors**. It explains the one transport almost all of them share (the MSFS Coherent GT remote debugger), which tool to reach for, how to run it, and how to diagnose the app's crashes.
 
-> **Read this when:** you need to read/write a live FlyByWire L:var, scrape or drive a cockpit display / MCDU / flyPad, verify whether a control's write "sticks", reproduce a `tools/_probe` finding, **adapt a scraper to a different aircraft** (§9), or investigate a crash (§8). For the *methodology* of proving a control works (write-stick rules, the write-mechanism decision tree), this guide points you at the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in `CLAUDE.md` — that is the source of truth; this guide is the tool catalogue.
+> **Read this when:** you need to read/write a live FlyByWire L:var, scrape or drive a cockpit display / MCDU / flyPad, verify whether a control's write "sticks", reproduce a `tools/_probe` finding, **adapt a scraper to a different aircraft** (§9), or investigate a crash (§8). For the *methodology* of proving a control works (write-stick rules, the write-mechanism decision tree), this guide points you at the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in [troubleshooting-playbook.md](troubleshooting-playbook.md) — that is the source of truth; this guide is the tool catalogue.
 
 ---
 
@@ -30,7 +30,7 @@ Everything under `tools/` falls into two buckets:
 | Bucket | Tools | Status |
 |---|---|---|
 | **Created during the A320/A380 work** (this branch — mine + Gus's) | **`coherent.ps1` (the unified driver)**, `coherent-eval.ps1`, `_probe/`, `fcu/`, `fp_*.{js,ps1}`, `mcdu_*.{js,ps1}`, `mfd_import_and_scrape.ps1`, `sd-page-tour.ps1`, `efb-dom-tool.js`, `fbw-mcdu-probe/`, `flypad-shell-test/`, `flypad-settings-test/`, `probe-*.ps1`, `prove-coherent-scrape.ps1`, `test-coherent-ws.ps1`, and the `*.md` reference catalogs | **Documented + organized here.** Improve/reorganize freely. |
-| **Pre-existing** (on `origin/main` before the FBW work) | `tools/CDUTest`, `tools/PMDGDispatchTester` | **Leave untouched.** Documented in `CLAUDE.md` (Build Commands) only. Not part of the Coherent tooling. See §7. |
+| **Pre-existing** (on `origin/main` before the FBW work) | `tools/CDUTest`, `tools/PMDGDispatchTester` | **Leave untouched.** Documented in [development.md](development.md#build-output-and-traps) (Build output and traps) only. Not part of the Coherent tooling. See §7. |
 
 This guide only reorganizes/improves the first bucket. The two PMDG tools are independent console apps with their own build story and are deliberately out of scope here.
 
@@ -48,7 +48,7 @@ Every A380/A32NX cockpit surface that isn't a plain SimVar — the **MFD/MCDU, f
 - **Resolve views by TITLE, never by id.** Page ids in `/pagelist.json` **shuffle every session**. Always fetch `/pagelist.json` and match a title substring.
 - **One inspector socket per page.** Coherent GT (Chromium 49) accepts **only ONE** devtools WebSocket per view. If the app already holds a view's socket (e.g. `CoherentEWDClient` is always connected to `A380X_EWD` while the A380 is loaded; `CoherentEFBClient` owns `- EFB` while the flyPad form is open), a second connection from a tool is **rejected**. Close the relevant app window before driving that view from a tool, and vice-versa. ⚠️ Closing a window does NOT free the A32NX / Headwind A330 MCDU view (`A32NX_MCDU` / `A339X_MCDU`): once the MCDU window has been opened, the app holds that socket until the aircraft is switched or the app exits (it keeps reading the screen so FMS messages reach a closed window, and D / Shift+D ride it). Switch aircraft or quit MSFSBA before pointing a tool at it — or use a view the app never holds (e.g. `A32NX_PFD_1`, `A32NX_SYSTEMSHOST`).
 - **ES5 only inside agents.** Coherent GT = Chromium 49: `var` (no `let`/`const` arrow funcs), no `String.includes`/`AbortSignal.timeout`, `.indexOf()` instead, top-level `try/catch`. This constrains `Resources/coherent-*-agent.js` and any `-PreFile` you inject — but **not** the WebView2 shell or your PowerShell/Node host code.
-- **Writes: use the calculator path, not data-def.** To make an L:var write stick reliably for FBW vars, write via `SimVar.SetSimVarValue('L:VAR','number',v)` inside a Coherent view, or `(>L:VAR)` / `execute_calculator_code`. The MCP `set_lvar` (native data-def) silently fails for many FBW L:vars and produces false "reverts/uncontrollable" verdicts. (Full rationale: the PLAYBOOK in `CLAUDE.md`.) **Caveat:** a `SimVar.SetSimVarValue` issued *from a Coherent view* is sometimes view-local and lost on disconnect (notably the SD page index — see `sd-page-tour.ps1`); for those, drive the write from the app or the MCP calculator path.
+- **Writes: use the calculator path, not data-def.** To make an L:var write stick reliably for FBW vars, write via `SimVar.SetSimVarValue('L:VAR','number',v)` inside a Coherent view, or `(>L:VAR)` / `execute_calculator_code`. The MCP `set_lvar` (native data-def) silently fails for many FBW L:vars and produces false "reverts/uncontrollable" verdicts. (Full rationale: the PLAYBOOK, [troubleshooting-playbook.md](troubleshooting-playbook.md).) **Caveat:** a `SimVar.SetSimVarValue` issued *from a Coherent view* is sometimes view-local and lost on disconnect (notably the SD page index — see `sd-page-tour.ps1`); for those, drive the write from the app or the MCP calculator path.
 
 ### View title-needles (pass to `-Title`)
 
@@ -148,7 +148,7 @@ the same transport, a standalone Node project, or an early bootstrap script it s
 | `atccom_*.js` | A380X_MFD | navigate + scrape ATC COM / CPDLC / D-ATIS (UIService nav) |
 | `surv_*.js`, `radio_diag.js` | A380X_MFD | SURV RadioButtonGroup enabled/disabled + click-actuation |
 | `btv_dist.js`, `rudtrim.js` | A380X_MFD | ARINC429 / plain-metres readouts |
-| `pack_write.js`, `ovhd_flip*.js`, `ovhd_check.js` | A380X_MFD | **write-stick test** (proved the "computed-output" PBs are settable — `CLAUDE.md` #103) |
+| `pack_write.js`, `ovhd_flip*.js`, `ovhd_check.js` | A380X_MFD | **write-stick test** (proved the "computed-output" PBs are settable — #103, [A380-23] in [invariants/a380-systems.md](invariants/a380-systems.md)) |
 | `efb_*.js`, `metric*.js` | `- EFB` | flyPad scrape/navigate, persistent-store metric toggle |
 | `ecl_*.js` | A380X_EWD | ECL `.EclLine` scrape |
 | `uisvc.js`, `sec_read.js` | A380X_MFD | resolve `uiService`; SEC plans read like the active plan |
@@ -235,12 +235,12 @@ Two console apps predate the FBW work and are **not** Coherent tools. Documented
 - **`tools/PMDGDispatchTester/`** — a console REPL that probes which PMDG NG3 dispatch shape a switch accepts against a live sim. Compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>`. Builds as part of `MSFSBlindAssist.sln`.
 - **`tools/CDUTest/`** — fires a single CDA-write or `TransmitClientEvent` at one chosen PMDG event. Builds on its own (`dotnet build tools/CDUTest`).
 
-Leave these two alone. (Details in `CLAUDE.md` → Build Commands.)
+Leave these two alone. (Details in [development.md](development.md#build-output-and-traps) → Build output and traps.)
 
 Two more tools live in this same out-of-scope-for-Coherent bucket — no debugger, no live sim, standalone build — but unlike the two above they are maintained, re-runnable **measurement** harnesses rather than fixed probes, so "leave alone" doesn't apply to them. Both load the database through ONE shared loader, `tools/Shared/NavdataSweepLoader.cs` (linked by each, never copied, so their inputs cannot drift; it mirrors `LittleNavMapProvider`'s readers and opens the database read-only), and both default to or take the pilot's `fs2024.sqlite` (`%APPDATA%\MSFSBlindAssist\databases`):
 
 - **`tools/StandBridgeSweep/`** — sweeps a real navdata database and reports the PR #235 stand-bridge figures: bridge count, distinct airports touched, and the four safety invariants (no bridge on or across runway pavement, none ending on a hold-short node, a stand, or another stand's lead-in chain), plus how many otherwise-unreachable stands the bridges bring onto the main taxi network. It links the production `TaxiGraph`/`RunwayPavement`/`RunwayShape` sources rather than reimplementing their logic — the same linked-`<Compile>` idea `PMDGDispatchTester` uses for the CDA struct above, so its output can never drift from what `TaxiGraph.BridgeOrphanParkingIslands` actually builds. Builds on its own (`dotnet build tools/StandBridgeSweep`), not as part of the solution. **Re-run it before trusting any change to the bridging rule or its safety checks** — see the "Stranded stand stubs are reattached; unreachable destinations are refused" write-up in `docs/taxi-guidance.md` for the currently measured figures.
-- **`tools/LandingExitSweep/`** — writes every runway direction's `GetLandingExits` list (name, distance, type, angle, side, position, hold-short node) as CSV over the REAL production `TaxiGraph` (linked, not reimplemented), and diffs two such CSVs into a markdown report: exits gained and lost, retyped (with a transition table), angle and side changes, and directions that lose every usable exit. Its job is the whole-database before/after of any change to how landing exits are measured: build it once against the current sources and once against the pre-change tree (the two branch-measurement files are linked conditionally, so the same project builds against both), run both over the same database, compare. Build: `dotnet build tools/LandingExitSweep -c Release -r win-x64 --self-contained false`. Run: `LandingExitSweep.exe sweep <db> <out.csv> [maxAirports]` (about 40 s for fs2024) and `LandingExitSweep.exe compare <before.csv> <after.csv> <report.md>`. **Re-run it before trusting any change to exit measurement** — `ExitBranch`, `TaxiGraph.ExitRefinement`, the producers in `TaxiGraph.GetLandingExits`/`FindDownfieldExits`, or any constant the CLAUDE.md derived-constant tripwire names.
+- **`tools/LandingExitSweep/`** — writes every runway direction's `GetLandingExits` list (name, distance, type, angle, side, position, hold-short node) as CSV over the REAL production `TaxiGraph` (linked, not reimplemented), and diffs two such CSVs into a markdown report: exits gained and lost, retyped (with a transition table), angle and side changes, and directions that lose every usable exit. Its job is the whole-database before/after of any change to how landing exits are measured: build it once against the current sources and once against the pre-change tree (the two branch-measurement files are linked conditionally, so the same project builds against both), run both over the same database, compare. Build: `dotnet build tools/LandingExitSweep -c Release -r win-x64 --self-contained false`. Run: `LandingExitSweep.exe sweep <db> <out.csv> [maxAirports]` (about 40 s for fs2024) and `LandingExitSweep.exe compare <before.csv> <after.csv> <report.md>`. **Re-run it before trusting any change to exit measurement** — `ExitBranch`, `TaxiGraph.ExitRefinement`, the producers in `TaxiGraph.GetLandingExits`/`FindDownfieldExits`, or any constant the derived-constant tripwire ([ROL-19] in [invariants/landing-rollout.md](invariants/landing-rollout.md)) names.
 
 ---
 
@@ -346,7 +346,7 @@ Identify: the container class for a "line/cell", the field/input elements, the d
 
 **Step 6 — Find the navigation mechanism.** A380 = click a stable page-selector id, or `uiService.navigateTo(uri)` for cross-system jumps. A new aircraft may use page-button clicks, a hardware-key event, or an SDK page command. Whatever it is, expose it as the agent's `navigate*` method so a driver can walk every page.
 
-**Step 7 — Verify by round-trip**, never by assumption: scrape → act → re-scrape and confirm the change landed (the universal write-stick discipline from the `CLAUDE.md` PLAYBOOK).
+**Step 7 — Verify by round-trip**, never by assumption: scrape → act → re-scrape and confirm the change landed (the universal write-stick discipline from the PLAYBOOK, [troubleshooting-playbook.md](troubleshooting-playbook.md)).
 
 ### 9.4 Worked evidence — the flyPad scraper IS cross-aircraft (verified live)
 
@@ -372,6 +372,6 @@ To ground the "flyPad agent serves both FBW jets" claim, this session drove the 
 - **Verify FCU** → `tools/fcu/fcu-read.ps1` (+ roundtrip/set).
 - **Drive the A32NX MCDU without the app** → `tools/fbw-mcdu-probe/` (Node).
 - **Touch the flyPad reconcile** → mirror `tools/flypad-shell-test/`.
-- **A control "doesn't work"** → STOP. Read the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in `CLAUDE.md` (calculator-path write-stick test, write-mechanism decision tree, the case studies) before concluding anything.
+- **A control "doesn't work"** → STOP. Read the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in [troubleshooting-playbook.md](troubleshooting-playbook.md) (calculator-path write-stick test, write-mechanism decision tree, the case studies) before concluding anything.
 - **"Can I reuse this scraper for another aircraft?"** → §9: transport + generic scrape core are universal; the aircraft-specific selector/nav/input layer must be re-derived (recipe in §9.3).
 - **Crash** → §8: read `%APPDATA%\MSFSBlindAssist\logs\startup.log`, then Event Viewer for native faults.

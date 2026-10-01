@@ -10,7 +10,7 @@ namespace MSFSBlindAssist.Navigation;
 /// <c>AnnounceInstruction</c> with NO window check at all -- unlike the turn,
 /// destination-ahead and curve callouts, which all wait for the same window via <see
 /// cref="StartWarningChatterGate"/> -- so it interrupted (and lost) the 10.4 s start
-/// warning the window exists to protect, contrary to what both CLAUDE.md and
+/// warning the window exists to protect, contrary to what both CLAUDE.md (now [RTE-2] in docs/invariants/taxi-routing.md) and
 /// docs/taxi-guidance.md claimed the code already did.</para>
 ///
 /// <para>Unlike those three callouts, the taxiway-change callout has no proximity LATCH

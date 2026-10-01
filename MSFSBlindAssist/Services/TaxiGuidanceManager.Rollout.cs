@@ -1000,7 +1000,7 @@ public partial class TaxiGuidanceManager
             // segment the tone is ACTUALLY about to steer at. It used to sit inside the
             // re-route block gated on handoffRerouted, which left the fallback path — the
             // one that resumes on the touchdown route — with no guard at all, while
-            // CLAUDE.md requires it to gate EVERY landing-exit handoff re-route. For a
+            // [ROL-29] (docs/invariants/landing-rollout.md) requires it to gate EVERY landing-exit handoff re-route. For a
             // successful re-route the cursor is 0, so that case is unchanged.
             if (_route != null && _currentSegmentIndex >= 0
                 && _currentSegmentIndex < _route.Segments.Count)
@@ -1919,7 +1919,7 @@ public partial class TaxiGuidanceManager
 
         // Reachability guard — the LAST ungated landing-exit handoff re-route. This method
         // builds a route, arms the post-handoff monitor and moves to Taxiing exactly like
-        // the handoff in UpdateLandingRollout, so CLAUDE.md's "IsHandoffRouteReachable must
+        // the handoff in UpdateLandingRollout, so [ROL-29] in docs/invariants/landing-rollout.md, "IsHandoffRouteReachable must
         // gate every landing-exit handoff re-route" was simply not true of it. Its only
         // route sanity check is the first segment's BEARING (above); the KSEA 34L failure
         // lived on the DISTANCE axis — a segment 53.9 m of cross-track away, with the
@@ -1966,7 +1966,7 @@ public partial class TaxiGuidanceManager
             }
 
             // Same whole-route crossing guard as the UpdateLandingRollout handoff —
-            // CLAUDE.md requires EVERY landing-exit handoff re-route to be gated
+            // [ROL-27] (docs/invariants/landing-rollout.md) requires EVERY landing-exit handoff re-route to be gated
             // identically, and this method was the last ungated one once before
             // (commit 29b8bcbf). See the other site for the KATL 26R defect.
             if (HandoffRouteReCrossesLandingRunway(lat, lon))
@@ -2622,7 +2622,7 @@ public partial class TaxiGuidanceManager
     ///
     /// <para>ONE owner for the whole conclude sequence (reason split → clear the handoff flag
     /// → Taxiing → HandleArrival). It was hand-copied at four guard sites, whose identity
-    /// CLAUDE.md requires and which nothing enforced; this method is that enforcement. Note
+    /// [ROL-27] (docs/invariants/landing-rollout.md) requires and which nothing enforced; this method is that enforcement. Note
     /// the two <c>TryEarlyExitHandoff</c> sites can only ever take the
     /// <c>_landingExitRouteUnreachable</c> arm — that method's <c>LoadRoute</c> nulls the
     /// planned-exit name and never restores it — and calling the shared rule from there

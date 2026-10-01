@@ -59,8 +59,8 @@ namespace MSFSBlindAssist.Services;
 /// across a four-argument base method plus a five-argument radius-aware wrapper that
 /// subtracted the radius and delegated. That split was itself a footgun — a caller that
 /// forgot the radius argument bound SILENTLY to the shorter overload and reintroduced
-/// the Critical defect above with no compile error to catch it (CLAUDE.md documents the
-/// identical hazard for the A380 <c>Configure</c> method: "a second one differing only
+/// the Critical defect above with no compile error to catch it ([AUD-10] in docs/invariants/audio-output.md documents the
+/// identical hazard for <c>AudioToneGenerator.Configure</c>: "a second one differing only
 /// by a trailing double binds silently"). Merged into the single method below — every
 /// caller now states its clear radius explicitly, passing 0 when none applies rather
 /// than reaching for a shorter overload that no longer exists.</para>

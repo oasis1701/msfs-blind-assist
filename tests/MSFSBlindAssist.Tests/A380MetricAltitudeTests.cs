@@ -121,7 +121,7 @@ public class A380MetricAltitudeTests
     public void A_reconnect_keeps_the_unit_and_the_next_change_is_spoken()
     {
         // ResetAnnouncementBaselines runs on every reconnect, AFTER the reconnect's first batch has
-        // re-fired every var (the ordering trap CLAUDE.md records under the MD-11). It must keep the
+        // re-fired every var (the ordering trap recorded under the MD-11: [MD11-19] in docs/invariants/md11.md). It must keep the
         // unit — or a typed altitude is taken as feet on a metric FCU — and must NOT clear the
         // call-out's baseline, or the first real MTRS change after the reconnect is swallowed as
         // one. No reset clears it: the FCU settle a context reset begins absorbs the new context's

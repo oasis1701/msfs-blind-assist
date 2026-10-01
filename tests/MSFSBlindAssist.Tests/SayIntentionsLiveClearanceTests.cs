@@ -256,7 +256,7 @@ public class SayIntentionsLiveClearanceTests
 //     anywhere in it. It IS read now (TheTaxiPathIsReadAsCoordinatesOnly, below):
 //     point.lat/point.lon only, into TaxiPathPoints. See SayIntentionsService's
 //     reader for why no other member of an entry is ever touched, and the
-//     rewritten CLAUDE.md invariant for the hazard that guards against widening it.
+//     rewritten invariant [SI-9] (docs/invariants/sayintentions-import.md) for the hazard that guards against widening it.
 public class SayIntentionsLiveFlightJsonTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "si-live-" + Guid.NewGuid().ToString("N"));

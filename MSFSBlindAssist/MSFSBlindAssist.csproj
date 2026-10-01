@@ -16,7 +16,7 @@
          restore time: only win-x64 is resolved, and it lands flattened beside the exe.
 
          AppendRuntimeIdentifierToOutputPath=false is REQUIRED, not cosmetic. A RID normally
-         redirects output into a win-x64 SUBFOLDER (the trap CLAUDE.md documents) — which is
+         redirects output into a win-x64 SUBFOLDER (the trap CLAUDE.md [CORE-2] documents) — which is
          NOT the folder the app runs from, NOT the folder release.yml zips, and NOT the folder
          the PostBuild xcopy steps target, so the build would "succeed" while shipping a stale
          or half-populated tree. This pins output back to bin\x64\<cfg>\net10.0-windows\.
@@ -269,7 +269,7 @@
          Any CPU (see its <Platforms>AnyCPU</Platforms> and the Debug|x64 -> Debug|Any CPU
          mapping in MSFSBlindAssist.sln), so without this override, building this csproj
          directly with an explicit platform — e.g.
-         `dotnet build MSFSBlindAssist.csproj -c Debug -p:Platform=x64`, a command CLAUDE.md
+         `dotnet build MSFSBlindAssist.csproj -c Debug -p:Platform=x64`, a command CLAUDE.md [CORE-1]
          explicitly sanctions as an alternative to building the .sln — passes Platform=x64
          straight through to the plugin project too. That sends the plugin's output to
          bin\x64\Debug\net48\ instead of bin\Debug\net48\, a folder the Copy target below

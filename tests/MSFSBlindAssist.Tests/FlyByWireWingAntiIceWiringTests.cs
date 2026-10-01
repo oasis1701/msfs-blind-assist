@@ -86,7 +86,7 @@ public class FlyByWireWingAntiIceWiringTests
 
     // ------------------------------------------------------------------
     // The WRITE half. The registration tests above pin the state side; the bug was in the
-    // actuator, and before these the whole write path was uncovered while CLAUDE.md and
+    // actuator, and before these the whole write path was uncovered while CLAUDE.md (now [A380-25] in docs/invariants/a380-systems.md) and
     // docs/a380x.md both claimed this file pinned it.
     // ------------------------------------------------------------------
 

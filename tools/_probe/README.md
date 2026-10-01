@@ -54,12 +54,12 @@ Each probe is an IIFE that returns a string (JSON or plain text):
 | `_click_by_text.js` | any (agent) | generic click-an-element-by-its-text helper |
 | `_capture_fixture.js` | bakes `tools/perf-builder-test` fixtures | stamp `data-rect`/`data-vis` onto a live MFD scrape so `enumerateLines` runs offline under jsdom |
 | `_capture_flypad_fixture.js` | bakes `tools/flypad-settings-test` fixtures | same, for the flyPad Settings fixtures |
-| `a380_engmon.js` / `a380_engmon_full.js` | A380X_SYSTEMSHOST, via `../a380_engine_monitor.ps1` | live variable monitor (caught the ENGINE_COUNT=2 ignition-fan-out bug — CLAUDE.md "Engines 3 & 4 motor but never light") |
+| `a380_engmon.js` / `a380_engmon_full.js` | A380X_SYSTEMSHOST, via `../a380_engine_monitor.ps1` | live variable monitor (caught the ENGINE_COUNT=2 ignition-fan-out bug — docs/troubleshooting-playbook.md "Engines 3 & 4 motor but never light") |
 | `flypad_tour.js` + `drive_tour.ps1` | "- EFB" | tour every flyPad EFB tab (ping/scrape/click/setValue) |
 | `fbw_lvars_clean.txt` | reference data | a dump of every L:var in the running A380X — grep it for a system + its synonyms |
 | `captures/mcdu_captures.md`, `captures/mfd_pages_recon.md` | reference notes | per-page MCDU/MFD scrape recon |
 
-**Write-stick testing rule (CLAUDE.md #103):** to decide whether an FBW L:var write
+**Write-stick testing rule ([DBG-1] in docs/invariants/troubleshooting.md; the #103 finding is [A380-23] in docs/invariants/a380-systems.md):** to decide whether an FBW L:var write
 sticks, ALWAYS write via the calculator path — `SimVar.SetSimVarValue('L:VAR','number',v)`
 in a Coherent view, or `(>L:VAR)` via `execute_calculator_code`. NEVER use the MCP
 `set_lvar` (native data-def) — it silently fails for many FBW L:vars and produces false

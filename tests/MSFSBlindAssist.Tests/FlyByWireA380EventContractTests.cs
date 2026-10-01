@@ -186,7 +186,7 @@ public class FlyByWireA380EventContractTests
     public void The_inventoried_efis_cp_actuators_are_all_fcu_events()
     {
         // Every one must clear SimConnectManager.IsFbwFcuEvent's "A32NX.FCU_" test, which is
-        // what lets them bypass the calc-path probe on the A380 (CLAUDE.md: a probe false
+        // what lets them bypass the calc-path probe on the A380 ([SIM-10] in docs/invariants/core-simconnect.md: a probe false
         // negative there does not degrade an FCU event, it kills it).
         Assert.All(EfisCpActuators, e => Assert.StartsWith("A32NX.FCU_", e, StringComparison.Ordinal));
     }

@@ -116,7 +116,7 @@ public partial class SimConnectManager
     /// unverified and its verdict refuses every write on the aircraft switched to next.
     /// Note this is NOT what <see cref="ExecuteCalculatorCode"/> guards itself
     /// with, and must not become it — the FBW defs' per-prefix catch-alls write through the
-    /// calculator UNCONDITIONALLY by design (CLAUDE.md), and gating them on the probe is what kept
+    /// calculator UNCONDITIONALLY by design ([VAR-3] in docs/invariants/variable-definitions.md; [MD11-16] in docs/invariants/md11.md), and gating them on the probe is what kept
     /// the A380/A32NX overhead panels alive through the ten-week probe outage.
     /// </summary>
     public bool CalcWriteCanLand => CanExecuteCalculatorCode && !(CalcPathProbeConcluded && !CalcPathVerified);

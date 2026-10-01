@@ -110,7 +110,7 @@ public partial class MainForm
 
             // No announcement here on purpose. The screen reader speaks the window and
             // then the first line as focus lands; announcing a summary on top of that
-            // would talk over it (CLAUDE.md: never announce a UI interaction the
+            // would talk over it (CLAUDE.md [CORE-7]: never announce a UI interaction the
             // screen reader already covers).
             sayIntentionsInfoForm = new SayIntentionsInfoForm(lines, inheritedFocusReturn);
             sayIntentionsInfoForm.Show();

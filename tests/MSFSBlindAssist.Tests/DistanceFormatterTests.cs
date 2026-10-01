@@ -1,7 +1,7 @@
 // Characterization tests for MSFSBlindAssist.Services.DistanceFormatter.
 //
 // Ports the golden cases from tools/DistanceUnitsProbe/Program.cs. DistanceFormatter is
-// a DISPLAY layer only (never used for guidance thresholds — see CLAUDE.md), and its
+// a DISPLAY layer only (never used for guidance thresholds — see [DCK-35] in docs/invariants/gsx-stands-docking.md), and its
 // UnitProvider is process-global mutable state, so every test sets it explicitly and
 // this class shares the "DistanceUnitGlobalState" collection with DistanceMilestonesTests
 // to avoid cross-test races (see DistanceUnitGlobalStateCollection.cs).

@@ -93,7 +93,7 @@ public static class SayIntentionsTaxiPathSnapper
     ///
     /// That measurement was against OSM centrelines only — the lszh-taxiways.json
     /// fixture this snapper is tested against — while the real caller feeds edges from
-    /// TaxiGraph.GetNamedEdges(), which per CLAUDE.md's taxi-data-augmentation invariant
+    /// TaxiGraph.GetNamedEdges(), which per the taxi-data-augmentation invariant [AUG-1] (docs/invariants/taxi-augmentation.md)
     /// is navdata geometry with OSM names, never OSM geometry. A systematic
     /// navdata-vs-OSM centreline offset would have been invisible to the OSM measurement,
     /// so this constant was re-measured against navdata-sourced edges. THAT IS DONE — it

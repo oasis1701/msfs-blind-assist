@@ -310,7 +310,7 @@ public partial class TaxiGraph
     ///
     /// So PROVENANCE OUTRANKS THE VOTE: a spelling with a navdata row behind it beats one
     /// with none, however many online rows carry the latter. "navdata is AUTHORITATIVE — an
-    /// existing navdata taxiway/gate name is never overwritten" (CLAUDE.md) is enforced by
+    /// existing navdata taxiway/gate name is never overwritten" ([AUG-1] in docs/invariants/taxi-augmentation.md) is enforced by
     /// TaxiDataMerger when it merges, which refuses to overwrite a named segment; without
     /// this the fold could undo it one layer up, because a taxiway navdata names on two
     /// segments and an online source fills on three would lose 3-2 on count alone. The vote

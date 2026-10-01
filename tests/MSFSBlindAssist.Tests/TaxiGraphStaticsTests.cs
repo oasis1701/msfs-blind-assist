@@ -447,7 +447,7 @@ public class TaxiGraphStaticsTests
     // --- Navdata outranks an online spelling, however many rows carry it ---------------
     //
     // The fold runs on the AUGMENTED path list, so an OSM / apt.dat name adopted for a
-    // segment navdata left unnamed competes here with a navdata one. CLAUDE.md: "navdata is
+    // segment navdata left unnamed competes here with a navdata one. [AUG-1] (docs/invariants/taxi-augmentation.md): "navdata is
     // AUTHORITATIVE - an existing navdata taxiway/gate name is never overwritten, online
     // names only fill UNNAMED segments." TaxiDataMerger enforces that when it merges; this
     // keeps the fold from undoing it one layer up.

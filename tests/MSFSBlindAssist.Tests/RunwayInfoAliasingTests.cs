@@ -31,7 +31,7 @@ public class RunwayInfoAliasingTests
     // The runway row's OWN heading/altitude/lonx/laty columns are set to these same primary
     // values — replicating the real navdata schema, where the ambiguous `runway` table columns
     // resolve to the primary end when no alias is used. This is exactly the "showed the primary
-    // end's heading (off by 180°)" bug the CLAUDE.md invariant describes.
+    // end's heading (off by 180°)" bug the [EFB-6] invariant (docs/invariants/flight-planning-efb.md) describes.
     private const double PrimaryHeading = 64.0;
     private const double PrimaryAltitude = 10.0;
     private const double PrimaryLonx = -122.375;

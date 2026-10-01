@@ -113,7 +113,7 @@ public sealed class GsxRemoteGateSelector
 
         if (!capabilities.Contains(GateCapability, StringComparer.Ordinal))
         {
-            // Names the CAPABILITY, never a version number. CLAUDE.md and docs/gsx.md both hold
+            // Names the CAPABILITY, never a version number. [GSX-7] (docs/invariants/gsx-remote.md) and docs/gsx.md both hold
             // that 4.0.8 appears in exactly two user-facing strings and nowhere else in code
             // (GsxService.ReasonNoRemoteApi and GsxGateSelectAnnouncer.GateSelectUnsupportedMessage)
             // so that a future floor change is a two-site edit rather than a hunt -- and those two

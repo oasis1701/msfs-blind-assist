@@ -73,7 +73,7 @@ public class AdvisoryPolygonLookupTests
     public void Identity_match_is_word_boundary_not_substring()
         // "CONVECTIVE SIGMET 5E" must NOT match a raw whose only occurrence is
         // "CONVECTIVE SIGMET 5E1" — "5E" is a prefix of "5E1", so a plain
-        // Contains() false-positives (CLAUDE.md: EXACT identity match only).
+        // Contains() false-positives ([WX-11] in docs/invariants/weather.md: EXACT identity match only).
         => Assert.Null(WeatherService.FindAdvisoryPolygonInGeoJson(
             PrefixCollisionFixture, "CONVECTIVE SIGMET 5E"));
 

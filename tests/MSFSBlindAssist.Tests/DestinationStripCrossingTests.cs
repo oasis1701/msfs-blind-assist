@@ -9,7 +9,7 @@
 //     exclusion, and announced a hold-short of a runway the pilot never named;
 //   - the same crossing nearer the 04L end reported "04L" and was DROPPED ENTIRELY — no hold-short
 //     before crossing the active runway, which is the runway-incursion direction
-//     (FAA AIM 4-3-18 / ICAO Doc 4444), and the one CLAUDE.md forbids disabling.
+//     (FAA AIM 4-3-18 / ICAO Doc 4444), and the one [HLD-4] in docs/invariants/runway-holds.md forbids disabling.
 //
 // The rule is now: skip ONLY the route's own arrival (an entry that ends on the destination strip);
 // every other entry or crossing of that strip is held and labelled with the designator the pilot

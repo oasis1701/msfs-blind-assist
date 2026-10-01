@@ -90,7 +90,7 @@ See [Access GSX](gsx.md) for the full feature reference.
 
 - Project targets .NET 10 (`net10.0-windows`)
 - Uses modern SDK-style project format
-- Platform: x64 (`Platforms`/`PlatformTarget`; no `RuntimeIdentifier` — see the RID-subfolder gotcha in CLAUDE.md)
+- Platform: x64 (`Platforms`/`PlatformTarget`; no `RuntimeIdentifier` — see the RID-subfolder gotcha, CLAUDE.md [CORE-2] and [Build output and traps](#build-output-and-traps) below)
 - Uses Microsoft Flight Simulator SimConnect SDK
 - Post-build event copies SimConnect.dll to output directory
 - SimConnect.cfg configuration file is copied to output for connection settings
@@ -125,7 +125,7 @@ The `tools/*.md` files (e.g. `a380-simvars-catalog.md`, `a380-fcu-vars.md`,
 its product ships as `MSFSBlindAssist/SimConnect/EWDMessageLookupA380.cs`.
 
 > `tools/CDUTest` and `tools/PMDGDispatchTester` are **pre-existing PMDG console apps**,
-> not Coherent tooling — see [CLAUDE.md](../CLAUDE.md) → Build Commands. Leave them untouched.
+> not Coherent tooling — see [Build output and traps](#build-output-and-traps) below. Leave them untouched.
 
 ### Crashes & diagnosis
 

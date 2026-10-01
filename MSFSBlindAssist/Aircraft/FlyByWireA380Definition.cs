@@ -441,7 +441,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 
         // ---- CABIN LIGHTING (passenger-cabin brightness) ----
         // App-side panel controls because the flyPad rc-slider can't be set through the
-        // injected agent (Coherent blocks the agent's SimVar WRITES — see CLAUDE.md flyPad
+        // injected agent (Coherent blocks the agent's SimVar WRITES — see [FPD-1] in docs/invariants/flypad.md, the flyPad
         // note). Written via the reliable calc path in HandleUIVariableSet. Manual
         // brightness 0-100% (the numeric _SET box); Auto-Brightness Off/On combo; the live
         // auto value is a read-only display.

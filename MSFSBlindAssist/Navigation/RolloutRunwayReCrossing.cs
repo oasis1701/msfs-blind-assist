@@ -254,7 +254,7 @@ public static class RolloutRunwayReCrossing
     /// trigger, so it supersedes nothing ahead of it and keeps its whole countdown. Getting the
     /// time slightly wrong is mild in both directions: too short returns a narrow band to
     /// today's behaviour, too long retires a distance restatement marginally early. It is NOT
-    /// the kind of speech-duration estimate CLAUDE.md forbids — nothing here mutes speech.</para>
+    /// the kind of speech-duration estimate [VG-1] (docs/invariants/visual-guidance.md) forbids — nothing here mutes speech.</para>
     ///
     /// <para>Deliberately NOT applied to the turn-now cue's own trigger by the caller: "now" is
     /// time-critical, and retiring it a lead-window early would speak it hundreds of feet out

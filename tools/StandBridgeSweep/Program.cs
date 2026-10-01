@@ -265,7 +265,7 @@ static (Dictionary<int, int> ComponentOf, int MainComponentId) ComputeComponents
 // graph-building logic) to the returned node id. This is deliberately NOT TaxiNode.Type, which
 // the later parking-spot proximity pass (and, within the taxi_path loop itself, UpgradeNodeType's
 // single highest-wins field) can make lie about a node also being a hold-short — exactly why
-// CLAUDE.md says not to use it here.
+// [RTE-2] in docs/invariants/taxi-routing.md says not to use it here.
 static (HashSet<int> StandNodes, HashSet<int> HoldShortNodes) ReconstructNavdataIdentity(
     TaxiGraph graph, List<TaxiPath> paths, MethodInfo resolveNode)
 {

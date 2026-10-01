@@ -354,14 +354,14 @@ public class TaxiGraphLocationRadiusTests
 
     /// <summary>
     /// Proves predicate (c) reads the navdata-endpoint-type identity, not <c>TaxiNode.Type</c>,
-    /// which CLAUDE.md's rule on stand/hold-short identity exists to rule out (see
+    /// which [RTE-2]'s rule on stand/hold-short identity (docs/invariants/taxi-routing.md) exists to rule out (see
     /// <c>TaxiGraph._navdataHoldShortNodeIds</c>'s own doc).
     ///
     /// <para>Hold-short node H sits 36 m due north of the query — just OUTSIDE today's ~33.3 m
     /// north-south ring, so H cannot itself win the gate via the ring, and inside predicate (c)'s
     /// 40 m stand radius. H has no parking lead-in of its own, and a phantom parking spot with no
     /// lead-in either sits exactly on it, so Build's "mark parking nodes" pass — matching by pure
-    /// proximity, in any component, CLAUDE.md's own words — finds H as the nearest existing node
+    /// proximity, in any component, [RTE-2]'s own words — finds H as the nearest existing node
     /// and overwrites its <c>Type</c> to Parking: the exact real-world shape the rule warns about.
     /// A second, genuinely separate stand S sits 30 m due east of the query (outside the ~20.5 m
     /// east-west ring), on its own dedicated node, so it is never confused with H. Named taxiway A

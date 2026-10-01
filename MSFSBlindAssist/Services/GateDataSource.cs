@@ -47,7 +47,7 @@ public sealed class GateDataSource
     private readonly Func<long> _handlerDataVersion;
 
     // ⚠ THREAD-SAFE ON PURPOSE (PR #238 deferred finding §8a). These were plain Dictionaries, which
-    // is why CLAUDE.md said never to hand one GateDataSource to two threads — and why
+    // is why CLAUDE.md (now [DCK-40] in docs/invariants/gsx-stands-docking.md) said never to hand one GateDataSource to two threads — and why
     // LandingExitForm evaluated a full GetNamedSpots, GetRunwayStarts and GetRunways INLINE ON THE
     // UI THREAD while a screen-reader user was arrowing the exit combo, with only TaxiGraph.Build
     // itself off-thread. A concurrent dictionary makes every read and write here atomic; two callers
