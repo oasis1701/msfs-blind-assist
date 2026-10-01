@@ -8,7 +8,7 @@ paths:
   - "MSFSBlindAssist/Navigation/RunwayLineupTarget.cs"
   - "MSFSBlindAssist/Navigation/RouteStartTurnCue.cs"
   - "tests/MSFSBlindAssist.Tests/**/*GuidanceGeometry*.cs"
-  - "tests/MSFSBlindAssist.Tests/**/*Steering*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Lineup*.cs"
 ---
 # Taxi steering tone, lineup and turn cues rules
 

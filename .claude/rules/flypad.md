@@ -1,7 +1,6 @@
 ---
 paths:
   - "MSFSBlindAssist/Resources/coherent-flypad-agent.js"
-  - "MSFSBlindAssist/Forms/FbwEfbForm*.cs"
   - "MSFSBlindAssist/Forms/**/FbwEfbForm*.cs"
   - "tools/flypad-shell-test/**"
 ---
