@@ -384,9 +384,14 @@ public partial class CowsDA40Definition
             Name = lvar,
             DisplayName = label + " Failure",
             Type = SimVarType.LVar,
-            Units = "percent",
+            // ⚠️ "number": an L:var holds a raw number and a converting unit makes SimConnect
+            // convert it. The factor is 0 to 1; Scale shows it as a percentage.
+            Units = "number",
             UpdateFrequency = UpdateFrequency.Continuous,
-            IsAnnounced = false,
+            // ⚠️ ANNOUNCED SO IT IS DELIVERED AT ALL. Continuous without IsAnnounced is read
+            // only on request, so NoteGradedFailure never saw an onset. It never speaks the
+            // number: NoteGradedFailure intercepts it and says the onset and a worsening.
+            IsAnnounced = true,
             Format = "F0",
             Scale = 100.0
         };

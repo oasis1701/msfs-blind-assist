@@ -98,7 +98,7 @@ public partial class CowsDA40Definition
             Name = "FILTER_RESRTICTION",
             DisplayName = "Induction Filter Restriction",
             Type = SimVarType.LVar,
-            Units = "percent",
+            Units = "number",   // an L:var: raw, never a converting unit. Builds 0 to 100.
             Format = "F0",
             UpdateFrequency = UpdateFrequency.Continuous,
             // Announced only to reach the batch; the graded announcer speaks the onset.
