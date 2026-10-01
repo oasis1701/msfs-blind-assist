@@ -9,6 +9,8 @@ paths:
   - "MSFSBlindAssist/Database/Models/ParkingSpot.cs"
   - "MSFSBlindAssist/Forms/GateTeleportForm.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Docking*.cs"
+  - "MSFSBlindAssist/Services/Gsx/Remote/GsxRemoteParkingReader.cs"
+  - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
 ---
 # Stands, gate lists and docking guidance rules
 

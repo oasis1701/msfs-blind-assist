@@ -3,6 +3,7 @@ paths:
   - "MSFSBlindAssist/Services/VPilot/**"
   - "MSFSBlindAssist/Services/VATSIMService.cs"
   - "plugins/**"
+  - "MSFSBlindAssist/MainForm.Hotkeys.cs"
 ---
 # VATSIM and the vPilot plugin rules
 

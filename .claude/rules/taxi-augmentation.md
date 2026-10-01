@@ -2,6 +2,7 @@
 paths:
   - "MSFSBlindAssist/Services/TaxiAugment/**"
   - "tests/MSFSBlindAssist.Tests/**/*ProviderWrap*.cs"
+  - "MSFSBlindAssist/MainForm*.cs"
 ---
 # Online taxi-data augmentation rules
 

@@ -9,5 +9,6 @@ Kept so a reviewer can re-run it; neither script is part of the build.
   `--dry-run` lists every assignment.
 - `verify_moved.py` proves every invariant bullet and every paragraph that left the core of that
   CLAUDE.md appears verbatim somewhere in the repository now.
+- `check_coverage.py` lists rules whose own code no `paths:` glob covers; re-run it after changing globs.
 
 Adding a rule today needs neither script: see "Adding or changing a rule" in CLAUDE.md.

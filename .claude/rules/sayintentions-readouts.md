@@ -5,6 +5,7 @@ paths:
   - "MSFSBlindAssist/Services/SayIntentions/SayIntentionsEndpoint.cs"
   - "MSFSBlindAssist/Services/SayIntentions/SayIntentionsTransmissionClassifier.cs"
   - "MSFSBlindAssist/Forms/SayIntentionsInfoForm.cs"
+  - "MSFSBlindAssist/Services/SayIntentions/SayIntentionsClearanceSelector.cs"
 ---
 # SayIntentions readouts and flight data rules
 

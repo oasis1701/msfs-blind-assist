@@ -5,6 +5,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/HeadwindA330Definition.cs"
   - "MSFSBlindAssist/Resources/coherent-oans-agent.js"
   - "tests/MSFSBlindAssist.Tests/**/*Arinc*.cs"
+  - "MSFSBlindAssist/MainForm*.cs"
 ---
 # FlyByWire ARINC 429 words rules
 

@@ -3,6 +3,8 @@ paths:
   - "MSFSBlindAssist/Services/Audio*.cs"
   - "MSFSBlindAssist/Services/ProximityBeeper.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Audio*.cs"
+  - "MSFSBlindAssist/Services/VisualGuidanceManager.cs"
+  - "MSFSBlindAssist/Forms/Settings/TestTone*.cs"
 ---
 # Guidance tone output device rules
 
