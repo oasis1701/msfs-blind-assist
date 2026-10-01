@@ -3013,7 +3013,7 @@ public partial class MainForm
     {
         try
         {
-            var verdict = MSFSBlindAssist.Services.UnusualAttitudeMonitor.Evaluate(
+            var verdict = MSFSBlindAssist.Services.UnusualAttitudeMonitor.EvaluateSim(
                 data.BankDegrees, data.PitchDegrees, data.OnGround > 0.5, _attitudeState);
 
             _attitudeState = verdict.Next;

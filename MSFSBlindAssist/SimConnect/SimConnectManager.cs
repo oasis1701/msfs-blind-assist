@@ -860,6 +860,7 @@ public partial class SimConnectManager
     {
         /// <summary>⚠️ LEFT-POSITIVE. A right bank is negative. See UnusualAttitudeMonitor.</summary>
         public double BankDegrees;
+        /// <summary>⚠️ NOSE-UP NEGATIVE (body axis). See UnusualAttitudeMonitor.EvaluateSim.</summary>
         public double PitchDegrees;
         public double OnGround;
     }

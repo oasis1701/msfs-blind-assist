@@ -76,6 +76,16 @@ public static class UnusualAttitudeMonitor
     /// has caught this project before. The caller passes the raw SimVar and the naming is done
     /// here, once, so no call site has to remember it.
     /// </summary>
+    /// <summary>
+    /// The two attitude SimVars exactly as SimConnect delivers them — bank LEFT-positive,
+    /// pitch NOSE-UP NEGATIVE (<c>PLANE PITCH DEGREES</c> is a body-axis angle, which is why
+    /// hand fly negates it too). Passed through raw, a climb was announced as "Pitch down".
+    /// </summary>
+    public static Verdict EvaluateSim(double simBankDeg, double simPitchDeg, bool onGround, State state)
+        => Evaluate(simBankDeg, -simPitchDeg, onGround, state);
+
+    /// <summary>Pitch here is NOSE-UP POSITIVE; a caller holding the raw SimVar uses
+    /// <see cref="EvaluateSim"/>.</summary>
     public static Verdict Evaluate(double bankDegLeftPositive, double pitchDeg,
                                    bool onGround, State state)
     {

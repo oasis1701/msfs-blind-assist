@@ -121,4 +121,25 @@ public class UnusualAttitudeMonitorTests
         var v = UnusualAttitudeMonitor.Evaluate(0, pitchDeg: 25, onGround: false, Fresh);
         Assert.Equal("Pitch up 25 degrees.", v.Message);
     }
+
+    /// <summary>
+    /// ⚠️ <c>PLANE PITCH DEGREES</c> is NOSE-UP NEGATIVE (the body axis), the same SimVar hand
+    /// fly negates. Passed through raw, a 25-degree climb was announced "Pitch down 25 degrees"
+    /// on every aircraft — the alert told the pilot to pull in a climb.
+    /// </summary>
+    [Theory]
+    [InlineData(-25, "Pitch up 25 degrees.")]
+    [InlineData(20, "Pitch down 20 degrees.")]
+    public void TheSimulatorsPitchIsReadNoseUpNegative(double simPitch, string expected)
+    {
+        var v = UnusualAttitudeMonitor.EvaluateSim(0, simPitch, onGround: false, Fresh);
+        Assert.Equal(expected, v.Message);
+    }
+
+    [Fact]
+    public void TheSimulatorFormStillNamesABankRightAsRight()
+    {
+        var v = UnusualAttitudeMonitor.EvaluateSim(-60, 0, onGround: false, Fresh);
+        Assert.Equal("Bank right 60 degrees.", v.Message);
+    }
 }
