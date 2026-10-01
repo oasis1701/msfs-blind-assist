@@ -1,0 +1,57 @@
+---
+paths:
+  - "MSFSBlindAssist/Services/Gsx/*.cs"
+  - "MSFSBlindAssist/Services/Docking*.cs"
+  - "MSFSBlindAssist/Services/GateDataSource.cs"
+  - "MSFSBlindAssist/Services/GateResolver.cs"
+  - "MSFSBlindAssist/Services/ParkingSpotSource.cs"
+  - "MSFSBlindAssist/Services/DistanceFormatter.cs"
+  - "MSFSBlindAssist/Database/Models/ParkingSpot.cs"
+  - "MSFSBlindAssist/Forms/GateTeleportForm.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Docking*.cs"
+---
+# Stands, gate lists and docking guidance rules
+
+Loaded when Claude reads matching code. Background: docs/gsx.md. Full text of each rule: docs/invariants/gsx-stands-docking.md.
+
+- [DCK-1] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-1
+- [DCK-2] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-2
+- [DCK-3] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-3
+- [DCK-4] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-4
+- [DCK-5] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-5
+- [DCK-6] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-6
+- [DCK-7] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-7
+- [DCK-8] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-8
+- [DCK-9] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-9
+- [DCK-10] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-10
+- [DCK-11] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-11
+- [DCK-12] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-12
+- [DCK-13] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-13
+- [DCK-14] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-14
+- [DCK-15] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-15
+- [DCK-16] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-16
+- [DCK-17] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-17
+- [DCK-18] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-18
+- [DCK-19] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-19
+- [DCK-20] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-20
+- [DCK-21] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-21
+- [DCK-22] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-22
+- [DCK-23] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-23
+- [DCK-24] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-24
+- [DCK-25] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-25
+- [DCK-26] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-26
+- [DCK-27] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-27
+- [DCK-28] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-28
+- [DCK-29] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-29
+- [DCK-30] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-30
+- [DCK-31] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-31
+- [DCK-32] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-32
+- [DCK-33] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-33
+- [DCK-34] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-34
+- [DCK-35] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-35
+- [DCK-36] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-36
+- [DCK-37] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-37
+- [DCK-38] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-38
+- [DCK-39] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-39
+- [DCK-40] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-40
+- [DCK-41] <<ONE-LINER>> Full: docs/invariants/gsx-stands-docking.md#dck-41
