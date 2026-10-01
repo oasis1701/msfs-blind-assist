@@ -198,6 +198,9 @@ public partial class MainForm
                 settings.TakeoffAssistHeadingToneThreshold, settings.TakeoffAssistLegacyMode,
                 settings.TakeoffAssistEnableCallouts);
             takeoffAssistManager.TakeoffAssistActiveChanged += OnTakeoffAssistActiveChanged;
+            // A rebuilt manager starts with the airliner pair; give it the current aircraft's
+            // calls back, or saving Settings silently took the DA40's "Rotate" away.
+            Services.TakeoffRollCallouts.Apply(takeoffAssistManager, currentAircraft);
 
             if (hadRunwayRef)
             {

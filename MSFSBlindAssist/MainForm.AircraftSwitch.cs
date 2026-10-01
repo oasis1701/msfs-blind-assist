@@ -1199,13 +1199,11 @@ public partial class MainForm
             da40Cas.StartCasMonitor(announcer);
             da40Cas.AttachLampWatch(simConnectManager);
             da40Cas.AttachWaypointSequencer(simConnectManager, announcer);
-
-            // ⚠️ The DA40 rotates at 67 KIAS, so the stock 80/100 knot roll callouts both land
-            // AFTER it is flying - two announcements during the busiest ten seconds of the
-            // flight, neither marking anything. One call at Vr is what a light single wants.
-            takeoffAssistManager?.ConfigureSpeedCallouts(
-                Aircraft.DA40.DA40Speeds.For(da40Cas.Variant).Vr, "Rotate", null, string.Empty);
         }
+
+        // Every switch, not only onto the DA40: its single "Rotate" call must be taken back
+        // when the next aircraft is loaded, or that aircraft has no 80 and 100 knot calls.
+        Services.TakeoffRollCallouts.Apply(takeoffAssistManager, newAircraft);
 
         // The HS787 CDU + EFB open their own Coherent debugger connections on demand (from
         // their forms) — no HTTP bridge to start. The IRS-alignment monitor runs continuously
