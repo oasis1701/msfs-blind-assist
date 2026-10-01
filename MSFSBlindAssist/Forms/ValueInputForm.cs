@@ -507,7 +507,10 @@ public partial class ValueInputForm : Form
 
             SetFieldIndex = index;
             IsValidInput = true;
-            InputValue = index == 0 ? input : InputValue;
+            // The main box's text either way. Left unset on a per-field Set of an EXTRA field,
+            // it stayed null, and a caller parsing InputValue first gave up before reading the
+            // field the pilot actually set (the DA40 standby altimeter's Set wrote nothing).
+            InputValue = valueTextBox.Text.Trim();
             _extraValues.Clear();
             for (int i = 0; i < _extraBoxes.Count; i++) _extraValues.Add(_extraBoxes[i].Text.Trim());
             DialogResult = DialogResult.OK;

@@ -32,6 +32,30 @@ public partial class CowsDA40Definition
     /// <summary>US gallons to litres, for the dual-unit fuel readouts.</summary>
 
     /// <summary>
+    /// Which altimeters a Ctrl+B dialog result sets, in inches: <paramref name="setFieldIndex"/>
+    /// is -1 for Set all, 0 for the main, 1 for the standby. Each field is read only when it is
+    /// written; the units cannot overlap, so magnitude says which was meant (above 100 is
+    /// hectopascals). Null when nothing that was asked for parses.
+    /// </summary>
+    internal static (double? MainInHg, double? StbyInHg)? PlanBaroSet(int setFieldIndex, string? main, string? standby)
+    {
+        static double? Parse(string? text) =>
+            double.TryParse(text, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double v)
+                ? Math.Clamp(v > 100 ? v / 33.8639 : v, 28.00, 31.50)
+                : null;
+
+        double? m = setFieldIndex is -1 or 0 ? Parse(main) : null;
+        double? s = setFieldIndex is -1 or 1 ? Parse(standby) : null;
+
+        // Set all with an unreadable standby keeps the old behaviour: both take the main.
+        if (setFieldIndex == -1 && m.HasValue && !s.HasValue) s = m;
+        if (setFieldIndex is -1 or 0 && !m.HasValue) return null;
+        if (setFieldIndex == 1 && !s.HasValue) return null;
+        return (m, s);
+    }
+
+    /// <summary>
     /// Input mode + B: SET both altimeters.
     ///
     /// This aeroplane has two and the AFM descent check is "Altimeters (2) ... SET", so
@@ -93,27 +117,6 @@ public partial class CowsDA40Definition
         dialog.InitialValue = SeedOf("DA40_G1000_BARO");
 
         if (dialog.ShowDialog(parentForm) != DialogResult.OK || !dialog.IsValidInput) return true;
-        if (!double.TryParse(dialog.InputValue, System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double entered))
-        {
-            return true;
-        }
-
-        // Same convention as the standby panel's own field: the ranges cannot overlap, so
-        // magnitude says which unit was meant.
-        // Same unit convention as everywhere else on this aeroplane: the ranges cannot
-        // overlap, so magnitude says which unit was meant, per field independently.
-        static double ToInHg(double v) =>
-            Math.Clamp(v > 100 ? v / 33.8639 : v, 28.00, 31.50);
-
-        double mainInHg = ToInHg(entered);
-        double stbyInHg = mainInHg;
-        if (dialog.ExtraValues.Count > 0 &&
-            double.TryParse(dialog.ExtraValues[0], System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double stbyEntered))
-        {
-            stbyInHg = ToInHg(stbyEntered);
-        }
 
         // ⚠️ WRITE ONLY WHAT THE PILOT ASKED FOR. The dialog has a Set button per altimeter
         // and a "Set all"; SetFieldIndex says which was pressed (-1 all, 0 main, 1 standby).
@@ -121,16 +124,24 @@ public partial class CowsDA40Definition
         // BOTH - reported from the cockpit as "there is only a set main button, there's no
         // set standby button, and you can't set them individually unless you go to the
         // panel itself".
-        bool doMain = dialog.SetFieldIndex is -1 or 0;
-        bool doStby = dialog.SetFieldIndex is -1 or 1;
+        //
+        // ⚠️ Each field is parsed only when it is being written: parsing the main field first
+        // and returning on failure made the standby's own Set button write nothing at all.
+        var plan = PlanBaroSet(dialog.SetFieldIndex, dialog.InputValue,
+            dialog.ExtraValues.Count > 0 ? dialog.ExtraValues[0] : null);
+        if (plan is null) return true;
+        bool doMain = plan.Value.MainInHg.HasValue;
+        bool doStby = plan.Value.StbyInHg.HasValue;
+        double mainInHg = plan.Value.MainInHg ?? plan.Value.StbyInHg!.Value;
+        double stbyInHg = plan.Value.StbyInHg ?? mainInHg;
 
         // ⚠️ THE TWO ALTIMETERS TAKE DIFFERENT TRANSPORTS - see this method's own summary.
         // The G1000 subscale is the stock unindexed K:KOHLSMAN_SET in millibars times
         // sixteen; the standby is a real L:var written through the calculator.
         if (doMain)
         {
-            simConnect.ExecuteCalculatorCode(
-                $"{mainInHg * 33.8639 * 16:0.###} (>K:KOHLSMAN_SET)".Replace(",", "."));
+            simConnect.ExecuteCalculatorCode(string.Create(System.Globalization.CultureInfo.InvariantCulture,
+                $"{mainInHg * 33.8639 * 16:0.###} (>K:KOHLSMAN_SET)"));
         }
         if (doStby) SetStandbyBaro(simConnect, stbyInHg);
         MarkBaroSetByUs();
