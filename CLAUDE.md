@@ -70,7 +70,7 @@ not set one cannot catch it.
 
 ## Git workflow and release notes
 
-`main` is protected: branch, then open a pull request. Every PR adds `changelog.d/<pr>-<slug>.<category>.md`, written for a pilot, not a reviewer; a required CI check fails without it. `<pr>` is READ, never guessed (issues and PRs share one number sequence): commit and push, open the PR (`gh pr create` prints its number), then add the fragment, commit and push. Categories: `aircraft`, `feature`, `improvement`, `fix`, `internal` (never published). A released fragment is never deleted; before merging, a long-running PR's own fragments may be condensed to what a pilot sees changed. Full convention: [changelog.d/README.md](changelog.d/README.md).
+The `main` branch is protected. Always create a new branch for changes and open a pull request — never commit directly to main. Every PR adds `changelog.d/<pr>-<slug>.<category>.md`, written for a pilot, not a reviewer; a required CI check fails without it. `<pr>` is READ, never guessed (issues and PRs share one number sequence): commit and push, open the PR (`gh pr create` prints its number), then add the fragment, commit and push. Categories: `aircraft`, `feature`, `improvement`, `fix`, `internal` (never published). A released fragment is never deleted; before merging, a long-running PR's own fragments may be condensed to what a pilot sees changed. Full convention: [changelog.d/README.md](changelog.d/README.md).
 
 - [CORE-6] `main` is protected: never commit to it directly; always branch and open a PR. Full: docs/invariants/core.md#core-6
 

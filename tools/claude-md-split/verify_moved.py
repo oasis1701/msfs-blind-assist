@@ -19,6 +19,7 @@ ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
 
 ALLOWLIST = [
     r"^Details: \[",                                  # stub pointers, now rows of the map
+    r"^Details \+ all A380X invariants: \[",       # A380 stub pointer, now a map row
     r"^\*\*Claude: Read these docs only",              # the old doc-list preamble
     r"^\*\*When to read detailed docs:\*\*",
     r"^\*\*Available documentation:\*\*",
