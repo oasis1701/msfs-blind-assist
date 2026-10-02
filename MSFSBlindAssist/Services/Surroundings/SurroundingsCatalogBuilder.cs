@@ -112,9 +112,11 @@ public sealed class SurroundingsCatalogBuilder
         bool byCensus = false;
         if (dirs.Count == 0)
         {
-            string? community = MsfsPackagesLocator.TryGetCommunityPath(_simulatorVersion(), out bool configUnreadable);
+            // Every add-on folder the running simulator loads: Community, and on MSFS 2024 also
+            // Community2024, where the SDK puts 2024-native scenery.
+            var community = MsfsPackagesLocator.TryGetCommunityPaths(_simulatorVersion(), out bool configUnreadable);
             isShort |= configUnreadable;
-            if (community != null)
+            if (community.Count > 0)
             {
                 dirs = _census.Locate(community, facilities, out bool censusShort).ToList();
                 byCensus = dirs.Count > 0;

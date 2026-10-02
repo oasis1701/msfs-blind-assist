@@ -64,18 +64,26 @@ public sealed class SceneryPackageCensus
     /// The packages whose objects stand on <paramref name="box"/>'s airport, most first, at most
     /// <see cref="MaxPackages"/>; empty below <see cref="MinPlacementsInBox"/> or with no Community folder.
     /// </summary>
-    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box) => Locate(communityDir, box, out _);
+    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box) => Locate(new[] { communityDir }, box, out _);
+
+    /// <summary>As above over one folder, with the short-scan flag.</summary>
+    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box, out bool incomplete)
+        => Locate(new[] { communityDir }, box, out incomplete);
 
     /// <summary>
-    /// As above, and whether any scan came back short. A short scan is not cached, but the catalog
-    /// built on it is, so the caller ORs this into the build's degraded bit.
+    /// As above over EVERY add-on folder the simulator loads — <c>Community</c> and, on MSFS 2024,
+    /// <c>Community2024</c> (<see cref="Database.MsfsPackagesLocator.TryGetCommunityPaths"/>) — scored
+    /// together, so the cap and the ordering are over all of them at once. <paramref name="incomplete"/>
+    /// is whether any scan came back short: a short scan is not cached, but the catalog built on it
+    /// is, so the caller ORs this into the build's degraded bit.
     /// </summary>
-    public IReadOnlyList<string> Locate(string communityDir, AirportFacilities box, out bool incomplete)
+    public IReadOnlyList<string> Locate(IReadOnlyList<string> communityDirs, AirportFacilities box, out bool incomplete)
     {
         incomplete = false;
         lock (_lock)
         {
-            if (string.IsNullOrWhiteSpace(communityDir) || !Directory.Exists(communityDir)) return Array.Empty<string>();
+            var dirs = communityDirs.Where(d => !string.IsNullOrWhiteSpace(d) && Directory.Exists(d)).ToList();
+            if (dirs.Count == 0) return Array.Empty<string>();
 
             var cache = _cache ??= Load();
             var known = new Dictionary<string, PackageCells>(StringComparer.OrdinalIgnoreCase);
@@ -86,7 +94,7 @@ public sealed class SceneryPackageCensus
             bool changed = false;
             var clock = Stopwatch.StartNew();
 
-            foreach (var (dir, stamp) in ScenerylikePackages(communityDir))
+            foreach (var (dir, stamp) in dirs.SelectMany(ScenerylikePackages))
             {
                 long len = stamp.Length, ticks = stamp.Ticks;
                 if (known.TryGetValue(dir, out var hit) && hit.Cells != null && hit.LayoutLength == len && hit.LayoutTicks == ticks)

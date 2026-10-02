@@ -154,12 +154,12 @@ public class MsfsPackagesLocatorTests : IDisposable
         string packages = WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", Path.Combine(_root, "p2024"));
         string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
 
-        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));  // packages root, but no Community under it
+        Assert.Empty(MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out bool failed));  // packages root, but no Community under it
         Assert.False(failed);
         Directory.CreateDirectory(Path.Combine(packages, "Community"));
-        Assert.Equal(Path.Combine(packages, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out failed));
+        Assert.Equal(new[] { Path.Combine(packages, "Community") }, MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out failed));
         Assert.False(failed);
-        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2020", roaming, local, out failed));      // no config for that simulator at all
+        Assert.Empty(MsfsPackagesLocator.TryGetCommunityPaths("FS2020", roaming, local, out failed));      // no config for that simulator at all
         Assert.False(failed);
     }
 
@@ -173,12 +173,12 @@ public class MsfsPackagesLocatorTests : IDisposable
         Directory.CreateDirectory(Path.Combine(packages, "Community"));
         string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
 
-        Assert.Equal(Path.Combine(packages, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));
+        Assert.Equal(new[] { Path.Combine(packages, "Community") }, MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out bool failed));
         Assert.False(failed);
 
         using var held = new FileStream(Path.Combine(roaming, "Microsoft Flight Simulator 2024", "UserCfg.opt"),
                                         FileMode.Open, FileAccess.Read, FileShare.None);
-        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out failed));
+        Assert.Empty(MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out failed));
         Assert.True(failed);
     }
 
@@ -186,17 +186,17 @@ public class MsfsPackagesLocatorTests : IDisposable
     public void Nothing_to_read_is_never_a_read_failure()
     {
         string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
-        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));   // no config anywhere
+        Assert.Empty(MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out bool failed));   // no config anywhere
         Assert.False(failed);
 
         string dir = Path.Combine(roaming, "Microsoft Flight Simulator 2024");
         Directory.CreateDirectory(dir);
         File.WriteAllLines(Path.Combine(dir, "UserCfg.opt"), new[] { "{Graphics", "  Version 1.1.0", "}" });
-        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out failed));        // no key
+        Assert.Empty(MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out failed));        // no key
         Assert.False(failed);
 
         File.WriteAllLines(Path.Combine(dir, "UserCfg.opt"), new[] { $"InstalledPackagesPath \"{Path.Combine(_root, "gone")}\"" });
-        Assert.Null(MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out failed));        // names a folder that is not there
+        Assert.Empty(MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out failed));        // names a folder that is not there
         Assert.False(failed);
     }
 
@@ -212,7 +212,7 @@ public class MsfsPackagesLocatorTests : IDisposable
 
         using var held = new FileStream(Path.Combine(roaming, "Microsoft Flight Simulator 2024", "UserCfg.opt"),
                                         FileMode.Open, FileAccess.Read, FileShare.None);
-        Assert.Equal(Path.Combine(store, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));
+        Assert.Equal(new[] { Path.Combine(store, "Community") }, MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out bool failed));
         Assert.True(failed);
     }
 
@@ -229,10 +229,63 @@ public class MsfsPackagesLocatorTests : IDisposable
         Directory.CreateDirectory(Path.Combine(active, "Community"));
         string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
 
-        Assert.Equal(Path.Combine(active, "Community"), MsfsPackagesLocator.TryGetCommunityPath("FS2024", roaming, local, out bool failed));
+        Assert.Equal(new[] { Path.Combine(active, "Community") }, MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out bool failed));
         Assert.False(failed);                                                                      // skipping a line is not a read failure
         // The navdata database build keeps its documented first-existing rule, NextBoot included.
         Assert.Equal(next, MsfsPackagesLocator.TryGetInstalledPackagesPath("FS2024", roaming, local));
+    }
+
+    [Fact]
+    public void A_2024_root_yields_Community2024_beside_Community_and_a_2020_root_never_does()
+    {
+        // MSFS 2024 reads Community (add-ons both simulators load) AND Community2024, the SDK's
+        // folder for 2024-only add-ons — where every 2024-native airport and the MD-11 go. MSFS 2020
+        // reads Community alone and ignores Community2024 even on a shared root. A Community-only
+        // reader told a pilot "no installed scenery package found" at CYYZ with FlyTampa's package
+        // on the disk (2026-10-02).
+        string p2024 = WriteUserCfg("Roaming/Microsoft Flight Simulator 2024", Path.Combine(_root, "p2024"));
+        string p2020 = WriteUserCfg("Roaming/Microsoft Flight Simulator", Path.Combine(_root, "p2020"));
+        foreach (string root in new[] { p2024, p2020 })
+        {
+            Directory.CreateDirectory(Path.Combine(root, "Community"));
+            Directory.CreateDirectory(Path.Combine(root, "Community2024"));
+        }
+        string roaming = Path.Combine(_root, "Roaming"), local = Path.Combine(_root, "Local");
+
+        Assert.Equal(new[] { Path.Combine(p2024, "Community"), Path.Combine(p2024, "Community2024") },
+                     MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out bool failed));
+        Assert.False(failed);
+        Assert.Equal(new[] { Path.Combine(p2020, "Community") },
+                     MsfsPackagesLocator.TryGetCommunityPaths("FS2020", roaming, local, out failed));
+        Assert.False(failed);
+
+        // Only the folders that are there: a 2024 root with no Community still answers.
+        Directory.Delete(Path.Combine(p2024, "Community"));
+        Assert.Equal(new[] { Path.Combine(p2024, "Community2024") },
+                     MsfsPackagesLocator.TryGetCommunityPaths("FS2024", roaming, local, out _));
+    }
+
+    [Fact]
+    public void Package_folders_are_every_folder_that_directly_holds_packages_in_a_fixed_order()
+    {
+        // The readers that walk every installed package (the aircraft.cfg catalog, the GSX profile
+        // scan) take whichever root they find first and must see both simulators' layouts: Community
+        // and Official\* on a 2020 root; Community, Community2024, Official2020\* and Official2024\* on
+        // a 2024 one. StreamedPackages holds no packages a reader can open.
+        string shared = Path.Combine(_root, "shared");
+        foreach (string rel in new[] { "Community", "Community2024", "Official2020/OneStore", "Official2024/Steam", "StreamedPackages" })
+            Directory.CreateDirectory(Path.Combine(shared, rel));
+        Assert.Equal(new[] { Path.Combine(shared, "Community"), Path.Combine(shared, "Community2024"),
+                             Path.Combine(shared, "Official2020", "OneStore"), Path.Combine(shared, "Official2024", "Steam") },
+                     MsfsPackagesLocator.PackageFolders(shared));
+
+        string legacy = Path.Combine(_root, "legacy");
+        foreach (string rel in new[] { "Community", "Official/OneStore" })
+            Directory.CreateDirectory(Path.Combine(legacy, rel));
+        Assert.Equal(new[] { Path.Combine(legacy, "Community"), Path.Combine(legacy, "Official", "OneStore") },
+                     MsfsPackagesLocator.PackageFolders(legacy));
+
+        Assert.Empty(MsfsPackagesLocator.PackageFolders(Path.Combine(_root, "nowhere")));
     }
 
     [Fact]

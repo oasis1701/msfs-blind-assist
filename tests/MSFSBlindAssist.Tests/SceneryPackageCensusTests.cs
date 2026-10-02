@@ -16,14 +16,39 @@ public class SceneryPackageCensusTests : IDisposable
     private static readonly string Schema = SceneryPackageCensus.CurrentSchemaVersion.ToString(CultureInfo.InvariantCulture);
 
     private string Package(string name, int count, double lat, double lon, string contentType = "SCENERY")
+        => PackageIn(Community, name, count, lat, lon, contentType);
+
+    private static string PackageIn(string folder, string name, int count, double lat, double lon, string contentType = "SCENERY")
     {
-        string dir = Path.Combine(Community, name, "scenery");
+        string dir = Path.Combine(folder, name, "scenery");
         Directory.CreateDirectory(dir);
         var objs = Enumerable.Range(0, count).Select(i => (lat + i * 0.0001, lon, 0.0, Guid.NewGuid())).ToArray();
         File.WriteAllBytes(Path.Combine(dir, "objects.bgl"), BglPlacementReaderTests.BuildBgl(objs));
-        File.WriteAllText(Path.Combine(Community, name, "layout.json"), "{}");
-        File.WriteAllText(Path.Combine(Community, name, "manifest.json"), $"{{\"content_type\":\"{contentType}\"}}");
-        return Path.Combine(Community, name);
+        File.WriteAllText(Path.Combine(folder, name, "layout.json"), "{}");
+        File.WriteAllText(Path.Combine(folder, name, "manifest.json"), $"{{\"content_type\":\"{contentType}\"}}");
+        return Path.Combine(folder, name);
+    }
+
+    [Fact]
+    public void Packages_in_Community2024_are_found_beside_those_in_Community_and_score_under_one_cap()
+    {
+        // MSFS 2024 loads Community AND Community2024 (the SDK's folder for 2024-only add-ons, where
+        // the 2024-native airports go). Scanned as one census: the cap and the ordering are over both
+        // folders at once, and a folder that is not there is skipped, not fatal.
+        string community2024 = Path.Combine(_root, "Community2024");
+        string legacy30 = Package("legacy-airport", 30, 33.6400, -84.4300);
+        string legacy40 = Package("legacy-city", 40, 33.6400, -84.4300);
+        string native60 = PackageIn(community2024, "flytampa-airport-cyyz-toronto-pearson", 60, 33.6400, -84.4300);
+        string native25 = PackageIn(community2024, "native-few", 25, 33.6400, -84.4300);   // over the threshold, but fourth: beyond the cap
+        var census = new SceneryPackageCensus(Path.Combine(_root, "cache"));
+
+        var found = census.Locate(new[] { Community, community2024 }, Katl, out bool incomplete);
+        Assert.Equal(new[] { native60, legacy40, legacy30 }, found);
+        Assert.False(incomplete);
+
+        Assert.Equal(found, census.Locate(new[] { Community, Path.Combine(_root, "nope"), community2024 }, Katl, out _));
+        Assert.Equal(new[] { native60, native25 }, census.Locate(new[] { community2024 }, Katl, out _));
+        Assert.Empty(census.Locate(new[] { Path.Combine(_root, "nope") }, Katl, out _));
     }
 
     [Fact]

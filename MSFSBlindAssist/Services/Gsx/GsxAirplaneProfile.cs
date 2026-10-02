@@ -173,12 +173,9 @@ public sealed class GsxAirplaneProfile
         string? pkgRoot = FindInstalledPackagesPath();
         if (pkgRoot != null)
         {
-            var roots = new List<string>();
-            string community = System.IO.Path.Combine(pkgRoot, "Community");
-            if (System.IO.Directory.Exists(community)) roots.Add(community);
-            string official = System.IO.Path.Combine(pkgRoot, "Official");
-            if (System.IO.Directory.Exists(official)) roots.AddRange(SafeDirs(official)); // Official\OneStore, Official\Steam, ...
-            foreach (var root in roots)
+            // Community, Community2024 and each child of Official / Official2020 / Official2024 —
+            // the same package folders AircraftCfgCatalog walks, from the one resolver.
+            foreach (var root in Database.MsfsPackagesLocator.PackageFolders(pkgRoot))
                 foreach (var pkg in SafeDirs(root))
                 {
                     string simobj = System.IO.Path.Combine(pkg, "SimObjects");
