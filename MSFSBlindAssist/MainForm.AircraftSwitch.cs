@@ -789,6 +789,11 @@ public partial class MainForm
         // EventIds tables use different event_base + N numberings) and actuate an arbitrary
         // wrong control. Idempotent, so the FBW double-call above is a no-op.
         (oldAircraft as BaseAircraftDefinition)?.DisposeTrackedWindows();
+        // Every def's own timers that could still SPEAK over the next aircraft (the PMDG
+        // speed-brake settle announcer). Unconditional for the same reason as the line above —
+        // never a per-type line — but never on the instance being switched TO.
+        if (!ReferenceEquals(oldAircraft, newAircraft))
+            (oldAircraft as BaseAircraftDefinition)?.OnSwitchedAway();
 
         // A manually-engaged 737 warning test (stick shaker / overspeed clacker) holds its
         // spring switch open-ended via a transmit press — release it on swap so it can't
@@ -1339,39 +1344,22 @@ public partial class MainForm
         // Save current flight plan state before recreating managers
         var savedFlightPlan = flightPlanManager?.CurrentFlightPlan;
 
-        // Reload database provider based on current settings (can be null if not built yet)
-        airportDataProvider = DatabaseSelector.SelectProvider();
+        // Reload database provider based on current settings (can be null if not built yet), wrapped
+        // in the same taxi-data augmentation every reader expects — see WithTaxiAugmentation's doc
+        // comment for the bug a raw, never-rewrapped assignment here used to cause.
+        airportDataProvider = WithTaxiAugmentation(DatabaseSelector.SelectProvider());
 
         // Recreate flight plan manager with new navigation database path
         var settings = MSFSBlindAssist.Settings.SettingsManager.Current;
         string navigationDatabasePath = NavdataReaderBuilder.GetDefaultDatabasePath(settings.SimulatorVersion ?? "FS2020");
         flightPlanManager = new MSFSBlindAssist.Navigation.FlightPlanManager(navigationDatabasePath, airportDataProvider);
 
-        // Restore flight plan state if one existed
+        // Restore flight plan state if one existed — every property, via FlightPlan.CopyFrom, not a
+        // hand-kept field list: the old field-by-field copy dropped ExtractedFlightData and the
+        // aircraft/airline fields, so the re-created EFB left Describe Route disabled until the
+        // pilot reloaded SimBrief.
         if (savedFlightPlan != null && !savedFlightPlan.IsEmpty())
-        {
-            // Copy all flight plan data to the new manager's flight plan
-            var newFlightPlan = flightPlanManager.CurrentFlightPlan;
-
-            // Copy metadata
-            newFlightPlan.DepartureICAO = savedFlightPlan.DepartureICAO;
-            newFlightPlan.DepartureRunway = savedFlightPlan.DepartureRunway;
-            newFlightPlan.ArrivalICAO = savedFlightPlan.ArrivalICAO;
-            newFlightPlan.ArrivalRunway = savedFlightPlan.ArrivalRunway;
-            newFlightPlan.SIDName = savedFlightPlan.SIDName;
-            newFlightPlan.STARName = savedFlightPlan.STARName;
-            newFlightPlan.ApproachName = savedFlightPlan.ApproachName;
-            newFlightPlan.SimBriefUsername = savedFlightPlan.SimBriefUsername;
-            newFlightPlan.LoadedTime = savedFlightPlan.LoadedTime;
-
-            // Copy all waypoint sections
-            newFlightPlan.DepartureAirportWaypoints = new List<WaypointFix>(savedFlightPlan.DepartureAirportWaypoints);
-            newFlightPlan.SIDWaypoints = new List<WaypointFix>(savedFlightPlan.SIDWaypoints);
-            newFlightPlan.EnrouteWaypoints = new List<WaypointFix>(savedFlightPlan.EnrouteWaypoints);
-            newFlightPlan.STARWaypoints = new List<WaypointFix>(savedFlightPlan.STARWaypoints);
-            newFlightPlan.ApproachWaypoints = new List<WaypointFix>(savedFlightPlan.ApproachWaypoints);
-            newFlightPlan.ArrivalAirportWaypoints = new List<WaypointFix>(savedFlightPlan.ArrivalAirportWaypoints);
-        }
+            flightPlanManager.CurrentFlightPlan.CopyFrom(savedFlightPlan);
 
         // Close EFB window if open - it will be recreated with the new manager when reopened
         if (electronicFlightBagForm != null && !electronicFlightBagForm.IsDisposed)
@@ -1379,6 +1367,9 @@ public partial class MainForm
             electronicFlightBagForm.Close();
             electronicFlightBagForm = null;
         }
+        // A route description still being prepared was computed against the old database and the old flight plan
+        // manager: discard it when it finishes (the kept description itself stays).
+        if (routeDescriptionSession.IsGenerating) routeDescriptionSession.Abandon();
 
         // Same for the TCAS window, and for the same reason: its GateResolver is built ONCE in
         // OpenTcasWindow from DatabaseSelector.SelectProvider() and captures that provider in a
@@ -1471,9 +1462,12 @@ public partial class MainForm
                 electronicFlightBagForm.Close();
                 electronicFlightBagForm = null;
             }
+            // Same for a route description still being prepared: it reads the database being released.
+            if (routeDescriptionSession.IsGenerating) routeDescriptionSession.Abandon();
 
-            // Set providers to null to release connections
-            airportDataProvider = null;
+            // Set providers to null to release connections — through WithTaxiAugmentation, so the augmenting decorator
+            // (_augmentingProvider, which holds the navdata provider) is released with it.
+            airportDataProvider = WithTaxiAugmentation(null);
             flightPlanManager = null!;
 
             // Force garbage collection to ensure connections are fully released

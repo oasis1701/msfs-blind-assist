@@ -91,10 +91,12 @@ public class AircraftActionExecutor : IFoActionExecutor
     private const uint MouseFlagLeftSingleU  = 0x20000000u;
     private const uint MouseFlagLeftReleaseU = 0x00020000u;
 
-    // Speedbrake arm read-back. The ambient CDA poll is 1 Hz, so a 1.2 s window always
+    // Speedbrake arm read-back. The ambient CDA poll is 1 Hz, so the window always
     // contains at least one refresh. PMDGNG3DataManager.RequestFreshSnapshotAsync is NOT
     // used — it is private and documented as unsafe for concurrent callers.
-    private const int SpeedbrakeArmVerifyMs = 1200;
+    // The lever rides the 1 Hz L-var batch and travels DOWN→ARM in about half a second, so the
+    // confirmation (lever at ARM AND the light) needs more than one batch.
+    private const int SpeedbrakeArmVerifyMs = 3000;
     private const int SpeedbrakeArmPollMs = 100;
     // Press-and-hold for the third rung, matching the warning-test press/release shape.
     private const int SpeedbrakeArmHoldMs = 120;
@@ -232,9 +234,10 @@ public class AircraftActionExecutor : IFoActionExecutor
         // no-op — the Landing flow's "Speedbrake: ARMED" never armed.
         // 2026-08-25: live-verified against a real 737-800 — a single CDA + LEFTSINGLE
         // click on EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM armed the lever on the first
-        // attempt. The FO path (ArmSpeedbrakeAsync / SpeedbrakeArmLadder) still reads
-        // MAIN_annunSPEEDBRAKE_ARMED back afterward and reports honestly if it does not
-        // take, but no longer escalates across transports — see SpeedbrakeArmLadder's
+        // attempt. The FO path (ArmSpeedbrakeAsync / SpeedbrakeArmLadder) still confirms
+        // afterward that the lever sits exactly at ARM AND that MAIN_annunSPEEDBRAKE_ARMED is
+        // lit, and reports honestly if it does not take, but no longer escalates across
+        // transports — see SpeedbrakeArmLadder's
         // class comment for why the other two proven transports stay documented on the
         // enum without being tried. These rows still serve the sibling detent events
         // reached through the normal dispatch path (e.g. _DOWN, via SetSpeedbrakeDown());
@@ -532,17 +535,17 @@ public class AircraftActionExecutor : IFoActionExecutor
     /// ARMED" and the checklist item ticked while the lever stayed down. Live-verified
     /// 2026-08-25: that same CDA + LEFTSINGLE click arms the lever on the first try, so
     /// <see cref="SpeedbrakeArmLadder"/> is now a single rung — but this method still
-    /// READS BACK <c>MAIN_annunSPEEDBRAKE_ARMED</c> afterward and reports honestly if it
-    /// does not take, rather than the old dispatch-once-and-assume-success.
+    /// READS BACK the lever (at ARM) and <c>MAIN_annunSPEEDBRAKE_ARMED</c> afterward and
+    /// reports honestly if it does not take, rather than the old dispatch-once-and-assume-success.
     ///
     /// Holds <c>_dispatchGate</c> across the whole call and uses <c>DispatchCoreAsync</c>
     /// / the raw send methods internally — never <c>DispatchAsync</c>, which would deadlock
-    /// on the gate. Worst case is roughly the verify window (~1.2s), which
+    /// on the gate. Worst case is roughly the verify window (~3 s), which
     /// <c>ChecklistManager.RunCheckActionWithGraceAsync</c> already covers: it holds revert
     /// until the action completes AND the dispatch gate drains, which is what the
     /// multi-second transponder walk relies on.
     /// </summary>
-    /// <returns>true once MAIN_annunSPEEDBRAKE_ARMED confirms; false if the rung did not take.</returns>
+    /// <returns>true once the lever is at ARM with the ARMED light lit (or already was); false if it is extended, unread, or the click did not take.</returns>
     public async Task<bool> ArmSpeedbrakeAsync()
     {
         const string ev = "EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM";
@@ -554,15 +557,22 @@ public class AircraftActionExecutor : IFoActionExecutor
         await _dispatchGate.WaitAsync();
         try
         {
-            // Already armed, or already deployed (auto-speedbrake fired on touchdown, or
-            // manually raised): a click here is a click toward the DOWN/RETRACT side of
-            // the detent travel, which on this lever means yanking the ground spoilers
-            // back in during rollout. Without this guard, a re-run of the Landing flow
-            // (or a manual re-tick) would fire that click once per call — one rung today,
-            // but this guard is what keeps a re-run harmless regardless of how many rungs
-            // SpeedbrakeArmLadder.Attempts holds. Bail out honestly-true instead.
-            if (FieldOn(SpeedbrakeArmLadder.ArmedField) || FieldOn(SpeedbrakeArmLadder.ExtendedField))
-                return true;
+            // An armed lever (at ARM, with the ARMED light) needs no click. A DEPLOYED lever
+            // (auto-speedbrake fired on touchdown, or manually raised) or a lit EXTENDED light
+            // is never clicked: the click would retract the spoilers, the ground spoilers on
+            // rollout included, and the arm honestly reports NOT done, because the speed brake
+            // is not armed. A lever not read yet is never clicked blind. This is what keeps a
+            // re-run of the Landing flow, or a manual re-tick, harmless.
+            var decision = SpeedbrakeLeverState.DecideArm(SpeedbrakePositionNow(sc),
+                FieldOn(SpeedbrakeArmLadder.ArmedField), FieldOn(SpeedbrakeArmLadder.ExtendedField));
+            if (decision == SpeedbrakeArmDecision.AlreadyArmed) return true;
+            if (decision != SpeedbrakeArmDecision.Arm)
+            {
+                Log.Debug("FirstOfficer", decision == SpeedbrakeArmDecision.LeaveAlone
+                    ? "Speedbrake arm not attempted: the speed brake is extended."
+                    : "Speedbrake arm not attempted: the lever position is not known yet.");
+                return false;
+            }
 
             for (int i = 0; i < SpeedbrakeArmLadder.Attempts.Count; i++)
             {
@@ -620,23 +630,37 @@ public class AircraftActionExecutor : IFoActionExecutor
         finally { _dispatchGate.Release(); }
     }
 
-    /// <summary>Polls the ARMED annunciator for <c>SpeedbrakeArmVerifyMs</c>. Returns as
-    /// soon as it reads true.</summary>
+    /// <summary>Polls for the lever at ARM with the ARMED light lit, for
+    /// <c>SpeedbrakeArmVerifyMs</c>. Returns as soon as both agree.</summary>
     private async Task<bool> WaitForSpeedbrakeArmedAsync()
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(SpeedbrakeArmVerifyMs);
         while (DateTime.UtcNow < deadline)
         {
-            if (FieldOn(SpeedbrakeArmLadder.ArmedField)) return true;
+            if (IsSpeedbrakeArmedNow()) return true;
             await Task.Delay(SpeedbrakeArmPollMs);
         }
-        return FieldOn(SpeedbrakeArmLadder.ArmedField);
+        return IsSpeedbrakeArmedNow();
     }
 
+    private SpeedbrakeLeverPosition SpeedbrakePositionNow(SimConnectManager sc) =>
+        SpeedbrakeLeverState.Classify(SpeedbrakeLeverState.Pmdg737,
+            sc.GetCachedVariableValue(SpeedbrakeLeverState.Pmdg737.LeverKey) ?? double.NaN);
+
+    private bool IsSpeedbrakeArmedNow() =>
+        _sc is { } sc
+        && SpeedbrakePositionNow(sc) == SpeedbrakeLeverPosition.Armed
+        && FieldOn(SpeedbrakeArmLadder.ArmedField);
+
     // No IsReady gate needed: pre-snapshot every field reads 0.0, so an unready data
-    // manager reads as "not armed" / "not lit" — the ladder tries every rung and honestly
-    // reports failure, which is the fail-safe direction here (unlike CenterQty(), where a
-    // false-0 must BLOCK an on-write, this is a read-only verification check).
+    // manager reads as "not armed" / "not lit". For the read-back check that is the fail-safe
+    // direction (the ladder tries every rung and honestly reports failure; unlike CenterQty(),
+    // where a false-0 must BLOCK an on-write, this is a read-only verification check). It is
+    // NOT fail-safe by itself where FieldOn also feeds the EXTENDED-light input of the arm
+    // decision (ArmSpeedbrakeAsync): there an unready 0 reads "not extended". What keeps that
+    // safe is the lever classification, which comes from SimConnect's cache and not from this
+    // data manager: a deployed lever classifies Deployed (left alone) and an unread one
+    // Unknown (never clicked blind), whatever this returns.
     private bool FieldOn(string field)
         => (_sc?.PMDGDataManager?.GetFieldValue(field) ?? 0.0) > 0.5;
 

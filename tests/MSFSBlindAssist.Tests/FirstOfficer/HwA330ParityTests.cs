@@ -66,12 +66,11 @@ public class HwA330ParityTests
     /// </summary>
     private static readonly Dictionary<string, string> KnownFlowStepActionDivergences = new()
     {
-        ["BS_SEATBELTS"] = "Seatbelt signs are 3-position on the A339X (0=On, 1=Auto, 2=Off), "
-                         + "so the write goes through HwA330ActionExecutor's SEATBELT_SIGN "
-                         + "pseudo-key. The A320's CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE reaches "
-                         + "no A330 write branch and AUTO would undo it within 500 ms anyway.",
-        ["DC_SEATBELTS"] = "Same switch, same pseudo-key — see BS_SEATBELTS.",
-        ["SD_SEATBELTS_OFF"] = "Same switch, same pseudo-key — see BS_SEATBELTS.",
+        // Empty since 2026-09-29. The three seat-belt steps (BS_SEATBELTS, DC_SEATBELTS,
+        // SD_SEATBELTS_OFF) used to be listed here: the A330 wrote its SEATBELT_SIGN pseudo-key
+        // while the A32NX wrote the bare CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE event, which
+        // reached no write branch on EITHER airframe. The A32NX now writes SEATBELT_SIGN too
+        // (each executor resolves it to its own airframe's write), so the steps converged.
     };
 
     private static Dictionary<string, string?> ChecklistStateFields<TExec, TState>(

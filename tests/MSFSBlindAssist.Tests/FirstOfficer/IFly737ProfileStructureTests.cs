@@ -5,6 +5,11 @@ using MSFSBlindAssist.FirstOfficer.IFly737;
 using MSFSBlindAssist.FirstOfficer.Models;
 using Xunit;
 
+// An alias, not `using MSFSBlindAssist.FirstOfficer;`: that namespace also holds the 777's
+// AircraftStateEvaluator / AircraftActionExecutor, which would make unqualified 737 names
+// ambiguous.
+using SpeedbrakeLeverState = MSFSBlindAssist.FirstOfficer.SpeedbrakeLeverState;
+
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 /// <summary>
@@ -98,7 +103,7 @@ public class IFly737ProfileStructureTests
     }
 
     [Fact]
-    public void TakeoffFlaps_LandingAutobrake_Speedbrake_AreReminders()
+    public void TakeoffFlaps_LandingAutobrake_AreReminders_SpeedbrakeIsArmedByTheFirstOfficer()
     {
         var groups = Groups();
 
@@ -112,22 +117,30 @@ public class IFly737ProfileStructureTests
         Assert.Equal(ChecklistItemType.CaptainReminder, landingAutobrake.Type);
         Assert.Null(landingAutobrake.CheckAction);
 
-        // Speedbrake ARM (Landing) — a Captain item on this aircraft (unverified lever write
-        // scale, deliberately read-only): NO action. It mirrors the armed light rather than
-        // staying a plain reminder, so finishing the Landing flow cannot latch it ticked over
-        // an unarmed lever — see IFly737LandingSpeedbrakeCheckTests.
+        // Speedbrake ARM (Landing) — the First Officer arms it, as on the PMDG 737 (a verified
+        // SPEEDBRAKE_ARM through main's measured lever write), judged by the lever exactly at
+        // ARM AND the ARMED light (FO_SPEEDBRAKE_ARMED). See IFly737LandingSpeedbrakeCheckTests.
         var speedbrakeArm = groups.First(g => g.Id == "LANDING").Items.Single(i => i.Id == "LDA_SPDBRK");
         Assert.Equal(ChecklistItemType.AutoDetectable, speedbrakeArm.Type);
-        Assert.Null(speedbrakeArm.CheckAction);
-        Assert.Equal("SPEED_BRAKE_ARMED_Light_Status", speedbrakeArm.StateFieldName);
+        Assert.NotNull(speedbrakeArm.CheckAction);
+        Assert.NotNull(speedbrakeArm.LeaveAloneWhen);
+        Assert.Equal(SpeedbrakeLeverState.ArmedField, speedbrakeArm.StateFieldName);
 
-        // Its Landing Checklist twin auto-detects (the iFly DOES expose a speedbrake-armed
-        // readback the PMDG NG3 struct lacks) but must still be action-free per the _CL
-        // invariant checked above.
+        // Its Landing Checklist twin reads the same field but must still be action-free per
+        // the _CL invariant checked above.
         var speedbrakeReadback = groups.First(g => g.Id == "LANDING_CL").Items.Single(i => i.Id == "LDC_SPDBRK");
         Assert.Equal(ChecklistItemType.AutoDetectable, speedbrakeReadback.Type);
         Assert.Null(speedbrakeReadback.CheckAction);
-        Assert.Equal("SPEED_BRAKE_ARMED_Light_Status", speedbrakeReadback.StateFieldName);
+        Assert.Equal(SpeedbrakeLeverState.ArmedField, speedbrakeReadback.StateFieldName);
+    }
+
+    // PR #261 gave the lever a real write (FLTCTRL_SPOILER). A display-only field still has none.
+    [Fact]
+    public void The_speed_brake_lever_is_writable_now_and_a_display_field_is_not()
+    {
+        var def = new IFly737MAXDefinition();
+        Assert.True(def.HasWriteCommand("Spoiler_Lever_Status"));
+        Assert.False(def.HasWriteCommand("Hydraulic_Brake_Pressure_Status"));
     }
 
     [Fact]
@@ -328,20 +341,21 @@ public class IFly737ProfileStructureTests
     /// definition that has a REAL write command. Membership alone is not enough — Task 4's
     /// review found that <see cref="IFly737MAXDefinition.ApplyUIVariable"/> returns true for a
     /// registered but READ-ONLY key (it speaks "X is a read-only indicator" and re-fires
-    /// state), so a flow step targeting e.g. Spoiler_Lever_Status would resolve as "valid"
-    /// and then silently do nothing in the sim.
+    /// state), so a flow step targeting e.g. Hydraulic_Brake_Pressure_Status (a Disp field)
+    /// would resolve as "valid" and then silently do nothing in the sim.
     ///
     /// Fix pass 1 (2026-08), Fix 2: writability is now read off
     /// <see cref="IFly737MAXDefinition.HasWriteCommand"/> rather than
     /// <see cref="SimConnect.SimVarDefinition.RenderAsReadOnlyStatus"/>. The flag is set true
     /// ONLY by the SwD registration path (a field registered with a null write command) — the
-    /// Disp/Annun/AnnunD paths (display-only fields, e.g. Spoiler_Lever_Status) leave it FALSE
-    /// with no write command at all, so the flag-based check passed a step pointed at one of
-    /// those fields. A mutation probe proved this: pointing a step at Spoiler_Lever_Status (a
-    /// Disp registration — the very key a step was demoted to a Captain reminder to avoid)
-    /// PASSED the old RenderAsReadOnlyStatus-based test. HasWriteCommand checks BOTH write
-    /// dictionaries the definition actually dispatches through (_writes, _perValueWrites), so
-    /// it can't miss a Disp/Annun/AnnunD field the way the flag did.
+    /// Disp/Annun/AnnunD paths (display-only fields, e.g. Hydraulic_Brake_Pressure_Status)
+    /// leave it FALSE with no write command at all, so the flag-based check passed a step
+    /// pointed at one of those fields. A mutation probe proved this: pointing a step at
+    /// Spoiler_Lever_Status (then a Disp registration; PR #261 has since given it a real
+    /// write, FLTCTRL_SPOILER) PASSED the old RenderAsReadOnlyStatus-based test.
+    /// HasWriteCommand checks BOTH write dictionaries the definition actually dispatches
+    /// through (_writes, _perValueWrites), so it can't miss a Disp/Annun/AnnunD field the
+    /// way the flag did.
     /// </summary>
     [Fact]
     public void EverySetSwitchStep_Resolves()

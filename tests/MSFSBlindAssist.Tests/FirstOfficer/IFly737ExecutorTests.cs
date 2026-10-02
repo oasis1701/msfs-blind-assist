@@ -31,7 +31,7 @@ public class IFly737ExecutorTests
     private static readonly string[] Expected =
     {
         "FIRE_TEST", "STALL_TEST_1", "STALL_TEST_2", "OVSPD_TEST_1", "OVSPD_TEST_2",
-        "TCAS_TEST", "GPWS_TEST", "APU_START", "BARO_STD_BOTH", "PRESS_ALTS",
+        "TCAS_TEST", "GPWS_TEST", "APU_START", "BARO_STD_BOTH", "PRESS_ALTS", "SPEEDBRAKE_ARM",
     };
 
     [Fact]
@@ -134,6 +134,7 @@ public class IFly737ExecutorTests
         Assert.False(await exec.SetCenterFuelPumps(1));
         Assert.False(await exec.SetWingFuelPumps(1));
         Assert.False(await exec.SetAltimetersStandardAsync());
+        Assert.False(await exec.ArmSpeedbrakeAsync());
         Assert.False(await exec.SetPressurizationAltitudesAsync(new IFly737StateEvaluator()));
         Assert.False(await exec.CabinCall());
     }
@@ -179,6 +180,17 @@ public class IFly737ExecutorTests
 
         Assert.True(exec.IsDeclaredPosition("BTN_ATTENDANT_CALL", 1));
         Assert.True(exec.IsDeclaredPosition("BTN_ATTENDANT_CALL", 42)); // still nothing to check against
+    }
+
+    // The verified arm writes ARM (34) through ApplySilent, which refuses any value that is not
+    // one of the lever combo's declared positions — ARM must be one.
+    [Fact]
+    public void Speedbrake_ARM_is_a_declared_lever_position()
+    {
+        var exec = new IFly737ActionExecutor();
+        exec.SetDefinition(new MSFSBlindAssist.Aircraft.IFly737MAXDefinition());
+        Assert.True(exec.IsDeclaredPosition(MSFSBlindAssist.Aircraft.IFly737SpeedBrakeLever.FieldName,
+            SpeedbrakeLeverState.IFly737.ArmValue));
     }
 
     // An unrecognised key is also accepted by the range check itself — ApplyUIVariable's
@@ -292,10 +304,11 @@ public class IFly737ExecutorTests
     // pseudo-key handler bodies and every typed public method's Set/MultiAsync call — checked
     // against IFly737MAXDefinition.HasWriteCommand (the same "really writable" check
     // EverySetSwitchStep_Resolves uses; a registered-but-read-only key would pass a bare
-    // ContainsKey the same way Spoiler_Lever_Status once did there). Some of these ARE also
-    // reachable via a flow step and so are already covered above — re-checking them here is
-    // harmless and keeps this list a complete, self-contained inventory of the executor's write
-    // surface rather than a hand-picked diff against the flow test.
+    // ContainsKey the same way Spoiler_Lever_Status once did there; it was read-only until
+    // PR #261 gave it a write, and is writable now). Some of these ARE also reachable via a
+    // flow step and so are already covered above — re-checking them here is harmless and
+    // keeps this list a complete, self-contained inventory of the executor's write surface
+    // rather than a hand-picked diff against the flow test.
     private static readonly string[] ExecutorWriteKeys =
     {
         // Pseudo-key handler bodies (FireTestCoreAsync, ClickAndSettleCoreAsync, and the two
@@ -369,6 +382,10 @@ public class IFly737ExecutorTests
         // wrapper — see PF_YD/AL_FLAPS's own comments), but still part of the executor's
         // write surface and named explicitly by the review.
         "FLAP_Status",
+
+        // The speed-brake lever: ArmSpeedbrakeCoreAsync (the verified SPEEDBRAKE_ARM
+        // pseudo-key) writes it through ApplySilent, to ARM exactly.
+        MSFSBlindAssist.Aircraft.IFly737SpeedBrakeLever.FieldName,
     };
 
     [Fact]

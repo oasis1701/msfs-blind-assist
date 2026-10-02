@@ -229,8 +229,11 @@ public static class FbwA320FlowDefinitions
             // External power off; skip when not on the bus
             Done(Skip(SW("BS_EXTPWR_OFF", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0),
                 s => !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON")), "BS_EXTPWR_OFF"),
-            // Seatbelt signs: 2-position toggle event on the A320 (no AUTO, unlike the A380).
-            Done(Skip(SW("BS_SEATBELTS", "Seatbelt signs: ON", "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 1),
+            // Seatbelt signs: 2-position on the A320 (no AUTO, unlike the A380). Routed through
+            // the SEATBELT_SIGN pseudo-key to FbwA320ActionExecutor.SetSeatbeltSign, the guarded
+            // toggle. The bare CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE reaches no write branch, so
+            // it was refused and this step was skipped with the sign untouched (2026-09-29).
+            Done(Skip(SW("BS_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 1),
                 s => s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "BS_SEATBELTS"),
             Done(Skip(SW("BS_BEACON", "Beacon: ON", "BEACON_LIGHTS_SET", 1),
                 s => s.IsOn("LIGHT BEACON")), "BS_BEACON"),
@@ -384,7 +387,8 @@ public static class FbwA320FlowDefinitions
             // Landing autobrake is ALWAYS a Captain item (project-wide rule) — never
             // automated in a descent/approach flow.
             Captain("DC_AUTOBRAKE", "Set the landing autobrake — Instrument section, Autobrake panel"),
-            Done(Skip(SW("DC_SEATBELTS", "Seatbelt signs: ON", "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 1),
+            // SEATBELT_SIGN pseudo-key — see BS_SEATBELTS.
+            Done(Skip(SW("DC_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 1),
                 s => s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "DC_SEATBELTS"),
             // ONE descent-preparation item — see FbwA320ChecklistDefinitions.BuildDescent.
             Captain("DC_MCDU",
@@ -483,7 +487,8 @@ public static class FbwA320FlowDefinitions
                 s => !s.IsOn("A32NX_EFIS_L_LS_BUTTON_IS_ON")), "SD_LS1"),
             Done(Skip(SW("SD_LS2", "LS first officer: OFF", "A32NX_EFIS_R_LS_BUTTON_IS_ON", 0),
                 s => !s.IsOn("A32NX_EFIS_R_LS_BUTTON_IS_ON")), "SD_LS2"),
-            Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE", 0),
+            // SEATBELT_SIGN pseudo-key — see BS_SEATBELTS.
+            Done(Skip(SW("SD_SEATBELTS_OFF", "Seatbelt signs: OFF", "SEATBELT_SIGN", 0),
                 s => !s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "SD_SEATBELTS_OFF"),
             Done(Skip(SW("SD_BEACON_OFF", "Beacon: OFF", "BEACON_LIGHTS_SET", 0),
                 s => s.IsPosition("LIGHT BEACON", 0)), "SD_BEACON_OFF"),

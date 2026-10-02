@@ -325,24 +325,23 @@ public static class PMDG737ChecklistDefinitions
             Auto("LDA_START", "LANDING", "Engine start switches: CONT", "ENG_StartSelector_0", v => v > 1.5 && v < 2.5,
                 new[] { "ENG_StartSelector_1" },
                 (e, _) => { e.SetEngStartSelector1(2); e.SetEngStartSelector2(2); }),
-            // Detected on MAIN_annunSPEEDBRAKE_ARMED. (The old comment here claimed the
-            // NG3 CDA struct has no speedbrake state field; it does — this one — and
-            // without it a failed arm ticked the item anyway.) The annunciator reflects
-            // the auto-speedbrake system being ARMED rather than raw lever position, so it
-            // will not light cold-and-dark; this item only exists in the Landing phase.
+            // Detected on the lever exactly at ARM AND the ARMED light
+            // (SpeedbrakeLeverState.ArmedField): the light alone stays lit to about 342 on the
+            // lever, i.e. with the spoilers already up, so it cannot prove "armed" by itself.
+            // Neither reads true cold-and-dark; this item only exists in the Landing phase.
             //
             // Because this is AutoAsync (RevertToState), the item can un-tick on its own:
-            // the auto-speedbrake deploys on touchdown, ARMED extinguishes, and — unless the
+            // the auto-speedbrake deploys on touchdown, the lever leaves ARM, and — unless the
             // group was already latched by a completed flow run (see ChecklistManager.
             // MarkGroupComplete) — the checklist visibly reverts this item mid-rollout. A
-            // pilot tidying it back up by hand then re-fires the arm action against a
-            // DEPLOYED lever. That is exactly what ArmSpeedbrakeAsync's already-armed/
-            // already-extended guard exists to make safe: it reads back ArmedField OR
-            // ExtendedField before touching the lever at all, so a re-tick here on rollout
-            // is a same-frame no-op, not a click toward retracting the ground spoilers.
-            AutoAsync("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED",
-                SpeedbrakeArmLadder.ArmedField, v => v > 0.5,
+            // pilot tidying it back up by hand then re-ticks it over a DEPLOYED lever: that is
+            // refused by the leave-alone rule below, with its reason spoken, and
+            // ArmSpeedbrakeAsync never clicks ARM over a deployed lever either, because the
+            // click would retract the ground spoilers.
+            LeaveAlone(AutoAsync("LDA_SPDBRK", "LANDING", "Speedbrake: ARMED",
+                SpeedbrakeLeverState.ArmedField, v => v > 0.5,
                 (e, _) => e.ArmSpeedbrakeAsync()),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
             Reminder("LDA_MISSED", "LANDING", "Set the missed approach altitude"),
         }
     };
@@ -564,7 +563,7 @@ public static class PMDG737ChecklistDefinitions
             // Verify-only on the checklist — the Landing flow and the Landing group item
             // are what actuate. Mirrors the 777's LDG_SPEEDBRAKE.
             Auto("LDC_SPDBRK", "LANDING_CL", "Speedbrake: ARMED",
-                SpeedbrakeArmLadder.ArmedField, v => v > 0.5, action: null),
+                SpeedbrakeLeverState.ArmedField, v => v > 0.5, action: null),
             // "Landing gear: DOWN" is confirmed the way a crew confirms it — three green —
             // through the GearConfirmation synthetic (lever DOWN, all three main-panel greens
             // on, no red), never the lever alone (owner decision 2026-09-22). The Landing
@@ -715,6 +714,15 @@ public static class PMDG737ChecklistDefinitions
         ManualCompletionAllowed = true,
         CheckAction = action,
     };
+
+    // A line whose hand-tick the First Officer refuses in the aircraft's current state
+    // (ChecklistItem.LeaveAloneWhen), speaking `text` instead.
+    private static Item LeaveAlone(Item item, Func<AircraftStateEvaluator, bool> when, string text)
+    {
+        item.LeaveAloneWhen = when;
+        item.LeaveAloneText = text;
+        return item;
+    }
 
     private static Item Reminder(string id, string groupId, string text) => new()
     {

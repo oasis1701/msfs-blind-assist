@@ -140,11 +140,14 @@ public class Pmdg777FlowChecklistLinkTests
         m["EVT_CONTROL_STAND_FLAPS_LEVER_15"] = new (string, Func<int, double>)[] { ("FCTL_Flaps_Lever", _ => 3) };
         m["EVT_CONTROL_STAND_FLAPS_LEVER_20"] = new (string, Func<int, double>)[] { ("FCTL_Flaps_Lever", _ => 4) };
         m["EVT_CONTROL_STAND_FLAPS_LEVER_25"] = new (string, Func<int, double>)[] { ("FCTL_Flaps_Lever", _ => 5) };
-        // Speed brake detent click events (the lever is an analog 0-100 position).
+        // Speed brake: the verified arm (SPEEDBRAKE_ARM -> ArmSpeedbrakeAsync) and the detent
+        // click events drive main's lever L-var, read through FO_SPEEDBRAKE_LEVER.
+        m[SpeedbrakeLeverState.ArmPseudoKey] = new (string, Func<int, double>)[]
+        { (Pmdg777SpeedbrakeLever.LeverField, _ => Pmdg777SpeedbrakeLever.ArmedValue) };
         m["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM"] = new (string, Func<int, double>)[]
-        { ("FCTL_Speedbrake_Lever", _ => Pmdg777SpeedbrakeLever.ArmedValue) };
+        { (Pmdg777SpeedbrakeLever.LeverField, _ => Pmdg777SpeedbrakeLever.ArmedValue) };
         m["EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_DOWN"] = new (string, Func<int, double>)[]
-        { ("FCTL_Speedbrake_Lever", _ => Pmdg777SpeedbrakeLever.DownValue) };
+        { (Pmdg777SpeedbrakeLever.LeverField, _ => Pmdg777SpeedbrakeLever.DownValue) };
         return m;
     }
 
@@ -332,7 +335,8 @@ public class Pmdg777FlowChecklistLinkTests
         // Before Taxi flaps steps once named 737-style detent INDICES (_2/_3/_4) where the
         // table is keyed by DEGREES, so flaps 5 / 15 / 20 never moved; none may be missing.
         var pseudoKeys = new HashSet<string>(StringComparer.Ordinal)
-        { "OXY_TEST_CAPT", "OXY_TEST_FO", "FIRE_OVHT_TEST", "TCAS_TEST", "WXR_TEST", "EMER_EXIT_LIGHTS" };
+        { "OXY_TEST_CAPT", "OXY_TEST_FO", "FIRE_OVHT_TEST", "TCAS_TEST", "WXR_TEST", "EMER_EXIT_LIGHTS",
+          SpeedbrakeLeverState.ArmPseudoKey };
         var missing = PMDG777FlowDefinitions.Build()
             .SelectMany(f => f.Steps.Where(FlowChecklistLinkAudit.IsWrite).SelectMany(Writes))
             .Select(w => w.Event)

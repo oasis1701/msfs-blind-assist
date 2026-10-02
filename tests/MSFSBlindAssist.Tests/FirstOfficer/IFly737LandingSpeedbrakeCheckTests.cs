@@ -13,32 +13,25 @@ using MSFSBlindAssist.SimConnect.IFly;
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 /// <summary>
-/// iFly 737 MAX8: finishing the Landing flow must not latch "Speedbrake: ARMED" complete
-/// over a speedbrake that is NOT armed. The lever has no First Officer write (a Captain item,
-/// deliberately read-only), so the flow can only REMIND the Captain — and the flow's
-/// completion used to tick and latch both speedbrake lines (the Landing action group's
-/// LDA_SPDBRK and the Landing Checklist's LDC_SPDBRK) whatever the lever was doing.
-///
-/// The fix follows the gear-check pattern: a READ-ONLY wait on the SPEED BRAKE ARMED light,
-/// Skip on timeout, which completes both lines when the light comes on and, when it does not,
-/// is announced as skipped so FlowManager keeps both lines out of MarkGroupComplete's latch and
-/// they keep mirroring the light. It sits BEFORE the gear-down check, which stays LAST.
-/// Pure logic over the app's own Build() data plus the real ChecklistManager; no SDK.
+/// iFly 737 MAX8: the First Officer arms the speed brake itself, as the PMDG 737's does (same
+/// aircraft type), through the verified SPEEDBRAKE_ARM action — main's PR #261 gave the lever a
+/// measured write (FLTCTRL_SPOILER, the same 0-224 scale as the read, ARM exactly 34). "Armed"
+/// is the lever exactly at 34 AND the SPEED BRAKE ARMED light: the light alone is lit from 34
+/// all the way to 224. A deployed speed brake is left alone with its reason.
 /// </summary>
 public class IFly737LandingSpeedbrakeCheckTests
 {
-    private const string ArmedLight = "SPEED_BRAKE_ARMED_Light_Status";
-
     private static FlowDefinition<IFly737StateEvaluator> LandingFlow()
         => IFly737FlowDefinitions.Build().Single(f => f.Id == "LANDING");
 
-    private static FlowStep<IFly737StateEvaluator> Check()
-        => LandingFlow().Steps.Single(s => s.Id == "LD_SPDBRK_CHECK");
+    private static FlowStep<IFly737StateEvaluator> Arm()
+        => LandingFlow().Steps.Single(s => s.Id == "LD_SPDBRK");
 
-    private static IFly737StateEvaluator ReadyWithArmedLight(byte lightValue)
+    private static IFly737StateEvaluator Ready(int lever, byte armedLight)
     {
         var data = new byte[IFlySdkOffsets.StructSize];
-        data[IFlySdkOffsets.SPEED_BRAKE_ARMED_Light_Status] = lightValue;
+        BitConverter.GetBytes(lever).CopyTo(data, IFlySdkOffsets.Spoiler_Lever_Status);
+        data[IFlySdkOffsets.SPEED_BRAKE_ARMED_Light_Status] = armedLight;
         var snap = new IFlySdkSnapshot(data);
         var eval = new IFly737StateEvaluator();
         eval.SnapshotSource = () => snap;
@@ -46,94 +39,68 @@ public class IFly737LandingSpeedbrakeCheckTests
         return eval;
     }
 
-    // ---- the flow's shape ------------------------------------------------------------------
-
     [Fact]
-    public void Landing_flow_checks_the_speedbrake_before_the_gear_and_the_gear_check_stays_last()
+    public void Landing_flow_matches_the_PMDG_737s_order()
     {
-        Assert.Equal(
-            new[] { "LD_START_CONT", "LD_SPDBRK", "LD_MISSED", "LD_SPDBRK_CHECK", "LD_GEAR_DOWN_CHECK" },
+        Assert.Equal(new[] { "LD_START_CONT", "LD_SPDBRK", "LD_MISSED", "LD_GEAR_DOWN_CHECK" },
             LandingFlow().Steps.Select(s => s.Id).ToArray());
     }
 
     [Fact]
-    public void The_Captain_is_still_asked_to_arm_the_speedbrake_before_the_check_waits_for_it()
+    public void The_first_officer_arms_through_the_verified_pseudo_key()
     {
-        var steps = LandingFlow().Steps;
-        var reminder = steps.Single(s => s.Id == "LD_SPDBRK");
-        Assert.Equal(FlowStepActionType.CaptainReminder, reminder.ActionType);
-        int check = steps.FindIndex(s => s.Id == "LD_SPDBRK_CHECK");
-        Assert.InRange(steps.IndexOf(reminder), 0, check - 1);
-    }
-
-    // ---- the check is read-only and linked to both speedbrake lines ------------------------
-
-    [Fact]
-    public void Speedbrake_check_is_a_read_only_wait_on_the_armed_light()
-    {
-        var step = Check();
-        Assert.Equal("Speedbrake: ARMED", step.Label);
-        Assert.Equal(FlowStepActionType.WaitForCondition, step.ActionType);
-        Assert.Equal(ArmedLight, step.ConditionFieldName);
-        // Never a write — the lever is a Captain item on this aircraft.
-        Assert.Null(step.EventName);
-        Assert.Null(step.TargetValue);
-        Assert.Empty(step.MultiActions);
-        Assert.Null(step.VerifyFieldName);
-    }
-
-    [Fact]
-    public void Speedbrake_check_reads_DIM_or_BRIGHT_as_armed_and_off_or_unknown_as_not()
-    {
-        var c = Check().Condition!;
-        Assert.True(c(1));   // light ON (DIM)
-        Assert.True(c(2));   // light ON (BRIGHT)
-        Assert.False(c(0));  // light OFF
-        Assert.False(c(double.NaN));
-    }
-
-    [Fact]
-    public void Speedbrake_check_is_Skip_with_a_short_bounded_timeout()
-    {
-        var step = Check();
+        var step = Arm();
+        Assert.Equal(FlowStepActionType.SetSwitch, step.ActionType);
+        Assert.Equal(IFly737ActionExecutor.KeySpeedbrakeArm, step.EventName);
+        Assert.Equal(SpeedbrakeLeverState.ArmPseudoKey, step.EventName);
+        Assert.Equal(new[] { "LDA_SPDBRK", "LDC_SPDBRK" }, step.LinkedChecklistItemIds.ToArray());
         Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
-        // Short — the Captain was just asked, and the gear check is waiting behind it.
-        Assert.InRange(step.TimeoutSeconds, 5, 20);
     }
 
     [Fact]
-    public void Speedbrake_check_completes_the_Landing_Checklist_line_and_the_action_group_line()
+    public void An_armed_speed_brake_is_already_set_and_a_deployed_one_is_left_alone()
     {
-        var step = Check();
-        Assert.Equal("LDC_SPDBRK", step.CompletesChecklistItemId);
-        Assert.Equal(new[] { "LDC_SPDBRK", "LDA_SPDBRK" }, step.LinkedChecklistItemIds.ToArray());
+        var step = Arm();
+        Assert.True(step.SkipCondition!(Ready(34, 1)));
+        Assert.False(step.SkipCondition!(Ready(0, 0)));
+        Assert.False(step.SkipCondition!(Ready(100, 1)));   // lit, but deployed
+        Assert.True(step.LeaveAloneWhen!(Ready(100, 1)));
+        Assert.False(step.LeaveAloneWhen!(Ready(0, 0)));
+        Assert.Equal(SpeedbrakeLeverState.LeaveAloneText, step.LeaveAloneText);
+    }
 
-        var itemIds = IFly737ChecklistDefinitions.Build().SelectMany(g => g.Items).Select(i => i.Id).ToHashSet();
-        Assert.All(step.LinkedChecklistItemIds, id => Assert.Contains(id, itemIds));
+    [Theory]
+    [InlineData(0, 0, 0.0)]
+    [InlineData(33, 0, 0.0)]
+    [InlineData(34, 1, 1.0)]     // DIM counts
+    [InlineData(34, 2, 1.0)]     // BRIGHT
+    [InlineData(34, 0, 0.0)]
+    [InlineData(100, 1, 0.0)]    // the light is lit all the way up
+    [InlineData(224, 2, 0.0)]
+    public void Armed_is_the_lever_at_34_and_the_light(int lever, byte light, double expected) =>
+        Assert.Equal(expected, Ready(lever, light).GetValue(SpeedbrakeLeverState.ArmedField));
+
+    [Fact]
+    public void Armed_is_unknown_until_the_SDK_is_ready()
+    {
+        var eval = Ready(34, 1);
+        eval.ReadySource = () => false;
+        Assert.True(double.IsNaN(eval.GetValue(SpeedbrakeLeverState.ArmedField)));
     }
 
     [Fact]
-    public void Speedbrake_check_skips_as_already_set_only_on_a_lit_armed_light()
+    public void Both_lines_read_the_armed_field_and_only_the_landing_group_line_arms()
     {
-        var skip = Check().SkipCondition!;
-        Assert.True(skip(ReadyWithArmedLight(1)));
-        Assert.True(skip(ReadyWithArmedLight(2)));
-        Assert.False(skip(ReadyWithArmedLight(0)));
-        Assert.False(skip(new IFly737StateEvaluator())); // no data never reads "Already set"
-    }
+        var groups = IFly737ChecklistDefinitions.Build();
+        var group = groups.Single(g => g.Id == "LANDING").Items.Single(i => i.Id == "LDA_SPDBRK");
+        Assert.Equal(SpeedbrakeLeverState.ArmedField, group.StateFieldName);
+        Assert.NotNull(group.CheckAction);
+        Assert.NotNull(group.LeaveAloneWhen);
+        Assert.Equal(SpeedbrakeLeverState.LeaveAloneText, group.LeaveAloneText);
 
-    // ---- both speedbrake lines mirror the light, and neither can write ---------------------
-
-    [Fact]
-    public void Landing_action_group_speedbrake_line_mirrors_the_armed_light_with_no_write()
-    {
-        var item = IFly737ChecklistDefinitions.Build()
-            .Single(g => g.Id == "LANDING").Items.Single(i => i.Id == "LDA_SPDBRK");
-        Assert.Equal("Speedbrake: ARMED", item.Label);
-        Assert.Equal(ChecklistItemType.AutoDetectable, item.Type);
-        Assert.Equal(ArmedLight, item.StateFieldName);
-        Assert.Equal(RevertBehavior.RevertToState, item.RevertBehavior);
-        Assert.Null(item.CheckAction);
+        var readback = groups.Single(g => g.Id == "LANDING_CL").Items.Single(i => i.Id == "LDC_SPDBRK");
+        Assert.Equal(SpeedbrakeLeverState.ArmedField, readback.StateFieldName);
+        Assert.Null(readback.CheckAction);
     }
 
     // ---- end to end through the real ChecklistManager ---------------------------------------
@@ -152,14 +119,15 @@ public class IFly737LandingSpeedbrakeCheckTests
         string groupId, string itemId)
         => groups.Single(g => g.Id == groupId).Items.Single(i => i.Id == itemId);
 
-    // A timed-out check puts its linked ids in FlowManager's unfinished set (the Skip branch —
-    // pinned by the source guard below); finishing the flow must then leave BOTH speedbrake
-    // lines un-ticked and exempt from the latch, while every other line of the phase completes.
+    // A failed or left-alone arm puts its linked ids in FlowManager's unfinished set (the Skip
+    // branch — pinned by the source guard below); finishing the flow must then leave BOTH
+    // speedbrake lines un-ticked and exempt from the latch, while every other line of the phase
+    // completes.
     [Fact]
-    public void Timed_out_check_leaves_both_speedbrake_lines_unticked_and_live_after_the_flow_finishes()
+    public void A_failed_arm_leaves_both_speedbrake_lines_unticked_and_live_after_the_flow_finishes()
     {
         var (mgr, groups) = Manager();
-        var unfinished = Check().LinkedChecklistItemIds.ToArray();
+        var unfinished = Arm().LinkedChecklistItemIds.ToArray();
 
         foreach (var groupId in LandingFlow().RelatedChecklistGroupIds)
             mgr.MarkGroupComplete(groupId, unfinished);
@@ -174,13 +142,13 @@ public class IFly737LandingSpeedbrakeCheckTests
         Assert.True(Item(groups, "LANDING", "LDA_MISSED").IsChecked);
     }
 
-    // A successful (or already-set) check marks every linked line complete — FlowManager's
-    // success and already-set branches — so the latch then stands over an armed speedbrake.
+    // A verified (or already-set) arm marks every linked line complete — FlowManager's success
+    // and already-set branches — so the latch then stands over an armed speed brake.
     [Fact]
-    public void Confirmed_check_ticks_both_speedbrake_lines()
+    public void A_verified_arm_ticks_both_speedbrake_lines()
     {
         var (mgr, groups) = Manager();
-        foreach (var id in Check().LinkedChecklistItemIds)
+        foreach (var id in Arm().LinkedChecklistItemIds)
             mgr.MarkComplete(id);
 
         Assert.True(Item(groups, "LANDING_CL", "LDC_SPDBRK").IsChecked);

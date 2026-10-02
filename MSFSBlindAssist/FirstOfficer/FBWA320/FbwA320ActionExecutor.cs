@@ -124,6 +124,11 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             "FCU_PUSH_ALT"      => FireFcu(EvtAltPush),
             "AP1_ENGAGE"        => FireFcu(EvtAp1Push),
             "CABIN_CALL_ALL"    => await FireCabinCallAsync(),
+            // Seat-belt sign. A pseudo-key, NOT the stock CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE
+            // event the flows and checklist actions once wrote: that key has no
+            // HandleUIVariableSet branch, so ApplySilent refused it and the step was skipped
+            // with the sign untouched (found by FoFbwUnclaimedEventKeyTests). 1 = ON, 0 = OFF.
+            SeatbeltSignKey     => SetSeatbeltSignCore((target ?? 1) != 0),
             _ when name.StartsWith("ECAM_PAGE_") => await FireEcamPageAsync(name),
             _                   => ApplySilent(name, target ?? 1),
         };
@@ -384,15 +389,44 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     public Task<bool> SetNoseLight(int pos)    => DispatchAsync("LIGHTING_LANDING_1", pos);
     public Task<bool> CabinCall()              => DispatchAsync("CABIN_CALL_ALL", 1);
 
-    /// <summary>Seat-belt sign (2-position, no AUTO). The A320 sign is a stock TOGGLE
-    /// (CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE) with state simvar CABIN SEATBELTS ALERT SWITCH
-    /// (0=Off/1=On). Fire the toggle only when the live state differs from the target —
-    /// mirroring the A380 def's guarded toggle and the panel's stock-event send.</summary>
-    public Task<bool> SetSeatbeltSign(bool on)
+    /// <summary>
+    /// The pseudo-key the flow steps dispatch for the seat-belt sign (target 1 = ON, 0 = OFF).
+    /// The Headwind A330 uses the same key name, so the two profiles' seat-belt flow steps
+    /// write the same thing (HwA330ParityTests).
+    /// </summary>
+    public const string SeatbeltSignKey = "SEATBELT_SIGN";
+
+    /// <summary>
+    /// Seat-belt sign (2-position, no AUTO — unlike the A380 and the A339X). The A320 sign is
+    /// a stock TOGGLE (CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE) with state simvar
+    /// CABIN SEATBELTS ALERT SWITCH (0=Off/1=On). The flow steps, the checklist actions and
+    /// the phase monitor all converge here, and through <see cref="DispatchAsync"/>, so the
+    /// write is serialized and paced like every other First Officer write.
+    /// </summary>
+    public Task<bool> SetSeatbeltSign(bool on) => DispatchAsync(SeatbeltSignKey, on ? 1 : 0);
+
+    /// <summary>
+    /// Whether the stock toggle must fire to put the sign at <paramref name="on"/>. A toggle
+    /// fired over a sign already in place would switch it the WRONG way — the flows mean
+    /// 1 = ON and 0 = OFF — so it fires only when the cached state differs. An unknown state
+    /// (no cached reading yet) counts as differing: that is the phase monitor's original
+    /// behaviour, kept unchanged, and it means the step acts rather than reporting success
+    /// over a sign it never touched; the checklist item's own state read then confirms or
+    /// reverts it.
+    /// </summary>
+    public static bool SeatbeltToggleNeeded(double? currentSwitch, bool on)
     {
-        if (_sc == null) return Task.FromResult(false);
-        bool currentOn = (_sc.GetCachedVariableValue("CABIN SEATBELTS ALERT SWITCH") ?? (on ? 0.0 : 1.0)) > 0.5;
-        if (currentOn != on) _sc.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
-        return Task.FromResult(true);
+        if (currentSwitch is not double v) return true;
+        return (v > 0.5) != on;
+    }
+
+    // Must be called inside _gate (dispatched from DispatchCoreAsync's SeatbeltSignKey arm,
+    // so the checklist action, the flow step and the phase monitor share one path).
+    private bool SetSeatbeltSignCore(bool on)
+    {
+        if (_sc == null) return false;
+        if (SeatbeltToggleNeeded(_sc.GetCachedVariableValue("CABIN SEATBELTS ALERT SWITCH"), on))
+            _sc.SendEvent("CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE");
+        return true;
     }
 }

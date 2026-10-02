@@ -22,14 +22,22 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // N2 (percent) at/above which an engine is treated as RUNNING (≈ stabilised near idle).
     // Public so the engine-start checklist detection references the same value (tune in-sim).
     public const double EngineRunningN2 = 50.0;
-    // N2 (percent) the engine must reach while motoring before the start lever introduces
-    // fuel (real-procedure ~25%; 20 gives margin). Below this a fuel intro hangs the start.
-    // Shared by the Engine Start flow AND the checklist StartEngineAsync so the two paths
-    // can never disagree on when fuel is introduced.
-    public const double EngStartFuelN2 = 20.0;
+    // There is deliberately NO "N2 before fuel" constant here any more: the NG3 writes the
+    // stock TURB ENG N2 only from light-off (0.0 throughout motoring, measured 2026-09-28),
+    // so the Engine Start flow motors each engine for a fixed time instead
+    // (PMDG737FlowDefinitions.EngStartMotorSeconds). EngineRunningN2 above is unaffected —
+    // once fuel is in, the stock N2 is live and the running checks read it as before.
 
     /// <summary>Update the data-manager reference (called on connect/disconnect).</summary>
     public void SetDataManager(PMDGNG3DataManager? dm) => _dm = dm;
+
+    // Values the NG3 CDA does not carry come from SimConnect's variable cache (a
+    // ConcurrentDictionary, safe from the flow's pool threads): the speed-brake lever, main's
+    // MON_PMDG737_SpeedBrake (L:switch_679_73X — the NG3 SDK has no lever field). Set by
+    // Pmdg737FoProfile.BindDataManager; a test injects its own.
+    private Func<string, double?>? _cachedValue;
+
+    public void SetCachedValueSource(Func<string, double?>? source) => _cachedValue = source;
 
     // Written on the UI thread (FO timer / SimConnect callback); read on a thread-pool thread
     // by the flow's WaitForCondition loop. Volatile.Read/Write makes the cross-thread handoff
@@ -53,6 +61,13 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         // so a manual tick HOLDS — the no-plan degradation to a plain reminder.
         if (field == "FO_ENG1_N2") return Volatile.Read(ref _eng1N2);
         if (field == "FO_ENG2_N2") return Volatile.Read(ref _eng2N2);
+        // Speed brake: the lever from SimConnect (no CDA needed), and "armed" = the lever
+        // exactly at ARM AND the ARMED light — the light alone stays lit to about 342.
+        if (field == SpeedbrakeLeverState.LeverField) return SpeedbrakeLever();
+        if (field == SpeedbrakeLeverState.ArmedField)
+            return !CdaReady ? double.NaN
+                : SpeedbrakeLeverState.ArmedValue(SpeedbrakeLeverState.Pmdg737, SpeedbrakeLever(),
+                      RawValue(SpeedbrakeArmLadder.ArmedField));
         if (field == "FO_PRESS_ALTS_MATCH")
             return !HasPressurizationPlan || !CdaReady ? double.NaN : (AllPressAltsMatch() ? 1 : 0);
         if (field == "FO_PRESS_LAND_ALT_MATCH")
@@ -118,6 +133,16 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool IsOn(string field) => GetValue(field) > 0.5;
     public bool AllOn(params string[] fields) => fields.All(IsOn);
     public bool IsPosition(string field, int position) => Math.Abs(GetValue(field) - position) < 0.1;
+
+    // -----------------------------------------------------------------------
+    // Speed brake (lever: main's L:switch_679_73X, ARM exactly 100)
+    // -----------------------------------------------------------------------
+    public double SpeedbrakeLever() =>
+        _cachedValue?.Invoke(SpeedbrakeLeverState.Pmdg737.LeverKey) ?? double.NaN;
+    public SpeedbrakeLeverPosition SpeedbrakePosition() =>
+        SpeedbrakeLeverState.Classify(SpeedbrakeLeverState.Pmdg737, SpeedbrakeLever());
+    public bool IsSpeedbrakeArmed()    => GetValue(SpeedbrakeLeverState.ArmedField) > 0.5;
+    public bool IsSpeedbrakeDeployed() => SpeedbrakePosition() == SpeedbrakeLeverPosition.Deployed;
 
     // -----------------------------------------------------------------------
     // Electrical

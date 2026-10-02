@@ -13,7 +13,9 @@ namespace MSFSBlindAssist.Aircraft;
 public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
 {
     public override string AircraftName => "PMDG 737";
-    public override string AircraftCode => "PMDG_737";
+    // One spelling, shared with the speed-brake callout's Ctrl+M lookup (DefAnnounceMuteSets).
+    private const string Code = "PMDG_737";
+    public override string AircraftCode => Code;
 
     // EFB accessibility is supported on the 738 — it renders the identical EFB app as the 777,
     // so the same Coherent in-page agent (coherent-pmdg-efb-agent.js) reads it. Opened with
@@ -55,14 +57,13 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     private byte _lastAttendPressCount;
     private byte _lastGrdCallPressCount;
 
-    // Stabilizer trim, in units. Last announced value rounded to 0.1 unit, or
-    // NaN until the baseline is absorbed silently on connect. See the
-    // MON_PMDG737_StabTrim case in ProcessSimVarUpdate.
-    private double _lastAnnouncedStabTrim = double.NaN;
+    // Stabilizer trim, in units: the one rule both 737s speak with
+    // (StabTrimUnitsCallout). See the MON_PMDG737_StabTrim case in ProcessSimVarUpdate.
+    private readonly StabTrimUnitsCallout _stabTrimCallout = new();
 
     // Speed-brake lever position. The NG3 SDK exposes no lever-position field
-    // (the 777 has FCTL_Speedbrake_Lever; the 737 does not) and PMDG does not
-    // drive the stock SPOILERS HANDLE POSITION SimVar, so the analog handle
+    // and PMDG does not drive the stock SPOILERS HANDLE POSITION SimVar (the
+    // 777 reads its own L-var switch_498_a the same way), so the analog handle
     // position comes from the PMDG L-var switch_679_73X. The L-var sweeps
     // CONTINUOUSLY as the lever animates (verified live — e.g. 62 / 337 caught
     // mid-move), and continuous monitoring only fires on change, so a value that
@@ -72,11 +73,19 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     // the settle announcer (shared with the 777) live in PmdgSpeedBrakeLever.cs;
     // the announcer also honours the Ctrl+M mute and silences the pilot's own
     // combo pick, since its timer speaks outside MainForm's suppression wrap.
-    // Positions that come to rest between detents say nothing. The first settle
-    // is the lever's position at load, so it is recorded silently.
+    // A lever resting between detents above ARMED speaks its deployment as a
+    // percentage, as the 777 and the iFly do. The first settle is the lever's
+    // position at load, so it is recorded silently. Stopped when the pilot
+    // switches aircraft (OnSwitchedAway), so it never speaks over the next one.
     private readonly PmdgSpeedBrakeCallout _speedBrakeCallout = new(
         PmdgSpeedBrakeLever.Ng3, PmdgSpeedBrakeLever.Ng3SettleTolerance, PmdgSpeedBrakeLever.Ng3SettleMs,
-        muteKey: "MON_PMDG737_SpeedBrake", speakFirst: false);
+        aircraftCode: Code, muteKey: "MON_PMDG737_SpeedBrake", speakFirst: false);
+
+    /// <summary>The speed-brake lever's settle announcer, for the tests that pin its behaviour.</summary>
+    internal PmdgSpeedBrakeCallout SpeedBrakeCallout => _speedBrakeCallout;
+
+    /// <inheritdoc />
+    public override void OnSwitchedAway() => _speedBrakeCallout.Dispose();
 
     // EFIS Minimums knob step sizes per click on the PMDG NG3 737. RADIO mode
     // (DH) clicks in 1-ft increments; BARO mode (DA) clicks in 20-ft increments.
@@ -362,7 +371,7 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
             IsAnnounced = true,  // custom announcement in ProcessSimVarUpdate
             ValueDescriptions = PmdgSpeedBrakeLever.ComboDescriptions(PmdgSpeedBrakeLever.Ng3),
-            ValueToDescriptionKey = v => PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.Ng3, v)
+            ValueToDescriptionKey = v => PmdgSpeedBrakeLever.NearestDetentValue(PmdgSpeedBrakeLever.Ng3, v, PmdgSpeedBrakeLever.Ng3SettleTolerance)
         };
 
         // =================================================================
@@ -5113,16 +5122,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             {
                 if (!_trimAnnouncementsEnabled)
                     return true;
-                double rounded = Math.Round(value, 1);
-                if (double.IsNaN(_lastAnnouncedStabTrim))
-                {
-                    _lastAnnouncedStabTrim = rounded;
-                    return true;
-                }
-                if (Math.Abs(rounded - _lastAnnouncedStabTrim) < 0.05)
-                    return true;
-                _lastAnnouncedStabTrim = rounded;
-                announcer.Announce($"Trim {rounded:F1}");
+                if (_stabTrimCallout.Next(value, TrimHysteresis) is { } trimPhrase)
+                    announcer.Announce(trimPhrase);
                 return true;
             }
 

@@ -24,9 +24,15 @@ using Step = Models.FlowStep<AircraftStateEvaluator>;
 /// </summary>
 public static class PMDG737FlowDefinitions
 {
-    // N2 (percent) the engine must reach while motoring before the start lever introduces
-    // fuel — shared with the checklist's StartEngineAsync (see the evaluator const).
-    private const double EngStartFuelN2 = AircraftStateEvaluator.EngStartFuelN2;
+    // Seconds each engine is MOTORED on the starter, counted from the start valve reading
+    // OPEN, before the start lever introduces fuel. A fixed time, not an N2 gate: the NG3
+    // writes the stock TURB ENG N2 only from light-off (measured 2026-09-28 — 0.0 for over
+    // four minutes of motoring with the valve open and 40 psi of duct pressure, then 15.5 %
+    // on the first read after the lever went to IDLE and 46.6 % ten seconds later), and its
+    // own data struct carries no N1/N2 at all, so there is nothing to read while motoring.
+    // 15 s is what the pilot-side add-ons give it and comfortably past the ~25 % N2 the
+    // procedure asks for (the old N2 gate could never pass here and stopped every start).
+    private const int EngStartMotorSeconds = 15;
 
     public static List<Flow> Build() => new()
     {
@@ -203,18 +209,39 @@ public static class PMDG737FlowDefinitions
             // (re-run after a completed transfer), and no stateless NG3 signal separates
             // that from "generator not up yet" at the moment this step is reached — a
             // running-and-light-off SkipCondition would skip the gate in the normal
-            // just-past-cutout case. A post-transfer re-run costs one announced 30 s
-            // timeout, then everything below no-ops.
+            // just-past-cutout case. A post-transfer re-run costs one announced timeout,
+            // then everything below no-ops.
+            //
+            // The budget is 120 s, MEASURED, not the 30 s the step shipped with: on a live
+            // NG3 (2026-09-28, warm APU) the light came on 25-40 s after the selector sprang
+            // back, and the flow only starts counting once its own 1 s poll has seen the
+            // spring-back — so a healthy start sat right on the old line, and a cold APU is
+            // slower still. The pilot heard "Timed out waiting for the APU generator" on a
+            // start that was fine. Keep it well clear of the measured value; the 777's
+            // generator wait is 120 s for the same reason.
             WaitForField("BS_APU_GEN_AVAIL", "Waiting for the APU generator",
-                "ELEC_annunAPU_GEN_OFF_BUS", v => v > 0.5, 30),
+                "ELEC_annunAPU_GEN_OFF_BUS", v => v > 0.5, 120),
             // Transfer the electrical load to the APU: the 737's APU GEN switches are
             // momentary bus-transfer buttons that must be pressed AFTER the APU is on
             // line (unlike the 777, whose gen switch is armed during preflight). Then
             // drop ground power — skipped when no GPU was ever connected.
-            Multi("BS_APUGEN", "APU generators: ON", "BS_APUGEN",
-                ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
-            Skip(SW("BS_GPU_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0),
-                s => !s.IsGpuOn()),
+            //
+            // BOTH depend on the generator wait above having PASSED (RequiresStepId): when
+            // it timed out the flow used to press the transfer buttons anyway — no effect,
+            // the generator was not up — and then drop ground power with nothing else on
+            // the buses, leaving the pilot on batteries mid-flow (the 2026-09-28 report).
+            // The state cannot carry this: the light is off both before the generator is up
+            // and after a completed transfer, which is exactly why the wait is Skip. So the
+            // dependency is on the WAIT'S OWN OUTCOME, and the skip text says what stays
+            // as it is. The checklist lines then stay unticked for the pilot to do by hand.
+            Requires(Multi("BS_APUGEN", "APU generators: ON", "BS_APUGEN",
+                    ("EVT_OH_ELEC_APU_GEN1_SWITCH", 1), ("EVT_OH_ELEC_APU_GEN2_SWITCH", 1)),
+                "BS_APU_GEN_AVAIL",
+                "Skipping: APU generators: ON. The flow could not confirm the APU generator."),
+            Requires(Skip(SW("BS_GPU_OFF", "Ground power: OFF", "EVT_OH_ELEC_GRD_PWR_SWITCH", 0),
+                    s => !s.IsGpuOn()),
+                "BS_APU_GEN_AVAIL",
+                "Skipping: Ground power: OFF. The flow could not confirm the APU generator, so ground power stays connected."),
             Multi("BS_FUELON", "Fuel pumps: ON", "BS_FUEL",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 1), ("EVT_OH_FUEL_PUMP_2_FORWARD", 1),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 1), ("EVT_OH_FUEL_PUMP_2_AFT", 1),
@@ -255,12 +282,13 @@ public static class PMDG737FlowDefinitions
             // instead of ever introducing fuel.
             WaitForField("ES_E2_VALVE", "Engine 2 start valve open",
                 "ENG_StartValve_1", v => v > 0.5, 15, onTimeout: FlowStepFailurePolicy.Stop),
-            // Introduce fuel ONLY after N2 has spun up (~25%); moving the start lever to IDLE
-            // before that hangs/aborts the start. FO_ENG2_N2 is the timer-fed N2 (percent).
-            // On timeout (starter/bleed failure → N2 never builds) ABORT the flow rather than
-            // introduce fuel into an under-rotating engine (a hung/hot start).
-            WaitForField("ES_E2_N2", "Engine 2 motoring — waiting for N2 before introducing fuel",
-                "FO_ENG2_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
+            // Introduce fuel only once the engine has motored up (~25 % N2 on the real
+            // procedure): a fixed EngStartMotorSeconds from the valve opening, because this
+            // aircraft gives the app NO N2 to read while motoring (see the constant). The
+            // valve wait above is what still refuses a start the starter never engaged; a
+            // stalled crank with the valve open is not detectable here and never was — the
+            // old N2 gate read 0 for a healthy crank and a dead one alike.
+            Wait("ES_E2_MOTOR", "Engine 2 motoring before fuel", EngStartMotorSeconds),
             SW("ES_E2_RUN", "Engine 2 start lever: IDLE", "EVT_CONTROL_STAND_ENG2_START_LEVER", 1, checklistItemId: "ES_E2_RUN"),
             // Starter cutout: the GRD position is solenoid-held and springs back to OFF
             // as the starter disengages. Wait on the START SWITCH itself — matching the
@@ -273,8 +301,7 @@ public static class PMDG737FlowDefinitions
             SW("ES_E1_GRD", "Engine 1 start switch: GRD", "EVT_OH_LIGHTS_L_ENGINE_START", 0),
             WaitForField("ES_E1_VALVE", "Engine 1 start valve open",
                 "ENG_StartValve_0", v => v > 0.5, 15, onTimeout: FlowStepFailurePolicy.Stop),
-            WaitForField("ES_E1_N2", "Engine 1 motoring — waiting for N2 before introducing fuel",
-                "FO_ENG1_N2", v => v >= EngStartFuelN2, 60, onTimeout: FlowStepFailurePolicy.Stop),
+            Wait("ES_E1_MOTOR", "Engine 1 motoring before fuel", EngStartMotorSeconds),
             SW("ES_E1_RUN", "Engine 1 start lever: IDLE", "EVT_CONTROL_STAND_ENG1_START_LEVER", 1, checklistItemId: "ES_E1_RUN"),
             WaitForField("ES_E1_CUTOUT", "Engine 1 starting — waiting for the start switch to cut out",
                 "ENG_StartSelector_0", v => Math.Abs(v - 1) < 0.1, 120),
@@ -415,16 +442,20 @@ public static class PMDG737FlowDefinitions
             // Verified arm via the SPEEDBRAKE_ARM pseudo-key (intercepted in
             // AircraftActionExecutor.ExecuteStepAsync, same mechanism as GPWS_TEST /
             // TCAS_TEST). A bare dispatch of the real event reported success whether or
-            // not the lever moved; this one proves it against the ARMED annunciator, and
-            // the Skip failure policy means a genuine failure is announced without
+            // not the lever moved; this one proves it against the lever at ARM and the ARMED
+            // light, and the Skip failure policy means a genuine failure is announced without
             // aborting the rest of the Landing flow.
             // Completes BOTH "Speedbrake: ARMED" lines — its own group's LDA_SPDBRK and the
             // Landing Checklist's LDC_SPDBRK — since the verified arm achieves both (same
-            // ARMED annunciator). It used to name only LDC_SPDBRK, so a failed arm left
+            // lever-and-light field). It used to name only LDC_SPDBRK, so a failed arm left
             // LDA_SPDBRK to MarkGroupComplete's blanket sweep, latched complete over a lever
             // that never armed.
-            Also(SW("LD_SPDBRK", "Speedbrake: ARMED", SpeedbrakeArmLadder.PseudoKey, null,
-               SpeedbrakeArmLadder.ArmedField, v => v > 0.5, "LDA_SPDBRK"), "LDC_SPDBRK"),
+            // An armed speed brake (the lever at ARM with the light) is "Already set", and a
+            // deployed one is left alone with its reason: clicking ARM over it retracts it.
+            LeaveAlone(Skip(Also(SW("LD_SPDBRK", "Speedbrake: ARMED", SpeedbrakeArmLadder.PseudoKey, null,
+               SpeedbrakeLeverState.ArmedField, v => v > 0.5, "LDA_SPDBRK"), "LDC_SPDBRK"),
+                s => s.IsSpeedbrakeArmed()),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
             Captain("LD_MISSED", "Set the missed approach altitude."),
             // Read-only gear-down confirmation — it never moves the lever (the First Officer
             // writes no gear lever; see docs/pmdg-737.md). Confirms the gear the way a crew
@@ -647,6 +678,25 @@ public static class PMDG737FlowDefinitions
     private static Step Skip(Step step, Func<AircraftStateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
+        return step;
+    }
+
+    // A step the First Officer must not perform in the aircraft's current state
+    // (FlowStep.LeaveAloneWhen): nothing is sent, `text` is spoken, its lines stay open.
+    private static Step LeaveAlone(Step step, Func<AircraftStateEvaluator, bool> when, string text)
+    {
+        step.LeaveAloneWhen = when;
+        step.LeaveAloneText = text;
+        return step;
+    }
+
+    // A step that must not run when an EARLIER step of the same run was skipped (failed
+    // or timed out under Skip policy) — see FlowStep.RequiresStepId. skipText is spoken in
+    // place of the plain "Skipping: …" and must say what the flow is leaving as it is.
+    private static Step Requires(Step step, string requiredStepId, string skipText)
+    {
+        step.RequiresStepId = requiredStepId;
+        step.RequiresStepSkipText = skipText;
         return step;
     }
 

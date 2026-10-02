@@ -69,19 +69,6 @@ public class FoFbwUnclaimedEventKeyTests
     private static readonly Dictionary<string, string> KnownUnclaimedWrites =
         new(StringComparer.Ordinal)
         {
-            ["CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE"] =
-                "A32NX ONLY, and found BY this sweep on the day it was written — a fifth "
-                + "instance of the very defect, left for its own change rather than smuggled "
-                + "into this one. The A32NX flows (BS_SEATBELTS / DC_SEATBELTS / "
-                + "SD_SEATBELTS_OFF) and three checklist CheckActions dispatch the stock "
-                + "TOGGLE EVENT as a varKey, so it falls through HandleUIVariableSet. The "
-                + "A330 already fixed it by intercepting the key in its dispatch switch "
-                + "(HwA330ActionExecutor.SeatbeltSignKey -> SetSeatbeltSignCoreAsync), and "
-                + "the A32NX even has the matching guarded typed method "
-                + "(FbwA320ActionExecutor.SetSeatbeltSign) — it just has no dispatch arm "
-                + "routing the key to it. With the refusal in place the step now FAILS "
-                + "AUDIBLY instead of ticking with the signs off, which is this change's "
-                + "whole point.",
         };
 
     [Fact]
@@ -502,7 +489,7 @@ public class FoFbwUnclaimedEventKeyTests
     /// The body of one method, comments removed. Only DECLARATIONS match: a call site is
     /// followed by <c>;</c> or <c>,</c>, never <c>{</c>.
     /// </summary>
-    private static string MethodBody(string sourcePath, string methodName)
+    internal static string MethodBody(string sourcePath, string methodName)
     {
         string src = StripCommentsKeepingLiterals(File.ReadAllText(sourcePath));
 

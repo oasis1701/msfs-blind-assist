@@ -94,11 +94,14 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         set => _seatbelt.Mode = value;
     }
 
+    /// <summary>SimBrief cruise altitude for the TOC/TOD seat-belt automation (null = no plan).</summary>
+    public void SetPlannedCruiseAltitude(int? cruiseFt) => _seatbelt.PlannedCruiseFt = cruiseFt;
+
     /// <summary>
     /// Called periodically with current altitude (feet MSL) and vertical speed (fpm).
     /// Checks for altitude threshold crossings and executes the appropriate actions.
     /// </summary>
-    public void Update(double altitudeFt, double verticalSpeedFpm)
+    public void Update(double altitudeFt, double verticalSpeedFpm, bool onGround)
     {
         if (!_executor.IsAvailable) return;
 
@@ -109,7 +112,7 @@ public class FlightPhaseMonitor : IFoPhaseMonitor
         Check10kCrossing(altitudeFt, climbing, descending);
 
         // ---- Auto seat-belt-sign automation ----
-        _seatbelt.Update(altitudeFt, verticalSpeedFpm);
+        _seatbelt.Update(altitudeFt, verticalSpeedFpm, onGround);
 
         // ---- Transition altitude / level (altimeters) ----
         if (_trans.HasThresholds)

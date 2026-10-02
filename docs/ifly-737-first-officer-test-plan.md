@@ -43,7 +43,7 @@ them rather than re-running them.
 | Belts / no-smoking | 0 / 1 / 2 | vendor Value2 |
 | Flight director / autothrottle | 0 / 1 | vendor Value2 |
 | FLT ALT / LDG ALT | literal feet, within the vendor's documented ranges | `key_command.h` |
-| Speedbrake write-vs-read scale mismatch | **Confirmed real** — write `0~254` (detents 0/34/180/254) vs read `0~225` (detents 0/35/149/224) | `key_command.h` vs `SDK_Defines.h` — the read-only stance is vendor-justified, see B7 |
+| Speedbrake write-vs-read scale | The headers disagree (write `0~254`, detents 0/34/180/254; read `0~225`, detents 0/35/149/224), but **measured (PR #261, 2026-09-30) they are ONE 0-224 scale**: ARM exactly 34, FLIGHT DETENT 180, UP 224. The First Officer arms it, see B7 | `key_command.h` vs `SDK_Defines.h`, then a live measurement |
 | MCP CMD A / B / CWS A / CWS B | CMD A press 7 / release 8; CMD B 9/10; CWS A 37/38; CWS B 39/40 | `iFly737Max_INTERIOR.xml` clickspot triggers |
 | Attendant call | a genuine momentary chime press | model XML |
 | ND range | **0..10** — the struct's `0~2` comment is a stale vendor doc bug; the command doc is authoritative | `key_command.h` vs `SDK_Defines.h` |
@@ -89,7 +89,7 @@ plan's Part B2 — this aircraft's flow *steps* are the same, only the underlyin
 | After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; **gear lever UP** (not "OFF" — this airframe's lever has only Up/Down, see B3); autobrake OFF; then confirms the gear is up via the gear lights (see B10) |
 | Descent | Seatbelt sign ON; captain reminders for autobrake, ILS, landing data |
 | Approach | EFIS APP / range 20; altimeter reminder |
-| Landing | Start switches CONT; **speedbrake ARM is a Captain reminder** (see B7); missed-altitude reminder; then confirms the speedbrake is armed via the SPEED BRAKE ARMED light (15 s, see B7) and the gear is down via the gear lights (see B10) |
+| Landing | Start switches CONT; **the First Officer arms the speed brake** (verified, lever AND ARMED light; a deployed one is left alone — see B7); missed-altitude reminder; then confirms the gear is down via the gear lights (see B10) |
 | After Landing | Landing lights off; taxi light ON; strobes steady; anti-ice OFF; probe heat **AUTO**; APU ON; start switches OFF; autobrake OFF |
 | Shutdown | APU generators ON; start levers CUTOFF (no spool-down wait); signs/lights off; fuel pumps OFF; window heat OFF; transponder **ALT OFF** |
 | Secure | IRS OFF; emergency exit lights **OFF**; window heat OFF; packs OFF |
@@ -209,23 +209,24 @@ power loss at any point.
 transfer immediately on a cold APU and this needs to be flipped — tell me what the light state
 actually was at the moment the flow proceeded.
 
-### B7. Speedbrake — Captain reminder by design (mismatch now CONFIRMED)
-Landing's "Speedbrake: ARM" step is a Captain reminder, not an automated write — the lever's
-write command has a scale mismatch against its own status readback. The 2026-08 header sweep
-**confirmed** it: the write is `0~254` with detents 0 / 34 / 180 / 254, the read is `0~225` with
-detents 0 / 35 / 149 / 224. The read-only stance is vendor-justified, not merely cautious. This
-is deliberate, not a gap to test — confirm the reminder is spoken and no lever movement is
-attempted.
+### B7. Speedbrake — the First Officer arms it
+Landing's "Speedbrake: ARMED" step arms the lever through the verified `SPEEDBRAKE_ARM`
+(the PMDG 737's shape): it writes ARM, then requires the lever exactly at ARM AND the SPEED
+BRAKE ARMED light within 3 s. It completes BOTH "Speedbrake: ARMED" lines — the Landing
+group's and the Landing Checklist's — and the gear check still comes last. History: until
+PR #261 measured the write, this step was a Captain reminder because the two vendor headers
+disagreed on the lever's scale (write `0~254`, read `0~225`); measured, it is one 0-224 scale
+with ARM at 34.
 
-After the reminders the flow waits up to **15 s** for the SPEED BRAKE ARMED light (a READ-ONLY
-check, `LD_SPDBRK_CHECK` — it never moves the lever; the gear check still comes last). It
-completes BOTH "Speedbrake: ARMED" lines — the Landing group's and the Landing Checklist's.
-Two quick checks on final:
-1. Arm the speedbrake when reminded → expect "Speedbrake: ARMED" (or "Already set: Speedbrake:
-   ARMED" if it was armed before the flow) and both lines ticked.
-2. Leave it DOWN → expect "Timed out waiting for: Speedbrake: ARMED", "Skipping: Speedbrake:
-   ARMED", then the gear check and "Landing flow complete" — and both speedbrake lines still
-   UNticked. Arm it now → both lines tick within a second or two.
+A deployed speed brake is never written over — writing ARM would retract it. Two in-sim
+checks on final:
+1. Lever DOWN, run Landing → expect "Speedbrake: ARMED" (or "Already set: Speedbrake: ARMED"
+   if it was armed before the flow), the lever at the ARM detent, and both lines ticked.
+2. Lever at the FLIGHT detent (or further) → expect "Speedbrake extended, not armed. Left as
+   it is." The lever does not move, both speedbrake lines stay UNticked, and the flow goes on
+   to the gear check and "Landing flow complete". Arm the lever yourself → both lines tick
+   within a second or two. Ticking "Speedbrake: ARMED" by hand while it is deployed says the
+   same sentence and ticks nothing.
 
 ### B8. Engine start — GRD auto-release — **LIVE-VERIFY (still open)**
 Engine start gates on the start switch springing back from GRD plus N2 (there is no starter-valve
@@ -272,11 +273,12 @@ leave it for each check.
    battery physically moves), confirmed by the item staying ticked on the next poll.
 5. Readback `_CL` groups are action-free — ticking a readback item must **not** move a switch; it
    only auto-ticks from live state.
-6. **Landing Checklist speedbrake-armed item** (`LDC_SPDBRK`) is the one readback item that
-   diverges from the PMDG port: it auto-detects on `SPEED_BRAKE_ARMED_Light_Status` (this SDK
-   does expose that light, unlike the PMDG NG3 struct) rather than staying a plain reminder — and
-   so does its Landing-group twin `LDA_SPDBRK` (both action-free). Arm the speedbrake by hand and
-   confirm both items tick.
+6. **Landing Checklist speedbrake-armed item** (`LDC_SPDBRK`) is a readback item, so it is
+   action-free: it auto-detects the lever exactly at ARM AND `SPEED_BRAKE_ARMED_Light_Status`
+   (the light alone is lit from 34 to 224, so it cannot tell armed from deployed). Its
+   Landing-group twin `LDA_SPDBRK` reads the same and, ticked by hand, arms the lever (verified,
+   and refused with "Speedbrake extended, not armed. Left as it is." over a deployed one).
+   Arm the speedbrake by hand and confirm both items tick.
 
 ---
 
@@ -427,17 +429,15 @@ unconverted).
   all (see B2, which carries an optional probe).
 - **No lower-DU/EICAS synoptic-page-select field exists** — the Before Taxi lower-DU item is a
   permanent Captain reminder.
-- **Speedbrake ARM is a permanent Captain reminder** — the lever write's scale mismatch against
-  its own status readback is now CONFIRMED from the vendor headers (write 0~254, read 0~225), so
-  the write stays deliberately unwired (see B7).
 - **Ground power has no availability readback at all** (worse than the PMDG NG3, which at least
   has an unreliable one) — every ground-power checklist/flow item is a stateless press.
 - **No engine start-valve field, and no APU EGT field** — both confirmed absent by an
   exhaustive 2026-08 search of `SDK_Defines.h`. Engine-start gating relies on the start switch
   springing back plus N2 only (there is no "starter valve open" confirmation step like the
   PMDG), and APU availability comes from the `APU_GEN_OFF_BUS` annunciator instead of EGT.
-- **Takeoff flaps / landing autobrake / speedbrake are Captain items on every aircraft** in this
-  fleet, not just this one — unchanged fleet-wide policy.
+- **Takeoff flaps and landing autobrake are Captain items on every aircraft** in this fleet, not
+  just this one — unchanged fleet-wide policy. The speed brake is not one: the First Officer arms
+  it here, as on the PMDG jets (B7).
 
 ## Part F — Regression: other five aircraft unaffected
 

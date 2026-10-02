@@ -52,6 +52,10 @@ public class IFly737FlowChecklistLinkTests
         // to ON, which is what "APU: ON line" reads.
         [IFly737ActionExecutor.KeyApuStart] = new (string, Func<int, double>)[]
         { ("APU_Switch_Status", _ => IFly737ActionExecutor.ApuOn) },
+        // SPEEDBRAKE_ARM pseudo-key (ArmSpeedbrakeCoreAsync): the lever at ARM with the ARMED
+        // light, which is what both "Speedbrake: ARMED" lines read.
+        [IFly737ActionExecutor.KeySpeedbrakeArm] = new (string, Func<int, double>)[]
+        { (SpeedbrakeLeverState.ArmedField, _ => 1) },
         // Every fuel pump also feeds the Before Start synthetic. ON is the intended Before
         // Start configuration either way: with centre fuel the centre pumps run, without it
         // the executor's CenterPumpGate suppresses the centre ON write — both read OK (1).

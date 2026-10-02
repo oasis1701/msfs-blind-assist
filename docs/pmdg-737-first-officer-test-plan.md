@@ -49,7 +49,7 @@ Pre-condition for the ground flows: start cold-and-dark (or at the matching phas
 | After Takeoff | Packs AUTO; start switches OFF; turnoff lights OFF; autobrake OFF; confirms gear up (lights out) |
 | Descent | Seatbelt sign ON; captain reminders for autobrake, ILS, landing data |
 | Approach | EFIS APP / range 20; altimeter reminder |
-| Landing | Start switches CONT; speedbrake ARMED; missed-altitude reminder; confirms gear down (three green) |
+| Landing | Start switches CONT; speedbrake ARMED (a deployed speed brake is left alone, see H10); missed-altitude reminder; confirms gear down (three green) |
 | After Landing | Landing lights retract; taxi light ON; strobes steady; anti-ice OFF; probe heat OFF; APU ON; start switches OFF; autobrake OFF |
 | Shutdown | APU gen ON; **start levers CUTOFF then waits for engine spool-down**; signs/lights off; fuel pumps OFF; window heat OFF; transponder STBY |
 | Secure | IRS OFF; emergency exit OFF; window heat OFF; packs OFF |
@@ -228,7 +228,7 @@ The **Checklists** tab now has a **"Load SimBrief"** button (in addition to the 
 On the **Checklists** tab the action/readback pairing now covers every phase that has a flow.
 
 ### G1. 777 Descent + Approach action groups
-Confirm the tree shows **"Descent"** above **"Descent Checklist"**, and **"Approach"** above **"Approach Checklist"**. Tick **Descent** items → Autobrake AUTO (`BRAKES_AutobrakeSelector` = 6), FO EFIS APP and FO EFIS 20nm range actuate. Tick **Approach → Speedbrake: ARM** → `FCTL_Speedbrake_Lever` arms. Reminders (landing data, recall, approach brief, altimeters) just tick. 777 **Landing** remains readback-only (no Landing flow).
+Confirm the tree shows **"Descent"** above **"Descent Checklist"**, and **"Approach"** above **"Approach Checklist"**. Tick **Descent** items → Autobrake AUTO (`BRAKES_AutobrakeSelector` = 6), FO EFIS APP and FO EFIS 20nm range actuate. Reminders (landing data, recall, approach brief, altimeters) just tick. The 777 speed brake is no longer armed from **Approach**: the Landing flow and the **Landing Checklist → "Speedbrake: ARMED"** item arm it, reading `L:switch_498_a` (never the SDK byte `FCTL_Speedbrake_Lever`) — see H10.
 
 ### G2. 737 Descent + Approach + Landing action groups
 Confirm **"Descent"/"Approach"/"Landing"** action groups appear above their `… Checklist` readbacks. Tick: **Descent → Seatbelt signs: ON** (`COMM_FastenBeltsSelector` = 2); **Approach → EFIS mode: APP** + **range 20** (Captain EFIS); **Landing → Engine start switches: CONT** (`ENG_StartSelector_0/1` = 2) + **Speedbrake: ARMED**. Reminders tick only.
@@ -307,6 +307,20 @@ to STD and announces "Transition altitude. Altimeters set to standard." (the STD
 the momentary-toggle dispatch). Descending through the transition level → back to QNH + "set local
 pressure" callout. *Note:* the transition altitude still comes from SimBrief only (no default fallback,
 by design). The **777** is unchanged here (it already read STD state and committed correctly).
+
+### H10. Speed brake: arm it, and leave a deployed one alone (Landing, 737 and 777)  *(verify in sim, 2026-09-30)*
+Both jets judge the lever, not a light: "armed" is the lever exactly at ARM (737: and the
+ARMED light; the light alone stays lit well into deployed travel), read from main's
+`L:switch_679_73X` (737) / `L:switch_498_a` (777). Run it once on each jet, hydraulics
+pressurised:
+1. Lever DOWN, run the Landing flow → "Speedbrake: ARMED" is announced, the lever ends at ARM
+   (the 777's takes about five seconds to get there — the arm waits up to 8 s), and the
+   **Landing Checklist → "Speedbrake: ARMED"** line ticks (on the 737 the Landing group's line
+   too). Run the flow again → "Already set".
+2. Lever at the FLIGHT detent (737) / the 50 percent detent (777), or further → the flow says "Speedbrake extended, not armed. Left
+   as it is." The lever does NOT move (clicking ARM over it would retract it), the speedbrake
+   lines stay unticked, and the flow goes on. Ticking "Speedbrake: ARMED" by hand says the same
+   sentence and ticks nothing. Move the lever to ARM yourself → the lines tick.
 
 ---
 

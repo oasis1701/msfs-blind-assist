@@ -37,84 +37,100 @@ public class Pmdg777FlowOrderingTests
     // =====================================================================
     // 1. Speedbrake lever scale
     //
-    // ⚠️ THE SDK HEADER IS WRONG HERE. PMDG_777X_SDK.h:454 (identical in the 77W, 77ER and
-    // 77F packages) says:
-    //     // Position 0...100  0: DOWN, 25: ARMED, 26...100: DEPLOYED
-    // The real detents were MEASURED on a live 777 at the gate (2026-08-29) by clicking
-    // each one through the stock K:ROTOR_BRAKE transport and reading the field back, and
-    // cross-checked against the owner moving the lever by hand:
-    //     DOWN 0   |   ARM 50   |   "50 percent" detent 75   |   UP 100
-    // The 75 reading is what proves the mapping rather than merely asserting it: PMDG's
-    // own event for that detent is named _50, and (75-50)/50 = 50 %. So deployment is
-    // measured from the ARM detent at 50, and ARMED is 50 — NOT 25.
-    //
-    // What was actually broken is unchanged by that correction: every 777 FO condition
-    // tested "v > 0.5 && v < 1.5", a detent INDEX this analog lever never produces. The
-    // Landing flow armed the lever and then announced "Skipping: Speedbrake: ARM"; a
-    // hand-tick reverted with "Unable to complete". The wrong scale came from a comment on
-    // AircraftStateEvaluator.SpeeedbrakeLeverPos ("0=Down, 1=Armed, 2-7 = deployed").
+    // The First Officer reads the lever from L:switch_498_a (main's FCTL_Speedbrake key), never
+    // the SDK's FCTL_Speedbrake_Lever byte. Measured 2026-09-30 (PR #261, hydraulics
+    // pressurised): the lever rests at DOWN 0 / ARM 200 / 50 percent 300 / UP 400; the byte is
+    // that value / 4, TRUNCATED, so a lever at 201-203 (spoilers already 34 percent up) read 50,
+    // "armed", and a hardware axis's DOWN at 22 read 5, "not down". The SDK header's
+    // "25: ARMED" is wrong on both scales. The values come from main's PmdgSpeedBrakeLever.B777.
     // =====================================================================
 
     [Theory]
     [InlineData(0, true)]
-    [InlineData(1, false)]
-    [InlineData(50, false)]
-    [InlineData(100, false)]
-    public void SpeedbrakeDown_is_only_the_zero_detent(double lever, bool expected) =>
+    [InlineData(22, true)]     // a hardware axis parks DOWN here
+    [InlineData(199, true)]    // short of ARM is not armed
+    [InlineData(200, false)]
+    [InlineData(300, false)]
+    [InlineData(400, false)]
+    public void SpeedbrakeDown_is_anything_short_of_ARM(double lever, bool expected) =>
         Assert.Equal(expected, Pmdg777SpeedbrakeLever.IsDown(lever));
 
     [Theory]
-    [InlineData(50, true)]    // MEASURED arm detent — the whole point
+    [InlineData(200, true)]
+    [InlineData(199, false)]
+    [InlineData(201, false)]   // spoilers already 34 percent up
+    [InlineData(50, false)]    // the old SDK-byte value
     [InlineData(0, false)]
-    [InlineData(1, false)]    // what the old condition accepted, and the lever never rests at
-    [InlineData(25, false)]   // what the SDK header claims; the lever never rests here either
-    [InlineData(75, false)]   // the half-deployed detent
-    [InlineData(100, false)]
-    public void SpeedbrakeArmed_is_the_measured_detent_50(double lever, bool expected) =>
+    [InlineData(400, false)]
+    public void SpeedbrakeArmed_is_exactly_the_ARM_detent(double lever, bool expected) =>
         Assert.Equal(expected, Pmdg777SpeedbrakeLever.IsArmed(lever));
 
     [Theory]
-    [InlineData(75, true)]     // measured half-deployed detent
-    [InlineData(100, true)]    // measured full-up detent
-    [InlineData(50, false)]    // armed is not deployed
+    [InlineData(201, true)]
+    [InlineData(300, true)]
+    [InlineData(400, true)]
+    [InlineData(200, false)]
     [InlineData(0, false)]
-    public void SpeedbrakeDeployed_starts_above_the_arm_detent(double lever, bool expected) =>
+    public void SpeedbrakeDeployed_is_anything_past_ARM(double lever, bool expected) =>
         Assert.Equal(expected, Pmdg777SpeedbrakeLever.IsDeployed(lever));
 
     [Fact]
-    public void Deployed_percent_is_measured_from_the_arm_detent()
+    public void An_unread_lever_is_none_of_the_three()
     {
-        // PMDG names the 75 detent "_50", so a correct mapping must call it 50 percent.
-        // This is what the ORIGINAL panel decoder already did — (v-50)/50 — and it was
-        // right; the 25-based reading briefly introduced here was the regression.
-        Assert.Equal(0, Pmdg777SpeedbrakeLever.DeployedPercent(50));
-        Assert.Equal(50, Pmdg777SpeedbrakeLever.DeployedPercent(75));
-        Assert.Equal(100, Pmdg777SpeedbrakeLever.DeployedPercent(100));
+        Assert.False(Pmdg777SpeedbrakeLever.IsDown(double.NaN));
+        Assert.False(Pmdg777SpeedbrakeLever.IsArmed(double.NaN));
+        Assert.False(Pmdg777SpeedbrakeLever.IsDeployed(double.NaN));
     }
 
     [Fact]
-    public void The_measured_detents_are_pinned_so_the_SDK_comment_cannot_creep_back()
+    public void The_measured_detents_come_from_mains_table()
     {
-        Assert.Equal(0, Pmdg777SpeedbrakeLever.DownValue);
-        Assert.Equal(50, Pmdg777SpeedbrakeLever.ArmedValue);
-        Assert.Equal(100, Pmdg777SpeedbrakeLever.UpValue);
-        Assert.Equal(75, Pmdg777SpeedbrakeLever.HalfDeployedValue);
+        Assert.Equal(0.0, Pmdg777SpeedbrakeLever.DownValue);
+        Assert.Equal(200.0, Pmdg777SpeedbrakeLever.ArmedValue);
+        Assert.Equal(300.0, Pmdg777SpeedbrakeLever.HalfDeployedValue);
+        Assert.Equal(400.0, Pmdg777SpeedbrakeLever.UpValue);
     }
 
     [Fact]
     public void LandingChecklist_speedbrake_accepts_the_armed_lever()
     {
         var item = Item("LANDING_CL", "LDG_SPEEDBRAKE");
+        Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, item.StateFieldName);
         Assert.True(item.EvaluateState(Pmdg777SpeedbrakeLever.ArmedValue),
             "ticking 'Speedbrake: ARMED' must not revert once the lever reaches ARM");
         Assert.False(item.EvaluateState(Pmdg777SpeedbrakeLever.DownValue));
+        Assert.False(item.EvaluateState(201));
+    }
+
+    // A 777 evaluator whose speed-brake lever reads `lever` (null = never delivered), the same
+    // shape as Pmdg777SpeedbrakeLeverReadTests.With. The leave-alone and already-set predicates
+    // are pinned through it, so swapping IsSpeedbrakeArmed and IsSpeedbrakeDeployed fails.
+    private static AircraftStateEvaluator LeverReading(double? lever)
+    {
+        var eval = new AircraftStateEvaluator();
+        eval.SetCachedValueSource(key => key == SpeedbrakeLeverState.Pmdg777.LeverKey ? lever : null);
+        return eval;
     }
 
     [Fact]
-    public void LandingFlow_speedbrake_verification_accepts_the_armed_lever()
+    public void LandingChecklist_speedbrake_leaves_a_deployed_lever_alone()
+    {
+        var item = Item("LANDING_CL", "LDG_SPEEDBRAKE");
+        Assert.NotNull(item.LeaveAloneWhen);
+        Assert.Equal(SpeedbrakeLeverState.LeaveAloneText, item.LeaveAloneText);
+
+        Assert.True(item.LeaveAloneWhen!(LeverReading(201)), "spoilers 34 percent up: leave it");
+        Assert.False(item.LeaveAloneWhen!(LeverReading(200)), "ARMED is not deployed");
+        Assert.False(item.LeaveAloneWhen!(LeverReading(0)), "DOWN is not deployed");
+        Assert.False(item.LeaveAloneWhen!(LeverReading(null)), "an unread lever is not known deployed");
+    }
+
+    [Fact]
+    public void LandingFlow_speedbrake_goes_through_the_verified_arm()
     {
         var arm = Step("LANDING", "LD_SPEEDBRAKE_ARM");
-        Assert.Equal("FCTL_Speedbrake_Lever", arm.VerifyFieldName);
+        Assert.Equal(SpeedbrakeLeverState.ArmPseudoKey, arm.EventName);
+        Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, arm.VerifyFieldName);
         Assert.NotNull(arm.VerifyCondition);
         Assert.True(arm.VerifyCondition!(Pmdg777SpeedbrakeLever.ArmedValue),
             "the Landing flow must not announce 'Skipping' on a lever it just armed");
@@ -124,18 +140,33 @@ public class Pmdg777FlowOrderingTests
     [Fact]
     public void LandingFlow_never_clicks_ARM_over_a_deployed_lever()
     {
-        // Clicking the ARM detent retracts a lever the pilot has raised for descent —
-        // the same hazard SpeedbrakeArmLadder.ExtendedField guards on the 737. The step
-        // needs a skip predicate; without one it is unconditional.
+        // Clicking the ARM detent retracts a lever the pilot has raised. Armed is "Already
+        // set"; deployed is left alone with its reason — never "Already set".
         var arm = Step("LANDING", "LD_SPEEDBRAKE_ARM");
         Assert.NotNull(arm.SkipCondition);
+        Assert.NotNull(arm.LeaveAloneWhen);
+        Assert.Equal(SpeedbrakeLeverState.LeaveAloneText, arm.LeaveAloneText);
+
+        // Already set: exactly the ARM detent.
+        Assert.True(arm.SkipCondition!(LeverReading(200)));
+        Assert.False(arm.SkipCondition!(LeverReading(201)), "deployed is not 'Already set'");
+        Assert.False(arm.SkipCondition!(LeverReading(0)));
+        Assert.False(arm.SkipCondition!(LeverReading(null)));
+
+        // Left alone: anything past ARM.
+        Assert.True(arm.LeaveAloneWhen!(LeverReading(201)));
+        Assert.False(arm.LeaveAloneWhen!(LeverReading(200)));
+        Assert.False(arm.LeaveAloneWhen!(LeverReading(0)));
+        Assert.False(arm.LeaveAloneWhen!(LeverReading(null)));
     }
 
     [Fact]
     public void AfterLandingChecklist_speedbrake_down_uses_the_same_scale()
     {
         var item = Item("AFTER_LANDING", "AL_SPEEDBRAKE");
+        Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, item.StateFieldName);
         Assert.True(item.EvaluateState(Pmdg777SpeedbrakeLever.DownValue));
+        Assert.True(item.EvaluateState(22), "a hardware axis parks DOWN at 22");
         Assert.False(item.EvaluateState(Pmdg777SpeedbrakeLever.ArmedValue));
     }
 

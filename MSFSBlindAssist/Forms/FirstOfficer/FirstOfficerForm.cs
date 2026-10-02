@@ -282,6 +282,8 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         int? cruiseFt   = int.TryParse(ofp.InitialAltitude, out int crz) && crz > 0 ? crz : null;
         int? destElevFt = int.TryParse(ofp.DestElevation, out int elev) ? Math.Max(0, elev) : null;  // below-sea-level out of scope (min 0, matches evaluator clamp)
         _stateEval.SetPlannedPressurizationAltitudes(cruiseFt, destElevFt);
+        // The TOC/TOD seat-belt automation calls a level-off "cruise" only near this.
+        _flightPhaseMon.SetPlannedCruiseAltitude(cruiseFt);
         if (cruiseFt != null || destElevFt != null)
         {
             var pressParts = new List<string>();
@@ -294,7 +296,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
     private void OnAircraftPositionReceived(object? sender, SimConnectManager.AircraftPosition pos)
     {
         // Forward to both monitors (called on SimConnect message thread)
-        _flightPhaseMon.Update(pos.Altitude, pos.VerticalSpeedFPM);
+        _flightPhaseMon.Update(pos.Altitude, pos.VerticalSpeedFPM, pos.SimOnGround >= 0.5);
         _foAutoMgr.Update(pos.Altitude, pos.VerticalSpeedFPM, _latestAgl, _latestIas, pos.SimOnGround >= 0.5);
     }
 
@@ -619,7 +621,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         if (e.Node.Checked == item.IsChecked) return; // Prevent loop
 
         _suppressTreeEvents = true;
-        if (_checklistMgr.ToggleItem(groupId, itemId) == null)
+        if (_checklistMgr.ToggleItem(groupId, itemId, out string? leftAloneText) == null)
         {
             // Toggle rejected — revert the checkbox
             e.Node.Checked = item.IsChecked;
@@ -627,8 +629,11 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         else
         {
             e.Node.Checked = item.IsChecked;
+            // A tick the First Officer refused (ChecklistItem.LeaveAloneWhen) speaks its reason
+            // IN PLACE of the status line — one utterance, so the interrupting status line can
+            // never cut the reason off.
             string status = item.IsChecked ? "checked" : "unchecked";
-            _announcer.AnnounceImmediate($"{item.Label}: {status}");
+            _announcer.AnnounceImmediate(leftAloneText ?? $"{item.Label}: {status}");
         }
         _suppressTreeEvents = false;
     }
