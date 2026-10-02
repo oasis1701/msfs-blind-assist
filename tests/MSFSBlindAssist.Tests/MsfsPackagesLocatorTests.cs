@@ -277,15 +277,15 @@ public class MsfsPackagesLocatorTests : IDisposable
             Directory.CreateDirectory(Path.Combine(shared, rel));
         Assert.Equal(new[] { Path.Combine(shared, "Community"), Path.Combine(shared, "Community2024"),
                              Path.Combine(shared, "Official2020", "OneStore"), Path.Combine(shared, "Official2024", "Steam") },
-                     MsfsPackagesLocator.PackageFolders(shared));
+                     MsfsPackageLayout.PackageFolders(shared));
 
         string legacy = Path.Combine(_root, "legacy");
         foreach (string rel in new[] { "Community", "Official/OneStore" })
             Directory.CreateDirectory(Path.Combine(legacy, rel));
         Assert.Equal(new[] { Path.Combine(legacy, "Community"), Path.Combine(legacy, "Official", "OneStore") },
-                     MsfsPackagesLocator.PackageFolders(legacy));
+                     MsfsPackageLayout.PackageFolders(legacy));
 
-        Assert.Empty(MsfsPackagesLocator.PackageFolders(Path.Combine(_root, "nowhere")));
+        Assert.Empty(MsfsPackageLayout.PackageFolders(Path.Combine(_root, "nowhere")));
     }
 
     [Fact]

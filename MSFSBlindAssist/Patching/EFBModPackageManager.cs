@@ -84,7 +84,9 @@ namespace MSFSBlindAssist.Patching
                 System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Packages", "Microsoft.FlightSimulator_8wekyb3d8bbwe", "LocalCache", "UserCfg.opt"),
             };
 
-            // Check FS2024
+            // Check FS2024. Community only, deliberately: this finder exists to remove the packages
+            // this app itself installed (the retired PMDG EFB bridge, the retired HS787 bridge), and
+            // it only ever installed them here — the HS787 is a Community package on every install.
             foreach (string configPath in fs2024Paths)
             {
                 string? basePath = TryParseInstalledPackagesPath(configPath);

@@ -174,8 +174,9 @@ public sealed class GsxAirplaneProfile
         if (pkgRoot != null)
         {
             // Community, Community2024 and each child of Official / Official2020 / Official2024 —
-            // the same package folders AircraftCfgCatalog walks, from the one resolver.
-            foreach (var root in Database.MsfsPackagesLocator.PackageFolders(pkgRoot))
+            // the same package folders AircraftCfgCatalog walks, from the one dependency-free
+            // MsfsPackageLayout (tools/GsxAirplaneProbe links this file and that one, nothing else).
+            foreach (var root in Database.MsfsPackageLayout.PackageFolders(pkgRoot))
                 foreach (var pkg in SafeDirs(root))
                 {
                     string simobj = System.IO.Path.Combine(pkg, "SimObjects");

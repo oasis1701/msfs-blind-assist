@@ -206,8 +206,9 @@ namespace MSFSBlindAssist.Services
 
             // Scan every folder that directly holds packages: Community, Community2024 (MSFS 2024's
             // own add-on folder), and each child of Official / Official2020 / Official2024 (OneStore,
-            // Steam, ...). A 2020 root simply has fewer of them.
-            foreach (var root in Database.MsfsPackagesLocator.PackageFolders(pkgRoot))
+            // Steam, ...). A 2020 root simply has fewer of them. MsfsPackageLayout is dependency-free
+            // on purpose: tools/GsxOffsetProbe links this file and that one, nothing else of the app.
+            foreach (var root in Database.MsfsPackageLayout.PackageFolders(pkgRoot))
             {
                 foreach (var pkg in SafeDirs(root))
                 {

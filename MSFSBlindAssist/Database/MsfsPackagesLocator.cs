@@ -106,27 +106,10 @@ public static class MsfsPackagesLocator
         }
     }
 
-    /// <summary>
-    /// The add-on folder names a simulator loads under its packages root. MSFS 2020 reads
-    /// <c>Community</c> alone. MSFS 2024 reads <c>Community</c> (add-ons that work in both
-    /// simulators, since both read it) AND <c>Community2024</c> (2024-only add-ons; the folder the
-    /// SDK tells 2024-native scenery to go in, and where TFDi's installer puts the MD-11) — so a
-    /// 2024 pilot's native airports live where a <c>Community</c>-only reader never looks. Measured
-    /// 2026-10-02 on a shared packages root: 100 packages under Community, 63 under Community2024,
-    /// among them every FlyTampa, iniBuilds and Orbx 2024 airport the pilot owned; the scenery
-    /// census had indexed 41 and reported "no installed scenery package found" at CYYZ while the
-    /// FlyTampa package sat on the disk.
-    /// </summary>
-    internal static IReadOnlyList<string> CommunityFolderNames(string simulatorVersion)
-        => simulatorVersion == "FS2024" ? new[] { "Community", "Community2024" } : new[] { "Community" };
-
-    /// <summary>The names of the folders that hold OFFICIAL packages one level down (OneStore, Steam):
-    /// <c>Official</c> for MSFS 2020, <c>Official2020</c> and <c>Official2024</c> for MSFS 2024.</summary>
-    private static readonly string[] OfficialFolderNames = { "Official", "Official2020", "Official2024" };
-
-    /// <summary>The add-on folders the RUNNING simulator loads, in <see cref="CommunityFolderNames"/>
-    /// order, only those on disk; empty when none. <paramref name="readFailed"/> as above. The
-    /// NextBoot line never counts here, and there is no parameter to make it.</summary>
+    /// <summary>The add-on folders the RUNNING simulator loads — <c>Community</c>, and on MSFS 2024
+    /// <c>Community2024</c> too (<see cref="MsfsPackageLayout"/>) — only those on disk; empty when none.
+    /// <paramref name="readFailed"/> as above. The NextBoot line never counts here, and there is no
+    /// parameter to make it.</summary>
     public static IReadOnlyList<string> TryGetCommunityPaths(string simulatorVersion, out bool readFailed)
         => CommunityFolders(TryGetInstalledPackagesPath(simulatorVersion, RoamingAppData(), LocalAppData(), includeNextBoot: false, out readFailed), simulatorVersion);
 
@@ -134,53 +117,11 @@ public static class MsfsPackagesLocator
     internal static IReadOnlyList<string> TryGetCommunityPaths(string simulatorVersion, string roamingAppData, string localAppData, out bool readFailed)
         => CommunityFolders(TryGetInstalledPackagesPath(simulatorVersion, roamingAppData, localAppData, includeNextBoot: false, out readFailed), simulatorVersion);
 
-    /// <summary>
-    /// Every folder under <paramref name="packagesRoot"/> that DIRECTLY holds packages, add-on folders
-    /// first (<c>Community</c>, <c>Community2024</c>), then each child of an Official folder
-    /// (<c>Official\OneStore</c>, <c>Official2024\Steam</c>, …); only those on disk, in that order. For
-    /// a reader that walks every installed package of either simulator (the aircraft.cfg catalog, the
-    /// GSX profile scan) and so does not care which simulator wrote the root: a 2020 root has no
-    /// <c>Community2024</c> or <c>Official2024</c> to find. Never throws.
-    /// </summary>
-    public static IReadOnlyList<string> PackageFolders(string packagesRoot)
-    {
-        var result = new List<string>();
-        try
-        {
-            foreach (string name in CommunityFolderNames("FS2024"))
-            {
-                string dir = Path.Combine(packagesRoot, name);
-                if (Directory.Exists(dir)) result.Add(dir);
-            }
-            foreach (string name in OfficialFolderNames)
-            {
-                string official = Path.Combine(packagesRoot, name);
-                if (!Directory.Exists(official)) continue;
-                try { result.AddRange(Directory.GetDirectories(official)); }
-                catch (Exception ex) { Log.Debug("Database", $"Could not list {official}: {ex.Message}"); }
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Debug("Database", $"Could not list package folders under {packagesRoot}: {ex.Message}");
-        }
-        return result;
-    }
-
     private static string RoamingAppData() => Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
     private static string LocalAppData() => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
     private static IReadOnlyList<string> CommunityFolders(string? root, string simulatorVersion)
-    {
-        if (root == null) return Array.Empty<string>();
-        var found = new List<string>();
-        foreach (string name in CommunityFolderNames(simulatorVersion))
-        {
-            string dir = Path.Combine(root, name);
-            if (Directory.Exists(dir)) found.Add(dir);
-        }
-        return found;
-    }
+        => root == null ? Array.Empty<string>() : MsfsPackageLayout.CommunityFolders(root, simulatorVersion);
 
     /// <summary>The first packages root this config names that exists on disk. <paramref name="readFailed"/>
     /// is true only when the file exists and reading it threw.</summary>
