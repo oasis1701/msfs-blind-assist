@@ -107,8 +107,8 @@ public partial class ChecklistForm : Form
     }
 
     private string GetChecklistText()
-        // The aircraft's own checklist first, MSFSBA's bundled file second, never another
-        // aircraft's — see ChecklistContent, which owns the order and the file map.
+        // The aircraft's own checklist first, MSFSBA's bundled file second — see
+        // ChecklistContent, which owns the order and the file map.
         => Services.ChecklistContent.Load(
             aircraftCode,
             Services.NativeChecklistReader.Render,

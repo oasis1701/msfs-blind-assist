@@ -11,8 +11,8 @@ namespace MSFSBlindAssist.Tests;
 
 /// <summary>
 /// What the checklist window (output mode, Shift+C) shows, and where it comes from: the
-/// aircraft's own checklist first, MSFSBA's bundled text file second, and a plain "there is
-/// none" when there is neither — never another aeroplane's.
+/// aircraft's own checklist first, MSFSBA's bundled text file second, and main's A320 fallback
+/// when there is neither.
 /// </summary>
 public class ChecklistContentTests
 {
@@ -233,12 +233,13 @@ public class ChecklistContentTests
     }
 
     [Fact]
-    public void AnAircraftWithNeitherSaysSoAndNeverBorrowsAnother()
+    public void AnAircraftWithNeitherFallsBackToTheA320FileAsMainDoes()
     {
+        // The fallback is main's behaviour and stays main's to change (upstream PR #266 names
+        // it in the window title); this branch only adds the DA40's own sources ahead of it.
         string text = ChecklistContent.Load("NO_SUCH_AEROPLANE", _ => null, ChecklistFolder());
 
-        Assert.Equal(ChecklistContent.NoChecklistText, text);
-        Assert.DoesNotContain("A320", text, StringComparison.Ordinal);
+        Assert.Equal(File.ReadAllText(Path.Combine(ChecklistFolder(), "FBW_A320_Checklist.txt")), text);
     }
 
     [Fact]

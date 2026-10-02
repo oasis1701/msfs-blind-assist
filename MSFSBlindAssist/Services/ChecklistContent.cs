@@ -13,13 +13,9 @@ public sealed record ChecklistSection(string Title, IReadOnlyList<string> Items)
 /// remembered.
 ///
 /// THE ORDER IS THE AIRCRAFT'S OWN CHECKLIST FIRST (<see cref="NativeChecklistReader"/>), then
-/// the text file MSFSBA ships for that aircraft, then a plain "there is none". The aircraft's
-/// own is the vendor's, complete, and follows the aeroplane through updates; the bundled file
-/// is what a pilot gets when the package cannot be found, or ships none.
-///
-/// ⚠️ NO FALLBACK TO ANOTHER AIRCRAFT'S FILE. An aeroplane with no checklist of its own used
-/// to be shown the A320's — a wrong checklist that looks authoritative is worse than an empty
-/// window.
+/// the text file MSFSBA ships for that aircraft, then main's fallback to the A320's file. The
+/// aircraft's own is the vendor's, complete, and follows the aeroplane through updates; the
+/// bundled file is what a pilot gets when the package cannot be found, or ships none.
 /// </summary>
 public static class ChecklistContent
 {
@@ -37,11 +33,9 @@ public static class ChecklistContent
             ["COWS_DA40XLS"] = "COWS_DA40XLS_Checklist.txt",
         };
 
-    /// <summary>Shown when the aircraft ships no checklist and MSFSBA carries none.</summary>
-    public const string NoChecklistText =
-        "[No checklist for this aircraft]\n" +
-        "This aeroplane ships no checklist of its own and MSFSBA carries none " +
-        "for it. Use the aircraft's own documentation.";
+    /// <summary>The aircraft whose file is shown when an aircraft has neither its own checklist
+    /// nor a bundled file — main's behaviour, unchanged here.</summary>
+    private const string FallbackAircraftCode = "A320";
 
     /// <summary>The bundled file name for an aircraft, or null when MSFSBA carries none.</summary>
     public static string? BundledFileFor(string? aircraftCode)
@@ -57,8 +51,7 @@ public static class ChecklistContent
         string? native = nativeReader(aircraftCode);
         if (!string.IsNullOrWhiteSpace(native)) return native;
 
-        string? file = BundledFileFor(aircraftCode);
-        if (file == null) return NoChecklistText;
+        string file = BundledFileFor(aircraftCode) ?? BundledFiles[FallbackAircraftCode];
 
         string path = Path.Combine(checklistFolder, file);
         try

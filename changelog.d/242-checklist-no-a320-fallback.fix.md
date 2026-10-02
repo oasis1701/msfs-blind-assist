@@ -1,1 +1,0 @@
-The checklist window no longer shows the A320's checklist on aircraft MSFSBA has no checklist for, such as the PMDG 737 and 777, the HorizonSim 787 and the TFDi MD-11. It now says that no checklist is available for the aircraft.
