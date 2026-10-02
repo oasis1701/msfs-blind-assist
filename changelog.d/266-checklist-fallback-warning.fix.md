@@ -1,0 +1,1 @@
+The checklist window (Shift+C) now says when an aircraft has no checklist of its own. On the PMDG 737 and 777, the HorizonSim 787 and the TFDi MD-11 it used to open the FlyByWire A320 checklist without saying so; the window title now names both aircraft, so your screen reader tells you whose checklist you are reading.
