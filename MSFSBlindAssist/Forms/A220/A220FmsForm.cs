@@ -271,19 +271,22 @@ public sealed class A220FmsForm : Form
             _scratchpad.Clear();
             _ = ClearAircraftScratchpadAsync();
         }, 140);
-        Add("E&XEC", (_, _) => _ = ExecAsync(), 90);
+        // Alt+E / Ctrl+Enter = EXEC, the same chords as the PMDG, iFly and WT CDU forms.
+        Add("&EXEC", (_, _) => _ = ExecAsync(), 90);
         Add("Ca&ncel mod", (_, _) => _ = CancelModAsync(), 110);
-        Add("&Refresh", (_, _) => _ = RefreshAsync(), 100);
+        Add("Refresh (F5)", (_, _) => _ = RefreshAsync(), 110);
         bx = 12; by += 36;
-        // Page navigation lives in the "Go to page" combo (top right) + Ctrl+1..5;
-        // DIR is the MKP quick-access key (Ctrl+D).
+        // Page navigation lives in the "Go to page" combo (top right) plus the Airbus
+        // MCDU-form chords: Alt+F FPLN, Alt+Shift+F SEC, Alt+P PERF, Alt+R ROUTE.
+        // Ctrl+1-6 is deliberately NOT a page jump — in every other CDU form it is the
+        // left line-select keys. DIR is the MKP quick-access key (Alt+D / Ctrl+D).
         Add("&Open FMS window", (_, _) => _ = OpenFmsWindowAsync(), 150);
         Add("&DIR (Direct-to)", (_, _) => { _def.SendMkpKey("DIR"); _ = DelayedRefreshAsync(); }, 130);
         bx = 12; by += 36;
         Add("SimBrief &uplink", (_, _) => _ = RunUplinkFlowAsync(), 140);
         Add("&Wind request", (_, _) => _ = RunFlowAsync("Wind request",
             new[] { "FPLN", "WIND/TEMP", "FPLN WIND REQ" }), 130);
-        Add("&Fuel page", (_, _) => _ = RunFlowAsync("FUEL page",
+        Add("Fue&l page", (_, _) => _ = RunFlowAsync("FUEL page",
             new[] { "FPLN", "FUEL" }), 110);
         Add("Set &V-speeds", (_, _) => _ = RunFlowAsync("PERF DEP SET VSPEEDS",
             new[] { "PERF", "DEP", "SET VSPEEDS" }), 130);
@@ -298,26 +301,35 @@ public sealed class A220FmsForm : Form
                 + "250/ or 250/FL120, set that waypoint's speed/altitude constraint (A above, B below).  "
                 + "Alt+C or Backspace: clear the scratchpad (also clears a stuck invalid entry).  "
                 + "Delete on a discontinuity row: remove it, then EXEC.  "
-                + "Go to page combo or Ctrl+1-7: DBASE/POS/FPLN/PERF/ROUTE/SEC/ACT.  "
-                + "PageUp/PageDown or Alt+Up/Alt+Down: previous/next page of a long list (inside a dialog: the dialog's own list).  "
-                + "Ctrl+D: Direct-to.  F5: refresh.  Escape: close menu, then window.",
+                + "Alt+F: flight plan.  Alt+Shift+F: secondary flight plan.  Alt+P: PERF.  Alt+R: ROUTE.  Other pages: Go to page combo.  "
+                + "Alt+Home: back to the page rows.  "
+                + "PageUp/PageDown, Alt+Up/Alt+Down or Ctrl+Up/Ctrl+Down: previous/next page of a long list (inside a dialog: the dialog's own list).  "
+                + "Alt+E or Ctrl+Enter: EXEC.  Ctrl+D: Direct-to.  F5: refresh.  Escape: close menu, then window.",
             AccessibleName = "Keyboard help"
         };
         Controls.Add(hint);
 
         KeyDown += (_, e) =>
         {
-            if (e.KeyCode == Keys.F5) { _ = RefreshAsync(); e.Handled = true; }
+            // Ctrl+Enter → EXEC. Handled here (KeyPreview) and suppressed so the
+            // list's own Enter handler never also activates the selected row.
+            if (e.Control && e.KeyCode == Keys.Enter)
+            {
+                _ = ExecAsync();
+                e.Handled = true; e.SuppressKeyPress = true;
+            }
+            else if (e.KeyCode == Keys.F5) { _ = RefreshAsync(); e.Handled = true; }
             // Page the FMS window, the same chord every other CDU form in this app
             // uses (PageUp/PageDown or Alt+Up/Alt+Down). These fire the MKP's own
             // PREV/NEXT page keys — NOT its UP/DOWN cursor keys, which move the
             // aircraft's line cursor and are a different control entirely.
-            else if (e.KeyCode == Keys.PageUp || (e.Alt && e.KeyCode == Keys.Up))
+            // Ctrl+Up/Down is the A380 MCDU form's page chord; same action.
+            else if (e.KeyCode == Keys.PageUp || ((e.Alt || e.Control) && e.KeyCode == Keys.Up))
             {
                 if (_overlay == Overlay.Dialog) _ = PageDialogAsync(-1); else PageFms("PREV");
                 e.Handled = true; e.SuppressKeyPress = true;
             }
-            else if (e.KeyCode == Keys.PageDown || (e.Alt && e.KeyCode == Keys.Down))
+            else if (e.KeyCode == Keys.PageDown || ((e.Alt || e.Control) && e.KeyCode == Keys.Down))
             {
                 if (_overlay == Overlay.Dialog) _ = PageDialogAsync(1); else PageFms("NEXT");
                 e.Handled = true; e.SuppressKeyPress = true;
@@ -327,11 +339,17 @@ public sealed class A220FmsForm : Form
             else if (e.KeyCode == Keys.Escape && _overlay != Overlay.None)
             { _ = DismissOverlayAsync(); e.Handled = true; }
             else if (e.KeyCode == Keys.Escape) { Close(); e.Handled = true; }
-            else if (e.Control && e.KeyCode is >= Keys.D1 and <= Keys.D7)
+            // Alt+Home: back to the page rows (every other CDU form has it).
+            else if (e.Alt && e.KeyCode == Keys.Home)
             {
-                int i = e.KeyCode - Keys.D1;
-                if (i < NavTargets.Length) _ = NavigateAsync(NavTargets[i].Click);
-                e.Handled = true;
+                _list.Focus();
+                e.Handled = true; e.SuppressKeyPress = true;
+            }
+            // Airbus MCDU-form page chords (A32NX/A380/Fenix muscle memory).
+            else if (e.Alt && !e.Control && PageChord(e.KeyCode, e.Shift) is { } target)
+            {
+                _ = NavigateAsync(target);
+                e.Handled = true; e.SuppressKeyPress = true;
             }
             else if (e.Control && e.KeyCode == Keys.D)
             {
@@ -1714,6 +1732,17 @@ public sealed class A220FmsForm : Form
         }
         finally { _busy = false; }
     }
+
+    /// <summary>Alt+letter page chords, matching the A32NX/A380 MCDU forms where the
+    /// page exists. Null = not a page chord (falls through to button mnemonics).</summary>
+    private static string? PageChord(Keys key, bool shift) => (key, shift) switch
+    {
+        (Keys.F, true) => "SEC",
+        (Keys.F, false) => "FPLN",
+        (Keys.P, false) => "PERF",
+        (Keys.R, false) => "ROUTE",
+        _ => null
+    };
 
     /// <summary>"Go to page" dispatch: page tiles are a plain text click; SEC/ACT
     /// go through the flight-plan dropdown gesture.</summary>
