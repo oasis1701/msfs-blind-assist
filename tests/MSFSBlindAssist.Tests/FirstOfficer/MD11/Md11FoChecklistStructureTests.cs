@@ -126,103 +126,73 @@ public class Md11FoChecklistStructureTests
                 $"{s.Id}: {s.ConditionFieldName}");
     }
 
-    // ---------------- TFDi's normal checklist, verbatim ----------------
+    // ---------------- The read-back checklists ----------------
+    // Condensed from TFDi's normal checklist to what a screen-reader pilot can check through the
+    // app: switch positions the FO reads back, plus Captain items reachable from MSFSBA (MCDU,
+    // altimeters, radios). Sighted-only sub-checks (lamps that illuminate during a test, gauge
+    // readings, overboost bar, ADG wiring) are gone; the throttle check stays for its aural
+    // warnings. The flows and action groups are unchanged.
 
     private static string[] Labels(string groupId) => Groups.Single(g => g.Id == groupId).Items.Select(i => i.Label).ToArray();
 
     [Fact]
-    public void CockpitEntry_IsTfdisVerbatim() => Assert.Equal(new[]
+    public void CockpitEntry_Labels() => Assert.Equal(new[]
     {
-        "Weather Radar: Off", "Fuel Switches: Off", "Parking Brake: Set / Chocks", "Flap/Slats Handle: Up and Retracted",
+        "Weather Radar: Off", "Fuel Switches: Off", "Parking Brake: Set", "Flap/Slats Handle: Up and Retracted",
         "Gear Handle: Down", "Fuel Dump Switches: Covered and Off", "Manifold Drain Switches: Covered and Off",
         "Emergency Power Selector: Off",
     }, Labels("COCKPIT_ENTRY_CL"));
 
     [Fact]
-    public void Preflight_IsTfdisVerbatim() => Assert.Equal(new[]
+    public void Preflight_Labels() => Assert.Equal(new[]
     {
-        "Battery Switch: On", "External Power Switches: As Required", "Engine/APU Fire Test: Perform",
-        "Engine/APU Fire Test: All 3 fire handles — Illuminates", "Engine/APU Fire Test: APU fire handle — Illuminates",
-        "Engine/APU Fire Test: All 3 Engine Fuel Shutoff Switches — Illuminates",
-        "Engine/APU Fire Test: Both Master Warnings — Illuminates", "Engine/APU Fire Test: Fire Bell — Sounds",
-        "Engine/APU Fire Test: Level 3 alert messages on EAD — Displayed",
-        "Master Warning: Press", "Fuel Used: Reset", "Annunciator Lights: Test/Check", "Annunciator Bright/Dim Switch: Select",
-        "Cargo Fire: Manual Test", "Cargo Fire: FWD/AFT Heat/Smoke lights — Illuminates",
-        "Cargo Fire: Manual Test switch — Illuminates", "Cargo Fire: All agent discharge lights — Illuminates",
-        "Cargo Fire: FWD/AFT Flow Switch DISAG lights — Illuminates", "Cargo Fire: Both Master Warnings — Illuminates",
-        "Cargo Fire: CRG FIRE LWR FWD + CRG FIRE LWR AFT on EAD — Displayed",
-        "IRU Switches: NAV", "IRU Alignment: Initialize", "Cockpit Voice Recorder: Test",
-        "Galley Bus Panel: All lights extinguished", "Cargo Temperature Selectors: As required",
-        "FADEC/Engine Ignition Panel Lights: Off Except ENG IGN OFF",
-        "Hydraulic Test: Perform", "Hydraulic Test: Observe on SD — Normal",
-        "Electrical Panel: Check", "Electrical Panel: Manual Light — Off",
-        "Smoke Elec/Air Source: Normal", "Drive 1/2/3 + CAB BUS: Guarded", "Emergency Power Selector: Armed, No Light",
-        "Air Panel: Verify", "Air Panel: Manual Light — Off", "Air Panel: ECON Light — Off", "Air Panel: TRIM AIR OFF Light — Off",
-        "Cabin Outflow Valve: Open", "Air Conditioning: Establish", "Temperature Selectors: As required",
-        "Fuel Panel Manual Light: Off", "Fuel Quantity: Test",
-        "Fuel Quantity: 188880 Displayed — Checked", "Fuel Quantity: 10500 Displayed in each tank — Checked",
-        "Emergency Light Switch: Arm", "No Smoking Switch: On", "Seat Belt Switch: Off", "Exterior Lights: As required",
-        "EVAC Panel: Armed and Guarded", "GPWS Test Switch: Test and Guarded",
-        "AFS Panel: Check", "AFS Panel: All lights — Off", "AFS Panel: Flap limit — Normal", "AFS Panel: Elevator feel — Normal",
-        "Cabin Pressurization Panel: Check", "Cabin Pressurization Panel: In AUTO operation — Checked",
-        "Cabin Pressurization Panel: Valve — Open", "Cabin Pressurization Panel: Ditching switch — Guarded",
-        "Cabin Pressurization Panel: Ditching light — Extinguished",
-        "Anti-Ice Panel: Check", "Anti-Ice Panel: All lights — Off",
-        "Windshield Anti-Ice/Defog: NORM/ON/DEFOG Light Extinguished",
-        "Altimeter: Set QNH", "IAS: Auto", "HDG: Auto", "FEET: Auto", "Bank Selector: Auto", "Static Air Switch: Normal",
-        "Source Input Selector Lights: Off", "PDF/ND/EAD/SD: Check", "PDF/ND/EAD/SD: No faults — Checked",
-        "PDF/ND/EAD/SD: Altimeters — As desired", "PDF/ND/EAD/SD: Time — Correct",
-        "PDF/ND/EAD/SD: Oil Quantity — >16 quarts", "PDF/ND/EAD/SD: PDF FMA annunciator — TAKEOFF",
-        "Gear Handle: Down, 4 green", "Auto Brake Switch: RTO", "Overboost Breakout bar: Full AFT",
-        "Throttles: Check", "Throttles: Travel and aural warnings — Checked", "Throttles: Closed", "Reverse Levers: Down",
-        "Dial-a-Flap: To Setting", "Engine Start Buttons: Pressed In", "Fuel Switches: Off", "SDCP: Cue Lights and Clear",
-        "Radio Panels: As desired", "Weather Radar: Test and Off", "Transponder: Set", "Rudder Trim: Zero",
-        "Aileron Trim: Zero", "Air Driven Generator (ADG): Handle Down and Wired",
+        "Battery: On", "IRS Switches: NAV", "System Tests: Complete", "Electrical System: Auto",
+        "Emergency Power: Armed", "Hydraulic System: Auto", "Air System: Auto", "Economy: On", "Fuel System: Auto",
+        "Cabin Pressure: Auto", "Engine Ignition: Off", "Emergency Lights: Armed", "No Smoking Signs: On",
+        "Seat Belt Signs: Off", "EVAC Switch: Armed and Guarded", "GPWS: Normal and Guarded", "Windshield Anti-Ice: On",
+        "Autobrake: RTO", "Dial-A-Flap: Takeoff Setting", "Engine Start Switches: In",
+        "Throttles: Travel and Aural Warnings Checked, Closed", "Altimeters: Set QNH",
+        "Radios and Transponder: Set",
     }, Labels("PREFLIGHT_CL"));
 
     [Fact]
-    public void BeforeStart_IsTfdisVerbatim() => Assert.Equal(new[]
+    public void BeforeStart_Labels() => Assert.Equal(new[]
     {
-        "APU: Start", "FMS: Initialized and Checked", "FMS: Weights — Confirmed", "FMS: Headwind/Tailwind — Confirmed",
-        "FMS: Runway Slope — Confirmed", "FMS: Temperature — Confirmed", "FMS: V-Speeds — Confirmed",
-        "IRS: Nav and Aligned", "EIS/BUGS: Set", "Seat Belt Sign: On", "External Power Switches: Off",
-        "AUX HYD Pump 1: On", "Engine Ignition: A or B", "Beacon Light: On",
+        "FMS: Initialized, V-Speeds Set", "IRS: Aligned", "APU: Running", "External Power: Off", "Seat Belt Signs: On",
+        "AUX Hydraulic Pump 1: On", "Engine Ignition: A or B", "APU Bleed: On", "Beacon: On",
+        "Pushback and Start Clearance: Obtained",
     }, Labels("BEFORE_START_CL"));
 
     [Fact]
-    public void EngineStart_IsTfdisVerbatim() => Assert.Equal(new[]
+    public void EngineStart_Labels() => Assert.Equal(new[]
     {
-        "Engine 3 Start Switch: Pull", "Fuel Level: On", "Wait until N2 >= 15%: Confirmed", "Oil Pressure: Verify Rising",
-        "Engine Ignition: Verify <= 25 Seconds", "EGT: Check", "Start Valve: Verify Closed at 45% N2",
-        "Engine 3: Verify Stabilized", "Engine 3: N1 — Around 20%", "Engine 3: EGT — Around 400C", "Engine 3: N2 — Around 60%",
-        "Engine 3: Oil — +/- 2 quarts after start", "Engine 3: Fuel Flow — Around 1200 at sea level",
-        "Engine Anti-Ice: As required", "Repeat for Engine 1: Checked", "Repeat for Engine 2: Checked",
+        "Engine 3: Running", "Engine 1: Running", "Engine 2: Running", "Engine Start Switches: In",
+        "Engine Anti-Ice: As Required",
     }, Labels("ENGINE_START_CL"));
 
     [Fact]
-    public void AfterStart_IsTfdisVerbatim() => Assert.Equal(new[]
+    public void AfterStart_Labels() => Assert.Equal(new[]
     {
-        "Engine Anti-Ice: As required", "APU: Off", "Flaps: Set", "Config Page: Select", "Flight Controls: Check",
-        "Stab Trim: Set", "Taxi Lights: On",
+        "APU Bleed: Off", "Flaps: Set", "Spoilers: Armed", "Autobrake: RTO", "Flight Controls: Checked",
+        "Stab Trim: Set", "Taxi Light: On",
     }, Labels("AFTER_START_CL"));
 
     [Fact]
-    public void BeforeTakeoff_IsTfdisVerbatim() => Assert.Equal(new[]
+    public void BeforeTakeoff_Labels() => Assert.Equal(new[]
     {
-        "EIS/BUGS: Verify", "Runway: Verify", "Anti-Ice: Wings Off, Engine as required", "Stab Trim: Verify Green Band and Config",
-        "Spoilers: Armed", "Autobrake: RTO", "Flaps and Slats: Set for takeoff", "Takeoff Data and Bugs: Verify", "EAD: Checked",
-        "Landing Lights: On", "High Intensity Lights (Strobes): On", "Flight Modes: As required",
-        "Flight Modes: NAV — Armed", "Flight Modes: PROF — Armed", "Flight Modes: AUTOFLIGHT — On", "Flight Modes: TOGA power — Set",
+        "Runway and Takeoff Data: Verified", "Flaps and Slats: Set for Takeoff", "Stab Trim: Set", "Wing Anti-Ice: Off",
+        "Spoilers: Armed", "Autobrake: RTO", "Transponder: TA/RA", "Landing Lights: On", "Strobes: On",
+        "NAV and PROF: Armed", "Auto Flight: On",
     }, Labels("BEFORE_TAKEOFF_CL"));
 
     [Fact]
-    public void AfterTakeoff_IsTfdisVerbatim() => Assert.Equal(new[]
+    public void AfterTakeoff_Labels() => Assert.Equal(new[]
     {
-        "Gear: Up", "Spoilers: Disarm", "Autobrake: Verify", "Flaps/Slats: Up and Retracted", "EAD: Check No Alerts",
+        "Gear: Up", "Spoilers: Disarmed", "Autobrake: Off", "Flaps and Slats: Up and Retracted",
     }, Labels("AFTER_TAKEOFF_CL"));
 
     [Fact]
-    public void InFlightPhases_AreTfdisVerbatim()
+    public void InFlightPhases_Labels()
     {
         Assert.Equal(new[] { "Sterile Cockpit: Chime", "Landing Lights: Off" }, Labels("PASSING_10000_CL"));
         Assert.Equal(new[] { "Altimeters: STD (Pull)", "Dial-a-Flap: Set 15" }, Labels("TRANSITION_ALTITUDE_CL"));
@@ -234,7 +204,7 @@ public class Md11FoChecklistStructureTests
     }
 
     [Fact]
-    public void GroundPhases_AreTfdisVerbatim()
+    public void GroundPhases_Labels()
     {
         Assert.Equal(new[]
         {

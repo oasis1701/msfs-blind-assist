@@ -11,10 +11,12 @@ using CheckFn = System.Func<Md11FoActionExecutor, Md11FoStateEvaluator, System.T
 /// <summary>
 /// The TFDi MD-11 First Officer checklists. Two layers, as on every profile: an ACTION group per
 /// flow (ticking fires the item's switch through the executor, and it auto-detects from state), and
-/// TFDi's own published normal checklist as action-free READBACK (*_CL) groups, every item and
-/// response verbatim ("Item: Response"; an indented TFDi sub-check reads "Parent: Sub — Response").
-/// A readback item the app can read auto-ticks; the rest (visual checks, FMS entries, test
-/// results only a sighted crew sees) are manual ticks.
+/// action-free READBACK (*_CL) groups following the order of TFDi's published normal checklist,
+/// CONDENSED to what a screen-reader pilot can check through MSFSBA ("Item: Response"). TFDi's
+/// Preflight alone ran 92 lines, most of them lamps that light during a test, gauge readings and
+/// panel inspections only a sighted crew can see; those are gone. What remains auto-ticks from a
+/// switch position the app reads, or is a Captain item reachable from the app (MCDU, altimeters,
+/// radios, the flight controls). Never re-add a check the pilot has no way to perform.
 /// </summary>
 public static class Md11FoChecklistDefinitions
 {
@@ -325,7 +327,7 @@ public static class Md11FoChecklistDefinitions
         {
             Read("CEC_WXR", "COCKPIT_ENTRY_CL", "Weather Radar: Off", "FO_WXR_OFF", On),
             Read("CEC_FUEL_SW", "COCKPIT_ENTRY_CL", "Fuel Switches: Off", "FO_FUEL_SWITCHES_OFF", On),
-            Reminder("CEC_PARK", "COCKPIT_ENTRY_CL", "Parking Brake: Set / Chocks"),
+            Read("CEC_PARK", "COCKPIT_ENTRY_CL", "Parking Brake: Set", Park, On),
             Read("CEC_FLAPS", "COCKPIT_ENTRY_CL", "Flap/Slats Handle: Up and Retracted", "FO_FLAPS_UP", On),
             Read("CEC_GEAR", "COCKPIT_ENTRY_CL", "Gear Handle: Down", "FO_GEAR_DOWN", On),
             Read("CEC_DUMP", "COCKPIT_ENTRY_CL", "Fuel Dump Switches: Covered and Off", "FO_FUEL_DUMP_SAFE", On),
@@ -342,98 +344,29 @@ public static class Md11FoChecklistDefinitions
             Id = G, Name = "Preflight Checklist",
             Items = new()
             {
-                Read("PFC_BATT", G, "Battery Switch: On", Batt, On),
-                Reminder("PFC_EXT_PWR", G, "External Power Switches: As Required"),
-                Reminder("PFC_FIRE", G, "Engine/APU Fire Test: Perform"),
-                Reminder("PFC_FIRE_HANDLES", G, "Engine/APU Fire Test: All 3 fire handles — Illuminates"),
-                Reminder("PFC_FIRE_APU_HANDLE", G, "Engine/APU Fire Test: APU fire handle — Illuminates"),
-                Reminder("PFC_FIRE_FUEL_SW", G, "Engine/APU Fire Test: All 3 Engine Fuel Shutoff Switches — Illuminates"),
-                Reminder("PFC_FIRE_MW", G, "Engine/APU Fire Test: Both Master Warnings — Illuminates"),
-                Reminder("PFC_FIRE_BELL", G, "Engine/APU Fire Test: Fire Bell — Sounds"),
-                Reminder("PFC_FIRE_EAD", G, "Engine/APU Fire Test: Level 3 alert messages on EAD — Displayed"),
-                Reminder("PFC_MW", G, "Master Warning: Press"),
-                Reminder("PFC_FUEL_USED", G, "Fuel Used: Reset"),
-                Reminder("PFC_ANNUN", G, "Annunciator Lights: Test/Check"),
-                Reminder("PFC_BRTDIM", G, "Annunciator Bright/Dim Switch: Select"),
-                Reminder("PFC_CARGO", G, "Cargo Fire: Manual Test"),
-                Reminder("PFC_CARGO_HEAT", G, "Cargo Fire: FWD/AFT Heat/Smoke lights — Illuminates"),
-                Reminder("PFC_CARGO_TEST_SW", G, "Cargo Fire: Manual Test switch — Illuminates"),
-                Reminder("PFC_CARGO_AGENT", G, "Cargo Fire: All agent discharge lights — Illuminates"),
-                Reminder("PFC_CARGO_DISAG", G, "Cargo Fire: FWD/AFT Flow Switch DISAG lights — Illuminates"),
-                Reminder("PFC_CARGO_MW", G, "Cargo Fire: Both Master Warnings — Illuminates"),
-                Reminder("PFC_CARGO_EAD", G, "Cargo Fire: CRG FIRE LWR FWD + CRG FIRE LWR AFT on EAD — Displayed"),
-                Read("PFC_IRU", G, "IRU Switches: NAV", "FO_IRS_NAV", On),
-                Reminder("PFC_IRU_INIT", G, "IRU Alignment: Initialize"),
-                Reminder("PFC_CVR", G, "Cockpit Voice Recorder: Test"),
-                Reminder("PFC_GALLEY", G, "Galley Bus Panel: All lights extinguished"),
-                Reminder("PFC_CARGO_TEMP", G, "Cargo Temperature Selectors: As required"),
-                Read("PFC_IGN_LIGHTS", G, "FADEC/Engine Ignition Panel Lights: Off Except ENG IGN OFF", "FO_IGNITION_OFF", On),
-                Reminder("PFC_HYD", G, "Hydraulic Test: Perform"),
-                Reminder("PFC_HYD_SD", G, "Hydraulic Test: Observe on SD — Normal"),
-                Reminder("PFC_ELEC", G, "Electrical Panel: Check"),
-                Read("PFC_ELEC_MAN", G, "Electrical Panel: Manual Light — Off", ElecSel, Off),
-                Read("PFC_SMOKE", G, "Smoke Elec/Air Source: Normal", "MD11_OVHD_ELEC_SMOKE_ELEC_AIR_KB", v => Is(v, 0)),
-                Reminder("PFC_DRIVES", G, "Drive 1/2/3 + CAB BUS: Guarded"),
-                Read("PFC_EMER_PWR", G, "Emergency Power Selector: Armed, No Light", EmerPwr, v => Is(v, 1)),
-                Reminder("PFC_AIR", G, "Air Panel: Verify"),
-                Read("PFC_AIR_MAN", G, "Air Panel: Manual Light — Off", AirSel, Off),
-                Read("PFC_AIR_ECON", G, "Air Panel: ECON Light — Off", "FO_ECON_ON", On),
-                Reminder("PFC_AIR_TRIM", G, "Air Panel: TRIM AIR OFF Light — Off"),
-                Reminder("PFC_OUTFLOW", G, "Cabin Outflow Valve: Open"),
-                Reminder("PFC_AIRCOND", G, "Air Conditioning: Establish"),
-                Reminder("PFC_TEMPS", G, "Temperature Selectors: As required"),
-                Read("PFC_FUEL_MAN", G, "Fuel Panel Manual Light: Off", FuelSel, Off),
-                Reminder("PFC_FQ", G, "Fuel Quantity: Test"),
-                Reminder("PFC_FQ_TOTAL", G, "Fuel Quantity: 188880 Displayed — Checked"),
-                Reminder("PFC_FQ_TANKS", G, "Fuel Quantity: 10500 Displayed in each tank — Checked"),
-                Read("PFC_EMER_LTS", G, "Emergency Light Switch: Arm", EmerLts, v => Is(v, 1)),
-                Read("PFC_NO_SMOKE", G, "No Smoking Switch: On", NoSmoke, v => Is(v, 2)),
-                Read("PFC_SEAT_BELTS", G, "Seat Belt Switch: Off", SeatBelts, v => Is(v, 0)),
-                Reminder("PFC_EXT_LTS", G, "Exterior Lights: As required"),
-                Read("PFC_EVAC", G, "EVAC Panel: Armed and Guarded", "FO_EVAC_ARMED_GUARDED", On),
-                Read("PFC_GPWS", G, "GPWS Test Switch: Test and Guarded", "FO_GPWS_NORMAL_GUARDED", On),
-                Reminder("PFC_AFS", G, "AFS Panel: Check"),
-                Reminder("PFC_AFS_LIGHTS", G, "AFS Panel: All lights — Off"),
-                Read("PFC_AFS_FLAPLIM", G, "AFS Panel: Flap limit — Normal", "MD11_OVHD_FLTCTL_FLAPLIM_KB", v => Is(v, 2)),
-                Reminder("PFC_AFS_FEEL", G, "AFS Panel: Elevator feel — Normal"),
-                Reminder("PFC_PRESS", G, "Cabin Pressurization Panel: Check"),
-                Read("PFC_PRESS_AUTO", G, "Cabin Pressurization Panel: In AUTO operation — Checked", CabinSel, Off),
-                Reminder("PFC_PRESS_VALVE", G, "Cabin Pressurization Panel: Valve — Open"),
-                Reminder("PFC_DITCH_SW", G, "Cabin Pressurization Panel: Ditching switch — Guarded"),
-                Reminder("PFC_DITCH_LT", G, "Cabin Pressurization Panel: Ditching light — Extinguished"),
-                Reminder("PFC_AICE", G, "Anti-Ice Panel: Check"),
-                Read("PFC_AICE_LIGHTS", G, "Anti-Ice Panel: All lights — Off", "FO_ANTI_ICE_OFF", On),
-                Read("PFC_WINDSHIELD", G, "Windshield Anti-Ice/Defog: NORM/ON/DEFOG Light Extinguished", "FO_WINDSHIELD_ON", On),
-                Reminder("PFC_ALT", G, "Altimeter: Set QNH"),
-                Reminder("PFC_IAS", G, "IAS: Auto"),
-                Reminder("PFC_HDG", G, "HDG: Auto"),
-                Reminder("PFC_FEET", G, "FEET: Auto"),
-                Reminder("PFC_BANK", G, "Bank Selector: Auto"),
-                Reminder("PFC_STATIC", G, "Static Air Switch: Normal"),
-                Reminder("PFC_SOURCE", G, "Source Input Selector Lights: Off"),
-                Reminder("PFC_DISPLAYS", G, "PDF/ND/EAD/SD: Check"),
-                Reminder("PFC_DISP_FAULTS", G, "PDF/ND/EAD/SD: No faults — Checked"),
-                Reminder("PFC_DISP_ALTS", G, "PDF/ND/EAD/SD: Altimeters — As desired"),
-                Reminder("PFC_DISP_TIME", G, "PDF/ND/EAD/SD: Time — Correct"),
-                Reminder("PFC_DISP_OIL", G, "PDF/ND/EAD/SD: Oil Quantity — >16 quarts"),
-                Reminder("PFC_DISP_FMA", G, "PDF/ND/EAD/SD: PDF FMA annunciator — TAKEOFF"),
-                Read("PFC_GEAR", G, "Gear Handle: Down, 4 green", "FO_GEAR_DOWN", On),
-                Read("PFC_AUTOBRAKE", G, "Auto Brake Switch: RTO", Autobrake, v => Is(v, 0)),
-                Reminder("PFC_OVERBOOST", G, "Overboost Breakout bar: Full AFT"),
-                Reminder("PFC_THROTTLES", G, "Throttles: Check"),
-                Reminder("PFC_THROTTLES_TRAVEL", G, "Throttles: Travel and aural warnings — Checked"),
-                Reminder("PFC_THROTTLES_CLOSED", G, "Throttles: Closed"),
-                Reminder("PFC_REVERSERS", G, "Reverse Levers: Down"),
-                Read("PFC_DAF", G, "Dial-a-Flap: To Setting", "FO_DAF_TAKEOFF", On),
-                Read("PFC_START_IN", G, "Engine Start Buttons: Pressed In", "FO_START_SWITCHES_IN", On),
-                Read("PFC_FUEL_SW", G, "Fuel Switches: Off", "FO_FUEL_SWITCHES_OFF", On),
-                Reminder("PFC_SDCP", G, "SDCP: Cue Lights and Clear"),
-                Reminder("PFC_RADIOS", G, "Radio Panels: As desired"),
-                Read("PFC_WXR", G, "Weather Radar: Test and Off", "FO_WXR_OFF", On),
-                Reminder("PFC_XPDR", G, "Transponder: Set"),
-                Reminder("PFC_RUDDER_TRIM", G, "Rudder Trim: Zero"),
-                Reminder("PFC_AILERON_TRIM", G, "Aileron Trim: Zero"),
-                Reminder("PFC_ADG", G, "Air Driven Generator (ADG): Handle Down and Wired"),
+                Read("PFC_BATT", G, "Battery: On", Batt, On),
+                Read("PFC_IRU", G, "IRS Switches: NAV", "FO_IRS_NAV", On),
+                Reminder("PFC_TESTS", G, "System Tests: Complete"),
+                Read("PFC_ELEC", G, "Electrical System: Auto", ElecSel, Off),
+                Read("PFC_EMER_PWR", G, "Emergency Power: Armed", EmerPwr, v => Is(v, 1)),
+                Read("PFC_HYD", G, "Hydraulic System: Auto", HydSel, Off),
+                Read("PFC_AIR", G, "Air System: Auto", AirSel, Off),
+                Read("PFC_ECON", G, "Economy: On", "FO_ECON_ON", On),
+                Read("PFC_FUEL", G, "Fuel System: Auto", FuelSel, Off),
+                Read("PFC_PRESS", G, "Cabin Pressure: Auto", CabinSel, Off),
+                Read("PFC_IGNITION", G, "Engine Ignition: Off", "FO_IGNITION_OFF", On),
+                Read("PFC_EMER_LTS", G, "Emergency Lights: Armed", EmerLts, v => Is(v, 1)),
+                Read("PFC_NO_SMOKE", G, "No Smoking Signs: On", NoSmoke, v => Is(v, 2)),
+                Read("PFC_SEAT_BELTS", G, "Seat Belt Signs: Off", SeatBelts, v => Is(v, 0)),
+                Read("PFC_EVAC", G, "EVAC Switch: Armed and Guarded", "FO_EVAC_ARMED_GUARDED", On),
+                Read("PFC_GPWS", G, "GPWS: Normal and Guarded", "FO_GPWS_NORMAL_GUARDED", On),
+                Read("PFC_WINDSHIELD", G, "Windshield Anti-Ice: On", "FO_WINDSHIELD_ON", On),
+                Read("PFC_AUTOBRAKE", G, "Autobrake: RTO", Autobrake, v => Is(v, 0)),
+                Read("PFC_DAF", G, "Dial-A-Flap: Takeoff Setting", "FO_DAF_TAKEOFF", On),
+                Read("PFC_START_IN", G, "Engine Start Switches: In", "FO_START_SWITCHES_IN", On),
+                Reminder("PFC_THROTTLES", G, "Throttles: Travel and Aural Warnings Checked, Closed"),
+                Reminder("PFC_ALT", G, "Altimeters: Set QNH"),
+                Reminder("PFC_RADIOS", G, "Radios and Transponder: Set"),
             }
         };
     }
@@ -446,20 +379,16 @@ public static class Md11FoChecklistDefinitions
             Id = G, Name = "Before Start Checklist",
             Items = new()
             {
-                Read("BSC_APU", G, "APU: Start", ApuState, ApuStartingOrRunning),
-                Reminder("BSC_FMS", G, "FMS: Initialized and Checked"),
-                Reminder("BSC_FMS_WEIGHTS", G, "FMS: Weights — Confirmed"),
-                Reminder("BSC_FMS_WIND", G, "FMS: Headwind/Tailwind — Confirmed"),
-                Reminder("BSC_FMS_SLOPE", G, "FMS: Runway Slope — Confirmed"),
-                Reminder("BSC_FMS_TEMP", G, "FMS: Temperature — Confirmed"),
-                Reminder("BSC_FMS_VSPEEDS", G, "FMS: V-Speeds — Confirmed"),
-                Read("BSC_IRS", G, "IRS: Nav and Aligned", "FO_IRS_ALIGNED", On),
-                Reminder("BSC_EIS", G, "EIS/BUGS: Set"),
-                Read("BSC_SEAT_BELTS", G, "Seat Belt Sign: On", SeatBelts, v => Is(v, 2)),
-                Read("BSC_EXT_PWR", G, "External Power Switches: Off", "FO_EXT_POWER_ON", Off),
-                Read("BSC_AUX_PUMP", G, "AUX HYD Pump 1: On", "FO_AUX_PUMP_1_ON", On),
+                Reminder("BSC_FMS", G, "FMS: Initialized, V-Speeds Set"),
+                Read("BSC_IRS", G, "IRS: Aligned", "FO_IRS_ALIGNED", On),
+                Read("BSC_APU", G, "APU: Running", "FO_APU_RUNNING", On),
+                Read("BSC_EXT_PWR", G, "External Power: Off", "FO_EXT_POWER_ON", Off),
+                Read("BSC_SEAT_BELTS", G, "Seat Belt Signs: On", SeatBelts, v => Is(v, 2)),
+                Read("BSC_AUX_PUMP", G, "AUX Hydraulic Pump 1: On", "FO_AUX_PUMP_1_ON", On),
                 Read("BSC_IGNITION", G, "Engine Ignition: A or B", "FO_IGNITION_SELECTED", On),
-                Read("BSC_BEACON", G, "Beacon Light: On", "FO_BEACON_ON", On),
+                Read("BSC_APU_BLEED", G, "APU Bleed: On", ApuBleed, On),
+                Read("BSC_BEACON", G, "Beacon: On", "FO_BEACON_ON", On),
+                Reminder("BSC_CLEARANCE", G, "Pushback and Start Clearance: Obtained"),
             }
         };
     }
@@ -472,22 +401,11 @@ public static class Md11FoChecklistDefinitions
             Id = G, Name = "Engine Start Checklist",
             Items = new()
             {
-                Read("ESC_E3_START", G, "Engine 3 Start Switch: Pull", "FO_ENG3_N2", v => v >= Md11FoStateEvaluator.EngineRunningN2),
-                Read("ESC_E3_FUEL", G, "Fuel Level: On", "MD11_THR_R_FUEL_SW", On),
-                Read("ESC_E3_N2_15", G, "Wait until N2 >= 15%: Confirmed", "FO_ENG3_N2", v => v >= 15),
-                Reminder("ESC_OIL", G, "Oil Pressure: Verify Rising"),
-                Reminder("ESC_LIGHTOFF", G, "Engine Ignition: Verify <= 25 Seconds"),
-                Reminder("ESC_EGT", G, "EGT: Check"),
-                Read("ESC_CUTOUT", G, "Start Valve: Verify Closed at 45% N2", "FO_ENG3_START_CUTOUT", On),
-                Read("ESC_E3_STABLE", G, "Engine 3: Verify Stabilized", "FO_ENG3_N2", v => v >= 55),
-                Read("ESC_E3_N1", G, "Engine 3: N1 — Around 20%", "MD11_ENG3_N1", v => v >= 15),
-                Reminder("ESC_E3_EGT", G, "Engine 3: EGT — Around 400C"),
-                Read("ESC_E3_N2", G, "Engine 3: N2 — Around 60%", "FO_ENG3_N2", v => v >= 55),
-                Reminder("ESC_E3_OIL", G, "Engine 3: Oil — +/- 2 quarts after start"),
-                Reminder("ESC_E3_FF", G, "Engine 3: Fuel Flow — Around 1200 at sea level"),
-                Reminder("ESC_ANTI_ICE", G, "Engine Anti-Ice: As required"),
-                Read("ESC_E1", G, "Repeat for Engine 1: Checked", "FO_ENG1_N2", v => v >= Md11FoStateEvaluator.EngineRunningN2),
-                Read("ESC_E2", G, "Repeat for Engine 2: Checked", "FO_ENG2_N2", v => v >= Md11FoStateEvaluator.EngineRunningN2),
+                Read("ESC_E3", G, "Engine 3: Running", "FO_ENG3_N2", v => v >= Md11FoStateEvaluator.EngineRunningN2),
+                Read("ESC_E1", G, "Engine 1: Running", "FO_ENG1_N2", v => v >= Md11FoStateEvaluator.EngineRunningN2),
+                Read("ESC_E2", G, "Engine 2: Running", "FO_ENG2_N2", v => v >= Md11FoStateEvaluator.EngineRunningN2),
+                Read("ESC_START_IN", G, "Engine Start Switches: In", "FO_START_SWITCHES_IN", On),
+                Reminder("ESC_ANTI_ICE", G, "Engine Anti-Ice: As Required"),
             }
         };
     }
@@ -500,13 +418,13 @@ public static class Md11FoChecklistDefinitions
             Id = G, Name = "After Start Checklist",
             Items = new()
             {
-                Reminder("ASC_ANTI_ICE", G, "Engine Anti-Ice: As required"),
-                Read("ASC_APU", G, "APU: Off", "FO_APU_OFF", On),
+                Read("ASC_APU_BLEED", G, "APU Bleed: Off", ApuBleed, Off),
                 Read("ASC_FLAPS", G, "Flaps: Set", "FO_FLAPS_DAF", On),
-                Reminder("ASC_CONFIG", G, "Config Page: Select"),
-                Reminder("ASC_FLT_CTRL", G, "Flight Controls: Check"),
+                Read("ASC_SPOILERS", G, "Spoilers: Armed", "FO_SPOILERS_ARMED", On),
+                Read("ASC_AUTOBRAKE", G, "Autobrake: RTO", Autobrake, v => Is(v, 0)),
+                Reminder("ASC_FLT_CTRL", G, "Flight Controls: Checked"),
                 Reminder("ASC_STAB_TRIM", G, "Stab Trim: Set"),
-                Read("ASC_TAXI_LIGHT", G, "Taxi Lights: On", Nose, v => Is(v, 1)),
+                Read("ASC_TAXI_LIGHT", G, "Taxi Light: On", Nose, v => Is(v, 1)),
             }
         };
     }
@@ -519,23 +437,18 @@ public static class Md11FoChecklistDefinitions
             Id = G, Name = "Before Takeoff Checklist",
             Items = new()
             {
-                Reminder("BTC_EIS", G, "EIS/BUGS: Verify"),
-                Reminder("BTC_RUNWAY", G, "Runway: Verify"),
-                Read("BTC_ANTI_ICE", G, "Anti-Ice: Wings Off, Engine as required", "FO_WING_ANTI_ICE_OFF", On),
-                Reminder("BTC_STAB_TRIM", G, "Stab Trim: Verify Green Band and Config"),
+                Reminder("BTC_TO_DATA", G, "Runway and Takeoff Data: Verified"),
+                Read("BTC_FLAPS", G, "Flaps and Slats: Set for Takeoff", "FO_FLAPS_DAF", On),
+                Reminder("BTC_STAB_TRIM", G, "Stab Trim: Set"),
+                Read("BTC_ANTI_ICE", G, "Wing Anti-Ice: Off", "FO_WING_ANTI_ICE_OFF", On),
                 Read("BTC_SPOILERS", G, "Spoilers: Armed", "FO_SPOILERS_ARMED", On),
                 Read("BTC_AUTOBRAKE", G, "Autobrake: RTO", Autobrake, v => Is(v, 0)),
-                Read("BTC_FLAPS", G, "Flaps and Slats: Set for takeoff", "FO_FLAPS_DAF", On),
-                Reminder("BTC_TO_DATA", G, "Takeoff Data and Bugs: Verify"),
-                Reminder("BTC_EAD", G, "EAD: Checked"),
+                Read("BTC_XPDR", G, "Transponder: TA/RA", "FO_XPDR_TARA", On),
                 Read("BTC_LANDING_LIGHTS", G, "Landing Lights: On", "FO_LANDING_LIGHTS_ON", On),
-                Read("BTC_STROBES", G, "High Intensity Lights (Strobes): On", "FO_STROBES_ON", On),
-                Reminder("BTC_MODES", G, "Flight Modes: As required"),
-                Reminder("BTC_NAV", G, "Flight Modes: NAV — Armed"),
-                Reminder("BTC_PROF", G, "Flight Modes: PROF — Armed"),
+                Read("BTC_STROBES", G, "Strobes: On", "FO_STROBES_ON", On),
+                Reminder("BTC_MODES", G, "NAV and PROF: Armed"),
                 // AUTO FLIGHT engages the autopilot: MD11_AP_STATE 0 off, 1 AP 1, 2 AP 2, 3 both.
-                Read("BTC_AUTOFLIGHT", G, "Flight Modes: AUTOFLIGHT — On", Md11AutopilotEngage.ApStateKey, On),
-                Reminder("BTC_TOGA", G, "Flight Modes: TOGA power — Set"),
+                Read("BTC_AUTOFLIGHT", G, "Auto Flight: On", Md11AutopilotEngage.ApStateKey, On),
             }
         };
     }
@@ -549,10 +462,9 @@ public static class Md11FoChecklistDefinitions
             Items = new()
             {
                 Read("ATC_GEAR", G, "Gear: Up", "FO_GEAR_UP", On),
-                Read("ATC_SPOILERS", G, "Spoilers: Disarm", "FO_SPOILERS_DOWN", On),
-                Read("ATC_AUTOBRAKE", G, "Autobrake: Verify", Autobrake, v => Is(v, 1)),
-                Read("ATC_FLAPS", G, "Flaps/Slats: Up and Retracted", "FO_FLAPS_UP", On),
-                Reminder("ATC_EAD", G, "EAD: Check No Alerts"),
+                Read("ATC_SPOILERS", G, "Spoilers: Disarmed", "FO_SPOILERS_DOWN", On),
+                Read("ATC_AUTOBRAKE", G, "Autobrake: Off", Autobrake, v => Is(v, 1)),
+                Read("ATC_FLAPS", G, "Flaps and Slats: Up and Retracted", "FO_FLAPS_UP", On),
             }
         };
     }

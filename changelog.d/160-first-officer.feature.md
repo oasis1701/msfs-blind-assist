@@ -1,5 +1,5 @@
 A First Officer for the PMDG 777, PMDG 737, iFly 737 MAX8, Fenix A320, FlyByWire A32NX,
-FlyByWire A380 and HeadwindSim A330-900neo. Open it from the File menu: the item is named
+FlyByWire A380, HeadwindSim A330-900neo and TFDi MD-11. Open it from the File menu: the item is named
 for the aircraft you are flying ("PMDG 777 First Officer", "Fenix A320 First Officer" and
 so on) and only shows up when you are flying that aircraft. The window has two tabs. On
 the Flows tab, pick a phase's flow and press Start Flow. The First Officer works through
