@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Forms;
 public partial class ChecklistForm : Form
@@ -22,10 +23,13 @@ public partial class ChecklistForm : Form
     private static int lastFocusedListViewIndex = 0;
     private static int lastSelectedItemIndex = 0;
 
-    public ChecklistForm(ScreenReaderAnnouncer announcer, string aircraftCode)
+    public ChecklistForm(ScreenReaderAnnouncer announcer, string aircraftCode, string aircraftName, string fallbackAircraftName)
     {
         this.aircraftCode = aircraftCode;
         InitializeComponent();
+        // Read by the screen reader every time the window opens, so an aircraft with no
+        // checklist of its own is told whose checklist it is looking at.
+        Text = ChecklistFiles.WindowTitle(aircraftCode, aircraftName, fallbackAircraftName);
         SetupAccessibility();
         PopulateChecklist();
     }
@@ -108,20 +112,7 @@ public partial class ChecklistForm : Form
 
     private string GetChecklistText()
     {
-        // Map aircraft codes to checklist filenames
-        var filenameMap = new Dictionary<string, string>
-        {
-            { "A320", "FBW_A320_Checklist.txt" },
-            { "HW_A330", "FBW_A330_Checklist.txt" },
-            { "FENIX_A320CEO", "Fenix_A320_Checklist.txt" },
-            { "FBW_A380", "FBW_A380_Checklist.txt" },
-            { "IFLY_737MAX8", "iFly_737MAX8_Checklist.txt" }
-        };
-
-        // Determine which file to load
-        string filename = filenameMap.ContainsKey(aircraftCode)
-            ? filenameMap[aircraftCode]
-            : "FBW_A320_Checklist.txt"; // Default fallback
+        string filename = ChecklistFiles.FileNameFor(aircraftCode);
 
         // Construct file path
         string appPath = AppDomain.CurrentDomain.BaseDirectory;

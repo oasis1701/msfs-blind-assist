@@ -275,7 +275,11 @@ public partial class MainForm
         // Ctrl+Shift+C (ShowChecklistECLDialog).
         if (checklistForm == null || checklistForm.IsDisposed)
         {
-            checklistForm = new ChecklistForm(announcer, currentAircraft.AircraftCode);
+            // The fallback aircraft's name is asked of its own definition, so the title names
+            // it exactly as the Aircraft menu does.
+            string fallbackAircraftName = LoadAircraftFromCode(ChecklistFiles.FallbackAircraftCode).AircraftName;
+            checklistForm = new ChecklistForm(announcer, currentAircraft.AircraftCode,
+                currentAircraft.AircraftName, fallbackAircraftName);
         }
 
         // Show the form (reuses same instance to preserve checkbox states)
