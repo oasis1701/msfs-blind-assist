@@ -2669,7 +2669,7 @@ loading (review SI-5).
 | Setting | Default | Panel |
 |---|---|---|
 | `SurroundingsCalloutsEnabled` | off | Taxi Guidance |
-| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus `", 1 file unreadable"` / `", 3 files unreadable"` when a file could not be read and `", 1 file missing or incomplete"` / `", 3 files missing or incomplete"` when the package does not match its own `layout.json` (neither scan is cached), and `" (located by Community scan)"` when the census found the package |
+| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus `", 1 file unreadable"` / `", 3 files unreadable"` when a file could not be read and `", 1 file missing or incomplete"` / `", 3 files missing or incomplete"` when the package does not match its own `layout.json` (neither scan is cached), and `" (located by add-on folder scan)"` when the census found the package (in Community or Community2024) |
 | OSM feature tags | rides the existing `TaxiAugmentEnabled` opt-in | — |
 
 The scenery index is disk-cached under
