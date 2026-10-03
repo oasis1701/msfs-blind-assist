@@ -341,6 +341,16 @@ public partial class MainForm
         fbwA320MonitorManagerForm.ShowForm();
     }
 
+    public void ShowC680MonitorManagerDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (c680MonitorManagerForm == null || c680MonitorManagerForm.IsDisposed)
+        {
+            c680MonitorManagerForm = new Forms.Citation680.C680MonitorManagerForm(currentAircraft.GetVariables());
+        }
+        c680MonitorManagerForm.ShowForm();
+    }
+
     public void ShowHS787MonitorManagerDialog()
     {
         hotkeyManager.ExitOutputHotkeyMode();

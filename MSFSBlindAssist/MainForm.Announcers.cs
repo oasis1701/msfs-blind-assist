@@ -361,6 +361,13 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the Sovereign+ Monitor Manager (switches and selectors on the generic path).
+                if (currentAircraft.AircraftCode == "SKYWARD_C680" &&
+                    Settings.SettingsManager.Current.C680DisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
                 // Check if disabled in the HS787 Monitor Manager.
                 if (currentAircraft.AircraftCode == "HS_787" &&
                     Settings.SettingsManager.Current.HS787DisabledMonitorVariablesSet.Contains(e.VarName))
