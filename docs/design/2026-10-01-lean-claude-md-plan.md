@@ -10,6 +10,8 @@
 
 **Spec:** [2026-09-30-lean-claude-md-design.md](2026-09-30-lean-claude-md-design.md)
 
+> **Status (review, 2026-10):** executed. The `tools/claude-md-split/` scripts this plan builds were removed after their output was recorded; the spec's section 6 gives the result and how to recover them, and its "As built" notes list what review changed (area-coverage check, RTE-2 split, code comments left as they were).
+
 ## Global Constraints
 
 - **Source of truth:** CLAUDE.md as of `1f37801a` (main on 2026-09-30) is the base. Every bullet of its `## Invariants (do not revert)` section, and every paragraph that leaves the core, must appear **verbatim** somewhere afterwards. The only allowed change is rewriting relative link targets so they still resolve from the new folder.

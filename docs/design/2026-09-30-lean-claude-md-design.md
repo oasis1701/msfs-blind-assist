@@ -21,7 +21,7 @@ CLAUDE.md is 518,000 characters across 1,033 lines. Claude Code recommends under
 1. **Load only when needed.** A session or subagent carries only the rules for the code it actually opens.
 2. **Easy to reach when needed.** Rules arrive automatically with the code they guard. A small always-loaded map says where everything lives, and every short rule points at its full text.
 3. **Never regrow.** A CI-enforced test fails a PR that grows CLAUDE.md past its budget or writes a long rule, and its message says what to do instead.
-4. **Lose nothing.** Every word that leaves CLAUDE.md lands verbatim somewhere, and a script proves it.
+4. **Lose nothing.** Every word that leaves CLAUDE.md lands verbatim somewhere, and a script proved it during review (section 6).
 
 ## Mechanism: path-scoped rules
 
@@ -109,7 +109,7 @@ These sections leave the core verbatim, with no rule ID:
 
 ### 4. Area split (initial)
 
-**As built:** 39 areas (CORE plus 38 rule files). The table below grew where the per-file budget needed it: taxi guidance split further into routing, runway holds, steering, landing exits, landing rollout, ground traffic, surroundings, augmentation and takeoff; SayIntentions into clearance, import and readouts (SIC, SI, SIR); the A380 into FCU, Coherent and systems (A380F, A380C, A380); and the cross-aircraft definition rules, the FBW ARINC words and the troubleshooting playbook got files of their own (VAR, ARINC, DBG). `tools/claude-md-split/split.py` holds the final table and globs.
+**As built:** 39 areas (CORE plus 38 rule files). The table below grew where the per-file budget needed it: taxi guidance split further into routing, runway holds, steering, landing exits, landing rollout, ground traffic, surroundings, augmentation and takeoff; SayIntentions into clearance, import and readouts (SIC, SI, SIR); the A380 into FCU, Coherent and systems (A380F, A380C, A380); and the cross-aircraft definition rules, the FBW ARINC words and the troubleshooting playbook got files of their own (VAR, ARINC, DBG). The rule files themselves hold the final globs; `split.py`, which generated the first version, was removed in review (section 6).
 
 Each existing bullet is assigned by **its own doc link**, not by the heading it sits under. About ten weather rules currently sit under the taxi heading, and the camera and display-read rules sit under Core SimConnect. Initial areas, all prefixes unique:
 
@@ -147,7 +147,7 @@ Each existing bullet is assigned by **its own doc link**, not by the heading it 
 
 The exact globs are produced during implementation by a coverage step. For each bullet, it lists the source files that define the code names the bullet mentions, and confirms that the rule file's globs match every one of them. A rule may name a `MainForm` partial only when that partial is specific to the area. `MainForm.cs` itself belongs to `core-simconnect` alone, and the per-file load budget (section 5) enforces it.
 
-**As built (after review):** two refinements. A few small rule files glob the specific `MainForm` partial their code lives in (the ARINC decoder hook, the augmentation wrapper). A rule whose code is CALLED from a file its own area does not cover is MIRRORED: its line is copied word for word into a rule file scoped to that file (`mainform-call-sites.md` for `MainForm.Announcers.cs` and `MainForm.AircraftSwitch.cs`; CLAUDE.md for the two rules that apply to any form). The test keeps mirrors identical, and the per-file budget bounds what any one file loads. `tools/claude-md-split/check_coverage.py` lists rules a code name of which no carrying rule file covers.
+**As built (after review):** two refinements. A few small rule files glob the specific `MainForm` partial their code lives in (the ARINC decoder hook, the augmentation wrapper). A rule whose code is CALLED from a file its own area does not cover is MIRRORED: its line is copied word for word into a rule file scoped to that file (`mainform-call-sites.md` for `MainForm.Announcers.cs` and `MainForm.AircraftSwitch.cs`; CLAUDE.md for the two rules that apply to any form). The test keeps mirrors identical, and the per-file budget bounds what any one file loads. A second review found whole folders loading no rule at all (the A32NX MCDU/DCDU forms, the PMDG CDU forms, the HS787 and A380 RMP/EWD/ECL agent scripts) because the name-based coverage script could not see JS functions, constants or fields; their globs were added, `MainForm.Dialogs.cs` joined both mirror files, and the test now fails when any file in an aircraft's or area's own subfolder of `Aircraft/`, `Forms/` or `SimConnect/`, or any `Resources/coherent-*.js`, loads no rule file (an exemption list names the folders no rule guards, with the reason).
 
 ### 5. The guard: `ClaudeContextBudgetTests`
 
@@ -163,14 +163,16 @@ A new xUnit test class in `tests/MSFSBlindAssist.Tests`, run by the existing CI 
 | IDs | unique across all rule files; each `Full:` target file exists and has `## <ID>`; every `## <ID>` heading has a rule line | the exact missing or orphaned ID |
 | Per-file load | for every `.cs`/`.js` file under `MSFSBlindAssist/` and `tests/` (excluding `bin`/`obj`), the rule files whose globs match it total ≤ 30,000 characters | which file and which rule files; narrow the globs |
 | Links | relative links in `.claude/rules/` and `docs/invariants/` resolve | the broken link |
+| Area coverage (added in review) | every `.cs` in an aircraft's or area's own subfolder of `Aircraft/`, `Forms/`, `SimConnect/`, and every `Resources/coherent-*.js`, loads at least one rule file | add a glob, or exempt the folder with its reason |
+| Raw format (added in review) | rule files have no byte-order mark and no CRLF, checked on the bytes, not the normalised text | save as UTF-8 without BOM, LF |
 
 The test needs a small glob matcher (`*`, `**`). Braces are forbidden, so the matcher stays simple.
 
 ### 6. Moving without loss
 
-- A one-off script, `tools/claude-md-split/verify_moved.py` (Python is already used in `tools/md11-gen`), reads the pre-migration CLAUDE.md from git. It checks that every bullet and every paragraph that left the core appears verbatim in `docs/invariants/`, `docs/*.md` or `changelog.d/README.md`, comparing with whitespace and link targets normalised. Its output goes in the PR description. It is committed so reviewers can re-run it.
+- A one-off script, `tools/claude-md-split/verify_moved.py` (Python is already used in `tools/md11-gen`), reads the pre-migration CLAUDE.md from git. It checks that every bullet and every paragraph that left the core appears verbatim in `docs/invariants/`, `docs/*.md` or `changelog.d/README.md`, comparing with whitespace and link targets normalised. Its output goes in the PR description. **As built:** at `ddee4edf` it found 662 blocks verbatim, 78 deliberately rewritten (the two doc lists, the stub pointers and the old preambles) and 0 missing. The three scripts (`split.py`, `verify_moved.py`, `check_coverage.py`) were removed in review once that output was recorded, since they only describe the move (`git show ddee4edf:tools/claude-md-split/<file>` recovers them). Two deliberate rewrites followed that run: `changelog.d/README.md` merged the copy appended from CLAUDE.md into its own sections, and RTE-2 was split into RTE-2 and RTE-26 to RTE-29, words unchanged.
 - The full-text files are generated **mechanically** from the bullets by the same tooling. Only the one-liners are written by hand.
-- Code, tests and docs that say "see CLAUDE.md" for a rule are updated to cite the rule ID. Today that is 35 mentions in 29 files under `MSFSBlindAssist/`, and more under `tests/`, `tools/` and `docs/`. Historical plan and design docs under `docs/design/` and `docs/superpowers/` are left alone; they record what was true then.
+- Code, tests and docs that say "see CLAUDE.md" for a rule are updated to cite the rule ID. Today that is 35 mentions in 29 files under `MSFSBlindAssist/`, and more under `tests/`, `tools/` and `docs/`. Historical plan and design docs under `docs/design/` and `docs/superpowers/` are left alone; they record what was true then. **As built:** only docs were updated. The code and test comment updates were reverted in review to keep this PR out of code files; CLAUDE.md's "Adding or changing a rule" tells the reader that an older comment citing CLAUDE.md now means `docs/invariants/`.
 
 ### 7. Delivery
 
@@ -194,14 +196,14 @@ The test needs a small glob matcher (`*`, `**`). Braces are forbidden, so the ma
 
 - CLAUDE.md ≤ 25,000 characters and ≤ 200 lines (from 518,000 and 1,033), and Claude Code's startup length warning no longer appears.
 - An idle general-purpose subagent uses ≤ 40,000 tokens (from 253,000).
-- The verification script finds every moved text verbatim.
+- The verification script finds every moved text verbatim (met at `ddee4edf`; section 6).
 - `ClaudeContextBudgetTests` passes in CI, and fails on a deliberately oversized rule line (checked once, locally).
 - Reading any single code file loads at most 30,000 characters of rules (enforced by the test).
 
 ## Risks
 
-- **A file no glob covers gets no rules.** This happens for a new file in a new folder. Mitigations: globs prefer folders and prefixes; the map in CLAUDE.md names each area's doc; the coverage step checks every code name a bullet mentions. Accepted residual: a brand-new folder needs its glob added, the same as a new doc needs a map row.
-- **A one-liner drops the half of a rule that matters.** Mitigations: the full text is one hop away under the same ID; one-liners must state the never/always and the key symbol; area owners review.
+- **A file no glob covers gets no rules.** This happens for a new file in a new folder. Mitigations: globs prefer folders and prefixes; the map in CLAUDE.md names each area's doc; the test fails when a file in an aircraft's or area's own folder, or a Coherent agent script, loads no rule file. Accepted residual: a new file in a shared folder (`Navigation/`, `Services/`) needs its glob added by hand, the same as a new doc needs a map row.
+- **A one-liner drops the half of a rule that matters.** Mitigations: the full text is one hop away under the same ID; one-liners must state the never/always and the key symbol; area owners review. As built: RTE-2, whose full text held five rules but whose line named only the stand bridge, was split into RTE-2 and RTE-26 to RTE-29.
 - **Claude Code changes how path-scoped rules behave.** The probe in this spec is cheap to re-run after a Claude Code update.
 - **Conflicts with the six open PRs.** Handled by the porting section and by doing the ports when main is merged into those branches.
 
