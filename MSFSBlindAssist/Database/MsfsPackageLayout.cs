@@ -24,8 +24,11 @@ namespace MSFSBlindAssist.Database;
 /// </summary>
 public static class MsfsPackageLayout
 {
-    /// <summary>Every add-on folder name either simulator reads, in the order a reader walks them.</summary>
-    public static readonly IReadOnlyList<string> AllCommunityFolderNames = new[] { "Community", "Community2024" };
+    /// <summary>Every add-on folder name either simulator reads, in the order a reader walks them.
+    /// Read-only, not a bare array: it is handed out as is, and a cast must not be able to edit it.</summary>
+    public static readonly IReadOnlyList<string> AllCommunityFolderNames = Array.AsReadOnly(new[] { "Community", "Community2024" });
+
+    private static readonly IReadOnlyList<string> CommunityOnly = Array.AsReadOnly(new[] { "Community" });
 
     /// <summary>The folders whose CHILDREN are official packages (<c>OneStore</c>, <c>Steam</c>, …).</summary>
     private static readonly string[] OfficialFolderNames = { "Official", "Official2020", "Official2024" };
@@ -33,7 +36,7 @@ public static class MsfsPackageLayout
     /// <summary>The add-on folder names the given simulator loads: both for "FS2024", <c>Community</c>
     /// alone for anything else — MSFS 2020 never reads <c>Community2024</c>, even on a shared root.</summary>
     public static IReadOnlyList<string> CommunityFolderNames(string simulatorVersion)
-        => simulatorVersion == "FS2024" ? AllCommunityFolderNames : new[] { "Community" };
+        => simulatorVersion == "FS2024" ? AllCommunityFolderNames : CommunityOnly;
 
     /// <summary>The add-on folders the given simulator loads under <paramref name="packagesRoot"/>,
     /// only those on disk, in <see cref="CommunityFolderNames"/> order; empty when none.</summary>
@@ -45,7 +48,9 @@ public static class MsfsPackageLayout
     /// first, then each child of each Official folder; only those on disk, in that order. For a reader
     /// that walks every installed package of either simulator (the aircraft.cfg catalog, the GSX
     /// profile scan) and so does not care which simulator wrote the root: a 2020 root simply has no
-    /// <c>Community2024</c>, <c>Official2020</c> or <c>Official2024</c> to find.
+    /// <c>Community2024</c>, <c>Official2020</c> or <c>Official2024</c> to find. The children of one
+    /// Official folder are sorted by name, because both readers keep the FIRST package that names a
+    /// title or a type, and the order a directory listing comes back in belongs to the file system.
     /// </summary>
     public static IReadOnlyList<string> PackageFolders(string packagesRoot)
     {
@@ -55,7 +60,10 @@ public static class MsfsPackageLayout
             try
             {
                 string official = Path.Combine(packagesRoot, name);
-                if (Directory.Exists(official)) result.AddRange(Directory.GetDirectories(official));
+                if (!Directory.Exists(official)) continue;
+                string[] children = Directory.GetDirectories(official);
+                Array.Sort(children, StringComparer.OrdinalIgnoreCase);
+                result.AddRange(children);
             }
             catch (Exception) { /* cannot be listed: nothing a reader can open */ }
         }

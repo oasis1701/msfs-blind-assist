@@ -52,6 +52,37 @@ public class SceneryPackageCensusTests : IDisposable
     }
 
     [Fact]
+    public void An_addon_folder_that_cannot_be_listed_makes_the_answer_short()
+    {
+        // A Community2024 that exists but refuses a listing (an access error) must not read as an
+        // empty folder: the catalog built on it would be cached with that whole folder missing.
+        // Directory.Exists still answers true here, because attributes come from the parent.
+        string community2024 = Path.Combine(_root, "Community2024");
+        string legacy = Package("legacy-airport", 30, 33.6400, -84.4300);
+        PackageIn(community2024, "native-airport", 60, 33.6400, -84.4300);
+        var folder = new DirectoryInfo(community2024);
+        var security = folder.GetAccessControl();
+        var denyListing = new System.Security.AccessControl.FileSystemAccessRule(
+            System.Security.Principal.WindowsIdentity.GetCurrent().User!,
+            System.Security.AccessControl.FileSystemRights.ListDirectory,
+            System.Security.AccessControl.AccessControlType.Deny);
+        security.AddAccessRule(denyListing);
+        folder.SetAccessControl(security);
+        try
+        {
+            var found = new SceneryPackageCensus(Path.Combine(_root, "cache"))
+                .Locate(new[] { Community, community2024 }, Katl, out bool incomplete);
+            Assert.Equal(new[] { legacy }, found);    // what WAS listed still counts
+            Assert.True(incomplete);                  // but the answer is short
+        }
+        finally
+        {
+            security.RemoveAccessRule(denyListing);
+            folder.SetAccessControl(security);
+        }
+    }
+
+    [Fact]
     public void Finds_the_package_whose_objects_stand_on_the_airport_and_nothing_else()
     {
         string here = Package("flytampa-somewhere", 30, 33.6400, -84.4300);        // no ICAO in the folder name — position decides

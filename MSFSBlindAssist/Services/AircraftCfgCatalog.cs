@@ -197,7 +197,7 @@ namespace MSFSBlindAssist.Services
             return (icao, titles);
         }
 
-        // --- file discovery (mirrors EFBModPackageManager / GsxAirplaneProfile path logic) ----
+        // --- file discovery (the same package folders as GsxAirplaneProfile) -------------------
 
         private static IEnumerable<string> EnumerateAircraftCfgFiles()
         {

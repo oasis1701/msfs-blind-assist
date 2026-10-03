@@ -36,10 +36,13 @@ public sealed class SceneryPackageCensus
     /// <summary>Each package's manifest verdict, memoised on its layout.json stamp. Under <c>_lock</c>.</summary>
     private readonly Dictionary<string, (SceneryPackageDisk.LayoutStamp Stamp, bool Scenery)> _sceneryVerdicts = new(StringComparer.OrdinalIgnoreCase);
 
-    /// <summary>The immediate children of an add-on folder: a package is a top-level folder.</summary>
+    /// <summary>The immediate children of an add-on folder: a package is a top-level folder.
+    /// <c>IgnoreInaccessible</c> is OFF on purpose: the listing is not recursive, so it only decides
+    /// what an add-on folder that refuses to be LISTED does, and ON it reads as an empty folder with
+    /// no exception, so <see cref="ScenerylikePackages"/> never learns the answer is short.</summary>
     private static readonly EnumerationOptions PackageFolders = new()
     {
-        RecurseSubdirectories = false, IgnoreInaccessible = true, AttributesToSkip = 0,
+        RecurseSubdirectories = false, IgnoreInaccessible = false, AttributesToSkip = 0,
     };
 
     private sealed class CacheFile

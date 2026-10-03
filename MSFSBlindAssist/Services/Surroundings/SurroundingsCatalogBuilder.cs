@@ -102,8 +102,8 @@ public sealed class SurroundingsCatalogBuilder
         return new(features, facilities?.DescribeFacts() ?? AirportFacts.None, degraded);
     }
 
-    /// <summary>The package folders navdata names (an MSFS 2020 build), else the ones the Community
-    /// census locates (an MSFS 2024 build names none). <paramref name="isShort"/> is set when the
+    /// <summary>The package folders navdata names (an MSFS 2020 build), else the ones the add-on
+    /// folder census locates (an MSFS 2024 build names none). <paramref name="isShort"/> is set when the
     /// answer may be incomplete: an unreadable UserCfg.opt, or a scan that could not read every
     /// file.</summary>
     private IReadOnlyList<AirportFeature> ReadScenery(string icao, AirportFacilities facilities, ref bool isShort)

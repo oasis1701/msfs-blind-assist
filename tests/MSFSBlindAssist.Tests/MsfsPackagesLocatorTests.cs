@@ -272,11 +272,14 @@ public class MsfsPackagesLocatorTests : IDisposable
         // scan) take whichever root they find first and must see both simulators' layouts: Community
         // and Official\* on a 2020 root; Community, Community2024, Official2020\* and Official2024\* on
         // a 2024 one. StreamedPackages holds no packages a reader can open.
+        // Two children of one Official folder come back sorted by name, whatever order the file
+        // system lists them in: both readers keep the FIRST package that names a title or a type.
         string shared = Path.Combine(_root, "shared");
-        foreach (string rel in new[] { "Community", "Community2024", "Official2020/OneStore", "Official2024/Steam", "StreamedPackages" })
+        foreach (string rel in new[] { "Community", "Community2024", "Official2020/OneStore", "Official2024/Steam", "Official2024/OneStore", "StreamedPackages" })
             Directory.CreateDirectory(Path.Combine(shared, rel));
         Assert.Equal(new[] { Path.Combine(shared, "Community"), Path.Combine(shared, "Community2024"),
-                             Path.Combine(shared, "Official2020", "OneStore"), Path.Combine(shared, "Official2024", "Steam") },
+                             Path.Combine(shared, "Official2020", "OneStore"),
+                             Path.Combine(shared, "Official2024", "OneStore"), Path.Combine(shared, "Official2024", "Steam") },
                      MsfsPackageLayout.PackageFolders(shared));
 
         string legacy = Path.Combine(_root, "legacy");
@@ -286,6 +289,17 @@ public class MsfsPackagesLocatorTests : IDisposable
                      MsfsPackageLayout.PackageFolders(legacy));
 
         Assert.Empty(MsfsPackageLayout.PackageFolders(Path.Combine(_root, "nowhere")));
+    }
+
+    [Fact]
+    public void The_shared_folder_name_lists_cannot_be_edited_through_a_cast()
+    {
+        // Handed out as is to every caller: a bare array behind IReadOnlyList could be cast back
+        // and edited, changing which folders the census and both aircraft scanners read.
+        Assert.IsNotType<string[]>(MsfsPackageLayout.AllCommunityFolderNames);
+        Assert.IsNotType<string[]>(MsfsPackageLayout.CommunityFolderNames("FS2024"));
+        Assert.IsNotType<string[]>(MsfsPackageLayout.CommunityFolderNames("FS2020"));
+        Assert.Equal(new[] { "Community" }, MsfsPackageLayout.CommunityFolderNames("FS2020"));
     }
 
     [Fact]
