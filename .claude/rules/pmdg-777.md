@@ -4,8 +4,11 @@ paths:
   - "MSFSBlindAssist/Aircraft/Pmdg777*.cs"
   - "MSFSBlindAssist/Aircraft/PmdgSpeedBrakeLever.cs"
   - "MSFSBlindAssist/SimConnect/PMDG777*.cs"
+  - "MSFSBlindAssist/Forms/PMDG777/**"
   - "tests/MSFSBlindAssist.Tests/**/*Pmdg777*.cs"
   - "MSFSBlindAssist/SimConnect/IPMDGDataManager.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PmdgCdu*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PmdgSpeedBrakeLever*.cs"
 ---
 # PMDG 777 rules
 

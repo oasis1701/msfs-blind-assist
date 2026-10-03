@@ -11,6 +11,23 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*Surroundings*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Scenery*.cs"
   - "MSFSBlindAssist/Navigation/RunwayShapeSource.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OsmFeature*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OsmRing*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*FeatureLexicon*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*FeatureKind*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AirportFeatureCatalog*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*NavdataFeatureSource*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OnlineFeatureStore*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*BglPlacement*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ModelLibName*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GrownBox*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PassingCallout*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PassRadius*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AirportWarmUp*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SurfaceChange*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PlaceListBuilder*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*CurrentAirportResolver*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AirportFacilities*.cs"
 ---
 # Airport surroundings, places and passing callouts rules
 

@@ -8,11 +8,22 @@ paths:
   - "MSFSBlindAssist/Services/FlyByWire*.cs"
   - "MSFSBlindAssist/SimConnect/CoherentA32nxMcduClient.cs"
   - "MSFSBlindAssist/Forms/FBWA320/**"
+  - "MSFSBlindAssist/Forms/FlyByWireA320/**"
+  - "MSFSBlindAssist/Resources/coherent-a32nx-*.js"
   - "MSFSBlindAssist/Forms/Fenix*/**"
   - "MSFSBlindAssist/Aircraft/Fcu*.cs"
   - "MSFSBlindAssist/SimConnect/CoherentEvalClient.cs"
   - "MSFSBlindAssist/SimConnect/CoherentLinkState.cs"
   - "MSFSBlindAssist/SimConnect/CoherentViewOwnership.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*A32nx*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Fenix*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*FbwMcdu*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Fcu*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*FlyByWireMCDU*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*FbwAutothrust*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*FbwVSpeed*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*CoherentLinkState*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*CoherentViewOwnership*.cs"
 ---
 # FlyByWire A32NX and Fenix A320 rules
 

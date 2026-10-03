@@ -8,6 +8,13 @@ paths:
   - "MSFSBlindAssist/Services/TurnaroundLiftoffDetector.cs"
   - "MSFSBlindAssist/Forms/WeatherRadarForm.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Weather*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ActiveSky*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Advisory*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*IceAccretion*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Turbulence*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TurnaroundLiftoff*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Metar*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*WindReadout*.cs"
 ---
 # Weather and ActiveSky rules
 

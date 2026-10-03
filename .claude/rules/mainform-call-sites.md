@@ -2,6 +2,7 @@
 paths:
   - "MSFSBlindAssist/MainForm.Announcers.cs"
   - "MSFSBlindAssist/MainForm.AircraftSwitch.cs"
+  - "MSFSBlindAssist/MainForm.Dialogs.cs"
 ---
 # Rules whose code MainForm calls
 

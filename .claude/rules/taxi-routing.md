@@ -7,9 +7,20 @@ paths:
   - "MSFSBlindAssist/Navigation/TaxiLeadIn.cs"
   - "MSFSBlindAssist/Navigation/TaxiwayChangeGate.cs"
   - "MSFSBlindAssist/Services/StartWarningChatterGate.cs"
+  - "MSFSBlindAssist/Navigation/LoadRefusalRollback.cs"
+  - "MSFSBlindAssist/Navigation/ReachabilityRefusalGate.cs"
+  - "MSFSBlindAssist/Navigation/RunwayReachGate.cs"
   - "MSFSBlindAssist/Forms/TaxiAssistForm.cs"
   - "tests/MSFSBlindAssist.Tests/**/*TaxiGraph*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Route*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*LoadRefusalRollback*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ReachabilityRefusalGate*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*StartWarningChatterGate*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TaxiwayChangeGate*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TaxiLeadIn*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TaxiwayEntryNode*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OrphanParkingIsland*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayReachGate*.cs"
 ---
 # Taxi routing rules
 
@@ -40,3 +51,7 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [RTE-23] Do NOT remove the first-taxiway pre-snap (the anchoring fix); the pavement lead-in replaces it only when the first cleared taxiway is far (>75 m from the aircraft). Full: docs/invariants/taxi-routing.md#rte-23
 - [RTE-24] The `FindRunwayBridge` 200m cap must not be raised: it prevents a silent half-airport jump when an ATC clearance is genuinely wrong (those fall back to shortest path with a log line). Full: docs/invariants/taxi-routing.md#rte-24
 - [RTE-25] One taxiway has ONE spelling: `TaxiGraph.BuildCanonicalTaxiwayNames` folds case variants by PROVENANCE first (navdata beats online, `TaxiPath.NameFromOnlineSource`), then the majority spelling, then ordinal-smallest; never ordinal-smallest alone, as `TaxiwayName` is spoken verbatim (more: see full). Full: docs/invariants/taxi-routing.md#rte-25
+- [RTE-26] `RouteReachability` classifies position before `LoadRoute`/`TryRecalculateRoute` adopt a route: off the destination's network, refuse (naming the runway) if the unmapped first leg touches a runway, else warn; refuse an unreachable destination by name; runway pavement or no taxi edge is `Unchanged`. Never classify from the nearest node alone. Full: docs/invariants/taxi-routing.md#rte-26
+- [RTE-27] The start grace window (`START_WARNING_CHATTER_GRACE_SEC`, 12.5 s) follows either start warning: turn, destination-ahead and curve callouts wait it out when safe (`StartWarningChatterGate`), the taxiway-change callout defers (`TaxiwayChangeGate`); never make any of them skip, never gate hold-short or runway-crossing callouts on it. Full: docs/invariants/taxi-routing.md#rte-27
+- [RTE-28] Reachability sentences name a stand by its identifier only (the label up to its first spaced dash, `RouteReachabilityMessages.SpokenDestinationName`), never the whole label. Full: docs/invariants/taxi-routing.md#rte-28
+- [RTE-29] A refused `LoadRoute` must put back the destination, lineup and graph state it had already overwritten (`LoadRefusalRollback`), so a refusal mid-taxi leaves the route being flown untouched; the older failure returns do not roll back. Full: docs/invariants/taxi-routing.md#rte-29

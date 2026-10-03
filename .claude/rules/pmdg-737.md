@@ -3,6 +3,8 @@ paths:
   - "MSFSBlindAssist/Aircraft/PMDG737*.cs"
   - "MSFSBlindAssist/Aircraft/Pmdg737*.cs"
   - "MSFSBlindAssist/SimConnect/PMDGNG3*.cs"
+  - "MSFSBlindAssist/Forms/PMDG737/**"
+  - "tests/MSFSBlindAssist.Tests/**/*Pmdg737*.cs"
 ---
 # PMDG 737-800 NG3 rules
 

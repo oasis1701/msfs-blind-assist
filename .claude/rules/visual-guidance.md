@@ -5,6 +5,8 @@ paths:
   - "MSFSBlindAssist/Services/LiftoffHandoffBreadcrumb.cs"
   - "MSFSBlindAssist/Hotkeys/**"
   - "MSFSBlindAssist/MainForm.Hotkeys.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*HandFly*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*LiftoffHandoff*.cs"
 ---
 # Visual guidance, hand fly and the liftoff handoff rules
 

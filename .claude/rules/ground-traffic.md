@@ -5,7 +5,16 @@ paths:
   - "MSFSBlindAssist/Services/QueueMovementPolicy.cs"
   - "MSFSBlindAssist/Services/RunwayWatch*.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.TrafficContext.cs"
+  - "MSFSBlindAssist/Navigation/HeldRunwayLabel.cs"
   - "tests/MSFSBlindAssist.Tests/**/*GroundTraffic*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayWatch*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Queue*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TrafficSpeech*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TrafficMotion*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ProximityEscalation*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*MovingAwayByMotion*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayTrafficClassification*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*HeldRunwayLabel*.cs"
 ---
 # Ground traffic and the runway watch rules
 

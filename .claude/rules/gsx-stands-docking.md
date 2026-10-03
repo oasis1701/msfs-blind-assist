@@ -13,6 +13,17 @@ paths:
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
   - "MSFSBlindAssist/Services/Gsx/Remote/GsxConcourseLetterFiller.cs"
   - "MSFSBlindAssist/Services/Gsx/Remote/GsxTerminalDisambiguator.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*DistanceFormatter*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*DistanceUnit*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GateResolver*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GateSearchFilter*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GateDataSource*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GateAlias*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ParkingSpot*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ParkingTypes*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*StandId*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AircraftSizeClass*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*BacktrackEntry*.cs"
 ---
 # Stands, gate lists and docking guidance rules
 

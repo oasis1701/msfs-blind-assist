@@ -9,6 +9,15 @@ paths:
   - "MSFSBlindAssist/SimConnect/SimConnectManager.Camera.cs"
   - "MSFSBlindAssist/Aircraft/AiDisplayRead.cs"
   - "MSFSBlindAssist/SimConnect/CameraReadWaiters.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AiDisplay*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AiProvider*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*DisplayRead*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*DisplayPrompt*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Gemini*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ClaudeService*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Camera*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Screenshot*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*InstrumentView*.cs"
 ---
 # AI display reads, the camera and screenshots rules
 

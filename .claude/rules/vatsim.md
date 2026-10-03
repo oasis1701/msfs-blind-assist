@@ -5,6 +5,8 @@ paths:
   - "plugins/**"
   - "MSFSBlindAssist/MainForm.Hotkeys.cs"
   - "MSFSBlindAssist/Forms/Settings/VatsimPanel.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Vatsim*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*VPilot*.cs"
 ---
 # VATSIM and the vPilot plugin rules
 

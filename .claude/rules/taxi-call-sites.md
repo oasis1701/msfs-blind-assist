@@ -4,6 +4,7 @@ paths:
   - "MSFSBlindAssist/Forms/TaxiAssistForm.cs"
   - "MSFSBlindAssist/Forms/LandingExitForm.cs"
   - "MSFSBlindAssist/MainForm.cs"
+  - "MSFSBlindAssist/MainForm.Dialogs.cs"
 ---
 # Rules whose code the taxi entry points call
 

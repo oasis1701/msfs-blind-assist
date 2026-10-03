@@ -5,6 +5,8 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*Audio*.cs"
   - "MSFSBlindAssist/Services/VisualGuidanceManager.cs"
   - "MSFSBlindAssist/Forms/Settings/TestTone*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TestTonePlayer*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GuidanceToneDevice*.cs"
 ---
 # Guidance tone output device rules
 

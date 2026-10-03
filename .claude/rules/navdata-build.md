@@ -3,6 +3,7 @@ paths:
   - "MSFSBlindAssist/Database/NavdataReader*.cs"
   - "MSFSBlindAssist/Resources/navdatareader.cfg"
   - "MSFSBlindAssist/Forms/DatabaseBuildProgressForm.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*NavdataReader*.cs"
 ---
 # Navdata database build rules
 

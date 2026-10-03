@@ -4,6 +4,12 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*ProviderWrap*.cs"
   - "MSFSBlindAssist/MainForm.cs"
   - "MSFSBlindAssist/MainForm.AircraftSwitch.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AptDat*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Overpass*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TaxiDataMerger*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TaxiGeo*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Augmenting*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OsmTaxiSource*.cs"
 ---
 # Online taxi-data augmentation rules
 

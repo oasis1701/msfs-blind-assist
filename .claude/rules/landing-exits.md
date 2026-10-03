@@ -3,6 +3,9 @@ paths:
   - "MSFSBlindAssist/Navigation/ExitBranch.cs"
   - "MSFSBlindAssist/Navigation/LandingExit*.cs"
   - "MSFSBlindAssist/Navigation/LandingRunwayMatch.cs"
+  - "MSFSBlindAssist/Navigation/RolloutExitGate.cs"
+  - "MSFSBlindAssist/Navigation/LandingAssistRunwaySwitch.cs"
+  - "MSFSBlindAssist/Navigation/RunwayFrame.cs"
   - "MSFSBlindAssist/Navigation/TaxiGraph.ExitRefinement.cs"
   - "MSFSBlindAssist/Services/LandingExitPlanner*.cs"
   - "MSFSBlindAssist/Forms/LandingExitForm.cs"
@@ -10,6 +13,11 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*ExitBranch*.cs"
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.Rollout.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*LandingRunwayMatch*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ExitRelativeBearing*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*LandingAssistRunwaySwitch*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayFrame*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*EarlyVacateExitMatcher*.cs"
 ---
 # Landing exits: measurement, planner and re-plan rules
 

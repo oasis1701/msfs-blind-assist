@@ -6,6 +6,11 @@ paths:
   - "MSFSBlindAssist/Aircraft/ArmedAltitudeMode.cs"
   - "MSFSBlindAssist/Aircraft/NdFilterSelection.cs"
   - "MSFSBlindAssist/Aircraft/Fcu*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*A380*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*NdFilter*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AltitudeManagedState*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AltitudeModeTracker*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ArmedAltitudeMode*.cs"
 ---
 # FlyByWire A380X FCU, EFIS and FMA rules
 

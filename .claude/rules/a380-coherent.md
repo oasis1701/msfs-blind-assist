@@ -4,6 +4,10 @@ paths:
   - "MSFSBlindAssist/Resources/coherent-a380*.js"
   - "MSFSBlindAssist/Resources/coherent-oans-agent.js"
   - "MSFSBlindAssist/Resources/coherent-flypad-agent.js"
+  - "MSFSBlindAssist/Resources/coherent-rmp-agent.js"
+  - "MSFSBlindAssist/Resources/coherent-ewd-agent.js"
+  - "MSFSBlindAssist/Resources/coherent-ecl-agent.js"
+  - "MSFSBlindAssist/Resources/coherent-display-agent.js"
   - "MSFSBlindAssist/Forms/FBWA380/**"
   - "MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs"
 ---

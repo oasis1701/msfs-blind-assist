@@ -12,6 +12,15 @@ paths:
   - "MSFSBlindAssist/Services/TaxiGuidanceManager*.cs"
   - "MSFSBlindAssist/Database/Models/TaxiRoute.cs"
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayShape*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayPavement*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayMembership*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayRowShapes*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayCenterlinePairing*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayReach*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*DestinationStripCrossing*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayEventDescription*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TaxiMathUtils*.cs"
 ---
 # Runway hold-shorts, crossings and runway shape rules
 

@@ -3,6 +3,12 @@ paths:
   - "MSFSBlindAssist/Aircraft/*.cs"
   - "MSFSBlindAssist/Services/DefAnnounceMuteSets.cs"
   - "tests/MSFSBlindAssist.Tests/**/*VarNameCollision*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SimVarDefinition*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*DefAnnounceMuteSets*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ComboLabelCollapse*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*MuteWrap*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*WiperPosition*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ApproachMinimums*.cs"
 ---
 # Aircraft variable definitions rules
 

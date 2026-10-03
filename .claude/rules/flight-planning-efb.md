@@ -8,6 +8,10 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*RunwayInfo*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*OrphanIls*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*ColdTemperature*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*FlightPlanCopy*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*FlightPlanManager*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*NavigationDatabaseProvider*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*NavDataFixture*.cs"
 ---
 # Flight-planning EFB and procedure data (Shift+E) rules
 

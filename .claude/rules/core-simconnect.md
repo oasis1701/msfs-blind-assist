@@ -7,6 +7,17 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*CalcPath*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*FreshRead*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RequestId*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*BridgeProbe*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SimConnectId*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SimConnectPureLogic*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OwnAircraftFilter*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*DeliveryLogPolicy*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ValueChangeTolerance*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*WakeableDelay*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ReadoutFormat*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PanelRowRules*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*EwdMessageLookup*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ControlStateHook*.cs"
 ---
 # Core SimConnect and MainForm rules
 

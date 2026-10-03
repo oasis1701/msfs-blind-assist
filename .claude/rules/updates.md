@@ -5,6 +5,11 @@ paths:
   - "MSFSBlindAssist/Services/SemanticVersion.cs"
   - "MSFSBlindAssistUpdater/**"
   - ".github/workflows/*.yml"
+  - "tests/MSFSBlindAssist.Tests/**/*UpdateCandidate*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*UpdatesPanel*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SemanticVersion*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AppVersion*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ReleaseNotes*.cs"
 ---
 # Updates and release channels rules
 

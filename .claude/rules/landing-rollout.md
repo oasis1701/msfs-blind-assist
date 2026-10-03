@@ -12,6 +12,18 @@ paths:
   - "MSFSBlindAssist/Services/LandingFlareAssistManager.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Rollout*.cs"
   - "MSFSBlindAssist/Navigation/PavementTolerance.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*EarlyVacate*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OffPavement*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayEndCountdown*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*LandingFlare*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TouchdownCallout*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RetargetCallout*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OvershootRetarget*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PavementMap*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PavementTolerance*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayVacateResolver*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*KmemLanding*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*LandingGuidanceLaw*.cs"
 ---
 # Landing rollout guidance rules
 
