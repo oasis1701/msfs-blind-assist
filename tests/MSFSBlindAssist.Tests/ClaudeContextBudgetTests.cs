@@ -48,6 +48,25 @@ public class ClaudeContextBudgetTests
         => Assert.Equal(expected, GlobMatches(glob, path));
 
     [Fact]
+    public void An_empty_front_matter_reads_as_no_paths_instead_of_throwing()
+    {
+        (List<string>? globs, string body, _) = SplitFrontMatter("---\n---\n# Rules\n");
+        Assert.Empty(globs ?? new List<string>());
+        Assert.Equal("# Rules\n", body);
+    }
+
+    [Theory]
+    [InlineData("---\npaths:\n  - \"a/**\"\n---\n", null)]
+    [InlineData("﻿---\npaths:\n  - \"a/**\"\n---\n", "byte-order mark")]
+    [InlineData("---\r\npaths:\r\n  - \"a/**\"\r\n---\r\n", "CRLF")]
+    public void A_rule_file_must_be_bom_free_LF_text(string content, string? expectedProblem)
+    {
+        List<string> problems = RawFormatProblems("x.md", Encoding.UTF8.GetBytes(content)).ToList();
+        if (expectedProblem is null) Assert.Empty(problems);
+        else Assert.Contains(problems, p => p.Contains(expectedProblem, StringComparison.Ordinal));
+    }
+
+    [Fact]
     public void CLAUDE_md_stays_within_its_budget()
     {
         string text = Read(Path.Combine(RepoRoot(), "CLAUDE.md"));
@@ -64,6 +83,7 @@ public class ClaudeContextBudgetTests
         var problems = new List<string>();
         foreach (RuleFile rf in RuleFiles())
         {
+            problems.AddRange(RawFormatProblems(rf.Name, File.ReadAllBytes(rf.Path)));
             if (rf.Globs is null || rf.Globs.Count == 0)
                 problems.Add($"{rf.Name}: no 'paths:' list. A rule file without paths loads in EVERY session; "
                     + "scope it to the code it guards, one '  - \"<glob>\"' line per glob (the comma-separated form is not "
@@ -107,6 +127,19 @@ public class ClaudeContextBudgetTests
                     problems.Add($"{rf.Name}: glob '{g}' matches no file, so its rules never load. The code moved or was "
                         + "renamed; point the glob at where it lives now.");
             }
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
+    }
+
+    [Fact]
+    public void Every_aircraft_folder_file_and_coherent_agent_loads_a_rule_file()
+    {
+        var compiled = RuleFiles().SelectMany(rf => rf.Globs ?? new List<string>()).Select(GlobRegex).ToList();
+        var problems = new List<string>();
+        foreach (string file in RepoFiles().Where(IsAreaOwnedFile).OrderBy(f => f, StringComparer.Ordinal))
+            if (!compiled.Any(g => g.IsMatch(file)))
+                problems.Add($"{file} loads no rule file, so no rule reaches whoever edits it. Add a glob for it to its "
+                    + "area's .claude/rules file; if no rule guards that folder, add the folder to AreaFolderExemptions "
+                    + "with the reason.");
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 
@@ -217,6 +250,39 @@ public class ClaudeContextBudgetTests
             problems.Add($"{name}: '{head}' is {line.Length} characters, over {RuleLineMaxChars}. " + HowToAdd);
     }
 
+    /// <summary>Checks the bytes Claude Code reads, which <see cref="Read"/> normalizes away: a front matter it fails
+    /// to parse makes the file load in EVERY session.</summary>
+    private static IEnumerable<string> RawFormatProblems(string name, byte[] raw)
+    {
+        if (raw.Length >= 3 && raw[0] == 0xEF && raw[1] == 0xBB && raw[2] == 0xBF)
+            yield return $"{name}: starts with a UTF-8 byte-order mark before '---'; save it as UTF-8 without BOM.";
+        if (Array.IndexOf(raw, (byte)'\r') >= 0)
+            yield return $"{name}: has CRLF line endings; rule files are LF (see .gitattributes).";
+    }
+
+    /// <summary>Folders that belong to one aircraft or area but that no rule guards, each with the reason.</summary>
+    private static readonly Dictionary<string, string> AreaFolderExemptions = new(StringComparer.Ordinal)
+    {
+        ["MSFSBlindAssist/Forms/IFly737/"] = "the iFly 737 has no rule file; docs/ifly-737.md holds its notes",
+        ["MSFSBlindAssist/SimConnect/IFly/"] = "the iFly 737 has no rule file; docs/ifly-737.md holds its notes",
+        ["MSFSBlindAssist/Forms/PMDG/"] = "the autopilot window both PMDG aircraft share; no rule names it",
+        ["MSFSBlindAssist/Forms/Settings/"] = "app-wide settings panels, not an area; their rule (VAT-13) is in CLAUDE.md",
+    };
+
+    /// <summary>A file in an aircraft's or area's own subfolder of Aircraft/, Forms/ or SimConnect/, or a Coherent
+    /// agent script: code that belongs to one area, so some rule file must load with it.</summary>
+    private static bool IsAreaOwnedFile(string file)
+    {
+        if (file.StartsWith("MSFSBlindAssist/Resources/coherent-", StringComparison.Ordinal)
+            && file.EndsWith(".js", StringComparison.Ordinal))
+            return true;
+        string[] parts = file.Split('/');
+        return parts.Length >= 4 && parts[0] == "MSFSBlindAssist"
+            && parts[1] is "Aircraft" or "Forms" or "SimConnect"
+            && file.EndsWith(".cs", StringComparison.Ordinal)
+            && !AreaFolderExemptions.Keys.Any(k => file.StartsWith(k, StringComparison.Ordinal));
+    }
+
     internal static bool GlobMatches(string glob, string relativePath) => GlobRegex(glob).IsMatch(relativePath);
 
     private static Regex GlobRegex(string glob)
@@ -263,7 +329,7 @@ public class ClaudeContextBudgetTests
         if (end < 0) return (null, text, items);
         var globs = new List<string>();
         bool inPaths = false;
-        foreach (string raw in text[4..end].Split('\n'))
+        foreach (string raw in (end > 4 ? text[4..end] : "").Split('\n'))
         {
             string line = raw.TrimEnd();
             if (line.StartsWith("paths:", StringComparison.Ordinal)) { inPaths = true; continue; }
