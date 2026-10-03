@@ -113,6 +113,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
 
     public override string AircraftName => "FlyByWire Airbus A320neo";
     public override string AircraftCode => "A320";
+    public override string? ChecklistFileName => "FBW_A320_Checklist.txt";
 
     // Coherent GT view title-needle hosting the MCDU instrument: the view the MCDU window's
     // Coherent client holds (FlyByWireMCDUService) AND the one the D / Shift+D flight-info

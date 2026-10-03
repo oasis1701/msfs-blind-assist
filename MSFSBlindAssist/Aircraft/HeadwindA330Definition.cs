@@ -63,6 +63,7 @@ public class HeadwindA330Definition : FlyByWireA320Definition
 {
     public override string AircraftName => "Headwind Airbus A330-900neo";
     public override string AircraftCode => "HW_A330";
+    public override string? ChecklistFileName => "FBW_A330_Checklist.txt";
 
     /// <summary>
     /// The A330 keeps the PLAIN speed L-vars the A32NX lost in FBW #10890.
