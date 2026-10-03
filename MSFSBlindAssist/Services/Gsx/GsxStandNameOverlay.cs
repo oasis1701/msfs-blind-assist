@@ -19,7 +19,7 @@ namespace MSFSBlindAssist.Services.Gsx;
 /// <c>NamedHoldingPointResolver</c> (which SKIPS parking nodes when snapping a named holding point,
 /// a Progressive-Taxi terminator target), by <c>HoldShortNodeResolver</c>, and by the route
 /// truncation in <c>TaxiGuidanceManager.Routing</c>. A different SET of spots marks a different set
-/// of nodes, so a hold-short could move — and [HLD-8] (docs/invariants/runway-holds.md) is emphatic that
+/// of nodes, so a hold-short could move — and CLAUDE.md is emphatic that
 /// <c>NamedHoldingPointResolver</c>'s snap behaviour was probed against real navdata and live OSM
 /// at six airports and must not be re-tuned. A hold-short that moves is a runway-incursion surface,
 /// not a readout.</item>

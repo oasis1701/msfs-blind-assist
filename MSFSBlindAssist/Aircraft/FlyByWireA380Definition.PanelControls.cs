@@ -242,7 +242,7 @@ public partial class FlyByWireA380Definition
             "A380X_OVHD_STORM_LT",
             "A32NX_LIGHTING_PRESET_LOAD", "A32NX_LIGHTING_PRESET_SAVE",
             // Passenger-cabin lighting (moved here from the flyPad Quick Controls, which
-            // can't be set through the injected agent — see the flyPad note [FPD-1] in docs/invariants/flypad.md).
+            // can't be set through the injected agent — see CLAUDE.md flyPad note).
             "CABIN_BRIGHTNESS_SET", "A32NX_CABIN_USING_AUTOBRIGHTNESS", "A32NX_CABIN_AUTOBRIGHTNESS"
         };
         p["Exterior Lighting"] = new List<string>

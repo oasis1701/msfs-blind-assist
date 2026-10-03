@@ -6,7 +6,7 @@
 // Before this gate, both taxiway-change call sites (AdvanceToNearestSegment,
 // AdvanceSegment) spoke via a bare AnnounceInstruction with NO window check at all, so the
 // callout cut off the 10.4 s start warning the window (_startChatterSuppressUntil) exists
-// to protect -- both CLAUDE.md (now [RTE-2] in docs/invariants/taxi-routing.md) and docs/taxi-guidance.md claimed it already waited the
+// to protect -- both CLAUDE.md and docs/taxi-guidance.md claimed it already waited the
 // window out, but the code never checked it.
 //
 // Unlike the other three window-gated callouts (turn, destination-ahead, curve -- see

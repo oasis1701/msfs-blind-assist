@@ -6,7 +6,7 @@ namespace MSFSBlindAssist.Forms.Settings;
 /// plus the weather auto-announcement toggles (moved here from AnnouncementsPanel so all
 /// weather behavior lives on one tab). The ActiveSky switch is the ONLY control that
 /// enables AS integration — default off; when off, ActiveSkyClient.IsRunningAsync
-/// short-circuits and no AS probing runs anywhere (see the weather invariant [WX-7] in docs/invariants/weather.md).</summary>
+/// short-circuits and no AS probing runs anywhere (see the CLAUDE.md weather invariant).</summary>
 public class WeatherPanel : UserControl, ISettingsPanel
 {
     private CheckBox _activeSkyEnabled = null!;

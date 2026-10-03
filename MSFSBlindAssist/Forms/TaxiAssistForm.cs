@@ -1636,7 +1636,7 @@ public class TaxiAssistForm : Form
     /// OnIntersectionToggled → ShowIntersectionListOrFallback MOVES FOCUS to the
     /// intersection combo and can announce "No runway intersections available. Full
     /// length departure." Neither belongs to a silent restore — the pilot performed no
-    /// action here, and CLAUDE.md's announcement rule [CORE-7] reserves speech for real state
+    /// action here, and CLAUDE.md's announcement rule reserves speech for real state
     /// changes. So the list is rebuilt directly, with the handler detached.</summary>
     private void RestoreIntersectionState(bool wasChecked, string? priorLabel)
     {

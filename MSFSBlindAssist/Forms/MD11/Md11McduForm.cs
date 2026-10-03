@@ -50,7 +50,7 @@ public class Md11McduForm : Form
     /// <summary>
     /// Connection state and lit annunciators, as a read-only TEXT BOX in the tab order. It was a
     /// Label: not in the tab order — a screen reader reaches one only with its review cursor —
-    /// and with an AccessibleName that shadowed the very text it existed to show ([VAT-13] in docs/invariants/vatsim.md:
+    /// and with an AccessibleName that shadowed the very text it existed to show (CLAUDE.md:
     /// status readouts are read-only TextBoxes; the iFly CDU window's status is the same control).
     /// </summary>
     private TextBox statusBox = null!;

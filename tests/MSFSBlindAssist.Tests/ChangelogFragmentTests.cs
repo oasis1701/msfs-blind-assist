@@ -1,5 +1,5 @@
 // Tests for ChangelogBuilder.ChangelogFragment.Parse — the filename/content validator
-// behind the per-PR changelog fragments (see changelog.d/README.md).
+// behind the per-PR changelog fragments (see CLAUDE.md "Release notes").
 //
 // Parse is pure: it takes a file NAME and its CONTENT as strings and never touches the
 // filesystem or git, so every case here is expressible as a literal. The error strings

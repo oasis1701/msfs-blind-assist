@@ -7,7 +7,7 @@
 // SimConnect data-def read assume the raw value is m/s and multiply by 196.85 — a
 // 1500-fpm climb target was spoken as "295276". They MUST stay Units="number" (raw);
 // the "feet per minute" label is hardcoded in TcasRaGuidance.Compose + the :1 display
-// overrides. ([A380-19] in docs/invariants/a380-systems.md; docs/troubleshooting-playbook.md has the full story.)
+// overrides. (CLAUDE.md invariant; docs/troubleshooting-playbook.md has the full story.)
 //
 // Also pins the A380 PRIM-FE flight-path-angle format: FPA lives in the ±0.5–4° range,
 // so the readout must keep tenth-degree precision ("0.0"), matching the FCU FPA readout.

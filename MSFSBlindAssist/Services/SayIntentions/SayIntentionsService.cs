@@ -236,7 +236,7 @@ public sealed class SayIntentionsService
             // ReadTaxiPathPoints below reads point.lat/point.lon and the entry's own
             // heading, all three GEOMETRY, and nothing else — see its doc
             // comment for why nothing else in an entry is ever touched. See the
-            // rewritten invariant [SI-9] (docs/invariants/sayintentions-import.md) and
+            // rewritten CLAUDE.md invariant ("SayIntentions integration") and
             // docs/sayintentions.md for the hazard this boundary exists to prevent.
             if (currentFlight is JsonElement flight)
             {
@@ -355,7 +355,7 @@ public sealed class SayIntentionsService
     /// array would plausibly gain on a schema change, and ~200 point ids would have
     /// become "taxiway names" that silently replaced the clearance-derived route.
     /// Names come from the airport's own TaxiGraph, never from SI — see the
-    /// rewritten invariant [SI-9] in docs/invariants/sayintentions-import.md.
+    /// rewritten CLAUDE.md invariant under "SayIntentions integration".
     ///
     /// An entry missing either coordinate is skipped, not defaulted to (0,0) — a
     /// zeroed point would snap to nothing useful at best and to some other

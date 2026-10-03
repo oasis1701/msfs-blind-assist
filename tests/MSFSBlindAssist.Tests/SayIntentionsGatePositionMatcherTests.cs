@@ -189,7 +189,7 @@ public class SayIntentionsGatePositionMatcherTests
     //
     // The published point is the NOSE-STOP position, not the stand datum: 18.9 m out from
     // the spot centre on bearing 68.6° against a stand heading of 68.8°, i.e. straight
-    // along the stand's own axis — the same distinction [DCK-3] (docs/invariants/gsx-stands-docking.md) records for GSX stop
+    // along the stand's own axis — the same distinction CLAUDE.md records for GSX stop
     // positions. So it is EXPECTED to sit off-centre by most of the radius, and a "near
     // the centre" test would reject the stand the aircraft is standing on.
     //

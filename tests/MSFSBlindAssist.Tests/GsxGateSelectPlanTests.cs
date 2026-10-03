@@ -62,7 +62,7 @@ public class GsxGateSelectPlanTests
     {
         // The load-bearing half of the guard. A spot carrying a number but NO GsxIdentifier
         // is a navdata/.ini-sourced spot: only GsxRemoteParkingReader populates the
-        // identifier, and [DCK-7] (docs/invariants/gsx-stands-docking.md) holds that such a list "cannot be auto-selected --
+        // identifier, and CLAUDE.md holds that such a list "cannot be auto-selected --
         // gate.select degrades to BadArgs, i.e. to manual selection, which is the
         // pre-existing baseline and the intended degradation".
         //

@@ -1215,7 +1215,7 @@ public partial class TaxiGuidanceManager : IDisposable
     // 1500 feet ahead. Slow down."). Sizing it is low-stakes in both directions — too short
     // returns a narrow band to the pre-fix behaviour, too long retires a coarse distance
     // restatement slightly early — and it is NOT the kind of speech-duration estimate
-    // the liftoff-handoff rule [VG-1] (docs/invariants/visual-guidance.md) forbids: nothing here mutes speech.
+    // CLAUDE.md's liftoff-handoff rule forbids: nothing here mutes speech.
     private const double ROLLOUT_DECLINE_CALLOUT_LEAD_SEC = 4.0;
 
     // Lead window for the touchdown sentence that carries a landing-exit runway correction

@@ -36,7 +36,7 @@ namespace MSFSBlindAssist.Navigation;
 /// (or headed toward) the destination's own network -- an ordinary refusal in that case (no
 /// taxi path data, destination node not found, no nearby taxiway node, could not calculate a
 /// route) has nothing to do with route reachability, and rolling those back too is a
-/// separate, unasked-for change ([RTE-2] in docs/invariants/taxi-routing.md / the brief's explicit scope for this PR).</para>
+/// separate, unasked-for change (CLAUDE.md / the brief's explicit scope for this PR).</para>
 /// </summary>
 public static class LoadRefusalRollback
 {

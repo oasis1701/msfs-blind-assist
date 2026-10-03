@@ -636,7 +636,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
 
         // Display-only panel: it still needs an (empty) panel-controls entry or
         // MainForm's panel builder returns early and renders NOTHING — the HS787
-        // Flight-Data-panels bug (see [HS-5] in docs/invariants/hs787.md and "Empty Flight Data panels" in docs/hs787.md).
+        // Flight-Data-panels bug (see CLAUDE.md "Empty Flight Data panels").
         PanelList(P);
 
         // CDU FAIL annunciators (2026-07-23 audit finding — PMDG 737 parity with
@@ -899,7 +899,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             _flapWalkQuietUntilTicks = Environment.TickCount64 + 4000; // swallow intermediate-detent announces (see ProcessSimVarUpdate)
             // Plain async local function, NEVER Task.Run: SendEvent must stay on the
             // UI thread (unlocked eventIds dictionary — the PMDG 777 emergency-lights
-            // rule [P777-13] in docs/invariants/pmdg-777.md), which also makes the generation check race-free.
+            // rule in CLAUDE.md), which also makes the generation check race-free.
             async void Walk()
             {
                 int current = fs.ByteAt(IFlySdkOffsets.FLAP_Status);

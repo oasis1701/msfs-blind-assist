@@ -1,7 +1,7 @@
 // What the Taxi Guidance tab's scenery-index status box says
 // (TaxiGuidancePanel.DescribeSceneryIndexStatus).
 //
-// It is a read-only TextBox in the tab order — the VATSIM rule [VAT-13] (docs/invariants/vatsim.md), so a screen-reader
+// It is a read-only TextBox in the tab order — the CLAUDE.md VATSIM rule, so a screen-reader
 // user can tab to it rather than hunt with the review cursor. That makes an EMPTY value the one
 // thing it must never hold: tabbing to it then announces an edit field with nothing in it, which
 // is indistinguishable from a broken control. It was empty until the session's first catalog

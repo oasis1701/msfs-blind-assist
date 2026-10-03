@@ -43,7 +43,7 @@ public partial class MainForm
     /// guaranteed degraded window on every Aircraft-menu switch and bought nothing: for at least
     /// two probe ticks (the timer is 1500 ms and the read-back lags its write by one round)
     /// <c>CalcPathVerified</c> was false, so every FBW <c>SetLVar</c> fell back to the data-def
-    /// write [SIM-9] (docs/invariants/core-simconnect.md) calls unreliable for FBW L:vars — overhead switches revert silently — and
+    /// write CLAUDE.md calls unreliable for FBW L:vars — overhead switches revert silently — and
     /// every dotted A32NX FCU event was queued instead of sent. With no WASM module installed the
     /// window is the probe's full 40 × 1500 ms ≈ 60 s, after which <c>FlushPendingCalcEvents</c>
     /// replays a minute of queued heading/altitude/speed sets at once and drops anything past the

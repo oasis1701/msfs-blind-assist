@@ -605,7 +605,7 @@ public sealed class AccessGSXForm : Form
             // Menu speech is the one GSX source that does NOT go through GsxService.Announce
             // (this form owns it), so until this call existed the loudest, most heavily gated
             // source in the integration left no trace in gsx.log in either direction, while
-            // both docs/gsx.md and CLAUDE.md (now [GSX-9] in docs/invariants/gsx-remote.md) asserted menu prose was logged. GsxSpeechSource.Menu
+            // both docs/gsx.md and CLAUDE.md asserted menu prose was logged. GsxSpeechSource.Menu
             // had no production reference at all and read as dead code.
             GsxDiagnosticLog.Spoke(GsxSpeechSource.Menu, menuText, SpeechRoute.None);
             return;

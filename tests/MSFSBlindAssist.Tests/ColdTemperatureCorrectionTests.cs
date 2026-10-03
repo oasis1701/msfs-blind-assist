@@ -1,7 +1,7 @@
 // Characterization tests for MSFSBlindAssist.Forms.ColdTemperatureCorrectionForm.CorrectedAltitude.
 //
 // This method is a VERBATIM transcription of FlyByWire's EUROCONTROL cold-temperature
-// correction formula ([EFB-8] in docs/invariants/flight-planning-efb.md), including a redundant term
+// correction formula (CLAUDE.md), including a redundant term
 // (publishedAlt - fieldElevation + fieldElevation, which algebraically cancels to
 // publishedAlt but is kept in the source to mirror FBW's TemperatureCorrectionWidget
 // exactly) and a round-UP-to-10ft finish. The documented safety invariant is: a warm
