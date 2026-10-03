@@ -308,6 +308,10 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             case "FO_AIRSPEED_IAS":  _latestIas = e.Value; break;
             case "FO_ENG1_N2":       _latestEng1N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
             case "FO_ENG2_N2":       _latestEng2N2 = e.Value; _stateEval.SetEngineN2(_latestEng1N2, _latestEng2N2); break;
+            case "FO_ENG3_N2":
+                if (_stateEval is MSFSBlindAssist.FirstOfficer.IFoEngine3N2Sink eng3Sink)
+                    eng3Sink.SetEngine3N2(e.Value);
+                break;
             case "FO_GEAR_LEFT_POS":
             case "FO_GEAR_CENTER_POS":
             case "FO_GEAR_RIGHT_POS":

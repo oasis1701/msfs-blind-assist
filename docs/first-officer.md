@@ -1,6 +1,6 @@
 # First Officer Automation
 
-Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8 and HeadwindSim A330-900neo. This is the detailed reference; the CLAUDE.md invariants index links here. In-sim verification lives in the per-aircraft test plans under `docs/`.
+Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8, HeadwindSim A330-900neo and TFDi MD-11. This is the detailed reference; the CLAUDE.md invariants index links here. In-sim verification lives in the per-aircraft test plans under `docs/`.
 
 ## Overview
 
@@ -199,6 +199,142 @@ reads the stock Kohlsman altimeter instead. So every finding above is a necessar
 that was checked, never a sufficient one, and the nine LIVE-VERIFY items are part of this
 work rather than an optional follow-up. In-sim test plan:
 [docs/headwind-a330-first-officer-test-plan.md](docs/headwind-a330-first-officer-test-plan.md).
+
+**TFDi MD-11 First Officer (branch `feature/first-officer`):** an eighth profile,
+`FirstOfficer/MD11/`, with its OWN switch-manipulation code (owner request — the PMDG/Fenix
+pattern of an own dispatch table, not the panels' `SetControl` path). The MD-11 has no L:var to
+set: every actuation is a CEVENT id, and `Md11FoActionExecutor` sends every one through the live
+definition's single paced bus (`Md11DefinitionFoTransport` → `TFDiMD11Definition.FoFireEvent` /
+`FoPress` / `FoHoldAsync`), never a writer of its own — a second writer would break the `{seq}`
+anti-coalescing prefix and the 60 ms pacing, and two writes landing in one frame lose one event.
+The only non-CEVENT writes are the closed set `TFDiMD11Definition.IsFoExternalWriteAllowed`
+names: TFDi's `MD11_EXTCTL_*` command inboxes (the altimeters, set by value) and the Dial-A-Flap
+wheel's own var (one direct write; a CEVENT walk jams the wheel at an end stop).
+
+The executor decides which id, how many steps, the order, when to hold and release, and how to
+verify. Every write is read back, and nothing is pressed on an unread value — a toggle clicked on
+a stale read reverses the switch. `Md11FoControls` is its verified table, one of six kinds per
+control:
+
+- **Latch** — the button's own var is the state (battery, the system selectors, APU bleed,
+  windshield heat). Pressed only when it differs.
+- **Single-event toggle** — each click toggles (IRS, fuel switches, parking brake, altitude
+  reporting). Clicked once, only when it differs.
+- **Stepped** — one position per event, clamped (emergency power and lights, the signs, landing
+  and nose lights, cargo temperatures, EVAC, GPWS, autobrake, transponder).
+- **Lamp-read toggle** — a momentary whose system toggles a hidden state, read back on its lamp
+  (external and APU power, the AUX pump, ignition, packs, ECON, exterior lights, anti-ice).
+- **Hold-to-test** — DOWN, hold, UP (fire, cargo fire, voice recorder, fuel quantity, emergency
+  lights, oxygen, TCAS, standby display, annunciator).
+- **One-shot** — a timed test, a reset or a page select, pressed once (hydraulic test, cargo door
+  test, fuel used reset, master warning reset, weather radar TEST and OFF, and the system display
+  CONFIG button, which steps pages and must never be pressed twice).
+
+Every id is pinned to the generated control map (`Md11FoControlsTests`) and every step direction
+to TFDi's own handlers decoded from `md11host.wasm` — never the panel walker's learned polarity,
+which guesses the opposite on a fresh install. What the table relies on: RIGHT raises every
+overhead stepped control; the EVAC and GPWS covers gate the INCREASE above position 1 while
+closed, so Off↔Armed and Test↔Normal work cover-closed and ON / FLAP OVERRIDE stay unreachable —
+the FO never opens a cover, and GPWS TEST is reached by stepping DOWN from NORMAL; guarded
+push-buttons (battery, hydraulic test) work through a CEVENT with the cover closed; the START
+switches pop in by themselves at cutout; and the packs are inert in Air AUTO, so Packs OFF first
+puts the Air system in MANUAL. The stepped walk re-reads after every step and watches for the
+whole step ceiling, never one early read (a CEVENT lands a frame or more after it is sent); a step
+that moves the WRONG way is undone at once and the correction remembered for the session; a
+no-move at an end stop tries the other event once and remembers that only when it then moves the
+control toward the target.
+
+**One voice.** An FO actuation opens the definition's quiet window
+(`TFDiMD11Definition.NoteFoActuation` → `Md11AnnouncementGate.NoteQuietActuation`, 5 s): the lamp
+and latch changes it causes are recorded, not spoken, because the flow step already said it. The
+annunciator light test lights about 488 lamps at once, so it is held only under a lamp-speech mute
+(`MuteLampSpeechFor`: the hold, the 1 Hz batch and the dark settle); the raw test key is routed
+through the same composite, so a checklist naming it cannot bypass the mute. The spoiler
+read-outs honour the quiet window as well — mid-stow the pull reads 1 and would announce "armed".
+
+**Preflight runs every system test the MD-11 has:** engine and APU fire, annunciator lights, cargo
+fire, the cockpit voice recorder, hydraulic (a ~100 s timed test, started only in hydraulic AUTO
+with power on and the engines stopped; the flows wait for it to finish before the AUX pump,
+because an AUX pump press aborts it, and the executor keeps the same rule for a hand-tick), fuel
+quantity, emergency lights, GPWS (TEST and back to NORMAL, cover closed), the weather radar (TEST,
+then OFF, verified on the OFF button's own var, read under the FO's own key `MD11_FO_WXR_OFF`),
+both oxygen masks, the standby display (where fitted), TCAS and the cargo doors. The throttle
+travel and aural warning check is a Captain item.
+
+**Flaps are the Captain's in flight** (owner decision). The FO sets the Dial-A-Flap from the
+SimBrief takeoff flap at Preflight (without a plan the step fails rather than ticks, and a Captain
+reminder speaks); moves the handle to the Dial-A-Flap detent after start and UP after landing —
+ON THE GROUND ONLY, one detent per wheel event, each read back; and sets Dial-A-Flap 15 at the
+transition altitude, refused while the handle sits in the Dial-A-Flap detent (the wheel would
+then move the flaps). There is no auto-flap schedule: `FOAutoFlapsEnabled` is stored and never
+acted on. The wheel's direction is not in TFDi's mechanical table; the default (77830 extends) was
+measured live, and a wrong-way detent is undone and remembered.
+
+**Ground spoilers are the FO's in every phase:** arm, disarm and the stow after landing are each
+one lever click (77829). From deployed the click drops the pull 2 → 1 and TFDi's own lever spring
+runs the lever to RET and zeroes the pull — decoded, not yet flown ([docs/md11.md](docs/md11.md) §12).
+Arming from deployed stows first. An extended speedbrake is the Captain's lever: never moved, and
+it refuses an arm.
+
+**Engines start 3, 1, 2.** The flow first waits for all three N2s (engine 3's is a new SimConnect
+request, `FO_ENG3_N2`, request 386, fed through `IFoEngine3N2Sink`), the APU running with its
+bleed on, and ignition selected. Each START switch is pulled only when it reads in and N2 is below
+15 %, and never clicked twice — a second click aborts the start. Fuel goes ON at 15 % N2. An engine
+that does not reach 15 % within 60 s has its START switch pushed back in and the flow stops, so a
+stopped flow never leaves a starter engaged. Then the flow waits for the switch to pop in and N2
+to reach 55 %.
+
+**Other rules the executor keeps**, each from TFDi's code or a live measurement. External power is
+decided by its ON lamp, read fresh and first: connect only with AVAIL lit or on the battery alone,
+disconnect only with APU power ON (live: TFDi itself refuses to drop external power when it is the
+only source, so a flow that tried would stall with the aircraft still on the GPU). The APU is shut
+down only with its bleed closed (an open bleed restarts the shutdown timer) and APU PWR ON lit (a
+press with it dark REQUESTS APU power). Engine, wing and tail anti-ice are left alone in AUTO —
+TFDi toggles them only in MANUAL, and this install reads AUTO. The autobrake goes to T.O. or OFF
+only; a landing setting is refused as the Captain's. The gear lever is clicked only at rest at one
+end (two matching readings: a click while it travels reverses the pilot's own command), and up
+only when definitely airborne. There is no fallback for an unmapped key — that is a mapping bug,
+logged, never a write to guess at.
+
+**Cold-and-dark guards.** Power Up and Shutdown stop before their first switch unless every engine
+reads stopped (N2 below 10 %; unread counts as not stopped), and Shutdown also unless on the
+ground. Found live: Power Up started with the engines running cut all three fuel switches, and
+Shutdown switched the IRS and the battery off.
+
+**Checklists.** Action groups mirror each flow, and TFDi's normal checklist is carried as sixteen
+read-back groups in its order: Cockpit Entry, Preflight, Before Start, Engine Start, After Start,
+Before Takeoff, After Takeoff, Passing 10,000 Feet, Passing Transition Altitude, Cruise, Passing
+Below Transition Level, Descending Below 10,000 Feet, Before Landing, After Landing, Parking and
+Shutdown. They are CONDENSED (owner request, 2026-10-01), not verbatim: TFDi's Preflight ran 92
+lines and its Engine Start 16, most of them lamps lighting during a test, gauge readings (EGT, oil,
+fuel flow) and panel inspections a blind pilot cannot perform. Each list now holds only switch
+positions the app reads back (auto-tick) and Captain items reachable from MSFSBA (MCDU, altimeters,
+radios, flight controls, the throttle check, whose warnings are aural) — Preflight 23 items,
+Engine Start 5. The system tests are one "System
+Tests: Complete" line; the FO still runs every one of them in the Preflight flow. Never re-add a
+check the pilot has no way to perform. The START switch items latch on N2 like the other start
+selectors; the fuel switch items stay `RevertToState`.
+
+**Automatic modes.** Passing 10,000 ft the landing lights retract climbing and come on descending
+(`FOAutoLights10kEnabled`). Passing the transition altitude climbing, the FO sets all three
+altimeters to standard BY VALUE into TFDi's external inboxes (the Ctrl+B path — the STD push state
+is unreadable) and the Dial-A-Flap to 15, then speaks ONE sentence saying what it did and what it
+leaves to the Captain. The transition level descending is announce-only. Seat-belt signs follow
+`FOAutoSeatbeltMode`. Gear and autopilot engagement are the universal automation's; the MD-11
+engages through AUTO FLIGHT (never the stock `AUTOPILOT_ON`, which the MD-11 disables), confirmed
+on `MD11_AP_STATE` and floored at 400 ft AGL.
+
+**Diagnostics.** Every flow step's outcome is logged (`FlowManager`, category `FO`: done, already
+set, skipped, failed), and every MD-11 FO actuation with its result and the reason for a refusal
+(`Md11FoActionExecutor.Set`, category `MD11 FO`). debug.log is the first stop for "the First
+Officer skipped X".
+
+**Verified live on 2026-09-26** (MD-11F GE at CYYZ, MSFS 2024, driven through the real window):
+Power Up, Preflight with every test, Before Start, Engine Start (3, 1, 2), After Start, Before
+Takeoff, both cold-and-dark guards, and most Shutdown steps (from an accidental run with the
+engines turning, before the guards existed). Not yet flown: After Takeoff, Descent, Before
+Landing, After Landing (the spoiler stow), Parking, and the automatic modes. In-sim test plan:
+[docs/tfdi-md11-first-officer-test-plan.md](docs/tfdi-md11-first-officer-test-plan.md).
 
 **Architecture — everything aircraft-specific is injected via `IFoProfile<TExec,TState>`.** The form is identical across aircraft; the profile (`FirstOfficer/Pmdg777FoProfile.cs`, `FirstOfficer/PMDG737/Pmdg737FoProfile.cs`) supplies the executor, state evaluator, checklist + flow data, auto/phase managers, window title, and the data-manager binding. Generic engine pieces: `ChecklistManager` (toggle / auto-detect / revert), `FlowManager` (step runner + events), `FlightPhaseMonitor`, `FOAutoManager`; per-aircraft: `AircraftActionExecutor` (PMDG switch dispatch), `AircraftStateEvaluator` (reads PMDG data fields), `PMDG7x7ChecklistDefinitions`, `PMDG7x7FlowDefinitions`. Interfaces live in `FirstOfficer/IFo*.cs`; models in `FirstOfficer/Models/` (`ChecklistItem`, `ChecklistGroup`, `FlowDefinition`, `FlowStep`).
 

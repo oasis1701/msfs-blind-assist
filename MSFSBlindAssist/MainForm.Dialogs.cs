@@ -660,6 +660,24 @@ public partial class MainForm
         hwA330FirstOfficerForm.ShowForm();
     }
 
+    private void TfdiMd11FirstOfficerMenuItem_Click(object? sender, EventArgs e)
+        => ShowTfdiMd11FirstOfficerDialog();
+
+    private void ShowTfdiMd11FirstOfficerDialog()
+    {
+        if (currentAircraft is not TFDiMD11Definition md11Def) return;
+        if (tfdiMd11FirstOfficerForm == null || tfdiMd11FirstOfficerForm.IsDisposed)
+        {
+            tfdiMd11FirstOfficerForm = new Forms.FirstOfficer.FirstOfficerForm<FirstOfficer.MD11.Md11FoActionExecutor, FirstOfficer.MD11.Md11FoStateEvaluator>(
+                new FirstOfficer.MD11.Md11FoProfile(md11Def),
+                simConnectManager,
+                announcer,
+                MSFSBlindAssist.Settings.SettingsManager.Current,
+                new MSFSBlindAssist.Services.SimBriefService());
+        }
+        tfdiMd11FirstOfficerForm.ShowForm();
+    }
+
     // PMDG 737/777 EFB tablet over the Coherent debugger — one client + window per
     // crew side, reusing the generic FbwEfbForm. Mirrors ShowFbwEfbDialog's lazy
     // client/form creation + non-modal ShowForm pattern.
