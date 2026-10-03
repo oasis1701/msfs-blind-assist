@@ -1,5 +1,4 @@
 using MSFSBlindAssist.Accessibility;
-using MSFSBlindAssist.Services;
 
 namespace MSFSBlindAssist.Forms;
 public partial class ChecklistForm : Form
@@ -13,7 +12,7 @@ public partial class ChecklistForm : Form
 
     private Panel scrollPanel = null!;
     private List<CheckedListBox> checklistViews = new List<CheckedListBox>();
-    private readonly string aircraftCode;
+    private readonly string checklistFileName;
     private IntPtr previousWindow;
 
     // Static dictionary to persist checkbox states across show/hide cycles
@@ -23,13 +22,10 @@ public partial class ChecklistForm : Form
     private static int lastFocusedListViewIndex = 0;
     private static int lastSelectedItemIndex = 0;
 
-    public ChecklistForm(ScreenReaderAnnouncer announcer, string aircraftCode, string aircraftName, string fallbackAircraftName)
+    public ChecklistForm(ScreenReaderAnnouncer announcer, string checklistFileName)
     {
-        this.aircraftCode = aircraftCode;
+        this.checklistFileName = checklistFileName;
         InitializeComponent();
-        // Read by the screen reader every time the window opens, so an aircraft with no
-        // checklist of its own is told whose checklist it is looking at.
-        Text = ChecklistFiles.WindowTitle(aircraftCode, aircraftName, fallbackAircraftName);
         SetupAccessibility();
         PopulateChecklist();
     }
@@ -112,11 +108,9 @@ public partial class ChecklistForm : Form
 
     private string GetChecklistText()
     {
-        string filename = ChecklistFiles.FileNameFor(aircraftCode);
-
         // Construct file path
         string appPath = AppDomain.CurrentDomain.BaseDirectory;
-        string filePath = Path.Combine(appPath, "Checklists", filename);
+        string filePath = Path.Combine(appPath, "Checklists", checklistFileName);
 
         try
         {

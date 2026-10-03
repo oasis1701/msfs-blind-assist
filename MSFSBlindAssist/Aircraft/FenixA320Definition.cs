@@ -12,6 +12,7 @@ public class FenixA320Definition : BaseAircraftDefinition
 {
     public override string AircraftName => "Fenix A320 CEO";
     public override string AircraftCode => "FENIX_A320CEO";
+    public override string? ChecklistFileName => "Fenix_A320_Checklist.txt";
 
     // Fenix FCU uses increment/decrement buttons, not direct value input like FlyByWire
     public override FCUControlType GetAltitudeControlType() => FCUControlType.IncrementDecrement;
