@@ -351,6 +351,17 @@ public partial class MainForm
         hs787MonitorManagerForm.ShowForm();
     }
 
+    public void ShowCowsDA40MonitorManagerDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (cowsDA40MonitorManagerForm == null || cowsDA40MonitorManagerForm.IsDisposed)
+        {
+            cowsDA40MonitorManagerForm = new Forms.DA40.CowsDA40MonitorManagerForm(
+                currentAircraft.GetVariables());
+        }
+        cowsDA40MonitorManagerForm.ShowForm();
+    }
+
     public void ShowPMDGAnnouncementMonitorDialog()
     {
         // Deactivate output hotkey mode before showing dialog

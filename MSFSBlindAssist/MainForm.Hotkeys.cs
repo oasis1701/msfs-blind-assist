@@ -209,41 +209,49 @@ public partial class MainForm
                 ShowElectronicFlightBagDialog();
                 break;
             case HotkeyAction.ShowFenixMCDU:
-                // Single "show MCDU" hotkey routed by the currently-selected
-                // aircraft. The action's enum name is historical (it was added
-                // for Fenix first); FBW A380 reuses the same chord.
-                if (currentAircraft is IPMDGAircraft && simConnectManager.PMDGDataManager != null)
+                // Single "show MCDU" hotkey routed by the currently-selected aircraft.
+                // The action's enum name is historical (it was added for Fenix first).
+                // The routing is McduWindowRouting's: every window is named there and
+                // nothing is a fallback — a bare else here opened the FENIX MCDU over the
+                // DA40 and over a PMDG whose data link was not up yet.
+                switch (McduWindowRouting.For(currentAircraft?.AircraftCode,
+                            currentAircraft is IPMDGAircraft,
+                            simConnectManager.PMDGDataManager != null))
                 {
-                    ShowPMDGCDUDialog();
-                }
-                else if (currentAircraft?.AircraftCode == "FBW_A380")
-                {
-                    ShowFBWA380MCDUDialog();
-                }
-                else if (currentAircraft?.AircraftCode == "HS_787")
-                {
-                    ShowHS787FMCDialog();
-                }
-                else if (currentAircraft?.AircraftCode == "IFLY_737MAX8")
-                {
-                    // iFly 737 MAX8 — CDU screen from the iFly SDK shared memory.
-                    ShowIFlyCDUDialog();
-                }
-                else if (currentAircraft?.AircraftCode == "TFDI_MD11")
-                {
-                    // MD-11 — all three MCDUs as text from the MD11MCDU client data area.
-                    ShowMd11McduDialog();
-                }
-                else if (currentAircraft?.AircraftCode == "A320" || currentAircraft?.AircraftCode == "HW_A330")
-                {
-                    // The Headwind A330 MCDU is the same FBW instrument (the Coherent view
-                    // "A339X_MCDU" — FlightInfoMcduView — and the same SimBridge relay), so
-                    // the A320 MCDU service/form serve it with only the view name changed.
-                    ShowFlyByWireMCDUDialog();
-                }
-                else
-                {
-                    ShowFenixMCDUDialog();
+                    case McduWindow.PmdgCdu:
+                        ShowPMDGCDUDialog();
+                        break;
+                    case McduWindow.FbwA380Mcdu:
+                        ShowFBWA380MCDUDialog();
+                        break;
+                    case McduWindow.Hs787Fmc:
+                        ShowHS787FMCDialog();
+                        break;
+                    case McduWindow.IFlyCdu:
+                        // iFly 737 MAX8 — CDU screen from the iFly SDK shared memory.
+                        ShowIFlyCDUDialog();
+                        break;
+                    case McduWindow.Md11Mcdu:
+                        // MD-11 — all three MCDUs as text from the MD11MCDU client data area.
+                        ShowMd11McduDialog();
+                        break;
+                    case McduWindow.FbwA320Mcdu:
+                        // The Headwind A330 MCDU is the same FBW instrument (the Coherent view
+                        // "A339X_MCDU" — FlightInfoMcduView — and the same SimBridge relay), so
+                        // the A320 MCDU service/form serve it with only the view name changed.
+                        ShowFlyByWireMCDUDialog();
+                        break;
+                    case McduWindow.FenixMcdu:
+                        ShowFenixMCDUDialog();
+                        break;
+                    case McduWindow.PmdgCduNotReady:
+                        hotkeyManager.ExitInputHotkeyMode();
+                        announcer.AnnounceImmediate(McduWindowRouting.PmdgNotReadyMessage);
+                        break;
+                    default:
+                        hotkeyManager.ExitInputHotkeyMode();
+                        announcer.AnnounceImmediate(McduWindowRouting.NoWindowMessage);
+                        break;
                 }
                 break;
             case HotkeyAction.ShowPMDGEFB:

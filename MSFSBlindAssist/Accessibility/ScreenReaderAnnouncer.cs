@@ -20,6 +20,17 @@ public class ScreenReaderAnnouncer : IDisposable
     /// </summary>
     public bool Suppressed { get; set; } = false;
 
+    /// <summary>
+    /// Silences EVERY entry point, <see cref="AnnounceImmediate"/> included — unlike
+    /// <see cref="Suppressed"/>, which deliberately lets an immediate announcement (a hotkey
+    /// readout) through. Set only by its owner around its own synchronous work: the DA40's
+    /// settle after a flight load (<c>CowsDA40Definition.UnderLoadSettle</c>), where the
+    /// aircraft's own trackers speak through AnnounceImmediate and must record their new
+    /// baselines without narrating every value that differs from the previous flight.
+    /// Nothing else sets it, so nothing else changes.
+    /// </summary>
+    public bool OwnerMute { get; set; }
+
     // Screen reader integration components
     private TolkWrapper? tolkWrapper;
     private NvdaControllerWrapper? nvdaWrapper;
@@ -224,7 +235,7 @@ public class ScreenReaderAnnouncer : IDisposable
             if (string.IsNullOrEmpty(message))
                 return;
             // Initial-detect grace: drop automatic announcements (not user hotkeys).
-            if (Suppressed)
+            if (Suppressed || OwnerMute)
                 return;
 
             // Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] Announce called - Mode: {currentMode}, Message: {message}");
@@ -283,6 +294,8 @@ public class ScreenReaderAnnouncer : IDisposable
         public virtual void AnnounceImmediate(string message)
         {
             if (string.IsNullOrEmpty(message))
+                return;
+            if (OwnerMute)
                 return;
 
             // Log.Debug("Accessibility", $"[ScreenReaderAnnouncer] AnnounceImmediate called - Mode: {currentMode}, Message: {message}");
@@ -344,7 +357,7 @@ public class ScreenReaderAnnouncer : IDisposable
         {
             if (string.IsNullOrEmpty(message))
                 return;
-            if (Suppressed)
+            if (Suppressed || OwnerMute)
                 return;
 
             lock (announcementQueue)

@@ -86,6 +86,18 @@ public partial class MainForm
         
         // Re-enable event
         panelsListBox.SelectedIndexChanged += PanelsListBox_SelectedIndexChanged;
+
+        // ⚠️ AND TEAR DOWN THE OLD SECTION'S CONTROLS, OR THEY READ AS THIS SECTION'S.
+        // Changing section clears currentPanel and repopulates the panel list but used to
+        // leave the previous panel's widgets on screen - so selecting Cabin, with no panel
+        // chosen in it yet, still showed the Autopilot section's status display and
+        // announced "Commanded Bank: wings level" under a Cabin heading. A blind pilot has
+        // nothing else telling them which panel those rows belong to.
+        //
+        // Same teardown a panel load does first; the next panel selection rebuilds.
+        controlsContainer.Controls.Clear();
+        currentControls.Clear();
+        displayValues.Clear();
     }
 
     private void PanelsListBox_SelectedIndexChanged(object? sender, EventArgs e)
