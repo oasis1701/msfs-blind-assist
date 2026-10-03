@@ -379,6 +379,14 @@ public partial class MainForm
                     return; // Skip announcement for disabled variable
                 }
 
+                // Check if disabled in the Learjet 35A Monitor Manager (plain switches and
+                // selectors on the generic path; the lamps are covered by the wrap above).
+                if (currentAircraft.AircraftCode == "FLYSIMWARE_LJ35A" &&
+                    Settings.SettingsManager.Current.LJ35DisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
                 // Suppress the generic announce for a var the iFly autopilot window
                 // JUST wrote: the focused button's label rename is the screen-reader
                 // feedback (NVDA reads the name change), so the Step-6 announce would
