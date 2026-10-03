@@ -8,6 +8,8 @@ paths:
   - "MSFSBlindAssist/Services/CurrentAirport.cs"
   - "MSFSBlindAssist/Services/AirportWarmUp.cs"
   - "MSFSBlindAssist/Database/Models/ParkingTypes.cs"
+  - "MSFSBlindAssist/Database/MsfsPackage*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*MsfsPackage*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Surroundings*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Scenery*.cs"
   - "MSFSBlindAssist/Navigation/RunwayShapeSource.cs"
