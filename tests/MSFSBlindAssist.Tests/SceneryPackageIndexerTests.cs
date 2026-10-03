@@ -339,7 +339,9 @@ public class SceneryPackageIndexerTests : IDisposable
         indexer.GetFeatures("KABC", Array.Empty<string>(), null);
         Assert.Equal("KABC: no installed scenery package found", indexer.LastStatus);
         indexer.GetFeatures("KXYZ", new[] { pkg }, null, locatedByCensus: true);
-        Assert.EndsWith("(located by Community scan)", indexer.LastStatus);
+        // Not "Community scan": the census also scans Community2024, and naming one folder told a
+        // pilot whose package lives in the other the wrong place to look.
+        Assert.EndsWith("(located by add-on folder scan)", indexer.LastStatus);
     }
 
     [Fact]

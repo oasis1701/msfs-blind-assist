@@ -1,4 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><ImplicitUsings>enable</ImplicitUsings><Nullable>enable</Nullable><Platforms>x64</Platforms></PropertyGroup>
-  <ItemGroup><Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxAirplaneProfile.cs" Link="Linked\GsxAirplaneProfile.cs" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\MSFSBlindAssist\Services\Gsx\GsxAirplaneProfile.cs" Link="Linked\GsxAirplaneProfile.cs" />
+    <!-- The package-folder layout the profile scan walks (Community, Community2024, Official*); dependency-free by design so it can be linked here. -->
+    <Compile Include="..\..\MSFSBlindAssist\Database\MsfsPackageLayout.cs" Link="Linked\MsfsPackageLayout.cs" />
+  </ItemGroup>
 </Project>
