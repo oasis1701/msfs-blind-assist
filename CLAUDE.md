@@ -78,7 +78,7 @@ The `main` branch is protected. Always create a new branch for changes and open 
 
 ### Screen reader announcements
 
-Screen readers already announce every UI control interaction, so the app NEVER announces a button press, a combo or dropdown change, or any other direct interaction in a panel. It ONLY announces numeric input confirmations, error conditions (validation failures) and background state changes the user did not trigger. Two narrow, scoped exceptions exist: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]) and the EFB shell's `announceChange` opt-in ([MD11-13]). Neither is a licence to announce presses anywhere else.
+Screen readers already announce every UI control interaction, so the app NEVER announces a button press, a combo or dropdown change, or any other direct interaction in a panel. It ONLY announces numeric input confirmations, error conditions (validation failures) and background state changes the user did not trigger. Two narrow, scoped exceptions exist: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]) and the EFB shell's `announceChange` opt-in ([MD11-26]). Neither is a licence to announce presses anywhere else.
 
 - [CORE-7] NEVER announce button presses, combo/dropdown changes or any direct UI interaction in panel controls; ONLY numeric input confirmations, validation errors and background state changes. The two scoped exceptions above are the only ones. Full: docs/invariants/core.md#core-7
 - [CORE-8] Combo double-announce suppression is GLOBAL, never aircraft-gated: `_uiSetEcho`/`MarkUiSet` plus a wrap that sets `announcer.Suppressed` around `ProcessSimVarUpdate` for any var inside the echo window. Full: docs/invariants/core.md#core-8
