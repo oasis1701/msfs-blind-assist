@@ -38,3 +38,9 @@ Loaded when Claude reads matching code. Background: docs/a380x.md. Full text of 
 - [A380-27] Frequency readouts need explicit formatting: stock `COM ACTIVE/STANDBY FREQUENCY:n` needs a "0.000 MHz" display override, and ND ADF/VOR need kHz/MHz unit labels. Full: docs/invariants/a380-systems.md#a380-27
 - [A380-28] "Passengers on Board" sums the per-station `A32NX_PAX_<st>_DESIRED` bitmasks, never the boarded `A32NX_PAX_<st>` set, which lags and under GSX boarding settles below target. Full: docs/invariants/a380-systems.md#a380-28
 - [A380-29] Wipers are a synthetic 3-position OFF/SLOW/FAST combo per side (circuits 141/143): read BOTH `CIRCUIT SWITCH ON` and `CIRCUIT POWER SETTING` (75/100%), switch first, since power stays 100% while off. Full: docs/invariants/a380-systems.md#a380-29
+
+Mirrored from a380-coherent.md and takeoff-and-callouts.md (they govern code in the A380 definition; change them there and here together):
+- [A380C-4] Never construct a second `CoherentDisplayClient("A380X_EWD")` while `EwdMonitor` exists; the SD Upper-E/WD fallback goes through the one always-on monitor socket. Full: docs/invariants/a380-coherent.md#a380c-4
+- [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/a380-coherent.md#a380c-16
+- [A380C-18] Never re-add an A380 RMP "Radios" panel on stock COM standby-set/swap events, which the FBW A380 ignores; anything else tuning COM with stock events must ask `IAircraftDefinition.StockComTuningRefusal` first and speak it. Full: docs/invariants/a380-coherent.md#a380c-18
+- [TKO-5] Take-off calls are ONE `AnnounceImmediate` per sample via `TakeoffVSpeedCallouts.Compose`, never one per call; every definition drops the ARM, never the speeds, on reconnect AND `OnSimContextReset`, and names keys through the one `TakeoffCalloutKeys` (more: see full). Full: docs/invariants/takeoff-and-callouts.md#tko-5

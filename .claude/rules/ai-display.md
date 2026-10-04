@@ -18,6 +18,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*Camera*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Screenshot*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*InstrumentView*.cs"
+  - "MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs"
 ---
 # AI display reads, the camera and screenshots rules
 

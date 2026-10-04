@@ -9,6 +9,8 @@ paths:
   - "MSFSBlindAssist/Aircraft/A380TakeoffCallouts.cs"
   - "MSFSBlindAssist/Aircraft/MD11/Md11TakeoffCallouts.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AltitudeCallout*.cs"
+  - "MSFSBlindAssist/Aircraft/IFly737MAXDefinition*.cs"
+  - "MSFSBlindAssist/Aircraft/TFDiMD11Definition*.cs"
 ---
 # Takeoff assist and flight callouts rules
 

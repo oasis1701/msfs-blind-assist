@@ -24,6 +24,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*RunwayVacateResolver*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*KmemLanding*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*LandingGuidanceLaw*.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.cs"
 ---
 # Landing rollout guidance rules
 

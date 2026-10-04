@@ -21,6 +21,8 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*TaxiwayEntryNode*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*OrphanParkingIsland*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayReachGate*.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Announcements.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
 ---
 # Taxi routing rules
 
@@ -55,3 +57,6 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [RTE-27] The start grace window (`START_WARNING_CHATTER_GRACE_SEC`, 12.5 s) follows either start warning: turn, destination-ahead and curve callouts wait it out when safe (`StartWarningChatterGate`), the taxiway-change callout defers (`TaxiwayChangeGate`); never make any of them skip, never gate hold-short or runway-crossing callouts on it. Full: docs/invariants/taxi-routing.md#rte-27
 - [RTE-28] Reachability sentences name a stand by its identifier only (the label up to its first spaced dash, `RouteReachabilityMessages.SpokenDestinationName`), never the whole label. Full: docs/invariants/taxi-routing.md#rte-28
 - [RTE-29] A refused `LoadRoute` must put back the destination, lineup and graph state it had already overwritten (`LoadRefusalRollback`), so a refusal mid-taxi leaves the route being flown untouched; the older failure returns do not roll back. Full: docs/invariants/taxi-routing.md#rte-29
+
+Mirrored from sayintentions-import.md (it governs `TaxiGraph.GetNamedEdges`; change it there and here together):
+- [SI-20] The snapper takes an already-built `TaxiGraph` (`GetNamedEdges()`) and never fetches names itself; `GetNamedEdges` must stay sorted on an INTRINSIC key (name + endpoint coordinates), never node id. Full: docs/invariants/sayintentions-import.md#si-20

@@ -1,12 +1,10 @@
 ---
 paths:
-  - "MSFSBlindAssist/MainForm.Announcers.cs"
-  - "MSFSBlindAssist/MainForm.AircraftSwitch.cs"
-  - "MSFSBlindAssist/MainForm.Dialogs.cs"
+  - "MSFSBlindAssist/MainForm*.cs"
 ---
 # Rules whose code MainForm calls
 
-MIRRORS: each line below is copied word for word from its area's rule file, because the code it guards is called from these MainForm partials, which that area's globs do not cover. Change a rule in its own file and here together; ClaudeContextBudgetTests fails if the two differ.
+MIRRORS: each line below is copied word for word from its area's rule file, because the code it guards lives in or is called from the MainForm partials, which that area's globs do not cover. Change a rule in its own file and here together; ClaudeContextBudgetTests fails if the two differ.
 
 - [SIM-15] `UpdateDisplayText` must always refresh `displayValues` from `GetCachedVariableValue` first; cached `displayValues` alone go stale for any def whose `ProcessSimVarUpdate` returns `true`. Full: docs/invariants/core-simconnect.md#sim-15
 - [SIM-16] The per-event "is this var in any panel display" gate must use the cached `GetDisplayVarNamesCached()` HashSet — never call a def's `GetPanelDisplayVariables()` per SimVar event; it rebuilds its whole dictionary every call. Full: docs/invariants/core-simconnect.md#sim-16
@@ -19,3 +17,8 @@ MIRRORS: each line below is copied word for word from its area's rule file, beca
 - [A380C-24] Capture the OUTGOING aircraft def at the top of `SwitchAircraft` for cleanup (`StopAllMotion()`, EWD-monitor teardown), or seat/slider motor timers keep writing L:vars into the new aircraft. Full: docs/invariants/a380-coherent.md#a380c-24
 - [MD11-16] Every MD-11 write path refuses ALOUD, before writing, when it cannot reach the aircraft: ask `CalcWriteCanLand` (calc bus) or `CanSendEvent` (stock event), never bare `CanExecuteCalculatorCode`. Re-arm a NEGATIVE probe verdict on aircraft switch, keep a VERIFIED one. Success stays silent. (more: see full) Full: docs/invariants/md11.md#md11-16
 - [DCK-15] A DATABASE switch is invalidated by CLOSING the window (`RefreshDatabaseProvider` closes `tcasForm`), not a cache clear: `GateResolver` captures its provider at construction. Full: docs/invariants/gsx-stands-docking.md#dck-15
+- [AUD-9] The session's first sweep is a baseline (`AudioOutputRouter.RequestBaselineSweep`, from `MainForm`'s connect timer after "Initializing, please wait"): at it `FellBackToDefault` and `NoDeviceAvailable` speak and `DefaultDeviceChanged`/`RecoveredPreferred` stay silent; never re-silence the degraded pair (more: see full). Full: docs/invariants/audio-output.md#aud-9
+- [TRF-1] `GroundTrafficSuppression` (pure, not a MainForm lambda) silences Caution/Warning on the takeoff roll, with no route and in a STILL-ROLLING rollout; the 120° arc never gates Awareness, Alt+G stays ungated; a fast landing exit filters speech, never mutes the monitor (more: see full). Full: docs/invariants/ground-traffic.md#trf-1
+- [VG-1] The liftoff cue wording and its mute are one decision in `LiftoffHandoffBreadcrumb.For(...)`; never split them or size a mute by estimate (measure at SAPI `Rate = 0`), and keep every mute under the 3504 ms ceiling by shortening the phrase, never widening the mute (more: see full). Full: docs/invariants/visual-guidance.md#vg-1
+- [VG-11] VG auto-deactivation on the airborne-to-on-ground edge must not be gated on ground speed or any other condition: a landing at any speed must trigger it. Full: docs/invariants/visual-guidance.md#vg-11
+- [P777-10] MainForm's PMDG panel-populate loop must force-read only `Type == PMDGVar` controls: `GetFieldValue` on a non-PMDG control (e.g. an LVar combo) returns the 0.0 "unknown field" sentinel and silently resets it on every panel re-show. Full: docs/invariants/pmdg-777.md#p777-10

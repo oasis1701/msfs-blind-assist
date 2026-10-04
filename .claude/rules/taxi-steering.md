@@ -30,3 +30,7 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [STR-16] Verbal turn direction must come from the aircraft's current heading (`ComputeTurnVerbalFromHeading`), never the route's static `TurnDirection`, which off-axis can contradict the correct tone. Full: docs/invariants/taxi-steering.md#str-16
 - [STR-17] Runway-destination lineup must anchor on the `start` table (`GetRunwayStarts`), never `Runway.StartLat/StartLon`: that is the pavement edge, hundreds of metres off the lineup point at displaced thresholds. Full: docs/invariants/taxi-steering.md#str-17
 - [STR-18] The route-start turn cue has ONE owner (`RouteStartTurnCue` via `ComposeInitialTurnCue`, from `LoadRoute` and the handoff RE-ANCHOR), never the first taxiing frame; delivered once via `ConsumeInitialTurnCue()`, angle from `ComputeSteeringHeadingError`, both sides true north (more: see full). Full: docs/invariants/taxi-steering.md#str-18
+
+Mirrored from takeoff-and-callouts.md and gsx-stands-docking.md (they govern the lineup code in TaxiGuidanceManager.Rollout.cs; change them there and here together):
+- [TKO-2] Auto-activate-Takeoff-Assist-on-lineup is a one-shot latch (`_autoActivateFired`) that must NOT reset on lineup drift-out; re-engaging after a deliberate manual deactivation would surprise the pilot. Full: docs/invariants/takeoff-and-callouts.md#tko-2
+- [DCK-31] Never re-add the runway-style stopped-misaligned pulse to gate lineup; precision parking is docking's job. Full: docs/invariants/gsx-stands-docking.md#dck-31

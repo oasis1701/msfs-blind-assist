@@ -5,6 +5,9 @@ paths:
   - "MSFSBlindAssist/Forms/AccessGSXForm.cs"
   - "MSFSBlindAssist/Forms/GsxSettingsForm.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Gsx*.cs"
+  - "MSFSBlindAssist/Database/Models/ParkingSpot.cs"
+  - "MSFSBlindAssist/Services/Gsx/GsxStandNameOverlay.cs"
+  - "MSFSBlindAssist/Services/ParkingSpotSource.cs"
 ---
 # GSX Remote API, gate selection and GSX logs rules
 
