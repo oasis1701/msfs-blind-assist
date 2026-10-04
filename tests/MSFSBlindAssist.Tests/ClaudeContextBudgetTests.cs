@@ -17,6 +17,7 @@ public class ClaudeContextBudgetTests
     public const int ClaudeMdMaxLines = 200;
     public const int RuleLineMaxChars = 400;
     public const int RuleFileMaxChars = 12_000;
+    public const int RuleFileProseMaxChars = 1_000;
     public const int PerFileLoadMaxChars = 30_000;
 
     private const string HowToAdd =
@@ -28,7 +29,9 @@ public class ClaudeContextBudgetTests
         @"^- \[(?<id>[A-Z][A-Z0-9]*-\d+)\] (?<text>\S.*?) Full: (?<file>docs/invariants/[a-z0-9-]+\.md)#(?<anchor>[a-z0-9-]+)$",
         RegexOptions.CultureInvariant);
     private static readonly Regex IdHeading = new(@"^## (?<id>[A-Z][A-Z0-9]*-\d+)$", RegexOptions.CultureInvariant);
-    private static readonly Regex QuotedPathItem = new("^\\s+- \"[^\"]+\"$", RegexOptions.CultureInvariant);
+    private static readonly Regex AnyIdHeading = new(@"^## (?<id>[A-Z][A-Z0-9]*-\d+)(?: \(retired:.*\))?$", RegexOptions.CultureInvariant);
+    private static readonly Regex IdCitation = new(@"\[(?<id>[A-Z][A-Z0-9]*-\d+)\]", RegexOptions.CultureInvariant);
+    private static readonly Regex QuotedPathItem = new("^ +- \"[^\"]+\"$", RegexOptions.CultureInvariant);
     private static readonly Regex MarkdownLink =new(@"\]\((?<target>[^)\s]+)\)", RegexOptions.CultureInvariant);
     private static readonly HashSet<string> PrunedDirectories = new(StringComparer.OrdinalIgnoreCase)
         { ".git", "bin", "obj", "node_modules", ".vs", "TestResults" };
@@ -57,13 +60,47 @@ public class ClaudeContextBudgetTests
 
     [Theory]
     [InlineData("---\npaths:\n  - \"a/**\"\n---\n", null)]
-    [InlineData("﻿---\npaths:\n  - \"a/**\"\n---\n", "byte-order mark")]
+    [InlineData("\uFEFF---\npaths:\n  - \"a/**\"\n---\n", "byte-order mark")]
     [InlineData("---\r\npaths:\r\n  - \"a/**\"\r\n---\r\n", "CRLF")]
     public void A_rule_file_must_be_bom_free_LF_text(string content, string? expectedProblem)
     {
         List<string> problems = RawFormatProblems("x.md", Encoding.UTF8.GetBytes(content)).ToList();
         if (expectedProblem is null) Assert.Empty(problems);
         else Assert.Contains(problems, p => p.Contains(expectedProblem, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("  - \"a/**\"", true)]
+    [InlineData("\t- \"a/**\"", false)]
+    [InlineData("  - a/**", false)]
+    public void A_paths_item_is_a_double_quoted_glob_indented_with_spaces(string item, bool accepted)
+        => Assert.Equal(accepted, QuotedPathItem.IsMatch(item));
+
+    [Theory]
+    [InlineData(1, 120, false)]
+    [InlineData(2, 300, false)]
+    [InlineData(1, 401, true)]
+    [InlineData(3, 350, true)]
+    public void A_rule_file_body_holds_rule_lines_not_prose(int proseLines, int proseLength, bool rejected)
+    {
+        // The first prose line is a preamble; the rest follow the rule, as a "Mirrored from …:" header does.
+        var body = new StringBuilder("# Area rules\n\n").Append('a', proseLength).Append("\n\n")
+            .Append("- [X-1] Never do the thing. Full: docs/invariants/x.md#x-1\n");
+        for (int i = 1; i < proseLines; i++) body.Append('\n').Append('a', proseLength).Append('\n');
+        Assert.Equal(rejected, RuleBodyProblems("x.md", body.ToString()).Count > 0);
+    }
+
+    [Theory]
+    [InlineData("## A-1\n", "## A-2\n", "see [A-1]", false)]
+    [InlineData("## A-1\n", "## A-1\n", "", true)]
+    [InlineData("## A-1 (retired: merged into A-2)\n", "## A-1\n", "", true)]
+    [InlineData("## A-1 (retired: merged into A-2)\n", "## A-2\n", "see [A-1]", false)]
+    [InlineData("## A-1\n", "## A-2\n", "see [A-3]", true)]
+    public void An_ID_names_one_rule_forever_and_every_citation_resolves(string fullText1, string fullText2, string citing,
+        bool rejected)
+    {
+        var fullTexts = new[] { ("one.md", fullText1), ("two.md", fullText2) };
+        Assert.Equal(rejected, IdProblems(fullTexts, new[] { ("doc.md", citing) }).Count > 0);
     }
 
     [Fact]
@@ -90,9 +127,10 @@ public class ClaudeContextBudgetTests
                     + "accepted here), or, if it truly applies to any file, move it into CLAUDE.md.");
             foreach (string item in rf.PathItems)
                 if (!QuotedPathItem.IsMatch(item))
-                    problems.Add($"{rf.Name}: paths item '{item.Trim()}' must be a double-quoted glob, '  - \"<glob>\"'. "
-                        + "Unquoted, YAML can read '*' as an alias or '#' as a comment; Claude Code then ignores the front "
-                        + "matter and loads the file in EVERY session.");
+                    problems.Add($"{rf.Name}: paths item '{item.Trim()}' must be a double-quoted glob indented with spaces, "
+                        + "'  - \"<glob>\"'. Unquoted, YAML can read '*' as an alias or '#' as a comment, and a tab in the "
+                        + "indentation is a YAML error; Claude Code then ignores the front matter and loads the file in EVERY "
+                        + "session.");
             foreach (string g in rf.Globs ?? new List<string>())
             {
                 if (g.Contains('{') || g.Contains('['))
@@ -104,9 +142,7 @@ public class ClaudeContextBudgetTests
             if (rf.Text.Length > RuleFileMaxChars)
                 problems.Add($"{rf.Name}: {rf.Text.Length:N0} characters, over {RuleFileMaxChars:N0}. Split the area into "
                     + "two rule files with narrower paths, or shorten its lines.");
-            foreach (string line in rf.Body.Split('\n'))
-                if (line.StartsWith("- ", StringComparison.Ordinal))
-                    CheckRuleLine(rf.Name, line, problems);
+            problems.AddRange(RuleBodyProblems(rf.Name, rf.Body));
         }
         foreach (string line in Read(Path.Combine(RepoRoot(), "CLAUDE.md")).Split('\n'))
             if (IdStart.IsMatch(line))
@@ -193,6 +229,10 @@ public class ClaudeContextBudgetTests
                     problems.Add($"{rel}: '## {id}' is claimed by a rule line pointing at {owner}.");
             }
         }
+        IEnumerable<string> citing = new[] { Path.Combine(root, "CLAUDE.md") }.Concat(RuleFiles().Select(rf => rf.Path))
+            .Concat(InvariantFiles()).Concat(Directory.EnumerateFiles(Path.Combine(root, "docs"), "*.md"));
+        problems.AddRange(IdProblems(InvariantFiles().Select(p => (Rel(root, p), Read(p))),
+            citing.Select(p => (Rel(root, p), Read(p)))));
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 
@@ -202,9 +242,7 @@ public class ClaudeContextBudgetTests
         string root = RepoRoot();
         var compiled = RuleFiles().Select(rf => (rf, Globs: (rf.Globs ?? new List<string>()).Select(GlobRegex).ToList())).ToList();
         var problems = new List<string>();
-        foreach (string file in RepoFiles().Where(f =>
-                     (f.StartsWith("MSFSBlindAssist/", StringComparison.Ordinal) || f.StartsWith("tests/", StringComparison.Ordinal))
-                     && (f.EndsWith(".cs", StringComparison.Ordinal) || f.EndsWith(".js", StringComparison.Ordinal))))
+        foreach (string file in RepoFiles())
         {
             var loaded = compiled.Where(c => c.Globs.Any(g => g.IsMatch(file))).Select(c => c.rf).ToList();
             int total = loaded.Sum(rf => rf.Text.Length);
@@ -248,6 +286,53 @@ public class ClaudeContextBudgetTests
             problems.Add($"{name}: '{head}' still has its placeholder; write the one-line rule.");
         if (line.Length > RuleLineMaxChars)
             problems.Add($"{name}: '{head}' is {line.Length} characters, over {RuleLineMaxChars}. " + HowToAdd);
+    }
+
+    /// <summary>An ID names one rule forever: it heads ONE full text, retired or not, and every '[ID]' citation names
+    /// one of them.</summary>
+    private static List<string> IdProblems(IEnumerable<(string Name, string Text)> fullTexts,
+        IEnumerable<(string Name, string Text)> citingTexts)
+    {
+        var problems = new List<string>();
+        var home = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach ((string name, string text) in fullTexts)
+            foreach (string line in text.Split('\n'))
+            {
+                Match h = AnyIdHeading.Match(line);
+                if (!h.Success) continue;
+                string id = h.Groups["id"].Value;
+                if (home.TryGetValue(id, out string? first))
+                    problems.Add($"{name}: '## {id}' is also a heading in {first}. An ID names ONE rule forever, retired "
+                        + "or not; a new rule takes the next unused number.");
+                else home[id] = name;
+            }
+        foreach ((string name, string text) in citingTexts)
+            foreach (string id in IdCitation.Matches(text).Select(m => m.Groups["id"].Value).Distinct())
+                if (!home.ContainsKey(id))
+                    problems.Add($"{name}: cites [{id}], which no '## {id}' heading in docs/invariants defines.");
+        return problems;
+    }
+
+    /// <summary>Rule lines, plus headings and a short preamble; the story goes under the ID in docs/invariants.</summary>
+    private static List<string> RuleBodyProblems(string name, string body)
+    {
+        var problems = new List<string>();
+        int prose = 0;
+        foreach (string line in body.Split('\n'))
+        {
+            if (line.StartsWith("- ", StringComparison.Ordinal))
+            {
+                CheckRuleLine(name, line, problems);
+                continue;
+            }
+            prose += line.Length;
+            if (line.Length > RuleLineMaxChars)
+                problems.Add($"{name}: a {line.Length}-character line that is not a rule line. " + HowToAdd);
+        }
+        if (prose > RuleFileProseMaxChars)
+            problems.Add($"{name}: {prose:N0} characters of text that is not a rule line, over {RuleFileProseMaxChars:N0}; "
+                + "a rule file holds rule lines, headings and a short preamble. " + HowToAdd);
+        return problems;
     }
 
     /// <summary>Checks the bytes Claude Code reads, which <see cref="Read"/> normalizes away: a front matter it fails
