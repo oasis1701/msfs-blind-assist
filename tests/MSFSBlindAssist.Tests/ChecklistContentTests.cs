@@ -24,11 +24,19 @@ public class ChecklistContentTests
 
     private static string ChecklistFolder() => Path.Combine(RepoRoot(), "MSFSBlindAssist", "Checklists");
 
-    /// <summary>Every bundled file, by the definitions that name it (main #266 moved the map there).</summary>
+    /// <summary>
+    /// Every bundled file, by the definitions that name it (main #266 moved the map there).
+    /// The definitions are found in the ASSEMBLY, not on a hand-kept list: an aircraft that
+    /// ships a checklist but is missing from ComboLabelCollapseTests.AllAircraft (the A220
+    /// was, in the all-PRs build) would otherwise read as a file nobody names.
+    /// </summary>
     private static IReadOnlyDictionary<string, string> BundledFiles()
     {
         var map = new Dictionary<string, string>(StringComparer.Ordinal);
-        var defs = ComboLabelCollapseTests.AllAircraft().Select(o => (MSFSBlindAssist.Aircraft.IAircraftDefinition)o[0])
+        var defs = typeof(MSFSBlindAssist.Aircraft.IAircraftDefinition).Assembly.GetTypes()
+            .Where(t => !t.IsAbstract && typeof(MSFSBlindAssist.Aircraft.IAircraftDefinition).IsAssignableFrom(t)
+                        && t.GetConstructor(Type.EmptyTypes) != null)
+            .Select(t => (MSFSBlindAssist.Aircraft.IAircraftDefinition)Activator.CreateInstance(t)!)
             .Append(new CowsDA40Definition(DA40Variant.NG))
             .Append(new CowsDA40Definition(DA40Variant.XLS));
         foreach (var d in defs)
