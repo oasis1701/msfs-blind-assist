@@ -101,7 +101,6 @@ Displays and Windows:
   Shift+M    Show VATSIM METAR Report
   Ctrl+Shift+T  Cold Temperature Altitude Correction (offline calculator: field elevation + temperature + published altitudes -> corrected altitudes)
   Shift+B    SimBrief Briefing
-  Shift+C    Show Checklist
 
 Background Announcements:
   Ctrl+M     787 Monitor Manager - a checklist of every variable the 787 announces

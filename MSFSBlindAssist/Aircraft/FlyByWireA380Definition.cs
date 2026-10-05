@@ -40,6 +40,7 @@ public partial class FlyByWireA380Definition : BaseAircraftDefinition,
 {
     public override string AircraftName => "FlyByWire A380X";
     public override string AircraftCode => "FBW_A380";
+    public override string? ChecklistFileName => "FBW_A380_Checklist.txt";
 
     // Taxi-turn rollout-anticipation lead (see IAircraftDefinition.TaxiTurnLeadSeconds).
     // The PR-85 (A380) and PR-87 (taxi rollout anticipation) branches merged

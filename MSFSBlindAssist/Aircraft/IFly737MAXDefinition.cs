@@ -30,6 +30,7 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
     // One spelling, shared with the speed-brake callout's Ctrl+M lookup (DefAnnounceMuteSets).
     private const string Code = "IFLY_737MAX8";
     public override string AircraftCode => Code;
+    public override string? ChecklistFileName => "iFly_737MAX8_Checklist.txt";
 
     // Measured on the PMDG 737 and validated in-sim; same airframe class.
     public override double TaxiTurnLeadSeconds => 0.4;

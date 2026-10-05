@@ -2535,7 +2535,14 @@ length and mtime. A package scores by the cells that reach the airport box grown
 box's own latitude — the resolver alone used to convert at the aircraft's), and
 needs `MinPlacementsInBox` (20) to count — below that is a livery's
 hangar, a city pack's edge, or one static aircraft on the ramp. **Community
-only**; Official/OneStore is never scanned. Measured on a real Community folder:
+and, on MSFS 2024, `Community2024`** — the SDK's folder for 2024-only add-ons,
+where iniBuilds, FlyTampa and Orbx put their 2024-native airports and TFDi its
+MD-11; both come from the one `MsfsPackagesLocator.TryGetCommunityPaths` and are
+scored together under one cap (a Community-only census reported "no installed
+scenery package found" at CYYZ with FlyTampa's package on the disk, 2026-10-02;
+on that machine 63 of 163 packages, and every 2024 airport, were in the second
+folder). Official/OneStore is never scanned. Measured on a real Community folder
+(the `Community2024` half is unmeasured):
 40 scenery packages of 88 (the other 48 carry no `layout.json`, or a
 `manifest.json` naming another `content_type`, and no BGL of theirs is opened at
 all), 2,443 BGLs, 21.3 MB read, 2.58 s cold and 16 ms warm (measured before
@@ -2637,7 +2644,7 @@ config, and since the census it is read while the simulator is running, where
 a reader that permits no writer can make the simulator's own write fail. A
 config that EXISTS but cannot be READ — the simulator holding it exclusively
 for a moment, an access error — is reported apart from "nothing to read"
-(`TryGetCommunityPath`'s `readFailed`), and `SurroundingsCatalogBuilder` marks the
+(`TryGetCommunityPaths`' `readFailed`), and `SurroundingsCatalogBuilder` marks the
 scenery tier SHORT on it, so the catalog is degraded and built again after its
 lifetime instead of standing as an airport with no scenery package: a read
 that failed says nothing about whether the package is there. A config that
@@ -2648,7 +2655,7 @@ rebuild would only find the same absence. Its `IndexOf` match also matches
 CALLER's choice (`includeNextBoot`, passed explicitly with no default). The
 navdata database build keeps it (`TryGetInstalledPackagesPath`, preserved
 deliberately: it has always resolved its base path this way). The census
-never does (`TryGetCommunityPath`, the active key only — the rule
+never does (`TryGetCommunityPaths`, the active key only — the rule
 `AircraftCfgCatalog`, `GsxAirplaneProfile` and `EFBModPackageManager` already
 applied — with no `includeNextBoot` parameter of its own, so no caller can
 take the NextBoot line by accident): it reads while the simulator RUNS, and
@@ -2662,7 +2669,7 @@ loading (review SI-5).
 | Setting | Default | Panel |
 |---|---|---|
 | `SurroundingsCalloutsEnabled` | off | Taxi Guidance |
-| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus `", 1 file unreadable"` / `", 3 files unreadable"` when a file could not be read and `", 1 file missing or incomplete"` / `", 3 files missing or incomplete"` when the package does not match its own `layout.json` (neither scan is cached), and `" (located by Community scan)"` when the census found the package |
+| `SceneryIndexEnabled` | on | Taxi Guidance, with a read-only status TextBox — `"{icao}: {n} features from {package} ({n} placements, {n} without a model name)"`, plus `", 1 file unreadable"` / `", 3 files unreadable"` when a file could not be read and `", 1 file missing or incomplete"` / `", 3 files missing or incomplete"` when the package does not match its own `layout.json` (neither scan is cached), and `" (located by add-on folder scan)"` when the census found the package (in Community or Community2024) |
 | OSM feature tags | rides the existing `TaxiAugmentEnabled` opt-in | — |
 
 The scenery index is disk-cached under
