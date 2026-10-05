@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 17;
+    A.VERSION = 23;
 
     function visible(el) {
         if (!el) return false;
@@ -2586,6 +2586,14 @@
 
         var e2 = host.parentElement;
         for (var d = 0; d < 6 && e2; d++) {
+            // ⚠️ A LABEL LIVES IN THE FIELD'S OWN ROW, NEVER ABOVE THE LIST THE ROW IS IN.
+            // A page menu's rows are self-describing ("Engine Damage: ON") and have no label
+            // node at all, so the climb walked out of the row into the menu's list and took
+            // what was left of the WHOLE MENU - the first row - as the name: every row of the
+            // MFD Engine page menu read "Failures Mode: Normal: State Saving: OFF",
+            // "Failures Mode: Normal: Engine Damage: ON" (reported from the cockpit). Reaching
+            // a list container means the row had no label of its own, and that is the answer.
+            if (hasClassContaining(e2, "-list") || hasClassContaining(e2, "listcontainer")) return "";
             var whole = text(e2);
             var cut = whole;
             for (var i = 0; i < strip.length; i++) cut = cut.split(strip[i]).join(" ");
@@ -2668,7 +2676,7 @@
         var out = [];
         if (!view || !view.scrollController) return out;
         A.M.walk(view.scrollController, "", out, 0);
-        A.M.nameByRow(out);
+        A.M.nameByRow(out, /MenuDialog$/.test(A.M.viewKey() || ""));
         return out;
     };
 
@@ -2692,7 +2700,7 @@
     //     "Nearest Airport, Minimum Length" read correctly on the setup page.
     //   - a field that is not the FIRST of its row is labelled with the first one's value,
     //     so the frequency is announced as the airport's.
-    A.M.nameByRow = function (fields) {
+    A.M.nameByRow = function (fields, isMenu) {
         if (!fields || !fields.length) return;
 
         // Drop a group that is the same on every field.
@@ -2703,6 +2711,14 @@
         if (uniform && g0) {
             for (var j = 0; j < fields.length; j++) fields[j].group = "";
         }
+
+        // ⚠️ A MENU IS A LIST OF ENTRIES, NEVER A ROW WITH A SUBJECT. Every page menu - the
+        // MFD Engine page's, the checklist page's, the map's - nests its entries under one
+        // list, so they share a row path, and naming them after the first entry made the
+        // checklist page's menu read "Show Checklist Dropdown: Show Group Dropdown",
+        // "Show Checklist Dropdown: Check All" for every entry below the first (reported from
+        // the cockpit as the first entry said again and again while moving through a menu).
+        if (isMenu) return;
 
         // Label the rest of a row with the row's first value.
         var rowOf = function (p) {
@@ -2732,8 +2748,19 @@
         //
         // A row that has neither leaves its later fields unlabelled, which reads as the
         // bare value - imperfect, and still better than a confident wrong one.
+        //   - ⚠️ A VALUE THAT ALREADY NAMES ITSELF ("Engine Damage: ON") is a whole menu
+        //     ENTRY, not a row's subject, and the entries of one menu all sit under one list
+        //     and so look like one row. Naming them after the first entry made every row of
+        //     the MFD Engine page menu read "Failures Mode: Normal: State Saving: OFF",
+        //     "Failures Mode: Normal: Engine Damage: ON" (reported from the cockpit), and
+        //     the same shape made a checklist's entries all read after its first one. A
+        //     self-named value neither names a row nor takes a row's name.
+        var selfNamed = function (f) {
+            return /^[^:]*[A-Za-z][^:]*:\s+\S/.test(String((f && f.value) || ""));
+        };
         var canName = function (f) {
             if (!f || f.able === false) return false;
+            if (selfNamed(f)) return false;
             return /[A-Za-z]/.test(String(f.value || ""));
         };
 
@@ -2743,7 +2770,7 @@
             if (!r) continue;
             if (!(r in firstOfRow)) { firstOfRow[r] = canName(fields[m]) ? fields[m].value : ""; continue; }
             // Not the first of its row, and carrying no label of its own.
-            if (!fields[m].label && firstOfRow[r]) fields[m].label = firstOfRow[r];
+            if (!fields[m].label && firstOfRow[r] && !selfNamed(fields[m])) fields[m].label = firstOfRow[r];
         }
     };
 
@@ -3057,12 +3084,15 @@
                 if (inst && inst.nodeType === 1) return inst;
             } catch (e) { }
         }
-        try { if (c.props && c.props.ref && c.props.ref.instance) return c.props.ref.instance; }
+        try {
+            if (c.props && c.props.ref && c.props.ref.instance && c.props.ref.instance.nodeType === 1)
+                return c.props.ref.instance;
+        }
         catch (e) { }
         try {
             if (c.getHighlightElement) {
                 var h = c.getHighlightElement();
-                if (h) return h;
+                if (h && h.nodeType === 1) return h;
             }
         } catch (e) { }
         return null;
@@ -3073,12 +3103,17 @@
     /// clock from becoming "0 : 0 0" welds "VCBI 020" into one token. Its own child
     /// elements ARE the fields: "VCBI, 250°, 0.1 NM".
     A.M.rowText = function (el2) {
-        if (!el2) return "";
+        // ⚠️ ONLY A DOM ELEMENT. f2Element can hand back a component object whose
+        // `children` is not a NodeList, and text() on one THROWS inside createTreeWalker —
+        // which took the whole readback down with it: on the checklist page the GROUP and
+        // CHECKLIST selectors read "nothing under the cursor" while the cursor sat on them.
+        if (!el2 || el2.nodeType !== 1) return "";
 
         var kids = el2.children;
         if (kids && kids.length > 1) {
             var parts = [];
             for (var i = 0; i < kids.length; i++) {
+                if (!kids[i] || kids[i].nodeType !== 1) continue;
                 var v = text(kids[i]);
                 if (v) parts.push(v);
             }
@@ -3108,6 +3143,11 @@
                 if (candidate) { t2 = candidate; break; }
             }
             if (!t2) continue;
+
+            // A checklist item draws its LEADER as a run of seventy dots ("Parking brake
+            // .......... SET"), which the window's rows already read as " ... " but the
+            // knob readback spoke raw. Same tidy as the rows, so the two never disagree.
+            t2 = t2.replace(/\s*\.{3,}\s*/g, " ... ");
 
             // A checklist NOTE or a terms-and-conditions paragraph is a legitimate item and
             // it can run to five hundred characters. Speaking all of it after every knob
@@ -3651,6 +3691,18 @@
         return rows;
     };
 
+    /// The checklist page's GROUP or CHECKLIST box, when the cursor is on it.
+    A.checklistSelectorSay = function () {
+        var boxes = [[".checklist-category", "Checklist group"], [".checklist-title", "Checklist"]];
+        for (var i = 0; i < boxes.length; i++) {
+            var box = firstVisible(boxes[i][0]);
+            if (!box) continue;
+            var hl = box.querySelector(".highlight-select");
+            if (hl && visible(hl)) return boxes[i][1] + ", " + (text(hl) || "blank");
+        }
+        return "";
+    };
+
     A.summary = function () {
         // A SELECTION POPUP outranks everything, and this is why the checklist page felt
         // like a dead end: the knob really was moving the highlight, but the readback fell
@@ -3738,6 +3790,13 @@
             return "No window open. The PFD cursor works inside a window - " +
                    "press Control G, or a softkey such as Nearest or Timer and References.";
         }
+
+        // THE CHECKLIST PAGE'S TWO SELECTORS. COWS 1.2.0's checklist plugin registers its
+        // group and checklist boxes as controls whose element the model cannot hand back, so
+        // with the cursor on either of them the readback said "nothing under the cursor".
+        // The box under the cursor carries the instrument's own highlight-select.
+        var chkSel = A.checklistSelectorSay();
+        if (chkSel) return chkSel;
 
         var title = A.pageTitle();
         var on = false;

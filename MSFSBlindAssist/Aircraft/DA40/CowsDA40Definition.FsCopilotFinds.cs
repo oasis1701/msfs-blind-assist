@@ -428,9 +428,8 @@ public partial class CowsDA40Definition
             "Fuel Pump 2 Damage");
 
         // ---------- FAILURES WITH NO ROW ----------
-        AddFind(v, "DA40_FAIL_PROP_COMBINED", "FAILURES_PROP:1", SimVarType.LVar,
-            "Propeller Failure",
-            "number", "F0", yesNo, true);
+        // (FAILURES_PROP:1 is a settable failure with THREE modes since COWS 1.2.0, so it is
+        // a row of its own in the Engine Failures controls — CowsDA40Definition.Failures.)
         AddFind(v, "DA40_FAIL_TURBO_STOCK", "RECIP ENG TURBOCHARGER FAILED:1",
             SimVarType.SimVar, "Turbocharger Failed",
             "bool", "F0", yesNo, true);
@@ -508,6 +507,6 @@ public partial class CowsDA40Definition
     private static readonly List<string> FsCopilotIcePitotRows2 = new() { "DA40_PITOT_HEAT_STOCK" };
     private static readonly List<string> FsCopilotEngineFailureRows2 = new()
     {
-        "DA40_FAIL_PROP_COMBINED", "DA40_FAIL_TURBO_STOCK"
+        "DA40_FAIL_TURBO_STOCK"
     };
 }

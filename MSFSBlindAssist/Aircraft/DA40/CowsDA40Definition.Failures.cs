@@ -65,6 +65,17 @@ public partial class CowsDA40Definition
             AddFailureFlag(v, "DA40_FAIL_OIL_T_SENSOR", "FAILURES_OIL_TEMP_SENSOR:1", "Oil Temperature Sensor");
             AddFailureFactor(v, "DA40_FAIL_TURBO_SET", "FAILURES_TURBO:1", "Turbocharger");
             AddFailureFlag(v, "DA40_FAIL_WASTEGATE", "FAILURES_WASTEGATE:1", "Wastegate");
+
+            // The propeller governor, by the model's own three branches (NG Logic 786ff):
+            // 1 stops the governor's oil flow, so the blades hold the pitch they have; 2
+            // starves the coarse side, so the governor cannot pull the pitch coarser against
+            // an overspeed; 3 — new in COWS 1.2.0, with the governor's actuator motor —
+            // freezes the governor's target rpm where it is. The random picker raises 1 and 2.
+            AddFailureModes(v, "DA40_FAIL_PROP_COMBINED", "FAILURES_PROP:1", "Propeller Governor",
+                new Dictionary<double, string>
+                {
+                    [0] = "Normal", [1] = "Pitch stuck", [2] = "No coarse pitch", [3] = "Actuator stuck"
+                });
         }
 
         // ---------- FADEC and Sensors ----------
@@ -413,6 +424,7 @@ public partial class CowsDA40Definition
         "DA40_FAIL_OIL_T_SENSOR",
         "DA40_FAIL_TURBO_SET",
         "DA40_FAIL_WASTEGATE",
+        "DA40_FAIL_PROP_COMBINED",
     };
 
     private static readonly List<string> SimFadecControls = new()
