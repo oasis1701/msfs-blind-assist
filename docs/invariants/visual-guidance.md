@@ -78,3 +78,7 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## VG-19
 
 - VG's manual-query grace window must only suppress the two chatty per-second callouts (bank guidance, centerline deviation) — phase changes and distance callouts must still fire during a manual hotkey readout. → [visual-guidance.md](../visual-guidance.md)
+
+## VG-20
+
+- The A380X and HS787 must NOT inherit the A320 baseline VG profile — both are heavy widebodies and carry 777-class overrides; the biases are type-performance ESTIMATES (the installed `flight_model.cfg` files hold only vestigial stub speeds, A380 == A320), pending in-sim coupled-ILS-autoland calibration. → [visual-guidance.md](../visual-guidance.md)
