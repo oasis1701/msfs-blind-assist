@@ -26,11 +26,15 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// A blind pilot has none of those, and would find out on the landing rollout. Both
 /// wheels are reported separately because they heat separately.
 ///
-/// THE PARKING BRAKE IS SIMPLER THAN THE BOOK. AFM 7.5.2 has the pilot pull the lever and
-/// then PUMP the toe pedals to build pressure. COWS does not model the pumping: setting
-/// INPUT_PARK took BRAKE_PRESS from 0 to 100 in one step, measured live, and clearing it
-/// took it back to 0. So one toggle is the whole control, and inventing a pump button
-/// would be adding a step the simulation does not have.
+/// THE PARKING BRAKE FOLLOWS THE COWS OPTION. AFM 7.5.2 has the pilot pull the lever and then
+/// press the toe pedals to build pressure. With Realistic Parking Brake on (L:REALISTIC_PARKING_BRAKE
+/// 1) that is exactly what the model does: while INPUT_PARK is set, BRAKE_PARK:n latches the
+/// highest pedal pressure it sees (BRAKE_PEDAL feeds back through its own max), so the handle
+/// alone holds 0 percent and pressing the pedals after it latched 97 (measured live on the NG).
+/// The pedals are the pilot's own hardware or the sim's Brakes key, which COWS binds to
+/// INPUT_BRAKE_BUTTON_BOTH, so a pilot without toe brakes presses that. With the option
+/// Simplified, INPUT_PARK takes BRAKE_PRESS straight to 100. Either way the handle is the one
+/// panel control; the Park Pressure rows say whether it is holding.
 /// </summary>
 public partial class CowsDA40Definition
 {

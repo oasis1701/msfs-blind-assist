@@ -11,6 +11,8 @@ paths:
   - "MSFSBlindAssist/Forms/DisplayListBox.cs"
   - "MSFSBlindAssist/Aircraft/A380SurfaceDeflection.cs"
   - "tools/coherent-coverage.js"
+  - "MSFSBlindAssist/Services/TakeoffRollCallouts.cs"
+  - "MSFSBlindAssist/Services/UnusualAttitudeMonitor.cs"
 ---
 # Rules the DA40 work found in shared code
 
@@ -27,3 +29,5 @@ Rules about shared code that the DA40 work measured. Full text of each rule: doc
 - [DA40S-9] `NativeChecklistReader` renders the aircraft's own `Checklist/*.xml`, walking each page's children IN ORDER including one level of `<Block>`; it is pinned against the installed package, and packages resolve from UserCfg.opt's active key. Full: docs/invariants/da40-shared-code.md#da40s-9
 - [DA40S-10] Use `tools/coherent-coverage.js` before claiming any Coherent display is fully read: its visibility test walks the ancestor chain and chrome is reported once; it reports candidates, not verdicts. Full: docs/invariants/da40-shared-code.md#da40s-10
 - [DA40S-11] FBW mirrors the LEFT aileron only: `A380SurfaceDeflection.DescribeMirrored` is for the left aileron and `Describe` for the right aileron and both elevators, or a droop reads as a roll. Full: docs/invariants/da40-shared-code.md#da40s-11
+- [DA40S-12] Take-off-roll speed calls are decided only by `TakeoffRollCallouts` and applied for the CURRENT aircraft on every path that configures `TakeoffAssistManager` (aircraft switch AND Settings save); a profile is never applied without being taken back. Full: docs/invariants/da40-shared-code.md#da40s-12
+- [DA40S-13] `UnusualAttitudeMonitor` INTERRUPTS beyond 45 degrees of bank with hysteresis and announces the recovery at 20 degrees, a deliberate exception to the silent-clear rule; never turn it into a query and never silence the recovery. Full: docs/invariants/da40-shared-code.md#da40s-13
