@@ -146,7 +146,6 @@ Displays and Windows:
   Shift+L    Location Info
   Shift+M    Show METAR Report (VATSIM, plus ActiveSky METAR if AS detected)
   Shift+B    SimBrief Briefing
-  Shift+C    Show Checklist
 
 INPUT MODE - PMDG EFB Tablet:
   Shift+T    PMDG EFB Tablet - Captain tablet
