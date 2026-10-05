@@ -1,0 +1,62 @@
+---
+paths:
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Rollout.cs"
+  - "MSFSBlindAssist/Navigation/Rollout*.cs"
+  - "MSFSBlindAssist/Navigation/RunwayEndCountdownGate.cs"
+  - "MSFSBlindAssist/Navigation/RetargetCallout.cs"
+  - "MSFSBlindAssist/Navigation/TouchdownCallout.cs"
+  - "MSFSBlindAssist/Navigation/OffPavementAlert.cs"
+  - "MSFSBlindAssist/Navigation/PavementMap.cs"
+  - "MSFSBlindAssist/Navigation/RunwayVacateResolver.cs"
+  - "MSFSBlindAssist/Services/LandingExitGoAround.cs"
+  - "MSFSBlindAssist/Services/LandingFlareAssistManager.cs"
+  - "MSFSBlindAssist/Services/LandingGuidanceLaws.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*Rollout*.cs"
+  - "MSFSBlindAssist/Navigation/PavementTolerance.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*EarlyVacate*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OffPavement*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayEndCountdown*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*LandingFlare*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TouchdownCallout*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RetargetCallout*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*OvershootRetarget*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PavementMap*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*PavementTolerance*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayVacateResolver*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*KmemLanding*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*LandingGuidanceLaw*.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.cs"
+---
+# Landing rollout guidance rules
+
+Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full text of each rule: docs/invariants/landing-rollout.md.
+
+- [ROL-1] The landing assist hands its rollout tone to taxi guidance SILENTLY (`LandingFlareAssistManager.StepTaxiHandover`), never by widening `IsLandingExitTaxiSteering` to backtracking; its own end is QUEUED when taxi guidance ran, so it never clips a taxi sentence. Full: docs/invariants/landing-rollout.md#rol-1
+- [ROL-2] Rollout handoff to Taxiing must require `turnBegun || (atTaxiSpeed && nearExit)`; never relax `nearExit` back to speed-only, since a long runway drops below 30 kt thousands of feet before the exit. Full: docs/invariants/landing-rollout.md#rol-2
+- [ROL-3] Never remove the `ROLLOUT_TURN_MAX_GS_KTS` (90 kt) cap on `turnBegun`: above 90 kt a heading deviation is touchdown yaw or crosswind crab, not a real exit turn. Full: docs/invariants/landing-rollout.md#rol-3
+- [ROL-4] `EnterRunwayEndCountdown` must null `_route`/`_destinationNodeId` on overshoot-with-no-exit, or `TryRecalculateRoute` routes back across the runway to the already-passed exit. Full: docs/invariants/landing-rollout.md#rol-4
+- [ROL-5] Measure the overshoot "downfield" cutoff from the aircraft as well as the missed exit (`RolloutExitGate.DownfieldCutoffFeet`); the aircraft is a FLOOR, never an extra margin stacked on the exit-relative value. Full: docs/invariants/landing-rollout.md#rol-5
+- [ROL-6] Every path that lands in `Taxiing` with a null `_route` must STOP the steering tone first (`UpdatePosition` early-returns, so a tone holds its last pan forever) and say what happened. Full: docs/invariants/landing-rollout.md#rol-6
+- [ROL-7] A go-around or touch-and-go ENDS landing-exit guidance and keeps the plan (`LandingExitGoAround`): held only while KNOWN airborne, decided after `ConfirmMs` by a FRESH position read (never the 1 Hz cache), then ONE sentence. Full: docs/invariants/landing-rollout.md#rol-7
+- [ROL-8] `TryEarlyExitHandoff` must fire ONLY for High-speed exits (angle <50°); never restore it for Normal/End exits, where it hard-panned the tone 300 ft early with no verbal cue. Full: docs/invariants/landing-rollout.md#rol-8
+- [ROL-9] Every handoff to Taxiing must re-route from the live aircraft position via the extension-node logic; never revert to the ApronNodeId-only re-route (Normal/End exits have ApronNodeId==NodeId). Full: docs/invariants/landing-rollout.md#rol-9
+- [ROL-10] The post-high-speed-exit `ExitBearingTrue` pan floor has exactly TWO releases: the opposite-sign test on the pavement and lateral clearance (`IsWithinRolloutRunwayLaterally`); never magnitude-vs-floor, never the unconditional `Math.Max/Min` clamp. Full: docs/invariants/landing-rollout.md#rol-10
+- [ROL-11] The implicit-exit shallow-angle override needs BOTH guards together (apron forward-direction AND `apronAngle > currentAngleFwd`); dropping either regresses the exit bearing. Full: docs/invariants/landing-rollout.md#rol-11
+- [ROL-12] The `exitedLaterally` handoff trigger must use the combined gate (lateral + dist/hdgDelta/pastExit), never bare lateral distance, which fires before the tone's exit-bearing phase engages. Full: docs/invariants/landing-rollout.md#rol-12
+- [ROL-13] The passive-handoff `exitedLaterallyPH` check must NOT be gated like the trigger: different semantics, and gating it delays clearing the overshoot monitor. Full: docs/invariants/landing-rollout.md#rol-13
+- [ROL-14] `_rolloutRunway` must stay cached through `EnterRunwayEndCountdown`: the countdown needs it, and full silence on a missed last exit is unsafe for a blind pilot. Full: docs/invariants/landing-rollout.md#rol-14
+- [ROL-15] `BeginLandingRolloutNoGraph` must defensively null `_route` at entry regardless of the takeoff path, so the handoff-failure fallback invariant always holds. Full: docs/invariants/landing-rollout.md#rol-15
+- [ROL-16] `RetargetLandingExit` must cascade through every downfield exit before giving up; an Earlier retarget's fall-forward stops SILENTLY at the exit already targeted (`RetargetCallout.StaysOnPlannedExit`), and an exit that fails to route is skipped for the rollout. Full: docs/invariants/landing-rollout.md#rol-16
+- [ROL-17] The undershoot retarget scan needs a speed-proportional minimum lead distance, never "nearest within 1000 ft", which retargets to an exit impossible to make at the aircraft's speed. Full: docs/invariants/landing-rollout.md#rol-17
+- [ROL-18] Rollout announce latches (e.g. `_rolloutApproach900Announced`) must be reset at all four sites: `BeginLandingRollout`, `BeginLandingRolloutNoGraph`, `EnterRunwayEndCountdown`, `StopGuidance`. Full: docs/invariants/landing-rollout.md#rol-18
+- [ROL-19] Derived-constant tripwire: re-derive all five before changing any runway/rollout tolerance and say so in the commit; 350 ft, 1400 ft and the 25 m clamp follow from the 5 m gap between `HandoffReachMarginM` and `RunwayClearMarginM`; re-run `tools/LandingExitSweep` (more: see full). Full: docs/invariants/landing-rollout.md#rol-19
+- [ROL-20] The rollout exit-turn gate must stay SIGNED (deviation on the exit's own side) and proximity-gated (within `RolloutExitGate.TurnWindowFeetFor`, max 1,000 ft, or past it); never the bare `Math.Abs(hdgDelta) >= 15`. Full: docs/invariants/landing-rollout.md#rol-20
+- [ROL-21] The rollout tone keeps THREE modes (silent >50 kt, exit-bearing ≤300 ft, drift-correction to runway heading between), never fights a turn in the turn window, never leads to a too-fast exit, and uses `ExitBearingTrue` only if `IsPlausibleExitBearing` (more: see full). Full: docs/invariants/landing-rollout.md#rol-21
+- [ROL-22] Each exit has its own turn window (`RolloutExitGate.TurnWindowFeetFor`), floored at `TurnNowFeet` (150 ft), capped at 1,000 ft, computed where read from the exit targeted NOW, never cached; never go back to the fixed window (only `IsVacateAwayFromPlannedExit` keeps it). Full: docs/invariants/landing-rollout.md#rol-22
+- [ROL-23] "Turn now" is never said when too fast (`RolloutExitGate.IsTooFastToTurn`): retarget downfield via `FindTooFastAlternative`, else say "too fast to turn. Slow down.", hold the runway heading, keep speed-driven handoffs closed; never say "Missed" (more: see full). Full: docs/invariants/landing-rollout.md#rol-23
+- [ROL-24] A retarget is ONE utterance (`RetargetCallout` via `AnnounceRetarget`): first retire every approach milestone it supersedes with the MEASURED lead of the sentence spoken (`LeadSecondsFor`), never turn-now; re-measure the lead when the wording changes, never estimate it. Full: docs/invariants/landing-rollout.md#rol-24
+- [ROL-25] "Off pavement." (`PavementMap` + `OffPavementAlert`) runs only in `LandingRollout` and landing-exit `Taxiing`, only on the ground, always counts the landing runway as pavement, speaks via `AnnounceImmediate` and never names a direction (more: see full). Full: docs/invariants/landing-rollout.md#rol-25
+- [ROL-26] After an early vacate never re-route to the PLANNED exit: retarget or conclude. "Early vacate" is along-track (`RolloutExitGate.IsVacateAwayFromPlannedExit`, 350 ft short) under a laterally-clear conjunct; never raise 350 toward a claimed spacing floor. Full: docs/invariants/landing-rollout.md#rol-26
+- [ROL-27] Refuse a handoff route that re-crosses the landing runway at BOTH sites via the ONE `HandoffRouteReCrossesLandingRunway()`; decline only while ON the runway with the exit ahead (both conjuncts), else conclude via `ConcludeLandingExitOn/OffRunway()` (more: see full). Full: docs/invariants/landing-rollout.md#rol-27
+- [ROL-28] `MatchEarlyVacateExit` measures along-track PER EXIT and must never compare against `DistanceFromThresholdFeet`, which is from the landing threshold and breaks at displaced thresholds. Full: docs/invariants/landing-rollout.md#rol-28
+- [ROL-29] `IsHandoffRouteReachable` must gate every landing-exit handoff re-route: a route whose first segment the aircraft is not essentially already on must CONCLUDE guidance, never steer the tone at it. Full: docs/invariants/landing-rollout.md#rol-29

@@ -5,7 +5,8 @@ the fragments added since the previous tag are combined into the GitHub release 
 above the automatically generated list of merged PRs.
 
 Write for a pilot, not a reviewer: say what is different when they fly, not which code
-path moved.
+path moved. Compare "Docking no longer says complete when you are parked askew — it tells
+you to back up and try again" against "fix(docking): require squareness before completion".
 
 ## Naming
 
@@ -17,6 +18,21 @@ ever colliding on a file name. **You add the fragment after opening the PR** —
 number does not exist before that, so there is nothing to name the file until GitHub has
 assigned it. The required check verifies the number is actually this PR's own; get it
 wrong, or forget it, and the check fails with the exact `git mv` command to fix it.
+
+**The procedure — the number is READ, never guessed:**
+
+1. Commit the code changes and push the branch.
+2. Open the PR (`gh pr create …`). It prints the PR URL; the trailing number IS `<pr>`.
+3. Add `changelog.d/<pr>-<slug>.<category>.md`, commit, push.
+
+**NEVER infer the next number.** GitHub draws issue and PR numbers from ONE shared
+sequence — in this repo issue #172 sits between PRs #171 and #173, issue #169 between
+#168 and #170 — so anyone filing an *issue* between your guess and `gh pr create` shifts
+it, as does a second PR opened in that window (four people contribute here). A fragment
+carrying the WRONG number is worse than one carrying none: it looks authoritative, so
+nobody re-checks it, and the archive quietly attributes a change to a PR that never made
+it. Step 2 costs nothing and cannot be wrong. If a number does end up wrong or missing,
+CI prints the exact `git mv` — that is the backstop, not the detection mechanism.
 
 `<slug>` is lower-case letters, digits and dashes, starting with a letter or digit —
 anything short and descriptive; it only has to be unique within the PR. `<category>` is
@@ -57,15 +73,36 @@ with their PR numbers.
 
 Either add an `internal` fragment, or apply the `skip-changelog` label to the PR. Both
 satisfy the required check; the `internal` fragment needs no repository permissions, so
-it is the one to use if you cannot apply labels.
+prefer it, and it is the one to use if you cannot apply labels.
 
-## Fragments are never deleted
+## Released fragments are never deleted
 
-A release is defined by the fragments *added* between two tags, so old files stay as a
-per-change archive. Do not remove them to "clean up" — and do not add a fragment
-describing something already released, or it will appear in the next release's notes.
+A release is defined by the fragments *added* between two tags
+(`git diff --diff-filter=A <prev>..<tag>`), so `changelog.d/` is a permanent per-change
+archive of what has SHIPPED. Two consequences that are easy to get wrong: never tidy away
+a fragment that is already between two tags, and never add a fragment for something
+already released — it would appear in the next release's notes.
 
-## Previewing
+**Before it merges, a long-running PR's own fragments may be CONDENSED, and a big one
+should be.** Nothing in an unmerged PR is between two tags, so nothing is lost from the
+archive. The rule for what survives: a release note describes what changed for a PILOT
+between the last release and this one, so a fragment that documents ITERATION ON CODE
+THIS SAME PR INTRODUCED has no reader — no version ever shipped without it, and the
+capability it repairs is simply part of the feature. What survives is the feature itself
+and anything the work changed OUTSIDE it. PR #189 (the TFDi MD-11) is the worked example:
+80 fragments became 8 — one `aircraft` entry naming what the MD-11 support provides, five
+fixes and an improvement that reach OTHER aircraft (the AI capture path, the calc-path
+verdict across an aircraft switch, the iFly's take-off callouts, the unit suffix, the
+MobiFlight log flood) and one `internal`. ⚠️ Judge "iteration" by what SHIPPED, not by the
+fragment's category: several of the deleted ones were written as `fix` but repaired the
+PrintWindow capture, the display-read latch and the EFB disabled-flip — all three added by
+that same PR, so a pilot upgrading never saw the defect.
+
+## Previewing and publishing
 
 Actions → **Changelog** → *Run workflow* renders the notes for everything unreleased and
 prints them to the run summary. Nothing is published.
+
+At tag time `.github/workflows/release.yml` renders the fragments with
+`tools/ChangelogBuilder` and passes them as `body_path`, which the release action
+prepends to GitHub's generated PR list.
