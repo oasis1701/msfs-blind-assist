@@ -1852,6 +1852,8 @@ public class CowsDA40PanelStructureTests
 
         var v = def.GetVariables()["DA40_ELT"];
         Assert.Equal("Armed", v.ValueDescriptions![0]);
+        // The cockpit switch (input event SAFETY_ELT_1) has two values: 0 ARM, 1 ON.
+        Assert.Equal(new double[] { 0, 1 }, v.ValueDescriptions.Keys.OrderBy(k => k).ToArray());
         Assert.True(v.IsAnnounced);
     }
 

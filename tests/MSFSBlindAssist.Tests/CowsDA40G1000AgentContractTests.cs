@@ -186,7 +186,7 @@ public class CowsDA40G1000AgentContractTests
         // either.
         Assert.Equal(new[]
         {
-            "DA40_OPT_TIMER_EXPIRED_SET", "DA40_OPT_KILL_FMA",
+            "DA40_OPT_TIMER_EXPIRED_SET",
             "DA40_OPT_FFB_YOKE", "DA40_OPT_FFB_SERVO_DISABLE"
         }, controls.ToArray());
     }

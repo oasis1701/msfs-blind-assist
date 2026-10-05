@@ -117,6 +117,17 @@ public partial class CowsDA40Definition
         // against a value that contradicts it.
         AddOptionSwitch(v, "DA40_OPT_KILL_FMA", "COWS_KILL_FMA",
             "G1000 FMA", "Shown", "Hidden");
+        // ⚠️ NOT A SETTING, AND IT NEVER WAS. The model writes COWS_KILL_FMA every frame (XLS
+        // Logic 3005, NG 3152, and the same in 1.1.5): 1 while the autopilot computer is
+        // dead - an AFCS circuit off, a partial-panel failure, or the AFCS self-test not
+        // complete - and 0 otherwise; at 1 it also disconnects the autopilot and drops every
+        // mode. Offered as a switch it was overwritten within a frame (measured live: set to
+        // Hidden, read back Shown). It is the GFC 700 panel's status row now, beside the
+        // pre-flight test it follows, and silent: the test and the autopilot disconnect
+        // already speak for the moments it changes.
+        v["DA40_OPT_KILL_FMA"].RenderAsReadOnlyStatus = true;
+        v["DA40_OPT_KILL_FMA"].UpdateFrequency = UpdateFrequency.OnRequest;
+        v["DA40_OPT_KILL_FMA"].IsAnnounced = false;
 
         // ⚠️ THE MODES HAVE NAMES AND THE AEROPLANE'S OWN MANUAL GIVES THEM. This used to
         // read "0 is off. The aircraft uses modes 1 to 4; it does not name them", on the
@@ -191,7 +202,7 @@ public partial class CowsDA40Definition
     /// the rule on this aeroplane is that anything doable on the display does not also get
     /// a panel.
     ///
-    /// The two that stay are the two the menu does NOT list, checked against the menu's own
+    /// The ones that stay are the ones the menu does NOT list, checked against the menu's own
     /// nine rows rather than assumed. Without them there would be no way to reach these at
     /// all, which is the opposite failure and the worse one.
     ///
@@ -202,7 +213,6 @@ public partial class CowsDA40Definition
     private static readonly List<string> OptionControls = new()
     {
         "DA40_OPT_TIMER_EXPIRED_SET",
-        "DA40_OPT_KILL_FMA",
         // The vendor's two force-feedback switches (DA40 LVAR bindings.txt, 1.2.0): neither
         // is on the MFD menu.
         "DA40_OPT_FFB_YOKE",

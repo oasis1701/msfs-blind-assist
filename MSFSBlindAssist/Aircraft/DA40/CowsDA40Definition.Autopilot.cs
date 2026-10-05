@@ -324,7 +324,10 @@ public partial class CowsDA40Definition
         // Found by diffing FS Copilot's COWS_DA40NG.yaml against this definition.
         "DA40_AP_SELFTEST",
         "DA40_AP_PFT",
-        "DA40_AP_FAILED"
+        "DA40_AP_FAILED",
+        // Whether the G1000 shows the FMA at all: the model hides it whenever the autopilot
+        // computer is dead (Options.cs).
+        "DA40_OPT_KILL_FMA"
     };
 
     private static readonly List<string> AutopilotControls = new()
@@ -396,7 +399,11 @@ public partial class CowsDA40Definition
             "DA40_AP_APR" => on ? "AP_APR_HOLD_ON" : "AP_APR_HOLD_OFF",
             "DA40_AP_BC" => on ? "AP_BC_HOLD_ON" : "AP_BC_HOLD_OFF",
             "DA40_AP_ALT" => on ? "AP_ALT_HOLD_ON" : "AP_ALT_HOLD_OFF",
-            "DA40_AP_VS" => on ? "AP_VS_HOLD_ON" : "AP_VS_HOLD_OFF",
+            // ⚠️ AP_VS_ON / AP_VS_OFF, NOT AP_VS_HOLD_ON / _OFF: the Working Title GFC 700's
+            // state manager intercepts AP_VS_ON/OFF (and AP_PANEL_VS_ON/OFF) and has no case for
+            // the _HOLD_ pair, so those left the autopilot in pitch hold (measured live on the
+            // XLS, 2026-10-05). Every other event here is in its intercept list.
+            "DA40_AP_VS" => on ? "AP_VS_ON" : "AP_VS_OFF",
             "DA40_AP_FLC" => on ? "FLIGHT_LEVEL_CHANGE_ON" : "FLIGHT_LEVEL_CHANGE_OFF",
             _ => null
         };

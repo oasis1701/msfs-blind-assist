@@ -15,17 +15,20 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// The shutdown checklist item is "ELT ... check not transmitting on 121.5 MHz", so the
 /// state is the whole point: ARMED is the normal position and ON means it is transmitting.
 ///
-/// Driven by TOGGLE_ELT rather than ELT_SET, and that is measured rather than preferred:
-/// `2 (>K:ELT_SET)` left ELT ACTIVATED at 0 while `1 (>K:TOGGLE_ELT)` moved it to 2.
-/// ELT_SET does work for 0, so only the toggle is dependable in both directions — which
-/// means comparing against the current state before firing, exactly like the fuel pumps.
+/// ⚠️ RE-MEASURED 2026-10-05 (MSFS 2024, COWS 1.2.0), AND THE EARLIER NOTE WAS WRONG BY
+/// NOW. It said `1 (>K:TOGGLE_ELT)` moved ELT ACTIVATED to 2 and ELT_SET could not reach
+/// it, so the control toggled and called 2 "ON". Today TOGGLE_ELT does nothing at all,
+/// and the cockpit switch itself - its input event SAFETY_ELT_1 - has exactly two values:
+/// 0 ARM and 1 ON (driving it to 2 leaves 1). ELT_SET reaches 0, 1 and 2 directly, so the
+/// control writes the switch's own two values with it, absolute, and needs no compare.
+/// The row reads anything at 1 or above as transmitting.
 /// </summary>
 public partial class CowsDA40Definition
 {
     private const string EltPanel = "ELT";
 
-    /// <summary>The value ELT ACTIVATED takes when the beacon is transmitting.</summary>
-    private const double EltOnValue = 2.0;
+    /// <summary>The value the cockpit switch gives ELT ACTIVATED at ON (SAFETY_ELT_1 = 1).</summary>
+    private const double EltOnValue = 1.0;
 
     private static Dictionary<string, SimVarDefinition> BuildEltVariables() => new()
     {
@@ -52,14 +55,8 @@ public partial class CowsDA40Definition
     {
         if (varKey != "DA40_ELT") return false;
 
-        double current = simConnect.GetCachedVariableValue("DA40_ELT") ?? 0;
-        bool wantOn = value >= 1;
-
-        if (wantOn != current >= 1)
-        {
-            simConnect.ExecuteCalculatorCodeUnique("1 (>K:TOGGLE_ELT)");
-        }
-
+        simConnect.ExecuteCalculatorCodeUnique(
+            FormattableString.Invariant($"{(value >= 1 ? EltOnValue : 0):0} (>K:ELT_SET)"));
         return true;
     }
 }

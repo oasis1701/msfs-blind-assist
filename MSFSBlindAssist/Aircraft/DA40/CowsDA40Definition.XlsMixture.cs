@@ -300,6 +300,20 @@ public partial class CowsDA40Definition
                 // average of 12.5 to 1 while it is set, and clears it on arrival. Written
                 // directly (not the K-event) for the same reason as the auto-start. A
                 // second press mid-walk is byte-identical, so unique.
+                //
+                // ⚠️ REFUSED WITH THE ENGINE STOPPED (automixture off), like the propeller
+                // cycle beside it. The walk aims for a fuel-flow average a stopped engine
+                // never produces (Inputs.xml PRESET_MIXTURE: 50 - average, every frame), so
+                // the flag never clears and the mixture is dragged to cut-off and HELD there
+                // - pushed forward for the start, it creeps back to cut-off at about 8
+                // percent a second (measured live on the XLS, 2026-10-05). With automixture
+                // on the binding just sets 72 and clears, so it is allowed.
+                bool automixture = (simConnect.GetCachedVariableValue("DA40_XLS_AUTOMIXTURE") ?? 0) >= 0.99;
+                if (!automixture && _magRpmNow < DA40MagnetoCheck.RunningRpm)
+                {
+                    announcer.AnnounceImmediate("Engine not running");
+                    return true;
+                }
                 simConnect.ExecuteCalculatorCodeUnique("1 (>L:MIXTURE_SET_BEST)");
                 return true;
 
@@ -532,7 +546,7 @@ public partial class CowsDA40Definition
                 return true;
 
             case "DA40_XLS_PROP_PRIME":
-                displayText = value >= PropPrimedAt ? "Primed" : $"{value:F1} of 5, cycle the propeller";
+                displayText = value >= PropPrimedAt ? "Primed" : $"Not primed, {value:F1} of 5";
                 return true;
 
             case "DA40_XLS_AUTOMIXTURE":

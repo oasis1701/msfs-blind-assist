@@ -239,11 +239,13 @@ public partial class CowsDA40Definition
         foreach (var kv in RadioLabels)
             if (pending.TryGetValue(kv.Key, out double f))
             {
-                // A frequency needs three decimals; an altitude of 9000 read as "9000.000"
-                // is a different kind of wrong. Radios are the only three-decimal values
-                // here, and they are exactly the keys carrying RADIO in their name.
-                bool freq = kv.Key.IndexOf("RADIO", StringComparison.Ordinal) >= 0;
-                parts.Add(kv.Value + " " + f.ToString(freq ? "0.000" : "0",
+                // A COM frequency needs three decimals (8.33 kHz) and a NAV frequency two,
+                // the same as the typed read-back ("NAV 1 standby 110.50"); a swap read NAV
+                // as "110.500" beside it. An altitude of 9000 read as "9000.000" is a
+                // different kind of wrong, so everything that is not a radio is whole.
+                bool com = kv.Key.IndexOf("RADIO_COM", StringComparison.Ordinal) >= 0;
+                bool nav = kv.Key.IndexOf("RADIO_NAV", StringComparison.Ordinal) >= 0;
+                parts.Add(kv.Value + " " + f.ToString(com ? "0.000" : nav ? "0.00" : "0",
                     System.Globalization.CultureInfo.InvariantCulture));
             }
 
