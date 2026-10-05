@@ -228,6 +228,11 @@ public partial class CowsDA40Definition
         // The lock, first: everything about the valve depends on it.
         AddFlag(v, "DA40_FUEL_WIRE_STATE", "FUEL_SELECTOR_WIRE_CUT",
             "Fuel Valve Safety Wire", "Intact, valve locked to Main", "Broken, valve free");
+        // Cached (and silent - SilentCachedReadouts) because the valve's handler asks it:
+        // OnRequest it was never in the cache, so every valve pick read "wired to Main",
+        // even with the wire broken and the valve moving (measured live, 2026-10-05).
+        v["DA40_FUEL_WIRE_STATE"].UpdateFrequency = UpdateFrequency.Continuous;
+        v["DA40_FUEL_WIRE_STATE"].IsAnnounced = true;
 
         // Where the engine is ACTUALLY drawing from, which is the valve's effect rather
         // than the valve's position — they differ while the wire is intact.
@@ -465,7 +470,9 @@ public partial class CowsDA40Definition
                 // is not something a blind pilot can see.
                 simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{pos} (>L:FUEL_SELECTOR)"));
 
-                bool unlocked = (simConnect.GetCachedVariableValue("FUEL_SELECTOR_WIRE_CUT") ?? 0) >= 0.5;
+                // By KEY - the cache is keyed by variable key, never by L:var name; the name
+                // here was never found, so the wire always read intact.
+                bool unlocked = (simConnect.GetCachedVariableValue("DA40_FUEL_WIRE_STATE") ?? 0) >= 0.5;
                 if (!unlocked && pos != 0)
                 {
                     announcer.AnnounceImmediate(

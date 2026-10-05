@@ -38,10 +38,9 @@ public partial class CowsDA40Definition
     /// </summary>
     private static readonly Dictionary<string, (string What, double ToPercent)> GradedFailures = new(StringComparer.Ordinal)
     {
-        ["DA40_FAIL_COOLANT_LEAK_SET"] = ("Coolant leak", 100),
-        ["DA40_FAIL_TURBO_SET"] = ("Turbocharger failure", 100),
-        ["DA40_FAIL_BOOST_LEAK_SET"] = ("Boost leak", 100),
-
+        // ⚠️ The coolant leak, turbocharger and boost leak failures USED to be here as
+        // percentages. The model reads all three as on/off (Failures.cs), so they are
+        // ordinary failure flags now and announce like the other eighty-five.
         // Not a failure, but exactly the same shape: a percentage that climbs, whose ONSET
         // is the news and whose value is not. The DA40 is not approved for flight into
         // known icing, and its induction filter blocks with ice unless alternate air is

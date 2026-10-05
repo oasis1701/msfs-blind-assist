@@ -191,6 +191,11 @@ public partial class CowsDA40Definition
         "DA40_CTL_AILERON",
         "DA40_CTL_RUDDER",
 
+        // Read by the fuel valve and door handlers; the controls' own announcements say
+        // what happened.
+        "DA40_FUEL_WIRE_STATE",
+        "DA40_DOOR_WIND",
+
         // The three bus voltages the master's read-back speaks. Cached so that announcement
         // can read them; never spoken on their own, because a voltage moves continuously in
         // flight and would talk over everything.

@@ -671,11 +671,8 @@ public class CowsDA40PanelStructureTests
         "DA40_RADIO_NAV1_SET", "DA40_RADIO_NAV2_SET",
         // Failure SEVERITIES. Nothing outside MSFSBA sets these, so there is no background
         // change to miss, and a percentage is a number to be read like any other.
-        "DA40_FAIL_COOLANT_LEAK_SET",
         "DA40_FAIL_CHT_BAFFLE",
-        "DA40_FAIL_TURBO_SET",
         "DA40_FAIL_VACC_LEAK",
-        "DA40_FAIL_BOOST_LEAK_SET",
         "DA40_FAIL_FUEL_PUMP",
         "DA40_FAIL_FUEL_SPRING",
         "DA40_FAIL_FUEL_LEAK",
@@ -1964,7 +1961,7 @@ public class CowsDA40PanelStructureTests
         Assert.Contains("DA40_FAIL_CAM_B", controls["FADEC and Sensors"]);
         Assert.Contains("DA40_FAIL_LEVER_A", controls["FADEC and Sensors"]);
         Assert.Contains("DA40_FAIL_GLOW", controls["FADEC and Sensors"]);
-        Assert.Contains("DA40_FAIL_COOLANT_LEAK_SET", controls["Engine Failures"]);
+        Assert.Contains("DA40_FAIL_COOLANT_LEAK", controls["Engine Failures"]);
     }
 
     [Fact]

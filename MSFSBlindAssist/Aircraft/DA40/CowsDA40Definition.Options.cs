@@ -157,10 +157,12 @@ public partial class CowsDA40Definition
                 [4] = "Stepping"
             });
 
-        // COWS ship a "timer expired" voice alert; this is its setting. Named from their
-        // own feature list rather than guessed from the variable.
-        AddOptionNumber(v, "DA40_OPT_TIMER_EXPIRED_SET", "COWS_TIMER_EXP",
-            "Timer Expired Alert");
+        // ⚠️ NO "TIMER EXPIRED ALERT" CONTROL. COWS_TIMER_EXP was offered here as a setting
+        // and is a ONE-SHOT TRIGGER: the G1000 plugin raises it when its timer runs out,
+        // and the Logic plays the chime and clears it in the same breath (1.2.0 Logic
+        // 2478, and the same in 1.1.5). Writing it only played the chime once, and it never
+        // read back as set (measured live on the NG, 2026-10-05). The chime is heard
+        // without MSFSBA.
 
         AddOptionNumber(v, "DA40_OPT_TRIM_SPEED", "INPUT_TRIM_SPEED",
             "Electric Trim Speed");
@@ -212,7 +214,6 @@ public partial class CowsDA40Definition
     /// </summary>
     private static readonly List<string> OptionControls = new()
     {
-        "DA40_OPT_TIMER_EXPIRED_SET",
         // The vendor's two force-feedback switches (DA40 LVAR bindings.txt, 1.2.0): neither
         // is on the MFD menu.
         "DA40_OPT_FFB_YOKE",

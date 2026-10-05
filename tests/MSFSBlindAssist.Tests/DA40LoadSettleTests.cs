@@ -81,15 +81,15 @@ public class CowsDA40LoadSettleWiringTests
         var def = new CowsDA40Definition(DA40Variant.NG);
         var speech = new Capture();
 
-        def.ProcessSimVarUpdate("DA40_FAIL_COOLANT_LEAK_SET", 0, speech);      // flight 1 baseline
+        def.ProcessSimVarUpdate("DA40_ICE_FILTER", 0, speech);      // flight 1 baseline
         def.OnSimContextReset();                                              // flight 2 loads
-        Assert.True(def.ProcessSimVarUpdate("DA40_FAIL_COOLANT_LEAK_SET", 0.35, speech));
+        Assert.True(def.ProcessSimVarUpdate("DA40_ICE_FILTER", 35, speech));
         Assert.Empty(speech.All);
 
         for (int i = 0; i <= DA40LoadSettle.QuietDeliveries; i++) def.OnContinuousBatchDelivered(1);
 
         // The recorded 35 percent is the baseline now, so a real worsening still speaks.
-        def.ProcessSimVarUpdate("DA40_FAIL_COOLANT_LEAK_SET", 0.65, speech);
-        Assert.Equal(new[] { "Coolant leak worsening, 65 percent" }, speech.All);
+        def.ProcessSimVarUpdate("DA40_ICE_FILTER", 65, speech);
+        Assert.Equal(new[] { "Induction filter icing worsening, 65 percent" }, speech.All);
     }
 }

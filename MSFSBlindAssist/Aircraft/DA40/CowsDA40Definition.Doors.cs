@@ -72,8 +72,11 @@ public partial class CowsDA40Definition
             DisplayName = "Relative Wind",
             Type = SimVarType.SimVar,
             Units = "knots",
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            // Cached (silent - SilentCachedReadouts) because the door handler checks it
+            // against the 30-knot limit. OnRequest it was never cached, read as 0, and the
+            // refusal could never be explained.
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
             Format = "F0"
         };

@@ -60,10 +60,17 @@ public partial class CowsDA40Definition
             AddFailureModes(v, "DA40_FAIL_THERM_COOL", "FAILURES_THERMOSTAT:1", "Coolant Thermostat",
             new Dictionary<double, string> { [0] = "Normal", [1] = "Stuck closed", [2] = "Stuck open", [3] = "Stuck as is" });
             AddFailureFlag(v, "DA40_FAIL_WATER_PUMP", "FAILURES_WATER_PUMP:1", "Water Pump");
-            AddFailureFactor(v, "DA40_FAIL_COOLANT_LEAK_SET", "FAILURES_COOLANT_LEAK:1", "Coolant Leak");
+            // ⚠️ ON/OFF, NOT A SEVERITY - these three were offered as percentages and never were.
+            // The model reads the coolant leak as "== 1" (Failures.xml: only then does
+            // ENG_COOLANT_LEAK:1 climb), the turbo as "nonzero" (Logic: damage grows) and the
+            // boost leak as "nonzero" (Logic: the turbo spool-up branch is skipped), in 1.1.5
+            // and 1.2.0 alike, and the random picker writes 1. So "30 percent" stored 0.3: a
+            // coolant leak that read back as set and did nothing at all, and turbo and boost
+            // failures that were simply full (measured live on the NG, 2026-10-05).
+            AddFailureFlag(v, "DA40_FAIL_COOLANT_LEAK", "FAILURES_COOLANT_LEAK:1", "Coolant Leak");
             AddFailureFlag(v, "DA40_FAIL_OIL_P_SENSOR", "FAILURES_OIL_P_SENSOR:1", "Oil Pressure Sensor");
             AddFailureFlag(v, "DA40_FAIL_OIL_T_SENSOR", "FAILURES_OIL_TEMP_SENSOR:1", "Oil Temperature Sensor");
-            AddFailureFactor(v, "DA40_FAIL_TURBO_SET", "FAILURES_TURBO:1", "Turbocharger");
+            AddFailureFlag(v, "DA40_FAIL_TURBO", "FAILURES_TURBO:1", "Turbocharger");
             AddFailureFlag(v, "DA40_FAIL_WASTEGATE", "FAILURES_WASTEGATE:1", "Wastegate");
 
             // The propeller governor, by the model's own three branches (NG Logic 786ff):
@@ -94,7 +101,7 @@ public partial class CowsDA40Definition
             AddFailureFlag(v, "DA40_FAIL_PROP_A", "FAILURES_PROP_A:1", "Propeller Control, ECU A");
             AddFailureFlag(v, "DA40_FAIL_PROP_B", "FAILURES_PROP_B:1", "Propeller Control, ECU B");
             AddFailureFlag(v, "DA40_FAIL_GLOW", "FAILURES_GLOW", "Glow Plugs");
-            AddFailureFactor(v, "DA40_FAIL_BOOST_LEAK_SET", "FAILURES_BOOST_LEAK:1", "Boost Leak");
+            AddFailureFlag(v, "DA40_FAIL_BOOST_LEAK", "FAILURES_BOOST_LEAK:1", "Boost Leak");
         }
 
         // ---------- Fuel Failures ----------
@@ -388,41 +395,15 @@ public partial class CowsDA40Definition
         };
     }
 
-    /// <summary>
-    /// A failure with a severity. The airframe wants 0 to 1; this is entered as a
-    /// PERCENTAGE and divided on the way out, because "0.35" is not how anyone thinks
-    /// about a 35 percent blocked injector.
-    /// </summary>
-    private static void AddFailureFactor(Dictionary<string, SimVarDefinition> v, string key,
-        string lvar, string label)
-    {
-        v[key] = new SimVarDefinition
-        {
-            Name = lvar,
-            DisplayName = label + " Failure",
-            Type = SimVarType.LVar,
-            // ⚠️ "number": an L:var holds a raw number and a converting unit makes SimConnect
-            // convert it. The factor is 0 to 1; Scale shows it as a percentage.
-            Units = "number",
-            UpdateFrequency = UpdateFrequency.Continuous,
-            // ⚠️ ANNOUNCED SO IT IS DELIVERED AT ALL. Continuous without IsAnnounced is read
-            // only on request, so NoteGradedFailure never saw an onset. It never speaks the
-            // number: NoteGradedFailure intercepts it and says the onset and a worsening.
-            IsAnnounced = true,
-            Format = "F0",
-            Scale = 100.0
-        };
-    }
-
     private static readonly List<string> SimEngineControls = new()
     {
         "DA40_FAIL_BYPASS",
         "DA40_FAIL_THERM_COOL",
         "DA40_FAIL_WATER_PUMP",
-        "DA40_FAIL_COOLANT_LEAK_SET",
+        "DA40_FAIL_COOLANT_LEAK",
         "DA40_FAIL_OIL_P_SENSOR",
         "DA40_FAIL_OIL_T_SENSOR",
-        "DA40_FAIL_TURBO_SET",
+        "DA40_FAIL_TURBO",
         "DA40_FAIL_WASTEGATE",
         "DA40_FAIL_PROP_COMBINED",
     };
@@ -440,7 +421,7 @@ public partial class CowsDA40Definition
         "DA40_FAIL_PROP_A",
         "DA40_FAIL_PROP_B",
         "DA40_FAIL_GLOW",
-        "DA40_FAIL_BOOST_LEAK_SET"
+        "DA40_FAIL_BOOST_LEAK"
     };
 
     private static readonly List<string> SimFuelControls = new()
@@ -642,14 +623,6 @@ public partial class CowsDA40Definition
         return d;
     }
 
-    /// <summary>The factor failures, whose written value is a hundredth of what is typed.</summary>
-    private static readonly HashSet<string> FailureFactorKeys = new()
-    {
-        "DA40_FAIL_COOLANT_LEAK_SET",
-        "DA40_FAIL_TURBO_SET",
-        "DA40_FAIL_BOOST_LEAK_SET",
-        "DA40_FAIL_INJ_4"
-    };
 
     private bool HandleFailureSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
@@ -700,14 +673,6 @@ public partial class CowsDA40Definition
         if (!varKey.StartsWith("DA40_FAIL_") || !GetVariables().TryGetValue(varKey, out var def))
         {
             return false;
-        }
-
-        if (FailureFactorKeys.Contains(varKey))
-        {
-            double pct = Math.Clamp(value, 0, 100);
-            simConnect.SetLVar(def.Name, pct / 100.0);
-            announcer.AnnounceImmediate($"{def.DisplayName} {pct:0} percent");
-            return true;
         }
 
         simConnect.SetLVar(def.Name, value);

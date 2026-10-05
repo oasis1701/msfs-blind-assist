@@ -33,6 +33,30 @@ public class CowsDA40LiveControlFindingsTests
     }
 
     [Fact]
+    public void EveryCacheLookupNamesACachedVariableKey()
+    {
+        // The cache is keyed by VARIABLE KEY and holds only Continuous + IsAnnounced
+        // variables. The fuel valve looked up its wire by L:var name (never found, so the
+        // valve always "wired to Main") and the doors read an OnRequest wind (always 0).
+        var defs = new[] { new CowsDA40Definition(DA40Variant.NG), new CowsDA40Definition(DA40Variant.XLS) }
+            .Select(d => d.GetVariables()).ToArray();
+        var bad = new System.Collections.Generic.List<string>();
+        foreach (string file in Directory.EnumerateFiles(Path.Combine(RepoRoot(), "MSFSBlindAssist", "Aircraft", "DA40"), "*.cs"))
+        {
+            foreach (System.Text.RegularExpressions.Match m in System.Text.RegularExpressions.Regex.Matches(
+                         File.ReadAllText(file), @"GetCachedVariableValue\(\s*""([^""]+)""\s*\)"))
+            {
+                string key = m.Groups[1].Value;
+                var found = defs.Where(v => v.ContainsKey(key)).Select(v => v[key]).ToList();
+                if (found.Count == 0) bad.Add($"{Path.GetFileName(file)}: {key} is not a variable key");
+                else if (found.Any(d => d.UpdateFrequency != MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous || !d.IsAnnounced))
+                    bad.Add($"{Path.GetFileName(file)}: {key} is never cached");
+            }
+        }
+        Assert.True(bad.Count == 0, string.Join("; ", bad));
+    }
+
+    [Fact]
     public void VerticalSpeedUsesTheEventsTheGfc700Intercepts()
     {
         // The Working Title GFC 700 state manager handles AP_VS_ON/OFF and has no case for

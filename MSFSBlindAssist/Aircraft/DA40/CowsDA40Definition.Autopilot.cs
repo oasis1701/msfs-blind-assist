@@ -386,6 +386,17 @@ public partial class CowsDA40Definition
     /// Every mode takes its own ON and OFF event, so a combo set lands where the pilot
     /// asked regardless of what MSFSBA believed the state was.
     /// </summary>
+    /// <summary>The exact preselect, once the knob step that marks it selected has landed.</summary>
+    private static async Task WriteSelectedAltitudeAfterStepAsync(SimConnectManager simConnect, int feet)
+    {
+        // Measured: 250 ms between the two leaves the exact value and the selection marked.
+        // Awaited on the caller's (UI) context, never Task.Run, like every other SimConnect
+        // write from this definition.
+        await Task.Delay(300);
+        simConnect.ExecuteCalculatorCodeUnique(
+            FormattableString.Invariant($"{feet} (>A:AUTOPILOT ALTITUDE LOCK VAR, feet)"));
+    }
+
     private bool HandleAutopilotSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
@@ -466,8 +477,17 @@ public partial class CowsDA40Definition
                 // AP_SPD_VAR_SET, HEADING_BUG_SET and VOR1_SET were all re-measured in the
                 // same pass and every one landed on the value asked for (700, 90, 123, 45),
                 // so do not "harmonise" them onto the A: form on the strength of this one.
-                simConnect.ExecuteCalculatorCodeUnique(
-                    FormattableString.Invariant($"{feet} (>A:AUTOPILOT ALTITUDE LOCK VAR, feet)"));
+                //
+                // ⚠️ AND A DIRECT WRITE NEVER COUNTS AS SELECTING AN ALTITUDE. The G1000's
+                // altitude-select manager marks the preselect "initialized" only when one of
+                // its own key events passes through it, and the GFC 700 refuses FLC until it
+                // is (G1000Autopilot.verticalPressed: !isAltSelectInitialized). Measured live
+                // on the NG: 3000 typed here, the preselect read 3000, and FLC stayed refused.
+                // So one knob step first - it marks the selection - then, after it has
+                // landed, the exact altitude. Sent together, the step lands after the write
+                // and leaves the preselect 100 ft from the old value (measured).
+                simConnect.ExecuteCalculatorCodeUnique("0 (>K:AP_ALT_VAR_INC)");
+                _ = WriteSelectedAltitudeAfterStepAsync(simConnect, feet);
                 announcer.AnnounceImmediate($"Selected altitude {feet} feet");
                 return true;
             }
