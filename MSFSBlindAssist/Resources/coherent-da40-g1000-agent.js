@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 23;
+    A.VERSION = 24;
 
     function visible(el) {
         if (!el) return false;
@@ -3699,6 +3699,16 @@
             if (!box) continue;
             var hl = box.querySelector(".highlight-select");
             if (hl && visible(hl)) return boxes[i][1] + ", " + (text(hl) || "blank");
+        }
+        // The button at the foot of a checklist. The cursor lands on it the moment it is
+        // armed on a checklist with nothing left to check, and the knob walks onto it past
+        // the last item; the XLS spells it .Da40-next-checklist-label, so it is matched by
+        // the class's tail. Unmatched it read "nothing under the cursor" with the cursor
+        // sitting on a button ENT would press.
+        var next = document.querySelectorAll("[class*='next-checklist-label']");
+        for (var n = 0; n < next.length; n++) {
+            if (visible(next[n]) && classList(next[n]).indexOf("highlight-select") >= 0)
+                return text(next[n]) || "Go to Next Checklist";
         }
         return "";
     };

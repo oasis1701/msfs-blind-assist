@@ -18,10 +18,17 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 ///    2 → 1. The same L:var the NG's valve uses, with different positions.
 ///  • <c>ENG_FUEL_PRESS</c> is in BAR; the G1000 draws <c>DISP_FP_PROBE</c> in psi — 1.616
 ///    against 23.43, 14.5 psi per bar. The arcs (AFM 2.5) are 14–35 psi, green only.
-///  • <c>FUEL_QUANT_PROBE:1/2</c> is the gauge: the true quantity with a slosh term, and
+///  • <c>FUEL_QUANT_PROBE:1/2</c> is the probe: the true quantity with a slosh term, and
 ///    CLAMPED to 15.25 between 15.25 and 18.5 gal — the model's version of the AFM's "max
-///    indicated fuel quantity 15 US gal per tank". Reported as the indication, flagged on
-///    the flat spot, with the measured quantity beside it. Same design as the NG's 14-gal cap.
+///    indicated fuel quantity 15 US gal per tank". The INDICATION is <c>DISP_FUEL:1/2</c>
+///    (the probe clamped 0 to 24 and zeroed by the tank's indication failure, Logic 2082):
+///    the Engine page's "L Fuel Gal" digits are drawn from it (measured 20 for 20.4). The
+///    EIS strip's needle is drawn from it MINUS ONE against a red 0 to 1 band, but that
+///    gauge carries no digits; the number a pilot reads is the Engine page's, and the NG's
+///    row reads DISP_FUEL the same way. Up to COWS 1.2.0 these rows read the probe, which
+///    kept a full tank on screen off a failed gauge (measured: indication failed, DISP_FUEL
+///    0, probe 20.4). Flagged on the flat spot, with the measured quantity beside it. Same
+///    design as the NG's 14-gal cap.
 ///  • Tanks are 2 × 20.6 gal with 0.5 unusable each (AFM 2.14.2): 20.1 usable a side. The
 ///    sim's own tank is 25 gal, the long-range size, and refuelling clamps to the AFM figure
 ///    rather than the sim's.
@@ -110,8 +117,8 @@ public partial class CowsDA40Definition
         // keys, which carry the NG's names; only one key per SimVar may be batched.
         v["DA40_XLS_FUEL_LEFT"] = Twin("FUEL TANK LEFT MAIN QUANTITY", "Left Tank Measured", SimVarType.SimVar, "gallons");
         v["DA40_XLS_FUEL_RIGHT"] = Twin("FUEL TANK RIGHT MAIN QUANTITY", "Right Tank Measured", SimVarType.SimVar, "gallons");
-        v["DA40_XLS_FUEL_LEFT_IND"] = Twin("FUEL_QUANT_PROBE:1", "Left Tank Indicated", SimVarType.LVar, "gallons");
-        v["DA40_XLS_FUEL_RIGHT_IND"] = Twin("FUEL_QUANT_PROBE:2", "Right Tank Indicated", SimVarType.LVar, "gallons");
+        v["DA40_XLS_FUEL_LEFT_IND"] = Twin("DISP_FUEL:1", "Left Tank Indicated", SimVarType.LVar, "number");
+        v["DA40_XLS_FUEL_RIGHT_IND"] = Twin("DISP_FUEL:2", "Right Tank Indicated", SimVarType.LVar, "number");
         v["DA40_XLS_FUEL_DIFFERENCE"] = Twin("FUEL TANK LEFT MAIN QUANTITY", "Tank Difference", SimVarType.SimVar, "gallons");
         v["DA40_XLS_FUEL_FEED"] = Twin("FUEL_FEED_QUANTITY", "Feeding", SimVarType.LVar, "gallons");
 
@@ -290,7 +297,7 @@ public partial class CowsDA40Definition
 
             case "DA40_XLS_FUEL_VAPOUR":
                 displayText = value >= 0.995 ? "None"
-                    : $"Vapour lock, fuel pressure at {value * 100:0} percent - electric pump on";
+                    : $"Vapour lock, fuel pressure at {value * 100:0} percent";
                 return true;
         }
 
