@@ -592,7 +592,6 @@ public partial class CowsDA40Definition
         var l = new List<string>(SharedResetControls);
         l.AddRange(isNg ? NgResetControls : XlsResetControls);
         l.Add("DA40_FAIL_RESET_ALL");
-        l.Add("DA40_FAIL_REPAIR_REFUEL");
         return l;
     }
 

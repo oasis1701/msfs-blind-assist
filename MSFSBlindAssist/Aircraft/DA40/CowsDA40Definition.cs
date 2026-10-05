@@ -977,7 +977,6 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleAutopilotSet(varKey, value, simConnect, announcer)) return true;
         if (HandlePayloadSet(varKey, value, simConnect, announcer)) return true;
         if (HandleFailureSet(varKey, value, simConnect, announcer)) return true;
-        if (HandleCows120Set(varKey, announcer, simConnect)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect, announcer)) return true;
         if (HandleMagnetoSet(varKey, value, simConnect, announcer)) return true;
         if (HandleXlsPowerSet(varKey, value, simConnect, announcer)) return true;

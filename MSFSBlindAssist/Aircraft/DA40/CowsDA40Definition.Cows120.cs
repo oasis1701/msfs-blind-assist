@@ -1,4 +1,3 @@
-using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.SimConnect;
 
 namespace MSFSBlindAssist.Aircraft.DA40;
@@ -58,13 +57,15 @@ public partial class CowsDA40Definition
         AddReadout(v, "DA40_ELEC_BATT_SURF", "ELEC_BATT_SURF_VOLT", "Battery Surface Charge",
             "volts", "F2");
 
-        // ---------- The Repair and Refuel key binding ----------
+        // ---------- The Repair and Refuel key binding: deliberately NOT a button ----------
         //
-        // The POH's own way out when the MFD menu cannot be reached: the aeroplane binds the
-        // simulator's REPAIR_AND_REFUEL event to reset the battery and the failures and push
-        // the PFD and MFD breakers back in, then passes the event on, so the simulator refuels
-        // and repairs as well.
-        AddResetButton(v, "DA40_FAIL_REPAIR_REFUEL", "Repair and Refuel");
+        // The POH's way out when the MFD menu cannot be reached is the simulator's Repair and
+        // Refuel KEY, which the aeroplane catches in an input binding (Inputs.xml) to reset
+        // the battery and the failures and push the PFD and MFD breakers in. Measured live
+        // 2026-10-05: neither a calculator (>K:REPAIR_AND_REFUEL) nor a SimConnect
+        // TransmitClientEvent reaches that binding — a raised FAILURES_SENS_VOLT stayed raised
+        // through both — so a button would do nothing. The Reset panel's own Failures and
+        // Battery buttons write the same L:vars the binding does, and always work.
 
         // ---------- Force-feedback options, from the vendor's binding notes ----------
         AddOptionSwitch(v, "DA40_OPT_FFB_YOKE", "FFB_YOKE", "FFB Yoke", "Off", "On");
@@ -83,20 +84,25 @@ public partial class CowsDA40Definition
             AddFlag(v, "DA40_ECU_POWER_A", "FADEC_MASTER_A:1", "ECU A Power", "Off", "On");
             AddFlag(v, "DA40_ECU_POWER_B", "FADEC_MASTER_B:1", "ECU B Power", "Off", "On");
 
-            // ---------- Which sensor the ACTIVE ECU is using ----------
+            // ---------- Which ECU is flying the engine, and what it can sense ----------
             //
-            // Each ECU has its own crankshaft, camshaft and boost sensor, failed separately
-            // (the FADEC and Sensors failure rows). Which one the engine is running on is the
-            // ACTIVE ECU's, published here: these are what the FADEC actually acts on, and
-            // they were wrongly offered as failure switches under their 1.1.5 names
-            // (FAILURES_CRANK_SENS and friends) — derived values the model rewrites every
-            // frame, so a write did nothing. 1.2.0 renamed them FADEC_SENS_*.
+            // FADEC_RUNNING_A/B: the ECU actually controlling the engine (powered, and asked
+            // for by the voter). Each ECU has its own crankshaft, camshaft and boost sensor,
+            // failed separately (the FADEC and Sensors failure rows); FADEC_SENS_* is what
+            // the RUNNING ECU gets, which is what the engine runs on. They were wrongly
+            // offered as failure switches under their 1.1.5 names (FAILURES_CRANK_SENS and
+            // friends) — derived values the model rewrites every frame, so a write did
+            // nothing. ⚠️ With NO ECU running the model holds the crank signal LOST (Logic
+            // 1326ff), which is true — nothing is reading the crankshaft — and is why the
+            // running rows sit beside it.
+            AddFlag(v, "DA40_ECU_RUNNING_A", "FADEC_RUNNING_A:1", "ECU A Running", "No", "Yes");
+            AddFlag(v, "DA40_ECU_RUNNING_B", "FADEC_RUNNING_B:1", "ECU B Running", "No", "Yes");
             AddFlag(v, "DA40_ECU_SENS_CRANK", "FADEC_SENS_CRANK:1",
-                "Active ECU Crankshaft Sensor", "Normal", "Failed");
+                "Crankshaft Signal", "OK", "Lost");
             AddFlag(v, "DA40_ECU_SENS_CAM", "FADEC_SENS_CAM:1",
-                "Active ECU Camshaft Sensor", "Normal", "Failed");
+                "Camshaft Signal", "OK", "Lost");
             AddFlag(v, "DA40_ECU_SENS_BOOST", "FADEC_SENS_BOOST:1",
-                "Active ECU Boost Sensor", "Normal", "Failed");
+                "Boost Signal", "OK", "Lost");
 
             // ---------- Induction air, since 1.2.0 redid alternate air ----------
             //
@@ -129,19 +135,10 @@ public partial class CowsDA40Definition
             AddRows(d, EcuPanel, new List<string>
             {
                 "DA40_ECU_POWER_A", "DA40_ECU_POWER_B",
+                "DA40_ECU_RUNNING_A", "DA40_ECU_RUNNING_B",
                 "DA40_ECU_SENS_CRANK", "DA40_ECU_SENS_CAM", "DA40_ECU_SENS_BOOST"
             });
             AddRows(d, ElectricalPanel, new List<string> { "DA40_ELEC_BATT_ECU_TEMP" });
         }
-    }
-
-    private bool HandleCows120Set(string varKey, ScreenReaderAnnouncer announcer,
-        SimConnectManager simConnect)
-    {
-        if (varKey != "DA40_FAIL_REPAIR_REFUEL") return false;
-
-        // The aeroplane's own binding catches the event and passes it on to the simulator.
-        simConnect.ExecuteCalculatorCodeUnique("(>K:REPAIR_AND_REFUEL)");
-        return true;
     }
 }

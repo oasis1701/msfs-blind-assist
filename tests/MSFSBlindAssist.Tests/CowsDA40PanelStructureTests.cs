@@ -2043,8 +2043,7 @@ public class CowsDA40PanelStructureTests
             "DA40_FAIL_RESET_BATT",
             "DA40_FAIL_RESET_ECU",
             "DA40_FAIL_RESET_WIRE",
-            "DA40_FAIL_RESET_ALL",
-            "DA40_FAIL_REPAIR_REFUEL"
+            "DA40_FAIL_RESET_ALL"
         }, Ng().GetPanelControls()["Reset"].ToArray());
 
         Assert.Equal(new[]
@@ -2054,8 +2053,7 @@ public class CowsDA40PanelStructureTests
             "DA40_FAIL_RESET_BATT",
             "DA40_FAIL_RESET_FLOOD",
             "DA40_FAIL_RESET_PLUGS",
-            "DA40_FAIL_RESET_ALL",
-            "DA40_FAIL_REPAIR_REFUEL"
+            "DA40_FAIL_RESET_ALL"
         }, Xls().GetPanelControls()["Reset"].ToArray());
 
         foreach (var variant in new[] { DA40Variant.NG, DA40Variant.XLS })

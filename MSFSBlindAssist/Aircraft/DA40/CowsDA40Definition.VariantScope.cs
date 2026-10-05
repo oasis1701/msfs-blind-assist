@@ -83,6 +83,8 @@ public partial class CowsDA40Definition
         // temperature — the Austro's FADEC, which a Lycoming has not got.
         "DA40_ECU_POWER_A",
         "DA40_ECU_POWER_B",
+        "DA40_ECU_RUNNING_A",
+        "DA40_ECU_RUNNING_B",
         "DA40_ECU_SENS_CRANK",
         "DA40_ECU_SENS_CAM",
         "DA40_ECU_SENS_BOOST",
