@@ -4,6 +4,8 @@ paths:
   - "MSFSBlindAssist/Services/RouteBriefingText.cs"
   - "MSFSBlindAssist/Services/RouteDescriptionSession.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Briefing*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RouteDescription*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*DescribeRoute*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*OsmPlanningGraph*.cs"
   - "MSFSBlindAssist/Services/GeminiService.cs"
   - "MSFSBlindAssist/Services/ClaudeService.cs"

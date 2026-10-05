@@ -6,6 +6,9 @@ paths:
   - "MSFSBlindAssist/Forms/TaxiAssistForm.cs"
   - "MSFSBlindAssist/Hotkeys/HotkeyManager.cs"
   - "MSFSBlindAssist/Services/SayIntentions/SayIntentionsService.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsExternalRoute*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsTaxiPathSnapper*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsGatePositionMatcher*.cs"
 ---
 # SayIntentions taxi-route import rules
 

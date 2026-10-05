@@ -4,7 +4,7 @@ paths:
 ---
 # Rules whose code MainForm calls
 
-MIRRORS: each line below is copied word for word from its area's rule file, because the code it guards lives in or is called from the MainForm partials, which that area's globs do not cover. Change a rule in its own file and here together; ClaudeContextBudgetTests fails if the two differ.
+MIRRORS: each line below is copied word for word from its area's rule file, because the code it guards lives in or is called from MainForm partials that area's globs miss (a partial they also cover loads the line twice, harmlessly). Change a rule in its own file and here together; ClaudeContextBudgetTests fails if the two differ.
 
 - [SIM-15] `UpdateDisplayText` must always refresh `displayValues` from `GetCachedVariableValue` first; cached `displayValues` alone go stale for any def whose `ProcessSimVarUpdate` returns `true`. Full: docs/invariants/core-simconnect.md#sim-15
 - [SIM-16] The per-event "is this var in any panel display" gate must use the cached `GetDisplayVarNamesCached()` HashSet — never call a def's `GetPanelDisplayVariables()` per SimVar event; it rebuilds its whole dictionary every call. Full: docs/invariants/core-simconnect.md#sim-16

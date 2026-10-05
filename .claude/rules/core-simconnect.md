@@ -4,6 +4,8 @@ paths:
   - "MSFSBlindAssist/MainForm.cs"
   - "MSFSBlindAssist/MainForm.PanelBuilder.cs"
   - "MSFSBlindAssist/MainForm.AircraftSwitch.cs"
+  - "MSFSBlindAssist/Utils/ReadoutFormat.cs"
+  - "MSFSBlindAssist/Utils/PanelRowRules.cs"
   - "tests/MSFSBlindAssist.Tests/**/*CalcPath*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*FreshRead*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RequestId*.cs"

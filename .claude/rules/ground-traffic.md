@@ -15,6 +15,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*MovingAwayByMotion*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayTrafficClassification*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*HeldRunwayLabel*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RouteThreat*.cs"
 ---
 # Ground traffic and the runway watch rules
 

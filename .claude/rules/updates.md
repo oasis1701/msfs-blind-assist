@@ -3,6 +3,8 @@ paths:
   - "MSFSBlindAssist/Services/Update*.cs"
   - "MSFSBlindAssist/Services/AppVersion.cs"
   - "MSFSBlindAssist/Services/SemanticVersion.cs"
+  - "MSFSBlindAssist/Services/ReleaseNotesHtml.cs"
+  - "MSFSBlindAssist/Forms/Settings/UpdatesPanel.cs"
   - "MSFSBlindAssistUpdater/**"
   - ".github/workflows/*.yml"
   - "tests/MSFSBlindAssist.Tests/**/*UpdateCandidate*.cs"

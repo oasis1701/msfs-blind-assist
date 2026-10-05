@@ -8,6 +8,8 @@ paths:
   - "MSFSBlindAssist/Services/DistanceFormatter.cs"
   - "MSFSBlindAssist/Database/Models/ParkingSpot.cs"
   - "MSFSBlindAssist/Forms/GateTeleportForm.cs"
+  - "MSFSBlindAssist/Services/StandId.cs"
+  - "MSFSBlindAssist/Services/GateSearchFilter.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Docking*.cs"
   - "MSFSBlindAssist/Services/Gsx/Remote/GsxRemoteParkingReader.cs"
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"

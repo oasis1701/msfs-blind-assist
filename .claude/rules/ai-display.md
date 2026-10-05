@@ -4,6 +4,7 @@ paths:
   - "MSFSBlindAssist/Services/ClaudeService.cs"
   - "MSFSBlindAssist/Services/Screenshot*.cs"
   - "MSFSBlindAssist/Services/DisplayReadGate.cs"
+  - "MSFSBlindAssist/Services/AiProviderFactory.cs"
   - "MSFSBlindAssist/Services/InstrumentView*.cs"
   - "MSFSBlindAssist/Services/CameraHome*.cs"
   - "MSFSBlindAssist/SimConnect/SimConnectManager.Camera.cs"

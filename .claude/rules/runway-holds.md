@@ -21,6 +21,8 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*DestinationStripCrossing*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayEventDescription*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*TaxiMathUtils*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RunwayRouteClassifier*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*RouteRunwayCrossings*.cs"
 ---
 # Runway hold-shorts, crossings and runway shape rules
 

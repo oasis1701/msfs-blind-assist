@@ -9,7 +9,7 @@ paths:
 ---
 # Rules whose code the taxi entry points call
 
-MIRRORS: each line below is copied word for word from its area's rule file, because the code it guards lives in or is called from these files, which that area's globs do not cover. Change a rule in its own file and here together; ClaudeContextBudgetTests fails if the two differ.
+MIRRORS: each line below is copied word for word from its area's rule file, because the code it guards lives in or is called from these files, not all of which that area's globs cover (a file they also cover loads the line twice, harmlessly). Change a rule in its own file and here together; ClaudeContextBudgetTests fails if the two differ.
 
 - [DCK-40] A stand has ONE name app-wide: `GetSelectableGates` to ACT on a stand, `GetNamedSpots` to name one and for `TaxiGraph.Build`; never build a pilot-heard list from `GetParkingSpots`, nor call the supplier per position update (more: see full). Full: docs/invariants/gsx-stands-docking.md#dck-40
 - [DCK-41] Never feed `TaxiGraph.Build` a spot list other than navdata's own set: its parking pass sets `TaxiNodeType.Parking` and can MOVE A HOLD-SHORT; the one exception is a runway-rows-only build with no parking. Full: docs/invariants/gsx-stands-docking.md#dck-41
