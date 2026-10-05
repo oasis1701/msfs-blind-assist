@@ -2,7 +2,7 @@
 
 Index of the dev/debug tools in this directory. **Full guide: [`../docs/tooling.md`](../docs/tooling.md)** — read it for the shared transport (the MSFS Coherent GT remote debugger on `:19999`), how to run each tool, and crash diagnosis.
 
-For the *methodology* of proving a control works (calculator-path write-stick test, the write-mechanism decision tree, the case studies), see the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in [`../CLAUDE.md`](../CLAUDE.md).
+For the *methodology* of proving a control works (calculator-path write-stick test, the write-mechanism decision tree, the case studies), see the **VARIABLE / CONTROL TROUBLESHOOTING PLAYBOOK** in [`../docs/troubleshooting-playbook.md`](../docs/troubleshooting-playbook.md).
 
 ---
 
@@ -41,4 +41,4 @@ Static research notes mined from FBW source (var names, page-index maps): `a380-
 
 ## Pre-existing — do NOT modify
 
-`PMDGDispatchTester/` and `CDUTest/` predate the FBW work and are independent PMDG console apps (not Coherent tooling). See [`../CLAUDE.md`](../CLAUDE.md) → Build Commands. Leave them untouched.
+`PMDGDispatchTester/` and `CDUTest/` predate the FBW work and are independent PMDG console apps (not Coherent tooling). See [`../docs/development.md`](../docs/development.md#build-output-and-traps) → Build output and traps. Leave them untouched.

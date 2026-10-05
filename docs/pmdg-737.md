@@ -1,6 +1,6 @@
 # PMDG 737-800 NG3 Patterns
 
-Reference for working with `PMDG737Definition`, `PMDGNG3DataManager`, `PMDGNG3DataStruct`, and `PMDG737CDUForm`. Companion to the general PMDG patterns in CLAUDE.md (the 777 section).
+Reference for working with `PMDG737Definition`, `PMDGNG3DataManager`, `PMDGNG3DataStruct`, and `PMDG737CDUForm`. Companion to the general PMDG patterns in [pmdg-777.md](pmdg-777.md).
 
 ## Scope
 
@@ -213,7 +213,7 @@ needed, and NO sim restart is required.
 - The agent's `collect()` carries live-validated noise-suppression rules (drop anonymous buttons +
   single-character runway-diagram glyphs; reject value-display labels so the METAR temperature can't
   bleed into the Toggle Weather / Weather Icao fields; clean icon-button collision names) — see the
-  "PMDG EFB (Coherent debugger)" section of `CLAUDE.md`. All locked by `tools/pmdg-efb-test` (jsdom).
+  rules [PEFB-2]–[PEFB-4] in [invariants/pmdg-efb.md](invariants/pmdg-efb.md) and [pmdg-efb.md](pmdg-efb.md). All locked by `tools/pmdg-efb-test` (jsdom).
 
 ## Interior section
 
