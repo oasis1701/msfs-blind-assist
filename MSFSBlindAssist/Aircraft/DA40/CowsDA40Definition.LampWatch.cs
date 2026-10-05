@@ -32,7 +32,7 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 ///
 /// ⚠️ THIS IS ALSO WHY PULLING A BREAKER LOOKED LIKE IT DID NOTHING. `L:CB_LDL` is the
 /// handle; the sim's circuit is what carries the current. The same split is already recorded
-/// for the other direction in CLAUDE.md - a SIM-level pulled breaker kills its circuit while
+/// for the other direction in rule [DA40F-1] - a SIM-level pulled breaker kills its circuit while
 /// `L:CB_*` still reads IN.
 ///
 /// IT SAYS ONE SHORT SENTENCE AND NOTHING ELSE. No confirmation when the fault clears: the

@@ -21,7 +21,7 @@ namespace MSFSBlindAssist.Tests;
 ///
 /// The scan is over the variant's own SimObjects folder plus the shared html_ui, and it is a
 /// TEXT scan, which is complete for this package only because it ships no WASM (a WASM-only
-/// variable is invisible to a text search — the trap CLAUDE.md records). It matches the WHOLE
+/// variable is invisible to a text search — the trap rule [DA40-17] records). It matches the WHOLE
 /// name: a substring scan once passed FAILURES_FUEL_L on the XLS because FAILURES_FUEL_LEAK_L
 /// contains it. Skips on a machine without the aircraft.
 /// </summary>
