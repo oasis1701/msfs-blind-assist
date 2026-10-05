@@ -210,8 +210,9 @@ public class ClaudeContextBudgetTests
         foreach (string file in RepoFiles().Where(IsAreaOwnedFile).OrderBy(f => f, StringComparer.Ordinal))
             if (!compiled.Any(g => g.IsMatch(file)))
                 problems.Add($"{file} loads no rule file, so no rule reaches whoever edits it. Add a glob for it to its "
-                    + "area's .claude/rules file; if no rule guards that folder, add the folder to AreaFolderExemptions "
-                    + "with the reason.");
+                    + "area's .claude/rules file. A new aircraft or feature with no rules yet gets a rule file of its own "
+                    + "whose preamble names its doc (CLAUDE.md, \"Adding or changing a rule\"); only a shared folder that "
+                    + "no rule guards goes in AreaFolderExemptions, with the reason.");
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 
