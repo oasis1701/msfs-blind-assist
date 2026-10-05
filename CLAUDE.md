@@ -173,6 +173,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [ifly-737.md](docs/ifly-737.md) | iFly 737 MAX8: SDK shared memory + WM_COPYDATA, no MobiFlight, no L:var writes except named clickspot replays | — |
 | [hs787.md](docs/hs787.md) | HorizonSim 787-9: CDU, IRS, EICAS over the Coherent debugger | hs787 |
 | [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11 |
+| [learjet35a.md](docs/learjet35a.md) | Flysimware Learjet 35A: transports, panel map, derived annunciators, GNS windows; every measured variable in [learjet35a-variables.md](docs/learjet35a-variables.md) | learjet35a |
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
 
 ## Adding or changing a rule
@@ -186,7 +187,3 @@ Take the next unused number for that prefix; IDs are never renumbered or reused,
 ## Technology Stack
 
 .NET 10 (C# 13), Windows Forms, SimConnect SDK (MSFS), SQLite, NVDA/Tolk (screen readers)
-
-### Flysimware Learjet 35A
-
-Details: [docs/learjet35a.md](docs/learjet35a.md) (transports, panel map, derived annunciators, GNS windows) and [docs/learjet35a-variables.md](docs/learjet35a-variables.md) (every measured variable). Every vendor switch is a plain L:var written through the calculator path; the GNS bezel goes over the display window's own Coherent socket; reads during development are verified through a Coherent view, never the MCP's MobiFlight read path.
