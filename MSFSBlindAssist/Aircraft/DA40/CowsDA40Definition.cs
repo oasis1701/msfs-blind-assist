@@ -863,6 +863,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     /// </summary>
     public override bool TryGetDisplayOverride(string varKey, double value, out string displayText)
     {
+        if (TryGetEcuDeadIndication(varKey, out displayText)) return true;
         if (TryGetXlsStartDisplayOverride(varKey, value, out displayText)) return true;
         // ⚠️ This was listed TWICE. Harmless - the second call can never run - but it is
         // dead code in the one place a reader checks to find out which override owns a key.

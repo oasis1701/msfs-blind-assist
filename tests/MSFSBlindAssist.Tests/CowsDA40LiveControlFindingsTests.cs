@@ -57,6 +57,22 @@ public class CowsDA40LiveControlFindingsTests
     }
 
     [Fact]
+    public void WithNoEcuRunningTheNgLoadRpmAndFlowReadAsTheG1000ShowsThem()
+    {
+        // The G1000 draws dashes for all three while neither ECU runs.
+        var def = new CowsDA40Definition(DA40Variant.NG);
+        var speech = new System.Collections.Generic.List<string>();
+        def.ProcessSimVarUpdate("DA40_ECU_RUNNING_A", 0, null!);
+        def.ProcessSimVarUpdate("DA40_ECU_RUNNING_B", 0, null!);
+        Assert.True(def.TryGetDisplayOverride("DA40_POWER_LOAD", 0, out string dead));
+        Assert.StartsWith("no reading", dead);
+
+        def.ProcessSimVarUpdate("DA40_ECU_RUNNING_A", 1, null!);
+        def.TryGetDisplayOverride("DA40_POWER_LOAD", 0, out string live);
+        Assert.DoesNotContain("no reading", live);
+    }
+
+    [Fact]
     public void VerticalSpeedUsesTheEventsTheGfc700Intercepts()
     {
         // The Working Title GFC 700 state manager handles AP_VS_ON/OFF and has no case for

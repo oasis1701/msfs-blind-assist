@@ -97,6 +97,13 @@ public partial class CowsDA40Definition
             // running rows sit beside it.
             AddFlag(v, "DA40_ECU_RUNNING_A", "FADEC_RUNNING_A:1", "ECU A Running", "No", "Yes");
             AddFlag(v, "DA40_ECU_RUNNING_B", "FADEC_RUNNING_B:1", "ECU B Running", "No", "Yes");
+            // Delivered (and silent - SilentCachedReadouts) so the load, RPM and fuel-flow
+            // rows can say what the G1000 says when no ECU runs: nothing (see below).
+            foreach (string k in new[] { "DA40_ECU_RUNNING_A", "DA40_ECU_RUNNING_B" })
+            {
+                v[k].UpdateFrequency = UpdateFrequency.Continuous;
+                v[k].IsAnnounced = true;
+            }
             AddFlag(v, "DA40_ECU_SENS_CRANK", "FADEC_SENS_CRANK:1",
                 "Crankshaft Signal", "OK", "Lost");
             AddFlag(v, "DA40_ECU_SENS_CAM", "FADEC_SENS_CAM:1",
@@ -119,6 +126,38 @@ public partial class CowsDA40Definition
         }
 
         return v;
+    }
+
+    private bool _ecuARunning, _ecuBRunning, _ecuRunningKnown;
+
+    /// <summary>The NG keys that read the ECU's own indications of load, RPM and fuel flow.</summary>
+    private static readonly HashSet<string> EcuIndicationKeys = new(StringComparer.Ordinal)
+    {
+        "DA40_POWER_LOAD", "DA40_POWER_RPM", "DA40_POWER_FUEL_FLOW",
+        "DA40_START_LOAD", "DA40_START_RPM", "DA40_FUEL_FLOW", "DA40_NG_MIN_LOAD",
+        "DA40_ECU_PROP_SENSED"
+    };
+
+    private void NoteEcuRunning(string varKey, double value)
+    {
+        if (varKey == "DA40_ECU_RUNNING_A") { _ecuARunning = value >= 0.5; _ecuRunningKnown = true; }
+        else if (varKey == "DA40_ECU_RUNNING_B") { _ecuBRunning = value >= 0.5; _ecuRunningKnown = true; }
+    }
+
+    /// <summary>
+    /// ⚠️ WITH NO ECU RUNNING THE G1000 SHOWS LOAD, RPM AND FUEL FLOW AS DASHES, and MSFSBA
+    /// said "Load 0 percent, green" beside them. Measured live on the NG at Colombo
+    /// (2026-10-05): engine master off, both FADEC_RUNNING 0, the strip read "Load %: ———,
+    /// RPM: ————, FFlow GPH: ---"; master on, ECU A running, the same gauges read 0, 0, 0.0.
+    /// So with neither ECU running these rows say what the pilot would see: no reading.
+    /// </summary>
+    private bool TryGetEcuDeadIndication(string varKey, out string displayText)
+    {
+        displayText = "";
+        if (!IsNG || !_ecuRunningKnown || _ecuARunning || _ecuBRunning) return false;
+        if (!EcuIndicationKeys.Contains(varKey)) return false;
+        displayText = "no reading";
+        return true;
     }
 
     /// <summary>The 1.2.0 rows, by panel, appended after every panel exists.</summary>

@@ -195,6 +195,9 @@ public partial class CowsDA40Definition
         // what happened.
         "DA40_FUEL_WIRE_STATE",
         "DA40_DOOR_WIND",
+        // Whether either ECU is running decides what the load, RPM and fuel-flow rows say.
+        "DA40_ECU_RUNNING_A",
+        "DA40_ECU_RUNNING_B",
 
         // The three bus voltages the master's read-back speaks. Cached so that announcement
         // can read them; never spoken on their own, because a voltage moves continuously in
@@ -278,6 +281,7 @@ public partial class CowsDA40Definition
     {
         // ⚠️ After a flight load or a reconnect every tracker below RECORDS but does not
         // speak, and the generic announcer is kept out too (return true) — see DA40LoadSettle.
+        NoteEcuRunning(varName, value);
         if (!_loadSettle.Settling) return ProcessSimVarUpdateCore(varName, value, announcer);
 
         _loadSettle.NoteChange();
