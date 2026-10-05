@@ -173,6 +173,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [ifly-737.md](docs/ifly-737.md) | iFly 737 MAX8: SDK shared memory + WM_COPYDATA, no MobiFlight, no L:var writes except named clickspot replays | — |
 | [hs787.md](docs/hs787.md) | HorizonSim 787-9: CDU, IRS, EICAS over the Coherent debugger | hs787 |
 | [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11 |
+| [da40.md](docs/da40.md) | COWS Diamond DA40 NG and XLS: panels, gauge arcs, the FADEC power lever, the G1000 display window; XLS variables in [da40-xls-variables.md](docs/da40-xls-variables.md) | da40, da40-airframe, da40-ng-engine, da40-xls-engine, da40-g1000, da40-avionics, da40-shared-code |
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
 
 ## Adding or changing a rule
