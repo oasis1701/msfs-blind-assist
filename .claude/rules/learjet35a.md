@@ -3,6 +3,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/Learjet35/**"
   - "MSFSBlindAssist/Forms/Learjet35/**"
   - "MSFSBlindAssist/Resources/coherent-gns-agent.js"
+  - "MSFSBlindAssist/Services/GpsWaypointSequencer.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Lj35*.cs"
 ---
 # Flysimware Learjet 35A rules
