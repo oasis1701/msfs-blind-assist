@@ -106,24 +106,22 @@ public static class MsfsPackagesLocator
         }
     }
 
-    /// <summary>The Community folder the RUNNING simulator loads, or null; <paramref name="readFailed"/>
-    /// as above. The NextBoot line never counts here, and there is no parameter to make it.</summary>
-    public static string? TryGetCommunityPath(string simulatorVersion, out bool readFailed)
-        => Community(TryGetInstalledPackagesPath(simulatorVersion, RoamingAppData(), LocalAppData(), includeNextBoot: false, out readFailed));
+    /// <summary>The add-on folders the RUNNING simulator loads — <c>Community</c>, and on MSFS 2024
+    /// <c>Community2024</c> too (<see cref="MsfsPackageLayout"/>) — only those on disk; empty when none.
+    /// <paramref name="readFailed"/> as above. The NextBoot line never counts here, and there is no
+    /// parameter to make it.</summary>
+    public static IReadOnlyList<string> TryGetCommunityPaths(string simulatorVersion, out bool readFailed)
+        => CommunityFolders(TryGetInstalledPackagesPath(simulatorVersion, RoamingAppData(), LocalAppData(), includeNextBoot: false, out readFailed), simulatorVersion);
 
     /// <summary>Test seam: the two roots Windows would otherwise supply.</summary>
-    internal static string? TryGetCommunityPath(string simulatorVersion, string roamingAppData, string localAppData, out bool readFailed)
-        => Community(TryGetInstalledPackagesPath(simulatorVersion, roamingAppData, localAppData, includeNextBoot: false, out readFailed));
+    internal static IReadOnlyList<string> TryGetCommunityPaths(string simulatorVersion, string roamingAppData, string localAppData, out bool readFailed)
+        => CommunityFolders(TryGetInstalledPackagesPath(simulatorVersion, roamingAppData, localAppData, includeNextBoot: false, out readFailed), simulatorVersion);
 
     private static string RoamingAppData() => Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
     private static string LocalAppData() => Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
-    private static string? Community(string? root)
-    {
-        if (root == null) return null;
-        string community = Path.Combine(root, "Community");
-        return Directory.Exists(community) ? community : null;
-    }
+    private static IReadOnlyList<string> CommunityFolders(string? root, string simulatorVersion)
+        => root == null ? Array.Empty<string>() : MsfsPackageLayout.CommunityFolders(root, simulatorVersion);
 
     /// <summary>The first packages root this config names that exists on disk. <paramref name="readFailed"/>
     /// is true only when the file exists and reading it threw.</summary>

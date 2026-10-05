@@ -13,6 +13,7 @@ public partial class ChecklistForm : Form
     private Panel scrollPanel = null!;
     private List<CheckedListBox> checklistViews = new List<CheckedListBox>();
     private readonly string aircraftCode;
+    private readonly string checklistFileName;
     private IntPtr previousWindow;
 
     // Static dictionary to persist checkbox states across show/hide cycles
@@ -22,9 +23,10 @@ public partial class ChecklistForm : Form
     private static int lastFocusedListViewIndex = 0;
     private static int lastSelectedItemIndex = 0;
 
-    public ChecklistForm(ScreenReaderAnnouncer announcer, string aircraftCode)
+    public ChecklistForm(ScreenReaderAnnouncer announcer, string aircraftCode, string checklistFileName)
     {
         this.aircraftCode = aircraftCode;
+        this.checklistFileName = checklistFileName;
         InitializeComponent();
         SetupAccessibility();
         PopulateChecklist();
@@ -107,10 +109,11 @@ public partial class ChecklistForm : Form
     }
 
     private string GetChecklistText()
-        // The aircraft's own checklist first, MSFSBA's bundled file second — see
-        // ChecklistContent, which owns the order and the file map.
+        // The aircraft's own checklist first, then the file the aircraft names — see
+        // ChecklistContent, which owns the order.
         => Services.ChecklistContent.Load(
             aircraftCode,
+            checklistFileName,
             Services.NativeChecklistReader.Render,
             Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Checklists"));
 

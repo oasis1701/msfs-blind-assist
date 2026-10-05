@@ -13,47 +13,26 @@ public sealed record ChecklistSection(string Title, IReadOnlyList<string> Items)
 /// remembered.
 ///
 /// THE ORDER IS THE AIRCRAFT'S OWN CHECKLIST FIRST (<see cref="NativeChecklistReader"/>), then
-/// the text file MSFSBA ships for that aircraft, then main's fallback to the A320's file. The
+/// the text file MSFSBA ships for that aircraft (the definition names it). The
 /// aircraft's own is the vendor's, complete, and follows the aeroplane through updates; the
 /// bundled file is what a pilot gets when the package cannot be found, or ships none.
 /// </summary>
 public static class ChecklistContent
 {
-    /// <summary>Aircraft code to the file under <c>Checklists\</c> next to the exe. Each one
-    /// also needs its own copy entry in MSFSBlindAssist.csproj — there is no wildcard.</summary>
-    public static IReadOnlyDictionary<string, string> BundledFiles { get; } =
-        new Dictionary<string, string>(StringComparer.Ordinal)
-        {
-            ["A320"] = "FBW_A320_Checklist.txt",
-            ["HW_A330"] = "FBW_A330_Checklist.txt",
-            ["FENIX_A320CEO"] = "Fenix_A320_Checklist.txt",
-            ["FBW_A380"] = "FBW_A380_Checklist.txt",
-            ["IFLY_737MAX8"] = "iFly_737MAX8_Checklist.txt",
-            ["COWS_DA40NG"] = "COWS_DA40NG_Checklist.txt",
-            ["COWS_DA40XLS"] = "COWS_DA40XLS_Checklist.txt",
-        };
-
-    /// <summary>The aircraft whose file is shown when an aircraft has neither its own checklist
-    /// nor a bundled file — main's behaviour, unchanged here.</summary>
-    private const string FallbackAircraftCode = "A320";
-
-    /// <summary>The bundled file name for an aircraft, or null when MSFSBA carries none.</summary>
-    public static string? BundledFileFor(string? aircraftCode)
-        => aircraftCode != null && BundledFiles.TryGetValue(aircraftCode, out string? file) ? file : null;
-
     /// <summary>
-    /// The checklist text for an aircraft. <paramref name="nativeReader"/> is
-    /// <see cref="NativeChecklistReader.Render"/> in the app; <paramref name="checklistFolder"/>
-    /// is the <c>Checklists</c> folder next to the exe.
+    /// The checklist text for an aircraft. <paramref name="checklistFileName"/> is the aircraft's
+    /// own <c>IAircraftDefinition.ChecklistFileName</c> — main (#266) moved the file map onto the
+    /// definitions, and an aircraft naming none opens no window at all, so there is no fallback
+    /// here. <paramref name="nativeReader"/> is <see cref="NativeChecklistReader.Render"/> in the
+    /// app; <paramref name="checklistFolder"/> is the <c>Checklists</c> folder next to the exe.
     /// </summary>
-    public static string Load(string aircraftCode, Func<string, string?> nativeReader, string checklistFolder)
+    public static string Load(string aircraftCode, string checklistFileName,
+        Func<string, string?> nativeReader, string checklistFolder)
     {
         string? native = nativeReader(aircraftCode);
         if (!string.IsNullOrWhiteSpace(native)) return native;
 
-        string file = BundledFileFor(aircraftCode) ?? BundledFiles[FallbackAircraftCode];
-
-        string path = Path.Combine(checklistFolder, file);
+        string path = Path.Combine(checklistFolder, checklistFileName);
         try
         {
             return File.Exists(path)

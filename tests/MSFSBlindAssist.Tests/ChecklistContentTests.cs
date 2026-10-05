@@ -11,8 +11,7 @@ namespace MSFSBlindAssist.Tests;
 
 /// <summary>
 /// What the checklist window (output mode, Shift+C) shows, and where it comes from: the
-/// aircraft's own checklist first, MSFSBA's bundled text file second, and main's A320 fallback
-/// when there is neither.
+/// aircraft's own checklist first, then the bundled text file its definition names.
 /// </summary>
 public class ChecklistContentTests
 {
@@ -25,45 +24,37 @@ public class ChecklistContentTests
 
     private static string ChecklistFolder() => Path.Combine(RepoRoot(), "MSFSBlindAssist", "Checklists");
 
-    private static string ReadBundled(string aircraftCode)
+    /// <summary>Every bundled file, by the definitions that name it (main #266 moved the map there).</summary>
+    private static IReadOnlyDictionary<string, string> BundledFiles()
     {
-        string? file = ChecklistContent.BundledFileFor(aircraftCode);
-        Assert.NotNull(file);
-        return File.ReadAllText(Path.Combine(ChecklistFolder(), file!));
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        var defs = ComboLabelCollapseTests.AllAircraft().Select(o => (MSFSBlindAssist.Aircraft.IAircraftDefinition)o[0])
+            .Append(new CowsDA40Definition(DA40Variant.NG))
+            .Append(new CowsDA40Definition(DA40Variant.XLS));
+        foreach (var d in defs)
+            if (d.ChecklistFileName is { } f) map[d.AircraftCode] = f;
+        return map;
     }
+
+    private static string ReadBundled(string aircraftCode)
+        => File.ReadAllText(Path.Combine(ChecklistFolder(), BundledFiles()[aircraftCode]));
 
     // ---------- which file ----------
 
     [Theory]
-    [InlineData("COWS_DA40NG", "COWS_DA40NG_Checklist.txt")]
-    [InlineData("COWS_DA40XLS", "COWS_DA40XLS_Checklist.txt")]
-    [InlineData("A320", "FBW_A320_Checklist.txt")]
-    [InlineData("FENIX_A320CEO", "Fenix_A320_Checklist.txt")]
-    public void EachAircraftNamesItsOwnFile(string aircraftCode, string expected)
-        => Assert.Equal(expected, ChecklistContent.BundledFileFor(aircraftCode));
-
-    [Theory]
-    [InlineData(null)]
-    [InlineData("")]
-    [InlineData("NO_SUCH_AEROPLANE")]
-    public void AnAircraftWithNoFileHasNone(string? aircraftCode)
-        => Assert.Null(ChecklistContent.BundledFileFor(aircraftCode));
+    [InlineData(DA40Variant.NG, "COWS_DA40NG_Checklist.txt")]
+    [InlineData(DA40Variant.XLS, "COWS_DA40XLS_Checklist.txt")]
+    public void EachDA40NamesItsOwnFile(DA40Variant variant, string expected)
+        => Assert.Equal(expected, new CowsDA40Definition(variant).ChecklistFileName);
 
     [Fact]
-    public void EveryMappedFileIsInTheRepository()
+    public void EveryFileInTheFolderIsNamedByAnAircraft()
     {
-        foreach (string file in ChecklistContent.BundledFiles.Values)
-            Assert.True(File.Exists(Path.Combine(ChecklistFolder(), file)), $"{file} is mapped but missing");
-    }
-
-    [Fact]
-    public void EveryFileInTheFolderIsMapped()
-    {
-        // A file nobody maps can never be shown, which is how a checklist gets written and
+        // A file nobody names can never be shown, which is how a checklist gets written and
         // then silently never reaches the pilot.
-        var mapped = new HashSet<string>(ChecklistContent.BundledFiles.Values, StringComparer.OrdinalIgnoreCase);
+        var named = new HashSet<string>(BundledFiles().Values, StringComparer.OrdinalIgnoreCase);
         foreach (string path in Directory.GetFiles(ChecklistFolder(), "*.txt"))
-            Assert.Contains(Path.GetFileName(path), mapped);
+            Assert.Contains(Path.GetFileName(path), named);
     }
 
     /// <summary>
@@ -72,7 +63,7 @@ public class ChecklistContentTests
     /// "Checklist file not found" in the window.
     /// </summary>
     [Fact]
-    public void TheBuildCopiesEveryMappedFile()
+    public void TheBuildCopiesEveryNamedFile()
     {
         var csproj = XDocument.Load(Path.Combine(RepoRoot(), "MSFSBlindAssist", "MSFSBlindAssist.csproj"));
         var copied = csproj.Descendants()
@@ -82,14 +73,14 @@ public class ChecklistContentTests
             .Select(p => p.Replace('/', '\\'))
             .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-        foreach (string file in ChecklistContent.BundledFiles.Values)
+        foreach (string file in BundledFiles().Values)
             Assert.Contains($"Checklists\\{file}", copied);
     }
 
     // ---------- the files themselves ----------
 
     public static IEnumerable<object[]> AllBundledCodes()
-        => ChecklistContent.BundledFiles.Keys.Select(k => new object[] { k });
+        => BundledFiles().Keys.Select(k => new object[] { k });
 
     [Theory]
     [MemberData(nameof(AllBundledCodes))]
@@ -211,7 +202,7 @@ public class ChecklistContentTests
     [Fact]
     public void TheAircraftsOwnChecklistWinsOverTheBundledFile()
     {
-        string text = ChecklistContent.Load("COWS_DA40NG", _ => "[Native]\nFrom the package\n", ChecklistFolder());
+        string text = ChecklistContent.Load("COWS_DA40NG", "COWS_DA40NG_Checklist.txt", _ => "[Native]\nFrom the package\n", ChecklistFolder());
 
         Assert.StartsWith("[Native]", text, StringComparison.Ordinal);
     }
@@ -219,7 +210,7 @@ public class ChecklistContentTests
     [Fact]
     public void TheBundledFileIsUsedWhenThePackageHasNone()
     {
-        string text = ChecklistContent.Load("COWS_DA40NG", _ => null, ChecklistFolder());
+        string text = ChecklistContent.Load("COWS_DA40NG", "COWS_DA40NG_Checklist.txt", _ => null, ChecklistFolder());
 
         Assert.Equal(File.ReadAllText(Path.Combine(ChecklistFolder(), "COWS_DA40NG_Checklist.txt")), text);
     }
@@ -227,19 +218,9 @@ public class ChecklistContentTests
     [Fact]
     public void ABlankNativeChecklistCountsAsNone()
     {
-        string text = ChecklistContent.Load("COWS_DA40XLS", _ => "   \n", ChecklistFolder());
+        string text = ChecklistContent.Load("COWS_DA40XLS", "COWS_DA40XLS_Checklist.txt", _ => "   \n", ChecklistFolder());
 
         Assert.Contains("[Before Starting Engine]", text, StringComparison.Ordinal);
-    }
-
-    [Fact]
-    public void AnAircraftWithNeitherFallsBackToTheA320FileAsMainDoes()
-    {
-        // The fallback is main's behaviour and stays main's to change (upstream PR #266 names
-        // it in the window title); this branch only adds the DA40's own sources ahead of it.
-        string text = ChecklistContent.Load("NO_SUCH_AEROPLANE", _ => null, ChecklistFolder());
-
-        Assert.Equal(File.ReadAllText(Path.Combine(ChecklistFolder(), "FBW_A320_Checklist.txt")), text);
     }
 
     [Fact]
@@ -248,7 +229,7 @@ public class ChecklistContentTests
         string empty = Directory.CreateTempSubdirectory("msfsba-checklist-").FullName;
         try
         {
-            string text = ChecklistContent.Load("COWS_DA40NG", _ => null, empty);
+            string text = ChecklistContent.Load("COWS_DA40NG", "COWS_DA40NG_Checklist.txt", _ => null, empty);
 
             Assert.StartsWith("[Error]", text, StringComparison.Ordinal);
             Assert.Contains("COWS_DA40NG_Checklist.txt", text, StringComparison.Ordinal);

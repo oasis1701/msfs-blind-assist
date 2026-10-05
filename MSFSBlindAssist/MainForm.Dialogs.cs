@@ -270,12 +270,19 @@ public partial class MainForm
         // Ensure output hotkey mode is deactivated before showing dialog
         hotkeyManager.ExitOutputHotkeyMode();
 
-        // Shift+C opens the static text checklist (same for every aircraft, including
-        // the A380). The A380's LIVE Electronic Checklist is on its own key,
-        // Ctrl+Shift+C (ShowChecklistECLDialog).
+        // Shift+C opens this aircraft's static text checklist. An aircraft with none of its own
+        // opens nothing and says so: another aircraft's list must never pass for this one's.
+        // The A380's LIVE Electronic Checklist is on its own key, Ctrl+Shift+C
+        // (ShowChecklistECLDialog).
+        if (currentAircraft.ChecklistFileName is not { } checklistFileName)
+        {
+            announcer.AnnounceImmediate("No checklist for this aircraft.");
+            return;
+        }
+
         if (checklistForm == null || checklistForm.IsDisposed)
         {
-            checklistForm = new ChecklistForm(announcer, currentAircraft.AircraftCode);
+            checklistForm = new ChecklistForm(announcer, currentAircraft.AircraftCode, checklistFileName);
         }
 
         // Show the form (reuses same instance to preserve checkbox states)
@@ -291,7 +298,11 @@ public partial class MainForm
 
         if (currentAircraft?.AircraftCode != "FBW_A380")
         {
-            announcer.AnnounceImmediate("The live Electronic Checklist is only on the A380. Use Shift+C for the text checklist.");
+            // Point to Shift+C only where it opens something: on an aircraft with no checklist
+            // file it says "No checklist for this aircraft." (ShowChecklistDialog).
+            announcer.AnnounceImmediate(currentAircraft?.ChecklistFileName != null
+                ? "The live Electronic Checklist is only on the A380. Use Shift+C for the text checklist."
+                : "The live Electronic Checklist is only on the A380.");
             return;
         }
         // The live ECL reads through the SHARED A380X_EWD monitor connection (only

@@ -54,6 +54,11 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
     public override string AircraftCode =>
         IsNG ? "COWS_DA40NG" : "COWS_DA40XLS";
 
+    /// <summary>MSFSBA's bundled text checklist, shown when the package's own cannot be read
+    /// (<see cref="Services.ChecklistContent"/> tries the aircraft's own first).</summary>
+    public override string? ChecklistFileName =>
+        IsNG ? "COWS_DA40NG_Checklist.txt" : "COWS_DA40XLS_Checklist.txt";
+
     // ==================================================================================
     // Panel structure — Sections → Panels
     // ==================================================================================

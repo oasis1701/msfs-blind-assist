@@ -197,23 +197,18 @@ namespace MSFSBlindAssist.Services
             return (icao, titles);
         }
 
-        // --- file discovery (mirrors EFBModPackageManager / GsxAirplaneProfile path logic) ----
+        // --- file discovery (the same package folders as GsxAirplaneProfile) -------------------
 
         private static IEnumerable<string> EnumerateAircraftCfgFiles()
         {
             string? pkgRoot = FindInstalledPackagesPath();
             if (pkgRoot == null) yield break;
 
-            // Scan Community + Official\OneStore + Official\Steam.
-            var roots = new List<string>();
-            string community = Path.Combine(pkgRoot, "Community");
-            if (SafeDirExists(community)) roots.Add(community);
-
-            string official = Path.Combine(pkgRoot, "Official");
-            if (SafeDirExists(official))
-                foreach (var sub in SafeDirs(official)) roots.Add(sub); // OneStore, Steam, ...
-
-            foreach (var root in roots)
+            // Scan every folder that directly holds packages: Community, Community2024 (MSFS 2024's
+            // own add-on folder), and each child of Official / Official2020 / Official2024 (OneStore,
+            // Steam, ...). A 2020 root simply has fewer of them. MsfsPackageLayout is dependency-free
+            // on purpose: tools/GsxOffsetProbe links this file and that one, nothing else of the app.
+            foreach (var root in Database.MsfsPackageLayout.PackageFolders(pkgRoot))
             {
                 foreach (var pkg in SafeDirs(root))
                 {

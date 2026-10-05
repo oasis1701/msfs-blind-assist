@@ -454,7 +454,8 @@ public class TaxiGuidancePanel : UserControl, ISettingsPanel
             AccessibleDescription = "When enabled, reads the add-on airport package on disk for named "
                 + "hangars, concourses, the tower and other modeled buildings and includes them in the "
                 + "surroundings readout. No network use. With an MSFS 2024 database the package is found "
-                + "by a one-time scan of the Community folder's scenery headers. Applies immediately."
+                + "by a one-time scan of the scenery headers in the simulator's add-on folders, Community "
+                + "and Community2024. Applies immediately."
         };
 
         // Read-only TextBox, not a Label, so a screen-reader user can tab to it.
