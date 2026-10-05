@@ -137,6 +137,21 @@ public class ClaudeContextBudgetTests
         Assert.Equal(over, OverRuleFileBudget("---\npaths:\n" + globs + "---\n" + new string('a', bodyLength)));
     }
 
+    [Theory]
+    [InlineData("", "", false)]
+    [InlineData("- Never do the thing.\n", "", true)]
+    [InlineData("", "### Flysimware Learjet 35A\n", true)]
+    [InlineData("", "- **[Citation Sovereign+](docs/c680.md)** - Skyward C680\n", true)]
+    [InlineData("", "See [a](docs/a.md#part).\n", false)]
+    [InlineData("", "```\n# a shell comment\n```\n", false)]
+    public void CLAUDE_md_keeps_its_outline_rule_lines_and_map(string inRules, string atEnd, bool rejected)
+    {
+        string text = "# T\n## Rules for any file\n- [X-1] Never do the thing. Full: docs/invariants/x.md#x-1\n" + inRules
+            + "## Where things live\n| [a.md](docs/a.md) | when | x |\n" + atEnd;
+        string[] outline = { "# T", "## Rules for any file", "## Where things live" };
+        Assert.Equal(rejected, ClaudeMdStructureProblems(text, outline).Count > 0);
+    }
+
     [Fact]
     public void CLAUDE_md_stays_within_its_budget()
     {
@@ -146,6 +161,13 @@ public class ClaudeContextBudgetTests
             $"CLAUDE.md is {text.Length:N0} characters and {lines} lines; the budget is {ClaudeMdMaxChars:N0} and "
             + $"{ClaudeMdMaxLines}. It is loaded into every session and every general-purpose subagent, so it takes only "
             + "rules that apply to ANY file. " + HowToAdd);
+    }
+
+    [Fact]
+    public void CLAUDE_md_keeps_its_outline_and_maps_every_doc_it_links()
+    {
+        List<string> problems = ClaudeMdStructureProblems(Read(Path.Combine(RepoRoot(), "CLAUDE.md")), ClaudeMdOutline);
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 
     [Fact]
@@ -455,6 +477,58 @@ public class ClaudeContextBudgetTests
     /// rule into context" (code.claude.com/docs/en/memory), and a Read of AppVersion.cs injected updates.md from its
     /// heading on, with no paths list (measured 2026-10-05), so the globs cost nothing. The one-line "Contents of
     /// &lt;path&gt;:" header Claude Code puts above each injected file is not counted.</summary>
+    /// <summary>CLAUDE.md's headings, in full. A new aircraft or feature takes a row in "Where things live" and a rule
+    /// file of its own, never a CLAUDE.md section, so a change to this list is a deliberate change to CLAUDE.md's shape.</summary>
+    private static readonly string[] ClaudeMdOutline =
+    {
+        "# CLAUDE.md", "## Project Overview", "## Build", "## Testing", "## Before changing behaviour",
+        "## Git workflow and release notes", "## Rules for any file", "### Screen reader announcements",
+        "### Everywhere else", "## Multi-Aircraft Architecture", "## Quick Reference", "### Adding Panel Control",
+        "### Adding Background Monitoring", "### Adding New Aircraft", "### Variable Types",
+        "### `SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06)", "## Where things live",
+        "## Adding or changing a rule", "## Technology Stack",
+    };
+
+    /// <summary>CLAUDE.md keeps its outline, its "Rules for any file" section holds rule lines only, and every doc it
+    /// links to has a row in "Where things live". Text a branch carries over from the old CLAUDE.md after merging main
+    /// fails here even when it is too short to break the size budget; git can merge a small hunk with no conflict.</summary>
+    private static List<string> ClaudeMdStructureProblems(string text, IReadOnlyCollection<string> outline)
+    {
+        var problems = new List<string>();
+        var mapped = new HashSet<string>(StringComparer.Ordinal);
+        var linked = new List<string>();
+        string section = "";
+        bool inFence = false;
+        foreach (string line in text.Split('\n'))
+        {
+            if (line.StartsWith("```", StringComparison.Ordinal)) inFence = !inFence;
+            if (inFence || line.StartsWith("```", StringComparison.Ordinal)) continue;
+            if (line.StartsWith('#'))
+            {
+                if (!outline.Contains(line))
+                    problems.Add($"CLAUDE.md: '{line}' is not one of its headings. A new aircraft or feature takes a row in "
+                        + "\"Where things live\" and a rule file of its own, not a CLAUDE.md section; if CLAUDE.md's own "
+                        + "outline must change, update ClaudeMdOutline in this test in the same PR.");
+                if (line.StartsWith("## ", StringComparison.Ordinal)) section = line;
+                continue;
+            }
+            if (section == "## Rules for any file" && line.StartsWith("- ", StringComparison.Ordinal) && !RuleLine.IsMatch(line))
+                problems.Add($"CLAUDE.md: '{(line.Length > 60 ? line[..60] + "…" : line)}' under \"Rules for any file\" is "
+                    + "not a rule line. " + HowToAdd);
+            foreach (Match m in MarkdownLink.Matches(line))
+            {
+                string target = m.Groups["target"].Value.Split('#')[0];
+                if (!target.StartsWith("docs/", StringComparison.Ordinal)) continue;
+                if (section == "## Where things live" && line.StartsWith("| ", StringComparison.Ordinal)) mapped.Add(target);
+                else linked.Add(target);
+            }
+        }
+        foreach (string doc in linked.Distinct(StringComparer.Ordinal).Where(d => !mapped.Contains(d)))
+            problems.Add($"CLAUDE.md links to {doc}, which has no row in \"Where things live\". Give it a row there (the doc, "
+                + "when to read it, its rule files) instead of a pointer of its own.");
+        return problems;
+    }
+
     private static int LoadedChars(string ruleFileText) => SplitFrontMatter(ruleFileText).Body.Length;
 
     private static bool OverRuleFileBudget(string ruleFileText) => LoadedChars(ruleFileText) > RuleFileMaxChars;
