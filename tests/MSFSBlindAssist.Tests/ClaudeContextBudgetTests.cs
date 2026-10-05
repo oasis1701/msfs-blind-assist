@@ -247,6 +247,24 @@ public class ClaudeContextBudgetTests
     }
 
     [Fact]
+    public void Only_the_shared_aircraft_rules_glob_all_of_Aircraft()
+    {
+        const string anyNewAircraftFile = "MSFSBlindAssist/Aircraft/NewAircraft/NewAircraftDefinition.cs";
+        List<RuleFile> all = RuleFiles().ToList();
+        RuleFile? shared = all.FirstOrDefault(rf => rf.Name == SharedAircraftRules);
+        var problems = new List<string>();
+        if (shared?.Globs?.Contains("MSFSBlindAssist/Aircraft/**") != true)
+            problems.Add($"{SharedAircraftRules} must exist and glob \"MSFSBlindAssist/Aircraft/**\": the area-folder check "
+                + "ignores it by that name. If it moved or was renamed, update SharedAircraftRules.");
+        foreach (RuleFile rf in all.Where(rf => rf.Name != SharedAircraftRules))
+            if ((rf.Globs ?? new List<string>()).Any(g => GlobMatches(g, anyNewAircraftFile)))
+                problems.Add($"{rf.Name} globs every aircraft's folder, so the area-folder check would count it as any new "
+                    + "aircraft's own rule file. Scope it to the aircraft it guards, or add it to SharedAircraftRules' "
+                    + "exclusion in AreaFilesLoadingNoOwnRuleFile.");
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
+    }
+
+    [Fact]
     public void Every_tested_code_file_loads_a_rule_file_when_its_test_does()
     {
         var compiled = RuleFiles().Select(rf => (rf.Name, Globs: (rf.Globs ?? new List<string>()).Select(GlobRegex).ToList()))
