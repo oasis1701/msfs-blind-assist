@@ -1,6 +1,6 @@
 ---
 paths:
-  - "MSFSBlindAssist/Aircraft/*.cs"
+  - "MSFSBlindAssist/Aircraft/**"
   - "MSFSBlindAssist/Services/DefAnnounceMuteSets.cs"
   - "tests/MSFSBlindAssist.Tests/**/*VarNameCollision*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*SimVarDefinition*.cs"
@@ -22,6 +22,7 @@ Loaded when Claude reads matching code. Background: docs/aircraft-definitions.md
 - [VAR-6] Never add a Continuous+IsAnnounced monitoring var to `BuildPanelControls()` merely to register it; the one exception is a var that IS a panel control's own read-back (the speed-brake levers), and a `RefreshControlWhenDefHandled` predicate must never accept values a lever sweeps through. Full: docs/invariants/variable-definitions.md#var-6
 - [VAR-7] Two var keys may share a `Name`, but NEVER when both are `Continuous` and batched: the batch sorts by name, so duplicates shift every later struct slot. Use ONE var and derive extra announcements, or exclude a copy from the batch (`VarNameCollisionTests`). Full: docs/invariants/variable-definitions.md#var-7
 - [VAR-8] A def that announces from inside `ProcessSimVarUpdate` needs the `announcer.Suppressed` wrap for Ctrl+M mutes (which airframes: `Services/DefAnnounceMuteSets` alone); a branch speaking a call-out ANOTHER row owns must be in `IsMuteWrapExempt` and check each row itself. Full: docs/invariants/variable-definitions.md#var-8
+- [VAR-9] A var `ProcessSimVarUpdate` consumes silently (a hotkey-readout or dialog cache, never spoken) must also set `ExcludeFromMonitorManager = true` (HS787: list it in `CacheOnlyVariables`), or it earns a Ctrl+M checkbox that mutes nothing. Full: docs/invariants/variable-definitions.md#var-9
 
 Mirrored from visual-guidance.md (it governs `VisualGuidanceProfile` in IAircraftDefinition.cs; change it there and here together):
 - [VG-15] Never collapse `GlideslopeAltitudeBiasFt` and `FlareAltitudeBiasFt` into one shared constant: they apply in different code paths (glideslope error vs phase detection) and were measured separately. Full: docs/invariants/visual-guidance.md#vg-15

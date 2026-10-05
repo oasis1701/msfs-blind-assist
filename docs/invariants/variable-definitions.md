@@ -34,3 +34,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## VAR-8
 
 - The Ctrl+M monitor-manager disabled-var gate must WRAP `ProcessSimVarUpdate` in `announcer.Suppressed` for the HS787, never rely on the generic post-return gate alone — the HS787 announces ~100 of its vars from INSIDE `ProcessSimVarUpdate`, which returns true and skips the generic gate entirely; apply the same wrap to any future aircraft with the same self-announcing pattern. Which list wraps which airframe is `Services/DefAnnounceMuteSets` alone. The FBW A380 joined it on 2026-09-25: it had relied on per-branch checks, and its baro, spoilers, thrust-lever, minimums, autoland-capability and weight-unit rows muted nothing. The wrap assumes a branch speaks only for its OWN row: a branch that also speaks a call-out ANOTHER row owns must be named in `IAircraftDefinition.IsMuteWrapExempt` (checked by `DefAnnounceMuteSets.ShouldWrap`) and check each row itself, or muting its row silences the other one too. The A380's FMA vertical, lateral and armed vertical modes speak "Altitude Mode"; wrapped, muting "Vertical Mode" silenced it (`A380MuteWrapTests`). → [hs787.md](../hs787.md), [a380x.md](../a380x.md)
+
+## VAR-9
+
+- A var that `ProcessSimVarUpdate` consumes SILENTLY (a cache for hotkey readouts or dialog fields, never spoken) must ALSO set `ExcludeFromMonitorManager = true` (HS787: add it to `CacheOnlyVariables`) - otherwise it earns a Ctrl+M checkbox that mutes nothing
+
+Moved word for word from CLAUDE.md's Quick Reference ("Adding Background Monitoring", step 4) as of `6ba751ec`; docs/QUICK-REFERENCE.md keeps the same words in its walkthrough.
