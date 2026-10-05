@@ -112,33 +112,8 @@ Screen readers already announce every UI control interaction, so the app NEVER a
 
 ## Quick Reference
 
-### Adding Panel Control
-1. Add to aircraft's `GetVariables()` with `UpdateFrequency.OnRequest`
-2. Add variable key to `BuildPanelControls()` under appropriate panel
-3. Test - automatic registration and UI generation
-
-### Adding Background Monitoring
-1. Add to `GetVariables()` with `UpdateFrequency.Continuous` + `IsAnnounced = true`
-2. Do NOT add to `BuildPanelControls()` - batched monitoring is automatic (sole exception: the var is itself a panel control's read-back — see [VAR-6] in `.claude/rules/variable-definitions.md`)
-3. Change detection and announcements are automatic (supports 1000 variables)
-4. A var that `ProcessSimVarUpdate` consumes SILENTLY (a cache for hotkey readouts or dialog fields, never spoken) must ALSO set `ExcludeFromMonitorManager = true` (HS787: add it to `CacheOnlyVariables`) - otherwise it earns a Ctrl+M checkbox that mutes nothing
-
-### Adding New Aircraft
-1. Create class inheriting `BaseAircraftDefinition`
-2. Override: `GetVariables()`, `GetPanelStructure()`, `BuildPanelControls()`
-3. Add menu item in `MainForm.Designer.cs` + click handler
-4. Add to `LoadAircraftFromCode()` switch statement
-5. Use `FlyByWireA320Definition.cs` as template
-
-### Variable Types
-- **K:EVENT** - Standard MSFS events (via SimConnect TransmitClientEvent)
-- **L:VARIABLE** - Local variables (reading aircraft state)
-- **H:EVENT** - Hardware events (via MobiFlight WASM module)
-- **PMDGVar** - PMDG SDK variables (read via Client Data Area broadcast)
-
-### `SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06)
-
-Every L:var write is routed through the MobiFlight calculator path when connected (gated on `CalcPathVerified`), never the native data-def write. Full routing rules, the H:/dotted event queue, and the RPN invariant-formatting rule: [docs/architecture.md](docs/architecture.md).
+- Adding a panel control, background monitoring, an H-variable, a hotkey, an aircraft or a feature: follow its workflow in [adding-features.md](docs/adding-features.md); the short forms are under "Common Workflows" in [QUICK-REFERENCE.md](docs/QUICK-REFERENCE.md). The rules for aircraft code load when you Read it.
+- **`SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06):** Every L:var write is routed through the MobiFlight calculator path when connected (gated on `CalcPathVerified`), never the native data-def write. Full routing rules, the H:/dotted event queue, and the RPN invariant-formatting rule: [docs/architecture.md](docs/architecture.md).
 
 ## Where things live
 

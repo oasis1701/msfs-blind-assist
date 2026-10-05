@@ -16,6 +16,9 @@ Step-by-step workflows for adding features to MSFS Blind Assist. For quick patte
 - Format: `H:EVENT_NAME`
 - Sent via: MobiFlight WASM module (automatic for variables with `Type = SimVarType.HVar`)
 
+**PMDG variables (PMDGVar)** - PMDG SDK variables
+- Read via: Client Data Area broadcast
+
 ## Workflow 1: Adding Panel Control
 
 **File:** Aircraft definition class (e.g., `FlyByWireA320Definition.cs`)

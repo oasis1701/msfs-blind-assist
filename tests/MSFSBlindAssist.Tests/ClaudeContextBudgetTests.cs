@@ -473,19 +473,13 @@ public class ClaudeContextBudgetTests
             && !AreaFolderExemptions.Keys.Any(k => file.StartsWith(k, StringComparison.Ordinal));
     }
 
-    /// <summary>What a rule file puts into context: its body. "Claude Code removes the frontmatter before loading the
-    /// rule into context" (code.claude.com/docs/en/memory), and a Read of AppVersion.cs injected updates.md from its
-    /// heading on, with no paths list (measured 2026-10-05), so the globs cost nothing. The one-line "Contents of
-    /// &lt;path&gt;:" header Claude Code puts above each injected file is not counted.</summary>
     /// <summary>CLAUDE.md's headings, in full. A new aircraft or feature takes a row in "Where things live" and a rule
     /// file of its own, never a CLAUDE.md section, so a change to this list is a deliberate change to CLAUDE.md's shape.</summary>
     private static readonly string[] ClaudeMdOutline =
     {
         "# CLAUDE.md", "## Project Overview", "## Build", "## Testing", "## Before changing behaviour",
         "## Git workflow and release notes", "## Rules for any file", "### Screen reader announcements",
-        "### Everywhere else", "## Multi-Aircraft Architecture", "## Quick Reference", "### Adding Panel Control",
-        "### Adding Background Monitoring", "### Adding New Aircraft", "### Variable Types",
-        "### `SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06)", "## Where things live",
+        "### Everywhere else", "## Multi-Aircraft Architecture", "## Quick Reference", "## Where things live",
         "## Adding or changing a rule", "## Technology Stack",
     };
 
@@ -529,6 +523,10 @@ public class ClaudeContextBudgetTests
         return problems;
     }
 
+    /// <summary>What a rule file puts into context: its body. "Claude Code removes the frontmatter before loading the
+    /// rule into context" (code.claude.com/docs/en/memory), and a Read of AppVersion.cs injected updates.md from its
+    /// heading on, with no paths list (measured 2026-10-05), so the globs cost nothing. The one-line "Contents of
+    /// &lt;path&gt;:" header Claude Code puts above each injected file is not counted.</summary>
     private static int LoadedChars(string ruleFileText) => SplitFrontMatter(ruleFileText).Body.Length;
 
     private static bool OverRuleFileBudget(string ruleFileText) => LoadedChars(ruleFileText) > RuleFileMaxChars;
