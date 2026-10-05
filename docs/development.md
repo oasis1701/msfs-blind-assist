@@ -90,7 +90,7 @@ See [Access GSX](gsx.md) for the full feature reference.
 
 - Project targets .NET 10 (`net10.0-windows`)
 - Uses modern SDK-style project format
-- Platform: x64 (`Platforms`/`PlatformTarget`; no `RuntimeIdentifier` — see the RID-subfolder gotcha in CLAUDE.md)
+- Platform: x64 (`Platforms`/`PlatformTarget`; no `RuntimeIdentifier` — see the RID-subfolder gotcha, CLAUDE.md [CORE-2] and [Build output and traps](#build-output-and-traps) below)
 - Uses Microsoft Flight Simulator SimConnect SDK
 - Post-build event copies SimConnect.dll to output directory
 - SimConnect.cfg configuration file is copied to output for connection settings
@@ -125,7 +125,7 @@ The `tools/*.md` files (e.g. `a380-simvars-catalog.md`, `a380-fcu-vars.md`,
 its product ships as `MSFSBlindAssist/SimConnect/EWDMessageLookupA380.cs`.
 
 > `tools/CDUTest` and `tools/PMDGDispatchTester` are **pre-existing PMDG console apps**,
-> not Coherent tooling — see [CLAUDE.md](../CLAUDE.md) → Build Commands. Leave them untouched.
+> not Coherent tooling — see [Build output and traps](#build-output-and-traps) below. Leave them untouched.
 
 ### Crashes & diagnosis
 
@@ -166,3 +166,20 @@ Settings are now stored in JSON format at:
 - Updated when user switches aircraft via the Aircraft menu
 
 **Note:** Users upgrading from .NET Framework 4.8.1 will need to reconfigure their settings.
+
+
+## Build output and traps
+
+Moved here from CLAUDE.md (2026-10), word for word except the project count, which said five before the vPilot plugin was counted; CLAUDE.md keeps the commands and the three traps as one-line rules.
+
+**Output (the run path):** `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\` — a plain `dotnet build` (the `.sln`, or the `.csproj` with `-p:Platform=x64`) writes HERE. There is **NO `win-x64\` subfolder** unless you build with an explicit `-r win-x64`; see the RID-subfolder gotcha below.
+
+**⚠️ ALWAYS build the SOLUTION (or pass `-p:Platform=x64`), NEVER `dotnet build MSFSBlindAssist\MSFSBlindAssist.csproj` alone.** The csproj declares `<Platforms>x64</Platforms>` only, but a bare `dotnet build` on the .csproj still defaults to **Platform=AnyCPU** and writes the exe to **`bin\Debug\net10.0-windows\`** — a DIFFERENT folder from the one the app runs from (**`bin\x64\Debug\net10.0-windows\`**). The build will say "Build succeeded" while the running x64 exe stays frozen at its old timestamp, so changes silently never reach the user (burned a whole session on this — every "compile-check" went to bin\Debug and the user's x64 exe never updated). Correct commands: `dotnet build MSFSBlindAssist.sln -c Debug` (the .sln maps to Debug|x64) or `dotnet build MSFSBlindAssist\MSFSBlindAssist.csproj -c Debug -p:Platform=x64`. To verify a build actually landed, check the LastWriteTime of `bin\x64\Debug\net10.0-windows\MSFSBlindAssist.exe` is "now". The exe is file-locked while MSFSBA runs (MSB3021) — close the app before building a fresh exe the user will run.
+
+**RID-subfolder gotcha (a SECOND build-path trap, seen 2026-06-06):** the csproj has no `<RuntimeIdentifier>`, so a plain `dotnet build` produces the non-RID run path above and creates **no** `win-x64\` subfolder. But building with an explicit **`-r win-x64`** (or `dotnet publish -r win-x64`) writes to a SEPARATE tree, `...\net10.0-windows\win-x64\`, that a plain build NEVER touches. So a stale `win-x64\MSFSBlindAssist.dll` can sit next to a fresh non-RID `net10.0-windows\MSFSBlindAssist.dll` and mislead you into thinking the build didn't land. **Build to — and verify the timestamp in — the folder the app actually launches from.** By default that is the non-RID `bin\x64\Debug\net10.0-windows\` (which the `.sln` build updates). Only if you deliberately run a `win-x64\` RID tree must you pass `-r win-x64` so C# changes reach it (a plain `.sln` build will not). NOTE: the JS agents under `Resources\` are copied to whichever tree you build, so when in doubt build BOTH (plain + `-r win-x64`), or just confirm your launch path.
+
+**Prerequisites:** MSFS_SDK environment variable, .NET 10 SDK
+
+The solution contains six projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), `tools/ChangelogBuilder` (the release-notes builder that turns `changelog.d/` fragments into the GitHub release body; its parsing/rendering logic is covered by the xUnit suite), `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI), and `plugins/MSFSBlindAssist.VPilotPlugin` (the vPilot plugin that passes VATSIM events to the app over a named pipe; see [vatsim.md](vatsim.md)). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all six. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution. A fourth standalone probe, `tools/StandBridgeSweep`, sweeps a real navdata database and reports the PR #235 stand-bridge figures (bridge count, distinct airports touched, and the four safety invariants — never on or across runway pavement, never ending on a hold-short node, a stand, or another stand's lead-in chain) by linking the production `TaxiGraph`/`RunwayPavement`/`RunwayShape` sources rather than reimplementing their logic, so its numbers can never drift from what the app actually builds; re-run it (`dotnet build tools/StandBridgeSweep`) before trusting any change to the bridging rule — it also builds on its own, not as part of the solution. A fifth, `tools/LandingExitSweep`, writes every runway direction's `GetLandingExits` list as CSV over the production `TaxiGraph` and diffs two runs into a markdown report — the whole-database before/after for any change to how landing exits are measured (`docs/tooling.md` §7); it builds on its own too. Both sweeps load the database through the one linked `tools/Shared/NavdataSweepLoader.cs`.
+
+
