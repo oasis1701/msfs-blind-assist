@@ -96,11 +96,45 @@ public class ClaudeContextBudgetTests
     [InlineData("## A-1 (retired: merged into A-2)\n", "## A-1\n", "", true)]
     [InlineData("## A-1 (retired: merged into A-2)\n", "## A-2\n", "see [A-1]", false)]
     [InlineData("## A-1\n", "## A-2\n", "see [A-3]", true)]
+    [InlineData("## A-1\n", "## A-2\n", "the [MD-11] reads [UTF-8] text", false)]
     public void An_ID_names_one_rule_forever_and_every_citation_resolves(string fullText1, string fullText2, string citing,
         bool rejected)
     {
         var fullTexts = new[] { ("one.md", fullText1), ("two.md", fullText2) };
         Assert.Equal(rejected, IdProblems(fullTexts, new[] { ("doc.md", citing) }).Count > 0);
+    }
+
+    [Theory]
+    [InlineData("MSFSBlindAssist/Services/StandId.cs", "tests/MSFSBlindAssist.Tests/StandIdTests.cs", "", "gsx.md", true)]
+    [InlineData("MSFSBlindAssist/Services/StandId.cs", "tests/MSFSBlindAssist.Tests/StandIdTests.cs", "gsx.md", "gsx.md", false)]
+    [InlineData("MSFSBlindAssist/Services/StandId.cs", "tests/MSFSBlindAssist.Tests/StandIdTests.cs", "other.md", "gsx.md", false)]
+    [InlineData("MSFSBlindAssist/Services/StandId.cs", "tests/MSFSBlindAssist.Tests/StandIdTests.cs", "", "", false)]
+    [InlineData("MSFSBlindAssist/Services/LandingGuidanceLaws.cs", "tests/MSFSBlindAssist.Tests/LandingGuidanceLawTests.cs", "", "rollout.md", true)]
+    [InlineData("MSFSBlindAssistUpdater/Updater.cs", "tests/MSFSBlindAssist.Tests/Updates/UpdaterTests.cs", "", "updates.md", true)]
+    [InlineData("MSFSBlindAssist/Services/StandIdParser.cs", "tests/MSFSBlindAssist.Tests/StandIdTests.cs", "", "gsx.md", false)]
+    [InlineData("tools/CDUTest/Program.cs", "tests/MSFSBlindAssist.Tests/ProgramTests.cs", "", "core.md", false)]
+    public void Code_loads_a_rule_file_when_its_test_does(string code, string test, string codeLoads, string testLoads,
+        bool flagged)
+    {
+        var loads = new Dictionary<string, List<string>>
+        {
+            [code] = codeLoads.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList(),
+            [test] = testLoads.Split(';', StringSplitOptions.RemoveEmptyEntries).ToList(),
+        };
+        Assert.Equal(flagged, CodeMissingItsTestsRules(new[] { code, test }, f => loads[f]).Count > 0);
+    }
+
+    [Fact]
+    public void A_rule_file_loads_its_body_not_its_front_matter()
+        => Assert.Equal("# Rules\n- [X-1] r\n".Length, LoadedChars("---\npaths:\n  - \"a/**\"\n---\n# Rules\n- [X-1] r\n"));
+
+    [Theory]
+    [InlineData(11_000, false)]
+    [InlineData(12_001, true)]
+    public void A_rule_files_size_cap_counts_its_body_not_its_globs(int bodyLength, bool over)
+    {
+        string globs = string.Concat(Enumerable.Range(0, 60).Select(i => $"  - \"MSFSBlindAssist/Area/File{i:D2}.cs\"\n"));
+        Assert.Equal(over, OverRuleFileBudget("---\npaths:\n" + globs + "---\n" + new string('a', bodyLength)));
     }
 
     [Fact]
@@ -134,13 +168,15 @@ public class ClaudeContextBudgetTests
             foreach (string g in rf.Globs ?? new List<string>())
             {
                 if (g.Contains('{') || g.Contains('['))
-                    problems.Add($"{rf.Name}: glob '{g}' uses braces or brackets; list each pattern separately.");
+                    problems.Add($"{rf.Name}: glob '{g}' uses braces or brackets. Claude Code expands braces, but this "
+                        + "test's matcher does not, so it could not check the glob; list each pattern separately.");
                 if (g.Split('/').Any(seg => seg.Contains("**", StringComparison.Ordinal) && seg != "**"))
-                    problems.Add($"{rf.Name}: glob '{g}' uses '**' inside a path segment; '**' must be a whole segment "
-                        + "('a/**/b'), anything else is read as '*'.");
+                    problems.Add($"{rf.Name}: glob '{g}' uses '**' inside a path segment. This test's matcher supports "
+                        + "'**' only as a whole segment ('a/**/b'), and the Claude Code docs do not say how they read it "
+                        + "elsewhere; rewrite the glob with '*' or a whole-segment '**'.");
             }
-            if (rf.Text.Length > RuleFileMaxChars)
-                problems.Add($"{rf.Name}: {rf.Text.Length:N0} characters, over {RuleFileMaxChars:N0}. Split the area into "
+            if (OverRuleFileBudget(rf.Text))
+                problems.Add($"{rf.Name}: {LoadedChars(rf.Text):N0} characters, over {RuleFileMaxChars:N0}. Split the area into "
                     + "two rule files with narrower paths, or shorten its lines.");
             problems.AddRange(RuleBodyProblems(rf.Name, rf.Body));
         }
@@ -176,6 +212,16 @@ public class ClaudeContextBudgetTests
                 problems.Add($"{file} loads no rule file, so no rule reaches whoever edits it. Add a glob for it to its "
                     + "area's .claude/rules file; if no rule guards that folder, add the folder to AreaFolderExemptions "
                     + "with the reason.");
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
+    }
+
+    [Fact]
+    public void Every_tested_code_file_loads_a_rule_file_when_its_test_does()
+    {
+        var compiled = RuleFiles().Select(rf => (rf.Name, Globs: (rf.Globs ?? new List<string>()).Select(GlobRegex).ToList()))
+            .ToList();
+        List<string> Loads(string file) => compiled.Where(c => c.Globs.Any(g => g.IsMatch(file))).Select(c => c.Name).ToList();
+        List<string> problems = CodeMissingItsTestsRules(RepoFiles(), Loads);
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 
@@ -245,10 +291,12 @@ public class ClaudeContextBudgetTests
         foreach (string file in RepoFiles())
         {
             var loaded = compiled.Where(c => c.Globs.Any(g => g.IsMatch(file))).Select(c => c.rf).ToList();
-            int total = loaded.Sum(rf => rf.Text.Length);
+            int total = loaded.Sum(rf => LoadedChars(rf.Text));
             if (total > PerFileLoadMaxChars)
                 problems.Add($"{file} loads {total:N0} characters of rules ({string.Join(", ", loaded.Select(r => r.Name))}); "
-                    + $"the budget is {PerFileLoadMaxChars:N0}. Narrow a glob so fewer areas claim this file, or shorten lines.");
+                    + $"the budget is {PerFileLoadMaxChars:N0}. Shorten lines, or, where an area globs this file for only a "
+                    + "few of its rules, mirror those lines into a rule file scoped here in place of the glob. Never just "
+                    + "drop a glob: its rules would stop loading with the code they guard.");
         }
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
@@ -306,12 +354,16 @@ public class ClaudeContextBudgetTests
                         + "or not; a new rule takes the next unused number.");
                 else home[id] = name;
             }
+        // Only a prefix that heads a section makes a citation, so "[MD-11]" or "[UTF-8]" in prose is not one.
+        var prefixes = home.Keys.Select(Prefix).ToHashSet(StringComparer.Ordinal);
         foreach ((string name, string text) in citingTexts)
             foreach (string id in IdCitation.Matches(text).Select(m => m.Groups["id"].Value).Distinct())
-                if (!home.ContainsKey(id))
+                if (prefixes.Contains(Prefix(id)) && !home.ContainsKey(id))
                     problems.Add($"{name}: cites [{id}], which no '## {id}' heading in docs/invariants defines.");
         return problems;
     }
+
+    private static string Prefix(string id) => id[..id.LastIndexOf('-')];
 
     /// <summary>Rule lines, plus headings and a short preamble; the story goes under the ID in docs/invariants.</summary>
     private static List<string> RuleBodyProblems(string name, string body)
@@ -345,13 +397,43 @@ public class ClaudeContextBudgetTests
             yield return $"{name}: has CRLF line endings; rule files are LF (see .gitattributes).";
     }
 
+    /// <summary>Shipped code that loads no rule file while its test does. A test is paired with its code by name only:
+    /// 'XTests.cs' tests 'X.cs', or 'Xs.cs' (LandingGuidanceLawTests tests LandingGuidanceLaws.cs), in the app, the
+    /// updater or the vPilot plugin (never a tools/ probe or vendored example). A test named for a behaviour
+    /// ('A380BaroMuteTests') or a partial ('X.Part.cs') pairs with nothing and is not checked.</summary>
+    private static List<string> CodeMissingItsTestsRules(IEnumerable<string> files, Func<string, List<string>> loads)
+    {
+        List<string> all = files.ToList();
+        ILookup<string, string> codeByName = all
+            .Where(f => f.EndsWith(".cs", StringComparison.Ordinal) && ShippedCodeRoots.Any(r => f.StartsWith(r, StringComparison.Ordinal)))
+            .ToLookup(f => Path.GetFileNameWithoutExtension(f), StringComparer.Ordinal);
+        var problems = new List<string>();
+        foreach (string test in all.Where(f => f.StartsWith("tests/MSFSBlindAssist.Tests/", StringComparison.Ordinal)
+                     && f.EndsWith("Tests.cs", StringComparison.Ordinal)))
+        {
+            List<string> testLoads = loads(test);
+            if (testLoads.Count == 0) continue;
+            string name = Path.GetFileName(test)[..^"Tests.cs".Length];
+            foreach (string code in codeByName[name].Concat(codeByName[name + "s"]))
+                if (loads(code).Count == 0)
+                    problems.Add($"{code} loads no rule file, but its test {test} loads {string.Join(", ", testLoads)}. "
+                        + (testLoads.Count == 1 ? "Add a glob for the code to that rule file" : "Add a glob for the code to "
+                            + "the one whose rules guard it")
+                        + ", so whoever edits the code gets the rules whoever edits its test gets.");
+        }
+        return problems;
+    }
+
+    private static readonly string[] ShippedCodeRoots = { "MSFSBlindAssist/", "MSFSBlindAssistUpdater/", "plugins/" };
+
     /// <summary>Folders that belong to one aircraft or area but that no rule guards, each with the reason.</summary>
     private static readonly Dictionary<string, string> AreaFolderExemptions = new(StringComparer.Ordinal)
     {
         ["MSFSBlindAssist/Forms/IFly737/"] = "the iFly 737 has no rule file; docs/ifly-737.md holds its notes",
         ["MSFSBlindAssist/SimConnect/IFly/"] = "the iFly 737 has no rule file; docs/ifly-737.md holds its notes",
         ["MSFSBlindAssist/Forms/PMDG/"] = "the autopilot window both PMDG aircraft share; no rule names it",
-        ["MSFSBlindAssist/Forms/Settings/"] = "app-wide settings panels, not an area; their rule (VAT-13) is in CLAUDE.md",
+        ["MSFSBlindAssist/Forms/Settings/"] = "app-wide settings panels, not one area: VAT-13 in CLAUDE.md covers them all, "
+            + "and an area that owns a panel globs it in its own rule file",
     };
 
     /// <summary>A file in an aircraft's or area's own subfolder of Aircraft/, Forms/ or SimConnect/, or a Coherent
@@ -367,6 +449,14 @@ public class ClaudeContextBudgetTests
             && file.EndsWith(".cs", StringComparison.Ordinal)
             && !AreaFolderExemptions.Keys.Any(k => file.StartsWith(k, StringComparison.Ordinal));
     }
+
+    /// <summary>What a rule file puts into context: its body. "Claude Code removes the frontmatter before loading the
+    /// rule into context" (code.claude.com/docs/en/memory), and a Read of AppVersion.cs injected updates.md from its
+    /// heading on, with no paths list (measured 2026-10-05), so the globs cost nothing. The one-line "Contents of
+    /// &lt;path&gt;:" header Claude Code puts above each injected file is not counted.</summary>
+    private static int LoadedChars(string ruleFileText) => SplitFrontMatter(ruleFileText).Body.Length;
+
+    private static bool OverRuleFileBudget(string ruleFileText) => LoadedChars(ruleFileText) > RuleFileMaxChars;
 
     internal static bool GlobMatches(string glob, string relativePath) => GlobRegex(glob).IsMatch(relativePath);
 
@@ -439,7 +529,9 @@ public class ClaudeContextBudgetTests
     }
 
     /// <summary>Every file in the repository, as a '/'-separated path from the root, skipping build
-    /// output, VCS internals and the worktrees Claude Code keeps under .claude/worktrees.</summary>
+    /// output, VCS internals and the worktrees Claude Code keeps under .claude/worktrees. It walks the working
+    /// tree, as the suite's other source scans do, not git's index: an untracked file counts locally and not in
+    /// CI, so a local run can differ from CI's clean checkout, which is the one that gates a merge.</summary>
     private static IEnumerable<string> RepoFiles()
     {
         string root = RepoRoot();
