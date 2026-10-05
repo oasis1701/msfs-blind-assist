@@ -64,10 +64,23 @@ public partial class CowsDA40Definition
 
     /// <summary>
     /// POH: "Hold the button down until all CAS messages are gone and the engine has
-    /// rested at idle. The test takes around 20-25s." Measured with an 11-second hold the
-    /// test only reached step 1 of the cycle, so the full duration is what is used here.
+    /// rested at idle. The test takes around 20-25s."
+    ///
+    /// ⚠️ IT TAKES 30.6 SECONDS IN COWS 1.2.0, AND A FIXED 26-SECOND HOLD ABORTED IT EVERY
+    /// TIME. Timed live on the NG (2026-10-05): stage 0.5 at 0.6 s, ECU A to 15.0 s, ECU B
+    /// from 15.6 s, complete (stage 10) at 30.6 s; letting go at 26 s fell in ECU B's half,
+    /// and the model reset the whole test. So the button is held until the model reports
+    /// the test COMPLETE (<see cref="NoteEcuTestStage"/>) and released then - holding past
+    /// the end is harmless, the stage stays at 10 until it is let go - with this as the
+    /// ceiling for a test that never finishes.
     /// </summary>
-    private const int EcuTestHoldMs = 26000;
+    private const int EcuTestHoldMs = 45000;
+
+    /// <summary>How long the whole test takes, measured (above) - for the elapsed row.</summary>
+    private const int EcuTestTypicalMs = 31000;
+
+    /// <summary>The model's last stage: the test has finished and the engine is at idle.</summary>
+    private const double EcuTestCompleteStage = 10;
 
     /// <summary>
     /// The OTHER hold on the same button, and the aeroplane's own way out of a flat
@@ -158,8 +171,10 @@ public partial class CowsDA40Definition
             Name = "FADEC_ECUTEST_STEP:1",
             DisplayName = "ECU Test Stage",
             Type = SimVarType.LVar,
-            UpdateFrequency = UpdateFrequency.OnRequest,
-            IsAnnounced = false,
+            // Delivered (silent - SilentCachedReadouts) so the button is let go when the
+            // test completes, rather than after a fixed time that was too short.
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
             RenderAsReadOnlyStatus = true,
             ValueDescriptions = new Dictionary<double, string>
             {
@@ -170,7 +185,11 @@ public partial class CowsDA40Definition
                 [3]   = "Winding down",
                 [4]   = "Changing over",
                 [5]   = "Spinning up, second ECU",
-                [6]   = "Checking governor, second ECU"
+                [6]   = "Checking governor, second ECU",
+                [7]   = "Spinning up",
+                [8]   = "Winding down",
+                [9]   = "Finishing",
+                [EcuTestCompleteStage] = "Complete"
             }
         };
 
@@ -320,7 +339,7 @@ public partial class CowsDA40Definition
     private readonly DA40HoldSet _holds = new();
 
     /// <summary>
-    /// Holds an L:var at 1 for <paramref name="holdMs"/> by re-writing it every ~40 ms,
+    /// Holds an L:var at 1 for <paramref name="holdMs"/> by re-writing it every ~15 ms,
     /// then releases it to 0.
     ///
     /// This exists because a whole class of COWS DA40 controls (ECU_TEST:1, ATT_CAGE,
@@ -346,7 +365,13 @@ public partial class CowsDA40Definition
 
         if (_holdTimer == null)
         {
-            _holdTimer = new System.Windows.Forms.Timer { Interval = 40 };
+            // ⚠️ 15 ms, NOT 40. The held-button template DRAINS its variable a third per frame
+            // (measured: 1, 0.667, 0.333, 0 - gone in three frames, ~36 ms at 83 fps), so a
+            // 40 ms rewrite let it reach 0 between writes; the ECU test's 2 Hz check then
+            // read 0 now and again and RESTARTED the test - "the clicks were heard, the
+            // engine did nothing" (2026-10-05). 15 ms is about the finest a WinForms timer
+            // ticks, and keeps the value above zero between writes.
+            _holdTimer = new System.Windows.Forms.Timer { Interval = 15 };
             _holdTimer.Tick += (_, _) => TickHolds();
             _holdTimer.Start();
         }
@@ -390,6 +415,23 @@ public partial class CowsDA40Definition
     }
 
     /// <summary>Lets go of one held control without completing it.</summary>
+    /// <summary>
+    /// Lets go of the ECU test button the moment the model reports the test complete,
+    /// which is what the POH means by holding it "until ... the engine has rested at idle".
+    /// </summary>
+    private void NoteEcuTestStage(string varKey, double value,
+        Accessibility.ScreenReaderAnnouncer announcer)
+    {
+        if (varKey != "DA40_ECU_TEST_STEP" || value < EcuTestCompleteStage) return;
+        if (!_holds.IsHeld("ECU_TEST:1")) return;
+        ReleaseHeldLVar("ECU_TEST:1");
+        // The press said "ECU test running"; the end is what a sighted pilot sees as the
+        // CAS messages clearing and the engine settling at idle. A failed ECU latches its
+        // own fault, which DA40_ECU_TEST_FAIL_A/B and the CAS announce.
+        if (!Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet.Contains("DA40_ECU_TEST_STEP"))
+            announcer?.AnnounceImmediate("ECU test complete");
+    }
+
     private void ReleaseHeldLVar(string lvar)
     {
         if (_holds.Release(lvar) && _holdSim != null) WriteReleased(_holdSim, lvar);
@@ -414,17 +456,20 @@ public partial class CowsDA40Definition
     {
         var blockers = new List<string>();
 
-        double Lv(string n) => simConnect.GetCachedVariableValue(n) ?? 0;
-
-        double powerLever = Lv("DA40_ECU_PRE_POWER_LEVER");
-        double propRpm = Lv("DA40_ECU_PROP_SENSED");
-        double gearbox = Lv("DA40_ECU_PRE_GEARBOX");
-        double voter = Lv("DA40_ECU_VOTER");
-        double onGround = Lv("DA40_ECU_PRE_ON_GROUND");
+        // ⚠️ CACHED KEYS ONLY, each a literal so CowsDA40LiveControlFindingsTests can check
+        // it is delivered. The ECU panel's own DA40_ECU_PRE_* rows are OnRequest - read only
+        // while that panel is open - so pressed from anywhere else this said "not on the
+        // ground, gearbox 0 degrees" on the ground with the gearbox at 29 (measured live on
+        // the NG, 2026-10-05). The same indications, from keys that are always delivered:
+        double powerLever = simConnect.GetCachedVariableValue("DA40_POWER_LEVER_SET") ?? 0;
+        double propRpm = simConnect.GetCachedVariableValue("DA40_POWER_RPM") ?? 0;
+        double gearbox = simConnect.GetCachedVariableValue("DA40_START_GEARBOX_TEMP") ?? 0;
+        double voter = simConnect.GetCachedVariableValue("DA40_ECU_VOTER") ?? 0;
+        double onGround = simConnect.GetCachedVariableValue("SIM_ON_GROUND") ?? 0;
 
         if (powerLever > 1) blockers.Add($"power lever {powerLever:0} percent, not idle");
         if (voter != 1) blockers.Add("voter not in auto");
-        if (propRpm >= EcuTestMaxPropRpm) blockers.Add($"propeller {propRpm:0} RPM, needs below {EcuTestMaxPropRpm:0}");
+        if (propRpm >= EcuTestMaxPropRpm) blockers.Add($"propeller {propRpm:0} rpm, needs below {EcuTestMaxPropRpm:0}");
         if (onGround < 0.5) blockers.Add("not on the ground");
         if (gearbox < EcuTestGearboxMinC) blockers.Add($"gearbox {gearbox:0} degrees, needs {EcuTestGearboxMinC:0}");
 
@@ -446,7 +491,9 @@ public partial class CowsDA40Definition
                 var blockers = EcuTestBlockers(simConnect);
                 announcer.AnnounceImmediate(blockers.Count == 0
                     ? "ECU test running."
-                    : "ECU test running. " + string.Join(", ", blockers) + ".");
+                    // Not "running": with a condition unmet the aeroplane does not start the
+                    // sequence (measured: gearbox 29 C, step stayed 0 through the hold).
+                    : "ECU test held. Not met: " + string.Join(", ", blockers) + ".");
 
                 _ecuTestStartedTicks = Environment.TickCount64;
                 _ecuTestEndedTicks = 0;
@@ -509,7 +556,7 @@ public partial class CowsDA40Definition
         if (value >= 0.5 || _ecuTestEndedTicks == 0)
         {
             // Still running: how far through the press we are.
-            displayText = $"{(now - _ecuTestStartedTicks) / 1000.0:0} s of about {EcuTestHoldMs / 1000} s";
+            displayText = $"{(now - _ecuTestStartedTicks) / 1000.0:0} s of about {EcuTestTypicalMs / 1000} s";
             return true;
         }
 

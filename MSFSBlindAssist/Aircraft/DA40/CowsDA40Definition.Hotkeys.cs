@@ -491,7 +491,7 @@ public partial class CowsDA40Definition
                     if (target is not null && actual is not null &&
                         Math.Abs(target.Value - actual.Value) >= 25)
                     {
-                        bits.Add($"governor targeting {target.Value:0} RPM");
+                        bits.Add($"governor targeting {target.Value:0} rpm");
                     }
                 }
                 else
