@@ -55,7 +55,6 @@ public class CowsDA40XlsEngineDetailTests
     /// phantom reads 0 - indistinguishable from an undamaged engine.
     /// </summary>
     [Theory]
-    [InlineData("DAMAGE_BLOCK")]
     [InlineData("DAMAGE_OIL")]
     [InlineData("HEALTH_OIL")]
     [InlineData("DAMAGE_DUST")]

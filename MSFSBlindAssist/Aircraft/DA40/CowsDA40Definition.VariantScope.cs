@@ -21,6 +21,11 @@ public partial class CowsDA40Definition
 {
     private static readonly HashSet<string> NgOnlyKeys = new(StringComparer.Ordinal)
     {
+        // INERT on the XLS, not absent: its random picker raises and clears FAILURES_ALT and
+        // nothing else reads it (1.1.5 and 1.2.0 alike), so a row would announce an alternator
+        // failure the aeroplane does not have. NoFailureRowIsInert pins it.
+        "DA40_FAIL_ALT",
+
         // The Austro's electrical system. The XLS has main, essential, hot and emergency
         // buses and no battery bus between them, and no ECU to give a battery or a bus of
         // its own. Nor an ESS BUS lamp: the NG draws ESSBUS_LIGHT from the battery bus, the

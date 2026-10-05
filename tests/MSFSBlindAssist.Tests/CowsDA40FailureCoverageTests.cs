@@ -39,6 +39,11 @@ public class CowsDA40FailureCoverageTests
     private static readonly Dictionary<string, string> XlsNotOffered = new(StringComparer.Ordinal)
     {
         ["FAILURES_CB_ADF"] = "inert on the XLS",
+        // Raised and cleared by the picker and read by nothing else (NoFailureRowIsInert):
+        // block damage left the XLS model in 1.2.0; the leaks were never wired, 1.1.5 too.
+        ["FAILURES_BLOCK"] = "inert on the XLS since COWS 1.2.0 removed block damage",
+        ["FAILURES_VACC_LEAK"] = "inert on the XLS",
+        ["FAILURES_FUEL_LEAK"] = "inert on the XLS (the per-tank leaks are the live ones)",
     };
 
     private static readonly Regex PickBlock = new(@"\(L:FAILURES_RNG\)\s+(\d+)\s+==");
@@ -87,6 +92,50 @@ public class CowsDA40FailureCoverageTests
         var stale = excluded.Keys.Where(k => !writes.Contains(k) || bound.Contains(k)).ToList();
         Assert.True(stale.Count == 0,
             variant + ": exclusions the picker no longer writes, or that a row binds after all — " + string.Join(", ", stale));
+    }
+
+    /// <summary>
+    /// ⚠️ A FAILURE ROW MUST DO SOMETHING. COWS 1.2.0 took the XLS's block damage out of the
+    /// model entirely: FAILURES_BLOCK is still raised by the picker and cleared by the reset,
+    /// and read by nothing else — so a row for it announces a failure the aeroplane does not
+    /// have. A failure is live when something reads it beyond the picker's own "already
+    /// failed?" check (one read per pick block). Breaker trips have their own, stricter test.
+    /// </summary>
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void NoFailureRowIsInert(DA40Variant variant)
+    {
+        string? root = CowsDA40PackagePresenceTests.PackageRoot();
+        if (root is null) return;
+
+        string dir = Path.Combine(root, "SimObjects", "Airplanes", variant == DA40Variant.NG ? "COWS_DA40NG" : "COWS_DA40XLS");
+        var texts = Directory.EnumerateFiles(dir, "*.xml", SearchOption.AllDirectories)
+            .Select(f => (File: f, Text: Regex.Replace(File.ReadAllText(f), "<!--.*?-->", "", RegexOptions.Singleline)))
+            .ToList();
+        string failures = texts.First(t => t.File.EndsWith("Failures.xml", StringComparison.Ordinal)).Text;
+        var picks = PickBlock.Split(failures).Where((_, i) => i >= 2 && i % 2 == 0).ToList();
+
+        var inert = new List<string>();
+        foreach (var (key, def) in new CowsDA40Definition(variant).GetVariables())
+        {
+            if (!key.StartsWith("DA40_FAIL", StringComparison.Ordinal) && !key.StartsWith("DA40_XLS_FAIL", StringComparison.Ordinal)) continue;
+            string n = def.Name;
+            if (!n.StartsWith("FAILURES_", StringComparison.Ordinal) || n.StartsWith("FAILURES_CB_", StringComparison.Ordinal)) continue;
+
+            string read = "(L:" + n + ")";
+            int reads = texts.Sum(t => CountOf(t.Text, read));
+            int pickReads = picks.Count(p => p.Contains(read, StringComparison.Ordinal));
+            if (reads <= pickReads) inert.Add(key + " (" + n + ")");
+        }
+        Assert.True(inert.Count == 0, variant + ": failure rows nothing in the aeroplane acts on — " + string.Join(", ", inert));
+    }
+
+    private static int CountOf(string text, string needle)
+    {
+        int n = 0, i = 0;
+        while ((i = text.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { n++; i += needle.Length; }
+        return n;
     }
 
     [Theory]

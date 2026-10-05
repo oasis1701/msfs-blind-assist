@@ -78,12 +78,10 @@ public partial class CowsDA40Definition
         XlsFail(v, "DA40_XLS_FAIL_MIX_LEVER", "FAILURES_MIX_LEVER", "Mixture Lever");
 
         // ---------- Engine, whole ----------
-        XlsFail(v, "DA40_XLS_FAIL_BLOCK", "FAILURES_BLOCK", "Engine Block");
         XlsFail(v, "DA40_XLS_FAIL_OIL", "FAILURES_OIL", "Oil System");
         XlsFail(v, "DA40_XLS_FAIL_BYPASS", "FAILURES_BYPASS", "Oil Bypass");
         XlsFail(v, "DA40_XLS_FAIL_THERMOSTAT", "FAILURES_THERMOSTAT_OIL", "Oil Thermostat");
         XlsFail(v, "DA40_XLS_FAIL_CHT_BAFFLE", "FAILURES_CHT_BAFFLE", "Cooling Baffle");
-        XlsFail(v, "DA40_XLS_FAIL_VACC_LEAK", "FAILURES_VACC_LEAK", "Induction Leak");
         XlsFail(v, "DA40_XLS_FAIL_PROP_PUMP", "FAILURES_PROP_PUMP",
             "Propeller Governor Pump");
         XlsFail(v, "DA40_XLS_FAIL_ALT_OVERVOLT", "FAILURES_ALT_OVERVOLT",
@@ -93,7 +91,6 @@ public partial class CowsDA40Definition
         XlsFail(v, "DA40_XLS_FAIL_FUEL_PUMP", "FAILURES_FUEL_PUMP", "Electric Fuel Pump");
         XlsFail(v, "DA40_XLS_FAIL_FUEL_SPRING", "FAILURES_FUEL_SPRING",
             "Fuel Pressure Spring");
-        XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK", "FAILURES_FUEL_LEAK", "Fuel Leak");
         XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK_L", "FAILURES_FUEL_LEAK_L", "Left Tank Leak");
         XlsFail(v, "DA40_XLS_FAIL_FUEL_LEAK_R", "FAILURES_FUEL_LEAK_R", "Right Tank Leak");
 
@@ -189,9 +186,9 @@ public partial class CowsDA40Definition
             "DA40_XLS_FAIL_MAG_GND_L", "DA40_XLS_FAIL_MAG_GND_R",
             "DA40_XLS_FAIL_THROT_LEVER", "DA40_XLS_FAIL_PROP_LEVER",
             "DA40_XLS_FAIL_MIX_LEVER",
-            "DA40_XLS_FAIL_BLOCK", "DA40_XLS_FAIL_OIL", "DA40_XLS_FAIL_BYPASS",
+            "DA40_XLS_FAIL_OIL", "DA40_XLS_FAIL_BYPASS",
             "DA40_XLS_FAIL_THERMOSTAT", "DA40_XLS_FAIL_CHT_BAFFLE",
-            "DA40_XLS_FAIL_VACC_LEAK", "DA40_XLS_FAIL_PROP_PUMP",
+            "DA40_XLS_FAIL_PROP_PUMP",
             "DA40_XLS_FAIL_ALT_OVERVOLT"
         });
         return l;
@@ -201,7 +198,6 @@ public partial class CowsDA40Definition
     {
         "DA40_XLS_FAIL_FUEL_PUMP",
         "DA40_XLS_FAIL_FUEL_SPRING",
-        "DA40_XLS_FAIL_FUEL_LEAK",
         "DA40_XLS_FAIL_FUEL_LEAK_L",
         "DA40_XLS_FAIL_FUEL_LEAK_R"
     };

@@ -236,7 +236,6 @@ public partial class CowsDA40Definition
         // ⚠️ THE XLS SPELLS THESE THREE WITHOUT AN INDEX. The NG's DAMAGE_BLOCK:1 /
         // DAMAGE_OIL:1 / HEALTH_OIL:1 do not exist on this airframe — reading one returns
         // a phantom 0, which is indistinguishable from an undamaged engine.
-        XlsNum(v, "DA40_XLS_BLOCK_DAMAGE", "DAMAGE_BLOCK", "Block Damage");
         XlsNum(v, "DA40_XLS_OIL_DAMAGE", "DAMAGE_OIL", "Oil Damage");
         XlsNum(v, "DA40_XLS_OIL_HEALTH", "HEALTH_OIL", "Oil Health");
         XlsNum(v, "DA40_XLS_DUST_DAMAGE", "DAMAGE_DUST", "Dust Damage");
@@ -281,7 +280,6 @@ public partial class CowsDA40Definition
     /// </summary>
     private static List<string> XlsDamageDetailDisplay() => new()
     {
-        "DA40_XLS_BLOCK_DAMAGE",
         "DA40_XLS_OIL_DAMAGE",
         "DA40_XLS_OIL_HEALTH",
         "DA40_XLS_DUST_DAMAGE"
