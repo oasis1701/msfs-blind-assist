@@ -223,6 +223,7 @@ plugin's — and is not built on.
 | **`ENG_FUEL_PRESS` is BAR; `DISP_FP_PROBE` is the gauge in psi** | 1.616 against 23.43 = 14.5 psi/bar; AFM green 14–35 psi, no yellow |
 | Tanks 2 × 20.6 gal, 0.5 unusable each; the sim's tank is 25 gal (the long-range size) | AFM 2.14.2; `FUEL TANK LEFT MAIN CAPACITY` 25 |
 | The gauge (`FUEL_QUANT_PROBE:n`) is the true quantity plus a slosh term, **clamped to 15.25 between 15.25 and 18.5 gal** — the AFM's "max indicated 15 US gal per tank" | Logic 1979–1986; read 19.5 / 19.7 against 19.9 / 20.0 actual, above the band |
+| The INDICATION is `DISP_FUEL:n` (COWS 1.2.0): the probe clamped 0 to 24 and zeroed by the tank's indication failure. The Engine page's "L/R Fuel Gal" digits are drawn from it; the EIS strip needle from it minus one. MSFSBA's indicated-tank rows read it | Logic 2082; measured 20 shown for 20.4, and 0 with `FAILURES_SENS_FUEL:1` set while the probe held 20.4 |
 | Max tank difference 10 gal (NG: 9) | AFM 2.14.2 |
 | `FUEL_FEED_QUANTITY` is the selected tank's probe, 0 when OFF, and was 0 while the spread set was zero | 19.50 = probe 1 with LEFT selected |
 | Vapour lock is `FUEL_TEMP_BOIL_FAC` multiplying the pressure; the electric pump subtracts a unit from `FUEL_TEMP_BOIL` | Logic 2043–2046 |
