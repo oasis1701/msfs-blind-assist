@@ -9,6 +9,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Waypoint.cs"
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Units.cs"
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Hotkeys.cs"
+  - "MSFSBlindAssist/Services/GpsWaypointSequencer.cs"
 ---
 # COWS DA40 radios, altimeters, autopilot and hotkey rules
 
