@@ -452,8 +452,6 @@ public class ClaudeContextBudgetTests
     /// <summary>Folders that belong to one aircraft or area but that no rule guards, each with the reason.</summary>
     private static readonly Dictionary<string, string> AreaFolderExemptions = new(StringComparer.Ordinal)
     {
-        ["MSFSBlindAssist/Forms/IFly737/"] = "the iFly 737 has no rule file; docs/ifly-737.md holds its notes",
-        ["MSFSBlindAssist/SimConnect/IFly/"] = "the iFly 737 has no rule file; docs/ifly-737.md holds its notes",
         ["MSFSBlindAssist/Forms/PMDG/"] = "the autopilot window both PMDG aircraft share; no rule names it",
         ["MSFSBlindAssist/Forms/Settings/"] = "app-wide settings panels, not one area: VAT-13 in CLAUDE.md covers them all, "
             + "and an area that owns a panel globs it in its own rule file",

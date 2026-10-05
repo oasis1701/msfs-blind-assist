@@ -145,7 +145,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [pmdg-777.md](docs/pmdg-777.md) | PMDG 777: CDA switches, CDU indexing, System Display | pmdg-777 |
 | [pmdg-737.md](docs/pmdg-737.md) | PMDG 737-800 NG3: two CDUs, NG3 struct, EFB parity with the 777 (Shift+T) | pmdg-737 |
 | [pmdg-efb.md](docs/pmdg-efb.md) | The PMDG (and HS787 CDU) Coherent-debugger EFB agent | pmdg-efb |
-| [ifly-737.md](docs/ifly-737.md) | iFly 737 MAX8: SDK shared memory + WM_COPYDATA, no MobiFlight, no L:var writes except named clickspot replays | — |
+| [ifly-737.md](docs/ifly-737.md) | iFly 737 MAX8: SDK shared memory + WM_COPYDATA, no MobiFlight, no L:var writes except named clickspot replays | ifly-737 |
 | [hs787.md](docs/hs787.md) | HorizonSim 787-9: CDU, IRS, EICAS over the Coherent debugger | hs787 |
 | [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11 |
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
