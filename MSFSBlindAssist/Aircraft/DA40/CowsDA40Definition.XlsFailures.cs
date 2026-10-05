@@ -57,9 +57,11 @@ public partial class CowsDA40Definition
                 $"Cylinder {c} Health");
             XlsFlag(v, $"DA40_XLS_CYL_DEAD_{c}", $"KAPUTT_CYL:{c}",
                 $"Cylinder {c} Destroyed");
-            XlsReadout(v, $"DA40_XLS_CYL_DAMAGE_FAC_{c}", $"DAMAGE_CYL_FAC:{c}",
-                $"Cylinder {c} Damage Rate");
         }
+
+        // (The per-cylinder and block damage RATES - DAMAGE_CYL_FAC:n, DAMAGE_BLOCK_FAC - are
+        // gone from COWS 1.2.0: the damage now accumulates straight into DAMAGE_CYL:n and
+        // DAMAGE_BLOCK, which the Mixture panel and the Engine Variation panel read.)
 
         // ---------- Magnetos, whole side ----------
         XlsFail(v, "DA40_XLS_FAIL_MAG_LEFT", "FAILURES_MAG_L", "Left Magneto");
@@ -86,8 +88,6 @@ public partial class CowsDA40Definition
             "Propeller Governor Pump");
         XlsFail(v, "DA40_XLS_FAIL_ALT_OVERVOLT", "FAILURES_ALT_OVERVOLT",
             "Alternator Overvoltage");
-
-        XlsReadout(v, "DA40_XLS_BLOCK_DAMAGE_FAC", "DAMAGE_BLOCK_FAC", "Block Damage Rate");
 
         // ---------- Fuel ----------
         XlsFail(v, "DA40_XLS_FAIL_FUEL_PUMP", "FAILURES_FUEL_PUMP", "Electric Fuel Pump");
@@ -219,9 +219,7 @@ public partial class CowsDA40Definition
         {
             l.Add($"DA40_XLS_CYL_HEALTH_{c}");
             l.Add($"DA40_XLS_CYL_DEAD_{c}");
-            l.Add($"DA40_XLS_CYL_DAMAGE_FAC_{c}");
         }
-        l.Add("DA40_XLS_BLOCK_DAMAGE_FAC");
         return l;
     }
 

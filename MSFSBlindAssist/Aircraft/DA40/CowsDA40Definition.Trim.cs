@@ -5,7 +5,7 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 
 /// <summary>
 /// Center Console → Elevator Trim. Both variants — the XLS model uses the same
-/// INPUT_TRIM_AXIS, INPUT_TRIM_UP/DN, INPUT_AP_DISC and circuit 37.
+/// INPUT_TRIM_AXIS, INPUT_TRIM_SPAD, INPUT_AP_DISC and circuit 37.
 ///
 /// PITCH ONLY. The DA40 has no cockpit rudder or aileron trim: AFM 7.3.4 describes a
 /// rudder trim TAB adjusted on the ground with a screwdriver, and the pre-flight
@@ -26,12 +26,20 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// into 10 units per second, so a full sweep takes about 20 seconds and a one-second
 /// press is 10 % of the range.
 ///
-/// The stick switch is a held control like the rest of this airframe — measured live, a
-/// single write to INPUT_TRIM_UP moved the trim 0.99 % and stopped, and the variable read
-/// back 0 on the next request. That self-clearing is a SAFETY property worth keeping in
-/// mind rather than an obstacle: a hold interrupted by a crash, a disconnect or an
-/// aircraft switch cannot leave the trim running, because the airframe stops it within a
-/// frame of the last write.
+/// ⚠️ COWS 1.2.0 REMOVED THE INPUT THIS PANEL USED. Up to 1.1.5 the stick switch was
+/// L:INPUT_TRIM_UP / L:INPUT_TRIM_DN, which the model cleared every 100 ms; 1.2.0 deleted
+/// both from every file of the package and put ONE rocker input in their place,
+/// L:INPUT_TRIM_SPAD — +1 nose up, -1 nose down — which, in the vendor's own binding notes,
+/// does NOT reset: "you must set 0 on release". So the switch is still held the way every
+/// momentary control on this airframe is (a repeating write for the press's duration), at
+/// the direction's own value, and the release writes the 0 the model will not write itself.
+/// The release is what keeps a hold interrupted by a crash, a disconnect or an aircraft
+/// switch from leaving the trim running — the self-clearing the old inputs gave for free is
+/// gone, so <see cref="ReleaseAllHeldLVars"/> on the way out is now load-bearing here.
+///
+/// 1.2.0 ALSO STOPS ALL ELECTRIC TRIM WHILE THE MANUAL WHEEL IS GRABBED (L:TRIM_HELD, set
+/// while the wheel is held with the mouse) — a sighted pilot's own hand, which this panel
+/// never sets, so it cannot get in the way here.
 ///
 /// THE AFM PUBLISHES NO NUMBER FOR THE TAKE-OFF POSITION. It is a MARK on the wheel
 /// ("A mark on the wheel shows the take-off (T/O) position"), and the checklist item is
@@ -57,6 +65,10 @@ public partial class CowsDA40Definition
     /// hear as one action rather than a stutter.
     /// </summary>
     private const int TrimNudgeHoldMs = 1000;
+
+    /// <summary>The stick trim switch's input since COWS 1.2.0: +1 nose up, -1 nose down, 0
+    /// released — and it is NOT reset by the model, so the release must write the 0.</summary>
+    internal const string TrimSwitchInput = "INPUT_TRIM_SPAD";
 
     /// <summary>
     /// How long the AP disconnect is held. Long enough for the pilot to command trim
@@ -258,17 +270,13 @@ public partial class CowsDA40Definition
             }
 
             case "DA40_TRIM_NOSE_UP":
-                // The two directions are one rocker: holding both at once is not a press a
-                // pilot can make, so one direction lets go of the other.
-                ReleaseHeldLVar("INPUT_TRIM_DN");
-                HoldLVar("INPUT_TRIM_UP", TrimNudgeHoldMs, simConnect,
-                    () => AnnounceTrimAfterNudge(simConnect, announcer));
-                return true;
-
             case "DA40_TRIM_NOSE_DOWN":
-                ReleaseHeldLVar("INPUT_TRIM_UP");
-                HoldLVar("INPUT_TRIM_DN", TrimNudgeHoldMs, simConnect,
-                    () => AnnounceTrimAfterNudge(simConnect, announcer));
+                // The two directions are ONE rocker on ONE variable, so a press in the
+                // other direction replaces the hold rather than adding a second one — the
+                // same var held twice at once is not something a pilot's thumb can do.
+                HoldLVar(TrimSwitchInput, TrimNudgeHoldMs, simConnect,
+                    () => AnnounceTrimAfterNudge(simConnect, announcer),
+                    varKey == "DA40_TRIM_NOSE_UP" ? 1 : -1);
                 return true;
 
             case "DA40_TRIM_AP_DISC":

@@ -25,7 +25,6 @@ public class CowsDA40FsCopilotFindsTests
     [InlineData("DA40_FUEL_TOTALISER_USED", "FUEL_TOTALISER_USE")]
     [InlineData("DA40_PITOT_TEMP", "PITOT_TEMP")]
     [InlineData("DA40_ELEC_BATT_ECU_CAPACITY", "ELEC_BATT_ECU_CAPACITY")]
-    [InlineData("DA40_ELEC_BATT_SURF", "ELEC_BATT_SURF")]
     [InlineData("DA40_AP_POWERED", "AFCS_POWER")]
     public void EachFindIsBoundAsAnLVarReadInRawNumbers(string key, string lvar)
     {
@@ -86,7 +85,12 @@ public class CowsDA40FsCopilotFindsTests
         foreach (var p in def.GetPanelDisplayVariables()) all.UnionWith(p.Value);
 
         Assert.DoesNotContain("DA40_FUEL_TOTALISER_REM", all);
-        Assert.DoesNotContain("DA40_PITOT_TEMP", all);
+
+        // PITOT_TEMP is the exception, and on the evidence of the package rather than a
+        // measurement: COWS 1.1.3 gave BOTH airframes the pitot temperature model, and
+        // 1.2.0's PTC heater (PITOT_WATT) is written on both — CowsDA40PackagePresenceTests
+        // holds the XLS to its own package.
+        Assert.Contains("DA40_PITOT_TEMP", all);
 
         // The shared halves DO appear: the main battery's surface charge, the GFC 700.
         Assert.Contains("DA40_ELEC_BATT_SURF", all);

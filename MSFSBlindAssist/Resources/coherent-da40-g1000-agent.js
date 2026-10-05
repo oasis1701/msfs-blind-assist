@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 16;
+    A.VERSION = 17;
 
     function visible(el) {
         if (!el) return false;
@@ -2077,16 +2077,27 @@
 
             // The rest of the page - the labelled blocks the dials sit among - read one
             // level down, skipping anything a dial has already answered for.
+            //
+            // ⚠️ AND SKIPPING THE ENGINE PAGE'S FOUR GAUGE BOXES, which enginePageLines
+            // reads a gauge at a time. COWS 1.2.0 put Oil dials on the NG's engine page,
+            // which sent it down THIS branch instead of the engine reader below, and the
+            // boxes came out welded: "Fuel System FFlow GPH blank 26°C 27 L R Main 14105
+            // Gal 1414" - two temperatures, two tank columns and the scale ends in one token.
+            var engineBoxes = ".fluids-container, .electrical-container, " +
+                              ".fuel-system-container, .fuel-calculator-container";
             var host = p.children.length === 1 ? p.children[0] : p;
             for (var k = 0; k < host.children.length; k++) {
                 var kid = host.children[k];
                 if (!visible(kid)) continue;
                 if (kid.querySelector(".dial-gauge-parent") ||
                     classList(kid).indexOf("dial-gauge-parent") >= 0) continue;
+                if (kid.matches(engineBoxes) || kid.querySelector(engineBoxes)) continue;
                 var kl = spacedText(kid);
                 if (kl) lines.push(kl);
             }
-            if (lines.length) return lines;
+            var boxesBesideDials = A.enginePageLines(p);
+            for (var eb = 0; eb < boxesBesideDials.length; eb++) lines.push(boxesBesideDials[eb]);
+            if (lines.length) return A.dedupeAdjacent(lines);
         }
 
         // THE ENGINE PAGE FIRST. Its four boxes are gauges, not group-boxes, so the

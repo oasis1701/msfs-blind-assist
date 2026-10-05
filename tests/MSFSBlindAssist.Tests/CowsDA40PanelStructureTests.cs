@@ -608,11 +608,13 @@ public class CowsDA40PanelStructureTests
     }
 
     [Fact]
-    public void InductionAirFactorIsOnTheScan_SoTheDoorCanBeSeenWorking()
+    public void InductionAirTemperatureIsOnTheScan_SoTheDoorCanBeSeenWorking()
     {
-        // Opening alternate air moved ENG_ALT_AIR_FACTOR from 1.00 to 0.98 live; without
-        // it there is no way to tell the door did anything.
-        Assert.Contains("DA40_ICE_ALT_AIR_FACTOR", Ng().GetPanelDisplayVariables()["Ice and Pitot"]);
+        // COWS 1.2.0: NG alternate air draws warm air from behind the radiator, so the
+        // induction air temperature is what shows the door doing something. (1.1.5's
+        // ENG_ALT_AIR_FACTOR, which this row used to read, no longer exists.)
+        Assert.Contains("DA40_ICE_INDUCTION_TEMP", Ng().GetPanelDisplayVariables()["Ice and Pitot"]);
+        Assert.Equal("ENG_INT_AIR_TEMP:1", Ng().GetVariables()["DA40_ICE_INDUCTION_TEMP"].Name);
     }
 
     // ==============================================================================
@@ -2041,7 +2043,8 @@ public class CowsDA40PanelStructureTests
             "DA40_FAIL_RESET_BATT",
             "DA40_FAIL_RESET_ECU",
             "DA40_FAIL_RESET_WIRE",
-            "DA40_FAIL_RESET_ALL"
+            "DA40_FAIL_RESET_ALL",
+            "DA40_FAIL_REPAIR_REFUEL"
         }, Ng().GetPanelControls()["Reset"].ToArray());
 
         Assert.Equal(new[]
@@ -2051,7 +2054,8 @@ public class CowsDA40PanelStructureTests
             "DA40_FAIL_RESET_BATT",
             "DA40_FAIL_RESET_FLOOD",
             "DA40_FAIL_RESET_PLUGS",
-            "DA40_FAIL_RESET_ALL"
+            "DA40_FAIL_RESET_ALL",
+            "DA40_FAIL_REPAIR_REFUEL"
         }, Xls().GetPanelControls()["Reset"].ToArray());
 
         foreach (var variant in new[] { DA40Variant.NG, DA40Variant.XLS })

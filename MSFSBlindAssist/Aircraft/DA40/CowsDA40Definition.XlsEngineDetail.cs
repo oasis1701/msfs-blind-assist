@@ -107,7 +107,19 @@ public partial class CowsDA40Definition
         // than on the two latches below, which are where a pilot lands when the numbers
         // look wrong: they read YES in the trapped state too, so neither is evidence.
         XlsBool(v, "DA40_XLS_VAR_SET", "SPREAD_SET", "Engine Variation Generated");
-        XlsBool(v, "DA40_XLS_VAR_CYL_SET", "CYL_SPREAD_SET", "Cylinder Variation Generated");
+        // ⚠️ COWS 1.2.0 renamed this latch STATE_CYL_SPREAD_SET and made it state-saved
+        // (systems.cfg [LocalVars]); CYL_SPREAD_SET is gone from the package. Besides 0 and 1
+        // it has two FIXED presets the logic honours instead of rolling dice (Logic 6137ff):
+        // 69 sets every variation to nominal, 420 the same with the injectors 5 % rich and a
+        // higher roughness threshold.
+        XlsBool(v, "DA40_XLS_VAR_CYL_SET", "STATE_CYL_SPREAD_SET", "Cylinder Variation Generated");
+        v["DA40_XLS_VAR_CYL_SET"].ValueDescriptions = new Dictionary<double, string>
+        {
+            [0] = "No",
+            [1] = "Yes",
+            [69] = "Fixed, no variation",
+            [420] = "Fixed, injectors 5 percent rich"
+        };
 
         return v;
     }

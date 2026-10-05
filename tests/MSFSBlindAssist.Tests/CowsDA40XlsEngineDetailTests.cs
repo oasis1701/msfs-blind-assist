@@ -80,7 +80,7 @@ public class CowsDA40XlsEngineDetailTests
             "FUEL_SPREAD_PRESSURE", "SPREAD_INJ_TRIM", "SPREAD_OP", "SPREAD_OC",
             "OP_SPREAD_BYPASS", "SPREAD_ROUGH", "MAG_SPREAD_TIMING", "SPREAD_AIR",
             "SPREAD_ALT", "SPREAD_ALT_OFF", "THROTTLE_SPREAD",
-            "PROP_SPREAD_LO", "PROP_SPREAD_HI", "SPREAD_SET", "CYL_SPREAD_SET"
+            "PROP_SPREAD_LO", "PROP_SPREAD_HI", "SPREAD_SET", "STATE_CYL_SPREAD_SET"
         };
         for (int c = 1; c <= 4; c++)
         {
@@ -204,19 +204,13 @@ public class CowsDA40XlsEngineDetailTests
     }
 
     /// <summary>
-    /// ⚠️ SIXTEEN NAMES FS COPILOT LISTS ARE NOT IN THE INSTALLED PACKAGE - the same
-    /// sixteen as on the NG. A row bound to one would sit at 0 for ever, reporting "no
-    /// failure" about a system nothing watches, which is worse than absent: a pilot would
-    /// scan it and be reassured.
+    /// ⚠️ NAMES FS COPILOT LISTS THAT ARE NOT IN THE INSTALLED PACKAGE. A row bound to one
+    /// would sit at 0 for ever, reporting "no failure" about a system nothing watches, which
+    /// is worse than absent: a pilot would scan it and be reassured. COWS 1.2.0 ADDED the
+    /// AFCS_FAIL_* and FAILURES_SENS_* names this list used to carry — the injectable
+    /// indication failures are FAILURES_SENS_* now, and the failure rows bind them.
     /// </summary>
     [Theory]
-    [InlineData("AFCS_FAIL_AIL")]
-    [InlineData("AFCS_FAIL_ELE")]
-    [InlineData("AFCS_FAIL_TRIM")]
-    [InlineData("FAILURES_SENS_CHT:1")]
-    [InlineData("FAILURES_SENS_EGT:1")]
-    [InlineData("FAILURES_SENS_RPM")]
-    [InlineData("FAILURES_SENS_VOLT")]
     [InlineData("LIGHTING_PANEL_1")]
     [InlineData("LIGHTING_GLARESHIELD_1")]
     [InlineData("ATT_CAGE_IsDown")]

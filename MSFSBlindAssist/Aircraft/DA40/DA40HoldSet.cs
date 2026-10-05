@@ -23,6 +23,7 @@ internal sealed class DA40HoldSet
     {
         public long UntilTicks;
         public Action? OnComplete;
+        public double Value;
     }
 
     private readonly Dictionary<string, Hold> _holds = new(StringComparer.Ordinal);
@@ -31,14 +32,21 @@ internal sealed class DA40HoldSet
 
     public bool IsHeld(string lvar) => _holds.ContainsKey(lvar);
 
-    /// <summary>Holds <paramref name="lvar"/> until <paramref name="untilTicks"/>; true when it
-    /// replaced a hold of the same var.</summary>
-    public bool Start(string lvar, long untilTicks, Action? onComplete)
+    /// <summary>Holds <paramref name="lvar"/> at <paramref name="value"/> until
+    /// <paramref name="untilTicks"/>; true when it replaced a hold of the same var.</summary>
+    public bool Start(string lvar, long untilTicks, Action? onComplete, double value = 1)
     {
         bool replaced = _holds.ContainsKey(lvar);
-        _holds[lvar] = new Hold { UntilTicks = untilTicks, OnComplete = onComplete };
+        _holds[lvar] = new Hold { UntilTicks = untilTicks, OnComplete = onComplete, Value = value };
         return replaced;
     }
+
+    /// <summary>
+    /// The value a held var is written at. Most are pressed at 1; a ROCKER held on one var
+    /// in two directions is not — COWS 1.2.0's trim switch input, <c>L:INPUT_TRIM_SPAD</c>,
+    /// is +1 nose up and -1 nose down on the one variable. 1 for a var not held.
+    /// </summary>
+    public double ValueOf(string lvar) => _holds.TryGetValue(lvar, out var h) ? h.Value : 1;
 
     /// <summary>
     /// One tick: the vars still held (write 1), the vars whose time is up (write 0), and the

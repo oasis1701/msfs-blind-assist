@@ -15,6 +15,8 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// a self-echo:
 ///   Pitot Heat      K:PITOT_HEAT_ON/OFF   ->  A:PITOT HEAT 0/1, L:STATE_PITOT follows
 ///   Alternate Air   L:ENGINE_ALTERNATE_AIR ->  L:ENG_ALT_AIR_FACTOR moved 1.00 to 0.98
+///                   (COWS 1.1.5; 1.2.0 replaced the factor with the induction air
+///                   temperature, ENG_INT_AIR_TEMP:1 on the NG)
 ///   Alternate Static K:TOGGLE_ALTERNATE_STATIC -> A:ALTERNATE STATIC SOURCE OPEN 0/1
 ///
 /// Pitot heat has a CAS consequence worth knowing about: with it OFF the G1000 shows
@@ -105,9 +107,8 @@ public partial class CowsDA40Definition
             IsAnnounced = true,
             RenderAsReadOnlyStatus = true
         };
-        // Moves off 1.00 when alternate air opens — the induction restriction, so the
-        // pilot can see the door is actually doing something.
-        AddReadout(v, "DA40_ICE_ALT_AIR_FACTOR", "ENG_ALT_AIR_FACTOR", "Induction Air Factor", "", "F2");
+        // (The NG's induction air TEMPERATURE, which is what alternate air changes since
+        // COWS 1.2.0, is DA40_ICE_INDUCTION_TEMP in CowsDA40Definition.Cows120.)
         // Read from the SimVar, NOT from L:ABS_AMBIENT_TEMPERATURE. "ABS" means absolute:
         // that L:var is in KELVIN and rendered 303 for a 30 degC day. A units string on an
         // L:var is only a label — MSFSBA prints the raw number — so the conversion has to
@@ -140,7 +141,7 @@ public partial class CowsDA40Definition
         "DA40_ICE_PITOT_STATE",
         "DA40_ICE_ALT_AIR_STATE",
         "DA40_ICE_FILTER",
-        "DA40_ICE_ALT_AIR_FACTOR",
+        "DA40_ICE_INDUCTION_TEMP",
         "DA40_ICE_OAT"
     };
 

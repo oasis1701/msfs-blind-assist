@@ -206,14 +206,14 @@ public class CowsDA40PohFindingsTests
     /// mixture are set by; the eight after them are what the lean assist is read from.
     /// </summary>
     [Theory]
-    [InlineData("DA40_FAIL_DISP_RPM", "FAILURES_DISP_RPM")]
-    [InlineData("DA40_FAIL_DISP_MAP", "FAILURES_DISP_MAP")]
-    [InlineData("DA40_FAIL_DISP_FF", "FAILURES_DISP_FF")]
-    [InlineData("DA40_FAIL_DISP_FP", "FAILURES_DISP_FP")]
-    [InlineData("DA40_FAIL_DISP_CHT_1", "FAILURES_DISP_CHT:1")]
-    [InlineData("DA40_FAIL_DISP_CHT_4", "FAILURES_DISP_CHT:4")]
-    [InlineData("DA40_FAIL_DISP_EGT_1", "FAILURES_DISP_EGT:1")]
-    [InlineData("DA40_FAIL_DISP_EGT_4", "FAILURES_DISP_EGT:4")]
+    [InlineData("DA40_FAIL_DISP_RPM", "FAILURES_SENS_RPM")]
+    [InlineData("DA40_FAIL_DISP_MAP", "FAILURES_SENS_MAP")]
+    [InlineData("DA40_FAIL_DISP_FF", "FAILURES_SENS_FF")]
+    [InlineData("DA40_FAIL_DISP_FP", "FAILURES_SENS_FP")]
+    [InlineData("DA40_FAIL_DISP_CHT_1", "FAILURES_SENS_CHT:1")]
+    [InlineData("DA40_FAIL_DISP_CHT_4", "FAILURES_SENS_CHT:4")]
+    [InlineData("DA40_FAIL_DISP_EGT_1", "FAILURES_SENS_EGT:1")]
+    [InlineData("DA40_FAIL_DISP_EGT_4", "FAILURES_SENS_EGT:4")]
     public void TheXlsCarriesItsOwnIndicationFailures(string key, string lvar)
     {
         var xls = Xls();

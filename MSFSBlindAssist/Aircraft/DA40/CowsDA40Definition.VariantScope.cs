@@ -75,9 +75,18 @@ public partial class CowsDA40Definition
         "DA40_FAIL_CBT_FPB",
         "DA40_FAIL_CBT_XFR",
 
-        // The NG's induction-air factor. The XLS has an ALTERNATE_AIR control but models no
-        // factor behind it.
-        "DA40_ICE_ALT_AIR_FACTOR",
+        // The NG's induction air temperature (COWS 1.2.0: alternate air draws warm air from
+        // behind the radiator). The XLS's alternate air models no such temperature.
+        "DA40_ICE_INDUCTION_TEMP",
+
+        // COWS 1.2.0's ECU power states and active-ECU sensors, and the ECU battery's
+        // temperature — the Austro's FADEC, which a Lycoming has not got.
+        "DA40_ECU_POWER_A",
+        "DA40_ECU_POWER_B",
+        "DA40_ECU_SENS_CRANK",
+        "DA40_ECU_SENS_CAM",
+        "DA40_ECU_SENS_BOOST",
+        "DA40_ELEC_BATT_ECU_TEMP",
     };
 
     /// <summary>

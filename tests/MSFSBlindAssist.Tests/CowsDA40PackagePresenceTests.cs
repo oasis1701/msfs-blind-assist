@@ -163,4 +163,44 @@ public class CowsDA40PackagePresenceTests
             Assert.Contains("ASOBO_PASSENGER_Lever_Cabin_Heat_Template", tokens);
         }
     }
+
+    /// <summary>
+    /// ⚠️ THE OTHER HALF OF THE SAME TRAP: AN L:VAR THE CODE WRITES. A bound variable is a
+    /// row, and the test above checks it; a write is a string literal in a setter, and
+    /// nothing did. COWS 1.2.0 deleted L:INPUT_TRIM_UP and L:INPUT_TRIM_DN from the whole
+    /// package, and the trim nudge buttons went on writing them — a write to a variable
+    /// nothing reads succeeds, so it failed in silence. Every literal the DA40 code hands to
+    /// SetLVar / HoldLVar / ReleaseHeldLVar (and the named trim-switch constant) must exist
+    /// in at least one variant's package.
+    /// </summary>
+    [Fact]
+    public void EveryLvarTheCodeWritesExistsInThePackage()
+    {
+        string? root = PackageRoot();
+        if (root is null) return;
+
+        var tokens = PackageTokens(root, DA40Variant.NG);
+        tokens.UnionWith(PackageTokens(root, DA40Variant.XLS));
+
+        string src = Path.Combine(ChecklistRepoRoot(), "MSFSBlindAssist", "Aircraft", "DA40");
+        var written = new SortedSet<string>(StringComparer.Ordinal);
+        foreach (string file in Directory.EnumerateFiles(src, "*.cs"))
+        {
+            string text = File.ReadAllText(file);
+            foreach (Match m in Regex.Matches(text, @"(?:SetLVar|HoldLVar|ReleaseHeldLVar)\(""([A-Za-z0-9_:]+)"""))
+                written.Add(m.Groups[1].Value.Split(':')[0]);
+        }
+        written.Add(CowsDA40Definition.TrimSwitchInput);
+
+        Assert.NotEmpty(written);
+        var missing = written.Where(n => !tokens.Contains(n)).ToList();
+        Assert.True(missing.Count == 0, "the code writes L:vars the package does not have: " + string.Join(", ", missing));
+    }
+
+    private static string ChecklistRepoRoot()
+    {
+        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
+            if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
+        throw new InvalidOperationException("MSFSBlindAssist.sln not found");
+    }
 }

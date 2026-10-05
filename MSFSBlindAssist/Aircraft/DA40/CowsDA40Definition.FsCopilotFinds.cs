@@ -101,13 +101,9 @@ public partial class CowsDA40Definition
         // Unit deliberately unnamed; see the class comment.
         AddFsCopilotReadout(v, "DA40_ELEC_BATT_ECU_CAPACITY", "ELEC_BATT_ECU_CAPACITY",
             "ECU Battery Capacity");
-        // ⚠️ IT RUNS 0 DOWN TO -2, NOT 0 TO 100, and calling it a "charge" made a rested
-        // battery read "0.0" as though it were flat. The model clamps it (`-2 max 0 min`),
-        // drives it NEGATIVE while the battery is loaded and recovers it toward 0 when the
-        // load comes off, then feeds it into the charge factor as -SURF/6. So zero is the
-        // RESTED state and -2 is the worst case - the opposite reading to the obvious one.
-        AddFsCopilotReadout(v, "DA40_ELEC_BATT_SURF", "ELEC_BATT_SURF",
-            "Battery Surface Depletion");
+        // DA40_ELEC_BATT_SURF (the battery's surface charge) is COWS 1.2.0's
+        // ELEC_BATT_SURF_VOLT now and lives in CowsDA40Definition.Cows120 — the 1.1.5
+        // accumulator it used to read (ELEC_BATT_SURF, 0 down to -2) is gone from the package.
 
         // Is the autopilot POWERED - a different question from whether it is engaged, and
         // one the GFC 700 panel could not answer at all. It lives on the avionics bus.
@@ -209,7 +205,7 @@ public partial class CowsDA40Definition
         v[key] = d;
     }
 
-    private static Dictionary<string, SimVarDefinition> BuildFsCopilotSecondPassVariables()
+    private static Dictionary<string, SimVarDefinition> BuildFsCopilotSecondPassVariables(bool isNg)
     {
         var v = new Dictionary<string, SimVarDefinition>();
         var yesNo = new Dictionary<double, string> { [0] = "No", [1] = "Yes" };
@@ -221,8 +217,18 @@ public partial class CowsDA40Definition
         // could not see either. The fire is even referenced in the fuel-valve
         // documentation - "turning the valve OFF really does clear ENG ON FIRE:1" - so it
         // was known to exist and still never read.
-        AddFind(v, "DA40_ENG_FIRE", "ENG ON FIRE:1", SimVarType.SimVar, "Engine Fire",
-            "bool", "F0", new Dictionary<double, string> { [0] = "No", [1] = "FIRE" }, true);
+        //
+        // ⚠️ COWS 1.2.0 MOVED THE NG's FIRE OFF THE STOCK SIMVAR. Its logic now catches
+        // ENG ON FIRE:1 the moment anything raises it, CLEARS it, and carries the fire on
+        // L:FIRE_ENG:1 (which spreads damage on a timer, and goes out below 500 rpm or with
+        // the fuel valve OFF) — so the stock SimVar reads 0 through the whole fire. The XLS
+        // still burns on the stock SimVar.
+        if (isNg)
+            AddFind(v, "DA40_ENG_FIRE", "FIRE_ENG:1", SimVarType.LVar, "Engine Fire",
+                "number", "F0", new Dictionary<double, string> { [0] = "No", [1] = "FIRE" }, true);
+        else
+            AddFind(v, "DA40_ENG_FIRE", "ENG ON FIRE:1", SimVarType.SimVar, "Engine Fire",
+                "bool", "F0", new Dictionary<double, string> { [0] = "No", [1] = "FIRE" }, true);
 
         AddFind(v, "DA40_ENG_FAILED", "GENERAL ENG FAILED:1", SimVarType.SimVar,
             "Engine Failed",

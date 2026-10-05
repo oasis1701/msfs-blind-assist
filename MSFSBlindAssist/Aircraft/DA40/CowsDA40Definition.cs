@@ -317,7 +317,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
-        foreach (var kv in BuildFsCopilotSecondPassVariables())
+        foreach (var kv in BuildFsCopilotSecondPassVariables(IsNG))
         {
             vars[kv.Key] = kv.Value;
         }
@@ -398,6 +398,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             vars[kv.Key] = kv.Value;
         }
 
+        foreach (var kv in BuildCows120Variables(IsNG)) vars[kv.Key] = kv.Value;
         foreach (var kv in BuildFailureVariables(IsNG))
         {
             vars[kv.Key] = kv.Value;
@@ -750,6 +751,8 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
             AddRows(d, SimDamagePanel, XlsDamageDetailDisplay());
         }
 
+        AddCows120Rows(d);
+
         RemoveForeignRows(d);
 
         return d;
@@ -974,6 +977,7 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         if (HandleAutopilotSet(varKey, value, simConnect, announcer)) return true;
         if (HandlePayloadSet(varKey, value, simConnect, announcer)) return true;
         if (HandleFailureSet(varKey, value, simConnect, announcer)) return true;
+        if (HandleCows120Set(varKey, announcer, simConnect)) return true;
         if (HandleEngineStartSet(varKey, value, simConnect, announcer)) return true;
         if (HandleMagnetoSet(varKey, value, simConnect, announcer)) return true;
         if (HandleXlsPowerSet(varKey, value, simConnect, announcer)) return true;

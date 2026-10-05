@@ -202,7 +202,11 @@ public partial class CowsDA40Definition
     private static readonly List<string> OptionControls = new()
     {
         "DA40_OPT_TIMER_EXPIRED_SET",
-        "DA40_OPT_KILL_FMA"
+        "DA40_OPT_KILL_FMA",
+        // The vendor's two force-feedback switches (DA40 LVAR bindings.txt, 1.2.0): neither
+        // is on the MFD menu.
+        "DA40_OPT_FFB_YOKE",
+        "DA40_OPT_FFB_SERVO_DISABLE"
     };
 
     private bool HandleOptionSet(string varKey, double value, SimConnectManager simConnect)

@@ -336,13 +336,13 @@ public partial class CowsDA40Definition
     /// press of a DIFFERENT control no longer cuts the ECU test short.
     /// </summary>
     private void HoldLVar(string lvar, int holdMs, SimConnectManager simConnect,
-        Action? onComplete = null)
+        Action? onComplete = null, double value = 1)
     {
         _holdSim = simConnect;
-        if (_holds.Start(lvar, Environment.TickCount64 + holdMs, onComplete))
+        if (_holds.Start(lvar, Environment.TickCount64 + holdMs, onComplete, value))
             Log.Debug("DA40", $"Re-pressed L:{lvar}; the earlier press does not complete");
 
-        simConnect.SetLVar(lvar, 1);
+        simConnect.SetLVar(lvar, value);
 
         if (_holdTimer == null)
         {
@@ -362,7 +362,7 @@ public partial class CowsDA40Definition
         try
         {
             var (write, release, complete) = _holds.Tick(Environment.TickCount64, sim.IsConnected);
-            foreach (string lvar in write) sim.SetLVar(lvar, 1);
+            foreach (string lvar in write) sim.SetLVar(lvar, _holds.ValueOf(lvar));
             foreach (string lvar in release) WriteReleased(sim, lvar);
             if (_holds.IsEmpty) StopHoldTimer();
             foreach (var done in complete) done();

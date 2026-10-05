@@ -70,13 +70,10 @@ public partial class CowsDA40Definition
         // ---------- FADEC and Sensors ----------
         if (isNg)
         {
-            AddFailureFlag(v, "DA40_FAIL_CRANK_SENS", "FAILURES_CRANK_SENS:1", "Crankshaft Sensor");
             AddFailureFlag(v, "DA40_FAIL_CRANK_A", "FAILURES_CRANK_SENSOR_A:1", "Crankshaft Sensor, ECU A");
             AddFailureFlag(v, "DA40_FAIL_CRANK_B", "FAILURES_CRANK_SENSOR_B:1", "Crankshaft Sensor, ECU B");
-            AddFailureFlag(v, "DA40_FAIL_CAM_SENS", "FAILURES_CAM_SENS:1", "Camshaft Sensor");
             AddFailureFlag(v, "DA40_FAIL_CAM_A", "FAILURES_CAM_SENSOR_A:1", "Camshaft Sensor, ECU A");
             AddFailureFlag(v, "DA40_FAIL_CAM_B", "FAILURES_CAM_SENSOR_B:1", "Camshaft Sensor, ECU B");
-            AddFailureFlag(v, "DA40_FAIL_BOOST_SENS", "FAILURES_BOOST_SENS:1", "Boost Sensor");
             AddFailureFlag(v, "DA40_FAIL_BOOST_A", "FAILURES_BOOST_SENSOR_A:1", "Boost Sensor, ECU A");
             AddFailureFlag(v, "DA40_FAIL_BOOST_B", "FAILURES_BOOST_SENSOR_B:1", "Boost Sensor, ECU B");
             AddFailureModes(v, "DA40_FAIL_LEVER_A", "FAILURES_POWER_LEVER_A:1", "Power Lever, ECU A",
@@ -119,31 +116,31 @@ public partial class CowsDA40Definition
         // rule: a failed indication ZEROES the variable MSFSBA reads while the engine runs
         // on perfectly, so without a row the reading simply becomes 0 and there is nothing
         // to tell that from a real zero.
-        AddFailureFlag(v, "DA40_FAIL_DISP_OP", "FAILURES_DISP_OP", "Oil Pressure");
-        AddFailureFlag(v, "DA40_FAIL_DISP_OT", "FAILURES_DISP_OT", "Oil Temperature");
-        AddFailureFlag(v, "DA40_FAIL_DISP_AMPS", "FAILURES_DISP_AMPS", "Ammeter");
-        AddFailureFlag(v, "DA40_FAIL_DISP_VOLT", "FAILURES_DISP_VOLT", "Voltmeter");
-        AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_1", "FAILURES_DISP_FUEL:1", "Main Tank Quantity");
-        AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_2", "FAILURES_DISP_FUEL:2", "Auxiliary Tank Quantity");
+        AddFailureFlag(v, "DA40_FAIL_DISP_OP", "FAILURES_SENS_OP", "Oil Pressure");
+        AddFailureFlag(v, "DA40_FAIL_DISP_OT", "FAILURES_SENS_OT", "Oil Temperature");
+        AddFailureFlag(v, "DA40_FAIL_DISP_AMPS", "FAILURES_SENS_AMPS", "Ammeter");
+        AddFailureFlag(v, "DA40_FAIL_DISP_VOLT", "FAILURES_SENS_VOLT", "Voltmeter");
+        AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_1", "FAILURES_SENS_FUEL:1", "Main Tank Quantity");
+        AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_2", "FAILURES_SENS_FUEL:2", "Auxiliary Tank Quantity");
 
         if (isNg)
         {
-            AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_T1", "FAILURES_DISP_FUEL_T:1", "Main Tank Temperature");
-            AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_T2", "FAILURES_DISP_FUEL_T:2", "Auxiliary Tank Temperature");
-            AddFailureFlag(v, "DA40_FAIL_DISP_GT", "FAILURES_DISP_GT", "Gearbox Temperature");
-            AddFailureFlag(v, "DA40_FAIL_DISP_WT", "FAILURES_DISP_WT", "Coolant Temperature");
+            AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_T1", "FAILURES_SENS_FUEL_T:1", "Main Tank Temperature");
+            AddFailureFlag(v, "DA40_FAIL_DISP_FUEL_T2", "FAILURES_SENS_FUEL_T:2", "Auxiliary Tank Temperature");
+            AddFailureFlag(v, "DA40_FAIL_DISP_GT", "FAILURES_SENS_GT", "Gearbox Temperature");
+            AddFailureFlag(v, "DA40_FAIL_DISP_WT", "FAILURES_SENS_WT", "Coolant Temperature");
         }
         else
         {
-            AddFailureFlag(v, "DA40_FAIL_DISP_RPM", "FAILURES_DISP_RPM", "Tachometer");
-            AddFailureFlag(v, "DA40_FAIL_DISP_MAP", "FAILURES_DISP_MAP", "Manifold Pressure");
-            AddFailureFlag(v, "DA40_FAIL_DISP_FF", "FAILURES_DISP_FF", "Fuel Flow");
-            AddFailureFlag(v, "DA40_FAIL_DISP_FP", "FAILURES_DISP_FP", "Fuel Pressure");
+            AddFailureFlag(v, "DA40_FAIL_DISP_RPM", "FAILURES_SENS_RPM", "Tachometer");
+            AddFailureFlag(v, "DA40_FAIL_DISP_MAP", "FAILURES_SENS_MAP", "Manifold Pressure");
+            AddFailureFlag(v, "DA40_FAIL_DISP_FF", "FAILURES_SENS_FF", "Fuel Flow");
+            AddFailureFlag(v, "DA40_FAIL_DISP_FP", "FAILURES_SENS_FP", "Fuel Pressure");
             for (int c = 1; c <= DA40CylinderState.CylinderCount; c++)
             {
-                AddFailureFlag(v, $"DA40_FAIL_DISP_CHT_{c}", $"FAILURES_DISP_CHT:{c}",
+                AddFailureFlag(v, $"DA40_FAIL_DISP_CHT_{c}", $"FAILURES_SENS_CHT:{c}",
                     $"Cylinder {c} Head Temperature");
-                AddFailureFlag(v, $"DA40_FAIL_DISP_EGT_{c}", $"FAILURES_DISP_EGT:{c}",
+                AddFailureFlag(v, $"DA40_FAIL_DISP_EGT_{c}", $"FAILURES_SENS_EGT:{c}",
                     $"Cylinder {c} Exhaust Temperature");
             }
         }
@@ -193,6 +190,15 @@ public partial class CowsDA40Definition
         {
             AddFailureFlag(v, "DA40_FAIL_OIL_PUMP", "FAILURES_OIL:1", "Oil Pump");
             AddFailureFlag(v, "DA40_FAIL_BLOCK", "FAILURES_BLOCK:1", "Engine Block");
+
+            // The fuel system and the two fuel pumps, which the random picker raises (picks
+            // 27, 28 and 29) and nothing here reported. Each wears its own damage
+            // accumulator — DAMAGE_FUEL:1 above 2000 rpm, DAMAGE_FUEL:11 / :12 while pump 1
+            // (circuit 50) or pump 2 (circuit 51) runs — and those feed the HEALTH_FUEL rows
+            // the ECU panel already shows. Found by CowsDA40FailureCoverageTests.
+            AddFailureFlag(v, "DA40_FAIL_FUEL_SYSTEM", "FAILURES_FUEL:1", "Fuel System");
+            AddFailureFlag(v, "DA40_FAIL_FUEL_PUMP_1", "FAILURES_FUEL:11", "Fuel Pump 1");
+            AddFailureFlag(v, "DA40_FAIL_FUEL_PUMP_2", "FAILURES_FUEL:12", "Fuel Pump 2");
         }
 
         // ⚠️ THREE OF THESE CARRY A ":1" AND IT IS LOAD-BEARING. The oil pump, the engine
@@ -411,13 +417,10 @@ public partial class CowsDA40Definition
 
     private static readonly List<string> SimFadecControls = new()
     {
-        "DA40_FAIL_CRANK_SENS",
         "DA40_FAIL_CRANK_A",
         "DA40_FAIL_CRANK_B",
-        "DA40_FAIL_CAM_SENS",
         "DA40_FAIL_CAM_A",
         "DA40_FAIL_CAM_B",
-        "DA40_FAIL_BOOST_SENS",
         "DA40_FAIL_BOOST_A",
         "DA40_FAIL_BOOST_B",
         "DA40_FAIL_LEVER_A",
@@ -519,7 +522,10 @@ public partial class CowsDA40Definition
     private static readonly List<string> SimDamageControls = new()
     {
         "DA40_FAIL_OIL_PUMP",
-        "DA40_FAIL_BLOCK"
+        "DA40_FAIL_BLOCK",
+        "DA40_FAIL_FUEL_SYSTEM",
+        "DA40_FAIL_FUEL_PUMP_1",
+        "DA40_FAIL_FUEL_PUMP_2"
     };
 
     private static readonly List<string> BreakerTripControls = new()
@@ -586,6 +592,7 @@ public partial class CowsDA40Definition
         var l = new List<string>(SharedResetControls);
         l.AddRange(isNg ? NgResetControls : XlsResetControls);
         l.Add("DA40_FAIL_RESET_ALL");
+        l.Add("DA40_FAIL_REPAIR_REFUEL");
         return l;
     }
 
@@ -650,7 +657,7 @@ public partial class CowsDA40Definition
 
             case "DA40_FAIL_RESET_BATT":
                 simConnect.SetLVar("RESET_BATT", 1);
-                announcer.AnnounceImmediate("Batteries reset to full charge");
+                announcer.AnnounceImmediate("Batteries charged and warmed");
                 return true;
 
             case "DA40_FAIL_RESET_ECU":
