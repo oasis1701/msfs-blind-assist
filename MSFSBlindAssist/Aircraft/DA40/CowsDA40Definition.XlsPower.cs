@@ -259,7 +259,8 @@ public partial class CowsDA40Definition
             // ⚠️ NO LONGER CONVERTED FROM BAR. DISP_MAP is the drawn value and is already
             // inHg; multiplying it again read 447 inHg on a running engine.
             case "DA40_XLS_MAP":
-                displayText = $"{value:F1} inHg";
+                // "inches", as both altimeters say it: a screen reader spells "inHg" out.
+                displayText = $"{value:F1} inches";
                 return true;
 
             // ⚠️ THESE THREE NAME THEIR OWN UNIT BECAUSE THEIR SOURCE NO LONGER CARRIES ONE.

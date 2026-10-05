@@ -441,18 +441,18 @@ public partial class CowsDA40Definition
                     int h = (int)hours;
                     int m = (int)Math.Round((hours - h) * 60);
                     if (m == 60) { h++; m = 0; }
-                    fuelBits.Add($"endurance {h} hours {m} minutes at this flow");
+                    fuelBits.Add($"Endurance {h} hours {m} minutes at this flow");
                 }
                 else
                 {
-                    fuelBits.Add("engine not burning, no endurance figure");
+                    fuelBits.Add("Engine not burning, no endurance figure");
                 }
 
                 // The tank DIFFERENCE is an AFM limit on this aeroplane, and on the NG the
                 // fuel moves by itself - burnt from the main, returned through the aux - so
                 // it drifts without the pilot doing anything.
                 double diff = Math.Abs(mainOpt.Value - auxOpt.Value);
-                fuelBits.Add($"tank difference {diff:0.0} of {FuelMaxTankDifferenceGal:0} gallons allowed" +
+                fuelBits.Add($"Tank difference {diff:0.0} of {FuelMaxTankDifferenceGal:0} gallons allowed" +
                              (diff > FuelMaxTankDifferenceGal ? ", OVER the limit" : ""));
 
                 announcer.AnnounceImmediate(string.Join(". ", fuelBits) + ".");
@@ -635,8 +635,12 @@ public partial class CowsDA40Definition
                 // - and those two are ALREADY in the continuous batch. Promoting the
                 // standby copies as well would put two keys with one SimVar name into a
                 // batch that sorts by name, which shifts every later variable's slot.
-                Add(bits, simConnect, "DA40_AIRSPEED", "Standby airspeed");
-                Add(bits, simConnect, "INDICATED_ALTITUDE", "altitude");
+                // Spelled out here because neither key carries a unit or a display
+                // override: through Add() they read "Standby airspeed 0, altitude 29.1".
+                if (ReadNow(simConnect, "DA40_AIRSPEED") is double ias)
+                    bits.Add(FormattableString.Invariant($"Standby airspeed {ias:0} knots"));
+                if (ReadNow(simConnect, "INDICATED_ALTITUDE") is double alt)
+                    bits.Add(FormattableString.Invariant($"altitude {alt:0} feet"));
                 Add(bits, simConnect, "DA40_STBY_COMPASS", "compass");
 
                 double? pitch = ReadNow(simConnect, "DA40_STBY_GYRO_PITCH");

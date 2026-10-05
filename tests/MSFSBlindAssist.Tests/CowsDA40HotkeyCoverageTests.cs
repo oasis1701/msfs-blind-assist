@@ -77,7 +77,7 @@ public class CowsDA40HotkeyCoverageTests
 
         // Quantity answers the TANKS; the second key answers how long that lasts.
         Assert.Contains("endurance", src, StringComparison.Ordinal);
-        Assert.Contains("tank difference", src, StringComparison.Ordinal);
+        Assert.Contains("Tank difference", src, StringComparison.Ordinal);
     }
 
     [Fact]
