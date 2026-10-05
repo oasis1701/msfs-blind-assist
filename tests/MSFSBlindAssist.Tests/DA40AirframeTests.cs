@@ -38,4 +38,27 @@ public class DA40AirframeTests
     [InlineData(DA40Airframe.NgCode, "Airbus A320neo")]
     public void OnlyTheTwoDA40ProfilesEverSwap(string current, string title)
         => Assert.Null(DA40Airframe.SwapTarget(current, title));
+    [Theory]
+    [InlineData(@"..\COWS_DA40NG", DA40Airframe.NgCode)]
+    [InlineData(@"""..\COWS_DA40XLS""", DA40Airframe.XlsCode)]
+    [InlineData("../cows_da40ng/", DA40Airframe.NgCode)]
+    [InlineData(@"..\FNX_32X", null)]
+    [InlineData("", null)]
+    public void ALiveryIsNamedByTheAeroplaneItDresses(string baseContainer, string? expected)
+        => Assert.Equal(expected, DA40Airframe.CodeForBaseContainer(baseContainer));
+
+    [Fact]
+    public void ALiveryPackagesAircraftCfgIsFollowedToItsBaseContainer()
+    {
+        // Measured: the N524LA livery loads from its own folder, cows_da40ng_n524la, which the
+        // folder test cannot name; its aircraft.cfg says base_container = "..\COWS_DA40NG".
+        string dir = System.IO.Directory.CreateTempSubdirectory("msfsba-livery-").FullName;
+        try
+        {
+            string cfg = System.IO.Path.Combine(dir, "aircraft.cfg");
+            System.IO.File.WriteAllText(cfg, "[VARIATION]\nbase_container = \"..\\COWS_DA40NG\" ; dressed\ntitle = \"DA40-NG N524LA\"\n");
+            Assert.Equal(DA40Airframe.NgCode, DA40Airframe.CodeFor(cfg));
+        }
+        finally { System.IO.Directory.Delete(dir, recursive: true); }
+    }
 }

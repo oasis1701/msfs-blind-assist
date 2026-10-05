@@ -29,6 +29,46 @@ internal static class DA40Airframe
 
         if (s.StartsWith("DA40-NG", StringComparison.OrdinalIgnoreCase)) return NgCode;
         if (s.StartsWith("DA40-XLS", StringComparison.OrdinalIgnoreCase)) return XlsCode;
+
+        // ⚠️ A LIVERY PACKAGE LOADS FROM ITS OWN FOLDER. Measured: the N524LA livery's
+        // AircraftLoaded path is ...\livery-cows-da40ng-n524la\simobjects\airplanes\cows_da40ng_n524la\aircraft.cfg,
+        // which names neither folder above — but the file
+        // says which aeroplane it dresses: base_container = "..\COWS_DA40NG".
+        if (s.EndsWith("aircraft.cfg", StringComparison.OrdinalIgnoreCase))
+            return CodeForBaseContainer(ReadBaseContainer(s));
+        return null;
+    }
+
+    /// <summary>The DA40 a livery's <c>base_container</c> line points at, or null.</summary>
+    internal static string? CodeForBaseContainer(string? baseContainer)
+    {
+        if (string.IsNullOrWhiteSpace(baseContainer)) return null;
+        string folder = baseContainer.Trim().Trim('"').Replace('/', '\\').TrimEnd('\\');
+        int cut = folder.LastIndexOf('\\');
+        if (cut >= 0) folder = folder[(cut + 1)..];
+        if (folder.Equals("COWS_DA40NG", StringComparison.OrdinalIgnoreCase)) return NgCode;
+        if (folder.Equals("COWS_DA40XLS", StringComparison.OrdinalIgnoreCase)) return XlsCode;
+        return null;
+    }
+
+    private static string? ReadBaseContainer(string aircraftCfg)
+    {
+        try
+        {
+            if (!System.IO.File.Exists(aircraftCfg)) return null;
+            foreach (string raw in System.IO.File.ReadLines(aircraftCfg))
+            {
+                string line = raw.Trim();
+                if (!line.StartsWith("base_container", StringComparison.OrdinalIgnoreCase)) continue;
+                int eq = line.IndexOf('=');
+                if (eq < 0) continue;
+                string value = line[(eq + 1)..];
+                int comment = value.IndexOf(';');
+                if (comment >= 0) value = value[..comment];
+                return value.Trim();
+            }
+        }
+        catch (Exception) { /* an unreadable cfg names no DA40 */ }
         return null;
     }
 
