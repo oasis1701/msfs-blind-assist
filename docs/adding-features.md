@@ -261,6 +261,19 @@ private IAircraftDefinition LoadAircraftFromCode(string aircraftCode)
 
 **Step 5:** Test - build, launch, select aircraft from menu
 
+**Step 6:** Docs and rules, so the next person (and Claude) finds what you learned
+
+- Write `docs/<aircraft>.md`: transports, panel map, what is measured and how.
+- Add a row to CLAUDE.md's "Where things live": the doc, when to read it, the rule files. The aircraft never gets a section of its own in CLAUDE.md.
+- Create `.claude/rules/<aircraft>.md` with `paths:` globs for the aircraft's own code (`MSFSBlindAssist/Aircraft/<Aircraft>/**`, or `MSFSBlindAssist/Aircraft/<Aircraft>*.cs` for a definition at the top level; `MSFSBlindAssist/Forms/<Aircraft>/**`; any `MSFSBlindAssist/SimConnect/<Aircraft>/**`), its `Resources/coherent-*.js` agent scripts and its tests. Every glob is a double-quoted item indented with spaces; the file is UTF-8 without BOM, LF. The shared aircraft rules (`.claude/rules/variable-definitions.md`) already load for everything under `Aircraft/`.
+- Until the aircraft has a rule, the rule file is its front matter, a heading and one line naming its doc: copy `.claude/rules/ifly-737.md`.
+- Each lesson a future change must not break becomes a rule: its full text under `## <PREFIX>-n` in `docs/invariants/<aircraft>.md`, and one line `- [<PREFIX>-n] <rule> Full: docs/invariants/<aircraft>.md#<prefix>-n` (at most 400 characters) in the rule file, with a prefix no other area uses. With the first rule, the preamble also names the full-text file, and `docs/invariants/<aircraft>.md` is created in the format of the existing ones (for example `docs/invariants/audio-output.md`).
+- Add a changelog fragment in the `aircraft` category (see `changelog.d/README.md`).
+- Run `ClaudeContextBudgetTests`; each failure says what to fix:
+  ```bash
+  dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter "FullyQualifiedName~ClaudeContextBudgetTests"
+  ```
+
 ## Workflow 6: Adding Aircraft-Specific Hotkey
 
 ### Method 1: Simple Variable Mapping
@@ -327,6 +340,22 @@ public override bool HandleHotkeyAction(
     return base.HandleHotkeyAction(action, simConnect, announcer, parentForm);
 }
 ```
+
+## Workflow 7: Adding a New Feature
+
+A feature here is a subsystem that is not an aircraft (the First Officer, the Waypoint Flight Director, taxi guidance); its code usually lives under `Services/`, `Navigation/` or a folder of its own. Pure logic (formatters, parsers, geometry, classifiers) gets characterization tests in `tests/MSFSBlindAssist.Tests`; a sim-facing part gets an in-sim test plan in the PR (CORE-5). Then:
+
+**Step 1:** Write `docs/<feature>.md`: what it does for a pilot, how it works, what is measured and how.
+
+**Step 2:** Add a row to CLAUDE.md's "Where things live": the doc, when to read it, the rule files. The feature never gets a section of its own in CLAUDE.md.
+
+**Step 3:** Create `.claude/rules/<feature>.md` with `paths:` globs for the feature's own files and its tests (double-quoted, indented with spaces; UTF-8 without BOM, LF). Until it has a rule, the file is its front matter, a heading and one line naming its doc, as in `.claude/rules/ifly-737.md`.
+- Shared hubs (`MainForm*.cs`, `TaxiGuidanceManager*.cs`, `UserSettings.cs`) get a rule by a MIRRORED line, word for word, in `.claude/rules/mainform-call-sites.md`, `taxi-call-sites.md` or `settings-call-sites.md`, not by a glob.
+- If the rule file would pass 12,000 characters, split it into two with narrower globs.
+
+**Step 4:** Each lesson a future change must not break becomes a rule: its full text under `## <PREFIX>-n` in `docs/invariants/<feature>.md`, and one line `- [<PREFIX>-n] <rule> Full: docs/invariants/<feature>.md#<prefix>-n` (at most 400 characters) in the rule file, with a prefix no other area uses. A rule that applies to every file goes in CLAUDE.md under "Rules for any file", with its full text under `## CORE-n` in `docs/invariants/core.md`; that is the only kind of rule CLAUDE.md takes.
+
+**Step 5:** Add a changelog fragment in the `feature` category (see `changelog.d/README.md`), and run `ClaudeContextBudgetTests` (the command is in Workflow 5, Step 6).
 
 ## When to Use Each Pattern
 

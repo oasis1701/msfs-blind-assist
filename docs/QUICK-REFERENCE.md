@@ -208,6 +208,7 @@ Use `FlyByWireA320Definition.cs` as template.
        _ => new FlyByWireA320Definition()
    };
    ```
+6. Give it its doc, its row in CLAUDE.md's "Where things live" and its rule file (`.claude/rules/<aircraft>.md`): see Step 6 of [Workflow 5](adding-features.md#workflow-5-adding-new-aircraft)
 
 ### Add Button State Announcement
 ```csharp
