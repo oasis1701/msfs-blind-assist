@@ -193,14 +193,14 @@ Use `FlyByWireA320Definition.cs` as template.
    this.yourAircraftMenuItem.Text = "Your Aircraft";
    this.yourAircraftMenuItem.Click += new System.EventHandler(this.YourAircraftMenuItem_Click);
    ```
-4. Add click handler in `MainForm.cs`:
+4. Add click handler in `MainForm.MenuHandlers.cs`:
    ```csharp
    private void YourAircraftMenuItem_Click(object? sender, EventArgs e)
    {
        SwitchAircraft(new YourAircraftDefinition());
    }
    ```
-5. Add to `LoadAircraftFromCode()` switch statement in `MainForm.cs`:
+5. Add to `LoadAircraftFromCode()` switch statement in `MainForm.AircraftSwitch.cs`:
    ```csharp
    return aircraftCode switch
    {
@@ -209,6 +209,9 @@ Use `FlyByWireA320Definition.cs` as template.
    };
    ```
 6. Give it its doc, its row in CLAUDE.md's "Where things live" and its rule file (`.claude/rules/<aircraft>.md`): see Step 6 of [Workflow 5](adding-features.md#workflow-5-adding-new-aircraft)
+
+### Add New Feature
+Follow [Workflow 7](adding-features.md#workflow-7-adding-a-new-feature): its doc, its row in CLAUDE.md's "Where things live" and its rule file.
 
 ### Add Button State Announcement
 ```csharp

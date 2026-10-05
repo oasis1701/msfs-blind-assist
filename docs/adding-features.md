@@ -239,7 +239,7 @@ this.yourAircraftMenuItem.Text = "Your Aircraft &Name";
 this.yourAircraftMenuItem.Click += new System.EventHandler(this.YourAircraftMenuItem_Click);
 ```
 
-**Step 3:** Add event handler in `MainForm.cs`
+**Step 3:** Add event handler in `MainForm.MenuHandlers.cs`
 ```csharp
 private void YourAircraftMenuItem_Click(object? sender, EventArgs e)
 {
@@ -247,7 +247,7 @@ private void YourAircraftMenuItem_Click(object? sender, EventArgs e)
 }
 ```
 
-**Step 4:** Update `LoadAircraftFromCode()` in `MainForm.cs`
+**Step 4:** Update `LoadAircraftFromCode()` in `MainForm.AircraftSwitch.cs`
 ```csharp
 private IAircraftDefinition LoadAircraftFromCode(string aircraftCode)
 {
@@ -265,7 +265,7 @@ private IAircraftDefinition LoadAircraftFromCode(string aircraftCode)
 
 - Write `docs/<aircraft>.md`: transports, panel map, what is measured and how.
 - Add a row to CLAUDE.md's "Where things live": the doc, when to read it, the rule files. The aircraft never gets a section of its own in CLAUDE.md.
-- Create `.claude/rules/<aircraft>.md` with `paths:` globs for the aircraft's own code (`MSFSBlindAssist/Aircraft/<Aircraft>/**`, or `MSFSBlindAssist/Aircraft/<Aircraft>*.cs` for a definition at the top level; `MSFSBlindAssist/Forms/<Aircraft>/**`; any `MSFSBlindAssist/SimConnect/<Aircraft>/**`), its `Resources/coherent-*.js` agent scripts and its tests. Every glob is a double-quoted item indented with spaces; the file is UTF-8 without BOM, LF. The shared aircraft rules (`.claude/rules/variable-definitions.md`) already load for everything under `Aircraft/`.
+- Create `.claude/rules/<aircraft>.md` with `paths:` globs for each of these that the aircraft has: `MSFSBlindAssist/Aircraft/<Aircraft>/**` and/or `MSFSBlindAssist/Aircraft/<Aircraft>*.cs` (a definition at the top level); `MSFSBlindAssist/Forms/<Aircraft>/**`; `MSFSBlindAssist/SimConnect/<Aircraft>/**`; its `MSFSBlindAssist/MainForm.<Aircraft>.cs` partial; its agent scripts, as `MSFSBlindAssist/Resources/coherent-<aircraft>*.js` (as `hs787.md` and `md11.md` do) or each script by its exact name, never `coherent-*.js`; and its tests. Every glob is a double-quoted item indented with spaces; the file is UTF-8 without BOM, LF. The shared aircraft rules (`.claude/rules/variable-definitions.md`) already load for everything under `Aircraft/`, but they never count as the aircraft's own: the guard test fails for an aircraft file that no rule file of its own covers.
 - Until the aircraft has a rule, the rule file is its front matter, a heading and one line naming its doc: copy `.claude/rules/ifly-737.md`.
 - Each lesson a future change must not break becomes a rule: its full text under `## <PREFIX>-n` in `docs/invariants/<aircraft>.md`, and one line `- [<PREFIX>-n] <rule> Full: docs/invariants/<aircraft>.md#<prefix>-n` (at most 400 characters) in the rule file, with a prefix no other area uses. With the first rule, the preamble also names the full-text file, and `docs/invariants/<aircraft>.md` is created in the format of the existing ones (for example `docs/invariants/audio-output.md`).
 - Add a changelog fragment in the `aircraft` category (see `changelog.d/README.md`).
@@ -343,14 +343,14 @@ public override bool HandleHotkeyAction(
 
 ## Workflow 7: Adding a New Feature
 
-A feature here is a subsystem that is not an aircraft (the First Officer, the Waypoint Flight Director, taxi guidance); its code usually lives under `Services/`, `Navigation/` or a folder of its own. Pure logic (formatters, parsers, geometry, classifiers) gets characterization tests in `tests/MSFSBlindAssist.Tests`; a sim-facing part gets an in-sim test plan in the PR (CORE-5). Then:
+A feature here is a subsystem that is not an aircraft (taxi guidance, GSX docking, the SayIntentions taxi import); its code usually lives under `Services/`, `Navigation/` or a folder of its own. Pure logic (formatters, parsers, geometry, classifiers) gets characterization tests in `tests/MSFSBlindAssist.Tests`; a sim-facing part gets an in-sim test plan in the PR (CORE-5). Then:
 
 **Step 1:** Write `docs/<feature>.md`: what it does for a pilot, how it works, what is measured and how.
 
 **Step 2:** Add a row to CLAUDE.md's "Where things live": the doc, when to read it, the rule files. The feature never gets a section of its own in CLAUDE.md.
 
 **Step 3:** Create `.claude/rules/<feature>.md` with `paths:` globs for the feature's own files and its tests (double-quoted, indented with spaces; UTF-8 without BOM, LF). Until it has a rule, the file is its front matter, a heading and one line naming its doc, as in `.claude/rules/ifly-737.md`.
-- Shared hubs (`MainForm*.cs`, `TaxiGuidanceManager*.cs`, `UserSettings.cs`) get a rule by a MIRRORED line, word for word, in `.claude/rules/mainform-call-sites.md`, `taxi-call-sites.md` or `settings-call-sites.md`, not by a glob.
+- A partial named for the feature (`MainForm.<Feature>.cs`, `TaxiGuidanceManager.<Feature>.cs`) is the feature's own: glob it directly, as `md11.md` globs `MainForm.MD11.cs` and `sayintentions-import.md` globs `MainForm.SayIntentions.cs`. A rule whose code sits in a shared hub (`MainForm.cs` and its mechanism partials such as `MainForm.Hotkeys.cs`, `TaxiGuidanceManager.cs`, `UserSettings.cs`) gets a MIRRORED line, word for word, in `.claude/rules/mainform-call-sites.md`, `taxi-call-sites.md` or `settings-call-sites.md`, rather than a glob that would load the whole rule file with every edit of the hub.
 - If the rule file would pass 12,000 characters, split it into two with narrower globs.
 
 **Step 4:** Each lesson a future change must not break becomes a rule: its full text under `## <PREFIX>-n` in `docs/invariants/<feature>.md`, and one line `- [<PREFIX>-n] <rule> Full: docs/invariants/<feature>.md#<prefix>-n` (at most 400 characters) in the rule file, with a prefix no other area uses. A rule that applies to every file goes in CLAUDE.md under "Rules for any file", with its full text under `## CORE-n` in `docs/invariants/core.md`; that is the only kind of rule CLAUDE.md takes.

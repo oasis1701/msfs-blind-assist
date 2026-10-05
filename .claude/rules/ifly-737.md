@@ -3,6 +3,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/IFly737*.cs"
   - "MSFSBlindAssist/Forms/IFly737/**"
   - "MSFSBlindAssist/SimConnect/IFly/**"
+  - "MSFSBlindAssist/MainForm.IFly737.cs"
   - "tests/MSFSBlindAssist.Tests/IFly/**"
   - "tests/MSFSBlindAssist.Tests/**/*IFly*.cs"
 ---

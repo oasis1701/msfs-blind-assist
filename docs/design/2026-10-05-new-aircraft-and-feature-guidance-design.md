@@ -122,6 +122,8 @@ See "Adding or changing a rule" in CLAUDE.md.
 
 In `ClaudeContextBudgetTests.cs`, the `<summary>` for `LoadedChars` sits above `ClaudeMdOutline`, stacked on that field's own summary; it moves to `LoadedChars`. No other code changes: this is a docs PR.
 
+**As built (final review, 2026-10-05):** the wider `Aircraft/**` glob let the shared aircraft rules satisfy the guard's "aircraft folder file loads a rule file" check, so a ported aircraft whose rule file missed its own subfolder would have passed; that check now ignores `variable-definitions.md` (`AreaFilesLoadingNoOwnRuleFile`, pinned by a theory). An area-named partial (`MainForm.<Area>.cs`) is globbed by its own rule file, as `md11.md` and `sayintentions-import.md` do, so Workflow 5's Step 6 lists it and `ifly-737.md` globs `MainForm.IFly737.cs`; Workflow 7 mirrors only the rules whose code sits in the shared hubs. Agent scripts are globbed per aircraft (`coherent-<aircraft>*.js`) or by name. CLAUDE.md's pointer says "in QUICK-REFERENCE.md", because the H-variable and hotkey short forms live outside "Common Workflows", which also gained "Add New Feature". The walkthroughs now name where the menu handler (`MainForm.MenuHandlers.cs`) and `LoadAircraftFromCode` (`MainForm.AircraftSwitch.cs`) actually live. CLAUDE.md: 163 lines, 17,048 characters.
+
 ## Constraints
 
 - Read a file with the Read tool before editing it (CORE-16).
