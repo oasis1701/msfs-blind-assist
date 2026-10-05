@@ -425,7 +425,7 @@ PMDG 737-800 NG3 aircraft implementation:
 - Uses CDA (Client Data Area) via `PMDG_NG3_Data` / `PMDG_NG3_Control` / `PMDG_NG3_CDU_0/1` structs
 - Two CDUs (Captain = 0, F/O = 1); no observer CDU
 - MCP value entry via dialogs (Shift+H / Shift+S / Shift+A / Shift+V) — no FPA mode
-- See `### PMDG 737-800 NG3 Specific Patterns` in CLAUDE.md for SDK gotchas
+- See [pmdg-737.md](pmdg-737.md) for SDK gotchas
 
 ## Dynamic Aircraft Selection System
 
@@ -650,7 +650,7 @@ See [Taxi Guidance](taxi-guidance.md) for the full reference.
 - Returns navdata immediately on a cache miss; background-fetches in `Task.Run` (fire-and-forget, in-flight deduplication via `HashSet<string> + lock`); raises `AirportDataUpdated` event on completion
 - Name writeback is **by index on the original `TaxiPath` objects** — no rebuild, no field loss
 - Wired in `MainForm` immediately after `DatabaseSelector.SelectProvider()`, guarded by `if (airportDataProvider != null)`
-- Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log`, written via `Utils/Logging/Log.Channel("taxi-augment")` (path resolved underneath by `AppLogs.PathFor`) — see CLAUDE.md's Diagnostic Logs section for the facade
+- Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\taxi-augment.log`, written via `Utils/Logging/Log.Channel("taxi-augment")` (path resolved underneath by `AppLogs.PathFor`) — see CLAUDE.md [CORE-14]/[CORE-15] and the Diagnostic Logs background in [invariants/core.md](invariants/core.md) for the facade
 - `Enabled` property (default `true`) wired to `UserSettings.TaxiAugmentEnabled` (in-dialog checkbox + ODbL / X-Plane attribution in Taxi Guidance Options); a "Refresh Taxiway Names" button force-fetches the nearby airport and announces the names-added count (`GetLastCoverage`)
 
 See [Taxi Guidance — Taxi-Data Augmentation Pipeline](taxi-guidance.md#taxi-data-augmentation-pipeline-phase-5) for the full reference.
