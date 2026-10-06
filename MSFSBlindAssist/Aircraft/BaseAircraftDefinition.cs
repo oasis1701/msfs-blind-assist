@@ -580,6 +580,20 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Whether the status-display auto-refresh pauses ENTIRELY while a combo in the panel has
+    /// focus (SIM-18). True for an aircraft that overrides <see cref="OnDisplayPanelShown"/>:
+    /// its status box is a page snapshot driven by a page combo (the A320 family's and A380's
+    /// SD page, the PMDG 777's System Display), and a refresh while the pilot arrows that combo
+    /// can fight its announcement - the case the pause was written for. Every other aircraft
+    /// keeps the list live and holds back only the focused combo's own variable.
+    /// </summary>
+    public bool StatusRefreshPausesWhileComboFocused =>
+        _statusRefreshPauses ??= GetType().GetMethod(nameof(OnDisplayPanelShown),
+            new[] { typeof(string), typeof(SimConnect.SimConnectManager) })?.DeclaringType != typeof(BaseAircraftDefinition);
+
+    private bool? _statusRefreshPauses;
+
+    /// <summary>
     /// Default: no override — the panel display uses ValueDescriptions / numeric
     /// formatting. Aircraft with ARINC429 (or otherwise non-presentable) display
     /// fields override this to return a decoded string.

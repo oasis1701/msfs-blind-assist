@@ -88,7 +88,9 @@ public sealed class CowsDA40PageJumpForm : Form
         _tree.ExpandAll();
         _tree.SelectedNode = start ?? (_tree.Nodes.Count > 0 ? _tree.Nodes[0] : null);
 
-        _tree.NodeMouseDoubleClick += (s, e) => Accept();
+        // A double-click on a GROUP is the tree's own expand or collapse; calling Accept for it
+        // as well toggled it a second time, so the group never opened.
+        _tree.NodeMouseDoubleClick += (s, e) => { if (e.Node?.Tag is PageEntry) Accept(); };
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44 };
 

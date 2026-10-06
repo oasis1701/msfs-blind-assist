@@ -475,6 +475,12 @@ public partial class MainForm : Form
     // refreshButton.Click can restore it — otherwise the blind user "lands elsewhere".
     private Control? _refreshFocusReturn = null;
 
+    // The status list's GotFocus repaints and re-reads (SIM-18). These tell it the work was
+    // just done: Ctrl+3 repaints BEFORE focusing (so NVDA's first read is current), and a
+    // finished Refresh has just repainted AND re-read everything before handing focus back.
+    private bool _displayListPaintedForFocus;
+    private bool _displayListRefreshedForFocus;
+
     private ConcurrentDictionary<string, bool> pendingStateAnnouncements = new ConcurrentDictionary<string, bool>();  // Track state announcement requests
 
     private IAircraftDefinition currentAircraft;

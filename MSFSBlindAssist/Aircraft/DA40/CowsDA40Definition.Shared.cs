@@ -367,6 +367,8 @@ public partial class CowsDA40Definition
         NoteFuelValveChange(varName, value);
         // Which receiver the CDI is on, so only that course speaks. Silent.
         if (NoteCdiSource(varName, value)) return true;
+        // A COM audio flag that moved because MSFSBA just set one of the others. Silent.
+        if (IsComAudioSideEffect(varName)) return true;
 
         if (IsSilentCachedReadout(varName)) return true;
 

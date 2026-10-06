@@ -532,7 +532,7 @@ public sealed class CowsDA40DisplayForm : Form
                 // no COM or NAV knob at all, which is a real answer to "why does this key
                 // do nothing here" and one a sighted pilot can see at a glance. The
                 // barometric knob is on the same bezel and the same is true of it.
-                _announcer.AnnounceImmediate(knob.Event.StartsWith("BARO", StringComparison.Ordinal)
+                SayOther(knob.Event.StartsWith("BARO", StringComparison.Ordinal)
                     ? "The barometric knob is on the PFD, not the MFD."
                     : "The radios are tuned on the PFD, not the MFD.");
                 return true;
@@ -540,7 +540,7 @@ public sealed class CowsDA40DisplayForm : Form
 
             if (!_simConnect.IsConnected)
             {
-                _announcer.AnnounceImmediate("Not connected to simulator.");
+                SayOther("Not connected to simulator.");
                 return true;
             }
 
@@ -571,7 +571,7 @@ public sealed class CowsDA40DisplayForm : Form
         {
             if (_side != "PFD")
             {
-                _announcer.AnnounceImmediate("The radios are tuned on the PFD, not the MFD.");
+                SayOther("The radios are tuned on the PFD, not the MFD.");
                 return true;
             }
             _ = PushRadioTuningBox(push.Event, push.Spoken);
@@ -625,13 +625,13 @@ public sealed class CowsDA40DisplayForm : Form
             // what they closed and where they now are.
             string page = await _client.InvokeAsync(
                 "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.M.pageKey()");
-            _announcer.AnnounceImmediate(
+            SayOther(
                 r == "nothing open" ? "Nothing to close." : $"Closed. {page}");
         }
         catch (Exception ex)
         {
             Utils.Logging.Log.Debug("DA40", $"Close view: {ex.Message}");
-            _announcer.AnnounceImmediate("Could not close the window.");
+            SayOther("Could not close the window.");
         }
     }
 
@@ -772,7 +772,7 @@ public sealed class CowsDA40DisplayForm : Form
         // and once when the batch delivers the same change to the variable's own announcer.
         if (moved.VarKey.Length > 0) _owner?.MarkRadioTunedByWindow(moved.VarKey);
 
-        _announcer.AnnounceImmediate(moved.Spoken);
+        SayOther(moved.Spoken);
     }
 
 
@@ -821,7 +821,7 @@ public sealed class CowsDA40DisplayForm : Form
             // Falling back to the key's own name keeps a push that moved nothing from
             // sounding like a dead key - which is the whole failure this replaces.
             string moved = TuningCursorMove(before, after);
-            _announcer.AnnounceImmediate(moved.Length > 0 ? moved : spoken);
+            SayOther(moved.Length > 0 ? moved : spoken);
         }
         finally { try { _knobGate.Release(); } catch { } }
     }
@@ -1034,7 +1034,7 @@ public sealed class CowsDA40DisplayForm : Form
         // cursor changing, keeps the whole read-back: that is arriving somewhere.
         if (!cursorChangedHere && view == _lastView && summary.Length > 0 && !IsChecklistTextView(view))
         {
-            toSay = DropRepeatedLead(_lastSpokenSummary, summary);
+            toSay = DropRepeatedLead(_leadBaseline, summary);
         }
 
         if (cursorChangedHere)
@@ -1081,6 +1081,7 @@ public sealed class CowsDA40DisplayForm : Form
         _lastSpokenSummary = summary;
         _lastView = view;
         _lastFocus = focus;
+        _leadBaseline = summary;
         _announcer.AnnounceImmediate(toSay);
 
         // The window's own text last, off the critical path: it is not what a pilot is
@@ -1110,7 +1111,7 @@ public sealed class CowsDA40DisplayForm : Form
         // is the one failure a pilot could otherwise mistake for a dead key.
         if (result.IndexOf("no instrument", StringComparison.Ordinal) >= 0)
         {
-            _announcer.AnnounceImmediate("The display did not accept that key.");
+            SayOther("The display did not accept that key.");
             return (false, "", "", "", false);
         }
 
@@ -1211,6 +1212,21 @@ public sealed class CowsDA40DisplayForm : Form
     internal static bool IsChecklistTextView(string view) =>
         view.EndsWith("ChecklistPage", StringComparison.Ordinal);
 
+    /// <summary>
+    /// The last read-back a knob step may shorten against (<see cref="DropRepeatedLead"/>). Any
+    /// other speech from this window - a softkey, a radio, a typed ident, an error - clears it,
+    /// so a step after it is said in full: the pilot has heard something else since, and a bare
+    /// "ABNORMAL OPS PROC" after a softkey label has lost its name.
+    /// </summary>
+    private string _leadBaseline = "";
+
+    /// <summary>Speaks anything that is not a bezel read-back, and clears the lead baseline.</summary>
+    private void SayOther(string text)
+    {
+        _leadBaseline = "";
+        _announcer.AnnounceImmediate(text);
+    }
+
     /// <summary>What was last read back, so a repeat can be told from a stale read.</summary>
     private string _lastSpokenSummary = "";
 
@@ -1285,7 +1301,7 @@ public sealed class CowsDA40DisplayForm : Form
 
         if (entries.Count == 0)
         {
-            _announcer.AnnounceImmediate("The display did not give a page list.");
+            SayOther("The display did not give a page list.");
             return;
         }
 
@@ -1307,6 +1323,7 @@ public sealed class CowsDA40DisplayForm : Form
             _lastCursorOn = jumped.Cursor;
             _lastView = jumped.View;
             _lastSpokenSummary = jumped.Summary;
+            _leadBaseline = _lastSpokenSummary;
             _announcer.AnnounceImmediate(_lastSpokenSummary);
         }
         else
@@ -1314,7 +1331,7 @@ public sealed class CowsDA40DisplayForm : Form
             // "not available" comes back for a page whose key the display does not know,
             // which should be impossible from this list but is worth saying rather than
             // leaving the key silent.
-            _announcer.AnnounceImmediate(result.Length > 0 ? result : "The page did not open.");
+            SayOther(result.Length > 0 ? result : "The page did not open.");
         }
 
         await _client.ScrapeNowAsync();
@@ -1377,7 +1394,7 @@ public sealed class CowsDA40DisplayForm : Form
         {
             // "no text field" is the common one, and it is worth spelling out: the cursor
             // has to be ON a box before there is anything to type into.
-            _announcer.AnnounceImmediate(
+            SayOther(
                 result.IndexOf("no text field", StringComparison.Ordinal) >= 0
                     ? "Nothing to type into. Put the cursor on a waypoint field first."
                     : "The display did not take that: " + result);
@@ -1391,7 +1408,7 @@ public sealed class CowsDA40DisplayForm : Form
             "window.__MSFSBA_DA40G1000 && window.__MSFSBA_DA40G1000.typedResult()");
         if (_disposed) return;
 
-        _announcer.AnnounceImmediate(said);
+        SayOther(said);
         await _client.ScrapeNowAsync();
     }
 
@@ -1418,7 +1435,7 @@ public sealed class CowsDA40DisplayForm : Form
 
         if (!_simConnect.IsConnected)
         {
-            _announcer.AnnounceImmediate("Not connected to simulator.");
+            SayOther("Not connected to simulator.");
             return true;
         }
 
@@ -1480,7 +1497,7 @@ public sealed class CowsDA40DisplayForm : Form
         string joined = string.Join("; ", SoftkeyLabels(rows));
         if (joined != string.Join("; ", SoftkeyLabels(before)))
         {
-            _announcer.AnnounceImmediate("Softkeys now: " + joined);
+            SayOther("Softkeys now: " + joined);
             return;
         }
 
@@ -1490,7 +1507,7 @@ public sealed class CowsDA40DisplayForm : Form
         string changed = FirstChangedRow(before, rows);
         if (changed.Length > 0)
         {
-            _announcer.AnnounceImmediate(changed);
+            SayOther(changed);
             return;
         }
 
@@ -1499,7 +1516,7 @@ public sealed class CowsDA40DisplayForm : Form
         // that was not registered at all, which is the complaint that started this
         // ("you never know when they're entered"). It costs one short word and removes a
         // whole class of doubt.
-        if (pressedLabel.Length > 0) _announcer.AnnounceImmediate(pressedLabel);
+        if (pressedLabel.Length > 0) SayOther(pressedLabel);
     }
 
     /// <summary>

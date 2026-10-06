@@ -47,4 +47,13 @@ public class CowsDA40CourseSourceTests
         Assert.True(vars["DA40_CDI_GPS"].ExcludeFromMonitorManager);
         Assert.True(vars["DA40_CDI_NAV"].ExcludeFromMonitorManager);
     }
+
+    [Theory]
+    [InlineData(null, null, 3)]
+    [InlineData(false, null, 3)]     // off GPS, but which NAV is not known yet
+    [InlineData(true, null, 1)]
+    [InlineData(false, 2, 1)]
+    public void AnUnknownSourceLetsEveryCourseSpeak(bool? onGps, int? navRadio, int count)
+        // Assuming GPS before the first batch dropped a NAV 2 course turned right after a connect.
+        => Assert.Equal(count, CowsDA40Definition.CdiCourseKeysFor(onGps, navRadio).Length);
 }

@@ -419,9 +419,10 @@ public partial class CowsDA40Definition
     /// Every mode takes its own ON and OFF event, so a combo set lands where the pilot
     /// asked regardless of what MSFSBA believed the state was.
     /// </summary>
-    // The CDI source as last delivered; GPS until told otherwise (the G1000 powers up on GPS).
-    private bool _cdiOnGps = true;
-    private int _cdiNavRadio = 1;
+    // The CDI source as last delivered. Null until both have arrived: assuming GPS before the
+    // first batch dropped a NAV 2 course change turned on hardware right after a connect.
+    private bool? _cdiOnGps;
+    private int? _cdiNavRadio;
 
     private bool NoteCdiSource(string varName, double value)
     {
@@ -433,8 +434,14 @@ public partial class CowsDA40Definition
         }
     }
 
-    /// <summary>The course key the CRS knob is moving right now.</summary>
-    private string CdiCourseKey() => CourseKeyFor(_cdiOnGps, _cdiNavRadio);
+    /// <summary>The course key(s) the CRS knob is moving right now: one once the CDI source is
+    /// known, all three before it is.</summary>
+    private string[] CdiCourseKeys() => CdiCourseKeysFor(_cdiOnGps, _cdiNavRadio);
+
+    internal static string[] CdiCourseKeysFor(bool? onGps, int? navRadio)
+        => onGps is null || (onGps == false && navRadio is null)
+            ? CourseKeys
+            : new[] { CourseKeyFor(onGps.Value, navRadio ?? 1) };
 
     internal static string CourseKeyFor(bool onGps, int navRadio)
         => onGps ? "DA40_AP_CRS_GPS" : navRadio == 2 ? "DA40_AP_CRS_NAV2" : "DA40_AP_CRS_SET";
@@ -592,7 +599,7 @@ public partial class CowsDA40Definition
                 // The CDI's course, chosen in the sim at the moment of the write so a stale
                 // cache cannot send it to the wrong receiver; the cache only says which
                 // settle key to mark as ours.
-                MarkRadioSetByUs(CdiCourseKey());
+                MarkRadioSetByUs(CdiCourseKeys());
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
                 simConnect.ExecuteCalculatorCodeUnique(CourseWrite(deg));
                 announcer.AnnounceImmediate($"Course {deg:000}");

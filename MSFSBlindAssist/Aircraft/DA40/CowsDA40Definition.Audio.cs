@@ -110,8 +110,42 @@ public partial class CowsDA40Definition
         AddVolume(v, "DA40_AUDIO_NAV1_VOL_SET", "NAV VOLUME:1", "NAV1 VOL");
         AddVolume(v, "DA40_AUDIO_NAV2_VOL_SET", "NAV VOLUME:2", "NAV2 VOL");
 
+        // The COM audio four move together (see ComAudioKeys), and a knock-on change MSFSBA
+        // keeps quiet must still move the combo showing it.
+        foreach (var key in ComAudioKeys)
+            v[key].RefreshControlWhenDefHandled = _ => true;
+
         return v;
     }
+
+    /// <summary>
+    /// ⚠️ THE FOUR COM AUDIO CONTROLS ARE ONE SYSTEM IN THE SIM. Setting COM2 receive on
+    /// also set COM RECEIVE ALL (measured, AS1000_MID_COM_2 = 1, NG, 2026-10-06), choosing
+    /// Monitor Both moves COM RECEIVE:2, and a MIC selection moves the receive flags. So a
+    /// pilot setting one of them heard the others "change" too - a direct interaction spoken
+    /// as if it were somebody else's (CORE-7). After MSFSBA writes one, the others' changes
+    /// are kept quiet for <see cref="ComAudioGraceMs"/>; a change from the cockpit or
+    /// hardware, with no write of ours behind it, still speaks.
+    /// </summary>
+    internal static readonly string[] ComAudioKeys =
+    {
+        "DA40_AUDIO_TRANSMIT", "DA40_AUDIO_MONITOR_BOTH", "DA40_AUDIO_COM1_RECEIVE", "DA40_AUDIO_COM2_RECEIVE"
+    };
+
+    /// <summary>Outlasts the 1 s batch that delivers the knock-on change (DA40S-2).</summary>
+    internal const int ComAudioGraceMs = 2500;
+
+    private DateTime _comAudioOwnWriteAt = DateTime.MinValue;
+    private string _comAudioOwnKey = "";
+
+    private bool IsComAudioSideEffect(string varName)
+        => IsComAudioSideEffect(varName, _comAudioOwnKey, DateTime.UtcNow - _comAudioOwnWriteAt);
+
+    /// <summary>Whether <paramref name="varName"/> moved because MSFSBA just set another of the four.</summary>
+    internal static bool IsComAudioSideEffect(string varName, string ownKey, TimeSpan sinceOwnWrite)
+        => ownKey.Length > 0 && varName != ownKey &&
+           Array.IndexOf(ComAudioKeys, varName) >= 0 &&
+           sinceOwnWrite.TotalMilliseconds < ComAudioGraceMs;
 
     /// <summary>One GMA 1347 key: its MSFSBA key, the simvar its lamp follows, its placard,
     /// its input event, and the stock event that moves the same simvar.</summary>
@@ -211,6 +245,12 @@ public partial class CowsDA40Definition
     private bool HandleAudioSet(string varKey, double value, SimConnectManager simConnect,
         ScreenReaderAnnouncer announcer)
     {
+        if (Array.IndexOf(ComAudioKeys, varKey) >= 0)
+        {
+            _comAudioOwnWriteAt = DateTime.UtcNow;
+            _comAudioOwnKey = varKey;
+        }
+
         switch (varKey)
         {
             case "DA40_AUDIO_TRANSMIT":

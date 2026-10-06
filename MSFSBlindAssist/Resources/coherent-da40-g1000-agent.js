@@ -17,7 +17,7 @@
 (function () {
     var A = {};
 
-    A.VERSION = 24;
+    A.VERSION = 25;
 
     function visible(el) {
         if (!el) return false;
@@ -248,26 +248,62 @@
         // ⚠️ THE SHORT-TEXT ALERTS ARE NOT IN THE CAS WINDOW. Every panel.xml <Alert> with a
         // <ShortText> instead of a <Text> - ROLL, PTCH and PTRM (an autopilot servo failed),
         // <--AIL, AIL-->, UP ELE and DN ELE (a servo holding force), TRAFFIC, TERRAIN, PULL UP,
-        // TAWS NA - is drawn in ONE box beside the altimeter, .warnings-display, highest
-        // priority only, coloured by class: "yellow" a caution, "red" a warning (measured on the
-        // NG, 2026-10-06, raising TRAFFIC and holding L:AFCS_FAIL_ELE for PTCH). Nothing read that box, so a failed pitch servo or a terrain
-        // warning reached a sighted pilot and nobody else. It joins the CAS list here, so the
-        // background CAS watcher announces it exactly as it announces a CAS message.
+        // TAWS NA - is drawn in ONE box beside the altimeter, .warnings-display, and nothing
+        // read it, so a failed pitch servo or a terrain warning reached a sighted pilot and
+        // nobody else. They join the CAS list here, so the background CAS watcher announces
+        // them exactly as it announces a CAS message.
+        //
+        // ⚠️ FROM THEIR CONDITIONS, NOT FROM THE BOX. The box draws the highest-priority alert
+        // ONLY (measured on the NG, 2026-10-06: TRAFFIC yellow, then PTCH red in its place), so
+        // read off the box a caution covered by a warning looked CLEARED and was announced so,
+        // then came back as new when the warning cleared. Each alert is tested here exactly as
+        // panel.xml states it (identical on both airframes): the variable, the AFCS circuit
+        // (CIRCUIT ON:37) where the alert requires it, and the 6 s hold the servo forces carry.
         //   PFT and AFCS are left out: the pre-flight test and the AFCS self-test are their
         // own announced rows (AFCS_PFT, AFCS_TEST), and saying each twice is noise.
-        var boxes = document.querySelectorAll(".warnings-display");
-        for (var b = 0; b < boxes.length; b++) {
-            if (!visible(boxes[b])) continue;
-            var st = text(boxes[b]);
-            if (!st || st === "PFT" || st === "AFCS" || seen[st]) continue;
-            seen[st] = 1;
-            var bc = classList(boxes[b]);
-            var sev = (bc.indexOf("red") >= 0 || bc.indexOf("warning") >= 0) ? "warning"
-                    : (bc.indexOf("yellow") >= 0 || bc.indexOf("caution") >= 0) ? "caution"
-                    : "advisory";
-            out.push({ text: st, severity: sev, isNew: false });
+        var shortList = A.shortAlerts();
+        for (var q = 0; q < shortList.length; q++) {
+            if (seen[shortList[q].text]) continue;
+            seen[shortList[q].text] = 1;
+            out.push(shortList[q]);
         }
 
+        return out;
+    };
+
+    // The panel.xml <ShortText> alerts, from their own conditions (see A.cas). A Timer
+    // condition holds for its seconds before the alert shows; the start of each hold is kept
+    // on A, so a hold restarts if the agent is reinstalled, as the instrument's own would.
+    A._shortSince = {};
+    A.shortAlerts = function () {
+        var out = [];
+        if (typeof SimVar === "undefined") return out;
+        function lv(n) { try { return SimVar.GetSimVarValue("L:" + n, "number") || 0; } catch (e) { return 0; } }
+        var afcs = false;
+        try { afcs = !!SimVar.GetSimVarValue("CIRCUIT ON:37", "bool"); } catch (e) { afcs = false; }
+        var now = Date.now();
+        function held(key, on, secs) {
+            if (!on) { delete A._shortSince[key]; return false; }
+            if (A._shortSince[key] === undefined) A._shortSince[key] = now;
+            return now - A._shortSince[key] >= secs * 1000;
+        }
+        function add(on, text, severity) { if (on) out.push({ text: text, severity: severity, isNew: false }); }
+
+        add(lv("TAWS_AVAILABLE") < -1, "TAWS NA", "caution");
+        add(lv("TAWS_EDR_PULLUP_ALERT") !== 0, "PULL UP", "warning");
+        add(lv("TAWS_EDR_SINK_ALERT") !== 0 ||
+            lv("TAWS_NCR_DONTSINK_ALERT_LOSS") !== 0 || lv("TAWS_NCR_DONTSINK_ALERT_SINK") !== 0,
+            "TERRAIN", "caution");
+        add(lv("COWS_TRAFFIC_WARN") !== 0, "TRAFFIC", "caution");
+        add(afcs && lv("AFCS_FAIL_AIL") === 1, "ROLL", "warning");
+        add(afcs && lv("AFCS_FAIL_ELE") === 1, "PTCH", "warning");
+        add(afcs && lv("AFCS_FAIL_TRIM") === 1, "PTRM", "warning");
+        var ail = lv("AFCS_FORCE_AIL"), ele = lv("AFCS_FORCE_ELE");
+        add(held("ailL", ail === -1, 6) && afcs, "<--AIL", "caution");
+        add(held("ailR", ail === 1, 6) && afcs, "AIL-->", "caution");
+        add(held("eleU", ele === 1, 6) && afcs, "UP ELE", "caution");
+        add(held("eleD", ele === -1, 6) && afcs, "DN ELE", "caution");
+        add(lv("TAWS_TEST") === 1, "TAWS TEST", "status");
         return out;
     };
 

@@ -131,13 +131,14 @@ public partial class CowsDA40Definition
     /// The key is the honest unit: a value MSFSBA wrote and already spoke is redundant, and
     /// any OTHER value moving in the same window is somebody else's news.
     /// </summary>
-    private void MarkRadioSetByUs(string varKey)
+    private void MarkRadioSetByUs(params string[] varKeys)
     {
         _radioOwnWriteAt = DateTime.UtcNow;
-        _radioOwnWriteKey = varKey;
+        _radioOwnWriteKeys = varKeys;
     }
 
-    private string _radioOwnWriteKey = "";
+    // More than one only for a course typed before the CDI source is known (CdiCourseKeys).
+    private string[] _radioOwnWriteKeys = Array.Empty<string>();
 
     /// <summary>
     /// The display window tuned a radio and has already spoken the result.
@@ -224,7 +225,7 @@ public partial class CowsDA40Definition
             // The suppression is justified ONLY for a value MSFSBA itself echoed back as it
             // was typed; an autopilot preselect that happens to change in the same window is
             // somebody else's news and must still be spoken.
-            if (_radioOwnWriteKey.Length > 0) pending.Remove(_radioOwnWriteKey);
+            foreach (var own in _radioOwnWriteKeys) if (own.Length > 0) pending.Remove(own);
             if (pending.Count == 0) return;
         }
 
@@ -234,9 +235,11 @@ public partial class CowsDA40Definition
         // rule the altimeter settle and the A32NX armed-altitude flush follow.
         // A course the CDI is not on moved without the knob (a NAV 2 OBS while flying GPS):
         // nothing the pilot is flying changed, so it is not news.
-        string cdiCourse = CdiCourseKey();
+        // Until the CDI source has been delivered every course may speak: dropping one on a
+        // guess is how a NAV 2 course turned on hardware went unsaid after a connect.
+        var cdiCourses = CdiCourseKeys();
         foreach (var key in CourseKeys)
-            if (key != cdiCourse) pending.Remove(key);
+            if (Array.IndexOf(cdiCourses, key) < 0) pending.Remove(key);
         if (pending.Count == 0) return;
 
         var muted = Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet;

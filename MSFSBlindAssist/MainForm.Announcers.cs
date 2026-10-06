@@ -236,6 +236,21 @@ public partial class MainForm
         {
             pendingDisplayRequests[e.VarName].TrySetResult(true);
         }
+
+        // Step 3 (both branches): a status-display row moved, so repaint the list if one is up
+        // (SIM-18). It sits above the split for the same reason as the completion above: a
+        // def-handled row (every silent DA40 readout, every DA40 var during the load settle)
+        // used to skip it, change only on the auto-refresh tick, and read seconds old on Ctrl+3.
+        // The repaint reads the cache (SIM-15) and is COALESCED: during the auto-refresh tick the
+        // whole panel is force-read at once, and N responses must make one rebuild, not N.
+        // (cached name set — this gate runs PER EVENT; see GetDisplayVarNamesCached)
+        bool isDisplayVar = GetDisplayVarNamesCached().Contains(e.VarName) &&
+                            currentAircraft.GetVariables().ContainsKey(e.VarName);
+        if (isDisplayVar && currentControls.TryGetValue("_DISPLAY_", out var displayCtrl) && displayCtrl is ListBox)
+        {
+            ScheduleDisplayRepaint();
+        }
+
         if (wasProcessedByAircraft)
         {
             // The def announced (suppressed) and updated its own baseline — consume the echo so a
@@ -275,36 +290,14 @@ public partial class MainForm
             {
                 UpdateButtonStateFromStateVariable(e.VarName, e.Value);
             }
-            // A STATUS-DISPLAY ROW THE DEF HANDLED STILL MOVED. Step 3 below repaints the list
-            // for every other var, and this return skipped it, so a def-handled row (every
-            // silent DA40 readout, every DA40 var during the load settle) changed only on the
-            // auto-refresh tick - which pauses while any combo has focus, and nearly every DA40
-            // control is a combo. Ctrl+3 then landed on values seconds old. The repaint reads
-            // the cache (SIM-15) and is coalesced, so this costs one rebuild per burst.
-            if (currentControls.ContainsKey("_DISPLAY_") &&
-                GetDisplayVarNamesCached().Contains(e.VarName))
-            {
-                ScheduleDisplayRepaint();
-            }
             return; // Aircraft handled it completely, no further generic processing needed
         }
 
-        // Step 3: Update display values (if this variable is used in any panel display)
-        // This happens silently without announcements - users read the display manually
-        // (cached name set — this gate runs PER EVENT; see GetDisplayVarNamesCached)
-        if (currentAircraft.GetVariables().ContainsKey(e.VarName) &&
-            GetDisplayVarNamesCached().Contains(e.VarName))
+        // Step 3, the rest: keep the display value (silently - users read the display
+        // manually). The repaint was scheduled above, for both branches.
+        if (isDisplayVar)
         {
             displayValues[e.VarName] = e.Value;
-
-            // Repaint the display list if visible — COALESCED. During the auto-refresh tick the
-            // whole panel is force-read at once, so N responses land in quick succession; without
-            // debouncing, each would rebuild + reconcile the entire list (O(N) × N). Schedule one
-            // repaint instead.
-            if (currentControls.ContainsKey("_DISPLAY_") && currentControls["_DISPLAY_"] is ListBox)
-            {
-                ScheduleDisplayRepaint();
-            }
             // DON'T return - continue processing for announcements if needed
         }
 

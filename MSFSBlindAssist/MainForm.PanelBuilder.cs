@@ -1296,7 +1296,11 @@ public partial class MainForm
                 // Repaint from the cache at once (Tab arrives here without Ctrl+3's pre-focus
                 // repaint), then force-read the rows the cache does not stream so they follow
                 // within one round trip instead of the next tick.
-                if (displayList.Items.Count > 0) UpdateDisplayText(displayList);
+                // A Refresh that just finished did all of this before handing focus back.
+                if (_displayListRefreshedForFocus) { _displayListRefreshedForFocus = false; return; }
+
+                if (_displayListPaintedForFocus) _displayListPaintedForFocus = false;
+                else if (displayList.Items.Count > 0) UpdateDisplayText(displayList);
                 if (simConnectManager?.IsConnected == true &&
                     GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var focusVars))
                     foreach (var vk in focusVars)
@@ -1383,7 +1387,11 @@ public partial class MainForm
                 // button). Only refocuses when it actually left — a deliberate click on the
                 // Refresh button won't bounce focus back to the list.
                 if (focusReturn != null && focusReturn.IsHandleCreated && focusReturn.CanFocus && !focusReturn.Focused)
+                {
+                    _displayListRefreshedForFocus = focusReturn == displayList;
                     focusReturn.Focus();
+                    _displayListRefreshedForFocus = false;
+                }
             };
 
             displayPanel.Controls.Add(displayList);
@@ -1514,10 +1522,16 @@ public partial class MainForm
             // combo, so a pilot working a panel and pressing Ctrl+3 read values from whenever
             // they last left the list. What fights the combo is (a), which re-pushes a page
             // var, and a force-read of the combo's own var; the rest of the rows are free to move.
+            // An aircraft whose status box is a page snapshot behind a page combo (it overrides
+            // OnDisplayPanelShown: the A320 family's and A380's SD page, the PMDG 777's System
+            // Display) keeps the whole pause, which is what that combo was measured against.
             string? focusedComboKey = null;
             foreach (var kv in currentControls)
                 if (kv.Value is ComboBox cb && cb.IsHandleCreated && cb.Focused)
                 { focusedComboKey = kv.Key; break; }
+            if (focusedComboKey != null &&
+                (currentAircraft is not BaseAircraftDefinition baseDef || baseDef.StatusRefreshPausesWhileComboFocused))
+                return;
 
             // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, control surfaces, …) —
             //     silent; OnDisplayPanelShown force-reads the row vars and re-pushes the page var,
