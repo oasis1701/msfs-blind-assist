@@ -339,14 +339,13 @@ public static class FenixFlowDefinitions
             // UniversalAutomationService's auto-gear-up (see this flow's own Description),
             // not by this flow. Confirms the gear the way a crew does, "gear up, lights
             // out" (FenixGearConfirmation: the lever plus all seven LDG GEAR indicator
-            // lights, never the lever alone — owner decision 2026-09-22), and completes the
-            // After Takeoff Checklist's "Landing gear: UP". LAST, so gear still retracting
-            // does not hold up the steps above; waits up to 20 s. If the gear is not
-            // confirmed up the step is announced as skipped and FlowManager keeps ATC_GEAR
-            // out of MarkGroupComplete's latch, so the line keeps mirroring the real gear
-            // instead of reading complete over gear that is still down.
-            Done(Skip(WaitForField("AT_GEAR_UP_CHECK", "Landing gear: UP", FenixGearConfirmation.UpField, v => v > 0.5, 20),
-                    s => s.GetValue(FenixGearConfirmation.UpField) > 0.5), "ATC_GEAR"),
+            // lights, never the lever alone — owner decision 2026-09-22). LAST, so gear still
+            // retracting does not hold up the steps above; waits up to 20 s. If the gear is not
+            // confirmed up the step is announced as skipped. The Airbus card has no After
+            // Takeoff checklist (Airbus deleted it in Nov 2021), so there is no read-back line
+            // for this wait to complete: it deliberately links no checklist item.
+            Skip(WaitForField("AT_GEAR_UP_CHECK", "Landing gear: UP", FenixGearConfirmation.UpField, v => v > 0.5, 20),
+                s => s.GetValue(FenixGearConfirmation.UpField) > 0.5),
         }
     };
 

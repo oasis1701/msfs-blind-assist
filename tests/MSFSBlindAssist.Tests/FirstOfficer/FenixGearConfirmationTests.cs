@@ -102,7 +102,7 @@ public class FenixGearConfirmationTests
     }
 
     [Fact]
-    public void AfterTakeoff_flow_ends_with_a_read_only_gear_up_check_that_completes_ATC_GEAR()
+    public void AfterTakeoff_flow_ends_with_a_read_only_gear_up_check()
     {
         var step = FenixFlowDefinitions.Build().Single(f => f.Id == "AFTER_TAKEOFF").Steps.Last();
 
@@ -110,9 +110,10 @@ public class FenixGearConfirmationTests
         Assert.Equal("Landing gear: UP", step.Label);
         Assert.Equal(FlowStepActionType.WaitForCondition, step.ActionType);
         Assert.Equal(FenixGearConfirmation.UpField, step.ConditionFieldName);
-        Assert.Equal("ATC_GEAR", step.CompletesChecklistItemId);
-        // A timeout must SKIP (so FlowManager keeps ATC_GEAR out of the completion latch),
-        // never Stop the flow.
+        // The Airbus card has no After Takeoff checklist, so there is no read-back line for this
+        // wait to complete: it only confirms the gear aloud.
+        Assert.Null(step.CompletesChecklistItemId);
+        // A timeout must SKIP (announced aloud), never Stop the flow.
         Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
         Assert.InRange(step.TimeoutSeconds, 1, 30);
         Assert.NotNull(step.SkipCondition);
@@ -126,27 +127,14 @@ public class FenixGearConfirmationTests
         Assert.False(step.Condition!(double.NaN));
     }
 
-    [Fact]
-    public void AfterTakeoffChecklist_gear_line_reads_lights_out_and_keeps_its_label()
-    {
-        var item = FenixChecklistDefinitions.Build()
-            .Single(g => g.Id == "AFTER_TAKEOFF_CL").Items.Single(i => i.Id == "ATC_GEAR");
-
-        Assert.Equal("Landing gear: UP", item.Label);
-        Assert.Equal(FenixGearConfirmation.UpField, item.StateFieldName);
-        Assert.NotNull(item.StateCondition);
-        Assert.True(item.StateCondition!(1));
-        Assert.False(item.StateCondition!(0));
-        Assert.False(item.StateCondition!(double.NaN));
-    }
-
-    // The Fenix profile has no Landing flow, so "Landing gear: DOWN" (LDC_GEAR) is only
-    // ever ticked by its own state condition — FO_GEAR_DOWN, three green and no red. That
-    // premise is pinned here because FirstOfficerForm's RelatedGroupIdsFor latches
-    // `flow.Id + "_CL"` complete automatically whenever a checklist group of that id exists:
-    // a future Fenix "LANDING" flow would latch LDC_GEAR the moment it completes, over gear
-    // that may still be up. If one is ever added, it needs a read-only gear-down check that
-    // completes LDC_GEAR FIRST (the same shape as AT_GEAR_UP_CHECK above).
+    // The Fenix profile has no Landing flow, so "Landing memo, landing gear: DOWN"
+    // (LDC_MEMO_GEAR) is only ever ticked by its own state condition — FO_GEAR_DOWN, three
+    // green and no red. That premise is pinned here because FirstOfficerForm's
+    // RelatedGroupIdsFor latches `flow.Id + "_CL"` complete automatically whenever a checklist
+    // group of that id exists: a future Fenix "LANDING" flow would latch LDC_MEMO_GEAR the
+    // moment it completes, over gear that may still be up. If one is ever added, it needs a
+    // read-only gear-down check that completes LDC_MEMO_GEAR FIRST (the same shape as
+    // AT_GEAR_UP_CHECK above).
     [Fact]
     public void No_Fenix_flow_latches_LANDING_CL()
     {
@@ -268,9 +256,9 @@ public class FenixGearConfirmationTests
     public void LandingChecklist_gear_line_reads_three_green_and_keeps_its_label()
     {
         var item = FenixChecklistDefinitions.Build()
-            .Single(g => g.Id == "LANDING_CL").Items.Single(i => i.Id == "LDC_GEAR");
+            .Single(g => g.Id == "LANDING_CL").Items.Single(i => i.Id == "LDC_MEMO_GEAR");
 
-        Assert.Equal("Landing gear: DOWN", item.Label);
+        Assert.Equal("Landing memo, landing gear: DOWN", item.Label);
         Assert.Equal(FenixGearConfirmation.DownField, item.StateFieldName);
         Assert.NotNull(item.StateCondition);
         Assert.True(item.StateCondition!(1));

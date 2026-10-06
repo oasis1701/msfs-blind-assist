@@ -1,3 +1,4 @@
+using MSFSBlindAssist.FirstOfficer.Airbus;
 using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer.Fenix;
@@ -10,7 +11,9 @@ using CheckFn = System.Func<FenixActionExecutor, FenixStateEvaluator, System.Thr
 /// Data-driven Fenix A320 First-Officer checklist definitions — the two-layer structure
 /// shared with the PMDG profiles: auto-detect STATE groups (mirroring 1:1 what each flow
 /// sets; ticking an item fires the SAME write the flow uses) plus action-free readback
-/// (*_CL) checklists in JD's Guide wording.
+/// (*_CL) checklists: the Airbus A320 normal checklist (Nov 2021 revision) — Cockpit
+/// Preparation, Before Start, After Start, Taxi, Line-up, Approach, Landing, After Landing,
+/// Parking and Securing — kept line for line equal to the FlyByWire A32NX's.
 ///
 /// Every state item is RevertToState (live mirror). State reads come from the SimConnect
 /// L:var cache — OnRequest vars are polled by the FO window via OnRequestPollFields, and
@@ -22,25 +25,26 @@ public static class FenixChecklistDefinitions
     {
         BuildElectricalPowerUp(),
         BuildPreflight(),
+        BuildCockpitPrepCL(),
         BuildBeforeStart(),
-        BuildBeforeStartChecklist(),
+        BuildBeforeStartCL(),
         BuildEngineStart(),
         BuildAfterStart(),
-        BuildAfterStartChecklist(),
+        BuildAfterStartCL(),
+        BuildTaxiCL(),
         BuildBeforeTakeoff(),
-        BuildBeforeTakeoffChecklist(),
+        BuildLineupCL(),
         BuildAfterTakeoff(),
-        BuildAfterTakeoffChecklist(),
         BuildDescent(),
         BuildApproach(),
-        BuildApproachChecklist(),
-        BuildLandingChecklist(),
+        BuildApproachCL(),
+        BuildLandingCL(),
         BuildAfterLanding(),
-        BuildAfterLandingChecklist(),
+        BuildAfterLandingCL(),
         BuildShutdown(),
-        BuildParkingChecklist(),
+        BuildParkingCL(),
         BuildSecure(),
-        BuildSecuringChecklist(),
+        BuildSecuringCL(),
     };
 
     // -----------------------------------------------------------------------
@@ -463,110 +467,126 @@ public static class FenixChecklistDefinitions
                 "S_OH_ELEC_BAT2", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_BAT2", 0)),
         }
     };
-
     // -----------------------------------------------------------------------
-    // Readback checklists (*_CL) — Airbus wording per JD's Guide. STRICTLY
-    // action-free: no item here may carry a CheckAction.
+    // Read-back (*_CL) groups — the Airbus A320 normal checklist (Nov 2021 revision), with
+    // each "ECAM MEMO ... NO BLUE" line expanded into the memo's own lines. Sources and
+    // confidence: docs/invariants/first-officer-airbus.md#foa-8. The same ten groups, ids,
+    // labels and order as the FlyByWire A32NX (the Fenix prints "signs" on the memo's seat-belt
+    // lines and has no readable rudder trim, so that line is a Reminder here). HARD INVARIANT
+    // (FO-3): every item is action-free (Reminder, or Auto(..., action: null)).
     // -----------------------------------------------------------------------
 
-    private static Group BuildBeforeStartChecklist() => new()
+    private static Group BuildCockpitPrepCL() => new()
+    {
+        Id = "COCKPIT_PREP_CL", Name = "Cockpit Preparation Checklist",
+        Items = new()
+        {
+            Reminder("CPC_PINS", "COCKPIT_PREP_CL", "Gear pins and covers: REMOVED"),
+            Reminder("CPC_FUEL", "COCKPIT_PREP_CL", "Fuel quantity: CHECKED", s => s.FuelText()),
+            Auto("CPC_SEATBELTS", "COCKPIT_PREP_CL", "Seat belts: ON",
+                "S_OH_SIGNS", v => v > 0.5, action: null),
+            Auto("CPC_ADIRS", "COCKPIT_PREP_CL", "ADIRS: NAV",
+                "S_OH_NAV_IR1_MODE", v => Math.Abs(v - 1) < 0.5,
+                new[] { "S_OH_NAV_IR2_MODE", "S_OH_NAV_IR3_MODE" }, action: null),
+            Reminder("CPC_BARO", "COCKPIT_PREP_CL", "Baro reference: SET (both)", s => s.BaroText()),
+        }
+    };
+
+    private static Group BuildBeforeStartCL() => new()
     {
         Id = "BEFORE_START_CL", Name = "Before Start Checklist",
         Items = new()
         {
-            Reminder("BSC_PREP", "BEFORE_START_CL", "Cockpit preparation: COMPLETED"),
-            Reminder("BSC_PINS", "BEFORE_START_CL", "Gear pins and covers: REMOVED"),
-            Auto("BSC_SIGNS", "BEFORE_START_CL", "Signs: ON and AUTO",
-                "S_OH_SIGNS", v => v > 0.5, new[] { "S_OH_SIGNS_SMOKING" },
-                action: null),
-            Auto("BSC_ADIRS", "BEFORE_START_CL", "ADIRS: NAV",
-                "S_OH_NAV_IR1_MODE", v => Math.Abs(v - 1) < 0.5,
-                new[] { "S_OH_NAV_IR2_MODE", "S_OH_NAV_IR3_MODE" }, action: null),
-            Reminder("BSC_FUELQTY", "BEFORE_START_CL", "Fuel quantity: CHECKED"),
-            Reminder("BSC_TODATA", "BEFORE_START_CL", "Takeoff data: SET"),
-            Reminder("BSC_BARO", "BEFORE_START_CL", "Baro ref: SET"),
-            Info("BSC_LINE", "BEFORE_START_CL", "— Down to the line —"),
-            Reminder("BSC_DOORS", "BEFORE_START_CL", "Windows and doors: CLOSED"),
+            Reminder("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: SET",
+                s => AirbusReadbackFormat.OnOff(s.GetValue("S_MIP_PARKING_BRAKE"))),
+            Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds and thrust: SET (both)",
+                s => AirbusReadbackFormat.TakeoffSpeeds(s.GetValue("FNX2PLD_speedV1"),
+                    s.GetValue("FNX2PLD_speedVR"), s.GetValue("FNX2PLD_speedV2"),
+                    s.GetValue("N_MISC_PERF_TO_FLEX"))),
+            Reminder("BSC_WINDOWS", "BEFORE_START_CL", "Windows: CLOSED (both)"),
             Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON",
                 "S_OH_EXT_LT_BEACON", v => v > 0.5, action: null),
-            Auto("BSC_THRLEVERS", "BEFORE_START_CL", "Thrust levers: IDLE",
-                "A_FC_THROTTLE_LEFT_INPUT", v => Math.Abs(v - 2) < 0.5,
-                new[] { "A_FC_THROTTLE_RIGHT_INPUT" }, action: null),
-            Auto("BSC_PARK", "BEFORE_START_CL", "Parking brake: ON",
-                "S_MIP_PARKING_BRAKE", v => v > 0.5, action: null),
         }
     };
 
-    private static Group BuildAfterStartChecklist() => new()
+    private static Group BuildAfterStartCL() => new()
     {
         Id = "AFTER_START_CL", Name = "After Start Checklist",
         Items = new()
         {
-            Reminder("ASC_ANTIICE", "AFTER_START_CL", "Anti-ice: OFF or ON as required"),
-            Reminder("ASC_ECAM", "AFTER_START_CL", "ECAM status: CHECKED"),
+            Reminder("ASC_ANTIICE", "AFTER_START_CL", "Anti-ice: SET",
+                s => AirbusReadbackFormat.AntiIce(s.GetValue("S_OH_PNEUMATIC_ENG1_ANTI_ICE"),
+                    s.GetValue("S_OH_PNEUMATIC_ENG2_ANTI_ICE"), s.GetValue("S_OH_PNEUMATIC_WING_ANTI_ICE"))),
+            Reminder("ASC_ECAMSTS", "AFTER_START_CL", "ECAM status: CHECKED"),
             Reminder("ASC_PITCH", "AFTER_START_CL", "Pitch trim: SET"),
-            Reminder("ASC_RUDDER", "AFTER_START_CL", "Rudder trim: ZERO"),
+            // A Reminder (owner decision 2026-10-06): the A32NX ticks this line from the FAC's
+            // rudder trim word, but no Fenix var has been MEASURED as a neutral test (the
+            // registered N_FC_RUDDER_TRIM_DECIMAL display value has no verified unit or zero,
+            // and a Fenix var's meaning is read in the sim, never inferred).
+            Reminder("ASC_RUDDER", "AFTER_START_CL", "Rudder trim: NEUTRAL"),
         }
     };
 
-    private static Group BuildBeforeTakeoffChecklist() => new()
+    private static Group BuildTaxiCL() => new()
     {
-        Id = "BEFORE_TAKEOFF_CL", Name = "Before Takeoff Checklist",
+        Id = "TAXI_CL", Name = "Taxi Checklist",
         Items = new()
         {
-            Auto("BTC_FLAPS", "BEFORE_TAKEOFF_CL", "Flap setting: CONFIG set",
-                "S_FC_FLAPS", v => v is >= 0.5 and <= 3.5, action: null),
-            Reminder("BTC_VSPEEDS", "BEFORE_TAKEOFF_CL", "V1, VR, V2, FLEX temp: SET"),
-            Reminder("BTC_ATC", "BEFORE_TAKEOFF_CL", "ATC: SET"),
-            Info("BTC_LINE", "BEFORE_TAKEOFF_CL", "— Below the line —"),
-            Auto("BTC_TCAS", "BEFORE_TAKEOFF_CL", "TCAS: TA/RA",
-                "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, action: null),
-            Auto("BTC_ENGMODE", "BEFORE_TAKEOFF_CL", "Engine mode selector: NORM or IGN",
-                "S_ENG_MODE", v => v > 0.5, action: null),
-            Auto("BTC_PACKS", "BEFORE_TAKEOFF_CL", "Packs: ON",
-                "S_OH_PNEUMATIC_PACK_1", v => v > 0.5, new[] { "S_OH_PNEUMATIC_PACK_2" },
-                action: null),
+            Reminder("TXC_FCTEST", "TAXI_CL", "Flight controls: CHECKED (both)"),
+            Reminder("TXC_FLAPS", "TAXI_CL", "Flaps setting: SET (both)",
+                s => AirbusReadbackFormat.FlapsLever(s.GetValue("S_FC_FLAPS"))),
+            Auto("TXC_WXR", "TAXI_CL", "Radar and predictive windshear: ON and AUTO",
+                "FO_WXR_ON_AUTO", v => v > 0.5, action: null),
+            Reminder("TXC_ENGMODE", "TAXI_CL", "Engine mode selector: SET",
+                s => AirbusReadbackFormat.EngineMode(s.GetValue("S_ENG_MODE"))),
+            Auto("TXC_MEMO_AUTOBRK", "TAXI_CL", "Takeoff memo, autobrake: MAX",
+                "I_MIP_AUTOBRAKE_MAX_L", v => v > 0.5, action: null),
+            // The Fenix's memo prints "SIGNS": seat belts ON and the no-smoking sign lit (the
+            // switch at Auto or On). S_OH_SIGNS_SMOKING is 0 Off / 1 Auto / 2 On.
+            Auto("TXC_MEMO_SIGNS", "TAXI_CL", "Takeoff memo, signs: ON",
+                "S_OH_SIGNS", v => v > 0.5, new[] { "S_OH_SIGNS_SMOKING" }, action: null),
+            Reminder("TXC_MEMO_CABIN", "TAXI_CL", "Takeoff memo, cabin: READY"),
+            // A_FC_SPEEDBRAKE: 0 = ARMED.
+            Auto("TXC_MEMO_SPLRS", "TAXI_CL", "Takeoff memo, spoilers: ARMED",
+                "A_FC_SPEEDBRAKE", v => Math.Abs(v) < 0.5, action: null),
+            Auto("TXC_MEMO_FLAPS", "TAXI_CL", "Takeoff memo, flaps: T.O",
+                "S_FC_FLAPS", v => v > 0.5 && v < 3.5, action: null),
+            Reminder("TXC_MEMO_TOCFG", "TAXI_CL", "Takeoff memo, T.O config: NORMAL"),
         }
     };
 
-    private static Group BuildAfterTakeoffChecklist() => new()
+    private static Group BuildLineupCL() => new()
     {
-        Id = "AFTER_TAKEOFF_CL", Name = "After Takeoff Checklist",
+        Id = "LINEUP_CL", Name = "Line-up Checklist",
         Items = new()
         {
-            // "Landing gear: UP" is confirmed the way a crew confirms it — gear up, lights
-            // out — through the FenixGearConfirmation synthetic (lever UP and all seven
-            // LDG GEAR indicator lights out), never the lever alone (owner decision
-            // 2026-09-22). The After Takeoff flow's read-only AT_GEAR_UP_CHECK step waits
-            // for the same field and completes this line; when it times out it is skipped
-            // aloud and FlowManager keeps this line out of MarkGroupComplete's latch, so it
-            // never reads complete over gear that is still down.
-            Auto("ATC_GEAR", "AFTER_TAKEOFF_CL", "Landing gear: UP",
-                FenixGearConfirmation.UpField, v => v > 0.5, action: null),
-            Auto("ATC_FLAPS", "AFTER_TAKEOFF_CL", "Flaps: RETRACTED",
-                "S_FC_FLAPS", v => v < 0.5, action: null),
-            Auto("ATC_PACKS", "AFTER_TAKEOFF_CL", "Packs: ON",
-                "S_OH_PNEUMATIC_PACK_1", v => v > 0.5, new[] { "S_OH_PNEUMATIC_PACK_2" },
-                action: null),
+            Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED (both)"),
+            Auto("LUC_TCAS", "LINEUP_CL", "TCAS: TA/RA",
+                "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, action: null,
+                live: s => AirbusReadbackFormat.Tcas(s.GetValue("S_XPDR_MODE"))),
+            Reminder("LUC_PACKS", "LINEUP_CL", "Packs 1 and 2: SET",
+                s => AirbusReadbackFormat.Packs(s.GetValue("S_OH_PNEUMATIC_PACK_1"),
+                    s.GetValue("S_OH_PNEUMATIC_PACK_2"))),
         }
     };
 
-    private static Group BuildApproachChecklist() => new()
+    private static Group BuildApproachCL() => new()
     {
         Id = "APPROACH_CL", Name = "Approach Checklist",
         Items = new()
         {
+            Reminder("APC_BARO", "APPROACH_CL", "Baro reference: SET (both)", s => s.BaroText()),
             Auto("APC_SEATBELTS", "APPROACH_CL", "Seat belts: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
-            Auto("APC_BARO", "APPROACH_CL", "Baro ref: QNH set",
-                "S_FCU_EFIS1_BARO_STD", v => v < 0.5, new[] { "S_FCU_EFIS2_BARO_STD" },
-                action: null),
-            Reminder("APC_MINIMUMS", "APPROACH_CL", "Minimums: SET"),
-            Reminder("APC_ENGMODE", "APPROACH_CL", "Engine mode selector: NORM or IGN"),
+            Reminder("APC_MINIMUM", "APPROACH_CL", "Minimum: SET"),
+            // Read only: the landing autobrake is the Captain's (FO-14).
+            Reminder("APC_AUTOBRAKE", "APPROACH_CL", "Autobrake: SET", s => s.AutobrakeText()),
+            Reminder("APC_ENGMODE", "APPROACH_CL", "Engine mode selector: SET",
+                s => AirbusReadbackFormat.EngineMode(s.GetValue("S_ENG_MODE"))),
         }
     };
 
-    private static Group BuildLandingChecklist() => new()
+    private static Group BuildLandingCL() => new()
     {
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
@@ -576,73 +596,60 @@ public static class FenixChecklistDefinitions
             // lower legend lit, its upper legend and the red arrow out — the greens measured
             // live 2026-09-25), never the lever alone (owner decision 2026-09-22). The Fenix
             // has no Landing flow, so nothing latches this line: it ticks from its own state.
-            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN",
+            Auto("LDC_MEMO_GEAR", "LANDING_CL", "Landing memo, landing gear: DOWN",
                 FenixGearConfirmation.DownField, v => v > 0.5, action: null),
-            Auto("LDC_SIGNS", "LANDING_CL", "Signs: ON",
+            Auto("LDC_MEMO_SIGNS", "LANDING_CL", "Landing memo, signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
-            Auto("LDC_SPOILERS", "LANDING_CL", "Ground spoilers: ARMED",
-                "A_FC_SPEEDBRAKE", v => v < 0.5, action: null),
-            Auto("LDC_FLAPS", "LANDING_CL", "Flaps: SET",
-                "S_FC_FLAPS", v => v > 2.5, action: null),
-            Reminder("LDC_AUTOBRAKE", "LANDING_CL", "Autobrake: SET as required"),
+            Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Landing memo, cabin: READY"),
+            Auto("LDC_MEMO_SPLRS", "LANDING_CL", "Landing memo, spoilers: ARMED",
+                "A_FC_SPEEDBRAKE", v => Math.Abs(v) < 0.5, action: null),
+            // FULL, or 3 with the GPWS LDG FLAP 3 switch on; the live value is the lever itself.
+            Auto("LDC_MEMO_FLAPS", "LANDING_CL", "Landing memo, flaps: SET",
+                "FO_LDG_FLAPS_SET", v => v > 0.5, action: null,
+                live: s => AirbusReadbackFormat.FlapsLever(s.GetValue("S_FC_FLAPS"))),
         }
     };
 
-    private static Group BuildAfterLandingChecklist() => new()
+    private static Group BuildAfterLandingCL() => new()
     {
         Id = "AFTER_LANDING_CL", Name = "After Landing Checklist",
         Items = new()
         {
-            Auto("ALC_FLAPS", "AFTER_LANDING_CL", "Flaps: RETRACTED",
-                "S_FC_FLAPS", v => v < 0.5, action: null),
-            Auto("ALC_SPOILERS", "AFTER_LANDING_CL", "Spoilers: DISARMED",
-                "A_FC_SPEEDBRAKE", v => Math.Abs(v - 1) < 0.5, action: null),
-            // AVAIL lamp (_L), not the transient ON lamp (_U) — see BS_APU above.
-            Auto("ALC_APU", "AFTER_LANDING_CL", "APU: STARTED",
-                FenixActionExecutor.ApuAvailField, v => v > 0.5, action: null),
-            Auto("ALC_WXR", "AFTER_LANDING_CL", "Radar: OFF",                          // [RADAR]
-                "S_WR_SYS", v => Math.Abs(v - 1) < 0.5, action: null),                 // [RADAR]
-            Auto("ALC_PWS", "AFTER_LANDING_CL", "Predictive windshear: OFF",           // [RADAR]
-                "S_WR_PRED_WS", v => v < 0.5, action: null),                           // [RADAR]
+            Auto("ALC_WXR", "AFTER_LANDING_CL", "Radar and predictive windshear: OFF",
+                "FO_WXR_PWS_OFF", v => v > 0.5, action: null),
         }
     };
 
-    private static Group BuildParkingChecklist() => new()
+    private static Group BuildParkingCL() => new()
     {
         Id = "PARKING_CL", Name = "Parking Checklist",
         Items = new()
         {
-            Auto("PKC_APUBLEED", "PARKING_CL", "APU bleed: ON",
-                "S_OH_PNEUMATIC_APU_BLEED", v => v > 0.5, action: null),
+            Reminder("PKC_PARKBRK", "PARKING_CL", "Parking brake or chocks: SET",
+                s => AirbusReadbackFormat.OnOff(s.GetValue("S_MIP_PARKING_BRAKE"))),
             Auto("PKC_ENGINES", "PARKING_CL", "Engines: OFF",
                 "FO_ENGINES_OFF", v => v > 0.5, action: null),
-            Auto("PKC_SEATBELTS", "PARKING_CL", "Seat belts: OFF",
-                "S_OH_SIGNS", v => v < 0.5, action: null),
-            Reminder("PKC_EXTLT", "PARKING_CL", "Exterior lights: AS REQUIRED"),
+            Auto("PKC_WINGLT", "PARKING_CL", "Wing lights: OFF",
+                "S_OH_EXT_LT_WING", v => v < 0.5, action: null),
             Auto("PKC_FUELPUMPS", "PARKING_CL", "Fuel pumps: OFF",
                 "S_OH_FUEL_LEFT_1", v => v < 0.5,
                 new[] { "S_OH_FUEL_LEFT_2", "S_OH_FUEL_CENTER_1", "S_OH_FUEL_CENTER_2",
                         "S_OH_FUEL_RIGHT_1", "S_OH_FUEL_RIGHT_2" }, action: null),
-            Auto("PKC_PARK", "PARKING_CL", "Parking brake: ON (chocks as required)",
-                "S_MIP_PARKING_BRAKE", v => v > 0.5, action: null),
         }
     };
 
-    private static Group BuildSecuringChecklist() => new()
+    private static Group BuildSecuringCL() => new()
     {
-        Id = "SECURING_CL", Name = "Securing the Aircraft Checklist",
+        Id = "SECURING_CL", Name = "Securing Checklist",
         Items = new()
         {
-            Auto("SCC_ADIRS", "SECURING_CL", "ADIRS: OFF",
-                "S_OH_NAV_IR1_MODE", v => v < 0.5,
-                new[] { "S_OH_NAV_IR2_MODE", "S_OH_NAV_IR3_MODE" }, action: null),
             Auto("SCC_OXY", "SECURING_CL", "Oxygen: OFF",
-                "S_OH_OXYGEN_CREW_OXYGEN", v => v < 0.5, action: null),
-            Auto("SCC_PARK", "SECURING_CL", "Parking brake: SET",
-                "S_MIP_PARKING_BRAKE", v => v > 0.5, action: null),
-            Auto("SCC_APU", "SECURING_CL", "APU: OFF",
-                "S_OH_ELEC_APU_MASTER", v => v < 0.5, action: null),
-            Auto("SCC_BAT", "SECURING_CL", "Batteries 1 and 2: OFF",
+                "S_OH_OXYGEN_CREW_OXYGEN", v => Math.Abs(v) < 0.5, action: null),
+            // S_OH_INT_LT_EMER: 0 Off / 1 Arm / 2 On.
+            Auto("SCC_EMEREXIT", "SECURING_CL", "Emergency exit lights: OFF",
+                "S_OH_INT_LT_EMER", v => Math.Abs(v) < 0.5, action: null),
+            Reminder("SCC_EFBS", "SECURING_CL", "EFBs: OFF"),
+            Auto("SCC_BAT", "SECURING_CL", "Batteries: OFF",
                 "S_OH_ELEC_BAT1", v => v < 0.5, new[] { "S_OH_ELEC_BAT2" }, action: null),
         }
     };
@@ -651,9 +658,12 @@ public static class FenixChecklistDefinitions
     // Item builders (737 idioms adapted to the Fenix generic types)
     // -----------------------------------------------------------------------
 
+    // `live` is the optional value the read-back speaks on a tick and shows in the status line
+    // ("Flaps setting, flaps 2: Complete") — never part of the tree text (ChecklistItem.LiveValue).
     private static Item Auto(string id, string groupId, string label,
         string field, Func<double, bool> condition,
-        string[]? additionalFields, CheckFn? action) => new()
+        string[]? additionalFields, CheckFn? action,
+        Func<FenixStateEvaluator, string?>? live = null) => new()
     {
         Id = id, GroupId = groupId, Label = label,
         Type = ChecklistItemType.AutoDetectable,
@@ -665,11 +675,15 @@ public static class FenixChecklistDefinitions
         AdditionalStateFields = additionalFields ?? Array.Empty<string>(),
         AdditionalStateCondition = condition,
         CheckAction = action,
+        LiveValue = live,
     };
 
+    // The short overload gains `live` too, so `Auto(..., v => ..., action: null, live: ...)`
+    // (no additionalFields) compiles.
     private static Item Auto(string id, string groupId, string label,
-        string field, Func<double, bool> condition, CheckFn? action) =>
-        Auto(id, groupId, label, field, condition, null, action);
+        string field, Func<double, bool> condition, CheckFn? action,
+        Func<FenixStateEvaluator, string?>? live = null) =>
+        Auto(id, groupId, label, field, condition, null, action, live);
 
     private static Item AutoAsync(string id, string groupId, string label,
         string field, Func<double, bool> condition, CheckFn action) =>
@@ -683,20 +697,13 @@ public static class FenixChecklistDefinitions
         CheckAction = action,
     };
 
-    private static Item Reminder(string id, string groupId, string text) => new()
+    private static Item Reminder(string id, string groupId, string text,
+        Func<FenixStateEvaluator, string?>? live = null) => new()
     {
         Id = id, GroupId = groupId, Label = text,
         Type = ChecklistItemType.CaptainReminder,
         ManualCompletionAllowed = true,
         ReminderText = text,
-    };
-
-    private static Item Info(string id, string groupId, string text) => new()
-    {
-        Id = id, GroupId = groupId, Label = text,
-        Type = ChecklistItemType.Informational,
-        // Separators are structure, not work items: not tickable (and the FO window
-        // hides their checkbox), so they can never inflate CompletedCount.
-        ManualCompletionAllowed = false,
+        LiveValue = live,
     };
 }

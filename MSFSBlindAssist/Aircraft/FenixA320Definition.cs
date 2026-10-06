@@ -8271,6 +8271,21 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Units = "radians" // Note: Despite name, returns radians!
             },
 
+            // Total fuel on board for the First Officer's Cockpit Preparation read-back ("Fuel
+            // quantity: CHECKED"): the stock weight in POUNDS, the same name and unit the fuel
+            // hotkey reads (HotkeyAction.ReadFuelInfo -> RequestFuelQuantityKg); FenixStateEvaluator.FuelText turns it
+            // into kilograms. OnRequest — the FO window polls it (OnRequestPollFields) — and a
+            // silent cache, so it is hidden from the Ctrl+M monitor list and not a panel control.
+            ["FUEL TOTAL QUANTITY WEIGHT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL TOTAL QUANTITY WEIGHT",
+                DisplayName = "Total Fuel Weight",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "pounds",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ExcludeFromMonitorManager = true,
+            },
+
             // Unused Variables - Available for future use
             // Comment out variables here when they're not needed for active monitoring
             // Uncomment and move back up when needed
