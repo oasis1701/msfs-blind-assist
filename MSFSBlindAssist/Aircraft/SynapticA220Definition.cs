@@ -18,6 +18,7 @@ public partial class SynapticA220Definition : BaseAircraftDefinition
 {
     public override string AircraftName => "Synaptic Simulations A220-300";
     public override string AircraftCode => "SYNAPTIC_A220";
+    public override string? ChecklistFileName => "A220_Checklist.txt";
 
     /// <summary>
     /// Taxi turn anticipation. This airframe was the ONLY one with no override, so it sat

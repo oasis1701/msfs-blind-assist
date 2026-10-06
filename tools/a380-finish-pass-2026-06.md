@@ -24,7 +24,7 @@ budget (was ~1083 and overflowing) — ~470 vars of headroom.
 (1) stop double-registering continuous vars (read them from the batch cache; ~1083→~530 defs);
 (2) register bulk vars LAST so detection can't be stranded by an overflow; (3) a 900-def cap +
 persistent `logs/registration.log` (footprint, "FULLY CONNECTED", "[CEILING]"). See CLAUDE.md
-"THE SIMCONNECT DATA-DEFINITION CEILING" for the full writeup. **A320 still needs a live connect
+"THE SIMCONNECT DATA-DEFINITION CEILING" (now docs/architecture.md) for the full writeup. **A320 still needs a live connect
 check** (shared `SimConnectManager`).
 
 ---

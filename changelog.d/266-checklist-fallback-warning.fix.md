@@ -1,0 +1,1 @@
+Shift+C no longer opens another aircraft's checklist. On the PMDG 737 and 777, the HorizonSim 787 and the TFDi MD-11, which have no checklist of their own yet, it used to open the FlyByWire A320 checklist without saying so; it now opens nothing and says "No checklist for this aircraft."

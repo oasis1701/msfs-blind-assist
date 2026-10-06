@@ -992,7 +992,7 @@ would have heard a shortest-path route plus "Could not apply" followed by two hu
 numbers — with nothing in the announcement to reveal that the switch had even happened.
 So the boundary is enforced at the reader itself, coordinates in and nothing else, no
 matter what a future capture appears to add: see the doc comment on
-`ReadTaxiPathPoints` and the CLAUDE.md invariant under "SayIntentions integration" for
+`ReadTaxiPathPoints` and the invariant [SI-9] in [invariants/sayintentions-import.md](invariants/sayintentions-import.md) for
 the same rule stated at the code site.
 
 Turning those coordinates into a route is a separate concern:
