@@ -164,7 +164,7 @@ came back empty, so the monitor never reaches a state where it would need to fal
 sourced precip line — it stays silent and resets its baseline (§5). This matches §5 below: there
 is no SimConnect fallback for decoded station weather.
 
-CLAUDE.md's weather invariant states this as three tiers (closest-station METAR → position
+The weather invariant [WX-5] ([invariants/weather.md](invariants/weather.md)) states this as three tiers (closest-station METAR → position
 METAR → SimConnect bitmask). That's a simplification aimed at the general "prefer closest
 station" rule, not a literal count for every readout: it's exact for the ambient auto-announce;
 for the Weather Radar it collapses tiers 1 and 2 into one "closest-station METAR" step; and for
@@ -546,7 +546,7 @@ generic announcer detect this and skip itself **entirely** for that aircraft —
 `AnnounceAmbientChanges` gates the whole `STRUCTURAL ICE PCT` branch on
 `currentAircraft?.HasOwnIcingAnnouncer != true`, not merely muted — so one icing episode on the
 A380 is never spoken by two voices, the same one-condition-one-call-out rule as the documented
-PB-light/ECAM-memo invariant (see CLAUDE.md's A380X section). The A380's own announcer is
+PB-light/ECAM-memo invariant (see [A380-21] in [invariants/a380-systems.md](invariants/a380-systems.md)). The A380's own announcer is
 deliberately **not** gated on the new `AnnounceIcingEnabled` setting — it predates the setting
 and is aircraft-curated; turning the new toggle off silences the generic tracker for every
 other aircraft but leaves the A380's own voice untouched. (Making the A380 announcer also
@@ -1062,7 +1062,7 @@ pure and exhaustively pinned — `RouteAdvisoryProximityTrackerTests.cs` asserts
 of every `Observe` call against the §12(d) zone table, row by row (see §12(d)). What remains
 deliberately NOT unit-tested is `ComputeFactsAsync`'s live HTTP/tier-2 orchestration itself and
 `ActiveSkyClient.GetPositionalAdvisoriesTextAsync` — the thin HTTP shells this doc's testing
-philosophy (§12(f), and the sim-facing-paths rule in CLAUDE.md) reserves for the in-sim test plan,
+philosophy (§12(f), and the sim-facing-paths rule in CLAUDE.md [CORE-5]) reserves for the in-sim test plan,
 matching every other AS network call in this doc.
 
 **Approximations carried from design §5 (distance approximation superseded 2026-07-14).** Two
