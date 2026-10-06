@@ -94,7 +94,11 @@ public partial class CowsDA40Definition
         ["DA40_AP_VS_SET"] = "Selected vertical speed",
         ["DA40_AP_IAS_SET"] = "Selected airspeed",
         ["DA40_AP_HDG_SET"] = "Heading bug",
-        ["DA40_AP_CRS_SET"] = "Course"
+        // One knob, three courses: the CDI's own is the only one spoken (FlushRadioSettle),
+        // so all three are simply "Course", as the knob is.
+        ["DA40_AP_CRS_SET"] = "Course",
+        ["DA40_AP_CRS_NAV2"] = "Course",
+        ["DA40_AP_CRS_GPS"] = "Course"
     };
 
     /// <summary>
@@ -228,6 +232,13 @@ public partial class CowsDA40Definition
         // TIMER, and the generic monitor gate only wraps ProcessSimVarUpdate - a callback
         // outside that wrap would keep talking after the pilot un-ticked the row. Same
         // rule the altimeter settle and the A32NX armed-altitude flush follow.
+        // A course the CDI is not on moved without the knob (a NAV 2 OBS while flying GPS):
+        // nothing the pilot is flying changed, so it is not news.
+        string cdiCourse = CdiCourseKey();
+        foreach (var key in CourseKeys)
+            if (key != cdiCourse) pending.Remove(key);
+        if (pending.Count == 0) return;
+
         var muted = Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet;
         foreach (var key in RadioLabels.Keys)
             if (muted.Contains(key)) pending.Remove(key);

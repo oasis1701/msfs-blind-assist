@@ -1542,15 +1542,28 @@ public class CowsDA40PanelStructureTests
     [InlineData(DA40Variant.XLS)]
     public void AudioPanelCarriesWhatTheAudioPanelDoes(DA40Variant variant)
     {
-        // The GMA 1347 itself is in the G1000 bezel, so it belongs to the display window.
-        // What is here is what it DOES, reachable without it, plus the headset jack -
-        // the only audio item COWS models on its own.
+        // The GMA 1347 sits BETWEEN the displays, on neither screen, so the display windows
+        // cannot press it: every key the model gives a push node is here (the MIC pair as
+        // Transmit Radio), with the PFD's VOL knobs per radio and the headset jack - the
+        // only audio item COWS models on its own.
         var controls = new CowsDA40Definition(variant).GetPanelControls()["Audio"];
 
         Assert.Equal(new[]
         {
             "DA40_AUDIO_TRANSMIT",
             "DA40_AUDIO_MONITOR_BOTH",
+            "DA40_AUDIO_COM1_RECEIVE",
+            "DA40_AUDIO_COM2_RECEIVE",
+            "DA40_AUDIO_NAV1_IDENT",
+            "DA40_AUDIO_NAV2_IDENT",
+            "DA40_AUDIO_DME_IDENT",
+            "DA40_AUDIO_ADF_IDENT",
+            "DA40_AUDIO_MKR_MUTE",
+            "DA40_AUDIO_HI_SENS",
+            "DA40_AUDIO_COM1_VOL_SET",
+            "DA40_AUDIO_COM2_VOL_SET",
+            "DA40_AUDIO_NAV1_VOL_SET",
+            "DA40_AUDIO_NAV2_VOL_SET",
             "DA40_AUDIO_HEADSET"
         }, controls.ToArray());
     }

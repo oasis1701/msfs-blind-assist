@@ -29,11 +29,14 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// quantity with NO indication — the oil cooler, the variation spreads, the priming
 /// charge, damage — is exposed from the model, because there is no indication to defeat.
 ///
-/// ⚠️ SIXTEEN MORE ARE ABSENT FROM THE INSTALLED XLS PACKAGE, exactly as they are from the
-/// NG's: `AFCS_FAIL_AIL/ELE/TRIM`, the whole `FAILURES_SENS_*` family, `LIGHTING_PANEL_1`,
-/// `LIGHTING_GLARESHIELD_1`, `ATT_CAGE_IsDown` and `RESET_ECU`. Binding one would give a
-/// row sitting at 0 for ever, reporting "no failure" about a system nothing watches —
-/// worse than absent, because a pilot would scan it and be reassured.
+/// ⚠️ FOUR NAMES THE YAML CARRIES ARE ABSENT FROM THE INSTALLED XLS PACKAGE: `LIGHTING_PANEL_1`,
+/// `LIGHTING_GLARESHIELD_1`, `ATT_CAGE_IsDown` and `RESET_ECU` (the last is NG-only, where it is
+/// bound). Binding one would give a row sitting at 0 for ever, reporting "no failure" about a
+/// system nothing watches — worse than absent, because a pilot would scan it and be reassured.
+/// This list once also named `AFCS_FAIL_AIL/ELE/TRIM` and the `FAILURES_SENS_*` family, which
+/// were absent from 1.1.5 and are in COWS 1.2.0 (re-scanned 2026-10-06): the sensor failures are
+/// bound, and the three AFCS flags are the PFD's ROLL, PTCH and PTRM warnings, which reach the
+/// pilot through the CAS reader (the agent's A.cas reads the short-text box).
 /// </summary>
 public partial class CowsDA40Definition
 {

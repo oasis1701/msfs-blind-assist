@@ -6,21 +6,32 @@ namespace MSFSBlindAssist.Aircraft.DA40;
 /// <summary>
 /// Center Console → Audio. Both variants.
 ///
-/// The DA40's audio panel is the GMA 1347 built into the G1000 bezel, so by the standing
-/// rule it belongs to the G1000 display window rather than here. What this panel owns is
-/// what the audio panel DOES, reachable without it: which radio the microphone is on, and
-/// whether the other one is being monitored. Both are stock and both were verified live —
-/// COM1_TRANSMIT_SELECT moved COM TRANSMIT:1 from 0 to 1, COM_RECEIVE_ALL_SET moved COM
-/// RECEIVE ALL and COM RECEIVE:2 together.
+/// The DA40's audio panel is the GMA 1347 between the two displays: the stock
+/// ASOBO_AS1000_MID template with NO_AUX, NO_COM_3 and NO_NAV_3 (both variants' IN.xml). Its
+/// keys are on neither SCREEN, so the display windows cannot press them and they live here
+/// (DA40-22 covers what a display draws, not the bezel between them). The model gives a push
+/// node to exactly these: COM1 MIC, COM2 MIC, COM1, COM2, NAV1, NAV2, DME, ADF, MKR/MUTE,
+/// HI SENS and DISPLAY BACKUP (the last on Standby Instruments). There is no SPKR, PA, AUX or
+/// MAN SQ node, and PILOT has its lamp but no push node, so none of those is offered.
+///
+/// The two MIC keys are the Transmit Radio row (COM1_TRANSMIT_SELECT moved COM TRANSMIT:1
+/// from 0 to 1); COM_RECEIVE_ALL_SET moves COM RECEIVE ALL and COM RECEIVE:2 together.
+///
+/// ⚠️ EACH KEY IS WRITTEN THROUGH ITS OWN INPUT EVENT, BY VALUE. AS1000_MID_NAV_1 = 1 lights
+/// the key and turns the NAV 1 ident audio on, = 0 turns it off; a second 1 changes nothing
+/// (measured live on the NG, 2026-10-06, for every key here). The stock K events move the
+/// same simvars and are the fallback before the input events are enumerated.
+///
+/// ⚠️ MKR/MUTE IS THE MARKER MUTE, NOT THE MARKER AUDIO. The cockpit key moves MARKER BEACON
+/// TEST MUTE and leaves MARKER SOUND at 1 (measured: AS1000_MID_MKR 1, then 0).
 ///
 /// And the headset jack, which is a real clickspot on the console and the ONLY audio item
 /// COWS models itself: L:HEADSET is referenced by exactly one file in the package,
-/// sound.xml. It changes what the pilot hears, nothing else — so it is a control here and
-/// it is not pretending to be a system.
+/// sound.xml. It changes what the pilot hears, nothing else.
 ///
-/// The active frequencies ride along on the scan. "Transmitting on COM 1" is half an
-/// answer without the number, and a readout is not a control — tuning belongs with the
-/// radios, which are still to come.
+/// The volumes are the PFD's two VOL knobs, which act on whichever radio holds the tuning
+/// box; here they are set per radio through COM1/COM2_VOLUME_SET and NAV1/NAV2_VOLUME_SET_EX1,
+/// each measured to set and read back the percentage.
 /// </summary>
 public partial class CowsDA40Definition
 {
@@ -89,30 +100,72 @@ public partial class CowsDA40Definition
         // form of this), and a display row does not need a definition of its own - it needs
         // a KEY, and the Radios panel's keys are the ones being kept up to date.
 
-        AddComFlag(v, "DA40_AUDIO_COM1_RECEIVE", "COM RECEIVE:1", "COM 1 Audio");
-        AddComFlag(v, "DA40_AUDIO_COM2_RECEIVE", "COM RECEIVE:2", "COM 2 Audio");
+        // ---------- The GMA 1347 keys, named as printed ----------
+        foreach (var key in GmaKeys)
+            AddGmaKey(v, key.VarKey, key.SimVar, key.Placard);
+
+        // ---------- The PFD's VOL knobs, per radio ----------
+        AddVolume(v, "DA40_AUDIO_COM1_VOL_SET", "COM VOLUME:1", "COM1 VOL");
+        AddVolume(v, "DA40_AUDIO_COM2_VOL_SET", "COM VOLUME:2", "COM2 VOL");
+        AddVolume(v, "DA40_AUDIO_NAV1_VOL_SET", "NAV VOLUME:1", "NAV1 VOL");
+        AddVolume(v, "DA40_AUDIO_NAV2_VOL_SET", "NAV VOLUME:2", "NAV2 VOL");
 
         return v;
     }
 
+    /// <summary>One GMA 1347 key: its MSFSBA key, the simvar its lamp follows, its placard,
+    /// its input event, and the stock event that moves the same simvar.</summary>
+    internal readonly record struct GmaKey(string VarKey, string SimVar, string Placard,
+        string InputEvent, string KEvent, bool KEventToggles);
 
-    private static void AddComFlag(Dictionary<string, SimVarDefinition> v, string key,
+    internal static readonly GmaKey[] GmaKeys =
+    {
+        new("DA40_AUDIO_COM1_RECEIVE", "COM RECEIVE:1", "COM1", "AS1000_MID_COM_1", "COM1_RECEIVE_SELECT", false),
+        new("DA40_AUDIO_COM2_RECEIVE", "COM RECEIVE:2", "COM2", "AS1000_MID_COM_2", "COM2_RECEIVE_SELECT", false),
+        new("DA40_AUDIO_NAV1_IDENT", "NAV SOUND:1", "NAV1", "AS1000_MID_NAV_1", "RADIO_VOR1_IDENT_TOGGLE", true),
+        new("DA40_AUDIO_NAV2_IDENT", "NAV SOUND:2", "NAV2", "AS1000_MID_NAV_2", "RADIO_VOR2_IDENT_TOGGLE", true),
+        new("DA40_AUDIO_DME_IDENT", "DME SOUND", "DME", "AS1000_MID_DME", "RADIO_DME1_IDENT_TOGGLE", true),
+        new("DA40_AUDIO_ADF_IDENT", "ADF SOUND:1", "ADF", "AS1000_MID_ADF", "RADIO_ADF_IDENT_TOGGLE", true),
+        new("DA40_AUDIO_MKR_MUTE", "MARKER BEACON TEST MUTE", "MKR/MUTE", "AS1000_MID_MKR", "MARKER_BEACON_TEST_MUTE", false),
+        new("DA40_AUDIO_HI_SENS", "MARKER BEACON SENSITIVITY HIGH", "HI SENS", "AS1000_MID_HI", "MARKER_BEACON_SENSITIVITY_HIGH", false)
+    };
+
+    private static void AddGmaKey(Dictionary<string, SimVarDefinition> v, string key,
+        string simvar, string placard)
+    {
+        // A switch: settable, so Continuous and announced (DA40-9) - a key pressed in the
+        // cockpit speaks, and MSFSBA's own set is covered by the global combo echo.
+        v[key] = new SimVarDefinition
+        {
+            Name = simvar,
+            DisplayName = placard,
+            Type = SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ValueDescriptions = new Dictionary<double, string>
+            {
+                [0] = "Off",
+                [1] = "On"
+            }
+        };
+    }
+
+    private static void AddVolume(Dictionary<string, SimVarDefinition> v, string key,
         string simvar, string display)
     {
+        // A percentage, so a slider (DA40S-6); a numeric setting stays silent (DA40-9).
         v[key] = new SimVarDefinition
         {
             Name = simvar,
             DisplayName = display,
             Type = SimVarType.SimVar,
-            Units = "bool",
+            Units = "percent",
             UpdateFrequency = UpdateFrequency.OnRequest,
             IsAnnounced = false,
-            RenderAsReadOnlyStatus = true,
-            ValueDescriptions = new Dictionary<double, string>
-            {
-                [0] = "Muted",
-                [1] = "Heard"
-            }
+            RenderAsSlider = true,
+            SliderMin = 0,
+            SliderMax = 100
         };
     }
 
@@ -134,15 +187,25 @@ public partial class CowsDA40Definition
     {
         "DA40_AUDIO_TRANSMIT",
         "DA40_AUDIO_MONITOR_BOTH",
+        "DA40_AUDIO_COM1_RECEIVE",
+        "DA40_AUDIO_COM2_RECEIVE",
+        "DA40_AUDIO_NAV1_IDENT",
+        "DA40_AUDIO_NAV2_IDENT",
+        "DA40_AUDIO_DME_IDENT",
+        "DA40_AUDIO_ADF_IDENT",
+        "DA40_AUDIO_MKR_MUTE",
+        "DA40_AUDIO_HI_SENS",
+        "DA40_AUDIO_COM1_VOL_SET",
+        "DA40_AUDIO_COM2_VOL_SET",
+        "DA40_AUDIO_NAV1_VOL_SET",
+        "DA40_AUDIO_NAV2_VOL_SET",
         "DA40_AUDIO_HEADSET"
     };
 
     private static readonly List<string> AudioDisplay = new()
     {
         "DA40_RADIO_COM1_ACTIVE",
-        "DA40_RADIO_COM2_ACTIVE",
-        "DA40_AUDIO_COM1_RECEIVE",
-        "DA40_AUDIO_COM2_RECEIVE"
+        "DA40_RADIO_COM2_ACTIVE"
     };
 
     private bool HandleAudioSet(string varKey, double value, SimConnectManager simConnect,
@@ -163,8 +226,48 @@ public partial class CowsDA40Definition
             case "DA40_AUDIO_HEADSET":
                 simConnect.SetLVar("HEADSET", value >= 0.5 ? 1 : 0);
                 return true;
+
+            case "DA40_AUDIO_COM1_VOL_SET":
+            case "DA40_AUDIO_COM2_VOL_SET":
+            case "DA40_AUDIO_NAV1_VOL_SET":
+            case "DA40_AUDIO_NAV2_VOL_SET":
+                simConnect.ExecuteCalculatorCodeUnique(VolumeWrite(varKey, value));
+                return true;
+        }
+
+        foreach (var key in GmaKeys)
+        {
+            if (key.VarKey != varKey) continue;
+            int on = value >= 0.5 ? 1 : 0;
+
+            // The cockpit's own key, by value (see the class note).
+            if (simConnect.HasInputEvent(key.InputEvent) && simConnect.TrySetInputEvent(key.InputEvent, on))
+                return true;
+
+            simConnect.ExecuteCalculatorCodeUnique(GmaFallbackWrite(key, on));
+            return true;
         }
 
         return false;
+    }
+
+    /// <summary>The stock-event write for a GMA key when its input event is not available.
+    /// A toggle event is sent only when the simvar is not already where the pilot asked.</summary>
+    internal static string GmaFallbackWrite(GmaKey key, int on) => key.KEventToggles
+        ? FormattableString.Invariant($"(A:{key.SimVar}, Bool) {on} != if{{ 1 (>K:{key.KEvent}) }}")
+        : FormattableString.Invariant($"{on} (>K:{key.KEvent})");
+
+    /// <summary>A VOL setting, as the whole percentage the four volume events take.</summary>
+    internal static string VolumeWrite(string varKey, double percent)
+    {
+        double p = Math.Clamp(Math.Round(percent), 0, 100);
+        string ev = varKey switch
+        {
+            "DA40_AUDIO_COM1_VOL_SET" => "COM1_VOLUME_SET",
+            "DA40_AUDIO_COM2_VOL_SET" => "COM2_VOLUME_SET",
+            "DA40_AUDIO_NAV1_VOL_SET" => "NAV1_VOLUME_SET_EX1",
+            _ => "NAV2_VOLUME_SET_EX1"
+        };
+        return FormattableString.Invariant($"{p:0} (>K:{ev})");
     }
 }

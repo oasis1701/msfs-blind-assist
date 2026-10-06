@@ -86,3 +86,7 @@ The text is verbatim from the CLAUDE.md invariants PR #242 added; where two bull
 ## DA40A-19
 
 - **An Airbus-named hotkey should do the equivalent JOB on a non-Airbus, not nothing.** The DA40 has no lower ECAM and no ISIS but has what those keys are for: Alt+S is the engine at a glance (load, RPM, oil, coolant, gearbox, flow, volts, amps, each with its arc) and Alt+I the standby instruments (including CAGED/TOPPLED gyro). Both render through `TryGetDisplayOverride`, never their own formatting, so a hotkey can never disagree with the panel beside it. → [da40.md](../da40.md)
+
+## DA40A-20
+
+- **The CRS knob sets the course of whatever the CDI is on** (one `AS1000_PFD_CRS_INC` each, measured on the NG, 2026-10-06): NAV 2 moved `NAV OBS:2` only, GPS moved `GPS OBS VALUE`. The typed Course wrote `VOR1_SET` regardless. `CourseWrite` chooses in RPN at write time from `GPS DRIVES NAV1` (1 on GPS) and `AUTOPILOT NAV SELECTED` (the NAV radio) - measured stepping the CDI softkey GPS, LOC1, LOC2: 1/1, 0/1, 0/2 - so a stale cache cannot send it to the wrong receiver. The three courses ride the settle announcer as "Course" and only `CdiCourseKey()`'s speaks. → [da40.md](../da40.md)

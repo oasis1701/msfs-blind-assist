@@ -173,12 +173,16 @@ public partial class CowsDA40Definition
     // SECOND PASS: everything else the YAML named that the aeroplane really has.
     //
     // WARNING: THE YAML IS A LEAD SOURCE, NOT AN ORACLE - PROVEN, not assumed. Checking
-    // every candidate against the PACKAGE ITSELF before defining it found ELEVEN names FS
-    // Copilot lists that the aircraft does not contain at all: AFCS_FAIL_AIL/ELE/TRIM (the
-    // real ones are FAILURES_AFCS_*, which this definition already had), the whole
-    // FAILURES_SENS_* family, and LIGHTING_PANEL_1 / LIGHTING_GLARESHIELD_1 (the real
-    // brightness inputs are LIGHT POTENTIOMETER, already bound). Almost certainly leftovers
-    // from an older build of the aeroplane.
+    // every candidate against the PACKAGE ITSELF before defining it found names FS Copilot
+    // lists that the aircraft does not contain: LIGHTING_PANEL_1 / LIGHTING_GLARESHIELD_1
+    // (the real brightness inputs are LIGHT POTENTIOMETER, already bound).
+    //
+    // ⚠️ AND THE ANSWER CHANGES WITH THE AEROPLANE. Against COWS 1.1.5 the same scan also
+    // found AFCS_FAIL_AIL/ELE/TRIM and the whole FAILURES_SENS_* family absent; COWS 1.2.0
+    // has all of them (re-scanned 2026-10-06). FAILURES_SENS_* is now the indication-failure
+    // input (DA40-2), and AFCS_FAIL_* are the model's servo-failure flags behind the PFD's
+    // ROLL, PTCH and PTRM warnings, which the CAS reader now announces. Re-scan on every
+    // COWS update rather than trusting this paragraph.
     //
     // Binding those would have produced eleven readouts sitting at 0 forever, quietly
     // reporting "no failure" about a system nothing is watching - worse than not having

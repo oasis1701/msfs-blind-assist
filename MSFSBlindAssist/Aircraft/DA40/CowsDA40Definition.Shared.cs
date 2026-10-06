@@ -365,6 +365,8 @@ public partial class CowsDA40Definition
         // The NG fuel valve, so the emergency-transfer row can say whether anything is
         // moving. A control is on no display list, so its own override never runs.
         NoteFuelValveChange(varName, value);
+        // Which receiver the CDI is on, so only that course speaks. Silent.
+        if (NoteCdiSource(varName, value)) return true;
 
         if (IsSilentCachedReadout(varName)) return true;
 

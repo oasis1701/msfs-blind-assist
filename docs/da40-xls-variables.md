@@ -432,11 +432,12 @@ pilot a perfect temperature off a dead gauge, defeating a failure class COWS bui
 purpose. A quantity with **no** indication is exposed from the model, because there is
 nothing to defeat. Pinned both ways by `CowsDA40XlsEngineDetailTests`.
 
-### Rule 2 — sixteen names are not in the installed package
+### Rule 2 — four names are not in the installed package
 
-The same sixteen the NG's file lists and the NG package lacks: `AFCS_FAIL_AIL/ELE/TRIM`,
-the whole `FAILURES_SENS_*` family, `LIGHTING_PANEL_1`, `LIGHTING_GLARESHIELD_1`,
-`ATT_CAGE_IsDown`, `RESET_ECU`. A row bound to one sits at 0 for ever and reports "no
+`LIGHTING_PANEL_1`, `LIGHTING_GLARESHIELD_1`, `ATT_CAGE_IsDown` and `RESET_ECU` (NG-only,
+bound there). Under COWS 1.1.5 the list was sixteen long; 1.2.0 added `AFCS_FAIL_AIL/ELE/TRIM`
+(the PFD's ROLL, PTCH and PTRM warnings, announced through the CAS reader) and the whole
+`FAILURES_SENS_*` family (bound as the indication failures). Re-scanned 2026-10-06. A row bound to one sits at 0 for ever and reports "no
 failure" about a system nothing watches — worse than absent, because a pilot scans it and
 is reassured.
 

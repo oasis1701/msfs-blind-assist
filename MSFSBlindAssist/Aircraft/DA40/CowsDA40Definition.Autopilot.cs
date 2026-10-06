@@ -104,6 +104,39 @@ public partial class CowsDA40Definition
         AddApValue(v, "DA40_AP_CRS_SET", "NAV OBS:1", "Course",
             "degrees", "F0");
 
+        // ⚠️ THE COURSE IS THE CDI'S, NOT NAV 1'S. The CRS knob sets the course of whatever
+        // the CDI is on (measured live on the NG, 2026-10-06, one AS1000_PFD_CRS_INC each):
+        // CDI on NAV 2 moved NAV OBS:2 and left NAV OBS:1 alone; CDI on GPS moved GPS OBS
+        // VALUE, the course OBS mode will fly. The typed Course wrote VOR1_SET whatever the
+        // CDI said, so with the CDI on NAV 2 it set a course nothing was flying. The two
+        // other courses ride the same settle announcer, and only the CDI's own course speaks.
+        AddApValue(v, "DA40_AP_CRS_NAV2", "NAV OBS:2", "NAV 2 Course", "degrees", "F0");
+        AddApValue(v, "DA40_AP_CRS_GPS", "GPS OBS VALUE", "GPS OBS Course", "degrees", "F0");
+
+        // Which source the CDI is on: GPS DRIVES NAV1 is 1 on GPS, otherwise AUTOPILOT NAV
+        // SELECTED names the NAV radio (measured stepping the PFD's CDI softkey GPS, LOC1,
+        // LOC2: 1/1, 0/1, 0/2). Cached, silent, never a Ctrl+M row.
+        v["DA40_CDI_GPS"] = new SimVarDefinition
+        {
+            Name = "GPS DRIVES NAV1",
+            DisplayName = "CDI on GPS",
+            Type = SimVarType.SimVar,
+            Units = "bool",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromMonitorManager = true
+        };
+        v["DA40_CDI_NAV"] = new SimVarDefinition
+        {
+            Name = "AUTOPILOT NAV SELECTED",
+            DisplayName = "CDI NAV radio",
+            Type = SimVarType.SimVar,
+            Units = "number",
+            UpdateFrequency = UpdateFrequency.Continuous,
+            IsAnnounced = true,
+            ExcludeFromMonitorManager = true
+        };
+
         // ---------- THE KNOBS THEMSELVES ----------
         //
         // ⚠️ A TYPED BOX IS A CONVENIENCE, NOT THE CONTROL. Every one of the five selected
@@ -386,6 +419,36 @@ public partial class CowsDA40Definition
     /// Every mode takes its own ON and OFF event, so a combo set lands where the pilot
     /// asked regardless of what MSFSBA believed the state was.
     /// </summary>
+    // The CDI source as last delivered; GPS until told otherwise (the G1000 powers up on GPS).
+    private bool _cdiOnGps = true;
+    private int _cdiNavRadio = 1;
+
+    private bool NoteCdiSource(string varName, double value)
+    {
+        switch (varName)
+        {
+            case "DA40_CDI_GPS": _cdiOnGps = value >= 0.5; return true;
+            case "DA40_CDI_NAV": _cdiNavRadio = value >= 1.5 ? 2 : 1; return true;
+            default: return false;
+        }
+    }
+
+    /// <summary>The course key the CRS knob is moving right now.</summary>
+    private string CdiCourseKey() => CourseKeyFor(_cdiOnGps, _cdiNavRadio);
+
+    internal static string CourseKeyFor(bool onGps, int navRadio)
+        => onGps ? "DA40_AP_CRS_GPS" : navRadio == 2 ? "DA40_AP_CRS_NAV2" : "DA40_AP_CRS_SET";
+
+    /// <summary>The three courses the CRS knob can be moving; only the CDI's speaks.</summary>
+    internal static readonly string[] CourseKeys = { "DA40_AP_CRS_SET", "DA40_AP_CRS_NAV2", "DA40_AP_CRS_GPS" };
+
+    /// <summary>
+    /// The course write, choosing the receiver in the sim at the moment it lands - the same
+    /// choice the CRS knob makes (GPS: GPS OBS; NAV 2: NAV OBS:2; otherwise NAV OBS:1).
+    /// </summary>
+    internal static string CourseWrite(int degrees) => FormattableString.Invariant(
+        $"(A:GPS DRIVES NAV1, Bool) if{{ {degrees} (>K:GPS_OBS_SET) }} els{{ (A:AUTOPILOT NAV SELECTED, number) 2 == if{{ {degrees} (>K:VOR2_SET) }} els{{ {degrees} (>K:VOR1_SET) }} }}");
+
     /// <summary>The exact preselect, once the knob step that marks it selected has landed.</summary>
     private static async Task WriteSelectedAltitudeAfterStepAsync(SimConnectManager simConnect, int feet)
     {
@@ -526,9 +589,12 @@ public partial class CowsDA40Definition
 
             case "DA40_AP_CRS_SET":
             {
-                MarkRadioSetByUs("DA40_AP_CRS_SET");
+                // The CDI's course, chosen in the sim at the moment of the write so a stale
+                // cache cannot send it to the wrong receiver; the cache only says which
+                // settle key to mark as ours.
+                MarkRadioSetByUs(CdiCourseKey());
                 int deg = ((int)Math.Round(value) % 360 + 360) % 360;
-                simConnect.ExecuteCalculatorCodeUnique(FormattableString.Invariant($"{deg} (>K:VOR1_SET)"));
+                simConnect.ExecuteCalculatorCodeUnique(CourseWrite(deg));
                 announcer.AnnounceImmediate($"Course {deg:000}");
                 return true;
             }

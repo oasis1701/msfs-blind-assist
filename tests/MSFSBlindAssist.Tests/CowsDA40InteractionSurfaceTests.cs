@@ -103,10 +103,13 @@ public class CowsDA40InteractionSurfaceTests
         ["AS1000_MFD"] = "the MFD window (Alt+M), with the bezel on the keyboard",
         ["CRS_fix_1"] = "GFC 700: course",
         ["CRS_fix_2"] = "GFC 700: course",
+        // The GMA 1347 audio panel. It was once listed here as the brightness knobs alone,
+        // and its eleven keys went unexposed until FS Copilot's G1000 module named them.
         ["AS1000_MID"] =
-            "- the two display BRIGHTNESS knobs. Screen brightness has no operational " +
-            "effect for a pilot who cannot see the screen, and the reversion switch beside " +
-            "them (G1000_REV_FORCE) IS exposed, on Standby Instruments.",
+            "Audio: COM1 MIC and COM2 MIC (Transmit Radio), COM1, COM2, NAV1, NAV2, DME, ADF, " +
+            "MKR/MUTE, HI SENS; DISPLAY BACKUP on Standby Instruments. Left out: the two " +
+            "display BRIGHTNESS knobs (no operational effect for a pilot who cannot see the " +
+            "screen), and SPKR, PA, AUX, MAN SQ and PILOT, which the model gives no push node.",
 
         // ---------------- cabin ----------------
         ["DOORS"] = "Doors and Windows: the group",
