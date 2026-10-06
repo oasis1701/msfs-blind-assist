@@ -14,7 +14,8 @@ Standalone build, not part of `MSFSBlindAssist.sln`:
 dotnet build tools/DA40Probe -c Debug
 ```
 
-Run the exe from its output folder with the DA40 loaded and MSFSBA closed (two clients registering the
+The exe lands in `tools/DA40Probe/bin/Debug/net10.0-windows`, or under `bin/x64/` when built with
+`-p:Platform=x64`; the two do not update each other, so run the one you just built. Run it with the DA40 loaded and MSFSBA closed (two clients registering the
 same definitions get in each other's way). Output goes to the console and to
 `probe_<variant>_<mode>.tsv` beside the exe.
 
@@ -22,10 +23,12 @@ same definitions get in each other's way). Output goes to the console and to
 |---|---|
 | `DA40Probe NG list` | Offline. Every panel control, its kind, and whether the definition has a write path for it. |
 | `DA40Probe NG live [filter]` | Presses every control (or those whose key or panel contains `filter`): each combo position, each button, each typed entry with its current value. Reads back, restores, and records what MSFSBA said. |
-| `DA40Probe NG set "KEY=1[@READKEY][#ms];…"` | Sets a value, waits (default 3000 ms), reads back, restores. |
+| `DA40Probe NG names` | Offline. Every variable the definition registers: key, name, type, units (for diffing against an outside inventory such as FS Copilot's YAML). |
+| `DA40Probe NG set "KEY=1[@READKEY][#ms];…"` | Enumerates the input events, then sets a value, waits (default 3000 ms), reads back, restores. |
 | `DA40Probe NG keep "KEY=1[@READKEY][#ms];…"` | The same without the restore. |
 | `DA40Probe NG hotkeys "ReadFuelQuantity,…"` | Fires hotkey actions and dumps whatever a window they open shows. |
 | `DA40Probe NG ie "INPUT_EVENT,READKEY"` | Steps an input event through 0, 1, 2, 1, 0 and reads a key after each. |
+| `DA40Probe NG press "EVENT[=v],…"` | Sets each input event once (default 1). The G1000 audio panel's events take a value (1 on, 0 off), so a second 1 changes nothing. |
 | `DA40Probe NG calcloop "rpn|ms|secs"` | Repeats a calculator string, for a held input such as the toe brakes (`100 (>L:INPUT_BRAKE:1)`). |
 
 Use `XLS` in place of `NG` for the XLS.

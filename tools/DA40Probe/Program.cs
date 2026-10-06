@@ -8,12 +8,14 @@ using MSFSBlindAssist.Utils;
 // Live harness for the COWS DA40: runs MSFSBA's real SimConnectManager and CowsDA40Definition and
 // calls HandleUIVariableSet exactly as the panel does. See README.md before running it against a sim.
 //
+// DA40Probe <NG|XLS> names                     - offline: every binding (key, name, type, units)
 // DA40Probe <NG|XLS> list                      - offline: every panel control and its write path
 // DA40Probe <NG|XLS> live [filter]             - press every control (or those matching filter), read back, restore
 // DA40Probe <NG|XLS> set "key=val[@readKey][#ms];..."  - set, read back, restore
 // DA40Probe <NG|XLS> keep "key=val[@readKey][#ms];..." - set and read back, no restore
 // DA40Probe <NG|XLS> hotkeys "Action,Action"   - fire hotkey actions; dumps what any opened window shows
 // DA40Probe <NG|XLS> ie "INPUT_EVENT,readKey"  - step an input event 0,1,2,1,0
+// DA40Probe <NG|XLS> press "EVENT[=v],..."     - set each input event once (default 1)
 // DA40Probe <NG|XLS> calcloop "rpn|ms|secs"    - repeat a calculator string (a held input)
 internal static class Program
 {
@@ -106,6 +108,15 @@ internal sealed class ProbeForm : Form
             foreach (var k in keys)
                 if (seen.Add(k)) order.Add((panel, k));
 
+        if (_mode == "names")
+        {
+            // Offline: every binding the definition registers (key, name, type), for diffing the
+            // definition against an outside inventory of the aircraft.
+            foreach (var (key, d) in vars.OrderBy(p => p.Key, StringComparer.Ordinal))
+                Line($"{key}\t{d.Name}\t{d.Type}\t{d.Units}");
+            return;
+        }
+
         if (_mode == "list")
         {
             // Offline: which controls have a write path? An unconnected manager makes every
@@ -152,6 +163,23 @@ internal sealed class ProbeForm : Form
             return;
         }
 
+        if (_mode == "press")
+        {
+            // press "EVENT[=value],..." : set each input event once (default 1). The G1000 audio
+            // panel's events take a VALUE (1 on, 0 off), so a second press of 1 changes nothing.
+            _m.RequestEnumerateInputEvents();
+            await Task.Delay(4000);
+            foreach (var item in _filter!.Split(',', StringSplitOptions.RemoveEmptyEntries))
+            {
+                var parts = item.Split('=');
+                double val = parts.Length > 1 ? double.Parse(parts[1], CultureInfo.InvariantCulture) : 1;
+                bool ok = _m.TrySetInputEvent(parts[0], val);
+                await Task.Delay(1500);
+                Line($"{parts[0]}={val}\tsent={ok}");
+            }
+            return;
+        }
+
         if (_mode == "calcloop")
         {
             // calcloop "<rpn>|<ms period>|<seconds>"
@@ -193,7 +221,11 @@ internal sealed class ProbeForm : Form
 
         if (_mode == "set" || _mode == "keep")
         {
-            // set key=value[@readKey];... : a real new value, read back, then restore
+            // set key=value[@readKey];... : a real new value, read back, then restore.
+            // Input events first, as MSFSBA has them after connecting: a write that prefers
+            // one (the G1000 audio panel) otherwise only ever exercises its fallback.
+            _m.RequestEnumerateInputEvents();
+            await Task.Delay(4000);
             foreach (var item in _filter!.Split(';', StringSplitOptions.RemoveEmptyEntries))
             {
                 var kv = item.Split('=');
