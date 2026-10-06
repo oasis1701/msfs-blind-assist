@@ -1,4 +1,5 @@
 using MSFSBlindAssist.FirstOfficer;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer.Models;
 
@@ -278,8 +279,9 @@ public class ChecklistItem<TExec, TState>
             string? v = LiveValue(state);
             return string.IsNullOrWhiteSpace(v) ? null : v;
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Log.Debug("FirstOfficer", $"Live value for {Id} failed: {ex.Message}");
             return null;
         }
     }

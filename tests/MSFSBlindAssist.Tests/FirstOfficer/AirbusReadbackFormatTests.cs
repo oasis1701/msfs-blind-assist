@@ -90,10 +90,12 @@ public class AirbusReadbackFormatTests
     {
         Assert.Equal("V1 142, VR 145, V2 149, flex 55",
             InCulture(culture, () => AirbusReadbackFormat.TakeoffSpeeds(142.4, 145, 149, 55)));
+        Assert.Equal("V1 143, VR 145, V2 149, flex 56",
+            InCulture(culture, () => AirbusReadbackFormat.TakeoffSpeeds(142.6, 145.2, 149.4, 55.5)));
         Assert.Equal("V1 142, VR 145, V2 149",
             InCulture(culture, () => AirbusReadbackFormat.TakeoffSpeeds(142, 145, 149, 0)));
         Assert.Equal("not set", InCulture(culture, () => AirbusReadbackFormat.TakeoffSpeeds(0, 145, 149, 55)));
-        Assert.Equal("not set", InCulture(culture, () => AirbusReadbackFormat.TakeoffSpeeds(double.NaN, 1, 1, 1)));
+        Assert.Null(InCulture(culture, () => AirbusReadbackFormat.TakeoffSpeeds(double.NaN, 1, 1, 1)));
     }
 
     [Theory, MemberData(nameof(Cultures))]

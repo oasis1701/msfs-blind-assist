@@ -78,14 +78,23 @@ public static class AirbusReadbackFormat
         return 0;
     }
 
-    /// <summary>"V1 142, VR 145, V2 149, flex 55"; flex omitted when not set; "not set" when
-    /// any V-speed is missing (FBW publishes values below 1 for "not entered").</summary>
+    /// <summary>"V1 142, VR 145, V2 149, flex 55"; flex omitted when not set; null when
+    /// any V-speed is unknown (NaN); "not set" when a known value is below 1.</summary>
     public static string? TakeoffSpeeds(double v1, double vr, double v2, double flex)
     {
-        static bool Set(double v) => !double.IsNaN(v) && v >= 1;
-        if (!Set(v1) || !Set(vr) || !Set(v2)) return "not set";
+        // If any V-speed is unknown (NaN), return null (nothing to say)
+        if (double.IsNaN(v1) || double.IsNaN(vr) || double.IsNaN(v2)) return null;
+
+        // If any V-speed is known but below 1, return "not set"
+        if (v1 < 1 || vr < 1 || v2 < 1) return "not set";
+
         string s = string.Format(Inv, "V1 {0:0}, VR {1:0}, V2 {2:0}", v1, vr, v2);
-        return Set(flex) ? s + string.Format(Inv, ", flex {0:0}", flex) : s;
+        // Flex: include only if not NaN and >= 1
+        if (!double.IsNaN(flex) && flex >= 1)
+        {
+            s += string.Format(Inv, ", flex {0:0}", flex);
+        }
+        return s;
     }
 
     /// <summary>Total fuel to the nearest 100, in kilograms or pounds.</summary>
