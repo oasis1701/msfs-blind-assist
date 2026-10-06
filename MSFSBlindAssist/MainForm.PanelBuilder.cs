@@ -1288,11 +1288,21 @@ public partial class MainForm
 
             // When the user moves focus TO the list, pull current content. The live auto-refresh
             // timer keeps it current while focused too (updating only the changed rows, so the
-            // cursor stays put), but it skips while a SELECTOR COMBO is focused so it can't fight
-            // the combo's announcement — so this GotFocus pull is what brings the list current the
-            // instant the user moves from the page combo onto it to read.
+            // cursor stays put), but it holds back the page re-push while a combo is focused so it
+            // can't fight the combo's announcement — so this GotFocus pull is what brings a page
+            // snapshot current the instant the user moves from the page combo onto it to read.
             displayList.GotFocus += (s2, e2) =>
             {
+                // Repaint from the cache at once (Tab arrives here without Ctrl+3's pre-focus
+                // repaint), then force-read the rows the cache does not stream so they follow
+                // within one round trip instead of the next tick.
+                if (displayList.Items.Count > 0) UpdateDisplayText(displayList);
+                if (simConnectManager?.IsConnected == true &&
+                    GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var focusVars))
+                    foreach (var vk in focusVars)
+                        if (currentAircraft?.GetVariables().ContainsKey(vk) == true)
+                            simConnectManager.RequestVariable(vk, forceUpdate: true);
+
                 try { currentAircraft?.OnDisplayPanelShown(currentPanel, simConnectManager!); }
                 catch (Exception ex)
                 {
@@ -1495,24 +1505,32 @@ public partial class MainForm
             // screen-reader cursor stays on the row being read; a stable value is never
             // re-touched (so it never re-announces).
 
-            // Skip ONLY while the user is on a SELECTOR COMBO in this panel (e.g. the SD page
-            // picker). The refresh re-requests the page var — UpdateControlFromSimVar can then
-            // re-set the combo's SelectedIndex to a lagging value, fighting the user's arrowing —
-            // which steps on NVDA's page-selection announcement. The list is brought current when
-            // the user moves focus TO it (the list's GotFocus refresh).
+            // While the user is on a SELECTOR COMBO in this panel (e.g. the SD page picker), the
+            // refresh must not re-request that combo's var: UpdateControlFromSimVar can then re-set
+            // its SelectedIndex to a lagging value, fighting the user's arrowing and stepping on
+            // NVDA's page-selection announcement.
+            // ⚠️ ONLY THE COMBO'S OWN PART PAUSES. This used to return outright, which froze the
+            // whole list while ANY combo had focus - and on the DA40 nearly every control is a
+            // combo, so a pilot working a panel and pressing Ctrl+3 read values from whenever
+            // they last left the list. What fights the combo is (a), which re-pushes a page
+            // var, and a force-read of the combo's own var; the rest of the rows are free to move.
+            string? focusedComboKey = null;
             foreach (var kv in currentControls)
                 if (kv.Value is ComboBox cb && cb.IsHandleCreated && cb.Focused)
-                    return;
+                { focusedComboKey = kv.Key; break; }
 
             // (a) Rebuild any snapshot SD-page content (FOB, engine, fuel, control surfaces, …) —
             //     silent; OnDisplayPanelShown force-reads the row vars and re-pushes the page var,
             //     which drives UpdateDisplayText -> the list updates its changed rows in place.
-            try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); }
-            catch (Exception ex)
+            if (focusedComboKey == null)
             {
-                // A throw here silently leaves the SD-page snapshot stale with no clue why —
-                // a known confusing-bug shape for this codebase (values that "never move").
-                Log.Debug("MainForm", $"OnDisplayPanelShown (auto-refresh) failed for panel '{currentPanel}': {ex.Message}");
+                try { currentAircraft.OnDisplayPanelShown(currentPanel, simConnectManager); }
+                catch (Exception ex)
+                {
+                    // A throw here silently leaves the SD-page snapshot stale with no clue why —
+                    // a known confusing-bug shape for this codebase (values that "never move").
+                    Log.Debug("MainForm", $"OnDisplayPanelShown (auto-refresh) failed for panel '{currentPanel}': {ex.Message}");
+                }
             }
 
             // (b) Force-read the panel's own display vars so the cache is fresh (covers the
@@ -1523,7 +1541,7 @@ public partial class MainForm
             //     list still repaints when no value changed (e.g. the very first populate).
             if (GetPanelDisplayVarsCached().TryGetValue(currentPanel, out var liveVars))
                 foreach (var vk in liveVars)
-                    if (currentAircraft.GetVariables().ContainsKey(vk))
+                    if (vk != focusedComboKey && currentAircraft.GetVariables().ContainsKey(vk))
                         simConnectManager.RequestVariable(vk, forceUpdate: true);
 
             ScheduleDisplayRepaint();

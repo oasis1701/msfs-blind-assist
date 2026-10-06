@@ -799,6 +799,10 @@ public partial class MainForm
         {
             if (currentControls.TryGetValue("_DISPLAY_", out var dispCtrl) && dispCtrl is ListBox dispBox)
             {
+                // Bring the rows up to the cache BEFORE focus, so the first row the screen
+                // reader speaks is current rather than whatever the list held when the pilot
+                // last left it (the auto-refresh pauses while a combo has focus).
+                if (dispBox.Items.Count > 0) UpdateDisplayText(dispBox);
                 dispBox.Focus();
                 // If the list is empty (OnRequest display vars don't auto-update until a
                 // refresh), pull live content so the user lands on real status rather than a

@@ -70,3 +70,7 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## SIM-17
 
 - Every calc-path event string must be unique per call — `SimConnectManager.BuildCalcEventCode` prefixes `{seq} 0 *` centrally, because MobiFlight dedups byte-identical consecutive commands and a TOGGLE fires the SAME event for on and off, so without it a control could be switched on and never off. The dedup keys on TEXT, not elapsed time: "presses are seconds apart" is NOT a mitigation. → [a380x.md](../a380x.md)
+
+## SIM-18
+
+- **A status display must show what is true when the pilot reads it.** Three things kept DA40 rows seconds stale: `OnSimVarUpdated` returned before Step 3's repaint for any var whose `ProcessSimVarUpdate` returned true (every silent DA40 readout, and every DA40 var during the load settle), so those rows moved only on the 1 s auto-refresh tick; the tick returned outright while ANY combo had focus (on the DA40 nearly every control is one); and Ctrl+3 focused the list without repainting it. Now a handled display var schedules the coalesced repaint, the tick skips only `OnDisplayPanelShown` (the page re-push that fights an SD-page selector) and a force-read of the focused combo's own var, and Ctrl+3 and the list's GotFocus repaint from the cache before the screen reader reads. → [da40.md](../da40.md)

@@ -275,6 +275,17 @@ public partial class MainForm
             {
                 UpdateButtonStateFromStateVariable(e.VarName, e.Value);
             }
+            // A STATUS-DISPLAY ROW THE DEF HANDLED STILL MOVED. Step 3 below repaints the list
+            // for every other var, and this return skipped it, so a def-handled row (every
+            // silent DA40 readout, every DA40 var during the load settle) changed only on the
+            // auto-refresh tick - which pauses while any combo has focus, and nearly every DA40
+            // control is a combo. Ctrl+3 then landed on values seconds old. The repaint reads
+            // the cache (SIM-15) and is coalesced, so this costs one rebuild per burst.
+            if (currentControls.ContainsKey("_DISPLAY_") &&
+                GetDisplayVarNamesCached().Contains(e.VarName))
+            {
+                ScheduleDisplayRepaint();
+            }
             return; // Aircraft handled it completely, no further generic processing needed
         }
 
