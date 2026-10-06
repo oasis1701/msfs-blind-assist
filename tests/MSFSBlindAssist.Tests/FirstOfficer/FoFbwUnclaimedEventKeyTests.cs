@@ -253,6 +253,7 @@ public class FoFbwUnclaimedEventKeyTests
         {
             "Set",                                      // carries a raw varKey — the shape the sweep reads
             "SetCockpitLighting", "SetSeatbeltSign",    // typed; their keys live in the executor
+            "StartApuAsync",                            // typed; the APU master/START keys are Set(...) literals in the executor
             "FireTestAsync", "CabinCall", "TakeoffConfigTest", "CvrTest",   // pseudo-keys
         };
 

@@ -172,17 +172,11 @@ public static class FbwA320ChecklistDefinitions
         Items = new()
         {
             ActionManual("BS_ECAMAPU", "BEFORE_START", "ECAM page: APU", (e, _) => e.Set("ECAM_PAGE_APU", 1)),
-            // Master → dwell → START pulse, same pattern as the flow.
-            Auto("BS_APU", "BEFORE_START", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
-                v => v > 0.5, async (e, s) =>
-                {
-                    await e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1);
-                    if (!s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE"))
-                    {
-                        await System.Threading.Tasks.Task.Delay(3000);
-                        await e.Set("A32NX_OVHD_APU_START_PB_IS_ON", 1);
-                    }
-                }),
+            // Master → dwell → START press, then the tick holds open until AVAIL lights (FO-11):
+            // the line says "ON and available" and detects on the AVAIL lamp, like the flow,
+            // which also waits for it. See FbwA320ActionExecutor.StartApuAsync.
+            Auto("BS_APU", "BEFORE_START", "APU: ON and available", FbwA320ActionExecutor.ApuAvailField,
+                v => v > 0.5, (e, s) => e.StartApuAsync(s)),
             Auto("BS_APUBLEED", "BEFORE_START", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
             Auto("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ALL ON", "FUEL_PUMP_L1", v => v > 0.5,
@@ -235,6 +229,12 @@ public static class FbwA320ChecklistDefinitions
                 v => v > 0.5, (e, _) => e.Set("ENGINE_1_MASTER", 1)),
             Auto("ES_ENG2", "ENGINE_START", "Engine 2 master: ON", "ENGINE_2_MASTER",
                 v => v > 0.5, (e, _) => e.Set("ENGINE_2_MASTER", 1)),
+            // Detect-only: FlyByWire's own engine state reads On. The flow's ES_ENGn_N2 wait
+            // confirms it, and the line ticks itself from the state (the Fenix's shape).
+            Auto("ES_ENG1_RUN", "ENGINE_START", "Engine 1: running", "FO_ENG1_RUNNING",
+                v => v > 0.5, action: null),
+            Auto("ES_ENG2_RUN", "ENGINE_START", "Engine 2: running", "FO_ENG2_RUNNING",
+                v => v > 0.5, action: null),
         }
     };
 
@@ -258,9 +258,16 @@ public static class FbwA320ChecklistDefinitions
                 v => v > 0.5, (e, s) => s.IsOn("A32NX_SPOILERS_ARMED")
                     ? Task.CompletedTask : e.Set("SPOILERS_ARM_TOGGLE", 1)),
             ActionManual("AS_RUDDERTRIM", "AFTER_START", "Rudder trim: RESET", (e, _) => e.Set("A32NX_RUDDER_TRIM_RESET", 1)),
-            // Takeoff flaps are NEVER auto-set (project-wide rule) — Captain reminder,
-            // matches the flow's decision.
-            Reminder("AS_FLAPS", "AFTER_START", "Flaps: set for takeoff"),
+            // Auto-detects "flaps not up" (A32NX_FLAPS_HANDLE_INDEX is polled); ticking sets the
+            // SimBrief flaps when loaded, else does nothing (the flow's Captain fallback speaks).
+            // The Fenix's AS_FLAPS line, retyped to the A32NX lever key.
+            Auto("AS_FLAPS", "AFTER_START", "Flaps: takeoff setting", "A32NX_FLAPS_HANDLE_INDEX",
+                v => v is >= 0.5 and <= 3.5,
+                async (e, s) =>
+                {
+                    int f = s.TakeoffFlapsLeverIndex();
+                    if (f >= 1) await e.Set("A32NX_FLAPS_HANDLE_INDEX", f);
+                }),
             Auto("AS_NOSE_TAXI", "AFTER_START", "Nose light: TAXI", "LIGHTING_LANDING_1",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 1)),
             Reminder("AS_ANTIICE", "AFTER_START", "Set engine and wing anti-ice as required"),
@@ -404,17 +411,9 @@ public static class FbwA320ChecklistDefinitions
                 v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("LANDING_LIGHTS_OFF_THIRD_PARTY", 1)),
             Auto("AL_NOSE_TAXI", "AFTER_LANDING", "Nose light: TAXI", "LIGHTING_LANDING_1",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 1)),
-            // Same master → dwell → START press as the Before Start item.
-            Auto("AL_APU", "AFTER_LANDING", "APU: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
-                v => v > 0.5, async (e, s) =>
-                {
-                    await e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1);
-                    if (!s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE"))
-                    {
-                        await System.Threading.Tasks.Task.Delay(3000);
-                        await e.Set("A32NX_OVHD_APU_START_PB_IS_ON", 1);
-                    }
-                }),
+            // Same master → dwell → START press → wait for AVAIL as the Before Start item.
+            Auto("AL_APU", "AFTER_LANDING", "APU: ON and available", FbwA320ActionExecutor.ApuAvailField,
+                v => v > 0.5, (e, s) => e.StartApuAsync(s)),
             Auto("AL_ANTIICE_OFF", "AFTER_LANDING", "Engine and wing anti-ice: OFF", "ENG_ANTI_ICE:1",
                 v => System.Math.Abs(v - 0) < 0.5, new[] { "ENG_ANTI_ICE:2", "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION" },
                 async (e, _) =>
@@ -445,6 +444,8 @@ public static class FbwA320ChecklistDefinitions
             // Transponder to standby at shutdown (moved from After Landing).
             Auto("SD_XPDR_STBY", "SHUTDOWN", "Transponder: STANDBY", "A32NX_TRANSPONDER_MODE",
                 v => v < 0.5, (e, _) => e.Set("A32NX_TRANSPONDER_MODE", 0)),
+            Auto("SD_TCAS_STBY", "SHUTDOWN", "TCAS: STANDBY", "A32NX_SWITCH_TCAS_POSITION",
+                v => v < 0.5, (e, _) => e.Set("A32NX_SWITCH_TCAS_POSITION", 0)),
             // LS pushbuttons off at shutdown (mirrors approach AP_LS1/AP_LS2, inverted).
             Auto("SD_LS1", "SHUTDOWN", "LS captain: OFF", "A32NX_EFIS_L_LS_BUTTON_IS_ON",
                 v => v < 0.5, (e, _) => e.Set("A32NX_EFIS_L_LS_BUTTON_IS_ON", 0)),
@@ -512,6 +513,8 @@ public static class FbwA320ChecklistDefinitions
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)),
             Auto("SC_APUMASTER", "SECURE", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)),
+            Auto("SC_EXTPWR_OFF", "SECURE", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON",
+                v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0)),
             Auto("SC_BAT1", "SECURE", "Battery 1: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0)),
             Auto("SC_BAT2", "SECURE", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",

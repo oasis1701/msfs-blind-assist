@@ -137,10 +137,31 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         return AirbusReadbackFormat.FuelQuantity(GetValue("FUEL_QUANTITY_KG"), pounds: metric < 0.5);
     }
 
+    /// <summary>1 when FlyByWire's own engine state (0 Off / 1 On / 2 Starting / 3 Shutting
+    /// down) reads On, 0 for any other state, NaN when the state is unknown.</summary>
+    internal static double RunningFrom(double state)
+        => double.IsNaN(state) ? double.NaN : Math.Abs(state - 1) < 0.5 ? 1.0 : 0.0;
+
+    /// <summary>SimBrief takeoff flaps (1..3) as the A32NX flap handle index (same numbering),
+    /// or -1 when not loaded / out of range — the Fenix evaluator's twin.</summary>
+    public int TakeoffFlapsLeverIndex()
+    {
+        int f = GetTakeoffFlaps();
+        return f is >= 1 and <= 3 ? f : -1;
+    }
+
     protected override bool TryGetSyntheticValue(string field, out double value)
     {
         switch (field)
         {
+            // FlyByWire's own engine state: 0 Off / 1 On / 2 Starting / 3 Shutting down.
+            // "Running" = On. Used instead of a raw N2 threshold (the A330's idle N2 is unknown).
+            case "FO_ENG1_RUNNING":
+                value = RunningFrom(GetValue("A32NX_ENGINE_STATE:1"));
+                return true;
+            case "FO_ENG2_RUNNING":
+                value = RunningFrom(GetValue("A32NX_ENGINE_STATE:2"));
+                return true;
             // Radar ON (system 1 or 2 — 1 is OFF) AND predictive windshear AUTO (1).
             case "FO_WXR_ON_AUTO":
                 value = Both(GetValue("XMLVAR_A320_WeatherRadar_Sys"), GetValue("A32NX_SWITCH_RADAR_PWS_POSITION"),

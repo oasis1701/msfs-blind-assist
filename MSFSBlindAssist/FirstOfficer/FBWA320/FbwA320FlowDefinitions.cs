@@ -45,15 +45,15 @@ using Step = Models.FlowStep<FbwA320StateEvaluator>;
 ///   ECP A32NX_ECP_TO_CONF_TEST_PRESSED/RELEASED via TakeoffConfigTestAsync) are all
 ///   sim + source verified and automated (2026-07). The F/CTL ECAM page itself still has
 ///   no dedicated key and stays a Captain reminder ("no F/CTL ECP key").
-/// - Takeoff flaps are NEVER auto-set (project-wide "no takeoff-flap automation" rule) —
-///   unlike the Fenix source, AS_FLAPS here is a Captain reminder (matches the A380 flow).
+/// - Takeoff flaps come from SimBrief (the Fenix's Provider step, AS_FLAPS); without a plan a
+///   Captain reminder (AS_FLAPS_CAPT) speaks instead.
 /// - Cockpit lighting (§4.1): flow steps only pulse the ANN light key
 ///   (A32NX_OVHD_INTLT_ANN: 1=Bright, 2=Dim) per phase; the full multi-var scene
 ///   (dome/compass/integ/flood) is a Task 7 checklist CheckAction calling
 ///   FbwA320ActionExecutor.SetCockpitLighting directly (per the design brief).
-/// - Engine start has no live N2 gate (A32NX_ENGINE_N2:n exists but is UpdateFrequency.OnRequest
-///   and isn't in FbwA320StateEvaluator's PollFields) — mirrors the A380 flow's fixed-dwell
-///   approach rather than the Fenix/PMDG N2-verification pattern.
+/// - Engine start waits for FlyByWire's own engine state (A32NX_ENGINE_STATE:n = On, read as the
+///   synthetic FO_ENGn_RUNNING), not a raw N2 threshold: both FBW airframes publish the state
+///   and the A330's idle N2 is not known.
 /// </summary>
 public static class FbwA320FlowDefinitions
 {
@@ -257,7 +257,7 @@ public static class FbwA320FlowDefinitions
     private static Flow BuildEngineStart() => new()
     {
         Id = "ENGINE_START", Name = "Engine Start",
-        Description = "ECAM engine page, engine mode IGN/START, then engine 1 and engine 2 with dwell periods.",
+        Description = "ECAM engine page, engine mode IGN/START, then engine 1 and engine 2, each waited until running.",
         RelatedChecklistGroupIds = new[] { "ENGINE_START" },
         Steps = new()
         {
@@ -265,15 +265,19 @@ public static class FbwA320FlowDefinitions
             Done(SW("ES_ECAMENG", "ECAM page: engine", "ECAM_PAGE_ENG", 1), "ES_ECAMENG"),
             Done(Skip(SW("ES_MODE", "Engine mode selector: IGN START", "ENGINE_MODE_SELECTOR", 2),
                 s => s.IsPosition("ENGINE_MODE_SELECTOR", 2)), "ES_MODE"),
-            // Engine 1 first, then engine 2. No live N2 gate is available on this
-            // evaluator (A32NX_ENGINE_N2:n is UpdateFrequency.OnRequest and not polled) —
-            // fixed dwell periods, matching the A380 flow's approach.
+            // Engine 1 first, then engine 2. Each wait is on FlyByWire's own engine state
+            // (A32NX_ENGINE_STATE:n = On, via FO_ENGn_RUNNING), not a raw N2: both FBW airframes
+            // publish it and the A330's idle N2 is unknown. 120 s, and a timeout stops the flow
+            // (the Fenix's shape). Like the Fenix's N2 waits it links no checklist line: the
+            // "Engine n: running" lines tick themselves from the same state.
             Done(Skip(SW("ES_ENG1", "Engine 1 master: ON", "ENGINE_1_MASTER", 1),
                 s => s.IsOn("ENGINE_1_MASTER")), "ES_ENG1"),
-            Wait("ES_ENG1_DWELL", "Engine 1 starting — standby", 60),
+            WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
+                "FO_ENG1_RUNNING", v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
             Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "ENGINE_2_MASTER", 1),
                 s => s.IsOn("ENGINE_2_MASTER")), "ES_ENG2"),
-            Wait("ES_ENG2_DWELL", "Engine 2 starting — standby", 60),
+            WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
+                "FO_ENG2_RUNNING", v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
         }
     };
 
@@ -303,9 +307,11 @@ public static class FbwA320FlowDefinitions
             Done(Skip(SW("AS_SPOILERS_ARM", "Ground spoilers: ARMED", "SPOILERS_ARM_TOGGLE", 1),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)), "AS_SPOILERS_ARM"),
             Done(SW("AS_RUDDERTRIM", "Rudder trim: RESET", "A32NX_RUDDER_TRIM_RESET", 1), "AS_RUDDERTRIM"),
-            // Takeoff flaps are NEVER auto-set (project-wide rule) — Captain item, unlike
-            // the Fenix source's SimBrief-driven Provider step.
-            Captain("AS_FLAPS", "Flaps: set for takeoff"),
+            // Takeoff flaps from SimBrief (the Fenix's step): quiet skip without a plan, and
+            // then the Captain reminder below speaks instead.
+            Done(Provider("AS_FLAPS", "Flaps: takeoff setting", "A32NX_FLAPS_HANDLE_INDEX",
+                s => { int f = s.TakeoffFlapsLeverIndex(); return f >= 1 ? f : (int?)null; }), "AS_FLAPS"),
+            Skip(Captain("AS_FLAPS_CAPT", "Flaps: set for takeoff"), s => s.TakeoffFlapsLeverIndex() >= 1),
             Done(Skip(SW("AS_NOSE_TAXI", "Nose light: TAXI", "LIGHTING_LANDING_1", 1),
                 s => s.IsPosition("LIGHTING_LANDING_1", 1)), "AS_NOSE_TAXI"),
             Captain("AS_ANTIICE", "Set engine and wing anti-ice as required"),
@@ -360,7 +366,7 @@ public static class FbwA320FlowDefinitions
     private static Flow BuildAfterTakeoff() => new()
     {
         Id = "AFTER_TAKEOFF", Name = "After Takeoff",
-        Description = "Spoilers disarm, packs on, turn-off lights off. Gear and autopilot are handled by the auto-managers.",
+        Description = "Spoilers disarm, packs on, turn-off lights off. Gear and autopilot are handled by the auto-managers. Ends by confirming the gear is up.",
         RelatedChecklistGroupIds = new[] { "AFTER_TAKEOFF" },
         Steps = new()
         {
@@ -371,6 +377,10 @@ public static class FbwA320FlowDefinitions
                 s => s.IsOn("A32NX_OVHD_COND_PACK_1_PB_IS_ON") && s.IsOn("A32NX_OVHD_COND_PACK_2_PB_IS_ON")), "AT_PACKS"),
             Done(Skip(SW("AT_TURNOFF_OFF", "Runway turn-off lights: OFF", "LIGHT TAXI:2", 0),
                 s => s.IsPosition("LIGHT TAXI:2", 0)), "AT_TURNOFF_OFF"),
+            // Read-only confirmation (FO-13): handle up and every leg retracted. 20 s, then skip.
+            Skip(WaitForField("AT_GEAR_UP_CHECK", "Landing gear: UP", FbwA320GearConfirmation.UpField,
+                    v => v > 0.5, 20, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue(FbwA320GearConfirmation.UpField) > 0.5),
         }
     };
 
@@ -480,8 +490,8 @@ public static class FbwA320FlowDefinitions
             // stay active until the aircraft is parked).
             Done(Skip(SW("SD_XPDR_STBY", "Transponder: STANDBY", "A32NX_TRANSPONDER_MODE", 0),
                 s => s.IsPosition("A32NX_TRANSPONDER_MODE", 0)), "SD_XPDR_STBY"),
-            Skip(SW("SD_TCAS_STBY", "TCAS: STANDBY", "A32NX_SWITCH_TCAS_POSITION", 0),
-                s => s.IsPosition("A32NX_SWITCH_TCAS_POSITION", 0)),
+            Done(Skip(SW("SD_TCAS_STBY", "TCAS: STANDBY", "A32NX_SWITCH_TCAS_POSITION", 0),
+                s => s.IsPosition("A32NX_SWITCH_TCAS_POSITION", 0)), "SD_TCAS_STBY"),
             // LS pushbuttons off at shutdown (mirrors approach AP_LS1/AP_LS2, inverted to 0).
             Done(Skip(SW("SD_LS1", "LS captain: OFF", "A32NX_EFIS_L_LS_BUTTON_IS_ON", 0),
                 s => !s.IsOn("A32NX_EFIS_L_LS_BUTTON_IS_ON")), "SD_LS1"),
@@ -537,8 +547,8 @@ public static class FbwA320FlowDefinitions
                 s => s.IsPosition("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 0)), "SC_APUBLEED"),
             Done(Skip(SW("SC_APUMASTER", "APU master: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0),
                 s => s.IsPosition("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 0)), "SC_APUMASTER"),
-            Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0),
-                s => !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON")),
+            Done(Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON", 0),
+                s => !s.IsOn("A32NX_OVHD_ELEC_EXT_PWR_PB_IS_ON")), "SC_EXTPWR_OFF"),
             Done(Skip(SW("SC_BAT1", "Battery 1: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0),
                 s => s.IsPosition("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0)), "SC_BAT1"),
             Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0),
