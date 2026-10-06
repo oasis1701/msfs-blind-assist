@@ -96,9 +96,19 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         // fallback for any stray plain dispatch.
         ["S_ECAM_TO"]              = LVarDispatchKind.LVarPulse,   // TO CONFIG test (takeoff)
         ["S_ECAM_STATUS"]          = LVarDispatchKind.LVarPulse,   // STS status page (landing review)
+        // ECAM SD page buttons are momentary: a held write leaves them pressed.
+        ["S_ECAM_DOOR"]            = LVarDispatchKind.LVarPulse,   // DOOR page (preflight, shutdown)
+        ["S_ECAM_APU"]             = LVarDispatchKind.LVarPulse,   // APU page (before start)
+        ["S_ECAM_ENGINE"]          = LVarDispatchKind.LVarPulse,   // ENG page (engine start)
     };
 
     protected override IReadOnlyDictionary<string, LVarDispatchKind> DispatchTable => Table;
+
+    /// <summary>True when <paramref name="key"/> is a momentary pushbutton in the pulse table
+    /// (written 1 then released), not a held L:var write. A flow step or checklist action that
+    /// presses a momentary button must use such a key: a held write leaves the button pressed.</summary>
+    public static bool IsMomentaryKey(string key) =>
+        Table.TryGetValue(key, out var kind) && kind == LVarDispatchKind.LVarPulse;
 
     /// <summary>Pseudo-control keys used by flow steps for actions that aren't a plain
     /// L:var write. Intercepted here; everything else defers to the base dispatch.</summary>

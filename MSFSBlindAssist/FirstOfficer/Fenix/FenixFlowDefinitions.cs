@@ -117,6 +117,8 @@ public static class FenixFlowDefinitions
             Done(SW("PF_FIRE_APU", "APU fire test", "FIRE_TEST_APU", 1), "PF_FIRE_APU"),
             Done(SW("PF_FIRE_ENG1", "Engine 1 fire test", "FIRE_TEST_ENG1", 1), "PF_FIRE_ENG1"),
             Done(SW("PF_FIRE_ENG2", "Engine 2 fire test", "FIRE_TEST_ENG2", 1), "PF_FIRE_ENG2"),
+            // ECAM page: door (momentary SD page button — in the executor's pulse table)
+            Done(SW("PF_ECAMDOOR", "ECAM page: door", "S_ECAM_DOOR", 1), "PF_ECAMDOOR"),
             // Air conditioning / pressurization
             Done(Skip(Multi("PF_PACKS", "Packs 1 and 2: ON",
                     ("S_OH_PNEUMATIC_PACK_1", 1), ("S_OH_PNEUMATIC_PACK_2", 1)),
@@ -169,6 +171,8 @@ public static class FenixFlowDefinitions
         RelatedChecklistGroupIds = new[] { "BEFORE_START" },
         Steps = new()
         {
+            // ECAM page: APU (momentary SD page button — in the executor's pulse table)
+            Done(SW("BS_ECAMAPU", "ECAM page: APU", "S_ECAM_APU", 1), "BS_ECAMAPU"),
             // APU block: master on, dwell, start pulse, wait for AVAIL (green light).
             // "Available" is FenixActionExecutor.ApuAvailField — the ONE spelling every
             // site here references, never a repeated literal, because the executor and
@@ -237,6 +241,8 @@ public static class FenixFlowDefinitions
         RelatedChecklistGroupIds = new[] { "ENGINE_START" },
         Steps = new()
         {
+            // ECAM page: engine (momentary SD page button — in the executor's pulse table)
+            Done(SW("ES_ECAMENG", "ECAM page: engine", "S_ECAM_ENGINE", 1), "ES_ECAMENG"),
             Done(Skip(SW("ES_MODE", "Engine mode selector: IGN START", "S_ENG_MODE", 2),
                 s => s.IsPosition("S_ENG_MODE", 2)), "ES_MODE"),
             // Engine 1 first, then engine 2 (user preference). The FADEC runs the whole
@@ -244,11 +250,11 @@ public static class FenixFlowDefinitions
             // pushed per second) before the next master goes on.
             Done(Skip(SW("ES_ENG1", "Engine 1 master: ON", "S_ENG_MASTER_1", 1),
                 s => s.IsOn("S_ENG_MASTER_1")), "ES_ENG1"),
-            WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for stabilized N2",
+            WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
                 "FO_ENG1_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
             Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "S_ENG_MASTER_2", 1),
                 s => s.IsOn("S_ENG_MASTER_2")), "ES_ENG2"),
-            WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for stabilized N2",
+            WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
                 "FO_ENG2_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
         }
     };
@@ -275,10 +281,16 @@ public static class FenixFlowDefinitions
             // Takeoff flaps from SimBrief (quiet skip when no plan loaded)
             Done(Provider("AS_FLAPS", "Flaps: takeoff setting", "S_FC_FLAPS",
                 s => { int f = s.TakeoffFlapsLeverIndex(); return f >= 1 ? f : (int?)null; }), "AS_FLAPS"),
+            // Without a SimBrief plan the Provider above skips quietly, so the Captain is
+            // asked to set the takeoff flaps; with a plan this reminder is skipped.
+            Skip(Captain("AS_FLAPS_CAPT", "Flaps: set for takeoff"),
+                s => s.TakeoffFlapsLeverIndex() >= 1),
             Done(Skip(SW("AS_NOSE_TAXI", "Nose light: TAXI", "S_OH_EXT_LT_NOSE", 1),
                 s => s.IsPosition("S_OH_EXT_LT_NOSE", 1)), "AS_NOSE_TAXI"),
             Captain("AS_ANTIICE", "Set engine and wing anti-ice as required"),
             Captain("AS_PITCHTRIM", "Set pitch trim per the loadsheet"),
+            // ECAM page: status (momentary SD page button — in the executor's pulse table)
+            Done(SW("AS_ECAMSTS", "ECAM page: status", "S_ECAM_STATUS", 1), "AS_ECAMSTS"),
         }
     };
 
@@ -455,8 +467,8 @@ public static class FenixFlowDefinitions
             // reporting continues until the aircraft is parked and shut down.
             Done(Skip(SW("SD_XPDR_STBY", "Transponder: STANDBY", "S_XPDR_OPERATION", 0),
                 s => s.IsPosition("S_XPDR_OPERATION", 0)), "SD_XPDR_STBY"),
-            Skip(SW("SD_TCAS_STBY", "TCAS: STANDBY", "S_XPDR_MODE", 0),
-                s => s.IsPosition("S_XPDR_MODE", 0)),
+            Done(Skip(SW("SD_TCAS_STBY", "TCAS: STANDBY", "S_XPDR_MODE", 0),
+                s => s.IsPosition("S_XPDR_MODE", 0)), "SD_TCAS_STBY"),
             // LS pushbuttons OFF (pulse the BASE var S_FCU_EFISn_LS, mirrors approach AP_LSn
             // inverted — pulse only when the indicator I_FCU_EFISn_LS reads on).
             Done(Skip(SW("SD_LS1", "LS captain: OFF", "S_FCU_EFIS1_LS", 1),
@@ -480,6 +492,8 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_EXT_LT_RWY_TURNOFF", 0)), "SD_TURNOFF_OFF"),
             // Cockpit door: open for disembark (S_COCKPIT_DOOR=1, live-verified actuator 2026-07-05).
             Done(SW("SD_COCKPITDOOR", "Cockpit door: unlocked", "S_COCKPIT_DOOR", 1), "SD_COCKPITDOOR"),
+            // ECAM page: door (momentary SD page button — in the executor's pulse table)
+            Done(SW("SD_ECAMDOOR", "ECAM page: door", "S_ECAM_DOOR", 1), "SD_ECAMDOOR"),
         }
     };
 
@@ -507,8 +521,10 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_PNEUMATIC_APU_BLEED", 0)), "SC_APUBLEED"),
             Done(Skip(SW("SC_APUMASTER", "APU master: OFF", "S_OH_ELEC_APU_MASTER", 0),
                 s => s.IsPosition("S_OH_ELEC_APU_MASTER", 0)), "SC_APUMASTER"),
-            Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
-                s => !s.IsOn("I_OH_ELEC_EXT_PWR_L")),
+            // A toggle pushbutton: press only while the ON light reads lit (a press while it is
+            // already off would turn it back ON).
+            Done(Skip(SW("SC_EXTPWR_OFF", "External power: OFF", "S_OH_ELEC_EXT_PWR", 1),
+                s => !s.IsOn("I_OH_ELEC_EXT_PWR_L")), "SC_EXTPWR_OFF"),
             Done(Skip(SW("SC_BAT1", "Battery 1: OFF", "S_OH_ELEC_BAT1", 0),
                 s => s.IsPosition("S_OH_ELEC_BAT1", 0)), "SC_BAT1"),
             Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "S_OH_ELEC_BAT2", 0),

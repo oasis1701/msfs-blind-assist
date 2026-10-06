@@ -99,6 +99,9 @@ public static class FenixChecklistDefinitions
             ActionManual("PF_FIRE_APU", "PREFLIGHT", "APU fire test", (e, _) => e.FireTest("S_OH_FIRE_APU_TEST")),
             ActionManual("PF_FIRE_ENG1", "PREFLIGHT", "Engine 1 fire test", (e, _) => e.FireTest("S_OH_FIRE_ENG1_TEST")),
             ActionManual("PF_FIRE_ENG2", "PREFLIGHT", "Engine 2 fire test", (e, _) => e.FireTest("S_OH_FIRE_ENG2_TEST")),
+            // ECAM SD page buttons are momentary pushbuttons (executor pulse table): ActionManual
+            // has no state to read, ticking presses the page button once.
+            ActionManual("PF_ECAMDOOR", "PREFLIGHT", "ECAM page: door", (e, _) => e.Pulse("S_ECAM_DOOR")),
             Auto("PF_PACKS", "PREFLIGHT", "Packs 1 and 2: ON",
                 "S_OH_PNEUMATIC_PACK_1", v => v > 0.5, new[] { "S_OH_PNEUMATIC_PACK_2" },
                 async (e, _) =>
@@ -142,6 +145,7 @@ public static class FenixChecklistDefinitions
         Id = "BEFORE_START", Name = "Before Start",
         Items = new()
         {
+            ActionManual("BS_ECAMAPU", "BEFORE_START", "ECAM page: APU", (e, _) => e.Pulse("S_ECAM_APU")),
             // Master ON → dwell → START pulse; the AVAIL light is the running state.
             // "Available" is FenixActionExecutor.ApuAvailField — the ONE spelling every
             // site here references, never a repeated literal, because the executor and
@@ -194,7 +198,7 @@ public static class FenixChecklistDefinitions
             ActionManual("BS_FCUHDG", "BEFORE_START", "FCU heading: managed",
                 (e, _) => e.PushFcuManaged("S_FCU_HEADING")),
             // Cockpit door: closed (S_COCKPIT_DOOR=0, live-verified actuator 2026-07-05).
-            ActionManual("BS_COCKPITDOOR", "BEFORE_START", "Cockpit door: closed and locked",
+            ActionManual("BS_COCKPITDOOR", "BEFORE_START", "Cockpit door: LOCKED",
                 (e, _) => e.SetCockpitDoor(false)),
             Reminder("BS_DOORS", "BEFORE_START", "Close doors and remove ground services on the EFB"),
             Reminder("BS_THRLEVERS", "BEFORE_START", "Confirm thrust levers idle"),
@@ -208,6 +212,7 @@ public static class FenixChecklistDefinitions
         Id = "ENGINE_START", Name = "Engine Start",
         Items = new()
         {
+            ActionManual("ES_ECAMENG", "ENGINE_START", "ECAM page: engine", (e, _) => e.Pulse("S_ECAM_ENGINE")),
             Auto("ES_MODE", "ENGINE_START", "Engine mode selector: IGN START",
                 "S_ENG_MODE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_ENG_MODE", 2)),
             // Engine 1 first, then engine 2 (user preference).
@@ -250,6 +255,7 @@ public static class FenixChecklistDefinitions
                 "S_OH_EXT_LT_NOSE", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_EXT_LT_NOSE", 1)),
             Reminder("AS_ANTIICE", "AFTER_START", "Set engine and wing anti-ice as required"),
             Reminder("AS_PITCHTRIM", "AFTER_START", "Set pitch trim per the loadsheet"),
+            ActionManual("AS_ECAMSTS", "AFTER_START", "ECAM page: status", (e, _) => e.Pulse("S_ECAM_STATUS")),
         }
     };
 
@@ -263,7 +269,7 @@ public static class FenixChecklistDefinitions
             Auto("BT_AUTOBRAKE", "BEFORE_TAKEOFF", "Autobrake: MAX",
                 "I_MIP_AUTOBRAKE_MAX_L", v => v > 0.5,
                 (e, s) => s.IsOn("I_MIP_AUTOBRAKE_MAX_L") ? Task.CompletedTask : e.Pulse("S_MIP_AUTOBRAKE_MAX")),
-            Auto("BT_WXR", "BEFORE_TAKEOFF", "Weather radar: ON",                      // [RADAR]
+            Auto("BT_WXR", "BEFORE_TAKEOFF", "Weather radar: SYSTEM 1",               // [RADAR]
                 "S_WR_SYS", v => v < 0.5, (e, _) => e.Set("S_WR_SYS", 0)),             // [RADAR]
             Auto("BT_PWS", "BEFORE_TAKEOFF", "Predictive windshear: AUTO",             // [RADAR]
                 "S_WR_PRED_WS", v => v > 0.5, (e, _) => e.Set("S_WR_PRED_WS", 1)),     // [RADAR]
@@ -403,6 +409,9 @@ public static class FenixChecklistDefinitions
             // Transponder/TCAS to STANDBY here (moved from After Landing).
             Auto("SD_XPDR_STBY", "SHUTDOWN", "Transponder: STANDBY",
                 "S_XPDR_OPERATION", v => v < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 0)),
+            // S_XPDR_MODE: 0 = STBY, 1 = TA, 2 = TA/RA — the write the SD_TCAS_STBY flow step sends.
+            Auto("SD_TCAS_STBY", "SHUTDOWN", "TCAS: STANDBY",
+                "S_XPDR_MODE", v => Math.Abs(v) < 0.5, (e, _) => e.Set("S_XPDR_MODE", 0)),
             // Guarded: momentary pulse on a latching light — act only when currently on
             // (mirrors the APPROACH AP_LSn item inverted). Base var S_FCU_EFISn_LS, NOT "_PRESS".
             Auto("SD_LS1", "SHUTDOWN", "LS captain: OFF",
@@ -433,8 +442,9 @@ public static class FenixChecklistDefinitions
             Auto("SD_TURNOFF_OFF", "SHUTDOWN", "Runway turn-off lights: OFF",
                 "S_OH_EXT_LT_RWY_TURNOFF", v => v < 0.5, (e, _) => e.Set("S_OH_EXT_LT_RWY_TURNOFF", 0)),
             // Cockpit door: open for disembark (S_COCKPIT_DOOR=1, live-verified actuator 2026-07-05).
-            ActionManual("SD_COCKPITDOOR", "SHUTDOWN", "Cockpit door: unlocked",
+            ActionManual("SD_COCKPITDOOR", "SHUTDOWN", "Cockpit door: UNLOCKED",
                 (e, _) => e.SetCockpitDoor(true)),
+            ActionManual("SD_ECAMDOOR", "SHUTDOWN", "ECAM page: door", (e, _) => e.Pulse("S_ECAM_DOOR")),
         }
     };
 
@@ -461,6 +471,11 @@ public static class FenixChecklistDefinitions
                 "S_OH_PNEUMATIC_APU_BLEED", v => v < 0.5, (e, _) => e.Set("S_OH_PNEUMATIC_APU_BLEED", 0)),
             Auto("SC_APUMASTER", "SECURE", "APU master: OFF",
                 "S_OH_ELEC_APU_MASTER", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_APU_MASTER", 0)),
+            // A toggle pushbutton (the BS_EXTPWR_OFF guard): the ON light is the readable state,
+            // and the press fires only while it is lit — a press while off would turn it ON.
+            Auto("SC_EXTPWR_OFF", "SECURE", "External power: OFF",
+                "I_OH_ELEC_EXT_PWR_L", v => v < 0.5,
+                (e, s) => s.IsOn("I_OH_ELEC_EXT_PWR_L") ? e.Pulse("S_OH_ELEC_EXT_PWR") : Task.CompletedTask),
             Auto("SC_BAT1", "SECURE", "Battery 1: OFF",
                 "S_OH_ELEC_BAT1", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_BAT1", 0)),
             Auto("SC_BAT2", "SECURE", "Battery 2: OFF",
