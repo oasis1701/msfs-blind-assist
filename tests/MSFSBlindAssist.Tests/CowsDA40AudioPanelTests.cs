@@ -90,4 +90,12 @@ public class CowsDA40AudioPanelTests
         Assert.True(new MSFSBlindAssist.Aircraft.FlyByWireA380Definition().StatusRefreshPausesWhileComboFocused);
         Assert.True(new MSFSBlindAssist.Aircraft.FlyByWireA320Definition().StatusRefreshPausesWhileComboFocused);
     }
+
+    [Theory]
+    [InlineData("DA40_AUDIO_COM1_RECEIVE", 1)]
+    [InlineData("DA40_AUDIO_COM2_RECEIVE", 2)]
+    [InlineData("DA40_AUDIO_NAV1_IDENT", 0)]
+    public void OnlyTheComReceiveKeysNameARadio(string key, int radio)
+        // The transmitting radio is always heard; only these two can be refused for it.
+        => Assert.Equal(radio, CowsDA40Definition.ReceiveKeyRadio(key));
 }

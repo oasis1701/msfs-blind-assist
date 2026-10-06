@@ -280,6 +280,19 @@ public partial class CowsDA40Definition
             if (key.VarKey != varKey) continue;
             int on = value >= 0.5 ? 1 : 0;
 
+            // ⚠️ THE RADIO YOU TRANSMIT ON IS ALWAYS HEARD. Turning COM1 off while COM1 MIC is
+            // selected leaves COM RECEIVE:1 at 1 (measured on the XLS, 2026-10-06; COM2 the same
+            // way round), as on a real GMA 1347, and choosing a MIC turns the other radio's
+            // receive off. The write still goes out - the aeroplane decides - but a key that
+            // did nothing must say why, or it reads as broken.
+            if (on == 0 && TransmitRadioOf(simConnect) is int tx && ReceiveKeyRadio(varKey) == tx)
+            {
+                announcer.AnnounceImmediate($"COM{tx} is the transmitting radio and is always heard.");
+                // The value never changes, so nothing would move the combo back to On; a forced
+                // read delivers it again on the next batch (SIM-4).
+                simConnect.RequestVariable(varKey, forceUpdate: true);
+            }
+
             // The cockpit's own key, by value (see the class note).
             if (simConnect.HasInputEvent(key.InputEvent) && simConnect.TrySetInputEvent(key.InputEvent, on))
                 return true;
@@ -290,6 +303,18 @@ public partial class CowsDA40Definition
 
         return false;
     }
+
+    /// <summary>1 or 2: the radio COM TRANSMIT names, from the cache; null when not yet read.</summary>
+    private static int? TransmitRadioOf(SimConnectManager simConnect)
+        => simConnect.GetCachedVariableValue("DA40_AUDIO_TRANSMIT") is double t ? (t >= 0.5 ? 2 : 1) : null;
+
+    /// <summary>1 or 2 for the COM1/COM2 receive keys, otherwise 0.</summary>
+    internal static int ReceiveKeyRadio(string varKey) => varKey switch
+    {
+        "DA40_AUDIO_COM1_RECEIVE" => 1,
+        "DA40_AUDIO_COM2_RECEIVE" => 2,
+        _ => 0
+    };
 
     /// <summary>The stock-event write for a GMA key when its input event is not available.
     /// A toggle event is sent only when the simvar is not already where the pilot asked.</summary>
