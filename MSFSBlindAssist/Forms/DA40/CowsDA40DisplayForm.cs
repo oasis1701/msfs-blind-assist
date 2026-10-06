@@ -1030,6 +1030,13 @@ public sealed class CowsDA40DisplayForm : Form
         bool cursorChangedHere = knownHere && cursorOn != wasOnHere;
         _cursorByView[view] = cursorOn;
 
+        // A step INSIDE one view says only what moved (DropRepeatedLead). A new view, or the
+        // cursor changing, keeps the whole read-back: that is arriving somewhere.
+        if (!cursorChangedHere && view == _lastView && summary.Length > 0 && !IsChecklistTextView(view))
+        {
+            toSay = DropRepeatedLead(_lastSpokenSummary, summary);
+        }
+
         if (cursorChangedHere)
         {
             toSay = (cursorOn ? "Cursor on. " : "Cursor off. ") + toSay;
@@ -1133,6 +1140,76 @@ public sealed class CowsDA40DisplayForm : Form
         return (parts[1] == "1", parts[2].Trim(), parts[3].Trim(),
             string.Join("|", parts, 4, parts.Length - 4).Trim());
     }
+
+    /// <summary>
+    /// The read-back with the lead-in it shares with the previous one taken off, so a knob
+    /// step says only what moved. Pure so the suite can pin it.
+    ///
+    /// ⚠️ THE NAME IS SAID ONCE, ON ARRIVAL, AND NOT ON EVERY STEP. Turning through the
+    /// checklist page's group list read "Checklist group, NORMAL OPERATING PROCEDURES",
+    /// "Checklist group, ABNORMAL OPS PROC - …" on every click; ENT on the Engine page menu
+    /// read "Failures Mode: Normal", "Failures Mode: High", "Failures Mode: Chaos"; a choice
+    /// list said "Choose," and a setup page its group box before every field (reported from
+    /// the cockpit as "checklist, checklist" and "failure mode, failure mode"). The menu fix
+    /// (DA40G-16) stopped a WRONG name being borrowed; this stops a RIGHT one being repeated.
+    ///
+    /// A lead-in is the run of leading ", "/": " segments the two read-backs share. The first
+    /// read-back after a view change carries the page title in front ("EIS - Checklist,
+    /// Checklist group, USER AGREEMENT"), so the previous one is also tried without its first
+    /// segment. Nothing is dropped when the two are identical (a repeat is answered in full)
+    /// or when it would leave nothing to say.
+    /// </summary>
+    internal static string DropRepeatedLead(string previous, string current)
+    {
+        if (previous.Length == 0 || current.Length == 0 || previous == current) return current;
+
+        var now = SplitLead(current);
+        var before = SplitLead(previous);
+        if (now.Count < 2) return current;
+
+        int shared = Math.Max(SharedLead(before, 0, now), SharedLead(before, 1, now));
+
+        // Always leave the last segment: it is the value, the thing that moved.
+        if (shared >= now.Count) shared = now.Count - 1;
+        if (shared == 0) return current;
+
+        return current.Substring(now[shared].Start).TrimStart();
+    }
+
+    private static int SharedLead(List<(string Text, int Start)> before, int skip, List<(string Text, int Start)> now)
+    {
+        int n = 0;
+        // The previous read-back's LAST segment is its value, never part of a lead-in.
+        while (skip + n < before.Count - 1 && n < now.Count &&
+               before[skip + n].Text == now[n].Text) n++;
+        return n;
+    }
+
+    /// <summary>Segments separated by ", " or ": ", each with where it starts.</summary>
+    private static List<(string Text, int Start)> SplitLead(string s)
+    {
+        var parts = new List<(string Text, int Start)>();
+        int start = 0;
+        for (int i = 0; i < s.Length - 1; i++)
+        {
+            if ((s[i] == ',' || s[i] == ':') && s[i + 1] == ' ')
+            {
+                parts.Add((s.Substring(start, i - start).Trim(), start));
+                start = i + 2;
+                i++;
+            }
+        }
+        parts.Add((s.Substring(start).Trim(), start));
+        return parts;
+    }
+
+    /// <summary>
+    /// The checklist page's own list, whose lines are the checklist's TEXT ("WARNING: Be
+    /// prepared for loss of oil", "note: …"): a shared "WARNING" there is content, not a
+    /// name, and must be read on every line. Its two selection popups are other views.
+    /// </summary>
+    internal static bool IsChecklistTextView(string view) =>
+        view.EndsWith("ChecklistPage", StringComparison.Ordinal);
 
     /// <summary>What was last read back, so a repeat can be told from a stale read.</summary>
     private string _lastSpokenSummary = "";

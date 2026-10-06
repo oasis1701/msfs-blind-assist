@@ -245,6 +245,29 @@
             out.push({ text: t, severity: severity, isNew: cls.indexOf("new") >= 0 });
         }
 
+        // ⚠️ THE SHORT-TEXT ALERTS ARE NOT IN THE CAS WINDOW. Every panel.xml <Alert> with a
+        // <ShortText> instead of a <Text> - ROLL, PTCH and PTRM (an autopilot servo failed),
+        // <--AIL, AIL-->, UP ELE and DN ELE (a servo holding force), TRAFFIC, TERRAIN, PULL UP,
+        // TAWS NA - is drawn in ONE box beside the altimeter, .warnings-display, highest
+        // priority only, coloured by class: "yellow" a caution, "red" a warning (measured on the
+        // NG, 2026-10-06, raising TRAFFIC and holding L:AFCS_FAIL_ELE for PTCH). Nothing read that box, so a failed pitch servo or a terrain
+        // warning reached a sighted pilot and nobody else. It joins the CAS list here, so the
+        // background CAS watcher announces it exactly as it announces a CAS message.
+        //   PFT and AFCS are left out: the pre-flight test and the AFCS self-test are their
+        // own announced rows (AFCS_PFT, AFCS_TEST), and saying each twice is noise.
+        var boxes = document.querySelectorAll(".warnings-display");
+        for (var b = 0; b < boxes.length; b++) {
+            if (!visible(boxes[b])) continue;
+            var st = text(boxes[b]);
+            if (!st || st === "PFT" || st === "AFCS" || seen[st]) continue;
+            seen[st] = 1;
+            var bc = classList(boxes[b]);
+            var sev = (bc.indexOf("red") >= 0 || bc.indexOf("warning") >= 0) ? "warning"
+                    : (bc.indexOf("yellow") >= 0 || bc.indexOf("caution") >= 0) ? "caution"
+                    : "advisory";
+            out.push({ text: st, severity: sev, isNew: false });
+        }
+
         return out;
     };
 

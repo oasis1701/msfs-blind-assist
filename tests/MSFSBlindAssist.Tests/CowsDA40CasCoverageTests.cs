@@ -40,6 +40,14 @@ public class CowsDA40CasCoverageTests
         ("Advisory", "FUEL XFER"),     ("Advisory", "GLOW ON"),
         ("Advisory", "STEER AUTOBRAKE"),("Advisory","STEER NWS"),
         ("Advisory", "STEER REAL"),
+        // The <ShortText> alerts, drawn in the PFD's .warnings-display box and merged into
+        // the CAS list by the agent (A.cas). The arrows are part of the text.
+        ("WARNING",  "ROLL"),          ("WARNING",  "PTCH"),
+        ("WARNING",  "PTRM"),          ("WARNING",  "PULL UP"),
+        ("Caution",  "<--AIL"),        ("Caution",  "AIL-->"),
+        ("Caution",  "UP ELE"),        ("Caution",  "DN ELE"),
+        ("Caution",  "TRAFFIC"),       ("Caution",  "TERRAIN"),
+        ("Caution",  "TAWS NA"),
         // ⚠️ NOT A TYPO IN THIS TEST. COWS overwrote one annunciation's <Text> with a
         // YouTube URL fragment and left it tagged as the glow advisory; its condition is
         // airspeed above 182.88 kt for six seconds, so it is REACHABLE in an overspeed and
