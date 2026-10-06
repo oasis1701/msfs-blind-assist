@@ -256,6 +256,35 @@ public class ChecklistItem<TExec, TState>
     public string? ReminderText { get; set; }
 
     // -----------------------------------------------------------------------
+    // Live value (spoken on a tick and shown on the status line, never in the tree)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// Optional: the value the First Officer reads for this line ("flaps 1", "TA/RA",
+    /// "QNH 1013"), spoken after the label when the pilot ticks it and shown on the status
+    /// line. Null, or a null/blank result, leaves both texts exactly as they are without it.
+    /// Never used for the tree node text, so a changing value never makes the screen reader
+    /// re-read a line. A320-family read-backs set it (Airbus prints a blank there).
+    /// </summary>
+    public Func<TState, string?>? LiveValue { get; set; }
+
+    /// <summary><see cref="LiveValue"/> evaluated defensively: null when unset, blank, or
+    /// when reading it throws (a live value is a courtesy, never a reason to lose the tick).</summary>
+    public string? ReadLiveValue(TState state)
+    {
+        if (LiveValue == null) return null;
+        try
+        {
+            string? v = LiveValue(state);
+            return string.IsNullOrWhiteSpace(v) ? null : v;
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    // -----------------------------------------------------------------------
     // Helpers
     // -----------------------------------------------------------------------
 

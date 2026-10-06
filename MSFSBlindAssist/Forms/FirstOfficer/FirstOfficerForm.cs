@@ -632,8 +632,8 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
             // A tick the First Officer refused (ChecklistItem.LeaveAloneWhen) speaks its reason
             // IN PLACE of the status line — one utterance, so the interrupting status line can
             // never cut the reason off.
-            string status = item.IsChecked ? "checked" : "unchecked";
-            _announcer.AnnounceImmediate(leftAloneText ?? $"{item.Label}: {status}");
+            _announcer.AnnounceImmediate(leftAloneText
+                ?? ChecklistItemSpeech.TickText(item.Label, item.ReadLiveValue(_stateEval), item.IsChecked));
         }
         _suppressTreeEvents = false;
     }
@@ -781,7 +781,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         {
             var item = _checklistMgr.FindItem(parentGroupId, itemId);
             _checklistStatusLabel.Text = item != null
-                ? $"{item.Label} — {(item.IsChecked ? "Complete" : "Incomplete")}"
+                ? ChecklistItemSpeech.StatusText(item.Label, item.ReadLiveValue(_stateEval), item.IsChecked)
                 : "";
         }
     }
