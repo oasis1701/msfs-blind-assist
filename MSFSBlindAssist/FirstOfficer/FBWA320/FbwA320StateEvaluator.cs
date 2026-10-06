@@ -71,6 +71,8 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         "A32NX_SPEEDS_LANDING_CONF3",
         "WIPER_LEFT", "WIPER_RIGHT",
         "A32NX_RCDR_GROUND_CONTROL_ON",
+        // Gear legs (FbwA320GearConfirmation)
+        "A32NX_GEAR_CENTER_POSITION", "A32NX_GEAR_LEFT_POSITION", "A32NX_GEAR_RIGHT_POSITION",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;
@@ -110,6 +112,16 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         if (field == "FO_VFE_NEXT")
         {
             value = DecodeVfeNext(GetValue("FAC_1_V_FE_NEXT"), GetValue("FAC_2_V_FE_NEXT"));
+            return true;
+        }
+        if (field == FbwA320GearConfirmation.UpField)
+        {
+            value = FbwA320GearConfirmation.UpValue(GetValue);
+            return true;
+        }
+        if (field == FbwA320GearConfirmation.DownField)
+        {
+            value = FbwA320GearConfirmation.DownValue(GetValue);
             return true;
         }
         value = double.NaN;

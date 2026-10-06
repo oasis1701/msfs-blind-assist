@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MSFSBlindAssist.FirstOfficer.FBWA320;
 using MSFSBlindAssist.FirstOfficer.Generic;
 
 namespace MSFSBlindAssist.FirstOfficer.HWA330;
@@ -73,6 +74,8 @@ public sealed class HwA330StateEvaluator : LVarStateEvaluator
         "A32NX_SPEEDS_LANDING_CONF3",
         "WIPER_LEFT", "WIPER_RIGHT",
         "A32NX_RCDR_GROUND_CONTROL_ON",
+        // Gear legs (FbwA320GearConfirmation)
+        "A32NX_GEAR_CENTER_POSITION", "A32NX_GEAR_LEFT_POSITION", "A32NX_GEAR_RIGHT_POSITION",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;
@@ -98,6 +101,16 @@ public sealed class HwA330StateEvaluator : LVarStateEvaluator
             // predates FBW #10890) and its FACs publish no characteristic speeds at all
             // (docs/a32nx.md) — never switch this one to the FAC words.
             value = GetValue("A32NX_SPEEDS_VFEN");
+            return true;
+        }
+        if (field == FbwA320GearConfirmation.UpField)
+        {
+            value = FbwA320GearConfirmation.UpValue(GetValue);
+            return true;
+        }
+        if (field == FbwA320GearConfirmation.DownField)
+        {
+            value = FbwA320GearConfirmation.DownValue(GetValue);
             return true;
         }
         value = double.NaN;

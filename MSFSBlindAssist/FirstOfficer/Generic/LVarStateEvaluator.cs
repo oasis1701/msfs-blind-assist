@@ -37,6 +37,11 @@ public abstract class LVarStateEvaluator : IFoStateEvaluator
         return false;
     }
 
+    /// <summary>A two-input synthetic field: NaN when either input is unknown, else 1/0 from
+    /// <paramref name="test"/>. The "unknown is not false" contract every FO state read keeps.</summary>
+    protected static double Both(double a, double b, Func<double, double, bool> test)
+        => double.IsNaN(a) || double.IsNaN(b) ? double.NaN : test(a, b) ? 1.0 : 0.0;
+
     public double GetValue(string field)
     {
         if (TryGetSyntheticValue(field, out double synthetic))
