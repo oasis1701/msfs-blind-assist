@@ -16,8 +16,9 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 /// <summary>
 /// Cross-profile structural invariants for the 2026-07-13 checklist refinements:
-/// the uniform Before Start tail (ACARS → pushback/start clearance), the Airbus
-/// before/after-the-line separators, and the removed Fenix After Takeoff baro readback.
+/// the uniform Before Start tail (ACARS → pushback/start clearance), the A380's
+/// before-the-line separator, and the A320 family's Airbus-card read-backs (no line markers,
+/// no Before/After Takeoff list).
 /// Pure-logic over the data-driven Build() methods — the automated safety net.
 /// </summary>
 public class FoChecklistRefinementTests
@@ -109,20 +110,24 @@ public class FoChecklistRefinementTests
     { AssertBeforeStartTail(Md11.Md11FoChecklistDefinitions.Build());
       AssertBeforeStartFlowTail(Md11.Md11FoFlowDefinitions.Build()); }
 
-    // ---- Task 2: Airbus before/after-the-line separators ----
-    [Fact] public void A320_BeforeStartCL_HasLine()
-        => AssertHasLineSeparator(A320.FbwA320ChecklistDefinitions.Build(), "BEFORE_START_CL");
-    [Fact] public void A320_BeforeTakeoffCL_HasLine()
-        => AssertHasLineSeparator(A320.FbwA320ChecklistDefinitions.Build(), "BEFORE_TAKEOFF_CL");
+    // ---- Task 2: Airbus before/after-the-line separators (the A380 keeps its own card) ----
     [Fact] public void A380_BeforeStartCL_HasLine()
         => AssertHasLineSeparator(A380.FbwA380ChecklistDefinitions.Build(), "BEFORE_START_CL");
 
-    // ---- Task 1 (Fenix baro removal) ----
-    [Fact] public void Fenix_AfterTakeoffCL_HasNoBaro()
+    // ---- A320 family follows the Nov 2021 Airbus card: no line markers, no Before/After Takeoff read-backs ----
+    [Fact] public void A320_Readbacks_FollowTheAirbusCard()
     {
-        var ids = GroupItemIds(Fenix.FenixChecklistDefinitions.Build(), "AFTER_TAKEOFF_CL");
-        Assert.DoesNotContain("ATC_BARO", ids);
-        Assert.DoesNotContain("ATC_LINE", ids);
+        foreach (var groups in new[]
+                 {
+                     A320.FbwA320ChecklistDefinitions.Build().Select(g => (g.Id, Items: g.Items.Select(i => i.Type))),
+                     HwA330.HwA330ChecklistDefinitions.Build().Select(g => (g.Id, Items: g.Items.Select(i => i.Type))),
+                 })
+        {
+            var list = groups.ToList();
+            Assert.DoesNotContain(list, g => g.Id is "BEFORE_TAKEOFF_CL" or "AFTER_TAKEOFF_CL" or "DEPARTURE_CHANGE_CL");
+            Assert.All(list.Where(g => g.Id.EndsWith("_CL")),
+                g => Assert.DoesNotContain(MSFSBlindAssist.FirstOfficer.Models.ChecklistItemType.Informational, g.Items));
+        }
     }
 
     // ---- guardrail: new Info separators keep *_CL groups action-free (Airbus) ----

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MSFSBlindAssist.FirstOfficer.Airbus;
 using MSFSBlindAssist.FirstOfficer.Generic;
 using MSFSBlindAssist.SimConnect;
 
@@ -73,6 +74,12 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         "A32NX_RCDR_GROUND_CONTROL_ON",
         // Gear legs (FbwA320GearConfirmation)
         "A32NX_GEAR_CENTER_POSITION", "A32NX_GEAR_LEFT_POSITION", "A32NX_GEAR_RIGHT_POSITION",
+        // Read-back live values (the Airbus card's "SET"/"CHECKED" lines speak the value the
+        // First Officer reads). Polling a Continuous var is harmless; the OnRequest ones need it.
+        "FUEL_QUANTITY_KG", "A32NX_EFB_USING_METRIC_UNIT",
+        "PFD_V1", "PFD_VR", "PFD_V2", "A32NX_AIRLINER_TO_FLEX_TEMP",
+        "A32NX_FAC_1_RUDDER_TRIM_POS", "A32NX_GPWS_FLAPS3",
+        "A32NX_FCU_LEFT_EIS_BARO_HPA", "A32NX_FCU_LEFT_EIS_BARO",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;
@@ -94,8 +101,71 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         return double.NaN;
     }
 
+    /// <summary>
+    /// FAC 1 rudder-trim word (ARINC429 degrees, positive = nose-left): 1 when the trim is
+    /// neutral (under 0.1 degrees, the panel's own "Neutral" threshold), 0 when it is not, NaN
+    /// when the word carries no data (failure warning / no computed data, and the 0 a
+    /// never-written L:var reads) or was never read, so an unread trim can never tick the line.
+    /// </summary>
+    internal static double DecodeRudderTrimNeutral(double raw)
+    {
+        if (double.IsNaN(raw)) return double.NaN;
+        var word = new Arinc429Word(raw);
+        return word.HasData ? (Math.Abs(word.Value) < 0.1 ? 1.0 : 0.0) : double.NaN;
+    }
+
+    /// <summary>Captain-side baro for the read-back: STD, or the QNH value from the FCU's
+    /// EIS words (mode 0 STD / 1 hPa / 2 inHg). Null when unknown.</summary>
+    public string? BaroText()
+    {
+        double mode = GetValue("A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE");
+        if (double.IsNaN(mode)) return null;
+        if (mode < 0.5) return AirbusReadbackFormat.Baro(1, double.NaN, false);
+        bool inHg = mode > 1.5;
+        double raw = GetValue(inHg ? "A32NX_FCU_LEFT_EIS_BARO" : "A32NX_FCU_LEFT_EIS_BARO_HPA");
+        if (double.IsNaN(raw)) return null;
+        var word = new Arinc429Word(raw);
+        return word.HasData ? AirbusReadbackFormat.Baro(0, word.Value, inHg) : null;
+    }
+
+    /// <summary>Total fuel in the EFB's unit (A32NX_EFB_USING_METRIC_UNIT 1 = kg, 0 = lb);
+    /// <c>FUEL_QUANTITY_KG</c> is read in kilograms. Null when the fuel or the unit is unknown.</summary>
+    public string? FuelText()
+    {
+        double metric = GetValue("A32NX_EFB_USING_METRIC_UNIT");
+        if (double.IsNaN(metric)) return null;
+        return AirbusReadbackFormat.FuelQuantity(GetValue("FUEL_QUANTITY_KG"), pounds: metric < 0.5);
+    }
+
     protected override bool TryGetSyntheticValue(string field, out double value)
     {
+        switch (field)
+        {
+            // Radar ON (system 1 or 2 — 1 is OFF) AND predictive windshear AUTO (1).
+            case "FO_WXR_ON_AUTO":
+                value = Both(GetValue("XMLVAR_A320_WeatherRadar_Sys"), GetValue("A32NX_SWITCH_RADAR_PWS_POSITION"),
+                    (sys, pws) => Math.Abs(sys - 1) > 0.5 && Math.Abs(pws - 1) < 0.5);
+                return true;
+            // Radar OFF (1) AND predictive windshear OFF (0).
+            case "FO_WXR_PWS_OFF":
+                value = Both(GetValue("XMLVAR_A320_WeatherRadar_Sys"), GetValue("A32NX_SWITCH_RADAR_PWS_POSITION"),
+                    (sys, pws) => Math.Abs(sys - 1) < 0.5 && pws < 0.5);
+                return true;
+            // The memo's SIGNS line: seat-belt sign lit AND no smoking ON or AUTO (0 On / 1 Auto / 2 Off).
+            case "FO_SIGNS_ON":
+                value = Both(GetValue("CABIN SEATBELTS ALERT SWITCH"), GetValue("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION"),
+                    (belts, smoking) => belts > 0.5 && smoking < 1.5);
+                return true;
+            // The LDG memo's flaps line: FULL, or 3 when the GPWS LDG FLAP 3 switch is on.
+            case "FO_LDG_FLAPS_SET":
+                value = Both(GetValue("A32NX_FLAPS_HANDLE_INDEX"), GetValue("A32NX_GPWS_FLAPS3"),
+                    (flaps, conf3) => conf3 > 0.5 ? Math.Abs(flaps - 3) < 0.5 : Math.Abs(flaps - 4) < 0.5);
+                return true;
+            // FAC 1 rudder trim word: neutral when |trim| < 0.1°; no data → NaN.
+            case "FO_RUDDER_TRIM_NEUTRAL":
+                value = DecodeRudderTrimNeutral(GetValue("A32NX_FAC_1_RUDDER_TRIM_POS"));
+                return true;
+        }
         if (field == "FO_ENGINES_OFF")
         {
             double e1 = GetValue("A32NX_ENGINE_STATE:1"), e2 = GetValue("A32NX_ENGINE_STATE:2");
