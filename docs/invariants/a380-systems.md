@@ -1,7 +1,7 @@
 # FlyByWire A380X systems and panels — rules in full
 
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/a380-systems.md`, which Claude Code loads when it reads matching code. Background: [a380x.md](../a380x.md).
-The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
+The text is verbatim from CLAUDE.md as of `1f37801a` (A380-28: PR #160's widened text as of `642f48c1`); a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
 
 ## A380-1
 
@@ -113,7 +113,7 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## A380-28
 
-- "Passengers on Board" sums the per-station `A32NX_PAX_<st>_DESIRED` seat bitmasks (the planned/target load the flyPad headline + GSX `FSDT_GSX_NUMPASSENGERS` report), NOT the boarded `A32NX_PAX_<st>` set — the boarded bitmask lags and, under GSX-driven boarding, settles below target and stays there (popcount is exact, max 50 seats/station < 2⁵³; it's the wrong quantity, not a math bug). → [a380x.md](../a380x.md)
+- "Passengers on Board" sums the per-station `A32NX_PAX_<st>_DESIRED` seat bitmasks (the planned/target load the flyPad headline + GSX `FSDT_GSX_NUMPASSENGERS` report), NOT the boarded `A32NX_PAX_<st>` set — the boarded bitmask lags and, under GSX-driven boarding, settles below target and stays there (popcount is exact, but the "max 50 seats/station" margin is A320-calibrated and does NOT describe the wider cabins — the Headwind A330's station J was live-measured at 9007197107257344, a FULL 53-bit mask sitting just 2³¹ below float64's exact-integer limit of 2⁵³; still exact, with far less headroom than that phrase implies; it's the wrong quantity, not a math bug). → [a380x.md](../a380x.md)
 
 ## A380-29
 

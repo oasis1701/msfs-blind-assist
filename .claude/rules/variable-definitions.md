@@ -25,3 +25,7 @@ Loaded when Claude reads matching code. Background: docs/aircraft-definitions.md
 
 Mirrored from visual-guidance.md (it governs `VisualGuidanceProfile` in IAircraftDefinition.cs; change it there and here together):
 - [VG-15] Never collapse `GlideslopeAltitudeBiasFt` and `FlareAltitudeBiasFt` into one shared constant: they apply in different code paths (glideslope error vs phase detection) and were measured separately. Full: docs/invariants/visual-guidance.md#vg-15
+
+Mirrored from first-officer.md (they govern `IAircraftDefinition` members each definition implements; change them there and here together):
+- [FO-17] Auto-AP-engage is floored by `IAircraftDefinition.MinimumAutopilotEngageAltitudeAgl` (PMDG 737 = 400 ft, its AFDS inhibits CMD below 400 ft RA; 777 = 200): never let the user setting press below an aircraft's own limit, and never lower the 737's floor, or the press is silently rejected while success is announced. Full: docs/invariants/first-officer.md#fo-17
+- [FO-18] Auto-AP-engage is CLOSED-LOOP wherever `IAircraftDefinition.IsAutopilotEngaged` is non-null: announce only a CONFIRMED engagement, retry a rejected press (`MaxApEngageAttempts`), report a Captain action if it never takes. It returns null, never false, before the first CDA snapshot (PMDG engage switches toggle). Full: docs/invariants/first-officer.md#fo-18

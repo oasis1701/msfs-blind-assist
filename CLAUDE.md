@@ -90,6 +90,7 @@ Screen readers already announce every UI control interaction, so the app NEVER a
 - [CORE-16] Area rules (`.claude/rules/`) load only when the Read, Edit or Write tool opens a file, never through `cat`, `sed`, `rg` or Grep: Read a file before changing it, or its area's rules never reach you. Full: docs/invariants/core.md#core-16
 - [CORE-11] In `SimConnectManager`, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`: `StartContinuousMonitoring()` guards on it. Full: docs/invariants/core.md#core-11
 - [CORE-12] Never use `TreeView` directly in a form: use `NativeAccessibleTreeView` (the .NET UIA tree gives NVDA a wrong order); a tree with detail data populates its children lazily on `BeforeExpand`. Full: docs/invariants/core.md#core-12
+- [CORE-17] Never set `TreeView.CheckBoxes = true` on a tree mixing checkable items with plain headers (NVDA calls every selected or once-expanded header a "check box"); use `NativeAccessibleTreeView.CheckboxStateImages = true` + `ShowCheckBox(node)`, with a NodeMouseClick hit-test for mouse clicks. Full: docs/invariants/core.md#core-17
 - [CORE-13] Never hardcode the FBWBA/MSFSBlindAssist database path: reads go through `DatabasePathResolver.ResolveExistingDatabasePath`, writes through `GetCanonicalDatabasePath`. Full: docs/invariants/core.md#core-13
 - [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one. Full: docs/invariants/core.md#core-14
 - [CORE-15] Never hand-build a log write (`File.AppendAllText`, a raw path): use `Log.Debug/Info/Warn/Error(category, msg)` for debug.log, or `Log.Channel(name)` for a named log. Full: docs/invariants/core.md#core-15
@@ -173,6 +174,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [ifly-737.md](docs/ifly-737.md) | iFly 737 MAX8: SDK shared memory + WM_COPYDATA, no MobiFlight, no L:var writes except named clickspot replays | — |
 | [hs787.md](docs/hs787.md) | HorizonSim 787-9: CDU, IRS, EICAS over the Coherent debugger | hs787 |
 | [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11 |
+| [first-officer.md](docs/first-officer.md) | The screen-reader First Officer: flows, checklists, auto managers, per-aircraft profiles (PMDG 777/737, iFly 737, Fenix, FBW A32NX/A380, Headwind A330, MD-11) | first-officer, first-officer-boeing, first-officer-airbus |
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
 
 ## Adding or changing a rule

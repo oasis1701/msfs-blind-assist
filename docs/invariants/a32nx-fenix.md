@@ -1,7 +1,7 @@
 # FlyByWire A32NX and Fenix A320 — rules in full
 
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/a32nx-fenix.md`, which Claude Code loads when it reads matching code. Background: [a32nx.md](../a32nx.md).
-The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
+The text is verbatim from CLAUDE.md as of `1f37801a` (A320-30: PR #160's widened text as of `642f48c1`); a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
 
 ## A320-1
 
@@ -121,7 +121,7 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## A320-30
 
-- A32NX "Passengers on Board" sums the `A32NX_PAX_{A..D}_DESIRED` planned bitmasks, not the lagging boarded set (same lesson as the A380 pax fix). → [a32nx.md](../a32nx.md)
+- A32NX "Passengers on Board" sums the `A32NX_PAX_{A..D}_DESIRED` planned bitmasks, not the lagging boarded set (same lesson as the A380 pax fix). ⚠ THE STATION LIST IS PER-AIRFRAME, never fleet-wide: the station set is `FlyByWireA320Definition.PaxStationVars` (protected virtual) and the **Headwind A330 has TEN stations, A..J**, which it overrides in. Inheriting the A320's four silently undercounted — live-measured 2026-08-31 in cruise, MSFSBA spoke **39 passengers with 136 aboard**, a 97-pax / 71 % undercount, because E..J were never registered and so never delivered. The popcount/sum consumer in `ProcessSimVarUpdate` is deliberately station-AGNOSTIC (it matches any `A32NX_PAX_*_DESIRED`), so registration is the only thing that decides what counts — fix a station gap there, never by whitelisting in the consumer. These vars are batch-covered, so extra stations cost ZERO individual data definitions. → [a32nx.md](../a32nx.md)
 
 ## A320-31
 

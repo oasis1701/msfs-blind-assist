@@ -1,6 +1,6 @@
 # First Officer Automation
 
-Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8, HeadwindSim A330-900neo and TFDi MD-11. This is the detailed reference; the CLAUDE.md invariants index links here. In-sim verification lives in the per-aircraft test plans under `docs/`.
+Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8, HeadwindSim A330-900neo and TFDi MD-11. This is the detailed reference. Its rules load with the code from `.claude/rules/first-officer.md` (shared), `first-officer-boeing.md` (PMDG 777/737, iFly 737 MAX8, centre fuel pumps) and `first-officer-airbus.md` (Fenix, FBW A32NX/A380, Headwind A330); their full texts are in `docs/invariants/` under the same names. In-sim verification lives in the per-aircraft test plans under `docs/`.
 
 ## Overview
 
