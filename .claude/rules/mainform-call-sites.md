@@ -25,7 +25,7 @@ MIRRORS: each line below is copied word for word from its area's rule file, beca
 - [P777-10] MainForm's PMDG panel-populate loop must force-read only `Type == PMDGVar` controls: `GetFieldValue` on a non-PMDG control (e.g. an LVar combo) returns the 0.0 "unknown field" sentinel and silently resets it on every panel re-show. Full: docs/invariants/pmdg-777.md#p777-10
 
 Mirrored from da40-shared-code.md and da40.md (they govern MainForm code; change them there and here together):
-- [DA40S-6] A non-percentage numeric control never sets `RenderAsSlider` (the TrackBar is 0-100); `HelpText` reaches the pilot on BUTTONS only and the other ten PanelBuilder sites must not be wired to it. Full: docs/invariants/da40-shared-code.md#da40s-6
+- [DA40S-6] A non-percentage numeric control never sets `RenderAsSlider` (the TrackBar is 0-100); `HelpText` reaches the pilot on BUTTONS only, never the other PanelBuilder sites. Full: docs/invariants/da40-shared-code.md#da40s-6
 - [DA40S-7] A background monitor starts in BOTH `MainForm_Load` and `SwitchAircraft`, or it never runs for the aircraft the app opens with. Full: docs/invariants/da40-shared-code.md#da40s-7
 - [DA40S-12] Take-off-roll speed calls are decided only by `TakeoffRollCallouts` and applied for the CURRENT aircraft on every path that configures `TakeoffAssistManager` (aircraft switch AND Settings save); a profile is never applied without being taken back. Full: docs/invariants/da40-shared-code.md#da40s-12
 - [DA40-15] A DA40 profile follows the airframe the sim has loaded (`DA40Airframe` + `MainForm.SwapDA40ProfileToMatch`): on connect from the TITLE and on every load from the AircraftLoaded path, NG<->XLS only. Full: docs/invariants/da40.md#da40-15
