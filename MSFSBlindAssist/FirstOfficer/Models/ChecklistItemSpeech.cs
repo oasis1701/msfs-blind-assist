@@ -3,7 +3,7 @@ namespace MSFSBlindAssist.FirstOfficer.Models;
 /// <summary>
 /// The text the First Officer window speaks when a checklist line is ticked by hand, and
 /// shows on its status line. A line with a <see cref="ChecklistItem{TExec,TState}.LiveValue"/>
-/// carries the value the First Officer reads ("Flaps setting: SET (both), flaps 1: checked");
+/// carries the value the First Officer reads ("Flaps setting: SET, flaps 1: checked");
 /// without one the text is exactly what it was before live values existed. Pure, so the
 /// format is pinned by tests rather than by the form.
 /// </summary>

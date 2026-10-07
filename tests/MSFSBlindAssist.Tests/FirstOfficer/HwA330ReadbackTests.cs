@@ -82,9 +82,9 @@ public class HwA330ReadbackTests
     public void Memo_lines_use_the_A32NX_ECAM_wording()
     {
         var items = HwA330ChecklistDefinitions.Build().SelectMany(g => g.Items).ToDictionary(i => i.Id);
-        Assert.Equal("Takeoff memo, seat belts: ON", items["TXC_MEMO_SIGNS"].Label);
-        Assert.Equal("Landing memo, seat belts: ON", items["LDC_MEMO_SIGNS"].Label);
-        Assert.Equal("Takeoff memo, T.O config: NORMAL", items["TXC_MEMO_TOCFG"].Label);
+        Assert.Equal("Seat belts: ON", items["TXC_MEMO_SIGNS"].Label);
+        Assert.Equal("Seat belts: ON", items["LDC_MEMO_SIGNS"].Label);
+        Assert.Equal("T.O config: NORMAL", items["TXC_MEMO_TOCFG"].Label);
         Assert.Equal(FbwA320GearConfirmation.DownField, items["LDC_MEMO_GEAR"].StateFieldName);
     }
 

@@ -72,7 +72,7 @@ public static class FenixChecklistDefinitions
             // Cockpit lighting, bright for ground preparation — the A32NX's lines and labels
             // on the Fenix encodings (ANN 0 Dim / 1 Bright / 2 Test; dome 0 Off / 1 Dim /
             // 2 Bright). No standby-compass line: the Fenix has no compass light.
-            Auto("EPU_COCKPITLT", "ELEC_POWER_UP", "Cockpit lights: ANN bright",
+            Auto("EPU_COCKPITLT", "ELEC_POWER_UP", "Cockpit lights: annunciator bright",
                 "S_OH_IN_LT_ANN_LT", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_IN_LT_ANN_LT", 1)),
             Auto("EPU_DOME", "ELEC_POWER_UP", "Cockpit lights: dome bright",
                 "S_OH_INT_LT_DOME", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_OH_INT_LT_DOME", 2)),
@@ -92,7 +92,7 @@ public static class FenixChecklistDefinitions
                 (e, s) => s.IsOn("I_OH_RCRD_GND_CTL_L") ? Task.CompletedTask : e.Pulse("S_OH_RCRD_GND_CTL")),
             // Held 3 s test (like the fire tests) — ticking runs a self-completing test and
             // the switch returns to NORMAL, so it never sticks in TEST.
-            ActionManual("PF_CVR", "PREFLIGHT", "CVR test (listen for the test tone)",
+            ActionManual("PF_CVR", "PREFLIGHT", "CVR test: listen for the test tone",
                 (e, _) => e.CvrTest("S_OH_RCRD_TEST")),
             Auto("PF_IRS", "PREFLIGHT", "IRS 1, 2 and 3: NAV",
                 "S_OH_NAV_IR1_MODE", v => Math.Abs(v - 1) < 0.5,
@@ -270,7 +270,7 @@ public static class FenixChecklistDefinitions
             Reminder("AS_ANTIICE", "AFTER_START", "Set engine and wing anti-ice as required"),
             Reminder("AS_PITCHTRIM", "AFTER_START", "Set pitch trim per the loadsheet"),
             // Cockpit lighting, dim for taxi and flight (Fenix ANN DIM is 0, dome DIM is 1).
-            Auto("AS_COCKPITLT", "AFTER_START", "Cockpit lights: ANN dim",
+            Auto("AS_COCKPITLT", "AFTER_START", "Cockpit lights: annunciator dim",
                 "S_OH_IN_LT_ANN_LT", v => Math.Abs(v) < 0.5, (e, _) => e.Set("S_OH_IN_LT_ANN_LT", 0)),
             Auto("AS_DOME", "AFTER_START", "Cockpit lights: dome dim",
                 "S_OH_INT_LT_DOME", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_INT_LT_DOME", 1)),
@@ -466,7 +466,7 @@ public static class FenixChecklistDefinitions
             ActionManual("SD_COCKPITDOOR", "SHUTDOWN", "Cockpit door: UNLOCKED",
                 (e, _) => e.SetCockpitDoor(true)),
             // Cockpit lighting, bright for parking.
-            Auto("SD_COCKPITLT", "SHUTDOWN", "Cockpit lights: ANN bright",
+            Auto("SD_COCKPITLT", "SHUTDOWN", "Cockpit lights: annunciator bright",
                 "S_OH_IN_LT_ANN_LT", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_IN_LT_ANN_LT", 1)),
             Auto("SD_DOME", "SHUTDOWN", "Cockpit lights: dome bright",
                 "S_OH_INT_LT_DOME", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_OH_INT_LT_DOME", 2)),
@@ -509,7 +509,7 @@ public static class FenixChecklistDefinitions
             Auto("SC_BAT2", "SECURE", "Battery 2: OFF",
                 "S_OH_ELEC_BAT2", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_BAT2", 0)),
             // Cockpit lighting off: ANN left at BRIGHT for the next power-up, dome and knobs off.
-            Auto("SC_COCKPITLT", "SECURE", "Cockpit lights: ANN bright",
+            Auto("SC_COCKPITLT", "SECURE", "Cockpit lights: annunciator bright",
                 "S_OH_IN_LT_ANN_LT", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_IN_LT_ANN_LT", 1)),
             Auto("SC_DOME", "SECURE", "Cockpit lights: dome off",
                 "S_OH_INT_LT_DOME", v => Math.Abs(v) < 0.5, (e, _) => e.Set("S_OH_INT_LT_DOME", 0)),
@@ -540,7 +540,7 @@ public static class FenixChecklistDefinitions
             Auto("CPC_ADIRS", "COCKPIT_PREP_CL", "ADIRS: NAV",
                 "S_OH_NAV_IR1_MODE", v => Math.Abs(v - 1) < 0.5,
                 new[] { "S_OH_NAV_IR2_MODE", "S_OH_NAV_IR3_MODE" }, action: null),
-            Reminder("CPC_BARO", "COCKPIT_PREP_CL", "Baro reference: SET (both)", s => s.BaroText()),
+            Reminder("CPC_BARO", "COCKPIT_PREP_CL", "Baro reference: SET", s => s.BaroText()),
         }
     };
 
@@ -551,11 +551,11 @@ public static class FenixChecklistDefinitions
         {
             Reminder("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: SET",
                 s => AirbusReadbackFormat.OnOff(s.GetValue("S_MIP_PARKING_BRAKE"))),
-            Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds and thrust: SET (both)",
+            Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds and thrust: SET",
                 s => AirbusReadbackFormat.TakeoffSpeeds(s.GetValue("FNX2PLD_speedV1"),
                     s.GetValue("FNX2PLD_speedVR"), s.GetValue("FNX2PLD_speedV2"),
                     s.GetValue("N_MISC_PERF_TO_FLEX"))),
-            Reminder("BSC_WINDOWS", "BEFORE_START_CL", "Windows: CLOSED (both)"),
+            Reminder("BSC_WINDOWS", "BEFORE_START_CL", "Windows: CLOSED"),
             Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON",
                 "S_OH_EXT_LT_BEACON", v => v > 0.5, action: null),
         }
@@ -584,26 +584,26 @@ public static class FenixChecklistDefinitions
         Id = "TAXI_CL", Name = "Taxi Checklist",
         Items = new()
         {
-            Reminder("TXC_FCTEST", "TAXI_CL", "Flight controls: CHECKED (both)"),
-            Reminder("TXC_FLAPS", "TAXI_CL", "Flaps setting: SET (both)",
+            Reminder("TXC_FCTEST", "TAXI_CL", "Flight controls: CHECKED"),
+            Reminder("TXC_FLAPS", "TAXI_CL", "Flaps setting: SET",
                 s => AirbusReadbackFormat.FlapsLever(s.GetValue("S_FC_FLAPS"))),
             Auto("TXC_WXR", "TAXI_CL", "Radar and predictive windshear: ON and AUTO",
                 "FO_WXR_ON_AUTO", v => v > 0.5, action: null),
             Reminder("TXC_ENGMODE", "TAXI_CL", "Engine mode selector: SET",
                 s => AirbusReadbackFormat.EngineMode(s.GetValue("S_ENG_MODE"))),
-            Auto("TXC_MEMO_AUTOBRK", "TAXI_CL", "Takeoff memo, autobrake: MAX",
+            Auto("TXC_MEMO_AUTOBRK", "TAXI_CL", "Autobrake: MAX",
                 "I_MIP_AUTOBRAKE_MAX_L", v => v > 0.5, action: null),
             // The Fenix's memo prints "SIGNS": seat belts ON and the no-smoking sign lit (the
             // switch at Auto or On). S_OH_SIGNS_SMOKING is 0 Off / 1 Auto / 2 On.
-            Auto("TXC_MEMO_SIGNS", "TAXI_CL", "Takeoff memo, signs: ON",
+            Auto("TXC_MEMO_SIGNS", "TAXI_CL", "Signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, new[] { "S_OH_SIGNS_SMOKING" }, action: null),
-            Reminder("TXC_MEMO_CABIN", "TAXI_CL", "Takeoff memo, cabin: READY"),
+            Reminder("TXC_MEMO_CABIN", "TAXI_CL", "Cabin: READY"),
             // A_FC_SPEEDBRAKE: 0 = ARMED.
-            Auto("TXC_MEMO_SPLRS", "TAXI_CL", "Takeoff memo, spoilers: ARMED",
+            Auto("TXC_MEMO_SPLRS", "TAXI_CL", "Spoilers: ARMED",
                 "A_FC_SPEEDBRAKE", v => Math.Abs(v) < 0.5, action: null),
-            Auto("TXC_MEMO_FLAPS", "TAXI_CL", "Takeoff memo, flaps: T.O",
+            Auto("TXC_MEMO_FLAPS", "TAXI_CL", "Flaps: T.O",
                 "S_FC_FLAPS", v => v > 0.5 && v < 3.5, action: null),
-            Reminder("TXC_MEMO_TOCFG", "TAXI_CL", "Takeoff memo, T.O config: NORMAL"),
+            Reminder("TXC_MEMO_TOCFG", "TAXI_CL", "T.O config: NORMAL"),
         }
     };
 
@@ -612,7 +612,7 @@ public static class FenixChecklistDefinitions
         Id = "LINEUP_CL", Name = "Line-up Checklist",
         Items = new()
         {
-            Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED (both)"),
+            Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED"),
             Auto("LUC_TCAS", "LINEUP_CL", "TCAS: TA/RA",
                 "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, action: null,
                 live: s => AirbusReadbackFormat.Tcas(s.GetValue("S_XPDR_MODE"))),
@@ -627,7 +627,7 @@ public static class FenixChecklistDefinitions
         Id = "APPROACH_CL", Name = "Approach Checklist",
         Items = new()
         {
-            Reminder("APC_BARO", "APPROACH_CL", "Baro reference: SET (both)", s => s.BaroText()),
+            Reminder("APC_BARO", "APPROACH_CL", "Baro reference: SET", s => s.BaroText()),
             Auto("APC_SEATBELTS", "APPROACH_CL", "Seat belts: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
             Reminder("APC_MINIMUM", "APPROACH_CL", "Minimum: SET"),
@@ -648,15 +648,15 @@ public static class FenixChecklistDefinitions
             // lower legend lit, its upper legend and the red arrow out — the greens measured
             // live 2026-09-25), never the lever alone (owner decision 2026-09-22). The Fenix
             // has no Landing flow, so nothing latches this line: it ticks from its own state.
-            Auto("LDC_MEMO_GEAR", "LANDING_CL", "Landing memo, landing gear: DOWN",
+            Auto("LDC_MEMO_GEAR", "LANDING_CL", "Landing gear: DOWN",
                 FenixGearConfirmation.DownField, v => v > 0.5, action: null),
-            Auto("LDC_MEMO_SIGNS", "LANDING_CL", "Landing memo, signs: ON",
+            Auto("LDC_MEMO_SIGNS", "LANDING_CL", "Signs: ON",
                 "S_OH_SIGNS", v => v > 0.5, action: null),
-            Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Landing memo, cabin: READY"),
-            Auto("LDC_MEMO_SPLRS", "LANDING_CL", "Landing memo, spoilers: ARMED",
+            Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Cabin: READY"),
+            Auto("LDC_MEMO_SPLRS", "LANDING_CL", "Spoilers: ARMED",
                 "A_FC_SPEEDBRAKE", v => Math.Abs(v) < 0.5, action: null),
             // FULL, or 3 with the GPWS LDG FLAP 3 switch on; the live value is the lever itself.
-            Auto("LDC_MEMO_FLAPS", "LANDING_CL", "Landing memo, flaps: SET",
+            Auto("LDC_MEMO_FLAPS", "LANDING_CL", "Flaps: SET",
                 "FO_LDG_FLAPS_SET", v => v > 0.5, action: null,
                 live: s => AirbusReadbackFormat.FlapsLever(s.GetValue("S_FC_FLAPS"))),
         }

@@ -15,8 +15,8 @@ public class ChecklistItemSpeechTests
     [Fact]
     public void Tick_with_a_value_speaks_it_between_label_and_status()
     {
-        Assert.Equal("Flaps setting: SET (both), flaps 1: checked",
-            ChecklistItemSpeech.TickText("Flaps setting: SET (both)", "flaps 1", true));
+        Assert.Equal("Flaps setting: SET, flaps 1: checked",
+            ChecklistItemSpeech.TickText("Flaps setting: SET", "flaps 1", true));
     }
 
     [Fact]

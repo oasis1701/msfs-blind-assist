@@ -117,7 +117,7 @@ public static class FenixFlowDefinitions
             // it never sticks in TEST).
             Done(Skip(SW("PF_GNDCTL", "Recorder ground control: ON", "S_OH_RCRD_GND_CTL", 1),
                 s => s.IsOn("I_OH_RCRD_GND_CTL_L")), "PF_GNDCTL"),
-            Done(SW("PF_CVR", "CVR test — listen for the test tone", "CVR_TEST", 1), "PF_CVR"),
+            Done(SW("PF_CVR", "CVR test: listen for the test tone", "CVR_TEST", 1), "PF_CVR"),
             // ADIRS
             Done(Skip(Multi("PF_IRS", "IRS 1, 2 and 3: NAV",
                     ("S_OH_NAV_IR1_MODE", 1), ("S_OH_NAV_IR2_MODE", 1), ("S_OH_NAV_IR3_MODE", 1)),

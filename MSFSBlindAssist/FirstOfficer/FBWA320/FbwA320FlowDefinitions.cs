@@ -140,7 +140,7 @@ public static class FbwA320FlowDefinitions
             // button via the executor's CvrTestAsync pseudo-key) — sim + source verified.
             Done(Skip(SW("PF_GNDCTL", "Recorder ground control: ON", "A32NX_RCDR_GROUND_CONTROL_ON", 1),
                 s => s.IsOn("A32NX_RCDR_GROUND_CONTROL_ON")), "PF_GNDCTL"),
-            Done(SW("PF_CVR", "CVR test — listen for the test tone", "CVR_TEST", 1), "PF_CVR"),
+            Done(SW("PF_CVR", "CVR test: listen for the test tone", "CVR_TEST", 1), "PF_CVR"),
             // ADIRS
             Done(Skip(Multi("PF_IRS", "IRS 1, 2 and 3: NAV",
                     ("A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB", 1), ("A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", 1),

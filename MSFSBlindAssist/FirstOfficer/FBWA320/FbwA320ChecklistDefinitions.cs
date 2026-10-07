@@ -85,7 +85,7 @@ public static class FbwA320ChecklistDefinitions
             // ★ Cockpit lighting (spec §4.1): Bright for ground prep. ANN matches the
             // flow's actual write; dome + standby compass are additional independently
             // settable Auto items; the scene ActionManual fires the full batched write.
-            Auto("EPU_COCKPITLT", "ELEC_POWER_UP", "Cockpit lights: ANN bright", "A32NX_OVHD_INTLT_ANN",
+            Auto("EPU_COCKPITLT", "ELEC_POWER_UP", "Cockpit lights: annunciator bright", "A32NX_OVHD_INTLT_ANN",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 1)),
             Auto("EPU_DOME", "ELEC_POWER_UP", "Cockpit lights: dome bright", "A32NX_OVHD_INTLT_DOME",
                 v => v >= 90, (e, _) => e.Set("A32NX_OVHD_INTLT_DOME", 100)),
@@ -107,7 +107,7 @@ public static class FbwA320ChecklistDefinitions
             // Recorder ground control + CVR test — sim + source verified (2026-07).
             Auto("PF_GNDCTL", "PREFLIGHT", "Recorder ground control: ON", "A32NX_RCDR_GROUND_CONTROL_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_RCDR_GROUND_CONTROL_ON", 1)),
-            ActionManual("PF_CVR", "PREFLIGHT", "CVR test (listen for the test tone)", (e, _) => e.CvrTest()),
+            ActionManual("PF_CVR", "PREFLIGHT", "CVR test: listen for the test tone", (e, _) => e.CvrTest()),
             Auto("PF_IRS", "PREFLIGHT", "IRS 1, 2 and 3: NAV", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
                 v => System.Math.Abs(v - 1) < 0.5,
                 new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
@@ -277,7 +277,7 @@ public static class FbwA320ChecklistDefinitions
             Reminder("AS_ANTIICE", "AFTER_START", "Set engine and wing anti-ice as required"),
             Reminder("AS_PITCHTRIM", "AFTER_START", "Set pitch trim per the loadsheet"),
             // ★ Cockpit lighting: Dim for taxi/flight.
-            Auto("AS_COCKPITLT", "AFTER_START", "Cockpit lights: ANN dim", "A32NX_OVHD_INTLT_ANN",
+            Auto("AS_COCKPITLT", "AFTER_START", "Cockpit lights: annunciator dim", "A32NX_OVHD_INTLT_ANN",
                 v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 2)),
             Auto("AS_DOME", "AFTER_START", "Cockpit lights: dome dim", "A32NX_OVHD_INTLT_DOME",
                 v => v <= 30, (e, _) => e.Set("A32NX_OVHD_INTLT_DOME", 20)),
@@ -478,7 +478,7 @@ public static class FbwA320ChecklistDefinitions
             Auto("SD_COCKPITDOOR", "SHUTDOWN", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED",
                 v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_COCKPIT_DOOR_LOCKED", 0)),
             // ★ Cockpit lighting: Bright for parking.
-            Auto("SD_COCKPITLT", "SHUTDOWN", "Cockpit lights: ANN bright", "A32NX_OVHD_INTLT_ANN",
+            Auto("SD_COCKPITLT", "SHUTDOWN", "Cockpit lights: annunciator bright", "A32NX_OVHD_INTLT_ANN",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 1)),
             Auto("SD_DOME", "SHUTDOWN", "Cockpit lights: dome bright", "A32NX_OVHD_INTLT_DOME",
                 v => v >= 90, (e, _) => e.Set("A32NX_OVHD_INTLT_DOME", 100)),
@@ -524,7 +524,7 @@ public static class FbwA320ChecklistDefinitions
             Auto("SC_BAT2", "SECURE", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
                 v => v < 0.5, (e, _) => e.Set("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0)),
             // ★ Cockpit lighting off (full off-scene).
-            Auto("SC_COCKPITLT", "SECURE", "Cockpit lights: ANN bright", "A32NX_OVHD_INTLT_ANN",
+            Auto("SC_COCKPITLT", "SECURE", "Cockpit lights: annunciator bright", "A32NX_OVHD_INTLT_ANN",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 1)),
             Auto("SC_DOME", "SECURE", "Cockpit lights: dome off", "A32NX_OVHD_INTLT_DOME",
                 v => v <= 5, (e, _) => e.Set("A32NX_OVHD_INTLT_DOME", 0)),
@@ -557,7 +557,7 @@ public static class FbwA320ChecklistDefinitions
                 v => System.Math.Abs(v - 1) < 0.5,
                 new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
                 action: null),
-            Reminder("CPC_BARO", "COCKPIT_PREP_CL", "Baro reference: SET (both)", s => s.BaroText()),
+            Reminder("CPC_BARO", "COCKPIT_PREP_CL", "Baro reference: SET", s => s.BaroText()),
         }
     };
 
@@ -568,10 +568,10 @@ public static class FbwA320ChecklistDefinitions
         {
             Reminder("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: SET",
                 s => AirbusReadbackFormat.OnOff(s.GetValue("A32NX_PARK_BRAKE_LEVER_POS"))),
-            Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds and thrust: SET (both)",
+            Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds and thrust: SET",
                 s => AirbusReadbackFormat.TakeoffSpeeds(s.GetValue("PFD_V1"), s.GetValue("PFD_VR"),
                     s.GetValue("PFD_V2"), s.GetValue("A32NX_AIRLINER_TO_FLEX_TEMP"))),
-            Reminder("BSC_WINDOWS", "BEFORE_START_CL", "Windows: CLOSED (both)"),
+            Reminder("BSC_WINDOWS", "BEFORE_START_CL", "Windows: CLOSED"),
             Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON", "LIGHT BEACON", v => v > 0.5, action: null),
         }
     };
@@ -596,23 +596,23 @@ public static class FbwA320ChecklistDefinitions
         Id = "TAXI_CL", Name = "Taxi Checklist",
         Items = new()
         {
-            Reminder("TXC_FCTEST", "TAXI_CL", "Flight controls: CHECKED (both)"),
-            Reminder("TXC_FLAPS", "TAXI_CL", "Flaps setting: SET (both)",
+            Reminder("TXC_FCTEST", "TAXI_CL", "Flight controls: CHECKED"),
+            Reminder("TXC_FLAPS", "TAXI_CL", "Flaps setting: SET",
                 s => AirbusReadbackFormat.FlapsLever(s.GetValue("A32NX_FLAPS_HANDLE_INDEX"))),
             Auto("TXC_WXR", "TAXI_CL", "Radar and predictive windshear: ON and AUTO", "FO_WXR_ON_AUTO",
                 v => v > 0.5, action: null),
             Reminder("TXC_ENGMODE", "TAXI_CL", "Engine mode selector: SET",
                 s => AirbusReadbackFormat.EngineMode(s.GetValue("ENGINE_MODE_SELECTOR"))),
-            Auto("TXC_MEMO_AUTOBRK", "TAXI_CL", "Takeoff memo, autobrake: MAX", "A32NX_AUTOBRAKES_ARMED_MODE",
+            Auto("TXC_MEMO_AUTOBRK", "TAXI_CL", "Autobrake: MAX", "A32NX_AUTOBRAKES_ARMED_MODE",
                 v => System.Math.Abs(v - 3) < 0.5, action: null),
-            Auto("TXC_MEMO_SIGNS", "TAXI_CL", "Takeoff memo, seat belts: ON", "FO_SIGNS_ON",
+            Auto("TXC_MEMO_SIGNS", "TAXI_CL", "Seat belts: ON", "FO_SIGNS_ON",
                 v => v > 0.5, action: null),
-            Reminder("TXC_MEMO_CABIN", "TAXI_CL", "Takeoff memo, cabin: READY"),
-            Auto("TXC_MEMO_SPLRS", "TAXI_CL", "Takeoff memo, spoilers: ARMED", "A32NX_SPOILERS_ARMED",
+            Reminder("TXC_MEMO_CABIN", "TAXI_CL", "Cabin: READY"),
+            Auto("TXC_MEMO_SPLRS", "TAXI_CL", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
                 v => v > 0.5, action: null),
-            Auto("TXC_MEMO_FLAPS", "TAXI_CL", "Takeoff memo, flaps: T.O", "A32NX_FLAPS_HANDLE_INDEX",
+            Auto("TXC_MEMO_FLAPS", "TAXI_CL", "Flaps: T.O", "A32NX_FLAPS_HANDLE_INDEX",
                 v => v > 0.5 && v < 3.5, action: null),
-            Reminder("TXC_MEMO_TOCFG", "TAXI_CL", "Takeoff memo, T.O config: NORMAL"),
+            Reminder("TXC_MEMO_TOCFG", "TAXI_CL", "T.O config: NORMAL"),
         }
     };
 
@@ -621,7 +621,7 @@ public static class FbwA320ChecklistDefinitions
         Id = "LINEUP_CL", Name = "Line-up Checklist",
         Items = new()
         {
-            Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED (both)"),
+            Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: CONFIRMED"),
             Auto("LUC_TCAS", "LINEUP_CL", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION",
                 v => System.Math.Abs(v - 2) < 0.5, action: null,
                 live: s => AirbusReadbackFormat.Tcas(s.GetValue("A32NX_SWITCH_TCAS_POSITION"))),
@@ -636,7 +636,7 @@ public static class FbwA320ChecklistDefinitions
         Id = "APPROACH_CL", Name = "Approach Checklist",
         Items = new()
         {
-            Reminder("APC_BARO", "APPROACH_CL", "Baro reference: SET (both)", s => s.BaroText()),
+            Reminder("APC_BARO", "APPROACH_CL", "Baro reference: SET", s => s.BaroText()),
             Auto("APC_SEATBELTS", "APPROACH_CL", "Seat belts: ON", "CABIN SEATBELTS ALERT SWITCH",
                 v => v > 0.5, action: null),
             Reminder("APC_MINIMUM", "APPROACH_CL", "Minimum: SET"),
@@ -653,14 +653,14 @@ public static class FbwA320ChecklistDefinitions
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
         {
-            Auto("LDC_MEMO_GEAR", "LANDING_CL", "Landing memo, landing gear: DOWN", FbwA320GearConfirmation.DownField,
+            Auto("LDC_MEMO_GEAR", "LANDING_CL", "Landing gear: DOWN", FbwA320GearConfirmation.DownField,
                 v => v > 0.5, action: null),
-            Auto("LDC_MEMO_SIGNS", "LANDING_CL", "Landing memo, seat belts: ON", "CABIN SEATBELTS ALERT SWITCH",
+            Auto("LDC_MEMO_SIGNS", "LANDING_CL", "Seat belts: ON", "CABIN SEATBELTS ALERT SWITCH",
                 v => v > 0.5, action: null),
-            Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Landing memo, cabin: READY"),
-            Auto("LDC_MEMO_SPLRS", "LANDING_CL", "Landing memo, spoilers: ARMED", "A32NX_SPOILERS_ARMED",
+            Reminder("LDC_MEMO_CABIN", "LANDING_CL", "Cabin: READY"),
+            Auto("LDC_MEMO_SPLRS", "LANDING_CL", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
                 v => v > 0.5, action: null),
-            Auto("LDC_MEMO_FLAPS", "LANDING_CL", "Landing memo, flaps: SET", "FO_LDG_FLAPS_SET",
+            Auto("LDC_MEMO_FLAPS", "LANDING_CL", "Flaps: SET", "FO_LDG_FLAPS_SET",
                 v => v > 0.5, action: null,
                 live: s => AirbusReadbackFormat.FlapsLever(s.GetValue("A32NX_FLAPS_HANDLE_INDEX"))),
         }

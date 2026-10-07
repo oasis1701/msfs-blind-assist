@@ -127,7 +127,7 @@ public class FenixGearConfirmationTests
         Assert.False(step.Condition!(double.NaN));
     }
 
-    // The Fenix profile has no Landing flow, so "Landing memo, landing gear: DOWN"
+    // The Fenix profile has no Landing flow, so "Landing gear: DOWN"
     // (LDC_MEMO_GEAR) is only ever ticked by its own state condition — FO_GEAR_DOWN, three
     // green and no red. That premise is pinned here because FirstOfficerForm's
     // RelatedGroupIdsFor latches `flow.Id + "_CL"` complete automatically whenever a checklist
@@ -258,7 +258,7 @@ public class FenixGearConfirmationTests
         var item = FenixChecklistDefinitions.Build()
             .Single(g => g.Id == "LANDING_CL").Items.Single(i => i.Id == "LDC_MEMO_GEAR");
 
-        Assert.Equal("Landing memo, landing gear: DOWN", item.Label);
+        Assert.Equal("Landing gear: DOWN", item.Label);
         Assert.Equal(FenixGearConfirmation.DownField, item.StateFieldName);
         Assert.NotNull(item.StateCondition);
         Assert.True(item.StateCondition!(1));

@@ -97,10 +97,10 @@ public class FenixReadbackTests
     public void Memo_lines_use_the_printed_card_wording()
     {
         var items = FenixChecklistDefinitions.Build().SelectMany(g => g.Items).ToDictionary(i => i.Id);
-        Assert.Equal("Takeoff memo, signs: ON", items["TXC_MEMO_SIGNS"].Label);
-        Assert.Equal("Landing memo, signs: ON", items["LDC_MEMO_SIGNS"].Label);
-        Assert.Equal("Takeoff memo, T.O config: NORMAL", items["TXC_MEMO_TOCFG"].Label);
-        Assert.Equal("Landing memo, landing gear: DOWN", items["LDC_MEMO_GEAR"].Label);
+        Assert.Equal("Signs: ON", items["TXC_MEMO_SIGNS"].Label);
+        Assert.Equal("Signs: ON", items["LDC_MEMO_SIGNS"].Label);
+        Assert.Equal("T.O config: NORMAL", items["TXC_MEMO_TOCFG"].Label);
+        Assert.Equal("Landing gear: DOWN", items["LDC_MEMO_GEAR"].Label);
         Assert.Equal(FenixGearConfirmation.DownField, items["LDC_MEMO_GEAR"].StateFieldName);
     }
 
