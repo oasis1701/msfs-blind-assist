@@ -19,6 +19,13 @@ using Step = Models.FlowStep<FenixStateEvaluator>;
 /// - A_FC_SPEEDBRAKE 0=Armed,1=Disarmed,2=Half,3=Full. Flaps L:var S_FC_FLAPS 0..4.
 /// - XPDR mode 0=STBY,1=TA,2=TA/RA; operation 0=STBY,1=AUTO,2=ON; TCAS range 1=ALL.
 /// - X-bleed 1=Auto; pack flow 1=Normal; press mode 1=Auto.
+/// - Cockpit lighting, at the A32NX's four points (power-up bright, after start dim,
+///   shutdown bright, secure off): annunciator S_OH_IN_LT_ANN_LT 0=Dim/1=Bright/2=Test (NOT
+///   the A32NX's 1=Bright/2=Dim; never write 2, TEST lights the gear reds), dome
+///   S_OH_INT_LT_DOME 0=Off/1=Dim/2=Bright, and the COCKPIT_LIGHT_SCENE_* pseudo-key for the
+///   four brightness knobs (FenixActionExecutor.CockpitLightingWrites). The A32NX flow sets
+///   only its annunciator and leaves dome and scene to checklist lines; here each line has its
+///   own step (FO-7). No standby-compass light on the Fenix, so no compass step.
 /// </summary>
 public static class FenixFlowDefinitions
 {
@@ -55,7 +62,7 @@ public static class FenixFlowDefinitions
     private static Flow BuildElectricalPowerUp() => new()
     {
         Id = "ELECTRICAL_POWER_UP", Name = "Electrical Power Up",
-        Description = "Safety checks, batteries on, external power if available, nav lights.",
+        Description = "Safety checks, batteries on, external power if available, nav lights, cockpit lights.",
         RelatedChecklistGroupIds = new[] { "ELEC_POWER_UP" },
         Steps = new()
         {
@@ -87,6 +94,10 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("I_OH_ELEC_EXT_PWR_L")), "EPU_EXTPWR"),
             Done(Skip(SW("EPU_NAVLOGO", "Nav and logo lights: ON", "S_OH_EXT_LT_NAV_LOGO", 1),
                 s => s.GetValue("S_OH_EXT_LT_NAV_LOGO") > 0.5), "EPU_NAVLOGO"),
+            // Cockpit lighting: bright for ground preparation (the A32NX's EPU_COCKPITLT point).
+            Done(SW("EPU_COCKPITLT", "Cockpit lights: set", "S_OH_IN_LT_ANN_LT", 1), "EPU_COCKPITLT"),
+            Done(SW("EPU_DOME", "Dome light: bright", "S_OH_INT_LT_DOME", 2), "EPU_DOME"),
+            Done(Scene("EPU_LTSCENE", FenixActionExecutor.CockpitLightScene.DayPrep), "EPU_LTSCENE"),
         }
     };
 
@@ -265,7 +276,7 @@ public static class FenixFlowDefinitions
     private static Flow BuildAfterStart() => new()
     {
         Id = "AFTER_START", Name = "After Start",
-        Description = "Mode NORM, APU off, spoilers armed, takeoff flaps, trims, taxi light.",
+        Description = "Mode NORM, APU off, spoilers armed, takeoff flaps, trims, taxi light, cockpit lights dim.",
         RelatedChecklistGroupIds = new[] { "AFTER_START" },
         Steps = new()
         {
@@ -289,6 +300,11 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_EXT_LT_NOSE", 1)), "AS_NOSE_TAXI"),
             Captain("AS_ANTIICE", "Set engine and wing anti-ice as required"),
             Captain("AS_PITCHTRIM", "Set pitch trim per the loadsheet"),
+            // Cockpit lighting: dim for taxi and flight (the A32NX's AS_COCKPITLT point).
+            // Annunciator DIM is 0 on the Fenix (the A32NX's DIM is 2).
+            Done(SW("AS_COCKPITLT", "Cockpit lights: dim", "S_OH_IN_LT_ANN_LT", 0), "AS_COCKPITLT"),
+            Done(SW("AS_DOME", "Dome light: dim", "S_OH_INT_LT_DOME", 1), "AS_DOME"),
+            Done(Scene("AS_LTSCENE", FenixActionExecutor.CockpitLightScene.DimFlight), "AS_LTSCENE"),
             // ECAM page: status (momentary SD page button — in the executor's pulse table)
             Done(SW("AS_ECAMSTS", "ECAM page: status", "S_ECAM_STATUS", 1), "AS_ECAMSTS"),
         }
@@ -451,7 +467,7 @@ public static class FenixFlowDefinitions
     private static Flow BuildShutdown() => new()
     {
         Id = "SHUTDOWN", Name = "Shutdown",
-        Description = "Parking brake, APU bleed, engine masters off, signs, beacon, fuel pumps.",
+        Description = "Parking brake, APU bleed, engine masters off, signs, beacon, fuel pumps, cockpit lights, ECAM door page.",
         RelatedChecklistGroupIds = new[] { "SHUTDOWN" },
         Steps = new()
         {
@@ -492,6 +508,10 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_EXT_LT_RWY_TURNOFF", 0)), "SD_TURNOFF_OFF"),
             // Cockpit door: open for disembark (S_COCKPIT_DOOR=1, live-verified actuator 2026-07-05).
             Done(SW("SD_COCKPITDOOR", "Cockpit door: unlocked", "S_COCKPIT_DOOR", 1), "SD_COCKPITDOOR"),
+            // Cockpit lighting: bright for parking (the A32NX's SD_COCKPITLT point).
+            Done(SW("SD_COCKPITLT", "Cockpit lights: set", "S_OH_IN_LT_ANN_LT", 1), "SD_COCKPITLT"),
+            Done(SW("SD_DOME", "Dome light: bright", "S_OH_INT_LT_DOME", 2), "SD_DOME"),
+            Done(Scene("SD_LTSCENE", FenixActionExecutor.CockpitLightScene.ParkingBright), "SD_LTSCENE"),
             // ECAM page: door (momentary SD page button — in the executor's pulse table)
             Done(SW("SD_ECAMDOOR", "ECAM page: door", "S_ECAM_DOOR", 1), "SD_ECAMDOOR"),
         }
@@ -503,7 +523,7 @@ public static class FenixFlowDefinitions
     private static Flow BuildSecure() => new()
     {
         Id = "SECURE", Name = "Securing",
-        Description = "ADIRS, oxygen, emergency lights, signs, APU and batteries off.",
+        Description = "ADIRS, oxygen, emergency lights, signs, APU and batteries off, cockpit lights off.",
         RelatedChecklistGroupIds = new[] { "SECURE" },
         Steps = new()
         {
@@ -529,6 +549,11 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_ELEC_BAT1", 0)), "SC_BAT1"),
             Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "S_OH_ELEC_BAT2", 0),
                 s => s.IsPosition("S_OH_ELEC_BAT2", 0)), "SC_BAT2"),
+            // Cockpit lighting off (the A32NX's SC_COCKPITLT point): annunciator left at
+            // BRIGHT for the next power-up, dome and knobs off.
+            Done(SW("SC_COCKPITLT", "Cockpit lights: annunciator bright", "S_OH_IN_LT_ANN_LT", 1), "SC_COCKPITLT"),
+            Done(SW("SC_DOME", "Dome light: off", "S_OH_INT_LT_DOME", 0), "SC_DOME"),
+            Done(Scene("SC_LTSCENE", FenixActionExecutor.CockpitLightScene.Off), "SC_LTSCENE"),
         }
     };
 
@@ -545,6 +570,11 @@ public static class FenixFlowDefinitions
         PostActionDelayMs = 300,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
+
+    // One lighting scene's four brightness knobs, through the executor's COCKPIT_LIGHT_SCENE_*
+    // pseudo-key; labelled as the A32NX's scene line.
+    private static Step Scene(string id, FenixActionExecutor.CockpitLightScene scene) =>
+        SW(id, "Panel and integral brightness: SET", FenixActionExecutor.CockpitLightSceneKey(scene), 1);
 
     private static Step Provider(string id, string label, string eventName, Func<FenixStateEvaluator, int?> provider) => new()
     {

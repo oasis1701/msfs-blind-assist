@@ -69,6 +69,15 @@ public static class FenixChecklistDefinitions
             Auto("EPU_NAVLOGO", "ELEC_POWER_UP", "Nav and logo lights: ON",
                 "S_OH_EXT_LT_NAV_LOGO", v => v > 0.5,
                 (e, _) => e.Set("S_OH_EXT_LT_NAV_LOGO", 1)),
+            // Cockpit lighting, bright for ground preparation — the A32NX's lines and labels
+            // on the Fenix encodings (ANN 0 Dim / 1 Bright / 2 Test; dome 0 Off / 1 Dim /
+            // 2 Bright). No standby-compass line: the Fenix has no compass light.
+            Auto("EPU_COCKPITLT", "ELEC_POWER_UP", "Cockpit lights: ANN bright",
+                "S_OH_IN_LT_ANN_LT", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_IN_LT_ANN_LT", 1)),
+            Auto("EPU_DOME", "ELEC_POWER_UP", "Cockpit lights: dome bright",
+                "S_OH_INT_LT_DOME", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_OH_INT_LT_DOME", 2)),
+            ActionManual("EPU_LTSCENE", "ELEC_POWER_UP", "Panel and integral brightness: SET",
+                (e, _) => e.SetCockpitLighting(FenixActionExecutor.CockpitLightScene.DayPrep)),
         }
     };
 
@@ -255,6 +264,13 @@ public static class FenixChecklistDefinitions
                 "S_OH_EXT_LT_NOSE", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_EXT_LT_NOSE", 1)),
             Reminder("AS_ANTIICE", "AFTER_START", "Set engine and wing anti-ice as required"),
             Reminder("AS_PITCHTRIM", "AFTER_START", "Set pitch trim per the loadsheet"),
+            // Cockpit lighting, dim for taxi and flight (Fenix ANN DIM is 0, dome DIM is 1).
+            Auto("AS_COCKPITLT", "AFTER_START", "Cockpit lights: ANN dim",
+                "S_OH_IN_LT_ANN_LT", v => Math.Abs(v) < 0.5, (e, _) => e.Set("S_OH_IN_LT_ANN_LT", 0)),
+            Auto("AS_DOME", "AFTER_START", "Cockpit lights: dome dim",
+                "S_OH_INT_LT_DOME", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_INT_LT_DOME", 1)),
+            ActionManual("AS_LTSCENE", "AFTER_START", "Panel and integral brightness: SET",
+                (e, _) => e.SetCockpitLighting(FenixActionExecutor.CockpitLightScene.DimFlight)),
             ActionManual("AS_ECAMSTS", "AFTER_START", "ECAM page: status", (e, _) => e.Pulse("S_ECAM_STATUS")),
         }
     };
@@ -444,6 +460,13 @@ public static class FenixChecklistDefinitions
             // Cockpit door: open for disembark (S_COCKPIT_DOOR=1, live-verified actuator 2026-07-05).
             ActionManual("SD_COCKPITDOOR", "SHUTDOWN", "Cockpit door: UNLOCKED",
                 (e, _) => e.SetCockpitDoor(true)),
+            // Cockpit lighting, bright for parking.
+            Auto("SD_COCKPITLT", "SHUTDOWN", "Cockpit lights: ANN bright",
+                "S_OH_IN_LT_ANN_LT", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_IN_LT_ANN_LT", 1)),
+            Auto("SD_DOME", "SHUTDOWN", "Cockpit lights: dome bright",
+                "S_OH_INT_LT_DOME", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_OH_INT_LT_DOME", 2)),
+            ActionManual("SD_LTSCENE", "SHUTDOWN", "Panel and integral brightness: SET",
+                (e, _) => e.SetCockpitLighting(FenixActionExecutor.CockpitLightScene.ParkingBright)),
             ActionManual("SD_ECAMDOOR", "SHUTDOWN", "ECAM page: door", (e, _) => e.Pulse("S_ECAM_DOOR")),
         }
     };
@@ -480,6 +503,13 @@ public static class FenixChecklistDefinitions
                 "S_OH_ELEC_BAT1", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_BAT1", 0)),
             Auto("SC_BAT2", "SECURE", "Battery 2: OFF",
                 "S_OH_ELEC_BAT2", v => v < 0.5, (e, _) => e.Set("S_OH_ELEC_BAT2", 0)),
+            // Cockpit lighting off: ANN left at BRIGHT for the next power-up, dome and knobs off.
+            Auto("SC_COCKPITLT", "SECURE", "Cockpit lights: ANN bright",
+                "S_OH_IN_LT_ANN_LT", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_OH_IN_LT_ANN_LT", 1)),
+            Auto("SC_DOME", "SECURE", "Cockpit lights: dome off",
+                "S_OH_INT_LT_DOME", v => Math.Abs(v) < 0.5, (e, _) => e.Set("S_OH_INT_LT_DOME", 0)),
+            ActionManual("SC_LTSCENE", "SECURE", "Panel and integral brightness: SET",
+                (e, _) => e.SetCockpitLighting(FenixActionExecutor.CockpitLightScene.Off)),
         }
     };
     // -----------------------------------------------------------------------

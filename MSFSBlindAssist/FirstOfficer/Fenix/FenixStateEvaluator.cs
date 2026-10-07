@@ -33,6 +33,8 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
         "S_OH_FUEL_CENTER_2", "S_OH_FUEL_RIGHT_1", "S_OH_FUEL_RIGHT_2",
         // Signs / interior
         "S_OH_SIGNS", "S_OH_SIGNS_SMOKING", "S_OH_INT_LT_EMER",
+        // Cockpit lighting lines: annunciator and dome switches
+        "S_OH_IN_LT_ANN_LT", "S_OH_INT_LT_DOME",
         // Exterior lights
         "S_OH_EXT_LT_BEACON", "S_OH_EXT_LT_STROBE", "S_OH_EXT_LT_NAV_LOGO",
         "S_OH_EXT_LT_WING", "S_OH_EXT_LT_LANDING_L", "S_OH_EXT_LT_LANDING_R",

@@ -100,6 +100,27 @@ public abstract class LVarActionExecutor : IFoActionExecutor
         finally { _gate.Release(); }
     }
 
+    /// <summary>Single gated FRACTIONAL write — a 0–1 knob such as a Fenix brightness pot —
+    /// under the same serialize gate and pacing as every other dispatch. Always a held L:var
+    /// write (the dispatch table describes integer controls, never a knob), straight through
+    /// <see cref="SimConnectManager.SetLVar"/>, which takes the double as-is and, on the
+    /// calculator path, formats it fixed-point with InvariantCulture. Never build the RPN
+    /// string here: a CurrentCulture "0,3" is a silent bad write on a comma-decimal Windows.</summary>
+    protected async Task<bool> DispatchDoubleAsync(string name, double value)
+    {
+        await _gate.WaitAsync();
+        try
+        {
+            var sc = _sc;
+            if (sc is not { IsConnected: true }) return false;
+            await PaceAsync();
+            sc.SetLVar(name, value);
+            _lastWriteUtc = DateTime.UtcNow;
+            return true;
+        }
+        finally { _gate.Release(); }
+    }
+
     /// <summary>Gated momentary pulse (0 → gap → 1 → hold → 0) regardless of table entry.</summary>
     /// <param name="pressHoldMs">How long to hold the button at 1 before releasing. Use a
     /// longer value for level-triggered tests whose result must be observed while held

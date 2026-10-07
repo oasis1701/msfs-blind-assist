@@ -130,8 +130,73 @@ public sealed class FenixActionExecutor : LVarActionExecutor
                 // BT_CONFIG step gets the long hold + spoken result, not a plain pulse.
                 case "S_ECAM_TO":                return TakeoffConfigTest();
             }
+            // COCKPIT_LIGHT_SCENE_<NAME>: the four brightness knobs of one lighting scene.
+            if (step.EventName != null && TryGetCockpitLightScene(step.EventName, out var scene))
+                return SetCockpitLighting(scene);
         }
         return base.ExecuteStepAsync(step);
+    }
+
+    // -----------------------------------------------------------------------
+    // Cockpit-lighting scenes (the A32NX's four points: power-up, after start, shutdown, secure)
+    // -----------------------------------------------------------------------
+
+    /// <summary>The A32NX's scene names (<c>FbwA320ActionExecutor.CockpitLightScene</c>), so the
+    /// two First Officers set their cockpit lights at the same points.</summary>
+    public enum CockpitLightScene { DayPrep, DimFlight, ParkingBright, Off }
+
+    private const string CockpitLightScenePrefix = "COCKPIT_LIGHT_SCENE_";
+
+    /// <summary>The flow-step pseudo-key for <paramref name="scene"/>, e.g.
+    /// <c>COCKPIT_LIGHT_SCENE_DAYPREP</c>; intercepted in <see cref="ExecuteStepAsync"/>.</summary>
+    public static string CockpitLightSceneKey(CockpitLightScene scene) =>
+        CockpitLightScenePrefix + scene.ToString().ToUpperInvariant();
+
+    private static readonly Dictionary<string, CockpitLightScene> SceneByKey =
+        Enum.GetValues<CockpitLightScene>().ToDictionary(CockpitLightSceneKey, s => s);
+
+    /// <summary>True when <paramref name="key"/> is one of the scene pseudo-keys.</summary>
+    public static bool TryGetCockpitLightScene(string key, out CockpitLightScene scene) =>
+        SceneByKey.TryGetValue(key, out scene);
+
+    /// <summary>
+    /// The knob writes one scene makes — the SINGLE source of truth for it:
+    /// <see cref="SetCockpitLighting"/> writes exactly this and nothing else. The levels are the
+    /// A32NX scene's (<c>FbwA320ActionExecutor.SetCockpitLighting</c>: integral 100/50/100/0 %,
+    /// flood 50/30/50/0 %) scaled to the Fenix knobs' 0–1 range: integral drives the overhead
+    /// and pedestal integral knobs (A_OH_LIGHTING_OVD, A_PED_LIGHTING_PEDESTAL, 0.05 steps),
+    /// flood the main-panel and pedestal floods (A_MIP_LIGHTING_FLOOD_MAIN,
+    /// A_MIP_LIGHTING_FLOOD_PEDESTAL, 0.1 steps). The A32NX scene's annunciator and dome are
+    /// their own flow steps and lines here (Fenix encodings), and the Fenix has no
+    /// standby-compass light, so the scene is the four knobs only.
+    /// </summary>
+    public static IReadOnlyList<(string Key, double Value)> CockpitLightingWrites(CockpitLightScene scene)
+    {
+        (double integral, double flood) = scene switch
+        {
+            CockpitLightScene.DayPrep       => (1.0, 0.5),
+            CockpitLightScene.DimFlight     => (0.5, 0.3),
+            CockpitLightScene.ParkingBright => (1.0, 0.5),
+            CockpitLightScene.Off           => (0.0, 0.0),
+            _                               => (1.0, 0.5),
+        };
+        return new (string Key, double Value)[]
+        {
+            ("A_OH_LIGHTING_OVD", integral),
+            ("A_PED_LIGHTING_PEDESTAL", integral),
+            ("A_MIP_LIGHTING_FLOOD_MAIN", flood),
+            ("A_MIP_LIGHTING_FLOOD_PEDESTAL", flood),
+        };
+    }
+
+    /// <summary>Write one lighting scene's knobs, each through the serialized dispatch gate.
+    /// True only when every write went out.</summary>
+    public async Task<bool> SetCockpitLighting(CockpitLightScene scene)
+    {
+        bool ok = true;
+        foreach (var (key, value) in CockpitLightingWrites(scene))
+            ok &= await SetValue(key, value);
+        return ok;
     }
 
     // -----------------------------------------------------------------------
@@ -139,6 +204,10 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     // -----------------------------------------------------------------------
 
     public Task<bool> Set(string lvar, int value) => DispatchAsync(lvar, value);
+
+    /// <summary>Fractional held write for a 0–1 knob (brightness pots), through the same
+    /// serialized gate as <see cref="Set"/>.</summary>
+    public Task<bool> SetValue(string lvar, double value) => DispatchDoubleAsync(lvar, value);
 
     public Task<bool> Pulse(string lvar) => PulseAsync(lvar);
 
