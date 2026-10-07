@@ -11,8 +11,10 @@ namespace MSFSBlindAssist.Forms;
 /// event, subscribed only while this window is open), and the simulator process's CPU, memory and
 /// GPU use (Windows process and performance counters, sampled in the background). Rows reconcile
 /// in place once a second, so the reader's cursor stays put and only the focused row re-reads when
-/// its value changes; F5 refreshes at once, Escape closes. The overlay's per-thread millisecond
-/// timings and its "limited by" verdict are internal to the sim and are not available here.
+/// its value changes; there is no manual refresh, since nothing can be fresher than that timer
+/// (the background sampler itself publishes once a second). Escape closes. The overlay's
+/// per-thread millisecond timings and its "limited by" verdict are internal to the sim and are
+/// not available here.
 /// </summary>
 public sealed class SimPerformanceForm : Form
 {
@@ -39,23 +41,18 @@ public sealed class SimPerformanceForm : Form
             Font = new Font("Consolas", 11, FontStyle.Regular),
             TabIndex = 0,
             AccessibleName = "Sim performance",
-            AccessibleDescription = "Simulator frame rate and resource usage, one value per row. Read with the arrow keys; "
-                                    + "a focused row re-reads when its value changes. F5 refreshes now; Escape closes.",
+            AccessibleDescription = "Simulator frame rate and resource usage, one value per row, updated every second. "
+                                    + "Read with the arrow keys; a focused row re-reads when its value changes. Escape closes.",
         };
         _list.SetText("Measuring…");
 
         var bottom = new Panel { Dock = DockStyle.Bottom, Height = 44 };
-        var refreshButton = new Button
-        {
-            Text = "&Refresh (F5)", Location = new Point(440, 8), Size = new Size(90, 30), TabIndex = 1, AccessibleName = "Refresh",
-        };
-        refreshButton.Click += (_, _) => RefreshRows();
         var closeButton = new Button
         {
-            Text = "&Close", Location = new Point(535, 8), Size = new Size(85, 30), TabIndex = 2, AccessibleName = "Close",
+            Text = "&Close", Location = new Point(535, 8), Size = new Size(85, 30), TabIndex = 1, AccessibleName = "Close",
         };
         closeButton.Click += (_, _) => Close();
-        bottom.Controls.AddRange(new Control[] { refreshButton, closeButton });
+        bottom.Controls.Add(closeButton);
 
         Controls.Add(_list);
         Controls.Add(bottom);
@@ -92,7 +89,6 @@ public sealed class SimPerformanceForm : Form
 
     protected override bool ProcessDialogKey(Keys keyData)
     {
-        if (keyData == Keys.F5) { RefreshRows(); return true; }
         if (keyData == Keys.Escape) { Close(); return true; }
         return base.ProcessDialogKey(keyData);
     }
