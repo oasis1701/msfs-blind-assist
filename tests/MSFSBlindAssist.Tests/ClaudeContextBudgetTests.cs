@@ -124,6 +124,15 @@ public class ClaudeContextBudgetTests
         Assert.Equal(flagged, CodeMissingItsTestsRules(new[] { code, test }, f => loads[f]).Count > 0);
     }
 
+    [Theory]
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/a220.md", "MSFSBlindAssist/Aircraft/A220/**", false)]
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/a220.md", "MSFSBlindAssist/Forms/A220/**", true)]
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/variable-definitions.md", "MSFSBlindAssist/Aircraft/**", true)]
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Definition.cs", ".claude/rules/troubleshooting.md", "MSFSBlindAssist/Aircraft/**/*Definition*.cs", true)]
+    public void An_aircraft_folder_file_needs_a_rule_file_of_its_own(string file, string ruleFile, string glob, bool flagged)
+        => Assert.Equal(flagged, AreaFilesLoadingNoOwnRuleFile(new[] { file },
+            new[] { (ruleFile, new List<string> { glob }) }).Count > 0);
+
     [Fact]
     public void A_rule_file_loads_its_body_not_its_front_matter()
         => Assert.Equal("# Rules\n- [X-1] r\n".Length, LoadedChars("---\npaths:\n  - \"a/**\"\n---\n# Rules\n- [X-1] r\n"));
@@ -227,14 +236,17 @@ public class ClaudeContextBudgetTests
     [Fact]
     public void Every_aircraft_folder_file_and_coherent_agent_loads_a_rule_file()
     {
-        var compiled = RuleFiles().SelectMany(rf => rf.Globs ?? new List<string>()).Select(GlobRegex).ToList();
-        var problems = new List<string>();
-        foreach (string file in RepoFiles().Where(IsAreaOwnedFile).OrderBy(f => f, StringComparer.Ordinal))
-            if (!compiled.Any(g => g.IsMatch(file)))
-                problems.Add($"{file} loads no rule file, so no rule reaches whoever edits it. Add a glob for it to its "
+        List<RuleFile> ruleFiles = RuleFiles().ToList();
+        List<string> problems = SharedAircraftRules.Where(name => ruleFiles.All(rf => rf.Name != name))
+            .Select(name => $"{name} is in SharedAircraftRules but does not exist. If it moved or was renamed, update "
+                + "SharedAircraftRules, or this check counts it as every aircraft's own rule file.")
+            .Concat(AreaFilesLoadingNoOwnRuleFile(RepoFiles(), ruleFiles.Select(rf => (rf.Name, rf.Globs ?? new List<string>())))
+                .Select(file => $"{file} loads no rule file of its own (the shared aircraft rules in SharedAircraftRules "
+                    + "do not count), so no area rule reaches whoever edits it. Add a glob for it to its "
                     + "area's .claude/rules file. A new aircraft or feature with no rules yet gets a rule file of its own "
                     + "whose preamble names its doc (CLAUDE.md, \"Adding or changing a rule\"); only a shared folder that "
-                    + "no rule guards goes in AreaFolderExemptions, with the reason.");
+                    + "no rule guards goes in AreaFolderExemptions, with the reason."))
+            .ToList();
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 
@@ -449,11 +461,25 @@ public class ClaudeContextBudgetTests
 
     private static readonly string[] ShippedCodeRoots = { "MSFSBlindAssist/", "MSFSBlindAssistUpdater/", "plugins/" };
 
+    /// <summary>The shared aircraft rules glob files in every aircraft's folder under Aircraft/ (every file; every
+    /// *Definition*.cs), so they never stand in for an aircraft's own rule file: a ported aircraft whose rule file
+    /// misses its own subfolder is still flagged.</summary>
+    private static readonly HashSet<string> SharedAircraftRules = new(StringComparer.Ordinal)
+        { ".claude/rules/variable-definitions.md", ".claude/rules/troubleshooting.md" };
+
+    /// <summary>Area-owned files (<see cref="IsAreaOwnedFile"/>) that no rule file of their own matches.</summary>
+    private static List<string> AreaFilesLoadingNoOwnRuleFile(IEnumerable<string> files,
+        IEnumerable<(string Name, List<string> Globs)> ruleFiles)
+    {
+        var compiled = ruleFiles.Where(rf => !SharedAircraftRules.Contains(rf.Name))
+            .SelectMany(rf => rf.Globs).Select(GlobRegex).ToList();
+        return files.Where(IsAreaOwnedFile).Where(f => !compiled.Any(g => g.IsMatch(f)))
+            .OrderBy(f => f, StringComparer.Ordinal).ToList();
+    }
+
     /// <summary>Folders that belong to one aircraft or area but that no rule guards, each with the reason.</summary>
     private static readonly Dictionary<string, string> AreaFolderExemptions = new(StringComparer.Ordinal)
     {
-        ["MSFSBlindAssist/Forms/IFly737/"] = "the iFly 737 has no rule file; docs/ifly-737.md holds its notes",
-        ["MSFSBlindAssist/SimConnect/IFly/"] = "the iFly 737 has no rule file; docs/ifly-737.md holds its notes",
         ["MSFSBlindAssist/Forms/PMDG/"] = "the autopilot window both PMDG aircraft share; no rule names it",
         ["MSFSBlindAssist/Forms/Settings/"] = "app-wide settings panels, not one area: VAT-13 in CLAUDE.md covers them all, "
             + "and an area that owns a panel globs it in its own rule file",
@@ -483,9 +509,7 @@ public class ClaudeContextBudgetTests
     {
         "# CLAUDE.md", "## Project Overview", "## Build", "## Testing", "## Before changing behaviour",
         "## Git workflow and release notes", "## Rules for any file", "### Screen reader announcements",
-        "### Everywhere else", "## Multi-Aircraft Architecture", "## Quick Reference", "### Adding Panel Control",
-        "### Adding Background Monitoring", "### Adding New Aircraft", "### Variable Types",
-        "### `SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06)", "## Where things live",
+        "### Everywhere else", "## Multi-Aircraft Architecture", "## Quick Reference", "## Where things live",
         "## Adding or changing a rule", "## Technology Stack",
     };
 

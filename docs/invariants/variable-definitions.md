@@ -9,7 +9,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## VAR-2
 
-- Never register a name containing a space or colon as an L:var — those are stock SimVars (force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely). → [architecture.md](../architecture.md)
+- Never register a STOCK SimVar as an L:var. Stock SimVar names usually carry a space or a colon index (`INTERACTIVE POINT OPEN:n`, `LIGHT TAXI:2`), and forcing one through the L:var path corrupts SimConnect registration: force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely. The space or colon alone does not decide it, though: an add-on's real L:vars can be colon-indexed (FBW's `A32NX_FUEL_USED:1`, `A32NX_AUTOTHRUST_TLA:1`; A380-26, where the old "any colon = SimVar" rule left the SD fuel pages blank) or contain spaces. Classify by the add-on's own prefix or source, and check what that add-on's L:vars actually look like before copying another aircraft's test: the A32NX's SD loop treats a space as stock (right for FBW, whose L:vars never contain one), and the A380's treats a missing FBW prefix as stock, which holds only because its unprefixed L:vars (`CPT_SLIDING_WINDOW`, `FO_SLIDING_WINDOW`) are declared before the loop. The A32NX (`A32NX_AUTOTHRUST_TLA:1`) and the HS787 (`B787_IRS_Knob_State:1`) register colon-indexed L:vars too; a new aircraft whose L:vars contain a space or a colon says so in its own rules. Writing is separate: today `SetLVar` keeps every space or colon name off the calculator route (SIM-12; for a colon-indexed L:var that is unmeasured, not a rule), so such an L:var gets the native data-def write, which DBG-1 calls unreliable for many add-on L:vars: read the write back before trusting it (DBG-4). → [architecture.md](../architecture.md)
+
+Narrowed 2026-10-07. The original text, verbatim from CLAUDE.md as of `1f37801a`, was: "Never register a name containing a space or colon as an L:var — those are stock SimVars (force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely)." It contradicted A380-26 on main, and the space-named L:vars of the A220 and the colon-indexed L:vars of the DA40 in their open PRs (#244, #242).
 
 ## VAR-3
 
@@ -34,3 +36,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## VAR-8
 
 - The Ctrl+M monitor-manager disabled-var gate must WRAP `ProcessSimVarUpdate` in `announcer.Suppressed` for the HS787, never rely on the generic post-return gate alone — the HS787 announces ~100 of its vars from INSIDE `ProcessSimVarUpdate`, which returns true and skips the generic gate entirely; apply the same wrap to any future aircraft with the same self-announcing pattern. Which list wraps which airframe is `Services/DefAnnounceMuteSets` alone. The FBW A380 joined it on 2026-09-25: it had relied on per-branch checks, and its baro, spoilers, thrust-lever, minimums, autoland-capability and weight-unit rows muted nothing. The wrap assumes a branch speaks only for its OWN row: a branch that also speaks a call-out ANOTHER row owns must be named in `IAircraftDefinition.IsMuteWrapExempt` (checked by `DefAnnounceMuteSets.ShouldWrap`) and check each row itself, or muting its row silences the other one too. The A380's FMA vertical, lateral and armed vertical modes speak "Altitude Mode"; wrapped, muting "Vertical Mode" silenced it (`A380MuteWrapTests`). → [hs787.md](../hs787.md), [a380x.md](../a380x.md)
+
+## VAR-9
+
+- A var that `ProcessSimVarUpdate` consumes SILENTLY (a cache for hotkey readouts or dialog fields, never spoken) must ALSO set `ExcludeFromMonitorManager = true` (HS787: add it to `CacheOnlyVariables`) - otherwise it earns a Ctrl+M checkbox that mutes nothing
+
+Moved word for word from CLAUDE.md's Quick Reference ("Adding Background Monitoring", step 4) as of `6ba751ec`; docs/QUICK-REFERENCE.md keeps the same words in its walkthrough.
