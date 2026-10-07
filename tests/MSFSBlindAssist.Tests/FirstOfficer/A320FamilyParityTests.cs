@@ -19,9 +19,15 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 ///
 /// Compared: checklist group ids, names and order; item ids and order within each group; each
 /// item's label and kind (Auto, Auto detect-only, Reminder, ActionManual); flow ids, names and
-/// order; step ids and order within each flow; each step's label and kind (its action type).
-/// Not compared: anything named by an aircraft's own variables (state fields, writes, poll
-/// lists). The two add-ons share no variable names, so those differ everywhere by design.
+/// order; step ids and order within each flow; each step's label, kind (its action type) and the
+/// checklist lines it completes (LinkedChecklistItemIds).
+/// Not compared, so a drift in any of these passes here unseen: each step's wait and timeout
+/// seconds, failure policy and retry count, spoken-label override and reminder text, and whether it
+/// has a skip, leave-alone or requires-step rule; each flow's Description and
+/// RelatedChecklistGroupIds; each item's revert behaviour, reminder text, related flow and whether
+/// it has a LiveValue; and anything named by an aircraft's own variables (state fields, writes,
+/// poll lists, the fields a skip rule or a wait reads). The two add-ons share no variable names, so
+/// those differ everywhere by design.
 ///
 /// A difference is either a fix in the profile that drifted or an entry below that names it and
 /// says why. An entry that stops being a difference ALSO fails, including one that names an id
@@ -100,13 +106,28 @@ public class A320FamilyParityTests
         ["EPU_CHK_GEAR"] = GearLeverNotWritable,
     };
 
+    /// <summary>Flow steps, on both aircraft, that complete different checklist lines, and why.</summary>
+    private static readonly Dictionary<string, string> KnownStepLinkDivergences = new()
+    {
+    };
+
     // -----------------------------------------------------------------------
     // Profile-neutral projections: a checklist group or a flow is a Section of Lines.
     // -----------------------------------------------------------------------
 
-    private sealed record Line(string Id, string Label, string Kind);
+    /// <summary>One checklist item or flow step. <see cref="Links"/> is a flow step's checklist lines
+    /// (<c>FlowStep.LinkedChecklistItemIds</c>: <c>CompletesChecklistItemId</c> then
+    /// <c>AlsoCompletesChecklistItemIds</c>, the one list FlowManager marks and, on a skip, keeps out
+    /// of the latch); a checklist item has none.</summary>
+    private sealed record Line(string Id, string Label, string Kind, string Links = "");
 
     private sealed record Section(string Id, string Name, IReadOnlyList<Line> Lines);
+
+    private static string LinksOf(IEnumerable<string> ids)
+    {
+        var list = ids.ToList();
+        return list.Count == 0 ? "(none)" : string.Join(", ", list);
+    }
 
     private static string ItemKind<TExec, TState>(ChecklistItem<TExec, TState> i)
         where TExec : IFoActionExecutor where TState : IFoStateEvaluator => i.Type switch
@@ -125,7 +146,8 @@ public class A320FamilyParityTests
     private static List<Section> Flows<TState>(IEnumerable<FlowDefinition<TState>> flows)
         where TState : IFoStateEvaluator =>
         flows.Select(f => new Section(f.Id, f.Name,
-            f.Steps.Select(s => new Line(s.Id, s.Label, s.ActionType.ToString())).ToList())).ToList();
+            f.Steps.Select(s => new Line(s.Id, s.Label, s.ActionType.ToString(), LinksOf(s.LinkedChecklistItemIds)))
+                .ToList())).ToList();
 
     private static List<Section> FenixChecklist() => Checklist(Fenix.FenixChecklistDefinitions.Build());
     private static List<Section> A32nxChecklist() => Checklist(A320.FbwA320ChecklistDefinitions.Build());
@@ -293,6 +315,22 @@ public class A320FamilyParityTests
             + string.Format(Remedy, nameof(KnownStepKindDivergences)) + string.Join("; ", drift));
     }
 
+    /// <summary>
+    /// Which checklist line each step completes. A step that completes a line on one aircraft and
+    /// not the other ticks (and at flow end latches) different lines for the same procedure: the
+    /// APU master write completing "APU: ON and available" on a never-available APU was this drift
+    /// waiting to happen on one side only.
+    /// </summary>
+    [Fact]
+    public void Flow_step_checklist_links_match_except_where_allow_listed()
+    {
+        var drift = PropertyDrift(FenixFlows(), A32nxFlows(), l => l.Links, KnownStepLinkDivergences);
+        Assert.True(drift.Count == 0,
+            "These flow steps complete different checklist lines on the two aircraft "
+            + "(CompletesChecklistItemId / AlsoCompletesChecklistItemIds) with no recorded reason."
+            + string.Format(Remedy, nameof(KnownStepLinkDivergences)) + string.Join("; ", drift));
+    }
+
     // -----------------------------------------------------------------------
     // The allow-lists stay honest
     // -----------------------------------------------------------------------
@@ -311,6 +349,7 @@ public class A320FamilyParityTests
             .Concat(StaleOneSided(nameof(KnownStepDivergences), KnownStepDivergences, ff, af))
             .Concat(StaleProperty(nameof(KnownStepLabelDivergences), KnownStepLabelDivergences, ff, af, l => l.Label))
             .Concat(StaleProperty(nameof(KnownStepKindDivergences), KnownStepKindDivergences, ff, af, l => l.Kind))
+            .Concat(StaleProperty(nameof(KnownStepLinkDivergences), KnownStepLinkDivergences, ff, af, l => l.Links))
             .ToList();
 
         Assert.True(stale.Count == 0,
