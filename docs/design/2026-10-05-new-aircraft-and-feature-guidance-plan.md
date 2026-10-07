@@ -323,3 +323,117 @@
   Expected: 0 failed.
 - [ ] **Step 2:** Check the design's "Done when" list item by item; re-run the proof script and keep its output for the PR description.
 - [ ] **Step 3:** Ask the user before pushing. Then push, open the PR (description: what changes for a contributor, the proof output, the numbers), add `changelog.d/<pr>-new-aircraft-feature-guidance.internal.md` under the PR's real number, commit and push.
+
+---
+
+## Follow-up tasks (2026-10-07): the open-PR review
+
+Design: section 8 of the design doc. The guard-test baseline is now 57 tests (Tasks 1-5 and the final-review fixes added four). The text blocks below are indented 2 spaces for this list: strip exactly those 2 spaces.
+
+### Task 6: VAR-2 and MON-1 say what is true for every aircraft
+
+**Files:**
+- Modify: `.claude/rules/variable-definitions.md` (the `- [VAR-2] …` line)
+- Modify: `docs/invariants/variable-definitions.md` (the bullet under `## VAR-2`)
+- Modify: `.claude/rules/monitor-manager.md` (the `- [MON-1] …` line)
+- Modify: `docs/invariants/monitor-manager.md` (the bullet under `## MON-1`)
+
+**Interfaces:**
+- Consumes: rule A380-26 (exists on main, `.claude/rules/a380-systems.md`), cited as `[A380-26]`; SIM-12 (exists, `core-simconnect.md`), named in prose.
+- Produces: nothing later tasks depend on.
+
+- [ ] **Step 1: VAR-2's line.** In `.claude/rules/variable-definitions.md` replace the whole `- [VAR-2] …` line with (359 characters):
+
+  ```markdown
+  - [VAR-2] Never register a STOCK SimVar as an L:var (forcing `INTERACTIVE POINT OPEN:n` through the L:var path broke A380 detection). Tell them apart by the add-on's own prefix or source, never by a space or colon alone: add-on L:vars can be colon-indexed (`A32NX_FUEL_USED:1`, [A380-26]) or contain spaces. Full: docs/invariants/variable-definitions.md#var-2
+  ```
+
+- [ ] **Step 2: VAR-2's full text.** In `docs/invariants/variable-definitions.md`, under `## VAR-2`, replace the one bullet
+
+  ```markdown
+  - Never register a name containing a space or colon as an L:var — those are stock SimVars (force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely). → [architecture.md](../architecture.md)
+  ```
+
+  with this bullet, a blank line, and a history paragraph:
+
+  ```markdown
+  - Never register a STOCK SimVar as an L:var. Stock SimVar names usually carry a space or a colon index (`INTERACTIVE POINT OPEN:n`, `LIGHT TAXI:2`), and forcing one through the L:var path corrupts SimConnect registration: force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely. The space or colon alone does not decide it, though: an add-on's real L:vars can be colon-indexed (FBW's `A32NX_FUEL_USED:1`, `A32NX_AUTOTHRUST_TLA:1`; A380-26, where the old "any colon = SimVar" rule left the SD fuel pages blank) or contain spaces. Classify by the add-on's own prefix or source; an aircraft whose L:vars contain a space or a colon says so in its own rules. Writing is a separate guard: `SetLVar` keeps space and colon names off the calculator route (SIM-12). → [architecture.md](../architecture.md)
+
+  Narrowed 2026-10-07. The original text, verbatim from CLAUDE.md as of `1f37801a`, was: "Never register a name containing a space or colon as an L:var — those are stock SimVars (force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely)." It contradicted A380-26 on main, and the space-named L:vars of the A220 and the colon-indexed L:vars of the DA40 in their open PRs (#244, #242).
+  ```
+
+- [ ] **Step 3: MON-1's line.** In `.claude/rules/monitor-manager.md` replace the whole `- [MON-1] …` line with:
+
+  ```markdown
+  - [MON-1] Every per-aircraft monitor manager subclasses `Forms/MonitorManagerFormBase`, supplying only a title, rows and its `*DisabledMonitorVariables` list — never re-add per-form UI, and never copy the filter into a form. Full: docs/invariants/monitor-manager.md#mon-1
+  ```
+
+- [ ] **Step 4: MON-1's full text.** In `docs/invariants/monitor-manager.md`, under `## MON-1`, replace the bullet that begins `- All seven per-aircraft monitor managers` with this bullet, a blank line, and a history paragraph:
+
+  ```markdown
+  - Every per-aircraft monitor manager is a subclass of `Forms/MonitorManagerFormBase` supplying only a title, its rows, and its `*DisabledMonitorVariables` list — never re-add per-form UI, and never copy the filter into a form. The pure half (`Services/MonitorRowBuilder` + `Services/MonitorVariableFilter`) carries the xUnit coverage. (The MD-11's was the last hand-rolled one — no search box over ~530 rows — and was migrated 2026-09-06.)
+
+  Reworded 2026-10-07 from "All seven per-aircraft monitor managers are subclasses of `Forms/MonitorManagerFormBase` supplying only a title, their rows, and their `*DisabledMonitorVariables` list": there were seven when it was written, and the count was dropped so that each new aircraft's monitor manager need not edit it.
+  ```
+
+- [ ] **Step 5: Verify.** Byte check both rule files (`python -c "for f in ['.claude/rules/variable-definitions.md','.claude/rules/monitor-manager.md']: b=open(f,'rb').read(); print(f, b[:3]==b'\xef\xbb\xbf', b'\r' in b)"` must print `False False` twice). Then the guard test: 57 passed (it checks the 400-character limit, the `Full:` anchors, that each `## ID` still has its line, and that `[A380-26]` resolves).
+
+- [ ] **Step 6: Commit**
+
+  ```bash
+  git add .claude/rules/variable-definitions.md docs/invariants/variable-definitions.md .claude/rules/monitor-manager.md docs/invariants/monitor-manager.md
+  git commit -m "docs(rules): VAR-2 guards stock SimVars, not spaces and colons; MON-1 drops its count"
+  ```
+
+---
+
+### Task 7: A new aircraft's menu handler may live in its own MainForm partial
+
+**Files:**
+- Modify: `docs/adding-features.md` (Workflow 5, the `**Step 3:** Add event handler in …` line)
+- Modify: `docs/QUICK-REFERENCE.md` ("Add New Aircraft", the `4. Add click handler in …` line)
+
+**Interfaces:**
+- Consumes: nothing from Task 6.
+- Produces: nothing later tasks depend on.
+
+- [ ] **Step 1: Workflow 5.** In `docs/adding-features.md` replace the line
+
+  ```markdown
+  **Step 3:** Add event handler in `MainForm.MenuHandlers.cs`
+  ```
+
+  with
+
+  ```markdown
+  **Step 3:** Add event handler in `MainForm.MenuHandlers.cs`, or in the aircraft's own `MainForm.<Aircraft>.cs` partial if it has one (as the MD-11 and iFly do); never in another aircraft's partial
+  ```
+
+- [ ] **Step 2: QUICK-REFERENCE.md.** In `docs/QUICK-REFERENCE.md` replace the line
+
+  ```markdown
+  4. Add click handler in `MainForm.MenuHandlers.cs`:
+  ```
+
+  with
+
+  ```markdown
+  4. Add click handler in `MainForm.MenuHandlers.cs` (or in the aircraft's own `MainForm.<Aircraft>.cs` partial if it has one, as the MD-11 and iFly do; never in another aircraft's):
+  ```
+
+- [ ] **Step 3: Verify.** The guard test: 57 passed. Then the word-proof script (path given by the controller): PASS, with "Add New Aircraft" still reporting `none`.
+
+- [ ] **Step 4: Commit**
+
+  ```bash
+  git add docs/adding-features.md docs/QUICK-REFERENCE.md
+  git commit -m "docs: a new aircraft's menu handler may live in its own MainForm partial"
+  ```
+
+---
+
+### Task 8: Full verification (controller)
+
+- [ ] **Step 1:** Full suite into the isolated folder (command in Task 5): 0 failed.
+- [ ] **Step 2:** Section 8 of the design is done: VAR-2 and MON-1 lines and full texts reworded with their history, Step 3 and QUICK-REFERENCE step 4 allow the aircraft's own partial.
+- [ ] **Step 3:** Still local; push only when the user asks (Task 5, Step 3).
