@@ -497,7 +497,35 @@ public partial class CowsDA40Definition : BaseAircraftDefinition
         // variables. See CowsDA40Definition.VariantScope.
         RemoveForeignVariables(vars);
 
+        // VAR-9: a var consumed silently earns no Ctrl+M row, which would mute nothing.
+        HideSilentReadoutsFromMonitorManager(vars);
+
         return vars;
+    }
+
+    /// <summary>
+    /// The silent keys that are nevertheless SPOKEN, by a tracker of their own that checks
+    /// the key's Ctrl+M mute itself (the ECU test stages, the waypoint-passing call, the XLS
+    /// priming, start and mixture call-outs). Their row is the only way to mute that speech.
+    /// </summary>
+    internal static readonly HashSet<string> SilentKeysSpokenByOwnTracker = new(StringComparer.Ordinal)
+    {
+        "DA40_ECU_TEST_STEP", "DA40_WAYPOINT_PASSING", "DA40_PRIME_CYL_1",
+        "DA40_XLS_START_READY", "DA40_XLS_AUTO_STEP", "DA40_XLS_LEAN_ASSIST", "DA40_XLS_RED_BOX",
+        "DA40_XLS_FOULING", "DA40_XLS_SHOCK_COOLING", "DA40_XLS_CYL_HEALTH"
+    };
+
+    /// <summary>
+    /// ⚠️ VAR-9. Every key ProcessSimVarUpdate swallows (IsSilentCachedReadout) and no tracker
+    /// speaks had a Ctrl+M checkbox that muted nothing: the surfaces, the stick, the door wind,
+    /// the fuel wire, both ECU-running flags, two bus voltages, the trim setting and the
+    /// flight-director bars among them (found when #269 made VAR-9 a rule).
+    /// </summary>
+    private static void HideSilentReadoutsFromMonitorManager(Dictionary<string, SimConnect.SimVarDefinition> vars)
+    {
+        foreach (string key in SilentCachedReadoutKeys)
+            if (!SilentKeysSpokenByOwnTracker.Contains(key) && vars.TryGetValue(key, out var def))
+                def.ExcludeFromMonitorManager = true;
     }
 
     /// <summary>

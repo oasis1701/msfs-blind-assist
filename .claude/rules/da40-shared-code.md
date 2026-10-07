@@ -1,22 +1,13 @@
 ---
 paths:
-  - "MSFSBlindAssist/SimConnect/SimVarDefinitions.cs"
-  - "MSFSBlindAssist/SimConnect/SimConnectManager.VarCache.cs"
-  - "MSFSBlindAssist/MainForm.PanelBuilder.cs"
-  - "MSFSBlindAssist/MainForm.AircraftSwitch.cs"
-  - "MSFSBlindAssist/Services/NativeChecklistReader.cs"
-  - "MSFSBlindAssist/Services/ChecklistContent.cs"
-  - "MSFSBlindAssist/SimConnect/CoherentDisplayClient.cs"
-  - "MSFSBlindAssist/Forms/DisplayList.cs"
-  - "MSFSBlindAssist/Forms/DisplayListBox.cs"
-  - "MSFSBlindAssist/Aircraft/A380SurfaceDeflection.cs"
-  - "tools/coherent-coverage.js"
-  - "MSFSBlindAssist/Services/TakeoffRollCallouts.cs"
-  - "MSFSBlindAssist/Services/UnusualAttitudeMonitor.cs"
+  - "MSFSBlindAssist/Aircraft/DA40/**"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40SettleExceedsBatchTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40VarNameCollisionTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40HotkeyCacheTests.cs"
 ---
 # Rules the DA40 work found in shared code
 
-Rules about shared code that the DA40 work measured. Full text of each rule: docs/invariants/da40-shared-code.md.
+Rules about shared code that the DA40 work measured. A line guarding a shared file is MIRRORED word for word into the rule file that loads that file; change it here and in its mirrors together. Full text of each rule: docs/invariants/da40-shared-code.md.
 
 - [DA40S-1] `GetCachedVariableValue` is keyed by the VARIABLE KEY, never the SimVar name, and holds a variable when it is `Continuous && IsAnnounced` (`ExcludeFromBatch` vars too); never turn a cache miss into 0 (`EveryCacheLookupNamesACachedVariableKey`). Full: docs/invariants/da40-shared-code.md#da40s-1
 - [DA40S-2] A settle timer outlasts the sample period of what feeds it: over 1000 ms for a batch-fed value; a SIM_FRAME-fed value carries a `FAST-SAMPLED` marker (`CowsDA40SettleExceedsBatchTests`); an own-write grace outlasts the settle. Full: docs/invariants/da40-shared-code.md#da40s-2

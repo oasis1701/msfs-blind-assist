@@ -14,9 +14,11 @@ namespace MSFSBlindAssist.Forms.DA40;
 /// on demand from the panel status displays instead (Ctrl+3, F5).
 ///
 /// Un-ticked keys are written to UserSettings.DA40DisabledMonitorVariables and honoured
-/// by the generic gate in MainForm.OnSimVarUpdated. Unlike the HS787, iFly and PMDG
-/// definitions, the DA40 announces nothing from inside ProcessSimVarUpdate, so it needs
-/// no Step-2.5 Suppressed-wrap — the one generic gate covers everything.
+/// by the generic gate in MainForm.OnSimVarUpdated. The DA40 ALSO announces from inside
+/// ProcessSimVarUpdate (doors, engine health, magnetos, lamps, the fuel valve and more), so
+/// it is in Services/DefAnnounceMuteSets and MainForm wraps that call in the mute (VAR-8);
+/// what speaks from a timer checks the list itself. A var consumed silently has no row
+/// (VAR-9, CowsDA40Definition.HideSilentReadoutsFromMonitorManager).
 /// </summary>
 public sealed class CowsDA40MonitorManagerForm : MonitorManagerFormBase
 {

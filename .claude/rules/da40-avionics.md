@@ -10,6 +10,14 @@ paths:
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Units.cs"
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Hotkeys.cs"
   - "MSFSBlindAssist/Services/GpsWaypointSequencer.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40AutopilotHotkeyTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40BaroSetTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40CourseSourceTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40DisplayUnitsTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40HotkeyC*Tests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40Radio*Tests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40StandbyBaroKnobTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/GpsWaypointSequencerTests.cs"
 ---
 # COWS DA40 radios, altimeters, autopilot and hotkey rules
 

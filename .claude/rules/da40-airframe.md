@@ -18,6 +18,12 @@ paths:
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.PowerUpAnnounce.cs"
   - "MSFSBlindAssist/Aircraft/DA40/CowsDA40Definition.Audio.cs"
   - "MSFSBlindAssist/Aircraft/DA40/DA40BreakerPlacards.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40Breaker*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40AudioPanelTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40CockpitNameTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40ElevatorNeutralTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40PowerUpAnnounceTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40InteractionSurfaceTests.cs"
 ---
 # COWS DA40 airframe rules (electrical, lights, doors, breakers, controls, options)
 

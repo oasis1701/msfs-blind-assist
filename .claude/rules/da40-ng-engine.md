@@ -16,6 +16,17 @@ paths:
   - "MSFSBlindAssist/Aircraft/DA40/DA40PerformanceTables.cs"
   - "MSFSBlindAssist/Aircraft/DA40/DA40InstrumentBands.cs"
   - "MSFSBlindAssist/Aircraft/DA40/DA40AutoStart.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40EngineHealthScaleTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40FailureCoverageTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40FsCopilotFindsTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40FuelInfoTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40GradedFailureTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40IndicationFailureTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40AutoStartTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40HoldSetTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40InstrumentBandsTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40PerformanceTableTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40StartReadinessTests.cs"
 ---
 # COWS DA40-NG engine and fuel rules
 

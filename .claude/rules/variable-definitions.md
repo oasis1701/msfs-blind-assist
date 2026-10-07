@@ -25,3 +25,9 @@ Loaded when Claude reads matching code. Background: docs/aircraft-definitions.md
 
 Mirrored from visual-guidance.md (it governs `VisualGuidanceProfile` in IAircraftDefinition.cs; change it there and here together):
 - [VG-15] Never collapse `GlideslopeAltitudeBiasFt` and `FlareAltitudeBiasFt` into one shared constant: they apply in different code paths (glideslope error vs phase detection) and were measured separately. Full: docs/invariants/visual-guidance.md#vg-15
+
+Mirrored from da40-shared-code.md (they govern every aircraft definition; change them there and here together):
+- [DA40S-3] An L:var is registered `Units = "number"`, never a converting unit; use `SimVarDefinition.Scale` for a scale. Full: docs/invariants/da40-shared-code.md#da40s-3
+- [DA40S-4] `ABS_AMBIENT_TEMPERATURE` is kelvin and an L:var's Units field is a label: use the `AMBIENT TEMPERATURE` SimVar. Full: docs/invariants/da40-shared-code.md#da40s-4
+- [DA40S-5] `SimVarDefinition.Format` defaults to "F0" and `ValueDescriptions` is never null (test `Count`, not null). Full: docs/invariants/da40-shared-code.md#da40s-5
+- [DA40S-6] A non-percentage numeric control never sets `RenderAsSlider` (the TrackBar is 0-100); `HelpText` reaches the pilot on BUTTONS only and the other ten PanelBuilder sites must not be wired to it. Full: docs/invariants/da40-shared-code.md#da40s-6

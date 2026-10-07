@@ -11,6 +11,9 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*AltitudeCallout*.cs"
   - "MSFSBlindAssist/Aircraft/IFly737MAXDefinition*.cs"
   - "MSFSBlindAssist/Aircraft/TFDiMD11Definition*.cs"
+  - "MSFSBlindAssist/Services/TakeoffRollCallouts.cs"
+  - "MSFSBlindAssist/Services/UnusualAttitudeMonitor.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*UnusualAttitude*.cs"
 ---
 # Takeoff assist and flight callouts rules
 
@@ -21,3 +24,7 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [TKO-3] `GroundSpeedAnnouncer` is mode-independent (taxi, takeoff roll, landing rollout); never move it back into a per-mode manager like `TaxiGuidanceManager`, where it stopped the moment takeoff assist or touchdown took over. Full: docs/invariants/takeoff-and-callouts.md#tko-3
 - [TKO-4] `AltitudeCalloutAnnouncer` fires AT the 1,000-ft boundary and names the thousand CROSSED; re-crossing the last-announced thousand is ALWAYS silent with no distance window, and the ground/teleport reset must clear the announced-thousand latch too. Full: docs/invariants/takeoff-and-callouts.md#tko-4
 - [TKO-5] Take-off calls are ONE `AnnounceImmediate` per sample via `TakeoffVSpeedCallouts.Compose`, never one per call; every definition drops the ARM, never the speeds, on reconnect AND `OnSimContextReset`, and names keys through the one `TakeoffCalloutKeys` (more: see full). Full: docs/invariants/takeoff-and-callouts.md#tko-5
+
+Mirrored from da40-shared-code.md (they govern TakeoffRollCallouts, TakeoffAssistManager and UnusualAttitudeMonitor; change them there and here together):
+- [DA40S-12] Take-off-roll speed calls are decided only by `TakeoffRollCallouts` and applied for the CURRENT aircraft on every path that configures `TakeoffAssistManager` (aircraft switch AND Settings save); a profile is never applied without being taken back. Full: docs/invariants/da40-shared-code.md#da40s-12
+- [DA40S-13] `UnusualAttitudeMonitor` INTERRUPTS beyond 45 degrees of bank with hysteresis and announces the recovery at 20 degrees, a deliberate exception to the silent-clear rule; never turn it into a query and never silence the recovery. Full: docs/invariants/da40-shared-code.md#da40s-13

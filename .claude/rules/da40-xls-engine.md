@@ -7,6 +7,14 @@ paths:
   - "MSFSBlindAssist/Aircraft/DA40/DA40RedBox.cs"
   - "MSFSBlindAssist/Aircraft/DA40/DA40CylinderState.cs"
   - "MSFSBlindAssist/Aircraft/DA40/DA40MagnetoCheck.cs"
+  - "MSFSBlindAssist/Aircraft/DA40/DA40InstrumentBands.cs"
+  - "tests/MSFSBlindAssist.Tests/**/CowsDA40Xls*Tests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40CylinderBaselineTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40CylinderStateTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40MagnetoCheckTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40PrimingTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40RedBoxTests.cs"
+  - "tests/MSFSBlindAssist.Tests/**/DA40InstrumentBandsTests.cs"
 ---
 # COWS DA40-XLS engine rules
 

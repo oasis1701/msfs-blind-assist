@@ -53,3 +53,8 @@ Mirrored from gsx-stands-docking.md, surroundings.md and gsx-remote.md (they gov
 - [DCK-34] SimConnect `PLANE_HEADING_DEGREES_TRUE`/`_MAGNETIC` are RADIANS despite the name: multiply by 57.2958 before using them as degrees. Full: docs/invariants/gsx-stands-docking.md#dck-34
 - [SUR-10] The surface-change callout (`SurfaceChangeGate`) has its own switch, is not behind `SuppressCheck`, speaks only a surface FAMILY change confirmed by `ConfirmMetres` from its first reading; other `lastKnownPosition` writers must carry the surface fields forward (more: see full). Full: docs/invariants/surroundings.md#sur-10
 - [GSX-20] "GSX available" for the `.ini` gate overlay, deice pads and profile stop positions is `GsxService.CouatlStarted` OR `SimConnectManager.GsxCouatlStartedLVar`, never the Remote flag alone; `GsxService` itself still touches SimConnect nowhere. Full: docs/invariants/gsx-remote.md#gsx-20
+
+Mirrored from da40-shared-code.md (they govern SimConnectManager, SimVarDefinition and CoherentDisplayClient code; change them there and here together):
+- [DA40S-1] `GetCachedVariableValue` is keyed by the VARIABLE KEY, never the SimVar name, and holds a variable when it is `Continuous && IsAnnounced` (`ExcludeFromBatch` vars too); never turn a cache miss into 0 (`EveryCacheLookupNamesACachedVariableKey`). Full: docs/invariants/da40-shared-code.md#da40s-1
+- [DA40S-5] `SimVarDefinition.Format` defaults to "F0" and `ValueDescriptions` is never null (test `Count`, not null). Full: docs/invariants/da40-shared-code.md#da40s-5
+- [DA40S-8] A `CoherentDisplayClient` agent returns a string containing `MSFSBA_DISP_INSTALLED`; the client reports a wrong answer once per socket, and that report stays. Full: docs/invariants/da40-shared-code.md#da40s-8

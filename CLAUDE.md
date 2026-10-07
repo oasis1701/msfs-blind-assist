@@ -153,7 +153,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [variable-system.md](docs/variable-system.md) | The three variable patterns (panel, monitoring, hotkey) | — |
 | [hotkey-system.md](docs/hotkey-system.md) | Adding or changing hotkeys | — |
 | [development.md](docs/development.md) | Dependencies, key files, build output paths and traps | — |
-| [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | — |
+| [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | coherent-tooling |
 | [troubleshooting-playbook.md](docs/troubleshooting-playbook.md) | A control "doesn't work": read this FIRST, before calling it broken or unsettable | troubleshooting |
 | [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, runway-holds, taxi-steering, landing-exits, landing-rollout, ground-traffic, surroundings, taxi-augmentation, takeoff-and-callouts |
 | [gsx.md](docs/gsx.md) | GSX gate selection and Remote API, docking guidance, the metres/feet toggle | gsx-remote, gsx-stands-docking |
@@ -174,6 +174,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [hs787.md](docs/hs787.md) | HorizonSim 787-9: CDU, IRS, EICAS over the Coherent debugger | hs787 |
 | [md11.md](docs/md11.md) | TFDi MD-11: CEVENT transport, control state, layout, the control-map generator | md11 |
 | [da40.md](docs/da40.md) | COWS Diamond DA40 NG and XLS: panels, gauge arcs, the FADEC power lever, the G1000 display window; XLS variables in [da40-xls-variables.md](docs/da40-xls-variables.md) | da40, da40-airframe, da40-ng-engine, da40-xls-engine, da40-g1000, da40-avionics, da40-shared-code |
+| [checklists.md](docs/checklists.md) | The checklist window (Shift+C): the aircraft's own checklist read out of its package, the bundled files, the order between them | checklists |
 | [gemini.md](docs/gemini.md) | AI providers (Gemini or Claude): display reads, scene and route description, route briefing | ai-display, route-briefing |
 
 ## Adding or changing a rule

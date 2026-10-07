@@ -795,6 +795,27 @@ public class CowsDA40PanelStructureTests
         Assert.NotEmpty(rows);
     }
 
+    [Theory]
+    [InlineData(DA40Variant.NG)]
+    [InlineData(DA40Variant.XLS)]
+    public void EverySilentlyConsumedVarHasNoMuteRow(DA40Variant variant)
+    {
+        // VAR-9: a var ProcessSimVarUpdate consumes silently (IsSilentCachedReadout returns true
+        // before any announcer runs) never speaks, so a Ctrl+M row for it would mute nothing.
+        var vars = new CowsDA40Definition(variant).GetVariables();
+        var offending = CowsDA40Definition.SilentCachedReadoutKeys
+            .Where(k => !CowsDA40Definition.SilentKeysSpokenByOwnTracker.Contains(k))
+            .Where(k => vars.TryGetValue(k, out var d)
+                        && d.UpdateFrequency == MSFSBlindAssist.SimConnect.UpdateFrequency.Continuous
+                        && d.IsAnnounced && !d.ExcludeFromMonitorManager)
+            .ToList();
+        Assert.True(offending.Count == 0, $"{variant}: silent but muteable: {string.Join(", ", offending)}");
+
+        // And the keys a tracker of their own speaks keep the row that mutes that speech.
+        foreach (var key in CowsDA40Definition.SilentKeysSpokenByOwnTracker)
+            if (vars.TryGetValue(key, out var d))
+                Assert.False(d.ExcludeFromMonitorManager, $"{variant}: {key} is spoken and must stay muteable");
+    }
     [Fact]
     public void MonitorRowsCarryReadableLabels()
     {
