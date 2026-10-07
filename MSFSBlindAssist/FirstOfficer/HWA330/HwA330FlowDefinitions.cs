@@ -262,8 +262,10 @@ public static class HwA330FlowDefinitions
             // Detection stays on the sign LAMP, never the position — the A380 invariant.
             Done(Skip(SW("BS_SEATBELTS", "Seatbelt signs: ON", "SEATBELT_SIGN", 1),
                 s => s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "BS_SEATBELTS"),
-            Done(Skip(SW("BS_BEACON", "Beacon: ON", "BEACON_LIGHTS_SET", 1),
-                s => s.IsOn("LIGHT BEACON")), "BS_BEACON"),
+            // Completes the Before Start Checklist's "Beacon: ON" too (FO-6): the flow latches both
+            // groups, so a failed write must keep BSC_BEACON out of the latch as well.
+            Also(Done(Skip(SW("BS_BEACON", "Beacon: ON", "BEACON_LIGHTS_SET", 1),
+                s => s.IsOn("LIGHT BEACON")), "BS_BEACON"), "BSC_BEACON"),
             // FCU managed modes (pseudo-keys → atomic knob-push calc)
             Done(SW("BS_FCUSPD", "FCU speed: managed", "FCU_PUSH_SPEED", 1), "BS_FCUSPD"),
             Done(SW("BS_FCUHDG", "FCU heading: managed", "FCU_PUSH_HEADING", 1), "BS_FCUHDG"),
@@ -333,7 +335,10 @@ public static class HwA330FlowDefinitions
             // double-fires it back to disarmed.
             Done(Skip(SW("AS_SPOILERS_ARM", "Ground spoilers: ARMED", "SPOILERS_ARM_TOGGLE", 1),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)), "AS_SPOILERS_ARM"),
-            Done(SW("AS_RUDDERTRIM", "Rudder trim: RESET", "A32NX_RUDDER_TRIM_RESET", 1), "AS_RUDDERTRIM"),
+            // Completes the After Start Checklist's "Rudder trim: NEUTRAL" too (FO-6): a failed
+            // reset must keep ASC_RUDDER out of the latch as well.
+            Also(Done(SW("AS_RUDDERTRIM", "Rudder trim: RESET", "A32NX_RUDDER_TRIM_RESET", 1), "AS_RUDDERTRIM"),
+                "ASC_RUDDER"),
             // Takeoff flaps from SimBrief (the Fenix's step): quiet skip without a plan. The
             // Captain reminder below speaks unless the lever already reads a takeoff position
             // (1-3): no plan, or a write that did not take, and the pilot is asked. Keyed on the
@@ -477,10 +482,13 @@ public static class HwA330FlowDefinitions
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 0)), "AL_SPOILERS"),
             Done(Skip(SW("AL_FLAPS_UP", "Flaps: UP", "A32NX_FLAPS_HANDLE_INDEX", 0),
                 s => s.IsPosition("A32NX_FLAPS_HANDLE_INDEX", 0)), "AL_FLAPS_UP"),
-            Done(Skip(SW("AL_WXR_OFF", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys", 1),
-                s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 1)), "AL_WXR_OFF"),
-            Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "A32NX_SWITCH_RADAR_PWS_POSITION", 0),
-                s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_POSITION", 0)), "AL_PWS_OFF"),
+            // Both radar steps complete the After Landing Checklist's "Radar and predictive
+            // windshear: OFF" (ALC_WXR, FO-6): the line is true only when BOTH are off, so each
+            // step's failure must keep it out of the latch.
+            Also(Done(Skip(SW("AL_WXR_OFF", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys", 1),
+                s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 1)), "AL_WXR_OFF"), "ALC_WXR"),
+            Also(Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "A32NX_SWITCH_RADAR_PWS_POSITION", 0),
+                s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_POSITION", 0)), "AL_PWS_OFF"), "ALC_WXR"),
             Done(Skip(SW("AL_STROBE_AUTO", "Strobes: AUTO", "LIGHTING_STROBE_0", 1),
                 s => s.IsPosition("LIGHTING_STROBE_0", 1)), "AL_STROBE_AUTO"),
             Done(SW("AL_LANDING_OFF", "Landing lights: OFF", "LANDING_LIGHTS_OFF_THIRD_PARTY", 1), "AL_LANDING_OFF"),
@@ -687,6 +695,15 @@ public static class HwA330FlowDefinitions
     private static Step Done(Step step, string checklistItemId)
     {
         step.CompletesChecklistItemId = checklistItemId;
+        return step;
+    }
+
+    // A further line the step delivers, beyond Done's: the same line in the flow's own *_CL
+    // read-back (FlowStep.AlsoCompletesChecklistItemIds; FlowManager marks and, on a skip,
+    // excludes every linked id).
+    private static Step Also(Step step, params string[] alsoCompletes)
+    {
+        step.AlsoCompletesChecklistItemIds = alsoCompletes;
         return step;
     }
 }

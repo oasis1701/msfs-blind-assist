@@ -232,8 +232,10 @@ public static class FenixFlowDefinitions
                 s => !s.IsOn("I_OH_ELEC_EXT_PWR_L")), "BS_EXTPWR_OFF"),
             Done(Skip(SW("BS_SEATBELTS", "Seatbelt signs: ON", "S_OH_SIGNS", 1),
                 s => s.IsOn("S_OH_SIGNS")), "BS_SEATBELTS"),
-            Done(Skip(SW("BS_BEACON", "Beacon: ON", "S_OH_EXT_LT_BEACON", 1),
-                s => s.IsOn("S_OH_EXT_LT_BEACON")), "BS_BEACON"),
+            // Completes the Before Start Checklist's "Beacon: ON" too (FO-6): the flow latches both
+            // groups, so a failed write must keep BSC_BEACON out of the latch as well.
+            Also(Done(Skip(SW("BS_BEACON", "Beacon: ON", "S_OH_EXT_LT_BEACON", 1),
+                s => s.IsOn("S_OH_EXT_LT_BEACON")), "BS_BEACON"), "BSC_BEACON"),
             // FCU managed modes (pseudo-keys → atomic knob-push calc)
             Done(SW("BS_FCUSPD", "FCU speed: managed", "FCU_PUSH_SPEED_MANAGED", 1), "BS_FCUSPD"),
             Done(SW("BS_FCUHDG", "FCU heading: managed", "FCU_PUSH_HEADING_MANAGED", 1), "BS_FCUHDG"),
@@ -294,7 +296,12 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_OH_ELEC_APU_MASTER", 0)), "AS_APUMASTER_OFF"),
             Done(Skip(SW("AS_SPOILERS_ARM", "Ground spoilers: ARMED", "A_FC_SPEEDBRAKE", 0),
                 s => s.IsPosition("A_FC_SPEEDBRAKE", 0)), "AS_SPOILERS_ARM"),
-            Done(SW("AS_RUDDERTRIM", "Rudder trim: RESET", "S_FC_RUDDER_TRIM_RESET", 1), "AS_RUDDERTRIM"),
+            // Completes the After Start Checklist's "Rudder trim: NEUTRAL" too (FO-6), though that
+            // line is a Reminder here (no measured Fenix trim var): the reset is what the line
+            // asks for, and linking it only keeps the line unticked, for the pilot, when the
+            // reset could not be sent. It does not claim the trim was read as neutral.
+            Also(Done(SW("AS_RUDDERTRIM", "Rudder trim: RESET", "S_FC_RUDDER_TRIM_RESET", 1), "AS_RUDDERTRIM"),
+                "ASC_RUDDER"),
             // Takeoff flaps from SimBrief (quiet skip when no plan loaded)
             Done(Provider("AS_FLAPS", "Flaps: takeoff setting", "S_FC_FLAPS",
                 s => { int f = s.TakeoffFlapsLeverIndex(); return f >= 1 ? f : (int?)null; }), "AS_FLAPS"),
@@ -442,10 +449,13 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("A_FC_SPEEDBRAKE", 1)), "AL_SPOILERS"),
             Done(Skip(SW("AL_FLAPS_UP", "Flaps: UP", "S_FC_FLAPS", 0),
                 s => s.IsPosition("S_FC_FLAPS", 0)), "AL_FLAPS_UP"),
-            Done(Skip(SW("AL_WXR_OFF", "Weather radar: OFF", "S_WR_SYS", WxOff),      // [RADAR]
-                s => s.IsPosition("S_WR_SYS", WxOff)), "AL_WXR_OFF"),                  // [RADAR]
-            Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "S_WR_PRED_WS", PwsOff), // [RADAR]
-                s => s.IsPosition("S_WR_PRED_WS", PwsOff)), "AL_PWS_OFF"),             // [RADAR]
+            // Both radar steps complete the After Landing Checklist's "Radar and predictive
+            // windshear: OFF" (ALC_WXR, FO-6): the line is true only when BOTH are off, so each
+            // step's failure must keep it out of the latch.
+            Also(Done(Skip(SW("AL_WXR_OFF", "Weather radar: OFF", "S_WR_SYS", WxOff),      // [RADAR]
+                s => s.IsPosition("S_WR_SYS", WxOff)), "AL_WXR_OFF"), "ALC_WXR"),           // [RADAR]
+            Also(Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "S_WR_PRED_WS", PwsOff), // [RADAR]
+                s => s.IsPosition("S_WR_PRED_WS", PwsOff)), "AL_PWS_OFF"), "ALC_WXR"),      // [RADAR]
             Done(Skip(SW("AL_STROBE_AUTO", "Strobes: AUTO", "S_OH_EXT_LT_STROBE", 1),
                 s => s.IsPosition("S_OH_EXT_LT_STROBE", 1)), "AL_STROBE_AUTO"),
             Done(SW("AL_LANDING_OFF", "Landing lights: OFF", "LANDING_LIGHTS_BOTH", 1), "AL_LANDING_OFF"),
@@ -648,6 +658,15 @@ public static class FenixFlowDefinitions
     private static Step Done(Step step, string checklistItemId)
     {
         step.CompletesChecklistItemId = checklistItemId;
+        return step;
+    }
+
+    // A further line the step delivers, beyond Done's: the same line in the flow's own *_CL
+    // read-back (FlowStep.AlsoCompletesChecklistItemIds; FlowManager marks and, on a skip,
+    // excludes every linked id).
+    private static Step Also(Step step, params string[] alsoCompletes)
+    {
+        step.AlsoCompletesChecklistItemIds = alsoCompletes;
         return step;
     }
 }
