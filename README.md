@@ -185,10 +185,6 @@ See [Download](#download) above for the current release and preview builds. MSFS
 ## Contributing
 Pure-logic changes should come with characterization tests in tests/MSFSBlindAssist.Tests (CI runs them on every PR).
 
-## Donations
-Consider donating to support me and my project! Every bit helps, and it would be extremely helpful. Thank you!
-[Support me on Ko-fi](https://ko-fi.com/oasis1701)
-
 ## License
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)
