@@ -12,7 +12,7 @@ Each section is the complete text of one rule. Its one-line form, under the same
 
 ## WFD-3
 
-- EVERY aircraft definition must state `GetWaypointFlightDirectorProfile()` explicitly, even when it just takes the baseline — `HeadwindA330Definition` derives from `FlyByWireA320Definition`, so an omitted override silently inherits an EXPLICIT narrowbody profile on a heavy widebody and reads as deliberate. Never derive `BankRateLeadSec` from a measured `TaxiTurnLeadSeconds`: the taxi figure is ground steering dominated by pilot rollout anticipation (PMDG 777: taxi 0.3 s vs FD lead 1.3 s). → [waypoint-flight-director.md](../waypoint-flight-director.md)
+- EVERY aircraft definition must state `GetWaypointFlightDirectorProfile()` explicitly, even when it just takes the baseline — `HeadwindA330Definition` derives from `FlyByWireA320Definition`, so an omitted override silently inherits an EXPLICIT narrowbody profile on a heavy widebody and reads as deliberate. Never derive `BankRateLeadSec` from a measured `TaxiTurnLeadSeconds`: the taxi figure is ground steering dominated by pilot rollout anticipation (PMDG 777: taxi 0.3 s vs FD lead 1.3 s). The TFDi MD-11 was the one definition that took the base class's A320 baseline silently (it derives from `BaseAircraftDefinition`, not an airliner); since 2026-10-07 it states the unmeasured heavy-widebody class profile the 787 and A330 carry. An aircraft added later (the open DA40, Learjet 35A and Citation 680 PRs among them) states its own too. → [waypoint-flight-director.md](../waypoint-flight-director.md)
 
 ## WFD-4
 
@@ -52,7 +52,9 @@ Each section is the complete text of one rule. Its one-line form, under the same
 
 ## WFD-13
 
-- The EFB "Track Slot N" handler must REJECT a position-less fix (`Latitude==0 && Longitude==0`) — ARINC maneuver legs (CA/VA/VM/FM/CI/VI/CD/VD/CR, ~14% of legs) parse to (0,0) and would steer the FD at null island. → [waypoint-flight-director.md](../waypoint-flight-director.md)
+- The EFB "Track Slot N" handler must REJECT a position-less fix (`Latitude==0 && Longitude==0`) — ARINC maneuver legs (CA/VA/VM/FM/CI/VI/CD/VD/CR, ~14% of legs) parse to (0,0) and would steer the FD at null island — with ONE exception: a leg that `WaypointConstraintMapper.FromFix` gives both a course and a terminating altitude (CA/FA/VA "climb course 220° to 500 ft", the opening leg of most SIDs and missed approaches). That leg is completely specified without a position, and the FD flies it as a course hold ended by the altitude (`WaypointFlightDirectorManager.ProcessToAltitudeLeg`). A bare intercept leg, or a fix whose coordinates did not resolve, is still refused aloud.
+
+Updated 2026-10-07 (#269's port review): the line still said every position-less fix was rejected after the to-altitude legs became flyable. → [waypoint-flight-director.md](../waypoint-flight-director.md)
 
 ## WFD-14
 
