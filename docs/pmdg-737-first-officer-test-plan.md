@@ -358,7 +358,9 @@ initial/cruise altitude and destination field elevation.
    and the reminder fires: "Captain action required: Set flight and landing altitudes on
    the pressurization panel." In the Steps list both steps show as skipped ("→ Flight
    altitude: set", "→ Landing altitude: set"), not "✓": a step with no SimBrief value is a
-   skipped step (FO-20, 2026-10-06), and nothing spoken, ticked or latched changes.
+   skipped step (FO-20, 2026-10-06). After "Preflight flow complete", Checklists →
+   Preflight → "Flight and landing altitudes: SET" must stay UNTICKED (since 2026-10-06 it
+   is no longer latched over windows nobody set); set the windows and tick it by hand.
 5. **Checklist tick fires the set** — SimBrief loaded, then dial FLT ALT wrong via the
    Air Systems panel. Checklists → Preflight → "Flight and landing altitudes: SET" shows
    unticked; tick it → both values set (two callouts, ~350 ms apart) and it re-ticks.

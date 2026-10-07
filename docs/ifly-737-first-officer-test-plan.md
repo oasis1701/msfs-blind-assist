@@ -164,7 +164,11 @@ this one, it does not set it.
 
 ### B5. Pressurization altitude LED windows — **LIVE-VERIFY**
 Preflight sets the FLT ALT / LAND ALT windows from a loaded SimBrief plan (skipped, no
-announcement, if no plan is loaded). The composition helper that reads these five-digit LED
+announcement, if no plan is loaded). **No plan (2026-10-06):** run Preflight without loading
+SimBrief — expect only "Captain action required: Set flight and landing altitudes on the
+pressurization panel." (no "Flight and landing altitudes: set"), and after "Preflight flow
+complete" the Preflight checklist's "Flight and landing altitudes: SET" stays UNTICKED, not
+latched. The composition helper that reads these five-digit LED
 windows back for checklist auto-detect now allows **leading blanks** (so a value under 10,000 ft
 reads correctly padded) and an **optional leading minus** immediately before the first digit (so
 a below-sea-level LAND ALT, e.g. a Schiphol-elevation destination, reads as negative).

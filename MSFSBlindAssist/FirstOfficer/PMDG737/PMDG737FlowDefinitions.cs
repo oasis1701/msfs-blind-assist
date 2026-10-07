@@ -145,10 +145,14 @@ public static class PMDG737FlowDefinitions
             // skipped when no plan is loaded — the Captain fallback below announces
             // instead. Two separate steps keep the CDA writes in separate sim frames.
             // The PR #120 window monitors announce the resulting values automatically.
+            // BOTH steps name "Flight and landing altitudes: SET" (PF_PRESS), the one line the
+            // two windows share: a step with no plan value (FO-20's silent skip) or a write
+            // that did not take keeps that line out of the end-of-flow latch, so with no plan
+            // it stays open for the pilot instead of being latched over unset windows (FO-7).
             DynSW("PF_FLT_ALT", "Flight altitude: set", "EVT_OH_PRESS_FLT_ALT_SET",
-                s => s.PlannedFltAltFt, skipWhen: s => s.FltAltMatches()),
+                s => s.PlannedFltAltFt, skipWhen: s => s.FltAltMatches(), checklistItemId: "PF_PRESS"),
             DynSW("PF_LAND_ALT", "Landing altitude: set", "EVT_OH_PRESS_LAND_ALT_SET",
-                s => s.PlannedLandAltFt, skipWhen: s => s.LandAltMatches()),
+                s => s.PlannedLandAltFt, skipWhen: s => s.LandAltMatches(), checklistItemId: "PF_PRESS"),
             Skip(Captain("PF_PRESS", "Flight and landing altitudes",
                     "Set flight and landing altitudes on the pressurization panel."),
                 s => s.HasPressurizationPlan),
@@ -587,16 +591,18 @@ public static class PMDG737FlowDefinitions
 
     // SetSwitch whose target resolves at DISPATCH time from evaluator state — for
     // SimBrief-derived values unknown when these static definitions are built. A null
-    // provider result quietly skips the step (see FlowStep.TargetValueProvider).
+    // provider result quietly skips the step and keeps its line out of the latch (FO-20,
+    // see FlowStep.TargetValueProvider).
     private static Step DynSW(string id, string label, string eventName,
         Func<AircraftStateEvaluator, int?> provider,
-        Func<AircraftStateEvaluator, bool>? skipWhen = null) => new()
+        Func<AircraftStateEvaluator, bool>? skipWhen = null, string? checklistItemId = null) => new()
     {
         Id = id, Label = label,
         ActionType = FlowStepActionType.SetSwitch,
         EventName = eventName,
         TargetValueProvider = provider,
         SkipCondition = skipWhen,
+        CompletesChecklistItemId = checklistItemId,
         PostActionDelayMs = 350,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };

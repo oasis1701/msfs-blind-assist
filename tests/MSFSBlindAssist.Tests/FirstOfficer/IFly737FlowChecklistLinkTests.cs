@@ -56,6 +56,12 @@ public class IFly737FlowChecklistLinkTests
         // light, which is what both "Speedbrake: ARMED" lines read.
         [IFly737ActionExecutor.KeySpeedbrakeArm] = new (string, Func<int, double>)[]
         { (SpeedbrakeLeverState.ArmedField, _ => 1) },
+        // PRESS_ALTS pseudo-key (SetPressurizationAltitudesCoreAsync): sets every planned window
+        // to the plan, which is what "Flight and landing altitudes: SET" (FO_PRESS_ALTS_MATCH)
+        // reads. The step is plan-gated (no plan = no target, a silent skip, FO-20), so it never
+        // claims the line over a no-op.
+        [IFly737ActionExecutor.KeyPressAlts] = new (string, Func<int, double>)[]
+        { ("FO_PRESS_ALTS_MATCH", _ => 1), ("FO_PRESS_LAND_ALT_MATCH", _ => 1) },
         // Every fuel pump also feeds the Before Start synthetic. ON is the intended Before
         // Start configuration either way: with centre fuel the centre pumps run, without it
         // the executor's CenterPumpGate suppresses the centre ON write — both read OK (1).
@@ -78,9 +84,6 @@ public class IFly737FlowChecklistLinkTests
         "BTN_APU_GEN_1_ON", "BTN_APU_GEN_2_ON", // stateless bus-transfer click pair
         "BTN_ATTENDANT_CALL",                   // cabin chime
         "Fuel_Flow_Switch_Status",              // spring-loaded RESET, no line reads it
-        // SimBrief-driven: PF_PRESS reads the synthetic FO_PRESS_ALTS_MATCH, which needs a
-        // loaded plan — with none the pseudo-key is a quiet no-op that still "succeeds".
-        IFly737ActionExecutor.KeyPressAlts,
         // Held self-completing tests (no persistent "test performed" state).
         IFly737ActionExecutor.KeyFireTest, IFly737ActionExecutor.KeyStallTest1, IFly737ActionExecutor.KeyStallTest2,
         IFly737ActionExecutor.KeyOverspeedTest1, IFly737ActionExecutor.KeyOverspeedTest2,
@@ -175,15 +178,19 @@ public class IFly737FlowChecklistLinkTests
                     $"{flow.Id}/{step.Id} links a StayComplete line - a GRD write is not a completed start");
     }
 
-    // The SimBrief pressurization write can "succeed" without setting anything (no plan
-    // loaded is a quiet no-op), so it must never claim the line it would set.
+    // The SimBrief pressurization pseudo-key "succeeds" without setting anything when no plan is
+    // loaded, so the step may claim its line ONLY because it is plan-gated: with no plan its
+    // provider has no target and FlowManager skips it silently (FO-20), keeping the line open.
+    // The behaviour on a real FlowManager is IFly737PressurizationNoPlanTests.
     [Fact]
-    public void The_pressurization_write_links_no_line()
+    public void The_pressurization_write_links_its_line_only_behind_a_plan_gate()
     {
         var step = IFly737FlowDefinitions.Build().Single(f => f.Id == "PREFLIGHT")
             .Steps.Single(s => s.Id == "PF_PRESS_ALTS");
         Assert.Equal(IFly737ActionExecutor.KeyPressAlts, step.EventName);
-        Assert.Empty(step.LinkedChecklistItemIds);
+        Assert.Equal(new[] { "PF_PRESS" }, step.LinkedChecklistItemIds.ToArray());
+        Assert.NotNull(step.TargetValueProvider);
+        Assert.Null(step.TargetValueProvider!(new IFly737StateEvaluator()));
     }
 
     // Characterization of what is still latched with no step behind it: auto-detect and
@@ -215,8 +222,6 @@ public class IFly737FlowChecklistLinkTests
             "PREFLIGHT/PFC_LEVERS",
             "PREFLIGHT/PFC_PARK",
             "PREFLIGHT/PFC_PRESS",
-            // The SimBrief pressurization write + a Captain fallback; no plan is a quiet success.
-            "PREFLIGHT/PF_PRESS",
             // Shutdown Checklist: parking brake is the Captain's; probe heat AUTO was set in
             // After Landing.
             "SHUTDOWN/SDC_PARK",

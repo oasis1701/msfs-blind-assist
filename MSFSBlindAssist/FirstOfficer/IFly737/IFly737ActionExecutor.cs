@@ -709,9 +709,10 @@ public sealed class IFly737ActionExecutor : IFoActionExecutor
     /// reasoning as every other *CoreAsync split in this file). <paramref name="state"/> is
     /// nullable ONLY for the pseudo-key path, which passes the executor's own wired
     /// evaluator (<see cref="_state"/>) — never wired (no <see cref="SetStateEvaluator"/>
-    /// call yet, or a unit test) is a quiet no-op success, matching the flow's own
-    /// "no plan loaded" quiet-skip contract (see IFly737FlowDefinitions.PF_PRESS_ALTS): no
-    /// write, no announce, the Captain fallback step covers it instead.</summary>
+    /// call yet, or a unit test) is a quiet no-op success: no write, no announce. The FLOW
+    /// never relies on that success with no plan: its PF_PRESS_ALTS step is plan-gated and
+    /// skipped silently before dispatch (FO-20, see IFly737FlowDefinitions.PF_PRESS_ALTS), so
+    /// the line it names stays open and the Captain fallback step covers it.</summary>
     private async Task<bool> SetPressurizationAltitudesCoreAsync(IFly737StateEvaluator? state)
     {
         if (state == null) return true;

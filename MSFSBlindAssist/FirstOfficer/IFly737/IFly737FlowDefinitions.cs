@@ -118,6 +118,9 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///    cuts off the step's OWN "Flight and landing altitudes: set" narration mid-word on every
 ///    run regardless of repeat count. The bypass avoids that entirely: it sends
 ///    AIRSYSTEM_FLT_ALT_SET/AIRSYSTEM_LDG_ALT_SET straight to the SDK client with no announce.
+///    The step is plan-gated (2026-10-06): with no SimBrief plan it has no target, a silent skip
+///    (FO-20), and it names PF_PRESS, so a no-plan run leaves that line open instead of latching
+///    it (the PMDG's two per-window steps name it the same way).
 /// </summary>
 public static class IFly737FlowDefinitions
 {
@@ -258,9 +261,18 @@ public static class IFly737FlowDefinitions
             // this step's own "Flight and landing altitudes: set" narration mid-word every
             // run. PRESS_ALTS reads the plan straight off the wired state evaluator and sends
             // AIRSYSTEM_FLT_ALT_SET/AIRSYSTEM_LDG_ALT_SET directly (no announce) — a single
-            // step covers both altitudes; a quiet no-op (no write, no announce) when no plan
-            // is loaded, same as before. The Captain fallback below still covers that case.
-            SW("PF_PRESS_ALTS", "Flight and landing altitudes: set", IFly737ActionExecutor.KeyPressAlts, 1),
+            // step covers both altitudes. The Captain fallback below covers the no-plan case.
+            //
+            // PLAN-GATED (2026-10-06): with no plan the pseudo-key is a quiet no-op that still
+            // reports success, so the step used to say "Flight and landing altitudes: set" over
+            // windows it never touched, and nothing kept PF_PRESS out of the end-of-flow latch
+            // (FO-7). The step now has no target without a plan, which FlowManager treats as a
+            // SILENT skip (FO-20: nothing sent or spoken, the Captain fallback is the speech),
+            // and it names PF_PRESS, so a no-plan run, or a write that did not take, leaves
+            // "Flight and landing altitudes: SET" open for the pilot. The target itself is a
+            // token (the pseudo-key reads the plan off the evaluator, not the step).
+            Plan(SW("PF_PRESS_ALTS", "Flight and landing altitudes: set", IFly737ActionExecutor.KeyPressAlts, 1,
+                checklistItemId: "PF_PRESS")),
             Skip(Captain("PF_PRESS", "Flight and landing altitudes",
                     "Set flight and landing altitudes on the pressurization panel."),
                 s => s.HasPressurizationPlan),
@@ -745,6 +757,16 @@ public static class IFly737FlowDefinitions
     private static Step Skip(Step step, Func<IFly737StateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
+        return step;
+    }
+
+    // A step that needs the SimBrief pressurization plan: without one it has no target, a SILENT
+    // skip in FlowManager (FO-20) that keeps its lines out of the latch; with one it sends its own
+    // fixed target unchanged.
+    private static Step Plan(Step step)
+    {
+        int? target = step.TargetValue;
+        step.TargetValueProvider = s => s.HasPressurizationPlan ? target : null;
         return step;
     }
 
