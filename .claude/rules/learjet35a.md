@@ -4,7 +4,10 @@ paths:
   - "MSFSBlindAssist/Forms/Learjet35/**"
   - "MSFSBlindAssist/Resources/coherent-gns-agent.js"
   - "MSFSBlindAssist/Services/GpsWaypointSequencer.cs"
+  - "MSFSBlindAssist/MainForm.Learjet35.cs"
+  - "tools/lj35-gen/**"
   - "tests/MSFSBlindAssist.Tests/**/*Lj35*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/GpsWaypointSequencerTests.cs"
 ---
 # Flysimware Learjet 35A rules
 
@@ -14,7 +17,7 @@ Loaded with the Learjet 35A code. Background: docs/learjet35a.md and docs/learje
 - [LJ35-2] A control whose instrument JS listens for the H: event (the Davtron clock) is written through its B: input event, `(>B:GENERIC_<node>_Set)`, which fires the same `H:GENERIC_<node>` the cockpit click does. Full: docs/invariants/learjet35a.md#lj35-2
 - [LJ35-3] The GNS 530/430 take `H:AS530_<Key>`/`H:AS430_<Key>` sent from inside the page over the GNS window's own Coherent socket; the GTX 345 takes `H:Transponder<Key>` through MobiFlight. Full: docs/invariants/learjet35a.md#lj35-3
 - [LJ35-4] The panel tree is the vendor manual's cockpit map: every one of the model's 225 interactive components is a control or a named omission in `Lj35InteractionSurfaceTests.Surface`; no panel is silently empty, no control is in two panels, panel names are unique (`Lj35PanelStructureTests`). Full: docs/invariants/learjet35a.md#lj35-4
-- [LJ35-5] Deliberately absent, never add them: the weather radar picture (a WASM canvas), the GTN slots, the decorative L/R breaker panels, anything the manual marks NOT SIMULATED, and copilot duplicates of yoke switches. Full: docs/invariants/learjet35a.md#lj35-5
+- [LJ35-5] Deliberately absent, never add them: the weather radar picture (a WASM canvas), the decorative L/R breaker panels, anything the manual marks NOT SIMULATED, and copilot duplicates of yoke switches. The GTN slots are absent only until a GTN is installed to measure against; the tablet's GPS-unit selector is there for that window. Full: docs/invariants/learjet35a.md#lj35-5
 - [LJ35-6] `IsAnnounced` governs background changes only: every settable switch is Continuous and announced, every numeric readout silent, except the radio frequencies (`Freq`), which announce on change because vPilot retunes COM 1. Full: docs/invariants/learjet35a.md#lj35-6
 - [LJ35-7] The annunciator panel is DERIVED by `Lj35AnnunciatorLogic` from `Annunciators.xml`: each lamp is a Continuous pseudo-variable, baseline-first, silent while the annunciator test runs; `Lj35MasterCaution` latches each new cause; TEST-only lamps are not modelled. Full: docs/invariants/learjet35a.md#lj35-7
 - [LJ35-8] The GNS agent renders ONE layer (startup, self-test, a dialog or the active page) by DOM structure, the first row is the context, and after a key `Lj35GnsSpeech` speaks what the key DID; on the self-test page only the large right knob and ENT work. Full: docs/invariants/learjet35a.md#lj35-8

@@ -328,4 +328,60 @@ public class GpsWaypointSequencerTests
         var far = GpsWaypointSequencer.Read(Frame("SOXOM", "", distanceMetres: 185200), previousNextId: "SOXOM");
         Assert.Contains("100 miles", GpsWaypointSequencer.ComposeReadout(far));
     }
+    /// <summary>
+    /// A LAPSED PLAN NAME MUST FALL BACK TO THE LIVE SIMVAR, NOT PIN THE OLD WAYPOINT.
+    ///
+    /// Reported from the cockpit on the XLS: assign a Direct-To and Ctrl+W keeps naming the
+    /// PREVIOUS waypoint "unless you restarted the MSFSBA app". The plan-sourced name beat
+    /// the SimVar unconditionally, was written only on a SUCCESSFUL socket read, and never
+    /// expired — so any condition that stopped the read succeeding froze the answer for the
+    /// session, and a restart was the only thing that cleared it. The caller now passes null
+    /// once the cached name is stale, and null must mean "use what the aeroplane says".
+    ///
+    /// A Direct-To is exactly the case where the fallback is known-good: it populates the
+    /// ident SimVars, unlike the SIDs and STARs the plan path exists for.
+    /// </summary>
+    [Fact]
+    public void AnAbsentPlanNameFallsBackToTheSimVar()
+    {
+        var r = GpsWaypointSequencer.Read(
+            Frame("VCRI", "VCBI", directTo: true), previousNextId: "VCBI",
+            legNext: null, legPrev: null);
+
+        Assert.Equal("VCRI", r.NextId);
+    }
+
+    /// <summary>
+    /// And while it IS fresh the plan still wins — the reason the plan path exists at all is
+    /// that the ident SimVars are empty on every procedure, so this must not be "fixed" by
+    /// making the SimVar authoritative.
+    /// </summary>
+    [Fact]
+    public void AFreshPlanNameStillOutranksTheSimVar()
+    {
+        var r = GpsWaypointSequencer.Read(
+            Frame("", ""), previousNextId: "BI582",
+            legNext: "BI583", legPrev: "BI582");
+
+        Assert.Equal("BI583", r.NextId);
+        Assert.Equal("BI582", r.PassedId);
+    }
+
+    /// <summary>
+    /// Swapping source mid-flight must not fabricate a passing. The guard is structural — the
+    /// fix we were flying TO must have become the fix we are flying FROM — so a name arriving
+    /// from a different source is only a passing if the aeroplane really sequenced.
+    /// </summary>
+    [Fact]
+    public void LosingThePlanNameIsNotAPassing()
+    {
+        // The plan said BI583; the cache lapses and the SimVar offers something else, but the
+        // previous ident does not match what we were flying to, so nothing sequenced.
+        var r = GpsWaypointSequencer.Read(
+            Frame("VCRI", "VCBI", directTo: true), previousNextId: "BI583",
+            legNext: null, legPrev: null);
+
+        Assert.Equal(string.Empty, r.PassedId);
+    }
+
 }
