@@ -115,6 +115,8 @@
     <PackageReference Include="Newtonsoft.Json" Version="13.0.4" />
     <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
     <PackageReference Include="System.Speech" Version="10.0.9" />
+    <!-- Windows GPU performance counters ("GPU Engine", "GPU Process Memory") for the Sim Performance window. -->
+    <PackageReference Include="System.Diagnostics.PerformanceCounter" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Configuration" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Json" Version="10.0.9" />
     <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="10.0.9" />

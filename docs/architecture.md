@@ -13,6 +13,7 @@ This document describes the core components and design patterns of MSFS Blind As
 - Processes both LVars (local variables) and standard SimVars
 - Supports teleport functionality via InitPosition structure
 - Integrates with MobiFlight WASM module for H-variable support
+- Subscribes to the SimConnect "Frame" system event on demand (`SimConnectManager.FrameRate.cs`), only while the File > Sim Performance window holds a request, for its frame-rate row (rule SIM-18; the window and its resource sampler live in `Forms/SimPerformanceForm.cs` and `Services/SimPerformance/`)
 
 ### SimConnect data-definition ceiling
 
