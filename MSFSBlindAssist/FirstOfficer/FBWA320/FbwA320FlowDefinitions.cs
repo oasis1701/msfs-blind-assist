@@ -213,15 +213,18 @@ public static class FbwA320FlowDefinitions
             // APU block: master on, dwell, start pulse, wait for AVAIL. Stop policy: an
             // APU start failure aborts the flow HERE, before external power is pulsed
             // off the bus below — never a silent transfer to batteries.
-            Done(Skip(SW("BS_APU_MASTER", "APU master: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1),
-                s => s.IsOn("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON")), "BS_APU"),
+            // The line "APU: ON and available" is the AVAIL state, so the AVAIL WAIT completes
+            // it, never the master write: a master that is on with an APU that never comes up
+            // must not tick the line (FO-6/FO-7). The master write links nothing on purpose.
+            Skip(SW("BS_APU_MASTER", "APU master: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1),
+                s => s.IsOn("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON")),
             Skip(Wait("BS_APU_DWELL", "Waiting before APU start", 3),
                 s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
             Skip(SW("BS_APU_START", "APU start", "A32NX_OVHD_APU_START_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
-            WaitForField("BS_APU_AVAIL", "Waiting for APU available",
+            Done(WaitForField("BS_APU_AVAIL", "Waiting for APU available",
                 "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5, 180,
-                onTimeout: FlowStepFailurePolicy.Stop),
+                onTimeout: FlowStepFailurePolicy.Stop), "BS_APU"),
             // Defensive: release the latched START PB (mirrors the A380 flow's guard
             // against a stale 1 surprise-starting the APU on a later master-ON).
             Skip(SW("BS_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
@@ -465,15 +468,17 @@ public static class FbwA320FlowDefinitions
             Done(SW("AL_LANDING_OFF", "Landing lights: OFF", "LANDING_LIGHTS_OFF_THIRD_PARTY", 1), "AL_LANDING_OFF"),
             Done(Skip(SW("AL_NOSE_TAXI", "Nose light: TAXI", "LIGHTING_LANDING_1", 1),
                 s => s.IsPosition("LIGHTING_LANDING_1", 1)), "AL_NOSE_TAXI"),
-            // APU for the gate (skip the whole block when already available)
-            Done(Skip(SW("AL_APU_MASTER", "APU master: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1),
-                s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")), "AL_APU"),
+            // APU for the gate (skip the whole block when already available). The AVAIL wait
+            // completes "APU: ON and available", never the master write (see BS_APU_MASTER): a
+            // timed-out wait is skipped aloud and keeps the line out of the latch.
+            Skip(SW("AL_APU_MASTER", "APU master: ON", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1),
+                s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
             Skip(Wait("AL_APU_DWELL", "Waiting before APU start", 3),
                 s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
             Skip(SW("AL_APU_START", "APU start", "A32NX_OVHD_APU_START_PB_IS_ON", 1),
                 s => s.IsOn("A32NX_OVHD_APU_START_PB_IS_AVAILABLE")),
-            WaitForField("AL_APU_AVAIL", "Waiting for APU available",
-                "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5, 180),
+            Done(WaitForField("AL_APU_AVAIL", "Waiting for APU available",
+                "A32NX_OVHD_APU_START_PB_IS_AVAILABLE", v => v > 0.5, 180), "AL_APU"),
             Skip(SW("AL_APU_START_OFF", "APU start button: released", "A32NX_OVHD_APU_START_PB_IS_ON", 0),
                 s => !s.IsOn("A32NX_OVHD_APU_START_PB_IS_ON")),
             Done(Skip(Multi("AL_ANTIICE_OFF", "Engine and wing anti-ice: OFF",

@@ -204,16 +204,19 @@ public static class FenixFlowDefinitions
             // reasoning alone, each reproducing the other's bug, so: on the Fenix a legend's
             // meaning is NEVER inferred — not from its suffix, not from the real aircraft,
             // not from a sibling pushbutton — it is read in the sim.
-            Done(Skip(SW("BS_APU_MASTER", "APU master: ON", "S_OH_ELEC_APU_MASTER", 1),
-                s => s.IsOn("S_OH_ELEC_APU_MASTER")), "BS_APU"),
+            // The line "APU: ON and available" is the AVAIL state, so the AVAIL WAIT completes
+            // it, never the master write: a master that is on with an APU that never comes up
+            // must not tick the line (FO-6/FO-7). The master write links nothing on purpose.
+            Skip(SW("BS_APU_MASTER", "APU master: ON", "S_OH_ELEC_APU_MASTER", 1),
+                s => s.IsOn("S_OH_ELEC_APU_MASTER")),
             Wait("BS_APU_DWELL", "Waiting before APU start", 3),
             Skip(SW("BS_APU_START", "APU start", "S_OH_ELEC_APU_START", 1),
                 s => s.IsOn(FenixActionExecutor.ApuAvailField)),
             // Stop policy: an APU start failure aborts the flow HERE, before external
             // power is pulsed off the bus below — never a silent transfer to batteries.
-            WaitForField("BS_APU_AVAIL", "Waiting for APU available",
+            Done(WaitForField("BS_APU_AVAIL", "Waiting for APU available",
                 FenixActionExecutor.ApuAvailField, v => v > 0.5, 180,
-                onTimeout: FlowStepFailurePolicy.Stop),
+                onTimeout: FlowStepFailurePolicy.Stop), "BS_APU"),
             Done(Skip(SW("BS_APUBLEED", "APU bleed: ON", "S_OH_PNEUMATIC_APU_BLEED", 1),
                 s => s.IsOn("S_OH_PNEUMATIC_APU_BLEED")), "BS_APUBLEED"),
             // Fuel pumps immediately after the APU block (user decision, matches FSFO)
@@ -446,15 +449,17 @@ public static class FenixFlowDefinitions
             Done(Skip(SW("AL_NOSE_TAXI", "Nose light: TAXI", "S_OH_EXT_LT_NOSE", 1),
                 s => s.IsPosition("S_OH_EXT_LT_NOSE", 1)), "AL_NOSE_TAXI"),
             // APU for the gate (skip the whole block when already available).
-            // AVAIL lamp (_L), not the transient ON lamp (_U) — see BS_APU_MASTER above.
-            Done(Skip(SW("AL_APU_MASTER", "APU master: ON", "S_OH_ELEC_APU_MASTER", 1),
-                s => s.IsOn(FenixActionExecutor.ApuAvailField)), "AL_APU"),
+            // AVAIL is FenixActionExecutor.ApuAvailField (the persistent lamp, measured) — see
+            // BS_APU_MASTER above. The AVAIL wait completes "APU: ON and available", never the
+            // master write: a timed-out wait is skipped aloud and keeps the line out of the latch.
+            Skip(SW("AL_APU_MASTER", "APU master: ON", "S_OH_ELEC_APU_MASTER", 1),
+                s => s.IsOn(FenixActionExecutor.ApuAvailField)),
             Skip(Wait("AL_APU_DWELL", "Waiting before APU start", 3),
                 s => s.IsOn(FenixActionExecutor.ApuAvailField)),
             Skip(SW("AL_APU_START", "APU start", "S_OH_ELEC_APU_START", 1),
                 s => s.IsOn(FenixActionExecutor.ApuAvailField)),
-            WaitForField("AL_APU_AVAIL", "Waiting for APU available",
-                FenixActionExecutor.ApuAvailField, v => v > 0.5, 180),
+            Done(WaitForField("AL_APU_AVAIL", "Waiting for APU available",
+                FenixActionExecutor.ApuAvailField, v => v > 0.5, 180), "AL_APU"),
             Done(Skip(Multi("AL_ANTIICE_OFF", "Engine and wing anti-ice: OFF",
                     ("S_OH_PNEUMATIC_ENG1_ANTI_ICE", 0), ("S_OH_PNEUMATIC_ENG2_ANTI_ICE", 0),
                     ("S_OH_PNEUMATIC_WING_ANTI_ICE", 0)),

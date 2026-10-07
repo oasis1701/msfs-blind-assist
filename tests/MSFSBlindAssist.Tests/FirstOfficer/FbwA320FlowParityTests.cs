@@ -191,11 +191,26 @@ public class FbwA320FlowParityTests
         Assert.False(item.EvaluateState(0));
     }
 
-    [Fact]
-    public void The_flows_still_complete_the_apu_lines()
+    /// <summary>"APU: ON and available" is the AVAIL state, so the AVAIL wait completes it and the
+    /// master write links nothing: a master that is on with an APU that never comes up must not tick
+    /// (and, at flow end, latch) the line. After Landing's wait is Skip, so a timeout keeps the line
+    /// out of the latch; Before Start's is Stop, so the flow ends there and latches nothing.</summary>
+    [Theory]
+    [InlineData("BEFORE_START", "BS_APU_MASTER", "BS_APU_AVAIL", "BS_APU", FlowStepFailurePolicy.Stop)]
+    [InlineData("AFTER_LANDING", "AL_APU_MASTER", "AL_APU_AVAIL", "AL_APU", FlowStepFailurePolicy.Skip)]
+    public void The_avail_wait_completes_the_apu_line_and_the_master_write_does_not(
+        string flow, string master, string wait, string line, FlowStepFailurePolicy onTimeout)
     {
-        Assert.Equal("BS_APU", Step("BEFORE_START", "BS_APU_MASTER").CompletesChecklistItemId);
-        Assert.Equal("AL_APU", Step("AFTER_LANDING", "AL_APU_MASTER").CompletesChecklistItemId);
+        var w = Step(flow, wait);
+        Assert.Equal(FlowStepActionType.WaitForCondition, w.ActionType);
+        Assert.Equal("A32NX_OVHD_APU_START_PB_IS_AVAILABLE", w.ConditionFieldName);
+        Assert.Equal(line, w.CompletesChecklistItemId);
+        Assert.Equal(onTimeout, w.FailurePolicy);
+
+        Assert.Equal(FlowStepActionType.SetSwitch, Step(flow, master).ActionType);
+        Assert.Empty(Step(flow, master).LinkedChecklistItemIds);
+        Assert.Single(FbwA320FlowDefinitions.Build().Single(f => f.Id == flow).Steps,
+            s => s.LinkedChecklistItemIds.Contains(line));
     }
 
     [Fact]

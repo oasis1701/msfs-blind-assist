@@ -397,7 +397,7 @@ public static class FenixChecklistDefinitions
                 (e, _) => e.SetLandingLights(1)),
             Auto("AL_NOSE_TAXI", "AFTER_LANDING", "Nose light: TAXI",
                 "S_OH_EXT_LT_NOSE", v => Math.Abs(v - 1) < 0.5, (e, _) => e.SetNoseLight(1)),
-            // AVAIL lamp (_L), not the transient ON lamp (_U) — see BS_APU above.
+            // The persistent AVAIL lamp (ApuAvailField), not the transient ON lamp — see BS_APU above.
             AutoAsync("AL_APU", "AFTER_LANDING", "APU: ON and available",
                 FenixActionExecutor.ApuAvailField, v => v > 0.5, (e, _) => e.StartApuAsync()),
             Auto("AL_ANTIICE_OFF", "AFTER_LANDING", "Engine and wing anti-ice: OFF",

@@ -428,6 +428,28 @@ public class FoPr160ProcedureFixTests
         Assert.Equal("I_OH_ELEC_APU_START_U", step.ConditionFieldName);
     }
 
+    // "APU: ON and available" is the AVAIL state, so the AVAIL wait completes the line and the
+    // master write links nothing. Linked to the master write, a never-available APU still had
+    // the line ticked at the write and latched when the flow finished (FO-6/FO-7/FO-8): After
+    // Landing's wait is Skip-policy, so its timeout only excludes the lines the WAIT links.
+    [Theory]
+    [InlineData("BEFORE_START", "BS_APU_MASTER", "BS_APU_AVAIL", "BS_APU", FlowStepFailurePolicy.Stop)]
+    [InlineData("AFTER_LANDING", "AL_APU_MASTER", "AL_APU_AVAIL", "AL_APU", FlowStepFailurePolicy.Skip)]
+    public void Fenix_ApuAvailWait_CompletesTheApuLine_AndTheMasterWriteDoesNot(
+        string flowId, string masterId, string waitId, string lineId, FlowStepFailurePolicy onTimeout)
+    {
+        var steps = FenixFlows.Build().Single(f => f.Id == flowId).Steps;
+        var wait = steps.Single(s => s.Id == waitId);
+        var master = steps.Single(s => s.Id == masterId);
+
+        Assert.Equal(FlowStepActionType.WaitForCondition, wait.ActionType);
+        Assert.Equal(lineId, wait.CompletesChecklistItemId);
+        Assert.Equal(onTimeout, wait.FailurePolicy);
+        Assert.Equal(FlowStepActionType.SetSwitch, master.ActionType);
+        Assert.Empty(master.LinkedChecklistItemIds);
+        Assert.Single(steps, s => s.LinkedChecklistItemIds.Contains(lineId));
+    }
+
     // Every other field the Fenix FO reads/writes/waits on is exposed as a plain
     // string, but the flow Skip(...) predicates are opaque Func<TState,bool> lambdas
     // baked in at Build() time — there is no public way to introspect which field name
