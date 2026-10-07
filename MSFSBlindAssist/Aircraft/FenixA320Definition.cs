@@ -6289,7 +6289,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
             },
 
-            // ========== LIGHTS (3 variables) ==========
+            // ========== LIGHTS (2 variables) ==========
+            // A_MIP_LIGHTING_FLOOD_MAIN is not here: it is the Main Instrument Lights panel knob
+            // (OnRequest, 0-100 %), defined once above. A second entry here silently replaced it.
             ["A_FCU_LIGHTING"] = new SimConnect.SimVarDefinition
             {
                 Name = "A_FCU_LIGHTING",
@@ -6297,15 +6299,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-            },
-            ["A_MIP_LIGHTING_FLOOD_MAIN"] = new SimConnect.SimVarDefinition
-            {
-                Name = "A_MIP_LIGHTING_FLOOD_MAIN",
-                DisplayName = "LIGHTING FLOOD Main Pot Position",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = OffOn
             },
             ["N_PED_LIGHTING_PEDESTAL"] = new SimConnect.SimVarDefinition
             {
@@ -8269,6 +8262,21 @@ public class FenixA320Definition : BaseAircraftDefinition
                 UpdateFrequency = SimConnect.UpdateFrequency.OnRequest, // Registered at startup, monitored when takeoff assist is active
                 IsAnnounced = false, // Handled by TakeoffAssistManager
                 Units = "radians" // Note: Despite name, returns radians!
+            },
+
+            // Total fuel on board for the First Officer's Cockpit Preparation read-back ("Fuel
+            // quantity: CHECKED"): the stock weight in POUNDS, the same name and unit the fuel
+            // hotkey reads (HotkeyAction.ReadFuelInfo -> RequestFuelQuantityKg); FenixStateEvaluator.FuelText turns it
+            // into kilograms. OnRequest — the FO window polls it (OnRequestPollFields) — and a
+            // silent cache, so it is hidden from the Ctrl+M monitor list and not a panel control.
+            ["FUEL TOTAL QUANTITY WEIGHT"] = new SimConnect.SimVarDefinition
+            {
+                Name = "FUEL TOTAL QUANTITY WEIGHT",
+                DisplayName = "Total Fuel Weight",
+                Type = SimConnect.SimVarType.SimVar,
+                Units = "pounds",
+                UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+                ExcludeFromMonitorManager = true,
             },
 
             // Unused Variables - Available for future use
@@ -11752,15 +11760,17 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // S_FCU_ALTITUDE push/pull: same atomic RPN fix as S_FCU_HEADING / S_FCU_SPEED
+            // below (the First Officer's PushFcuManaged pushes this L:var before start).
             if (varKey == "S_FCU_ALTITUDE_PUSH" && value == 1)
             {
-                DecrementCounter("S_FCU_ALTITUDE", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_ALTITUDE", -1, simConnect);
                 return true;
             }
 
             if (varKey == "S_FCU_ALTITUDE_PULL" && value == 1)
             {
-                IncrementCounter("S_FCU_ALTITUDE", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_ALTITUDE", 1, simConnect);
                 return true;
             }
 
@@ -12464,7 +12474,7 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
-    /// Adjusts an FCU push/pull knob (S_FCU_SPEED / S_FCU_HEADING) by +/-1 using an atomic
+    /// Adjusts an FCU push/pull knob (S_FCU_SPEED / S_FCU_HEADING / S_FCU_ALTITUDE) by +/-1 using an atomic
     /// RPN read-modify-write, same reasoning as AdjustBaroCounter: the First Officer
     /// (FenixActionExecutor.PushFcuManaged) writes these same L:vars independently of this
     /// panel's rmpCounters, so two absolute-counter writers would desync (a stale app-side
@@ -13205,11 +13215,11 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
 
             case HotkeyAction.FCUAltitudePush:
-                DecrementCounter("S_FCU_ALTITUDE", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_ALTITUDE", -1, simConnect);
                 return true;
 
             case HotkeyAction.FCUAltitudePull:
-                IncrementCounter("S_FCU_ALTITUDE", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_ALTITUDE", 1, simConnect);
                 return true;
 
             case HotkeyAction.FCUSpeedPush:

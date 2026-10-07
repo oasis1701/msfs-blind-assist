@@ -41,8 +41,8 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// <c>FoPr160ProcedureFixTests</c>). It is right because it was read in the sim.
 ///
 /// The Fenix First Officer profile has no Landing flow, so the Landing Checklist's "Landing
-/// gear: DOWN" line (<c>LDC_GEAR</c>) is ticked only by its own state condition on
-/// <see cref="DownField"/> — never latched by a flow finishing.
+/// memo, landing gear: DOWN" line (<c>LDC_MEMO_GEAR</c>) is ticked only by its own state
+/// condition on <see cref="DownField"/> — never latched by a flow finishing.
 /// </summary>
 public static class FenixGearConfirmation
 {

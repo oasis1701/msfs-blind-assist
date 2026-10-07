@@ -13,7 +13,7 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// user never has to un-tick to stop it. The cabin CALL pushbuttons are also held (press,
 /// brief hold, release — "hit and release"). The FCU managed pushes go
 /// through an atomic read-modify-write calculator string rather than an app-side counter:
-/// the def's panel (FenixA320Definition.HandleUIVariableSet, S_FCU_SPEED/HEADING_PUSH/PULL)
+/// the def's panel (FenixA320Definition.HandleUIVariableSet, S_FCU_SPEED/HEADING/ALTITUDE_PUSH/PULL)
 /// ALSO writes these same L:vars via its own atomic RPN read-modify-write
 /// (AdjustFcuPushPullCounter) rather than its rmpCounters absolute counter — both writers
 /// now read the live sim value before modifying, so they stay coherent no matter which one
@@ -96,9 +96,19 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         // fallback for any stray plain dispatch.
         ["S_ECAM_TO"]              = LVarDispatchKind.LVarPulse,   // TO CONFIG test (takeoff)
         ["S_ECAM_STATUS"]          = LVarDispatchKind.LVarPulse,   // STS status page (landing review)
+        // ECAM SD page buttons are momentary: a held write leaves them pressed.
+        ["S_ECAM_DOOR"]            = LVarDispatchKind.LVarPulse,   // DOOR page (preflight, shutdown)
+        ["S_ECAM_APU"]             = LVarDispatchKind.LVarPulse,   // APU page (before start)
+        ["S_ECAM_ENGINE"]          = LVarDispatchKind.LVarPulse,   // ENG page (engine start)
     };
 
     protected override IReadOnlyDictionary<string, LVarDispatchKind> DispatchTable => Table;
+
+    /// <summary>True when <paramref name="key"/> is a momentary pushbutton in the pulse table
+    /// (written 1 then released), not a held L:var write. A flow step or checklist action that
+    /// presses a momentary button must use such a key: a held write leaves the button pressed.</summary>
+    public static bool IsMomentaryKey(string key) =>
+        Table.TryGetValue(key, out var kind) && kind == LVarDispatchKind.LVarPulse;
 
     /// <summary>Pseudo-control keys used by flow steps for actions that aren't a plain
     /// L:var write. Intercepted here; everything else defers to the base dispatch.</summary>
@@ -110,7 +120,8 @@ public sealed class FenixActionExecutor : LVarActionExecutor
             {
                 case "FCU_PUSH_SPEED_MANAGED":   return PushFcuManaged("S_FCU_SPEED");
                 case "FCU_PUSH_HEADING_MANAGED": return PushFcuManaged("S_FCU_HEADING");
-                case "CVR_TEST":                 return CvrTest("S_OH_RCRD_TEST");
+                case "FCU_PUSH_ALT_MANAGED":     return PushFcuManaged("S_FCU_ALTITUDE");
+                case "CVR_TEST":                return CvrTest("S_OH_RCRD_TEST");
                 case "FIRE_TEST_APU":            return FireTest("S_OH_FIRE_APU_TEST");
                 case "FIRE_TEST_ENG1":           return FireTest("S_OH_FIRE_ENG1_TEST");
                 case "FIRE_TEST_ENG2":           return FireTest("S_OH_FIRE_ENG2_TEST");
@@ -120,8 +131,73 @@ public sealed class FenixActionExecutor : LVarActionExecutor
                 // BT_CONFIG step gets the long hold + spoken result, not a plain pulse.
                 case "S_ECAM_TO":                return TakeoffConfigTest();
             }
+            // COCKPIT_LIGHT_SCENE_<NAME>: the four brightness knobs of one lighting scene.
+            if (step.EventName != null && TryGetCockpitLightScene(step.EventName, out var scene))
+                return SetCockpitLighting(scene);
         }
         return base.ExecuteStepAsync(step);
+    }
+
+    // -----------------------------------------------------------------------
+    // Cockpit-lighting scenes (the A32NX's four points: power-up, after start, shutdown, secure)
+    // -----------------------------------------------------------------------
+
+    /// <summary>The A32NX's scene names (<c>FbwA320ActionExecutor.CockpitLightScene</c>), so the
+    /// two First Officers set their cockpit lights at the same points.</summary>
+    public enum CockpitLightScene { DayPrep, DimFlight, ParkingBright, Off }
+
+    private const string CockpitLightScenePrefix = "COCKPIT_LIGHT_SCENE_";
+
+    /// <summary>The flow-step pseudo-key for <paramref name="scene"/>, e.g.
+    /// <c>COCKPIT_LIGHT_SCENE_DAYPREP</c>; intercepted in <see cref="ExecuteStepAsync"/>.</summary>
+    public static string CockpitLightSceneKey(CockpitLightScene scene) =>
+        CockpitLightScenePrefix + scene.ToString().ToUpperInvariant();
+
+    private static readonly Dictionary<string, CockpitLightScene> SceneByKey =
+        Enum.GetValues<CockpitLightScene>().ToDictionary(CockpitLightSceneKey, s => s);
+
+    /// <summary>True when <paramref name="key"/> is one of the scene pseudo-keys.</summary>
+    public static bool TryGetCockpitLightScene(string key, out CockpitLightScene scene) =>
+        SceneByKey.TryGetValue(key, out scene);
+
+    /// <summary>
+    /// The knob writes one scene makes — the SINGLE source of truth for it:
+    /// <see cref="SetCockpitLighting"/> writes exactly this and nothing else. The levels are the
+    /// A32NX scene's (<c>FbwA320ActionExecutor.SetCockpitLighting</c>: integral 100/50/100/0 %,
+    /// flood 50/30/50/0 %) scaled to the Fenix knobs' 0–1 range: integral drives the overhead
+    /// and pedestal integral knobs (A_OH_LIGHTING_OVD, A_PED_LIGHTING_PEDESTAL, 0.05 steps),
+    /// flood the main-panel and pedestal floods (A_MIP_LIGHTING_FLOOD_MAIN,
+    /// A_MIP_LIGHTING_FLOOD_PEDESTAL, 0.1 steps). The A32NX scene's annunciator and dome are
+    /// their own flow steps and lines here (Fenix encodings), and the Fenix has no
+    /// standby-compass light, so the scene is the four knobs only.
+    /// </summary>
+    public static IReadOnlyList<(string Key, double Value)> CockpitLightingWrites(CockpitLightScene scene)
+    {
+        (double integral, double flood) = scene switch
+        {
+            CockpitLightScene.DayPrep       => (1.0, 0.5),
+            CockpitLightScene.DimFlight     => (0.5, 0.3),
+            CockpitLightScene.ParkingBright => (1.0, 0.5),
+            CockpitLightScene.Off           => (0.0, 0.0),
+            _                               => (1.0, 0.5),
+        };
+        return new (string Key, double Value)[]
+        {
+            ("A_OH_LIGHTING_OVD", integral),
+            ("A_PED_LIGHTING_PEDESTAL", integral),
+            ("A_MIP_LIGHTING_FLOOD_MAIN", flood),
+            ("A_MIP_LIGHTING_FLOOD_PEDESTAL", flood),
+        };
+    }
+
+    /// <summary>Write one lighting scene's knobs, each through the serialized dispatch gate.
+    /// True only when every write went out.</summary>
+    public async Task<bool> SetCockpitLighting(CockpitLightScene scene)
+    {
+        bool ok = true;
+        foreach (var (key, value) in CockpitLightingWrites(scene))
+            ok &= await SetValue(key, value);
+        return ok;
     }
 
     // -----------------------------------------------------------------------
@@ -129,6 +205,10 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     // -----------------------------------------------------------------------
 
     public Task<bool> Set(string lvar, int value) => DispatchAsync(lvar, value);
+
+    /// <summary>Fractional held write for a 0–1 knob (brightness pots), through the same
+    /// serialized gate as <see cref="Set"/>.</summary>
+    public Task<bool> SetValue(string lvar, double value) => DispatchDoubleAsync(lvar, value);
 
     public Task<bool> Pulse(string lvar) => PulseAsync(lvar);
 
@@ -220,7 +300,7 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     public Task<bool> EngageAp1() => PulseAsync("S_FCU_AP1");
 
     /// <summary>Push an FCU knob to managed (Fenix convention: push = value decrement on
-    /// the knob L:var, e.g. "S_FCU_SPEED" or "S_FCU_HEADING"). Atomic read-modify-write in
+    /// the knob L:var, e.g. "S_FCU_SPEED", "S_FCU_HEADING" or "S_FCU_ALTITUDE"). Atomic read-modify-write in
     /// ONE calculator string so it can never desync against the def's own panel handler
     /// (which now uses the same atomic-RPN mechanism — see the class doc comment). The
     /// leading "{seq} 0 *" makes the string unique per call so MobiFlight's identical-string
@@ -238,8 +318,12 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         return true;
     }
 
+    /// <summary>Push the FCU altitude knob (the Before Start "FCU altitude: pushed" line):
+    /// the same atomic push as speed and heading, on S_FCU_ALTITUDE.</summary>
+    public Task<bool> PushFcuAltitude() => PushFcuManaged("S_FCU_ALTITUDE");
+
     /// <summary>
-    /// APU start block: Master ON, dwell, START pulse, then WAIT for the AVAIL lamp.
+    /// APU start block:Master ON, dwell, START pulse, then WAIT for the AVAIL lamp.
     ///
     /// ⚠️ The wait is not optional and must not be moved back to the caller. The Before
     /// Start / After Landing FLOW does wait (its own WaitForField step), but the CHECKLIST

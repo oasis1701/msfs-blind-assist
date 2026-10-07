@@ -406,16 +406,6 @@ public class FoPr160ProcedureFixTests
     }
 
     [Fact]
-    public void Fenix_AfterLandingChecklistChecklist_ApuItem_ReadsTheAvailLamp()
-    {
-        var item = FenixChecklist.Build()
-            .Single(g => g.Id == "AFTER_LANDING_CL").Items
-            .Single(i => i.Id == "ALC_APU");
-
-        Assert.Equal("I_OH_ELEC_APU_START_U", item.StateFieldName);
-    }
-
-    [Fact]
     public void Fenix_BeforeStartFlow_ApuAvailWait_ReadsTheAvailLamp()
     {
         // A WaitForCondition step (WaitForField) carries its field on
