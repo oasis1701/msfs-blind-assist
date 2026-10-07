@@ -595,11 +595,20 @@ standby instruments at all. The standby is in view 8 (index 7), measured.
 
 ### Fenix A320 First Officer — "Landing gear: UP" by lights out, "DOWN" by three green (2026-09-22 / 2026-09-25)
 
-The After Takeoff Checklist's "Landing gear: UP" (`ATC_GEAR`) used to read `S_MIP_GEAR`
-directly, and `FirstOfficerForm`'s automatic `<Id>_CL` rule (`RelatedGroupIdsFor`) latches
-`flow.Id + "_CL"` complete on top of every group a flow explicitly declares — so finishing
-the After Takeoff flow latched `AFTER_TAKEOFF_CL` even though `ATC_GEAR` had no step of its
-own behind it, and the line could read complete over gear that was still down. Fixed the
+**Updated 2026-10-06 ([FOA-8](invariants/first-officer-airbus.md#foa-8)).** The Fenix First
+Officer no longer has an After Takeoff checklist (Airbus deleted it in November 2021) and no
+`ATC_GEAR` or `AFTER_TAKEOFF_CL`; the "gear down" read-back line is `LDC_MEMO_GEAR`, the first
+line of the Landing checklist's landing memo (it was `LDC_GEAR`). What follows is the history
+and the measurements, which still hold: the lights-out and three-green reads below are what
+`FO_GEAR_UP` and `FO_GEAR_DOWN` still do, and the read-only After Takeoff wait still exists but
+now links no checklist line. The FlyByWire A32NX and the Headwind A330 have the same two
+fields, built from the gear legs instead of lights (`FbwA320GearConfirmation`, below).
+
+The Fenix's old After Takeoff Checklist's "Landing gear: UP" (`ATC_GEAR`) used to read
+`S_MIP_GEAR` directly, and `FirstOfficerForm`'s automatic `<Id>_CL` rule (`RelatedGroupIdsFor`)
+latches `flow.Id + "_CL"` complete on top of every group a flow explicitly declares — so
+finishing the After Takeoff flow latched `AFTER_TAKEOFF_CL` even though `ATC_GEAR` had no step of
+its own behind it, and the line could read complete over gear that was still down. Fixed the
 way the PMDG 737's equivalent line was fixed (see [pmdg-737.md](pmdg-737.md) — same owner
 decision, same day): `FenixGearConfirmation` (`FirstOfficer/Fenix/FenixGearConfirmation.cs`,
 published as the synthetic state field `FO_GEAR_UP`) reads UP only when the lever reads UP
@@ -633,20 +642,29 @@ when the lever reads DOWN **and** all three `_L` legends are lit **and** none of
 `_U` legends nor `I_MIP_GEAR_RED` is lit — the shared `GearLightRules.IsDown`. Treating `_U`
 and the arrow as reds means an annunciator light test (which lights everything) can never
 read as "down". Any unwritten reading gives NaN, as for UP. The Landing Checklist's "Landing
-gear: DOWN" line (`LDC_GEAR`) now auto-ticks from `FO_GEAR_DOWN` instead of the plain lever
+memo, landing gear: DOWN" line (`LDC_MEMO_GEAR`, formerly `LDC_GEAR`) auto-ticks from
+`FO_GEAR_DOWN` instead of the plain lever
 — the same field the PMDG 737 and iFly lines read. It has no `CheckAction`, so a hand tick
 never writes the gear. The Fenix First Officer profile has **no Landing flow**, so nothing
 latches `LANDING_CL` complete: the line ticks and un-ticks from its own state alone
 (`FenixGearConfirmationTests.No_Fenix_flow_latches_LANDING_CL` pins that premise — a future
-Fenix Landing flow would need a read-only gear-down check completing `LDC_GEAR` first).
+Fenix Landing flow would need a read-only gear-down check completing `LDC_MEMO_GEAR` first).
 
 **The After Takeoff flow ends with a read-only step**, `AT_GEAR_UP_CHECK` ("Landing gear:
-UP"), that waits up to 20 s for `FO_GEAR_UP` and completes `ATC_GEAR` on delivery. It never
-writes the lever — gear retraction stays the `UniversalAutomationService`'s auto-gear-up job
-(the flow's own `Description` says so) — it only confirms. On a timeout the step is
+UP"), that waits up to 20 s for `FO_GEAR_UP`. It never writes the lever — gear retraction
+stays the `UniversalAutomationService`'s auto-gear-up job (the flow's own `Description` says
+so) — it only confirms. It used to complete `ATC_GEAR`; with the After Takeoff checklist gone
+(2026-10-06) it links no checklist line, and the wait stays. On a timeout the step is
 announced as skipped ("Timed out waiting for: Landing gear: UP" / "Skipping: Landing gear:
 UP", heard before the non-interrupting "After Takeoff flow complete" — see
-[first-officer.md](first-officer.md)) and `FlowManager` adds `ATC_GEAR` to its
-`_unfinishedChecklistItemIds` set, which `MarkGroupComplete`'s `excludeItemIds` then keeps
-out of the completion latch — so the checklist line keeps mirroring the real gear state
-instead of reading complete over gear that is still down.
+[first-officer.md](first-officer.md)).
+
+**The A32NX and A330 confirm from the legs, not lights (2026-10-06).** Neither FlyByWire jet
+has the Fenix's gear lights, so `FbwA320GearConfirmation` (`FirstOfficer/FBWA320/`, shared by
+the Headwind A330) publishes the same two fields from the handle and the three leg positions:
+`FO_GEAR_UP` is the handle up AND `A32NX_GEAR_CENTER_POSITION`, `_LEFT_POSITION` and
+`_RIGHT_POSITION` all under 5 %; `FO_GEAR_DOWN` is the handle down AND all three over 95 %.
+Any unknown input gives NaN, so a flow's wait reads "not yet" instead of a false positive.
+`AT_GEAR_UP_CHECK` on those two aircraft is the same read-only 20 s wait (FO-13), and the
+Landing checklist's `LDC_MEMO_GEAR` reads `FO_GEAR_DOWN`. The A32NX gear lever itself still
+cannot be written, so its flow's gear-lever step stays a Captain reminder.

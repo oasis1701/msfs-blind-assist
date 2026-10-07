@@ -20,30 +20,37 @@ Start cold-and-dark at a gate, MSFSBA connected, Fenix FO window open.
    Start → After Start → Before Takeoff. For each step, confirm the corresponding overhead
    / MIP / pedestal switch physically moves — read back via the panel controls (screen-reader
    focus/announce) or the Ctrl+M-style state readouts, not just the FO's own narration.
-2. **Electrical Power Up**: BAT 1/2 ON, external power ON (if available), nav/logo lights ON.
+2. **Electrical Power Up**: BAT 1/2 ON, external power ON (if available), nav/logo lights ON,
+   **cockpit lighting bright** (annunciator, dome and the brightness knobs — see Part G).
 3. **Preflight**: recorder ground control ON, CVR test (listen for the test tone — a captain
    reminder, not automated), IRS 1/2/3 → NAV (no pause; alignment runs in the background —
    confirm the FO does NOT wait/announce an alignment delay), crew oxygen ON, APU fire test /
    engine 1 fire test / engine 2 fire test (each a **held** switch: TEST for ~3 s then back to
    NORMAL — listen for the fire-bell as the verification cue), packs 1/2 ON, crossbleed AUTO,
    pack flow NORMAL, hot air ON, cabin pressure mode AUTO, strobes AUTO, wing lights OFF, no
-   smoking AUTO, emergency exit lights ARM, altitude reporting ON, TCAS traffic ALL. **Radar
+   smoking AUTO, emergency exit lights ARM, altitude reporting ON, TCAS traffic ALL, **ECAM
+   page → DOOR**. **Radar
    steps are ACTIVE, not omitted**: confirm "Weather radar: OFF" (`S_WR_SYS`) is checked as
    part of the Electrical Power Up group's auto-detect (see Part E) — the radar/PWS controls
    pre-existed on the Fenix def and both the flow and checklist wire through them.
-4. **Before Start**: captain MCP reminder, **APU master ON → ~3 s dwell → APU START pulses**
-   → the flow then **waits for APU AVAIL** before proceeding (confirm a real wait, not an
-   instant pass-through) — APU bleed ON, fuel pumps ALL ON, external power OFF, seatbelt signs
-   ON, beacon ON, **FCU speed push to managed**, **FCU heading push to managed** (confirm both
-   FCU windows show "managed", not a stale/doubled push — see the FCU regression section below).
-5. **Engine Start**: engine mode selector → IGN START, **engine 2 master ON** then **engine 1
-   master ON** — confirm each engine actually spools and stabilizes; verify via **N2**, not
+4. **Before Start**: **ECAM page → APU**, captain MCP reminder, **APU master ON → ~3 s dwell →
+   APU START pulses** → the flow then **waits for APU AVAIL** before proceeding (confirm a real
+   wait, not an instant pass-through) — APU bleed ON, fuel pumps ALL ON, external power OFF,
+   seatbelt signs ON, beacon ON, **FCU speed push to managed**, **FCU heading push to managed**,
+   then the Captain reminder **"Set cleared altitude on the FCU"** and **FCU altitude pushed**
+   (confirm the FCU windows show "managed", not a stale/doubled push — see the FCU regression
+   section below).
+5. **Engine Start**: **ECAM page → engine**, engine mode selector → IGN START, **engine 1 master
+   ON** then **engine 2 master ON**, each followed by "Engine N starting — waiting for the engine
+   to stabilize" — confirm each engine actually spools and stabilizes; verify via **N2**, not
    just the master-switch position (CFM56 idle N2 ≈ 58–60%; the FO's own state evaluator uses
-   ≥ 55% as "running" — cross-check against the ECAM/EWD N2 gauge).
+   ≥ 55% as "running" — cross-check against the ECAM/EWD N2 gauge). A start that never
+   stabilizes must stop the flow after 120 s.
 6. **After Start**: engine mode selector → NORM, APU bleed OFF, APU master OFF, ground
    spoilers ARMED, rudder trim RESET, flaps → SimBrief takeoff setting (if SimBrief was
-   loaded — see Part C; if not loaded, confirm this step is skipped/no-ops rather than
-   setting a wrong flap value), nose light TAXI.
+   loaded — see Part C; if not loaded, confirm the flow instead speaks the Captain reminder
+   "Flaps: set for takeoff" rather than setting a wrong flap value), nose light TAXI,
+   **cockpit lighting dim** (Part G), **ECAM page → status**.
 7. **Before Takeoff**: autobrake MAX, weather radar → SYSTEM 1, predictive windshear AUTO,
    TCAS TA/RA, transponder AUTO, **takeoff config test** (`S_ECAM_TO` — a press-HOLD-release:
    held ~1.5 s, then the result is spoken — "Takeoff config normal." on a good config /
@@ -76,7 +83,9 @@ electrical/pneumatic systems already configured for taxi).
      "Already set" and does NOT pulse the switch (which would reconnect/toggle power state
      unexpectedly on a momentary control).
 4. Re-run both flows a second time back-to-back — confirm the second pass is entirely
-   "Already set" announcements with no switch movement.
+   "Already set" announcements with no switch movement. (The exceptions are the momentary
+   ECAM page buttons and the lighting-scene knobs, which have no skip test and simply select
+   the page / set the levels again.)
 
 ---
 
@@ -128,10 +137,33 @@ electrical/pneumatic systems already configured for taxi).
 
 Open the Checklists tab; work through both the 12 auto-detect **state groups** (Electrical
 Power Up, Preflight, Before Start, Engine Start, After Start, Before Takeoff, After Takeoff,
-Descent, Approach, After Landing, Shutdown, Secure) and the 9 **readback (`*_CL`) groups**
-(Before Start Checklist, After Start Checklist, Before Takeoff Checklist, After Takeoff
-Checklist, Approach Checklist, Landing Checklist, After Landing Checklist, Parking Checklist,
-Securing the Aircraft Checklist).
+Descent, Approach, After Landing, Shutdown, Secure) and the 10 **readback (`*_CL`) groups**.
+The read-backs are the current Airbus A320 normal checklist (November 2021, one card with the
+A32NX and A330 — FOA-8), each ECAM memo line spoken on its own. "(live)" marks a line that
+speaks the value the First Officer reads when you tick it:
+
+- **Cockpit Preparation Checklist**: Gear pins and covers: REMOVED. Fuel quantity: CHECKED
+  (live, kilograms). Seat belts: ON. ADIRS: NAV. Baro reference: SET (both) (live).
+- **Before Start Checklist**: Parking brake: SET (live). Takeoff speeds and thrust: SET (both)
+  (live: V1, VR, V2, flex). Windows: CLOSED (both). Beacon: ON.
+- **After Start Checklist**: Anti-ice: SET (live). ECAM status: CHECKED. Pitch trim: SET.
+  Rudder trim: NEUTRAL (a line you confirm: the Fenix rudder-trim var has never been measured).
+- **Taxi Checklist**: Flight controls: CHECKED (both). Flaps setting: SET (both) (live). Radar
+  and predictive windshear: ON and AUTO. Engine mode selector: SET (live). Then the takeoff memo,
+  one line each: autobrake: MAX, signs: ON, cabin: READY, spoilers: ARMED, flaps: T.O, T.O
+  config: NORMAL.
+- **Line-up Checklist**: Takeoff runway: CONFIRMED (both). TCAS: TA/RA (live). Packs 1 and 2:
+  SET (live).
+- **Approach Checklist**: Baro reference: SET (both) (live). Seat belts: ON. Minimum: SET.
+  Autobrake: SET (live, read only — you set it). Engine mode selector: SET (live).
+- **Landing Checklist**: the landing memo, one line each: landing gear: DOWN, signs: ON,
+  cabin: READY, spoilers: ARMED, flaps: SET (live; FULL, or 3 with the GPWS LDG FLAP 3 switch on).
+- **After Landing Checklist**: Radar and predictive windshear: OFF.
+- **Parking Checklist**: Parking brake or chocks: SET (live). Engines: OFF. Wing lights: OFF.
+  Fuel pumps: OFF (all six).
+- **Securing Checklist**: Oxygen: OFF. Emergency exit lights: OFF. EFBs: OFF. Batteries: OFF.
+
+There is no Before Takeoff, After Takeoff or Departure Change checklist.
 
 1. **Manual tick fires the switch.** In a state group (e.g. Electrical Power Up → "Battery 1:
    ON"), tick the item manually with the switch OFF — confirm the physical switch moves ON.
@@ -142,22 +174,27 @@ Securing the Aircraft Checklist).
    underlying switch directly in the cockpit (mouse/VR/panel), independent of the FO —
    confirm the checklist item ticks itself within a poll cycle (the state evaluator polls
    OnRequest fields roughly every second).
-4. **Readback CLs (`*_CL` groups) never move switches.** Open any `*_CL` group (e.g. Before
-   Start Checklist, Landing Checklist, Securing the Aircraft Checklist) and tick an
-   auto-detectable item (e.g. "Signs: ON and AUTO", "Landing gear: DOWN", "Parking brake:
-   SET") — confirm **no switch moves**. The item should only tick itself once the real
-   switch independently reaches the stated position (set it via the matching state-group
-   flow, or by hand in the cockpit). Cross-reference: this was verified structurally in Step
-   1 (grep confirms every `*_CL` item's `CheckAction` is `null`).
+4. **Readback CLs (`*_CL` groups) never move switches.** Open any `*_CL` group (e.g. Cockpit
+   Preparation, Taxi, Landing, Securing) and tick an auto-detectable line (e.g. "Seat belts:
+   ON", "Takeoff memo, spoilers: ARMED", "Batteries: OFF") — confirm **no switch moves**. The
+   line should only tick itself once the real switch independently reaches the stated position
+   (set it via the matching state-group flow, or by hand in the cockpit). Cross-reference:
+   every `*_CL` item's `CheckAction` is `null`, checked structurally by the unit tests.
 5. **10-second manual-tick grace — no immediate revert.** Manually tick a `RevertToState`
-   item whose real switch does NOT yet match (e.g. tick "Gear: UP" in After Takeoff while
-   gear is still down) — confirm the tick **holds** for the ~10-second grace window instead
-   of instantly reverting to unticked, then genuinely reverts if the switch still hasn't
-   moved to match after that window. This exercises `ChecklistManager.ManualTickGrace`
-   (10 s).
-6. Spot-check the **RADAR items in the After Landing Checklist readback group** — "Radar:
-   OFF" / "Predictive windshear: OFF" — confirm both auto-tick from `S_WR_SYS` /
-   `S_WR_PRED_WS` and never fire an action when manually ticked.
+   line whose real switch does NOT yet match (e.g. tick "Beacon: ON" in the Before Start
+   Checklist while the beacon is off) — confirm the tick **holds** for the ~10-second grace
+   window instead of instantly reverting to unticked, then genuinely reverts if the switch
+   still hasn't moved to match after that window. This exercises
+   `ChecklistManager.ManualTickGrace` (10 s).
+6. Spot-check the **radar lines**: Taxi's "Radar and predictive windshear: ON and AUTO" ticks
+   only with a radar system selected (1 or 2) AND predictive windshear on AUTO, and After
+   Landing's "Radar and predictive windshear: OFF" ticks from `S_WR_SYS` / `S_WR_PRED_WS`
+   with both off; neither ever fires an action when ticked by hand.
+7. **Live values.** Tick a line marked (live) — e.g. "Flaps setting: SET (both)" with the lever
+   at 1 — and confirm the spoken tick text carries the value ("Flaps setting: SET (both), flaps
+   1: checked") and the status line shows it ("… flaps 1 — Complete"), while the tree text of
+   the line does not change. With the value unreadable (e.g. before the aircraft is powered)
+   the line speaks as it always did, with no value.
 
 ---
 
@@ -169,21 +206,57 @@ Securing the Aircraft Checklist).
 2. **After Landing**: landing lights retract to OFF, spoilers disarm, APU master ON (started
    for ground power handoff), weather radar OFF, predictive windshear OFF, transponder
    STANDBY, strobes AUTO, nose light TAXI, engine/wing anti-ice OFF as applicable.
-3. **Shutdown**: parking brake ON, APU bleed ON, engine 1/2 masters OFF, seatbelt signs OFF,
-   beacon OFF, fuel pumps ALL OFF, nose light OFF, runway turnoff lights OFF.
+3. **Shutdown**: parking brake ON, APU bleed ON, engine 1/2 masters OFF, **TCAS: STANDBY**,
+   seatbelt signs OFF, beacon OFF, fuel pumps ALL OFF, nose light OFF, runway turnoff lights
+   OFF, **cockpit lighting bright**, **ECAM page → door**.
 4. **Secure**: ADIRS OFF (all three), crew oxygen OFF, parking brake confirmed SET, APU
-   master OFF, batteries 1 and 2 OFF.
+   master OFF, **external power OFF** (a guarded toggle: it must press only while the ON
+   light is lit), batteries 1 and 2 OFF, **cockpit lighting off**.
 5. **LANDING_CL auto-ticks on approach configuration** — during the approach (before
-   touchdown), configure landing gear DOWN, signs ON, ground spoilers ARMED, flaps to
-   landing setting, and confirm the **Landing Checklist** (`LANDING_CL`) group's matching
-   items auto-tick from live state as each is set — "Landing gear: DOWN" (only once the gear
-   shows three green — see the gear-down section below), "Signs: ON",
-   "Ground spoilers: ARMED", "Flaps: SET" (checked via `A_FC_SPEEDBRAKE < 0.5` for spoilers
-   armed and `S_FC_FLAPS > 2.5` for flaps set — confirm these thresholds match your actual
-   flap lever detent for a landing configuration).
-6. Confirm the **Parking Checklist** (run after Shutdown, at the gate) auto-ticks: APU bleed
-   ON, engines OFF (via the `FO_ENGINES_OFF` synthetic — both N2 < 20%), seatbelt signs OFF,
-   fuel pumps OFF, parking brake ON.
+   touchdown), configure landing gear DOWN, seat belts ON, ground spoilers ARMED, flaps to
+   the landing setting, and confirm the **Landing Checklist** (`LANDING_CL`) memo lines
+   auto-tick from live state as each is set — "Landing memo, landing gear: DOWN" (only once
+   the gear shows three green — see the gear-down section below), "signs: ON", "spoilers:
+   ARMED", "flaps: SET" (ticks at FULL, or at 3 with the GPWS LDG FLAP 3 switch on; the
+   spoken value is the lever position). "cabin: READY" never ticks by itself — it is a line you
+   confirm.
+6. Confirm the **Parking Checklist** (run after Shutdown, at the gate): "Engines: OFF" (via the
+   `FO_ENGINES_OFF` synthetic — both N2 < 20%), "Wing lights: OFF" and "Fuel pumps: OFF" (all
+   six) auto-tick; "Parking brake or chocks: SET" is a line you confirm and speaks the brake
+   state ("on"/"off") when ticked.
+
+---
+
+## Part G — The Airbus card, in one run (2026-10-06)
+
+The Fenix and the A32NX First Officers were brought together (FOA-8): same read-backs, same
+flows. This is the Fenix half of the one in-sim run the owner does for both; the A32NX half is
+Part G of [docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md). Do
+ONE cold-and-dark to secure run with the First Officer flows and watch these four things, which
+are new on the Fenix and could not be tested without the sim:
+
+1. **ECAM pages.** The flows now select the SD page at five points: door (Preflight), APU
+   (Before Start), engine (Engine Start), status (After Start), door (Shutdown). Check each
+   right after its step (the aircraft's own auto-SD may move on within seconds). The buttons
+   are momentary pulses: each `S_ECAM_*` must read 0 afterwards.
+2. **Lighting scenes.** Bright at power-up, dim after start, bright at shutdown, off at
+   securing, each as annunciator, dome and one "Panel and integral brightness: SET" step that
+   drives four knobs (`A_OH_LIGHTING_OVD`, `A_PED_LIGHTING_PEDESTAL`,
+   `A_MIP_LIGHTING_FLOOD_MAIN`, `A_MIP_LIGHTING_FLOOD_PEDESTAL`). **Listen** during every scene
+   write: the First Officer's own step line must be the only voice. Any spoken knob
+   announcement (for example the pedestal light, `N_PED_LIGHTING_PEDESTAL`) is a defect to
+   report. And at the end of Securing, which writes the "off" scene AFTER the batteries are
+   off, check whether the knob writes actually took effect (power the batteries up again and
+   read the knobs): if they did not, the scene needs to move before the battery steps.
+3. **FCU altitude push.** Before Start's "Set cleared altitude on the FCU" then "FCU altitude:
+   pushed", and the panel and hotkey pushes, as in the FCU section below (item 4).
+4. **The Landing read-back.** Approach through landing with the Checklists tab open: the memo
+   lines tick as each item is set (Part F, item 5), the flaps line speaks the lever position
+   when you tick it, and the gear line ticks only on three green.
+
+The rest of the card (engine start waits for the engine to run, SimBrief takeoff flaps, the
+Taxi read-back with its takeoff-memo lines, TCAS and external-power lines) is covered by
+Parts A, E and F above.
 
 ---
 
@@ -210,6 +283,14 @@ swallowing or doubling a push). Verify both paths still work AND don't fight eac
    steps) — confirm it correctly re-detects "selected" and pushes to managed again (not
    confused by the earlier writer's state). This is the regression the atomic-RPN fix
    targets: neither writer should silently overwrite the other's notion of the counter.
+4. **Altitude joins the same mechanism (2026-10-06).** The panel's and the hotkeys' altitude
+   push now use the same atomic write as speed and heading (the old app-side
+   `DecrementCounter` is gone), and the First Officer pushes the altitude too: Before Start's
+   "Set cleared altitude on the FCU" (Captain) then "FCU altitude: pushed". Set a cleared
+   altitude, then push it three ways in turn — the altitude hotkey, the panel's altitude
+   control, and the Before Start flow's "FCU altitude: pushed" — and confirm each push takes
+   the FCU altitude to managed exactly once (no doubled or swallowed push), including a flow
+   push straight after a panel pull.
 
 ---
 
@@ -259,6 +340,9 @@ against the landing config after touchdown (FWC phase 9, below 80 kt) — a spur
    2026-07-08; landing autobrake is a Captain item), AP1 engage, LS 1/2 on approach, rudder-trim
    reset. Each effect must persist after the release (they latch into their `I_*`
    indicators on the 0→1 edge — the main-branch fix live-verified this class of button).
+   The ECAM page buttons the flows now press (`S_ECAM_DOOR`, `S_ECAM_APU`, `S_ECAM_ENGINE`,
+   `S_ECAM_STATUS`) are in the same pulse table: each must read 0 afterwards with the page
+   still showing.
 
 ---
 
@@ -299,20 +383,20 @@ One change: the Before Start "Waiting for APU available" wait now ABORTS the flo
 1. In flight, after takeoff, with the gear still DOWN (disable **Auto-raise gear on climb**
    first), run the **After Takeoff** flow. Expect
    "Timed out waiting for: Landing gear: UP" then "Skipping: Landing gear: UP" spoken
-   *before* "After Takeoff flow complete" (non-interrupting, so both are heard). Open the
-   Checklists tab — the After Takeoff Checklist's "Landing gear: UP" line must stay
-   **unticked**. Raise the gear (by hand or via the auto-manager) and confirm the line ticks
-   itself once the lever reads UP **and** every LDG GEAR indicator (all three wheels' upper
-   and lower legends, plus the lever's red arrow) is dark — not merely once the lever moves.
+   *before* "After Takeoff flow complete" (non-interrupting, so both are heard). With the gear
+   up and the lights out (lever UP **and** every LDG GEAR indicator — all three wheels' upper
+   and lower legends, plus the lever's red arrow — dark) the wait must pass at once; it must
+   not pass merely because the lever moved. There is no After Takeoff checklist line behind
+   this wait any more (Airbus deleted that list); the wait only confirms.
 
 ---
 
 ## "Landing gear: DOWN" by three green, not the lever (2026-09-25)
 
 1. On approach, with **Auto-lower gear on descent** disabled, open the Checklists tab and
-   put the gear lever DOWN by hand. The Landing Checklist's "Landing gear: DOWN" line must
-   stay **unticked** while the gear is still travelling, and tick itself only once all three
-   gear show down and locked — not the moment the lever moves.
+   put the gear lever DOWN by hand. The Landing Checklist's "Landing memo, landing gear: DOWN"
+   line must stay **unticked** while the gear is still travelling, and tick itself only once
+   all three gear show down and locked — not the moment the lever moves.
 2. Parked on the ground on a fresh flight load, gear down, aircraft powered, without ticking
    any Landing Checklist line by hand (a hand-worked group that reaches 100% freezes and no
    longer un-ticks): the line reads ticked. Set the
