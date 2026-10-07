@@ -239,7 +239,7 @@ this.yourAircraftMenuItem.Text = "Your Aircraft &Name";
 this.yourAircraftMenuItem.Click += new System.EventHandler(this.YourAircraftMenuItem_Click);
 ```
 
-**Step 3:** Add event handler in `MainForm.MenuHandlers.cs`
+**Step 3:** Add event handler in `MainForm.MenuHandlers.cs`, or in the aircraft's own `MainForm.<Aircraft>.cs` partial if it has one (as the MD-11 and iFly do); never in another aircraft's partial
 ```csharp
 private void YourAircraftMenuItem_Click(object? sender, EventArgs e)
 {
