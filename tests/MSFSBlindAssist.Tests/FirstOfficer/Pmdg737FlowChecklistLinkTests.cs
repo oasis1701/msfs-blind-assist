@@ -125,7 +125,8 @@ public class Pmdg737FlowChecklistLinkTests
         "EVT_DSP_CPT_LOWER_DU_SELECTOR",
         "EVT_OH_ATTND_CALL_SWITCH",          // cabin chime
         // SimBrief-driven DynSW targets. PF_PRESS reads the synthetic FO_PRESS_ALTS_MATCH,
-        // which needs BOTH windows and a loaded plan (a null target is a quiet "success").
+        // which needs BOTH windows and a loaded plan (with no plan a null target is a silent skip,
+        // FO-20, not a success).
         "EVT_OH_PRESS_FLT_ALT_SET", "EVT_OH_PRESS_LAND_ALT_SET",
         // Held self-completing test pseudo-keys (no persistent "test performed" state).
         "OXY_TEST_CAPT", "OXY_TEST_FO", "FIRE_TEST", "STALL_TEST_1", "STALL_TEST_2",
@@ -254,7 +255,9 @@ public class Pmdg737FlowChecklistLinkTests
             "PREFLIGHT/PFC_LEVERS",
             "PREFLIGHT/PFC_PARK",
             "PREFLIGHT/PFC_PRESS",
-            // Two SimBrief DynSW steps + a Captain fallback; a missing plan is a quiet success.
+            // Two SimBrief DynSW steps + a Captain fallback. With no plan the steps skip silently
+            // (FO-20), but they link no line, so PF_PRESS is still latched: a known gap, tracked
+            // separately.
             "PREFLIGHT/PF_PRESS",
             // Shutdown Checklist: parking brake is the Captain's, probe heat is switched off in
             // After Landing, not Shutdown.

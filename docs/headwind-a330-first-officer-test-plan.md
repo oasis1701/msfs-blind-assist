@@ -106,6 +106,9 @@ can wait.
 In the same walk, confirm that After Takeoff's "Landing gear: UP" wait passes once the gear is
 up (the three leg variables are inherited from the A32NX, not measured on the A339X).
 
+**Observation to report:** with a SimBrief plan loaded, if the flaps do not move after "Flaps:
+takeoff setting", that action line still shows done (the write is not verified).
+
 **Expected, not a defect: flows complete their read-back** (owner decision 2026-10-06,
 [FOA-8](invariants/first-officer-airbus.md#foa-8)). Four read-backs show complete, every line
 ticked, as soon as their flow finishes: the **Before Start Checklist** after the Before Start

@@ -107,8 +107,8 @@ just the FO's own narration.
    light is on), APU bleed ON, fuel pumps ON (all tanks), ground power OFF, seatbelt signs ON
    (confirm the sign illuminates, not just the switch), beacon ON, FCU speed pushed managed,
    FCU heading pushed managed, Captain "Set cleared altitude on the FCU" then FCU altitude
-   pushed about 2 s later (the reminder does not wait for you — item 15), cockpit door LOCKED. Captain: doors/ground services, thrust levers idle,
-   clearance.
+   pushed about 2 s later (the reminder does not wait for you — item 15), cockpit door LOCKED.
+   Captain: doors/ground services, thrust levers idle, clearance.
 4. **Engine Start**: **ECAM page → ENG**, mode selector → IGN/START, engine 1 master → START,
    then "Engine 1 starting — waiting for the engine to stabilize" until FlyByWire's own engine
    state reads On (`A32NX_ENGINE_STATE:1` = 1; 120 s, a timeout stops the flow — it is no longer
@@ -365,6 +365,8 @@ SimBrief flap lever, the three gear legs), and later steps of the run depend on 
    takeoff flap and the Captain reminder answers "Already set: Flaps: set for takeoff" (it is
    skipped only because the lever now reads 1 to 3); with none, the reminder "Flaps: set for
    takeoff" speaks. If the lever did not move despite a plan, the reminder must still speak.
+   **Observation to report:** with a plan loaded, if the flaps do not move after "Flaps:
+   takeoff setting", that action line still shows done (the write is not verified).
 3. **The Taxi read-back, with its live values.** After the takeoff-config test, tick through the
    Taxi Checklist: the lines read their values aloud ("Flaps setting: SET (both), flaps 1:
    checked"; engine mode, "normal"), the takeoff-memo lines tick from live state (autobrake MAX,

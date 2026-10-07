@@ -54,7 +54,9 @@ Start cold-and-dark at a gate, MSFSBA connected, Fenix FO window open.
    when the lever reads a takeoff position, so a write that did not take still gets it; with no
    plan, the After Start line "Flaps: takeoff setting" stays unticked after the flow and ticks
    itself once you set flaps 1-3, FO-20), nose light TAXI,
-   **cockpit lighting dim** (Part G), **ECAM page → status**.
+   **cockpit lighting dim** (Part G), **ECAM page → status**. **Observation to report:** with
+   a plan loaded, if the flaps do not move after "Flaps: takeoff setting", that action line
+   still shows done (the write is not verified).
 7. **Before Takeoff**: autobrake MAX, weather radar → SYSTEM 1, predictive windshear AUTO,
    TCAS TA/RA, transponder AUTO, **takeoff config test** (`S_ECAM_TO` — a press-HOLD-release:
    held ~1.5 s, then the result is spoken — "Takeoff config normal." on a good config /

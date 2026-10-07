@@ -208,8 +208,10 @@ public class FlowStep<TState> : IFlowStepDispatch
 
     /// <summary>
     /// The id of an earlier step in the same flow that this step builds on. When that step
-    /// was SKIPPED in this run (its failure policy was Skip and it failed or timed out, or it
-    /// was itself skipped through its own dependency), FlowManager skips this step too —
+    /// was SKIPPED in this run (its failure policy was Skip and it failed or timed out, it was
+    /// left alone by its <see cref="LeaveAloneWhen"/> rule, its <see cref="TargetValueProvider"/>
+    /// had no value (FO-20), or it was itself skipped through its own dependency), FlowManager
+    /// skips this step too —
     /// announcing <see cref="RequiresStepSkipText"/> — and keeps its linked checklist items
     /// out of the completion latch, exactly as a skipped step of its own does. A step whose
     /// <see cref="SkipCondition"/> reads true is still "Already set" first: the aircraft's own
