@@ -451,6 +451,11 @@ public partial class MainForm
         SwitchAircraft(new HeadwindA330Definition());
     }
 
+    private void C680MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new Aircraft.Citation680.SkywardC680Definition());
+    }
+
     /// <summary>
     /// Guards against the startup check and the menu item running at once — either would
     /// otherwise open its own update dialog.

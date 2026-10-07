@@ -4,6 +4,7 @@ paths:
   - "MSFSBlindAssist/Forms/Citation680/**"
   - "MSFSBlindAssist/Resources/coherent-c680-*.js"
   - "MSFSBlindAssist/Resources/coherent-gtc-agent.js"
+  - "tools/c680-gen/**"
   - "tests/MSFSBlindAssist.Tests/**/*C680*.cs"
 ---
 # Skyward Citation Sovereign+ (C680) rules

@@ -96,9 +96,4 @@ public partial class MainForm
     {
         SwitchAircraft(new IFly737MAXDefinition());
     }
-
-    private void C680MenuItem_Click(object? sender, EventArgs e)
-    {
-        SwitchAircraft(new Aircraft.Citation680.SkywardC680Definition());
-    }
 }
