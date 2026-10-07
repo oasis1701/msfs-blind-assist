@@ -71,6 +71,8 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - Every calc-path event string must be unique per call — `SimConnectManager.BuildCalcEventCode` prefixes `{seq} 0 *` centrally, because MobiFlight dedups byte-identical consecutive commands and a TOGGLE fires the SAME event for on and off, so without it a control could be switched on and never off. The dedup keys on TEXT, not elapsed time: "presses are seconds apart" is NOT a mitigation. → [a380x.md](../a380x.md)
 
-## SIM-18
+## SIM-19
 
 - **A status display must show what is true when the pilot reads it.** Three things kept DA40 rows seconds stale: `OnSimVarUpdated` returned before Step 3's repaint for any var whose `ProcessSimVarUpdate` returned true (every silent DA40 readout, and every DA40 var during the load settle), so those rows moved only on the 1 s auto-refresh tick; the tick returned outright while ANY combo had focus (on the DA40 nearly every control is one); and Ctrl+3 focused the list without repainting it. Now the display-var repaint sits above the def-handled split, so both branches schedule it from one gate. With a combo focused the tick skips `OnDisplayPanelShown` and the focused combo's own var and keeps the rest of the list live - except on an aircraft whose status box is a page snapshot behind a page combo (`BaseAircraftDefinition.StatusRefreshPausesWhileComboFocused`, true when it overrides `OnDisplayPanelShown`: the A320 family, A380, PMDG 777), which keeps the whole pause the combo was measured against. Ctrl+3 repaints from the cache BEFORE focusing so NVDA's first read is current; GotFocus repaints and force-reads for Tab, and skips work Ctrl+3 or a finished Refresh has just done. → [da40.md](../da40.md)
+
+Numbered SIM-18 until 2026-10-07; renumbered because #268 (the Sim Performance window) took SIM-18 for the Frame system event.

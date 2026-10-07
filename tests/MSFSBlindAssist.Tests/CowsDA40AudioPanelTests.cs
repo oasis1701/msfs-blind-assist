@@ -84,7 +84,7 @@ public class CowsDA40AudioPanelTests
     [Fact]
     public void OnlyPageSnapshotAircraftPauseTheStatusRefreshForACombo()
     {
-        // SIM-18: the DA40 keeps its list live; an aircraft whose status box is a page
+        // SIM-19: the DA40 keeps its list live; an aircraft whose status box is a page
         // snapshot behind a page combo keeps the full pause.
         Assert.False(new CowsDA40Definition(DA40Variant.NG).StatusRefreshPausesWhileComboFocused);
         Assert.True(new MSFSBlindAssist.Aircraft.FlyByWireA380Definition().StatusRefreshPausesWhileComboFocused);

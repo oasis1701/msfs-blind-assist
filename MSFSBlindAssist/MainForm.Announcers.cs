@@ -238,7 +238,7 @@ public partial class MainForm
         }
 
         // Step 3 (both branches): a status-display row moved, so repaint the list if one is up
-        // (SIM-18). It sits above the split for the same reason as the completion above: a
+        // (SIM-19). It sits above the split for the same reason as the completion above: a
         // def-handled row (every silent DA40 readout, every DA40 var during the load settle)
         // used to skip it, change only on the auto-refresh tick, and read seconds old on Ctrl+3.
         // The repaint reads the cache (SIM-15) and is COALESCED: during the auto-refresh tick the

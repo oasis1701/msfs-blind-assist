@@ -581,7 +581,7 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
 
     /// <summary>
     /// Whether the status-display auto-refresh pauses ENTIRELY while a combo in the panel has
-    /// focus (SIM-18). True for an aircraft that overrides <see cref="OnDisplayPanelShown"/>:
+    /// focus (SIM-19). True for an aircraft that overrides <see cref="OnDisplayPanelShown"/>:
     /// its status box is a page snapshot driven by a page combo (the A320 family's and A380's
     /// SD page, the PMDG 777's System Display), and a refresh while the pilot arrows that combo
     /// can fight its announcement - the case the pause was written for. Every other aircraft
