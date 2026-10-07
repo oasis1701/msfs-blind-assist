@@ -6289,7 +6289,9 @@ public class FenixA320Definition : BaseAircraftDefinition
                 IsAnnounced = true,
             },
 
-            // ========== LIGHTS (3 variables) ==========
+            // ========== LIGHTS (2 variables) ==========
+            // A_MIP_LIGHTING_FLOOD_MAIN is not here: it is the Main Instrument Lights panel knob
+            // (OnRequest, 0-100 %), defined once above. A second entry here silently replaced it.
             ["A_FCU_LIGHTING"] = new SimConnect.SimVarDefinition
             {
                 Name = "A_FCU_LIGHTING",
@@ -6297,15 +6299,6 @@ public class FenixA320Definition : BaseAircraftDefinition
                 Type = SimConnect.SimVarType.LVar,
                 UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
                 IsAnnounced = true,
-            },
-            ["A_MIP_LIGHTING_FLOOD_MAIN"] = new SimConnect.SimVarDefinition
-            {
-                Name = "A_MIP_LIGHTING_FLOOD_MAIN",
-                DisplayName = "LIGHTING FLOOD Main Pot Position",
-                Type = SimConnect.SimVarType.LVar,
-                UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-                IsAnnounced = true,
-                ValueDescriptions = OffOn
             },
             ["N_PED_LIGHTING_PEDESTAL"] = new SimConnect.SimVarDefinition
             {
