@@ -85,15 +85,21 @@ for the engine to run, takeoff flaps from SimBrief (a Captain reminder without a
 gear up and down read from the legs, and the "TCAS: STANDBY" and "External power: OFF" lines.
 The full run is the A32NX's (Part G of
 [docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md)); on the A339X
-only these four claims need the sim, because each reads a variable that was never confirmed on
-this airframe. Run them in the Part B walk:
+only these five checks need the sim (four claims in the table, and the gear legs under it),
+because each reads a variable that was never confirmed on this airframe. Run them in the Part B
+walk.
+
+**Do these first: L10, L12 and L13.** A wrong answer on any of them changes what the First Officer
+does or ticks on this airframe: L10 decides whether Engine Start ever finishes, and L12 and L13
+decide whether the Rudder trim and landing-flaps lines tick at all. L11 and the gear legs can
+wait.
 
 | # | Claim to settle | How to tell |
 |---|---|---|
-| L10 | Engine start reaches "running" on the Trent engines | Run Engine Start. Each "Engine n starting — waiting for the engine to stabilize" must end by itself, well inside 120 s, when `A32NX_ENGINE_STATE:n` reads 1, and the "Engine n: running" line ticks. A timeout stops the flow: then read the state while the engine spools and record what the A339X publishes. |
+| L10 | **Do first.** Engine start reaches "running" on the Trent engines | Run Engine Start. Each "Engine n starting — waiting for the engine to stabilize" must end by itself, well inside 120 s, when `A32NX_ENGINE_STATE:n` reads 1, and the "Engine n: running" line ticks. A timeout stops the flow: then read the state while the engine spools and record what the A339X publishes. |
 | L11 | The baro live value reads | With STD, then QNH, set on the captain's side, tick "Baro reference: SET (both)" (Cockpit Preparation or Approach): it speaks "standard", then "QNH 1013" (hPa) or "QNH 29.92" (inHg). It reads the Kohlsman settings, not the FBW display words. |
-| L12 | `A32NX_FAC_1_RUDDER_TRIM_POS` reads | After Start's "Rudder trim: NEUTRAL" ticks itself with the trim neutral and un-ticks off neutral. If it never ticks, the word is not published here: make the line a Reminder, as on the Fenix. |
-| L13 | `A32NX_GPWS_FLAPS3` reads | The Landing memo's "flaps: SET" ticks at FULL, and at 3 only with the GPWS LDG FLAP 3 switch on. |
+| L12 | **Do first.** `A32NX_FAC_1_RUDDER_TRIM_POS` reads | After Start's "Rudder trim: NEUTRAL" ticks itself with the trim neutral and un-ticks off neutral. If it never ticks, the word is not published here: make the line a Reminder, as on the Fenix. |
+| L13 | **Do first.** `A32NX_GPWS_FLAPS3` reads | The Landing memo's "flaps: SET" ticks at FULL, and at 3 only with the GPWS LDG FLAP 3 switch on. |
 
 In the same walk, confirm that After Takeoff's "Landing gear: UP" wait passes once the gear is
 up (the three leg variables are inherited from the A32NX, not measured on the A339X).

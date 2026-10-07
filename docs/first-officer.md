@@ -20,11 +20,14 @@ def previously exposed no public apply-path), under the same suppressed-announce
 specific divergences from the A380 template: **baro STD/QNH polarity is PULL=STD/PUSH=QNH — the
 OPPOSITE of the A380's PUSH=STD/PULL=QNH** (`A32NX.FCU_EFIS_L/R_BARO_PULL`/`_PUSH`, state off
 `A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE`, since the `_IS_STD` L:vars are dead); **ECAM SD pages
-are selected via momentary ECP button press/release pulses** (`ECAM_ENG/APU/BLEED/COND/ELEC/HYD/
-FUEL/PRESS/DOOR/STS`), not the A380's sticky page-index write — there is no F/CTL or WHEEL ECP key,
-so the takeoff-config-test ECAM check stays a Captain reminder; landing gear is the stock
-`GEAR_SET` event; seatbelt signs are genuinely 2-position ON/OFF (no AUTO, unlike the A380); and
-cabin notify is a release-pulse of `PUSH_OVHD_CALLS_ALL` (a stuck 1 is an endless mechanical horn).
+are selected by writing the SD page index directly** (`ECAM_PAGE_ENG/APU/BLEED/COND/ELEC/HYD/
+FUEL/PRESS/DOOR/WHEEL/FCTL/STS` → `A32NX_ECAM_SD_CURRENT_PAGE_INDEX`, as the A380 does; an
+earlier ECP press/release pulse could leave a button stuck), while the Fenix pulses its own
+`S_ECAM_*` page pushbuttons; both select the same pages at the same flow points (door, APU,
+engine, status, door), and no flow selects the F/CTL or WHEEL page (the takeoff-config test only
+fires the test); landing gear is the stock `GEAR_SET` event; seatbelt signs are genuinely
+2-position ON/OFF (no AUTO, unlike the A380); and cabin notify is a release-pulse of
+`PUSH_OVHD_CALLS_ALL` (a stuck 1 is an endless mechanical horn).
 The A32NX also gets a **richer cockpit-lighting scene** than the A380's single ANN knob — ANN
 (Test/Bright/Dim), dome, standby-compass light, and six analog flood/integral knobs
 (`BRIGHT_{PEDESTAL,MAINPANEL,GLARESHIELD_CAPT,GLARESHIELD_FO,GLARESHIELD_INTEG,OVERHEAD_INTEG}_SET`),

@@ -48,8 +48,8 @@ system is also silently wrong:
    WHEEL=9, FCTL=10, STS=12) instead of the earlier ECP press/release H-var pulse — no
    held-button risk. Confirm each ★-marked ECAM page step (DOOR at Preflight/Parking, APU
    at Before Start, ENG at Engine Start, STS at After Start) actually changes the visible
-   SD page. There is deliberately no automated F/CTL or WHEEL page trigger in the flow —
-   the takeoff-config-test ECAM check stays a Captain reminder for the F/CTL page itself.
+   SD page. No flow step selects the F/CTL or WHEEL page (the executor's index map has both,
+   but nothing calls them); the takeoff-config test only fires the test.
 6. **`PUSH_OVHD_CALLS_ALL` / other `_IS_PRESSED` release pulses.** Cabin notify
    (`CABIN_CALL_ALL` → `PUSH_OVHD_CALLS_ALL`) and the fire-test PBs
    (`A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED`, `A32NX_FIRE_TEST_ENG1/ENG2/APU`) must each land as **two
@@ -97,16 +97,18 @@ just the FO's own narration.
 2. **Preflight**: recorder ground control ON (`A32NX_RCDR_GROUND_CONTROL_ON`), CVR test (held
    ~3 s, confirm the test tone sounds — needs ground control ON), IRS 1-3 to NAV, crew oxygen
    ON, **fire tests (APU/ENG1/ENG2, held ~3 s)** — confirm each sounds the fire bell/master
-   warning and self-cancels, packs ON, crossbleed AUTO, pack flow NORMAL, hot air ON, pressurization
+   warning and self-cancels, **ECAM page → DOOR** (right after the fire tests), packs ON,
+   crossbleed AUTO, pack flow NORMAL, hot air ON, pressurization
    mode AUTO, strobes/wing lights/no-smoking/emergency-exit lighting, altitude reporting ON
-   (`A32NX_SWITCH_ATC_ALT`, now automated), TCAS traffic ALL, flight directors 1/2 ON,
-   **ECAM page → DOOR**. Captain reminders: QNH, FCU altitude, squawk, EFB, MCDU.
-3. **Before Start**: APU master ON → dwell → START → wait for AVAIL (Stop on timeout; the
-   "APU: ON and available" line holds its tick until the AVAIL light is on), APU bleed ON, fuel
-   pumps ON (all tanks), ground power OFF, seatbelt signs ON (confirm the sign illuminates, not
-   just the switch), beacon ON, FCU speed pushed managed, FCU heading pushed managed, Captain
-   "Set cleared altitude on the FCU" then FCU altitude pushed, cockpit door LOCKED, **ECAM
-   page → APU**. Captain: doors/ground services, thrust levers idle, clearance.
+   (`A32NX_SWITCH_ATC_ALT`, now automated), TCAS traffic ALL, flight directors 1/2 ON.
+   Captain reminders: QNH, FCU altitude, squawk, EFB, MCDU.
+3. **Before Start**: **ECAM page → APU** first, then APU master ON → dwell → START → wait for
+   AVAIL (Stop on timeout; the "APU: ON and available" line holds its tick until the AVAIL
+   light is on), APU bleed ON, fuel pumps ON (all tanks), ground power OFF, seatbelt signs ON
+   (confirm the sign illuminates, not just the switch), beacon ON, FCU speed pushed managed,
+   FCU heading pushed managed, Captain "Set cleared altitude on the FCU" then FCU altitude
+   pushed, cockpit door LOCKED. Captain: doors/ground services, thrust levers idle,
+   clearance.
 4. **Engine Start**: **ECAM page → ENG**, mode selector → IGN/START, engine 1 master → START,
    then "Engine 1 starting — waiting for the engine to stabilize" until FlyByWire's own engine
    state reads On (`A32NX_ENGINE_STATE:1` = 1; 120 s, a timeout stops the flow — it is no longer
@@ -154,9 +156,8 @@ just the FO's own narration.
     See the note at the end of this document about the ONE expected exception (continuously
     monitored vars).
 15. **Captain reminders announce and wait.** Every remaining `Captain(...)` step (minimums,
-    landing autobrake, flaps, IFR clearance, MCDU programming, ECAM page selection where no ECP
-    key exists, etc.) is spoken as a reminder and the flow **pauses for acknowledgement** —
-    confirm it does not silently auto-complete. (CVR test, recorder ground control, and the
+    landing autobrake, flaps, IFR clearance, MCDU programming, etc.) is spoken as a reminder
+    and the flow **pauses for acknowledgement** — confirm it does not silently auto-complete. (CVR test, recorder ground control, and the
     takeoff-config test are no longer Captain reminders — see item 2/6 above.)
 16. **Already-in-target-state steps announce as skipped.** Re-run a flow (or a step) whose switch
     is already correct — confirm the matching step announces a quiet skip ("Already set" or
@@ -334,19 +335,24 @@ The A32NX and the Fenix First Officers were brought together (FOA-8): same read-
 flows. The owner does ONE cold-and-dark to secure run with the First Officer flows and watches
 these things, which are new or changed on the A32NX and could not be tested without the sim
 (the Fenix half is Part G of
-[docs/fenix-first-officer-test-plan.md](fenix-first-officer-test-plan.md)):
+[docs/fenix-first-officer-test-plan.md](fenix-first-officer-test-plan.md)).
 
-1. **Engine start waits for "running".** Each engine's wait ends only when
+**Do these first: items 1, 2 and 4.** Engine start, takeoff flaps and the gear legs are the
+riskiest checks: each is new code that has not run in the sim yet (the engine-state wait, the
+SimBrief flap lever, the three gear legs), and later steps of the run depend on all three. Items
+3 and 5 can wait.
+
+1. **Engine start waits for "running" (do first).** Each engine's wait ends only when
    `A32NX_ENGINE_STATE:n` reads On (1), well inside the 120 s limit, and the "Engine n: running"
    lines tick. Nothing may move on after a fixed delay.
-2. **SimBrief takeoff flaps.** With a plan loaded, After Start sets the lever to the plan's
+2. **SimBrief takeoff flaps (do first).** With a plan loaded, After Start sets the lever to the plan's
    takeoff flap and the Captain reminder stays silent; with none, the reminder "Flaps: set for
    takeoff" speaks.
 3. **The Taxi read-back, with its live values.** After the takeoff-config test, tick through the
    Taxi Checklist: the lines read their values aloud ("Flaps setting: SET (both), flaps 1:
    checked"; engine mode, "normal"), the takeoff-memo lines tick from live state (autobrake MAX,
    seat belts, spoilers, flaps T.O), and the cabin and T.O config lines stay yours to confirm.
-4. **Gear up and down from the legs.** After takeoff the "Landing gear: UP" wait passes once the
+4. **Gear up and down from the legs (do first).** After takeoff the "Landing gear: UP" wait passes once the
    handle is up and the legs are retracted; on approach the Landing memo's gear line ticks only
    with the handle down and all three legs over 95 %.
 5. **The two new lines and the lighting.** Shutdown's "TCAS: STANDBY" and Securing's "External
@@ -377,17 +383,18 @@ legitimate state feedback, not a double-announce bug.
   audit: PF_ALTRPTG writes/detects `A32NX_SWITCH_ATC_ALT`, and EPU_CHK_GEAR detect-only
   reads `GEAR_HANDLE_POSITION`; the gear lever itself still can't be written, so the flow
   step stays a Captain reminder even though the checklist item now auto-detects.)
-- **CONF3-landing detection remains absent** — no equivalent of the A380's
-  `A32NX_SPEEDS_LANDING_CONF3` exists in `FlyByWireA320Definition`; this is a genuine data
-  gap on the A32NX build, not a Captain-reminder-by-policy item, and stays unautomated.
+- **CONF 3 landing is detected two ways (FOA-6)** — the auto-flaps schedule caps at flaps 3 on
+  `A32NX_SPEEDS_LANDING_CONF3` (registered by `FlyByWireA320Definition`, set when CONF 3 is
+  selected on the MCDU PERF APPR page), and the Landing memo's flaps line reads the GPWS LDG
+  FLAP 3 switch (`A32NX_GPWS_FLAPS3`): flaps 3 when it is on, FULL when it is off.
 - **No FMC/MCDU programming, ever** (project-wide deliberate decision) — SimBrief load-only.
 - **Landing autobrake selection is a Captain item on every aircraft**, including this one.
 - **Takeoff flaps come from SimBrief, not from auto-flaps** (2026-10-06) — the After Start flow
   sets the SimBrief takeoff flap lever (the Fenix's step), with the Captain reminder "Flaps: set
   for takeoff" when no plan is loaded; the opt-in auto-flaps schedule only handles climbout
   retraction, approach extension, VFE-next protection, and the SOP go-around step.
-- **ECAM F/CTL and WHEEL pages have no ECP key on the A320** — the takeoff-config-test ECAM check
-  stays a Captain reminder rather than an automated page pulse.
+- **No flow selects the ECAM F/CTL or WHEEL page** — the executor's page-index map has both, but
+  the takeoff-config test only fires the test and no flow step opens either page.
 - **The six cockpit-lighting flood/integral knobs are `ActionManual`, not auto-detect** — analog
   potentiometers have no clean "target reached" readback, so the grouped "Panel and integral
   brightness: SET" item never auto-reverts; only the ANN/dome/standby-compass discrete controls

@@ -25,6 +25,16 @@ TCAS, weather radar and GPWS tests. Load SimBrief brings in the transition altit
 level, the takeoff flap setting and, on the PMDG 737, the pressurization altitudes. It
 loads by itself when the window opens if your SimBrief username is set.
 
+On the Fenix A320, FlyByWire A32NX and Headwind A330, the Checklists tab holds Airbus's
+current A320 normal checklist: Cockpit Preparation, Before Start, After Start, Taxi,
+Line-up, Approach, Landing, After Landing, Parking and Securing, with the ECAM takeoff
+and landing memos read out line by line. Ticking a line speaks what the First Officer
+reads, such as the flap setting or the TCAS mode. The flows are the same on all three: each
+engine start waits for the engine to be running, the takeoff flaps come from SimBrief (with
+a reminder to you when no plan is loaded), the ECAM pages and the cockpit lighting are set
+at the same points, the FCU altitude is pushed, and the gear is confirmed up after takeoff.
+Shutdown has a "TCAS: STANDBY" line and Securing an "External power: OFF" line.
+
 While the window is open, it also switches the landing lights at 10,000 feet, and you
 can turn that off in Settings. If SimBrief has supplied the transition altitude and
 level, it also sets the altimeters to standard at the transition altitude and back to QNH

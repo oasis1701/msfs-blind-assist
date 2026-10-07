@@ -211,7 +211,8 @@ There is no Before Takeoff, After Takeoff or Departure Change checklist.
    OFF, **cockpit lighting bright**, **ECAM page → door**.
 4. **Secure**: ADIRS OFF (all three), crew oxygen OFF, parking brake confirmed SET, APU
    master OFF, **external power OFF** (a guarded toggle: it must press only while the ON
-   light is lit), batteries 1 and 2 OFF, **cockpit lighting off**.
+   light is lit), batteries 1 and 2 OFF, **cockpit lighting off**: the annunciator is left
+   BRIGHT for the next power-up, and only the dome and the four brightness knobs go off.
 5. **LANDING_CL auto-ticks on approach configuration** — during the approach (before
    touchdown), configure landing gear DOWN, seat belts ON, ground spoilers ARMED, flaps to
    the landing setting, and confirm the **Landing Checklist** (`LANDING_CL`) memo lines
@@ -233,14 +234,21 @@ The Fenix and the A32NX First Officers were brought together (FOA-8): same read-
 flows. This is the Fenix half of the one in-sim run the owner does for both; the A32NX half is
 Part G of [docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md). Do
 ONE cold-and-dark to secure run with the First Officer flows and watch these four things, which
-are new on the Fenix and could not be tested without the sim:
+are new on the Fenix and could not be tested without the sim.
+
+**Do these first: item 2 (listen for unexpected spoken knob announcements during every lighting
+scene, and check the Secure scene after the batteries are off) and item 3 (the FCU altitude
+push by panel, hotkey and flow).** A knob announcement means the First Officer is no longer the
+only voice, the Secure scene writes to knobs on an unpowered aircraft, and the altitude push is a
+change to code the panel and hotkeys share. Items 1 and 4 can wait.
 
 1. **ECAM pages.** The flows now select the SD page at five points: door (Preflight), APU
    (Before Start), engine (Engine Start), status (After Start), door (Shutdown). Check each
    right after its step (the aircraft's own auto-SD may move on within seconds). The buttons
    are momentary pulses: each `S_ECAM_*` must read 0 afterwards.
-2. **Lighting scenes.** Bright at power-up, dim after start, bright at shutdown, off at
-   securing, each as annunciator, dome and one "Panel and integral brightness: SET" step that
+2. **Lighting scenes (do first).** Bright at power-up, dim after start, bright at shutdown, off
+   at securing (the annunciator stays BRIGHT then, and only the dome and the knobs go off),
+   each as annunciator, dome and one "Panel and integral brightness: SET" step that
    drives four knobs (`A_OH_LIGHTING_OVD`, `A_PED_LIGHTING_PEDESTAL`,
    `A_MIP_LIGHTING_FLOOD_MAIN`, `A_MIP_LIGHTING_FLOOD_PEDESTAL`). **Listen** during every scene
    write: the First Officer's own step line must be the only voice. Any spoken knob
@@ -248,7 +256,7 @@ are new on the Fenix and could not be tested without the sim:
    report. And at the end of Securing, which writes the "off" scene AFTER the batteries are
    off, check whether the knob writes actually took effect (power the batteries up again and
    read the knobs): if they did not, the scene needs to move before the battery steps.
-3. **FCU altitude push.** Before Start's "Set cleared altitude on the FCU" then "FCU altitude:
+3. **FCU altitude push (do first).** Before Start's "Set cleared altitude on the FCU" then "FCU altitude:
    pushed", and the panel and hotkey pushes, as in the FCU section below (item 4).
 4. **The Landing read-back.** Approach through landing with the Checklists tab open: the memo
    lines tick as each item is set (Part F, item 5), the flaps line speaks the lever position
