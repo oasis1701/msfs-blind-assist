@@ -168,6 +168,14 @@ speaks the value the First Officer reads when you tick it:
 
 There is no Before Takeoff, After Takeoff or Departure Change checklist.
 
+**Expected, not a defect: flows complete their read-back** (owner decision 2026-10-06, FOA-8).
+Four read-backs show complete, every line ticked, as soon as their flow finishes: the **Before
+Start Checklist** after the Before Start flow, the **After Start Checklist** after After Start,
+the **Approach Checklist** after Approach and the **After Landing Checklist** after After
+Landing. Ticking a line there to confirm it un-ticks it ("Windows: CLOSED (both): unchecked")
+and re-opens that list, so its self-ticking lines follow the aircraft again. No flow completes
+the other six read-backs.
+
 1. **Manual tick fires the switch.** In a state group (e.g. Electrical Power Up → "Battery 1:
    ON"), tick the item manually with the switch OFF — confirm the physical switch moves ON.
 2. **Untick/retick.** Untick an item, confirm nothing reverts on the aircraft (unticking is a

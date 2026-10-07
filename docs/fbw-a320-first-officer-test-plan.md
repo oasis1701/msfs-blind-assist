@@ -207,6 +207,15 @@ There is no Before Takeoff, After Takeoff or Departure Change checklist. The cab
 lines you confirm: the A32NX never ticks them (FlyByWire's CABIN READY needs a CALLS press and
 resets at every flight-phase change).
 
+**Expected, not a defect: flows complete their read-back** (owner decision 2026-10-06, FOA-8).
+Four read-backs show complete, every line ticked, as soon as their flow finishes: the **Before
+Start Checklist** after the Before Start flow, the **After Start Checklist** after After Start,
+the **Approach Checklist** after Approach and the **After Landing Checklist** after After
+Landing. Ticking a line there to confirm it un-ticks it ("Windows: CLOSED (both): unchecked")
+and re-opens that list, so its self-ticking lines follow the aircraft again (judge "Rudder trim:
+NEUTRAL" before After Start runs, or after such an untick). No flow completes the other six
+read-backs.
+
 1. **STATE items auto-tick as switches reach position.** With an item unticked, change the
    underlying switch directly in the cockpit (mouse/VR/panel), independent of the FO — confirm
    the checklist item ticks itself within about 1-2 s.

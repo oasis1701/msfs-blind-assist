@@ -104,3 +104,12 @@ can wait.
 
 In the same walk, confirm that After Takeoff's "Landing gear: UP" wait passes once the gear is
 up (the three leg variables are inherited from the A32NX, not measured on the A339X).
+
+**Expected, not a defect: flows complete their read-back** (owner decision 2026-10-06,
+[FOA-8](invariants/first-officer-airbus.md#foa-8)). Four read-backs show complete, every line
+ticked, as soon as their flow finishes: the **Before Start Checklist** after the Before Start
+flow, the **After Start Checklist** after After Start, the **Approach Checklist** after Approach
+and the **After Landing Checklist** after After Landing. Ticking a line there to confirm it
+un-ticks it ("Windows: CLOSED (both): unchecked") and re-opens that list, so its self-ticking
+lines follow the aircraft again. For L12, judge "Rudder trim: NEUTRAL" before After Start runs,
+or after such an untick: right after the flow it reads ticked whatever the trim is.
