@@ -98,9 +98,9 @@ can wait.
 | # | Claim to settle | How to tell |
 |---|---|---|
 | L10 | **Do first.** Engine start reaches "running" on the Trent engines | Run Engine Start. Each "Engine n starting — waiting for the engine to stabilize" must end by itself, well inside 120 s, when `A32NX_ENGINE_STATE:n` reads 1, and the "Engine n: running" line ticks. A timeout stops the flow: then read the state while the engine spools and record what the A339X publishes. |
-| L11 | The baro live value reads | With STD, then QNH, set on the captain's side, tick "Baro reference: SET (both)" (Cockpit Preparation or Approach): it speaks "standard", then "QNH 1013" (hPa) or "QNH 29.92" (inHg). It reads the Kohlsman settings, not the FBW display words. |
+| L11 | The baro live value reads | With STD, then QNH, set on the captain's side, tick "Baro reference: SET" (Cockpit Preparation or Approach): it speaks "standard", then "QNH 1013" (hPa) or "QNH 29.92" (inHg). It reads the Kohlsman settings, not the FBW display words. |
 | L12 | **Do first.** `A32NX_FAC_1_RUDDER_TRIM_POS` reads | After Start's "Rudder trim: NEUTRAL" ticks itself with the trim neutral and un-ticks off neutral. If it never ticks, the word is not published here: make the line a Reminder, as on the Fenix. |
-| L13 | **Do first.** `A32NX_GPWS_FLAPS3` reads | The Landing memo's "flaps: SET" ticks at FULL, and at 3 only with the GPWS LDG FLAP 3 switch on. |
+| L13 | **Do first.** `A32NX_GPWS_FLAPS3` reads | The Landing memo's "Flaps: SET" ticks at FULL, and at 3 only with the GPWS LDG FLAP 3 switch on. |
 | L14 | `A32NX_EFB_USING_METRIC_UNIT` arrives | Tick Cockpit Preparation's "Fuel quantity: CHECKED": it speaks the total fuel in the EFB's unit (kilograms or pounds). If it speaks no value, the unit variable never reached the cache on the A339X (the fuel line needs both it and `FUEL_QUANTITY_KG`): record what the A339X EFB publishes instead. |
 
 In the same walk, confirm that After Takeoff's "Landing gear: UP" wait passes once the gear is
@@ -114,7 +114,7 @@ takeoff setting", that action line still shows done (the write is not verified).
 ticked, as soon as their flow finishes: the **Before Start Checklist** after the Before Start
 flow, the **After Start Checklist** after After Start, the **Approach Checklist** after Approach
 and the **After Landing Checklist** after After Landing. Ticking a line there to confirm it
-un-ticks it ("Windows: CLOSED (both): unchecked") and re-opens that list, so its self-ticking
+un-ticks it ("Windows: CLOSED: unchecked") and re-opens that list, so its self-ticking
 lines follow the aircraft again. For L12, judge "Rudder trim: NEUTRAL" before After Start runs,
 or after such an untick: right after the flow it reads ticked whatever the trim is when the
 flow's "Rudder trim: RESET" step was sent (a reset that could not be sent leaves the line

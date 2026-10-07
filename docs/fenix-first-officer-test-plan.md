@@ -149,18 +149,18 @@ A32NX and A330 — FOA-8), each ECAM memo line spoken on its own. "(live)" marks
 speaks the value the First Officer reads when you tick it:
 
 - **Cockpit Preparation Checklist**: Gear pins and covers: REMOVED. Fuel quantity: CHECKED
-  (live, kilograms). Seat belts: ON. ADIRS: NAV. Baro reference: SET (both) (live).
-- **Before Start Checklist**: Parking brake: SET (live). Takeoff speeds and thrust: SET (both)
-  (live: V1, VR, V2, flex). Windows: CLOSED (both). Beacon: ON.
+  (live, kilograms). Seat belts: ON. ADIRS: NAV. Baro reference: SET (live).
+- **Before Start Checklist**: Parking brake: SET (live). Takeoff speeds and thrust: SET
+  (live: V1, VR, V2, flex). Windows: CLOSED. Beacon: ON.
 - **After Start Checklist**: Anti-ice: SET (live). ECAM status: CHECKED. Pitch trim: SET.
   Rudder trim: NEUTRAL (a line you confirm: the Fenix rudder-trim var has never been measured).
-- **Taxi Checklist**: Flight controls: CHECKED (both). Flaps setting: SET (both) (live). Radar
+- **Taxi Checklist**: Flight controls: CHECKED. Flaps setting: SET (live). Radar
   and predictive windshear: ON and AUTO. Engine mode selector: SET (live). Then the takeoff memo,
   one line each: autobrake: MAX, signs: ON, cabin: READY, spoilers: ARMED, flaps: T.O, T.O
   config: NORMAL.
-- **Line-up Checklist**: Takeoff runway: CONFIRMED (both). TCAS: TA/RA (live). Packs 1 and 2:
+- **Line-up Checklist**: Takeoff runway: CONFIRMED. TCAS: TA/RA (live). Packs 1 and 2:
   SET (live).
-- **Approach Checklist**: Baro reference: SET (both) (live). Seat belts: ON. Minimum: SET.
+- **Approach Checklist**: Baro reference: SET (live). Seat belts: ON. Minimum: SET.
   Autobrake: SET (live, read only — you set it). Engine mode selector: SET (live).
 - **Landing Checklist**: the landing memo, one line each: landing gear: DOWN, signs: ON,
   cabin: READY, spoilers: ARMED, flaps: SET (live; FULL, or 3 with the GPWS LDG FLAP 3 switch on).
@@ -175,7 +175,7 @@ There is no Before Takeoff, After Takeoff or Departure Change checklist.
 Four read-backs show complete, every line ticked, as soon as their flow finishes: the **Before
 Start Checklist** after the Before Start flow, the **After Start Checklist** after After Start,
 the **Approach Checklist** after Approach and the **After Landing Checklist** after After
-Landing. Ticking a line there to confirm it un-ticks it ("Windows: CLOSED (both): unchecked")
+Landing. Ticking a line there to confirm it un-ticks it ("Windows: CLOSED: unchecked")
 and re-opens that list, so its self-ticking lines follow the aircraft again. No flow completes
 the other six read-backs.
 
@@ -190,7 +190,7 @@ the other six read-backs.
    OnRequest fields roughly every second).
 4. **Readback CLs (`*_CL` groups) never move switches.** Open any `*_CL` group (e.g. Cockpit
    Preparation, Taxi, Landing, Securing) and tick an auto-detectable line (e.g. "Seat belts:
-   ON", "Takeoff memo, spoilers: ARMED", "Batteries: OFF") — confirm **no switch moves**. The
+   ON", "Spoilers: ARMED", "Batteries: OFF") — confirm **no switch moves**. The
    line should only tick itself once the real switch independently reaches the stated position
    (set it via the matching state-group flow, or by hand in the cockpit). Cross-reference:
    every `*_CL` item's `CheckAction` is `null`, checked structurally by the unit tests.
@@ -204,8 +204,8 @@ the other six read-backs.
    only with a radar system selected (1 or 2) AND predictive windshear on AUTO, and After
    Landing's "Radar and predictive windshear: OFF" ticks from `S_WR_SYS` / `S_WR_PRED_WS`
    with both off; neither ever fires an action when ticked by hand.
-7. **Live values.** Tick a line marked (live) — e.g. "Flaps setting: SET (both)" with the lever
-   at 1 — and confirm the spoken tick text carries the value ("Flaps setting: SET (both), flaps
+7. **Live values.** Tick a line marked (live) — e.g. "Flaps setting: SET" with the lever
+   at 1 — and confirm the spoken tick text carries the value ("Flaps setting: SET, flaps
    1: checked") and the status line shows it ("… flaps 1 — Complete"), while the tree text of
    the line does not change. With the value unreadable (e.g. before the aircraft is powered)
    the line speaks as it always did, with no value.
@@ -233,7 +233,7 @@ the other six read-backs.
 5. **LANDING_CL auto-ticks on approach configuration** — during the approach (before
    touchdown), configure landing gear DOWN, seat belts ON, ground spoilers ARMED, flaps to
    the landing setting, and confirm the **Landing Checklist** (`LANDING_CL`) memo lines
-   auto-tick from live state as each is set — "Landing memo, landing gear: DOWN" (only once
+   auto-tick from live state as each is set — "Landing gear: DOWN" (only once
    the gear shows three green — see the gear-down section below), "signs: ON", "spoilers:
    ARMED", "flaps: SET" (ticks at FULL, or at 3 with the GPWS LDG FLAP 3 switch on; the
    spoken value is the lever position). "cabin: READY" never ticks by itself — it is a line you
@@ -424,7 +424,7 @@ One change: the Before Start "Waiting for APU available" wait now ABORTS the flo
 ## "Landing gear: DOWN" by three green, not the lever (2026-09-25)
 
 1. On approach, with **Auto-lower gear on descent** disabled, open the Checklists tab and
-   put the gear lever DOWN by hand. The Landing Checklist's "Landing memo, landing gear: DOWN"
+   put the gear lever DOWN by hand. The Landing Checklist's "Landing gear: DOWN"
    line must stay **unticked** while the gear is still travelling, and tick itself only once
    all three gear show down and locked — not the moment the lever moves.
 2. Parked on the ground on a fresh flight load, gear down, aircraft powered, without ticking

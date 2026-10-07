@@ -60,7 +60,7 @@ are the same on the three aircraft except the memo's signs line (A32NX and A330 
 Fenix "signs"), and `A320FamilyParityTests` keeps the Fenix and A32NX equal, every difference
 being a named allow-list entry with a reason (the A330 stays tied to the A32NX by
 `HwA330ParityTests`, and follows every A32NX change). A line whose Airbus response is a blank
-speaks the real value when the pilot ticks it ("Flaps setting: SET (both), flaps 1: checked")
+speaks the real value when the pilot ticks it ("Flaps setting: SET, flaps 1: checked")
 through `ChecklistItem.LiveValue`; the tree text never changes. The flows were brought
 together at the same time: engine start waits for the engine to run on all three (the Fenix on
 N2 of 55 % or more), takeoff flaps come from SimBrief on all three, all three select the same ECAM
