@@ -384,8 +384,10 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
     /// <summary>Pause between the master going on and the START press (the flow's own dwell).</summary>
     private const int ApuMasterToStartMs = 3000;
 
-    /// <summary>The AVAIL-lamp test, shared with the BS_APU / AL_APU checklist conditions so the
-    /// two can never disagree about what "available" means. An unread (NaN) lamp is not lit.</summary>
+    /// <summary>The AVAIL-lamp test. The BS_APU / AL_APU checklist conditions use this method
+    /// itself (not a copy of the comparison), and so do the start and the wait below, so the
+    /// line and the action can never disagree about what "available" means. An unread (NaN)
+    /// lamp is not lit.</summary>
     public static bool IsApuAvailable(double lamp) => lamp > 0.5;
 
     /// <summary>

@@ -176,7 +176,7 @@ public static class FbwA320ChecklistDefinitions
             // the line says "ON and available" and detects on the AVAIL lamp, like the flow,
             // which also waits for it. See FbwA320ActionExecutor.StartApuAsync.
             Auto("BS_APU", "BEFORE_START", "APU: ON and available", FbwA320ActionExecutor.ApuAvailField,
-                v => v > 0.5, (e, s) => e.StartApuAsync(s)),
+                FbwA320ActionExecutor.IsApuAvailable, (e, s) => e.StartApuAsync(s)),
             Auto("BS_APUBLEED", "BEFORE_START", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
             Auto("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ALL ON", "FUEL_PUMP_L1", v => v > 0.5,
@@ -225,14 +225,16 @@ public static class FbwA320ChecklistDefinitions
             ActionManual("ES_ECAMENG", "ENGINE_START", "ECAM page: engine", (e, _) => e.Set("ECAM_PAGE_ENG", 1)),
             Auto("ES_MODE", "ENGINE_START", "Engine mode selector: IGN START", "ENGINE_MODE_SELECTOR",
                 v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 2)),
+            // Engine 1 first, then engine 2, each master followed by its own running line (the
+            // Fenix's order, and the flow's). The running lines are detect-only: FlyByWire's own
+            // engine state reads On. The flow's ES_ENGn_N2 wait confirms it, and the line ticks
+            // itself from the state.
             Auto("ES_ENG1", "ENGINE_START", "Engine 1 master: ON", "ENGINE_1_MASTER",
                 v => v > 0.5, (e, _) => e.Set("ENGINE_1_MASTER", 1)),
-            Auto("ES_ENG2", "ENGINE_START", "Engine 2 master: ON", "ENGINE_2_MASTER",
-                v => v > 0.5, (e, _) => e.Set("ENGINE_2_MASTER", 1)),
-            // Detect-only: FlyByWire's own engine state reads On. The flow's ES_ENGn_N2 wait
-            // confirms it, and the line ticks itself from the state (the Fenix's shape).
             Auto("ES_ENG1_RUN", "ENGINE_START", "Engine 1: running", "FO_ENG1_RUNNING",
                 v => v > 0.5, action: null),
+            Auto("ES_ENG2", "ENGINE_START", "Engine 2 master: ON", "ENGINE_2_MASTER",
+                v => v > 0.5, (e, _) => e.Set("ENGINE_2_MASTER", 1)),
             Auto("ES_ENG2_RUN", "ENGINE_START", "Engine 2: running", "FO_ENG2_RUNNING",
                 v => v > 0.5, action: null),
         }
@@ -413,7 +415,7 @@ public static class FbwA320ChecklistDefinitions
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 1)),
             // Same master → dwell → START press → wait for AVAIL as the Before Start item.
             Auto("AL_APU", "AFTER_LANDING", "APU: ON and available", FbwA320ActionExecutor.ApuAvailField,
-                v => v > 0.5, (e, s) => e.StartApuAsync(s)),
+                FbwA320ActionExecutor.IsApuAvailable, (e, s) => e.StartApuAsync(s)),
             Auto("AL_ANTIICE_OFF", "AFTER_LANDING", "Engine and wing anti-ice: OFF", "ENG_ANTI_ICE:1",
                 v => System.Math.Abs(v - 0) < 0.5, new[] { "ENG_ANTI_ICE:2", "A32NX_BUTTON_OVHD_ANTI_ICE_WING_POSITION" },
                 async (e, _) =>

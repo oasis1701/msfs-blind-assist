@@ -50,6 +50,16 @@ public class FbwA320FlowParityTests
     }
 
     [Fact]
+    public void Each_engine_running_line_directly_follows_its_engine_master_line()
+    {
+        // The Fenix's order, and the flow's: engine 1 master, engine 1 running, engine 2 master, engine 2 running.
+        var ids = FbwA320ChecklistDefinitions.Build().Single(g => g.Id == "ENGINE_START").Items.Select(i => i.Id).ToList();
+        foreach (var n in new[] { 1, 2 })
+            Assert.Equal(ids.IndexOf($"ES_ENG{n}") + 1, ids.IndexOf($"ES_ENG{n}_RUN"));
+        Assert.True(ids.IndexOf("ES_ENG1_RUN") < ids.IndexOf("ES_ENG2"));
+    }
+
+    [Fact]
     public void Engine_running_is_unknown_with_no_data()
     {
         Assert.True(double.IsNaN(new FbwA320StateEvaluator().GetValue("FO_ENG1_RUNNING")));
