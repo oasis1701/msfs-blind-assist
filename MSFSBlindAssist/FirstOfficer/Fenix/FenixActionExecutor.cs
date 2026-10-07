@@ -1,5 +1,6 @@
 using MSFSBlindAssist.FirstOfficer.Generic;
 using MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.FirstOfficer.Fenix;
 
@@ -17,10 +18,11 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// ALSO writes these same L:vars via its own atomic RPN read-modify-write
 /// (AdjustFcuPushPullCounter) rather than its rmpCounters absolute counter — both writers
 /// now read the live sim value before modifying, so they stay coherent no matter which one
-/// fires. Each call's RPN string is prefixed with a per-instance sequence number
-/// ("{seq} 0 *", a numeric no-op) so MobiFlight's command channel — which coalesces two
-/// consecutive IDENTICAL calc strings — never drops a repeated push (same anti-dedup idiom
-/// as FlyByWireA380Definition.SendRmpKey).
+/// fires. Both send through SimConnectManager.ExecuteCalculatorCodeUnique, whose "{seq} 0 *"
+/// prefix (a numeric no-op) comes from the manager's ONE counter, so MobiFlight's command
+/// channel — which coalesces two consecutive IDENTICAL calc strings — never drops a repeated
+/// push, even a panel push straight after an FO push (SIM-17; two private counters each
+/// starting at 0 could build the same string twice).
 /// </summary>
 public sealed class FenixActionExecutor : LVarActionExecutor
 {
@@ -58,9 +60,6 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     /// warning before we read the result and release (matches the panel path's
     /// FenixA320Definition.TakeoffConfigTestHoldMs).</summary>
     private const int TakeoffConfigTestHoldMs = 1500;
-
-    // Anti-dedup sequence for the FCU push/pull atomic RPN write (see PushFcuManaged).
-    private long _fcuPushSeq;
 
     // The app announcer, injected by FenixFoProfile (FbwA380ActionExecutor precedent) —
     // used only for the TO CONFIG result readout; all step narration stays FlowManager's.
@@ -121,7 +120,7 @@ public sealed class FenixActionExecutor : LVarActionExecutor
                 case "FCU_PUSH_SPEED_MANAGED":   return PushFcuManaged("S_FCU_SPEED");
                 case "FCU_PUSH_HEADING_MANAGED": return PushFcuManaged("S_FCU_HEADING");
                 case "FCU_PUSH_ALT_MANAGED":     return PushFcuManaged("S_FCU_ALTITUDE");
-                case "CVR_TEST":                return CvrTest("S_OH_RCRD_TEST");
+                case "CVR_TEST":                 return CvrTest("S_OH_RCRD_TEST");
                 case "FIRE_TEST_APU":            return FireTest("S_OH_FIRE_APU_TEST");
                 case "FIRE_TEST_ENG1":           return FireTest("S_OH_FIRE_ENG1_TEST");
                 case "FIRE_TEST_ENG2":           return FireTest("S_OH_FIRE_ENG2_TEST");
@@ -241,7 +240,7 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         }
         catch (Exception ex)
         {
-            System.Diagnostics.Debug.WriteLine($"[FenixFO] AnnounceTakeoffConfigResult error: {ex.Message}");
+            Log.Debug("FO", $"Fenix AnnounceTakeoffConfigResult error: {ex.Message}");
         }
     }
 
@@ -302,17 +301,17 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     /// <summary>Push an FCU knob to managed (Fenix convention: push = value decrement on
     /// the knob L:var, e.g. "S_FCU_SPEED", "S_FCU_HEADING" or "S_FCU_ALTITUDE"). Atomic read-modify-write in
     /// ONE calculator string so it can never desync against the def's own panel handler
-    /// (which now uses the same atomic-RPN mechanism — see the class doc comment). The
-    /// leading "{seq} 0 *" makes the string unique per call so MobiFlight's identical-string
-    /// coalescing can't drop a repeated push.</summary>
+    /// (which now uses the same atomic-RPN mechanism — see the class doc comment). Sent through
+    /// ExecuteCalculatorCodeUnique, so the string is unique per call on the manager's one
+    /// counter, shared with the panel's push, and MobiFlight's identical-string coalescing can't
+    /// drop a repeated push (SIM-17).</summary>
     public async Task<bool> PushFcuManaged(string knobLVar)
     {
         var sc = Sc;
         if (sc is not { IsConnected: true }) return false;
         await RunGatedAsync(() =>
         {
-            long seq = ++_fcuPushSeq;
-            sc.ExecuteCalculatorCode($"{seq} 0 * (L:{knobLVar}) 1 - (>L:{knobLVar})");
+            sc.ExecuteCalculatorCodeUnique($"(L:{knobLVar}) 1 - (>L:{knobLVar})");
             return Task.CompletedTask;
         });
         return true;
@@ -323,7 +322,7 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     public Task<bool> PushFcuAltitude() => PushFcuManaged("S_FCU_ALTITUDE");
 
     /// <summary>
-    /// APU start block:Master ON, dwell, START pulse, then WAIT for the AVAIL lamp.
+    /// APU start block: Master ON, dwell, START pulse, then WAIT for the AVAIL lamp.
     ///
     /// ⚠️ The wait is not optional and must not be moved back to the caller. The Before
     /// Start / After Landing FLOW does wait (its own WaitForField step), but the CHECKLIST
@@ -335,8 +334,9 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     /// condition: the item un-ticked, ItemActionFailed fired, and the pilot heard "Unable to
     /// complete: APU: ON and available" while the APU was starting perfectly, after which it
     /// silently re-ticked. Holding the action open for the spool-up is what makes
-    /// ActionSettling cover it. Fenix is the only profile that detects an APU item on a slow
-    /// lamp rather than an instant switch position, which is why only it showed this.
+    /// ActionSettling cover it. The Fenix was the first profile to detect an APU item on a slow
+    /// lamp rather than an instant switch position, which is why it showed this first; the
+    /// A32NX and A330 executors' StartApuAsync now hold their AVAIL lines open the same way (FO-11).
     ///
     /// A genuine failure still surfaces: on timeout this returns and the item reverts with the
     /// same message, now truthfully. The dispatch gate is released between writes, so the wait

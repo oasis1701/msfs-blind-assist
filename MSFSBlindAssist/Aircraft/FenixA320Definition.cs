@@ -12481,20 +12481,21 @@ public class FenixA320Definition : BaseAircraftDefinition
     /// counter overwrites the FO's push, producing a swallowed or doubled delta). Reading
     /// the live sim value on every call keeps both writers coherent.
     ///
-    /// The leading "{seq} 0 *" makes each call's RPN string textually unique — MobiFlight's
-    /// command channel coalesces two consecutive IDENTICAL calc strings, and a push/pull is
-    /// always the same fixed delta (+1/-1), so back-to-back presses would otherwise collapse
-    /// into one (same anti-dedup idiom as FlyByWireA380Definition.SendRmpKey).
+    /// Sent through <see cref="SimConnect.SimConnectManager.ExecuteCalculatorCodeUnique"/> (SIM-17):
+    /// MobiFlight's command channel coalesces two consecutive IDENTICAL calc strings, and a
+    /// push/pull is always the same fixed delta (+1/-1). The "{seq} 0 *" prefix must come from the
+    /// manager's ONE counter, shared with the First Officer's push: two private counters, each
+    /// starting at 0, could build byte-identical consecutive strings (a panel push numbered 1 right
+    /// after an FO push numbered 1) and the second push would be dropped.
     /// </summary>
     private void AdjustFcuPushPullCounter(string counterVar, int delta, SimConnect.SimConnectManager simConnect)
     {
         if (delta == 0) return;
 
         string op = delta > 0 ? $"{delta} +" : $"{Math.Abs(delta)} -";
-        string rpn = $"{++_fcuPushSeq} 0 * (L:{counterVar}) {op} (>L:{counterVar})";
-        simConnect.ExecuteCalculatorCode(rpn);
+        simConnect.ExecuteCalculatorCodeUnique($"(L:{counterVar}) {op} (>L:{counterVar})");
 
-        System.Diagnostics.Debug.WriteLine($"[FenixA320] AdjustFcuPushPullCounter: {counterVar} delta={delta}");
+        Log.Debug("Fenix", $"AdjustFcuPushPullCounter: {counterVar} delta={delta}");
     }
 
     private void RequestGearPosition(SimConnect.SimConnectManager simConnectMgr)
@@ -12772,9 +12773,6 @@ public class FenixA320Definition : BaseAircraftDefinition
 
     // Counter tracking for RMP frequency knobs
     private Dictionary<string, int> rmpCounters = new Dictionary<string, int>();
-
-    // Anti-dedup sequence for FCU push/pull atomic RPN writes (see AdjustFcuPushPullCounter).
-    private long _fcuPushSeq;
 
     /// <summary>
     /// Increments a counter variable for RMP frequency controls.

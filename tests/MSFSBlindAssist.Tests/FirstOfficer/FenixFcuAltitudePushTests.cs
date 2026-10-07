@@ -84,6 +84,27 @@ public class FenixFcuAltitudePushTests
         Assert.Contains("(L:{knobLVar}) 1 - (>L:{knobLVar})", body);
     }
 
+    /// <summary>The panel's and the First Officer's pushes number their calculator strings on the
+    /// SimConnectManager's ONE counter (ExecuteCalculatorCodeUnique, SIM-17). Each used to keep a
+    /// private "{seq} 0 *" counter starting at 0, so a panel push could build a string byte-identical
+    /// to the FO push just before it, and MobiFlight coalesces identical consecutive strings: the
+    /// second push was lost.</summary>
+    [Fact]
+    public void Both_fcu_push_writers_number_their_strings_on_the_managers_one_counter()
+    {
+        string definition = DefinitionSource();
+        string executor = FoFbwUnclaimedEventKeyTests.ExecutorSourcePath("Fenix", "FenixActionExecutor.cs");
+
+        foreach (var (path, method) in new[] { (definition, "AdjustFcuPushPullCounter"), (executor, "PushFcuManaged") })
+        {
+            string body = FoFbwUnclaimedEventKeyTests.MethodBody(path, method);
+            Assert.Contains("ExecuteCalculatorCodeUnique(", body);
+            Assert.DoesNotMatch(new Regex(@"\bExecuteCalculatorCode\("), body);
+            Assert.DoesNotContain("0 *", body);   // no hand-built prefix: the manager adds it
+            Assert.DoesNotContain("_fcuPushSeq", StripComments(File.ReadAllText(path)));
+        }
+    }
+
     // =====================================================================
     // First Officer: the Before Start altitude push, as on the A32NX
     // =====================================================================
