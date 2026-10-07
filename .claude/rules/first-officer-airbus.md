@@ -14,6 +14,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/AirbusReadback*.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/Conf3Registration*.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/EngineModeSelector*.cs"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/A320Family*.cs"
 ---
 # First Officer rules: Fenix A320, FBW A32NX/A380, Headwind A330
 

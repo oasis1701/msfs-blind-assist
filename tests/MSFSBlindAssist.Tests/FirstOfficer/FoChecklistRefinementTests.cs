@@ -33,11 +33,6 @@ public class FoChecklistRefinementTests
         groups.First(g => g.Id == groupId).Items
               .Select(i => (i.Label, i.Type)).ToArray();
 
-    private static string[] GroupItemIds<TExec, TState>(
-        IEnumerable<ChecklistGroup<TExec, TState>> groups, string groupId)
-        where TExec : IFoActionExecutor where TState : IFoStateEvaluator =>
-        groups.First(g => g.Id == groupId).Items.Select(i => i.Id).ToArray();
-
     private static (string Label, FlowStepActionType Type)[] FlowSteps<TState>(
         IEnumerable<FlowDefinition<TState>> flows, string flowId)
         where TState : IFoStateEvaluator =>
@@ -121,6 +116,7 @@ public class FoChecklistRefinementTests
                  {
                      A320.FbwA320ChecklistDefinitions.Build().Select(g => (g.Id, Items: g.Items.Select(i => i.Type))),
                      HwA330.HwA330ChecklistDefinitions.Build().Select(g => (g.Id, Items: g.Items.Select(i => i.Type))),
+                     Fenix.FenixChecklistDefinitions.Build().Select(g => (g.Id, Items: g.Items.Select(i => i.Type))),
                  })
         {
             var list = groups.ToList();
@@ -130,7 +126,7 @@ public class FoChecklistRefinementTests
         }
     }
 
-    // ---- guardrail: new Info separators keep *_CL groups action-free (Airbus) ----
+    // ---- guardrail: the Airbus *_CL read-back groups stay action-free (FO-3) ----
     [Fact] public void AirbusReadbackGroupsRemainActionFree()
     {
         foreach (var g in A320.FbwA320ChecklistDefinitions.Build().Where(g => g.Id.EndsWith("_CL")))
