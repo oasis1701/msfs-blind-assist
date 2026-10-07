@@ -54,32 +54,40 @@ public class FlowManager<TExec, TState>
     public FlowDefinition<TState>? CurrentFlow { get; private set; }
     public int CurrentStepIndex { get; private set; }
 
-    // Checklist items belonging to steps this run announced as SKIPPED — a step that failed
-    // and whose FailurePolicy let the flow continue, a step skipped by the dependency gate,
-    // or a step left alone by its LeaveAloneWhen rule. FirstOfficerForm passes these to
-    // MarkGroupComplete so flow completion cannot tick and latch an item the flow never
-    // delivered. Only those three contribute: Stop and an exhausted RetryThenStop both
-    // raise FlowFailed and return, so FlowCompleted never fires on those runs, and the
+    // Checklist items belonging to steps this run SKIPPED — a step that failed and whose
+    // FailurePolicy let the flow continue, a step skipped by the dependency gate, a step left
+    // alone by its LeaveAloneWhen rule, or a step whose TargetValueProvider had no value
+    // (FO-20: skipped SILENTLY, the paired Captain reminder is the speech). FirstOfficerForm
+    // passes these to MarkGroupComplete so flow completion cannot tick and latch an item the
+    // flow never delivered. Only those four contribute: Stop and an exhausted RetryThenStop
+    // both raise FlowFailed and return, so FlowCompleted never fires on those runs, and the
     // "Already set" early-continue is a SUCCESS (it raises StepCompleted and marks the item).
     //
     // Pinned by BEHAVIOUR tests on a real FlowManager run (FlowManagerStepDependencyTests,
-    // FlowManagerLeaveAloneTests): the announce entry points are virtual, so a recording
-    // ScreenReaderAnnouncer subclass (GatedSpeechCapture, tests/MuteWrapHarness.cs) replaces
-    // the screen reader. They pin which ids land here on a Skip-policy failure, on a
-    // dependency skip and on a leave-alone skip, that an "Already set" step lands nothing,
-    // and that the set clears between runs. The CONSUMER half — what MarkGroupComplete does
-    // with this set — is FoFlowCompletionExclusionTests.
+    // FlowManagerLeaveAloneTests, FlowManagerTargetProviderTests): the announce entry points
+    // are virtual, so a recording ScreenReaderAnnouncer subclass (GatedSpeechCapture,
+    // tests/MuteWrapHarness.cs) replaces the screen reader. They pin which ids land here on a
+    // Skip-policy failure, on a dependency skip, on a leave-alone skip and on a null target,
+    // that an "Already set" step lands nothing, and that the set clears between runs. The
+    // CONSUMER half — what MarkGroupComplete does with this set — is
+    // FoFlowCompletionExclusionTests.
     private readonly HashSet<string> _unfinishedChecklistItemIds = new(StringComparer.Ordinal);
 
     // Ids of the steps THIS run skipped — a Skip-policy step that failed or timed out, a
-    // step left alone by its LeaveAloneWhen rule, or a step skipped because its
-    // FlowStep.RequiresStepId is in here already (so a dependency chain propagates). Read by
-    // the dependency gate at the top of the step loop; cleared with
-    // _unfinishedChecklistItemIds when the next run starts. All three Add()s (the Skip
-    // branch's, the leave-alone rule's and the dependency gate's) are pinned by
-    // FlowManagerStepDependencyTests / FlowManagerLeaveAloneTests; FlowStepDependencyIdTests
+    // step left alone by its LeaveAloneWhen rule, a step whose TargetValueProvider had no
+    // value, or a step skipped because its FlowStep.RequiresStepId is in here already (so a
+    // dependency chain propagates). Read by the dependency gate at the top of the step loop;
+    // cleared with _unfinishedChecklistItemIds when the next run starts. Every Add() (the Skip
+    // branch's, and SkipWithoutRunningAsync's for the leave-alone rule, the null target and
+    // the dependency gate) is pinned by FlowManagerStepDependencyTests /
+    // FlowManagerLeaveAloneTests / FlowManagerTargetProviderTests; FlowStepDependencyIdTests
     // pins that every profile's RequiresStepId names an earlier step of the same flow.
     private readonly HashSet<string> _skippedStepIds = new(StringComparer.Ordinal);
+
+    // What one attempt at a step came to. NoTarget: the step's FlowStep.TargetValueProvider
+    // returned null (the data it needs, e.g. a SimBrief plan, is not there), so nothing was
+    // sent. That is a SILENT SKIP, never a success (FO-20).
+    private enum StepOutcome { Done, Failed, NoTarget }
 
     /// <summary>Checklist item ids the most recent run could not deliver. Valid to read
     /// from the FlowCompleted handler; cleared when the next run starts. Returns a
@@ -167,19 +175,21 @@ public class FlowManager<TExec, TState>
         return Task.CompletedTask;
     }
 
-    /// <summary>A step skipped WITHOUT running (leave-alone rule, dependency gate): keeps its
-    /// linked checklist lines out of the completion latch, records its id as skipped, raises
-    /// StepSkipped, speaks <paramref name="spokenText"/> (queued), and pauses
+    /// <summary>A step skipped WITHOUT sending anything (leave-alone rule, dependency gate, a
+    /// target provider with no value): keeps its linked checklist lines out of the completion
+    /// latch, records its id as skipped, raises StepSkipped, speaks <paramref name="spokenText"/>
+    /// (queued; null speaks nothing — the null-target skip is silent, FO-20), and pauses
     /// <see cref="InterStepPauseMs"/> unless it is the last step. Returns false when the flow was
     /// cancelled during that pause (FlowCancelled already raised), true otherwise.</summary>
     private async Task<bool> SkipWithoutRunningAsync(
-        FlowDefinition<TState> flow, FlowStep<TState> step, int index, string spokenText, CancellationToken ct)
+        FlowDefinition<TState> flow, FlowStep<TState> step, int index, string? spokenText, CancellationToken ct)
     {
         foreach (var itemId in step.LinkedChecklistItemIds)
             _unfinishedChecklistItemIds.Add(itemId);
         _skippedStepIds.Add(step.Id);
         StepSkipped?.Invoke(flow, step, index);
-        _announcer.Announce(spokenText);
+        if (spokenText != null)
+            _announcer.Announce(spokenText);
         if (index < flow.Steps.Count - 1)
         {
             try { await Task.Delay(InterStepPauseMs, ct); }
@@ -261,9 +271,24 @@ public class FlowManager<TExec, TState>
 
             StepStarted?.Invoke(flow, step, i);
 
-            bool success = await ExecuteStepAsync(flow, step, i, ct);
+            StepOutcome outcome = await ExecuteStepAsync(flow, step, i, ct);
 
-            if (!success)
+            // FO-20: a TargetValueProvider with no value (no SimBrief plan) is a SILENT SKIP,
+            // never a success. Nothing was sent, so its lines are neither marked nor latched:
+            // as a quiet success it latched "Flaps: takeoff setting" over a lever at 0 on the
+            // A320s. Silent because the step's paired Captain reminder is what the pilot hears
+            // ("Skipping: …" would say the flow failed when it only had no plan). Its id joins
+            // the skipped set like any other skip, so a step that RequiresStepId it — one that
+            // would build on a value the flow never set — is skipped too, as after a failure.
+            if (outcome == StepOutcome.NoTarget)
+            {
+                Log.Debug("FO", $"{flow.Id}.{step.Id}: no target value, skipped silently");
+                if (!await SkipWithoutRunningAsync(flow, step, i, spokenText: null, ct))
+                    return;
+                continue;
+            }
+
+            if (outcome == StepOutcome.Failed)
             {
                 switch (step.FailurePolicy)
                 {
@@ -286,19 +311,22 @@ public class FlowManager<TExec, TState>
                         break;
 
                     case FlowStepFailurePolicy.RetryThenStop:
-                        bool retried = false;
-                        for (int r = 0; r < step.RetryCount; r++)
+                        StepOutcome retry = StepOutcome.Failed;
+                        for (int r = 0; r < step.RetryCount && retry == StepOutcome.Failed; r++)
                         {
                             await Task.Delay(1000, ct);
-                            bool retryOk = await ExecuteStepAsync(flow, step, i, ct);
-                            if (retryOk) { retried = true; break; }
+                            retry = await ExecuteStepAsync(flow, step, i, ct);
                         }
-                        if (!retried)
+                        if (retry == StepOutcome.Failed)
                         {
                             FlowFailed?.Invoke(flow, $"Step '{step.Label}' failed after retries");
                             _announcer.AnnounceImmediate($"{flow.Name} flow stopped. Unable to complete: {step.AnnounceText}");
                             return;
                         }
+                        // A retry that finds no target value any more is the same silent skip (FO-20).
+                        if (retry == StepOutcome.NoTarget
+                            && !await SkipWithoutRunningAsync(flow, step, i, spokenText: null, ct))
+                            return;
                         break;
                 }
             }
@@ -346,7 +374,7 @@ public class FlowManager<TExec, TState>
         _announcer.Announce($"{flow.Name} flow complete");
     }
 
-    private async Task<bool> ExecuteStepAsync(FlowDefinition<TState> flow, FlowStep<TState> step, int index, CancellationToken ct)
+    private async Task<StepOutcome> ExecuteStepAsync(FlowDefinition<TState> flow, FlowStep<TState> step, int index, CancellationToken ct)
     {
         try
         {
@@ -357,7 +385,7 @@ public class FlowManager<TExec, TState>
                     string text = step.ReminderText ?? step.Label;
                     CaptainReminderRequired?.Invoke(text);
                     _announcer.Announce($"Captain action required: {text}");
-                    return true;
+                    return StepOutcome.Done;
                 }
 
                 case FlowStepActionType.WaitSeconds:
@@ -365,13 +393,13 @@ public class FlowManager<TExec, TState>
                     int total = step.WaitSeconds;
                     _announcer.Announce($"Waiting {total} seconds: {step.AnnounceText}");
                     await Task.Delay(TimeSpan.FromSeconds(total), ct);
-                    return true;
+                    return StepOutcome.Done;
                 }
 
                 case FlowStepActionType.WaitForCondition:
                 {
                     if (step.ConditionFieldName == null || step.Condition == null)
-                        return true; // No condition defined — treat as complete
+                        return StepOutcome.Done; // No condition defined — treat as complete
 
                     _announcer.Announce($"Waiting for: {step.AnnounceText}");
                     int elapsed = 0;
@@ -388,31 +416,32 @@ public class FlowManager<TExec, TState>
                         // this loop.
                         await WaitWhilePausedAsync(ct);
                         double v = _state.GetValue(step.ConditionFieldName);
-                        if (step.Condition(v)) return true;
+                        if (step.Condition(v)) return StepOutcome.Done;
                         await Task.Delay(1000, ct);
                         elapsed++;
                     }
                     _announcer.Announce($"Timed out waiting for: {step.AnnounceText}");
                     StepFailed?.Invoke(flow, step, index, "Timed out");
-                    return false;
+                    return StepOutcome.Failed;
                 }
 
                 case FlowStepActionType.SetSwitch:
                 case FlowStepActionType.SetSwitchMultiple:
                 {
                     // Resolve a dynamic target (e.g. SimBrief-derived) just before dispatch.
-                    // Null = required data unavailable → quiet skip (see TargetValueProvider).
+                    // Null = required data unavailable → NoTarget, a SILENT SKIP handled by
+                    // RunFlowAsync (FO-20; see TargetValueProvider). Never a success.
                     if (step.TargetValueProvider != null)
                     {
                         int? resolved = step.TargetValueProvider(_state);
-                        if (resolved is null) return true;
+                        if (resolved is null) return StepOutcome.NoTarget;
                         step.TargetValue = resolved;
                     }
 
                     if (!_executor.IsAvailable)
                     {
                         _announcer.Announce($"Sim not connected — cannot perform: {step.AnnounceText}");
-                        return false;
+                        return StepOutcome.Failed;
                     }
 
                     _announcer.Announce(step.AnnounceText);
@@ -420,7 +449,7 @@ public class FlowManager<TExec, TState>
                     if (!sent)
                     {
                         StepFailed?.Invoke(flow, step, index, "Event not sent");
-                        return false;
+                        return StepOutcome.Failed;
                     }
 
                     // Optionally verify state after brief settle time
@@ -431,14 +460,14 @@ public class FlowManager<TExec, TState>
                         if (!step.VerifyCondition(v))
                         {
                             StepFailed?.Invoke(flow, step, index, "State verification failed");
-                            return false;
+                            return StepOutcome.Failed;
                         }
                     }
-                    return true;
+                    return StepOutcome.Done;
                 }
 
                 default:
-                    return true;
+                    return StepOutcome.Done;
             }
         }
         catch (OperationCanceledException)
@@ -449,7 +478,7 @@ public class FlowManager<TExec, TState>
         catch (Exception ex)
         {
             StepFailed?.Invoke(flow, step, index, ex.Message);
-            return false;
+            return StepOutcome.Failed;
         }
     }
 }

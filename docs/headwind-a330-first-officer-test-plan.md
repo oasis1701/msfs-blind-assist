@@ -81,7 +81,8 @@ visibly in the commanded position.
 The A330 follows every A32NX change ([FOA-8](invariants/first-officer-airbus.md#foa-8)): the
 same ten read-back lists (Cockpit Preparation to Securing, the takeoff and landing memos line by
 line, "seat belts" on the memo's signs line), live values on a tick, engine start that waits
-for the engine to run, takeoff flaps from SimBrief (a Captain reminder without a plan),
+for the engine to run, takeoff flaps from SimBrief (a Captain reminder without a plan, and the
+After Start line "Flaps: takeoff setting" left unticked until the lever reads 1-3, FO-20),
 gear up and down read from the legs, and the "TCAS: STANDBY" and "External power: OFF" lines.
 The full run is the A32NX's (Part G of
 [docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md)); on the A339X

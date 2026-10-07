@@ -51,8 +51,9 @@ Start cold-and-dark at a gate, MSFSBA connected, Fenix FO window open.
    spoilers ARMED, rudder trim RESET, flaps → SimBrief takeoff setting (if SimBrief was
    loaded — see Part C; if not loaded, confirm the flow instead speaks the Captain reminder
    "Flaps: set for takeoff" rather than setting a wrong flap value; the reminder is skipped only
-   when the lever reads a takeoff position, so a write that did not take still gets it), nose
-   light TAXI,
+   when the lever reads a takeoff position, so a write that did not take still gets it; with no
+   plan, the After Start line "Flaps: takeoff setting" stays unticked after the flow and ticks
+   itself once you set flaps 1-3, FO-20), nose light TAXI,
    **cockpit lighting dim** (Part G), **ECAM page → status**.
 7. **Before Takeoff**: autobrake MAX, weather radar → SYSTEM 1, predictive windshear AUTO,
    TCAS TA/RA, transponder AUTO, **takeoff config test** (`S_ECAM_TO` — a press-HOLD-release:

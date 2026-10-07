@@ -117,7 +117,8 @@ just the FO's own narration.
 5. **After Start**: mode → NORM, APU bleed/master OFF, ground spoilers ARM (confirm real state
    `A32NX_SPOILERS_ARMED` reads armed — the Act-key write itself has no readback), rudder trim
    RESET fires once, takeoff flaps set per SimBrief (if loaded; with no plan the Captain
-   reminder "Flaps: set for takeoff" speaks instead), nose light → TAXI, **cockpit
+   reminder "Flaps: set for takeoff" speaks instead, and the After Start line "Flaps: takeoff
+   setting" stays unticked after the flow until you set flaps 1-3, FO-20), nose light → TAXI, **cockpit
    lighting DIM for taxi/flight** (ANN Dim, dome Dim) per §4.1, **ECAM page → STS**. Captain:
    anti-ice as required, pitch trim.
 6. **Before Takeoff / Taxi**: autobrake MAX (confirm it actually arms — see risk item 3 above),

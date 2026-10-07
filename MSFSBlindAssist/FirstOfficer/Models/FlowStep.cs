@@ -75,10 +75,15 @@ public class FlowStep<TState> : IFlowStepDispatch
     /// pressurization altitudes). When non-null, FlowManager writes the resolved value
     /// into <see cref="TargetValue"/> immediately before dispatch (re-resolved on every
     /// run, so the mutation never goes stale). Returning null means the required data is
-    /// unavailable → the step is QUIETLY skipped: success result, NO announcement (the
-    /// generic "Already set:"/"Skipping:" wordings would be wrong for "no flight plan").
+    /// unavailable → the step is SILENTLY SKIPPED (FO-20): NO announcement (the generic
+    /// "Already set:"/"Skipping:" wordings would be wrong for "no flight plan"), nothing sent,
+    /// and like any skipped step its <see cref="LinkedChecklistItemIds"/> are NOT marked and
+    /// are kept out of the flow's completion latch, and its id counts as skipped for
+    /// <see cref="RequiresStepId"/>. Never a success: as one it ticked and latched the A320s'
+    /// "Flaps: takeoff setting" over a lever at 0 when no SimBrief plan was loaded.
     /// Pair such steps with a fallback CaptainReminder that is SkipCondition'd away when
-    /// the data IS available, so the pilot still hears something in the no-data case.
+    /// the data IS available (or, better, when the aircraft already reads the target), so the
+    /// pilot still hears something in the no-data case.
     /// </summary>
     public Func<TState, int?>? TargetValueProvider { get; set; }
 

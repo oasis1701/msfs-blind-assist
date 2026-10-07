@@ -102,7 +102,7 @@ public class HwA330FlowParityTests
         Assert.NotNull(provider.TargetValueProvider);
         Assert.Equal("AS_FLAPS", provider.CompletesChecklistItemId);
         var e = new HwA330StateEvaluator();
-        Assert.Null(provider.TargetValueProvider!(e));      // no plan → quiet skip
+        Assert.Null(provider.TargetValueProvider!(e));      // no plan → silent skip, line not ticked (FO-20)
         e.SetTakeoffFlaps(2);
         Assert.Equal(2, provider.TargetValueProvider!(e));
 
