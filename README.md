@@ -9,6 +9,17 @@
 
 This application uses Windows standard controls, screen reader announcements and global hotkeys to give full control of supported aircraft in MSFS2020 and MSFS2024 to people who are blind or visually impaired.
 
+## Download
+
+- **Stable release:** [Download MSFSBA.zip (latest release)](https://github.com/oasis1701/msfs-blind-assist/releases/latest/download/MSFSBA.zip). The release notes are on the [latest release page](https://github.com/oasis1701/msfs-blind-assist/releases/latest), and older versions on the [Releases page](https://github.com/oasis1701/msfs-blind-assist/releases).
+- **Preview build:** [Download MSFSBA-preview.zip (rolling preview)](https://github.com/oasis1701/msfs-blind-assist/releases/download/preview/MSFSBA-preview.zip). The preview is rebuilt every time a change lands on `main`, so it has the newest work, reviewed and tested, but with far less flying time than a release: bugs and stability problems are more likely. Everything it contains since the last release is listed on the [preview release page](https://github.com/oasis1701/msfs-blind-assist/releases/tag/preview).
+
+Both builds come as a zip. Extract it to a folder of your choice and run `MSFSBlindAssist.exe`. To update by hand, close MSFS Blind Assist and extract the new zip over the same folder.
+
+MSFS Blind Assist needs the **.NET 10 Desktop Runtime (x64)** from the [.NET 10 download page](https://dotnet.microsoft.com/download/dotnet/10.0). If it is missing, the app says so when you start it and points you to the download.
+
+Once installed, the app checks GitHub for updates at startup and installs them for you. It offers release builds by default; switch to the preview channel under **Settings → Updates** to be offered previews as well. See [Updates and release channels](docs/updates.md) for the details, including how to go back from a preview to a release.
+
 ## Features
 - Panels for supported aircraft that allow blind users to use their keyboard to scroll through switches, knobs, and similar controls and interact with them.
 - Global hotkeys for accessing a comprehensive set of features, such as on-demand readout of heading/speed/altitude/VS and many more
@@ -26,6 +37,8 @@ This application uses Windows standard controls, screen reader announcements and
 - Much more
 
 ## Requirements
+
+Windows 10 or 11 (64-bit) with the **.NET 10 Desktop Runtime (x64)**; see [Download](#download).
 
 ### MobiFlight WASM module
 
@@ -167,14 +180,10 @@ Navdata Reader command-line tool by Alexander Barthel to build the airport and n
 - Gus Pacleb ([@kn4iee](https://github.com/kn4iee), &lt;augustu.pacleb@gmail.com&gt;) — FlyByWire accessibility contributor: the shared accessible flyPad EFB for both FBW jets (WebView2 browser mode over the Coherent DevTools transport — Ground Services / Payload / Fuel, Settings, Quick Controls, door open/closed states, throttle calibration), the FlyByWire A32NX accessible MCDU (SimBridge relay), the FlyByWire A32NX cockpit parity audit pass (decoded SD pages and Upper E/WD, weight-unit and distance/top-of-descent hotkeys, light-switch and V-speed fixes, safety aurals), and the data-only OANS/BTV rework, Fenix-style FCU windows (speed / heading / altitude / V-S / autopilot / baro), screen-faithful MFD F-PLN/PERF/SURV/D-ATIS read-outs and colour-aware E/WD auto-announce on the A380X; plus A380X systems fixes (engine-start ignition fan-out, hydraulics, fuel pumps, seats, cabin lighting, GPU and ground-service announcements, ROW/ROP and BTV rollout call-outs, distance/time-to-destination hotkeys), HorizonSim 787-9 FMC bridge FS2024 support (in-place patching, community-folder detection), PMDG 777 center/right CDU index fixes, and the Coherent-debugger developer tooling
 
 ## Usage and Documentation
-MSFS Blind Assist is available to download in the releases page. It is currently in active development and a small group of testers are using it daily. A thorough documentation is in the works and a hotkey list is included in the application.
+See [Download](#download) above for the current release and preview builds. MSFS Blind Assist is in active development and a small group of testers are using it daily. A thorough documentation is in the works and a hotkey list is included in the application.
 
 ## Contributing
 Pure-logic changes should come with characterization tests in tests/MSFSBlindAssist.Tests (CI runs them on every PR).
-
-## Donations
-Consider donating to support me and my project! Every bit helps, and it would be extremely helpful. Thank you!
-[Support me on Ko-fi](https://ko-fi.com/oasis1701)
 
 ## License
 
