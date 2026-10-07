@@ -1,6 +1,6 @@
 ---
 paths:
-  - "MSFSBlindAssist/Aircraft/*Definition*.cs"
+  - "MSFSBlindAssist/Aircraft/**/*Definition*.cs"
 ---
 # Troubleshooting a control rules
 

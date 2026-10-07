@@ -168,19 +168,21 @@ if (varKey == "ENCODER_INC" && value == 1)
 ## Common Workflows
 
 ### Add Panel Control to Existing Aircraft
-1. Add to `GetVariables()` with `UpdateFrequency.OnRequest`
-2. Add key to appropriate panel in `BuildPanelControls()`
-3. Test
+1. Add to aircraft's `GetVariables()` with `UpdateFrequency.OnRequest`
+2. Add variable key to `BuildPanelControls()` under appropriate panel
+3. Test - automatic registration and UI generation
 
 ### Add Background Monitoring
 1. Add to `GetVariables()` with `UpdateFrequency.Continuous` + `IsAnnounced = true`
-2. Do NOT add to `BuildPanelControls()`
-3. If `ProcessSimVarUpdate` consumes it silently (a cache, never spoken), also set `ExcludeFromMonitorManager = true` - a Ctrl+M row for it would mute nothing
-4. Test
+2. Do NOT add to `BuildPanelControls()` - batched monitoring is automatic (sole exception: the var is itself a panel control's read-back — see [VAR-6] in `.claude/rules/variable-definitions.md`)
+3. Change detection and announcements are automatic (supports 1000 variables)
+4. A var that `ProcessSimVarUpdate` consumes SILENTLY (a cache for hotkey readouts or dialog fields, never spoken) must ALSO set `ExcludeFromMonitorManager = true` (HS787: add it to `CacheOnlyVariables`) - otherwise it earns a Ctrl+M checkbox that mutes nothing ([VAR-9])
+5. Test
 
 ### Add New Aircraft
-1. Create `YourAircraftDefinition.cs` inheriting `BaseAircraftDefinition`
-2. Override required methods (see minimal implementation above)
+Use `FlyByWireA320Definition.cs` as template.
+1. Create class `YourAircraftDefinition.cs` inheriting `BaseAircraftDefinition`
+2. Override required methods: `GetVariables()`, `GetPanelStructure()`, `BuildPanelControls()` (see minimal implementation above)
 3. Add menu item in `MainForm.Designer.cs`:
    ```csharp
    private System.Windows.Forms.ToolStripMenuItem yourAircraftMenuItem = null!;
@@ -191,14 +193,14 @@ if (varKey == "ENCODER_INC" && value == 1)
    this.yourAircraftMenuItem.Text = "Your Aircraft";
    this.yourAircraftMenuItem.Click += new System.EventHandler(this.YourAircraftMenuItem_Click);
    ```
-4. Add click handler in `MainForm.cs`:
+4. Add click handler in `MainForm.MenuHandlers.cs` (or in the aircraft's own `MainForm.<Aircraft>.cs` partial if it has one, as the MD-11 and iFly do; never in another aircraft's):
    ```csharp
    private void YourAircraftMenuItem_Click(object? sender, EventArgs e)
    {
        SwitchAircraft(new YourAircraftDefinition());
    }
    ```
-5. Add to `LoadAircraftFromCode()` in `MainForm.cs`:
+5. Add to `LoadAircraftFromCode()` switch statement in `MainForm.AircraftSwitch.cs`:
    ```csharp
    return aircraftCode switch
    {
@@ -206,6 +208,11 @@ if (varKey == "ENCODER_INC" && value == 1)
        _ => new FlyByWireA320Definition()
    };
    ```
+   Then wire it into the code every aircraft shares: the menu checkmark in `UpdateAircraftMenuItems()`, the Ctrl+M monitor manager, the Shift+M and EFB branches and the hotkey list. The list is under Step 4 of [Workflow 5](adding-features.md#workflow-5-adding-new-aircraft).
+6. Give it its doc, its row in CLAUDE.md's "Where things live" and its rule file (`.claude/rules/<aircraft>.md`): see Step 6 of [Workflow 5](adding-features.md#workflow-5-adding-new-aircraft)
+
+### Add New Feature
+Follow [Workflow 7](adding-features.md#workflow-7-adding-a-new-feature): its doc, its row in CLAUDE.md's "Where things live" and its rule file.
 
 ### Add Button State Announcement
 ```csharp
