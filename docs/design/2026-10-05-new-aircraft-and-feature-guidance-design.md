@@ -124,6 +124,22 @@ In `ClaudeContextBudgetTests.cs`, the `<summary>` for `LoadedChars` sits above `
 
 **As built (final review, 2026-10-05):** the wider `Aircraft/**` glob let the shared aircraft rules satisfy the guard's "aircraft folder file loads a rule file" check, so a ported aircraft whose rule file missed its own subfolder would have passed; that check now ignores `variable-definitions.md` (`AreaFilesLoadingNoOwnRuleFile`, pinned by a theory). An area-named partial (`MainForm.<Area>.cs`) is globbed by its own rule file, as `md11.md` and `sayintentions-import.md` do, so Workflow 5's Step 6 lists it and `ifly-737.md` globs `MainForm.IFly737.cs`; Workflow 7 mirrors only the rules whose code sits in the shared hubs. Agent scripts are globbed per aircraft (`coherent-<aircraft>*.js`) or by name. CLAUDE.md's pointer says "in QUICK-REFERENCE.md", because the H-variable and hotkey short forms live outside "Common Workflows", which also gained "Add New Feature". The walkthroughs now name where the menu handler (`MainForm.MenuHandlers.cs`) and `LoadAircraftFromCode` (`MainForm.AircraftSwitch.cs`) actually live. CLAUDE.md: 163 lines, 17,048 characters.
 
+### 8. Follow-up from the open-PR review (2026-10-07)
+
+Every open PR (#116, #160, #231, #233, #240, #242, #244) was merged with this branch in a throwaway copy: all merge cleanly and pass `ClaudeContextBudgetTests`. A docs review of each found three things that belong in this branch rather than in the PRs (owner's choice, 2026-10-07):
+
+- **VAR-2 is wrong as worded.** It says any name with a space or colon is a stock SimVar and is never registered as an L:var. On main, A380-26 and the A380 definition already say a colon-indexed FBW L:var (`A32NX_FUEL_USED:1`) is a real L:var (the old "any colon = SimVar" rule left the SD fuel pages blank). The widened `Aircraft/**` glob also puts VAR-2 in front of the DA40 (#242: 12 colon-indexed L:vars such as `FADEC_ECUTEST_TIMER:1`) and every A220 file (#244: space-named L:vars, A220-1). The rule's real concern, measured on the A380, is a STOCK SimVar forced through the L:var path. New line (359 characters):
+
+  ```markdown
+  - [VAR-2] Never register a STOCK SimVar as an L:var (forcing `INTERACTIVE POINT OPEN:n` through the L:var path broke A380 detection). Tell them apart by the add-on's own prefix or source, never by a space or colon alone: add-on L:vars can be colon-indexed (`A32NX_FUEL_USED:1`, [A380-26]) or contain spaces. Full: docs/invariants/variable-definitions.md#var-2
+  ```
+
+  Its full text says the same at length, notes that an aircraft whose L:vars contain a space or colon says so in its own rules, that the write path is a separate guard (SIM-12, unchanged), and keeps the original sentence word for word as "narrowed 2026-10-07". VAR-2 has no mirrors. Considered and not chosen: leaving VAR-2 and adding an exception in each aircraft's rules (it stays wrong for the A380 on main, and the exceptions scatter), and retiring it (A380-26 covers only the A380's SD pages, so no general registration rule would remain).
+- **MON-1 counts the monitor managers.** "All seven monitor managers" is true on main, but #231, #233, #242 and #244 each add one, so four PRs would edit the same line and conflict. It becomes "Every per-aircraft monitor manager" in the line and the full text; the full text records that there were seven when it was written and why the count was dropped.
+- **Workflow 5, Step 3 names only `MainForm.MenuHandlers.cs`** for the menu handler, while the MD-11 and the iFly keep theirs in their own `MainForm.<Aircraft>.cs` partial, and #233 put the Citation's into the iFly's. Step 3 and QUICK-REFERENCE.md's matching step gain: "or in the aircraft's own `MainForm.<Aircraft>.cs` partial if it has one (as the MD-11 and iFly do); never in another aircraft's".
+
+Everything else the reviews found belongs to the PRs themselves and is listed for their porters, not changed here.
+
 ## Constraints
 
 - Read a file with the Read tool before editing it (CORE-16).
