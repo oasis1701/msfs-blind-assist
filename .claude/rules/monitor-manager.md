@@ -2,6 +2,7 @@
 paths:
   - "MSFSBlindAssist/Forms/*MonitorManager*.cs"
   - "MSFSBlindAssist/Forms/**/*MonitorManager*.cs"
+  - "MSFSBlindAssist/Forms/PMDGAnnouncementMonitorForm.cs"
   - "MSFSBlindAssist/Services/MonitorRowBuilder.cs"
   - "MSFSBlindAssist/Services/MonitorVariableFilter.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Monitor*.cs"

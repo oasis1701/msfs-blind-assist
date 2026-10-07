@@ -140,6 +140,8 @@ Every open PR (#116, #160, #231, #233, #240, #242, #244) was merged with this br
 
 Everything else the reviews found belongs to the PRs themselves and is listed for their porters, not changed here.
 
+**Code review (2026-10-07):** SIM-12 now says only that space and colon names take the data-def write path, not that they are stock SimVars, and VAR-2's full text says what that means for such an L:var. `troubleshooting.md` globs `Aircraft/**/*Definition*.cs`, so the DBG rules reach a definition in a subfolder. The guard's exclusion is a list, `SharedAircraftRules` (`variable-definitions.md`, `troubleshooting.md`), checked for existence, in place of the separate "only the shared rules glob all of Aircraft" test. `monitor-manager.md` globs `PMDGAnnouncementMonitorForm.cs`, the seventh monitor manager. `ifly-737.md` globs `tools/ifly-gen/**` and `tools/IFlySdkProbe/**`. Workflow 2 carries the VAR-6 exception and the HS787 note. Workflow 5's Step 6 lists `tools/` and says what the guard misses, and Workflow 7 says when a feature-named partial is the feature's own and that an everywhere-rule may be mirrored.
+
 ## Constraints
 
 - Read a file with the Read tool before editing it (CORE-16).

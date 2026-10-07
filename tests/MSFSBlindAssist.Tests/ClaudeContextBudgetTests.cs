@@ -128,6 +128,7 @@ public class ClaudeContextBudgetTests
     [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/a220.md", "MSFSBlindAssist/Aircraft/A220/**", false)]
     [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/a220.md", "MSFSBlindAssist/Forms/A220/**", true)]
     [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/variable-definitions.md", "MSFSBlindAssist/Aircraft/**", true)]
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Definition.cs", ".claude/rules/troubleshooting.md", "MSFSBlindAssist/Aircraft/**/*Definition*.cs", true)]
     public void An_aircraft_folder_file_needs_a_rule_file_of_its_own(string file, string ruleFile, string glob, bool flagged)
         => Assert.Equal(flagged, AreaFilesLoadingNoOwnRuleFile(new[] { file },
             new[] { (ruleFile, new List<string> { glob }) }).Count > 0);
@@ -235,32 +236,17 @@ public class ClaudeContextBudgetTests
     [Fact]
     public void Every_aircraft_folder_file_and_coherent_agent_loads_a_rule_file()
     {
-        List<string> problems = AreaFilesLoadingNoOwnRuleFile(RepoFiles(),
-                RuleFiles().Select(rf => (rf.Name, rf.Globs ?? new List<string>())))
-            .Select(file => $"{file} loads no rule file of its own (the shared aircraft rules in variable-definitions.md "
-                + "do not count), so no area rule reaches whoever edits it. Add a glob for it to its "
-                + "area's .claude/rules file. A new aircraft or feature with no rules yet gets a rule file of its own "
-                + "whose preamble names its doc (CLAUDE.md, \"Adding or changing a rule\"); only a shared folder that "
-                + "no rule guards goes in AreaFolderExemptions, with the reason.")
+        List<RuleFile> ruleFiles = RuleFiles().ToList();
+        List<string> problems = SharedAircraftRules.Where(name => ruleFiles.All(rf => rf.Name != name))
+            .Select(name => $"{name} is in SharedAircraftRules but does not exist. If it moved or was renamed, update "
+                + "SharedAircraftRules, or this check counts it as every aircraft's own rule file.")
+            .Concat(AreaFilesLoadingNoOwnRuleFile(RepoFiles(), ruleFiles.Select(rf => (rf.Name, rf.Globs ?? new List<string>())))
+                .Select(file => $"{file} loads no rule file of its own (the shared aircraft rules in SharedAircraftRules "
+                    + "do not count), so no area rule reaches whoever edits it. Add a glob for it to its "
+                    + "area's .claude/rules file. A new aircraft or feature with no rules yet gets a rule file of its own "
+                    + "whose preamble names its doc (CLAUDE.md, \"Adding or changing a rule\"); only a shared folder that "
+                    + "no rule guards goes in AreaFolderExemptions, with the reason."))
             .ToList();
-        Assert.True(problems.Count == 0, string.Join("\n", problems));
-    }
-
-    [Fact]
-    public void Only_the_shared_aircraft_rules_glob_all_of_Aircraft()
-    {
-        const string anyNewAircraftFile = "MSFSBlindAssist/Aircraft/NewAircraft/NewAircraftDefinition.cs";
-        List<RuleFile> all = RuleFiles().ToList();
-        RuleFile? shared = all.FirstOrDefault(rf => rf.Name == SharedAircraftRules);
-        var problems = new List<string>();
-        if (shared?.Globs?.Contains("MSFSBlindAssist/Aircraft/**") != true)
-            problems.Add($"{SharedAircraftRules} must exist and glob \"MSFSBlindAssist/Aircraft/**\": the area-folder check "
-                + "ignores it by that name. If it moved or was renamed, update SharedAircraftRules.");
-        foreach (RuleFile rf in all.Where(rf => rf.Name != SharedAircraftRules))
-            if ((rf.Globs ?? new List<string>()).Any(g => GlobMatches(g, anyNewAircraftFile)))
-                problems.Add($"{rf.Name} globs every aircraft's folder, so the area-folder check would count it as any new "
-                    + "aircraft's own rule file. Scope it to the aircraft it guards, or add it to SharedAircraftRules' "
-                    + "exclusion in AreaFilesLoadingNoOwnRuleFile.");
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 
@@ -475,15 +461,17 @@ public class ClaudeContextBudgetTests
 
     private static readonly string[] ShippedCodeRoots = { "MSFSBlindAssist/", "MSFSBlindAssistUpdater/", "plugins/" };
 
-    /// <summary>The shared aircraft rules glob every file under Aircraft/, so they never stand in for an aircraft's own
-    /// rule file: a ported aircraft whose rule file misses its own subfolder is still flagged.</summary>
-    private const string SharedAircraftRules = ".claude/rules/variable-definitions.md";
+    /// <summary>The shared aircraft rules glob files in every aircraft's folder under Aircraft/ (every file; every
+    /// *Definition*.cs), so they never stand in for an aircraft's own rule file: a ported aircraft whose rule file
+    /// misses its own subfolder is still flagged.</summary>
+    private static readonly HashSet<string> SharedAircraftRules = new(StringComparer.Ordinal)
+        { ".claude/rules/variable-definitions.md", ".claude/rules/troubleshooting.md" };
 
     /// <summary>Area-owned files (<see cref="IsAreaOwnedFile"/>) that no rule file of their own matches.</summary>
     private static List<string> AreaFilesLoadingNoOwnRuleFile(IEnumerable<string> files,
         IEnumerable<(string Name, List<string> Globs)> ruleFiles)
     {
-        var compiled = ruleFiles.Where(rf => rf.Name != SharedAircraftRules)
+        var compiled = ruleFiles.Where(rf => !SharedAircraftRules.Contains(rf.Name))
             .SelectMany(rf => rf.Globs).Select(GlobRegex).ToList();
         return files.Where(IsAreaOwnedFile).Where(f => !compiled.Any(g => g.IsMatch(f)))
             .OrderBy(f => f, StringComparer.Ordinal).ToList();

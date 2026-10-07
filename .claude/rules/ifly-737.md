@@ -4,6 +4,8 @@ paths:
   - "MSFSBlindAssist/Forms/IFly737/**"
   - "MSFSBlindAssist/SimConnect/IFly/**"
   - "MSFSBlindAssist/MainForm.IFly737.cs"
+  - "tools/ifly-gen/**"
+  - "tools/IFlySdkProbe/**"
   - "tests/MSFSBlindAssist.Tests/IFly/**"
   - "tests/MSFSBlindAssist.Tests/**/*IFly*.cs"
 ---

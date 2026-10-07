@@ -49,7 +49,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## SIM-12
 
-- A name containing a space or colon (e.g. `TRANSPONDER STATE:1`) is a stock SimVar shape and must stay on the data-def write path — never route it through the L:var calc path. → [architecture.md](../architecture.md)
+- `SetLVar` keeps every name containing a space or colon on the data-def write path — never route it through the L:var calc path. Most such names are stock SimVars (`TRANSPONDER STATE:1`), but an add-on's real L:vars can carry a colon index or a space too (`B787_IRS_Knob_State:1`, which the HS787 writes through `SetLVar`; VAR-2): the shape decides the write route, never whether a name is a stock SimVar. Such an L:var therefore gets the native data-def write, not the calculator path, so read the write back before trusting it (DBG-1, DBG-4). → [architecture.md](../architecture.md)
+
+Reworded 2026-10-07. The original text, verbatim from CLAUDE.md as of `1f37801a`, was: "A name containing a space or colon (e.g. `TRANSPONDER STATE:1`) is a stock SimVar shape and must stay on the data-def write path — never route it through the L:var calc path." Its "is a stock SimVar shape" contradicted VAR-2 as narrowed the same day; the routing it guards is unchanged.
 
 ## SIM-13
 

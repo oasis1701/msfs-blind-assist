@@ -2,6 +2,8 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+**As built (2026-10-07):** this plan is done; never re-apply its text blocks. The shipped files are authoritative, and several blocks below were changed afterwards: the menu handler goes in `MainForm.MenuHandlers.cs` (or the aircraft's own partial) and `LoadAircraftFromCode` is in `MainForm.AircraftSwitch.cs`, not `MainForm.cs`; Workflow 5's Step 6 and Workflow 7 were reworded; VAR-2's line is the 387-character one in the design's section 8, with a longer full text; SIM-12 was reworded too; and the guard test went past the "Docs only" constraint, with a check that ignores the shared aircraft rules (`SharedAircraftRules`). See the design's "As built" paragraph and section 8.
+
 **Goal:** Move CLAUDE.md's Quick Reference to where it is used (lossless), make the aircraft rules reach every aircraft's code, and give new aircraft and features a docs-and-rules step, a workflow and a PR checkbox.
 
 **Architecture:** Docs, rule files and two lists in one test file; no app code. Path-scoped rule files (`.claude/rules/*.md`) load when Claude reads matching code; `ClaudeContextBudgetTests` enforces their shape and CLAUDE.md's budget and outline. Design: [2026-10-05-new-aircraft-and-feature-guidance-design.md](2026-10-05-new-aircraft-and-feature-guidance-design.md).
