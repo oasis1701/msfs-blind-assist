@@ -414,6 +414,62 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
     }
     public Task<bool> TakeoffConfigTest() => TakeoffConfigTestAsync();
 
+    // ---- APU start (BS_APU / AL_APU checklist lines) ----
+
+    /// <summary>The APU START pushbutton's AVAIL lamp: lit for as long as the APU runs. The
+    /// flows' own wait steps and the BS_APU / AL_APU checklist lines read this same key.</summary>
+    public const string ApuAvailField = "A32NX_OVHD_APU_START_PB_IS_AVAILABLE";
+
+    /// <summary>How long <see cref="StartApuAsync"/> waits for AVAIL. Matches the Before Start
+    /// flow's own WaitForField budget (BS_APU_AVAIL) so the two paths give up at the same point.</summary>
+    public const int ApuAvailTimeoutMs = 180_000;
+
+    /// <summary>AVAIL poll cadence — the FlowManager's WaitForCondition uses the same 1 s.</summary>
+    private const int ApuAvailPollMs = 1000;
+
+    /// <summary>Pause between the master going on and the START press (the flow's own dwell).</summary>
+    private const int ApuMasterToStartMs = 3000;
+
+    /// <summary>The AVAIL-lamp test. The BS_APU / AL_APU checklist conditions use this method
+    /// itself (not a copy of the comparison), and so do the start and the wait below, so the
+    /// line and the action can never disagree about what "available" means. An unread (NaN)
+    /// lamp is not lit.</summary>
+    public static bool IsApuAvailable(double lamp) => lamp > 0.5;
+
+    /// <summary>
+    /// APU start block for the checklist tick: master ON, dwell, START press, then WAIT for the
+    /// AVAIL lamp (FO-11). BS_APU / AL_APU detect on that lamp, which lights ~45 s after START;
+    /// the ChecklistManager's revert grace is only ~10 s past the action, so returning at the
+    /// START press would revert the line and say "Unable to complete" over a healthy start.
+    /// Holding the action open for the spool-up is what makes the action settling cover it
+    /// (<c>FenixActionExecutor.StartApuAsync</c> is the same shape). A genuine failure still
+    /// surfaces: on timeout this returns and the line reverts, now truthfully. The dispatch
+    /// gate is released between writes, so the wait never blocks WaitForDispatchDrainAsync.
+    /// </summary>
+    public async Task<bool> StartApuAsync(HwA330StateEvaluator s)
+    {
+        bool ok = await Set("A32NX_OVHD_APU_MASTER_SW_PB_IS_ON", 1);
+        if (!IsApuAvailable(s.GetValue(ApuAvailField)))
+        {
+            await Task.Delay(ApuMasterToStartMs);
+            ok &= await Set("A32NX_OVHD_APU_START_PB_IS_ON", 1);
+        }
+        return ok && await WaitForApuAvailableAsync(s);
+    }
+
+    /// <summary>Poll the AVAIL lamp until it lights or <see cref="ApuAvailTimeoutMs"/> elapses.
+    /// A NaN (unread) lamp keeps waiting — "indeterminate is not a failure", the same contract
+    /// the ChecklistManager applies to state evaluation.</summary>
+    private static async Task<bool> WaitForApuAvailableAsync(HwA330StateEvaluator s)
+    {
+        for (int waited = 0; waited < ApuAvailTimeoutMs; waited += ApuAvailPollMs)
+        {
+            if (IsApuAvailable(s.GetValue(ApuAvailField))) return true;
+            await Task.Delay(ApuAvailPollMs);
+        }
+        return IsApuAvailable(s.GetValue(ApuAvailField));
+    }
+
     // ---- Convenience methods for the auto-manager / phase monitor ----
     // GEAR_HANDLE_POSITION is a read-only stock SimVar (no HandleUIVariableSet write branch) —
     // set the gear via the stock GEAR_SET K-event instead (0=up, 1=down), the same pattern

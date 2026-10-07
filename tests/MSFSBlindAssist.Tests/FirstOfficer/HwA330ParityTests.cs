@@ -56,6 +56,19 @@ public class HwA330ParityTests
         ["FAC_2_V_FE_NEXT"] = "A32NX only: FAC 2, the fallback when FAC 1 has no data. Same reason.",
         ["A32NX_SPEEDS_VFEN"] = "A339X only: Headwind still publishes the plain L-var (its "
                               + "A32NX_Speeds.ts predates FBW #10890); the A32NX no longer does.",
+        // The read-back baro lines (CPC_BARO, APC_BARO). The A32NX reads the FCU's EIS baro words;
+        // the A339X reads the stock Kohlsman settings. The same reason covers all five fields.
+        ["A32NX_FCU_LEFT_EIS_BARO_HPA"] = "A32NX only. A339X: the FBW baro words never reach the "
+            + "cache (HeadwindA330Definition notes); the read-back's live baro reads the Kohlsman settings.",
+        ["A32NX_FCU_LEFT_EIS_BARO"] = "A32NX only. A339X: the FBW baro words never reach the "
+            + "cache (HeadwindA330Definition notes); the read-back's live baro reads the Kohlsman settings.",
+        ["KOHLSMAN SETTING STD:1"] = "A339X only. The FBW baro words never reach the cache "
+            + "(HeadwindA330Definition notes); the read-back's live baro reads the Kohlsman settings.",
+        ["KOHLSMAN SETTING MB:1"] = "A339X only. The FBW baro words never reach the cache "
+            + "(HeadwindA330Definition notes); the read-back's live baro reads the Kohlsman settings.",
+        ["A32NX_FCU_EFIS_L_BARO_IS_INHG"] = "A339X only. The FBW baro words never reach the cache "
+            + "(HeadwindA330Definition notes); the read-back's live baro reads the Kohlsman settings, "
+            + "in the unit this L:var selects.",
     };
 
     /// <summary>
