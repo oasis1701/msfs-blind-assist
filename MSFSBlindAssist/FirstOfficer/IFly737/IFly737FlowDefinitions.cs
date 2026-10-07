@@ -97,6 +97,11 @@ using Step = Models.FlowStep<IFly737StateEvaluator>;
 ///    (`FMS_WXR_SYS_CTRL_SET`, Value2 0 TEST/1 NORM, readable back via
 ///    `Weather_Radar_System_Control_Switch_Status`) but remains deliberately unwired — see
 ///    IFly737ActionExecutor.PseudoKeys.
+///  - Crew oxygen tests: none here, unlike the PMDG's PF_OXY_TEST_CAPT/PF_OXY_TEST_FO steps and
+///    items (added to the PMDG 2026-08-16) — the iFly SDK has no crew oxygen mask test command
+///    (IFlyKeyCommand's only oxygen commands are the PASSENGER oxygen switch and light), so there
+///    is nothing to press. The Preflight Checklist's "Oxygen: TESTED, 100%" read-back stays a
+///    Reminder on both aircraft (Pmdg737IFly737ReadbackLinkTests pins the difference).
 ///  - Lower display unit (BT_LOWERDU) is a Captain reminder — no lower-DU/EICAS synoptic-page-
 ///    select field exists in IFlySdkFields.cs.
 ///  - Labels changed to match this airframe's own switch wording (Fix-pass-1 convention
