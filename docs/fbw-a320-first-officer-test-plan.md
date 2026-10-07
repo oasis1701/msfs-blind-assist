@@ -107,7 +107,7 @@ just the FO's own narration.
    light is on), APU bleed ON, fuel pumps ON (all tanks), ground power OFF, seatbelt signs ON
    (confirm the sign illuminates, not just the switch), beacon ON, FCU speed pushed managed,
    FCU heading pushed managed, Captain "Set cleared altitude on the FCU" then FCU altitude
-   pushed, cockpit door LOCKED. Captain: doors/ground services, thrust levers idle,
+   pushed about 2 s later (the reminder does not wait for you — item 15), cockpit door LOCKED. Captain: doors/ground services, thrust levers idle,
    clearance.
 4. **Engine Start**: **ECAM page → ENG**, mode selector → IGN/START, engine 1 master → START,
    then "Engine 1 starting — waiting for the engine to stabilize" until FlyByWire's own engine
@@ -140,7 +140,9 @@ just the FO's own narration.
     via real state (no dedicated Landing flow, matching the A320-family convention).
 11. **After Landing**: spoilers disarm, flaps up, weather
     radar/predictive windshear OFF, strobes AUTO, landing lights OFF, nose light → TAXI, APU
-    start for the gate (waits for AVAIL), anti-ice OFF.
+    start for the gate (waits for AVAIL; the AVAIL wait, not the master write, ticks "APU: ON
+    and available", so if the APU never becomes available the wait times out, is skipped
+    aloud, and the line stays unticked after the flow completes), anti-ice OFF.
 12. **Shutdown / Parking**: parking brake ON, APU bleed ON, engine masters OFF (confirm the flow
     waits for `FO_ENGINES_OFF` before continuing), transponder STBY and **TCAS: STANDBY** (the
     new line: tick it by hand with TCAS on TA/RA and confirm it moves to standby), seatbelt
@@ -155,10 +157,14 @@ just the FO's own narration.
     def's own internal `Announce()` calls are dropped and only the FO's step narration speaks.
     See the note at the end of this document about the ONE expected exception (continuously
     monitored vars).
-15. **Captain reminders announce and wait.** Every remaining `Captain(...)` step (minimums,
-    landing autobrake, flaps, IFR clearance, MCDU programming, etc.) is spoken as a reminder
-    and the flow **pauses for acknowledgement** — confirm it does not silently auto-complete. (CVR test, recorder ground control, and the
-    takeoff-config test are no longer Captain reminders — see item 2/6 above.)
+15. **Captain reminders are spoken, and the flow carries on.** Every remaining `Captain(...)`
+    step (minimums, landing autobrake, flaps, IFR clearance, MCDU programming, etc.) is spoken
+    as "Captain action required: …" and is NOT a pause: `FlowManager` announces it and moves on
+    after its usual 2 s step pause, without waiting for acknowledgement — confirm each reminder
+    is heard in full. So in Before Start the FCU altitude is pushed about 2 s after "Set cleared
+    altitude on the FCU": set the altitude before running the flow, or pause the flow when you
+    hear the reminder. (CVR test, recorder ground control, and the takeoff-config test are no
+    longer Captain reminders — see item 2/6 above.)
 16. **Already-in-target-state steps announce as skipped.** Re-run a flow (or a step) whose switch
     is already correct — confirm the matching step announces a quiet skip ("Already set" or
     equivalent) instead of re-firing the action. This matters especially for autobrake MAX

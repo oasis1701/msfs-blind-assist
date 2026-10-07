@@ -517,12 +517,14 @@ public static class FenixChecklistDefinitions
                 (e, _) => e.SetCockpitLighting(FenixActionExecutor.CockpitLightScene.Off)),
         }
     };
+
     // -----------------------------------------------------------------------
     // Read-back (*_CL) groups — the Airbus A320 normal checklist (Nov 2021 revision), with
     // each "ECAM MEMO ... NO BLUE" line expanded into the memo's own lines. Sources and
     // confidence: docs/invariants/first-officer-airbus.md#foa-8. The same ten groups, ids,
     // labels and order as the FlyByWire A32NX (the Fenix prints "signs" on the memo's seat-belt
-    // lines and has no readable rudder trim, so that line is a Reminder here). HARD INVARIANT
+    // lines, and its rudder trim is unmeasured — N_FC_RUDDER_TRIM_DECIMAL exists, its units were
+    // never measured — so that line is a Reminder here). HARD INVARIANT
     // (FO-3): every item is action-free (Reminder, or Auto(..., action: null)).
     // -----------------------------------------------------------------------
 

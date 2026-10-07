@@ -38,8 +38,9 @@ Start cold-and-dark at a gate, MSFSBA connected, Fenix FO window open.
    wait, not an instant pass-through) — APU bleed ON, fuel pumps ALL ON, external power OFF,
    seatbelt signs ON, beacon ON, **FCU speed push to managed**, **FCU heading push to managed**,
    then the Captain reminder **"Set cleared altitude on the FCU"** and **FCU altitude pushed**
-   (confirm the FCU windows show "managed", not a stale/doubled push — see the FCU regression
-   section below).
+   about 2 s later — a Captain reminder is spoken and the flow carries on, it does not wait for
+   you, so set the altitude first or pause the flow at the reminder (confirm the FCU windows
+   show "managed", not a stale/doubled push — see the FCU regression section below).
 5. **Engine Start**: **ECAM page → engine**, engine mode selector → IGN START, **engine 1 master
    ON** then **engine 2 master ON**, each followed by "Engine N starting — waiting for the engine
    to stabilize" — confirm each engine actually spools and stabilizes; verify via **N2**, not
@@ -247,7 +248,10 @@ change to code the panel and hotkeys share. Items 1 and 4 can wait.
 1. **ECAM pages.** The flows now select the SD page at five points: door (Preflight), APU
    (Before Start), engine (Engine Start), status (After Start), door (Shutdown). Check each
    right after its step (the aircraft's own auto-SD may move on within seconds). The buttons
-   are momentary pulses: each `S_ECAM_*` must read 0 afterwards.
+   are momentary pulses: each `S_ECAM_*` must read 0 afterwards. **Expected, not a defect:** a
+   page press may be followed by a background announcement such as "ECAM DOOR: On". The
+   Fenix's `I_ECAM_*` page lights are monitored, announced variables, so this is a background
+   state change, which CORE-7 allows; it is not the knob announcements item 2 calls defects.
 2. **Lighting scenes (do first).** Bright at power-up, dim after start, bright at shutdown, off
    at securing (the annunciator stays BRIGHT then, and only the dome and the knobs go off),
    each as annunciator, dome and one "Panel and integral brightness: SET" step that
@@ -384,7 +388,9 @@ One change: the Before Start "Waiting for APU available" wait now ABORTS the flo
    then "Before Start flow stopped. Unable to complete: Waiting for APU available" after
    ~3 minutes, with external power still on the bus. Fix the cause, re-run the flow —
    completed steps announce "Already set" and the flow proceeds.
-3. After Landing APU block: unchanged (timeout announces and continues).
+3. After Landing APU block: a timeout announces and continues, and "APU: ON and available"
+   is left unticked when the flow completes: the AVAIL wait, not the APU master write,
+   completes that line (2026-10-06), so an APU that never comes up is never latched as done.
 
 ---
 

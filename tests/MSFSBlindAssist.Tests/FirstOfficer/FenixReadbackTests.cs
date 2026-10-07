@@ -12,8 +12,9 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// <summary>
 /// The Fenix A320's read-back (*_CL) checklists follow the Nov 2021 Airbus A320 normal
 /// checklist, line for line the same ids, labels and order as the FlyByWire A32NX (the two
-/// profiles differ only where the Fenix prints "signs" for the memo's seat-belt line and has
-/// no readable rudder trim — a Reminder here, an Auto line there).
+/// profiles differ only where the Fenix prints "signs" for the memo's seat-belt line and where
+/// its rudder trim is unmeasured — N_FC_RUDDER_TRIM_DECIMAL exists but its units were never
+/// measured — a Reminder here, an Auto line there).
 /// </summary>
 public class FenixReadbackTests
 {
@@ -104,7 +105,7 @@ public class FenixReadbackTests
     }
 
     [Fact]
-    public void Rudder_trim_is_a_reminder_because_the_Fenix_publishes_no_readable_trim()
+    public void Rudder_trim_is_a_reminder_because_the_Fenix_rudder_trim_is_unmeasured()
     {
         var item = FenixChecklistDefinitions.Build().SelectMany(g => g.Items).Single(i => i.Id == "ASC_RUDDER");
         Assert.Equal("Rudder trim: NEUTRAL", item.Label);
