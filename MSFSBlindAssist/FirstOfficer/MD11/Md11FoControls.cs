@@ -145,6 +145,9 @@ public static class Md11FoControls
         Once("MD11_PED_SD_CONFIG_BT", 69844, 69845),            // NOT idempotent: press once only
         Once("MD11_PED_WXR_TEST_BT", 69885, 69886),
         Once("MD11_PED_WXR_OFF_BT", 69883, 69884),
+        Once("MD11_CGS_NAV_BT", 86090, 86091),                  // arms NAV; no armed state is exported; a 2nd press leaves it armed
+        Once("MD11_CGS_PROF_BT", 86096, 86097),                 // arms PROF; same
+        Once("MD11_CGS_AUTOFLIGHT_BT", 86094, 86095),           // only via FO_AUTO_FLIGHT (read first: a press with an AP on swaps AP 1/2)
     };
 
     public static IReadOnlyDictionary<string, Md11FoControl> All { get; } =

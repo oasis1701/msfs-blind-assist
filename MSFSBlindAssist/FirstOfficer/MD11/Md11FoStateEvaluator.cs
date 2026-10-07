@@ -170,7 +170,6 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
         ["FO_LANDING_LIGHTS_RETRACTED"] = Vars(v => Pos(v[0], 0) && Pos(v[1], 0), "MD11_OVHD_LTS_LDG_L_SW", "MD11_OVHD_LTS_LDG_R_SW"),
         ["FO_SPOILERS_ARMED"] = Vars(v => Pos(v[0], 1), Md11SpeedbrakeSystem.ArmKey),
         ["FO_SPOILERS_DOWN"] = Vars(v => Pos(v[0], 0), Md11SpeedbrakeSystem.ArmKey),
-        ["FO_XPDR_TARA"] = Vars(v => Pos(v[0], 3) && Pos(v[1], 1), "MD11_PED_XPNDR_MODE_KB", "MD11_PED_XPNDR_ALT_RPTG_KB"),
         ["FO_WINDSHIELD_ON"] = Vars(v => Pos(v[0], 1) && Pos(v[1], 1) && Pos(v[2], 0) && Pos(v[3], 0),
             "MD11_OVHD_WNDSHLD_AICE_L_BT", "MD11_OVHD_WNDSHLD_AICE_R_BT", "MD11_OVHD_WNDSHLD_AICE_BT", "MD11_OVHD_WNDSHLD_AICE_DEFOG_BT"),
         ["FO_WINDSHIELD_OFF"] = Vars(v => Pos(v[0], 0) && Pos(v[1], 0) && Pos(v[2], 1),
@@ -180,6 +179,8 @@ public sealed class Md11FoStateEvaluator : LVarStateEvaluator, IFoEngine3N2Sink,
         ["FO_GPWS_NORMAL_GUARDED"] = Vars(v => Pos(v[0], 1) && Pos(v[1], 0), "MD11_AOVHD_GPWS_SW", "MD11_AOVHD_GPWS_GRD"),
         ["FO_APU_OFF"] = Vars(v => v[0] < 0.5 || v[0] > 2.5, "MD11_APU_STATE"),              // off or stopping
         ["FO_APU_RUNNING"] = Vars(v => Pos(v[0], 2), "MD11_APU_STATE"),
+        ["FO_AUTO_FLIGHT_ON"] = Vars(v => Md11FoSwitching.AutoFlightOn(v[0], v[1]),
+            Md11AutopilotEngage.ApStateKey, Md11AutopilotEngage.AtsStateKey),
         ["FO_START_AIR_READY"] = Vars(v => Pos(v[0], 2) && Pos(v[1], 1), "MD11_APU_STATE", "MD11_OVHD_PNEU_APU_BLEED_BT"),
         ["FO_ALTIMETERS_STD"] = new(Alts, r =>
         {

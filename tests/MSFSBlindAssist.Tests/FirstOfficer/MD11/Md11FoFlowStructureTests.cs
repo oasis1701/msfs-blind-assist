@@ -115,6 +115,45 @@ public class Md11FoFlowStructureTests
             Assert.Contains(k, keys);
     }
 
+    /// <summary>
+    /// Both fire tests light the master warnings: ONE reset, right after the cargo fire test (the
+    /// later of the two, TFDi's order), ticking the checklist's single reset line (owner, 2026-10-06).
+    /// </summary>
+    [Fact]
+    public void Preflight_ResetsTheMasterWarningOnce_RightAfterTheCargoFireTest()
+    {
+        var s = Flows.Single(f => f.Id == "PREFLIGHT").Steps;
+        var reset = Assert.Single(s, x => x.EventName == "MD11_GSL_MST_WRN_BT");
+        int engine = s.FindIndex(x => x.EventName == "MD11_AOVHD_FIRETEST_BT");
+        int cargo = s.FindIndex(x => x.EventName == "MD11_AOVHD_CRGSMK_TEST_BT");
+        Assert.True(engine >= 0 && engine < cargo);
+        Assert.Equal(cargo + 1, s.IndexOf(reset));
+        Assert.Equal("PF_MW_RESET", reset.CompletesChecklistItemId);
+    }
+
+    /// <summary>
+    /// Before Takeoff ends with NAV, PROF and AUTO FLIGHT, each the First Officer's own press (owner,
+    /// 2026-10-06: the checklist is run at lineup, and AUTO FLIGHT arms the autothrottle; TFDi's
+    /// page ends "NAV: ARMED, PROF: ARMED, AUTOFLIGHT: PRESS after LINEUP"). Only AUTO FLIGHT can
+    /// be read back, so only it skips as "Already set"; NAV and PROF stay armed on a second press.
+    /// Each links its read-back line, so a failed press is never latched done there either.
+    /// </summary>
+    [Fact]
+    public void BeforeTakeoff_EndsWithNavProfAndAutoFlight_EachLinkingItsReadBackLine()
+    {
+        var s = Flows.Single(f => f.Id == "BEFORE_TAKEOFF").Steps;
+        Assert.Equal(new[] { "MD11_CGS_NAV_BT", "MD11_CGS_PROF_BT", Md11FoActionExecutor.AutoFlight },
+            s.TakeLast(3).Select(x => x.EventName));
+        Assert.Equal(new[] { "BT_NAV", "BTC_NAV" }, s[^3].LinkedChecklistItemIds);
+        Assert.Equal(new[] { "BT_PROF", "BTC_PROF" }, s[^2].LinkedChecklistItemIds);
+        Assert.Equal(new[] { "BT_AUTO_FLIGHT", "BTC_AUTOFLIGHT" }, s[^1].LinkedChecklistItemIds);
+        Assert.Null(s[^3].SkipCondition);
+        Assert.Null(s[^2].SkipCondition);
+        Assert.NotNull(s[^1].SkipCondition);
+        Assert.DoesNotContain(s, x => x.ActionType == FlowStepActionType.CaptainReminder
+            && (x.ReminderText!.Contains("NAV", StringComparison.Ordinal) || x.ReminderText.Contains("AUTO FLIGHT", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void Preflight_HydraulicAutoPrecedesTheTest_AndTheFlowWaitsForIt()
     {

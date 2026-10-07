@@ -297,7 +297,10 @@ because an AUX pump press aborts it, and the executor keeps the same rule for a 
 quantity, emergency lights, GPWS (TEST and back to NORMAL, cover closed), the weather radar (TEST,
 then OFF, verified on the OFF button's own var, read under the FO's own key `MD11_FO_WXR_OFF`),
 both oxygen masks, the standby display (where fitted), TCAS and the cargo doors. The throttle
-travel and aural warning check is a Captain item.
+travel and aural warning check is a Captain item. Both fire tests light the master warnings, so
+ONE master warning reset follows the cargo fire test, the later of the two, in the flow and the
+Preflight checklist alike (owner decision, 2026-10-06; TFDi's order otherwise kept). The checklist
+used to reset only after the engine fire test, so a cargo test ticked there left the warning on.
 
 **Flaps are the Captain's in flight** (owner decision). The FO sets the Dial-A-Flap from the
 SimBrief takeoff flap at Preflight (without a plan the step fails rather than ticks, and a Captain
@@ -313,6 +316,19 @@ one lever click (77829). From deployed the click drops the pull 2 → 1 and TFDi
 runs the lever to RET and zeroes the pull — decoded, not yet flown ([docs/md11.md](docs/md11.md) §12).
 Arming from deployed stows first. An extended speedbrake is the Captain's lever: never moved, and
 it refuses an arm.
+
+**Before Takeoff ends with NAV, PROF and AUTO FLIGHT, each the FO's own press** (owner,
+2026-10-06: on this aircraft the checklist is run at lineup, and AUTO FLIGHT before takeoff arms the
+autothrottle; TFDi's page ends "NAV: ARMED, PROF: ARMED, AUTOFLIGHT: PRESS after LINEUP"). NAV and
+PROF export no armed state, so their presses cannot be read back (like the master warning reset);
+a second press leaves them armed, so a re-run presses them again harmlessly. AUTO FLIGHT engages
+"both ATs and one AP", and the autopilot is refused below 100 ft, so on the ground only the
+autothrottle comes on: it is pressed only when `MD11_AP_STATE` and `MD11_ATS_STATE` both read
+definitely off (a press with an autopilot on swaps AP 1 and AP 2, it never disengages) and is done
+when either reads on (`Md11FoSwitching.AutoFlightOn`, the same rule as the `FO_AUTO_FLIGHT_ON`
+read-back lines). Each of the three steps also links its read-back line, so a press that fails
+leaves "NAV: Armed", "PROF: Armed" or "Auto Flight: On" unticked rather than latched by the flow.
+The autopilot itself still engages after takeoff at the auto-engage height (400 ft floor).
 
 **Engines start 3, 1, 2.** The flow first waits for all three N2s (engine 3's is a new SimConnect
 request, `FO_ENG3_N2`, request 386, fed through `IFoEngine3N2Sink`), the APU running with its
@@ -348,10 +364,23 @@ lines and its Engine Start 16, most of them lamps lighting during a test, gauge 
 fuel flow) and panel inspections a blind pilot cannot perform. Each list now holds only switch
 positions the app reads back (auto-tick) and Captain items reachable from MSFSBA (MCDU, altimeters,
 radios, flight controls, the throttle check, whose warnings are aural) — Preflight 23 items,
-Engine Start 5. The system tests are one "System
+Engine Start 4. The system tests are one "System
 Tests: Complete" line; the FO still runs every one of them in the Preflight flow. Never re-add a
 check the pilot has no way to perform. The START switch items latch on N2 like the other start
 selectors; the fuel switch items stay `RevertToState`.
+
+Each read-back list keeps its own TFDi page's lines, in TFDi's order (owner request, 2026-10-06),
+so a line repeats across phases only where TFDi repeats it (spoilers armed before takeoff and
+before landing, autobrake RTO at Preflight and Before Takeoff). Removed then as not on that page:
+After Start's spoilers and autobrake, Before Takeoff's transponder, Before Start's pushback
+clearance, Parking's anti-ice and Shutdown's packs; engine anti-ice moved to After Start. Two
+deliberate differences stay: After Start reads "APU Bleed: Off" where TFDi says "APU: Off" (closing
+the bleed lets the APU shut itself down), and Shutdown reads "APU: Off" where TFDi says "As
+required" (the flow turns it off). TFDi's one-line Takeoff page ("TOGA Power: Set") is left out.
+A finished flow ticks and latches its read-back list too (`FlowDefinition.CompletionGroupIds`), so
+never add a live read-back line the flow does not deliver: it would read done with the switch
+untouched. The action groups list the same lines in the same order as their flows
+(`EveryActionGroup_ListsTheSameLinesInTheSameOrderAsItsFlow`).
 
 **Automatic modes.** Passing 10,000 ft the landing lights retract climbing and come on descending
 (`FOAutoLights10kEnabled`). Passing the transition altitude climbing, the FO sets all three

@@ -89,6 +89,38 @@ public class Md11FoChecklistStructureTests
         }
     }
 
+    /// <summary>
+    /// A flow and its action group are one procedure in two forms — run it, or tick it line by
+    /// line — so they list the same lines in the same order. Only flow-only steps fall outside:
+    /// waits, and the Captain prompts that speak only when needed (no ground power, no SimBrief).
+    /// </summary>
+    [Fact]
+    public void EveryActionGroup_ListsTheSameLinesInTheSameOrderAsItsFlow()
+    {
+        foreach (var f in Flows)
+        {
+            var group = Groups.SingleOrDefault(g => g.Id == f.Id);
+            if (group == null) continue;
+            var itemIds = group.Items.Select(i => i.Id).ToHashSet();
+            var fromFlow = f.Steps.Select(s => s.CompletesChecklistItemId ?? s.Id).Where(itemIds.Contains).ToList();
+            Assert.Equal(group.Items.Select(i => i.Id), fromFlow);
+        }
+    }
+
+    /// <summary>
+    /// Both fire tests light the master warnings. Owner decision (2026-10-06): ONE reset, after
+    /// the cargo fire test, in TFDi's order — the checklist used to reset only after the engine
+    /// fire test, so a cargo test ticked there left the warning on until the pilot found the button.
+    /// </summary>
+    [Fact]
+    public void Preflight_OneMasterWarningReset_RightAfterTheCargoFireTest()
+    {
+        var labels = Labels("PREFLIGHT");
+        Assert.Single(labels, l => l == "Master warning: reset");
+        Assert.True(Array.IndexOf(labels, "Engine and APU fire test") < Array.IndexOf(labels, "Cargo fire manual test"));
+        Assert.Equal(Array.IndexOf(labels, "Cargo fire manual test") + 1, Array.IndexOf(labels, "Master warning: reset"));
+    }
+
     [Fact]
     public void AutoItemsAreLiveMirrors_ExceptTheEngineStartSwitches()
     {
@@ -131,7 +163,10 @@ public class Md11FoChecklistStructureTests
     // app: switch positions the FO reads back, plus Captain items reachable from MSFSBA (MCDU,
     // altimeters, radios). Sighted-only sub-checks (lamps that illuminate during a test, gauge
     // readings, overboost bar, ADG wiring) are gone; the throttle check stays for its aural
-    // warnings. The flows and action groups are unchanged.
+    // warnings. Each list keeps its TFDi page's lines and order (2026-10-06): no line TFDi puts on
+    // another page, so a line repeats across phases only where TFDi repeats it. Kept by owner
+    // decision: After Start's "APU Bleed: Off" (closing the bleed lets the APU shut itself down)
+    // and Shutdown's "APU: Off" (the flow turns it off); TFDi's one-line Takeoff page is left out.
 
     private static string[] Labels(string groupId) => Groups.Single(g => g.Id == groupId).Items.Select(i => i.Label).ToArray();
 
@@ -158,37 +193,46 @@ public class Md11FoChecklistStructureTests
     [Fact]
     public void BeforeStart_Labels() => Assert.Equal(new[]
     {
-        "FMS: Initialized, V-Speeds Set", "IRS: Aligned", "APU: Running", "External Power: Off", "Seat Belt Signs: On",
-        "AUX Hydraulic Pump 1: On", "Engine Ignition: A or B", "APU Bleed: On", "Beacon: On",
-        "Pushback and Start Clearance: Obtained",
+        "APU: Running", "APU Bleed: On", "FMS: Initialized, V-Speeds Set", "IRS: Aligned", "EIS/Bugs: Set",
+        "Seat Belt Signs: On", "External Power: Off", "AUX Hydraulic Pump 1: On", "Engine Ignition: A or B", "Beacon: On",
     }, Labels("BEFORE_START_CL"));
 
     [Fact]
     public void EngineStart_Labels() => Assert.Equal(new[]
     {
         "Engine 3: Running", "Engine 1: Running", "Engine 2: Running", "Engine Start Switches: In",
-        "Engine Anti-Ice: As Required",
     }, Labels("ENGINE_START_CL"));
 
     [Fact]
     public void AfterStart_Labels() => Assert.Equal(new[]
     {
-        "APU Bleed: Off", "Flaps: Set", "Spoilers: Armed", "Autobrake: RTO", "Flight Controls: Checked",
-        "Stab Trim: Set", "Taxi Light: On",
+        "Engine Anti-Ice: As Required", "APU Bleed: Off", "Flaps: Set", "Config Page: Selected",
+        "Flight Controls: Checked", "Stab Trim: Set", "Taxi Light: On",
     }, Labels("AFTER_START_CL"));
 
     [Fact]
     public void BeforeTakeoff_Labels() => Assert.Equal(new[]
     {
-        "Runway and Takeoff Data: Verified", "Flaps and Slats: Set for Takeoff", "Stab Trim: Set", "Wing Anti-Ice: Off",
-        "Spoilers: Armed", "Autobrake: RTO", "Transponder: TA/RA", "Landing Lights: On", "Strobes: On",
-        "NAV and PROF: Armed", "Auto Flight: On",
+        "EIS/Bugs: Verified", "Runway: Verified", "Wing Anti-Ice: Off", "Stab Trim: Green Band Verified",
+        "Spoilers: Armed", "Autobrake: RTO", "Flaps and Slats: Set for Takeoff", "Takeoff Data and Bugs: Verified",
+        "EAD: Checked", "Landing Lights: On", "Strobes: On", "NAV: Armed", "PROF: Armed", "Auto Flight: On",
     }, Labels("BEFORE_TAKEOFF_CL"));
+
+    /// <summary>The FO's AUTO FLIGHT press and the read-back line judge the same state: autopilot OR autothrottle on.</summary>
+    [Fact]
+    public void BeforeTakeoff_AutoFlightLines_ReadTheStateThePressConfirms()
+    {
+        var action = Groups.Single(g => g.Id == "BEFORE_TAKEOFF").Items.Single(i => i.Id == "BT_AUTO_FLIGHT");
+        var readBack = Groups.Single(g => g.Id == "BEFORE_TAKEOFF_CL").Items.Single(i => i.Id == "BTC_AUTOFLIGHT");
+        Assert.NotNull(action.CheckAction);
+        Assert.Equal("FO_AUTO_FLIGHT_ON", action.StateFieldName);
+        Assert.Equal("FO_AUTO_FLIGHT_ON", readBack.StateFieldName);
+    }
 
     [Fact]
     public void AfterTakeoff_Labels() => Assert.Equal(new[]
     {
-        "Gear: Up", "Spoilers: Disarmed", "Autobrake: Off", "Flaps and Slats: Up and Retracted",
+        "Gear: Up", "Spoilers: Disarmed", "Autobrake: Off", "Flaps and Slats: Up and Retracted", "EAD: Checked",
     }, Labels("AFTER_TAKEOFF_CL"));
 
     [Fact]
@@ -214,13 +258,13 @@ public class Md11FoChecklistStructureTests
         Assert.Equal(new[]
         {
             "Parking Brakes: Set", "Fuel Switches: Off", "Seat Belt Sign: Off", "External Power: As required",
-            "APU: As required", "Anti-Ice: Off", "Engine Ignition: Off", "Exterior Lights: All off, except NAV",
+            "APU: As required", "Engine Ignition: Off", "Exterior Lights: All off, except NAV",
         }, Labels("PARKING_CL"));
         Assert.Equal(new[]
         {
             "Emergency Light Switch: Off", "Emergency Power Switch: Off", "Windshield Anti-Ice and Defog: Off",
             "IRS Switches: Off", "Cargo Temperatures: Off", "Cockpit Lights: Off", "EVAC Control Switch: Off",
-            "Packs: Off", "APU: Off", "Battery: Off",
+            "APU: Off", "Battery: Off",
         }, Labels("SHUTDOWN_CL"));
     }
 }

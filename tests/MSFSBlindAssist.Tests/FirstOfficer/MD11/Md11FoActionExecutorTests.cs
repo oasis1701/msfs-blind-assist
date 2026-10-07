@@ -772,4 +772,66 @@ public class Md11FoActionExecutorTests : IDisposable
         Assert.False(await _exec.Set("MD11_OVHD_HYD_HYD_TEST_BT", 1));
         Assert.Empty(_ac.Events);
     }
+
+    // ---------------- Before Takeoff: NAV, PROF, AUTO FLIGHT ----------------
+
+    [Fact]
+    public async Task AutoFlight_OnTheGround_PressesOnce_AndConfirmsOnTheAutothrottle()
+    {
+        Assert.True(await _exec.Set(Md11FoActionExecutor.AutoFlight, 1));
+        Assert.Equal(new[] { 86094, 86095 }, _ac.Events);
+        Assert.Equal(1, _ac.Get("MD11_ATS_STATE"));
+        Assert.Equal(0, _ac.Get("MD11_AP_STATE"));                          // refused below 100 ft
+        Assert.Contains("MD11_CGS_AUTOFLIGHT_BT", _ac.Noted);
+    }
+
+    /// <summary>The press never disengages: with an autopilot on it swaps AP 1 and AP 2. Either on = done.</summary>
+    [Theory]
+    [InlineData(1.0, 0.0)]
+    [InlineData(0.0, 1.0)]
+    public async Task AutoFlight_EitherAlreadyOn_IsAlreadySet_AndNothingIsPressed(double ap, double ats)
+    {
+        _ac.Set("MD11_AP_STATE", ap);
+        _ac.Set("MD11_ATS_STATE", ats);
+        Assert.True(await _exec.Set(Md11FoActionExecutor.AutoFlight, 1));
+        Assert.Empty(_ac.Events);
+        Assert.Equal(ap, _ac.Get("MD11_AP_STATE"));
+    }
+
+    [Theory]
+    [InlineData("MD11_AP_STATE")]
+    [InlineData("MD11_ATS_STATE")]
+    public async Task AutoFlight_RefusesAnUnreadState(string unread)
+    {
+        _ac.Unreadable.Add(unread);
+        Assert.False(await _exec.Set(Md11FoActionExecutor.AutoFlight, 1));
+        Assert.Empty(_ac.Events);
+    }
+
+    [Fact]
+    public async Task AutoFlight_APressThatEngagesNothing_IsNotDone()
+    {
+        _ac.AutoFlightInert = true;
+        Assert.False(await _exec.Set(Md11FoActionExecutor.AutoFlight, 1));
+        Assert.Equal(new[] { 86094, 86095 }, _ac.Events);                    // pressed once, never again
+    }
+
+    [Fact]
+    public async Task RawAutoFlightKey_IsGuarded()
+    {
+        _ac.Set("MD11_AP_STATE", 1);
+        Assert.True(await _exec.Set("MD11_CGS_AUTOFLIGHT_BT", 1));
+        Assert.Empty(_ac.Events);                                            // a press would swap AP 1 and AP 2
+    }
+
+    /// <summary>No armed state is exported for NAV or PROF, and a second press leaves them armed (owner): one press per request.</summary>
+    [Theory]
+    [InlineData("MD11_CGS_NAV_BT", 86090, 86091)]
+    [InlineData("MD11_CGS_PROF_BT", 86096, 86097)]
+    public async Task NavAndProf_ArePressedOncePerRequest(string key, int down, int up)
+    {
+        Assert.True(await _exec.Set(key, 1));
+        Assert.True(await _exec.Set(key, 1));
+        Assert.Equal(new[] { down, up, down, up }, _ac.Events);
+    }
 }

@@ -107,10 +107,11 @@ public static class Md11FoChecklistDefinitions
         Items = new()
         {
             ActionManual("PF_FIRE_TEST", "PREFLIGHT", "Engine and APU fire test", Set("MD11_AOVHD_FIRETEST_BT", 1)),
-            ActionManual("PF_MW_RESET", "PREFLIGHT", "Master warning: reset", Set("MD11_GSL_MST_WRN_BT", 1)),
             ActionManual("PF_FUEL_USED", "PREFLIGHT", "Fuel used: reset", Set("MD11_OVHD_FUELUSEDRESET_BT", 1)),
             ActionManual("PF_ANNUN_TEST", "PREFLIGHT", "Annunciator light test", Set(X.AnnunciatorTest, 1)),
             ActionManual("PF_CARGO_FIRE_TEST", "PREFLIGHT", "Cargo fire manual test", Set("MD11_AOVHD_CRGSMK_TEST_BT", 1)),
+            // ONE reset for both fire tests, after the later one (the flow's order).
+            ActionManual("PF_MW_RESET", "PREFLIGHT", "Master warning: reset", Set("MD11_GSL_MST_WRN_BT", 1)),
             ActionManual("PF_CVR_TEST", "PREFLIGHT", "Cockpit voice recorder test", Set("MD11_OVHD_CVR_TEST_BT", 1)),
             Auto("PF_HYD_AUTO", "PREFLIGHT", "Hydraulic system: AUTO", HydSel, Off, Set(HydSel, 0)),
             ActionManual("PF_HYD_TEST", "PREFLIGHT", "Hydraulic test", Set(X.HydraulicTest, 1)),
@@ -216,7 +217,10 @@ public static class Md11FoChecklistDefinitions
             Auto("BT_SPOILERS", "BEFORE_TAKEOFF", "Spoilers: ARM", "FO_SPOILERS_ARMED", On, Set(X.Spoilers, 1)),
             Auto("BT_AUTOBRAKE", "BEFORE_TAKEOFF", "Autobrake: T.O.", Autobrake, v => Is(v, 0), Set(Autobrake, 0)),
             Reminder("BT_EIS", "BEFORE_TAKEOFF", "Verify the EIS bugs, the runway, the stabilizer trim green band and the takeoff data"),
-            Reminder("BT_MODES", "BEFORE_TAKEOFF", "Arm NAV and PROF, and press AUTO FLIGHT on the runway"),
+            // NAV and PROF export no armed state (a second press leaves them armed); AUTO FLIGHT arms the autothrottle.
+            ActionManual("BT_NAV", "BEFORE_TAKEOFF", "NAV: ARM", Set("MD11_CGS_NAV_BT", 1)),
+            ActionManual("BT_PROF", "BEFORE_TAKEOFF", "PROF: ARM", Set("MD11_CGS_PROF_BT", 1)),
+            Auto("BT_AUTO_FLIGHT", "BEFORE_TAKEOFF", "Auto flight: ON", "FO_AUTO_FLIGHT_ON", On, Set(X.AutoFlight, 1)),
         }
     };
 
@@ -379,16 +383,16 @@ public static class Md11FoChecklistDefinitions
             Id = G, Name = "Before Start Checklist",
             Items = new()
             {
+                Read("BSC_APU", G, "APU: Running", "FO_APU_RUNNING", On),
+                Read("BSC_APU_BLEED", G, "APU Bleed: On", ApuBleed, On),
                 Reminder("BSC_FMS", G, "FMS: Initialized, V-Speeds Set"),
                 Read("BSC_IRS", G, "IRS: Aligned", "FO_IRS_ALIGNED", On),
-                Read("BSC_APU", G, "APU: Running", "FO_APU_RUNNING", On),
-                Read("BSC_EXT_PWR", G, "External Power: Off", "FO_EXT_POWER_ON", Off),
+                Reminder("BSC_EIS", G, "EIS/Bugs: Set"),
                 Read("BSC_SEAT_BELTS", G, "Seat Belt Signs: On", SeatBelts, v => Is(v, 2)),
+                Read("BSC_EXT_PWR", G, "External Power: Off", "FO_EXT_POWER_ON", Off),
                 Read("BSC_AUX_PUMP", G, "AUX Hydraulic Pump 1: On", "FO_AUX_PUMP_1_ON", On),
                 Read("BSC_IGNITION", G, "Engine Ignition: A or B", "FO_IGNITION_SELECTED", On),
-                Read("BSC_APU_BLEED", G, "APU Bleed: On", ApuBleed, On),
                 Read("BSC_BEACON", G, "Beacon: On", "FO_BEACON_ON", On),
-                Reminder("BSC_CLEARANCE", G, "Pushback and Start Clearance: Obtained"),
             }
         };
     }
@@ -405,7 +409,6 @@ public static class Md11FoChecklistDefinitions
                 Read("ESC_E1", G, "Engine 1: Running", "FO_ENG1_N2", v => v >= Md11FoStateEvaluator.EngineRunningN2),
                 Read("ESC_E2", G, "Engine 2: Running", "FO_ENG2_N2", v => v >= Md11FoStateEvaluator.EngineRunningN2),
                 Read("ESC_START_IN", G, "Engine Start Switches: In", "FO_START_SWITCHES_IN", On),
-                Reminder("ESC_ANTI_ICE", G, "Engine Anti-Ice: As Required"),
             }
         };
     }
@@ -418,10 +421,11 @@ public static class Md11FoChecklistDefinitions
             Id = G, Name = "After Start Checklist",
             Items = new()
             {
+                Reminder("ASC_ANTI_ICE", G, "Engine Anti-Ice: As Required"),
+                // TFDi's line is "APU: Off"; closing the bleed is what lets the APU shut itself down.
                 Read("ASC_APU_BLEED", G, "APU Bleed: Off", ApuBleed, Off),
                 Read("ASC_FLAPS", G, "Flaps: Set", "FO_FLAPS_DAF", On),
-                Read("ASC_SPOILERS", G, "Spoilers: Armed", "FO_SPOILERS_ARMED", On),
-                Read("ASC_AUTOBRAKE", G, "Autobrake: RTO", Autobrake, v => Is(v, 0)),
+                Reminder("ASC_CONFIG_PAGE", G, "Config Page: Selected"),
                 Reminder("ASC_FLT_CTRL", G, "Flight Controls: Checked"),
                 Reminder("ASC_STAB_TRIM", G, "Stab Trim: Set"),
                 Read("ASC_TAXI_LIGHT", G, "Taxi Light: On", Nose, v => Is(v, 1)),
@@ -437,18 +441,21 @@ public static class Md11FoChecklistDefinitions
             Id = G, Name = "Before Takeoff Checklist",
             Items = new()
             {
-                Reminder("BTC_TO_DATA", G, "Runway and Takeoff Data: Verified"),
-                Read("BTC_FLAPS", G, "Flaps and Slats: Set for Takeoff", "FO_FLAPS_DAF", On),
-                Reminder("BTC_STAB_TRIM", G, "Stab Trim: Set"),
+                Reminder("BTC_EIS", G, "EIS/Bugs: Verified"),
+                Reminder("BTC_RUNWAY", G, "Runway: Verified"),
                 Read("BTC_ANTI_ICE", G, "Wing Anti-Ice: Off", "FO_WING_ANTI_ICE_OFF", On),
+                Reminder("BTC_STAB_TRIM", G, "Stab Trim: Green Band Verified"),
                 Read("BTC_SPOILERS", G, "Spoilers: Armed", "FO_SPOILERS_ARMED", On),
                 Read("BTC_AUTOBRAKE", G, "Autobrake: RTO", Autobrake, v => Is(v, 0)),
-                Read("BTC_XPDR", G, "Transponder: TA/RA", "FO_XPDR_TARA", On),
+                Read("BTC_FLAPS", G, "Flaps and Slats: Set for Takeoff", "FO_FLAPS_DAF", On),
+                Reminder("BTC_TO_DATA", G, "Takeoff Data and Bugs: Verified"),
+                Reminder("BTC_EAD", G, "EAD: Checked"),
                 Read("BTC_LANDING_LIGHTS", G, "Landing Lights: On", "FO_LANDING_LIGHTS_ON", On),
                 Read("BTC_STROBES", G, "Strobes: On", "FO_STROBES_ON", On),
-                Reminder("BTC_MODES", G, "NAV and PROF: Armed"),
-                // AUTO FLIGHT engages the autopilot: MD11_AP_STATE 0 off, 1 AP 1, 2 AP 2, 3 both.
-                Read("BTC_AUTOFLIGHT", G, "Auto Flight: On", Md11AutopilotEngage.ApStateKey, On),
+                Reminder("BTC_NAV", G, "NAV: Armed"),
+                Reminder("BTC_PROF", G, "PROF: Armed"),
+                // AUTO FLIGHT engages "both ATs and one AP"; before takeoff only the autothrottle.
+                Read("BTC_AUTOFLIGHT", G, "Auto Flight: On", "FO_AUTO_FLIGHT_ON", On),
             }
         };
     }
@@ -465,6 +472,7 @@ public static class Md11FoChecklistDefinitions
                 Read("ATC_SPOILERS", G, "Spoilers: Disarmed", "FO_SPOILERS_DOWN", On),
                 Read("ATC_AUTOBRAKE", G, "Autobrake: Off", Autobrake, v => Is(v, 1)),
                 Read("ATC_FLAPS", G, "Flaps and Slats: Up and Retracted", "FO_FLAPS_UP", On),
+                Reminder("ATC_EAD", G, "EAD: Checked"),
             }
         };
     }
@@ -564,7 +572,6 @@ public static class Md11FoChecklistDefinitions
                 Read("PKC_SEAT_BELTS", G, "Seat Belt Sign: Off", SeatBelts, v => Is(v, 0)),
                 Reminder("PKC_EXT_PWR", G, "External Power: As required"),
                 Reminder("PKC_APU", G, "APU: As required"),
-                Read("PKC_ANTI_ICE", G, "Anti-Ice: Off", "FO_ANTI_ICE_OFF", On),
                 Read("PKC_IGNITION", G, "Engine Ignition: Off", "FO_IGNITION_OFF", On),
                 Read("PKC_EXT_LIGHTS", G, "Exterior Lights: All off, except NAV", "FO_EXTERIOR_PARKED", On),
             }
@@ -586,7 +593,7 @@ public static class Md11FoChecklistDefinitions
                 Read("SDC_CARGO_TEMP", G, "Cargo Temperatures: Off", "FO_CARGO_TEMPS_OFF", On),
                 Read("SDC_COCKPIT_LTS", G, "Cockpit Lights: Off", "FO_DOME_OFF", On),
                 Read("SDC_EVAC", G, "EVAC Control Switch: Off", Evac, v => Is(v, 0)),
-                Read("SDC_PACKS", G, "Packs: Off", "FO_PACKS_OFF", On),
+                // TFDi's line is "APU: As required"; this flow turns the APU off before the battery.
                 Read("SDC_APU", G, "APU: Off", "FO_APU_OFF", On),
                 Read("SDC_BATTERY", G, "Battery: Off", Batt, Off),
             }

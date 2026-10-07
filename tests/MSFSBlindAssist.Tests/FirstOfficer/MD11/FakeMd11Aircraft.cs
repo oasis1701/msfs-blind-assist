@@ -33,6 +33,8 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
     public bool HydTestAborted { get; private set; }
     /// <summary>The clock at the last AUX pump 1 press, or -1.</summary>
     public long AuxPump1PressedAt { get; private set; } = -1;
+    /// <summary>AUTO FLIGHT presses change nothing (a press the aircraft refuses).</summary>
+    public bool AutoFlightInert { get; set; }
 
     public Dictionary<string, double> Vars { get; } = new(StringComparer.Ordinal);
     public List<int> Events { get; } = new();
@@ -79,7 +81,7 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
             "MD11_OVHD_LTS_NOSE_SW", "MD11_OVHD_PNEU_FWD_CARGO_TEMP", "MD11_OVHD_PNEU_AFT_CARGO_TEMP",
             "MD11_AOVHD_EVAC_SW", "MD11_AOVHD_GPWS_SW", "MD11_CTR_AUTOBRAKE_SW", "MD11_PED_XPNDR_MODE_KB",
             "MD11_AOVHD_EVAC_GRD", "MD11_AOVHD_GPWS_GRD", "MD11_SPDBRK_ARM", "MD11_SPDBRK_HANDLE",
-            "MD11_APU_STATE", "MD11_OVHD_PNEU_ECON_OFF_LT",
+            "MD11_APU_STATE", "MD11_OVHD_PNEU_ECON_OFF_LT", "MD11_AP_STATE", "MD11_ATS_STATE",
             "MD11_OVHD_PNEU_PACK_1_OFF_LT", "MD11_OVHD_PNEU_PACK_2_OFF_LT", "MD11_OVHD_PNEU_PACK_3_OFF_LT",
         })
             Vars[k] = 0;
@@ -273,6 +275,15 @@ internal sealed class FakeMd11Aircraft : IMd11FoTransport, IMd11FoFlightState
                 break;
             case 69885: Set("MD11_FO_WXR_OFF", 0); break;   // WXR TEST selected
             case 69883: Set("MD11_FO_WXR_OFF", 1); break;   // WXR OFF selected
+            // AUTO FLIGHT engages "both ATs and one AP"; the autopilot is refused below 100 ft, so on
+            // the ground only the autothrottle comes on. With an autopilot on it swaps AP 1 and AP 2.
+            case 86094:
+                if (AutoFlightInert) break;
+                Set("MD11_ATS_STATE", 1);
+                if (GroundState != true) Set("MD11_AP_STATE", Get("MD11_AP_STATE") switch { 1 => 2, 2 => 1, 3 => 3, _ => 1 });
+                break;
+            // NAV and PROF arm a mode the aircraft never exports; a second press leaves it armed.
+            case 86090: case 86096: break;
             // Spoiler lever click — FlightControls::Create's lambda: SetSpoilerArm(pull == 0).
             // Keys follow the app: MD11_SPDBRK_ARM is the pull, MD11_SPDBRK_HANDLE the travel.
             case 77829:

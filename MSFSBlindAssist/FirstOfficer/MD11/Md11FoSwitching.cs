@@ -55,6 +55,13 @@ public static class Md11FoSwitching
     public static int StepCap(int min, int max) => (max - min) * 2 + 2;
 
     /// <summary>
+    /// AUTO FLIGHT has taken: it engages "both ATs and one AP" (TFDi), and before takeoff only the
+    /// autothrottle comes on (the autopilot is refused below 100 ft), so either one engaged is on.
+    /// </summary>
+    public static bool AutoFlightOn(double apState, double atsState)
+        => Md11AutopilotEngage.Engaged(apState) == true || Md11AutoflightState.AutothrottleOn(atsState);
+
+    /// <summary>
     /// The logical state a read-back lamp shows: lit means <paramref name="litMeans"/> (1 on,
     /// 0 off). Ignition lamps read 1/2/4, so "lit" is the lamp threshold, not == 1. Unread is null.
     /// </summary>

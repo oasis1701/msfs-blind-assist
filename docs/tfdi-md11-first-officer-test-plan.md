@@ -58,7 +58,10 @@ ending with a wait of about 100 seconds for the hydraulic test.
 2. **Listen:** you hear the GPWS voice test. The cover stays closed and the switch ends at NORMAL.
 3. **Listen:** fire test bells, the voice recorder test, both oxygen tests, the TCAS test and the
    cargo door test. Note any you expected to hear and did not.
-4. **Settle:** "Dial-A-Flap: takeoff setting" is done, not "Skipping", and the Dial-A-Flap reads
+4. **Settle:** "Master warning: reset" comes once, right after the cargo fire test. Afterwards no
+   warning is sounding. Then, on the Checklists tab, tick "Engine and APU fire test", "Cargo fire
+   manual test" and "Master warning: reset" in that order: no warning is left sounding.
+5. **Settle:** "Dial-A-Flap: takeoff setting" is done, not "Skipping", and the Dial-A-Flap reads
    your SimBrief takeoff flap (the Ctrl+P window shows it). Without a plan it says Skipping and
    gives the Captain reminder instead.
 
@@ -88,7 +91,14 @@ Worked on 26 September: engines 3, 1 and 2, about three and a half minutes.
 ### Before Takeoff
 
 Worked on 26 September. Landing lights on, strobes, transponder TA/RA with altitude reporting,
-spoilers and autobrake checked, Captain reminders.
+spoilers and autobrake checked, Captain reminders. Run it at lineup.
+
+1. **Settle:** it ends with "NAV: ARM", "PROF: ARM" and "Auto flight: ON", all done. The
+   autothrottle then reads on (autopilot window), and the read-back lines "NAV: Armed", "PROF:
+   Armed" and "Auto Flight: On" are ticked.
+2. **Listen:** "Autothrottle: on" may be spoken after "Auto flight: ON". Note whether it is.
+3. **Settle:** run Before Takeoff again: "Already set: Auto flight: ON", and NAV and PROF stay
+   armed.
 
 ### After Landing, on the ground
 
@@ -133,7 +143,9 @@ Not fully run yet.
 
 1. **Listen:** section headers read as plain items. Lines you can tick read as check boxes,
    checked or not checked.
-2. **Settle:** TFDi's read-back lines tick themselves once their switch is in position.
+2. **Settle:** TFDi's read-back lines tick themselves once their switch is in position. Each list
+   follows its TFDi page: the After Start Checklist no longer repeats spoilers and autobrake, and
+   starts with "Engine Anti-Ice: As Required".
 3. **Settle:** ticking an action line moves the switch. If a line ever says "Unable to complete",
    note which one.
 4. **Settle:** after Parking and Shutdown, the engine start lines stay ticked.

@@ -105,6 +105,16 @@ public class Md11FoStateEvaluatorTests
             Read(new() { ["MD11_APU_STATE"] = 1, ["MD11_OVHD_PNEU_APU_BLEED_BT"] = 1 })));
     }
 
+    /// <summary>AUTO FLIGHT engages "both ATs and one AP"; before takeoff only the autothrottle comes on.</summary>
+    [Fact]
+    public void AutoFlightOn_IsTheAutopilotOrTheAutothrottleEngaged()
+    {
+        Assert.Equal(0, Md11FoStateEvaluator.Compute("FO_AUTO_FLIGHT_ON", Read(new() { ["MD11_AP_STATE"] = 0, ["MD11_ATS_STATE"] = 0 })));
+        Assert.Equal(1, Md11FoStateEvaluator.Compute("FO_AUTO_FLIGHT_ON", Read(new() { ["MD11_AP_STATE"] = 0, ["MD11_ATS_STATE"] = 1 })));
+        Assert.Equal(1, Md11FoStateEvaluator.Compute("FO_AUTO_FLIGHT_ON", Read(new() { ["MD11_AP_STATE"] = 2, ["MD11_ATS_STATE"] = 0 })));
+        Assert.True(double.IsNaN(Md11FoStateEvaluator.Compute("FO_AUTO_FLIGHT_ON", Read(new() { ["MD11_AP_STATE"] = 0 }))));
+    }
+
     [Fact]
     public void Engine3N2_IsNaNUntilFed()
     {

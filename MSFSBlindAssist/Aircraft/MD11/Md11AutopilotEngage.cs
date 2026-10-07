@@ -10,6 +10,8 @@ namespace MSFSBlindAssist.Aircraft.MD11;
 public static class Md11AutopilotEngage
 {
     public const string ApStateKey = "MD11_AP_STATE";
+    /// <summary>The autothrottle export: what AUTO FLIGHT turns on before takeoff, with the autopilot refused below 100 ft.</summary>
+    public const string AtsStateKey = "MD11_ATS_STATE";
     public const string AutoflightKey = "MD11_CGS_AUTOFLIGHT_BT";
 
     /// <summary>TFDi quick start: autopilot allowed above 400 ft AGL (the aircraft refuses below 100).</summary>

@@ -20,7 +20,8 @@ namespace MSFSBlindAssist.FirstOfficer.MD11;
 /// never move the flap handle airborne; never walk the Dial-A-Flap wheel (one direct write);
 /// never set a landing autobrake; hold the annunciator light test only under a lamp-speech mute;
 /// never disconnect external power without APU power on; never press the AUX hydraulic pump over
-/// a running hydraulic test; never press engine/wing/tail anti-ice in AUTO (it is TFDi's).
+/// a running hydraulic test; never press engine/wing/tail anti-ice in AUTO (it is TFDi's); never
+/// press AUTO FLIGHT unless the autopilot and autothrottle both read off (it swaps an engaged AP).
 /// There is NO fallback for an unmapped key — that is a mapping bug to surface, not a write to
 /// guess at.
 /// </summary>
@@ -44,6 +45,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
     public const string LandingLights = "FO_LANDING_LIGHTS";
     public const string AltimetersStandard = "FO_ALTIMETERS_STD";
     public const string AntiIceOff = "FO_ANTI_ICE_OFF";
+    public const string AutoFlight = "FO_AUTO_FLIGHT";
     public const string EngineStart1 = "FO_ENGINE_START_1";
     public const string EngineStart2 = "FO_ENGINE_START_2";
     public const string EngineStart3 = "FO_ENGINE_START_3";
@@ -104,6 +106,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         [LandingLights] = (_, io, t) => LandingLightsAsync(io, t),
         [AltimetersStandard] = (_, io, _) => AltimetersStandardAsync(io),
         [AntiIceOff] = (_, io, _) => AntiIceOffAsync(io),
+        [AutoFlight] = (_, io, _) => AutoFlightAsync(io),
         [EngineStart1] = (e, io, t) => e.EngineStartAsync(io, 1, t),
         [EngineStart2] = (e, io, t) => e.EngineStartAsync(io, 2, t),
         [EngineStart3] = (e, io, t) => e.EngineStartAsync(io, 3, t),
@@ -197,6 +200,7 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
                 case "MD11_PED_WXR_TEST_BT": return WeatherRadarTestAsync(io);          // TEST always ends OFF
                 case "MD11_PED_WXR_OFF_BT": return WeatherRadarOffAsync(io);            // read first, verified
                 case "MD11_OVHD_HYD_AUX_PUMP_1_BT" when target > 0: return AuxPump1OnAsync(io, c);
+                case Md11AutopilotEngage.AutoflightKey: return AutoFlightAsync(io);     // read first: never a blind press
             }
             return c.Kind switch
             {
@@ -834,6 +838,34 @@ public sealed class Md11FoActionExecutor : IFoActionExecutor
         foreach (var k in AntiIceButtons)
             ok &= await LampToggleAsync(io, Control(k), 0).ConfigureAwait(false);
         return ok;
+    }
+
+    /// <summary>
+    /// AUTO FLIGHT, pressed by the First Officer at lineup to arm the autothrottle (owner, TFDi's
+    /// "AUTOFLIGHT: PRESS after LINEUP"). The press never disengages anything — with an autopilot
+    /// on it swaps AP 1 and AP 2 — so it is pressed only when the autopilot AND the autothrottle
+    /// both read definitely off, and done when either reads on (<see cref="Md11FoSwitching.AutoFlightOn"/>).
+    /// Unread refuses; a press nothing comes of is not done, and is never repeated.
+    /// </summary>
+    private static async Task<bool> AutoFlightAsync(IMd11FoTransport io)
+    {
+        var ap = await ReadAsync(io, Md11AutopilotEngage.ApStateKey, LampReadTimeoutMs).ConfigureAwait(false);
+        var ats = await ReadAsync(io, Md11AutopilotEngage.AtsStateKey, LampReadTimeoutMs).ConfigureAwait(false);
+        if (ap is null || ats is null) return false;
+        if (Md11FoSwitching.AutoFlightOn(ap.Value, ats.Value)) return true;
+        var c = Control(Md11AutopilotEngage.AutoflightKey);
+        io.NoteActuation(c.Key);
+        if (!io.Press(c.Down, c.Up)) return false;
+        long deadline = io.NowMs + LampVerifyTimeoutMs;
+        await io.DelayAsync(ReadBackDelay(io)).ConfigureAwait(false);
+        while (true)
+        {
+            var a = await ReadAsync(io, Md11AutopilotEngage.ApStateKey, LampReadTimeoutMs).ConfigureAwait(false);
+            var t = await ReadAsync(io, Md11AutopilotEngage.AtsStateKey, LampReadTimeoutMs).ConfigureAwait(false);
+            if (Md11FoSwitching.AutoFlightOn(a ?? double.NaN, t ?? double.NaN)) return true;
+            if (io.NowMs >= deadline) return false;
+            await io.DelayAsync(PollMs).ConfigureAwait(false);
+        }
     }
 
     private static readonly (string Switch, int Click)[] StartSwitches =

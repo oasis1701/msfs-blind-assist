@@ -95,11 +95,12 @@ public static class Md11FoFlowDefinitions
         Steps = new()
         {
             Done(SW("PF_FIRE_TEST", "Engine and APU fire test", "MD11_AOVHD_FIRETEST_BT", 1), "PF_FIRE_TEST"),
-            Done(SW("PF_MW_RESET", "Master warning: reset", "MD11_GSL_MST_WRN_BT", 1), "PF_MW_RESET"),
             Done(SW("PF_FUEL_USED", "Fuel used: reset", "MD11_OVHD_FUELUSEDRESET_BT", 1), "PF_FUEL_USED"),
             Done(SW("PF_ANNUN_TEST", "Annunciator light test", X.AnnunciatorTest, 1), "PF_ANNUN_TEST"),
             Done(SW("PF_CARGO_FIRE_TEST", "Cargo fire manual test", "MD11_AOVHD_CRGSMK_TEST_BT", 1), "PF_CARGO_FIRE_TEST"),
-            SW("PF_MW_RESET_2", "Master warning: reset", "MD11_GSL_MST_WRN_BT", 1),
+            // Both fire tests light the master warnings: ONE reset, after the later test (owner
+            // decision, TFDi's order kept), the same line the Preflight checklist carries.
+            Done(SW("PF_MW_RESET", "Master warning: reset", "MD11_GSL_MST_WRN_BT", 1), "PF_MW_RESET"),
             Done(SW("PF_CVR_TEST", "Cockpit voice recorder test", "MD11_OVHD_CVR_TEST_BT", 1), "PF_CVR_TEST"),
             Done(Skip(SW("PF_HYD_AUTO", "Hydraulic system: AUTO", HydSel, 0), s => s.IsPosition(HydSel, 0)), "PF_HYD_AUTO"),
             Done(SW("PF_HYD_TEST", "Hydraulic test: start", X.HydraulicTest, 1), "PF_HYD_TEST"),
@@ -236,7 +237,7 @@ public static class Md11FoFlowDefinitions
     private static Flow BuildBeforeTakeoff() => new()
     {
         Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
-        Description = "Landing lights, strobes, transponder TA/RA with altitude reporting, spoilers and autobrake verified.",
+        Description = "Landing lights, strobes, transponder TA/RA with altitude reporting, spoilers and autobrake verified, then NAV, PROF and AUTO FLIGHT.",
         RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF", "BEFORE_TAKEOFF_CL" },
         Steps = new()
         {
@@ -247,7 +248,13 @@ public static class Md11FoFlowDefinitions
             Done(Skip(SW("BT_SPOILERS", "Spoilers: ARM", X.Spoilers, 1), s => s.IsOn("FO_SPOILERS_ARMED")), "BT_SPOILERS"),
             Done(Skip(SW("BT_AUTOBRAKE", "Autobrake: T.O.", Autobrake, 0), s => s.IsPosition(Autobrake, 0)), "BT_AUTOBRAKE"),
             Captain("BT_EIS", "Verify the EIS bugs, the runway, the stabilizer trim green band and the takeoff data"),
-            Captain("BT_MODES", "Arm NAV and PROF, and press AUTO FLIGHT on the runway"),
+            // The checklist is run at lineup (owner). NAV and PROF export no armed state, so their
+            // presses cannot be read back; a second press leaves them armed, so a re-run is safe.
+            // AUTO FLIGHT arms the autothrottle. Each also completes its read-back line.
+            Also(Done(SW("BT_NAV", "NAV: ARM", "MD11_CGS_NAV_BT", 1), "BT_NAV"), "BTC_NAV"),
+            Also(Done(SW("BT_PROF", "PROF: ARM", "MD11_CGS_PROF_BT", 1), "BT_PROF"), "BTC_PROF"),
+            Also(Done(Skip(SW("BT_AUTO_FLIGHT", "Auto flight: ON", X.AutoFlight, 1), s => s.IsOn("FO_AUTO_FLIGHT_ON")),
+                "BT_AUTO_FLIGHT"), "BTC_AUTOFLIGHT"),
         }
     };
 
@@ -454,6 +461,13 @@ public static class Md11FoFlowDefinitions
     private static Step Done(Step step, string checklistItemId)
     {
         step.CompletesChecklistItemId = checklistItemId;
+        return step;
+    }
+
+    /// <summary>The read-back line this step also delivers: ticked with it, and kept unticked when it is skipped (FO-6).</summary>
+    private static Step Also(Step step, params string[] readBackItemIds)
+    {
+        step.AlsoCompletesChecklistItemIds = readBackItemIds;
         return step;
     }
 }
