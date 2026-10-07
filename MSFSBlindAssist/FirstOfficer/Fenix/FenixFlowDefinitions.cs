@@ -233,6 +233,8 @@ public static class FenixFlowDefinitions
             // FCU managed modes (pseudo-keys → atomic knob-push calc)
             Done(SW("BS_FCUSPD", "FCU speed: managed", "FCU_PUSH_SPEED_MANAGED", 1), "BS_FCUSPD"),
             Done(SW("BS_FCUHDG", "FCU heading: managed", "FCU_PUSH_HEADING_MANAGED", 1), "BS_FCUHDG"),
+            Captain("BS_ALT", "Set cleared altitude on the FCU"),
+            Done(SW("BS_FCUALT", "FCU altitude: pushed", "FCU_PUSH_ALT_MANAGED", 1), "BS_FCUALT"),
             // Cockpit door: closed (S_COCKPIT_DOOR=0, live-verified actuator 2026-07-05).
             Done(SW("BS_COCKPITDOOR", "Cockpit door: closed and locked", "S_COCKPIT_DOOR", 0), "BS_COCKPITDOOR"),
             Captain("BS_DOORS", "Close doors and remove ground services on the EFB"),

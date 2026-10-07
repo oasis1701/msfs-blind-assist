@@ -11767,15 +11767,17 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
             }
 
+            // S_FCU_ALTITUDE push/pull: same atomic RPN fix as S_FCU_HEADING / S_FCU_SPEED
+            // below (the First Officer's PushFcuManaged pushes this L:var before start).
             if (varKey == "S_FCU_ALTITUDE_PUSH" && value == 1)
             {
-                DecrementCounter("S_FCU_ALTITUDE", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_ALTITUDE", -1, simConnect);
                 return true;
             }
 
             if (varKey == "S_FCU_ALTITUDE_PULL" && value == 1)
             {
-                IncrementCounter("S_FCU_ALTITUDE", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_ALTITUDE", 1, simConnect);
                 return true;
             }
 
@@ -12479,7 +12481,7 @@ public class FenixA320Definition : BaseAircraftDefinition
     }
 
     /// <summary>
-    /// Adjusts an FCU push/pull knob (S_FCU_SPEED / S_FCU_HEADING) by +/-1 using an atomic
+    /// Adjusts an FCU push/pull knob (S_FCU_SPEED / S_FCU_HEADING / S_FCU_ALTITUDE) by +/-1 using an atomic
     /// RPN read-modify-write, same reasoning as AdjustBaroCounter: the First Officer
     /// (FenixActionExecutor.PushFcuManaged) writes these same L:vars independently of this
     /// panel's rmpCounters, so two absolute-counter writers would desync (a stale app-side
@@ -13220,11 +13222,11 @@ public class FenixA320Definition : BaseAircraftDefinition
                 return true;
 
             case HotkeyAction.FCUAltitudePush:
-                DecrementCounter("S_FCU_ALTITUDE", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_ALTITUDE", -1, simConnect);
                 return true;
 
             case HotkeyAction.FCUAltitudePull:
-                IncrementCounter("S_FCU_ALTITUDE", simConnect);
+                AdjustFcuPushPullCounter("S_FCU_ALTITUDE", 1, simConnect);
                 return true;
 
             case HotkeyAction.FCUSpeedPush:

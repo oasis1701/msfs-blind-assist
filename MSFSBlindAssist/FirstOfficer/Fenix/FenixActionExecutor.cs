@@ -13,7 +13,7 @@ namespace MSFSBlindAssist.FirstOfficer.Fenix;
 /// user never has to un-tick to stop it. The cabin CALL pushbuttons are also held (press,
 /// brief hold, release — "hit and release"). The FCU managed pushes go
 /// through an atomic read-modify-write calculator string rather than an app-side counter:
-/// the def's panel (FenixA320Definition.HandleUIVariableSet, S_FCU_SPEED/HEADING_PUSH/PULL)
+/// the def's panel (FenixA320Definition.HandleUIVariableSet, S_FCU_SPEED/HEADING/ALTITUDE_PUSH/PULL)
 /// ALSO writes these same L:vars via its own atomic RPN read-modify-write
 /// (AdjustFcuPushPullCounter) rather than its rmpCounters absolute counter — both writers
 /// now read the live sim value before modifying, so they stay coherent no matter which one
@@ -120,7 +120,8 @@ public sealed class FenixActionExecutor : LVarActionExecutor
             {
                 case "FCU_PUSH_SPEED_MANAGED":   return PushFcuManaged("S_FCU_SPEED");
                 case "FCU_PUSH_HEADING_MANAGED": return PushFcuManaged("S_FCU_HEADING");
-                case "CVR_TEST":                 return CvrTest("S_OH_RCRD_TEST");
+                case "FCU_PUSH_ALT_MANAGED":     return PushFcuManaged("S_FCU_ALTITUDE");
+                case "CVR_TEST":                return CvrTest("S_OH_RCRD_TEST");
                 case "FIRE_TEST_APU":            return FireTest("S_OH_FIRE_APU_TEST");
                 case "FIRE_TEST_ENG1":           return FireTest("S_OH_FIRE_ENG1_TEST");
                 case "FIRE_TEST_ENG2":           return FireTest("S_OH_FIRE_ENG2_TEST");
@@ -299,7 +300,7 @@ public sealed class FenixActionExecutor : LVarActionExecutor
     public Task<bool> EngageAp1() => PulseAsync("S_FCU_AP1");
 
     /// <summary>Push an FCU knob to managed (Fenix convention: push = value decrement on
-    /// the knob L:var, e.g. "S_FCU_SPEED" or "S_FCU_HEADING"). Atomic read-modify-write in
+    /// the knob L:var, e.g. "S_FCU_SPEED", "S_FCU_HEADING" or "S_FCU_ALTITUDE"). Atomic read-modify-write in
     /// ONE calculator string so it can never desync against the def's own panel handler
     /// (which now uses the same atomic-RPN mechanism — see the class doc comment). The
     /// leading "{seq} 0 *" makes the string unique per call so MobiFlight's identical-string
@@ -317,8 +318,12 @@ public sealed class FenixActionExecutor : LVarActionExecutor
         return true;
     }
 
+    /// <summary>Push the FCU altitude knob (the Before Start "FCU altitude: pushed" line):
+    /// the same atomic push as speed and heading, on S_FCU_ALTITUDE.</summary>
+    public Task<bool> PushFcuAltitude() => PushFcuManaged("S_FCU_ALTITUDE");
+
     /// <summary>
-    /// APU start block: Master ON, dwell, START pulse, then WAIT for the AVAIL lamp.
+    /// APU start block:Master ON, dwell, START pulse, then WAIT for the AVAIL lamp.
     ///
     /// ⚠️ The wait is not optional and must not be moved back to the caller. The Before
     /// Start / After Landing FLOW does wait (its own WaitForField step), but the CHECKLIST

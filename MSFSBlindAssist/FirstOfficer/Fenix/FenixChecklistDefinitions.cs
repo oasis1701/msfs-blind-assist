@@ -206,6 +206,9 @@ public static class FenixChecklistDefinitions
                 (e, _) => e.PushFcuManaged("S_FCU_SPEED")),
             ActionManual("BS_FCUHDG", "BEFORE_START", "FCU heading: managed",
                 (e, _) => e.PushFcuManaged("S_FCU_HEADING")),
+            Reminder("BS_ALT", "BEFORE_START", "Set cleared altitude on the FCU"),
+            ActionManual("BS_FCUALT", "BEFORE_START", "FCU altitude: pushed",
+                (e, _) => e.PushFcuAltitude()),
             // Cockpit door: closed (S_COCKPIT_DOOR=0, live-verified actuator 2026-07-05).
             ActionManual("BS_COCKPITDOOR", "BEFORE_START", "Cockpit door: LOCKED",
                 (e, _) => e.SetCockpitDoor(false)),
