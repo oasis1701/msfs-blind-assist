@@ -468,13 +468,21 @@ public static class FbwA320FlowDefinitions
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 0)), "AL_SPOILERS"),
             Done(Skip(SW("AL_FLAPS_UP", "Flaps: UP", "A32NX_FLAPS_HANDLE_INDEX", 0),
                 s => s.IsPosition("A32NX_FLAPS_HANDLE_INDEX", 0)), "AL_FLAPS_UP"),
-            // Both radar steps complete the After Landing Checklist's "Radar and predictive
-            // windshear: OFF" (ALC_WXR, FO-6): the line is true only when BOTH are off, so each
-            // step's failure must keep it out of the latch.
-            Also(Done(Skip(SW("AL_WXR_OFF", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys", 1),
-                s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 1)), "AL_WXR_OFF"), "ALC_WXR"),
-            Also(Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "A32NX_SWITCH_RADAR_PWS_POSITION", 0),
-                s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_POSITION", 0)), "AL_PWS_OFF"), "ALC_WXR"),
+            // The After Landing Checklist's "Radar and predictive windshear: OFF" (ALC_WXR) is true
+            // only when BOTH are off, so neither write completes it (FO-6): it is that read-back's
+            // only line, so a write linking it latched the whole read-back with the other switch
+            // still on. The read-only AL_WXR_PWS_CHECK after both completes it (the FO-13 shape,
+            // never writes). 5 s: it starts after AL_PWS_OFF's 2 s pause and reads once a second,
+            // the rate both switches are polled, so its last read comes some 6 s after the windshear
+            // write, well past the second or two a polled switch lags its write. A timeout is
+            // skipped aloud and keeps the line out of the latch.
+            Done(Skip(SW("AL_WXR_OFF", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys", 1),
+                s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 1)), "AL_WXR_OFF"),
+            Done(Skip(SW("AL_PWS_OFF", "Predictive windshear: OFF", "A32NX_SWITCH_RADAR_PWS_POSITION", 0),
+                s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_POSITION", 0)), "AL_PWS_OFF"),
+            Done(Skip(WaitForField("AL_WXR_PWS_CHECK", "Radar and predictive windshear: OFF", "FO_WXR_PWS_OFF",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("FO_WXR_PWS_OFF") > 0.5), "ALC_WXR"),
             Done(Skip(SW("AL_STROBE_AUTO", "Strobes: AUTO", "LIGHTING_STROBE_0", 1),
                 s => s.IsPosition("LIGHTING_STROBE_0", 1)), "AL_STROBE_AUTO"),
             Done(SW("AL_LANDING_OFF", "Landing lights: OFF", "LANDING_LIGHTS_OFF_THIRD_PARTY", 1), "AL_LANDING_OFF"),
