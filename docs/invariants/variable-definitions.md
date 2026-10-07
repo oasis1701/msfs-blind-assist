@@ -9,7 +9,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## VAR-2
 
-- Never register a name containing a space or colon as an L:var — those are stock SimVars (force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely). → [architecture.md](../architecture.md)
+- Never register a STOCK SimVar as an L:var. Stock SimVar names usually carry a space or a colon index (`INTERACTIVE POINT OPEN:n`, `LIGHT TAXI:2`), and forcing one through the L:var path corrupts SimConnect registration: force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely. The space or colon alone does not decide it, though: an add-on's real L:vars can be colon-indexed (FBW's `A32NX_FUEL_USED:1`, `A32NX_AUTOTHRUST_TLA:1`; A380-26, where the old "any colon = SimVar" rule left the SD fuel pages blank) or contain spaces. Classify by the add-on's own prefix or source; an aircraft whose L:vars contain a space or a colon says so in its own rules. Writing is a separate guard: `SetLVar` keeps space and colon names off the calculator route (SIM-12). → [architecture.md](../architecture.md)
+
+Narrowed 2026-10-07. The original text, verbatim from CLAUDE.md as of `1f37801a`, was: "Never register a name containing a space or colon as an L:var — those are stock SimVars (force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely)." It contradicted A380-26 on main, and the space-named L:vars of the A220 and the colon-indexed L:vars of the DA40 in their open PRs (#244, #242).
 
 ## VAR-3
 
