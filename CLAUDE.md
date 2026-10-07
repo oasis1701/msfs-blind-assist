@@ -113,7 +113,7 @@ Screen readers already announce every UI control interaction, so the app NEVER a
 ## Quick Reference
 
 - Adding a panel control, background monitoring, an H-variable, a hotkey, an aircraft or a feature: follow its workflow in [adding-features.md](docs/adding-features.md); the short forms are in [QUICK-REFERENCE.md](docs/QUICK-REFERENCE.md). The rules for aircraft code load when you Read it.
-- **`SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06):** Every L:var write is routed through the MobiFlight calculator path when connected (gated on `CalcPathVerified`), never the native data-def write. Full routing rules, the H:/dotted event queue, and the RPN invariant-formatting rule: [docs/architecture.md](docs/architecture.md).
+- **`SimConnectManager.SetLVar` — GLOBAL MobiFlight calc-path routing (2026-06):** Every L:var write is routed through the MobiFlight calculator path when connected (gated on `CalcPathVerified`), never the native data-def write, except a name with a space or colon, which takes the data-def write even when it is a real L:var ([SIM-12]). Full routing rules, the H:/dotted event queue, and the RPN invariant-formatting rule: [docs/architecture.md](docs/architecture.md).
 
 ## Where things live
 

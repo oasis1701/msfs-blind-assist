@@ -208,6 +208,7 @@ Use `FlyByWireA320Definition.cs` as template.
        _ => new FlyByWireA320Definition()
    };
    ```
+   Then wire it into the code every aircraft shares: the menu checkmark in `UpdateAircraftMenuItems()`, the Ctrl+M monitor manager, the Shift+M and EFB branches and the hotkey list. The list is under Step 4 of [Workflow 5](adding-features.md#workflow-5-adding-new-aircraft).
 6. Give it its doc, its row in CLAUDE.md's "Where things live" and its rule file (`.claude/rules/<aircraft>.md`): see Step 6 of [Workflow 5](adding-features.md#workflow-5-adding-new-aircraft)
 
 ### Add New Feature
