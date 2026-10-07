@@ -1,0 +1,264 @@
+---
+title: Inputs
+description: |
+  Index of all simulator input events that the A220 listens to, organized by system.
+  These can be used to create button and axis bindings in the simulator's control settings.
+---
+
+## Brakes
+
+Brake pedal / autobrake input (`BrakeVars`, feeds `BrakeControls`):
+
+| Event | Description |
+|---|---|
+| `BRAKES` | Applies brakes; ramps the commanded brake pressure up over time while held/repeated, and releases it back down once no longer pressed. |
+| `BRAKES_LEFT` | Applies the left brake; in this implementation it ramps the same shared commanded brake pressure as `BRAKES`. |
+| `BRAKES_RIGHT` | Applies the right brake; in this implementation it ramps the same shared commanded brake pressure as `BRAKES`. |
+| `PARKING_BRAKES` | Toggles the parking brake. |
+| `PARKING_BRAKE_SET` | Sets the parking brake to an explicit on/off value. |
+| `AUTOBRAKE_DISARM` | Disarms the autobrake. |
+| `AUTOBRAKE_HI_SET` | Selects the HI autobrake setting. |
+| `AUTOBRAKE_MED_SET` | Selects the MED autobrake setting. |
+| `AUTOBRAKE_LO_SET` | Selects the LO autobrake setting. |
+| `INCREASE_AUTOBRAKE_CONTROL` | Steps the autobrake selector up one setting. |
+| `DECREASE_AUTOBRAKE_CONTROL` | Steps the autobrake selector down one setting. |
+| `SET_AUTOBRAKE_CONTROL` | Sets the autobrake selector directly to a given level. |
+
+
+## Electronic Flight Control System (EFCS)
+
+### Pitch/Roll/Rudder/Spoiler Inceptor Transformers (RVDT)
+
+Each `RotaryTransformer` instance converts a trio of simulator input events (an absolute axis-set event, plus increment/decrement step events) into a normalized 0–1 (or -1–1) position. There are two instances: pitch and roll.
+
+| Event | Description |
+|---|---|
+| `AXIS_ELEVATOR_SET` | Sets the pitch sidestick input axis directly (absolute), used to drive the elevator inceptor position. |
+| `ELEVATOR_UP` | Steps the pitch input toward nose-up by a fixed amount per tick while received. |
+| `ELEVATOR_DOWN` | Steps the pitch input toward nose-down by a fixed amount per tick while received. |
+| `AXIS_AILERONS_SET` | Sets the roll sidestick input axis directly (absolute), used to drive the aileron inceptor position. |
+| `AILERONS_RIGHT` | Steps the roll input toward right by a fixed amount per tick while received. |
+| `AILERONS_LEFT` | Steps the roll input toward left by a fixed amount per tick while received. |
+
+`RudderTransformer` (rudder pedals):
+
+| Event | Description |
+|---|---|
+| `AXIS_RUDDER_SET` | Sets the rudder pedal input axis directly (absolute). |
+| `RUDDER_RIGHT` | Steps the rudder pedal input toward right by a fixed amount per tick while received. |
+| `RUDDER_LEFT` | Steps the rudder pedal input toward left by a fixed amount per tick while received. |
+| `RUDDER_AXIS_PLUS` | Sets the rudder pedal input axis directly (positive/inverted axis convention). |
+| `RUDDER_AXIS_MINUS` | Sets the rudder pedal input axis directly (negative/inverted axis convention). |
+
+`SpoilerTransformer` (spoiler/speedbrake lever):
+
+| Event | Description |
+|---|---|
+| `SPOILERS_ARM_OFF` | Consumed (masked) to prevent the stock spoiler-arm-off event from affecting the default flight model; not otherwise used. |
+| `SPOILERS_ARM_ON` | Consumed (masked) to prevent the stock spoiler-arm-on event from affecting the default flight model; not otherwise used. |
+| `SPOILERS_ARM_SET` | Consumed (masked) to prevent the stock spoiler-arm-set event from affecting the default flight model; not otherwise used. |
+| `SPOILERS_ARM_TOGGLE` | Consumed (masked) to prevent the stock spoiler-arm-toggle event from affecting the default flight model; not otherwise used. |
+| `AXIS_SPOILER_SET` | Sets the spoiler lever input axis directly (absolute). |
+| `SPOILERS_SET` | Sets the spoiler lever input axis directly (absolute, alternate event). |
+| `SPOILERS_DEC` | Steps the spoiler lever input down by a fixed amount when received. |
+| `SPOILERS_INC` | Steps the spoiler lever input up by a fixed amount when received. |
+| `SPOILERS_OFF` | Sets the spoiler lever fully retracted. |
+| `SPOILERS_ON` | Sets the spoiler lever fully deployed. |
+| `SPOILERS_TOGGLE` | Toggles the spoiler lever between fully retracted and fully deployed. |
+
+Elevator/aileron/rudder trim switches (`TrimSwitch`, one instance each for pitch, aileron, and rudder trim):
+
+| Event | Description |
+|---|---|
+| `AXIS_ELEV_TRIM_SET` | Consumed (masked) to sink the stock elevator-trim axis-set event; its value is not used, only the pitch trim switch inputs drive trim. |
+| `ELEV_TRIM_DN` | Received when the pitch trim switch is moved nose-down; drives the trim rate input this tick. |
+| `ELEV_TRIM_UP` | Received when the pitch trim switch is moved nose-up; drives the trim rate input this tick. |
+| `AILERON_TRIM_SET_EX1` | Consumed (masked) to sink the stock aileron-trim axis-set event; its value is not used, only the aileron trim switch inputs drive trim. |
+| `AILERON_TRIM_RIGHT` | Received when the aileron trim switch is moved right; drives the trim rate input this tick. |
+| `AILERON_TRIM_LEFT` | Received when the aileron trim switch is moved left; drives the trim rate input this tick. |
+| `RUDDER_TRIM_SET_EX1` | Consumed (masked) to sink the stock rudder-trim axis-set event; its value is not used, only the rudder trim switch inputs drive trim. |
+| `RUDDER_TRIM_RIGHT` | Received when the rudder trim switch is moved right; drives the trim rate input this tick. |
+| `RUDDER_TRIM_LEFT` | Received when the rudder trim switch is moved left; drives the trim rate input this tick. |
+
+Autopilot disconnect / sidestick priority button (`Button`):
+
+| Event | Description |
+|---|---|
+| `AUTOPILOT_OFF` | Autopilot disconnect / priority button press; triggers the AP-disengage and sidestick priority logic. |
+| `AUTOPILOT_DISENGAGE_SET` | Alternate autopilot-disengage event consumed by the same priority button logic. |
+
+## Flight Control Panel (FCP)
+
+The autopilot/flight-guidance control panel: physical panel state (brightness, backlight, knob/button inputs) plus flight guidance mode annunciations.
+
+| Event | Description |
+|---|---|
+| `AP_MASTER` | Toggles the autopilot master on/off. |
+| `AUTO_THROTTLE_ARM` | Arms the autothrottle. |
+| `AP_SPD_VAR_INC` | Increments the selected speed (knob right). |
+| `AP_SPD_VAR_DEC` | Decrements the selected speed (knob left). |
+| `AP_MANAGED_SPEED_IN_MACH_TOGGLE` | Toggles managed speed units between knots and Mach. |
+| `HEADING_BUG_INC` | Increments the heading bug (knob right). |
+| `HEADING_BUG_DEC` | Decrements the heading bug (knob left). |
+| `HEADING_BUG_SET` | Syncs the heading bug to the current heading. |
+| `AP_HDG_HOLD` | Engages HDG (heading select) mode. |
+| `AP_NAV1_HOLD` | Engages LNAV/NAV mode. |
+| `AP_APR_HOLD` | Engages APPR (approach) mode. |
+| `AP_MAX_BANK_ANGLE_SET` | Toggles half-bank mode. |
+| `AP_ALT_VAR_INC` | Increments the selected altitude (knob right). |
+| `AP_ALT_VAR_DEC` | Decrements the selected altitude (knob left). |
+| `FLIGHT_LEVEL_CHANGE` | Engages FLC (flight level change) mode. |
+| `AP_ALT_HOLD` | Engages altitude hold mode. |
+| `AP_VS_VAR_INC` | Increments the selected vertical speed (knob up). |
+| `AP_VS_VAR_DEC` | Decrements the selected vertical speed (knob down). |
+| `AP_VS_HOLD` | Engages vertical speed mode. |
+| `AP_ATT_HOLD` | Engages flight-path-angle/pitch-hold mode. |
+
+## Engines
+
+| Event | Description |
+|---|---|
+| `ENGINE_MASTER_1_SET`<br/>`ENGINE_MASTER_2_SET` | Directly sets the engine master switch. |
+| `ENGINE_MASTER_1_TOGGLE`<br/>`ENGINE_MASTER_2_TOGGLE` | Toggles the engine master switch. |
+| `ANTI_ICE_SET_ENG1`<br/>`ANTI_ICE_SET_ENG2` | Commands the engine cowl anti-ice (CAIS) valve. |
+
+| Event | Description |
+|---|---|
+| `AXIS_THROTTLE_MINUS` | Standard MSFS event: sets the combined throttle axis from a `-` (decreasing) axis input. |
+| `AXIS_THROTTLE_PLUS` | Standard MSFS event: sets the combined throttle axis from a `+` (increasing) axis input. |
+| `AXIS_THROTTLE_SET` | Standard MSFS event: sets the combined throttle axis position directly. |
+| `AXIS_THROTTLE1_SET` | Standard MSFS event: sets throttle 1's axis position directly. |
+| `AXIS_THROTTLE2_SET` | Standard MSFS event: sets throttle 2's axis position directly. |
+| `DECREASE_THROTTLE` | Standard MSFS event: decreases the combined throttle by one step. |
+| `INCREASE_THROTTLE` | Standard MSFS event: increases the combined throttle by one step. |
+| `THROTTLE_INCR` | Standard MSFS event: increases the combined throttle by one step. |
+| `THROTTLE_DECR` | Standard MSFS event: decreases the combined throttle by one step. |
+| `THROTTLE1_DECR` | Standard MSFS event: decreases throttle 1 by one step. |
+| `THROTTLE2_DECR` | Standard MSFS event: decreases throttle 2 by one step. |
+| `THROTTLE_10` | Standard MSFS event: sets the combined throttle to 10%. |
+| `THROTTLE_20` | Standard MSFS event: sets the combined throttle to 20%. |
+| `THROTTLE_30` | Standard MSFS event: sets the combined throttle to 30%. |
+| `THROTTLE_40` | Standard MSFS event: sets the combined throttle to 40%. |
+| `THROTTLE_50` | Standard MSFS event: sets the combined throttle to 50%. |
+| `THROTTLE_60` | Standard MSFS event: sets the combined throttle to 60%. |
+| `THROTTLE_70` | Standard MSFS event: sets the combined throttle to 70%. |
+| `THROTTLE_80` | Standard MSFS event: sets the combined throttle to 80%. |
+| `THROTTLE_90` | Standard MSFS event: sets the combined throttle to 90%. |
+| `THROTTLE_AXIS_SET_EX1` | Standard MSFS event: sets the combined throttle axis position (extended range variant). |
+| `THROTTLE1_AXIS_SET_EX1` | Standard MSFS event: sets throttle 1's axis position (extended range variant). |
+| `THROTTLE2_AXIS_SET_EX1` | Standard MSFS event: sets throttle 2's axis position (extended range variant). |
+| `THROTTLE_CUT` | Standard MSFS event: cuts the combined throttle to idle/off. |
+| `THROTTLE1_CUT` | Standard MSFS event: cuts throttle 1 to idle/off. |
+| `THROTTLE2_CUT` | Standard MSFS event: cuts throttle 2 to idle/off. |
+| `THROTTLE_CUT_EX1` | Standard MSFS event: cuts the combined throttle to idle/off (extended range variant). |
+| `THROTTLE1_CUT_EX1` | Standard MSFS event: cuts throttle 1 to idle/off (extended range variant). |
+| `THROTTLE2_CUT_EX1` | Standard MSFS event: cuts throttle 2 to idle/off (extended range variant). |
+| `THROTTLE_DECR_SMALL` | Standard MSFS event: decreases the combined throttle by a small step. |
+| `THROTTLE1_DECR_SMALL` | Standard MSFS event: decreases throttle 1 by a small step. |
+| `THROTTLE2_DECR_SMALL` | Standard MSFS event: decreases throttle 2 by a small step. |
+| `THROTTLE_DECREASE_EX1` | Standard MSFS event: decreases the combined throttle by one step (extended range variant). |
+| `THROTTLE1_DECREASE_EX1` | Standard MSFS event: decreases throttle 1 by one step (extended range variant). |
+| `THROTTLE2_DECREASE_EX1` | Standard MSFS event: decreases throttle 2 by one step (extended range variant). |
+| `THROTTLE_DECREASE_SMALL_EX1` | Standard MSFS event: decreases the combined throttle by a small step (extended range variant). |
+| `THROTTLE1_DECREASE_SMALL_EX1` | Standard MSFS event: decreases throttle 1 by a small step (extended range variant). |
+| `THROTTLE2_DECREASE_SMALL_EX1` | Standard MSFS event: decreases throttle 2 by a small step (extended range variant). |
+| `THROTTLE_FULL` | Standard MSFS event: sets the combined throttle to full. |
+| `THROTTLE1_FULL` | Standard MSFS event: sets throttle 1 to full. |
+| `THROTTLE2_FULL` | Standard MSFS event: sets throttle 2 to full. |
+| `THROTTLE_FULL_EX1` | Standard MSFS event: sets the combined throttle to full (extended range variant). |
+| `THROTTLE1_FULL_EX1` | Standard MSFS event: sets throttle 1 to full (extended range variant). |
+| `THROTTLE2_FULL_EX1` | Standard MSFS event: sets throttle 2 to full (extended range variant). |
+| `THROTTLE_INCREASE_EX1` | Standard MSFS event: increases the combined throttle by one step (extended range variant). |
+| `THROTTLE1_INCR` | Standard MSFS event: increases throttle 1 by one step. |
+| `THROTTLE2_INCR` | Standard MSFS event: increases throttle 2 by one step. |
+| `THROTTLE1_INCREASE_EX1` | Standard MSFS event: increases throttle 1 by one step (extended range variant). |
+| `THROTTLE2_INCREASE_EX1` | Standard MSFS event: increases throttle 2 by one step (extended range variant). |
+| `THROTTLE_INCREASE_SMALL_EX1` | Standard MSFS event: increases the combined throttle by a small step (extended range variant). |
+| `THROTTLE1_INCR_SMALL` | Standard MSFS event: increases throttle 1 by a small step. |
+| `THROTTLE2_INCR_SMALL` | Standard MSFS event: increases throttle 2 by a small step. |
+| `THROTTLE1_INCREASE_SMALL_EX1` | Standard MSFS event: increases throttle 1 by a small step (extended range variant). |
+| `THROTTLE2_INCREASE_SMALL_EX1` | Standard MSFS event: increases throttle 2 by a small step (extended range variant). |
+| `THROTTLE_SET` | Standard MSFS event: sets the combined throttle position directly. |
+| `THROTTLE1_SET` | Standard MSFS event: sets throttle 1's position directly. |
+| `THROTTLE2_SET` | Standard MSFS event: sets throttle 2's position directly. |
+| `AUTO_THROTTLE_TO_GA` | Standard MSFS event: commands autothrottle TO/GA (takeoff/go-around) power. |
+| `AUTO_THROTTLE_DISCONNECT` | Standard MSFS event: disconnects the autothrottle. |
+| `SET_REVERSE_THRUST_OFF` | Standard MSFS event: turns off reverse thrust for both engines. |
+| `SET_REVERSE_THRUST_ON` | Standard MSFS event: turns on reverse thrust for both engines. |
+| `SET_THROTTLE1_REVERSE_THRUST_OFF` | Standard MSFS event: turns off reverse thrust for engine 1. |
+| `SET_THROTTLE1_REVERSE_THRUST_ON` | Standard MSFS event: turns on reverse thrust for engine 1. |
+| `SET_THROTTLE2_REVERSE_THRUST_OFF` | Standard MSFS event: turns off reverse thrust for engine 2. |
+| `SET_THROTTLE2_REVERSE_THRUST_ON` | Standard MSFS event: turns on reverse thrust for engine 2. |
+| `THROTTLE_REVERSE_THRUST_TOGGLE` | Standard MSFS event: toggles reverse thrust for both engines. |
+| `TOGGLE_THROTTLE1_REVERSE_THRUST` | Standard MSFS event: toggles reverse thrust for engine 1. |
+| `TOGGLE_THROTTLE2_REVERSE_THRUST` | Standard MSFS event: toggles reverse thrust for engine 2. |
+| `THROTTLE_REVERSE_THRUST_HOLD` | Standard MSFS event: holds reverse thrust engaged for both engines while held. |
+| `THROTTLE1_REVERSE_THRUST_HOLD` | Standard MSFS event: holds reverse thrust engaged for engine 1 while held. |
+| `THROTTLE2_REVERSE_THRUST_HOLD` | Standard MSFS event: holds reverse thrust engaged for engine 2 while held. |
+
+## Flaps
+
+| Event | Description |
+|---|---|
+| `AXIS_FLAPS_SET` | Standard MSFS event: sets the flap lever axis position, mapped to the nearest detent. |
+| `FLAPS_SET` | Standard MSFS event: sets the flap lever position, mapped to the nearest detent. |
+| `FLAPS_1` | Standard MSFS event: sets the flap lever to detent 1. |
+| `FLAPS_2` | Standard MSFS event: sets the flap lever to detent 2. |
+| `FLAPS_3` | Standard MSFS event: sets the flap lever to detent 3. |
+| `FLAPS_DECR` | Standard MSFS event: moves the flap lever one detent down. |
+| `FLAPS_INCR` | Standard MSFS event: moves the flap lever one detent up. |
+| `FLAPS_UP` | Standard MSFS event: moves the flap lever fully up (detent 0). |
+| `FLAPS_DOWN` | Standard MSFS event: moves the flap lever fully down (detent 5). |
+
+## Landing Gear
+
+| Event | Description |
+|---|---|
+| `AXIS_STEERING_SET` | Nose-wheel tiller/steering axis key event; sets absolute steering position from the tiller axis input. |
+| `STEERING_SET` | Nose-wheel steering key event; sets absolute steering position (also used as the tiller's output that reports the commanded steering position back to the simulator). |
+| `STEERING_INC` | Nose-wheel steering key event; increments the commanded steering position. |
+| `STEERING_DEC` | Nose-wheel steering key event; decrements the commanded steering position. |
+
+## ATC / Transponder
+
+| Event | Description |
+|---|---|
+| `XPNDR_1_INC` | Increments squawk code digit 1. |
+| `XPNDR_1_DEC` | Decrements squawk code digit 1. |
+| `XPNDR_10_INC` | Increments squawk code digit 2 (tens). |
+| `XPNDR_10_DEC` | Decrements squawk code digit 2 (tens). |
+| `XPNDR_100_INC` | Increments squawk code digit 3 (hundreds). |
+| `XPNDR_100_DEC` | Decrements squawk code digit 3 (hundreds). |
+| `XPNDR_1000_INC` | Increments squawk code digit 4 (thousands). |
+| `XPNDR_1000_DEC` | Decrements squawk code digit 4 (thousands). |
+| `XPNDR_INC_CARRY` | Carries a digit-1 increment into digit 2 of the squawk code. |
+| `XPNDR_DEC_CARRY` | Carries a digit-1 decrement into digit 2 of the squawk code. |
+| `XPNDR_SET` | Reads an externally-set BCD squawk code if one was posted this tick; otherwise re-sends the transponder's current BCD code so other apps stay in sync. |
+| `XPNDR_IDENT_ON` | Triggers the sim's "transponder IDENT" key event when the crew presses the IDENT button. |
+
+## VHF Radio (COM/NAV/Marker Beacon)
+
+`{id}` below is the radio instance identifier used to build a family of tuning key events: `COM1`/`COM2`/`COM3` for the COM radios, `NAV1`/`NAV2` for the NAV radios. `{N}` is the matching numeric index (1-3 for COM, 1-2 for NAV).
+
+| Event | Description |
+|---|---|
+| `COM_STBY_RADIO_SWAP`<br/>`COM1_RADIO_SWAP`<br/>`COM2_RADIO_SWAP`<br/>`COM3_RADIO_SWAP` | Swaps the active and standby frequencies (COM1 also accepts `COM_STBY_RADIO_SWAP`). |
+| `COM_RADIO_SET`<br/>`COM2_RADIO_SET`<br/>`COM3_RADIO_SET` | Sets the active frequency from a BCD-encoded value. |
+| `COM_RADIO_SET_HZ`<br/>`COM2_RADIO_SET_HZ`<br/>`COM3_RADIO_SET_HZ` | Reads and writes the active frequency in raw Hz: accepts external sets and re-sends the radio's current active frequency each tick. |
+| `COM_RADIO_WHOLE_INC`<br/>`COM2_RADIO_WHOLE_INC`<br/>`COM3_RADIO_WHOLE_INC` | Increments the whole MHz digit of the active frequency. |
+| `COM_RADIO_WHOLE_DEC`<br/>`COM2_RADIO_WHOLE_DEC`<br/>`COM3_RADIO_WHOLE_DEC` | Decrements the whole MHz digit of the active frequency. |
+| `COM_RADIO_FRACT_INC`<br/>`COM2_RADIO_FRACT_INC`<br/>`COM3_RADIO_FRACT_INC` | Increments the fractional (kHz) digit of the active frequency. |
+| `COM_RADIO_FRACT_INC_CARRY`<br/>`COM2_RADIO_FRACT_INC_CARRY`<br/>`COM3_RADIO_FRACT_INC_CARRY` | Increments the fractional digit of the active frequency and carries into the whole MHz digit. |
+| `COM_RADIO_FRACT_DEC`<br/>`COM2_RADIO_FRACT_DEC`<br/>`COM3_RADIO_FRACT_DEC` | Decrements the fractional (kHz) digit of the active frequency. |
+| `COM_RADIO_FRACT_DEC_CARRY`<br/>`COM2_RADIO_FRACT_DEC_CARRY`<br/>`COM3_RADIO_FRACT_DEC_CARRY` | Decrements the fractional digit of the active frequency and carries into the whole MHz digit. |
+| `COM_STBY_RADIO_SET`<br/>`COM2_STBY_RADIO_SET`<br/>`COM3_STBY_RADIO_SET` | Sets the standby frequency from a BCD-encoded value. |
+| `COM_STBY_RADIO_SET_HZ`<br/>`COM2_STBY_RADIO_SET_HZ`<br/>`COM3_STBY_RADIO_SET_HZ` | Reads and writes the standby frequency in raw Hz: accepts external sets and re-sends the radio's current standby frequency each tick. |
+| `NAV1_STBY_SET`<br/>`NAV2_STBY_SET` | Sets the standby frequency from a BCD-encoded value. |
+| `NAV1_STBY_SET_HZ`<br/>`NAV2_STBY_SET_HZ` | Reads and writes the standby frequency in raw Hz: accepts external sets and re-sends the radio's current standby frequency each tick. |
+
+## Simulation / World Environment
+
+| Event | Description |
+|---|---|
+| `BAROMETRIC` | Sets barometric pressure to auto. |
+| `PAUSE_ON` | Sends the sim's pause-state key event so other systems can react while paused. |
