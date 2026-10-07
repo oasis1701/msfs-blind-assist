@@ -12,6 +12,7 @@ paths:
   - "MSFSBlindAssist/FirstOfficer/CenterFuelPumpAutomation.cs"
   - "MSFSBlindAssist/FirstOfficer/CenterPump*.cs"
   - "MSFSBlindAssist/FirstOfficer/FuelSystemLogic.cs"
+  - "MSFSBlindAssist/FirstOfficer/EmerExitLightSequence.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/Pmdg*.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/IFly737*.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/Fo777*.cs"
@@ -24,6 +25,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/FuelSystemLogic*.cs"
   - "tests/MSFSBlindAssist.Tests/GroundPowerGate*.cs"
   - "tests/MSFSBlindAssist.Tests/SpeedbrakeArmLadder*.cs"
+  - "tests/MSFSBlindAssist.Tests/EmerExitLightSequence*.cs"
 ---
 # First Officer rules: PMDG 777/737, iFly 737 MAX8, centre fuel pumps
 
