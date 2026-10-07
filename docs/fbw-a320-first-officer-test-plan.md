@@ -143,7 +143,10 @@ just the FO's own narration.
     radar/predictive windshear OFF, strobes AUTO, landing lights OFF, nose light → TAXI, APU
     start for the gate (waits for AVAIL; the AVAIL wait, not the master write, ticks "APU: ON
     and available", so if the APU never becomes available the wait times out, is skipped
-    aloud, and the line stays unticked after the flow completes), anti-ice OFF.
+    aloud, and the line stays unticked after the flow completes), anti-ice OFF. The After
+    Landing Checklist's "Radar and predictive windshear: OFF" ticks only after both the radar and
+    the predictive windshear read OFF (the flow's "Radar and predictive windshear: OFF" check),
+    never on the radar step alone.
 12. **Shutdown / Parking**: parking brake ON, APU bleed ON, engine masters OFF (confirm the flow
     waits for `FO_ENGINES_OFF` before continuing), transponder STBY and **TCAS: STANDBY** (the
     new line: tick it by hand with TCAS on TA/RA and confirm it moves to standby), seatbelt

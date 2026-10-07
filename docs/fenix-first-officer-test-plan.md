@@ -219,7 +219,10 @@ the other six read-backs.
    exercised in Part C).
 2. **After Landing**: landing lights retract to OFF, spoilers disarm, APU master ON (started
    for ground power handoff), weather radar OFF, predictive windshear OFF, transponder
-   STANDBY, strobes AUTO, nose light TAXI, engine/wing anti-ice OFF as applicable.
+   STANDBY, strobes AUTO, nose light TAXI, engine/wing anti-ice OFF as applicable. The After
+   Landing Checklist's "Radar and predictive windshear: OFF" ticks only after both the radar and
+   the predictive windshear read OFF (the flow's "Radar and predictive windshear: OFF" check),
+   never on the radar step alone.
 3. **Shutdown**: parking brake ON, APU bleed ON, engine 1/2 masters OFF, **TCAS: STANDBY**,
    seatbelt signs OFF, beacon OFF, fuel pumps ALL OFF, nose light OFF, runway turnoff lights
    OFF, **cockpit lighting bright**, **ECAM page → door**.

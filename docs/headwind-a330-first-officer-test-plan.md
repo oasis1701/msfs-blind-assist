@@ -116,4 +116,9 @@ flow, the **After Start Checklist** after After Start, the **Approach Checklist*
 and the **After Landing Checklist** after After Landing. Ticking a line there to confirm it
 un-ticks it ("Windows: CLOSED (both): unchecked") and re-opens that list, so its self-ticking
 lines follow the aircraft again. For L12, judge "Rudder trim: NEUTRAL" before After Start runs,
-or after such an untick: right after the flow it reads ticked whatever the trim is.
+or after such an untick: right after the flow it reads ticked whatever the trim is when the
+flow's "Rudder trim: RESET" step was sent (a reset that could not be sent leaves the line
+unticked and following the trim). When After Landing runs, the After Landing Checklist's
+"Radar and predictive windshear: OFF" ticks only after both the radar and the predictive
+windshear read OFF (the flow's "Radar and predictive windshear: OFF" check), never on the radar
+step alone.
