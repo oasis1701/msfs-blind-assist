@@ -85,6 +85,13 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
                 // tests above (must not fall through to the generic SetLVar dispatch).
                 if (step.EventName == "CVR_TEST") return await CvrTestAsync();
                 if (step.EventName == "TO_CONFIG_TEST") return await TakeoffConfigTestAsync();
+                // COCKPIT_LIGHT_SCENE_<NAME>: one lighting scene (the Fenix's pseudo-key, spelled the
+                // same). Not a control the definition knows, so it is intercepted HERE, before the
+                // generic dispatch: HandleUIVariableSet claims no such key, so DispatchAsync would
+                // refuse it (FOA-4), and SetCockpitLighting writes each knob through DispatchAsync
+                // itself, so it must run outside the gate rather than from DispatchCoreAsync.
+                if (TryGetCockpitLightScene(step.EventName, out var lightScene))
+                    return await SetCockpitLighting(lightScene);
                 return await DispatchAsync(step.EventName, step.TargetValue);
 
             case FlowStepActionType.SetSwitchMultiple:
@@ -229,8 +236,25 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
 
     public enum CockpitLightScene { DayPrep, DimFlight, ParkingBright, Off }
 
+    private const string CockpitLightScenePrefix = "COCKPIT_LIGHT_SCENE_";
+
+    /// <summary>The flow-step pseudo-key for <paramref name="scene"/>, e.g.
+    /// <c>COCKPIT_LIGHT_SCENE_DAYPREP</c> — the Fenix's spelling for the same scene name, so the
+    /// A320-family flows read alike; intercepted in <see cref="ExecuteStepAsync"/>.</summary>
+    public static string CockpitLightSceneKey(CockpitLightScene scene) =>
+        CockpitLightScenePrefix + scene.ToString().ToUpperInvariant();
+
+    private static readonly Dictionary<string, CockpitLightScene> SceneByKey =
+        Enum.GetValues<CockpitLightScene>().ToDictionary(CockpitLightSceneKey, s => s);
+
+    /// <summary>True when <paramref name="key"/> is one of the scene pseudo-keys.</summary>
+    public static bool TryGetCockpitLightScene(string key, out CockpitLightScene scene) =>
+        SceneByKey.TryGetValue(key, out scene);
+
     /// <summary>Batched, spaced cockpit-lighting scene write (per spec §4.1). Values tunable
-    /// in-sim. Uses the def's brightness-knob keys (ann/dome/compass/integ/flood).</summary>
+    /// in-sim. Uses the def's brightness-knob keys (ann/dome/compass/integ/flood). True only
+    /// when every write went out, so a flow step that delivers the scene never reports success
+    /// over knobs it did not move.</summary>
     public async Task<bool> SetCockpitLighting(CockpitLightScene scene)
     {
         (int ann, int dome, int compass, int integ, int flood) = scene switch
@@ -241,16 +265,16 @@ public sealed class FbwA320ActionExecutor : IFoActionExecutor
             CockpitLightScene.Off           => (1, 0,   0, 0,   0),
             _                               => (1, 100, 1, 100, 50),
         };
-        await Set("A32NX_OVHD_INTLT_ANN", ann);
-        await Set("A32NX_OVHD_INTLT_DOME", dome);
-        await Set("A32NX_STBY_COMPASS_LIGHT_TOGGLE", compass);
-        await Set("BRIGHT_GLARESHIELD_INTEG_SET", integ);
-        await Set("BRIGHT_OVERHEAD_INTEG_SET", integ);
-        await Set("BRIGHT_MAINPANEL_SET", flood);
-        await Set("BRIGHT_PEDESTAL_SET", flood);
-        await Set("BRIGHT_GLARESHIELD_CAPT_SET", flood);
-        await Set("BRIGHT_GLARESHIELD_FO_SET", flood);
-        return true;
+        bool ok = await Set("A32NX_OVHD_INTLT_ANN", ann);
+        ok &= await Set("A32NX_OVHD_INTLT_DOME", dome);
+        ok &= await Set("A32NX_STBY_COMPASS_LIGHT_TOGGLE", compass);
+        ok &= await Set("BRIGHT_GLARESHIELD_INTEG_SET", integ);
+        ok &= await Set("BRIGHT_OVERHEAD_INTEG_SET", integ);
+        ok &= await Set("BRIGHT_MAINPANEL_SET", flood);
+        ok &= await Set("BRIGHT_PEDESTAL_SET", flood);
+        ok &= await Set("BRIGHT_GLARESHIELD_CAPT_SET", flood);
+        ok &= await Set("BRIGHT_GLARESHIELD_FO_SET", flood);
+        return ok;
     }
 
     private async Task PaceAsync()

@@ -85,6 +85,13 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
                 // tests above (must not fall through to the generic SetLVar dispatch).
                 if (step.EventName == "CVR_TEST") return await CvrTestAsync();
                 if (step.EventName == "TO_CONFIG_TEST") return await TakeoffConfigTestAsync();
+                // COCKPIT_LIGHT_SCENE_<NAME>: one lighting scene (the Fenix's pseudo-key, spelled the
+                // same). Not a control the definition knows, so it is intercepted HERE, before the
+                // generic dispatch: HandleUIVariableSet claims no such key, so DispatchAsync would
+                // refuse it (FOA-4), and SetCockpitLighting writes each pot through DispatchAsync
+                // itself, so it must run outside the gate rather than from DispatchCoreAsync.
+                if (TryGetCockpitLightScene(step.EventName, out var lightScene))
+                    return await SetCockpitLighting(lightScene);
                 return await DispatchAsync(step.EventName, step.TargetValue);
 
             case FlowStepActionType.SetSwitchMultiple:
@@ -235,6 +242,21 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
 
     public enum CockpitLightScene { DayPrep, DimFlight, ParkingBright, Off }
 
+    private const string CockpitLightScenePrefix = "COCKPIT_LIGHT_SCENE_";
+
+    /// <summary>The flow-step pseudo-key for <paramref name="scene"/>, e.g.
+    /// <c>COCKPIT_LIGHT_SCENE_DAYPREP</c> — the A32NX's and the Fenix's spelling for the same
+    /// scene name, so the three flows read alike; intercepted in <see cref="ExecuteStepAsync"/>.</summary>
+    public static string CockpitLightSceneKey(CockpitLightScene scene) =>
+        CockpitLightScenePrefix + scene.ToString().ToUpperInvariant();
+
+    private static readonly Dictionary<string, CockpitLightScene> SceneByKey =
+        Enum.GetValues<CockpitLightScene>().ToDictionary(CockpitLightSceneKey, s => s);
+
+    /// <summary>True when <paramref name="key"/> is one of the scene pseudo-keys.</summary>
+    public static bool TryGetCockpitLightScene(string key, out CockpitLightScene scene) =>
+        SceneByKey.TryGetValue(key, out scene);
+
     /// <summary>
     /// The ordered (key, value) writes the A330 lighting scene makes — the SINGLE source
     /// of truth for this scene. <see cref="SetCockpitLighting"/> writes exactly this and
@@ -291,12 +313,15 @@ public sealed class HwA330ActionExecutor : IFoActionExecutor
 
     /// <summary>Batched, spaced cockpit-lighting scene write (per spec §4.1). Values tunable
     /// in-sim on <see cref="CockpitLightingPlan"/>, which is the only thing this writes —
-    /// keep it that way, or the plan stops describing what the aircraft is sent.</summary>
+    /// keep it that way, or the plan stops describing what the aircraft is sent. True only when
+    /// every write went out, so a flow step that delivers the scene never reports success over
+    /// pots it did not move.</summary>
     public async Task<bool> SetCockpitLighting(CockpitLightScene scene)
     {
+        bool ok = true;
         foreach (var (key, val) in CockpitLightingPlan(scene))
-            await Set(key, val);
-        return true;
+            ok &= await Set(key, val);
+        return ok;
     }
 
     private async Task PaceAsync()

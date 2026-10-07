@@ -23,9 +23,10 @@ using Step = Models.FlowStep<FenixStateEvaluator>;
 ///   shutdown bright, secure off): annunciator S_OH_IN_LT_ANN_LT 0=Dim/1=Bright/2=Test (NOT
 ///   the A32NX's 1=Bright/2=Dim; never write 2, TEST lights the gear reds), dome
 ///   S_OH_INT_LT_DOME 0=Off/1=Dim/2=Bright, and the COCKPIT_LIGHT_SCENE_* pseudo-key for the
-///   four brightness knobs (FenixActionExecutor.CockpitLightingWrites). The A32NX flow sets
-///   only its annunciator and leaves dome and scene to checklist lines; here each line has its
-///   own step (FO-7). No standby-compass light on the Fenix, so no compass step.
+///   four brightness knobs (FenixActionExecutor.CockpitLightingWrites). Each line has its own
+///   step (FO-7), in the order the A32NX flow uses for the same points (its annunciator, dome and
+///   scene steps; it also has a standby-compass step). No standby-compass light on the Fenix, so
+///   no compass step.
 /// </summary>
 public static class FenixFlowDefinitions
 {

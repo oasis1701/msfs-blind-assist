@@ -52,10 +52,16 @@ using Step = Models.FlowStep<HwA330StateEvaluator>;
 ///   no dedicated key and stays a Captain reminder ("no F/CTL ECP key").
 /// - Takeoff flaps come from SimBrief (the Fenix's Provider step, AS_FLAPS); without a plan a
 ///   Captain reminder (AS_FLAPS_CAPT) speaks instead.
-/// - Cockpit lighting (§4.1): flow steps only pulse the ANN light key
-///   (A32NX_OVHD_INTLT_ANN: 1=Bright, 2=Dim) per phase; the full multi-var scene
-///   (dome/compass/integ/flood) is a Task 7 checklist CheckAction calling
-///   HwA330ActionExecutor.SetCockpitLighting directly (per the design brief).
+/// - Cockpit lighting (§4.1), at four points (power-up bright, after start dim, shutdown bright,
+///   secure off), one step per action line (FO-7), in the Fenix's order and identical to the
+///   A32NX's (HwA330ParityTests): the annunciator (A32NX_OVHD_INTLT_ANN: 1=Bright, 2=Dim), the
+///   dome (A32NX_OVHD_INTLT_DOME, a percentage: 100 bright / 20 dim / 0 off), the
+///   standby-compass light (A32NX_STBY_COMPASS_LIGHT_TOGGLE, a plain 0/1 L:var despite its
+///   name) and the scene. The scene step passes the COCKPIT_LIGHT_SCENE_* pseudo-key
+///   (HwA330ActionExecutor.CockpitLightSceneKey), which the executor maps to
+///   SetCockpitLighting — the same call the scene checklist line makes (FO-3), so it writes
+///   this airframe's four pots, not the A32NX's six. The dome and compass steps skip when the
+///   light already reads the line's own state; the scene has nothing readable to skip on.
 /// - Engine start waits for FlyByWire's own engine state (A32NX_ENGINE_STATE:n = On, read as the
 ///   synthetic FO_ENGn_RUNNING), not a raw N2 threshold: both FBW airframes publish the state
 ///   and the A339X's idle N2 is not known.
@@ -118,9 +124,14 @@ public static class HwA330FlowDefinitions
             // A32NX switch L:var's SYS2 value of 2. The > 0.5 test is correct for both.
             Done(Skip(SW("EPU_NAVLOGO", "Nav and logo lights: ON", "A32NX_LIGHTS_NAV_LOGO", 1),
                 s => s.GetValue("A32NX_LIGHTS_NAV_LOGO") > 0.5), "EPU_NAVLOGO"),
-            // ★ Cockpit lighting (spec §4.1): Bright for ground prep. Flow pulses only the
-            // ANN light key; the full scene is a Task 7 checklist CheckAction.
+            // ★ Cockpit lighting (spec §4.1): Bright for ground prep. Each lighting line has its
+            // own step (FO-7), in the Fenix's order: annunciator, dome, standby compass, scene.
             Done(SW("EPU_COCKPITLT", "Cockpit lights: set", "A32NX_OVHD_INTLT_ANN", 1), "EPU_COCKPITLT"),
+            Done(Skip(SW("EPU_DOME", "Dome light: bright", "A32NX_OVHD_INTLT_DOME", 100),
+                s => s.GetValue("A32NX_OVHD_INTLT_DOME") >= 90), "EPU_DOME"),
+            Done(Skip(SW("EPU_STBYCOMPASS", "Standby compass light: ON", "A32NX_STBY_COMPASS_LIGHT_TOGGLE", 1),
+                s => s.IsOn("A32NX_STBY_COMPASS_LIGHT_TOGGLE")), "EPU_STBYCOMPASS"),
+            Done(Scene("EPU_LTSCENE", HwA330ActionExecutor.CockpitLightScene.DayPrep), "EPU_LTSCENE"),
         }
     };
 
@@ -331,6 +342,11 @@ public static class HwA330FlowDefinitions
             Captain("AS_PITCHTRIM", "Set pitch trim per the loadsheet"),
             // ★ Cockpit lighting: Dim for taxi/flight (spec §4.1), + ECAM status page (spec §4)
             Done(SW("AS_COCKPITLT", "Cockpit lights: dim", "A32NX_OVHD_INTLT_ANN", 2), "AS_COCKPITLT"),
+            Done(Skip(SW("AS_DOME", "Dome light: dim", "A32NX_OVHD_INTLT_DOME", 20),
+                s => s.GetValue("A32NX_OVHD_INTLT_DOME") <= 30), "AS_DOME"),
+            Done(Skip(SW("AS_STBYCOMPASS", "Standby compass light: ON", "A32NX_STBY_COMPASS_LIGHT_TOGGLE", 1),
+                s => s.IsOn("A32NX_STBY_COMPASS_LIGHT_TOGGLE")), "AS_STBYCOMPASS"),
+            Done(Scene("AS_LTSCENE", HwA330ActionExecutor.CockpitLightScene.DimFlight), "AS_LTSCENE"),
             Done(SW("AS_ECAMSTS", "ECAM page: status", "ECAM_PAGE_STS", 1), "AS_ECAMSTS"),
         }
     };
@@ -529,6 +545,11 @@ public static class HwA330FlowDefinitions
             Done(SW("SD_COCKPITDOOR", "Cockpit door: unlocked", "A32NX_COCKPIT_DOOR_LOCKED", 0), "SD_COCKPITDOOR"),
             // ★ Cockpit lighting: Bright for parking, + ECAM door page (spec §4)
             Done(SW("SD_COCKPITLT", "Cockpit lights: set", "A32NX_OVHD_INTLT_ANN", 1), "SD_COCKPITLT"),
+            Done(Skip(SW("SD_DOME", "Dome light: bright", "A32NX_OVHD_INTLT_DOME", 100),
+                s => s.GetValue("A32NX_OVHD_INTLT_DOME") >= 90), "SD_DOME"),
+            Done(Skip(SW("SD_STBYCOMPASS", "Standby compass light: ON", "A32NX_STBY_COMPASS_LIGHT_TOGGLE", 1),
+                s => s.IsOn("A32NX_STBY_COMPASS_LIGHT_TOGGLE")), "SD_STBYCOMPASS"),
+            Done(Scene("SD_LTSCENE", HwA330ActionExecutor.CockpitLightScene.ParkingBright), "SD_LTSCENE"),
             Done(SW("SD_ECAMDOOR", "ECAM page: door", "ECAM_PAGE_DOOR", 1), "SD_ECAMDOOR"),
         }
     };
@@ -566,8 +587,14 @@ public static class HwA330FlowDefinitions
                 s => s.IsPosition("A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", 0)), "SC_BAT1"),
             Done(Skip(SW("SC_BAT2", "Battery 2: OFF", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0),
                 s => s.IsPosition("A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", 0)), "SC_BAT2"),
-            // ★ Cockpit lighting off (spec §4.1) — the full off-scene is a Task 7 checklist item.
+            // ★ Cockpit lighting off (spec §4.1): annunciator left bright for the next power-up,
+            // dome and compass light off, scene off (FO-7: a step behind every line).
             Done(SW("SC_COCKPITLT", "Cockpit lights: annunciator bright", "A32NX_OVHD_INTLT_ANN", 1), "SC_COCKPITLT"),
+            Done(Skip(SW("SC_DOME", "Dome light: off", "A32NX_OVHD_INTLT_DOME", 0),
+                s => s.GetValue("A32NX_OVHD_INTLT_DOME") <= 5), "SC_DOME"),
+            Done(Skip(SW("SC_STBYCOMPASS", "Standby compass light: OFF", "A32NX_STBY_COMPASS_LIGHT_TOGGLE", 0),
+                s => s.IsPosition("A32NX_STBY_COMPASS_LIGHT_TOGGLE", 0)), "SC_STBYCOMPASS"),
+            Done(Scene("SC_LTSCENE", HwA330ActionExecutor.CockpitLightScene.Off), "SC_LTSCENE"),
         }
     };
 
@@ -584,6 +611,11 @@ public static class HwA330FlowDefinitions
         PostActionDelayMs = 300,
         FailurePolicy = FlowStepFailurePolicy.Skip,
     };
+
+    // One lighting scene's pots, through the executor's COCKPIT_LIGHT_SCENE_* pseudo-key (the
+    // A32NX's and the Fenix's spelling); labelled as the scene's checklist line.
+    private static Step Scene(string id, HwA330ActionExecutor.CockpitLightScene scene) =>
+        SW(id, "Panel and integral brightness: SET", HwA330ActionExecutor.CockpitLightSceneKey(scene), 1);
 
     private static Step Provider(string id, string label, string eventName, Func<HwA330StateEvaluator, int?> provider) => new()
     {

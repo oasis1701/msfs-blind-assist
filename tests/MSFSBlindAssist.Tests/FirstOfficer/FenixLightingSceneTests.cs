@@ -13,7 +13,7 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// bright, after start dim, shutdown bright, secure off), on the Fenix's own controls and
 /// encodings: the annunciator switch S_OH_IN_LT_ANN_LT (0 Dim / 1 Bright / 2 Test), the dome
 /// switch S_OH_INT_LT_DOME (0 Off / 1 Dim / 2 Bright) and four 0–1 knobs. The Fenix has no
-/// standby-compass light, so the A32NX's three *_STBYCOMPASS lines have no twin here.
+/// standby-compass light, so the A32NX's four *_STBYCOMPASS lines have no twin here.
 /// </summary>
 public class FenixLightingSceneTests
 {
@@ -72,8 +72,8 @@ public class FenixLightingSceneTests
     }
 
     /// <summary>ANN position 2 is TEST: it lights every annunciator, the LDG GEAR upper legends
-    /// and red arrow among them, which FenixGearConfirmation reads as reds. No lighting write,
-    /// in a flow or behind a checklist line, may ever select it.</summary>
+    /// and red arrow among them, which FenixGearConfirmation reads as reds. No flow step may
+    /// ever select it.</summary>
     [Fact]
     public void Nothing_selects_the_annunciator_TEST_position()
     {
@@ -123,9 +123,10 @@ public class FenixLightingSceneTests
         }
     }
 
-    /// <summary>The lighting block sits where the A32NX sets its cockpit lights: the step
-    /// before the ANN step and the step after the block are the A32NX's neighbours of its own
-    /// *_COCKPITLT step.</summary>
+    /// <summary>The lighting block sits where the A32NX sets its cockpit lights: the A32NX has
+    /// the same *_COCKPITLT, *_DOME, *_LTSCENE steps in the same order (plus its own
+    /// *_STBYCOMPASS, which the Fenix lacks and which is left out of the comparison), and the
+    /// step before the block and the step after it are the same on both.</summary>
     [Theory]
     [InlineData("ELECTRICAL_POWER_UP", "EPU")]
     [InlineData("AFTER_START", "AS")]
@@ -134,13 +135,16 @@ public class FenixLightingSceneTests
     public void Lighting_steps_sit_where_the_A32NX_sets_its_cockpit_lights(string flow, string p)
     {
         var fenix = FenixFlowDefinitions.Build().Single(f => f.Id == flow).Steps.Select(s => s.Id).ToList();
-        var fbw = FbwA320FlowDefinitions.Build().Single(f => f.Id == flow).Steps.Select(s => s.Id).ToList();
-        int i = fenix.IndexOf(p + "_COCKPITLT");
-        int j = fbw.IndexOf(p + "_COCKPITLT");
+        var fbw = FbwA320FlowDefinitions.Build().Single(f => f.Id == flow).Steps.Select(s => s.Id)
+            .Where(id => !id.EndsWith("_STBYCOMPASS", StringComparison.Ordinal)).ToList();
+        string[] block = { p + "_COCKPITLT", p + "_DOME", p + "_LTSCENE" };
+        int i = fenix.IndexOf(block[0]);
+        int j = fbw.IndexOf(block[0]);
         Assert.True(i >= 0 && j >= 0);
-        Assert.Equal(new[] { p + "_COCKPITLT", p + "_DOME", p + "_LTSCENE" }, fenix.Skip(i).Take(3));
+        Assert.Equal(block, fenix.Skip(i).Take(3));
+        Assert.Equal(block, fbw.Skip(j).Take(3));
         Assert.Equal(j > 0 ? fbw[j - 1] : null, i > 0 ? fenix[i - 1] : null);
-        Assert.Equal(j + 1 < fbw.Count ? fbw[j + 1] : null, i + 3 < fenix.Count ? fenix[i + 3] : null);
+        Assert.Equal(j + 3 < fbw.Count ? fbw[j + 3] : null, i + 3 < fenix.Count ? fenix[i + 3] : null);
     }
 
     [Fact]
