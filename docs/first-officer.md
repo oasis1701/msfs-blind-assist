@@ -42,7 +42,8 @@ flaps (FBW A380 and A32NX)." Three flow changes since 2026-10-06, each bringing 
 the Fenix: **engine start waits for each engine to run** (FlyByWire's own
 `A32NX_ENGINE_STATE:n` = 1, On, rather than a raw N2 threshold or the old fixed 60 s; 120 s,
 and a timeout stops the flow), **takeoff flaps are set from SimBrief** in After Start (a
-Captain reminder, "Flaps: set for takeoff", when no plan is loaded), and **gear up after
+Captain reminder, "Flaps: set for takeoff", speaks unless the lever then reads a takeoff
+position: no plan, or a write that did not take), and **gear up after
 takeoff is confirmed from the gear legs** (`FbwA320GearConfirmation`: the handle up and all
 three `A32NX_GEAR_*_POSITION` under 5 %; "down" is the handle down and all three over 95 %,
 which backs the Landing memo's gear line). In-sim test plan:

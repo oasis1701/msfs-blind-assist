@@ -346,8 +346,9 @@ SimBrief flap lever, the three gear legs), and later steps of the run depend on 
    `A32NX_ENGINE_STATE:n` reads On (1), well inside the 120 s limit, and the "Engine n: running"
    lines tick. Nothing may move on after a fixed delay.
 2. **SimBrief takeoff flaps (do first).** With a plan loaded, After Start sets the lever to the plan's
-   takeoff flap and the Captain reminder stays silent; with none, the reminder "Flaps: set for
-   takeoff" speaks.
+   takeoff flap and the Captain reminder answers "Already set: Flaps: set for takeoff" (it is
+   skipped only because the lever now reads 1 to 3); with none, the reminder "Flaps: set for
+   takeoff" speaks. If the lever did not move despite a plan, the reminder must still speak.
 3. **The Taxi read-back, with its live values.** After the takeoff-config test, tick through the
    Taxi Checklist: the lines read their values aloud ("Flaps setting: SET (both), flaps 1:
    checked"; engine mode, "normal"), the takeoff-memo lines tick from live state (autobrake MAX,

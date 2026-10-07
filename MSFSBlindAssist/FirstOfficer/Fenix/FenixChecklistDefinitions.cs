@@ -254,8 +254,10 @@ public static class FenixChecklistDefinitions
                 "A_FC_SPEEDBRAKE", v => v < 0.5, (e, _) => e.Set("A_FC_SPEEDBRAKE", 0)),
             ActionManual("AS_RUDDERTRIM", "AFTER_START", "Rudder trim: RESET",
                 (e, _) => e.Pulse("S_FC_RUDDER_TRIM_RESET")),
-            // Auto-detects "flaps not up" (S_FC_FLAPS is Continuous — always cached);
-            // ticking sets the SimBrief flaps when loaded, else announces nothing (no-op).
+            // Auto-detects a takeoff flap lever, 1-3 (S_FC_FLAPS is Continuous — always cached).
+            // Ticking sets the SimBrief flaps when loaded; without a plan the tick writes nothing,
+            // so it un-ticks with "Unable to complete" unless the pilot sets the lever within the
+            // grace (FO-9). The flow's Captain reminder plays no part in a hand tick.
             Auto("AS_FLAPS", "AFTER_START", "Flaps: takeoff setting",
                 "S_FC_FLAPS", v => v is >= 0.5 and <= 3.5,
                 async (e, s) =>

@@ -31,14 +31,38 @@ public class FenixFlowParityTests
     }
 
     [Fact]
-    public void Takeoff_flaps_have_a_captain_fallback_when_no_simbrief_plan()
+    public void Takeoff_flaps_have_a_captain_reminder_that_a_plan_alone_never_skips()
     {
         var fallback = Step("AFTER_START", "AS_FLAPS_CAPT");
         Assert.Equal("Flaps: set for takeoff", fallback.Label);
+        Assert.Equal(FlowStepActionType.CaptainReminder, fallback.ActionType);
         var e = new FenixStateEvaluator();
         Assert.False(fallback.SkipCondition!(e));
         e.SetTakeoffFlaps(1);
-        Assert.True(fallback.SkipCondition!(e));
+        Assert.False(fallback.SkipCondition!(e));            // plan loaded, lever unread → still speaks
+    }
+
+    /// <summary>The Captain reminder is skipped only when the flap lever READS a takeoff position.
+    /// Keyed on the SimBrief plan, a write that did not take was heard as "Skipping…" then a false
+    /// "Already set: Flaps: set for takeoff", and the pilot lost the reminder. A plan is loaded in
+    /// every case here, so only the lever decides.</summary>
+    [Theory]
+    [InlineData(0.0, false)]          // lever up: the write did not take → the reminder speaks
+    [InlineData(double.NaN, false)]   // unread → the reminder speaks
+    [InlineData(1.0, true)]
+    [InlineData(2.0, true)]           // set for takeoff → skipped
+    [InlineData(3.0, true)]
+    [InlineData(4.0, false)]          // FULL is not a takeoff setting
+    public void The_takeoff_flaps_reminder_is_skipped_only_when_the_lever_reads_a_takeoff_position(
+        double lever, bool skipped)
+    {
+        Assert.Equal(skipped, FenixFlowDefinitions.IsTakeoffFlapsLever(lever));
+
+        var e = new FenixStateEvaluator();
+        e.SetTakeoffFlaps(2);
+        if (!double.IsNaN(lever))
+            e.SetSimConnect(SeededSimConnectCache.With(("S_FC_FLAPS", lever)));
+        Assert.Equal(skipped, Step("AFTER_START", "AS_FLAPS_CAPT").SkipCondition!(e));
     }
 
     [Fact]

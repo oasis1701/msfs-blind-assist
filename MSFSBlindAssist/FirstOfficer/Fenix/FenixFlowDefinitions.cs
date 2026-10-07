@@ -298,10 +298,13 @@ public static class FenixFlowDefinitions
             // Takeoff flaps from SimBrief (quiet skip when no plan loaded)
             Done(Provider("AS_FLAPS", "Flaps: takeoff setting", "S_FC_FLAPS",
                 s => { int f = s.TakeoffFlapsLeverIndex(); return f >= 1 ? f : (int?)null; }), "AS_FLAPS"),
-            // Without a SimBrief plan the Provider above skips quietly, so the Captain is
-            // asked to set the takeoff flaps; with a plan this reminder is skipped.
+            // The Captain is asked to set the takeoff flaps unless the lever already reads a
+            // takeoff position (1-3): without a SimBrief plan the Provider above skips quietly,
+            // and a write that did not take leaves the lever where it was. Keyed on the LEVER,
+            // never on the plan: keyed on the plan, a failed write was heard as "Skipping…" then
+            // a false "Already set", and the reminder was lost. Unread (NaN) is not set.
             Skip(Captain("AS_FLAPS_CAPT", "Flaps: set for takeoff"),
-                s => s.TakeoffFlapsLeverIndex() >= 1),
+                s => IsTakeoffFlapsLever(s.GetValue("S_FC_FLAPS"))),
             Done(Skip(SW("AS_NOSE_TAXI", "Nose light: TAXI", "S_OH_EXT_LT_NOSE", 1),
                 s => s.IsPosition("S_OH_EXT_LT_NOSE", 1)), "AS_NOSE_TAXI"),
             Captain("AS_ANTIICE", "Set engine and wing anti-ice as required"),
@@ -564,6 +567,11 @@ public static class FenixFlowDefinitions
             Done(Scene("SC_LTSCENE", FenixActionExecutor.CockpitLightScene.Off), "SC_LTSCENE"),
         }
     };
+
+    /// <summary>True when the flap lever (<c>S_FC_FLAPS</c>, 0..4) reads a takeoff position, 1-3 —
+    /// the same test as the AS_FLAPS line. 0, FULL and an unread lever (NaN) are not, so the
+    /// AS_FLAPS_CAPT reminder speaks.</summary>
+    internal static bool IsTakeoffFlapsLever(double lever) => lever is >= 0.5 and <= 3.5;
 
     // -----------------------------------------------------------------------
     // Step builders (mirror the 737 file's helpers)

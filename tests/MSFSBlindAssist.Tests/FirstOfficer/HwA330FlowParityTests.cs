@@ -109,8 +109,31 @@ public class HwA330FlowParityTests
         var fallback = Step("AFTER_START", "AS_FLAPS_CAPT");
         Assert.Equal("Flaps: set for takeoff", fallback.Label);
         Assert.Equal(FlowStepActionType.CaptainReminder, fallback.ActionType);
-        Assert.True(fallback.SkipCondition!(e));             // plan known → no reminder
+        Assert.False(fallback.SkipCondition!(e));            // a plan alone never skips it: lever unread
         Assert.False(fallback.SkipCondition!(new HwA330StateEvaluator()));
+    }
+
+    /// <summary>The Captain reminder is skipped only when the flap handle READS a takeoff position.
+    /// Keyed on the SimBrief plan, a write that did not take was heard as "Skipping…" then a false
+    /// "Already set: Flaps: set for takeoff", and the pilot lost the reminder. A plan is loaded in
+    /// every case here, so only the handle decides.</summary>
+    [Theory]
+    [InlineData(0.0, false)]          // handle up: the write did not take → the reminder speaks
+    [InlineData(double.NaN, false)]   // unread → the reminder speaks
+    [InlineData(1.0, true)]
+    [InlineData(2.0, true)]           // set for takeoff → skipped
+    [InlineData(3.0, true)]
+    [InlineData(4.0, false)]          // FULL is not a takeoff setting
+    public void The_takeoff_flaps_reminder_is_skipped_only_when_the_handle_reads_a_takeoff_position(
+        double handle, bool skipped)
+    {
+        Assert.Equal(skipped, HwA330FlowDefinitions.IsTakeoffFlapsLever(handle));
+
+        var e = new HwA330StateEvaluator();
+        e.SetTakeoffFlaps(2);
+        if (!double.IsNaN(handle))
+            e.SetSimConnect(SeededSimConnectCache.With(("A32NX_FLAPS_HANDLE_INDEX", handle)));
+        Assert.Equal(skipped, Step("AFTER_START", "AS_FLAPS_CAPT").SkipCondition!(e));
     }
 
     [Fact]

@@ -45,8 +45,8 @@ using Step = Models.FlowStep<FbwA320StateEvaluator>;
 ///   ECP A32NX_ECP_TO_CONF_TEST_PRESSED/RELEASED via TakeoffConfigTestAsync) are all
 ///   sim + source verified and automated (2026-07). The F/CTL ECAM page itself still has
 ///   no dedicated key and stays a Captain reminder ("no F/CTL ECP key").
-/// - Takeoff flaps come from SimBrief (the Fenix's Provider step, AS_FLAPS); without a plan a
-///   Captain reminder (AS_FLAPS_CAPT) speaks instead.
+/// - Takeoff flaps come from SimBrief (the Fenix's Provider step, AS_FLAPS); a Captain reminder
+///   (AS_FLAPS_CAPT) speaks unless the flap handle already reads a takeoff position (1-3).
 /// - Cockpit lighting (§4.1), at four points (power-up bright, after start dim, shutdown bright,
 ///   secure off), one step per action line (FO-7), in the Fenix's order: the annunciator
 ///   (A32NX_OVHD_INTLT_ANN: 1=Bright, 2=Dim), the dome (A32NX_OVHD_INTLT_DOME, a percentage:
@@ -320,11 +320,15 @@ public static class FbwA320FlowDefinitions
             Done(Skip(SW("AS_SPOILERS_ARM", "Ground spoilers: ARMED", "SPOILERS_ARM_TOGGLE", 1),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)), "AS_SPOILERS_ARM"),
             Done(SW("AS_RUDDERTRIM", "Rudder trim: RESET", "A32NX_RUDDER_TRIM_RESET", 1), "AS_RUDDERTRIM"),
-            // Takeoff flaps from SimBrief (the Fenix's step): quiet skip without a plan, and
-            // then the Captain reminder below speaks instead.
+            // Takeoff flaps from SimBrief (the Fenix's step): quiet skip without a plan. The
+            // Captain reminder below speaks unless the lever already reads a takeoff position
+            // (1-3): no plan, or a write that did not take, and the pilot is asked. Keyed on the
+            // LEVER, never on the plan: keyed on the plan, a failed write was heard as
+            // "Skipping…" then a false "Already set". Unread (NaN) is not set.
             Done(Provider("AS_FLAPS", "Flaps: takeoff setting", "A32NX_FLAPS_HANDLE_INDEX",
                 s => { int f = s.TakeoffFlapsLeverIndex(); return f >= 1 ? f : (int?)null; }), "AS_FLAPS"),
-            Skip(Captain("AS_FLAPS_CAPT", "Flaps: set for takeoff"), s => s.TakeoffFlapsLeverIndex() >= 1),
+            Skip(Captain("AS_FLAPS_CAPT", "Flaps: set for takeoff"),
+                s => IsTakeoffFlapsLever(s.GetValue("A32NX_FLAPS_HANDLE_INDEX"))),
             Done(Skip(SW("AS_NOSE_TAXI", "Nose light: TAXI", "LIGHTING_LANDING_1", 1),
                 s => s.IsPosition("LIGHTING_LANDING_1", 1)), "AS_NOSE_TAXI"),
             Captain("AS_ANTIICE", "Set engine and wing anti-ice as required"),
@@ -588,6 +592,11 @@ public static class FbwA320FlowDefinitions
             Done(Scene("SC_LTSCENE", FbwA320ActionExecutor.CockpitLightScene.Off), "SC_LTSCENE"),
         }
     };
+
+    /// <summary>True when the flap handle (<c>A32NX_FLAPS_HANDLE_INDEX</c>, 0..4) reads a takeoff
+    /// position, 1-3 — the same test as the AS_FLAPS line. 0, FULL and an unread handle (NaN) are
+    /// not, so the AS_FLAPS_CAPT reminder speaks.</summary>
+    internal static bool IsTakeoffFlapsLever(double lever) => lever is >= 0.5 and <= 3.5;
 
     // -----------------------------------------------------------------------
     // Step builders (mirror the Fenix/A380 files' helpers, retyped to FbwA320StateEvaluator)

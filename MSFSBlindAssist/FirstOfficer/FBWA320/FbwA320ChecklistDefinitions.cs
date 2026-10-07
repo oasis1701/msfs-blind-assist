@@ -260,8 +260,10 @@ public static class FbwA320ChecklistDefinitions
                 v => v > 0.5, (e, s) => s.IsOn("A32NX_SPOILERS_ARMED")
                     ? Task.CompletedTask : e.Set("SPOILERS_ARM_TOGGLE", 1)),
             ActionManual("AS_RUDDERTRIM", "AFTER_START", "Rudder trim: RESET", (e, _) => e.Set("A32NX_RUDDER_TRIM_RESET", 1)),
-            // Auto-detects "flaps not up" (A32NX_FLAPS_HANDLE_INDEX is polled); ticking sets the
-            // SimBrief flaps when loaded, else does nothing (the flow's Captain fallback speaks).
+            // Auto-detects a takeoff flap handle, 1-3 (A32NX_FLAPS_HANDLE_INDEX is polled). Ticking
+            // sets the SimBrief flaps when loaded; without a plan the tick writes nothing, so it
+            // un-ticks with "Unable to complete" unless the pilot sets the handle within the grace
+            // (FO-9). The flow's Captain reminder plays no part in a hand tick.
             // The Fenix's AS_FLAPS line, retyped to the A32NX lever key.
             Auto("AS_FLAPS", "AFTER_START", "Flaps: takeoff setting", "A32NX_FLAPS_HANDLE_INDEX",
                 v => v is >= 0.5 and <= 3.5,
