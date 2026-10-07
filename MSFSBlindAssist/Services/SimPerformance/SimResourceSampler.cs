@@ -81,18 +81,31 @@ public sealed class SimResourceSampler : IDisposable
         }
     }
 
+    /// <summary>
+    /// True once the GPU counters have answered (or failed) one tick. The first GPU counter read of
+    /// a session loads the performance-data name tables and can take seconds, so until then the
+    /// process and memory rows are published ahead of it instead of sitting on "Measuring…".
+    /// </summary>
+    private bool _gpuSampledOnce;
+
     private void Sample()
     {
         var snap = SimPerformanceSnapshot.Empty;
         snap = SampleProcess(snap);
         snap = SampleSystemMemory(snap);
-        // Publish the cheap rows first: the first GPU counter read of a session loads the
-        // performance-data name tables and can take seconds, and the window should not sit on
-        // "Measuring…" for the process and memory rows meanwhile.
-        Latest = snap;
-        if (_process == null) return;
+        if (_process == null)
+        {
+            Latest = snap;
+            return;
+        }
+        // After the first tick a snapshot is published once, whole: the window's own timer reads
+        // Latest at any phase of this tick, and a half-built snapshot with the GPU fields still
+        // null would blank the GPU rows for whichever reads landed inside the counter read, and
+        // move the reader's cursor with them.
+        if (!_gpuSampledOnce) Latest = snap;
         long started = Stopwatch.GetTimestamp();
         snap = SampleGpu(snap, _process.Id);
+        _gpuSampledOnce = true;
         long elapsedMs = (Stopwatch.GetTimestamp() - started) * 1000 / Stopwatch.Frequency;
         if (elapsedMs > 500) Log.Debug(LogCat, $"GPU counter read took {elapsedMs} ms");
         Latest = snap;

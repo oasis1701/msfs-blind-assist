@@ -43,6 +43,8 @@ public class GpuCounterInstanceTests
     [InlineData("")]
     [InlineData("luid_0x00000000_0x0000ee5d_phys_0")]
     [InlineData("pid_abc_luid_0x0_0x1_phys_0")]
+    [InlineData("pid_luid_0x0_0x1_phys_0")]
+    [InlineData("pid__luid_0x0_0x1_phys_0")]
     [InlineData("pid_4_phys_0")]
     public void OtherShapes_AreRejected(string? instance)
     {

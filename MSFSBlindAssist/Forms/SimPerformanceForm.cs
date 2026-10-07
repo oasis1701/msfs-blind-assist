@@ -66,7 +66,8 @@ public sealed class SimPerformanceForm : Form
             _sim.StartFrameRateMonitoring();
             _monitoring = true;
             _sampler.Start();
-            RefreshRows();
+            // The first paint waits for the timer: the sampler has not published yet, and an empty
+            // snapshot reads as "Simulator: not running", wrong for a second with the sim up.
             _timer = new System.Windows.Forms.Timer { Interval = 1000 };
             _timer.Tick += (_, _) => RefreshRows();
             _timer.Start();

@@ -20,7 +20,9 @@ public static class GpuCounterInstance
         if (string.IsNullOrEmpty(instance) || !instance.StartsWith("pid_", StringComparison.Ordinal)) return false;
 
         int luidAt = instance.IndexOf("_luid_", StringComparison.Ordinal);
-        if (luidAt < 0) return false;
+        // At least one pid digit between "pid_" and "_luid_": "pid_luid_…" would give the span a
+        // negative length and throw out of a Try method.
+        if (luidAt <= 4) return false;
         if (!int.TryParse(instance.AsSpan(4, luidAt - 4), NumberStyles.None, CultureInfo.InvariantCulture, out pid)) return false;
 
         string rest = instance.Substring(luidAt + 1); // "luid_…_phys_0[_eng_0_engtype_3d]"
