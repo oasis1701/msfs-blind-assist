@@ -133,6 +133,9 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <!-- Hotkey Guide Files -->
+    <None Update="HotkeyGuides\COWS_DA40_Hotkeys.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
     <None Update="HotkeyGuides\FBW_A320_Hotkeys.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -174,6 +177,12 @@
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <None Update="Checklists\iFly_737MAX8_Checklist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Checklists\COWS_DA40NG_Checklist.txt">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </None>
+    <None Update="Checklists\COWS_DA40XLS_Checklist.txt">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
     <!-- User-facing guides/manuals. Shipped in full (whole folder) so the in-app
@@ -221,6 +230,9 @@
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-ewd-agent.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="Resources\coherent-da40-g1000-agent.js">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
     <None Update="Resources\coherent-display-agent.js">

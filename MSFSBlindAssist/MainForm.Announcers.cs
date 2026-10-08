@@ -236,6 +236,21 @@ public partial class MainForm
         {
             pendingDisplayRequests[e.VarName].TrySetResult(true);
         }
+
+        // Step 3 (both branches): a status-display row moved, so repaint the list if one is up
+        // (SIM-19). It sits above the split for the same reason as the completion above: a
+        // def-handled row (every silent DA40 readout, every DA40 var during the load settle)
+        // used to skip it, change only on the auto-refresh tick, and read seconds old on Ctrl+3.
+        // The repaint reads the cache (SIM-15) and is COALESCED: during the auto-refresh tick the
+        // whole panel is force-read at once, and N responses must make one rebuild, not N.
+        // (cached name set — this gate runs PER EVENT; see GetDisplayVarNamesCached)
+        bool isDisplayVar = GetDisplayVarNamesCached().Contains(e.VarName) &&
+                            currentAircraft.GetVariables().ContainsKey(e.VarName);
+        if (isDisplayVar && currentControls.TryGetValue("_DISPLAY_", out var displayCtrl) && displayCtrl is ListBox)
+        {
+            ScheduleDisplayRepaint();
+        }
+
         if (wasProcessedByAircraft)
         {
             // The def announced (suppressed) and updated its own baseline — consume the echo so a
@@ -278,22 +293,11 @@ public partial class MainForm
             return; // Aircraft handled it completely, no further generic processing needed
         }
 
-        // Step 3: Update display values (if this variable is used in any panel display)
-        // This happens silently without announcements - users read the display manually
-        // (cached name set — this gate runs PER EVENT; see GetDisplayVarNamesCached)
-        if (currentAircraft.GetVariables().ContainsKey(e.VarName) &&
-            GetDisplayVarNamesCached().Contains(e.VarName))
+        // Step 3, the rest: keep the display value (silently - users read the display
+        // manually). The repaint was scheduled above, for both branches.
+        if (isDisplayVar)
         {
             displayValues[e.VarName] = e.Value;
-
-            // Repaint the display list if visible — COALESCED. During the auto-refresh tick the
-            // whole panel is force-read at once, so N responses land in quick succession; without
-            // debouncing, each would rebuild + reconcile the entire list (O(N) × N). Schedule one
-            // repaint instead.
-            if (currentControls.ContainsKey("_DISPLAY_") && currentControls["_DISPLAY_"] is ListBox)
-            {
-                ScheduleDisplayRepaint();
-            }
             // DON'T return - continue processing for announcements if needed
         }
 
@@ -375,6 +379,15 @@ public partial class MainForm
                 // on the generic path.
                 if (currentAircraft.AircraftCode == "IFLY_737MAX8" &&
                     Settings.SettingsManager.Current.IFlyDisabledMonitorVariablesSet.Contains(e.VarName))
+                {
+                    return; // Skip announcement for disabled variable
+                }
+
+                // Check if disabled in the COWS DA40 Monitor Manager. The DA40 definition
+                // announces nothing from inside ProcessSimVarUpdate — every switch rides
+                // the generic path — so this single gate is the whole mute story for it.
+                if (currentAircraft.AircraftCode.StartsWith("COWS_DA40", StringComparison.Ordinal) &&
+                    Settings.SettingsManager.Current.DA40DisabledMonitorVariablesSet.Contains(e.VarName))
                 {
                     return; // Skip announcement for disabled variable
                 }
@@ -2984,6 +2997,41 @@ public partial class MainForm
         {
             Log.Debug("MainForm", $"Error during nearest city announcement: {ex.Message}");
             // Don't announce errors to avoid interrupting the user
+        }
+    }
+
+    /// <summary>
+    /// The unusual-attitude alert, fed once a second from the dedicated attitude definition.
+    ///
+    /// ⚠️ THIS IS THE ONE ANNOUNCEMENT IN THE APP WRITTEN AGAINST AN ACCIDENT. A DA40 rolled
+    /// into a 65-degree bank and flew into the ground while hand fly mode was ACTIVE and its
+    /// bank tone was sounding; the pilot pressed a readout key twelve times in thirteen seconds
+    /// hunting for what was wrong, and nothing ever said the word "bank". Every other attitude
+    /// channel here has to be ASKED. This one interrupts, because a steep bank interrupts a
+    /// sighted pilot whether they were scanning or not.
+    ///
+    /// Immediate, never queued: an attitude alert that arrives behind a queue of scan chatter
+    /// is an attitude alert that arrives after the recovery was still possible.
+    /// </summary>
+    private void OnFlightAttitude(object? sender, SimConnect.SimConnectManager.FlightAttitudeData data)
+    {
+        try
+        {
+            var verdict = MSFSBlindAssist.Services.UnusualAttitudeMonitor.EvaluateSim(
+                data.BankDegrees, data.PitchDegrees, data.OnGround > 0.5, _attitudeState);
+
+            _attitudeState = verdict.Next;
+            if (verdict.Message.Length == 0) return;
+
+            // Marshalled: this arrives on the SimConnect dispatch path, and the announcer is
+            // not safe to call from off the UI thread (a silent no-op that still updates the
+            // dedup key, which is the failure mode recorded for the A380 RMP).
+            if (IsHandleCreated && !IsDisposed)
+                BeginInvoke(new Action(() => announcer.AnnounceImmediate(verdict.Message)));
+        }
+        catch (Exception ex)
+        {
+            Utils.Logging.Log.Debug("MainForm", $"Unusual attitude: {ex.Message}");
         }
     }
 }

@@ -1,0 +1,134 @@
+[Before Starting Engine]
+Preflight inspection complete
+Safety belts fastened, passengers briefed
+Rear canopy closed and latched (Cabin, Doors and Windows)
+Parking brake set (Center Console, Brakes)
+Flight controls free and correct (Center Console, Flight Controls reads the surfaces)
+Elevator trim centred, the take-off position (Elevator Trim, Centre Trim)
+Fuel selector on the fuller tank (Fuel System)
+Fuel quantity checked (output F)
+Propeller full forward, high RPM (Power and Levers)
+Mixture idle cut-off (Power and Levers)
+ESS BUS off, its normal position (Electrical)
+Battery master and alternator master on, bus voltage checked (Electrical)
+Annunciations checked (output Alt+E reads the CAS window)
+Strobe lights on (Lighting Switches)
+
+[Starting Engine - cold]
+Electric fuel pump on (Fuel System)
+Throttle to the priming position. Use the same position every time
+Mixture full forward about 5 seconds, fuel flow above 4.5 gallons per hour, then idle cut-off
+Priming state checked (Priming panel says Primed)
+Throttle opened slightly
+Propeller area clear
+Ignition key START (Magnetos), Release Starter when the engine fires
+Mixture forward as the engine fires
+Not started within 10 seconds: release, prime 1 to 2 seconds more, crank again
+Oil pressure in the green within 30 seconds (output Alt+S)
+Ignition key BOTH (Magnetos)
+Avionics master on (Electrical)
+Warm-up: 1000 RPM for 2 minutes, then up to 2000
+
+[Starting Engine - flooded or hot]
+Electric fuel pump off (Fuel System)
+Mixture idle cut-off, throttle half open
+Crank until the engine coughs, then mixture forward
+Or Clear Flooding on the Priming panel to start again from dry
+Hot engine: prime only briefly, expect a long crank and a rough engine at first
+
+[Before Taxiing]
+Altimeters set (input Ctrl+B sets both)
+Radios set: COM and NAV standby, then swap (Radios, or the PFD window, output Alt+P)
+Transponder code set (PFD window softkeys)
+Flight plan loaded (MFD window: output Alt+M, or input Shift+M)
+Flaps cycled UP, T/O, LDG and back to UP (Flaps)
+Ground lean: 1200 RPM, mixture back slowly until the RPM drops, then 1000 RPM
+Taxi light on (Lighting Switches)
+Parking brake released, brakes checked
+
+[Before Take-off - Run-up]
+Parking brake set
+Mixture full rich, or leaned for a high airfield
+Throttle 2000 RPM
+Magneto check: ignition key RIGHT, then BOTH, then LEFT, then BOTH (Magnetos)
+   Each drop at most 175 RPM, the two drops within 50 RPM of each other. MSFSBA speaks each drop
+   A drop of zero is a fault: a hot magneto
+Propeller cycled 2 or 3 times at 1800 to 2000 RPM (Mixture and Propeller, Cycle Propeller)
+Engine instruments in the green, ammeter charging (output Alt+S)
+Throttle idle, engine runs smoothly
+Fuel selector on the fuller tank, electric fuel pump on (Fuel System)
+Flaps T/O (Flaps)
+Elevator trim centred (Elevator Trim)
+Canopy closed and latched, no DOOR OPEN warning on the CAS window
+Engine alternate air closed (Ice and Pitot)
+Alternate static valve closed (Ice and Pitot)
+Pitot heat as required (Ice and Pitot)
+Autopilot off, flight director as required (Autopilot)
+Landing light on, strobe lights on (Lighting Switches)
+Transponder altitude reporting
+
+[Take-off]
+Throttle full, propeller full forward, mixture full rich
+Engine RPM and fuel flow checked (output P and E)
+Rotate 59 KIAS
+Climb 67 KIAS with flaps T/O
+Flaps UP at a safe height (Flaps)
+Electric fuel pump off at a safe height (Fuel System)
+
+[Climb]
+Climb 73 KIAS, flaps UP
+Mixture full rich. Lean only with the cylinder heads in range (Mixture and Propeller)
+Cylinder head and oil temperatures in the green (output Shift+O)
+Landing light off when clear of the circuit
+
+[Cruise]
+Power set from the cruise table on Power and Levers: manifold pressure, RPM, fuel flow
+Mixture leaned: lean until the first EGT peaks (Mixture and Propeller, lean assist), or Set Best Mixture
+   Stoichiometric only below 75 percent power. Do not exceed 1350 F EGT
+Tanks kept within 10 gallons of each other: switch the fuel selector (Fuel System, output Shift+F)
+Engine instruments checked (output Alt+S)
+
+[Descent]
+Altimeters set (input Ctrl+B)
+Approach briefing complete, procedure loaded (MFD window, Ctrl+P for procedures)
+Mixture enriched as the descent goes on
+Avoid shock cooling: hold about 15 inches of manifold pressure
+
+[Approach and Landing]
+Fuel selector on the fuller tank, electric fuel pump on (Fuel System)
+Mixture full rich, propeller full forward
+Flaps T/O below 108 KIAS
+Flaps LDG below 91 KIAS
+Final approach 73 KIAS, short field 64 KIAS
+Landing light on
+Over the threshold reduce power gradually, bleed off speed in the flare
+
+[Go-around]
+Throttle full, propeller full forward, mixture full rich
+Flaps T/O
+Climb 67 KIAS with flaps T/O, then flaps UP at a safe height
+
+[After Landing]
+Flaps UP (Flaps)
+Electric fuel pump off (Fuel System)
+Landing light off, taxi light on
+Pitot heat off (Ice and Pitot)
+Transponder as required
+
+[Engine Shutdown]
+Parking brake set (Brakes)
+Throttle idle, about 1000 RPM
+Avionics master off (Electrical)
+Mixture idle cut-off (Power and Levers)
+Ignition key OFF when the engine has stopped (Magnetos)
+Lights off except as required (Lighting Switches)
+Alternator master and battery master off (Electrical)
+Fuel selector as required (Fuel System)
+ELT not transmitting (ELT)
+
+[Tips]
+Automixture on: the engine cannot be flooded and Set Best Mixture snaps to 72 percent
+High airfield: for every 1000 feet about 1 percent more throttle and 5 percent less mixture to start
+Starter held for long means the engine was flooded; no start at all means it was underprimed
+Best glide 76 KIAS, flaps UP
+Maximum flap speeds: T/O 108 KIAS, LDG 91 KIAS. Never exceed 178 KIAS

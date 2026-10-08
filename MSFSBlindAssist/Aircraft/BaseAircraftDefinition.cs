@@ -580,6 +580,20 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
+    /// Whether the status-display auto-refresh pauses ENTIRELY while a combo in the panel has
+    /// focus (SIM-19). True for an aircraft that overrides <see cref="OnDisplayPanelShown"/>:
+    /// its status box is a page snapshot driven by a page combo (the A320 family's and A380's
+    /// SD page, the PMDG 777's System Display), and a refresh while the pilot arrows that combo
+    /// can fight its announcement - the case the pause was written for. Every other aircraft
+    /// keeps the list live and holds back only the focused combo's own variable.
+    /// </summary>
+    public bool StatusRefreshPausesWhileComboFocused =>
+        _statusRefreshPauses ??= GetType().GetMethod(nameof(OnDisplayPanelShown),
+            new[] { typeof(string), typeof(SimConnect.SimConnectManager) })?.DeclaringType != typeof(BaseAircraftDefinition);
+
+    private bool? _statusRefreshPauses;
+
+    /// <summary>
     /// Default: no override — the panel display uses ValueDescriptions / numeric
     /// formatting. Aircraft with ARINC429 (or otherwise non-presentable) display
     /// fields override this to return a decoded string.
@@ -1101,17 +1115,30 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     // event_base + N numberings — so a surviving 777 window can actuate an arbitrary
     // wrong control on a loaded 737 (and renders the new aircraft's CDA data under the
     // old aircraft's labels). The refresh timers keep ticking too.
-    private readonly Dictionary<Type, System.Windows.Forms.Form> _trackedWindows = new();
+    private readonly Dictionary<object, System.Windows.Forms.Form> _trackedWindows = new();
 
     protected void ShowTrackedWindow<T>(Func<T> factory, Action<T> show) where T : System.Windows.Forms.Form
+        => ShowTrackedWindow(typeof(T), factory, show);
+
+    /// <summary>
+    /// Shows a tracked window under an EXPLICIT key.
+    ///
+    /// The type alone is not always the identity. The DA40 opens its PFD and its MFD
+    /// through one <c>CowsDA40DisplayForm</c> differing only in which display it is bound
+    /// to, so keyed on the type the second one re-showed the first: Alt+N after Alt+P
+    /// handed the pilot the PFD again, with the right window title and the wrong screen
+    /// behind it. Anything that opens two instances of one form must pass its own key.
+    /// </summary>
+    protected void ShowTrackedWindow<T>(object key, Func<T> factory, Action<T> show)
+        where T : System.Windows.Forms.Form
     {
-        if (_trackedWindows.TryGetValue(typeof(T), out var existing) && !existing.IsDisposed) { show((T)existing); return; }
+        if (_trackedWindows.TryGetValue(key, out var existing) && !existing.IsDisposed) { show((T)existing); return; }
         var form = factory();
-        _trackedWindows[typeof(T)] = form;
+        _trackedWindows[key] = form;
         form.FormClosed += (s, _) =>
         {
-            if (_trackedWindows.TryGetValue(typeof(T), out var cur) && ReferenceEquals(cur, s))
-                _trackedWindows.Remove(typeof(T));
+            if (_trackedWindows.TryGetValue(key, out var cur) && ReferenceEquals(cur, s))
+                _trackedWindows.Remove(key);
         };
         show(form);
     }

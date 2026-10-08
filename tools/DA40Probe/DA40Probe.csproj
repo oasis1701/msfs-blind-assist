@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Standalone live harness for the COWS DA40 definition; not part of MSFSBlindAssist.sln.
+       Build: dotnet build tools/DA40Probe -c Debug   See tools/DA40Probe/README.md. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <DisableWinExeOutputInference>true</DisableWinExeOutputInference>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\MSFSBlindAssist\MSFSBlindAssist.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <!-- The native SimConnect DLLs the app ships beside its exe; Program.cs copies the right one to SimConnect.dll. -->
+    <None Include="..\..\SimConnect_msfs_2024.dll" Link="SimConnect_msfs_2024.dll" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\SimConnect_msfs_2020.dll" Link="SimConnect_msfs_2020.dll" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>

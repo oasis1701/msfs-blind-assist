@@ -282,7 +282,7 @@ public partial class MainForm
 
         if (checklistForm == null || checklistForm.IsDisposed)
         {
-            checklistForm = new ChecklistForm(announcer, checklistFileName);
+            checklistForm = new ChecklistForm(announcer, currentAircraft.AircraftCode, checklistFileName);
         }
 
         // Show the form (reuses same instance to preserve checkbox states)
@@ -360,6 +360,17 @@ public partial class MainForm
             hs787MonitorManagerForm = new Forms.HS787.HS787MonitorManagerForm(currentAircraft.GetVariables());
         }
         hs787MonitorManagerForm.ShowForm();
+    }
+
+    public void ShowCowsDA40MonitorManagerDialog()
+    {
+        hotkeyManager.ExitOutputHotkeyMode();
+        if (cowsDA40MonitorManagerForm == null || cowsDA40MonitorManagerForm.IsDisposed)
+        {
+            cowsDA40MonitorManagerForm = new Forms.DA40.CowsDA40MonitorManagerForm(
+                currentAircraft.GetVariables());
+        }
+        cowsDA40MonitorManagerForm.ShowForm();
     }
 
     public void ShowPMDGAnnouncementMonitorDialog()
