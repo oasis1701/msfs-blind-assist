@@ -24,3 +24,6 @@ Loaded when Claude reads matching code. Background: docs/gemini.md. Full text of
 Mirrored from gsx-stands-docking.md (they govern the graph builds in TaxiBriefingGraphSource.cs and OsmPlanningGraph.cs; change them there and here together):
 - [DCK-40] A stand has ONE name app-wide: `GetSelectableGates` to ACT on a stand, `GetNamedSpots` to name one and for every `TaxiGraph.Build` given parking; never build a pilot-heard list from `GetParkingSpots`, nor call the supplier per position update (more: see full). Full: docs/invariants/gsx-stands-docking.md#dck-40
 - [DCK-41] Never feed `TaxiGraph.Build` a spot list other than navdata's own set: its parking pass sets `TaxiNodeType.Parking` and can MOVE A HOLD-SHORT; the exceptions are builds given no parking at all: the runway-rows-only ones and the briefing's `OsmPlanningGraph`. Full: docs/invariants/gsx-stands-docking.md#dck-41
+
+Mirrored from surroundings.md (it governs the `CurrentAirport.Resolve` call in TaxiBriefingGraphSource.cs; change it there and here together):
+- [SUR-4] "Which airport am I at" is always `CurrentAirport.Resolve` -> `CurrentAirportResolver.Pick` (four true-distance passes, order load-bearing), never `GetNearbyAirportICAOs`; the catalog is never built on the UI thread (`SurroundingsCatalogCache.GetAsync` only) (more: see full). Full: docs/invariants/surroundings.md#sur-4

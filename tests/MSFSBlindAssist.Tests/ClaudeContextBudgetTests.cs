@@ -159,6 +159,13 @@ public class ClaudeContextBudgetTests
         => Assert.Equal(flagged, ExemptionEntriesMatchingNoFile(
             new[] { "MSFSBlindAssist/Program.cs", "MSFSBlindAssist/Utils/Logging/Log.cs" }, new[] { entry }).Count > 0);
 
+    [Theory]
+    [InlineData("MSFSBlindAssist/Resources/coherent-x-agent.js", false)]
+    [InlineData("MSFSBlindAssist/Services/TcasService.cs", true)]
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", true)]
+    public void The_coverage_failure_offers_an_exemption_only_where_one_can_work(string file, bool offersExemption)
+        => Assert.Equal(offersExemption, UncoveredFileProblem(file).Contains("CoverageExemptions", StringComparison.Ordinal));
+
     [Fact]
     public void A_rule_file_loads_its_body_not_its_front_matter()
         => Assert.Equal("# Rules\n- [X-1] r\n".Length, LoadedChars("---\npaths:\n  - \"a/**\"\n---\n# Rules\n- [X-1] r\n"));
@@ -273,15 +280,25 @@ public class ClaudeContextBudgetTests
                     + "point the entry at where it lives now, or drop it."))
             .Concat(ShippedFilesLoadingNoRuleFile(files, ruleFiles.Select(rf => (rf.Name, rf.Globs ?? new List<string>())),
                     exemptions)
-                .Select(file => $"{file} loads no rule file"
-                    + (IsAreaOwnedFile(file) ? " of its own (the shared aircraft rules in SharedAircraftRules do not count)" : "")
-                    + ", so no rule reaches whoever edits it. Add a glob for it to its area's .claude/rules file. A new "
-                    + "feature or aircraft with no rules yet gets a rule file of its own whose preamble names its doc "
-                    + "(CLAUDE.md, \"Adding or changing a rule\"). If no area's rules apply, add it to CoverageExemptions "
-                    + "under the reason that fits, or under a new reason saying why none applies."))
+                .Select(UncoveredFileProblem))
             .ToList();
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
+
+    /// <summary>What the coverage check says about a shipped file no rule file loads: the ways out that can work
+    /// for that file. A Coherent agent script gets no exemption advice, since <see cref="IsExempt"/> never exempts
+    /// one.</summary>
+    private static string UncoveredFileProblem(string file)
+        => IsCoherentAgentScript(file)
+            ? $"{file} loads no rule file of its own. A Coherent agent script is never exempt (the owner's choice, "
+                + "2026-10-05): glob it into its aircraft's or area's .claude/rules file, or give a new one a rule file of "
+                + "its own whose preamble names its doc (CLAUDE.md, \"Adding or changing a rule\")."
+            : $"{file} loads no rule file"
+            + (IsAreaOwnedFile(file) ? " of its own (the shared aircraft rules in SharedAircraftRules do not count)" : "")
+            + ", so no rule reaches whoever edits it. Add a glob for it to its area's .claude/rules file. A new "
+            + "feature or aircraft with no rules yet gets a rule file of its own whose preamble names its doc "
+            + "(CLAUDE.md, \"Adding or changing a rule\"). If no area's rules apply, add it to CoverageExemptions "
+            + "under the reason that fits, or under a new reason saying why none applies.";
 
     [Fact]
     public void Every_tested_code_file_loads_a_rule_file_when_its_test_does()

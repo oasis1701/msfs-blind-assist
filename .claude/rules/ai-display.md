@@ -24,6 +24,7 @@ paths:
   - "MSFSBlindAssist/Services/IAiProvider.cs"
   - "MSFSBlindAssist/Settings/AiProvider.cs"
   - "MSFSBlindAssist/Forms/DisplayReadingResultForm.cs"
+  - "MSFSBlindAssist/Forms/Settings/AiSettingsPanel.cs"
 ---
 # AI display reads, the camera and screenshots rules
 
