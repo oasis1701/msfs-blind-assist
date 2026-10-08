@@ -241,7 +241,100 @@ public class ClaudeRulesHookTests
         Assert.Equal("", run.Stdout);
     }
 
+    private const string TaxiDiff =
+        "diff --git a/MSFSBlindAssist/Navigation/TaxiGraph.cs b/MSFSBlindAssist/Navigation/TaxiGraph.cs\n"
+        + "index 1111111..2222222 100644\n--- a/MSFSBlindAssist/Navigation/TaxiGraph.cs\n"
+        + "+++ b/MSFSBlindAssist/Navigation/TaxiGraph.cs\n@@ -1 +1 @@\n-a\n+b\n";
+
+    [Fact]
+    public void Diff_adds_the_rule_files_for_a_changed_path()
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(TaxiDiff))));
+
+        Assert.NotNull(output);
+        Assert.Equal("PostToolUse", output.Value.GetProperty("hookEventName").GetString());
+        string context = output.Value.GetProperty("additionalContext").GetString()!;
+        Assert.StartsWith("Area rules for the files in this diff.", context);
+        Assert.Contains(RuleBody("taxi-routing.md"), context);   // holds non-ASCII text: checks the encoding
+        Assert.Contains("Contents of " + Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".claude", "rules", "runway-holds.md")
+            + ":", context);
+    }
+
+    [Fact]
+    public void Diff_reads_name_only_output()
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" },
+            DiffInput("git diff --name-only", BashResponse("MSFSBlindAssist/Navigation/TaxiGraph.cs\n"))));
+
+        Assert.NotNull(output);
+        Assert.Contains(RuleBody("taxi-routing.md"), output.Value.GetProperty("additionalContext").GetString());
+    }
+
+    [Fact]
+    public void Diff_accepts_a_plain_string_tool_response()
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", TaxiDiff)));
+
+        Assert.NotNull(output);
+        Assert.Contains(RuleBody("taxi-routing.md"), output.Value.GetProperty("additionalContext").GetString());
+    }
+
+    [Fact]
+    public void Diff_uses_the_folder_named_by_git_dash_C()
+    {
+        string root = ClaudeContextBudgetTests.RepoRoot();
+
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput($"git -C \"{root}\" diff --name-only",
+            BashResponse("MSFSBlindAssist/Navigation/TaxiGraph.cs\n"), cwd: NewTempDir())));
+
+        Assert.NotNull(output);
+        Assert.Contains(RuleBody("taxi-routing.md"), output.Value.GetProperty("additionalContext").GetString());
+    }
+
+    [Fact]
+    public void Diff_stops_at_the_cap_and_names_the_rest()
+    {
+        // TaxiGraph.cs and FlyByWireA380Definition.Rmp.cs load disjoint rule sets, 24,216 + 26,412 characters
+        // (measured 2026-10-08): more than the 40,000-character cap.
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff --name-only", BashResponse(
+            "MSFSBlindAssist/Navigation/TaxiGraph.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs\n"))));
+
+        Assert.NotNull(output);
+        string context = output.Value.GetProperty("additionalContext").GetString()!;
+        Assert.Contains("Not added (over the 40,000-character cap): .claude/rules/", context);
+        int added = System.Text.RegularExpressions.Regex.Matches(context, @"Contents of (?<path>[^\n]+?\.md):")
+            .Sum(m => RuleBody(Path.GetFileName(m.Groups["path"].Value)).Length);
+        Assert.InRange(added, 1, 40_000);
+    }
+
+    [Fact]
+    public void Diff_adds_nothing_new_on_a_repeat()
+    {
+        var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
+
+        Assert.NotNull(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(TaxiDiff)), env: env)));
+        Assert.Null(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(TaxiDiff)), env: env)));
+    }
+
+    [Fact]
+    public void Diff_ignores_output_without_paths()
+    {
+        HookRun run = RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse("")));
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Null(HookOutput(run));
+    }
+
     // ---- inputs and fixtures ----
+
+    private static object BashResponse(string stdout) =>
+        new { stdout, stderr = "", interrupted = false, isImage = false, noOutputExpected = false };
+
+    private static string DiffInput(string command, object toolResponse, string? cwd = null) => HookInput(new
+    {
+        session_id = "s1", hook_event_name = "PostToolUse", tool_name = "Bash", tool_input = new { command },
+        tool_response = toolResponse, cwd = cwd ?? ClaudeContextBudgetTests.RepoRoot(),
+    });
 
     private static string ShellInput(string tool, string command) => HookInput(new
     {

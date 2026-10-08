@@ -13,6 +13,8 @@ Modes (first argument):
                                      subagent's own worktree (.claude/worktrees/agent-*), where Claude Code loads none
   shell-guard                        PreToolUse (Bash, PowerShell): refuse a command that writes a file some rule
                                      file covers (redirects, sed/perl -i, tee, Set-Content, Add-Content, Out-File)
+  diff                               PostToolUse (git diff, git show, gh pr diff): add the rule files for the
+                                     changed paths, up to 40,000 characters, naming the rest
 
 Hook modes read the hook input (JSON) on stdin. Setting MSFSBA_RULES_HOOK=off silences every hook mode.
 
@@ -481,6 +483,97 @@ function Invoke-ShellGuard($HookInput) {
     Write-Utf8 ($output | ConvertTo-Json -Depth 4 -Compress)
 }
 
+# ---- diff: the rules for the files in a reviewed diff ----
+
+$DiffHeader = 'Area rules for the files in this diff. Claude Code loads them only when a file is Read, ' +
+    'so .claude/hooks/rules-hook.ps1 added them:'
+$DiffCap = 40000
+
+# Repo-relative paths a diff names, first seen first: both sides of each "diff --git" header, else the lines of
+# --name-only output or the last field of --name-status lines.
+function Get-DiffPaths([string]$Command, [string]$Output) {
+    $paths = New-Object System.Collections.Generic.List[string]
+    $lines = $Output.Replace("`r`n", "`n").Split("`n")
+    foreach ($line in $lines) {
+        $m = [regex]::Match($line, '^diff --git "?a/(.+?)"? "?b/(.+?)"?$')
+        if (-not $m.Success) { continue }
+        foreach ($p in @($m.Groups[1].Value, $m.Groups[2].Value)) { if (-not $paths.Contains($p)) { $paths.Add($p) } }
+    }
+    if ($paths.Count -gt 0) { return ,$paths.ToArray() }
+    $nameStatus = $Command.Contains('--name-status')
+    if (-not ($nameStatus -or $Command.Contains('--name-only'))) { return ,$paths.ToArray() }
+    foreach ($line in $lines) {
+        $p = $line.Trim()
+        if ($nameStatus) { $fields = $line.Split("`t"); $p = $fields[$fields.Length - 1].Trim() }
+        if ($p -ne '' -and -not $paths.Contains($p)) { $paths.Add($p) }
+    }
+    return ,$paths.ToArray()
+}
+
+# The folder git ran in: $Cwd, moved by any cd, or the folder a "git -C <dir>" names.
+function Get-GitDirectory([string]$Command, [string]$Cwd, [string]$Shell) {
+    $dir = $Cwd
+    try {
+        foreach ($segment in (Split-ShellCommands $Command $Shell)) {
+            $words = Get-ShellWords $segment $Shell
+            if ($words.Count -ge 2 -and @('cd', 'Set-Location', 'sl', 'pushd', 'Push-Location') -contains $words[0].Text) {
+                $next = Resolve-FullPath $words[1].Text $dir
+                if ($next) { $dir = $next }
+                continue
+            }
+            for ($k = 0; $k + 2 -lt $words.Count; $k++) {
+                if ($words[$k].Text -ceq 'git' -and $words[$k + 1].Text -ceq '-C') {
+                    $named = Resolve-FullPath $words[$k + 2].Text $dir
+                    if ($named) { return $named }
+                }
+            }
+        }
+    }
+    catch { }
+    return $dir
+}
+
+# PostToolUse on git diff / git show / gh pr diff: Claude Code loads rules only for files it Reads, so a review of the
+# diff output alone sees none. Add the rule files for the changed paths, in path order, up to $DiffCap characters.
+function Invoke-Diff($HookInput) {
+    if ($null -eq $HookInput -or $null -eq $HookInput.tool_input) { return }
+    $command = [string]$HookInput.tool_input.command
+    $response = $HookInput.tool_response
+    $output = ''
+    if ($response -is [string]) { $output = $response }
+    elseif ($null -ne $response) { $output = [string]$response.stdout }
+    if ($output -eq '') { return }
+    $paths = Get-DiffPaths $command $output
+    if ($paths.Count -eq 0) { return }
+    $shell = 'Bash'
+    if ([string]$HookInput.tool_name -eq 'PowerShell') { $shell = 'PowerShell' }
+    $cwd = [string]$HookInput.cwd
+    if ($cwd -eq '') { $cwd = (Get-Location).Path }
+    $root = Find-CheckoutRoot (Get-GitDirectory $command $cwd $shell)
+    if (-not $root) { return }
+    $ruleFiles = Get-RuleFiles $root
+    $wanted = New-Object System.Collections.Generic.List[object]
+    foreach ($p in $paths) {
+        foreach ($h in (Get-MatchingRuleFiles $ruleFiles $p)) { if (-not $wanted.Contains($h)) { $wanted.Add($h) } }
+    }
+    $fresh = Select-NotRemembered $HookInput $wanted.ToArray()
+    if ($fresh.Count -eq 0) { return }
+    $added = New-Object System.Collections.Generic.List[object]
+    $notAdded = New-Object System.Collections.Generic.List[string]
+    $total = 0
+    foreach ($rf in $fresh) {
+        if ($notAdded.Count -eq 0 -and $total + $rf.Body.Length -le $DiffCap) { $added.Add($rf); $total += $rf.Body.Length }
+        else { $notAdded.Add($rf.Name) }
+    }
+    $text = Format-RuleBlocks $DiffHeader $added.ToArray()
+    if ($notAdded.Count -gt 0) {
+        $text += "`n`nNot added (over the 40,000-character cap): " + ($notAdded.ToArray() -join ', ') +
+            '. Read them before judging the change.'
+    }
+    Write-Context 'PostToolUse' $text
+    if ($added.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($a in $added) { $a.Path })) }
+}
+
 function Invoke-For {
     $base = (Get-Location).Path
     $root = Find-CheckoutRoot $base
@@ -519,6 +612,7 @@ try {
         'for' { Invoke-For }
         'read' { Invoke-Read (Read-HookInput) }
         'shell-guard' { Invoke-ShellGuard (Read-HookInput) }
+        'diff' { Invoke-Diff (Read-HookInput) }
         default { }
     }
 }
