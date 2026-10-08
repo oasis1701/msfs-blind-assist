@@ -429,6 +429,98 @@ public class ClaudeRulesHookTests
         Assert.Equal("", off.Stdout);
     }
 
+    private static readonly string[] HookArgsPrefix =
+        { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1" };
+
+    [Fact]
+    public void Settings_register_the_pinned_hooks()
+    {
+        // Pinned on purpose: every filter here was checked in a live session (2026-10-08), and some filters never
+        // match (Write(...), Edit(...) on a Write, redirect forms such as Bash(cat >*)). Change a filter only after the
+        // live checks in docs/development.md, then update this list (CCT-3).
+        List<RegisteredHook> hooks = RegisteredHooks();
+        foreach (RegisteredHook hook in hooks)
+        {
+            Assert.Equal("command", hook.Type);
+            Assert.Equal("powershell.exe", hook.Command);
+            Assert.Equal(HookArgsPrefix, hook.Args[..^1]);
+            Assert.Equal(10, hook.Timeout);
+        }
+        Assert.Equal(new[]
+        {
+            "PostToolUse @ Read @ read @ Read(//**/.claude/worktrees/agent-*/**)",
+            "PostToolUse @ Write|NotebookEdit @ read @ ",
+            "PostToolUse @ Bash @ diff @ Bash(git diff*)", "PostToolUse @ Bash @ diff @ Bash(git -C * diff*)",
+            "PostToolUse @ Bash @ diff @ Bash(git show*)", "PostToolUse @ Bash @ diff @ Bash(git -C * show*)",
+            "PostToolUse @ Bash @ diff @ Bash(gh pr diff*)",
+            "PostToolUse @ PowerShell @ diff @ PowerShell(git diff*)", "PostToolUse @ PowerShell @ diff @ PowerShell(git -C * diff*)",
+            "PostToolUse @ PowerShell @ diff @ PowerShell(git show*)", "PostToolUse @ PowerShell @ diff @ PowerShell(git -C * show*)",
+            "PostToolUse @ PowerShell @ diff @ PowerShell(gh pr diff*)",
+            "PreToolUse @ Bash @ shell-guard @ Bash(sed *)", "PreToolUse @ Bash @ shell-guard @ Bash(perl *)",
+            "PreToolUse @ Bash @ shell-guard @ Bash(tee *)", "PreToolUse @ Bash @ shell-guard @ Bash(cat *)",
+            "PreToolUse @ Bash @ shell-guard @ Bash(echo *)", "PreToolUse @ Bash @ shell-guard @ Bash(printf *)",
+            "PreToolUse @ PowerShell @ shell-guard @ PowerShell(Set-Content *)",
+            "PreToolUse @ PowerShell @ shell-guard @ PowerShell(Add-Content *)",
+            "PreToolUse @ PowerShell @ shell-guard @ PowerShell(Out-File *)",
+            "SubagentStart @  @ subagent-start @ ",
+            "SessionStart @ compact @ session-start @ ",
+        }, hooks.Select(h => $"{h.Event} @ {h.Matcher} @ {h.Args[^1]} @ {h.If}"));
+    }
+
+    [Fact]
+    public void Every_registered_hook_runs_a_mode_that_acts_on_its_event()
+    {
+        // A mistyped mode exits silently by design (CCT-1), so check each registered (event, mode) does something.
+        string root = ClaudeContextBudgetTests.RepoRoot();
+        var env = new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = root };
+        foreach ((string evt, string mode) in RegisteredHooks().Select(h => (h.Event, h.Args[^1])).Distinct())
+        {
+            bool acts = (evt, mode) switch
+            {
+                ("PostToolUse", "read") => HookOutput(RunHook(new[] { mode },
+                    ReadInput(CreateFile(CreateAgentWorktree(NewTempDir()), Pmdg737), agentId: "a1"))) != null,
+                ("PostToolUse", "diff") => HookOutput(RunHook(new[] { mode }, DiffInput("git diff", BashResponse(TaxiDiff)))) != null,
+                ("PreToolUse", "shell-guard") => HookOutput(RunHook(new[] { mode },
+                    ShellInput("Bash", $"sed -i 's/a/b/' {Pmdg737}"))) != null,
+                ("SubagentStart", "subagent-start") => HookOutput(RunHook(new[] { mode }, SubagentInput("Plan", root), env: env)) != null,
+                ("SessionStart", "session-start") => ForgetsAfterCompaction(mode),
+                _ => false,
+            };
+            Assert.True(acts, $"{evt} runs rules-hook.ps1 in mode '{mode}', which does nothing for that event.");
+        }
+    }
+
+    private static bool ForgetsAfterCompaction(string mode)
+    {
+        var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
+        string diff = DiffInput("git diff", BashResponse(TaxiDiff));
+        RunHook(new[] { "diff" }, diff, env: env);
+        RunHook(new[] { mode }, HookInput(new { session_id = "s1", hook_event_name = "SessionStart", source = "compact" }), env: env);
+        return HookOutput(RunHook(new[] { "diff" }, diff, env: env)) != null;
+    }
+
+    private sealed record RegisteredHook(string Event, string Matcher, string Type, string Command, string[] Args, int Timeout,
+        string If);
+
+    private static List<RegisteredHook> RegisteredHooks()
+    {
+        using JsonDocument doc = JsonDocument.Parse(File.ReadAllText(
+            Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".claude", "settings.json")));
+        var hooks = new List<RegisteredHook>();
+        foreach (JsonProperty evt in doc.RootElement.GetProperty("hooks").EnumerateObject())
+            foreach (JsonElement group in evt.Value.EnumerateArray())
+            {
+                string matcher = group.TryGetProperty("matcher", out JsonElement m) ? m.GetString()! : "";
+                foreach (JsonElement h in group.GetProperty("hooks").EnumerateArray())
+                    hooks.Add(new RegisteredHook(evt.Name, matcher, h.GetProperty("type").GetString()!,
+                        h.GetProperty("command").GetString()!,
+                        h.GetProperty("args").EnumerateArray().Select(a => a.GetString()!).ToArray(),
+                        h.GetProperty("timeout").GetInt32(),
+                        h.TryGetProperty("if", out JsonElement f) ? f.GetString()! : ""));
+            }
+        return hooks;
+    }
+
     // ---- inputs and fixtures ----
 
     private static string SubagentInput(string agentType, string cwd) => HookInput(new
