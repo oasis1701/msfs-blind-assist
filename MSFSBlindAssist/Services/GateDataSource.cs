@@ -464,7 +464,8 @@ public sealed class GateDataSource
             // Fill in the concourse letter GSX's own uiGateName usually omits ("Gate 25" at
             // "Terminal 4 - Concourse B" is stand B25). NAME-ONLY -- nothing else is taken from
             // navdata, which is exactly why this is NOT a GsxNavdataMerger call: the API's
-            // coordinates, heading, radius and metadata are complete and stay authoritative.
+            // coordinates, heading, radius and metadata stay authoritative wherever GSX publishes
+            // them (a stand no profile covers gets its heading and size from navdata below, DCK-42).
             // Without it every such stand renders as "25" while SayIntentions asks for "B25",
             // and the assigned-gate lookup falls through its chain to the ARRIVAL RUNWAY.
             //
@@ -476,8 +477,9 @@ public sealed class GateDataSource
             //
             // The navdata read is a DELEGATE, not a list: GsxConcourseLetterFiller invokes it at
             // most once and not at all when every stand already has a letter, so an airport that
-            // needs nothing pays nothing for a database query on the UI thread. It is also the
-            // ONE navdata read on this path -- never a per-stand lookup over ~231 stands.
+            // needs nothing pays nothing for a database query on the UI thread. It is one read,
+            // now shared with the geometry fill below through navdataOnce -- never a per-stand
+            // lookup over ~231 stands.
             spots = GsxConcourseLetterFiller.Fill(spots, () => navdataOnce.Value);
 
             if (_locator.TryFindProfile(icao, out string iniPath))

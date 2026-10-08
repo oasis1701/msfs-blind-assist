@@ -165,7 +165,7 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## DCK-41
 
-- NAMING a stand and deciding WHICH NODES ARE PARKING are different jobs, and only the first may change — which is why the seam above corrects names in place instead of handing `TaxiGraph.Build` the GSX list. `Build`'s parking pass only LABELS an existing node (`FindNearestNode` within 100 m — it creates no node and moves none), and `TaxiNode.ParkingName` has four consumers inside `DescribeLocation` (readout), plus the route briefing's own-position endpoint (also a readout). But the same pass ALSO writes `node.Type = TaxiNodeType.Parking` unconditionally, and `Type` is read by `NamedHoldingPointResolver` (skips parking nodes when snapping a named holding point — a Progressive-Taxi terminator target, and a resolver whose snap radii are probe-pinned and must not be re-tuned), by `HoldShortNodeResolver`, and by the route truncation in `TaxiGuidanceManager.Routing`. So a differently-sized spot list marks a different set of nodes `Parking` and can MOVE A HOLD-SHORT — a runway-incursion surface, not a readout — and additionally strips the Where-Am-I label off any stand it omits (GSX excludes Vehicle/Fuel stands and drops the ones nothing can orient (DCK-42): 230 of KJFK's 231). Never feed `Build` a list that is not navdata's own set. The ONE exception is a runway-rows-only `Build` with no taxi paths and NO parking at all (`RunwayPavement.BuildShapesFromRunwayRows`, the passing-callout runway probe's shapes): only its runway centrelines are read, the graph is thrown away at once and never names a stand, marks a node or places a hold-short. The route briefing's online planning graph (`OsmPlanningGraph`) passes NO parking at all: its stands stay in the bundle for the stand picker only. → [taxi-guidance.md](../taxi-guidance.md)
+- NAMING a stand and deciding WHICH NODES ARE PARKING are different jobs, and only the first may change — which is why the seam above corrects names in place instead of handing `TaxiGraph.Build` the GSX list. `Build`'s parking pass only LABELS an existing node (`FindNearestNode` within 100 m — it creates no node and moves none), and `TaxiNode.ParkingName` has four consumers inside `DescribeLocation` (readout), plus the route briefing's own-position endpoint (also a readout). But the same pass ALSO writes `node.Type = TaxiNodeType.Parking` unconditionally, and `Type` is read by `NamedHoldingPointResolver` (skips parking nodes when snapping a named holding point — a Progressive-Taxi terminator target, and a resolver whose snap radii are probe-pinned and must not be re-tuned), by `HoldShortNodeResolver`, and by the route truncation in `TaxiGuidanceManager.Routing`. So a differently-sized spot list marks a different set of nodes `Parking` and can MOVE A HOLD-SHORT — a runway-incursion surface, not a readout — and additionally strips the Where-Am-I label off any stand it omits (GSX excludes Vehicle/Fuel stands and drops the ones nothing can orient (DCK-42): 230 of KJFK's 231 survive with no navdata, all 231 once navdata fills Gate 1A). Never feed `Build` a list that is not navdata's own set. The ONE exception is a runway-rows-only `Build` with no taxi paths and NO parking at all (`RunwayPavement.BuildShapesFromRunwayRows`, the passing-callout runway probe's shapes): only its runway centrelines are read, the graph is thrown away at once and never names a stand, marks a node or places a hold-short. The route briefing's online planning graph (`OsmPlanningGraph`) passes NO parking at all: its stands stay in the bundle for the stand picker only. → [taxi-guidance.md](../taxi-guidance.md)
 
 ## DCK-42
 
@@ -182,10 +182,11 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 - Rules of the fill:
   - The `.ini`'s `this_parking_pos` heading still wins (GSX's own data, joined first).
   - It never overwrites a published value.
-  - In-range candidates disagreeing by more than `MaxHeadingDisagreementDegrees` (10°) are refused, never arbitrated.
+  - In-range candidates disagreeing with the NEAREST one by more than `MaxHeadingDisagreementDegrees` (10°) are refused, never arbitrated (each candidate is compared with the nearest, not pairwise).
   - The size sets `Radius` = navdata feet × 0.3048 and `MaxWingspanMeters` = twice that. That is the fit navdata's own `FitsAircraft` gives, so the fit filter and SayIntentions' position match (SI-7) behave as on a navdata list.
   - The filler shares `GsxConcourseLetterFiller`'s one lazy navdata read and is skipped when nothing needs it.
   - A stand neither source can orient is still dropped.
+  - For a stand flagged `ParkingSpot.GsxUnconfigured` only, an accepted donor also lends `HasJetway` and `AirlineCodes` (DCK-44).
 
 → [gsx.md](../gsx.md)
 
@@ -197,5 +198,23 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 - A PRESENT `type` with no matching constant still degrades to 0 (pinned by `Entry_with_no_matching_type_constant_degrades_to_unknown_type_zero`).
 - Use `ToUpperInvariant`, never `ToUpper`: in tr-TR "Ramp Mil Cargo" folds to `RAMP_MİL_CARGO`.
 - `maxWingspan` 999.0 is on every selectable stand GSX sends with neither a heading nor a `type` (live KSAN 75 of 75, KATL 4 of 4) and on all 7 of KJFK's Vehicle/Fuel entries, and on no selectable stand that has a heading (KJFK's 231 top out at 90 m). Read as 499.5 m it would make every such stand fit any aircraft, so it reads as unpublished and `GsxNavdataGeometryFiller` (DCK-42) fills the real size.
+
+→ [gsx.md](../gsx.md)
+
+## DCK-44
+
+- `ParkingSpot.GsxUnconfigured` marks a stand GSX's Remote API published with NO profile-derived field: no `heading` and no `hasJetway`. `GsxRemoteParkingReader.ReadOne` sets it from exactly that pair (`!heading.HasValue && no "hasJetway" key`); no other path sets it (navdata and `.ini` spots are false).
+- Measured on the committed captures, per selectable stand (Vehicle and Fuel excluded), by which of `heading`, `hasJetway`, `airlineCodes` and `type` GSX sent:
+
+  | Capture | Stands | None of the four | All four | Other |
+  | --- | --- | --- | --- | --- |
+  | KSAN | 79 | 75 | 4 | 0 |
+  | KATL | 8 | 4 | 0 | 4 with `heading`, `hasJetway` and `airlineCodes` (`type` was trimmed from the capture) |
+  | KJFK | 231 | 0 | 230 | 1: Gate 1A, with no `heading` but `hasJetway`, `airlineCodes` and `type` |
+
+  So "no `heading` AND no `hasJetway`" identifies exactly the stands no profile covers on all three: KSAN 75, KATL 4, KJFK 0.
+- A missing heading ALONE is not the signal. KJFK's Gate 1A (Terminal 8 - Concourse B) lacks only its heading; a profile covers it, GSX published its jet-bridge flag and airline codes, and navdata must never overwrite them. Its heading is borrowed (DCK-42), nothing else.
+- Why the filler needs the flag. Without it, 53 of KSAN's 75 recovered gates read "no jetway": navdata's `has_jetway` is 1 on 53 of its 79 rows (gates 20-51 and 101-121, e.g. 115) and 0 on the GA and cargo ramps (e.g. N Parking 10), while an unconfigured GSX stand always reads `HasJetway` false. `ParkingSpot.Describe` then drops "(Jetway)" from the label and `DockingGuidanceManager` says "Door on your left" instead of "Jetway on your left". At an airport with no profile (KSFO, 208 of 208) that is a regression against the navdata list the recovered one replaces. So `GsxNavdataGeometryFiller` copies the donor's `HasJetway` (and a non-empty `AirlineCodes`) onto a flagged stand, and onto no other.
+- Why the surroundings catalog needs the flag. An unconfigured stand's `TerminalName` is not a profile author's section title but GSX's own synthesized grouping (KSAN: "Ramp" 53, "N Parking" 10, "Gate N" 10, "Gate W" 3, "E Parking" 3). Before this fix those stands never reached `GsxTerminalFeatureSource` (they were dropped, or the list was the navdata fallback, which its `Source` test excludes), and navdata, OSM and the scenery already describe those areas. Letting them in made the Look Around readout and the passing callouts announce a "Gate W" or "N Parking" place no other source recognises. `GsxTerminalFeatureSource.Read` skips them, which restores the previous catalog exactly: KSAN yields the one feature its 4 configured stands make, "Gate N".
 
 → [gsx.md](../gsx.md)
