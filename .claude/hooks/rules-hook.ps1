@@ -9,6 +9,10 @@ Modes (first argument):
   for [-Machine] <path>... | for [-Machine] -Stdin
                                      list the rule files that load for the given paths, or for the paths on stdin
                                      one per line (a command, not a hook; -Machine prints path<TAB>name;name)
+  read                               PostToolUse (Read, Write, NotebookEdit): add the rule files for a file inside a
+                                     subagent's own worktree (.claude/worktrees/agent-*), where Claude Code loads none
+
+Hook modes read the hook input (JSON) on stdin. Setting MSFSBA_RULES_HOOK=off silences every hook mode.
 
 Every hook mode fails open (CCT-1): any error, missing file or unexpected input exits 0 with no output.
 Glob translation and front-matter parsing mirror ClaudeContextBudgetTests (CCT-2); ClaudeRulesHookTests pins both.
@@ -64,12 +68,16 @@ function Resolve-FullPath([string]$Path, [string]$Base) {
     } catch { return $null }
 }
 
-# The nearest folder at or above $Path (or its nearest existing parent) that holds .claude\rules, or $null.
+# The nearest folder at or above $Path (or its nearest existing parent) that holds .claude\rules and a .git entry (a
+# folder in a clone, a file in a worktree), or $null. Requiring .git keeps a home folder's user-level ~/.claude/rules
+# from passing for a checkout.
 function Find-CheckoutRoot([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
     try { $dir = [IO.Path]::GetFullPath((ConvertTo-WindowsPath $Path)) } catch { return $null }
     while ($dir) {
-        if ([IO.Directory]::Exists([IO.Path]::Combine($dir, '.claude', 'rules'))) { return $dir.TrimEnd('\') }
+        $git = [IO.Path]::Combine($dir, '.git')
+        if ([IO.Directory]::Exists([IO.Path]::Combine($dir, '.claude', 'rules')) -and
+            ([IO.Directory]::Exists($git) -or [IO.File]::Exists($git))) { return $dir.TrimEnd('\') }
         $dir = [IO.Path]::GetDirectoryName($dir)
     }
     return $null
@@ -156,6 +164,76 @@ function Get-MatchingRuleFiles($RuleFiles, [string]$RelativePath) {
     return ,$hits.ToArray()
 }
 
+$ReadHeader = "Area rules for {0}. Claude Code does not load .claude/rules for files in a subagent's own worktree, " +
+    "so .claude/hooks/rules-hook.ps1 added them:"
+
+# The header, then one "Contents of <path>:" block per rule file: the shape of Claude Code's own injection.
+function Format-RuleBlocks([string]$Header, $RuleFiles) {
+    $parts = New-Object System.Collections.Generic.List[string]
+    $parts.Add($Header)
+    foreach ($rf in $RuleFiles) { $parts.Add('Contents of ' + $rf.Path + ":`n`n" + $rf.Body + "`n") }
+    return ($parts.ToArray() -join "`n`n")
+}
+
+function Write-Context([string]$EventName, [string]$Text) {
+    $output = @{ hookSpecificOutput = @{ hookEventName = $EventName; additionalContext = $Text } }
+    Write-Utf8 ($output | ConvertTo-Json -Depth 4 -Compress)
+}
+
+# Which rule files this session (or subagent) already got from the hook: one file per session and subagent under
+# %TEMP%\msfsba-rules-hook, one rule-file path per line.
+function Get-MemoryPath($HookInput) {
+    $session = [regex]::Replace([string]$HookInput.session_id, '[^A-Za-z0-9_-]', '')
+    $agent = [regex]::Replace([string]$HookInput.agent_id, '[^A-Za-z0-9_-]', '')
+    if ($agent -eq '') { $agent = 'main' }
+    return [IO.Path]::Combine($env:TEMP, 'msfsba-rules-hook', "$session-$agent.txt")
+}
+
+function Get-Remembered($HookInput) {
+    $path = Get-MemoryPath $HookInput
+    if (-not [IO.File]::Exists($path)) { return ,@() }
+    return ,([IO.File]::ReadAllLines($path, $Utf8))
+}
+
+function Add-Remembered($HookInput, [string[]]$RulePaths) {
+    $path = Get-MemoryPath $HookInput
+    $dir = [IO.Path]::GetDirectoryName($path)
+    [void][IO.Directory]::CreateDirectory($dir)
+    [IO.File]::AppendAllLines($path, $RulePaths, $Utf8)
+    $cutoff = (Get-Date).AddDays(-2)
+    foreach ($old in [IO.Directory]::GetFiles($dir, '*.txt')) {
+        if ([IO.File]::GetLastWriteTime($old) -lt $cutoff) { try { [IO.File]::Delete($old) } catch { } }
+    }
+}
+
+# Rule files that $Hits holds and this session or subagent has not been given yet.
+function Select-NotRemembered($HookInput, $Hits) {
+    $remembered = Get-Remembered $HookInput
+    $fresh = New-Object System.Collections.Generic.List[object]
+    foreach ($h in $Hits) { if ($remembered -notcontains $h.Path) { $fresh.Add($h) } }
+    return ,$fresh.ToArray()
+}
+
+# PostToolUse on Read/Write/NotebookEdit in a subagent: Claude Code loads no .claude/rules for a file inside a
+# subagent's own worktree (.claude/worktrees/agent-*), so add that file's rule files here.
+function Invoke-Read($HookInput) {
+    if ($null -eq $HookInput -or [string]::IsNullOrEmpty([string]$HookInput.agent_id)) { return }
+    $toolInput = $HookInput.tool_input
+    if ($null -eq $toolInput) { return }
+    $file = [string]$toolInput.file_path
+    if ($file -eq '') { $file = [string]$toolInput.notebook_path }
+    $full = Resolve-FullPath $file ([string]$HookInput.cwd)
+    if (-not $full) { return }
+    if ($full.IndexOf('\.claude\worktrees\agent-', [StringComparison]::OrdinalIgnoreCase) -lt 0) { return }
+    $root = Find-CheckoutRoot $full
+    if (-not $root) { return }
+    $relative = Get-RelativePath $root $full
+    $fresh = Select-NotRemembered $HookInput (Get-MatchingRuleFiles (Get-RuleFiles $root) $relative)
+    if ($fresh.Count -eq 0) { return }
+    Write-Context 'PostToolUse' (Format-RuleBlocks ($ReadHeader -f $relative) $fresh)
+    Add-Remembered $HookInput ([string[]]@(foreach ($f in $fresh) { $f.Path }))
+}
+
 function Invoke-For {
     $base = (Get-Location).Path
     $root = Find-CheckoutRoot $base
@@ -189,8 +267,10 @@ function Invoke-For {
 
 $ErrorActionPreference = 'Stop'
 try {
+    if ($Mode -ne 'for' -and $env:MSFSBA_RULES_HOOK -eq 'off') { exit 0 }
     switch ($Mode) {
         'for' { Invoke-For }
+        'read' { Invoke-Read (Read-HookInput) }
         default { }
     }
 }
