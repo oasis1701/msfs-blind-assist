@@ -21,8 +21,13 @@ public static class GsxTerminalFeatureSource
         var result = new List<AirportFeature>();
         // Grouped by the header as written; the catalog's same-name rule decides whether two
         // sections that clean to one name are one place.
+        // A stand GSX published unconfigured has no profile section, so its header is GSX's own
+        // synthesized grouping ("N Parking", "Gate W", "Ramp"), not a profile author's section title
+        // [DCK-44]. Before the unconfigured-stand fix those stands never reached this source (dropped,
+        // or the list was the navdata fallback, which the Source test excludes), and navdata, OSM and
+        // the scenery already describe those areas; skipping them keeps the catalog exactly as it was.
         var groups = selectableGates
-            .Where(s => s.Source == GateSource.Gsx)
+            .Where(s => s.Source == GateSource.Gsx && !s.GsxUnconfigured)
             .Select(s => (Spot: s, Header: ParkingSpot.SpeakableTerminalName(s.TerminalName).Trim()))
             .Where(x => x.Header.Length > 0)
             .GroupBy(x => x.Header, x => x.Spot, StringComparer.OrdinalIgnoreCase);

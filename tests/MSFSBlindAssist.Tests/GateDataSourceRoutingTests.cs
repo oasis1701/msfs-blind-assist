@@ -389,6 +389,7 @@ public class GateDataSourceRoutingTests : IDisposable
         var gate115 = spots.Single(s => s.GsxIdentifier == "Ramp 115");
         Assert.Equal(196.08, gate115.Heading, 2);
         Assert.Equal("Gate Medium", gate115.GetFilterCategory());
+        Assert.True(gate115.HasJetway);   // navdata's has_jetway, borrowed for a stand GSX did not configure [DCK-44]
         Assert.Equal(SayIntentionsClearanceParser.NormalizeParkingName("Gate 115"),
                      SayIntentionsClearanceParser.NormalizeParkingName(gate115.ToString()));
         Assert.Equal(new[] { GsxKsanFixtures.Ksan }, navdata.GetParkingSpotsCalls);   // ONE read, shared

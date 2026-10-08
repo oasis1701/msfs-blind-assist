@@ -15,18 +15,21 @@ public class GsxNavdataGeometryFillerTests
     private const double Lat = 32.73188, Lon = -117.19246;
 
     private static ParkingSpot Api(string id, int number, double lat, double lon,
-                                   double heading = double.NaN, double? maxWingspan = null) => new()
+                                   double heading = double.NaN, double? maxWingspan = null,
+                                   bool unconfigured = false, bool hasJetway = false, string airlineCodes = "") => new()
     {
         AirportICAO = Ksan, GsxIdentifier = id, Number = number, Latitude = lat, Longitude = lon,
         Heading = heading, MaxWingspanMeters = maxWingspan,
         Radius = maxWingspan.HasValue ? maxWingspan.Value / 2.0 : 100.0,   // the reader's own placeholder
         Source = GateSource.Gsx,
+        GsxUnconfigured = unconfigured, HasJetway = hasJetway, AirlineCodes = airlineCodes,
     };
 
-    private static ParkingSpot Nav(int number, double lat, double lon, double heading, double radiusFeet = 66.0) => new()
+    private static ParkingSpot Nav(int number, double lat, double lon, double heading, double radiusFeet = 66.0,
+                                   bool hasJetway = false, string airlineCodes = "") => new()
     {
         AirportICAO = Ksan, Number = number, Latitude = lat, Longitude = lon, Heading = heading,
-        Radius = radiusFeet, Source = GateSource.Navdata,
+        Radius = radiusFeet, Source = GateSource.Navdata, HasJetway = hasJetway, AirlineCodes = airlineCodes,
     };
 
     /// <summary>Offsets a coordinate due north by <paramref name="metres"/>.</summary>
@@ -92,6 +95,73 @@ public class GsxNavdataGeometryFillerTests
             Nav(115, LatPlusMetres(Lat, 4.0), Lon, 197.0),
             Nav(115, LatPlusMetres(Lat, 2.0), Lon, 196.0)));
         Assert.Equal(196.0, spot.Heading, 6);
+    }
+
+    [Fact]
+    public void In_range_navdata_stands_either_side_of_north_agree_across_the_wrap()
+    {
+        // 359 and 1 degrees are 2 degrees apart, not 358: pins AngleBetween's wrap. Refused, the
+        // stand would stay NaN and be dropped after touchdown.
+        var spot = Api("Ramp 115", 115, Lat, Lon, maxWingspan: 40.0);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(
+            Nav(115, LatPlusMetres(Lat, 2.0), Lon, 359.0),
+            Nav(115, LatPlusMetres(Lat, 4.0), Lon, 1.0)));
+        Assert.Equal(359.0, spot.Heading, 6);   // the nearest one's, never an average
+    }
+
+    // ── Jet-bridge flag and airline codes: unconfigured stands only [DCK-44] ─────────────────
+
+    [Fact]
+    public void An_unconfigured_stand_takes_the_jet_bridge_flag_from_the_donor()
+    {
+        var spot = Api("Ramp 115", 115, Lat, Lon, unconfigured: true);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(Nav(115, LatPlusMetres(Lat, 2.0), Lon, 196.1, hasJetway: true)));
+        Assert.True(spot.HasJetway);
+        Assert.Contains("(Jetway)", spot.Describe());
+    }
+
+    [Fact]
+    public void An_unconfigured_stand_whose_donor_has_no_jet_bridge_stays_without_one()
+    {
+        var spot = Api("N Parking 10", 10, Lat, Lon, unconfigured: true);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(Nav(10, Lat, Lon, 90.0, hasJetway: false)));
+        Assert.False(spot.HasJetway);
+        Assert.DoesNotContain("(Jetway)", spot.Describe());
+    }
+
+    [Fact]
+    public void A_stand_GSX_configured_never_has_its_jet_bridge_flag_or_airline_codes_replaced()
+    {
+        // KJFK Gate 1A: GSX published hasJetway (false) and airlineCodes but not the heading. Only
+        // the heading is borrowed; the donor's jet bridge and airlines are another source's opinion.
+        var spot = Api("Gate 1A", 1, Lat, Lon, unconfigured: false, hasJetway: false, airlineCodes: "DAL");
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(
+            Nav(1, LatPlusMetres(Lat, 2.86), Lon, 196.1, hasJetway: true, airlineCodes: "UAL, AAL")));
+        Assert.Equal(196.1, spot.Heading, 6);   // the gap is filled...
+        Assert.False(spot.HasJetway);           // ...and nothing else is
+        Assert.Equal("DAL", spot.AirlineCodes);
+    }
+
+    [Fact]
+    public void An_unconfigured_stand_takes_the_donors_airline_codes_but_an_empty_donor_value_leaves_none()
+    {
+        var withCodes = Api("Ramp 115", 115, Lat, Lon, unconfigured: true);
+        var withoutCodes = Api("Ramp 116", 116, LatPlusMetres(Lat, 50.0), Lon, unconfigured: true);
+        GsxNavdataGeometryFiller.Fill(new[] { withCodes, withoutCodes }, Navdata(
+            Nav(115, Lat, Lon, 196.1, airlineCodes: "UAL, AAL"),
+            Nav(116, LatPlusMetres(Lat, 50.0), Lon, 16.1, airlineCodes: "")));
+        Assert.Equal("UAL, AAL", withCodes.AirlineCodes);
+        Assert.Equal("", withoutCodes.AirlineCodes);
+    }
+
+    [Fact]
+    public void A_refused_match_gives_an_unconfigured_stand_no_jet_bridge_flag_either()
+    {
+        var spot = Api("Ramp 115", 115, Lat, Lon, unconfigured: true);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(
+            Nav(115, LatPlusMetres(Lat, 2.0), Lon, 196.0, hasJetway: true),
+            Nav(115, LatPlusMetres(Lat, 4.0), Lon, 16.0, hasJetway: true)));
+        Assert.False(spot.HasJetway);
     }
 
     // ── Size ────────────────────────────────────────────────────────────────────────────────
@@ -187,5 +257,31 @@ public class GsxNavdataGeometryFillerTests
         var gateN1 = spots.Single(s => s.GsxIdentifier == "Gate N 1");
         Assert.Equal(325.79, gateN1.Heading, 2);
         Assert.Equal(58.0, gateN1.MaxWingspanMeters);
+    }
+
+    [Fact]
+    public void KSAN_gates_with_a_jet_bridge_in_navdata_keep_it_after_the_fill_and_ramps_do_not_gain_one()
+    {
+        // Without this, 53 of KSAN's 75 recovered stands read "no jetway": the label loses
+        // "(Jetway)" and docking says "Door on your left" for a jet bridge. At a profile-less
+        // airport (KSFO) that would be a regression against the navdata list this replaces.
+        var spots = GsxNavdataGeometryFiller.Fill(
+            GsxRemoteParkingReader.Read(GsxKsanFixtures.GsxAirport(), Ksan),
+            () => GsxKsanFixtures.Navdata());
+
+        var ramp115 = spots.Single(s => s.GsxIdentifier == "Ramp 115");   // SayIntentions' "Gate 115"
+        Assert.True(ramp115.GsxUnconfigured);
+        Assert.True(ramp115.HasJetway);
+        Assert.Contains("(Jetway)", ramp115.ToString());
+
+        var parking10 = spots.Single(s => s.GsxIdentifier == "N Parking 10");   // a GA ramp: no jet bridge in navdata
+        Assert.True(parking10.GsxUnconfigured);
+        Assert.False(parking10.HasJetway);
+        Assert.DoesNotContain("(Jetway)", parking10.ToString());
+
+        // A stand GSX configured keeps what GSX published, whatever navdata says about it.
+        var gateN1 = spots.Single(s => s.GsxIdentifier == "Gate N 1");
+        Assert.False(gateN1.GsxUnconfigured);
+        Assert.False(gateN1.HasJetway);
     }
 }

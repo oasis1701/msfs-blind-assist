@@ -31,10 +31,22 @@ namespace MSFSBlindAssist.Services.Gsx.Remote;
 /// recovered (GSX's own <c>this_parking_pos</c>, joined first), is never touched; the same for a
 /// size GSX published. The match is the shared stand rule: same NUMBER, within
 /// <see cref="MatchRadiusMetres"/> (<see cref="GsxStandLetterMatch.MatchRadiusMetres"/>, whose doc
-/// carries the measurement). In-range candidates that disagree on heading by more than
-/// <see cref="MaxHeadingDisagreementDegrees"/> are REFUSED, never arbitrated, and nothing is taken
-/// from a refused match. A stand neither source can orient stays NaN, and
+/// carries the measurement). In-range candidates that disagree with the NEAREST one on heading by
+/// more than <see cref="MaxHeadingDisagreementDegrees"/> are REFUSED, never arbitrated, and nothing
+/// is taken from a refused match. A stand neither source can orient stays NaN, and
 /// <c>DropUnusableHeadings</c> still drops it.
+/// </para>
+///
+/// <para>
+/// <b>The jet bridge and the airlines, unconfigured stands only [DCK-44].</b> A stand flagged
+/// <see cref="ParkingSpot.GsxUnconfigured"/> (GSX sent no <c>heading</c> and no <c>hasJetway</c>:
+/// no profile covers it) has no GSX opinion on either, so an accepted donor also lends
+/// <see cref="ParkingSpot.HasJetway"/> and, when it has any, <see cref="ParkingSpot.AirlineCodes"/>.
+/// Without it 53 of KSAN's 75 recovered gates read "no jetway": the label loses "(Jetway)" and
+/// docking says "Door on your left" for a jet bridge, a regression against the navdata list the
+/// recovered one replaces at a profile-less airport. NEVER for a stand that is not flagged: KJFK's
+/// Gate 1A lacks only its heading, GSX published its jet-bridge flag and airline codes, and only the
+/// heading is borrowed.
 /// </para>
 ///
 /// <para>
@@ -59,7 +71,8 @@ public static class GsxNavdataGeometryFiller
     internal const double MatchRadiusMetres = GsxStandLetterMatch.MatchRadiusMetres;
 
     /// <summary>
-    /// How far two in-range navdata candidates may disagree on heading before the match is refused.
+    /// How far an in-range navdata candidate may disagree with the NEAREST one on heading before the
+    /// match is refused (each candidate is compared with the nearest, not with every other).
     /// Two rows for one physical stand (a duplicated row, a MARS pair) point the same way; the
     /// widest same-stand disagreement measured between GSX and navdata is 6.68 degrees (KJFK).
     /// </summary>
@@ -84,7 +97,7 @@ public static class GsxNavdataGeometryFiller
         if (needy.Count == 0) return result;   // navdata is never even asked for
 
         var donors = LoadDonors(navdata);
-        int headingsNeeded = 0, headingsFilled = 0, sizesNeeded = 0, sizesFilled = 0, refused = 0;
+        int headingsNeeded = 0, headingsFilled = 0, sizesNeeded = 0, sizesFilled = 0, jetwaysFilled = 0, refused = 0;
 
         foreach (var spot in needy)
         {
@@ -110,9 +123,18 @@ public static class GsxNavdataGeometryFiller
                 spot.MaxWingspanMeters = 2.0 * radiusMetres;         // "the radius holds the half-span"
                 sizesFilled++;
             }
+
+            // GSX has no opinion on these two for a stand no profile covers [DCK-44]; for any other
+            // stand (KJFK's Gate 1A) it published them, and they are never replaced.
+            if (spot.GsxUnconfigured)
+            {
+                spot.HasJetway = donor.HasJetway;
+                if (donor.HasJetway) jetwaysFilled++;
+                if (!string.IsNullOrEmpty(donor.AirlineCodes)) spot.AirlineCodes = donor.AirlineCodes;
+            }
         }
 
-        LogSummary(headingsNeeded, headingsFilled, sizesNeeded, sizesFilled, donors.Count, refused);
+        LogSummary(headingsNeeded, headingsFilled, sizesNeeded, sizesFilled, jetwaysFilled, donors.Count, refused);
         return result;
     }
 
@@ -156,7 +178,7 @@ public static class GsxNavdataGeometryFiller
 
     /// <summary>
     /// The nearest same-numbered donor within <see cref="MatchRadiusMetres"/>, or null when there is
-    /// none. When two in-range donors disagree on heading by more than
+    /// none. When an in-range donor disagrees with the NEAREST one on heading by more than
     /// <see cref="MaxHeadingDisagreementDegrees"/>, <paramref name="wasRefused"/> is set and null is
     /// returned: refuse, never arbitrate.
     /// </summary>
@@ -197,12 +219,12 @@ public static class GsxNavdataGeometryFiller
 
     /// <summary>ONE line per call, never per stand. Warn only when a match was refused.</summary>
     private static void LogSummary(int headingsNeeded, int headingsFilled, int sizesNeeded, int sizesFilled,
-                                   int donorCount, int refused)
+                                   int jetwaysFilled, int donorCount, int refused)
     {
         string summary =
             $"navdata geometry: {headingsNeeded} stand(s) had no GSX heading and {sizesNeeded} no GSX size; " +
-            $"filled {headingsFilled} heading(s) and {sizesFilled} size(s) from the same-numbered navdata stand " +
-            $"within {MatchRadiusMetres:0.#} m ({donorCount} candidate stand(s)).";
+            $"filled {headingsFilled} heading(s), {sizesFilled} size(s) and {jetwaysFilled} jet-bridge flag(s) " +
+            $"from the same-numbered navdata stand within {MatchRadiusMetres:0.#} m ({donorCount} candidate stand(s)).";
 
         if (refused > 0)
             Log.Warn("Gsx", summary + $" {refused} stand(s) had navdata candidates disagreeing by more than " +

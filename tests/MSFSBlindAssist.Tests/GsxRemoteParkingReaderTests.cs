@@ -601,6 +601,48 @@ public class GsxRemoteParkingReaderTests
     }
 
     [Fact]
+    public void On_the_KSAN_capture_exactly_the_75_headingless_stands_are_flagged_unconfigured()
+    {
+        // GSX sends neither `heading` nor `hasJetway` for a stand no profile section covers (KSAN
+        // 75 of 79); the 4 stands the installed profile covers carry both. That pair is the signal [DCK-44].
+        var spots = GsxRemoteParkingReader.Read(GsxKsanFixtures.GsxAirport(), GsxKsanFixtures.Ksan);
+
+        var unconfigured = spots.Where(s => s.GsxUnconfigured).ToList();
+        Assert.Equal(75, unconfigured.Count);
+        Assert.All(unconfigured, s => Assert.False(GsxRemoteParkingReader.HasUsableHeading(s), s.GsxIdentifier));
+        Assert.All(spots.Where(s => !s.GsxUnconfigured), s => Assert.True(GsxRemoteParkingReader.HasUsableHeading(s), s.GsxIdentifier));
+        Assert.Equal(4, spots.Count(s => !s.GsxUnconfigured));
+        Assert.False(spots.Single(s => s.GsxIdentifier == "Gate N 1").GsxUnconfigured);
+        Assert.True(spots.Single(s => s.GsxIdentifier == "Ramp 115").GsxUnconfigured);
+    }
+
+    [Fact]
+    public void On_the_KJFK_capture_no_stand_is_unconfigured_Gate_1A_lacks_only_its_heading()
+    {
+        // Gate 1A at Terminal 8 - Concourse B has no heading but DOES carry hasJetway, airlineCodes and
+        // type: a profile covers it, so a missing heading alone is not the signal and navdata must
+        // never overwrite its published jet-bridge flag.
+        var spots = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk);
+
+        Assert.Equal(231, spots.Count);
+        Assert.DoesNotContain(spots, s => s.GsxUnconfigured);
+        var gate1A = spots.Single(s => s.GsxIdentifier == "Gate 1A" && s.TerminalName == "Terminal 8 - Concourse B");
+        Assert.False(GsxRemoteParkingReader.HasUsableHeading(gate1A));
+        Assert.False(gate1A.GsxUnconfigured);
+    }
+
+    [Fact]
+    public void A_stand_with_no_heading_but_a_published_jetway_flag_is_not_unconfigured()
+    {
+        const string json = """
+            {"parkings":[{"uiGateName":"Gate 1A","uiTerminalName":"T1","uiType":"Gate Heavy","type":10,
+                          "GATE_HEAVY":10,"lat":1.0,"lon":2.0,"hasJetway":0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.False(spot.GsxUnconfigured);
+    }
+
+    [Fact]
     public void HasJetway_also_accepts_a_real_json_boolean()
     {
         const string json = """

@@ -128,6 +128,14 @@ public static class GsxRemoteParkingReader
         }
 
         Log.Debug("Gsx", $"parking reader: {result.Count} selectable parking(s) for {icao}.");
+
+        // ONE line per read, never one per stand: at an airport no GSX profile covers (KSAN 75 of 79,
+        // KSFO 208 of 208) nearly every stand has no heading, and a line each would bury debug.log.
+        var headingless = result.Where(s => !HasUsableHeading(s)).Select(s => s.GsxIdentifier).ToList();
+        if (headingless.Count > 0)
+            Log.Debug("Gsx", $"parking reader: {headingless.Count} of {result.Count} stand(s) for {icao} have no published heading " +
+                             "(GSX sends none for a stand no profile section covers; the .ini join, then navdata, may recover it): " +
+                             string.Join(", ", headingless) + ".");
         return result;
     }
 
@@ -199,8 +207,6 @@ public static class GsxRemoteParkingReader
         double effectiveHeading = heading.HasValue
             ? GsxProfileParser.NormalizeHeading(heading.Value)
             : double.NaN;
-        if (!heading.HasValue)
-            Log.Warn("Gsx", $"parking reader: \"{uiGateName}\" ({icao}) has no published heading from GSX -- emitting with Heading=NaN instead of dropping it; the .ini join may recover a real value.");
 
         double? maxWingspan = Double(p, "maxWingspan");
         if (maxWingspan >= UnlimitedWingspanMetres) maxWingspan = null;   // the unconfigured-stand sentinel, not a size
@@ -257,6 +263,13 @@ public static class GsxRemoteParkingReader
 
             HasJetway = ReadBool(p, "hasJetway"),
             AirlineCodes = AirlineCodesJoined(p),
+
+            // GSX sends neither `heading` nor `hasJetway` for a stand no profile section covers
+            // (KSAN 75 of 79, KATL 4 of 8, KJFK 0 of 231) and both for one that has a section.
+            // A missing heading ALONE is not the signal: KJFK's Gate 1A lacks only its heading and
+            // is fully configured. The pair is what GsxNavdataGeometryFiller and
+            // GsxTerminalFeatureSource key on [DCK-44].
+            GsxUnconfigured = !heading.HasValue && !p.TryGetProperty("hasJetway", out _),
 
             Source = GateSource.Gsx,
             VdgsType = string.IsNullOrWhiteSpace(vdgs) ? null : vdgs,
