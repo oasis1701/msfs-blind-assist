@@ -189,7 +189,7 @@ The committed `.claude/settings.json` runs `.claude/hooks/rules-hook.ps1` under 
 The modes, and what starts each:
 
 - `read`: after a Read inside `.claude/worktrees/agent-*` (filter `Read(//**/.claude/worktrees/agent-*/**)`), and after every Write or NotebookEdit, since no filter matches a Write; outside agent worktrees it exits at once. A subagent run with worktree isolation gets no area rules from Claude Code, so this adds the file's rule files, once per subagent.
-- `diff`: after `git diff`, `git show` or `gh pr diff`, including the `git -C <dir>` forms, in the Bash and PowerShell tools. It adds the rule files for the changed paths, up to 40,000 characters, and names the rest.
+- `diff`: after every `git` or `gh` command in the Bash and PowerShell tools; it acts only on `git diff`, `git show` (also after `git -C <dir>`) and `gh pr diff`. It adds the rule files for the changed paths, up to 40,000 characters, and names the rest. It is registered as `Bash(git *)` rather than `Bash(git diff*)` because a filter naming more than the command also runs on every command holding `$VAR` or `$()`.
 - `shell-guard`: before a Bash command using `sed`, `perl`, `tee`, `cat`, `echo` or `printf`, and before a PowerShell `Set-Content`, `Add-Content` or `Out-File`. It refuses the command when it writes a file some rule file covers, and points to Read and then Edit or Write.
 - `subagent-start`: when a subagent starts. It gives the built-in Plan agent CLAUDE.md, which that agent otherwise skips, and tells a subagent working in a worktree that is neither the session's own checkout nor an `agent-*` folder to load its rules itself.
 - `session-start`: after a compaction. It forgets which rule files the hook added, so they can be added again.
@@ -205,9 +205,9 @@ powershell -NoProfile -File .claude/hooks/rules-hook.ps1 for MSFSBlindAssist/Nav
 
 **Limits.**
 - The shell guard cannot see a write made by a script (Python, Node, `dotnet`), by `cp` or `mv`, by git itself, or by a PowerShell `>` redirect outside the three cmdlets; CORE-16's instruction still covers those.
-- Each matching shell command, and each Write, costs about 0.2 s of PowerShell start-up. Normal Reads never start the hook.
+- Each `git` or `gh` command, each filtered shell command and each Write costs about 0.2 s of PowerShell start-up. Normal Reads never start the hook.
 - If Claude later Reads a file whose rules the diff mode added, Claude Code adds the same rule file again: a harmless duplicate.
-- Hooks load when a session starts, so a running session never sees a change to `.claude/settings.json`.
+- A change to `.claude/settings.json` can reach a session that is already running, so test a change in a fresh session.
 
 **Live checks (CCT-3).** After changing a hook's matcher or `if` filter, check in a fresh session (a headless `claude -p` from the checkout is enough) that:
 
@@ -218,6 +218,6 @@ powershell -NoProfile -File .claude/hooks/rules-hook.ps1 for MSFSBlindAssist/Nav
 5. A Plan agent starts with CLAUDE.md.
 6. A normal Read in the main conversation never starts the `read` hook. To see this, register a logging copy of the hook under the same filter with `--settings`.
 7. A subagent working in a worktree the read mode cannot see is told to load its rules itself.
-8. A filter naming a redirect (`Bash(cat >*)`) still matches nothing, so the broad shell-guard filters are still needed.
+8. A filter naming a redirect (`Bash(cat >*)`) still matches nothing, so the broad shell-guard filters are still needed; and a command holding `$VAR` but no git command does not start the diff hook.
 
 

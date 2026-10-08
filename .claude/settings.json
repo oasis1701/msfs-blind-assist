@@ -17,21 +17,15 @@
       {
         "matcher": "Bash",
         "hooks": [
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "Bash(git diff*)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "Bash(git -C * diff*)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "Bash(git show*)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "Bash(git -C * show*)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "Bash(gh pr diff*)" }
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "Bash(git *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "Bash(gh *)" }
         ]
       },
       {
         "matcher": "PowerShell",
         "hooks": [
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "PowerShell(git diff*)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "PowerShell(git -C * diff*)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "PowerShell(git show*)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "PowerShell(git -C * show*)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "PowerShell(gh pr diff*)" }
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "PowerShell(git *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "PowerShell(gh *)" }
         ]
       }
     ],

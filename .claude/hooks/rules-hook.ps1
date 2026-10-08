@@ -213,6 +213,20 @@ function Add-Remembered($HookInput, [string[]]$RulePaths) {
     }
 }
 
+# One command can match several registered handlers, which Claude Code runs in parallel (seen 2026-10-08: five diff
+# handlers added five copies), so the check-then-remember step runs under a per-session (and per-subagent) mutex.
+function Lock-Memory($HookInput) {
+    $name = 'Local\msfsba-rules-hook-' + [IO.Path]::GetFileNameWithoutExtension((Get-MemoryPath $HookInput))
+    $mutex = New-Object System.Threading.Mutex($false, $name)
+    try { [void]$mutex.WaitOne(5000) } catch [System.Threading.AbandonedMutexException] { }
+    return $mutex
+}
+
+function Unlock-Memory($Mutex) {
+    try { $Mutex.ReleaseMutex() } catch { }
+    $Mutex.Dispose()
+}
+
 # Rule files that $Hits holds and this session or subagent has not been given yet.
 function Select-NotRemembered($HookInput, $Hits) {
     $remembered = Get-Remembered $HookInput
@@ -235,10 +249,15 @@ function Invoke-Read($HookInput) {
     $root = Find-CheckoutRoot $full
     if (-not $root) { return }
     $relative = Get-RelativePath $root $full
-    $fresh = Select-NotRemembered $HookInput (Get-MatchingRuleFiles (Get-RuleFiles $root) $relative)
+    $hits = Get-MatchingRuleFiles (Get-RuleFiles $root) $relative
+    $mutex = Lock-Memory $HookInput
+    try {
+        $fresh = Select-NotRemembered $HookInput $hits
+        if ($fresh.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($f in $fresh) { $f.Path })) }
+    }
+    finally { Unlock-Memory $mutex }
     if ($fresh.Count -eq 0) { return }
     Write-Context 'PostToolUse' (Format-RuleBlocks ($ReadHeader -f $relative) $fresh)
-    Add-Remembered $HookInput ([string[]]@(foreach ($f in $fresh) { $f.Path }))
 }
 
 # ---- shell-guard: find the files a shell command writes ----
@@ -536,11 +555,41 @@ function Get-GitDirectory([string]$Command, [string]$Cwd, [string]$Shell) {
     return $dir
 }
 
+# True when a simple command in $Command is git diff, git show (after git's own options such as -C <dir>) or
+# gh pr diff. The diff mode is registered under Bash(git *) and Bash(gh *): a filter naming more than the command,
+# such as Bash(git diff*), also runs on every command holding $VAR or $() (Claude Code's documented behaviour).
+function Test-DiffCommand([string]$Command, [string]$Shell) {
+    try {
+        foreach ($segment in (Split-ShellCommands $Command $Shell)) {
+            $words = @(foreach ($w in (Get-ShellWords $segment $Shell)) { $w.Text })
+            $k = 0
+            while ($k -lt $words.Count -and $words[$k] -match '^[A-Za-z_][A-Za-z0-9_]*=') { $k++ }
+            if ($k -ge $words.Count) { continue }
+            if ($words[$k] -ceq 'gh') {
+                if ($k + 2 -lt $words.Count -and $words[$k + 1] -ceq 'pr' -and $words[$k + 2] -ceq 'diff') { return $true }
+                continue
+            }
+            if ($words[$k] -cne 'git') { continue }
+            $k++
+            while ($k -lt $words.Count -and $words[$k].StartsWith('-')) {
+                if ($words[$k] -ceq '-C' -or $words[$k] -ceq '-c') { $k++ }
+                $k++
+            }
+            if ($k -lt $words.Count -and ($words[$k] -ceq 'diff' -or $words[$k] -ceq 'show')) { return $true }
+        }
+    }
+    catch { }
+    return $false
+}
+
 # PostToolUse on git diff / git show / gh pr diff: Claude Code loads rules only for files it Reads, so a review of the
 # diff output alone sees none. Add the rule files for the changed paths, in path order, up to $DiffCap characters.
 function Invoke-Diff($HookInput) {
     if ($null -eq $HookInput -or $null -eq $HookInput.tool_input) { return }
     $command = [string]$HookInput.tool_input.command
+    $shell = 'Bash'
+    if ([string]$HookInput.tool_name -eq 'PowerShell') { $shell = 'PowerShell' }
+    if (-not (Test-DiffCommand $command $shell)) { return }
     $response = $HookInput.tool_response
     $output = ''
     if ($response -is [string]) { $output = $response }
@@ -548,8 +597,6 @@ function Invoke-Diff($HookInput) {
     if ($output -eq '') { return }
     $paths = Get-DiffPaths $command $output
     if ($paths.Count -eq 0) { return }
-    $shell = 'Bash'
-    if ([string]$HookInput.tool_name -eq 'PowerShell') { $shell = 'PowerShell' }
     $cwd = [string]$HookInput.cwd
     if ($cwd -eq '') { $cwd = (Get-Location).Path }
     $root = Find-CheckoutRoot (Get-GitDirectory $command $cwd $shell)
@@ -559,22 +606,25 @@ function Invoke-Diff($HookInput) {
     foreach ($p in $paths) {
         foreach ($h in (Get-MatchingRuleFiles $ruleFiles $p)) { if (-not $wanted.Contains($h)) { $wanted.Add($h) } }
     }
-    $fresh = Select-NotRemembered $HookInput $wanted.ToArray()
-    if ($fresh.Count -eq 0) { return }
     $added = New-Object System.Collections.Generic.List[object]
     $notAdded = New-Object System.Collections.Generic.List[string]
-    $total = 0
-    foreach ($rf in $fresh) {
-        if ($notAdded.Count -eq 0 -and $total + $rf.Body.Length -le $DiffCap) { $added.Add($rf); $total += $rf.Body.Length }
-        else { $notAdded.Add($rf.Name) }
+    $mutex = Lock-Memory $HookInput
+    try {
+        $total = 0
+        foreach ($rf in (Select-NotRemembered $HookInput $wanted.ToArray())) {
+            if ($notAdded.Count -eq 0 -and $total + $rf.Body.Length -le $DiffCap) { $added.Add($rf); $total += $rf.Body.Length }
+            else { $notAdded.Add($rf.Name) }
+        }
+        if ($added.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($a in $added) { $a.Path })) }
     }
+    finally { Unlock-Memory $mutex }
+    if ($added.Count -eq 0 -and $notAdded.Count -eq 0) { return }
     $text = Format-RuleBlocks $DiffHeader $added.ToArray()
     if ($notAdded.Count -gt 0) {
         $text += "`n`nNot added (over the 40,000-character cap): " + ($notAdded.ToArray() -join ', ') +
             '. Read them before judging the change.'
     }
     Write-Context 'PostToolUse' $text
-    if ($added.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($a in $added) { $a.Path })) }
 }
 
 # ---- subagent-start and session-start ----

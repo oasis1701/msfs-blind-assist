@@ -316,6 +316,33 @@ public class ClaudeRulesHookTests
         Assert.Null(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(TaxiDiff)), env: env)));
     }
 
+    [Theory]
+    [InlineData("git log --name-only -1")]
+    [InlineData("git status --short")]
+    [InlineData("gh pr view 270 --json files")]
+    public void Diff_ignores_commands_that_are_not_a_diff(string command)
+    {
+        // The diff mode is registered under Bash(git *) and Bash(gh *), so it also runs for git log and the like.
+        HookRun run = RunHook(new[] { "diff" }, DiffInput(command, BashResponse("MSFSBlindAssist/Navigation/TaxiGraph.cs\n")));
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Null(HookOutput(run));
+    }
+
+    [Fact]
+    public void Diff_adds_rules_once_when_several_hooks_run_it_at_once()
+    {
+        // A command can match several registered handlers, which Claude Code runs in parallel (seen 2026-10-08: five
+        // diff handlers, five copies). Only one of them may add the rules.
+        var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
+        string input = DiffInput("git diff", BashResponse(TaxiDiff));
+
+        HookRun[] runs = Enumerable.Range(0, 5).AsParallel().WithDegreeOfParallelism(5)
+            .Select(_ => RunHook(new[] { "diff" }, input, env: env)).ToArray();
+
+        Assert.Equal(1, runs.Count(r => HookOutput(r) != null));
+    }
+
     [Fact]
     public void Diff_ignores_output_without_paths()
     {
@@ -435,9 +462,10 @@ public class ClaudeRulesHookTests
     [Fact]
     public void Settings_register_the_pinned_hooks()
     {
-        // Pinned on purpose: every filter here was checked in a live session (2026-10-08), and some filters never
-        // match (Write(...), Edit(...) on a Write, redirect forms such as Bash(cat >*)). Change a filter only after the
-        // live checks in docs/development.md, then update this list (CCT-3).
+        // Pinned on purpose: every filter here was checked in a live session (2026-10-08). Some filters never match
+        // (Write(...), Edit(...) on a Write, redirect forms such as Bash(cat >*)), and one naming more than the command
+        // (Bash(git diff*)) runs on any command holding $VAR or $(). Change a filter only after the live checks in
+        // docs/development.md, then update this list (CCT-3).
         List<RegisteredHook> hooks = RegisteredHooks();
         foreach (RegisteredHook hook in hooks)
         {
@@ -450,12 +478,8 @@ public class ClaudeRulesHookTests
         {
             "PostToolUse @ Read @ read @ Read(//**/.claude/worktrees/agent-*/**)",
             "PostToolUse @ Write|NotebookEdit @ read @ ",
-            "PostToolUse @ Bash @ diff @ Bash(git diff*)", "PostToolUse @ Bash @ diff @ Bash(git -C * diff*)",
-            "PostToolUse @ Bash @ diff @ Bash(git show*)", "PostToolUse @ Bash @ diff @ Bash(git -C * show*)",
-            "PostToolUse @ Bash @ diff @ Bash(gh pr diff*)",
-            "PostToolUse @ PowerShell @ diff @ PowerShell(git diff*)", "PostToolUse @ PowerShell @ diff @ PowerShell(git -C * diff*)",
-            "PostToolUse @ PowerShell @ diff @ PowerShell(git show*)", "PostToolUse @ PowerShell @ diff @ PowerShell(git -C * show*)",
-            "PostToolUse @ PowerShell @ diff @ PowerShell(gh pr diff*)",
+            "PostToolUse @ Bash @ diff @ Bash(git *)", "PostToolUse @ Bash @ diff @ Bash(gh *)",
+            "PostToolUse @ PowerShell @ diff @ PowerShell(git *)", "PostToolUse @ PowerShell @ diff @ PowerShell(gh *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(sed *)", "PreToolUse @ Bash @ shell-guard @ Bash(perl *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(tee *)", "PreToolUse @ Bash @ shell-guard @ Bash(cat *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(echo *)", "PreToolUse @ Bash @ shell-guard @ Bash(printf *)",
