@@ -23,25 +23,27 @@ Step-by-step workflows for adding features to MSFS Blind Assist. For quick patte
 
 **File:** Aircraft definition class (e.g., `FlyByWireA320Definition.cs`)
 
-**Step 1:** Add to `GetVariables()` method
+**Step 1:** Add an entry to the aircraft's variables in `BuildVariables()`
+<!-- template: panel-variable -->
 ```csharp
 ["NEW_CONTROL_VAR"] = new SimConnect.SimVarDefinition
 {
-    Name = "L:A32NX_NEW_CONTROL",
+    Name = "A32NX_NEW_CONTROL", // An L:var's name, without "L:"
     DisplayName = "New Control",
     Type = SimConnect.SimVarType.LVar,
     UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
     IsAnnounced = false,
     ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
-}
+},
 ```
 
-**Step 2:** Add to `BuildPanelControls()` method
+**Step 2:** Add its key to its panel's list in `BuildPanelControls()`
+<!-- template: panel-controls -->
 ```csharp
-["YourPanelName"] = new List<string>
+["Your Panel"] = new List<string>
 {
-    "EXISTING_VAR_1",
-    "NEW_CONTROL_VAR"  // Add here
+    "NEW_CONTROL_VAR",
+    "BUTTON_KEY"
 }
 ```
 
@@ -51,11 +53,13 @@ Step-by-step workflows for adding features to MSFS Blind Assist. For quick patte
 
 **File:** Aircraft definition class
 
-**Step 1:** Add to `GetVariables()` with `Continuous` + `IsAnnounced` (and, if `ProcessSimVarUpdate` will consume it silently as a cache that is never spoken, `ExcludeFromMonitorManager = true` too, or for the HS787 add it to `CacheOnlyVariables` - otherwise it earns a Ctrl+M checkbox that mutes nothing)
+**Step 1:** Add to `BuildVariables()` with `Continuous` + `IsAnnounced` (and, if `ProcessSimVarUpdate` will consume it silently as a cache that is never spoken, `ExcludeFromMonitorManager = true` too, or for the HS787 add it to `CacheOnlyVariables` - otherwise it earns a Ctrl+M checkbox that mutes nothing)
+<!-- template: monitoring-variable -->
 ```csharp
 ["A32NX_NEW_STATUS"] = new SimConnect.SimVarDefinition
 {
     Name = "A32NX_NEW_STATUS",
+    DisplayName = "New Status",
     Type = SimConnect.SimVarType.LVar,
     UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
     IsAnnounced = true,
@@ -64,7 +68,7 @@ Step-by-step workflows for adding features to MSFS Blind Assist. For quick patte
         [0] = "Status inactive",
         [1] = "Status active"
     }
-}
+},
 ```
 
 **Step 2:** Do NOT add to `BuildPanelControls()` - batched monitoring is automatic (sole exception: the var is itself a panel control's read-back — see [VAR-6] in `.claude/rules/variable-definitions.md`)
@@ -75,7 +79,8 @@ Step-by-step workflows for adding features to MSFS Blind Assist. For quick patte
 
 **File:** Aircraft definition class
 
-**Step 1:** Add to `GetVariables()` method
+**Step 1:** Add the button, and its light if it has one, to `BuildVariables()`. `PressEvent` and `ReleaseEvent` name H: events without the `H:` (MobiFlight adds it), and `LedVariable` is the key of the light's own variable
+<!-- template: h-variable -->
 ```csharp
 ["BUTTON_KEY"] = new SimConnect.SimVarDefinition
 {
@@ -83,12 +88,20 @@ Step-by-step workflows for adding features to MSFS Blind Assist. For quick patte
     DisplayName = "Button Label",
     Type = SimConnect.SimVarType.HVar,
     UseMobiFlight = true,
-    PressEvent = "H:PRESS_EVENT_NAME",
-    ReleaseEvent = "H:RELEASE_EVENT_NAME",
-    LedVariable = "L:LED_VARIABLE_NAME",  // Optional
-    PressReleaseDelay = 200,  // Optional, defaults to 200ms
+    PressEvent = "YOUR_BUTTON_PRESSED", // An H: event's name, without "H:"
+    ReleaseEvent = "YOUR_BUTTON_RELEASED",
+    LedVariable = "YOUR_BUTTON_LIGHT", // Optional: the key of the light's own variable
+    PressReleaseDelay = 200, // Optional, defaults to 200 ms
     UpdateFrequency = SimConnect.UpdateFrequency.Never
-}
+},
+["YOUR_BUTTON_LIGHT"] = new SimConnect.SimVarDefinition
+{
+    Name = "YOUR_BUTTON_LIGHT",
+    DisplayName = "Button Light",
+    Type = SimConnect.SimVarType.LVar,
+    UpdateFrequency = SimConnect.UpdateFrequency.Never,
+    ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
+},
 ```
 
 **Step 2:** Add to appropriate panel in `BuildPanelControls()`
@@ -97,112 +110,153 @@ Step-by-step workflows for adding features to MSFS Blind Assist. For quick patte
 
 ## Workflow 4: Adding Hotkey-Only Variable Readout
 
-**Use this for values accessed only via hotkeys, not shown in panels.**
+**Use this for values read only through a hotkey, never shown in a panel.** The example is the outside-temperature readout (`]`, then `O`), which reads the same simvar on every aircraft: it is registered once per connection and requested with one call. A readout whose simvar or units differ by aircraft works differently; see the end of this workflow.
 
-**Step 1:** Add Request method in `SimConnectManager.cs`
+**Step 1:** Pick an id in 300–399 that none of [architecture.md's request id ranges](architecture.md#request-id-ranges) uses (some ids there are taken by raw casts with no enum member), and add it to both enums in `SimConnect/SimConnectManager.cs` with the same value
+<!-- fragment: MSFSBlindAssist/SimConnect/SimConnectManager.cs#REQUEST_OUTSIDE_TEMP -->
 ```csharp
-public void RequestNewValue()
+// In DATA_REQUESTS:
+REQUEST_OUTSIDE_TEMP = 323,
+
+// In DATA_DEFINITIONS, the same number:
+DEF_OUTSIDE_TEMP = 323,
+```
+
+**Step 2:** Add its row to `HotkeyReadoutDefinitions` in `SimConnect/SimConnectManager.Setup.cs`, which registers it once per connection
+<!-- fragment: MSFSBlindAssist/SimConnect/SimConnectManager.Setup.cs#DEF_OUTSIDE_TEMP -->
+```csharp
+// In HotkeyReadoutDefinitions:
+((int)DATA_DEFINITIONS.DEF_OUTSIDE_TEMP,   "AMBIENT TEMPERATURE",            "celsius",         SIMCONNECT_DATATYPE.FLOAT64),
+```
+
+**Step 3:** Add its request method in `SimConnect/SimConnectManager.DataRequests.cs`, which asks for the registered definition once
+<!-- fragment: MSFSBlindAssist/SimConnect/SimConnectManager.DataRequests.cs#RequestOutsideTemperature -->
+```csharp
+public void RequestOutsideTemperature()
 {
-    if (IsConnected && simConnect != null)
+    if (!IsConnected || simConnect == null) return;
+    try
     {
-        try
-        {
-            var tempDefId = (DATA_DEFINITIONS)315;  // Pick unused ID in 300-399
-            simConnect.ClearDataDefinition(tempDefId);
-            simConnect.AddToDataDefinition(tempDefId,
-                "YOUR_SIMVAR_NAME", "units",
-                SIMCONNECT_DATATYPE.FLOAT64, 0.0f, SIMCONNECT_UNUSED);
-            simConnect.RegisterDataDefineStruct<SingleValue>(tempDefId);
-            simConnect.RequestDataOnSimObject((DATA_REQUESTS)315,
-                tempDefId, SIMCONNECT_OBJECT_ID_USER,
-                SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
-        }
-        catch (Exception ex) { /* error handling */ }
+        simConnect.RequestDataOnSimObject(DATA_REQUESTS.REQUEST_OUTSIDE_TEMP,
+            DATA_DEFINITIONS.DEF_OUTSIDE_TEMP, SIMCONNECT_OBJECT_ID_USER,
+            SIMCONNECT_PERIOD.ONCE, SIMCONNECT_DATA_REQUEST_FLAG.DEFAULT, 0, 0, 0);
+    }
+    catch (Exception ex)
+    {
+        Log.Debug("SimConnect", $"Error requesting outside temperature: {ex.Message}");
     }
 }
 ```
 
-**Step 2:** Add case handler in `SimConnect_OnRecvSimobjectData`
+**Step 4:** Add its case in `SimConnect_OnRecvSimobjectData` (`SimConnect/SimConnectManager.Dispatch.cs`), which raises `SimVarUpdated` with the text to speak
+<!-- fragment: MSFSBlindAssist/SimConnect/SimConnectManager.Dispatch.cs#REQUEST_OUTSIDE_TEMP -->
 ```csharp
-case (DATA_REQUESTS)315:
-    SingleValue data = (SingleValue)data.dwData[0];
+case DATA_REQUESTS.REQUEST_OUTSIDE_TEMP:
+    SingleValue oatData = (SingleValue)data.dwData[0];
     SimVarUpdated?.Invoke(this, new SimVarUpdateEventArgs
     {
-        VarName = "NEW_HOTKEY_VALUE",
-        Value = data.value,
-        Description = $"Value: {data.value:0.0}"
+        VarName = "OUTSIDE_TEMP",
+        Value = oatData.value,
+        Description = $"{oatData.value:0} degrees Celsius"
     });
     break;
 ```
 
-**Step 3:** Add hotkey action in `HotkeyManager.cs` (HotkeyAction enum)
+**Step 5:** Add its `HotkeyAction` and its four places in `Hotkeys/HotkeyManager.cs`: the hotkey's id; `RegisterHotKey` in `ActivateOutputHotkeyMode()` (`ActivateInputHotkeyMode()` for an input-mode key); `UnregisterHotKey` in the matching `Deactivate…HotkeyMode()`; and the case in `ProcessWindowMessage()`
+<!-- fragment: MSFSBlindAssist/Hotkeys/HotkeyManager.cs#HOTKEY_OUTSIDE_TEMP -->
 ```csharp
-public enum HotkeyAction
-{
-    ReadNewValue  // Add this
-}
+// The hotkey's id, with the others:
+private const int HOTKEY_OUTSIDE_TEMP = 9107;
+
+// In ActivateOutputHotkeyMode():
+RegisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP, MOD_NONE, 0x4F); // O (Outside Temperature)
+
+// In DeactivateOutputHotkeyMode():
+UnregisterHotKey(windowHandle, HOTKEY_OUTSIDE_TEMP);
+
+// In ProcessWindowMessage():
+case HOTKEY_OUTSIDE_TEMP:
+    TriggerHotkey(HotkeyAction.ReadOutsideTemperature);
+    break;
+
+// In the HotkeyAction enum:
+ReadOutsideTemperature,
 ```
 
-**Step 4:** Register hotkey in `ActivateOutputHotkeyMode` or `ActivateInputHotkeyMode`
+**Step 6:** Call the request method from `OnHotkeyTriggered` in `MainForm.Hotkeys.cs`
+<!-- fragment: MSFSBlindAssist/MainForm.Hotkeys.cs#ReadOutsideTemperature -->
 ```csharp
-RegisterHotKey(windowHandle, HOTKEY_NEW_VALUE, MOD_SHIFT, 0x4E); // Shift+N
-```
-
-**Step 5:** Add handler in `MainForm.cs` (`OnHotkeyTriggered`)
-```csharp
-case HotkeyAction.ReadNewValue:
-    simConnectManager.RequestNewValue();
+case HotkeyAction.ReadOutsideTemperature:
+    simConnectManager.RequestOutsideTemperature();
     break;
 ```
 
-**Step 6:** Add announcement handler in `MainForm.cs` (`OnSimVarUpdated`)
+**Step 7:** Add its `VarName` to the readouts `HandleSpecialAnnouncements` speaks at once, in `MainForm.Announcers.cs`
+<!-- fragment: MSFSBlindAssist/MainForm.Announcers.cs#OUTSIDE_TEMP -->
 ```csharp
-if (e.VarName == "NEW_HOTKEY_VALUE")
+// At the end of HandleSpecialAnnouncements' list of readouts spoken at once:
+    e.VarName == "OUTSIDE_TEMP" || e.VarName == "SQUAWK_CODE" ||
+    e.VarName == "LOCAL_TIME_SECONDS" || e.VarName == "ZULU_TIME_SECONDS")
 {
     announcer.AnnounceImmediate(e.Description);
-    return;
+    return true;
 }
 ```
 
-**Step 7:** Test - press `]` then your hotkey
+**Step 8:** Add the key to each `HotkeyGuides/*.txt` that lists the read-mode keys. Test: build, launch, press `]`, then the key.
+
+**A readout whose simvar or units differ by aircraft** skips Steps 2, 3 and 6: the definition's `HandleHotkeyAction` calls `simConnect.RequestSingleValue(id, simVarName, units, varName)`, which registers the definition afresh on each call, as the FBW A380's fuel quantity does (`FlyByWireA380Definition.HotkeysAndMotion.cs`). Give it an id no `HotkeyReadoutDefinitions` row uses; the comment above `RequestSingleValue` says why.
 
 ## Workflow 5: Adding New Aircraft
 
 > **If the new aircraft's MCDU / EFB / glass-cockpit displays are rendered in Coherent GT** (FBW, WT/Asobo, most modern study sims), you can read and drive them live via the Coherent debugger — and the existing scrapers may be reusable. See **[Developer Tooling Guide](tooling.md)** for the transport, and **[§9 "Adaptability to other aircraft"](tooling.md)** for a per-tool verdict (transport + generic scrape core are universal; the aircraft-specific selector/navigation/input layer must be re-derived) plus a step-by-step recipe (§9.3) for adapting the MFD/CDU scraper to a new aircraft. For closed add-ons with their own SDK surface (PMDG, Fenix), use that SDK instead of scraping.
 
-**Step 1:** Create aircraft definition class
+**Step 1:** Create the aircraft definition class
 
-**File:** `Aircraft/YourAircraftDefinition.cs`
+**File:** `MSFSBlindAssist/Aircraft/<Name>Definition.cs`
 
+Copy the walkthrough template, `tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs`, and rename the class. The test project compiles it, so it matches the current base class; below, each workflow's example is collapsed to `// ...`. Every aircraft implements `AircraftName`, `AircraftCode`, `BuildVariables()` (starting from `GetBaseVariables()`), `GetPanelStructure()`, `BuildPanelControls()`, `GetPanelDisplayVariables()`, `GetButtonStateMapping()` and the four `Get…ControlType()` methods; the compiler names any that are missing.
+
+<!-- template: aircraft-file -->
 ```csharp
-using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.Hotkeys;
 
 namespace MSFSBlindAssist.Aircraft;
 
 public class YourAircraftDefinition : BaseAircraftDefinition
 {
     public override string AircraftName => "Your Aircraft Full Name";
-    public override string AircraftCode => "CODE";
+    public override string AircraftCode => "YOUR_AIRCRAFT";
 
-    public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
-    public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
-    public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
-    public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
-
-    public override Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+    protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
-        return new Dictionary<string, SimConnect.SimVarDefinition>
+        // Start from the variables every aircraft shares (SIM ON GROUND and others).
+        var variables = GetBaseVariables();
+
+        var aircraftVariables = new Dictionary<string, SimConnect.SimVarDefinition>
         {
-            ["VAR1"] = new SimConnect.SimVarDefinition { /* ... */ }
+            // A panel control (Workflow 1):
+            // ...
+
+            // Background monitoring (Workflow 2):
+            // ...
+
+            // An H-variable button and its light (Workflow 3):
+            // ...
         };
+
+        foreach (var kvp in aircraftVariables)
+            variables[kvp.Key] = kvp.Value;
+
+        return variables;
     }
 
     public override Dictionary<string, List<string>> GetPanelStructure()
     {
         return new Dictionary<string, List<string>>
         {
-            ["Section"] = new List<string> { "Panel1", "Panel2" }
+            ["Your Section"] = new List<string> { "Your Panel" }
         };
     }
 
@@ -210,36 +264,63 @@ public class YourAircraftDefinition : BaseAircraftDefinition
     {
         return new Dictionary<string, List<string>>
         {
-            ["Panel1"] = new List<string> { "VAR1" }
+            ["Your Panel"] = new List<string>
+            {
+                "NEW_CONTROL_VAR",
+                "BUTTON_KEY"
+            }
         };
     }
+
+    // Values a panel shows as read-only text; none here.
+    public override Dictionary<string, List<string>> GetPanelDisplayVariables() => new();
+
+    // Stays empty: reading a button's state back after a press is CORE-7's scoped exception,
+    // held by the FBW A320, Headwind A330 and FBW A380 alone. The screen reader already
+    // announces the press.
+    public override Dictionary<string, string> GetButtonStateMapping() => new();
+
+    public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetHeadingControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetSpeedControlType() => FCUControlType.SetValue;
+    public override FCUControlType GetVerticalSpeedControlType() => FCUControlType.SetValue;
 
     protected override Dictionary<HotkeyAction, string> GetHotkeyVariableMap()
     {
         return new Dictionary<HotkeyAction, string>
         {
-            [HotkeyAction.ToggleAutopilot1] = "YOUR_AP_TOGGLE_EVENT"
+            [HotkeyAction.ToggleAutopilot1] = "YOUR_AP_TOGGLE_EVENT",
+            [HotkeyAction.FCUHeadingPush] = "YOUR_HDG_PUSH_EVENT"
         };
     }
+
+    // A hotkey with its own dialog (Workflow 6, Method 2):
+    // ...
 }
 ```
 
-**Step 2:** Add menu item in `MainForm.Designer.cs`
-
-Add field declaration:
+**Step 2:** Add its menu item in `MainForm.Designer.cs`, as the MD-11's `tfdiMd11MenuItem` is added
+<!-- fragment: MSFSBlindAssist/MainForm.Designer.cs#aircraftMenuItem -->
 ```csharp
+// With the other fields:
 private System.Windows.Forms.ToolStripMenuItem yourAircraftMenuItem = null!;
-```
 
-In `InitializeComponent()`:
-```csharp
+// In InitializeComponent(), with the other items:
 this.yourAircraftMenuItem = new System.Windows.Forms.ToolStripMenuItem();
-this.aircraftMenuItem.DropDownItems.Add(this.yourAircraftMenuItem);
+
+// The aircraft menu's list, with the new item last:
+this.aircraftMenuItem.DropDownItems.AddRange(new System.Windows.Forms.ToolStripItem[] {
+    // ... the existing aircraft
+    this.yourAircraftMenuItem});
+
+// Its properties:
+this.yourAircraftMenuItem.Name = "yourAircraftMenuItem";
 this.yourAircraftMenuItem.Text = "Your Aircraft &Name";
 this.yourAircraftMenuItem.Click += new System.EventHandler(this.YourAircraftMenuItem_Click);
 ```
 
 **Step 3:** Add event handler in `MainForm.MenuHandlers.cs`, or in the aircraft's own `MainForm.<Aircraft>.cs` partial if it has one (as the MD-11 and iFly do); never in another aircraft's partial
+<!-- fragment: MSFSBlindAssist/MainForm.MenuHandlers.cs#SwitchAircraft -->
 ```csharp
 private void YourAircraftMenuItem_Click(object? sender, EventArgs e)
 {
@@ -248,13 +329,15 @@ private void YourAircraftMenuItem_Click(object? sender, EventArgs e)
 ```
 
 **Step 4:** Update `LoadAircraftFromCode()` in `MainForm.AircraftSwitch.cs`
+<!-- fragment: MSFSBlindAssist/MainForm.AircraftSwitch.cs#LoadAircraftFromCode -->
 ```csharp
 private IAircraftDefinition LoadAircraftFromCode(string aircraftCode)
 {
     return aircraftCode switch
     {
-        "CODE" => new YourAircraftDefinition(),
-        _ => new FlyByWireA320Definition()
+        // ... the existing aircraft
+        "YOUR_AIRCRAFT" => new YourAircraftDefinition(),
+        _ => new FlyByWireA320Definition() // Default to A320
     };
 }
 ```
@@ -288,26 +371,19 @@ Then wire it into the code every aircraft shares (search for an existing aircraf
 
 **File:** Aircraft definition class
 
+<!-- template: hotkey-map -->
 ```csharp
 protected override Dictionary<HotkeyAction, string> GetHotkeyVariableMap()
 {
     return new Dictionary<HotkeyAction, string>
     {
-        [HotkeyAction.NewAction] = "YOUR_EVENT_NAME"
+        [HotkeyAction.ToggleAutopilot1] = "YOUR_AP_TOGGLE_EVENT",
+        [HotkeyAction.FCUHeadingPush] = "YOUR_HDG_PUSH_EVENT"
     };
 }
 ```
 
-**Optional:** Add button state announcement
-```csharp
-public override Dictionary<string, string> GetButtonStateMapping()
-{
-    return new Dictionary<string, string>
-    {
-        ["YOUR_EVENT_NAME"] = "STATE_VARIABLE_NAME"
-    };
-}
-```
+Never add a button state announcement for it: `GetButtonStateMapping()` stays empty (Workflow 5, Step 1). The screen reader already announces the press, and reading a button's state back after a press is CORE-7's scoped exception for the FBW A320, Headwind A330 and FBW A380.
 
 ### Method 2: Custom Handler
 
@@ -315,35 +391,30 @@ public override Dictionary<string, string> GetButtonStateMapping()
 
 **File:** Aircraft definition class
 
+<!-- template: custom-hotkey-handler -->
 ```csharp
 public override bool HandleHotkeyAction(
     HotkeyAction action,
     SimConnect.SimConnectManager simConnect,
     ScreenReaderAnnouncer announcer,
-    Form parentForm)
+    Form parentForm,
+    HotkeyManager hotkeyManager)
 {
-    if (action == HotkeyAction.CustomAction)
+    if (action == HotkeyAction.FCUSetAltitude)
     {
-        ShowFCUInputDialog(
-            title: "Set Value",
-            parameterType: "Value",
-            rangeText: "0-999",
-            eventName: "YOUR_SET_EVENT",
-            simConnect: simConnect,
-            announcer: announcer,
-            parentForm: parentForm,
+        ShowFCUInputDialog("Set Altitude", "Altitude", "100-49000 feet",
+            "YOUR_ALT_SET_EVENT", simConnect, announcer, parentForm,
             validator: (input) =>
             {
-                if (double.TryParse(input, out double val) && val >= 0 && val <= 999)
+                if (double.TryParse(input, out double val) && val >= 100 && val <= 49000)
                     return (true, "");
-                return (false, "Value must be 0-999");
+                return (false, "Altitude must be 100-49000");
             },
-            valueConverter: (val) => (uint)val
+            valueConverter: (val) => (uint)Math.Round(val / 100) * 100
         );
-        return true;  // Handled
+        return true;
     }
-
-    return base.HandleHotkeyAction(action, simConnect, announcer, parentForm);
+    return base.HandleHotkeyAction(action, simConnect, announcer, parentForm, hotkeyManager);
 }
 ```
 
