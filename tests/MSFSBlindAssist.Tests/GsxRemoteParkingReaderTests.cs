@@ -564,7 +564,7 @@ public class GsxRemoteParkingReaderTests
     public void A_999_metre_wingspan_is_GSXs_no_limit_sentinel_and_reads_as_unpublished()
     {
         // Every stand GSX publishes unconfigured carries maxWingspan 999 (KSAN 75 of 75, KATL 4 of
-        // 4); no stand with a heading does (KJFK's selectable stands top out at 90 m). Read as
+        // 4); no selectable stand with a heading does (KJFK's selectable stands top out at 90 m). Read as
         // 499.5 m it made every such stand fit any aircraft. Unpublished instead: the same 100 m
         // placeholder and permissive fit as a stand with no maxWingspan at all, until
         // GsxNavdataGeometryFiller fills the real size.

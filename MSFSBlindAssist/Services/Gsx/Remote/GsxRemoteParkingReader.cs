@@ -37,11 +37,12 @@ public static class GsxRemoteParkingReader
     private const string UiTypeFuel = "Fuel";
 
     /// <summary>
-    /// GSX's "no wingspan limit" value, published on every stand GSX publishes without a heading
-    /// (measured: KSAN 75 of 75 live on 2026-10-07, KATL 4 of 4, and KJFK's 7 Vehicle/Fuel
-    /// entries) and on no stand that has one (KJFK's 231 selectable stands top out at 90 m). It
-    /// is not a size: read as one it became a 499.5 m radius that fits every aircraft. So it
-    /// reads as UNPUBLISHED, and GsxNavdataGeometryFiller borrows the real size [DCK-43].
+    /// GSX's "no wingspan limit" value, sent on every selectable stand GSX publishes with neither
+    /// a heading nor a <c>type</c> (measured: KSAN 75 of 75 live on 2026-10-07, KATL 4 of 4) and
+    /// on KJFK's 7 Vehicle/Fuel entries, never on a selectable stand that has a heading (KJFK's
+    /// 231 top out at 90 m). It is not a size: read as one it became a 499.5 m radius that fits
+    /// every aircraft. So it reads as UNPUBLISHED, and GsxNavdataGeometryFiller borrows the real
+    /// size [DCK-43].
     /// </summary>
     internal const double UnlimitedWingspanMetres = 999.0;
 
