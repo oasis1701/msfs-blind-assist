@@ -869,6 +869,10 @@ public partial class SimConnectManager
         // and the door-offset map is re-queried for the new aircraft.
         sc.OnRecvEventFilename += SimConnect_OnRecvEventFilename;
         sc.SubscribeToSystemEvent(SYSTEM_EVENT_ID.AircraftLoaded, "AircraftLoaded");
+        // "Frame" is subscribed on demand (SimConnectManager.FrameRate.cs): the handler is attached
+        // here, the subscription only while the Sim Performance window holds a request.
+        sc.OnRecvEventFrame += SimConnect_OnRecvEventFrame;
+        RearmFrameEventForNewConnection();
     }
 
     /// <summary>
