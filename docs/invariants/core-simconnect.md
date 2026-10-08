@@ -49,7 +49,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## SIM-12
 
-- A name containing a space or colon (e.g. `TRANSPONDER STATE:1`) is a stock SimVar shape and must stay on the data-def write path — never route it through the L:var calc path. → [architecture.md](../architecture.md)
+- `SetLVar` keeps stock SimVar names (`TRANSPONDER STATE:1`) and every name containing a space on the data-def write path — never route one through the L:var calc path. Today it sends every name with a colon there too, but the shape decides only the write route, never whether a name is a stock SimVar: an add-on's real L:vars can carry a colon index or a space (`B787_IRS_Knob_State:1`, which the HS787 writes through `SetLVar`; VAR-2). Such an L:var gets the native data-def write, not the calculator path, so read the write back before trusting it (DBG-1, DBG-4). For a colon-indexed add-on L:var that route is today's behaviour, never measured, not a rule: if an in-sim read-back shows its data-def write reverting, moving colon-indexed add-on L:vars to the calculator path does not break this rule. → [architecture.md](../architecture.md)
+
+Reworded 2026-10-07. The original text, verbatim from CLAUDE.md as of `1f37801a`, was: "A name containing a space or colon (e.g. `TRANSPONDER STATE:1`) is a stock SimVar shape and must stay on the data-def write path — never route it through the L:var calc path." Its "is a stock SimVar shape" contradicted VAR-2 as narrowed the same day; the routing it guards is unchanged. The colon-indexed add-on L:var was left out of the "never" the same day: nothing had measured its write on either route.
 
 ## SIM-13
 
@@ -70,6 +72,10 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## SIM-17
 
 - Every calc-path event string must be unique per call — `SimConnectManager.BuildCalcEventCode` prefixes `{seq} 0 *` centrally, because MobiFlight dedups byte-identical consecutive commands and a TOGGLE fires the SAME event for on and off, so without it a control could be switched on and never off. The dedup keys on TEXT, not elapsed time: "presses are seconds apart" is NOT a mitigation. → [a380x.md](../a380x.md)
+
+## SIM-18
+
+- The SimConnect "Frame" system event (`SYSTEM_EVENT_ID.Frame`, `SimConnectManager.FrameRate.cs`) is subscribed only while a consumer holds a `StartFrameRateMonitoring` request, released with the last `StopFrameRateMonitoring`, and re-armed by `SetupEvents` on a new connection only when a request is still held. Never hoist the `SubscribeToSystemEvent` into `SetupEvents` unconditionally: the sim raises it once per rendered frame (30 to 120 times a second), each one a `ReceiveMessage` dispatch on the UI thread next to the per-frame SIM_FRAME data the taxi, landing and guidance paths already consume, and the only reader is the File > Sim Performance window. The handler itself only stores a value in `FrameRateMeter`; the window averages it on its own one-second timer. → [architecture.md](../architecture.md)
 
 ## SIM-19
 

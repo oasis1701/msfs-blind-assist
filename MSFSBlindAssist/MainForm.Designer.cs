@@ -9,6 +9,7 @@
         private System.Windows.Forms.ToolStripMenuItem settingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem fmcSettingsMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem hotkeyListMenuItem = null!;
+        private System.Windows.Forms.ToolStripMenuItem simPerformanceMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem suspendHotkeysMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem updateApplicationMenuItem = null!;
         private System.Windows.Forms.ToolStripMenuItem aboutMenuItem = null!;
@@ -46,6 +47,7 @@
             this.settingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.fmcSettingsMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.hotkeyListMenuItem = new System.Windows.Forms.ToolStripMenuItem();
+            this.simPerformanceMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.suspendHotkeysMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.updateApplicationMenuItem = new System.Windows.Forms.ToolStripMenuItem();
             this.aboutMenuItem = new System.Windows.Forms.ToolStripMenuItem();
@@ -89,6 +91,7 @@
             this.settingsMenuItem,
             this.fmcSettingsMenuItem,
             this.hotkeyListMenuItem,
+            this.simPerformanceMenuItem,
             this.suspendHotkeysMenuItem,
             this.updateApplicationMenuItem,
             this.aboutMenuItem});
@@ -136,6 +139,15 @@
             this.hotkeyListMenuItem.Size = new System.Drawing.Size(220, 26);
             this.hotkeyListMenuItem.Text = "&Hotkey List";
             this.hotkeyListMenuItem.Click += new System.EventHandler(this.HotkeyListMenuItem_Click);
+            //
+            // simPerformanceMenuItem
+            //
+            this.simPerformanceMenuItem.AccessibleName = "Sim Performance";
+            this.simPerformanceMenuItem.AccessibleDescription = "Show the simulator's frame rate and its CPU, memory and GPU usage, like the in-sim developer FPS display";
+            this.simPerformanceMenuItem.Name = "simPerformanceMenuItem";
+            this.simPerformanceMenuItem.Size = new System.Drawing.Size(220, 26);
+            this.simPerformanceMenuItem.Text = "Sim &Performance";
+            this.simPerformanceMenuItem.Click += new System.EventHandler(this.SimPerformanceMenuItem_Click);
             //
             // suspendHotkeysMenuItem
             //
