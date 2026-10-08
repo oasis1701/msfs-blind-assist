@@ -45,6 +45,12 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 Corrected 2026-10-08: the one-line form now names the unknown-length exception this text already gave. Evidence: `OrphanIlsMatcher.SelectBest`, whose along-track ceiling is `double.MaxValue` when the end's `LengthMetres` is 0, pinned by `OrphanIlsMatcherTests.Unknown_runway_length_disables_the_along_track_ceiling`.
 
+## EFB-11
+
+- The EFB's Airport Lookup tab lists the airport's runways, and selecting one must repopulate the runway-info box with that runway's details: the list's `SelectedIndexChanged` is wired to `AirportLookupRunwaysListBox_SelectedIndexChanged`, which calls `GetRunwayDetailedInfo`. It is never Load-button-only, or a pilot arrowing down the list hears a new runway name while the info box still describes the first. Evidence: `ElectronicFlightBagForm.cs`, the wiring beside the Airport Lookup controls and the handler itself. → [architecture.md](../architecture.md)
+
+Promoted 2026-10-08 from the Background below ("Airport Lookup"), which keeps its text.
+
 ## Background: the former CLAUDE.md section
 
 This section stood in CLAUDE.md's core until 2026-10. Kept here word for word.
