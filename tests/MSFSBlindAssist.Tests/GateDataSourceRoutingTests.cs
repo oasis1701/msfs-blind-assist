@@ -14,6 +14,7 @@ using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services;
 using MSFSBlindAssist.Services.Gsx;
+using MSFSBlindAssist.Services.SayIntentions;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -364,6 +365,76 @@ public class GateDataSourceRoutingTests : IDisposable
 
         var spot = Assert.Single(spots);
         Assert.Equal("Gate 2", spot.GsxIdentifier);
+        Assert.Equal(271.5, spot.Heading, 3);
+    }
+
+    // ── 7b. Stands GSX publishes unconfigured (KSAN live, 2026-10-07) ───────────────────────
+
+    [Fact]
+    public void After_touchdown_at_KSAN_every_stand_is_listed_not_only_the_four_its_profile_covers()
+    {
+        // THE regression. GSX published a heading for 4 of KSAN's 79 stands (the 4 its installed
+        // profile covers); DropUnusableHeadings threw the other 75 away, so the gate list and the
+        // taxi planner offered 4 stands after touchdown, and SayIntentions' assigned Gate 115
+        // ("Ramp 115" to GSX) could not be found.
+        var navdata = new FakeAirportDataProvider(new(StringComparer.OrdinalIgnoreCase)
+            { [GsxKsanFixtures.Ksan] = GsxKsanFixtures.Navdata() });
+        var airport = GsxKsanFixtures.GsxAirport();
+        var source = Build(navdata, capabilities: HasHandlerData, getHandlerDataAirport: () => airport);
+
+        var spots = source.GetGates(GsxKsanFixtures.Ksan);
+
+        Assert.Equal(79, spots.Count);
+        Assert.All(spots, s => Assert.NotNull(s.GsxIdentifier));   // GSX's own list, not the navdata fallback
+        var gate115 = spots.Single(s => s.GsxIdentifier == "Ramp 115");
+        Assert.Equal(196.08, gate115.Heading, 2);
+        Assert.Equal("Gate Medium", gate115.GetFilterCategory());
+        Assert.Equal(SayIntentionsClearanceParser.NormalizeParkingName("Gate 115"),
+                     SayIntentionsClearanceParser.NormalizeParkingName(gate115.ToString()));
+        Assert.Equal(new[] { GsxKsanFixtures.Ksan }, navdata.GetParkingSpotsCalls);   // ONE read, shared
+    }
+
+    [Fact]
+    public void A_stand_needing_both_a_letter_and_a_heading_still_reads_navdata_once()
+    {
+        var navdataSpots = new List<ParkingSpot>
+        {
+            new() { AirportICAO = Kjfk, Name = "B", Number = 25,
+                    Latitude = 40.6421, Longitude = -73.7787, Heading = 123.0, Radius = 66.0 },
+        };
+        var navdata = new FakeAirportDataProvider(new(StringComparer.OrdinalIgnoreCase) { [Kjfk] = navdataSpots });
+        var airport = AirportJson(Kjfk, Parking("Gate 25", 40.64213, -73.77872, heading: null));
+        var source = Build(navdata, capabilities: HasHandlerData, getHandlerDataAirport: () => airport);
+
+        var spot = Assert.Single(source.GetGates(Kjfk));
+
+        Assert.Equal("B", spot.Name);
+        Assert.Equal(123.0, spot.Heading);
+        Assert.Equal(40.64213, spot.Latitude);                     // the position stays GSX's
+        Assert.Equal(new[] { Kjfk }, navdata.GetParkingSpotsCalls);
+    }
+
+    [Fact]
+    public void The_ini_joins_heading_still_wins_over_navdatas()
+    {
+        // ORDER pin: GSX's own .ini (this_parking_pos) is joined BEFORE navdata is consulted, so a
+        // stand the profile covers keeps the profile's heading even when navdata disagrees. Passes
+        // before the wiring too; it fails only if the filler is wired ahead of the join.
+        var navdata = new FakeAirportDataProvider(new(StringComparer.OrdinalIgnoreCase)
+        {
+            [Kjfk] = new List<ParkingSpot>
+            {
+                new() { AirportICAO = Kjfk, Number = 2, Latitude = 30.0, Longitude = 40.0, Heading = 100.0, Radius = 66.0 },
+            },
+        });
+        var airport = AirportJson(Kjfk, Parking("Gate 2", 30.0, 40.0, heading: null));
+        var locator = LocatorWithIni(Kjfk, """
+            [gate a 2]
+            this_parking_pos = 30.0 40.0 271.5
+            """);
+        var source = Build(navdata, locator: locator, capabilities: HasHandlerData, getHandlerDataAirport: () => airport);
+
+        var spot = Assert.Single(source.GetGates(Kjfk));
         Assert.Equal(271.5, spot.Heading, 3);
     }
 
