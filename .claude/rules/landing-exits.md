@@ -35,3 +35,6 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 Mirrored from landing-rollout.md (they govern exit and tolerance code in TaxiGraph.cs and ExitBranch.cs; change them there and here together):
 - [ROL-11] The implicit-exit shallow-angle override needs BOTH guards together (apron forward-direction AND `apronAngle > currentAngleFwd`); dropping either regresses the exit bearing. Full: docs/invariants/landing-rollout.md#rol-11
 - [ROL-19] Derived-constant tripwire: re-derive all five (`VacatedShortAlongTrackFeet`, `EarlyVacateMaxPassedFeet`, `HandoffReachDefaultHalfWidthM`, `RunwayClearMarginM`, `DefaultRunwayWidthFeet`; three hang on `HandoffReachMarginM`) before any runway/rollout tolerance change, say so in the commit, re-run `tools/LandingExitSweep` (more: see full). Full: docs/invariants/landing-rollout.md#rol-19
+
+Mirrored from taxi-routing.md (it governs the `IsStandBridge` skips in ExitBranch.cs and LandingExitDestination.cs; change it there and here together):
+- [RTE-2] Bridge a stranded stand (`BridgeOrphanParkingIslands`) ONLY when its island is all navdata `P` lead-ins within 50 m: never on/across runway pavement, onto a hold-short, a stand or another lead-in chain, never an island carrying a taxiway; runway-exit logic skips `IsStandBridge` edges (more: see full). Full: docs/invariants/taxi-routing.md#rte-2

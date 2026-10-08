@@ -24,6 +24,8 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*FbwVSpeed*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*CoherentLinkState*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*CoherentViewOwnership*.cs"
+  - "MSFSBlindAssist/Aircraft/ArmedAltitudeMode.cs"
+  - "MSFSBlindAssist/Aircraft/WiperPosition.cs"
 ---
 # FlyByWire A32NX and Fenix A320 rules
 
@@ -64,3 +66,8 @@ Loaded when Claude reads matching code. Background: docs/a32nx.md. Full text of 
 
 Mirrored from a380-coherent.md (it governs `_doorDefs` in FlyByWireA320Definition.cs; change it there and here together):
 - [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/a380-coherent.md#a380c-16
+
+Mirrored from a380-systems.md (they govern the TCAS RA registrations in FlyByWireA320Definition.cs; change them there and here together):
+- [A380-17] Register the TCAS RA-guidance V/S bands as the `:1`/`:2` indexed L:vars, never only the unindexed names, which FBW never writes. Full: docs/invariants/a380-systems.md#a380-17
+- [A380-18] Defer the TCAS RA-guidance compose (~800 ms), never synchronous off the state edge: FBW resets the V/S band vars only in STBY, so RA onset can speak the previous RA's sense. Full: docs/invariants/a380-systems.md#a380-18
+- [A380-19] Register the TCAS `VSPEED_GREEN/RED:1/:2` and `RA_RATE_TO_MAINTAIN` L:vars with `Units="number"`, never a velocity unit: they are already fpm, and a velocity unit multiplies them by 196.85. Full: docs/invariants/a380-systems.md#a380-19

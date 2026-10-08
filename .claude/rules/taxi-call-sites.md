@@ -7,6 +7,7 @@ paths:
   - "MSFSBlindAssist/MainForm.Dialogs.cs"
   - "MSFSBlindAssist/Services/LandingExitPlanner*.cs"
   - "MSFSBlindAssist/MainForm.Announcers.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.Routing.cs"
 ---
 # Rules whose code the taxi entry points call
 
@@ -29,3 +30,5 @@ MIRRORS: each line below is copied word for word from its area's rule file, beca
 - [GSX-7] "4.0.8" appears only in `GsxService.ReasonNoRemoteApi` and `GsxGateSelectAnnouncer.GateSelectUnsupportedMessage`, never 4.0.1; that message latches once per `TaxiAssistForm` (the announcer stays stateless), never via `UnavailableReason` or the Access GSX status. Full: docs/invariants/gsx-remote.md#gsx-7
 - [HLD-4] Never disable auto-inserted runway-crossing hold-shorts: `ApplyAutoHoldShortPasses` runs only from `AdoptRoute`, the one place a route is adopted; never place a stop on any runway's pavement, and every `StartGuidance` caller must speak `LastRouteStartHoldCue` (more: see full). Full: docs/invariants/runway-holds.md#hld-4
 - [STR-18] The route-start turn cue has ONE owner (`RouteStartTurnCue`), composed via `ComposeInitialTurnCue` from `LoadRoute` and the handoff RE-ANCHOR, never on the first taxiing frame; delivered once via `ConsumeInitialTurnCue()`, the per-frame one-shot included, angle from `ComputeSteeringHeadingError`, both sides true north (more: see full). Full: docs/invariants/taxi-steering.md#str-18
+- [DCK-4] The `.py` per-aircraft stop offset must apply to ALL non-deice gates, `.ini` gates included. Full: docs/invariants/gsx-stands-docking.md#dck-4
+- [DCK-5] `GsxOffset.Zero` must be a strict no-op (skip the shift); any resolver miss at any layer degrades to Zero, never throws or half-applies. Full: docs/invariants/gsx-stands-docking.md#dck-5

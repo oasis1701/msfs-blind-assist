@@ -6,6 +6,18 @@ paths:
   - "MSFSBlindAssist/Resources/coherent-oans-agent.js"
   - "tests/MSFSBlindAssist.Tests/**/*Arinc*.cs"
   - "MSFSBlindAssist/MainForm.Announcers.cs"
+  - "MSFSBlindAssist/Aircraft/A380ApproachCapability.cs"
+  - "MSFSBlindAssist/Aircraft/A380FlightDirector.cs"
+  - "MSFSBlindAssist/Aircraft/A380MetricAltitude.cs"
+  - "MSFSBlindAssist/Aircraft/ArmedAltitudeMode.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*A32nxAltitudeDiscrepancy*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*A380ApproachCapability*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*A380BaroMute*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*A380FgAlerts*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*A380FlightDirector*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*A380MetricAltitude*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*A380RowRopCallout*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ArmedAltitudeMode*.cs"
 ---
 # FlyByWire ARINC 429 words rules
 

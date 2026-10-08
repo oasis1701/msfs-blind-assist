@@ -5,6 +5,7 @@ paths:
   - "MSFSBlindAssist/Forms/FBWA380/**"
   - "tests/MSFSBlindAssist.Tests/**/*A380*.cs"
   - "MSFSBlindAssist/Services/TcasRaGuidance.cs"
+  - "MSFSBlindAssist/Aircraft/WiperPosition.cs"
 ---
 # FlyByWire A380X systems and panels rules
 
@@ -43,3 +44,4 @@ Mirrored from a380-coherent.md and takeoff-and-callouts.md (they govern code in 
 - [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/a380-coherent.md#a380c-16
 - [A380C-18] Never re-add an A380 RMP "Radios" panel on stock COM standby-set/swap events, which the FBW A380 ignores; anything else tuning COM with stock events must ask `IAircraftDefinition.StockComTuningRefusal` first and speak it. Full: docs/invariants/a380-coherent.md#a380c-18
 - [TKO-5] Take-off calls are ONE `AnnounceImmediate` per sample via `TakeoffVSpeedCallouts.Compose`, never one per call; every definition drops the ARM, never the speeds, on reconnect AND `OnSimContextReset`, and names keys through the one `TakeoffCalloutKeys` (more: see full). Full: docs/invariants/takeoff-and-callouts.md#tko-5
+- [A380C-17] Never write `SetStoredData` for metric weight and expect it to propagate; only the real EFB "US Units" toggle changes the aircraft. MSFSBA's Units button is a local read-out preference, kept separate from the aircraft's value. Full: docs/invariants/a380-coherent.md#a380c-17
