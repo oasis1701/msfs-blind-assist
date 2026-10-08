@@ -46,7 +46,7 @@ Loaded when Claude reads matching code. Background: docs/architecture.md. Full t
 
 Mirrored from md11.md (they govern SimConnectManager code; change them there and here together):
 - [MD11-8] A walked control's state var is consumed by `ProcessSimVarUpdate` during the walk, so no forced read reaches MainForm's combo refresh mid-walk; the walker reads via `ReadFreshAsync` on the read's OWN request id, never the subscription's, and SIM_FRAME subscriptions are seeded. (more: see full) Full: docs/invariants/md11.md#md11-8
-- [MD11-16] Every MD-11 write path refuses ALOUD, before writing, when it cannot reach the aircraft: ask `CalcWriteCanLand` (calc bus) or `CanSendEvent` (stock event), never bare `CanExecuteCalculatorCode`. Re-arm a NEGATIVE probe verdict on aircraft switch, keep a VERIFIED one. Success stays silent. (more: see full) Full: docs/invariants/md11.md#md11-16
+- [MD11-16] Every MD-11 write path refuses ALOUD, before writing, when it cannot reach the aircraft: ask `CalcWriteCanLand` (calc bus) or `CanSendEvent` (stock event), never bare `CanExecuteCalculatorCode`; the probe check never moves into `ExecuteCalculatorCode` ([VAR-3]). Re-arm a NEGATIVE verdict on aircraft switch, keep a VERIFIED one. Success is silent. Full: docs/invariants/md11.md#md11-16
 - [MD11-17] The `MD11MCDU` subscription never delivers the current page, so `RequestAll` keeps a start-up ONCE snapshot on a DIFFERENT request id. The window restores the cursor by ROW IDENTITY and polls only while visible; ONE `Md11McduDataManager` per connection. (more: see full) Full: docs/invariants/md11.md#md11-17
 
 Mirrored from gsx-stands-docking.md, surroundings.md and gsx-remote.md (they govern SimConnectManager code; change them there and here together):

@@ -21,7 +21,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## A380F-5
 
-- The A380 ND filter buttons (WPT/VORD/NDB) are ONE mutually-exclusive selection (Off/Waypoints/VOR-DME/NDB), NEVER three independent toggles — the FCU holds a single `pEfisFilter` enum and each light is `efis_filter == <enum>`, so two can never be lit at once. Pressing the ACTIVE button clears to NONE, any other REPLACES; there is no "off" button, so clearing means re-pressing whatever is active (`NdFilterSelection`). CSTR/ARPT/V/V ARE independent (T flip-flops) and stay separate. A briefly-held "independent, live-verified all three lit" claim was wrong and shipped three switches that fought each other. The A380 FCU has no EXPED button at all. → [a380x.md](../a380x.md)
+- The A380 ND filter buttons (WPT/VORD/NDB) are ONE mutually-exclusive selection (Off/Waypoints/VOR-DME/NDB), NEVER three independent toggles — the FCU holds a single `pEfisFilter` enum and each light is `efis_filter == <enum>`, so two can never be lit at once. Pressing any other button REPLACES the selection. The FCU's generated code reads as though re-pressing the ACTIVE button clears to NONE, but on a380x 1bbd304 that re-press is a no-op (A380F-10); there is no "off" button, so `NdFilterSelection` still sends the re-press and speaks why it did nothing. CSTR/ARPT/V/V ARE independent (T flip-flops) and stay separate. A briefly-held "independent, live-verified all three lit" claim was wrong and shipped three switches that fought each other. The A380 FCU has no EXPED button at all. → [a380x.md](../a380x.md)
+
+Corrected 2026-10-08: re-pressing the active filter does not clear it on a380x 1bbd304 (A380F-10, measured); this text had said it clears to NONE, as the FCU source reads. Evidence: `NdFilterSelection.IsClearAttempt` and `NdFilterSelection.ClearUnsupportedMessage`.
 
 ## A380F-6
 

@@ -9,7 +9,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## FPD-2
 
-- Never render the flyPad scrape as native WinForms controls — only a WebView2 HTML document gives NVDA full browse mode; headings and static text are otherwise unreachable. → [flypad.md](../flypad.md)
+- Never render the flyPad scrape as native WinForms controls — only a WebView2 HTML document gives NVDA full browse mode; headings and static text are otherwise unreachable. The one exception is the silent list mode `FbwEfbForm.CreateControlFor` builds when WebView2 fails to initialise (no user toggle); MD11-13 governs how it shows a disabled control. → [flypad.md](../flypad.md)
+
+Corrected 2026-10-08: names the WebView2-failed list mode, which the rule's "never" did not allow for. Evidence: `FbwEfbForm` (its "LIST MODE (silent fallback)" design note and `CreateControlFor`), and MD11-13's full text on that fallback.
 
 ## FPD-3
 
