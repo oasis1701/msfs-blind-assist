@@ -36,6 +36,14 @@ public static class GsxRemoteParkingReader
     private const string UiTypeVehicle = "Vehicle";
     private const string UiTypeFuel = "Fuel";
 
+    /// <summary>
+    /// GSX's "no wingspan limit" value, published on every stand no profile section covers
+    /// (measured: KSAN 75 of 75 live on 2026-10-07, KATL 4 of 4) and on no configured stand (KJFK
+    /// max 72). It is not a size: read as one it became a 499.5 m radius that fits every aircraft.
+    /// So it reads as UNPUBLISHED, and GsxNavdataGeometryFiller borrows the real size [DCK-43].
+    /// </summary>
+    internal const double UnlimitedWingspanMetres = 999.0;
+
     // GSX type-constant NAME -> the numeric input GsxGateMapper.MapGsxTypeToNavdataType has
     // always expected for that category (its own doc comment: "GSX .ini type uses the MSFS
     // SDK parking-type enum"). See ResolveNavdataType for why this indirection exists.
@@ -193,6 +201,7 @@ public static class GsxRemoteParkingReader
             Log.Warn("Gsx", $"parking reader: \"{uiGateName}\" ({icao}) has no published heading from GSX -- emitting with Heading=NaN instead of dropping it; the .ini join may recover a real value.");
 
         double? maxWingspan = Double(p, "maxWingspan");
+        if (maxWingspan >= UnlimitedWingspanMetres) maxWingspan = null;   // the unconfigured-stand sentinel, not a size
         string? vdgs = Str(p, "parkingSystem");
         var (name, number, suffix) = ParseStandIdentity(uiGateName);
 

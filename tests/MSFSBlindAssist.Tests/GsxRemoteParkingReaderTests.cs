@@ -561,6 +561,45 @@ public class GsxRemoteParkingReaderTests
     }
 
     [Fact]
+    public void A_999_metre_wingspan_is_GSXs_no_limit_sentinel_and_reads_as_unpublished()
+    {
+        // Every stand GSX publishes unconfigured carries maxWingspan 999 (KSAN 75 of 75, KATL 4 of
+        // 4); no configured one does (KJFK max 72). Read as 499.5 m it made every such stand fit any
+        // aircraft. Unpublished instead: the same 100 m placeholder and permissive fit as a stand
+        // with no maxWingspan at all, until GsxNavdataGeometryFiller fills the real size.
+        const string json = """
+            {"parkings":[{"uiGateName":"Ramp 115","uiTerminalName":"Ramp","uiType":"Gate Medium",
+                          "lat":1.0,"lon":2.0,"maxWingspan":999.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Null(spot.MaxWingspanMeters);
+        Assert.Equal(100.0, spot.Radius);
+    }
+
+    [Fact]
+    public void A_real_wingspan_below_the_sentinel_is_kept_verbatim()
+    {
+        const string json = """
+            {"parkings":[{"uiGateName":"Gate 1","uiTerminalName":"T1","uiType":"Gate Extra",
+                          "lat":1.0,"lon":2.0,"heading":3.0,"maxWingspan":88.4}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal(88.4, spot.MaxWingspanMeters);
+        Assert.Equal(44.2, spot.Radius, 6);
+    }
+
+    [Fact]
+    public void On_the_KSAN_capture_exactly_the_75_unconfigured_stands_lose_the_999_wingspan()
+    {
+        var spots = GsxRemoteParkingReader.Read(GsxKsanFixtures.GsxAirport(), GsxKsanFixtures.Ksan);
+
+        var unconfigured = spots.Where(s => !GsxRemoteParkingReader.HasUsableHeading(s)).ToList();
+        Assert.Equal(75, unconfigured.Count);
+        Assert.All(unconfigured, s => Assert.Null(s.MaxWingspanMeters));
+        Assert.Equal(58.0, spots.Single(s => s.GsxIdentifier == "Gate N 1").MaxWingspanMeters);
+    }
+
+    [Fact]
     public void HasJetway_also_accepts_a_real_json_boolean()
     {
         const string json = """
