@@ -3901,7 +3901,7 @@ calibrated to from taxiing).
 
 ### Pure-logic verification
 
-`tools/DockingProbe` is a console probe (no xUnit, per CLAUDE.md) that exercises
+`tools/DockingProbe` is a console probe that exercises
 `DockingGeometry` and the `DockingGuidanceManager` state machine against scripted
 position sequences:
 
