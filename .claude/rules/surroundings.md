@@ -31,6 +31,9 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*PlaceListBuilder*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*CurrentAirportResolver*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AirportFacilities*.cs"
+  - "MSFSBlindAssist/Services/Com1Tuning.cs"
+  - "MSFSBlindAssist/Services/AircraftCfgCatalog.cs"
+  - "MSFSBlindAssist/Database/IAirportFacilitiesProvider.cs"
 ---
 # Airport surroundings, places and passing callouts rules
 

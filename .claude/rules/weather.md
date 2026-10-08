@@ -18,6 +18,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*TurnaroundLiftoff*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*Metar*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*WindReadout*.cs"
+  - "MSFSBlindAssist/Forms/METARReportForm.cs"
 ---
 # Weather and ActiveSky rules
 

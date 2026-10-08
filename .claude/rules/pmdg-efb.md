@@ -3,6 +3,8 @@ paths:
   - "MSFSBlindAssist/SimConnect/CoherentPmdgEfbClient.cs"
   - "MSFSBlindAssist/Resources/coherent-pmdg-efb-agent.js"
   - "tests/MSFSBlindAssist.Tests/**/*PmdgEfb*.cs"
+  - "MSFSBlindAssist/Patching/EFBModPackageManager.cs"
+  - "MSFSBlindAssist/Patching/LegacyEfbBridgeCleanup.cs"
 ---
 # PMDG EFB over the Coherent debugger rules
 

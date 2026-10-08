@@ -4,6 +4,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/A380*.cs"
   - "MSFSBlindAssist/Forms/FBWA380/**"
   - "tests/MSFSBlindAssist.Tests/**/*A380*.cs"
+  - "MSFSBlindAssist/Services/TcasRaGuidance.cs"
 ---
 # FlyByWire A380X systems and panels rules
 

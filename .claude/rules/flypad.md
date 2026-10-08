@@ -3,6 +3,7 @@ paths:
   - "MSFSBlindAssist/Resources/coherent-flypad-agent.js"
   - "MSFSBlindAssist/Forms/**/FbwEfbForm*.cs"
   - "tools/flypad-shell-test/**"
+  - "MSFSBlindAssist/Resources/flypad-shell.html"
 ---
 # FlyByWire flyPad EFB (A320 and A380) rules
 

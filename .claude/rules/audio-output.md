@@ -7,6 +7,8 @@ paths:
   - "MSFSBlindAssist/Forms/Settings/TestTone*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*TestTonePlayer*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*GuidanceToneDevice*.cs"
+  - "MSFSBlindAssist/Services/PhaseContinuousOscillator.cs"
+  - "MSFSBlindAssist/Services/LowPassFilterProvider.cs"
 ---
 # Guidance tone output device rules
 

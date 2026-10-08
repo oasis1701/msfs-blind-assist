@@ -18,6 +18,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*LandingAssistRunwaySwitch*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayFrame*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*EarlyVacateExitMatcher*.cs"
+  - "MSFSBlindAssist/Services/DistanceMilestones.cs"
 ---
 # Landing exits: measurement, planner and re-plan rules
 

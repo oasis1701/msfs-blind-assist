@@ -125,13 +125,39 @@ public class ClaudeContextBudgetTests
     }
 
     [Theory]
-    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/a220.md", "MSFSBlindAssist/Aircraft/A220/**", false)]
-    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/a220.md", "MSFSBlindAssist/Forms/A220/**", true)]
-    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/variable-definitions.md", "MSFSBlindAssist/Aircraft/**", true)]
-    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Definition.cs", ".claude/rules/troubleshooting.md", "MSFSBlindAssist/Aircraft/**/*Definition*.cs", true)]
-    public void An_aircraft_folder_file_needs_a_rule_file_of_its_own(string file, string ruleFile, string glob, bool flagged)
-        => Assert.Equal(flagged, AreaFilesLoadingNoOwnRuleFile(new[] { file },
-            new[] { (ruleFile, new List<string> { glob }) }).Count > 0);
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/a220.md", "MSFSBlindAssist/Aircraft/A220/**", "", false)]
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/a220.md", "MSFSBlindAssist/Forms/A220/**", "", true)]
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Afdx.cs", ".claude/rules/variable-definitions.md", "MSFSBlindAssist/Aircraft/**", "", true)]
+    [InlineData("MSFSBlindAssist/Aircraft/A220/A220Definition.cs", ".claude/rules/troubleshooting.md", "MSFSBlindAssist/Aircraft/**/*Definition*.cs", "", true)]
+    [InlineData("MSFSBlindAssist/Aircraft/WiperPosition.cs", ".claude/rules/variable-definitions.md", "MSFSBlindAssist/Aircraft/**", "", false)]
+    [InlineData("MSFSBlindAssist/Services/TcasService.cs", ".claude/rules/tcas.md", "MSFSBlindAssist/Services/Tcas*.cs", "", false)]
+    [InlineData("MSFSBlindAssist/Services/TcasService.cs", ".claude/rules/weather.md", "MSFSBlindAssist/Services/Weather*.cs", "", true)]
+    [InlineData("MSFSBlindAssistUpdater/Program.cs", ".claude/rules/core.md", "MSFSBlindAssist/**", "", true)]
+    [InlineData("plugins/VPilotPlugin/Plugin.cs", ".claude/rules/core.md", "MSFSBlindAssist/**", "", true)]
+    [InlineData("MSFSBlindAssist/Resources/flypad-shell.html", ".claude/rules/flypad.md", "MSFSBlindAssist/Resources/coherent-flypad-agent.js", "", true)]
+    [InlineData("MSFSBlindAssist/Resources/md11_control_map.json", ".claude/rules/md11.md", "MSFSBlindAssist/Aircraft/MD11/**", "", false)]
+    [InlineData("tests/MSFSBlindAssist.Tests/TcasServiceTests.cs", ".claude/rules/core.md", "MSFSBlindAssist/**", "", false)]
+    [InlineData("tools/CDUTest/Program.cs", ".claude/rules/core.md", "MSFSBlindAssist/**", "", false)]
+    [InlineData("MSFSBlindAssist/Utils/Logging/Log.cs", ".claude/rules/core.md", "MSFSBlindAssist/Services/**", "MSFSBlindAssist/Utils/Logging/", false)]
+    [InlineData("MSFSBlindAssist/Utils/LoggingHelpers.cs", ".claude/rules/core.md", "MSFSBlindAssist/Services/**", "MSFSBlindAssist/Utils/Logging/", true)]
+    [InlineData("MSFSBlindAssist/Program.cs", ".claude/rules/core.md", "MSFSBlindAssist/Services/**", "MSFSBlindAssist/Program.cs", false)]
+    [InlineData("MSFSBlindAssist/Forms/TrackFixForm.Designer.cs", ".claude/rules/core.md", "MSFSBlindAssist/Services/**", "MSFSBlindAssist/Forms/TrackFixForm.cs", true)]
+    [InlineData("MSFSBlindAssist/Forms/Settings/AudioPanel.cs", ".claude/rules/core.md", "MSFSBlindAssist/Services/**", "MSFSBlindAssist/Forms/Settings/", false)]
+    [InlineData("MSFSBlindAssist/Resources/coherent-x-agent.js", ".claude/rules/core.md", "MSFSBlindAssist/Services/**", "MSFSBlindAssist/Resources/", true)]
+    public void A_shipped_code_file_needs_a_rule_file_or_an_exemption(string file, string ruleFile, string glob, string exemption,
+        bool flagged)
+        => Assert.Equal(flagged, ShippedFilesLoadingNoRuleFile(new[] { file }, new[] { (ruleFile, new List<string> { glob }) },
+            exemption.Length == 0 ? Array.Empty<string>() : new[] { exemption }).Count > 0);
+
+    [Theory]
+    [InlineData("MSFSBlindAssist/Program.cs", false)]
+    [InlineData("MSFSBlindAssist/Gone.cs", true)]
+    [InlineData("MSFSBlindAssist/Utils/Logging/", false)]
+    [InlineData("MSFSBlindAssist/Utils/Gone/", true)]
+    [InlineData("MSFSBlindAssist/Utils/Logging", true)]
+    public void An_exemption_entry_names_a_file_or_folder_that_exists(string entry, bool flagged)
+        => Assert.Equal(flagged, ExemptionEntriesMatchingNoFile(
+            new[] { "MSFSBlindAssist/Program.cs", "MSFSBlindAssist/Utils/Logging/Log.cs" }, new[] { entry }).Count > 0);
 
     [Fact]
     public void A_rule_file_loads_its_body_not_its_front_matter()
@@ -234,18 +260,25 @@ public class ClaudeContextBudgetTests
     }
 
     [Fact]
-    public void Every_aircraft_folder_file_and_coherent_agent_loads_a_rule_file()
+    public void Every_shipped_code_file_loads_a_rule_file_or_is_exempt()
     {
         List<RuleFile> ruleFiles = RuleFiles().ToList();
+        List<string> files = RepoFiles().ToList();
+        List<string> exemptions = CoverageExemptions.Values.SelectMany(entries => entries).ToList();
         List<string> problems = SharedAircraftRules.Where(name => ruleFiles.All(rf => rf.Name != name))
             .Select(name => $"{name} is in SharedAircraftRules but does not exist. If it moved or was renamed, update "
                 + "SharedAircraftRules, or this check counts it as every aircraft's own rule file.")
-            .Concat(AreaFilesLoadingNoOwnRuleFile(RepoFiles(), ruleFiles.Select(rf => (rf.Name, rf.Globs ?? new List<string>())))
-                .Select(file => $"{file} loads no rule file of its own (the shared aircraft rules in SharedAircraftRules "
-                    + "do not count), so no area rule reaches whoever edits it. Add a glob for it to its "
-                    + "area's .claude/rules file. A new aircraft or feature with no rules yet gets a rule file of its own "
-                    + "whose preamble names its doc (CLAUDE.md, \"Adding or changing a rule\"); only a shared folder that "
-                    + "no rule guards goes in AreaFolderExemptions, with the reason."))
+            .Concat(ExemptionEntriesMatchingNoFile(files, exemptions)
+                .Select(entry => $"{entry} in CoverageExemptions matches no file. It moved, was renamed or was deleted: "
+                    + "point the entry at where it lives now, or drop it."))
+            .Concat(ShippedFilesLoadingNoRuleFile(files, ruleFiles.Select(rf => (rf.Name, rf.Globs ?? new List<string>())),
+                    exemptions)
+                .Select(file => $"{file} loads no rule file"
+                    + (IsAreaOwnedFile(file) ? " of its own (the shared aircraft rules in SharedAircraftRules do not count)" : "")
+                    + ", so no rule reaches whoever edits it. Add a glob for it to its area's .claude/rules file. A new "
+                    + "feature or aircraft with no rules yet gets a rule file of its own whose preamble names its doc "
+                    + "(CLAUDE.md, \"Adding or changing a rule\"). If no area's rules apply, add it to CoverageExemptions "
+                    + "under the reason that fits, or under a new reason saying why none applies."))
             .ToList();
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
@@ -467,37 +500,113 @@ public class ClaudeContextBudgetTests
     private static readonly HashSet<string> SharedAircraftRules = new(StringComparer.Ordinal)
         { ".claude/rules/variable-definitions.md", ".claude/rules/troubleshooting.md" };
 
-    /// <summary>Area-owned files (<see cref="IsAreaOwnedFile"/>) that no rule file of their own matches.</summary>
-    private static List<string> AreaFilesLoadingNoOwnRuleFile(IEnumerable<string> files,
-        IEnumerable<(string Name, List<string> Globs)> ruleFiles)
+    /// <summary>Shipped code that no rule file needs to reach, by reason: each key says why no area's rules apply to its
+    /// entries. An entry ending in '/' is a folder, kept for infrastructure no area rule guards; any other entry is one
+    /// file, so a new file beside it still needs a glob or an entry of its own. When a feature listed here gains a rule,
+    /// give it a rule file and drop its entries. A Coherent agent script is never exempt (<see cref="IsExempt"/>).</summary>
+    private static readonly Dictionary<string, string[]> CoverageExemptions = new(StringComparer.Ordinal)
     {
-        var compiled = ruleFiles.Where(rf => !SharedAircraftRules.Contains(rf.Name))
-            .SelectMany(rf => rf.Globs).Select(GlobRegex).ToList();
-        return files.Where(IsAreaOwnedFile).Where(f => !compiled.Any(g => g.IsMatch(f)))
+        ["CLAUDE.md always loads, and its rules for any file cover these: CORE-7 and CORE-8 (screen-reader output), "
+            + "CORE-12 (controls), CORE-13 (the database path and its dialogs), CORE-14 and CORE-15 (logging), and VAT-13 "
+            + "(settings panels; an area that owns a panel globs it as well)"] = new[]
+        {
+            "MSFSBlindAssist/Accessibility/", "MSFSBlindAssist/Controls/", "MSFSBlindAssist/Utils/Logging/",
+            "MSFSBlindAssist/Utils/AppLogs.cs", "MSFSBlindAssist/Database/DatabasePathResolver.cs",
+            "MSFSBlindAssist/Database/DatabaseSelector.cs", "MSFSBlindAssist/Forms/DatabaseSettingsForm.cs",
+            "MSFSBlindAssist/Forms/DatabaseMismatchDialog.cs", "MSFSBlindAssist/Forms/Settings/",
+        },
+        ["app scaffolding that no feature's rules apply to"] = new[]
+        {
+            "MSFSBlindAssist/Program.cs", "MSFSBlindAssist/GlobalUsings.cs", "MSFSBlindAssist/SingleInstanceManager.cs",
+            "MSFSBlindAssist/Properties/", "MSFSBlindAssist/Utils/RuntimeChecker.cs", "MSFSBlindAssist/Utils/SimulatorDetector.cs",
+        },
+        ["plain data records: the rules about their fields load with the code that reads them"] = new[]
+        {
+            "MSFSBlindAssist/Database/Models/Airport.cs", "MSFSBlindAssist/Database/Models/AirportCandidate.cs",
+            "MSFSBlindAssist/Database/Models/DatabaseMetadata.cs", "MSFSBlindAssist/Database/Models/ILSData.cs",
+            "MSFSBlindAssist/Database/Models/Runway.cs", "MSFSBlindAssist/Database/Models/StartPosition.cs",
+            "MSFSBlindAssist/Database/Models/WaypointFix.cs", "MSFSBlindAssist/Models/LocationData.cs",
+            "MSFSBlindAssist/Models/SimBriefOFP.cs", "MSFSBlindAssist/Models/TcasTraffic.cs",
+        },
+        ["generic dialogs and display controls that no feature's rules apply to"] = new[]
+        {
+            "MSFSBlindAssist/Forms/AboutForm.cs", "MSFSBlindAssist/Forms/ValueInputForm.cs",
+            "MSFSBlindAssist/Forms/HotkeyListForm.cs", "MSFSBlindAssist/Forms/ChecklistForm.cs",
+            "MSFSBlindAssist/Forms/DisplayList.cs", "MSFSBlindAssist/Forms/DisplayListBox.cs", "MSFSBlindAssist/Forms/DisplayText.cs",
+        },
+        ["shared by several aircraft or areas, and no rule names it"] = new[]
+        {
+            "MSFSBlindAssist/Forms/PMDG/", "MSFSBlindAssist/Forms/CduScratchpadAnnouncer.cs", "MSFSBlindAssist/Forms/FbwEwdWindow.cs",
+            "MSFSBlindAssist/Forms/NavRadiosForm.cs", "MSFSBlindAssist/Forms/FMCSettingsForm.cs",
+            "MSFSBlindAssist/Services/NdWaypointReadout.cs", "MSFSBlindAssist/Services/RelativeDirection.cs",
+            "MSFSBlindAssist/Navigation/NavigationCalculator.cs", "MSFSBlindAssist/Navigation/RunwayCenterlineTracker.cs",
+        },
+        ["a feature with no rules or doc of its own yet (TCAS display, SimBrief planner, GeoNames, waypoint tracking, "
+            + "landing rate): when it gains a rule, give it a rule file and drop its entries"] = new[]
+        {
+            "MSFSBlindAssist/Services/TcasService.cs", "MSFSBlindAssist/Forms/TcasForm.cs",
+            "MSFSBlindAssist/Services/SimBriefService.cs", "MSFSBlindAssist/Forms/SimBriefPlannerForm.cs",
+            "MSFSBlindAssist/Services/GeoNamesService.cs", "MSFSBlindAssist/Forms/LocationInfoForm.cs",
+            "MSFSBlindAssist/Navigation/WaypointTracker.cs", "MSFSBlindAssist/Forms/TrackFixForm.cs",
+            "MSFSBlindAssist/Forms/TrackFixForm.Designer.cs", "MSFSBlindAssist/Services/LandingRateAnnouncer.cs",
+        },
+        ["retired-install cleanup that no rule names"] = new[]
+        {
+            "MSFSBlindAssist/Patching/StaleRuntimesCleanup.cs",
+        },
+    };
+
+    /// <summary>Code that ships: a .cs file in the app, the updater or the vPilot plugin, or a script or page the app
+    /// injects from Resources/. Tests and tools/ are not checked here; the tested-code check covers tests.</summary>
+    private static bool IsShippedCode(string file)
+        => (file.EndsWith(".cs", StringComparison.Ordinal)
+                && ShippedCodeRoots.Any(r => file.StartsWith(r, StringComparison.Ordinal)))
+            || (file.StartsWith("MSFSBlindAssist/Resources/", StringComparison.Ordinal)
+                && (file.EndsWith(".js", StringComparison.Ordinal) || file.EndsWith(".html", StringComparison.Ordinal)));
+
+    /// <summary>Whether an exemption entry covers the file. A Coherent agent script is never exempt: the owner's choice
+    /// of 2026-10-05, since its rule file is what points whoever opens the script at its doc.</summary>
+    private static bool IsExempt(string file, IEnumerable<string> exemptions)
+        => !IsCoherentAgentScript(file) && exemptions.Any(e => EntryCovers(e, file));
+
+    private static bool EntryCovers(string entry, string file)
+        => entry.EndsWith('/') ? file.StartsWith(entry, StringComparison.Ordinal) : file == entry;
+
+    /// <summary>Shipped code (<see cref="IsShippedCode"/>) outside the exemptions that no rule file loads. An area-owned
+    /// file (<see cref="IsAreaOwnedFile"/>) needs a rule file of its own: the shared aircraft rules do not count.</summary>
+    private static List<string> ShippedFilesLoadingNoRuleFile(IEnumerable<string> files,
+        IEnumerable<(string Name, List<string> Globs)> ruleFiles, IReadOnlyCollection<string> exemptions)
+    {
+        var compiled = ruleFiles.Select(rf => (rf.Name, Globs: rf.Globs.Select(GlobRegex).ToList())).ToList();
+        var anyGlob = compiled.SelectMany(c => c.Globs).ToList();
+        var ownGlob = compiled.Where(c => !SharedAircraftRules.Contains(c.Name)).SelectMany(c => c.Globs).ToList();
+        return files.Where(f => IsShippedCode(f) && !IsExempt(f, exemptions))
+            .Where(f => !(IsAreaOwnedFile(f) ? ownGlob : anyGlob).Any(g => g.IsMatch(f)))
             .OrderBy(f => f, StringComparer.Ordinal).ToList();
     }
 
-    /// <summary>Folders that belong to one aircraft or area but that no rule guards, each with the reason.</summary>
-    private static readonly Dictionary<string, string> AreaFolderExemptions = new(StringComparer.Ordinal)
+    /// <summary>Exemption entries that match no file. A moved or deleted file must not leave its entry behind, just as a
+    /// dead glob fails <see cref="Every_rule_file_glob_still_matches_a_file"/>.</summary>
+    private static List<string> ExemptionEntriesMatchingNoFile(IEnumerable<string> files, IEnumerable<string> exemptions)
     {
-        ["MSFSBlindAssist/Forms/PMDG/"] = "the autopilot window both PMDG aircraft share; no rule names it",
-        ["MSFSBlindAssist/Forms/Settings/"] = "app-wide settings panels, not one area: VAT-13 in CLAUDE.md covers them all, "
-            + "and an area that owns a panel globs it in its own rule file",
-    };
+        List<string> all = files.ToList();
+        return exemptions.Where(e => !all.Any(f => EntryCovers(e, f))).ToList();
+    }
 
     /// <summary>A file in an aircraft's or area's own subfolder of Aircraft/, Forms/ or SimConnect/, or a Coherent
-    /// agent script: code that belongs to one area, so some rule file must load with it.</summary>
+    /// agent script: code that belongs to one area, so a rule file of its own must load with it.</summary>
     private static bool IsAreaOwnedFile(string file)
     {
-        if (file.StartsWith("MSFSBlindAssist/Resources/coherent-", StringComparison.Ordinal)
-            && file.EndsWith(".js", StringComparison.Ordinal))
-            return true;
+        if (IsCoherentAgentScript(file)) return true;
         string[] parts = file.Split('/');
         return parts.Length >= 4 && parts[0] == "MSFSBlindAssist"
             && parts[1] is "Aircraft" or "Forms" or "SimConnect"
-            && file.EndsWith(".cs", StringComparison.Ordinal)
-            && !AreaFolderExemptions.Keys.Any(k => file.StartsWith(k, StringComparison.Ordinal));
+            && file.EndsWith(".cs", StringComparison.Ordinal);
     }
+
+    private static bool IsCoherentAgentScript(string file)
+        => file.StartsWith("MSFSBlindAssist/Resources/coherent-", StringComparison.Ordinal)
+            && file.EndsWith(".js", StringComparison.Ordinal);
 
     /// <summary>What a rule file puts into context: its body. "Claude Code removes the frontmatter before loading the
     /// rule into context" (code.claude.com/docs/en/memory), and a Read of AppVersion.cs injected updates.md from its

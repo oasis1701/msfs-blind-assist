@@ -20,6 +20,12 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*PanelRowRules*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*EwdMessageLookup*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*ControlStateHook*.cs"
+  - "MSFSBlindAssist/Forms/SimPerformanceForm.cs"
+  - "MSFSBlindAssist/Services/SimPerformance/**"
+  - "tests/MSFSBlindAssist.Tests/**/*SimPerformance*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*CpuLoad*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*FrameRateMeter*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GpuCounterInstance*.cs"
 ---
 # Core SimConnect and MainForm rules
 

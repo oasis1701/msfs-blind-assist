@@ -30,6 +30,8 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*RunwayReachGate*.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.Announcements.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
+  - "MSFSBlindAssist/Database/Models/TaxiNode.cs"
+  - "MSFSBlindAssist/Database/Models/TaxiPath.cs"
 ---
 # Taxi routing rules
 
