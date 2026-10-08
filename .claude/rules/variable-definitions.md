@@ -26,3 +26,8 @@ Loaded when Claude reads matching code. Background: docs/aircraft-definitions.md
 
 Mirrored from visual-guidance.md (it governs `VisualGuidanceProfile` in IAircraftDefinition.cs; change it there and here together):
 - [VG-15] Never collapse `GlideslopeAltitudeBiasFt` and `FlareAltitudeBiasFt` into one shared constant: they apply in different code paths (glideslope error vs phase detection) and were measured separately. Full: docs/invariants/visual-guidance.md#vg-15
+
+Mirrored from waypoint-flight-director.md and visual-guidance.md (they govern each definition's profiles; change them there and here together):
+- [WFD-2] A profile's FD `TonePitchRangeDeg` EQUALS its `MaxPitchDeg` (the FD clamps pitch there), deliberately not `VisualGuidanceProfile.TonePitchRangeDeg`. Full: docs/invariants/waypoint-flight-director.md#wfd-2
+- [WFD-3] EVERY aircraft definition states `GetWaypointFlightDirectorProfile()`, even the baseline (the Headwind A330 would inherit the A320's); never derive `BankRateLeadSec` from `TaxiTurnLeadSeconds`. Full: docs/invariants/waypoint-flight-director.md#wfd-3
+- [VG-20] The A380X and HS787 must NOT inherit the A320 baseline VG profile: both carry 777-class overrides, and their biases are type ESTIMATES pending in-sim coupled-ILS calibration. Full: docs/invariants/visual-guidance.md#vg-20

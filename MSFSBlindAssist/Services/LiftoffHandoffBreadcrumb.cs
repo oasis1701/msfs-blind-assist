@@ -111,14 +111,20 @@ public static class LiftoffHandoffBreadcrumb
     /// re-measuring and re-sizing the matching mute — and if the new mute would approach
     /// 3.5 s, shorten the phrase instead. That ceiling is the defect this area exists to fix.
     /// </summary>
-    public static (string Text, int GraceMs) For(bool activatedHandFly, bool quickKeysRegistered)
+    public static (string Text, int GraceMs) For(bool activatedHandFly, bool quickKeysRegistered,
+                                                 bool activatedFlightDirector = false)
     {
         // Pre-armed: hand fly never stopped talking, so announcing it as newly active would be
         // wrong. The only news is that the aircraft is airborne — and because the callout
         // stream is already running here, this one gets the shortest mute of the three.
+        // The Flight Director rides in this SAME utterance for the same reason the quick-keys
+        // warning does: its own "Flight director active" is an AnnounceImmediate, which this
+        // breadcrumb would cancel, so the pilot would never hear that it came on.
+        string fd = activatedFlightDirector ? ", flight director" : "";
+
         if (!activatedHandFly)
         {
-            return ("Airborne.", GracePreArmedMs);
+            return ($"Airborne{fd}.", GracePreArmedMs);
         }
 
         // The warning MUST ride inside this utterance. AnnounceImmediate cancels pending speech
@@ -129,7 +135,7 @@ public static class LiftoffHandoffBreadcrumb
         // during this handoff, and the pilot already heard the warning in full when they armed
         // it manually.
         return quickKeysRegistered
-            ? ("Airborne, hand fly.", GraceMs)
-            : ($"Airborne, hand fly, {QuickKeysWarning}.", GraceWithWarningMs);
+            ? ($"Airborne, hand fly{fd}.", GraceMs)
+            : ($"Airborne, hand fly{fd}, {QuickKeysWarning}.", GraceWithWarningMs);
     }
 }

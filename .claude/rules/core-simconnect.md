@@ -53,3 +53,7 @@ Mirrored from gsx-stands-docking.md, surroundings.md and gsx-remote.md (they gov
 - [DCK-34] SimConnect `PLANE_HEADING_DEGREES_TRUE`/`_MAGNETIC` are RADIANS despite the name: multiply by 57.2958 before using them as degrees. Full: docs/invariants/gsx-stands-docking.md#dck-34
 - [SUR-10] The surface-change callout (`SurfaceChangeGate`) has its own switch, is not behind `SuppressCheck`, speaks only a surface FAMILY change confirmed by `ConfirmMetres` from its first reading; other `lastKnownPosition` writers must carry the surface fields forward (more: see full). Full: docs/invariants/surroundings.md#sur-10
 - [GSX-20] "GSX available" for the `.ini` gate overlay, deice pads and profile stop positions is `GsxService.CouatlStarted` OR `SimConnectManager.GsxCouatlStartedLVar`, never the Remote flag alone; `GsxService` itself still touches SimConnect nowhere. Full: docs/invariants/gsx-remote.md#gsx-20
+
+Mirrored from waypoint-flight-director.md (they govern SimConnectManager and SimVarDefinition code; change them there and here together):
+- [WFD-5] `AUTOPILOT MASTER` stays the LAST `VisualGuidanceData` field; AP-mute detection ORs it with the cached `A32NX_AUTOPILOT_1/2_ACTIVE` vars, which the FBW Airbuses drive instead of the stock simvar. Full: docs/invariants/waypoint-flight-director.md#wfd-5
+- [WFD-12] `TURN_COORDINATOR_BALL` stays `DeferredSubscription` (it streams only while Ctrl+K is on), unlike always-on `G_FORCE`; both branches sit at the TOP of `HandleSpecialAnnouncements`. Full: docs/invariants/waypoint-flight-director.md#wfd-12
