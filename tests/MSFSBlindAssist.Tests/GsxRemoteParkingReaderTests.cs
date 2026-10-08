@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.Gsx;
@@ -476,6 +477,87 @@ public class GsxRemoteParkingReaderTests
         var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
         Assert.Equal(GsxGateMapper.MapGsxTypeToNavdataType(9), spot.Type); // "Gate Medium"'s current navdata number
         Assert.Equal(10, spot.Type);
+    }
+
+    // ── Unconfigured stands: no `type` number, only `uiType` (KSAN live, 2026-10-07) ────────
+
+    [Fact]
+    public void A_stand_published_with_no_type_number_takes_its_type_from_uiType()
+    {
+        // GSX sends `type` only for a stand a profile section covers; every other stand carries
+        // `uiType` alone (75 of 79 live at KSAN). Without this it read "Spot 115 - Unknown",
+        // outside every gate category.
+        const string json = """
+            {"parkings":[{"uiGateName":"Ramp 115","uiTerminalName":"Ramp","uiType":"Gate Medium",
+                          "lat":1.0,"lon":2.0,"heading":3.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal(10, spot.Type);
+        Assert.Equal("Gate Medium", spot.GetFilterCategory());
+    }
+
+    [Theory]
+    [InlineData("Gate Small", 9)]
+    [InlineData("Gate Medium", 10)]
+    [InlineData("Gate Heavy", 13)]
+    [InlineData("Gate Extra", 14)]
+    [InlineData("Ramp Cargo", 6)]
+    [InlineData("Ramp GA Large", 5)]
+    [InlineData("Ramp GA Medium", 4)]
+    [InlineData("Ramp Mil Cargo", 7)]
+    [InlineData("Ramp GA Extra", 15)]
+    [InlineData("Dock GA", 12)]
+    [InlineData("Helipad", 0)]   // names no known constant: unknown, exactly as an unmatched `type` is
+    [InlineData("", 0)]
+    public void uiType_names_the_same_constant_the_type_number_would(string uiType, int expectedNavdataType)
+        => Assert.Equal(expectedNavdataType, GsxRemoteParkingReader.ResolveNavdataTypeFromUiType(uiType));
+
+    [Fact]
+    public void Every_KJFK_stand_reads_the_same_type_from_uiType_as_from_its_type_number()
+    {
+        // The evidence the fallback rests on: all 231 KJFK stands carry both fields, and on every
+        // one of them uiType and `type` name the same category.
+        var parkings = KjfkFixture().GetProperty("parkings").EnumerateArray()
+            .Where(p => p.GetProperty("uiType").GetString() is not ("Vehicle" or "Fuel"))
+            .ToList();
+        Assert.Equal(231, parkings.Count);
+        foreach (var p in parkings)
+        {
+            var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse($$"""{"parkings":[{{p.GetRawText()}}]}"""), Kjfk));
+            Assert.Equal(spot.Type, GsxRemoteParkingReader.ResolveNavdataTypeFromUiType(p.GetProperty("uiType").GetString()));
+        }
+    }
+
+    [Fact]
+    public void uiType_resolution_does_not_depend_on_the_current_culture()
+    {
+        // tr-TR upper-cases "i" to a dotted "İ": a culture-sensitive ToUpper turns "Ramp Mil Cargo"
+        // into RAMP_MİL_CARGO, which silently matches nothing.
+        var savedCulture = CultureInfo.CurrentCulture;
+        var savedUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("tr-TR");
+            CultureInfo.CurrentUICulture = new CultureInfo("tr-TR");
+            Assert.Equal(7, GsxRemoteParkingReader.ResolveNavdataTypeFromUiType("Ramp Mil Cargo"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = savedCulture;
+            CultureInfo.CurrentUICulture = savedUiCulture;
+        }
+    }
+
+    [Fact]
+    public void Every_unconfigured_KSAN_stand_gets_a_real_type()
+    {
+        var spots = GsxRemoteParkingReader.Read(GsxKsanFixtures.GsxAirport(), GsxKsanFixtures.Ksan);
+
+        Assert.Equal(79, spots.Count);                       // 86 - 7 Vehicle
+        Assert.DoesNotContain(spots, s => s.Type == 0);
+        Assert.Equal("Gate Medium", spots.Single(s => s.GsxIdentifier == "Ramp 115").GetFilterCategory());
+        Assert.Equal("Ramp GA", spots.Single(s => s.GsxIdentifier == "N Parking 10").GetFilterCategory());
+        Assert.Equal("Ramp Cargo", spots.Single(s => s.GsxIdentifier == "Gate N 1").GetFilterCategory()); // has `type`: unchanged route
     }
 
     [Fact]

@@ -196,6 +196,15 @@ public static class GsxRemoteParkingReader
         string? vdgs = Str(p, "parkingSystem");
         var (name, number, suffix) = ParseStandIdentity(uiGateName);
 
+        // `type` is ABSENT on every stand no GSX profile section covers (75 of 79 live at KSAN,
+        // 2026-10-07; all 8 of the KATL capture) while `uiType` is present on every one. A
+        // published number keeps its own route through the live constants, unchanged -- see
+        // ResolveNavdataTypeFromUiType [DCK-43].
+        int? gsxTypeNumber = Int(p, "type");
+        int navdataType = gsxTypeNumber.HasValue
+            ? ResolveNavdataType(p, gsxTypeNumber)
+            : ResolveNavdataTypeFromUiType(uiType);
+
         return new ParkingSpot
         {
             AirportICAO = icao ?? string.Empty,
@@ -221,7 +230,7 @@ public static class GsxRemoteParkingReader
             // part every stand-id consumer already discards).
             TerminalName = TerminalNameOrEmpty(p),
 
-            Type = ResolveNavdataType(p, Int(p, "type")),
+            Type = navdataType,
 
             Latitude = lat.Value,
             Longitude = lon.Value,
@@ -332,6 +341,30 @@ public static class GsxRemoteParkingReader
         }
 
         return 0;
+    }
+
+    /// <summary>
+    /// The navdata type for a stand GSX published with no <c>type</c> number, read from its
+    /// <c>uiType</c> text instead: "Gate Medium" -> <c>GATE_MEDIUM</c> -> navdata 10. Upper-cased with
+    /// spaces as underscores, <c>uiType</c> IS the constant NAME <see cref="NameToKnownGsxTypeInt"/>
+    /// already maps, and on all 231 KJFK stands (which carry both) it resolves to the same type as
+    /// <c>type</c> does. Used ONLY when <c>type</c> carries no number: a present number with no
+    /// matching constant still degrades to 0 through <see cref="ResolveNavdataType"/>, unchanged.
+    /// <para>
+    /// <c>ToUpperInvariant</c>, never <c>ToUpper</c>: in tr-TR "Ramp Mil Cargo" folds to
+    /// <c>RAMP_MİL_CARGO</c> and matches nothing. Unknown or empty text is 0 ("Other").
+    /// </para>
+    /// </summary>
+    internal static int ResolveNavdataTypeFromUiType(string? uiType)
+    {
+        if (string.IsNullOrWhiteSpace(uiType)) return 0;
+
+        string constantName = string.Join('_',
+            uiType.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
+
+        return NameToKnownGsxTypeInt.TryGetValue(constantName, out int gsxType)
+            ? GsxGateMapper.MapGsxTypeToNavdataType(gsxType)
+            : 0;
     }
 
     // ── JSON accessor helpers ───────────────────────────────────────────────
