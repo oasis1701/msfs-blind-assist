@@ -37,10 +37,11 @@ public static class GsxRemoteParkingReader
     private const string UiTypeFuel = "Fuel";
 
     /// <summary>
-    /// GSX's "no wingspan limit" value, published on every stand no profile section covers
-    /// (measured: KSAN 75 of 75 live on 2026-10-07, KATL 4 of 4) and on no configured stand (KJFK
-    /// max 72). It is not a size: read as one it became a 499.5 m radius that fits every aircraft.
-    /// So it reads as UNPUBLISHED, and GsxNavdataGeometryFiller borrows the real size [DCK-43].
+    /// GSX's "no wingspan limit" value, published on every stand GSX publishes without a heading
+    /// (measured: KSAN 75 of 75 live on 2026-10-07, KATL 4 of 4, and KJFK's 7 Vehicle/Fuel
+    /// entries) and on no stand that has one (KJFK's 231 selectable stands top out at 90 m). It
+    /// is not a size: read as one it became a 499.5 m radius that fits every aircraft. So it
+    /// reads as UNPUBLISHED, and GsxNavdataGeometryFiller borrows the real size [DCK-43].
     /// </summary>
     internal const double UnlimitedWingspanMetres = 999.0;
 
@@ -206,9 +207,9 @@ public static class GsxRemoteParkingReader
         var (name, number, suffix) = ParseStandIdentity(uiGateName);
 
         // `type` is ABSENT on every stand no GSX profile section covers (75 of 79 live at KSAN,
-        // 2026-10-07; all 8 of the KATL capture) while `uiType` is present on every one. A
-        // published number keeps its own route through the live constants, unchanged -- see
-        // ResolveNavdataTypeFromUiType [DCK-43].
+        // 2026-10-07 -- exactly the 75 without a heading) while `uiType` is present on every
+        // one. A published number keeps its own route through the live constants, unchanged --
+        // see ResolveNavdataTypeFromUiType [DCK-43].
         int? gsxTypeNumber = Int(p, "type");
         int navdataType = gsxTypeNumber.HasValue
             ? ResolveNavdataType(p, gsxTypeNumber)
