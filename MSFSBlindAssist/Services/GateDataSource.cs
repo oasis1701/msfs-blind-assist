@@ -465,7 +465,8 @@ public sealed class GateDataSource
             // "Terminal 4 - Concourse B" is stand B25). NAME-ONLY -- nothing else is taken from
             // navdata, which is exactly why this is NOT a GsxNavdataMerger call: the API's
             // coordinates, heading, radius and metadata stay authoritative wherever GSX publishes
-            // them (a stand no profile covers gets its heading and size from navdata below, DCK-42).
+            // them (a stand no profile covers gets its heading, size and (DCK-44) jet bridge and
+            // airline codes from navdata below, DCK-42).
             // Without it every such stand renders as "25" while SayIntentions asks for "B25",
             // and the assigned-gate lookup falls through its chain to the ARRIVAL RUNWAY.
             //

@@ -143,15 +143,17 @@ public class GsxNavdataGeometryFillerTests
     }
 
     [Fact]
-    public void An_unconfigured_stand_takes_the_donors_airline_codes_but_an_empty_donor_value_leaves_none()
+    public void An_unconfigured_stand_takes_the_donors_airline_codes_but_an_empty_donor_value_leaves_what_it_had()
     {
         var withCodes = Api("Ramp 115", 115, Lat, Lon, unconfigured: true);
-        var withoutCodes = Api("Ramp 116", 116, LatPlusMetres(Lat, 50.0), Lon, unconfigured: true);
+        // Starts with codes of its own, so an unconditional assignment would blank them: the stand
+        // already defaults to "", which could never show the "only when the donor has any" guard.
+        var withoutCodes = Api("Ramp 116", 116, LatPlusMetres(Lat, 50.0), Lon, unconfigured: true, airlineCodes: "UAL");
         GsxNavdataGeometryFiller.Fill(new[] { withCodes, withoutCodes }, Navdata(
             Nav(115, Lat, Lon, 196.1, airlineCodes: "UAL, AAL"),
             Nav(116, LatPlusMetres(Lat, 50.0), Lon, 16.1, airlineCodes: "")));
         Assert.Equal("UAL, AAL", withCodes.AirlineCodes);
-        Assert.Equal("", withoutCodes.AirlineCodes);
+        Assert.Equal("UAL", withoutCodes.AirlineCodes);
     }
 
     [Fact]
@@ -279,7 +281,8 @@ public class GsxNavdataGeometryFillerTests
         Assert.False(parking10.HasJetway);
         Assert.DoesNotContain("(Jetway)", parking10.ToString());
 
-        // A stand GSX configured keeps what GSX published, whatever navdata says about it.
+        // A sanity check only: Gate N 1 has a heading, so the filler never reads a donor for it. The
+        // synthetic Gate 1A test above is the real guard that a configured stand keeps GSX's values.
         var gateN1 = spots.Single(s => s.GsxIdentifier == "Gate N 1");
         Assert.False(gateN1.GsxUnconfigured);
         Assert.False(gateN1.HasJetway);

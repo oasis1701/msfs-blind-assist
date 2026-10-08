@@ -1052,8 +1052,10 @@ as long as the airport was current.
 - **`GsxTerminalFeatureSource`** groups `ParkingSpotSource.GetSelectableGates`
   entries by their `TerminalName` into features — never from the graph. A bare
   category header ("Parking", "Ramp", "Gates", "Stand"…) is a profile author's
-  section divider, not a place, and is skipped; a group of one is skipped too.
-  A group is NAMED without the author's notes (`PlaceName`: every parenthesised
+  section divider, not a place, and is skipped; a group of one is skipped too,
+  and so is a stand GSX publishes unconfigured (`ParkingSpot.GsxUnconfigured`,
+  DCK-44), because its header is GSX's own synthesized grouping, not a profile
+  author's. A group is NAMED without the author's notes (`PlaceName`: every parenthesised
   group, then the size-hint tail and trailing "N/A" that
   `ParkingSpot.SpeakableTerminalName` removes) — EHAM's "K/M-Platform buffer
   overflow (TD) N/A" is "K/M-Platform buffer overflow", and KATL's "Concourse T

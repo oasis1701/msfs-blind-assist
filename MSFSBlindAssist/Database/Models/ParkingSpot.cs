@@ -25,10 +25,11 @@ public class ParkingSpot
     /// True for a stand GSX's Remote API published with NONE of its profile-derived fields: no
     /// <c>heading</c> and no <c>hasJetway</c>. No GSX profile section covers such a stand, so its
     /// <see cref="TerminalName"/> is GSX's own synthesized header (KSAN "N Parking", "Gate W", "Ramp")
-    /// rather than a profile author's section title, and its heading, type, jet-bridge flag, airline
-    /// codes and size are not GSX data at all. Measured on the committed captures: KSAN 75 of 79,
-    /// KATL 4 of 8, KJFK 0 of 231 (Gate 1A lacks only its heading and is NOT unconfigured, which is
-    /// why a missing heading alone is not the signal) [DCK-44].
+    /// rather than a profile author's section title, and its heading, jet-bridge flag, airline codes
+    /// and size are not GSX data (its type comes from GSX's <c>uiType</c>, not a profile [DCK-43]).
+    /// Measured on the committed captures: KSAN 75 of 79, KATL 4 of 8, KJFK 0 of 231 (Gate 1A lacks
+    /// only its heading and is NOT unconfigured, which is why a missing heading alone is not the
+    /// signal) [DCK-44].
     /// <para>
     /// Set ONLY by <c>GsxRemoteParkingReader</c>; false on every other path (navdata, <c>.ini</c>).
     /// It gates two things: <c>GsxNavdataGeometryFiller</c> borrows the jet-bridge flag and airline
