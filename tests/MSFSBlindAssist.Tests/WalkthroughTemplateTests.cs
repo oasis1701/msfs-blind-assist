@@ -127,6 +127,10 @@ public class WalkthroughTemplateTests
                 problems.Add($"{key}: ReleaseEvent '{v.ReleaseEvent}' carries 'H:', but MobiFlight sends '(>H:<name>)' itself.");
             if (v.LedVariable.Length > 0 && !variables.ContainsKey(v.LedVariable))
                 problems.Add($"{key}: LedVariable '{v.LedVariable}' is not a variable key; it names the light's own variable by its key.");
+            else if (v.LedVariable.Length > 0
+                && variables[v.LedVariable].UpdateFrequency == global::MSFSBlindAssist.SimConnect.UpdateFrequency.Never)
+                problems.Add($"{key}: LedVariable '{v.LedVariable}' names a variable that is never registered (UpdateFrequency.Never), "
+                    + "so the read after a press returns nothing; give the light UpdateFrequency.OnRequest, or leave LedVariable out.");
         }
         Assert.True(problems.Count == 0, $"{TemplatePath}:\n" + string.Join("\n", problems));
     }
@@ -134,8 +138,9 @@ public class WalkthroughTemplateTests
     [Fact]
     public void Template_button_state_mapping_stays_empty()
         => Assert.True(new YourAircraftDefinition().GetButtonStateMapping().Count == 0,
-            $"{TemplatePath}: GetButtonStateMapping() must stay empty. Reading a button's state back after a press is "
-            + "CORE-7's scoped exception for the FBW A320, Headwind A330 and FBW A380; a new aircraft never announces a press.");
+            $"{TemplatePath}: GetButtonStateMapping() must stay empty in the template. An entry is CORE-7's button read-back, "
+            + "which only the FBW A320, Headwind A330 and FBW A380 have; a new aircraft takes one only as the owner's deliberate "
+            + "choice, for a button whose effect the pilot cannot otherwise hear.");
 
     /// <summary>Reaches the protected base variables the template must start from.</summary>
     private sealed class Probe : YourAircraftDefinition

@@ -49,7 +49,7 @@ In `BuildVariables()`, never in `BuildPanelControls()` (VAR-6):
 ```
 
 ### H-Variable (Hardware Event via MobiFlight)
-In `BuildVariables()`; `PressEvent`, `ReleaseEvent` and `LedVariable` carry no `H:` or `L:` prefix:
+In `BuildVariables()`; `PressEvent` and `ReleaseEvent` carry no `H:` prefix:
 <!-- template: h-variable -->
 ```csharp
 ["BUTTON_KEY"] = new SimConnect.SimVarDefinition
@@ -60,17 +60,8 @@ In `BuildVariables()`; `PressEvent`, `ReleaseEvent` and `LedVariable` carry no `
     UseMobiFlight = true,
     PressEvent = "YOUR_BUTTON_PRESSED", // An H: event's name, without "H:"
     ReleaseEvent = "YOUR_BUTTON_RELEASED",
-    LedVariable = "YOUR_BUTTON_LIGHT", // Optional: the key of the light's own variable
     PressReleaseDelay = 200, // Optional, defaults to 200 ms
     UpdateFrequency = SimConnect.UpdateFrequency.Never
-},
-["YOUR_BUTTON_LIGHT"] = new SimConnect.SimVarDefinition
-{
-    Name = "YOUR_BUTTON_LIGHT",
-    DisplayName = "Button Light",
-    Type = SimConnect.SimVarType.LVar,
-    UpdateFrequency = SimConnect.UpdateFrequency.Never,
-    ValueDescriptions = new Dictionary<double, string> { [0] = "Off", [1] = "On" }
 },
 ```
 
@@ -103,7 +94,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
             // Background monitoring (Workflow 2):
             // ...
 
-            // An H-variable button and its light (Workflow 3):
+            // An H-variable button (Workflow 3):
             // ...
         };
 
@@ -136,9 +127,10 @@ public class YourAircraftDefinition : BaseAircraftDefinition
     // Values a panel shows as read-only text; none here.
     public override Dictionary<string, List<string>> GetPanelDisplayVariables() => new();
 
-    // Stays empty: reading a button's state back after a press is CORE-7's scoped exception,
-    // held by the FBW A320, Headwind A330 and FBW A380 alone. The screen reader already
-    // announces the press.
+    // Starts empty, as on every aircraft but the FBW A320, Headwind A330 and FBW A380. An entry is
+    // CORE-7's button read-back: about 300 ms after a press of the mapped event, the app speaks the
+    // state variable once. Add one only as the owner's deliberate choice, for a button whose effect
+    // the pilot cannot otherwise hear, never to echo a press.
     public override Dictionary<string, string> GetButtonStateMapping() => new();
 
     public override FCUControlType GetAltitudeControlType() => FCUControlType.SetValue;
@@ -311,12 +303,13 @@ Start from the compiled template (Minimal Aircraft Implementation above; Workflo
 Follow [Workflow 7](adding-features.md#workflow-7-adding-a-new-feature): its doc, its row in CLAUDE.md's "Where things live" and its rule file.
 
 ### Button State Mapping
-Every aircraft implements it, and a new one returns it empty: reading a button's state back after a press is CORE-7's scoped exception for the FBW A320, Headwind A330 and FBW A380.
+Every aircraft implements it, and a new one starts with it empty. An entry is CORE-7's button read-back, never a way to echo a press:
 <!-- template: button-state-mapping -->
 ```csharp
-// Stays empty: reading a button's state back after a press is CORE-7's scoped exception,
-// held by the FBW A320, Headwind A330 and FBW A380 alone. The screen reader already
-// announces the press.
+// Starts empty, as on every aircraft but the FBW A320, Headwind A330 and FBW A380. An entry is
+// CORE-7's button read-back: about 300 ms after a press of the mapped event, the app speaks the
+// state variable once. Add one only as the owner's deliberate choice, for a button whose effect
+// the pilot cannot otherwise hear, never to echo a press.
 public override Dictionary<string, string> GetButtonStateMapping() => new();
 ```
 
