@@ -1,0 +1,69 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Read",
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "read"], "timeout": 10, "if": "Read(//**/.claude/worktrees/agent-*/**)" }
+        ]
+      },
+      {
+        "matcher": "Write|NotebookEdit",
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "read"], "timeout": 10 }
+        ]
+      },
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "Bash(git *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "Bash(gh *)" }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "PowerShell(git *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "diff"], "timeout": 10, "if": "PowerShell(gh *)" }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(sed *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(perl *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(tee *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(cat *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(echo *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(printf *)" }
+        ]
+      },
+      {
+        "matcher": "PowerShell",
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(Set-Content *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(Add-Content *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(Out-File *)" }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "subagent-start"], "timeout": 10 }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "matcher": "compact",
+        "hooks": [
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "session-start"], "timeout": 10 }
+        ]
+      }
+    ]
+  }
+}
