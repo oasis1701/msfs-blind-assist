@@ -15,6 +15,9 @@ Modes (first argument):
                                      file covers (redirects, sed/perl -i, tee, Set-Content, Add-Content, Out-File)
   diff                               PostToolUse (git diff, git show, gh pr diff): add the rule files for the
                                      changed paths, up to 40,000 characters, naming the rest
+  subagent-start                     SubagentStart: give the built-in Plan agent CLAUDE.md; tell a subagent in a
+                                     worktree the read mode cannot see to load its rules itself
+  session-start                      SessionStart (compact): forget which rule files were added before compaction
 
 Hook modes read the hook input (JSON) on stdin. Setting MSFSBA_RULES_HOOK=off silences every hook mode.
 
@@ -574,6 +577,47 @@ function Invoke-Diff($HookInput) {
     if ($added.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($a in $added) { $a.Path })) }
 }
 
+# ---- subagent-start and session-start ----
+
+$PlanHeader = 'CLAUDE.md (the built-in Plan agent skips it; .claude/hooks/rules-hook.ps1 added it):'
+$WorktreeFallback = 'This subagent works in {0}, where Claude Code does not load .claude/rules and the rules hook ' +
+    'does not reach. Before changing a file, run: powershell -NoProfile -File .claude/hooks/rules-hook.ps1 for <path>, ' +
+    'then Read each rule file it lists.'
+
+# SubagentStart: the built-in Plan agent skips CLAUDE.md, so give it the session checkout's. A subagent working in a
+# worktree that is neither the session's own checkout (a desktop-app session runs in .claude\worktrees\<name>, and
+# its normal subagents start there) nor one of Claude Code's agent-* folders is beyond the read mode's filter: tell
+# it to load its rules itself.
+function Invoke-SubagentStart($HookInput) {
+    if ($null -eq $HookInput) { return }
+    $parts = New-Object System.Collections.Generic.List[string]
+    $project = [string]$env:CLAUDE_PROJECT_DIR
+    if ([string]$HookInput.agent_type -eq 'Plan' -and $project -ne '') {
+        $claudeMd = [IO.Path]::Combine($project, 'CLAUDE.md')
+        if ([IO.File]::Exists($claudeMd)) {
+            $parts.Add($PlanHeader + "`n`n" + [IO.File]::ReadAllText($claudeMd, [Text.Encoding]::UTF8).Replace("`r`n", "`n"))
+        }
+    }
+    $worktree = [regex]::Match((ConvertTo-WindowsPath ([string]$HookInput.cwd)), '^(.*\\\.claude\\worktrees\\([^\\]+))',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if ($worktree.Success -and $project -ne '' -and
+        -not $worktree.Groups[2].Value.StartsWith('agent-', [StringComparison]::OrdinalIgnoreCase)) {
+        $folder = $worktree.Groups[1].Value.TrimEnd('\') + '\'
+        $projectFull = Resolve-FullPath $project (Get-Location).Path
+        if ($projectFull -and -not ($projectFull.TrimEnd('\') + '\').StartsWith($folder, [StringComparison]::OrdinalIgnoreCase)) {
+            $parts.Add($WorktreeFallback -f $worktree.Groups[1].Value)
+        }
+    }
+    if ($parts.Count -gt 0) { Write-Context 'SubagentStart' ($parts.ToArray() -join "`n`n") }
+}
+
+# SessionStart after a compaction: the rule files the hook added are gone from context, so forget them.
+function Invoke-SessionStart($HookInput) {
+    if ($null -eq $HookInput) { return }
+    $memory = Get-MemoryPath ([pscustomobject]@{ session_id = $HookInput.session_id; agent_id = '' })
+    if ([IO.File]::Exists($memory)) { [IO.File]::Delete($memory) }
+}
+
 function Invoke-For {
     $base = (Get-Location).Path
     $root = Find-CheckoutRoot $base
@@ -613,6 +657,8 @@ try {
         'read' { Invoke-Read (Read-HookInput) }
         'shell-guard' { Invoke-ShellGuard (Read-HookInput) }
         'diff' { Invoke-Diff (Read-HookInput) }
+        'subagent-start' { Invoke-SubagentStart (Read-HookInput) }
+        'session-start' { Invoke-SessionStart (Read-HookInput) }
         default { }
     }
 }

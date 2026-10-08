@@ -325,7 +325,116 @@ public class ClaudeRulesHookTests
         Assert.Null(HookOutput(run));
     }
 
+    [Fact]
+    public void Plan_agent_starts_with_CLAUDE_md()
+    {
+        string root = ClaudeContextBudgetTests.RepoRoot();
+
+        JsonElement? output = HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("Plan", root),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = root }));
+
+        Assert.NotNull(output);
+        Assert.Equal("SubagentStart", output.Value.GetProperty("hookEventName").GetString());
+        string context = output.Value.GetProperty("additionalContext").GetString()!;
+        Assert.StartsWith("CLAUDE.md (the built-in Plan agent skips it;", context);
+        Assert.Contains(File.ReadAllText(Path.Combine(root, "CLAUDE.md")).Replace("\r\n", "\n"), context);
+    }
+
+    [Fact]
+    public void Other_agents_start_with_nothing_added()
+    {
+        string root = ClaudeContextBudgetTests.RepoRoot();
+
+        HookRun run = RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", root),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = root });
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Null(HookOutput(run));
+    }
+
+    [Fact]
+    public void A_subagent_in_an_unrecognised_worktree_is_told_to_load_its_rules()
+    {
+        string cwd = Path.Combine(NewTempDir(), ".claude", "worktrees", "review-x");
+
+        JsonElement? output = HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", cwd),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = ClaudeContextBudgetTests.RepoRoot() }));
+
+        Assert.NotNull(output);
+        string context = output.Value.GetProperty("additionalContext").GetString()!;
+        Assert.Contains("review-x", context);
+        Assert.Contains("rules-hook.ps1 for <path>", context);
+    }
+
+    [Fact]
+    public void A_subagent_in_the_sessions_own_worktree_needs_no_instruction()
+    {
+        // A desktop-app session runs in its own .claude\worktrees\<name>, and its normal subagents start there too:
+        // Claude Code loads their rules, so they need no instruction.
+        string worktree = Path.Combine(NewTempDir(), ".claude", "worktrees", "review-x");
+
+        HookRun run = RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", worktree),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = worktree });
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Null(HookOutput(run));
+    }
+
+    [Fact]
+    public void An_agent_worktree_needs_no_instruction()
+    {
+        string cwd = Path.Combine(NewTempDir(), ".claude", "worktrees", "agent-abc");
+
+        Assert.Null(HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", cwd))));
+    }
+
+    [Fact]
+    public void Compaction_lets_rules_be_added_again()
+    {
+        var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
+        string diff = DiffInput("git diff", BashResponse(TaxiDiff));
+
+        Assert.NotNull(HookOutput(RunHook(new[] { "diff" }, diff, env: env)));
+        Assert.Null(HookOutput(RunHook(new[] { "diff" }, diff, env: env)));
+        HookRun compacted = RunHook(new[] { "session-start" },
+            HookInput(new { session_id = "s1", hook_event_name = "SessionStart", source = "compact" }), env: env);
+        Assert.Equal("", compacted.Stdout);
+        JsonElement? again = HookOutput(RunHook(new[] { "diff" }, diff, env: env));
+        Assert.NotNull(again);
+        Assert.Contains(RuleBody("taxi-routing.md"), again.Value.GetProperty("additionalContext").GetString());
+    }
+
+    [Theory]
+    [InlineData("read")]
+    [InlineData("shell-guard")]
+    [InlineData("diff")]
+    [InlineData("subagent-start")]
+    public void Every_hook_mode_is_silent_when_switched_off(string mode)
+    {
+        string root = ClaudeContextBudgetTests.RepoRoot();
+        string input = mode switch
+        {
+            "read" => ReadInput(CreateFile(CreateAgentWorktree(NewTempDir()), Pmdg737), agentId: "a1"),
+            "shell-guard" => ShellInput("Bash", $"sed -i 's/a/b/' {Pmdg737}"),
+            "diff" => DiffInput("git diff", BashResponse(TaxiDiff)),
+            _ => SubagentInput("Plan", root),
+        };
+
+        HookRun on = RunHook(new[] { mode }, input, env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = root });
+        HookRun off = RunHook(new[] { mode }, input,
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = root, ["MSFSBA_RULES_HOOK"] = "off" });
+
+        Assert.NotEqual("", on.Stdout);
+        Assert.Equal(0, off.ExitCode);
+        Assert.Equal("", off.Stdout);
+    }
+
     // ---- inputs and fixtures ----
+
+    private static string SubagentInput(string agentType, string cwd) => HookInput(new
+    {
+        session_id = "s1", hook_event_name = "SubagentStart", agent_id = "p1", agent_type = agentType, cwd,
+    });
 
     private static object BashResponse(string stdout) =>
         new { stdout, stderr = "", interrupted = false, isImage = false, noOutputExpected = false };
