@@ -14,9 +14,12 @@ Modes (first argument):
   shell-guard                        PreToolUse (Bash, PowerShell): refuse a command that writes a file some rule
                                      file covers (redirects, sed/perl -i, tee, Set-Content, Add-Content, Out-File)
   diff                               PostToolUse (git diff, git show, gh pr diff): add the rule files for the
-                                     changed paths, up to 40,000 characters, naming the rest
-  subagent-start                     SubagentStart: give the built-in Plan agent CLAUDE.md; tell a subagent in a
-                                     worktree the read mode cannot see to load its rules itself
+                                     changed paths
+  subagent-start                     SubagentStart: give the built-in Plan agent CLAUDE.md's rules sections; tell a
+                                     subagent in a worktree the read mode cannot see to load its rules itself
+
+Claude Code shows the model only about 10,000 characters of a hook's output (CCT-5), so read and diff show whole rule
+files within 9,000 characters and name the rest for Claude to Read.
   session-start                      SessionStart (compact): forget which rule files were added before compaction
 
 Hook modes read the hook input (JSON) on stdin. Setting MSFSBA_RULES_HOOK=off silences every hook mode.
@@ -174,12 +177,31 @@ function Get-MatchingRuleFiles($RuleFiles, [string]$RelativePath) {
 $ReadHeader = "Area rules for {0}. Claude Code does not load .claude/rules for files in a subagent's own worktree, " +
     "so .claude/hooks/rules-hook.ps1 added them:"
 
-# The header, then one "Contents of <path>:" block per rule file: the shape of Claude Code's own injection.
-function Format-RuleBlocks([string]$Header, $RuleFiles) {
-    $parts = New-Object System.Collections.Generic.List[string]
-    $parts.Add($Header)
-    foreach ($rf in $RuleFiles) { $parts.Add('Contents of ' + $rf.Path + ":`n`n" + $rf.Body + "`n") }
-    return ($parts.ToArray() -join "`n`n")
+# Claude Code shows the model at most about 10,000 characters of a hook's added context: longer text is saved to a
+# file and the model gets a 2 KB preview (measured 2026-10-08). Every output stays within this budget (CCT-5).
+$ContextBudget = 9000
+$NotShownLine = 'Not shown in full, since Claude Code shows only about 10,000 characters of hook output: Read {0} ' +
+    'with the Read tool before changing or judging this.'
+
+# The header, the names of all matching rule files, as many whole rule files as fit in $ContextBudget (in name order,
+# passing over one that does not fit) in Claude Code's own "Contents of <path>:" shape, and a line naming the rest by
+# path for Claude to Read. Returns @{ Text; Shown }.
+function Format-RuleContext([string]$Header, $RuleFiles) {
+    $names = foreach ($rf in $RuleFiles) { $rf.Name }
+    $paths = foreach ($rf in $RuleFiles) { $rf.Path }
+    $lead = $Header + "`n" + 'Rule files that apply: ' + (@($names) -join ', ') + '.'
+    $room = $ContextBudget - $lead.Length - ($NotShownLine -f (@($paths) -join ', ')).Length - 1
+    $shown = New-Object System.Collections.Generic.List[object]
+    $notShown = New-Object System.Collections.Generic.List[string]
+    $blocks = New-Object System.Text.StringBuilder
+    foreach ($rf in $RuleFiles) {
+        $block = "`n`nContents of " + $rf.Path + ":`n`n" + $rf.Body.TrimEnd("`n")
+        if ($block.Length -le $room) { [void]$blocks.Append($block); $shown.Add($rf); $room -= $block.Length }
+        else { $notShown.Add($rf.Path) }
+    }
+    $text = $lead
+    if ($notShown.Count -gt 0) { $text += "`n" + ($NotShownLine -f ($notShown.ToArray() -join ', ')) }
+    return @{ Text = $text + $blocks.ToString(); Shown = $shown.ToArray() }
 }
 
 function Write-Context([string]$EventName, [string]$Text) {
@@ -250,14 +272,18 @@ function Invoke-Read($HookInput) {
     if (-not $root) { return }
     $relative = Get-RelativePath $root $full
     $hits = Get-MatchingRuleFiles (Get-RuleFiles $root) $relative
+    $context = $null
     $mutex = Lock-Memory $HookInput
     try {
         $fresh = Select-NotRemembered $HookInput $hits
-        if ($fresh.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($f in $fresh) { $f.Path })) }
+        if ($fresh.Count -gt 0) {
+            $context = Format-RuleContext ($ReadHeader -f $relative) $fresh
+            if ($context.Shown.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($s in $context.Shown) { $s.Path })) }
+        }
     }
     finally { Unlock-Memory $mutex }
-    if ($fresh.Count -eq 0) { return }
-    Write-Context 'PostToolUse' (Format-RuleBlocks ($ReadHeader -f $relative) $fresh)
+    if ($null -eq $context) { return }
+    Write-Context 'PostToolUse' $context.Text
 }
 
 # ---- shell-guard: find the files a shell command writes ----
@@ -280,7 +306,7 @@ function Remove-HeredocBodies([string]$Command, [string]$Shell) {
             continue
         }
         $kept.Add($line)
-        foreach ($m in [regex]::Matches($line, "(?<!<)<<(?!<)(-?)\s*(['`"]?)([A-Za-z_][A-Za-z0-9_]*)\2")) {
+        foreach ($m in [regex]::Matches($line, "(?<!<)<<(?!<)(-?)\s*\\?(['`"]?)([A-Za-z_][A-Za-z0-9_.-]*)\2")) {
             $pending.Enqueue([pscustomobject]@{ Word = $m.Groups[3].Value; StripTabs = ($m.Groups[1].Value -eq '-') })
         }
     }
@@ -304,6 +330,13 @@ function Split-ShellCommands([string]$Command, [string]$Shell) {
             continue
         }
         if ($c -eq $escape -and $i + 1 -lt $Command.Length) { [void]$current.Append($c).Append($Command[$i + 1]); $i++; continue }
+        # A # that starts a word starts a comment, to the end of the line (bash and PowerShell alike).
+        if ($c -eq '#' -and ($current.Length -eq 0 -or [char]::IsWhiteSpace($current.Chars($current.Length - 1)))) {
+            $newline = $Command.IndexOf("`n", $i)
+            if ($newline -lt 0) { break }
+            $i = $newline - 1
+            continue
+        }
         if ($c -eq "'" -or $c -eq '"') { $quote = $c; [void]$current.Append($c); continue }
         $separator = 0
         if (($c -eq '&' -or $c -eq '|') -and $i + 1 -lt $Command.Length -and $Command[$i + 1] -eq $c) { $separator = 2 }
@@ -382,6 +415,28 @@ function Add-WriteTarget($Targets, [string]$Raw, [string]$Dir) {
     if ($full) { $Targets.Add([pscustomobject]@{ Raw = $Raw; FullPath = $full }) }
 }
 
+# Reads one short-option cluster of sed or perl (-ni, -pi.bak, -Mstrict, -lne) letter by letter: -i edits in place
+# (the rest is its suffix), -e/-E/-f bring the script (the next word unless attached), and perl's -M -m -I -F -d -D
+# -C -x take the rest of the cluster as their argument, so the i in -Mstrict or -Ilib is not -i.
+function Read-OptionCluster([string]$Name, [string]$Word) {
+    $result = @{ InPlace = $false; Script = $false; TakesNext = $false }
+    for ($j = 1; $j -lt $Word.Length; $j++) {
+        $c = $Word[$j]
+        $attached = $j + 1 -lt $Word.Length
+        if ($c -ceq 'i') { $result.InPlace = $true; break }
+        if ($Name -eq 'perl') {
+            if ($c -ceq 'e' -or $c -ceq 'E') { $result.Script = $true; $result.TakesNext = -not $attached; break }
+            if ('MmIFdDCx'.IndexOf($c) -ge 0) { break }
+            if ($c -ceq 'l' -or $c -ceq '0') { while ($j + 1 -lt $Word.Length -and [char]::IsDigit($Word[$j + 1])) { $j++ } }
+        }
+        else {
+            if ($c -ceq 'e' -or $c -ceq 'f') { $result.Script = $true; $result.TakesNext = -not $attached; break }
+            if ($c -ceq 'l') { $result.TakesNext = -not $attached; break }
+        }
+    }
+    return $result
+}
+
 # Operands of sed or perl when they edit in place: the words that are neither options nor the script.
 function Get-InPlaceOperands([string]$Name, $Words) {
     $inPlace = $false
@@ -389,23 +444,22 @@ function Get-InPlaceOperands([string]$Name, $Words) {
     $operands = New-Object System.Collections.Generic.List[string]
     for ($k = 1; $k -lt $Words.Count; $k++) {
         $w = $Words[$k]
-        if ($Name -eq 'sed' -and ($w -ceq '--in-place' -or $w.StartsWith('--in-place=', [StringComparison]::Ordinal))) {
-            $inPlace = $true; continue
-        }
-        if ($Name -eq 'sed' -and ($w -ceq '--expression' -or $w -ceq '--file')) { $scriptGiven = $true; $k++; continue }
-        if ($Name -eq 'sed' -and ($w.StartsWith('--expression=', [StringComparison]::Ordinal) -or
-                $w.StartsWith('--file=', [StringComparison]::Ordinal))) { $scriptGiven = $true; continue }
-        if ($w -cmatch '^-i') { $inPlace = $true; continue }
-        if ($w -cmatch '^-[A-Za-z]+$') {
-            if ($w.Contains('i')) { $inPlace = $true }
-            $last = $w[$w.Length - 1]
-            $takesScript = ($Name -eq 'sed' -and ($last -ceq 'e' -or $last -ceq 'f')) -or
-                ($Name -eq 'perl' -and ($last -ceq 'e' -or $last -ceq 'E'))
-            if ($Name -eq 'sed' -and $last -ceq 'l') { $k++ }
-            if ($takesScript) { $scriptGiven = $true; $k++ }
+        if ($w.StartsWith('--', [StringComparison]::Ordinal)) {
+            if ($Name -eq 'sed' -and ($w -ceq '--in-place' -or $w.StartsWith('--in-place=', [StringComparison]::Ordinal))) {
+                $inPlace = $true
+            }
+            elseif ($Name -eq 'sed' -and ($w -ceq '--expression' -or $w -ceq '--file')) { $scriptGiven = $true; $k++ }
+            elseif ($Name -eq 'sed' -and ($w.StartsWith('--expression=', [StringComparison]::Ordinal) -or
+                    $w.StartsWith('--file=', [StringComparison]::Ordinal))) { $scriptGiven = $true }
             continue
         }
-        if ($w.StartsWith('-')) { continue }
+        if ($w.Length -gt 1 -and $w.StartsWith('-')) {
+            $cluster = Read-OptionCluster $Name $w
+            if ($cluster.InPlace) { $inPlace = $true }
+            if ($cluster.Script) { $scriptGiven = $true }
+            if ($cluster.TakesNext) { $k++ }
+            continue
+        }
         $operands.Add($w)
     }
     if (-not $inPlace) { return ,@() }
@@ -509,7 +563,6 @@ function Invoke-ShellGuard($HookInput) {
 
 $DiffHeader = 'Area rules for the files in this diff. Claude Code loads them only when a file is Read, ' +
     'so .claude/hooks/rules-hook.ps1 added them:'
-$DiffCap = 40000
 
 # Repo-relative paths a diff names, first seen first: both sides of each "diff --git" header, else the lines of
 # --name-only output or the last field of --name-status lines.
@@ -583,7 +636,7 @@ function Test-DiffCommand([string]$Command, [string]$Shell) {
 }
 
 # PostToolUse on git diff / git show / gh pr diff: Claude Code loads rules only for files it Reads, so a review of the
-# diff output alone sees none. Add the rule files for the changed paths, in path order, up to $DiffCap characters.
+# diff output alone sees none. Add the rule files for the changed paths (Format-RuleContext keeps to the budget).
 function Invoke-Diff($HookInput) {
     if ($null -eq $HookInput -or $null -eq $HookInput.tool_input) { return }
     $command = [string]$HookInput.tool_input.command
@@ -606,33 +659,37 @@ function Invoke-Diff($HookInput) {
     foreach ($p in $paths) {
         foreach ($h in (Get-MatchingRuleFiles $ruleFiles $p)) { if (-not $wanted.Contains($h)) { $wanted.Add($h) } }
     }
-    $added = New-Object System.Collections.Generic.List[object]
-    $notAdded = New-Object System.Collections.Generic.List[string]
+    $context = $null
     $mutex = Lock-Memory $HookInput
     try {
-        $total = 0
-        foreach ($rf in (Select-NotRemembered $HookInput $wanted.ToArray())) {
-            if ($notAdded.Count -eq 0 -and $total + $rf.Body.Length -le $DiffCap) { $added.Add($rf); $total += $rf.Body.Length }
-            else { $notAdded.Add($rf.Name) }
+        $fresh = Select-NotRemembered $HookInput $wanted.ToArray()
+        if ($fresh.Count -gt 0) {
+            $context = Format-RuleContext $DiffHeader $fresh
+            if ($context.Shown.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($s in $context.Shown) { $s.Path })) }
         }
-        if ($added.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($a in $added) { $a.Path })) }
     }
     finally { Unlock-Memory $mutex }
-    if ($added.Count -eq 0 -and $notAdded.Count -eq 0) { return }
-    $text = Format-RuleBlocks $DiffHeader $added.ToArray()
-    if ($notAdded.Count -gt 0) {
-        $text += "`n`nNot added (over the 40,000-character cap): " + ($notAdded.ToArray() -join ', ') +
-            '. Read them before judging the change.'
-    }
-    Write-Context 'PostToolUse' $text
+    if ($null -eq $context) { return }
+    Write-Context 'PostToolUse' $context.Text
 }
 
 # ---- subagent-start and session-start ----
 
-$PlanHeader = 'CLAUDE.md (the built-in Plan agent skips it; .claude/hooks/rules-hook.ps1 added it):'
+$PlanHeader = 'CLAUDE.md (the built-in Plan agent skips it; .claude/hooks/rules-hook.ps1 added the parts below). ' +
+    'Read {0} with the Read tool for the rest: build, testing, git workflow, and the map of docs and rule files.'
+$PlanSections = @('## Rules for any file', '## Before changing behaviour')
 $WorktreeFallback = 'This subagent works in {0}, where Claude Code does not load .claude/rules and the rules hook ' +
-    'does not reach. Before changing a file, run: powershell -NoProfile -File .claude/hooks/rules-hook.ps1 for <path>, ' +
-    'then Read each rule file it lists.'
+    'does not reach. Before changing a file, run: powershell -NoProfile -ExecutionPolicy Bypass -File ' +
+    '.claude/hooks/rules-hook.ps1 for <path>, then Read each rule file it lists.'
+
+# A markdown section: its heading line up to the next "## " heading, or $null.
+function Get-MarkdownSection([string]$Text, [string]$Heading) {
+    $start = $Text.IndexOf($Heading + "`n", [StringComparison]::Ordinal)
+    if ($start -lt 0) { return $null }
+    $end = $Text.IndexOf("`n## ", $start + $Heading.Length, [StringComparison]::Ordinal)
+    if ($end -lt 0) { return $Text.Substring($start).TrimEnd("`n") }
+    return $Text.Substring($start, $end - $start).TrimEnd("`n")
+}
 
 # SubagentStart: the built-in Plan agent skips CLAUDE.md, so give it the session checkout's. A subagent working in a
 # worktree that is neither the session's own checkout (a desktop-app session runs in .claude\worktrees\<name>, and
@@ -645,7 +702,14 @@ function Invoke-SubagentStart($HookInput) {
     if ([string]$HookInput.agent_type -eq 'Plan' -and $project -ne '') {
         $claudeMd = [IO.Path]::Combine($project, 'CLAUDE.md')
         if ([IO.File]::Exists($claudeMd)) {
-            $parts.Add($PlanHeader + "`n`n" + [IO.File]::ReadAllText($claudeMd, [Text.Encoding]::UTF8).Replace("`r`n", "`n"))
+            # The whole file is over the budget (CCT-5): give the two sections that bind a plan, and its path.
+            $text = [IO.File]::ReadAllText($claudeMd, [Text.Encoding]::UTF8).Replace("`r`n", "`n")
+            $plan = $PlanHeader -f $claudeMd
+            foreach ($heading in $PlanSections) {
+                $section = Get-MarkdownSection $text $heading
+                if ($section -and $plan.Length + 2 + $section.Length -le $ContextBudget) { $plan += "`n`n" + $section }
+            }
+            $parts.Add($plan)
         }
     }
     $worktree = [regex]::Match((ConvertTo-WindowsPath ([string]$HookInput.cwd)), '^(.*\\\.claude\\worktrees\\([^\\]+))',

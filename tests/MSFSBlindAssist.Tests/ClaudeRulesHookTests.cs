@@ -9,9 +9,19 @@ namespace MSFSBlindAssist.Tests;
 /// stdout) and checks what it adds or refuses. The hook brings area rules where Claude Code's own path-scoped loading
 /// does not reach (CORE-16), and its glob matching must stay identical to ClaudeContextBudgetTests' (CCT-2).
 /// </summary>
-public class ClaudeRulesHookTests
+public class ClaudeRulesHookTests : IDisposable
 {
     private sealed record HookRun(int ExitCode, string Stdout, string Stderr);
+
+    /// <summary>Temp folders this class made; xUnit disposes the class after each test, which deletes them (each test
+    /// copies every rule file, so a full run would otherwise leave tens of megabytes in %TEMP%).</summary>
+    private static readonly System.Collections.Concurrent.ConcurrentBag<string> TempDirs = new();
+
+    public void Dispose()
+    {
+        while (TempDirs.TryTake(out string? dir))
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+    }
 
     private static string ScriptPath =>
         Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".claude", "hooks", "rules-hook.ps1");
@@ -78,6 +88,25 @@ public class ClaudeRulesHookTests
         Assert.Contains("Contents of " + Path.Combine(worktree, ".claude", "rules", "pmdg-737.md") + ":", context);
         Assert.Contains(RuleBody("pmdg-737.md"), context);
         Assert.Contains(RuleBody("variable-definitions.md"), context);   // holds non-ASCII text: checks the encoding
+    }
+
+    [Theory]
+    [InlineData("MSFSBlindAssist/Navigation/TaxiGraph.cs", "gsx-stands-docking.md;landing-exits.md;runway-holds.md;taxi-routing.md")]
+    [InlineData("MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs",
+        "a380-coherent.md;a380-fcu.md;a380-systems.md;fbw-arinc.md;troubleshooting.md;variable-definitions.md")]
+    public void Read_keeps_its_context_within_what_Claude_Code_shows_in_full(string path, string ruleFiles)
+    {
+        // Claude Code saves hook context over about 10,000 characters to a file and shows the model a 2 KB preview
+        // (measured 2026-10-08); these files load 24,216 and 26,412 characters of rules.
+        string worktree = CreateAgentWorktree(NewTempDir());
+        string file = CreateFile(worktree, path);
+
+        JsonElement? output = HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1")));
+
+        Assert.NotNull(output);
+        string context = output.Value.GetProperty("additionalContext").GetString()!;
+        Assert.InRange(context.Length, 1, 9_000);
+        AssertEachRuleFileShownOrNamed(context, worktree, ruleFiles.Split(';'));
     }
 
     [Fact]
@@ -196,6 +225,12 @@ public class ClaudeRulesHookTests
     [InlineData("Bash", "perl -pi -e 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
     [InlineData("PowerShell", "Set-Content -Path MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs -Value x", Pmdg737)]
     [InlineData("PowerShell", "'x' | Out-File MSFSBlindAssist\\Aircraft\\Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "sed -Ei 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "perl -i.bak -pe 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "# Don't touch the header\nsed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs  # it's a one-off", Pmdg737)]
+    [InlineData("PowerShell", "# Don't touch the header\nSet-Content -Path MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs -Value x",
+        Pmdg737)]
     public void Shell_guard_refuses_writes_to_covered_files(string tool, string command, string target)
     {
         JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput(tool, command)));
@@ -233,6 +268,13 @@ public class ClaudeRulesHookTests
     [InlineData("PowerShell", "Set-Content -Path $env:TEMP\\x.txt -Value x")]
     [InlineData("PowerShell", "Set-Content -Value MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs changelog.d/999-x.fix.md")]
     [InlineData("Bash", "sed -i 's/a/b/ unterminated")]
+    [InlineData("Bash", "perl -Mstrict -ne 'print if /PMDG/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("Bash", "perl -Ilib -ne 'print' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("Bash", "perl -Mwarnings -lne 'print' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("Bash", "cat MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs # > MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<'EOF'\n> MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\nEOF")]
+    [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<\\EOF\n> MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\nEOF")]
+    [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<'END-OF-NOTE'\n> MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\nEND-OF-NOTE")]
     public void Shell_guard_allows_commands_that_write_no_covered_file(string tool, string command)
     {
         HookRun run = RunHook(new[] { "shell-guard" }, ShellInput(tool, command));
@@ -241,22 +283,23 @@ public class ClaudeRulesHookTests
         Assert.Equal("", run.Stdout);
     }
 
-    private const string TaxiDiff =
-        "diff --git a/MSFSBlindAssist/Navigation/TaxiGraph.cs b/MSFSBlindAssist/Navigation/TaxiGraph.cs\n"
-        + "index 1111111..2222222 100644\n--- a/MSFSBlindAssist/Navigation/TaxiGraph.cs\n"
-        + "+++ b/MSFSBlindAssist/Navigation/TaxiGraph.cs\n@@ -1 +1 @@\n-a\n+b\n";
+    // pmdg-737.md and variable-definitions.md: about 4,500 characters, so both arrive in full.
+    private const string Pmdg737Diff =
+        "diff --git a/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs b/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\n"
+        + "index 1111111..2222222 100644\n--- a/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\n"
+        + "+++ b/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\n@@ -1 +1 @@\n-a\n+b\n";
 
     [Fact]
     public void Diff_adds_the_rule_files_for_a_changed_path()
     {
-        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(TaxiDiff))));
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff))));
 
         Assert.NotNull(output);
         Assert.Equal("PostToolUse", output.Value.GetProperty("hookEventName").GetString());
         string context = output.Value.GetProperty("additionalContext").GetString()!;
         Assert.StartsWith("Area rules for the files in this diff.", context);
-        Assert.Contains(RuleBody("taxi-routing.md"), context);   // holds non-ASCII text: checks the encoding
-        Assert.Contains("Contents of " + Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".claude", "rules", "runway-holds.md")
+        Assert.Contains(RuleBody("variable-definitions.md"), context);   // holds non-ASCII text: checks the encoding
+        Assert.Contains("Contents of " + Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".claude", "rules", "pmdg-737.md")
             + ":", context);
     }
 
@@ -264,19 +307,19 @@ public class ClaudeRulesHookTests
     public void Diff_reads_name_only_output()
     {
         JsonElement? output = HookOutput(RunHook(new[] { "diff" },
-            DiffInput("git diff --name-only", BashResponse("MSFSBlindAssist/Navigation/TaxiGraph.cs\n"))));
+            DiffInput("git diff --name-only", BashResponse(Pmdg737 + "\n"))));
 
         Assert.NotNull(output);
-        Assert.Contains(RuleBody("taxi-routing.md"), output.Value.GetProperty("additionalContext").GetString());
+        Assert.Contains(RuleBody("variable-definitions.md"), output.Value.GetProperty("additionalContext").GetString());
     }
 
     [Fact]
     public void Diff_accepts_a_plain_string_tool_response()
     {
-        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", TaxiDiff)));
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", Pmdg737Diff)));
 
         Assert.NotNull(output);
-        Assert.Contains(RuleBody("taxi-routing.md"), output.Value.GetProperty("additionalContext").GetString());
+        Assert.Contains(RuleBody("variable-definitions.md"), output.Value.GetProperty("additionalContext").GetString());
     }
 
     [Fact]
@@ -285,26 +328,27 @@ public class ClaudeRulesHookTests
         string root = ClaudeContextBudgetTests.RepoRoot();
 
         JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput($"git -C \"{root}\" diff --name-only",
-            BashResponse("MSFSBlindAssist/Navigation/TaxiGraph.cs\n"), cwd: NewTempDir())));
+            BashResponse(Pmdg737 + "\n"), cwd: NewTempDir())));
 
         Assert.NotNull(output);
-        Assert.Contains(RuleBody("taxi-routing.md"), output.Value.GetProperty("additionalContext").GetString());
+        Assert.Contains(RuleBody("variable-definitions.md"), output.Value.GetProperty("additionalContext").GetString());
     }
 
     [Fact]
-    public void Diff_stops_at_the_cap_and_names_the_rest()
+    public void Diff_keeps_its_context_within_what_Claude_Code_shows_in_full()
     {
-        // TaxiGraph.cs and FlyByWireA380Definition.Rmp.cs load disjoint rule sets, 24,216 + 26,412 characters
-        // (measured 2026-10-08): more than the 40,000-character cap.
+        // Claude Code saves hook context over about 10,000 characters to a file and shows the model a 2 KB preview
+        // (measured 2026-10-08). TaxiGraph.cs and FlyByWireA380Definition.Rmp.cs load ten rule files, 50,628
+        // characters of bodies: the hook shows whole files within 9,000 characters and names the rest to Read.
         JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff --name-only", BashResponse(
             "MSFSBlindAssist/Navigation/TaxiGraph.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs\n"))));
 
         Assert.NotNull(output);
         string context = output.Value.GetProperty("additionalContext").GetString()!;
-        Assert.Contains("Not added (over the 40,000-character cap): .claude/rules/", context);
-        int added = System.Text.RegularExpressions.Regex.Matches(context, @"Contents of (?<path>[^\n]+?\.md):")
-            .Sum(m => RuleBody(Path.GetFileName(m.Groups["path"].Value)).Length);
-        Assert.InRange(added, 1, 40_000);
+        Assert.InRange(context.Length, 1, 9_000);
+        AssertEachRuleFileShownOrNamed(context, ClaudeContextBudgetTests.RepoRoot(), "gsx-stands-docking.md", "landing-exits.md",
+            "runway-holds.md", "taxi-routing.md", "a380-coherent.md", "a380-fcu.md", "a380-systems.md", "fbw-arinc.md",
+            "troubleshooting.md", "variable-definitions.md");
     }
 
     [Fact]
@@ -312,8 +356,8 @@ public class ClaudeRulesHookTests
     {
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
 
-        Assert.NotNull(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(TaxiDiff)), env: env)));
-        Assert.Null(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(TaxiDiff)), env: env)));
+        Assert.NotNull(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), env: env)));
+        Assert.Null(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), env: env)));
     }
 
     [Theory]
@@ -323,7 +367,7 @@ public class ClaudeRulesHookTests
     public void Diff_ignores_commands_that_are_not_a_diff(string command)
     {
         // The diff mode is registered under Bash(git *) and Bash(gh *), so it also runs for git log and the like.
-        HookRun run = RunHook(new[] { "diff" }, DiffInput(command, BashResponse("MSFSBlindAssist/Navigation/TaxiGraph.cs\n")));
+        HookRun run = RunHook(new[] { "diff" }, DiffInput(command, BashResponse(Pmdg737 + "\n")));
 
         Assert.Equal(0, run.ExitCode);
         Assert.Null(HookOutput(run));
@@ -335,7 +379,7 @@ public class ClaudeRulesHookTests
         // A command can match several registered handlers, which Claude Code runs in parallel (seen 2026-10-08: five
         // diff handlers, five copies). Only one of them may add the rules.
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
-        string input = DiffInput("git diff", BashResponse(TaxiDiff));
+        string input = DiffInput("git diff", BashResponse(Pmdg737Diff));
 
         HookRun[] runs = Enumerable.Range(0, 5).AsParallel().WithDegreeOfParallelism(5)
             .Select(_ => RunHook(new[] { "diff" }, input, env: env)).ToArray();
@@ -353,9 +397,12 @@ public class ClaudeRulesHookTests
     }
 
     [Fact]
-    public void Plan_agent_starts_with_CLAUDE_md()
+    public void Plan_agent_starts_with_the_rules_for_any_file_and_is_told_to_read_CLAUDE_md()
     {
+        // CLAUDE.md (17,000+ characters) is over what Claude Code shows of hook context in full (about 10,000), so
+        // the Plan agent gets the two sections that bind a plan and the path to Read for the rest.
         string root = ClaudeContextBudgetTests.RepoRoot();
+        string claudeMd = File.ReadAllText(Path.Combine(root, "CLAUDE.md")).Replace("\r\n", "\n");
 
         JsonElement? output = HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("Plan", root),
             env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = root }));
@@ -364,7 +411,10 @@ public class ClaudeRulesHookTests
         Assert.Equal("SubagentStart", output.Value.GetProperty("hookEventName").GetString());
         string context = output.Value.GetProperty("additionalContext").GetString()!;
         Assert.StartsWith("CLAUDE.md (the built-in Plan agent skips it;", context);
-        Assert.Contains(File.ReadAllText(Path.Combine(root, "CLAUDE.md")).Replace("\r\n", "\n"), context);
+        Assert.InRange(context.Length, 1, 9_000);
+        Assert.Contains("Read " + Path.Combine(root, "CLAUDE.md"), context);
+        Assert.Contains(Section(claudeMd, "## Rules for any file"), context);
+        Assert.Contains(Section(claudeMd, "## Before changing behaviour"), context);
     }
 
     [Fact]
@@ -390,7 +440,8 @@ public class ClaudeRulesHookTests
         Assert.NotNull(output);
         string context = output.Value.GetProperty("additionalContext").GetString()!;
         Assert.Contains("review-x", context);
-        Assert.Contains("rules-hook.ps1 for <path>", context);
+        // Windows client machines default to the Restricted execution policy, where a bare -File run fails.
+        Assert.Contains("powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/rules-hook.ps1 for <path>", context);
     }
 
     [Fact]
@@ -419,7 +470,7 @@ public class ClaudeRulesHookTests
     public void Compaction_lets_rules_be_added_again()
     {
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
-        string diff = DiffInput("git diff", BashResponse(TaxiDiff));
+        string diff = DiffInput("git diff", BashResponse(Pmdg737Diff));
 
         Assert.NotNull(HookOutput(RunHook(new[] { "diff" }, diff, env: env)));
         Assert.Null(HookOutput(RunHook(new[] { "diff" }, diff, env: env)));
@@ -428,7 +479,7 @@ public class ClaudeRulesHookTests
         Assert.Equal("", compacted.Stdout);
         JsonElement? again = HookOutput(RunHook(new[] { "diff" }, diff, env: env));
         Assert.NotNull(again);
-        Assert.Contains(RuleBody("taxi-routing.md"), again.Value.GetProperty("additionalContext").GetString());
+        Assert.Contains(RuleBody("variable-definitions.md"), again.Value.GetProperty("additionalContext").GetString());
     }
 
     [Theory]
@@ -443,7 +494,7 @@ public class ClaudeRulesHookTests
         {
             "read" => ReadInput(CreateFile(CreateAgentWorktree(NewTempDir()), Pmdg737), agentId: "a1"),
             "shell-guard" => ShellInput("Bash", $"sed -i 's/a/b/' {Pmdg737}"),
-            "diff" => DiffInput("git diff", BashResponse(TaxiDiff)),
+            "diff" => DiffInput("git diff", BashResponse(Pmdg737Diff)),
             _ => SubagentInput("Plan", root),
         };
 
@@ -503,7 +554,7 @@ public class ClaudeRulesHookTests
             {
                 ("PostToolUse", "read") => HookOutput(RunHook(new[] { mode },
                     ReadInput(CreateFile(CreateAgentWorktree(NewTempDir()), Pmdg737), agentId: "a1"))) != null,
-                ("PostToolUse", "diff") => HookOutput(RunHook(new[] { mode }, DiffInput("git diff", BashResponse(TaxiDiff)))) != null,
+                ("PostToolUse", "diff") => HookOutput(RunHook(new[] { mode }, DiffInput("git diff", BashResponse(Pmdg737Diff)))) != null,
                 ("PreToolUse", "shell-guard") => HookOutput(RunHook(new[] { mode },
                     ShellInput("Bash", $"sed -i 's/a/b/' {Pmdg737}"))) != null,
                 ("SubagentStart", "subagent-start") => HookOutput(RunHook(new[] { mode }, SubagentInput("Plan", root), env: env)) != null,
@@ -517,7 +568,7 @@ public class ClaudeRulesHookTests
     private static bool ForgetsAfterCompaction(string mode)
     {
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
-        string diff = DiffInput("git diff", BashResponse(TaxiDiff));
+        string diff = DiffInput("git diff", BashResponse(Pmdg737Diff));
         RunHook(new[] { "diff" }, diff, env: env);
         RunHook(new[] { mode }, HookInput(new { session_id = "s1", hook_event_name = "SessionStart", source = "compact" }), env: env);
         return HookOutput(RunHook(new[] { "diff" }, diff, env: env)) != null;
@@ -596,9 +647,32 @@ public class ClaudeRulesHookTests
         return path;
     }
 
+    /// <summary>Every listed rule file is either shown in full (its whole body is in the context) or named by its
+    /// absolute path for Claude to Read, and at least one is shown in full.</summary>
+    private static void AssertEachRuleFileShownOrNamed(string context, string root, params string[] ruleFiles)
+    {
+        int shown = 0;
+        foreach (string ruleFile in ruleFiles)
+        {
+            if (context.Contains(RuleBody(ruleFile), StringComparison.Ordinal)) { shown++; continue; }
+            Assert.Contains(Path.Combine(root, ".claude", "rules", ruleFile), context);
+        }
+        Assert.True(shown > 0, "no rule file was shown in full");
+    }
+
+    /// <summary>A CLAUDE.md section: its heading line up to the next "## " heading.</summary>
+    private static string Section(string text, string heading)
+    {
+        int start = text.IndexOf(heading + "\n", StringComparison.Ordinal);
+        Assert.True(start >= 0, $"CLAUDE.md has no '{heading}' heading");
+        int end = text.IndexOf("\n## ", start + heading.Length, StringComparison.Ordinal);
+        return (end < 0 ? text[start..] : text[start..end]).TrimEnd('\n');
+    }
+
     /// <summary>A rule file's body as the guard test reads it, independently of the script under test.</summary>
     private static string RuleBody(string ruleFile) => ClaudeContextBudgetTests.SplitFrontMatter(
-        File.ReadAllText(Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".claude", "rules", ruleFile)).Replace("\r\n", "\n")).Body;
+        File.ReadAllText(Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".claude", "rules", ruleFile)).Replace("\r\n", "\n")).Body
+        .TrimEnd('\n');
 
     // ---- harness ----
 
@@ -659,6 +733,7 @@ public class ClaudeRulesHookTests
     {
         string dir = Path.Combine(Path.GetTempPath(), "msfsba-hook-tests", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
+        TempDirs.Add(dir);
         return dir;
     }
 }
