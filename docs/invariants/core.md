@@ -29,7 +29,11 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## CORE-7
 
-- NEVER announce button presses, combo/dropdown value changes, or any direct UI interaction in panel controls — screen readers already announce them; ONLY announce numeric input confirmations, validation errors, and background (non-user-triggered) state changes. The ONE scoped exception is the TFDi MD-11's once-after-settle press confirmation and the EFB shell's `announceChange` opt-in (the paragraph under Screen Reader Announcements) — never a licence to announce presses elsewhere. → CLAUDE.md
+- NEVER announce button presses, combo/dropdown value changes, or any direct UI interaction in panel controls — screen readers already announce them; ONLY announce numeric input confirmations, validation errors, and background (non-user-triggered) state changes. The scoped exceptions are the TFDi MD-11's once-after-settle press confirmation, the EFB shell's `announceChange` opt-in (the paragraph under Screen Reader Announcements) and the FBW button read-back below — never a licence to announce presses elsewhere. → CLAUDE.md
+
+The button read-back is the third exception, ruled a sanctioned one by the repo's owner on 2026-10-08 when the review of the rules split found it in the code. After a panel button click (`MainForm.PanelBuilder.cs`) or a hotkey press (`MainForm.Hotkeys.cs`) whose event a definition maps in `GetButtonStateMapping`, `MainForm.HandleButtonStateAnnouncement` waits 300 ms, force-reads the mapped state variable and speaks it once (`pendingStateAnnouncements`, consumed by `AnnounceVariableState` in `OnSimVarUpdated`). Only the FBW A320, the Headwind A330 (the A320's map plus its baro STD rows) and the FBW A380 map any button; every other definition returns an empty map. The reason is MD11-11's: the screen reader speaks the button, never what the press did (an autopilot that engaged or did not, a managed mode taken), and the read-back is the pilot's only confirmation of it. A new mapping is a deliberate choice for a button whose effect the pilot cannot otherwise hear, never a way to echo presses.
+
+Corrected 2026-10-08: the exception list names this third exception, and no longer calls the first two "the ONE scoped exception". Evidence: `MainForm.HandleButtonStateAnnouncement` in `MainForm.Announcers.cs`, its callers in `MainForm.PanelBuilder.cs` and `MainForm.Hotkeys.cs`, and the `GetButtonStateMapping` overrides of `FlyByWireA320Definition`, `HeadwindA330Definition` and `FlyByWireA380Definition`.
 
 ## CORE-8
 
@@ -37,7 +41,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## CORE-9
 
-- The echo-window suppression must match on TIME only, never on value — a combo set can write a different encoding than the SDK reads back, so a value-compare silently misses the duplicate. → CLAUDE.md
+- The echo-window suppression in the wrap around `ProcessSimVarUpdate` (CORE-8) must match on TIME only, never on value — a combo set can write a different encoding than the SDK reads back, so a value-compare silently misses the duplicate. The generic `_uiSetEcho` gate on the monitor path stays value-matched on purpose: it drops only a value matching what the user set inside the window, so a change from another source inside the window still speaks, and a definition whose read-back legitimately lands on a sibling encoding opts a variable out with `SimVarDefinition.UiEchoMatchesAnyValue` (PR #163). → CLAUDE.md
+
+Corrected 2026-10-08: scoped to the wrap; the rule had read as covering the generic gate too, which matches on value by design. Evidence: `MainForm.OnSimVarUpdated` in `MainForm.Announcers.cs`, whose `uiEcho` test around `ProcessSimVarUpdate` checks only the `UiSetEchoSuppressMs` window, while the generic gate also compares the value unless `UiEchoMatchesAnyValue` is set.
 
 ## CORE-10
 
