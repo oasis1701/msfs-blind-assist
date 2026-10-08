@@ -26,6 +26,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*KmemLanding*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*LandingGuidanceLaw*.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.cs"
+  - "MSFSBlindAssist/Forms/DestinationRunwayForm.cs"
 ---
 # Landing rollout guidance rules
 
@@ -60,3 +61,8 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [ROL-27] Refuse a handoff route that re-crosses the landing runway at BOTH sites via the ONE `HandoffRouteReCrossesLandingRunway()`; decline only while ON the runway with the exit ahead (both conjuncts), else conclude via `ConcludeLandingExitOn/OffRunway()` (more: see full). Full: docs/invariants/landing-rollout.md#rol-27
 - [ROL-28] `MatchEarlyVacateExit` measures along-track PER EXIT and must never compare against `DistanceFromThresholdFeet`, which is from the landing threshold and breaks at displaced thresholds. Full: docs/invariants/landing-rollout.md#rol-28
 - [ROL-29] `IsHandoffRouteReachable` must gate every landing-exit handoff re-route: a route whose first segment the aircraft is not essentially already on must CONCLUDE guidance, never steer the tone at it. Full: docs/invariants/landing-rollout.md#rol-29
+
+Mirrored from surroundings.md, runway-holds.md and taxi-routing.md (they govern TaxiGuidanceManager.Rollout.cs and RunwayVacateResolver.cs; change them there and here together):
+- [SUR-9] Passing callouts are queued and fire at the closest point of approach, abeam at the minimum, with NO start-up baseline; identity is kind + name + position (`SameFeatureMetres` 40 m, never widen); silent on runway pavement, and the probe never uses `Monitor.TryEnter` (more: see full). Full: docs/invariants/surroundings.md#sur-9
+- [HLD-7] Read runway geometry through the ONE `RunwayShape.For` (classifier, holds, Where-Am-I, takeoff, vacate, reach walk), bar `MatchHoldShortRunwayName` (start rows) and four callers with their own geometry; never read `Pavement*` directly or test membership on `Lat1..Lon2` alone; repair an outboard start ROW, never cap the extent (more: see full). Full: docs/invariants/runway-holds.md#hld-7
+- [RTE-2] Bridge a stranded stand (`BridgeOrphanParkingIslands`) ONLY when its island is all navdata `P` lead-ins within 50 m: never on/across runway pavement, onto a hold-short, a stand or another lead-in chain, never an island carrying a taxiway; runway-exit logic skips `IsStandBridge` edges (more: see full). Full: docs/invariants/taxi-routing.md#rte-2

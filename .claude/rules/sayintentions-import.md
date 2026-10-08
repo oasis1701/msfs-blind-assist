@@ -9,6 +9,10 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsExternalRoute*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsTaxiPathSnapper*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsGatePositionMatcher*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsDestinationCandidates*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsImportAirport*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsParkingLog*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*HotkeyGuideSayIntentionsChord*.cs"
 ---
 # SayIntentions taxi-route import rules
 

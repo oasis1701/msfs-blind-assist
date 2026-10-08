@@ -11,6 +11,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*AltitudeManagedState*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AltitudeModeTracker*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*ArmedAltitudeMode*.cs"
+  - "MSFSBlindAssist/Forms/FBWA380/FBWA380*Window*.cs"
 ---
 # FlyByWire A380X FCU, EFIS and FMA rules
 
@@ -32,3 +33,6 @@ Loaded when Claude reads matching code. Background: docs/a380x.md. Full text of 
 - [A380F-14] The A380 has ONE FD pushbutton: state `L:A32NX_FCU_FD_LIGHT_ON`, pressed with `A32NX.FCU_FD_PUSH` only when the pick differs (`A380FlightDirector`). Never the stock `TOGGLE_FLIGHT_DIRECTOR` pair or per-side FD keys; every FD press sets `A380FlightDirector.StateKey`. Full: docs/invariants/a380-fcu.md#a380f-14
 - [A380F-15] Approach minimums read the plain-feet `AIRLINER_MINIMUM_DESCENT_ALTITUDE`/`AIRLINER_DECISION_HEIGHT` L:vars, never the ARINC `A32NX_FM1/FM2_*` words, which read NCD ("Not set") until the FMC is in approach range. Full: docs/invariants/a380-fcu.md#a380f-15
 - [A380F-16] Takeoff trim reads the ARINC word `A32NX_FM1_TO_PITCH_TRIM`, never the dead bare `A32NX_TO_PITCH_TRIM`, and it is a PERCENT (takeoff CG %MAC), not degrees. Full: docs/invariants/a380-fcu.md#a380f-16
+
+Mirrored from a32nx-fenix.md (it governs the A380's FCU dial callouts, `TryComposeFcuValuePhrase` in FlyByWireA380Definition.SimVarUpdate.cs; change it there and here together):
+- [A320-22] FCU dial callouts (A32NX, Headwind A330, A380) listen only to sources that say themselves whether the window shows a selection, never the `A32NX_FCU_AFS_DISPLAY_*_VALUE` values; changes are STAGED, released at batch end only while the FCU is available. (more: see full) Full: docs/invariants/a32nx-fenix.md#a320-22

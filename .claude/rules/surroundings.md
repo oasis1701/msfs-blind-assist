@@ -31,6 +31,9 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*PlaceListBuilder*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*CurrentAirportResolver*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AirportFacilities*.cs"
+  - "MSFSBlindAssist/Services/Com1Tuning.cs"
+  - "MSFSBlindAssist/Services/AircraftCfgCatalog.cs"
+  - "MSFSBlindAssist/Database/IAirportFacilitiesProvider.cs"
 ---
 # Airport surroundings, places and passing callouts rules
 
@@ -46,3 +49,7 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 - [SUR-8] A navdata parking type belongs to at most ONE family in `Database/Models/ParkingTypes`, and every consumer reads the families from there, never hand-typed; `IsCargo` is civil cargo only (6), while 7 and 8 are `IsMilitary`. Full: docs/invariants/surroundings.md#sur-8
 - [SUR-9] Passing callouts are queued and fire at the closest point of approach, abeam at the minimum, with NO start-up baseline; identity is kind + name + position (`SameFeatureMetres` 40 m, never widen); silent on runway pavement, and the probe never uses `Monitor.TryEnter` (more: see full). Full: docs/invariants/surroundings.md#sur-9
 - [SUR-10] The surface-change callout (`SurfaceChangeGate`) has its own switch, is not behind `SuppressCheck`, speaks only a surface FAMILY change confirmed by `ConfirmMetres` from its first reading; other `lastKnownPosition` writers must carry the surface fields forward (more: see full). Full: docs/invariants/surroundings.md#sur-10
+- [SUR-11] `MsfsPackagesLocator` reads the simulator's own `UserCfg.opt` while the simulator runs: open it with `FileShare.ReadWrite | FileShare.Delete` and close it before the first `Directory.Exists`, or the simulator's own write can fail. Full: docs/invariants/surroundings.md#sur-11
+
+Mirrored from a380-coherent.md (it governs the stock COM 1 tuning in Com1Tuning.cs; change it there and here together):
+- [A380C-18] Never re-add an A380 RMP "Radios" panel on stock COM standby-set/swap events, which the FBW A380 ignores; anything else tuning COM with stock events must ask `IAircraftDefinition.StockComTuningRefusal` first and speak it. Full: docs/invariants/a380-coherent.md#a380c-18

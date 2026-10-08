@@ -26,6 +26,9 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*StandId*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AircraftSizeClass*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*BacktrackEntry*.cs"
+  - "MSFSBlindAssist/Database/Models/GsxGate.cs"
+  - "MSFSBlindAssist/Database/Models/GateSource.cs"
+  - "MSFSBlindAssist/Settings/DistanceUnit.cs"
 ---
 # Stands, gate lists and docking guidance rules
 

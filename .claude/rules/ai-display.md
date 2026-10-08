@@ -20,6 +20,11 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*Screenshot*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*InstrumentView*.cs"
   - "MSFSBlindAssist/Aircraft/BaseAircraftDefinition.cs"
+  - "MSFSBlindAssist/Services/AiModelInfo.cs"
+  - "MSFSBlindAssist/Services/IAiProvider.cs"
+  - "MSFSBlindAssist/Settings/AiProvider.cs"
+  - "MSFSBlindAssist/Forms/DisplayReadingResultForm.cs"
+  - "MSFSBlindAssist/Forms/Settings/AiSettingsPanel.cs"
 ---
 # AI display reads, the camera and screenshots rules
 

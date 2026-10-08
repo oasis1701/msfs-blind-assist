@@ -13,10 +13,6 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 Corrected 2026-10-08: the exceptions now include the seat-motor `RenderAsButton` toggles, which A380-10 requires and this rule forbade. Evidence: `FlyByWireA380Definition`'s `SeatBtn` helper (`RenderAsButton = true`, handled by `ToggleSeatMotor`).
 
-## A380-3
-
-- Never implement the FBW flyPad pushback controls — Robin's team uses GSX for pushback; this is a permanent decision. → [a380x.md](../a380x.md)
-
 ## A380-4
 
 - Never treat the Surveillance pedestal panel as a working feature — FBW's own docs say it's not yet implemented; transponder AUTO-mode and squawk are the only real controls, reachable via the MFD SURV page. → [a380x.md](../a380x.md)
@@ -32,12 +28,6 @@ Corrected 2026-10-08: the exceptions now include the seat-motor `RenderAsButton`
 ## A380-7
 
 - Every A380 RMP calc-path write must be made unique per call with a `{seq} 0 *` prefix — MobiFlight's command channel coalesces two consecutive IDENTICAL calc strings, silently dropping a repeated-digit keystroke or a double-press of the same LSK/ADK. → [a380x.md](../a380x.md)
-
-## A380-8
-
-- Every A32NX DCDU H-event fire (`FlyByWireDcduForm.FireDcduEvent`) must be similarly sequence-uniquified — the WILCO→SEND two-step press on the same slot would otherwise silently drop the second press to the coalescing bug. The A380 has no DCDU: its CPDLC lives on the MFD ATCCOM pages. → [a380x.md](../a380x.md)
-
-Corrected 2026-10-08: names the A32NX DCDU, the only DCDU there is. Evidence: `FlyByWireDcduForm.FireDcduEvent` (`Forms/FlyByWireA320/FlyByWireDcduForm.cs`), and the "A380 has NO DCDU instrument" comment in `FlyByWireA380Definition`.
 
 ## A380-9
 

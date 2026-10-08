@@ -27,7 +27,6 @@ Loaded when Claude reads matching code. Background: docs/a380x.md. Full text of 
 - [A380C-10] KCCU H-events must be published on the MFD's own msfs-sdk EventBus (`bus.pub('hEvent', ...)`); `Coherent.trigger`/`SimVar.SetSimVarValue` from the external debugger do not reach the MFD. Full: docs/invariants/a380-coherent.md#a380c-10
 - [A380C-11] `fireKey` must fire each KCCU H-event once, never via both `Coherent.trigger` and `SimVar.SetSimVarValue`, which caused double/erratic F-PLN paging. Full: docs/invariants/a380-coherent.md#a380c-11
 - [A380C-12] Never widen the flyPad Dashboard's column-first read order to other EFB pages without evidence a specific page is jumbled; a blind global split breaks single-column pages. Full: docs/invariants/a380-coherent.md#a380c-12
-- [A380C-13] Never detect the PMDG EFB settings page's unit toggles (`coherent-pmdg-efb-agent.js`) with a universal "checked=metric" rule; direction differs per toggle id, so use the per-id `UNIT_PAIRS` map. Full: docs/invariants/a380-coherent.md#a380c-13
 - [A380C-14] `buildSettingsLines` must return null (defer to the generic pass) when it finds no recognizable control in a region, never render an owned-but-blank page. Full: docs/invariants/a380-coherent.md#a380c-14
 - [A380C-15] Door-tile names must never trust the FBW enum digit alone (index 9 "Main4Right" is Main Door 5 Right): parse the handler comment's enum NAME, falling back to column Left/Right only when it cannot be parsed. Full: docs/invariants/a380-coherent.md#a380c-15
 - [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/a380-coherent.md#a380c-16
@@ -40,3 +39,6 @@ Loaded when Claude reads matching code. Background: docs/a380x.md. Full text of 
 - [A380C-23] Dispose every A380 form holding a Coherent client or the def in `SwitchAircraft`'s cleanup; a hide-on-close form (RMP) tears down in `Dispose(bool)`, since `Close()` is cancelled and `Form.Dispose()` skips `OnFormClosed`. Full: docs/invariants/a380-coherent.md#a380c-23
 - [A380C-24] Capture the OUTGOING aircraft def at the top of `SwitchAircraft` for cleanup (`StopAllMotion()`, EWD-monitor teardown), or seat/slider motor timers keep writing L:vars into the new aircraft. Full: docs/invariants/a380-coherent.md#a380c-24
 - [A380C-25] The A380 EWD scrape must baseline silently on first connect; only failures appearing after connect are announced, as with every other MSFSBA monitor. Full: docs/invariants/a380-coherent.md#a380c-25
+
+Mirrored from troubleshooting.md (it governs every Coherent client in SimConnect/Coherent*.cs; change it there and here together):
+- [DBG-9] Coherent GT allows only ONE inspector socket per page for ANY aircraft using it — never open a second client against a view another client already holds; share the connection. Full: docs/invariants/troubleshooting.md#dbg-9

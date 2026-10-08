@@ -4,6 +4,8 @@ paths:
   - "MSFSBlindAssist/Aircraft/A380*.cs"
   - "MSFSBlindAssist/Forms/FBWA380/**"
   - "tests/MSFSBlindAssist.Tests/**/*A380*.cs"
+  - "MSFSBlindAssist/Services/TcasRaGuidance.cs"
+  - "MSFSBlindAssist/Aircraft/WiperPosition.cs"
 ---
 # FlyByWire A380X systems and panels rules
 
@@ -11,12 +13,10 @@ Loaded when Claude reads matching code. Background: docs/a380x.md. Full text of 
 
 - [A380-1] The LT-TEST knob is render-only: never narrate what the bulbs would show; announce only the knob's own position and let real per-system fault lights announce genuine faults. Full: docs/invariants/a380-systems.md#a380-1
 - [A380-2] Every A380 panel control renders as a COMBO, never a hardware button, except true one-shot momentary actions (ECAM-CP keys, chrono, calls, ATC ack) and the seat-motor `RenderAsButton` toggles [A380-10] prescribes; a control showing ongoing state is never a plain button. Full: docs/invariants/a380-systems.md#a380-2
-- [A380-3] Never implement the FBW flyPad pushback controls; pushback is done with GSX, a permanent decision. Full: docs/invariants/a380-systems.md#a380-3
 - [A380-4] Never treat the Surveillance pedestal panel as working (FBW has not implemented it); transponder AUTO mode and squawk are the only real controls, via the MFD SURV page. Full: docs/invariants/a380-systems.md#a380-4
 - [A380-5] Before declaring an announced ARINC var untestable by injection, check for a per-frame writer: only vars the writer leaves alone are injectable; writer-owned vars need a live scenario. Full: docs/invariants/a380-systems.md#a380-5
 - [A380-6] FBW buses and batteries publish as `A32NX_ELEC_{rawBusName}_BUS_IS_POWERED` with the raw bus id; never invent a descriptive name, confirm the id in the Rust source. Full: docs/invariants/a380-systems.md#a380-6
 - [A380-7] Every A380 RMP calc-path write must be unique per call with a `{seq} 0 *` prefix: MobiFlight coalesces consecutive identical calc strings, dropping a repeated digit or a double LSK/ADK press. Full: docs/invariants/a380-systems.md#a380-7
-- [A380-8] Every A32NX DCDU H-event fire (`FlyByWireDcduForm.FireDcduEvent`; the A380 has no DCDU) must be sequence-uniquified too, or the WILCO then SEND second press on the same slot is silently dropped. Full: docs/invariants/a380-systems.md#a380-8
 - [A380-9] Seat-motor writes need a per-frame unique calc string (`<seq> 0 *` prefix); MobiFlight fires identical strings once, so the motor ticks once instead of running. Full: docs/invariants/a380-systems.md#a380-9
 - [A380-10] Never periodically re-read and snap a combo whose synthetic motor var idles at 0 (it loops restart/stop/announce); use a `RenderAsButton` toggle so state changes only on the click edge. Full: docs/invariants/a380-systems.md#a380-10
 - [A380-11] Every FBW unit/feature with an observable effect must be wired into MSFSBA's own read-outs; MSFSBA bypasses the cockpit displays, so a display-only conversion never reaches the pilot. Full: docs/invariants/a380-systems.md#a380-11
@@ -44,3 +44,4 @@ Mirrored from a380-coherent.md and takeoff-and-callouts.md (they govern code in 
 - [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/a380-coherent.md#a380c-16
 - [A380C-18] Never re-add an A380 RMP "Radios" panel on stock COM standby-set/swap events, which the FBW A380 ignores; anything else tuning COM with stock events must ask `IAircraftDefinition.StockComTuningRefusal` first and speak it. Full: docs/invariants/a380-coherent.md#a380c-18
 - [TKO-5] Take-off calls are ONE `AnnounceImmediate` per sample via `TakeoffVSpeedCallouts.Compose`, never one per call; every definition drops the ARM, never the speeds, on reconnect AND `OnSimContextReset`, and names keys through the one `TakeoffCalloutKeys` (more: see full). Full: docs/invariants/takeoff-and-callouts.md#tko-5
+- [A380C-17] Never write `SetStoredData` for metric weight and expect it to propagate; only the real EFB "US Units" toggle changes the aircraft. MSFSBA's Units button is a local read-out preference, kept separate from the aircraft's value. Full: docs/invariants/a380-coherent.md#a380c-17
