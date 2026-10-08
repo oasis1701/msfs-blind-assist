@@ -87,7 +87,7 @@ Screen readers already announce every UI control interaction, so the app NEVER a
 
 ### Everywhere else
 
-- [CORE-16] Area rules (`.claude/rules/`) load only when the Read, Edit or Write tool opens a file, never through `cat`, `sed`, `rg` or Grep: Read a file before changing it, or its area's rules never reach you. Full: docs/invariants/core.md#core-16
+- [CORE-16] Area rules (`.claude/rules/`) load only when Read, Edit or Write opens a file in the session's own checkout, never through `cat`, `sed`, `rg` or Grep: Read a file before changing it. `.claude/hooks/rules-hook.ps1` adds them for a subagent's own worktree and for `git diff`, and refuses shell writes to covered files. Full: docs/invariants/core.md#core-16
 - [CORE-11] In `SimConnectManager`, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`: `StartContinuousMonitoring()` guards on it. Full: docs/invariants/core.md#core-11
 - [CORE-12] Never use `TreeView` directly in a form: use `NativeAccessibleTreeView` (the .NET UIA tree gives NVDA a wrong order); a tree with detail data populates its children lazily on `BeforeExpand`. Full: docs/invariants/core.md#core-12
 - [CORE-13] Never hardcode the FBWBA/MSFSBlindAssist database path: reads go through `DatabasePathResolver.ResolveExistingDatabasePath`, writes through `GetCanonicalDatabasePath`. Full: docs/invariants/core.md#core-13
@@ -127,7 +127,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [adding-features.md](docs/adding-features.md) | Step-by-step workflows for common tasks | — |
 | [variable-system.md](docs/variable-system.md) | The three variable patterns (panel, monitoring, hotkey) | — |
 | [hotkey-system.md](docs/hotkey-system.md) | Adding or changing hotkeys | — |
-| [development.md](docs/development.md) | Dependencies, key files, build output paths and traps | — |
+| [development.md](docs/development.md) | Dependencies, key files, build output paths and traps, and the Claude Code hooks | claude-tooling |
 | [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | — |
 | [troubleshooting-playbook.md](docs/troubleshooting-playbook.md) | A control "doesn't work": read this FIRST, before calling it broken or unsettable | troubleshooting |
 | [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, runway-holds, taxi-steering, landing-exits, landing-rollout, ground-traffic, surroundings, taxi-augmentation, takeoff-and-callouts |

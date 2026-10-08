@@ -559,7 +559,7 @@ public class ClaudeContextBudgetTests
 
     internal static bool GlobMatches(string glob, string relativePath) => GlobRegex(glob).IsMatch(relativePath);
 
-    private static Regex GlobRegex(string glob)
+    internal static Regex GlobRegex(string glob)
     {
         var sb = new StringBuilder("^");
         for (int i = 0; i < glob.Length; i++)
@@ -578,10 +578,10 @@ public class ClaudeContextBudgetTests
         return new Regex(sb.Append('$').ToString(), RegexOptions.CultureInvariant);
     }
 
-    private sealed record RuleFile(string Path, string Name, string Text, string Body, List<string>? Globs,
+    internal sealed record RuleFile(string Path, string Name, string Text, string Body, List<string>? Globs,
         List<string> PathItems);
 
-    private static IEnumerable<RuleFile> RuleFiles()
+    internal static IEnumerable<RuleFile> RuleFiles()
     {
         string root = RepoRoot();
         string dir = Path.Combine(root, ".claude", "rules");
@@ -595,7 +595,7 @@ public class ClaudeContextBudgetTests
     }
 
     /// <summary>The globs, the body after the front matter, and the raw paths item lines (for the quoting check).</summary>
-    private static (List<string>? Globs, string Body, List<string> Items) SplitFrontMatter(string text)
+    internal static (List<string>? Globs, string Body, List<string> Items) SplitFrontMatter(string text)
     {
         var items = new List<string>();
         if (!text.StartsWith("---\n", StringComparison.Ordinal)) return (null, text, items);
@@ -631,7 +631,7 @@ public class ClaudeContextBudgetTests
     /// output, VCS internals and the worktrees Claude Code keeps under .claude/worktrees. It walks the working
     /// tree, as the suite's other source scans do, not git's index: an untracked file counts locally and not in
     /// CI, so a local run can differ from CI's clean checkout, which is the one that gates a merge.</summary>
-    private static IEnumerable<string> RepoFiles()
+    internal static IEnumerable<string> RepoFiles()
     {
         string root = RepoRoot();
         var stack = new Stack<string>();
@@ -655,7 +655,7 @@ public class ClaudeContextBudgetTests
 
     private static string Read(string path) => File.ReadAllText(path).Replace("\r\n", "\n");
 
-    private static string RepoRoot()
+    internal static string RepoRoot()
     {
         for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
             if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
