@@ -209,7 +209,7 @@ case HotkeyAction.ReadOutsideTemperature:
 
 ## Workflow 5: Adding New Aircraft
 
-> **If the new aircraft's MCDU / EFB / glass-cockpit displays are rendered in Coherent GT** (FBW, WT/Asobo, most modern study sims), you can read and drive them live via the Coherent debugger — and the existing scrapers may be reusable. See **[Developer Tooling Guide](tooling.md)** for the transport, and **[§9 "Adaptability to other aircraft"](tooling.md)** for a per-tool verdict (transport + generic scrape core are universal; the aircraft-specific selector/navigation/input layer must be re-derived) plus a step-by-step recipe (§9.3) for adapting the MFD/CDU scraper to a new aircraft. For closed add-ons with their own SDK surface (PMDG, Fenix), use that SDK instead of scraping.
+> **If the new aircraft's MCDU / EFB / glass-cockpit displays are rendered in Coherent GT** (FBW, WT/Asobo, most modern study sims), you can read and drive them live via the Coherent debugger — and the existing scrapers may be reusable. See **[Developer Tooling Guide](tooling.md)** for the transport, and **[§9 "Adaptability to other aircraft"](tooling.md#9-adaptability-to-other-aircraft-pmdg--fenix--wt--future-add-ons)** for a per-tool verdict (transport + generic scrape core are universal; the aircraft-specific selector/navigation/input layer must be re-derived) plus a step-by-step recipe ([§9.3](tooling.md#93-recipe--adapt-the-mfdcdu-scraper-to-a-new-aircraft)) for adapting the MFD/CDU scraper to a new aircraft. For closed add-ons with their own SDK surface (PMDG, Fenix), use that SDK instead of scraping.
 
 **Step 1:** Create the aircraft definition class
 
@@ -344,7 +344,7 @@ private IAircraftDefinition LoadAircraftFromCode(string aircraftCode)
 
 Then wire it into the code every aircraft shares (search for an existing aircraft's code, such as `TFDI_MD11`, to find each spot):
 - `UpdateAircraftMenuItems()` in the same file: clear and set its menu item's `Checked`, or the screen reader reads it as not checked.
-- Ctrl+M: a `MonitorManagerFormBase` subclass in `Forms/<Aircraft>/` (MON-1), its `<Aircraft>DisabledMonitorVariables` list in `UserSettings`, a `Show…MonitorManagerDialog()` in MainForm that the definition's `HandleHotkeyAction` calls, a check of that list in MainForm's generic mute gate (`MainForm.Announcers.cs`), and, if the definition announces from `ProcessSimVarUpdate`, its row in `Services/DefAnnounceMuteSets` (VAR-8).
+- Ctrl+M: a `MonitorManagerFormBase` subclass in `Forms/<Aircraft>/` (MON-1), its `<Aircraft>DisabledMonitorVariables` list in `UserSettings` and its line in `UserSettings.RebuildDisabledMonitorVariableCaches()`, which builds the `<Aircraft>DisabledMonitorVariablesSet` from it, a `Show…MonitorManagerDialog()` in MainForm that the definition's `HandleHotkeyAction` calls, a check of that set in MainForm's generic mute gate (`MainForm.Announcers.cs`), and, if the definition announces from `ProcessSimVarUpdate`, its row in `Services/DefAnnounceMuteSets` (VAR-8).
 - Shift+M and the EFB key: a branch in `MainForm.Hotkeys.cs`; with none, Shift+M opens the Fenix MCDU dialog.
 - The hotkey list: `HotkeyGuides/<file>.txt` with its `<None Update=…>` entry in the csproj, and a row in `HotkeyListForm`'s file map (otherwise it shows the A320's); a text checklist the same way through `ChecklistFileName`.
 
@@ -354,10 +354,10 @@ Then wire it into the code every aircraft shares (search for an existing aircraf
 
 - Write `docs/<aircraft>.md`: transports, panel map, what is measured and how.
 - Add a row to CLAUDE.md's "Where things live": the doc, when to read it, the rule files. The aircraft never gets a section of its own in CLAUDE.md.
-- Create `.claude/rules/<aircraft>.md` with `paths:` globs for each of these that the aircraft has: `MSFSBlindAssist/Aircraft/<Aircraft>/**` and/or `MSFSBlindAssist/Aircraft/<Aircraft>*.cs` (a definition at the top level); `MSFSBlindAssist/Forms/<Aircraft>/**`; `MSFSBlindAssist/SimConnect/<Aircraft>/**`; its `MSFSBlindAssist/MainForm.<Aircraft>.cs` partial; its agent scripts, as `MSFSBlindAssist/Resources/coherent-<aircraft>*.js` (as `md11.md` does with `coherent-md11*.js` and `hs787.md` with `coherent-hs787-*.js`) or each script by its exact name, never `coherent-*.js`; its generator or probe under `tools/` (as `ifly-737.md` globs `tools/ifly-gen/**` and `tools/IFlySdkProbe/**`); and its tests. Every glob is a double-quoted item indented with spaces; the file is UTF-8 without BOM, LF. The shared aircraft rules (`.claude/rules/variable-definitions.md` for everything under `Aircraft/`, `troubleshooting.md` for every `*Definition*.cs` there) already load, but they never count as the aircraft's own: the guard test fails for a file in the aircraft's own `Aircraft/`, `Forms/` or `SimConnect/` subfolder, or an agent script, that no rule file of its own covers. It cannot catch a missing glob for a top-level definition or the `MainForm.<Aircraft>.cs` partial, because the shared aircraft rules and `mainform-call-sites.md` already load there, so glob those yourself. Nor does it notice a missing `Forms/<Aircraft>/**` glob for a file that another area's rule file globs in every folder (`monitor-manager.md` takes any `Forms/**/*MonitorManager*.cs`), so glob the whole folder even when it holds only the monitor manager.
+- Create `.claude/rules/<aircraft>.md` with `paths:` globs for each of these that the aircraft has: `MSFSBlindAssist/Aircraft/<Aircraft>/**` and/or `MSFSBlindAssist/Aircraft/<Aircraft>*.cs` (a definition at the top level); `MSFSBlindAssist/Forms/<Aircraft>/**` and/or `MSFSBlindAssist/Forms/<Aircraft>*.cs`; `MSFSBlindAssist/SimConnect/<Aircraft>/**` and/or `MSFSBlindAssist/SimConnect/<Aircraft>*.cs` (as `pmdg-777.md` globs `SimConnect/PMDG777*.cs`); its `MSFSBlindAssist/MainForm.<Aircraft>.cs` partial; its agent scripts, as `MSFSBlindAssist/Resources/coherent-<aircraft>*.js` (as `md11.md` does with `coherent-md11*.js` and `hs787.md` with `coherent-hs787-*.js`) or each script by its exact name, never `coherent-*.js`; its generator or probe under `tools/` (as `ifly-737.md` globs `tools/ifly-gen/**` and `tools/IFlySdkProbe/**`); and its tests. Every glob is a double-quoted item indented with spaces; the file is UTF-8 without BOM, LF. The shared aircraft rules (`.claude/rules/variable-definitions.md` for everything under `Aircraft/`, `troubleshooting.md` for every `*Definition*.cs` there) already load, but they never count as the aircraft's own: the guard test fails for a file in the aircraft's own `Aircraft/`, `Forms/` or `SimConnect/` subfolder, or an agent script, that no rule file of its own covers. It cannot catch a missing glob for a top-level definition, a top-level `SimConnect/<Aircraft>*.cs` file or the `MainForm.<Aircraft>.cs` partial, because the shared aircraft rules, `core-simconnect.md` and `mainform-call-sites.md` already load there, so glob those yourself. Nor does it notice a missing `Forms/<Aircraft>/**` or `Forms/<Aircraft>*.cs` glob for a file that another area's rule file globs in every folder (`monitor-manager.md` takes any `Forms/**/*MonitorManager*.cs`), so glob the whole folder even when it holds only the monitor manager.
 - Until the aircraft has a rule, the rule file is its front matter, a heading and one line naming its doc: `Loaded when Claude reads matching code. Background: docs/<aircraft>.md. No rules yet: add the first as CLAUDE.md's "Adding or changing a rule" says.`
 - Each lesson a future change must not break becomes a rule: its full text under `## <PREFIX>-n` in `docs/invariants/<aircraft>.md`, and one line `- [<PREFIX>-n] <rule> Full: docs/invariants/<aircraft>.md#<prefix>-n` (at most 400 characters) in the rule file, with a prefix no other area uses. With the first rule, the preamble also names the full-text file, and `docs/invariants/<aircraft>.md` is created in the format of the existing ones (for example `docs/invariants/audio-output.md`).
-- Add a changelog fragment in the `aircraft` category (see `changelog.d/README.md`).
+- Once `gh pr create` has printed the PR's number, add `changelog.d/<pr>-<slug>.aircraft.md` (see `changelog.d/README.md`), then commit and push it.
 - Run `ClaudeContextBudgetTests`; each failure says what to fix:
   ```bash
   dotnet test tests/MSFSBlindAssist.Tests/MSFSBlindAssist.Tests.csproj -c Debug -p:Platform=x64 --filter "FullyQualifiedName~ClaudeContextBudgetTests"
@@ -420,7 +420,11 @@ public override bool HandleHotkeyAction(
 
 ## Workflow 7: Adding a New Feature
 
-A feature here is a subsystem that is not an aircraft (taxi guidance, GSX docking, the SayIntentions taxi import); its code usually lives under `Services/`, `Navigation/` or a folder of its own. Pure logic (formatters, parsers, geometry, classifiers) gets characterization tests in `tests/MSFSBlindAssist.Tests`; a sim-facing part gets an in-sim test plan in the PR (CORE-5). Then:
+A feature here is a subsystem that is not an aircraft (taxi guidance, GSX docking, the SayIntentions taxi import); its code usually lives under `Services/`, `Navigation/` or a folder of its own. Pure logic (formatters, parsers, geometry, classifiers) gets characterization tests in `tests/MSFSBlindAssist.Tests`; a sim-facing part gets an in-sim test plan in the PR (CORE-5).
+
+**A small feature in an existing area** (a file or two whose rules belong to an area that already has a rule file and a doc): skip Steps 1 to 3. Add a glob for each of its files to that area's rule file, describe it in that area's doc, and put any rule in that area's files as Step 4 says; then Step 5.
+
+**A new area:**
 
 **Step 1:** Write `docs/<feature>.md`: what it does for a pilot, how it works, what is measured and how.
 
@@ -432,7 +436,7 @@ A feature here is a subsystem that is not an aircraft (taxi guidance, GSX dockin
 
 **Step 4:** Each lesson a future change must not break becomes a rule: its full text under `## <PREFIX>-n` in `docs/invariants/<feature>.md`, and one line `- [<PREFIX>-n] <rule> Full: docs/invariants/<feature>.md#<prefix>-n` (at most 400 characters) in the rule file, with a prefix no other area uses. A rule that applies to every file goes in CLAUDE.md under "Rules for any file": a new one as `CORE-n` with its full text in `docs/invariants/core.md`, or the feature's own rule MIRRORED there word for word, keeping its ID and full text (as VAT-13 is). That is the only kind of rule CLAUDE.md takes.
 
-**Step 5:** Add a changelog fragment in the `feature` category (see `changelog.d/README.md`), and run `ClaudeContextBudgetTests` (the command is in Workflow 5, Step 6). It checks the rule file's format, that every glob matches a file, and that every shipped code file (the app's, the updater's and the vPilot plugin's `.cs`, and the scripts and pages under `Resources/`) loads a rule file or has an entry in the test's `CoverageExemptions` under its reason. It cannot tell whether the RIGHT rule file loads: a file under a folder-wide glob such as `SimConnect/*.cs` or `Aircraft/**` passes on another area's rules. Check yourself that the feature's globs cover all of its code.
+**Step 5:** Run `ClaudeContextBudgetTests` (the command is in Workflow 5, Step 6). It checks the rule file's format, that every glob matches a file, and that every shipped code file (the app's, the updater's and the vPilot plugin's `.cs`, and the scripts and pages under `Resources/`) loads a rule file or has an entry in the test's `CoverageExemptions` under its reason. It cannot tell whether the RIGHT rule file loads: a file under a folder-wide glob such as `SimConnect/*.cs` or `Aircraft/**` passes on another area's rules. Check yourself that the feature's globs cover all of its code. Once `gh pr create` has printed the PR's number, add `changelog.d/<pr>-<slug>.feature.md` (see `changelog.d/README.md`).
 
 ## When to Use Each Pattern
 
@@ -447,9 +451,9 @@ A feature here is a subsystem that is not an aircraft (taxi guidance, GSX dockin
 - Silent caches (consumed by `ProcessSimVarUpdate`, never spoken): also `ExcludeFromMonitorManager = true`
 
 **Hotkey-Only Variables:**
-- Ad-hoc requests via hotkeys
-- Dedicated Request*() methods
-- Not in Variables dictionary
+- Read through a hotkey only, never shown in a panel
+- A `HotkeyReadoutDefinitions` row and a `Request…()` method, or `RequestSingleValue` when the simvar differs by aircraft (Workflow 4)
+- Not in the variables dictionary
 
 **H-Variables:**
 - MobiFlight-supported hardware events
@@ -457,4 +461,4 @@ A feature here is a subsystem that is not an aircraft (taxi guidance, GSX dockin
 
 ## Reference Implementation
 
-See `FlyByWireA320Definition.cs` as complete example (367 variables, 24 panels, all patterns demonstrated).
+See `FlyByWireA320Definition.cs` for a complete aircraft that uses every pattern here.

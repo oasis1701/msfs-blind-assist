@@ -249,21 +249,21 @@ if (varKey == "E_FCU_EFIS1_BARO_INC" && value == 1)
 ## Common Workflows
 
 ### Add Panel Control to Existing Aircraft
-1. Add to aircraft's `GetVariables()` with `UpdateFrequency.OnRequest`
+1. Add it to the aircraft's `BuildVariables()` with `UpdateFrequency.OnRequest`
 2. Add variable key to `BuildPanelControls()` under appropriate panel
 3. Test - automatic registration and UI generation
 
 ### Add Background Monitoring
-1. Add to `GetVariables()` with `UpdateFrequency.Continuous` + `IsAnnounced = true`
+1. Add it to `BuildVariables()` with `UpdateFrequency.Continuous` + `IsAnnounced = true`
 2. Do NOT add to `BuildPanelControls()` - batched monitoring is automatic (sole exception: the var is itself a panel control's read-back — see [VAR-6] in `.claude/rules/variable-definitions.md`)
-3. Change detection and announcements are automatic (supports 1000 variables)
+3. Change detection and announcements are automatic, for up to 1,500 variables: five batches of `ContinuousBatchLayout.BatchSize` (300), set up by `StartContinuousMonitoring` in `SimConnectManager.Setup.cs`
 4. A var that `ProcessSimVarUpdate` consumes SILENTLY (a cache for hotkey readouts or dialog fields, never spoken) must ALSO set `ExcludeFromMonitorManager = true` (HS787: add it to `CacheOnlyVariables`) - otherwise it earns a Ctrl+M checkbox that mutes nothing ([VAR-9])
 5. Test
 
 ### Add New Aircraft
-Use `FlyByWireA320Definition.cs` as template.
-1. Create class `YourAircraftDefinition.cs` inheriting `BaseAircraftDefinition`
-2. Override required methods: `GetVariables()`, `GetPanelStructure()`, `BuildPanelControls()` (see minimal implementation above)
+Start from the compiled template (Minimal Aircraft Implementation above; Workflow 5, Step 1).
+1. Copy `tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs` to `MSFSBlindAssist/Aircraft/<Name>Definition.cs` and rename the class
+2. Implement every required member: `AircraftName`, `AircraftCode`, `BuildVariables()` (starting from `GetBaseVariables()`), `GetPanelStructure()`, `BuildPanelControls()`, `GetPanelDisplayVariables()`, `GetButtonStateMapping()` (empty), `GetAltitudeControlType()`, `GetHeadingControlType()`, `GetSpeedControlType()` and `GetVerticalSpeedControlType()`; the compiler names any that are missing
 3. Add menu item in `MainForm.Designer.cs`:
    <!-- fragment: MSFSBlindAssist/MainForm.Designer.cs#aircraftMenuItem -->
    ```csharp
@@ -363,18 +363,15 @@ simConnectManager.RequestVariables(new List<string> { "VAR1", "VAR2" });
 
 ## Reserved Data Definition IDs
 
-- `1-99`: System reserved
-- `100-299`: Special functions (FCU, position, wind, etc.)
-- `300-399`: Hotkey-only variables (use for new hotkey requests)
-- `1000+`: Individual variable registrations (auto-assigned)
+SimConnect treats a request under an id already in use as a replacement of the earlier one, so a new fixed id must stay clear of every range in [architecture.md's request id ranges](architecture.md#request-id-ranges), including the ids taken only by raw `(DATA_REQUESTS)` casts. Individual variable registrations take ids from 1000 upward automatically.
 
 ## File Locations
 
-**Aircraft definitions:** `Aircraft/YourAircraftDefinition.cs`
+**Aircraft definitions:** `Aircraft/<Name>Definition.cs` (the template: `tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs`)
 **SimConnect:** `SimConnect/SimConnectManager.cs`
 **Hotkeys:** `Hotkeys/HotkeyManager.cs`
 **Main UI:** `MainForm.cs` + `MainForm.Designer.cs`
-**Forms:** `Forms/` (universal), per-aircraft subfolders `Forms/FlyByWireA320/`, `Forms/FBWA320/`, `Forms/FBWA380/`, `Forms/FenixA320/`, `Forms/PMDG737|777|EFB/`, `Forms/HS787/`
+**Forms:** `Forms/` (shared), `Forms/Settings/` (the settings panels), and per-aircraft subfolders `Forms/FBWA320/`, `Forms/FBWA380/`, `Forms/Fenix/`, `Forms/FenixA320/`, `Forms/FlyByWireA320/`, `Forms/HS787/`, `Forms/IFly737/`, `Forms/MD11/`, `Forms/PMDG/`, `Forms/PMDG737/`, `Forms/PMDG777/`
 
 ## Key Classes
 
