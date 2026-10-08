@@ -11,6 +11,8 @@ Modes (first argument):
                                      one per line (a command, not a hook; -Machine prints path<TAB>name;name)
   read                               PostToolUse (Read, Write, NotebookEdit): add the rule files for a file inside a
                                      subagent's own worktree (.claude/worktrees/agent-*), where Claude Code loads none
+  shell-guard                        PreToolUse (Bash, PowerShell): refuse a command that writes a file some rule
+                                     file covers (redirects, sed/perl -i, tee, Set-Content, Add-Content, Out-File)
 
 Hook modes read the hook input (JSON) on stdin. Setting MSFSBA_RULES_HOOK=off silences every hook mode.
 
@@ -234,6 +236,251 @@ function Invoke-Read($HookInput) {
     Add-Remembered $HookInput ([string[]]@(foreach ($f in $fresh) { $f.Path }))
 }
 
+# ---- shell-guard: find the files a shell command writes ----
+
+# Drops heredoc bodies (bash <<WORD ... WORD) and here-string bodies (PowerShell @' ... '@), so text inside them -
+# "=>", "List<string>" - is never read as a redirect.
+function Remove-HeredocBodies([string]$Command, [string]$Shell) {
+    $text = $Command.Replace("`r`n", "`n")
+    if ($Shell -eq 'PowerShell') {
+        return [regex]::Replace($text, "(?s)@(['`"])\n.*?\n\1@", "''")
+    }
+    $kept = New-Object System.Collections.Generic.List[string]
+    $pending = New-Object System.Collections.Generic.Queue[object]
+    foreach ($line in $text.Split("`n")) {
+        if ($pending.Count -gt 0) {
+            $heredoc = $pending.Peek()
+            $candidate = $line
+            if ($heredoc.StripTabs) { $candidate = $line.TrimStart("`t") }
+            if ($candidate -ceq $heredoc.Word) { [void]$pending.Dequeue() }
+            continue
+        }
+        $kept.Add($line)
+        foreach ($m in [regex]::Matches($line, "(?<!<)<<(?!<)(-?)\s*(['`"]?)([A-Za-z_][A-Za-z0-9_]*)\2")) {
+            $pending.Enqueue([pscustomobject]@{ Word = $m.Groups[3].Value; StripTabs = ($m.Groups[1].Value -eq '-') })
+        }
+    }
+    return ($kept.ToArray() -join "`n")
+}
+
+# Splits a command into simple commands at &&, ||, ;, | and newlines outside quotes (>| stays a redirect).
+# An unterminated quote throws, so the caller treats the command as unparseable.
+function Split-ShellCommands([string]$Command, [string]$Shell) {
+    $escape = '\'
+    if ($Shell -eq 'PowerShell') { $escape = '`' }
+    $parts = New-Object System.Collections.Generic.List[string]
+    $current = New-Object System.Text.StringBuilder
+    $quote = [char]0
+    for ($i = 0; $i -lt $Command.Length; $i++) {
+        $c = $Command[$i]
+        if ($quote -ne [char]0) {
+            [void]$current.Append($c)
+            if ($c -eq $escape -and $quote -eq '"' -and $i + 1 -lt $Command.Length) { $i++; [void]$current.Append($Command[$i]) }
+            elseif ($c -eq $quote) { $quote = [char]0 }
+            continue
+        }
+        if ($c -eq $escape -and $i + 1 -lt $Command.Length) { [void]$current.Append($c).Append($Command[$i + 1]); $i++; continue }
+        if ($c -eq "'" -or $c -eq '"') { $quote = $c; [void]$current.Append($c); continue }
+        $separator = 0
+        if (($c -eq '&' -or $c -eq '|') -and $i + 1 -lt $Command.Length -and $Command[$i + 1] -eq $c) { $separator = 2 }
+        elseif ($c -eq ';' -or $c -eq "`n") { $separator = 1 }
+        elseif ($c -eq '|' -and -not ($i -gt 0 -and $Command[$i - 1] -eq '>')) { $separator = 1 }
+        if ($separator -gt 0) {
+            $parts.Add($current.ToString()); [void]$current.Clear(); $i += $separator - 1; continue
+        }
+        [void]$current.Append($c)
+    }
+    if ($quote -ne [char]0) { throw 'unterminated quote' }
+    $parts.Add($current.ToString())
+    $result = New-Object System.Collections.Generic.List[string]
+    foreach ($p in $parts) { if ($p.Trim() -ne '') { $result.Add($p.Trim()) } }
+    return ,$result.ToArray()
+}
+
+# Words of one simple command as objects: Text (quotes removed) and Bare (its first character was neither quoted
+# nor escaped, so it can be an operator: a quoted ">" is an argument, never a redirect). Bash: a backslash escapes
+# outside quotes and, inside double quotes, only $ ` " \; single quotes are literal. PowerShell: the backtick escapes;
+# a backslash is a path separator; '' inside single quotes is one quote. An unterminated quote throws.
+function Get-ShellWords([string]$Segment, [string]$Shell) {
+    $words = New-Object System.Collections.Generic.List[object]
+    $word = New-Object System.Text.StringBuilder
+    $inWord = $false
+    $bare = $null
+    $quote = [char]0
+    for ($i = 0; $i -lt $Segment.Length; $i++) {
+        $c = $Segment[$i]
+        $hasNext = $i + 1 -lt $Segment.Length
+        if ($quote -eq "'") {
+            if ($c -eq "'") {
+                if ($Shell -eq 'PowerShell' -and $hasNext -and $Segment[$i + 1] -eq "'") { [void]$word.Append("'"); $i++ }
+                else { $quote = [char]0 }
+            }
+            else { [void]$word.Append($c) }
+            if ($null -eq $bare -and $word.Length -gt 0) { $bare = $false }
+            continue
+        }
+        if ($quote -eq '"') {
+            if ($c -eq '"') { $quote = [char]0 }
+            elseif ($Shell -eq 'PowerShell' -and $c -eq '`' -and $hasNext) { $i++; [void]$word.Append($Segment[$i]) }
+            elseif ($Shell -ne 'PowerShell' -and $c -eq '\' -and $hasNext -and '$`"\'.Contains([string]$Segment[$i + 1])) {
+                $i++; [void]$word.Append($Segment[$i])
+            }
+            else { [void]$word.Append($c) }
+            if ($null -eq $bare -and $word.Length -gt 0) { $bare = $false }
+            continue
+        }
+        if ([char]::IsWhiteSpace($c)) {
+            if ($inWord) {
+                $words.Add([pscustomobject]@{ Text = $word.ToString(); Bare = ($bare -eq $true) })
+                [void]$word.Clear(); $inWord = $false; $bare = $null
+            }
+            continue
+        }
+        $inWord = $true
+        if ($c -eq "'" -or $c -eq '"') { $quote = $c; continue }
+        if (($Shell -eq 'PowerShell' -and $c -eq '`' -and $hasNext) -or ($Shell -ne 'PowerShell' -and $c -eq '\' -and $hasNext)) {
+            $i++; [void]$word.Append($Segment[$i])
+            if ($null -eq $bare) { $bare = $false }
+            continue
+        }
+        [void]$word.Append($c)
+        if ($null -eq $bare) { $bare = $true }
+    }
+    if ($quote -ne [char]0) { throw 'unterminated quote' }
+    if ($inWord) { $words.Add([pscustomobject]@{ Text = $word.ToString(); Bare = ($bare -eq $true) }) }
+    return ,$words.ToArray()
+}
+
+function Add-WriteTarget($Targets, [string]$Raw, [string]$Dir) {
+    if ([string]::IsNullOrWhiteSpace($Raw) -or $Raw.StartsWith('&')) { return }
+    if ($Raw -eq '/dev/null' -or $Raw -eq 'NUL' -or $Raw.Contains('$') -or $Raw.Contains('%')) { return }
+    $full = Resolve-FullPath $Raw $Dir
+    if ($full) { $Targets.Add([pscustomobject]@{ Raw = $Raw; FullPath = $full }) }
+}
+
+# Operands of sed or perl when they edit in place: the words that are neither options nor the script.
+function Get-InPlaceOperands([string]$Name, $Words) {
+    $inPlace = $false
+    $scriptGiven = $false
+    $operands = New-Object System.Collections.Generic.List[string]
+    for ($k = 1; $k -lt $Words.Count; $k++) {
+        $w = $Words[$k]
+        if ($Name -eq 'sed' -and ($w -ceq '--in-place' -or $w.StartsWith('--in-place=', [StringComparison]::Ordinal))) {
+            $inPlace = $true; continue
+        }
+        if ($Name -eq 'sed' -and ($w -ceq '--expression' -or $w -ceq '--file')) { $scriptGiven = $true; $k++; continue }
+        if ($Name -eq 'sed' -and ($w.StartsWith('--expression=', [StringComparison]::Ordinal) -or
+                $w.StartsWith('--file=', [StringComparison]::Ordinal))) { $scriptGiven = $true; continue }
+        if ($w -cmatch '^-i') { $inPlace = $true; continue }
+        if ($w -cmatch '^-[A-Za-z]+$') {
+            if ($w.Contains('i')) { $inPlace = $true }
+            $last = $w[$w.Length - 1]
+            $takesScript = ($Name -eq 'sed' -and ($last -ceq 'e' -or $last -ceq 'f')) -or
+                ($Name -eq 'perl' -and ($last -ceq 'e' -or $last -ceq 'E'))
+            if ($Name -eq 'sed' -and $last -ceq 'l') { $k++ }
+            if ($takesScript) { $scriptGiven = $true; $k++ }
+            continue
+        }
+        if ($w.StartsWith('-')) { continue }
+        $operands.Add($w)
+    }
+    if (-not $inPlace) { return ,@() }
+    if ($scriptGiven) { return ,$operands.ToArray() }
+    return ,@($operands | Select-Object -Skip 1)
+}
+
+$PowerShellSwitches = @('-Force', '-NoNewline', '-Append', '-PassThru', '-WhatIf', '-Confirm', '-NoClobber', '-AsByteStream')
+
+# The files a command writes: redirect targets, sed/perl -i and tee operands, and the path of Set-Content, Add-Content
+# and Out-File. Follows cd and Set-Location from $Cwd. Throws on an unparseable command.
+function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
+    $targets = New-Object System.Collections.Generic.List[object]
+    $dir = $Cwd
+    foreach ($segment in (Split-ShellCommands (Remove-HeredocBodies $Command $Shell) $Shell)) {
+        $all = Get-ShellWords $segment $Shell
+        $start = 0
+        while ($start -lt $all.Count -and $all[$start].Bare -and $all[$start].Text -match '^[A-Za-z_][A-Za-z0-9_]*=') { $start++ }
+        if ($start -ge $all.Count) { continue }
+        $name = $all[$start].Text
+        if (@('cd', 'Set-Location', 'sl', 'pushd', 'Push-Location') -contains $name) {
+            if ($start + 1 -lt $all.Count) {
+                $next = Resolve-FullPath $all[$start + 1].Text $dir
+                if ($next) { $dir = $next }
+            }
+            continue
+        }
+        $words = New-Object System.Collections.Generic.List[string]
+        for ($k = $start; $k -lt $all.Count; $k++) {
+            $w = $all[$k].Text
+            if ($all[$k].Bare) {
+                $out = [regex]::Match($w, '^(?:>\||[0-9]*>>?|&>>?)(.*)$')
+                if ($out.Success) {
+                    $raw = $out.Groups[1].Value
+                    if ($raw -eq '' -and $k + 1 -lt $all.Count) { $k++; $raw = $all[$k].Text }
+                    Add-WriteTarget $targets $raw $dir
+                    continue
+                }
+                $in = [regex]::Match($w, '^[0-9]*<+(.*)$')
+                if ($in.Success) { if ($in.Groups[1].Value -eq '') { $k++ }; continue }
+            }
+            $words.Add($w)
+        }
+        if ($words.Count -eq 0) { continue }
+        $name = $words[0]
+        if ($name -ceq 'sed' -or $name -ceq 'perl') {
+            foreach ($o in (Get-InPlaceOperands $name $words)) { Add-WriteTarget $targets $o $dir }
+        }
+        elseif ($name -ceq 'tee') {
+            for ($k = 1; $k -lt $words.Count; $k++) { if (-not $words[$k].StartsWith('-')) { Add-WriteTarget $targets $words[$k] $dir } }
+        }
+        elseif (@('Set-Content', 'Add-Content', 'Out-File') -contains $name) {
+            $path = $null
+            $positional = $null
+            for ($k = 1; $k -lt $words.Count; $k++) {
+                $w = $words[$k]
+                if (@('-Path', '-LiteralPath', '-FilePath') -contains $w) { if ($k + 1 -lt $words.Count) { $path = $words[$k + 1] }; break }
+                if ($w.StartsWith('-')) { if ($PowerShellSwitches -notcontains $w) { $k++ }; continue }
+                if ($null -eq $positional) { $positional = $w }
+            }
+            if ($null -eq $path) { $path = $positional }
+            Add-WriteTarget $targets $path $dir
+        }
+    }
+    return ,$targets.ToArray()
+}
+
+$DenyReason = 'Refused by .claude/hooks/rules-hook.ps1: this command writes {0}, whose rules reach you only through ' +
+    'the Read, Edit and Write tools (CORE-16). Read the file with the Read tool, then change it with Edit or Write.'
+
+# PreToolUse on Bash/PowerShell: refuse a command that writes a file some rule file covers, since a shell write loads
+# none of its rules. Anything it cannot parse, or a write to an uncovered file, is allowed.
+function Invoke-ShellGuard($HookInput) {
+    if ($null -eq $HookInput -or $null -eq $HookInput.tool_input) { return }
+    $command = [string]$HookInput.tool_input.command
+    if ($command -eq '') { return }
+    $shell = 'Bash'
+    if ([string]$HookInput.tool_name -eq 'PowerShell') { $shell = 'PowerShell' }
+    $cwd = [string]$HookInput.cwd
+    if ($cwd -eq '') { $cwd = (Get-Location).Path }
+    $ruleFilesByRoot = @{}
+    $found = New-Object System.Collections.Generic.List[string]
+    foreach ($target in (Get-WriteTargets $command $cwd $shell)) {
+        $root = Find-CheckoutRoot $target.FullPath
+        if (-not $root) { continue }
+        if (-not $ruleFilesByRoot.ContainsKey($root)) { $ruleFilesByRoot[$root] = Get-RuleFiles $root }
+        $relative = Get-RelativePath $root $target.FullPath
+        $hits = Get-MatchingRuleFiles $ruleFilesByRoot[$root] $relative
+        if ($hits.Count -eq 0) { continue }
+        $names = foreach ($h in $hits) { $h.Name }
+        $entry = $relative + ' (' + (@($names) -join ', ') + ')'
+        if (-not $found.Contains($entry)) { $found.Add($entry) }
+    }
+    if ($found.Count -eq 0) { return }
+    $output = @{ hookSpecificOutput = @{ hookEventName = 'PreToolUse'; permissionDecision = 'deny';
+            permissionDecisionReason = ($DenyReason -f ($found.ToArray() -join '; ')) } }
+    Write-Utf8 ($output | ConvertTo-Json -Depth 4 -Compress)
+}
+
 function Invoke-For {
     $base = (Get-Location).Path
     $root = Find-CheckoutRoot $base
@@ -271,6 +518,7 @@ try {
     switch ($Mode) {
         'for' { Invoke-For }
         'read' { Invoke-Read (Read-HookInput) }
+        'shell-guard' { Invoke-ShellGuard (Read-HookInput) }
         default { }
     }
 }

@@ -183,7 +183,71 @@ public class ClaudeRulesHookTests
         }
     }
 
+    private const string Pmdg737 = "MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs";
+
+    [Theory]
+    [InlineData("Bash", "sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "cd MSFSBlindAssist && sed -i 's/a/b/' Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "sed -i 's/a|b/c/;s/d/e/' \"MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\"", Pmdg737)]
+    [InlineData("Bash", "cat > MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs <<'EOF'\nclass X {}\nEOF", Pmdg737)]
+    [InlineData("Bash", "printf 'x' >> tests/MSFSBlindAssist.Tests/Pmdg737ProbeTests.cs",
+        "tests/MSFSBlindAssist.Tests/Pmdg737ProbeTests.cs")]
+    [InlineData("Bash", "echo x | tee -a MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "perl -pi -e 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("PowerShell", "Set-Content -Path MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs -Value x", Pmdg737)]
+    [InlineData("PowerShell", "'x' | Out-File MSFSBlindAssist\\Aircraft\\Pmdg737DisplayReads.cs", Pmdg737)]
+    public void Shell_guard_refuses_writes_to_covered_files(string tool, string command, string target)
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput(tool, command)));
+
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+        string reason = output.Value.GetProperty("permissionDecisionReason").GetString()!;
+        Assert.Contains(target, reason);
+        Assert.Contains(".claude/rules/pmdg-737.md", reason);
+        Assert.Contains("(CORE-16)", reason);
+    }
+
+    [Fact]
+    public void Shell_guard_resolves_git_bash_paths()
+    {
+        string root = ClaudeContextBudgetTests.RepoRoot();
+        string gitBashRoot = "/" + char.ToLowerInvariant(root[0]) + root[2..].Replace('\\', '/');
+
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" },
+            ShellInput("Bash", $"sed -i 's/a/b/' {gitBashRoot}/{Pmdg737}")));
+
+        Assert.NotNull(output);
+        Assert.Contains(Pmdg737, output.Value.GetProperty("permissionDecisionReason").GetString());
+    }
+
+    [Theory]
+    [InlineData("Bash", "sed -n '1,5p' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("Bash", "cat MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<'EOF'\nList<string> x => y > z\nEOF")]
+    [InlineData("Bash", "echo hi > /dev/null")]
+    [InlineData("Bash", "cat x.txt && grep \">\" MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("Bash", "git diff > \"C:/Temp/My Folder/x.patch\"")]
+    [InlineData("Bash", "echo $HOME > $TMPFILE")]
+    [InlineData("Bash", "tee -a changelog.d/999-x.fix.md < MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("PowerShell", "Set-Content -Path $env:TEMP\\x.txt -Value x")]
+    [InlineData("PowerShell", "Set-Content -Value MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs changelog.d/999-x.fix.md")]
+    [InlineData("Bash", "sed -i 's/a/b/ unterminated")]
+    public void Shell_guard_allows_commands_that_write_no_covered_file(string tool, string command)
+    {
+        HookRun run = RunHook(new[] { "shell-guard" }, ShellInput(tool, command));
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("", run.Stdout);
+    }
+
     // ---- inputs and fixtures ----
+
+    private static string ShellInput(string tool, string command) => HookInput(new
+    {
+        session_id = "s1", hook_event_name = "PreToolUse", tool_name = tool, tool_input = new { command },
+        cwd = ClaudeContextBudgetTests.RepoRoot(),
+    });
 
     private static string ReadInput(string file, string? agentId, string tool = "Read") => agentId is null
         ? HookInput(new { session_id = "s1", hook_event_name = "PostToolUse", tool_name = tool, tool_input = new { file_path = file } })
