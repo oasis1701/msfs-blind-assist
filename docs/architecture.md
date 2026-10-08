@@ -45,6 +45,8 @@ search for a named enum member. From low to high:
   instrument-view read goes out under the next of these eight ids, so an abandoned read's late
   reply can never complete the NEXT read — the original design shared ONE id for every camera
   read and paid for exactly that bug.
+- **349** — `REQUEST_COM1_RADIO` (`DEF_COM1_RADIO`): COM 1's active and standby frequencies in
+  one one-shot (`ReadCom1RadioAsync`), the first id past the camera's rotating range.
 - **370–372** — hand-numbered too, ABOVE the 300–340 band and with no reserving comment in the
   enum at all: the dispatcher matches 370 (waypoint info) and 371/372 (hand fly's heading and
   vertical speed, issued in `SimConnectManager.Monitoring.cs`) by raw `(DATA_REQUESTS)` casts in
@@ -603,10 +605,10 @@ Dual-mode hotkey system:
 - Custom Windows Forms control optimized for screen reader navigation
 - Implements three-level navigation: Sections → Panels → Controls
 
-### DatabaseBuilder
-**File:** `Database/DatabaseBuilder.cs`
+### NavdataReaderBuilder
+**File:** `Database/NavdataReaderBuilder.cs`
 
-- Processes Microsoft Flight Simulator BGL files
+- Builds the airport database with the navdatareader command-line tool, for FS2020 and FS2024
 - Extracts airport, runway, and parking spot data
 - Builds searchable SQLite database for teleport functionality
 

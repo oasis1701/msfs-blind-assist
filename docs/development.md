@@ -45,7 +45,7 @@ This document contains development notes, key files, and dependencies for MSFS B
 
 ### Database System
 
-- **`Database/DatabaseBuilder.cs`**: BGL file processing for airport data
+- **`Database/NavdataReaderBuilder.cs`**: builds the airport database with the navdatareader tool (FS2020 and FS2024)
 - **`Database/Models/Airport.cs`**: Airport data model
 - **`Database/Models/Runway.cs`**: Runway data model
 - **`Database/Models/ParkingSpot.cs`**: Gate/parking data model
@@ -79,7 +79,7 @@ See [Access GSX](gsx.md) for the full feature reference.
 
 - **`Forms/RunwayTeleportForm.cs`**: Runway selection dialog
 - **`Forms/GateTeleportForm.cs`**: Gate selection dialog
-- **`Forms/AnnouncementSettingsForm.cs`**: Tabbed announcement settings (mode, nearest city interval, weather/SIGMET/PIREP auto-announce)
+- **`Forms/Settings/AnnouncementsPanel.cs`**: the Announcements settings panel (announcement mode, nearest-city interval, seconds in time readouts, 1,000-foot altitude crossings)
 - **`Controls/AccessiblePanel.cs`**: Accessible navigation control
 
 ### Input Management
@@ -134,7 +134,7 @@ faults (recovered, app keeps running), background-thread faults (logged, CLR sti
 and unobserved task exceptions. Startup diagnostics are wired through `Log.Channel("startup", truncateOnLaunch: true)`
 which writes to `%APPDATA%\MSFSBlindAssist\logs\startup.log`, so **managed** crashes leave a stack trace there.
 A crash with **no** logged exception is almost certainly **native** (WebView2 / Coherent / SimConnect) — check Windows Event Viewer →
-Application for the faulting module. Full procedure in [tooling.md §8](tooling.md).
+Application for the faulting module. Full procedure in [tooling.md §8](tooling.md#8-crash-diagnosis).
 
 ## Dependencies
 
@@ -180,7 +180,7 @@ Moved here from CLAUDE.md (2026-10), word for word except the project count, whi
 
 **Prerequisites:** MSFS_SDK environment variable, .NET 10 SDK
 
-The solution contains six projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), `tools/ChangelogBuilder` (the release-notes builder that turns `changelog.d/` fragments into the GitHub release body; its parsing/rendering logic is covered by the xUnit suite), `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI), and `plugins/MSFSBlindAssist.VPilotPlugin` (the vPilot plugin that passes VATSIM events to the app over a named pipe; see [vatsim.md](vatsim.md)). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all six. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution. A fourth standalone probe, `tools/StandBridgeSweep`, sweeps a real navdata database and reports the PR #235 stand-bridge figures (bridge count, distinct airports touched, and the four safety invariants — never on or across runway pavement, never ending on a hold-short node, a stand, or another stand's lead-in chain) by linking the production `TaxiGraph`/`RunwayPavement`/`RunwayShape` sources rather than reimplementing their logic, so its numbers can never drift from what the app actually builds; re-run it (`dotnet build tools/StandBridgeSweep`) before trusting any change to the bridging rule — it also builds on its own, not as part of the solution. A fifth, `tools/LandingExitSweep`, writes every runway direction's `GetLandingExits` list as CSV over the production `TaxiGraph` and diffs two runs into a markdown report — the whole-database before/after for any change to how landing exits are measured (`docs/tooling.md` §7); it builds on its own too. Both sweeps load the database through the one linked `tools/Shared/NavdataSweepLoader.cs`.
+The solution contains six projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), `tools/ChangelogBuilder` (the release-notes builder that turns `changelog.d/` fragments into the GitHub release body; its parsing/rendering logic is covered by the xUnit suite), `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI), and `plugins/MSFSBlindAssist.VPilotPlugin` (the vPilot plugin that passes VATSIM events to the app over a named pipe; see [vatsim.md](vatsim.md)). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all six. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution. A fourth standalone probe, `tools/StandBridgeSweep`, sweeps a real navdata database and reports the PR #235 stand-bridge figures (bridge count, distinct airports touched, and the four safety invariants — never on or across runway pavement, never ending on a hold-short node, a stand, or another stand's lead-in chain) by linking the production `TaxiGraph`/`RunwayPavement`/`RunwayShape` sources rather than reimplementing their logic, so its numbers can never drift from what the app actually builds; re-run it (`dotnet build tools/StandBridgeSweep`) before trusting any change to the bridging rule — it also builds on its own, not as part of the solution. A fifth, `tools/LandingExitSweep`, writes every runway direction's `GetLandingExits` list as CSV over the production `TaxiGraph` and diffs two runs into a markdown report — the whole-database before/after for any change to how landing exits are measured ([tooling.md §7](tooling.md#7-pre-existing-tools-and-other-standalone-non-coherent-probes-out-of-scope--do-not-fold-in)); it builds on its own too. Both sweeps load the database through the one linked `tools/Shared/NavdataSweepLoader.cs`.
 
 ## Claude Code hooks
 
