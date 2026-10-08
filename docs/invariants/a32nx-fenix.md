@@ -128,3 +128,11 @@ Corrected 2026-10-08: the rule named `A32NX_FCU_EFIS_{L,R}_FD_ACTIVE`, which FBW
 ## A320-31
 
 - The Fenix MCDU marks a selected option with cyan AND large font — never gate the accessible `*` marker on green alone (that left CONFIG > FAILURES with no indication of NONE/MINOR/ALL), and never "fix" it by broadening the colour test to cyan: cyan is used for entry fields, brackets and the leading `←` cycle arrow, so it asterisks nearly every line. Selection detection belongs in `FenixMcduFormat`'s size rule (large-among-small within a `/`-separated group), which must stay conservative — ≥2 options, each uniformly one size, exactly one large. The colour rule must run BEFORE the size rule and the size rule must skip a token the colour rule already marked — the shared `HashSet<int>` only collapses an identical index, and the two rules anchor differently (green-segment start vs first letter/digit), so a green option starting on `(`/`[`/`←` double-marks as `A/*(*B)` without the per-token overlap check. `currentLarge = true` is load-bearing, not a fallback (the live NONE-selected capture has no size code before NONE), and `SpecialChars` must keep its `\uXXXX` escapes — the Latin-1 keys mangle at runtime, with no compile error, if the BOM-less file is ever re-saved as CP1252. → [a32nx.md](../a32nx.md)
+
+## A380-8
+
+- Every A32NX DCDU H-event fire (`FlyByWireDcduForm.FireDcduEvent`) must be similarly sequence-uniquified — the WILCO→SEND two-step press on the same slot would otherwise silently drop the second press to the coalescing bug. The A380 has no DCDU: its CPDLC lives on the MFD ATCCOM pages. → [a380x.md](../a380x.md)
+
+Corrected 2026-10-08: names the A32NX DCDU, the only DCDU there is. Evidence: `FlyByWireDcduForm.FireDcduEvent` (`Forms/FlyByWireA320/FlyByWireDcduForm.cs`), and the "A380 has NO DCDU instrument" comment in `FlyByWireA380Definition`.
+
+Moved 2026-10-08 from docs/invariants/a380-systems.md: the code is the A32NX DCDU form's (`FlyByWireDcduForm.FireDcduEvent`), and the A380 has no DCDU. The ID keeps its prefix.

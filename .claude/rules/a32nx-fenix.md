@@ -60,6 +60,7 @@ Loaded when Claude reads matching code. Background: docs/a32nx.md. Full text of 
 - [A320-29] A32NX seat belts is genuinely 2-position ON/OFF in the FBW model (no AUTO, unlike the A380); don't "fix" it to 3-position. Full: docs/invariants/a32nx-fenix.md#a320-29
 - [A320-30] A32NX "Passengers on Board" sums the `A32NX_PAX_{A..D}_DESIRED` planned bitmasks, not the lagging boarded set. Full: docs/invariants/a32nx-fenix.md#a320-30
 - [A320-31] The Fenix MCDU marks selection with cyan AND large font: never gate the `*` marker on green alone nor broaden the colour test to cyan; detect it in `FenixMcduFormat`'s conservative size rule, run after the colour rule. Keep `SpecialChars`' `\uXXXX` escapes. (more: see full) Full: docs/invariants/a32nx-fenix.md#a320-31
+- [A380-8] Every A32NX DCDU H-event fire (`FlyByWireDcduForm.FireDcduEvent`; the A380 has no DCDU) must be sequence-uniquified too, or the WILCO then SEND second press on the same slot is silently dropped. Full: docs/invariants/a32nx-fenix.md#a380-8
 
 Mirrored from a380-coherent.md (it governs `_doorDefs` in FlyByWireA320Definition.cs; change it there and here together):
 - [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/a380-coherent.md#a380c-16

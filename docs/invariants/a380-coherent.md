@@ -51,12 +51,6 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - Never widen the flyPad Dashboard's column-first read order to other EFB pages without evidence a specific page is jumbled — a blind global split would break single-column pages. → [a380x.md](../a380x.md)
 
-## A380C-13
-
-- Never key the PMDG EFB agent's settings-page unit-toggle detection on a universal "checked=metric" assumption — direction differs per toggle id; use the per-id `UNIT_PAIRS` map (`A.UNIT_PAIRS` in `Resources/coherent-pmdg-efb-agent.js`, not the flyPad's agent). → [a380x.md](../a380x.md)
-
-Corrected 2026-10-08: names the agent the map lives in; this rule sits among the A380 rules, but no A380 code holds `UNIT_PAIRS`. Evidence: `A.UNIT_PAIRS` in `Resources/coherent-pmdg-efb-agent.js`.
-
 ## A380C-14
 
 - `buildSettingsLines` must return null (defer to the generic pass) when it finds no recognizable control in a region, rather than rendering an owned-but-blank page — this is the safety net for layouts the builder doesn't recognize. → [a380x.md](../a380x.md)

@@ -40,3 +40,9 @@ Corrected 2026-10-08: names the WebView2-failed list mode, which the rule's "nev
 ## FPD-9
 
 - Suppress the "Fill … from SimBrief" controls' caption tooltip and icon button (never the value input) on the Ground Payload/Fuel pages — the user imports via the Dashboard instead. → [flypad.md](../flypad.md)
+
+## A380-3
+
+- Never implement the FBW flyPad pushback controls — Robin's team uses GSX for pushback; this is a permanent decision. → [a380x.md](../a380x.md)
+
+Moved 2026-10-08 from docs/invariants/a380-systems.md: the code is the flyPad agent's, which the A320 and A380 share. The ID keeps its prefix.

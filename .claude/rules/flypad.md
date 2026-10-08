@@ -17,3 +17,4 @@ Loaded when Claude reads matching code. Background: docs/flypad.md. Full text of
 - [FPD-7] The Ground Payload/Fuel builders must own (suppress) every non-actionable section child, the CG-chart card and all tooltip nodes, or the scrape flattens into unreadable fragments. Full: docs/invariants/flypad.md#fpd-7
 - [FPD-8] `setValue` on a flyPad SimpleInput must commit with a synthetic Enter keydown/keyup plus blur; FBW commits on Enter/blur, not onChange, so a plain value-set never reaches the sim. Full: docs/invariants/flypad.md#fpd-8
 - [FPD-9] On the Ground Payload/Fuel pages, suppress the "Fill ... from SimBrief" caption tooltip and icon button, never the value input; the user imports via the Dashboard instead. Full: docs/invariants/flypad.md#fpd-9
+- [A380-3] Never implement the FBW flyPad pushback controls; pushback is done with GSX, a permanent decision. Full: docs/invariants/flypad.md#a380-3

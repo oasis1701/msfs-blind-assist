@@ -34,3 +34,11 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## PEFB-8
 
 - `window.Settings` is ALWAYS false on the live PMDG view (never mirrored to `window`) — any code reading it must fall back to the bare global, never a `window.Settings`-only check (that silently no-ops live). → [pmdg-efb.md](../pmdg-efb.md)
+
+## A380C-13
+
+- Never key the PMDG EFB agent's settings-page unit-toggle detection on a universal "checked=metric" assumption — direction differs per toggle id; use the per-id `UNIT_PAIRS` map (`A.UNIT_PAIRS` in `Resources/coherent-pmdg-efb-agent.js`, not the flyPad's agent). → [a380x.md](../a380x.md)
+
+Corrected 2026-10-08: names the agent the map lives in; this rule sits among the A380 rules, but no A380 code holds `UNIT_PAIRS`. Evidence: `A.UNIT_PAIRS` in `Resources/coherent-pmdg-efb-agent.js`.
+
+Moved 2026-10-08 from docs/invariants/a380-coherent.md: the code is the PMDG EFB agent's (`UNIT_PAIRS` in `coherent-pmdg-efb-agent.js`). The ID keeps its prefix.
