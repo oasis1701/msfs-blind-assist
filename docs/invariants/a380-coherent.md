@@ -53,7 +53,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## A380C-13
 
-- Never key a settings-page unit-toggle detection on a universal "checked=metric" assumption — direction differs per toggle id; use the per-id `UNIT_PAIRS` map. → [a380x.md](../a380x.md)
+- Never key the PMDG EFB agent's settings-page unit-toggle detection on a universal "checked=metric" assumption — direction differs per toggle id; use the per-id `UNIT_PAIRS` map (`A.UNIT_PAIRS` in `Resources/coherent-pmdg-efb-agent.js`, not the flyPad's agent). → [a380x.md](../a380x.md)
+
+Corrected 2026-10-08: names the agent the map lives in; this rule sits among the A380 rules, but no A380 code holds `UNIT_PAIRS`. Evidence: `A.UNIT_PAIRS` in `Resources/coherent-pmdg-efb-agent.js`.
 
 ## A380C-14
 

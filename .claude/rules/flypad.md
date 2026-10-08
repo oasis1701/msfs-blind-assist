@@ -9,7 +9,7 @@ paths:
 Loaded when Claude reads matching code. Background: docs/flypad.md. Full text of each rule: docs/invariants/flypad.md.
 
 - [FPD-1] A control drivable only by an L:var write must not be wired through the injected agent (`SimVar.SetSimVarValue` silently no-ops there); expose it as an app-side panel control instead. Full: docs/invariants/flypad.md#fpd-1
-- [FPD-2] Never render the flyPad scrape as native WinForms controls; only a WebView2 HTML document gives NVDA full browse mode, with headings and static text reachable. Full: docs/invariants/flypad.md#fpd-2
+- [FPD-2] Never render the flyPad scrape as native WinForms controls, except the silent list mode `FbwEfbForm.CreateControlFor` falls back to when WebView2 fails ([MD11-13]); only a WebView2 HTML document gives NVDA full browse mode, with headings and static text reachable. Full: docs/invariants/flypad.md#fpd-2
 - [FPD-3] Never wipe and rebuild the flyPad WebView2 DOM every poll (`innerHTML` replace), which steals screen-reader focus; use the keyed in-place reconcile only. Full: docs/invariants/flypad.md#fpd-3
 - [FPD-4] The flyPad reconcile key must be element CONTENT, never the scrape idx, which is re-stamped every scrape and collides nodes across pages and sub-tabs. Full: docs/invariants/flypad.md#fpd-4
 - [FPD-5] The reconcile key must strip dynamic state suffixes (`(active)`/`(called)`/`(selected)`), or a state change rebuilds the node and throws NVDA's focus off the control just activated. Full: docs/invariants/flypad.md#fpd-5

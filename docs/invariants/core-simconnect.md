@@ -33,7 +33,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## SIM-8
 
-- The calc-path probe MUST report its verdict — `CalcPathVerdict.LogLine` on both outcomes, and `PilotWarning` spoken when an aircraft that registers the probe target (`MSFSBA_BRIDGE_PROBE` — the FBW defs, the Headwind A330 by inheritance, and the TFDi MD-11) concludes UNVERIFIED. MainForm's timer gates on THAT REGISTRATION, never on a type list: a type list is how the MD-11 — every control write a calculator-path CEVENT — sat outside the probe with no module and no warning, while every load logged a false `NOT available after 0 attempt(s)`. It reported NOTHING before, which is the sole reason a broken probe degraded every generic L:var write and dotted FBW event for ten weeks unnoticed. Never make the verdict silent again. → [architecture.md](../architecture.md)
+- The calc-path probe MUST report its verdict — `CalcPathVerdict.LogLine` on both outcomes, and `PilotWarning` spoken when an aircraft that registers the probe target (`MSFSBA_BRIDGE_PROBE` — the FBW defs, the Headwind A330 by inheritance, and the TFDi MD-11) concludes UNVERIFIED. Every other aircraft concludes at once: the log line is still written, but `PilotWarning` returns null for it, so nothing is spoken, by design, since it has nothing to verify and nothing to warn about. MainForm's timer gates on THAT REGISTRATION, never on a type list: a type list is how the MD-11 — every control write a calculator-path CEVENT — sat outside the probe with no module and no warning, while every load logged a false `NOT available after 0 attempt(s)`. It reported NOTHING before, which is the sole reason a broken probe degraded every generic L:var write and dotted FBW event for ten weeks unnoticed. Never make the verdict silent again. → [architecture.md](../architecture.md)
+
+Corrected 2026-10-08: the one-line form had dropped "an aircraft that registers the probe target", so it read as a spoken warning on every aircraft; this text now also says what the others do. Evidence: `CalcPathVerdict.PilotWarning`, `SimConnectManager.MarkCalcPathProbeConcluded` (`aircraftNeedsCalcPath` defaults to false) and `MainForm.BridgeProbeTimer_Tick`; which aircraft register the target is pinned by `CalcPathProbeOptInTests`.
 
 ## SIM-9
 
@@ -53,9 +55,13 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 Reworded 2026-10-07. The original text, verbatim from CLAUDE.md as of `1f37801a`, was: "A name containing a space or colon (e.g. `TRANSPONDER STATE:1`) is a stock SimVar shape and must stay on the data-def write path — never route it through the L:var calc path." Its "is a stock SimVar shape" contradicted VAR-2 as narrowed the same day; the routing it guards is unchanged. The colon-indexed add-on L:var was left out of the "never" the same day: nothing had measured its write on either route.
 
+Corrected 2026-10-08: the one-line form restores this text's condition, which it had shortened to "change it after an in-sim read-back": move colon-indexed add-on L:vars to the calculator path only if the read-back shows the data-def write reverting. Evidence: this rule's 2026-10-07 text above; the route itself is `SimConnectManager.SetLVar` in `SimConnectManager.EventSend.cs`.
+
 ## SIM-13
 
-- H: events must always go to the MobiFlight channel whenever `IsMobiFlightConnected`; dotted events must wait for `CalcPathVerified` (queued, bounded, flushed on verify or probe-conclude) — never fire a dotted event before the probe concludes. → [architecture.md](../architecture.md)
+- H: events must always go to the MobiFlight channel whenever `IsMobiFlightConnected`; dotted events must wait for `CalcPathVerified` (queued, bounded, flushed on verify or probe-conclude) — never fire a dotted event before the probe concludes, except the A380's `A32NX.FCU_*` events, which SIM-10 sends straight to the calculator path without waiting (`SimConnectManager.IsFbwFcuEvent`). → [architecture.md](../architecture.md)
+
+Corrected 2026-10-08: names SIM-10's exception, which this rule's "never" contradicted. Evidence: `SimConnectManager.SendEvent` in `SimConnectManager.EventSend.cs`, which fires the calculator event when `CalcPathVerified || IsFbwFcuEvent(...)` holds, before it queues anything.
 
 ## SIM-14
 

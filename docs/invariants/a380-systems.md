@@ -9,7 +9,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## A380-2
 
-- Every A380 panel control must render as a COMBO, not a hardware button, EXCEPT true one-shot momentary actions (ECAM-CP keys, chrono, calls, ATC ack) — a control that must show ongoing state must never be a plain button (the reverted APU-start-PB and Fire-Test cases). → [a380x.md](../a380x.md)
+- Every A380 panel control must render as a COMBO, not a hardware button, EXCEPT true one-shot momentary actions (ECAM-CP keys, chrono, calls, ATC ack) and the seat-motor toggles A380-10 prescribes (`RenderAsButton`: a press starts the motor, a second press stops it) — a control that must show ongoing state must never be a plain button (the reverted APU-start-PB and Fire-Test cases). → [a380x.md](../a380x.md)
+
+Corrected 2026-10-08: the exceptions now include the seat-motor `RenderAsButton` toggles, which A380-10 requires and this rule forbade. Evidence: `FlyByWireA380Definition`'s `SeatBtn` helper (`RenderAsButton = true`, handled by `ToggleSeatMotor`).
 
 ## A380-3
 
@@ -33,7 +35,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## A380-8
 
-- Every DCDU H-event fire must be similarly sequence-uniquified — the WILCO→SEND two-step press on the same slot would otherwise silently drop the second press to the coalescing bug. → [a380x.md](../a380x.md)
+- Every A32NX DCDU H-event fire (`FlyByWireDcduForm.FireDcduEvent`) must be similarly sequence-uniquified — the WILCO→SEND two-step press on the same slot would otherwise silently drop the second press to the coalescing bug. The A380 has no DCDU: its CPDLC lives on the MFD ATCCOM pages. → [a380x.md](../a380x.md)
+
+Corrected 2026-10-08: names the A32NX DCDU, the only DCDU there is. Evidence: `FlyByWireDcduForm.FireDcduEvent` (`Forms/FlyByWireA320/FlyByWireDcduForm.cs`), and the "A380 has NO DCDU instrument" comment in `FlyByWireA380Definition`.
 
 ## A380-9
 
@@ -97,7 +101,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## A380-24
 
-- Multi-position cockpit switches stay MULTI-position combos, never split into easier On/Off controls: the Nose light is one 3-position T.O./Taxi/Off combo (state = `LIGHTING_LANDING_1`, actuated by indexed `LANDING_LIGHTS_SET`/`TAXI_LIGHTS_SET`), and Seat Belts is 3-position ON/AUTO/OFF (`XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position` — On/Off drive the stock `CABIN SEATBELTS ALERT SWITCH` via its toggle, AUTO is left to the FBW 500 ms Update). A blind pilot gets the same access a sighted pilot has. → [a380x.md](../a380x.md)
+- Multi-position cockpit switches stay MULTI-position combos, never split into easier On/Off controls: the Nose light is one 3-position T.O./Taxi/Off combo (state = `LIGHTING_LANDING_1`, actuated by indexed `LANDING_LIGHTS_SET`/`TAXI_LIGHTS_SET`), and Seat Belts is 3-position ON/AUTO/OFF (`XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position`, written on every set because the FBW model reads it for AUTO — On/Off also drive the stock `CABIN SEATBELTS ALERT SWITCH` via its toggle, AUTO is left to the FBW 500 ms Update). A blind pilot gets the same access a sighted pilot has. → [a380x.md](../a380x.md)
+
+Corrected 2026-10-08: the one-line form named the two L:vars as if each were the whole control. The nose light's `LIGHTING_LANDING_1` only mirrors its position, and the indexed events actuate it; the seat-belt XMLVAR is the switch position the FBW model reads for AUTO, so every set writes it, and On/Off also send the stock toggle when the sign differs. Evidence: `FlyByWireA380Definition.HandleUIVariableSet`'s `NOSE_LIGHT` and `SEATBELT_SIGN` branches in `FlyByWireA380Definition.UiVariableSet.cs`, and the seat-belt registration's comment in `FlyByWireA380Definition` ("Position 1 = AUTO: the FBW model auto-drives the sign").
 
 ## A380-25
 

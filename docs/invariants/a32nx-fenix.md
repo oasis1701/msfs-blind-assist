@@ -25,7 +25,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## A320-6
 
-- The A32NX Flight Director control vars are `A32NX_FCU_EFIS_{L,R}_FD_ACTIVE`, NOT `TOGGLE_FLIGHT_DIRECTOR`/`A320_Neo_FCU_FD_n_PUSH`/`A380X_EFIS_L_FD_BUTTON_IS_ON` — those alternates genuinely fail; don't re-test the wrong vars and re-conclude "uncontrollable." → [a32nx.md](../a32nx.md)
+- The A32NX Flight Director controls are the `A32NX.FCU_EFIS_{L,R}_FD_PUSH` events, and their state is `A32NX_FCU_EFIS_{L,R}_FD_LIGHT_ON` (`A32NX_FCU_EFIS_{L,R}_FD_ACTIVE` does not exist in FBW), NOT `TOGGLE_FLIGHT_DIRECTOR`/`A320_Neo_FCU_FD_n_PUSH`/`A380X_EFIS_L_FD_BUTTON_IS_ON` — those alternates genuinely fail; don't re-test the wrong vars and re-conclude "uncontrollable." → [a32nx.md](../a32nx.md)
+
+Corrected 2026-10-08: the rule named `A32NX_FCU_EFIS_{L,R}_FD_ACTIVE`, which FBW does not have; the controls are the push events and the light. Evidence: `FlyByWireA320Definition`'s `A32NX.FCU_EFIS_{L,R}_FD_PUSH` and `A32NX_FCU_EFIS_{L,R}_FD_LIGHT_ON` registrations and its `FdLeftLightVar`/`FdRightLightVar`, and the comment in `Forms/FBWA320/FBWA320AutopilotWindow.cs` that the `_FD_ACTIVE` names do not exist.
 
 ## A320-7
 
