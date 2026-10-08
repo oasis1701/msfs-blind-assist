@@ -101,9 +101,9 @@ Corrected 2026-10-08: names the A32NX DCDU, the only DCDU there is. Evidence: `F
 
 ## A380-24
 
-- Multi-position cockpit switches stay MULTI-position combos, never split into easier On/Off controls: the Nose light is one 3-position T.O./Taxi/Off combo (state = `LIGHTING_LANDING_1`, actuated by indexed `LANDING_LIGHTS_SET`/`TAXI_LIGHTS_SET`), and Seat Belts is 3-position ON/AUTO/OFF (`XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position` — On/Off drive the stock `CABIN SEATBELTS ALERT SWITCH` via its toggle, AUTO is left to the FBW 500 ms Update). A blind pilot gets the same access a sighted pilot has. → [a380x.md](../a380x.md)
+- Multi-position cockpit switches stay MULTI-position combos, never split into easier On/Off controls: the Nose light is one 3-position T.O./Taxi/Off combo (state = `LIGHTING_LANDING_1`, actuated by indexed `LANDING_LIGHTS_SET`/`TAXI_LIGHTS_SET`), and Seat Belts is 3-position ON/AUTO/OFF (`XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position`, written on every set because the FBW model reads it for AUTO — On/Off also drive the stock `CABIN SEATBELTS ALERT SWITCH` via its toggle, AUTO is left to the FBW 500 ms Update). A blind pilot gets the same access a sighted pilot has. → [a380x.md](../a380x.md)
 
-Corrected 2026-10-08: the one-line form named the two L:vars as if they were the controls; they hold the position and drive nothing, as this text says. Evidence: `FlyByWireA380Definition.HandleUIVariableSet`'s `NOSE_LIGHT` (indexed `LANDING_LIGHTS_SET`/`TAXI_LIGHTS_SET`) and `SEATBELT_SIGN` (`CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE`) branches in `FlyByWireA380Definition.UiVariableSet.cs`.
+Corrected 2026-10-08: the one-line form named the two L:vars as if each were the whole control. The nose light's `LIGHTING_LANDING_1` only mirrors its position, and the indexed events actuate it; the seat-belt XMLVAR is the switch position the FBW model reads for AUTO, so every set writes it, and On/Off also send the stock toggle when the sign differs. Evidence: `FlyByWireA380Definition.HandleUIVariableSet`'s `NOSE_LIGHT` and `SEATBELT_SIGN` branches in `FlyByWireA380Definition.UiVariableSet.cs`, and the seat-belt registration's comment in `FlyByWireA380Definition` ("Position 1 = AUTO: the FBW model auto-drives the sign").
 
 ## A380-25
 
