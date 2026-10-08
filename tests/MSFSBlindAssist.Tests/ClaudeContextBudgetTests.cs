@@ -166,6 +166,12 @@ public class ClaudeContextBudgetTests
     public void The_coverage_failure_offers_an_exemption_only_where_one_can_work(string file, bool offersExemption)
         => Assert.Equal(offersExemption, UncoveredFileProblem(file).Contains("CoverageExemptions", StringComparison.Ordinal));
 
+    [Theory]
+    [InlineData("MSFSBlindAssist/Resources/coherent-x-agent.js")]
+    [InlineData("MSFSBlindAssist/Services/TcasService.cs")]
+    public void The_coverage_failure_points_at_the_walkthroughs(string file)
+        => Assert.Contains("docs/adding-features.md", UncoveredFileProblem(file));
+
     [Fact]
     public void A_rule_file_loads_its_body_not_its_front_matter()
         => Assert.Equal("# Rules\n- [X-1] r\n".Length, LoadedChars("---\npaths:\n  - \"a/**\"\n---\n# Rules\n- [X-1] r\n"));
@@ -292,12 +298,14 @@ public class ClaudeContextBudgetTests
         => IsCoherentAgentScript(file)
             ? $"{file} loads no rule file of its own. A Coherent agent script is never exempt (the owner's choice, "
                 + "2026-10-05): glob it into its aircraft's or area's .claude/rules file, or give a new one a rule file of "
-                + "its own whose preamble names its doc (CLAUDE.md, \"Adding or changing a rule\")."
+                + "its own whose preamble names its doc (CLAUDE.md, \"Adding or changing a rule\"). docs/adding-features.md "
+                + "walks through both: Workflow 5 for an aircraft, Workflow 7 for a feature."
             : $"{file} loads no rule file"
             + (IsAreaOwnedFile(file) ? " of its own (the shared aircraft rules in SharedAircraftRules do not count)" : "")
             + ", so no rule reaches whoever edits it. Add a glob for it to its area's .claude/rules file. A new "
             + "feature or aircraft with no rules yet gets a rule file of its own whose preamble names its doc "
-            + "(CLAUDE.md, \"Adding or changing a rule\"). If no area's rules apply, add it to CoverageExemptions "
+            + "(CLAUDE.md, \"Adding or changing a rule\"). docs/adding-features.md walks through both: Workflow 5 for an "
+            + "aircraft, Workflow 7 for a feature. If no area's rules apply, add it to CoverageExemptions "
             + "under the reason that fits, or under a new reason saying why none applies.";
 
     [Fact]
