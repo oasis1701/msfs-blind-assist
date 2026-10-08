@@ -8,6 +8,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*Vatsim*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*VPilot*.cs"
   - "MSFSBlindAssist/Services/VatsimPilotDataService.cs"
+  - "MSFSBlindAssist/MainForm.MenuHandlers.cs"
 ---
 # VATSIM and the vPilot plugin rules
 

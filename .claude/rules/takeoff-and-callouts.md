@@ -12,6 +12,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/IFly737MAXDefinition*.cs"
   - "MSFSBlindAssist/Aircraft/TFDiMD11Definition*.cs"
   - "MSFSBlindAssist/Forms/RunwayTeleportForm.cs"
+  - "MSFSBlindAssist/MainForm.Announcers.cs"
 ---
 # Takeoff assist and flight callouts rules
 
