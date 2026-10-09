@@ -1,6 +1,6 @@
-// The ONE documented exception to "every log write goes through Utils/Logging/Log":
-// this code runs inside vPilot's process on .NET Framework and cannot reference the
-// app's logger. It still resolves into the canonical %APPDATA%\MSFSBlindAssist\logs
+// A documented exception to "every log write goes through Utils/Logging/Log" (CORE-15
+// names the two; the updater's startup log is the other): this code runs inside vPilot's
+// process on .NET Framework and cannot reference the app's logger. It still resolves into the canonical %APPDATA%\MSFSBlindAssist\logs
 // folder, so "send me your logs" remains one folder.
 //
 // Unlike the vPilot-to-TTS original this does NOT truncate on load — a plugin that

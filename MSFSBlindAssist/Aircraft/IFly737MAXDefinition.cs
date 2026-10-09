@@ -899,8 +899,8 @@ public partial class IFly737MAXDefinition : BaseAircraftDefinition
             _flapWalkTarget = targetDetent;
             _flapWalkQuietUntilTicks = Environment.TickCount64 + 4000; // swallow intermediate-detent announces (see ProcessSimVarUpdate)
             // Plain async local function, NEVER Task.Run: SendEvent must stay on the
-            // UI thread (unlocked eventIds dictionary — the PMDG 777 emergency-lights
-            // rule in CLAUDE.md), which also makes the generation check race-free.
+            // UI thread (unlocked eventIds dictionary, [SIM-20]), which also makes the
+            // generation check race-free.
             async void Walk()
             {
                 int current = fs.ByteAt(IFlySdkOffsets.FLAP_Status);
