@@ -1,5 +1,7 @@
 # Python write targets for the shell guard in rules-hook.ps1 (CCT-7). rules-hook.ps1 dot-sources this file from its own
-# folder as the first statement of its main try, so a missing file makes every mode fail open (CCT-1).
+# folder inside its own try/catch, before anything else runs: if the file is missing or does not parse, the guard loses
+# its Python analysis (a Python write is allowed) and nothing else - every mode and every other check keeps working
+# (CCT-1).
 #
 # Get-PythonWriteTargets returns the raw path strings that some Python code writes, as far as string literals tell. The
 # guard resolves each against the command's folder and refuses the command when a rule file covers it. A path the code

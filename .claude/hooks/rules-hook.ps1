@@ -1010,9 +1010,11 @@ function Invoke-For {
 }
 
 $ErrorActionPreference = 'Stop'
+# The Python analysis is optional (CCT-1, CCT-7): a python-writes.ps1 that is missing or does not parse costs the shell
+# guard its Python analysis only (the python branch of Get-WriteTargets absorbs the undefined function), never another
+# mode or another check of the guard.
+try { . ([IO.Path]::Combine($PSScriptRoot, 'python-writes.ps1')) } catch { }
 try {
-    # First, so a missing file fails open (CCT-1): the catch below exits 0 with no output.
-    . ([IO.Path]::Combine($PSScriptRoot, 'python-writes.ps1'))
     if ($Mode -ne 'for' -and $env:MSFSBA_RULES_HOOK -eq 'off') { exit 0 }
     switch ($Mode) {
         'for' { Invoke-For }

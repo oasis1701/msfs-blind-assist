@@ -375,6 +375,8 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'rb').read()\"")]
     [InlineData("python - <<'PY'\nopen('changelog.d/999-x.fix.md', 'w').write(open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'r', encoding='utf-8').read())\nPY")]
     [InlineData("cat > s.py <<'EOF'\nopen('changelog.d/999-x.fix.md', 'w')\nEOF\npython s.py")]
+    // A heredoc fed to a command that is not Python is text, not code, whatever it contains.
+    [InlineData("git commit -F - <<'EOF'\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\nEOF")]
     public void Shell_guard_allows_python_that_writes_no_covered_file(string command)
     {
         HookRun run = RunHook(new[] { "shell-guard" }, ShellInput("Bash", command));
@@ -391,19 +393,33 @@ public class ClaudeRulesHookTests : IDisposable
         Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
     }
 
-    [Fact]
-    public void Shell_guard_allows_everything_when_the_python_helper_is_missing()
+    // python-writes.ps1 is optional (CCT-1, CCT-7): when it is missing or does not parse, the guard loses its Python
+    // analysis (a Python write is allowed) and nothing else - redirects are still refused and diff mode still adds rules.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("function Get-PythonWriteTargets( {\n")]
+    public void A_missing_or_broken_python_helper_costs_only_the_python_analysis(string? helper)
     {
         string hooks = Path.Combine(NewTempDir(), "hooks");
         Directory.CreateDirectory(hooks);
         string script = Path.Combine(hooks, "rules-hook.ps1");
         File.Copy(ScriptPath, script);
+        if (helper is not null) File.WriteAllText(Path.Combine(hooks, "python-writes.ps1"), helper);
 
-        HookRun run = RunHook(new[] { "shell-guard" },
+        JsonElement? redirect = HookOutput(RunHook(new[] { "shell-guard" },
+            ShellInput("Bash", "echo x > " + Pmdg737), scriptPath: script));
+        Assert.NotNull(redirect);
+        Assert.Equal("deny", redirect.Value.GetProperty("permissionDecision").GetString());
+        Assert.Contains(Pmdg737, redirect.Value.GetProperty("permissionDecisionReason").GetString());
+
+        HookRun python = RunHook(new[] { "shell-guard" },
             ShellInput("Bash", "python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w')\""), scriptPath: script);
+        Assert.Equal(0, python.ExitCode);
+        Assert.Equal("", python.Stdout);
 
-        Assert.Equal(0, run.ExitCode);
-        Assert.Equal("", run.Stdout);
+        JsonElement? diff = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), scriptPath: script));
+        Assert.NotNull(diff);
+        Assert.Contains(RuleBody("pmdg-737.md"), diff.Value.GetProperty("additionalContext").GetString());
     }
 
     // pmdg-737.md and variable-definitions.md: about 4,500 characters, so both arrive in full.
