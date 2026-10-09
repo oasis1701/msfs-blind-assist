@@ -14,8 +14,9 @@ namespace MSFSBlindAssist.Automation;
 /// No gear state is read — the per-leg latch plus the climb/descent gates prevent
 /// redundant fires, and stock GEAR_UP/GEAR_DOWN are idempotent in the sim. AP engage is
 /// routed through an injected delegate: the PMDG jets press their own MCP switch (CMD A on
-/// the 737, A/P L on the 777, each self-guarded against toggling an already-engaged AP);
-/// every other aircraft falls back to the stock AUTOPILOT_ON. Actuation and announcements
+/// the 737, A/P L on the 777, each self-guarded against toggling an already-engaged AP), the
+/// FlyByWire family presses AP 1 (FO-21: FBW captures the stock AUTOPILOT_ON into a flag
+/// nothing reads); every other aircraft falls back to the stock AUTOPILOT_ON. Actuation and announcements
 /// go through injected delegates so the logic is unit-testable.
 ///
 /// AP engage is CLOSED-LOOP where the aircraft exposes an engaged-readback
@@ -34,12 +35,14 @@ public sealed class UniversalAutomationService
 {
     private readonly Action<string> _sendStockEvent;
     private readonly Action<string> _announce;
-    // AP engage is aircraft-routed: PMDG jets press their own MCP switch (CMD A / A/P L),
-    // everything else fires the stock AUTOPILOT_ON. Null => stock fallback.
+    // AP engage is aircraft-routed: PMDG jets press their own MCP switch (CMD A / A/P L), the
+    // FlyByWire family AP 1, everything else fires the stock AUTOPILOT_ON. Null => stock fallback.
     private readonly Action? _engageAutopilot;
     // Engaged-readback: true/false when the aircraft knows, null when it has no readable
     // engaged state (or its data feed isn't ready yet — never guess in that window).
     private readonly Func<bool?>? _isAutopilotEngaged;
+    // Milliseconds since an arbitrary start; injected so the retry spacing is testable.
+    private readonly Func<long> _nowMs;
 
     /// <summary>Presses before giving up and handing the autopilot to the Captain. At the
     /// ~1 Hz feed rate that is ~5 s of trying — long enough to ride out an engage inhibit
@@ -61,19 +64,30 @@ public sealed class UniversalAutomationService
     public int EffectiveApEngageAltitudeAgl
         => Math.Max(AutoApEngageAltitudeAgl, MinimumApEngageAltitudeAgl);
 
+    /// <summary>Minimum time (ms) between autopilot presses, and before giving up after the last
+    /// one, pushed from the current aircraft definition
+    /// (<c>IAircraftDefinition.AutopilotEngageRetryIntervalMs</c>). 0 = every tick (the PMDG jets,
+    /// the iFly, the MD-11). The FlyByWire family sets 3000: its AP 1 push is a toggle and its
+    /// engaged state reaches the cache with the 1 Hz batch, so an earlier retry could land on an
+    /// autopilot the previous press already engaged — and switch it off (FO-21).</summary>
+    public int ApRetryIntervalMs { get; set; }
+
     private bool _gearRaisedThisLeg;
     private bool _gearLoweredThisLeg;
     private bool _apResolvedThisLeg;   // engaged, pilot-engaged, or given up
     private int  _apAttempts;
+    private long _lastPressMs;
     private bool _wasOnGround = true;
 
     public UniversalAutomationService(Action<string> sendStockEvent, Action<string> announce,
-        Action? engageAutopilot = null, Func<bool?>? isAutopilotEngaged = null)
+        Action? engageAutopilot = null, Func<bool?>? isAutopilotEngaged = null,
+        Func<long>? nowMs = null)
     {
         _sendStockEvent = sendStockEvent;
         _announce = announce;
         _engageAutopilot = engageAutopilot;
         _isAutopilotEngaged = isAutopilotEngaged;
+        _nowMs = nowMs ?? (() => Environment.TickCount64);
     }
 
     public bool AnyEnabled => AutoGearUpEnabled || AutoGearDownEnabled || AutoApEnabled;
@@ -84,6 +98,7 @@ public sealed class UniversalAutomationService
         _gearLoweredThisLeg = false;
         _apResolvedThisLeg  = false;
         _apAttempts         = 0;
+        _lastPressMs        = 0;
         _wasOnGround        = true;
     }
 
@@ -152,6 +167,11 @@ public sealed class UniversalAutomationService
         if (_apAttempts == 0 && !(climbing && altitudeAgl >= EffectiveApEngageAltitudeAgl))
             return;
 
+        // A press is still settling: give the aircraft ApRetryIntervalMs to report it before
+        // pressing again (a toggle) or giving up (FO-21). An interval of 0 never waits.
+        if (_apAttempts > 0 && _nowMs() - _lastPressMs < ApRetryIntervalMs)
+            return;
+
         if (_apAttempts >= MaxApEngageAttempts)
         {
             _announce("Autopilot did not engage. Captain action required: engage the autopilot.");
@@ -164,6 +184,7 @@ public sealed class UniversalAutomationService
         if (_engageAutopilot != null) _engageAutopilot();
         else _sendStockEvent("AUTOPILOT_ON");
         _apAttempts++;
+        _lastPressMs = _nowMs();
 
         if (engaged == null)
         {

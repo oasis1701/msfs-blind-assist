@@ -245,4 +245,72 @@ public class UniversalAutomationServiceTests
         Assert.Empty(events);
         Assert.False(s.AnyEnabled);
     }
+
+    // ---------------------------------------------------------------------
+    // Retry spacing (2026-10-09, FO-21). The FlyByWire AP 1 push is a TOGGLE and its engaged
+    // state reaches the cache with the 1 Hz batch: a retry on the next 1 Hz tick could land on
+    // an autopilot the first press already engaged and switch it off. An aircraft sets
+    // ApRetryIntervalMs; 0 (every test above) keeps the every-tick retry.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void Ap_WithRetryInterval_DoesNotPressAgainBeforeTheIntervalHasPassed()
+    {
+        long now = 0;
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add,
+            () => presses++, () => false, () => now);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = 3000;
+
+        s.Update(700, 900, 420);                 // press #1 at t = 0
+        now = 1000; s.Update(800, 900, 500);
+        now = 2999; s.Update(900, 900, 600);
+        Assert.Equal(1, presses);                // still settling: a second press could switch it off
+
+        now = 3000; s.Update(1000, 900, 700);
+        Assert.Equal(2, presses);                // the interval has passed: retry
+    }
+
+    [Fact]
+    public void Ap_WithRetryInterval_ConfirmsAnEngagementThatArrivesWhileSettling()
+    {
+        long now = 0;
+        bool engaged = false;
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add,
+            () => presses++, () => engaged, () => now);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = 3000;
+
+        s.Update(700, 900, 420);                 // press at t = 0
+        now = 1000; engaged = true;
+        s.Update(800, 900, 500);                 // the readback catches up inside the interval
+        Assert.Equal(1, presses);
+        Assert.Equal(new[] { "400 feet. Autopilot engaged." }, spoken);
+    }
+
+    [Fact]
+    public void Ap_WithRetryInterval_GivesUpOnlyOnceTheIntervalAfterTheFifthPressHasPassed()
+    {
+        long now = 0;
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add,
+            () => presses++, () => false, () => now);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = 3000;
+
+        for (int i = 0; i < 5; i++) { now = i * 3000L; s.Update(700, 900, 420); }
+        Assert.Equal(5, presses);
+
+        now = 13000; s.Update(700, 900, 420);    // 1 s after the fifth press: still settling
+        Assert.DoesNotContain(spoken, m => m.Contains("did not engage"));
+
+        now = 15000; s.Update(700, 900, 420);    // the interval has passed: report it
+        Assert.Equal(5, presses);
+        Assert.Contains(spoken, m => m.Contains("did not engage"));
+    }
 }
