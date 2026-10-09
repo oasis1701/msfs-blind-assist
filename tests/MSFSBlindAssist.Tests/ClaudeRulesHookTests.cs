@@ -802,7 +802,7 @@ public class ClaudeRulesHookTests : IDisposable
         // Pinned on purpose: every filter here was checked in a live session (2026-10-08). Some filters never match
         // (Write(...), Edit(...) on a Write, redirect forms such as Bash(cat >*)), and one naming more than the command
         // (Bash(git diff*)) runs on any command holding $VAR or $(). Change a filter only after the live checks in
-        // docs/development.md, then update this list (CCT-3).
+        // docs/development.md, then update this list (CCT-3). Python filters added 2026-10-09 (CCT-7).
         List<RegisteredHook> hooks = RegisteredHooks();
         foreach (RegisteredHook hook in hooks)
         {
@@ -820,9 +820,14 @@ public class ClaudeRulesHookTests : IDisposable
             "PreToolUse @ Bash @ shell-guard @ Bash(sed *)", "PreToolUse @ Bash @ shell-guard @ Bash(perl *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(tee *)", "PreToolUse @ Bash @ shell-guard @ Bash(cat *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(echo *)", "PreToolUse @ Bash @ shell-guard @ Bash(printf *)",
+            "PreToolUse @ Bash @ shell-guard @ Bash(python *)", "PreToolUse @ Bash @ shell-guard @ Bash(python3 *)",
+            "PreToolUse @ Bash @ shell-guard @ Bash(py *)",
             "PreToolUse @ PowerShell @ shell-guard @ PowerShell(Set-Content *)",
             "PreToolUse @ PowerShell @ shell-guard @ PowerShell(Add-Content *)",
             "PreToolUse @ PowerShell @ shell-guard @ PowerShell(Out-File *)",
+            "PreToolUse @ PowerShell @ shell-guard @ PowerShell(python *)",
+            "PreToolUse @ PowerShell @ shell-guard @ PowerShell(python3 *)",
+            "PreToolUse @ PowerShell @ shell-guard @ PowerShell(py *)",
             "SubagentStart @  @ subagent-start @ ",
             "SessionStart @ compact @ session-start @ ",
         }, hooks.Select(h => $"{h.Event} @ {h.Matcher} @ {h.Args[^1]} @ {h.If}"));
