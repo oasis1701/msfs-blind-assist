@@ -461,6 +461,23 @@ public partial class FlyByWireA380Definition
         if (readback) OnPanelButtonFired(evt, s, a);
     }
 
+    // FO-21: as on the A32NX — FlyByWire captures the stock AUTOPILOT_ON into a flag nothing
+    // reads, so the universal auto-engage presses AP 1 (SendEvent sends A32NX.FCU_* as a unique
+    // K-event and never waits on the probe, SIM-10), never over an engaged autopilot, verified
+    // on AP 1 / AP 2 active.
+    public override void EngageAutopilot(SimConnectManager simConnect)
+    {
+        string? evt = FbwAutopilotEngage.PressFor(simConnect.GetCachedVariableValue);
+        if (evt == null) return;
+        ArmFcuEchoFor(evt, FcuConfirmation.None);   // A320-38; the AP push moves no FCU value
+        simConnect.SendEvent(evt);
+    }
+
+    public override bool? IsAutopilotEngaged(SimConnectManager simConnect)
+        => FbwAutopilotEngage.IsEngaged(simConnect.GetCachedVariableValue);
+
+    public override int AutopilotEngageRetryIntervalMs => FbwAutopilotEngage.RetryIntervalMs;
+
     private void RampSliderTo(string lvar, double target, SimConnectManager simConnect,
                               double rangeMin = 0.0, double rangeMax = 100.0)
     {

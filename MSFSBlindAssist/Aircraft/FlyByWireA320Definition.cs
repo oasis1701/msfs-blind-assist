@@ -6349,6 +6349,23 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         };
     }
 
+    // FO-21: FlyByWire captures the stock AUTOPILOT_ON into a flag nothing reads, so the
+    // universal auto-engage presses the cockpit's AP 1 button (the ToggleAutopilot1 event above),
+    // never over an engaged autopilot (the push is a toggle), and verifies on AP 1 / AP 2 active.
+    // The Headwind A330 inherits all three.
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        string? evt = FbwAutopilotEngage.PressFor(simConnect.GetCachedVariableValue);
+        if (evt == null) return;
+        ArmFcuEchoFor(evt, FcuConfirmation.None);   // A320-38; the AP push moves no FCU value
+        simConnect.SendEvent(evt);
+    }
+
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+        => FbwAutopilotEngage.IsEngaged(simConnect.GetCachedVariableValue);
+
+    public override int AutopilotEngageRetryIntervalMs => FbwAutopilotEngage.RetryIntervalMs;
+
     /// <summary>
     /// Handles complex hotkey actions that require custom dialogs or logic.
     /// </summary>
