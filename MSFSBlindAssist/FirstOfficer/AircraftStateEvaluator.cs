@@ -108,6 +108,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         if (fieldName == Pmdg777GearConfirmation.UpField)   return Pmdg777GearConfirmation.UpValue(GetValue);
         if (fieldName == Pmdg777GearConfirmation.DownField) return Pmdg777GearConfirmation.DownValue(GetValue);
 
+        // Cockpit Prep's power-up check: battery, ADIRU, demand pumps OFF, nav lights and gear
+        // lever DOWN all as their Preflight lines say (Pmdg777PowerUpCheck). Every input is a CDA
+        // field, so it is NaN until the first snapshot.
+        if (fieldName == Pmdg777PowerUpCheck.Field) return Pmdg777PowerUpCheck.Value(GetValue);
+
         if (!CdaReady) return double.NaN;
         try { return _dm?.GetFieldValue(fieldName) ?? double.NaN; }
         catch { return double.NaN; }
@@ -320,6 +325,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
 
     public bool IsADIRUOn()              => IsOn("ADIRU_Sw_On");
     public bool IsThrustAsymCompAuto()   => IsOn("FCTL_ThrustAsymComp_Sw_AUTO");
+
+    // Battery, ADIRU, demand pumps OFF, nav lights and gear lever DOWN as their Preflight lines say
+    // (Pmdg777PowerUpCheck); false (never true) while any reading is unknown.
+    public bool IsPowerUpConfirmed()     => IsPosition(Pmdg777PowerUpCheck.Field, 1);
 
     // -----------------------------------------------------------------------
     // EFIS / Baro
