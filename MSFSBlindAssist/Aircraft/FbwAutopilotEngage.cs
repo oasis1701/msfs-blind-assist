@@ -54,11 +54,13 @@ internal static class FbwAutopilotEngage
     /// wait behind the calc-path probe (<see cref="PressWouldWait"/>). Null when an autopilot already
     /// reads engaged: pressing would disconnect it. Null when the state is unknown, an AP var not read
     /// yet or NaN: a blind press could disconnect an autopilot that is already on, so the service waits
-    /// for a definite reading instead (<c>IAircraftDefinition.AutopilotEngageWaitsForState</c>); this
-    /// guard is the helper's own, since the service never asks to press from there. Null when both read
-    /// off but the press would wait: the service retries from that state, so the waiting pushes could
-    /// pile up and arrive back to back. That press is tried again after <see cref="RetryIntervalMs"/>,
-    /// and if none ever goes out the service's Captain-action call is then true.</summary>
+    /// for a definite reading instead (<c>IAircraftDefinition.AutopilotEngageWaitsForState</c>). The
+    /// service does not ask to press from there, because MainForm pushes the aircraft's limits,
+    /// <c>WaitForApState</c> among them, on every aircraft switch as well as every second; this
+    /// guard stays as defence in depth. Null when both read off but the press would wait: the
+    /// service retries from that state, so the waiting pushes could pile up and arrive back to back.
+    /// That press is tried again after <see cref="RetryIntervalMs"/>, and if none ever goes out the
+    /// service's Captain-action call is then true.</summary>
     public static string? PressFor(Func<string, double?> read, bool pressWouldWait = false)
         => (IsEngaged(read) == false && !pressWouldWait) ? Ap1PushEvent : null;
 }

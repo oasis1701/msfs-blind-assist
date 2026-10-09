@@ -366,11 +366,16 @@ public interface IAircraftDefinition
     int AutopilotEngageRetryIntervalMs { get; }
 
     /// <summary>
-    /// True when <c>IsAutopilotEngaged</c>'s <c>null</c> means "not read yet" rather than "this
-    /// aircraft exposes no engaged state". The universal auto-engage then never presses on an
-    /// unknown state, because the engage is a toggle and a blind press could disconnect an engaged
-    /// autopilot: it waits for a definite reading, and if none comes within its attempts, the
-    /// Captain call ends it. The FlyByWire family sets it (FO-21).
+    /// True where the universal auto-engage must never press while <c>IsAutopilotEngaged</c> reads
+    /// <c>null</c>. The service waits for a definite reading instead, and if none comes within its
+    /// attempts it gives the Captain call. The FlyByWire family sets it (FO-21): its engage is the
+    /// AP 1 push, a toggle, so a blind press could disconnect an autopilot that is already on, and
+    /// its <c>null</c> means "not read yet". False (the default) takes the open-loop
+    /// press-and-announce on a null reading. Only the Fenix and the HS787 expose no engaged state
+    /// at all (the base returns <c>null</c>). The PMDG 737 and 777, the iFly 737 and the TFDi MD-11
+    /// also return <c>null</c>, until their data is ready, and keep the open-loop path: the service
+    /// invokes the engage once and announces on it (the MD-11's own engage presses nothing on an
+    /// unread state). That is unchanged here and tracked separately.
     /// </summary>
     bool AutopilotEngageWaitsForState { get; }
 

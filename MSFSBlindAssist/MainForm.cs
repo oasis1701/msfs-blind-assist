@@ -694,15 +694,8 @@ public partial class MainForm : Form
             universalAutomation.AutoGearDownEnabled     = s.FOAutoGearDownEnabled;
             universalAutomation.AutoApEnabled           = s.FOAutoApEnabled;
             universalAutomation.AutoApEngageAltitudeAgl = s.FOAutoApEngageAltitudeAgl;
-            // Per-aircraft engage floor — the 737 refuses CMD below 400 ft RA after takeoff.
-            universalAutomation.MinimumApEngageAltitudeAgl =
-                currentAircraft?.MinimumAutopilotEngageAltitudeAgl ?? 0;
-            // Per-aircraft press spacing — the FlyByWire AP 1 push is a toggle (FO-21).
-            universalAutomation.ApRetryIntervalMs =
-                currentAircraft?.AutopilotEngageRetryIntervalMs ?? 0;
-            // Per-aircraft: a null engaged-readback is "not read yet", never press blind (FO-21).
-            universalAutomation.WaitForApState =
-                currentAircraft?.AutopilotEngageWaitsForState ?? false;
+            // The current aircraft's own engage floor, press spacing and wait flag (also pushed on a switch).
+            PushUniversalAircraftLimits();
             if (!universalAutomation.AnyEnabled) return;   // zero SimConnect load when disabled
             simConnectManager.RequestAircraftPosition();
             simConnectManager.RequestFOAltitudeAGL();
@@ -1110,6 +1103,22 @@ public partial class MainForm : Form
             simConnectManager.Connect();
         };
         connectTimer.Start();
+    }
+
+    /// <summary>
+    /// Pushes the CURRENT aircraft's own auto-engage limits to the universal automation: the engage floor
+    /// (the 737 refuses CMD below 400 ft RA after takeoff, FO-17), the spacing between presses (the FlyByWire
+    /// AP 1 push is a toggle) and whether a null engaged-readback waits for a definite reading instead of
+    /// pressing blind (FO-21). Called by the 1 Hz universal timer and by <c>SwitchAircraft</c> right after it
+    /// resets the service: an <c>Update</c> that ran between a switch and the next tick would otherwise act on
+    /// the previous aircraft's values. The user-setting pushes (gear, AP enable, engage height) stay in the timer.
+    /// </summary>
+    private void PushUniversalAircraftLimits()
+    {
+        if (universalAutomation == null) return;   // built in InitializeManagers; SwitchAircraft guards it too
+        universalAutomation.MinimumApEngageAltitudeAgl = currentAircraft?.MinimumAutopilotEngageAltitudeAgl ?? 0;
+        universalAutomation.ApRetryIntervalMs = currentAircraft?.AutopilotEngageRetryIntervalMs ?? 0;
+        universalAutomation.WaitForApState = currentAircraft?.AutopilotEngageWaitsForState ?? false;
     }
 
     /// <summary>

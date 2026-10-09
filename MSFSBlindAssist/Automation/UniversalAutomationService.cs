@@ -28,11 +28,15 @@ namespace MSFSBlindAssist.Automation;
 ///     <see cref="MinimumApEngageAltitudeAgl"/>, a per-aircraft hard floor; and
 ///   * the announcement fired unconditionally on the press and latched the leg, so a blind
 ///     pilot was told "Autopilot engaged" with the AP off and no retry ever came.
-/// Aircraft with no readback (readback returns null) keep the announce-on-press behaviour —
-/// there is nothing to verify against — except where <see cref="WaitForApState"/> is set (the
-/// FlyByWire family, FO-21): there null only means "not read yet", and the press is a toggle, so
-/// the service never presses on it. It waits for a definite reading, and if none comes within
-/// <see cref="MaxApEngageAttempts"/> attempts it reports a Captain action.
+/// On a null readback an aircraft that does not wait (<see cref="WaitForApState"/> off) takes the
+/// open-loop path: one press, announced on the press, with nothing to verify against. The null
+/// means either that the aircraft exposes no engaged state at all (the Fenix, the HS787) or that
+/// its data is not ready yet (the PMDG jets, the iFly, the MD-11), and the press is no safer for
+/// being open-loop: the PMDG engage switches are toggles (FO-18). The FlyByWire family sets
+/// <see cref="WaitForApState"/> (FO-21): there null only means "not read yet", and the press is a
+/// toggle, so the service never presses on it. It waits for a definite reading, and if none comes
+/// within <see cref="MaxApEngageAttempts"/> attempts it reports a Captain action ("state unknown"
+/// when it never pressed, "did not engage" when it did).
 /// </summary>
 public sealed class UniversalAutomationService
 {
@@ -42,8 +46,9 @@ public sealed class UniversalAutomationService
     // FlyByWire family AP 1, everything else fires the stock AUTOPILOT_ON. Null => stock fallback.
     private readonly Action? _engageAutopilot;
     // Engaged-readback: true/false when the aircraft knows, null when it has no readable
-    // engaged state (or its data feed isn't ready yet — never guess in that window). Which of
-    // the two a null means is WaitForApState.
+    // engaged state or its data feed isn't ready yet (never guess in that window). The service
+    // cannot tell those two apart; what it does with a null is WaitForApState: wait for a
+    // definite reading, or (an aircraft that does not wait) press once, open-loop.
     private readonly Func<bool?>? _isAutopilotEngaged;
     // Milliseconds since an arbitrary start; injected so the retry spacing is testable.
     private readonly Func<long> _nowMs;
@@ -76,15 +81,15 @@ public sealed class UniversalAutomationService
     /// autopilot the previous press already engaged — and switch it off (FO-21).</summary>
     public int ApRetryIntervalMs { get; set; }
 
-    /// <summary>True when the aircraft's engaged-readback returns null for "not read yet" rather
-    /// than "this aircraft exposes no engaged state", pushed from the current aircraft definition
-    /// (<c>IAircraftDefinition.AutopilotEngageWaitsForState</c>). The engage then never presses on
-    /// a null reading: the press is a toggle, so a blind press could disconnect an autopilot that
-    /// is already on. Each tick spent waiting counts as an attempt and is spaced by
-    /// <see cref="ApRetryIntervalMs"/> like a press, so if no definite reading comes within
-    /// <see cref="MaxApEngageAttempts"/> attempts the Captain call ends the leg. False (the
-    /// default) keeps the open-loop press on a null reading. The FlyByWire family sets it
-    /// (FO-21).</summary>
+    /// <summary>True where the engage must never press while the engaged-readback is null, pushed
+    /// from the current aircraft definition (<c>IAircraftDefinition.AutopilotEngageWaitsForState</c>):
+    /// the press is a toggle, so a blind press could disconnect an autopilot that is already on.
+    /// The service waits for a definite reading instead. A wait is an attempt, like a press: the
+    /// first at the climb through the engage height, then one per <see cref="ApRetryIntervalMs"/>
+    /// (a tick at or past the interval counts, a tick inside it does not). If no definite reading
+    /// comes within <see cref="MaxApEngageAttempts"/> attempts the Captain call ends the leg, as
+    /// "state unknown" when the service never pressed. False (the default) takes the open-loop
+    /// press on a null reading. The FlyByWire family sets it (FO-21).</summary>
     public bool WaitForApState { get; set; }
 
     private bool _gearRaisedThisLeg;
@@ -164,8 +169,9 @@ public sealed class UniversalAutomationService
     /// <summary>
     /// Press-then-verify autopilot engage. Runs every tick until the leg resolves, so a
     /// press that the aircraft rejected (engage inhibit, dropped dispatch) is retried and
-    /// the pilot is told the truth either way. Once pressing has started the verification
-    /// no longer requires the climb gate — a level-off must not strand it unresolved.
+    /// the pilot is told the truth either way. The climb gate applies only until the first
+    /// attempt, a press or a wait for a reading, has been made; after that the verification
+    /// no longer requires it — a level-off must not strand the leg unresolved.
     /// </summary>
     private void UpdateAutopilotEngage(double altitudeAgl, bool climbing)
     {
@@ -182,7 +188,7 @@ public sealed class UniversalAutomationService
             return;
         }
 
-        // Not pressed yet — wait for the climb through the engage height.
+        // Nothing attempted yet (no press, no wait): wait for the climb through the engage height.
         if (_apAttempts == 0 && !(climbing && altitudeAgl >= EffectiveApEngageAltitudeAgl))
             return;
 
@@ -194,14 +200,21 @@ public sealed class UniversalAutomationService
 
         if (_apAttempts >= MaxApEngageAttempts)
         {
-            _announce("Autopilot did not engage. Captain action required: engage the autopilot.");
+            // Only a leg that invoked the engage (_apPressed) can say the autopilot did not engage. A
+            // leg that only waited (WaitForApState, the state never read) never did: the autopilot may
+            // well be on, and a Captain told to engage it would disconnect it. That leg ends on "state
+            // unknown" and a request to check. An aircraft that does not wait reaches this point only
+            // after invoking the engage, so it keeps the "did not engage" line.
+            _announce(_apPressed
+                ? "Autopilot did not engage. Captain action required: engage the autopilot."
+                : "Autopilot state unknown. Captain action required: check the autopilot.");
             _apResolvedThisLeg = true;
             return;
         }
 
         // Not read yet, on an aircraft whose engage is a toggle (FO-21): never press blind, since
         // the autopilot may already be on. Record the wait as an attempt, so it is spaced like a
-        // press, and look again; the Captain call above ends it if no reading ever comes.
+        // press, and look again; the give-up above ends it if no reading ever comes.
         if (engaged == null && WaitForApState)
         {
             _apAttempts++;
@@ -209,9 +222,10 @@ public sealed class UniversalAutomationService
             return;
         }
 
-        // engaged == false (definitively off), or null on an aircraft with no readback
-        // (WaitForApState off) — safe to press. A null readback there never reaches a retry, so a
-        // toggle switch can't be flipped back off.
+        // engaged == false (definitively off), or null on an aircraft that does not wait
+        // (WaitForApState off): press. The null press is open-loop and not a safe one: the PMDG
+        // engage switches are toggles, and they read null until their data is ready (FO-18). It is
+        // not retried: the leg is resolved below.
         if (_engageAutopilot != null) _engageAutopilot();
         else _sendStockEvent("AUTOPILOT_ON");
         _apPressed = true;
