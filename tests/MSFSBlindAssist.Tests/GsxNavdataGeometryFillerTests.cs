@@ -5,8 +5,9 @@ namespace MSFSBlindAssist.Tests;
 
 /// <summary>
 /// Pins <see cref="GsxNavdataGeometryFiller"/>: the heading and size GSX's Remote API leaves out
-/// for a stand no GSX profile section covers, borrowed from the same-numbered navdata stand within
-/// 10 m. The end-to-end case runs the REAL KSAN captures through the REAL reader, because that is
+/// for a stand no GSX profile section covers, borrowed from the same navdata stand within 10 m
+/// (same number and, when one exists, same suffix; an unnumbered stand from the lone unnumbered
+/// row). The end-to-end case runs the REAL KSAN captures through the REAL reader, because that is
 /// the defect: 75 of KSAN's 79 stands arrived with no heading and were dropped after touchdown.
 /// </summary>
 public class GsxNavdataGeometryFillerTests
@@ -102,7 +103,7 @@ public class GsxNavdataGeometryFillerTests
     [Fact]
     public void In_range_navdata_stands_either_side_of_north_agree_across_the_wrap()
     {
-        // 359 and 1 degrees are 2 degrees apart, not 358: pins AngleBetween's wrap. Refused, the
+        // 359 and 1 degrees are 2 degrees apart, not 358: pins the TaxiGeo.WrapDeltaDeg wrap. Refused, the
         // stand would stay NaN and be dropped after touchdown.
         var spot = Api("Ramp 115", 115, Lat, Lon, maxWingspan: 40.0);
         GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(

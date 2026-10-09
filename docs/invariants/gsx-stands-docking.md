@@ -193,7 +193,7 @@ Corrected 2026-10-08: "the ONE exception" became the three builds given no parki
   - Donors are NAVDATA rows only (`GateSource.Navdata`): the size math assumes a radius in feet (DCK-7). Every `IAirportDataProvider` returns navdata rows today; the filter keeps a future GSX-sourced row from being shrunk 3.28 times.
   - Candidates are the rows with the spot's number within `MatchRadiusMetres`. When any carries the spot's own suffix (trimmed, case-insensitive), only those remain: a MARS parent "20" is a different, wider stand from its child "20A".
   - The concourse letter is NOT compared: navdata's letter is wrong on 46 of 222 KJFK stands that are the same physical stand (DCK-10), so a letter test would refuse true donors.
-  - An unnumbered stand (Number 0) matches an unnumbered row, and only when exactly ONE is in range.
+  - An unnumbered stand (Number 0) matches an unnumbered row, and only when exactly ONE remains after the suffix step (two unnumbered rows in range, one of them carrying the stand's own suffix, leave that one).
   - Remaining candidates disagreeing with the NEAREST one by more than `MaxHeadingDisagreementDegrees` (10°) are refused, never arbitrated (each candidate is compared with the nearest, not pairwise).
   - The size sets `Radius` = navdata feet × 0.3048 and `MaxWingspanMeters` = twice that. That is the fit navdata's own `FitsAircraft` gives, so the fit filter and SayIntentions' position match (SI-7) behave as on a navdata list.
   - The filler shares `GsxConcourseLetterFiller`'s one lazy navdata read and is skipped when nothing needs it.

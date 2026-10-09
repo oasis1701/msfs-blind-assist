@@ -86,8 +86,10 @@ public static class GsxNavdataGeometryFiller
     /// <summary>
     /// How far an in-range navdata candidate may disagree with the NEAREST one on heading before the
     /// match is refused (each candidate is compared with the nearest, not with every other).
-    /// Two rows for one physical stand (a duplicated row, a MARS pair) point the same way; the
-    /// widest same-stand disagreement measured between GSX and navdata is 6.68 degrees (KJFK).
+    /// A duplicated row for one physical stand points the same way, but a MARS pair need not
+    /// (EGSS 15/15R 19.7 degrees, EIDW 411L/411T 74.9), which is why the rows with the spot's own
+    /// suffix are kept first. The widest same-stand disagreement measured between GSX and navdata
+    /// is 6.68 degrees (KJFK).
     /// </summary>
     internal const double MaxHeadingDisagreementDegrees = 10.0;
 
@@ -242,7 +244,8 @@ public static class GsxNavdataGeometryFiller
         string summary =
             $"navdata geometry: {headingsNeeded} stand(s) had no GSX heading and {sizesNeeded} no GSX size; " +
             $"filled {headingsFilled} heading(s), {sizesFilled} size(s) and {jetwaysFilled} jet-bridge flag(s) " +
-            $"from the same-numbered navdata stand within {MatchRadiusMetres:0.#} m ({donorCount} candidate stand(s)).";
+            $"from the same-numbered (or lone unnumbered) navdata stand within {MatchRadiusMetres:0.#} m " +
+            $"({donorCount} candidate stand(s)).";
 
         if (refused > 0)
             Log.Warn("Gsx", summary + $" {refused} stand(s) had ambiguous navdata candidates (headings more than " +
