@@ -66,3 +66,6 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 
 Mirrored from a380-coherent.md (it governs the stock COM 1 tuning in Com1Tuning.cs; change it there and here together):
 - [A380C-18] Never re-add an A380 RMP "Radios" panel on stock COM standby-set/swap events, which the FBW A380 ignores; anything else tuning COM with stock events must ask `IAircraftDefinition.StockComTuningRefusal` first and speak it. Full: docs/invariants/a380-coherent.md#a380c-18
+
+Mirrored from gsx-stands-docking.md (it governs `GsxTerminalFeatureSource`; change it there and here together):
+- [DCK-44] `ParkingSpot.GsxUnconfigured` is set ONLY by `GsxRemoteParkingReader` (GSX sent no `heading` and no `hasJetway` value, a JSON null counting as none: no profile covers the stand); only then does `GsxNavdataGeometryFiller` borrow `HasJetway`/`AirlineCodes`, and `GsxTerminalFeatureSource` skips such stands (their header is GSX's own). Full: docs/invariants/gsx-stands-docking.md#dck-44

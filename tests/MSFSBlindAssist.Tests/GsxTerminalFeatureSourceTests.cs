@@ -1,5 +1,6 @@
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Navigation.Surroundings;
+using MSFSBlindAssist.Services.Gsx.Remote;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -133,4 +134,43 @@ public class GsxTerminalFeatureSourceTests
     [InlineData("(TD)")] [InlineData("Ramp (TD)")] [InlineData("Gates N/A")]
     public void A_header_that_is_only_notes_or_a_category_is_not_a_place(string header)
         => Assert.Empty(GsxTerminalFeatureSource.Read(new[] { G(header, 1, 10, 1.0, 1.0), G(header, 2, 10, 1.0004, 1.0) }));
+
+    // ── Stands GSX publishes unconfigured [DCK-44] ──────────────────────────────────────────────
+
+    [Fact]
+    public void Two_unconfigured_stands_sharing_a_header_make_no_feature()
+    {
+        // No profile section covers them, so the header is GSX's OWN grouping ("Gate W"), not a
+        // section title a profile author wrote: a place the pilot would be told about that no
+        // scenery, OSM or navdata source recognises.
+        var a = G("Gate W", 1, 10, 40.645, -73.776); a.GsxUnconfigured = true;
+        var b = G("Gate W", 2, 10, 40.6454, -73.776); b.GsxUnconfigured = true;
+        Assert.Empty(GsxTerminalFeatureSource.Read(new[] { a, b }));
+    }
+
+    [Fact]
+    public void An_unconfigured_stand_never_joins_a_configured_stands_group()
+    {
+        var configured = G("Terminal 5", 1, 10, 40.645, -73.776);
+        var configured2 = G("Terminal 5", 2, 10, 40.6454, -73.776);
+        var stray = G("Terminal 5", 3, 10, 40.6458, -73.776); stray.GsxUnconfigured = true;
+        var f = Assert.Single(GsxTerminalFeatureSource.Read(new[] { configured, configured2, stray }));
+        Assert.Equal(2, f.Members!.Count);
+    }
+
+    [Fact]
+    public void The_KSAN_capture_yields_only_the_one_feature_its_four_configured_stands_make()
+    {
+        // Before the unconfigured-stand fix only the 4 stands the installed profile covers reached
+        // this source, and they made exactly one feature, "Gate N". The 75 recovered stands carry
+        // GSX's own synthesized headers ("N Parking", "Gate W", "Ramp"...) and must add none.
+        var spots = GsxNavdataGeometryFiller.Fill(
+            GsxRemoteParkingReader.Read(GsxKsanFixtures.GsxAirport(), GsxKsanFixtures.Ksan),
+            () => GsxKsanFixtures.Navdata());
+        Assert.Equal(79, spots.Count);
+
+        var f = Assert.Single(GsxTerminalFeatureSource.Read(spots));
+        Assert.Equal("Gate N", f.Name);
+        Assert.Equal(4, f.Members!.Count);
+    }
 }

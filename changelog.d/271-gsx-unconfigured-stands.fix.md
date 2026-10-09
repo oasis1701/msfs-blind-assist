@@ -1,0 +1,1 @@
+At an airport whose GSX profile does not cover every stand, the gate list and the taxi planner keep every stand after touchdown instead of shrinking to the few the profile covers. Those stands keep their real heading, size and jet bridge, so a SayIntentions-assigned gate is found and docking lines up with it.

@@ -1,0 +1,261 @@
+using MSFSBlindAssist.Database.Models;
+using MSFSBlindAssist.Services.TaxiAugment;
+using MSFSBlindAssist.Utils.Logging;
+
+namespace MSFSBlindAssist.Services.Gsx.Remote;
+
+/// <summary>
+/// Fills the stand GEOMETRY GSX's Remote API leaves out (a heading, a size) from the SAME stand in
+/// navdata [DCK-42]: mostly for a stand no GSX profile section covers, which also takes the
+/// jet-bridge flag and airline codes [DCK-44], but for any stand with such a gap (KJFK's Gate 1A).
+///
+/// <para>
+/// <b>Why it exists.</b> GSX publishes <c>heading</c>, <c>type</c>, <c>hasJetway</c> and
+/// <c>airlineCodes</c> only for a stand a profile section covers. Every other stand arrives with a
+/// position, <c>uiType</c> and <c>maxWingspan</c> 999 alone. Live at KSAN (2026-10-07) that was 75
+/// of 79 stands; the installed profile is LatinVFR's, written for a different scenery, and its 4
+/// matching sections are exactly the 4 stands with a heading. At KSFO, with no profile, it was 208
+/// of 208. <c>GateDataSource.DropUnusableHeadings</c> threw every one of them away, so a pilot was
+/// left with 4 stands after touchdown and SayIntentions' assigned Gate 115 could not be found.
+/// </para>
+///
+/// <para>
+/// <b>Why navdata is the right donor, measured.</b> Navdata stays authoritative for stand GEOMETRY
+/// (see <see cref="GsxConcourseLetterFiller"/>'s doc for the one measured exception, the concourse
+/// LETTER). All 75 KSAN stands sit 0.36-4.50 m (median 2.16) from a same-numbered navdata stand.
+/// Where GSX and navdata BOTH publish a heading (187 KJFK stands), they agree to a median 0.24
+/// degrees, max 6.68, with no 180-degree flips. Live at RJAA (stock scenery, no profile) all 154
+/// stands have their navdata stand within 5.2 m. The POSITION stays GSX's: the offset is navdata
+/// converting metres to degrees with a flat 111,132.954 m per degree where GSX uses the WGS84
+/// ellipsoid, so GSX's point is the more precise one, and that scale bends a heading by at most
+/// 0.13 degrees (full measurement under DCK-42).
+/// </para>
+///
+/// <para>
+/// <b>Only gaps, never a second opinion.</b> A heading GSX published, or one the <c>.ini</c> join
+/// recovered (GSX's own <c>this_parking_pos</c>, joined first), is never touched; the same for a
+/// size GSX published. A stand neither source can orient stays NaN, and
+/// <c>DropUnusableHeadings</c> still drops it.
+/// </para>
+///
+/// <para>
+/// <b>Which row is the same stand.</b> Navdata rows only (their radius is FEET, DCK-7), with the
+/// spot's NUMBER, within <see cref="MatchRadiusMetres"/> (<see cref="GsxStandLetterMatch.MatchRadiusMetres"/>,
+/// whose doc carries the measurement). When one of them carries the spot's own SUFFIX, only those
+/// count: a MARS parent "20" is a different, wider stand from its child "20A", and siblings such as
+/// EGSS 15/15R (9.4 m apart, 19.7 degrees) used to refuse each other, so the stand was dropped
+/// (simulated over the fs2024 navdata: 53 such stands refused and 3 given a sibling's size before,
+/// 3.3 and 1.5 after). Candidates left that disagree with the NEAREST one on heading by more than
+/// <see cref="MaxHeadingDisagreementDegrees"/> are REFUSED, never arbitrated, and nothing is taken
+/// from a refused match. An UNNUMBERED stand (Number 0, KSFO's Northwest parking) matches an
+/// unnumbered row, and only when exactly one is in range: unnumbered stands sit a median 59.5 m
+/// apart and none within 14.5 m of another. The concourse LETTER is deliberately not compared:
+/// navdata's letter is wrong on 46 of 222 KJFK stands that are the same physical stand (see
+/// <see cref="GsxConcourseLetterFiller"/>), so a letter test would refuse true donors.
+/// </para>
+///
+/// <para>
+/// <b>The jet bridge and the airlines, unconfigured stands only [DCK-44].</b> A stand flagged
+/// <see cref="ParkingSpot.GsxUnconfigured"/> (GSX sent no <c>heading</c> and no <c>hasJetway</c>:
+/// no profile covers it) has no GSX opinion on either, so an accepted donor also lends
+/// <see cref="ParkingSpot.HasJetway"/> and, when it has any, <see cref="ParkingSpot.AirlineCodes"/>.
+/// Without it 53 of KSAN's 75 recovered gates read "no jetway": the label loses "(Jetway)" and
+/// docking says "Door on your left" for a jet bridge, a regression against the navdata list the
+/// recovered one replaces at a profile-less airport. NEVER for a stand that is not flagged: KJFK's
+/// Gate 1A lacks only its heading, GSX published its jet-bridge flag and airline codes, and only the
+/// heading is borrowed.
+/// </para>
+///
+/// <para>
+/// <b>The size.</b> Navdata's <see cref="ParkingSpot.Radius"/> is FEET and a GSX spot's is METRES
+/// (DCK-7), so it is converted. <see cref="ParkingSpot.MaxWingspanMeters"/> becomes twice that
+/// radius, because <see cref="ParkingSpot.FitsAircraft"/>'s navdata rule is "the radius holds the
+/// half-span". The fit filter therefore answers exactly what it answers on a navdata list, and
+/// SayIntentions' position match (SI-7) gets a real radius rather than 999/2 m.
+/// </para>
+///
+/// <para>
+/// <b>Pure, static, never throws.</b> The navdata read is a delegate invoked AT MOST ONCE, and not
+/// at all when no stand needs anything (this runs on the UI thread while a gate dropdown is
+/// built). <c>GateDataSource</c> hands this filler and <see cref="GsxConcourseLetterFiller"/> the
+/// same lazy read, so the path still costs one query. Mutates and returns the SAME instances, like
+/// <see cref="GsxStopPositionJoiner"/>.
+/// </para>
+/// </summary>
+public static class GsxNavdataGeometryFiller
+{
+    /// <summary>The shared same-stand radius; see <see cref="GsxStandLetterMatch.MatchRadiusMetres"/>.</summary>
+    internal const double MatchRadiusMetres = GsxStandLetterMatch.MatchRadiusMetres;
+
+    /// <summary>
+    /// How far an in-range navdata candidate may disagree with the NEAREST one on heading before the
+    /// match is refused (each candidate is compared with the nearest, not with every other).
+    /// A duplicated row for one physical stand points the same way, but a MARS pair need not
+    /// (EGSS 15/15R 19.7 degrees, EIDW 411L/411T 74.9), which is why the rows with the spot's own
+    /// suffix are kept first. The widest same-stand disagreement measured between GSX and navdata
+    /// is 6.68 degrees (KJFK).
+    /// </summary>
+    internal const double MaxHeadingDisagreementDegrees = 10.0;
+
+    private const double FeetToMetres = 0.3048;
+
+    public static List<ParkingSpot> Fill(IReadOnlyList<ParkingSpot>? apiSpots,
+                                         Func<IReadOnlyList<ParkingSpot>?>? navdata)
+    {
+        var result = new List<ParkingSpot>();
+        if (apiSpots == null) return result;
+
+        var needy = new List<ParkingSpot>();
+        foreach (var spot in apiSpots)
+        {
+            if (spot == null) continue;
+            result.Add(spot);
+            if (NeedsHeading(spot) || NeedsSize(spot)) needy.Add(spot);
+        }
+
+        if (needy.Count == 0) return result;   // navdata is never even asked for
+
+        var donors = LoadDonors(navdata);
+        int headingsNeeded = 0, headingsFilled = 0, sizesNeeded = 0, sizesFilled = 0, jetwaysFilled = 0, refused = 0;
+
+        foreach (var spot in needy)
+        {
+            bool needsHeading = NeedsHeading(spot);
+            bool needsSize = NeedsSize(spot);
+            if (needsHeading) headingsNeeded++;
+            if (needsSize) sizesNeeded++;
+
+            ParkingSpot? donor = AgreedDonor(spot, donors, out bool wasRefused);
+            if (wasRefused) { refused++; continue; }
+            if (donor == null) continue;
+
+            if (needsHeading)
+            {
+                spot.Heading = GsxProfileParser.NormalizeHeading(donor.Heading);
+                headingsFilled++;
+            }
+
+            if (needsSize && donor.Radius > 0)
+            {
+                double radiusMetres = donor.Radius * FeetToMetres;   // navdata FEET -> GSX METRES (DCK-7)
+                spot.Radius = radiusMetres;
+                spot.MaxWingspanMeters = 2.0 * radiusMetres;         // "the radius holds the half-span"
+                sizesFilled++;
+            }
+
+            // GSX has no opinion on these two for a stand no profile covers [DCK-44]; for any other
+            // stand (KJFK's Gate 1A) it published them, and they are never replaced.
+            if (spot.GsxUnconfigured)
+            {
+                spot.HasJetway = donor.HasJetway;
+                if (donor.HasJetway) jetwaysFilled++;
+                if (!string.IsNullOrEmpty(donor.AirlineCodes)) spot.AirlineCodes = donor.AirlineCodes;
+            }
+        }
+
+        LogSummary(headingsNeeded, headingsFilled, sizesNeeded, sizesFilled, jetwaysFilled,
+                   donors.Values.Sum(bucket => bucket.Count), refused);
+        return result;
+    }
+
+    /// <summary>Unnumbered stands (Number 0) need one too: they match unnumbered rows, see <see cref="AgreedDonor"/>.</summary>
+    private static bool NeedsHeading(ParkingSpot spot) => !GsxRemoteParkingReader.HasUsableHeading(spot);
+
+    private static bool NeedsSize(ParkingSpot spot) => !spot.MaxWingspanMeters.HasValue;
+
+    /// <summary>
+    /// The rows that may donate, read once and bucketed by stand number (0 = unnumbered): NAVDATA
+    /// rows only, because the size math assumes a radius in FEET (DCK-7), with a real coordinate
+    /// (<see cref="GsxStandLetterMatch.IsPlaceable"/>) and a heading.
+    /// </summary>
+    private static Dictionary<int, List<ParkingSpot>> LoadDonors(Func<IReadOnlyList<ParkingSpot>?>? navdata)
+    {
+        var donors = new Dictionary<int, List<ParkingSpot>>();
+        if (navdata == null) return donors;
+
+        IReadOnlyList<ParkingSpot>? spots;
+        try
+        {
+            spots = navdata();
+        }
+        catch (Exception ex)
+        {
+            // A failed navdata read must never cost the pilot the API list; every stand simply
+            // keeps what it had, and DropUnusableHeadings decides as it did before this filler.
+            Log.Debug("Gsx", $"navdata geometry: navdata lookup failed, nothing filled: {ex.Message}");
+            return donors;
+        }
+
+        if (spots == null) return donors;
+        foreach (var s in spots)
+        {
+            if (s == null || s.Source != GateSource.Navdata || s.Number < 0) continue;
+            if (double.IsNaN(s.Heading) || !GsxStandLetterMatch.IsPlaceable(s)) continue;
+            if (!donors.TryGetValue(s.Number, out var bucket)) donors[s.Number] = bucket = new List<ParkingSpot>();
+            bucket.Add(s);
+        }
+        return donors;
+    }
+
+    /// <summary>
+    /// The row that is the SAME stand, or null when none is. Candidates are the rows with the spot's
+    /// number within <see cref="MatchRadiusMetres"/>; when any of them carries the spot's own suffix,
+    /// only those remain (a MARS parent "20" is not its child "20A"). An unnumbered spot with more
+    /// than one candidate left, or remaining candidates that disagree with the NEAREST one on heading
+    /// by more than <see cref="MaxHeadingDisagreementDegrees"/>, sets <paramref name="wasRefused"/>
+    /// and returns null: refuse, never arbitrate.
+    /// </summary>
+    private static ParkingSpot? AgreedDonor(ParkingSpot spot, Dictionary<int, List<ParkingSpot>> donorsByNumber,
+                                            out bool wasRefused)
+    {
+        wasRefused = false;
+        if (!donorsByNumber.TryGetValue(spot.Number, out var sameNumber)) return null;
+
+        var inRange = new List<(ParkingSpot Donor, double Metres)>();
+        foreach (var donor in sameNumber)
+        {
+            double metres = TaxiGeo.HaversineMeters(spot.Latitude, spot.Longitude, donor.Latitude, donor.Longitude);
+            if (metres <= MatchRadiusMetres) inRange.Add((donor, metres));
+        }
+        if (inRange.Count == 0) return null;
+
+        if (inRange.Any(c => SameSuffix(c.Donor, spot)))
+            inRange.RemoveAll(c => !SameSuffix(c.Donor, spot));
+
+        // With no number to agree on, a second candidate is ambiguity whatever its heading.
+        if (spot.Number == 0 && inRange.Count > 1) { wasRefused = true; return null; }
+
+        var nearest = inRange.MinBy(c => c.Metres).Donor;
+        foreach (var (donor, _) in inRange)
+        {
+            if (Math.Abs(TaxiGeo.WrapDeltaDeg(donor.Heading - nearest.Heading)) > MaxHeadingDisagreementDegrees)
+            {
+                wasRefused = true;
+                return null;
+            }
+        }
+        return nearest;
+    }
+
+    private static bool SameSuffix(ParkingSpot a, ParkingSpot b)
+        => string.Equals((a.Suffix ?? string.Empty).Trim(), (b.Suffix ?? string.Empty).Trim(),
+                         StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>ONE line per call, never per stand. Warn only when a match was refused.</summary>
+    private static void LogSummary(int headingsNeeded, int headingsFilled, int sizesNeeded, int sizesFilled,
+                                   int jetwaysFilled, int donorCount, int refused)
+    {
+        string summary =
+            $"navdata geometry: {headingsNeeded} stand(s) had no GSX heading and {sizesNeeded} no GSX size; " +
+            $"filled {headingsFilled} heading(s), {sizesFilled} size(s) and {jetwaysFilled} jet-bridge flag(s) " +
+            $"from the same-numbered (or lone unnumbered) navdata stand within {MatchRadiusMetres:0.#} m " +
+            $"({donorCount} candidate stand(s)).";
+
+        if (refused > 0)
+            Log.Warn("Gsx", summary + $" {refused} stand(s) had ambiguous navdata candidates (headings more than " +
+                            $"{MaxHeadingDisagreementDegrees:0.#} degrees apart, or two unnumbered stands in range) " +
+                            "and were left alone rather than guessed at.");
+        else
+            Log.Debug("Gsx", summary);
+    }
+}
