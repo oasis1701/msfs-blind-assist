@@ -462,17 +462,20 @@ public class Pmdg777FlowOrderingTests
             // Group the flow's linked ticks by the group each item belongs to, keeping
             // flow order, then assert each group's indices only ever increase.
             //
-            // ONE item is left out, deliberately: the After Takeoff flow completes
-            // AFTER_TKOF_CL's ATKOF_GEAR ("Landing Gear: UP", listed first) from its LAST step,
-            // a read-only up-to-20 s check that the gear is physically up (lever plus the stock
-            // gear-leg positions — the 777 SDK has no gear lights), placed last so a slow gear
-            // confirmation never holds up the flaps — so it ticks after ATKOF_FLAPS.
-            // Only that one item is excused; every other item in every group, including any
-            // later added to AFTER_TKOF_CL, is still checked.
+            // TWO items are left out, deliberately, for one reason: a flow completes its
+            // read-back's gear line from its LAST step, a read-only up-to-20 s check that the gear
+            // is physically there (lever plus the stock gear-leg positions — the 777 SDK has no
+            // gear lights), placed last so a slow gear confirmation never holds up the flaps
+            // (FO-13). The After Takeoff flow completes AFTER_TKOF_CL's ATKOF_GEAR ("Landing
+            // Gear: UP", listed first) after ATKOF_FLAPS; since 2026-10-09 the Landing flow
+            // completes LANDING_CL's LDG_GEAR ("Landing Gear: DOWN", listed second) after its
+            // flap-lever check completes LDG_FLAPS. Only those two are excused; every other item
+            // in every group, including any later added to either read-back, is still checked.
             var linked = flow.Steps
                 .Select(s => s.CompletesChecklistItemId)
                 .Where(id => !string.IsNullOrEmpty(id))
                 .Where(id => !(flow.Id == "AFTER_TAKEOFF" && id == "ATKOF_GEAR"))
+                .Where(id => !(flow.Id == "LANDING" && id == "LDG_GEAR"))
                 // A line several steps deliver (both wiper sides → one "Wiper selectors: OFF";
                 // left FD, both A/T ARMs, right FD in physical MCP order → "Flight Director
                 // switches: ON" and "Autothrottle arm switches: ARM") is placed by the FIRST
@@ -533,5 +536,35 @@ public class Pmdg777FlowOrderingTests
         Assert.True(System.Math.Abs(Fraction(flow, "CP_OXY_TEST_CAPT")
                                   - Fraction(items, "PF_OXY_TEST_CAPT")) < 0.25,
             "the oxygen test must not sit near the top of the flow and the bottom of the checklist");
+    }
+
+    // =====================================================================
+    // 8. Flows tick their checklist, made honest (2026-10-09)
+    //
+    // A finished flow ticks and latches every line of its groups, so every line the First
+    // Officer can read or act on has a step behind it: a write that links it, or a read-only
+    // check. Each new step sits where its line sits in the procedure.
+    // =====================================================================
+
+    [Fact]
+    public void Flap_lever_checks_sit_where_their_lines_are_flown()
+    {
+        // Before Taxi: right after the plan-gated flap steps, before the packs.
+        var bt = FlowStepIds("BEFORE_TAXI");
+        Assert.Equal(bt.IndexOf("BT_FLAPS_25") + 1, bt.IndexOf("BT_FLAPS_CHECK"));
+        AssertOrder(bt, "BT_FLAPS_CHECK", "BT_PACK_L_AUTO");
+
+        // Before Takeoff: after the Captain's flap confirmation, and last.
+        var btkof = FlowStepIds("BEFORE_TAKEOFF");
+        Assert.Equal(btkof.IndexOf("BTKOF_FLAPS_CONFIRM") + 1, btkof.IndexOf("BTKOF_FLAPS_CHECK"));
+        Assert.Equal("BTKOF_FLAPS_CHECK", btkof[^1]);
+
+        // Landing: right before the gear check, which stays LAST (FO-13).
+        var ld = FlowStepIds("LANDING");
+        Assert.Equal(new[] { "LD_FLAPS_CHECK", "LD_GEAR_DOWN_CHECK" }, ld.Skip(ld.Count - 2).ToArray());
+
+        // Shutdown: right after the fuel pumps, as the Shutdown Checklist reads.
+        var sd = FlowStepIds("SHUTDOWN");
+        Assert.Equal(sd.IndexOf("SD_FUEL_PUMPS") + 1, sd.IndexOf("SD_FLAPS_UP_CHECK"));
     }
 }

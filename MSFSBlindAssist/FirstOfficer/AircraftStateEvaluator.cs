@@ -258,8 +258,14 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // FlapsLeverPosition() == 0 read "flaps up" before the first CDA snapshot and the After
     // Takeoff flaps steps said "Already set" over data that had not arrived.
     public bool AreFlapsUp()              => IsPosition("FCTL_Flaps_Lever", 0);
-    public bool AreFlapsForTakeoff()      => FlapsLeverPosition() >= 1 && FlapsLeverPosition() <= 3;
-    public bool AreFlapsForLanding()      => FlapsLeverPosition() >= 4;
+    // The read-back lines' own lever ranges — "Flaps: Set for takeoff" (BTKOF_FLAPS) and "Flaps:
+    // Set for landing" (LDG_FLAPS) — shared with the flows' read-only lever checks and their
+    // "Already set", so the three can never disagree. False for an unread lever (NaN). The takeoff
+    // range used to stop at 3 here, as the line once did (Pmdg777TakeoffFlapsTests).
+    public static bool IsTakeoffFlapLever(double lever) => lever >= 1 && lever <= 4;   // flaps 1, 5, 15 or 20
+    public static bool IsLandingFlapLever(double lever) => lever >= 4;                 // flaps 20, 25 or 30
+    public bool AreFlapsForTakeoff()      => IsTakeoffFlapLever(GetValue("FCTL_Flaps_Lever"));
+    public bool AreFlapsForLanding()      => IsLandingFlapLever(GetValue("FCTL_Flaps_Lever"));
 
     // The speed-brake lever is main's L:switch_498_a (0 / 200 / 300 / 400), never the SDK's
     // truncating FCTL_Speedbrake_Lever byte — see Pmdg777SpeedbrakeLever. NaN until read.

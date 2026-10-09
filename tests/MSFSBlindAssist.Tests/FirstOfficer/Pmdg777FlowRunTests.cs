@@ -47,8 +47,10 @@ public class Pmdg777FlowRunTests
 
     /// <summary>Runs <paramref name="stepIds"/> (in flow order) of the real flow
     /// <paramref name="flowId"/>, then latches its completion groups as the form does. A read-only
-    /// check waits 1 s instead of its 20 s: the same timeout path (the 20 s is pinned on the real
-    /// step), in a test that cannot move the lever.</summary>
+    /// check waits 1 s instead of its real timeout: the same timeout path, in a test that cannot
+    /// move the lever. What is pinned on the real steps, and where: exactly 20 s on the four
+    /// flap-lever checks (Pmdg777FlapLeverCheckTests); only the 1-30 s window on the After Takeoff
+    /// flap check and the two gear checks (Pmdg777AfterTakeoffFlapsTests, Pmdg777LandingGearCheckTests).</summary>
     internal static async Task<Run> RunAsync(AircraftStateEvaluator state, string flowId, params string[] stepIds)
     {
         var source = PMDG777FlowDefinitions.Build().Single(f => f.Id == flowId);
@@ -120,5 +122,28 @@ public class Pmdg777FlowRunTests
         Assert.True(run.Line("LANDING_CL", "LDG_SPEEDBRAKE").IsChecked);
         Assert.Null(run.Line("LANDING_CL", "LDG_SPEEDBRAKE").CheckAction);
         Assert.True(run.Line("LANDING", "LDA_SPEEDBRAKE").IsChecked);
+    }
+
+    // ---- Before Takeoff: "Flaps: Set for takeoff" ticks only off the lever ---------------------
+
+    // The lever is unread here (no CDA snapshot), so the check's condition is false, exactly as for
+    // a lever at UP (that the condition rejects UP is pinned in Pmdg777FlapLeverCheckTests).
+    [Fact]
+    public async Task A_flap_check_that_cannot_confirm_the_lever_is_heard_skipped_and_keeps_the_line_open()
+    {
+        var run = await RunAsync(Available(() => null), "BEFORE_TAKEOFF", "BTKOF_FLAPS_CHECK");
+
+        Assert.Equal(new[]
+        {
+            "Before Takeoff flow started",
+            "Waiting for: Flap lever: takeoff",
+            "Timed out waiting for: Flap lever: takeoff",
+            "Skipping: Flap lever: takeoff",
+            "Before Takeoff flow complete",
+        }, run.Speech);
+        Assert.Equal(new[] { "BTKOF_FLAPS" }, run.Unfinished);
+        Assert.False(run.Line("BEFORE_TKOF_CL", "BTKOF_FLAPS").IsChecked);
+        Assert.True(run.Line("BEFORE_TKOF_CL", "BTKOF_FLAPS").ExemptFromCompletionLatch);
+        Assert.True(run.Latched("BEFORE_TKOF_CL"));
     }
 }

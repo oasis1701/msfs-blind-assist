@@ -468,7 +468,8 @@ public static class PMDG777ChecklistDefinitions
                 action: (e, _) => e.SetStormLights(0)),
             Manual("BT_ANTI_ICE", "BEFORE_TAXI", "Engine Anti-Ice selectors: As needed"),
             // Sets the SimBrief-planned takeoff flaps (defaults to flaps 5 with no OFP) —
-            // the same source the Before Taxi flow uses.
+            // the same source the Before Taxi flow uses. The flow's read-only lever check
+            // (BT_FLAPS_CHECK) completes it once the lever is at a takeoff detent.
             ActionManual("BT_FLAPS", "BEFORE_TAXI", "Flap lever: Set for takeoff (from SimBrief perf data)",
                 (e, s) => e.SetFlapsPosition(AircraftActionExecutor.FlapDegreesToPosition(s.GetTakeoffFlaps()))),
             Auto("BT_PACKS", "BEFORE_TAXI", "Packs: AUTO",
@@ -553,9 +554,11 @@ public static class PMDG777ChecklistDefinitions
             // PMDG's Before Takeoff Checklist is this one line ("Flaps .. Confirm Set for Takeoff",
             // FOB-4). "V speeds: Checked" and "Altitude: Set initial climb" came with the first
             // 777 commit, when the First Officer still programmed the FMC, and are on no PMDG page.
-            // Flap target depends on SimBrief perf data — no fixed action value
+            // Flap target depends on SimBrief perf data — no fixed action value. Lever 1-4 (flaps
+            // 1, 5, 15 or 20); the Before Takeoff flow's read-only check (BTKOF_FLAPS_CHECK) waits
+            // for the same range.
             Auto("BTKOF_FLAPS", "BEFORE_TKOF_CL", "Flaps: Set for takeoff",
-                "FCTL_Flaps_Lever", v => v >= 1 && v <= 4),   // 1, 5, 15 or 20 (detents 1-4)
+                "FCTL_Flaps_Lever", AircraftStateEvaluator.IsTakeoffFlapLever),
         }
     };
 
@@ -713,9 +716,10 @@ public static class PMDG777ChecklistDefinitions
             Auto("LDG_GEAR", "LANDING_CL", "Landing Gear: DOWN",
                 Pmdg777GearConfirmation.DownField, v => v > 0.5,
                 action: null),
-            // Landing flap target depends on approach — no fixed action value
+            // Landing flap target depends on approach — no fixed action value. Lever 20 or more;
+            // the Landing flow's read-only check (LD_FLAPS_CHECK) waits for the same range.
             Auto("LDG_FLAPS", "LANDING_CL", "Flaps: Set for landing",
-                "FCTL_Flaps_Lever", v => v >= 4),
+                "FCTL_Flaps_Lever", AircraftStateEvaluator.IsLandingFlapLever),
         }
     };
 

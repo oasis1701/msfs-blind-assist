@@ -455,6 +455,14 @@ public static class PMDG777FlowDefinitions
             Skip(Momentary("BT_FLAPS_15", "Flaps: 15", "EVT_CONTROL_STAND_FLAPS_LEVER_15"), s => s.GetTakeoffFlaps() != 15),
             Skip(Momentary("BT_FLAPS_20", "Flaps: 20", "EVT_CONTROL_STAND_FLAPS_LEVER_20"), s => s.GetTakeoffFlaps() != 20),
             Skip(Momentary("BT_FLAPS_25", "Flaps: 25", "EVT_CONTROL_STAND_FLAPS_LEVER_25"), s => s.GetTakeoffFlaps() != 25),
+            // Read-only: completes "Flap lever: Set for takeoff" (BT_FLAPS) once the LEVER is at a
+            // takeoff detent — the Before Takeoff Checklist line's own range, flaps 1, 5, 15 or 20.
+            // The plan-gated steps above cannot carry the link: the four not planned skip as
+            // "Already set", which would tick the line whatever the planned one did (FO-6). Never
+            // writes; up to 20 s, then skipped aloud, and the line stays open until the lever agrees.
+            Skip(WaitForField("BT_FLAPS_CHECK", "Flap lever: takeoff", "FCTL_Flaps_Lever",
+                    AircraftStateEvaluator.IsTakeoffFlapLever, 20, checklistItemId: "BT_FLAPS"),
+                s => s.AreFlapsForTakeoff()),
             // Packs: both to AUTO for departure (skip each if already AUTO)
             Skip(SW("BT_PACK_L_AUTO", "Pack left: AUTO",  "EVT_OH_AIRCOND_PACK_SWITCH_L", 1, checklistItemId: "BT_PACKS"),
                 s => s.IsPack1Auto()),
@@ -473,7 +481,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "BEFORE_TAKEOFF",
         Name = "Before Takeoff",
-        Description = "Arms lights, transponder, LNAV/VNAV, and FO instruments for runway lineup.",
+        Description = "Arms lights, transponder, LNAV/VNAV, and FO instruments for runway lineup, then confirms the takeoff flap lever.",
         RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF", "BEFORE_TKOF_CL" },
         Steps = new()
         {
@@ -496,6 +504,13 @@ public static class PMDG777FlowDefinitions
             Skip(Momentary("BTKOF_VNAV", "VNAV: Verify armed", "EVT_MCP_VNAV_SWITCH", "BTKO_VNAV"),
                 s => s.IsOn("MCP_annunVNAV")),
             Captain("BTKOF_FLAPS_CONFIRM", "Confirm flap setting for takeoff"),
+            // Read-only: completes PMDG's one Before Takeoff Checklist line, "Flaps: Set for
+            // takeoff" (BTKOF_FLAPS), once the LEVER is at a takeoff detent (the line's own range).
+            // Never writes — the Captain sets the flaps. Up to 20 s after the reminder above, then
+            // skipped aloud, and the line stays open until the lever agrees.
+            Skip(WaitForField("BTKOF_FLAPS_CHECK", "Flap lever: takeoff", "FCTL_Flaps_Lever",
+                    AircraftStateEvaluator.IsTakeoffFlapLever, 20, checklistItemId: "BTKOF_FLAPS"),
+                s => s.AreFlapsForTakeoff()),
         }
     };
 
@@ -599,7 +614,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "LANDING",
         Name = "Landing",
-        Description = "Speedbrake armed and missed approach altitude set for landing, then confirms the gear is down.",
+        Description = "Speedbrake armed and missed approach altitude set for landing, then confirms the landing flap lever and the gear down.",
         RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
         Steps = new()
         {
@@ -617,10 +632,18 @@ public static class PMDG777FlowDefinitions
                 s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
             // The 737's "Engine start switches: CONT" is deliberately NOT mirrored here —
             // 777 ignition is automatic and needs no CONT selection for landing.
+
             // Delivers the Landing section's "Set the missed approach altitude" (LDA_MISSED), as
             // the PMDG 737's LD_MISSED does: a Captain reminder is its line's step, and the
             // finished flow ticks the line.
             Captain("LD_MISSED",      "Set the missed approach altitude"),
+            // Read-only: completes "Flaps: Set for landing" (LDG_FLAPS) once the LEVER is at 20 or
+            // more (the line's own range). Never writes — the Captain sets the flaps. Before the
+            // gear check, which stays LAST (FO-13), so the Landing Checklist ticks its flaps line
+            // before its gear line (the exception Pmdg777FlowOrderingTests names).
+            Skip(WaitForField("LD_FLAPS_CHECK", "Flap lever: landing", "FCTL_Flaps_Lever",
+                    AircraftStateEvaluator.IsLandingFlapLever, 20, checklistItemId: "LDG_FLAPS"),
+                s => s.AreFlapsForLanding()),
             // Read-only gear-down confirmation — it never moves the lever. The 777 SDK exposes
             // no gear-indication lights, so the crew's "three green" is composed from the lever
             // DOWN and all three legs fully extended per the stock GEAR x POSITION SimVars
@@ -732,6 +755,13 @@ public static class PMDG777FlowDefinitions
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 0),     ("EVT_OH_FUEL_PUMP_2_AFT", 0),
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 0),  ("EVT_OH_FUEL_PUMP_R_CENTER", 0)), "SDCL_FUEL_PUMPS"),
+            // Read-only: completes the Shutdown Checklist's "Flaps: UP" (SDCL_FLAPS_UP) once the
+            // LEVER reads UP — the line's own condition, the After Takeoff check's shape. The flaps
+            // came up in After Landing; this never writes, waits up to 20 s, and a timeout keeps
+            // the line out of the latch. After the fuel pumps, as the Shutdown Checklist reads.
+            Skip(WaitForField("SD_FLAPS_UP_CHECK", "Flap lever: UP", "FCTL_Flaps_Lever", v => v < 0.5, 20,
+                    checklistItemId: "SDCL_FLAPS_UP"),
+                s => s.AreFlapsUp()),
             Skip(SW("SD_BEACON_OFF",  "Beacon: OFF",              "EVT_OH_LIGHTS_BEACON",       0,
                "LTS_Beacon_Sw_ON", v => v < 0.5, "SD_BEACON_OFF"),
                 s => !s.IsBeaconOn()),

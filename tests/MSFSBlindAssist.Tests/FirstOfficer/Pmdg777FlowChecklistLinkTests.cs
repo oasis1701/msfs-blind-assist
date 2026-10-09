@@ -357,16 +357,12 @@ public class Pmdg777FlowChecklistLinkTests
             // Before Start: seat belts are set ON in Cockpit Prep, not here; the APU start's
             // Stop-policy APU-running wait aborts the flow before any latch if it fails.
             // Before Taxi: autobrake RTO is set in Cockpit Prep; recall has no flow step.
-            // Before Taxi "Flap lever: Set for takeoff" (BT_FLAPS): its five plan-gated flap
-            // steps are NOT linked — the four not planned skip as "Already set", which would tick
-            // the line whatever the planned step does.
-            // Before Takeoff "Flaps: Set for takeoff" and Landing "Flaps: Set for landing": the
-            // captain sets the flaps; no flow step writes them.
             // Cockpit Prep: battery, ADIRU, demand pumps, nav lights and gear DOWN are set in
             // Electrical Power Up; no step turns the fuel pumps OFF.
             // Descent: recall is a Captain reminder.
             // Engine start selectors: StayComplete on N2 (never linked — see above).
-            // Shutdown Checklist "Flaps: UP": the flaps are retracted in After Landing.
+            // (Every flaps line has a read-only lever check since 2026-10-09:
+            // Pmdg777FlapLeverCheckTests.)
             // --- Manual verification lines (no state, no action) the flow still latches ---
             // (trim, CDU, V speeds, MCP, altimeters, anti-ice, flight controls, recall, oil
             // pressure, WX radar, APU, the Shutdown Checklist's parking brake "As required") —
@@ -387,14 +383,12 @@ public class Pmdg777FlowChecklistLinkTests
             "BEFORE_START/BS_SEAT_BELTS",
             "BEFORE_START/BS_STAB_TRIM",
             "BEFORE_START/BS_V2_SET",
-            "BEFORE_TAKEOFF/BTKOF_FLAPS",
             "BEFORE_TAXI/BTCL_ANTI_ICE",
             "BEFORE_TAXI/BTCL_AUTOBRAKE",
             "BEFORE_TAXI/BTCL_FCTL",
             "BEFORE_TAXI/BTCL_RECALL",
             "BEFORE_TAXI/BT_ANTI_ICE",
             "BEFORE_TAXI/BT_FCTL_CHECK",
-            "BEFORE_TAXI/BT_FLAPS",
             "BEFORE_TAXI/BT_RECALL",
             "COCKPIT_PREP/PF_ADIRU",
             "COCKPIT_PREP/PF_BARO_SET",
@@ -413,8 +407,6 @@ public class Pmdg777FlowChecklistLinkTests
             "ENGINE_START/ES_ENG1_START_SEL",
             "ENGINE_START/ES_ENG2_OIL_PRESS",
             "ENGINE_START/ES_ENG2_START_SEL",
-            "LANDING/LDG_FLAPS",
-            "SHUTDOWN/SDCL_FLAPS_UP",
             "SHUTDOWN/SDCL_HYD",
             "SHUTDOWN/SDCL_PARK_BRAKE",
             "SHUTDOWN/SDCL_WX_RADAR",
