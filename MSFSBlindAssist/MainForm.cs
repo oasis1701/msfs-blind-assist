@@ -676,7 +676,8 @@ public partial class MainForm : Form
             eventName => simConnectManager.SendEvent(eventName),
             msg => announcer.AnnounceImmediate(msg),
             // AP engage routes through the current aircraft def: PMDG jets press their own
-            // MCP switch (CMD A / A/P L), everything else falls back to stock AUTOPILOT_ON.
+            // MCP switch (CMD A / A/P L), the FlyByWire family AP 1 (FO-21), everything else
+            // falls back to stock AUTOPILOT_ON.
             () => currentAircraft?.EngageAutopilot(simConnectManager),
             // ...and is verified against the def's engaged-readback where it has one, so a
             // press the aircraft rejected is retried instead of being announced as success.
@@ -696,6 +697,9 @@ public partial class MainForm : Form
             // Per-aircraft engage floor — the 737 refuses CMD below 400 ft RA after takeoff.
             universalAutomation.MinimumApEngageAltitudeAgl =
                 currentAircraft?.MinimumAutopilotEngageAltitudeAgl ?? 0;
+            // Per-aircraft press spacing — the FlyByWire AP 1 push is a toggle (FO-21).
+            universalAutomation.ApRetryIntervalMs =
+                currentAircraft?.AutopilotEngageRetryIntervalMs ?? 0;
             if (!universalAutomation.AnyEnabled) return;   // zero SimConnect load when disabled
             simConnectManager.RequestAircraftPosition();
             simConnectManager.RequestFOAltitudeAGL();

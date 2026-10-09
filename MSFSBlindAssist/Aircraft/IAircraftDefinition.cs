@@ -333,8 +333,9 @@ public interface IAircraftDefinition
     /// <summary>
     /// Engage the autopilot for the universal auto-AP-engage feature. The default fires the
     /// stock <c>AUTOPILOT_ON</c> event; aircraft whose autopilot ignores or misreads that
-    /// (the PMDG jets — CMD A on the 737, A/P L on the 777) override to press their own MCP
-    /// engage switch. Implementations should no-op if the autopilot is already engaged so a
+    /// override to press their own engage switch: the PMDG jets (CMD A on the 737, A/P L on the
+    /// 777) and the FlyByWire family (AP 1 — FBW captures AUTOPILOT_ON into a flag nothing
+    /// reads, FO-21). Implementations should no-op if the autopilot is already engaged so a
     /// toggle-style engage switch can't disconnect it.
     /// </summary>
     void EngageAutopilot(SimConnect.SimConnectManager simConnect);
@@ -355,6 +356,14 @@ public interface IAircraftDefinition
     /// <c>false</c> over an engaged autopilot would disconnect it.
     /// </summary>
     bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect);
+
+    /// <summary>
+    /// Minimum time (ms) the universal auto-engage waits after a press before pressing again or
+    /// giving up. 0 = retry every tick. An aircraft whose engage is a TOGGLE and whose engaged
+    /// state reaches the cache no faster than the 1 Hz feed sets it (the FlyByWire family: 3000,
+    /// FO-21), so a retry never lands on an autopilot the previous press already engaged.
+    /// </summary>
+    int AutopilotEngageRetryIntervalMs { get; }
 
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)
