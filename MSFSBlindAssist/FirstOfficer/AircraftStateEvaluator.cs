@@ -181,6 +181,12 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool AreWingFuelPumpsOn() =>
         IsFuelPump1FwdOn() && IsFuelPump2FwdOn() && IsFuelPump1AftOn() && IsFuelPump2AftOn();
     public bool IsEitherCenterPumpOn() => IsFuelPump1CtrOn() || IsFuelPump2CtrOn();
+    // All six pump switches OFF. NaN-safe (IsPosition): "!IsOn" would read an unread switch as
+    // OFF, and Cockpit Prep's pumps-off step would say "Already set" before the first CDA snapshot.
+    public bool AreAllFuelPumpsOff() =>
+        IsPosition("FUEL_PumpFwd_Sw_0", 0) && IsPosition("FUEL_PumpFwd_Sw_1", 0) &&
+        IsPosition("FUEL_PumpAft_Sw_0", 0) && IsPosition("FUEL_PumpAft_Sw_1", 0) &&
+        IsPosition("FUEL_PumpCtr_Sw_0", 0) && IsPosition("FUEL_PumpCtr_Sw_1", 0);
 
     // Fuel Control: 0=CUTOFF, 1=RUN in PMDG data
     public bool IsEng1FuelControlRun()    => IsOn("ENG_FuelControl_Sw_RUN_0");

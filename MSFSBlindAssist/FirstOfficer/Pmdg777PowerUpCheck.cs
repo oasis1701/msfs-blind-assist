@@ -37,11 +37,12 @@ public static class Pmdg777PowerUpCheck
         };
 
     /// <summary>1 when every condition holds, 0 when any does not, NaN when any input is unread —
-    /// ChecklistManager then neither ticks nor reverts, and the check keeps waiting.</summary>
+    /// an unknown reading keeps the check waiting, because NaN fails its condition. No checklist
+    /// line reads this field; only the flow's check and the evaluator's IsPowerUpConfirmed do.</summary>
     public static double Value(Func<string, double> read)
     {
-        var readings = Conditions.Select(c => (c.Holds, Value: read(c.Input))).ToList();
-        if (readings.Any(r => double.IsNaN(r.Value))) return double.NaN;
-        return readings.All(r => r.Holds(r.Value)) ? 1 : 0;
+        var readings = Conditions.Select(c => (c.Holds, Reading: read(c.Input))).ToList();
+        if (readings.Any(r => double.IsNaN(r.Reading))) return double.NaN;
+        return readings.All(r => r.Holds(r.Reading)) ? 1 : 0;
     }
 }

@@ -130,10 +130,21 @@ public static class PMDG777FlowDefinitions
     {
         Id = "COCKPIT_PREP",
         Name = "Cockpit Preparation",
-        Description = "Sets all overhead systems to preflight state. Run after electrical power is established.",
+        Description = "Checks the power-up state, then sets all overhead systems to preflight state. Run after electrical power is established.",
         RelatedChecklistGroupIds = new[] { "PREFLIGHT" },
         Steps = new()
         {
+            // Read-only, never writes: the five Preflight lines the Electrical Power Up flow set
+            // (battery, ADIRU, demand pumps OFF, nav lights, gear lever DOWN) had no step here, so
+            // a finished run latched them over whatever the switches read (FO-7). One check on
+            // Pmdg777PowerUpCheck's synthetic (1 only when all five lines' own conditions hold,
+            // NaN while any input is unread) delivers all five; a timeout is heard skipped and each
+            // line then follows its own switch. First, as PMDG's Preflight Procedure opens with the
+            // battery and the Preflight group lists these lines first.
+            Also(Skip(WaitForField("CP_POWER_UP_CHECK", "Battery, ADIRU, demand pumps, nav lights and gear: checked",
+                    Pmdg777PowerUpCheck.Field, v => v > 0.5, 20, checklistItemId: "PF_BATTERY"),
+                s => s.IsPowerUpConfirmed()),
+                "PF_ADIRU", "PF_DEMAND_PUMPS_OFF", "PF_NAV_LIGHTS", "PF_GEAR_DOWN"),
             Skip(SW("CP_IFE",          "IFE/Pass Seats: ON",        "EVT_OH_ELEC_IFE",                    1,
                checklistItemId: "PF_IFE"),
                 s => s.IsIFEPassSeatsOn()),
@@ -210,6 +221,15 @@ public static class PMDG777FlowDefinitions
                checklistItemId: "PF_JETTISON_OFF"),
             Multi("CP_XFEED_OFF", "Crossfeed: OFF", "PF_CROSSFEED_OFF",
                 ("EVT_OH_FUEL_CROSSFEED_FORWARD", 0), ("EVT_OH_FUEL_CROSSFEED_AFT", 0)),
+            // PMDG's Preflight runs "CROSSFEED switches — OFF", then "FUEL PUMP switches — OFF"
+            // (FOB-4); the flow had no step for the pumps, so "Fuel pumps: OFF" was latched over
+            // pumps nobody checked. Shutdown's six-pump write, wing pumps before centre pumps
+            // (FOB-12: the centre falling edge must see the wing pumps already off).
+            Skip(Multi("CP_FUEL_PUMPS_OFF", "Fuel pumps: OFF", "PF_FUEL_PUMPS_OFF",
+                ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
+                ("EVT_OH_FUEL_PUMP_1_AFT", 0),     ("EVT_OH_FUEL_PUMP_2_AFT", 0),
+                ("EVT_OH_FUEL_PUMP_L_CENTER", 0),  ("EVT_OH_FUEL_PUMP_R_CENTER", 0)),
+                s => s.AreAllFuelPumpsOff()),
             SW("CP_WING_ANTI_ICE","Wing anti-ice: AUTO",       "EVT_OH_ICE_WING_ANTIICE",            1,
                checklistItemId: "PF_WING_ANTI_ICE"),
             Multi("CP_ENG_ANTI_ICE","Engine anti-ice: AUTO", "PF_ENG_ANTI_ICE",

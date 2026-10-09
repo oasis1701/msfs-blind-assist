@@ -95,11 +95,33 @@ public class Pmdg777PowerUpCheckTests
         }
     }
 
+    // Pins only the unread state: the evaluator wiring is checked in the sim (the 777 evaluator has no CDA seam).
     [Fact]
-    public void The_evaluator_serves_the_field_and_it_is_unknown_with_no_data()
+    public void The_field_is_unknown_and_unconfirmed_with_no_data()
     {
         var eval = new AircraftStateEvaluator();
         Assert.True(double.IsNaN(eval.GetValue(Pmdg777PowerUpCheck.Field)));
         Assert.False(eval.IsPowerUpConfirmed());
+    }
+
+    [Fact]
+    public void Cockpit_prep_opens_with_a_read_only_check_that_delivers_the_five_lines()
+    {
+        var steps = PMDG777FlowDefinitions.Build().Single(f => f.Id == "COCKPIT_PREP").Steps;
+        var step = steps[0];
+
+        Assert.Equal("CP_POWER_UP_CHECK", step.Id);
+        Assert.Equal("Battery, ADIRU, demand pumps, nav lights and gear: checked", step.Label);
+        Assert.Equal(FlowStepActionType.WaitForCondition, step.ActionType);
+        Assert.Null(step.EventName);              // read-only: it never moves a switch
+        Assert.Empty(step.MultiActions);
+        Assert.Equal(Pmdg777PowerUpCheck.Field, step.ConditionFieldName);
+        Assert.True(step.Condition!(1));
+        Assert.False(step.Condition!(0));
+        Assert.False(step.Condition!(double.NaN));
+        Assert.Equal(FlowStepFailurePolicy.Skip, step.FailurePolicy);
+        Assert.Equal(20, step.TimeoutSeconds);
+        Assert.Equal(Lines, step.LinkedChecklistItemIds.ToArray());
+        Assert.False(step.SkipCondition!(new AircraftStateEvaluator()));
     }
 }

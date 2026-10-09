@@ -598,4 +598,18 @@ public class Pmdg777FlowOrderingTests
         // Descent Setup: the RECALL push keeps the reminder's place.
         AssertOrder(FlowStepIds("DESCENT_SETUP"), "DSC_EFIS_FO_RANGE", "DSC_RECALL", "DSC_APPROACH_BRIEF");
     }
+
+    [Fact]
+    public void Cockpit_prep_checks_the_power_up_first_and_turns_the_pumps_off_beside_crossfeed()
+    {
+        var cp = FlowStepIds("COCKPIT_PREP");
+        // The power-up lines head the Preflight group (PF_BATTERY, PF_ADIRU) and PMDG's Preflight
+        // Procedure opens with the battery, so the check opens the flow.
+        Assert.Equal("CP_POWER_UP_CHECK", cp[0]);
+        // PMDG's order (FOB-4): CROSSFEED switches OFF, then FUEL PUMP switches OFF; the
+        // Preflight group lists the two lines the same way.
+        Assert.Equal(cp.IndexOf("CP_XFEED_OFF") + 1, cp.IndexOf("CP_FUEL_PUMPS_OFF"));
+        var items = ItemIds("PREFLIGHT");
+        Assert.Equal(items.IndexOf("PF_CROSSFEED_OFF") + 1, items.IndexOf("PF_FUEL_PUMPS_OFF"));
+    }
 }

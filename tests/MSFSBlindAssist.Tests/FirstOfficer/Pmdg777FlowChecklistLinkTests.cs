@@ -347,7 +347,13 @@ public class Pmdg777FlowChecklistLinkTests
 
     // Characterization of what is still latched with no step behind it: every non-reminder line
     // in a latched group that no step of the flow names. Each is a known, reviewed gap — a failed
-    // step cannot leave these live. Change this list deliberately.
+    // step cannot leave these live. Change this list deliberately. Since 2026-10-09 every line
+    // the First Officer can read or act on has a write or a read-only check behind it, bar the
+    // two exceptions below (the shared rule "flows tick their checklist, made honest"): the
+    // flap-lever checks (Pmdg777FlapLeverCheckTests), Cockpit Prep's power-up check
+    // (Pmdg777PowerUpCheckTests) and the reused writes (Pmdg777HonestTickingTests: the seat
+    // belts, autobrake RTO, the fuel pumps OFF, and the action-group RECALL lines BT_RECALL and
+    // DSCA_RECALL; their READ-BACK lines, BTCL_RECALL and DSC_RECALL, stay pilot-confirmed).
     [Fact]
     public void Lines_latched_with_no_delivering_step_are_the_known_set()
     {
@@ -356,15 +362,10 @@ public class Pmdg777FlowChecklistLinkTests
             // --- Lines with readable state or a CheckAction, but no step in this flow ---
             // Before Start: the APU start's Stop-policy APU-running wait aborts the flow before any
             // latch if it fails.
-            // Cockpit Prep: battery, ADIRU, demand pumps, nav lights and gear DOWN are set in
-            // Electrical Power Up; no step turns the fuel pumps OFF.
             // Engine start selectors: StayComplete on N2 (never linked — see above).
-            // (Since 2026-10-09 every flaps line has a delivering step, a write or a read-only
-            // lever check (Pmdg777FlapLeverCheckTests), and the seat belts, autobrake RTO and
-            // both recall lines have a write (Pmdg777HonestTickingTests).)
             // --- Manual verification lines (no state, no action) the flow still latches ---
-            // (trim, CDU, V speeds, MCP, altimeters, anti-ice, flight controls, recall, oil
-            // pressure, WX radar, APU, the Shutdown Checklist's parking brake "As required") —
+            // (trim, CDU, V speeds, MCP, altimeters, anti-ice, flight controls, recall read-backs,
+            // oil pressure, WX radar, APU, the Shutdown Checklist's parking brake "As required") —
             // delivered by the pilot or a Captain reminder step.
             "AFTER_LANDING/AL_WX_RADAR_OFF",
             "APPROACH_SETUP/APP_ALTIMETERS",
@@ -385,15 +386,9 @@ public class Pmdg777FlowChecklistLinkTests
             "BEFORE_TAXI/BTCL_RECALL",
             "BEFORE_TAXI/BT_ANTI_ICE",
             "BEFORE_TAXI/BT_FCTL_CHECK",
-            "COCKPIT_PREP/PF_ADIRU",
             "COCKPIT_PREP/PF_BARO_SET",
-            "COCKPIT_PREP/PF_BATTERY",
             "COCKPIT_PREP/PF_CDU_PREFLIGHT",
-            "COCKPIT_PREP/PF_DEMAND_PUMPS_OFF",
             "COCKPIT_PREP/PF_FMC_PERF",
-            "COCKPIT_PREP/PF_FUEL_PUMPS_OFF",
-            "COCKPIT_PREP/PF_GEAR_DOWN",
-            "COCKPIT_PREP/PF_NAV_LIGHTS",
             "DESCENT_SETUP/DSC_AUTOBRAKE",
             "DESCENT_SETUP/DSC_LANDING_DATA",
             "DESCENT_SETUP/DSC_RECALL",

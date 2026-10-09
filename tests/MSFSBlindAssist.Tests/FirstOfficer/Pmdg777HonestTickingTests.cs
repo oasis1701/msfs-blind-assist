@@ -10,9 +10,9 @@ namespace MSFSBlindAssist.Tests;
 /// PMDG 777 flows tick their checklist, made honest (2026-10-09). A finished flow ticks and
 /// latches every line of its groups (FO-7), so a line the First Officer can read or act on needs a
 /// step behind it, or it is latched over whatever the aircraft reads. These lines had none; each now
-/// gets a write of its own (the seat-belt sign ON, autobrake RTO, a RECALL press; "Already set" when
-/// the aircraft is there), linked to the lines it delivers (FO-6), so a failed write is heard
-/// skipped and its lines stay open.
+/// gets a write of its own (the seat-belt sign ON, autobrake RTO, a RECALL press, the six fuel pumps
+/// OFF; "Already set" when the aircraft is there), linked to the lines it delivers (FO-6), so a
+/// failed write is heard skipped and its lines stay open.
 /// </summary>
 public class Pmdg777HonestTickingTests
 {
@@ -62,6 +62,29 @@ public class Pmdg777HonestTickingTests
         Assert.False(new AircraftStateEvaluator().IsAutobrakRTO());
         Assert.False(Step("COCKPIT_PREP", "CP_AUTOBRAKE").SkipCondition!(new AircraftStateEvaluator()));
     }
+
+    [Fact]
+    public void Cockpit_prep_turns_the_fuel_pumps_off_wing_pumps_first()
+    {
+        // The Shutdown flow's six-pump write, wing pumps before centre pumps (FOB-12: the centre
+        // falling edge must see the wing pumps already off, or a manual-off latch is set).
+        var step = Step("COCKPIT_PREP", "CP_FUEL_PUMPS_OFF");
+        Assert.Equal("Fuel pumps: OFF", step.Label);
+        Assert.Equal(FlowStepActionType.SetSwitchMultiple, step.ActionType);
+        Assert.Equal(new (string, int?)[]
+        {
+            ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
+            ("EVT_OH_FUEL_PUMP_1_AFT", 0), ("EVT_OH_FUEL_PUMP_2_AFT", 0),
+            ("EVT_OH_FUEL_PUMP_L_CENTER", 0), ("EVT_OH_FUEL_PUMP_R_CENTER", 0),
+        }, step.MultiActions.ToArray());
+        Assert.Equal(new[] { "PF_FUEL_PUMPS_OFF" }, step.LinkedChecklistItemIds.ToArray());
+        Assert.False(step.SkipCondition!(new AircraftStateEvaluator()));
+    }
+
+    // An unread pump is not OFF: before the first CDA snapshot the step must not say "Already set".
+    [Fact]
+    public void Unread_fuel_pumps_are_not_all_off() =>
+        Assert.False(new AircraftStateEvaluator().AreAllFuelPumpsOff());
 
     // The same press as each line's own action (AircraftActionExecutor.PushCancelRecall: a
     // momentary EVT_DSP_CANC_RCL_SWITCH); the pilot reads the messages it brings up.
