@@ -266,15 +266,17 @@ public static class FenixFlowDefinitions
                 s => s.IsPosition("S_ENG_MODE", 2)), "ES_MODE"),
             // Engine 1 first, then engine 2 (user preference). The FADEC runs the whole
             // start; each N2 wait verifies the engine actually spooled (stock TURB ENG N2,
-            // pushed per second) before the next master goes on.
+            // pushed per second) before the next master goes on, and completes its own "Engine n:
+            // running" line, which reads the same N2 (FO-6). A timeout stops the flow, so nothing
+            // is latched.
             Done(Skip(SW("ES_ENG1", "Engine 1 master: ON", "S_ENG_MASTER_1", 1),
                 s => s.IsOn("S_ENG_MASTER_1")), "ES_ENG1"),
-            WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
-                "FO_ENG1_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            Done(WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
+                "FO_ENG1_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG1_RUN"),
             Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "S_ENG_MASTER_2", 1),
                 s => s.IsOn("S_ENG_MASTER_2")), "ES_ENG2"),
-            WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
-                "FO_ENG2_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            Done(WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
+                "FO_ENG2_N2", v => v >= EngRunningN2, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG2_RUN"),
         }
     };
 

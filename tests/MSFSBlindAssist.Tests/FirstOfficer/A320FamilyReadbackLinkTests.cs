@@ -54,6 +54,10 @@ public class A320FamilyReadbackLinkTests
         {
             yield return new object?[] { aircraft, "BEFORE_START", "BS_BEACON", "BS_BEACON", "BSC_BEACON" };
             yield return new object?[] { aircraft, "AFTER_START", "AS_RUDDERTRIM", "AS_RUDDERTRIM", "ASC_RUDDER" };
+            // Each engine-start wait completes its own "Engine n: running" line (the line reads the
+            // state the wait waits for; a timeout stops the flow, so nothing is latched).
+            yield return new object?[] { aircraft, "ENGINE_START", "ES_ENG1_N2", "ES_ENG1_RUN", null };
+            yield return new object?[] { aircraft, "ENGINE_START", "ES_ENG2_N2", "ES_ENG2_RUN", null };
             // One radar switch off does not make "Radar and predictive windshear: OFF" true: each
             // radar write names its own action line only ...
             yield return new object?[] { aircraft, "AFTER_LANDING", "AL_WXR_OFF", "AL_WXR_OFF", null };
@@ -128,6 +132,45 @@ public class A320FamilyReadbackLinkTests
         // No other step of any flow completes the line.
         Assert.Equal(new[] { RadarCheck },
             flows.SelectMany(f => f.Steps).Where(s => s.LinkedChecklistItemIds.Contains(RadarLine)).Select(s => s.Id));
+    }
+
+    // -----------------------------------------------------------------------
+    // The audit: lines a finished flow latches with no step behind them
+    // -----------------------------------------------------------------------
+
+    /// <summary>Per aircraft, the lines a finished flow latches (its CompletionGroupIds) that the app
+    /// can read or act on (an Auto line or an action line; a line the pilot confirms is a Reminder)
+    /// and that no step of that flow completes, as "FLOW/LINE" (FlowChecklistLinkAudit.UndeliveredLines,
+    /// the PMDG 777's audit). Each is latched whatever the aircraft reads (FO-7). A known, reviewed
+    /// gap: change this list deliberately.</summary>
+    public static IEnumerable<object[]> KnownUndeliveredLines()
+    {
+        yield return new object[] { "Fenix", new[] { "APPROACH/APC_SEATBELTS" } };
+        yield return new object[] { "A32NX", new[] { "APPROACH/APC_SEATBELTS", "ELECTRICAL_POWER_UP/EPU_CHK_GEAR" } };
+        yield return new object[] { "A330", new[] { "APPROACH/APC_SEATBELTS", "ELECTRICAL_POWER_UP/EPU_CHK_GEAR" } };
+    }
+
+    [Theory]
+    [MemberData(nameof(KnownUndeliveredLines))]
+    public void Lines_latched_with_no_delivering_step_are_the_known_set(string aircraft, string[] known)
+        => Assert.Equal(known, UndeliveredLines(aircraft));
+
+    private static List<string> UndeliveredLines(string aircraft) => aircraft switch
+    {
+        "Fenix" => Undelivered(FenixFlowDefinitions.Build(), FenixChecklistDefinitions.Build()),
+        "A32NX" => Undelivered(FbwA320FlowDefinitions.Build(), FbwA320ChecklistDefinitions.Build()),
+        "A330" => Undelivered(HwA330FlowDefinitions.Build(), HwA330ChecklistDefinitions.Build()),
+        _ => throw new ArgumentOutOfRangeException(nameof(aircraft), aircraft, null),
+    };
+
+    private static List<string> Undelivered<TExec, TState>(
+        List<FlowDefinition<TState>> flows, List<ChecklistGroup<TExec, TState>> groups)
+        where TExec : IFoActionExecutor
+        where TState : IFoStateEvaluator
+    {
+        var ids = groups.Select(g => g.Id).ToHashSet(StringComparer.Ordinal);
+        return FlowChecklistLinkAudit.UndeliveredLines(
+            FlowChecklistLinkAudit.FlowsWithItems(flows, groups, f => f.CompletionGroupIds(ids.Contains)));
     }
 
     // -----------------------------------------------------------------------

@@ -31,6 +31,8 @@ public class FbwA320FlowParityTests
             Assert.Equal(120, s.TimeoutSeconds);
             Assert.Equal($"Engine {n} starting — waiting for the engine to stabilize", s.Label);
             Assert.Equal($"FO_ENG{n}_RUNNING", Item($"ES_ENG{n}_RUN").StateFieldName);
+            // The wait completes its own "Engine n: running" line (FO-6).
+            Assert.Equal(new[] { $"ES_ENG{n}_RUN" }, s.LinkedChecklistItemIds);
         }
         Assert.DoesNotContain(FbwA320FlowDefinitions.Build().SelectMany(f => f.Steps), s => s.Id.EndsWith("_DWELL") && s.Id.StartsWith("ES_"));
     }

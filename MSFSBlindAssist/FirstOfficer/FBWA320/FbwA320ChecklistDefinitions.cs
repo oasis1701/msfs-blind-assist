@@ -227,8 +227,8 @@ public static class FbwA320ChecklistDefinitions
                 v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 2)),
             // Engine 1 first, then engine 2, each master followed by its own running line (the
             // Fenix's order, and the flow's). The running lines are detect-only: FlyByWire's own
-            // engine state reads On. The flow's ES_ENGn_N2 wait confirms it, and the line ticks
-            // itself from the state.
+            // engine state reads On. The flow's ES_ENGn_N2 wait completes it (FO-6), and the line
+            // also ticks itself from the state.
             Auto("ES_ENG1", "ENGINE_START", "Engine 1 master: ON", "ENGINE_1_MASTER",
                 v => v > 0.5, (e, _) => e.Set("ENGINE_1_MASTER", 1)),
             Auto("ES_ENG1_RUN", "ENGINE_START", "Engine 1: running", "FO_ENG1_RUNNING",

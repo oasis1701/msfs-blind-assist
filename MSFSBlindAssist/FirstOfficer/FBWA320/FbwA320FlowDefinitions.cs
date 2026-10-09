@@ -283,16 +283,17 @@ public static class FbwA320FlowDefinitions
             // Engine 1 first, then engine 2. Each wait is on FlyByWire's own engine state
             // (A32NX_ENGINE_STATE:n = On, via FO_ENGn_RUNNING), not a raw N2: both FBW airframes
             // publish it and the A330's idle N2 is unknown. 120 s, and a timeout stops the flow
-            // (the Fenix's shape). Like the Fenix's N2 waits it links no checklist line: the
-            // "Engine n: running" lines tick themselves from the same state.
+            // (the Fenix's shape), so nothing is latched. Each wait completes its own "Engine n:
+            // running" line, which reads the same state, so the line a finished flow latches has a
+            // step behind it (FO-6).
             Done(Skip(SW("ES_ENG1", "Engine 1 master: ON", "ENGINE_1_MASTER", 1),
                 s => s.IsOn("ENGINE_1_MASTER")), "ES_ENG1"),
-            WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
-                "FO_ENG1_RUNNING", v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            Done(WaitForField("ES_ENG1_N2", "Engine 1 starting — waiting for the engine to stabilize",
+                "FO_ENG1_RUNNING", v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG1_RUN"),
             Done(Skip(SW("ES_ENG2", "Engine 2 master: ON", "ENGINE_2_MASTER", 1),
                 s => s.IsOn("ENGINE_2_MASTER")), "ES_ENG2"),
-            WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
-                "FO_ENG2_RUNNING", v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop),
+            Done(WaitForField("ES_ENG2_N2", "Engine 2 starting — waiting for the engine to stabilize",
+                "FO_ENG2_RUNNING", v => v > 0.5, 120, onTimeout: FlowStepFailurePolicy.Stop), "ES_ENG2_RUN"),
         }
     };
 

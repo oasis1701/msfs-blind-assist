@@ -42,6 +42,23 @@ public class FenixFlowParityTests
         Assert.False(fallback.SkipCondition!(e));            // plan loaded, lever unread → still speaks
     }
 
+    /// <summary>Each engine-start wait reads N2 (55 % or more; CFM56 idle is ~58-60 %), stops the
+    /// flow on a 120 s timeout, and completes its own "Engine n: running" line, which reads the same
+    /// N2 field (FO-6).</summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Engine_start_waits_for_N2_and_completes_its_running_line(int n)
+    {
+        var s = Step("ENGINE_START", $"ES_ENG{n}_N2");
+        Assert.Equal(FlowStepActionType.WaitForCondition, s.ActionType);
+        Assert.Equal($"FO_ENG{n}_N2", s.ConditionFieldName);
+        Assert.Equal(FlowStepFailurePolicy.Stop, s.FailurePolicy);
+        Assert.Equal(120, s.TimeoutSeconds);
+        Assert.Equal(new[] { $"ES_ENG{n}_RUN" }, s.LinkedChecklistItemIds);
+        Assert.Equal(s.ConditionFieldName, Item($"ES_ENG{n}_RUN").StateFieldName);
+    }
+
     /// <summary>The Captain reminder is skipped only when the flap lever READS a takeoff position.
     /// Keyed on the SimBrief plan, a write that did not take was heard as "Skipping…" then a false
     /// "Already set: Flaps: set for takeoff", and the pilot lost the reminder. A plan is loaded in
