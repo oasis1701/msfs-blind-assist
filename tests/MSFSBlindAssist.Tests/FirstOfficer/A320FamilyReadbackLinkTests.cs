@@ -30,7 +30,6 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// The Fenix's ASC_RUDDER is a Reminder (no measured trim var); it is linked all the same, so a reset
 /// that could not be sent leaves it unticked for the pilot.
 ///
-/// The Approach flow's seat-belt write AP_SEATBELTS completes APC_SEATBELTS "Seat belts: ON" (2026-10-09).
 /// Considered and NOT linked: AS_ECAMSTS (the ECAM page it shows is not the pilot's "ECAM status:
 /// CHECKED").
 ///
@@ -147,13 +146,12 @@ public class A320FamilyReadbackLinkTests
     /// <summary>Per aircraft, the lines a finished flow latches (its CompletionGroupIds) that the app
     /// can read or act on (an Auto line or an action line; a line the pilot confirms is a Reminder)
     /// and that no step of that flow completes, as "FLOW/LINE" (FlowChecklistLinkAudit.UndeliveredLines,
-    /// the PMDG 777's audit). Each is latched whatever the aircraft reads (FO-7). A known, reviewed
-    /// gap: change this list deliberately.</summary>
+    /// the PMDG 777's audit). Such a line is latched whatever the aircraft reads (FO-7). EMPTY on all
+    /// three since 2026-10-09 (FOA-8, "made honest"): an entry here is a deliberate, reviewed gap.</summary>
     public static IEnumerable<object[]> KnownUndeliveredLines()
     {
-        yield return new object[] { "Fenix", Array.Empty<string>() };
-        yield return new object[] { "A32NX", new[] { "ELECTRICAL_POWER_UP/EPU_CHK_GEAR" } };
-        yield return new object[] { "A330", new[] { "ELECTRICAL_POWER_UP/EPU_CHK_GEAR" } };
+        foreach (var aircraft in Aircraft)
+            yield return new object[] { aircraft, Array.Empty<string>() };
     }
 
     [Theory]

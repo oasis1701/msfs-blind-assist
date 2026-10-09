@@ -78,8 +78,8 @@ public static class FbwA320ChecklistDefinitions
             Auto("EPU_NAVLOGO", "ELEC_POWER_UP", "Nav and logo lights: ON", "A32NX_LIGHTS_NAV_LOGO",
                 v => v > 0.5, (e, _) => e.Set("A32NX_LIGHTS_NAV_LOGO", 1)),
             // Gear lever has no settable A32NX key, but GEAR_HANDLE_POSITION (stock,
-            // 0=Up/1=Down) is readable — detect-only Auto (no CheckAction; the flow
-            // step stays a Captain reminder since the lever can't be written).
+            // 0=Up/1=Down) is readable — detect-only Auto (no CheckAction), completed by the
+            // flow's read-only EPU_CHK_GEAR check, since the lever can't be written.
             Auto("EPU_CHK_GEAR", "ELEC_POWER_UP", "Gear lever: DOWN", "GEAR_HANDLE_POSITION",
                 v => v > 0.5, null),
             // ★ Cockpit lighting (spec §4.1): Bright for ground prep. ANN matches the

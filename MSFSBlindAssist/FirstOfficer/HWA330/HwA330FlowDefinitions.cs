@@ -101,9 +101,14 @@ public static class HwA330FlowDefinitions
                 s => s.IsPosition("ENGINE_2_MASTER", 0)),
             Skip(SW("EPU_CHK_MODE", "Engine mode selector: NORM", "ENGINE_MODE_SELECTOR", 1),
                 s => s.IsPosition("ENGINE_MODE_SELECTOR", 1)),
-            // Gear lever has no settable A32NX key (GEAR_HANDLE_POSITION is a read-only
-            // stock SimVar) — Captain item, same safety intent as the Fenix source.
-            Captain("EPU_CHK_GEAR", "Gear lever: DOWN"),
+            // Gear lever has no settable A32NX key (GEAR_HANDLE_POSITION is a read-only stock
+            // SimVar), so this safety check READS it, where the Fenix writes its lever: "Already
+            // set" with the lever down, else a 5 s wait that is skipped aloud. It never writes, and
+            // it completes the detect-only "Gear lever: DOWN" line, so a lever not read down keeps
+            // that line out of the latch (FO-6).
+            Done(Skip(WaitForField("EPU_CHK_GEAR", "Gear lever: DOWN", "GEAR_HANDLE_POSITION",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("GEAR_HANDLE_POSITION") > 0.5), "EPU_CHK_GEAR"),
             Skip(Multi("EPU_CHK_WIPERS", "Wipers: OFF",
                     ("WIPER_LEFT", 0), ("WIPER_RIGHT", 0)),
                 s => s.IsPosition("WIPER_LEFT", 0) && s.IsPosition("WIPER_RIGHT", 0)),

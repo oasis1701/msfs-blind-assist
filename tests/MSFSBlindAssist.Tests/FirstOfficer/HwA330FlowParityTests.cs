@@ -39,6 +39,37 @@ public class HwA330FlowParityTests
         Assert.DoesNotContain(HwA330FlowDefinitions.Build().SelectMany(f => f.Steps), s => s.Id.EndsWith("_DWELL") && s.Id.StartsWith("ES_"));
     }
 
+    /// <summary>The power-up gear-lever safety check READS the lever (GEAR_HANDLE_POSITION is a
+    /// read-only stock SimVar here): "Already set" when it is down, else a 5 s wait that is skipped
+    /// aloud; it never writes, and it completes the detect-only "Gear lever: DOWN" line.</summary>
+    [Fact]
+    public void The_gear_lever_safety_check_reads_the_lever_and_completes_its_line()
+    {
+        var s = Step("ELECTRICAL_POWER_UP", "EPU_CHK_GEAR");
+        var line = Item("EPU_CHK_GEAR");
+        Assert.Equal("Gear lever: DOWN", s.Label);
+        Assert.Equal(FlowStepActionType.WaitForCondition, s.ActionType);
+        Assert.Equal("GEAR_HANDLE_POSITION", s.ConditionFieldName);
+        Assert.Equal(line.StateFieldName, s.ConditionFieldName);
+        Assert.Equal(5, s.TimeoutSeconds);
+        Assert.Equal(FlowStepFailurePolicy.Skip, s.FailurePolicy);
+        Assert.True(s.Condition!(1));
+        Assert.False(s.Condition!(0));
+        Assert.False(s.Condition!(double.NaN));
+        Assert.Null(s.EventName);
+        Assert.Null(s.TargetValue);
+        Assert.Empty(s.MultiActions);
+        Assert.Equal(new[] { "EPU_CHK_GEAR" }, s.LinkedChecklistItemIds);
+        Assert.Null(line.CheckAction);
+
+        var e = new HwA330StateEvaluator();
+        Assert.False(s.SkipCondition!(e));                                   // unread: not down
+        e.SetSimConnect(SeededSimConnectCache.With(("GEAR_HANDLE_POSITION", 1)));
+        Assert.True(s.SkipCondition!(e));                                    // down: "Already set"
+        e.SetSimConnect(SeededSimConnectCache.With(("GEAR_HANDLE_POSITION", 0)));
+        Assert.False(s.SkipCondition!(e));
+    }
+
     [Fact]
     public void Engine_running_lines_are_action_free_detect_only_items()
     {
