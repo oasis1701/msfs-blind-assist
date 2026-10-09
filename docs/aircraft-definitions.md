@@ -3,12 +3,17 @@
 **IMPORTANT:** Dictionaries are now instance methods in aircraft definition classes, NOT static dictionaries in SimVarDefinitions.cs.
 
 **Supported aircraft definitions:**
-- `FlyByWireA320Definition` — FlyByWire A32NX (reference implementation)
+- `FlyByWireA320Definition` — FlyByWire A32NX
 - `FlyByWireA380Definition` — FlyByWire A380X (Coherent-debugger MFD/flyPad/ECL transport; near-parity with the A320 definition)
+- `HeadwindA330Definition` — Headwind A330 (extends `FlyByWireA320Definition`)
 - `FenixA320Definition` — Fenix A320
 - `PMDG777Definition` — PMDG 777X
 - `PMDG737Definition` — PMDG 737-800 NG3
 - `HorizonSim787Definition` — HorizonSim 787-9
+- `IFly737MAXDefinition` — iFly 737 MAX8
+- `TFDiMD11Definition` — TFDi MD-11
+
+The reference for a new aircraft is the compiled template, `tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs`; the workflows that use it are in [adding-features.md](adding-features.md#workflow-5-adding-new-aircraft). A block below that uses the template's `Your…` names is a word-for-word copy of it, checked by `WalkthroughTemplateTests`. The other blocks are shortened copies of a real definition.
 
 The application accesses dictionaries through the current aircraft instance:
 - `currentAircraft.GetVariables()` - Get all variables for current aircraft
@@ -17,44 +22,60 @@ The application accesses dictionaries through the current aircraft instance:
 - `currentAircraft.GetPanelDisplayVariables()` - Get display-only variables
 - `currentAircraft.GetButtonStateMapping()` - Get button-to-state mappings
 
-## 1. GetVariables() Method
+## 1. BuildVariables() / GetVariables() Methods
 
 ### Purpose
 
 Returns all simulator variables and controls for the aircraft.
 
+### Architecture (Caching)
+
+**Public API:**
+- `GetVariables()` - Provided by BaseAircraftDefinition with automatic caching
+- Call this method to access the variables (built on first access, cached after)
+
+**Implementation:**
+- `BuildVariables()` - **Override this in aircraft definitions**
+- Protected abstract method called once by GetVariables() to build the dictionary
+- Start from `GetBaseVariables()`, the variables every aircraft shares (`SIM ON GROUND` and others), and add the aircraft's own. An aircraft that extends another definition starts from `base.BuildVariables()` instead, as `HeadwindA330Definition` does.
+
 ### Returns
 
 `Dictionary<string, SimConnect.SimVarDefinition>`
 
-### Example from FlyByWireA320Definition.cs
+### Example from the walkthrough template
 
+Each collapsed `// ...` is a variable of one pattern; [Workflows 1 to 3](adding-features.md#workflow-1-adding-panel-control) show them.
+
+<!-- template: build-variables -->
 ```csharp
-public Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
+protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
 {
-    return new Dictionary<string, SimConnect.SimVarDefinition>
+    // Start from the variables every aircraft shares (SIM ON GROUND and others).
+    var variables = GetBaseVariables();
+
+    var aircraftVariables = new Dictionary<string, SimConnect.SimVarDefinition>
     {
-        ["A32NX_FCU_AP_1_LIGHT_ON"] = new SimConnect.SimVarDefinition
-        {
-            Name = "A32NX_FCU_AP_1_LIGHT_ON",
-            DisplayName = "AP 1",
-            Type = SimConnect.SimVarType.LVar,
-            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
-            IsAnnounced = true,
-            ValueDescriptions = new Dictionary<double, string>
-            {
-                [0] = "AP1 off",
-                [1] = "AP 1 on"
-            }
-        },
-        // ... 366 more variables
+        // A panel control (Workflow 1):
+        // ...
+
+        // Background monitoring (Workflow 2):
+        // ...
+
+        // An H-variable button (Workflow 3):
+        // ...
     };
+
+    foreach (var kvp in aircraftVariables)
+        variables[kvp.Key] = kvp.Value;
+
+    return variables;
 }
 ```
 
 ### Properties in SimVarDefinition
 
-- `Name`: SimConnect variable name (e.g., "L:A32NX_FCU_AP_1_LIGHT_ON")
+- `Name`: the variable's name without a prefix (e.g., "A32NX_FCU_AP_1_LIGHT_ON" for an L:var, "SIM ON GROUND" for a SimVar). Registration adds `L:` to an L:var's name itself, so a `Name` that starts with `L:` or `H:` is wrong; `Type` says which kind the variable is. An H-variable button names its events in `PressEvent` and `ReleaseEvent`, also without `H:`.
 - `DisplayName` — the label the screen reader speaks and the panel row shows. Two rules:
 
   **No two controls in one panel may share it.** It is the pilot's only handle on a
@@ -82,11 +103,11 @@ public Dictionary<string, SimConnect.SimVarDefinition> GetVariables()
   "External Power Primary" vs "Ext Power 1 AVAIL Light", "IDG Disconnect Left" vs
   "IDG Left Disc Drive Light". Bind a pair when you touch it; never assume a light follows
   a constant that does not exist.
-- `Type`: SimVarType (LVar, SimVar, Event, HVar)
+- `Type`: SimVarType (LVar, SimVar, Event, HVar, PMDGVar, InputEvent)
 - `UpdateFrequency`: When to request (Never, OnRequest, Continuous)
 - `IsAnnounced`: Whether to announce state changes
 - `ValueDescriptions`: Map numeric values to descriptive strings
-- `Units`: Measurement units (e.g., "knots", "feet", "degrees")
+- `Units`: Measurement units (e.g., "knots", "feet", "degrees"); defaults to "number"
 
 ### Usage
 
@@ -102,33 +123,23 @@ Organizes panels into parent sections for UI navigation.
 
 `Dictionary<string, List<string>>`
 
-### Example from FlyByWireA320Definition.cs
+### Example from FlyByWireA320Definition.cs (shortened)
 
+<!-- fragment: MSFSBlindAssist/Aircraft/FlyByWireA320Definition.cs#GetPanelStructure -->
 ```csharp
-public Dictionary<string, List<string>> GetPanelStructure()
+public override Dictionary<string, List<string>> GetPanelStructure()
 {
     return new Dictionary<string, List<string>>
     {
-        ["Overhead Forward"] = new List<string>
-        {
-            "ELEC", "ADIRS", "APU", "Oxygen", "Fuel",
-            "Air Con", "Anti Ice", "Signs", "Exterior Lighting", "Calls"
-        },
-        ["Glareshield"] = new List<string>
-        {
-            "FCU", "EFIS Control Panel", "Warnings"
-        },
-        ["Instrument"] = new List<string>
-        {
-            "Autobrake and Gear"
-        },
-        ["Pedestal"] = new List<string>
-        {
-            "Speed Brake", "Parking Brake", "Engines", "ECAM", "WX", "ATC-TCAS", "RMP"
-        }
+        ["Overhead"] = new List<string> { "ELEC", "ADIRS", "APU", "Oxygen", "Fire", /* ... */ },
+        ["Glareshield"] = new List<string> { "FCU", "EFIS Captain", "EFIS First Officer", "Warnings" },
+        ["Instrument"] = new List<string> { "Gear", "Autobrake", "PFD", "ND", /* ... */ },
+        ["Pedestal"] = new List<string> { "Flight Controls", "Speed Brake", "Parking Brake", "Engines", /* ... */ }
     };
 }
 ```
+
+The template's version has one section with one panel (`["Your Section"] = new List<string> { "Your Panel" }`).
 
 ### Usage
 
@@ -151,20 +162,20 @@ Maps panel names to their associated variable keys.
 - Protected abstract method called once by GetPanelControls() to build the dictionary
 - Result is cached automatically by base class
 
-### Example from FlyByWireA320Definition.cs
+### Example from the walkthrough template
 
+Each entry is a panel's name and the keys of its controls, as `BuildVariables()` names them. [Workflow 1](adding-features.md#workflow-1-adding-panel-control) adds a control to it.
+
+<!-- template: build-panel-controls -->
 ```csharp
 protected override Dictionary<string, List<string>> BuildPanelControls()
 {
     return new Dictionary<string, List<string>>
     {
-        ["FCU"] = new List<string>
+        ["Your Panel"] = new List<string>
         {
-            "A32NX.FCU_HDG_SET",
-            "A32NX.FCU_HDG_PUSH",
-            "A32NX.FCU_HDG_PULL",
-            "A32NX.FCU_SPD_SET",
-            // ... etc
+            "NEW_CONTROL_VAR",
+            "BUTTON_KEY"
         }
     };
 }
@@ -185,7 +196,7 @@ When a panel opens, `simConnectManager.RequestPanelVariables(panelName)` request
 
 ### Purpose
 
-Maps panels to display-only variables that update silently without announcements.
+Maps panels to the variables whose values the panel shows as read-only text, not as controls.
 
 ### Returns
 
@@ -193,21 +204,23 @@ Maps panels to display-only variables that update silently without announcements
 
 ### Usage
 
-Variables like FCU display values that need frequent updates but shouldn't trigger announcements. Access via `currentAircraft.GetPanelDisplayVariables()`.
+Readings such as the battery voltages on the A320's ELEC panel. The variables are defined in `BuildVariables()` like any other. Access via `currentAircraft.GetPanelDisplayVariables()`, but only outside per-event code: this method rebuilds its whole dictionary on every call, so MainForm reads its own cached copy ([SIM-16]). The template returns an empty dictionary.
 
-### Example
+### Example from FlyByWireA320Definition.cs (shortened)
 
+<!-- fragment: MSFSBlindAssist/Aircraft/FlyByWireA320Definition.cs#GetPanelDisplayVariables -->
 ```csharp
-public Dictionary<string, List<string>> GetPanelDisplayVariables()
+public override Dictionary<string, List<string>> GetPanelDisplayVariables()
 {
     return new Dictionary<string, List<string>>
     {
-        ["FCU"] = new List<string>
+        ["ELEC"] = new List<string>
         {
-            "A32NX_FCU_AFS_DISPLAY_HDG_TRK_VALUE",
-            "A32NX_FCU_AFS_DISPLAY_SPD_MACH_VALUE",
-            "A32NX_FCU_AFS_DISPLAY_ALTITUDE_VALUE"
-        }
+            "A32NX_ELEC_BAT_1_POTENTIAL",
+            "A32NX_ELEC_BAT_2_POTENTIAL"
+        },
+        ["Wipers"] = new List<string> { "WIPER_L_SW", "WIPER_R_SW" },
+        // ...
     };
 }
 ```
@@ -216,27 +229,28 @@ public Dictionary<string, List<string>> GetPanelDisplayVariables()
 
 ### Purpose
 
-Maps button event keys to their corresponding state variable keys for automatic announcements.
+Maps button event keys to their corresponding state variable keys. An entry is CORE-7's button read-back: about 300 ms after a panel button or hotkey press of that event, the app speaks the state variable once.
 
 ### Returns
 
 `Dictionary<string, string>`
 
-### Example from FlyByWireA320Definition.cs
+### Example from FlyByWireA320Definition.cs (shortened)
 
+<!-- fragment: MSFSBlindAssist/Aircraft/FlyByWireA320Definition.cs#GetButtonStateMapping -->
 ```csharp
-public Dictionary<string, string> GetButtonStateMapping()
+public override Dictionary<string, string> GetButtonStateMapping()
 {
     return new Dictionary<string, string>
     {
         // FCU buttons
         ["A32NX.FCU_HDG_PUSH"] = "A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED",
         ["A32NX.FCU_AP_1_PUSH"] = "A32NX_FCU_AP_1_LIGHT_ON",
-        // ... etc
+        // ...
     };
 }
 ```
 
 ### Usage
 
-After button interaction, system announces the corresponding state variable value. Access via `currentAircraft.GetButtonStateMapping()`.
+Only the FBW A320, Headwind A330 and FBW A380 map entries. Every other aircraft returns an empty dictionary, and so does the template: add an entry only as the owner's deliberate choice, for a button whose effect the pilot cannot otherwise hear, never to echo a press. Access via `currentAircraft.GetButtonStateMapping()`.

@@ -101,10 +101,10 @@ Screen readers already announce every UI control interaction, so the app never r
 **Core interfaces:**
 - **IAircraftDefinition** - Contract for all aircraft
 - **BaseAircraftDefinition** - Recommended base class (provides hotkey routing, caching, helpers)
-- **FlyByWireA320Definition** - Reference implementation
+- **`tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs`** - The compiled template to copy for a new aircraft; the walkthroughs in [adding-features.md](docs/adding-features.md) show its parts
 
 **Each aircraft defines:**
-- `GetVariables()` - All simulator variables
+- `BuildVariables()` - All simulator variables, starting from `GetBaseVariables()` (the base class caches them as `GetVariables()`)
 - `GetPanelStructure()` - Section/panel hierarchy
 - `BuildPanelControls()` - Panel-to-variables mapping (cached automatically by base class)
 - `GetHotkeyVariableMap()` - Simple hotkey action → event name mappings
