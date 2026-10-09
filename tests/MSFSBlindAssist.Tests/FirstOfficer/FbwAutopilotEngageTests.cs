@@ -79,4 +79,38 @@ public class FbwAutopilotEngageTests
         Assert.False(def.IsAutopilotEngaged(SeededSimConnectCache.With(
             (FbwAutopilotEngage.Ap1ActiveVar, 0), (FbwAutopilotEngage.Ap2ActiveVar, 0))));
     }
+
+    // SIM-13: SendEvent holds a dotted event in its calc-path probe queue while the MobiFlight
+    // module is there and the probe has neither verified nor concluded, then sends the whole queue
+    // at once. The three inputs are the ones the engage reads off SimConnectManager.
+    [Theory]
+    [InlineData(true, false, false, true)]     // module there, probe still running: SendEvent would queue the press
+    [InlineData(true, false, true, false)]     // probe gave up: the legacy transmit goes out at once
+    [InlineData(true, true, false, false)]     // verified (never seen without concluded): the calc path fires at once
+    [InlineData(true, true, true, false)]      // verified: the calc path fires at once
+    [InlineData(false, false, false, false)]   // no module (or not connected): nothing waits in the queue
+    [InlineData(false, false, true, false)]
+    [InlineData(false, true, false, false)]
+    [InlineData(false, true, true, false)]
+    public void PressWouldWait_only_while_the_module_is_there_and_the_probe_is_still_running(
+        bool canExecuteCalculatorCode, bool calcPathVerified, bool calcPathProbeConcluded, bool expected)
+        => Assert.Equal(expected,
+            FbwAutopilotEngage.PressWouldWait(canExecuteCalculatorCode, calcPathVerified, calcPathProbeConcluded));
+
+    [Fact]
+    public void PressFor_sends_nothing_while_the_press_would_wait_behind_the_probe()
+    {
+        // Neither autopilot is engaged, so the press is otherwise due. A withheld press is tried
+        // again after the retry interval; it is never queued to arrive in a burst when the probe ends.
+        var bothOff = Read(0.0, 0.0);
+
+        Assert.Null(FbwAutopilotEngage.PressFor(bothOff, pressWouldWait: true));
+        Assert.Equal(FbwAutopilotEngage.Ap1PushEvent, FbwAutopilotEngage.PressFor(bothOff, pressWouldWait: false));
+    }
+
+    // The definitions theory above compares their interval with the constant itself, so the
+    // 3 s value is pinned here.
+    [Fact]
+    public void The_retry_interval_is_three_seconds()
+        => Assert.Equal(3000, FbwAutopilotEngage.RetryIntervalMs);
 }

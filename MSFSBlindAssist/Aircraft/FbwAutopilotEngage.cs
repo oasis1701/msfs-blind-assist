@@ -30,8 +30,22 @@ internal static class FbwAutopilotEngage
         return false;
     }
 
+    /// <summary>True while <c>SimConnectManager.SendEvent</c> would hold a dotted event in its calc-path
+    /// probe queue instead of sending it (SIM-13; the dotted branch of <c>SendEvent</c>): the MobiFlight
+    /// module is there and the probe has neither verified nor concluded. That queue is sent all at once
+    /// when the probe ends, so the pushes the retries queued would arrive back to back and toggle AP 1
+    /// on and off again. After the service has already told the Captain to engage the autopilot, those
+    /// late pushes could also switch off the one the Captain engaged since. Not for the A380, whose
+    /// <c>A32NX.FCU_*</c> events never wait (SIM-10). The arguments are <c>SimConnectManager</c>'s
+    /// <c>CanExecuteCalculatorCode</c>, <c>CalcPathVerified</c> and <c>CalcPathProbeConcluded</c>.</summary>
+    public static bool PressWouldWait(bool canExecuteCalculatorCode, bool calcPathVerified, bool calcPathProbeConcluded)
+        => canExecuteCalculatorCode && !calcPathVerified && !calcPathProbeConcluded;
+
     /// <summary>The event the engage sends: AP 1's push, unless an autopilot already reads engaged
-    /// (pressing a toggle then would disconnect it) — then null, and nothing is sent.</summary>
-    public static string? PressFor(Func<string, double?> read)
-        => IsEngaged(read) == true ? null : Ap1PushEvent;
+    /// (pressing a toggle then would disconnect it) — then null, and nothing is sent. It also sends
+    /// nothing while the press would wait behind the calc-path probe (<see cref="PressWouldWait"/>):
+    /// that press is tried again after <see cref="RetryIntervalMs"/>, and if none ever goes out the
+    /// service's Captain-action call is then true.</summary>
+    public static string? PressFor(Func<string, double?> read, bool pressWouldWait = false)
+        => pressWouldWait || IsEngaged(read) == true ? null : Ap1PushEvent;
 }
