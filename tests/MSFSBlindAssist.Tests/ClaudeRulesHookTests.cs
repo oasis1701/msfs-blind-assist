@@ -245,6 +245,13 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("Bash", "sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs  # it's a one-off", Pmdg737)]
     [InlineData("PowerShell", "# Don't touch the header\nSet-Content -Path MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs -Value x",
         Pmdg737)]
+    [InlineData("Bash", "f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs && sed -i 's/a/b/' \"$f\"", Pmdg737)]
+    [InlineData("Bash", "export D=MSFSBlindAssist/Aircraft; sed -i 's/a/b/' ${D}/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("PowerShell", "$p = 'MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs'; 'x' | Set-Content $p", Pmdg737)]
+    [InlineData("PowerShell", "$P='MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs'; Set-Content -Path $p -Value x", Pmdg737)]
+    [InlineData("Bash", "echo x>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "(cd MSFSBlindAssist && sed -i 's/a/b/' Aircraft/Pmdg737DisplayReads.cs)", Pmdg737)]
+    [InlineData("Bash", "export D=MSFSBlindAssist; cd $D && sed -i 's/a/b/' Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
     public void Shell_guard_refuses_writes_to_covered_files(string tool, string command, string target)
     {
         JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput(tool, command)));
@@ -289,6 +296,16 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<'EOF'\n> MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\nEOF")]
     [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<\\EOF\n> MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\nEOF")]
     [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<'END-OF-NOTE'\n> MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\nEND-OF-NOTE")]
+    [InlineData("Bash", "f=changelog.d/999-x.fix.md && sed -i 's/a/b/' \"$f\"")]
+    [InlineData("Bash", "F=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs; sed -i 's/a/b/' \"$f\"")]   // bash names are case-sensitive
+    [InlineData("Bash", "cat MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs 2>&1")]
+    [InlineData("Bash", "echo 'a>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs' > changelog.d/999-x.fix.md")]
+    [InlineData("PowerShell", "$p = $env:TEMP + '\\x.txt'; Set-Content $p x")]
+    // A variable counts only while its value is known: NAME=VALUE before a command is that command's alone, and a value
+    // that is not a literal (or a PowerShell += or computed value) makes the name unknown again.
+    [InlineData("Bash", "f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs sed -i 's/a/b/' \"$f\"")]
+    [InlineData("Bash", "f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs; f=$(mktemp); sed -i 's/a/b/' \"$f\"")]
+    [InlineData("PowerShell", "$p = 'MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs'; $p += 'x'; Set-Content $p x")]
     public void Shell_guard_allows_commands_that_write_no_covered_file(string tool, string command)
     {
         HookRun run = RunHook(new[] { "shell-guard" }, ShellInput(tool, command));

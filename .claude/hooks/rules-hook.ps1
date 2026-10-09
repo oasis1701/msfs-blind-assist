@@ -357,7 +357,8 @@ function Split-ShellCommands([string]$Command, [string]$Shell) {
 # Words of one simple command as objects: Text (quotes removed) and Bare (its first character was neither quoted
 # nor escaped, so it can be an operator: a quoted ">" is an argument, never a redirect). Bash: a backslash escapes
 # outside quotes and, inside double quotes, only $ ` " \; single quotes are literal. PowerShell: the backtick escapes;
-# a backslash is a path separator; '' inside single quotes is one quote. An unterminated quote throws.
+# a backslash is a path separator; '' inside single quotes is one quote. A bare > inside a word starts a new word
+# (echo x>f). An unterminated quote throws.
 function Get-ShellWords([string]$Segment, [string]$Shell) {
     $words = New-Object System.Collections.Generic.List[object]
     $word = New-Object System.Text.StringBuilder
@@ -400,6 +401,15 @@ function Get-ShellWords([string]$Segment, [string]$Shell) {
             if ($null -eq $bare) { $bare = $false }
             continue
         }
+        # An unquoted, unescaped > inside a word ends it and starts a bare word at the >, so "echo x>f" reads as
+        # "echo x >f". Not after nothing, a file descriptor number, & or another > (2>&1, &>f, >>f stay one word).
+        if ($c -eq '>' -and $word.Length -gt 0) {
+            $sofar = $word.ToString()
+            if ($sofar -ne '&' -and $sofar -notmatch '^[0-9]+$' -and -not $sofar.Contains('>')) {
+                $words.Add([pscustomobject]@{ Text = $sofar; Bare = ($bare -eq $true) })
+                [void]$word.Clear(); $bare = $null
+            }
+        }
         [void]$word.Append($c)
         if ($null -eq $bare) { $bare = $true }
     }
@@ -408,7 +418,73 @@ function Get-ShellWords([string]$Segment, [string]$Shell) {
     return ,$words.ToArray()
 }
 
-function Add-WriteTarget($Targets, [string]$Raw, [string]$Dir) {
+# Replaces ${NAME} and $NAME in $Raw with the literal value $Vars holds for NAME, and leaves any other reference as it
+# is. $Vars is a Hashtable whose comparer carries the shell's rule: ordinal for Bash, ignoring case for PowerShell.
+# PowerShell reads $name:x as one drive- or scope-qualified name ($env:TEMP), so it is never expanded there.
+function Expand-KnownVariables([string]$Raw, $Vars, [string]$Shell) {
+    if ([string]::IsNullOrEmpty($Raw) -or $null -eq $Vars -or $Vars.Count -eq 0 -or -not $Raw.Contains('$')) { return $Raw }
+    $pattern = '\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))'
+    if ($Shell -eq 'PowerShell') { $pattern = '\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_:]))' }
+    $result = New-Object System.Text.StringBuilder
+    $last = 0
+    foreach ($m in [regex]::Matches($Raw, $pattern)) {
+        $name = $m.Groups[1].Value
+        if (-not $m.Groups[1].Success) { $name = $m.Groups[2].Value }
+        if (-not $Vars.ContainsKey($name)) { continue }
+        [void]$result.Append($Raw, $last, $m.Index - $last).Append([string]$Vars[$name])
+        $last = $m.Index + $m.Length
+    }
+    [void]$result.Append($Raw, $last, $Raw.Length - $last)
+    return $result.ToString()
+}
+
+# Remembers NAME=VALUE for Expand-KnownVariables. A value that is not a plain literal ($VAR, $(...), (...), `...`) is
+# unknown, so it also forgets what NAME held before: an unknown variable is never expanded, and its target allowed.
+function Set-KnownVariable($Vars, [string]$Name, [string]$Value) {
+    if ($Value.IndexOfAny([char[]]@('$', '(', '`')) -ge 0) { $Vars.Remove($Name); return }
+    $Vars[$Name] = $Value
+}
+
+# Bash NAME=VALUE (the word as the shell reads it, quotes removed).
+function Set-KnownVariableFromAssignment($Vars, [string]$Word) {
+    $m = [regex]::Match($Word, '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if ($m.Success) { Set-KnownVariable $Vars $m.Groups[1].Value $m.Groups[2].Value }
+}
+
+# PowerShell `$NAME = VALUE` (three words, the middle exactly =) or one `$NAME=VALUE` word. Any other assignment to the
+# name (`$NAME = a + b`, `$NAME += x`) leaves it unknown.
+function Update-PowerShellVariables($Vars, $Words) {
+    if ($Words.Count -eq 0) { return }
+    $one = [regex]::Match($Words[0].Text, '^\$([A-Za-z_][A-Za-z0-9_]*)(?:=(.*))?$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if (-not $one.Success) { return }
+    $name = $one.Groups[1].Value
+    if ($one.Groups[2].Success) {
+        if ($Words.Count -eq 1) { Set-KnownVariable $Vars $name $one.Groups[2].Value } else { $Vars.Remove($name) }
+    }
+    elseif ($Words.Count -ge 2 -and $Words[1].Text -match '^[-+*/%]?=') {
+        if ($Words.Count -eq 3 -and $Words[1].Text -ceq '=') { Set-KnownVariable $Vars $name $Words[2].Text } else { $Vars.Remove($name) }
+    }
+}
+
+# Drops the ( of a subshell from a segment's first word and the ) from its last bare word, so "(cd d && sed -i s/a/b/ f)"
+# reads as the commands inside. A word that is only the paren disappears.
+function Remove-SubshellParens($Words) {
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($w in $Words) { $list.Add($w) }
+    if ($list.Count -gt 0 -and $list[0].Bare -and $list[0].Text.StartsWith('(', [StringComparison]::Ordinal)) {
+        $rest = $list[0].Text.Substring(1)
+        if ($rest -eq '') { $list.RemoveAt(0) } else { $list[0] = [pscustomobject]@{ Text = $rest; Bare = $true } }
+    }
+    $last = $list.Count - 1
+    if ($last -ge 0 -and $list[$last].Bare -and $list[$last].Text.EndsWith(')', [StringComparison]::Ordinal)) {
+        $rest = $list[$last].Text.Substring(0, $list[$last].Text.Length - 1)
+        if ($rest -eq '') { $list.RemoveAt($last) } else { $list[$last] = [pscustomobject]@{ Text = $rest; Bare = $true } }
+    }
+    return ,$list.ToArray()
+}
+
+function Add-WriteTarget($Targets, [string]$Raw, [string]$Dir, $Vars, [string]$Shell = 'Bash') {
+    $Raw = Expand-KnownVariables $Raw $Vars $Shell
     if ([string]::IsNullOrWhiteSpace($Raw) -or $Raw.StartsWith('&')) { return }
     if ($Raw -eq '/dev/null' -or $Raw -eq 'NUL' -or $Raw.Contains('$') -or $Raw.Contains('%')) { return }
     $full = Resolve-FullPath $Raw $Dir
@@ -470,19 +546,30 @@ function Get-InPlaceOperands([string]$Name, $Words) {
 $PowerShellSwitches = @('-Force', '-NoNewline', '-Append', '-PassThru', '-WhatIf', '-Confirm', '-NoClobber', '-AsByteStream')
 
 # The files a command writes: redirect targets, sed/perl -i and tee operands, and the path of Set-Content, Add-Content
-# and Out-File. Follows cd and Set-Location from $Cwd. Throws on an unparseable command.
+# and Out-File. Follows cd and Set-Location from $Cwd, and a path held in a variable the command itself set to a
+# literal. Throws on an unparseable command.
 function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
     $targets = New-Object System.Collections.Generic.List[object]
     $dir = $Cwd
+    # The variables the command has set to a literal so far (Bash: NAME=VALUE and export NAME=VALUE; PowerShell:
+    # $NAME = VALUE). Bash names are case-sensitive, PowerShell names are not.
+    $comparer = [StringComparer]::Ordinal
+    if ($Shell -eq 'PowerShell') { $comparer = [StringComparer]::OrdinalIgnoreCase }
+    $vars = New-Object System.Collections.Hashtable($comparer)
     foreach ($segment in (Split-ShellCommands (Remove-HeredocBodies $Command $Shell) $Shell)) {
-        $all = Get-ShellWords $segment $Shell
+        $all = Remove-SubshellParens (Get-ShellWords $segment $Shell)
+        if ($Shell -eq 'PowerShell') { Update-PowerShellVariables $vars $all }
         $start = 0
         while ($start -lt $all.Count -and $all[$start].Bare -and $all[$start].Text -match '^[A-Za-z_][A-Za-z0-9_]*=') { $start++ }
-        if ($start -ge $all.Count) { continue }
+        if ($start -ge $all.Count) {
+            # Only assignments: they stay set. In "NAME=VALUE command" they reach that command alone.
+            if ($Shell -ne 'PowerShell') { foreach ($assignment in $all) { Set-KnownVariableFromAssignment $vars $assignment.Text } }
+            continue
+        }
         $name = $all[$start].Text
         if (@('cd', 'Set-Location', 'sl', 'pushd', 'Push-Location') -contains $name) {
             if ($start + 1 -lt $all.Count) {
-                $next = Resolve-FullPath $all[$start + 1].Text $dir
+                $next = Resolve-FullPath (Expand-KnownVariables $all[$start + 1].Text $vars $Shell) $dir
                 if ($next) { $dir = $next }
             }
             continue
@@ -495,7 +582,7 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
                 if ($out.Success) {
                     $raw = $out.Groups[1].Value
                     if ($raw -eq '' -and $k + 1 -lt $all.Count) { $k++; $raw = $all[$k].Text }
-                    Add-WriteTarget $targets $raw $dir
+                    Add-WriteTarget $targets $raw $dir $vars $Shell
                     continue
                 }
                 $in = [regex]::Match($w, '^[0-9]*<+(.*)$')
@@ -506,10 +593,15 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
         if ($words.Count -eq 0) { continue }
         $name = $words[0]
         if ($name -ceq 'sed' -or $name -ceq 'perl') {
-            foreach ($o in (Get-InPlaceOperands $name $words)) { Add-WriteTarget $targets $o $dir }
+            foreach ($o in (Get-InPlaceOperands $name $words)) { Add-WriteTarget $targets $o $dir $vars $Shell }
         }
         elseif ($name -ceq 'tee') {
-            for ($k = 1; $k -lt $words.Count; $k++) { if (-not $words[$k].StartsWith('-')) { Add-WriteTarget $targets $words[$k] $dir } }
+            for ($k = 1; $k -lt $words.Count; $k++) {
+                if (-not $words[$k].StartsWith('-')) { Add-WriteTarget $targets $words[$k] $dir $vars $Shell }
+            }
+        }
+        elseif ($name -ceq 'export' -and $Shell -ne 'PowerShell') {
+            for ($k = 1; $k -lt $words.Count; $k++) { Set-KnownVariableFromAssignment $vars $words[$k] }
         }
         elseif (@('Set-Content', 'Add-Content', 'Out-File') -contains $name) {
             $path = $null
@@ -521,7 +613,7 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
                 if ($null -eq $positional) { $positional = $w }
             }
             if ($null -eq $path) { $path = $positional }
-            Add-WriteTarget $targets $path $dir
+            Add-WriteTarget $targets $path $dir $vars $Shell
         }
     }
     return ,$targets.ToArray()
