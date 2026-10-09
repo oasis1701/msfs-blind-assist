@@ -41,3 +41,7 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 
 Mirrored from landing-rollout.md (it governs the `RunwayShape` tolerances; change it there and here together):
 - [ROL-19] Derived-constant tripwire: re-derive all five (`VacatedShortAlongTrackFeet`, `EarlyVacateMaxPassedFeet`, `HandoffReachDefaultHalfWidthM`, `RunwayClearMarginM`, `DefaultRunwayWidthFeet`; three hang on `HandoffReachMarginM`) before any runway/rollout tolerance change, say so in the commit, re-run `tools/LandingExitSweep` (more: see full). Full: docs/invariants/landing-rollout.md#rol-19
+
+Mirrored from ground-traffic.md and surroundings.md (they govern the held-runway label and the runway probe in the TaxiGuidanceManager partials; change them there and here together):
+- [TRF-6] The held runway the watch scopes and the HoldShort status readout speaks come from the ONE `Navigation.HeldRunwayLabel.Resolve` (`GetGroundTrafficContext`, `GetStatusAnnouncement`), never a mirrored field: PR #247's `_heldRunwayLabel` was never assigned, so no hold-short was watched. Full: docs/invariants/ground-traffic.md#trf-6
+- [SUR-24] The runway probe (`TaxiGuidanceManager.IsOnRunwayPavement`) answers only from geometry in hand and NEVER builds a graph; its warm-up reads runway rows only (`PrepareRunwayShapeWarmUp`, never `GetTaxiPaths`); `_graphGeneration` is stamped only when a NEW `_graph` instance is installed, never when a re-route hands the same graph back. Full: docs/invariants/surroundings.md#sur-24

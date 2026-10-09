@@ -71,6 +71,9 @@ Loaded when Claude reads matching code. Background: docs/taxi-guidance.md. Full 
 Mirrored from sayintentions-import.md (it governs `TaxiGraph.GetNamedEdges`; change it there and here together):
 - [SI-20] The snapper takes an already-built `TaxiGraph` (`GetNamedEdges()`) and never fetches names itself; `GetNamedEdges` must stay sorted on an INTRINSIC key (name + endpoint coordinates), never node id. Full: docs/invariants/sayintentions-import.md#si-20
 
+Mirrored from surroundings.md (it governs the Place list in TaxiAssistForm.cs; change it there and here together):
+- [SUR-13] `TaxiAssistForm` never builds a Place catalog: it reads `SurroundingsCatalogCached` and starts at most ONE `LoadPlaces` (never while `_placesLoading` or `_placesSettling`), listing meanwhile from the catalog last loaded for that airport; a pick a rebuild lost is cleared and spoken (`PlaceListUpdatedMessage`). Full: docs/invariants/surroundings.md#sur-13
+
 Mirrored from runway-holds.md (they govern the runway geometry `TaxiGraph` reads: `MatchHoldShortRunwayName`, the start-row repairs, `AnotherRunwayClaimsPoint`; change them there and here together):
 - [HLD-1] Hold-short-to-runway association must be by nearest runway CENTERLINE, never threshold distance, which mislabels crossings far from either threshold with the taxiway name instead of the runway. Full: docs/invariants/runway-holds.md#hld-1
 - [HLD-7] Read runway geometry through the ONE `RunwayShape.For` (classifier, holds, Where-Am-I, takeoff, vacate, reach walk), bar `MatchHoldShortRunwayName` (start rows) and four callers with their own geometry; never read `Pavement*` directly or test membership on `Lat1..Lon2` alone; repair an outboard start ROW, never cap the extent (more: see full). Full: docs/invariants/runway-holds.md#hld-7
