@@ -348,12 +348,14 @@ public class Pmdg777FlowChecklistLinkTests
     // Characterization of what is still latched with no step behind it: every non-reminder line
     // in a latched group that no step of the flow names. Each is a known, reviewed gap — a failed
     // step cannot leave these live. Change this list deliberately. Since 2026-10-09 every line
-    // the First Officer can read or act on has a write or a read-only check behind it, bar the
-    // two exceptions below (the shared rule "flows tick their checklist, made honest"): the
-    // flap-lever checks (Pmdg777FlapLeverCheckTests), Cockpit Prep's power-up check
-    // (Pmdg777PowerUpCheckTests) and the reused writes (Pmdg777HonestTickingTests: the seat
-    // belts, autobrake RTO, the fuel pumps OFF, and the action-group RECALL lines BT_RECALL and
-    // DSCA_RECALL; their READ-BACK lines, BTCL_RECALL and DSC_RECALL, stay pilot-confirmed).
+    // the First Officer can read or act on has a write or a read-only check behind it (the
+    // shared rule "flows tick their checklist, made honest"): the flap-lever checks
+    // (Pmdg777FlapLeverCheckTests), Cockpit Prep's power-up check (Pmdg777PowerUpCheckTests) and
+    // the reused writes (Pmdg777HonestTickingTests: the seat belts, autobrake RTO, the fuel pumps
+    // OFF, and the action-group RECALL lines BT_RECALL and DSCA_RECALL; their READ-BACK lines,
+    // BTCL_RECALL and DSC_RECALL, stay pilot-confirmed). The two exceptions, the APU start
+    // (BS_APU_START) and the engine-start selectors (ES_ENG1_START_SEL, ES_ENG2_START_SEL), are
+    // in the known set below.
     [Fact]
     public void Lines_latched_with_no_delivering_step_are_the_known_set()
     {

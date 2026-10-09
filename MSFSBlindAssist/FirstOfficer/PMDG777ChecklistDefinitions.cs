@@ -574,10 +574,8 @@ public static class PMDG777ChecklistDefinitions
                 "LTS_RunwayTurnoff_Sw_ON_0", v => v < 0.5,
                 new[] { "LTS_RunwayTurnoff_Sw_ON_1" },
                 (e, _) => e.SetRunwayTurnoff(0)),
-            Auto("ATKO_LANDING_OFF", "AFTER_TAKEOFF", "Landing lights: OFF",
-                "LTS_LandingLights_Sw_ON_0", v => v < 0.5,
-                new[] { "LTS_LandingLights_Sw_ON_1", "LTS_LandingLights_Sw_ON_2" },
-                (e, _) => e.SetLandingLights(0)),
+            // No "Landing lights: OFF": PMDG has no such step, and the 10,000 ft automation
+            // switches them (removed with the flow's step, 2026-10-09, FOB-4).
             Auto("ATKO_GEAR_UP", "AFTER_TAKEOFF", "Gear: UP",
                 "GEAR_Lever", v => v < 0.5,
                 action: (e, _) => e.SetGearLever(0)),
@@ -763,9 +761,8 @@ public static class PMDG777ChecklistDefinitions
         Id = "SHUTDOWN", Name = "Shutdown",
         Items = new()
         {
-            Auto("SD_STORM_ON", "SHUTDOWN", "Storm lights: ON",
-                "LTS_Storm_Sw_ON", v => v > 0.5,
-                action: (e, _) => e.SetStormLights(1)),
+            // No "Storm lights: ON": PMDG's Shutdown Procedure has no such step (removed with the
+            // flow's step, 2026-10-09, FOB-4).
             Auto("SD_PARK_BRAKE", "SHUTDOWN", "Parking Brake/Chocks: SET",
                 "BRAKES_ParkingBrakeLeverOn", v => v > 0.5,
                 action: (e, _) => e.SetParkingBrake(1)),

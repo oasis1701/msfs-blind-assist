@@ -140,7 +140,7 @@ public static class PMDG777FlowDefinitions
             // Pmdg777PowerUpCheck's synthetic (1 only when all five lines' own conditions hold,
             // NaN while any input is unread) delivers all five; a timeout is heard skipped and each
             // line then follows its own switch. First, as PMDG's Preflight Procedure opens with the
-            // battery and the Preflight group lists these lines first.
+            // battery and the Preflight group opens with the battery and ADIRU lines.
             Also(Skip(WaitForField("CP_POWER_UP_CHECK", "Battery, ADIRU, demand pumps, nav lights and gear: checked",
                     Pmdg777PowerUpCheck.Field, v => v > 0.5, 20, checklistItemId: "PF_BATTERY"),
                 s => s.IsPowerUpConfirmed()),
@@ -568,9 +568,8 @@ public static class PMDG777FlowDefinitions
             Skip(SW("ATKOF_TURNOFF_OFF", "Runway turnoff: OFF", "EVT_OH_LIGHTS_LR_TURNOFF",  0,
                checklistItemId: "ATKO_TURNOFF_OFF"),
                 s => !s.IsRwyTurnoffLOn() && !s.IsRwyTurnoffROn()),
-            Skip(Multi("ATKOF_LANDING_OFF", "Landing lights: OFF", "ATKO_LANDING_OFF",
-                ("EVT_OH_LIGHTS_LANDING_L", 0), ("EVT_OH_LIGHTS_LANDING_NOSE", 0), ("EVT_OH_LIGHTS_LANDING_R", 0)),
-                s => !s.AreLandingLightsOn()),
+            // No "Landing lights: OFF" step: PMDG's file has none, and the 10,000 ft automation
+            // (FOAutoLights10kEnabled) switches them (removed 2026-10-09, FOB-4).
             Skip(SW("ATKOF_GEAR_UP",     "Gear: UP",            "EVT_GEAR_LEVER",             0,
                "GEAR_Lever", v => v < 0.5, "ATKO_GEAR_UP"),
                 s => s.IsGearUp()),
@@ -765,8 +764,9 @@ public static class PMDG777FlowDefinitions
         RelatedChecklistGroupIds = new[] { "SHUTDOWN", "SHUTDOWN_CL" },
         Steps = new()
         {
-            SW("SD_STORM",       "Storm lights: ON",         "EVT_OH_LIGHTS_STORM",        1,
-               checklistItemId: "SD_STORM_ON"),
+            // No "Storm lights: ON" step: PMDG's Shutdown Procedure has none (removed 2026-10-09,
+            // FOB-4).
+
             // Sets the brake and completes the Shutdown group's "Parking Brake/Chocks: SET". It no
             // longer names the read-back's line: that is PMDG's "Parking Brake: As required", a
             // Manual line the pilot confirms (SDCL_PARK_BRAKE).
@@ -978,10 +978,12 @@ public static class PMDG777FlowDefinitions
         return step;
     }
 
-    // A write whose line appears in BOTH its own action group and the phase's read-back
-    // (*_CL) checklist, and which achieves both (same field, same condition): the extra
-    // line is delivered, and on a skipped step kept out of the latch, alongside
-    // CompletesChecklistItemId (FlowStep.AlsoCompletesChecklistItemIds).
+    // Extra lines one step delivers besides its CompletesChecklistItemId: either a write whose
+    // line appears in BOTH its own action group and the phase's read-back (*_CL) checklist and
+    // which achieves both (same field, same condition), or a read-only check that confirms
+    // several lines of one group at once (Cockpit Prep's power-up check). The extra lines are
+    // delivered, and on a skipped step kept out of the latch, alongside CompletesChecklistItemId
+    // (FlowStep.AlsoCompletesChecklistItemIds).
     private static FlowStep<AircraftStateEvaluator> Also(FlowStep<AircraftStateEvaluator> step, params string[] alsoCompletes)
     {
         step.AlsoCompletesChecklistItemIds = alsoCompletes;

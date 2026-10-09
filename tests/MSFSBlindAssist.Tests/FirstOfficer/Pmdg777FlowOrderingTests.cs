@@ -604,12 +604,45 @@ public class Pmdg777FlowOrderingTests
     {
         var cp = FlowStepIds("COCKPIT_PREP");
         // The power-up lines head the Preflight group (PF_BATTERY, PF_ADIRU) and PMDG's Preflight
-        // Procedure opens with the battery, so the check opens the flow.
+        // Procedure opens with the battery, so the check opens the flow. The order guard
+        // (Every_flow_ticks_its_checklist_items_in_the_order_they_are_listed) reads only
+        // CompletesChecklistItemId (PF_BATTERY), so it never sees the check's four Also lines,
+        // three of which (PF_DEMAND_PUMPS_OFF, PF_NAV_LIGHTS, PF_GEAR_DOWN) the group lists far
+        // below: by design, so do not move the check to "fix" that order.
         Assert.Equal("CP_POWER_UP_CHECK", cp[0]);
         // PMDG's order (FOB-4): CROSSFEED switches OFF, then FUEL PUMP switches OFF; the
         // Preflight group lists the two lines the same way.
         Assert.Equal(cp.IndexOf("CP_XFEED_OFF") + 1, cp.IndexOf("CP_FUEL_PUMPS_OFF"));
         var items = ItemIds("PREFLIGHT");
         Assert.Equal(items.IndexOf("PF_CROSSFEED_OFF") + 1, items.IndexOf("PF_FUEL_PUMPS_OFF"));
+    }
+
+    // =====================================================================
+    // 9. Non-PMDG steps (FOB-4, owner 2026-10-09)
+    //
+    // PMDG's procedure pages have neither of these two steps, and the owner removed both. The
+    // other non-PMDG steps stay as the owner's choices, listed in FOB-4's full text.
+    // =====================================================================
+
+    private static System.Collections.Generic.List<string> WrittenEvents(string flowId) =>
+        PMDG777FlowDefinitions.Build().Single(f => f.Id == flowId).Steps
+            .SelectMany(s => s.EventName is null ? s.MultiActions.Select(a => a.EventName) : new[] { s.EventName })
+            .ToList();
+
+    [Fact]
+    public void After_takeoff_leaves_the_landing_lights_to_the_10000_ft_automation()
+    {
+        Assert.DoesNotContain("ATKOF_LANDING_OFF", FlowStepIds("AFTER_TAKEOFF"));
+        Assert.DoesNotContain("ATKO_LANDING_OFF", ItemIds("AFTER_TAKEOFF"));
+        Assert.DoesNotContain(WrittenEvents("AFTER_TAKEOFF"),
+            e => e.StartsWith("EVT_OH_LIGHTS_LANDING_", System.StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Shutdown_no_longer_turns_the_storm_lights_on()
+    {
+        Assert.DoesNotContain("SD_STORM", FlowStepIds("SHUTDOWN"));
+        Assert.DoesNotContain("SD_STORM_ON", ItemIds("SHUTDOWN"));
+        Assert.DoesNotContain("EVT_OH_LIGHTS_STORM", WrittenEvents("SHUTDOWN"));
     }
 }
