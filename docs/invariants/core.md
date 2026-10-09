@@ -9,7 +9,18 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## CORE-2
 
-- RID-subfolder gotcha: `-r win-x64` (or `dotnet publish -r win-x64`) writes to a SEPARATE `net10.0-windows\win-x64\` tree that a plain `.sln` build never touches — always build/verify the exact folder the app launches from. → CLAUDE.md
+- Keep `<RuntimeIdentifier>win-x64</RuntimeIdentifier>`, `<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>` and `<SelfContained>false</SelfContained>` in `MSFSBlindAssist/MSFSBlindAssist.csproj`. Without the RuntimeIdentifier the build is portable and ships every platform's SQLite binaries. Without the `false`, a build writes to a `win-x64\` subfolder: not the folder the app runs from, not the folder release.yml zips, not the folder the PostBuild xcopy steps target, so a build can succeed while the app, the zip and the copies stay stale. `dotnet publish` writes to `win-x64\publish\`, a folder under the run path. A `win-x64\` folder holding built files predates 2026-08-25 and is stale. Build to, and check the timestamp in, the folder the app launches from.
+
+History. The trap was first seen 2026-06-06, when the csproj had no RuntimeIdentifier: a plain build wrote to `net10.0-windows\`, and `-r win-x64` (or `dotnet publish -r win-x64`) wrote to a separate `net10.0-windows\win-x64\` tree a plain build never touched. Commit 70f28f06 (2026-08-25) pinned the RuntimeIdentifier to cut the shipped output, measured on a Release build at 86.2 MB to 21.2 MB (114 files to 82) and the zip at 41.3 MB to 8.7 MB, and added `AppendRuntimeIdentifierToOutputPath=false` so the output stayed in `bin\x64\<cfg>\net10.0-windows\`. The csproj's comment gives the same reasons.
+
+Measured 2026-10-09, by evaluation only (`dotnet msbuild MSFSBlindAssist/MSFSBlindAssist.csproj -p:Configuration=<cfg> -p:Platform=x64 -getProperty:<name>`, no build):
+
+- As committed, Debug: `OutputPath` is `bin\x64\Debug\net10.0-windows\`, `PublishDir` is `bin\x64\Debug\net10.0-windows\win-x64\publish\`, `RuntimeIdentifier` is `win-x64`. Release: `bin\x64\Release\net10.0-windows\` and `bin\x64\Release\net10.0-windows\win-x64\publish\`, with `AppendRuntimeIdentifierToOutputPath` false and `SelfContained` false.
+- `-p:RuntimeIdentifier=win-x64` on the command line, which is what `-r win-x64` sets: the same `OutputPath` and `PublishDir`. So `-r win-x64` changes nothing any more.
+- `-p:RuntimeIdentifier=` (the RuntimeIdentifier emptied): `OutputPath` unchanged, `PublishDir` `bin\x64\Debug\net10.0-windows\publish\`.
+- `-p:AppendRuntimeIdentifierToOutputPath=true` (the `false` undone): `OutputPath` becomes `bin\x64\Debug\net10.0-windows\win-x64\`.
+
+Corrected 2026-10-09: the rule said `-r win-x64` writes a separate `win-x64\` tree a plain build never touches; since 2026-08-25 the csproj pins the RuntimeIdentifier and the output path, so `-r win-x64` changes nothing, and the trap is removing the `false` (output moves into `win-x64\`) or the RuntimeIdentifier (a portable build). Evidence: `MSFSBlindAssist/MSFSBlindAssist.csproj` (commit 70f28f06) and the `-getProperty` measurements above.
 
 ## CORE-3
 
@@ -17,7 +28,11 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## CORE-4
 
-- `tools/CDUTest` and `tools/CDUTest`-style standalone probes build on their own, NOT as part of the solution. → CLAUDE.md
+- `dotnet build MSFSBlindAssist.sln` builds only two of the `tools/` projects, `tools/PMDGDispatchTester` and `tools/ChangelogBuilder`. The other 12 `tools/*` projects build on their own, never as part of the solution: `CDUTest`, `DistanceUnitsProbe`, `DockingProbe`, `GsxAirplaneProbe`, `GsxOffsetProbe`, `GsxProfileProbe`, `IFlySdkProbe`, `LandingExitSweep`, `ProgressiveTaxiProbe`, `StandBridgeSweep`, `TaxiAugmentProbe` and `TaxiGuidanceProbe`. docs/development.md ("Build output and traps") names what each does.
+
+Why it matters. Eleven of the twelve link production sources from `MSFSBlindAssist/` with `<Compile Include>` (`CDUTest` links none; it copies the main app's `SimConnect.dll`). A solution build never compiles them, so a change to a linked source can break one without any solution build showing it. Build the probe you rely on, after a change to a source it links.
+
+Corrected 2026-10-09: the rule named only `tools/CDUTest` and probes "of its style", and CLAUDE.md listed four; 12 projects build on their own. Evidence: `ls tools/*/*.csproj` (14 projects) against the project list in `MSFSBlindAssist.sln`, which holds only `PMDGDispatchTester` and `ChangelogBuilder` from `tools/`.
 
 ## CORE-5
 
