@@ -354,16 +354,25 @@ function Split-ShellCommands([string]$Command, [string]$Shell) {
     return ,$result.ToArray()
 }
 
-# Words of one simple command as objects: Text (quotes removed) and Bare (its first character was neither quoted
-# nor escaped, so it can be an operator: a quoted ">" is an argument, never a redirect). Bash: a backslash escapes
-# outside quotes and, inside double quotes, only $ ` " \; single quotes are literal. PowerShell: the backtick escapes;
-# a backslash is a path separator; '' inside single quotes is one quote. A bare > inside a word starts a new word
-# (echo x>f). An unterminated quote throws.
+# One word of a command: Text (quotes removed); Bare (its first character was neither quoted nor escaped, so it can be
+# an operator: a quoted ">" is an argument, never a redirect); EndsBare (its last character was neither quoted nor
+# escaped, so a ")" there can close a subshell); Opens and Closes (its unquoted, unescaped "(" and ")" characters).
+function New-ShellWord([string]$Text, [bool]$Bare, [bool]$EndsBare, [int]$Opens, [int]$Closes) {
+    return [pscustomobject]@{ Text = $Text; Bare = $Bare; EndsBare = $EndsBare; Opens = $Opens; Closes = $Closes }
+}
+
+# Words of one simple command as objects (see New-ShellWord). Bash: a backslash escapes outside quotes and, inside
+# double quotes, only $ ` " \; single quotes are literal. PowerShell: the backtick escapes; a backslash is a path
+# separator; '' inside single quotes is one quote. A bare > inside a word starts a new word (echo x>f). An
+# unterminated quote throws.
 function Get-ShellWords([string]$Segment, [string]$Shell) {
     $words = New-Object System.Collections.Generic.List[object]
     $word = New-Object System.Text.StringBuilder
     $inWord = $false
     $bare = $null
+    $endsBare = $false
+    $opens = 0
+    $closes = 0
     $quote = [char]0
     for ($i = 0; $i -lt $Segment.Length; $i++) {
         $c = $Segment[$i]
@@ -375,6 +384,7 @@ function Get-ShellWords([string]$Segment, [string]$Shell) {
             }
             else { [void]$word.Append($c) }
             if ($null -eq $bare -and $word.Length -gt 0) { $bare = $false }
+            $endsBare = $false
             continue
         }
         if ($quote -eq '"') {
@@ -385,36 +395,42 @@ function Get-ShellWords([string]$Segment, [string]$Shell) {
             }
             else { [void]$word.Append($c) }
             if ($null -eq $bare -and $word.Length -gt 0) { $bare = $false }
+            $endsBare = $false
             continue
         }
         if ([char]::IsWhiteSpace($c)) {
             if ($inWord) {
-                $words.Add([pscustomobject]@{ Text = $word.ToString(); Bare = ($bare -eq $true) })
-                [void]$word.Clear(); $inWord = $false; $bare = $null
+                $words.Add((New-ShellWord ($word.ToString()) ($bare -eq $true) $endsBare $opens $closes))
+                [void]$word.Clear(); $inWord = $false; $bare = $null; $endsBare = $false; $opens = 0; $closes = 0
             }
             continue
         }
         $inWord = $true
-        if ($c -eq "'" -or $c -eq '"') { $quote = $c; continue }
+        if ($c -eq "'" -or $c -eq '"') { $quote = $c; $endsBare = $false; continue }
         if (($Shell -eq 'PowerShell' -and $c -eq '`' -and $hasNext) -or ($Shell -ne 'PowerShell' -and $c -eq '\' -and $hasNext)) {
             $i++; [void]$word.Append($Segment[$i])
             if ($null -eq $bare) { $bare = $false }
+            $endsBare = $false
             continue
         }
         # An unquoted, unescaped > inside a word ends it and starts a bare word at the >, so "echo x>f" reads as
-        # "echo x >f". Not after nothing, a file descriptor number, & or another > (2>&1, &>f, >>f stay one word).
+        # "echo x >f". The word stays whole only while it is bare and nothing but a file descriptor number or & (and
+        # at most one > after it): 2>&1, &>f, >>f, 2>>f and &>>f. A word that began in quotes always splits, as does
+        # a second redirect (x>a>f, 2>&1>f).
         if ($c -eq '>' -and $word.Length -gt 0) {
             $sofar = $word.ToString()
-            if ($sofar -ne '&' -and $sofar -notmatch '^[0-9]+$' -and -not $sofar.Contains('>')) {
-                $words.Add([pscustomobject]@{ Text = $sofar; Bare = ($bare -eq $true) })
-                [void]$word.Clear(); $bare = $null
+            if (-not ($bare -eq $true -and $sofar -match '^(?:[0-9]*|&)>?$')) {
+                $words.Add((New-ShellWord $sofar ($bare -eq $true) $endsBare $opens $closes))
+                [void]$word.Clear(); $bare = $null; $endsBare = $false; $opens = 0; $closes = 0
             }
         }
         [void]$word.Append($c)
         if ($null -eq $bare) { $bare = $true }
+        $endsBare = $true
+        if ($c -eq '(') { $opens++ } elseif ($c -eq ')') { $closes++ }
     }
     if ($quote -ne [char]0) { throw 'unterminated quote' }
-    if ($inWord) { $words.Add([pscustomobject]@{ Text = $word.ToString(); Bare = ($bare -eq $true) }) }
+    if ($inWord) { $words.Add((New-ShellWord ($word.ToString()) ($bare -eq $true) $endsBare $opens $closes)) }
     return ,$words.ToArray()
 }
 
@@ -466,21 +482,33 @@ function Update-PowerShellVariables($Vars, $Words) {
     }
 }
 
-# Drops the ( of a subshell from a segment's first word and the ) from its last bare word, so "(cd d && sed -i s/a/b/ f)"
-# reads as the commands inside. A word that is only the paren disappears.
+# A segment's words without the parens of a subshell, so "(cd d && sed -i s/a/b/ f)" reads as the commands inside, and
+# whether the segment opened a subshell (Open) or closed one (Close). The ( comes off the first word when it is bare.
+# The ) comes off the last word when its last character is unquoted and the segment has more unquoted ) than (: the )
+# that ends a $( ) or a PowerShell ( ) group is matched inside the segment, so it stays and closes nothing. A word that
+# is only the paren disappears. Returns @{ Words; Open; Close }.
 function Remove-SubshellParens($Words) {
     $list = New-Object System.Collections.Generic.List[object]
-    foreach ($w in $Words) { $list.Add($w) }
+    $opens = 0
+    $closes = 0
+    foreach ($w in $Words) { $list.Add($w); $opens += $w.Opens; $closes += $w.Closes }
+    $open = $false
+    $close = $false
     if ($list.Count -gt 0 -and $list[0].Bare -and $list[0].Text.StartsWith('(', [StringComparison]::Ordinal)) {
-        $rest = $list[0].Text.Substring(1)
-        if ($rest -eq '') { $list.RemoveAt(0) } else { $list[0] = [pscustomobject]@{ Text = $rest; Bare = $true } }
+        $first = $list[0]
+        $open = $true
+        $opens--
+        $rest = $first.Text.Substring(1)
+        if ($rest -eq '') { $list.RemoveAt(0) } else { $list[0] = New-ShellWord $rest $true $first.EndsBare ($first.Opens - 1) $first.Closes }
     }
     $last = $list.Count - 1
-    if ($last -ge 0 -and $list[$last].Bare -and $list[$last].Text.EndsWith(')', [StringComparison]::Ordinal)) {
-        $rest = $list[$last].Text.Substring(0, $list[$last].Text.Length - 1)
-        if ($rest -eq '') { $list.RemoveAt($last) } else { $list[$last] = [pscustomobject]@{ Text = $rest; Bare = $true } }
+    if ($last -ge 0 -and $list[$last].EndsBare -and $list[$last].Text.EndsWith(')', [StringComparison]::Ordinal) -and $closes -gt $opens) {
+        $final = $list[$last]
+        $close = $true
+        $rest = $final.Text.Substring(0, $final.Text.Length - 1)
+        if ($rest -eq '') { $list.RemoveAt($last) } else { $list[$last] = New-ShellWord $rest $final.Bare $false $final.Opens ($final.Closes - 1) }
     }
-    return ,$list.ToArray()
+    return @{ Words = $list.ToArray(); Open = $open; Close = $close }
 }
 
 function Add-WriteTarget($Targets, [string]$Raw, [string]$Dir, $Vars, [string]$Shell = 'Bash') {
@@ -556,8 +584,16 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
     $comparer = [StringComparer]::Ordinal
     if ($Shell -eq 'PowerShell') { $comparer = [StringComparer]::OrdinalIgnoreCase }
     $vars = New-Object System.Collections.Hashtable($comparer)
+    # A subshell keeps its cd and its variables to itself: its opening ( saves the directory and a copy of the
+    # variables, and the segment after the one holding its closing ) gets them back.
+    $scopes = New-Object System.Collections.Generic.Stack[object]
+    $leaveScope = $false
     foreach ($segment in (Split-ShellCommands (Remove-HeredocBodies $Command $Shell) $Shell)) {
-        $all = Remove-SubshellParens (Get-ShellWords $segment $Shell)
+        $parens = Remove-SubshellParens (Get-ShellWords $segment $Shell)
+        $all = $parens.Words
+        if ($leaveScope -and $scopes.Count -gt 0) { $scope = $scopes.Pop(); $dir = $scope.Dir; $vars = $scope.Vars }
+        $leaveScope = $parens.Close
+        if ($parens.Open) { $scopes.Push(@{ Dir = $dir; Vars = $vars.Clone() }) }
         if ($Shell -eq 'PowerShell') { Update-PowerShellVariables $vars $all }
         $start = 0
         while ($start -lt $all.Count -and $all[$start].Bare -and $all[$start].Text -match '^[A-Za-z_][A-Za-z0-9_]*=') { $start++ }

@@ -252,6 +252,20 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("Bash", "echo x>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
     [InlineData("Bash", "(cd MSFSBlindAssist && sed -i 's/a/b/' Aircraft/Pmdg737DisplayReads.cs)", Pmdg737)]
     [InlineData("Bash", "export D=MSFSBlindAssist; cd $D && sed -i 's/a/b/' Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    // A > inside quotes, or one after an earlier redirect in the same word, never hides the unquoted > that follows.
+    [InlineData("Bash", "echo \"a => b\">MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("PowerShell", "echo \"a => b\">MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo 'a>b'>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x>a>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x 2>&1>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x>>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x>|MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x &>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    // A subshell keeps its cd and its variables to itself; its closing ) comes off a quoted last word too, but the ) that
+    // closes a $( ) does not end the subshell.
+    [InlineData("Bash", "(cd tests && true); sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "(sed -i 's/a/b/' \"MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\")", Pmdg737)]
+    [InlineData("Bash", "(cd tests && v=$(pwd) && sed -i 's/a/b/' ../MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs)", Pmdg737)]
     public void Shell_guard_refuses_writes_to_covered_files(string tool, string command, string target)
     {
         JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput(tool, command)));
@@ -306,6 +320,7 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("Bash", "f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs sed -i 's/a/b/' \"$f\"")]
     [InlineData("Bash", "f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs; f=$(mktemp); sed -i 's/a/b/' \"$f\"")]
     [InlineData("PowerShell", "$p = 'MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs'; $p += 'x'; Set-Content $p x")]
+    [InlineData("Bash", "(f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs); sed -i 's/a/b/' \"$f\"")]   // a subshell's variable ends with it
     public void Shell_guard_allows_commands_that_write_no_covered_file(string tool, string command)
     {
         HookRun run = RunHook(new[] { "shell-guard" }, ShellInput(tool, command));
