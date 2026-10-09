@@ -422,6 +422,8 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("open(r'MSFSBlindAssist/Forms/PMDG737\\new.cs', 'w')", "MSFSBlindAssist/Forms/PMDG737/new.cs")]
     // A def body that writes its own local binding: the binding holds until the body ends.
     [InlineData("OUT = 'scratch/report.md'\ndef save(t):\n    OUT = '{C}'\n    open(OUT, 'w').write(t)")]
+    // A loop the guard does not follow, earlier in the text, does not hide the covered binding that comes after it.
+    [InlineData("import sys\nfor p in sys.argv[1:]:\n    print(p)\np = '{C}'\nopen(p, 'w')")]
     public void Shell_guard_refuses_a_python_write_resolved_to_a_covered_file(string script, string covered = Pmdg737)
     {
         JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(script))));
@@ -475,6 +477,16 @@ public class ClaudeRulesHookTests : IDisposable
         + "def report(t):\n    open(OUT, 'w').write(t)")]
     // An escape that changes the value (\n here) leaves the literal unresolved: Python would not write this path.
     [InlineData("open('MSFSBlindAssist/Forms/PMDG737\\new.cs', 'w')")]
+    // A binding the guard does not follow, earlier in the text than the scratch write, must not shift the write onto
+    // the later covered binding the script only reads (the bindings are found per kind, then put in text order).
+    [InlineData("names = [p for p in ['a', 'b']]\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("for p in ['a', 'b']:\n    print(p)\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("with open('a.txt') as p:\n    pass\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("p = 'a'\np += 'b'\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("def show(p):\n    return p\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("import sys\nfor OUT in sys.argv[1:]:\n    print(OUT)\nOUT = 'scratch/report.md'\ndef report(t):\n"
+        + "    open(OUT, 'w').write(t)\ndef scan():\n    OUT = '{C}'\n    return open(OUT).read()")]
+    [InlineData("p = 'scratch/x.txt'\nouts = [\n    open(p, 'w')\n    for p in ['a.txt', 'b.txt']\n]\np = '{C}'\nprint(open(p).read())")]
     public void Shell_guard_allows_a_python_script_that_writes_no_resolved_covered_file(string script)
     {
         HookRun run = RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(script)));

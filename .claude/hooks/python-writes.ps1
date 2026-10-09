@@ -443,7 +443,16 @@ function Read-PyBindings($Ctx, [string]$Name) {
         $order[$k] = 2 * [long]$entries[$k].Effective
         if ($entries[$k].Kind -eq 'kill') { $order[$k]++ }
     }
-    [Array]::Sort($order, $entries)
+    # Both cast to [Array]: without the casts Windows PowerShell 5.1 binds the generic Sort<TKey,TValue>, which sorts a
+    # converted copy of the entries and leaves $entries in the order the searches above found them.
+    [Array]::Sort([Array]$order, [Array]$entries)
+    # Order is read back from the sorted entries, so the two can never disagree; out of order means the entries did not
+    # move, and the name stays unresolved (Get-PyBindings catches the throw).
+    for ($k = 0; $k -lt $entries.Length; $k++) {
+        $order[$k] = 2 * [long]$entries[$k].Effective
+        if ($entries[$k].Kind -eq 'kill') { $order[$k]++ }
+        if ($k -gt 0 -and $order[$k] -lt $order[$k - 1]) { throw 'python-writes: bindings out of order' }
+    }
     return @{ Order = $order; Entries = $entries }
 }
 
