@@ -485,9 +485,12 @@ public class ClaudeRulesHookTests : IDisposable
     [Fact]
     public void An_agent_worktree_needs_no_instruction()
     {
+        // Claude Code's own agent-* worktrees are filed under a key that is never the parent session's, so the exemption
+        // by name is what keeps them quiet. Pass a transcript key that differs: without one the hook is silent anyway.
         string cwd = Path.Combine(NewTempDir(), ".claude", "worktrees", "agent-abc");
 
-        Assert.Null(HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", cwd))));
+        Assert.Null(HookOutput(RunHook(new[] { "subagent-start" },
+            SubagentInput("general-purpose", cwd, TranscriptFor(NewTempDir())))));
     }
 
     [Fact]
