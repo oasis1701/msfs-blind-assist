@@ -52,3 +52,27 @@ Moved 2026-10-08 from docs/invariants/a380-systems.md: the code is the flyPad ag
 - `FbwEfbForm`'s list mode, the silent WinForms fallback when WebView2 fails (`CreateControlFor`, `ApplyDisabledInPlace`), honours a disabled control without disabling it: the control stays focusable, its label carries `DimmedSuffix` (", dimmed"), and activating it says "Unavailable" and posts nothing; never `Enabled = false`, which would take it out of the tab order. List mode dims EVERY control while the browser shell dims buttons and links only, on purpose; never harmonize the two. No test covers list mode, and FPD-2 only names it. → [flypad.md](../flypad.md)
 
 Split from MD11-13 on 2026-10-09: one mechanism per ID. It is a flyPad rule because `FbwEfbForm` is the shell the flyPad, the PMDG EFB and the MD-11 EFB share.
+
+## A380C-12
+
+- Never widen the flyPad Dashboard's column-first read order to other EFB pages without evidence a specific page is jumbled — a blind global split would break single-column pages. → [a380x.md](../a380x.md)
+
+Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`), which the A32NX and the A380 share. The ID keeps its prefix.
+
+## A380C-14
+
+- `buildSettingsLines` must return null (defer to the generic pass) when it finds no recognizable control in a region, rather than rendering an owned-but-blank page — this is the safety net for layouts the builder doesn't recognize. → [a380x.md](../a380x.md)
+
+Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`), which the A32NX and the A380 share. The ID keeps its prefix.
+
+## A380C-15
+
+- Door-tile precise names must never trust the FBW enum DIGIT alone — it can be wrong (index 9 "Main4Right" is actually Main Door 5 Right); always parse the handler comment's enum NAME, falling back to column-based Left/Right only when the enum can't be parsed. → [a380x.md](../a380x.md)
+
+Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`), which the A32NX and the A380 share. The ID keeps its prefix.
+
+## A380C-16
+
+- `A.DOOR_NAMES` (flyPad agent) must be kept in sync with each aircraft def's `_doorDefs` table — the flyPad label and the spoken door name must agree. → [a380x.md](../a380x.md)
+
+Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`, its A320 and A380 entries) and each definition's `_doorDefs`; its mirrors in `a32nx-fenix.md` and `a380-systems.md` point here now. The ID keeps its prefix.

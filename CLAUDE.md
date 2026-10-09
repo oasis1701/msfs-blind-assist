@@ -128,7 +128,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [variable-system.md](docs/variable-system.md) | The three variable patterns (panel, monitoring, hotkey) | — |
 | [hotkey-system.md](docs/hotkey-system.md) | Adding or changing hotkeys | — |
 | [development.md](docs/development.md) | Dependencies, key files, build output paths and traps, and the Claude Code hooks | claude-tooling |
-| [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | — |
+| [tooling.md](docs/tooling.md) | Live debugging over the Coherent debugger (`:19999`), the probes in `tools/`, crash diagnosis | coherent-clients |
 | [troubleshooting-playbook.md](docs/troubleshooting-playbook.md) | A control "doesn't work": read this FIRST, before calling it broken or unsettable | troubleshooting |
 | [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, runway-holds, taxi-steering, landing-exits, landing-rollout, ground-traffic, surroundings, taxi-augmentation, takeoff-and-callouts |
 | [gsx.md](docs/gsx.md) | GSX gate selection and Remote API, docking guidance, the metres/feet toggle | gsx-remote, gsx-stands-docking |

@@ -67,8 +67,8 @@ Loaded when Claude reads matching code. Background: docs/a32nx.md. Full text of 
 - [A320-38] Every MSFSBA-origin FCU write arms its dial-callout echo BEFORE the send, keys from `FcuEchoKeys.For(evt, FcuSources, FcuConfirmation)` (`ArmFcuEchoFor`, `OnPanelButtonFiring`; the calc-code V/S set arms the same two directly); a queued dotted event re-arms when `FlushPendingCalcEvents` sends it (`QueuedEventDispatched`). Full: docs/invariants/a32nx-fenix.md#a320-38
 - [A320-39] `SwitchAircraft` starts the new definition's FCU callout settle (`BeginFcuValueSettle`) when the switch falls within `AircraftLoadSettleWindowMs` (60 s, a judgement) of `AircraftLoaded`; without it a loading flight's first published FCU values are spoken as knob turns. Full: docs/invariants/a32nx-fenix.md#a320-39
 
-Mirrored from a380-coherent.md (it governs `_doorDefs` in FlyByWireA320Definition.cs; change it there and here together):
-- [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/a380-coherent.md#a380c-16
+Mirrored from flypad.md (it governs `_doorDefs` in FlyByWireA320Definition.cs; change it there and here together):
+- [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/flypad.md#a380c-16
 
 Mirrored from a380-systems.md (they govern the TCAS RA registrations in FlyByWireA320Definition.cs; change them there and here together):
 - [A380-17] Register the TCAS RA-guidance V/S bands as the `:1`/`:2` indexed L:vars, never only the unindexed names, which FBW never writes. Full: docs/invariants/a380-systems.md#a380-17
