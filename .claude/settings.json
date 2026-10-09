@@ -38,7 +38,10 @@
           { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(tee *)" },
           { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(cat *)" },
           { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(echo *)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(printf *)" }
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(printf *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(python *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(python3 *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "Bash(py *)" }
         ]
       },
       {
@@ -46,7 +49,10 @@
         "hooks": [
           { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(Set-Content *)" },
           { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(Add-Content *)" },
-          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(Out-File *)" }
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(Out-File *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(python *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(python3 *)" },
+          { "type": "command", "command": "powershell.exe", "args": ["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", "${CLAUDE_PROJECT_DIR}/.claude/hooks/rules-hook.ps1", "shell-guard"], "timeout": 10, "if": "PowerShell(py *)" }
         ]
       }
     ],

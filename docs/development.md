@@ -184,15 +184,17 @@ The solution contains six projects: `MSFSBlindAssist` (main app), `MSFSBlindAssi
 
 ## Claude Code hooks
 
-The committed `.claude/settings.json` runs `.claude/hooks/rules-hook.ps1` under Windows PowerShell in every Claude Code session in this repository. It brings area rules where Claude Code's own path-scoped loading does not reach, and refuses shell edits that would go around it (CORE-16). Its own rules are CCT-1 to CCT-4, in `.claude/rules/claude-tooling.md`.
+The committed `.claude/settings.json` runs `.claude/hooks/rules-hook.ps1` under Windows PowerShell in every Claude Code session in this repository. It brings area rules where Claude Code's own path-scoped loading does not reach, and refuses shell edits that would go around it (CORE-16). Its own rules are CCT-1 to CCT-7, in `.claude/rules/claude-tooling.md`.
 
 The modes, and what starts each:
 
 - `read`: after a Read inside `.claude/worktrees/agent-*` (filter `Read(//**/.claude/worktrees/agent-*/**)`), and after every Write or NotebookEdit, since no filter matches a Write; outside agent worktrees it exits at once. A subagent run with worktree isolation gets no area rules from Claude Code, so this adds the file's rule files, once per subagent: whole rule files within about 9,000 characters, then the rest named for Claude to Read (CCT-5).
 - `diff`: after every `git` or `gh` command in the Bash and PowerShell tools; it acts only on `git diff`, `git show` (also after `git -C <dir>`) and `gh pr diff`. It adds the rule files for the changed paths the same way. It is registered as `Bash(git *)` rather than `Bash(git diff*)` because a filter naming more than the command also runs on every command holding `$VAR` or `$()`.
-- `shell-guard`: before a Bash command using `sed`, `perl`, `tee`, `cat`, `echo` or `printf`, and before a PowerShell `Set-Content`, `Add-Content` or `Out-File`. It refuses the command when it writes a file some rule file covers, and points to Read and then Edit or Write.
-- `subagent-start`: when a subagent starts. The built-in Plan agent skips CLAUDE.md, so it gets CLAUDE.md's "Rules for any file" and "Before changing behaviour" sections and the path to Read for the rest. A subagent working in a worktree that is neither the session's own checkout nor an `agent-*` folder is told to load its rules itself.
+- `shell-guard`: before a Bash command using `sed`, `perl`, `tee`, `cat`, `echo`, `printf`, `python`, `python3` or `py`, and before a PowerShell `Set-Content`, `Add-Content`, `Out-File`, `python`, `python3` or `py`. It refuses the command when it writes a file some rule file covers, and points to Read and then Edit or Write. It follows a path held in a variable the same command set to a literal (`f=<path> && sed -i … "$f"`). For Python it reads the code the command runs (`-c`, a heredoc or a bash here-string (`<<<`), a `<` stdin file, a script file, or a script the same command wrote with a heredoc) and refuses only a write sink whose path it can resolve from literals (CCT-7).
+- `subagent-start`: when a subagent starts. The built-in Plan agent skips CLAUDE.md, so it gets the "Rules for any file" and "Before changing behaviour" sections of the CLAUDE.md in the checkout it runs in, and the path to Read for the rest. A subagent working in a `.claude/worktrees/<name>` folder that is neither an `agent-*` folder nor the session's own is told to load its rules itself. The own-worktree test compares the folder in the hook input's `transcript_path` with the worktree's path, never `CLAUDE_PROJECT_DIR` (CCT-6).
 - `session-start`: after a compaction. It forgets which rule files the hook added, so they can be added again.
+
+**Worktree sessions.** A desktop-app session in `.claude/worktrees/<name>` runs the main checkout's copy of the script, because `CLAUDE_PROJECT_DIR` is the main checkout there. Try a hook change by running the worktree's script by hand, or in a `claude -p` started in the worktree.
 
 **Listing a change's rules.** The same script lists the rule files that load for any paths, which is useful when reviewing a change or planning one:
 
@@ -205,8 +207,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/rules-hook.ps1
 
 **Limits.**
 - Claude Code shows the model only about 10,000 characters of a hook's output; anything longer is saved to a file and the model sees a 2 KB preview. So the hook shows whole rule files within 9,000 characters and names the rest by path, and Claude has to Read those itself (CCT-5).
-- The shell guard cannot see a write made by a script (Python, Node, `dotnet`), by `cp` or `mv`, by git itself, or by a PowerShell `>` redirect outside the three cmdlets; CORE-16's instruction still covers those.
-- Each `git` or `gh` command, each filtered shell command and each Write costs about 0.2 to 0.5 s: PowerShell start-up, plus reading the rule files when a target is inside a checkout. Normal Reads never start the hook.
+- The shell guard refuses only a write it has matched to a covered file. It leaves allowed `cp`, `mv`, git itself, a redirect from a command it does not start on (`awk … > f`, `git show X:f > f`), PowerShell .NET writes (`[IO.File]::WriteAllText`), a script in another language (Node, `dotnet`), a Python path built at run time (`os.walk`, globs, f-strings, `Path(...) / 'x'`, string concatenation), an interpreter named anything but exactly `python`, `python3` or `py` (`python3.12`, `python.exe`, a full path), and code piped into Python (`cat <<EOF | python -`). CORE-16's instruction still covers those.
+- The guard reads a variable as the command wrote it: one changed by `unset`, `read`, `f+=`, `for`, `declare` or `local` keeps its earlier literal value in the guard's eyes, so it can refuse a write that would not happen or miss one that would, and a single-quoted `'$f'` is read like `"$f"`.
+- The Python analysis has a 3-second deadline and allows whatever it has not analysed by then. A missing or broken `.claude/hooks/python-writes.ps1` costs only that analysis (CCT-1).
+- Each `git` or `gh` command, each filtered shell command and each Write costs about 0.2 to 0.5 s: PowerShell start-up, plus reading the rule files when a target is inside a checkout. A Python command costs up to about 0.75 s (measured 2026-10-09: `python -c "print(1)"` about 0.4 s, a few-KB heredoc with a write sink about 0.7 s), and filtered shell commands are about 50 ms slower than before the Python analysis (the first-call compile of the larger parser). Normal Reads never start the hook.
 - Claude Code and the hook do not know what the other has added, so a rule file can arrive twice: when Claude Reads a file and then runs `git diff` over it, or the other way round. It is harmless; it costs context.
 - A change to `.claude/settings.json` can reach a session that is already running, so test a change in a fresh session.
 
@@ -214,11 +218,11 @@ powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/rules-hook.ps1
 
 1. A subagent run with worktree isolation that reads `MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs` and `MSFSBlindAssist/Navigation/TaxiGraph.cs` gets `pmdg-737`, `variable-definitions`, `gsx-stands-docking`, `landing-exits`, `runway-holds` and `taxi-routing`, each shown in full or named to Read, and a Write of a new file under `MSFSBlindAssist/Aircraft/MD11/` adds `md11`. Ask it to quote the last rule ID of each file shown in full: a 2 KB preview would not contain it (CCT-5).
 2. The main conversation reading the same two files gets each rule file once, from Claude Code, with no hook header.
-3. `sed -i` and `cat > file <<EOF` aimed at a covered file are refused with the CORE-16 message, and the same aimed at a scratch file run.
+3. `sed -i` and `cat > file <<EOF` aimed at a covered file are refused with the CORE-16 message, and the same aimed at a scratch file run. A Python heredoc that writes a covered file is refused and one that only reads it runs.
 4. `git show <commit> -- MSFSBlindAssist/Navigation/TaxiGraph.cs`, and `git -C <checkout> diff --name-only` over that commit, add the taxi rule files.
 5. A Plan agent can quote CORE-7, from CLAUDE.md's "Rules for any file", and is told to Read CLAUDE.md for the rest.
 6. A normal Read in the main conversation never starts the `read` hook. To see this, register a logging copy of the hook under the same filter with `--settings`.
-7. A subagent working in a worktree the read mode cannot see is told to load its rules itself.
+7. A subagent in the session's own worktree gets no instruction, and a logging SubagentStart hook (registered with `--settings`, as in check 6) shows its `transcript_path` key matches the worktree. A subagent in another non-`agent-*` worktree is told to load its rules itself. In a `claude -p` started in the worktree this checks the `transcript_path` key format; only a desktop-app worktree session (where `CLAUDE_PROJECT_DIR` is the main checkout) shows the old false warning.
 8. A filter naming a redirect (`Bash(cat >*)`) still matches nothing, so the broad shell-guard filters are still needed; and a command holding `$VAR` but no git command does not start the diff hook.
 
 
