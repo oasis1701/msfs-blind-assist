@@ -24,7 +24,11 @@ namespace MSFSBlindAssist.Services.Gsx.Remote;
 /// (see <see cref="GsxConcourseLetterFiller"/>'s doc for the one measured exception, the concourse
 /// LETTER). All 75 KSAN stands sit 0.36-4.50 m (median 2.16) from a same-numbered navdata stand.
 /// Where GSX and navdata BOTH publish a heading (187 KJFK stands), they agree to a median 0.24
-/// degrees, max 6.68, with no 180-degree flips.
+/// degrees, max 6.68, with no 180-degree flips. Live at RJAA (stock scenery, no profile) all 154
+/// stands have their navdata stand within 5.2 m. The POSITION stays GSX's: the offset is navdata
+/// converting metres to degrees with a flat 111,132.954 m per degree where GSX uses the WGS84
+/// ellipsoid, so GSX's point is the more precise one, and that scale bends a heading by at most
+/// 0.13 degrees (full measurement under DCK-42).
 /// </para>
 ///
 /// <para>
