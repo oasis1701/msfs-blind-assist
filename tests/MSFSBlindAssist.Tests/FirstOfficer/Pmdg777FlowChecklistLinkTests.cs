@@ -369,7 +369,8 @@ public class Pmdg777FlowChecklistLinkTests
             // Shutdown Checklist "Flaps: UP": the flaps are retracted in After Landing.
             // --- Manual verification lines (no state, no action) the flow still latches ---
             // (trim, CDU, V speeds, MCP, altimeters, anti-ice, flight controls, recall, oil
-            // pressure, WX radar, APU) — delivered by the pilot or a Captain reminder step.
+            // pressure, WX radar, APU, the Shutdown Checklist's parking brake "As required") —
+            // delivered by the pilot or a Captain reminder step.
             "AFTER_LANDING/AL_WX_RADAR_OFF",
             "APPROACH_SETUP/APP_ALTIMETERS",
             "BEFORE_START/BSCL_CDU_COMPLETE",
@@ -386,9 +387,7 @@ public class Pmdg777FlowChecklistLinkTests
             "BEFORE_START/BS_SEAT_BELTS",
             "BEFORE_START/BS_STAB_TRIM",
             "BEFORE_START/BS_V2_SET",
-            "BEFORE_TAKEOFF/BTKOF_ALT",
             "BEFORE_TAKEOFF/BTKOF_FLAPS",
-            "BEFORE_TAKEOFF/BTKOF_V_SPEEDS",
             "BEFORE_TAXI/BTCL_ANTI_ICE",
             "BEFORE_TAXI/BTCL_AUTOBRAKE",
             "BEFORE_TAXI/BTCL_FCTL",
@@ -417,6 +416,7 @@ public class Pmdg777FlowChecklistLinkTests
             "LANDING/LDG_FLAPS",
             "SHUTDOWN/SDCL_FLAPS_UP",
             "SHUTDOWN/SDCL_HYD",
+            "SHUTDOWN/SDCL_PARK_BRAKE",
             "SHUTDOWN/SDCL_WX_RADAR",
             "SHUTDOWN/SD_APU",
         }, FlowChecklistLinkAudit.UndeliveredLines(FlowsWithItems()));

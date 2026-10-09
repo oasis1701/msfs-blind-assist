@@ -694,9 +694,12 @@ public static class PMDG777FlowDefinitions
         {
             SW("SD_STORM",       "Storm lights: ON",         "EVT_OH_LIGHTS_STORM",        1,
                checklistItemId: "SD_STORM_ON"),
-            Also(Skip(SW("SD_PARK_BRAKE",  "Parking brake: SET",       "EVT_CONTROL_STAND_PARK_BRAKE_LEVER", 1,
+            // Sets the brake and completes the Shutdown group's "Parking Brake/Chocks: SET". It no
+            // longer names the read-back's line: that is PMDG's "Parking Brake: As required", a
+            // Manual line the pilot confirms (SDCL_PARK_BRAKE).
+            Skip(SW("SD_PARK_BRAKE",  "Parking brake: SET",       "EVT_CONTROL_STAND_PARK_BRAKE_LEVER", 1,
                "BRAKES_ParkingBrakeLeverOn", v => v > 0.5, "SD_PARK_BRAKE"),
-                s => s.IsParkingBrakeSet()), "SDCL_PARK_BRAKE"),
+                s => s.IsParkingBrakeSet()),
             // Fuel control: CUTOFF — PMDG inverted: 1=CUTOFF
             new FlowStep<AircraftStateEvaluator> { Id = "SD_FC_CUTOFF", Label = "Fuel Control: CUTOFF",
                 ActionType = FlowStepActionType.SetSwitchMultiple,

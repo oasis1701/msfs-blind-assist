@@ -549,11 +549,12 @@ public static class PMDG777ChecklistDefinitions
         Id = "BEFORE_TKOF_CL", Name = "Before Takeoff Checklist",
         Items = new()
         {
+            // PMDG's Before Takeoff Checklist is this one line ("Flaps .. Confirm Set for Takeoff",
+            // FOB-4). "V speeds: Checked" and "Altitude: Set initial climb" came with the first
+            // 777 commit, when the First Officer still programmed the FMC, and are on no PMDG page.
             // Flap target depends on SimBrief perf data — no fixed action value
             Auto("BTKOF_FLAPS", "BEFORE_TKOF_CL", "Flaps: Set for takeoff",
                 "FCTL_Flaps_Lever", v => v >= 1 && v <= 4),   // 1, 5, 15 or 20 (detents 1-4)
-            Manual("BTKOF_V_SPEEDS", "BEFORE_TKOF_CL", "V speeds: Checked"),
-            Manual("BTKOF_ALT", "BEFORE_TKOF_CL", "Altitude: Set initial climb"),
         }
     };
 
@@ -644,9 +645,13 @@ public static class PMDG777ChecklistDefinitions
         Id = "DESCENT_CL", Name = "Descent Checklist",
         Items = new()
         {
+            // PMDG's Descent Checklist, line for line (FOB-4): Recall, Notes, Autobrake, Landing
+            // Data, Approach Briefing (PMDG prints "Breifing"; the typo is not copied).
             Manual("DSC_RECALL", "DESCENT_CL", "Recall: Checked"),
+            Reminder("DSC_NOTES", "DESCENT_CL", "Notes: Checked"),
             Manual("DSC_AUTOBRAKE", "DESCENT_CL", "Autobrake: As required"),
             Manual("DSC_LANDING_DATA", "DESCENT_CL", "Landing Data: Set VREF and minimums"),
+            Reminder("DSC_APPROACH_BRIEF", "DESCENT_CL", "Approach Briefing: Complete"),
         }
     };
 
@@ -785,15 +790,18 @@ public static class PMDG777ChecklistDefinitions
         Items = new()
         {
             Manual("SDCL_HYD", "SHUTDOWN_CL", "Hydraulic panel: SET"),
+            // All six pumps — the Shutdown group's SD_FUEL_PUMPS fields. It read only the left
+            // forward pump, so it ticked with a centre or aft pump still running.
             Auto("SDCL_FUEL_PUMPS", "SHUTDOWN_CL", "Fuel Pumps: OFF",
                 "FUEL_PumpFwd_Sw_0", v => v < 0.5,
-                action: null),
+                new[] { "FUEL_PumpFwd_Sw_1", "FUEL_PumpAft_Sw_0", "FUEL_PumpAft_Sw_1", "FUEL_PumpCtr_Sw_0", "FUEL_PumpCtr_Sw_1" },
+                null),
             Auto("SDCL_FLAPS_UP", "SHUTDOWN_CL", "Flaps: UP",
                 "FCTL_Flaps_Lever", v => v < 0.5,
                 action: null),
-            Auto("SDCL_PARK_BRAKE", "SHUTDOWN_CL", "Parking Brake: SET",
-                "BRAKES_ParkingBrakeLeverOn", v => v > 0.5,
-                action: null),
+            // PMDG's wording, "As required" (owner, 2026-10-09): on chocks the brake may be off,
+            // so the line reads nothing and the pilot confirms it. It read "SET" off the lever.
+            Manual("SDCL_PARK_BRAKE", "SHUTDOWN_CL", "Parking Brake: As required"),
             Auto("SDCL_FUEL_CTRL", "SHUTDOWN_CL", "Fuel Control Switches: CUTOFF",
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },
