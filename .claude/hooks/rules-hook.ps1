@@ -12,15 +12,18 @@ Modes (first argument):
   read                               PostToolUse (Read, Write, NotebookEdit): add the rule files for a file inside a
                                      subagent's own worktree (.claude/worktrees/agent-*), where Claude Code loads none
   shell-guard                        PreToolUse (Bash, PowerShell): refuse a command that writes a file some rule
-                                     file covers (redirects, sed/perl -i, tee, Set-Content, Add-Content, Out-File)
+                                     file covers (redirects, sed/perl -i, tee, Set-Content, Add-Content, Out-File,
+                                     and the Python that python, python3 and py run, found from literals: CCT-7)
   diff                               PostToolUse (git diff, git show, gh pr diff): add the rule files for the
                                      changed paths
-  subagent-start                     SubagentStart: give the built-in Plan agent CLAUDE.md's rules sections; tell a
-                                     subagent in a worktree the read mode cannot see to load its rules itself
+  subagent-start                     SubagentStart: give the built-in Plan agent the rules sections of the CLAUDE.md in
+                                     its own checkout; tell a subagent in a worktree the read mode cannot see, and
+                                     that is not the session's own (by its transcript folder, CCT-6), to load its
+                                     rules itself
+  session-start                      SessionStart (compact): forget which rule files were added before compaction
 
 Claude Code shows the model only about 10,000 characters of a hook's output (CCT-5), so read and diff show whole rule
 files within 9,000 characters and name the rest for Claude to Read.
-  session-start                      SessionStart (compact): forget which rule files were added before compaction
 
 Hook modes read the hook input (JSON) on stdin. Setting MSFSBA_RULES_HOOK=off silences every hook mode.
 
@@ -633,10 +636,11 @@ function Get-PythonScript($Words, [string]$Dir, $Stdin, $Scripts) {
 }
 
 # The files a command writes: redirect targets, sed/perl -i and tee operands, the path of Set-Content, Add-Content and
-# Out-File, and the files a python, python3 or py command opens for writing with a literal path (Get-PythonWriteTargets,
-# from the code that -c, a heredoc, a here-string, stdin or a script file brings; a script this same command wrote with a
-# heredoc counts too). Follows cd and Set-Location from $Cwd, and a path held in a variable the command itself set to a
-# literal. Throws on an unparseable command.
+# Out-File, and the files a python, python3 or py command writes (Get-PythonWriteTargets in python-writes.ps1: the paths
+# of its write sinks that resolve from literals, through Path(...), os.path.join(...) and a name's nearest earlier
+# binding, CCT-7), read from the code that -c, a heredoc, a here-string, stdin or a script file brings; a script this
+# same command wrote with a heredoc counts too. Follows cd and Set-Location from $Cwd, and a path held in a variable the
+# command itself set to a literal. Throws on an unparseable command.
 function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
     $targets = New-Object System.Collections.Generic.List[object]
     $split = Split-HeredocBodies $Command $Shell
