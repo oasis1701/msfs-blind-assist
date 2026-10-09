@@ -354,15 +354,14 @@ public class Pmdg777FlowChecklistLinkTests
         Assert.Equal(new[]
         {
             // --- Lines with readable state or a CheckAction, but no step in this flow ---
-            // Before Start: seat belts are set ON in Cockpit Prep, not here; the APU start's
-            // Stop-policy APU-running wait aborts the flow before any latch if it fails.
-            // Before Taxi: autobrake RTO is set in Cockpit Prep; recall has no flow step.
+            // Before Start: the APU start's Stop-policy APU-running wait aborts the flow before any
+            // latch if it fails.
             // Cockpit Prep: battery, ADIRU, demand pumps, nav lights and gear DOWN are set in
             // Electrical Power Up; no step turns the fuel pumps OFF.
-            // Descent: recall is a Captain reminder.
             // Engine start selectors: StayComplete on N2 (never linked — see above).
-            // (Every flaps line has a read-only lever check since 2026-10-09:
-            // Pmdg777FlapLeverCheckTests.)
+            // (Since 2026-10-09 every flaps line has a delivering step, a write or a read-only
+            // lever check (Pmdg777FlapLeverCheckTests), and the seat belts, autobrake RTO and
+            // both recall lines have a write (Pmdg777HonestTickingTests).)
             // --- Manual verification lines (no state, no action) the flow still latches ---
             // (trim, CDU, V speeds, MCP, altimeters, anti-ice, flight controls, recall, oil
             // pressure, WX radar, APU, the Shutdown Checklist's parking brake "As required") —
@@ -371,7 +370,6 @@ public class Pmdg777FlowChecklistLinkTests
             "APPROACH_SETUP/APP_ALTIMETERS",
             "BEFORE_START/BSCL_CDU_COMPLETE",
             "BEFORE_START/BSCL_MCP",
-            "BEFORE_START/BSCL_SIGNS",
             "BEFORE_START/BSCL_TRIM",
             "BEFORE_START/BSCL_V_SPEEDS",
             "BEFORE_START/BS_AIL_TRIM",
@@ -380,16 +378,13 @@ public class Pmdg777FlowChecklistLinkTests
             "BEFORE_START/BS_INIT_ALT",
             "BEFORE_START/BS_INIT_HDG",
             "BEFORE_START/BS_RUD_TRIM",
-            "BEFORE_START/BS_SEAT_BELTS",
             "BEFORE_START/BS_STAB_TRIM",
             "BEFORE_START/BS_V2_SET",
             "BEFORE_TAXI/BTCL_ANTI_ICE",
-            "BEFORE_TAXI/BTCL_AUTOBRAKE",
             "BEFORE_TAXI/BTCL_FCTL",
             "BEFORE_TAXI/BTCL_RECALL",
             "BEFORE_TAXI/BT_ANTI_ICE",
             "BEFORE_TAXI/BT_FCTL_CHECK",
-            "BEFORE_TAXI/BT_RECALL",
             "COCKPIT_PREP/PF_ADIRU",
             "COCKPIT_PREP/PF_BARO_SET",
             "COCKPIT_PREP/PF_BATTERY",
@@ -399,7 +394,6 @@ public class Pmdg777FlowChecklistLinkTests
             "COCKPIT_PREP/PF_FUEL_PUMPS_OFF",
             "COCKPIT_PREP/PF_GEAR_DOWN",
             "COCKPIT_PREP/PF_NAV_LIGHTS",
-            "DESCENT_SETUP/DSCA_RECALL",
             "DESCENT_SETUP/DSC_AUTOBRAKE",
             "DESCENT_SETUP/DSC_LANDING_DATA",
             "DESCENT_SETUP/DSC_RECALL",

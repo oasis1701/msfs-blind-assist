@@ -182,14 +182,14 @@ public static class PMDG777FlowDefinitions
             Skip(Multi("CP_ENG_PUMPS", "Engine pumps: ON", "PF_ENG_PUMPS",
                 ("EVT_OH_HYD_ENG1", 1), ("EVT_OH_HYD_ENG2", 1)),
                 s => s.IsEngPump1On() && s.IsEngPump2On()),
-            // ON (2), not AUTO (1). PMDG's own printed procedure says AUTO, and this is a
-            // deliberate deviation from it (owner ruling 2026-08-29): both 737 profiles
-            // already select ON, and this aircraft's OWN seat-belt automation writes only
-            // ON/OFF (AircraftActionExecutor.SetSeatbeltSign), so AUTO here contradicted the
-            // automation that follows it.
-            Skip(SW("CP_SEAT_BELTS",   "Seat belts: ON",            "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",   2,
+            // OFF, as PMDG's Preflight Procedure reads ("SEAT BELTS selector .. OFF"; owner,
+            // 2026-10-09). The sign goes ON in Before Start (BS_SEAT_BELTS): the owner's "ON,
+            // not the vendor's AUTO" ruling (2026-08-29) is PMDG's Before Start position, and
+            // this step applied it here too, as ON, until 2026-10-09. "Already set" only when the
+            // selector reads OFF (AreSeatBeltsOff, NaN-safe).
+            Skip(SW("CP_SEAT_BELTS",   "Seat belts: OFF",           "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",   0,
                checklistItemId: "PF_SEAT_BELTS"),
-                s => s.SeatBeltsSelector() == 2),
+                s => s.AreSeatBeltsOff()),
             SW("CP_NO_SMOKING",   "No smoking: ON",            "EVT_OH_NO_SMOKING_LIGHT_SWITCH",     2,
                checklistItemId: "PF_NO_SMOKING"),
             SW("CP_LIGHTS_MASTER","Lights master: ON",         "EVT_OH_LIGHTS_IND_LTS_SWITCH",       1,
@@ -286,11 +286,20 @@ public static class PMDG777FlowDefinitions
     {
         Id = "BEFORE_START",
         Name = "Before Start",
-        Description = "Prepares the aircraft for engine start. APU started here always, hydraulics pressurised, fuel pumps on.",
+        Description = "Prepares the aircraft for engine start. Passenger signs on, APU started here always, hydraulics pressurised, fuel pumps on.",
         RelatedChecklistGroupIds = new[] { "BEFORE_START", "BEFORE_START_CL" },
         Steps = new()
         {
             Captain("BS_MCP_SPEEDS",  "Set MCP: speed, heading and altitude"),
+            // PMDG's Before Start "SEAT BELTS selector" line, ON rather than the vendor's AUTO
+            // (owner ruling 2026-08-29, FOB-4). Cockpit Prep leaves the selector OFF, as PMDG's
+            // Preflight reads, so this is where the sign goes ON; until 2026-10-09 nothing here
+            // set or checked it, so "Seat Belts selector: ON" and the read-back's "Passenger
+            // Signs: Set" were latched over whatever it read. Verified as Shutdown's seat-belt
+            // write is; "Already set" when the selector reads ON.
+            Also(Skip(SW("BS_SEAT_BELTS", "Passenger signs: ON", "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH", 2,
+               "SIGNS_SeatBeltsSelector", v => v > 1.5, "BS_SEAT_BELTS"),
+                s => s.SeatBeltsSelector() == 2), "BSCL_SIGNS"),
             // Trim is NOT briefed here any more — it moved to the end of this flow, where
             // PMDG's own Before Start Procedure puts it (after the transponder) and where
             // the hydraulic pumps that move the surfaces are actually running. It used to
@@ -434,7 +443,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "BEFORE_TAXI",
         Name = "Before Taxi",
-        Description = "Shuts down APU, sets both packs to AUTO, sets takeoff flaps and taxi lighting.",
+        Description = "Shuts down APU, sets taxi lighting, takeoff flaps (then confirms the lever), both packs to AUTO and autobrake RTO, and pushes RECALL.",
         RelatedChecklistGroupIds = new[] { "BEFORE_TAXI", "BEFORE_TAXI_CL" },
         Steps = new()
         {
@@ -468,9 +477,20 @@ public static class PMDG777FlowDefinitions
                 s => s.IsPack1Auto()),
             Skip(SW("BT_PACK_R_AUTO", "Pack right: AUTO", "EVT_OH_AIRCOND_PACK_SWITCH_R", 1, checklistItemId: "BT_PACKS"),
                 s => s.IsPack2Auto()),
+            // PMDG's Before Taxi Checklist reads "Auto Brake: RTO". The selector was set in Cockpit
+            // Prep and nothing here checked it, so the read-back latched over whatever it read.
+            // Cockpit Prep's RTO write; "Already set" when it reads RTO. The Before Taxi group has
+            // no autobrake line, so it completes the read-back's (BTCL_AUTOBRAKE).
+            Skip(SW("BT_AUTOBRAKE_RTO", "Autobrake: RTO", "EVT_ABS_AUTOBRAKE_SELECTOR", 0,
+               "BRAKES_AutobrakeSelector", v => Math.Abs(v) < 0.1, "BTCL_AUTOBRAKE"),
+                s => s.IsAutobrakRTO()),
             Captain("BT_FCTL_CHECK",   "Check flight controls — confirm free and correct"),
             // No trim reminder here — see the matching note on the Before Taxi checklist
             // group; trim is set at the end of Before Start and read back on BSCL_TRIM.
+            // PMDG's last Before Taxi step: "Recall — Check. Verify that only expected alert
+            // messages are shown". The First Officer pushes RECALL (the same press as the "Recall:
+            // Check" line's own action, PushCancelRecall) and you read the messages.
+            Momentary("BT_RECALL", "Recall: push", "EVT_DSP_CANC_RCL_SWITCH", "BT_RECALL"),
         }
     };
 
@@ -571,7 +591,7 @@ public static class PMDG777FlowDefinitions
     {
         Id = "DESCENT_SETUP",
         Name = "Descent Setup",
-        Description = "Prepares FO instruments for descent and approach; landing autobrake is a Captain item.",
+        Description = "Prepares FO instruments for descent and approach and pushes RECALL; landing autobrake is a Captain item.",
         RelatedChecklistGroupIds = new[] { "DESCENT", "DESCENT_CL" },
         Steps = new()
         {
@@ -581,7 +601,11 @@ public static class PMDG777FlowDefinitions
                checklistItemId: "DSCA_EFIS_FO_MODE"),
             SW("DSC_EFIS_FO_RANGE",   "FO EFIS: 20nm range",      "EVT_EFIS_FO_RANGE",          1,
                checklistItemId: "DSCA_EFIS_FO_RANGE"),
-            Captain("DSC_RECALL",     "Recall: Check no unexpected messages"),
+            // PMDG's Descent Checklist opens "Recall .. Checked". The First Officer pushes RECALL
+            // (the same press as the Descent line's own action, PushCancelRecall) and you read the
+            // messages. It was a Captain reminder, which delivers nothing, so "Recall: Check no
+            // unexpected messages" (DSCA_RECALL) was latched over a press nobody made.
+            Momentary("DSC_RECALL",   "Recall: Check no unexpected messages", "EVT_DSP_CANC_RCL_SWITCH", "DSCA_RECALL"),
             Captain("DSC_APPROACH_BRIEF", "Approach briefing: Complete"),
         }
     };

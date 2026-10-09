@@ -244,6 +244,9 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // -----------------------------------------------------------------------
 
     public int SeatBeltsSelector()   => (int)Math.Round(GetValue("SIGNS_SeatBeltsSelector"));
+    // NaN-safe (IsPosition): SeatBeltsSelector() == 0 would read an unread selector as OFF,
+    // because (int)Math.Round(NaN) is 0, and Cockpit Prep's OFF step would say "Already set".
+    public bool AreSeatBeltsOff()        => IsPosition("SIGNS_SeatBeltsSelector", 0);
     public int NoSmokingSelector()   => (int)Math.Round(GetValue("SIGNS_NoSmokingSelector"));
     // EmerLightsSelector: 0=Off (guard open), 1=Armed, 2=On
     public int EmerLightsSelector()  => (int)Math.Round(GetValue("LTS_EmerLightsSelector"));
@@ -253,9 +256,8 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // -----------------------------------------------------------------------
 
     // FlapsLever: 0=UP, 1=1, 2=5, 3=15, 4=20, 5=25, 6=30 (PMDG positions)
-    public int FlapsLeverPosition()       => (int)Math.Round(GetValue("FCTL_Flaps_Lever"));
-    // NaN-safe: (int)Math.Round(NaN) is 0 under .NET's saturating float->int conversion, so
-    // FlapsLeverPosition() == 0 read "flaps up" before the first CDA snapshot and the After
+    // NaN-safe: (int)Math.Round(NaN) is 0 under .NET's saturating float->int conversion, so a
+    // rounded "== 0" test read "flaps up" before the first CDA snapshot and the After
     // Takeoff flaps steps said "Already set" over data that had not arrived.
     public bool AreFlapsUp()              => IsPosition("FCTL_Flaps_Lever", 0);
     // The read-back lines' own lever ranges — "Flaps: Set for takeoff" (BTKOF_FLAPS) and "Flaps:
@@ -291,7 +293,9 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // 5="3", 6="4", 7=Max Auto. The DISARM detent used to be missing from this map;
     // only 0 and 1 are used below, and both survived the correction unchanged.
     public int AutobrakeSelector()       => (int)Math.Round(GetValue("BRAKES_AutobrakeSelector"));
-    public bool IsAutobrakRTO()          => AutobrakeSelector() == 0;
+    // NaN-safe (IsPosition): AutobrakeSelector() == 0 read RTO before the first CDA snapshot,
+    // because (int)Math.Round(NaN) is 0, and the RTO steps said "Already set" (AreFlapsUp's fix).
+    public bool IsAutobrakRTO()          => IsPosition("BRAKES_AutobrakeSelector", 0);
     public bool IsAutobrakeOff()         => AutobrakeSelector() == 1;
 
     // ParkingBrake: 0=Off, 1=On

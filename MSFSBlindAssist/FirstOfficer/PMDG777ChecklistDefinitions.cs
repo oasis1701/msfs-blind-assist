@@ -189,13 +189,13 @@ public static class PMDG777ChecklistDefinitions
                 "HYD_DemandElecPump_Selector_0", v => v < 0.5,
                 new[] { "HYD_DemandElecPump_Selector_1", "HYD_DemandAirPump_Selector_0", "HYD_DemandAirPump_Selector_1" },
                 (e, _) => e.SetDemandPumps(0)),
-            // ON (2), not AUTO (1) — a deliberate deviation from PMDG's printed procedure
-            // (owner ruling 2026-08-29); see the CP_SEAT_BELTS note in the flow. The old
-            // condition "v >= 1" also accepted AUTO, so a line labelled AUTO ticked on ON
-            // and vice versa.
-            Auto("PF_SEAT_BELTS", "PREFLIGHT", "Seat Belts selector: ON",
-                "SIGNS_SeatBeltsSelector", v => v > 1.5,
-                action: (e, _) => e.SetSeatBelts(2)),
+            // OFF (0), as PMDG's Preflight Procedure reads (owner, 2026-10-09); see the
+            // CP_SEAT_BELTS note in the flow. The sign goes ON in Before Start (BS_SEAT_BELTS,
+            // ON rather than the vendor's AUTO: owner ruling 2026-08-29). Exactly OFF: AUTO (1)
+            // is not OFF, and an unread selector (NaN) is neither.
+            Auto("PF_SEAT_BELTS", "PREFLIGHT", "Seat Belts selector: OFF",
+                "SIGNS_SeatBeltsSelector", v => v < 0.5,
+                action: (e, _) => e.SetSeatBelts(0)),
             Auto("PF_NO_SMOKING", "PREFLIGHT", "No Smoking selector: ON",
                 "SIGNS_NoSmokingSelector", v => v > 1.5,
                 action: (e, _) => e.SetNoSmoking(2)),

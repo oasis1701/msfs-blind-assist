@@ -175,29 +175,42 @@ public class Pmdg777FlowOrderingTests
     }
 
     // =====================================================================
-    // 2. Seat belt signs: ON, not AUTO
+    // 2. Seat belt signs: OFF in Cockpit Prep, ON (not AUTO) in Before Start
     //
     // PMDG_777X_SDK.h:154  SIGNS_SeatBeltsSelector  // 0: OFF  1: AUTO   2: ON
     //
-    // Both 737 profiles already select ON (2) and detect on "v > 1.5"
-    // (PMDG737ChecklistDefinitions PF_BELTS, IFly737ChecklistDefinitions PF_BELTS); the
-    // 777 was the only Boeing selecting AUTO. Its own seat-belt AUTOMATION already writes
-    // ON/OFF only — AircraftActionExecutor.SetSeatbeltSign(bool) => SetSeatBelts(on ? 2 : 0)
-    // — so preflight AUTO contradicted the automation that follows it.
+    // PMDG's Preflight Procedure reads "SEAT BELTS selector .. OFF", its Before Start
+    // Procedure "AUTO". Before Start selects ON, not AUTO (owner ruling 2026-08-29): both 737
+    // profiles already select ON (2) and detect on "v > 1.5" (PMDG737ChecklistDefinitions
+    // PF_BELTS, IFly737ChecklistDefinitions PF_BELTS), and the 777's own seat-belt AUTOMATION
+    // writes ON/OFF only — AircraftActionExecutor.SetSeatbeltSign(bool) => SetSeatBelts(on ? 2 : 0)
+    // — so AUTO contradicted the automation that follows it. Cockpit Prep applied the same ON
+    // until 2026-10-09; it now follows PMDG's Preflight, OFF (owner, 2026-10-09).
     // =====================================================================
 
     private const int SeatBeltsOff = 0, SeatBeltsAuto = 1, SeatBeltsOn = 2;
 
     [Fact]
-    public void CockpitPrepFlow_selects_seat_belts_ON()
+    public void CockpitPrepFlow_selects_seat_belts_OFF_as_PMDGs_preflight()
     {
         var step = Step("COCKPIT_PREP", "CP_SEAT_BELTS");
-        Assert.Equal(SeatBeltsOn, step.TargetValue);
-        Assert.Contains("ON", step.Label);
+        Assert.Equal(SeatBeltsOff, step.TargetValue);
+        Assert.Contains("OFF", step.Label);
+        // "Already set" only over a selector that READS OFF: an unread one (NaN) is not OFF.
+        Assert.False(step.SkipCondition!(new AircraftStateEvaluator()));
+    }
+
+    [Fact]
+    public void PreflightSeatBeltItem_requires_OFF()
+    {
+        var item = Item("PREFLIGHT", "PF_SEAT_BELTS");
+        Assert.True(item.EvaluateState(SeatBeltsOff));
+        Assert.False(item.EvaluateState(SeatBeltsAuto));
+        Assert.False(item.EvaluateState(SeatBeltsOn));
+        Assert.False(item.EvaluateState(double.NaN));
     }
 
     [Theory]
-    [InlineData("PREFLIGHT", "PF_SEAT_BELTS")]
     [InlineData("BEFORE_START", "BS_SEAT_BELTS")]
     [InlineData("BEFORE_START_CL", "BSCL_SIGNS")]
     public void SeatBeltItems_require_ON_and_reject_AUTO(string groupId, string itemId)
@@ -566,5 +579,23 @@ public class Pmdg777FlowOrderingTests
         // Shutdown: right after the fuel pumps, as the Shutdown Checklist reads.
         var sd = FlowStepIds("SHUTDOWN");
         Assert.Equal(sd.IndexOf("SD_FUEL_PUMPS") + 1, sd.IndexOf("SD_FLAPS_UP_CHECK"));
+    }
+
+    [Fact]
+    public void Reused_writes_sit_where_their_lines_are_flown()
+    {
+        // Before Start: PMDG's SEAT BELTS line follows the MCP setup; the flow sets it before the
+        // APU start, where its checklist group lists it.
+        AssertOrder(FlowStepIds("BEFORE_START"), "BS_MCP_SPEEDS", "BS_SEAT_BELTS", "BS_APU_ON");
+        AssertOrder(ItemIds("BEFORE_START"), "BS_SEAT_BELTS", "BS_APU_START");
+
+        // Before Taxi: autobrake RTO after the packs; PMDG's flight-control check and then RECALL
+        // close the procedure.
+        var bt = FlowStepIds("BEFORE_TAXI");
+        AssertOrder(bt, "BT_PACK_R_AUTO", "BT_AUTOBRAKE_RTO", "BT_FCTL_CHECK", "BT_RECALL");
+        Assert.Equal("BT_RECALL", bt[^1]);
+
+        // Descent Setup: the RECALL push keeps the reminder's place.
+        AssertOrder(FlowStepIds("DESCENT_SETUP"), "DSC_EFIS_FO_RANGE", "DSC_RECALL", "DSC_APPROACH_BRIEF");
     }
 }
