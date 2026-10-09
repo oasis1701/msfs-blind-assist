@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -41,6 +42,23 @@ public class ClaudeRulesHookTests : IDisposable
         HookRun run = RunHook(new[] { "for", "changelog.d/README.md" });
         Assert.Equal(0, run.ExitCode);
         Assert.Contains("changelog.d/README.md: no rule files", run.Stdout);
+    }
+
+    [Fact]
+    public void For_lists_rule_files_in_ordinal_order_not_directory_order()
+    {
+        // NTFS lists a-x.md before B-x.md (case-insensitive), ordinal order puts B-x.md first. Windows PowerShell 5.1
+        // binds [Array]::Sort($keys, $values, ...) to the generic overload and sorts a converted copy of $values, so
+        // without the [Array] casts the keys are sorted and the rule files keep the directory's order.
+        string checkout = NewTempDir();
+        CreateFile(checkout, ".git", "gitdir: elsewhere\n");
+        CreateFile(checkout, ".claude/rules/a-x.md", "---\npaths:\n  - \"src/x.cs\"\n---\n# A\n- [A-1] r\n");
+        CreateFile(checkout, ".claude/rules/B-x.md", "---\npaths:\n  - \"src/x.cs\"\n---\n# B\n- [B-1] r\n");
+
+        HookRun run = RunHook(new[] { "for", "src/x.cs" }, workingDirectory: checkout);
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Contains("src/x.cs: .claude/rules/B-x.md, .claude/rules/a-x.md (", run.Stdout);
     }
 
     [Fact]
@@ -119,6 +137,21 @@ public class ClaudeRulesHookTests : IDisposable
         Assert.NotNull(HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1"), env: env)));
         Assert.Null(HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1"), env: env)));
         Assert.NotNull(HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a2"), env: env)));
+    }
+
+    [Fact]
+    public void Read_names_a_rule_file_once_per_subagent()
+    {
+        // FlyByWireA380Definition.Rmp.cs loads over 20,000 characters of rules: some are only named ("Not shown in
+        // full"), and a named rule file is remembered too, so a second Read of the file adds nothing.
+        string worktree = CreateAgentWorktree(NewTempDir());
+        string file = CreateFile(worktree, "MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs");
+        var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
+
+        JsonElement? first = HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1"), env: env));
+        Assert.NotNull(first);
+        Assert.Contains("Not shown in full", first.Value.GetProperty("additionalContext").GetString());
+        Assert.Null(HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1"), env: env)));
     }
 
     [Fact]
@@ -231,6 +264,27 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("Bash", "sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs  # it's a one-off", Pmdg737)]
     [InlineData("PowerShell", "# Don't touch the header\nSet-Content -Path MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs -Value x",
         Pmdg737)]
+    [InlineData("Bash", "f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs && sed -i 's/a/b/' \"$f\"", Pmdg737)]
+    [InlineData("Bash", "export D=MSFSBlindAssist/Aircraft; sed -i 's/a/b/' ${D}/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("PowerShell", "$p = 'MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs'; 'x' | Set-Content $p", Pmdg737)]
+    [InlineData("PowerShell", "$P='MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs'; Set-Content -Path $p -Value x", Pmdg737)]
+    [InlineData("Bash", "echo x>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "(cd MSFSBlindAssist && sed -i 's/a/b/' Aircraft/Pmdg737DisplayReads.cs)", Pmdg737)]
+    [InlineData("Bash", "export D=MSFSBlindAssist; cd $D && sed -i 's/a/b/' Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    // A > inside quotes, or one after an earlier redirect in the same word, never hides the unquoted > that follows.
+    [InlineData("Bash", "echo \"a => b\">MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("PowerShell", "echo \"a => b\">MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo 'a>b'>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x>a>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x 2>&1>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x>>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x>|MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo x &>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    // A subshell keeps its cd and its variables to itself; its closing ) comes off a quoted last word too, but the ) that
+    // closes a $( ) does not end the subshell.
+    [InlineData("Bash", "(cd tests && true); sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "(sed -i 's/a/b/' \"MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\")", Pmdg737)]
+    [InlineData("Bash", "(cd tests && v=$(pwd) && sed -i 's/a/b/' ../MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs)", Pmdg737)]
     public void Shell_guard_refuses_writes_to_covered_files(string tool, string command, string target)
     {
         JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput(tool, command)));
@@ -275,12 +329,221 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<'EOF'\n> MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\nEOF")]
     [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<\\EOF\n> MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\nEOF")]
     [InlineData("Bash", "cat > changelog.d/999-x.fix.md <<'END-OF-NOTE'\n> MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\nEND-OF-NOTE")]
+    [InlineData("Bash", "f=changelog.d/999-x.fix.md && sed -i 's/a/b/' \"$f\"")]
+    [InlineData("Bash", "F=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs; sed -i 's/a/b/' \"$f\"")]   // bash names are case-sensitive
+    [InlineData("Bash", "cat MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs 2>&1")]
+    [InlineData("Bash", "echo 'a>MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs' > changelog.d/999-x.fix.md")]
+    [InlineData("PowerShell", "$p = $env:TEMP + '\\x.txt'; Set-Content $p x")]
+    // A variable counts only while its value is known: NAME=VALUE before a command is that command's alone, and a value
+    // that is not a literal (or a PowerShell += or computed value) makes the name unknown again.
+    [InlineData("Bash", "f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs sed -i 's/a/b/' \"$f\"")]
+    [InlineData("Bash", "f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs; f=$(mktemp); sed -i 's/a/b/' \"$f\"")]
+    [InlineData("PowerShell", "$p = 'MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs'; $p += 'x'; Set-Content $p x")]
+    [InlineData("Bash", "(f=MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs); sed -i 's/a/b/' \"$f\"")]   // a subshell's variable ends with it
     public void Shell_guard_allows_commands_that_write_no_covered_file(string tool, string command)
     {
         HookRun run = RunHook(new[] { "shell-guard" }, ShellInput(tool, command));
 
         Assert.Equal(0, run.ExitCode);
         Assert.Equal("", run.Stdout);
+    }
+
+    private static string Root => ClaudeContextBudgetTests.RepoRoot();
+    private static string CoveredAbs => Path.Combine(Root, "MSFSBlindAssist", "Aircraft", "Pmdg737DisplayReads.cs");
+
+    // The Python a command runs is read from -c, a heredoc, a here-string, stdin or a script file (also one the command
+    // writes itself), and every write it names with a literal path is a write of that file. Interpreter options before
+    // the script or the - (py -3 -X utf8 -, python -I -u s.py) do not hide it, and `python gen.py > covered` is a redirect.
+    [Theory]
+    [InlineData("python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w').write('x')\"")]
+    [InlineData("python - <<'PY'\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w').write('x')\nPY")]
+    [InlineData("cd MSFSBlindAssist && python3 - <<PY\nopen('Aircraft/Pmdg737DisplayReads.cs', 'a')\nPY")]
+    [InlineData("py -3 -X utf8 - <<'PY'\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\nPY")]
+    [InlineData("cat > s.py <<'EOF'\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\nEOF\npython -I -u s.py")]
+    [InlineData("python gen.py > MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("python -Bc \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w')\"")]
+    [InlineData("python3 -c \"import io; io.open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', encoding='utf-8', mode='w')\"")]
+    [InlineData("PYTHONIOENCODING=utf-8 python - <<'PY'\nimport codecs\ncodecs.open(\"MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\", \"a\", \"utf-8\")\nPY")]
+    [InlineData("python - <<< \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\"")]
+    [InlineData("tee s.py <<'EOF' > /dev/null\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\nEOF\npython s.py")]
+    public void Shell_guard_refuses_python_that_writes_a_covered_file(string command)
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", command)));
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+        Assert.Contains(Pmdg737, output.Value.GetProperty("permissionDecisionReason").GetString());
+    }
+
+    [Fact]
+    public void Shell_guard_reads_a_python_script_from_disk_and_from_stdin()
+    {
+        string script = CreateFile(NewTempDir(), "edit.py", $"open(r'{CoveredAbs}', 'w').write('x')\n");
+        foreach (string command in new[] { $"python \"{script}\"", $"python - < \"{script}\"", $"python < \"{script}\"" })
+        {
+            JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", command)));
+            Assert.NotNull(output);
+            Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("python -m pytest tests")]
+    [InlineData("python C:/no/such/script.py")]
+    [InlineData("python - <<'PY'\nprint(open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs').read())\nPY")]
+    [InlineData("python -c")]
+    [InlineData("python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'rb').read()\"")]
+    [InlineData("python - <<'PY'\nopen('changelog.d/999-x.fix.md', 'w').write(open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'r', encoding='utf-8').read())\nPY")]
+    [InlineData("cat > s.py <<'EOF'\nopen('changelog.d/999-x.fix.md', 'w')\nEOF\npython s.py")]
+    // A heredoc fed to a command that is not Python is text, not code, whatever it contains.
+    [InlineData("git commit -F - <<'EOF'\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\nEOF")]
+    // A write in a comment or inside a string is not code.
+    [InlineData("python -c \"# open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w')\"")]
+    [InlineData("python -c \"print(\\\"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\\\")\"")]
+    public void Shell_guard_allows_python_that_writes_no_covered_file(string command)
+    {
+        HookRun run = RunHook(new[] { "shell-guard" }, ShellInput("Bash", command));
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("", run.Stdout);
+    }
+
+    [Fact]
+    public void Shell_guard_refuses_python_run_from_powershell()
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" },
+            ShellInput("PowerShell", "python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w')\"")));
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+    }
+
+    // CCT-7: a write sink (open with a w/a/x/+ mode, write_text/write_bytes, a copy, move or replace destination) is
+    // refused when its target resolves from literals, through a name's nearest earlier binding, to a covered file. Each
+    // script runs as `python - <<'PY'`; {C} stands for the covered Pmdg737 file, {S} for an uncovered changelog fragment
+    // and {CoveredAbs} for the covered file's absolute path.
+    [Theory]
+    [InlineData("import io\np = \"{C}\"\ns = io.open(p, encoding=\"utf-8\", newline=\"\").read()\n"
+        + "io.open(p, \"w\", encoding=\"utf-8\", newline=\"\").write(s.replace(\"a\", \"b\"))")]
+    [InlineData("import pathlib\npathlib.Path(r'{CoveredAbs}').write_text('x')")]
+    [InlineData("from pathlib import Path\nP = Path('{C}')\nP.write_text(P.read_text().replace('a', 'b'))")]
+    [InlineData("files = [\n    '{S}',\n    '{C}',\n]\nfor f in files:\n    open(f, 'a').write('x')")]
+    [InlineData("import shutil\nshutil.copy('scratch.cs', '{C}')")]
+    [InlineData("import os\np = os.path.join('MSFSBlindAssist', 'Aircraft', 'Pmdg737DisplayReads.cs')\nopen(p, mode='w')")]
+    [InlineData("p = 'MSFSBlindAssist\\\\Aircraft\\\\Pmdg737DisplayReads.cs'\nopen(p, 'w')")]   // doubled backslashes in the Python
+    [InlineData("import os\nos.replace(tmp, '{C}')")]
+    [InlineData("with open('{C}', 'r+') as fh:\n    fh.write('x')")]
+    [InlineData("\"\"\"Don't panic: open('nowhere', 'w').\"\"\"\n# it's fine\nopen('{C}', 'w')")]
+    // A mode bound to a name, file=/dst= keywords, a bare copy2, a Path variant, literals side by side, a raw string.
+    [InlineData("m = 'w'\nopen('{C}', m)")]
+    [InlineData("open(file='{C}', mode='w')")]
+    [InlineData("import shutil\nshutil.copy2(s, dst='{C}')")]
+    [InlineData("from shutil import copy2\ncopy2('scratch.cs', '{C}')")]
+    [InlineData("from pathlib import PureWindowsPath\nopen(PureWindowsPath('MSFSBlindAssist/Aircraft', 'Pmdg737DisplayReads.cs'), 'w')")]
+    [InlineData("open('MSFSBlindAssist/Aircraft/' 'Pmdg737DisplayReads.cs', 'w')")]
+    [InlineData("open(r'MSFSBlindAssist/Forms/PMDG737\\new.cs', 'w')", "MSFSBlindAssist/Forms/PMDG737/new.cs")]
+    // A def body that writes its own local binding: the binding holds until the body ends.
+    [InlineData("OUT = 'scratch/report.md'\ndef save(t):\n    OUT = '{C}'\n    open(OUT, 'w').write(t)")]
+    // A loop the guard does not follow, earlier in the text, does not hide the covered binding that comes after it.
+    [InlineData("import sys\nfor p in sys.argv[1:]:\n    print(p)\np = '{C}'\nopen(p, 'w')")]
+    public void Shell_guard_refuses_a_python_write_resolved_to_a_covered_file(string script, string covered = Pmdg737)
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(script))));
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+        Assert.Contains(covered, output.Value.GetProperty("permissionDecisionReason").GetString());
+    }
+
+    // A long one-line literal ahead of the write must not use up the guard's time (the analysis stops at a deadline
+    // and lets the rest run): a literal target is checked before any name is resolved, and resolving a name stays
+    // linear in the length of the line. Both writes are refused, well inside the hook's 10-second timeout.
+    [Theory]
+    [InlineData("out = 'scratch/x'; open(out, 'w')\nopen('{C}', 'w')")]
+    [InlineData("p = '{C}'\nopen(p, 'w')")]
+    public void Shell_guard_refuses_a_python_write_after_a_long_one_line_literal(string tail)
+    {
+        string dict = "d = {" + string.Join(", ", Enumerable.Range(0, 2500).Select(i => $"'k{i}': {i}")) + "}\n";
+        var clock = Stopwatch.StartNew();
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(dict + tail))));
+        clock.Stop();
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+        Assert.Contains(Pmdg737, output.Value.GetProperty("permissionDecisionReason").GetString());
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(8), $"the hook took {clock.Elapsed.TotalSeconds:F1} s");
+    }
+
+    // A script that only reads a covered file, whose write target is another file, or whose target the guard cannot
+    // resolve (a loop variable over os.walk, an f-string) always runs; so does a write that only appears inside a string.
+    [Theory]
+    [InlineData("src = '{C}'\nout = '{S}'\nopen(out, 'w').write(open(src).read())")]
+    [InlineData("p = '{C}'\ns = open(p).read()\np = '{S}'\nopen(p, 'w').write(s)")]
+    [InlineData("p = '{C}'\nprint(open(p, 'rb').read())")]
+    [InlineData("import os\nfor d, _, fs in os.walk('MSFSBlindAssist'):\n    for f in fs:\n        open(os.path.join(d, f), 'w')")]
+    [InlineData("n = 'X'\nopen(f'MSFSBlindAssist/Aircraft/{n}.cs', 'w')")]
+    [InlineData("doc = \"\"\"\nopen('{C}', 'w')\n\"\"\"\nprint(doc)")]
+    [InlineData("print(\"open('{C}', 'w')\")")]
+    // A rebinding the guard does not follow leaves the name unresolved, so the write runs: an augmented assignment, a
+    // tuple swap, a def or lambda parameter, with ... as, a comprehension variable (on one line, spread over lines, or a
+    // generator inside a call), and a keyword argument on its own line, which is no binding at all.
+    [InlineData("p = '{C}'\np += '.bak'\nopen(p, 'w')")]
+    [InlineData("a = '{C}'\nb = '{S}'\na, b = b, a\nopen(a, 'w')")]
+    [InlineData("p = '{C}'\ndef save(p):\n    open(p, 'w')")]
+    [InlineData("p = '{C}'\nsave = lambda p: open(p, 'w')")]
+    [InlineData("p = '{C}'\nwith open('{S}') as p:\n    pass\nopen(p, 'w')")]
+    [InlineData("f = '{C}'\nouts = [open(f, 'w') for f in ['{S}']]")]
+    [InlineData("p = '{C}'\ntext = open(p).read()\nouts = [\n    open(p, 'w')\n    for p in ['a.txt', 'b.txt']\n]")]
+    [InlineData("from pathlib import Path\np = '{C}'\nlist(\n    Path(p).write_text('x')\n    for p in ['a.txt']\n)")]
+    [InlineData("p = '{S}'\nfoo(\n    p='{C}',\n)\nopen(p, 'w')")]
+    // A binding made inside a def body ends with that body: report() writes the global OUT, not scan()'s local one.
+    [InlineData("OUT = 'scratch/report.md'\ndef scan():\n    OUT = '{C}'\n    return open(OUT).read()\n"
+        + "def report(t):\n    open(OUT, 'w').write(t)")]
+    // An escape that changes the value (\n here) leaves the literal unresolved: Python would not write this path.
+    [InlineData("open('MSFSBlindAssist/Forms/PMDG737\\new.cs', 'w')")]
+    // A binding the guard does not follow, earlier in the text than the scratch write, must not shift the write onto
+    // the later covered binding the script only reads (the bindings are found per kind, then put in text order).
+    [InlineData("names = [p for p in ['a', 'b']]\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("for p in ['a', 'b']:\n    print(p)\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("with open('a.txt') as p:\n    pass\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("p = 'a'\np += 'b'\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("def show(p):\n    return p\np = 'scratch/out'\nopen(p, 'w')\np = '{C}'\nprint(open(p).read())")]
+    [InlineData("import sys\nfor OUT in sys.argv[1:]:\n    print(OUT)\nOUT = 'scratch/report.md'\ndef report(t):\n"
+        + "    open(OUT, 'w').write(t)\ndef scan():\n    OUT = '{C}'\n    return open(OUT).read()")]
+    [InlineData("p = 'scratch/x.txt'\nouts = [\n    open(p, 'w')\n    for p in ['a.txt', 'b.txt']\n]\np = '{C}'\nprint(open(p).read())")]
+    public void Shell_guard_allows_a_python_script_that_writes_no_resolved_covered_file(string script)
+    {
+        HookRun run = RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(script)));
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("", run.Stdout);
+    }
+
+    private static string PythonHeredoc(string script) => "python - <<'PY'\n"
+        + script.Replace("{C}", Pmdg737).Replace("{S}", "changelog.d/999-x.fix.md").Replace("{CoveredAbs}", CoveredAbs)
+        + "\nPY";
+
+    // python-writes.ps1 is optional (CCT-1, CCT-7): when it is missing or does not parse, the guard loses its Python
+    // analysis (a Python write is allowed) and nothing else - redirects are still refused and diff mode still adds rules.
+    [Theory]
+    [InlineData(null)]
+    [InlineData("function Get-PythonWriteTargets( {\n")]
+    public void A_missing_or_broken_python_helper_costs_only_the_python_analysis(string? helper)
+    {
+        string hooks = Path.Combine(NewTempDir(), "hooks");
+        Directory.CreateDirectory(hooks);
+        string script = Path.Combine(hooks, "rules-hook.ps1");
+        File.Copy(ScriptPath, script);
+        if (helper is not null) File.WriteAllText(Path.Combine(hooks, "python-writes.ps1"), helper);
+
+        JsonElement? redirect = HookOutput(RunHook(new[] { "shell-guard" },
+            ShellInput("Bash", "echo x > " + Pmdg737), scriptPath: script));
+        Assert.NotNull(redirect);
+        Assert.Equal("deny", redirect.Value.GetProperty("permissionDecision").GetString());
+        Assert.Contains(Pmdg737, redirect.Value.GetProperty("permissionDecisionReason").GetString());
+
+        HookRun python = RunHook(new[] { "shell-guard" },
+            ShellInput("Bash", "python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w')\""), scriptPath: script);
+        Assert.Equal(0, python.ExitCode);
+        Assert.Equal("", python.Stdout);
+
+        JsonElement? diff = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), scriptPath: script));
+        Assert.NotNull(diff);
+        Assert.Contains(RuleBody("pmdg-737.md"), diff.Value.GetProperty("additionalContext").GetString());
     }
 
     // pmdg-737.md and variable-definitions.md: about 4,500 characters, so both arrive in full.
@@ -360,6 +623,22 @@ public class ClaudeRulesHookTests : IDisposable
         Assert.Null(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), env: env)));
     }
 
+    [Fact]
+    public void Diff_names_a_rule_file_once_per_session()
+    {
+        // TaxiGraph.cs + FlyByWireA380Definition.Rmp.cs load over 50,000 characters of rules: most are only named,
+        // and a named rule file is remembered too, so a second diff of the same files adds nothing.
+        var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
+        string input = DiffInput("git diff --name-only", BashResponse(
+            "MSFSBlindAssist/Navigation/TaxiGraph.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs\n"));
+
+        JsonElement? first = HookOutput(RunHook(new[] { "diff" }, input, env: env));
+
+        Assert.NotNull(first);
+        Assert.Contains("Not shown in full", first.Value.GetProperty("additionalContext").GetString());
+        Assert.Null(HookOutput(RunHook(new[] { "diff" }, input, env: env)));
+    }
+
     [Theory]
     [InlineData("git log --name-only -1")]
     [InlineData("git status --short")]
@@ -430,13 +709,26 @@ public class ClaudeRulesHookTests : IDisposable
     }
 
     [Fact]
-    public void A_subagent_in_an_unrecognised_worktree_is_told_to_load_its_rules()
+    public void A_subagent_in_the_sessions_own_worktree_needs_no_instruction()
     {
-        string cwd = Path.Combine(NewTempDir(), ".claude", "worktrees", "review-x");
+        // Desktop-app session: it runs in .claude\worktrees\<name>, its transcripts are filed under that folder, and
+        // CLAUDE_PROJECT_DIR is the MAIN checkout (measured 2026-10-09). Claude Code loads the rules there.
+        string main = NewTempDir();
+        string worktree = Path.Combine(main, ".claude", "worktrees", "review-x");
+        HookRun run = RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", worktree, TranscriptFor(worktree)),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = main });
+        Assert.Equal(0, run.ExitCode);
+        Assert.Null(HookOutput(run));
+    }
 
-        JsonElement? output = HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", cwd),
-            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = ClaudeContextBudgetTests.RepoRoot() }));
-
+    [Fact]
+    public void A_subagent_in_someone_elses_worktree_is_told_to_load_its_rules()
+    {
+        string main = NewTempDir();
+        string worktree = Path.Combine(main, ".claude", "worktrees", "review-x");
+        JsonElement? output = HookOutput(RunHook(new[] { "subagent-start" },
+            SubagentInput("general-purpose", worktree, TranscriptFor(main)),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = worktree }));   // no longer consulted
         Assert.NotNull(output);
         string context = output.Value.GetProperty("additionalContext").GetString()!;
         Assert.Contains("review-x", context);
@@ -445,25 +737,38 @@ public class ClaudeRulesHookTests : IDisposable
     }
 
     [Fact]
-    public void A_subagent_in_the_sessions_own_worktree_needs_no_instruction()
+    public void A_subagent_with_no_transcript_path_is_told_nothing()
     {
-        // A desktop-app session runs in its own .claude\worktrees\<name>, and its normal subagents start there too:
-        // Claude Code loads their rules, so they need no instruction.
-        string worktree = Path.Combine(NewTempDir(), ".claude", "worktrees", "review-x");
+        string main = NewTempDir();
+        string worktree = Path.Combine(main, ".claude", "worktrees", "review-x");
+        Assert.Null(HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", worktree),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = main })));
+    }
 
-        HookRun run = RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", worktree),
-            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = worktree });
-
-        Assert.Equal(0, run.ExitCode);
-        Assert.Null(HookOutput(run));
+    [Fact]
+    public void Plan_agent_gets_the_CLAUDE_md_of_its_own_checkout()
+    {
+        string checkout = NewTempDir();
+        CreateFile(checkout, ".git", "gitdir: elsewhere\n");
+        Directory.CreateDirectory(Path.Combine(checkout, ".claude", "rules"));
+        CreateFile(checkout, "CLAUDE.md", "# X\n\n## Rules for any file\n\n- own-checkout-marker\n\n## Before changing behaviour\n\nb\n");
+        JsonElement? output = HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("Plan", checkout),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = ClaudeContextBudgetTests.RepoRoot() }));
+        Assert.NotNull(output);
+        string context = output.Value.GetProperty("additionalContext").GetString()!;
+        Assert.Contains("own-checkout-marker", context);
+        Assert.Contains("Read " + Path.Combine(checkout, "CLAUDE.md"), context);
     }
 
     [Fact]
     public void An_agent_worktree_needs_no_instruction()
     {
+        // The transcript key here differs from the worktree's own key, so only the agent-* exemption by name keeps the
+        // hook silent. Pass a differing key: without a transcript_path the hook is silent anyway.
         string cwd = Path.Combine(NewTempDir(), ".claude", "worktrees", "agent-abc");
 
-        Assert.Null(HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", cwd))));
+        Assert.Null(HookOutput(RunHook(new[] { "subagent-start" },
+            SubagentInput("general-purpose", cwd, TranscriptFor(NewTempDir())))));
     }
 
     [Fact]
@@ -513,7 +818,9 @@ public class ClaudeRulesHookTests : IDisposable
     [Fact]
     public void Settings_register_the_pinned_hooks()
     {
-        // Pinned on purpose: every filter here was checked in a live session (2026-10-08). Some filters never match
+        // Pinned on purpose: the original filters were checked in a live session (2026-10-08). The Python filters were
+        // added 2026-10-09 (CCT-7) and Bash(python *) was live-checked that day; Bash(python3 *), Bash(py *) and the
+        // PowerShell Python filters are pinned but not individually live-checked. Some filters never match
         // (Write(...), Edit(...) on a Write, redirect forms such as Bash(cat >*)), and one naming more than the command
         // (Bash(git diff*)) runs on any command holding $VAR or $(). Change a filter only after the live checks in
         // docs/development.md, then update this list (CCT-3).
@@ -534,9 +841,14 @@ public class ClaudeRulesHookTests : IDisposable
             "PreToolUse @ Bash @ shell-guard @ Bash(sed *)", "PreToolUse @ Bash @ shell-guard @ Bash(perl *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(tee *)", "PreToolUse @ Bash @ shell-guard @ Bash(cat *)",
             "PreToolUse @ Bash @ shell-guard @ Bash(echo *)", "PreToolUse @ Bash @ shell-guard @ Bash(printf *)",
+            "PreToolUse @ Bash @ shell-guard @ Bash(python *)", "PreToolUse @ Bash @ shell-guard @ Bash(python3 *)",
+            "PreToolUse @ Bash @ shell-guard @ Bash(py *)",
             "PreToolUse @ PowerShell @ shell-guard @ PowerShell(Set-Content *)",
             "PreToolUse @ PowerShell @ shell-guard @ PowerShell(Add-Content *)",
             "PreToolUse @ PowerShell @ shell-guard @ PowerShell(Out-File *)",
+            "PreToolUse @ PowerShell @ shell-guard @ PowerShell(python *)",
+            "PreToolUse @ PowerShell @ shell-guard @ PowerShell(python3 *)",
+            "PreToolUse @ PowerShell @ shell-guard @ PowerShell(py *)",
             "SubagentStart @  @ subagent-start @ ",
             "SessionStart @ compact @ session-start @ ",
         }, hooks.Select(h => $"{h.Event} @ {h.Matcher} @ {h.Args[^1]} @ {h.If}"));
@@ -598,10 +910,18 @@ public class ClaudeRulesHookTests : IDisposable
 
     // ---- inputs and fixtures ----
 
-    private static string SubagentInput(string agentType, string cwd) => HookInput(new
-    {
-        session_id = "s1", hook_event_name = "SubagentStart", agent_id = "p1", agent_type = agentType, cwd,
-    });
+    private static string SubagentInput(string agentType, string cwd, string? transcriptPath = null) => transcriptPath is null
+        ? HookInput(new { session_id = "s1", hook_event_name = "SubagentStart", agent_id = "p1", agent_type = agentType, cwd })
+        : HookInput(new
+        {
+            session_id = "s1", hook_event_name = "SubagentStart", agent_id = "p1", agent_type = agentType, cwd,
+            transcript_path = transcriptPath,
+        });
+
+    /// <summary>Where Claude Code files a session's subagent transcript: under .claude\projects\ in a folder named after
+    /// the session's folder, every character outside [A-Za-z0-9] written as '-'.</summary>
+    private static string TranscriptFor(string sessionFolder) => Path.Combine(NewTempDir(), ".claude", "projects",
+        Regex.Replace(sessionFolder.TrimEnd('\\'), "[^A-Za-z0-9]", "-"), "s1", "subagents", "agent-p1.jsonl");
 
     private static object BashResponse(string stdout) =>
         new { stdout, stderr = "", interrupted = false, isImage = false, noOutputExpected = false };
@@ -680,7 +1000,7 @@ public class ClaudeRulesHookTests : IDisposable
     /// its memory of added rule files there) and the MSFSBA_RULES_HOOK switch is cleared, unless <paramref name="env"/>
     /// sets them; a null value in <paramref name="env"/> removes that variable.</summary>
     private static HookRun RunHook(string[] args, string? stdin = null, string? workingDirectory = null,
-        IReadOnlyDictionary<string, string?>? env = null)
+        IReadOnlyDictionary<string, string?>? env = null, string? scriptPath = null)
     {
         var psi = new ProcessStartInfo("powershell.exe")
         {
@@ -694,7 +1014,7 @@ public class ClaudeRulesHookTests : IDisposable
             StandardErrorEncoding = new UTF8Encoding(false),
             WorkingDirectory = workingDirectory ?? ClaudeContextBudgetTests.RepoRoot(),
         };
-        foreach (string a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ScriptPath })
+        foreach (string a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath ?? ScriptPath })
             psi.ArgumentList.Add(a);
         foreach (string a in args) psi.ArgumentList.Add(a);
         string temp = NewTempDir();

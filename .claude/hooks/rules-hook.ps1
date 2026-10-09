@@ -12,15 +12,18 @@ Modes (first argument):
   read                               PostToolUse (Read, Write, NotebookEdit): add the rule files for a file inside a
                                      subagent's own worktree (.claude/worktrees/agent-*), where Claude Code loads none
   shell-guard                        PreToolUse (Bash, PowerShell): refuse a command that writes a file some rule
-                                     file covers (redirects, sed/perl -i, tee, Set-Content, Add-Content, Out-File)
+                                     file covers (redirects, sed/perl -i, tee, Set-Content, Add-Content, Out-File,
+                                     and the Python that python, python3 and py run, found from literals: CCT-7)
   diff                               PostToolUse (git diff, git show, gh pr diff): add the rule files for the
                                      changed paths
-  subagent-start                     SubagentStart: give the built-in Plan agent CLAUDE.md's rules sections; tell a
-                                     subagent in a worktree the read mode cannot see to load its rules itself
+  subagent-start                     SubagentStart: give the built-in Plan agent the rules sections of the CLAUDE.md in
+                                     its own checkout; tell a subagent in a worktree the read mode cannot see, and
+                                     that is not the session's own (by its transcript folder, CCT-6), to load its
+                                     rules itself
+  session-start                      SessionStart (compact): forget which rule files were added before compaction
 
 Claude Code shows the model only about 10,000 characters of a hook's output (CCT-5), so read and diff show whole rule
 files within 9,000 characters and name the rest for Claude to Read.
-  session-start                      SessionStart (compact): forget which rule files were added before compaction
 
 Hook modes read the hook input (JSON) on stdin. Setting MSFSBA_RULES_HOOK=off silences every hook mode.
 
@@ -161,7 +164,8 @@ function Get-RuleFiles([string]$Root) {
     }
     $keys = $names.ToArray()
     $values = $items.ToArray()
-    [Array]::Sort($keys, $values, [StringComparer]::Ordinal)
+    # The [Array] casts matter: without them Windows PowerShell 5.1 binds the generic overload and sorts the keys only.
+    [Array]::Sort([Array]$keys, [Array]$values, [StringComparer]::Ordinal)
     return ,$values
 }
 
@@ -278,7 +282,7 @@ function Invoke-Read($HookInput) {
         $fresh = Select-NotRemembered $HookInput $hits
         if ($fresh.Count -gt 0) {
             $context = Format-RuleContext ($ReadHeader -f $relative) $fresh
-            if ($context.Shown.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($s in $context.Shown) { $s.Path })) }
+            Add-Remembered $HookInput ([string[]]@(foreach ($f in $fresh) { $f.Path }))   # shown or named: told once
         }
     }
     finally { Unlock-Memory $mutex }
@@ -288,29 +292,42 @@ function Invoke-Read($HookInput) {
 
 # ---- shell-guard: find the files a shell command writes ----
 
-# Drops heredoc bodies (bash <<WORD ... WORD) and here-string bodies (PowerShell @' ... '@), so text inside them -
-# "=>", "List<string>" - is never read as a redirect.
-function Remove-HeredocBodies([string]$Command, [string]$Shell) {
+# Takes the heredoc bodies (bash <<WORD ... WORD) out of a command, so text inside them - "=>", "List<string>" - is never
+# read as a redirect. Each heredoc operator (<<WORD, <<-WORD, <<'WORD', <<"WORD", <<\WORD) becomes the word
+# <<__HEREDOC_<n>__ and the lines of its body, up to the closing WORD, are kept as Bodies[n]: the body of a "python -"
+# is the script it runs. PowerShell here-strings (@' ... '@) become '' and keep no body.
+# Returns @{ Command = [string]; Bodies = [string[]] }.
+function Split-HeredocBodies([string]$Command, [string]$Shell) {
     $text = $Command.Replace("`r`n", "`n")
     if ($Shell -eq 'PowerShell') {
-        return [regex]::Replace($text, "(?s)@(['`"])\n.*?\n\1@", "''")
+        return @{ Command = [regex]::Replace($text, "(?s)@(['`"])\n.*?\n\1@", "''"); Bodies = [string[]]@() }
     }
     $kept = New-Object System.Collections.Generic.List[string]
+    $bodies = New-Object System.Collections.Generic.List[object]
     $pending = New-Object System.Collections.Generic.Queue[object]
     foreach ($line in $text.Split("`n")) {
         if ($pending.Count -gt 0) {
             $heredoc = $pending.Peek()
             $candidate = $line
             if ($heredoc.StripTabs) { $candidate = $line.TrimStart("`t") }
-            if ($candidate -ceq $heredoc.Word) { [void]$pending.Dequeue() }
+            if ($candidate -ceq $heredoc.Word) { [void]$pending.Dequeue() } else { $heredoc.Lines.Add($line) }
             continue
         }
-        $kept.Add($line)
+        $rewritten = New-Object System.Text.StringBuilder
+        $last = 0
         foreach ($m in [regex]::Matches($line, "(?<!<)<<(?!<)(-?)\s*\\?(['`"]?)([A-Za-z_][A-Za-z0-9_.-]*)\2")) {
-            $pending.Enqueue([pscustomobject]@{ Word = $m.Groups[3].Value; StripTabs = ($m.Groups[1].Value -eq '-') })
+            $lines = New-Object System.Collections.Generic.List[string]
+            $bodies.Add($lines)
+            $pending.Enqueue([pscustomobject]@{ Word = $m.Groups[3].Value; StripTabs = ($m.Groups[1].Value -eq '-'); Lines = $lines })
+            [void]$rewritten.Append($line, $last, $m.Index - $last).Append('<<__HEREDOC_').Append($bodies.Count - 1).Append('__')
+            $last = $m.Index + $m.Length
         }
+        [void]$rewritten.Append($line, $last, $line.Length - $last)
+        $kept.Add($rewritten.ToString())
     }
-    return ($kept.ToArray() -join "`n")
+    $texts = New-Object System.Collections.Generic.List[string]
+    foreach ($b in $bodies) { $texts.Add($b.ToArray() -join "`n") }
+    return @{ Command = ($kept.ToArray() -join "`n"); Bodies = $texts.ToArray() }
 }
 
 # Splits a command into simple commands at &&, ||, ;, | and newlines outside quotes (>| stays a redirect).
@@ -354,15 +371,25 @@ function Split-ShellCommands([string]$Command, [string]$Shell) {
     return ,$result.ToArray()
 }
 
-# Words of one simple command as objects: Text (quotes removed) and Bare (its first character was neither quoted
-# nor escaped, so it can be an operator: a quoted ">" is an argument, never a redirect). Bash: a backslash escapes
-# outside quotes and, inside double quotes, only $ ` " \; single quotes are literal. PowerShell: the backtick escapes;
-# a backslash is a path separator; '' inside single quotes is one quote. An unterminated quote throws.
+# One word of a command: Text (quotes removed); Bare (its first character was neither quoted nor escaped, so it can be
+# an operator: a quoted ">" is an argument, never a redirect); EndsBare (its last character was neither quoted nor
+# escaped, so a ")" there can close a subshell); Opens and Closes (its unquoted, unescaped "(" and ")" characters).
+function New-ShellWord([string]$Text, [bool]$Bare, [bool]$EndsBare, [int]$Opens, [int]$Closes) {
+    return [pscustomobject]@{ Text = $Text; Bare = $Bare; EndsBare = $EndsBare; Opens = $Opens; Closes = $Closes }
+}
+
+# Words of one simple command as objects (see New-ShellWord). Bash: a backslash escapes outside quotes and, inside
+# double quotes, only $ ` " \; single quotes are literal. PowerShell: the backtick escapes; a backslash is a path
+# separator; '' inside single quotes is one quote. A bare > inside a word starts a new word (echo x>f). An
+# unterminated quote throws.
 function Get-ShellWords([string]$Segment, [string]$Shell) {
     $words = New-Object System.Collections.Generic.List[object]
     $word = New-Object System.Text.StringBuilder
     $inWord = $false
     $bare = $null
+    $endsBare = $false
+    $opens = 0
+    $closes = 0
     $quote = [char]0
     for ($i = 0; $i -lt $Segment.Length; $i++) {
         $c = $Segment[$i]
@@ -374,6 +401,7 @@ function Get-ShellWords([string]$Segment, [string]$Shell) {
             }
             else { [void]$word.Append($c) }
             if ($null -eq $bare -and $word.Length -gt 0) { $bare = $false }
+            $endsBare = $false
             continue
         }
         if ($quote -eq '"') {
@@ -384,35 +412,136 @@ function Get-ShellWords([string]$Segment, [string]$Shell) {
             }
             else { [void]$word.Append($c) }
             if ($null -eq $bare -and $word.Length -gt 0) { $bare = $false }
+            $endsBare = $false
             continue
         }
         if ([char]::IsWhiteSpace($c)) {
             if ($inWord) {
-                $words.Add([pscustomobject]@{ Text = $word.ToString(); Bare = ($bare -eq $true) })
-                [void]$word.Clear(); $inWord = $false; $bare = $null
+                $words.Add((New-ShellWord ($word.ToString()) ($bare -eq $true) $endsBare $opens $closes))
+                [void]$word.Clear(); $inWord = $false; $bare = $null; $endsBare = $false; $opens = 0; $closes = 0
             }
             continue
         }
         $inWord = $true
-        if ($c -eq "'" -or $c -eq '"') { $quote = $c; continue }
+        if ($c -eq "'" -or $c -eq '"') { $quote = $c; $endsBare = $false; continue }
         if (($Shell -eq 'PowerShell' -and $c -eq '`' -and $hasNext) -or ($Shell -ne 'PowerShell' -and $c -eq '\' -and $hasNext)) {
             $i++; [void]$word.Append($Segment[$i])
             if ($null -eq $bare) { $bare = $false }
+            $endsBare = $false
             continue
+        }
+        # An unquoted, unescaped > inside a word ends it and starts a bare word at the >, so "echo x>f" reads as
+        # "echo x >f". The word stays whole only while it is bare and nothing but a file descriptor number or & (and
+        # at most one > after it): 2>&1, &>f, >>f, 2>>f and &>>f. A word that began in quotes always splits, as does
+        # a second redirect (x>a>f, 2>&1>f).
+        if ($c -eq '>' -and $word.Length -gt 0) {
+            $sofar = $word.ToString()
+            if (-not ($bare -eq $true -and $sofar -match '^(?:[0-9]*|&)>?$')) {
+                $words.Add((New-ShellWord $sofar ($bare -eq $true) $endsBare $opens $closes))
+                [void]$word.Clear(); $bare = $null; $endsBare = $false; $opens = 0; $closes = 0
+            }
         }
         [void]$word.Append($c)
         if ($null -eq $bare) { $bare = $true }
+        $endsBare = $true
+        if ($c -eq '(') { $opens++ } elseif ($c -eq ')') { $closes++ }
     }
     if ($quote -ne [char]0) { throw 'unterminated quote' }
-    if ($inWord) { $words.Add([pscustomobject]@{ Text = $word.ToString(); Bare = ($bare -eq $true) }) }
+    if ($inWord) { $words.Add((New-ShellWord ($word.ToString()) ($bare -eq $true) $endsBare $opens $closes)) }
     return ,$words.ToArray()
 }
 
-function Add-WriteTarget($Targets, [string]$Raw, [string]$Dir) {
+# Replaces ${NAME} and $NAME in $Raw with the literal value $Vars holds for NAME, and leaves any other reference as it
+# is. $Vars is a Hashtable whose comparer carries the shell's rule: ordinal for Bash, ignoring case for PowerShell.
+# PowerShell reads $name:x as one drive- or scope-qualified name ($env:TEMP), so it is never expanded there.
+function Expand-KnownVariables([string]$Raw, $Vars, [string]$Shell) {
+    if ([string]::IsNullOrEmpty($Raw) -or $null -eq $Vars -or $Vars.Count -eq 0 -or -not $Raw.Contains('$')) { return $Raw }
+    $pattern = '\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*))'
+    if ($Shell -eq 'PowerShell') { $pattern = '\$(?:\{([A-Za-z_][A-Za-z0-9_]*)\}|([A-Za-z_][A-Za-z0-9_]*)(?![A-Za-z0-9_:]))' }
+    $result = New-Object System.Text.StringBuilder
+    $last = 0
+    foreach ($m in [regex]::Matches($Raw, $pattern)) {
+        $name = $m.Groups[1].Value
+        if (-not $m.Groups[1].Success) { $name = $m.Groups[2].Value }
+        if (-not $Vars.ContainsKey($name)) { continue }
+        [void]$result.Append($Raw, $last, $m.Index - $last).Append([string]$Vars[$name])
+        $last = $m.Index + $m.Length
+    }
+    [void]$result.Append($Raw, $last, $Raw.Length - $last)
+    return $result.ToString()
+}
+
+# Remembers NAME=VALUE for Expand-KnownVariables. A value that is not a plain literal ($VAR, $(...), (...), `...`) is
+# unknown, so it also forgets what NAME held before: an unknown variable is never expanded, and its target allowed.
+function Set-KnownVariable($Vars, [string]$Name, [string]$Value) {
+    if ($Value.IndexOfAny([char[]]@('$', '(', '`')) -ge 0) { $Vars.Remove($Name); return }
+    $Vars[$Name] = $Value
+}
+
+# Bash NAME=VALUE (the word as the shell reads it, quotes removed).
+function Set-KnownVariableFromAssignment($Vars, [string]$Word) {
+    $m = [regex]::Match($Word, '^([A-Za-z_][A-Za-z0-9_]*)=(.*)$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if ($m.Success) { Set-KnownVariable $Vars $m.Groups[1].Value $m.Groups[2].Value }
+}
+
+# PowerShell `$NAME = VALUE` (three words, the middle exactly =) or one `$NAME=VALUE` word. Any other assignment to the
+# name (`$NAME = a + b`, `$NAME += x`) leaves it unknown.
+function Update-PowerShellVariables($Vars, $Words) {
+    if ($Words.Count -eq 0) { return }
+    $one = [regex]::Match($Words[0].Text, '^\$([A-Za-z_][A-Za-z0-9_]*)(?:=(.*))?$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if (-not $one.Success) { return }
+    $name = $one.Groups[1].Value
+    if ($one.Groups[2].Success) {
+        if ($Words.Count -eq 1) { Set-KnownVariable $Vars $name $one.Groups[2].Value } else { $Vars.Remove($name) }
+    }
+    elseif ($Words.Count -ge 2 -and $Words[1].Text -match '^[-+*/%]?=') {
+        if ($Words.Count -eq 3 -and $Words[1].Text -ceq '=') { Set-KnownVariable $Vars $name $Words[2].Text } else { $Vars.Remove($name) }
+    }
+}
+
+# A segment's words without the parens of a subshell, so "(cd d && sed -i s/a/b/ f)" reads as the commands inside, and
+# whether the segment opened a subshell (Open) or closed one (Close). The ( comes off the first word when it is bare.
+# The ) comes off the last word when its last character is unquoted and the segment has more unquoted ) than (: the )
+# that ends a $( ) or a PowerShell ( ) group is matched inside the segment, so it stays and closes nothing. A word that
+# is only the paren disappears. Returns @{ Words; Open; Close }.
+function Remove-SubshellParens($Words) {
+    $list = New-Object System.Collections.Generic.List[object]
+    $opens = 0
+    $closes = 0
+    foreach ($w in $Words) { $list.Add($w); $opens += $w.Opens; $closes += $w.Closes }
+    $open = $false
+    $close = $false
+    if ($list.Count -gt 0 -and $list[0].Bare -and $list[0].Text.StartsWith('(', [StringComparison]::Ordinal)) {
+        $first = $list[0]
+        $open = $true
+        $opens--
+        $rest = $first.Text.Substring(1)
+        if ($rest -eq '') { $list.RemoveAt(0) } else { $list[0] = New-ShellWord $rest $true $first.EndsBare ($first.Opens - 1) $first.Closes }
+    }
+    $last = $list.Count - 1
+    if ($last -ge 0 -and $list[$last].EndsBare -and $list[$last].Text.EndsWith(')', [StringComparison]::Ordinal) -and $closes -gt $opens) {
+        $final = $list[$last]
+        $close = $true
+        $rest = $final.Text.Substring(0, $final.Text.Length - 1)
+        if ($rest -eq '') { $list.RemoveAt($last) } else { $list[$last] = New-ShellWord $rest $final.Bare $false $final.Opens ($final.Closes - 1) }
+    }
+    return @{ Words = $list.ToArray(); Open = $open; Close = $close }
+}
+
+function Add-WriteTarget($Targets, [string]$Raw, [string]$Dir, $Vars, [string]$Shell = 'Bash') {
+    $Raw = Expand-KnownVariables $Raw $Vars $Shell
     if ([string]::IsNullOrWhiteSpace($Raw) -or $Raw.StartsWith('&')) { return }
     if ($Raw -eq '/dev/null' -or $Raw -eq 'NUL' -or $Raw.Contains('$') -or $Raw.Contains('%')) { return }
     $full = Resolve-FullPath $Raw $Dir
     if ($full) { $Targets.Add([pscustomobject]@{ Raw = $Raw; FullPath = $full }) }
+}
+
+# Add-WriteTarget for a file the command's own output goes to (a redirect or a tee operand): the full path it adds also
+# goes to $Written, since a heredoc written to it is a script that a later command in the same line may run.
+function Add-OutputTarget($Targets, $Written, [string]$Raw, [string]$Dir, $Vars, [string]$Shell) {
+    $before = $Targets.Count
+    Add-WriteTarget $Targets $Raw $Dir $Vars $Shell
+    if ($Targets.Count -gt $before) { $Written.Add($Targets[$Targets.Count - 1].FullPath) }
 }
 
 # Reads one short-option cluster of sed or perl (-ni, -pi.bak, -Mstrict, -lne) letter by letter: -i edits in place
@@ -469,25 +598,93 @@ function Get-InPlaceOperands([string]$Name, $Words) {
 
 $PowerShellSwitches = @('-Force', '-NoNewline', '-Append', '-PassThru', '-WhatIf', '-Confirm', '-NoClobber', '-AsByteStream')
 
-# The files a command writes: redirect targets, sed/perl -i and tee operands, and the path of Set-Content, Add-Content
-# and Out-File. Follows cd and Set-Location from $Cwd. Throws on an unparseable command.
+# The text of a script file that exists and is at most 1 MB, else $null.
+function Read-ScriptFile([string]$Path) {
+    if ([string]::IsNullOrEmpty($Path)) { return $null }
+    try {
+        if (-not [IO.File]::Exists($Path)) { return $null }
+        if ((New-Object System.IO.FileInfo($Path)).Length -gt 1048576) { return $null }
+        return [IO.File]::ReadAllText($Path, $Utf8)
+    }
+    catch { return $null }
+}
+
+# The Python code a python, python3 or py command runs, or $null when it cannot be read. $Words are the command's words
+# (the command word first, redirects already taken out). Walks the options: -c (also in a cluster such as -Bc) brings the
+# code as the next word; -m runs a module, which cannot be read; -W and -X take a value; any other option is skipped.
+# A - (or no script at all) means the code comes in on stdin: $Stdin is @{ Body; HereString; File } from the segment's
+# input redirects. The first other word is a script: the body a heredoc in this same command wrote to that path
+# ($Scripts maps full paths to bodies), else the file, when it exists.
+function Get-PythonScript($Words, [string]$Dir, $Stdin, $Scripts) {
+    for ($k = 1; $k -lt $Words.Count; $k++) {
+        $w = $Words[$k]
+        if ($w -ceq '-') { break }
+        if ($w -cmatch '^-[bBdEiIOPqRsSuvx]*c$') {
+            if ($k + 1 -lt $Words.Count) { return $Words[$k + 1] }
+            return $null
+        }
+        if ($w -cmatch '^-[bBdEiIOPqRsSuvx]*m$') { return $null }
+        if ($w -ceq '-W' -or $w -ceq '-X') { $k++; continue }
+        if ($w.StartsWith('-')) { continue }
+        $full = Resolve-FullPath $w $Dir
+        if (-not $full) { return $null }
+        if ($Scripts.ContainsKey($full)) { return [string]$Scripts[$full] }
+        return Read-ScriptFile $full
+    }
+    if ($null -ne $Stdin.Body) { return $Stdin.Body }
+    if ($null -ne $Stdin.HereString) { return $Stdin.HereString }
+    return Read-ScriptFile $Stdin.File
+}
+
+# The files a command writes: redirect targets, sed/perl -i and tee operands, the path of Set-Content, Add-Content and
+# Out-File, and the files a python, python3 or py command writes (Get-PythonWriteTargets in python-writes.ps1: the paths
+# of its write sinks that resolve from literals, through Path(...), os.path.join(...) and a name's nearest earlier
+# binding, CCT-7), read from the code that -c, a heredoc, a here-string, stdin or a script file brings; a script this
+# same command wrote with a heredoc counts too. Follows cd and Set-Location from $Cwd, and a path held in a variable the
+# command itself set to a literal. Throws on an unparseable command.
 function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
     $targets = New-Object System.Collections.Generic.List[object]
+    $split = Split-HeredocBodies $Command $Shell
+    $bodies = $split.Bodies
+    # Full path (ignoring case) -> the heredoc body this command wrote there: a later "python <path>" runs that text.
+    $scripts = New-Object System.Collections.Hashtable([StringComparer]::OrdinalIgnoreCase)
     $dir = $Cwd
-    foreach ($segment in (Split-ShellCommands (Remove-HeredocBodies $Command $Shell) $Shell)) {
-        $all = Get-ShellWords $segment $Shell
+    # The variables the command has set to a literal so far (Bash: NAME=VALUE and export NAME=VALUE; PowerShell:
+    # $NAME = VALUE). Bash names are case-sensitive, PowerShell names are not.
+    $comparer = [StringComparer]::Ordinal
+    if ($Shell -eq 'PowerShell') { $comparer = [StringComparer]::OrdinalIgnoreCase }
+    $vars = New-Object System.Collections.Hashtable($comparer)
+    # A subshell keeps its cd and its variables to itself: its opening ( saves the directory and a copy of the
+    # variables, and the segment after the one holding its closing ) gets them back.
+    $scopes = New-Object System.Collections.Generic.Stack[object]
+    $leaveScope = $false
+    foreach ($segment in (Split-ShellCommands $split.Command $Shell)) {
+        $parens = Remove-SubshellParens (Get-ShellWords $segment $Shell)
+        $all = $parens.Words
+        if ($leaveScope -and $scopes.Count -gt 0) { $scope = $scopes.Pop(); $dir = $scope.Dir; $vars = $scope.Vars }
+        $leaveScope = $parens.Close
+        if ($parens.Open) { $scopes.Push(@{ Dir = $dir; Vars = $vars.Clone() }) }
+        if ($Shell -eq 'PowerShell') { Update-PowerShellVariables $vars $all }
         $start = 0
         while ($start -lt $all.Count -and $all[$start].Bare -and $all[$start].Text -match '^[A-Za-z_][A-Za-z0-9_]*=') { $start++ }
-        if ($start -ge $all.Count) { continue }
+        if ($start -ge $all.Count) {
+            # Only assignments: they stay set. In "NAME=VALUE command" they reach that command alone.
+            if ($Shell -ne 'PowerShell') { foreach ($assignment in $all) { Set-KnownVariableFromAssignment $vars $assignment.Text } }
+            continue
+        }
         $name = $all[$start].Text
         if (@('cd', 'Set-Location', 'sl', 'pushd', 'Push-Location') -contains $name) {
             if ($start + 1 -lt $all.Count) {
-                $next = Resolve-FullPath $all[$start + 1].Text $dir
+                $next = Resolve-FullPath (Expand-KnownVariables $all[$start + 1].Text $vars $Shell) $dir
                 if ($next) { $dir = $next }
             }
             continue
         }
         $words = New-Object System.Collections.Generic.List[string]
+        # What the segment's input redirects feed its stdin (a python - reads its script there): the body of a heredoc,
+        # the text of a here-string, or the full path of an input file. $written holds the files its output goes to.
+        $redirected = @{ Body = $null; HereString = $null; File = $null }
+        $written = New-Object System.Collections.Generic.List[string]
         for ($k = $start; $k -lt $all.Count; $k++) {
             $w = $all[$k].Text
             if ($all[$k].Bare) {
@@ -495,21 +692,54 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
                 if ($out.Success) {
                     $raw = $out.Groups[1].Value
                     if ($raw -eq '' -and $k + 1 -lt $all.Count) { $k++; $raw = $all[$k].Text }
-                    Add-WriteTarget $targets $raw $dir
+                    Add-OutputTarget $targets $written $raw $dir $vars $Shell
                     continue
                 }
-                $in = [regex]::Match($w, '^[0-9]*<+(.*)$')
-                if ($in.Success) { if ($in.Groups[1].Value -eq '') { $k++ }; continue }
+                $in = [regex]::Match($w, '^([0-9]*)(<{1,3})(.*)$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+                if ($in.Success) {
+                    $rest = $in.Groups[3].Value
+                    if ($rest -eq '' -and $k + 1 -lt $all.Count) { $k++; $rest = $all[$k].Text }
+                    if ($in.Groups[1].Value -eq '' -or $in.Groups[1].Value -eq '0') {
+                        $operator = $in.Groups[2].Value.Length
+                        if ($operator -eq 3) { $redirected.HereString = $rest }
+                        elseif ($operator -eq 2) {
+                            $heredoc = [regex]::Match($rest, '^__HEREDOC_([0-9]{1,6})__$')
+                            if ($heredoc.Success -and [int]$heredoc.Groups[1].Value -lt $bodies.Count) {
+                                $redirected.Body = $bodies[[int]$heredoc.Groups[1].Value]
+                            }
+                        }
+                        else {
+                            $file = Expand-KnownVariables $rest $vars $Shell
+                            if (-not $file.Contains('$')) { $redirected.File = Resolve-FullPath $file $dir }
+                        }
+                    }
+                    continue
+                }
             }
             $words.Add($w)
         }
         if ($words.Count -eq 0) { continue }
         $name = $words[0]
         if ($name -ceq 'sed' -or $name -ceq 'perl') {
-            foreach ($o in (Get-InPlaceOperands $name $words)) { Add-WriteTarget $targets $o $dir }
+            foreach ($o in (Get-InPlaceOperands $name $words)) { Add-WriteTarget $targets $o $dir $vars $Shell }
         }
         elseif ($name -ceq 'tee') {
-            for ($k = 1; $k -lt $words.Count; $k++) { if (-not $words[$k].StartsWith('-')) { Add-WriteTarget $targets $words[$k] $dir } }
+            for ($k = 1; $k -lt $words.Count; $k++) {
+                if (-not $words[$k].StartsWith('-')) { Add-OutputTarget $targets $written $words[$k] $dir $vars $Shell }
+            }
+        }
+        elseif (@('python', 'python3', 'py') -contains $name) {
+            # A script the guard cannot read or analyse runs (CCT-1) without hiding the command's other targets.
+            try {
+                $code = Get-PythonScript $words $dir $redirected $scripts
+                if ($null -ne $code) {
+                    foreach ($path in (Get-PythonWriteTargets $code)) { Add-WriteTarget $targets $path $dir $vars $Shell }
+                }
+            }
+            catch { }
+        }
+        elseif ($name -ceq 'export' -and $Shell -ne 'PowerShell') {
+            for ($k = 1; $k -lt $words.Count; $k++) { Set-KnownVariableFromAssignment $vars $words[$k] }
         }
         elseif (@('Set-Content', 'Add-Content', 'Out-File') -contains $name) {
             $path = $null
@@ -521,8 +751,10 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
                 if ($null -eq $positional) { $positional = $w }
             }
             if ($null -eq $path) { $path = $positional }
-            Add-WriteTarget $targets $path $dir
+            Add-WriteTarget $targets $path $dir $vars $Shell
         }
+        # "cat > s.py <<'EOF' ... EOF" (or tee) writes a script: a later "python s.py" in this command runs that body.
+        if ($null -ne $redirected.Body) { foreach ($file in $written) { $scripts[$file] = $redirected.Body } }
     }
     return ,$targets.ToArray()
 }
@@ -665,7 +897,7 @@ function Invoke-Diff($HookInput) {
         $fresh = Select-NotRemembered $HookInput $wanted.ToArray()
         if ($fresh.Count -gt 0) {
             $context = Format-RuleContext $DiffHeader $fresh
-            if ($context.Shown.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($s in $context.Shown) { $s.Path })) }
+            Add-Remembered $HookInput ([string[]]@(foreach ($f in $fresh) { $f.Path }))   # shown or named: told once
         }
     }
     finally { Unlock-Memory $mutex }
@@ -691,14 +923,34 @@ function Get-MarkdownSection([string]$Text, [string]$Heading) {
     return $Text.Substring($start, $end - $start).TrimEnd("`n")
 }
 
-# SubagentStart: the built-in Plan agent skips CLAUDE.md, so give it the session checkout's. A subagent working in a
-# worktree that is neither the session's own checkout (a desktop-app session runs in .claude\worktrees\<name>, and
-# its normal subagents start there) nor one of Claude Code's agent-* folders is beyond the read mode's filter: tell
-# it to load its rules itself.
+# Claude Code files a session's transcripts under ~/.claude/projects/<key>/, where <key> is the session's folder with
+# every character outside [A-Za-z0-9] written as '-'. A trailing separator is dropped first.
+function ConvertTo-ProjectKey([string]$Path) {
+    if ([string]::IsNullOrEmpty($Path)) { return $null }
+    return [regex]::Replace($Path.TrimEnd('\', '/'), '[^A-Za-z0-9]', '-')
+}
+
+# The <key> folder of the hook input's transcript_path (the segment after .claude\projects\), or $null.
+function Get-ProjectKey($HookInput) {
+    $transcript = ConvertTo-WindowsPath ([string]$HookInput.transcript_path)
+    if ([string]::IsNullOrEmpty($transcript)) { return $null }
+    $match = [regex]::Match($transcript, '\\\.claude\\projects\\([^\\]+)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) { return $null }
+    return $match.Groups[1].Value
+}
+
+# SubagentStart: the built-in Plan agent skips CLAUDE.md, so give it the CLAUDE.md of the checkout it runs in. A
+# subagent in a worktree that is neither the session's own folder nor one of Claude Code's agent-* folders is beyond
+# the read mode's filter: tell it to load its rules itself (CCT-6).
+# CLAUDE_PROJECT_DIR cannot tell the session's own worktree: a desktop-app session runs in .claude\worktrees\<name>
+# while CLAUDE_PROJECT_DIR names the MAIN checkout (measured 2026-10-09). The session's transcripts are filed under
+# its own folder though, so a worktree whose key is the transcript's key is the session's own, where Claude Code
+# loads the rules. No transcript_path means no verdict: say nothing rather than guess (CCT-1).
 function Invoke-SubagentStart($HookInput) {
     if ($null -eq $HookInput) { return }
     $parts = New-Object System.Collections.Generic.List[string]
-    $project = [string]$env:CLAUDE_PROJECT_DIR
+    $project = Find-CheckoutRoot ([string]$HookInput.cwd)
+    if ($null -eq $project) { $project = [string]$env:CLAUDE_PROJECT_DIR }
     if ([string]$HookInput.agent_type -eq 'Plan' -and $project -ne '') {
         $claudeMd = [IO.Path]::Combine($project, 'CLAUDE.md')
         if ([IO.File]::Exists($claudeMd)) {
@@ -714,11 +966,10 @@ function Invoke-SubagentStart($HookInput) {
     }
     $worktree = [regex]::Match((ConvertTo-WindowsPath ([string]$HookInput.cwd)), '^(.*\\\.claude\\worktrees\\([^\\]+))',
         [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-    if ($worktree.Success -and $project -ne '' -and
-        -not $worktree.Groups[2].Value.StartsWith('agent-', [StringComparison]::OrdinalIgnoreCase)) {
-        $folder = $worktree.Groups[1].Value.TrimEnd('\') + '\'
-        $projectFull = Resolve-FullPath $project (Get-Location).Path
-        if ($projectFull -and -not ($projectFull.TrimEnd('\') + '\').StartsWith($folder, [StringComparison]::OrdinalIgnoreCase)) {
+    if ($worktree.Success -and -not $worktree.Groups[2].Value.StartsWith('agent-', [StringComparison]::OrdinalIgnoreCase)) {
+        $sessionKey = Get-ProjectKey $HookInput
+        $worktreeKey = ConvertTo-ProjectKey $worktree.Groups[1].Value
+        if ($sessionKey -and -not $sessionKey.Equals($worktreeKey, [StringComparison]::OrdinalIgnoreCase)) {
             $parts.Add($WorktreeFallback -f $worktree.Groups[1].Value)
         }
     }
@@ -764,6 +1015,10 @@ function Invoke-For {
 }
 
 $ErrorActionPreference = 'Stop'
+# The Python analysis is optional (CCT-1, CCT-7): a python-writes.ps1 that is missing or does not parse costs the shell
+# guard its Python analysis only (the python branch of Get-WriteTargets absorbs the undefined function), never another
+# mode or another check of the guard.
+try { . ([IO.Path]::Combine($PSScriptRoot, 'python-writes.ps1')) } catch { }
 try {
     if ($Mode -ne 'for' -and $env:MSFSBA_RULES_HOOK -eq 'off') { exit 0 }
     switch ($Mode) {
