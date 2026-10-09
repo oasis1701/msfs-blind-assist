@@ -76,7 +76,7 @@ public class FenixReadbackTests
         Assert.Equal(new[]
         {
             "ELEC_POWER_UP", "PREFLIGHT", "COCKPIT_PREP_CL", "BEFORE_START", "BEFORE_START_CL",
-            "ENGINE_START", "AFTER_START", "AFTER_START_CL", "TAXI_CL", "BEFORE_TAKEOFF", "LINEUP_CL",
+            "ENGINE_START", "AFTER_START", "AFTER_START_CL", "TAXI", "TAXI_CL", "LINEUP", "LINEUP_CL",
             "AFTER_TAKEOFF", "DESCENT", "APPROACH", "APPROACH_CL", "LANDING_CL", "AFTER_LANDING",
             "AFTER_LANDING_CL", "SHUTDOWN", "PARKING_CL", "SECURE", "SECURING_CL",
         }, FenixChecklistDefinitions.Build().Select(g => g.Id));

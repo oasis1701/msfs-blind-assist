@@ -127,7 +127,7 @@ public sealed class FenixActionExecutor : LVarActionExecutor
                 case "CABIN_CALL_ALL":           return CabinCall("S_OH_CALLS_ALL");
                 case "LANDING_LIGHTS_BOTH":      return SetLandingLights(step.TargetValue ?? 2);
                 // TO CONFIG is level-triggered: intercept the real key so the flow's
-                // BT_CONFIG step gets the long hold + spoken result, not a plain pulse.
+                // TX_CONFIG step gets the long hold + spoken result, not a plain pulse.
                 case "S_ECAM_TO":                return TakeoffConfigTest();
             }
             // COCKPIT_LIGHT_SCENE_<NAME>: the four brightness knobs of one lighting scene.

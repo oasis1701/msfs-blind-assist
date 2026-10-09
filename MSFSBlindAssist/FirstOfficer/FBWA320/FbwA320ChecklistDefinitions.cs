@@ -45,8 +45,9 @@ public static class FbwA320ChecklistDefinitions
         BuildEngineStart(),
         BuildAfterStart(),
         BuildAfterStartCL(),
+        BuildTaxi(),
         BuildTaxiCL(),
-        BuildBeforeTakeoff(),
+        BuildLineup(),
         BuildLineupCL(),
         BuildAfterTakeoff(),
         BuildDescent(),
@@ -290,43 +291,54 @@ public static class FbwA320ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 6. Before Takeoff
+    // 6. Taxi
     // -----------------------------------------------------------------------
-    private static Group BuildBeforeTakeoff() => new()
+    private static Group BuildTaxi() => new()
     {
-        Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
+        Id = "TAXI", Name = "Taxi",
         Items = new()
         {
             // ★ Autobrake MAX.
-            Auto("BT_AUTOBRAKE", "BEFORE_TAKEOFF", "Autobrake: MAX", "A32NX_AUTOBRAKES_ARMED_MODE",
+            Auto("TX_AUTOBRAKE", "TAXI", "Autobrake: MAX", "A32NX_AUTOBRAKES_ARMED_MODE",
                 v => System.Math.Abs(v - 3) < 0.5, (e, _) => e.Set("AUTOBRAKE_MODE", 3)),
-            Auto("BT_WXR", "BEFORE_TAKEOFF", "Weather radar: SYSTEM 1", "XMLVAR_A320_WeatherRadar_Sys",
+            Auto("TX_WXR", "TAXI", "Weather radar: SYSTEM 1", "XMLVAR_A320_WeatherRadar_Sys",
                 v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("XMLVAR_A320_WeatherRadar_Sys", 0)),
-            Auto("BT_PWS", "BEFORE_TAKEOFF", "Predictive windshear: AUTO", "A32NX_SWITCH_RADAR_PWS_POSITION",
+            Auto("TX_PWS", "TAXI", "Predictive windshear: AUTO", "A32NX_SWITCH_RADAR_PWS_POSITION",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_SWITCH_RADAR_PWS_POSITION", 1)),
-            Auto("BT_TCAS", "BEFORE_TAKEOFF", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION",
-                v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("A32NX_SWITCH_TCAS_POSITION", 2)),
-            Auto("BT_XPDRAUTO", "BEFORE_TAKEOFF", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE",
+            Auto("TX_XPDRAUTO", "TAXI", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_TRANSPONDER_MODE", 1)),
-            // Takeoff config test — sim + source verified held ECP button (2026-07).
-            ActionManual("BT_CONFIG", "BEFORE_TAKEOFF", "Takeoff config test", (e, _) => e.TakeoffConfigTest()),
-            Auto("BT_TURNOFF", "BEFORE_TAKEOFF", "Runway turn-off lights: ON", "LIGHT TAXI:2",
-                v => v > 0.5, (e, _) => e.Set("LIGHT TAXI:2", 1)),
-            Auto("BT_LANDING_LT", "BEFORE_TAKEOFF", "Landing lights: ON", "LIGHTING_LANDING_2",
-                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LANDING_LIGHTS_ON_THIRD_PARTY", 1)),
-            Auto("BT_NOSE_TO", "BEFORE_TAKEOFF", "Nose light: TAKEOFF", "LIGHTING_LANDING_1",
-                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 0)),
-            Auto("BT_STROBE", "BEFORE_TAKEOFF", "Strobes: ON", "LIGHTING_STROBE_0",
-                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHTING_STROBE_0", 0)),
-            // ★ Cabin notify for takeoff.
-            ActionManual("BT_CABIN", "BEFORE_TAKEOFF", "Advise the cabin crew for takeoff (call all)",
+            // ★ Cabin call for takeoff.
+            ActionManual("TX_CABIN", "TAXI", "Advise the cabin crew for takeoff (call all)",
                 (e, _) => e.CabinCall()),
-            Reminder("BT_CLEARANCE", "BEFORE_TAKEOFF", "Obtain takeoff clearance"),
+            // Takeoff config test — sim + source verified held ECP button (2026-07).
+            ActionManual("TX_CONFIG", "TAXI", "Takeoff config test", (e, _) => e.TakeoffConfigTest()),
         }
     };
 
     // -----------------------------------------------------------------------
-    // 7. After Takeoff
+    // 7. Line-up
+    // -----------------------------------------------------------------------
+    private static Group BuildLineup() => new()
+    {
+        Id = "LINEUP", Name = "Line-up",
+        Items = new()
+        {
+            Auto("LU_TCAS", "LINEUP", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION",
+                v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("A32NX_SWITCH_TCAS_POSITION", 2)),
+            Auto("LU_STROBE", "LINEUP", "Strobes: ON", "LIGHTING_STROBE_0",
+                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHTING_STROBE_0", 0)),
+            Auto("LU_TURNOFF", "LINEUP", "Runway turn-off lights: ON", "LIGHT TAXI:2",
+                v => v > 0.5, (e, _) => e.Set("LIGHT TAXI:2", 1)),
+            Auto("LU_NOSE_TO", "LINEUP", "Nose light: TAKEOFF", "LIGHTING_LANDING_1",
+                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 0)),
+            Auto("LU_LANDING_LT", "LINEUP", "Landing lights: ON", "LIGHTING_LANDING_2",
+                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LANDING_LIGHTS_ON_THIRD_PARTY", 1)),
+            Reminder("LU_CLEARANCE", "LINEUP", "Obtain takeoff clearance"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 8. After Takeoff
     // -----------------------------------------------------------------------
     private static Group BuildAfterTakeoff() => new()
     {
@@ -349,7 +361,7 @@ public static class FbwA320ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 8. Descent
+    // 9. Descent
     // -----------------------------------------------------------------------
     private static Group BuildDescent() => new()
     {
@@ -373,7 +385,7 @@ public static class FbwA320ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 9. Approach
+    // 10. Approach
     // -----------------------------------------------------------------------
     private static Group BuildApproach() => new()
     {
@@ -396,7 +408,7 @@ public static class FbwA320ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 10. After Landing
+    // 11. After Landing
     // -----------------------------------------------------------------------
     private static Group BuildAfterLanding() => new()
     {
@@ -433,7 +445,7 @@ public static class FbwA320ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 11. Shutdown
+    // 12. Shutdown
     // -----------------------------------------------------------------------
     private static Group BuildShutdown() => new()
     {
@@ -494,7 +506,7 @@ public static class FbwA320ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 12. Securing
+    // 13. Securing
     // -----------------------------------------------------------------------
     private static Group BuildSecure() => new()
     {

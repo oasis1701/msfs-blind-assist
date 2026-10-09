@@ -225,7 +225,7 @@ public class FbwA320FlowParityTests
     {
         Assert.Equal("APU: ON and available", Item("BS_APU").Label);
         Assert.Equal("APU: ON and available", Item("AL_APU").Label);
-        Assert.Equal("Weather radar: SYSTEM 1", Item("BT_WXR").Label);
+        Assert.Equal("Weather radar: SYSTEM 1", Item("TX_WXR").Label);
         Assert.Equal("Cockpit door: LOCKED", Item("BS_COCKPITDOOR").Label);
         Assert.Equal("Cockpit door: UNLOCKED", Item("SD_COCKPITDOOR").Label);
     }

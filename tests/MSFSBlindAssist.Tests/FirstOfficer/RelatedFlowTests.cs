@@ -17,11 +17,11 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// <para>
 /// Step 3 also matches a flow that step 1 or 2 finds whenever that flow lists a group of the same
 /// phase, so a row tells the steps apart only when a stand-in is set up to separate them: a flow that
-/// names no group (step 3 cannot match it), or an earlier flow that step 3 would return instead.
-/// Each row's comment says which step it pins, or which step finds it when another would too. The
-/// rows that pin a step are DESCENT_CL (step 1 before step 2), ENGINE_START and ENGINE_START_CL
-/// (step 2), DESCENT (step 2 before step 3) and SECURING (step 3). Deleting a step, or swapping
-/// neighbouring steps, fails at least one of them.
+/// names no group (step 3 cannot match it), an earlier flow that step 3 would return instead, or two
+/// different flows that steps 1 and 2 find. Each row's comment says which step it pins, or which step
+/// finds it when another would too. The rows that pin a step are DESCENT_CL (step 1 before step 2),
+/// ENGINE_START and ENGINE_START_CL (step 2), DESCENT (step 2 before step 3) and SECURING (step 3).
+/// Deleting a step, or swapping neighbouring steps, fails at least one of them.
 /// </para>
 /// </summary>
 public class RelatedFlowTests
@@ -82,6 +82,11 @@ public class RelatedFlowTests
             yield return new object[] { aircraft, "ELEC_POWER_UP", "ELECTRICAL_POWER_UP" };   // step 1: the flow lists the action group
             yield return new object[] { aircraft, "BEFORE_START_CL", "BEFORE_START" };        // step 2: the flow is named after the phase
             yield return new object[] { aircraft, "AFTER_LANDING_CL", "AFTER_LANDING" };      // step 2, likewise
+            // Each new flow starts from its action group and from its own checklist (2026-10-09).
+            yield return new object[] { aircraft, "TAXI", "TAXI" };                           // step 1: the flow lists the action group
+            yield return new object[] { aircraft, "TAXI_CL", "TAXI" };                        // step 2: the flow is named after the phase
+            yield return new object[] { aircraft, "LINEUP", "LINEUP" };                       // step 1: the flow lists the action group
+            yield return new object[] { aircraft, "LINEUP_CL", "LINEUP" };                    // step 2: the flow is named after the phase
         }
     }
 

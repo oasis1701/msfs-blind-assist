@@ -7,7 +7,7 @@ using Flow = Models.FlowDefinition<HwA330StateEvaluator>;
 using Step = Models.FlowStep<HwA330StateEvaluator>;
 
 /// <summary>
-/// Data-driven HeadwindSim A330-900neo First-Officer flow definitions — the same 12
+/// Data-driven HeadwindSim A330-900neo First-Officer flow definitions — the same 13
 /// phases as <see cref="Fenix.FenixFlowDefinitions"/> (Electrical Power Up through
 /// Secure). ORIGINATES as a duplicate of <see cref="FBWA320.FbwA320FlowDefinitions"/>, and
 /// the A339X is built on the A32NX systems, so most control keys keep their <c>A32NX_</c>
@@ -75,7 +75,8 @@ public static class HwA330FlowDefinitions
         BuildBeforeStart(),
         BuildEngineStart(),
         BuildAfterStart(),
-        BuildBeforeTakeoff(),
+        BuildTaxi(),
+        BuildLineup(),
         BuildAfterTakeoff(),
         BuildDescent(),
         BuildApproach(),
@@ -370,45 +371,78 @@ public static class HwA330FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 6. Before Takeoff
+    // 6. Taxi (run while taxiing, before the Taxi checklist; FOA-8)
     // -----------------------------------------------------------------------
-    private static Flow BuildBeforeTakeoff() => new()
+    private static Flow BuildTaxi() => new()
     {
-        Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
-        Description = "Autobrake MAX, radar, TCAS, exterior lights, cabin notify for takeoff.",
-        RelatedChecklistGroupIds = new[] { "BEFORE_TAKEOFF" },
+        Id = "TAXI", Name = "Taxi",
+        Description = "Autobrake MAX, weather radar and predictive windshear, transponder AUTO, cabin call, a check of the takeoff memo items, then the takeoff config test.",
+        RelatedChecklistGroupIds = new[] { "TAXI" },
         Steps = new()
         {
-            // ★ Autobrake MAX (spec §4)
-            Done(Skip(SW("BT_AUTOBRAKE", "Autobrake: MAX", "AUTOBRAKE_MODE", 3),
-                s => s.IsPosition("A32NX_AUTOBRAKES_ARMED_MODE", 3)), "BT_AUTOBRAKE"),
-            Done(Skip(SW("BT_WXR", "Weather radar: SYSTEM 1", "XMLVAR_A320_WeatherRadar_Sys", 0),
-                s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 0)), "BT_WXR"),
-            Done(Skip(SW("BT_PWS", "Predictive windshear: AUTO", "A32NX_SWITCH_RADAR_PWS_POSITION", 1),
-                s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_POSITION", 1)), "BT_PWS"),
-            Done(Skip(SW("BT_TCAS", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION", 2),
-                s => s.IsPosition("A32NX_SWITCH_TCAS_POSITION", 2)), "BT_TCAS"),
-            Done(Skip(SW("BT_XPDRAUTO", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE", 1),
-                s => s.IsPosition("A32NX_TRANSPONDER_MODE", 1)), "BT_XPDRAUTO"),
-            // Takeoff config test: held ECP TO_CONF_TEST H-event via the executor's
-            // TakeoffConfigTestAsync pseudo-key (sim + source verified; the F/CTL ECAM
-            // page itself still has no dedicated key and stays out of scope here).
-            Done(SW("BT_CONFIG", "Takeoff config test", "TO_CONFIG_TEST", 1), "BT_CONFIG"),
-            Done(Skip(SW("BT_TURNOFF", "Runway turn-off lights: ON", "LIGHT TAXI:2", 1),
-                s => s.IsOn("LIGHT TAXI:2")), "BT_TURNOFF"),
-            Done(SW("BT_LANDING_LT", "Landing lights: ON", "LANDING_LIGHTS_ON_THIRD_PARTY", 1), "BT_LANDING_LT"),
-            Done(Skip(SW("BT_NOSE_TO", "Nose light: TAKEOFF", "LIGHTING_LANDING_1", 0),
-                s => s.IsPosition("LIGHTING_LANDING_1", 0)), "BT_NOSE_TO"),
-            Done(Skip(SW("BT_STROBE", "Strobes: ON", "LIGHTING_STROBE_0", 0),
-                s => s.IsPosition("LIGHTING_STROBE_0", 0)), "BT_STROBE"),
-            // ★ Cabin notify for takeoff (spec §4)
-            Done(SW("BT_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "BT_CABIN"),
-            Captain("BT_CLEARANCE", "Obtain takeoff clearance"),
+            // ★ Autobrake MAX (spec §4). Also the takeoff memo's "Autobrake: MAX" (FO-6): the flow
+            // latches the Taxi Checklist too, so a failed write keeps that line open.
+            Also(Done(Skip(SW("TX_AUTOBRAKE", "Autobrake: MAX", "AUTOBRAKE_MODE", 3),
+                s => s.IsPosition("A32NX_AUTOBRAKES_ARMED_MODE", 3)), "TX_AUTOBRAKE"), "TXC_MEMO_AUTOBRK"),
+            // "Radar and predictive windshear: ON and AUTO" (TXC_WXR) is true only with BOTH set, so
+            // neither write completes it: the read-only TX_WXR_PWS_CHECK after them does (the
+            // AL_WXR_PWS_CHECK shape: 5 s, skipped aloud on timeout, never writes).
+            Done(Skip(SW("TX_WXR", "Weather radar: SYSTEM 1", "XMLVAR_A320_WeatherRadar_Sys", 0),
+                s => s.IsPosition("XMLVAR_A320_WeatherRadar_Sys", 0)), "TX_WXR"),
+            Done(Skip(SW("TX_PWS", "Predictive windshear: AUTO", "A32NX_SWITCH_RADAR_PWS_POSITION", 1),
+                s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_POSITION", 1)), "TX_PWS"),
+            Done(Skip(WaitForField("TX_WXR_PWS_CHECK", "Radar and predictive windshear: ON and AUTO", "FO_WXR_ON_AUTO",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("FO_WXR_ON_AUTO") > 0.5), "TXC_WXR"),
+            Done(Skip(SW("TX_XPDRAUTO", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE", 1),
+                s => s.IsPosition("A32NX_TRANSPONDER_MODE", 1)), "TX_XPDRAUTO"),
+            // ★ Cabin call for takeoff (spec §4): the ONE call (owner, 2026-10-09), which makes
+            // FlyByWire's memo show CABIN READY. Also the memo's "Cabin: READY", a line the pilot
+            // confirms: a call that could not be sent keeps it open.
+            Also(Done(SW("TX_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "TX_CABIN"),
+                "TXC_MEMO_CABIN"),
+            // Read-only check of the takeoff memo items set in After Start (FO_TAXI_MEMO_OK: ground
+            // spoilers armed, a takeoff flap handle, the memo's seat belts on). 5 s, skipped aloud on
+            // timeout, never writes: flaps held until the holding point (icing) time it out, and its
+            // four lines then stay out of the latch, following the aircraft.
+            Also(Done(Skip(WaitForField("TX_MEMO_CHECK", "Spoilers, flaps and seat belts: set for takeoff", "FO_TAXI_MEMO_OK",
+                    v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
+                s => s.GetValue("FO_TAXI_MEMO_OK") > 0.5), "TXC_MEMO_SPLRS"),
+                "TXC_MEMO_FLAPS", "TXC_FLAPS", "TXC_MEMO_SIGNS"),
+            // Takeoff config test, LAST (FOA-8 owner choice 12: the memo is read after it): held ECP
+            // TO_CONF_TEST H-event via the executor's TakeoffConfigTestAsync pseudo-key (sim + source
+            // verified). Also the memo's "T.O config: NORMAL".
+            Also(Done(SW("TX_CONFIG", "Takeoff config test", "TO_CONFIG_TEST", 1), "TX_CONFIG"), "TXC_MEMO_TOCFG"),
         }
     };
 
     // -----------------------------------------------------------------------
-    // 7. After Takeoff
+    // 7. Line-up (run when cleared onto the runway, before the Line-up checklist)
+    // -----------------------------------------------------------------------
+    private static Flow BuildLineup() => new()
+    {
+        Id = "LINEUP", Name = "Line-up",
+        Description = "TCAS TA/RA, strobes, runway turn-off, nose and landing lights, then the takeoff clearance reminder.",
+        RelatedChecklistGroupIds = new[] { "LINEUP" },
+        Steps = new()
+        {
+            // Also the Line-up Checklist's "TCAS: TA/RA" (FO-6).
+            Also(Done(Skip(SW("LU_TCAS", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION", 2),
+                s => s.IsPosition("A32NX_SWITCH_TCAS_POSITION", 2)), "LU_TCAS"), "LUC_TCAS"),
+            Done(Skip(SW("LU_STROBE", "Strobes: ON", "LIGHTING_STROBE_0", 0),
+                s => s.IsPosition("LIGHTING_STROBE_0", 0)), "LU_STROBE"),
+            Done(Skip(SW("LU_TURNOFF", "Runway turn-off lights: ON", "LIGHT TAXI:2", 1),
+                s => s.IsOn("LIGHT TAXI:2")), "LU_TURNOFF"),
+            Done(Skip(SW("LU_NOSE_TO", "Nose light: TAKEOFF", "LIGHTING_LANDING_1", 0),
+                s => s.IsPosition("LIGHTING_LANDING_1", 0)), "LU_NOSE_TO"),
+            // Landing lights here, a little before the takeoff clearance (owner, 2026-10-09: as the A380).
+            Done(SW("LU_LANDING_LT", "Landing lights: ON", "LANDING_LIGHTS_ON_THIRD_PARTY", 1), "LU_LANDING_LT"),
+            Captain("LU_CLEARANCE", "Obtain takeoff clearance"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 8. After Takeoff
     // -----------------------------------------------------------------------
     private static Flow BuildAfterTakeoff() => new()
     {
@@ -432,7 +466,7 @@ public static class HwA330FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 8. Descent
+    // 9. Descent
     // -----------------------------------------------------------------------
     private static Flow BuildDescent() => new()
     {
@@ -454,7 +488,7 @@ public static class HwA330FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 9. Approach
+    // 10. Approach
     // -----------------------------------------------------------------------
     private static Flow BuildApproach() => new()
     {
@@ -480,7 +514,7 @@ public static class HwA330FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 10. After Landing (pilot-triggered once clear of the runway)
+    // 11. After Landing (pilot-triggered once clear of the runway)
     // -----------------------------------------------------------------------
     private static Flow BuildAfterLanding() => new()
     {
@@ -534,7 +568,7 @@ public static class HwA330FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 11. Shutdown / Parking
+    // 12. Shutdown / Parking
     // -----------------------------------------------------------------------
     private static Flow BuildShutdown() => new()
     {
@@ -591,7 +625,7 @@ public static class HwA330FlowDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 12. Securing
+    // 13. Securing
     // -----------------------------------------------------------------------
     private static Flow BuildSecure() => new()
     {

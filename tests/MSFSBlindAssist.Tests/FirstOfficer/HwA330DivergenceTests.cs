@@ -486,7 +486,7 @@ public class HwA330DivergenceTests
     {
         var items = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ChecklistDefinitions.Build()
             .SelectMany(g => g.Items)
-            .Where(i => i.Id is "BT_LANDING_LT" or "AL_LANDING_OFF")
+            .Where(i => i.Id is "LU_LANDING_LT" or "AL_LANDING_OFF")
             .ToList();
 
         Assert.Equal(2, items.Count);
@@ -502,8 +502,8 @@ public class HwA330DivergenceTests
 
         // ON accepts 1 and rejects 0; OFF accepts 0 and rejects 1. There is no
         // RETRACT position on this airframe, so nothing may test for 2.
-        Assert.True(items["BT_LANDING_LT"].StateCondition!(1));
-        Assert.False(items["BT_LANDING_LT"].StateCondition!(0));
+        Assert.True(items["LU_LANDING_LT"].StateCondition!(1));
+        Assert.False(items["LU_LANDING_LT"].StateCondition!(0));
         Assert.True(items["AL_LANDING_OFF"].StateCondition!(0));
         Assert.False(items["AL_LANDING_OFF"].StateCondition!(1));
         Assert.False(items["AL_LANDING_OFF"].StateCondition!(2));

@@ -30,7 +30,7 @@ public class HwA330ParityTests
     /// <summary>Checklist item ids whose StateFieldName legitimately differs, and why.</summary>
     private static readonly Dictionary<string, string> KnownStateFieldDivergences = new()
     {
-        ["BT_LANDING_LT"] = "A339X has one 2-position ganged landing-light switch on stock "
+        ["LU_LANDING_LT"] = "A339X has one 2-position ganged landing-light switch on stock "
                           + "LIGHT LANDING:2; L:LIGHTING_LANDING_2 is an A32NX Retractable position.",
         ["AL_LANDING_OFF"] = "Same switch. The A32NX item tests for RETRACT (2), which does "
                            + "not exist on the A330.",

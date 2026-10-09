@@ -35,6 +35,9 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
     {
         ("BEFORE_START", new[] { "BS_BEACON" }, new[] { "BS_BEACON", "BSC_BEACON" }),
         ("AFTER_START", new[] { "AS_RUDDERTRIM" }, new[] { "AS_RUDDERTRIM", "ASC_RUDDER" }),
+        ("TAXI", new[] { "TX_AUTOBRAKE", "TX_CABIN", "TX_CONFIG" },
+            new[] { "TX_AUTOBRAKE", "TXC_MEMO_AUTOBRK", "TX_CABIN", "TXC_MEMO_CABIN", "TX_CONFIG", "TXC_MEMO_TOCFG" }),
+        ("LINEUP", new[] { "LU_TCAS" }, new[] { "LU_TCAS", "LUC_TCAS" }),
         ("APPROACH", new[] { "AP_SEATBELTS" }, new[] { "AP_SEATBELTS", "APC_SEATBELTS" }),
         ("AFTER_LANDING", new[] { "AL_WXR_OFF", "AL_PWS_OFF" }, new[] { "AL_WXR_OFF", "AL_PWS_OFF" }),
     };
@@ -42,6 +45,11 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
     private const string RadarCheck = A320FamilyReadbackLinkTests.RadarCheck;
     private const string RadarLine = A320FamilyReadbackLinkTests.RadarLine;
     private const string RadarLabel = A320FamilyReadbackLinkTests.RadarLabel;
+    private const string WxrOnCheck = A320FamilyReadbackLinkTests.WxrOnCheck;
+    private const string WxrOnLine = A320FamilyReadbackLinkTests.WxrOnLine;
+    private const string MemoCheck = A320FamilyReadbackLinkTests.MemoCheck;
+    private const string MemoLabel = A320FamilyReadbackLinkTests.MemoLabel;
+    private static readonly string[] MemoLines = A320FamilyReadbackLinkTests.MemoLines;
 
     // The aircraft under test: a fresh evaluator, an executor with no sim (every write it is asked for
     // fails: "Sim not connected"), and its real checklists and flows.
@@ -53,6 +61,14 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
     // The L-vars the radar read-back reads: the radar switch, and the predictive windshear switch.
     protected abstract string RadarVar { get; }
     protected abstract string WindshearVar { get; }
+
+    // A cache where everything the Taxi flow's two checks read is set for takeoff (radar system 1,
+    // predictive windshear AUTO, ground spoilers armed, the memo's signs on) except the flap lever,
+    // which is the given position.
+    protected abstract (string Key, double Value)[] TaxiReady(double flapLever);
+
+    // The TCAS switch at TA/RA.
+    protected abstract (string Key, double Value) TcasTaRa { get; }
 
     public static IEnumerable<object[]> FlowRuns() =>
         Rows.Select(r => new object[] { r.Flow, r.Steps, r.Lines });
@@ -197,6 +213,147 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
         }
     }
 
+    /// <summary>The Taxi flow's two read-only checks on the real steps, evaluator and checklists and a
+    /// real FlowManager, with everything set for takeoff except the flaps, still UP (held until the
+    /// holding point, the icing case). The radar check passes; the takeoff-memo check times out and is
+    /// skipped aloud, and the end-of-flow latch leaves its four lines unticked and free while the rest
+    /// of the Taxi checklist latches. The pilot then sets takeoff flaps: the memo's flaps, spoilers and
+    /// signs lines tick themselves from the aircraft, and "Flaps setting: SET", a line the pilot
+    /// confirms (a Reminder), stays open until they tick it.</summary>
+    [Fact]
+    public async Task A_taxi_run_with_the_flaps_up_skips_the_memo_check_and_leaves_its_lines_open()
+    {
+        var state = NewState();
+        var executor = NewExecutor();
+        var groups = BuildChecklists();
+        state.SetSimConnect(SeededSimConnectCache.ConnectedWith(TaxiReady(flapLever: 0)));
+
+        string[] stepIds = { WxrOnCheck, MemoCheck };
+        var flow = Subset(BuildFlows(), "TAXI", stepIds);
+        Assert.Equal(stepIds, flow.Steps.Select(s => s.Id).ToArray());
+
+        var speech = new GatedSpeechCapture();
+        var checklist = new ChecklistManager<TExec, TState>(state, executor, groups);
+        var flowManager = new FlowManager<TExec, TState>(state, executor, checklist, speech);
+        var skipped = new List<string>();
+        flowManager.StepSkipped += (_, step, _) => { lock (skipped) skipped.Add(step.Id); };
+
+        await RunToEnd(flowManager, flow);
+
+        Assert.Equal(new[] { MemoCheck }, skipped.ToArray());
+        Assert.Contains($"Timed out waiting for: {MemoLabel}", speech.All);
+        Assert.Contains($"Skipping: {MemoLabel}", speech.All);
+        Assert.Equal(MemoLines.Order().ToArray(), flowManager.UnfinishedChecklistItemIds.Order().ToArray());
+
+        foreach (var groupId in flow.CompletionGroupIds(id => groups.Any(g => g.Id == id)))
+            checklist.MarkGroupComplete(groupId, flowManager.UnfinishedChecklistItemIds);
+
+        var items = groups.SelectMany(g => g.Items).ToDictionary(i => i.Id);
+        var taxiCl = groups.Single(g => g.Id == "TAXI_CL");
+        Assert.True(taxiCl.CompletionLatched);
+        foreach (var line in taxiCl.Items)
+        {
+            if (MemoLines.Contains(line.Id))
+            {
+                Assert.False(line.IsChecked, $"{line.Id} was ticked over a memo check that timed out");
+                Assert.True(line.ExemptFromCompletionLatch, $"{line.Id} is latched: it cannot follow the aircraft");
+            }
+            else
+            {
+                Assert.True(line.IsChecked, $"{line.Id} was not ticked by the finished Taxi flow");
+                Assert.False(line.ExemptFromCompletionLatch, line.Id);
+            }
+        }
+
+        // The pilot sets takeoff flaps: the memo lines follow the aircraft by themselves ...
+        state.SetSimConnect(SeededSimConnectCache.ConnectedWith(TaxiReady(flapLever: 1)));
+        checklist.EvaluateAutoDetection();
+        Assert.True(items["TXC_MEMO_FLAPS"].IsChecked);
+        Assert.True(items["TXC_MEMO_SPLRS"].IsChecked);
+        Assert.True(items["TXC_MEMO_SIGNS"].IsChecked);
+        // ... and "Flaps setting: SET", a line the pilot confirms, waits for their tick.
+        Assert.False(items["TXC_FLAPS"].IsChecked);
+    }
+
+    /// <summary>The same two checks with the flaps set for takeoff: both pass ("Already set"), they
+    /// are what tick their five Taxi checklist lines, and the finished flow latches the whole list, the
+    /// lines only the pilot can confirm included.</summary>
+    [Fact]
+    public async Task A_taxi_run_whose_checks_pass_ticks_and_latches_the_whole_taxi_checklist()
+    {
+        var state = NewState();
+        var executor = NewExecutor();
+        var groups = BuildChecklists();
+        state.SetSimConnect(SeededSimConnectCache.ConnectedWith(TaxiReady(flapLever: 2)));
+
+        string[] stepIds = { WxrOnCheck, MemoCheck };
+        var flow = Subset(BuildFlows(), "TAXI", stepIds);
+        Assert.Equal(new[] { "TAXI", "TAXI_CL" }, flow.CompletionGroupIds(id => groups.Any(g => g.Id == id)).ToArray());
+
+        var speech = new GatedSpeechCapture();
+        var checklist = new ChecklistManager<TExec, TState>(state, executor, groups);
+        var flowManager = new FlowManager<TExec, TState>(state, executor, checklist, speech);
+        var skipped = new List<string>();
+        flowManager.StepSkipped += (_, step, _) => { lock (skipped) skipped.Add(step.Id); };
+
+        await RunToEnd(flowManager, flow);
+
+        Assert.Empty(skipped);
+        Assert.Empty(flowManager.UnfinishedChecklistItemIds);
+        var items = groups.SelectMany(g => g.Items).ToDictionary(i => i.Id);
+        foreach (var id in MemoLines.Append(WxrOnLine))
+            Assert.True(items[id].IsChecked, $"{id} was not ticked by its check");
+        Assert.False(items["TXC_FCTEST"].IsChecked);   // the pilot's line: the finished flow ticks it, below
+
+        foreach (var groupId in flow.CompletionGroupIds(id => groups.Any(g => g.Id == id)))
+            checklist.MarkGroupComplete(groupId, flowManager.UnfinishedChecklistItemIds);
+
+        var taxiCl = groups.Single(g => g.Id == "TAXI_CL");
+        Assert.True(taxiCl.CompletionLatched);
+        Assert.All(taxiCl.Items, i =>
+        {
+            Assert.True(i.IsChecked, i.Id);
+            Assert.False(i.ExemptFromCompletionLatch, i.Id);
+        });
+    }
+
+    /// <summary>The Line-up flow's TCAS step with TCAS already at TA/RA: it ticks the Line-up
+    /// Checklist's "TCAS: TA/RA" itself, and the finished flow ticks and latches the rest of that list
+    /// ("Takeoff runway: CONFIRMED", "Packs 1 and 2: SET", lines the pilot confirms).</summary>
+    [Fact]
+    public async Task A_line_up_run_ticks_TCAS_from_its_step_and_latches_the_line_up_checklist()
+    {
+        var state = NewState();
+        var executor = NewExecutor();
+        var groups = BuildChecklists();
+        state.SetSimConnect(SeededSimConnectCache.ConnectedWith(TcasTaRa));
+
+        var flow = Subset(BuildFlows(), "LINEUP", new[] { "LU_TCAS" });
+        Assert.Equal(new[] { "LINEUP", "LINEUP_CL" }, flow.CompletionGroupIds(id => groups.Any(g => g.Id == id)).ToArray());
+
+        var speech = new GatedSpeechCapture();
+        var checklist = new ChecklistManager<TExec, TState>(state, executor, groups);
+        var flowManager = new FlowManager<TExec, TState>(state, executor, checklist, speech);
+
+        await RunToEnd(flowManager, flow);
+
+        var items = groups.SelectMany(g => g.Items).ToDictionary(i => i.Id);
+        var lineup = groups.Single(g => g.Id == "LINEUP_CL");
+        Assert.True(items["LUC_TCAS"].IsChecked);
+        Assert.False(items["LUC_RUNWAY"].IsChecked);
+        Assert.False(lineup.CompletionLatched);
+
+        foreach (var groupId in flow.CompletionGroupIds(id => groups.Any(g => g.Id == id)))
+            checklist.MarkGroupComplete(groupId, flowManager.UnfinishedChecklistItemIds);
+
+        Assert.True(lineup.CompletionLatched);
+        Assert.All(lineup.Items, i =>
+        {
+            Assert.True(i.IsChecked, i.Id);
+            Assert.False(i.ExemptFromCompletionLatch, i.Id);
+        });
+    }
+
     // -----------------------------------------------------------------------
     // Shared run helpers
     // -----------------------------------------------------------------------
@@ -240,6 +397,14 @@ public sealed class A320FamilyReadbackLinkBehaviourFenixTests
     protected override List<FlowDefinition<FenixStateEvaluator>> BuildFlows() => FenixFlowDefinitions.Build();
     protected override string RadarVar => "S_WR_SYS";
     protected override string WindshearVar => "S_WR_PRED_WS";
+    protected override (string Key, double Value)[] TaxiReady(double flapLever) => new[]
+    {
+        ("S_WR_SYS", 0.0), ("S_WR_PRED_WS", 1.0),            // radar system 1, predictive windshear AUTO
+        ("A_FC_SPEEDBRAKE", 0.0),                             // 0 = ARMED
+        ("S_FC_FLAPS", flapLever),
+        ("S_OH_SIGNS", 1.0), ("S_OH_SIGNS_SMOKING", 1.0),     // seat belts ON, no smoking AUTO
+    };
+    protected override (string Key, double Value) TcasTaRa => ("S_XPDR_MODE", 2.0);
 }
 
 /// <summary>The FlyByWire A32NX (see <see cref="A320FamilyReadbackLinkBehaviourTests{TExec, TState}"/>).</summary>
@@ -253,6 +418,14 @@ public sealed class A320FamilyReadbackLinkBehaviourA32nxTests
     protected override List<FlowDefinition<FbwA320StateEvaluator>> BuildFlows() => FbwA320FlowDefinitions.Build();
     protected override string RadarVar => "XMLVAR_A320_WeatherRadar_Sys";
     protected override string WindshearVar => "A32NX_SWITCH_RADAR_PWS_POSITION";
+    protected override (string Key, double Value)[] TaxiReady(double flapLever) => new[]
+    {
+        ("XMLVAR_A320_WeatherRadar_Sys", 0.0), ("A32NX_SWITCH_RADAR_PWS_POSITION", 1.0),   // system 1, AUTO
+        ("A32NX_SPOILERS_ARMED", 1.0),
+        ("A32NX_FLAPS_HANDLE_INDEX", flapLever),
+        ("CABIN SEATBELTS ALERT SWITCH", 1.0), ("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", 1.0),
+    };
+    protected override (string Key, double Value) TcasTaRa => ("A32NX_SWITCH_TCAS_POSITION", 2.0);
 }
 
 /// <summary>The Headwind A330 (see <see cref="A320FamilyReadbackLinkBehaviourTests{TExec, TState}"/>).</summary>
@@ -266,4 +439,12 @@ public sealed class A320FamilyReadbackLinkBehaviourA330Tests
     protected override List<FlowDefinition<HwA330StateEvaluator>> BuildFlows() => HwA330FlowDefinitions.Build();
     protected override string RadarVar => "XMLVAR_A320_WeatherRadar_Sys";
     protected override string WindshearVar => "A32NX_SWITCH_RADAR_PWS_POSITION";
+    protected override (string Key, double Value)[] TaxiReady(double flapLever) => new[]
+    {
+        ("XMLVAR_A320_WeatherRadar_Sys", 0.0), ("A32NX_SWITCH_RADAR_PWS_POSITION", 1.0),   // system 1, AUTO
+        ("A32NX_SPOILERS_ARMED", 1.0),
+        ("A32NX_FLAPS_HANDLE_INDEX", flapLever),
+        ("CABIN SEATBELTS ALERT SWITCH", 1.0), ("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", 1.0),
+    };
+    protected override (string Key, double Value) TcasTaRa => ("A32NX_SWITCH_TCAS_POSITION", 2.0);
 }
