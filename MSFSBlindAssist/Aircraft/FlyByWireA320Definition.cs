@@ -6351,9 +6351,11 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
 
     // FO-21: FlyByWire captures the stock AUTOPILOT_ON into a flag nothing reads, so the
     // universal auto-engage presses the cockpit's AP 1 button (the ToggleAutopilot1 event above),
-    // never over an engaged autopilot (the push is a toggle) and never while SendEvent would hold
-    // the press in the calc-path probe queue (SIM-13: that queue is sent all at once, so the
-    // retries' pushes would arrive back to back), and verifies on AP 1 / AP 2 active.
+    // never over an engaged autopilot (the push is a toggle), and verifies on AP 1 / AP 2 active.
+    // While both autopilots read off the service retries, so the press is withheld whenever
+    // SendEvent would hold it in the calc-path probe queue (SIM-13: that queue is sent all at
+    // once, so the retries' pushes would arrive back to back). With an unknown state the service
+    // presses once and never retries, so that one push is sent even if it waits.
     // The Headwind A330 inherits all three.
     public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
     {

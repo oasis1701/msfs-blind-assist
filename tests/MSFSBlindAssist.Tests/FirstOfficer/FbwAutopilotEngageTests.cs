@@ -49,12 +49,15 @@ public class FbwAutopilotEngageTests
         => Assert.Null(FbwAutopilotEngage.IsEngaged(Read(double.NaN, 0.0)));
 
     [Theory]
-    [InlineData(0.0, 0.0, "A32NX.FCU_AP_1_PUSH")]
-    [InlineData(null, null, "A32NX.FCU_AP_1_PUSH")]   // unknown: press; the service announces on the press
-    [InlineData(1.0, 0.0, null)]                       // AP 1 engaged: a press would switch it off
-    [InlineData(0.0, 1.0, null)]                       // AP 2 engaged: already flying, leave it
-    public void PressFor_never_presses_over_an_engaged_autopilot(double? ap1, double? ap2, string? expected)
-        => Assert.Equal(expected, FbwAutopilotEngage.PressFor(Read(ap1, ap2)));
+    [InlineData(0.0, 0.0, false, "A32NX.FCU_AP_1_PUSH")]
+    [InlineData(null, null, false, "A32NX.FCU_AP_1_PUSH")]   // unknown: press; the service announces on the press
+    [InlineData(1.0, 0.0, false, null)]                       // AP 1 engaged: a press would switch it off
+    [InlineData(1.0, 0.0, true, null)]                        // ... and a press that would wait is no different
+    [InlineData(0.0, 1.0, false, null)]                       // AP 2 engaged: already flying, leave it
+    [InlineData(0.0, 1.0, true, null)]
+    public void PressFor_never_presses_over_an_engaged_autopilot(
+        double? ap1, double? ap2, bool pressWouldWait, string? expected)
+        => Assert.Equal(expected, FbwAutopilotEngage.PressFor(Read(ap1, ap2), pressWouldWait));
 
     [Fact]
     public void The_press_is_the_cockpit_ap1_button_event()
@@ -98,14 +101,33 @@ public class FbwAutopilotEngageTests
             FbwAutopilotEngage.PressWouldWait(canExecuteCalculatorCode, calcPathVerified, calcPathProbeConcluded));
 
     [Fact]
-    public void PressFor_sends_nothing_while_the_press_would_wait_behind_the_probe()
+    public void PressFor_withholds_a_waiting_press_while_both_autopilots_read_off()
     {
-        // Neither autopilot is engaged, so the press is otherwise due. A withheld press is tried
-        // again after the retry interval; it is never queued to arrive in a burst when the probe ends.
+        // Both autopilots read definitively off, so the press is otherwise due and the service
+        // retries from this state. A withheld press is tried again after the retry interval; it is
+        // never queued to arrive in a burst when the probe ends.
         var bothOff = Read(0.0, 0.0);
 
         Assert.Null(FbwAutopilotEngage.PressFor(bothOff, pressWouldWait: true));
         Assert.Equal(FbwAutopilotEngage.Ap1PushEvent, FbwAutopilotEngage.PressFor(bothOff, pressWouldWait: false));
+    }
+
+    // An unknown state (an AP var not in the cache yet, or NaN) still pushes when the press would
+    // wait: from there the service presses once and never retries, so the one queued push cannot
+    // pile up, and when the probe ends it goes out and engages AP 1. Withheld, it would never be
+    // retried and the service would announce "Autopilot engaged" over nothing.
+    [Theory]
+    [InlineData(null, null)]          // neither AP var read yet
+    [InlineData(0.0, null)]           // one unread: still unknown (FO-18)
+    [InlineData(null, 0.0)]
+    [InlineData(double.NaN, 0.0)]     // a NaN read is unknown as well
+    [InlineData(0.0, double.NaN)]
+    public void PressFor_still_sends_the_single_press_while_the_state_is_unknown(double? ap1, double? ap2)
+    {
+        var read = Read(ap1, ap2);
+
+        Assert.Equal(FbwAutopilotEngage.Ap1PushEvent, FbwAutopilotEngage.PressFor(read, pressWouldWait: true));
+        Assert.Equal(FbwAutopilotEngage.Ap1PushEvent, FbwAutopilotEngage.PressFor(read, pressWouldWait: false));
     }
 
     // The definitions theory above compares their interval with the constant itself, so the
