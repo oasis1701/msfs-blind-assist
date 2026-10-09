@@ -691,14 +691,34 @@ function Get-MarkdownSection([string]$Text, [string]$Heading) {
     return $Text.Substring($start, $end - $start).TrimEnd("`n")
 }
 
-# SubagentStart: the built-in Plan agent skips CLAUDE.md, so give it the session checkout's. A subagent working in a
-# worktree that is neither the session's own checkout (a desktop-app session runs in .claude\worktrees\<name>, and
-# its normal subagents start there) nor one of Claude Code's agent-* folders is beyond the read mode's filter: tell
-# it to load its rules itself.
+# Claude Code files a session's transcripts under ~/.claude/projects/<key>/, where <key> is the session's folder with
+# every character outside [A-Za-z0-9] written as '-'. A trailing separator is dropped first.
+function ConvertTo-ProjectKey([string]$Path) {
+    if ([string]::IsNullOrEmpty($Path)) { return $null }
+    return [regex]::Replace($Path.TrimEnd('\', '/'), '[^A-Za-z0-9]', '-')
+}
+
+# The <key> folder of the hook input's transcript_path (the segment after .claude\projects\), or $null.
+function Get-ProjectKey($HookInput) {
+    $transcript = ConvertTo-WindowsPath ([string]$HookInput.transcript_path)
+    if ([string]::IsNullOrEmpty($transcript)) { return $null }
+    $match = [regex]::Match($transcript, '\\\.claude\\projects\\([^\\]+)', [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+    if (-not $match.Success) { return $null }
+    return $match.Groups[1].Value
+}
+
+# SubagentStart: the built-in Plan agent skips CLAUDE.md, so give it the CLAUDE.md of the checkout it runs in. A
+# subagent in a worktree that is neither the session's own folder nor one of Claude Code's agent-* folders is beyond
+# the read mode's filter: tell it to load its rules itself (CCT-6).
+# CLAUDE_PROJECT_DIR cannot tell the session's own worktree: a desktop-app session runs in .claude\worktrees\<name>
+# while CLAUDE_PROJECT_DIR names the MAIN checkout (measured 2026-10-09). The session's transcripts are filed under
+# its own folder though, so a worktree whose key is the transcript's key is the session's own, where Claude Code
+# loads the rules. No transcript_path means no verdict: say nothing rather than guess (CCT-1).
 function Invoke-SubagentStart($HookInput) {
     if ($null -eq $HookInput) { return }
     $parts = New-Object System.Collections.Generic.List[string]
-    $project = [string]$env:CLAUDE_PROJECT_DIR
+    $project = Find-CheckoutRoot ([string]$HookInput.cwd)
+    if ($null -eq $project) { $project = [string]$env:CLAUDE_PROJECT_DIR }
     if ([string]$HookInput.agent_type -eq 'Plan' -and $project -ne '') {
         $claudeMd = [IO.Path]::Combine($project, 'CLAUDE.md')
         if ([IO.File]::Exists($claudeMd)) {
@@ -714,11 +734,10 @@ function Invoke-SubagentStart($HookInput) {
     }
     $worktree = [regex]::Match((ConvertTo-WindowsPath ([string]$HookInput.cwd)), '^(.*\\\.claude\\worktrees\\([^\\]+))',
         [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
-    if ($worktree.Success -and $project -ne '' -and
-        -not $worktree.Groups[2].Value.StartsWith('agent-', [StringComparison]::OrdinalIgnoreCase)) {
-        $folder = $worktree.Groups[1].Value.TrimEnd('\') + '\'
-        $projectFull = Resolve-FullPath $project (Get-Location).Path
-        if ($projectFull -and -not ($projectFull.TrimEnd('\') + '\').StartsWith($folder, [StringComparison]::OrdinalIgnoreCase)) {
+    if ($worktree.Success -and -not $worktree.Groups[2].Value.StartsWith('agent-', [StringComparison]::OrdinalIgnoreCase)) {
+        $sessionKey = Get-ProjectKey $HookInput
+        $worktreeKey = ConvertTo-ProjectKey $worktree.Groups[1].Value
+        if ($sessionKey -and -not $sessionKey.Equals($worktreeKey, [StringComparison]::OrdinalIgnoreCase)) {
             $parts.Add($WorktreeFallback -f $worktree.Groups[1].Value)
         }
     }

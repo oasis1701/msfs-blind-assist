@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 
 namespace MSFSBlindAssist.Tests;
 
@@ -430,13 +431,26 @@ public class ClaudeRulesHookTests : IDisposable
     }
 
     [Fact]
-    public void A_subagent_in_an_unrecognised_worktree_is_told_to_load_its_rules()
+    public void A_subagent_in_the_sessions_own_worktree_needs_no_instruction()
     {
-        string cwd = Path.Combine(NewTempDir(), ".claude", "worktrees", "review-x");
+        // Desktop-app session: it runs in .claude\worktrees\<name>, its transcripts are filed under that folder, and
+        // CLAUDE_PROJECT_DIR is the MAIN checkout (measured 2026-10-09). Claude Code loads the rules there.
+        string main = NewTempDir();
+        string worktree = Path.Combine(main, ".claude", "worktrees", "review-x");
+        HookRun run = RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", worktree, TranscriptFor(worktree)),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = main });
+        Assert.Equal(0, run.ExitCode);
+        Assert.Null(HookOutput(run));
+    }
 
-        JsonElement? output = HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", cwd),
-            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = ClaudeContextBudgetTests.RepoRoot() }));
-
+    [Fact]
+    public void A_subagent_in_someone_elses_worktree_is_told_to_load_its_rules()
+    {
+        string main = NewTempDir();
+        string worktree = Path.Combine(main, ".claude", "worktrees", "review-x");
+        JsonElement? output = HookOutput(RunHook(new[] { "subagent-start" },
+            SubagentInput("general-purpose", worktree, TranscriptFor(main)),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = worktree }));   // no longer consulted
         Assert.NotNull(output);
         string context = output.Value.GetProperty("additionalContext").GetString()!;
         Assert.Contains("review-x", context);
@@ -445,17 +459,27 @@ public class ClaudeRulesHookTests : IDisposable
     }
 
     [Fact]
-    public void A_subagent_in_the_sessions_own_worktree_needs_no_instruction()
+    public void A_subagent_with_no_transcript_path_is_told_nothing()
     {
-        // A desktop-app session runs in its own .claude\worktrees\<name>, and its normal subagents start there too:
-        // Claude Code loads their rules, so they need no instruction.
-        string worktree = Path.Combine(NewTempDir(), ".claude", "worktrees", "review-x");
+        string main = NewTempDir();
+        string worktree = Path.Combine(main, ".claude", "worktrees", "review-x");
+        Assert.Null(HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", worktree),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = main })));
+    }
 
-        HookRun run = RunHook(new[] { "subagent-start" }, SubagentInput("general-purpose", worktree),
-            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = worktree });
-
-        Assert.Equal(0, run.ExitCode);
-        Assert.Null(HookOutput(run));
+    [Fact]
+    public void Plan_agent_gets_the_CLAUDE_md_of_its_own_checkout()
+    {
+        string checkout = NewTempDir();
+        CreateFile(checkout, ".git", "gitdir: elsewhere\n");
+        Directory.CreateDirectory(Path.Combine(checkout, ".claude", "rules"));
+        CreateFile(checkout, "CLAUDE.md", "# X\n\n## Rules for any file\n\n- own-checkout-marker\n\n## Before changing behaviour\n\nb\n");
+        JsonElement? output = HookOutput(RunHook(new[] { "subagent-start" }, SubagentInput("Plan", checkout),
+            env: new Dictionary<string, string?> { ["CLAUDE_PROJECT_DIR"] = ClaudeContextBudgetTests.RepoRoot() }));
+        Assert.NotNull(output);
+        string context = output.Value.GetProperty("additionalContext").GetString()!;
+        Assert.Contains("own-checkout-marker", context);
+        Assert.Contains("Read " + Path.Combine(checkout, "CLAUDE.md"), context);
     }
 
     [Fact]
@@ -598,10 +622,18 @@ public class ClaudeRulesHookTests : IDisposable
 
     // ---- inputs and fixtures ----
 
-    private static string SubagentInput(string agentType, string cwd) => HookInput(new
-    {
-        session_id = "s1", hook_event_name = "SubagentStart", agent_id = "p1", agent_type = agentType, cwd,
-    });
+    private static string SubagentInput(string agentType, string cwd, string? transcriptPath = null) => transcriptPath is null
+        ? HookInput(new { session_id = "s1", hook_event_name = "SubagentStart", agent_id = "p1", agent_type = agentType, cwd })
+        : HookInput(new
+        {
+            session_id = "s1", hook_event_name = "SubagentStart", agent_id = "p1", agent_type = agentType, cwd,
+            transcript_path = transcriptPath,
+        });
+
+    /// <summary>Where Claude Code files a session's subagent transcript: under .claude\projects\ in a folder named after
+    /// the session's folder, every character outside [A-Za-z0-9] written as '-'.</summary>
+    private static string TranscriptFor(string sessionFolder) => Path.Combine(NewTempDir(), ".claude", "projects",
+        Regex.Replace(sessionFolder.TrimEnd('\\'), "[^A-Za-z0-9]", "-"), "s1", "subagents", "agent-p1.jsonl");
 
     private static object BashResponse(string stdout) =>
         new { stdout, stderr = "", interrupted = false, isImage = false, noOutputExpected = false };
