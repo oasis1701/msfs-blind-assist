@@ -45,7 +45,7 @@ This document contains development notes, key files, and dependencies for MSFS B
 
 ### Database System
 
-- **`Database/DatabaseBuilder.cs`**: BGL file processing for airport data
+- **`Database/NavdataReaderBuilder.cs`**: builds the airport database with the navdatareader tool (FS2020 and FS2024)
 - **`Database/Models/Airport.cs`**: Airport data model
 - **`Database/Models/Runway.cs`**: Runway data model
 - **`Database/Models/ParkingSpot.cs`**: Gate/parking data model
@@ -79,7 +79,7 @@ See [Access GSX](gsx.md) for the full feature reference.
 
 - **`Forms/RunwayTeleportForm.cs`**: Runway selection dialog
 - **`Forms/GateTeleportForm.cs`**: Gate selection dialog
-- **`Forms/AnnouncementSettingsForm.cs`**: Tabbed announcement settings (mode, nearest city interval, weather/SIGMET/PIREP auto-announce)
+- **`Forms/Settings/AnnouncementsPanel.cs`**: the Announcements settings panel (announcement mode, nearest-city interval, seconds in time readouts, 1,000-foot altitude crossings)
 - **`Controls/AccessiblePanel.cs`**: Accessible navigation control
 
 ### Input Management
@@ -134,7 +134,7 @@ faults (recovered, app keeps running), background-thread faults (logged, CLR sti
 and unobserved task exceptions. Startup diagnostics are wired through `Log.Channel("startup", truncateOnLaunch: true)`
 which writes to `%APPDATA%\MSFSBlindAssist\logs\startup.log`, so **managed** crashes leave a stack trace there.
 A crash with **no** logged exception is almost certainly **native** (WebView2 / Coherent / SimConnect) — check Windows Event Viewer →
-Application for the faulting module. Full procedure in [tooling.md §8](tooling.md).
+Application for the faulting module. Full procedure in [tooling.md §8](tooling.md#8-crash-diagnosis).
 
 ## Dependencies
 
@@ -180,6 +180,45 @@ Moved here from CLAUDE.md (2026-10), word for word except the project count, whi
 
 **Prerequisites:** MSFS_SDK environment variable, .NET 10 SDK
 
-The solution contains six projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), `tools/ChangelogBuilder` (the release-notes builder that turns `changelog.d/` fragments into the GitHub release body; its parsing/rendering logic is covered by the xUnit suite), `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI), and `plugins/MSFSBlindAssist.VPilotPlugin` (the vPilot plugin that passes VATSIM events to the app over a named pipe; see [vatsim.md](vatsim.md)). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all six. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution. A fourth standalone probe, `tools/StandBridgeSweep`, sweeps a real navdata database and reports the PR #235 stand-bridge figures (bridge count, distinct airports touched, and the four safety invariants — never on or across runway pavement, never ending on a hold-short node, a stand, or another stand's lead-in chain) by linking the production `TaxiGraph`/`RunwayPavement`/`RunwayShape` sources rather than reimplementing their logic, so its numbers can never drift from what the app actually builds; re-run it (`dotnet build tools/StandBridgeSweep`) before trusting any change to the bridging rule — it also builds on its own, not as part of the solution. A fifth, `tools/LandingExitSweep`, writes every runway direction's `GetLandingExits` list as CSV over the production `TaxiGraph` and diffs two runs into a markdown report — the whole-database before/after for any change to how landing exits are measured (`docs/tooling.md` §7); it builds on its own too. Both sweeps load the database through the one linked `tools/Shared/NavdataSweepLoader.cs`.
+The solution contains six projects: `MSFSBlindAssist` (main app), `MSFSBlindAssistUpdater` (small WinForms auto-update helper), `tools/PMDGDispatchTester` (a console diagnostic REPL for probing which PMDG NG3 dispatch shape a switch accepts against a live sim — e.g. used to confirm the 737 fire-handle UNLOCK→TOP sequence), `tools/ChangelogBuilder` (the release-notes builder that turns `changelog.d/` fragments into the GitHub release body; its parsing/rendering logic is covered by the xUnit suite), `tests/MSFSBlindAssist.Tests` (the pure-logic xUnit suite run by CI), and `plugins/MSFSBlindAssist.VPilotPlugin` (the vPilot plugin that passes VATSIM events to the app over a named pipe; see [vatsim.md](vatsim.md)). The tester compiles the main app's `SimConnect/PMDGNG3DataStruct.cs` via a **linked** `<Compile>` (not a copy) so its CDA layout can never drift. `dotnet build MSFSBlindAssist.sln` builds all six. A second standalone probe, `tools/CDUTest`, fires a single CDA-write or TransmitClientEvent at one chosen PMDG event (used to prove the NG3 CDU keys need TransmitClientEvent, not the CDA write); it builds on its own (`dotnet build tools/CDUTest`), not as part of the solution. A third standalone probe, `tools/IFlySdkProbe`, dumps the iFly shared-memory block live (links the generated offset files so it can never drift); it also builds on its own, not as part of the solution. A fourth standalone probe, `tools/StandBridgeSweep`, sweeps a real navdata database and reports the PR #235 stand-bridge figures (bridge count, distinct airports touched, and the four safety invariants — never on or across runway pavement, never ending on a hold-short node, a stand, or another stand's lead-in chain) by linking the production `TaxiGraph`/`RunwayPavement`/`RunwayShape` sources rather than reimplementing their logic, so its numbers can never drift from what the app actually builds; re-run it (`dotnet build tools/StandBridgeSweep`) before trusting any change to the bridging rule — it also builds on its own, not as part of the solution. A fifth, `tools/LandingExitSweep`, writes every runway direction's `GetLandingExits` list as CSV over the production `TaxiGraph` and diffs two runs into a markdown report — the whole-database before/after for any change to how landing exits are measured ([tooling.md §7](tooling.md#7-pre-existing-tools-and-other-standalone-non-coherent-probes-out-of-scope--do-not-fold-in)); it builds on its own too. Both sweeps load the database through the one linked `tools/Shared/NavdataSweepLoader.cs`.
+
+## Claude Code hooks
+
+The committed `.claude/settings.json` runs `.claude/hooks/rules-hook.ps1` under Windows PowerShell in every Claude Code session in this repository. It brings area rules where Claude Code's own path-scoped loading does not reach, and refuses shell edits that would go around it (CORE-16). Its own rules are CCT-1 to CCT-4, in `.claude/rules/claude-tooling.md`.
+
+The modes, and what starts each:
+
+- `read`: after a Read inside `.claude/worktrees/agent-*` (filter `Read(//**/.claude/worktrees/agent-*/**)`), and after every Write or NotebookEdit, since no filter matches a Write; outside agent worktrees it exits at once. A subagent run with worktree isolation gets no area rules from Claude Code, so this adds the file's rule files, once per subagent: whole rule files within about 9,000 characters, then the rest named for Claude to Read (CCT-5).
+- `diff`: after every `git` or `gh` command in the Bash and PowerShell tools; it acts only on `git diff`, `git show` (also after `git -C <dir>`) and `gh pr diff`. It adds the rule files for the changed paths the same way. It is registered as `Bash(git *)` rather than `Bash(git diff*)` because a filter naming more than the command also runs on every command holding `$VAR` or `$()`.
+- `shell-guard`: before a Bash command using `sed`, `perl`, `tee`, `cat`, `echo` or `printf`, and before a PowerShell `Set-Content`, `Add-Content` or `Out-File`. It refuses the command when it writes a file some rule file covers, and points to Read and then Edit or Write.
+- `subagent-start`: when a subagent starts. The built-in Plan agent skips CLAUDE.md, so it gets CLAUDE.md's "Rules for any file" and "Before changing behaviour" sections and the path to Read for the rest. A subagent working in a worktree that is neither the session's own checkout nor an `agent-*` folder is told to load its rules itself.
+- `session-start`: after a compaction. It forgets which rule files the hook added, so they can be added again.
+
+**Listing a change's rules.** The same script lists the rule files that load for any paths, which is useful when reviewing a change or planning one:
+
+```
+git diff --name-only main... | powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/rules-hook.ps1 for -Stdin
+powershell -NoProfile -ExecutionPolicy Bypass -File .claude/hooks/rules-hook.ps1 for MSFSBlindAssist/Navigation/TaxiGraph.cs
+```
+
+**Switching it off.** Set the environment variable `MSFSBA_RULES_HOOK=off` before starting Claude Code, and every hook mode does nothing. Use it only to rule the hook out while diagnosing a problem.
+
+**Limits.**
+- Claude Code shows the model only about 10,000 characters of a hook's output; anything longer is saved to a file and the model sees a 2 KB preview. So the hook shows whole rule files within 9,000 characters and names the rest by path, and Claude has to Read those itself (CCT-5).
+- The shell guard cannot see a write made by a script (Python, Node, `dotnet`), by `cp` or `mv`, by git itself, or by a PowerShell `>` redirect outside the three cmdlets; CORE-16's instruction still covers those.
+- Each `git` or `gh` command, each filtered shell command and each Write costs about 0.2 to 0.5 s: PowerShell start-up, plus reading the rule files when a target is inside a checkout. Normal Reads never start the hook.
+- Claude Code and the hook do not know what the other has added, so a rule file can arrive twice: when Claude Reads a file and then runs `git diff` over it, or the other way round. It is harmless; it costs context.
+- A change to `.claude/settings.json` can reach a session that is already running, so test a change in a fresh session.
+
+**Live checks (CCT-3).** After changing a hook's matcher or `if` filter, check in a fresh session (a headless `claude -p` from the checkout is enough) that:
+
+1. A subagent run with worktree isolation that reads `MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs` and `MSFSBlindAssist/Navigation/TaxiGraph.cs` gets `pmdg-737`, `variable-definitions`, `gsx-stands-docking`, `landing-exits`, `runway-holds` and `taxi-routing`, each shown in full or named to Read, and a Write of a new file under `MSFSBlindAssist/Aircraft/MD11/` adds `md11`. Ask it to quote the last rule ID of each file shown in full: a 2 KB preview would not contain it (CCT-5).
+2. The main conversation reading the same two files gets each rule file once, from Claude Code, with no hook header.
+3. `sed -i` and `cat > file <<EOF` aimed at a covered file are refused with the CORE-16 message, and the same aimed at a scratch file run.
+4. `git show <commit> -- MSFSBlindAssist/Navigation/TaxiGraph.cs`, and `git -C <checkout> diff --name-only` over that commit, add the taxi rule files.
+5. A Plan agent can quote CORE-7, from CLAUDE.md's "Rules for any file", and is told to Read CLAUDE.md for the rest.
+6. A normal Read in the main conversation never starts the `read` hook. To see this, register a logging copy of the hook under the same filter with `--settings`.
+7. A subagent working in a worktree the read mode cannot see is told to load its rules itself.
+8. A filter naming a redirect (`Bash(cat >*)`) still matches nothing, so the broad shell-guard filters are still needed; and a command holding `$VAR` but no git command does not start the diff hook.
 
 

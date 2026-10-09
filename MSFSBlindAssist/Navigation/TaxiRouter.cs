@@ -665,9 +665,10 @@ public class TaxiRouter
     /// MAX_BRIDGE_METERS bounds how far the bridge can be: a runway crossing
     /// is typically &lt;100 m wide; allowing a much larger gap would let the
     /// router silently route through unrelated airport infrastructure when an
-    /// ATC clearance is genuinely wrong. 200 m gives slack for unusual layouts
-    /// (extra-wide RWY + shoulder + pavement margins) without enabling
-    /// silent half-airport jumps.
+    /// ATC clearance is genuinely wrong. 400 m (raised from 200 m with the
+    /// total-cost scoring below, #76) gives slack for unusual layouts
+    /// (extra-wide RWY + shoulder + pavement margins, a handoff point further
+    /// along a looping taxiway) without enabling silent half-airport jumps [RTE-24].
     /// </summary>
     private (int exitOnCurrent, int entryOnNext) FindRunwayBridge(
         string currentTaxiway,

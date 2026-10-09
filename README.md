@@ -185,6 +185,8 @@ See [Download](#download) above for the current release and preview builds. MSFS
 ## Contributing
 Pure-logic changes should come with characterization tests in tests/MSFSBlindAssist.Tests (CI runs them on every PR).
 
+To add an aircraft or a feature, follow the walkthroughs in [docs/adding-features.md](docs/adding-features.md), with the short forms in [docs/QUICK-REFERENCE.md](docs/QUICK-REFERENCE.md). Their code examples compile as part of the test suite.
+
 ## License
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](https://www.gnu.org/licenses/gpl-3.0)

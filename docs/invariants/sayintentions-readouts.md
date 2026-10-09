@@ -9,11 +9,15 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## SIR-2
 
-- The flight-information readout (`Ctrl+Shift+S`) is a READ-ONLY WINDOW read line by line, not a spoken string — it carries the ATIS, the active runway configuration, the METAR and the TAF, and speaking that as one run-on gives a blind pilot no way to re-hear one part or stop it. Do NOT announce a summary when it opens: the screen reader already speaks the window and the first line (see the Screen Reader Announcements rule). `WordWrap` must stay OFF — wrapped, a long METAR becomes several visual lines and Down-arrow walks the fragments. Long prose is split into real lines by `SayIntentionsInfoReport` instead, and the caret is put at position 0 with nothing selected, or the box opens fully selected and the reader announces the whole report in one breath. When nothing is available, SPEAK that instead of opening an empty window. → [sayintentions.md](../sayintentions.md)
+- The flight-information readout (`Ctrl+Shift+S`) is a READ-ONLY WINDOW read item by item, not a spoken string — it carries the flight, the gate, and each airport's runway configuration and altimeter (SIR-3), and speaking that as one run-on gives a blind pilot no way to re-hear one part or stop it. Do NOT announce a summary when it opens: the screen reader already speaks the window and the first item (see the Screen Reader Announcements rule). The window is one list box per section, as SIR-14 says; it replaced the read-only TextBox this rule first described, whose `WordWrap`-off and caret-at-0 clauses went with it. When nothing is available, SPEAK that instead of opening an empty window. → [sayintentions.md](../sayintentions.md)
+
+Corrected 2026-10-08: this text described the read-only TextBox that SIR-14's list boxes replaced (`WordWrap` off, caret at 0, the ATIS, METAR and TAF that SIR-3 removed); SIR-14 matches the code, so this rule now defers to it. Evidence: `Forms/SayIntentionsInfoForm` (a `DisplayListBox` per section) and `MainForm.AnnounceSayIntentionsAssignedStatusAsync` (no announcement on open; speaks instead when `SayIntentionsInfoReport.HasContent` is false).
 
 ## SIR-3
 
-- The flight-information window keeps ONLY what a pilot cannot get by listening to the ATIS or opening the METAR window (`Shift+M`): the runway configuration (landing / departing / preferred / flow) and the altimeter. `departure_wx` also carries the decoded ATIS, METAR, TAF, wind, visibility and density altitude — those were briefly all shown and it was wrong, because twenty lines of already-heard weather is the wall the window exists to remove. The ATIS letter is parsed but not shown; it is not runway information. Do not re-add any of it without a reason that survives that rule. → [sayintentions.md](../sayintentions.md)
+- Each airport block of the flight-information window keeps ONLY what a pilot cannot get by listening to the ATIS or opening the METAR window (`Shift+M`): the runway configuration (landing / departing / preferred / flow) and the altimeter. The window's Flight and Gate sections are separate and carry their own rows. `departure_wx` also carries the decoded ATIS, METAR, TAF, wind, visibility and density altitude — those were briefly all shown and it was wrong, because twenty lines of already-heard weather is the wall the window exists to remove. The ATIS letter is parsed but not shown; it is not runway information. Do not re-add any of it without a reason that survives that rule. → [sayintentions.md](../sayintentions.md)
+
+Corrected 2026-10-08: scoped to each airport block; the window also has Flight and Gate sections. Evidence: `SayIntentionsInfoReport.Build`, which adds the Flight (`AddFlight`), gate (`AddGateAndRunway`) and airport (`AddAirports`) sections.
 
 ## SIR-4
 
@@ -25,7 +29,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## SIR-6
 
-- The observed wire format is ONE capture, taken stopped on the ground AT THE DESTINATION — there is no airborne observation of `flight.json` at all. Do not design an en-route readout against the captured field table. In particular: `cleared_for_takeoff`, `cleared_for_landing`, `clearance`, `last_clearance` and `taxi_clearance` were all ABSENT from it, and two of those sit in the destination-resolution chain — anything depending on them is untested against real SI. `flight_plan_route` and `callsign_icao` are parsed and never spoken; whether SI populates them is unverified. A single mid-cruise copy of the file settles all of it. → [sayintentions.md](../sayintentions.md)
+- The observed wire format began as ONE capture, taken stopped on the ground AT THE DESTINATION. Since then two fields are measured in the cruise — `current_airport` holds the controlling ARTCC's ident (SI-31) and `assigned_gate` appears at least 31 minutes before landing — and the taxi captures behind SI-13 and SI-17 were taken on the ground; every other field is still unobserved airborne. Do not design a further en-route readout against the captured field table. In particular: `cleared_for_takeoff`, `cleared_for_landing`, `clearance`, `last_clearance` and `taxi_clearance` were all ABSENT from it, and two of those sit in the destination-resolution chain — anything depending on them is untested against real SI. A single mid-cruise copy of the file settles the rest. → [sayintentions.md](../sayintentions.md)
+
+Corrected 2026-10-08: no longer "ONE capture": two fields are measured in the cruise; and the sentence saying `flight_plan_route` and `callsign_icao` are never spoken is gone, since the window shows both (SIR-4 strips the callsign's hyphens). Evidence: docs/sayintentions.md, "What flight.json holds AIRBORNE is unknown"; `SayIntentionsInfoReport.AddFlight` (the Callsign and Route rows).
 
 ## SIR-7
 
@@ -34,6 +40,10 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## SIR-8
 
 - The cabin-word veto is overridable ONLY by the three-keyed instruction-shape test (`IsCabinVetoOverridden`: channel not cabin, no cabin marker in the FIELDS, imperative shape in the message via `AtcInstructionVocabulary`) — a silenced ATC instruction is the failure the readout must never have, but "cleared to land"/"taxi"/"runway" are ordinary purser prose. The shape itself rests on a shared `NarrationGuard` lookbehind on every verb-initial leg plus a per-token noun-phrase blocklist inside the `TAXI…VIA` gap — never widen a verb leg without adding its matching rescue leg beside it (`CLEARED TO CROSS` beside `CROSS`, `CONTINUE TAXI` beside `CONTINUE`). A verb leg and its rescue pairing are designed TOGETHER, not by a blanket guarded/unguarded split — `CONTINUE TAXI` carries the guard WITH its own rescue semantics (it defers to the word before `CONTINUE`, not before `TAXI`), while `CLEARED TO CROSS` is deliberately UNGUARDED as `TO`'s rescue; never strip or add a guard on either without re-running the probe matrix against the residual pins. `SayIntentionsTransmissionClassifier.cs` inventories six honest residuals beside `AtcInstructionVocabulary` (lettered a-f) — read them before "fixing" a leak this file already knows about. → [sayintentions.md](../sayintentions.md)
+
+Clarified 2026-10-09: the one-line form's "never widen a verb leg without its matching rescue leg" now says what the classifier's own summary says: widen the shared guard, and where the widened guard catches a genuine ATC form, add the matching rescue leg beside it, never a hole in the guard (`CLEARED TO CROSS` rescues what TO blocks, `CONTINUE TAXI` what CONTINUE blocks). Evidence: `SayIntentionsTransmissionClassifier`'s class summary.
+
+Split out on 2026-10-09: SIR-16 (one shared `NarrationGuard` on every verb-initial leg, and the `TAXI…VIA` blocklist). This text keeps it as written; it has its own section below.
 
 ## SIR-9
 
@@ -62,3 +72,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## SIR-15
 
 - SI request caching must commit AFTER the request completes and coalesce onto the in-flight task — stamping the cache time before awaiting makes a second hotkey press during a slow request speak "no transmission available". → [sayintentions.md](../sayintentions.md)
+
+## SIR-16
+
+- Every VERB-initial leg of `AtcInstructionVocabulary` (HOLD SHORT, HOLD POSITION, GIVE WAY, CROSS, TAXI TO, TAXI…VIA, CONTINUE TAXI, LINE UP AND WAIT, and any new one) carries the ONE shared `NarrationGuard` lookbehind, never a per-leg guard. The verb is the same in both registers (a controller says "cross runway 27", a captain says "we will cross runway 27"), so the word in front of it is what separates them; rounds 1-3 each blocked ONE surface form with its own per-leg guard, and the next review found the modal variant still open ("we WILL cross") or a real instruction newly silenced. The `TAXI…VIA` gap also keeps its per-token noun-phrase blocklist. `SayIntentionsTransmissionClassifierTests.CabinSpeechStaysFilteredEvenWhenItSoundsOperational` catches a stripped guard on some legs only (no row for HOLD POSITION or GIVE WAY), nothing covers a new leg, and every cabin row reaching `TAXI…VIA` has "we" first, so deleting the blocklist fails no test. → [sayintentions.md](../sayintentions.md)
+
+Split from SIR-8 on 2026-10-09: one mechanism per ID.

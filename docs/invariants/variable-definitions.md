@@ -13,6 +13,8 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 Narrowed 2026-10-07. The original text, verbatim from CLAUDE.md as of `1f37801a`, was: "Never register a name containing a space or colon as an L:var — those are stock SimVars (force-registering `INTERACTIVE POINT OPEN:n` as an L:var broke A380 detection entirely)." It contradicted A380-26 on main, and the space-named L:vars of the A220 and the colon-indexed L:vars of the DA40 in their open PRs (#244, #242).
 
+Corrected 2026-10-08: the one-line form now carries the write half of this rule (`SetLVar`'s data-def write, SIM-12), which it had dropped; this text already said it. Evidence: `SimConnectManager.SetLVar` in `SimConnectManager.EventSend.cs`, whose calculator branch requires a name with no space and no colon.
+
 ## VAR-3
 
 - Do NOT delete the per-prefix `ExecuteCalculatorCode` routing in the FBW defs' `HandleUIVariableSet` catch-alls as "redundant" now that `SetLVar` routes globally — they write through the calculator UNCONDITIONALLY, whereas the global routing is gated on a probe proven capable of silent failure. They are why the overhead panel kept working through that outage while the FCU combos did not. Only ~7 of ~71 calc sites in those defs are even that shape; the rest are RPN logic and parameterised K-/H-events. → [architecture.md](../architecture.md)
