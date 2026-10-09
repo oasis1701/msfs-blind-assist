@@ -330,6 +330,18 @@ public class GsxNavdataGeometryFillerTests
     // ── The real KSAN data ──────────────────────────────────────────────────────────────────
 
     [Fact]
+    public void The_KSAN_navdata_fixture_names_its_stands_as_the_app_does()
+    {
+        // The concourse-letter filler reads navdata Name (single letters donate), so the fixture
+        // must carry LittleNavMapProvider's mapped names ("GN" -> "N", "EP" -> "East"), not the raw
+        // column, or the end-to-end tests never see the letter borrow production performs.
+        var navdata = GsxKsanFixtures.Navdata();
+        Assert.Contains(navdata, s => s.Number == 1 && s.Name == "N");
+        Assert.Contains(navdata, s => s.Number == 1 && s.Name == "East");
+        Assert.DoesNotContain(navdata, s => s.Name == "GN" || s.Name == "EP");
+    }
+
+    [Fact]
     public void Every_KSAN_stand_GSX_left_unconfigured_gets_its_heading_and_size_from_navdata()
     {
         var spots = GsxNavdataGeometryFiller.Fill(

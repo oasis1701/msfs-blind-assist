@@ -1109,7 +1109,8 @@ public class LittleNavMapProvider : IAirportDataProvider, IAirportFacilitiesProv
         }
     }
 
-    private string MapParkingName(string name)
+    /// <summary>Internal so the test fixtures name navdata stands exactly as this provider does.</summary>
+    internal static string MapParkingName(string name)
     {
         // Map navdatareader ParkingName abbreviations to display-friendly names
         // Gate codes use "G" prefix (GA = GATE_A, GZ = GATE_Z) — strip it

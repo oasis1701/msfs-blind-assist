@@ -1,4 +1,5 @@
 using System.Text.Json;
+using MSFSBlindAssist.Database;
 using MSFSBlindAssist.Database.Models;
 
 namespace MSFSBlindAssist.Tests;
@@ -9,6 +10,10 @@ namespace MSFSBlindAssist.Tests;
 /// <c>GsxRemoteParkingReader</c> reads, and the same airport's fs2024 navdata parking rows.
 /// 79 selectable GSX stands; GSX published a heading and a type number for only the 4 its
 /// installed profile (LatinVFR's, written for a different scenery) covers.
+/// <para>
+/// They describe the KSAN scenery installed where they were captured, not stock KSAN: the stock
+/// fs2024 navdata has 106 KSAN stands with different names and positions (measured 2026-10-09).
+/// </para>
 /// </summary>
 internal static class GsxKsanFixtures
 {
@@ -23,8 +28,9 @@ internal static class GsxKsanFixtures
 
     /// <summary>
     /// KSAN's navdata stands, shaped the way <c>LittleNavMapProvider</c> builds them: Radius in
-    /// FEET, Source Navdata. <see cref="ParkingSpot.Name"/> is the raw navdata name column (null
-    /// becomes ""), not the provider's mapped letter: nothing these tests check reads it.
+    /// FEET, Source Navdata, and <see cref="ParkingSpot.Name"/> mapped by the provider's own
+    /// <c>MapParkingName</c> ("GN" -> "N", "EP" -> "East"), because the concourse-letter filler
+    /// reads it.
     /// </summary>
     public static List<ParkingSpot> Navdata()
     {
@@ -36,7 +42,7 @@ internal static class GsxKsanFixtures
             spots.Add(new ParkingSpot
             {
                 AirportICAO = Ksan,
-                Name = StringOrEmpty(r, "name"),
+                Name = LittleNavMapProvider.MapParkingName(StringOrEmpty(r, "name")),
                 Number = r.GetProperty("number").GetInt32(),
                 Suffix = StringOrEmpty(r, "suffix"),
                 Heading = r.GetProperty("heading").GetDouble(),
