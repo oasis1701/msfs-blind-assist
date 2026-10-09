@@ -388,6 +388,10 @@ public static class HwA330ChecklistDefinitions
                 v => v > 0.5, (e, _) => e.Set("A32NX_EFIS_L_LS_BUTTON_IS_ON", 1)),
             Auto("AP_LS2", "APPROACH", "LS first officer: ON", "A32NX_EFIS_R_LS_BUTTON_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_EFIS_R_LS_BUTTON_IS_ON", 1)),
+            // SetSeatbeltSign (the SEATBELT_SIGN write that selects the switch position) — see
+            // BS_SEATBELTS. The Approach flow's seat-belt step.
+            Auto("AP_SEATBELTS", "APPROACH", "Seat belts: ON", "CABIN SEATBELTS ALERT SWITCH",
+                v => v > 0.5, (e, _) => e.SetSeatbeltSign(true)),
             // ★ Cabin notify for landing.
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall()),

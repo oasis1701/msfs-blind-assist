@@ -372,6 +372,9 @@ public static class FenixChecklistDefinitions
             Auto("AP_LS2", "APPROACH", "LS first officer: ON",
                 "I_FCU_EFIS2_LS", v => v > 0.5,
                 (e, s) => s.IsOn("I_FCU_EFIS2_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS2_LS")),
+            // The Approach flow's seat-belt step.
+            Auto("AP_SEATBELTS", "APPROACH", "Seat belts: ON",
+                "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
             // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall("S_OH_CALLS_ALL")),

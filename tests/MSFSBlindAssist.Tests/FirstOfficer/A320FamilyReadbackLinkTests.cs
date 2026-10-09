@@ -15,10 +15,11 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// A330). A finished flow latches its action group AND its own <c>*_CL</c> read-back
 /// (<see cref="FlowDefinition{TState}.CompletionGroupIds"/>), so a step that delivers a read-back line
 /// has to name it, or a step that failed ("Skipping: Beacon: ON") still latches the line ticked.
-/// Three read-back lines have a step behind them:
-///   Before Start   BS_BEACON        -> BSC_BEACON  "Beacon: ON" (the write sets it)
-///   After Start    AS_RUDDERTRIM    -> ASC_RUDDER  "Rudder trim: NEUTRAL" (the write sets it)
-///   After Landing  AL_WXR_PWS_CHECK -> ALC_WXR     "Radar and predictive windshear: OFF"
+/// Four read-back lines have a step behind them:
+///   Before Start   BS_BEACON        -> BSC_BEACON     "Beacon: ON" (the write sets it)
+///   After Start    AS_RUDDERTRIM    -> ASC_RUDDER     "Rudder trim: NEUTRAL" (the write sets it)
+///   Approach       AP_SEATBELTS     -> APC_SEATBELTS  "Seat belts: ON" (the write sets it)
+///   After Landing  AL_WXR_PWS_CHECK -> ALC_WXR        "Radar and predictive windshear: OFF"
 /// The radar line is true only when BOTH the radar (<c>AL_WXR_OFF</c>) and the predictive windshear
 /// (<c>AL_PWS_OFF</c>) are off, so neither write completes it. Linked to both writes, the radar
 /// write's success ticked the line, and as the only line of <c>AFTER_LANDING_CL</c> that latched the
@@ -29,13 +30,15 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// The Fenix's ASC_RUDDER is a Reminder (no measured trim var); it is linked all the same, so a reset
 /// that could not be sent leaves it unticked for the pilot.
 ///
+/// The Approach flow's seat-belt write AP_SEATBELTS completes APC_SEATBELTS "Seat belts: ON" (2026-10-09).
 /// Considered and NOT linked: AS_ECAMSTS (the ECAM page it shows is not the pilot's "ECAM status:
-/// CHECKED"), and the Approach flow, which has no step that sets a line of APPROACH_CL (the seat belts
-/// the Descent flow sets are not in a group the Approach flow latches).
+/// CHECKED").
 ///
-/// This class holds the structural link and pairing tests, which are instant. The behaviour tests, which
-/// run real <see cref="FlowManager{TExec, TState}"/> flows in real time (its 2 s inter-step pause and
-/// the radar check's 5 s timeout), live one class per aircraft in
+/// This class holds the structural link and pairing tests, which are instant. It also pins the
+/// engine-start action-line links and the FO-7 latch audit (<c>KnownUndeliveredLines</c>, the lines a
+/// finished flow latches with no step behind them). The behaviour tests, which run real
+/// <see cref="FlowManager{TExec, TState}"/> flows in real time (its 2 s inter-step pause and the radar
+/// check's 5 s timeout), live one class per aircraft in
 /// <see cref="A320FamilyReadbackLinkBehaviourTests{TExec, TState}"/> so xUnit runs them in parallel.
 /// </summary>
 public class A320FamilyReadbackLinkTests
@@ -58,6 +61,9 @@ public class A320FamilyReadbackLinkTests
             // state the wait waits for; a timeout stops the flow, so nothing is latched).
             yield return new object?[] { aircraft, "ENGINE_START", "ES_ENG1_N2", "ES_ENG1_RUN", null };
             yield return new object?[] { aircraft, "ENGINE_START", "ES_ENG2_N2", "ES_ENG2_RUN", null };
+            // The Approach flow's seat-belt write completes its own line and the Approach Checklist's
+            // "Seat belts: ON" (usually "Already set" after Descent).
+            yield return new object?[] { aircraft, "APPROACH", "AP_SEATBELTS", "AP_SEATBELTS", "APC_SEATBELTS" };
             // One radar switch off does not make "Radar and predictive windshear: OFF" true: each
             // radar write names its own action line only ...
             yield return new object?[] { aircraft, "AFTER_LANDING", "AL_WXR_OFF", "AL_WXR_OFF", null };
@@ -145,9 +151,9 @@ public class A320FamilyReadbackLinkTests
     /// gap: change this list deliberately.</summary>
     public static IEnumerable<object[]> KnownUndeliveredLines()
     {
-        yield return new object[] { "Fenix", new[] { "APPROACH/APC_SEATBELTS" } };
-        yield return new object[] { "A32NX", new[] { "APPROACH/APC_SEATBELTS", "ELECTRICAL_POWER_UP/EPU_CHK_GEAR" } };
-        yield return new object[] { "A330", new[] { "APPROACH/APC_SEATBELTS", "ELECTRICAL_POWER_UP/EPU_CHK_GEAR" } };
+        yield return new object[] { "Fenix", Array.Empty<string>() };
+        yield return new object[] { "A32NX", new[] { "ELECTRICAL_POWER_UP/EPU_CHK_GEAR" } };
+        yield return new object[] { "A330", new[] { "ELECTRICAL_POWER_UP/EPU_CHK_GEAR" } };
     }
 
     [Theory]

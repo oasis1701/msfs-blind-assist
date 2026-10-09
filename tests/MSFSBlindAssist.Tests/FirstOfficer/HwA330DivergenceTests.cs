@@ -325,11 +325,11 @@ public class HwA330DivergenceTests
     {
         var items = MSFSBlindAssist.FirstOfficer.HWA330.HwA330ChecklistDefinitions.Build()
             .SelectMany(g => g.Items)
-            .Where(i => i.Id is "BS_SEATBELTS" or "DC_SEATBELTS" or "SD_SEATBELTS_OFF")
+            .Where(i => i.Id is "BS_SEATBELTS" or "DC_SEATBELTS" or "AP_SEATBELTS" or "SD_SEATBELTS_OFF")
             .ToList();
 
         // Detection stays on the sign LAMP, never the switch position — the A380 invariant.
-        Assert.Equal(3, items.Count);
+        Assert.Equal(4, items.Count);
         foreach (var i in items)
             Assert.Equal("CABIN SEATBELTS ALERT SWITCH", i.StateFieldName);
 
@@ -347,10 +347,10 @@ public class HwA330DivergenceTests
     {
         var steps = MSFSBlindAssist.FirstOfficer.HWA330.HwA330FlowDefinitions.Build()
             .SelectMany(f => f.Steps)
-            .Where(s => s.Id is "BS_SEATBELTS" or "DC_SEATBELTS" or "SD_SEATBELTS_OFF")
+            .Where(s => s.Id is "BS_SEATBELTS" or "DC_SEATBELTS" or "AP_SEATBELTS" or "SD_SEATBELTS_OFF")
             .ToDictionary(s => s.Id);
 
-        Assert.Equal(3, steps.Count);
+        Assert.Equal(4, steps.Count);
 
         // The pseudo-key DispatchCoreAsync claims, so flow, checklist and phase monitor
         // converge on SetSeatbeltSign — the one path that moves the switch out of AUTO.
@@ -362,6 +362,7 @@ public class HwA330DivergenceTests
 
         Assert.Equal(1, steps["BS_SEATBELTS"].TargetValue);
         Assert.Equal(1, steps["DC_SEATBELTS"].TargetValue);
+        Assert.Equal(1, steps["AP_SEATBELTS"].TargetValue);
         Assert.Equal(0, steps["SD_SEATBELTS_OFF"].TargetValue);
     }
 

@@ -420,7 +420,7 @@ public static class FenixFlowDefinitions
     private static Flow BuildApproach() => new()
     {
         Id = "APPROACH", Name = "Approach",
-        Description = "LS on both sides, notify the cabin for landing, approach reminders.",
+        Description = "LS on both sides, seat belts on, notify the cabin for landing, approach reminders.",
         RelatedChecklistGroupIds = new[] { "APPROACH" },
         Steps = new()
         {
@@ -430,6 +430,10 @@ public static class FenixFlowDefinitions
                 s => s.IsOn("I_FCU_EFIS1_LS")), "AP_LS1"),
             Done(Skip(SW("AP_LS2", "LS first officer: ON", "S_FCU_EFIS2_LS", 1),
                 s => s.IsOn("I_FCU_EFIS2_LS")), "AP_LS2"),
+            // Also the Approach Checklist's "Seat belts: ON" (FO-6): usually "Already set" after
+            // Descent, and a write that fails keeps both lines out of the latch, following the switch.
+            Also(Done(Skip(SW("AP_SEATBELTS", "Seat belts: ON", "S_OH_SIGNS", 1),
+                s => s.IsOn("S_OH_SIGNS")), "AP_SEATBELTS"), "APC_SEATBELTS"),
             // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
             Done(SW("AP_CABIN", "Notify the cabin crew for landing (call all)", "CABIN_CALL_ALL", 1), "AP_CABIN"),
             Captain("AP_MINIMUMS", "Check minimums set on the MCDU approach page"),

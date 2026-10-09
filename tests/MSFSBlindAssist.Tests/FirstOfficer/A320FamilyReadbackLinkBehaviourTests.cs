@@ -35,6 +35,7 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
     {
         ("BEFORE_START", new[] { "BS_BEACON" }, new[] { "BS_BEACON", "BSC_BEACON" }),
         ("AFTER_START", new[] { "AS_RUDDERTRIM" }, new[] { "AS_RUDDERTRIM", "ASC_RUDDER" }),
+        ("APPROACH", new[] { "AP_SEATBELTS" }, new[] { "AP_SEATBELTS", "APC_SEATBELTS" }),
         ("AFTER_LANDING", new[] { "AL_WXR_OFF", "AL_PWS_OFF" }, new[] { "AL_WXR_OFF", "AL_PWS_OFF" }),
     };
 

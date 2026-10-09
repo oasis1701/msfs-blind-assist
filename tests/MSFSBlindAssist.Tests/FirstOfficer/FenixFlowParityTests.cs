@@ -59,6 +59,29 @@ public class FenixFlowParityTests
         Assert.Equal(s.ConditionFieldName, Item($"ES_ENG{n}_RUN").StateFieldName);
     }
 
+    /// <summary>The Approach flow sets the seat belts (skipped when the switch already reads on, as
+    /// after Descent) and completes both seat-belt lines: its own and the Approach Checklist's.</summary>
+    [Fact]
+    public void Approach_sets_the_seat_belts_and_completes_both_seat_belt_lines()
+    {
+        var s = Step("APPROACH", "AP_SEATBELTS");
+        Assert.Equal("Seat belts: ON", s.Label);
+        Assert.Equal("S_OH_SIGNS", s.EventName);
+        Assert.Equal(1, s.TargetValue);
+        Assert.Equal(new[] { "AP_SEATBELTS", "APC_SEATBELTS" }, s.LinkedChecklistItemIds);
+
+        var e = new FenixStateEvaluator();
+        e.SetSimConnect(SeededSimConnectCache.With(("S_OH_SIGNS", 1)));
+        Assert.True(s.SkipCondition!(e));
+        e.SetSimConnect(SeededSimConnectCache.With(("S_OH_SIGNS", 0)));
+        Assert.False(s.SkipCondition!(e));
+
+        var line = Item("AP_SEATBELTS");
+        Assert.Equal("Seat belts: ON", line.Label);
+        Assert.Equal("S_OH_SIGNS", line.StateFieldName);
+        Assert.NotNull(line.CheckAction);
+    }
+
     /// <summary>The Captain reminder is skipped only when the flap lever READS a takeoff position.
     /// Keyed on the SimBrief plan, a write that did not take was heard as "Skipping…" then a false
     /// "Already set: Flaps: set for takeoff", and the pilot lost the reminder. A plan is loaded in

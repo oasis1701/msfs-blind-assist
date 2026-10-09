@@ -454,7 +454,7 @@ public static class HwA330FlowDefinitions
     private static Flow BuildApproach() => new()
     {
         Id = "APPROACH", Name = "Approach",
-        Description = "LS on both sides, notify the cabin for landing, approach reminders.",
+        Description = "LS on both sides, seat belts on, notify the cabin for landing, approach reminders.",
         RelatedChecklistGroupIds = new[] { "APPROACH" },
         Steps = new()
         {
@@ -462,6 +462,11 @@ public static class HwA330FlowDefinitions
                 s => s.IsOn("A32NX_EFIS_L_LS_BUTTON_IS_ON")), "AP_LS1"),
             Done(Skip(SW("AP_LS2", "LS first officer: ON", "A32NX_EFIS_R_LS_BUTTON_IS_ON", 1),
                 s => s.IsOn("A32NX_EFIS_R_LS_BUTTON_IS_ON")), "AP_LS2"),
+            // SEATBELT_SIGN pseudo-key — see BS_SEATBELTS for why a bare toggle cannot work here.
+            // Also the Approach Checklist's "Seat belts: ON" (FO-6): usually "Already set" after
+            // Descent, and a write that fails keeps both lines out of the latch, following the sign.
+            Also(Done(Skip(SW("AP_SEATBELTS", "Seat belts: ON", "SEATBELT_SIGN", 1),
+                s => s.IsOn("CABIN SEATBELTS ALERT SWITCH")), "AP_SEATBELTS"), "APC_SEATBELTS"),
             // ★ Cabin notify for landing (spec §4)
             Done(SW("AP_CABIN", "Notify the cabin crew for landing (call all)", "CABIN_CALL_ALL", 1), "AP_CABIN"),
             Captain("AP_MINIMUMS", "Check minimums set on the MCDU approach page"),
