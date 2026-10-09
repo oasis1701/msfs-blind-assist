@@ -418,7 +418,7 @@ Complete A320 aircraft implementation:
 - Defines 24 panels across 4 sections (Overhead Forward, Glareshield, Instrument, Pedestal)
 - All FCU controls use `SetValue` type (direct value entry)
 - 27 button-to-state mappings for automatic announcements
-- **Serves as reference implementation** for adding new aircraft
+- A complete example of every pattern, not a template to copy (its button read-back mappings and press confirmations would come with it); start a new aircraft from `tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs`
 
 ## PMDG737Definition
 

@@ -78,7 +78,7 @@ The `main` branch is protected. Always create a new branch for changes and open 
 
 ### Screen reader announcements
 
-Screen readers already announce every UI control interaction, so the app never repeats one: it confirms a direct interaction once, and only with what the reader cannot say, and it always speaks numeric input confirmations, validation errors and background state changes the user did not trigger. Today's cases: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]); the EFB shell's `announceChange` opt-in ([MD11-26]); the FBW A320, Headwind A330 and FBW A380 button read-back (`GetButtonStateMapping`, `HandleButtonStateAnnouncement`); the value-dialog toggle read-back (`ValueInputForm`, about 1.2 s after a press); "<name> pressed" for a momentary button or an Idle/Activate action combo with no readable state (`PulseMomentaryLVar`, the A380's `PulseEcpKey`, MainForm's unhandled-button fallback); the A380 FCU push/pull value read-out (`OnPanelButtonFired`); the A380 EWD window's refresh and the menu's hotkey suspend and resume confirmations.
+Screen readers already announce every UI control interaction, so the app never repeats one: it confirms a direct interaction once, and only with what the reader cannot say, and it always speaks numeric input confirmations, validation errors and background state changes the user did not trigger. Today's cases: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]); the EFB shell's `announceChange` opt-in ([MD11-26]); the FBW A320, Headwind A330 and FBW A380 button read-back (`GetButtonStateMapping`, `HandleButtonStateAnnouncement`); the value-dialog toggle read-back (`ValueInputForm`, about 1.2 s after a press); "<name> pressed" for a momentary button or an Idle/Activate action combo with no readable state (`PulseMomentaryLVar`, the A380's `PulseEcpKey`, MainForm's unhandled-button fallback); the A380 FCU push/pull value read-out (`OnPanelButtonFired`); the FBW E/WD pop-out's refresh and the menu's hotkey suspend and resume confirmations.
 
 - [CORE-7] Never repeat what the screen reader just said (a panel control's press, label or new combo value). Confirm a direct interaction once, only with what the reader cannot say: a state read back after the press, or "<name> pressed" for an action with no readable state. Numeric confirmations, validation errors and background changes always speak. Full: docs/invariants/core.md#core-7
 - [CORE-8] Combo double-announce suppression is GLOBAL, never aircraft-gated: `_uiSetEcho`/`MarkUiSet` plus a wrap that sets `announcer.Suppressed` around `ProcessSimVarUpdate` for any var inside the echo window. Full: docs/invariants/core.md#core-8
@@ -91,7 +91,7 @@ Screen readers already announce every UI control interaction, so the app never r
 - [CORE-11] In `SimConnectManager`, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`: `StartContinuousMonitoring()` guards on it. Full: docs/invariants/core.md#core-11
 - [CORE-12] Never use `TreeView` directly in a form: use `NativeAccessibleTreeView` (the .NET UIA tree gives NVDA a wrong order); a tree with detail data populates its children lazily on `BeforeExpand`. Full: docs/invariants/core.md#core-12
 - [CORE-13] Never hardcode the FBWBA/MSFSBlindAssist database path: reads go through `DatabasePathResolver.ResolveExistingDatabasePath`, writes through `GetCanonicalDatabasePath`. Full: docs/invariants/core.md#core-13
-- [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one. Full: docs/invariants/core.md#core-14
+- [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one (exempt, as in [CORE-15]: the vPilot plugin and the updater). Full: docs/invariants/core.md#core-14
 - [CORE-15] Never hand-build a log write (`File.AppendAllText`, a raw path): use `Log.Debug/Info/Warn/Error(category, msg)` for debug.log, or `Log.Channel(name)` for a named log. Exempt, as they cannot reference the app: the vPilot plugin's log ([VAT-6]) and the updater's own `%TEMP%` args log (`MSFSBlindAssistUpdater/Program.cs`). Full: docs/invariants/core.md#core-15
 - [VAT-13] Status/diagnostic text in any settings panel is a read-only `TextBox`, never a `Label`: a `Label` is not in the tab order, so a screen-reader user has to hunt for it with the review cursor. Full: docs/invariants/vatsim.md#vat-13
 - [A380C-6] Every form marshaling a background bridge push to the UI thread must wrap `BeginInvoke` in try/catch(InvalidOperationException) (`SafeBeginInvoke`); an `IsHandleCreated` check alone races handle destruction. Full: docs/invariants/a380-coherent.md#a380c-6
@@ -107,8 +107,8 @@ Screen readers already announce every UI control interaction, so the app never r
 - `BuildVariables()` - All simulator variables, starting from `GetBaseVariables()` (the base class caches them as `GetVariables()`)
 - `GetPanelStructure()` - Section/panel hierarchy
 - `BuildPanelControls()` - Panel-to-variables mapping (cached automatically by base class)
-- `GetHotkeyVariableMap()` - Simple hotkey action → event name mappings
-- `HandleHotkeyAction()` - Custom hotkey logic (optional override)
+- `GetHotkeyVariableMap()` - Optional simple hotkey action → event name map (only the FBW A320 and A380 override it)
+- `HandleHotkeyAction()` - Hotkey logic (most aircraft override it)
 
 ## Quick Reference
 

@@ -12,7 +12,7 @@ paths:
 Loaded when Claude reads matching code. Background: docs/a380x.md. Full text of each rule: docs/invariants/a380-systems.md.
 
 - [A380-1] The LT-TEST knob is render-only: never narrate what the bulbs would show; announce only the knob's own position and let real per-system fault lights announce genuine faults. Full: docs/invariants/a380-systems.md#a380-1
-- [A380-2] Every A380 panel control renders as a COMBO, never a hardware button, except true one-shot momentary actions (ECAM-CP keys, chrono, calls, ATC ack) and the seat-motor `RenderAsButton` toggles [A380-10] prescribes; a control showing ongoing state is never a plain button. Full: docs/invariants/a380-systems.md#a380-2
+- [A380-2] Every A380 panel control renders as a COMBO, never a hardware button, except true one-shot momentary actions (ECAM-CP keys, chrono, calls) and the seat-motor `RenderAsButton` toggles [A380-10] prescribes; a control showing ongoing state is never a plain button. Full: docs/invariants/a380-systems.md#a380-2
 - [A380-4] Never treat the Surveillance pedestal panel as working (FBW has not implemented it); transponder AUTO mode and squawk are the only real controls, via the MFD SURV page. Full: docs/invariants/a380-systems.md#a380-4
 - [A380-5] Before declaring an announced ARINC var untestable by injection, check for a per-frame writer: only vars the writer leaves alone are injectable; writer-owned vars need a live scenario. Full: docs/invariants/a380-systems.md#a380-5
 - [A380-6] FBW buses and batteries publish as `A32NX_ELEC_{rawBusName}_BUS_IS_POWERED` with the raw bus id; never invent a descriptive name, confirm the id in the Rust source. Full: docs/invariants/a380-systems.md#a380-6

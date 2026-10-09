@@ -18,7 +18,7 @@ This document contains development notes, key files, and dependencies for MSFS B
   - Reduces boilerplate code significantly
 
 - **`Aircraft/FlyByWireA320Definition.cs`**: Complete A320 definition (367 variables, 24 panels, all mappings)
-  - **Reference implementation** - Use as template when adding new aircraft
+  - A complete example of every pattern, not a template to copy (its button read-back mappings and press confirmations would come with it); start a new aircraft from `tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs`
   - Contains all variables, panel structures, control mappings, and hotkey handlers for A320
   - Demonstrates both simple variable mapping and custom dialog handling
 

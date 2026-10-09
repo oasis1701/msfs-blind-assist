@@ -9,9 +9,11 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## A380-2
 
-- Every A380 panel control must render as a COMBO, not a hardware button, EXCEPT true one-shot momentary actions (ECAM-CP keys, chrono, calls, ATC ack) and the seat-motor toggles A380-10 prescribes (`RenderAsButton`: a press starts the motor, a second press stops it) — a control that must show ongoing state must never be a plain button (the reverted APU-start-PB and Fire-Test cases). → [a380x.md](../a380x.md)
+- Every A380 panel control must render as a COMBO, not a hardware button, EXCEPT true one-shot momentary actions (ECAM-CP keys, chrono, calls) and the seat-motor toggles A380-10 prescribes (`RenderAsButton`: a press starts the motor, a second press stops it) — a control that must show ongoing state must never be a plain button (the reverted APU-start-PB and Fire-Test cases). → [a380x.md](../a380x.md)
 
 Corrected 2026-10-08: the exceptions now include the seat-motor `RenderAsButton` toggles, which A380-10 requires and this rule forbade. Evidence: `FlyByWireA380Definition`'s `SeatBtn` helper (`RenderAsButton = true`, handled by `ToggleSeatMotor`).
+
+Corrected 2026-10-09: the A380 has no ATC ack (removed 2026-06-13, a401b8b1). Evidence: `FlyByWireA380Definition.PanelControls.cs`.
 
 ## A380-4
 

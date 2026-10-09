@@ -88,7 +88,7 @@ Parking brake released
 Optional, activate takeoff assistance with output mode then control T, automatic if taxi guidance lined you up
 
 [Takeoff]
-Advance thrust to about fifty percent, then set flex MCT or TOGA, detents are announced
+Advance thrust to about fifty percent, then set flex MCT or TOGA with the All Thrust Levers combo
 Monitor airspeed with output mode then S
 Rotate at VR
 Positive climb, gear up

@@ -80,14 +80,14 @@ In `BuildVariables()`, never in `BuildPanelControls()` ([VAR-6]):
 **Technical Implementation:**
 - `GenericBatch.cs` - Defines `GenericBatch1`-`GenericBatch5`, five structs each with 300 double fields, registered as `CONTINUOUS_BATCH_1`..`CONTINUOUS_BATCH_5` / requested as `REQUEST_CONTINUOUS_BATCH_1`..`REQUEST_CONTINUOUS_BATCH_5`
 - `SimConnectManager.StartContinuousMonitoring()` (`SimConnectManager.Setup.cs`) - Sorts continuous+announced variables, splits them across the five batch definitions, pads each to 300 datums, and registers each with `SIMCONNECT_PERIOD.SECOND`
-- `SimConnectManager.ProcessContinuousBatch()` - Extracts values per batch using a pre-cached field-accessor array (optimized)
+- `SimConnectManager.ProcessContinuousBatch()` - Extracts values per batch with an unsafe pointer cast over the batch struct (`ProcessContinuousBatchImpl`, `SimConnectManager.VarCache.cs`), walking the prebuilt `batchVarArrays[batchNum]`
 - Each variable is mapped to a `(batchNum, indexWithinBatch)` pair, tracked in `continuousVariableIndexMap`, in the order variables were assigned to batches
 - Uses `SIMCONNECT_UNUSED` for datum ID - SimConnect auto-populates sequentially
 
 **Performance Optimization:**
-- Field accessors pre-cached during `StartContinuousMonitoring()` initialization in `batchFields` array
-- Hot path uses fast field access via cached `FieldInfo` instead of reflection
-- Eliminates N reflection calls per second where N = number of continuous variables
+- `StartContinuousMonitoring()` builds `batchVarArrays` once: one `(key, index, SimVarDefinition)` array per batch, in the order the variables were assigned their index, with the definition already resolved
+- The hot path treats the batch struct (300 doubles) as a `double*` and reads `values[index]` for each entry: no reflection, no per-variable dictionary lookup, and no scan of `continuousVariableIndexMap` for other batches' variables
+- `continuousVariableIndexMap` stays for the callers that only need to know whether a variable is in a batch (for example `RequestVariable`)
 
 **Aircraft-Specific Display Processing:**
 
@@ -169,10 +169,7 @@ public override Dictionary<string, string> GetButtonStateMapping()
         // FCU buttons
         ["A32NX.FCU_HDG_PUSH"] = "A32NX_FCU_AFS_DISPLAY_HDG_TRK_MANAGED",
         ["A32NX.FCU_AP_1_PUSH"] = "A32NX_FCU_AP_1_LIGHT_ON",
-
-        // System buttons
-        ["A32NX.AUTOBRAKE_SET_DISARM"] = "A32NX_AUTOBRAKES_ARMED_MODE",
-        ["SPOILERS_ARM_TOGGLE"] = "A32NX_SPOILERS_ARMED"
+        // ...
     };
 }
 ```

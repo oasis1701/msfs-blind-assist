@@ -82,7 +82,7 @@ Optional, takeoff assistance for centerline steering with output mode then contr
 
 [Takeoff]
 Parking brake released
-Thrust levers to the flex or toga detent, each detent is announced automatically
+Thrust levers to the flex or toga detent with the All Thrust Levers combo
 Monitor airspeed with output mode then S
 Rotate at VR
 Positive climb, check vertical speed with output mode then V
