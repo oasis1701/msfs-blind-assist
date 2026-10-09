@@ -377,6 +377,9 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("cat > s.py <<'EOF'\nopen('changelog.d/999-x.fix.md', 'w')\nEOF\npython s.py")]
     // A heredoc fed to a command that is not Python is text, not code, whatever it contains.
     [InlineData("git commit -F - <<'EOF'\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\nEOF")]
+    // A write in a comment or inside a string is not code.
+    [InlineData("python -c \"# open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w')\"")]
+    [InlineData("python -c \"print(\\\"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\\\")\"")]
     public void Shell_guard_allows_python_that_writes_no_covered_file(string command)
     {
         HookRun run = RunHook(new[] { "shell-guard" }, ShellInput("Bash", command));
@@ -392,6 +395,51 @@ public class ClaudeRulesHookTests : IDisposable
         Assert.NotNull(output);
         Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
     }
+
+    // CCT-7: a write sink (open with a w/a/x/+ mode, write_text/write_bytes, a copy, move or replace destination) is
+    // refused when its target resolves from literals, through a name's nearest earlier binding, to a covered file. Each
+    // script runs as `python - <<'PY'`; {C} stands for the covered Pmdg737 file, {S} for an uncovered changelog fragment
+    // and {CoveredAbs} for the covered file's absolute path.
+    [Theory]
+    [InlineData("import io\np = \"{C}\"\ns = io.open(p, encoding=\"utf-8\", newline=\"\").read()\n"
+        + "io.open(p, \"w\", encoding=\"utf-8\", newline=\"\").write(s.replace(\"a\", \"b\"))")]
+    [InlineData("import pathlib\npathlib.Path(r'{CoveredAbs}').write_text('x')")]
+    [InlineData("from pathlib import Path\nP = Path('{C}')\nP.write_text(P.read_text().replace('a', 'b'))")]
+    [InlineData("files = [\n    '{S}',\n    '{C}',\n]\nfor f in files:\n    open(f, 'a').write('x')")]
+    [InlineData("import shutil\nshutil.copy('scratch.cs', '{C}')")]
+    [InlineData("import os\np = os.path.join('MSFSBlindAssist', 'Aircraft', 'Pmdg737DisplayReads.cs')\nopen(p, mode='w')")]
+    [InlineData("p = 'MSFSBlindAssist\\\\Aircraft\\\\Pmdg737DisplayReads.cs'\nopen(p, 'w')")]   // doubled backslashes in the Python
+    [InlineData("import os\nos.replace(tmp, '{C}')")]
+    [InlineData("with open('{C}', 'r+') as fh:\n    fh.write('x')")]
+    [InlineData("\"\"\"Don't panic: open('nowhere', 'w').\"\"\"\n# it's fine\nopen('{C}', 'w')")]
+    public void Shell_guard_refuses_a_python_write_resolved_to_a_covered_file(string script)
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(script))));
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+        Assert.Contains(Pmdg737, output.Value.GetProperty("permissionDecisionReason").GetString());
+    }
+
+    // A script that only reads a covered file, whose write target is another file, or whose target the guard cannot
+    // resolve (a loop variable over os.walk, an f-string) always runs; so does a write that only appears inside a string.
+    [Theory]
+    [InlineData("src = '{C}'\nout = '{S}'\nopen(out, 'w').write(open(src).read())")]
+    [InlineData("p = '{C}'\ns = open(p).read()\np = '{S}'\nopen(p, 'w').write(s)")]
+    [InlineData("p = '{C}'\nprint(open(p, 'rb').read())")]
+    [InlineData("import os\nfor d, _, fs in os.walk('MSFSBlindAssist'):\n    for f in fs:\n        open(os.path.join(d, f), 'w')")]
+    [InlineData("n = 'X'\nopen(f'MSFSBlindAssist/Aircraft/{n}.cs', 'w')")]
+    [InlineData("doc = \"\"\"\nopen('{C}', 'w')\n\"\"\"\nprint(doc)")]
+    [InlineData("print(\"open('{C}', 'w')\")")]
+    public void Shell_guard_allows_a_python_script_that_writes_no_resolved_covered_file(string script)
+    {
+        HookRun run = RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(script)));
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("", run.Stdout);
+    }
+
+    private static string PythonHeredoc(string script) => "python - <<'PY'\n"
+        + script.Replace("{C}", Pmdg737).Replace("{S}", "changelog.d/999-x.fix.md").Replace("{CoveredAbs}", CoveredAbs)
+        + "\nPY";
 
     // python-writes.ps1 is optional (CCT-1, CCT-7): when it is missing or does not parse, the guard loses its Python
     // analysis (a Python write is allowed) and nothing else - redirects are still refused and diff mode still adds rules.
