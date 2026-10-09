@@ -14,7 +14,11 @@ namespace MSFSBlindAssist.Tests;
 public class WalkthroughTemplateTests
 {
     internal const string TemplatePath = "tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs";
-    internal static readonly string[] Walkthroughs = { "docs/adding-features.md", "docs/QUICK-REFERENCE.md" };
+    internal static readonly string[] Walkthroughs =
+    {
+        "docs/adding-features.md", "docs/QUICK-REFERENCE.md",
+        "docs/aircraft-definitions.md", "docs/variable-system.md", "docs/hotkey-system.md",
+    };
 
     private static string Root => ClaudeContextBudgetTests.RepoRoot();
 

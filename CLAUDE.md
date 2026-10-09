@@ -13,12 +13,12 @@ dotnet build MSFSBlindAssist.sln -c Debug
 dotnet build MSFSBlindAssist.sln -c Release
 ```
 
-The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds six projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder` and the vPilot plugin among them; the standalone probes (`tools/CDUTest`, `IFlySdkProbe`, `StandBridgeSweep`, `LandingExitSweep`) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
+The app runs from `MSFSBlindAssist\bin\x64\{Debug|Release}\net10.0-windows\`. Prerequisites: the MSFS_SDK environment variable and the .NET 10 SDK. The solution builds six projects, `tools/PMDGDispatchTester`, `tools/ChangelogBuilder` and the vPilot plugin among them; the other 12 `tools/*` projects (`tools/CDUTest`, the probes and the sweeps) build on their own. Output paths, the projects and the probes in full: [docs/development.md](docs/development.md#build-output-and-traps).
 
 - [CORE-1] Always build the `.sln` or pass `-p:Platform=x64`; never the bare `.csproj`, which defaults to AnyCPU and writes to `bin\Debug\…`, so the x64 exe the app runs from never updates. Full: docs/invariants/core.md#core-1
-- [CORE-2] `-r win-x64` (or `dotnet publish -r win-x64`) writes a separate `net10.0-windows\win-x64\` tree a plain build never touches: build to, and check the timestamp in, the folder the app launches from. Full: docs/invariants/core.md#core-2
+- [CORE-2] Keep `RuntimeIdentifier=win-x64` (else the build ships every platform's SQLite binaries) and `AppendRuntimeIdentifierToOutputPath=false` (else it writes to a `win-x64\` folder the app, release.yml and PostBuild never use) in the csproj. `dotnet publish` writes `win-x64\publish\`; other `win-x64\` build output predates 2026-08-25: stale. Full: docs/invariants/core.md#core-2
 - [CORE-3] The exe is file-locked while MSFSBA runs (MSB3021): close the app before building an exe the user will run. Full: docs/invariants/core.md#core-3
-- [CORE-4] `tools/CDUTest` and the other standalone probes (`IFlySdkProbe`, `StandBridgeSweep`, `LandingExitSweep`) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
+- [CORE-4] `dotnet build MSFSBlindAssist.sln` builds only `tools/PMDGDispatchTester` and `tools/ChangelogBuilder`; the other 12 `tools/*` projects (`CDUTest`, the probes and the sweeps, listed in docs/development.md) build on their own, never as part of the solution. Full: docs/invariants/core.md#core-4
 
 ## Testing
 
@@ -78,9 +78,9 @@ The `main` branch is protected. Always create a new branch for changes and open 
 
 ### Screen reader announcements
 
-Screen readers already announce every UI control interaction, so the app NEVER announces a button press, a combo or dropdown change, or any other direct interaction in a panel. It ONLY announces numeric input confirmations, error conditions (validation failures) and background state changes the user did not trigger. Four narrow, scoped exceptions exist: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]); the EFB shell's `announceChange` opt-in ([MD11-26]); the button read-back of the FBW A320, Headwind A330 and FBW A380, which speaks the state a definition maps in `GetButtonStateMapping` once, about 300 ms after a panel button or hotkey press (`HandleButtonStateAnnouncement`); and a momentary pushbutton with no readable state confirming its own press once ("<name> pressed" via `PulseMomentaryLVar`, the A380's `PulseEcpKey` and MainForm's unhandled-button fallback; the A320's master warning/caution and rudder trim; the A380 chrono and HS787 ident; and the A380 FCU push/pull value read-out, `OnPanelButtonFired`). None is a licence to announce presses anywhere else.
+Screen readers already announce every UI control interaction, so the app never repeats one: it confirms a direct interaction once, and only with what the reader cannot say, and it always speaks numeric input confirmations, validation errors and background state changes the user did not trigger. Today's cases: the TFDi MD-11's once-after-settle press confirmation ([MD11-11]); the EFB shell's `announceChange` opt-in ([MD11-26]); the FBW A320, Headwind A330 and FBW A380 button read-back (`GetButtonStateMapping`, `HandleButtonStateAnnouncement`); the value-dialog toggle read-back (`ValueInputForm`, about 1.2 s after a press); "<name> pressed" for a momentary button or an Idle/Activate action combo with no readable state (`PulseMomentaryLVar`, the A380's `PulseEcpKey`, MainForm's unhandled-button fallback); the A380 FCU push/pull value read-out (`OnPanelButtonFired`); the FBW E/WD pop-out's refresh and the menu's hotkey suspend and resume confirmations.
 
-- [CORE-7] NEVER announce button presses, combo/dropdown changes or any direct UI interaction in panel controls; ONLY numeric input confirmations, validation errors and background state changes. The four scoped exceptions above are the only ones. Full: docs/invariants/core.md#core-7
+- [CORE-7] Never repeat what the screen reader just said (a panel control's press, label or new combo value). Confirm a direct interaction once, only with what the reader cannot say: a state read back after the press, or "<name> pressed" for an action with no readable state. Numeric confirmations, validation errors and background changes always speak. Full: docs/invariants/core.md#core-7
 - [CORE-8] Combo double-announce suppression is GLOBAL, never aircraft-gated: `_uiSetEcho`/`MarkUiSet` plus a wrap that sets `announcer.Suppressed` around `ProcessSimVarUpdate` for any var inside the echo window. Full: docs/invariants/core.md#core-8
 - [CORE-9] The echo wrap around `ProcessSimVarUpdate` matches on TIME only, never on value: a combo set can write a different encoding than the SDK reads back, so a value compare silently misses. The generic `_uiSetEcho` gate stays value-matched (opt-out: `UiEchoMatchesAnyValue`), so another source's change inside the window still speaks. Full: docs/invariants/core.md#core-9
 - [CORE-10] Never blanket-suppress value-0 resting-state button labels in MainForm; use the opt-in `SimVarDefinition.SuppressRestingButtonState` only. "LNAV: Off" and "Baro STD: QNH" are real states. Full: docs/invariants/core.md#core-10
@@ -91,8 +91,8 @@ Screen readers already announce every UI control interaction, so the app NEVER a
 - [CORE-11] In `SimConnectManager`, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`: `StartContinuousMonitoring()` guards on it. Full: docs/invariants/core.md#core-11
 - [CORE-12] Never use `TreeView` directly in a form: use `NativeAccessibleTreeView` (the .NET UIA tree gives NVDA a wrong order); a tree with detail data populates its children lazily on `BeforeExpand`. Full: docs/invariants/core.md#core-12
 - [CORE-13] Never hardcode the FBWBA/MSFSBlindAssist database path: reads go through `DatabasePathResolver.ResolveExistingDatabasePath`, writes through `GetCanonicalDatabasePath`. Full: docs/invariants/core.md#core-13
-- [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one. Full: docs/invariants/core.md#core-14
-- [CORE-15] Never hand-build a log write (`File.AppendAllText`, a raw path): use `Log.Debug/Info/Warn/Error(category, msg)` for debug.log, or `Log.Channel(name)` for a named log. Full: docs/invariants/core.md#core-15
+- [CORE-14] Every diagnostic log path resolves through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs`; never hand-build one (exempt, as in [CORE-15]: the vPilot plugin and the updater). Full: docs/invariants/core.md#core-14
+- [CORE-15] Never hand-build a log write (`File.AppendAllText`, a raw path): use `Log.Debug/Info/Warn/Error(category, msg)` for debug.log, or `Log.Channel(name)` for a named log. Exempt, as they cannot reference the app: the vPilot plugin's log ([VAT-6]) and the updater's own `%TEMP%` args log (`MSFSBlindAssistUpdater/Program.cs`). Full: docs/invariants/core.md#core-15
 - [VAT-13] Status/diagnostic text in any settings panel is a read-only `TextBox`, never a `Label`: a `Label` is not in the tab order, so a screen-reader user has to hunt for it with the review cursor. Full: docs/invariants/vatsim.md#vat-13
 - [A380C-6] Every form marshaling a background bridge push to the UI thread must wrap `BeginInvoke` in try/catch(InvalidOperationException) (`SafeBeginInvoke`); an `IsHandleCreated` check alone races handle destruction. Full: docs/invariants/a380-coherent.md#a380c-6
 
@@ -101,14 +101,14 @@ Screen readers already announce every UI control interaction, so the app NEVER a
 **Core interfaces:**
 - **IAircraftDefinition** - Contract for all aircraft
 - **BaseAircraftDefinition** - Recommended base class (provides hotkey routing, caching, helpers)
-- **FlyByWireA320Definition** - Reference implementation
+- **`tests/MSFSBlindAssist.Tests/Walkthroughs/YourAircraftDefinition.cs`** - The compiled template to copy for a new aircraft; the walkthroughs in [adding-features.md](docs/adding-features.md) show its parts
 
 **Each aircraft defines:**
-- `GetVariables()` - All simulator variables
+- `BuildVariables()` - All simulator variables, starting from `GetBaseVariables()` (the base class caches them as `GetVariables()`)
 - `GetPanelStructure()` - Section/panel hierarchy
 - `BuildPanelControls()` - Panel-to-variables mapping (cached automatically by base class)
-- `GetHotkeyVariableMap()` - Simple hotkey action → event name mappings
-- `HandleHotkeyAction()` - Custom hotkey logic (optional override)
+- `GetHotkeyVariableMap()` - Optional simple hotkey action → event name map (only the FBW A320 and A380 override it)
+- `HandleHotkeyAction()` - Hotkey logic (most aircraft override it)
 
 ## Quick Reference
 

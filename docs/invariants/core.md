@@ -9,7 +9,18 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## CORE-2
 
-- RID-subfolder gotcha: `-r win-x64` (or `dotnet publish -r win-x64`) writes to a SEPARATE `net10.0-windows\win-x64\` tree that a plain `.sln` build never touches — always build/verify the exact folder the app launches from. → CLAUDE.md
+- Keep `<RuntimeIdentifier>win-x64</RuntimeIdentifier>`, `<AppendRuntimeIdentifierToOutputPath>false</AppendRuntimeIdentifierToOutputPath>` and `<SelfContained>false</SelfContained>` in `MSFSBlindAssist/MSFSBlindAssist.csproj`. Without the RuntimeIdentifier the build is portable and ships every platform's SQLite binaries. Without the `false`, a build writes to a `win-x64\` subfolder: not the folder the app runs from, not the folder release.yml zips, not the folder the PostBuild xcopy steps target, so a build can succeed while the app, the zip and the copies stay stale. `dotnet publish` writes to `win-x64\publish\`, a folder under the run path. A `win-x64\` folder holding built files predates 2026-08-25 and is stale. Build to, and check the timestamp in, the folder the app launches from.
+
+History. The trap was first seen 2026-06-06, when the csproj had no RuntimeIdentifier: a plain build wrote to `net10.0-windows\`, and `-r win-x64` (or `dotnet publish -r win-x64`) wrote to a separate `net10.0-windows\win-x64\` tree a plain build never touched. Commit 70f28f06 (2026-08-25) pinned the RuntimeIdentifier to cut the shipped output, measured on a Release build at 86.2 MB to 21.2 MB (114 files to 82) and the zip at 41.3 MB to 8.7 MB, and added `AppendRuntimeIdentifierToOutputPath=false` so the output stayed in `bin\x64\<cfg>\net10.0-windows\`. The csproj's comment gives the same reasons.
+
+Measured 2026-10-09, by evaluation only (`dotnet msbuild MSFSBlindAssist/MSFSBlindAssist.csproj -p:Configuration=<cfg> -p:Platform=x64 -getProperty:<name>`, no build):
+
+- As committed, Debug: `OutputPath` is `bin\x64\Debug\net10.0-windows\`, `PublishDir` is `bin\x64\Debug\net10.0-windows\win-x64\publish\`, `RuntimeIdentifier` is `win-x64`. Release: `bin\x64\Release\net10.0-windows\` and `bin\x64\Release\net10.0-windows\win-x64\publish\`, with `AppendRuntimeIdentifierToOutputPath` false and `SelfContained` false.
+- `-p:RuntimeIdentifier=win-x64` on the command line, which is what `-r win-x64` sets: the same `OutputPath` and `PublishDir`. So `-r win-x64` changes nothing any more.
+- `-p:RuntimeIdentifier=` (the RuntimeIdentifier emptied): `OutputPath` unchanged, `PublishDir` `bin\x64\Debug\net10.0-windows\publish\`.
+- `-p:AppendRuntimeIdentifierToOutputPath=true` (the `false` undone): `OutputPath` becomes `bin\x64\Debug\net10.0-windows\win-x64\`.
+
+Corrected 2026-10-09: the rule said `-r win-x64` writes a separate `win-x64\` tree a plain build never touches; since 2026-08-25 the csproj pins the RuntimeIdentifier and the output path, so `-r win-x64` changes nothing, and the trap is removing the `false` (output moves into `win-x64\`) or the RuntimeIdentifier (a portable build). Evidence: `MSFSBlindAssist/MSFSBlindAssist.csproj` (commit 70f28f06) and the `-getProperty` measurements above.
 
 ## CORE-3
 
@@ -17,7 +28,11 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## CORE-4
 
-- `tools/CDUTest` and `tools/CDUTest`-style standalone probes build on their own, NOT as part of the solution. → CLAUDE.md
+- `dotnet build MSFSBlindAssist.sln` builds only two of the `tools/` projects, `tools/PMDGDispatchTester` and `tools/ChangelogBuilder`. The other 12 `tools/*` projects build on their own, never as part of the solution: `CDUTest`, `DistanceUnitsProbe`, `DockingProbe`, `GsxAirplaneProbe`, `GsxOffsetProbe`, `GsxProfileProbe`, `IFlySdkProbe`, `LandingExitSweep`, `ProgressiveTaxiProbe`, `StandBridgeSweep`, `TaxiAugmentProbe` and `TaxiGuidanceProbe`. docs/development.md ("Build output and traps") names what each does.
+
+Why it matters. Eleven of the twelve link production sources from `MSFSBlindAssist/` with `<Compile Include>` (`CDUTest` links none; it copies the main app's `SimConnect.dll`). A solution build never compiles them, so a change to a linked source can break one without any solution build showing it. Build the probe you rely on, after a change to a source it links.
+
+Corrected 2026-10-09: the rule named only `tools/CDUTest` and probes "of its style", and CLAUDE.md listed four; 12 projects build on their own. Evidence: `ls tools/*/*.csproj` (14 projects) against the project list in `MSFSBlindAssist.sln`, which holds only `PMDGDispatchTester` and `ChangelogBuilder` from `tools/`.
 
 ## CORE-5
 
@@ -29,13 +44,41 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## CORE-7
 
-- NEVER announce button presses, combo/dropdown value changes, or any direct UI interaction in panel controls — screen readers already announce them; ONLY announce numeric input confirmations, validation errors, and background (non-user-triggered) state changes. The scoped exceptions are the TFDi MD-11's once-after-settle press confirmation, the EFB shell's `announceChange` opt-in (the paragraph under Screen Reader Announcements), the FBW button read-back and the momentary-press confirmation below — never a licence to announce presses elsewhere. → CLAUDE.md
+- Never repeat what the screen reader just said (a panel control's press, label or new combo value). A direct interaction is confirmed once, and only with what the reader cannot say: a state read back after the press, or "<name> pressed" for an action with no readable state. Numeric input confirmations, validation errors and background (non-user-triggered) state changes always speak.
 
-The button read-back is the third exception, ruled a sanctioned one by the repo's owner on 2026-10-08 when the review of the rules split found it in the code. After a panel button click (`MainForm.PanelBuilder.cs`) or a hotkey press (`MainForm.Hotkeys.cs`) whose event a definition maps in `GetButtonStateMapping`, `MainForm.HandleButtonStateAnnouncement` waits 300 ms, force-reads the mapped state variable and speaks it once (`pendingStateAnnouncements`, consumed by `AnnounceVariableState` in `OnSimVarUpdated`). Only the FBW A320, the Headwind A330 (the A320's map plus its baro STD rows) and the FBW A380 map any button; every other definition returns an empty map. The reason is MD11-11's: the screen reader speaks the button, never what the press did (an autopilot that engaged or did not, a managed mode taken), and the read-back is the pilot's only confirmation of it. A new mapping is a deliberate choice for a button whose effect the pilot cannot otherwise hear, never a way to echo presses.
+Why. The screen reader already speaks every control the pilot reaches or presses: its name, its role and, for a combo, the value just chosen. Speaking that again is noise. What the reader cannot say is what a press DID (an autopilot that engaged or did not, a managed mode taken) or, for a control with no state to read, that the press registered at all. A confirmation may carry only that. The test for a new announcement in a panel control: does it tell the pilot something the screen reader did not? If not, leave it out. Adding a case is a deliberate choice for an effect the pilot cannot otherwise hear, never a way to echo a press.
 
-The momentary-press confirmation is the fourth exception, ruled a sanctioned one by the repo's owner on 2026-10-08 when the final review of that correction found it in the code. A momentary pushbutton with no readable state confirms its own press ONCE, as it is pressed: "<name> pressed" from `BaseAircraftDefinition.PulseMomentaryLVar`, the FBW A380's `PulseEcpKey` (its ECAM-CP keys, made buttons at the owner's request in 2026-06), the FBW A320's master warning/caution and rudder-trim buttons (and so the Headwind A330's), and MainForm's fallback for a panel button no definition handles (`MainForm.PanelBuilder.cs`); the A380 chrono's "Chronometer reset" and "Chronometer start stop" and the HS787's "Ident"; and the FBW A380's FCU push/pull panel buttons, which speak the resulting selected or managed value through `OnPanelButtonFired` exactly as their hotkeys do. The reason is the read-back's: such a button has no state the screen reader can speak, so nothing else tells the pilot the press registered. It covers a momentary button's own press only — never a combo, a latching control or a control that shows its state, which the screen reader already speaks.
+Today's cases, each with its code. They show what the principle allows; the test above decides a new one, so the list is not closed.
 
-Corrected 2026-10-08: the exception list names the third and fourth exceptions, and no longer calls the first two "the ONE scoped exception". Evidence: `MainForm.HandleButtonStateAnnouncement` in `MainForm.Announcers.cs`, its callers in `MainForm.PanelBuilder.cs` and `MainForm.Hotkeys.cs`, and the `GetButtonStateMapping` overrides of `FlyByWireA320Definition`, `HeadwindA330Definition` and `FlyByWireA380Definition`; for the fourth, `BaseAircraftDefinition.PulseMomentaryLVar`, `FlyByWireA380Definition.PulseEcpKey`, the "pressed" fallbacks in `MainForm.PanelBuilder.cs` and `FlyByWireA380Definition.OnPanelButtonFired`.
+A state read back after the press:
+
+- The TFDi MD-11's once-after-settle press confirmation ([MD11-11]). Nothing the aircraft exposes confirms a panel press, so once it settles the definition speaks the control's resulting state ("External Power: On") and swallows the press's own lamp echo until then. Code: the press feedback in `TFDiMD11Definition.State.cs` and `Md11AnnouncementGate.Feedback`.
+- The EFB shell's `announceChange` opt-in ([MD11-26]). A pressed control's changed label is spoken only where the reader flagged that element `announceChange: true`: controls whose label carries their own NEW state (the MD-11 EFB's stepper arrows, tile button and state tile's action button). Code: `Forms/FBWA380/FbwEfbForm.cs` (the shell's page script speaks it), `Resources/coherent-md11-efb-agent.js` (sets the flag), `SimConnect/CoherentPmdgEfbClient.cs` (passes it on).
+- The button read-back of the FBW A320, Headwind A330 and FBW A380. After a panel button click (`MainForm.PanelBuilder.cs`) or a hotkey press (`MainForm.Hotkeys.cs`) whose event a definition maps in `GetButtonStateMapping`, `MainForm.HandleButtonStateAnnouncement` (`MainForm.Announcers.cs`) waits 300 ms, force-reads the mapped state variable and speaks it once (`pendingStateAnnouncements`, consumed by `AnnounceVariableState` in `OnSimVarUpdated`). Only these three map any button (the A330 is the A320's map plus its baro STD rows); every other definition returns an empty map. A new mapping is the owner's deliberate choice for a button whose effect the pilot cannot otherwise hear.
+- The value-dialog toggle read-back. In `ValueInputForm` (`ToggleButtonDef`), 1.2 s after a toggle button is pressed the dialog refreshes every toggle's label and speaks the pressed toggle's new state with `AnnounceImmediate`, unless the toggle's `SuppressStateAnnounce` says the aircraft refused the press (the announce would cut off the refusal). The PMDG 777 and 737, HS787, iFly 737 and MD-11 dialogs use it.
+- The A380 FCU push/pull panel buttons speak the resulting selected or managed value through `FlyByWireA380Definition.OnPanelButtonFired` (`FlyByWireA380Definition.HotkeysAndMotion.cs`), exactly as their hotkeys do.
+
+"<name> pressed" for an action with no readable state:
+
+- Momentary pushbuttons: `BaseAircraftDefinition.PulseMomentaryLVar` pulses the L:var 1 then 0 and speaks "<name> pressed". The FBW A320 (and so the Headwind A330) calls it from the momentary L-var handler in `FlyByWireA320Definition.HandleUIVariableSet`, which covers both a `RenderAsButton` momentary button and an Idle/Activate action combo (its comment calls the combo "the screen-reader-preferred form for TEST/RESET/DEPLOY actions"); the A380's `_momentaryButtons` (Off/Activate combos) call it from `FlyByWireA380Definition.UiVariableSet.cs`.
+- The A380's ECAM-CP keys (`A32NX_BTN_*`, made buttons at the owner's request in 2026-06) speak the same words through `FlyByWireA380Definition.PulseEcpKey`.
+- The A320's master warning and master caution buttons and its rudder-trim nudge buttons (`RUDDER_TRIM_LEFT`, `RUDDER_TRIM_RIGHT`), in `FlyByWireA320Definition.HandleUIVariableSet`, and so the Headwind A330's.
+- MainForm's fallback for a panel button no definition handles, at two sites in `MainForm.PanelBuilder.cs`.
+- The A380 chronometer combos `A32NX_CHRONO_TOGGLE` and `A32NX_CHRONO_RST` ("Chronometer start stop", "Chronometer reset") in `FlyByWireA380Definition.UiVariableSet.cs`, and the HS787's transponder "Ident" button (`HS787_XpndrIdent` in `HorizonSim787Definition.UiAndHotkeys.cs`).
+
+An action combo or button whose selected value is only "Activate" or "Reset" says nothing of what happened, so it speaks what the action did, once:
+
+- A320, in `FlyByWireA320Definition.HandleUIVariableSet`: the rudder-trim reset combo (`A32NX_RUDDER_TRIM_RESET`, "Rudder trim reset"), the evacuation horn shut-off combo (`A32NX_EVAC_HORN_SHUTOFF`, "Evacuation horn silenced") and the "All Landing Lights On" and "All Landing Lights Off" buttons ("All landing lights on", "All landing lights retracted").
+- A380, in `FlyByWireA380Definition.UiVariableSet.cs`: "Signal Cabin Ready" (`A380X_MSFSBA_SIGNAL_CABIN_READY`, "Cabin ready signalled") and the rudder-trim reset combo ("Rudder trim reset").
+
+Not a press at all:
+
+- `FbwEwdWindow` (`MSFSBlindAssist/Forms/FbwEwdWindow.cs`, shared by the A380 and the A32NX): F5 or the Refresh button speaks "E W D refreshed", because a refresh reconciles the text in place and changes nothing the reader would say. The first load and the 2 s timer refresh stay silent.
+- The Suspend Hotkeys menu item (`SuspendHotkeysMenuItem_Click`, `MainForm.MenuHandlers.cs`) speaks "Hotkeys suspended" or "Hotkeys resumed", so the pilot knows every hotkey went quiet or came back. A failed re-registration is an error and speaks a warning.
+
+Counter-example. The thrust-lever detent press confirmations ("All thrust levers Idle", "Thrust lever 1 Climb") repeated the value of the combo the pilot had just set, which the screen reader had just read. They sat in the thrust-detent branch of `FlyByWireA320Definition.HandleUIVariableSet` (the Headwind A330 inherits it) and in `FlyByWireA380Definition.UiVariableSet.cs`, and were removed. The A380's background detent announcement in `FlyByWireA380Definition.SimVarUpdate.cs` stays: a combo pick only sends the axis command, so the announcement reads back that the levers actually reached the detent (a state read back after the press, which the reader cannot say), and it also covers a lever moved by other means (a sim key binding or a hardware throttle).
+
+Changed 2026-10-09: the closed list ruled on 2026-10-08 missed four kinds of case within a day; the owner replaced it with this principle, and ruled the thrust-lever detent press confirmations a repeat (removed).
 
 ## CORE-8
 
@@ -50,6 +93,8 @@ Corrected 2026-10-08: scoped to the wrap; the rule had read as covering the gene
 ## CORE-10
 
 - Never blanket-suppress value-0 resting-state button labels in MainForm — use the opt-in `SuppressRestingButtonState` flag only; some 0-state labels (PMDG 777 "LNAV: Off", HS787 "Baro STD: QNH") are meaningful and must be spoken. → CLAUDE.md
+
+Corrected 2026-10-09: the explanation (and two code comments) said only the FBW momentary-button helpers set the flag. Three families do: the FBW A320 and A380 (the A380's local `Btn`/`PressSilent`/`SeatBtn` helpers and inline defs, the A320's inline ones in `BuildVariables`), the iFly 737 (its `Btn` helper and `McpModeStyleWarning`, whose buttons have no readable resting state), and the TFDi MD-11 (every `Md11Kinds.Button` control `BuildControlVariable` makes). The rule is unchanged: the flag stays opt-in per definition, and MainForm never decides it. Evidence: `SuppressRestingButtonState = true` in `FlyByWireA320Definition.cs`, `FlyByWireA380Definition.cs`, `IFly737MAXDefinition.cs` (`Btn`, `McpModeStyleWarning`) and `TFDiMD11Definition.cs` (`BuildControlVariable`); the only readers are `MainForm.Announcers.cs` and `MainForm.PanelBuilder.cs`.
 
 ## CORE-11
 
@@ -67,9 +112,13 @@ Corrected 2026-10-08: scoped to the wrap; the rule had read as covering the gene
 
 - CRITICAL: every diagnostic log path must be resolved through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs` — never hand-build a log path. → CLAUDE.md
 
+Corrected 2026-10-09: the rule had no exceptions, but two programs cannot reference the app's `AppLogs`. The vPilot plugin's log still resolves into the canonical logs folder ([VAT-6]); the updater's does not. `MSFSBlindAssistUpdater` has no project reference to the app, and its `Program.Main` writes a startup-arguments log at `Path.GetTempPath()` + `MSFSBlindAssist_Updater_Args.log`, a hand-built `%TEMP%` path that it also names in its invalid-arguments message box. Moving it into `%APPDATA%\MSFSBlindAssist\logs` would need the updater to carry its own copy of the path logic. Evidence: `MSFSBlindAssistUpdater/Program.cs` (the `logPath` and the message box) and `MSFSBlindAssistUpdater.csproj` (no `ProjectReference`).
+
 ## CORE-15
 
 - Never hand-build a log write (`File.AppendAllText`/raw path) — every diagnostic log goes through `Utils/Logging/Log` (`Log.Debug/Info/Warn/Error(category,msg)` → debug.log, or `Log.Channel(name)` → named file); `AppLogs.PathFor` is the PATH layer only. → CLAUDE.md
+
+Corrected 2026-10-09: names the two programs that cannot call `Log` and are exempt. The vPilot plugin writes its own `vpilot-plugin.log` ([VAT-6]: it runs in vPilot's .NET Framework process and cannot reference the app's logger). The updater, `MSFSBlindAssistUpdater`, has no reference to the app either, so `Program.Main` writes its startup-arguments log with `File.WriteAllText` to `Path.GetTempPath()` + `MSFSBlindAssist_Updater_Args.log`, and its invalid-arguments message box tells the user that path. Neither is a model for code inside the app, which always goes through `Log`. Evidence: `MSFSBlindAssistUpdater/Program.cs` (`logPath`) and `MSFSBlindAssistUpdater.csproj` (no `ProjectReference`).
 
 ## CORE-16
 
@@ -79,7 +128,7 @@ The rules hook (2026-10-08). Three gaps remained after the move, and `.claude/ho
 
 ## Background: the former CLAUDE.md core sections
 
-These sections stood in CLAUDE.md's core until 2026-10; CLAUDE.md now keeps the rules as CORE one-liners. Kept here word for word.
+These sections stood in CLAUDE.md's core until 2026-10; CLAUDE.md now keeps the rules as CORE one-liners. Kept here word for word; where the Screen Reader Announcements text below differs from CORE-7 above, CORE-7 governs.
 
 ### Screen Reader Announcements
 
@@ -101,7 +150,7 @@ These sections stood in CLAUDE.md's core until 2026-10; CLAUDE.md now keeps the 
 
 **Combo double-announce suppression is GLOBAL (`_uiSetEcho`, MainForm).** When the user changes a panel **combo**, the screen reader already speaks the selection — so MSFSBA must not also announce the resulting SimVar change. Every combo-set path calls `MarkUiSet(varKey, value)` (records `_uiSetEcho[varKey]` + a tick), and `OnSimVarUpdated` suppresses the duplicate two ways: (1) the generic `_uiSetEcho` gate for vars announced on the generic monitor path, AND (2) **a wrap that sets `announcer.Suppressed` around the `ProcessSimVarUpdate` call** for any var inside the echo window — because a def that auto-announces from INSIDE `ProcessSimVarUpdate` (PMDG APU selector + the Boris Audio Works soundpack switches, HS787, A380, …) returns `true` and exits BEFORE the generic gate ever runs. **The wrap was HS787-gated and is now ALL-aircraft (2026-06 fix)** — that gate-miss is exactly why the PMDG APU selector + the whole Boris panel double-announced. The wrap matches on the **time window only, not the value** (a combo set can write a different encoding than the SDK reads back — event position vs struct field, 0/1 vs 0/100 — so a value compare silently misses). So: a def that announces its own state from `ProcessSimVarUpdate` needs NO per-control echo flag for combo sets — the global wrap covers it; only background (non-UI) changes still announce.
 
-**Resting-state button labels are suppressed ONLY via the opt-in `SimVarDefinition.SuppressRestingButtonState`** (set by the FBW momentary helpers `Btn`/`PressSilent`/`SeatBtn` + the inline cabin-ready/chrono defs). Never blanket-suppress value-0 labels in MainForm: PMDG 777 MCP "LNAV: Off" and HS787 "Baro STD: QNH" are meaningful states a blind user needs (PR #85 finding M4).
+**Resting-state button labels are suppressed ONLY via the opt-in `SimVarDefinition.SuppressRestingButtonState`** (set by the FBW momentary helpers `Btn`/`PressSilent`/`SeatBtn` + the inline cabin-ready/chrono defs, and, since the iFly 737 and TFDi MD-11 were added, by the iFly's `Btn`/`McpModeStyleWarning` and the MD-11's push-button controls in `BuildControlVariable`). Never blanket-suppress value-0 labels in MainForm: PMDG 777 MCP "LNAV: Off" and HS787 "Baro STD: QNH" are meaningful states a blind user needs (PR #85 finding M4).
 
 ### SimConnect Connection Timing
 

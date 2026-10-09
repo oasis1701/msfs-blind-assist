@@ -100,7 +100,8 @@ public class SimVarDefinition
     // UI customization properties (aircraft-specific)
     public bool RenderAsButton { get; set; }  // True to render as button instead of combo box (e.g., APU Start)
     /// <summary>
-    /// When true (opt-in, set by the FBW momentary-button helpers), the panel label
+    /// When true (opt-in, set by the momentary-button definitions of the FBW A320/A380, the
+    /// iFly 737 and the TFDi MD-11), the panel label
     /// SUPPRESSES the value-0 resting state ("Released"/"Off"/"Idle") — a momentary
     /// push-button has no meaningful resting value, so appending it reads as noise.
     /// MUST stay opt-in: PMDG 777 MCP buttons and the HS787 Baro STD use value-0

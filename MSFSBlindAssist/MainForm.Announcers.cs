@@ -1339,9 +1339,11 @@ public partial class MainForm
                     {
                         // Mirror the build-time button-label logic (the RenderAsButton branch):
                         // resting-state (value 0) suppression is OPT-IN via
-                        // SuppressRestingButtonState, set only by the FBW momentary-button
-                        // helpers (ECAM-CP keys, calls, acks, tests) — a momentary push-button
-                        // has no meaningful RESTING state, so relabelling e.g. "ECAM All" to
+                        // SuppressRestingButtonState, set by the momentary-button defs of the
+                        // FBW A320/A380 (ECAM-CP keys, calls, acks, tests), the iFly 737 (Btn,
+                        // McpModeStyleWarning) and the MD-11 (BuildControlVariable) — a
+                        // momentary push-button has no meaningful RESTING state, so
+                        // relabelling e.g. "ECAM All" to
                         // "ECAM All: Released" reads as noise. By DEFAULT the value-0 label
                         // shows: on PMDG ("LNAV: Off") and HS787 ("Baro STD: QNH") it IS
                         // meaningful state and must not be silenced. The functional dispatch

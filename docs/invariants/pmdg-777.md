@@ -27,6 +27,8 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - CDU buttons must send parameter 1 (pressed) via CDA — parameter 0 ALSO registers as a press, not a release, so never rely on 0 to mean "no press." → [pmdg-777.md](../pmdg-777.md)
 
+Corrected 2026-10-09: the rule said every CDU button goes through CDA, but FMCCOMM and HOLD do not. The CDA path (parameter 1, never released) opens the page on the first press, but the PMDG SDK will not re-trigger the same page key without a release edge, so after the pilot navigates away, pressing FMCCOMM or HOLD again is silently dead (no sound, the page never refreshes). That was issue #46; a CDA-only fix (commit f55d157) regressed it because it was verified only by opening the page once. Those two keys now send `TransmitClientEvent` with `MOUSE_FLAG_LEFTSINGLE` (0x20000000), a self-contained click each call; every other CDU key keeps the faster CDA path, where a stray double-press would double-enter text. Evidence: `PMDG777CDUForm.SendCDUKey` (`Forms/PMDG777/PMDG777CDUForm.cs`), the `FMCCOMM`/`HOLD` branch and its comment.
+
 ## P777-7
 
 - The CDU array index convention is `0=Captain/1=F.O./2=Observer` for every crew-position array including CDU data areas — the dropdown is Left/Center/Right and needs the `DataCDUIndex` remap (`1→2, 2→1`); the event-prefix switch uses the raw dropdown index and must NOT be remapped. → [pmdg-777.md](../pmdg-777.md)
