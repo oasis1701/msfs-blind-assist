@@ -329,6 +329,83 @@ public class ClaudeRulesHookTests : IDisposable
         Assert.Equal("", run.Stdout);
     }
 
+    private static string Root => ClaudeContextBudgetTests.RepoRoot();
+    private static string CoveredAbs => Path.Combine(Root, "MSFSBlindAssist", "Aircraft", "Pmdg737DisplayReads.cs");
+
+    // The Python a command runs is read from -c, a heredoc, a here-string, stdin or a script file (also one the command
+    // writes itself), and every write it names with a literal path is a write of that file. Interpreter options before
+    // the script or the - (py -3 -X utf8 -, python -I -u s.py) do not hide it, and `python gen.py > covered` is a redirect.
+    [Theory]
+    [InlineData("python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w').write('x')\"")]
+    [InlineData("python - <<'PY'\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w').write('x')\nPY")]
+    [InlineData("cd MSFSBlindAssist && python3 - <<PY\nopen('Aircraft/Pmdg737DisplayReads.cs', 'a')\nPY")]
+    [InlineData("py -3 -X utf8 - <<'PY'\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\nPY")]
+    [InlineData("cat > s.py <<'EOF'\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\nEOF\npython -I -u s.py")]
+    [InlineData("python gen.py > MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs")]
+    [InlineData("python -Bc \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w')\"")]
+    [InlineData("python3 -c \"import io; io.open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', encoding='utf-8', mode='w')\"")]
+    [InlineData("PYTHONIOENCODING=utf-8 python - <<'PY'\nimport codecs\ncodecs.open(\"MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\", \"a\", \"utf-8\")\nPY")]
+    [InlineData("python - <<< \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\"")]
+    [InlineData("tee s.py <<'EOF' > /dev/null\nopen('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'w')\nEOF\npython s.py")]
+    public void Shell_guard_refuses_python_that_writes_a_covered_file(string command)
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", command)));
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+        Assert.Contains(Pmdg737, output.Value.GetProperty("permissionDecisionReason").GetString());
+    }
+
+    [Fact]
+    public void Shell_guard_reads_a_python_script_from_disk_and_from_stdin()
+    {
+        string script = CreateFile(NewTempDir(), "edit.py", $"open(r'{CoveredAbs}', 'w').write('x')\n");
+        foreach (string command in new[] { $"python \"{script}\"", $"python - < \"{script}\"", $"python < \"{script}\"" })
+        {
+            JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", command)));
+            Assert.NotNull(output);
+            Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+        }
+    }
+
+    [Theory]
+    [InlineData("python -m pytest tests")]
+    [InlineData("python C:/no/such/script.py")]
+    [InlineData("python - <<'PY'\nprint(open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs').read())\nPY")]
+    [InlineData("python -c")]
+    [InlineData("python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'rb').read()\"")]
+    [InlineData("python - <<'PY'\nopen('changelog.d/999-x.fix.md', 'w').write(open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs', 'r', encoding='utf-8').read())\nPY")]
+    [InlineData("cat > s.py <<'EOF'\nopen('changelog.d/999-x.fix.md', 'w')\nEOF\npython s.py")]
+    public void Shell_guard_allows_python_that_writes_no_covered_file(string command)
+    {
+        HookRun run = RunHook(new[] { "shell-guard" }, ShellInput("Bash", command));
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("", run.Stdout);
+    }
+
+    [Fact]
+    public void Shell_guard_refuses_python_run_from_powershell()
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" },
+            ShellInput("PowerShell", "python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w')\"")));
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+    }
+
+    [Fact]
+    public void Shell_guard_allows_everything_when_the_python_helper_is_missing()
+    {
+        string hooks = Path.Combine(NewTempDir(), "hooks");
+        Directory.CreateDirectory(hooks);
+        string script = Path.Combine(hooks, "rules-hook.ps1");
+        File.Copy(ScriptPath, script);
+
+        HookRun run = RunHook(new[] { "shell-guard" },
+            ShellInput("Bash", "python -c \"open('MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs','w')\""), scriptPath: script);
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("", run.Stdout);
+    }
+
     // pmdg-737.md and variable-definitions.md: about 4,500 characters, so both arrive in full.
     private const string Pmdg737Diff =
         "diff --git a/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs b/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\n"
@@ -776,7 +853,7 @@ public class ClaudeRulesHookTests : IDisposable
     /// its memory of added rule files there) and the MSFSBA_RULES_HOOK switch is cleared, unless <paramref name="env"/>
     /// sets them; a null value in <paramref name="env"/> removes that variable.</summary>
     private static HookRun RunHook(string[] args, string? stdin = null, string? workingDirectory = null,
-        IReadOnlyDictionary<string, string?>? env = null)
+        IReadOnlyDictionary<string, string?>? env = null, string? scriptPath = null)
     {
         var psi = new ProcessStartInfo("powershell.exe")
         {
@@ -790,7 +867,7 @@ public class ClaudeRulesHookTests : IDisposable
             StandardErrorEncoding = new UTF8Encoding(false),
             WorkingDirectory = workingDirectory ?? ClaudeContextBudgetTests.RepoRoot(),
         };
-        foreach (string a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", ScriptPath })
+        foreach (string a in new[] { "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", scriptPath ?? ScriptPath })
             psi.ArgumentList.Add(a);
         foreach (string a in args) psi.ArgumentList.Add(a);
         string temp = NewTempDir();

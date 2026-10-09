@@ -288,29 +288,42 @@ function Invoke-Read($HookInput) {
 
 # ---- shell-guard: find the files a shell command writes ----
 
-# Drops heredoc bodies (bash <<WORD ... WORD) and here-string bodies (PowerShell @' ... '@), so text inside them -
-# "=>", "List<string>" - is never read as a redirect.
-function Remove-HeredocBodies([string]$Command, [string]$Shell) {
+# Takes the heredoc bodies (bash <<WORD ... WORD) out of a command, so text inside them - "=>", "List<string>" - is never
+# read as a redirect. Each heredoc operator (<<WORD, <<-WORD, <<'WORD', <<"WORD", <<\WORD) becomes the word
+# <<__HEREDOC_<n>__ and the lines of its body, up to the closing WORD, are kept as Bodies[n]: the body of a "python -"
+# is the script it runs. PowerShell here-strings (@' ... '@) become '' and keep no body.
+# Returns @{ Command = [string]; Bodies = [string[]] }.
+function Split-HeredocBodies([string]$Command, [string]$Shell) {
     $text = $Command.Replace("`r`n", "`n")
     if ($Shell -eq 'PowerShell') {
-        return [regex]::Replace($text, "(?s)@(['`"])\n.*?\n\1@", "''")
+        return @{ Command = [regex]::Replace($text, "(?s)@(['`"])\n.*?\n\1@", "''"); Bodies = [string[]]@() }
     }
     $kept = New-Object System.Collections.Generic.List[string]
+    $bodies = New-Object System.Collections.Generic.List[object]
     $pending = New-Object System.Collections.Generic.Queue[object]
     foreach ($line in $text.Split("`n")) {
         if ($pending.Count -gt 0) {
             $heredoc = $pending.Peek()
             $candidate = $line
             if ($heredoc.StripTabs) { $candidate = $line.TrimStart("`t") }
-            if ($candidate -ceq $heredoc.Word) { [void]$pending.Dequeue() }
+            if ($candidate -ceq $heredoc.Word) { [void]$pending.Dequeue() } else { $heredoc.Lines.Add($line) }
             continue
         }
-        $kept.Add($line)
+        $rewritten = New-Object System.Text.StringBuilder
+        $last = 0
         foreach ($m in [regex]::Matches($line, "(?<!<)<<(?!<)(-?)\s*\\?(['`"]?)([A-Za-z_][A-Za-z0-9_.-]*)\2")) {
-            $pending.Enqueue([pscustomobject]@{ Word = $m.Groups[3].Value; StripTabs = ($m.Groups[1].Value -eq '-') })
+            $lines = New-Object System.Collections.Generic.List[string]
+            $bodies.Add($lines)
+            $pending.Enqueue([pscustomobject]@{ Word = $m.Groups[3].Value; StripTabs = ($m.Groups[1].Value -eq '-'); Lines = $lines })
+            [void]$rewritten.Append($line, $last, $m.Index - $last).Append('<<__HEREDOC_').Append($bodies.Count - 1).Append('__')
+            $last = $m.Index + $m.Length
         }
+        [void]$rewritten.Append($line, $last, $line.Length - $last)
+        $kept.Add($rewritten.ToString())
     }
-    return ($kept.ToArray() -join "`n")
+    $texts = New-Object System.Collections.Generic.List[string]
+    foreach ($b in $bodies) { $texts.Add($b.ToArray() -join "`n") }
+    return @{ Command = ($kept.ToArray() -join "`n"); Bodies = $texts.ToArray() }
 }
 
 # Splits a command into simple commands at &&, ||, ;, | and newlines outside quotes (>| stays a redirect).
@@ -519,6 +532,14 @@ function Add-WriteTarget($Targets, [string]$Raw, [string]$Dir, $Vars, [string]$S
     if ($full) { $Targets.Add([pscustomobject]@{ Raw = $Raw; FullPath = $full }) }
 }
 
+# Add-WriteTarget for a file the command's own output goes to (a redirect or a tee operand): the full path it adds also
+# goes to $Written, since a heredoc written to it is a script that a later command in the same line may run.
+function Add-OutputTarget($Targets, $Written, [string]$Raw, [string]$Dir, $Vars, [string]$Shell) {
+    $before = $Targets.Count
+    Add-WriteTarget $Targets $Raw $Dir $Vars $Shell
+    if ($Targets.Count -gt $before) { $Written.Add($Targets[$Targets.Count - 1].FullPath) }
+}
+
 # Reads one short-option cluster of sed or perl (-ni, -pi.bak, -Mstrict, -lne) letter by letter: -i edits in place
 # (the rest is its suffix), -e/-E/-f bring the script (the next word unless attached), and perl's -M -m -I -F -d -D
 # -C -x take the rest of the cluster as their argument, so the i in -Mstrict or -Ilib is not -i.
@@ -573,11 +594,55 @@ function Get-InPlaceOperands([string]$Name, $Words) {
 
 $PowerShellSwitches = @('-Force', '-NoNewline', '-Append', '-PassThru', '-WhatIf', '-Confirm', '-NoClobber', '-AsByteStream')
 
-# The files a command writes: redirect targets, sed/perl -i and tee operands, and the path of Set-Content, Add-Content
-# and Out-File. Follows cd and Set-Location from $Cwd, and a path held in a variable the command itself set to a
+# The text of a script file that exists and is at most 1 MB, else $null.
+function Read-ScriptFile([string]$Path) {
+    if ([string]::IsNullOrEmpty($Path)) { return $null }
+    try {
+        if (-not [IO.File]::Exists($Path)) { return $null }
+        if ((New-Object System.IO.FileInfo($Path)).Length -gt 1048576) { return $null }
+        return [IO.File]::ReadAllText($Path, $Utf8)
+    }
+    catch { return $null }
+}
+
+# The Python code a python, python3 or py command runs, or $null when it cannot be read. $Words are the command's words
+# (the command word first, redirects already taken out). Walks the options: -c (also in a cluster such as -Bc) brings the
+# code as the next word; -m runs a module, which cannot be read; -W and -X take a value; any other option is skipped.
+# A - (or no script at all) means the code comes in on stdin: $Stdin is @{ Body; HereString; File } from the segment's
+# input redirects. The first other word is a script: the body a heredoc in this same command wrote to that path
+# ($Scripts maps full paths to bodies), else the file, when it exists.
+function Get-PythonScript($Words, [string]$Dir, $Stdin, $Scripts) {
+    for ($k = 1; $k -lt $Words.Count; $k++) {
+        $w = $Words[$k]
+        if ($w -ceq '-') { break }
+        if ($w -cmatch '^-[bBdEiIOPqRsSuvx]*c$') {
+            if ($k + 1 -lt $Words.Count) { return $Words[$k + 1] }
+            return $null
+        }
+        if ($w -cmatch '^-[bBdEiIOPqRsSuvx]*m$') { return $null }
+        if ($w -ceq '-W' -or $w -ceq '-X') { $k++; continue }
+        if ($w.StartsWith('-')) { continue }
+        $full = Resolve-FullPath $w $Dir
+        if (-not $full) { return $null }
+        if ($Scripts.ContainsKey($full)) { return [string]$Scripts[$full] }
+        return Read-ScriptFile $full
+    }
+    if ($null -ne $Stdin.Body) { return $Stdin.Body }
+    if ($null -ne $Stdin.HereString) { return $Stdin.HereString }
+    return Read-ScriptFile $Stdin.File
+}
+
+# The files a command writes: redirect targets, sed/perl -i and tee operands, the path of Set-Content, Add-Content and
+# Out-File, and the files a python, python3 or py command opens for writing with a literal path (Get-PythonWriteTargets,
+# from the code that -c, a heredoc, a here-string, stdin or a script file brings; a script this same command wrote with a
+# heredoc counts too). Follows cd and Set-Location from $Cwd, and a path held in a variable the command itself set to a
 # literal. Throws on an unparseable command.
 function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
     $targets = New-Object System.Collections.Generic.List[object]
+    $split = Split-HeredocBodies $Command $Shell
+    $bodies = $split.Bodies
+    # Full path (ignoring case) -> the heredoc body this command wrote there: a later "python <path>" runs that text.
+    $scripts = New-Object System.Collections.Hashtable([StringComparer]::OrdinalIgnoreCase)
     $dir = $Cwd
     # The variables the command has set to a literal so far (Bash: NAME=VALUE and export NAME=VALUE; PowerShell:
     # $NAME = VALUE). Bash names are case-sensitive, PowerShell names are not.
@@ -588,7 +653,7 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
     # variables, and the segment after the one holding its closing ) gets them back.
     $scopes = New-Object System.Collections.Generic.Stack[object]
     $leaveScope = $false
-    foreach ($segment in (Split-ShellCommands (Remove-HeredocBodies $Command $Shell) $Shell)) {
+    foreach ($segment in (Split-ShellCommands $split.Command $Shell)) {
         $parens = Remove-SubshellParens (Get-ShellWords $segment $Shell)
         $all = $parens.Words
         if ($leaveScope -and $scopes.Count -gt 0) { $scope = $scopes.Pop(); $dir = $scope.Dir; $vars = $scope.Vars }
@@ -611,6 +676,10 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
             continue
         }
         $words = New-Object System.Collections.Generic.List[string]
+        # What the segment's input redirects feed its stdin (a python - reads its script there): the body of a heredoc,
+        # the text of a here-string, or the full path of an input file. $written holds the files its output goes to.
+        $redirected = @{ Body = $null; HereString = $null; File = $null }
+        $written = New-Object System.Collections.Generic.List[string]
         for ($k = $start; $k -lt $all.Count; $k++) {
             $w = $all[$k].Text
             if ($all[$k].Bare) {
@@ -618,11 +687,29 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
                 if ($out.Success) {
                     $raw = $out.Groups[1].Value
                     if ($raw -eq '' -and $k + 1 -lt $all.Count) { $k++; $raw = $all[$k].Text }
-                    Add-WriteTarget $targets $raw $dir $vars $Shell
+                    Add-OutputTarget $targets $written $raw $dir $vars $Shell
                     continue
                 }
-                $in = [regex]::Match($w, '^[0-9]*<+(.*)$')
-                if ($in.Success) { if ($in.Groups[1].Value -eq '') { $k++ }; continue }
+                $in = [regex]::Match($w, '^([0-9]*)(<{1,3})(.*)$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+                if ($in.Success) {
+                    $rest = $in.Groups[3].Value
+                    if ($rest -eq '' -and $k + 1 -lt $all.Count) { $k++; $rest = $all[$k].Text }
+                    if ($in.Groups[1].Value -eq '' -or $in.Groups[1].Value -eq '0') {
+                        $operator = $in.Groups[2].Value.Length
+                        if ($operator -eq 3) { $redirected.HereString = $rest }
+                        elseif ($operator -eq 2) {
+                            $heredoc = [regex]::Match($rest, '^__HEREDOC_([0-9]{1,6})__$')
+                            if ($heredoc.Success -and [int]$heredoc.Groups[1].Value -lt $bodies.Count) {
+                                $redirected.Body = $bodies[[int]$heredoc.Groups[1].Value]
+                            }
+                        }
+                        else {
+                            $file = Expand-KnownVariables $rest $vars $Shell
+                            if (-not $file.Contains('$')) { $redirected.File = Resolve-FullPath $file $dir }
+                        }
+                    }
+                    continue
+                }
             }
             $words.Add($w)
         }
@@ -633,8 +720,18 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
         }
         elseif ($name -ceq 'tee') {
             for ($k = 1; $k -lt $words.Count; $k++) {
-                if (-not $words[$k].StartsWith('-')) { Add-WriteTarget $targets $words[$k] $dir $vars $Shell }
+                if (-not $words[$k].StartsWith('-')) { Add-OutputTarget $targets $written $words[$k] $dir $vars $Shell }
             }
+        }
+        elseif (@('python', 'python3', 'py') -contains $name) {
+            # A script the guard cannot read or analyse runs (CCT-1) without hiding the command's other targets.
+            try {
+                $code = Get-PythonScript $words $dir $redirected $scripts
+                if ($null -ne $code) {
+                    foreach ($path in (Get-PythonWriteTargets $code)) { Add-WriteTarget $targets $path $dir $vars $Shell }
+                }
+            }
+            catch { }
         }
         elseif ($name -ceq 'export' -and $Shell -ne 'PowerShell') {
             for ($k = 1; $k -lt $words.Count; $k++) { Set-KnownVariableFromAssignment $vars $words[$k] }
@@ -651,6 +748,8 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
             if ($null -eq $path) { $path = $positional }
             Add-WriteTarget $targets $path $dir $vars $Shell
         }
+        # "cat > s.py <<'EOF' ... EOF" (or tee) writes a script: a later "python s.py" in this command runs that body.
+        if ($null -ne $redirected.Body) { foreach ($file in $written) { $scripts[$file] = $redirected.Body } }
     }
     return ,$targets.ToArray()
 }
@@ -912,6 +1011,8 @@ function Invoke-For {
 
 $ErrorActionPreference = 'Stop'
 try {
+    # First, so a missing file fails open (CCT-1): the catch below exits 0 with no output.
+    . ([IO.Path]::Combine($PSScriptRoot, 'python-writes.ps1'))
     if ($Mode -ne 'for' -and $env:MSFSBA_RULES_HOOK -eq 'off') { exit 0 }
     switch ($Mode) {
         'for' { Invoke-For }
