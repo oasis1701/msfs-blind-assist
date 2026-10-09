@@ -544,19 +544,17 @@ public partial class FlyByWireA380Definition
         {
             int idx = (int)Math.Round(value);
             double[] detentAxis = { -1.0, -0.70, -0.44, -0.10, 0.53, 1.0 };
-            string[] names = { "Reverse", "Reverse Idle", "Idle", "Climb", "Flex M C T", "TOGA" };
             if (idx < 0 || idx >= detentAxis.Length) return true;
             uint ex1 = unchecked((uint)(int)Math.Round(detentAxis[idx] * 16384));
+            // No press confirmation: the screen reader already spoke the combo's value (CORE-7).
             if (varKey == "THROTTLE_ALL_DETENT")
             {
                 for (int n = 1; n <= 4; n++) simConnect.SendEvent($"THROTTLE{n}_AXIS_SET_EX1", ex1);
-                announcer.Announce($"All thrust levers {names[idx]}");
             }
             else
             {
                 int eng = varKey.Length > 9 && char.IsDigit(varKey[9]) ? varKey[9] - '0' : 1;
                 simConnect.SendEvent($"THROTTLE{eng}_AXIS_SET_EX1", ex1);
-                announcer.Announce($"Thrust lever {eng} {names[idx]}");
             }
             return true;
         }
