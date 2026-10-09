@@ -11,7 +11,6 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*Incursion*.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager*.cs"
   - "MSFSBlindAssist/Database/Models/TaxiRoute.cs"
-  - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayShape*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayPavement*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayMembership*.cs"

@@ -91,13 +91,13 @@ public class ClaudeRulesHookTests : IDisposable
     }
 
     [Theory]
-    [InlineData("MSFSBlindAssist/Navigation/TaxiGraph.cs", "gsx-stands-docking.md;landing-exits.md;runway-holds.md;taxi-routing.md")]
+    [InlineData("MSFSBlindAssist/Navigation/TaxiGraph.cs", "gsx-stands-docking.md;landing-exits.md;taxi-routing.md")]
     [InlineData("MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs",
         "a380-coherent.md;a380-fcu.md;a380-systems.md;fbw-arinc.md;troubleshooting.md;variable-definitions.md")]
     public void Read_keeps_its_context_within_what_Claude_Code_shows_in_full(string path, string ruleFiles)
     {
         // Claude Code saves hook context over about 10,000 characters to a file and shows the model a 2 KB preview
-        // (measured 2026-10-08); these files load 24,216 and 26,412 characters of rules.
+        // (measured 2026-10-08); each of these files loads over 20,000 characters of rules.
         string worktree = CreateAgentWorktree(NewTempDir());
         string file = CreateFile(worktree, path);
 
@@ -338,7 +338,7 @@ public class ClaudeRulesHookTests : IDisposable
     public void Diff_keeps_its_context_within_what_Claude_Code_shows_in_full()
     {
         // Claude Code saves hook context over about 10,000 characters to a file and shows the model a 2 KB preview
-        // (measured 2026-10-08). TaxiGraph.cs and FlyByWireA380Definition.Rmp.cs load ten rule files, 50,628
+        // (measured 2026-10-08). TaxiGraph.cs and FlyByWireA380Definition.Rmp.cs load nine rule files, over 50,000
         // characters of bodies: the hook shows whole files within 9,000 characters and names the rest to Read.
         JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff --name-only", BashResponse(
             "MSFSBlindAssist/Navigation/TaxiGraph.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs\n"))));
@@ -347,7 +347,7 @@ public class ClaudeRulesHookTests : IDisposable
         string context = output.Value.GetProperty("additionalContext").GetString()!;
         Assert.InRange(context.Length, 1, 9_000);
         AssertEachRuleFileShownOrNamed(context, ClaudeContextBudgetTests.RepoRoot(), "gsx-stands-docking.md", "landing-exits.md",
-            "runway-holds.md", "taxi-routing.md", "a380-coherent.md", "a380-fcu.md", "a380-systems.md", "fbw-arinc.md",
+            "taxi-routing.md", "a380-coherent.md", "a380-fcu.md", "a380-systems.md", "fbw-arinc.md",
             "troubleshooting.md", "variable-definitions.md");
     }
 
