@@ -91,13 +91,17 @@ public class Pmdg777FlowOrderingTests
         Assert.Equal(400.0, Pmdg777SpeedbrakeLever.UpValue);
     }
 
-    [Fact]
-    public void LandingChecklist_speedbrake_accepts_the_armed_lever()
+    // The Landing section's arming line and the Landing Checklist's read-only line both read the
+    // lever exactly at ARM.
+    [Theory]
+    [InlineData("LANDING", "LDA_SPEEDBRAKE")]
+    [InlineData("LANDING_CL", "LDG_SPEEDBRAKE")]
+    public void Landing_speedbrake_lines_accept_the_armed_lever(string groupId, string itemId)
     {
-        var item = Item("LANDING_CL", "LDG_SPEEDBRAKE");
+        var item = Item(groupId, itemId);
         Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, item.StateFieldName);
         Assert.True(item.EvaluateState(Pmdg777SpeedbrakeLever.ArmedValue),
-            "ticking 'Speedbrake: ARMED' must not revert once the lever reaches ARM");
+            "a ticked speedbrake line must not revert once the lever reaches ARM");
         Assert.False(item.EvaluateState(Pmdg777SpeedbrakeLever.DownValue));
         Assert.False(item.EvaluateState(201));
     }
@@ -113,9 +117,9 @@ public class Pmdg777FlowOrderingTests
     }
 
     [Fact]
-    public void LandingChecklist_speedbrake_leaves_a_deployed_lever_alone()
+    public void LandingSection_speedbrake_leaves_a_deployed_lever_alone()
     {
-        var item = Item("LANDING_CL", "LDG_SPEEDBRAKE");
+        var item = Item("LANDING", "LDA_SPEEDBRAKE");
         Assert.NotNull(item.LeaveAloneWhen);
         Assert.Equal(SpeedbrakeLeverState.LeaveAloneText, item.LeaveAloneText);
 

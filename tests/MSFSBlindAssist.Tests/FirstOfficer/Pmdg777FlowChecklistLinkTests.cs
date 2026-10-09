@@ -422,14 +422,23 @@ public class Pmdg777FlowChecklistLinkTests
         }, FlowChecklistLinkAudit.UndeliveredLines(FlowsWithItems()));
     }
 
-    // On the 777 no group is named after a flow (or its "_CL"), so a finished flow latches
-    // exactly its related groups — the audit above covers every line the form latches.
+    // On the 777 every group named after a flow (or its "_CL") is also among that flow's related
+    // groups — the Landing section, LANDING, since 2026-10-09 — so a finished flow latches exactly
+    // its related groups, and the audit above covers every line the form latches.
     [Fact]
     public void Every_777_flow_latches_exactly_its_related_groups()
     {
         var ids = PMDG777ChecklistDefinitions.Build().Select(g => g.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var flow in PMDG777FlowDefinitions.Build())
             Assert.Equal(flow.RelatedChecklistGroupIds, flow.CompletionGroupIds(ids.Contains).ToArray());
+    }
+
+    [Fact]
+    public void The_landing_flow_latches_the_landing_section_and_the_landing_checklist()
+    {
+        var ids = PMDG777ChecklistDefinitions.Build().Select(g => g.Id).ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(new[] { "LANDING", "LANDING_CL" },
+            PMDG777FlowDefinitions.Build().Single(f => f.Id == "LANDING").CompletionGroupIds(ids.Contains).ToArray());
     }
 
     // The After Landing APU start is confirmed by the read-only APU-running wait, never by the

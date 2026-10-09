@@ -44,6 +44,7 @@ public static class PMDG777ChecklistDefinitions
         BuildDescentChecklist(),
         BuildApproach(),
         BuildApproachChecklist(),
+        BuildLanding(),
         BuildLandingChecklist(),
         BuildAfterLanding(),
         BuildShutdown(),
@@ -631,8 +632,8 @@ public static class PMDG777ChecklistDefinitions
         Id = "APPROACH", Name = "Approach",
         Items = new()
         {
-            // The speedbrake is NOT armed here — too early. It lives on the Landing
-            // checklist (LDG_SPEEDBRAKE) and the Landing flow.
+            // The speedbrake is NOT armed here — too early. It lives in the Landing section
+            // (LDA_SPEEDBRAKE) and the Landing flow.
             Reminder("APPA_ALTIMETERS", "APPROACH", "Altimeters: Set local QNH / transition"),
         }
     };
@@ -668,6 +669,32 @@ public static class PMDG777ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
+    // 16a. Landing (mirrors the Landing flow; added 2026-10-09)
+    // -----------------------------------------------------------------------
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildLanding() => new()
+    {
+        Id = "LANDING", Name = "Landing",
+        Items = new()
+        {
+            // Ticking this ARMS the lever — the action the Landing Checklist's "Speedbrake: ARMED"
+            // carried until 2026-10-09, moved here so every read-back stays action-free (FO-3), as
+            // on the PMDG 737 (LDA_SPDBRK). It reads main's lever L-var (exactly ARM, never the
+            // truncating SDK byte, which reads a lever at 201-203 as armed). A tick over a
+            // DEPLOYED lever is refused with its reason (LeaveAloneWhen); the executor never
+            // clicks ARM over one either, because the ARM detent is an absolute click position
+            // and clicking it over a raised lever retracts it.
+            LeaveAlone(Auto("LDA_SPEEDBRAKE", "LANDING", "Speedbrake: ARM",
+                Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsArmed,
+                action: (e, _) => e.SetSpeedbrakeArmed()),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
+            // The Captain's missed-approach altitude, as on the PMDG 737 (LDA_MISSED; owner,
+            // 2026-10-09): the Landing flow's LD_MISSED reminder speaks it, and the finished
+            // flow ticks it.
+            Reminder("LDA_MISSED", "LANDING", "Set the missed approach altitude"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
     // 17. Landing Checklist
     // -----------------------------------------------------------------------
     private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildLandingChecklist() => new()
@@ -675,15 +702,12 @@ public static class PMDG777ChecklistDefinitions
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
         {
-            // Ticking this ARMS the lever. It reads main's lever L-var (exactly ARM, never the
-            // truncating SDK byte, which reads a lever at 201-203 as armed). A tick over a
-            // DEPLOYED lever is refused with its reason (LeaveAloneWhen); the executor never
-            // clicks ARM over one either, because the ARM detent is an absolute click position
-            // and clicking it over a raised lever retracts it.
-            LeaveAlone(Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
+            // Read-only: the lever exactly at ARM (main's lever L-var, never the truncating SDK
+            // byte). The Landing flow arms it through the Landing section's LDA_SPEEDBRAKE, and
+            // its arm step links this line too, so a skipped arm keeps both out of the latch.
+            Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
                 Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsArmed,
-                action: (e, _) => e.SetSpeedbrakeArmed()),
-                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
+                action: null),
             // Gear CONFIRMED down: lever DOWN and all three legs fully extended
             // (Pmdg777GearConfirmation). NaN until known.
             Auto("LDG_GEAR", "LANDING_CL", "Landing Gear: DOWN",

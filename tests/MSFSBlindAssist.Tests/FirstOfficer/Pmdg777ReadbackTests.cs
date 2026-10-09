@@ -136,6 +136,17 @@ public class Pmdg777ReadbackTests
         Assert.False(readback.EvaluateAdditionalState(1));
     }
 
+    // FO-3: ticking a read-back line fires nothing. The Landing Checklist's "Speedbrake: ARMED"
+    // was the one read-back line with an action on any aircraft until 2026-10-09; the arming is
+    // the Landing section's LDA_SPEEDBRAKE now.
+    [Fact]
+    public void Readbacks_are_action_free()
+    {
+        foreach (var g in Readbacks())
+            foreach (var i in g.Items)
+                Assert.True(i.CheckAction == null, $"{g.Id}/{i.Id} is a read-back line with a CheckAction (FO-3)");
+    }
+
     [Fact]
     public void Passenger_signs_read_ON_the_documented_difference_from_PMDGs_AUTO()
     {

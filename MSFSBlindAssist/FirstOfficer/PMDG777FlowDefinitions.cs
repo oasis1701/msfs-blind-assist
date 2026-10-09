@@ -586,7 +586,8 @@ public static class PMDG777FlowDefinitions
             // descent/approach transition, well before the landing configuration is
             // established — arming there is too early. It moved to the Landing flow,
             // which is where its own CompletesChecklistItemId ("LDG_SPEEDBRAKE", an item
-            // in LANDING_CL) always said it belonged.
+            // in LANDING_CL) always said it belonged; since 2026-10-09 it completes the
+            // Landing section's LDA_SPEEDBRAKE and links LDG_SPEEDBRAKE.
             Captain("APP_ALTIMETERS",   "Altimeters: Set local QNH / transition"),
         }
     };
@@ -599,7 +600,7 @@ public static class PMDG777FlowDefinitions
         Id = "LANDING",
         Name = "Landing",
         Description = "Speedbrake armed and missed approach altitude set for landing, then confirms the gear is down.",
-        RelatedChecklistGroupIds = new[] { "LANDING_CL" },
+        RelatedChecklistGroupIds = new[] { "LANDING", "LANDING_CL" },
         Steps = new()
         {
             // Moved out of Approach Setup: too early there. The step goes through the verified
@@ -607,13 +608,18 @@ public static class PMDG777FlowDefinitions
             // reach ARM — the flow's own verify reads only 600 ms after dispatch and the lever
             // takes about five seconds from DOWN. An armed lever is "Already set"; a DEPLOYED
             // one is left alone with its reason, because clicking ARM over a lever the pilot
-            // has raised retracts it.
-            LeaveAlone(Skip(SW("LD_SPEEDBRAKE_ARM", "Speedbrake: ARM", SpeedbrakeLeverState.ArmPseudoKey, null,
-               true, Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsArmed, "LDG_SPEEDBRAKE"),
-                s => s.IsSpeedbrakeArmed()),
+            // has raised retracts it. It completes the Landing section's arming line and links
+            // the Landing Checklist's read-only "Speedbrake: ARMED" (same lever, same condition),
+            // so a skipped arm keeps both out of the latch (FO-6) — the PMDG 737's shape.
+            LeaveAlone(Also(Skip(SW("LD_SPEEDBRAKE_ARM", "Speedbrake: ARM", SpeedbrakeLeverState.ArmPseudoKey, null,
+               true, Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsArmed, "LDA_SPEEDBRAKE"),
+                s => s.IsSpeedbrakeArmed()), "LDG_SPEEDBRAKE"),
                 s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
             // The 737's "Engine start switches: CONT" is deliberately NOT mirrored here —
             // 777 ignition is automatic and needs no CONT selection for landing.
+            // Delivers the Landing section's "Set the missed approach altitude" (LDA_MISSED), as
+            // the PMDG 737's LD_MISSED does: a Captain reminder is its line's step, and the
+            // finished flow ticks the line.
             Captain("LD_MISSED",      "Set the missed approach altitude"),
             // Read-only gear-down confirmation — it never moves the lever. The 777 SDK exposes
             // no gear-indication lights, so the crew's "three green" is composed from the lever
