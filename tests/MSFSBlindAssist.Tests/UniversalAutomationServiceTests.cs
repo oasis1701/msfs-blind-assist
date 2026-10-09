@@ -313,4 +313,166 @@ public class UniversalAutomationServiceTests
         Assert.Equal(5, presses);
         Assert.Contains(spoken, m => m.Contains("did not engage"));
     }
+
+    // ---------------------------------------------------------------------
+    // Waiting for a definite state (2026-10-09, FO-21). On the FlyByWire family a null readback only
+    // means "not read yet": the AP vars arrive with the 1 Hz batch, so the first tick after an app
+    // restart or a mid-climb aircraft detection can come before them. The AP 1 push is a TOGGLE, so
+    // a blind press over an autopilot that is already on would switch it off while the service says
+    // "Autopilot engaged". With WaitForApState the service never presses on a null reading: each tick
+    // spent waiting is an attempt, spaced by ApRetryIntervalMs, and if no definite reading comes
+    // within MaxApEngageAttempts the Captain call ends the leg. WaitForApState off keeps the
+    // open-loop press on a null readback (Ap_ReadbackUnknown_KeepsAnnounceOnPressBehaviour).
+    // ---------------------------------------------------------------------
+
+    private const string CaptainCall = "Autopilot did not engage. Captain action required: engage the autopilot.";
+
+    [Fact]
+    public void Ap_WaitingForState_NeverPressesOnAnUnknownStateAndEndsWithTheCaptainCall()
+    {
+        long now = 0;
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add,
+            () => presses++, () => null, () => now);   // the AP vars are never read
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = 3000;
+        s.WaitForApState = true;
+
+        for (int i = 0; i < UniversalAutomationService.MaxApEngageAttempts; i++)
+        {
+            now = i * 3000L;
+            s.Update(700, 900, 420);             // climbing through the engage height, state unknown
+        }
+        Assert.Equal(0, presses);                // never presses blind: the autopilot may already be on
+        Assert.Empty(events);                    // ... not even the stock event
+        Assert.Empty(spoken);                    // ... and says nothing while it waits
+
+        now = 14999; s.Update(700, 900, 420);    // 1 ms short of the interval after the last attempt
+        Assert.Empty(spoken);
+
+        now = 15000; s.Update(700, 900, 420);    // no definite reading within the attempts: the Captain's
+        Assert.Equal(new[] { CaptainCall }, spoken);
+
+        now = 18000; s.Update(700, 900, 420);    // the leg is resolved: said once
+        now = 21000; s.Update(700, 900, 420);
+        Assert.Equal(new[] { CaptainCall }, spoken);
+        Assert.Equal(0, presses);
+        Assert.Empty(events);
+    }
+
+    [Fact]
+    public void Ap_WaitingForState_PressesOnceTheStateReadsOffAndAnnouncesOnlyOnConfirmation()
+    {
+        long now = 0;
+        bool? engaged = null;                    // the AP vars have not arrived yet
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add,
+            () => presses++, () => engaged, () => now);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = 3000;
+        s.WaitForApState = true;
+
+        s.Update(700, 900, 420);                 // t = 0: unknown - waits
+        Assert.Equal(0, presses);
+        Assert.Empty(spoken);
+
+        engaged = false;                         // the batch arrives: both autopilots off
+        now = 3000; s.Update(800, 900, 500);     // the wait's interval has passed: now it presses
+        Assert.Equal(1, presses);
+        Assert.Empty(spoken);                    // not claimed until the readback confirms
+
+        engaged = true;
+        now = 4000; s.Update(900, 900, 600);     // confirmed
+        Assert.Equal(1, presses);
+        Assert.Equal(new[] { "400 feet. Autopilot engaged." }, spoken);
+
+        now = 7000; s.Update(1000, 900, 700);
+        Assert.Single(spoken);                   // once
+    }
+
+    [Fact]
+    public void Ap_WaitingForState_AutopilotAlreadyOn_NeverPressesAndStaysSilent()
+    {
+        long now = 0;
+        bool? engaged = null;                    // an app restart mid-climb: not read yet
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add,
+            () => presses++, () => engaged, () => now);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = 3000;
+        s.WaitForApState = true;
+
+        s.Update(700, 900, 420);                 // t = 0: unknown - waits (an attempt, nothing pressed)
+        engaged = true;                          // the batch arrives: the autopilot was already on
+        now = 1000; s.Update(800, 900, 500);
+        now = 4000; s.Update(900, 900, 600);
+
+        Assert.Equal(0, presses);                // pressing the toggle would DISCONNECT it
+        Assert.Empty(events);
+        Assert.Empty(spoken);                    // and the service engaged nothing, so it claims nothing
+    }
+
+    // "Autopilot engaged" is spoken only for an engage the service itself pressed. A waiting attempt
+    // presses nothing, so what was pressed on an earlier leg (or before a Reset) must not carry over.
+    [Fact]
+    public void Ap_WaitingForState_TouchdownClearsTheFactThatALegPressed()
+    {
+        long now = 0;
+        bool? engaged = null;
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add,
+            () => presses++, () => engaged, () => now);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = 3000;
+        s.WaitForApState = true;
+
+        s.Update(700, 900, 420);                 // leg 1: unknown - waits
+        engaged = false;
+        now = 3000; s.Update(800, 900, 500);     // presses
+        engaged = true;
+        now = 4000; s.Update(900, 900, 600);     // confirmed and announced
+        Assert.Equal(1, presses);
+        Assert.Single(spoken);
+
+        s.Update(0, 0, 5);                       // touchdown
+
+        engaged = null;
+        now = 10000; s.Update(700, 900, 420);    // leg 2: unknown - waits (an attempt, nothing pressed)
+        engaged = true;
+        now = 11000; s.Update(800, 900, 500);    // found already on
+        Assert.Equal(1, presses);                // leg 2 pressed nothing
+        Assert.Single(spoken);                   // leg 1's call-out only: no second "engaged"
+    }
+
+    [Fact]
+    public void Ap_WaitingForState_ResetClearsTheFactThatALegPressed()
+    {
+        long now = 0;
+        bool? engaged = null;
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add,
+            () => presses++, () => engaged, () => now);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = 3000;
+        s.WaitForApState = true;
+
+        s.Update(700, 900, 420);                 // unknown - waits
+        engaged = false;
+        now = 3000; s.Update(800, 900, 500);     // presses; not confirmed yet
+        Assert.Equal(1, presses);
+
+        s.Reset();                               // a fresh start, as on an aircraft switch
+
+        engaged = null;
+        now = 4000; s.Update(700, 900, 420);     // unknown again - waits (an attempt, nothing pressed)
+        engaged = true;
+        now = 5000; s.Update(800, 900, 500);     // found already on
+        Assert.Equal(1, presses);                // only the press from before the reset
+        Assert.Empty(spoken);                    // and no "engaged" call-out for it
+    }
 }

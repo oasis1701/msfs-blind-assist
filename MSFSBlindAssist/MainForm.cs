@@ -700,6 +700,9 @@ public partial class MainForm : Form
             // Per-aircraft press spacing — the FlyByWire AP 1 push is a toggle (FO-21).
             universalAutomation.ApRetryIntervalMs =
                 currentAircraft?.AutopilotEngageRetryIntervalMs ?? 0;
+            // Per-aircraft: a null engaged-readback is "not read yet", never press blind (FO-21).
+            universalAutomation.WaitForApState =
+                currentAircraft?.AutopilotEngageWaitsForState ?? false;
             if (!universalAutomation.AnyEnabled) return;   // zero SimConnect load when disabled
             simConnectManager.RequestAircraftPosition();
             simConnectManager.RequestFOAltitudeAGL();

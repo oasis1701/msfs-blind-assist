@@ -365,6 +365,15 @@ public interface IAircraftDefinition
     /// </summary>
     int AutopilotEngageRetryIntervalMs { get; }
 
+    /// <summary>
+    /// True when <c>IsAutopilotEngaged</c>'s <c>null</c> means "not read yet" rather than "this
+    /// aircraft exposes no engaged state". The universal auto-engage then never presses on an
+    /// unknown state, because the engage is a toggle and a blind press could disconnect an engaged
+    /// autopilot: it waits for a definite reading, and if none comes within its attempts, the
+    /// Captain call ends it. The FlyByWire family sets it (FO-21).
+    /// </summary>
+    bool AutopilotEngageWaitsForState { get; }
+
     // Display System Monitoring (ECAM for Airbus, EICAS for Boeing, etc.)
     // Aircraft without these systems should use the default implementation (does nothing)
 

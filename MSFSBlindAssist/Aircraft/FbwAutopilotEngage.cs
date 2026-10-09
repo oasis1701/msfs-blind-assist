@@ -6,7 +6,9 @@ namespace MSFSBlindAssist.Aircraft;
 /// <c>AUTOPILOT_ON</c> and sets an <c>AP_engage</c> flag nothing has read since FBW #7587 (A32NX)
 /// and #10855 (A380X), so the engage is the cockpit's AP 1 pushbutton, <c>A32NX.FCU_AP_1_PUSH</c>
 /// (the event the AP 1 button and the ToggleAutopilot1 hotkey already send). The push is a TOGGLE:
-/// it is pressed only while no autopilot reads engaged. Pure, so it is testable without a sim.
+/// it is pressed only once both autopilots read definitively off, never on an unknown state (the
+/// service waits for a reading instead, <c>IAircraftDefinition.AutopilotEngageWaitsForState</c>).
+/// Pure, so it is testable without a sim.
 /// </summary>
 internal static class FbwAutopilotEngage
 {
@@ -14,9 +16,10 @@ internal static class FbwAutopilotEngage
     public const string Ap1ActiveVar = "A32NX_AUTOPILOT_1_ACTIVE";
     public const string Ap2ActiveVar = "A32NX_AUTOPILOT_2_ACTIVE";
 
-    /// <summary>Time between presses, and before giving up after the last one: the AP state
-    /// reaches the cache with the 1 Hz batch, so a press sooner than this could land on an
-    /// autopilot the previous press already engaged — and switch it off.</summary>
+    /// <summary>Time between attempts (a press, or a wait for the first reading), and before giving
+    /// up after the last one: the AP state reaches the cache with the 1 Hz batch, so a press sooner
+    /// than this could land on an autopilot the previous press already engaged — and switch it
+    /// off.</summary>
     public const int RetryIntervalMs = 3000;
 
     /// <summary>True when AP 1 or AP 2 reads engaged; false only when both read definitively off;
@@ -32,32 +35,30 @@ internal static class FbwAutopilotEngage
 
     /// <summary>True while <c>SimConnectManager.SendEvent</c> would hold a dotted event in its calc-path
     /// probe queue instead of sending it (SIM-13; the dotted branch of <c>SendEvent</c>): the MobiFlight
-    /// module is there and the probe has neither verified nor concluded. That queue is sent all at once
-    /// when the probe ends, so several pushes queued by the service's retries would arrive back to back
-    /// and toggle AP 1 on and off again. After the service has already told the Captain to engage the
-    /// autopilot, those late pushes could also switch off the one the Captain engaged since. Only a
-    /// retried press can pile up like that, so this only reports the condition: <see cref="PressFor"/>
-    /// withholds a waiting press just when both autopilots read off, and a single press on an unknown
-    /// state is still sent. Not for the A380, whose <c>A32NX.FCU_*</c> events never wait (SIM-10). The
-    /// arguments are <c>SimConnectManager</c>'s <c>CanExecuteCalculatorCode</c>, <c>CalcPathVerified</c>
-    /// and <c>CalcPathProbeConcluded</c>.</summary>
+    /// bridge object exists and the probe has neither verified nor concluded. The bridge object exists
+    /// on every connection, whether or not the WASM module is installed, so
+    /// <c>CanExecuteCalculatorCode</c> is true either way; with no module the probe can never verify
+    /// and runs its full ~60 s (40 attempts, 1.5 s apart) before it concludes. That queue is sent all
+    /// at once when the probe ends, so several pushes queued by the service's retries would arrive back
+    /// to back and toggle AP 1 on and off again. After the service has already told the Captain to
+    /// engage the autopilot, those late pushes could also switch off the one the Captain engaged
+    /// since. This only reports the condition; <see cref="PressFor"/> decides what to do about it. Not
+    /// for the A380, whose <c>A32NX.FCU_*</c> events never wait (SIM-10). The arguments are
+    /// <c>SimConnectManager</c>'s <c>CanExecuteCalculatorCode</c>, <c>CalcPathVerified</c> and
+    /// <c>CalcPathProbeConcluded</c>.</summary>
     public static bool PressWouldWait(bool canExecuteCalculatorCode, bool calcPathVerified, bool calcPathProbeConcluded)
         => canExecuteCalculatorCode && !calcPathVerified && !calcPathProbeConcluded;
 
-    /// <summary>The event the engage sends: AP 1's push, or null when nothing is sent. Null in two
-    /// cases. An autopilot already reads engaged: the push toggles, so pressing would disconnect it.
-    /// Or both autopilots read definitively off and the press would wait behind the calc-path probe
-    /// (<see cref="PressWouldWait"/>): the service retries from that state, so the waiting pushes
-    /// could pile up and arrive back to back. That press is tried again after
-    /// <see cref="RetryIntervalMs"/>, and if none ever goes out the service's Captain-action call is
-    /// then true. With an unknown state (either autopilot unread, or NaN) the push is sent even if
-    /// it waits: the service presses once from there and never retries, so one queued push cannot
-    /// pile up, and when the probe ends it is sent and engages AP 1.</summary>
+    /// <summary>The event the engage sends: AP 1's push, or null when nothing is sent. The push is a
+    /// TOGGLE, so it goes out only when both autopilots read definitively off and the press would not
+    /// wait behind the calc-path probe (<see cref="PressWouldWait"/>). Null when an autopilot already
+    /// reads engaged: pressing would disconnect it. Null when the state is unknown, an AP var not read
+    /// yet or NaN: a blind press could disconnect an autopilot that is already on, so the service waits
+    /// for a definite reading instead (<c>IAircraftDefinition.AutopilotEngageWaitsForState</c>); this
+    /// guard is the helper's own, since the service never asks to press from there. Null when both read
+    /// off but the press would wait: the service retries from that state, so the waiting pushes could
+    /// pile up and arrive back to back. That press is tried again after <see cref="RetryIntervalMs"/>,
+    /// and if none ever goes out the service's Captain-action call is then true.</summary>
     public static string? PressFor(Func<string, double?> read, bool pressWouldWait = false)
-    {
-        bool? engaged = IsEngaged(read);
-        if (engaged == true) return null;                     // the push toggles: it would disconnect it
-        if (engaged == false && pressWouldWait) return null;  // a retry would queue behind this push
-        return Ap1PushEvent;
-    }
+        => (IsEngaged(read) == false && !pressWouldWait) ? Ap1PushEvent : null;
 }

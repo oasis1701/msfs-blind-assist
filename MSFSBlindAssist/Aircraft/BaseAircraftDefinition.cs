@@ -841,6 +841,11 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// and the MD-11). The FlyByWire family overrides it (FO-21).</summary>
     public virtual int AutopilotEngageRetryIntervalMs => 0;
 
+    /// <summary>Default: <c>IsAutopilotEngaged</c>'s null means "no readable engaged state", so
+    /// the auto-engage presses once and announces on the press. The FlyByWire family overrides it:
+    /// there null is "not read yet" and the engage waits for a definite reading (FO-21).</summary>
+    public virtual bool AutopilotEngageWaitsForState => false;
+
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
 
