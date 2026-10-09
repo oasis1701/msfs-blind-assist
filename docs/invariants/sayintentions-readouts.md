@@ -41,6 +41,10 @@ Corrected 2026-10-08: no longer "ONE capture": two fields are measured in the cr
 
 - The cabin-word veto is overridable ONLY by the three-keyed instruction-shape test (`IsCabinVetoOverridden`: channel not cabin, no cabin marker in the FIELDS, imperative shape in the message via `AtcInstructionVocabulary`) — a silenced ATC instruction is the failure the readout must never have, but "cleared to land"/"taxi"/"runway" are ordinary purser prose. The shape itself rests on a shared `NarrationGuard` lookbehind on every verb-initial leg plus a per-token noun-phrase blocklist inside the `TAXI…VIA` gap — never widen a verb leg without adding its matching rescue leg beside it (`CLEARED TO CROSS` beside `CROSS`, `CONTINUE TAXI` beside `CONTINUE`). A verb leg and its rescue pairing are designed TOGETHER, not by a blanket guarded/unguarded split — `CONTINUE TAXI` carries the guard WITH its own rescue semantics (it defers to the word before `CONTINUE`, not before `TAXI`), while `CLEARED TO CROSS` is deliberately UNGUARDED as `TO`'s rescue; never strip or add a guard on either without re-running the probe matrix against the residual pins. `SayIntentionsTransmissionClassifier.cs` inventories six honest residuals beside `AtcInstructionVocabulary` (lettered a-f) — read them before "fixing" a leak this file already knows about. → [sayintentions.md](../sayintentions.md)
 
+Clarified 2026-10-09: the one-line form's "never widen a verb leg without its matching rescue leg" now says what the classifier's own summary says: where the shared guard catches a genuine ATC form, widen the guard, then add the matching rescue leg beside it, never a hole in the guard (`CLEARED TO CROSS` rescues what TO blocks, `CONTINUE TAXI` what CONTINUE blocks). Evidence: `SayIntentionsTransmissionClassifier`'s class summary.
+
+Split out on 2026-10-09: SIR-16 (one shared `NarrationGuard` on every verb-initial leg, and the `TAXI…VIA` blocklist). This text keeps it as written; it has its own section below.
+
 ## SIR-9
 
 - The SAPI hostname comes from a file this app does not own; validate https + the sayintentions.ai allowlist before attaching the API key, and never log the key (use `SayIntentionsEndpoint.Redact`). → [sayintentions.md](../sayintentions.md)
@@ -68,3 +72,9 @@ Corrected 2026-10-08: no longer "ONE capture": two fields are measured in the cr
 ## SIR-15
 
 - SI request caching must commit AFTER the request completes and coalesce onto the in-flight task — stamping the cache time before awaiting makes a second hotkey press during a slow request speak "no transmission available". → [sayintentions.md](../sayintentions.md)
+
+## SIR-16
+
+- Every VERB-initial leg of `AtcInstructionVocabulary` (HOLD SHORT, HOLD POSITION, GIVE WAY, CROSS, TAXI TO, TAXI…VIA, CONTINUE TAXI, LINE UP AND WAIT, and any new one) carries the ONE shared `NarrationGuard` lookbehind, never a per-leg guard. The verb is the same in both registers (a controller says "cross runway 27", a captain says "we will cross runway 27"), so the word in front of it is what separates them; rounds 1-3 each blocked ONE surface form with its own per-leg guard, and the next review found the modal variant still open ("we WILL cross") or a real instruction newly silenced. The `TAXI…VIA` gap also keeps its per-token noun-phrase blocklist. `SayIntentionsTransmissionClassifierTests.CabinSpeechStaysFilteredEvenWhenItSoundsOperational` catches a stripped guard on some legs only (no row for HOLD POSITION or GIVE WAY), nothing covers a new leg, and every cabin row reaching `TAXI…VIA` has "we" first, so deleting the blocklist fails no test. → [sayintentions.md](../sayintentions.md)
+
+Split from SIR-8 on 2026-10-09: one mechanism per ID.

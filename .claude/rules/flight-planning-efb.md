@@ -33,3 +33,6 @@ Loaded when Claude reads matching code. Background: docs/architecture.md. Full t
 
 Mirrored from taxi-augmentation.md (it governs `FlightPlan.CopyFrom`; change it there and here together):
 - [AUG-2] Every non-null assignment of `MainForm.airportDataProvider` must go through `MainForm.WithTaxiAugmentation`, or online names, aliases and the briefing's OSM tier are silently lost; a database switch carries the plan via `FlightPlan.CopyFrom`, never a field-by-field copy. Full: docs/invariants/taxi-augmentation.md#aug-2
+
+Mirrored from route-briefing.md (it governs the aircraft class `ElectronicFlightBagForm.BuildTaxiRoutesBlockAsync` hands the briefing; change it there and here together):
+- [BRF-7] The briefing's aircraft class comes from the SimBrief OFP ALONE (`AircraftSizeClass.Resolve` in `ElectronicFlightBagForm.BuildTaxiRoutesBlockAsync`), never the loaded aircraft or the sim's `WING SPAN`; navdata taxiway widths stay advisory notes (`TaxiBriefingPlanner.NarrowTaxiways`), never a routing constraint. Full: docs/invariants/route-briefing.md#brf-7
