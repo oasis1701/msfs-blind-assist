@@ -26,3 +26,6 @@ Loaded when Claude reads matching code. Background: docs/aircraft-definitions.md
 
 Mirrored from visual-guidance.md (it governs `VisualGuidanceProfile` in IAircraftDefinition.cs; change it there and here together):
 - [VG-15] Never collapse `GlideslopeAltitudeBiasFt` and `FlareAltitudeBiasFt` into one shared constant: they apply in different code paths (glideslope error vs phase detection) and were measured separately. Full: docs/invariants/visual-guidance.md#vg-15
+
+Mirrored from core-simconnect.md (it governs SendEvent callers in the aircraft definitions; change it there and here together):
+- [SIM-20] Never add a `SimConnectManager.SendEvent` caller off the UI thread (`Task.Run`, a pool timer, after `ConfigureAwait(false)`): it maps each new event name into the unlocked `eventIds` Dictionary, bumping a non-atomic `nextEventId`. Marshal first, or `await` the delay on the UI thread. The FBW A320's `DeferReadback` sends are a known race. Full: docs/invariants/core-simconnect.md#sim-20
