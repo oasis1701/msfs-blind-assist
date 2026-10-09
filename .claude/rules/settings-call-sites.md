@@ -2,6 +2,7 @@
 paths:
   - "MSFSBlindAssist/Settings/UserSettings.cs"
   - "MSFSBlindAssist/Settings/SettingsManager.cs"
+  - "MSFSBlindAssist/Forms/Settings/TaxiGuidancePanel.cs"
 ---
 # Rules whose settings live in UserSettings
 
@@ -12,5 +13,6 @@ MIRRORS: each line below is copied word for word from its area's rule file, beca
 - [DCK-35] `DistanceFormatter` is display-only; guidance thresholds stay unit-native (metric). `GroundTrafficUseMetres` and `GroundDistanceUnit` are independent toggles: never fold them together. Full: docs/invariants/gsx-stands-docking.md#dck-35
 - [SUR-10] The surface-change callout (`SurfaceChangeGate`) has its own switch, is not behind `SuppressCheck`, speaks only a surface FAMILY change confirmed by `ConfirmMetres` from its first reading; other `lastKnownPosition` writers must carry the surface fields forward (more: see full). Full: docs/invariants/surroundings.md#sur-10
 - [DCK-33] Hot paths must not regress: docking far-field math gated to <150 m or engaged, fired callout latches early-out, `TaxiAssistForm`'s gate list cached per ICAO, `SettingsManager.Save` writing outside its static lock. Full: docs/invariants/gsx-stands-docking.md#dck-33
+- [VG-13] Desired and current tone waveforms must default to different shapes (triangle and sine, the user settings `VisualGuidanceToneWaveform` and `VisualGuidanceCurrentToneWaveform`): identical waveforms phase-cancel at a matched state, exactly when the pilot most needs the difference audible. Full: docs/invariants/visual-guidance.md#vg-13
 - [FO-16] The FO AP engagement height is the user setting `FOAutoApEngageAltitudeAgl` (default 350 ft AGL, one global value): never hardcode an engagement altitude in an `FOAutoManager`; the 737's LNAV/VNAV push height (400 ft AGL) is deliberately FIXED and each push is annunciator-guarded (NaN = skip). Full: docs/invariants/first-officer.md#fo-16
 - [FO-19] The 10k landing-light switching is gated by `FOAutoLights10kEnabled` (default ON), and ONLY the light actions/announcements are; baro pushes, the reminder and the crossing latch always run. The checklist tree never uses `TreeView.CheckBoxes = true` (`CheckboxStateImages` + `ShowCheckBox`; never set `.Checked` on headers). Full: docs/invariants/first-officer.md#fo-19

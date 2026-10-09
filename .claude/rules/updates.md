@@ -12,6 +12,8 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*SemanticVersion*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AppVersion*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*ReleaseNotes*.cs"
+  - "MSFSBlindAssist/Forms/UpdateAvailableForm.cs"
+  - "MSFSBlindAssist/Settings/UpdateChannel.cs"
 ---
 # Updates and release channels rules
 

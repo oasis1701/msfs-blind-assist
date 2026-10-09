@@ -9,6 +9,10 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsExternalRoute*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsTaxiPathSnapper*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsGatePositionMatcher*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsDestinationCandidates*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsImportAirport*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsParkingLog*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*HotkeyGuideSayIntentionsChord*.cs"
 ---
 # SayIntentions taxi-route import rules
 
@@ -44,4 +48,4 @@ Loaded when Claude reads matching code. Background: docs/sayintentions.md. Full 
 - [SI-28] `TaxiAssistForm.LoadAirportDataAsync` must drop `_graph` before its awaits and claim `_currentIcao` only after a graph is built, so no failure exit leaves the previous airport's graph standing. Full: docs/invariants/sayintentions-import.md#si-28
 - [SI-29] A ground-track route accepted with NO clearance (`ChooseTaxiwaySource` rule 2) must SAY it is SayIntentions' own plan, not ATC's, and must never discard `GetLastTaxiClearanceAsync`'s `Error`. Full: docs/invariants/sayintentions-import.md#si-29
 - [SI-30] `BuildTaxiRouteFromSayIntentionsAsync` runs as a discarded Task, so EVERY statement (the DB-provider guard and `ValidateDatabaseSimulatorMatch()` included) must sit inside its top-level try, or failures vanish silently. Full: docs/invariants/sayintentions-import.md#si-30
-- [SI-31] `current_airport` holds the ARTCC ident in the cruise: validate every airport candidate against the navdata and fall through, never filter on the KZ prefix alone, and never let an unvalidated `current_airport` dead-end the import. Full: docs/invariants/sayintentions-import.md#si-31
+- [SI-31] `current_airport` holds the ARTCC ident in the cruise: validate every airport candidate against the navdata and fall through, never filter on the KZ prefix alone, and never let an unvalidated `current_airport` dead-end the import (more: see full). Full: docs/invariants/sayintentions-import.md#si-31

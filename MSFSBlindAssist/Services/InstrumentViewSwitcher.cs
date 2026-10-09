@@ -328,9 +328,9 @@ public sealed class InstrumentViewSwitcher
 
         try
         {
-            // Drop the index to a value every view type has before touching the TYPE register.
-            // The sim validates the PAIR on a type write and refuses one whose CURRENT index is
-            // out of range for the type being written — see NeutralViewIndex.
+            // Drop the index to a value every view type has before touching the TYPE register: on
+            // some aircraft the sim refuses a type write while the index holds a high value. Why is
+            // not known (the pair-check theory is disproven) — see NeutralViewIndex.
             _io.SetViewIndex(NeutralViewIndex);
             await _delay(_writeGapMs);
 

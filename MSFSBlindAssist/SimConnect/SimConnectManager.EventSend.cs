@@ -37,9 +37,13 @@ public partial class SimConnectManager
         // so they are deliberate defence in depth, not leftovers. Only ~7 of the ~71 calc call
         // sites in those defs are even this shape; the rest are RPN logic and parameterised
         // K-/H-events that could never be replaced by a plain L:var write.
-        //   * Only for TRUE L:vars: a name with a space or colon is a stock-SimVar shape
-        //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must NOT be written as (>L:..).
-        //     SetLVar always prepends "L:" to varName, so a real caller never passes such a name here.
+        //   * Only for names with no space and no colon [SIM-12]. Stock SimVar names carry one
+        //     (e.g. "TRANSPONDER STATE:1", "INTERACTIVE POINT OPEN:0") and must never be routed through
+        //     the L:var calc path — but an add-on L:var can carry one too: the HS787 passes the
+        //     colon-indexed "B787_IRS_Knob_State:1" here, and it gets the data-def write below. For such
+        //     an L:var that route is unmeasured, not a rule: move it to the calc path only if an in-sim
+        //     read-back shows the data-def write reverting. SetLVar always writes L:<name>, so it can
+        //     never write a stock SimVar: use SetSimVar for one.
         if (CalcPathVerified
             && !string.IsNullOrEmpty(varName)
             && varName.IndexOf(' ') < 0

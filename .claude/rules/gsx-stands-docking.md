@@ -26,19 +26,22 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*StandId*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AircraftSizeClass*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*BacktrackEntry*.cs"
+  - "MSFSBlindAssist/Database/Models/GsxGate.cs"
+  - "MSFSBlindAssist/Database/Models/GateSource.cs"
+  - "MSFSBlindAssist/Settings/DistanceUnit.cs"
 ---
 # Stands, gate lists and docking guidance rules
 
 Loaded when Claude reads matching code. Background: docs/gsx.md. Full text of each rule: docs/invariants/gsx-stands-docking.md.
 
-- [DCK-1] This codebase owns GSX POSITIONING only (gate/stand selection, docking geometry, deice positioning): never add live service-state logic here, and docking must never read service vars. Full: docs/invariants/gsx-stands-docking.md#dck-1
+- [DCK-1] The docking and positioning code owns GSX POSITIONING only (gate/stand selection, docking geometry, deice positioning): never add live service-state logic to it, and docking must never read service vars. Service state and its announcements are Access GSX's ([GSX-16], [GSX-18], [GSX-19]). Full: docs/invariants/gsx-stands-docking.md#dck-1
 - [DCK-2] `GsxNavdataMerger` must never cross-concourse-borrow coordinates: a navdata candidate donates only when its normalized concourse matches the GSX gate's, otherwise drop the spot. Full: docs/invariants/gsx-stands-docking.md#dck-2
 - [DCK-3] GSX gate spot-position priority is `this_parking_pos` -> navdata -> stop position LAST; the stop position is a VDGS nose-stop reference, not an aircraft-datum location. Full: docs/invariants/gsx-stands-docking.md#dck-3
 - [DCK-4] The `.py` per-aircraft stop offset must apply to ALL non-deice gates, `.ini` gates included. Full: docs/invariants/gsx-stands-docking.md#dck-4
 - [DCK-5] `GsxOffset.Zero` must be a strict no-op (skip the shift); any resolver miss at any layer degrades to Zero, never throws or half-applies. Full: docs/invariants/gsx-stands-docking.md#dck-5
 - [DCK-6] The `.ini`/navdata gate LIST and the `.py`/`.ini` stop-offset chain deliberately survive the Remote API move and are not version floors; `GateDataSource` takes the API path only with the `handlerData` capability AND a matching `handlerData.airport.icao`. Full: docs/invariants/gsx-stands-docking.md#dck-6
 - [DCK-7] `ParkingSpot.GsxIdentifier` is set ONLY by `GsxRemoteParkingReader` (fallback lists degrade to manual selection); `ParkingSpot.Radius` is FEET on navdata, METRES on GSX: convert by `Source`, never assume. Full: docs/invariants/gsx-stands-docking.md#dck-7
-- [DCK-8] `ParkingSpot.Name` is the CONCOURSE LETTER on every path, never terminal prose; `uiTerminalName` goes in `TerminalName`, rendered only when `TerminalNameDisambiguates`; split identity with `StandId.Parse`, never a local regex. Full: docs/invariants/gsx-stands-docking.md#dck-8
+- [DCK-8] `ParkingSpot.Name` is the CONCOURSE LETTER on every path, never terminal prose; `uiTerminalName` goes in `TerminalName`, rendered only when `TerminalNameDisambiguates`; split identity with `StandId.Parse`, never a local regex (more: see full). Full: docs/invariants/gsx-stands-docking.md#dck-8
 - [DCK-9] `GsxConcourseLetterFiller` borrows a missing concourse letter right after the reader: NAME-ONLY, never overwriting a letter GSX supplied, and `Name = ""` stays a supported shape. Full: docs/invariants/gsx-stands-docking.md#dck-9
 - [DCK-10] Concourse letters come from `uiTerminalName`'s "Concourse X" FIRST, navdata second (never flip it); navdata needs position AND number within 10 m, disagreeing candidates are refused, and never widen the radius or wording. Full: docs/invariants/gsx-stands-docking.md#dck-10
 - [DCK-11] Remote API headings must go through the same `GsxProfileParser.NormalizeHeading` (0-360) as the `.ini` path, and `double.NaN` (the no-heading sentinel) must pass through unchanged. Full: docs/invariants/gsx-stands-docking.md#dck-11
@@ -64,11 +67,11 @@ Loaded when Claude reads matching code. Background: docs/gsx.md. Full text of ea
 - [DCK-31] Never re-add the runway-style stopped-misaligned pulse to gate lineup; precision parking is docking's job. Full: docs/invariants/gsx-stands-docking.md#dck-31
 - [DCK-32] MainForm must call `taxiGuidanceManager.SetSteeringToneSuppressed(dockingGuidanceManager.IsActive)` every frame so taxi and docking tones never pan at once. Full: docs/invariants/gsx-stands-docking.md#dck-32
 - [DCK-33] Hot paths must not regress: docking far-field math gated to <150 m or engaged, fired callout latches early-out, `TaxiAssistForm`'s gate list cached per ICAO, `SettingsManager.Save` writing outside its static lock. Full: docs/invariants/gsx-stands-docking.md#dck-33
-- [DCK-34] SimConnect `PLANE_HEADING_DEGREES_TRUE`/`_MAGNETIC` are RADIANS despite the name: multiply by 57.2958 before using them as degrees. Full: docs/invariants/gsx-stands-docking.md#dck-34
+- [DCK-34] A SimConnect heading (`PLANE HEADING DEGREES TRUE`/`MAGNETIC`) arrives in the unit its `AddToDataDefinition` asks for: degrees in the position, AI-traffic, visual-guidance and flare definitions, radians in the hotkey, take-off and hand-fly ones, converted once on receipt. Never convert `AircraftPosition.HeadingMagnetic` again. Full: docs/invariants/gsx-stands-docking.md#dck-34
 - [DCK-35] `DistanceFormatter` is display-only; guidance thresholds stay unit-native (metric). `GroundTrafficUseMetres` and `GroundDistanceUnit` are independent toggles: never fold them together. Full: docs/invariants/gsx-stands-docking.md#dck-35
 - [DCK-36] A per-ICAO gate-list cache keys on `GetGateListVersion(icao)` too, via `ShouldRebuildGateList` (never rebuilt on a downgrade); token-only consumers use static `ComputeGateListVersion`; a lost stand leaves NOTHING selected (more: see full). Full: docs/invariants/gsx-stands-docking.md#dck-36
 - [DCK-37] `GateResolver` (the TCAS "at Gate" label) names stands via `ParkingSpotSource.GetNamedSpots`, never raw `GetParkingSpots` and never `GetSelectableGates`. Full: docs/invariants/gsx-stands-docking.md#dck-37
 - [DCK-38] `GsxGateMapper.MapGsxTypeToNavdataType` maps `GATE_EXTRA` (GSX 15) to navdata 14 and `RAMP_GA_EXTRA` (GSX 14) to navdata 15: the numbering is SWAPPED between the enums. Full: docs/invariants/gsx-stands-docking.md#dck-38
 - [DCK-39] The Remote API publishes no docking stop position, so stop geometry still comes from GSX's `.ini`/`.py` profiles; never source the stop from the API's `lat`/`lon`, far from the real VDGS stop point. Full: docs/invariants/gsx-stands-docking.md#dck-39
-- [DCK-40] A stand has ONE name app-wide: `GetSelectableGates` to ACT on a stand, `GetNamedSpots` to name one and for `TaxiGraph.Build`; never build a pilot-heard list from `GetParkingSpots`, nor call the supplier per position update (more: see full). Full: docs/invariants/gsx-stands-docking.md#dck-40
-- [DCK-41] Never feed `TaxiGraph.Build` a spot list other than navdata's own set: its parking pass sets `TaxiNodeType.Parking` and can MOVE A HOLD-SHORT; the one exception is a runway-rows-only build with no parking. Full: docs/invariants/gsx-stands-docking.md#dck-41
+- [DCK-40] A stand has ONE name app-wide: `GetSelectableGates` to ACT on a stand, `GetNamedSpots` to name one and for every `TaxiGraph.Build` given parking; never build a pilot-heard list from `GetParkingSpots`, nor call the supplier per position update (more: see full). Full: docs/invariants/gsx-stands-docking.md#dck-40
+- [DCK-41] Never feed `TaxiGraph.Build` a spot list other than navdata's own set: its parking pass sets `TaxiNodeType.Parking` and can MOVE A HOLD-SHORT; the exceptions are builds given no parking at all: the runway-rows-only ones and the briefing's `OsmPlanningGraph`. Full: docs/invariants/gsx-stands-docking.md#dck-41

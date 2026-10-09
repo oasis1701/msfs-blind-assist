@@ -9,7 +9,9 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 ## FPD-2
 
-- Never render the flyPad scrape as native WinForms controls — only a WebView2 HTML document gives NVDA full browse mode; headings and static text are otherwise unreachable. → [flypad.md](../flypad.md)
+- Never render the flyPad scrape as native WinForms controls — only a WebView2 HTML document gives NVDA full browse mode; headings and static text are otherwise unreachable. The one exception is the silent list mode `FbwEfbForm.CreateControlFor` builds when WebView2 fails to initialise (no user toggle); MD11-13 governs how it shows a disabled control. → [flypad.md](../flypad.md)
+
+Corrected 2026-10-08: names the WebView2-failed list mode, which the rule's "never" did not allow for. Evidence: `FbwEfbForm` (its "LIST MODE (silent fallback)" design note and `CreateControlFor`), and MD11-13's full text on that fallback.
 
 ## FPD-3
 
@@ -38,3 +40,39 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## FPD-9
 
 - Suppress the "Fill … from SimBrief" controls' caption tooltip and icon button (never the value input) on the Ground Payload/Fuel pages — the user imports via the Dashboard instead. → [flypad.md](../flypad.md)
+
+## A380-3
+
+- Never implement the FBW flyPad pushback controls — Robin's team uses GSX for pushback; this is a permanent decision. → [a380x.md](../a380x.md)
+
+Moved 2026-10-08 from docs/invariants/a380-systems.md: the code is the flyPad agent's, which the A320 and A380 share. The ID keeps its prefix.
+
+## FPD-10
+
+- `FbwEfbForm`'s list mode, the silent WinForms fallback when WebView2 fails (`CreateControlFor`, `ApplyDisabledInPlace`), honours a disabled control without disabling it: the control stays focusable, its label carries `DimmedSuffix` (", dimmed"), and activating it says "Unavailable" and posts nothing; never `Enabled = false`, which would take it out of the tab order. List mode dims EVERY control while the browser shell dims buttons and links only, on purpose; never harmonize the two. No test covers list mode, and FPD-2 only names it. → [flypad.md](../flypad.md)
+
+Split from MD11-13 on 2026-10-09: one mechanism per ID. It is a flyPad rule because `FbwEfbForm` is the shell the flyPad, the PMDG EFB and the MD-11 EFB share.
+
+## A380C-12
+
+- Never widen the flyPad Dashboard's column-first read order to other EFB pages without evidence a specific page is jumbled — a blind global split would break single-column pages. → [a380x.md](../a380x.md)
+
+Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`), which the A32NX and the A380 share. The ID keeps its prefix.
+
+## A380C-14
+
+- `buildSettingsLines` must return null (defer to the generic pass) when it finds no recognizable control in a region, rather than rendering an owned-but-blank page — this is the safety net for layouts the builder doesn't recognize. → [a380x.md](../a380x.md)
+
+Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`), which the A32NX and the A380 share. The ID keeps its prefix.
+
+## A380C-15
+
+- Door-tile precise names must never trust the FBW enum DIGIT alone — it can be wrong (index 9 "Main4Right" is actually Main Door 5 Right); always parse the handler comment's enum NAME, falling back to column-based Left/Right only when the enum can't be parsed. → [a380x.md](../a380x.md)
+
+Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`), which the A32NX and the A380 share. The ID keeps its prefix.
+
+## A380C-16
+
+- `A.DOOR_NAMES` (flyPad agent) must be kept in sync with each aircraft def's `_doorDefs` table — the flyPad label and the spoken door name must agree. → [a380x.md](../a380x.md)
+
+Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`, its A320 and A380 entries) and each definition's `_doorDefs`; its mirrors in `a32nx-fenix.md` and `a380-systems.md` point here now. The ID keeps its prefix.

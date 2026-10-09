@@ -91,7 +91,9 @@ public partial class TaxiGuidanceManager
         // touchdown route, RetargetLandingExit's route to another exit, and both landing-handoff
         // re-routes. It LABELS the "Route crossings:" log line (phase=touchdown) and does nothing
         // else: whether the route may start held is now decided by the pass, from the aircraft's own
-        // position and ground speed, which is the whole of PR #238 deferred finding §2. The old
+        // position and AircraftPosition.MayStartHeld (false only from TryRecalculateRoute), never
+        // from ground speed, a gate tried and withdrawn; that is the whole of PR #238 deferred
+        // finding §2. The old
         // `allowStartHold` bool travelled bool -> "load"/"touchdown" string -> bool, so a fourth
         // phase or a typo silently disabled start holds with no compile error.
         bool landingRolloutRoute = false)

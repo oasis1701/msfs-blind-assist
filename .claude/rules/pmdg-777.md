@@ -9,6 +9,7 @@ paths:
   - "MSFSBlindAssist/SimConnect/IPMDGDataManager.cs"
   - "tests/MSFSBlindAssist.Tests/**/*PmdgCdu*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*PmdgSpeedBrakeLever*.cs"
+  - "MSFSBlindAssist/Services/PMDGProgPage*.cs"
 ---
 # PMDG 777 rules
 

@@ -27,13 +27,17 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - Request ids 505–508 are the hand-numbered guidance frames (`(DATA_REQUESTS)505..508`: visual guidance, takeoff assist, taxi-guidance position, flare assist — `SimConnectManager.Monitoring.cs`/`Dispatch.cs`) and 600–607 are the ground-traffic sweeps' rotating range (`REQUEST_GROUND_TRAFFIC`, `GroundTrafficRequestIdCount`) — never assign an id in either range to anything else, and grep for raw `(DATA_REQUESTS)` casts before choosing a new one: SimConnect treats a request issued under an existing id as a REPLACEMENT, so a sweep planned at 501–508 would have cancelled taxi guidance's own position stream (the enum alone does not show those four; an earlier review missed them exactly that way). Pinned by `GroundTrafficRequestIdTests`, which also scans every `*.cs` under `MSFSBlindAssist/` for a raw `(DATA_REQUESTS)NNN` cast, so a future hand-numbered id is caught too. → [architecture.md](../architecture.md)
 
+Added 2026-10-09: 341–348 (camera reads: `REQUEST_CAMERA_VIEW` + `CameraReadIdCount`, each display read on its own id, AI-8), below `INDIVIDUAL_VARIABLE_BASE` and pinned by `CameraReadWaitersTests.TheManagersCameraRange_IsBelowTheIndividualBase_AndClearOfEveryOtherRequestId`. The range was stated only in AI-3's full text, whose rule file loads on no `SimConnectManager` partial but the camera one.
+
 ## SIM-7
 
 - A delivered value is a CHANGE (fires `SimVarUpdated`) only when it moves by more than its definition's `SimVarDefinition.ChangeTolerance`, or the shared `SimConnectManager.ChangeTolerance` (0.001) when that is null — ONE rule, `SimConnectManager.IsValueChange`, for both delivery paths. Widen it only for a var whose readers need a coarse line and whose ripple costs work: the MD-11's `MD11_DC_BUS_VOLTAGE` is 0.5 V (its power gate needs only the 20 V line, and each ripple re-composed every stateful row of the open panel once a second). The cache still takes every delivery, so a drift slower than the tolerance per sample never fires — never widen a var whose reader acts on a small cumulative change, and never one `Md11SeedGate` counts (it compares at the shared constant). → [md11.md](../md11.md)
 
 ## SIM-8
 
-- The calc-path probe MUST report its verdict — `CalcPathVerdict.LogLine` on both outcomes, and `PilotWarning` spoken when an aircraft that registers the probe target (`MSFSBA_BRIDGE_PROBE` — the FBW defs, the Headwind A330 by inheritance, and the TFDi MD-11) concludes UNVERIFIED. MainForm's timer gates on THAT REGISTRATION, never on a type list: a type list is how the MD-11 — every control write a calculator-path CEVENT — sat outside the probe with no module and no warning, while every load logged a false `NOT available after 0 attempt(s)`. It reported NOTHING before, which is the sole reason a broken probe degraded every generic L:var write and dotted FBW event for ten weeks unnoticed. Never make the verdict silent again. → [architecture.md](../architecture.md)
+- The calc-path probe MUST report its verdict — `CalcPathVerdict.LogLine` on both outcomes, and `PilotWarning` spoken when an aircraft that registers the probe target (`MSFSBA_BRIDGE_PROBE` — the FBW defs, the Headwind A330 by inheritance, and the TFDi MD-11) concludes UNVERIFIED. Every other aircraft concludes at once: the log line is still written, but `PilotWarning` returns null for it, so nothing is spoken, by design, since it has nothing to verify and nothing to warn about. MainForm's timer gates on THAT REGISTRATION, never on a type list: a type list is how the MD-11 — every control write a calculator-path CEVENT — sat outside the probe with no module and no warning, while every load logged a false `NOT available after 0 attempt(s)`. It reported NOTHING before, which is the sole reason a broken probe degraded every generic L:var write and dotted FBW event for ten weeks unnoticed. Never make the verdict silent again. → [architecture.md](../architecture.md)
+
+Corrected 2026-10-08: the one-line form had dropped "an aircraft that registers the probe target", so it read as a spoken warning on every aircraft; this text now also says what the others do. Evidence: `CalcPathVerdict.PilotWarning`, `SimConnectManager.MarkCalcPathProbeConcluded` (`aircraftNeedsCalcPath` defaults to false) and `MainForm.BridgeProbeTimer_Tick`; which aircraft register the target is pinned by `CalcPathProbeOptInTests`.
 
 ## SIM-9
 
@@ -53,9 +57,13 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 Reworded 2026-10-07. The original text, verbatim from CLAUDE.md as of `1f37801a`, was: "A name containing a space or colon (e.g. `TRANSPONDER STATE:1`) is a stock SimVar shape and must stay on the data-def write path — never route it through the L:var calc path." Its "is a stock SimVar shape" contradicted VAR-2 as narrowed the same day; the routing it guards is unchanged. The colon-indexed add-on L:var was left out of the "never" the same day: nothing had measured its write on either route.
 
+Corrected 2026-10-08: the one-line form restores this text's condition, which it had shortened to "change it after an in-sim read-back": move colon-indexed add-on L:vars to the calculator path only if the read-back shows the data-def write reverting. Evidence: this rule's 2026-10-07 text above; the route itself is `SimConnectManager.SetLVar` in `SimConnectManager.EventSend.cs`.
+
 ## SIM-13
 
-- H: events must always go to the MobiFlight channel whenever `IsMobiFlightConnected`; dotted events must wait for `CalcPathVerified` (queued, bounded, flushed on verify or probe-conclude) — never fire a dotted event before the probe concludes. → [architecture.md](../architecture.md)
+- H: events must always go to the MobiFlight channel whenever `IsMobiFlightConnected`; dotted events must wait for `CalcPathVerified` (queued, bounded, flushed on verify or probe-conclude) — never fire a dotted event before the probe concludes, except the A380's `A32NX.FCU_*` events, which SIM-10 sends straight to the calculator path without waiting (`SimConnectManager.IsFbwFcuEvent`). → [architecture.md](../architecture.md)
+
+Corrected 2026-10-08: names SIM-10's exception, which this rule's "never" contradicted. Evidence: `SimConnectManager.SendEvent` in `SimConnectManager.EventSend.cs`, which fires the calculator event when `CalcPathVerified || IsFbwFcuEvent(...)` holds, before it queues anything.
 
 ## SIM-14
 
@@ -76,3 +84,9 @@ Reworded 2026-10-07. The original text, verbatim from CLAUDE.md as of `1f37801a`
 ## SIM-18
 
 - The SimConnect "Frame" system event (`SYSTEM_EVENT_ID.Frame`, `SimConnectManager.FrameRate.cs`) is subscribed only while a consumer holds a `StartFrameRateMonitoring` request, released with the last `StopFrameRateMonitoring`, and re-armed by `SetupEvents` on a new connection only when a request is still held. Never hoist the `SubscribeToSystemEvent` into `SetupEvents` unconditionally: the sim raises it once per rendered frame (30 to 120 times a second), each one a `ReceiveMessage` dispatch on the UI thread next to the per-frame SIM_FRAME data the taxi, landing and guidance paths already consume, and the only reader is the File > Sim Performance window. The handler itself only stores a value in `FrameRateMeter`; the window averages it on its own one-second timer. → [architecture.md](../architecture.md)
+
+## SIM-19
+
+- A SIM_FRAME + CHANGED own subscription delivers only on a change, so it is SEEDED by a ONCE request on `FreshReadPolicy.SeedRequestId` (the definition id + 900000, with no request-map entry), and only once `OnRecvSimobjectData` is attached: `SeedSimFrameSubscriptions` runs after `SetupEvents`, and again after a re-registration, because `SetupDataDefinitions`' `DoEvents` drains any answer that arrives before the handler exists. `RequestVariable` also seeds on an empty or forced cache. A seed's answer fills the cache and completes NO fresh-read waiter. The ordering is untestable, and it is SimConnect-wide rather than MD-11-only, which is why this rule lives here. → [architecture.md](../architecture.md)
+
+Split from MD11-8 on 2026-10-09: one mechanism per ID.
