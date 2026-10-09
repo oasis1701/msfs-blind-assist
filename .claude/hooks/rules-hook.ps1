@@ -164,7 +164,8 @@ function Get-RuleFiles([string]$Root) {
     }
     $keys = $names.ToArray()
     $values = $items.ToArray()
-    [Array]::Sort($keys, $values, [StringComparer]::Ordinal)
+    # The [Array] casts matter: without them Windows PowerShell 5.1 binds the generic overload and sorts the keys only.
+    [Array]::Sort([Array]$keys, [Array]$values, [StringComparer]::Ordinal)
     return ,$values
 }
 

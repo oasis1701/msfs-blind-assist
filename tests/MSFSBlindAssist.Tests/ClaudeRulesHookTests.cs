@@ -45,6 +45,23 @@ public class ClaudeRulesHookTests : IDisposable
     }
 
     [Fact]
+    public void For_lists_rule_files_in_ordinal_order_not_directory_order()
+    {
+        // NTFS lists a-x.md before B-x.md (case-insensitive), ordinal order puts B-x.md first. Windows PowerShell 5.1
+        // binds [Array]::Sort($keys, $values, ...) to the generic overload and sorts a converted copy of $values, so
+        // without the [Array] casts the keys are sorted and the rule files keep the directory's order.
+        string checkout = NewTempDir();
+        CreateFile(checkout, ".git", "gitdir: elsewhere\n");
+        CreateFile(checkout, ".claude/rules/a-x.md", "---\npaths:\n  - \"src/x.cs\"\n---\n# A\n- [A-1] r\n");
+        CreateFile(checkout, ".claude/rules/B-x.md", "---\npaths:\n  - \"src/x.cs\"\n---\n# B\n- [B-1] r\n");
+
+        HookRun run = RunHook(new[] { "for", "src/x.cs" }, workingDirectory: checkout);
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Contains("src/x.cs: .claude/rules/B-x.md, .claude/rules/a-x.md (", run.Stdout);
+    }
+
+    [Fact]
     public void For_machine_output_matches_the_guard_matcher_for_every_repo_file()
     {
         List<string> files = ClaudeContextBudgetTests.RepoFiles().ToList();
@@ -131,7 +148,9 @@ public class ClaudeRulesHookTests : IDisposable
         string file = CreateFile(worktree, "MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs");
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
 
-        Assert.NotNull(HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1"), env: env)));
+        JsonElement? first = HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1"), env: env));
+        Assert.NotNull(first);
+        Assert.Contains("Not shown in full", first.Value.GetProperty("additionalContext").GetString());
         Assert.Null(HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1"), env: env)));
     }
 
@@ -744,8 +763,8 @@ public class ClaudeRulesHookTests : IDisposable
     [Fact]
     public void An_agent_worktree_needs_no_instruction()
     {
-        // Claude Code's own agent-* worktrees are filed under a key that is never the parent session's, so the exemption
-        // by name is what keeps them quiet. Pass a transcript key that differs: without one the hook is silent anyway.
+        // The transcript key here differs from the worktree's own key, so only the agent-* exemption by name keeps the
+        // hook silent. Pass a differing key: without a transcript_path the hook is silent anyway.
         string cwd = Path.Combine(NewTempDir(), ".claude", "worktrees", "agent-abc");
 
         Assert.Null(HookOutput(RunHook(new[] { "subagent-start" },
@@ -799,10 +818,12 @@ public class ClaudeRulesHookTests : IDisposable
     [Fact]
     public void Settings_register_the_pinned_hooks()
     {
-        // Pinned on purpose: every filter here was checked in a live session (2026-10-08). Some filters never match
+        // Pinned on purpose: the original filters were checked in a live session (2026-10-08). The Python filters were
+        // added 2026-10-09 (CCT-7) and Bash(python *) was live-checked that day; Bash(python3 *), Bash(py *) and the
+        // PowerShell Python filters are pinned but not individually live-checked. Some filters never match
         // (Write(...), Edit(...) on a Write, redirect forms such as Bash(cat >*)), and one naming more than the command
         // (Bash(git diff*)) runs on any command holding $VAR or $(). Change a filter only after the live checks in
-        // docs/development.md, then update this list (CCT-3). Python filters added 2026-10-09 (CCT-7).
+        // docs/development.md, then update this list (CCT-3).
         List<RegisteredHook> hooks = RegisteredHooks();
         foreach (RegisteredHook hook in hooks)
         {
