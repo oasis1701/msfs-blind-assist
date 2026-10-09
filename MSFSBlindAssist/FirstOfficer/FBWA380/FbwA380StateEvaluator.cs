@@ -10,6 +10,10 @@ namespace MSFSBlindAssist.FirstOfficer.FBWA380;
 /// </summary>
 public sealed class FbwA380StateEvaluator : LVarStateEvaluator
 {
+    /// <summary>The CONF 3 landing selection the auto-flap cap reads (FOA-6): the A380X's own
+    /// name; nothing in FlyByWire writes A32NX_SPEEDS_LANDING_CONF3 any more.</summary>
+    internal const string LandingConf3Field = "A380X_FM_LANDING_CONF3";
+
     private static readonly string[] PollFields =
     {
         "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO",
@@ -57,7 +61,7 @@ public sealed class FbwA380StateEvaluator : LVarStateEvaluator
         "ELEC_APU_GEN:1", "ELEC_APU_GEN:2",
         // Auto-flap schedule inputs (speed tape + landing config + flaps handle).
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F", "A32NX_SPEEDS_VFEN",
-        "A32NX_SPEEDS_LANDING_CONF3", "A32NX_FLAPS_HANDLE_INDEX",
+        LandingConf3Field, "A32NX_FLAPS_HANDLE_INDEX",
     };
 
     public override IReadOnlyList<string> OnRequestPollFields => PollFields;

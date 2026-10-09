@@ -4,8 +4,9 @@ using MSFSBlindAssist.Accessibility;
 namespace MSFSBlindAssist.FirstOfficer.HWA330;
 
 /// <summary>
-/// Automated gear, autopilot and flap management for the FlyByWire A320.
-/// Gear/AP mirror the Fenix FOAutoManager. The flap schedule is A380-specific,
+/// Automated flap management for the Headwind A330. Gear and autopilot left this class in
+/// July 2026 for the app-wide UniversalAutomationService (FO-21 for the AP 1 press). The flap
+/// schedule is A380-specific,
 /// driven by the published speed-tape L:vars (green dot / S / F / VFE-next):
 /// extension on approach (capped at flaps 3 when the MFD PERF APPR landing
 /// config is CONF 3), retraction after takeoff / go-around, and the Airbus SOP

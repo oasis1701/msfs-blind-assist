@@ -13,6 +13,11 @@ namespace MSFSBlindAssist.FirstOfficer.FBWA320;
 /// </summary>
 public sealed class FbwA320StateEvaluator : LVarStateEvaluator
 {
+    /// <summary>The CONF 3 landing selection the auto-flap cap reads (FOA-6). FlyByWire #10890
+    /// (2026-09-11) renamed it from A32NX_SPEEDS_LANDING_CONF3, which nothing writes any more;
+    /// the Headwind A330 still writes the old name (HwA330StateEvaluator).</summary>
+    internal const string LandingConf3Field = "A32NX_FM_LANDING_CONF3";
+
     private static readonly string[] PollFields =
     {
         // Batteries (A320 has only 2 — no ESS/APU battery like the A380's 4).
@@ -62,14 +67,14 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
         // Ctrl+P autopilot window, and the FD steps silently did nothing.
         "A32NX_FCU_EFIS_L_FD_LIGHT_ON", "A32NX_FCU_EFIS_R_FD_LIGHT_ON",
         "A32NX_OVHD_INTLT_ANN", "A32NX_OVHD_INTLT_DOME", "A32NX_STBY_COMPASS_LIGHT_TOGGLE",
-        // Auto-flap schedule inputs (speed tape + flaps handle). A32NX_SPEEDS_LANDING_CONF3
-        // was previously absent here AND unregistered in the definition, so `conf3` was
-        // permanently NaN and the CONF 3 landing cap could never engage (fixed 2026-08-30).
+        // Auto-flap schedule inputs (speed tape + flaps handle). The CONF 3 landing selection
+        // was absent here AND unregistered until 2026-08-30, and read FBW's pre-#10890 name until
+        // 2026-10-09: either way `conf3` was NaN and the cap took flaps FULL (FOA-6).
         // VFE-next comes from the FAC's V_FE_NEXT word because FBW #10890 stopped publishing
         // A32NX_SPEEDS_VFEN (docs/a32nx.md).
         "A32NX_SPEEDS_GD", "A32NX_SPEEDS_S", "A32NX_SPEEDS_F",
         "FAC_1_V_FE_NEXT", "FAC_2_V_FE_NEXT",
-        "A32NX_SPEEDS_LANDING_CONF3",
+        LandingConf3Field,
         "WIPER_LEFT", "WIPER_RIGHT",
         "A32NX_RCDR_GROUND_CONTROL_ON",
         // Gear legs (FbwA320GearConfirmation)
