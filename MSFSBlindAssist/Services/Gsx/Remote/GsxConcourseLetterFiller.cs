@@ -74,9 +74,10 @@ namespace MSFSBlindAssist.Services.Gsx.Remote;
 /// <para>
 /// <b>NAME-ONLY. Nothing else is ever imported from the matched navdata spot</b> — not the
 /// coordinates, not the heading, not the radius, not the stop position. This is deliberately NOT
-/// a merge: the Remote API's own values are complete and authoritative for all of those, which is
-/// exactly why <c>GateDataSource.TryBuildGatesFromRemoteApi</c> does not call
-/// <c>GsxNavdataMerger</c> wholesale. It also never OVERWRITES a letter GSX did supply — same
+/// a merge: the Remote API's own values are authoritative for all of those wherever GSX publishes
+/// them (a stand no profile covers gets its geometry from <see cref="GsxNavdataGeometryFiller"/>,
+/// never from this filler), which is exactly why <c>GateDataSource.TryBuildGatesFromRemoteApi</c>
+/// does not call <c>GsxNavdataMerger</c> wholesale. It also never OVERWRITES a letter GSX did supply — same
 /// "only fill what is EMPTY" rule the <c>.ini</c> path applies, and the same rule the taxi-data
 /// augmentation follows (navdata is authoritative; other sources only fill gaps).
 /// </para>

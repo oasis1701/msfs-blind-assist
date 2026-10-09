@@ -15,6 +15,7 @@ paths:
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
   - "MSFSBlindAssist/Services/Gsx/Remote/GsxConcourseLetterFiller.cs"
   - "MSFSBlindAssist/Services/Gsx/Remote/GsxTerminalDisambiguator.cs"
+  - "MSFSBlindAssist/Services/Gsx/Remote/GsxNavdataGeometryFiller.cs"
   - "tests/MSFSBlindAssist.Tests/**/*DistanceFormatter*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*DistanceUnit*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*GateResolver*.cs"
@@ -75,3 +76,6 @@ Loaded when Claude reads matching code. Background: docs/gsx.md. Full text of ea
 - [DCK-39] The Remote API publishes no docking stop position, so stop geometry still comes from GSX's `.ini`/`.py` profiles; never source the stop from the API's `lat`/`lon`, far from the real VDGS stop point. Full: docs/invariants/gsx-stands-docking.md#dck-39
 - [DCK-40] A stand has ONE name app-wide: `GetSelectableGates` to ACT on a stand, `GetNamedSpots` to name one and for every `TaxiGraph.Build` given parking; never build a pilot-heard list from `GetParkingSpots`, nor call the supplier per position update (more: see full). Full: docs/invariants/gsx-stands-docking.md#dck-40
 - [DCK-41] Never feed `TaxiGraph.Build` a spot list other than navdata's own set: its parking pass sets `TaxiNodeType.Parking` and can MOVE A HOLD-SHORT; the exceptions are builds given no parking at all: the runway-rows-only ones and the briefing's `OsmPlanningGraph`. Full: docs/invariants/gsx-stands-docking.md#dck-41
+- [DCK-42] `GsxNavdataGeometryFiller` runs AFTER the `.ini` join, BEFORE `DropUnusableHeadings`, filling ONLY what GSX omitted (NaN heading, null size) from a same-numbered NAVDATA row within `MatchRadiusMetres`, own suffix first, never by letter; unnumbered only from a lone unnumbered row; disagreeing candidates are refused; FEET become metres. Full: docs/invariants/gsx-stands-docking.md#dck-42
+- [DCK-43] `GsxRemoteParkingReader` takes `Type` from `uiType` whenever the `type` number resolves to 0 (absent, or no constant matches it), upper-casing INVARIANTLY; `maxWingspan` >= `UnlimitedWingspanMetres` (999) is GSX's unconfigured-stand sentinel and reads as unpublished, never as a 499.5 m radius. Full: docs/invariants/gsx-stands-docking.md#dck-43
+- [DCK-44] `ParkingSpot.GsxUnconfigured` is set ONLY by `GsxRemoteParkingReader` (GSX sent no `heading` and no `hasJetway` value, a JSON null counting as none: no profile covers the stand); only then does `GsxNavdataGeometryFiller` borrow `HasJetway`/`AirlineCodes`, and `GsxTerminalFeatureSource` skips such stands (their header is GSX's own). Full: docs/invariants/gsx-stands-docking.md#dck-44

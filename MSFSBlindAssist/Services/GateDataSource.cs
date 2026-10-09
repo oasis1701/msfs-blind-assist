@@ -22,12 +22,16 @@ namespace MSFSBlindAssist.Services;
 /// <see cref="GsxNavdataMerger"/>. Parsed profiles are cached per (path, last-write-time).</item>
 /// <item>The navdata provider, unchanged.</item>
 /// </list>
-/// The Remote API path takes exactly TWO things from outside the API, both narrow and both
+/// The Remote API path takes exactly THREE things from outside the API, all narrow and all
 /// documented at their call sites below: the docking STOP POSITION from the GSX <c>.ini</c>
-/// (<see cref="GsxStopPositionJoiner"/>), and the CONCOURSE LETTER from navdata
-/// (<see cref="GsxConcourseLetterFiller"/>, name-only, position-matched). Everything else — the
-/// coordinates, heading, radius, size, jetway/VDGS metadata — comes from the API and stays
-/// authoritative, which is why this path never calls <see cref="GsxNavdataMerger"/> wholesale.
+/// (<see cref="GsxStopPositionJoiner"/>), the CONCOURSE LETTER from navdata
+/// (<see cref="GsxConcourseLetterFiller"/>, name-only, position-matched), and the HEADING and SIZE
+/// GSX left out of any stand, from the same navdata stand (<see cref="GsxNavdataGeometryFiller"/>,
+/// gaps only: mostly the stands no GSX profile section covers, which also take the jet-bridge flag
+/// and airline codes, but also a covered stand GSX sent without one, such as KJFK's Gate 1A).
+/// Everything GSX does publish (the coordinates, and the heading, radius, size and jetway/VDGS
+/// metadata of a configured stand) stays authoritative, which is why this path never calls
+/// <see cref="GsxNavdataMerger"/> wholesale.
 /// A stop position (docking's input) is available only via the <c>.ini</c> — the Remote API path
 /// joins it in from the SAME <c>.ini</c> profile when one exists for the airport
 /// (<see cref="GsxStopPositionJoiner"/>); when it doesn't, stop fields stay null exactly like a
@@ -453,10 +457,18 @@ public sealed class GateDataSource
 
             var spots = GsxRemoteParkingReader.Read(airport, icao);
 
+            // ONE navdata read for the whole path, shared by the two navdata borrows below: the
+            // concourse letter, and the geometry GSX leaves out for a stand no profile covers.
+            // Lazy, so an airport that needs neither pays nothing; each filler catches a failed
+            // read itself, so Lazy's cached exception reaches no caller.
+            var navdataOnce = new Lazy<IReadOnlyList<ParkingSpot>?>(() => _navdata.GetParkingSpots(icao));
+
             // Fill in the concourse letter GSX's own uiGateName usually omits ("Gate 25" at
             // "Terminal 4 - Concourse B" is stand B25). NAME-ONLY -- nothing else is taken from
             // navdata, which is exactly why this is NOT a GsxNavdataMerger call: the API's
-            // coordinates, heading, radius and metadata are complete and stay authoritative.
+            // coordinates, heading, radius and metadata stay authoritative wherever GSX publishes
+            // them (a stand no profile covers gets its heading, size and (DCK-44) jet bridge and
+            // airline codes from navdata below, DCK-42).
             // Without it every such stand renders as "25" while SayIntentions asks for "B25",
             // and the assigned-gate lookup falls through its chain to the ARRIVAL RUNWAY.
             //
@@ -468,9 +480,10 @@ public sealed class GateDataSource
             //
             // The navdata read is a DELEGATE, not a list: GsxConcourseLetterFiller invokes it at
             // most once and not at all when every stand already has a letter, so an airport that
-            // needs nothing pays nothing for a database query on the UI thread. It is also the
-            // ONE navdata read on this path -- never a per-stand lookup over ~231 stands.
-            spots = GsxConcourseLetterFiller.Fill(spots, () => _navdata.GetParkingSpots(icao));
+            // needs nothing pays nothing for a database query on the UI thread. It is one read,
+            // now shared with the geometry fill below through navdataOnce -- never a per-stand
+            // lookup over ~231 stands.
+            spots = GsxConcourseLetterFiller.Fill(spots, () => navdataOnce.Value);
 
             if (_locator.TryFindProfile(icao, out string iniPath))
             {
@@ -489,6 +502,12 @@ public sealed class GateDataSource
                     Log.Debug("Gsx", $"gate list: .ini join failed for {icao}, stop positions left null: {ex.Message}");
                 }
             }
+
+            // AFTER the .ini join, so GSX's own this_parking_pos heading wins wherever the profile
+            // covers the stand, and BEFORE the drop, so a stand only navdata can orient is kept.
+            // GSX publishes no heading, type or real size for a stand no profile section covers
+            // (75 of 79 live at KSAN, 208 of 208 at KSFO); without this they were all dropped [DCK-42].
+            spots = GsxNavdataGeometryFiller.Fill(spots, () => navdataOnce.Value);
 
             spots = DropUnusableHeadings(spots, icao);
 
@@ -525,10 +544,11 @@ public sealed class GateDataSource
     /// (<see cref="GsxRemoteParkingReader.HasUsableHeading"/> false) after the <c>.ini</c> join
     /// has had its chance to recover one — the last gate before a <see cref="double.NaN"/> could
     /// reach docking geometry or the UI. Logs ONE line naming every dropped stand (never per-spot
-    /// spam) only when at least one was actually dropped; this is expected to be rare (GSX omits a
-    /// heading for 1/238 real stands in the KJFK capture, and the <c>.ini</c> join recovers most of
-    /// those), so when it does happen it means neither GSX nor the <c>.ini</c> had a heading for
-    /// that stand — worth a line, not worth an exception or a fallback.
+    /// spam) only when at least one was actually dropped. By the time a stand reaches here, GSX,
+    /// its <c>.ini</c> (<see cref="GsxStopPositionJoiner"/>) and navdata
+    /// (<see cref="GsxNavdataGeometryFiller"/>) have all had their chance to orient it, so a drop
+    /// means none of the three knows which way the stand faces. That is worth a line, not an
+    /// exception or a fallback.
     /// </summary>
     private static List<ParkingSpot> DropUnusableHeadings(List<ParkingSpot> spots, string icao)
     {
@@ -550,7 +570,7 @@ public sealed class GateDataSource
         if (dropped is { Count: > 0 })
             Log.Warn("Gsx",
                 $"gate list: dropped {dropped.Count} stand(s) with no usable heading for {icao} " +
-                $"(neither GSX nor the .ini had one): {string.Join(", ", dropped)}");
+                $"(neither GSX, its .ini nor navdata had one): {string.Join(", ", dropped)}");
 
         return kept;
     }
