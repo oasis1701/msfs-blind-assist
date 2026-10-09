@@ -831,7 +831,7 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         var groupNode = selectedNode?.Parent == null ? selectedNode : selectedNode?.Parent;
         if (groupNode?.Tag is not string groupId) return;
 
-        var flow = FlowForGroup(groupId);
+        var flow = RelatedFlow.For(_flows, groupId);
         if (flow == null)
         {
             _announcer.AnnounceImmediate("No related flow found for this section");
@@ -843,27 +843,6 @@ public class FirstOfficerForm<TExec, TState> : Form, IFirstOfficerWindow
         int flowIndex = _flows.IndexOf(flow);
         if (flowIndex >= 0) _flowListBox.SelectedIndex = flowIndex;
         StartSelectedFlow();
-    }
-
-    // Strip a trailing "_CL" so a readback group and its action group share one base
-    // phase key (e.g. BEFORE_START_CL → BEFORE_START).
-    private static string BasePhaseId(string groupId)
-        => groupId.EndsWith("_CL", StringComparison.Ordinal) ? groupId[..^3] : groupId;
-
-    /// <summary>
-    /// Resolve the flow for a selected checklist group. Robust across aircraft whose flows
-    /// reference the ACTION group, the readback "_CL" group, or neither: a flow's Id is the
-    /// phase base (COCKPIT_PREP, BEFORE_START, …), so we match the exact related id, then the
-    /// flow Id against the group's base phase, then any related id's base phase. This fixed
-    /// the A380 (its flows list only the "_CL" groups, so selecting an action group found
-    /// nothing) and hardens every aircraft against the same action-vs-readback mismatch.
-    /// </summary>
-    private FlowDefinition<TState>? FlowForGroup(string groupId)
-    {
-        string baseId = BasePhaseId(groupId);
-        return _flows.FirstOrDefault(f => f.RelatedChecklistGroupIds.Contains(groupId))
-            ?? _flows.FirstOrDefault(f => f.Id == baseId)
-            ?? _flows.FirstOrDefault(f => f.RelatedChecklistGroupIds.Any(id => BasePhaseId(id) == baseId));
     }
 
     /// <summary>
