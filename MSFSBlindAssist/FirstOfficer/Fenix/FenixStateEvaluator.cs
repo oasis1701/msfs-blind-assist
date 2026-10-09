@@ -79,6 +79,13 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
             case "FO_WXR_PWS_OFF":
                 value = Both(GetValue("S_WR_SYS"), GetValue("S_WR_PRED_WS"), WxrPwsOff);
                 return true;
+            // The Taxi flow's takeoff-memo check (TX_MEMO_CHECK): ground spoilers armed, a takeoff
+            // flap lever and the memo's SIGNS line on, from the fields and conditions of the four
+            // Taxi checklist lines the check completes.
+            case "FO_TAXI_MEMO_OK":
+                value = TaxiMemoOk(GetValue("A_FC_SPEEDBRAKE"), GetValue("S_FC_FLAPS"),
+                    GetValue("S_OH_SIGNS"), GetValue("S_OH_SIGNS_SMOKING"));
+                return true;
             // The landing memo's flaps line: FULL (4), or 3 with the GPWS LDG FLAP 3 switch on.
             case "FO_LDG_FLAPS_SET":
                 value = Both(GetValue("S_FC_FLAPS"), GetValue("S_OH_GPWS_LDG_FLAP3"), LdgFlapsSet);
@@ -132,6 +139,18 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
     /// <summary>The landing memo's flaps: FULL (4), or 3 when the GPWS LDG FLAP 3 switch is on.</summary>
     internal static bool LdgFlapsSet(double flaps, double conf3) =>
         conf3 > 0.5 ? Math.Abs(flaps - 3) < 0.5 : Math.Abs(flaps - 4) < 0.5;
+
+    /// <summary>The Taxi flow's takeoff-memo check (FO_TAXI_MEMO_OK): ground spoilers ARMED
+    /// (A_FC_SPEEDBRAKE 0), the flap lever in a takeoff position (1-3, the AS_FLAPS test) and the
+    /// memo's SIGNS line on (seat belts ON, no smoking AUTO or ON) — the conditions of
+    /// TXC_MEMO_SPLRS, TXC_MEMO_FLAPS and TXC_MEMO_SIGNS. NaN when any input is unknown (unknown is
+    /// not false, Both's contract), else 1 when all hold and 0 when any does not.</summary>
+    internal static double TaxiMemoOk(double speedbrake, double flapLever, double seatBelts, double noSmoking) =>
+        double.IsNaN(speedbrake) || double.IsNaN(flapLever) || double.IsNaN(seatBelts) || double.IsNaN(noSmoking)
+            ? double.NaN
+            : Math.Abs(speedbrake) < 0.5 && FenixFlowDefinitions.IsTakeoffFlapsLever(flapLever)
+              && seatBelts > 0.5 && noSmoking > 0.5
+                ? 1.0 : 0.0;
 
     /// <summary>Captain-side baro: STD, else the value in the unit the EFIS shows
     /// (S_FCU_EFIS1_BARO_MODE 0 = inHg, 1 = hPa). Null whenever an input is unknown.</summary>

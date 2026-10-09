@@ -139,8 +139,23 @@ public class FenixReadbackTests
     public void Synthetic_fields_are_unknown_with_no_data()
     {
         var e = new FenixStateEvaluator();
-        foreach (var f in new[] { "FO_WXR_ON_AUTO", "FO_WXR_PWS_OFF", "FO_LDG_FLAPS_SET" })
+        foreach (var f in new[] { "FO_WXR_ON_AUTO", "FO_WXR_PWS_OFF", "FO_LDG_FLAPS_SET", "FO_TAXI_MEMO_OK" })
             Assert.True(double.IsNaN(e.GetValue(f)), f);
+    }
+
+    [Fact]
+    public void Taxi_memo_check_reads_the_fields_its_checklist_lines_read()
+    {
+        // A_FC_SPEEDBRAKE 0 = ARMED; S_FC_FLAPS 2; seat belts ON; no smoking AUTO.
+        var e = new FenixStateEvaluator();
+        e.SetSimConnect(SeededSimConnectCache.With(
+            ("A_FC_SPEEDBRAKE", 0), ("S_FC_FLAPS", 2), ("S_OH_SIGNS", 1), ("S_OH_SIGNS_SMOKING", 1)));
+        Assert.Equal(1.0, e.GetValue("FO_TAXI_MEMO_OK"));
+
+        // Flaps still up: the check reads not set.
+        e.SetSimConnect(SeededSimConnectCache.With(
+            ("A_FC_SPEEDBRAKE", 0), ("S_FC_FLAPS", 0), ("S_OH_SIGNS", 1), ("S_OH_SIGNS_SMOKING", 1)));
+        Assert.Equal(0.0, e.GetValue("FO_TAXI_MEMO_OK"));
     }
 
     [Fact]
@@ -341,4 +356,30 @@ public class FenixReadbackValueTests
     [InlineData(0, 1, false)]
     public void Landing_memo_flaps_are_full_or_three_with_the_conf3_switch(double flaps, double conf3, bool expected)
         => Assert.Equal(expected, FenixStateEvaluator.LdgFlapsSet(flaps, conf3));
+
+    // The Taxi flow's takeoff-memo check (FO_TAXI_MEMO_OK): A_FC_SPEEDBRAKE 0 = ARMED; S_FC_FLAPS 1-3
+    // is a takeoff flap; S_OH_SIGNS 1 = seat belts ON; S_OH_SIGNS_SMOKING 1 AUTO / 2 ON (the memo's
+    // SIGNS line, TXC_MEMO_SIGNS, needs both).
+    [Theory]
+    [InlineData(0, 1, 1, 1, 1.0)]   // armed, flaps 1, seat belts on, no smoking auto
+    [InlineData(0, 3, 1, 2, 1.0)]   // flaps 3, no smoking on
+    [InlineData(1, 1, 1, 1, 0.0)]   // spoilers disarmed
+    [InlineData(0, 0, 1, 1, 0.0)]   // flaps up, held until the holding point
+    [InlineData(0, 4, 1, 1, 0.0)]   // FULL is not a takeoff setting
+    [InlineData(0, 1, 0, 1, 0.0)]   // seat belts off
+    [InlineData(0, 1, 1, 0, 0.0)]   // no smoking off
+    public void Taxi_memo_check_needs_spoilers_armed_takeoff_flaps_and_signs_on(
+        double speedbrake, double flaps, double seatBelts, double noSmoking, double expected)
+        => Assert.Equal(expected, FenixStateEvaluator.TaxiMemoOk(speedbrake, flaps, seatBelts, noSmoking));
+
+    [Fact]
+    public void Taxi_memo_check_is_unknown_while_any_input_is_unknown()
+    {
+        Assert.True(double.IsNaN(FenixStateEvaluator.TaxiMemoOk(double.NaN, 1, 1, 1)));
+        Assert.True(double.IsNaN(FenixStateEvaluator.TaxiMemoOk(0, double.NaN, 1, 1)));
+        Assert.True(double.IsNaN(FenixStateEvaluator.TaxiMemoOk(0, 1, double.NaN, 1)));
+        Assert.True(double.IsNaN(FenixStateEvaluator.TaxiMemoOk(0, 1, 1, double.NaN)));
+        // Unknown outranks wrong (LVarStateEvaluator.Both's contract): flaps up, seat belts unread.
+        Assert.True(double.IsNaN(FenixStateEvaluator.TaxiMemoOk(0, 0, double.NaN, 1)));
+    }
 }

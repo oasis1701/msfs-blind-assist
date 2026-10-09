@@ -106,7 +106,8 @@ public class HwA330ReadbackTests
     public void Synthetic_fields_are_unknown_with_no_data()
     {
         var e = new HwA330StateEvaluator();
-        foreach (var f in new[] { "FO_WXR_ON_AUTO", "FO_WXR_PWS_OFF", "FO_SIGNS_ON", "FO_LDG_FLAPS_SET", "FO_RUDDER_TRIM_NEUTRAL" })
+        foreach (var f in new[] { "FO_WXR_ON_AUTO", "FO_WXR_PWS_OFF", "FO_SIGNS_ON", "FO_LDG_FLAPS_SET", "FO_RUDDER_TRIM_NEUTRAL",
+                                  "FO_TAXI_MEMO_OK" })
             Assert.True(double.IsNaN(e.GetValue(f)), f);
     }
 
@@ -212,5 +213,43 @@ public class HwA330ReadbackTests
         // The FBW baro display words never reach the cache on the A339X: the A330 must not rely on them.
         Assert.DoesNotContain("A32NX_FCU_LEFT_EIS_BARO_HPA", polled);
         Assert.DoesNotContain("A32NX_FCU_LEFT_EIS_BARO", polled);
+    }
+
+    // The Taxi flow's takeoff-memo check (FO_TAXI_MEMO_OK): ground spoilers armed (A32NX_SPOILERS_ARMED
+    // 1), the flap handle at a takeoff position (1-3) and the memo's seat-belts line on (FO_SIGNS_ON 1,
+    // the sign LAMP on this airframe, never the 3-position switch).
+    [Theory]
+    [InlineData(1, 1, 1, 1.0)]
+    [InlineData(1, 3, 1, 1.0)]
+    [InlineData(0, 1, 1, 0.0)]   // spoilers not armed
+    [InlineData(1, 0, 1, 0.0)]   // flaps up, held until the holding point
+    [InlineData(1, 4, 1, 0.0)]   // FULL is not a takeoff setting
+    [InlineData(1, 1, 0, 0.0)]   // seat belts off
+    public void Taxi_memo_check_needs_spoilers_armed_takeoff_flaps_and_seat_belts_on(
+        double spoilers, double flaps, double seatBelts, double expected)
+        => Assert.Equal(expected, HwA330StateEvaluator.TaxiMemoOk(spoilers, flaps, seatBelts));
+
+    [Fact]
+    public void Taxi_memo_check_is_unknown_while_any_input_is_unknown()
+    {
+        Assert.True(double.IsNaN(HwA330StateEvaluator.TaxiMemoOk(double.NaN, 1, 1)));
+        Assert.True(double.IsNaN(HwA330StateEvaluator.TaxiMemoOk(1, double.NaN, 1)));
+        Assert.True(double.IsNaN(HwA330StateEvaluator.TaxiMemoOk(1, 1, double.NaN)));
+        // Unknown outranks wrong (LVarStateEvaluator.Both's contract): flaps up, seat belts unread.
+        Assert.True(double.IsNaN(HwA330StateEvaluator.TaxiMemoOk(1, 0, double.NaN)));
+    }
+
+    [Fact]
+    public void Taxi_memo_check_reads_the_fields_its_checklist_lines_read()
+    {
+        var e = new HwA330StateEvaluator();
+        e.SetSimConnect(SeededSimConnectCache.With(("A32NX_SPOILERS_ARMED", 1), ("A32NX_FLAPS_HANDLE_INDEX", 2),
+            ("CABIN SEATBELTS ALERT SWITCH", 1), ("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", 1)));
+        Assert.Equal(1.0, e.GetValue("FO_TAXI_MEMO_OK"));
+
+        // No smoking OFF (2): the memo's seat-belts line (FO_SIGNS_ON) is not on, so neither is the check.
+        e.SetSimConnect(SeededSimConnectCache.With(("A32NX_SPOILERS_ARMED", 1), ("A32NX_FLAPS_HANDLE_INDEX", 2),
+            ("CABIN SEATBELTS ALERT SWITCH", 1), ("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION", 2)));
+        Assert.Equal(0.0, e.GetValue("FO_TAXI_MEMO_OK"));
     }
 }

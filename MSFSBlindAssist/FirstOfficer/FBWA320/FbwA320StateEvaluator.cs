@@ -142,6 +142,17 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
     internal static double RunningFrom(double state)
         => double.IsNaN(state) ? double.NaN : Math.Abs(state - 1) < 0.5 ? 1.0 : 0.0;
 
+    /// <summary>The Taxi flow's takeoff-memo check (FO_TAXI_MEMO_OK): ground spoilers armed
+    /// (A32NX_SPOILERS_ARMED), the flap handle in a takeoff position (1-3, the AS_FLAPS test) and
+    /// the memo's seat-belts line on (FO_SIGNS_ON) — the conditions of TXC_MEMO_SPLRS,
+    /// TXC_MEMO_FLAPS and TXC_MEMO_SIGNS. NaN when any input is unknown (unknown is not false,
+    /// Both's contract), else 1 when all three hold and 0 when any does not.</summary>
+    internal static double TaxiMemoOk(double spoilersArmed, double flapsHandle, double signsOn) =>
+        double.IsNaN(spoilersArmed) || double.IsNaN(flapsHandle) || double.IsNaN(signsOn)
+            ? double.NaN
+            : spoilersArmed > 0.5 && FbwA320FlowDefinitions.IsTakeoffFlapsLever(flapsHandle) && signsOn > 0.5
+                ? 1.0 : 0.0;
+
     /// <summary>SimBrief takeoff flaps (1..3) as the A32NX flap handle index (same numbering),
     /// or -1 when not loaded / out of range — the Fenix evaluator's twin.</summary>
     public int TakeoffFlapsLeverIndex()
@@ -176,6 +187,13 @@ public sealed class FbwA320StateEvaluator : LVarStateEvaluator
             case "FO_SIGNS_ON":
                 value = Both(GetValue("CABIN SEATBELTS ALERT SWITCH"), GetValue("XMLVAR_SWITCH_OVHD_INTLT_NOSMOKING_POSITION"),
                     (belts, smoking) => belts > 0.5 && smoking < 1.5);
+                return true;
+            // The Taxi flow's takeoff-memo check (TX_MEMO_CHECK): ground spoilers armed, a takeoff
+            // flap handle and the memo's seat-belts line on, from the fields and conditions of the
+            // four Taxi checklist lines the check completes.
+            case "FO_TAXI_MEMO_OK":
+                value = TaxiMemoOk(GetValue("A32NX_SPOILERS_ARMED"), GetValue("A32NX_FLAPS_HANDLE_INDEX"),
+                    GetValue("FO_SIGNS_ON"));
                 return true;
             // The LDG memo's flaps line: FULL, or 3 when the GPWS LDG FLAP 3 switch is on.
             case "FO_LDG_FLAPS_SET":
