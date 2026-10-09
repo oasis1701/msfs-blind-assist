@@ -190,11 +190,18 @@ Corrected 2026-10-08: "the ONE exception" became the three builds given no parki
 - Rules of the fill:
   - The `.ini`'s `this_parking_pos` heading still wins (GSX's own data, joined first).
   - It never overwrites a published value.
-  - In-range candidates disagreeing with the NEAREST one by more than `MaxHeadingDisagreementDegrees` (10°) are refused, never arbitrated (each candidate is compared with the nearest, not pairwise).
+  - Donors are NAVDATA rows only (`GateSource.Navdata`): the size math assumes a radius in feet (DCK-7). Every `IAirportDataProvider` returns navdata rows today; the filter keeps a future GSX-sourced row from being shrunk 3.28 times.
+  - Candidates are the rows with the spot's number within `MatchRadiusMetres`. When any carries the spot's own suffix (trimmed, case-insensitive), only those remain: a MARS parent "20" is a different, wider stand from its child "20A".
+  - The concourse letter is NOT compared: navdata's letter is wrong on 46 of 222 KJFK stands that are the same physical stand (DCK-10), so a letter test would refuse true donors.
+  - An unnumbered stand (Number 0) matches an unnumbered row, and only when exactly ONE is in range.
+  - Remaining candidates disagreeing with the NEAREST one by more than `MaxHeadingDisagreementDegrees` (10°) are refused, never arbitrated (each candidate is compared with the nearest, not pairwise).
   - The size sets `Radius` = navdata feet × 0.3048 and `MaxWingspanMeters` = twice that. That is the fit navdata's own `FitsAircraft` gives, so the fit filter and SayIntentions' position match (SI-7) behave as on a navdata list.
   - The filler shares `GsxConcourseLetterFiller`'s one lazy navdata read and is skipped when nothing needs it.
   - A stand neither source can orient is still dropped.
   - For a stand flagged `ParkingSpot.GsxUnconfigured` only, an accepted donor also lends `HasJetway` and `AirlineCodes` (DCK-44).
+- Why the suffix and the unnumbered rule (review of #271, 2026-10-09, against the fs2024 navdata: 302,258 parking rows at 22,666 airports):
+  - Every non-fuel stand with a same-numbered row within 14.5 m was simulated with GSX positions offset as measured at KSAN (median 2.16 m, max 4.50). Number-only matching: 280.6 of 337 stand-equivalents right, 53.4 refused (then dropped), 3.0 given a sibling's geometry. Own suffix first: 332.2 right, 3.3 refused, 1.5 wrong. The refusals were MARS siblings that point different ways, e.g. EGSS 15/15R (9.4 m apart, 19.7°), EIDW 411L/411T (6.8 m, 74.9°).
+  - Unnumbered stands: 2,574 non-fuel rows, mostly GA ramps. Where an airport has more than one, the nearest other one is a median 59.5 m away and never within 14.5 m. KSFO's 208 navdata stands are exactly GSX's 208, and its one unnumbered stand (Northwest parking, number 0) was dropped before this rule, though the navdata fallback had listed it.
 
 → [gsx.md](../gsx.md)
 

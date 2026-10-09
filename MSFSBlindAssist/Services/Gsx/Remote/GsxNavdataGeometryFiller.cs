@@ -29,12 +29,24 @@ namespace MSFSBlindAssist.Services.Gsx.Remote;
 /// <para>
 /// <b>Only gaps, never a second opinion.</b> A heading GSX published, or one the <c>.ini</c> join
 /// recovered (GSX's own <c>this_parking_pos</c>, joined first), is never touched; the same for a
-/// size GSX published. The match is the shared stand rule: same NUMBER, within
-/// <see cref="MatchRadiusMetres"/> (<see cref="GsxStandLetterMatch.MatchRadiusMetres"/>, whose doc
-/// carries the measurement). In-range candidates that disagree with the NEAREST one on heading by
-/// more than <see cref="MaxHeadingDisagreementDegrees"/> are REFUSED, never arbitrated, and nothing
-/// is taken from a refused match. A stand neither source can orient stays NaN, and
+/// size GSX published. A stand neither source can orient stays NaN, and
 /// <c>DropUnusableHeadings</c> still drops it.
+/// </para>
+///
+/// <para>
+/// <b>Which row is the same stand.</b> Navdata rows only (their radius is FEET, DCK-7), with the
+/// spot's NUMBER, within <see cref="MatchRadiusMetres"/> (<see cref="GsxStandLetterMatch.MatchRadiusMetres"/>,
+/// whose doc carries the measurement). When one of them carries the spot's own SUFFIX, only those
+/// count: a MARS parent "20" is a different, wider stand from its child "20A", and siblings such as
+/// EGSS 15/15R (9.4 m apart, 19.7 degrees) used to refuse each other, so the stand was dropped
+/// (simulated over the fs2024 navdata: 53 such stands refused and 3 given a sibling's size before,
+/// 3.3 and 1.5 after). Candidates left that disagree with the NEAREST one on heading by more than
+/// <see cref="MaxHeadingDisagreementDegrees"/> are REFUSED, never arbitrated, and nothing is taken
+/// from a refused match. An UNNUMBERED stand (Number 0, KSFO's Northwest parking) matches an
+/// unnumbered row, and only when exactly one is in range: unnumbered stands sit a median 59.5 m
+/// apart and none within 14.5 m of another. The concourse LETTER is deliberately not compared:
+/// navdata's letter is wrong on 46 of 222 KJFK stands that are the same physical stand (see
+/// <see cref="GsxConcourseLetterFiller"/>), so a letter test would refuse true donors.
 /// </para>
 ///
 /// <para>
@@ -134,21 +146,24 @@ public static class GsxNavdataGeometryFiller
             }
         }
 
-        LogSummary(headingsNeeded, headingsFilled, sizesNeeded, sizesFilled, jetwaysFilled, donors.Count, refused);
+        LogSummary(headingsNeeded, headingsFilled, sizesNeeded, sizesFilled, jetwaysFilled,
+                   donors.Values.Sum(bucket => bucket.Count), refused);
         return result;
     }
 
-    /// <summary>A number is required: it is half of the same-stand evidence, as in GsxStandLetterMatch.</summary>
-    private static bool NeedsHeading(ParkingSpot spot)
-        => spot.Number > 0 && !GsxRemoteParkingReader.HasUsableHeading(spot);
+    /// <summary>Unnumbered stands (Number 0) need one too: they match unnumbered rows, see <see cref="AgreedDonor"/>.</summary>
+    private static bool NeedsHeading(ParkingSpot spot) => !GsxRemoteParkingReader.HasUsableHeading(spot);
 
-    private static bool NeedsSize(ParkingSpot spot)
-        => spot.Number > 0 && !spot.MaxWingspanMeters.HasValue;
+    private static bool NeedsSize(ParkingSpot spot) => !spot.MaxWingspanMeters.HasValue;
 
-    /// <summary>Navdata rows with a real number, coordinate and heading, read once.</summary>
-    private static List<ParkingSpot> LoadDonors(Func<IReadOnlyList<ParkingSpot>?>? navdata)
+    /// <summary>
+    /// The rows that may donate, read once and bucketed by stand number (0 = unnumbered): NAVDATA
+    /// rows only, because the size math assumes a radius in FEET (DCK-7), with a real coordinate
+    /// (<see cref="GsxStandLetterMatch.IsPlaceable"/>) and a heading.
+    /// </summary>
+    private static Dictionary<int, List<ParkingSpot>> LoadDonors(Func<IReadOnlyList<ParkingSpot>?>? navdata)
     {
-        var donors = new List<ParkingSpot>();
+        var donors = new Dictionary<int, List<ParkingSpot>>();
         if (navdata == null) return donors;
 
         IReadOnlyList<ParkingSpot>? spots;
@@ -167,42 +182,46 @@ public static class GsxNavdataGeometryFiller
         if (spots == null) return donors;
         foreach (var s in spots)
         {
-            if (s == null || s.Number <= 0) continue;
-            if (double.IsNaN(s.Heading)) continue;
-            if (double.IsNaN(s.Latitude) || double.IsNaN(s.Longitude)) continue;
-            if (s.Latitude == 0.0 && s.Longitude == 0.0) continue;   // null island is not a position
-            donors.Add(s);
+            if (s == null || s.Source != GateSource.Navdata || s.Number < 0) continue;
+            if (double.IsNaN(s.Heading) || !GsxStandLetterMatch.IsPlaceable(s)) continue;
+            if (!donors.TryGetValue(s.Number, out var bucket)) donors[s.Number] = bucket = new List<ParkingSpot>();
+            bucket.Add(s);
         }
         return donors;
     }
 
     /// <summary>
-    /// The nearest same-numbered donor within <see cref="MatchRadiusMetres"/>, or null when there is
-    /// none. When an in-range donor disagrees with the NEAREST one on heading by more than
-    /// <see cref="MaxHeadingDisagreementDegrees"/>, <paramref name="wasRefused"/> is set and null is
-    /// returned: refuse, never arbitrate.
+    /// The row that is the SAME stand, or null when none is. Candidates are the rows with the spot's
+    /// number within <see cref="MatchRadiusMetres"/>; when any of them carries the spot's own suffix,
+    /// only those remain (a MARS parent "20" is not its child "20A"). An unnumbered spot with more
+    /// than one candidate left, or remaining candidates that disagree with the NEAREST one on heading
+    /// by more than <see cref="MaxHeadingDisagreementDegrees"/>, sets <paramref name="wasRefused"/>
+    /// and returns null: refuse, never arbitrate.
     /// </summary>
-    private static ParkingSpot? AgreedDonor(ParkingSpot spot, List<ParkingSpot> donors, out bool wasRefused)
+    private static ParkingSpot? AgreedDonor(ParkingSpot spot, Dictionary<int, List<ParkingSpot>> donorsByNumber,
+                                            out bool wasRefused)
     {
         wasRefused = false;
-        ParkingSpot? nearest = null;
-        double nearestMetres = double.MaxValue;
-        var inRange = new List<ParkingSpot>();
+        if (!donorsByNumber.TryGetValue(spot.Number, out var sameNumber)) return null;
 
-        foreach (var donor in donors)
+        var inRange = new List<(ParkingSpot Donor, double Metres)>();
+        foreach (var donor in sameNumber)
         {
-            if (donor.Number != spot.Number) continue;
             double metres = TaxiGeo.HaversineMeters(spot.Latitude, spot.Longitude, donor.Latitude, donor.Longitude);
-            if (metres > MatchRadiusMetres) continue;
-            inRange.Add(donor);
-            if (metres < nearestMetres) { nearestMetres = metres; nearest = donor; }
+            if (metres <= MatchRadiusMetres) inRange.Add((donor, metres));
         }
+        if (inRange.Count == 0) return null;
 
-        if (nearest == null) return null;
+        if (inRange.Any(c => SameSuffix(c.Donor, spot)))
+            inRange.RemoveAll(c => !SameSuffix(c.Donor, spot));
 
-        foreach (var donor in inRange)
+        // With no number to agree on, a second candidate is ambiguity whatever its heading.
+        if (spot.Number == 0 && inRange.Count > 1) { wasRefused = true; return null; }
+
+        var nearest = inRange.MinBy(c => c.Metres).Donor;
+        foreach (var (donor, _) in inRange)
         {
-            if (AngleBetween(donor.Heading, nearest.Heading) > MaxHeadingDisagreementDegrees)
+            if (Math.Abs(TaxiGeo.WrapDeltaDeg(donor.Heading - nearest.Heading)) > MaxHeadingDisagreementDegrees)
             {
                 wasRefused = true;
                 return null;
@@ -211,11 +230,9 @@ public static class GsxNavdataGeometryFiller
         return nearest;
     }
 
-    private static double AngleBetween(double a, double b)
-    {
-        double d = Math.Abs(a - b) % 360.0;
-        return d > 180.0 ? 360.0 - d : d;
-    }
+    private static bool SameSuffix(ParkingSpot a, ParkingSpot b)
+        => string.Equals((a.Suffix ?? string.Empty).Trim(), (b.Suffix ?? string.Empty).Trim(),
+                         StringComparison.OrdinalIgnoreCase);
 
     /// <summary>ONE line per call, never per stand. Warn only when a match was refused.</summary>
     private static void LogSummary(int headingsNeeded, int headingsFilled, int sizesNeeded, int sizesFilled,
@@ -227,8 +244,9 @@ public static class GsxNavdataGeometryFiller
             $"from the same-numbered navdata stand within {MatchRadiusMetres:0.#} m ({donorCount} candidate stand(s)).";
 
         if (refused > 0)
-            Log.Warn("Gsx", summary + $" {refused} stand(s) had navdata candidates disagreeing by more than " +
-                            $"{MaxHeadingDisagreementDegrees:0.#} degrees and were left alone rather than guessed at.");
+            Log.Warn("Gsx", summary + $" {refused} stand(s) had ambiguous navdata candidates (headings more than " +
+                            $"{MaxHeadingDisagreementDegrees:0.#} degrees apart, or two unnumbered stands in range) " +
+                            "and were left alone rather than guessed at.");
         else
             Log.Debug("Gsx", summary);
     }

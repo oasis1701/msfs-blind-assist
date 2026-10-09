@@ -16,9 +16,10 @@ public class GsxNavdataGeometryFillerTests
 
     private static ParkingSpot Api(string id, int number, double lat, double lon,
                                    double heading = double.NaN, double? maxWingspan = null,
-                                   bool unconfigured = false, bool hasJetway = false, string airlineCodes = "") => new()
+                                   bool unconfigured = false, bool hasJetway = false, string airlineCodes = "",
+                                   string suffix = "") => new()
     {
-        AirportICAO = Ksan, GsxIdentifier = id, Number = number, Latitude = lat, Longitude = lon,
+        AirportICAO = Ksan, GsxIdentifier = id, Number = number, Suffix = suffix, Latitude = lat, Longitude = lon,
         Heading = heading, MaxWingspanMeters = maxWingspan,
         Radius = maxWingspan.HasValue ? maxWingspan.Value / 2.0 : 100.0,   // the reader's own placeholder
         Source = GateSource.Gsx,
@@ -26,10 +27,11 @@ public class GsxNavdataGeometryFillerTests
     };
 
     private static ParkingSpot Nav(int number, double lat, double lon, double heading, double radiusFeet = 66.0,
-                                   bool hasJetway = false, string airlineCodes = "") => new()
+                                   bool hasJetway = false, string airlineCodes = "", string suffix = "",
+                                   GateSource source = GateSource.Navdata) => new()
     {
-        AirportICAO = Ksan, Number = number, Latitude = lat, Longitude = lon, Heading = heading,
-        Radius = radiusFeet, Source = GateSource.Navdata, HasJetway = hasJetway, AirlineCodes = airlineCodes,
+        AirportICAO = Ksan, Number = number, Suffix = suffix, Latitude = lat, Longitude = lon, Heading = heading,
+        Radius = radiusFeet, Source = source, HasJetway = hasJetway, AirlineCodes = airlineCodes,
     };
 
     /// <summary>Offsets a coordinate due north by <paramref name="metres"/>.</summary>
@@ -107,6 +109,93 @@ public class GsxNavdataGeometryFillerTests
             Nav(115, LatPlusMetres(Lat, 2.0), Lon, 359.0),
             Nav(115, LatPlusMetres(Lat, 4.0), Lon, 1.0)));
         Assert.Equal(359.0, spot.Heading, 6);   // the nearest one's, never an average
+    }
+
+    // ── Which in-range row is the SAME stand: the suffix, and unnumbered stands [DCK-42] ─────
+
+    [Fact]
+    public void A_MARS_child_takes_its_own_suffix_row_not_the_nearer_parent()
+    {
+        // The parent row "20" is nearer, but it is a different (wider) stand: the child must take
+        // its own 59 ft radius, or the fitting-stands filter offers it to a wider aircraft.
+        var spot = Api("Gate 20A", 20, Lat, Lon, suffix: "A");
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(
+            Nav(20, LatPlusMetres(Lat, 2.0), Lon, 196.0, radiusFeet: 89.0),
+            Nav(20, LatPlusMetres(Lat, 4.0), Lon, 196.0, radiusFeet: 59.0, suffix: "A")));
+        Assert.Equal(59.0 * 0.3048, spot.Radius, 6);
+    }
+
+    [Fact]
+    public void MARS_siblings_that_point_different_ways_no_longer_refuse_the_exact_suffix_row()
+    {
+        // EGSS 15 and 15R sit 9.4 m apart and differ by 19.7 degrees. Comparing every in-range row
+        // refused stand 15 outright, and DropUnusableHeadings then dropped it (53 such stands
+        // worldwide in the fs2024 navdata).
+        var spot = Api("Gate 15", 15, Lat, Lon);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(
+            Nav(15, LatPlusMetres(Lat, 2.0), Lon, 100.0),
+            Nav(15, LatPlusMetres(Lat, 6.0), Lon, 120.0, suffix: "R")));
+        Assert.Equal(100.0, spot.Heading, 6);
+    }
+
+    [Fact]
+    public void With_no_row_of_its_own_suffix_the_nearest_same_numbered_row_still_donates()
+    {
+        var spot = Api("Gate 7B", 7, Lat, Lon, suffix: "B");
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(Nav(7, LatPlusMetres(Lat, 2.0), Lon, 50.0)));
+        Assert.Equal(50.0, spot.Heading, 6);
+    }
+
+    [Fact]
+    public void Two_rows_of_the_spots_own_suffix_that_disagree_are_still_refused()
+    {
+        var spot = Api("Gate 15", 15, Lat, Lon);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(
+            Nav(15, LatPlusMetres(Lat, 2.0), Lon, 100.0),
+            Nav(15, LatPlusMetres(Lat, 4.0), Lon, 200.0)));
+        Assert.True(double.IsNaN(spot.Heading));
+        Assert.Null(spot.MaxWingspanMeters);
+    }
+
+    [Fact]
+    public void An_unnumbered_stand_borrows_from_the_one_unnumbered_navdata_row_in_range()
+    {
+        // KSFO's Northwest parking carries number 0. The navdata fallback listed it; GSX's list
+        // must not lose it. Unnumbered stands sit a median 59.5 m apart, none within 14.5 m.
+        var spot = Api("NW Parking", 0, Lat, Lon);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(Nav(0, LatPlusMetres(Lat, 3.0), Lon, 236.5, radiusFeet: 59.0)));
+        Assert.Equal(236.5, spot.Heading, 6);
+        Assert.Equal(2 * 59.0 * 0.3048, spot.MaxWingspanMeters!.Value, 6);
+    }
+
+    [Fact]
+    public void An_unnumbered_stand_with_two_unnumbered_rows_in_range_is_refused()
+    {
+        // With no number to agree on, two candidates in range is ambiguity even when they agree.
+        var spot = Api("NW Parking", 0, Lat, Lon);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(
+            Nav(0, LatPlusMetres(Lat, 2.0), Lon, 236.5),
+            Nav(0, LatPlusMetres(Lat, 6.0), Lon, 236.5)));
+        Assert.True(double.IsNaN(spot.Heading));
+    }
+
+    [Fact]
+    public void An_unnumbered_stand_never_borrows_from_a_numbered_row()
+    {
+        var spot = Api("NW Parking", 0, Lat, Lon);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(Nav(5, LatPlusMetres(Lat, 1.0), Lon, 90.0)));
+        Assert.True(double.IsNaN(spot.Heading));
+    }
+
+    [Fact]
+    public void A_row_that_is_not_navdata_sourced_never_donates()
+    {
+        // Radius is FEET on navdata and METRES on GSX (DCK-7): a GSX row would be shrunk 3.28 times.
+        var spot = Api("Ramp 115", 115, Lat, Lon);
+        GsxNavdataGeometryFiller.Fill(new[] { spot }, Navdata(
+            Nav(115, LatPlusMetres(Lat, 2.0), Lon, 196.1, source: GateSource.Gsx)));
+        Assert.True(double.IsNaN(spot.Heading));
+        Assert.Equal(100.0, spot.Radius);
     }
 
     // ── Jet-bridge flag and airline codes: unconfigured stands only [DCK-44] ─────────────────
