@@ -1,0 +1,54 @@
+---
+paths:
+  - "MSFSBlindAssist/FirstOfficer/PMDG737/**"
+  - "MSFSBlindAssist/FirstOfficer/IFly737/**"
+  - "MSFSBlindAssist/FirstOfficer/PMDG777*.cs"
+  - "MSFSBlindAssist/FirstOfficer/Pmdg777*.cs"
+  - "MSFSBlindAssist/FirstOfficer/AircraftActionExecutor.cs"
+  - "MSFSBlindAssist/FirstOfficer/AircraftStateEvaluator.cs"
+  - "MSFSBlindAssist/FirstOfficer/FOAutoManager.cs"
+  - "MSFSBlindAssist/FirstOfficer/GroundPowerGate.cs"
+  - "MSFSBlindAssist/FirstOfficer/SpeedbrakeLeverState.cs"
+  - "MSFSBlindAssist/FirstOfficer/CenterFuelPumpAutomation.cs"
+  - "MSFSBlindAssist/FirstOfficer/CenterPump*.cs"
+  - "MSFSBlindAssist/FirstOfficer/FuelSystemLogic.cs"
+  - "MSFSBlindAssist/FirstOfficer/EmerExitLightSequence.cs"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/Pmdg*.cs"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/IFly737*.cs"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/Fo777*.cs"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/EngineStart*.cs"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/SpeedbrakeLeverState*.cs"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/FoSystemTests*.cs"
+  - "tests/MSFSBlindAssist.Tests/FirstOfficer/WarningTestPanel*.cs"
+  - "tests/MSFSBlindAssist.Tests/CenterFuelPump*.cs"
+  - "tests/MSFSBlindAssist.Tests/CenterPump*.cs"
+  - "tests/MSFSBlindAssist.Tests/FuelSystemLogic*.cs"
+  - "tests/MSFSBlindAssist.Tests/GroundPowerGate*.cs"
+  - "tests/MSFSBlindAssist.Tests/SpeedbrakeArmLadder*.cs"
+  - "tests/MSFSBlindAssist.Tests/EmerExitLightSequence*.cs"
+---
+# First Officer rules: PMDG 777/737, iFly 737 MAX8, centre fuel pumps
+
+Loaded when Claude reads matching code, on top of first-officer.md. Background: docs/first-officer.md. Full text of each rule: docs/invariants/first-officer-boeing.md.
+
+- [FOB-1] 737 FO state groups are ALL `RevertToState` (never `StayComplete`), safe via NaN-until-`IsReady` gating and the manual-tick grace. ONE exception: the Boeing engine-start SELECTOR items (`ES_E1_GRD`/`ES_E2_GRD`, 777 `ES_ENG1/2_START_SEL`) `AutoLatch` on `FO_ENG{1,2}_N2` with `StayComplete`; never let it spread (more: see full). Full: docs/invariants/first-officer-boeing.md#fob-1
+- [FOB-2] The FO reads the 777 speed-brake lever from `L:switch_498_a` via `Pmdg777SpeedbrakeLever` → `SpeedbrakeLeverState` over `PmdgSpeedBrakeLever.B777`, NEVER the truncating SDK byte `FCTL_Speedbrake_Lever`. ARM is EXACT, DOWN is short of ARM; never "correct" the table toward the SDK header (more: see full). Full: docs/invariants/first-officer-boeing.md#fob-2
+- [FOB-3] PMDG 777 ground-power event NAMES are REVERSED against `ELEC_annunExtPowr_ON[2]` (SEC drives index 0, PRIM index 1, live-verified): `GroundPowerGate.EventForAnnunciatorIndex` is the single source of truth for the panel's `_simpleEventMap` and the FO alike; never re-derive the direction from event-id order. Full: docs/invariants/first-officer-boeing.md#fob-3
+- [FOB-4] 777 flow/checklist ORDER follows PMDG's shipped `B777_Checklist.xml` (trim LAST in Before Start; no trim checkpoint in Before Taxi/Takeoff). Only sanctioned divergences: oxygen tests before the fire test (`Pmdg777FlowOrderingTests`), seat belts ON; never restore the vendor's LNAV/VNAV arm or hydraulics lines (more: see full). Full: docs/invariants/first-officer-boeing.md#fob-4
+- [FOB-5] The 737 FO never touches the gear lever's OFF detent (21 write shapes never moved `MAIN_GearLever`; re-add only with a write verified IN FLIGHT by read-back). Both gear lines are confirmed by the GEAR LIGHTS (`GearConfirmation`), via a read-only wait last in its flow (more: see full). Full: docs/invariants/first-officer-boeing.md#fob-5
+- [FOB-6] The FO's 737 speedbrake-arm ladder is ONE proven rung (`CDA + MOUSE_FLAG_LEFTSINGLE` on `EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_ARM`) plus a read-back of the lever at ARM and `MAIN_annunSPEEDBRAKE_ARMED`; do not restore the old 3-transport escalation (`MAIN_annunSPEEDBRAKE_DO_NOT_ARM` catches real failures). Full: docs/invariants/first-officer-boeing.md#fob-6
+- [FOB-7] PMDG 737 transponder STBY (`XPDR_ModeSel` 0) is UNREACHABLE by every input path (the VC cannot reach it either): do not re-probe it. `PF_XPDR`/`SD_XPDR` target ALT RPTG OFF (1) and accept `v < 1.5`; never narrow it to `v < 0.5` or `v == 1`. `BS_XPDR`/`BTKO_XPDR` (TA/RA) are unaffected (more: see full). Full: docs/invariants/first-officer-boeing.md#fob-7
+- [FOB-8] 737 `EVT_TCAS_MODE` (transponder) and `EVT_OH_LIGHTS_POS_STROBE` (position lights) are CDA-deaf walked rotaries that step only on transmit mouse-clicks; probe actuation with `tools/CDUTest cda`, never the simconnect MCP's `send_pmdg_event` (its CDA write silently fails on the NG3). Full: docs/invariants/first-officer-boeing.md#fob-8
+- [FOB-9] PMDG self-tests (TCAS/WXR/GPWS) actuate ONLY via transmit press/release: 777 `XPDR_Test` uses a dedicated `HandleUIVariableSet` transmit branch (out of `_simpleEventMap`); WXR is a managed overlay/TEST sequence; the 737 GPWS variant comes from `FOGpws737LongTest`. Their items are `ActionManualAsync`, never Auto (more: see full). Full: docs/invariants/first-officer-boeing.md#fob-9
+- [FOB-10] Center-pump ON gating lives at `DispatchCoreAsync` in BOTH PMDG FO executors (the sole all-paths chokepoint: single writes, flow `Multi` tuples, checklist actions), keyed on `EVT_OH_FUEL_PUMP_L/R_CENTER` + ON, returning `true` BEFORE `PaceAsync`; never gate only `ExecuteSingle`/`Fire`/`FireBoth`. OFF is never gated. Full: docs/invariants/first-officer-boeing.md#fob-10
+- [FOB-11] ONE universal "Fuel pumps" item per phase on both PMDG jets (Preflight all-off, Before-Start wing-on + center-on-iff-fuel, Shutdown all-off); Before-Start detection is the SINGLE `FO_FUEL_PUMPS_BS_OK` synthetic; never reintroduce `FO_CTR_PUMPS_*` or a standalone `BS_CTR_PUMPS_ON`. Full: docs/invariants/first-officer-boeing.md#fob-11
+- [FOB-12] The merged Shutdown fuel action/flow MUST order wing-off BEFORE center-off, so the center falling edge sees the wing already off and no spurious manual-off latch is set; a required invariant, not cosmetic. Full: docs/invariants/first-officer-boeing.md#fob-12
+- [FOB-13] The center-pump OFF trigger is QUANTITY-BASED: center fuel confirmed below `OffThresholdLbs` (1000) for `QtyOffConfirmSeconds` (2 s), in any phase; never reintroduce an annunciator term. ARM needs ground + wing pumps on + center above `ArmThresholdLbs` (1500); the 500 lb gap is deliberate hysteresis. Full: docs/invariants/first-officer-boeing.md#fob-13
+- [FOB-14] The center-pump policy's OFF branch never reads `_switchedOffThisLeg` (THE TRAP); its only OFF suppressor is the self-clearing `_pendingCommand`. Manual-off/dry-off latches suppress only ARM; the switch's own rising edge clears only manual-off; `_qtyFloor` is NaN iff a latch is set (more: see full). Full: docs/invariants/first-officer-boeing.md#fob-14
+- [FOB-15] HISTORICAL, not driving automation: a lit CENTER low-press light implies its switch is on (not the converse), and the WING light tracks output pressure, not the switch (both measured); the center-pump policy reads neither annunciator. Full: docs/invariants/first-officer-boeing.md#fob-15
+- [FOB-16] `(int)Math.Round(double.NaN)` is `int.MinValue` on x64: every FO `Fuel*Lbs` reader routes through `FuelSystemLogic.SafeRoundToInt` (NaN→0), or a NaN-derived quantity pins the refuel floor and oscillates the pumps. Full: docs/invariants/first-officer-boeing.md#fob-16
+- [FOB-17] iFly FO writes go through `IFly737MAXDefinition.ApplyUIVariable` with exactly TWO bypasses: pressurization altitudes via `SendDirect`, and altimeters to STD by value via `KOHLSMAN_SET` (never a `BARO_STD_Status` guard: it is momentary). Never an L:var write or a second command table (more: see full). Full: docs/invariants/first-officer-boeing.md#fob-17
+- [FOB-18] iFly 737 MAX8 center-pump ON gating sits at `IFly737ActionExecutor.DispatchCoreAsync`, the executor's single all-paths chokepoint; same rule as the PMDG jets, never gate a shallower call. Full: docs/invariants/first-officer-boeing.md#fob-18
+- [FOB-19] iFly takeoff flaps and landing autobrake are Captain items; the FO ARMS the speed brake via the verified `SPEEDBRAKE_ARM` (`ArmSpeedbrakeCoreAsync`, ARM exactly 34). `LDA_SPDBRK`/`LDC_SPDBRK` read `FO_SPEEDBRAKE_ARMED` (lever at ARM AND the light); a deployed speed brake is left alone (more: see full). Full: docs/invariants/first-officer-boeing.md#fob-19
+- [FOB-20] iFly 737 MAX8 descent never commands standard pressure: the transition-level crossing is announce-only; only the climb-through-transition-altitude crossing presses STD, and only on a side not already confirmed STD. Full: docs/invariants/first-officer-boeing.md#fob-20
+- [FOB-21] iFly 737 MAX8 LNAV/VNAV latch must not burn on an unreadable snapshot: `ShouldBurnLnavVnavLatch` spends the 400 ft one-shot only when a push fired or both annunciators read definitively known; an all-NaN tick leaves it unset so the next tick retries. Full: docs/invariants/first-officer-boeing.md#fob-21

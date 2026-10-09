@@ -1,6 +1,6 @@
 ---
 paths:
-  - "MSFSBlindAssist/Aircraft/FlyByWireA320Definition.cs"
+  - "MSFSBlindAssist/Aircraft/FlyByWireA320Definition*.cs"
   - "MSFSBlindAssist/Aircraft/FenixA320*.cs"
   - "MSFSBlindAssist/Aircraft/HeadwindA330Definition.cs"
   - "MSFSBlindAssist/Services/FbwMcdu*.cs"
@@ -59,7 +59,7 @@ Loaded when Claude reads matching code. Background: docs/a32nx.md. Full text of 
 - [A320-27] A32NX nose/landing lights use the indexed stock events in the FBW template's verbatim RPN form `<value> <index> r (>K:2:LANDING_LIGHTS_SET/TAXI_LIGHTS_SET)`; the `LIGHTING_LANDING_x` L:vars drive nothing. Keep the template-verbatim form. Full: docs/invariants/a32nx-fenix.md#a320-27
 - [A320-28] A32NX wipers are circuits 77 (Capt) / 80 (F/O), not the A380's 141/143; OFF/SLOW/FAST needs BOTH circuit switch AND power (power rests at 100% while off), and `XMLVAR_A320_WiperSwitch_*` does not exist in FBW. Full: docs/invariants/a32nx-fenix.md#a320-28
 - [A320-29] A32NX seat belts is genuinely 2-position ON/OFF in the FBW model (no AUTO, unlike the A380); don't "fix" it to 3-position. Full: docs/invariants/a32nx-fenix.md#a320-29
-- [A320-30] A32NX "Passengers on Board" sums the `A32NX_PAX_{A..D}_DESIRED` planned bitmasks, not the lagging boarded set. Full: docs/invariants/a32nx-fenix.md#a320-30
+- [A320-30] A32NX "Passengers on Board" sums the `A32NX_PAX_{A..D}_DESIRED` planned bitmasks, not the lagging boarded set. The station list is PER AIRFRAME (`PaxStationVars`; the Headwind A330 has ten, A..J): fix a gap by registering, never by whitelisting in the station-agnostic consumer. Full: docs/invariants/a32nx-fenix.md#a320-30
 - [A320-31] The Fenix MCDU marks selection with cyan AND large font: never gate the `*` marker on green alone nor broaden the colour test to cyan; detect it in `FenixMcduFormat`'s conservative size rule, run after the colour rule. Keep `SpecialChars`' `\uXXXX` escapes. (more: see full) Full: docs/invariants/a32nx-fenix.md#a320-31
 - [A380-8] Every A32NX DCDU H-event fire (`FlyByWireDcduForm.FireDcduEvent`; the A380 has no DCDU) must be sequence-uniquified too, or the WILCO then SEND second press on the same slot is silently dropped. Full: docs/invariants/a32nx-fenix.md#a380-8
 - [A320-36] FCU V/S and FPA callouts read the ARINC words (`FcuSources`: A32NX `A32NX_FCU_SELECTED_{VERTICAL_SPEED,FPA}`, A380 `A32NX_PRIM_1_SELECTED_*`), never the `A32NX_AUTOPILOT_{VS,FPA}_SELECTED` shims: unlike the heading/speed shims they never read -1 when dashed (live value on the A32NX, 0 on the A380). Full: docs/invariants/a32nx-fenix.md#a320-36
@@ -74,3 +74,8 @@ Mirrored from a380-systems.md (they govern the TCAS RA registrations in FlyByWir
 - [A380-17] Register the TCAS RA-guidance V/S bands as the `:1`/`:2` indexed L:vars, never only the unindexed names, which FBW never writes. Full: docs/invariants/a380-systems.md#a380-17
 - [A380-18] Defer the TCAS RA-guidance compose (~800 ms), never synchronous off the state edge: FBW resets the V/S band vars only in STBY, so RA onset can speak the previous RA's sense. Full: docs/invariants/a380-systems.md#a380-18
 - [A380-19] Register the TCAS `VSPEED_GREEN/RED:1/:2` and `RA_RATE_TO_MAINTAIN` L:vars with `Units="number"`, never a velocity unit: they are already fpm, and a velocity unit multiplies them by 196.85. Full: docs/invariants/a380-systems.md#a380-19
+
+Mirrored from first-officer-airbus.md (they govern code in FlyByWireA320Definition and HeadwindA330Definition; change them there and here together):
+- [FOA-4] An Event-typed key with no `varKey ==` branch in `FlyByWireA320Definition.HandleUIVariableSet` is a SILENT DEAD WRITE that reports success: both FBW FO executors REFUSE an unclaimed Event key, swept by `FoFbwUnclaimedEventKeyTests`. The FD pushes stay GUARDED on `A32NX_FCU_EFIS_{L,R}_FD_LIGHT_ON` (more: see full). Full: docs/invariants/first-officer-airbus.md#foa-4
+- [FOA-5] The A330 panel inherits the A32NX's, so `HeadwindA330Definition.BuildPanelControls` overrides three controls: the `LIGHTING_LANDING_2/_3` rows become the read-back `LIGHT LANDING:2`, and pots 10/11 (the A339X ceiling and map lights) are dropped. Never over-apply either to the A32NX. Full: docs/invariants/first-officer-airbus.md#foa-5
+- [FOA-6] `A32NX_SPEEDS_LANDING_CONF3` is registered by `FlyByWireA320Definition` as `OnRequest` (like its `A32NX_SPEEDS_*` siblings) and polled by the FBW-family FO evaluators; never `Continuous` without `IsAnnounced`, an unbacked declaration that leaves a panel combo listing it blank (more: see full). Full: docs/invariants/first-officer-airbus.md#foa-6

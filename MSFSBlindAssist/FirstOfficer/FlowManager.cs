@@ -1,0 +1,484 @@
+using MSFSBlindAssist.Accessibility;
+using MSFSBlindAssist.FirstOfficer.Models;
+using MSFSBlindAssist.Utils.Logging;
+
+namespace MSFSBlindAssist.FirstOfficer;
+
+/// <summary>
+/// Executes PMDG 777 flows asynchronously.
+/// Runs steps in sequence, handles waits and conditions, and raises events
+/// that the UI and announcement service can subscribe to.
+/// </summary>
+public class FlowManager<TExec, TState>
+    where TExec : IFoActionExecutor
+    where TState : IFoStateEvaluator
+{
+    private readonly TState _state;
+    private readonly TExec _executor;
+    private readonly ChecklistManager<TExec, TState> _checklist;
+    private readonly ScreenReaderAnnouncer _announcer;
+
+    // Minimum audible gap between flow steps — a screen-reader FO must read at a
+    // human pace, not zip (user request 2026-07-08). This is announcement pacing
+    // ON TOP of the executors' write spacing, never a replacement for it.
+    private const int InterStepPauseMs = 2000;
+
+    private CancellationTokenSource? _cts;
+    private Task? _runTask;
+    private TaskCompletionSource<bool>? _pauseTcs;
+    private volatile bool _paused;
+
+    // -----------------------------------------------------------------------
+    // Events (fired from background task — consumers must marshal to UI thread)
+    // -----------------------------------------------------------------------
+
+    public event Action<FlowDefinition<TState>>? FlowStarted;
+    public event Action<FlowDefinition<TState>>? FlowCompleted;
+    public event Action<FlowDefinition<TState>>? FlowCancelled;
+    public event Action<FlowDefinition<TState>, string>? FlowFailed;
+    public event Action<FlowDefinition<TState>>? FlowPaused;
+    public event Action<FlowDefinition<TState>>? FlowResumed;
+
+    public event Action<FlowDefinition<TState>, FlowStep<TState>, int>? StepStarted;
+    public event Action<FlowDefinition<TState>, FlowStep<TState>, int>? StepCompleted;
+    public event Action<FlowDefinition<TState>, FlowStep<TState>, int, string>? StepFailed;
+    public event Action<FlowDefinition<TState>, FlowStep<TState>, int>? StepSkipped;
+    public event Action<string>? CaptainReminderRequired;
+
+    // -----------------------------------------------------------------------
+    // State
+    // -----------------------------------------------------------------------
+
+    public bool IsRunning  => _runTask is { IsCompleted: false };
+    public bool IsPaused   => _paused;
+    public FlowDefinition<TState>? CurrentFlow { get; private set; }
+    public int CurrentStepIndex { get; private set; }
+
+    // Checklist items belonging to steps this run SKIPPED — a step that failed and whose
+    // FailurePolicy let the flow continue, a step skipped by the dependency gate, a step left
+    // alone by its LeaveAloneWhen rule, or a step whose TargetValueProvider had no value
+    // (FO-20: skipped SILENTLY, the paired Captain reminder is the speech). FirstOfficerForm
+    // passes these to MarkGroupComplete so flow completion cannot tick and latch an item the
+    // flow never delivered. Only those four contribute: Stop and an exhausted RetryThenStop
+    // both raise FlowFailed and return, so FlowCompleted never fires on those runs, and the
+    // "Already set" early-continue is a SUCCESS (it raises StepCompleted and marks the item).
+    //
+    // Pinned by BEHAVIOUR tests on a real FlowManager run (FlowManagerStepDependencyTests,
+    // FlowManagerLeaveAloneTests, FlowManagerTargetProviderTests): the announce entry points
+    // are virtual, so a recording ScreenReaderAnnouncer subclass (GatedSpeechCapture,
+    // tests/MuteWrapHarness.cs) replaces the screen reader. They pin which ids land here on a
+    // Skip-policy failure, on a dependency skip, on a leave-alone skip and on a null target,
+    // that an "Already set" step lands nothing, and that the set clears between runs. The
+    // CONSUMER half — what MarkGroupComplete does with this set — is
+    // FoFlowCompletionExclusionTests.
+    private readonly HashSet<string> _unfinishedChecklistItemIds = new(StringComparer.Ordinal);
+
+    // Ids of the steps THIS run skipped — a Skip-policy step that failed or timed out, a
+    // step left alone by its LeaveAloneWhen rule, a step whose TargetValueProvider had no
+    // value, or a step skipped because its FlowStep.RequiresStepId is in here already (so a
+    // dependency chain propagates). Read by the dependency gate at the top of the step loop;
+    // cleared with _unfinishedChecklistItemIds when the next run starts. Every Add() (the Skip
+    // branch's, and SkipWithoutRunningAsync's for the leave-alone rule, the null target and
+    // the dependency gate) is pinned by FlowManagerStepDependencyTests /
+    // FlowManagerLeaveAloneTests / FlowManagerTargetProviderTests; FlowStepDependencyIdTests
+    // pins that every profile's RequiresStepId names an earlier step of the same flow.
+    private readonly HashSet<string> _skippedStepIds = new(StringComparer.Ordinal);
+
+    // What one attempt at a step came to. NoTarget: the step's FlowStep.TargetValueProvider
+    // returned null (the data it needs, e.g. a SimBrief plan, is not there), so nothing was
+    // sent. That is a SILENT SKIP, never a success (FO-20).
+    private enum StepOutcome { Done, Failed, NoTarget }
+
+    /// <summary>Checklist item ids the most recent run could not deliver. Valid to read
+    /// from the FlowCompleted handler; cleared when the next run starts. Returns a
+    /// snapshot, not the live set, so a caller may hold onto or enumerate the result
+    /// without racing the next run's Clear()/Add() on this same set.</summary>
+    public IReadOnlyCollection<string> UnfinishedChecklistItemIds => _unfinishedChecklistItemIds.ToArray();
+
+    // -----------------------------------------------------------------------
+    // Constructor
+    // -----------------------------------------------------------------------
+
+    public FlowManager(
+        TState state,
+        TExec executor,
+        ChecklistManager<TExec, TState> checklist,
+        ScreenReaderAnnouncer announcer)
+    {
+        _state     = state;
+        _executor  = executor;
+        _checklist = checklist;
+        _announcer = announcer;
+    }
+
+    // -----------------------------------------------------------------------
+    // Public control API
+    // -----------------------------------------------------------------------
+
+    public void StartFlow(FlowDefinition<TState> flow)
+    {
+        if (IsRunning) Cancel();
+        CurrentFlow = flow;
+        CurrentStepIndex = 0;
+        _paused = false;
+        _cts = new CancellationTokenSource();
+        _runTask = RunFlowAsync(flow, _cts.Token);
+    }
+
+    public void Pause()
+    {
+        if (!IsRunning || _paused) return;
+        _paused = true;
+        // RunContinuationsAsynchronously: Resume() is a UI-thread click and the flow awaits on
+        // the UI thread, so a default TCS would run the rest of the flow INLINE inside
+        // TrySetResult — before FlowResumed and the "resumed" announcement. A flow paused in its
+        // final wait then sent "flow complete" (non-interrupting) and had it cut off by the
+        // interrupting "resumed", with the status overwritten to "Resumed".
+        _pauseTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        if (CurrentFlow != null) FlowPaused?.Invoke(CurrentFlow);
+        _announcer.AnnounceImmediate($"{CurrentFlow?.Name ?? "Flow"} paused");
+    }
+
+    public void Resume()
+    {
+        if (!_paused) return;
+        _paused = false;
+        _pauseTcs?.TrySetResult(true);
+        _pauseTcs = null;
+        if (CurrentFlow != null) FlowResumed?.Invoke(CurrentFlow);
+        _announcer.AnnounceImmediate($"{CurrentFlow?.Name ?? "Flow"} resumed");
+    }
+
+    public void Cancel()
+    {
+        _paused = false;
+        _pauseTcs?.TrySetCanceled();
+        _cts?.Cancel();
+        _cts = null;
+    }
+
+    // -----------------------------------------------------------------------
+    // Private execution engine
+    // -----------------------------------------------------------------------
+
+    // Waits out an active Pause. Factored out of the original top-of-loop check (still
+    // called there, unchanged behaviour) so the same wait can ALSO run (1) on every
+    // iteration of the WaitForCondition loop, before the condition is read, and (2) once
+    // more immediately before FlowCompleted fires — see those call sites for the bugs
+    // each closes. Cancellation is NOT caught here: it propagates as
+    // OperationCanceledException so each call site can handle it the way it already
+    // handles cancellation elsewhere in that same method.
+    private Task WaitWhilePausedAsync(CancellationToken ct)
+    {
+        if (_paused && _pauseTcs != null)
+            return _pauseTcs.Task.WaitAsync(ct);
+        return Task.CompletedTask;
+    }
+
+    /// <summary>A step skipped WITHOUT sending anything (leave-alone rule, dependency gate, a
+    /// target provider with no value): keeps its linked checklist lines out of the completion
+    /// latch, records its id as skipped, raises StepSkipped, speaks <paramref name="spokenText"/>
+    /// (queued; null speaks nothing — the null-target skip is silent, FO-20), and pauses
+    /// <see cref="InterStepPauseMs"/> unless it is the last step. Returns false when the flow was
+    /// cancelled during that pause (FlowCancelled already raised), true otherwise.</summary>
+    private async Task<bool> SkipWithoutRunningAsync(
+        FlowDefinition<TState> flow, FlowStep<TState> step, int index, string? spokenText, CancellationToken ct)
+    {
+        foreach (var itemId in step.LinkedChecklistItemIds)
+            _unfinishedChecklistItemIds.Add(itemId);
+        _skippedStepIds.Add(step.Id);
+        StepSkipped?.Invoke(flow, step, index);
+        if (spokenText != null)
+            _announcer.Announce(spokenText);
+        if (index < flow.Steps.Count - 1)
+        {
+            try { await Task.Delay(InterStepPauseMs, ct); }
+            catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return false; }
+        }
+        return true;
+    }
+
+    private async Task RunFlowAsync(FlowDefinition<TState> flow, CancellationToken ct)
+    {
+        _unfinishedChecklistItemIds.Clear();
+        _skippedStepIds.Clear();
+        FlowStarted?.Invoke(flow);
+        _announcer.AnnounceImmediate($"{flow.Name} flow started");
+
+        for (int i = 0; i < flow.Steps.Count; i++)
+        {
+            if (ct.IsCancellationRequested)
+            {
+                FlowCancelled?.Invoke(flow);
+                _announcer.AnnounceImmediate($"{flow.Name} flow cancelled");
+                return;
+            }
+
+            // Pause check
+            try { await WaitWhilePausedAsync(ct); }
+            catch (OperationCanceledException)
+            {
+                FlowCancelled?.Invoke(flow);
+                return;
+            }
+
+            CurrentStepIndex = i;
+            var step = flow.Steps[i];
+
+            // Check if step is already in the desired state — skip gracefully
+            if (step.SkipCondition != null && _state.IsAvailable && step.SkipCondition(_state))
+            {
+                _announcer.Announce($"Already set: {step.AnnounceText}");
+                Log.Debug("FO", $"{flow.Id}.{step.Id}: already set");
+                StepCompleted?.Invoke(flow, step, i);
+                foreach (var itemId in step.LinkedChecklistItemIds)
+                    _checklist.MarkComplete(itemId);
+                if (i < flow.Steps.Count - 1)
+                {
+                    try { await Task.Delay(InterStepPauseMs, ct); }
+                    catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return; }
+                }
+                continue;
+            }
+
+            // A step the aircraft's state says the First Officer must NOT perform
+            // (FlowStep.LeaveAloneWhen — arming a speed brake that is already deployed would
+            // retract it): nothing is sent, the step's reason is spoken, and it is kept out of
+            // the completion latch exactly like a skipped step, so its lines keep mirroring the
+            // aircraft. After SkipCondition on purpose — "Already set" is the truer answer when
+            // the aircraft is already there.
+            if (step.LeaveAloneWhen != null && _state.IsAvailable && step.LeaveAloneWhen(_state))
+            {
+                if (!await SkipWithoutRunningAsync(flow, step, i,
+                        step.LeaveAloneText ?? $"Skipping: {step.AnnounceText}", ct))
+                    return;
+                continue;
+            }
+
+            // A step that builds on an earlier step this run could not complete
+            // (FlowStep.RequiresStepId) is skipped like a failed Skip-policy step: its
+            // linked items stay out of the latch, and its own id joins the skipped set so
+            // a chain of dependent steps stays skipped. After the SkipCondition above on
+            // purpose — "Already set" is the truer answer when the aircraft is already
+            // there, and a skip text that says what stays as it is would be wrong then.
+            if (step.RequiresStepId != null && _skippedStepIds.Contains(step.RequiresStepId))
+            {
+                if (!await SkipWithoutRunningAsync(flow, step, i,
+                        step.RequiresStepSkipText ?? $"Skipping: {step.AnnounceText}", ct))
+                    return;
+                continue;
+            }
+
+            StepStarted?.Invoke(flow, step, i);
+
+            StepOutcome outcome = await ExecuteStepAsync(flow, step, i, ct);
+
+            // FO-20: a TargetValueProvider with no value (no SimBrief plan) is a SILENT SKIP,
+            // never a success. Nothing was sent, so its lines are neither marked nor latched:
+            // as a quiet success it latched "Flaps: takeoff setting" over a lever at 0 on the
+            // A320s. Silent because the step's paired Captain reminder is what the pilot hears
+            // ("Skipping: …" would say the flow failed when it only had no plan). Its id joins
+            // the skipped set like any other skip, so a step that RequiresStepId it — one that
+            // would build on a value the flow never set — is skipped too, as after a failure.
+            if (outcome == StepOutcome.NoTarget)
+            {
+                Log.Debug("FO", $"{flow.Id}.{step.Id}: no target value, skipped silently");
+                if (!await SkipWithoutRunningAsync(flow, step, i, spokenText: null, ct))
+                    return;
+                continue;
+            }
+
+            if (outcome == StepOutcome.Failed)
+            {
+                switch (step.FailurePolicy)
+                {
+                    case FlowStepFailurePolicy.Stop:
+                        Log.Debug("FO", $"{flow.Id}.{step.Id}: failed, flow stopped");
+                        FlowFailed?.Invoke(flow, $"Step '{step.Label}' failed");
+                        _announcer.AnnounceImmediate($"{flow.Name} flow stopped. Unable to complete: {step.AnnounceText}");
+                        return;
+
+                    case FlowStepFailurePolicy.Skip:
+                        // EVERY linked item, not just CompletesChecklistItemId — a step that
+                        // delivers a line in both the action group and the read-back checklist
+                        // (AlsoCompletesChecklistItemIds) must keep both out of the latch.
+                        foreach (var itemId in step.LinkedChecklistItemIds)
+                            _unfinishedChecklistItemIds.Add(itemId);
+                        _skippedStepIds.Add(step.Id);
+                        StepSkipped?.Invoke(flow, step, i);
+                        Log.Debug("FO", $"{flow.Id}.{step.Id}: failed, skipped");
+                        _announcer.Announce($"Skipping: {step.AnnounceText}");
+                        break;
+
+                    case FlowStepFailurePolicy.RetryThenStop:
+                        StepOutcome retry = StepOutcome.Failed;
+                        for (int r = 0; r < step.RetryCount && retry == StepOutcome.Failed; r++)
+                        {
+                            await Task.Delay(1000, ct);
+                            retry = await ExecuteStepAsync(flow, step, i, ct);
+                        }
+                        if (retry == StepOutcome.Failed)
+                        {
+                            FlowFailed?.Invoke(flow, $"Step '{step.Label}' failed after retries");
+                            _announcer.AnnounceImmediate($"{flow.Name} flow stopped. Unable to complete: {step.AnnounceText}");
+                            return;
+                        }
+                        // A retry that finds no target value any more is the same silent skip (FO-20).
+                        if (retry == StepOutcome.NoTarget
+                            && !await SkipWithoutRunningAsync(flow, step, i, spokenText: null, ct))
+                            return;
+                        break;
+                }
+            }
+            else
+            {
+                Log.Debug("FO", $"{flow.Id}.{step.Id}: done");
+                StepCompleted?.Invoke(flow, step, i);
+
+                // Auto-tick linked checklist item
+                foreach (var itemId in step.LinkedChecklistItemIds)
+                    _checklist.MarkComplete(itemId);
+
+                // Delay between steps — at least InterStepPauseMs so flows read at
+                // a human pace; a longer per-step PostActionDelayMs still wins.
+                int pause = Math.Max(step.PostActionDelayMs, InterStepPauseMs);
+                if (i < flow.Steps.Count - 1 && pause > 0)
+                {
+                    try { await Task.Delay(pause, ct); }
+                    catch (OperationCanceledException) { FlowCancelled?.Invoke(flow); return; }
+                }
+            }
+        }
+
+        // Pause check before completion: without this, a flow paused during its own final
+        // step (e.g. the 737/iFly 20 s gear-check wait) still fell through here and
+        // completed — announcing "flow complete" and latching the checklist group — while
+        // the window still showed Paused. Wait out any active pause first, same as the
+        // top-of-loop check above.
+        try { await WaitWhilePausedAsync(ct); }
+        catch (OperationCanceledException)
+        {
+            FlowCancelled?.Invoke(flow);
+            return;
+        }
+
+        FlowCompleted?.Invoke(flow);
+        // NON-INTERRUPTING (Announce), never AnnounceImmediate (owner decision 2026-09-22).
+        // This runs straight after the last step with no pause, and AnnounceImmediate
+        // interrupts the screen reader and cancels its buffered speech — so the last step of
+        // a flow was routinely cut off, including a skipped wait's "Timed out waiting for: … /
+        // Skipping: …" (the PMDG 737 gear checks), which a blind pilot then heard as silence
+        // followed by "flow complete": success. Non-interrupting, the step's own words are
+        // heard first and "flow complete" follows them. Pinned by the source-text guard
+        // FlowManager_FlowComplete_IsNonInterrupting (FoPr160ProcedureFixTests).
+        _announcer.Announce($"{flow.Name} flow complete");
+    }
+
+    private async Task<StepOutcome> ExecuteStepAsync(FlowDefinition<TState> flow, FlowStep<TState> step, int index, CancellationToken ct)
+    {
+        try
+        {
+            switch (step.ActionType)
+            {
+                case FlowStepActionType.CaptainReminder:
+                {
+                    string text = step.ReminderText ?? step.Label;
+                    CaptainReminderRequired?.Invoke(text);
+                    _announcer.Announce($"Captain action required: {text}");
+                    return StepOutcome.Done;
+                }
+
+                case FlowStepActionType.WaitSeconds:
+                {
+                    int total = step.WaitSeconds;
+                    _announcer.Announce($"Waiting {total} seconds: {step.AnnounceText}");
+                    await Task.Delay(TimeSpan.FromSeconds(total), ct);
+                    return StepOutcome.Done;
+                }
+
+                case FlowStepActionType.WaitForCondition:
+                {
+                    if (step.ConditionFieldName == null || step.Condition == null)
+                        return StepOutcome.Done; // No condition defined — treat as complete
+
+                    _announcer.Announce($"Waiting for: {step.AnnounceText}");
+                    int elapsed = 0;
+                    while (elapsed < step.TimeoutSeconds)
+                    {
+                        ct.ThrowIfCancellationRequested();
+                        // Pause check, before the condition is read: without this, Pause
+                        // during a flow's FINAL wait (e.g. the 737/iFly 20 s gear checks)
+                        // was announced but had no effect — elapsed kept advancing and the
+                        // wait still timed out (and the flow still went on to complete and
+                        // latch) while the window showed Paused. Cancellation here
+                        // propagates like ct.ThrowIfCancellationRequested above — caught by
+                        // this method's own catch block below, same as everywhere else in
+                        // this loop.
+                        await WaitWhilePausedAsync(ct);
+                        double v = _state.GetValue(step.ConditionFieldName);
+                        if (step.Condition(v)) return StepOutcome.Done;
+                        await Task.Delay(1000, ct);
+                        elapsed++;
+                    }
+                    _announcer.Announce($"Timed out waiting for: {step.AnnounceText}");
+                    StepFailed?.Invoke(flow, step, index, "Timed out");
+                    return StepOutcome.Failed;
+                }
+
+                case FlowStepActionType.SetSwitch:
+                case FlowStepActionType.SetSwitchMultiple:
+                {
+                    // Resolve a dynamic target (e.g. SimBrief-derived) just before dispatch.
+                    // Null = required data unavailable → NoTarget, a SILENT SKIP handled by
+                    // RunFlowAsync (FO-20; see TargetValueProvider). Never a success.
+                    if (step.TargetValueProvider != null)
+                    {
+                        int? resolved = step.TargetValueProvider(_state);
+                        if (resolved is null) return StepOutcome.NoTarget;
+                        step.TargetValue = resolved;
+                    }
+
+                    if (!_executor.IsAvailable)
+                    {
+                        _announcer.Announce($"Sim not connected — cannot perform: {step.AnnounceText}");
+                        return StepOutcome.Failed;
+                    }
+
+                    _announcer.Announce(step.AnnounceText);
+                    bool sent = await _executor.ExecuteStepAsync(step);
+                    if (!sent)
+                    {
+                        StepFailed?.Invoke(flow, step, index, "Event not sent");
+                        return StepOutcome.Failed;
+                    }
+
+                    // Optionally verify state after brief settle time
+                    if (step.VerifyFieldName != null && step.VerifyCondition != null)
+                    {
+                        await Task.Delay(600, ct);
+                        double v = _state.GetValue(step.VerifyFieldName);
+                        if (!step.VerifyCondition(v))
+                        {
+                            StepFailed?.Invoke(flow, step, index, "State verification failed");
+                            return StepOutcome.Failed;
+                        }
+                    }
+                    return StepOutcome.Done;
+                }
+
+                default:
+                    return StepOutcome.Done;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            FlowCancelled?.Invoke(flow);
+            throw;
+        }
+        catch (Exception ex)
+        {
+            StepFailed?.Invoke(flow, step, index, ex.Message);
+            return StepOutcome.Failed;
+        }
+    }
+}

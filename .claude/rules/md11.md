@@ -1,6 +1,7 @@
 ---
 paths:
   - "MSFSBlindAssist/Aircraft/MD11/**"
+  - "MSFSBlindAssist/FirstOfficer/MD11/**"
   - "MSFSBlindAssist/Aircraft/TFDiMD11*.cs"
   - "MSFSBlindAssist/SimConnect/MD11/**"
   - "MSFSBlindAssist/MainForm.MD11.cs"

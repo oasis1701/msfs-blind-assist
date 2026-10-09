@@ -1,0 +1,721 @@
+# First Officer Automation
+
+Screen-reader First Officer (flows + checklists) for the PMDG 777, PMDG 737 NG3, Fenix A320, FlyByWire A380, FlyByWire A32NX, iFly 737 MAX8, HeadwindSim A330-900neo and TFDi MD-11. This is the detailed reference. Its rules load with the code from `.claude/rules/first-officer.md` (shared), `first-officer-boeing.md` (PMDG 777/737, iFly 737 MAX8, centre fuel pumps) and `first-officer-airbus.md` (Fenix, FBW A32NX/A380, Headwind A330); their full texts are in `docs/invariants/` under the same names. In-sim verification lives in the per-aircraft test plans under `docs/`.
+
+## Overview
+
+**Feature (branch `feature/777-first-officer`):** a screen-reader First Officer that runs procedural **flows** (sequenced switch actions) and tracks **checklists** for the PMDG 777 and PMDG 737 NG3. One shared, aircraft-agnostic window `Forms/FirstOfficer/FirstOfficerForm.cs` (`FirstOfficerForm<TExec,TState>`) with two tabs — **Checklists** (a `NativeAccessibleTreeView`) and **Flows** (ListBoxes). Opened from a per-aircraft Tools menu item; **each PMDG FO menu item is gated to its own aircraft** (the 777 item never shows on the 737 and vice-versa; neither shows on A320/A380/HS787). The First Officer automation settings live in the unified Settings dialog (File → Settings… → **First Officer** tab, `Forms/Settings/FirstOfficerPanel.cs`, 2026-07 — the standalone "First Officer Settings" menu item and `FirstOfficerSettingsForm` are retired) and the tab is visible for every aircraft. In-sim test plan (the project's verification model — no automated tests): [docs/pmdg-737-first-officer-test-plan.md](pmdg-737-first-officer-test-plan.md), Parts A–F.
+
+**Fenix A320 First Officer (branch `feature/fenix-first-officer`):** a third profile, `FirstOfficer/Fenix/`, rides a new aircraft-agnostic **`FirstOfficer/Generic/`** L:var layer built for this and future FBW reuse — `LVarActionExecutor` (a per-key dispatch table of `LVarDispatchKind`s: held write, momentary pulse, K-event, H-event, all serialized through one gate) and `LVarStateEvaluator` (cache-read that returns NaN until a field is seen, plus `OnRequestPollFields` polled onto the cache by the FO window's 1 s timer, since most Fenix `S_`/`A_` controls are OnRequest-only). Fenix-specific gotchas baked into `FenixActionExecutor`/`FenixFlowDefinitions`/`FenixChecklistDefinitions`: momentary buttons are `SetLVar 0 → ~200 ms → SetLVar 1` pulses (the panel's proven `ExecuteButtonTransition` convention); fire tests are HELD switches (1 → 3 s → 0), not pulses, with the fire bell as the blind-pilot verification cue; FCU managed pushes go through the atomic single-string calculator RPN `{seq} 0 * (L:S_FCU_SPEED) 1 - (>L:S_FCU_SPEED)` — never a second app-side counter, because the panel's own push/pull handler (`FenixA320Definition.HandleUIVariableSet`) writes the same L:var independently and two absolute counters would desync (the panel's altitude push joined the same atomic write on 2026-10-06, so for speed, heading and altitude alike the panel, the hotkeys and the First Officer share one mechanism); ground spoilers ARM is `A_FC_SPEEDBRAKE == 0`; landing lights OFF is value **1** (0 is Retract, 2 is On); there is deliberately **no auto-flaps** (the Fenix exposes no V1/VR/V2/VAPP L:var outside the MCDU display, so `FenixFOAutoManager.AutoFlapsEnabled` is stored from settings but never acted on; that is the speed-based flap schedule, and the takeoff flap setting itself is still set from SimBrief in the After Start flow, with a Captain reminder when no plan is loaded); and EFIS baro STD is a direct per-side state write (`S_FCU_EFIS1_BARO_STD`/`S_FCU_EFIS2_BARO_STD` = 1/0), simpler than the 737's blind toggle push since the Fenix var is directly readable. In-sim test plan: [docs/fenix-first-officer-test-plan.md](fenix-first-officer-test-plan.md).
+
+**FlyByWire A380 First Officer (branch `feature/first-officer`):** a fourth profile, `FirstOfficer/FBWA380/`, mirrors the Fenix profile over the same generic L:var layer but delegates every control write to `FlyByWireA380Definition.ApplyUIVariable` (the panels' verified write path) under a suppressed-announcer wrap, so the FO's own step narration stays the single voice; RTO-arm detects on the latched `A32NX_AUTOBRAKES_RTO_ARMED` (the `_IS_PRESSED` var is a self-resetting momentary); spoiler-arm writes the Act key `A380X_MSFSBA_SPOILERS_ARM` but all state reads use `A32NX_SPOILERS_ARMED`; TAKEOFF flap setting and landing-autobrake selection are Captain items by design, but the opt-in **auto-flaps schedule** (FOAutoFlapsEnabled) DOES act on the A380: extension/retraction timed by the published speed-tape L:vars (GD/S/F + a VFE-next overspeed guard — the FAC's `V_FE_NEXT` word on the A32NX, `A32NX_SPEEDS_VFEN` on the A380 and the Headwind A330), capped at flaps 3 when `A32NX_SPEEDS_LANDING_CONF3` (MFD PERF APPR CONF 3) is set, gear-down gate on the final landing step, Airbus-SOP go-around one-step retraction (the step fires ONLY on the primary GA signature vs > 500 fpm AND +200 ft above the approach's minimum AGL — never bare VS, which a gust fakes; the 737-style climbing>3000 AGL fallback is a latch-clear ONLY and never moves the lever; a dwell-blocked GA step is retried next tick, never lost), monotonic per phase so a pilot override is never re-fought. **Extension ARMS only on a descending sample below 5000 ft AGL** (one-way until GA/touchdown) — without that gate a departure level-off with takeoff flaps out reads as "extension" (IAS < F is true by construction until retraction completes) and would extend flaps on climb-out while blocking its own retraction; arming also stops the FO retracting a pilot-flown configuration on a level deceleration segment. Retraction runs only while DISARMED. In-sim test plan: [docs/fbw-a380-first-officer-test-plan.md](fbw-a380-first-officer-test-plan.md).
+
+**FlyByWire A32NX First Officer (branch `feature/first-officer`):** a fifth profile,
+`FirstOfficer/FBWA320/`, is a **hybrid** of the two profiles above — procedures and phase/checklist
+structure are reconciled from the **Fenix A320** profile (same Airbus SOPs, 2-engine layout, same
+phase count), while the write mechanism and auto-flaps schedule are reused from the **FBW A380**
+profile: the executor delegates every control write to `FlyByWireA320Definition.ApplyUIVariable`
+(a new thin public wrapper around the def's existing `HandleUIVariableSet`, added because the A320
+def previously exposed no public apply-path), under the same suppressed-announcer wrap. A32NX-
+specific divergences from the A380 template: **baro STD/QNH polarity is PULL=STD/PUSH=QNH — the
+OPPOSITE of the A380's PUSH=STD/PULL=QNH** (`A32NX.FCU_EFIS_L/R_BARO_PULL`/`_PUSH`, state off
+`A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE`, since the `_IS_STD` L:vars are dead); **ECAM SD pages
+are selected by writing the SD page index directly** (`ECAM_PAGE_ENG/APU/BLEED/COND/ELEC/HYD/
+FUEL/PRESS/DOOR/WHEEL/FCTL/STS` → `A32NX_ECAM_SD_CURRENT_PAGE_INDEX`, as the A380 does; an
+earlier ECP press/release pulse could leave a button stuck), while the Fenix pulses its own
+`S_ECAM_*` page pushbuttons; both select the same pages at the same flow points (door, APU,
+engine, status, door), and no flow selects the F/CTL or WHEEL page (the takeoff-config test only
+fires the test); landing gear is the stock `GEAR_SET` event; seatbelt signs are genuinely
+2-position ON/OFF (no AUTO, unlike the A380); and cabin notify is a release-pulse of
+`PUSH_OVHD_CALLS_ALL` (a stuck 1 is an endless mechanical horn).
+The A32NX also gets a **richer cockpit-lighting scene** than the A380's single ANN knob — ANN
+(Test/Bright/Dim), dome, standby-compass light, and six analog flood/integral knobs
+(`BRIGHT_{PEDESTAL,MAINPANEL,GLARESHIELD_CAPT,GLARESHIELD_FO,GLARESHIELD_INTEG,OVERHEAD_INTEG}_SET`),
+applied as a coordinated per-phase scene via `SetCockpitLighting`; the three discrete controls
+auto-detect as normal checklist items, while the six analog knobs surface as one `ActionManual`
+grouped item (no clean revert-detectable target for a potentiometer). The opt-in **auto-flaps
+schedule is reused near-verbatim from the A380** (same `A32NX_SPEEDS_*` L:vars for GD/S/F, since
+both aircraft share the FBW speed-tape implementation — except VFE-next, which the A32NX reads from
+the FAC's `V_FE_NEXT` word through its evaluator's `FO_VFE_NEXT` field, because FBW #10890 stopped
+publishing `A32NX_SPEEDS_VFEN` there) — the settings checkbox now reads "Auto-manage
+flaps (FBW A380 and A32NX)." Three flow changes since 2026-10-06, each bringing it level with
+the Fenix: **engine start waits for each engine to run** (FlyByWire's own
+`A32NX_ENGINE_STATE:n` = 1, On, rather than a raw N2 threshold or the old fixed 60 s; 120 s,
+and a timeout stops the flow), **takeoff flaps are set from SimBrief** in After Start (a
+Captain reminder, "Flaps: set for takeoff", speaks unless the lever then reads a takeoff
+position: no plan, or a write that did not take), and **gear up after
+takeoff is confirmed from the gear legs** (`FbwA320GearConfirmation`: the handle up and all
+three `A32NX_GEAR_*_POSITION` under 5 %; "down" is the handle down and all three over 95 %,
+which backs the Landing memo's gear line). In-sim test plan:
+[docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md).
+
+**A320 read-backs and flows, one card (2026-10-06):** the read-back (`*_CL`) checklists of the
+Fenix A320, the FlyByWire A32NX and the Headwind A330 are now ONE list, the current Airbus A320
+normal checklist (November 2021): Cockpit Preparation, Before Start, After Start, Taxi,
+Line-up, Approach, Landing, After Landing, Parking and Securing, with the two ECAM memos spoken
+line by line (the six takeoff-memo lines in Taxi, the five landing-memo lines in Landing).
+There is no After Takeoff, Before Takeoff or Departure Change checklist and no "down to the
+line" marker; the Fenix's old JD's-Guide lists are gone. Group ids, item ids, order and labels
+are the same on the three aircraft except the memo's signs line (A32NX and A330 "seat belts",
+Fenix "signs"), and `A320FamilyParityTests` keeps the Fenix and A32NX equal, every difference
+being a named allow-list entry with a reason (the A330 stays tied to the A32NX by
+`HwA330ParityTests`, and follows every A32NX change). A line whose Airbus response is a blank
+speaks the real value when the pilot ticks it ("Flaps setting: SET, flaps 1: checked")
+through `ChecklistItem.LiveValue`; the tree text never changes. The flows were brought
+together at the same time: engine start waits for the engine to run on all three (the Fenix on
+N2 of 55 % or more), takeoff flaps come from SimBrief on all three, all three select the same ECAM
+pages (door, APU, engine, status, door) and set the cockpit-lighting scene (power-up bright,
+after start dim, shutdown bright, securing off) as flow steps at the same points, the Fenix
+pushes the FCU altitude like the A32NX, the A32NX and A330 confirm gear up from the legs as the
+Fenix does from its lights, both A320s say "APU: ON and available" (the A32NX's APU lines now
+detect AVAIL and hold their tick open until it lights, and on all three the flows complete them
+from the AVAIL wait, never the master write, [FO-11]), and "TCAS: STANDBY"
+(Shutdown) and "External power: OFF" (Securing) became action-group lines on both, so the
+pilot can hand-tick the two flow steps that had none. Sources, the owner's 13 choices on the
+points the evidence could not settle and the live-value rule:
+[FOA-8](invariants/first-officer-airbus.md#foa-8). In-sim checks: the three per-aircraft test
+plans.
+
+**iFly 737 MAX8 First Officer (branch `feature/first-officer`):** a sixth profile,
+`FirstOfficer/IFly737/`, is a step-for-step port of the **PMDG 737 NG3** profile — same 13 flow
+phases, same 24-group checklist structure, same procedures, ids and step order — but with a
+different write approach from every profile above it: rather than a second aircraft-specific
+command table, `IFly737ActionExecutor` delegates writes to
+`IFly737MAXDefinition.ApplyUIVariable`, the panels' own already-verified write path (the FBW
+A380/A32NX pattern), under a suppressed-announcer wrap — with **two** sanctioned bypasses. The
+first is the pressurization altitudes, sent directly via `SendDirect`/`Sdk.SendCommand` because
+the def's NumSet path fires an unsuppressible `AnnounceImmediate` that would talk over the flow's
+own step narration. The second (added 2026-08) is **altimeters to standard**, set by VALUE
+through the stock `KOHLSMAN_SET` event — the mechanism the aircraft's own Ctrl+B altimeter
+dialog already uses and has live-verified — because the EFIS STD control cannot be driven
+closed-loop at all: `BARO_STD_Status` is **momentary**, not latched (v1.5 `SDK_Defines.h`
+documents it as "0:switch released / 1:switch pressed", the same phrasing iFly uses for its
+genuinely momentary press-buttons; the cockpit STD button is a momentary clickspot with no
+persistent STD-mode variable anywhere in the model XML; and the SDK command is a toggle click
+with no `_SET` variant). Read as a latch it made the FO press BOTH sides on every push — which,
+against a toggle, takes an already-standard side back to QNH — and then announce "Altimeter
+standard did not set" on every success. A value-set is idempotent, so it skips when already
+standard, retries safely, and stays silent on success (the def's monitored `ALTIMETER_SETTING`
+var announces the confirmed value with dedup, exactly as it does for Ctrl+B). This aircraft
+earned that approach more
+than any other: its official SDK (shared memory reads + WM_COPYDATA writes, see
+[docs/ifly-737.md](ifly-737.md)) has the **fleet's densest set of live-verified
+encoding traps** — inverted start levers, a reversed FO display selector, landing-light command
+values that don't match their status field, guarded switches needing a Value3 bypass, two
+spring-loaded electrical momentary families that only actuate via click commands, and no
+absolute SET at all for several controls (squawk entry, RTP standby frequencies, ADF frequency).
+Reusing the panels' write path means the FO inherits every one of those fixes for free instead
+of re-discovering them in a second table; the executor's own doc comment explains the one
+deliberate difference from the A380 pattern — there is **no SetLVar fallback** for an
+unrecognized key, because nothing on the iFly is ever written as an L:var, so a key
+`ApplyUIVariable` doesn't recognize is a mapping bug to surface, not a control that needs another
+path. `IFly737StateEvaluator.IsLit` (the 0-5 switch+light composite lit test, `value % 3 > 0`) is
+the one genuinely new piece the port needed beyond wiring existing PMDG-737-shaped executor
+method names to their iFly equivalents.
+
+Deviations from the PMDG 737 template, each because this airframe's own switches don't have the
+PMDG's shape (full list + rationale: `docs/ifly-737-first-officer-test-plan.md`): the **gear
+lever has only Up/Down, no OFF detent** (so the After Takeoff step and its checklist twin are
+worded "Gear lever: UP", never "OFF"); **emergency exit lights are a four-position switch where
+0 means the guard is closed** — treated as ARMED consistently everywhere the FO reads it, not
+just at one call site; **speedbrake ARM is now a First Officer action here too** (2026-09-30: a
+verified arm, as on the PMDG 737, since main's PR #261 measured the lever write — the Captain
+reminder this paragraph used to describe was a stance taken while the write's scale was
+unverified), while **landing autobrake stays a Captain reminder** (a Captain item fleet-wide
+already); **the weather-radar test is a reminder by choice, not by absence**
+— an earlier grep hunted for a WXR test *click* and wrongly concluded the SDK had none, but
+`FMS_WXR_SYS_CTRL_SET` ("Value2: 0:switch TEST; 1:switch NORM") is documented in v1.5
+`key_command.h` and readable back via `Weather_Radar_System_Control_Switch_Status`; it is left
+unwired because this airframe has a documented class of test switches that accept commands and
+do nothing (the A/P and A/T disengage-light TEST switches, live-tested), so driving TEST blind
+risks latching an unmodelled or un-releasing mode — an in-sim probe could upgrade it later;
+**engine
+start gates on the start switch springing back plus N2 only** — there is no starter-valve field
+to wait on between GRD and the N2 gate, the one intermediate confirmation every other Boeing
+profile has; and **APU availability comes from the `APU_GEN_OFF_BUS_Light_Status` annunciator,
+because there is no EGT field** to fall back on the way the PMDG NG3's
+`AircraftStateEvaluator.ApuRunningEgt` does. In-sim test plan:
+[docs/ifly-737-first-officer-test-plan.md](ifly-737-first-officer-test-plan.md) — it also
+carries several LIVE-VERIFY items a code review flagged but could not settle statically
+(the APU-generator-light polarity, a Before-Start re-run
+that is expected to time out and abort today, the pressurization LED-window blank/minus padding,
+the ND range 0..10 scale, and the LNAV switch's value-3 composite edge case).
+
+**HeadwindSim A330-900neo First Officer (branch `feature/first-officer`):** a seventh
+profile, `FirstOfficer/HWA330/`, is a **duplicate** of the A32NX profile — not a
+shared-data variant and not a widened aircraft check. `HeadwindA330Definition` inherits
+`FlyByWireA320Definition`, so an A330 instance already satisfies every type the A32NX FO
+requires and one relaxed line in `MainForm.AircraftSwitch.cs` would have produced a
+working window the same afternoon; it would also have been mislabelled and unaudited. The
+duplicate buys the A330 maximum freedom to diverge, and the price is a drift hazard this
+repository has already paid once (FBW #10855 renamed `A32NX.FCU_TO_AP_HDG_PUSH`, the A380
+*definition* was migrated and `FbwA380ActionExecutor` was not, because it sat in a
+directory the migration never visited — and a K-event nobody registered is swallowed
+silently by the sim). The mitigation is a test, not vigilance: `HwA330ParityTests` fails
+whenever the two profiles drift apart on checklist group ids, item ids, flow ids, step
+order or the fired-event set, unless the difference is named in its
+`KnownStateFieldDivergences` allow-list **with a reason** — and it fails again, from the
+other side, when an allow-list entry stops being a divergence, so the list cannot rot into
+a blanket exemption.
+
+The A339X is a near-exact fork of the A32NX — FBW's own machine-readable procedure file
+(`config/a339x/a330-941/aircraft_preset_procedures.xml`) is byte-identical between the two
+aircraft apart from a single step, the fuel system is a byte-level `flight_model.cfg`
+clone, the flap detents and the whole `A32NX_SPEEDS_*` speed tape transfer unchanged, and
+of the 67 `A32NX_*` names the A320 FO references literally exactly one is absent — so the
+profile diverges in **five** measured places, each corrected and none of which may be
+"harmonized" back to the A320:
+
+- **Nav & logo lights.** `A32NX_LIGHTS_NAV_LOGO` does not exist in the A339X package (A32NX:
+  14 occurrences; A339X: 0). `A330_NEO_INTERIOR.xml:2054-2069` binds
+  `SWITCH_OVHD_EXTLT_NAVLOGO` to stock `LIGHT LOGO` / `LIGHT NAV` through
+  `LOGO_LIGHTS_SET` / `NAV_LIGHTS_SET` at **index 0**. The A320 write path already wrote the
+  stock simvars, so only the *state read* was dead — the pilot who set the lights by hand
+  left the item un-ticked and the FO re-commanded them. `HeadwindA330Definition` keeps the
+  key and repoints it at stock `LIGHT NAV`, with a `HandleUIVariableSet` branch writing the
+  A330 form; keeping one key app-wide means the panel combo and the FO stay one control, and
+  incidentally fixes that combo, which was misreading for the same reason.
+- **ECAM system-display page indices.** The A330 splits ElecAC/ElecDC and adds a CB page,
+  shifting everything above `Fctl`: `Eng=0 Bleed=1 Press=2 ElecAC=3 ElecDC=4 Hyd=5 Apu=6
+  Cond=7 Door=8 Wheel=9 Fctl=10 Fuel=11 Crz=12 Status=13 CB=14`. The A320 table maps
+  `STS=12`, `HYD=4`, `FUEL=5`, which on this airframe select **Cruise**, **ElecDC** and
+  **Hyd**. `HwA330ActionExecutor.EcamPageIndexMap` carries the A339X indices — all of them,
+  including the entries no step uses yet, so a future A330 step cannot inherit a silent
+  mis-selection.
+- **Seat-belt sign.** Same L:var name, opposite encoding: the A32NX
+  (`A320_NEO_INTERIOR.xml:1756-1762`) is two-position `1=On`/`0=Off`, the A339X
+  (`A330_NEO_INTERIOR.xml:1817-1823`) three-position **`0=On`/`1=Auto`/`2=Off`**. Worse, the
+  AUTO position's own block re-drives the stock simvar from engines-running and
+  slats-or-gear on an `Update Frequency="500"`, so the A320's guarded stock toggle was
+  fought back within half a second whenever the switch sat in AUTO, while the cockpit switch
+  never moved at all because nothing wrote the position var. The fix is two steps **in this
+  order** — write the position (0 for ON, 2 for OFF), which moves the physical switch and
+  takes the airframe out of AUTO so nothing contends, then run the existing guarded stock
+  toggle to reconcile the lamp. Detection stays on the sign lamp
+  (`CABIN SEATBELTS ALERT SWITCH`), never on the switch position — the A380 invariant. The
+  reconcile step is **load-bearing, not belt-and-braces** — this was written as belt-and-braces
+  and the live A339X session on 2026-08-30 (item L1) came back the other way: `CODE_POS_0`/
+  `CODE_POS_2` fire on a **cockpit click only**, never on an external L:var write. Writing
+  position 2 with the sign lit moved the switch to OFF and left the lamp **ON**; only the
+  toggle extinguished it. So the position write alone changes nothing a pilot can hear, and
+  the toggle alone is undone by AUTO — both steps are required, in that order. The same
+  session confirmed AUTO's grip directly: with the lamp off, selecting AUTO re-lit the sign
+  by itself.
+- **Landing lights.** The A32NX has two `Retractable` switches (RETRACT/OFF/ON) whose state
+  lives in `L:LIGHTING_LANDING_2`/`_3`; the A339X has **one** two-position ganged switch on
+  stock `LIGHT LANDING` indices 2 and 3 (`A330_NEO_INTERIOR.xml:2022-2034`), and
+  `LIGHTING_LANDING_2` appears nowhere in its package outside the preset procedure file. The
+  write actuated already; the read was dead and the RETRACT position `AL_LANDING_OFF` tested
+  for does not exist. The A330 reads `LIGHT LANDING:2` and its after-landing item commands
+  **OFF**, not RETRACT — the two allow-listed parity divergences, and the only two.
+  Live-measured 2026-08-30 (L5), the read is worse than "dead": `LIGHTING_LANDING_2` returned
+  `0` with the lights **on** and `0` with them **off**. Since the A32NX item accepts `0` as ON,
+  the unported profile does not merely fail to tick — it reports **"Landing lights: ON"
+  permanently, including when they are off**, a false positive on a before-takeoff checklist.
+  That is the sharpest argument in this whole port for not simply reusing the A320 profile.
+- **Cockpit-lighting scene.** The A320 scene writes six analog knobs; on the A339X
+  potentiometers 10 and 11 are not glareshield floods but the Captain's **ceiling** and **map**
+  lights (`A330_NEO_INTERIOR.xml:271-283`), and both are binary click-toggles whose
+  `LEFT_SINGLE_CODE` flips `L:A339X_CEILING_LIGHT_CAPTAIN` / `L:A339X_MAP_LIGHT_CAPTAIN` and
+  drives the pot to 100 or 0. The scene's intermediate value (50 for DimFlight) is not a
+  valid state there, and writing the pot directly would leave a lamp lit while its own L:var
+  still read off — a desync no cockpit interaction resolves. `HwA330ActionExecutor.CockpitLightingKeys`
+  therefore writes **four** pots, not six; the A330 has no glareshield floods at all, and
+  wiring the real ceiling/map lights is deliberately not done (crew-comfort lamps, in no
+  normal procedure, and a toggle pair rather than a level).
+
+One further fix rides along and is **not** A330-specific: `A32NX_SPEEDS_LANDING_CONF3` is
+read in three places by the FBW-family auto-flaps schedule to cap extension at CONF 3, but
+`FlyByWireA320Definition` never registered it (only the A380 did), so it read NaN and the cap
+could never engage on the A32NX either. It is now registered once in the A320 definition and
+polled by both FBW-family evaluators, which fixes both aircraft together.
+
+Static package evidence proves *absence* reliably and proves nothing about *function*, and
+this airframe is its own proof of that: the FlyByWire baro display words are present in its
+`fbw.wasm` and never reach MSFSBlindAssist's cache, which is why `HeadwindA330Definition`
+reads the stock Kohlsman altimeter instead. So every finding above is a necessary condition
+that was checked, never a sufficient one, and the nine LIVE-VERIFY items are part of this
+work rather than an optional follow-up. In-sim test plan:
+[docs/headwind-a330-first-officer-test-plan.md](headwind-a330-first-officer-test-plan.md).
+
+**TFDi MD-11 First Officer (branch `feature/first-officer`):** an eighth profile,
+`FirstOfficer/MD11/`, with its OWN switch-manipulation code (owner request — the PMDG/Fenix
+pattern of an own dispatch table, not the panels' `SetControl` path). The MD-11 has no L:var to
+set: every actuation is a CEVENT id, and `Md11FoActionExecutor` sends every one through the live
+definition's single paced bus (`Md11DefinitionFoTransport` → `TFDiMD11Definition.FoFireEvent` /
+`FoPress` / `FoHoldAsync`), never a writer of its own — a second writer would break the `{seq}`
+anti-coalescing prefix and the 60 ms pacing, and two writes landing in one frame lose one event.
+The only non-CEVENT writes are the closed set `TFDiMD11Definition.IsFoExternalWriteAllowed`
+names: TFDi's `MD11_EXTCTL_*` command inboxes (the altimeters, set by value) and the Dial-A-Flap
+wheel's own var (one direct write; a CEVENT walk jams the wheel at an end stop).
+
+The executor decides which id, how many steps, the order, when to hold and release, and how to
+verify. Every write is read back, and nothing is pressed on an unread value — a toggle clicked on
+a stale read reverses the switch. `Md11FoControls` is its verified table, one of six kinds per
+control:
+
+- **Latch** — the button's own var is the state (battery, the system selectors, APU bleed,
+  windshield heat). Pressed only when it differs.
+- **Single-event toggle** — each click toggles (IRS, fuel switches, parking brake, altitude
+  reporting). Clicked once, only when it differs.
+- **Stepped** — one position per event, clamped (emergency power and lights, the signs, landing
+  and nose lights, cargo temperatures, EVAC, GPWS, autobrake, transponder).
+- **Lamp-read toggle** — a momentary whose system toggles a hidden state, read back on its lamp
+  (external and APU power, the AUX pump, ignition, packs, ECON, exterior lights, anti-ice).
+- **Hold-to-test** — DOWN, hold, UP (fire, cargo fire, voice recorder, fuel quantity, emergency
+  lights, oxygen, TCAS, standby display, annunciator).
+- **One-shot** — a timed test, a reset or a page select, pressed once (hydraulic test, cargo door
+  test, fuel used reset, master warning reset, weather radar TEST and OFF, and the system display
+  CONFIG button, which steps pages and must never be pressed twice).
+
+Every id is pinned to the generated control map (`Md11FoControlsTests`) and every step direction
+to TFDi's own handlers decoded from `md11host.wasm` — never the panel walker's learned polarity,
+which guesses the opposite on a fresh install. What the table relies on: RIGHT raises every
+overhead stepped control; the EVAC and GPWS covers gate the INCREASE above position 1 while
+closed, so Off↔Armed and Test↔Normal work cover-closed and ON / FLAP OVERRIDE stay unreachable —
+the FO never opens a cover, and GPWS TEST is reached by stepping DOWN from NORMAL; guarded
+push-buttons (battery, hydraulic test) work through a CEVENT with the cover closed; the START
+switches pop in by themselves at cutout; and the packs are inert in Air AUTO, so Packs OFF first
+puts the Air system in MANUAL. The stepped walk re-reads after every step and watches for the
+whole step ceiling, never one early read (a CEVENT lands a frame or more after it is sent); a step
+that moves the WRONG way is undone at once and the correction remembered for the session; a
+no-move at an end stop tries the other event once and remembers that only when it then moves the
+control toward the target.
+
+**One voice.** An FO actuation opens the definition's quiet window
+(`TFDiMD11Definition.NoteFoActuation` → `Md11AnnouncementGate.NoteQuietActuation`, 5 s): the lamp
+and latch changes it causes are recorded, not spoken, because the flow step already said it. The
+annunciator light test lights about 488 lamps at once, so it is held only under a lamp-speech mute
+(`MuteLampSpeechFor`: the hold, the 1 Hz batch and the dark settle); the raw test key is routed
+through the same composite, so a checklist naming it cannot bypass the mute. The spoiler
+read-outs honour the quiet window as well — mid-stow the pull reads 1 and would announce "armed".
+
+**Preflight runs every system test the MD-11 has:** engine and APU fire, annunciator lights, cargo
+fire, the cockpit voice recorder, hydraulic (a ~100 s timed test, started only in hydraulic AUTO
+with power on and the engines stopped; the flows wait for it to finish before the AUX pump,
+because an AUX pump press aborts it, and the executor keeps the same rule for a hand-tick), fuel
+quantity, emergency lights, GPWS (TEST and back to NORMAL, cover closed), the weather radar (TEST,
+then OFF, verified on the OFF button's own var, read under the FO's own key `MD11_FO_WXR_OFF`),
+both oxygen masks, the standby display (where fitted), TCAS and the cargo doors. The throttle
+travel and aural warning check is a Captain item. Both fire tests light the master warnings, so
+ONE master warning reset follows the cargo fire test, the later of the two, in the flow and the
+Preflight checklist alike (owner decision, 2026-10-06; TFDi's order otherwise kept). The checklist
+used to reset only after the engine fire test, so a cargo test ticked there left the warning on.
+
+**Flaps are the Captain's in flight** (owner decision). The FO sets the Dial-A-Flap from the
+SimBrief takeoff flap at Preflight (without a plan the step fails rather than ticks, and a Captain
+reminder speaks); moves the handle to the Dial-A-Flap detent after start and UP after landing —
+ON THE GROUND ONLY, one detent per wheel event, each read back; and sets Dial-A-Flap 15 at the
+transition altitude, refused while the handle sits in the Dial-A-Flap detent (the wheel would
+then move the flaps). There is no auto-flap schedule: `FOAutoFlapsEnabled` is stored and never
+acted on. The wheel's direction is not in TFDi's mechanical table; the default (77830 extends) was
+measured live, and a wrong-way detent is undone and remembered.
+
+**Ground spoilers are the FO's in every phase:** arm, disarm and the stow after landing are each
+one lever click (77829). From deployed the click drops the pull 2 → 1 and TFDi's own lever spring
+runs the lever to RET and zeroes the pull — decoded, not yet flown ([docs/md11.md](md11.md) §12).
+Arming from deployed stows first. An extended speedbrake is the Captain's lever: never moved, and
+it refuses an arm.
+
+**Before Takeoff ends with NAV, PROF and AUTO FLIGHT, each the FO's own press** (owner,
+2026-10-06: on this aircraft the checklist is run at lineup, and AUTO FLIGHT before takeoff arms the
+autothrottle; TFDi's page ends "NAV: ARMED, PROF: ARMED, AUTOFLIGHT: PRESS after LINEUP"). NAV and
+PROF export no armed state, so their presses cannot be read back (like the master warning reset);
+a second press leaves them armed, so a re-run presses them again harmlessly. AUTO FLIGHT engages
+"both ATs and one AP", and the autopilot is refused below 100 ft, so on the ground only the
+autothrottle comes on: it is pressed only when `MD11_AP_STATE` and `MD11_ATS_STATE` both read
+definitely off (a press with an autopilot on swaps AP 1 and AP 2, it never disengages) and is done
+when either reads on (`Md11FoSwitching.AutoFlightOn`, the same rule as the `FO_AUTO_FLIGHT_ON`
+read-back lines). Each of the three steps also links its read-back line, so a press that fails
+leaves "NAV: Armed", "PROF: Armed" or "Auto Flight: On" unticked rather than latched by the flow.
+The autopilot itself still engages after takeoff at the auto-engage height (400 ft floor).
+
+**Engines start 3, 1, 2.** The flow first waits for all three N2s (engine 3's is a new SimConnect
+request, `FO_ENG3_N2`, request 386, fed through `IFoEngine3N2Sink`), the APU running with its
+bleed on, and ignition selected. Each START switch is pulled only when it reads in and N2 is below
+15 %, and never clicked twice — a second click aborts the start. Fuel goes ON at 15 % N2. An engine
+that does not reach 15 % within 60 s has its START switch pushed back in and the flow stops, so a
+stopped flow never leaves a starter engaged. Then the flow waits for the switch to pop in and N2
+to reach 55 %.
+
+**Other rules the executor keeps**, each from TFDi's code or a live measurement. External power is
+decided by its ON lamp, read fresh and first: connect only with AVAIL lit or on the battery alone,
+disconnect only with APU power ON (live: TFDi itself refuses to drop external power when it is the
+only source, so a flow that tried would stall with the aircraft still on the GPU). The APU is shut
+down only with its bleed closed (an open bleed restarts the shutdown timer) and APU PWR ON lit (a
+press with it dark REQUESTS APU power). Engine, wing and tail anti-ice are left alone in AUTO —
+TFDi toggles them only in MANUAL, and this install reads AUTO. The autobrake goes to T.O. or OFF
+only; a landing setting is refused as the Captain's. The gear lever is clicked only at rest at one
+end (two matching readings: a click while it travels reverses the pilot's own command), and up
+only when definitely airborne. There is no fallback for an unmapped key — that is a mapping bug,
+logged, never a write to guess at.
+
+**Cold-and-dark guards.** Power Up and Shutdown stop before their first switch unless every engine
+reads stopped (N2 below 10 %; unread counts as not stopped), and Shutdown also unless on the
+ground. Found live: Power Up started with the engines running cut all three fuel switches, and
+Shutdown switched the IRS and the battery off.
+
+**Checklists.** Action groups mirror each flow, and TFDi's normal checklist is carried as sixteen
+read-back groups in its order: Cockpit Entry, Preflight, Before Start, Engine Start, After Start,
+Before Takeoff, After Takeoff, Passing 10,000 Feet, Passing Transition Altitude, Cruise, Passing
+Below Transition Level, Descending Below 10,000 Feet, Before Landing, After Landing, Parking and
+Shutdown. They are CONDENSED (owner request, 2026-10-01), not verbatim: TFDi's Preflight ran 92
+lines and its Engine Start 16, most of them lamps lighting during a test, gauge readings (EGT, oil,
+fuel flow) and panel inspections a blind pilot cannot perform. Each list now holds only switch
+positions the app reads back (auto-tick) and Captain items reachable from MSFSBA (MCDU, altimeters,
+radios, flight controls, the throttle check, whose warnings are aural) — Preflight 23 items,
+Engine Start 4. The system tests are one "System
+Tests: Complete" line; the FO still runs every one of them in the Preflight flow. Never re-add a
+check the pilot has no way to perform. The START switch items latch on N2 like the other start
+selectors; the fuel switch items stay `RevertToState`.
+
+Each read-back list keeps its own TFDi page's lines, in TFDi's order (owner request, 2026-10-06),
+so a line repeats across phases only where TFDi repeats it (spoilers armed before takeoff and
+before landing, autobrake RTO at Preflight and Before Takeoff). Removed then as not on that page:
+After Start's spoilers and autobrake, Before Takeoff's transponder, Before Start's pushback
+clearance, Parking's anti-ice and Shutdown's packs; engine anti-ice moved to After Start. Two
+deliberate differences stay: After Start reads "APU Bleed: Off" where TFDi says "APU: Off" (closing
+the bleed lets the APU shut itself down), and Shutdown reads "APU: Off" where TFDi says "As
+required" (the flow turns it off). TFDi's one-line Takeoff page ("TOGA Power: Set") is left out.
+A finished flow ticks and latches its read-back list too (`FlowDefinition.CompletionGroupIds`), so
+never add a live read-back line the flow does not deliver: it would read done with the switch
+untouched. The action groups list the same lines in the same order as their flows
+(`EveryActionGroup_ListsTheSameLinesInTheSameOrderAsItsFlow`).
+
+**Automatic modes.** Passing 10,000 ft the landing lights retract climbing and come on descending
+(`FOAutoLights10kEnabled`). Passing the transition altitude climbing, the FO sets all three
+altimeters to standard BY VALUE into TFDi's external inboxes (the Ctrl+B path — the STD push state
+is unreadable) and the Dial-A-Flap to 15, then speaks ONE sentence saying what it did and what it
+leaves to the Captain. The transition level descending is announce-only. Seat-belt signs follow
+`FOAutoSeatbeltMode`. Gear and autopilot engagement are the universal automation's; the MD-11
+engages through AUTO FLIGHT (never the stock `AUTOPILOT_ON`, which the MD-11 disables), confirmed
+on `MD11_AP_STATE` and floored at 400 ft AGL.
+
+**Diagnostics.** Every flow step's outcome is logged (`FlowManager`, category `FO`: done, already
+set, skipped, failed), and every MD-11 FO actuation with its result and the reason for a refusal
+(`Md11FoActionExecutor.Set`, category `MD11 FO`). debug.log is the first stop for "the First
+Officer skipped X".
+
+**Verified live on 2026-09-26** (MD-11F GE at CYYZ, MSFS 2024, driven through the real window):
+Power Up, Preflight with every test, Before Start, Engine Start (3, 1, 2), After Start, Before
+Takeoff, both cold-and-dark guards, and most Shutdown steps (from an accidental run with the
+engines turning, before the guards existed). Not yet flown: After Takeoff, Descent, Before
+Landing, After Landing (the spoiler stow), Parking, and the automatic modes. In-sim test plan:
+[docs/tfdi-md11-first-officer-test-plan.md](tfdi-md11-first-officer-test-plan.md).
+
+**Architecture — everything aircraft-specific is injected via `IFoProfile<TExec,TState>`.** The form is identical across aircraft; the profile (`FirstOfficer/Pmdg777FoProfile.cs`, `FirstOfficer/PMDG737/Pmdg737FoProfile.cs`) supplies the executor, state evaluator, checklist + flow data, auto/phase managers, window title, and the data-manager binding. Generic engine pieces: `ChecklistManager` (toggle / auto-detect / revert), `FlowManager` (step runner + events), `FlightPhaseMonitor`, `FOAutoManager`; per-aircraft: `AircraftActionExecutor` (PMDG switch dispatch), `AircraftStateEvaluator` (reads PMDG data fields), `PMDG7x7ChecklistDefinitions`, `PMDG7x7FlowDefinitions`. Interfaces live in `FirstOfficer/IFo*.cs`; models in `FirstOfficer/Models/` (`ChecklistItem`, `ChecklistGroup`, `FlowDefinition`, `FlowStep`).
+
+**Two-layer checklist model (per aircraft):**
+- **STATE / ACTION groups** (e.g. `ELEC_POWER_UP`, `PREFLIGHT`, `BEFORE_START`, `BEFORE_TAKEOFF`, `AFTER_TAKEOFF`, `SHUTDOWN`, `SECURE`) mirror what each flow sets — **ticking an item FIRES the switch** via its `CheckAction`, and the item also **auto-ticks from live sim state** (`ChecklistManager.EvaluateAutoDetection`).
+- **READBACK `*_CL` groups** (e.g. `BEFORE_START_CL`, `BEFORE_TAKEOFF_CL`) are the challenge-response checklists — **action-free**: ticking a readback item fires **no** switch (the state/action group or flow does the work), and the item auto-ticks from live sim state as the real switch reaches position. **Invariant: no `*_CL` group item has a non-null `CheckAction`.** (737 `_CL` groups were authored action-free; the 777 `_CL` groups had CheckActions and were stripped 2026-06.) **Every phase that has a flow has BOTH layers** — Before/After Takeoff, Descent, Approach (+ 737 Landing) action groups were added 2026-06 so each flow phase has an action group above its readback; the lone readback-only phase is the **777 Landing** (it has no Landing flow to mirror). Don't reintroduce actions into a `*_CL` group.
+
+**Flows** (`FlowManager`) run a `FlowDefinition`'s steps: `SetSwitch` / `SetSwitchMultiple` (PMDG events), `WaitSeconds`, `WaitForCondition` (poll a PMDG field), `CaptainReminder` (announced, never automated — the FO can't observe a visual test result blind). `Skip` predicates no-op a step the aircraft is already in; `PostActionDelayMs` spaces consecutive steps (the flow path's frame spacing); `CompletesChecklistItemId` ticks a checklist item on step success; `UsesMouseFlag` marks FD/AT toggles. **Captain-set / runtime-data items** (altimeters, trim, MCP courses, ILS freqs, pressurization alts) are reminders by design.
+
+**SimBrief + auto-managers.** **Load SimBrief** is on BOTH tabs (the checklist-tab button was added 2026-06) → sets transition altitude/level (`FlightPhaseMonitor`) + takeoff flaps (`IFoStateEvaluator.SetTakeoffFlaps`, aircraft-agnostic). **737 pressurization altitudes are FO-SET from SimBrief (2026-07-01):** Load SimBrief also pushes `SetPlannedPressurizationAltitudes(cruise, destElev)` (interface method; 777 = no-op — its pressurization is FMC-automatic and stays untouched). The 737 evaluator rounds/clamps at storage (FLT nearest 500 / LAND nearest 50 ft — matches the PR #120 knob steps so the event-side round-down is a no-op) and serves synthetic match keys `FO_PRESS_ALTS_MATCH` / `FO_PRESS_LAND_ALT_MATCH` (window vs plan, strictly < one knob step). The Preflight flow sets both via `EVT_OH_PRESS_FLT/LAND_ALT_SET` using the new `FlowStep.TargetValueProvider` (resolved at dispatch; **null = SILENT SKIP, never a success** (FO-20, owner decision 2026-10-06) — nothing sent, no announcement, and like any skipped step its linked checklist lines are not marked and stay out of the flow's completion latch, its id counts as skipped for `RequiresStepId`, and the Steps list marks it "→" — paired with a Captain fallback step SkipCondition'd away when a plan exists, so the pilot still hears the no-SimBrief case. Until 2026-10-06 null was a quiet SUCCESS, which on the A320s ticked and latched After Start's "Flaps: takeoff setting" over a lever at 0; the 737's two pressurization steps linked no line, so the Preflight line "Flight and landing altitudes: SET" (`PF_PRESS`) was still latched with no plan; since later that day both name it, and the iFly's single `PF_PRESS_ALTS` pseudo-key step is plan-gated by a provider and names it too, so with no plan the line stays open and only the Captain fallback speaks — FO-20's full text). Preflight SETS, descent only VERIFIES (`DC_PRESS` auto-ticks off the land match key, action-free per the `*_CL` invariant); `PF_PRESS` tick fires `SetPressurizationAltitudesAsync` (spaced writes). Test plan Part I. **Auto-gear and auto-AP-engage are UNIVERSAL (2026-07-12): moved out of the per-aircraft `FOAutoManager`s into `MSFSBlindAssist.Automation.UniversalAutomationService`** (constructed in `MainForm`, driven by a 1 Hz `AircraftPositionReceived` feed), which actuates via stock SimConnect events `GEAR_UP`/`GEAR_DOWN`/`AUTOPILOT_ON` and therefore runs on **every aircraft** (incl. HS787), **independent of whether the First Officer window is open**. It reads the same settings from `SettingsManager.Current` each tick — `FOAutoGearUpEnabled`/`FOAutoGearDownEnabled` and `FOAutoApEnabled` + the **user-configurable AP height** `FOAutoApEngageAltitudeAgl` (default **350 ft AGL**, one global value, validated 100–3000 in the First Officer settings panel — the announcement speaks the configured number). All three default off, so nothing actuates unless the user opts in (no separate master switch). The `FOAutoManager` layer is **retained** but now carries only FLAPS: the **FBW A380 and A32NX** speed-tape flap schedules (`CheckFlaps`) and the **737's fixed 400 ft LNAV/VNAV push** (`PMDG737/FOAutoManager.CheckLnavVnav`, annunciator-guarded, gated on `FOAutoApEnabled`, FO-window-driven — the one AP behavior NOT universalised because it is not a stock event). The PMDG 737/777 speed-scheduled flap logic remains **REMOVED (2026-07-08, do not re-add)**; the Fenix never acted on flaps; the "Auto-manage flaps" checkbox is labeled "(FBW A380 and A32NX)". **Auto seat-belt signs (2026-07-12):** a new `UserSettings.FOAutoSeatbeltMode` (0=Disabled/1=at-10k/2=off-at-TOC/on-at-TOD) drives the shared `FirstOfficer/SeatbeltAutomation.cs` state machine owned by each `IFoPhaseMonitor`, actuated through each aircraft's own `SetSeatbeltSign(bool)` executor method — aircraft-specific, so FO-aircraft-only (unlike gear/AP, seatbelts are never stock SimConnect). `FlightPhaseMonitor` pushes STD/QNH at the transition alt/level (the STD push is SimBrief-sourced only — there is NO default transition altitude). The checklist tree is **single-expand** (expanding one top-level group collapses the others). **Gear auto-management is split into two independent settings (2026-06-28): `UserSettings.FOAutoGearUpEnabled` (raise on positive rate / climb) and `FOAutoGearDownEnabled` (lower at 2000 ft AGL / descent)** — exposed as two checkboxes in the Settings dialog's First Officer panel (`Forms/Settings/FirstOfficerPanel.cs`) and read directly by `UniversalAutomationService` from `SettingsManager.Current` (2026-07-12; formerly gated per-aircraft in `IFoAutoManager` — those members were removed). The legacy single `FOAutoGearEnabled` is kept ONLY for deserialization; `SettingsManager.MigrateFOGearSplit` seeds both new flags from it once (guarded by `FOAutoGearSplitMigrated`). The `FOAuto{Flaps,Ap}Enabled` flags are unchanged; `FOAutoApEngageAltitudeAgl` (2026-07-08) needs no migration — a new key with default 350.
+
+**Auto seat-belt signs (`SeatbeltAutomation`, all seven aircraft; Settings → First Officer, Disabled / 10,000 ft / TOC-TOD).** One shared, aircraft-agnostic state machine; each phase monitor wires it to its own `SetSeatbeltSign(bool)`. ⚠️ **TOC/TOD was rewritten 2026-09-29 (owner report: long arrivals with several level-offs toggled the signs).** The old machine took ANY level-off above 10,000 ft as Top of Climb and re-armed whenever the altitude dipped below 10,000 ft, so a climb held at an intermediate level turned the signs off early, an arrival that dipped below 10,000 ft and then levelled at a restriction just above it heard "Cruise. Seat belt signs off.", and so did any state started during the descent (a SimBrief load resets the automation). Now: Top of Climb is a sustained level-off above 10,000 ft AT the leg's peak (within 500 ft — a level-off below the peak is a step on the way down, or a climb stepped down for traffic, and that rule alone keeps arrival level-offs silent) AFTER a real climb (3,000 ft gained this leg, so a state started at cruise or in the descent — the window first opened there, or a SimBrief load, which resets it — never switches signs the pilot may have set for a reason). How long it must hold: 20 s within 2,000 ft of the SimBrief cruise (`IFoPhaseMonitor.SetPlannedCruiseAltitude`, fed from the OFP's initial altitude and kept across `Reset`), 10 minutes when a plan is known but the level is further below it (ATC kept the aircraft low), 3 minutes with no plan — judgements, not measurements. The plan is for ONE flight: it is forgotten on the first ground sample after the aircraft has flown, so a stale plan's cruise cannot match the next flight's climb step (Load SimBrief sets it again; the window does not auto-reload once an OFP is loaded). An airborne altitude at or below 0 ft is ignored. A first cut of this rewrite also latched "descending" 1,000 ft below the peak; it was redundant with the peak rule and wrongly ended TOC detection for a climb stepped down and back up (review, 2026-09-29), so it is gone. Top of Descent is unchanged (after TOC, 15 s below −500 fpm AND 1,000 ft lost). The leg re-arms ONLY on the ground (`Update`'s `onGround`). Every duration is CLOCK time, never a sample count — `AircraftPositionReceived` fires for every position answer whichever feature asked (the FO window, the universal automation timer, TCAS), so counting deliveries made "20 seconds" a few. Pinned by `SeatbeltAutomationTests`.
+
+**NO FMC programming (deliberate, do NOT re-add).** The FO does NOT program the CDU — `FmcProgrammingService`, the `ProgramFmc` flow-action type + handler were deleted and `Load SimBrief` is **load-only**. Keep checklist text + V-speed read-outs + SimBrief load; never reintroduce CDU-keystroke automation. (User decision; mirrored in project memory `project_no_fmc_programming`.)
+
+### Center fuel pump auto-management (PMDG 737 + 777 + iFly MAX8)
+
+Opt-in via `FOAutoCenterPumpsEnabled` (First Officer settings, **default OFF**;
+Boeing jets only). This section describes the **QUANTITY-BASED** design shipped 2026-08-16
+after the annunciator-based design (low-press debounce) failed in the field TWICE and was
+retired — see `docs/superpowers/specs/2026-08-16-center-pump-quantity-off-design.md` for
+the full defect history if you need it; the earlier
+`docs/superpowers/specs/2026-07-15-center-pump-corrective-redesign.md` is HISTORICAL, kept
+only as a record of the annunciator model this replaced.
+
+**Why the annunciator model was replaced.** Two independent field failures:
+1. **2026-08 flicker defect.** The PMDG center LOW PRESSURE annunciator does not latch
+   steadily lit as the tank empties — it cycles on for a second or two and back out — which
+   defeated a reset-to-zero debounce (OFF became unreachable on a genuinely dry tank). The
+   corrective redesign fixed this with a cumulative/hysteretic debounce over the annunciator.
+2. **2026-08-16, log-proven, the annunciator model's terminal failure.** Even the
+   cumulative debounce depends on the annunciator being observable evidence at all. A live
+   `center_pumps.log` capture showed center fuel quantity fall 922→304→0 lbs with the
+   pumps running continuously — a genuine, unambiguous depletion — and the debounced dry
+   signal never accrued a single second of evidence: the annunciator simply was not lit
+   often enough at the policy's ~1 Hz sample rate to ever cross the confirm threshold. The
+   pilot switched the pumps off by hand. This is what forced the annunciator OFF trigger
+   out entirely, not just a further debounce tuning.
+
+**The fix: read the fuel gauge instead of the light.** Center fuel quantity from the
+aircraft's own data (PMDG CDA / iFly SDK) is monotone and reliable in the same log where
+the annunciator signal was absent. **Never reintroduce an annunciator term
+(dry/credible/low-press) into this policy** — see the design doc for why that path is a
+dead end, not merely under-tuned.
+
+Runs in the per-aircraft `FOAutoManager.Update` via the shared, pure, unit-tested
+`CenterFuelPumpAutomation` policy (`MSFSBlindAssist/FirstOfficer/CenterFuelPumpAutomation.cs`).
+Signature:
+
+```csharp
+public Action Update(
+    bool enabled, bool dataReady, bool onGround, double centerQtyLbs,
+    bool centerPumpsOn, bool wingPumpsOn, double rawElapsedMs)
+```
+
+`Update` is called on each position-update tick (~1-2.7 Hz, driven by
+`AircraftPositionReceived` — NOT a fixed per-frame rate), so the timing windows are
+**wall-clock seconds, not tick counts** (`QtyOffConfirmSeconds`) — each adapter owns a
+`System.Diagnostics.Stopwatch` and passes the measured `elapsedMs` into `Update`; the
+policy defensively clamps it to `MaxElapsedMs` (2000 ms, rejects a first-call/sim-pause/hitch
+spike without affecting a normal tick). A clamped maximum-length tick equals the whole 2 s
+confirm window, so a single below-threshold sample after a ≥2 s hitch satisfies the
+confirm on that one tick — accepted, because quantity is stable and the clamp only needs
+to ride out a single anomalous tick, not guard against a genuinely fast crossing. `onGround`
+is `pos.SimOnGround >= 0.5` from the position feed (not an AGL threshold). The policy itself
+is pure and touches no SimConnect state.
+
+**Invariants:**
+
+- **Arm ON is ground-only** and gated on the wing pumps already being ON (fuel-panel
+  setup has begun) AND center quantity above `ArmThresholdLbs` (1500 lbs) — never fires
+  cold-and-dark, never in flight, and never arms a tank it would immediately switch back off.
+- **OFF trigger is QUANTITY-based: center quantity confirmed below `OffThresholdLbs`
+  (1000 lbs) for `QtyOffConfirmSeconds` (2 s) continuously** — **with no `onGround` gate**,
+  so the tank is correctly switched off if it drains in cruise, not just on the ground.
+  - The confirm is a plain **CONTINUOUS** run — any valid reading at/above the threshold, or
+    any invalid reading (NaN/negative/Infinity), resets it to zero. Unlike the retired
+    annunciator, quantity does not flicker, so this is deliberately simple: it exists only
+    to ride out a single anomalous tick, not to accrue evidence across gaps the way the old
+    debounce had to.
+  - `qtyValid` rejects NaN/negative/Infinity so an invalid reading can never fire OFF and
+    always resets the confirm window (pinned by
+    `InvalidQuantity_ResetsConfirm_NeverFiresOffOnInvalidTick`). The PMDG adapters route NaN
+    through `FuelSystemLogic.SafeRoundToInt` → 0 before it ever reaches this policy, so this
+    guard mainly protects non-PMDG callers — the iFly MAX8 adapter passes NaN through
+    unconverted.
+  - The 500 lb gap between `OffThresholdLbs` (1000) and `ArmThresholdLbs` (1500) is
+    deliberate hysteresis: it is what stops the automation from arming a tank it would
+    immediately switch back off, and it is what the 2026-08-16 log-captured arm-at-922-lbs
+    defect (fixed by raising the arm floor above the off floor) exists to prevent.
+- **Two clearable arm-suppressor latches, sharing one floor and one clear path:**
+  - `_switchedOffThisLeg` — the dry-off latch, now set by the QUANTITY-based OFF trigger
+    (formerly set by the annunciator debounce).
+  - `_manualOffLatch` — set on an *unrequested* falling edge (someone else switched the
+    pumps off) while the wing pumps are still on; it records the intent "a human turned
+    this off, don't re-arm automatically."
+  - Both share one ratcheting floor, `_qtyFloor` (NaN iff neither latch is set — enforced
+    structurally every tick, not just at latch-set time). While either latch is set the
+    floor only ever ratchets **down** to track a draining/steady tank, never up.
+  - **`ClearPolicyLatches()` clears BOTH latches together** and fires on exactly three
+    edges: (1) a genuine ground refuel, `centerQtyLbs > _qtyFloor + RefuelMarginLbs` (250
+    lb margin above the ratcheted floor); (2) the `FOAutoCenterPumpsEnabled` settings
+    false→true edge; (3) a full `Reset()` (aircraft switch). Note the asymmetry: the center
+    **switch's own rising edge** (pumps observed going off→on) clears only
+    `_manualOffLatch` (C-A — "someone re-armed by hand or via Before-Start, the old
+    off-intent is stale"), **not** `_switchedOffThisLeg` — a manual/checklist re-arm after
+    a dry-off does not by itself un-latch the dry-off state; only a real refuel, the
+    settings edge, or a reset does.
+  - Inferring a refuel from "qty is now above `ArmThresholdLbs`" is unsound — after a
+    dry-off the tank stops draining, so the quantity freezes near whatever tripped the
+    threshold, and a threshold-only test passes vacuously on the very next tick with no
+    real fuel truck involved, oscillating the pumps on/off indefinitely. The
+    floor-plus-margin design is what replaced it, and it survived the quantity-off rewrite
+    unchanged.
+- **The center-pump policy's OFF branch never reads `_switchedOffThisLeg`** — it is
+  written there, never read as a guard on that branch (documented in code as THE TRAP). An
+  earlier revision *did* narrow the OFF condition on it, which meant a single dry-off
+  permanently prevented the OFF branch from ever firing again for the rest of the leg — the
+  trap this design avoids. The only thing that suppresses re-issuing an OFF write is the
+  self-clearing `_pendingCommand` latch below; the two arm-suppressor latches gate ON only.
+- **Pending-command latch (write-then-verify):** after commanding TurnOn/TurnOff, the
+  policy sets `_pendingCommand` and returns `Action.None` on every subsequent tick until
+  either (a) the observed `centerPumpsOn` matches the commanded direction (readback
+  landed), or (b) `CommandConfirmSeconds` (30 s, a failure-path bound only, not a retry
+  schedule) elapses with no matching readback — there is **no retry budget**; on an
+  unstuck timeout the policy simply becomes eligible to re-evaluate on the next tick. Under
+  a permanently broken write path this bounds the residual to roughly one announcement
+  attempt per 30 s window (≈2/min) — a named, accepted residual, not assumed away.
+- Both actions announce (background state change): "Center fuel pumps on." /
+  "Center tank low. Center fuel pumps off." Thresholds (`ArmThresholdLbs` = 1500 lb,
+  `OffThresholdLbs` = 1000 lb, `QtyOffConfirmSeconds` = 2 s, `RefuelMarginLbs` = 250 lb) are
+  tune-in-sim consts.
+- **Diagnostics: `%APPDATA%\MSFSBlindAssist\logs\center_pumps.log`** (`CenterPumpDiagnostics`,
+  one instance per FO adapter). Records the inputs the adapter passed to `Update` plus the
+  policy's internal state (`CenterFuelPumpAutomation.Diagnostics`) and the resulting action.
+  The line shape changed with the quantity-off rewrite — it now reads
+  `qty= dt= ready= gnd= pumps= wing= belowMs= dryOffLatch= manualOffLatch= floor= pending=
+  -> Action`; there is no more `dry=`/`cred=`/`dryMs=` (the annunciator fields are gone).
+  **Change-triggered, not per-tick** — a line is written only when an action fires or the
+  state key moves, and center quantity is excluded from that key (it changes every tick
+  while draining and would defeat the suppression), so a quiet cruise costs a handful of
+  lines while a depletion event is traced tick by tick. Silent while the feature is disabled.
+  This exists because the OFF trigger is otherwise invisible from the cockpit — the only
+  observable is whether the announcement happened, which is what made both the 2026-08 and
+  the 2026-08-16 defects require a diagnostic trace to root-cause. `center_pumps.log` is
+  still the trace to ask for when a pilot reports the center pumps not switching off —
+  check `belowMs` accrual and the `-> TurnOff` line.
+- **iFly MAX8 quantity source is the STOCK SIM fuel system, not the SDK gauge (2026-08-18
+  fix).** The iFly plugin writes BLANK (code 10) into every
+  `Fuel_Quantity_Indicator_Status` digit cell for the whole powered flight
+  (live-verified: the 2026-08-17 `center_pumps.log` shows `qty=NaN` on every tick of a
+  flying session, and `IFlySdkProbe fuel` shows all 15 cells at 10), so the gauge-text
+  read (`IFly737FoComposition.CenterQuantityLbs`) is NaN forever — the automation could
+  never arm, and `CenterPumpGate` suppressed the Before-Start flow's center-pump ON
+  writes (`debug.log`: "centre-pump ON suppressed"). The FO background timer now also
+  requests `FUEL TANK CENTER QUANTITY` × `FUEL WEIGHT PER GALLON` via SimConnect
+  (`RequestFOCenterFuelLbs` → `SimVarUpdated "FO_CENTER_FUEL_LBS"` →
+  `IFly737StateEvaluator.SetSimCenterFuelLbs`, iFly profile only), and
+  `CenterQtyLbs()` falls back to that pushed value whenever the gauge text is
+  blank/unparseable (the gauge still wins when readable — it is the aircraft's own
+  gauge). The stock vars ARE authoritative for this aircraft: the iFly WASM stomps its
+  own fuel state back into them (see the GSX-refuel note in `docs/ifly-737.md`). Same
+  SimConnect-push pattern and SDK-dropout independence as the engine-N2 cache.
+
+**Consolidation (§6 of the original design doc, unchanged by the quantity-off rewrite) —
+ONE "Fuel pumps" checklist item per phase, on both PMDG jets:**
+
+- Preflight: one item turns wing + center pumps off (`SetWingFuelPumps(0);
+  SetCenterFuelPumps(0);`).
+- Before-Start: one item turns wing pumps on and turns center pumps on **iff center fuel
+  is loaded**, gated by the single synthetic condition `FO_FUEL_PUMPS_BS_OK` →
+  `FuelSystemLogic.BeforeStartFuelPumpsOk(wingOn, centerOn, centerQty >
+  OffThresholdLbs)`. Threshold UNIFICATION (quantity-off rewrite): this "has fuel" test now
+  shares `OffThresholdLbs` (1000 lb) with the OFF trigger, rather than `ArmThresholdLbs`
+  (1500 lb) — both express "the center tank is meaningfully not-empty," and using the same
+  const the OFF trigger uses keeps the two decisions from disagreeing about what "empty"
+  means. There is no separate `FO_CTR_PUMPS_*` item and no standalone `BS_CTR_PUMPS_ON` —
+  those were folded into the one merged item.
+- Shutdown: one item turns wing + center pumps off, in that call order —
+  `SetWingFuelPumps(0); SetCenterFuelPumps(0);` — on both jets, in both the state/action
+  group and the `_CL` readback-detection twin.
+- **Every center-pump ON write — the background automation, a flow's `Multi` step
+  bundle, and a checklist action alike — is gated at the executor's `DispatchCoreAsync`,
+  the single chokepoint all three dispatch paths funnel through**, on `centerQty >
+  OffThresholdLbs` (`CenterPumpGate.ShouldSuppressCenterOn`, keyed on
+  `EVT_OH_FUEL_PUMP_L_CENTER`/`EVT_OH_FUEL_PUMP_R_CENTER` with the ON param only — OFF,
+  param 0, is never gated; same threshold unification as the Before-Start synthetic above).
+  This means the merged Before-Start item TICKS correctly on an empty-center flight (the
+  wing half of the write still succeeds, so the flow/checklist reports success) while the
+  center pumps themselves never spin dry — RULING A. Gating only
+  `ExecuteSingle`/`Fire`/`FireBoth` would have missed this: a flow's `Multi` steps never
+  call those, they call `DispatchCoreAsync` directly, so gating anywhere else leaves the
+  flow path able to dry-run the center pumps on an empty tank.
+
+**Accepted residuals (not defects):**
+
+- **Ruling D — wing-pumps-already-on preflight load.** If the pilot loads with the wing
+  pumps already switched on, Preflight's "all off" item can produce one revert plus one
+  "Center fuel pumps on." announcement before it self-settles. Bounded to once, and
+  self-correcting; not worth special-casing.
+- **HISTORICAL — retired with the annunciator model.** Two residuals documented under the
+  annunciator design no longer apply and are recorded here only so a reader of the git
+  history isn't confused by their absence: "the per-bus gap" (a single failed center pump
+  whose bus had also dropped could read as `centerTankDry` on an otherwise full tank and
+  announce a false "Center tank low") and "continuously-lit low-press during an active
+  ground refuel" (a stuck-lit annunciator could cycle the arm/off decision during a fast
+  refuel). Both depended on reading the low-press annunciator; the quantity-based trigger
+  reads the fuel gauge directly and has no low-press dependency at all, so neither residual
+  has an equivalent under the current design.
+
+**GOTCHAS (each was a real bug on this branch):**
+- **The 737 refuses CMD engagement below 400 ft RA — auto-AP-engage is now FLOORED and CLOSED-LOOP (2026-08, user report: "the announcement fires but CMD A does not engage; L and V NAV do without issue").** Two compounding defects. **(1) The floor.** `UniversalAutomationService` pressed at the user setting (`FOAutoApEngageAltitudeAgl`, default **350 ft AGL**), but the 737 NG AFDS **INHIBITS CMD engagement below 400 ft RA after takeoff** (SDS 4.20 / FCTM) — the transport accepted the press, the aircraft rejected it. With the ~1 Hz position feed the first sample ≥ 350 lands in **[350, 400) on essentially every takeoff**, so it failed deterministically, and LNAV/VNAV looked fine precisely because their push height is the fixed 400 ft that IS the engage floor. Fixed by `IAircraftDefinition.MinimumAutopilotEngageAltitudeAgl` (**737 = 400**, 777 = 200, base 0), pushed into the service by MainForm's 1 Hz timer and applied as `EffectiveApEngageAltitudeAgl = max(setting, floor)`; the announcement speaks the EFFECTIVE height. **Do not lower the 737 floor.** **(2) The lie.** The service announced "Autopilot engaged" unconditionally on the press and set `_apEngagedThisLeg`, so a rejected press was never retried and a blind pilot — who cannot see the MCP — was told the AP was on when it was off. Now: `IAircraftDefinition.IsAutopilotEngaged` returns the engage annunciator (737 `MCP_annunCMD_A`, 777 `MCP_annunAP_0`), and where it is non-null the service presses, **announces only once the readback confirms**, retries a definitive-false up to `MaxApEngageAttempts` (5, ≈5 s at the feed rate), and otherwise announces *"Autopilot did not engage. Captain action required: engage the autopilot."* Aircraft with no readback (FBW/Fenix/HS787/iFly/stock) return null and keep the announce-on-press behaviour — there is nothing to verify against. **`IsAutopilotEngaged` MUST return null, never false, before the first CDA snapshot** (`IsReady`): `GetFieldValue` yields the 0.0 unknown sentinel then, and the PMDG engage switches are TOGGLES, so a guessed false would make the retry **disconnect** an engaged autopilot. Once pressing has started the verification deliberately no longer requires the climb gate, so a level-off can't strand the leg unresolved; a pilot who engaged the AP before the trigger height latches the leg **silently** (no press, no call-out). Pinned by `UniversalAutomationServiceTests`.
+- **Transition altitude/level crossings use TWO INDEPENDENT edge detectors (`FirstOfficer/TransitionCrossingDetector.cs`), never one shared "in STD zone" latch (2026-07-15).** All five phase monitors previously tracked a single `_prevInStd` with a trailing `if (nowAboveTrans) _prevInStd = true; else if (nowBelowTrans) _prevInStd = false;`. That silently spammed the "set local QNH" call-out on descent whenever the **destination transition LEVEL sat more than ~600 ft above the origin transition ALTITUDE** (very common in Europe, e.g. TA 4000 / TL 6000) — the two ±300 ft hysteresis bands then OVERLAP, and in the overlap the QNH branch fired every tick while the `nowAboveTrans` arm re-set the latch to true (and flip-flopped STD/QNH if the aircraft levelled off in the band). The shared detector tracks each threshold with its own arming latch (`_belowTa` arms climb→STD, `_aboveTl` arms descent→QNH), so the two crossings can never contradict. It is pure logic with characterization tests (`TransitionCrossingDetectorTests`). Each monitor keeps its own aircraft-specific baro action + wording and just asks the detector for the `Crossing`. Do NOT reintroduce a single `_prevInStd`-style latch. (`pos.Altitude` is `PLANE ALTITUDE` = true MSL, so it does NOT jump when the FO flips STD/QNH — the overlap was the whole cause.)
+- **"Run Related Flow" matches by phase base, not exact group id (2026-07-15).** `RunRelatedFlow` → `FlowForGroup(groupId)` resolves a flow by: exact `RelatedChecklistGroupIds.Contains`, then `flow.Id == BasePhaseId(groupId)` (strip a trailing `_CL`), then any related id's base phase. This fixed the **A380** (its flows list only the `_CL` readback groups, so selecting an ACTION group like `COCKPIT_PREP` reported "No related flow found") and hardens every aircraft against the same action-vs-readback mismatch. `flow.Id` is always the phase base (`COCKPIT_PREP`, `BEFORE_START`, …), which is what makes the fallback safe.
+- **A completed flow marks its checklist section(s) complete (2026-07-15), with a per-item exemption for anything the flow could not deliver (2026-08-25).** `OnFlowCompleted` iterates `RelatedGroupIdsFor(flow)` (the declared related ids PLUS the action group `flow.Id` and readback `flow.Id + "_CL"` when they exist) and calls `ChecklistManager.MarkGroupComplete(groupId, excludeItemIds)`, which ticks every non-Informational item NOT named in `excludeItemIds`, sets `HasParticipation`, and unconditionally latches the group. `excludeItemIds` names the steps the flow announced as skipped (e.g. "Skipping: Speedbrake: ARMED"), plus, silently, a step whose `TargetValueProvider` had no value (FO-20: the A320s' "Flaps: takeoff setting" with no SimBrief plan) — those are neither ticked nor force-latched over; each is instead marked `ChecklistItem.ExemptFromCompletionLatch` so it alone keeps mirroring live state inside the otherwise-latched group (full exemption rules under the Group-completion latch bullet below). Without the original marking, the checklist header stayed at a partial "N of M" after a flow ran (the phase's Captain-reminder items never auto-tick from state); without the exemption, a step that failed and said so out loud was force-ticked two seconds later and frozen by the latch, so a blind pilot reading the checklist on final could be told the speedbrake was armed when it was not. This is consistent with the group-completion-latch philosophy: a run flow IS the FO working the phase, so its checklist stands as the phase's historical record — for every step it actually performed. Only `FlowCompleted` marks — a cancelled/failed flow does not.
+- **Auto-AP-engage is aircraft-routed for the PMDG jets (2026-07-15).** `UniversalAutomationService` takes an injected `engageAutopilot` delegate; MainForm wires it to `currentAircraft.EngageAutopilot(simConnectManager)`. The base `IAircraftDefinition.EngageAutopilot` fires stock `AUTOPILOT_ON`; the **737 overrides to press CMD A** (`EVT_MCP_CMD_A_SWITCH` via `SendPMDGMomentaryToggle` — stock AUTOPILOT_ON engages the basic AFDS, not CMD) and the **777 overrides to press A/P L** (`EVT_MCP_AP_L_SWITCH` via `SendPMDGEvent(...,1)`). Both are **guarded on their engaged annunciator** (737 `MCP_annunCMD_A`, 777 `MCP_annunAP_0`) so re-engaging a toggle-style switch can't disconnect an already-engaged AP. The universal service still fires stock `GEAR_UP`/`GEAR_DOWN` for gear on every aircraft.
+- **BOTH FO executors now serialize + frame-pace EVERY CDA write (737 2026-07-02, 777 same day).** The 777 pass closed the long-documented latent bug for real: its `ExecuteStepAsync` fired every `Multi()` flow bundle in ONE frame (only the last switch of bus-ties/anti-ice/demand-pumps/fuel-pumps/... actually moved) and its multi-write convenience methods did the same. Both executors route all dispatch through a `SemaphoreSlim` gate with a `PaceAsync` that enforces `CdaWriteSpacingMs` between ANY two writes — callers need no per-call delays. The 777 executor also forces `MOUSE_FLAG_LEFTSINGLE` for every `EVT_CONTROL_STAND_FLAPS_LEVER_*` dispatch at the core (the flows' flap steps were built momentary and were dead). 777 checklists follow the 737 conventions: all state-group items RevertToState, evaluator NaN-gated until the first CDA snapshot, GPU detection via the `FO_ANY_GPU_ON` synthetic with toggle-guarded connect/disconnect actions (press only the side whose annunciator disagrees), LNAV/VNAV tick-actions annunciator-guarded. Audit fixes: the EPU battery flow step's `CompletesChecklistItemId` was a nonexistent id; `CP_GENERATORS`' skip read the BACKUP-gen fields (mains are `ELEC_Gen_Sw_ON_0/1`, evaluator `IsGen1On/IsGen2On`).
+- **PMDG CDA same-frame write coalescing.** The PMDG SDK polls the control CDA once per frame, so **two `SendPMDGEvent`/CDA control writes issued in the SAME frame (one synchronous lambda) lose the first — only the LAST survives.** Symptoms: a checklist action that pushed both ground-power buttons synchronously disconnected **only one GPU**; an APU "ON then START" fired synchronously never started; on the 737, **generators and probe heat "didn't come on"** (GEN 1 / PROBE 1 lost). **Fix: SPACE the writes** with `await Task.Delay` (`CdaWriteSpacingMs = 350`, matches the flow's `PostActionDelayMs`; `ApuOnToStartMs = 2000`). The 777 spaces only `PushBothGroundPowerAsync` / `StartApuAsync` (its FLOWS use separate steps, so they were unaffected; its checklist convenience methods like `SetGenerators` are a latent same-bug, unreported). **The 737 is DIFFERENT: its flows use `Multi()` bundles (`SetSwitchMultiple` → `MultiAsync`) AND its checklist convenience methods fire 2–4 events**, so BOTH were affected. 737 fix (2026-06-28): `MultiAsync` `await Task.Delay(CdaWriteSpacingMs)` **between** actions (covers every `Multi(...)` flow step), plus a `FireSpaced(...)`/`FireSpacedAsync` background-spaced helper that every multi-write convenience method (`FireBoth`, `SetGenerators`, `SetProbeHeat`, `SetWingFuelPumps`, `SetWindowHeat`, …) routes through. **Plus a `SemaphoreSlim _dispatchGate` SERIALIZES all 737 dispatch** (`MultiAsync`/`FireSpacedAsync` hold it across their whole sequence incl. the inter-write delays; single writes via `DispatchAsync` hold it for one write; sequences call the non-locking `DispatchCoreAsync` to avoid re-entrant deadlock) — without it, two *concurrent* spaced sequences (a checklist tick landing while a flow's `MultiAsync` is mid-spacing, or two quick multi-write ticks) could interleave their writes into one sim frame and re-coalesce. **Rule: never fire >1 CDA write in one synchronous CheckAction lambda OR one same-frame `Multi`/loop — space them; and keep all dispatch behind the gate so concurrent sequences can't interleave.** (Tunable: raise `CdaWriteSpacingMs` if a value needs nudging in-sim.)
+- **737 momentary MCP/EFIS pushes need `SendPMDGMomentaryToggle`, NOT a bare CDA param (2026-06-28).** On the NG3, momentary MCP/EFIS buttons (MCP **CMD A**, RECALL) commit ONLY via a LEFTSINGLE+LEFTRELEASE pair (`SendPMDGMomentaryToggle`); a bare `SendPMDGEvent(name,id,1)` plays the click but never commits (the proven `_simpleEventMap` momentary branch in `PMDG737Definition`). Fixed via a `FireMomentaryToggle(eventName)` helper. The **777 is the opposite** — its momentary convention IS `SendPMDGEvent(...,1)` (per the PMDG 777 patterns). Don't harmonise the two. **⚠️ EXCEPTION — EFIS baro-STD is NOT set via the momentary toggle anymore (2026-07-03).** Live-probed: the `EVT_EFIS_*_BARO_STD` toggle commits only INTERMITTENTLY (an identically-shaped press/release pair engaged STD once and silently failed another time), has NO readback (no struct field; the stock `KOHLSMAN SETTING STD` flag never moves), and while STD is engaged the baro knob is MASKED — so a missed toggle is invisible and the transition announcement lied ("altimeters set to standard" with nothing set, the reported bug). The 737 FO now sets standard by **ROTATING both EFIS baro knobs** (`SetAltimetersStandardAsync`, the Ctrl+B dialog's verified mechanism: `EVT_EFIS_CPT/FO_BARO` transmit clicks, RIGHTSINGLE=up / LEFTSINGLE=down, 1 hPa / 0.01 inHg per click) to 1013/29.92 — deterministic, no-op when already standard. The stock KOHLSMAN indexes are GANGED on the NG3 (FO knob moved `:1` and `:2` together — no per-side readback), so the executor rotates the captain knob, waits ~1.5 s for the 1 Hz batch to refresh `ALTIMETER_SETTING`, then rotates the FO knob by the residual (0 under ganging — no double-apply). Descent through transition level is ANNOUNCE-ONLY (local QNH is unknowable; the pilot uses Ctrl+B).
+- **737 engine-start detection needs real N2, NOT the fuel-valve byte (2026-06-28).** The PMDG NG3 data struct has **no N1/N2**, and `FUEL_annunENG_VALVE_CLOSED` reads `0` ("valve open / run") BOTH when running AND when cold/unpowered — so the old `ES_E1/ES_E2` detection (`< 0.5`) auto-ticked at cold-and-dark and `StayComplete` latched it falsely complete. Fix: the FO reads the stock `TURB ENG N2:1/2` via a new `SimConnectManager.RequestFOEngineN2()` (mirrors `RequestFOAltitudeAGL`), the form pushes it into the 737 `AircraftStateEvaluator.SetEngineN2`, which serves it through the **synthetic `GetValue` keys `FO_ENG1_N2`/`FO_ENG2_N2`** (not in the CDA struct). The checklist's "running" verification rows (`ES_E1_STAB`/`ES_E2_STAB`) were removed from both the 737 and iFly MAX8 Engine Start groups (2026-08-16, user request) — Engine Start is pilot-paced start-switch + start-lever items only now, and nothing in the checklist reads `EngineRunningN2` any more. The N2 feed still does real work: the Engine Start flow gates fuel introduction on N2 ≥ `EngStartFuelN2` (20) via a `WaitForCondition` between the GRD step and the start-lever step. **That N2-gate step uses `FailurePolicy.Stop` (the `WaitForField` `onTimeout` param), so a starter/bleed failure where N2 never builds ABORTS the flow instead of introducing fuel into an under-rotating engine (hung/hot start).** The N2 cache (`_eng1N2`/`_eng2N2`) is written/read across threads via `Volatile.Read/Write` (double can't be `volatile`). Thresholds + the N2 unit (percent vs ratio) are tunable in-sim. `IFoStateEvaluator.SetEngineN2` exists on both aircraft (777 stores it as a no-op). ⚠️ **CORRECTION (2026-09-28, measured live on the NG3): the N2-before-fuel gate could never pass and stopped every 737 start.** The NG3 writes the stock `TURB ENG N2` only from LIGHT-OFF: with engine 2 on GRD, the start valve reading open and 40 psi of duct pressure it read 0.0 for over four minutes of motoring (the sim's own `GENERAL ENG STARTER:2` and `GENERAL ENG COMBUSTION:2` read 0 too — the crank lives entirely in PMDG's model), then 15.5 % on the first read after the start lever went to IDLE and 46.6 % ten seconds later. So the `ES_E1_N2`/`ES_E2_N2` waits timed out at 60 s and, being Stop, aborted the flow ("Unable to complete: Engine 2 motoring") on a healthy start every time. They are replaced by a fixed motoring time, `PMDG737FlowDefinitions.EngStartMotorSeconds` (15 s, what the pilot-side add-ons give it), counted from the start-valve wait passing — that valve wait is still what refuses a start the starter never engaged; a stalled crank with the valve open is not detectable and never was. `EngStartFuelN2` is deleted; `EngineRunningN2` (50) is unaffected, because once fuel is in the stock N2 is live. Pinned by `Pmdg737EngineStartMotoringTests`. The iFly MAX8 keeps its N2 gate (`IFly737StateEvaluator.EngStartFuelN2`, 20, a `Stop`-policy `WaitForField` in its Engine Start flow), but NOT because its SDK publishes N2: the iFly First Officer reads the SAME stock `TURB ENG N2:1/2` as the 737 — `FirstOfficerForm`'s 1 s timer calls `SimConnectManager.RequestFOEngineN2()` for every profile and pushes the answer into `IFly737StateEvaluator.SetEngineN2`, which serves `FO_ENG1_N2`/`FO_ENG2_N2`. Whether that stock N2 is live during an iFly CRANK (before light-off) is UNVERIFIED in the sim (2026-09-29); if the iFly, like the NG3, writes it only from light-off, its start would stop at the N2 wait exactly as the 737's did.
+- **777 transponder = `EVT_TCAS_MODE`, NOT stock `XPNDR_SET`.** `XPNDR_SET` is the stock SQUAWK-CODE (BCD) event — passing a mode index there set the squawk to `0002`. The 777 executor's `SetTransponderMode` dispatches the PMDG `EVT_TCAS_MODE` (`0=Stby,1=AltRptgOff,2=Xpndr,3=TA,4=TA/RA`), matching the 737 and the 777 flows. (777-only — the 737 was always correct.)
+- **737 transponder mode is a CLICK-WALKED rotary; the walk is CLOSED-LOOP over AWAITED-FRESH snapshots (2026-07-03, live-probed; freshness + suppression reworked same day after review).** On the NG3, `EVT_TCAS_MODE` ignores BOTH the CDA write with a position param AND the engine-start-style transmit-with-target. Only transmit mouse-clicks move it, ONE DETENT per click: LEFTSINGLE steps DOWN (2→1 verified), RIGHTSINGLE steps UP (1→2 verified) — the INVERSE of `WalkSelectorViaClicks`' TFM convention. **PMDG also DROPS detent clicks probabilistically**, and the NG3 Data-CDA snapshot refreshes ONLY via a 1 Hz `PERIOD.ONCE` poll — so any re-read paced faster than the poll is STALE, and a stale read fires an extra click past the target (middle-detent overshoot/oscillation; end stops mask it by clamping). The shared walk `PMDGNG3DataManager.WalkSelectorClosedLoop` (wrapper `SimConnectManager.WalkPMDGSelectorClosedLoop`, returns success bool) therefore AWAITS a fresh snapshot before EVERY read (`RequestFreshSnapshotAsync` — one-shot CDA request completed by `ProcessClientData`), 300 ms click pacing, 12-attempt budget. The FO executor's `Dispatch.WalkedSelector` DELEGATES to it. Per-detent monitor callouts are suppressed while `PMDGNG3DataManager.AnyWalkInProgress` (static, try/finally-cleared walk counter — NOT a detent count; the old `XpdrWalkSuppressCount` detent counter desynced against 1 Hz-coalesced snapshot diffs and is REMOVED). The PANEL's `XPDR_ModeSel` combo port to the same walk (a 4b `HandleUIVariableSet` branch + landed-position readback, `XPDR_ModeSel` removed from `_simpleEventMap`) is MERGED into `feature/first-officer` (was branch `fix/737-panel-transponder-mode`). `tools/CDUTest` takes optional `count`+`gapMs` args on the transmit method for probing multi-click sequences at real timing.
+- **737 position lights (`EVT_OH_LIGHTS_POS_STROBE`) are the SECOND CDA-deaf walked rotary (2026-07-06, live-probed).** The CDA position write AND transmit-with-target are silent no-ops (probe heat moved via the IDENTICAL CDUTest CDA write in the same session, so the transport itself was proven good); only transmit mouse-clicks move it, one detent per click, RIGHTSINGLE up / LEFTSINGLE down (the `EVT_TCAS_MODE` convention — verified 0→1→2 and back). This is why the BTKO_STROBE/AL_STROBE checklist ticks reverted permanently and the Before Takeoff / After Landing flows' position-light steps silently no-op'd. FO executor: `Dispatch.WalkedSelector` (StateField `LTS_PositionSw`). PANEL: `HandleUIVariableSet` 4c mirrors the transponder's 4b (own `_posLt*` state trio, `LTS_PositionSw` removed from `_simpleEventMap`, per-detent suppression case in `ProcessSimVarUpdate` reading `_posLtWalkSuppress || XpdrWalkInProgress` — that FO static now counts BOTH walked selectors). **A 2026-07-06 live CDA sweep of every other checklist-fired switch (beacon, autobrake, EFIS mode/range, IRS, seatbelts, isolation valve, landing-light retractables, probe heat) confirmed they all accept the CDA position write** — these two rotaries are the only known CDA-deaf members. ⚠️ Instrumentation: the simconnect MCP's `send_pmdg_event` Control-CDA write SILENTLY FAILS on the NG3 (every switch "looked" CDA-dead until re-tested through `tools/CDUTest cda`, the app's real path) — never conclude CDA-deaf from the MCP; probe with CDUTest.
+- **A hand-tick never re-does work the pilot already did (2026-09-04 — the Fenix “APU: ON and available” report).** `ChecklistManager.ToggleItem` fired an item’s `CheckAction` unconditionally, so a pilot who had started the APU themselves — outside the First Officer window — and then ticked the item had the FO re-run the whole start sequence on a live APU: `StartApuAsync` re-wrote MASTER and re-pulsed the START pushbutton, then sat on the 180 s AVAIL poll before the item reverted with *“Unable to complete: APU: ON and available”*. ⚠️ This is the SAME asymmetry recorded for the APU wait below — the FLOW never had it, because `FlowManager` honours a step’s `SkipCondition` and says *“Already set”* instead of re-issuing the write (and the Fenix APU block’s own `Skip` predicates exist for exactly this), while the hand-tick path had no equivalent. `ToggleItem` now skips the action — and the `AwaitingActionConfirmation` mark with it, so no failure can be announced for a request that was never made — when the item’s OWN state condition already reads DEFINITELY true. Judged by the item’s own condition so it can never disagree with what the item claims to be about; an indeterminate (NaN) read still runs the action, the standing “indeterminate is not a failure” contract. The skip is safe because such an item is one `EvaluateAutoDetection` would tick unaided on its next 1 s pass anyway — which is what makes running its action pure side-effect on the aircraft. It is gated on `IsAutoDetectable`, so an ACTIONABLE item with no state field (the preflight TCAS / WXR / GPWS self-tests — “press this and listen”) still fires on every tick; those exist to be re-run and no state check may authorise skipping one. Pinned by `FoAlreadySatisfiedTickTests`. ⚠️ Known gap, deliberately left open: this guard evaluates the item’s condition, so it does NOT cover an APU that is still SPOOLING (AVAIL not yet lit) — a tick there still pulses START mid-start. The signal to close it with is now known and free: `I_OH_ELEC_APU_START_L` is the ON legend, lit exactly while a start runs (see the lamp bullet below), and is already registered `Continuous`.
+- **Checklist manual-tick revert grace is ACTION-AWARE (2026-07-06 — the "transponder / strobe won't stay ticked" fix).** The fixed 10 s tick-time grace lost to (a) the closed-loop walks (4–20+ s with dropped clicks and per-detent fresh-snapshot awaits) and (b) ANY write queued behind a walk on the executor's serialized dispatch gate — `EvaluateAutoDetection` read real intermediate detents (non-NaN, definite false) and un-ticked fresh ticks mid-action. `ChecklistManager.ToggleItem` now routes the CheckAction through `RunCheckActionWithGraceAsync`: `ChecklistItem.ActionSettling` (a COUNTER — overlapping untick/re-tick tasks must not strip each other's protection) suppresses RevertToState from tick until the action completes AND `IFoActionExecutor.WaitForDispatchDrainAsync()` drains (acquire+release of the serialize gate, FIFO — implemented on all four executors: 737, 777, generic LVar, A380), then `StampActionGraceUtc()` re-arms the 10 s grace so the ~1 Hz CDA readback gets a full window. A genuinely failed action still surfaces (settling clears → grace expires → revert). Drain wait capped 45 s so a wedged gate can't suppress revert forever. Do NOT "simplify" this back to a bigger fixed grace — that masks real reverts without covering the unbounded walk.
+- **737 speed-brake lever detents are SDK mouse-click events (2026-07-03, live-verified; SAME on the 777).** `EVT_CONTROL_STAND_SPEED_BRAKE_LEVER_{DOWN,ARM,50PCT,FLT_DET,UP}` (sub-detent ids 6791–6795, the same family as the flaps' 7141–7149) commit ONLY with `MOUSE_FLAG_LEFTSINGLE` — the FO's old bare-param dispatch was a silent no-op, so "Speedbrake: ARMED" never armed. Verified: CDA+LEFTSINGLE on `_ARM` lit `MAIN_annunSPEEDBRAKE_ARMED`. Both executors now force the flag (737 via `Dispatch.MouseFlag` table entries, 777 via the same core prefix-check that fixes the flap detents; the trailing underscore keeps the bare drag-axis `SPEED_BRAKE_LEVER` event out).
+- **Speed brake is judged by the lever, and a deployed one is left alone (2026-09-30).** `FirstOfficer/SpeedbrakeLeverState` judges the PMDG 737, PMDG 777 and iFly 737 MAX levers on main's measured tables (PR #261; `Aircraft/PmdgSpeedBrakeLever`, `IFly737SpeedBrakeLever`): Down is anything short of ARM, Armed is EXACTLY ARM, Deployed is anything past it, Unknown is not read yet. ARM is 100 on the 737 (`L:switch_679_73X`, key `MON_PMDG737_SpeedBrake`), 200 on the 777 (`L:switch_498_a`, key `FCTL_Speedbrake` — never the SDK byte), 34 on the iFly (`Spoiler_Lever_Status`). "Speedbrake: ARMED" on the 737 and iFly is `FO_SPEEDBRAKE_ARMED`, the lever exactly at ARM AND the ARMED light (the 737's light alone stays lit to about 342, the iFly's from 34 to 224); the 777 has no such light and uses `FO_SPEEDBRAKE_LEVER`. All three Landing flows arm through the verified `SPEEDBRAKE_ARM` pseudo-key, and every executor refuses to click or write over a deployed or unread lever, because ARM over a deployed speed brake retracts it. The engine rule is `FlowStep.LeaveAloneWhen` / `LeaveAloneText` and `ChecklistItem.LeaveAloneWhen` / `LeaveAloneText`: when the speed brake is deployed the First Officer does nothing and says *"Speedbrake extended, not armed. Left as it is."* A flow checks it AFTER `SkipCondition` (an armed lever is "Already set", the truer answer) and keeps the step's lines out of the completion latch, so they keep mirroring the lever. A hand-tick is refused, and that reason is spoken in place of the window's "Label: checked" line. A CAPTAIN REMINDER note elsewhere in this file about the iFly's "Speedbrake: ARMED" is history.
+- **737 window-heat ON annunciators are default-silenced (2026-07-03).** `ICE_annunON_0..3` ("Window N Heat On") are real annunciators the window-heat controller CYCLES thermostatically as each window reaches temperature — most visibly on the ground — so the auto-announce spoke random on/off pairs while no switch moved (the reported "random window heat announcements"). They're seeded once into `PMDGDisabledMonitorVariables` (`SettingsManager.SeedPmdgMonitorDefaults`, guarded by `PmdgMonitorDefaultsSeeded` — the Fenix clock-counter pattern); re-enable in the PMDG Announcement Monitor. The OVERHEAT annunciators and the window-heat SWITCH vars stay announced.
+- **737 Engine Start flow waits for STARTER CUTOUT on the start SWITCH (2026-07-03).** After each start lever goes to IDLE, the flow waits for `ENG_StartSelector_{1,0}` to spring back to OFF (the GRD position is solenoid-held and releases at cutout) before touching the next engine — the old `ENG_StartValve` byte wait released early, so engine 1's GRD was set while engine 2's starter was still engaged (user report). This also matches the pilot-paced checklist's semantics.
+- **FD / AT Arm are mouse-flag TOGGLES** (`UsesMouseFlag`, no absolute target) — firing one while already in the desired state flips it the wrong way. Flow steps carry a `SkipCondition`; `SetFDLeft/Right` / `SetATArm(target, state)` read current state and no-op if already correct (panel parity).
+- **777 Preflight / Before Start ORDER follows PMDG's own shipped `B777_Checklist.xml` (2026-08-29, owner report: "the flows feel very off and all over the place").** That file — in the aircraft package under `SimObjects/Airplanes/PMDG 777-300ER/presets/pmdg/.../checklist/` — is the procedure authority, and it settled three things at once. **Trim** is the LAST operational block of the Before Start Procedure (after the transponder), not the third item after the MCP setup: it used to be flow step 3 of 17, ahead of the entire APU start and of every hydraulic pump, so the pilot was asked to set a stabiliser the hydraulics could not move. It also appeared a THIRD time in Before Taxi, where the vendor has no trim checkpoint at all (nor in Before Takeoff) — deleted; `BSCL_TRIM` in `BEFORE_START_CL` is the read-back. **Ground power** is disconnected at the same point in the flow and the checklist — they used to disagree by four mirrored pairs. Smaller vendor-order corrections: fuel pumps OFF next to crossfeed, baro in the forward-panel block, beacon OFF before nav ON, gear DOWN before autobrake RTO. **The ONE sanctioned divergence is the oxygen tests**: the vendor runs them in the forward-panel block, MSFSBA runs them before the fire test so the oxygen-flow sound never sits under the fire bell — flow and checklist must AGREE on that position. They did not: when the single `PF_OXYGEN` item was split per side it kept the old item's slot, leaving the pair at #44/#45 of 49 while the flow ticked them 7th. **Seat belts ON rather than the vendor's AUTO is a second, owner-ruled divergence** (2026-08-29) — both 737 profiles already select ON, and the 777's own `SetSeatbeltSign` automation writes only ON/OFF, so AUTO contradicted the automation that followed it. **Three vendor Before Start lines are owner-ruled OMISSIONS** (2026-09-22, "not needed there"): LNAV arm, VNAV arm and the clearance to pressurize the hydraulics — Before Takeoff's "Verify armed" pair, which presses a mode that is unarmed, is the First Officer's only LNAV/VNAV handling. All pinned by `Pmdg777FlowOrderingTests`.
+- **A checklist item with no flow step behind it is still TICKED AND LATCHED when its flow finishes.** `ChecklistManager.MarkGroupComplete` excludes only the lines of steps the run SKIPPED — a Skip-policy step that failed, a leave-alone, a dependency (`RequiresStepId`) or an FO-20 no-value skip (`FlowManager._unfinishedChecklistItemIds`), so an item no step ever references is not exempt — it is ticked and frozen as a historical record of something that never happened. On the 777, `BS_TRANSPONDER` and `BS_CANCEL_RECALL` had no step in the Before Start flow, so "Transponder: XPNDR" read complete with the selector untouched and a blind pilot had no way to catch it. **The fix is to add the delivering step, never to lean on the exclusion set** — a missing step never reaches it. When auditing a state group, check every actionable item has a step whose `CompletesChecklistItemId` names it. Related: a flow step must tick its OWN group's item, not a read-back (`*_CL`) one — except where the flow's own state group has no matching item: then the `*_CL` read-back item is the right target, and the link is load-bearing, because it is what keeps a skipped step's line out of the latch (the 737's `AT_GEAR_UP_CHECK` → `ATC_GEAR`, `LD_GEAR_DOWN_CHECK` → `LDC_GEAR`) — `BS_BEACON` was the only step in all thirteen 777 flows that did. (Correction, 2026-09-25: the 777 After Takeoff flaps WRITE `ATKOF_FLAPS_UP` did too — it completed the checklist's `ATKOF_FLAPS` and left its own group's `ATKO_FLAPS_UP` undelivered, so a skipped write still latched "Flaps: UP". It now completes `ATKO_FLAPS_UP`, and a read-only `ATKOF_FLAPS_UP_CHECK` completes `ATKOF_FLAPS` — the gear's shape; see docs/pmdg-777.md. `Pmdg777AfterTakeoffFlapsTests` pins that no After Takeoff write step completes an `AFTER_TKOF_CL` line.) A CAPTAIN REMINDER never delivers the state its line claims, so a state line whose only step is a reminder is latched ticked whatever the switch is doing (history: the iFly's "Speedbrake: ARMED" was the example until 2026-09-30, when the First Officer began arming it; the read-only `LD_SPDBRK_CHECK` that stood in for that arm since 2026-09-25 is gone). Where ONE step delivers a line that appears in both the action group and the read-back checklist, name the second in `FlowStep.AlsoCompletesChecklistItemIds`: FlowManager marks and, on a skip, excludes every id in `LinkedChecklistItemIds`, so both lines stay out of the latch together. The Fenix, FBW A32NX and Headwind A330 do this for the two write steps that set a line of their own flow's `_CL` read-back (`BS_BEACON` → `BSC_BEACON`, `AS_RUDDERTRIM` → `ASC_RUDDER`); the Fenix's `ASC_RUDDER` is a Reminder and is linked all the same. Their After Landing read-back line "Radar and predictive windshear: OFF" (`ALC_WXR`) is true only with both switches off, so neither radar write completes it: the read-only `AL_WXR_PWS_CHECK` right after `AL_WXR_OFF` and `AL_PWS_OFF` does (5 s, Skip, never writes; the gear's shape). Linked to the writes, the radar write's success ticked the one-line read-back and latched it with the windshear still on (fixed 2026-10-06). All of it is pinned by `A320FamilyReadbackLinkTests`. On the PMDG 737 every switch-WRITE step now names the line it sets (2026-09-25; before, only a handful did, so any failed write was latched complete on its line): its own group's line as `CompletesChecklistItemId` and, where the verified write also achieves the phase's read-back line, that one via `AlsoCompletesChecklistItemIds` (`LD_SPDBRK` → `LDA_SPDBRK` + `LDC_SPDBRK`, `AT_PACKS` → + `ATC_PACKS`, `LD_START_CONT` → + `LDC_START`). The engine-start selector lines are never linked (StayComplete on N2 — a GRD write is not a completed start). Audited by `Pmdg737FlowChecklistLinkTests`, which derives each step's lines from the fields its events drive and pins the few lines still latched with no step behind them.
+- **The iFly 737 MAX8 links every switch-write step too (2026-09-25),** audited by `IFly737FlowChecklistLinkTests` over the SAME matching rule as the PMDG 737 (`FlowChecklistLinkAudit` in the test project) but against the groups a finished flow really latches, `FlowDefinition.CompletionGroupIds` (related groups + the flow's own group + its `_CL` read-back — the one definition `FirstOfficerForm` now uses) — see docs/ifly-737.md. The two 737s are compared by `Pmdg737IFly737ReadbackLinkTests` (2026-10-06 audit, no read-back link was missing): the same fifteen write steps complete a `_CL` read-back line on both (a failed one leaves both its lines unticked and out of the latch on a real FlowManager), both latch the same lines with no step behind them, and the lines their steps deliver differ only where a control exists on one of them (the PMDG's EFIS range, lower DU, weather radar and crew oxygen tests; the iFly's gear lever UP, FOB-5). Reminders the flow cannot deliver stay unlinked ("Oxygen: TESTED, 100%", "Fuel: quantity checked, pumps ON", "Hydraulic panel: set").
+- **The PMDG 777 links every switch-write step too (2026-09-25),** audited by `Pmdg777FlowChecklistLinkTests` over the same shared rule and `CompletionGroupIds` (on the 777 that is exactly each flow's related groups — no group is named after a flow). Before, only about a quarter of its write steps named a line, so e.g. Electrical Power Up's verified nav-lights and ADIRU writes were latched complete on a failure. Three 777-specific points: a line whose CheckAction spans switches the flow writes as SEPARATE steps is named by every one of those steps (both wiper sides, the four window heats, the four EFIS selector steps, left/right FD and A/T ARM, the GPU sides), so either failing keeps it live; a line a READ-ONLY step of the same flow completes belongs to that check, not the write (After Takeoff "Flaps: UP"/"Landing Gear: UP"); and the target-less TOGGLE presses fired toward OFF (the GPU disconnects, Shutdown's FD OFF) are declared in the test. The engine-start selector writes no longer link `ES_ENG{1,2}_START_SEL` (StayComplete on N2). The After Landing APU line (`AL_APU`) is completed by the read-only `AL_APU_RUNNING` wait. The Before Taxi takeoff-flaps steps are deliberately NOT linked: they are gated on the SimBrief plan, so the four not planned skip as "Already set" and would tick `BT_FLAPS` whatever the planned one did. See docs/pmdg-777.md.
+- **"<flow> flow complete" is NON-INTERRUPTING (2026-09-22).** It runs straight after the last step with no pause, and the old `AnnounceImmediate` interrupted the screen reader and cancelled its buffered speech, so the last step of a flow was routinely cut off on every aircraft. That included every flow-final Captain reminder and, worst of all, a skipped wait's "Timed out waiting for… / Skipping…" (the PMDG 737 gear checks), heard as silence and then "flow complete". It is now `Announce`, so the last step's words come first. Pinned by the source-text guard `FlowManager_FlowComplete_IsNonInterrupting` (FoPr160ProcedureFixTests), since FlowManager cannot be unit-tested.
+- **PMDG 777 checklist gear lines confirm the PHYSICAL gear (2026-09-25).** The 777 SDK exposes no gear-indication lights, so the After Takeoff Checklist's "Landing Gear: UP" (`ATKOF_GEAR`) and the Landing Checklist's "Landing Gear: DOWN" (`LDG_GEAR`), and the read-only checks that end their flows (`ATKOF_GEAR_UP_CHECK`, `LD_GEAR_DOWN_CHECK`), read synthetic `FO_GEAR_UP`/`FO_GEAR_DOWN` from `Pmdg777GearConfirmation`: the CDA lever AND the stock `GEAR LEFT/CENTER/RIGHT POSITION` SimVars (UP = lever up and every leg ≤ 1 %, DOWN = lever down and every leg ≥ 99 % — the System Display Gear page's thresholds), via the shared `GearLightRules` with each leg standing in for its light, NaN while the lever or any leg is unknown. The leg positions reach the evaluator the same way engine N2 does: `FirstOfficerForm`'s 1 Hz timer calls `RequestFOGearPositions()` (777 profile only) and pushes the three `FO_GEAR_*_POS` updates into `AircraftStateEvaluator.SetGearPosition`. The action group's "Gear: UP" (`ATKO_GEAR_UP`) stays on the lever its write step moves. Details: docs/pmdg-777.md.
+- **777 Cockpit Prep sets FD ON and BOTH A/T ARM switches armed (2026-07-17, user report).** The old flow set FD/AT **OFF** as a "cold preflight state", directly contradicting the PREFLIGHT checklist's "Flight Director switches: ON" — running the flow visibly turned the FDs off. Now `CP_FD_L`/`CP_AT_ARM_L`/`CP_AT_ARM_R`/`CP_FD_R` (physical MCP left-to-right order) match the Boeing preflight procedure, `PF_FD_ON` is Auto-detected on `MCP_FD_Sw_On_0/1`, and the previously-missing `PF_AT_ARM` item Auto-detects `MCP_ATArm_Sw_On_0/1`. Shutdown's `SD_FD_L/R` OFF steps are unchanged. Pinned by `Fo777McpPreflightTests`.
+- **FO window auto-loads SimBrief on open (2026-07-17, all aircraft).** `ShowForm` calls `LoadSimBrief()` when no OFP is loaded yet, the SimBrief username is configured, and no fetch is in flight (the load-button-enabled guard) — mirroring the EFB's Shift+E auto-load, so transition altitudes/takeoff flaps/pressurization plan are set without pressing Load SimBrief. Loaded-once semantics: reloads stay manual via the buttons.
+- **PMDG inverted / positional params** — read each executor's inline value comments before changing a number: fuel-control levers logical `0=Cutoff/1=Run` map to inverted PMDG param (`1=Cutoff/0=Run`); engine start selector `0=Start/GND, 1=Norm`; **777 gear `0=UP/1=DOWN`** but **737 gear `0=UP/1=OFF/2=DOWN`**; 737 battery is byte **1** (not a phantom byte 2). Position values were audited against each panel's authoritative `ValueDescriptions` (Part E of the test plan). The `SetGearLever` value convention still matters for the 777's **pilot-triggered checklist/flow gear actions** (`0=UP/1=DOWN`); the 737 First Officer's flows and checklists move no gear lever at all (auto-gear, below, uses stock events). **Auto-gear no longer uses `SetGearLever` (2026-07-12):** the universal service commands the absolute stock `GEAR_DOWN` event, which sidesteps the 737 OFF-detent entirely (the old `SetGearLever(1)=OFF` auto-lower bug can't recur). Relatedly, the After Takeoff Checklist's "Landing gear: UP" item no longer reads the lever alone: it reads `FO_GEAR_UP` (`GearConfirmation` — lever not DOWN AND all nine gear lights out, "gear up, lights out"; 2026-09-22), which a lever a pilot moves to OFF by hand still satisfies once the gear is up, and the After Takeoff flow's last step waits for it (see docs/pmdg-737.md).
+- **737 ground power state is NOT reliably readable — the GPU checklist items are STATELESS press actions (2026-07-02).** The raw `ELEC_GrdPwrSw` struct bool reads **TRUE even with no GPU at the stand** (live-verified), and even the `FO_GPU_ON` composite (`ELEC_annunGRD_POWER_AVAILABLE && (ELEC_BusPowered_9 || ELEC_BusPowered_10)`) **false-POSITIVES whenever a GPU is plugged in while the APU/engines power the buses** (live-verified at the gate: AVAILABLE lit + ground-svc buses hot on APU power) — both made "Ground power: ON" skip as *"Already set"* / pre-check, so external power never came on. Resolution mirrors the panel's two-button design ("no reliable state signal that distinguishes their source from other AC sources on shared buses"): the checklist "Ground power: ON"/"OFF" items are `ActionManual` (tick = directional press, idempotent on repeats), and the power-up FLOW presses ON unconditionally. `FO_GPU_ON` survives only where its ambiguity is benign: the power-up flow's 10 s post-press wait (announces a timeout when no GPU exists; typical cold-and-dark has no other AC source so the composite is accurate there) and the Before Start ground-power-OFF skip. Similarly **`ELEC_GenSw_0/1` are LOCALLY-TRACKED** in `PMDGNG3DataManager` (raw bool always ~1 at rest) — the FO executor's Directional dispatch now calls `NotifyLocalSwitchState` for GEN 1/2 (as the panel does), else FO-driven generator changes are invisible to the checklist auto-detect. The `_lastDerivedValues`/`_localSwitchStates` dictionaries are guarded by `_derivedLock` (FO executor + flow threads now touch them off the UI thread).
+- **A SLOW state field needs its CheckAction to hold open — `ManualTickGrace` cannot cover it (2026-09-03, Fenix APU).** `ChecklistManager` suppresses `RevertToState` while an action is settling plus a fixed 10 s grace, and its own remarks state the rule: *"SLOW actions are covered by ActionSettling, not by inflating this constant."* The Fenix `BS_APU`/`AL_APU` items detect on `I_OH_ELEC_APU_START_L` — the START pushbutton's **lower/AVAIL** legend, which lights only once the APU reaches ~95% N, roughly 45 s after START — while `FenixActionExecutor.StartApuAsync` pressed MASTER, dwelled 3 s, pulsed START and returned. That is ~13 s of protection against a ~45 s condition, so a hand-tick un-ticked itself, `ItemActionFailed` fired, and the pilot heard *"Unable to complete: APU: ON and available"* over an APU starting perfectly — then watched it silently re-tick half a minute later. Reported live as "we get the unable-to-complete message despite things working as expected". `StartApuAsync` now polls the lamp for up to `ApuAvailTimeoutMs` (180 s — deliberately the SAME budget as the Before Start flow's `WaitForField`, so the two paths give up at the same point), which puts the whole spool-up inside `ActionSettling`. The failure path is unchanged and now truthful: on timeout the action returns, the grace expires, and the item reverts with the same message. The dispatch gate is released between writes (`DispatchAsync`/`PulseAsync` each acquire and release), so the wait never blocks `WaitForDispatchDrainAsync`, and the FLOW is untouched — it never called `StartApuAsync`. ⚠️ **The FLOW never had this bug**; the asymmetry between a flow that waits in its own step and a hand-tick that does not IS the bug, and it is the shape to look for on any future item whose state field is a lamp rather than a switch. ⚠️ The Fenix was the first profile in this position, and since 2026-10-06 the FBW A32NX and the Headwind A330 share it: their `BS_APU`/`AL_APU` detect `A32NX_OVHD_APU_START_PB_IS_AVAILABLE` (their executors' own `ApuAvailField`), and their own `StartApuAsync` holds the tick open to the same 180 s `ApuAvailTimeoutMs`. The FBW A380 still detects `A32NX_OVHD_APU_MASTER_SW_PB_IS_ON`, the PMDG 737 `APU_Selector` and the iFly `APU_Switch_Status`, all instant switch positions. Do not "harmonize" a lamp profile onto the master switch: gating on AVAIL before external power is dropped is the whole point of the item. On all three lamp profiles the flows complete the line from their AVAIL wait, never from the APU master write, so an APU that never becomes available is never ticked or latched by a flow. `A380NdKnobAndFenixApuTests` pins the executor's lamp and budget against the checklist item and the flow step so the two can never drift. MEASURED live 2026-09-04 (Fenix A319, cold APU started in flight, both legends polled throughout): at the START press `_L` goes 1 and `_U` stays 0; when the APU becomes available ~50 s later they EXCHANGE and stay that way — `_U` 1, `_L` 0. So `I_OH_ELEC_APU_START_L` is the TRANSIENT ON legend and **`I_OH_ELEC_APU_START_U` is the PERSISTENT AVAIL legend**, which is what every “is the APU available” read uses — through the single `FenixActionExecutor.ApuAvailField`, never a repeated literal. ⚠️ That is REVERSED against the real A320 (upper = ON, lower = AVAIL) AND against the Fenix’s own APU MASTER pushbutton, measured in the same session as `_U` = FAULT dark / `_L` = ON lit, matching the real jet exactly — so the suffixes look trustworthy right up until this button. Both readings have now shipped once each on reasoning alone (`_U` originally and per the 2026-07-06 audit, `_L` from 2026-08-26), each reproducing the other’s bug, because nobody had read either lamp in the sim; the 2026-08-26 swap’s supporting argument — “matches this repo’s own panel control” — was circular, that control’s `_L` coming from an April blanket flip of 17 unrelated controls under “Airbus upper = fault, lower = status”, a rule that does not even apply to a START pushbutton (it has no FAULT legend). The rule that survives: **on the Fenix a legend’s meaning is NEVER inferred — not from its suffix, not from the real aircraft, not from a sibling pushbutton — it is read in the sim.** The old warning that the convention “is REVERSED on EXT PWR” named the wrong button and had no source. Pinned by `FoPr160ProcedureFixTests` (which now forbids the `_L` literal in both Fenix FO definition files) and `FenixApuAvailWaitTests`.
+- **737 FO state groups are ALL `RevertToState` — do NOT reintroduce `StayComplete` (2026-07-02).** StayComplete latched items checked whenever the target state coincidentally matched an EARLIER phase (isolation valve AUTO at cold-and-dark, "APU: OFF" before it was ever started, the whole Shutdown/Secure set at session start) and then showed complete while the switch was NOT in the stated position — the reported "falsely checked, fixes itself on untick+retick" bug. Two supports make RevertToState safe: (a) `AircraftStateEvaluator.GetValue` returns **NaN for every CDA field until `IsReady`** (pre-snapshot zeros used to false-match every OFF condition; ChecklistManager treats NaN as indeterminate — no tick, no revert), and (b) the shared `ChecklistManager` grants a **~10 s manual-tick grace** (`ChecklistItem.LastManualCheckUtc`) so a fresh tick isn't reverted while its frame-spaced writes land.
+- **737 executor write pacing is GLOBAL (2026-07-02).** `DispatchCoreAsync` paces EVERY write `CdaWriteSpacingMs` from the previous one (`_lastWriteUtc`, inside `_dispatchGate`), so two back-to-back single `Fire()` calls in one CheckAction lambda (e.g. "start switches: CONT" firing both selectors) can no longer share a frame and coalesce. `MultiAsync`/`FireSpacedAsync` no longer carry their own inter-write delays — the pacing is the single mechanism; don't add per-call `Task.Delay`s back.
+- **Flap-lever events are SDK mouse-click events (2026-07-02): the per-detent `EVT_CONTROL_STAND_FLAPS_LEVER_*` events commit ONLY with `MOUSE_FLAG_LEFTSINGLE`** — a bare CDA param=1 is silently ignored (the 777 panel's proven `FCTL_Flaps` convention). Both FO executors' `SetFlapsPosition` and the flows' flap steps dispatch the mouse flag (737 via `Dispatch.MouseFlag` table entries) — the executor plumbing stays. **The PMDG auto-flap SCHEDULE that consumed it was REMOVED 2026-07-08 (user decision — never reintroduce a 737/777 flap schedule):** the per-leg V2/VREF caching (`CaptureVSpeeds`) and the level-segment extend/retract scheduling no longer exist in either PMDG `FOAutoManager` (`AutoFlapsEnabled` is stored but inert, the Fenix pattern); the pilot moves flaps, and the After Takeoff / After Landing flows carry the pilot-triggered lever steps. The "Auto-manage flaps" checkbox is labeled and acts **FBW A380 and A32NX only** (`FbwA380FOAutoManager`'s speed-tape schedule is unaffected).
+- **FO AP engagement height is the user setting `FOAutoApEngageAltitudeAgl` (default 350 ft AGL, one global value, 2026-07-08)** — read by `UniversalAutomationService` (2026-07-12; formerly `FOAutoManager.CheckAp`, now removed), which engages once climbing through it (aircraft-routed — see the CMD-A gotcha above) and speaks the **effective** height, i.e. the configured number raised to the aircraft's own `MinimumAutopilotEngageAltitudeAgl` floor where it has one. The **737's LNAV/VNAV push height (400 ft AGL) is deliberately FIXED** (Boeing SOP), independent of the configurable AP height, stays in `PMDG737/FOAutoManager.CheckLnavVnav` (FO-window-driven, gated on `FOAutoApEnabled`), and each push is annunciator-guarded (`MCP_annunLNAV`/`MCP_annunVNAV` definitively unlit; NaN = unknown = skip — the pushes are toggles and a blind press while armed would disengage).
+- **Flow pacing is deliberately slow (2026-07-08, user request):** `FlowManager` enforces a 2 s minimum between steps (`InterStepPauseMs`), INCLUDING after "Already set" skips — do not remove or shrink it as an optimization; it is announcement pacing for a screen-reader pilot, layered on top of (never replacing) the executors' CDA write spacing.
+- **Landing autobrake is a CAPTAIN item on ALL FOUR aircraft (2026-07-08, user decision):** no descent/approach flow step or checklist action may SET the autobrake — the 777 Descent `SetAutobrake(6)` write and the Fenix Descent MED pulse were converted to Captain/Reminder items whose text names the app's panel location (777: Forward Panel → Brakes → Autobrake Selector; 737: Forward Panel → Autobrake; Fenix: Main Instrument Panel → Auto Brakes; A380: Instrument → Autobrake) with NO suggested setting. RTO arming before takeoff and autobrake OFF after takeoff/landing STAY automated.
+- **Checklists tab button order (2026-07-08 order, Toggle Item removed 2026-07-11):** Run Related Flow → Reset Section → Reset All → Load SimBrief — keep flow start ahead of the reset buttons. The Toggle Item button was removed as redundant (Space / the checkbox itself toggles the selected item); don't re-add it.
+- **Group-completion latch (2026-07-11), with a per-item exemption for undelivered steps (2026-08-25):** `ChecklistManager` freezes a group's RevertToState un-ticking once the group reaches 100% complete AND `ChecklistGroup.HasParticipation` is set (a user manual tick or a flow `MarkComplete` touched it) — a completed checklist is a historical record of its phase, not a live mirror, so later flows moving the same switches (After Takeoff disarming the spoilers armed in After Start, etc.) no longer un-tick finished checklists. Coincidental auto-ticks alone never latch (that would be the group-shaped StayComplete false-latch: e.g. Fenix After Takeoff is all-auto and can coincidentally complete at cold-and-dark — it must stay a live mirror until a flow/user works it). Arming is DEFERRED while any item is inside its action-settling / manual-tick grace window, so a failed group-final tick (switch never moves) still reverts — surfaces — instead of being frozen; don't move `TryLatch` back into `ToggleItem`'s checked branch. `ResetGroup`/`ResetAll` clear both flags; a manual untick clears the latch. Do NOT replace this GROUP latch with item-level StayComplete or an unconditional 100% latch — that warning is about the group as a whole and is a DIFFERENT thing from the per-item exemption below: `MarkGroupComplete`'s group latch stays UNCONDITIONAL even when its `excludeItemIds` names a step the flow could not deliver (the completed steps are still a flight-long historical record), and the one undelivered item is exempted individually via `ChecklistItem.ExemptFromCompletionLatch` so it alone keeps mirroring live state — every other item in the group still gets the full historical-record protection above.
+  The exemption is set (in `MarkGroupComplete`'s excluded branch) whenever the flow did not itself deliver the item — it is un-checked, OR it is checked only because the pilot hand-ticked it (`AwaitingActionConfirmation` still set) while reacting to the "Skipping: ..." announcement before the flow finished, OR it is ticked but its own live state now reads definitively FALSE — never NaN — a stale tick, above all a GO-AROUND re-running the Landing flow before gear down, where the first approach's `MarkGroupComplete` already latched the gear line ticked. Its clear — a real delivery via `MarkComplete` or the non-excluded branch of `MarkGroupComplete`, or the live state agreeing in `EvaluateAutoDetection` — must be UNCONDITIONAL, never gated on `!item.IsChecked`: a hand-tick checks the item without clearing the exemption (a tick alone isn't evidence the switch moved), so gating the clear behind "not yet checked" leaves an item that later succeeds — via a real re-delivery or the state simply agreeing — permanently exempt, un-ticking itself every time the switch later moves even though it did exactly what was asked. It is deliberately NOT cleared by the manual tick itself.
+  When an exempted item's `RevertToState` un-tick fires while it was still `AwaitingActionConfirmation`, `ChecklistManager` raises `ItemActionFailed` and the form speaks `"Unable to complete: {label}"` — the only channel that reaches a blind pilot who has navigated away from the checklist tree, where the correction is otherwise silent and visual-only. This fires the same way inside a latched group (for the one exempted item) as outside one; an ordinary revert (the pilot moved the switch back themselves, `AwaitingActionConfirmation` never set) stays silent either way.
+- **Go-around latch hole closed (2026-09-22).** A ticked, excluded item is now exempted from `MarkGroupComplete`'s latch when its own live state reads definitively FALSE, not only when unchecked/`AwaitingActionConfirmation` — the go-around case: the first approach's Landing flow latches a gear line ticked, and a re-run before gear down (excluded, timed out) now lets the next `EvaluateAutoDetection()` un-tick it. NaN (unknown) never exempts — only a definite false.
+- **Pause now reaches a flow's final wait and its completion (2026-09-22).** `FlowManager` previously checked Pause only at the top of the step loop, so pausing during the last `WaitForCondition` step (e.g. the 737/iFly gear checks) was announced but ignored — paused time still counted toward `TimeoutSeconds` and the flow still completed and latched while the window showed Paused. The shared pause-wait helper (`WaitWhilePausedAsync`) now also runs on every `WaitForCondition` iteration, before the condition is read, and once more immediately before `FlowCompleted?.Invoke`. `WaitSeconds` dwells and `SetSwitchMultiple` writes honour Pause only at the next step boundary, so a pilot can hear "paused" and then hear a dwell finish; paused time changes no outcome there, because there is no timeout and no exclusion.
+- **Start Flow re-enables the moment a flow ends (2026-09-22).** `OnFlowCompleted`/`OnFlowCancelled`/`OnFlowFailed` fire while `FlowManager.IsRunning` is still true (the run task hasn't unwound yet), so the bare `UpdateFlowButtonStates()` call left "Start Flow" disabled until the pilot changed the flow selection. All three now pass `UpdateFlowButtonStates(runningOverride: false)`.
+- **Checklist tree checkboxes are custom state images — NEVER `TreeView.CheckBoxes = true` (2026-07-16 fix, supersedes the 2026-07-11/12 hidden-checkbox rounds).** The tree sets `NativeAccessibleTreeView.CheckboxStateImages = true` (a private native `TVSIL_STATE` image list laid out like the system checkbox list: 0=none, 1=unchecked, 2=checked, theme-drawn, DPI-scaled) and registers each tickable leaf with `ShowCheckBox(node)` after adding it in `BeforeExpand`; headers/separators are registered with `HideCheckBox` (now mostly a WndProc-interceptor guard — nothing stamps state images on them unsolicited without TVS_CHECKBOXES). **Why: in a TVS_CHECKBOXES tree, any item that is currently selected or was ever expanded reports MSAA role CHECKBUTTON to NVDA even with its state image forced to 0** (probe-verified 2026-07-16: `accRole`=CHECKBUTTON while `TVM_GETITEMSTATE` said state image 0; two independent layers — the managed `TreeNodeAccessibleObject` hardcodes `Role => CheckBoxes ? CheckButton : OutlineItem`, and the native serving misreports selected/expanded-once items even with WinForms' WM_GETOBJECT bypassed). Since the focused item is by definition selected, every group header the user landed on announced "check box not checked" — the 2026-07-12 state-image interception could never fix that role. Without the style, NVDA derives checkable/checked purely from the state image (`(TVM_GETITEMSTATE >> 12) & 3` — its sysTreeView32 overlay), so headers (state image 0) are plain collapsible tree items and leaves announce "checked/not checked" (the installer-feature-tree pattern). `TreeNode.Checked` still writes state image 1/2 natively with CheckBoxes=false (verified in the .NET 10 WinForms source), so Space toggling, the Before/AfterCheck events, and programmatic `child.Checked` writes all keep working; `ShowCheckBox` re-applies leaf state images after handle recreation (Realize does NOT restore them without TVS_CHECKBOXES). Mouse users toggle via `ChecklistTree_NodeMouseClick` (hit-test on the state image — the native control no longer self-toggles without the style). Never set `.Checked` programmatically on a header/separator (it would stamp a checkbox image; the WndProc interceptor guards registered nodes against exactly that). The "Loading..." placeholder is deliberately registered with NEITHER (it is removed on first expand; registering its handle would risk suppressing a real leaf's state image once comctl32 reuses the freed HTREEITEM). Space is still swallowed on non-tickable nodes in `ChecklistTree_KeyDown`, and `ChecklistTree_AfterCheck` self-heals by re-hiding. The Fenix `Info` builder is `ManualCompletionAllowed = false`.
+- **10 k landing-light switching is a user setting (2026-07-11):** `UserSettings.FOAutoLights10kEnabled` (default ON) → `IFoPhaseMonitor.AutoLights10kEnabled`, seeded in the FO form ctor and pushed by `ApplySettings()`. It gates ONLY the `Check10kCrossing` actions/announcements in all four monitors — the crossing latch keeps tracking while disabled (so re-enabling mid-flight can't fire a stale crossing), and the transition-altitude baro pushes + the 18,000 ft no-transition reminder are never gated.
+- **Checklist trim (2026-07-11, user request):** visual/briefing items were removed from the Before Takeoff / Descent / Approach / Landing groups on all four aircraft (flight-control-check, briefings, ECAM-review items, cabin-advised and runway-confirmed readbacks; the 737 "green light"/"three green" labels reworded to remove visual references). Don't re-add visual-verification items a blind pilot can't perform; the Fenix "— Below the line —" separators stay, checkbox-free.
+- **A380 FO tracks the PR #139 faithful-switch rework (2026-07-09):** the A380 def's `SEATBELT_SIGN` key is now the 3-position SWITCH `XMLVAR_SWITCH_OVHD_INTLT_SEATBELT_Position` (**0=On / 1=Auto / 2=Off** — writing 1 selects AUTO, not ON), and the old on/off `LIGHT_TAXI_OVHD` key was REPLACED by the 3-position `NOSE_LIGHT` selector (`LIGHTING_LANDING_1`: **0=T.O. / 1=Taxi / 2=Off**). FO conventions: every "Seatbelt signs: ON" step writes switch position **0** and every skip/detect/wait condition keys on the separate sign readout **`SEATBELT_SIGN_LIGHT`** (stock `CABIN SEATBELTS ALERT SWITCH` 0/1) so AUTO-with-sign-lit also counts; Parking writes position **2**. Nose-light steps write `NOSE_LIGHT` (After Start / After Takeoff / After Landing → 1 Taxi, Parking → 2 Off); Lineup's "Landing and nose lights: ON" is now TWO writes — `LIGHT_LANDING` 1 (wing LDG LT, indexed `LIGHT LANDING:2`) plus `NOSE_LIGHT` 0 (T.O.) — because the indexed landing-light fix means the wing switch no longer drives the nose beam. The phase monitor's 10 k crossing mirrors this (`SetNoseLight(2)` above / `SetNoseLight(0)` below; `SetTaxiLight` is gone). `FD_1_CTL`/`FD_2_CTL` and `WING_ANTI_ICE_OVHD` kept their keys (backing vars corrected inside the def) — no FO change was needed for them then (⚠️ `FD_1_CTL`/`FD_2_CTL` were later retired — see "A380 FO tracks FBW #10855" below). Never revert a seatbelt write to `Set("SEATBELT_SIGN", 1)` ("on" in the old encoding, AUTO in the new) and never detect seatbelts on the switch position — the checklist would false-negative under AUTO.
+- **A380 FO refinements (2026-07-12):** (1) the five **ECAM-page** items are now REAL writes of `A32NX_ECAM_SD_CURRENT_PAGE_INDEX` (door=5, APU=1, engine=0, F/Ctl=11; the index sticks — live-verified) instead of Captain reminders — a manual SD page overrides Airbus auto-page until the next auto event, acceptable for the checklist's explicit callout. (2) **Cockpit lights** are wired to the annunciator + integral light knobs (`A380X_OVHD_ANN_LT_POSITION` + `A32NX_OVHD_INTLT_ANN`, 0=Test/1=Bright/2=Dim): prep + parking = Bright (1), After Start = Dim (2). SOP is "as required"; these are the only L:var-settable cockpit lights on this build (dome/flood/pedestal knobs are not) — `CP_INSTRBRT` stays a reminder (no instrument-brightness L:var). (3) The **Climb** phase (flow + checklist group) was DELETED — its autobrake-disarm moved into **After Takeoff** (`AT_AUTOBRAKE`) and the seatbelt item dropped. (4) **Cabin-crew notify** added: `LU_CABIN` (Lineup flow + action group) and `AP_CABIN` (Approach action group), both firing the verified `A380X_MSFSBA_SIGNAL_CABIN_READY` (pulses `PUSH_OVHD_CALLS_ALL`); `LINEUP_CL`'s `LUC_CABINCREW` stays a readback reminder. Transponder/TCAS items were already Captain reminders (MFD-driven) — unchanged.
+- **Cabin-crew notify is cross-aircraft (2026-07-12):** advise the cabin before takeoff AND before landing, mirroring the Fenix (`BT_CABIN` / `AP_CABIN`, `CabinCall("S_OH_CALLS_ALL")`). 737: new `AircraftActionExecutor.CabinCall()` fires `EVT_OH_ATTND_CALL_SWITCH` (the overhead ATTEND pushbutton, CDA param-1 momentary chime, live-verified in the def's Calls panel) — added as `BTKO_CABIN` (Before Takeoff flow + group) and `AP_CABIN` (Approach flow + group). A380 as above. **777: NO cabin-crew item** — the PMDG 777 SDK has no cabin/attendant chime button (its CALL panel is ground/crew-rest/supernumerary/cargo only; the cabin is reached via an interphone code, not a single button), so cabin-notify is deliberately absent on the 777 (user decision) — do not add a reminder.
+- **A380 FO tracks FBW #10855 (2026-09-25, ported when #251 reached this branch):** two cockpit-prep items had to move with the aircraft. (1) **Flight directors** are ONE FCU pushbutton now (`A380FlightDirector`): `CP_FD` sets `A380FlightDirector.StateKey` (`A32NX_FCU_FD_LIGHT_ON`) to 1 ONCE and detects on that light; the definition presses `A32NX.FCU_FD_PUSH` only when the pick differs, and the flow step also skips as "Already set" when the light is lit. The per-side `FD_1_CTL`/`FD_2_CTL` it used to write 200 ms apart are gone from the definition — and a write to an unregistered key falls through to `SetLVar`, which creates a bogus L:var and REPORTS SUCCESS, so the step would have announced done with the flight directors off. (2) The **baro unit** is the EFIS-CP's own `A32NX_FCU_EFIS_{L,R}_BARO_IS_INHG`, whose polarity is the OPPOSITE of the dead `XMLVAR_Baro_Selector_HPA_{1,2}` — 1 is inHg, so `CP_BARO` writes and detects **0** for hectopascals; keeping the old 1 would set every pilot to inches. Pinned by `FoA380Fbw10855PortTests`; the class of bug by `FbwA380FoKeyRegistrationTests`, which fails any A380 FO read or write, and any A32NX or A330 FO read, of a key the definition does not register (the dead-name scan cannot see a key MSFSBA itself retires).
+- **A32NX seat-belt sign now moves from flows and checklists (2026-09-29).** The Before Start, Descent and Shutdown flow steps (`BS_SEATBELTS`, `DC_SEATBELTS`, `SD_SEATBELTS_OFF`) and their three checklist actions wrote the stock TOGGLE EVENT `CABIN_SEATBELTS_ALERT_SWITCH_TOGGLE` as a varKey. `FlyByWireA320Definition.HandleUIVariableSet` has no branch for it, so since the unclaimed-Event refusal the executor refused it: the flow said "Skipping: Seatbelt signs: ON" and the checklist item never ticked, while the panel control (which sends the stock event itself) worked. It is the fifth instance of the dead-write shape, found by `FoFbwUnclaimedEventKeyTests` on the day it was written and parked in `KnownUnclaimedWrites` until now. The fix is the Headwind A330's shape: the flows write the `SEATBELT_SIGN` pseudo-key (`FbwA320ActionExecutor.SeatbeltSignKey`, target 1 = ON, 0 = OFF), the checklists call `SetSeatbeltSign(bool)`, and the executor's dispatch switch routes the key to a GUARDED set that fires the toggle only when `CABIN SEATBELTS ALERT SWITCH` (0=Off/1=On) differs from the target (`SeatbeltToggleNeeded`; an unknown reading counts as differing, the phase monitor's original behaviour). A bare toggle would not be a fix: the steps mean 1 = ON and 0 = OFF, and toggling an already-lit sign switches it off. `SetSeatbeltSign` now goes through `DispatchAsync`, so the phase monitor's write is serialized and paced with every other FO write. The A32NX needs no position write first (2-position, no AUTO — unlike the A339X). With both profiles writing `SEATBELT_SIGN`, the three seat-belt steps left `HwA330ParityTests.KnownFlowStepActionDivergences`. Pinned by `FbwA320SeatbeltSignWriteTests`.
+- **737 checklist engine start is PILOT-PACED (2026-07-02, user request — 777 convention; supersedes the short-lived monolithic `StartEngineAsync` tick).** The ENGINE_START group has separate items per engine: "start switch: GRD" (`ActionManual` — the GRD detent is solenoid-held and springs back at starter cutout, so no state condition), "start lever: IDLE (at 25 percent N2)" (`Auto` on the derived `ENG_StartLever_n` field, 1=RUN from the fuel-valve annunciator — a lever moved in the cockpit/panels auto-ticks too; ticking fires `SetFuelControl{1,2}(1)`). The "running" verification row (`Auto` on `FO_ENGn_N2` ≥ `EngineRunningN2`) was removed 2026-08-16 (user request), from both the 737 and iFly MAX8 groups — the pilot times the fuel introduction and judges the start themselves. The monolithic tick was removed because its background N2 wait was SILENT on the checklist path (no announcer) — it felt frozen after the starter moved. The Engine Start FLOW remains the automated path: skip-if-on "APU bleed: ON" insurance, a 15 s **start-valve-OPEN wait (`FailurePolicy.Stop`) right after each GRD**, and the fuel introduction after a fixed motoring time — a starter that never engages aborts fast and clearly. (⚠️ CORRECTED 2026-09-28: this used to read "the N2-gated fuel introduction (`EngStartFuelN2` = 20, const on the evaluator)". That gate is gone on the PMDG 737: the NG3 writes the stock N2 only from light-off, so the wait never passed and stopped every start. It is now `PMDG737FlowDefinitions.EngStartMotorSeconds`, a fixed 15 s from the start-valve wait passing — see the "737 engine-start detection needs real N2" bullet. The iFly MAX8 still gates on N2.) **Neither shutdown flow waits for spool-down after cutoff** (777's fixed 60 s pause + the 737's instant-no-op start-valve wait both removed — nothing downstream needs the engines stopped). Recall is actionable: `PressRecall()` fires `EVT_SYSTEM_ANNUNCIATOR_PANEL_LEFT` via the momentary-toggle pair (Before Taxi + Descent groups); the readback `*_CL` "Recall: checked" items stay reminders (action-free invariant).
+- **APU-start gating (2026-07-06, all four aircraft): Before Start never drops ground power until the aircraft's REAL "APU available" signal, and a timeout ABORTS the flow (Stop) with ground power connected.** Signals: 777 = the SDK `APURunning` bool (the SD's field — `ELEC_APU_Selector` reads 1 immediately after the ON command and proves nothing; the old fixed 90 s wait is gone); 737 = selector spring-back (starter cutout, Stop) THEN the blue `ELEC_annunAPU_GEN_OFF_BUS` annunciator (generator actually available — cutout happens while the APU is still spooling) before the GEN transfer buttons; Fenix = the `I_OH_ELEC_APU_START_U` AVAIL light (now Stop) — `_U` is correct, confirmed by live measurement 2026-09-04 after a 2026-08-26 swap to `_L` and back; read it through `FenixActionExecutor.ApuAvailField`; A380 = master → dwell → **START PB press** (`A32NX_OVHD_APU_START_PB_IS_ON` — master alone never starts the FBW APU; the old flow left it master-only and dropped EXT PWR onto batteries) → `A32NX_OVHD_APU_START_PB_IS_AVAILABLE` wait → defensive START release (no evidence FBW auto-clears the latched PB). The 737 generator wait is deliberately Skip (light-off is ambiguous with "already on the buses" on a re-run — do NOT add a running-and-light-off SkipCondition; that is exactly the normal just-past-cutout state) and its budget is **120 s, measured, not the 30 s it shipped with**: live on the NG3 (2026-09-28, warm APU) the blue light came on 25-40 s after the selector sprang back, and the flow only starts counting once its own 1 s poll has seen the spring-back, so a healthy start sat on the old line and the pilot heard "Timed out waiting for the APU generator" — after which the Skip policy pressed the transfer buttons to no effect and DROPPED GROUND POWER with nothing else on the buses. That second half is closed structurally: `BS_APUGEN` and `BS_GPU_OFF` carry `FlowStep.RequiresStepId = "BS_APU_GEN_AVAIL"`, a generic FlowManager dependency (a step whose named predecessor was skipped in the same run is skipped too, speaking `RequiresStepSkipText` — "…so ground power stays connected." — with its checklist lines kept out of the latch). The state cannot carry that dependency (the light is off both before the generator is up and after a completed transfer), only the wait's own outcome can. Pinned by `Pmdg737ApuGeneratorGateTests`. After Landing APU waits are Skip by design (engines running, no hazard). 737 `IsApuRunning()` is EGT-based (`ApuRunningEgt`, tunable) — the selector position only proves where the switch is.
+- **Preflight fire / warning tests are HELD self-completing tests on all four aircraft (2026-07-12, Fenix parity).** Pseudo-keys intercepted in each `ExecuteStepAsync` (Fenix `FIRE_TEST_*` precedent); flow steps tick their `ActionManual`/`Actionable` checklist items via `CompletesChecklistItemId` (no persistent "test performed" state exists — do NOT convert them to Auto items). 737 (live-probed): `EVT_FIRE_DETECTION_TEST_SWITCH` CDA position write HOLDS the spring switch (0=FAULT/INOP, 1=neutral, 2=OVHT/FIRE — write 2, hold `FireTestHoldMs` 2 s, write 1; the release write is mandatory, nothing auto-releases), and the stall/Mach-IAS warning-test buttons are transmit-only (`SendPMDGEventViaTransmitWithTarget` LEFTSINGLE → hold 3.5 s/1.5 s → LEFTRELEASE; no CDA state, no CDA actuation — audio is the only feedback). 777: `EVT_OH_FIRE_OVHT_TEST` uses the same transmit press/hold/release (3 s) — NEVER a CDA 1→0 pair; 777 CDA param 0 is a press, not a release. A380: `FireTestAsync` writes `A32NX_OVHD_FIRE_TEST_PB_IS_PRESSED` 1 → 3 s → 0 through the def's dedicated branch, whose release write auto-pulses the MASTERAWARN acknowledge — don't bypass `ApplySilent`/`ApplyUIVariable` for it. Hold times are user-tuned constants on each executor.
+- **PMDG system self-tests (TCAS / WXR / GPWS) are transmit press/release ONLY — on BOTH aircraft (2026-07-13, live-verified).** The 777's usual CDA param-1 momentary is SILENT for `EVT_TCAS_TEST` (the panel's `XPDR_Test` was a silent no-op until it moved to a dedicated transmit branch in `HandleUIVariableSet`, removed from `_simpleEventMap`); the 737's buttons were probed the same day and driven via the FO executor's existing `WarningTestAsync` held-transmit helper. Pseudo-keys: 737 `GPWS_TEST` (reads `FOGpws737LongTest` at DISPATCH — short = 150 ms quick press, long = 5 s hold of the same `EVT_GPWS_SYS_TEST_BTN`; both variants are always available as panel buttons, the setting only picks the flow/checklist variant so a change needs no window reopen), `TCAS_TEST`, `WXR_TEST`; 777 `TCAS_TEST`, `WXR_TEST` (NO GPWS — the 777 SDK has no self-test button, only inhibit/override switches). The **WXR/PWS test is a managed sequence** because the EFIS WXR overlay is a blind toggle with NO readable state in either SDK and the radar TEST mode LATCHES: overlay on → settle 4 s (1 s was silent) → `EVT_WXR_TEST` (aural "MONITOR RADAR DISPLAY … WINDSHEAR") → wait ~20 s → `EVT_WXR_L_WX` (never leave TEST latched) → overlay off. Assumes the overlay starts OFF; a pre-toggled-ON overlay makes the run silent but the restore keeps state consistent for a re-run. There is no PWS enable option anywhere in the NG3 options/airframe inis — the callout is built in, gated only on the overlay being on. Checklist items are `ActionManualAsync` ticks (no persistent "test performed" state — never convert to Auto). **The three test steps are deliberately SEPARATED in the flow, NOT grouped (2026-07-13, user request), because each test's audio plays for many seconds after the flow's 150 ms press + 2 s inter-step pause moves on** — grouped, TCAS's ~8 s "TEST PASS", the GPWS callouts and the WXR sequence talked over each other. Layout: TCAS test stays with the warning tests (737: after the overspeed tests; 777: after the fire test), and the remaining tests are the LAST flow/checklist steps — the ~15 preflight steps in between give TCAS's callout room to finish. **737 end order is WXR then GPWS (GPWS concluding), and that order matters:** WXR's managed sequence is fully AWAITED (the flow blocks the whole ~30 s incl. the windshear callout, so its audio is done before the next step), whereas GPWS only fires-and-returns with its callouts trailing for up to ~30 s (long variant) AFTER the step — so GPWS must be LAST, with nothing after it to collide with. The 777 has only WXR at the end (no GPWS). `FoSystemTestsStructureTests` pins this ordering; keep them separated and keep GPWS after WXR. The panel buttons on both aircraft (`GPWS_SysTest` short + `GPWS_SysTestLong`, `WXR_Test`, `XPDR_Test`/`XPDR_TcasTest`) fire-and-forget the same held-transmit mechanism (`HeldTransmitAsync`/`WxrTestSequenceAsync` in each def) and add NO app-side announcement — the aircraft audio is the verification.
+
+**Verification:** no automated test project (SimConnect-driven UI). Build the SOLUTION x64 (`dotnet build MSFSBlindAssist.sln -c Debug`); behavior is human-verified via the in-sim test plan. Pure-logic invariants (e.g. the `*_CL` action-free rule) are checked structurally.
+
+
+## Engine-start SELECTOR items latch on N2 (2026-08-27)
+
+The Boeing ENGINE_START selector items — PMDG 737 / iFly 737 `ES_E1_GRD`, `ES_E2_GRD`, and
+PMDG 777 `ES_ENG1_START_SEL`, `ES_ENG2_START_SEL` — auto-tick once the engine is actually
+running, off the synthetic `FO_ENG{1,2}_N2` field against each profile's
+`EngineRunningN2` (50.0 on all three), latched `RevertBehavior.StayComplete`.
+
+They were `ActionManual` (Actionable, no `StateFieldName`, no `AutoCompleteAllowed`), so
+nothing could ever tick them but a hand tick. A pilot who started the engines from the
+MSFSBA panel or in the cockpit got three of the five 737 items ticking (packs off, both
+start levers) and the group sat permanently at 3/5. **The Airbus profiles were never
+affected** — Fenix / A32NX / A380 engine masters and mode selector are persistent switch
+positions that auto-detect on any start path.
+
+Two things make this shape mandatory rather than a preference:
+
+- **Not `RevertToState` on the switch position.** The start selector is held by the starter
+  solenoid and springs back to OFF/NORM at cutout, so a condition on its own position would
+  un-tick itself the moment the start succeeded. That is why the items were action-only in
+  the first place — the original comment says so.
+- **Not `RevertToState` on N2 either.** A start is a HISTORICAL event. Latched, the tick
+  survives N2 falling again at shutdown or on the next leg's secure.
+
+**This is the ONE sanctioned `StayComplete` in these state groups** (owner-approved
+2026-08-27) and the reason the blanket rule exists does not apply here. That rule guards
+against an item whose target state coincidentally matches an EARLIER phase — packs OFF at
+cold-and-dark, APU OFF before it was ever started, the whole Shutdown/Secure set at session
+start — latching complete while the switch is not where the item claims. "Engine running"
+is false at cold-and-dark and cannot be reached without a start having actually happened,
+so there is no coincidental match to latch on.
+
+It is **not** a reintroduction of the separate "Engine 1/2: running" items removed by user
+request 2026-08-16 and pinned out by `EngineStartChecklistShapeTests` — no item is added;
+N2 is the DETECTION for the existing selector item. Hand-ticking still fires the selector
+(`CheckAction` is unchanged), and the start-LEVER / fuel-control items stay `RevertToState`
+live-state mirrors — the latch must not spread across the group.
+
+The 777 evaluator needed wiring first: its `SetEngineN2` was a deliberate no-op ("not used
+by the 777 evaluator") even though the shared `FirstOfficerForm` feeds it for every profile.
+It now stores both values and serves `FO_ENG{1,2}_N2` **ahead of the `CdaReady` gate** —
+N2 comes from SimConnect, not the PMDG CDA, so gating it would return NaN for the whole
+session whenever the CDA snapshot has not landed, which is precisely when a start happens.
+Both start NaN, never 0: before the first push N2 is genuinely unknown, not "engine
+stopped", and `ChecklistManager` treats NaN as "skip both auto-tick and revert".
+
+Pinned by `EngineStartSelectorLatchTests`; `IFly737ProfileStructureTests` names the two
+latched ids explicitly so a third cannot appear silently.

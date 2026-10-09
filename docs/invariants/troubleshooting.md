@@ -1,7 +1,7 @@
 # Troubleshooting a control — rules in full
 
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/troubleshooting.md`, which Claude Code loads when it reads matching code. Background: [troubleshooting-playbook.md](../troubleshooting-playbook.md).
-The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
+The text is verbatim from CLAUDE.md as of `1f37801a` (DBG-12 and DBG-13 from PR #160's as of `642f48c1`); a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
 
 ## DBG-1
 
@@ -46,3 +46,11 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## DBG-11
 
 - ⚠️ BEFORE diagnosing any reported A380/MSFSBA behaviour, CHECK WHICH BINARY IS RUNNING — `startup.log` names the Application Directory, and the DLL's ProductVersion carries the commit (`8.1.1-pre.263+470a5cfa`). A tester's "altimeter stuck on QNH" was chased through the FBW source to a wrong root cause and a needless commit, when the app was simply a pre-fix build. `debug.log`'s `Sending event:` lines say what the app ACTUALLY emitted and settle in seconds what source reading cannot. → [a380x.md](../a380x.md)
+
+## DBG-12
+
+- **Never conclude anything about a PMDG control from the simconnect MCP's `send_pmdg_event`** — its parameterless form COALESCES two identical consecutive events (a second press appears to do nothing when it was never sent), and passing `MOUSE_FLAG_LEFTSINGLE` as its parameter moves a lever without the stock mirror SimVars following, which reads exactly like a stuck field. Both artifacts were hit in one session and each nearly produced a wrong conclusion. The stock **`K:ROTOR_BRAKE`** transport (`param = (pmdgEventId − 69632) × 100 + mouseCode`, mouse code 01 = left-single) is the reliable probe: it actuated the 777 speedbrake detents cleanly in BOTH directions and is how the scale above was measured. → [troubleshooting-playbook.md](../troubleshooting-playbook.md)
+
+## DBG-13
+
+- MCP-probing gotcha (probing sessions only, NOT a conclusion about MSFSBA's dispatch): PMDG `send_pmdg_event` WITH a parameter is a silent no-op on both 737/777; WITHOUT a parameter it works via transmit and acts as a TOGGLE (two identical consecutive events coalesce). MSFSBA's own path (`TransmitClientEvent`-with-parameter) is absolute + idempotent — draw no dispatch conclusions from the MCP artifacts. → [troubleshooting-playbook.md](../troubleshooting-playbook.md)

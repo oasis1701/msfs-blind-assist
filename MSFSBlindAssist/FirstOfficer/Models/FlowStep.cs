@@ -1,0 +1,264 @@
+using MSFSBlindAssist.FirstOfficer;
+
+namespace MSFSBlindAssist.FirstOfficer.Models;
+
+/// <summary>
+/// The kind of action a flow step performs.
+/// </summary>
+public enum FlowStepActionType
+{
+    /// <summary>Send a single PMDG event (switch to a position or press a button).</summary>
+    SetSwitch,
+
+    /// <summary>Send multiple PMDG events atomically (e.g. both bus tie switches).</summary>
+    SetSwitchMultiple,
+
+    /// <summary>Fixed delay in seconds before proceeding to the next step.</summary>
+    WaitSeconds,
+
+    /// <summary>Poll a sim state field until a condition is met or the step times out.</summary>
+    WaitForCondition,
+
+    /// <summary>Announce a reminder to the captain — no automation, user must acknowledge via UI.</summary>
+    CaptainReminder,
+}
+
+/// <summary>What the flow engine does if a step fails or times out.</summary>
+public enum FlowStepFailurePolicy
+{
+    /// <summary>Abort the entire flow and announce the failure.</summary>
+    Stop,
+
+    /// <summary>Log a warning and continue to the next step.</summary>
+    Skip,
+
+    /// <summary>Retry the step up to <see cref="FlowStep{TState}.RetryCount"/> times before applying Stop.</summary>
+    RetryThenStop,
+}
+
+/// <summary>
+/// A single automated step within a <see cref="FlowDefinition{TState}"/>.
+/// </summary>
+public class FlowStep<TState> : IFlowStepDispatch
+    where TState : IFoStateEvaluator
+{
+    // -----------------------------------------------------------------------
+    // Identity
+    // -----------------------------------------------------------------------
+
+    public string Id { get; set; } = "";
+
+    /// <summary>Human-readable label shown in the UI step list.</summary>
+    public string Label { get; set; } = "";
+
+    /// <summary>Overrides <see cref="Label"/> for NVDA speech if set (shorter/clearer form).</summary>
+    public string? SpokenLabel { get; set; }
+
+    public FlowStepActionType ActionType { get; set; }
+
+    // -----------------------------------------------------------------------
+    // SetSwitch / SetSwitchMultiple
+    // -----------------------------------------------------------------------
+
+    /// <summary>Key in <c>PMDG777Definition.EventIds</c> for a single-switch action.</summary>
+    public string? EventName { get; set; }
+
+    /// <summary>
+    /// Target switch position to send as the CDA parameter.
+    /// Null means send with no parameter (momentary button press).
+    /// </summary>
+    public int? TargetValue { get; set; }
+
+    /// <summary>
+    /// Resolves <see cref="TargetValue"/> dynamically at dispatch time — for values
+    /// unknown when the static flow definitions are built (e.g. SimBrief-derived
+    /// pressurization altitudes). When non-null, FlowManager writes the resolved value
+    /// into <see cref="TargetValue"/> immediately before dispatch (re-resolved on every
+    /// run, so the mutation never goes stale). Returning null means the required data is
+    /// unavailable → the step is SILENTLY SKIPPED (FO-20): NO announcement (the generic
+    /// "Already set:"/"Skipping:" wordings would be wrong for "no flight plan"), nothing sent,
+    /// and like any skipped step its <see cref="LinkedChecklistItemIds"/> are NOT marked and
+    /// are kept out of the flow's completion latch, and its id counts as skipped for
+    /// <see cref="RequiresStepId"/>. Never a success: as one it ticked and latched the A320s'
+    /// "Flaps: takeoff setting" over a lever at 0 when no SimBrief plan was loaded.
+    /// Pair such steps with a fallback CaptainReminder that is SkipCondition'd away when
+    /// the data IS available (or, better, when the aircraft already reads the target), so the
+    /// pilot still hears something in the no-data case.
+    /// </summary>
+    public Func<TState, int?>? TargetValueProvider { get; set; }
+
+    /// <summary>
+    /// For <see cref="FlowStepActionType.SetSwitchMultiple"/>.
+    /// Each tuple: (EventName from EventIds, target position).
+    /// </summary>
+    public List<(string EventName, int? TargetValue)> MultiActions { get; set; } = new();
+
+    // Explicit implementation so List<> coexists with the IReadOnlyList<> member on the interface.
+    IReadOnlyList<(string EventName, int? TargetValue)> IFlowStepDispatch.MultiActions => MultiActions;
+
+    /// <summary>
+    /// For FD/AT Arm switches that require the MOUSE_FLAG_LEFTSINGLE parameter.
+    /// </summary>
+    public bool UsesMouseFlag { get; set; }
+
+    /// <summary>
+    /// For ground power / momentary buttons: always send parameter 1.
+    /// </summary>
+    public bool IsMomentary { get; set; }
+
+    // -----------------------------------------------------------------------
+    // State verification (after action)
+    // -----------------------------------------------------------------------
+
+    /// <summary>PMDG data field name to poll after the action to verify it succeeded.</summary>
+    public string? VerifyFieldName { get; set; }
+
+    /// <summary>Condition that returns true when the action is confirmed successful.</summary>
+    public Func<double, bool>? VerifyCondition { get; set; }
+
+    // -----------------------------------------------------------------------
+    // WaitForCondition
+    // -----------------------------------------------------------------------
+
+    /// <summary>PMDG data field name to monitor.</summary>
+    public string? ConditionFieldName { get; set; }
+
+    /// <summary>Condition that returns true when the wait is over.</summary>
+    public Func<double, bool>? Condition { get; set; }
+
+    /// <summary>Maximum seconds to wait before declaring the step failed/timed out.</summary>
+    public int TimeoutSeconds { get; set; } = 120;
+
+    // -----------------------------------------------------------------------
+    // WaitSeconds
+    // -----------------------------------------------------------------------
+
+    public int WaitSeconds { get; set; }
+
+    // -----------------------------------------------------------------------
+    // CaptainReminder
+    // -----------------------------------------------------------------------
+
+    public string? ReminderText { get; set; }
+
+    // -----------------------------------------------------------------------
+    // Timing
+    // -----------------------------------------------------------------------
+
+    /// <summary>Milliseconds to pause between successive steps. Default 300ms.</summary>
+    public int PostActionDelayMs { get; set; } = 300;
+
+    // -----------------------------------------------------------------------
+    // Failure behavior
+    // -----------------------------------------------------------------------
+
+    public FlowStepFailurePolicy FailurePolicy { get; set; } = FlowStepFailurePolicy.Skip;
+
+    public int RetryCount { get; set; } = 1;
+
+    // -----------------------------------------------------------------------
+    // Checklist integration
+    // -----------------------------------------------------------------------
+
+    /// <summary>If set, auto-checks this checklist item when the step completes successfully.</summary>
+    public string? CompletesChecklistItemId { get; set; }
+
+    /// <summary>
+    /// Further checklist items this step delivers, beyond <see cref="CompletesChecklistItemId"/>
+    /// — for a line that appears in BOTH a phase's action group and its read-back checklist and
+    /// is delivered by one step (the iFly 737 Landing flow's verified speed-brake arm completes
+    /// "Speedbrake: ARMED" in both). FlowManager marks, and on a skipped step EXCLUDES, every id
+    /// in <see cref="LinkedChecklistItemIds"/>: a line the step delivers but does not name would
+    /// otherwise be ticked and latched by MarkGroupComplete even when the step was skipped.
+    /// </summary>
+    public IReadOnlyList<string> AlsoCompletesChecklistItemIds { get; set; } = Array.Empty<string>();
+
+    /// <summary>
+    /// Every checklist item this step delivers: <see cref="CompletesChecklistItemId"/> first,
+    /// then <see cref="AlsoCompletesChecklistItemIds"/>, skipping blanks and repeats. The one
+    /// list FlowManager consults for all three checklist hand-offs (already set, success, skip).
+    /// </summary>
+    public IEnumerable<string> LinkedChecklistItemIds
+    {
+        get
+        {
+            var seen = new HashSet<string>(StringComparer.Ordinal);
+            if (!string.IsNullOrEmpty(CompletesChecklistItemId) && seen.Add(CompletesChecklistItemId))
+                yield return CompletesChecklistItemId;
+            foreach (var id in AlsoCompletesChecklistItemIds)
+                if (!string.IsNullOrEmpty(id) && seen.Add(id))
+                    yield return id;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Skip condition (smart resume)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// If set and returns true, this step is skipped because the aircraft
+    /// is already in the desired state. Allows flows to resume from mid-state
+    /// without re-setting switches that are already correct.
+    /// </summary>
+    public Func<TState, bool>? SkipCondition { get; set; }
+
+    // -----------------------------------------------------------------------
+    // Dependency on an earlier step of the same run
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// The id of an earlier step in the same flow that this step builds on. When that step
+    /// was SKIPPED in this run (its failure policy was Skip and it failed or timed out, it was
+    /// left alone by its <see cref="LeaveAloneWhen"/> rule, its <see cref="TargetValueProvider"/>
+    /// had no value (FO-20), or it was itself skipped through its own dependency), FlowManager
+    /// skips this step too —
+    /// announcing <see cref="RequiresStepSkipText"/> — and keeps its linked checklist items
+    /// out of the completion latch, exactly as a skipped step of its own does. A step whose
+    /// <see cref="SkipCondition"/> reads true is still "Already set" first: the aircraft's own
+    /// state outranks the dependency.
+    ///
+    /// Why it exists: a Skip-policy WAIT lets the flow carry on past a condition it could not
+    /// confirm, and nothing downstream knew. The PMDG 737 Before Start flow's generator wait
+    /// (the blue APU GEN OFF BUS light) timed out on a healthy but slow start, and the flow
+    /// then pressed the APU GEN buttons to no effect and dropped GROUND POWER with nothing
+    /// else on the buses — the pilot landed on batteries with the flow still narrating
+    /// (live report, 2026-09-28). The state alone cannot express "the generator was
+    /// confirmed": the light is off both before the generator is up and after a completed
+    /// transfer. What the flow itself knows — that its own wait failed — is the only
+    /// discriminator, and this carries it forward.
+    /// </summary>
+    public string? RequiresStepId { get; set; }
+
+    /// <summary>
+    /// What is spoken when this step is skipped because <see cref="RequiresStepId"/> did not
+    /// complete. Say what stays as it is ("… so ground power stays connected."), never only
+    /// that something was skipped: a blind pilot has no other way to learn what the flow
+    /// left alone. Defaults to "Skipping: {AnnounceText}".
+    /// </summary>
+    public string? RequiresStepSkipText { get; set; }
+
+    // -----------------------------------------------------------------------
+    // Leave alone (the aircraft's state says the First Officer must not act)
+    // -----------------------------------------------------------------------
+
+    /// <summary>
+    /// If set and it returns true, the First Officer does NOT perform this step: nothing is sent,
+    /// <see cref="LeaveAloneText"/> is spoken, and the step's checklist lines are kept out of the
+    /// completion latch, so they keep mirroring the aircraft and tick themselves once the pilot
+    /// does it. Checked after <see cref="SkipCondition"/> ("Already set" is the truer answer when
+    /// the aircraft is already there) and before <see cref="RequiresStepId"/>; the step's id joins
+    /// the run's skipped set, so a step that requires it is skipped too. The speed-brake arm
+    /// steps use it for a speed brake that is already deployed, which clicking ARM would retract.
+    /// </summary>
+    public Func<TState, bool>? LeaveAloneWhen { get; set; }
+
+    /// <summary>What is spoken when <see cref="LeaveAloneWhen"/> holds. Say what stays as it is.
+    /// Defaults to "Skipping: {AnnounceText}".</summary>
+    public string? LeaveAloneText { get; set; }
+
+    // -----------------------------------------------------------------------
+    // Helper
+    // -----------------------------------------------------------------------
+
+    public string AnnounceText => SpokenLabel ?? Label;
+}
