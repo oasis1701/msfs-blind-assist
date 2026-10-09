@@ -412,12 +412,40 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("import os\nos.replace(tmp, '{C}')")]
     [InlineData("with open('{C}', 'r+') as fh:\n    fh.write('x')")]
     [InlineData("\"\"\"Don't panic: open('nowhere', 'w').\"\"\"\n# it's fine\nopen('{C}', 'w')")]
-    public void Shell_guard_refuses_a_python_write_resolved_to_a_covered_file(string script)
+    // A mode bound to a name, file=/dst= keywords, a bare copy2, a Path variant, literals side by side, a raw string.
+    [InlineData("m = 'w'\nopen('{C}', m)")]
+    [InlineData("open(file='{C}', mode='w')")]
+    [InlineData("import shutil\nshutil.copy2(s, dst='{C}')")]
+    [InlineData("from shutil import copy2\ncopy2('scratch.cs', '{C}')")]
+    [InlineData("from pathlib import PureWindowsPath\nopen(PureWindowsPath('MSFSBlindAssist/Aircraft', 'Pmdg737DisplayReads.cs'), 'w')")]
+    [InlineData("open('MSFSBlindAssist/Aircraft/' 'Pmdg737DisplayReads.cs', 'w')")]
+    [InlineData("open(r'MSFSBlindAssist/Forms/PMDG737\\new.cs', 'w')", "MSFSBlindAssist/Forms/PMDG737/new.cs")]
+    // A def body that writes its own local binding: the binding holds until the body ends.
+    [InlineData("OUT = 'scratch/report.md'\ndef save(t):\n    OUT = '{C}'\n    open(OUT, 'w').write(t)")]
+    public void Shell_guard_refuses_a_python_write_resolved_to_a_covered_file(string script, string covered = Pmdg737)
     {
         JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(script))));
         Assert.NotNull(output);
         Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+        Assert.Contains(covered, output.Value.GetProperty("permissionDecisionReason").GetString());
+    }
+
+    // A long one-line literal ahead of the write must not use up the guard's time (the analysis stops at a deadline
+    // and lets the rest run): a literal target is checked before any name is resolved, and resolving a name stays
+    // linear in the length of the line. Both writes are refused, well inside the hook's 10-second timeout.
+    [Theory]
+    [InlineData("out = 'scratch/x'; open(out, 'w')\nopen('{C}', 'w')")]
+    [InlineData("p = '{C}'\nopen(p, 'w')")]
+    public void Shell_guard_refuses_a_python_write_after_a_long_one_line_literal(string tail)
+    {
+        string dict = "d = {" + string.Join(", ", Enumerable.Range(0, 2500).Select(i => $"'k{i}': {i}")) + "}\n";
+        var clock = Stopwatch.StartNew();
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(dict + tail))));
+        clock.Stop();
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
         Assert.Contains(Pmdg737, output.Value.GetProperty("permissionDecisionReason").GetString());
+        Assert.True(clock.Elapsed < TimeSpan.FromSeconds(8), $"the hook took {clock.Elapsed.TotalSeconds:F1} s");
     }
 
     // A script that only reads a covered file, whose write target is another file, or whose target the guard cannot
@@ -430,6 +458,23 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("n = 'X'\nopen(f'MSFSBlindAssist/Aircraft/{n}.cs', 'w')")]
     [InlineData("doc = \"\"\"\nopen('{C}', 'w')\n\"\"\"\nprint(doc)")]
     [InlineData("print(\"open('{C}', 'w')\")")]
+    // A rebinding the guard does not follow leaves the name unresolved, so the write runs: an augmented assignment, a
+    // tuple swap, a def or lambda parameter, with ... as, a comprehension variable (on one line, spread over lines, or a
+    // generator inside a call), and a keyword argument on its own line, which is no binding at all.
+    [InlineData("p = '{C}'\np += '.bak'\nopen(p, 'w')")]
+    [InlineData("a = '{C}'\nb = '{S}'\na, b = b, a\nopen(a, 'w')")]
+    [InlineData("p = '{C}'\ndef save(p):\n    open(p, 'w')")]
+    [InlineData("p = '{C}'\nsave = lambda p: open(p, 'w')")]
+    [InlineData("p = '{C}'\nwith open('{S}') as p:\n    pass\nopen(p, 'w')")]
+    [InlineData("f = '{C}'\nouts = [open(f, 'w') for f in ['{S}']]")]
+    [InlineData("p = '{C}'\ntext = open(p).read()\nouts = [\n    open(p, 'w')\n    for p in ['a.txt', 'b.txt']\n]")]
+    [InlineData("from pathlib import Path\np = '{C}'\nlist(\n    Path(p).write_text('x')\n    for p in ['a.txt']\n)")]
+    [InlineData("p = '{S}'\nfoo(\n    p='{C}',\n)\nopen(p, 'w')")]
+    // A binding made inside a def body ends with that body: report() writes the global OUT, not scan()'s local one.
+    [InlineData("OUT = 'scratch/report.md'\ndef scan():\n    OUT = '{C}'\n    return open(OUT).read()\n"
+        + "def report(t):\n    open(OUT, 'w').write(t)")]
+    // An escape that changes the value (\n here) leaves the literal unresolved: Python would not write this path.
+    [InlineData("open('MSFSBlindAssist/Forms/PMDG737\\new.cs', 'w')")]
     public void Shell_guard_allows_a_python_script_that_writes_no_resolved_covered_file(string script)
     {
         HookRun run = RunHook(new[] { "shell-guard" }, ShellInput("Bash", PythonHeredoc(script)));
