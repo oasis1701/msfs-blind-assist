@@ -389,8 +389,10 @@ public partial class MainForm
                 {
                     // Fallback for non-Fenix buttons that still use ValueDescriptions.
                     // Resting-state (value 0 = Off/Idle) suppression is OPT-IN via
-                    // SuppressRestingButtonState, set only by the FBW momentary-button helpers
-                    // — a momentary push-button has no meaningful resting value, so appending
+                    // SuppressRestingButtonState, set by the momentary-button defs of the FBW
+                    // A320/A380, the iFly 737 (Btn, McpModeStyleWarning) and the MD-11
+                    // (BuildControlVariable) — a momentary push-button has no meaningful
+                    // resting value, so appending
                     // it read as noise ("Chronometer Start / Stop: Idle, button"). By DEFAULT
                     // the value-0 label shows: PMDG 777 MCP buttons ("LNAV: Off") and the
                     // HS787 Baro STD ("QNH") use value-0 descriptions that ARE meaningful state.

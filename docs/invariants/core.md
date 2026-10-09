@@ -94,6 +94,8 @@ Corrected 2026-10-08: scoped to the wrap; the rule had read as covering the gene
 
 - Never blanket-suppress value-0 resting-state button labels in MainForm — use the opt-in `SuppressRestingButtonState` flag only; some 0-state labels (PMDG 777 "LNAV: Off", HS787 "Baro STD: QNH") are meaningful and must be spoken. → CLAUDE.md
 
+Corrected 2026-10-09: the explanation (and two code comments) said only the FBW momentary-button helpers set the flag. Three families do: the FBW A320 and A380 (the A380's local `Btn`/`PressSilent`/`SeatBtn` helpers and inline defs, the A320's inline ones in `BuildVariables`), the iFly 737 (its `Btn` helper and `McpModeStyleWarning`, whose buttons have no readable resting state), and the TFDi MD-11 (every `Md11Kinds.Button` control `BuildControlVariable` makes). The rule is unchanged: the flag stays opt-in per definition, and MainForm never decides it. Evidence: `SuppressRestingButtonState = true` in `FlyByWireA320Definition.cs`, `FlyByWireA380Definition.cs`, `IFly737MAXDefinition.cs` (`Btn`, `McpModeStyleWarning`) and `TFDiMD11Definition.cs` (`BuildControlVariable`); the only readers are `MainForm.Announcers.cs` and `MainForm.PanelBuilder.cs`.
+
 ## CORE-11
 
 - CRITICAL: set `IsConnected = true` BEFORE calling `SetupDataDefinitions()` in SimConnectManager — `StartContinuousMonitoring()` guards on `IsConnected == true`. → CLAUDE.md
@@ -110,9 +112,13 @@ Corrected 2026-10-08: scoped to the wrap; the rule had read as covering the gene
 
 - CRITICAL: every diagnostic log path must be resolved through `Utils/AppLogs.PathFor(...)` into `%APPDATA%\MSFSBlindAssist\logs` — never hand-build a log path. → CLAUDE.md
 
+Corrected 2026-10-09: the rule had no exceptions, but two programs cannot reference the app's `AppLogs`. The vPilot plugin's log still resolves into the canonical logs folder ([VAT-6]); the updater's does not. `MSFSBlindAssistUpdater` has no project reference to the app, and its `Program.Main` writes a startup-arguments log at `Path.GetTempPath()` + `MSFSBlindAssist_Updater_Args.log`, a hand-built `%TEMP%` path that it also names in its invalid-arguments message box. Moving it into `%APPDATA%\MSFSBlindAssist\logs` would need the updater to carry its own copy of the path logic. Evidence: `MSFSBlindAssistUpdater/Program.cs` (the `logPath` and the message box) and `MSFSBlindAssistUpdater.csproj` (no `ProjectReference`).
+
 ## CORE-15
 
 - Never hand-build a log write (`File.AppendAllText`/raw path) — every diagnostic log goes through `Utils/Logging/Log` (`Log.Debug/Info/Warn/Error(category,msg)` → debug.log, or `Log.Channel(name)` → named file); `AppLogs.PathFor` is the PATH layer only. → CLAUDE.md
+
+Corrected 2026-10-09: names the two programs that cannot call `Log` and are exempt. The vPilot plugin writes its own `vpilot-plugin.log` ([VAT-6]: it runs in vPilot's .NET Framework process and cannot reference the app's logger). The updater, `MSFSBlindAssistUpdater`, has no reference to the app either, so `Program.Main` writes its startup-arguments log with `File.WriteAllText` to `Path.GetTempPath()` + `MSFSBlindAssist_Updater_Args.log`, and its invalid-arguments message box tells the user that path. Neither is a model for code inside the app, which always goes through `Log`. Evidence: `MSFSBlindAssistUpdater/Program.cs` (`logPath`) and `MSFSBlindAssistUpdater.csproj` (no `ProjectReference`).
 
 ## CORE-16
 
@@ -144,7 +150,7 @@ These sections stood in CLAUDE.md's core until 2026-10; CLAUDE.md now keeps the 
 
 **Combo double-announce suppression is GLOBAL (`_uiSetEcho`, MainForm).** When the user changes a panel **combo**, the screen reader already speaks the selection — so MSFSBA must not also announce the resulting SimVar change. Every combo-set path calls `MarkUiSet(varKey, value)` (records `_uiSetEcho[varKey]` + a tick), and `OnSimVarUpdated` suppresses the duplicate two ways: (1) the generic `_uiSetEcho` gate for vars announced on the generic monitor path, AND (2) **a wrap that sets `announcer.Suppressed` around the `ProcessSimVarUpdate` call** for any var inside the echo window — because a def that auto-announces from INSIDE `ProcessSimVarUpdate` (PMDG APU selector + the Boris Audio Works soundpack switches, HS787, A380, …) returns `true` and exits BEFORE the generic gate ever runs. **The wrap was HS787-gated and is now ALL-aircraft (2026-06 fix)** — that gate-miss is exactly why the PMDG APU selector + the whole Boris panel double-announced. The wrap matches on the **time window only, not the value** (a combo set can write a different encoding than the SDK reads back — event position vs struct field, 0/1 vs 0/100 — so a value compare silently misses). So: a def that announces its own state from `ProcessSimVarUpdate` needs NO per-control echo flag for combo sets — the global wrap covers it; only background (non-UI) changes still announce.
 
-**Resting-state button labels are suppressed ONLY via the opt-in `SimVarDefinition.SuppressRestingButtonState`** (set by the FBW momentary helpers `Btn`/`PressSilent`/`SeatBtn` + the inline cabin-ready/chrono defs). Never blanket-suppress value-0 labels in MainForm: PMDG 777 MCP "LNAV: Off" and HS787 "Baro STD: QNH" are meaningful states a blind user needs (PR #85 finding M4).
+**Resting-state button labels are suppressed ONLY via the opt-in `SimVarDefinition.SuppressRestingButtonState`** (set by the FBW momentary helpers `Btn`/`PressSilent`/`SeatBtn` + the inline cabin-ready/chrono defs, and, since the iFly 737 and TFDi MD-11 were added, by the iFly's `Btn`/`McpModeStyleWarning` and the MD-11's push-button controls in `BuildControlVariable`). Never blanket-suppress value-0 labels in MainForm: PMDG 777 MCP "LNAV: Off" and HS787 "Baro STD: QNH" are meaningful states a blind user needs (PR #85 finding M4).
 
 ### SimConnect Connection Timing
 

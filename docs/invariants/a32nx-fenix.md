@@ -57,6 +57,8 @@ Corrected 2026-10-08: the rule named `A32NX_FCU_EFIS_{L,R}_FD_ACTIVE`, which FBW
 
 - Momentary FBW L:var button pulses must be sent as TWO SEPARATE calc calls, never a single same-frame `1 (>L:X) 0 (>L:X)` string — the Rust sampler doesn't see a same-tick pulse. → [a32nx.md](../a32nx.md)
 
+Corrected 2026-10-09: "two separate calc calls" was not enough; two calls issued back to back would fail too. MobiFlight's command channel is one shared buffer it reads once per frame, so back-to-back `ExecuteCalculatorCode` calls land in the same frame and the second overwrites the first (the A380 RMP comment records this). The working helper writes `1 (>L:X)`, waits 250 ms, then writes `0 (>L:X)`, so the sampler sees the pressed state on its own tick; it also speaks "<name> pressed" once. The A380's ECP keys do not use it: they hold longer on the shared `A380EcpKeyPulse` clock ([A380-13]). Do not confuse this with the A380 RMP keys ([A380-7]), which are H-events sent as ONE call carrying press and release; the two shapes are opposite and must not be harmonised. Evidence: `BaseAircraftDefinition.PulseMomentaryLVar`; the blue e-pump override comment in `FlyByWireA320Definition` ("separated press/release toggles the latch; a same-frame 1->0 pulse is NOT seen by the Rust sampler"); `FlyByWireA380Definition.SendRmpKey`'s CRITICAL #1 comment (`FlyByWireA380Definition.Rmp.cs`).
+
 ## A320-15
 
 - The A32NX DCDU display must be a ListBox, not a multiline TextBox — a right-aligned key label read on a separate braille line from its leading key number in a TextBox. → [a32nx.md](../a32nx.md)
