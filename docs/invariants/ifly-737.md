@@ -5,7 +5,11 @@ The text is verbatim from docs/ifly-737.md as of `42d4a67b`; a cross-reference s
 
 ## IFLY-1
 
-- **`IFlySdkOffsets`/`IFlySdkFields` are GENERATED** (`tools/ifly-gen/generate_ifly_sdk.py` from SDK_Defines.h) — regenerate, never hand-edit. ⚠ The generator truncates every enum comment at `Value1:`, so the vendor's per-command Value2/Value3 encoding docs exist ONLY in the raw GBK `key_command.h`, never in the generated `IFlyKeyCommand.cs` — read the raw header before declaring a command encoding undocumented (the speedbrake-lever "no Value2 detail" claim, corrected below, was exactly this trap). → [ifly-737.md](../ifly-737.md)
+- **`IFlySdkOffsets`/`IFlySdkFields`/`IFlyKeyCommand` are GENERATED** (`tools/ifly-gen/generate_ifly_sdk.py` from the SDK headers) — regenerate, never hand-edit. ⚠ The generator truncates every enum comment at `Value1:`, so the vendor's per-command Value2/Value3 encoding docs almost always exist only in the raw GBK `key_command.h` (a comment with no `Value1:` column, such as `ENGAPU_THROTTLE1_POS`/`ENGAPU_THROTTLE2_POS`, keeps its text in the generated `IFlyKeyCommand.cs`) — read the raw header before declaring a command encoding undocumented (the speedbrake-lever "no Value2 detail" claim, corrected below, was exactly this trap). → [ifly-737.md](../ifly-737.md)
+
+Corrected 2026-10-09: the generated files now include `IFlyKeyCommand`, and "never in the generated `IFlyKeyCommand.cs`" became "almost always only in `key_command.h`": a comment with no `Value1:` column survives the cut. Evidence: `generate_ifly_sdk.py` (the truncation at `Value1:`) and `IFlyKeyCommand.cs`, where `ENGAPU_THROTTLE1_POS` and `ENGAPU_THROTTLE2_POS` keep their Value2/Value3 text.
+
+Split out on 2026-10-09: IFLY-5 (read the raw `key_command.h` before calling an encoding undocumented). This text keeps it as written; it has its own section below.
 
 ## IFLY-2
 
@@ -18,3 +22,9 @@ The text is verbatim from docs/ifly-737.md as of `42d4a67b`; a cross-reference s
 ## IFLY-4
 
 - **Per-send plugin-window resolution** (`SendCommand`): the WM_COPYDATA target HWND is re-resolved via `FindWindowEx` on EVERY send, never cached — a cached handle can be recycled by Windows after a sim restart, and a send to the recycled window "succeeds" (delivered) while the aircraft hears nothing; the title scan costs microseconds against 40-120 ms-paced commands. Send-failure logging is edge-triggered (`_lastSendFailed`) so a sustained-failure loop logs once, not once per send. → [ifly-737.md](../ifly-737.md)
+
+## IFLY-5
+
+- `tools/ifly-gen/generate_ifly_sdk.py` truncates every `IFlyKeyCommand` enum comment at `Value1:`, so a command's Value2/Value3 encoding is documented only in the iFly SDK's raw GBK `key_command.h`, bar a comment with no `Value1:` column (`ENGAPU_THROTTLE1_POS`, `ENGAPU_THROTTLE2_POS`), which keeps its text. Read the raw header before calling a command's encoding undocumented: the speedbrake-lever "no Value2 detail" claim (see docs/ifly-737.md) was exactly this trap. Nothing loaded this rule on the generated file or the definitions before it had its own line. → [ifly-737.md](../ifly-737.md)
+
+Split from IFLY-1 on 2026-10-09: one mechanism per ID.

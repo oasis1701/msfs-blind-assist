@@ -1,4 +1,4 @@
-# FlyByWire A380X Coherent clients, OANS, RMP and flyPad — rules in full
+# FlyByWire A380X Coherent clients, OANS and RMP — rules in full
 
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/a380-coherent.md`, which Claude Code loads when it reads matching code. Background: [a380x.md](../a380x.md).
 The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
@@ -6,14 +6,6 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## A380C-1
 
 - Never assume a Coherent UI element needs the KCCU cursor or a DOM click without checking what the real cockpit input drives underneath — the MFD uses `InputField` keypress, the ECL is driven by ECP L:var pulses, neither needs the KCCU cursor. → [a380x.md](../a380x.md)
-
-## A380C-2
-
-- Every Coherent client's `EnsureConnected` must re-install the agent on a still-open socket instead of reconnecting, and must Abort+Dispose any existing socket BEFORE `ConnectAsync` — skipping either orphans a healthy old socket and permanently loses the page for the process. → [a380x.md](../a380x.md)
-
-## A380C-3
-
-- Any public on-demand scrape method competing with a background `RunLoop` must be serialized by its own connect-lock (`_connectLock`) — the existing `_sendLock` only covers `SendAsync`, not connection setup, and doesn't close the race. → [a380x.md](../a380x.md)
 
 ## A380C-4
 
@@ -46,22 +38,6 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## A380C-11
 
 - `fireKey` must fire each KCCU H-event ONCE, never twice — firing it via both `Coherent.trigger` AND `SimVar.SetSimVarValue` caused double/erratic F-PLN paging. → [a380x.md](../a380x.md)
-
-## A380C-12
-
-- Never widen the flyPad Dashboard's column-first read order to other EFB pages without evidence a specific page is jumbled — a blind global split would break single-column pages. → [a380x.md](../a380x.md)
-
-## A380C-14
-
-- `buildSettingsLines` must return null (defer to the generic pass) when it finds no recognizable control in a region, rather than rendering an owned-but-blank page — this is the safety net for layouts the builder doesn't recognize. → [a380x.md](../a380x.md)
-
-## A380C-15
-
-- Door-tile precise names must never trust the FBW enum DIGIT alone — it can be wrong (index 9 "Main4Right" is actually Main Door 5 Right); always parse the handler comment's enum NAME, falling back to column-based Left/Right only when the enum can't be parsed. → [a380x.md](../a380x.md)
-
-## A380C-16
-
-- `A.DOOR_NAMES` (flyPad agent) must be kept in sync with each aircraft def's `_doorDefs` table — the flyPad label and the spoken door name must agree. → [a380x.md](../a380x.md)
 
 ## A380C-17
 

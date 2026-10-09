@@ -1472,11 +1472,14 @@ public partial class TaxiGuidanceManager : IDisposable
     /// <summary>
     /// The start-hold sentence ("Stop. Hold short of runway 12R. Press continue when cleared.") for a
     /// route that begins at a runway hold line (<see cref="TaxiRoute.StartHoldRunway"/>), set when
-    /// guidance enters that hold, and spoken exactly once. EVERY caller of <see cref="StartGuidance"/>
-    /// must consume and speak it: MainForm feeds no position frames while guidance holds, so no later
-    /// frame will. <c>TaxiAssistForm</c> folds it LAST into its standstill utterance on Calculate and
-    /// speaks it as a Progressive leg's opening instruction. A landing-exit re-route, which no caller
-    /// starts, enters the hold in <see cref="UpdatePosition"/> and is spoken in that same frame.
+    /// guidance enters that hold, and spoken exactly once. Every caller of <see cref="StartGuidance"/>
+    /// that leaves guidance in Taxiing or HoldShort must consume it (<see cref="ConsumeStartHoldCue"/>)
+    /// and speak it: MainForm feeds no position frames while guidance holds, so no later frame will.
+    /// <c>TaxiAssistForm</c> folds it LAST into its standstill utterance on Calculate and speaks it as
+    /// a Progressive leg's opening instruction. <c>LandingExitPlanner</c> starts guidance and enters
+    /// the landing rollout at once, where the clear margin refuses a start hold. A landing-exit
+    /// re-route, which no caller starts, enters the hold in <see cref="UpdatePosition"/> and is spoken
+    /// in that same frame.
     /// </summary>
     public string? LastRouteStartHoldCue { get; private set; }
 

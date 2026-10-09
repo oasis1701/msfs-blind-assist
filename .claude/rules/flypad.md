@@ -4,6 +4,7 @@ paths:
   - "MSFSBlindAssist/Forms/**/FbwEfbForm*.cs"
   - "tools/flypad-shell-test/**"
   - "MSFSBlindAssist/Resources/flypad-shell.html"
+  - "MSFSBlindAssist/SimConnect/CoherentEFBClient.cs"
 ---
 # FlyByWire flyPad EFB (A320 and A380) rules
 
@@ -19,6 +20,11 @@ Loaded when Claude reads matching code. Background: docs/flypad.md. Full text of
 - [FPD-8] `setValue` on a flyPad SimpleInput must commit with a synthetic Enter keydown/keyup plus blur; FBW commits on Enter/blur, not onChange, so a plain value-set never reaches the sim. Full: docs/invariants/flypad.md#fpd-8
 - [FPD-9] On the Ground Payload/Fuel pages, suppress the "Fill ... from SimBrief" caption tooltip and icon button, never the value input; the user imports via the Dashboard instead. Full: docs/invariants/flypad.md#fpd-9
 - [A380-3] Never implement the FBW flyPad pushback controls; pushback is done with GSX, a permanent decision. Full: docs/invariants/flypad.md#a380-3
+- [FPD-10] `FbwEfbForm`'s list mode (`CreateControlFor`, `ApplyDisabledInPlace`) keeps a disabled control focusable: label + `DimmedSuffix`, activation says "Unavailable" and posts nothing, never `Enabled = false`. It dims EVERY control while the browser shell dims buttons and links only, on purpose; never harmonize. Full: docs/invariants/flypad.md#fpd-10
+- [A380C-12] Never widen the flyPad Dashboard's column-first read order to other EFB pages without evidence a specific page is jumbled; a blind global split breaks single-column pages. Full: docs/invariants/flypad.md#a380c-12
+- [A380C-14] `buildSettingsLines` must return null (defer to the generic pass) when it finds no recognizable control in a region, never render an owned-but-blank page. Full: docs/invariants/flypad.md#a380c-14
+- [A380C-15] Door-tile names must never trust the FBW enum digit alone (index 9 "Main4Right" is Main Door 5 Right): parse the handler comment's enum NAME, falling back to column Left/Right only when it cannot be parsed. Full: docs/invariants/flypad.md#a380c-15
+- [A380C-16] Keep `A.DOOR_NAMES` (flyPad agent) in sync with each aircraft def's `_doorDefs` table, so the flyPad label and the spoken door name agree. Full: docs/invariants/flypad.md#a380c-16
 
 Mirrored from pmdg-efb.md (it governs the shared EFB shell, FbwEfbForm.cs; change it there and here together):
 - [PEFB-6] Capture an alert/confirmation card as ONE assertive item and skip its heading/message subtree in the main collect loop; the app must `AnnounceImmediate` a dynamically-injected alert, since WebView2 aria-live isn't reliable for it. Full: docs/invariants/pmdg-efb.md#pefb-6
