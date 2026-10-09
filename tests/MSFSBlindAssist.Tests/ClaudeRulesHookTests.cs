@@ -123,6 +123,19 @@ public class ClaudeRulesHookTests : IDisposable
     }
 
     [Fact]
+    public void Read_names_a_rule_file_once_per_subagent()
+    {
+        // FlyByWireA380Definition.Rmp.cs loads over 20,000 characters of rules: some are only named ("Not shown in
+        // full"), and a named rule file is remembered too, so a second Read of the file adds nothing.
+        string worktree = CreateAgentWorktree(NewTempDir());
+        string file = CreateFile(worktree, "MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs");
+        var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
+
+        Assert.NotNull(HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1"), env: env)));
+        Assert.Null(HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1"), env: env)));
+    }
+
+    [Fact]
     public void Read_adds_nothing_in_the_main_conversation()
     {
         string worktree = CreateAgentWorktree(NewTempDir());
@@ -359,6 +372,22 @@ public class ClaudeRulesHookTests : IDisposable
 
         Assert.NotNull(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), env: env)));
         Assert.Null(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), env: env)));
+    }
+
+    [Fact]
+    public void Diff_names_a_rule_file_once_per_session()
+    {
+        // TaxiGraph.cs + FlyByWireA380Definition.Rmp.cs load over 50,000 characters of rules: most are only named,
+        // and a named rule file is remembered too, so a second diff of the same files adds nothing.
+        var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
+        string input = DiffInput("git diff --name-only", BashResponse(
+            "MSFSBlindAssist/Navigation/TaxiGraph.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs\n"));
+
+        JsonElement? first = HookOutput(RunHook(new[] { "diff" }, input, env: env));
+
+        Assert.NotNull(first);
+        Assert.Contains("Not shown in full", first.Value.GetProperty("additionalContext").GetString());
+        Assert.Null(HookOutput(RunHook(new[] { "diff" }, input, env: env)));
     }
 
     [Theory]

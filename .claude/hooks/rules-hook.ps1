@@ -278,7 +278,7 @@ function Invoke-Read($HookInput) {
         $fresh = Select-NotRemembered $HookInput $hits
         if ($fresh.Count -gt 0) {
             $context = Format-RuleContext ($ReadHeader -f $relative) $fresh
-            if ($context.Shown.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($s in $context.Shown) { $s.Path })) }
+            Add-Remembered $HookInput ([string[]]@(foreach ($f in $fresh) { $f.Path }))   # shown or named: told once
         }
     }
     finally { Unlock-Memory $mutex }
@@ -665,7 +665,7 @@ function Invoke-Diff($HookInput) {
         $fresh = Select-NotRemembered $HookInput $wanted.ToArray()
         if ($fresh.Count -gt 0) {
             $context = Format-RuleContext $DiffHeader $fresh
-            if ($context.Shown.Count -gt 0) { Add-Remembered $HookInput ([string[]]@(foreach ($s in $context.Shown) { $s.Path })) }
+            Add-Remembered $HookInput ([string[]]@(foreach ($f in $fresh) { $f.Path }))   # shown or named: told once
         }
     }
     finally { Unlock-Memory $mutex }
