@@ -8626,7 +8626,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // calibration band centers; custom EFB calibrations may differ — see pass-2 checklist. Two engines on the A320.
         // NOTE (2026-06-12): a live-mapping in-RPN variant (band center computed from
         // A32NX_THROTTLE_MAPPING_*_LOW/HIGH:n) was tried and REVERTED at the user's
-        // request — it broke the detent announcements in their setup. See commit
+        // request — it did not work in their setup. See commit
         // 34a97a2a / the revert commit for the variant if ever revisited.
         if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
         {

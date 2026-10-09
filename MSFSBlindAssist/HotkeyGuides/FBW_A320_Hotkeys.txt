@@ -335,7 +335,6 @@ Arrow Navigation:
   Alt+Down       Scroll down
 
 Automatic Announcements:
-  - Thrust-lever detents reached (Idle / Climb / Flex MCT / TOGA / Reverse)
   - Flight Mode Annunciator (FMA) — vertical, lateral and autothrust modes
   - ECAM warnings, cautions and memos (toggle with Ctrl+E)
   - Master Warning / Master Caution

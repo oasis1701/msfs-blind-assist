@@ -538,7 +538,7 @@ public partial class FlyByWireA380Definition
         // Climb -0.10 / Flex-MCT 0.53 / TOGA 1.0); the throttle mapping snaps the
         // lever to the detent. Assumes default throttle calibration.
         // NOTE (2026-06-12): a live-mapping in-RPN variant was tried and REVERTED
-        // at the user's request — it broke detent announcements in their setup
+        // at the user's request — it did not work in their setup
         // (see the A32NX handler note / commit 34a97a2a for the variant).
         if (varKey == "THROTTLE_ALL_DETENT" || (varKey.StartsWith("THROTTLE_") && varKey.EndsWith("_DETENT")))
         {
