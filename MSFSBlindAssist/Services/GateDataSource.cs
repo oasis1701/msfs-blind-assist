@@ -25,11 +25,13 @@ namespace MSFSBlindAssist.Services;
 /// The Remote API path takes exactly THREE things from outside the API, all narrow and all
 /// documented at their call sites below: the docking STOP POSITION from the GSX <c>.ini</c>
 /// (<see cref="GsxStopPositionJoiner"/>), the CONCOURSE LETTER from navdata
-/// (<see cref="GsxConcourseLetterFiller"/>, name-only, position-matched), and, for a stand no GSX
-/// profile section covers, the HEADING and SIZE GSX left out, from the same navdata stand
-/// (<see cref="GsxNavdataGeometryFiller"/>, gaps only). Everything GSX does publish (the
-/// coordinates, and the heading, radius, size and jetway/VDGS metadata of a configured stand)
-/// stays authoritative, which is why this path never calls <see cref="GsxNavdataMerger"/> wholesale.
+/// (<see cref="GsxConcourseLetterFiller"/>, name-only, position-matched), and the HEADING and SIZE
+/// GSX left out of any stand, from the same navdata stand (<see cref="GsxNavdataGeometryFiller"/>,
+/// gaps only: mostly the stands no GSX profile section covers, which also take the jet-bridge flag
+/// and airline codes, but also a covered stand GSX sent without one, such as KJFK's Gate 1A).
+/// Everything GSX does publish (the coordinates, and the heading, radius, size and jetway/VDGS
+/// metadata of a configured stand) stays authoritative, which is why this path never calls
+/// <see cref="GsxNavdataMerger"/> wholesale.
 /// A stop position (docking's input) is available only via the <c>.ini</c> — the Remote API path
 /// joins it in from the SAME <c>.ini</c> profile when one exists for the airport
 /// (<see cref="GsxStopPositionJoiner"/>); when it doesn't, stop fields stay null exactly like a

@@ -5,8 +5,9 @@ using MSFSBlindAssist.Utils.Logging;
 namespace MSFSBlindAssist.Services.Gsx.Remote;
 
 /// <summary>
-/// Fills the stand GEOMETRY GSX's Remote API leaves out for a stand no GSX profile section covers
-/// (its heading and its size) from the SAME stand in navdata [DCK-42].
+/// Fills the stand GEOMETRY GSX's Remote API leaves out (a heading, a size) from the SAME stand in
+/// navdata [DCK-42]: mostly for a stand no GSX profile section covers, which also takes the
+/// jet-bridge flag and airline codes [DCK-44], but for any stand with such a gap (KJFK's Gate 1A).
 ///
 /// <para>
 /// <b>Why it exists.</b> GSX publishes <c>heading</c>, <c>type</c>, <c>hasJetway</c> and

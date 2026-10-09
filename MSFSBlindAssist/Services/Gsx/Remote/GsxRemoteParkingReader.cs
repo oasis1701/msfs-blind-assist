@@ -142,13 +142,14 @@ public static class GsxRemoteParkingReader
     /// <summary>
     /// The one canonical check for "does this spot carry a real, usable heading" — false for
     /// a spot <see cref="Read"/> emitted with <see cref="double.NaN"/> because GSX's
-    /// <c>handlerData</c> omitted <c>heading</c> for that stand (real, if rare: 1/238 at
-    /// KJFK — "Gate 1A" at Terminal 8 - Concourse B). Later stages should call this instead
-    /// of spelling out <c>double.IsNaN(spot.Heading)</c> themselves: a later join (e.g. the
-    /// GSX <c>.ini</c>'s <c>this_parking_pos</c>) may recover a real heading for a spot this
-    /// returns false for today, and whatever is still unusable after that must never reach
-    /// docking or the UI — dropping that residual case belongs to whichever later stage owns
-    /// that join, not to this reader.
+    /// <c>handlerData</c> omitted <c>heading</c> for that stand. That is common, not rare: GSX
+    /// sends no heading for any stand no profile section covers (KSAN 75 of 79, KSFO 208 of 208),
+    /// and occasionally for a covered one (KJFK 1 of 231, "Gate 1A" at Terminal 8 - Concourse B).
+    /// Later stages should call this instead of spelling out <c>double.IsNaN(spot.Heading)</c>
+    /// themselves: the GSX <c>.ini</c>'s <c>this_parking_pos</c> and then navdata
+    /// (<see cref="GsxNavdataGeometryFiller"/>) may recover a real heading for a spot this returns
+    /// false for, and whatever is still unusable after that must never reach docking or the UI —
+    /// <c>GateDataSource.DropUnusableHeadings</c> drops that residual case, not this reader.
     /// </summary>
     public static bool HasUsableHeading(ParkingSpot? spot) => spot is not null && !double.IsNaN(spot.Heading);
 
