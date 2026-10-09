@@ -50,7 +50,7 @@ Sources cited per row: **[FCU-src]** = the FCU instrument managers/components; *
 | `A32NX.FCU_AP_DISCONNECT_PUSH` | `A32NX.FCU_AP_DISCONNECT_PUSH` | SAME [api]. |
 | `A32NX.FCU_ATHR_DISCONNECT_PUSH` | `A32NX.FCU_ATHR_DISCONNECT_PUSH` | SAME [api]. |
 | `A32NX.FCU_SPD_MACH_TOGGLE_PUSH` | `A32NX.FCU_SPD_MACH_TOGGLE_PUSH` | SAME [api]. **CORRECTED post-#10855 (2026-09-25):** the WASM handles it (`spd_mach_button_pressed`) and the cockpit button fires it. `K:AP_MANAGED_SPEED_IN_MACH_ON/OFF` are now MASKED and mean the FMS's own speed/Mach crossover — never use them for the FCU button. |
-| `A32NX.FCU_TRK_FPA_TOGGLE_PUSH` | **(no event — direct L:var write)** | CORRECTION: NOT wired on the A380X. The cockpit button only runs RPN `(L:A32NX_TRK_FPA_MODE_ACTIVE) ! (>L:A32NX_TRK_FPA_MODE_ACTIVE)`. Drive it by writing `L:A32NX_TRK_FPA_MODE_ACTIVE` (0/1) directly [A32NX_Interior_FCU.xml:137, source audit]. |
+| `A32NX.FCU_TRK_FPA_TOGGLE_PUSH` | `A32NX.FCU_TRK_FPA_TOGGLE_PUSH` (a toggle) | **CORRECTED post-#10855 (2026-10-09):** `L:A32NX_TRK_FPA_MODE_ACTIVE` is now an FCU-shim OUTPUT rewritten every frame, so writing it does nothing; the mode moves only the way the cockpit button moves it, with this toggle event, fired only when the wanted mode differs (`FlyByWireA380Definition.SetTrkFpaMode`). The old "no event — direct L:var write" reading came from the pre-#10855 cockpit RPN `(L:A32NX_TRK_FPA_MODE_ACTIVE) ! (>L:A32NX_TRK_FPA_MODE_ACTIVE)` [A32NX_Interior_FCU.xml:137]. |
 
 ## EFIS-CP events (FD / baro)
 

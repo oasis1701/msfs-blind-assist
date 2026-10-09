@@ -46,3 +46,9 @@ Corrected 2026-10-08: names the WebView2-failed list mode, which the rule's "nev
 - Never implement the FBW flyPad pushback controls — Robin's team uses GSX for pushback; this is a permanent decision. → [a380x.md](../a380x.md)
 
 Moved 2026-10-08 from docs/invariants/a380-systems.md: the code is the flyPad agent's, which the A320 and A380 share. The ID keeps its prefix.
+
+## FPD-10
+
+- `FbwEfbForm`'s list mode, the silent WinForms fallback when WebView2 fails (`CreateControlFor`, `ApplyDisabledInPlace`), honours a disabled control without disabling it: the control stays focusable, its label carries `DimmedSuffix` (", dimmed"), and activating it says "Unavailable" and posts nothing; never `Enabled = false`, which would take it out of the tab order. List mode dims EVERY control while the browser shell dims buttons and links only, on purpose; never harmonize the two. No test covers list mode, and FPD-2 only names it. → [flypad.md](../flypad.md)
+
+Split from MD11-13 on 2026-10-09: one mechanism per ID. It is a flyPad rule because `FbwEfbForm` is the shell the flyPad, the PMDG EFB and the MD-11 EFB share.

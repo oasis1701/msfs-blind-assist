@@ -84,3 +84,9 @@ Corrected 2026-10-08: names SIM-10's exception, which this rule's "never" contra
 ## SIM-18
 
 - The SimConnect "Frame" system event (`SYSTEM_EVENT_ID.Frame`, `SimConnectManager.FrameRate.cs`) is subscribed only while a consumer holds a `StartFrameRateMonitoring` request, released with the last `StopFrameRateMonitoring`, and re-armed by `SetupEvents` on a new connection only when a request is still held. Never hoist the `SubscribeToSystemEvent` into `SetupEvents` unconditionally: the sim raises it once per rendered frame (30 to 120 times a second), each one a `ReceiveMessage` dispatch on the UI thread next to the per-frame SIM_FRAME data the taxi, landing and guidance paths already consume, and the only reader is the File > Sim Performance window. The handler itself only stores a value in `FrameRateMeter`; the window averages it on its own one-second timer. → [architecture.md](../architecture.md)
+
+## SIM-19
+
+- A SIM_FRAME + CHANGED own subscription delivers only on a change, so it is SEEDED by a ONCE request on `FreshReadPolicy.SeedRequestId` (the definition id + 900000, with no request-map entry), and only once `OnRecvSimobjectData` is attached: `SeedSimFrameSubscriptions` runs after `SetupEvents`, and again after a re-registration, because `SetupDataDefinitions`' `DoEvents` drains any answer that arrives before the handler exists. `RequestVariable` also seeds on an empty or forced cache. A seed's answer fills the cache and completes NO fresh-read waiter. The ordering is untestable, and it is SimConnect-wide rather than MD-11-only, which is why this rule lives here. → [architecture.md](../architecture.md)
+
+Split from MD11-8 on 2026-10-09: one mechanism per ID.
