@@ -218,7 +218,8 @@ Corrected 2026-10-08: "the ONE exception" became the three builds given no parki
 
 ## DCK-44
 
-- `ParkingSpot.GsxUnconfigured` marks a stand GSX's Remote API published with NO profile-derived field: no `heading` and no `hasJetway`. `GsxRemoteParkingReader.ReadOne` sets it from exactly that pair (`!heading.HasValue && no "hasJetway" key`); no other path sets it (navdata and `.ini` spots are false).
+- `ParkingSpot.GsxUnconfigured` marks a stand GSX's Remote API published with NO profile-derived field: no `heading` and no `hasJetway`. `GsxRemoteParkingReader.ReadOne` sets it from exactly that pair (`!heading.HasValue && !HasValue(p, "hasJetway")`); no other path sets it (navdata and `.ini` spots are false).
+- A JSON null counts as no value for BOTH fields (review of #271, 2026-10-09). `heading` was already read by value kind, but `hasJetway` was tested by key presence, so `"hasJetway": null` read as "configured". The live wire carries ~100 keys per parking and some are null (`stopPosition` on every one), while the committed captures are trimmed to the fields the reader reads, so they cannot show which form GSX uses for an unconfigured stand. Pinned by `A_stand_GSX_sends_with_null_heading_and_null_hasJetway_is_unconfigured`.
 - Measured on the committed captures, per selectable stand (Vehicle and Fuel excluded), by which of `heading`, `hasJetway`, `airlineCodes` and `type` GSX sent:
 
   | Capture | Stands | None of the four | All four | Other |

@@ -643,6 +643,21 @@ public class GsxRemoteParkingReaderTests
     }
 
     [Fact]
+    public void A_stand_GSX_sends_with_null_heading_and_null_hasJetway_is_unconfigured()
+    {
+        // The live wire carries ~100 keys per parking and some are JSON null (stopPosition on all of
+        // them); the committed captures are trimmed. A null is no value: reading the key's mere
+        // presence as "published" would leave the stand flagged configured, with no jet bridge
+        // borrowed and its GSX-made header in the surroundings catalog [DCK-44].
+        const string json = """
+            {"parkings":[{"uiGateName":"Ramp 115","uiTerminalName":"Ramp","uiType":"Gate Medium",
+                          "lat":1.0,"lon":2.0,"heading":null,"hasJetway":null}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.True(spot.GsxUnconfigured);
+    }
+
+    [Fact]
     public void HasJetway_also_accepts_a_real_json_boolean()
     {
         const string json = """

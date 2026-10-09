@@ -268,8 +268,9 @@ public static class GsxRemoteParkingReader
             // (KSAN 75 of 79, KATL 4 of 8, KJFK 0 of 231) and both for one that has a section.
             // A missing heading ALONE is not the signal: KJFK's Gate 1A lacks only its heading and
             // is fully configured. The pair is what GsxNavdataGeometryFiller and
-            // GsxTerminalFeatureSource key on [DCK-44].
-            GsxUnconfigured = !heading.HasValue && !p.TryGetProperty("hasJetway", out _),
+            // GsxTerminalFeatureSource key on [DCK-44]. A JSON null is no value, for both: the
+            // live wire carries ~100 keys per parking, some of them null.
+            GsxUnconfigured = !heading.HasValue && !HasValue(p, "hasJetway"),
 
             Source = GateSource.Gsx,
             VdgsType = string.IsNullOrWhiteSpace(vdgs) ? null : vdgs,
@@ -406,6 +407,11 @@ public static class GsxRemoteParkingReader
         => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
            && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i)
            ? i : null;
+
+    /// <summary>The field is present with a value: neither absent nor JSON null.</summary>
+    private static bool HasValue(JsonElement e, string name)
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
 
     private static double? Double(JsonElement e, string name)
         => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
