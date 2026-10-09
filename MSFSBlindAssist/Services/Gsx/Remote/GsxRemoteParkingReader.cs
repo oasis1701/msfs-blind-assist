@@ -215,12 +215,11 @@ public static class GsxRemoteParkingReader
 
         // `type` is ABSENT on every stand no GSX profile section covers (75 of 79 live at KSAN,
         // 2026-10-07 -- exactly the 75 without a heading) while `uiType` is present on every
-        // one. A published number keeps its own route through the live constants, unchanged --
+        // one. A published number keeps its own route through the live constants first; only
+        // when that names nothing (no number, or no constant matches it) does uiType decide --
         // see ResolveNavdataTypeFromUiType [DCK-43].
-        int? gsxTypeNumber = Int(p, "type");
-        int navdataType = gsxTypeNumber.HasValue
-            ? ResolveNavdataType(p, gsxTypeNumber)
-            : ResolveNavdataTypeFromUiType(uiType);
+        int navdataType = ResolveNavdataType(p, Int(p, "type"));
+        if (navdataType == 0) navdataType = ResolveNavdataTypeFromUiType(uiType);
 
         return new ParkingSpot
         {
@@ -347,7 +346,8 @@ public static class GsxRemoteParkingReader
     /// constant matches it (a category not in <see cref="NameToKnownGsxTypeInt"/> — today
     /// only FUEL/VEHICLE, which never get here, or a constant GSX has not invented yet), or
     /// when the constants are absent from the payload entirely (best-effort — the guide says
-    /// these fields are never guaranteed).
+    /// these fields are never guaranteed). <c>ReadOne</c> then asks
+    /// <see cref="ResolveNavdataTypeFromUiType"/> [DCK-43].
     /// </para>
     /// </summary>
     private static int ResolveNavdataType(JsonElement parking, int? gsxTypeValue)
@@ -373,8 +373,9 @@ public static class GsxRemoteParkingReader
     /// <c>uiType</c> text instead: "Gate Medium" -> <c>GATE_MEDIUM</c> -> navdata 10. Upper-cased with
     /// spaces as underscores, <c>uiType</c> IS the constant NAME <see cref="NameToKnownGsxTypeInt"/>
     /// already maps, and on all 231 KJFK stands (which carry both) it resolves to the same type as
-    /// <c>type</c> does. Used ONLY when <c>type</c> carries no number: a present number with no
-    /// matching constant still degrades to 0 through <see cref="ResolveNavdataType"/>, unchanged.
+    /// <c>type</c> does. Used whenever <see cref="ResolveNavdataType"/> names nothing: no
+    /// <c>type</c> number, or one no published constant matches. It is never worse than 0, and an
+    /// unknown <c>uiType</c> still gives 0.
     /// <para>
     /// <c>ToUpperInvariant</c>, never <c>ToUpper</c>: in tr-TR "Ramp Mil Cargo" folds to
     /// <c>RAMP_MİL_CARGO</c> and matches nothing. Unknown or empty text is 0 ("Other").

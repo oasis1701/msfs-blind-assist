@@ -210,9 +210,10 @@ Corrected 2026-10-08: "the ONE exception" became the three builds given no parki
 - `type` is absent on every unconfigured stand (live KSAN: 75 of 79, exactly the 75 without a heading), while `uiType` is present on all of them. (The committed KATL capture carries no `type` on any stand because it was trimmed when saved, so it is not evidence either way.)
 - Upper-cased with spaces as underscores, `uiType` IS the constant name the reader already maps ("Gate Medium" → `GATE_MEDIUM`). On all 231 KJFK stands it resolves to the same navdata type as `type`.
 - Without it, the recovered stands read "Spot 115 - Unknown", outside every gate category.
-- A PRESENT `type` with no matching constant still degrades to 0 (pinned by `Entry_with_no_matching_type_constant_degrades_to_unknown_type_zero`).
+- A PRESENT `type` with no matching constant falls back to `uiType` too (review of #271, 2026-10-09; pinned by `An_unmatched_type_number_falls_back_to_uiType`). It used to degrade to 0, but `uiType` is never worse: it matched `type` on all 231 KJFK stands, and an unknown `uiType` still gives 0 (`An_unmatched_type_number_with_an_unknown_uiType_is_still_unknown`). No capture has shown the case: all 325 captured entries carry the type constants.
 - Use `ToUpperInvariant`, never `ToUpper`: in tr-TR "Ramp Mil Cargo" folds to `RAMP_MİL_CARGO`.
 - `maxWingspan` 999.0 is on every selectable stand GSX sends with neither a heading nor a `type` (live KSAN 75 of 75, KATL 4 of 4) and on all 7 of KJFK's Vehicle/Fuel entries, and on no selectable stand that has a heading (KJFK's 231 top out at 90 m). Read as 499.5 m it would make every such stand fit any aircraft, so it reads as unpublished and `GsxNavdataGeometryFiller` (DCK-42) fills the real size.
+- The sentinel applies to every stand, not only unconfigured ones, and that is safe on the evidence: across the 5,030 parking sections of the 32 `.ini` profiles installed on a real machine (2026-10-09), not one lacks `maxwingspan` or sets it at 999 or more (the largest is 97 m). A profile-covered stand therefore never reaches the sentinel through its own section.
 
 → [gsx.md](../gsx.md)
 

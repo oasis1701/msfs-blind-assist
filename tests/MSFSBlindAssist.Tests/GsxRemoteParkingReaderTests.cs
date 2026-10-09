@@ -417,10 +417,23 @@ public class GsxRemoteParkingReaderTests
     }
 
     [Fact]
-    public void Entry_with_no_matching_type_constant_degrades_to_unknown_type_zero()
+    public void An_unmatched_type_number_falls_back_to_uiType()
     {
+        // No published constant names 999 (here the constants are absent altogether), but uiType
+        // still says what the stand is, and it matched `type` on all 231 KJFK stands [DCK-43].
         const string json = """
             {"parkings":[{"uiGateName":"Gate 1","uiTerminalName":"T1","uiType":"Gate Small","type":999,
+                          "lat":1.0,"lon":2.0,"heading":3.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal(9, spot.Type);
+    }
+
+    [Fact]
+    public void An_unmatched_type_number_with_an_unknown_uiType_is_still_unknown()
+    {
+        const string json = """
+            {"parkings":[{"uiGateName":"Pad 1","uiTerminalName":"T1","uiType":"Helipad","type":999,
                           "lat":1.0,"lon":2.0,"heading":3.0}]}
             """;
         var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
