@@ -36,6 +36,16 @@ public static class GsxRemoteParkingReader
     private const string UiTypeVehicle = "Vehicle";
     private const string UiTypeFuel = "Fuel";
 
+    /// <summary>
+    /// GSX's "no wingspan limit" value, sent on every selectable stand GSX publishes with neither
+    /// a heading nor a <c>type</c> (measured: KSAN 75 of 75 live on 2026-10-07, KATL 4 of 4) and
+    /// on KJFK's 7 Vehicle/Fuel entries, never on a selectable stand that has a heading (KJFK's
+    /// 231 top out at 90 m). It is not a size: read as one it became a 499.5 m radius that fits
+    /// every aircraft. So it reads as UNPUBLISHED, and GsxNavdataGeometryFiller borrows the real
+    /// size [DCK-43].
+    /// </summary>
+    internal const double UnlimitedWingspanMetres = 999.0;
+
     // GSX type-constant NAME -> the numeric input GsxGateMapper.MapGsxTypeToNavdataType has
     // always expected for that category (its own doc comment: "GSX .ini type uses the MSFS
     // SDK parking-type enum"). See ResolveNavdataType for why this indirection exists.
@@ -118,19 +128,28 @@ public static class GsxRemoteParkingReader
         }
 
         Log.Debug("Gsx", $"parking reader: {result.Count} selectable parking(s) for {icao}.");
+
+        // ONE line per read, never one per stand: at an airport no GSX profile covers (KSAN 75 of 79,
+        // KSFO 208 of 208) nearly every stand has no heading, and a line each would bury debug.log.
+        var headingless = result.Where(s => !HasUsableHeading(s)).Select(s => s.GsxIdentifier).ToList();
+        if (headingless.Count > 0)
+            Log.Debug("Gsx", $"parking reader: {headingless.Count} of {result.Count} stand(s) for {icao} have no published heading " +
+                             "(GSX sends none for a stand no profile section covers; the .ini join, then navdata, may recover it): " +
+                             string.Join(", ", headingless) + ".");
         return result;
     }
 
     /// <summary>
     /// The one canonical check for "does this spot carry a real, usable heading" — false for
     /// a spot <see cref="Read"/> emitted with <see cref="double.NaN"/> because GSX's
-    /// <c>handlerData</c> omitted <c>heading</c> for that stand (real, if rare: 1/238 at
-    /// KJFK — "Gate 1A" at Terminal 8 - Concourse B). Later stages should call this instead
-    /// of spelling out <c>double.IsNaN(spot.Heading)</c> themselves: a later join (e.g. the
-    /// GSX <c>.ini</c>'s <c>this_parking_pos</c>) may recover a real heading for a spot this
-    /// returns false for today, and whatever is still unusable after that must never reach
-    /// docking or the UI — dropping that residual case belongs to whichever later stage owns
-    /// that join, not to this reader.
+    /// <c>handlerData</c> omitted <c>heading</c> for that stand. That is common, not rare: GSX
+    /// sends no heading for any stand no profile section covers (KSAN 75 of 79, KSFO 208 of 208),
+    /// and occasionally for a covered one (KJFK 1 of 231, "Gate 1A" at Terminal 8 - Concourse B).
+    /// Later stages should call this instead of spelling out <c>double.IsNaN(spot.Heading)</c>
+    /// themselves: the GSX <c>.ini</c>'s <c>this_parking_pos</c> and then navdata
+    /// (<see cref="GsxNavdataGeometryFiller"/>) may recover a real heading for a spot this returns
+    /// false for, and whatever is still unusable after that must never reach docking or the UI —
+    /// <c>GateDataSource.DropUnusableHeadings</c> drops that residual case, not this reader.
     /// </summary>
     public static bool HasUsableHeading(ParkingSpot? spot) => spot is not null && !double.IsNaN(spot.Heading);
 
@@ -189,12 +208,19 @@ public static class GsxRemoteParkingReader
         double effectiveHeading = heading.HasValue
             ? GsxProfileParser.NormalizeHeading(heading.Value)
             : double.NaN;
-        if (!heading.HasValue)
-            Log.Warn("Gsx", $"parking reader: \"{uiGateName}\" ({icao}) has no published heading from GSX -- emitting with Heading=NaN instead of dropping it; the .ini join may recover a real value.");
 
         double? maxWingspan = Double(p, "maxWingspan");
+        if (maxWingspan >= UnlimitedWingspanMetres) maxWingspan = null;   // the unconfigured-stand sentinel, not a size
         string? vdgs = Str(p, "parkingSystem");
         var (name, number, suffix) = ParseStandIdentity(uiGateName);
+
+        // `type` is ABSENT on every stand no GSX profile section covers (75 of 79 live at KSAN,
+        // 2026-10-07 -- exactly the 75 without a heading) while `uiType` is present on every
+        // one. A published number keeps its own route through the live constants first; only
+        // when that names nothing (no number, or no constant matches it) does uiType decide --
+        // see ResolveNavdataTypeFromUiType [DCK-43].
+        int navdataType = ResolveNavdataType(p, Int(p, "type"));
+        if (navdataType == 0) navdataType = ResolveNavdataTypeFromUiType(uiType);
 
         return new ParkingSpot
         {
@@ -221,7 +247,7 @@ public static class GsxRemoteParkingReader
             // part every stand-id consumer already discards).
             TerminalName = TerminalNameOrEmpty(p),
 
-            Type = ResolveNavdataType(p, Int(p, "type")),
+            Type = navdataType,
 
             Latitude = lat.Value,
             Longitude = lon.Value,
@@ -237,6 +263,14 @@ public static class GsxRemoteParkingReader
 
             HasJetway = ReadBool(p, "hasJetway"),
             AirlineCodes = AirlineCodesJoined(p),
+
+            // GSX sends neither `heading` nor `hasJetway` for a stand no profile section covers
+            // (KSAN 75 of 79, KATL 4 of 8, KJFK 0 of 231) and both for one that has a section.
+            // A missing heading ALONE is not the signal: KJFK's Gate 1A lacks only its heading and
+            // is fully configured. The pair is what GsxNavdataGeometryFiller and
+            // GsxTerminalFeatureSource key on [DCK-44]. A JSON null is no value, for both: the
+            // live wire carries ~100 keys per parking, some of them null.
+            GsxUnconfigured = !heading.HasValue && !HasValue(p, "hasJetway"),
 
             Source = GateSource.Gsx,
             VdgsType = string.IsNullOrWhiteSpace(vdgs) ? null : vdgs,
@@ -313,7 +347,8 @@ public static class GsxRemoteParkingReader
     /// constant matches it (a category not in <see cref="NameToKnownGsxTypeInt"/> — today
     /// only FUEL/VEHICLE, which never get here, or a constant GSX has not invented yet), or
     /// when the constants are absent from the payload entirely (best-effort — the guide says
-    /// these fields are never guaranteed).
+    /// these fields are never guaranteed). <c>ReadOne</c> then asks
+    /// <see cref="ResolveNavdataTypeFromUiType"/> [DCK-43].
     /// </para>
     /// </summary>
     private static int ResolveNavdataType(JsonElement parking, int? gsxTypeValue)
@@ -334,6 +369,31 @@ public static class GsxRemoteParkingReader
         return 0;
     }
 
+    /// <summary>
+    /// The navdata type for a stand GSX published with no <c>type</c> number, read from its
+    /// <c>uiType</c> text instead: "Gate Medium" -> <c>GATE_MEDIUM</c> -> navdata 10. Upper-cased with
+    /// spaces as underscores, <c>uiType</c> IS the constant NAME <see cref="NameToKnownGsxTypeInt"/>
+    /// already maps, and on all 231 KJFK stands (which carry both) it resolves to the same type as
+    /// <c>type</c> does. Used whenever <see cref="ResolveNavdataType"/> names nothing: no
+    /// <c>type</c> number, or one no published constant matches. It is never worse than 0, and an
+    /// unknown <c>uiType</c> still gives 0.
+    /// <para>
+    /// <c>ToUpperInvariant</c>, never <c>ToUpper</c>: in tr-TR "Ramp Mil Cargo" folds to
+    /// <c>RAMP_MİL_CARGO</c> and matches nothing. Unknown or empty text is 0 ("Other").
+    /// </para>
+    /// </summary>
+    internal static int ResolveNavdataTypeFromUiType(string? uiType)
+    {
+        if (string.IsNullOrWhiteSpace(uiType)) return 0;
+
+        string constantName = string.Join('_',
+            uiType.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries)).ToUpperInvariant();
+
+        return NameToKnownGsxTypeInt.TryGetValue(constantName, out int gsxType)
+            ? GsxGateMapper.MapGsxTypeToNavdataType(gsxType)
+            : 0;
+    }
+
     // ── JSON accessor helpers ───────────────────────────────────────────────
     // Same ValueKind-guarded style as GsxServiceState/GsxBilling/GsxGateSelectResult in
     // this namespace: every read is `TryGetProperty` + an explicit ValueKind check, never
@@ -349,6 +409,11 @@ public static class GsxRemoteParkingReader
         => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
            && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i)
            ? i : null;
+
+    /// <summary>The field is present with a value: neither absent nor JSON null.</summary>
+    private static bool HasValue(JsonElement e, string name)
+        => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)
+           && v.ValueKind is not (JsonValueKind.Null or JsonValueKind.Undefined);
 
     private static double? Double(JsonElement e, string name)
         => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(name, out var v)

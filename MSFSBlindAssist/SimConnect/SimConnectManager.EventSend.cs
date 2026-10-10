@@ -264,7 +264,10 @@ public partial class SimConnectManager
     }
 
     // Ever-increasing discriminator for the calc-path event strings. Interlocked because
-    // SendEvent is reached from the UI thread, hotkey handling and background timers alike.
+    // SendEvent is not reached from the UI thread alone: the FBW A320's DeferReadback calls it
+    // from a pool thread, whose A32NX.FCU_ALT_SET comes through here on a verified calc path
+    // (its COM swap is a known race on eventIds above, [SIM-20]). Every other caller, hotkeys
+    // included (WM_HOTKEY), runs on the UI thread.
     private long calcEventSeq;
 
     /// <summary>

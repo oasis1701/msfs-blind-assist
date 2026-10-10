@@ -1,8 +1,9 @@
-// The walkthrough template. docs/adding-features.md and docs/QUICK-REFERENCE.md show the
-// regions marked below word for word, and the test project compiles this file, so a walkthrough
-// example that stops compiling fails the build. When a region changes, WalkthroughTemplateTests
-// names each doc block to update and prints the text to paste. A region marked "(collapsed)"
-// shows as one "// ..." line inside a larger region's block.
+// The walkthrough template. The docs listed in WalkthroughTemplateTests.Walkthroughs (the
+// workflows, the quick reference and the three API guides) show the regions marked below word
+// for word, and the test project compiles this file, so a walkthrough example that stops
+// compiling fails the build. When a region changes, WalkthroughTemplateTests names each doc
+// block to update and prints the text to paste. A region marked "(collapsed)" shows as one
+// "// ..." line inside a larger region's block.
 using System.Windows.Forms; // The app project imports this implicitly; the test project does not.
 
 // doc-region: aircraft-file
@@ -16,6 +17,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
     public override string AircraftName => "Your Aircraft Full Name";
     public override string AircraftCode => "YOUR_AIRCRAFT";
 
+    // doc-region: build-variables
     protected override Dictionary<string, SimConnect.SimVarDefinition> BuildVariables()
     {
         // Start from the variables every aircraft shares (SIM ON GROUND and others).
@@ -74,6 +76,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
 
         return variables;
     }
+    // doc-region-end: build-variables
 
     public override Dictionary<string, List<string>> GetPanelStructure()
     {
@@ -83,6 +86,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
         };
     }
 
+    // doc-region: build-panel-controls
     protected override Dictionary<string, List<string>> BuildPanelControls()
     {
         return new Dictionary<string, List<string>>
@@ -96,6 +100,7 @@ public class YourAircraftDefinition : BaseAircraftDefinition
             // doc-region-end: panel-controls
         };
     }
+    // doc-region-end: build-panel-controls
 
     // Values a panel shows as read-only text; none here.
     public override Dictionary<string, List<string>> GetPanelDisplayVariables() => new();
