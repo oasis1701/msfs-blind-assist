@@ -9140,7 +9140,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             simConnect.ExecuteCalculatorCode($"{on} {idx} r (>K:2:LANDING_LIGHTS_SET)");
             return true;
         }
-        // "All Landing Lights" momentary buttons (Exterior Lighting panel + FO BT_LANDING_LT /
+        // "All Landing Lights" momentary buttons (Exterior Lighting panel + FO LU_LANDING_LT /
         // AL_LANDING_OFF). Drive BOTH L/R via the indexed event + retract L:var — the SAME
         // actuator as the per-side combo above. On = extend + illuminate; Off = retract.
         // (Previously SetLVar("LIGHTING_LANDING_2/3") directly — VERIFIED a no-op: the lamp
