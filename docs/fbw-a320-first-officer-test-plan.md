@@ -225,10 +225,10 @@ honest 2026-10-09, FOA-8). Six read-backs show complete as soon as their flow fi
 Start, the **Taxi Checklist** after Taxi, the **Line-up Checklist** after Line-up, the **Approach
 Checklist** after Approach and the **After Landing Checklist** after After Landing. A line the
 First Officer can read ticks only if a step of the flow delivered it: a step that was skipped
-leaves its lines unticked, following the aircraft (with the flaps still up, the Taxi memo check
-times out after 5 s and is skipped aloud, and its four lines stay open: "Flaps: T.O" until you
-set the flaps, "Flaps setting: SET" until you tick it, and "Spoilers: ARMED" and "Seat belts: ON"
-tick themselves once they read true). The lines only you can confirm ("Takeoff runway:
+leaves a line that reads wrong unticked, following the aircraft (with the flaps still up, the Taxi
+memo check times out after 5 s and is skipped aloud: "Flaps: T.O" stays open until you set the
+flaps, "Flaps setting: SET" until you tick it, and "Spoilers: ARMED" and "Seat belts: ON", which
+already read true, latch with the rest). The lines only you can confirm ("Takeoff runway:
 CONFIRMED", "Flight controls: CHECKED") are ticked by the flow. Ticking a line there to confirm
 it un-ticks it ("Windows: CLOSED: unchecked") and re-opens that list, so its self-ticking lines
 follow the aircraft again (judge "Rudder trim: NEUTRAL" before After Start runs, or after such
@@ -416,10 +416,13 @@ step delivered it ([FOA-8](invariants/first-officer-airbus.md#foa-8)). One run a
    then "Captain action required: Obtain takeoff clearance". Read the Line-up Checklist: every line
    is ticked.
 3. **Abnormal config (once).** Put the flaps back to 0. Starting a flow does not reset a
-   checklist, so on the Checklists tab select the Taxi Checklist and press Reset Section, then press
-   Run Related Flow: the memo check times out after 5 s and is skipped aloud, the aircraft's own
-   config warning sounds after the config test, "T.O config: NORMAL" ticks anyway (the press ticks
-   it, never the result) and "Flaps setting: SET" stays unticked until you tick it.
+   checklist, so on the Checklists tab select the Taxi Checklist and press Reset Section (it
+   un-ticks the whole list; within a second the lines that read right, such as "Spoilers: ARMED" and
+   "Seat belts: ON", tick themselves again, and "Flaps: T.O" does not), then press Run Related Flow:
+   the memo check times out after 5 s and is skipped aloud, the aircraft's own config warning sounds
+   after the config test, "T.O config: NORMAL" ticks anyway (the press ticks it, never the result),
+   "Flaps: T.O" stays unticked until you set takeoff flaps, "Flaps setting: SET" stays unticked until
+   you tick it, and "Spoilers: ARMED" and "Seat belts: ON" stay ticked.
 
 In the same flight, listen for two small changes: Electrical Power Up says "Already set: Gear
 lever: DOWN" (a read, no longer a Captain reminder), and Approach sets the seat belts (normally

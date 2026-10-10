@@ -73,8 +73,8 @@ from the AVAIL wait, never the master write, [FO-11]), and "TCAS: STANDBY"
 (Shutdown) and "External power: OFF" (Securing) became action-group lines on both, so the
 pilot can hand-tick the two flow steps that had none. **Taxi and Line-up (2026-10-09):** the one
 Before Takeoff flow is now two flows, each with its action group just above its own checklist
-(`A320FamilyTaxiLineupFlowTests` pins the flows and the tree order): **Taxi** (autobrake MAX,
-weather radar and predictive windshear with a read-only check that both read ON and AUTO,
+(`A320FamilyTaxiAndRunwayEntryFlowTests` pins the flows and the tree order): **Taxi** (autobrake
+MAX, weather radar and predictive windshear with a read-only check that both read ON and AUTO,
 transponder AUTO, the one cabin call, a read-only check of the takeoff-memo items set earlier
 (spoilers and flaps in After Start, the signs in Preflight and Before Start) through the
 evaluators' `FO_TAXI_MEMO_OK`, then the takeoff config test, last) and **Line-up** (TCAS TA/RA,
@@ -83,15 +83,17 @@ Flow" starts each from its checklist (`RelatedFlow.For`). The config test ticks 
 NORMAL" when it is pressed, whatever the result (owner, 2026-10-09): the aircraft's own config
 warning still sounds, and on the Fenix the First Officer also speaks the result ("Takeoff config
 normal." or "Takeoff config: check configuration."). With the flaps still up (no SimBrief plan, or
-held for icing) the memo check times out after 5 s and is skipped aloud: its four lines stay open,
-the three the aircraft can answer tick themselves once they read true and "Flaps setting: SET", a
-line only the pilot can confirm, waits for the pilot's tick. A finished flow still ticks and
+held for icing) the memo check times out after 5 s and is skipped aloud: the lines that read wrong
+stay unticked and out of the latch, following the aircraft ("Flaps: T.O" until the lever is at a
+takeoff position), "Flaps setting: SET", a line only the pilot can confirm, waits for the pilot's
+tick, and the lines already reading right ("Spoilers: ARMED" and the seat-belts or signs line, which
+the window ticks every second) latch with the rest. A finished flow still ticks and
 latches its own read-back, now made honest: every line the app can read in a list a flow latches
 has a step behind it (the Approach flow now sets the seat belts, completing the Approach
 checklist's "Seat belts: ON"; each engine-start wait completes its "Engine n: running" line; the
-A32NX and A330 power-up gear-lever check reads the lever), so a skipped step keeps its lines
-unticked and following the aircraft, while the lines only the pilot can confirm are ticked by the
-flow. `A320FamilyReadbackLinkTests` audits it. Sources, the owner's 13 choices on the
+A32NX and A330 power-up gear-lever check reads the lever), so a skipped step keeps a line that
+reads wrong unticked and following the aircraft, while the lines only the pilot can confirm are
+ticked by the flow. `A320FamilyReadbackLinkTests` audits it. Sources, the owner's 13 choices on the
 points the evidence could not settle and the live-value rule:
 [FOA-8](invariants/first-officer-airbus.md#foa-8). In-sim checks: the three per-aircraft test
 plans.

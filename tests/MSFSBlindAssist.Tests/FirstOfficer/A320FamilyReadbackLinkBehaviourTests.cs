@@ -16,9 +16,10 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// <summary>
 /// The behaviour half of <see cref="A320FamilyReadbackLinkTests"/> (FO-6): the real steps, checklists
 /// and a real <see cref="FlowManager{TExec, TState}"/> run in real time, so a run that passes a
-/// step's 2 s inter-step pause ([FO-5], deliberate and never shortened) or waits out the radar check's
-/// 5 s timeout takes seconds. xUnit runs the tests of ONE class one after the other and different
-/// classes in parallel, so the three aircraft each have a class of their own below
+/// step's 2 s inter-step pause ([FO-5], deliberate and never shortened) or waits out the 5 s timeout
+/// of the radar check or the takeoff-memo check takes seconds. xUnit runs the tests of ONE class one
+/// after the other and different classes in parallel, so the three aircraft each have a class of
+/// their own below
 /// (<see cref="A320FamilyReadbackLinkBehaviourFenixTests"/>, <see cref="A320FamilyReadbackLinkBehaviourA32nxTests"/>,
 /// <see cref="A320FamilyReadbackLinkBehaviourA330Tests"/>), and each run drives a SHORT flow built from
 /// only the real steps under test (see <see cref="Subset"/>), the way
@@ -47,6 +48,7 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
     private const string RadarLabel = A320FamilyReadbackLinkTests.RadarLabel;
     private const string WxrOnCheck = A320FamilyReadbackLinkTests.WxrOnCheck;
     private const string WxrOnLine = A320FamilyReadbackLinkTests.WxrOnLine;
+    private const string WxrOnLabel = A320FamilyReadbackLinkTests.WxrOnLabel;
     private const string MemoCheck = A320FamilyReadbackLinkTests.MemoCheck;
     private const string MemoLabel = A320FamilyReadbackLinkTests.MemoLabel;
     private static readonly string[] MemoLines = A320FamilyReadbackLinkTests.MemoLines;
@@ -215,13 +217,17 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
 
     /// <summary>The Taxi flow's two read-only checks on the real steps, evaluator and checklists and a
     /// real FlowManager, with everything set for takeoff except the flaps, still UP (held until the
-    /// holding point, the icing case). The radar check passes; the takeoff-memo check times out and is
-    /// skipped aloud, and the end-of-flow latch leaves its four lines unticked and free while the rest
-    /// of the Taxi checklist latches. The pilot then sets takeoff flaps: the memo's flaps, spoilers and
-    /// signs lines tick themselves from the aircraft, and "Flaps setting: SET", a line the pilot
-    /// confirms (a Reminder), stays open until they tick it.</summary>
+    /// holding point, the icing case), and the window's one-second auto-detection having run first, as
+    /// it does the whole time the First Officer window is open: every line that already reads right is
+    /// ticked when the flow starts. The radar check passes; the takeoff-memo check times out and is
+    /// skipped aloud. The end-of-flow latch (MarkGroupComplete) then frees only the memo lines that
+    /// read wrong, "Flaps: T.O" and "Flaps setting: SET" (a Reminder the aircraft cannot answer): they
+    /// stay unticked and out of the latch, while the rest of the Taxi checklist latches, "Spoilers:
+    /// ARMED" and the seat-belts (or signs) line included, which read right and were ticked before the
+    /// flow ran. The pilot then sets takeoff flaps: "Flaps: T.O" ticks itself from the aircraft, and
+    /// "Flaps setting: SET" stays open until they tick it.</summary>
     [Fact]
-    public async Task A_taxi_run_with_the_flaps_up_skips_the_memo_check_and_leaves_its_lines_open()
+    public async Task A_taxi_run_with_the_flaps_up_skips_the_memo_check_and_frees_only_the_lines_that_read_wrong()
     {
         var state = NewState();
         var executor = NewExecutor();
@@ -232,14 +238,26 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
         var flow = Subset(BuildFlows(), "TAXI", stepIds);
         Assert.Equal(stepIds, flow.Steps.Select(s => s.Id).ToArray());
 
+        // The memo lines that read wrong with the flaps up, and the two that read right.
+        string[] open = { "TXC_MEMO_FLAPS", "TXC_FLAPS" };
+        string[] right = { "TXC_MEMO_SPLRS", "TXC_MEMO_SIGNS" };
+        Assert.Equal(MemoLines.Order().ToArray(), open.Concat(right).Order().ToArray());
+
         var speech = new GatedSpeechCapture();
         var checklist = new ChecklistManager<TExec, TState>(state, executor, groups);
+        checklist.EvaluateAutoDetection();   // the window's 1 s timer: lines that already read right are ticked
+        var items = groups.SelectMany(g => g.Items).ToDictionary(i => i.Id);
+        Assert.All(right, id => Assert.True(items[id].IsChecked, $"{id} reads right and was not ticked by the window"));
+        Assert.All(open, id => Assert.False(items[id].IsChecked, $"{id} reads wrong and was ticked"));
+
         var flowManager = new FlowManager<TExec, TState>(state, executor, checklist, speech);
         var skipped = new List<string>();
         flowManager.StepSkipped += (_, step, _) => { lock (skipped) skipped.Add(step.Id); };
 
         await RunToEnd(flowManager, flow);
 
+        // The memo check timed out and is skipped aloud, and all four of its lines are in the run's
+        // unfinished set: the latch decides below which of them it frees.
         Assert.Equal(new[] { MemoCheck }, skipped.ToArray());
         Assert.Contains($"Timed out waiting for: {MemoLabel}", speech.All);
         Assert.Contains($"Skipping: {MemoLabel}", speech.All);
@@ -248,31 +266,99 @@ public abstract class A320FamilyReadbackLinkBehaviourTests<TExec, TState>
         foreach (var groupId in flow.CompletionGroupIds(id => groups.Any(g => g.Id == id)))
             checklist.MarkGroupComplete(groupId, flowManager.UnfinishedChecklistItemIds);
 
-        var items = groups.SelectMany(g => g.Items).ToDictionary(i => i.Id);
         var taxiCl = groups.Single(g => g.Id == "TAXI_CL");
         Assert.True(taxiCl.CompletionLatched);
         foreach (var line in taxiCl.Items)
         {
-            if (MemoLines.Contains(line.Id))
+            if (open.Contains(line.Id))
             {
+                // The lines that read wrong stay unticked and out of the latch, following the aircraft.
                 Assert.False(line.IsChecked, $"{line.Id} was ticked over a memo check that timed out");
                 Assert.True(line.ExemptFromCompletionLatch, $"{line.Id} is latched: it cannot follow the aircraft");
             }
             else
             {
+                // Every other line, the memo lines that already read right included, is ticked and latched.
                 Assert.True(line.IsChecked, $"{line.Id} was not ticked by the finished Taxi flow");
-                Assert.False(line.ExemptFromCompletionLatch, line.Id);
+                Assert.False(line.ExemptFromCompletionLatch, $"{line.Id} was left out of the latch");
             }
         }
 
-        // The pilot sets takeoff flaps: the memo lines follow the aircraft by themselves ...
+        // The pilot sets takeoff flaps: "Flaps: T.O" follows the aircraft by itself (and is free of the
+        // exemption once the aircraft agrees), the latched lines stand as they were ...
         state.SetSimConnect(SeededSimConnectCache.ConnectedWith(TaxiReady(flapLever: 1)));
         checklist.EvaluateAutoDetection();
         Assert.True(items["TXC_MEMO_FLAPS"].IsChecked);
-        Assert.True(items["TXC_MEMO_SPLRS"].IsChecked);
-        Assert.True(items["TXC_MEMO_SIGNS"].IsChecked);
+        Assert.False(items["TXC_MEMO_FLAPS"].ExemptFromCompletionLatch);
+        Assert.All(right, id => Assert.True(items[id].IsChecked, id));
         // ... and "Flaps setting: SET", a line the pilot confirms, waits for their tick.
         Assert.False(items["TXC_FLAPS"].IsChecked);
+    }
+
+    /// <summary>The Taxi flow's radar block (both radar writes, then the check) with the radar OFF, on
+    /// the real steps, evaluator and checklists and a real FlowManager, the way the After Landing run
+    /// above covers its check with the windshear on AUTO. The evaluator reads a seeded cache that counts
+    /// as connected, with the radar OFF and the predictive windshear on AUTO; the executor has no sim,
+    /// so the radar write fails and is skipped aloud, and the windshear step is "Already set". The check
+    /// then times out and is skipped aloud too, and says nothing like "Already set": the Taxi Checklist's
+    /// "Radar and predictive windshear: ON and AUTO" stays unticked, and the end-of-flow latch leaves it
+    /// free to follow the aircraft, so it ticks itself once the pilot turns the radar on.</summary>
+    [Fact]
+    public async Task A_taxi_run_with_the_radar_off_skips_the_radar_check_and_leaves_its_line_open()
+    {
+        var state = NewState();
+        var executor = NewExecutor();
+        var groups = BuildChecklists();
+
+        // The same encoding on all three: radar 0 = system 1, 1 = OFF; predictive windshear 1 = AUTO.
+        state.SetSimConnect(SeededSimConnectCache.ConnectedWith((RadarVar, 1), (WindshearVar, 1)));
+        Assert.False(executor.IsAvailable);
+
+        string[] stepIds = { "TX_WXR", "TX_PWS", WxrOnCheck };
+        var flow = Subset(BuildFlows(), "TAXI", stepIds);
+        Assert.Equal(stepIds, flow.Steps.Select(s => s.Id).ToArray());
+
+        var speech = new GatedSpeechCapture();
+        var checklist = new ChecklistManager<TExec, TState>(state, executor, groups);
+        checklist.EvaluateAutoDetection();   // the window's 1 s timer: the radar reads OFF, so the line is open
+        var items = groups.SelectMany(g => g.Items).ToDictionary(i => i.Id);
+        var line = items[WxrOnLine];
+        Assert.False(line.IsChecked, "the radar reads OFF and the window ticked the radar line");
+
+        var flowManager = new FlowManager<TExec, TState>(state, executor, checklist, speech);
+        var skipped = new List<string>();
+        flowManager.StepSkipped += (_, step, _) => { lock (skipped) skipped.Add(step.Id); };
+
+        await RunToEnd(flowManager, flow);
+
+        // The radar write could not be sent and the check, which reads the radar, timed out: both are
+        // skipped aloud, the check never says "Already set", and the run left the line unticked.
+        Assert.Equal(new[] { "TX_WXR", WxrOnCheck }, skipped.ToArray());
+        Assert.Contains($"Timed out waiting for: {WxrOnLabel}", speech.All);
+        Assert.Contains($"Skipping: {WxrOnLabel}", speech.All);
+        Assert.DoesNotContain($"Already set: {WxrOnLabel}", speech.All);
+        Assert.False(line.IsChecked, "the radar line was ticked with the radar OFF");
+        Assert.Equal(new[] { "TX_WXR", WxrOnLine }.Order(StringComparer.Ordinal).ToArray(),
+            flowManager.UnfinishedChecklistItemIds.Order(StringComparer.Ordinal).ToArray());
+
+        foreach (var groupId in flow.CompletionGroupIds(id => groups.Any(g => g.Id == id)))
+            checklist.MarkGroupComplete(groupId, flowManager.UnfinishedChecklistItemIds);
+
+        // The radar line, and the radar write's own line, stay unticked and out of the latch; the
+        // windshear write, "Already set", is done.
+        Assert.False(line.IsChecked, "the radar line was ticked with the radar OFF");
+        Assert.True(line.ExemptFromCompletionLatch,
+            "the radar line is latched: it cannot follow the aircraft once the pilot turns the radar on");
+        Assert.False(items["TX_WXR"].IsChecked);
+        Assert.True(items["TX_WXR"].ExemptFromCompletionLatch);
+        Assert.True(items["TX_PWS"].IsChecked);
+        Assert.False(items["TX_PWS"].ExemptFromCompletionLatch);
+
+        // The pilot turns the radar on: the line follows the aircraft and ticks itself.
+        state.SetSimConnect(SeededSimConnectCache.ConnectedWith((RadarVar, 0), (WindshearVar, 1)));
+        checklist.EvaluateAutoDetection();
+        Assert.True(line.IsChecked);
+        Assert.False(line.ExemptFromCompletionLatch);
     }
 
     /// <summary>The same two checks with the flaps set for takeoff: both pass ("Already set"), they

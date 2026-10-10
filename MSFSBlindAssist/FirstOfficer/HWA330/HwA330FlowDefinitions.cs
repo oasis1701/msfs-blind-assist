@@ -404,8 +404,11 @@ public static class HwA330FlowDefinitions
             // Read-only check of the takeoff memo items set earlier (FO_TAXI_MEMO_OK): the ground
             // spoilers armed and a takeoff flap handle (After Start sets both) and the memo's seat
             // belts on (Before Start's seat belts, Preflight's no smoking). 5 s, skipped aloud on
-            // timeout, never writes: flaps held until the holding point (icing) time it out, and its
-            // four lines then stay out of the latch, following the aircraft.
+            // timeout, never writes: flaps held until the holding point (icing) time it out. Of its
+            // four lines the ones that read wrong then stay unticked and out of the latch, following
+            // the aircraft ("Flaps: T.O" with the lever up); "Flaps setting: SET", a Reminder, waits
+            // for the pilot's tick; lines already reading right (the window ticks them every second)
+            // latch with the rest.
             Also(Done(Skip(WaitForField("TX_MEMO_CHECK", "Spoilers, flaps and seat belts: set for takeoff", "FO_TAXI_MEMO_OK",
                     v => v > 0.5, 5, onTimeout: FlowStepFailurePolicy.Skip),
                 s => s.GetValue("FO_TAXI_MEMO_OK") > 0.5), "TXC_MEMO_SPLRS"),

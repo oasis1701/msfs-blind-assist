@@ -80,8 +80,8 @@ public sealed class FenixStateEvaluator : LVarStateEvaluator
                 value = Both(GetValue("S_WR_SYS"), GetValue("S_WR_PRED_WS"), WxrPwsOff);
                 return true;
             // The Taxi flow's takeoff-memo check (TX_MEMO_CHECK): ground spoilers armed, a takeoff
-            // flap lever and the memo's SIGNS line on, from the fields and conditions of the four
-            // Taxi checklist lines the check completes.
+            // flap lever and the memo's SIGNS line on, from the fields and conditions of the three
+            // Auto Taxi checklist lines the check completes (the fourth, TXC_FLAPS, is a Reminder).
             case "FO_TAXI_MEMO_OK":
                 value = TaxiMemoOk(GetValue("A_FC_SPEEDBRAKE"), GetValue("S_FC_FLAPS"),
                     GetValue("S_OH_SIGNS"), GetValue("S_OH_SIGNS_SMOKING"));

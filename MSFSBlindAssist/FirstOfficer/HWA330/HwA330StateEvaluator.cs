@@ -188,7 +188,8 @@ public sealed class HwA330StateEvaluator : LVarStateEvaluator
                 return true;
             // The Taxi flow's takeoff-memo check (TX_MEMO_CHECK): ground spoilers armed, a takeoff
             // flap handle and the memo's seat-belts line on, from the fields and conditions of the
-            // four Taxi checklist lines the check completes.
+            // three Auto Taxi checklist lines the check completes (the fourth, TXC_FLAPS, is a
+            // Reminder).
             case "FO_TAXI_MEMO_OK":
                 value = TaxiMemoOk(GetValue("A32NX_SPOILERS_ARMED"), GetValue("A32NX_FLAPS_HANDLE_INDEX"),
                     GetValue("FO_SIGNS_ON"));

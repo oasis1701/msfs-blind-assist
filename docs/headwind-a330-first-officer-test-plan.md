@@ -131,10 +131,13 @@ Part B walk, with the takeoff flaps set (a SimBrief plan, or the lever at 1 to 3
 Part H of [docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md), its two
 small changes at the end included: Taxi (ending with the takeoff config test), then Line-up, and
 read each checklist after its flow. Once, put the flaps back to 0, select the Taxi Checklist on the
-Checklists tab and press Reset Section (starting a flow does not reset a checklist), then press Run
-Related Flow: the memo check times out after 5 s and is skipped aloud, the aircraft's own config
-warning sounds after the config test, "T.O config: NORMAL" ticks anyway (the press ticks it, never
-the result) and "Flaps setting: SET" stays unticked until you tick it. On this airframe also check
+Checklists tab and press Reset Section (starting a flow does not reset a checklist; within a second
+the lines that read right, such as "Spoilers: ARMED" and "Seat belts: ON", tick themselves again,
+and "Flaps: T.O" does not), then press Run Related Flow: the memo check times out after 5 s and is
+skipped aloud, the aircraft's own config warning sounds after the config test, "T.O config: NORMAL"
+ticks anyway (the press ticks it, never the result), "Flaps: T.O" stays unticked until you set
+takeoff flaps, "Flaps setting: SET" stays unticked until you tick it, and "Spoilers: ARMED" and
+"Seat belts: ON" stay ticked. On this airframe also check
 that Line-up's "Landing lights: ON" turns the single ganged landing-light switch on and its line
 ticks (`LU_LANDING_LT` reads `LIGHT LANDING:2`, L5 above), and that Electrical Power Up says
 "Already set: Gear lever: DOWN".

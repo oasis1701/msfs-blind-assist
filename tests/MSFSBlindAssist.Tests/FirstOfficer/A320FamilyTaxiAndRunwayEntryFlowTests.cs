@@ -18,9 +18,12 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// and the cabin before the flow that sets them, and running that flow first lit the strobes and
 /// the landing lights while taxiing. Each flow now sits just above its own checklist, and a
 /// finished run latches that checklist (FlowDefinition.CompletionGroupIds). The links are pinned by
-/// A320FamilyReadbackLinkTests, the runs by A320FamilyReadbackLinkBehaviourTests.
+/// A320FamilyReadbackLinkTests, the runs by A320FamilyReadbackLinkBehaviourTests. The file name says
+/// "RunwayEntry" for the Line-up flow on purpose: the taxi-steering rules load for the glob
+/// <c>tests/**/*Lineup*.cs</c>, so a name with "Lineup" in it (in any letter case) makes reading this
+/// file load their rules for nothing.
 /// </summary>
-public class A320FamilyTaxiLineupFlowTests
+public class A320FamilyTaxiAndRunwayEntryFlowTests
 {
     public static TheoryData<string> Aircraft => new() { "Fenix", "A32NX", "A330" };
 
