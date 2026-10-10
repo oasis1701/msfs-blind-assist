@@ -365,9 +365,9 @@ public static class FbwA380FlowDefinitions
         Steps = new()
         {
             Captain("LU_TCAS", "TCAS mode: TA/RA (MFD SURV page)"),
-            // Packs 1 and 2 ON, read only (5 s, skipped aloud on timeout, never writes): the First Officer
-            // never switches the packs; a packs-off takeoff stays the pilot's call, and the Line-up
-            // Checklist's "Packs 1 and 2: ON" then stays open (FOA-9).
+            // Packs 1 and 2 ON, read only (5 s, skipped aloud on timeout, never writes): Cockpit Preparation's
+            // CP_PACKS switched them on, and this flow never switches them; a packs-off takeoff stays the
+            // pilot's call, and the Line-up Checklist's "Packs 1 and 2: ON" then stays open (FOA-9).
             Done(Skip(WaitForField("LU_PACKS_CHECK", "Packs 1 and 2: ON", "FO_PACKS_ON", v => v > 0.5, 5),
                 s => s.GetValue("FO_PACKS_ON") > 0.5), "LUC_PACKS"),
             Done(Skip(SW("LU_STROBE", "Strobe lights: ON", "LIGHT_STROBE", 1), s => s.IsOn("LIGHT_STROBE")), "LU_STROBE"),

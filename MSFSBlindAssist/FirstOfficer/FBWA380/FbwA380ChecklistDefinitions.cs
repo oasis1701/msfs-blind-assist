@@ -16,8 +16,9 @@ using CheckFn = System.Func<FbwA380ActionExecutor, FbwA380StateEvaluator, System
 ///   mirrors the flow's own Skip condition; every Captain flow step is a <see cref="Reminder"/>. A flow's
 ///   waits and read-only checks have no action line: they complete read-back lines;
 /// - the read-back (*_CL) groups are FlyByWire's A380X ECL normal checklists, in the ECL's words,
-///   spoken to one pilot, every blank answered SET with the value the First Officer reads
-///   (docs/invariants/first-officer-airbus.md#foa-9). Action-free (FO-3).
+///   spoken to one pilot, every blank answered SET, with the value the First Officer reads where it
+///   reads one ("T.O runway: SET" has none) (docs/invariants/first-officer-airbus.md#foa-9).
+///   Action-free (FO-3).
 ///
 /// Every state item is RevertToState (live mirror), matching the Fenix/PMDG convention. State reads come
 /// from the SimConnect L:var cache via <see cref="FbwA380StateEvaluator"/> — OnRequest vars are polled by
@@ -193,8 +194,9 @@ public static class FbwA380ChecklistDefinitions
             Reminder("CP_ALTIMETERS", "COCKPIT_PREP", "Altimeters: set QNH"),
             Auto("CP_ANTISKID", "COCKPIT_PREP", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE",
                 v => v > 0.5, (e, _) => e.Set("ANTISKID_BRAKES_ACTIVE", 1)),
-            // Surveillance reminders, as in the flow (see the note at its CP_ALTRPT): Captain items that name
-            // the MFD SURV page. There is no "TCAS traffic: all" line (FOA-9).
+            // Surveillance reminders, as in the flow: Captain items that name the MFD SURV page, where they are
+            // set; MSFSBA has no variable or event write for them. The evidence, and why there is no "TCAS
+            // traffic: all" line: FOA-9 (docs/invariants/first-officer-airbus.md#foa-9).
             Reminder("CP_ALTRPT", "COCKPIT_PREP", "Altitude reporting: on (MFD SURV page)"),
             Reminder("CP_TCASMODE", "COCKPIT_PREP", "TCAS mode: standby (MFD SURV page)"),
             Reminder("CP_XPDR", "COCKPIT_PREP", "Transponder: standby (MFD SURV page)"),
@@ -614,9 +616,9 @@ public static class FbwA380ChecklistDefinitions
     // -----------------------------------------------------------------------
     // Read-back (*_CL) groups: FlyByWire's A380X ECL normal checklists (NormalProcedures.ts at
     // 255546cb), in the ECL's words and order, spoken to one pilot: no "(BOTH)", no memo prefix, every
-    // blank answered SET with the value the First Officer reads (LiveValue). No Before Takeoff, After
-    // Takeoff, After Landing or Departure Change list. Sources and the owner's choices:
-    // docs/invariants/first-officer-airbus.md#foa-9.
+    // blank answered SET, with the value the First Officer reads (LiveValue) where it reads one ("T.O
+    // runway: SET" has none). No Before Takeoff, After Takeoff, After Landing or Departure Change list.
+    // Sources and the owner's choices: docs/invariants/first-officer-airbus.md#foa-9.
     // HARD INVARIANT (FO-3): every item here is action-free (Reminder, or Auto(..., action: null)).
     // -----------------------------------------------------------------------
 

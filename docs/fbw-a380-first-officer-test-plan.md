@@ -9,7 +9,7 @@ the single voice. There is no automated test project (SimConnect/UI app), so the
 verifies the sections below against a live sim (MSFS 2020 or 2024) with the FlyByWire A380
 loaded.
 
-Open the window from **Tools → "FlyByWire A380 First Officer"**. The window has two tabs:
+Open the window from **File → "FlyByWire A380 First Officer"**. The window has two tabs:
 **Flows** and **Checklists** — the same shared `FirstOfficerForm<TExec,TState>` UI as the
 PMDG 777/737 and Fenix windows.
 
@@ -17,7 +17,7 @@ PMDG 777/737 and Fenix windows.
 
 ## Part A — Window & gating
 
-1. Load the FlyByWire A380. Confirm **Tools → "FlyByWire A380 First Officer"** appears.
+1. Load the FlyByWire A380. Confirm **File → "FlyByWire A380 First Officer"** appears.
    (First Officer automation settings live in **File → Settings… → First Officer**, a tab
    that is visible for every aircraft — the old "First Officer Settings" menu item is retired.)
 2. Open the window — confirm it has exactly two tabs, **Flows** and **Checklists**, matching
@@ -64,10 +64,11 @@ own narration.
    lit (engines running), the seatbelt step skips as "already set" — also correct.
 2. **Before Start**: cockpit door LOCKED, **FCU speed pushed to managed**, **FCU heading pushed
    to managed** (confirm both read "managed" on the FCU Speed/Heading windows or hotkey
-   readouts — the same atomic RPN push mechanism validated for the Fenix), **FCU altitude
-   pushed** (after the captain sets a cleared altitude), APU ON, APU bleed ON, **ground power
-   1-4 OFF**, **fuel pumps ON** (all 20: the 8 feed pumps, tanks 1-4 MAIN + STBY, and the 12
-   transfer pumps), beacon lights ON, parking brake confirmed ON.
+   readouts — the same atomic RPN push mechanism validated for the Fenix), the "Set cleared
+   altitude on the FCU" reminder, then **FCU altitude pushed** about 2 s later (the flow does not
+   wait for the altitude: set it before running the flow, see item 14), APU ON, APU bleed ON,
+   **ground power 1-4 OFF**, **fuel pumps ON** (all 20: the 8 feed pumps, tanks 1-4 MAIN + STBY,
+   and the 12 transfer pumps), beacon lights ON, parking brake confirmed ON.
 3. **Engine Start**: APU bleed ON, engine mode selector → IGN, **engine 1 master → START**,
    **engine 2 master → START**, a **60-second standby wait**, **engine 3 master → START**,
    **engine 4 master → START**, a second **60-second standby wait**. Confirm all four engines
@@ -95,10 +96,10 @@ own narration.
    waiting for…" and "Skipping: Seat belts, ground spoilers and flaps for takeoff"), and the
    **takeoff config test last**.
 6. **Lineup**: the TCAS reminder (TA/RA, set on the MFD SURV page), the **packs check** (read only,
-   "Packs 1 and 2: ON"; the First Officer never switches the packs), strobe lights ON, **landing
-   and nose lights ON** — TWO writes: wing landing lights ON (`LIGHT LANDING:2`) **and the nose
-   selector → T.O.** (which lights the nose takeoff + taxi beams), runway turn-off lights ON, then
-   the cabin call. Confirm the lights actually illuminate.
+   "Packs 1 and 2: ON"; Cockpit Preparation switched them on, and Line-up never writes them),
+   strobe lights ON, **landing and nose lights ON** — TWO writes: wing landing lights ON
+   (`LIGHT LANDING:2`) **and the nose selector → T.O.** (which lights the nose takeoff + taxi
+   beams), runway turn-off lights ON, then the cabin call. Confirm the lights actually illuminate.
 7. **After Takeoff**: spoilers DISARM, autobrake disarm, nose light selector → TAXI, runway
    turn-off lights OFF.
 8. **Approach**: seatbelt signs ON, **EFIS mode → ILS (both sides)**, then the **cabin call**
@@ -126,11 +127,17 @@ own narration.
     around `ApplyUIVariable`, so the def's own internal `Announce()` calls (e.g. "Rudder trim
     reset") are dropped and only the FO's step narration speaks. See the note at the end of
     this document about the ONE expected exception (continuously-monitored vars).
-14. **Captain reminders announce and wait.** Every `Captain(...)` step (wipers off, flaps
-    confirm up, thrust-lever checks, ECAM page changes, fire test, altimeters set QNH, TCAS/
-    transponder settings, exterior walkaround, IFR clearance, MCDU programming, etc.) is spoken
-    as a reminder and the flow **pauses for acknowledgement** — confirm it does not silently
-    auto-complete or skip ahead.
+14. **Captain reminders are spoken, and the flow carries on.** Every `Captain(...)` step (wipers
+    off, flaps confirm up, thrust levers idle, altimeters set QNH, the transponder, TCAS and
+    altitude-reporting reminders that name the MFD SURV page, IFR clearance, payload, MCDU
+    programming, flaps for takeoff, the landing autobrake, the missed-approach altitude, etc.) is
+    spoken as "Captain action required: …" and is NOT a pause: `FlowManager` announces it and
+    moves on after its usual 2 s step pause, without waiting for acknowledgement — confirm each
+    reminder is heard in full. So in Before Start the FCU altitude is pushed about 2 s after "Set
+    cleared altitude on the FCU": set the altitude before running the flow, or pause the flow when
+    you hear the reminder. (The five ECAM page changes, the fire test, recorder ground control and
+    the takeoff config test are writes, not Captain reminders; the fire test has its own section
+    below, "Preflight fire test".)
 15. **Already-in-target-state steps announce as skipped.** Re-run a flow (or a step) whose
     switch is already correct (e.g. run Cockpit Preparation twice in a row) — confirm the
     matching step announces a quiet skip ("Already set" or equivalent) instead of re-firing the
@@ -193,9 +200,10 @@ After Landing checklist.
       ground spoilers and flaps for takeoff": "Flaps: T.O" stays open until the lever is set and
       "Flaps setting" until you tick it; lines that already read right tick with the rest.
    2. **Landing:** run the Landing flow, then read the Landing checklist. The gear check is the
-      last thing you hear; "Flaps: LDG" ticks at FULL, or at 3 with CONF 3 set. With the flaps
-      short of that you hear "Skipping: Seat belts and landing flaps": "Flaps: LDG" stays open
-      until the flaps are set; lines that already read right tick with the rest.
+      flow's last step, followed only by "Landing flow complete"; "Flaps: LDG" ticks at FULL, or
+      at 3 with CONF 3 set. With the flaps short of that you hear "Skipping: Seat belts and
+      landing flaps": "Flaps: LDG" stays open until the flaps are set; lines that already read
+      right tick with the rest.
    3. **Spoken values:** tick a few blank lines and listen: Fuel quantity, Baro reference,
       T.O speeds and thrust.
    4. **Surveillance (MFD SURV page):** listen to how the reminders sound, e.g. "Captain action

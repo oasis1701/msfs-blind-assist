@@ -11,9 +11,9 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// <summary>
 /// The FBW A380X First Officer's read-back (*_CL) checklists are FlyByWire's A380X ECL normal
 /// checklists (NormalProcedures.ts at 255546cb; docs/invariants/first-officer-airbus.md#foa-9), in the
-/// ECL's words and order, spoken to one pilot: no "(BOTH)", no memo prefix, every blank answered SET
-/// with the value the First Officer reads. No Before Takeoff, After Takeoff, After Landing or Departure
-/// Change list, no separators.
+/// ECL's words and order, spoken to one pilot: no "(BOTH)", no memo prefix, every blank answered SET,
+/// with the value the First Officer reads where it reads one ("T.O runway: SET" has none). No Before
+/// Takeoff, After Takeoff, After Landing or Departure Change list, no separators.
 /// </summary>
 public class FbwA380ReadbackTests
 {
@@ -132,7 +132,8 @@ public class FbwA380ReadbackTests
             0, 1),
     };
 
-    // The lines whose ECL answer is a blank: they say SET and speak what the First Officer reads.
+    // The blank lines whose value the First Officer reads: they say SET and speak it. "T.O runway: SET"
+    // (LUC_RUNWAY) is a blank too, but the First Officer reads no runway, so it speaks nothing.
     private static readonly string[] SpokenLines =
     {
         "CPC_FUEL", "CPC_ALTIMETERS", "BSC_PARKBRK", "BSC_TOSPEEDS", "ASC_ANTIICE", "TXC_FLAPS",
