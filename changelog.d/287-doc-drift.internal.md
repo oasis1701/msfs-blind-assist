@@ -1,0 +1,1 @@
+The taxi guidance documentation no longer contradicts the rules or the code: its notes folded in from CLAUDE.md now point at the rules they restated and keep only what is recorded nowhere else, and fifteen outdated passages were corrected.
