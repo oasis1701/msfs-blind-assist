@@ -347,34 +347,31 @@ public class Pmdg777FlowChecklistLinkTests
 
     // Characterization of what is still latched with no step behind it: every non-reminder line
     // in a latched group that no step of the flow names. Each is a known, reviewed gap — a failed
-    // step cannot leave these live. Change this list deliberately.
+    // step cannot leave these live. Change this list deliberately. Since 2026-10-09 every line
+    // the First Officer can read or act on has a write or a read-only check behind it (FO-6,
+    // FO-7, FO-8): the flap-lever checks (Pmdg777FlapLeverCheckTests), Cockpit Prep's power-up
+    // check (Pmdg777PowerUpCheckTests) and the reused writes (Pmdg777HonestTickingTests: the seat
+    // belts, autobrake RTO, the fuel pumps OFF, and the action-group RECALL lines BT_RECALL and
+    // DSCA_RECALL; their READ-BACK lines, BTCL_RECALL and DSC_RECALL, stay pilot-confirmed). The
+    // two exceptions, the APU start (BS_APU_START) and the engine-start selectors
+    // (ES_ENG1_START_SEL, ES_ENG2_START_SEL), are in the known set below.
     [Fact]
     public void Lines_latched_with_no_delivering_step_are_the_known_set()
     {
         Assert.Equal(new[]
         {
             // --- Lines with readable state or a CheckAction, but no step in this flow ---
-            // Before Start: seat belts are set ON in Cockpit Prep, not here; the APU start's
-            // Stop-policy APU-running wait aborts the flow before any latch if it fails.
-            // Before Taxi: autobrake RTO is set in Cockpit Prep; recall has no flow step.
-            // Before Taxi "Flap lever: Set for takeoff" (BT_FLAPS): its five plan-gated flap
-            // steps are NOT linked — the four not planned skip as "Already set", which would tick
-            // the line whatever the planned step does.
-            // Before Takeoff "Flaps: Set for takeoff" and Landing "Flaps: Set for landing": the
-            // captain sets the flaps; no flow step writes them.
-            // Cockpit Prep: battery, ADIRU, demand pumps, nav lights and gear DOWN are set in
-            // Electrical Power Up; no step turns the fuel pumps OFF.
-            // Descent: recall is a Captain reminder.
+            // Before Start: the APU start's Stop-policy APU-running wait aborts the flow before any
+            // latch if it fails.
             // Engine start selectors: StayComplete on N2 (never linked — see above).
-            // Shutdown Checklist "Flaps: UP": the flaps are retracted in After Landing.
             // --- Manual verification lines (no state, no action) the flow still latches ---
-            // (trim, CDU, V speeds, MCP, altimeters, anti-ice, flight controls, recall, oil
-            // pressure, WX radar, APU) — delivered by the pilot or a Captain reminder step.
+            // (trim, CDU, V speeds, MCP, altimeters, anti-ice, flight controls, recall read-backs,
+            // oil pressure, WX radar, APU, the Shutdown Checklist's parking brake "As required") —
+            // delivered by the pilot or a Captain reminder step.
             "AFTER_LANDING/AL_WX_RADAR_OFF",
             "APPROACH_SETUP/APP_ALTIMETERS",
             "BEFORE_START/BSCL_CDU_COMPLETE",
             "BEFORE_START/BSCL_MCP",
-            "BEFORE_START/BSCL_SIGNS",
             "BEFORE_START/BSCL_TRIM",
             "BEFORE_START/BSCL_V_SPEEDS",
             "BEFORE_START/BS_AIL_TRIM",
@@ -383,30 +380,16 @@ public class Pmdg777FlowChecklistLinkTests
             "BEFORE_START/BS_INIT_ALT",
             "BEFORE_START/BS_INIT_HDG",
             "BEFORE_START/BS_RUD_TRIM",
-            "BEFORE_START/BS_SEAT_BELTS",
             "BEFORE_START/BS_STAB_TRIM",
             "BEFORE_START/BS_V2_SET",
-            "BEFORE_TAKEOFF/BTKOF_ALT",
-            "BEFORE_TAKEOFF/BTKOF_FLAPS",
-            "BEFORE_TAKEOFF/BTKOF_V_SPEEDS",
             "BEFORE_TAXI/BTCL_ANTI_ICE",
-            "BEFORE_TAXI/BTCL_AUTOBRAKE",
             "BEFORE_TAXI/BTCL_FCTL",
             "BEFORE_TAXI/BTCL_RECALL",
             "BEFORE_TAXI/BT_ANTI_ICE",
             "BEFORE_TAXI/BT_FCTL_CHECK",
-            "BEFORE_TAXI/BT_FLAPS",
-            "BEFORE_TAXI/BT_RECALL",
-            "COCKPIT_PREP/PF_ADIRU",
             "COCKPIT_PREP/PF_BARO_SET",
-            "COCKPIT_PREP/PF_BATTERY",
             "COCKPIT_PREP/PF_CDU_PREFLIGHT",
-            "COCKPIT_PREP/PF_DEMAND_PUMPS_OFF",
             "COCKPIT_PREP/PF_FMC_PERF",
-            "COCKPIT_PREP/PF_FUEL_PUMPS_OFF",
-            "COCKPIT_PREP/PF_GEAR_DOWN",
-            "COCKPIT_PREP/PF_NAV_LIGHTS",
-            "DESCENT_SETUP/DSCA_RECALL",
             "DESCENT_SETUP/DSC_AUTOBRAKE",
             "DESCENT_SETUP/DSC_LANDING_DATA",
             "DESCENT_SETUP/DSC_RECALL",
@@ -414,22 +397,30 @@ public class Pmdg777FlowChecklistLinkTests
             "ENGINE_START/ES_ENG1_START_SEL",
             "ENGINE_START/ES_ENG2_OIL_PRESS",
             "ENGINE_START/ES_ENG2_START_SEL",
-            "LANDING/LDG_FLAPS",
-            "SHUTDOWN/SDCL_FLAPS_UP",
             "SHUTDOWN/SDCL_HYD",
+            "SHUTDOWN/SDCL_PARK_BRAKE",
             "SHUTDOWN/SDCL_WX_RADAR",
             "SHUTDOWN/SD_APU",
         }, FlowChecklistLinkAudit.UndeliveredLines(FlowsWithItems()));
     }
 
-    // On the 777 no group is named after a flow (or its "_CL"), so a finished flow latches
-    // exactly its related groups — the audit above covers every line the form latches.
+    // On the 777 every group named after a flow (or its "_CL") is also among that flow's related
+    // groups — the Landing section, LANDING, since 2026-10-09 — so a finished flow latches exactly
+    // its related groups, and the audit above covers every line the form latches.
     [Fact]
     public void Every_777_flow_latches_exactly_its_related_groups()
     {
         var ids = PMDG777ChecklistDefinitions.Build().Select(g => g.Id).ToHashSet(StringComparer.Ordinal);
         foreach (var flow in PMDG777FlowDefinitions.Build())
             Assert.Equal(flow.RelatedChecklistGroupIds, flow.CompletionGroupIds(ids.Contains).ToArray());
+    }
+
+    [Fact]
+    public void The_landing_flow_latches_the_landing_section_and_the_landing_checklist()
+    {
+        var ids = PMDG777ChecklistDefinitions.Build().Select(g => g.Id).ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(new[] { "LANDING", "LANDING_CL" },
+            PMDG777FlowDefinitions.Build().Single(f => f.Id == "LANDING").CompletionGroupIds(ids.Contains).ToArray());
     }
 
     // The After Landing APU start is confirmed by the read-only APU-running wait, never by the

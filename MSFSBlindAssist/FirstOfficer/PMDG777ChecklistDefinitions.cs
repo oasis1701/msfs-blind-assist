@@ -44,6 +44,7 @@ public static class PMDG777ChecklistDefinitions
         BuildDescentChecklist(),
         BuildApproach(),
         BuildApproachChecklist(),
+        BuildLanding(),
         BuildLandingChecklist(),
         BuildAfterLanding(),
         BuildShutdown(),
@@ -188,13 +189,13 @@ public static class PMDG777ChecklistDefinitions
                 "HYD_DemandElecPump_Selector_0", v => v < 0.5,
                 new[] { "HYD_DemandElecPump_Selector_1", "HYD_DemandAirPump_Selector_0", "HYD_DemandAirPump_Selector_1" },
                 (e, _) => e.SetDemandPumps(0)),
-            // ON (2), not AUTO (1) — a deliberate deviation from PMDG's printed procedure
-            // (owner ruling 2026-08-29); see the CP_SEAT_BELTS note in the flow. The old
-            // condition "v >= 1" also accepted AUTO, so a line labelled AUTO ticked on ON
-            // and vice versa.
-            Auto("PF_SEAT_BELTS", "PREFLIGHT", "Seat Belts selector: ON",
-                "SIGNS_SeatBeltsSelector", v => v > 1.5,
-                action: (e, _) => e.SetSeatBelts(2)),
+            // OFF (0), as PMDG's Preflight Procedure reads (owner, 2026-10-09); see the
+            // CP_SEAT_BELTS note in the flow. The sign goes ON in Before Start (BS_SEAT_BELTS,
+            // ON rather than the vendor's AUTO: owner ruling 2026-08-29). Exactly OFF: AUTO (1)
+            // is not OFF, and an unread selector (NaN) is neither.
+            Auto("PF_SEAT_BELTS", "PREFLIGHT", "Seat Belts selector: OFF",
+                "SIGNS_SeatBeltsSelector", v => v < 0.5,
+                action: (e, _) => e.SetSeatBelts(0)),
             Auto("PF_NO_SMOKING", "PREFLIGHT", "No Smoking selector: ON",
                 "SIGNS_NoSmokingSelector", v => v > 1.5,
                 action: (e, _) => e.SetNoSmoking(2)),
@@ -467,7 +468,8 @@ public static class PMDG777ChecklistDefinitions
                 action: (e, _) => e.SetStormLights(0)),
             Manual("BT_ANTI_ICE", "BEFORE_TAXI", "Engine Anti-Ice selectors: As needed"),
             // Sets the SimBrief-planned takeoff flaps (defaults to flaps 5 with no OFP) —
-            // the same source the Before Taxi flow uses.
+            // the same source the Before Taxi flow uses. The flow's read-only lever check
+            // (BT_FLAPS_CHECK) completes it once the lever is at a takeoff detent.
             ActionManual("BT_FLAPS", "BEFORE_TAXI", "Flap lever: Set for takeoff (from SimBrief perf data)",
                 (e, s) => e.SetFlapsPosition(AircraftActionExecutor.FlapDegreesToPosition(s.GetTakeoffFlaps()))),
             Auto("BT_PACKS", "BEFORE_TAXI", "Packs: AUTO",
@@ -549,11 +551,14 @@ public static class PMDG777ChecklistDefinitions
         Id = "BEFORE_TKOF_CL", Name = "Before Takeoff Checklist",
         Items = new()
         {
-            // Flap target depends on SimBrief perf data — no fixed action value
+            // PMDG's Before Takeoff Checklist is this one line ("Flaps .. Confirm Set for Takeoff",
+            // FOB-4). "V speeds: Checked" and "Altitude: Set initial climb" came with the first
+            // 777 commit, when the First Officer still programmed the FMC, and are on no PMDG page.
+            // Flap target depends on SimBrief perf data — no fixed action value. Lever 1-4 (flaps
+            // 1, 5, 15 or 20); the Before Takeoff flow's read-only check (BTKOF_FLAPS_CHECK) waits
+            // for the same range.
             Auto("BTKOF_FLAPS", "BEFORE_TKOF_CL", "Flaps: Set for takeoff",
-                "FCTL_Flaps_Lever", v => v >= 1 && v <= 4),   // 1, 5, 15 or 20 (detents 1-4)
-            Manual("BTKOF_V_SPEEDS", "BEFORE_TKOF_CL", "V speeds: Checked"),
-            Manual("BTKOF_ALT", "BEFORE_TKOF_CL", "Altitude: Set initial climb"),
+                "FCTL_Flaps_Lever", AircraftStateEvaluator.IsTakeoffFlapLever),
         }
     };
 
@@ -569,10 +574,8 @@ public static class PMDG777ChecklistDefinitions
                 "LTS_RunwayTurnoff_Sw_ON_0", v => v < 0.5,
                 new[] { "LTS_RunwayTurnoff_Sw_ON_1" },
                 (e, _) => e.SetRunwayTurnoff(0)),
-            Auto("ATKO_LANDING_OFF", "AFTER_TAKEOFF", "Landing lights: OFF",
-                "LTS_LandingLights_Sw_ON_0", v => v < 0.5,
-                new[] { "LTS_LandingLights_Sw_ON_1", "LTS_LandingLights_Sw_ON_2" },
-                (e, _) => e.SetLandingLights(0)),
+            // No "Landing lights: OFF": PMDG has no such step, and the 10,000 ft automation
+            // switches them (removed with the flow's step, 2026-10-09, FOB-4).
             Auto("ATKO_GEAR_UP", "AFTER_TAKEOFF", "Gear: UP",
                 "GEAR_Lever", v => v < 0.5,
                 action: (e, _) => e.SetGearLever(0)),
@@ -630,8 +633,8 @@ public static class PMDG777ChecklistDefinitions
         Id = "APPROACH", Name = "Approach",
         Items = new()
         {
-            // The speedbrake is NOT armed here — too early. It lives on the Landing
-            // checklist (LDG_SPEEDBRAKE) and the Landing flow.
+            // The speedbrake is NOT armed here — too early. It lives in the Landing section
+            // (LDA_SPEEDBRAKE) and the Landing flow.
             Reminder("APPA_ALTIMETERS", "APPROACH", "Altimeters: Set local QNH / transition"),
         }
     };
@@ -644,9 +647,13 @@ public static class PMDG777ChecklistDefinitions
         Id = "DESCENT_CL", Name = "Descent Checklist",
         Items = new()
         {
+            // PMDG's Descent Checklist, line for line (FOB-4): Recall, Notes, Autobrake, Landing
+            // Data, Approach Briefing (PMDG prints "Breifing"; the typo is not copied).
             Manual("DSC_RECALL", "DESCENT_CL", "Recall: Checked"),
+            Reminder("DSC_NOTES", "DESCENT_CL", "Notes: Checked"),
             Manual("DSC_AUTOBRAKE", "DESCENT_CL", "Autobrake: As required"),
             Manual("DSC_LANDING_DATA", "DESCENT_CL", "Landing Data: Set VREF and minimums"),
+            Reminder("DSC_APPROACH_BRIEF", "DESCENT_CL", "Approach Briefing: Complete"),
         }
     };
 
@@ -663,6 +670,32 @@ public static class PMDG777ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
+    // 16a. Landing (mirrors the Landing flow; added 2026-10-09)
+    // -----------------------------------------------------------------------
+    private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildLanding() => new()
+    {
+        Id = "LANDING", Name = "Landing",
+        Items = new()
+        {
+            // Ticking this ARMS the lever — the action the Landing Checklist's "Speedbrake: ARMED"
+            // carried until 2026-10-09, moved here so every read-back stays action-free (FO-3), as
+            // on the PMDG 737 (LDA_SPDBRK). It reads main's lever L-var (exactly ARM, never the
+            // truncating SDK byte, which reads a lever at 201-203 as armed). A tick over a
+            // DEPLOYED lever is refused with its reason (LeaveAloneWhen); the executor never
+            // clicks ARM over one either, because the ARM detent is an absolute click position
+            // and clicking it over a raised lever retracts it.
+            LeaveAlone(Auto("LDA_SPEEDBRAKE", "LANDING", "Speedbrake: ARM",
+                Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsArmed,
+                action: (e, _) => e.SetSpeedbrakeArmed()),
+                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
+            // The Captain's missed-approach altitude, as on the PMDG 737 (LDA_MISSED; owner,
+            // 2026-10-09): the Landing flow's LD_MISSED reminder speaks it, and the finished
+            // flow ticks it.
+            Reminder("LDA_MISSED", "LANDING", "Set the missed approach altitude"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
     // 17. Landing Checklist
     // -----------------------------------------------------------------------
     private static ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator> BuildLandingChecklist() => new()
@@ -670,23 +703,21 @@ public static class PMDG777ChecklistDefinitions
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
         {
-            // Ticking this ARMS the lever. It reads main's lever L-var (exactly ARM, never the
-            // truncating SDK byte, which reads a lever at 201-203 as armed). A tick over a
-            // DEPLOYED lever is refused with its reason (LeaveAloneWhen); the executor never
-            // clicks ARM over one either, because the ARM detent is an absolute click position
-            // and clicking it over a raised lever retracts it.
-            LeaveAlone(Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
+            // Read-only: the lever exactly at ARM (main's lever L-var, never the truncating SDK
+            // byte). The Landing flow arms it through the Landing section's LDA_SPEEDBRAKE, and
+            // its arm step links this line too, so a skipped arm keeps both out of the latch.
+            Auto("LDG_SPEEDBRAKE", "LANDING_CL", "Speedbrake: ARMED",
                 Pmdg777SpeedbrakeLever.LeverField, Pmdg777SpeedbrakeLever.IsArmed,
-                action: (e, _) => e.SetSpeedbrakeArmed()),
-                s => s.IsSpeedbrakeDeployed(), SpeedbrakeLeverState.LeaveAloneText),
+                action: null),
             // Gear CONFIRMED down: lever DOWN and all three legs fully extended
             // (Pmdg777GearConfirmation). NaN until known.
             Auto("LDG_GEAR", "LANDING_CL", "Landing Gear: DOWN",
                 Pmdg777GearConfirmation.DownField, v => v > 0.5,
                 action: null),
-            // Landing flap target depends on approach — no fixed action value
+            // Landing flap target depends on approach — no fixed action value. Lever 20 or more;
+            // the Landing flow's read-only check (LD_FLAPS_CHECK) waits for the same range.
             Auto("LDG_FLAPS", "LANDING_CL", "Flaps: Set for landing",
-                "FCTL_Flaps_Lever", v => v >= 4),
+                "FCTL_Flaps_Lever", AircraftStateEvaluator.IsLandingFlapLever),
         }
     };
 
@@ -730,9 +761,8 @@ public static class PMDG777ChecklistDefinitions
         Id = "SHUTDOWN", Name = "Shutdown",
         Items = new()
         {
-            Auto("SD_STORM_ON", "SHUTDOWN", "Storm lights: ON",
-                "LTS_Storm_Sw_ON", v => v > 0.5,
-                action: (e, _) => e.SetStormLights(1)),
+            // No "Storm lights: ON": PMDG's Shutdown Procedure has no such step (removed with the
+            // flow's step, 2026-10-09, FOB-4).
             Auto("SD_PARK_BRAKE", "SHUTDOWN", "Parking Brake/Chocks: SET",
                 "BRAKES_ParkingBrakeLeverOn", v => v > 0.5,
                 action: (e, _) => e.SetParkingBrake(1)),
@@ -785,15 +815,18 @@ public static class PMDG777ChecklistDefinitions
         Items = new()
         {
             Manual("SDCL_HYD", "SHUTDOWN_CL", "Hydraulic panel: SET"),
+            // All six pumps — the Shutdown group's SD_FUEL_PUMPS fields. It read only the left
+            // forward pump, so it ticked with a centre or aft pump still running.
             Auto("SDCL_FUEL_PUMPS", "SHUTDOWN_CL", "Fuel Pumps: OFF",
                 "FUEL_PumpFwd_Sw_0", v => v < 0.5,
-                action: null),
+                new[] { "FUEL_PumpFwd_Sw_1", "FUEL_PumpAft_Sw_0", "FUEL_PumpAft_Sw_1", "FUEL_PumpCtr_Sw_0", "FUEL_PumpCtr_Sw_1" },
+                null),
             Auto("SDCL_FLAPS_UP", "SHUTDOWN_CL", "Flaps: UP",
                 "FCTL_Flaps_Lever", v => v < 0.5,
                 action: null),
-            Auto("SDCL_PARK_BRAKE", "SHUTDOWN_CL", "Parking Brake: SET",
-                "BRAKES_ParkingBrakeLeverOn", v => v > 0.5,
-                action: null),
+            // PMDG's wording, "As required" (owner, 2026-10-09): on chocks the brake may be off,
+            // so the line reads nothing and the pilot confirms it. It read "SET" off the lever.
+            Manual("SDCL_PARK_BRAKE", "SHUTDOWN_CL", "Parking Brake: As required"),
             Auto("SDCL_FUEL_CTRL", "SHUTDOWN_CL", "Fuel Control Switches: CUTOFF",
                 "ENG_FuelControl_Sw_RUN_0", v => v < 0.5,
                 new[] { "ENG_FuelControl_Sw_RUN_1" },

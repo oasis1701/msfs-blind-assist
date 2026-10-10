@@ -91,13 +91,17 @@ public class Pmdg777FlowOrderingTests
         Assert.Equal(400.0, Pmdg777SpeedbrakeLever.UpValue);
     }
 
-    [Fact]
-    public void LandingChecklist_speedbrake_accepts_the_armed_lever()
+    // The Landing section's arming line and the Landing Checklist's read-only line both read the
+    // lever exactly at ARM.
+    [Theory]
+    [InlineData("LANDING", "LDA_SPEEDBRAKE")]
+    [InlineData("LANDING_CL", "LDG_SPEEDBRAKE")]
+    public void Landing_speedbrake_lines_accept_the_armed_lever(string groupId, string itemId)
     {
-        var item = Item("LANDING_CL", "LDG_SPEEDBRAKE");
+        var item = Item(groupId, itemId);
         Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, item.StateFieldName);
         Assert.True(item.EvaluateState(Pmdg777SpeedbrakeLever.ArmedValue),
-            "ticking 'Speedbrake: ARMED' must not revert once the lever reaches ARM");
+            "a ticked speedbrake line must not revert once the lever reaches ARM");
         Assert.False(item.EvaluateState(Pmdg777SpeedbrakeLever.DownValue));
         Assert.False(item.EvaluateState(201));
     }
@@ -113,9 +117,9 @@ public class Pmdg777FlowOrderingTests
     }
 
     [Fact]
-    public void LandingChecklist_speedbrake_leaves_a_deployed_lever_alone()
+    public void LandingSection_speedbrake_leaves_a_deployed_lever_alone()
     {
-        var item = Item("LANDING_CL", "LDG_SPEEDBRAKE");
+        var item = Item("LANDING", "LDA_SPEEDBRAKE");
         Assert.NotNull(item.LeaveAloneWhen);
         Assert.Equal(SpeedbrakeLeverState.LeaveAloneText, item.LeaveAloneText);
 
@@ -171,29 +175,64 @@ public class Pmdg777FlowOrderingTests
     }
 
     // =====================================================================
-    // 2. Seat belt signs: ON, not AUTO
+    // 2. Seat belt signs: OFF in Cockpit Prep, ON (not AUTO) in Before Start
     //
     // PMDG_777X_SDK.h:154  SIGNS_SeatBeltsSelector  // 0: OFF  1: AUTO   2: ON
     //
-    // Both 737 profiles already select ON (2) and detect on "v > 1.5"
-    // (PMDG737ChecklistDefinitions PF_BELTS, IFly737ChecklistDefinitions PF_BELTS); the
-    // 777 was the only Boeing selecting AUTO. Its own seat-belt AUTOMATION already writes
-    // ON/OFF only — AircraftActionExecutor.SetSeatbeltSign(bool) => SetSeatBelts(on ? 2 : 0)
-    // — so preflight AUTO contradicted the automation that follows it.
+    // PMDG's Preflight Procedure reads "SEAT BELTS selector .. OFF", its Before Start
+    // Procedure "AUTO". Before Start selects ON, not AUTO (owner ruling 2026-08-29): both 737
+    // profiles already select ON (2) and detect on "v > 1.5" (PMDG737ChecklistDefinitions
+    // PF_BELTS, IFly737ChecklistDefinitions PF_BELTS), and the 777's own seat-belt AUTOMATION
+    // writes ON/OFF only — AircraftActionExecutor.SetSeatbeltSign(bool) => SetSeatBelts(on ? 2 : 0)
+    // — so AUTO contradicted the automation that follows it. Cockpit Prep applied the same ON
+    // until 2026-10-09; it now follows PMDG's Preflight, OFF (owner, 2026-10-09).
     // =====================================================================
 
     private const int SeatBeltsOff = 0, SeatBeltsAuto = 1, SeatBeltsOn = 2;
 
     [Fact]
-    public void CockpitPrepFlow_selects_seat_belts_ON()
+    public void CockpitPrepFlow_selects_seat_belts_OFF_as_PMDGs_preflight()
     {
         var step = Step("COCKPIT_PREP", "CP_SEAT_BELTS");
-        Assert.Equal(SeatBeltsOn, step.TargetValue);
-        Assert.Contains("ON", step.Label);
+        Assert.Equal(SeatBeltsOff, step.TargetValue);
+        Assert.Contains("OFF", step.Label);
+        // "Already set" only over a selector that READS OFF: an unread one (NaN) is not OFF.
+        Assert.False(step.SkipCondition!(new AircraftStateEvaluator()));
+    }
+
+    // The write is verified, as Shutdown's identical OFF write (SD_SEAT_BELTS) is: FlowManager reads
+    // the selector 600 ms after the write, and a write that did not take is heard skipped and keeps
+    // "Seat Belts selector: OFF" (PF_SEAT_BELTS) out of the latch. The two steps agree on the field
+    // and on what counts as OFF, at every selector position and over an unread selector.
+    [Fact]
+    public void CockpitPrepFlow_verifies_the_seat_belt_write_as_Shutdown_does()
+    {
+        var step = Step("COCKPIT_PREP", "CP_SEAT_BELTS");
+        var shutdown = Step("SHUTDOWN", "SD_SEAT_BELTS");
+
+        Assert.Equal("SIGNS_SeatBeltsSelector", step.VerifyFieldName);
+        Assert.Equal(shutdown.VerifyFieldName, step.VerifyFieldName);
+        Assert.NotNull(step.VerifyCondition);
+        foreach (double selector in new[] { SeatBeltsOff, SeatBeltsAuto, SeatBeltsOn, double.NaN })
+            Assert.Equal(shutdown.VerifyCondition!(selector), step.VerifyCondition!(selector));
+        Assert.True(step.VerifyCondition!(SeatBeltsOff));
+        Assert.False(step.VerifyCondition!(SeatBeltsAuto));
+        Assert.False(step.VerifyCondition!(SeatBeltsOn));
+        Assert.False(step.VerifyCondition!(double.NaN), "an unread selector is not verified OFF");
+        Assert.Equal(new[] { "PF_SEAT_BELTS" }, step.LinkedChecklistItemIds.ToArray());
+    }
+
+    [Fact]
+    public void PreflightSeatBeltItem_requires_OFF()
+    {
+        var item = Item("PREFLIGHT", "PF_SEAT_BELTS");
+        Assert.True(item.EvaluateState(SeatBeltsOff));
+        Assert.False(item.EvaluateState(SeatBeltsAuto));
+        Assert.False(item.EvaluateState(SeatBeltsOn));
+        Assert.False(item.EvaluateState(double.NaN));
     }
 
     [Theory]
-    [InlineData("PREFLIGHT", "PF_SEAT_BELTS")]
     [InlineData("BEFORE_START", "BS_SEAT_BELTS")]
     [InlineData("BEFORE_START_CL", "BSCL_SIGNS")]
     public void SeatBeltItems_require_ON_and_reject_AUTO(string groupId, string itemId)
@@ -458,17 +497,20 @@ public class Pmdg777FlowOrderingTests
             // Group the flow's linked ticks by the group each item belongs to, keeping
             // flow order, then assert each group's indices only ever increase.
             //
-            // ONE item is left out, deliberately: the After Takeoff flow completes
-            // AFTER_TKOF_CL's ATKOF_GEAR ("Landing Gear: UP", listed first) from its LAST step,
-            // a read-only up-to-20 s check that the gear is physically up (lever plus the stock
-            // gear-leg positions — the 777 SDK has no gear lights), placed last so a slow gear
-            // confirmation never holds up the flaps — so it ticks after ATKOF_FLAPS.
-            // Only that one item is excused; every other item in every group, including any
-            // later added to AFTER_TKOF_CL, is still checked.
+            // TWO items are left out, deliberately, for one reason: a flow completes its
+            // read-back's gear line from its LAST step, a read-only up-to-20 s check that the gear
+            // is physically there (lever plus the stock gear-leg positions — the 777 SDK has no
+            // gear lights), placed last so a slow gear confirmation never holds up the flaps
+            // (FO-13). The After Takeoff flow completes AFTER_TKOF_CL's ATKOF_GEAR ("Landing
+            // Gear: UP", listed first) after ATKOF_FLAPS; since 2026-10-09 the Landing flow
+            // completes LANDING_CL's LDG_GEAR ("Landing Gear: DOWN", listed second) after its
+            // flap-lever check completes LDG_FLAPS. Only those two are excused; every other item
+            // in every group, including any later added to either read-back, is still checked.
             var linked = flow.Steps
                 .Select(s => s.CompletesChecklistItemId)
                 .Where(id => !string.IsNullOrEmpty(id))
                 .Where(id => !(flow.Id == "AFTER_TAKEOFF" && id == "ATKOF_GEAR"))
+                .Where(id => !(flow.Id == "LANDING" && id == "LDG_GEAR"))
                 // A line several steps deliver (both wiper sides → one "Wiper selectors: OFF";
                 // left FD, both A/T ARMs, right FD in physical MCP order → "Flight Director
                 // switches: ON" and "Autothrottle arm switches: ARM") is placed by the FIRST
@@ -529,5 +571,137 @@ public class Pmdg777FlowOrderingTests
         Assert.True(System.Math.Abs(Fraction(flow, "CP_OXY_TEST_CAPT")
                                   - Fraction(items, "PF_OXY_TEST_CAPT")) < 0.25,
             "the oxygen test must not sit near the top of the flow and the bottom of the checklist");
+    }
+
+    // =====================================================================
+    // 8. Every line a finished flow latches has a step behind it (2026-10-09; FO-6, FO-7, FO-8)
+    //
+    // A finished flow ticks and latches every line of its groups (FO-7), so every line the First
+    // Officer can read or act on has a step behind it: a write that links it (FO-6), or a
+    // read-only check. A step that fails is heard skipped and keeps its lines out of the latch
+    // (FO-6, FO-8). Each new step sits where its line sits in the procedure.
+    // =====================================================================
+
+    [Fact]
+    public void Flap_lever_checks_sit_where_their_lines_are_flown()
+    {
+        // Before Taxi: right after the plan-gated flap steps, before the packs.
+        var bt = FlowStepIds("BEFORE_TAXI");
+        Assert.Equal(bt.IndexOf("BT_FLAPS_25") + 1, bt.IndexOf("BT_FLAPS_CHECK"));
+        AssertOrder(bt, "BT_FLAPS_CHECK", "BT_PACK_L_AUTO");
+
+        // Before Takeoff: after the Captain's flap confirmation, and last.
+        var btkof = FlowStepIds("BEFORE_TAKEOFF");
+        Assert.Equal(btkof.IndexOf("BTKOF_FLAPS_CONFIRM") + 1, btkof.IndexOf("BTKOF_FLAPS_CHECK"));
+        Assert.Equal("BTKOF_FLAPS_CHECK", btkof[^1]);
+
+        // Landing: right before the gear check, which stays LAST (FO-13).
+        var ld = FlowStepIds("LANDING");
+        Assert.Equal(new[] { "LD_FLAPS_CHECK", "LD_GEAR_DOWN_CHECK" }, ld.Skip(ld.Count - 2).ToArray());
+
+        // Shutdown: right after the fuel pumps, as the Shutdown Checklist reads.
+        var sd = FlowStepIds("SHUTDOWN");
+        Assert.Equal(sd.IndexOf("SD_FUEL_PUMPS") + 1, sd.IndexOf("SD_FLAPS_UP_CHECK"));
+    }
+
+    [Fact]
+    public void Reused_writes_sit_where_their_lines_are_flown()
+    {
+        // Before Start: PMDG's SEAT BELTS line follows the MCP setup; the flow sets it before the
+        // APU start, where its checklist group lists it.
+        AssertOrder(FlowStepIds("BEFORE_START"), "BS_MCP_SPEEDS", "BS_SEAT_BELTS", "BS_APU_ON");
+        AssertOrder(ItemIds("BEFORE_START"), "BS_SEAT_BELTS", "BS_APU_START");
+
+        // Before Taxi: autobrake RTO after the packs; PMDG's flight-control check and then RECALL
+        // close the procedure.
+        var bt = FlowStepIds("BEFORE_TAXI");
+        AssertOrder(bt, "BT_PACK_R_AUTO", "BT_AUTOBRAKE_RTO", "BT_FCTL_CHECK", "BT_RECALL");
+        Assert.Equal("BT_RECALL", bt[^1]);
+
+        // Descent Setup: the RECALL push keeps the reminder's place.
+        AssertOrder(FlowStepIds("DESCENT_SETUP"), "DSC_EFIS_FO_RANGE", "DSC_RECALL", "DSC_APPROACH_BRIEF");
+    }
+
+    [Fact]
+    public void Cockpit_prep_checks_the_power_up_first_and_turns_the_pumps_off_beside_crossfeed()
+    {
+        var cp = FlowStepIds("COCKPIT_PREP");
+        // The power-up lines head the Preflight group (PF_BATTERY, PF_ADIRU) and PMDG's preflight
+        // opens with the battery, so the check opens the flow. The order guard
+        // (Every_flow_ticks_its_checklist_items_in_the_order_they_are_listed) reads only
+        // CompletesChecklistItemId (PF_BATTERY), so it never sees the check's four Also lines,
+        // three of which (PF_DEMAND_PUMPS_OFF, PF_NAV_LIGHTS, PF_GEAR_DOWN) the group lists far
+        // below: by design, so do not move the check to "fix" that order.
+        Assert.Equal("CP_POWER_UP_CHECK", cp[0]);
+        // PMDG's order (FOB-4): CROSSFEED switches OFF, then FUEL PUMP switches OFF; the
+        // Preflight group lists the two lines the same way.
+        Assert.Equal(cp.IndexOf("CP_XFEED_OFF") + 1, cp.IndexOf("CP_FUEL_PUMPS_OFF"));
+        var items = ItemIds("PREFLIGHT");
+        Assert.Equal(items.IndexOf("PF_CROSSFEED_OFF") + 1, items.IndexOf("PF_FUEL_PUMPS_OFF"));
+    }
+
+    // =====================================================================
+    // 9. Non-PMDG steps (FOB-4, owner 2026-10-09)
+    //
+    // PMDG's procedure pages have neither of these two steps, and the owner removed both. The
+    // other non-PMDG steps stay as the owner's choices, listed in FOB-4's full text.
+    // =====================================================================
+
+    private static System.Collections.Generic.List<string> WrittenEvents(string flowId) =>
+        PMDG777FlowDefinitions.Build().Single(f => f.Id == flowId).Steps
+            .SelectMany(s => s.EventName is null ? s.MultiActions.Select(a => a.EventName) : new[] { s.EventName })
+            .ToList();
+
+    [Fact]
+    public void After_takeoff_leaves_the_landing_lights_to_the_10000_ft_automation()
+    {
+        Assert.DoesNotContain("ATKOF_LANDING_OFF", FlowStepIds("AFTER_TAKEOFF"));
+        Assert.DoesNotContain("ATKO_LANDING_OFF", ItemIds("AFTER_TAKEOFF"));
+        Assert.DoesNotContain(WrittenEvents("AFTER_TAKEOFF"),
+            e => e.StartsWith("EVT_OH_LIGHTS_LANDING_", System.StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void Shutdown_no_longer_turns_the_storm_lights_on()
+    {
+        Assert.DoesNotContain("SD_STORM", FlowStepIds("SHUTDOWN"));
+        Assert.DoesNotContain("SD_STORM_ON", ItemIds("SHUTDOWN"));
+        Assert.DoesNotContain("EVT_OH_LIGHTS_STORM", WrittenEvents("SHUTDOWN"));
+    }
+
+    // The steps and Captain reminders with no line on PMDG's pages that the flows KEEP as the
+    // owner's choices (checked by hand against the procedure pages of B777_Checklist.xml, 2026-10-09).
+    // FOB-4's full text lists each, and each must still be a 777 flow step, so the list cannot
+    // outlive a rename or a removal unnoticed. The list is written by hand: no test can find a
+    // non-PMDG step nobody listed, because telling one from a PMDG step needs PMDG's file, which
+    // is not in the repository. A new flow step that PMDG's pages lack belongs here and in FOB-4.
+    private static readonly string[] OwnersChoices =
+    {
+        "EPU_STORM_OFF", "EPU_CVR", "CP_TCAS_TEST", "CP_WXR_TEST", "CP_NO_SMOKING", "CP_GASPER",
+        "BS_GND_PWR_1", "BS_GND_PWR_2",
+        "BT_TAXI_LIGHTS", "BT_STORM_OFF", "BTKOF_LANDING_L", "BTKOF_TURNOFF", "BTKOF_STROBE", "BTKOF_XPNDR",
+        "ATKOF_TURNOFF_OFF", "DSC_EFIS_FO_MODE", "DSC_EFIS_FO_RANGE", "SD_ENG_PUMPS",
+        "CP_ATIS", "BS_START_ACARS", "BS_TAXI_CLR", "LD_MISSED", "CP_RESET_CL",
+    };
+
+    [Fact]
+    public void Fob4_lists_the_hand_listed_non_PMDG_steps_the_flows_keep_and_the_two_removed()
+    {
+        string text = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            ClaudeContextBudgetTests.RepoRoot(), "docs", "invariants", "first-officer-boeing.md"));
+        int start = text.IndexOf("## FOB-4", System.StringComparison.Ordinal);
+        string fob4 = text[start..text.IndexOf("## FOB-5", start, System.StringComparison.Ordinal)];
+        var steps = PMDG777FlowDefinitions.Build().SelectMany(f => f.Steps).Select(s => s.Id).ToList();
+
+        foreach (string id in OwnersChoices)
+        {
+            Assert.True(steps.Contains(id), $"{id} is not a 777 flow step any more: update FOB-4's full text");
+            Assert.True(fob4.Contains($"`{id}`", System.StringComparison.Ordinal), $"FOB-4's full text does not list {id}");
+        }
+        foreach (string removed in new[] { "ATKOF_LANDING_OFF", "SD_STORM" })
+        {
+            Assert.DoesNotContain(removed, steps);
+            Assert.True(fob4.Contains($"`{removed}`", System.StringComparison.Ordinal), $"FOB-4's full text does not record {removed}");
+        }
     }
 }

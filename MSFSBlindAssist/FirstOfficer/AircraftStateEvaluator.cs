@@ -108,6 +108,11 @@ public class AircraftStateEvaluator : IFoStateEvaluator
         if (fieldName == Pmdg777GearConfirmation.UpField)   return Pmdg777GearConfirmation.UpValue(GetValue);
         if (fieldName == Pmdg777GearConfirmation.DownField) return Pmdg777GearConfirmation.DownValue(GetValue);
 
+        // Cockpit Prep's power-up check: battery, ADIRU, demand pumps OFF, nav lights and gear
+        // lever DOWN all as their Preflight lines say (Pmdg777PowerUpCheck). Every input is a CDA
+        // field, so it is NaN until the first snapshot.
+        if (fieldName == Pmdg777PowerUpCheck.Field) return Pmdg777PowerUpCheck.Value(GetValue);
+
         if (!CdaReady) return double.NaN;
         try { return _dm?.GetFieldValue(fieldName) ?? double.NaN; }
         catch { return double.NaN; }
@@ -176,6 +181,12 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     public bool AreWingFuelPumpsOn() =>
         IsFuelPump1FwdOn() && IsFuelPump2FwdOn() && IsFuelPump1AftOn() && IsFuelPump2AftOn();
     public bool IsEitherCenterPumpOn() => IsFuelPump1CtrOn() || IsFuelPump2CtrOn();
+    // All six pump switches OFF. NaN-safe (IsPosition): "!IsOn" would read an unread switch as
+    // OFF, and Cockpit Prep's pumps-off step would say "Already set" before the first CDA snapshot.
+    public bool AreAllFuelPumpsOff() =>
+        IsPosition("FUEL_PumpFwd_Sw_0", 0) && IsPosition("FUEL_PumpFwd_Sw_1", 0) &&
+        IsPosition("FUEL_PumpAft_Sw_0", 0) && IsPosition("FUEL_PumpAft_Sw_1", 0) &&
+        IsPosition("FUEL_PumpCtr_Sw_0", 0) && IsPosition("FUEL_PumpCtr_Sw_1", 0);
 
     // Fuel Control: 0=CUTOFF, 1=RUN in PMDG data
     public bool IsEng1FuelControlRun()    => IsOn("ENG_FuelControl_Sw_RUN_0");
@@ -244,6 +255,9 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // -----------------------------------------------------------------------
 
     public int SeatBeltsSelector()   => (int)Math.Round(GetValue("SIGNS_SeatBeltsSelector"));
+    // NaN-safe (IsPosition): SeatBeltsSelector() == 0 would read an unread selector as OFF,
+    // because (int)Math.Round(NaN) is 0, and Cockpit Prep's OFF step would say "Already set".
+    public bool AreSeatBeltsOff()        => IsPosition("SIGNS_SeatBeltsSelector", 0);
     public int NoSmokingSelector()   => (int)Math.Round(GetValue("SIGNS_NoSmokingSelector"));
     // EmerLightsSelector: 0=Off (guard open), 1=Armed, 2=On
     public int EmerLightsSelector()  => (int)Math.Round(GetValue("LTS_EmerLightsSelector"));
@@ -253,13 +267,18 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // -----------------------------------------------------------------------
 
     // FlapsLever: 0=UP, 1=1, 2=5, 3=15, 4=20, 5=25, 6=30 (PMDG positions)
-    public int FlapsLeverPosition()       => (int)Math.Round(GetValue("FCTL_Flaps_Lever"));
-    // NaN-safe: (int)Math.Round(NaN) is 0 under .NET's saturating float->int conversion, so
-    // FlapsLeverPosition() == 0 read "flaps up" before the first CDA snapshot and the After
+    // NaN-safe: (int)Math.Round(NaN) is 0 under .NET's saturating float->int conversion, so a
+    // rounded "== 0" test read "flaps up" before the first CDA snapshot and the After
     // Takeoff flaps steps said "Already set" over data that had not arrived.
     public bool AreFlapsUp()              => IsPosition("FCTL_Flaps_Lever", 0);
-    public bool AreFlapsForTakeoff()      => FlapsLeverPosition() >= 1 && FlapsLeverPosition() <= 3;
-    public bool AreFlapsForLanding()      => FlapsLeverPosition() >= 4;
+    // The read-back lines' own lever ranges — "Flaps: Set for takeoff" (BTKOF_FLAPS) and "Flaps:
+    // Set for landing" (LDG_FLAPS) — shared with the flows' read-only lever checks and their
+    // "Already set", so the three can never disagree. False for an unread lever (NaN). The takeoff
+    // range used to stop at 3 here, as the line once did (Pmdg777TakeoffFlapsTests).
+    public static bool IsTakeoffFlapLever(double lever) => lever >= 1 && lever <= 4;   // flaps 1, 5, 15 or 20
+    public static bool IsLandingFlapLever(double lever) => lever >= 4;                 // flaps 20, 25 or 30
+    public bool AreFlapsForTakeoff()      => IsTakeoffFlapLever(GetValue("FCTL_Flaps_Lever"));
+    public bool AreFlapsForLanding()      => IsLandingFlapLever(GetValue("FCTL_Flaps_Lever"));
 
     // The speed-brake lever is main's L:switch_498_a (0 / 200 / 300 / 400), never the SDK's
     // truncating FCTL_Speedbrake_Lever byte — see Pmdg777SpeedbrakeLever. NaN until read.
@@ -285,7 +304,9 @@ public class AircraftStateEvaluator : IFoStateEvaluator
     // 5="3", 6="4", 7=Max Auto. The DISARM detent used to be missing from this map;
     // only 0 and 1 are used below, and both survived the correction unchanged.
     public int AutobrakeSelector()       => (int)Math.Round(GetValue("BRAKES_AutobrakeSelector"));
-    public bool IsAutobrakRTO()          => AutobrakeSelector() == 0;
+    // NaN-safe (IsPosition): AutobrakeSelector() == 0 read RTO before the first CDA snapshot,
+    // because (int)Math.Round(NaN) is 0, and the RTO steps said "Already set" (AreFlapsUp's fix).
+    public bool IsAutobrakRTO()          => IsPosition("BRAKES_AutobrakeSelector", 0);
     public bool IsAutobrakeOff()         => AutobrakeSelector() == 1;
 
     // ParkingBrake: 0=Off, 1=On
@@ -310,6 +331,10 @@ public class AircraftStateEvaluator : IFoStateEvaluator
 
     public bool IsADIRUOn()              => IsOn("ADIRU_Sw_On");
     public bool IsThrustAsymCompAuto()   => IsOn("FCTL_ThrustAsymComp_Sw_AUTO");
+
+    // Battery, ADIRU, demand pumps OFF, nav lights and gear lever DOWN as their Preflight lines say
+    // (Pmdg777PowerUpCheck); false (never true) while any reading is unknown.
+    public bool IsPowerUpConfirmed()     => IsPosition(Pmdg777PowerUpCheck.Field, 1);
 
     // -----------------------------------------------------------------------
     // EFIS / Baro

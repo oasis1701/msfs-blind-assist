@@ -13,8 +13,9 @@ public class FuelSystemLogicTests
     [Fact] public void BsOk_WingOnCenterOffWithFuel_False()=> Assert.False(FuelSystemLogic.BeforeStartFuelPumpsOk(true, false, true)); // center should be on
     [Fact] public void BsOk_WingOff_False()                => Assert.False(FuelSystemLogic.BeforeStartFuelPumpsOk(false, false, false));
 
-    // ---- SafeRoundToInt: the F13/M1 fix. (int)Math.Round(NaN) is int.MinValue on x64 —
-    //      NaN MUST map to 0 so a pre-snapshot quantity can never pin the refuel floor low. ----
+    // ---- SafeRoundToInt: the F13/M1 fix. (int)Math.Round(NaN) was int.MinValue on x64 before
+    //      .NET 9 and is 0 since (FOB-16) — NaN MUST map to 0 explicitly, so a pre-snapshot
+    //      quantity can never pin the refuel floor low, whatever the runtime's cast does. ----
 
     [Fact] public void SafeRound_Nan_IsZero()      => Assert.Equal(0, FuelSystemLogic.SafeRoundToInt(double.NaN));
     [Fact] public void SafeRound_Normal_Rounds()   => Assert.Equal(5000, FuelSystemLogic.SafeRoundToInt(4999.6));

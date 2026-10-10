@@ -18,10 +18,12 @@ public static class FuelSystemLogic
     public static bool BeforeStartFuelPumpsOk(bool wingOn, bool centerOn, bool hasFuel) =>
         wingOn && (centerOn == hasFuel);
 
-    /// <summary>NaN-safe round-to-int for fuel quantities. (int)Math.Round(double.NaN) is
-    /// int.MinValue on x64 .NET (F13/M1 — the "// NaN → 0" comment at the old
-    /// PMDG737/AircraftStateEvaluator.cs:130 was FALSE). Returning 0 keeps a pre-snapshot
-    /// quantity from pinning the refuel floor to int.MinValue and oscillating the pumps.</summary>
+    /// <summary>NaN-safe round-to-int for fuel quantities. (int)Math.Round(double.NaN) was
+    /// int.MinValue on x64 .NET before .NET 9 (F13/M1 — the "// NaN → 0" comment at the old
+    /// PMDG737/AircraftStateEvaluator.cs:130 was FALSE then) and is 0 since .NET 9's saturating
+    /// float-to-integer conversions (FOB-16). Returning 0 explicitly keeps a pre-snapshot
+    /// quantity from pinning the refuel floor to int.MinValue and oscillating the pumps,
+    /// whatever the runtime's cast does.</summary>
     public static int SafeRoundToInt(double value) =>
         double.IsNaN(value) ? 0 : (int)Math.Round(value);
 }

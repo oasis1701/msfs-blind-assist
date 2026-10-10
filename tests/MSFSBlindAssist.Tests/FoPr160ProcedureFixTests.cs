@@ -180,15 +180,20 @@ public class FoPr160ProcedureFixTests
         var landing = flows.Single(f => f.Id == "LANDING");
 
         // LD_GEAR_DOWN_CHECK (PR #160 follow-up, Task C) is the flow's read-only,
-        // lever-based gear-down confirmation — see Pmdg777LandingGearCheckTests.
-        Assert.Equal(new[] { "LD_SPEEDBRAKE_ARM", "LD_MISSED", "LD_GEAR_DOWN_CHECK" },
+        // lever-based gear-down confirmation — see Pmdg777LandingGearCheckTests. The read-only
+        // flap-lever check before it (2026-10-09) — see Pmdg777FlapLeverCheckTests.
+        Assert.Equal(new[] { "LD_SPEEDBRAKE_ARM", "LD_MISSED", "LD_FLAPS_CHECK", "LD_GEAR_DOWN_CHECK" },
                      landing.Steps.Select(s => s.Id).ToArray());
-        Assert.Contains("LANDING_CL", landing.RelatedChecklistGroupIds);
+        Assert.Equal(new[] { "LANDING", "LANDING_CL" }, landing.RelatedChecklistGroupIds);
 
+        // The arm completes the Landing section's arming line and links the Landing Checklist's
+        // read-only "Speedbrake: ARMED": a skipped arm keeps both out of the latch (FO-6). The
+        // PMDG 737's shape (LD_SPDBRK -> LDA_SPDBRK + LDC_SPDBRK).
         var arm = landing.Steps.Single(s => s.Id == "LD_SPEEDBRAKE_ARM");
         Assert.Equal(SpeedbrakeLeverState.ArmPseudoKey, arm.EventName);
         Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, arm.VerifyFieldName);
-        Assert.Equal("LDG_SPEEDBRAKE", arm.CompletesChecklistItemId);
+        Assert.Equal("LDA_SPEEDBRAKE", arm.CompletesChecklistItemId);
+        Assert.Equal(new[] { "LDA_SPEEDBRAKE", "LDG_SPEEDBRAKE" }, arm.LinkedChecklistItemIds.ToArray());
     }
 
     // The Landing flow must run AFTER Approach Setup and BEFORE After Landing, so the
@@ -201,16 +206,60 @@ public class FoPr160ProcedureFixTests
         Assert.Equal(ids.IndexOf("LANDING") + 1, ids.IndexOf("AFTER_LANDING"));
     }
 
-    // Ticking "Speedbrake: ARMED" on the Landing checklist must actually arm it; the
-    // item verified but never actuated (action: null).
+    // The Landing section (the speedbrake arming) sits right above the Landing Checklist, as
+    // every action group sits above its read-back.
     [Fact]
-    public void Pmdg777_LandingChecklistSpeedbrake_ActuallyArms()
+    public void Pmdg777_LandingSection_SitsRightAboveTheLandingChecklist()
+    {
+        var groups = Pmdg777Checklist.Build();
+        var ids = groups.Select(g => g.Id).ToList();
+        Assert.Equal(ids.IndexOf("APPROACH_CL") + 1, ids.IndexOf("LANDING"));
+        Assert.Equal(ids.IndexOf("LANDING") + 1, ids.IndexOf("LANDING_CL"));
+        Assert.Equal("Landing", groups.Single(g => g.Id == "LANDING").Name);
+    }
+
+    // The Landing section is the PMDG 737's: the arming line, then the Captain's missed-approach
+    // altitude (LDA_MISSED; owner, 2026-10-09), which the Landing flow's LD_MISSED reminder
+    // speaks. A Captain reminder delivers its own line, and the finished flow ticks it.
+    [Fact]
+    public void Pmdg777_LandingSection_ArmsTheSpeedbrakeThenRemindsTheMissedApproachAltitude()
+    {
+        var section = Pmdg777Checklist.Build().Single(g => g.Id == "LANDING");
+        Assert.Equal(new[] { "LDA_SPEEDBRAKE", "LDA_MISSED" }, section.Items.Select(i => i.Id).ToArray());
+
+        var line = section.Items.Single(i => i.Id == "LDA_MISSED");
+        Assert.Equal(ChecklistItemType.CaptainReminder, line.Type);
+        Assert.Equal("Set the missed approach altitude", line.Label);
+
+        var step = Pmdg777Flows.Build().Single(f => f.Id == "LANDING").Steps.Single(s => s.Id == "LD_MISSED");
+        Assert.Equal(FlowStepActionType.CaptainReminder, step.ActionType);
+        Assert.Equal(line.Label, step.ReminderText);
+    }
+
+    // Ticking "Speedbrake: ARM" in the Landing section must actually arm it. Until 2026-10-09
+    // this action sat on the Landing Checklist's "Speedbrake: ARMED" — the one read-back line
+    // with an action on any aircraft (FO-3); it moved with its leave-alone rule.
+    [Fact]
+    public void Pmdg777_LandingGroupSpeedbrake_ActuallyArms()
+    {
+        var item = Pmdg777Checklist.Build()
+            .Single(g => g.Id == "LANDING").Items
+            .Single(i => i.Id == "LDA_SPEEDBRAKE");
+        Assert.Equal(ChecklistItemType.AutoDetectable, item.Type);
+        Assert.NotNull(item.CheckAction);
+        Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, item.StateFieldName);
+    }
+
+    [Fact]
+    public void Pmdg777_LandingChecklistSpeedbrake_VerifiesButDoesNotActuate()
     {
         var item = Pmdg777Checklist.Build()
             .Single(g => g.Id == "LANDING_CL").Items
             .Single(i => i.Id == "LDG_SPEEDBRAKE");
-        Assert.NotNull(item.CheckAction);
+        Assert.Equal(ChecklistItemType.AutoDetectable, item.Type);
         Assert.Equal(Pmdg777SpeedbrakeLever.LeverField, item.StateFieldName);
+        Assert.Null(item.CheckAction);
+        Assert.Null(item.LeaveAloneWhen);   // nothing to refuse: a tick fires no action
     }
 
     // The 777 flow's verified arm is intercepted before the event table is consulted, so it
