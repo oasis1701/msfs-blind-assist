@@ -197,9 +197,11 @@ public static class PMDG777FlowDefinitions
             // 2026-10-09). The sign goes ON in Before Start (BS_SEAT_BELTS): the owner's "ON,
             // not the vendor's AUTO" ruling (2026-08-29) is PMDG's Before Start position, and
             // this step applied it here too, as ON, until 2026-10-09. "Already set" only when the
-            // selector reads OFF (AreSeatBeltsOff, NaN-safe).
+            // selector reads OFF (AreSeatBeltsOff, NaN-safe). Verified, as Shutdown's SD_SEAT_BELTS
+            // and Before Start's BS_SEAT_BELTS are: a write that does not take is heard skipped and
+            // PF_SEAT_BELTS stays out of the latch.
             Skip(SW("CP_SEAT_BELTS",   "Seat belts: OFF",           "EVT_OH_FASTEN_BELTS_LIGHT_SWITCH",   0,
-               checklistItemId: "PF_SEAT_BELTS"),
+               "SIGNS_SeatBeltsSelector", v => v < 0.5, "PF_SEAT_BELTS"),
                 s => s.AreSeatBeltsOff()),
             SW("CP_NO_SMOKING",   "No smoking: ON",            "EVT_OH_NO_SMOKING_LIGHT_SWITCH",     2,
                checklistItemId: "PF_NO_SMOKING"),
@@ -224,11 +226,16 @@ public static class PMDG777FlowDefinitions
             // PMDG's Preflight runs "CROSSFEED switches — OFF", then "FUEL PUMP switches — OFF"
             // (FOB-4); the flow had no step for the pumps, so "Fuel pumps: OFF" was latched over
             // pumps nobody checked. Shutdown's six-pump write, wing pumps before centre pumps
-            // (FOB-12: the centre falling edge must see the wing pumps already off).
-            Skip(Multi("CP_FUEL_PUMPS_OFF", "Fuel pumps: OFF", "PF_FUEL_PUMPS_OFF",
+            // (FOB-12: the centre falling edge must see the wing pumps already off). Verified on
+            // the LAST pump written, the right centre pump (FUEL_PumpCtr_Sw_1): a Multi step reads
+            // its field once, after its last write, so a sequence cut short or a last write that did
+            // not take is heard skipped and PF_FUEL_PUMPS_OFF stays out of the latch. The first five
+            // pumps are not read back.
+            Skip(Verify(Multi("CP_FUEL_PUMPS_OFF", "Fuel pumps: OFF", "PF_FUEL_PUMPS_OFF",
                 ("EVT_OH_FUEL_PUMP_1_FORWARD", 0), ("EVT_OH_FUEL_PUMP_2_FORWARD", 0),
                 ("EVT_OH_FUEL_PUMP_1_AFT", 0),     ("EVT_OH_FUEL_PUMP_2_AFT", 0),
                 ("EVT_OH_FUEL_PUMP_L_CENTER", 0),  ("EVT_OH_FUEL_PUMP_R_CENTER", 0)),
+                "FUEL_PumpCtr_Sw_1", v => v < 0.5),
                 s => s.AreAllFuelPumpsOff()),
             SW("CP_WING_ANTI_ICE","Wing anti-ice: AUTO",       "EVT_OH_ICE_WING_ANTIICE",            1,
                checklistItemId: "PF_WING_ANTI_ICE"),
@@ -965,6 +972,18 @@ public static class PMDG777FlowDefinitions
     private static FlowStep<AircraftStateEvaluator> Skip(FlowStep<AircraftStateEvaluator> step, Func<AircraftStateEvaluator, bool> cond)
     {
         step.SkipCondition = cond;
+        return step;
+    }
+
+    // Reads a field back after the step's write: FlowManager waits 600 ms, then fails the step
+    // ("State verification failed": heard skipped, its lines out of the latch) unless `cond` holds.
+    // A Multi step is verified once, after its LAST write, so name the field of the last switch it
+    // writes. (SW takes the same pair as arguments; SD_FC_CUTOFF sets them by hand.)
+    private static FlowStep<AircraftStateEvaluator> Verify(FlowStep<AircraftStateEvaluator> step,
+        string field, Func<double, bool> cond)
+    {
+        step.VerifyFieldName = field;
+        step.VerifyCondition = cond;
         return step;
     }
 

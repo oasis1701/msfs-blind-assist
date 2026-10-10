@@ -200,6 +200,28 @@ public class Pmdg777FlowOrderingTests
         Assert.False(step.SkipCondition!(new AircraftStateEvaluator()));
     }
 
+    // The write is verified, as Shutdown's identical OFF write (SD_SEAT_BELTS) is: FlowManager reads
+    // the selector 600 ms after the write, and a write that did not take is heard skipped and keeps
+    // "Seat Belts selector: OFF" (PF_SEAT_BELTS) out of the latch. The two steps agree on the field
+    // and on what counts as OFF, at every selector position and over an unread selector.
+    [Fact]
+    public void CockpitPrepFlow_verifies_the_seat_belt_write_as_Shutdown_does()
+    {
+        var step = Step("COCKPIT_PREP", "CP_SEAT_BELTS");
+        var shutdown = Step("SHUTDOWN", "SD_SEAT_BELTS");
+
+        Assert.Equal("SIGNS_SeatBeltsSelector", step.VerifyFieldName);
+        Assert.Equal(shutdown.VerifyFieldName, step.VerifyFieldName);
+        Assert.NotNull(step.VerifyCondition);
+        foreach (double selector in new[] { SeatBeltsOff, SeatBeltsAuto, SeatBeltsOn, double.NaN })
+            Assert.Equal(shutdown.VerifyCondition!(selector), step.VerifyCondition!(selector));
+        Assert.True(step.VerifyCondition!(SeatBeltsOff));
+        Assert.False(step.VerifyCondition!(SeatBeltsAuto));
+        Assert.False(step.VerifyCondition!(SeatBeltsOn));
+        Assert.False(step.VerifyCondition!(double.NaN), "an unread selector is not verified OFF");
+        Assert.Equal(new[] { "PF_SEAT_BELTS" }, step.LinkedChecklistItemIds.ToArray());
+    }
+
     [Fact]
     public void PreflightSeatBeltItem_requires_OFF()
     {
@@ -552,11 +574,12 @@ public class Pmdg777FlowOrderingTests
     }
 
     // =====================================================================
-    // 8. Flows tick their checklist, made honest (2026-10-09)
+    // 8. Every line a finished flow latches has a step behind it (2026-10-09; FO-6, FO-7, FO-8)
     //
-    // A finished flow ticks and latches every line of its groups, so every line the First
-    // Officer can read or act on has a step behind it: a write that links it, or a read-only
-    // check. Each new step sits where its line sits in the procedure.
+    // A finished flow ticks and latches every line of its groups (FO-7), so every line the First
+    // Officer can read or act on has a step behind it: a write that links it (FO-6), or a
+    // read-only check. A step that fails is heard skipped and keeps its lines out of the latch
+    // (FO-6, FO-8). Each new step sits where its line sits in the procedure.
     // =====================================================================
 
     [Fact]
@@ -647,7 +670,7 @@ public class Pmdg777FlowOrderingTests
     }
 
     // The steps and Captain reminders with no line on PMDG's pages that the flows KEEP as the
-    // owner's choices (checked against every procedure page of B777_Checklist.xml, 2026-10-09).
+    // owner's choices (checked by hand against the procedure pages of B777_Checklist.xml, 2026-10-09).
     // FOB-4's full text lists each, and each must still be a 777 flow step, so the list cannot
     // outlive a rename or a removal unnoticed. The list is written by hand: no test can find a
     // non-PMDG step nobody listed, because telling one from a PMDG step needs PMDG's file, which

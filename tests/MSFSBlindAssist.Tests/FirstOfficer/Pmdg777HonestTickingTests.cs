@@ -7,12 +7,15 @@ using MSFSBlindAssist.FirstOfficer.Models;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// PMDG 777 flows tick their checklist, made honest (2026-10-09). A finished flow ticks and
-/// latches every line of its groups (FO-7), so a line the First Officer can read or act on needs a
-/// step behind it, or it is latched over whatever the aircraft reads. These lines had none; each now
-/// gets a write of its own (the seat-belt sign ON, autobrake RTO, a RECALL press, the six fuel pumps
+/// The 777's new writes behind latched lines (2026-10-09). A finished flow ticks and latches every
+/// line of its groups (FO-7), so a line the First Officer can read or act on needs a step behind it,
+/// or it is latched over whatever the aircraft reads. These lines had none; each now gets a write of
+/// its own (the seat-belt sign ON in Before Start, autobrake RTO, a RECALL press, the six fuel pumps
 /// OFF; "Already set" when the aircraft is there), linked to the lines it delivers (FO-6), so a
-/// failed write is heard skipped and its lines stay open.
+/// failed write is heard skipped and its lines stay open (FO-8 frees them to follow their
+/// switches). A write with a state to read back verifies it: the seat-belt selector (Cockpit Prep's
+/// OFF write too, pinned in Pmdg777FlowOrderingTests), the autobrake selector and the last fuel pump
+/// written. The two RECALL presses are momentary and have no state to read.
 /// </summary>
 public class Pmdg777HonestTickingTests
 {
@@ -79,6 +82,24 @@ public class Pmdg777HonestTickingTests
         }, step.MultiActions.ToArray());
         Assert.Equal(new[] { "PF_FUEL_PUMPS_OFF" }, step.LinkedChecklistItemIds.ToArray());
         Assert.False(step.SkipCondition!(new AircraftStateEvaluator()));
+    }
+
+    // A Multi step verifies once, after its last write (FlowManager reads the field 600 ms later), so
+    // the field is the LAST pump written: the right centre pump, FUEL_PumpCtr_Sw_1 in the SDK struct
+    // (the 777 definition pairs it with EVT_OH_FUEL_PUMP_R_CENTER). A sequence cut short, or a last
+    // write that did not take, is then heard skipped and keeps PF_FUEL_PUMPS_OFF out of the latch.
+    // Only that pump is read back; the first five are not.
+    [Fact]
+    public void Cockpit_prep_verifies_the_last_fuel_pump_it_writes()
+    {
+        var step = Step("COCKPIT_PREP", "CP_FUEL_PUMPS_OFF");
+
+        Assert.Equal("EVT_OH_FUEL_PUMP_R_CENTER", step.MultiActions[^1].EventName);
+        Assert.Equal("FUEL_PumpCtr_Sw_1", step.VerifyFieldName);
+        Assert.NotNull(step.VerifyCondition);
+        Assert.True(step.VerifyCondition!(0));
+        Assert.False(step.VerifyCondition!(1));
+        Assert.False(step.VerifyCondition!(double.NaN), "an unread pump is not verified OFF");
     }
 
     // An unread pump is not OFF: before the first CDA snapshot the step must not say "Already set".

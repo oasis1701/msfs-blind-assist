@@ -23,9 +23,14 @@ namespace MSFSBlindAssist.Tests;
 /// </summary>
 public class Pmdg777FlowRunTests
 {
+    // TickedByFlow: the ids of the lines ticked when the flow's last step ended, BEFORE the finishing
+    // latch (Groups and Latched() show the state after it). The latch ticks every line of the flow's
+    // groups that no skipped step names, whether or not a step delivers it, so only this snapshot
+    // shows which lines the steps themselves tick (FO-6).
     internal sealed record Run(List<string> Speech, string[] Unfinished,
         List<ChecklistGroup<AircraftActionExecutor, AircraftStateEvaluator>> Groups,
-        ChecklistManager<AircraftActionExecutor, AircraftStateEvaluator> Checklist)
+        ChecklistManager<AircraftActionExecutor, AircraftStateEvaluator> Checklist,
+        string[] TickedByFlow)
     {
         public ChecklistItem<AircraftActionExecutor, AircraftStateEvaluator> Line(string groupId, string itemId) =>
             Groups.Single(g => g.Id == groupId).Items.Single(i => i.Id == itemId);
@@ -80,9 +85,11 @@ public class Pmdg777FlowRunTests
         }
 
         var unfinished = flows.UnfinishedChecklistItemIds.OrderBy(x => x, StringComparer.Ordinal).ToArray();
+        var tickedByFlow = groups.SelectMany(g => g.Items).Where(i => i.IsChecked)
+            .Select(i => i.Id).OrderBy(x => x, StringComparer.Ordinal).ToArray();
         foreach (var groupId in flow.CompletionGroupIds(id => groups.Any(g => g.Id == id)))
             checklist.MarkGroupComplete(groupId, flows.UnfinishedChecklistItemIds);
-        return new Run(speech.All.ToList(), unfinished, groups, checklist);
+        return new Run(speech.All.ToList(), unfinished, groups, checklist, tickedByFlow);
     }
 
     // ---- Landing: the arming is the Landing section's, the read-back only reads the lever ------
@@ -94,6 +101,9 @@ public class Pmdg777FlowRunTests
 
         Assert.Contains("Already set: Speedbrake: ARM", run.Speech);
         Assert.Empty(run.Unfinished);
+        // The step ITSELF ticked both lines, before the finishing latch (which would tick them
+        // anyway): it completes the Landing section's arming line and links the read-back's.
+        Assert.Equal(new[] { "LDA_SPEEDBRAKE", "LDG_SPEEDBRAKE" }, run.TickedByFlow);
         foreach (var (group, id) in new[] { ("LANDING", "LDA_SPEEDBRAKE"), ("LANDING_CL", "LDG_SPEEDBRAKE") })
         {
             Assert.True(run.Line(group, id).IsChecked, id);
