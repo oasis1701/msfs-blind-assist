@@ -686,6 +686,37 @@ public class ClaudeRulesHookTests : IDisposable
     }
 
     [Fact]
+    public void Diff_of_a_repository_wide_change_stays_within_the_budget()
+    {
+        // A diff touching every file matches every rule file. Naming each one not shown by its absolute path took 12,432
+        // characters (measured 2026-10-10), past what Claude Code shows in full; the hook then names the rules folder
+        // once and the files by name, and every rule file is still shown or named.
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff --name-only",
+            BashResponse(string.Join("\n", ClaudeContextBudgetTests.RepoFiles()) + "\n"))));
+
+        Assert.NotNull(output);
+        string context = output.Value.GetProperty("additionalContext").GetString()!;
+        Assert.InRange(context.Length, 1, 9_000);
+        AssertEachRuleFileShownOrNamed(context, ClaudeContextBudgetTests.RepoRoot(),
+            ClaudeContextBudgetTests.RuleFiles().Select(rf => Path.GetFileName(rf.Path)).ToArray());
+    }
+
+    [Fact]
+    public void Diff_shows_rule_files_in_name_order()
+    {
+        // CCT-5: whole rule files come in name order, whatever order the diff names their code in.
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff --name-only",
+            BashResponse(".github/workflows/release.yml\n.claude/hooks/rules-hook.ps1\n"))));
+
+        Assert.NotNull(output);
+        string context = output.Value.GetProperty("additionalContext").GetString()!;
+        int tooling = context.IndexOf(RuleBody("claude-tooling.md"), StringComparison.Ordinal);
+        int updates = context.IndexOf(RuleBody("updates.md"), StringComparison.Ordinal);
+        Assert.True(tooling >= 0 && updates >= 0, "claude-tooling.md and updates.md should both be shown in full");
+        Assert.True(tooling < updates, "claude-tooling.md should come before updates.md");
+    }
+
+    [Fact]
     public void Diff_adds_nothing_new_on_a_repeat()
     {
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
@@ -1040,15 +1071,21 @@ public class ClaudeRulesHookTests : IDisposable
         return path;
     }
 
-    /// <summary>Every listed rule file is either shown in full (its whole body is in the context) or named by its
-    /// absolute path for Claude to Read, and at least one is shown in full.</summary>
+    /// <summary>Every listed rule file is either shown in full (its whole body is in the context) or named for Claude to
+    /// Read: by its absolute path, or, when those would not fit, by name in the not-shown line that names the rules
+    /// folder once. At least one is shown in full.</summary>
     private static void AssertEachRuleFileShownOrNamed(string context, string root, params string[] ruleFiles)
     {
         int shown = 0;
+        string folder = Path.Combine(root, ".claude", "rules");
+        int notShown = context.IndexOf("Not shown in full", StringComparison.Ordinal);
         foreach (string ruleFile in ruleFiles)
         {
             if (context.Contains(RuleBody(ruleFile), StringComparison.Ordinal)) { shown++; continue; }
-            Assert.Contains(Path.Combine(root, ".claude", "rules", ruleFile), context);
+            if (context.Contains(Path.Combine(folder, ruleFile), StringComparison.Ordinal)) continue;
+            Assert.True(notShown >= 0 && context.IndexOf(folder, notShown, StringComparison.Ordinal) >= 0
+                && Regex.IsMatch(context[notShown..], @"(?<![\w-])" + Regex.Escape(ruleFile)),
+                $"{ruleFile} is neither shown in full nor named to Read");
         }
         Assert.True(shown > 0, "no rule file was shown in full");
     }
