@@ -48,7 +48,7 @@ from what the design assumed, and both corrections are recorded in the spec and 
 | L2 | **CONFIRMED.** AUTO actively drives the sign. | With the lamp off, setting position `1` (AUTO) — engines running, gear down — re-lit the sign by itself. That is what would undo a bare toggle, and why the position write must come first. |
 | L3 | **CONFIRMED, both halves.** | Read: `A:LIGHT NAV` = 1 while `L:A32NX_LIGHTS_NAV_LOGO` = 0. Write: the shipped two-operand RPN drove both lights off and back on. |
 | L4 | **CONFIRMED from the aircraft's own code.** `Status = 13`. | `sd.js` — the same bundle that consumes `A32NX_ECAM_SD_CURRENT_PAGE_INDEX` — defines `Eng 0, Bleed 1, Press 2, ElecAC 3, ElecDC 4, Hyd 5, Apu 6, Cond 7, Door 8, Wheel 9, Fctl 10, Fuel 11, Crz 12, Status 13, CB 14`. ⚠ A LIVE read is **not** a reliable check here: a written index is reclaimed by the aircraft's auto-SD logic within seconds (measured: 13 written, read back as 9/Wheel). Verify from the bundle, not the screen. |
-| L5 | **CONFIRMED, and WORSE than documented.** | `L:LIGHTING_LANDING_2` read `0` with the lights **on** AND `0` with them **off** — it is frozen, never written by this airframe. Because the A320's `BT_LANDING_LT` accepts `0` as "ON", the unported profile does not merely fail to tick: it reports **"Landing lights: ON" permanently, including when they are off** — a false positive on a before-takeoff checklist. |
+| L5 | **CONFIRMED, and WORSE than documented.** | `L:LIGHTING_LANDING_2` read `0` with the lights **on** AND `0` with them **off** — it is frozen, never written by this airframe. Because the A320's `BT_LANDING_LT` (since 2026-10-09 the Line-up flow's `LU_LANDING_LT`) accepts `0` as "ON", the unported profile does not merely fail to tick: it reports **"Landing lights: ON" permanently, including when they are off** — a false positive on a before-takeoff checklist. |
 | L6 | **CONFIRMED.** | `A32NX_SPEEDS_LANDING_CONF3` read `0.0` with CONF FULL selected and flipped to **`1.0`** the moment CONF 3 was selected on the MCDU in flight — so the L:var delivers AND tracks the selection, which is the whole contract the registration fix depends on. The schedule's other inputs read **F 172 / S 203 / GD 250 kt** with VFEN 240 and the flap handle at 0 — genuine widebody figures (an A320 reads roughly 131/160/200), so the tape self-scales and the speed-driven schedule transfers without a numeric change. |
 | L7 | **CONFIRMED — all seven events exercised.** | Baro, both sides: `FCU_EFIS_L_BARO_PULL` took `KOHLSMAN SETTING STD:1` 0→1 and `_PUSH` returned it 1→0; the `_R_` pair did the same to `STD:2`. **PULL = STD on the A330, same polarity as the A32NX.** FCU: `FCU_SPD_PULL` cleared the managed dot and `FCU_SPD_PUSH` restored it; `FCU_HDG_PUSH` left `A32NX_FMA_LATERAL_ARMED` = 1 (NAV armed). Both sides restored to QNH. |
 | L8 | **NOT RUN.** | Needs a full cold-and-dark cycle. |
@@ -109,11 +109,13 @@ up (the three leg variables are inherited from the A32NX, not measured on the A3
 **Observation to report:** with a SimBrief plan loaded, if the flaps do not move after "Flaps:
 takeoff setting", that action line still shows done (the write is not verified).
 
-**Expected, not a defect: flows complete their read-back** (owner decision 2026-10-06,
-[FOA-8](invariants/first-officer-airbus.md#foa-8)). Four read-backs show complete, every line
-ticked, as soon as their flow finishes: the **Before Start Checklist** after the Before Start
-flow, the **After Start Checklist** after After Start, the **Approach Checklist** after Approach
-and the **After Landing Checklist** after After Landing. Ticking a line there to confirm it
+**Expected, not a defect: flows complete their read-back** (owner decision 2026-10-06, made
+honest 2026-10-09, [FOA-8](invariants/first-officer-airbus.md#foa-8)). Six read-backs show
+complete as soon as their flow finishes: the **Before Start Checklist** after the Before Start
+flow, the **After Start Checklist** after After Start, the **Taxi Checklist** after Taxi, the
+**Line-up Checklist** after Line-up, the **Approach Checklist** after Approach and the **After
+Landing Checklist** after After Landing; a line the First Officer can read ticks only if a step of
+the flow delivered it. Ticking a line there to confirm it
 un-ticks it ("Windows: CLOSED: unchecked") and re-opens that list, so its self-ticking
 lines follow the aircraft again. For L12, judge "Rudder trim: NEUTRAL" before After Start runs,
 or after such an untick: right after the flow it reads ticked whatever the trim is when the
@@ -122,3 +124,16 @@ unticked and following the trim). When After Landing runs, the After Landing Che
 "Radar and predictive windshear: OFF" ticks only after both the radar and the predictive
 windshear read OFF (the flow's "Radar and predictive windshear: OFF" check), never on the radar
 step alone.
+
+## Part D — Taxi and Line-up flows (2026-10-09)
+
+The A330 has the A32NX's two new flows ([FOA-8](invariants/first-officer-airbus.md#foa-8)). In the
+Part B walk, run them as in Part H of
+[docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md), its two small
+changes at the end included: Taxi (ending with the takeoff config test), then Line-up, and read
+each checklist after its flow. Once, put the flaps back to 0 and run Taxi again: the memo check
+times out after 5 s and is skipped aloud, the aircraft's own config warning sounds after the config
+test, yet "T.O config: NORMAL" still ticks (the press ticks it, never the result) and "Flaps
+setting: SET" waits for your tick. On this airframe also check that Line-up's "Landing lights: ON"
+turns the single ganged landing-light switch on and its line ticks (`LU_LANDING_LT` reads
+`LIGHT LANDING:2`, L5 above), and that Electrical Power Up says "Already set: Gear lever: DOWN".

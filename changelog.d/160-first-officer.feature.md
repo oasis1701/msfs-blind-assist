@@ -33,6 +33,10 @@ reads, such as the flap setting or the TCAS mode. The flows are the same on all 
 engine start waits for the engine to be running, the takeoff flaps come from SimBrief (with
 a reminder to you when no plan is loaded), the ECAM pages and the cockpit lighting are set
 at the same points, the FCU altitude is pushed, and the gear is confirmed up after takeoff.
+Taxi and Line-up each have their own flow, just above their checklist: Taxi, run while you taxi,
+arms the autobrake, sets the weather radar and transponder, calls the cabin, checks that the
+spoilers, flaps and seat belts are set and ends with the takeoff config test, and Line-up, run
+when you are cleared onto the runway, sets TCAS and the takeoff lights.
 Shutdown has a "TCAS: STANDBY" line and Securing an "External power: OFF" line.
 
 While the window is open, it also switches the landing lights at 10,000 feet, and you
