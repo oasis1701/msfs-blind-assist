@@ -3,10 +3,6 @@
 Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/landing-rollout.md`, which Claude Code loads when it reads matching code. Background: [taxi-guidance.md](../taxi-guidance.md).
 The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
 
-## ROL-1
-
-- The manual landing assist hands its rollout tone to taxi guidance SILENTLY on the frame taxi guidance leaves a landing rollout for anything but a route reload or a stop (`LandingFlareAssistManager.StepTaxiHandover`, fed from `StateChanged` and yielded after the taxi position update) — never by widening `IsLandingExitTaxiSteering` to count backtracking, which ended the two-tone overlap but let the assist's interrupting "Rollout guidance complete" cut "End of runway … Turn around" off within a frame. A Taxi Stop is not a takeover (the assist is independent of taxi guidance), and the assist's own speed or turn end is QUEUED whenever taxi guidance ran during the rollout, so it never clips a countdown, "Runway vacated…" or closure sentence. → [taxi-guidance.md](../taxi-guidance.md)
-
 ## ROL-2
 
 - Rollout handoff to Taxiing must require `turnBegun || (atTaxiSpeed && nearExit)` — do NOT relax `nearExit` back to a speed-only condition; a long runway drops below 30kt thousands of feet before the planned exit. `turnBegun` itself is not just the heading/speed pair below — see the SIGNED/proximity-gated bullet further down this group. → [taxi-guidance.md](../taxi-guidance.md)
@@ -27,10 +23,6 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 
 - Every path that lands in `Taxiing` with a null `_route` must STOP the steering tone first — `UpdatePosition` early-returns before touching the tone in that state, so a tone left sounding holds its last pan forever (CYYZ: the backtrack handoff's "Runway vacated." branch left it panned hard right for 68 s; its sibling no-connection branch had always stopped it). Say what happened too: a status query there answers "No route loaded.", which is true but reads as a fault unless the pilot was told. → [taxi-guidance.md](../taxi-guidance.md)
 
-## ROL-7
-
-- A go-around or touch-and-go after touchdown ENDS landing-exit guidance and keeps the plan (`Services/LandingExitGoAround`): while KNOWN airborne the rollout is held (`HoldsRollout`, unknown counts as the ground, never the other way); MainForm arms a one-shot check on the liftoff edge while landing-exit guidance runs (`Arms`: `LandingRollout` or landing-exit `Taxiing`), a touchdown stops it as a bounce, and after `ConfirmMs` (5 s) a FRESH position read decides (`Ends`), never the 1 Hz cache — the liftoff handoff's pattern, token-guarded against a response landing after a touchdown, disconnect or aircraft switch. It stops guidance as `StopGuidance` does, re-arms the planner (`RearmAfterGoAround`) and speaks ONE sentence ("Exit guidance off, plan kept."). Before it, nothing ended the rollout at liftoff: exit callouts spoke into the climb-out and the next approach had no exit guidance. → [taxi-guidance.md](../taxi-guidance.md)
-
 ## ROL-8
 
 - `TryEarlyExitHandoff` must fire ONLY for High-speed exits (angle <50°) — never restore it for Normal/End exits; it caused a 90°-exit tone to hard-pan 300ft early with no verbal cue (EGNX miss). → [taxi-guidance.md](../taxi-guidance.md)
@@ -42,10 +34,6 @@ The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" point
 ## ROL-10
 
 - The post-high-speed-exit `ExitBearingTrue` pan floor has exactly TWO sanctioned releases — the opposite-SIGN test while still on the pavement, and an unconditional release once the aircraft is laterally CLEAR of the runway (`IsWithinRolloutRunwayLaterally`) — never magnitude-vs-floor, and never restore the unconditional `Math.Max/Min` clamp: magnitude gating reintroduces the wrong-side hard-pan reversal seen at CYVR, while the lateral gate is a position test that cannot (the distortion the floor bridges only exists on the pavement, and the CYVR case is still caught earlier by the sign test). → [taxi-guidance.md](../taxi-guidance.md)
-
-## ROL-11
-
-- Both override guards (apron forward-direction AND `apronAngle > currentAngleFwd`) are required together in the implicit-exit shallow-angle override — dropping either regresses the exit bearing. → [taxi-guidance.md](../taxi-guidance.md)
 
 ## ROL-12
 
@@ -76,12 +64,6 @@ Corrected 2026-10-08: the one-line form said such an exit is "skipped for the ro
 ## ROL-18
 
 - The rollout announce latches (e.g. `_rolloutApproach900Announced`) must be reset at all four reset sites (`BeginLandingRollout`, `BeginLandingRolloutNoGraph`, `EnterRunwayEndCountdown`, `StopGuidance`). → [taxi-guidance.md](../taxi-guidance.md)
-
-## ROL-19
-
-- **THE DERIVED-CONSTANT TRIPWIRE — re-derive all five (`RolloutExitGate.VacatedShortAlongTrackFeet`, `EarlyVacateMaxPassedFeet`, `HandoffReachDefaultHalfWidthM`, `RunwayClearMarginM` and `DefaultRunwayWidthFeet`, the rows of the tripwire table in docs/taxi-guidance.md) before changing any tolerance in the runway/rollout area, and say so in the commit message.** `RolloutExitGate.VacatedShortAlongTrackFeet` (350), `EarlyVacateMaxPassedFeet` (1400) and the 25 m corridor clamp (`HandoffReachDefaultHalfWidthM`) are all arithmetic consequences of the exact **5 m** gap between the exit-node corridor (`halfWidth + HandoffReachMarginM`, 15 m) and the pavement boundary (`halfWidth + RunwayClearMarginM`, 10 m) — `halfWidth` cancels; `RunwayClearMarginM` (10) is the codebase's ONE definition of "off the runway"; `DefaultRunwayWidthFeet` (200) is a fallback half-width DIFFERENT from `RunwayShape.DefaultHalfWidthMeters` (75 ft). Nothing in the code, the compiler or the tests links them, there is no compile error when they stop being derived, and the boundary tests keep passing because they pin the OLD arithmetic. `RunwayVacateResolver` keeps its own 75 ft copy and its own `SameRunwayLateralM` (30.0), calibrated against the residual scatter `TaxiGraph.SnapStartToRunwayCenterline` leaves — so loosening the snap invalidates that too. Since 2026-09 the same constants also drive the landing-exit branch measurement and the off-pavement alert: `RunwayClearMarginM` is `ExitBranch`'s clear line (every measured branch ends there, so it decides every measured exit's angle), `PavementMap` reads `RunwayClearMarginM` for a runway (its taxiway reach is `PavementTolerance.ForWidthFeet`, the off-route detector's own), and `TurnWindowFeetFor` falls back to `DefaultRunwayWidthFeet` and is floored at `TurnNowFeet` (150 ft); `RunwayAxis.CorridorMarginMetres` IS `HandoffReachMarginM` (linked 2026-09-26, no longer a copy). A change there also moves exit angles, the off-pavement line and the turn window: re-run `tools/LandingExitSweep` too. → [taxi-guidance.md](../taxi-guidance.md)
-
-Corrected 2026-10-08: "all five" now names its five, the rows of the tripwire table in docs/taxi-guidance.md, in both this text and the one-line form. Evidence: the five constants in `RolloutExitGate.cs`.
 
 ## ROL-20
 

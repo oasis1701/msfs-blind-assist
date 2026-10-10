@@ -1,0 +1,10 @@
+# Taxi graph: stand bridges and named edges — rules in full
+
+Each section is the complete text of one rule. Its one-line form, under the same ID, is in `.claude/rules/taxi-graph.md`, which Claude Code loads when it reads matching code. Background: [taxi-guidance.md](../taxi-guidance.md).
+The text is verbatim from CLAUDE.md as of `1f37801a`; a trailing "→ doc" pointer is the original's. Cross-references such as "the bullet below", "above" or "under Core" point at CLAUDE.md's old single list, whose rules now live in several files: search `docs/invariants/` for the rule's key name to find it.
+
+## RTE-2
+
+- A stand stranded in its own connected component is bridged into the main taxi network at Build time (`BridgeOrphanParkingIslands`) ONLY when the island is made entirely of navdata stand lead-ins (`P` rows), a stand STUB, within 50 m. The bridge is never on or across runway pavement, never onto a hold-short node or a stand, and never onto another stand's lead-in chain (`MarkStandLeadInChains`, 100 m cap). Bridges carry `TaxiGraph.StandBridgePathType`, never `P`. Nothing that decides how an aircraft leaves a runway follows a bridge: the landing-exit corridor, the exit extension and the post-landing vacate walk all skip `TaxiGraph.IsStandBridge` edges. Stand and hold-short identity come from the navdata endpoint types recorded in `Build`, never from `TaxiNode.Type`, which the parking pass stamps by proximity in any component. Never widen this to islands that carry a taxiway: bridging whole networks at their closest pair drew routes along active runways with no hold-short (VIJU), put a crossing hold on the runway (ENAT), flipped a landing exit's side (UKHH) and turned a 272 m hop into a 4.7 km loop (KPRC). → [taxi-guidance.md](../taxi-guidance.md) (Split 2026-10 from one bullet, words unchanged: its route-reachability, start grace window, stand naming and refused-`LoadRoute` sentences are now RTE-26 to RTE-29.)
+
+Moved 2026-10-10 from taxi-routing.md (split for the rule budget).
