@@ -31,7 +31,7 @@
          to BUILD, i.e. unrunnable, on main. Self-contained (RunwayShape + Database.Models, both
          already linked), so pinning it here adds no further dependency. -->
     <Compile Include="..\..\MSFSBlindAssist\Navigation\RunwayPavement.cs"        Link="Linked\RunwayPavement.cs" />
-    <!-- TaxiGraph logs a relocated start row through Utils/Logging/Log (CLAUDE.md: every diagnostic
+    <!-- TaxiGraph logs a relocated start row through Utils/Logging/Log ([CORE-15]: every diagnostic
          write goes through it), so the logger and its path authority ride along. -->
     <Compile Include="..\..\MSFSBlindAssist\Utils\Logging\*.cs"                  Link="Linked\Logging\%(Filename)%(Extension)" />
     <Compile Include="..\..\MSFSBlindAssist\Utils\AppLogs.cs"                     Link="Linked\AppLogs.cs" />

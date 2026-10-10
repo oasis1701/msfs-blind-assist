@@ -235,9 +235,8 @@ public sealed class SayIntentionsService
             // {"heading": 93.92, "point": {"lon": …, "lat": …}} with no name anywhere.
             // ReadTaxiPathPoints below reads point.lat/point.lon and the entry's own
             // heading, all three GEOMETRY, and nothing else — see its doc
-            // comment for why nothing else in an entry is ever touched. See the
-            // rewritten CLAUDE.md invariant ("SayIntentions integration") and
-            // docs/sayintentions.md for the hazard this boundary exists to prevent.
+            // comment for why nothing else in an entry is ever touched. See [SI-9]
+            // and docs/sayintentions.md for the hazard this boundary exists to prevent.
             if (currentFlight is JsonElement flight)
             {
                 context.Origin = CleanIcao(GetString(flight, "flight_origin"));
@@ -354,8 +353,7 @@ public sealed class SayIntentionsService
     /// 2026-07 accepted exactly those members, which is exactly what a geometry
     /// array would plausibly gain on a schema change, and ~200 point ids would have
     /// become "taxiway names" that silently replaced the clearance-derived route.
-    /// Names come from the airport's own TaxiGraph, never from SI — see the
-    /// rewritten CLAUDE.md invariant under "SayIntentions integration".
+    /// Names come from the airport's own TaxiGraph, never from SI — see [SI-9].
     ///
     /// An entry missing either coordinate is skipped, not defaulted to (0,0) — a
     /// zeroed point would snap to nothing useful at best and to some other
@@ -401,8 +399,9 @@ public sealed class SayIntentionsService
     /// <c>flight_details.timestamp</c> is a raw Unix epoch in SECONDS, fractional —
     /// e.g. <c>1785357161.40969</c> — NOT an ISO/"Zulu" string like <c>stamp_zulu</c>
     /// elsewhere in this file (see ParseZuluStamp). Confirmed against ten real wire
-    /// captures (LSZH and EGLL, 2026-07-29/30,
-    /// docs/superpowers/plans/2026-07-29-geometry-captures/): every one carried this
+    /// captures (LSZH and EGLL, 2026-07-29/30, kept locally and not in the repository;
+    /// docs/sayintentions.md, "Reading `taxi_path`: coordinates only, never names",
+    /// records them): every one carried this
     /// shape, each within a few seconds of the file's own last-write time. Feeding
     /// that raw numeric string through a date-string parser (the shape used for
     /// stamp_zulu) never matches any recognized format and always fails, which would

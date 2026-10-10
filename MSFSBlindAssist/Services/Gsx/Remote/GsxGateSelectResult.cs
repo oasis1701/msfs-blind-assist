@@ -4,8 +4,8 @@ namespace MSFSBlindAssist.Services.Gsx.Remote;
 
 /// <summary>
 /// The interpreted outcome of a <c>gate.select</c> request — see
-/// docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
-/// §"GsxRemoteGateSelector.cs — REVISED" and the vendor guide §8.14.
+/// docs/gsx.md, "Developer internals" (its <c>gate.select</c> bullets), [GSX-4] and [GSX-5],
+/// and the vendor guide §8.14.
 /// </summary>
 public enum GsxGateSelectOutcome
 {

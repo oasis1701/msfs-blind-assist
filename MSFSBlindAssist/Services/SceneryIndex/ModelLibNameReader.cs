@@ -9,7 +9,7 @@ namespace MSFSBlindAssist.Services.SceneryIndex;
 /// fragments MSFS embeds beside each model in a modelLib/objects BGL (verified on three packages).
 /// Attribute order varies by developer, so each tag is scanned for both attributes independently.
 /// Each tag is decoded as UTF-8 — the XML's own encoding — and the name's XML entities are
-/// unescaped, so a name reaches the classifier, and a pilot, as its author wrote it (review SI-8).
+/// unescaped, so a name reaches the classifier, and a pilot, as its author wrote it ([SUR-6]).
 /// None of the 26,098 names in 35 installed airport packages needed either (measured 2026-09-22).
 /// </summary>
 public static class ModelLibNameReader

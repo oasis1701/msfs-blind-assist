@@ -3,13 +3,13 @@
 Builds the MSFS Blind Assist Release configuration and verifies the output.
 
 .DESCRIPTION
-Runs the SOLUTION build (never the bare csproj - see CLAUDE.md: a bare csproj
+Runs the SOLUTION build (never the bare csproj - see [CORE-1]: a bare csproj
 build silently defaults to AnyCPU and writes to a folder the app never runs
 from), then verifies the exe in the actual run path:
 
   MSFSBlindAssist\bin\x64\Release\net10.0-windows\
 
-Also warns about the second CLAUDE.md build trap: a stale win-x64\ RID subtree
+Also warns about the second build trap ([CORE-2]): a stale win-x64\ RID subtree
 that a plain solution build never updates.
 
 LOCAL ONLY: this script never creates git tags or GitHub releases. Publishing
@@ -61,8 +61,8 @@ if ($exeTime -lt $buildStart) {
     Write-Output "Note: outputs were already up to date (no changes since the last Release build), so the timestamp predates this run."
 }
 
-# Stale RID-subtree trap (CLAUDE.md): only an explicit -r win-x64 build writes
-# win-x64\; this plain build never touches it, so if it exists it is now stale.
+# Stale RID-subtree trap ([CORE-2]): with AppendRuntimeIdentifierToOutputPath=false no build
+# writes win-x64\ (only dotnet publish, to win-x64\publish\), so one here predates 2026-08-25.
 $ridDir = Join-Path $outDir 'win-x64'
 if (Test-Path $ridDir) {
     Write-Output "WARNING: a win-x64 subfolder exists at $ridDir and was NOT updated by this build. Launch the exe from $outDir, not from the win-x64 subfolder."

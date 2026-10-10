@@ -5,13 +5,13 @@
 // which take already-resolved column values (not a DB connection) and are called from
 // GetRunwayDetailedInfo exactly where the original AppendLine calls were.
 //
-// SCOPE — read before assuming these tests guard the CLAUDE.md aliasing invariant: they do
+// SCOPE — read before assuming these tests guard the [EFB-6] aliasing invariant: they do
 // NOT. They pass hard-coded doubles/objects straight to the formatter, so they only pin
 // correct RENDERING (F1 rounding, magnetic-heading subtraction, the "ft"/"°" suffixes, the
 // DBNull-to-blank behavior) given values that are ALREADY correctly resolved. They never open
 // a database and cannot detect a dropped `AS end_heading`/`AS end_altitude`/`AS end_lonx`/
 // `AS end_laty` SQL alias, nor a C# revert from reader["end_heading"] back to the ambiguous
-// bare reader["heading"] — the exact regression the CLAUDE.md invariant ("GetRunwayDetailedInfo
+// bare reader["heading"] — the exact regression the [EFB-6] invariant ("GetRunwayDetailedInfo
 // must explicitly alias the runway_end columns") is about.
 //
 // That SQL-level regression is covered separately, by a synthetic-SQLite fixture test against

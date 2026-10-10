@@ -291,8 +291,8 @@ public sealed class DockingGuidanceManager : IDisposable
                 // to the stop distance (KBOS E13: datum 31.5 m > 25 m circle → reposition).
                 // Strict NO-OP for deice pads, navdata-only gates (no StopLatitude / threshold),
                 // VDGS-reliant gates whose stop sits beyond the threshold (EDDF A66), and any
-                // datum already inside its circle. See
-                // docs/superpowers/specs/2026-06-13-gsx-vdgs-nose-stop-datum-handoff.md.
+                // datum already inside its circle. See [DCK-18] and docs/gsx.md, "Developer
+                // internals" (its GSX static occupancy clamp bullet).
                 if (_gate.StopLatitude.HasValue && _gate.StopLongitude.HasValue
                     && _gate.GateDistanceThreshold.HasValue && _gate.IsDeiceArea != true)
                 {

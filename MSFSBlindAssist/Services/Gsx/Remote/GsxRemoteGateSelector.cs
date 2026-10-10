@@ -20,9 +20,9 @@ public delegate Task<GsxFrame?> GsxCommandSender(string verb, object? args);
 /// <c>GsxMenuClassifier</c> (762 lines of leaf-vs-category heuristics): neither is on this
 /// path any more — there is no live menu state to traverse or classify.
 ///
-/// See docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
-/// §"GsxRemoteGateSelector.cs — REVISED" for the full design rationale, and the vendor
-/// guide §8.14 for the wire shapes.
+/// See docs/gsx.md, "Developer internals" (its <c>gate.select</c> bullets) and [GSX-1],
+/// [GSX-2] and [GSX-6] for the design rationale, and the vendor guide §8.14 for the wire
+/// shapes.
 /// </summary>
 public sealed class GsxRemoteGateSelector
 {
@@ -113,7 +113,7 @@ public sealed class GsxRemoteGateSelector
 
         if (!capabilities.Contains(GateCapability, StringComparer.Ordinal))
         {
-            // Names the CAPABILITY, never a version number. CLAUDE.md and docs/gsx.md both hold
+            // Names the CAPABILITY, never a version number. [GSX-7] and docs/gsx.md both hold
             // that 4.0.8 appears in exactly two user-facing strings and nowhere else in code
             // (GsxService.ReasonNoRemoteApi and GsxGateSelectAnnouncer.GateSelectUnsupportedMessage)
             // so that a future floor change is a two-site edit rather than a hunt -- and those two

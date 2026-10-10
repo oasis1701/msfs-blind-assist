@@ -232,7 +232,7 @@ public class TaxiMathUtilsTests
         Assert.Equal("slight right", TaxiGuidanceManager.ComputeTurnVerbalFromHeading(10, 350));
     }
 
-    // CLAUDE.md invariant: verbal turn direction must come from the aircraft's
+    // [STR-16]: verbal turn direction must come from the aircraft's
     // CURRENT heading, never the route's static (on-axis-assumed) TurnDirection
     // -- because off-axis, the real turn can be the OPPOSITE sign from what a
     // naive "next segment bearing minus current segment bearing" calc would say.
@@ -247,7 +247,7 @@ public class TaxiMathUtilsTests
     //   |turn| = 150 >= 60 -> "left".
     // The heading-based result ("left") is the OPPOSITE direction from the
     // static route-direction guess ("slight right") -- exactly the scenario
-    // CLAUDE.md's invariant exists to get right: the tone (heading-driven)
+    // [STR-16] exists to get right: the tone (heading-driven)
     // and the verbal callout must agree, so the verbal must be computed the
     // same way the tone is, not from the route's static intent.
     [Fact]

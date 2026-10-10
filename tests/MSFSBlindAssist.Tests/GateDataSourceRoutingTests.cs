@@ -6,8 +6,8 @@
 // dedicated test suites for what they DO with the data once GateDataSource has decided to call
 // them; this file does not re-test their internals, only that GateDataSource calls the right one.
 //
-// See docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
-// §"1. The API only knows the CURRENT airport" and §"GateDataSource — routing only".
+// See [DCK-6] (the API path needs a matching handlerData.airport.icao: the API only knows
+// the CURRENT airport) and docs/gsx.md, "Developer internals" (gate-list source selection).
 
 using System.Text.Json;
 using MSFSBlindAssist.Database;

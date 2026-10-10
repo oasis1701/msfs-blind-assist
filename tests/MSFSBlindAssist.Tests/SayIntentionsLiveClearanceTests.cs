@@ -256,7 +256,7 @@ public class SayIntentionsLiveClearanceTests
 //     anywhere in it. It IS read now (TheTaxiPathIsReadAsCoordinatesOnly, below):
 //     point.lat/point.lon only, into TaxiPathPoints. See SayIntentionsService's
 //     reader for why no other member of an entry is ever touched, and the
-//     rewritten CLAUDE.md invariant for the hazard that guards against widening it.
+//     rewritten [SI-9] invariant for the hazard that guards against widening it.
 public class SayIntentionsLiveFlightJsonTests : IDisposable
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), "si-live-" + Guid.NewGuid().ToString("N"));
@@ -372,7 +372,7 @@ public class SayIntentionsLiveFlightJsonTests : IDisposable
     // flight_details.timestamp turned out NOT to be the ISO-ish "stamp_zulu" shape
     // used elsewhere in this same file (see ParseZuluStamp) — it is a raw Unix
     // epoch in SECONDS, fractional. Confirmed against ten real wire captures (LSZH
-    // and EGLL, 2026-07-29/30, docs/superpowers/plans/2026-07-29-geometry-captures/),
+    // and EGLL, 2026-07-29/30; kept locally, not in the repository),
     // every one of which carried it in exactly this shape, a few seconds ahead of
     // the file's own last-write time. 1785357161.40969 is drawn verbatim from one of
     // those captures; independently verified against it as 2026-07-29T20:32:41.409Z

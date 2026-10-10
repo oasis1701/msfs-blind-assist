@@ -1,8 +1,7 @@
 // Characterization tests for MSFSBlindAssist.Forms.DisplayText.SetPreserveCaret — the
 // common-prefix/suffix minimal-edit + caret-line restore used to update read-only status
-// TextBoxes without throwing the screen reader's reading position back to line 0 (CLAUDE.md
-// "Diagnostic Logs" area isn't relevant here; this is the ECAM/ISIS/status-box refresh path
-// documented in Forms/DisplayText.cs).
+// TextBoxes without throwing the screen reader's reading position back to line 0 (this is
+// the ECAM/ISIS/status-box refresh path documented in Forms/DisplayText.cs).
 //
 // A plain WinForms TextBox constructs and responds to GetLineFromCharIndex /
 // GetFirstCharIndexFromLine fine in this xUnit host (net10.0-windows, no message pump
