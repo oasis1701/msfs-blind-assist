@@ -529,7 +529,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Runway turn-off lights. The real A320 has ONE RWY TURN OFF switch
         // (SWITCH_OVHD_EXTLT_RWY, A320_NEO_INTERIOR.xml:1880-1895). It reads state from
         // LIGHT TAXI:2 (left) and LIGHT TAXI:3 (right) and fires the indexed K:2:TAXI_LIGHTS_SET
-        // RPN: "INDEX VALUE (>K:2:TAXI_LIGHTS_SET)" (from FBW_Switch_LeftClick_MouseWheel template,
+        // RPN: "<value> <index> r (>K:2:TAXI_LIGHTS_SET)" (from FBW_Switch_LeftClick_MouseWheel template,
         // Airbus.xml:250-255). MSFSBA exposes a single combo (this "LIGHT TAXI:2" entry, displayed
         // as "Runway Turn Off Lights") whose set drives BOTH sides via that same RPN — see the
         // "LIGHT TAXI:2" branch in MainForm's lighting block. LIGHT TAXI:2 is the representative

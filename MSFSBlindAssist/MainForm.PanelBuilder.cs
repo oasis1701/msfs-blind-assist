@@ -785,8 +785,8 @@ public partial class MainForm
                                 // TOGGLE_EVENT=TAXI_LIGHTS_SET) so LIGHT TAXI:2/3, FBW presets, and
                                 // the EFB all stay in sync. The old ELECTRICAL_CIRCUIT_TOGGLE path
                                 // drove circuits 21/22 directly, which desynchronised LIGHT TAXI:2/3.
-                                // RPN form 2026-07: the FBW template-verbatim
-                                // "<value> <index> r (>K:2:TAXI_LIGHTS_SET)" — live-verified to set
+                                // RPN form 2026-07: verbatim the nose-light form in FBW's
+                                // A320_NEO_INTERIOR.xml, "<value> <index> r (>K:2:TAXI_LIGHTS_SET)" — live-verified to set
                                 // exactly the right index. (RPN "r" swaps the top two stack entries,
                                 // so this is stack-equivalent to "<index> <value>"; an earlier test
                                 // that read the index-first form as a no-op had some other confound

@@ -8,7 +8,7 @@ namespace MSFSBlindAssist.Forms.FBWA380;
 /// <summary>
 /// Accessible A380X Electronic Checklist (ECL) window — the live normal checklists
 /// and active abnormal procedures, read from the E/WD Coherent view via
-/// <see cref="CoherentEclClient"/> (no injection) and driven by the real ECP
+/// <see cref="CoherentEWDClient"/> (no injection) and driven by the real ECP
 /// push-button L-vars.
 ///
 /// The ECL is driven by the FWS, not by DOM clicks, so the actions are the cockpit
