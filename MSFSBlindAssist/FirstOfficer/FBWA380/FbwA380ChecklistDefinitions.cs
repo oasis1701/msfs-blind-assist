@@ -28,10 +28,11 @@ public static class FbwA380ChecklistDefinitions
     /// <summary>The 20 A380 fuel pumps the flows switch together: the 8 feed pumps (tanks 1-4, main and
     /// standby) and the 12 transfer pumps (outer, mid, inner, trim). The one list the checklist's three
     /// pump lines detect (Before Start "Fuel pumps: ON", Parking "Fuel pumps: OFF" and the Parking
-    /// read-back's "Fuel pumps: OFF"): the first is a line's own field, the rest its other fields. The
-    /// two action lines still write the pumps by literal key, which the write-key registration scan
+    /// read-back's "Fuel pumps: OFF"): the first is a line's own field, the rest its other fields. Read
+    /// only, so no caller can change what those three lines detect by editing one name. The two action
+    /// lines still write the pumps by literal key, which the write-key registration scan
     /// (FbwA380FoKeyRegistrationTests) reads from this file's source.</summary>
-    internal static readonly string[] FuelPumps =
+    internal static readonly IReadOnlyList<string> FuelPumps = Array.AsReadOnly(new[]
     {
         "FUELPUMP_FEEDTK1_MAIN", "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
         "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
@@ -40,7 +41,7 @@ public static class FbwA380ChecklistDefinitions
         "FUELPUMP_OUTR_R", "FUELPUMP_MID_R_FWD", "FUELPUMP_MID_R_AFT",
         "FUELPUMP_INR_R_FWD", "FUELPUMP_INR_R_AFT",
         "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R",
-    };
+    });
 
     public static List<Group> Build() => new()
     {
@@ -266,7 +267,7 @@ public static class FbwA380ChecklistDefinitions
             // ALL 20 pumps ON — 8 feed + 12 transfer (outer/mid/inner/trim). Transfer pumps are
             // manual on/off pumps like the feed pumps; FBW's POWERUP_CONFIG preset turns all 20
             // on and A380 SOP runs the transfer pumps continuously (see the flow's BS_FUELPUMPS).
-            Multi("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ON", FuelPumps[0], v => v > 0.5, FuelPumps[1..],
+            Multi("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ON", FuelPumps[0], v => v > 0.5, FuelPumps.Skip(1).ToArray(),
                 async (e, _) =>
                 {
                     await e.Set("FUELPUMP_FEEDTK1_MAIN", 1);
@@ -576,7 +577,7 @@ public static class FbwA380ChecklistDefinitions
             Auto("PK_APUBLEED", "PARKING", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
             // ALL 20 pumps OFF — mirrors POWERUP_CONFIG_OFF (feed + transfer).
-            Multi("PK_FUELPUMPS_OFF", "PARKING", "Fuel pumps: OFF", FuelPumps[0], v => v < 0.5, FuelPumps[1..],
+            Multi("PK_FUELPUMPS_OFF", "PARKING", "Fuel pumps: OFF", FuelPumps[0], v => v < 0.5, FuelPumps.Skip(1).ToArray(),
                 async (e, _) =>
                 {
                     await e.Set("FUELPUMP_FEEDTK1_MAIN", 0);
@@ -734,8 +735,8 @@ public static class FbwA380ChecklistDefinitions
             Auto("PKC_ENGINES", "PARKING_CL", "Engines: OFF", "FO_ENGINES_OFF", v => v > 0.5, action: null),
             Auto("PKC_WINGLT", "PARKING_CL", "Wing lights: OFF", "LIGHT_WING", v => v < 0.5, action: null),
             // Every pump the Parking flow switches off: the 8 feed and 12 transfer pumps.
-            Auto("PKC_FUELPUMPS", "PARKING_CL", "Fuel pumps: OFF", FuelPumps[0], v => v < 0.5, FuelPumps[1..],
-                action: null),
+            Auto("PKC_FUELPUMPS", "PARKING_CL", "Fuel pumps: OFF", FuelPumps[0], v => v < 0.5,
+                FuelPumps.Skip(1).ToArray(), action: null),
         }
     };
 

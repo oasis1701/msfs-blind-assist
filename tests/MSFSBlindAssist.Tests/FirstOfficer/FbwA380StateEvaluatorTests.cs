@@ -70,6 +70,16 @@ public class FbwA380StateEvaluatorTests
     }
 
     [Fact]
+    public void The_rudder_trim_field_reaches_SEC_3_when_SEC_1_is_unread()
+    {
+        // The synthetic's own fallback, not only the decoder's: SEC 1 is never seeded (unread, NaN) and SEC 3
+        // carries a valid 0 degrees word, so the field itself must read SEC 3 and answer neutral. A field that
+        // read SEC 1 alone would answer NaN here.
+        var e = With(("A32NX_SEC_3_RUDDER_ACTUAL_POSITION", Word(0b11, 0.0f)));
+        Assert.Equal(1.0, e.GetValue("FO_RUDDER_TRIM_NEUTRAL"));
+    }
+
+    [Fact]
     public void Rudder_trim_falls_back_to_SEC_3_and_is_unknown_without_data()
     {
         // SEC 1 failed, never written or unread: SEC 3 decides, as FlyByWire's warning system does.
