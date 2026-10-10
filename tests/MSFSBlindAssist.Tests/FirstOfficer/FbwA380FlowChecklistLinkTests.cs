@@ -104,7 +104,9 @@ public class FbwA380FlowChecklistLinkTests
         new object[] { "COCKPIT_PREP", "CP_SEATBELT", new[] { "CP_SEATBELT" } },
         new object[] { "COCKPIT_PREP", "CP_WAIT_SB", new[] { "CPC_SEATBELT" } },
         new object[] { "BEFORE_START", "BS_BEACON", new[] { "BS_BEACON", "BSC_BEACON" } },
-        new object[] { "AFTER_START", "AS_RUDDERTRIM", new[] { "AS_RUDDERTRIM", "ASC_RUDDERTRIM" } },
+        // The reset only commands the trim; the read-only check after it completes "Rudder trim: NEUTRAL".
+        new object[] { "AFTER_START", "AS_RUDDERTRIM", new[] { "AS_RUDDERTRIM" } },
+        new object[] { "AFTER_START", "AS_RUDDERTRIM_CHECK", new[] { "ASC_RUDDERTRIM" } },
         new object[] { "TAXI", "TX_AUTOBRAKE", new[] { "TX_AUTOBRAKE", "TXC_MEMO_AUTOBRK" } },
         new object[] { "TAXI", "TX_WXR", new[] { "TX_WXR", "TXC_WXR" } },
         new object[] { "TAXI", "TX_MEMO_CHECK", new[] { "TXC_MEMO_SIGNS", "TXC_MEMO_SPLRS", "TXC_MEMO_FLAPS", "TXC_FLAPS" } },
@@ -129,6 +131,43 @@ public class FbwA380FlowChecklistLinkTests
     {
         var step = FbwA380FlowDefinitions.Build().Single(f => f.Id == flowId).Steps.Single(s => s.Id == stepId);
         Assert.Equal(lines, step.LinkedChecklistItemIds.ToArray());
+    }
+
+    /// <summary>The rest of the link table: every step <see cref="StepLinks"/> does not list completes its
+    /// own action line and nothing else when it is a write with one, and nothing at all otherwise (a write
+    /// in <see cref="WritesWithNoLine"/>, a Captain reminder, a timed wait, an APU AVAIL wait). So a stray
+    /// link on any other step fails here, such as a write's <c>Also</c> naming a read-back line that only a
+    /// later condition makes true (FO-6).</summary>
+    [Fact]
+    public void Every_step_the_table_does_not_list_completes_its_own_line_or_nothing()
+    {
+        var listed = StepLinks().Select(row => ((string)row[0], (string)row[1])).ToHashSet();
+        var problems = new List<string>();
+        int checkedSteps = 0;
+        foreach (var flow in FbwA380FlowDefinitions.Build())
+            foreach (var step in flow.Steps.Where(s => !listed.Contains((flow.Id, s.Id))))
+            {
+                checkedSteps++;
+                var expected = FlowChecklistLinkAudit.IsWrite(step) && !WritesWithNoLine.Contains(step.Id)
+                    ? new[] { step.Id }
+                    : Array.Empty<string>();
+                var actual = step.LinkedChecklistItemIds.ToArray();
+                if (!actual.SequenceEqual(expected))
+                    problems.Add($"{flow.Id}/{step.Id} completes [{string.Join(", ", actual)}], " +
+                                 $"expected [{string.Join(", ", expected)}]");
+            }
+        Assert.True(checkedSteps > 0, "no step outside the table was checked");
+        Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
+    }
+
+    [Fact]
+    public void Every_write_listed_with_no_line_is_still_a_write_step()
+    {
+        var writes = FbwA380FlowDefinitions.Build().SelectMany(f => f.Steps)
+            .Where(s => FlowChecklistLinkAudit.IsWrite(s)).Select(s => s.Id).ToHashSet(StringComparer.Ordinal);
+        var stale = WritesWithNoLine.Where(id => !writes.Contains(id)).OrderBy(id => id, StringComparer.Ordinal).ToList();
+        Assert.True(stale.Count == 0,
+            "No longer a write step in any A380 flow, so drop it from WritesWithNoLine: " + string.Join(", ", stale));
     }
 
     [Fact]

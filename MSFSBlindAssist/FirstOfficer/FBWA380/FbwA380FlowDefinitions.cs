@@ -35,10 +35,10 @@ using Step = Models.FlowStep<FbwA380StateEvaluator>;
 /// - Checklist links (FO-6, FOA-9): every write step completes its own action line (<c>Done</c>) and any
 ///   read-back line it sets (<c>Also</c>); read-only checks (a WaitForField, skipped on timeout, never
 ///   writing) complete the lines only a later condition makes true: the Cockpit Preparation seat-belt
-///   wait, the Taxi memo check, the Line-up packs check, the Landing memo check, the Landing gear-down
-///   check (last in its flow, FO-13) and the Parking engines-off wait. A skipped step keeps its lines out
-///   of the end-of-flow latch (FO-8), and FbwA380FlowChecklistLinkTests pins that no readable or action
-///   line in a latched group lacks a step.
+///   wait, the After Start rudder-trim check, the Taxi memo check, the Line-up packs check, the Landing
+///   memo check, the Landing gear-down check (last in its flow, FO-13) and the Parking engines-off wait.
+///   A skipped step keeps its lines out of the end-of-flow latch (FO-8), and
+///   FbwA380FlowChecklistLinkTests pins that no readable or action line in a latched group lacks a step.
 /// </summary>
 public static class FbwA380FlowDefinitions
 {
@@ -281,7 +281,7 @@ public static class FbwA380FlowDefinitions
     private static Flow BuildAfterStart() => new()
     {
         Id = "AFTER_START", Name = "After Start",
-        Description = "Mode NORM, APU off, spoilers armed, taxi light, rudder trim reset.",
+        Description = "Mode NORM, APU off, spoilers armed, taxi light, rudder trim reset and neutral check.",
         RelatedChecklistGroupIds = new[] { "AFTER_START_CL" },
         Steps = new()
         {
@@ -306,10 +306,15 @@ public static class FbwA380FlowDefinitions
                 ("A32NX_OVHD_INTLT_ANN", 2)), "AS_COCKPITLT"),
             Done(Skip(SW("AS_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)), "AS_SPOILERS_ARM"),
-            // Completes the After Start Checklist's "Rudder trim: NEUTRAL" too (FO-6): a failed
-            // reset must keep ASC_RUDDERTRIM out of the latch as well.
-            Also(Done(SW("AS_RUDDERTRIM", "Rudder trim: RESET", "A32NX_RUDDER_TRIM_RESET", 1), "AS_RUDDERTRIM"),
-                "ASC_RUDDERTRIM"),
+            // The reset completes its own line only. The After Start Checklist's "Rudder trim: NEUTRAL" reads
+            // the SEC trim word, which the reset only commands: the trim gets there at its own rate, and only
+            // if the SEC and the actuator respond. So the read-only check right after it completes that line
+            // (FO-6): 20 s (the gear check's figure; the reset's time to neutral is not measured), skipped
+            // aloud on timeout, never writes. A trim that never reads neutral leaves the line open.
+            Done(SW("AS_RUDDERTRIM", "Rudder trim: RESET", "A32NX_RUDDER_TRIM_RESET", 1), "AS_RUDDERTRIM"),
+            Done(Skip(WaitForField("AS_RUDDERTRIM_CHECK", "Rudder trim: NEUTRAL", "FO_RUDDER_TRIM_NEUTRAL",
+                    v => v > 0.5, 20),
+                s => s.GetValue("FO_RUDDER_TRIM_NEUTRAL") > 0.5), "ASC_RUDDERTRIM"),
             Captain("AS_FLAPS", "Flaps: set for takeoff"),
         }
     };

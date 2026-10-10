@@ -10,8 +10,8 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// <summary>
 /// The A380 read-only checks (FO-6, FO-13, FOA-9): each waits on its lines' own field, is skipped aloud
 /// on timeout, never writes, and is the one step that completes those lines. The behaviour half, on a
-/// real FlowManager, is <see cref="FbwA380TaxiMemoCheckBehaviourTests"/> and
-/// <see cref="FbwA380LandingChecksBehaviourTests"/>.
+/// real FlowManager, is <see cref="FbwA380RudderTrimCheckBehaviourTests"/>,
+/// <see cref="FbwA380TaxiMemoCheckBehaviourTests"/> and <see cref="FbwA380LandingChecksBehaviourTests"/>.
 /// </summary>
 public class FbwA380ReadOnlyCheckTests
 {
@@ -22,6 +22,8 @@ public class FbwA380ReadOnlyCheckTests
     {
         new object[] { "COCKPIT_PREP", "CP_WAIT_SB", "Waiting for seatbelt signs on", "SEATBELT_SIGN_LIGHT", 60,
             new[] { "CPC_SEATBELT" } },
+        new object[] { "AFTER_START", "AS_RUDDERTRIM_CHECK", "Rudder trim: NEUTRAL", "FO_RUDDER_TRIM_NEUTRAL", 20,
+            new[] { "ASC_RUDDERTRIM" } },
         new object[] { "TAXI", "TX_MEMO_CHECK", "Seat belts, ground spoilers and flaps for takeoff", "FO_TAXI_MEMO_OK", 5,
             new[] { "TXC_MEMO_SIGNS", "TXC_MEMO_SPLRS", "TXC_MEMO_FLAPS", "TXC_FLAPS" } },
         new object[] { "LINEUP", "LU_PACKS_CHECK", "Packs 1 and 2: ON", "FO_PACKS_ON", 5, new[] { "LUC_PACKS" } },
@@ -52,10 +54,14 @@ public class FbwA380ReadOnlyCheckTests
         Assert.Equal(lines, step.LinkedChecklistItemIds.ToArray());
     }
 
-    // The four new checks, and what the aircraft shows when it already agrees (the check's field reads 1)
-    // and when it does not (the field reads 0). Written out here, not read from the evaluator under test.
+    // The new checks, and what the aircraft shows when it already agrees (the check's field reads 1) and
+    // when it does not (the field reads 0). Written out here, not read from the evaluator under test.
     private static readonly (string FlowId, string StepId, (string Key, double Value)[] Agrees, (string Key, double Value)[] Disagrees)[] NewChecks =
     {
+        // The SEC 1 rudder-trim word (ARINC 429, normal operation): 0 degrees is neutral, 2 is not.
+        ("AFTER_START", "AS_RUDDERTRIM_CHECK",
+            new[] { ("A32NX_SEC_1_RUDDER_ACTUAL_POSITION", FcuValuePhrasesTests.Word(0b11, 0.0f)) },
+            new[] { ("A32NX_SEC_1_RUDDER_ACTUAL_POSITION", FcuValuePhrasesTests.Word(0b11, 2.0f)) }),
         ("TAXI", "TX_MEMO_CHECK",
             new[] { ("SEATBELT_SIGN_LIGHT", 1.0), ("A32NX_SPOILERS_ARMED", 1.0), ("A32NX_FLAPS_HANDLE_INDEX", 2.0) },
             new[] { ("SEATBELT_SIGN_LIGHT", 1.0), ("A32NX_SPOILERS_ARMED", 1.0), ("A32NX_FLAPS_HANDLE_INDEX", 0.0) }),
@@ -126,17 +132,30 @@ public class FbwA380ReadOnlyCheckTests
             w => w.Event.StartsWith("A32NX_OVHD_COND_PACK_", StringComparison.Ordinal));
     }
 
+    // A line that only a later condition makes true is completed by the read-only wait that reads it,
+    // never by the write before it (FO-6): one step completes each of these lines, and it is a check.
     [Fact]
     public void Each_checked_line_is_completed_by_its_check_alone()
     {
-        var lines = new[] { "CPC_SEATBELT", "TXC_MEMO_SIGNS", "TXC_MEMO_SPLRS", "TXC_MEMO_FLAPS", "TXC_FLAPS",
-                            "LUC_PACKS", "LDC_SEATBELT", "LDC_FLAPS", "LDC_GEAR" };
-        var owners = FbwA380FlowDefinitions.Build().SelectMany(f => f.Steps)
-            .SelectMany(s => s.LinkedChecklistItemIds.Where(lines.Contains).Select(l => (Line: l, Step: s.Id)))
+        var lines = new[] { "CPC_SEATBELT", "ASC_RUDDERTRIM", "TXC_MEMO_SIGNS", "TXC_MEMO_SPLRS", "TXC_MEMO_FLAPS",
+                            "TXC_FLAPS", "LUC_PACKS", "LDC_SEATBELT", "LDC_FLAPS", "LDC_GEAR" };
+        var steps = FbwA380FlowDefinitions.Build().SelectMany(f => f.Steps).ToList();
+        var owners = steps
+            .SelectMany(s => s.LinkedChecklistItemIds.Where(lines.Contains).Select(l => (Line: l, Step: s)))
             .GroupBy(x => x.Line)
             .ToDictionary(g => g.Key, g => g.Select(x => x.Step).ToList());
         foreach (var line in lines)
-            Assert.True(owners.TryGetValue(line, out var steps) && steps.Count == 1,
-                $"{line} is completed by [{string.Join(", ", owners.GetValueOrDefault(line) ?? new List<string>())}]");
+        {
+            var by = owners.GetValueOrDefault(line) ?? new List<FlowStep<FbwA380StateEvaluator>>();
+            Assert.True(by.Count == 1 && by[0].ActionType == FlowStepActionType.WaitForCondition,
+                $"{line} is completed by [{string.Join(", ", by.Select(s => $"{s.Id} ({s.ActionType})"))}]");
+        }
+    }
+
+    [Fact]
+    public void The_rudder_trim_check_comes_right_after_the_reset()
+    {
+        var ids = Steps("AFTER_START").Select(s => s.Id).ToList();
+        Assert.Equal(ids.IndexOf("AS_RUDDERTRIM") + 1, ids.IndexOf("AS_RUDDERTRIM_CHECK"));
     }
 }

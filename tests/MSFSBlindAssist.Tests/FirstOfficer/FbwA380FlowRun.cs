@@ -80,15 +80,22 @@ internal static class FbwA380FlowRun
     /// window's one-second timer does the whole time it is open: every line that already reads right is
     /// ticked when the flow starts. Without it nothing is ticked before the run, so a line ticked after it
     /// was ticked by a step. The snapshots are taken before the run and after it; the latch that follows
-    /// ticks every line the run did not exclude and so cannot show what a step did.</summary>
+    /// ticks every line the run did not exclude and so cannot show what a step did. With
+    /// <paramref name="waitTimeoutSeconds"/> every read-only check in the short flow (a WaitForCondition
+    /// step) gives up after that many seconds instead of its own timeout: the same timeout path without
+    /// the wait, as Pmdg777FlowRunTests does. Only this run's own copies of the steps change; the real
+    /// timeouts are pinned on the real steps by FbwA380ReadOnlyCheckTests.</summary>
     public static async Task<RunResult> Run(string flowId, string groupId, string[] stepIds,
-        (string Key, double Value)[] seed, bool windowHasTicked)
+        (string Key, double Value)[] seed, bool windowHasTicked, int? waitTimeoutSeconds = null)
     {
         var state = new FbwA380StateEvaluator();
         state.SetSimConnect(SeededSimConnectCache.ConnectedWith(seed));
         var executor = new FbwA380ActionExecutor();
         var groups = FbwA380ChecklistDefinitions.Build();
         var flow = Subset(flowId, stepIds);
+        if (waitTimeoutSeconds is int timeout)
+            foreach (var step in flow.Steps.Where(s => s.ActionType == FlowStepActionType.WaitForCondition))
+                step.TimeoutSeconds = timeout;
         var speech = new GatedSpeechCapture();
         var checklist = new ChecklistManager<FbwA380ActionExecutor, FbwA380StateEvaluator>(state, executor, groups);
         if (windowHasTicked)

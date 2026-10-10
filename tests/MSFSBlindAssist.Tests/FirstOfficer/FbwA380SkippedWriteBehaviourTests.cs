@@ -20,25 +20,29 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// </summary>
 public sealed class FbwA380SkippedWriteBehaviourTests
 {
+    // Flow, step, the lines it names, and which of those have no state of their own (an action line the
+    // pilot confirms by ticking it). The rudder-trim reset completes only its own line: the read-only check
+    // after it completes "Rudder trim: NEUTRAL" (FbwA380RudderTrimCheckBehaviourTests).
     public static IEnumerable<object[]> Writes() => new[]
     {
-        new object[] { "COCKPIT_PREP", "CP_GEAR", new[] { "CP_GEAR" } },
-        new object[] { "BEFORE_START", "BS_BEACON", new[] { "BS_BEACON", "BSC_BEACON" } },
-        new object[] { "AFTER_START", "AS_RUDDERTRIM", new[] { "AS_RUDDERTRIM", "ASC_RUDDERTRIM" } },
-        new object[] { "TAXI", "TX_WXR", new[] { "TX_WXR", "TXC_WXR" } },
-        new object[] { "APPROACH", "AP_CABIN", new[] { "AP_CABIN" } },
-        new object[] { "SECURE", "SC_BAT_OFF", new[] { "SC_BAT_OFF", "SCC_BAT" } },
+        new object[] { "COCKPIT_PREP", "CP_GEAR", new[] { "CP_GEAR" }, NoStatelessLine },
+        new object[] { "BEFORE_START", "BS_BEACON", new[] { "BS_BEACON", "BSC_BEACON" }, NoStatelessLine },
+        new object[] { "AFTER_START", "AS_RUDDERTRIM", new[] { "AS_RUDDERTRIM" }, new[] { "AS_RUDDERTRIM" } },
+        new object[] { "TAXI", "TX_WXR", new[] { "TX_WXR", "TXC_WXR" }, NoStatelessLine },
+        new object[] { "APPROACH", "AP_CABIN", new[] { "AP_CABIN" }, new[] { "AP_CABIN" } },
+        new object[] { "SECURE", "SC_BAT_OFF", new[] { "SC_BAT_OFF", "SCC_BAT" }, NoStatelessLine },
     };
 
+    private static readonly string[] NoStatelessLine = Array.Empty<string>();
+
     // What the aircraft reads for each step: Wrong, as the failed write left it; Right, once the pilot has
-    // done it. Written out here, not read from the code under test. The rudder-trim line reads the SEC 1
-    // trim word (2 degrees is off neutral); the cabin call is a chime with no state, so it reads nothing.
+    // done it. Written out here, not read from the code under test. The rudder-trim reset and the cabin call
+    // have no state of their own, so they read nothing.
     private static readonly Dictionary<string, ((string Key, double Value)[] Wrong, (string Key, double Value)[] Right)> Readings = new()
     {
         ["CP_GEAR"] = (new[] { ("A32NX_GEAR_HANDLE_POSITION", 0.0) }, new[] { ("A32NX_GEAR_HANDLE_POSITION", 1.0) }),
         ["BS_BEACON"] = (new[] { ("LIGHT_BEACON", 0.0) }, new[] { ("LIGHT_BEACON", 1.0) }),
-        ["AS_RUDDERTRIM"] = (new[] { ("A32NX_SEC_1_RUDDER_ACTUAL_POSITION", Word(0b11, 2.0f)) },
-            new[] { ("A32NX_SEC_1_RUDDER_ACTUAL_POSITION", Word(0b11, 0.0f)) }),
+        ["AS_RUDDERTRIM"] = (Array.Empty<(string Key, double Value)>(), Array.Empty<(string Key, double Value)>()),
         ["TX_WXR"] = (new[] { ("XMLVAR_A320_WeatherRadar_Sys", 0.0) }, new[] { ("XMLVAR_A320_WeatherRadar_Sys", 1.0) }),
         ["AP_CABIN"] = (Array.Empty<(string Key, double Value)>(), Array.Empty<(string Key, double Value)>()),
         ["SC_BAT_OFF"] = (Batteries(1.0), Batteries(0.0)),
@@ -51,13 +55,10 @@ public sealed class FbwA380SkippedWriteBehaviourTests
         ("A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO", value), ("A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO", value),
     };
 
-    // An FBW ARINC 429 word: the one packer the FCU tests already use.
-    private static double Word(uint ssm, float value) => FcuValuePhrasesTests.Word(ssm, value);
-
     [Theory]
     [MemberData(nameof(Writes))]
     public async Task A_skipped_write_leaves_every_line_it_names_unticked_and_free(
-        string flowId, string stepId, string[] lineIds)
+        string flowId, string stepId, string[] lineIds, string[] statelessLineIds)
     {
         var (wrong, right) = Readings[stepId];
         string label = FbwA380FlowDefinitions.Build().Single(f => f.Id == flowId).Steps.Single(s => s.Id == stepId).AnnounceText;
@@ -84,13 +85,17 @@ public sealed class FbwA380SkippedWriteBehaviourTests
         }
 
         // The pilot does it: a line that reads the aircraft ticks itself and joins the latch; a line with no
-        // state of its own (the rudder-trim reset, the cabin call) waits for the pilot's tick.
+        // state of its own (the rudder-trim reset, the cabin call) waits for the pilot's tick. Which is which
+        // is the row's written-out list, and each line's kind is pinned against it.
         r.State.SetSimConnect(SeededSimConnectCache.ConnectedWith(right));
         r.Checklist.EvaluateAutoDetection();
         foreach (var id in lineIds)
         {
             var item = r.Items[id];
-            if (item.IsAutoDetectable)
+            bool hasState = !statelessLineIds.Contains(id);
+            Assert.True(hasState == item.IsAutoDetectable,
+                hasState ? $"{id} should read the aircraft, but has no state field" : $"{id} should have no state of its own");
+            if (hasState)
             {
                 Assert.True(item.IsChecked, $"{id} did not tick itself once the aircraft agreed");
                 Assert.False(item.ExemptFromCompletionLatch, id);
