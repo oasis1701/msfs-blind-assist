@@ -137,10 +137,13 @@ public static class FbwA380FlowDefinitions
             // TCAS TA/RA / TA ONLY / STBY on that page. (b) The "TCAS mode is NOT settable" note in
             // FlyByWireA380Definition.cs (commit cbb2023a5, 2026-06-03) records a live in-flight test that
             // cycled the A32NX pedestal switch var A32NX_SWITCH_TCAS_POSITION 0/1/2 and saw A32NX_TCAS_MODE
-            // stay at 0, so the A380 ignores that switch; the same note says, with no live test recorded,
-            // that the MFD SURV TCAS selection is a dead stub. (c) MSFSBA cannot set the controls in (a)
-            // (A380-4; the "Transponder MODE read-out" note above it in that file). So they are Captain
-            // items, never a write or a check (FOA-9).
+            // stay at 0, so the A380 ignores that switch. The same note says the MFD SURV TCAS selection is
+            // a dead stub; commits 3bbc85b8 and ec3e366c (also 2026-06-03) record a source search ("nothing
+            // subscribes"), not a live test of the MFD page, as the basis for calling its controls dead. The
+            // later "Transponder MODE read-out" note (commit 82c95f1a, 2026-06-04) records the XPDR AUTO/STBY,
+            // ALT RPTG and TCAS alert-level toggles as consumed in-process and reachable only on the MFD SURV
+            // CONTROLS page. (c) MSFSBA cannot set the controls in (a) (A380-4; that same later note). So they
+            // are Captain items, never a write or a check (FOA-9).
             // "TCAS traffic: all" is gone: FlyByWire's source offers NORM / ABV / BLW there, no ALL.
             Captain("CP_ALTRPT", "Altitude reporting: on (MFD SURV page)"),
             Captain("CP_TCASMODE", "TCAS mode: standby (MFD SURV page)"),
