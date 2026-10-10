@@ -14,7 +14,7 @@ public static class AirbusReadbackFormat
 {
     private static readonly CultureInfo Inv = CultureInfo.InvariantCulture;
 
-    private static int? Index(double v, int max)
+    internal static int? Index(double v, int max)
     {
         if (double.IsNaN(v)) return null;
         int i = (int)Math.Round(v);
