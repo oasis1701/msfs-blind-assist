@@ -9,10 +9,11 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 /// <summary>
 /// The FBW A380 flow lines fixed with the 2026-10-09 read-back rebuild (FOA-9): each says what its step
-/// does, and the one surveillance reminder that names a position the A380 does not offer is gone. The
-/// other surveillance reminders stay as Captain items that name the MFD SURV page (owner decision,
-/// 2026-10-09). These tests pin each reminder's wording and kind; they say nothing about whether the
-/// aircraft honours the setting (see the comment above the reminder test).
+/// does, and the one surveillance reminder that names a position FlyByWire's source does not offer on the
+/// A380's MFD SURV page is gone. The other surveillance reminders stay as Captain items that name that
+/// page (owner decision, 2026-10-09). These tests pin each reminder's wording and kind; they say nothing
+/// about whether the aircraft honours the setting (the record is in the note above CP_ALTRPT in
+/// FbwA380FlowDefinitions.cs).
 /// </summary>
 public class FbwA380FlowLineTests
 {
@@ -49,7 +50,7 @@ public class FbwA380FlowLineTests
     }
 
     // FlyByWire's source at 255546cb offers NORM / ABV / BLW for the MFD SURV TCAS traffic selection, so
-    // "all" names a position the A380 does not have.
+    // "all" names a position that source does not offer.
     [Fact]
     public void TCAS_traffic_all_is_gone()
     {
@@ -73,14 +74,7 @@ public class FbwA380FlowLineTests
         new object[] { "PARKING", "PK_TCAS", "TCAS mode: standby (MFD SURV page)" },
     };
 
-    // What is known about these settings, and what is not (FOA-9):
-    //  - FlyByWire's source at 255546cb models XPDR AUTO/STBY, ALT RPTG and TCAS TA/RA / TA ONLY / STBY on
-    //    the MFD SURV CONTROLS page;
-    //  - the repo's own note (FlyByWireA380Definition.cs, written after a live in-flight test on
-    //    2026-06-03) records the TCAS selection on that page as a dead stub;
-    //  - MSFSBA cannot set them (A380-4).
-    // So they stay Captain reminders that name the page (owner decision, 2026-10-09): never a write, never
-    // a check, and this test does not claim the page's TCAS selection does anything.
+    // The record behind these reminders: the note above CP_ALTRPT in FbwA380FlowDefinitions.cs (FOA-9).
     [Theory]
     [MemberData(nameof(SurveillanceReminders))]
     public void The_surveillance_reminders_stay_Captain_items_with_their_wording(string flowId, string id, string label)
