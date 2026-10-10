@@ -87,7 +87,7 @@ Screen readers already announce every UI control interaction, so the app never r
 
 ### Everywhere else
 
-- [CORE-16] Area rules (`.claude/rules/`) load only when Read, Edit or Write opens a file in the session's own checkout, never through `cat`, `sed`, `rg` or Grep: Read a file before changing it. `.claude/hooks/rules-hook.ps1` adds them for a subagent's own worktree and for `git diff`, and refuses shell writes to covered files. Full: docs/invariants/core.md#core-16
+- [CORE-16] Read a file with the Read tool before changing it: area rules load with Read, Edit or Write, and with a lone `cat`, `head`, `tail` or `sed -n` of one file, never with grep, a pipe, a redirect, PowerShell, Grep, Glob or a shell write. `rules-hook.ps1` covers subagent worktrees and `git diff`, and refuses shell writes to covered files. Full: docs/invariants/core.md#core-16
 - [CORE-11] In `SimConnectManager`, set `IsConnected = true` BEFORE calling `SetupDataDefinitions()`: `StartContinuousMonitoring()` guards on it. Full: docs/invariants/core.md#core-11
 - [CORE-12] Never use `TreeView` directly in a form: use `NativeAccessibleTreeView` (the .NET UIA tree gives NVDA a wrong order); a tree with detail data populates its children lazily on `BeforeExpand`. Full: docs/invariants/core.md#core-12
 - [CORE-13] Never hardcode the FBWBA/MSFSBlindAssist database path: reads go through `DatabasePathResolver.ResolveExistingDatabasePath`, writes through `GetCanonicalDatabasePath`. Full: docs/invariants/core.md#core-13
