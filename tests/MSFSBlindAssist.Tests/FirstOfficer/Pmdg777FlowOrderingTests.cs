@@ -649,17 +649,20 @@ public class Pmdg777FlowOrderingTests
     // The steps and Captain reminders with no line on PMDG's pages that the flows KEEP as the
     // owner's choices (checked against every procedure page of B777_Checklist.xml, 2026-10-09).
     // FOB-4's full text lists each, and each must still be a 777 flow step, so the list cannot
-    // outlive a rename or a removal unnoticed.
+    // outlive a rename or a removal unnoticed. The list is written by hand: no test can find a
+    // non-PMDG step nobody listed, because telling one from a PMDG step needs PMDG's file, which
+    // is not in the repository. A new flow step that PMDG's pages lack belongs here and in FOB-4.
     private static readonly string[] OwnersChoices =
     {
         "EPU_STORM_OFF", "EPU_CVR", "CP_TCAS_TEST", "CP_WXR_TEST", "CP_NO_SMOKING", "CP_GASPER",
+        "BS_GND_PWR_1", "BS_GND_PWR_2",
         "BT_TAXI_LIGHTS", "BT_STORM_OFF", "BTKOF_LANDING_L", "BTKOF_TURNOFF", "BTKOF_STROBE", "BTKOF_XPNDR",
         "ATKOF_TURNOFF_OFF", "DSC_EFIS_FO_MODE", "DSC_EFIS_FO_RANGE", "SD_ENG_PUMPS",
         "CP_ATIS", "BS_START_ACARS", "BS_TAXI_CLR", "LD_MISSED", "CP_RESET_CL",
     };
 
     [Fact]
-    public void Fob4_lists_every_non_PMDG_step_the_flows_keep_and_the_two_removed()
+    public void Fob4_lists_the_hand_listed_non_PMDG_steps_the_flows_keep_and_the_two_removed()
     {
         string text = System.IO.File.ReadAllText(System.IO.Path.Combine(
             ClaudeContextBudgetTests.RepoRoot(), "docs", "invariants", "first-officer-boeing.md"));
