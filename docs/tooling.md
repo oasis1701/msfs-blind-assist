@@ -148,7 +148,7 @@ the same transport, a standalone Node project, or an early bootstrap script it s
 | `atccom_*.js` | A380X_MFD | navigate + scrape ATC COM / CPDLC / D-ATIS (UIService nav) |
 | `surv_*.js`, `radio_diag.js` | A380X_MFD | SURV RadioButtonGroup enabled/disabled + click-actuation |
 | `btv_dist.js`, `rudtrim.js` | A380X_MFD | ARINC429 / plain-metres readouts |
-| `pack_write.js`, `ovhd_flip*.js`, `ovhd_check.js` | A380X_MFD | **write-stick test** (proved the "computed-output" PBs are settable — #103, [A380-23] in [invariants/a380-systems.md](invariants/a380-systems.md)) |
+| `pack_write.js`, `ovhd_flip*.js`, `ovhd_check.js` | A380X_MFD | **write-stick test** (proved the "computed-output" PBs are settable — #103, [A380-23] in [invariants/a380-panels.md](invariants/a380-panels.md)) |
 | `efb_*.js`, `metric*.js` | `- EFB` | flyPad scrape/navigate, persistent-store metric toggle |
 | `ecl_*.js` | A380X_EWD | ECL `.EclLine` scrape |
 | `uisvc.js`, `sec_read.js` | A380X_MFD | resolve `uiService`; SEC plans read like the active plan |

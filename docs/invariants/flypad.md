@@ -75,4 +75,4 @@ Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad a
 
 - `A.DOOR_NAMES` (flyPad agent) must be kept in sync with each aircraft def's `_doorDefs` table — the flyPad label and the spoken door name must agree. → [a380x.md](../a380x.md)
 
-Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`, its A320 and A380 entries) and each definition's `_doorDefs`; its mirrors in `a32nx-fenix.md` and `a380-systems.md` point here now. The ID keeps its prefix.
+Moved 2026-10-09 from docs/invariants/a380-coherent.md: the code is the flyPad agent's (`coherent-flypad-agent.js`, its A320 and A380 entries) and each definition's `_doorDefs`; its mirrors in `a32nx-fenix.md` and `a380-systems.md` point here now (since 2026-10-10 one mirror, in `flypad-call-sites.md`, over both definitions). The ID keeps its prefix.
