@@ -1,19 +1,15 @@
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using MSFSBlindAssist.FirstOfficer;
-using MSFSBlindAssist.FirstOfficer.FBWA380;
-using MSFSBlindAssist.FirstOfficer.Models;
 using Xunit;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 /// <summary>
 /// The Taxi flow's takeoff-memo check on the real step, evaluator and checklists and a real FlowManager
-/// (FOA-9). The evaluator reads a seeded cache that counts as connected; the executor has no sim. Its own
-/// class and file, so xUnit runs it in parallel with <see cref="FbwA380LandingChecksBehaviourTests"/> (a
-/// timed-out check takes 5 s).
+/// (FOA-9), run by the shared <see cref="FbwA380FlowRun"/> harness. The evaluator reads a seeded cache that
+/// counts as connected; the executor has no sim. Its own class and file, so xUnit runs it in parallel with
+/// <see cref="FbwA380LandingChecksBehaviourTests"/> (a timed-out check takes 5 s).
 /// </summary>
 public sealed class FbwA380TaxiMemoCheckBehaviourTests
 {
@@ -26,46 +22,11 @@ public sealed class FbwA380TaxiMemoCheckBehaviourTests
         ("SEATBELT_SIGN_LIGHT", 1.0), ("A32NX_SPOILERS_ARMED", 1.0), ("A32NX_FLAPS_HANDLE_INDEX", flapLever),
     };
 
-    private sealed record RunResult(
-        GatedSpeechCapture Speech,
-        FbwA380StateEvaluator State,
-        ChecklistManager<FbwA380ActionExecutor, FbwA380StateEvaluator> Checklist,
-        ChecklistGroup<FbwA380ActionExecutor, FbwA380StateEvaluator> Taxi,
-        Dictionary<string, ChecklistItem<FbwA380ActionExecutor, FbwA380StateEvaluator>> Items,
-        string[] TickedBeforeRun, string[] TickedAfterRun, string[] Unfinished);
-
-    private static string[] Ticked(ChecklistGroup<FbwA380ActionExecutor, FbwA380StateEvaluator> group) =>
-        group.Items.Where(i => i.IsChecked).Select(i => i.Id).Order(StringComparer.Ordinal).ToArray();
-
-    /// <summary>Runs the Taxi flow's memo check alone, then the end-of-flow latch. With
-    /// <paramref name="windowHasTicked"/> the checklist's auto-detection runs first, as the First Officer
-    /// window's one-second timer does the whole time it is open: every line that already reads right is
-    /// ticked when the flow starts. Without it nothing is ticked before the run, so a line ticked after it
-    /// was ticked by the check. The snapshots are taken before the run, after it and (by the caller) after
-    /// the latch, which ticks every line the run did not exclude and so cannot show what the check did.</summary>
-    private static async Task<RunResult> Run((string Key, double Value)[] seed, bool windowHasTicked)
-    {
-        var state = new FbwA380StateEvaluator();
-        state.SetSimConnect(SeededSimConnectCache.ConnectedWith(seed));
-        var executor = new FbwA380ActionExecutor();
-        var groups = FbwA380ChecklistDefinitions.Build();
-        var flow = FbwA380FlowRun.Subset("TAXI", "TX_MEMO_CHECK");
-        var speech = new GatedSpeechCapture();
-        var checklist = new ChecklistManager<FbwA380ActionExecutor, FbwA380StateEvaluator>(state, executor, groups);
-        if (windowHasTicked)
-            checklist.EvaluateAutoDetection();
-        var taxi = groups.Single(g => g.Id == "TAXI_CL");
-        var tickedBeforeRun = Ticked(taxi);
-        var flowManager = new FlowManager<FbwA380ActionExecutor, FbwA380StateEvaluator>(state, executor, checklist, speech);
-
-        await FbwA380FlowRun.RunToEnd(flowManager, flow);
-        var tickedAfterRun = Ticked(taxi);
-        var unfinished = flowManager.UnfinishedChecklistItemIds.Order(StringComparer.Ordinal).ToArray();
-
-        FbwA380FlowRun.Latch(checklist, groups, flow, flowManager.UnfinishedChecklistItemIds);
-        return new RunResult(speech, state, checklist, taxi, groups.SelectMany(g => g.Items).ToDictionary(i => i.Id),
-            tickedBeforeRun, tickedAfterRun, unfinished);
-    }
+    /// <summary>Runs the Taxi flow's memo check alone, then the end-of-flow latch, on the shared harness
+    /// (<see cref="FbwA380FlowRun.Run"/>). A line ticked after a run that began with
+    /// <paramref name="windowHasTicked"/> false was ticked by the check.</summary>
+    private static Task<FbwA380FlowRun.RunResult> Run((string Key, double Value)[] seed, bool windowHasTicked) =>
+        FbwA380FlowRun.Run("TAXI", "TAXI_CL", new[] { "TX_MEMO_CHECK" }, seed, windowHasTicked);
 
     /// <summary>The flaps still UP at the holding point (held back for icing), the window's auto-detection
     /// having run first. The check times out and is skipped aloud, and all four of its lines are in the
@@ -108,7 +69,7 @@ public sealed class FbwA380TaxiMemoCheckBehaviourTests
         }
         // ... and a line only the pilot can confirm is ticked by the finishing flow (the shared rule).
         Assert.True(r.Items["TXC_FCTEST"].IsChecked);
-        Assert.True(r.Taxi.CompletionLatched);
+        Assert.True(r.Group.CompletionLatched);
 
         // The pilot sets takeoff flaps (CONF 2): "Flaps: T.O" follows the aircraft by itself, the latched
         // lines stand as they were, and "Flaps setting: SET" waits for the pilot's tick.
@@ -133,9 +94,9 @@ public sealed class FbwA380TaxiMemoCheckBehaviourTests
         Assert.Empty(r.Unfinished);
         Assert.Equal(MemoLines.Order(StringComparer.Ordinal).ToArray(), r.TickedAfterRun);
 
-        // The latch then ticks the lines only the pilot can confirm, and nothing is left out of it.
-        Assert.True(r.Taxi.CompletionLatched);
-        Assert.All(r.Taxi.Items, i =>
+        // The latch then ticks every line this short run did not exclude, and nothing is left out of it.
+        Assert.True(r.Group.CompletionLatched);
+        Assert.All(r.Group.Items, i =>
         {
             Assert.True(i.IsChecked, i.Id);
             Assert.False(i.ExemptFromCompletionLatch, i.Id);

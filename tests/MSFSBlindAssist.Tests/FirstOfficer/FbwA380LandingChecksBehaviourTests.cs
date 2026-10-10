@@ -1,10 +1,5 @@
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
-using MSFSBlindAssist.FirstOfficer;
 using MSFSBlindAssist.FirstOfficer.FBWA380;
-using MSFSBlindAssist.FirstOfficer.Models;
 using Xunit;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
@@ -12,9 +7,10 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// <summary>
 /// The Landing flow's two read-only checks on the real steps, evaluator and checklists and a real
 /// FlowManager (FO-13, FOA-9): the landing-memo check, then the gear-down check, which is the last thing
-/// the pilot hears before "flow complete". The evaluator reads a seeded cache that counts as connected;
-/// the executor has no sim. Its own class and file, so xUnit runs it in parallel with
-/// <see cref="FbwA380TaxiMemoCheckBehaviourTests"/> (a timed-out check takes 5 s).
+/// the pilot hears before "flow complete". Run by the shared <see cref="FbwA380FlowRun"/> harness. The
+/// evaluator reads a seeded cache that counts as connected; the executor has no sim. Its own class and
+/// file, so xUnit runs it in parallel with <see cref="FbwA380TaxiMemoCheckBehaviourTests"/> (a timed-out
+/// check takes 5 s).
 /// </summary>
 public sealed class FbwA380LandingChecksBehaviourTests
 {
@@ -27,46 +23,11 @@ public sealed class FbwA380LandingChecksBehaviourTests
         ("A32NX_GEAR_CENTER_POSITION", 100.0), ("A32NX_GEAR_LEFT_POSITION", 100.0), ("A32NX_GEAR_RIGHT_POSITION", 100.0),
     };
 
-    private sealed record RunResult(
-        GatedSpeechCapture Speech,
-        FbwA380StateEvaluator State,
-        ChecklistManager<FbwA380ActionExecutor, FbwA380StateEvaluator> Checklist,
-        ChecklistGroup<FbwA380ActionExecutor, FbwA380StateEvaluator> Landing,
-        Dictionary<string, ChecklistItem<FbwA380ActionExecutor, FbwA380StateEvaluator>> Items,
-        string[] TickedBeforeRun, string[] TickedAfterRun, string[] Unfinished);
-
-    private static string[] Ticked(ChecklistGroup<FbwA380ActionExecutor, FbwA380StateEvaluator> group) =>
-        group.Items.Where(i => i.IsChecked).Select(i => i.Id).Order(StringComparer.Ordinal).ToArray();
-
-    /// <summary>Runs the Landing flow's two checks alone, then the end-of-flow latch. With
-    /// <paramref name="windowHasTicked"/> the checklist's auto-detection runs first, as the First Officer
-    /// window's one-second timer does the whole time it is open: every line that already reads right is
-    /// ticked when the flow starts. Without it nothing is ticked before the run, so a line ticked after it
-    /// was ticked by a check. The snapshots are taken before the run and after it; the latch that follows
-    /// ticks every line the run did not exclude and so cannot show what a check did.</summary>
-    private static async Task<RunResult> Run((string Key, double Value)[] seed, bool windowHasTicked)
-    {
-        var state = new FbwA380StateEvaluator();
-        state.SetSimConnect(SeededSimConnectCache.ConnectedWith(seed));
-        var executor = new FbwA380ActionExecutor();
-        var groups = FbwA380ChecklistDefinitions.Build();
-        var flow = FbwA380FlowRun.Subset("LANDING", "LD_MEMO_CHECK", "LD_GEAR_DOWN_CHECK");
-        var speech = new GatedSpeechCapture();
-        var checklist = new ChecklistManager<FbwA380ActionExecutor, FbwA380StateEvaluator>(state, executor, groups);
-        if (windowHasTicked)
-            checklist.EvaluateAutoDetection();
-        var landing = groups.Single(g => g.Id == "LANDING_CL");
-        var tickedBeforeRun = Ticked(landing);
-        var flowManager = new FlowManager<FbwA380ActionExecutor, FbwA380StateEvaluator>(state, executor, checklist, speech);
-
-        await FbwA380FlowRun.RunToEnd(flowManager, flow);
-        var tickedAfterRun = Ticked(landing);
-        var unfinished = flowManager.UnfinishedChecklistItemIds.Order(StringComparer.Ordinal).ToArray();
-
-        FbwA380FlowRun.Latch(checklist, groups, flow, flowManager.UnfinishedChecklistItemIds);
-        return new RunResult(speech, state, checklist, landing, groups.SelectMany(g => g.Items).ToDictionary(i => i.Id),
-            tickedBeforeRun, tickedAfterRun, unfinished);
-    }
+    /// <summary>Runs the Landing flow's two checks alone, then the end-of-flow latch, on the shared harness
+    /// (<see cref="FbwA380FlowRun.Run"/>). A line ticked after a run that began with
+    /// <paramref name="windowHasTicked"/> false was ticked by a check.</summary>
+    private static Task<FbwA380FlowRun.RunResult> Run((string Key, double Value)[] seed, bool windowHasTicked) =>
+        FbwA380FlowRun.Run("LANDING", "LANDING_CL", new[] { "LD_MEMO_CHECK", "LD_GEAR_DOWN_CHECK" }, seed, windowHasTicked);
 
     /// <summary>Both checks pass ("Already set"), the memo one after FULL flaps, or after flaps 3 with
     /// CONF 3 selected. Nothing is ticked before the run, so the three lines ticked after it, and no
@@ -79,14 +40,16 @@ public sealed class FbwA380LandingChecksBehaviourTests
         var r = await Run(Seed(flaps, conf3), windowHasTicked: false);
 
         Assert.Empty(r.TickedBeforeRun);
+        Assert.Contains("Already set: Seat belts and landing flaps", r.Speech.All);
         Assert.Equal("Already set: Landing gear: DOWN", r.Speech.All[^2]);
         Assert.Equal("Landing flow complete", r.Speech.All[^1]);
         Assert.Empty(r.Unfinished);
         Assert.Equal(new[] { "LDC_FLAPS", "LDC_GEAR", "LDC_SEATBELT" }, r.TickedAfterRun);
 
-        // The latch then ticks the line only the aircraft would answer, and nothing is left out of it.
-        Assert.True(r.Landing.CompletionLatched);
-        Assert.All(r.Landing.Items, i =>
+        // The latch then ticks every line this short run did not exclude (here the ground spoilers line),
+        // and nothing is left out of it.
+        Assert.True(r.Group.CompletionLatched);
+        Assert.All(r.Group.Items, i =>
         {
             Assert.True(i.IsChecked, i.Id);
             Assert.False(i.ExemptFromCompletionLatch, i.Id);
@@ -126,9 +89,10 @@ public sealed class FbwA380LandingChecksBehaviourTests
             Assert.True(r.Items[id].IsChecked, id);
             Assert.False(r.Items[id].ExemptFromCompletionLatch, id);
         }
-        // ... and the line only the aircraft would answer is ticked by the finishing flow (the shared rule).
+        // ... and the ground spoilers line, which this short run did not exclude, is ticked by the finishing
+        // flow (the latch ticks every line a run does not exclude).
         Assert.True(r.Items["LDC_SPOILERS"].IsChecked);
-        Assert.True(r.Landing.CompletionLatched);
+        Assert.True(r.Group.CompletionLatched);
 
         // The pilot sets FULL flaps: "Flaps: LDG" follows the aircraft by itself.
         r.State.SetSimConnect(SeededSimConnectCache.ConnectedWith(Seed(flapLever: 4, conf3: 0)));
