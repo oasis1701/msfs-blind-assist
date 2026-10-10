@@ -300,11 +300,12 @@ Parts A, E and F above, and the Taxi and Line-up flows by Part H below.
 
 ## Part H — Taxi and Line-up flows (2026-10-09)
 
-The one Before Takeoff flow is now two, each just above its own checklist, and a finished flow
-ticks a line it can read only when a step delivered it
-([FOA-8](invariants/first-officer-airbus.md#foa-8)). One run after engine start:
+The one Before Takeoff flow is now two, Taxi and Line-up, each with its action group just above
+its own checklist in the Checklists tree, and a finished flow ticks a line it can read only when a
+step delivered it ([FOA-8](invariants/first-officer-airbus.md#foa-8)). One run after engine start:
 
-1. **Taxi (do first).** Start it with Run Related Flow from the Taxi Checklist. Listen for, in
+1. **Taxi (do first).** With the takeoff flaps set (a SimBrief plan loaded before After Start, or
+   the lever at 1 to 3), start it with Run Related Flow from the Taxi Checklist. Listen for, in
    order: autobrake MAX, weather radar SYSTEM 1, predictive windshear AUTO, "Radar and predictive
    windshear: ON and AUTO", transponder AUTO, the cabin call, "Spoilers, flaps and seat belts: set
    for takeoff", and the takeoff config test as the last step before "Taxi flow complete". Strobes,
@@ -315,10 +316,11 @@ ticks a line it can read only when a step delivered it
    Checklist: TCAS TA/RA, strobes ON, runway turnoff lights ON, nose light TAKEOFF, landing lights
    ON (both), then "Captain action required: Obtain takeoff clearance". Read the Line-up
    Checklist: every line is ticked.
-3. **Abnormal config (once).** Put the flaps back to 0 and run Taxi again: the memo check times out
-   after 5 s and is skipped aloud, you hear "Takeoff config: check configuration." after the config
-   test, yet "T.O config: NORMAL" still ticks (the press ticks it, never the result) and "Flaps
-   setting: SET" waits for your tick.
+3. **Abnormal config (once).** Put the flaps back to 0. Starting a flow does not reset a
+   checklist, so on the Checklists tab select the Taxi Checklist and press Reset Section, then press
+   Run Related Flow: the memo check times out after 5 s and is skipped aloud, you hear "Takeoff
+   config: check configuration." after the config test, "T.O config: NORMAL" ticks anyway (the
+   press ticks it, never the result) and "Flaps setting: SET" stays unticked until you tick it.
 
 ---
 

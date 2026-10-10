@@ -93,9 +93,9 @@ just the FO's own narration.
 
 1. **Electrical Power Up**: safety checks (masters off, mode NORM, gear lever down, wipers off,
    WXR off, park brake on; the gear lever is read, never written: with it down you hear "Already
-   set: Gear lever: DOWN" and its line ticks), batteries ON, ext power ON (a guarded momentary), nav + logo lights ON,
-   **cockpit lighting SET (day/prep scene)** per §4.1 — ANN Bright, dome Bright, standby compass
-   ON, floods/integrals to their Prep defaults.
+   set: Gear lever: DOWN" and its line ticks), batteries ON, ext power ON (a guarded momentary),
+   nav + logo lights ON, **cockpit lighting SET (day/prep scene)** per §4.1 — ANN Bright, dome
+   Bright, standby compass ON, floods/integrals to their Prep defaults.
 2. **Preflight**: recorder ground control ON (`A32NX_RCDR_GROUND_CONTROL_ON`), CVR test (held
    ~3 s, confirm the test tone sounds — needs ground control ON), IRS 1-3 to NAV, crew oxygen
    ON, **fire tests (APU/ENG1/ENG2, held ~3 s)** — confirm each sounds the fire bell/master
@@ -215,8 +215,9 @@ speaks the value the First Officer reads when you tick it.
 - **Securing Checklist**: Oxygen: OFF. Emergency exit lights: OFF. EFBs: OFF. Batteries: OFF.
 
 There is no Before Takeoff, After Takeoff or Departure Change checklist. The cabin lines are
-lines you confirm: the A32NX never ticks them (FlyByWire's CABIN READY needs a CALLS press and
-resets at every flight-phase change).
+lines you confirm: the A32NX never reads them from the aircraft (FlyByWire's CABIN READY needs a
+CALLS press and resets at every flight-phase change), so a line ticks only when you tick it or,
+in the Taxi Checklist, when the Taxi flow has made the cabin call.
 
 **Expected, not a defect: flows complete their read-back** (owner decision 2026-10-06, made
 honest 2026-10-09, FOA-8). Six read-backs show complete as soon as their flow finishes: the
@@ -383,7 +384,7 @@ SimBrief flap lever, the three gear legs), and later steps of the run depend on 
    takeoff" speaks. If the lever did not move despite a plan, the reminder must still speak.
    **Observation to report:** with a plan loaded, if the flaps do not move after "Flaps:
    takeoff setting", that action line still shows done (the write is not verified).
-3. **The Taxi read-back, with its live values.** After the Taxi flow (Part H), read the Taxi
+3. **The Taxi read-back, with its live values.** After the Taxi flow (Part H, item 1), read the Taxi
    Checklist: every line reads ticked, and a line you untick to confirm it speaks its value when you
    tick it again ("Flaps setting: SET, flaps 1: checked"; engine mode, "normal").
 4. **Gear up and down from the legs (do first).** After takeoff the "Landing gear: UP" wait passes once the
@@ -399,11 +400,12 @@ Spot-check on the Headwind A330 in its own plan (Part C).
 
 ## Part H — Taxi and Line-up flows (2026-10-09)
 
-The one Before Takeoff flow is now two, each just above its own checklist, and a finished flow
-ticks a line it can read only when a step delivered it
-([FOA-8](invariants/first-officer-airbus.md#foa-8)). One run after engine start:
+The one Before Takeoff flow is now two, Taxi and Line-up, each with its action group just above
+its own checklist in the Checklists tree, and a finished flow ticks a line it can read only when a
+step delivered it ([FOA-8](invariants/first-officer-airbus.md#foa-8)). One run after engine start:
 
-1. **Taxi (do first).** Start it with Run Related Flow from the Taxi Checklist. Listen for, in
+1. **Taxi (do first).** With the takeoff flaps set (a SimBrief plan loaded before After Start, or
+   the lever at 1 to 3), start it with Run Related Flow from the Taxi Checklist. Listen for, in
    order: autobrake MAX, weather radar SYSTEM 1, predictive windshear AUTO, "Radar and predictive
    windshear: ON and AUTO", transponder AUTO, the cabin call, "Spoilers, flaps and seat belts: set
    for takeoff", and the takeoff config test as the last step before "Taxi flow complete". Strobes,
@@ -413,10 +415,11 @@ ticks a line it can read only when a step delivered it
    Checklist: TCAS TA/RA, strobes ON, runway turn-off lights ON, nose light T.O., landing lights ON,
    then "Captain action required: Obtain takeoff clearance". Read the Line-up Checklist: every line
    is ticked.
-3. **Abnormal config (once).** Put the flaps back to 0 and run Taxi again: the memo check times out
-   after 5 s and is skipped aloud, the aircraft's own config warning sounds after the config test,
-   yet "T.O config: NORMAL" still ticks (the press ticks it, never the result) and "Flaps setting:
-   SET" waits for your tick.
+3. **Abnormal config (once).** Put the flaps back to 0. Starting a flow does not reset a
+   checklist, so on the Checklists tab select the Taxi Checklist and press Reset Section, then press
+   Run Related Flow: the memo check times out after 5 s and is skipped aloud, the aircraft's own
+   config warning sounds after the config test, "T.O config: NORMAL" ticks anyway (the press ticks
+   it, never the result) and "Flaps setting: SET" stays unticked until you tick it.
 
 In the same flight, listen for two small changes: Electrical Power Up says "Already set: Gear
 lever: DOWN" (a read, no longer a Captain reminder), and Approach sets the seat belts (normally

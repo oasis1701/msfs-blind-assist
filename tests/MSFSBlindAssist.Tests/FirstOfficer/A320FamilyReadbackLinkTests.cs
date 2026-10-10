@@ -28,13 +28,15 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 ///   Line-up        LU_TCAS           -> LUC_TCAS          "TCAS: TA/RA"
 ///   Approach       AP_SEATBELTS      -> APC_SEATBELTS     "Seat belts: ON"
 ///   After Landing  AL_WXR_PWS_CHECK  -> ALC_WXR           "Radar and predictive windshear: OFF"
-/// A line true only when two switches are both set (the radar lines) or set earlier (the takeoff memo
-/// items, set in After Start) is completed by a read-only wait right after the writes it depends on:
-/// it reads the line's own field (or the evaluator's FO_TAXI_MEMO_OK) for up to 5 s, is skipped on
-/// timeout and never writes (the FO-13 shape). Linked to a write instead, the first write's success
-/// ticked the line, and a flow cancelled before the second left it latched complete. The Fenix's
-/// ASC_RUDDER is a Reminder (no measured trim var); it is linked all the same, so a reset that could
-/// not be sent leaves it unticked for the pilot.
+/// A line true only when two switches are both set (the radar lines) is completed by a read-only
+/// wait right after the two writes; a line that reads what an earlier flow set (the takeoff memo
+/// items: the ground spoilers and the takeoff flaps from After Start, the signs from Preflight's no
+/// smoking and Before Start's seat belts) is completed by a read-only check in the flow that latches
+/// it. Either reads the line's own field (or the evaluator's FO_TAXI_MEMO_OK) for up to 5 s, is
+/// skipped on timeout and never writes (the FO-13 shape). Linked to a write instead, the first
+/// write's success ticked the radar line, and a flow cancelled before the second left it latched
+/// complete. The Fenix's ASC_RUDDER is a Reminder (no measured trim var); it is linked all the same,
+/// so a reset that could not be sent leaves it unticked for the pilot.
 ///
 /// Considered and NOT linked: AS_ECAMSTS (the ECAM page it shows is not the pilot's "ECAM status:
 /// CHECKED").
@@ -204,7 +206,8 @@ public class A320FamilyReadbackLinkTests
             flows.SelectMany(f => f.Steps).Where(s => s.LinkedChecklistItemIds.Contains(WxrOnLine)).Select(s => s.Id));
     }
 
-    /// <summary>The takeoff-memo items set in After Start are confirmed by ONE read-only check of the
+    /// <summary>The takeoff-memo items set earlier (the ground spoilers and the takeoff flaps in After
+    /// Start, the signs in Preflight and Before Start) are confirmed by ONE read-only check of the
     /// Taxi flow, right before the takeoff config test (the last step), reading the evaluator's
     /// FO_TAXI_MEMO_OK: it completes the four Taxi checklist lines those items answer, and no other
     /// step completes any of them.</summary>

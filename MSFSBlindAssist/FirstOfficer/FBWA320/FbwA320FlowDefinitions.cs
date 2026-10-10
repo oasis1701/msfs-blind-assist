@@ -387,8 +387,9 @@ public static class FbwA320FlowDefinitions
             // confirms: a call that could not be sent keeps it open.
             Also(Done(SW("TX_CABIN", "Advise the cabin crew for takeoff (call all)", "CABIN_CALL_ALL", 1), "TX_CABIN"),
                 "TXC_MEMO_CABIN"),
-            // Read-only check of the takeoff memo items set in After Start (FO_TAXI_MEMO_OK: ground
-            // spoilers armed, a takeoff flap handle, the memo's seat belts on). 5 s, skipped aloud on
+            // Read-only check of the takeoff memo items set earlier (FO_TAXI_MEMO_OK): the ground
+            // spoilers armed and a takeoff flap handle (After Start sets both) and the memo's seat
+            // belts on (Before Start's seat belts, Preflight's no smoking). 5 s, skipped aloud on
             // timeout, never writes: flaps held until the holding point (icing) time it out, and its
             // four lines then stay out of the latch, following the aircraft.
             Also(Done(Skip(WaitForField("TX_MEMO_CHECK", "Spoilers, flaps and seat belts: set for takeoff", "FO_TAXI_MEMO_OK",

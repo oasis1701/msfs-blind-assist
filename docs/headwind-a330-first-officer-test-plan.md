@@ -115,25 +115,26 @@ complete as soon as their flow finishes: the **Before Start Checklist** after th
 flow, the **After Start Checklist** after After Start, the **Taxi Checklist** after Taxi, the
 **Line-up Checklist** after Line-up, the **Approach Checklist** after Approach and the **After
 Landing Checklist** after After Landing; a line the First Officer can read ticks only if a step of
-the flow delivered it. Ticking a line there to confirm it
-un-ticks it ("Windows: CLOSED: unchecked") and re-opens that list, so its self-ticking
-lines follow the aircraft again. For L12, judge "Rudder trim: NEUTRAL" before After Start runs,
-or after such an untick: right after the flow it reads ticked whatever the trim is when the
-flow's "Rudder trim: RESET" step was sent (a reset that could not be sent leaves the line
-unticked and following the trim). When After Landing runs, the After Landing Checklist's
-"Radar and predictive windshear: OFF" ticks only after both the radar and the predictive
-windshear read OFF (the flow's "Radar and predictive windshear: OFF" check), never on the radar
-step alone.
+the flow delivered it. Ticking a line there to confirm it un-ticks it ("Windows: CLOSED:
+unchecked") and re-opens that list, so its self-ticking lines follow the aircraft again. For L12,
+judge "Rudder trim: NEUTRAL" before After Start runs, or after such an untick: right after the
+flow it reads ticked whatever the trim is when the flow's "Rudder trim: RESET" step was sent (a
+reset that could not be sent leaves the line unticked and following the trim). When After Landing
+runs, the After Landing Checklist's "Radar and predictive windshear: OFF" ticks only after both
+the radar and the predictive windshear read OFF (the flow's "Radar and predictive windshear: OFF"
+check), never on the radar step alone.
 
 ## Part D — Taxi and Line-up flows (2026-10-09)
 
 The A330 has the A32NX's two new flows ([FOA-8](invariants/first-officer-airbus.md#foa-8)). In the
-Part B walk, run them as in Part H of
-[docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md), its two small
-changes at the end included: Taxi (ending with the takeoff config test), then Line-up, and read
-each checklist after its flow. Once, put the flaps back to 0 and run Taxi again: the memo check
-times out after 5 s and is skipped aloud, the aircraft's own config warning sounds after the config
-test, yet "T.O config: NORMAL" still ticks (the press ticks it, never the result) and "Flaps
-setting: SET" waits for your tick. On this airframe also check that Line-up's "Landing lights: ON"
-turns the single ganged landing-light switch on and its line ticks (`LU_LANDING_LT` reads
-`LIGHT LANDING:2`, L5 above), and that Electrical Power Up says "Already set: Gear lever: DOWN".
+Part B walk, with the takeoff flaps set (a SimBrief plan, or the lever at 1 to 3), run them as in
+Part H of [docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md), its two
+small changes at the end included: Taxi (ending with the takeoff config test), then Line-up, and
+read each checklist after its flow. Once, put the flaps back to 0, select the Taxi Checklist on the
+Checklists tab and press Reset Section (starting a flow does not reset a checklist), then press Run
+Related Flow: the memo check times out after 5 s and is skipped aloud, the aircraft's own config
+warning sounds after the config test, "T.O config: NORMAL" ticks anyway (the press ticks it, never
+the result) and "Flaps setting: SET" stays unticked until you tick it. On this airframe also check
+that Line-up's "Landing lights: ON" turns the single ganged landing-light switch on and its line
+ticks (`LU_LANDING_LT` reads `LIGHT LANDING:2`, L5 above), and that Electrical Power Up says
+"Already set: Gear lever: DOWN".
