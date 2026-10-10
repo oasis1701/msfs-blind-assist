@@ -116,7 +116,8 @@ public class ClaudeRulesHookTests : IDisposable
     public void Read_keeps_its_context_within_what_Claude_Code_shows_in_full(string path, string ruleFiles)
     {
         // Claude Code saves hook context over about 10,000 characters to a file and shows the model a 2 KB preview
-        // (measured 2026-10-08); each of these files loads over 20,000 characters of rules.
+        // (measured 2026-10-08), so the hook shows at most 9,000; each of these files loads far more rules than that, so
+        // some of its rule files must be named rather than shown.
         string worktree = CreateAgentWorktree(NewTempDir());
         string file = CreateFile(worktree, path);
 
@@ -143,8 +144,8 @@ public class ClaudeRulesHookTests : IDisposable
     [Fact]
     public void Read_names_a_rule_file_once_per_subagent()
     {
-        // FlyByWireA380Definition.Rmp.cs loads over 20,000 characters of rules: some are only named ("Not shown in
-        // full"), and a named rule file is remembered too, so a second Read of the file adds nothing.
+        // FlyByWireA380Definition.Rmp.cs loads far more rules than the hook shows within its 9,000 characters: some are
+        // only named ("Not shown in full"), and a named rule file is remembered too, so a second Read adds nothing.
         string worktree = CreateAgentWorktree(NewTempDir());
         string file = CreateFile(worktree, "MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs");
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };

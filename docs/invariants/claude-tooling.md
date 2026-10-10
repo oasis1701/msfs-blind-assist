@@ -16,7 +16,7 @@ Each section is the complete text of one rule. Its one-line form, under the same
 
 ## CCT-4
 
-- `ClaudeContextBudgetTests`' limits (CLAUDE.md at 25,000 characters and 200 lines, a rule line at 400, a rule file at 12,000, and any one file's rules at 30,000) were set by the lean-CLAUDE.md design (#265, `docs/design/2026-09-30-lean-claude-md-design.md`) for adherence; they are not Claude Code's, which loads a CLAUDE.md of up to 4 MiB in full. When one bites, take the remedies its failure message lists, in order: shorten lines; mirror the few rules a file needs instead of globbing a whole area onto it; split a large area file; retire rules whose code is gone. Raising a cap is the owner's decision, never a change made to get a PR green. Changed 2026-10-10: the rule-file cap is 8,000 (was 12,000) so the rules hook can show any rule file in full (CCT-5), and a file may not load a rule twice.
+- `ClaudeContextBudgetTests`' limits (CLAUDE.md at 25,000 characters and 200 lines, a rule line at 400, a rule file at 8,000 (12,000 until 2026-10-10), and any one file's rules at 30,000) were set by the lean-CLAUDE.md design (#265, `docs/design/2026-09-30-lean-claude-md-design.md`) for adherence; they are not Claude Code's, which loads a CLAUDE.md of up to 4 MiB in full. When one bites, take the remedies its failure message lists, in order: shorten lines; mirror the few rules a file needs instead of globbing a whole area onto it; split a large area file; retire rules whose code is gone. Raising a cap is the owner's decision, never a change made to get a PR green. Changed 2026-10-10: the rule-file cap is 8,000 (was 12,000) so the rules hook can show any rule file in full (CCT-5), and a file may not load a rule twice.
 
 ## CCT-5
 

@@ -377,6 +377,31 @@ public class ClaudeContextBudgetTests
     }
 
     [Fact]
+    public void Every_rule_keeps_its_original_in_the_rule_file_its_full_text_names()
+    {
+        // A mirror says it is copied from the rule file its Full: link names. A split that moves the original out of that
+        // file, or drops it, leaves the mirrors pointing at nothing and the rule off the area's own code. CLAUDE.md is the
+        // original of a line whose stem has no rule file (CORE-n point at core.md).
+        string root = RepoRoot();
+        List<RuleFile> ruleFiles = RuleFiles().ToList();
+        HashSet<string> names = ruleFiles.Select(rf => rf.Name).ToHashSet(StringComparer.Ordinal);
+        HashSet<string> inClaudeMd = Read(Path.Combine(root, "CLAUDE.md")).Split('\n').Select(l => RuleLine.Match(l))
+            .Where(m => m.Success).Select(m => m.Groups["id"].Value).ToHashSet(StringComparer.Ordinal);
+        var problems = new List<string>();
+        foreach (var copies in ruleFiles.SelectMany(rf => rf.Body.Split('\n').Select(l => (rf.Name, Match: RuleLine.Match(l))))
+                     .Where(x => x.Match.Success).GroupBy(x => x.Match.Groups["id"].Value, StringComparer.Ordinal))
+        {
+            string stem = Path.GetFileNameWithoutExtension(copies.First().Match.Groups["file"].Value);
+            string home = $".claude/rules/{stem}.md";
+            if (copies.Any(x => x.Name == home) || (inClaudeMd.Contains(copies.Key) && !names.Contains(home))) continue;
+            problems.Add($"[{copies.Key}]'s Full: link names {stem}.md but no line in {home} holds it (copies in "
+                + $"{string.Join(", ", copies.Select(x => x.Name).Distinct())}): put the original back in {stem}.md, or move "
+                + "its full text with it.");
+        }
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
+    }
+
+    [Fact]
     public void No_single_code_file_loads_more_rules_than_the_budget()
     {
         string root = RepoRoot();
@@ -399,19 +424,24 @@ public class ClaudeContextBudgetTests
     public void No_file_loads_a_rule_twice()
     {
         // A mirror loads a rule where its code is; a file that also loads the original pays for the line twice, which
-        // in the hot files cost up to 3,927 characters of the per-file budget (measured 2026-10-10).
+        // in the hot files cost up to 3,927 characters of the per-file budget (measured 2026-10-10). CLAUDE.md is not
+        // counted: its VAT-13 and A380C-6 lines mirror vatsim.md and a380-coherent.md on purpose, to load everywhere.
         var compiled = RuleFiles().Select(rf => (rf.Name,
             Ids: rf.Body.Split('\n').Select(l => IdStart.Match(l)).Where(m => m.Success).Select(m => m.Groups["id"].Value)
-                .Distinct(StringComparer.Ordinal).ToList(),
+                .ToList(),
             Globs: (rf.Globs ?? new List<string>()).Select(GlobRegex).ToList())).ToList();
-        var problems = new List<string>();
+        List<string> problems = compiled
+            .SelectMany(c => c.Ids.GroupBy(id => id, StringComparer.Ordinal).Where(g => g.Count() > 1)
+                .Select(g => $"{c.Name}: [{g.Key}] is listed {g.Count()} times, so every file it loads on gets the line "
+                    + $"{g.Count()} times. Keep one line per ID in a rule file."))
+            .ToList();
         foreach (string file in RepoFiles())
             foreach (IGrouping<string, (string Id, string Name)> twice in compiled.Where(c => c.Globs.Any(g => g.IsMatch(file)))
-                         .SelectMany(c => c.Ids.Select(id => (Id: id, c.Name)))
+                         .SelectMany(c => c.Ids.Distinct(StringComparer.Ordinal).Select(id => (Id: id, c.Name)))
                          .GroupBy(p => p.Id, StringComparer.Ordinal).Where(g => g.Count() > 1))
-                problems.Add($"{file}: [{twice.Key}] loads from {string.Join(" and ", twice.Select(p => p.Name))}. Load each "
-                    + "rule once: delete the mirror if every file it reaches also loads the original, else narrow the mirror "
-                    + "file's globs or split it by target.");
+                problems.Add($"{file}: [{twice.Key}] loads from {string.Join(" and ", twice.Select(p => p.Name))} (the original "
+                    + "is the copy in the rule file its Full: link names). Load each rule once: delete the mirror if every file "
+                    + "it reaches also loads the original, else narrow the mirror file's globs or split it by target.");
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 
