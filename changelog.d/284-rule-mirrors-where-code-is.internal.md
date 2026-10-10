@@ -1,0 +1,1 @@
+32 more of Claude Code's area rules now load on the files that hold their code, among them the SimConnect variable definitions, the calculator-code writer, the rollout lateral test and the surroundings catalog.
