@@ -9,8 +9,12 @@ fragments, since that work is part of the feature and none of it shipped separat
   difference must be named, with a reason, in an allow-list that cannot go stale.
 - `HwA330DivergenceTests` pins the A330's own switch mappings, including the two
   operands each indexed nav/logo light event needs.
-- `Conf3RegistrationTests` ties `A32NX_SPEEDS_LANDING_CONF3` being `OnRequest` to the
-  evaluators' poll lists.
+- `Conf3RegistrationTests` ties each airframe's CONF 3 landing variable (`A32NX_FM_LANDING_CONF3`,
+  `A380X_FM_LANDING_CONF3`, and the Headwind A330's `A32NX_SPEEDS_LANDING_CONF3`) being `OnRequest`
+  to its evaluator's poll list, and each First Officer auto manager's read to its own airframe's name.
+- `FbwAutopilotEngageTests` and `UniversalAutomationServiceTests` pin the FlyByWire auto-engage:
+  AP 1 pressed only on a definite off, never blind on an unknown state, never into the probe
+  queue, three seconds apart, and the two Captain-action lines when it gives up.
 - `FoFbwUnclaimedEventKeyTests` sweeps every A32NX and A330 First Officer write and
   requires the definition to claim it (`FoUnclaimedKeyPolicy`).
 - `FbwA380FoKeyRegistrationTests` fails if a FlyByWire-family First Officer reads a key

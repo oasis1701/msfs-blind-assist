@@ -285,7 +285,7 @@ now read **"Auto-manage flaps (FBW A380 and A32NX)."**
    passing F speed → lever to 1 (if starting from 2), **"Flaps 1."**; passing S speed → lever to
    0, **"Flaps up."**
 6. **Retraction ignores the landing config.** Select CONF 3 on the MCDU PERF APPR page
-   (`A32NX_SPEEDS_LANDING_CONF3` = 1) before departure — confirm climbout retraction is
+   (`A32NX_FM_LANDING_CONF3` = 1) before departure — confirm climbout retraction is
    unaffected.
 7. **Approach extension, FULL landing.** With CONF FULL selected (default), fly a decelerating
    approach below 5000 ft AGL. Confirm each step fires as IAS drops through green dot → S → F →
@@ -406,7 +406,7 @@ legitimate state feedback, not a double-announce bug.
   reads `GEAR_HANDLE_POSITION`; the gear lever itself still can't be written, so the flow
   step stays a Captain reminder even though the checklist item now auto-detects.)
 - **CONF 3 landing is detected two ways (FOA-6)** — the auto-flaps schedule caps at flaps 3 on
-  `A32NX_SPEEDS_LANDING_CONF3` (registered by `FlyByWireA320Definition`, set when CONF 3 is
+  `A32NX_FM_LANDING_CONF3` (registered by `FlyByWireA320Definition`, set when CONF 3 is
   selected on the MCDU PERF APPR page), and the Landing memo's flaps line reads the GPWS LDG
   FLAP 3 switch (`A32NX_GPWS_FLAPS3`): flaps 3 when it is on, FULL when it is off.
 - **No FMC/MCDU programming, ever** (project-wide deliberate decision) — SimBrief load-only.

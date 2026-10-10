@@ -6,6 +6,7 @@ paths:
   - "MSFSBlindAssist/Automation/UniversalAutomationService.cs"
   - "MSFSBlindAssist/MainForm.UniversalAutomation.cs"
   - "MSFSBlindAssist/Aircraft/TFDiMD11Definition.FirstOfficer.cs"
+  - "MSFSBlindAssist/Aircraft/FbwAutopilotEngage.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/**"
   - "tests/MSFSBlindAssist.Tests/Fo*.cs"
   - "tests/MSFSBlindAssist.Tests/UniversalAutomationServiceTests.cs"
@@ -35,3 +36,4 @@ Loaded when Claude reads matching code. Background: docs/first-officer.md. Full 
 - [FO-18] Auto-AP-engage is CLOSED-LOOP wherever `IAircraftDefinition.IsAutopilotEngaged` is non-null: announce only a CONFIRMED engagement, retry a rejected press (`MaxApEngageAttempts`), report a Captain action if it never takes. It returns null, never false, before the first CDA snapshot (PMDG engage switches toggle). Full: docs/invariants/first-officer.md#fo-18
 - [FO-19] The 10k landing-light switching is gated by `FOAutoLights10kEnabled` (default ON), and ONLY the light actions/announcements are; baro pushes, the reminder and the crossing latch always run. The checklist tree never uses `TreeView.CheckBoxes = true` (`CheckboxStateImages` + `ShowCheckBox`; never set `.Checked` on headers). Full: docs/invariants/first-officer.md#fo-19
 - [FO-20] `FlowManager` treats a `FlowStep.TargetValueProvider` returning null as a SILENT SKIP: nothing is sent or spoken (the paired Captain reminder speaks), its linked lines are not marked and stay out of the latch, and its id counts as skipped for `RequiresStepId`. Never a quiet success, which latched "Flaps: takeoff setting" over a lever at 0. Full: docs/invariants/first-officer.md#fo-20
+- [FO-21] FlyByWire auto-AP (A32NX, A380, Headwind A330) presses `A32NX.FCU_AP_1_PUSH` via `FbwAutopilotEngage` only on a definite OFF (`AutopilotEngageWaitsForState`: the push toggles, so never blind) and never into the probe queue (`PressWouldWait`), 3 s apart, confirmed on `A32NX_AUTOPILOT_1/2_ACTIVE`; never stock `AUTOPILOT_ON`, which FBW ignores. Full: docs/invariants/first-officer.md#fo-21

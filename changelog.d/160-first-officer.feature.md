@@ -52,5 +52,5 @@ Settings, and all of it is off until you turn it on:
   pushed at 400 feet.
 
 The gear and autopilot options work on every aircraft the app supports, whether or not a
-First Officer window is open. On the PMDG jets and the iFly, the app checks that the
-autopilot really engaged, and tells you if it did not.
+First Officer window is open. On the PMDG jets, the iFly, the FlyByWire A32NX and A380 and
+the Headwind A330, the app checks that the autopilot really engaged, and tells you if it did not.

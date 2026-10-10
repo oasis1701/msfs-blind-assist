@@ -258,9 +258,13 @@ it the same way.
 **FBW #10890 (`c0421a9`, 11 Sep 2026, "various AFS fixes") stopped the A32NX publishing
 `A32NX_SPEEDS_VFEN` and `A32NX_SPEEDS_VS` at all.** The writes were deleted from
 `A32NX_Speeds.ts`; the values still exist inside `NXSpeeds` but nothing puts them on an
-L-var any more. Nothing was renamed, so a name-diff sweep finds nothing — the vars simply
+L-var any more. Neither was renamed, so a name-diff sweep finds nothing — the vars simply
 stop being written and read a stale `0` forever. That is the failure mode to fear: the VFE
 and VS readouts did not go silent, they confidently said a wrong number.
+
+The same commit DID rename one L-var: `A32NX_SPEEDS_LANDING_CONF3`, the CONF 3 landing selection,
+became `A32NX_FM_LANDING_CONF3`. The First Officer's auto-flap cap read the old name, got NaN and
+took flaps FULL until 2026-10-09 (FOA-6). The Headwind A330 still writes the old name.
 
 The readouts now take the FAC's own characteristic speeds, which is what the PFD tape uses:
 
