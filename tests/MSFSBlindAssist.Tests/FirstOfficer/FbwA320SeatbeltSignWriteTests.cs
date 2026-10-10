@@ -35,16 +35,17 @@ public class FbwA320SeatbeltSignWriteTests
     {
         var steps = FbwA320FlowDefinitions.Build()
             .SelectMany(f => f.Steps)
-            .Where(s => s.Id is "BS_SEATBELTS" or "DC_SEATBELTS" or "SD_SEATBELTS_OFF")
+            .Where(s => s.Id is "BS_SEATBELTS" or "DC_SEATBELTS" or "AP_SEATBELTS" or "SD_SEATBELTS_OFF")
             .ToDictionary(s => s.Id);
 
-        Assert.Equal(3, steps.Count);
+        Assert.Equal(4, steps.Count);
         foreach (var s in steps.Values)
             Assert.Equal(PseudoKey, s.EventName);
 
         // 1 = ON, 0 = OFF: the target the guarded set compares against the live sign.
         Assert.Equal(1, steps["BS_SEATBELTS"].TargetValue);
         Assert.Equal(1, steps["DC_SEATBELTS"].TargetValue);
+        Assert.Equal(1, steps["AP_SEATBELTS"].TargetValue);
         Assert.Equal(0, steps["SD_SEATBELTS_OFF"].TargetValue);
     }
 

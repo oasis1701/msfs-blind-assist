@@ -39,8 +39,8 @@ public class A320FamilyParityTests
         "A32NX only: the Fenix has no standby-compass light (its compass is only stowed or deployed).";
 
     private const string GearLeverNotWritable =
-        "The A32NX gear lever cannot be written, so its safety check is a Captain reminder "
-        + "(with a detect-only line); the Fenix's flow writes the lever down itself.";
+        "The A32NX gear lever cannot be written, so its safety check is a read-only check of the "
+        + "lever that completes a detect-only line; the Fenix's flow writes the lever down itself.";
 
     private const string ApuStartRelease =
         "A32NX only: the FBW APU START button latches and needs a release; the Fenix's is pulsed.";
@@ -109,6 +109,8 @@ public class A320FamilyParityTests
     /// <summary>Flow steps, on both aircraft, that complete different checklist lines, and why.</summary>
     private static readonly Dictionary<string, string> KnownStepLinkDivergences = new()
     {
+        ["EPU_CHK_GEAR"] = GearLeverNotWritable + " The Fenix's safety checks have no lines, so its "
+            + "write completes none.",
     };
 
     // -----------------------------------------------------------------------

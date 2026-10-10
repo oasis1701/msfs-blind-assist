@@ -46,8 +46,9 @@ public static class HwA330ChecklistDefinitions
         BuildEngineStart(),
         BuildAfterStart(),
         BuildAfterStartCL(),
+        BuildTaxi(),
         BuildTaxiCL(),
-        BuildBeforeTakeoff(),
+        BuildLineup(),
         BuildLineupCL(),
         BuildAfterTakeoff(),
         BuildDescent(),
@@ -79,8 +80,8 @@ public static class HwA330ChecklistDefinitions
             Auto("EPU_NAVLOGO", "ELEC_POWER_UP", "Nav and logo lights: ON", "A32NX_LIGHTS_NAV_LOGO",
                 v => v > 0.5, (e, _) => e.Set("A32NX_LIGHTS_NAV_LOGO", 1)),
             // Gear lever has no settable A32NX key, but GEAR_HANDLE_POSITION (stock,
-            // 0=Up/1=Down) is readable — detect-only Auto (no CheckAction; the flow
-            // step stays a Captain reminder since the lever can't be written).
+            // 0=Up/1=Down) is readable — detect-only Auto (no CheckAction), completed by the
+            // flow's read-only EPU_CHK_GEAR check, since the lever can't be written.
             Auto("EPU_CHK_GEAR", "ELEC_POWER_UP", "Gear lever: DOWN", "GEAR_HANDLE_POSITION",
                 v => v > 0.5, null),
             // ★ Cockpit lighting (spec §4.1): Bright for ground prep. ANN matches the
@@ -229,8 +230,8 @@ public static class HwA330ChecklistDefinitions
                 v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("ENGINE_MODE_SELECTOR", 2)),
             // Engine 1 first, then engine 2, each master followed by its own running line (the
             // Fenix's order, and the flow's). The running lines are detect-only: FlyByWire's own
-            // engine state reads On. The flow's ES_ENGn_N2 wait confirms it, and the line ticks
-            // itself from the state.
+            // engine state reads On. The flow's ES_ENGn_N2 wait completes it (FO-6), and the line
+            // also ticks itself from the state.
             Auto("ES_ENG1", "ENGINE_START", "Engine 1 master: ON", "ENGINE_1_MASTER",
                 v => v > 0.5, (e, _) => e.Set("ENGINE_1_MASTER", 1)),
             Auto("ES_ENG1_RUN", "ENGINE_START", "Engine 1: running", "FO_ENG1_RUNNING",
@@ -292,46 +293,57 @@ public static class HwA330ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 6. Before Takeoff
+    // 6. Taxi
     // -----------------------------------------------------------------------
-    private static Group BuildBeforeTakeoff() => new()
+    private static Group BuildTaxi() => new()
     {
-        Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
+        Id = "TAXI", Name = "Taxi",
         Items = new()
         {
             // ★ Autobrake MAX.
-            Auto("BT_AUTOBRAKE", "BEFORE_TAKEOFF", "Autobrake: MAX", "A32NX_AUTOBRAKES_ARMED_MODE",
+            Auto("TX_AUTOBRAKE", "TAXI", "Autobrake: MAX", "A32NX_AUTOBRAKES_ARMED_MODE",
                 v => System.Math.Abs(v - 3) < 0.5, (e, _) => e.Set("AUTOBRAKE_MODE", 3)),
-            Auto("BT_WXR", "BEFORE_TAKEOFF", "Weather radar: SYSTEM 1", "XMLVAR_A320_WeatherRadar_Sys",
+            Auto("TX_WXR", "TAXI", "Weather radar: SYSTEM 1", "XMLVAR_A320_WeatherRadar_Sys",
                 v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("XMLVAR_A320_WeatherRadar_Sys", 0)),
-            Auto("BT_PWS", "BEFORE_TAKEOFF", "Predictive windshear: AUTO", "A32NX_SWITCH_RADAR_PWS_POSITION",
+            Auto("TX_PWS", "TAXI", "Predictive windshear: AUTO", "A32NX_SWITCH_RADAR_PWS_POSITION",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_SWITCH_RADAR_PWS_POSITION", 1)),
-            Auto("BT_TCAS", "BEFORE_TAKEOFF", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION",
-                v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("A32NX_SWITCH_TCAS_POSITION", 2)),
-            Auto("BT_XPDRAUTO", "BEFORE_TAKEOFF", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE",
+            Auto("TX_XPDRAUTO", "TAXI", "Transponder: AUTO", "A32NX_TRANSPONDER_MODE",
                 v => System.Math.Abs(v - 1) < 0.5, (e, _) => e.Set("A32NX_TRANSPONDER_MODE", 1)),
-            // Takeoff config test — sim + source verified held ECP button (2026-07).
-            ActionManual("BT_CONFIG", "BEFORE_TAKEOFF", "Takeoff config test", (e, _) => e.TakeoffConfigTest()),
-            Auto("BT_TURNOFF", "BEFORE_TAKEOFF", "Runway turn-off lights: ON", "LIGHT TAXI:2",
-                v => v > 0.5, (e, _) => e.Set("LIGHT TAXI:2", 1)),
-            // A339X: ONE two-position ganged switch on stock LIGHT LANDING:2/:3
-            // (A330_NEO_INTERIOR.xml:2022-2034). The A32NX's L:LIGHTING_LANDING_2 is a
-            // Retractable position (0=On/1=Off/2=Retracted) this airframe never writes.
-            Auto("BT_LANDING_LT", "BEFORE_TAKEOFF", "Landing lights: ON", "LIGHT LANDING:2",
-                v => v > 0.5, (e, _) => e.Set("LANDING_LIGHTS_ON_THIRD_PARTY", 1)),
-            Auto("BT_NOSE_TO", "BEFORE_TAKEOFF", "Nose light: TAKEOFF", "LIGHTING_LANDING_1",
-                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 0)),
-            Auto("BT_STROBE", "BEFORE_TAKEOFF", "Strobes: ON", "LIGHTING_STROBE_0",
-                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHTING_STROBE_0", 0)),
-            // ★ Cabin notify for takeoff.
-            ActionManual("BT_CABIN", "BEFORE_TAKEOFF", "Advise the cabin crew for takeoff (call all)",
+            // ★ Cabin call for takeoff.
+            ActionManual("TX_CABIN", "TAXI", "Advise the cabin crew for takeoff (call all)",
                 (e, _) => e.CabinCall()),
-            Reminder("BT_CLEARANCE", "BEFORE_TAKEOFF", "Obtain takeoff clearance"),
+            // Takeoff config test — sim + source verified held ECP button (2026-07).
+            ActionManual("TX_CONFIG", "TAXI", "Takeoff config test", (e, _) => e.TakeoffConfigTest()),
         }
     };
 
     // -----------------------------------------------------------------------
-    // 7. After Takeoff
+    // 7. Line-up
+    // -----------------------------------------------------------------------
+    private static Group BuildLineup() => new()
+    {
+        Id = "LINEUP", Name = "Line-up",
+        Items = new()
+        {
+            Auto("LU_TCAS", "LINEUP", "TCAS: TA/RA", "A32NX_SWITCH_TCAS_POSITION",
+                v => System.Math.Abs(v - 2) < 0.5, (e, _) => e.Set("A32NX_SWITCH_TCAS_POSITION", 2)),
+            Auto("LU_STROBE", "LINEUP", "Strobes: ON", "LIGHTING_STROBE_0",
+                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHTING_STROBE_0", 0)),
+            Auto("LU_TURNOFF", "LINEUP", "Runway turn-off lights: ON", "LIGHT TAXI:2",
+                v => v > 0.5, (e, _) => e.Set("LIGHT TAXI:2", 1)),
+            Auto("LU_NOSE_TO", "LINEUP", "Nose light: TAKEOFF", "LIGHTING_LANDING_1",
+                v => System.Math.Abs(v - 0) < 0.5, (e, _) => e.Set("LIGHTING_LANDING_1", 0)),
+            // A339X: ONE two-position ganged switch on stock LIGHT LANDING:2/:3
+            // (A330_NEO_INTERIOR.xml:2022-2034). The A32NX's L:LIGHTING_LANDING_2 is a
+            // Retractable position (0=On/1=Off/2=Retracted) this airframe never writes.
+            Auto("LU_LANDING_LT", "LINEUP", "Landing lights: ON", "LIGHT LANDING:2",
+                v => v > 0.5, (e, _) => e.Set("LANDING_LIGHTS_ON_THIRD_PARTY", 1)),
+            Reminder("LU_CLEARANCE", "LINEUP", "Obtain takeoff clearance"),
+        }
+    };
+
+    // -----------------------------------------------------------------------
+    // 8. After Takeoff
     // -----------------------------------------------------------------------
     private static Group BuildAfterTakeoff() => new()
     {
@@ -354,7 +366,7 @@ public static class HwA330ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 8. Descent
+    // 9. Descent
     // -----------------------------------------------------------------------
     private static Group BuildDescent() => new()
     {
@@ -377,7 +389,7 @@ public static class HwA330ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 9. Approach
+    // 10. Approach
     // -----------------------------------------------------------------------
     private static Group BuildApproach() => new()
     {
@@ -388,6 +400,10 @@ public static class HwA330ChecklistDefinitions
                 v => v > 0.5, (e, _) => e.Set("A32NX_EFIS_L_LS_BUTTON_IS_ON", 1)),
             Auto("AP_LS2", "APPROACH", "LS first officer: ON", "A32NX_EFIS_R_LS_BUTTON_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_EFIS_R_LS_BUTTON_IS_ON", 1)),
+            // SetSeatbeltSign (the SEATBELT_SIGN write that selects the switch position) — see
+            // BS_SEATBELTS. The Approach flow's seat-belt step.
+            Auto("AP_SEATBELTS", "APPROACH", "Seat belts: ON", "CABIN SEATBELTS ALERT SWITCH",
+                v => v > 0.5, (e, _) => e.SetSeatbeltSign(true)),
             // ★ Cabin notify for landing.
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall()),
@@ -397,7 +413,7 @@ public static class HwA330ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 10. After Landing
+    // 11. After Landing
     // -----------------------------------------------------------------------
     private static Group BuildAfterLanding() => new()
     {
@@ -436,7 +452,7 @@ public static class HwA330ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 11. Shutdown
+    // 12. Shutdown
     // -----------------------------------------------------------------------
     private static Group BuildShutdown() => new()
     {
@@ -496,7 +512,7 @@ public static class HwA330ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // 12. Securing
+    // 13. Securing
     // -----------------------------------------------------------------------
     private static Group BuildSecure() => new()
     {

@@ -42,6 +42,46 @@ public class FenixFlowParityTests
         Assert.False(fallback.SkipCondition!(e));            // plan loaded, lever unread → still speaks
     }
 
+    /// <summary>Each engine-start wait reads N2 (55 % or more; CFM56 idle is ~58-60 %), stops the
+    /// flow on a 120 s timeout, and completes its own "Engine n: running" line, which reads the same
+    /// N2 field (FO-6).</summary>
+    [Theory]
+    [InlineData(1)]
+    [InlineData(2)]
+    public void Engine_start_waits_for_N2_and_completes_its_running_line(int n)
+    {
+        var s = Step("ENGINE_START", $"ES_ENG{n}_N2");
+        Assert.Equal(FlowStepActionType.WaitForCondition, s.ActionType);
+        Assert.Equal($"FO_ENG{n}_N2", s.ConditionFieldName);
+        Assert.Equal(FlowStepFailurePolicy.Stop, s.FailurePolicy);
+        Assert.Equal(120, s.TimeoutSeconds);
+        Assert.Equal(new[] { $"ES_ENG{n}_RUN" }, s.LinkedChecklistItemIds);
+        Assert.Equal(s.ConditionFieldName, Item($"ES_ENG{n}_RUN").StateFieldName);
+    }
+
+    /// <summary>The Approach flow sets the seat belts (skipped when the switch already reads on, as
+    /// after Descent) and completes both seat-belt lines: its own and the Approach Checklist's.</summary>
+    [Fact]
+    public void Approach_sets_the_seat_belts_and_completes_both_seat_belt_lines()
+    {
+        var s = Step("APPROACH", "AP_SEATBELTS");
+        Assert.Equal("Seat belts: ON", s.Label);
+        Assert.Equal("S_OH_SIGNS", s.EventName);
+        Assert.Equal(1, s.TargetValue);
+        Assert.Equal(new[] { "AP_SEATBELTS", "APC_SEATBELTS" }, s.LinkedChecklistItemIds);
+
+        var e = new FenixStateEvaluator();
+        e.SetSimConnect(SeededSimConnectCache.With(("S_OH_SIGNS", 1)));
+        Assert.True(s.SkipCondition!(e));
+        e.SetSimConnect(SeededSimConnectCache.With(("S_OH_SIGNS", 0)));
+        Assert.False(s.SkipCondition!(e));
+
+        var line = Item("AP_SEATBELTS");
+        Assert.Equal("Seat belts: ON", line.Label);
+        Assert.Equal("S_OH_SIGNS", line.StateFieldName);
+        Assert.NotNull(line.CheckAction);
+    }
+
     /// <summary>The Captain reminder is skipped only when the flap lever READS a takeoff position.
     /// Keyed on the SimBrief plan, a write that did not take was heard as "Skipping…" then a false
     /// "Already set: Flaps: set for takeoff", and the pilot lost the reminder. A plan is loaded in
@@ -82,7 +122,7 @@ public class FenixFlowParityTests
     [Fact]
     public void Shared_wording_matches_the_A32NX()
     {
-        Assert.Equal("Weather radar: SYSTEM 1", Item("BT_WXR").Label);
+        Assert.Equal("Weather radar: SYSTEM 1", Item("TX_WXR").Label);
         Assert.Equal("Cockpit door: LOCKED", Item("BS_COCKPITDOOR").Label);
         Assert.Equal("Cockpit door: UNLOCKED", Item("SD_COCKPITDOOR").Label);
         Assert.Equal("APU: ON and available", Item("BS_APU").Label);

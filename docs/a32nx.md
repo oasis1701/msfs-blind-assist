@@ -671,4 +671,7 @@ the Headwind A330) publishes the same two fields from the handle and the three l
 Any unknown input gives NaN, so a flow's wait reads "not yet" instead of a false positive.
 `AT_GEAR_UP_CHECK` on those two aircraft is the same read-only 20 s wait (FO-13), and the
 Landing checklist's `LDC_MEMO_GEAR` reads `FO_GEAR_DOWN`. The A32NX gear lever itself still
-cannot be written, so its flow's gear-lever step stays a Captain reminder.
+cannot be written, so its power-up flow's gear-lever step reads it instead (2026-10-09): a read-only
+5 s check of `GEAR_HANDLE_POSITION`, "Already set" with the lever down and skipped aloud otherwise,
+that completes the detect-only "Gear lever: DOWN" line (it used to be a Captain reminder; the
+Headwind A330 is the same, and the Fenix writes its lever down).

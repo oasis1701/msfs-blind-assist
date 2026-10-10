@@ -31,8 +31,41 @@ public class FbwA320FlowParityTests
             Assert.Equal(120, s.TimeoutSeconds);
             Assert.Equal($"Engine {n} starting — waiting for the engine to stabilize", s.Label);
             Assert.Equal($"FO_ENG{n}_RUNNING", Item($"ES_ENG{n}_RUN").StateFieldName);
+            // The wait completes its own "Engine n: running" line (FO-6).
+            Assert.Equal(new[] { $"ES_ENG{n}_RUN" }, s.LinkedChecklistItemIds);
         }
         Assert.DoesNotContain(FbwA320FlowDefinitions.Build().SelectMany(f => f.Steps), s => s.Id.EndsWith("_DWELL") && s.Id.StartsWith("ES_"));
+    }
+
+    /// <summary>The power-up gear-lever safety check READS the lever (GEAR_HANDLE_POSITION is a
+    /// read-only stock SimVar here): "Already set" when it is down, else a 5 s wait that is skipped
+    /// aloud; it never writes, and it completes the detect-only "Gear lever: DOWN" line.</summary>
+    [Fact]
+    public void The_gear_lever_safety_check_reads_the_lever_and_completes_its_line()
+    {
+        var s = Step("ELECTRICAL_POWER_UP", "EPU_CHK_GEAR");
+        var line = Item("EPU_CHK_GEAR");
+        Assert.Equal("Gear lever: DOWN", s.Label);
+        Assert.Equal(FlowStepActionType.WaitForCondition, s.ActionType);
+        Assert.Equal("GEAR_HANDLE_POSITION", s.ConditionFieldName);
+        Assert.Equal(line.StateFieldName, s.ConditionFieldName);
+        Assert.Equal(5, s.TimeoutSeconds);
+        Assert.Equal(FlowStepFailurePolicy.Skip, s.FailurePolicy);
+        Assert.True(s.Condition!(1));
+        Assert.False(s.Condition!(0));
+        Assert.False(s.Condition!(double.NaN));
+        Assert.Null(s.EventName);
+        Assert.Null(s.TargetValue);
+        Assert.Empty(s.MultiActions);
+        Assert.Equal(new[] { "EPU_CHK_GEAR" }, s.LinkedChecklistItemIds);
+        Assert.Null(line.CheckAction);
+
+        var e = new FbwA320StateEvaluator();
+        Assert.False(s.SkipCondition!(e));                                   // unread: not down
+        e.SetSimConnect(SeededSimConnectCache.With(("GEAR_HANDLE_POSITION", 1)));
+        Assert.True(s.SkipCondition!(e));                                    // down: "Already set"
+        e.SetSimConnect(SeededSimConnectCache.With(("GEAR_HANDLE_POSITION", 0)));
+        Assert.False(s.SkipCondition!(e));
     }
 
     [Fact]
@@ -192,7 +225,7 @@ public class FbwA320FlowParityTests
     {
         Assert.Equal("APU: ON and available", Item("BS_APU").Label);
         Assert.Equal("APU: ON and available", Item("AL_APU").Label);
-        Assert.Equal("Weather radar: SYSTEM 1", Item("BT_WXR").Label);
+        Assert.Equal("Weather radar: SYSTEM 1", Item("TX_WXR").Label);
         Assert.Equal("Cockpit door: LOCKED", Item("BS_COCKPITDOOR").Label);
         Assert.Equal("Cockpit door: UNLOCKED", Item("SD_COCKPITDOOR").Label);
     }

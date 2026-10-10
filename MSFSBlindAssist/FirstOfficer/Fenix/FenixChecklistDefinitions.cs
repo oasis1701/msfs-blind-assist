@@ -31,8 +31,9 @@ public static class FenixChecklistDefinitions
         BuildEngineStart(),
         BuildAfterStart(),
         BuildAfterStartCL(),
+        BuildTaxi(),
         BuildTaxiCL(),
-        BuildBeforeTakeoff(),
+        BuildLineup(),
         BuildLineupCL(),
         BuildAfterTakeoff(),
         BuildDescent(),
@@ -227,7 +228,8 @@ public static class FenixChecklistDefinitions
             ActionManual("ES_ECAMENG", "ENGINE_START", "ECAM page: engine", (e, _) => e.Pulse("S_ECAM_ENGINE")),
             Auto("ES_MODE", "ENGINE_START", "Engine mode selector: IGN START",
                 "S_ENG_MODE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_ENG_MODE", 2)),
-            // Engine 1 first, then engine 2 (user preference).
+            // Engine 1 first, then engine 2 (user preference). Each "Engine n: running" line is
+            // completed by the flow's ES_ENGn_N2 wait (FO-6) and also ticks itself from N2.
             Auto("ES_ENG1", "ENGINE_START", "Engine 1 master: ON",
                 "S_ENG_MASTER_1", v => v > 0.5, (e, _) => e.Set("S_ENG_MASTER_1", 1)),
             Auto("ES_ENG1_RUN", "ENGINE_START", "Engine 1: running",
@@ -280,42 +282,50 @@ public static class FenixChecklistDefinitions
         }
     };
 
-    private static Group BuildBeforeTakeoff() => new()
+    private static Group BuildTaxi() => new()
     {
-        Id = "BEFORE_TAKEOFF", Name = "Before Takeoff",
+        Id = "TAXI", Name = "Taxi",
         Items = new()
         {
             // Guarded: momentary pulse on a latching light — act only when not armed
-            // (mirrors the BT_AUTOBRAKE flow step's own skip guard).
-            Auto("BT_AUTOBRAKE", "BEFORE_TAKEOFF", "Autobrake: MAX",
+            // (mirrors the TX_AUTOBRAKE flow step's own skip guard).
+            Auto("TX_AUTOBRAKE", "TAXI", "Autobrake: MAX",
                 "I_MIP_AUTOBRAKE_MAX_L", v => v > 0.5,
                 (e, s) => s.IsOn("I_MIP_AUTOBRAKE_MAX_L") ? Task.CompletedTask : e.Pulse("S_MIP_AUTOBRAKE_MAX")),
-            Auto("BT_WXR", "BEFORE_TAKEOFF", "Weather radar: SYSTEM 1",               // [RADAR]
+            Auto("TX_WXR", "TAXI", "Weather radar: SYSTEM 1",                          // [RADAR]
                 "S_WR_SYS", v => v < 0.5, (e, _) => e.Set("S_WR_SYS", 0)),             // [RADAR]
-            Auto("BT_PWS", "BEFORE_TAKEOFF", "Predictive windshear: AUTO",             // [RADAR]
+            Auto("TX_PWS", "TAXI", "Predictive windshear: AUTO",                        // [RADAR]
                 "S_WR_PRED_WS", v => v > 0.5, (e, _) => e.Set("S_WR_PRED_WS", 1)),     // [RADAR]
-            Auto("BT_TCAS", "BEFORE_TAKEOFF", "TCAS: TA/RA",
-                "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_XPDR_MODE", 2)),
-            Auto("BT_XPDRAUTO", "BEFORE_TAKEOFF", "Transponder: AUTO",
+            Auto("TX_XPDRAUTO", "TAXI", "Transponder: AUTO",
                 "S_XPDR_OPERATION", v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("S_XPDR_OPERATION", 1)),
+            // Advise the cabin crew: hit CALL ALL and release (momentary chime).
+            ActionManual("TX_CABIN", "TAXI", "Advise the cabin crew for takeoff (call all)",
+                (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
             // Level-triggered test: TakeoffConfigTest holds 1.5 s, announces the result
             // ("Takeoff config normal." / "check configuration."), then RELEASES — a plain
             // pulse left the button stuck at 1 and re-fired the config check after landing.
-            ActionManual("BT_CONFIG", "BEFORE_TAKEOFF", "Takeoff config test",
+            ActionManual("TX_CONFIG", "TAXI", "Takeoff config test",
                 (e, _) => e.TakeoffConfigTest()),
-            Auto("BT_TURNOFF", "BEFORE_TAKEOFF", "Runway turn-off lights: ON",
+        }
+    };
+
+    private static Group BuildLineup() => new()
+    {
+        Id = "LINEUP", Name = "Line-up",
+        Items = new()
+        {
+            Auto("LU_TCAS", "LINEUP", "TCAS: TA/RA",
+                "S_XPDR_MODE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_XPDR_MODE", 2)),
+            Auto("LU_STROBE", "LINEUP", "Strobes: ON",
+                "S_OH_EXT_LT_STROBE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_OH_EXT_LT_STROBE", 2)),
+            Auto("LU_TURNOFF", "LINEUP", "Runway turn-off lights: ON",
                 "S_OH_EXT_LT_RWY_TURNOFF", v => v > 0.5, (e, _) => e.Set("S_OH_EXT_LT_RWY_TURNOFF", 1)),
-            Auto("BT_LANDING_LT", "BEFORE_TAKEOFF", "Landing lights: ON",
+            Auto("LU_NOSE_TO", "LINEUP", "Nose light: TAKEOFF",
+                "S_OH_EXT_LT_NOSE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.SetNoseLight(2)),
+            Auto("LU_LANDING_LT", "LINEUP", "Landing lights: ON",
                 "S_OH_EXT_LT_LANDING_L", v => Math.Abs(v - 2) < 0.5, new[] { "S_OH_EXT_LT_LANDING_R" },
                 (e, _) => e.SetLandingLights(2)),
-            Auto("BT_NOSE_TO", "BEFORE_TAKEOFF", "Nose light: TAKEOFF",
-                "S_OH_EXT_LT_NOSE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.SetNoseLight(2)),
-            Auto("BT_STROBE", "BEFORE_TAKEOFF", "Strobes: ON",
-                "S_OH_EXT_LT_STROBE", v => Math.Abs(v - 2) < 0.5, (e, _) => e.Set("S_OH_EXT_LT_STROBE", 2)),
-            // Advise the cabin crew: hit CALL ALL and release (momentary chime).
-            ActionManual("BT_CABIN", "BEFORE_TAKEOFF", "Advise the cabin crew for takeoff (call all)",
-                (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
-            Reminder("BT_CLEARANCE", "BEFORE_TAKEOFF", "Obtain takeoff clearance"),
+            Reminder("LU_CLEARANCE", "LINEUP", "Obtain takeoff clearance"),
         }
     };
 
@@ -371,6 +381,9 @@ public static class FenixChecklistDefinitions
             Auto("AP_LS2", "APPROACH", "LS first officer: ON",
                 "I_FCU_EFIS2_LS", v => v > 0.5,
                 (e, s) => s.IsOn("I_FCU_EFIS2_LS") ? Task.CompletedTask : e.Pulse("S_FCU_EFIS2_LS")),
+            // The Approach flow's seat-belt step.
+            Auto("AP_SEATBELTS", "APPROACH", "Seat belts: ON",
+                "S_OH_SIGNS", v => v > 0.5, (e, _) => e.Set("S_OH_SIGNS", 1)),
             // Notify the cabin crew for landing: hit CALL ALL and release (momentary chime).
             ActionManual("AP_CABIN", "APPROACH", "Notify the cabin crew for landing (call all)",
                 (e, _) => e.CabinCall("S_OH_CALLS_ALL")),
