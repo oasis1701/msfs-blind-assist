@@ -18,6 +18,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*RunwayHoldPlacement*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayVacateResolver*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*PavementTolerance*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*HandoffRouteReachability*.cs"
 ---
 # Rollout geometry: the implicit-exit override and the tolerance tripwire rules
 
