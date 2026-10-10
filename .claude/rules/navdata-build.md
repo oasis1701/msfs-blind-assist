@@ -4,6 +4,7 @@ paths:
   - "MSFSBlindAssist/Resources/navdatareader.cfg"
   - "MSFSBlindAssist/Forms/DatabaseBuildProgressForm.cs"
   - "tests/MSFSBlindAssist.Tests/**/*NavdataReader*.cs"
+  - ".github/workflows/navdatareader-config.yml"
 ---
 # Navdata database build rules
 

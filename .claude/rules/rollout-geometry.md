@@ -10,6 +10,7 @@ paths:
   - "MSFSBlindAssist/Navigation/RouteRunwayCrossings.cs"
   - "MSFSBlindAssist/Navigation/RunwayVacateResolver.cs"
   - "MSFSBlindAssist/Navigation/PavementTolerance.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RolloutExitGate*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*EarlyVacateAlongTrack*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RolloutLateralClearance*.cs"
