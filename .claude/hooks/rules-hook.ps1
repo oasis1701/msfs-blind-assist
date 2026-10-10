@@ -1,9 +1,10 @@
 <#
 Claude Code hook script for this repository (registered in .claude/settings.json).
 
-Area rules live in .claude/rules/<area>.md and Claude Code loads one only when its Read, Edit or Write tool opens a
-file the rule file's paths: globs match. This script brings those rules where that never happens, and refuses shell
-writes that would change a covered file without them (CORE-16). Background: docs/development.md, "Claude Code hooks".
+Area rules live in .claude/rules/<area>.md and Claude Code loads one when its Read, Edit or Write tool opens a file the
+rule file's paths: globs match (and for a few shell reads of one file), never for a shell write. This script brings
+those rules where Claude Code does not, and refuses shell writes that would change a covered file without them
+(CORE-16). Background: docs/development.md, "Claude Code hooks".
 
 Modes (first argument):
   for [-Machine] <path>... | for [-Machine] -Stdin
@@ -884,8 +885,8 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
     return ,$targets.ToArray()
 }
 
-$DenyReason = 'Refused by .claude/hooks/rules-hook.ps1: this command writes {0}, whose rules reach you only through ' +
-    'the Read, Edit and Write tools (CORE-16). Read the file with the Read tool, then change it with Edit or Write.'
+$DenyReason = 'Refused by .claude/hooks/rules-hook.ps1: this command writes {0}, and a shell write loads none of ' +
+    'its rules (CORE-16). Read the file with the Read tool, then change it with Edit or Write.'
 
 # PreToolUse on Bash/PowerShell: refuse a command that writes a file some rule file covers, since a shell write loads
 # none of its rules. Anything it cannot parse, or a write to an uncovered file, is allowed.
