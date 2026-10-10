@@ -36,6 +36,3 @@ Loaded when Claude reads matching code. Background: docs/a380x.md. Full text of 
 - [A380C-23] Dispose every A380 form holding a Coherent client or the def in `SwitchAircraft`'s cleanup; a hide-on-close form (RMP) tears down in `Dispose(bool)`, since `Close()` is cancelled and `Form.Dispose()` skips `OnFormClosed`. Full: docs/invariants/a380-coherent.md#a380c-23
 - [A380C-24] Capture the OUTGOING aircraft def at the top of `SwitchAircraft` for cleanup (`StopAllMotion()`, EWD-monitor teardown), or seat/slider motor timers keep writing L:vars into the new aircraft. Full: docs/invariants/a380-coherent.md#a380c-24
 - [A380C-25] The A380 EWD scrape must baseline silently on first connect; only failures appearing after connect are announced, as with every other MSFSBA monitor. Full: docs/invariants/a380-coherent.md#a380c-25
-
-Mirrored from troubleshooting.md (it governs the A380 forms that build Coherent clients, such as FBWA380RmpForm's `CoherentDisplayClient` per RMP; change it there and here together):
-- [DBG-9] Coherent GT allows only ONE inspector socket per page for ANY aircraft using it — never open a second client against a view another client already holds; share the connection. Full: docs/invariants/troubleshooting.md#dbg-9
