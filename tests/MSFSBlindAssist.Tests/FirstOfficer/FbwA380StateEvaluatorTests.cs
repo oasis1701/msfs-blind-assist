@@ -46,6 +46,26 @@ public class FbwA380StateEvaluatorTests
         Assert.Equal(1.0, FbwA380StateEvaluator.DecodeRudderTrimNeutral(Word(0b11, -0.3f), double.NaN));
         Assert.Equal(0.0, FbwA380StateEvaluator.DecodeRudderTrimNeutral(Word(0b11, 0.5f), double.NaN));
         Assert.Equal(0.0, FbwA380StateEvaluator.DecodeRudderTrimNeutral(Word(0b11, -2.0f), double.NaN));
+        // The threshold itself: just inside 0.35 is neutral, just outside is not.
+        Assert.Equal(1.0, FbwA380StateEvaluator.DecodeRudderTrimNeutral(Word(0b11, 0.34f), double.NaN));
+        Assert.Equal(0.0, FbwA380StateEvaluator.DecodeRudderTrimNeutral(Word(0b11, 0.36f), double.NaN));
+    }
+
+    [Fact]
+    public void Rudder_trim_reads_SEC_1_before_SEC_3_when_both_carry_data()
+    {
+        // Both words are good: SEC 1 decides, whichever way the two disagree.
+        Assert.Equal(1.0, FbwA380StateEvaluator.DecodeRudderTrimNeutral(Word(0b11, 0.0f), Word(0b11, 3.0f)));
+        Assert.Equal(0.0, FbwA380StateEvaluator.DecodeRudderTrimNeutral(Word(0b11, 3.0f), Word(0b11, 0.0f)));
+    }
+
+    [Fact]
+    public void The_rudder_trim_field_reads_both_SEC_words_in_that_order()
+    {
+        // The synthetic's own wiring: SEC 1 at 2 degrees (not neutral) wins over SEC 3 at 0 (neutral).
+        var e = With(("A32NX_SEC_1_RUDDER_ACTUAL_POSITION", Word(0b11, 2.0f)),
+                     ("A32NX_SEC_3_RUDDER_ACTUAL_POSITION", Word(0b11, 0.0f)));
+        Assert.Equal(0.0, e.GetValue("FO_RUDDER_TRIM_NEUTRAL"));
     }
 
     [Fact]
@@ -103,6 +123,20 @@ public class FbwA380StateEvaluatorTests
     public void The_packs_check_needs_both_packs_on(double pack1, double pack2, double expected)
         => Assert.Equal(expected, With(("A32NX_OVHD_COND_PACK_1_PB_IS_ON", pack1),
             ("A32NX_OVHD_COND_PACK_2_PB_IS_ON", pack2)).GetValue("FO_PACKS_ON"));
+
+    [Fact]
+    public void Engines_are_off_when_all_four_fuel_valves_are_closed_and_unknown_while_one_is_unread()
+    {
+        // All four closed: off.
+        Assert.Equal(1.0, With(("ENG_VALVE_SWITCH:1", 0), ("ENG_VALVE_SWITCH:2", 0),
+            ("ENG_VALVE_SWITCH:3", 0), ("ENG_VALVE_SWITCH:4", 0)).GetValue("FO_ENGINES_OFF"));
+        // One open: an engine is still fed.
+        Assert.Equal(0.0, With(("ENG_VALVE_SWITCH:1", 0), ("ENG_VALVE_SWITCH:2", 0),
+            ("ENG_VALVE_SWITCH:3", 1), ("ENG_VALVE_SWITCH:4", 0)).GetValue("FO_ENGINES_OFF"));
+        // One unread: a cold cache is no answer, never "engines running" or "off".
+        Assert.True(double.IsNaN(With(("ENG_VALVE_SWITCH:1", 0), ("ENG_VALVE_SWITCH:2", 0),
+            ("ENG_VALVE_SWITCH:4", 0)).GetValue("FO_ENGINES_OFF")));
+    }
 
     [Fact]
     public void Synthetic_fields_are_unknown_with_no_data()
