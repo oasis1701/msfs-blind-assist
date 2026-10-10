@@ -192,25 +192,56 @@ $ReadHeader = "Area rules for {0}. Claude Code does not load .claude/rules for f
 $ContextBudget = 9000
 $NotShownLine = 'Not shown in full, since Claude Code shows only about 10,000 characters of hook output: Read {0} ' +
     'with the Read tool before changing or judging this.'
+$NotShownFolderLine = 'Not shown in full, since Claude Code shows only about 10,000 characters of hook output: Read ' +
+    'these from {0} with the Read tool before changing or judging this: {1}.'
+$NotShownMore = ' and {0} more (.claude/hooks/rules-hook.ps1 for -Stdin lists them for the changed paths)'
+
+# The line naming the rule files not shown, within $Room characters: each by absolute path when that fits, else the
+# rules folder once and the file names, cut short with how many more there are if even that does not fit.
+function Format-NotShownLine($RuleFiles, [int]$Room) {
+    $full = $NotShownLine -f (@(foreach ($rf in $RuleFiles) { $rf.Path }) -join ', ')
+    if ($full.Length -le $Room) { return $full }
+    $folder = [IO.Path]::GetDirectoryName($RuleFiles[0].Path)
+    $names = @(foreach ($rf in $RuleFiles) { [IO.Path]::GetFileName($rf.Path) })
+    for ($k = $names.Count; $k -ge 1; $k--) {
+        $list = $names[0..($k - 1)] -join ', '
+        if ($k -lt $names.Count) { $list += ($NotShownMore -f ($names.Count - $k)) }
+        $line = $NotShownFolderLine -f $folder, $list
+        if ($line.Length -le $Room -or $k -eq 1) { return $line }
+    }
+}
 
 # The header, the names of all matching rule files, as many whole rule files as fit in $ContextBudget (in name order,
-# passing over one that does not fit) in Claude Code's own "Contents of <path>:" shape, and a line naming the rest by
-# path for Claude to Read. Returns @{ Text; Shown }.
+# passing over one that does not fit) in Claude Code's own "Contents of <path>:" shape, and a line naming the rest for
+# Claude to Read (Format-NotShownLine). Returns @{ Text; Shown }.
 function Format-RuleContext([string]$Header, $RuleFiles) {
-    $names = foreach ($rf in $RuleFiles) { $rf.Name }
-    $paths = foreach ($rf in $RuleFiles) { $rf.Path }
-    $lead = $Header + "`n" + 'Rule files that apply: ' + (@($names) -join ', ') + '.'
-    $room = $ContextBudget - $lead.Length - ($NotShownLine -f (@($paths) -join ', ')).Length - 1
+    $sorted = New-Object System.Collections.Generic.List[object]
+    foreach ($rf in $RuleFiles) { $sorted.Add($rf) }
+    $sorted.Sort([Comparison[object]]{ param($a, $b) [string]::CompareOrdinal($a.Name, $b.Name) })
+    $names = @(foreach ($rf in $sorted) { $rf.Name })
+    $lead = $Header + "`n" + 'Rule files that apply: ' + ($names -join ', ') + '.'
+    # A list too long for half the budget names as many as fit there and counts the rest.
+    for ($k = $names.Count - 1; $lead.Length -gt ($ContextBudget / 2) -and $k -ge 1; $k--) {
+        $lead = $Header + "`n" + 'Rule files that apply: ' + ($names[0..($k - 1)] -join ', ') +
+            ($NotShownMore -f ($names.Count - $k)) + '.'
+    }
+    # Room for the blocks: the budget less the lead and the not-shown line in its folder form naming every file, the
+    # longest it can need.
+    $allNames = @(foreach ($rf in $sorted) { [IO.Path]::GetFileName($rf.Path) }) -join ', '
+    $reserve = ($NotShownFolderLine -f [IO.Path]::GetDirectoryName($sorted[0].Path), $allNames).Length
+    $room = $ContextBudget - $lead.Length - $reserve - 1
     $shown = New-Object System.Collections.Generic.List[object]
-    $notShown = New-Object System.Collections.Generic.List[string]
+    $notShown = New-Object System.Collections.Generic.List[object]
     $blocks = New-Object System.Text.StringBuilder
-    foreach ($rf in $RuleFiles) {
+    foreach ($rf in $sorted) {
         $block = "`n`nContents of " + $rf.Path + ":`n`n" + $rf.Body.TrimEnd("`n")
         if ($block.Length -le $room) { [void]$blocks.Append($block); $shown.Add($rf); $room -= $block.Length }
-        else { $notShown.Add($rf.Path) }
+        else { $notShown.Add($rf) }
     }
     $text = $lead
-    if ($notShown.Count -gt 0) { $text += "`n" + ($NotShownLine -f ($notShown.ToArray() -join ', ')) }
+    if ($notShown.Count -gt 0) {
+        $text += "`n" + (Format-NotShownLine $notShown.ToArray() ($ContextBudget - $lead.Length - $blocks.Length - 1))
+    }
     return @{ Text = $text + $blocks.ToString(); Shown = $shown.ToArray() }
 }
 
