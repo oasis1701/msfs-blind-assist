@@ -315,12 +315,14 @@ public override Dictionary<string, string> GetButtonStateMapping() => new();
 
 ## Screen Reader Announcement Rules
 
-### NEVER Announce
-- Button presses (screen reader announces automatically)
-- Combo box changes (screen reader announces automatically)
-- Any direct UI interaction
+The principle is [CORE-7](invariants/core.md#core-7): never repeat what the screen reader just said. Confirm a direct interaction once, and only with what the reader cannot say (the button read-back above, or "<name> pressed" for an action with no readable state). The lists below are the default; CORE-7 lists today's cases.
 
-### ONLY Announce
+### Do Not Announce
+- Button presses (the screen reader announces them), except a CORE-7 confirmation
+- Combo box changes (the screen reader announces them)
+- Any other direct UI interaction
+
+### Always Announce
 <!-- fragment: MSFSBlindAssist/Accessibility/ScreenReaderAnnouncer.cs#AnnounceImmediate -->
 ```csharp
 // Numeric confirmation
