@@ -19,8 +19,9 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// </summary>
 internal static class SeededSimConnectCache
 {
+    // Internal, not private: RecordingSimConnectCache swaps the dictionary through this same accessor.
     [UnsafeAccessor(UnsafeAccessorKind.Field, Name = "lastVariableValues")]
-    private static extern ref ConcurrentDictionary<string, double> Cache(SimConnectManager manager);
+    internal static extern ref ConcurrentDictionary<string, double> Cache(SimConnectManager manager);
 
     // IsConnected is an auto-property with a private setter; its compiler-generated setter is reached
     // the same way as the cache, never through reflection.
