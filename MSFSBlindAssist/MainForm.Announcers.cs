@@ -480,13 +480,6 @@ public partial class MainForm
         }
     }
 
-    /// <summary>Universal auto-gear/AP feed — runs for every aircraft, independent of the
-    /// First Officer window. Gated inside the service by the per-feature settings.</summary>
-    private void OnUniversalAircraftPosition(object? sender, SimConnect.SimConnectManager.AircraftPosition pos)
-    {
-        universalAutomation.Update(pos.Altitude, pos.VerticalSpeedFPM, _universalLatestAgl);
-    }
-
     /// <summary>
     /// Handles special announcements that should terminate processing.
     /// Returns true if the event was handled and no further processing is needed.

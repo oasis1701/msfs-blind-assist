@@ -4,6 +4,7 @@ paths:
   - "MSFSBlindAssist/Forms/FirstOfficer/**"
   - "MSFSBlindAssist/Forms/Settings/FirstOfficerPanel.cs"
   - "MSFSBlindAssist/Automation/UniversalAutomationService.cs"
+  - "MSFSBlindAssist/MainForm.UniversalAutomation.cs"
   - "MSFSBlindAssist/Aircraft/TFDiMD11Definition.FirstOfficer.cs"
   - "tests/MSFSBlindAssist.Tests/FirstOfficer/**"
   - "tests/MSFSBlindAssist.Tests/Fo*.cs"
