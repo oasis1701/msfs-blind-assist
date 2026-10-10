@@ -2,7 +2,7 @@
 paths:
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.cs"
 ---
-# Stand, landing and runway-probe rules for TaxiGuidanceManager.cs
+# Stand, landing, runway-probe and heading-unit rules for TaxiGuidanceManager.cs
 
 MIRRORS: copied word for word from the rule file each Full: link names: only the lines whose code this main partial holds, plus DCK-4, which names no code and keeps its old reach, in place of globbing those files here. Change every copy together (ClaudeContextBudgetTests checks).
 
@@ -22,3 +22,4 @@ MIRRORS: copied word for word from the rule file each Full: link names: only the
 - [EXIT-10] A touchdown runway correction is ONE `AnnounceInstruction` (`TouchdownCallout`): first retire every milestone due within the MEASURED `ROLLOUT_TOUCHDOWN_CORRECTION_LEAD_SEC` (re-measure when the wording changes), reached by `RolloutCalloutSupersession.ReachFeet` braking to taxi speed; turn-now only when already inside. Full: docs/invariants/landing-exits.md#exit-10
 - [EXIT-13] The overshoot margin and the alignment handoff read how the exit leaves its OWN node (`LandingExit.DivergenceAngleDegrees` into `RolloutExitGate.OvershootMarginFor`/`IsAlignedWithExit`), never `ExitAngleDegrees`, the branch's sharpest turn (EDDB 24L M3: 100 ft for 291). Full: docs/invariants/landing-exits.md#exit-13
 - [ROL-19] Derived-constant tripwire: re-derive all five (`VacatedShortAlongTrackFeet`, `EarlyVacateMaxPassedFeet`, `HandoffReachDefaultHalfWidthM`, `RunwayClearMarginM`, `DefaultRunwayWidthFeet`; three hang on `HandoffReachMarginM`) before any runway/rollout tolerance change, say so in the commit, re-run `tools/LandingExitSweep` (more: see full). Full: docs/invariants/rollout-geometry.md#rol-19
+- [DCK-34] A SimConnect heading (`PLANE HEADING DEGREES TRUE`/`MAGNETIC`) arrives in the unit its `AddToDataDefinition` asks for: degrees in the position, AI-traffic, visual-guidance and flare definitions, radians in the hotkey, take-off and hand-fly ones, converted once on receipt. Never convert `AircraftPosition.HeadingMagnetic` again. Full: docs/invariants/simconnect-data.md#dck-34
