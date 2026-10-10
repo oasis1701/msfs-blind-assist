@@ -2,7 +2,7 @@
 paths:
   - "MSFSBlindAssist/MainForm.Hotkeys.cs"
 ---
-# Ground-traffic rule for MainForm.Hotkeys.cs
+# Ground-traffic rules for MainForm.Hotkeys.cs
 
 MIRRORS: copied word for word from ground-traffic.md, whose globs leave MainForm.Hotkeys.cs out; its hotkey dispatch runs the Alt+G traffic summary TRF-1 keeps ungated and speaks the taxi status (`GetStatusAnnouncement`) whose held runway TRF-6 derives. Change both together (ClaudeContextBudgetTests checks).
 
