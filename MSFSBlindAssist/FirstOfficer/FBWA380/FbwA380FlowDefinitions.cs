@@ -37,6 +37,8 @@ using Step = Models.FlowStep<FbwA380StateEvaluator>;
 ///   writing) complete the lines only a later condition makes true: the Cockpit Preparation seat-belt
 ///   wait, the After Start rudder-trim check, the Taxi memo check, the Line-up packs check, the Landing
 ///   memo check, the Landing gear-down check (last in its flow, FO-13) and the Parking engines-off wait.
+///   The two seat-belt waits and the engines-off wait also complete the action line their write ticked,
+///   which reads the same field, so a timed-out wait keeps that line out of the latch too.
 ///   A skipped step keeps its lines out of the end-of-flow latch (FO-8), and
 ///   FbwA380FlowChecklistLinkTests pins that no readable or action line in a latched group lacks a step.
 /// </summary>
@@ -163,9 +165,10 @@ public static class FbwA380FlowDefinitions
             Done(SW("CP_ECAMPAGE", "ECAM page: door", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 5), "CP_ECAMPAGE"),
             // The Cockpit Preparation Checklist's "Seat belts: ON" reads the seat-belt SIGN (FOA-2). This wait
             // already reads that field, later in the flow than the CP_SEATBELT write, so it completes the line
-            // (FO-6): a sign that never lights leaves it open.
-            Done(WaitForField("CP_WAIT_SB", "Waiting for seatbelt signs on", "SEATBELT_SIGN_LIGHT", v => v > 0.5, 60),
-                "CPC_SEATBELT"),
+            // (FO-6). It also completes the write's own "Seatbelt signs: ON", which reads the same sign: a sign
+            // that never lights times the wait out and leaves both lines open, the write's tick included (FO-8).
+            Also(Done(WaitForField("CP_WAIT_SB", "Waiting for seatbelt signs on", "SEATBELT_SIGN_LIGHT",
+                    v => v > 0.5, 60), "CPC_SEATBELT"), "CP_SEATBELT"),
             Captain("CP_IFR", "Obtain IFR clearance"),
             Captain("CP_PAYLOAD", "Load payload on the EFB"),
             Captain("CP_MCDU", "Program the MCDU"),
@@ -528,9 +531,11 @@ public static class FbwA380FlowDefinitions
             Done(Multi("PK_MASTERS_OFF", "Engine masters 1 to 4: OFF",
                 ("ENG_VALVE_SWITCH:1", 0), ("ENG_VALVE_SWITCH:2", 0),
                 ("ENG_VALVE_SWITCH:3", 0), ("ENG_VALVE_SWITCH:4", 0)), "PK_MASTERS_OFF"),
-            // Read only: completes the Parking Checklist's "Engines: OFF", on the same field (FO-6).
-            Done(WaitForField("PK_WAIT_ENG", "Waiting for engines off", "FO_ENGINES_OFF", v => v > 0.5, 120),
-                "PKC_ENGINES"),
+            // Read only: completes the Parking Checklist's "Engines: OFF", on the same field (FO-6), and the
+            // masters' own line above, which reads the same four switches: a master that never reads off times
+            // the wait out and leaves both lines open, the write's tick included (FO-8).
+            Also(Done(WaitForField("PK_WAIT_ENG", "Waiting for engines off", "FO_ENGINES_OFF", v => v > 0.5, 120),
+                "PKC_ENGINES"), "PK_MASTERS_OFF"),
             Wait("PK_STBY1", "Standby", 5),
             Done(Multi("PK_COCKPITLT", "Cockpit lights: set",
                 ("A32NX_OVHD_INTLT_ANN", 1)), "PK_COCKPITLT"),
@@ -557,7 +562,10 @@ public static class FbwA380FlowDefinitions
             Captain("PK_TCAS", "TCAS mode: standby (MFD SURV page)"),
             Done(Skip(SW("PK_COCKPITDOOR", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED", 0),
                 s => s.IsPosition("A32NX_COCKPIT_DOOR_LOCKED", 0)), "PK_COCKPITDOOR"),
-            WaitForField("PK_WAIT_SB", "Waiting for seatbelt signs off", "SEATBELT_SIGN_LIGHT", v => v < 0.5, 60),
+            // Read only: completes "Seatbelt signs: OFF" above, which reads this same sign: a sign that stays lit
+            // times the wait out and leaves the line open, the write's tick included (FO-8).
+            Done(WaitForField("PK_WAIT_SB", "Waiting for seatbelt signs off", "SEATBELT_SIGN_LIGHT", v => v < 0.5, 60),
+                "PK_SEATBELTS_OFF"),
         }
     };
 

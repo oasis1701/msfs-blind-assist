@@ -57,7 +57,7 @@ internal static class FbwA380FlowRun
 
     /// <summary>What a <see cref="Run"/> left behind. The pieces the run was built from stay in it, so a
     /// test can carry on driving them (give <c>State</c> another cache, run <c>Checklist</c>'s
-    /// auto-detection again). <c>Group</c> is the read-back group the three snapshots are of, and
+    /// auto-detection again). <c>Group</c> is the checklist group the three snapshots are of, and
     /// <c>Items</c> every line of every checklist group, by id. <c>Unfinished</c> is the run's unfinished
     /// set as it stood before the latch.</summary>
     internal sealed record RunResult(
@@ -75,22 +75,26 @@ internal static class FbwA380FlowRun
     /// <summary>Runs a SHORT flow, <see cref="Subset"/> of <paramref name="flowId"/> with only
     /// <paramref name="stepIds"/>, on the real checklists and a real FlowManager, then the end-of-flow
     /// latch. The evaluator reads a seeded cache that counts as connected; the executor has no sim, so no
-    /// write lands. <paramref name="groupId"/> is the read-back group the snapshots are of. With
+    /// write lands, unless <paramref name="writesLandOn"/> is given: then every write is recorded there and
+    /// reported sent (<see cref="RecordingA380Definition.Executor"/>), and the seeded cache, which nothing
+    /// writes, keeps reading what the aircraft showed before the run, as an aircraft that does not follow
+    /// the write would. <paramref name="groupId"/> is the group the snapshots are of. With
     /// <paramref name="windowHasTicked"/> the checklist's auto-detection runs first, as the First Officer
     /// window's one-second timer does the whole time it is open: every line that already reads right is
     /// ticked when the flow starts. Without it nothing is ticked before the run, so a line ticked after it
     /// was ticked by a step. The snapshots are taken before the run and after it; the latch that follows
     /// ticks every line the run did not exclude and so cannot show what a step did. With
-    /// <paramref name="waitTimeoutSeconds"/> every read-only check in the short flow (a WaitForCondition
-    /// step) gives up after that many seconds instead of its own timeout: the same timeout path without
-    /// the wait, as Pmdg777FlowRunTests does. Only this run's own copies of the steps change; the real
-    /// timeouts are pinned on the real steps by FbwA380ReadOnlyCheckTests.</summary>
+    /// <paramref name="waitTimeoutSeconds"/> every read-only check or wait in the short flow (a
+    /// WaitForCondition step) gives up after that many seconds instead of its own timeout: the same timeout
+    /// path without the wait, as Pmdg777FlowRunTests does. Only this run's own copies of the steps change;
+    /// the read-only checks' real timeouts are pinned on the real steps by FbwA380ReadOnlyCheckTests.</summary>
     public static async Task<RunResult> Run(string flowId, string groupId, string[] stepIds,
-        (string Key, double Value)[] seed, bool windowHasTicked, int? waitTimeoutSeconds = null)
+        (string Key, double Value)[] seed, bool windowHasTicked, int? waitTimeoutSeconds = null,
+        RecordingA380Definition? writesLandOn = null)
     {
         var state = new FbwA380StateEvaluator();
         state.SetSimConnect(SeededSimConnectCache.ConnectedWith(seed));
-        var executor = new FbwA380ActionExecutor();
+        var executor = writesLandOn?.Executor() ?? new FbwA380ActionExecutor();
         var groups = FbwA380ChecklistDefinitions.Build();
         var flow = Subset(flowId, stepIds);
         if (waitTimeoutSeconds is int timeout)

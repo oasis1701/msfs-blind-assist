@@ -1,10 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using MSFSBlindAssist.Accessibility;
-using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.FBWA380;
-using MSFSBlindAssist.SimConnect;
 using Xunit;
 
 namespace MSFSBlindAssist.Tests.FirstOfficer;
@@ -18,34 +15,10 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// switch (<see cref="FbwA380ReadbackTests"/> pins both): a pump added to or dropped from one hand-tick
 /// alone would leave a pump the line reads but never switches, or switch one no line reads. This runs each
 /// line's own <c>CheckAction</c>, the code a hand-tick runs, against an executor whose definition records
-/// what it is asked to write.
+/// what it is asked to write (<see cref="RecordingA380Definition"/>).
 /// </summary>
 public sealed class FbwA380FuelPumpHandTickTests
 {
-    /// <summary>
-    /// A definition that records every write the executor asks of it instead of sending it, and reports
-    /// success. The executor is sealed and its <c>Set</c> is not virtual, so the recorder sits one step
-    /// down: <c>ApplyUIVariable</c> (what every plain-key write goes through) calls
-    /// <c>HandleUIVariableSet</c>, which is virtual.
-    /// </summary>
-    private sealed class RecordingA380Definition : FlyByWireA380Definition
-    {
-        private readonly object _gate = new();
-        private readonly List<(string Key, double Value)> _writes = new();
-
-        public (string Key, double Value)[] Writes
-        {
-            get { lock (_gate) return _writes.ToArray(); }
-        }
-
-        public override bool HandleUIVariableSet(string varKey, double value, SimVarDefinition varDef,
-            SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
-        {
-            lock (_gate) _writes.Add((varKey, value));
-            return true;
-        }
-    }
-
     /// <summary>What the line's hand-tick action writes, in order. The executor reads as connected (its
     /// sim is a manager that never opened a handle), so its dispatch runs; its definition records instead
     /// of sending.</summary>
@@ -55,12 +28,7 @@ public sealed class FbwA380FuelPumpHandTickTests
         Assert.NotNull(line.CheckAction);
 
         var definition = new RecordingA380Definition();
-        var executor = new FbwA380ActionExecutor();
-        executor.SetSimConnect(SeededSimConnectCache.ConnectedWith());
-        executor.SetDefinition(definition);
-        executor.SetAnnouncer(new GatedSpeechCapture());
-
-        await line.CheckAction!(executor, new FbwA380StateEvaluator());
+        await line.CheckAction!(definition.Executor(), new FbwA380StateEvaluator());
         return definition.Writes;
     }
 

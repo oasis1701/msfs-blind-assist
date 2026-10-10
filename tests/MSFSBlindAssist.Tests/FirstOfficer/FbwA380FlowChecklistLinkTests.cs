@@ -98,11 +98,13 @@ public class FbwA380FlowChecklistLinkTests
         Assert.True(problems.Count == 0, string.Join(Environment.NewLine, problems));
     }
 
-    /// <summary>Flow, step, and exactly the lines it completes (own line first).</summary>
+    /// <summary>Flow, step, and exactly the lines it completes (own line first). A wait on the field its
+    /// write sets (CP_WAIT_SB, PK_WAIT_ENG, PK_WAIT_SB) also completes the action line that write ticked, so a
+    /// timed-out wait keeps that line out of the latch too (FbwA380TimedOutWaitBehaviourTests).</summary>
     public static IEnumerable<object[]> StepLinks() => new[]
     {
         new object[] { "COCKPIT_PREP", "CP_SEATBELT", new[] { "CP_SEATBELT" } },
-        new object[] { "COCKPIT_PREP", "CP_WAIT_SB", new[] { "CPC_SEATBELT" } },
+        new object[] { "COCKPIT_PREP", "CP_WAIT_SB", new[] { "CPC_SEATBELT", "CP_SEATBELT" } },
         new object[] { "BEFORE_START", "BS_BEACON", new[] { "BS_BEACON", "BSC_BEACON" } },
         // The reset only commands the trim; the read-only check after it completes "Rudder trim: NEUTRAL".
         new object[] { "AFTER_START", "AS_RUDDERTRIM", new[] { "AS_RUDDERTRIM" } },
@@ -117,9 +119,10 @@ public class FbwA380FlowChecklistLinkTests
         new object[] { "LANDING", "LD_SPOILERS_ARM", new[] { "LD_SPOILERS_ARM", "LDC_SPOILERS" } },
         new object[] { "LANDING", "LD_MEMO_CHECK", new[] { "LDC_SEATBELT", "LDC_FLAPS" } },
         new object[] { "LANDING", "LD_GEAR_DOWN_CHECK", new[] { "LDC_GEAR" } },
-        new object[] { "PARKING", "PK_WAIT_ENG", new[] { "PKC_ENGINES" } },
+        new object[] { "PARKING", "PK_WAIT_ENG", new[] { "PKC_ENGINES", "PK_MASTERS_OFF" } },
         new object[] { "PARKING", "PK_WINGLT_OFF", new[] { "PK_WINGLT_OFF", "PKC_WINGLT" } },
         new object[] { "PARKING", "PK_FUELPUMPS_OFF", new[] { "PK_FUELPUMPS_OFF", "PKC_FUELPUMPS" } },
+        new object[] { "PARKING", "PK_WAIT_SB", new[] { "PK_SEATBELTS_OFF" } },
         new object[] { "SECURE", "SC_OXY", new[] { "SC_OXY", "SCC_OXY" } },
         new object[] { "SECURE", "SC_EMEREXIT", new[] { "SC_EMEREXIT", "SCC_EMEREXIT" } },
         new object[] { "SECURE", "SC_BAT_OFF", new[] { "SC_BAT_OFF", "SCC_BAT" } },

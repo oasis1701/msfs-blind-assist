@@ -37,11 +37,15 @@ public class FbwA380GearConfirmationTests
     public void Not_down_with_the_lever_up()
         => Assert.Equal(0.0, FbwA380GearConfirmation.DownValue(Reader(0, 100, 100, 100)));
 
+    /// <summary>The lever, then each leg in turn, unread while the rest read down: every input counts, so a leg
+    /// dropped from <see cref="FbwA380GearConfirmation.LegFields"/> fails here.</summary>
     [Fact]
     public void Unknown_input_reads_NaN()
     {
-        Assert.True(double.IsNaN(FbwA380GearConfirmation.DownValue(Reader(double.NaN, 100, 100, 100))));
-        Assert.True(double.IsNaN(FbwA380GearConfirmation.DownValue(Reader(1, 100, double.NaN, 100))));
+        Assert.True(double.IsNaN(FbwA380GearConfirmation.DownValue(Reader(double.NaN, 100, 100, 100))), "lever unread");
+        Assert.True(double.IsNaN(FbwA380GearConfirmation.DownValue(Reader(1, double.NaN, 100, 100))), "centre leg unread");
+        Assert.True(double.IsNaN(FbwA380GearConfirmation.DownValue(Reader(1, 100, double.NaN, 100))), "left leg unread");
+        Assert.True(double.IsNaN(FbwA380GearConfirmation.DownValue(Reader(1, 100, 100, double.NaN))), "right leg unread");
     }
 
     [Fact]

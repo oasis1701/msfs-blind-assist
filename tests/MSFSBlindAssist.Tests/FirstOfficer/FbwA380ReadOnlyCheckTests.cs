@@ -9,9 +9,11 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 
 /// <summary>
 /// The A380 read-only checks (FO-6, FO-13, FOA-9): each waits on its lines' own field, is skipped aloud
-/// on timeout, never writes, and is the one step that completes those lines. The behaviour half, on a
-/// real FlowManager, is <see cref="FbwA380RudderTrimCheckBehaviourTests"/>,
-/// <see cref="FbwA380TaxiMemoCheckBehaviourTests"/> and <see cref="FbwA380LandingChecksBehaviourTests"/>.
+/// on timeout, never writes, and is the one step that completes the read-back lines it confirms. The
+/// Cockpit Preparation seat-belt wait also completes the action line its write ticked, so a timeout keeps
+/// that line out of the latch too. The behaviour half, on a real FlowManager, is
+/// <see cref="FbwA380RudderTrimCheckBehaviourTests"/>, <see cref="FbwA380TaxiMemoCheckBehaviourTests"/>,
+/// <see cref="FbwA380LandingChecksBehaviourTests"/> and <see cref="FbwA380TimedOutWaitBehaviourTests"/>.
 /// </summary>
 public class FbwA380ReadOnlyCheckTests
 {
@@ -21,7 +23,7 @@ public class FbwA380ReadOnlyCheckTests
     public static IEnumerable<object[]> Checks() => new[]
     {
         new object[] { "COCKPIT_PREP", "CP_WAIT_SB", "Waiting for seatbelt signs on", "SEATBELT_SIGN_LIGHT", 60,
-            new[] { "CPC_SEATBELT" } },
+            new[] { "CPC_SEATBELT", "CP_SEATBELT" } },
         new object[] { "AFTER_START", "AS_RUDDERTRIM_CHECK", "Rudder trim: NEUTRAL", "FO_RUDDER_TRIM_NEUTRAL", 20,
             new[] { "ASC_RUDDERTRIM" } },
         new object[] { "TAXI", "TX_MEMO_CHECK", "Seat belts, ground spoilers and flaps for takeoff", "FO_TAXI_MEMO_OK", 5,
