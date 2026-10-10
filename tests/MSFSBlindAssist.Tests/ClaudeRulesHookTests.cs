@@ -109,13 +109,15 @@ public class ClaudeRulesHookTests : IDisposable
     }
 
     [Theory]
-    [InlineData("MSFSBlindAssist/Navigation/TaxiGraph.cs", "gsx-stands-docking.md;landing-exits.md;taxi-routing.md")]
+    [InlineData("MSFSBlindAssist/Navigation/TaxiGraph.cs", "gsx-stands-docking.md;landing-exits.md;rollout-geometry.md;"
+        + "runway-holds-call-sites.md;stand-naming-call-sites.md;taxi-graph.md;taxi-position.md;taxi-routing.md")]
     [InlineData("MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs",
-        "a380-coherent.md;a380-fcu.md;a380-systems.md;fbw-arinc.md;troubleshooting.md;variable-definitions.md")]
+        "a380-coherent.md;a380-fcu.md;a380-systems.md;fbw-arinc.md;tcas-ra.md;troubleshooting.md;variable-definitions.md")]
     public void Read_keeps_its_context_within_what_Claude_Code_shows_in_full(string path, string ruleFiles)
     {
         // Claude Code saves hook context over about 10,000 characters to a file and shows the model a 2 KB preview
-        // (measured 2026-10-08); each of these files loads over 20,000 characters of rules.
+        // (measured 2026-10-08), so the hook shows at most 9,000; each of these files loads far more rules than that, so
+        // some of its rule files must be named rather than shown.
         string worktree = CreateAgentWorktree(NewTempDir());
         string file = CreateFile(worktree, path);
 
@@ -142,8 +144,8 @@ public class ClaudeRulesHookTests : IDisposable
     [Fact]
     public void Read_names_a_rule_file_once_per_subagent()
     {
-        // FlyByWireA380Definition.Rmp.cs loads over 20,000 characters of rules: some are only named ("Not shown in
-        // full"), and a named rule file is remembered too, so a second Read of the file adds nothing.
+        // FlyByWireA380Definition.Rmp.cs loads far more rules than the hook shows within its 9,000 characters: some are
+        // only named ("Not shown in full"), and a named rule file is remembered too, so a second Read adds nothing.
         string worktree = CreateAgentWorktree(NewTempDir());
         string file = CreateFile(worktree, "MSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs");
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
@@ -601,17 +603,19 @@ public class ClaudeRulesHookTests : IDisposable
     public void Diff_keeps_its_context_within_what_Claude_Code_shows_in_full()
     {
         // Claude Code saves hook context over about 10,000 characters to a file and shows the model a 2 KB preview
-        // (measured 2026-10-08). TaxiGraph.cs and FlyByWireA380Definition.Rmp.cs load nine rule files, over 50,000
-        // characters of bodies: the hook shows whole files within 9,000 characters and names the rest to Read.
+        // (measured 2026-10-08). TaxiGuidanceManager.cs and FlyByWireA380Definition.cs load fifteen rule files, over
+        // 45,000 characters of bodies (48,766 on 2026-10-10): the hook shows whole files within 9,000 characters and names
+        // the rest to Read.
         JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff --name-only", BashResponse(
-            "MSFSBlindAssist/Navigation/TaxiGraph.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs\n"))));
+            "MSFSBlindAssist/Services/TaxiGuidanceManager.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.cs\n"))));
 
         Assert.NotNull(output);
         string context = output.Value.GetProperty("additionalContext").GetString()!;
         Assert.InRange(context.Length, 1, 9_000);
-        AssertEachRuleFileShownOrNamed(context, ClaudeContextBudgetTests.RepoRoot(), "gsx-stands-docking.md", "landing-exits.md",
-            "taxi-routing.md", "a380-coherent.md", "a380-fcu.md", "a380-systems.md", "fbw-arinc.md",
-            "troubleshooting.md", "variable-definitions.md");
+        AssertEachRuleFileShownOrNamed(context, ClaudeContextBudgetTests.RepoRoot(), "landing-rollout.md",
+            "runway-holds.md", "taxi-manager-call-sites.md", "taxi-position.md", "taxi-steering.md",
+            "a380-definition-call-sites.md", "a380-fcu.md", "a380-panels.md", "a380-systems.md", "fbw-arinc.md",
+            "fcu-callouts.md", "flypad-call-sites.md", "tcas-ra.md", "troubleshooting.md", "variable-definitions.md");
     }
 
     [Fact]
@@ -626,11 +630,11 @@ public class ClaudeRulesHookTests : IDisposable
     [Fact]
     public void Diff_names_a_rule_file_once_per_session()
     {
-        // TaxiGraph.cs + FlyByWireA380Definition.Rmp.cs load over 50,000 characters of rules: most are only named,
-        // and a named rule file is remembered too, so a second diff of the same files adds nothing.
+        // TaxiGuidanceManager.cs + FlyByWireA380Definition.cs load over 45,000 characters of rules: most are only
+        // named, and a named rule file is remembered too, so a second diff of the same files adds nothing.
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
         string input = DiffInput("git diff --name-only", BashResponse(
-            "MSFSBlindAssist/Navigation/TaxiGraph.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.Rmp.cs\n"));
+            "MSFSBlindAssist/Services/TaxiGuidanceManager.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.cs\n"));
 
         JsonElement? first = HookOutput(RunHook(new[] { "diff" }, input, env: env));
 

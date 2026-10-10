@@ -546,7 +546,7 @@ generic announcer detect this and skip itself **entirely** for that aircraft —
 `AnnounceAmbientChanges` gates the whole `STRUCTURAL ICE PCT` branch on
 `currentAircraft?.HasOwnIcingAnnouncer != true`, not merely muted — so one icing episode on the
 A380 is never spoken by two voices, the same one-condition-one-call-out rule as the documented
-PB-light/ECAM-memo invariant (see [A380-21] in [invariants/a380-systems.md](invariants/a380-systems.md)). The A380's own announcer is
+PB-light/ECAM-memo invariant (see [A380-21] in [invariants/a380-panels.md](invariants/a380-panels.md)). The A380's own announcer is
 deliberately **not** gated on the new `AnnounceIcingEnabled` setting — it predates the setting
 and is aircraft-curated; turning the new toggle off silences the generic tracker for every
 other aircraft but leaves the A380's own voice untouched. (Making the A380 announcer also
