@@ -14,6 +14,8 @@ paths:
   - "MSFSBlindAssist/Services/RouteAdvisoryLocator.cs"
   - "MSFSBlindAssist/Services/TakeoffAssistManager.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.Routing.cs"
+  - "MSFSBlindAssist/Services/VisualGuidanceManager.cs"
+  - "MSFSBlindAssist/Services/HandFlyManager.cs"
   - "tests/MSFSBlindAssist.Tests/GroundTrafficMonitorHarness.cs"
   - "tests/MSFSBlindAssist.Tests/TcasFormParsingTests.cs"
 ---
