@@ -2,7 +2,6 @@
 paths:
   - "MSFSBlindAssist/Navigation/RolloutExitGate.cs"
   - "MSFSBlindAssist/Services/TaxiGuidanceManager.Rollout.cs"
-  - "MSFSBlindAssist/Services/TaxiGuidanceManager.cs"
   - "MSFSBlindAssist/Navigation/TaxiGraph.cs"
   - "MSFSBlindAssist/Navigation/ExitBranch.cs"
   - "MSFSBlindAssist/Navigation/LandingExitReplan.cs"
