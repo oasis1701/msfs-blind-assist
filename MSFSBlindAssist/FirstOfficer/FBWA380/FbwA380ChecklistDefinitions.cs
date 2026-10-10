@@ -405,7 +405,6 @@ public static class FbwA380ChecklistDefinitions
         Items = new()
         {
             Reminder("LU_TCAS", "LINEUP", "TCAS mode: TA/RA (MFD SURV page)"),
-            Reminder("LU_PACKS", "LINEUP", "Packs: set for takeoff as required"),
             Auto("LU_STROBE", "LINEUP", "Strobe lights: ON", "LIGHT_STROBE",
                 v => v > 0.5, (e, _) => e.Set("LIGHT_STROBE", 1)),
             // Landing lights = wing LDG LT (LIGHT_LANDING 0/1); the nose T.O. beam is the

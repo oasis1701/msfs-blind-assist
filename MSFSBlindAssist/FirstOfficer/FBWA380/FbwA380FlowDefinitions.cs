@@ -158,7 +158,11 @@ public static class FbwA380FlowDefinitions
             // door=5, APU=1, engine=0, F/Ctl=11). Selecting a manual page overrides the
             // Airbus auto-page until the next auto event; acceptable during ground prep.
             SW("CP_ECAMPAGE", "ECAM page: door", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 5),
-            WaitForField("CP_WAIT_SB", "Waiting for seatbelt signs on", "SEATBELT_SIGN_LIGHT", v => v > 0.5, 60),
+            // The Cockpit Preparation Checklist's "Seat belts: ON" reads the seat-belt SIGN (FOA-2). This wait
+            // already reads that field, later in the flow than the CP_SEATBELT write, so it completes the line
+            // (FO-6): a sign that never lights leaves it open.
+            Done(WaitForField("CP_WAIT_SB", "Waiting for seatbelt signs on", "SEATBELT_SIGN_LIGHT", v => v > 0.5, 60),
+                "CPC_SEATBELT"),
             Captain("CP_IFR", "Obtain IFR clearance"),
             Captain("CP_PAYLOAD", "Load payload on the EFB"),
             Captain("CP_MCDU", "Program the MCDU"),
@@ -306,7 +310,7 @@ public static class FbwA380FlowDefinitions
     private static Flow BuildTaxi() => new()
     {
         Id = "TAXI", Name = "Taxi",
-        Description = "Autobrake RTO, engine mode NORM, weather radar and predictive windshear on.",
+        Description = "Autobrake RTO, engine mode NORM, weather radar and predictive windshear on, takeoff memo check, takeoff config test.",
         RelatedChecklistGroupIds = new[] { "TAXI_CL" },
         Steps = new()
         {
@@ -325,6 +329,15 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("A32NX_SWITCH_RADAR_PWS_Position", 1)),
             Captain("TX_FLAPS", "Flaps: set for takeoff"),
             SW("TX_ECAMPAGE", "ECAM page: flight controls", "A32NX_ECAM_SD_CURRENT_PAGE_INDEX", 11),
+            // The takeoff memo the pilot set earlier (seat belts, ground spoilers, flaps): a read-only check
+            // (5 s, skipped aloud on timeout, never writes) on the same fields and conditions as the four
+            // Taxi Checklist lines it completes (FOA-9). Flaps held back to the holding point (icing) time it
+            // out: "Flaps: T.O" then stays open until the lever is set and "Flaps setting: SET" until the pilot
+            // ticks it; lines that already read right (the window ticks them every second) tick with the rest.
+            Also(Done(Skip(WaitForField("TX_MEMO_CHECK", "Seat belts, ground spoilers and flaps for takeoff",
+                        "FO_TAXI_MEMO_OK", v => v > 0.5, 5),
+                    s => s.GetValue("FO_TAXI_MEMO_OK") > 0.5), "TXC_MEMO_SIGNS"),
+                "TXC_MEMO_SPLRS", "TXC_MEMO_FLAPS", "TXC_FLAPS"),
             // Takeoff config test: held ECP T.O CONFIG button via the executor's
             // TakeoffConfigTestAsync pseudo-key (press → 2 s → release; sim-verified the
             // A32NX_BTN_TOCONFIG L:var holds). Done after flaps/config so the FWC verifies
@@ -339,12 +352,16 @@ public static class FbwA380FlowDefinitions
     private static Flow BuildLineup() => new()
     {
         Id = "LINEUP", Name = "Lineup",
-        Description = "TCAS TA/RA, packs, strobe and landing/nose lights for takeoff.",
+        Description = "TCAS TA/RA reminder, packs check, strobe, landing/nose and turn-off lights for takeoff, cabin call.",
         RelatedChecklistGroupIds = new[] { "LINEUP_CL" },
         Steps = new()
         {
             Captain("LU_TCAS", "TCAS mode: TA/RA (MFD SURV page)"),
-            Captain("LU_PACKS", "Packs: set for takeoff as required"),
+            // Packs 1 and 2 ON, read only (5 s, skipped aloud on timeout, never writes): the First Officer
+            // never switches the packs; a packs-off takeoff stays the pilot's call, and the Line-up
+            // Checklist's "Packs 1 and 2: ON" then stays open (FOA-9).
+            Done(Skip(WaitForField("LU_PACKS_CHECK", "Packs 1 and 2: ON", "FO_PACKS_ON", v => v > 0.5, 5),
+                s => s.GetValue("FO_PACKS_ON") > 0.5), "LUC_PACKS"),
             Skip(SW("LU_STROBE", "Strobe lights: ON", "LIGHT_STROBE", 1), s => s.IsOn("LIGHT_STROBE")),
             // Landing lights = wing LDG LT (LIGHT_LANDING 0/1); the nose T.O. beam is the
             // separate 3-position NOSE_LIGHT selector (0=T.O.) since the PR #139 split.
@@ -406,13 +423,27 @@ public static class FbwA380FlowDefinitions
     private static Flow BuildLanding() => new()
     {
         Id = "LANDING", Name = "Landing",
-        Description = "Missed approach altitude reminder, spoilers armed.",
+        Description = "Missed approach altitude reminder, spoilers armed, landing memo check, gear-down check.",
         RelatedChecklistGroupIds = new[] { "LANDING_CL" },
         Steps = new()
         {
             Captain("LD_MISSEDALT", "Set missed approach altitude"),
             Skip(SW("LD_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)),
+            // The landing memo the pilot set (seat belts, flaps at the landing setting: FULL, or 3 with CONF 3
+            // selected): a read-only check (5 s, skipped aloud on timeout, never writes) completing the Landing
+            // Checklist's two lines on the same fields (FOA-9). Flaps short of the landing setting time it out:
+            // "Flaps: LDG" then stays open until the flaps are set; a line that already reads right (the window
+            // ticks it every second) ticks with the rest.
+            Also(Done(Skip(WaitForField("LD_MEMO_CHECK", "Seat belts and landing flaps", "FO_LDG_MEMO_OK",
+                        v => v > 0.5, 5),
+                    s => s.GetValue("FO_LDG_MEMO_OK") > 0.5), "LDC_SEATBELT"),
+                "LDC_FLAPS"),
+            // LAST (FO-13): the gear confirmed down from the legs, read only (20 s, skipped aloud on
+            // timeout, never writes). It completes the Landing Checklist's "Landing gear: DOWN".
+            Done(Skip(WaitForField("LD_GEAR_DOWN_CHECK", "Landing gear: DOWN", FbwA380GearConfirmation.DownField,
+                    v => v > 0.5, 20),
+                s => s.GetValue(FbwA380GearConfirmation.DownField) > 0.5), "LDC_GEAR"),
         }
     };
 
@@ -648,6 +679,15 @@ public static class FbwA380FlowDefinitions
     private static Step Done(Step step, string checklistItemId)
     {
         step.CompletesChecklistItemId = checklistItemId;
+        return step;
+    }
+
+    // A further line the step delivers, beyond Done's: the same line in the flow's own *_CL read-back,
+    // or the other lines a read-only check confirms (FlowStep.AlsoCompletesChecklistItemIds; FlowManager
+    // marks and, on a skip, excludes every linked id — FO-6). The A32NX file's helper.
+    private static Step Also(Step step, params string[] alsoCompletes)
+    {
+        step.AlsoCompletesChecklistItemIds = alsoCompletes;
         return step;
     }
 }
