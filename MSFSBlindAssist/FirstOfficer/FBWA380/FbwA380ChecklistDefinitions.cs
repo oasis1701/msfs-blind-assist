@@ -192,10 +192,11 @@ public static class FbwA380ChecklistDefinitions
             Reminder("CP_ALTIMETERS", "COCKPIT_PREP", "Altimeters: set QNH"),
             Auto("CP_ANTISKID", "COCKPIT_PREP", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE",
                 v => v > 0.5, (e, _) => e.Set("ANTISKID_BRAKES_ACTIVE", 1)),
-            Reminder("CP_ALTRPT", "COCKPIT_PREP", "Altitude reporting: on"),
-            Reminder("CP_TCASTRAFFIC", "COCKPIT_PREP", "TCAS traffic: all"),
-            Reminder("CP_TCASMODE", "COCKPIT_PREP", "TCAS mode: standby"),
-            Reminder("CP_XPDR", "COCKPIT_PREP", "Transponder: standby"),
+            // Surveillance reminders, as in the flow (see the note at its CP_ALTRPT): Captain items that name
+            // the MFD SURV page. There is no "TCAS traffic: all" line (FOA-9).
+            Reminder("CP_ALTRPT", "COCKPIT_PREP", "Altitude reporting: on (MFD SURV page)"),
+            Reminder("CP_TCASMODE", "COCKPIT_PREP", "TCAS mode: standby (MFD SURV page)"),
+            Reminder("CP_XPDR", "COCKPIT_PREP", "Transponder: standby (MFD SURV page)"),
             Multi("CP_EFISMODE", "COCKPIT_PREP", "EFIS mode: ARC", "A32NX_EFIS_L_ND_MODE", v => Math.Abs(v - 3) < 0.5,
                 new[] { "A32NX_EFIS_R_ND_MODE" },
                 async (e, _) => { await e.Set("A32NX_EFIS_L_ND_MODE", 3); await e.Set("A32NX_EFIS_R_ND_MODE", 3); }),
@@ -297,7 +298,7 @@ public static class FbwA380ChecklistDefinitions
             Auto("BS_PARKBRK", "BEFORE_START", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
                 v => v > 0.5, (e, _) => e.Set("A32NX_PARK_BRAKE_LEVER_POS", 1)),
             Reminder("BS_XPDR", "BEFORE_START", "Transponder: set for departure"),
-            Reminder("BS_TCAS", "BEFORE_START", "TCAS mode: TA/RA"),
+            Reminder("BS_TCAS", "BEFORE_START", "TCAS mode: TA/RA (MFD SURV page)"),
             Reminder("BS_MCDUPERF", "BEFORE_START", "Program the MCDU PERF page"),
             Reminder("BS_TRIM", "BEFORE_START", "Set trim"),
             Reminder("BS_ACARS", "BEFORE_START", "Start ACARS"),
@@ -353,7 +354,7 @@ public static class FbwA380ChecklistDefinitions
             Auto("AS_NOSE_TAXI", "AFTER_START", "Nose light: TAXI", "NOSE_LIGHT",
                 v => Math.Abs(v - 1) < 0.5, (e, _) => e.Set("NOSE_LIGHT", 1)),
             // DIM (2) for taxi/flight — ANN LT has no true OFF.
-            Auto("AS_COCKPITLT", "AFTER_START", "Cockpit lights: off", "A32NX_OVHD_INTLT_ANN",
+            Auto("AS_COCKPITLT", "AFTER_START", "Cockpit lights: annunciator dim", "A32NX_OVHD_INTLT_ANN",
                 v => Math.Abs(v - 2) < 0.5,
                 (e, _) => e.Set("A32NX_OVHD_INTLT_ANN", 2)),
             Auto("AS_SPOILERS_ARM", "AFTER_START", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
@@ -376,7 +377,7 @@ public static class FbwA380ChecklistDefinitions
             // momentary that auto-resets to 0, so it could never hold a tick — and
             // RevertToState would un-tick it seconds after arming). Guarded action:
             // a retick while already armed must not re-press — a second press disarms.
-            Auto("TX_AUTOBRAKE", "TAXI", "Autobrake: MAX", "A32NX_AUTOBRAKES_RTO_ARMED",
+            Auto("TX_AUTOBRAKE", "TAXI", "Autobrake: RTO", "A32NX_AUTOBRAKES_RTO_ARMED",
                 v => v > 0.5, (e, s) => s.IsOn("A32NX_AUTOBRAKES_RTO_ARMED")
                     ? Task.CompletedTask
                     : e.Set("A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", 1)),
@@ -403,7 +404,7 @@ public static class FbwA380ChecklistDefinitions
         Id = "LINEUP", Name = "Lineup",
         Items = new()
         {
-            Reminder("LU_TCAS", "LINEUP", "TCAS mode: TA/RA"),
+            Reminder("LU_TCAS", "LINEUP", "TCAS mode: TA/RA (MFD SURV page)"),
             Reminder("LU_PACKS", "LINEUP", "Packs: set for takeoff as required"),
             Auto("LU_STROBE", "LINEUP", "Strobe lights: ON", "LIGHT_STROBE",
                 v => v > 0.5, (e, _) => e.Set("LIGHT_STROBE", 1)),
@@ -603,8 +604,8 @@ public static class FbwA380ChecklistDefinitions
                 }),
             Auto("PK_SEATBELTS_OFF", "PARKING", "Seatbelt signs: OFF", "SEATBELT_SIGN_LIGHT",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("SEATBELT_SIGN", 2)),
-            Reminder("PK_XPDR", "PARKING", "Transponder: standby"),
-            Reminder("PK_TCAS", "PARKING", "TCAS mode: standby"),
+            Reminder("PK_XPDR", "PARKING", "Transponder: standby (MFD SURV page)"),
+            Reminder("PK_TCAS", "PARKING", "TCAS mode: standby (MFD SURV page)"),
             Auto("PK_COCKPITDOOR", "PARKING", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED",
                 v => Math.Abs(v - 0) < 0.5, (e, _) => e.Set("A32NX_COCKPIT_DOOR_LOCKED", 0)),
         }

@@ -132,10 +132,15 @@ public static class FbwA380FlowDefinitions
                 ("A32NX_FCU_EFIS_L_BARO_IS_INHG", 0), ("A32NX_FCU_EFIS_R_BARO_IS_INHG", 0)),
             Captain("CP_ALTIMETERS", "Altimeters: set QNH"),
             Skip(SW("CP_ANTISKID", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE", 1), s => s.IsOn("ANTISKID_BRAKES_ACTIVE")),
-            Captain("CP_ALTRPT", "Altitude reporting: on"),
-            Captain("CP_TCASTRAFFIC", "TCAS traffic: all"),
-            Captain("CP_TCASMODE", "TCAS mode: standby"),
-            Captain("CP_XPDR", "Transponder: standby"),
+            // Surveillance reminders, kept at the owner's decision (2026-10-09) and worded to name the MFD
+            // SURV page. What is known: FlyByWire's source at 255546cb models XPDR AUTO/STBY, ALT RPTG and
+            // TCAS TA/RA / TA ONLY / STBY on that page; the repo's own note (FlyByWireA380Definition.cs,
+            // written after a live in-flight test on 2026-06-03) records the TCAS selection there as a dead
+            // stub; and MSFSBA cannot set them (A380-4). So they are Captain items, never a write or a check
+            // (FOA-9). "TCAS traffic: all" is gone: FlyByWire's source offers NORM / ABV / BLW there, no ALL.
+            Captain("CP_ALTRPT", "Altitude reporting: on (MFD SURV page)"),
+            Captain("CP_TCASMODE", "TCAS mode: standby (MFD SURV page)"),
+            Captain("CP_XPDR", "Transponder: standby (MFD SURV page)"),
             Multi("CP_EFISMODE", "EFIS mode: ARC", ("A32NX_EFIS_L_ND_MODE", 3), ("A32NX_EFIS_R_ND_MODE", 3)),
             Multi("CP_EFISRANGE", "EFIS range: 40", ("A32NX_EFIS_L_ND_RANGE", 3), ("A32NX_EFIS_R_ND_RANGE", 3)),
             // One FCU pushbutton since FBW #10855 — see A380FlightDirector. A toggle, so skip it when lit.
@@ -216,7 +221,7 @@ public static class FbwA380FlowDefinitions
             Skip(SW("BS_PARKBRK", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS", 1),
                 s => s.IsOn("A32NX_PARK_BRAKE_LEVER_POS")),
             Captain("BS_XPDR", "Transponder: set for departure"),
-            Captain("BS_TCAS", "TCAS mode: TA/RA"),
+            Captain("BS_TCAS", "TCAS mode: TA/RA (MFD SURV page)"),
             Captain("BS_MCDUPERF", "Program the MCDU PERF page"),
             Captain("BS_TRIM", "Set trim"),
             Captain("BS_ACARS", "Start ACARS"),
@@ -279,7 +284,7 @@ public static class FbwA380FlowDefinitions
                 s => s.IsPosition("NOSE_LIGHT", 1)),
             // Cockpit lights DIM (position 2) for taxi/flight — the reduced setting
             // (ANN LT has no true OFF; 2=Dim is the in-flight position).
-            Multi("AS_COCKPITLT", "Cockpit lights: off",
+            Multi("AS_COCKPITLT", "Cockpit lights: annunciator dim",
                 ("A32NX_OVHD_INTLT_ANN", 2)),
             Skip(SW("AS_SPOILERS_ARM", "Spoilers: ARMED", "A380X_MSFSBA_SPOILERS_ARM", 1),
                 s => s.IsPosition("A32NX_SPOILERS_ARMED", 1)),
@@ -294,7 +299,7 @@ public static class FbwA380FlowDefinitions
     private static Flow BuildTaxi() => new()
     {
         Id = "TAXI", Name = "Taxi",
-        Description = "Autobrake MAX, engine mode NORM, weather radar and predictive windshear on.",
+        Description = "Autobrake RTO, engine mode NORM, weather radar and predictive windshear on.",
         RelatedChecklistGroupIds = new[] { "TAXI_CL" },
         Steps = new()
         {
@@ -303,7 +308,7 @@ public static class FbwA380FlowDefinitions
             // (Continuous+IsAnnounced, batch-cached). Skip on the ARMED state so a
             // re-run never re-presses the momentary while already armed (a second
             // press would disarm it).
-            Skip(SW("TX_AUTOBRAKE", "Autobrake: MAX", "A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", 1),
+            Skip(SW("TX_AUTOBRAKE", "Autobrake: RTO", "A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED", 1),
                 s => s.IsOn("A32NX_AUTOBRAKES_RTO_ARMED")),
             Skip(SW("TX_ENGMODE", "Engine mode: NORM", "ENGINE_MODE_SELECTOR", 1),
                 s => s.IsPosition("ENGINE_MODE_SELECTOR", 1)),
@@ -331,7 +336,7 @@ public static class FbwA380FlowDefinitions
         RelatedChecklistGroupIds = new[] { "LINEUP_CL" },
         Steps = new()
         {
-            Captain("LU_TCAS", "TCAS mode: TA/RA"),
+            Captain("LU_TCAS", "TCAS mode: TA/RA (MFD SURV page)"),
             Captain("LU_PACKS", "Packs: set for takeoff as required"),
             Skip(SW("LU_STROBE", "Strobe lights: ON", "LIGHT_STROBE", 1), s => s.IsOn("LIGHT_STROBE")),
             // Landing lights = wing LDG LT (LIGHT_LANDING 0/1); the nose T.O. beam is the
@@ -493,8 +498,8 @@ public static class FbwA380FlowDefinitions
                 ("FUELPUMP_TRIM_L", 0), ("FUELPUMP_TRIM_R", 0)),
             Skip(SW("PK_SEATBELTS_OFF", "Seatbelt signs: OFF", "SEATBELT_SIGN", 2),
                 s => s.IsPosition("SEATBELT_SIGN_LIGHT", 0)),
-            Captain("PK_XPDR", "Transponder: standby"),
-            Captain("PK_TCAS", "TCAS mode: standby"),
+            Captain("PK_XPDR", "Transponder: standby (MFD SURV page)"),
+            Captain("PK_TCAS", "TCAS mode: standby (MFD SURV page)"),
             Skip(SW("PK_COCKPITDOOR", "Cockpit door: UNLOCKED", "A32NX_COCKPIT_DOOR_LOCKED", 0),
                 s => s.IsPosition("A32NX_COCKPIT_DOOR_LOCKED", 0)),
             WaitForField("PK_WAIT_SB", "Waiting for seatbelt signs off", "SEATBELT_SIGN_LIGHT", v => v < 0.5, 60),
