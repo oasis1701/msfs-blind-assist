@@ -133,7 +133,7 @@ Each area's rules load automatically when Claude reads its code; their full text
 | [taxi-guidance.md](docs/taxi-guidance.md) | Taxi guidance, runway holds, landing exits and rollout, ground traffic, surroundings, takeoff assist | taxi-routing, taxi-graph, taxi-position, runway-holds, taxi-steering, landing-exits, landing-rollout, landing-touchdown, rollout-geometry, ground-traffic, surroundings, scenery-index, taxi-augmentation, takeoff-and-callouts |
 | [gsx.md](docs/gsx.md) | GSX gate selection and Remote API, docking guidance, the metres/feet toggle | gsx-remote, gsx-stands-docking, gsx-stands, gsx-docking |
 | [weather.md](docs/weather.md) | ActiveSky, the weather radar, METAR readouts, weather announcements | weather |
-| [sayintentions.md](docs/sayintentions.md) | SayIntentions: clearance parsing, the taxi-route import, readouts | sayintentions-clearance, sayintentions-import, sayintentions-readouts |
+| [sayintentions.md](docs/sayintentions.md) | SayIntentions: clearance parsing, the taxi-route import, readouts | sayintentions-clearance, sayintentions-import, sayintentions-gates, sayintentions-readouts |
 | [vatsim.md](docs/vatsim.md) | VATSIM: the vPilot plugin, pipe server, announcement settings | vatsim |
 | [updates.md](docs/updates.md) | Release and preview channels, the updater, release workflows | updates |
 | [visual-guidance.md](docs/visual-guidance.md) | Visual landing guidance (dual tone), hand fly, the liftoff handoff | visual-guidance |
