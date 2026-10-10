@@ -7,6 +7,8 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsExternalRoute*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsGatePositionMatcher*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsDestinationCandidates*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*SayIntentionsFlightContext*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*TaxiDestinationFitFilter*.cs"
 ---
 # SayIntentions gate resolution rules
 

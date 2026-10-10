@@ -9,6 +9,7 @@ paths:
   - "MSFSBlindAssist/Services/CameraHome*.cs"
   - "MSFSBlindAssist/SimConnect/SimConnectManager.Camera.cs"
   - "MSFSBlindAssist/Aircraft/AiDisplayRead.cs"
+  - "MSFSBlindAssist/Aircraft/**/*DisplayReads.cs"
   - "MSFSBlindAssist/SimConnect/CameraReadWaiters.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AiDisplay*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*AiProvider*.cs"

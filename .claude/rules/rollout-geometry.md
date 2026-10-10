@@ -10,6 +10,7 @@ paths:
   - "MSFSBlindAssist/Navigation/RouteRunwayCrossings.cs"
   - "MSFSBlindAssist/Navigation/RunwayVacateResolver.cs"
   - "MSFSBlindAssist/Navigation/PavementTolerance.cs"
+  - "MSFSBlindAssist/Services/TaxiGuidanceManager.MathUtils.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RolloutExitGate*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*EarlyVacateAlongTrack*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RolloutLateralClearance*.cs"
@@ -18,6 +19,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*RunwayHoldPlacement*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*RunwayVacateResolver*.cs"
   - "tests/MSFSBlindAssist.Tests/**/*PavementTolerance*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*HandoffRouteReachability*.cs"
 ---
 # Rollout geometry: the implicit-exit override and the tolerance tripwire rules
 

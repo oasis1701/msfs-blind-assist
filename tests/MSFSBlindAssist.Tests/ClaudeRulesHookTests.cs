@@ -30,10 +30,9 @@ public class ClaudeRulesHookTests : IDisposable
     [Fact]
     public void For_lists_the_rule_files_a_path_loads()
     {
-        HookRun run = RunHook(new[] { "for", "MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs" });
+        HookRun run = RunHook(new[] { "for", ShownInFull });
         Assert.Equal(0, run.ExitCode);
-        Assert.Contains("MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs: .claude/rules/pmdg-737.md, "
-            + ".claude/rules/variable-definitions.md (", run.Stdout);
+        Assert.Contains(ShownInFull + ": .claude/rules/ifly-737.md, .claude/rules/variable-definitions.md (", run.Stdout);
     }
 
     [Fact]
@@ -94,17 +93,16 @@ public class ClaudeRulesHookTests : IDisposable
     public void Read_adds_the_rule_files_for_a_file_in_an_agent_worktree()
     {
         string worktree = CreateAgentWorktree(NewTempDir());
-        string file = CreateFile(worktree, "MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs");
+        string file = CreateFile(worktree, ShownInFull);
 
         JsonElement? output = HookOutput(RunHook(new[] { "read" }, ReadInput(file, agentId: "a1")));
 
         Assert.NotNull(output);
         Assert.Equal("PostToolUse", output.Value.GetProperty("hookEventName").GetString());
         string context = output.Value.GetProperty("additionalContext").GetString()!;
-        Assert.StartsWith("Area rules for MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs. Claude Code does not load",
-            context);
-        Assert.Contains("Contents of " + Path.Combine(worktree, ".claude", "rules", "pmdg-737.md") + ":", context);
-        Assert.Contains(RuleBody("pmdg-737.md"), context);
+        Assert.StartsWith("Area rules for " + ShownInFull + ". Claude Code does not load", context);
+        Assert.Contains("Contents of " + Path.Combine(worktree, ".claude", "rules", "ifly-737.md") + ":", context);
+        Assert.Contains(RuleBody("ifly-737.md"), context);
         Assert.Contains(RuleBody("variable-definitions.md"), context);   // holds non-ASCII text: checks the encoding
     }
 
@@ -543,28 +541,29 @@ public class ClaudeRulesHookTests : IDisposable
         Assert.Equal(0, python.ExitCode);
         Assert.Equal("", python.Stdout);
 
-        JsonElement? diff = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), scriptPath: script));
+        JsonElement? diff = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(ShownInFullDiff)), scriptPath: script));
         Assert.NotNull(diff);
-        Assert.Contains(RuleBody("pmdg-737.md"), diff.Value.GetProperty("additionalContext").GetString());
+        Assert.Contains(RuleBody("ifly-737.md"), diff.Value.GetProperty("additionalContext").GetString());
     }
 
-    // pmdg-737.md and variable-definitions.md: about 4,500 characters, so both arrive in full.
-    private const string Pmdg737Diff =
-        "diff --git a/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs b/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\n"
-        + "index 1111111..2222222 100644\n--- a/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\n"
-        + "+++ b/MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\n@@ -1 +1 @@\n-a\n+b\n";
+    // ifly-737.md and variable-definitions.md: about 7,000 characters, so both arrive in full.
+    private const string ShownInFull = "MSFSBlindAssist/Aircraft/IFly737FlapSpeeds.cs";
+    private const string ShownInFullDiff =
+        "diff --git a/" + ShownInFull + " b/" + ShownInFull + "\n"
+        + "index 1111111..2222222 100644\n--- a/" + ShownInFull + "\n"
+        + "+++ b/" + ShownInFull + "\n@@ -1 +1 @@\n-a\n+b\n";
 
     [Fact]
     public void Diff_adds_the_rule_files_for_a_changed_path()
     {
-        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff))));
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(ShownInFullDiff))));
 
         Assert.NotNull(output);
         Assert.Equal("PostToolUse", output.Value.GetProperty("hookEventName").GetString());
         string context = output.Value.GetProperty("additionalContext").GetString()!;
         Assert.StartsWith("Area rules for the files in this diff.", context);
         Assert.Contains(RuleBody("variable-definitions.md"), context);   // holds non-ASCII text: checks the encoding
-        Assert.Contains("Contents of " + Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".claude", "rules", "pmdg-737.md")
+        Assert.Contains("Contents of " + Path.Combine(ClaudeContextBudgetTests.RepoRoot(), ".claude", "rules", "ifly-737.md")
             + ":", context);
     }
 
@@ -572,7 +571,7 @@ public class ClaudeRulesHookTests : IDisposable
     public void Diff_reads_name_only_output()
     {
         JsonElement? output = HookOutput(RunHook(new[] { "diff" },
-            DiffInput("git diff --name-only", BashResponse(Pmdg737 + "\n"))));
+            DiffInput("git diff --name-only", BashResponse(ShownInFull + "\n"))));
 
         Assert.NotNull(output);
         Assert.Contains(RuleBody("variable-definitions.md"), output.Value.GetProperty("additionalContext").GetString());
@@ -581,7 +580,7 @@ public class ClaudeRulesHookTests : IDisposable
     [Fact]
     public void Diff_accepts_a_plain_string_tool_response()
     {
-        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", Pmdg737Diff)));
+        JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", ShownInFullDiff)));
 
         Assert.NotNull(output);
         Assert.Contains(RuleBody("variable-definitions.md"), output.Value.GetProperty("additionalContext").GetString());
@@ -593,7 +592,7 @@ public class ClaudeRulesHookTests : IDisposable
         string root = ClaudeContextBudgetTests.RepoRoot();
 
         JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput($"git -C \"{root}\" diff --name-only",
-            BashResponse(Pmdg737 + "\n"), cwd: NewTempDir())));
+            BashResponse(ShownInFull + "\n"), cwd: NewTempDir())));
 
         Assert.NotNull(output);
         Assert.Contains(RuleBody("variable-definitions.md"), output.Value.GetProperty("additionalContext").GetString());
@@ -623,8 +622,8 @@ public class ClaudeRulesHookTests : IDisposable
     {
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
 
-        Assert.NotNull(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), env: env)));
-        Assert.Null(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(Pmdg737Diff)), env: env)));
+        Assert.NotNull(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(ShownInFullDiff)), env: env)));
+        Assert.Null(HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff", BashResponse(ShownInFullDiff)), env: env)));
     }
 
     [Fact]
@@ -662,7 +661,7 @@ public class ClaudeRulesHookTests : IDisposable
         // A command can match several registered handlers, which Claude Code runs in parallel (seen 2026-10-08: five
         // diff handlers, five copies). Only one of them may add the rules.
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
-        string input = DiffInput("git diff", BashResponse(Pmdg737Diff));
+        string input = DiffInput("git diff", BashResponse(ShownInFullDiff));
 
         HookRun[] runs = Enumerable.Range(0, 5).AsParallel().WithDegreeOfParallelism(5)
             .Select(_ => RunHook(new[] { "diff" }, input, env: env)).ToArray();
@@ -779,7 +778,7 @@ public class ClaudeRulesHookTests : IDisposable
     public void Compaction_lets_rules_be_added_again()
     {
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
-        string diff = DiffInput("git diff", BashResponse(Pmdg737Diff));
+        string diff = DiffInput("git diff", BashResponse(ShownInFullDiff));
 
         Assert.NotNull(HookOutput(RunHook(new[] { "diff" }, diff, env: env)));
         Assert.Null(HookOutput(RunHook(new[] { "diff" }, diff, env: env)));
@@ -803,7 +802,7 @@ public class ClaudeRulesHookTests : IDisposable
         {
             "read" => ReadInput(CreateFile(CreateAgentWorktree(NewTempDir()), Pmdg737), agentId: "a1"),
             "shell-guard" => ShellInput("Bash", $"sed -i 's/a/b/' {Pmdg737}"),
-            "diff" => DiffInput("git diff", BashResponse(Pmdg737Diff)),
+            "diff" => DiffInput("git diff", BashResponse(ShownInFullDiff)),
             _ => SubagentInput("Plan", root),
         };
 
@@ -870,7 +869,7 @@ public class ClaudeRulesHookTests : IDisposable
             {
                 ("PostToolUse", "read") => HookOutput(RunHook(new[] { mode },
                     ReadInput(CreateFile(CreateAgentWorktree(NewTempDir()), Pmdg737), agentId: "a1"))) != null,
-                ("PostToolUse", "diff") => HookOutput(RunHook(new[] { mode }, DiffInput("git diff", BashResponse(Pmdg737Diff)))) != null,
+                ("PostToolUse", "diff") => HookOutput(RunHook(new[] { mode }, DiffInput("git diff", BashResponse(ShownInFullDiff)))) != null,
                 ("PreToolUse", "shell-guard") => HookOutput(RunHook(new[] { mode },
                     ShellInput("Bash", $"sed -i 's/a/b/' {Pmdg737}"))) != null,
                 ("SubagentStart", "subagent-start") => HookOutput(RunHook(new[] { mode }, SubagentInput("Plan", root), env: env)) != null,
@@ -884,7 +883,7 @@ public class ClaudeRulesHookTests : IDisposable
     private static bool ForgetsAfterCompaction(string mode)
     {
         var env = new Dictionary<string, string?> { ["TEMP"] = NewTempDir(), ["TMP"] = null };
-        string diff = DiffInput("git diff", BashResponse(Pmdg737Diff));
+        string diff = DiffInput("git diff", BashResponse(ShownInFullDiff));
         RunHook(new[] { "diff" }, diff, env: env);
         RunHook(new[] { mode }, HookInput(new { session_id = "s1", hook_event_name = "SessionStart", source = "compact" }), env: env);
         return HookOutput(RunHook(new[] { "diff" }, diff, env: env)) != null;

@@ -26,6 +26,7 @@ paths:
   - "tests/MSFSBlindAssist.Tests/**/*CoherentViewOwnership*.cs"
   - "MSFSBlindAssist/Aircraft/ArmedAltitudeMode.cs"
   - "MSFSBlindAssist/Aircraft/WiperPosition.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*WiperPosition*.cs"
 ---
 # FlyByWire A32NX and Fenix A320 rules
 

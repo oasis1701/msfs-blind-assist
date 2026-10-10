@@ -93,14 +93,6 @@ Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
 
 Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
 
-## DCK-34
-
-- A SimConnect heading (`PLANE HEADING DEGREES TRUE`/`MAGNETIC`) arrives in whatever unit its `AddToDataDefinition` requests, whatever its name says. `SimConnectManager.Setup.cs` asks for degrees in `AIRCRAFT_POSITION`, `DEF_AI_TRAFFIC`, `VISUAL_GUIDANCE_DATA` and `FLARE_ASSIST_DATA`, and for radians in the hotkey readouts (`DEF_HEADING_MAG`, `DEF_HEADING_TRUE`) and `TAKEOFF_ASSIST_DATA`; the hand-fly heading (definition 371, `SimConnectManager.Monitoring.cs`) asks for radians too. Each radians value is converted ONCE where it is received — `SimConnectManager.Dispatch.cs` for the hotkey readouts and the take-off-assist and taxi-guidance positions, MainForm's hand-fly handler for 371 — so `AircraftPosition.HeadingMagnetic` is always degrees: never convert it again. Check the unit of the definition you read before converting anything (lat/lon are degrees). An aircraft definition's own heading variable follows its `Units` the same way: the FBW A320 and the Fenix register `PLANE_HEADING_DEGREES_MAGNETIC` in radians and cache it raw (the A320's display override converts it for display), while the A380's standby heading and the base `VISUAL_GUIDANCE_HEADING` ask for degrees. The old wording came from a live MCP/SimConnect read that returned radians (a logged 5.93 = 339.7°): true of that read, never of every definition. → [gsx.md](../gsx.md)
-
-Corrected 2026-10-08: the rule said both headings always arrive in radians and must always be multiplied by 57.2958; four definitions ask for degrees, and following it would convert an already-converted heading a second time. Evidence: the `AddToDataDefinition` calls in `SimConnectManager.Setup.cs` and `SimConnectManager.Monitoring.cs`, the `180.0 / Math.PI` conversions in `SimConnectManager.Dispatch.cs`, the hand-fly heading handler in `MainForm.Announcers.cs`, and the heading registrations of `FlyByWireA320Definition`, `FenixA320Definition`, `FlyByWireA380Definition` and `BaseAircraftDefinition` (`VISUAL_GUIDANCE_HEADING`).
-
-Moved 2026-10-10 from gsx-stands-docking.md (split for the rule budget).
-
 ## DCK-35
 
 - `DistanceFormatter` is a DISPLAY layer only — never use it for guidance thresholds; those must stay unit-native (metric) internally. `GroundTrafficUseMetres` is a separate, independent toggle from `GroundDistanceUnit` — never fold them together. → [gsx.md](../gsx.md)
