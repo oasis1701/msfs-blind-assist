@@ -110,6 +110,11 @@ function Convert-GlobToRegex([string]$Glob) {
     $sb = New-Object System.Text.StringBuilder '^'
     for ($i = 0; $i -lt $Glob.Length; $i++) {
         $c = $Glob[$i]
+        # A trailing /** also matches the path before it, as Claude Code's matcher does.
+        if ($c -eq '/' -and $Glob.Length - $i -eq 3 -and $Glob.EndsWith('/**', [StringComparison]::Ordinal)) {
+            [void]$sb.Append('(?:/.*)?')
+            break
+        }
         if ($c -eq '*' -and $i + 1 -lt $Glob.Length -and $Glob[$i + 1] -eq '*') {
             $i++
             if ($i + 1 -lt $Glob.Length -and $Glob[$i + 1] -eq '/') { $i++; [void]$sb.Append('(?:[^/]+/)*') }

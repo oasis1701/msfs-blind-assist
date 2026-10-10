@@ -39,6 +39,11 @@ public class ClaudeContextBudgetTests
     [Theory]
     [InlineData("MSFSBlindAssist/Services/Gsx/**", "MSFSBlindAssist/Services/Gsx/Remote/GsxRemoteConnection.cs", true)]
     [InlineData("MSFSBlindAssist/Services/Gsx/**", "MSFSBlindAssist/Services/GsxService.cs", false)]
+    // A trailing /** also matches the path before it, as Claude Code's matcher does: a Read of
+    // Forms/FenixMonitorManagerForm.cs loaded the rule files globbing "Forms/Fenix*/**" (measured 2026-10-10).
+    [InlineData("MSFSBlindAssist/Forms/Fenix*/**", "MSFSBlindAssist/Forms/FenixMonitorManagerForm.cs", true)]
+    [InlineData("MSFSBlindAssist/Services/Gsx/**", "MSFSBlindAssist/Services/Gsx", true)]
+    [InlineData("MSFSBlindAssist/Forms/Fenix*/**", "MSFSBlindAssist/Forms/FenixA320/FenixMcduForm.cs", true)]
     [InlineData("MSFSBlindAssist/SimConnect/*.cs", "MSFSBlindAssist/SimConnect/SimConnectManager.cs", true)]
     [InlineData("MSFSBlindAssist/SimConnect/*.cs", "MSFSBlindAssist/SimConnect/MD11/Md11McduDataManager.cs", false)]
     [InlineData("tests/MSFSBlindAssist.Tests/**/*Gsx*.cs", "tests/MSFSBlindAssist.Tests/GsxGateSelectPlanTests.cs", true)]
@@ -750,6 +755,12 @@ public class ClaudeContextBudgetTests
         for (int i = 0; i < glob.Length; i++)
         {
             char c = glob[i];
+            // A trailing /** also matches the path before it, as Claude Code's matcher does.
+            if (c == '/' && glob.Length - i == 3 && glob.EndsWith("/**", StringComparison.Ordinal))
+            {
+                sb.Append("(?:/.*)?");
+                break;
+            }
             if (c == '*' && i + 1 < glob.Length && glob[i + 1] == '*')
             {
                 i++;
