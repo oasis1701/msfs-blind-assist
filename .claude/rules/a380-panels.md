@@ -10,6 +10,7 @@ paths:
   - "MSFSBlindAssist/Aircraft/WiperPosition.cs"
   - "MSFSBlindAssist/Forms/FBWA380/**"
   - "tests/MSFSBlindAssist.Tests/**/*A380*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*WiperPosition*.cs"
 ---
 # FlyByWire A380X panel controls and read-outs rules
 
