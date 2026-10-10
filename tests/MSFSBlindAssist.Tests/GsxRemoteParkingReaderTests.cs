@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.Json;
 using MSFSBlindAssist.Database.Models;
 using MSFSBlindAssist.Services.Gsx;
@@ -416,10 +417,23 @@ public class GsxRemoteParkingReaderTests
     }
 
     [Fact]
-    public void Entry_with_no_matching_type_constant_degrades_to_unknown_type_zero()
+    public void An_unmatched_type_number_falls_back_to_uiType()
     {
+        // No published constant names 999 (here the constants are absent altogether), but uiType
+        // still says what the stand is, and it matched `type` on all 231 KJFK stands [DCK-43].
         const string json = """
             {"parkings":[{"uiGateName":"Gate 1","uiTerminalName":"T1","uiType":"Gate Small","type":999,
+                          "lat":1.0,"lon":2.0,"heading":3.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal(9, spot.Type);
+    }
+
+    [Fact]
+    public void An_unmatched_type_number_with_an_unknown_uiType_is_still_unknown()
+    {
+        const string json = """
+            {"parkings":[{"uiGateName":"Pad 1","uiTerminalName":"T1","uiType":"Helipad","type":999,
                           "lat":1.0,"lon":2.0,"heading":3.0}]}
             """;
         var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
@@ -476,6 +490,184 @@ public class GsxRemoteParkingReaderTests
         var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
         Assert.Equal(GsxGateMapper.MapGsxTypeToNavdataType(9), spot.Type); // "Gate Medium"'s current navdata number
         Assert.Equal(10, spot.Type);
+    }
+
+    // ── Unconfigured stands: no `type` number, only `uiType` (KSAN live, 2026-10-07) ────────
+
+    [Fact]
+    public void A_stand_published_with_no_type_number_takes_its_type_from_uiType()
+    {
+        // GSX sends `type` only for a stand a profile section covers; every other stand carries
+        // `uiType` alone (75 of 79 live at KSAN). Without this it read "Spot 115 - Unknown",
+        // outside every gate category.
+        const string json = """
+            {"parkings":[{"uiGateName":"Ramp 115","uiTerminalName":"Ramp","uiType":"Gate Medium",
+                          "lat":1.0,"lon":2.0,"heading":3.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal(10, spot.Type);
+        Assert.Equal("Gate Medium", spot.GetFilterCategory());
+    }
+
+    [Theory]
+    [InlineData("Gate Small", 9)]
+    [InlineData("Gate Medium", 10)]
+    [InlineData("Gate Heavy", 13)]
+    [InlineData("Gate Extra", 14)]
+    [InlineData("Ramp Cargo", 6)]
+    [InlineData("Ramp GA Large", 5)]
+    [InlineData("Ramp GA Medium", 4)]
+    [InlineData("Ramp Mil Cargo", 7)]
+    [InlineData("Ramp GA Extra", 15)]
+    [InlineData("Dock GA", 12)]
+    [InlineData("Helipad", 0)]   // names no known constant: unknown, exactly as an unmatched `type` is
+    [InlineData("", 0)]
+    public void uiType_names_the_same_constant_the_type_number_would(string uiType, int expectedNavdataType)
+        => Assert.Equal(expectedNavdataType, GsxRemoteParkingReader.ResolveNavdataTypeFromUiType(uiType));
+
+    [Fact]
+    public void Every_KJFK_stand_reads_the_same_type_from_uiType_as_from_its_type_number()
+    {
+        // The evidence the fallback rests on: all 231 KJFK stands carry both fields, and on every
+        // one of them uiType and `type` name the same category.
+        var parkings = KjfkFixture().GetProperty("parkings").EnumerateArray()
+            .Where(p => p.GetProperty("uiType").GetString() is not ("Vehicle" or "Fuel"))
+            .ToList();
+        Assert.Equal(231, parkings.Count);
+        foreach (var p in parkings)
+        {
+            var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse($$"""{"parkings":[{{p.GetRawText()}}]}"""), Kjfk));
+            Assert.Equal(spot.Type, GsxRemoteParkingReader.ResolveNavdataTypeFromUiType(p.GetProperty("uiType").GetString()));
+        }
+    }
+
+    [Fact]
+    public void uiType_resolution_does_not_depend_on_the_current_culture()
+    {
+        // tr-TR upper-cases "i" to a dotted "İ": a culture-sensitive ToUpper turns "Ramp Mil Cargo"
+        // into RAMP_MİL_CARGO, which silently matches nothing.
+        var savedCulture = CultureInfo.CurrentCulture;
+        var savedUiCulture = CultureInfo.CurrentUICulture;
+        try
+        {
+            CultureInfo.CurrentCulture = new CultureInfo("tr-TR");
+            CultureInfo.CurrentUICulture = new CultureInfo("tr-TR");
+            Assert.Equal(7, GsxRemoteParkingReader.ResolveNavdataTypeFromUiType("Ramp Mil Cargo"));
+        }
+        finally
+        {
+            CultureInfo.CurrentCulture = savedCulture;
+            CultureInfo.CurrentUICulture = savedUiCulture;
+        }
+    }
+
+    [Fact]
+    public void Every_unconfigured_KSAN_stand_gets_a_real_type()
+    {
+        var spots = GsxRemoteParkingReader.Read(GsxKsanFixtures.GsxAirport(), GsxKsanFixtures.Ksan);
+
+        Assert.Equal(79, spots.Count);                       // 86 - 7 Vehicle
+        Assert.DoesNotContain(spots, s => s.Type == 0);
+        Assert.Equal("Gate Medium", spots.Single(s => s.GsxIdentifier == "Ramp 115").GetFilterCategory());
+        Assert.Equal("Ramp GA", spots.Single(s => s.GsxIdentifier == "N Parking 10").GetFilterCategory());
+        Assert.Equal("Ramp Cargo", spots.Single(s => s.GsxIdentifier == "Gate N 1").GetFilterCategory()); // has `type`: unchanged route
+    }
+
+    [Fact]
+    public void A_999_metre_wingspan_is_GSXs_no_limit_sentinel_and_reads_as_unpublished()
+    {
+        // Every stand GSX publishes unconfigured carries maxWingspan 999 (KSAN 75 of 75, KATL 4 of
+        // 4); no selectable stand with a heading does (KJFK's selectable stands top out at 90 m). Read as
+        // 499.5 m it made every such stand fit any aircraft. Unpublished instead: the same 100 m
+        // placeholder and permissive fit as a stand with no maxWingspan at all, until
+        // GsxNavdataGeometryFiller fills the real size.
+        const string json = """
+            {"parkings":[{"uiGateName":"Ramp 115","uiTerminalName":"Ramp","uiType":"Gate Medium",
+                          "lat":1.0,"lon":2.0,"maxWingspan":999.0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Null(spot.MaxWingspanMeters);
+        Assert.Equal(100.0, spot.Radius);
+    }
+
+    [Fact]
+    public void A_real_wingspan_below_the_sentinel_is_kept_verbatim()
+    {
+        const string json = """
+            {"parkings":[{"uiGateName":"Gate 1","uiTerminalName":"T1","uiType":"Gate Extra",
+                          "lat":1.0,"lon":2.0,"heading":3.0,"maxWingspan":88.4}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.Equal(88.4, spot.MaxWingspanMeters);
+        Assert.Equal(44.2, spot.Radius, 6);
+    }
+
+    [Fact]
+    public void On_the_KSAN_capture_exactly_the_75_unconfigured_stands_lose_the_999_wingspan()
+    {
+        var spots = GsxRemoteParkingReader.Read(GsxKsanFixtures.GsxAirport(), GsxKsanFixtures.Ksan);
+
+        var unconfigured = spots.Where(s => !GsxRemoteParkingReader.HasUsableHeading(s)).ToList();
+        Assert.Equal(75, unconfigured.Count);
+        Assert.All(unconfigured, s => Assert.Null(s.MaxWingspanMeters));
+        Assert.Equal(58.0, spots.Single(s => s.GsxIdentifier == "Gate N 1").MaxWingspanMeters);
+    }
+
+    [Fact]
+    public void On_the_KSAN_capture_exactly_the_75_headingless_stands_are_flagged_unconfigured()
+    {
+        // GSX sends neither `heading` nor `hasJetway` for a stand no profile section covers (KSAN
+        // 75 of 79); the 4 stands the installed profile covers carry both. That pair is the signal [DCK-44].
+        var spots = GsxRemoteParkingReader.Read(GsxKsanFixtures.GsxAirport(), GsxKsanFixtures.Ksan);
+
+        var unconfigured = spots.Where(s => s.GsxUnconfigured).ToList();
+        Assert.Equal(75, unconfigured.Count);
+        Assert.All(unconfigured, s => Assert.False(GsxRemoteParkingReader.HasUsableHeading(s), s.GsxIdentifier));
+        Assert.All(spots.Where(s => !s.GsxUnconfigured), s => Assert.True(GsxRemoteParkingReader.HasUsableHeading(s), s.GsxIdentifier));
+        Assert.Equal(4, spots.Count(s => !s.GsxUnconfigured));
+        Assert.False(spots.Single(s => s.GsxIdentifier == "Gate N 1").GsxUnconfigured);
+        Assert.True(spots.Single(s => s.GsxIdentifier == "Ramp 115").GsxUnconfigured);
+    }
+
+    [Fact]
+    public void On_the_KJFK_capture_no_stand_is_unconfigured_Gate_1A_lacks_only_its_heading()
+    {
+        // Gate 1A at Terminal 8 - Concourse B has no heading but DOES carry hasJetway, airlineCodes and
+        // type: a profile covers it, so a missing heading alone is not the signal and navdata must
+        // never overwrite its published jet-bridge flag.
+        var spots = GsxRemoteParkingReader.Read(KjfkFixture(), Kjfk);
+
+        Assert.Equal(231, spots.Count);
+        Assert.DoesNotContain(spots, s => s.GsxUnconfigured);
+        var gate1A = spots.Single(s => s.GsxIdentifier == "Gate 1A" && s.TerminalName == "Terminal 8 - Concourse B");
+        Assert.False(GsxRemoteParkingReader.HasUsableHeading(gate1A));
+        Assert.False(gate1A.GsxUnconfigured);
+    }
+
+    [Fact]
+    public void A_stand_with_no_heading_but_a_published_jetway_flag_is_not_unconfigured()
+    {
+        const string json = """
+            {"parkings":[{"uiGateName":"Gate 1A","uiTerminalName":"T1","uiType":"Gate Heavy","type":10,
+                          "GATE_HEAVY":10,"lat":1.0,"lon":2.0,"hasJetway":0}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.False(spot.GsxUnconfigured);
+    }
+
+    [Fact]
+    public void A_stand_GSX_sends_with_null_heading_and_null_hasJetway_is_unconfigured()
+    {
+        // The live wire carries ~100 keys per parking and some are JSON null (stopPosition on all of
+        // them); the committed captures are trimmed. A null is no value: reading the key's mere
+        // presence as "published" would leave the stand flagged configured, with no jet bridge
+        // borrowed and its GSX-made header in the surroundings catalog [DCK-44].
+        const string json = """
+            {"parkings":[{"uiGateName":"Ramp 115","uiTerminalName":"Ramp","uiType":"Gate Medium",
+                          "lat":1.0,"lon":2.0,"heading":null,"hasJetway":null}]}
+            """;
+        var spot = Assert.Single(GsxRemoteParkingReader.Read(Parse(json), Kjfk));
+        Assert.True(spot.GsxUnconfigured);
     }
 
     [Fact]
