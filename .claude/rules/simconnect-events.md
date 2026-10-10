@@ -4,7 +4,6 @@ paths:
   - "MSFSBlindAssist/SimConnect/BridgeProbe.cs"
   - "MSFSBlindAssist/SimConnect/CalcPathVerdict.cs"
   - "MSFSBlindAssist/SimConnect/MobiFlightWasmModule.cs"
-  - "MSFSBlindAssist/SimConnect/SimVarDefinitions.cs"
   - "MSFSBlindAssist/MainForm.AircraftSwitch.cs"
   - "MSFSBlindAssist/MainForm.PanelBuilder.cs"
   - "MSFSBlindAssist/Forms/SimPerformanceForm.cs"
