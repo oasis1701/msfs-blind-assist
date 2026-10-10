@@ -167,9 +167,12 @@ public class FlowStep<TState> : IFlowStepDispatch
     /// Further checklist items this step delivers, beyond <see cref="CompletesChecklistItemId"/>
     /// — for a line that appears in BOTH a phase's action group and its read-back checklist and
     /// is delivered by one step (the iFly 737 Landing flow's verified speed-brake arm completes
-    /// "Speedbrake: ARMED" in both). FlowManager marks, and on a skipped step EXCLUDES, every id
-    /// in <see cref="LinkedChecklistItemIds"/>: a line the step delivers but does not name would
-    /// otherwise be ticked and latched by MarkGroupComplete even when the step was skipped.
+    /// "Speedbrake: ARMED" in both), or for a read-only check that confirms several lines of ONE
+    /// group at once (the PMDG 777 Cockpit Prep's CP_POWER_UP_CHECK completes PF_BATTERY and names
+    /// PF_ADIRU, PF_DEMAND_PUMPS_OFF, PF_NAV_LIGHTS and PF_GEAR_DOWN here). FlowManager marks, and
+    /// on a skipped step EXCLUDES, every id in <see cref="LinkedChecklistItemIds"/>: a line the
+    /// step delivers but does not name would otherwise be ticked and latched by MarkGroupComplete
+    /// even when the step was skipped.
     /// </summary>
     public IReadOnlyList<string> AlsoCompletesChecklistItemIds { get; set; } = Array.Empty<string>();
 

@@ -139,8 +139,8 @@ public static class PMDG777FlowDefinitions
             // a finished run latched them over whatever the switches read (FO-7). One check on
             // Pmdg777PowerUpCheck's synthetic (1 only when all five lines' own conditions hold,
             // NaN while any input is unread) delivers all five; a timeout is heard skipped and each
-            // line then follows its own switch. First, as PMDG's Preflight Procedure opens with the
-            // battery and the Preflight group opens with the battery and ADIRU lines.
+            // line then follows its own switch. It goes first: PMDG's preflight opens with the
+            // battery, and the Preflight group's first two lines are the battery and the ADIRU.
             Also(Skip(WaitForField("CP_POWER_UP_CHECK", "Battery, ADIRU, demand pumps, nav lights and gear: checked",
                     Pmdg777PowerUpCheck.Field, v => v > 0.5, 20, checklistItemId: "PF_BATTERY"),
                 s => s.IsPowerUpConfirmed()),

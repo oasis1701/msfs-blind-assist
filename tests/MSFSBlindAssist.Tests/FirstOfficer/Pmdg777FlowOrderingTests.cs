@@ -603,8 +603,8 @@ public class Pmdg777FlowOrderingTests
     public void Cockpit_prep_checks_the_power_up_first_and_turns_the_pumps_off_beside_crossfeed()
     {
         var cp = FlowStepIds("COCKPIT_PREP");
-        // The power-up lines head the Preflight group (PF_BATTERY, PF_ADIRU) and PMDG's Preflight
-        // Procedure opens with the battery, so the check opens the flow. The order guard
+        // The power-up lines head the Preflight group (PF_BATTERY, PF_ADIRU) and PMDG's preflight
+        // opens with the battery, so the check opens the flow. The order guard
         // (Every_flow_ticks_its_checklist_items_in_the_order_they_are_listed) reads only
         // CompletesChecklistItemId (PF_BATTERY), so it never sees the check's four Also lines,
         // three of which (PF_DEMAND_PUMPS_OFF, PF_NAV_LIGHTS, PF_GEAR_DOWN) the group lists far
@@ -644,5 +644,38 @@ public class Pmdg777FlowOrderingTests
         Assert.DoesNotContain("SD_STORM", FlowStepIds("SHUTDOWN"));
         Assert.DoesNotContain("SD_STORM_ON", ItemIds("SHUTDOWN"));
         Assert.DoesNotContain("EVT_OH_LIGHTS_STORM", WrittenEvents("SHUTDOWN"));
+    }
+
+    // The steps and Captain reminders with no line on PMDG's pages that the flows KEEP as the
+    // owner's choices (checked against every procedure page of B777_Checklist.xml, 2026-10-09).
+    // FOB-4's full text lists each, and each must still be a 777 flow step, so the list cannot
+    // outlive a rename or a removal unnoticed.
+    private static readonly string[] OwnersChoices =
+    {
+        "EPU_STORM_OFF", "EPU_CVR", "CP_TCAS_TEST", "CP_WXR_TEST", "CP_NO_SMOKING", "CP_GASPER",
+        "BT_TAXI_LIGHTS", "BT_STORM_OFF", "BTKOF_LANDING_L", "BTKOF_TURNOFF", "BTKOF_STROBE", "BTKOF_XPNDR",
+        "ATKOF_TURNOFF_OFF", "DSC_EFIS_FO_MODE", "DSC_EFIS_FO_RANGE", "SD_ENG_PUMPS",
+        "CP_ATIS", "BS_START_ACARS", "BS_TAXI_CLR", "LD_MISSED", "CP_RESET_CL",
+    };
+
+    [Fact]
+    public void Fob4_lists_every_non_PMDG_step_the_flows_keep_and_the_two_removed()
+    {
+        string text = System.IO.File.ReadAllText(System.IO.Path.Combine(
+            ClaudeContextBudgetTests.RepoRoot(), "docs", "invariants", "first-officer-boeing.md"));
+        int start = text.IndexOf("## FOB-4", System.StringComparison.Ordinal);
+        string fob4 = text[start..text.IndexOf("## FOB-5", start, System.StringComparison.Ordinal)];
+        var steps = PMDG777FlowDefinitions.Build().SelectMany(f => f.Steps).Select(s => s.Id).ToList();
+
+        foreach (string id in OwnersChoices)
+        {
+            Assert.True(steps.Contains(id), $"{id} is not a 777 flow step any more: update FOB-4's full text");
+            Assert.True(fob4.Contains($"`{id}`", System.StringComparison.Ordinal), $"FOB-4's full text does not list {id}");
+        }
+        foreach (string removed in new[] { "ATKOF_LANDING_OFF", "SD_STORM" })
+        {
+            Assert.DoesNotContain(removed, steps);
+            Assert.True(fob4.Contains($"`{removed}`", System.StringComparison.Ordinal), $"FOB-4's full text does not record {removed}");
+        }
     }
 }
