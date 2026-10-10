@@ -39,6 +39,12 @@ calls the cabin, checks that the spoilers, flaps and seat belts are set and ends
 config test. Line-up, run when you are cleared onto the runway, sets TCAS and the takeoff lights.
 Shutdown has a "TCAS: STANDBY" line and Securing an "External power: OFF" line.
 
+On the FlyByWire A380, the Checklists tab now holds the A380's own normal checklists from its
+electronic checklist, in its own words (Cockpit Preparation, Before Start, After Start, Taxi,
+Line-up, Approach, Landing, Parking and Securing the Aircraft): ticking a line you confirm speaks
+what the First Officer reads, such as the fuel, the baro reference or the takeoff speeds, and a
+finished flow no longer ticks a line the app reads unless its own step or check confirmed it.
+
 While the window is open, it also switches the landing lights at 10,000 feet, and you
 can turn that off in Settings. If SimBrief has supplied the transition altitude and
 level, it also sets the altimeters to standard at the transition altitude and back to QNH

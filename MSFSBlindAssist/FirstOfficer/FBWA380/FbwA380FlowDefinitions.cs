@@ -142,19 +142,10 @@ public static class FbwA380FlowDefinitions
             Captain("CP_ALTIMETERS", "Altimeters: set QNH"),
             Done(Skip(SW("CP_ANTISKID", "Anti-skid: ON", "ANTISKID_BRAKES_ACTIVE", 1), s => s.IsOn("ANTISKID_BRAKES_ACTIVE")),
                 "CP_ANTISKID"),
-            // Surveillance reminders, kept at the owner's decision (2026-10-09) and worded to name the MFD
-            // SURV page. The record: (a) FlyByWire's source at 255546cb models XPDR AUTO/STBY, ALT RPTG and
-            // TCAS TA/RA / TA ONLY / STBY on that page. (b) The "TCAS mode is NOT settable" note in
-            // FlyByWireA380Definition.cs (commit cbb2023a5, 2026-06-03) records a live in-flight test that
-            // cycled the A32NX pedestal switch var A32NX_SWITCH_TCAS_POSITION 0/1/2 and saw A32NX_TCAS_MODE
-            // stay at 0, so the A380 ignores that switch. The same note says the MFD SURV TCAS selection is
-            // a dead stub; commits 3bbc85b8 and ec3e366c (also 2026-06-03) record a source search ("nothing
-            // subscribes"), not a live test of the MFD page, as the basis for calling its controls dead. The
-            // later "Transponder MODE read-out" note (commit 82c95f1a, 2026-06-04) records the XPDR AUTO/STBY,
-            // ALT RPTG and TCAS alert-level toggles as consumed in-process and reachable only on the MFD SURV
-            // CONTROLS page. (c) MSFSBA cannot set the controls in (a) (A380-4; that same later note). So they
-            // are Captain items, never a write or a check (FOA-9).
-            // "TCAS traffic: all" is gone: FlyByWire's source offers NORM / ABV / BLW there, no ALL.
+            // Surveillance reminders (owner's decision, 2026-10-09): Captain items set on the MFD SURV CONTROLS
+            // page, for which MSFSBA has no variable or event write, so the First Officer reminds and never
+            // writes or checks them. The evidence, and why "TCAS traffic: all" went: FOA-9
+            // (docs/invariants/first-officer-airbus.md#foa-9).
             Captain("CP_ALTRPT", "Altitude reporting: on (MFD SURV page)"),
             Captain("CP_TCASMODE", "TCAS mode: standby (MFD SURV page)"),
             Captain("CP_XPDR", "Transponder: standby (MFD SURV page)"),

@@ -30,11 +30,11 @@ PMDG 777/737 and Fenix windows.
 
 ---
 
-## Part B — Flows (cold-and-dark → shutdown, all 12 in order)
+## Part B — Flows (cold-and-dark → securing, all 12 in order)
 
 Start cold-and-dark at a gate, MSFSBA connected, A380 FO window open. Run the 12 flows in
 order: **Cockpit Preparation → Before Start → Engine Start → After Start → Taxi → Lineup →
-After Takeoff → Climb → Approach → Landing → After Landing → Parking**. For each step, confirm
+After Takeoff → Approach → Landing → After Landing → Parking → Securing**. For each step, confirm
 the corresponding overhead/glareshield/pedestal control physically moves — read back via the
 panel controls (screen-reader focus/announce) or the panel display fields, not just the FO's
 own narration.
@@ -42,7 +42,8 @@ own narration.
 1. **Cockpit Preparation**: gear lever DOWN, spoilers disarmed (write is the `A380X_MSFSBA_
    SPOILERS_ARM` Act key, but confirm the real state — `A32NX_SPOILERS_ARMED` — reads
    disarmed), parking brake ON, engine mode NORM, **engine masters 1-4 OFF** (a `Multi` step —
-   confirm all four fuel valves move together), weather radar OFF, **batteries 1 and 2 ON**,
+   confirm all four fuel valves move together), weather radar OFF, **batteries ON** (all four:
+   BAT 1, BAT 2, ESS and APU),
    a 5-second standby wait, **ground power 1-4 ON**, **ADIRS 1-3 to NAV**, crew oxygen ON, nav
    + logo lights ON, **seatbelt signs ON — the seat-belt control is now the faithful
    3-position switch (On/Auto/Off, PR #139): confirm the FO drives the SWITCH to the ON
@@ -65,8 +66,8 @@ own narration.
    to managed** (confirm both read "managed" on the FCU Speed/Heading windows or hotkey
    readouts — the same atomic RPN push mechanism validated for the Fenix), **FCU altitude
    pushed** (after the captain sets a cleared altitude), APU ON, APU bleed ON, **ground power
-   1-4 OFF**, **fuel pumps ON** (all 8: feed tanks 1-4, MAIN + STBY each), beacon lights ON,
-   parking brake confirmed ON.
+   1-4 OFF**, **fuel pumps ON** (all 20: the 8 feed pumps, tanks 1-4 MAIN + STBY, and the 12
+   transfer pumps), beacon lights ON, parking brake confirmed ON.
 3. **Engine Start**: APU bleed ON, engine mode selector → IGN, **engine 1 master → START**,
    **engine 2 master → START**, a **60-second standby wait**, **engine 3 master → START**,
    **engine 4 master → START**, a second **60-second standby wait**. Confirm all four engines
@@ -76,29 +77,50 @@ own narration.
 4. **After Start**: engine mode → NORM, APU OFF, APU bleed OFF, **nose light selector →
    TAXI** (the nose light is now the faithful 3-position T.O./Taxi/Off combo `NOSE_LIGHT`,
    PR #139 — confirm the selector reads "Taxi" and the nose taxi beam `LIGHT TAXI:1` comes on),
+   **cockpit lights → annunciator dim** (the step says "Cockpit lights: annunciator dim"),
    spoilers ARMED (write the Act key, confirm real state `A32NX_SPOILERS_ARMED` reads armed),
-   **rudder trim RESET** fires once (a real switch action, not just a reminder).
-5. **Taxi**: **autobrake MAX** — confirm this ARMS `A32NX_AUTOBRAKES_RTO_ARMED` (the write is a
+   **rudder trim RESET** fires once (a real switch action, not just a reminder), then the
+   **rudder-trim check** (read only, up to 20 s): "Already set: Rudder trim: NEUTRAL" when the
+   trim already reads neutral, else "Waiting for: Rudder trim: NEUTRAL" until it does; a trim
+   still off neutral after 20 s is "Timed out waiting for: …" then "Skipping: …", and the After
+   Start Checklist's "Rudder trim: NEUTRAL" stays open. **In-sim check:** set a few degrees of
+   rudder trim before the flow, then time how long the trim takes to centre after the reset
+   (report the degrees and the seconds): the 20 s is a judgement, not a measurement.
+5. **Taxi**: **autobrake RTO** — confirm this ARMS `A32NX_AUTOBRAKES_RTO_ARMED` (the write is a
    momentary press of `A32NX_OVHD_AUTOBRK_RTO_ARM_IS_PRESSED`, which self-resets after ~1.5 s;
    the flow does not wait on it, so just confirm the armed state lands), engine mode NORM,
-   weather radar ON, predictive windshear ON.
-6. **Lineup**: strobe lights ON, **landing and nose lights ON** — this is now TWO writes:
-   wing landing lights ON (`LIGHT LANDING:2`) **and the nose selector → T.O.** (which lights
-   the nose takeoff + taxi beams). Confirm both actually illuminate.
-7. **After Takeoff**: spoilers DISARM, nose light selector → TAXI.
-8. **Climb**: autobrake disarm, seatbelt signs ON (switch to ON; sign confirmed lit).
-9. **Approach**: seatbelt signs ON, **EFIS mode → ILS (both sides)**.
-10. **Landing**: spoilers ARMED (again, via the Act key — confirm real state armed).
-11. **After Landing**: weather radar OFF, predictive windshear OFF, engine mode NORM, APU ON,
+   weather radar ON, predictive windshear ON, the flaps reminder, ECAM page → flight controls,
+   then the **takeoff-memo check** (read only: seat belts lit, ground spoilers armed, flap lever
+   1-3; "Already set" when all three read right, else "Waiting for…" up to 5 s, then "Timed out
+   waiting for…" and "Skipping: Seat belts, ground spoilers and flaps for takeoff"), and the
+   **takeoff config test last**.
+6. **Lineup**: the TCAS reminder (TA/RA, set on the MFD SURV page), the **packs check** (read only,
+   "Packs 1 and 2: ON"; the First Officer never switches the packs), strobe lights ON, **landing
+   and nose lights ON** — TWO writes: wing landing lights ON (`LIGHT LANDING:2`) **and the nose
+   selector → T.O.** (which lights the nose takeoff + taxi beams), runway turn-off lights ON, then
+   the cabin call. Confirm the lights actually illuminate.
+7. **After Takeoff**: spoilers DISARM, autobrake disarm, nose light selector → TAXI, runway
+   turn-off lights OFF.
+8. **Approach**: seatbelt signs ON, **EFIS mode → ILS (both sides)**, then the **cabin call**
+   (CALLS ALL chime; new 2026-10-09: confirm the chime sounds and the Approach group's "Notify
+   the cabin crew for landing (call all)" ticks). The landing autobrake stays a Captain reminder.
+9. **Landing**: the missed-approach altitude reminder, spoilers ARMED (via the Act key — confirm
+   real state armed), then the **landing-memo check** (read only: seat belts lit and flaps at the
+   landing setting, FULL, or 3 with CONF 3 selected) and, **last**, the **gear-down check** (read
+   only, up to 20 s).
+10. **After Landing**: weather radar OFF, predictive windshear OFF, engine mode NORM, APU ON,
     **engine anti-ice 1-4 OFF** (a 4-way `Multi`), wing anti-ice OFF, spoilers OFF, landing
     lights OFF, strobe lights OFF, nose light selector → TAXI.
-12. **Parking**: parking brake ON, **APU generators 1/2 ON**, **engine masters 1-4 OFF**, then
-    confirm the flow genuinely **waits** for `FO_ENGINES_OFF` (both engines' N2 below the
-    running threshold, up to 120 s) before continuing — a 5-second standby wait, beacon OFF,
-    wing lights OFF, nose light selector → OFF, engine anti-ice OFF, wing anti-ice OFF,
-    APU bleed ON, **fuel pumps OFF** (all 8), **seatbelt switch → OFF** (position 2 — confirm
-    the switch reads Off, not On/Auto), then the flow **waits** for the seatbelt SIGN to
-    actually go OFF (up to 60 s) before the cockpit door is set UNLOCKED as the final step.
+11. **Parking**: parking brake ON, **APU generators 1/2 ON**, **engine masters 1-4 OFF**, then
+    confirm the flow genuinely **waits** for `FO_ENGINES_OFF` (all four masters off, up to 120 s)
+    before continuing — a 5-second standby wait, beacon OFF, wing lights OFF, nose light selector
+    → OFF, engine anti-ice OFF, wing anti-ice OFF, APU bleed ON, **fuel pumps OFF** (all 20),
+    **seatbelt switch → OFF** (position 2 — confirm the switch reads Off, not On/Auto), the
+    transponder and TCAS standby reminders (MFD SURV page), the cockpit door UNLOCKED, then the
+    flow **waits** for the seatbelt SIGN to actually go OFF (up to 60 s).
+12. **Securing**: crew oxygen OFF, the EFB reminder, IRS 1-3 OFF, emergency exit lighting OFF, no
+    smoking OFF, nav and logo lights OFF, APU bleed OFF, external power OFF, APU master OFF, and
+    **batteries OFF last**.
 13. **No double-announce.** Throughout all 12 flows, confirm each step is announced **once**
     by the FO — not twice. The executor wraps every write in a suppressed-announcer guard
     around `ApplyUIVariable`, so the def's own internal `Announce()` calls (e.g. "Rudder trim
@@ -119,12 +141,13 @@ own narration.
 
 ## Part C — Checklists tab
 
-Open the Checklists tab. There are **12 STATE/ACTION groups** (Cockpit Preparation, Before
-Start, Engine Start, After Start, Taxi, Lineup, After Takeoff, Climb, Approach, Landing, After
-Landing, Parking) mirroring the 12 flows above, plus **10 readback (`*_CL`) groups** (Cockpit
-Preparation Checklist, Before Start Checklist, After Start Checklist, Taxi Checklist, Lineup
-Checklist, Before Takeoff Checklist, Approach Checklist, Landing Checklist, After Landing
-Checklist, Parking Checklist).
+Open the Checklists tab. Each flow's action group (Cockpit Preparation, Before Start, Engine Start,
+After Start, Taxi, Lineup, After Takeoff, Approach, Landing, After Landing, Parking, Securing) sits
+in flying order beside the nine **read-backs**, the A380's own ECL normal checklists in the ECL's
+words (FOA-9): Cockpit Preparation Checklist, Before Start Checklist, After Start Checklist, Taxi
+Checklist (with the takeoff memo), Line-up Checklist, Approach Checklist, Landing Checklist (the
+landing memo), Parking Checklist and Securing the Aircraft Checklist. There is no Before Takeoff or
+After Landing checklist.
 
 1. **STATE items auto-tick as switches reach position.** With an item unticked (e.g. Cockpit
    Preparation → "Batteries: ON"), change the underlying switch directly in the cockpit
@@ -136,23 +159,22 @@ Checklist, Parking Checklist).
 3. **Untick/retick is idempotent.** Untick a ticked item (pure UI action, nothing reverts on
    the aircraft), then retick it — confirm the action either fires again or is a no-op
    ("Already set") if the switch is still correct.
-4. **TX_AUTOBRAKE special case.** In the Taxi group, "Autobrake: MAX" detects on the **latched**
+4. **TX_AUTOBRAKE special case.** In the Taxi group, "Autobrake: RTO" detects on the **latched**
    `A32NX_AUTOBRAKES_RTO_ARMED` state (NOT the momentary `_IS_PRESSED` press var, which
    self-resets). Tick it with RTO disarmed — confirm it arms. **Untick and retick while RTO is
    already armed** — confirm the guarded action does **NOT** re-press the momentary switch
    (a second press would disarm it); the tick should recognize the armed state and no-op.
-5. **Readback (`*_CL`) items never fire a switch.** Open any `*_CL` group (e.g. Before Start
-   Checklist, Landing Checklist, Parking Checklist) and tick an auto-detectable item — e.g.
-   "Parking brake: ON" (Before Start Checklist / Parking Checklist), "Beacon: ON" (Before Start
-   Checklist), "Weather radar: ON" (Taxi Checklist), "Spoilers: ARMED" (Landing Checklist — this
-   one reads the real `A32NX_SPOILERS_ARMED` state directly, not the write-only Act key),
-   "Engines: OFF" (Parking Checklist, via `FO_ENGINES_OFF`), "Wing lights: OFF" / "Fuel pumps:
-   OFF" (Parking Checklist). Confirm **no switch moves** for any of these — the item only ticks
-   itself once the real state independently reaches the stated condition (set it via the
-   matching STATE-group flow, or by hand in the cockpit).
-6. Spot-check a few groups with **no matching STATE/ACTION group** — Before Takeoff Checklist
-   is readback-only (runway/flaps/takeoff-speeds/altitude readback, all captain reminders with
-   no auto-detect) — confirm it behaves as pure reminders with no auto-ticking.
+5. **Read-back items never fire a switch.** Tick a self-ticking read-back line — e.g. "Beacon: ON"
+   (Before Start Checklist), "Radar: ON" (Taxi Checklist), "Ground spoilers: ARM" (Landing
+   Checklist — it reads the real `A32NX_SPOILERS_ARMED`, not the write-only Act key), "Engines: OFF",
+   "Wing lights: OFF" or "Fuel pumps: OFF" (Parking Checklist). Confirm **no switch moves**: the line
+   only ticks itself once the real state reaches the stated condition.
+6. **Blank lines speak what the First Officer reads.** Tick "Fuel quantity: SET" and "Baro
+   reference: SET" (Cockpit Preparation Checklist), "Parking brake: SET" and "T.O speeds and
+   thrust: SET" (Before Start Checklist), "Anti-ice: SET" (After Start Checklist), "Flaps setting:
+   SET" (Taxi Checklist) and "Minimum: SET" / "Autobrake: SET" (Approach Checklist): each speaks its
+   value after the label ("Flaps setting: SET, CONF 2: checked"; the parking brake says "on" or
+   "off") and shows it on the status line; the tree text never changes.
 7. **WATCH ITEM — anti-skid tick stability.** Cockpit Preparation → "Anti-skid: ON" detects on
    the stock `ANTISKID BRAKES ACTIVE` SimVar, which the A380 definition documents as reading
    UNRELIABLY over the data-def path (the same batch has returned both 1 and 0). Leave the
@@ -161,10 +183,28 @@ Checklist, Parking Checklist).
    (the definition drives the toggle off its own tracked state, so a flaky read can never
    double-toggle the switch). **If the item visibly/audibly flaps, report it — the fix is to
    demote this one item to a manual action (no auto-detect).**
-8. **Engine anti-ice readbacks (After Landing / Parking → "Engine anti-ice: OFF").** These
-   detect on the stock `ENG ANTI ICE:n` readouts (the write keys have no readable state). Turn
-   engine anti-ice ON by hand, confirm the items UN-tick (RevertToState); run the flow or tick
-   the item and confirm they re-tick as all four switch off.
+8. **Engine anti-ice (After Landing / Parking → "Engine anti-ice: OFF").** These detect on the
+   stock `ENG ANTI ICE:n` readouts (the write keys have no readable state). Turn engine anti-ice
+   ON by hand, confirm the items UN-tick (RevertToState); run the flow or tick the item and
+   confirm they re-tick as all four switch off.
+9. **In-sim checks for the 2026-10-09 rebuild (prioritised):**
+   1. **Taxi:** run the Taxi flow, then read the Taxi checklist. With the memo set, the memo lines
+      tick. With the flaps up you hear "Timed out waiting for: …" and "Skipping: Seat belts,
+      ground spoilers and flaps for takeoff": "Flaps: T.O" stays open until the lever is set and
+      "Flaps setting" until you tick it; lines that already read right tick with the rest.
+   2. **Landing:** run the Landing flow, then read the Landing checklist. The gear check is the
+      last thing you hear; "Flaps: LDG" ticks at FULL, or at 3 with CONF 3 set. With the flaps
+      short of that you hear "Skipping: Seat belts and landing flaps": "Flaps: LDG" stays open
+      until the flaps are set; lines that already read right tick with the rest.
+   3. **Spoken values:** tick a few blank lines and listen: Fuel quantity, Baro reference,
+      T.O speeds and thrust.
+   4. **Surveillance (MFD SURV page):** listen to how the reminders sound, e.g. "Captain action
+      required: TCAS mode: TA/RA (MFD SURV page)". Then, once, check that the page's TCAS
+      selection works in your build; no live test of it is on record (FOA-9). With the
+      transponder on AUTO, select TCAS TA/RA on the MFD SURV CONTROLS page (MCDU window, "Go to
+      MFD page" → SURV: CONTROLS) and listen for MSFSBA's TCAS mode announcement ("traffic and
+      resolution advisories"). If the mode stays at standby, report it: the TCAS reminders would
+      then name a selection your build ignores.
 
 ---
 
@@ -304,13 +344,15 @@ switches. This is legitimate state feedback, not a double-announce bug.
 
 ## Known limitations (by design)
 
-- **Transponder / TCAS mode / ECAM page selection / exterior walk-around / flaps / approach
-  autobrake selection are Captain items by design** — every one of these appears only as a
-  `Captain(...)` reminder in the flows (and a `Reminder` in the checklists), never actuated by
-  the FO. Some (transponder, TCAS mode, ECAM page, flaps) have real settable A380 controls
-  elsewhere in MSFSBA's panels, but the FO does not drive them — these are pilot-flying
-  judgment calls (e.g. flap setting depends on SimBrief/performance data the FO does not
-  compute; ECAM page selection is a captain's monitoring choice).
+- **Transponder and TCAS settings, the takeoff flap setting and the landing autobrake are
+  Captain items by design** — every one of these appears only as a `Captain(...)` reminder in
+  the flows (and a `Reminder` in the checklists), never actuated by the FO. The transponder
+  mode, altitude reporting and TCAS mode are set on the MFD SURV CONTROLS page, which you can
+  click in MSFSBA's MCDU window ("Go to MFD page" → SURV: CONTROLS); MSFSBA has no variable or
+  event write for them, so their reminders name the page, "(MFD SURV page)" (FOA-9). The flaps
+  have real settable controls elsewhere in MSFSBA's panels, but the FO does not set the takeoff
+  setting: it depends on SimBrief/performance data the FO does not compute (the opt-in
+  auto-flaps schedule below is separate).
 - **FCU managed-push checklist items are `ActionManual`** ("FCU speed: managed", "FCU heading:
   managed", "FCU altitude: pushed", "Rudder trim: RESET") — these have no readable resting
   state to auto-detect against (a push/pull knob action, not a persistent switch position), so

@@ -12,8 +12,8 @@ namespace MSFSBlindAssist.Tests.FirstOfficer;
 /// does, and the one surveillance reminder that names a position FlyByWire's source does not offer on the
 /// A380's MFD SURV page is gone. The other surveillance reminders stay as Captain items that name that
 /// page (owner decision, 2026-10-09). These tests pin each reminder's wording and kind; they say nothing
-/// about whether the aircraft honours the setting (the record is in the note above CP_ALTRPT in
-/// FbwA380FlowDefinitions.cs).
+/// about whether the aircraft honours the setting (the record is FOA-9,
+/// docs/invariants/first-officer-airbus.md#foa-9).
 /// </summary>
 public class FbwA380FlowLineTests
 {
@@ -74,7 +74,7 @@ public class FbwA380FlowLineTests
         new object[] { "PARKING", "PK_TCAS", "TCAS mode: standby (MFD SURV page)" },
     };
 
-    // The record behind these reminders: the note above CP_ALTRPT in FbwA380FlowDefinitions.cs (FOA-9).
+    // The record behind these reminders: FOA-9 (docs/invariants/first-officer-airbus.md#foa-9).
     [Theory]
     [MemberData(nameof(SurveillanceReminders))]
     public void The_surveillance_reminders_stay_Captain_items_with_their_wording(string flowId, string id, string label)
