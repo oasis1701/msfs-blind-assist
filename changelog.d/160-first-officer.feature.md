@@ -42,8 +42,14 @@ Shutdown has a "TCAS: STANDBY" line and Securing an "External power: OFF" line.
 On the FlyByWire A380, the Checklists tab now holds the A380's own normal checklists from its
 electronic checklist, in its own words (Cockpit Preparation, Before Start, After Start, Taxi,
 Line-up, Approach, Landing, Parking and Securing the Aircraft): ticking a line you confirm speaks
-what the First Officer reads, such as the fuel, the baro reference or the takeoff speeds, and a
-finished flow no longer ticks a line the app reads unless its own step or check confirmed it.
+what the First Officer reads, such as the fuel, the baro reference or the takeoff speeds. You now
+also hear the A380 flows check the aircraft without moving anything: After Start checks that the
+rudder trim reads neutral after its reset, Taxi checks the takeoff memo (seat belts, ground spoilers
+and flaps), Line-up checks that both packs are on, and Landing checks the landing memo (seat belts
+and landing flaps) and, last of all, that the gear is down; the Approach flow also now calls the
+cabin crew for landing. A finished flow now ticks a line the First Officer can read only when one of
+its steps set it or one of its checks confirmed it; a line whose step was skipped is left to the
+aircraft: like any line, it ticks itself when the aircraft shows it done, and stays open until then.
 
 While the window is open, it also switches the landing lights at 10,000 feet, and you
 can turn that off in Settings. If SimBrief has supplied the transition altitude and

@@ -61,7 +61,11 @@ own narration.
    box reads flight director 1 and 2 "on"). Confirm the flow waits for the seatbelt SIGN to actually read ON
    (`WaitForField` on the sign light, up to 60 s) before continuing to the final captain
    reminders (IFR clearance, payload, MCDU). If the switch was already in AUTO with the sign
-   lit (engines running), the seatbelt step skips as "already set" — also correct.
+   lit (engines running), the seatbelt step skips as "already set" — also correct. If the sign
+   never lights, the wait times out after 60 s ("Timed out waiting for: Waiting for seatbelt signs
+   on", then "Skipping: …"), and both "Seatbelt signs: ON" in the Cockpit Preparation group and the
+   Cockpit Preparation Checklist's "Seat belts: ON" stay open until the sign lights, while the rest
+   of both lists tick.
 2. **Before Start**: cockpit door LOCKED, **FCU speed pushed to managed**, **FCU heading pushed
    to managed** (confirm both read "managed" on the FCU Speed/Heading windows or hotkey
    readouts — the same atomic RPN push mechanism validated for the Fenix), the "Set cleared
@@ -118,7 +122,10 @@ own narration.
     → OFF, engine anti-ice OFF, wing anti-ice OFF, APU bleed ON, **fuel pumps OFF** (all 20),
     **seatbelt switch → OFF** (position 2 — confirm the switch reads Off, not On/Auto), the
     transponder and TCAS standby reminders (MFD SURV page), the cockpit door UNLOCKED, then the
-    flow **waits** for the seatbelt SIGN to actually go OFF (up to 60 s).
+    flow **waits** for the seatbelt SIGN to actually go OFF (up to 60 s). A wait that times out is
+    skipped aloud ("Skipping: Waiting for engines off"), and the lines it checks stay open until the
+    aircraft agrees: a master that never reads off leaves "Engine masters 1 to 4: OFF" and the
+    Parking Checklist's "Engines: OFF" open; a sign that stays lit leaves "Seatbelt signs: OFF" open.
 12. **Securing**: crew oxygen OFF, the EFB reminder, IRS 1-3 OFF, emergency exit lighting OFF, no
     smoking OFF, nav and logo lights OFF, APU bleed OFF, external power OFF, APU master OFF, and
     **batteries OFF last**.
@@ -154,7 +161,9 @@ in flying order beside the nine **read-backs**, the A380's own ECL normal checkl
 words (FOA-9): Cockpit Preparation Checklist, Before Start Checklist, After Start Checklist, Taxi
 Checklist (with the takeoff memo), Line-up Checklist, Approach Checklist, Landing Checklist (the
 landing memo), Parking Checklist and Securing the Aircraft Checklist. There is no Before Takeoff or
-After Landing checklist.
+After Landing checklist. After its flow, each of the nine is already ticked and latched, so to hear
+a line's value, tick it before running the flow, or untick and re-tick it after: the untick ("Fuel
+quantity: SET, 12,400 kilograms: unchecked") re-opens the list.
 
 1. **STATE items auto-tick as switches reach position.** With an item unticked (e.g. Cockpit
    Preparation → "Batteries: ON"), change the underlying switch directly in the cockpit
@@ -176,12 +185,13 @@ After Landing checklist.
    Checklist — it reads the real `A32NX_SPOILERS_ARMED`, not the write-only Act key), "Engines: OFF",
    "Wing lights: OFF" or "Fuel pumps: OFF" (Parking Checklist). Confirm **no switch moves**: the line
    only ticks itself once the real state reaches the stated condition.
-6. **Blank lines speak what the First Officer reads.** Tick "Fuel quantity: SET" and "Baro
-   reference: SET" (Cockpit Preparation Checklist), "Parking brake: SET" and "T.O speeds and
-   thrust: SET" (Before Start Checklist), "Anti-ice: SET" (After Start Checklist), "Flaps setting:
-   SET" (Taxi Checklist) and "Minimum: SET" / "Autobrake: SET" (Approach Checklist): each speaks its
-   value after the label ("Flaps setting: SET, CONF 2: checked"; the parking brake says "on" or
-   "off") and shows it on the status line; the tree text never changes.
+6. **Blank lines speak what the First Officer reads.** Before running each list's flow (after it,
+   untick and re-tick the line), tick "Fuel quantity: SET" and "Baro reference: SET" (Cockpit
+   Preparation Checklist), "Parking brake: SET" and "T.O speeds and thrust: SET" (Before Start
+   Checklist), "Anti-ice: SET" (After Start Checklist), "Flaps setting: SET" (Taxi Checklist) and
+   "Minimum: SET" / "Autobrake: SET" (Approach Checklist): each speaks its value after the label
+   ("Flaps setting: SET, CONF 2: checked"; the parking brake says "on" or "off") and shows it on the
+   status line; the tree text never changes.
 7. **WATCH ITEM — anti-skid tick stability.** Cockpit Preparation → "Anti-skid: ON" detects on
    the stock `ANTISKID BRAKES ACTIVE` SimVar, which the A380 definition documents as reading
    UNRELIABLY over the data-def path (the same batch has returned both 1 and 0). Leave the
@@ -204,8 +214,8 @@ After Landing checklist.
       at 3 with CONF 3 set. With the flaps short of that you hear "Skipping: Seat belts and
       landing flaps": "Flaps: LDG" stays open until the flaps are set; lines that already read
       right tick with the rest.
-   3. **Spoken values:** tick a few blank lines and listen: Fuel quantity, Baro reference,
-      T.O speeds and thrust.
+   3. **Spoken values:** tick a few blank lines and listen, before running their flow, or untick
+      and re-tick them after it: Fuel quantity, Baro reference, T.O speeds and thrust.
    4. **Surveillance (MFD SURV page):** listen to how the reminders sound, e.g. "Captain action
       required: TCAS mode: TA/RA (MFD SURV page)". Then, once, check that the page's TCAS
       selection works in your build; no live test of it is on record (FOA-9). With the
