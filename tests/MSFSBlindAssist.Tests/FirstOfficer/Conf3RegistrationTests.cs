@@ -1,5 +1,8 @@
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using MSFSBlindAssist.Aircraft;
 using MSFSBlindAssist.FirstOfficer.FBWA320;
 using MSFSBlindAssist.FirstOfficer.FBWA380;
@@ -109,4 +112,46 @@ public class Conf3RegistrationTests
     public void A380_conf3_registration_matches_a_real_delivery_path()
         => AssertConf3ReachableByARealDeliveryPath(new FlyByWireA380Definition().GetVariables(),
             new FbwA380StateEvaluator().OnRequestPollFields, A380Conf3, "A380X");
+
+    // ------------------------------------------------------------------
+    // The auto managers read their own airframe's name
+    // ------------------------------------------------------------------
+
+    /// <summary>
+    /// The definitions register, and the evaluators poll, the right name (above), but the cap itself
+    /// is read by each auto manager, and a manager reading another airframe's name reads NaN, which
+    /// the cap takes as FULL: the original bug. The managers cannot be constructed in a test
+    /// (ScreenReaderAnnouncer must never be instantiated twice), so, as FbwA320VfeNextTests pins their
+    /// VFE-next read, the CONF 3 read is pinned on the source text. The A32NX and A380 managers read
+    /// their evaluator's LandingConf3Field (its value is pinned above) and name no CONF 3 variable of
+    /// their own; the A330 manager reads Headwind's name as a literal (FOA-6).
+    /// </summary>
+    [Theory]
+    [InlineData("FBWA320", "FbwA320FOAutoManager.cs",
+        "_state.GetValue(FbwA320StateEvaluator.LandingConf3Field)", "")]
+    [InlineData("FBWA380", "FbwA380FOAutoManager.cs",
+        "_state.GetValue(FbwA380StateEvaluator.LandingConf3Field)", "")]
+    [InlineData("HWA330", "HwA330FOAutoManager.cs",
+        "_state.GetValue(\"A32NX_SPEEDS_LANDING_CONF3\")", "A32NX_SPEEDS_LANDING_CONF3")]
+    public void Each_auto_manager_reads_its_own_airframes_conf3(
+        string folder, string fileName, string expectedRead, string expectedLiteral)
+    {
+        string source = File.ReadAllText(FirstOfficerSourcePath(Path.Combine(folder, fileName)));
+
+        Assert.Contains(expectedRead, source);
+
+        string[] literals = Regex.Matches(source, "\"[A-Za-z0-9_]*LANDING_CONF3\"")
+            .Select(m => m.Value.Trim('"')).Distinct().ToArray();
+        string[] expected = expectedLiteral.Length == 0 ? System.Array.Empty<string>() : new[] { expectedLiteral };
+        Assert.True(expected.SequenceEqual(literals),
+            $"{fileName} names the CONF 3 variable(s) [{string.Join(", ", literals)}], expected " +
+            $"[{string.Join(", ", expected)}]. A manager on another airframe's name reads NaN, " +
+            "which the cap takes as FULL (FOA-6).");
+    }
+
+    private static string FirstOfficerSourcePath(string relativePath,
+        [CallerFilePath] string thisTestFilePath = "") =>
+        Path.GetFullPath(Path.Combine(
+            Path.GetDirectoryName(thisTestFilePath)!,
+            "..", "..", "..", "MSFSBlindAssist", "FirstOfficer", relativePath));
 }

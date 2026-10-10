@@ -6,8 +6,7 @@ namespace MSFSBlindAssist;
 /// The wiring of the universal auto-gear/auto-AP service (<c>Automation/UniversalAutomationService.cs</c>):
 /// its construction, its 1 Hz feed timer, the aircraft-position handler and the push of the current
 /// aircraft's own limits. Kept in its own partial so <c>.claude/rules/first-officer.md</c> loads for it
-/// (FO-16, FO-17, FO-18) instead of being mirrored into every MainForm partial. Moved out of
-/// MainForm.cs and MainForm.Announcers.cs unchanged.
+/// (FO-16, FO-17, FO-18, FO-21) instead of being mirrored into every MainForm partial.
 /// </summary>
 public partial class MainForm
 {
@@ -16,10 +15,10 @@ public partial class MainForm
     private double _universalLatestAgl;
 
     /// <summary>
-    /// Builds the universal automation service and starts its 1 Hz feed. Called from
-    /// <c>InitializeManagers</c> after the <c>ContinuousBatchDelivered</c> subscription and before the
-    /// <c>QueuedEventDispatched</c> one, where the inline block used to sit; the timer is stopped and
-    /// disposed with the other timers in MainForm.cs.
+    /// Builds the universal automation service and starts its 1 Hz feed. <c>simConnectManager</c> must
+    /// already exist: the service's delegates and the position subscription use it.
+    /// <c>InitializeManagers</c> calls this after the <c>ContinuousBatchDelivered</c> subscription and
+    /// before the <c>QueuedEventDispatched</c> one; <c>DisposeUniversalAutomation</c> stops the timer.
     /// </summary>
     private void InitializeUniversalAutomation()
     {
@@ -57,6 +56,15 @@ public partial class MainForm
     }
 
     /// <summary>
+    /// Stops and disposes the 1 Hz feed timer. Called from MainForm's shutdown, beside the other timers.
+    /// </summary>
+    private void DisposeUniversalAutomation()
+    {
+        _universalAutomationTimer?.Stop();
+        _universalAutomationTimer?.Dispose();
+    }
+
+    /// <summary>
     /// Pushes the CURRENT aircraft's own auto-engage limits to the universal automation: the engage floor
     /// (the 737 refuses CMD below 400 ft RA after takeoff, FO-17), the spacing between presses (the FlyByWire
     /// AP 1 push is a toggle) and whether a null engaged-readback waits for a definite reading instead of
@@ -66,7 +74,7 @@ public partial class MainForm
     /// </summary>
     private void PushUniversalAircraftLimits()
     {
-        if (universalAutomation == null) return;   // built in InitializeManagers; SwitchAircraft guards it too
+        if (universalAutomation == null) return;   // InitializeUniversalAutomation has not run yet
         universalAutomation.MinimumApEngageAltitudeAgl = currentAircraft?.MinimumAutopilotEngageAltitudeAgl ?? 0;
         universalAutomation.ApRetryIntervalMs = currentAircraft?.AutopilotEngageRetryIntervalMs ?? 0;
         universalAutomation.WaitForApState = currentAircraft?.AutopilotEngageWaitsForState ?? false;

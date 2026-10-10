@@ -324,8 +324,9 @@ public class HeadwindA330Definition : FlyByWireA320Definition
         var vars = base.BuildVariables();
 
         // FOA-6: Headwind's A339X still writes the pre-FBW-#10890 name for the CONF 3 landing
-        // selection (its A32NX_Speeds.ts) and never A32NX_FM_LANDING_CONF3, so the A330 swaps
-        // the inherited registration for its own (HwA330StateEvaluator polls this one).
+        // selection (its A32NX_FMCMainDisplay.ts writes it from the PERF APPR selection;
+        // A32NX_Speeds.ts only resets it to 0) and never A32NX_FM_LANDING_CONF3, so the A330
+        // swaps the inherited registration for its own (HwA330StateEvaluator polls this one).
         vars.Remove("A32NX_FM_LANDING_CONF3");
         vars["A32NX_SPEEDS_LANDING_CONF3"] = new SimConnect.SimVarDefinition
         {

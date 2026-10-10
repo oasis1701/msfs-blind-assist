@@ -332,9 +332,9 @@ public interface IAircraftDefinition
 
     /// <summary>
     /// Engage the autopilot for the universal auto-AP-engage feature. The default fires the
-    /// stock <c>AUTOPILOT_ON</c> event; aircraft whose autopilot ignores or misreads that
-    /// override to press their own engage switch: the PMDG jets (CMD A on the 737, A/P L on the
-    /// 777) and the FlyByWire family (AP 1 — FBW captures AUTOPILOT_ON into a flag nothing
+    /// stock <c>AUTOPILOT_ON</c> event. Aircraft whose autopilot ignores or misreads that event
+    /// override this to press their own engage switch: the PMDG jets (CMD A on the 737, A/P L on
+    /// the 777) and the FlyByWire family (AP 1 — FBW captures AUTOPILOT_ON into a flag nothing
     /// reads, FO-21). Implementations should no-op if the autopilot is already engaged so a
     /// toggle-style engage switch can't disconnect it.
     /// </summary>
@@ -358,10 +358,11 @@ public interface IAircraftDefinition
     bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect);
 
     /// <summary>
-    /// Minimum time (ms) the universal auto-engage waits after a press before pressing again or
-    /// giving up. 0 = retry every tick. An aircraft whose engage is a TOGGLE and whose engaged
-    /// state reaches the cache no faster than the 1 Hz feed sets it (the FlyByWire family: 3000,
-    /// FO-21), so a retry never lands on an autopilot the previous press already engaged.
+    /// Minimum time (ms) the universal auto-engage waits after an attempt, a press or a wait for a
+    /// reading, before trying again or giving up. 0 = retry every tick. An aircraft whose engage
+    /// is a TOGGLE and whose engaged state reaches the cache no faster than the 1 Hz feed sets
+    /// 3000 (the FlyByWire family, FO-21), so a retry never lands on an autopilot the previous
+    /// press already engaged.
     /// </summary>
     int AutopilotEngageRetryIntervalMs { get; }
 
@@ -375,7 +376,7 @@ public interface IAircraftDefinition
     /// at all (the base returns <c>null</c>). The PMDG 737 and 777, the iFly 737 and the TFDi MD-11
     /// also return <c>null</c>, until their data is ready, and keep the open-loop path: the service
     /// invokes the engage once and announces on it (the MD-11's own engage presses nothing on an
-    /// unread state). That is unchanged here and tracked separately.
+    /// unread state). That is unchanged here and left for a separate change (FO-21, "Also seen on").
     /// </summary>
     bool AutopilotEngageWaitsForState { get; }
 

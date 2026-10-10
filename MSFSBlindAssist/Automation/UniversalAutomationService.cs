@@ -14,10 +14,11 @@ namespace MSFSBlindAssist.Automation;
 /// No gear state is read — the per-leg latch plus the climb/descent gates prevent
 /// redundant fires, and stock GEAR_UP/GEAR_DOWN are idempotent in the sim. AP engage is
 /// routed through an injected delegate: the PMDG jets press their own MCP switch (CMD A on
-/// the 737, A/P L on the 777, each self-guarded against toggling an already-engaged AP), the
-/// FlyByWire family presses AP 1 (FO-21: FBW captures the stock AUTOPILOT_ON into a flag
-/// nothing reads); every other aircraft falls back to the stock AUTOPILOT_ON. Actuation and announcements
-/// go through injected delegates so the logic is unit-testable.
+/// the 737, A/P L on the 777, each guarded against toggling an already-engaged AP, but only
+/// once the CDA snapshot exists: before it the guard reads 0.0, FO-18), the FlyByWire family
+/// presses AP 1 (FO-21: FBW captures the stock AUTOPILOT_ON into a flag nothing reads); every
+/// other aircraft falls back to the stock AUTOPILOT_ON. Actuation and announcements go
+/// through injected delegates so the logic is unit-testable.
 ///
 /// AP engage is CLOSED-LOOP where the aircraft exposes an engaged-readback
 /// (<c>isAutopilotEngaged</c>): press, then announce only once the readback confirms,
@@ -53,8 +54,10 @@ public sealed class UniversalAutomationService
     // Milliseconds since an arbitrary start; injected so the retry spacing is testable.
     private readonly Func<long> _nowMs;
 
-    /// <summary>Presses before giving up and handing the autopilot to the Captain. At the
-    /// ~1 Hz feed rate that is ~5 s of trying — long enough to ride out an engage inhibit
+    /// <summary>Attempts before giving up and handing the autopilot to the Captain. An attempt is
+    /// a press or, on an aircraft that waits (<see cref="WaitForApState"/>), a wait for a definite
+    /// reading. Where <see cref="ApRetryIntervalMs"/> is 0 that is about 5 ticks of the ~1 Hz feed;
+    /// at the FlyByWire family's 3 s spacing it is 15 s. Long enough to ride out an engage inhibit
     /// releasing, short enough not to hammer a toggle switch in the cockpit.</summary>
     public const int MaxApEngageAttempts = 5;
 
@@ -73,8 +76,8 @@ public sealed class UniversalAutomationService
     public int EffectiveApEngageAltitudeAgl
         => Math.Max(AutoApEngageAltitudeAgl, MinimumApEngageAltitudeAgl);
 
-    /// <summary>Minimum time (ms) between autopilot presses, and before giving up after the last
-    /// one, pushed from the current aircraft definition
+    /// <summary>Minimum time (ms) between autopilot attempts, a press or a wait for a reading, and
+    /// before giving up after the last one, pushed from the current aircraft definition
     /// (<c>IAircraftDefinition.AutopilotEngageRetryIntervalMs</c>). 0 = every tick (the PMDG jets,
     /// the iFly, the MD-11). The FlyByWire family sets 3000: its AP 1 push is a toggle and its
     /// engaged state reaches the cache with the 1 Hz batch, so an earlier retry could land on an

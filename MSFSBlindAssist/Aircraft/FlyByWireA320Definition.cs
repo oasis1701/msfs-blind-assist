@@ -4781,7 +4781,7 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
         },
         // Read by FbwA320FOAutoManager to cap flap extension at CONF 3 when the MCDU PERF APPR
         // page selects a CONF 3 landing (FOA-6). Unregistered until 2026-08-30; then FBW #10890
-        // (2026-09-11) renamed it from A32NX_SPEEDS_LANDING_CONF3, which nothing writes any more,
+        // (2026-09-11) renamed it from A32NX_SPEEDS_LANDING_CONF3, which FlyByWire no longer writes,
         // so the cap read NaN and took flaps FULL until 2026-10-09. The Headwind A330 still
         // writes the OLD name: HeadwindA330Definition registers that one in place of this.
         //

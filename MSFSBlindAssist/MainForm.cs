@@ -1240,8 +1240,7 @@ public partial class MainForm : Form
         _warmUpAfterLoadTimer?.Stop();
         _warmUpAfterLoadTimer?.Dispose();
 
-        _universalAutomationTimer?.Stop();
-        _universalAutomationTimer?.Dispose();
+        DisposeUniversalAutomation();
 
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();

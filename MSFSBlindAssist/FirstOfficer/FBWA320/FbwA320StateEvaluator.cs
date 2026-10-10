@@ -14,7 +14,7 @@ namespace MSFSBlindAssist.FirstOfficer.FBWA320;
 public sealed class FbwA320StateEvaluator : LVarStateEvaluator
 {
     /// <summary>The CONF 3 landing selection the auto-flap cap reads (FOA-6). FlyByWire #10890
-    /// (2026-09-11) renamed it from A32NX_SPEEDS_LANDING_CONF3, which nothing writes any more;
+    /// (2026-09-11) renamed it from A32NX_SPEEDS_LANDING_CONF3, which FlyByWire no longer writes;
     /// the Headwind A330 still writes the old name (HwA330StateEvaluator).</summary>
     internal const string LandingConf3Field = "A32NX_FM_LANDING_CONF3";
 
