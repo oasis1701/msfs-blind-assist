@@ -86,14 +86,14 @@ After Start line "Flaps: takeoff setting" left unticked until the lever reads 1-
 gear up and down read from the legs, and the "TCAS: STANDBY" and "External power: OFF" lines.
 The full run is the A32NX's (Part G of
 [docs/fbw-a320-first-officer-test-plan.md](fbw-a320-first-officer-test-plan.md)); on the A339X
-only these six checks need the sim (five claims in the table, and the gear legs under it),
-because each reads a variable that was never confirmed on this airframe. Run them in the Part B
-walk.
+only these seven checks need the sim (six claims in the table, and the gear legs under it),
+because each reads a variable, or sends an event, that was never confirmed on this airframe. Run
+them in the Part B walk.
 
 **Do these first: L10, L12 and L13.** A wrong answer on any of them changes what the First Officer
 does or ticks on this airframe: L10 decides whether Engine Start ever finishes, and L12 and L13
-decide whether the Rudder trim and landing-flaps lines tick at all. L11, L14 and the gear legs
-can wait.
+decide whether the Rudder trim and landing-flaps lines tick at all. L11, L14, L15 and the gear
+legs can wait.
 
 | # | Claim to settle | How to tell |
 |---|---|---|
@@ -102,6 +102,7 @@ can wait.
 | L12 | **Do first.** `A32NX_FAC_1_RUDDER_TRIM_POS` reads | After Start's "Rudder trim: NEUTRAL" ticks itself with the trim neutral and un-ticks off neutral. If it never ticks, the word is not published here: make the line a Reminder, as on the Fenix. |
 | L13 | **Do first.** `A32NX_GPWS_FLAPS3` reads | The Landing memo's "Flaps: SET" ticks at FULL, and at 3 only with the GPWS LDG FLAP 3 switch on. |
 | L14 | `A32NX_EFB_USING_METRIC_UNIT` arrives | Tick Cockpit Preparation's "Fuel quantity: CHECKED": it speaks the total fuel in the EFB's unit (kilograms or pounds). If it speaks no value, the unit variable never reached the cache on the A339X (the fuel line needs both it and `FUEL_QUANTITY_KG`): record what the A339X EFB publishes instead. |
+| L15 | The auto-autopilot's AP 1 push engages the A339X (FO-21) | On the walk's takeoff, with "Engage autopilot" on in Settings (350 ft): expect the aircraft's own "Autopilot 1 on" call, then "350 feet. Autopilot engaged.", both heard in full (the second must not cut the first off), AP 1 flying and no second press. The push is `A32NX.FCU_AP_1_PUSH`, read back on `A32NX_AUTOPILOT_1/2_ACTIVE`, both inherited from the A32NX and never exercised on this airframe. If the autopilot stays off, "Autopilot did not engage" follows after about 15 s: record what the A339X does with that event. |
 
 In the same walk, confirm that After Takeoff's "Landing gear: UP" wait passes once the gear is
 up (the three leg variables are inherited from the A32NX, not measured on the A339X).

@@ -7,7 +7,12 @@ public class UniversalAutomationServiceTests
 {
     private readonly List<string> events = new();
     private readonly List<string> spoken = new();
+    // What the service said through its separate success-confirmation delegate (see the last section).
+    private readonly List<string> confirmations = new();
     private UniversalAutomationService Make() => new(events.Add, spoken.Add);
+    // The service with a delegate of its own for the confirmation: `spoken` is then the interrupting one.
+    private UniversalAutomationService MakeSplit(Action? engage = null, Func<bool?>? engaged = null, Func<long>? now = null)
+        => new(events.Add, spoken.Add, engage, engaged, now, confirmations.Add);
 
     [Fact]
     public void GearUp_FiresOnceOnPositiveRateAboveFiftyFeet()
@@ -426,6 +431,67 @@ public class UniversalAutomationServiceTests
         Assert.Equal(UniversalAutomationService.MaxApEngageAttempts - 1, rig.Presses);
     }
 
+    // The give-up follows the LATEST reading, not only whether the service pressed. A press went out and
+    // then the state went unknown again: a SimConnect disconnect clears the cache, and only an aircraft
+    // switch resets the service. The autopilot may well be on by now, and "engage the autopilot" would
+    // disconnect it (the push is a toggle), so a leg whose latest reading is unknown ends on "state
+    // unknown". If the reading is back and says off, the press really never took.
+    [Theory]
+    [InlineData(null, StateUnknownCall)]
+    [InlineData(false, DidNotEngageCall)]
+    public void Ap_WaitingForState_AfterAPressTheGiveUpFollowsTheLatestReading(bool? latest, string expectedCall)
+    {
+        var rig = MakeWaiting(engaged: false);   // the AP vars have arrived: both autopilots off
+        var s = rig.Service;
+
+        s.Update(700, 900, 420);                 // t = 0: a definite OFF - presses (attempt 1)
+        Assert.Equal(1, rig.Presses);
+
+        rig.Engaged = null;                      // the cache is cleared: unknown again
+        for (int i = 1; i < UniversalAutomationService.MaxApEngageAttempts; i++)
+        {
+            rig.Now = i * (long)WaitInterval;
+            s.Update(700, 900, 420);             // waits (attempts 2 .. MaxApEngageAttempts): never presses blind
+        }
+        Assert.Equal(1, rig.Presses);
+        Assert.Empty(spoken);
+
+        rig.Engaged = latest;                    // what the reading says when the service gives up
+        rig.Now = GiveUpAfterMs - 1; s.Update(700, 900, 420);   // 1 ms short of the interval after the last attempt
+        Assert.Empty(spoken);
+
+        rig.Now = GiveUpAfterMs; s.Update(700, 900, 420);
+        Assert.Equal(new[] { expectedCall }, spoken);
+        Assert.Equal(1, rig.Presses);            // the give-up presses nothing
+    }
+
+    // An aircraft that does not wait (WaitForApState off) keeps the give-up it always had: it follows
+    // whether the service pressed, not the latest reading. Only the FlyByWire family waits.
+    [Fact]
+    public void Ap_NotWaiting_AGiveUpOnANullReadingStillSaysDidNotEngage()
+    {
+        long now = 0;
+        bool? engaged = false;
+        int presses = 0;
+        var s = new UniversalAutomationService(events.Add, spoken.Add,
+            () => presses++, () => engaged, () => now);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = WaitInterval;      // WaitForApState stays off
+
+        for (int i = 0; i < UniversalAutomationService.MaxApEngageAttempts; i++)
+        {
+            now = i * (long)WaitInterval;
+            s.Update(700, 900, 420);             // five presses that never take
+        }
+        Assert.Equal(UniversalAutomationService.MaxApEngageAttempts, presses);
+
+        engaged = null;                          // the readback is not ready when it gives up
+        now = GiveUpAfterMs; s.Update(700, 900, 420);
+        Assert.Equal(new[] { DidNotEngageCall }, spoken);
+        Assert.Equal(UniversalAutomationService.MaxApEngageAttempts, presses);
+    }
+
     [Fact]
     public void Ap_WaitingForState_PressesOnceTheStateReadsOffAndAnnouncesOnlyOnConfirmation()
     {
@@ -511,5 +577,110 @@ public class UniversalAutomationServiceTests
         rig.Now = WaitInterval + 2000; s.Update(800, 900, 500);     // found already on
         Assert.Equal(1, rig.Presses);            // only the press from before the reset
         Assert.Empty(spoken);                    // and no "engaged" call-out for it
+    }
+
+    // ---------------------------------------------------------------------
+    // The success confirmation does not interrupt (2026-10-10, FO-21). The aircraft announces its own
+    // "Autopilot 1 on" with its 1 Hz batch, and the service's "{height} feet. Autopilot engaged." follows
+    // 0-1 s later: an interrupting confirmation cut the aircraft's call off mid-word. So the confirmation
+    // has a delegate of its own (MainForm wires it to the non-interrupting announce); the gear calls and
+    // the two Captain calls keep the interrupting one. With no confirmation delegate given, the main
+    // one is used, so every caller that does not pass one is unchanged.
+    // ---------------------------------------------------------------------
+
+    [Fact]
+    public void Ap_ConfirmedEngagement_GoesToTheConfirmationDelegate()
+    {
+        bool engaged = false;
+        var s = MakeSplit(engage: () => { }, engaged: () => engaged);
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+
+        s.Update(700, 900, 420);                 // press: the readback does not say engaged yet
+        engaged = true;
+        s.Update(800, 900, 500);                 // confirmed
+
+        Assert.Equal(new[] { "400 feet. Autopilot engaged." }, confirmations);
+        Assert.Empty(spoken);                    // nothing here interrupts the aircraft's own call
+    }
+
+    [Fact]
+    public void Ap_OpenLoopPress_ConfirmationGoesToTheConfirmationDelegate()
+    {
+        int presses = 0;
+        var s = MakeSplit(engage: () => presses++, engaged: () => null);   // no readback, and the aircraft does not wait
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+
+        s.Update(700, 900, 420);
+
+        Assert.Equal(1, presses);
+        Assert.Equal(new[] { "400 feet. Autopilot engaged." }, confirmations);
+        Assert.Empty(spoken);
+    }
+
+    [Fact]
+    public void Ap_DidNotEngageCall_GoesToTheInterruptingDelegate()
+    {
+        long now = 0;
+        var s = MakeSplit(engage: () => { }, engaged: () => false, now: () => now);   // never engages
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = WaitInterval;
+
+        for (int i = 0; i <= UniversalAutomationService.MaxApEngageAttempts; i++)
+        {
+            now = i * (long)WaitInterval;
+            s.Update(700, 900, 420);             // five presses that never take, then the give-up
+        }
+
+        Assert.Equal(new[] { DidNotEngageCall }, spoken);
+        Assert.Empty(confirmations);
+    }
+
+    [Fact]
+    public void Ap_StateUnknownCall_GoesToTheInterruptingDelegate()
+    {
+        long now = 0;
+        var s = MakeSplit(engage: () => { }, engaged: () => null, now: () => now);   // the state is never read
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+        s.ApRetryIntervalMs = WaitInterval;
+        s.WaitForApState = true;
+
+        for (int i = 0; i <= UniversalAutomationService.MaxApEngageAttempts; i++)
+        {
+            now = i * (long)WaitInterval;
+            s.Update(700, 900, 420);             // five waits, then the give-up
+        }
+
+        Assert.Equal(new[] { StateUnknownCall }, spoken);
+        Assert.Empty(confirmations);
+    }
+
+    [Fact]
+    public void Gear_Calls_GoToTheInterruptingDelegate()
+    {
+        var s = MakeSplit();
+        s.AutoGearUpEnabled = true;
+        s.AutoGearDownEnabled = true;
+
+        s.Update(500, 800, 400);                 // positive rate: gear up
+        s.Update(3000, -700, 1500);              // descending through 2000 ft: gear down
+
+        Assert.Equal(new[] { "Positive rate. Gear up.", "Two thousand feet. Gear down." }, spoken);
+        Assert.Empty(confirmations);
+    }
+
+    [Fact]
+    public void Ap_WithNoConfirmationDelegate_TheConfirmationUsesTheMainAnnounce()
+    {
+        var s = new UniversalAutomationService(events.Add, spoken.Add, () => { }, () => null);   // the pre-existing shape
+        s.AutoApEnabled = true;
+        s.AutoApEngageAltitudeAgl = 400;
+
+        s.Update(700, 900, 420);
+
+        Assert.Equal(new[] { "400 feet. Autopilot engaged." }, spoken);
     }
 }

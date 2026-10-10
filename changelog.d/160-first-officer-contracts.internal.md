@@ -12,9 +12,13 @@ fragments, since that work is part of the feature and none of it shipped separat
 - `Conf3RegistrationTests` ties each airframe's CONF 3 landing variable (`A32NX_FM_LANDING_CONF3`,
   `A380X_FM_LANDING_CONF3`, and the Headwind A330's `A32NX_SPEEDS_LANDING_CONF3`) being `OnRequest`
   to its evaluator's poll list, and each First Officer auto manager's read to its own airframe's name.
-- `FbwAutopilotEngageTests` and `UniversalAutomationServiceTests` pin the FlyByWire auto-engage:
-  AP 1 pressed only on a definite off, never blind on an unknown state, never into the probe
-  queue, three seconds apart, and the two Captain-action lines when it gives up.
+- `FbwAutopilotEngageTests` and `UniversalAutomationServiceTests` pin the FlyByWire auto-engage
+  decisions. The helper presses AP 1 only on a definite off, never blind on an unknown state,
+  and holds a press back while it would wait in the probe queue. Only the helper is pinned:
+  whether each aircraft definition passes that queue condition in is not, because the send path
+  needs a live sim. The service spaces its attempts three seconds apart, speaks its success
+  confirmation without interrupting the aircraft's own call, and gives up with the
+  Captain-action line that matches the latest reading.
 - `FoFbwUnclaimedEventKeyTests` sweeps every A32NX and A330 First Officer write and
   requires the definition to claim it (`FoUnclaimedKeyPolicy`).
 - `FbwA380FoKeyRegistrationTests` fails if a FlyByWire-family First Officer reads a key

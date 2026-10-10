@@ -33,7 +33,12 @@ public partial class MainForm
             () => currentAircraft?.EngageAutopilot(simConnectManager),
             // ...and is verified against the def's engaged-readback where it has one, so a
             // press the aircraft rejected is retried instead of being announced as success.
-            () => currentAircraft?.IsAutopilotEngaged(simConnectManager));
+            () => currentAircraft?.IsAutopilotEngaged(simConnectManager),
+            // The success confirmation ("350 feet. Autopilot engaged.") does NOT interrupt (FO-21): the
+            // aircraft says its own "Autopilot 1 on" with the 1 Hz batch, and the confirmation follows 0-1 s
+            // later, so an interrupting one cut it off. The gear calls and the two Captain calls above keep
+            // AnnounceImmediate. Announce, unlike it, honours announcer.Suppressed (the first-detect grace).
+            announceConfirmation: msg => announcer.Announce(msg));
 
         simConnectManager.AircraftPositionReceived += OnUniversalAircraftPosition;
 

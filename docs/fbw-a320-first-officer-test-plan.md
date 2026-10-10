@@ -265,7 +265,11 @@ read-backs.
    - Positive rate of climb above ~50 ft AGL with gear down → gear auto-raises, **"Positive rate.
      Gear up."** announced.
    - Climbing through the **configured AP altitude** (Settings → First Officer numeric field,
-     default **350 ft AGL**) → AP1 engages; the announcement speaks the configured number.
+     default **350 ft AGL**) → AP 1 engages. **New 2026-10-09 (FO-21): the auto-autopilot used
+     to press a stock event FlyByWire ignores, so this is the check to run.** Take off with
+     "Engage autopilot" on and expect the aircraft's own **"Autopilot 1 on"** call, then
+     **"350 feet. Autopilot engaged."** (the configured number), **both heard in full** (the
+     second must not cut the first off), with AP 1 flying and no second press.
 3. On approach/descent, confirm gear auto-lowers descending through roughly 2000 ft AGL (and
    above 100 ft AGL, not already down) — **"Two thousand feet. Gear down."** announced.
 

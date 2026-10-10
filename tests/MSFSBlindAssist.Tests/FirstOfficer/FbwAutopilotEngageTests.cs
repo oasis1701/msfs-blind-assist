@@ -142,7 +142,8 @@ public class FbwAutopilotEngageTests
     {
         // Both autopilots read definitively off, so the press is otherwise due and the service
         // retries from this state. A withheld press is tried again after the retry interval; it is
-        // never queued to arrive in a burst when the probe ends.
+        // never queued to arrive up to a minute late, when the probe ends, over an autopilot the
+        // Captain may have engaged since.
         var bothOff = Read(0.0, 0.0);
 
         Assert.Null(FbwAutopilotEngage.PressFor(bothOff, pressWouldWait: true));

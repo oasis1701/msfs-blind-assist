@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Utils.Logging;
+
 namespace MSFSBlindAssist.Aircraft;
 
 /// <summary>
@@ -8,7 +10,7 @@ namespace MSFSBlindAssist.Aircraft;
 /// (the event the AP 1 button and the ToggleAutopilot1 hotkey already send). The push is a TOGGLE:
 /// it is pressed only once both autopilots read definitively off, never on an unknown state (the
 /// service waits for a reading instead, <c>IAircraftDefinition.AutopilotEngageWaitsForState</c>).
-/// Pure, so it is testable without a sim.
+/// Testable without a sim: the only side effect is one debug-log line when a press is held back.
 /// </summary>
 internal static class FbwAutopilotEngage
 {
@@ -38,11 +40,13 @@ internal static class FbwAutopilotEngage
     /// bridge object exists and the probe has neither verified nor concluded. The bridge object exists
     /// on every connection, whether or not the WASM module is installed, so
     /// <c>CanExecuteCalculatorCode</c> is true either way; with no module the probe can never verify
-    /// and runs its full ~60 s (40 attempts, 1.5 s apart) before it concludes. That queue is sent all
-    /// at once when the probe ends, so several pushes queued by the service's retries would arrive back
-    /// to back and toggle AP 1 on and off again. After the service has already told the Captain to
-    /// engage the autopilot, those late pushes could also switch off the one the Captain engaged
-    /// since. This only reports the condition; <see cref="PressFor"/> decides what to do about it. Not
+    /// and runs its full ~60 s (40 attempts, 1.5 s apart) before it concludes. That queue is sent in
+    /// one loop when the probe ends, and FlyByWire resets its autopilot inputs at the start of each
+    /// update and drains every pending event in it, so pushes that land in one update count as a
+    /// single press: queued retries would not toggle AP 1 on and off again. What a press must not
+    /// do is wait in that queue at all: one push arriving up to a minute late, after the service has
+    /// told the Captain to engage the autopilot, could switch off the one the Captain engaged since.
+    /// This only reports the condition; <see cref="PressFor"/> decides what to do about it. Not
     /// for the A380, whose <c>A32NX.FCU_*</c> events never wait (SIM-10). The arguments are
     /// <c>SimConnectManager</c>'s <c>CanExecuteCalculatorCode</c>, <c>CalcPathVerified</c> and
     /// <c>CalcPathProbeConcluded</c>.</summary>
@@ -57,10 +61,19 @@ internal static class FbwAutopilotEngage
     /// for a definite reading instead (<c>IAircraftDefinition.AutopilotEngageWaitsForState</c>). The
     /// service does not ask to press from there, because MainForm pushes the aircraft's limits,
     /// <c>WaitForApState</c> among them, on every aircraft switch as well as every second; this
-    /// guard stays as defence in depth. Null when both read off but the press would wait: the
-    /// service retries from that state, so the waiting pushes could pile up and arrive back to back.
-    /// That press is tried again after <see cref="RetryIntervalMs"/>, and if none ever goes out the
-    /// service's Captain-action call is then true.</summary>
+    /// guard stays as defence in depth. Null when both read off but the press would wait: it would
+    /// sit in the probe queue for up to a minute and could then switch off an autopilot the Captain
+    /// engaged in the meantime. That press is tried again after <see cref="RetryIntervalMs"/>, and
+    /// if none ever goes out the service's Captain-action call is then true. A held-back press
+    /// writes one debug-log line (at most once per attempt, never per tick).</summary>
     public static string? PressFor(Func<string, double?> read, bool pressWouldWait = false)
-        => (IsEngaged(read) == false && !pressWouldWait) ? Ap1PushEvent : null;
+    {
+        if (IsEngaged(read) != false) return null;
+        if (pressWouldWait)
+        {
+            Log.Debug("Automation", "AP engage: AP 1 push held back, it would wait in the calc-path probe queue (SIM-13).");
+            return null;
+        }
+        return Ap1PushEvent;
+    }
 }

@@ -1,3 +1,5 @@
+using MSFSBlindAssist.Utils.Logging;
+
 namespace MSFSBlindAssist.Automation;
 
 /// <summary>
@@ -18,7 +20,11 @@ namespace MSFSBlindAssist.Automation;
 /// once the CDA snapshot exists: before it the guard reads 0.0, FO-18), the FlyByWire family
 /// presses AP 1 (FO-21: FBW captures the stock AUTOPILOT_ON into a flag nothing reads); every
 /// other aircraft falls back to the stock AUTOPILOT_ON. Actuation and announcements go
-/// through injected delegates so the logic is unit-testable.
+/// through injected delegates so the logic is unit-testable. The success confirmation
+/// ("{height} feet. Autopilot engaged.") has a delegate of its own and must not interrupt: the
+/// aircraft announces its own engage call (the FlyByWire "Autopilot 1 on") with its 1 Hz batch and
+/// this line follows 0-1 s later. The gear calls and the two Captain calls use the main,
+/// interrupting delegate (FO-21).
 ///
 /// AP engage is CLOSED-LOOP where the aircraft exposes an engaged-readback
 /// (<c>isAutopilotEngaged</c>): press, then announce only once the readback confirms,
@@ -37,12 +43,20 @@ namespace MSFSBlindAssist.Automation;
 /// <see cref="WaitForApState"/> (FO-21): there null only means "not read yet", and the press is a
 /// toggle, so the service never presses on it. It waits for a definite reading, and if none comes
 /// within <see cref="MaxApEngageAttempts"/> attempts it reports a Captain action ("state unknown"
-/// when it never pressed, "did not engage" when it did).
+/// when it never pressed or the latest reading is unknown again, "did not engage" when it pressed
+/// and the autopilot reads off).
 /// </summary>
 public sealed class UniversalAutomationService
 {
     private readonly Action<string> _sendStockEvent;
+    // Interrupting: the gear calls and the two Captain calls, which the pilot must hear at once.
     private readonly Action<string> _announce;
+    // The success confirmation, "{height} feet. Autopilot engaged.", which must NOT interrupt: the aircraft
+    // says its own engage call (the FlyByWire "Autopilot 1 on") with the 1 Hz batch and this line follows
+    // 0-1 s later, so an interrupting one cut it off mid-word. MainForm wires it to the non-interrupting
+    // announce (FO-21; FO-4 makes the same choice for "flow complete"). Defaults to the main delegate when
+    // a caller gives none.
+    private readonly Action<string> _announceConfirmation;
     // AP engage is aircraft-routed: PMDG jets press their own MCP switch (CMD A / A/P L), the
     // FlyByWire family AP 1, everything else fires the stock AUTOPILOT_ON. Null => stock fallback.
     private readonly Action? _engageAutopilot;
@@ -91,8 +105,9 @@ public sealed class UniversalAutomationService
     /// first at the climb through the engage height, then one per <see cref="ApRetryIntervalMs"/>
     /// (a tick at or past the interval counts, a tick inside it does not). If no definite reading
     /// comes within <see cref="MaxApEngageAttempts"/> attempts the Captain call ends the leg, as
-    /// "state unknown" when the service never pressed. False (the default) takes the open-loop
-    /// press on a null reading. The FlyByWire family sets it (FO-21).</summary>
+    /// "state unknown" when the service never pressed or the latest reading is unknown again. False
+    /// (the default) takes the open-loop press on a null reading; the give-up of an aircraft that
+    /// does not wait never looks at the latest reading. The FlyByWire family sets it (FO-21).</summary>
     public bool WaitForApState { get; set; }
 
     private bool _gearRaisedThisLeg;
@@ -105,10 +120,11 @@ public sealed class UniversalAutomationService
 
     public UniversalAutomationService(Action<string> sendStockEvent, Action<string> announce,
         Action? engageAutopilot = null, Func<bool?>? isAutopilotEngaged = null,
-        Func<long>? nowMs = null)
+        Func<long>? nowMs = null, Action<string>? announceConfirmation = null)
     {
         _sendStockEvent = sendStockEvent;
         _announce = announce;
+        _announceConfirmation = announceConfirmation ?? announce;
         _engageAutopilot = engageAutopilot;
         _isAutopilotEngaged = isAutopilotEngaged;
         _nowMs = nowMs ?? (() => Environment.TickCount64);
@@ -185,8 +201,9 @@ public sealed class UniversalAutomationService
             // Confirmed. Silent when we never pressed — the pilot engaged it themselves (or it was
             // already on when the first reading arrived) and a call-out, let alone a press on a
             // toggle switch, would be wrong. A waiting attempt presses nothing, so it doesn't count.
+            // The confirmation does not interrupt: it follows the aircraft's own "Autopilot 1 on".
             if (_apPressed)
-                _announce($"{EffectiveApEngageAltitudeAgl} feet. Autopilot engaged.");
+                _announceConfirmation($"{EffectiveApEngageAltitudeAgl} feet. Autopilot engaged.");
             _apResolvedThisLeg = true;
             return;
         }
@@ -203,14 +220,20 @@ public sealed class UniversalAutomationService
 
         if (_apAttempts >= MaxApEngageAttempts)
         {
-            // Only a leg that invoked the engage (_apPressed) can say the autopilot did not engage. A
-            // leg that only waited (WaitForApState, the state never read) never did: the autopilot may
-            // well be on, and a Captain told to engage it would disconnect it. That leg ends on "state
-            // unknown" and a request to check. An aircraft that does not wait reaches this point only
-            // after invoking the engage, so it keeps the "did not engage" line.
-            _announce(_apPressed
-                ? "Autopilot did not engage. Captain action required: engage the autopilot."
-                : "Autopilot state unknown. Captain action required: check the autopilot.");
+            // "Did not engage, engage the autopilot" is true only if the service invoked the engage
+            // (_apPressed) AND the latest reading is not unknown. Otherwise the autopilot may well be on,
+            // and a Captain told to engage it would disconnect it (the push is a toggle): the leg ends on
+            // "state unknown" and a request to check. That is a leg that only waited (WaitForApState, the
+            // state never read), and one that pressed whose reading then went unknown again (a SimConnect
+            // disconnect clears the cache, and only SwitchAircraft resets this service). An aircraft that
+            // does not wait reaches this point only after invoking the engage, so for it the expression is
+            // just !_apPressed (false), as before: it says "did not engage" whatever the latest reading is.
+            bool stateUnknown = !_apPressed || (WaitForApState && engaged == null);
+            Log.Debug("Automation", $"AP engage: gave up after {_apAttempts} attempts (pressed: {(_apPressed ? "yes" : "no")}, " +
+                $"latest reading: {ReadingText(engaged)}), said \"{(stateUnknown ? "state unknown" : "did not engage")}\".");
+            _announce(stateUnknown
+                ? "Autopilot state unknown. Captain action required: check the autopilot."
+                : "Autopilot did not engage. Captain action required: engage the autopilot.");
             _apResolvedThisLeg = true;
             return;
         }
@@ -222,6 +245,7 @@ public sealed class UniversalAutomationService
         {
             _apAttempts++;
             _lastPressMs = _nowMs();
+            Log.Debug("Automation", $"AP engage: the autopilot state is not read yet, waiting instead of pressing (attempt {_apAttempts} of {MaxApEngageAttempts}).");
             return;
         }
 
@@ -237,9 +261,16 @@ public sealed class UniversalAutomationService
 
         if (engaged == null)
         {
-            // Nothing to verify against: announce on the press, as before.
-            _announce($"{EffectiveApEngageAltitudeAgl} feet. Autopilot engaged.");
+            // Nothing to verify against: announce on the press, as before (without interrupting).
+            _announceConfirmation($"{EffectiveApEngageAltitudeAgl} feet. Autopilot engaged.");
             _apResolvedThisLeg = true;
         }
     }
+
+    private static string ReadingText(bool? engaged) => engaged switch
+    {
+        true => "on",
+        false => "off",
+        null => "unknown",
+    };
 }
