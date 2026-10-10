@@ -24,9 +24,10 @@ public class FbwA380StateEvaluatorTests
 
     // The three texts are spoken, so they run under a comma-decimal culture too: CI runs en-US and would
     // never catch a "12.400 kilograms" or "QNH 29,92" (CLAUDE.md, "Check the whole of what you touched").
+    // FbwA380ReadbackTests runs the checklist lines' spoken values through these two as well.
     public static TheoryData<string> Cultures => new() { "en-US", "de-DE", "sv-SE" };
 
-    private static void InCulture(string name, Action body)
+    internal static void InCulture(string name, Action body)
     {
         var old = CultureInfo.CurrentCulture;
         var oldUi = CultureInfo.CurrentUICulture;

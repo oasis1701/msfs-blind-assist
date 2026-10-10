@@ -411,7 +411,8 @@ public static class FbwA380FlowDefinitions
     {
         Id = "AFTER_LANDING", Name = "After Landing",
         Description = "Clean up after vacating: radar, engine mode, flaps, APU, anti-ice, spoilers, lights.",
-        RelatedChecklistGroupIds = new[] { "AFTER_LANDING_CL" },
+        // No read-back of its own: the A380 ECL has no After Landing checklist (FOA-9).
+        RelatedChecklistGroupIds = new string[] { },
         Steps = new()
         {
             Skip(SW("AL_WXR_OFF", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys", 0),

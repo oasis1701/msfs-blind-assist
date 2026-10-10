@@ -1,4 +1,5 @@
 using MSFSBlindAssist.Aircraft;
+using MSFSBlindAssist.FirstOfficer.Airbus;
 using MSFSBlindAssist.FirstOfficer.Models;
 
 namespace MSFSBlindAssist.FirstOfficer.FBWA380;
@@ -8,19 +9,39 @@ using Group = Models.ChecklistGroup<FbwA380ActionExecutor, FbwA380StateEvaluator
 using CheckFn = System.Func<FbwA380ActionExecutor, FbwA380StateEvaluator, System.Threading.Tasks.Task>;
 
 /// <summary>
-/// Data-driven FlyByWire A380 First-Officer checklist definitions — the STATE/ACTION layer
-/// that mirrors <see cref="FbwA380FlowDefinitions"/> 1:1. Every drivable flow step becomes an
-/// <c>Auto</c> item whose tick fires the SAME write the flow uses and whose auto-detect
-/// condition mirrors the flow's own Skip condition; every Captain flow step becomes a
-/// <see cref="Reminder"/>. Readback (*_CL) groups are added to <see cref="Build"/> by Task 7.
+/// Data-driven FlyByWire A380 First-Officer checklist definitions, two kinds of group interleaved in
+/// flying order:
+/// - the STATE/ACTION groups mirror <see cref="FbwA380FlowDefinitions"/>: every drivable flow step is an
+///   <c>Auto</c> item whose tick fires the SAME write the flow uses and whose auto-detect condition
+///   mirrors the flow's own Skip condition; every Captain flow step is a <see cref="Reminder"/>. A flow's
+///   waits and read-only checks have no action line: they complete read-back lines;
+/// - the read-back (*_CL) groups are FlyByWire's A380X ECL normal checklists, in the ECL's words,
+///   spoken to one pilot, every blank answered SET with the value the First Officer reads
+///   (docs/invariants/first-officer-airbus.md#foa-9). Action-free (FO-3).
 ///
-/// Every state item is RevertToState (live mirror), matching the Fenix/PMDG convention. State
-/// reads come from the SimConnect L:var cache via <see cref="FbwA380StateEvaluator"/> —
-/// OnRequest vars are polled by the FO window via OnRequestPollFields; an uncached var reads
-/// NaN (indeterminate: no tick, no revert).
+/// Every state item is RevertToState (live mirror), matching the Fenix/PMDG convention. State reads come
+/// from the SimConnect L:var cache via <see cref="FbwA380StateEvaluator"/> — OnRequest vars are polled by
+/// the FO window via OnRequestPollFields; an uncached var reads NaN (indeterminate: no tick, no revert).
 /// </summary>
 public static class FbwA380ChecklistDefinitions
 {
+    /// <summary>The 20 A380 fuel pumps the flows switch together: the 8 feed pumps (tanks 1-4, main and
+    /// standby) and the 12 transfer pumps (outer, mid, inner, trim). The one list the checklist's three
+    /// pump lines detect (Before Start "Fuel pumps: ON", Parking "Fuel pumps: OFF" and the Parking
+    /// read-back's "Fuel pumps: OFF"): the first is a line's own field, the rest its other fields. The
+    /// two action lines still write the pumps by literal key, which the write-key registration scan
+    /// (FbwA380FoKeyRegistrationTests) reads from this file's source.</summary>
+    internal static readonly string[] FuelPumps =
+    {
+        "FUELPUMP_FEEDTK1_MAIN", "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
+        "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
+        "FUELPUMP_OUTR_L", "FUELPUMP_MID_L_FWD", "FUELPUMP_MID_L_AFT",
+        "FUELPUMP_INR_L_FWD", "FUELPUMP_INR_L_AFT",
+        "FUELPUMP_OUTR_R", "FUELPUMP_MID_R_FWD", "FUELPUMP_MID_R_AFT",
+        "FUELPUMP_INR_R_FWD", "FUELPUMP_INR_R_AFT",
+        "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R",
+    };
+
     public static List<Group> Build() => new()
     {
         BuildCockpitPrep(),
@@ -34,14 +55,12 @@ public static class FbwA380ChecklistDefinitions
         BuildTaxiCL(),
         BuildLineup(),
         BuildLineupCL(),
-        BuildBeforeTakeoffCL(),
         BuildAfterTakeoff(),
         BuildApproach(),
         BuildApproachCL(),
         BuildLanding(),
         BuildLandingCL(),
         BuildAfterLanding(),
-        BuildAfterLandingCL(),
         BuildParking(),
         BuildParkingCL(),
         BuildSecure(),
@@ -247,17 +266,7 @@ public static class FbwA380ChecklistDefinitions
             // ALL 20 pumps ON — 8 feed + 12 transfer (outer/mid/inner/trim). Transfer pumps are
             // manual on/off pumps like the feed pumps; FBW's POWERUP_CONFIG preset turns all 20
             // on and A380 SOP runs the transfer pumps continuously (see the flow's BS_FUELPUMPS).
-            Multi("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ON", "FUELPUMP_FEEDTK1_MAIN", v => v > 0.5,
-                new[]
-                {
-                    "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
-                    "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
-                    "FUELPUMP_OUTR_L", "FUELPUMP_MID_L_FWD", "FUELPUMP_MID_L_AFT",
-                    "FUELPUMP_INR_L_FWD", "FUELPUMP_INR_L_AFT",
-                    "FUELPUMP_OUTR_R", "FUELPUMP_MID_R_FWD", "FUELPUMP_MID_R_AFT",
-                    "FUELPUMP_INR_R_FWD", "FUELPUMP_INR_R_AFT",
-                    "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R",
-                },
+            Multi("BS_FUELPUMPS", "BEFORE_START", "Fuel pumps: ON", FuelPumps[0], v => v > 0.5, FuelPumps[1..],
                 async (e, _) =>
                 {
                     await e.Set("FUELPUMP_FEEDTK1_MAIN", 1);
@@ -567,17 +576,7 @@ public static class FbwA380ChecklistDefinitions
             Auto("PK_APUBLEED", "PARKING", "APU bleed: ON", "A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON",
                 v => v > 0.5, (e, _) => e.Set("A32NX_OVHD_PNEU_APU_BLEED_PB_IS_ON", 1)),
             // ALL 20 pumps OFF — mirrors POWERUP_CONFIG_OFF (feed + transfer).
-            Multi("PK_FUELPUMPS_OFF", "PARKING", "Fuel pumps: OFF", "FUELPUMP_FEEDTK1_MAIN", v => v < 0.5,
-                new[]
-                {
-                    "FUELPUMP_FEEDTK1_STBY", "FUELPUMP_FEEDTK2_MAIN", "FUELPUMP_FEEDTK2_STBY",
-                    "FUELPUMP_FEEDTK3_MAIN", "FUELPUMP_FEEDTK3_STBY", "FUELPUMP_FEEDTK4_MAIN", "FUELPUMP_FEEDTK4_STBY",
-                    "FUELPUMP_OUTR_L", "FUELPUMP_MID_L_FWD", "FUELPUMP_MID_L_AFT",
-                    "FUELPUMP_INR_L_FWD", "FUELPUMP_INR_L_AFT",
-                    "FUELPUMP_OUTR_R", "FUELPUMP_MID_R_FWD", "FUELPUMP_MID_R_AFT",
-                    "FUELPUMP_INR_R_FWD", "FUELPUMP_INR_R_AFT",
-                    "FUELPUMP_TRIM_L", "FUELPUMP_TRIM_R",
-                },
+            Multi("PK_FUELPUMPS_OFF", "PARKING", "Fuel pumps: OFF", FuelPumps[0], v => v < 0.5, FuelPumps[1..],
                 async (e, _) =>
                 {
                     await e.Set("FUELPUMP_FEEDTK1_MAIN", 0);
@@ -611,157 +610,132 @@ public static class FbwA380ChecklistDefinitions
     };
 
     // -----------------------------------------------------------------------
-    // Readback (*_CL) groups — challenge/response checklists.
-    // HARD INVARIANT: every item here is action-free (Reminder, or Auto(..., action: null)).
-    // No ActionManual, no non-null CheckAction, anywhere in a *_CL group.
+    // Read-back (*_CL) groups: FlyByWire's A380X ECL normal checklists (NormalProcedures.ts at
+    // 255546cb), in the ECL's words and order, spoken to one pilot: no "(BOTH)", no memo prefix, every
+    // blank answered SET with the value the First Officer reads (LiveValue). No Before Takeoff, After
+    // Takeoff, After Landing or Departure Change list. Sources and the owner's choices:
+    // docs/invariants/first-officer-airbus.md#foa-9.
+    // HARD INVARIANT (FO-3): every item here is action-free (Reminder, or Auto(..., action: null)).
     // -----------------------------------------------------------------------
 
-    // 1a. Cockpit Preparation Checklist
     private static Group BuildCockpitPrepCL() => new()
     {
         Id = "COCKPIT_PREP_CL", Name = "Cockpit Preparation Checklist",
         Items = new()
         {
-            Reminder("CPC_PREP", "COCKPIT_PREP_CL", "Cockpit preparation: COMPLETED"),
-            Reminder("CPC_FUEL", "COCKPIT_PREP_CL", "Fuel: READBACK"),
-            Auto("CPC_SEATBELT", "COCKPIT_PREP_CL", "Seatbelt signs: ON", "SEATBELT_SIGN_LIGHT",
+            Reminder("CPC_GEARPINS", "COCKPIT_PREP_CL", "Gear pins and covers: REMOVED"),
+            Reminder("CPC_FUEL", "COCKPIT_PREP_CL", "Fuel quantity: SET", s => s.FuelText()),
+            // The seat-belt SIGN, never the switch (FOA-2).
+            Auto("CPC_SEATBELT", "COCKPIT_PREP_CL", "Seat belts: ON", "SEATBELT_SIGN_LIGHT",
                 v => v > 0.5, action: null),
-            Auto("CPC_ADIRS", "COCKPIT_PREP_CL", "ADIRS: NAV", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
-                v => Math.Abs(v - 1) < 0.5,
-                new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
-                action: null),
-            Reminder("CPC_ALTIMETERS", "COCKPIT_PREP_CL", "Altimeters: SET"),
-            Reminder("CPC_FMGS", "COCKPIT_PREP_CL", "F.M.G.S: SET"),
+            Reminder("CPC_ALTIMETERS", "COCKPIT_PREP_CL", "Baro reference: SET", s => s.BaroText()),
         }
     };
 
-    // 2a. Before Start Checklist
     private static Group BuildBeforeStartCL() => new()
     {
         Id = "BEFORE_START_CL", Name = "Before Start Checklist",
         Items = new()
         {
-            Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "Takeoff speeds: READBACK"),
-            Info("BSC_LINE", "BEFORE_START_CL", "— Down to the line —"),
-            Reminder("BSC_DOORS", "BEFORE_START_CL", "Doors: CLOSED"),
-            Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON", "LIGHT_BEACON",
-                v => v > 0.5, action: null),
-            Auto("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
-                v => v > 0.5, action: null),
+            Reminder("BSC_PARKBRK", "BEFORE_START_CL", "Parking brake: SET",
+                s => AirbusReadbackFormat.OnOff(s.GetValue("A32NX_PARK_BRAKE_LEVER_POS"))),
+            Reminder("BSC_TOSPEEDS", "BEFORE_START_CL", "T.O speeds and thrust: SET",
+                s => AirbusReadbackFormat.TakeoffSpeeds(s.GetValue("PFD_V1"), s.GetValue("PFD_VR"),
+                    s.GetValue("PFD_V2"), s.GetValue("A32NX_AIRLINER_TO_FLEX_TEMP"))),
+            Auto("BSC_BEACON", "BEFORE_START_CL", "Beacon: ON", "LIGHT_BEACON", v => v > 0.5, action: null),
         }
     };
 
-    // 4a. After Start Checklist
     private static Group BuildAfterStartCL() => new()
     {
         Id = "AFTER_START_CL", Name = "After Start Checklist",
         Items = new()
         {
-            Reminder("ASC_ANTIICE", "AFTER_START_CL", "Anti-ice: SET"),
-            Reminder("ASC_ECAM", "AFTER_START_CL", "ECAM status: CHECKED"),
-            Reminder("ASC_TRIM", "AFTER_START_CL", "Trim: SET"),
+            Reminder("ASC_ANTIICE", "AFTER_START_CL", "Anti-ice: SET",
+                s => FbwA380ReadbackFormat.AntiIce(s.GetValue("ENG_ANTI_ICE:1"), s.GetValue("ENG_ANTI_ICE:2"),
+                    s.GetValue("ENG_ANTI_ICE:3"), s.GetValue("ENG_ANTI_ICE:4"), s.GetValue("WING_ANTI_ICE_OVHD"))),
+            Reminder("ASC_PITCHTRIM", "AFTER_START_CL", "Pitch trim: T.O"),
+            // The SEC trim word within 0.35 degrees, FlyByWire's own ECL threshold.
+            Auto("ASC_RUDDERTRIM", "AFTER_START_CL", "Rudder trim: NEUTRAL", "FO_RUDDER_TRIM_NEUTRAL",
+                v => v > 0.5, action: null),
         }
     };
 
-    // 5a. Taxi Checklist
     private static Group BuildTaxiCL() => new()
     {
         Id = "TAXI_CL", Name = "Taxi Checklist",
         Items = new()
         {
-            Reminder("TXC_TAXI", "TAXI_CL", "Taxi checklist"),
-            Reminder("TXC_FCTEST", "TAXI_CL", "Flight control test: CHECKED"),
-            Reminder("TXC_FLAPS", "TAXI_CL", "Flaps: SET"),
-            Auto("TXC_WXR", "TAXI_CL", "Weather radar: ON", "XMLVAR_A320_WeatherRadar_Sys",
+            Reminder("TXC_FCTEST", "TAXI_CL", "Flight controls: CHECKED"),
+            Reminder("TXC_FLAPS", "TAXI_CL", "Flaps setting: SET",
+                s => FbwA380ReadbackFormat.FlapsConf(s.GetValue("A32NX_FLAPS_HANDLE_INDEX"))),
+            // The A380 line is the radar alone (0 Off / 1 On on the A380).
+            Auto("TXC_WXR", "TAXI_CL", "Radar: ON", "XMLVAR_A320_WeatherRadar_Sys", v => v > 0.5, action: null),
+            // The takeoff memo (the ECL's "T.O" sub-headline), one line each.
+            Auto("TXC_MEMO_SIGNS", "TAXI_CL", "Seat belts: ON", "SEATBELT_SIGN_LIGHT", v => v > 0.5, action: null),
+            Auto("TXC_MEMO_SPLRS", "TAXI_CL", "Ground spoilers: ARM", "A32NX_SPOILERS_ARMED", v => v > 0.5, action: null),
+            Auto("TXC_MEMO_FLAPS", "TAXI_CL", "Flaps: T.O", "A32NX_FLAPS_HANDLE_INDEX",
+                FbwA380StateEvaluator.IsTakeoffFlapsLever, action: null),
+            Auto("TXC_MEMO_AUTOBRK", "TAXI_CL", "Autobrake: RTO", "A32NX_AUTOBRAKES_RTO_ARMED",
                 v => v > 0.5, action: null),
-            Auto("TXC_ENGMODE", "TAXI_CL", "Engine mode: SET", "ENGINE_MODE_SELECTOR",
-                v => Math.Abs(v - 1) < 0.5, action: null),
-            Reminder("TXC_ECAMMEMO", "TAXI_CL", "ECAM memo: no blue, takeoff config normal"),
+            Reminder("TXC_MEMO_TOCFG", "TAXI_CL", "T.O config: TEST"),
         }
     };
 
-    // 6a. Lineup Checklist
     private static Group BuildLineupCL() => new()
     {
-        Id = "LINEUP_CL", Name = "Lineup Checklist",
+        Id = "LINEUP_CL", Name = "Line-up Checklist",
         Items = new()
         {
-            Reminder("LUC_LINEUP", "LINEUP_CL", "Lineup checklist"),
-            Reminder("LUC_RUNWAY", "LINEUP_CL", "Takeoff runway: Confirmed"),
-            Reminder("LUC_TCAS", "LINEUP_CL", "TCAS: SET"),
-            Reminder("LUC_PACKS", "LINEUP_CL", "Packs: SET"),
-            Reminder("LUC_CABINCREW", "LINEUP_CL", "Cabin crew: NOTIFIED"),
+            Reminder("LUC_RUNWAY", "LINEUP_CL", "T.O runway: SET"),
+            Auto("LUC_PACKS", "LINEUP_CL", "Packs 1 and 2: ON", "A32NX_OVHD_COND_PACK_1_PB_IS_ON", v => v > 0.5,
+                new[] { "A32NX_OVHD_COND_PACK_2_PB_IS_ON" }, action: null),
         }
     };
 
-    // 13. Before Takeoff Checklist (readback-only briefing; no matching STATE/ACTION group)
-    private static Group BuildBeforeTakeoffCL() => new()
-    {
-        Id = "BEFORE_TAKEOFF_CL", Name = "Before Takeoff Checklist",
-        Items = new()
-        {
-            Reminder("BTC_FLAPS", "BEFORE_TAKEOFF_CL", "Flaps: SET"),
-            Reminder("BTC_TOSPEEDS", "BEFORE_TAKEOFF_CL", "Takeoff speeds: READBACK"),
-            Reminder("BTC_ALTITUDE", "BEFORE_TAKEOFF_CL", "Altitude: READBACK"),
-        }
-    };
-
-    // 9a. Approach Checklist
     private static Group BuildApproachCL() => new()
     {
         Id = "APPROACH_CL", Name = "Approach Checklist",
         Items = new()
         {
-            Reminder("APC_ALTIMETERS", "APPROACH_CL", "Altimeters: SET"),
-            Auto("APC_SEATBELT", "APPROACH_CL", "Seatbelt signs: ON", "SEATBELT_SIGN_LIGHT",
-                v => v > 0.5, action: null),
-            Reminder("APC_MINIMUMS", "APPROACH_CL", "Minimums: READBACK"),
-            Auto("APC_AUTOBRAKE", "APPROACH_CL", "Autobrakes: SET", "A32NX_AUTOBRAKES_SELECTED_MODE",
-                v => v > 0.5, action: null),
-            Auto("APC_ENGMODE", "APPROACH_CL", "Engine mode: SET", "ENGINE_MODE_SELECTOR",
-                v => Math.Abs(v - 1) < 0.5, action: null),
+            Reminder("APC_ALTIMETERS", "APPROACH_CL", "Baro reference: SET", s => s.BaroText()),
+            Auto("APC_SEATBELT", "APPROACH_CL", "Seat belts: ON", "SEATBELT_SIGN_LIGHT", v => v > 0.5, action: null),
+            Reminder("APC_MINIMUMS", "APPROACH_CL", "Minimum: SET", s => s.MinimumText()),
+            // Read only: the landing autobrake is the Captain's (FO-14).
+            Reminder("APC_AUTOBRAKE", "APPROACH_CL", "Autobrake: SET",
+                s => FbwA380ReadbackFormat.Autobrake(s.GetValue("A32NX_AUTOBRAKES_ARMED_MODE"))),
         }
     };
 
-    // 10a. Landing Checklist
     private static Group BuildLandingCL() => new()
     {
         Id = "LANDING_CL", Name = "Landing Checklist",
         Items = new()
         {
-            Reminder("LDC_MISSEDALT", "LANDING_CL", "Missed approach altitude: SET"),
-            // Real state var — NOT the write-only A380X_MSFSBA_SPOILERS_ARM Act key.
-            Auto("LDC_SPOILERS", "LANDING_CL", "Spoilers: ARMED", "A32NX_SPOILERS_ARMED",
+            // The landing memo (the ECL's "LDG" sub-headline), one line each.
+            Auto("LDC_SEATBELT", "LANDING_CL", "Seat belts: ON", "SEATBELT_SIGN_LIGHT", v => v > 0.5, action: null),
+            // Lever down and every leg extended (FbwA380GearConfirmation, FO-13).
+            Auto("LDC_GEAR", "LANDING_CL", "Landing gear: DOWN", FbwA380GearConfirmation.DownField,
                 v => v > 0.5, action: null),
+            // Real state var — NOT the write-only A380X_MSFSBA_SPOILERS_ARM Act key.
+            Auto("LDC_SPOILERS", "LANDING_CL", "Ground spoilers: ARM", "A32NX_SPOILERS_ARMED", v => v > 0.5, action: null),
+            // FULL, or 3 when the MFD PERF APPR page selects CONF 3 (A380X_FM_LANDING_CONF3).
+            Auto("LDC_FLAPS", "LANDING_CL", "Flaps: LDG", "FO_LDG_FLAPS_SET", v => v > 0.5, action: null),
         }
     };
 
-    // 11a. After Landing Checklist
-    private static Group BuildAfterLandingCL() => new()
-    {
-        Id = "AFTER_LANDING_CL", Name = "After Landing Checklist",
-        Items = new()
-        {
-            Auto("ALC_WXR", "AFTER_LANDING_CL", "Weather radar: OFF", "XMLVAR_A320_WeatherRadar_Sys",
-                v => v < 0.5, action: null),
-        }
-    };
-
-    // 12a. Parking Checklist
     private static Group BuildParkingCL() => new()
     {
         Id = "PARKING_CL", Name = "Parking Checklist",
         Items = new()
         {
-            Reminder("PKC_PARKING", "PARKING_CL", "Parking checklist"),
-            Auto("PKC_PARKBRK", "PARKING_CL", "Parking brake: ON", "A32NX_PARK_BRAKE_LEVER_POS",
-                v => v > 0.5, action: null),
-            Auto("PKC_ENGINES", "PARKING_CL", "Engines: OFF", "FO_ENGINES_OFF",
-                v => v > 0.5, action: null),
-            Auto("PKC_WINGLT", "PARKING_CL", "Wing lights: OFF", "LIGHT_WING",
-                v => v < 0.5, action: null),
-            Auto("PKC_FUELPUMPS", "PARKING_CL", "Fuel pumps: OFF", "FUELPUMP_FEEDTK1_MAIN",
-                v => v < 0.5, action: null),
+            Reminder("PKC_PARKBRK", "PARKING_CL", "Parking brake or chocks: SET",
+                s => AirbusReadbackFormat.OnOff(s.GetValue("A32NX_PARK_BRAKE_LEVER_POS"))),
+            Auto("PKC_ENGINES", "PARKING_CL", "Engines: OFF", "FO_ENGINES_OFF", v => v > 0.5, action: null),
+            Auto("PKC_WINGLT", "PARKING_CL", "Wing lights: OFF", "LIGHT_WING", v => v < 0.5, action: null),
+            // Every pump the Parking flow switches off: the 8 feed and 12 transfer pumps.
+            Auto("PKC_FUELPUMPS", "PARKING_CL", "Fuel pumps: OFF", FuelPumps[0], v => v < 0.5, FuelPumps[1..],
+                action: null),
         }
     };
 
@@ -824,50 +798,35 @@ public static class FbwA380ChecklistDefinitions
         }
     };
 
-    // 13a. Securing the Aircraft Checklist — readback group: action-free (see the hard
-    // invariant on this section).
+    // 13a. Securing the Aircraft Checklist — read-back group, action-free (FO-3). The ECL's order:
+    // OXYGEN, EMER EXIT LIGHT, EFBs, BATTERIES (NormalProcedures.ts L277-302).
     private static Group BuildSecuringCL() => new()
     {
         Id = "SECURING_CL", Name = "Securing the Aircraft Checklist",
         Items = new()
         {
-            Auto("SCC_ADIRS", "SECURING_CL", "ADIRS: OFF", "A32NX_OVHD_ADIRS_IR_1_MODE_SELECTOR_KNOB",
-                v => v < 0.5,
-                new[] { "A32NX_OVHD_ADIRS_IR_2_MODE_SELECTOR_KNOB", "A32NX_OVHD_ADIRS_IR_3_MODE_SELECTOR_KNOB" },
-                action: null),
+            // Crew oxygen is INVERTED on the A380 too: 1 = OFF.
             Auto("SCC_OXY", "SECURING_CL", "Oxygen: OFF", "PUSH_OVHD_OXYGEN_CREW",
                 v => Math.Abs(v - 1) < 0.5, action: null),
-            // Not in the aircraft's [Securing the Aircraft] source text (the parking brake is
-            // a [Parking] item) — kept as a readback because confirming the brake before the
-            // crew leaves is exactly what this checklist is for. Detect-only, actuates nothing.
-            Auto("SCC_PARK", "SECURING_CL", "Parking brake: SET", "A32NX_PARK_BRAKE_LEVER_POS",
-                v => v > 0.5, action: null),
-            Auto("SCC_APU", "SECURING_CL", "APU: OFF", "A32NX_OVHD_APU_MASTER_SW_PB_IS_ON",
-                v => v < 0.5, action: null),
-            Auto("SCC_EXTPWR", "SECURING_CL", "External power: OFF", "A32NX_OVHD_ELEC_EXT_PWR_1_PB_IS_ON",
-                v => v < 0.5,
-                new[] { "A32NX_OVHD_ELEC_EXT_PWR_2_PB_IS_ON", "A32NX_OVHD_ELEC_EXT_PWR_3_PB_IS_ON",
-                        "A32NX_OVHD_ELEC_EXT_PWR_4_PB_IS_ON" },
-                action: null),
-            Auto("SCC_BAT", "SECURING_CL", "Batteries: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO",
-                v => v < 0.5,
+            Auto("SCC_EMEREXIT", "SECURING_CL", "Emergency exit light: OFF",
+                "XMLVAR_SWITCH_OVHD_INTLT_EMEREXIT_Position", v => Math.Abs(v - 2) < 0.5, action: null),
+            Reminder("SCC_EFB", "SECURING_CL", "EFBs: OFF"),
+            // All four batteries (BAT 1, BAT 2, ESS, APU), the four the Securing flow switches off.
+            Auto("SCC_BAT", "SECURING_CL", "Batteries: OFF", "A32NX_OVHD_ELEC_BAT_1_PB_IS_AUTO", v => v < 0.5,
                 new[] { "A32NX_OVHD_ELEC_BAT_2_PB_IS_AUTO", "A32NX_OVHD_ELEC_BAT_ESS_PB_IS_AUTO",
                         "A32NX_OVHD_ELEC_BAT_APU_PB_IS_AUTO" },
                 action: null),
-            // Closing line from the source text ("Aircraft is now cold and dark"). Info is a
-            // non-tickable separator, so it can never inflate CompletedCount — same role as
-            // BSC_LINE in the Before Start checklist.
-            Info("SCC_DARK", "SECURING_CL", "Aircraft is now cold and dark"),
         }
     };
 
     // -----------------------------------------------------------------------
-    // Item builders (mirror the Fenix file's helpers, retyped to FbwA380ActionExecutor/FbwA380StateEvaluator)
+    // Item builders (mirror the Fenix/A32NX files' helpers, retyped to FbwA380ActionExecutor/FbwA380StateEvaluator)
     // -----------------------------------------------------------------------
 
     private static Item Auto(string id, string groupId, string label,
         string field, Func<double, bool> condition,
-        string[]? additionalFields, CheckFn? action) => new()
+        string[]? additionalFields, CheckFn? action,
+        Func<FbwA380StateEvaluator, string?>? live = null) => new()
     {
         Id = id, GroupId = groupId, Label = label,
         Type = ChecklistItemType.AutoDetectable,
@@ -879,11 +838,15 @@ public static class FbwA380ChecklistDefinitions
         AdditionalStateFields = additionalFields ?? Array.Empty<string>(),
         AdditionalStateCondition = condition,
         CheckAction = action,
+        LiveValue = live,
     };
 
+    // The short overload takes `live` too, so `Auto(..., v => ..., action: null, live: ...)`
+    // (no additionalFields) compiles — the A32NX file's pair.
     private static Item Auto(string id, string groupId, string label,
-        string field, Func<double, bool> condition, CheckFn? action) =>
-        Auto(id, groupId, label, field, condition, null, action);
+        string field, Func<double, bool> condition, CheckFn? action,
+        Func<FbwA380StateEvaluator, string?>? live = null) =>
+        Auto(id, groupId, label, field, condition, null, action, live);
 
     private static Item Multi(string id, string groupId, string label,
         string primaryField, Func<double, bool> condition,
@@ -906,13 +869,15 @@ public static class FbwA380ChecklistDefinitions
         ReminderText = text,
     };
 
-    private static Item Info(string id, string groupId, string text) => new()
+    // A pilot-confirm line whose ECL answer is a blank: it speaks the value the First Officer reads
+    // when ticked, and shows it on the status line; the tree text never changes (FOA-8, FOA-9).
+    private static Item Reminder(string id, string groupId, string text,
+        Func<FbwA380StateEvaluator, string?> live) => new()
     {
         Id = id, GroupId = groupId, Label = text,
-        Type = ChecklistItemType.Informational,
-        // Separators are structure, not work items: not tickable (and the FO window
-        // hides their checkbox), so they can never inflate CompletedCount. Matches
-        // the Fenix Info builder — keep both in sync.
-        ManualCompletionAllowed = false,
+        Type = ChecklistItemType.CaptainReminder,
+        ManualCompletionAllowed = true,
+        ReminderText = text,
+        LiveValue = live,
     };
 }
