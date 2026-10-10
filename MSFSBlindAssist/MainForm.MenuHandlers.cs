@@ -434,6 +434,13 @@ public partial class MainForm
         }
     }
 
+    // Before the A320's rather than after the A330's, where the DA40 PR (#242) adds its own two:
+    // two PRs appending at one spot cannot both merge cleanly.
+    private void C680MenuItem_Click(object? sender, EventArgs e)
+    {
+        SwitchAircraft(new Aircraft.Citation680.SkywardC680Definition());
+    }
+
     private void FlyByWireA320MenuItem_Click(object? sender, EventArgs e)
     {
         SwitchAircraft(new FlyByWireA320Definition());
