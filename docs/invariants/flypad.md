@@ -35,7 +35,9 @@ Corrected 2026-10-08: names the WebView2-failed list mode, which the rule's "nev
 
 ## FPD-8
 
-- `setValue` on a flyPad SimpleInput must commit via a synthetic Enter keydown/keyup + blur — FBW commits on Enter/blur, not on React onChange; a plain value-set silently fails to reach the sim. → [flypad.md](../flypad.md)
+- `setValue` on a flyPad SimpleInput must end with `blur()` — FBW commits (clamp + write to the sim) only in its `onBlur` handler, not on React onChange; a plain value-set silently fails to reach the sim. A real Enter commits only because FBW's `keypress` listener (keyCode 13) blurs the field; the agent's synthetic Enter keydown/keyup match no listener and commit nothing, so never drop the blur in their favour. → [flypad.md](../flypad.md)
+
+Corrected 2026-10-11: the rule said FBW "commits on Enter/blur", which reads as if either were enough. Evidence: FBW's `SimpleInput` in the installed A320 and A380 flyPad bundles (`EFB/efb.js`) wires `onBlur: onFocusOut`, which calls `props.onBlur` with the constrained value, and its only Enter handling is a root `keypress` listener that calls `blurInputField()`. The agent's own comment in `A.setValue` (`coherent-flypad-agent.js`) has said since 2026-06-11 that the blur is the load-bearing commit step and the Enter dispatches have no observable effect on SimpleInput.
 
 ## FPD-9
 
