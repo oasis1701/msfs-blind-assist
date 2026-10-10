@@ -227,8 +227,9 @@ public class FbwA380ReadbackTests
             Assert.Equal(expected, new[] { items[id].StateFieldName! }.Concat(items[id].AdditionalStateFields).ToArray());
     }
 
-    /// <summary>The flow steps still list their pumps by hand; this keeps them on the same 20 the lines
-    /// read, so a pump added to or dropped from one side alone fails here (R10).</summary>
+    /// <summary>The flow steps write <see cref="FbwA380ChecklistDefinitions.FuelPumps"/>, the list the lines
+    /// read; this pins what they write to the test's own list of 20, each at its target, so a step that
+    /// stops writing that list, or writes a pump twice or to the wrong value, fails here (R10).</summary>
     [Fact]
     public void The_flows_switch_the_same_twenty_pumps_the_lines_read()
     {

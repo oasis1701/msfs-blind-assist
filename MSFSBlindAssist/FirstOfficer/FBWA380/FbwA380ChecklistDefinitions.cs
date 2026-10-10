@@ -28,9 +28,10 @@ public static class FbwA380ChecklistDefinitions
     /// <summary>The 20 A380 fuel pumps the flows switch together: the 8 feed pumps (tanks 1-4, main and
     /// standby) and the 12 transfer pumps (outer, mid, inner, trim). The one list the checklist's three
     /// pump lines detect (Before Start "Fuel pumps: ON", Parking "Fuel pumps: OFF" and the Parking
-    /// read-back's "Fuel pumps: OFF"): the first is a line's own field, the rest its other fields. Read
-    /// only, so no caller can change what those three lines detect by editing one name. The two action
-    /// lines still write the pumps by literal key, which the write-key registration scan
+    /// read-back's "Fuel pumps: OFF"): the first is a line's own field, the rest its other fields. The
+    /// flows' two pump steps (Before Start BS_FUELPUMPS, Parking PK_FUELPUMPS_OFF) write this list, in this
+    /// order. Read only, so no caller can change what those three lines detect by editing one name. The
+    /// two action lines still write the pumps by literal key, which the write-key registration scan
     /// (FbwA380FoKeyRegistrationTests) reads from this file's source.</summary>
     internal static readonly IReadOnlyList<string> FuelPumps = Array.AsReadOnly(new[]
     {
