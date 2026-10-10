@@ -16,7 +16,7 @@ public class ClaudeContextBudgetTests
     public const int ClaudeMdMaxChars = 25_000;
     public const int ClaudeMdMaxLines = 200;
     public const int RuleLineMaxChars = 400;
-    public const int RuleFileMaxChars = 12_000;
+    public const int RuleFileMaxChars = 8_000;
     public const int RuleFileProseMaxChars = 1_000;
     public const int PerFileLoadMaxChars = 30_000;
 
@@ -24,7 +24,7 @@ public class ClaudeContextBudgetTests
         "A rule is ONE line in its area's .claude/rules/<area>.md file; its explanation, measurements and history go under "
         + "'## <ID>' in docs/invariants/<area>.md. See \"Adding or changing a rule\" in CLAUDE.md.";
 
-    private static readonly Regex IdStart = new(@"^- \[[A-Z][A-Z0-9]*-\d+\]", RegexOptions.CultureInvariant);
+    private static readonly Regex IdStart = new(@"^- \[(?<id>[A-Z][A-Z0-9]*-\d+)\]", RegexOptions.CultureInvariant);
     private static readonly Regex RuleLine = new(
         @"^- \[(?<id>[A-Z][A-Z0-9]*-\d+)\] (?<text>\S.*?) Full: (?<file>docs/invariants/[a-z0-9-]+\.md)#(?<anchor>[a-z0-9-]+)$",
         RegexOptions.CultureInvariant);
@@ -177,8 +177,8 @@ public class ClaudeContextBudgetTests
         => Assert.Equal("# Rules\n- [X-1] r\n".Length, LoadedChars("---\npaths:\n  - \"a/**\"\n---\n# Rules\n- [X-1] r\n"));
 
     [Theory]
-    [InlineData(11_000, false)]
-    [InlineData(12_001, true)]
+    [InlineData(7_000, false)]
+    [InlineData(8_001, true)]
     public void A_rule_files_size_cap_counts_its_body_not_its_globs(int bodyLength, bool over)
     {
         string globs = string.Concat(Enumerable.Range(0, 60).Select(i => $"  - \"MSFSBlindAssist/Area/File{i:D2}.cs\"\n"));
@@ -246,8 +246,9 @@ public class ClaudeContextBudgetTests
                         + "elsewhere; rewrite the glob with '*' or a whole-segment '**'.");
             }
             if (OverRuleFileBudget(rf.Text))
-                problems.Add($"{rf.Name}: {LoadedChars(rf.Text):N0} characters, over {RuleFileMaxChars:N0}. Split the area into "
-                    + "two rule files with narrower paths, or shorten its lines.");
+                problems.Add($"{rf.Name}: {LoadedChars(rf.Text):N0} characters, over {RuleFileMaxChars:N0}: the rules hook shows "
+                    + "a rule file in full only within about 8,450 characters (CCT-5). Take CCT-4's remedies in order: shorten "
+                    + "its lines; split the area into two rule files with narrower paths; retire rules whose code is gone.");
             problems.AddRange(RuleBodyProblems(rf.Name, rf.Body));
         }
         foreach (string line in Read(Path.Combine(RepoRoot(), "CLAUDE.md")).Split('\n'))
@@ -391,6 +392,26 @@ public class ClaudeContextBudgetTests
                     + "few of its rules, mirror those lines into a rule file scoped here in place of the glob. Never just "
                     + "drop a glob: its rules would stop loading with the code they guard.");
         }
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
+    }
+
+    [Fact]
+    public void No_file_loads_a_rule_twice()
+    {
+        // A mirror loads a rule where its code is; a file that also loads the original pays for the line twice, which
+        // in the hot files cost up to 3,927 characters of the per-file budget (measured 2026-10-10).
+        var compiled = RuleFiles().Select(rf => (rf.Name,
+            Ids: rf.Body.Split('\n').Select(l => IdStart.Match(l)).Where(m => m.Success).Select(m => m.Groups["id"].Value)
+                .Distinct(StringComparer.Ordinal).ToList(),
+            Globs: (rf.Globs ?? new List<string>()).Select(GlobRegex).ToList())).ToList();
+        var problems = new List<string>();
+        foreach (string file in RepoFiles())
+            foreach (IGrouping<string, (string Id, string Name)> twice in compiled.Where(c => c.Globs.Any(g => g.IsMatch(file)))
+                         .SelectMany(c => c.Ids.Select(id => (Id: id, c.Name)))
+                         .GroupBy(p => p.Id, StringComparer.Ordinal).Where(g => g.Count() > 1))
+                problems.Add($"{file}: [{twice.Key}] loads from {string.Join(" and ", twice.Select(p => p.Name))}. Load each "
+                    + "rule once: delete the mirror if every file it reaches also loads the original, else narrow the mirror "
+                    + "file's globs or split it by target.");
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 

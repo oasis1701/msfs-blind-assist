@@ -603,7 +603,7 @@ public class ClaudeRulesHookTests : IDisposable
     {
         // Claude Code saves hook context over about 10,000 characters to a file and shows the model a 2 KB preview
         // (measured 2026-10-08). TaxiGuidanceManager.cs and FlyByWireA380Definition.cs load fifteen rule files, over
-        // 45,000 characters of bodies (48,709 on 2026-10-10): the hook shows whole files within 9,000 characters and names
+        // 45,000 characters of bodies (48,766 on 2026-10-10): the hook shows whole files within 9,000 characters and names
         // the rest to Read.
         JsonElement? output = HookOutput(RunHook(new[] { "diff" }, DiffInput("git diff --name-only", BashResponse(
             "MSFSBlindAssist/Services/TaxiGuidanceManager.cs\nMSFSBlindAssist/Aircraft/FlyByWireA380Definition.cs\n"))));

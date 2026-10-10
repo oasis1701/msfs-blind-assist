@@ -4,7 +4,7 @@ paths:
 ---
 # Stand, landing and runway-probe rules for TaxiGuidanceManager.cs
 
-MIRRORS: copied word for word from the rule file each Full: link names: only the lines whose code this main partial holds, in place of globbing those files here. Change every copy together (ClaudeContextBudgetTests checks).
+MIRRORS: copied word for word from the rule file each Full: link names: only the lines whose code this main partial holds, plus DCK-4, which names no code and keeps its old reach, in place of globbing those files here. Change every copy together (ClaudeContextBudgetTests checks).
 
 - [DCK-40] A stand has ONE name app-wide: `GetSelectableGates` to ACT on a stand, `GetNamedSpots` to name one and for every `TaxiGraph.Build` given parking; never build a pilot-heard list from `GetParkingSpots`, nor call the supplier per position update (more: see full). Full: docs/invariants/gsx-stands.md#dck-40
 - [DCK-41] Never feed `TaxiGraph.Build` a spot list other than navdata's own set: its parking pass sets `TaxiNodeType.Parking` and can MOVE A HOLD-SHORT; the exceptions are builds given no parking at all: the runway-rows-only ones and the briefing's `OsmPlanningGraph`. Full: docs/invariants/gsx-stands.md#dck-41
