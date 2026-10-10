@@ -177,6 +177,70 @@ public class ClaudeContextBudgetTests
     public void The_coverage_failure_points_at_the_walkthroughs(string file)
         => Assert.Contains("docs/adding-features.md", UncoveredFileProblem(file));
 
+    [Theory]
+    [InlineData("- [X-1] Never call `Foo.Bar(x)` from `BazQux`. Full: docs/invariants/x.md#x-1", "Foo.Bar;BazQux")]
+    [InlineData("- [X-1] Keep `_lastOnGround` and `ROLLOUT_OVERSHOOT_FT` apart. Full: docs/invariants/x.md#x-1",
+        "_lastOnGround;ROLLOUT_OVERSHOOT_FT")]
+    [InlineData("- [X-1] `abc`, `Go()` and `Value` are not code names. Full: docs/invariants/x.md#x-1", "")]
+    [InlineData("- [X-1] Plain prose naming FooBar outside backticks. Full: docs/invariants/x.md#x-1", "")]
+    public void A_rules_code_names_come_from_its_backticked_spans(string line, string expected)
+        => Assert.Equal(expected, string.Join(";", RuleCodeNames(line)));
+
+    [Theory]
+    [InlineData("public sealed class FooBar\n{", "FooBar", "")]
+    [InlineData("internal static partial class TaxiGraph\n{", "TaxiGraph", "")]
+    [InlineData("public record GateRow(string Name);", "GateRow", "")]
+    [InlineData("    public bool IsNotSet { get; set; }", "", "IsNotSet")]
+    [InlineData("    private readonly List<int> _items = new();", "", "_items")]
+    [InlineData("    internal static int Pick(TaxiGraph? graph, LandingExit exit)", "", "Pick")]
+    [InlineData("    public const double Tolerance = 0.25;", "", "Tolerance")]
+    [InlineData("    public event EventHandler? AircraftLoaded;", "", "AircraftLoaded")]
+    [InlineData("        return Pick(graph);", "", "")]
+    [InlineData("        var total = Sum(a);", "", "")]
+    public void Declarations_are_found_by_their_modifiers(string source, string types, string members)
+    {
+        (HashSet<string> t, HashSet<string> m) = DeclaredNames(source);
+        Assert.Equal(types, string.Join(";", t.OrderBy(x => x, StringComparer.Ordinal)));
+        Assert.Equal(members, string.Join(";", m.OrderBy(x => x, StringComparer.Ordinal)));
+    }
+
+    [Theory]
+    // The rule loads on the file that declares the member it names: fine.
+    [InlineData("A.cs", "", false, false)]
+    // It loads only elsewhere: flagged, unless the pair is listed as a passing mention.
+    [InlineData("B.cs", "", true, false)]
+    [InlineData("B.cs", "X-1 Foo.Bar", false, false)]
+    // A listed pair the rule now loads on is stale.
+    [InlineData("A.cs", "X-1 Foo.Bar", false, true)]
+    // A listed pair the rule no longer names is stale too.
+    [InlineData("A.cs", "X-1 Gone.Name", false, true)]
+    public void A_rule_loads_on_the_code_it_names_or_lists_it_as_a_passing_mention(string loadsOn, string passing,
+        bool flagged, bool stale)
+    {
+        var types = new Dictionary<string, HashSet<string>> { ["Foo"] = new() { "A.cs" } };
+        var members = new Dictionary<string, HashSet<string>> { ["Bar"] = new() { "A.cs" } };
+        var rules = new[] { ("X-1", "- [X-1] Never call `Foo.Bar` twice. Full: docs/invariants/x.md#x-1") };
+        (List<string> problems, List<string> staleEntries) = PlacementProblems(rules, _ => new HashSet<string> { loadsOn },
+            types, members, passing.Length == 0 ? Array.Empty<string>() : new[] { passing });
+        Assert.Equal(flagged, problems.Count > 0);
+        Assert.Equal(stale, staleEntries.Count > 0);
+    }
+
+    [Theory]
+    // A name declared nowhere (an L:var, a JSON field) or in more than six files is not judged.
+    [InlineData("`A32NX_FCU_SPD`", 0)]
+    [InlineData("`Common.ToText`", 7)]
+    public void A_name_declared_nowhere_or_everywhere_is_not_judged(string span, int declaringFiles)
+    {
+        var files = Enumerable.Range(0, declaringFiles).Select(i => $"F{i}.cs").ToHashSet();
+        var types = new Dictionary<string, HashSet<string>> { ["Common"] = files };
+        var members = new Dictionary<string, HashSet<string>> { ["ToText"] = files };
+        var rules = new[] { ("X-1", $"- [X-1] Mind {span}. Full: docs/invariants/x.md#x-1") };
+        (List<string> problems, _) = PlacementProblems(rules, _ => new HashSet<string> { "Other.cs" }, types, members,
+            Array.Empty<string>());
+        Assert.Empty(problems);
+    }
+
     [Fact]
     public void A_rule_file_loads_its_body_not_its_front_matter()
         => Assert.Equal("# Rules\n- [X-1] r\n".Length, LoadedChars("---\npaths:\n  - \"a/**\"\n---\n# Rules\n- [X-1] r\n"));
@@ -321,6 +385,55 @@ public class ClaudeContextBudgetTests
             .ToList();
         List<string> Loads(string file) => compiled.Where(c => c.Globs.Any(g => g.IsMatch(file))).Select(c => c.Name).ToList();
         List<string> problems = CodeMissingItsTestsRules(RepoFiles(), Loads);
+        Assert.True(problems.Count == 0, string.Join("\n", problems));
+    }
+
+    [Fact]
+    public void Every_rule_loads_on_the_code_it_names_or_lists_why_not()
+    {
+        // The audit of 2026-10-10 found 32 rules that never loaded on the file declaring the code they guard: CLAUDE.md
+        // asked whoever writes a rule to check its globs, and nothing else did. A rule now loads on a file declaring each
+        // code name it gives in backticks, or the pair is a listed passing mention.
+        string root = RepoRoot();
+        List<string> files = RepoFiles().ToList();
+        var types = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var members = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        void Add(Dictionary<string, HashSet<string>> map, string name, string file)
+        {
+            if (!map.TryGetValue(name, out HashSet<string>? set)) map[name] = set = new HashSet<string>(StringComparer.Ordinal);
+            set.Add(file);
+        }
+        foreach (string file in files.Where(f => f.EndsWith(".cs", StringComparison.Ordinal)
+                     && ShippedCodeRoots.Any(r => f.StartsWith(r, StringComparison.Ordinal))))
+        {
+            (HashSet<string> t, HashSet<string> m) = DeclaredNames(Read(Path.Combine(root, file)));
+            foreach (string name in t) Add(types, name, file);
+            foreach (string name in m) Add(members, name, file);
+        }
+        // Where each rule loads: every file a rule file holding its line globs. CLAUDE.md's rules load everywhere.
+        var loads = new Dictionary<string, HashSet<string>>(StringComparer.Ordinal);
+        var lines = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (RuleFile rf in RuleFiles())
+        {
+            List<Regex> globs = (rf.Globs ?? new List<string>()).Select(GlobRegex).ToList();
+            List<string> hits = files.Where(f => globs.Any(g => g.IsMatch(f))).ToList();
+            foreach (Match m in rf.Body.Split('\n').Select(l => RuleLine.Match(l)).Where(m => m.Success))
+            {
+                string id = m.Groups["id"].Value;
+                lines.TryAdd(id, m.Value);
+                if (!loads.TryGetValue(id, out HashSet<string>? set)) loads[id] = set = new HashSet<string>(StringComparer.Ordinal);
+                set.UnionWith(hits);
+            }
+        }
+        HashSet<string> everywhere = Read(Path.Combine(root, "CLAUDE.md")).Split('\n').Select(l => RuleLine.Match(l))
+            .Where(m => m.Success).Select(m => m.Groups["id"].Value).ToHashSet(StringComparer.Ordinal);
+        List<string> passing = PassingMentions.Values.SelectMany(entries => entries).ToList();
+        (List<string> problems, List<string> stale) = PlacementProblems(
+            lines.Where(kv => !everywhere.Contains(kv.Key)).Select(kv => (kv.Key, kv.Value)), id => loads[id], types, members,
+            passing);
+        problems.AddRange(stale);
+        problems.AddRange(passing.GroupBy(p => p, StringComparer.Ordinal).Where(g => g.Count() > 1)
+            .Select(g => $"\"{g.Key}\" is listed in PassingMentions {g.Count()} times; keep one."));
         Assert.True(problems.Count == 0, string.Join("\n", problems));
     }
 
@@ -637,6 +750,66 @@ public class ClaudeContextBudgetTests
         },
     };
 
+    /// <summary>Rule-and-name pairs ("ID Name", the name as the rule gives it in backticks) where a rule names code
+    /// declared in files it does not load on, by reason: the rule mentions that code but guards other code, which it
+    /// does load on. Each was reviewed on 2026-10-10 (the documentation audit and #284 fixed the real misses). A rule
+    /// that GUARDS the code it names loads there instead: a glob on its rule file, or a mirror in a call-site file.
+    /// </summary>
+    private static readonly Dictionary<string, string[]> PassingMentions = new(StringComparer.Ordinal)
+    {
+        ["shared code the rule's own code calls or reads: the rule guards the call, and the callee works the same "
+            + "without it"] = new[]
+        {
+            "A320-7 SetLVar", "A320-23 SetLVar", "DBG-2 SetLVar", "IFLY-2 SetLVar", "MD11-1 SetLVar", "VAR-2 SetLVar",
+            "A380-25 SendEvent", "A380C-24 StopAllMotion", "A320-39 AircraftLoaded",
+            "PEFB-6 AnnounceImmediate", "ROL-25 AnnounceImmediate", "TKO-5 AnnounceImmediate", "VAT-3 AnnounceImmediate",
+            "VAT-3 AnnounceWithQueue", "VAT-4 QueuedAnnouncementCount", "EXIT-10 AnnounceInstruction",
+            "EXIT-1 RequestAircraftPositionAsync", "RTE-21 LastKnownPosition", "SUR-16 LastKnownPosition",
+            "SUR-23 LastKnownPosition", "ROL-4 TryRecalculateRoute", "ROL-30 LoadRoute", "SUR-15 ClearWhereAmICache",
+            "BRF-1 TaxiGraph.Build", "SUR-12 TaxiGraph.IsNavdataHoldShort", "RTE-4 RunwayShape", "STR-17 GetRunwayStarts",
+            "BRF-6 GetAssignedStatusAsync", "SI-30 ValidateDatabaseSimulatorMatch", "MD11-23 CalcPathVerdict.PilotWarning",
+            "VAT-12 HotkeyAction.ToggleVatsimAnnouncements", "WX-10 HasOwnIcingAnnouncer",
+            "DCK-19 UpdateHeadingErrorWithThresholds",
+        },
+        ["named as what never to use: the rule guards the code that must avoid it"] = new[]
+        {
+            "DCK-17 CalculateCrossTrackError", "EXIT-1 LastKnownPosition", "EXIT-9 Runway.Length",
+            "P777-14 RequestVariable", "STR-17 Runway.StartLat", "STR-17 StartLon", "SUR-4 GetNearbyAirportICAOs",
+            "SUR-24 GetTaxiPaths", "SUR-1 TaxiGraph.Build", "SI-27 TaxiGraph", "BRF-1 TaxiGuidanceManager",
+            "TKO-3 TaxiGuidanceManager",
+        },
+        ["named as the model the rule's code copies, or as a reader its change would break"] = new[]
+        {
+            "MD11-20 TakeoffVSpeedCallouts", "SIM-7 Md11SeedGate",
+        },
+        ["a data-model field the rule's code reads"] = new[]
+        {
+            "ROL-10 ExitBearingTrue", "ROL-21 ExitBearingTrue", "ROL-28 DistanceFromThresholdFeet", "SI-7 ParkingSpot.Radius",
+            "SI-13 TaxiPathStampUtc", "SIC-23 ClearanceText", "STR-6 TurnAngleDegrees", "STR-16 TurnDirection",
+            "SUR-12 TaxiNode.Type", "HLD-5 RunwayCenterline",
+        },
+        ["a setting the rule's code reads or writes"] = new[]
+        {
+            "A320-9 A32NXDisabledMonitorVariablesSet", "A320-37 A380DisabledMonitorVariablesSet",
+            "MD11-18 Md11DisabledMonitorVariablesSet", "AI-4 UserSettings.GeminiModel", "MON-3 SettingsManager.Save",
+        },
+        ["a SimVarDefinition field the aircraft definitions set: the rule loads on the definitions"] = new[]
+        {
+            "A320-10 SimVarDefinition.IsNotSet", "A380-2 RenderAsButton", "A380-10 RenderAsButton",
+            "A380F-12 ExcludeFromBatch", "ARINC-2 ValueDescriptions", "MD11-11 ExcludeFromMonitorManager",
+            "MD11-22 SimVarDefinition.ValueToDescriptionKey",
+        },
+        ["a MainForm field declared in MainForm.cs and used by the partial the rule loads on"] = new[]
+        {
+            "DCK-15 tcasForm", "SIR-7 _lastOnGround",
+        },
+        ["the same name, other code: the rule means a framework method, an enum value or a record parameter the "
+            + "declaration index does not see"] = new[]
+        {
+            "A380C-3 SendAsync", "TRF-3 IdentityKey", "HLD-11 HoldShort", "SUR-22 HoldShort",
+        },
+    };
+
     /// <summary>Code that ships: a .cs file in the app, the updater or the vPilot plugin, or a script or page the app
     /// injects from Resources/. Tests and tools/ are not checked here; the tested-code check covers tests.</summary>
     private static bool IsShippedCode(string file)
@@ -741,6 +914,99 @@ public class ClaudeContextBudgetTests
             problems.Add($"CLAUDE.md links to {doc}, which has no row in \"Where things live\". Give it a row there (the doc, "
                 + "when to read it, its rule files) instead of a pointer of its own.");
         return problems;
+    }
+
+    private static readonly Regex BacktickSpan = new("`([^`]+)`", RegexOptions.CultureInvariant);
+    private static readonly Regex QualifiedCodeName = new(@"\b([A-Z][A-Za-z0-9_]*)\.([A-Za-z_]\w*)\b", RegexOptions.CultureInvariant);
+    private static readonly Regex BareCodeName = new(@"(?<![.\w])([A-Za-z_]\w*)\b(?!\.[A-Za-z_])", RegexOptions.CultureInvariant);
+    private static readonly Regex TypeDeclaration = new(@"\b(?:class|struct|interface|enum|record)\s+([A-Z]\w*)",
+        RegexOptions.CultureInvariant);
+    private static readonly Regex MemberDeclaration = new(@"^\s*(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|internal|"
+        + @"static|readonly|const|override|virtual|abstract|sealed|async|partial|new|extern|unsafe|volatile|required)\s+)+"
+        + @"([\w<>\[\],.?() ]*?)\b([A-Za-z_]\w*)\s*(?:\(|=>|=(?!=)|;|\{|<[^>]*>\s*\()",
+        RegexOptions.CultureInvariant | RegexOptions.Multiline);
+    private static readonly Regex TypeKeywordAtEnd = new(@"\b(?:class|struct|interface|enum|record)\s+$", RegexOptions.CultureInvariant);
+
+    /// <summary>The most files one name may be declared in and still be judged: past it the name is too common
+    /// (an overload family, a name every form has) to say which declaration a rule means.</summary>
+    private const int MaxDeclaringFiles = 6;
+
+    /// <summary>The code names a rule's one-line form gives in backticks, in order: each `Type.Member`, and each other
+    /// identifier of five or more characters that looks like code (an inner capital, an underscore, a leading
+    /// underscore). The type in front of a `Type.Member` is not judged again on its own.</summary>
+    private static IEnumerable<string> RuleCodeNames(string line)
+    {
+        var names = new List<string>();
+        foreach (Match span in BacktickSpan.Matches(line))
+        {
+            string text = span.Groups[1].Value;
+            foreach (Match q in QualifiedCodeName.Matches(text)) names.Add(q.Groups[1].Value + "." + q.Groups[2].Value);
+            foreach (Match b in BareCodeName.Matches(text))
+            {
+                string token = b.Groups[1].Value;
+                if (token.Length >= 5 && (Regex.IsMatch(token, "[a-z][A-Z]") || token.Trim('_').Contains('_') || token.StartsWith('_')))
+                    names.Add(token);
+            }
+        }
+        return names.Distinct(StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>The types and members C# source declares: a type after class, struct, interface, enum or record; a
+    /// member as the name before "(", "=>", "=", ";", "{" or a generic "&lt;…&gt;(" on a line that starts with modifiers
+    /// (public, static, const…). A field or method with no modifier is not seen.</summary>
+    private static (HashSet<string> Types, HashSet<string> Members) DeclaredNames(string source)
+    {
+        var types = new HashSet<string>(StringComparer.Ordinal);
+        var members = new HashSet<string>(StringComparer.Ordinal);
+        foreach (Match t in TypeDeclaration.Matches(source)) types.Add(t.Groups[1].Value);
+        foreach (Match m in MemberDeclaration.Matches(source))
+            if (!TypeKeywordAtEnd.IsMatch(m.Groups[1].Value)) members.Add(m.Groups[2].Value);
+        return (types, members);
+    }
+
+    /// <summary>The files that declare a code name: for `Type.Member`, the files declaring that member among those
+    /// declaring the type (the type's own files when the member is declared nowhere); for a bare name, every file
+    /// declaring it as a type or a member.</summary>
+    private static HashSet<string> DeclaringFiles(string name, IReadOnlyDictionary<string, HashSet<string>> types,
+        IReadOnlyDictionary<string, HashSet<string>> members)
+    {
+        HashSet<string> Of(IReadOnlyDictionary<string, HashSet<string>> map, string key)
+            => map.TryGetValue(key, out HashSet<string>? f) ? f : new HashSet<string>(StringComparer.Ordinal);
+        int dot = name.IndexOf('.');
+        if (dot < 0) return Of(types, name).Union(Of(members, name), StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal);
+        HashSet<string> typeFiles = Of(types, name[..dot]), memberFiles = Of(members, name[(dot + 1)..]);
+        if (memberFiles.Count == 0) return typeFiles;
+        return typeFiles.Intersect(memberFiles, StringComparer.Ordinal).ToHashSet(StringComparer.Ordinal);
+    }
+
+    /// <summary>Each rule that names code declared in shipped files yet loads on none of them, unless the pair
+    /// ("ID Name") is listed as a passing mention; and each listed pair that is no longer flagged (stale).</summary>
+    private static (List<string> Problems, List<string> Stale) PlacementProblems(IEnumerable<(string Id, string Line)> rules,
+        Func<string, IReadOnlyCollection<string>> loads, IReadOnlyDictionary<string, HashSet<string>> types,
+        IReadOnlyDictionary<string, HashSet<string>> members, IReadOnlyCollection<string> passing)
+    {
+        var problems = new List<string>();
+        var flagged = new HashSet<string>(StringComparer.Ordinal);
+        foreach ((string id, string line) in rules)
+            foreach (string name in RuleCodeNames(line))
+            {
+                HashSet<string> declaring = DeclaringFiles(name, types, members);
+                if (declaring.Count == 0 || declaring.Count > MaxDeclaringFiles) continue;
+                IReadOnlyCollection<string> loaded = loads(id);
+                if (declaring.Any(loaded.Contains)) continue;
+                string pair = id + " " + name;
+                flagged.Add(pair);
+                if (passing.Contains(pair)) continue;
+                problems.Add($"[{id}] names `{name}`, declared in {string.Join(", ", declaring.OrderBy(f => f, StringComparer.Ordinal))}, "
+                    + "but loads on none of them, so whoever edits that code never sees the rule. Load it there: a glob on its "
+                    + "rule file, or a mirror in a call-site file (CLAUDE.md, \"Adding or changing a rule\"). If the rule only "
+                    + $"mentions that code and guards other code, add \"{pair}\" to PassingMentions under the reason that fits.");
+            }
+        List<string> stale = passing.Where(p => !flagged.Contains(p))
+            .Select(p => $"\"{p}\" in PassingMentions is no longer flagged: the rule now loads where that code is declared, "
+                + "or no longer names it, or the code moved. Drop the entry.")
+            .ToList();
+        return (problems, stale);
     }
 
     private static int LoadedChars(string ruleFileText) => SplitFrontMatter(ruleFileText).Body.Length;
