@@ -12,10 +12,11 @@
 #
 # Everything after ConvertTo-PyMasked reads the masked code, where comments are gone and every string is a token, so a
 # quote, a # or an open( inside a string or a docstring cannot derail it. Each scan is linear or capped, and the whole
-# analysis stops at a 3-second deadline (what is left unanalysed runs): masking, every sink and every resolution check
-# the clock, and each regex that reads a name's bindings gives up at the deadline mid-scan. Sinks with literal targets
-# are all checked before any name is resolved. This keeps a script of 1 MB (the most rules-hook.ps1 reads from a file)
-# well inside the hook's timeout.
+# analysis stops at its deadline, 3 seconds unless the caller gives less (rules-hook.ps1 does once a command's earlier
+# scripts have spent most of their shared budget), and what is left unanalysed runs: masking, every sink and every
+# resolution check the clock, and each regex that reads a name's bindings gives up at the deadline mid-scan. Sinks with
+# literal targets are all checked before any name is resolved. This keeps a script of 1 MB (the most rules-hook.ps1
+# reads from a file) well inside the hook's timeout.
 #
 # Windows PowerShell 5.1 runs this file, which it reads as ANSI: keep it pure ASCII.
 
@@ -572,13 +573,13 @@ function Add-PyWriteTarget($Ctx, $Found, [string]$Target, [string]$Mode, [int]$U
 # RECV.write_text( and RECV.write_bytes( (target RECV); shutil.copy(, copy2(, copyfile( and move(, os.replace( and
 # os.rename( (target the second argument or dst=). Two passes: every sink first with literals only, then the sinks
 # that hold a name, so a name that is slow to resolve can never cost a literal write its check before the deadline.
-function Get-PythonWriteTargets([string]$Code) {
+function Get-PythonWriteTargets([string]$Code, [int]$DeadlineMs = 3000) {
     $found = [System.Collections.Generic.List[string]]::new()
     if ([string]::IsNullOrEmpty($Code)) { return ,$found.ToArray() }
     $strings = New-PyStringRegexes
     $ctx = @{
         Clock = [Diagnostics.Stopwatch]::StartNew()
-        Deadline = 3000
+        Deadline = $DeadlineMs
         Starter = [regex]::new('#|\\\r?\n|(?:(?<![A-Za-z0-9_])([rR][bBfFtT]?|[bBfFtT][rR]?|[uU]))?(''''''|"""|''|")')
         Body = $strings.Body
         Template = $strings.Template

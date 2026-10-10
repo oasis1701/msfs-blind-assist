@@ -285,6 +285,17 @@ public class ClaudeRulesHookTests : IDisposable
     [InlineData("Bash", "(cd tests && true); sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
     [InlineData("Bash", "(sed -i 's/a/b/' \"MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs\")", Pmdg737)]
     [InlineData("Bash", "(cd tests && v=$(pwd) && sed -i 's/a/b/' ../MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs)", Pmdg737)]
+    // A redirect after a subshell's ) does not keep its cd alive; popd and Pop-Location return to the folder pushd and
+    // Push-Location left; Set-Location -Path names its folder.
+    [InlineData("Bash", "(cd tests && true) 2>&1; sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "(cd tests && true) > /dev/null; sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "pushd tests && popd && sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("PowerShell", "Push-Location tests; Pop-Location; Set-Content -Path MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs -Value x",
+        Pmdg737)]
+    [InlineData("PowerShell", "Set-Location -Path MSFSBlindAssist; Set-Content Aircraft/Pmdg737DisplayReads.cs x", Pmdg737)]
+    // A > inside [[ ]] or $(( )) compares, but a redirect after them still writes.
+    [InlineData("Bash", "[[ -f x ]] && sed -i 's/a/b/' MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
+    [InlineData("Bash", "echo $(( 1 > 0 )) > MSFSBlindAssist/Aircraft/Pmdg737DisplayReads.cs", Pmdg737)]
     public void Shell_guard_refuses_writes_to_covered_files(string tool, string command, string target)
     {
         JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" }, ShellInput(tool, command)));
@@ -346,6 +357,63 @@ public class ClaudeRulesHookTests : IDisposable
 
         Assert.Equal(0, run.ExitCode);
         Assert.Equal("", run.Stdout);
+    }
+
+    // CCT-1: refuse only a write positively placed in a covered file. A relative target is placed only while the folder
+    // is known: a cd to a variable, -, $(...) or no folder at all, or a popd with nothing pushed, leaves it unknown; a
+    // subshell's cd ends at its ), redirects after the ) included; and a > inside [[ ]], (( )) or $(( )) compares.
+    // {cwd} is the folder the command starts in, under the repository root.
+    [Theory]
+    [InlineData("Bash", "", "(cd tools/md11-gen && python -m unittest -q) 2>&1 | tail -3 && cat > changelog.d/290-md11.fix.md <<'EOF'\nFixed.\nEOF")]
+    [InlineData("Bash", "", "(cd MSFSBlindAssist/Aircraft && grep -l Pmdg *.cs) > /dev/null; echo done > notes.txt")]
+    [InlineData("Bash", "", "(cd tools/md11-gen && python -m unittest) > changelog.d/290-md11.fix.md")]
+    [InlineData("Bash", "", "pushd tools/md11-gen && python -m unittest; popd; echo ok > notes.txt")]
+    [InlineData("PowerShell", "", "Push-Location tools/md11-gen; python -m unittest discover; Pop-Location; Set-Content changelog.d/999-x.fix.md 'x'")]
+    [InlineData("Bash", "tools/md11-gen", "cd \"$OUT_DIR\" && echo x > result.txt")]
+    [InlineData("Bash", "MSFSBlindAssist/Aircraft", "cd - && echo ok > notes.txt")]
+    [InlineData("Bash", "MSFSBlindAssist/Aircraft", "cd && echo ok > notes.txt")]
+    [InlineData("Bash", "MSFSBlindAssist/Aircraft", "cd $(git rev-parse --show-toplevel) && echo ok > notes.txt")]
+    [InlineData("Bash", "MSFSBlindAssist/Aircraft", "popd; echo ok > notes.txt")]
+    [InlineData("PowerShell", "MSFSBlindAssist/Aircraft", "Set-Location $env:TEMP; Set-Content out.txt 'y'")]
+    [InlineData("Bash", "tools/md11-gen", "[[ 5 > 3 ]] && echo yes")]
+    [InlineData("Bash", "tools/md11-gen", "(( 5 > 3 )) && echo yes")]
+    [InlineData("Bash", "MSFSBlindAssist/Aircraft", "echo $(( 2 > 1 ))")]
+    [InlineData("PowerShell", "MSFSBlindAssist/Aircraft", "Set-Content -Path (Join-Path $env:TEMP 'x.txt') -Value x")]
+    public void Shell_guard_allows_writes_it_cannot_place_in_a_covered_file(string tool, string cwd, string command)
+    {
+        HookRun run = RunHook(new[] { "shell-guard" }, ShellInput(tool, command, cwd));
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.Equal("", run.Stdout);
+    }
+
+    [Fact]
+    public void Shell_guard_still_places_an_absolute_path_after_an_unknown_cd()
+    {
+        JsonElement? output = HookOutput(RunHook(new[] { "shell-guard" },
+            ShellInput("Bash", $"cd \"$OUT_DIR\" && sed -i 's/a/b/' \"{CoveredAbs.Replace('\\', '/')}\"")));
+
+        Assert.NotNull(output);
+        Assert.Equal("deny", output.Value.GetProperty("permissionDecision").GetString());
+    }
+
+    [Fact]
+    public void Shell_guard_shares_one_python_budget_across_a_command()
+    {
+        // Each Python analysis stops at its deadline, but four heavy scripts in one command took 12.4 s in all, past
+        // Claude Code's 10-second hook timeout (measured 2026-10-10). The scripts share one budget, so the guard ends in
+        // time and allows what it had no time to read (CCT-1).
+        string dir = NewTempDir();
+        var script = new StringBuilder();
+        for (int i = 0; i < 16_000; i++) script.Append($"p{i} = 'scratch/x{i}.txt'\nopen(p{i}, 'w').write('x')\n");
+        CreateFile(dir, "h.py", script.ToString());
+
+        var clock = Stopwatch.StartNew();
+        HookRun run = RunHook(new[] { "shell-guard" }, ShellInput("Bash", "python h.py; python h.py; python h.py; python h.py", dir));
+        clock.Stop();
+
+        Assert.Equal(0, run.ExitCode);
+        Assert.True(clock.ElapsedMilliseconds < 9_000, $"the shell guard took {clock.ElapsedMilliseconds:N0} ms");
     }
 
     private static string Root => ClaudeContextBudgetTests.RepoRoot();
@@ -935,10 +1003,12 @@ public class ClaudeRulesHookTests : IDisposable
         tool_response = toolResponse, cwd = cwd ?? ClaudeContextBudgetTests.RepoRoot(),
     });
 
-    private static string ShellInput(string tool, string command) => HookInput(new
+    /// <summary>A PreToolUse input for the shell guard. <paramref name="cwd"/> is the folder the command starts in: a
+    /// path under the repository root, an absolute path, or (null or empty) the root itself.</summary>
+    private static string ShellInput(string tool, string command, string? cwd = null) => HookInput(new
     {
         session_id = "s1", hook_event_name = "PreToolUse", tool_name = tool, tool_input = new { command },
-        cwd = ClaudeContextBudgetTests.RepoRoot(),
+        cwd = Path.Combine(ClaudeContextBudgetTests.RepoRoot(), (cwd ?? "").Replace('/', Path.DirectorySeparatorChar)),
     });
 
     private static string ReadInput(string file, string? agentId, string tool = "Read") => agentId is null

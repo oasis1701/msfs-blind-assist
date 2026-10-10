@@ -499,11 +499,44 @@ function Update-PowerShellVariables($Vars, $Words) {
     }
 }
 
+# For each word, whether it lies inside a $(( )) arithmetic expansion, from the word holding $(( to the one holding its
+# )): a > or < there compares and never redirects ("echo $(( 2 > 1 ))").
+function Get-ArithmeticWords($Words) {
+    $flags = New-Object bool[] $Words.Count
+    $inside = $false
+    for ($k = 0; $k -lt $Words.Count; $k++) {
+        $w = $Words[$k].Text
+        $from = 0
+        if (-not $inside) {
+            $at = $w.IndexOf('$((', [StringComparison]::Ordinal)
+            if ($at -lt 0) { continue }
+            $inside = $true
+            $from = $at + 3
+        }
+        $flags[$k] = $true
+        if ($w.IndexOf('))', $from, [StringComparison]::Ordinal) -ge 0) { $inside = $false }
+    }
+    return ,$flags
+}
+
+# The redirect a bare word starts: Out (>, >>, >|, 2>, &>, 2>&1), In (<, <<, <<<, 0<), the operator's file descriptor
+# (Fd), and its target when attached to the operator (Rest, '' when the target is the next word); $null for any other word.
+function Get-RedirectWord($Word) {
+    if (-not $Word.Bare) { return $null }
+    $out = [regex]::Match($Word.Text, '^(?:>\||[0-9]*>>?|&>>?)(.*)$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if ($out.Success) { return @{ Out = $true; Rest = $out.Groups[1].Value } }
+    $in = [regex]::Match($Word.Text, '^([0-9]*)(<{1,3})(.*)$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
+    if ($in.Success) { return @{ Out = $false; Fd = $in.Groups[1].Value; Operator = $in.Groups[2].Value.Length; Rest = $in.Groups[3].Value } }
+    return $null
+}
+
 # A segment's words without the parens of a subshell, so "(cd d && sed -i s/a/b/ f)" reads as the commands inside, and
 # whether the segment opened a subshell (Open) or closed one (Close). The ( comes off the first word when it is bare.
-# The ) comes off the last word when its last character is unquoted and the segment has more unquoted ) than (: the )
-# that ends a $( ) or a PowerShell ( ) group is matched inside the segment, so it stays and closes nothing. A word that
-# is only the paren disappears. Returns @{ Words; Open; Close }.
+# The ) comes off the last word before the segment's trailing redirects ("(cd d && make) 2>&1", "...) > log") when its
+# last character is unquoted and the segment has more unquoted ) than (: the ) that ends a $( ) or a PowerShell ( )
+# group is matched inside the segment, so it stays and closes nothing. The redirects after a closing ) belong to the
+# shell around the subshell and come back as After. A word that is only the paren disappears.
+# Returns @{ Words; After; Open; Close }.
 function Remove-SubshellParens($Words) {
     $list = New-Object System.Collections.Generic.List[object]
     $opens = 0
@@ -518,21 +551,74 @@ function Remove-SubshellParens($Words) {
         $rest = $first.Text.Substring(1)
         if ($rest -eq '') { $list.RemoveAt(0) } else { $list[0] = New-ShellWord $rest $true $first.EndsBare ($first.Opens - 1) $first.Closes }
     }
-    $last = $list.Count - 1
+    # Where the trailing redirects begin: every word from $tail on is a redirect operator or its separate target.
+    $arithmetic = Get-ArithmeticWords $list
+    $redirect = New-Object bool[] $list.Count
+    for ($k = 0; $k -lt $list.Count; $k++) {
+        if ($arithmetic[$k]) { continue }
+        $r = Get-RedirectWord $list[$k]
+        if ($null -eq $r) { continue }
+        $redirect[$k] = $true
+        if ($r.Rest -eq '' -and $k + 1 -lt $list.Count) { $k++; $redirect[$k] = $true }
+    }
+    $tail = $list.Count
+    while ($tail -gt 0 -and $redirect[$tail - 1]) { $tail-- }
+    $last = $tail - 1
+    $after = @()
     if ($last -ge 0 -and $list[$last].EndsBare -and $list[$last].Text.EndsWith(')', [StringComparison]::Ordinal) -and $closes -gt $opens) {
         $final = $list[$last]
         $close = $true
+        $after = $list.GetRange($tail, $list.Count - $tail).ToArray()
+        $list.RemoveRange($tail, $list.Count - $tail)
         $rest = $final.Text.Substring(0, $final.Text.Length - 1)
         if ($rest -eq '') { $list.RemoveAt($last) } else { $list[$last] = New-ShellWord $rest $final.Bare $false $final.Opens ($final.Closes - 1) }
     }
-    return @{ Words = $list.ToArray(); Open = $open; Close = $close }
+    return @{ Words = $list.ToArray(); After = $after; Open = $open; Close = $close }
+}
+
+# Resolve-FullPath against the folder the command is in. While that folder is unknown ($Dir empty: a cd the guard could
+# not follow), a relative path has no place, so it gives $null and the write is never placed in a covered file (CCT-1).
+function Resolve-InFolder([string]$Path, [string]$Dir) {
+    if ([string]::IsNullOrWhiteSpace($Path)) { return $null }
+    if ([string]::IsNullOrEmpty($Dir)) {
+        $p = ConvertTo-WindowsPath $Path
+        try { if (-not ($p.StartsWith('~') -or [IO.Path]::IsPathRooted($p))) { return $null } } catch { return $null }
+    }
+    return Resolve-FullPath $Path $Dir
+}
+
+# The folder argument of cd, pushd, Set-Location or Push-Location ($Words from the command word, at $Start), or $null
+# when it names none. Options are skipped (bash -L, -P, -e, -@; PowerShell -PassThru, -StackName with its value), and
+# PowerShell's -Path and -LiteralPath bring the next word.
+function Get-LocationArgument($Words, [int]$Start) {
+    for ($k = $Start + 1; $k -lt $Words.Count; $k++) {
+        $w = $Words[$k].Text
+        if ($w -eq '-Path' -or $w -eq '-LiteralPath') { if ($k + 1 -lt $Words.Count) { return $Words[$k + 1].Text }; return $null }
+        if ($w -eq '-StackName') { $k++; continue }
+        if ($w.Length -gt 1 -and $w.StartsWith('-') -and $Words[$k].Bare) { continue }
+        if ($null -ne (Get-RedirectWord $Words[$k])) { return $null }
+        return $w
+    }
+    return $null
+}
+
+# The folder a cd moves to, or $null (unknown) when the guard cannot know it: no folder (bash goes home), -, or a target
+# that still holds a variable, a command substitution, a PowerShell expression or a backtick once the variables the
+# command set are put in.
+function Resolve-KnownFolder($Arg, [string]$Dir, $Vars, [string]$Shell) {
+    if ($null -eq $Arg) { return $null }
+    $text = Expand-KnownVariables $Arg $Vars $Shell
+    if ($text -eq '-' -or $text.IndexOfAny([char[]]@('$', '(', '`', '%')) -ge 0) { return $null }
+    return Resolve-InFolder $text $Dir
 }
 
 function Add-WriteTarget($Targets, [string]$Raw, [string]$Dir, $Vars, [string]$Shell = 'Bash') {
     $Raw = Expand-KnownVariables $Raw $Vars $Shell
     if ([string]::IsNullOrWhiteSpace($Raw) -or $Raw.StartsWith('&')) { return }
     if ($Raw -eq '/dev/null' -or $Raw -eq 'NUL' -or $Raw.Contains('$') -or $Raw.Contains('%')) { return }
-    $full = Resolve-FullPath $Raw $Dir
+    # A PowerShell expression, (Join-Path ...) or @(...), is a path computed at run time.
+    if ($Raw.StartsWith('(') -or $Raw.StartsWith('@(')) { return }
+    $full = Resolve-InFolder $Raw $Dir
     if ($full) { $Targets.Add([pscustomobject]@{ Raw = $Raw; FullPath = $full }) }
 }
 
@@ -542,6 +628,19 @@ function Add-OutputTarget($Targets, $Written, [string]$Raw, [string]$Dir, $Vars,
     $before = $Targets.Count
     Add-WriteTarget $Targets $Raw $Dir $Vars $Shell
     if ($Targets.Count -gt $before) { $Written.Add($Targets[$Targets.Count - 1].FullPath) }
+}
+
+# Add-OutputTarget for each output redirect among $Words: the redirects after a subshell's ), placed in the folder of
+# the shell around it.
+function Add-RedirectTargets($Targets, $Words, [string]$Dir, $Vars, [string]$Shell) {
+    $written = New-Object System.Collections.Generic.List[string]
+    for ($k = 0; $k -lt $Words.Count; $k++) {
+        $r = Get-RedirectWord $Words[$k]
+        if ($null -eq $r) { continue }
+        $rest = $r.Rest
+        if ($rest -eq '' -and $k + 1 -lt $Words.Count) { $k++; $rest = $Words[$k].Text }
+        if ($r.Out) { Add-OutputTarget $Targets $written $rest $Dir $Vars $Shell }
+    }
 }
 
 # Reads one short-option cluster of sed or perl (-ni, -pi.bak, -Mstrict, -lne) letter by letter: -i edits in place
@@ -598,6 +697,11 @@ function Get-InPlaceOperands([string]$Name, $Words) {
 
 $PowerShellSwitches = @('-Force', '-NoNewline', '-Append', '-PassThru', '-WhatIf', '-Confirm', '-NoClobber', '-AsByteStream')
 
+# One Python analysis stops at $PythonDeadlineMs, and all of a command's analyses together at $PythonBudgetMs, so the
+# guard ends well inside Claude Code's 10-second hook timeout (four 0.9 MB scripts took 12.4 s with no shared budget).
+$PythonDeadlineMs = 3000
+$PythonBudgetMs = 4000
+
 # The text of a script file that exists and is at most 1 MB, else $null.
 function Read-ScriptFile([string]$Path) {
     if ([string]::IsNullOrEmpty($Path)) { return $null }
@@ -626,7 +730,7 @@ function Get-PythonScript($Words, [string]$Dir, $Stdin, $Scripts) {
         if ($w -cmatch '^-[bBdEiIOPqRsSuvx]*m$') { return $null }
         if ($w -ceq '-W' -or $w -ceq '-X') { $k++; continue }
         if ($w.StartsWith('-')) { continue }
-        $full = Resolve-FullPath $w $Dir
+        $full = Resolve-InFolder $w $Dir
         if (-not $full) { return $null }
         if ($Scripts.ContainsKey($full)) { return [string]$Scripts[$full] }
         return Read-ScriptFile $full
@@ -640,8 +744,10 @@ function Get-PythonScript($Words, [string]$Dir, $Stdin, $Scripts) {
 # Out-File, and the files a python, python3 or py command writes (Get-PythonWriteTargets in python-writes.ps1: the paths
 # of its write sinks that resolve from literals, through Path(...), os.path.join(...) and a name's nearest earlier
 # binding, CCT-7), read from the code that -c, a heredoc, a here-string, stdin or a script file brings; a script this
-# same command wrote with a heredoc counts too. Follows cd and Set-Location from $Cwd, and a path held in a variable the
-# command itself set to a literal. Throws on an unparseable command.
+# same command wrote with a heredoc counts too. Follows the folder from $Cwd through cd, Set-Location, pushd, popd,
+# Push-Location and Pop-Location; after a cd it cannot follow (Resolve-KnownFolder) or a popd with nothing pushed, the
+# folder is unknown and only absolute targets are placed. Follows a path held in a variable the command itself set to a
+# literal. [[ ]], (( )) and $(( )) compare with > and never redirect. Throws on an unparseable command.
 function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
     $targets = New-Object System.Collections.Generic.List[object]
     $split = Split-HeredocBodies $Command $Shell
@@ -654,16 +760,33 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
     $comparer = [StringComparer]::Ordinal
     if ($Shell -eq 'PowerShell') { $comparer = [StringComparer]::OrdinalIgnoreCase }
     $vars = New-Object System.Collections.Hashtable($comparer)
-    # A subshell keeps its cd and its variables to itself: its opening ( saves the directory and a copy of the
-    # variables, and the segment after the one holding its closing ) gets them back.
+    # The folders pushd and Push-Location left, last on top, for popd and Pop-Location ($null: one the guard did not know).
+    $pushed = New-Object System.Collections.Generic.List[object]
+    # A subshell keeps its cd, its pushd folders and its variables to itself: its opening ( saves the folder and copies
+    # of the others, and the segment after the one holding its closing ) gets them back.
     $scopes = New-Object System.Collections.Generic.Stack[object]
     $leaveScope = $false
+    # Time spent reading Python, shared by every script the command runs (CCT-7).
+    $pythonClock = New-Object System.Diagnostics.Stopwatch
     foreach ($segment in (Split-ShellCommands $split.Command $Shell)) {
-        $parens = Remove-SubshellParens (Get-ShellWords $segment $Shell)
+        if ($leaveScope -and $scopes.Count -gt 0) { $scope = $scopes.Pop(); $dir = $scope.Dir; $vars = $scope.Vars; $pushed = $scope.Pushed }
+        $leaveScope = $false
+        $shellWords = Get-ShellWords $segment $Shell
+        # An arithmetic command, (( ... )), compares with > and writes nothing.
+        if ($Shell -ne 'PowerShell' -and $shellWords.Count -gt 0 -and $shellWords[0].Bare -and
+                $shellWords[0].Text.StartsWith('((', [StringComparison]::Ordinal)) { continue }
+        $parens = Remove-SubshellParens $shellWords
         $all = $parens.Words
-        if ($leaveScope -and $scopes.Count -gt 0) { $scope = $scopes.Pop(); $dir = $scope.Dir; $vars = $scope.Vars }
         $leaveScope = $parens.Close
-        if ($parens.Open) { $scopes.Push(@{ Dir = $dir; Vars = $vars.Clone() }) }
+        if ($parens.Open) {
+            $scopes.Push(@{ Dir = $dir; Vars = $vars.Clone(); Pushed = [System.Collections.Generic.List[object]]::new($pushed) })
+        }
+        if ($parens.Close) {
+            # The redirects after the ) are the surrounding shell's: "(cd d && make) > log" writes log where the ( was.
+            $outer = @{ Dir = $dir; Vars = $vars }
+            if ($scopes.Count -gt 0) { $outer = $scopes.Peek() }
+            Add-RedirectTargets $targets $parens.After $outer.Dir $outer.Vars $Shell
+        }
         if ($Shell -eq 'PowerShell') { Update-PowerShellVariables $vars $all }
         $start = 0
         while ($start -lt $all.Count -and $all[$start].Bare -and $all[$start].Text -match '^[A-Za-z_][A-Za-z0-9_]*=') { $start++ }
@@ -673,11 +796,16 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
             continue
         }
         $name = $all[$start].Text
-        if (@('cd', 'Set-Location', 'sl', 'pushd', 'Push-Location') -contains $name) {
-            if ($start + 1 -lt $all.Count) {
-                $next = Resolve-FullPath (Expand-KnownVariables $all[$start + 1].Text $vars $Shell) $dir
-                if ($next) { $dir = $next }
-            }
+        # A test command, [[ ... ]], compares with > and writes nothing.
+        if ($name -ceq '[[') { continue }
+        if (@('popd', 'Pop-Location') -contains $name) {
+            $dir = $null
+            if ($pushed.Count -gt 0) { $dir = $pushed[$pushed.Count - 1]; $pushed.RemoveAt($pushed.Count - 1) }
+            continue
+        }
+        if (@('cd', 'chdir', 'Set-Location', 'sl', 'pushd', 'Push-Location') -contains $name) {
+            if (@('pushd', 'Push-Location') -contains $name) { $pushed.Add($dir) }
+            $dir = Resolve-KnownFolder (Get-LocationArgument $all $start) $dir $vars $Shell
             continue
         }
         $words = New-Object System.Collections.Generic.List[string]
@@ -685,38 +813,27 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
         # the text of a here-string, or the full path of an input file. $written holds the files its output goes to.
         $redirected = @{ Body = $null; HereString = $null; File = $null }
         $written = New-Object System.Collections.Generic.List[string]
+        $arithmetic = Get-ArithmeticWords $all
         for ($k = $start; $k -lt $all.Count; $k++) {
             $w = $all[$k].Text
-            if ($all[$k].Bare) {
-                $out = [regex]::Match($w, '^(?:>\||[0-9]*>>?|&>>?)(.*)$')
-                if ($out.Success) {
-                    $raw = $out.Groups[1].Value
-                    if ($raw -eq '' -and $k + 1 -lt $all.Count) { $k++; $raw = $all[$k].Text }
-                    Add-OutputTarget $targets $written $raw $dir $vars $Shell
-                    continue
-                }
-                $in = [regex]::Match($w, '^([0-9]*)(<{1,3})(.*)$', [System.Text.RegularExpressions.RegexOptions]::Singleline)
-                if ($in.Success) {
-                    $rest = $in.Groups[3].Value
-                    if ($rest -eq '' -and $k + 1 -lt $all.Count) { $k++; $rest = $all[$k].Text }
-                    if ($in.Groups[1].Value -eq '' -or $in.Groups[1].Value -eq '0') {
-                        $operator = $in.Groups[2].Value.Length
-                        if ($operator -eq 3) { $redirected.HereString = $rest }
-                        elseif ($operator -eq 2) {
-                            $heredoc = [regex]::Match($rest, '^__HEREDOC_([0-9]{1,6})__$')
-                            if ($heredoc.Success -and [int]$heredoc.Groups[1].Value -lt $bodies.Count) {
-                                $redirected.Body = $bodies[[int]$heredoc.Groups[1].Value]
-                            }
-                        }
-                        else {
-                            $file = Expand-KnownVariables $rest $vars $Shell
-                            if (-not $file.Contains('$')) { $redirected.File = Resolve-FullPath $file $dir }
-                        }
-                    }
-                    continue
+            $r = $null
+            if (-not $arithmetic[$k]) { $r = Get-RedirectWord $all[$k] }
+            if ($null -eq $r) { $words.Add($w); continue }
+            $rest = $r.Rest
+            if ($rest -eq '' -and $k + 1 -lt $all.Count) { $k++; $rest = $all[$k].Text }
+            if ($r.Out) { Add-OutputTarget $targets $written $rest $dir $vars $Shell; continue }
+            if ($r.Fd -ne '' -and $r.Fd -ne '0') { continue }
+            if ($r.Operator -eq 3) { $redirected.HereString = $rest }
+            elseif ($r.Operator -eq 2) {
+                $heredoc = [regex]::Match($rest, '^__HEREDOC_([0-9]{1,6})__$')
+                if ($heredoc.Success -and [int]$heredoc.Groups[1].Value -lt $bodies.Count) {
+                    $redirected.Body = $bodies[[int]$heredoc.Groups[1].Value]
                 }
             }
-            $words.Add($w)
+            else {
+                $file = Expand-KnownVariables $rest $vars $Shell
+                if (-not $file.Contains('$')) { $redirected.File = Resolve-InFolder $file $dir }
+            }
         }
         if ($words.Count -eq 0) { continue }
         $name = $words[0]
@@ -729,14 +846,22 @@ function Get-WriteTargets([string]$Command, [string]$Cwd, [string]$Shell) {
             }
         }
         elseif (@('python', 'python3', 'py') -contains $name) {
-            # A script the guard cannot read or analyse runs (CCT-1) without hiding the command's other targets.
-            try {
-                $code = Get-PythonScript $words $dir $redirected $scripts
-                if ($null -ne $code) {
-                    foreach ($path in (Get-PythonWriteTargets $code)) { Add-WriteTarget $targets $path $dir $vars $Shell }
+            # A script the guard cannot read or analyse runs (CCT-1) without hiding the command's other targets. Each
+            # analysis stops at its own deadline, and all of them at $PythonBudgetMs: a script past it runs unread.
+            $left = $PythonBudgetMs - $pythonClock.ElapsedMilliseconds
+            if ($left -gt 0) {
+                $pythonClock.Start()
+                try {
+                    $code = Get-PythonScript $words $dir $redirected $scripts
+                    if ($null -ne $code) {
+                        foreach ($path in (Get-PythonWriteTargets $code ([int][Math]::Min($PythonDeadlineMs, $left)))) {
+                            Add-WriteTarget $targets $path $dir $vars $Shell
+                        }
+                    }
                 }
+                catch { }
+                finally { $pythonClock.Stop() }
             }
-            catch { }
         }
         elseif ($name -ceq 'export' -and $Shell -ne 'PowerShell') {
             for ($k = 1; $k -lt $words.Count; $k++) { Set-KnownVariableFromAssignment $vars $words[$k] }
