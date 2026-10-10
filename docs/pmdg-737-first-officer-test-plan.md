@@ -2,8 +2,9 @@
 
 The First Officer engine was generalised into a **shared generic core** and the **PMDG 777
 FO was migrated onto it**, then a **PMDG 737 (NG3) FO** was added as a second implementation.
-There is no automated test project (SimConnect/UI app), so the repo owner verifies the two
-halves below against a live sim (MSFS 2020 or 2024).
+The pure logic has an xUnit suite (`tests/MSFSBlindAssist.Tests`, run by CI), but the
+SimConnect/UI paths cannot be unit-tested, so the repo owner verifies the two halves below
+against a live sim (MSFS 2020 or 2024).
 
 Open the window from **Tools → "PMDG 737 First Officer"** (above the 777 item) while the
 PMDG 737-800 is loaded. The window has two tabs: **Flows** and **Checklists**.
@@ -20,8 +21,8 @@ before:
    announcements, waits, and captain reminders as before the change.
 3. On the Checklists tab, confirm items auto-tick from live state, `RevertToState` items
    un-tick when state drifts, and ticking an actionable item fires its switch.
-4. Confirm SimBrief load, the opt-in auto gear/flaps/AP, and the altimeter/landing-light phase
-   automation still work.
+4. Confirm SimBrief load, the opt-in auto gear/AP (PMDG auto-flaps is gone, see B4), and the
+   altimeter/landing-light phase automation still work.
 5. Confirm the window opens, disposes on aircraft swap, and re-wires on a SimConnect reconnect.
 
 Any difference from the pre-refactor 777 behavior is a regression to report, except what the
@@ -129,13 +130,16 @@ guard and the checklists' `SetFDLeft(target, state)` path.
 
 ### C1. 777 — run each affected flow from BOTH starting states
 Read switch state via the sim tools (PMDG fields `MCP_FD_Sw_On_left` / `_right`,
-`MCP_ATArm_Sw_On_left` / `_right`).
+`MCP_ATArm_Sw_On_left` / `_right`). **Cockpit Preparation** turns both flight directors and
+both A/T ARM switches **ON** (four steps, in MCP order: left FD, left A/T ARM, right A/T ARM,
+right FD); **Shutdown** turns the flight directors **OFF** and leaves A/T ARM alone.
 
-- **Already-correct (the bug case):** with FD L/R and AT Arm **OFF**, run **Preflight**. The
-  three FD/AT steps must announce **"Already set: …"** and the switches **stay OFF**. (Before
-  the fix they flipped **ON**.)
-- **Needs-changing:** with FD L/R **ON**, run **Preflight** → they go **OFF**.
-- **Shutdown:** FDs **ON** → run **Shutdown/Secure** → **OFF**; FDs already **OFF** → run it
+- **Already-correct (the bug case):** with FD L/R and A/T ARM L/R already **ON**, run
+  **Cockpit Preparation**. The four FD/AT steps must announce **"Already set: …"** and the
+  switches **stay ON**. (An unguarded press would flip each one **OFF**.)
+- **Needs-changing:** with FD L/R and A/T ARM L/R **OFF**, run **Cockpit Preparation** → they
+  go **ON**.
+- **Shutdown:** FDs **ON** → run **Shutdown** → **OFF**; FDs already **OFF** → run it
   again → **"Already set"**, stay **OFF**.
 
 ### C2. 737 — same check
@@ -146,17 +150,17 @@ Read-back fields: `MCP_FDSw_1` / `MCP_FDSw_2` (FD L/R), `MCP_ATArmSw` (AT Arm).
 - AT **OFF** → run **Before Takeoff** → **ARM**; already **ARM** → run again → **"Already
   set"**, stay **ARM**.
 
-### C3. 777 flap-detent parameter — PENDING verification
-`AircraftActionExecutor.SetFlapsPosition` sends the per-detent
-`EVT_CONTROL_STAND_FLAPS_LEVER_*` event with **param 1**; the 777 panel sends the same events
-with **MOUSE_FLAG_LEFTSINGLE**. The 737 NG3 is known to accept param 1 (validated by the
-auto-flaps work); the 777 is unconfirmed. To verify: set flaps to **5**, then run the 777
-**Secure/Shutdown** "Flaps: UP" action (which calls `SetFlapsPosition(0)`) and read
-`FCTL_Flaps_Lever`.
-- Reads **0 / UP** → param 1 works on the 777; **no code change** needed (close this item).
-- **Did not move** → change `SetFlapsPosition`'s final dispatch from
-  `ExecuteSingle(eventName, null, false, true)` to `ExecuteSingle(eventName, null, true, false)`
-  (mouse flag), rebuild, and re-test.
+### C3. 777 flap-detent parameter — settled (Parts K and L); one quick confirmation
+The open question was whether the 777 takes the per-detent `EVT_CONTROL_STAND_FLAPS_LEVER_*`
+events with **param 1** or needs **MOUSE_FLAG_LEFTSINGLE**, the way the 777 panel sends them.
+Parts K and L settled it: they are SDK mouse-click events, a bare param 1 is ignored, and the
+mouse-flag change this item used to ask for is made. `AircraftActionExecutor.SetFlapsPosition`
+sends the mouse flag, and `DispatchCoreAsync` forces it for every
+`EVT_CONTROL_STAND_FLAPS_LEVER_*` event, so the flows' flap steps send it too (Part L, step 2
+flies those). Nothing is left to change. To confirm `SetFlapsPosition` itself in the sim, set
+flaps to **5**, then on the Checklists tab tick the After Landing group's **"Flap lever: UP"**
+(it calls `SetFlapsPosition(0)`) and read `FCTL_Flaps_Lever`: it reads **0 / UP**. The
+Shutdown and Secure flows have no flaps action (Shutdown only reads the lever).
 
 The sim tools can READ these PMDG fields but cannot WRITE to actuate this 777 (their event
 transport does not replicate the app's CDA `SetClientData` write — verified 2026-06-28), so all
@@ -198,7 +202,7 @@ Run **Cockpit Prep** (or tick the Preflight checklist items). Confirm **Wing Ant
 Run **Before Start**. Confirm the demand pumps (`HYD_DemandElecPump_Selector_0/1`, `HYD_DemandAirPump_Selector_0/1`) read **1 = Auto**, not 2 = On.
 
 ### E3. 777 transponder (flow now sets the mode)
-Run **Before Takeoff** → confirm `XPDR_ModeSel` = **4 (TA/RA)**; run **After Landing** / **Shutdown** → confirm `XPDR_ModeSel` = **0 (STBY)**. (Previously the flow fired the wrong event and never changed the mode.)
+Run **Before Takeoff** → confirm `XPDR_ModeSel` = **4 (TA/RA)**; run **After Landing** → it leaves `XPDR_ModeSel` alone (still **4**), so ground and tower still see the aircraft; run **Shutdown** → confirm `XPDR_ModeSel` = **0 (STBY)**. (Previously the flow fired the wrong event and never changed the mode.)
 
 ### E4. 777 strobe / recirc — **VERIFY value 1 actually turns them ON**
 These were changed from 2→1 based on the panel's `{0=Off,1=On}` map, but flagged for live confirmation in case the real switch is 3-position. Run **Before Takeoff** (strobe) and **Cockpit Prep** (recirc) and confirm `LTS_Strobe_Sw_ON` / `AIR_RecircFan_Sw_On_0/1` go to ON. If either does **not** turn on at value 1, tell me — the panel map is then incomplete and the value should be 2. (The storm lights were on this list through Shutdown's "Storm lights: ON" step. PMDG's Shutdown has no such step and it was removed 2026-10-09, so the First Officer only turns the 777 storm lights OFF now; to check value 1 for them anyway, use the "Storm Light" control on the Overhead → Lights panel.)
@@ -219,13 +223,13 @@ Read switch states via the sim tools (PMDG field in parentheses). Items F1–F4 
 Cold-dark, APU off → on the **Checklists** tab open **Before Start** and tick **"APU: START …"**. The selector goes **ON** (`ELEC_APU_Selector` = 1), then ~2 s later **START** (= 2, springs back to 1) and the APU spools up. Previously the item was a no-op. If START does not register, the ON→START gap is too short — tell me and I'll raise `ApuOnToStartMs` (777 `AircraftActionExecutor`).
 
 ### F2. 777 BOTH external power disconnect (Before Start)
-With both GPUs connected, tick **"External power: Disconnect when APU available"** → **both** ground-power units disconnect (not just one). Also check the symmetric paths: **Electrical Power Up → "External power: PUSH"** connects both; **Electrical Power Down → "APU or Ground Power switches: OFF"** disconnects both + APU off. Previously only one toggled (two CDA writes collided in the same frame). If still only one, raise `CdaWriteSpacingMs`.
+With both GPUs connected, tick **"External power: Disconnect when APU available"** → **both** ground-power units disconnect (not just one). Also check the symmetric paths: **Electrical Power Up → "External power: ON (if available)"** connects both; **Electrical Power Down → "APU or Ground Power switches: OFF"** disconnects both + APU off. Previously only one toggled (two CDA writes collided in the same frame). If still only one, raise `CdaWriteSpacingMs`.
 
 ### F3. 777 transponder XPNDR sets the MODE, not squawk 0002 (Before Start)
 Note the squawk code, then tick **"Transponder: XPNDR"** → the transponder MODE goes to XPNDR (`XPDR_ModeSel` = 2) and the **squawk code is UNCHANGED** (previously it was overwritten to `0002`). (This is the checklist executor fix; Part E3 covered the flow's separate TA/RA path.)
 
 ### F4. 777 readback `*_CL` checklists are action-free
-Open any readback checklist group (e.g. **Before Start Checklist**, **Landing Checklist**, **Shutdown Checklist**) and tick an item — **no switch should move** (e.g. ticking "Beacon: ON" must NOT toggle the beacon). The item should still **auto-tick on its own** once the real switch reaches position (set it via the matching action group / flow, or by hand in the cockpit); a line that reads no switch (the Shutdown Checklist's "Parking Brake: As required", "Recall: Checked") never auto-ticks. The Landing Checklist's "Speedbrake: ARMED" is action-free like the rest since 2026-10-09: ticking it arms nothing (H10). Spot-check that a state-group item (e.g. **Before Start → "Beacon: ON"**) DOES still fire its switch when ticked — only the `*_CL` groups changed.
+Open any readback checklist group (e.g. **Before Start Checklist**, **Landing Checklist**, **Shutdown Checklist**) and tick an item — **no switch should move** (e.g. ticking "Beacon: ON" must NOT toggle the beacon). The item should still **auto-tick on its own** once the real switch reaches position (set it via the matching action group / flow, or by hand in the cockpit); a line that reads no switch (the Shutdown Checklist's "Parking Brake: As required", the Before Taxi and Descent Checklists' "Recall: Checked") never auto-ticks. The Landing Checklist's "Speedbrake: ARMED" is action-free like the rest since 2026-10-09: ticking it arms nothing (H10). Spot-check that a state-group item (e.g. **Before Start → "Beacon: ON"**) DOES still fire its switch when ticked — only the `*_CL` groups changed.
 
 ### F5. Before/After Takeoff action groups (both aircraft)
 On the **Checklists** tab confirm the tree now lists **"Before Takeoff"** and **"After Takeoff"** action groups directly **above** their **"… Checklist"** readback groups (like every other phase). Ticking an action-group item fires the switch (777: landing/turnoff/strobe lights, transponder TA/RA, LNAV/VNAV arm, gear/flaps; 737: landing/position lights, A/T arm, transponder, packs, start switches, turnoff, autobrake). The matching **"… Checklist"** items still auto-tick from state.
@@ -301,20 +305,27 @@ After H3/H5, run Before Taxi → the APU selector goes **OFF** and the "APU: OFF
 Tick **"Probe heat: ON"** (or run Before Taxi): **BOTH** probe-heat switches turn ON (spaced writes),
 and the checklist "Probe heat: ON" ticks.
 
-### H8. The gear lines are confirmed by the gear lights (After Takeoff and Landing)
+### H8. The gear lines are confirmed by the gear itself (After Takeoff and Landing)
+The 737 reads its gear lights. The 777 SDK has none, so the 777 reads the gear lever and the
+three gear legs: UP is the lever up and every leg fully retracted, DOWN is the lever down and
+every leg fully extended (its "three green").
 1. After a normal takeoff and gear retraction, run the After Takeoff flow: it ends with
    "Already set: Landing gear: UP" (or a short wait while the gear is still retracting), and
    the **After Takeoff Checklist → "Landing gear: UP"** line is ticked.
-2. With **Auto-raise gear on climb** OFF, run the After Takeoff flow while the gear is still
-   DOWN: after about 20 s it says "Timed out waiting for: Landing gear: UP" and "Skipping:
+2. 737: with **Auto-raise gear on climb** OFF, run the After Takeoff flow while the gear is
+   still DOWN: after about 20 s it says "Timed out waiting for: Landing gear: UP" and "Skipping:
    Landing gear: UP", and the line stays unticked. Raise the gear: once all gear lights go
-   out, the line ticks by itself.
+   out, the line ticks by itself. (The 777 has no such case: its After Takeoff flow raises the
+   lever itself, with a "Gear: UP" step, and then waits for the legs to retract.)
 3. On approach, with **Auto-lower gear on descent** OFF (otherwise it lowers the gear
    at 2000 ft AGL mid-wait), run the Landing flow before lowering the gear: after the
    missed-approach reminder it says "Waiting for: Landing gear: DOWN", then after about 20 s
    "Timed out waiting for: Landing gear: DOWN", "Skipping: Landing gear: DOWN", and only then
    "Landing flow complete". The **Landing Checklist → "Landing gear: DOWN"** line stays
-   unticked until you lower the gear and all three greens are on.
+   unticked until you lower the gear and all three greens are on (777: until the lever is
+   DOWN and all three legs are fully extended). On the 777 the landing flap-lever check comes
+   first: "Already set: Flap lever: landing" when the flaps are set, otherwise up to 20 s of
+   "Waiting for: Flap lever: landing" before the gear wait.
 
 ### H9. Altimeters auto-set to STANDARD above transition (requires SimBrief)
 Load a SimBrief OFP with a transition altitude, then climb through it: the FO sets **both** altimeters
@@ -586,10 +597,12 @@ related checklist group, positioned in flow order.
   CONT), and the takeoff-flaps reminder moved to flow order (after the turnoff lights,
   before the lower DU).
 - **777**: Preflight gains "Reset checklists and obtain IFR clearance" and "Obtain ATIS"
-  (end, matching the Cockpit Prep flow tail); Before Start gains "Obtain taxi clearance"
-  and "Start ACARS if required" (end), and the three trim items moved up to follow the
-  MCP/LNAV-VNAV block (flow order); Before Taxi gains "Set stabiliser trim for takeoff"
-  (after the flight-controls check).
+  (at the end, just ahead of the weather radar test, matching the Cockpit Prep flow tail);
+  Before Start gains "Start ACARS" and "Obtain pushback and start clearance" (end), and the
+  three trim items sit after the transponder, ahead of those two (flow order, which is PMDG's
+  own: trim last). Before Taxi has no trim reminder: PMDG's Before Taxi carries no trim
+  checkpoint, so trim is covered at the end of Before Start and read back on the Before Start
+  Checklist.
 
 Test: expand each group listed above and confirm the reminders appear at the stated
 positions; tick them (manual tick holds — reminders have no action and no auto-detect).
