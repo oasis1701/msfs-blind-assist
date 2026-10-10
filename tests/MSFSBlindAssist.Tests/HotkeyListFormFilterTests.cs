@@ -11,9 +11,9 @@
 //     was extracted VERBATIM (zero logic change) into a new `internal static
 //     IsAllCategoriesSentinel(string)` method, because it was not already a separable
 //     unit and the whole form is otherwise heavily entangled (file-reading constructor,
-//     full WinForms control tree). See CLAUDE.md's Forms-cluster test-wave notes for why
-//     this item, unlike most others in the wave, needed an extraction rather than a bare
-//     access-modifier promotion.
+//     full WinForms control tree). That is why this item, unlike most others in the
+//     Forms-cluster test wave, needed an extraction rather than a bare access-modifier
+//     promotion.
 //
 // The whole HotkeyListForm was NOT constructed for these tests (its constructor reads
 // HotkeyGuides\*.txt relative to AppDomain.CurrentDomain.BaseDirectory and builds a full

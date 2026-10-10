@@ -4,9 +4,9 @@ using MSFSBlindAssist.Services.Gsx.Remote;
 namespace MSFSBlindAssist.Tests;
 
 /// <summary>
-/// Pins the parsing of GSX's <c>gate.select</c> result — see
-/// docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
-/// §"GsxRemoteGateSelector.cs — REVISED" and the vendor guide §8.14.
+/// Pins the parsing of GSX's <c>gate.select</c> result — see [GSX-2], [GSX-5],
+/// docs/gsx.md, "Developer internals" (the <c>gate.select</c> bullet) and the vendor
+/// guide §8.14.
 ///
 /// Every wire shape here is HAND-WRITTEN from the guide, not a live capture — no
 /// `gate.select` response has been captured against a running GSX yet. Do not

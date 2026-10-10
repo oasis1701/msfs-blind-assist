@@ -66,9 +66,9 @@ public static class GroundTrafficSuppression
     /// The runway watch's own gate. <see cref="Suppress"/> silences everything while takeoff assist
     /// is on — the takeoff-roll rule for PROXIMITY callouts — and takeoff assist auto-activates at
     /// lineup alignment, so the line-up wait lost the runway watch with it. Here takeoff assist
-    /// suppresses only once the ground speed is known to be at or above
-    /// <see cref="RunwayWatchTakeoffCutoffKts"/> (an unknown speed counts as rolling); otherwise the
-    /// rule is exactly <see cref="Suppress"/>'s. The fast landing exit does not suspend the watch - it
+    /// suppresses only at a ground speed at or above <see cref="RunwayWatchTakeoffCutoffKts"/> or an
+    /// unknown one (an unknown speed counts as rolling), never at a known speed below it; without
+    /// takeoff assist the rule is exactly <see cref="Suppress"/>'s. The fast landing exit does not suspend the watch - it
     /// only filters what is spoken (<see cref="LandingExitWarningsOnly"/>).
     /// </summary>
     public static bool SuppressRunwayWatch(bool takeoffAssistActive, TaxiGuidanceState state,

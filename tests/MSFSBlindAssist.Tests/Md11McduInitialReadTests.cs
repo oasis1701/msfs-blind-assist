@@ -19,7 +19,7 @@ namespace MSFSBlindAssist.Tests;
 /// request id. That is not tidiness: SimConnect treats a request re-issued under an existing id
 /// as a replacement, so a ONCE on the subscription's own id would cancel the subscription and
 /// leave the window frozen on its first page. This codebase has already been bitten by exactly
-/// that on ordinary data requests (see the A380 FCU ALT managed bullet in CLAUDE.md).
+/// that on ordinary data requests (see the A380 FCU ALT managed rule, [A380F-12]).
 /// </summary>
 public class Md11McduInitialReadTests
 {

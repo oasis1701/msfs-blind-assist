@@ -31,7 +31,7 @@ public static class GsxGateSelectPlan
         // this guard must not be "simplified" into a plain Number > 0 first test.
         //
         // Only GsxRemoteParkingReader populates GsxIdentifier, so a spot without one came
-        // from the navdata/.ini fallback, and CLAUDE.md holds that such a list "cannot be
+        // from the navdata/.ini fallback, and [DCK-7] holds that such a list "cannot be
         // auto-selected -- gate.select degrades to BadArgs, i.e. to manual selection, which
         // is the pre-existing baseline and the intended degradation".
         //

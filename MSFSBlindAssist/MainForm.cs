@@ -830,7 +830,8 @@ public partial class MainForm : Form
                 taxiGuidanceManager.IsLandingExitTaxiSteering);
         // The runway watch has its OWN gate: takeoff assist switches on at lineup alignment, and the
         // line-up wait is exactly when traffic landing on or entering the runway matters most, so the
-        // watch keeps running until the takeoff roll passes 30 kt (PR #247 review R1).
+        // watch keeps running until the takeoff roll reaches 30 kt; an unknown ground speed cuts it too
+        // (PR #247 review R1).
         groundTrafficMonitor.RunwayWatchSuppressCheck = () =>
             GroundTrafficSuppression.SuppressRunwayWatch(
                 takeoffAssistManager.IsActive,

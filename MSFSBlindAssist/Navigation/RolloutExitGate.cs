@@ -82,7 +82,7 @@ public static class RolloutExitGate
     /// pilot's distance-unit setting (<c>DistanceMilestones</c> → <c>DistanceFormatter.IsMetres</c>),
     /// so reading it here moved this decision by ~8 ft when the pilot switched between feet and
     /// metres, and by whatever a future extra milestone would shift the positional index to.
-    /// CLAUDE.md: "<c>DistanceFormatter</c> is a DISPLAY layer only — never use it for guidance
+    /// [DCK-35]: "<c>DistanceFormatter</c> is a DISPLAY layer only — never use it for guidance
     /// thresholds; those must stay unit-native internally."</para>
     /// </summary>
     public const double NearRunwayEndFeet = 500.0;

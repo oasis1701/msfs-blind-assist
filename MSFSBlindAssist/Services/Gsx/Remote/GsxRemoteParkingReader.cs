@@ -10,8 +10,9 @@ namespace MSFSBlindAssist.Services.Gsx.Remote;
 /// the <c>.ini</c>-only <see cref="GsxProfileParser"/>/<see cref="GsxNavdataMerger"/> path
 /// for that one airport, which is what lets a <c>.py</c>-profile airport (EDDF and similar)
 /// get a real gate list for the first time instead of silently falling back to navdata.
-/// See docs/superpowers/specs/2026-08-12-gsx-remote-api-gate-list-and-selection-design.md
-/// §"Data reference" and §"ParkingSpot is both the list model and the docking input".
+/// See docs/gsx.md, "Developer internals" (its gate-list source-selection bullet), and
+/// [DCK-7], [DCK-11], [DCK-39] and [DCK-43] (a ParkingSpot is both the list model and the
+/// docking input).
 ///
 /// <para>
 /// Routing (which ICAO this should be called for, and whether the result should be used

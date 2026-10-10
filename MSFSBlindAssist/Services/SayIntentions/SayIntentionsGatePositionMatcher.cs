@@ -38,7 +38,7 @@ public readonly record struct GatePositionCandidate(
 ///
 /// The point is the NOSE-STOP position, not the stand datum. At EDDB it sat 18.9 m from
 /// the navdata centre on bearing 68.6° against a stand heading of 68.8° — i.e. straight
-/// out along the stand's own axis, exactly the distinction CLAUDE.md already records for
+/// out along the stand's own axis, exactly the distinction [DCK-3] already records for
 /// GSX stop positions ("a VDGS nose-stop reference, not an aircraft-datum location"). So
 /// the point is EXPECTED to sit off-centre, and a tighter "near the centre" test would
 /// reject the very stand the aircraft is standing on.
