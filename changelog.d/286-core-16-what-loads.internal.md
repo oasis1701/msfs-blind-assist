@@ -1,0 +1,1 @@
+Claude Code's rule on when area rules load now matches what Claude Code does: a few one-file shell reads load them too, and the repository's model of rule loading now matches Claude Code for a glob ending in `/**`.
