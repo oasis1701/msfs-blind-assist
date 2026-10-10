@@ -1,0 +1,54 @@
+---
+paths:
+  - "MSFSBlindAssist/Services/Gsx/*.cs"
+  - "MSFSBlindAssist/Services/Gsx/Remote/GsxRemoteParkingReader.cs"
+  - "MSFSBlindAssist/Services/Gsx/Remote/GsxConcourseLetterFiller.cs"
+  - "MSFSBlindAssist/Services/Gsx/Remote/GsxTerminalDisambiguator.cs"
+  - "MSFSBlindAssist/Services/Gsx/Remote/GsxNavdataGeometryFiller.cs"
+  - "MSFSBlindAssist/Services/GateDataSource.cs"
+  - "MSFSBlindAssist/Services/GateResolver.cs"
+  - "MSFSBlindAssist/Services/ParkingSpotSource.cs"
+  - "MSFSBlindAssist/Services/StandId.cs"
+  - "MSFSBlindAssist/Services/GateSearchFilter.cs"
+  - "MSFSBlindAssist/Database/Models/ParkingSpot.cs"
+  - "MSFSBlindAssist/Database/Models/GsxGate.cs"
+  - "MSFSBlindAssist/Database/Models/GateSource.cs"
+  - "MSFSBlindAssist/Forms/GateTeleportForm.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GateResolver*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GateSearchFilter*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GateDataSource*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GateAlias*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ParkingSpot*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*ParkingTypes*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*StandId*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*AircraftSizeClass*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*BacktrackEntry*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GsxNavdataMerger*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GsxGateMapper*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GsxConcourseLetterFiller*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GsxNavdataGeometryFiller*.cs"
+  - "tests/MSFSBlindAssist.Tests/**/*GsxRemoteParkingReader*.cs"
+---
+# Stand lists and names: GSX merge, concourse letters, the parking reader and caches rules
+
+Loaded when Claude reads matching code. Background: docs/gsx.md. Full text of each rule: docs/invariants/gsx-stands.md.
+
+- [DCK-2] `GsxNavdataMerger` must never cross-concourse-borrow coordinates: a navdata candidate donates only when its normalized concourse matches the GSX gate's, otherwise drop the spot. Full: docs/invariants/gsx-stands.md#dck-2
+- [DCK-6] The `.ini`/navdata gate LIST and the `.py`/`.ini` stop-offset chain deliberately survive the Remote API move and are not version floors; `GateDataSource` takes the API path only with the `handlerData` capability AND a matching `handlerData.airport.icao`. Full: docs/invariants/gsx-stands.md#dck-6
+- [DCK-7] `ParkingSpot.GsxIdentifier` is set ONLY by `GsxRemoteParkingReader` (fallback lists degrade to manual selection); `ParkingSpot.Radius` is FEET on navdata, METRES on GSX: convert by `Source`, never assume. Full: docs/invariants/gsx-stands.md#dck-7
+- [DCK-8] `ParkingSpot.Name` is the CONCOURSE LETTER on every path, never terminal prose; `uiTerminalName` goes in `TerminalName`, rendered only when `TerminalNameDisambiguates`; split identity with `StandId.Parse`, never a local regex (more: see full). Full: docs/invariants/gsx-stands.md#dck-8
+- [DCK-9] `GsxConcourseLetterFiller` borrows a missing concourse letter right after the reader: NAME-ONLY, never overwriting a letter GSX supplied, and `Name = ""` stays a supported shape. Full: docs/invariants/gsx-stands.md#dck-9
+- [DCK-10] Concourse letters come from `uiTerminalName`'s "Concourse X" FIRST, navdata second (never flip it); navdata needs position AND number within 10 m, disagreeing candidates are refused, and never widen the radius or wording. Full: docs/invariants/gsx-stands.md#dck-10
+- [DCK-11] Remote API headings must go through the same `GsxProfileParser.NormalizeHeading` (0-360) as the `.ini` path, and `double.NaN` (the no-heading sentinel) must pass through unchanged. Full: docs/invariants/gsx-stands.md#dck-11
+- [DCK-12] Deice pads live in `handlerData.airport.deIceAreas`, not `parkings`, so `GsxRemoteParkingReader` needs no deice exclusion; `GetDeiceAreas` stays on the `.ini` key only because `deIceAreas` is not wired yet. Full: docs/invariants/gsx-stands.md#dck-12
+- [DCK-13] Never mutate a list from `GateDataSource`/`ParkingSpotSource.GetSelectableGates` (`.Clear()`, `.Remove`, `.Sort`): it is `GateDataSource`'s cached instance; drop the reference instead. Full: docs/invariants/gsx-stands.md#dck-13
+- [DCK-14] Any cache holding STAND NAMES must key on `GateDataSource.GetGateListVersion`'s token as well as the ICAO, compared through `ShouldRebuildGateList`, or a graph built before GSX published keeps navdata's letters. Full: docs/invariants/gsx-stands.md#dck-14
+- [DCK-15] A DATABASE switch is invalidated by CLOSING the window (`RefreshDatabaseProvider` closes `tcasForm`), not a cache clear: `GateResolver` captures its provider at construction. Full: docs/invariants/gsx-stands.md#dck-15
+- [DCK-36] A per-ICAO gate-list cache keys on `GetGateListVersion(icao)` too, via `ShouldRebuildGateList` (never rebuilt on a downgrade); token-only consumers use static `ComputeGateListVersion`; a lost stand leaves NOTHING selected (more: see full). Full: docs/invariants/gsx-stands.md#dck-36
+- [DCK-37] `GateResolver` (the TCAS "at Gate" label) names stands via `ParkingSpotSource.GetNamedSpots`, never raw `GetParkingSpots` and never `GetSelectableGates`. Full: docs/invariants/gsx-stands.md#dck-37
+- [DCK-38] `GsxGateMapper.MapGsxTypeToNavdataType` maps `GATE_EXTRA` (GSX 15) to navdata 14 and `RAMP_GA_EXTRA` (GSX 14) to navdata 15: the numbering is SWAPPED between the enums. Full: docs/invariants/gsx-stands.md#dck-38
+- [DCK-40] A stand has ONE name app-wide: `GetSelectableGates` to ACT on a stand, `GetNamedSpots` to name one and for every `TaxiGraph.Build` given parking; never build a pilot-heard list from `GetParkingSpots`, nor call the supplier per position update (more: see full). Full: docs/invariants/gsx-stands.md#dck-40
+- [DCK-41] Never feed `TaxiGraph.Build` a spot list other than navdata's own set: its parking pass sets `TaxiNodeType.Parking` and can MOVE A HOLD-SHORT; the exceptions are builds given no parking at all: the runway-rows-only ones and the briefing's `OsmPlanningGraph`. Full: docs/invariants/gsx-stands.md#dck-41
+- [DCK-42] `GsxNavdataGeometryFiller` runs AFTER the `.ini` join, BEFORE `DropUnusableHeadings`, filling ONLY what GSX omitted (NaN heading, null size) from a same-numbered NAVDATA row within `MatchRadiusMetres`, own suffix first, never by letter; unnumbered only from a lone unnumbered row; disagreeing candidates are refused; FEET become metres. Full: docs/invariants/gsx-stands.md#dck-42
+- [DCK-43] `GsxRemoteParkingReader` takes `Type` from `uiType` whenever the `type` number resolves to 0 (absent, or no constant matches it), upper-casing INVARIANTLY; `maxWingspan` >= `UnlimitedWingspanMetres` (999) is GSX's unconfigured-stand sentinel and reads as unpublished, never as a 499.5 m radius. Full: docs/invariants/gsx-stands.md#dck-43
+- [DCK-44] `ParkingSpot.GsxUnconfigured` is set ONLY by `GsxRemoteParkingReader` (GSX sent no `heading` and no `hasJetway` value, a JSON null counting as none: no profile covers the stand); only then does `GsxNavdataGeometryFiller` borrow `HasJetway`/`AirlineCodes`, and `GsxTerminalFeatureSource` skips such stands (their header is GSX's own). Full: docs/invariants/gsx-stands.md#dck-44
