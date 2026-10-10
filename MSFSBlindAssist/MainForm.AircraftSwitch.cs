@@ -878,6 +878,9 @@ public partial class MainForm
         simConnectManager.SuppressECAMAnnouncements = true;
 
         universalAutomation?.Reset();
+        // The NEW aircraft's floor, press spacing and wait flag now (currentAircraft is already the new
+        // definition), not at the next 1 s tick: an Update in between would act on the previous aircraft's.
+        PushUniversalAircraftLimits();
         _universalLatestAgl = 0;
 
         // Hazard announcers re-baseline on switch — stale category/ice baselines

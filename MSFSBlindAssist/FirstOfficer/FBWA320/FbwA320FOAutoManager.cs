@@ -4,12 +4,12 @@ using MSFSBlindAssist.Accessibility;
 namespace MSFSBlindAssist.FirstOfficer.FBWA320;
 
 /// <summary>
-/// Automated gear, autopilot and flap management for the FlyByWire A320.
-/// Gear/AP mirror the Fenix FOAutoManager. The flap schedule is A380-specific,
-/// driven by the published speed-tape L:vars (green dot / S / F / VFE-next):
-/// extension on approach (capped at flaps 3 when the MFD PERF APPR landing
-/// config is CONF 3), retraction after takeoff / go-around, and the Airbus SOP
-/// go-around one-step retraction. Takeoff flap setting is deliberately NOT
+/// Automated flap management for the FlyByWire A320. Gear and autopilot left this class in
+/// July 2026 for the app-wide UniversalAutomationService (FO-21 for the AP 1 press). The flap
+/// schedule is the A380 profile's, reused here, and is driven by the published speed-tape
+/// L:vars (green dot / S / F / VFE-next): extension on approach (capped at flaps 3 when the
+/// MCDU PERF APPR landing config is CONF 3), retraction after takeoff / go-around, and the
+/// Airbus SOP go-around one-step retraction. Takeoff flap setting is deliberately NOT
 /// automated (Captain item).
 /// </summary>
 public sealed class FbwA320FOAutoManager : IFoAutoManager
@@ -111,8 +111,8 @@ public sealed class FbwA320FOAutoManager : IFoAutoManager
         if (double.IsNaN(flapsRaw)) return;  // handle position unknown — do nothing
         int flaps = (int)System.Math.Round(flapsRaw);
 
-        // CONF 3 landing selected on the MFD PERF APPR page? NaN/0 = FULL (FBW default).
-        double conf3Raw = _state.GetValue("A32NX_SPEEDS_LANDING_CONF3");
+        // CONF 3 landing selected on the MCDU PERF APPR page? NaN/0 = FULL (FBW default).
+        double conf3Raw = _state.GetValue(FbwA320StateEvaluator.LandingConf3Field);
         bool conf3 = !double.IsNaN(conf3Raw) && conf3Raw > 0.5;
 
         // Arm the approach context on the first descending sample below 5000 ft

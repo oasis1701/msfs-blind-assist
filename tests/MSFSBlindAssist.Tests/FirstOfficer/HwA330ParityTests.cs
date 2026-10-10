@@ -56,6 +56,11 @@ public class HwA330ParityTests
         ["FAC_2_V_FE_NEXT"] = "A32NX only: FAC 2, the fallback when FAC 1 has no data. Same reason.",
         ["A32NX_SPEEDS_VFEN"] = "A339X only: Headwind still publishes the plain L-var (its "
                               + "A32NX_Speeds.ts predates FBW #10890); the A32NX no longer does.",
+        ["A32NX_FM_LANDING_CONF3"] = "A32NX only: FBW #10890 renamed the CONF 3 landing selection "
+                                   + "from A32NX_SPEEDS_LANDING_CONF3, which FlyByWire no longer writes (FOA-6).",
+        ["A32NX_SPEEDS_LANDING_CONF3"] = "A339X only: Headwind still writes the pre-#10890 name (its "
+                                       + "A32NX_FMCMainDisplay.ts writes it from the PERF APPR selection; "
+                                       + "A32NX_Speeds.ts only resets it to 0) and has no A32NX_FM_LANDING_CONF3 (FOA-6).",
         // The read-back baro lines (CPC_BARO, APC_BARO). The A32NX reads the FCU's EIS baro words;
         // the A339X reads the stock Kohlsman settings. The same reason covers all five fields.
         ["A32NX_FCU_LEFT_EIS_BARO_HPA"] = "A32NX only. A339X: the FBW baro words never reach the "

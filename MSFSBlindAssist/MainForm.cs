@@ -225,10 +225,6 @@ public partial class MainForm : Form
 
     private MSFSBlindAssist.Services.AltitudeCalloutAnnouncer altitudeCalloutAnnouncer = null!;
 
-    private MSFSBlindAssist.Automation.UniversalAutomationService universalAutomation = null!;
-    private System.Windows.Forms.Timer _universalAutomationTimer = null!;
-    private double _universalLatestAgl;
-
     private ElectronicFlightBagForm? electronicFlightBagForm;
     // The flight bag's route description, kept for the whole session: the flight bag is disposed on close (and closed
     // by a database switch or rebuild), so the description must outlive it. Erased only by Load SimBrief.
@@ -670,37 +666,8 @@ public partial class MainForm : Form
         simConnectManager.SimVarUpdated += OnSimVarUpdated;
         simConnectManager.ContinuousBatchDelivered += OnContinuousBatchDelivered;
 
-        // Universal (all-aircraft) auto-gear/AP service. Construct BEFORE the
-        // AircraftPositionReceived subscription + feed timer below reference it.
-        universalAutomation = new MSFSBlindAssist.Automation.UniversalAutomationService(
-            eventName => simConnectManager.SendEvent(eventName),
-            msg => announcer.AnnounceImmediate(msg),
-            // AP engage routes through the current aircraft def: PMDG jets press their own
-            // MCP switch (CMD A / A/P L), everything else falls back to stock AUTOPILOT_ON.
-            () => currentAircraft?.EngageAutopilot(simConnectManager),
-            // ...and is verified against the def's engaged-readback where it has one, so a
-            // press the aircraft rejected is retried instead of being announced as success.
-            () => currentAircraft?.IsAutopilotEngaged(simConnectManager));
-
-        simConnectManager.AircraftPositionReceived += OnUniversalAircraftPosition;
-
-        _universalAutomationTimer = new System.Windows.Forms.Timer { Interval = 1000 };
-        _universalAutomationTimer.Tick += (_, _) =>
-        {
-            if (!simConnectManager.IsConnected) return;
-            var s = SettingsManager.Current;
-            universalAutomation.AutoGearUpEnabled       = s.FOAutoGearUpEnabled;
-            universalAutomation.AutoGearDownEnabled     = s.FOAutoGearDownEnabled;
-            universalAutomation.AutoApEnabled           = s.FOAutoApEnabled;
-            universalAutomation.AutoApEngageAltitudeAgl = s.FOAutoApEngageAltitudeAgl;
-            // Per-aircraft engage floor — the 737 refuses CMD below 400 ft RA after takeoff.
-            universalAutomation.MinimumApEngageAltitudeAgl =
-                currentAircraft?.MinimumAutopilotEngageAltitudeAgl ?? 0;
-            if (!universalAutomation.AnyEnabled) return;   // zero SimConnect load when disabled
-            simConnectManager.RequestAircraftPosition();
-            simConnectManager.RequestFOAltitudeAGL();
-        };
-        _universalAutomationTimer.Start();
+        // The universal (all-aircraft) auto-gear/AP service and its 1 Hz feed: MainForm.UniversalAutomation.cs.
+        InitializeUniversalAutomation();
         simConnectManager.QueuedEventDispatched += OnQueuedEventDispatched;
         simConnectManager.TakeoffRunwayReferenceSet += OnTakeoffRunwayReferenceSet;
         simConnectManager.AircraftIcaoTypeDetected += OnAircraftIcaoTypeDetected;
@@ -1273,8 +1240,7 @@ public partial class MainForm : Form
         _warmUpAfterLoadTimer?.Stop();
         _warmUpAfterLoadTimer?.Dispose();
 
-        _universalAutomationTimer?.Stop();
-        _universalAutomationTimer?.Dispose();
+        DisposeUniversalAutomation();
 
         // Clean up taxi guidance, docking guidance, and ground traffic monitor
         taxiGuidanceManager?.Dispose();

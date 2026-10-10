@@ -4779,23 +4779,23 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             Units = "knots",
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest
         },
-        // Read by FbwA320FOAutoManager/HwA330FOAutoManager to cap flap extension at
-        // CONF 3 when the MFD PERF APPR page selects a CONF 3 landing. Unregistered
-        // until 2026-08-30, so it read NaN and the cap never engaged on either the
-        // A32NX or the A330. The A339X publishes it too (mcdu.js), so the A330
-        // inherits this registration unchanged.
+        // Read by FbwA320FOAutoManager to cap flap extension at CONF 3 when the MCDU PERF APPR
+        // page selects a CONF 3 landing (FOA-6). Unregistered until 2026-08-30; then FBW #10890
+        // (2026-09-11) renamed it from A32NX_SPEEDS_LANDING_CONF3, which FlyByWire no longer writes,
+        // so the cap read NaN and took flaps FULL until 2026-10-09. The Headwind A330 still
+        // writes the OLD name: HeadwindA330Definition registers that one in place of this.
         //
-        // OnRequest, exactly like the A32NX_SPEEDS_* siblings above and the A380's copy
-        // of this same L:var: its delivery path is FirstOfficerForm's 1 s RequestVariable
+        // OnRequest, exactly like the A32NX_SPEEDS_* siblings above and the A380's own CONF 3
+        // L:var: its delivery path is FirstOfficerForm's 1 s RequestVariable
         // poll over the evaluators' OnRequestPollFields, which lists it. It must NOT be
         // Continuous — every continuous delivery path (the batch gate and
         // StartContinuousMonitoring in SimConnectManager.Setup.cs, and the per-var
         // PERIOD.SECOND subscription an ExcludeFromBatch var gets) also requires
         // IsAnnounced, which this silent input must never have. Continuous without
         // IsAnnounced would declare a delivery nothing performs.
-        ["A32NX_SPEEDS_LANDING_CONF3"] = new SimConnect.SimVarDefinition
+        ["A32NX_FM_LANDING_CONF3"] = new SimConnect.SimVarDefinition
         {
-            Name = "A32NX_SPEEDS_LANDING_CONF3",
+            Name = "A32NX_FM_LANDING_CONF3",
             DisplayName = "Landing CONF 3 Selected",
             Type = SimConnect.SimVarType.LVar,
             UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
@@ -6348,6 +6348,28 @@ public partial class FlyByWireA320Definition : BaseAircraftDefinition,
             [HotkeyAction.ToggleLocalizer] = "A32NX.FCU_LOC_PUSH",
         };
     }
+
+    // FO-21: FlyByWire captures the stock AUTOPILOT_ON into a flag nothing reads, so the
+    // universal auto-engage presses the cockpit's AP 1 button (the ToggleAutopilot1 event above)
+    // and verifies on AP 1 / AP 2 active. Whether a press goes out at all, and why not, is
+    // FbwAutopilotEngage.PressFor's decision; the service waits for a definite state rather than
+    // press on an unknown one. The Headwind A330 inherits all four overrides.
+    public override void EngageAutopilot(SimConnect.SimConnectManager simConnect)
+    {
+        string? evt = FbwAutopilotEngage.PressFor(simConnect.GetCachedVariableValue,
+            FbwAutopilotEngage.PressWouldWait(simConnect.CanExecuteCalculatorCode,
+                simConnect.CalcPathVerified, simConnect.CalcPathProbeConcluded));
+        if (evt == null) return;
+        ArmFcuEchoFor(evt, FcuConfirmation.None);   // A320-38; the AP push moves no FCU value
+        simConnect.SendEvent(evt);
+    }
+
+    public override bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect)
+        => FbwAutopilotEngage.IsEngaged(simConnect.GetCachedVariableValue);
+
+    public override int AutopilotEngageRetryIntervalMs => FbwAutopilotEngage.RetryIntervalMs;
+
+    public override bool AutopilotEngageWaitsForState => true;
 
     /// <summary>
     /// Handles complex hotkey actions that require custom dialogs or logic.

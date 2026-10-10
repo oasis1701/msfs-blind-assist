@@ -176,8 +176,11 @@ Checklist, Parking Checklist).
    - Positive rate of climb above ~50 ft AGL with gear down → gear auto-raises, **"Positive
      rate. Gear up."** announced.
    - Climbing through the **configured AP altitude** (Settings → First Officer numeric
-     field, default **350 ft AGL**) → **AP1 engages**; the announcement speaks the
-     configured number (e.g. **"350 feet. Autopilot one engaged."**).
+     field, default **350 ft AGL**) → **AP 1 engages**. **New 2026-10-09 (FO-21): the
+     auto-autopilot used to press a stock event FlyByWire ignores, so this is the check to
+     run.** Take off with "Engage autopilot" on and expect the aircraft's own **"Autopilot 1
+     on"** call, then **"350 feet. Autopilot engaged."** (the configured number), **both heard
+     in full** (the second must not cut the first off), with AP 1 flying and no second press.
 3. On approach/descent, confirm gear auto-lowers descending through roughly 2000 ft AGL (and
    above 100 ft AGL, not already down) — **"Two thousand feet. Gear down."** announced.
 ### Auto-flaps
@@ -197,9 +200,9 @@ checks below require **"Auto Flaps"** enabled in File → Settings… → First 
    takeoff** — same rule, same two announcements (retraction is deliberately independent of the
    takeoff config: at F select 1, at S clean).
 6. **Retraction ignores the landing config.** Before departure, select **CONF 3** on the MFD PERF
-   APPR page (`A32NX_SPEEDS_LANDING_CONF3` = 1), then take off with flaps 2/3. Confirm the climbout
+   APPR page (`A380X_FM_LANDING_CONF3` = 1), then take off with flaps 2/3. Confirm the climbout
    retraction to 1 then up is **unaffected** — CONF 3 only caps *extension*, never retraction.
-7. **Approach extension, FULL landing.** With CONF **FULL** selected (default; `LANDING_CONF3` = 0),
+7. **Approach extension, FULL landing.** With CONF **FULL** selected (default; `A380X_FM_LANDING_CONF3` = 0),
    fly a decelerating approach, not climbing, below **5000 ft AGL**. Confirm each step fires as IAS
    drops through the matching speed: below **green dot** (`A32NX_SPEEDS_GD`) → **"Speed checked.
    Flaps 1."**; below **S** → **"Speed checked. Flaps 2."**; below **F** → **"Speed checked. Flaps
@@ -314,7 +317,7 @@ switches. This is legitimate state feedback, not a double-announce bug.
   they can only be manually ticked (which fires the action) — they never auto-tick from state.
 - **Auto-flaps is speed-tape driven, not V-speed driven** — `FbwA380FOAutoManager.CheckFlaps`
   schedules the flap lever off the published `A32NX_SPEEDS_*` L:vars (green dot / S / F / VFE-next)
-  and the MFD PERF APPR landing config (`A32NX_SPEEDS_LANDING_CONF3`), not off a V1/VR/V2/VAPP
+  and the MFD PERF APPR landing config (`A380X_FM_LANDING_CONF3`), not off a V1/VR/V2/VAPP
   source. It only runs when "Auto Flaps" is enabled (opt-in, default off). The **takeoff flap
   setting itself is never automated** (Captain item); the manager only handles climbout retraction,
   approach extension (gear-gated to FULL / capped at 3 for CONF 3), the Airbus-SOP go-around

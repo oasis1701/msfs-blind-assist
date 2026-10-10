@@ -818,8 +818,9 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     }
 
     /// <summary>
-    /// Default autopilot engage: the stock <c>AUTOPILOT_ON</c> event (idempotent in the sim).
-    /// The PMDG jets override this to press their MCP engage switch instead.
+    /// Default autopilot engage: the stock <c>AUTOPILOT_ON</c> event (idempotent in the stock
+    /// autopilot). Aircraft whose own autopilot ignores it override this: the PMDG jets press
+    /// their MCP engage switch, the FlyByWire family presses AP 1 (FO-21).
     /// </summary>
     public virtual void EngageAutopilot(SimConnect.SimConnectManager simConnect)
         => simConnect.SendEvent("AUTOPILOT_ON");
@@ -835,6 +836,14 @@ public abstract class BaseAircraftDefinition : IAircraftDefinition
     /// with an engage annunciator override this (the PMDG jets read theirs from the CDA).
     /// </summary>
     public virtual bool? IsAutopilotEngaged(SimConnect.SimConnectManager simConnect) => null;
+
+    /// <summary>Default: retry every tick (FO-18's bounded retry, as on the PMDG jets, the iFly
+    /// and the MD-11). The FlyByWire family overrides it (FO-21).</summary>
+    public virtual int AutopilotEngageRetryIntervalMs => 0;
+
+    /// <summary>Default false: a null reading takes the open-loop press-and-announce. The
+    /// FlyByWire family overrides it, so its engage waits for a definite reading (FO-21).</summary>
+    public virtual bool AutopilotEngageWaitsForState => false;
 
     // Display Monitoring Methods - Default implementations (do nothing)
     // Aircraft with ECAM/EICAS/etc. should override these methods
