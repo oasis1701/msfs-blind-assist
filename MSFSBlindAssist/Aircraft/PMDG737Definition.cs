@@ -1,6 +1,7 @@
 using MSFSBlindAssist.Hotkeys;
 using MSFSBlindAssist.Accessibility;
 using MSFSBlindAssist.Forms;
+using MSFSBlindAssist.Utils.Logging;
 
 namespace MSFSBlindAssist.Aircraft;
 
@@ -626,7 +627,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         // ELEC_GenSw bool lies), which started at Off on every load and never saw
         // the APU GEN trip the engine gens off the bus; re-picking the "On" the
         // combo already showed sent nothing, so the switch looked stuck. The
-        // truthful state is the Gen Bus 1/2 Off annunciators, announced below.
+        // truthful state is the Gen Bus 1/2 Off annunciators below, announced
+        // and listed on the Electrical panel after the buttons.
         d["ELEC_GenSw_0_On"]         = Momentary("ELEC_GenSw_0_On",  "Generator 1 On");
         d["ELEC_GenSw_0_Off"]        = Momentary("ELEC_GenSw_0_Off", "Generator 1 Off");
         d["ELEC_GenSw_1_On"]         = Momentary("ELEC_GenSw_1_On",  "Generator 2 On");
@@ -1854,6 +1856,11 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                 "ELEC_GenSw_1_On", "ELEC_GenSw_1_Off",
                 "ELEC_APUGenSw_0_On", "ELEC_APUGenSw_0_Off",
                 "ELEC_APUGenSw_1_On", "ELEC_APUGenSw_1_Off",
+                // The generator buttons are stateless; these lamps are their
+                // read-back, so a pilot can check the bus on demand (the iFly
+                // Overhead panel lists its GEN OFF BUS lights the same way).
+                "ELEC_annunGEN_BUS_OFF_0", "ELEC_annunGEN_BUS_OFF_1",
+                "ELEC_annunAPU_GEN_OFF_BUS",
                 "ELEC_BusTransSw_AUTO",
                 "ELEC_GrdPwrSw_On", "ELEC_GrdPwrSw_Off",
                 "ELEC_IDGDisconnectSw_0", "ELEC_IDGDisconnectSw_1",
@@ -3419,11 +3426,8 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
             ["ELEC_ACMeterSelector"]       = "EVT_OH_ELEC_AC_METER",
             ["ELEC_CabUtilSw"]             = "EVT_OH_ELEC_CAB_UTIL",
             ["ELEC_IFEPassSeatSw"]         = "EVT_OH_ELEC_IFE",
-            ["ELEC_GrdPwrSw"]              = "EVT_OH_ELEC_GRD_PWR_SWITCH",
-            ["ELEC_GenSw_0"]               = "EVT_OH_ELEC_GEN1_SWITCH",
-            ["ELEC_GenSw_1"]               = "EVT_OH_ELEC_GEN2_SWITCH",
-            ["ELEC_APUGenSw_0"]            = "EVT_OH_ELEC_APU_GEN1_SWITCH",
-            ["ELEC_APUGenSw_1"]            = "EVT_OH_ELEC_APU_GEN2_SWITCH",
+            // GRD PWR, GEN 1/2 and APU GEN 1/2 are On/Off push pairs — see
+            // _directionalPushMap; this path's CDA write is ignored for them.
             // ELEC_BatSelector, ELEC_StandbyPowerSelector, ELEC_BusTransSw_AUTO,
             // ELEC_IDGDisconnectSw_0/1 are guarded — see _guardedMap.
 
@@ -4433,7 +4437,28 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         //     specific mouse-flag direction once per press. Used by GEN 1/2,
         //     APU GEN 1/2 and Ground Power (split into separate "On" / "Off"
         //     buttons because PMDG NG3 gives no reliable per-switch state
-        //     signal — see _directionalPushMap above).
+        //     signal — see _directionalPushMap above). GEN 1/2 were the last
+        //     of these as combos, retired because a combo can't re-send the
+        //     value it already shows.
+        //
+        //     Verified dispatch shape (2026-05-22, PMDGDispatchTester rig
+        //     subscribed to PMDG_NG3_Data with PERIOD.ON_SET / FLAG.CHANGED):
+        //     CDA write with a directional MOUSE_FLAG_* in the Parameter field,
+        //     LEFTSINGLE (0x20000000) = ON (push up), RIGHTSINGLE (0x80000000)
+        //     = OFF (push down). The state persists and same-direction repeats
+        //     are idempotent on the PMDG side, so there is no cache no-op guard
+        //     (which also fixed "ON does nothing" when the snapshot lagged).
+        //
+        //     Patterns tried that do NOT work (do not revive):
+        //       - bare LEFT/RIGHTSINGLE via TransmitClientEvent (click-walk):
+        //         plays sound, state springs back.
+        //       - CDA direct-position (Parameter=0/1, taxi-light convention):
+        //         silently ignored on this event family.
+        //       - paired LEFTSINGLE+LEFTRELEASE via TransmitClientEvent
+        //         (FD-switch convention from ConnectionTest.cpp): ignored.
+        //       - CDA with MOUSE_FLAG_LEFTSINGLE for both directions (toggle):
+        //         worked for ON but cache-mismatch races could flip OFF the
+        //         wrong way ("toggling OFF actually turned it on").
         // ------------------------------------------------------------------
         if (_directionalPushMap.TryGetValue(varKey, out var directional) &&
             EventIds.TryGetValue(directional.EventName, out int dirEvId))
@@ -4447,37 +4472,6 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     ?.NotifyLocalSwitchState(directional.LocalStateKey, directional.IsOn);
             return true;
         }
-
-        // ------------------------------------------------------------------
-        // 2e. (History for 2d.) Momentary press-to-set bool switches — Ground
-        //     Power and the four generator switches on the 737 NG. All are now
-        //     On/Off push pairs dispatched by 2d; GEN 1/2 were the last combos
-        //     here, retired because a combo can't re-send the value it shows.
-        //
-        //     Verified dispatch shape (2026-05-22, standalone test rig in
-        //     PMDGDispatchTester subscribing directly to PMDG_NG3_Data with
-        //     PERIOD.ON_SET / FLAG.CHANGED): CDA write with a directional
-        //     MOUSE_FLAG_* value in the Parameter field.
-        //         LEFTSINGLE  (0x20000000) → set ON   (push up)
-        //         RIGHTSINGLE (0x80000000) → set OFF  (push down)
-        //     Direct parameter 0/1 is silently ignored. The state PERSISTS
-        //     (no spring back) and same-direction repeats are idempotent on
-        //     the PMDG side, so we don't need a cache no-op guard. Removing
-        //     the guard also fixes the "ON does nothing" complaint when the
-        //     CDA snapshot lags the actual cockpit state.
-        //
-        //     Patterns tried that do NOT work (do not revive):
-        //       - bare LEFT/RIGHTSINGLE via TransmitClientEvent (click-walk):
-        //         plays sound, state springs back.
-        //       - CDA direct-position (Parameter=0/1, taxi-light convention):
-        //         silently ignored on this event family.
-        //       - paired LEFTSINGLE+LEFTRELEASE via TransmitClientEvent
-        //         (FD-switch convention from ConnectionTest.cpp): silently
-        //         ignored.
-        //       - CDA with MOUSE_FLAG_LEFTSINGLE for both directions (toggle):
-        //         worked for ON but cache-mismatch races could flip OFF the
-        //         wrong way ("toggling OFF actually turned it on").
-        // ------------------------------------------------------------------
 
         // ------------------------------------------------------------------
         // 3. Spring-loaded selectors — dispatch via CDA direct position.
@@ -5322,24 +5316,25 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// </summary>
     protected override IReadOnlyList<AiDisplayRead> DisplayReads => Pmdg737DisplayReads.All;
 
-    /// <summary>Output-mode Shift+1..6 flap maneuver speed readout. REQUESTS a
-    /// fresh gross-weight read on every press, then announces from the cache:
-    /// PMDG737_FLAP_SPEEDS_GW has no continuous stream. async void on the UI
-    /// thread; ~600 ms lets the ONCE response land (the iFly's readout shape).</summary>
+    /// <summary>Output-mode Shift+1..6 flap maneuver speed readout. Reads the
+    /// gross weight fresh on every press (PMDG737_FLAP_SPEEDS_GW has no
+    /// continuous stream) and speaks only on a DELIVERED value, never a cache
+    /// left by an earlier press. async void on the UI thread.</summary>
     private async void AnnounceFlapManeuverSpeedAsync(int scheduleIndex,
         SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
     {
-        simConnect.RequestVariable("PMDG737_FLAP_SPEEDS_GW", forceUpdate: true);
-        await Task.Delay(600);
-        double? lbs = simConnect.GetCachedVariableValue("PMDG737_FLAP_SPEEDS_GW");
+        double? lbs = await simConnect.ReadFreshAsync("PMDG737_FLAP_SPEEDS_GW", 1000);
         if (lbs is not { } weight || !Pmdg737FlapSpeeds.IsPlausibleWeight(weight))
         {
             announcer.AnnounceImmediate("Flap speeds unavailable.");
             return;
         }
+        string title = simConnect.CurrentAircraftTitle;
+        if (Pmdg737FlapSpeeds.VariantFromTitle(title) == null)
+            Log.Info("PMDG737", $"Flap speeds: no 737 variant in title '{title}', using the -800 table");
         announcer.AnnounceImmediate(
             $"{Pmdg737FlapSpeeds.FlapName(scheduleIndex)} maneuver speed " +
-            $"{Pmdg737FlapSpeeds.ManeuverSpeedKnots(weight, simConnect.CurrentAircraftTitle, scheduleIndex)} knots, calculated");
+            $"{Pmdg737FlapSpeeds.ManeuverSpeedKnots(weight, title, scheduleIndex)} knots, calculated");
     }
 
 

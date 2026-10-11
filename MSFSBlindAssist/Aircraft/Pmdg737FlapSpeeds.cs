@@ -61,7 +61,9 @@ public static class Pmdg737FlapSpeeds
         grossWeightLbs >= MinWeightLbs && grossWeightLbs <= MaxWeightLbs;
 
     /// <summary>The variant digit from the aircraft TITLE ("737-700 PAX BW SC" -> 7,
-    /// "737-800BCF SSW" -> 8), or null when the title names none.</summary>
+    /// "737-800BCF SSW" -> 8), or null when the title names none. Never the ICAO
+    /// type instead: PMDG's -700 fuselage sets atc_model to B738, so
+    /// CurrentAircraftIcaoType reads B738 on the -700 (debug log, 2026-10-11).</summary>
     public static int? VariantFromTitle(string? title)
     {
         if (string.IsNullOrEmpty(title)) return null;
