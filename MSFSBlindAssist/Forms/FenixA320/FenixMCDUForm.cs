@@ -70,7 +70,7 @@ public class FenixMCDUForm : Form
         // Connection status
         connectionStatus = new Label
         {
-            Text = "MCDU (Left): Disconnected",
+            Text = "MCDU: Disconnected",
             Location = new Point(10, y),
             Size = new Size(400, 20),
             AccessibleName = "Connection status",
@@ -253,18 +253,25 @@ public class FenixMCDUForm : Form
         // Form-level key handling
         this.KeyDown += Form_KeyDown;
 
-        mcduSelector.SelectedIndexChanged += (s, e) =>
-        {
-            int mcduIndex = mcduSelector.SelectedIndex + 1; // 0→1 (left), 1→2 (right)
-            _service.SwitchMCDU(mcduIndex);
-            _currentDisplay = null;
-            _lastAnnouncedScratchpad = "";
-            _lastAnnouncedTitle = "";
-            mcduDisplay.Items.Clear();
-            string mcduName = mcduSelector.SelectedIndex == 0 ? "Left" : "Right";
-            this.Text = $"Fenix MCDU ({mcduName})";
-        };
+        mcduSelector.SelectedIndexChanged += (s, e) => OnSideSelected();
     }
+
+    private void OnSideSelected()
+    {
+        int side = mcduSelector.SelectedIndex + 1; // 0→1 (left), 1→2 (right)
+
+        // Forget the old side's title and scratchpad so the new side's page title is spoken (and
+        // its scratchpad, if not empty), then show its stored screen. SwitchMCDU raises
+        // DisplayUpdated synchronously, so the list is rebuilt before this returns.
+        _currentDisplay = null;
+        _lastAnnouncedScratchpad = "";
+        _lastAnnouncedTitle = "";
+        mcduDisplay.Items.Clear();
+        this.Text = $"Fenix MCDU ({SideName(side)})";
+        _service.SwitchMCDU(side);
+    }
+
+    private static string SideName(int side) => side == FenixMcduSides.Right ? "Right" : "Left";
 
     private void McduDisplay_KeyDown(object? sender, KeyEventArgs e)
     {
@@ -527,9 +534,9 @@ public class FenixMCDUForm : Form
 
     private void OnConnectionStatusChanged(bool isConnected)
     {
-        string mcduName = mcduSelector.SelectedIndex == 0 ? "Left" : "Right";
-        connectionStatus.Text = isConnected ? $"MCDU ({mcduName}): Connected" : $"MCDU ({mcduName}): Disconnected";
-        _announcer.Announce(isConnected ? $"{mcduName} MCDU connected" : $"{mcduName} MCDU disconnected");
+        // One connection serves both MCDUs, so the messages name no side.
+        connectionStatus.Text = isConnected ? "MCDU: Connected" : "MCDU: Disconnected";
+        _announcer.Announce(isConnected ? "MCDU connected" : "MCDU disconnected");
     }
 
     public void ShowForm()

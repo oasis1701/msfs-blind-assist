@@ -52,7 +52,8 @@ public class FenixMCDUService : IDisposable
     private bool _isConnected;
     private bool _disposed;
     private int _reconnectAttempt;
-    private int _mcduIndex = 1; // 1 = Captain (left), 2 = F/O (right)
+    // Both screens and the selected side; UI thread only (screens arrive through PostToUI).
+    private readonly FenixMcduScreens _screens = new();
     private static readonly int[] ReconnectDelays = { 3000, 6000, 12000, 30000 };
 
     public event Action<MCDUDisplayData>? DisplayUpdated;
@@ -81,16 +82,15 @@ public class FenixMCDUService : IDisposable
         SetConnected(false);
     }
 
+    /// <summary>
+    /// Shows the other MCDU. Both screens stay subscribed, so this never reconnects: it raises
+    /// <see cref="DisplayUpdated"/> with the stored screen at once (nothing before that side's first
+    /// screen has arrived). UI thread only.
+    /// </summary>
     public void SwitchMCDU(int mcduIndex)
     {
-        if (mcduIndex < 1 || mcduIndex > 2) return;
-        if (mcduIndex == _mcduIndex) return;
-        _mcduIndex = mcduIndex;
-        _reconnectAttempt = 0;
-
-        // Reconnect with new MCDU index
-        Disconnect();
-        Connect();
+        if (_screens.TrySelect(mcduIndex, out var stored) && stored != null)
+            DisplayUpdated?.Invoke(stored);
     }
 
     private async Task ConnectLoop(CancellationToken ct)
@@ -144,7 +144,7 @@ public class FenixMCDUService : IDisposable
             payload = new
             {
                 query = "subscription ($names: [String!]!) { dataRefs(names: $names) { name value } }",
-                variables = new { names = new[] { $"aircraft.mcdu{_mcduIndex}.display" } }
+                variables = new { names = FenixMcduSides.SubscribedRefs }
             }
         }, ct);
 
@@ -163,11 +163,17 @@ public class FenixMCDUService : IDisposable
             {
                 try
                 {
-                    var displayXml = msg["payload"]?["data"]?["dataRefs"]?["value"]?.ToString();
-                    if (!string.IsNullOrEmpty(displayXml))
+                    var dataRef = msg["payload"]?["data"]?["dataRefs"];
+                    string? name = dataRef?["name"]?.ToString();
+                    var displayXml = dataRef?["value"]?.ToString();
+                    if (!FenixMcduSides.TryGetSide(name, out int side))
+                    {
+                        Log.Debug("Services", $"Ignoring unexpected dataRef '{name}'");
+                    }
+                    else if (!string.IsNullOrEmpty(displayXml))
                     {
                         var displayData = ParseDisplayXml(displayXml);
-                        PostToUI(() => DisplayUpdated?.Invoke(displayData));
+                        PostToUI(() => StoreScreen(side, displayData));
                     }
                 }
                 catch (Exception ex)
@@ -190,9 +196,19 @@ public class FenixMCDUService : IDisposable
         }
     }
 
+    // UI thread (posted from the receive loop). Only the selected side reaches the window; the
+    // other side's screen waits for a switch.
+    private void StoreScreen(int side, MCDUDisplayData data)
+    {
+        if (_screens.Store(side, data) is { } show)
+            DisplayUpdated?.Invoke(show);
+    }
+
     public async Task SendButtonPress(string buttonName)
     {
-        var keyName = $"system.switches.S_CDU{_mcduIndex}_KEY_{buttonName}";
+        // The side is read once, so the press and its release reach the same MCDU even if the
+        // pilot switches sides in the 50 ms between them.
+        var keyName = FenixMcduSides.KeyRef(_screens.Selected, buttonName);
 
         // Send key press (value: 1)
         await SendKeyWrite(keyName, 1);
