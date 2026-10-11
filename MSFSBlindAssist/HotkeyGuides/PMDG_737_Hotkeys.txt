@@ -43,6 +43,17 @@ Weight:
 Flaps:
   L          Read Flap Position
 
+Flap Maneuver Speeds (calculated from live gross weight per the Boeing FCTM
+schedule — the PMDG does not expose the speed-tape flap bugs, so these are
+computed from VREF40 tables measured on the -700 and -800 FMCs; the -600 uses
+the -700's and the -900 the -800's):
+  Shift+1    Flaps up maneuver speed
+  Shift+2    Flaps 1 maneuver speed
+  Shift+3    Flaps 5 maneuver speed
+  Shift+4    Flaps 10 maneuver speed
+  Shift+5    Flaps 15 maneuver speed
+  Shift+6    Flaps 25 maneuver speed
+
 Landing Gear:
   Shift+G    Read Gear Position
 

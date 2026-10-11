@@ -1464,6 +1464,20 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
         d["FMC_DistanceToTOD"]     = Quantity("FMC_DistanceToTOD", "Distance To Top of Descent");
         d["FMC_DistanceToDest"]    = Quantity("FMC_DistanceToDest", "Distance To Destination");
         d["FMC_flightNumber"]      = Display("FMC_flightNumber", "Flight Number");
+        // Gross weight for the CALCULATED flap maneuvering speeds (Pmdg737FlapSpeeds;
+        // the bugs are exposed nowhere). No continuous stream (IsAnnounced = false,
+        // the iFly's IFLY_FLAP_SPEEDS shape): the Shift+1..6 readout requests a fresh
+        // read per press (AnnounceFlapManeuverSpeedAsync).
+        d["PMDG737_FLAP_SPEEDS_GW"] = new SimConnect.SimVarDefinition
+        {
+            Name = "TOTAL WEIGHT",
+            DisplayName = "Gross Weight (flap speeds)",
+            Type = SimConnect.SimVarType.SimVar,
+            Units = "pounds",
+            UpdateFrequency = SimConnect.UpdateFrequency.Continuous,
+            IsAnnounced = false,
+            ExcludeFromMonitorManager = true,
+        };
 
         // General / misc
         d["WeightInKg"]          = Toggle("WeightInKg", "Weight Units", "Pounds", "Kilograms");
@@ -5308,6 +5322,26 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
     /// </summary>
     protected override IReadOnlyList<AiDisplayRead> DisplayReads => Pmdg737DisplayReads.All;
 
+    /// <summary>Output-mode Shift+1..6 flap maneuver speed readout. REQUESTS a
+    /// fresh gross-weight read on every press, then announces from the cache:
+    /// PMDG737_FLAP_SPEEDS_GW has no continuous stream. async void on the UI
+    /// thread; ~600 ms lets the ONCE response land (the iFly's readout shape).</summary>
+    private async void AnnounceFlapManeuverSpeedAsync(int scheduleIndex,
+        SimConnect.SimConnectManager simConnect, ScreenReaderAnnouncer announcer)
+    {
+        simConnect.RequestVariable("PMDG737_FLAP_SPEEDS_GW", forceUpdate: true);
+        await Task.Delay(600);
+        double? lbs = simConnect.GetCachedVariableValue("PMDG737_FLAP_SPEEDS_GW");
+        if (lbs is not { } weight || !Pmdg737FlapSpeeds.IsPlausibleWeight(weight))
+        {
+            announcer.AnnounceImmediate("Flap speeds unavailable.");
+            return;
+        }
+        announcer.AnnounceImmediate(
+            $"{Pmdg737FlapSpeeds.FlapName(scheduleIndex)} maneuver speed " +
+            $"{Pmdg737FlapSpeeds.ManeuverSpeedKnots(weight, simConnect.CurrentAircraftTitle, scheduleIndex)} knots, calculated");
+    }
+
 
     public override bool HandleHotkeyAction(
         HotkeyAction action,
@@ -5546,6 +5580,19 @@ public class PMDG737Definition : BaseAircraftDefinition, IPMDGAircraft
                     "TOTAL WEIGHT", "pounds", "GROSS_WEIGHT_KG");
                 return true;
             }
+
+            // ------------------------------------------------------------------
+            // Flap maneuvering speeds — output-mode Shift+1..6 (the FBW speed
+            // hotkey slots, as on the iFly). CALCULATED from live gross weight
+            // over this variant's measured VREF40 table (Pmdg737FlapSpeeds); the
+            // readout says "calculated" because nothing exposes the PFD bugs.
+            // ------------------------------------------------------------------
+            case HotkeyAction.ReadSpeedGD:  AnnounceFlapManeuverSpeedAsync(0, simConnect, announcer); return true; // Shift+1: flaps up
+            case HotkeyAction.ReadSpeedS:   AnnounceFlapManeuverSpeedAsync(1, simConnect, announcer); return true; // Shift+2: flaps 1
+            case HotkeyAction.ReadSpeedF:   AnnounceFlapManeuverSpeedAsync(2, simConnect, announcer); return true; // Shift+3: flaps 5
+            case HotkeyAction.ReadSpeedVLS: AnnounceFlapManeuverSpeedAsync(3, simConnect, announcer); return true; // Shift+4: flaps 10
+            case HotkeyAction.ReadSpeedVS:  AnnounceFlapManeuverSpeedAsync(4, simConnect, announcer); return true; // Shift+5: flaps 15
+            case HotkeyAction.ReadSpeedVFE: AnnounceFlapManeuverSpeedAsync(5, simConnect, announcer); return true; // Shift+6: flaps 25
 
             // ------------------------------------------------------------------
             // MCP Direct-Set Input Dialogs
