@@ -61,6 +61,23 @@ public class A380MinimumsTests
         Assert.Null(A380Minimums.Announcement(dh, previous, feet: -1));
     }
 
+    // A new flight (or a reconnect) starts the MFD over, and FBW's initSimVars writes MDA 0 and
+    // DH -1: the first read after a context reset is the new situation, not a clear to narrate.
+    [Theory]
+    [InlineData(false, 940)]
+    [InlineData(true, 0)]
+    public void The_first_read_after_a_context_reset_does_not_speak_a_clear(bool dh, int previous)
+    {
+        Assert.Null(A380Minimums.Announcement(dh, previous, feet: -1, reseeding: true));
+    }
+
+    [Fact]
+    public void The_first_read_after_a_context_reset_still_speaks_a_new_minimum()
+    {
+        Assert.Equal("Baro minimum 500 feet",
+            A380Minimums.Announcement(isDecisionHeight: false, previousFeet: 940, feet: 500, reseeding: true));
+    }
+
     [Fact]
     public void An_unchanged_minimum_is_silent()
     {

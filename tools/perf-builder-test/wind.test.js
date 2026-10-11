@@ -49,6 +49,9 @@ test('Draft winds: the title and both draft buttons read', () => {
   assert.ok(t.includes('CANCEL WIND *'));
   assert.ok(t.includes('INSERT WIND *'));
   assert.ok(t.includes('CPNY WIND REQUEST *'), 'the request button keeps its visible star');
+  // Its menu holds Button.tsx's empty wrapper <div> and no option: still a plain button (as is
+  // INIT's CPNY F-PLN REQUEST, built the same way).
+  assert.strictEqual(line('wind_clb', 'CPNY WIND REQUEST *').kind, 'button');
 });
 
 test('CRZ: the waypoint arrows are named, propagated values say computed', () => {

@@ -170,13 +170,16 @@
   };
 
   // True when a Button's own menu (the .mfd-dropdown-menu beside it in its
-  // .mfd-dropdown-container) holds at least one item.
+  // .mfd-dropdown-container) holds at least one option. Count OPTIONS, not children:
+  // Button.tsx renders its items inside a wrapper <div> even when there are none, so
+  // every arrow-less menu button (INIT's CPNY F-PLN REQUEST among them) has a child.
   A.siblingMenuHasItems = function (node) {
     var p = node.parentElement;
     if (!p || !p.classList || !p.classList.contains("mfd-dropdown-container")) return false;
     for (var i = 0; i < p.children.length; i++) {
       var c = p.children[i];
-      if (c.classList && c.classList.contains("mfd-dropdown-menu")) return c.children.length > 0;
+      if (c.classList && c.classList.contains("mfd-dropdown-menu"))
+        return !!c.querySelector(".mfd-dropdown-menu-element");
     }
     return false;
   };

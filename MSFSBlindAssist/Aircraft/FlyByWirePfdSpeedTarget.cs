@@ -38,7 +38,9 @@ public static class FlyByWirePfdSpeedTarget
         var target = new Arinc429Word(raw);
         if (!target.HasData) return false;
 
-        var discrete = new Arinc429Word(word5 ?? 0);
+        // Word 5 is a sibling read that can land after the row's: say no mode rather than guess.
+        if (word5 is not double w5) { text = Knots(target.Value); return true; }
+        var discrete = new Arinc429Word(w5);
         bool managed = discrete.BitValueOr(19, false) && !discrete.BitValueOr(20, false);
         text = Knots(target.Value) + (managed ? ", managed" : ", selected");
         return true;

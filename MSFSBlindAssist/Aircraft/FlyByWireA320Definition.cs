@@ -7861,7 +7861,8 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // Approach speed from the FMS (0 = none entered or computed).
         if (varKey == "A32NX_SPEEDS_VAPP")
         {
-            displayText = value < 1 ? "not set" : Math.Round(value).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " knots";
+            displayText = value < 1 ? "not set"
+                : Math.Round(value, MidpointRounding.AwayFromZero).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " knots";
             return true;
         }
         // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).

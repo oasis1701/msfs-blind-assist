@@ -104,6 +104,24 @@ public class A32nxPfdSpeedTargetTests : IDisposable
     {
         Assert.Equal("none", FlyByWirePfdSpeedTarget.Describe(null, null, null, null, null));
     }
+
+    [Fact]
+    public void A_target_whose_discrete_word_is_not_read_yet_says_no_mode()
+    {
+        // The sibling read can land after the row's; "selected" would be a guess.
+        Assert.Equal("290 knots",
+            FlyByWirePfdSpeedTarget.Describe(Bnr(NormalOperation, 290f), null, null, null, null));
+    }
+
+    [Theory]
+    [InlineData(0, "not set")]
+    [InlineData(137, "137 knots")]
+    [InlineData(136.5, "137 knots")]   // away from zero, as the speed target rounds
+    public void Vapp_reads_knots_or_not_set(double value, string expected)
+    {
+        Assert.True(new FlyByWireA320Definition().TryGetDisplayOverride("A32NX_SPEEDS_VAPP", value, out string text));
+        Assert.Equal(expected, text);
+    }
 }
 
 public class A32nxPfdSpeedRowsTests
@@ -128,14 +146,5 @@ public class A32nxPfdSpeedRowsTests
         Assert.Contains("A32NX_SPEEDS_MANAGED_PFD", pfd);
         Assert.DoesNotContain(FlyByWireA320Definition.PfdSpeedTargetKey, pfd);
         Assert.DoesNotContain("A32NX_SPEEDS_VAPP", pfd);
-    }
-
-    [Theory]
-    [InlineData(0, "not set")]
-    [InlineData(137, "137 knots")]
-    public void Vapp_reads_knots_or_not_set(double value, string expected)
-    {
-        Assert.True(new FlyByWireA320Definition().TryGetDisplayOverride("A32NX_SPEEDS_VAPP", value, out string text));
-        Assert.Equal(expected, text);
     }
 }

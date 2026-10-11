@@ -96,7 +96,8 @@ public class FBWA380MCDUForm : Form
         new("SEC 2: F-PLN",       "", -1, "", "fms/sec2/f-pln"),
         new("SEC 3: F-PLN",       "", -1, "", "fms/sec3/f-pln"),
         // Secondary-plan winds (#10929). FBW routes no SEC 3 wind page (MfdPageDirectory.tsx),
-        // so there is no entry for it.
+        // so there is no entry for it. These go by URI (there is no page selector for them), so
+        // on a build older than #10929 they land on the MFD's not-found page.
         new("SEC 1: WIND",        "", -1, "", "fms/sec1/wind"),
         new("SEC 2: WIND",        "", -1, "", "fms/sec2/wind"),
         new("DATA: STATUS",       "Data",     0, ""),
