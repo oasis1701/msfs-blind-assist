@@ -74,7 +74,9 @@ internal static class LocationGeometry
         {
             int a = s, b = (s + 1) % n;
             double ax = WrapDelta(coords[2 * a] - lon) * 60.0 * cosLat, ay = (coords[2 * a + 1] - lat) * 60.0;
-            double bx = WrapDelta(coords[2 * b] - lon) * 60.0 * cosLat, by = (coords[2 * b + 1] - lat) * 60.0;
+            // b is framed from a, not from the aircraft: wrapped on its own, a segment across the
+            // aircraft's antipodal meridian would span 360° and pass through its own meridian.
+            double bx = ax + WrapDelta(coords[2 * b] - coords[2 * a]) * 60.0 * cosLat, by = (coords[2 * b + 1] - lat) * 60.0;
             double dx = bx - ax, dy = by - ay;
             double lenSq = dx * dx + dy * dy;
             double t = lenSq <= 0 ? 0 : Math.Clamp(-(ax * dx + ay * dy) / lenSq, 0, 1);

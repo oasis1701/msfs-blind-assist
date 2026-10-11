@@ -19,6 +19,11 @@ internal sealed record LocationBuildInputs(
     public long MinimumRows { get; init; } = 12_000_000;
 }
 
+/// <summary>The GeoNames dump itself failed the build's checks (a damaged zip, no allCountries.txt,
+/// ended early, a CRC mismatch, below the row floors): the job deletes it so the next press fetches
+/// it afresh (LOC-4). Any other build failure keeps the download.</summary>
+internal sealed class GeoNamesDumpRejectedException(string message, Exception? inner = null) : Exception(message, inner);
+
 internal enum BuildPhase { Places, Shapes, Packing, Verifying }
 
 internal readonly record struct BuildProgress(BuildPhase Phase, int Percent);
@@ -75,13 +80,21 @@ internal sealed class LocationDataBuilder
 
                 var countries = GeoNamesNameFiles.ParseCountryInfo(File.ReadLines(inputs.CountryInfoPath, Encoding.UTF8));
                 var states = GeoNamesNameFiles.ParseAdmin1(File.ReadLines(inputs.Admin1Path, Encoding.UTF8));
-                (places, rows) = ImportPlaces(db, inputs.GeoNamesZip, countries, states,
-                    p => Report(BuildPhase.Places, p * 85 / 100), ct);
+                try
+                {
+                    (places, rows) = ImportPlaces(db, inputs.GeoNamesZip, countries, states,
+                        p => Report(BuildPhase.Places, p * 85 / 100), ct);
+                }
+                catch (InvalidDataException ex)
+                {
+                    // System.IO.Compression found the zip damaged: no central directory, a broken entry or stream.
+                    throw new GeoNamesDumpRejectedException("The GeoNames download is damaged: " + ex.Message, ex);
+                }
                 Log.Info("LocationData", $"Imported {places} of {rows} GeoNames rows in {sw.Elapsed.TotalSeconds:F0} s");
                 if (rows < inputs.MinimumRows)
-                    throw new InvalidDataException($"The GeoNames file has only {rows} rows; it looks truncated.");
+                    throw new GeoNamesDumpRejectedException($"The GeoNames file has only {rows} rows; it looks truncated.");
                 if (places < inputs.MinimumPlaces)
-                    throw new InvalidDataException($"Only {places} places were kept; the GeoNames file looks damaged.");
+                    throw new GeoNamesDumpRejectedException($"Only {places} places were kept; the GeoNames file looks damaged.");
 
                 ImportShapes(db, inputs.NaturalEarthFiles, p => Report(BuildPhase.Shapes, 85 + p * 10 / 100), ct);
                 WriteMeta(db, new Dictionary<string, string>
@@ -156,7 +169,7 @@ internal sealed class LocationDataBuilder
     {
         using var zip = ZipFile.OpenRead(zipPath);
         var entry = zip.GetEntry("allCountries.txt")
-            ?? throw new InvalidDataException("The GeoNames download does not contain allCountries.txt.");
+            ?? throw new GeoNamesDumpRejectedException("The GeoNames download does not contain allCountries.txt.");
         using var raw = entry.Open();
         using var counting = new CrcCountingStream(raw);
         using var reader = new StreamReader(counting, Encoding.UTF8, detectEncodingFromByteOrderMarks: false, bufferSize: 1 << 16);
@@ -233,9 +246,9 @@ internal sealed class LocationDataBuilder
         Flush();
 
         if (counting.BytesRead != entry.Length)
-            throw new InvalidDataException("The GeoNames file ended early; it looks truncated.");
+            throw new GeoNamesDumpRejectedException("The GeoNames file ended early; it looks truncated.");
         if (counting.Crc32 != entry.Crc32)
-            throw new InvalidDataException("The GeoNames file is damaged (checksum mismatch).");
+            throw new GeoNamesDumpRejectedException("The GeoNames file is damaged (checksum mismatch).");
 
         using (var tx = db.BeginTransaction())
         {

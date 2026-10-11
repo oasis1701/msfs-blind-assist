@@ -119,7 +119,7 @@ public partial class MainForm
 
         if (!offlineLocationService.IsAvailable)
         {
-            announcer.AnnounceImmediate(Services.Geography.LocationPhrases.Unavailable(offlineLocationService.NeedsUpdate));
+            announcer.AnnounceImmediate(LocationDataUnavailableText());
             return;
         }
 
@@ -136,7 +136,7 @@ public partial class MainForm
                     var report = await Task.Run(() => offlineLocationService.GetLocationInfo(position.Latitude, position.Longitude, query));
                     if (report?.Details is null)
                     {
-                        announcer.AnnounceImmediate(Services.Geography.LocationPhrases.Unavailable(offlineLocationService.NeedsUpdate));
+                        announcer.AnnounceImmediate(LocationDataUnavailableText());
                         return;
                     }
                     var locationForm = new Forms.LocationInfoForm(report, query.Kilometres);
