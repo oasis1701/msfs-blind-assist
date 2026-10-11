@@ -1,0 +1,1 @@
+On the Fenix A320, the MCDU no longer stalls for about two seconds on the first key press after a pause, switching between the left and right MCDU is instant, and the FCU and altimeter readouts (Shift+H, Shift+S, Shift+A, Shift+V and B in output mode) speak at once instead of after up to a second.
