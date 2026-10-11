@@ -1316,6 +1316,11 @@ public partial class MainForm : Form
         if (flyByWireMCDUForm != null && !flyByWireMCDUForm.IsDisposed) flyByWireMCDUForm.Dispose();
         flyByWireMCDUService?.Dispose();
 
+        // Fenix MCDU: its data-service socket and reconnect loop (otherwise only disposed on
+        // aircraft swap). The window first, then the service, as above.
+        if (fenixMCDUForm != null && !fenixMCDUForm.IsDisposed) fenixMCDUForm.Dispose();
+        fenixMCDUService?.Dispose();
+
         // Clean up PMDG EFB Coherent clients (otherwise only disposed on aircraft swap —
         // a user who opens the EFB then quits without switching aircraft leaks the socket + poll loop).
         coherentPmdgEfbCaptain?.Dispose();

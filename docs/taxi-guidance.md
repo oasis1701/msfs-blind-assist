@@ -691,11 +691,13 @@ Hotkeys are identical across all supported aircraft.
 | `Ctrl+Shift+L` | Surroundings window — opens read-only lists (fuel, every frequency, then everything within 1 km, nearest first), reusing `SayIntentionsInfoForm`. In its Frequencies list, Enter tunes COM 1 standby and Shift+Enter COM 1 active. |
 
 Both `L` chords are output-mode keys like every other row above: press `]` first, then the
-chord. Three aircraft guides list the same chord for a WINDOW-LOCAL function (the FBW A380 MFD's
-`Alt+L` = FUEL & LOAD, the iFly FMC's `Alt+L` = LEGS, the TFDi MD-11 MCDU's `Ctrl+Shift+L` =
-switch to the left MCDU). Those are focus-scoped WinForms handlers and are unaffected without
-`]`; while output mode is armed the global chord wins — the same precedence the already-shipped
-`Alt+V` / `Alt+D` / `Alt+E` have.
+chord. Four aircraft guides list the same chord for a WINDOW-LOCAL function (the FBW A380 MFD's
+`Alt+L` = FUEL & LOAD, the iFly FMC's `Alt+L` = LEGS, the TFDi MD-11 MCDU's and the Fenix MCDU's
+`Ctrl+Shift+L` = switch to the left MCDU). Those are focus-scoped WinForms handlers and are
+unaffected without `]`; while output mode is armed the global chord wins — the same precedence the
+already-shipped `Alt+V` / `Alt+D` / `Alt+E` have. The same holds for those two MCDU windows'
+`Ctrl+Shift+R` (switch to the right MCDU): it is window-local too, and the global output-mode
+`Ctrl+Shift+R` (last landing rate) wins only while output mode is armed.
 
 ### Input mode (press `[`)
 
