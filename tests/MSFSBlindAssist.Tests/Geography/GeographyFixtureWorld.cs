@@ -23,13 +23,15 @@ internal static class GeographyFixtureWorld
         Row(6, "Sugarloaf Mountain", 38.90, -77.00, "T", "MT", "MD", 0),
         Row(7, "Bay Museum", 38.50, -76.50, "S", "MUS", "MD", 0),
         Row(8, "Some School", 38.51, -76.51, "S", "SCH", "MD", 0),
+        // Just across the border in the second state: the nearest town to (38.31, -76.9), which is in Maryland.
+        Row(9, "Bordertown", 38.28, -76.90, "P", "PPL", "VA", 800),
     };
 
     /// <summary>Places the catalog keeps out of <see cref="Rows"/> (the school is dropped).</summary>
-    internal const int KeptPlaces = 7;
+    internal const int KeptPlaces = 8;
 
     internal const string CountryInfo = "#ISO\tISO3\tNum\tfips\tCountry\nUS\tUSA\t840\tUS\tUnited States\n";
-    internal const string Admin1 = "US.MD\tMaryland\tMaryland\t4361885\n";
+    internal const string Admin1 = "US.MD\tMaryland\tMaryland\t4361885\nUS.VA\tVirginia\tVirginia\t6254928\n";
 
     internal static byte[] DumpZip()
     {
@@ -55,9 +57,11 @@ internal static class GeographyFixtureWorld
         [NaturalEarthLayer.Region] = Collection(
             Box("{\"NAME\":\"TEST RANGE\",\"FEATURECLA\":\"Range/mtn\"}", 46, 9, 47, 11),
             Box("{\"NAME\":\"EUROPE\",\"FEATURECLA\":\"Continent\"}", 35, -10, 70, 40)),
-        // Natural Earth spells it its own way; GeoNames' spelling must win (gn_a1_code US.MD).
+        // Natural Earth spells it its own way; the box says GeoNames' spelling, taken from a town
+        // inside the outline. The gn_a1_code is deliberately misleading: it must never be used (LOC-9).
         [NaturalEarthLayer.State] = Collection(
-            Box("{\"name\":\"State of Maryland\",\"admin\":\"United States of America\",\"iso_a2\":\"US\",\"gn_a1_code\":\"US.MD\"}", 38.3, -77.5, 39.5, -76.6)),
+            Box("{\"name\":\"State of Maryland\",\"admin\":\"United States of America\",\"iso_a2\":\"US\",\"gn_a1_code\":\"US.VA\"}", 38.3, -77.5, 39.5, -76.6),
+            Box("{\"name\":\"Commonwealth of Virginia\",\"admin\":\"United States of America\",\"iso_a2\":\"US\",\"gn_a1_code\":\"US.VA\"}", 37.5, -77.5, 38.3, -76.6)),
     };
 
     /// <summary>Writes every input file into <paramref name="dir"/> for a direct build.</summary>

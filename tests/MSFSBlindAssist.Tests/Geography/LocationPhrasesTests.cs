@@ -28,23 +28,23 @@ public class LocationPhrasesTests
     private static readonly WhereYouAre OverChesapeake = new()
     {
         Water = WaterKind.Sea, WaterName = "Chesapeake Bay", EdgeNm = Nm(5.2), EdgeBearingTrue = 270,
-        State = "Maryland", Country = "United States", StateIsNearest = true,
+        State = "Maryland", Country = "United States",
         TimeZone = "Eastern Daylight Time",
     };
 
     [Fact]
-    public void Over_a_bay_the_water_comes_first()
+    public void Over_a_bay_the_water_comes_first_then_the_nearest_land()
     {
         Assert.Equal(
-            "Over Chesapeake Bay, coast 5.2 miles west. Near Dares Beach, Maryland, United States, 5.4 miles west",
+            "Over Chesapeake Bay, nearest land 5.2 miles west. Near Dares Beach, Maryland, United States, 5.4 miles west",
             LocationPhrases.NearestCitySentence(OverChesapeake, DaresBeach, kilometres: false, nearbyRange: 25));
     }
 
     [Fact]
-    public void Open_ocean_without_a_town_says_the_ocean_and_the_coast()
+    public void Open_ocean_without_a_town_says_the_ocean_and_the_nearest_land()
     {
         var atlantic = new WhereYouAre { Water = WaterKind.Sea, WaterName = "North Atlantic Ocean", EdgeNm = Nm(368), EdgeBearingTrue = 180 };
-        Assert.Equal("Over North Atlantic Ocean, coast 368 miles south",
+        Assert.Equal("Over North Atlantic Ocean, nearest land 368 miles south",
             LocationPhrases.NearestCitySentence(atlantic, null, false, 25));
     }
 
@@ -68,6 +68,15 @@ public class LocationPhrasesTests
     }
 
     [Fact]
+    public void Over_land_the_coast_is_named_by_its_sea_when_known()
+    {
+        var brighton = new WhereYouAre { EdgeNm = Nm(1.2), EdgeBearingTrue = 180, CoastWater = "English Channel" };
+        var place = new PlaceHit("Brighton", "England", "United Kingdom", Nm(0.5), 0);
+        Assert.Equal("Near Brighton, England, United Kingdom, 0.5 miles north, English Channel coast 1.2 miles south",
+            LocationPhrases.NearestCitySentence(brighton, place, false, 25));
+    }
+
+    [Fact]
     public void Over_land_the_coast_threshold_is_80_km_in_kilometres()
     {
         var at70km = new WhereYouAre { EdgeNm = 70 / LocationPhrases.KmPerNm, EdgeBearingTrue = 90 };
@@ -77,10 +86,10 @@ public class LocationPhrasesTests
     }
 
     [Fact]
-    public void Over_a_lake_the_edge_is_the_shore()
+    public void Over_a_lake_the_edge_is_the_nearest_land_too()
     {
         var lake = new WhereYouAre { Water = WaterKind.Lake, WaterName = "Lake Michigan", EdgeNm = Nm(20), EdgeBearingTrue = 90 };
-        Assert.Equal("Over Lake Michigan, shore 20 miles east", LocationPhrases.NearestCitySentence(lake, null, false, 25));
+        Assert.Equal("Over Lake Michigan, nearest land 20 miles east", LocationPhrases.NearestCitySentence(lake, null, false, 25));
     }
 
     [Fact]
@@ -94,23 +103,32 @@ public class LocationPhrasesTests
     public void Where_you_are_box_over_the_bay()
     {
         Assert.Equal(
-            "Over Chesapeake Bay\r\nCoast: 5.2 miles west\r\nNearest state: Maryland, United States\r\nTime zone: Eastern Daylight Time",
+            "Over Chesapeake Bay\r\nNearest land: 5.2 miles west\r\nNear: Maryland, United States\r\nTime zone: Eastern Daylight Time",
             LocationPhrases.WhereYouAreText(OverChesapeake, false));
     }
 
     [Fact]
-    public void Where_you_are_box_over_land_puts_the_state_first_and_the_close_coast_after_the_region()
+    public void Where_you_are_box_over_land_puts_the_area_first_and_the_close_coast_after_the_region()
     {
         var alps = new WhereYouAre
         {
-            State = "Graubünden", Country = "Switzerland", Region = "Alps", RegionKind = "mountain range",
+            State = "Grisons", Country = "Switzerland", Region = "Alps", RegionKind = "mountain range",
             EdgeNm = Nm(130), EdgeBearingTrue = 135, TimeZone = "W. Europe Daylight Time",
         };
-        Assert.Equal("State: Graubünden, Switzerland\r\nRegion: Alps, mountain range\r\nTime zone: W. Europe Daylight Time",
+        Assert.Equal("In: Grisons, Switzerland\r\nRegion: Alps, mountain range\r\nTime zone: W. Europe Daylight Time",
             LocationPhrases.WhereYouAreText(alps, false));
 
         var coastal = alps with { EdgeNm = Nm(12) };
         Assert.Contains("Region: Alps, mountain range\r\nCoast: 12 miles southeast\r\n", LocationPhrases.WhereYouAreText(coastal, false));
+
+        var named = coastal with { CoastWater = "Mediterranean Sea" };
+        Assert.Contains("\r\nCoast: Mediterranean Sea, 12 miles southeast\r\n", LocationPhrases.WhereYouAreText(named, false));
+    }
+
+    [Fact]
+    public void A_country_without_a_state_reads_just_the_country()
+    {
+        Assert.StartsWith("In: Monaco\r\n", LocationPhrases.WhereYouAreText(new WhereYouAre { Country = "Monaco", TimeZone = "x" }, false));
     }
 
     [Fact]
@@ -149,9 +167,9 @@ public class LocationPhrasesTests
         UnderCulture(culture, () =>
         {
             string s = LocationPhrases.NearestCitySentence(OverChesapeake, DaresBeach, false, 25);
-            Assert.Contains("coast 5.2 miles west", s);
+            Assert.Contains("nearest land 5.2 miles west", s);
             Assert.Contains("5.4 miles west", s);
-            Assert.Contains("Coast: 5.2 miles west", LocationPhrases.WhereYouAreText(OverChesapeake, false));
+            Assert.Contains("Nearest land: 5.2 miles west", LocationPhrases.WhereYouAreText(OverChesapeake, false));
         });
     }
 

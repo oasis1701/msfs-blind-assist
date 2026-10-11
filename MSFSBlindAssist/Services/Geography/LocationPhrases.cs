@@ -7,20 +7,23 @@ internal enum WaterKind { None, Sea, Lake }
 /// <summary>The nearest populated place to a position.</summary>
 internal sealed record PlaceHit(string Name, string State, string Country, double DistanceNm, double BearingTrue);
 
-/// <summary>What the Natural Earth shapes (and, as a fallback, the nearest place) say about a position.</summary>
+/// <summary>What the Natural Earth shapes and the nearest GeoNames places say about a position.</summary>
 internal sealed record WhereYouAre
 {
     public WaterKind Water { get; init; }
     public string? WaterName { get; init; }
-    /// <summary>Distance to the sea coast (over sea or land) or to the lake's shore (over a lake);
-    /// null when none was found in range.</summary>
+    /// <summary>Over water (sea or lake): the distance to the nearest land. Over land: the distance
+    /// to the sea coast. Null when none was found in range.</summary>
     public double? EdgeNm { get; init; }
     public double EdgeBearingTrue { get; init; }
+    /// <summary>Over land: the named sea or bay at that coast ("English Channel"), when Natural
+    /// Earth names it.</summary>
+    public string? CoastWater { get; init; }
+    /// <summary>The country's first-level division (state, province, canton, region…) in GeoNames'
+    /// spelling, the one the C sentence uses: the area you are IN over land, the area you are
+    /// NEAR over water.</summary>
     public string? State { get; init; }
     public string? Country { get; init; }
-    /// <summary>True when the state came from the nearest place, not from a state polygon
-    /// containing the position (Natural Earth's states stop at the shore of a bay).</summary>
-    public bool StateIsNearest { get; init; }
     public string? Region { get; init; }
     /// <summary>Spoken kind of the region, e.g. "mountain range".</summary>
     public string? RegionKind { get; init; }
@@ -29,9 +32,11 @@ internal sealed record WhereYouAre
 
 /// <summary>
 /// Everything Location Info and Output > C say, composed in one place. Over water the water
-/// comes first ("Over Chesapeake Bay, coast 5.2 miles west. Near Dares Beach, …"); over land the
-/// sentence is the familiar "Near …" one, with the coast added only when it is within 50 miles
-/// (80 km). Over a lake the edge is its "shore", never the sea coast. Numbers are invariant:
+/// comes first and the distance is to the nearest land ("Over Chesapeake Bay, nearest land 5.2
+/// miles west. Near Dares Beach, …"); over land the sentence is the familiar "Near …" one, with
+/// the sea coast added, named when Natural Earth names its water ("English Channel coast 1.2
+/// miles south"), only within 50 miles (80 km). The area line says "In:" over land and "Near:"
+/// over water, never "State:", which fits few countries outside the US. Numbers are invariant:
 /// a pilot on a German Windows still hears "5.4 miles".
 /// </summary>
 internal static class LocationPhrases
@@ -65,7 +70,7 @@ internal static class LocationPhrases
     internal static string PlaceDistance(double nm, bool kilometres) =>
         Inv($"{ToUnit(nm, kilometres):0.0} {UnitWord(kilometres)}");
 
-    /// <summary>A coast or shore distance: one decimal under 10, whole numbers above ("368 miles").</summary>
+    /// <summary>A nearest-land or coast distance: one decimal under 10, whole numbers above ("368 miles").</summary>
     internal static string EdgeDistance(double nm, bool kilometres)
     {
         double v = ToUnit(nm, kilometres);
@@ -86,19 +91,24 @@ internal static class LocationPhrases
         return s + ", " + PlaceDistance(place.DistanceNm, kilometres) + " " + Direction(place.BearingTrue);
     }
 
-    /// <summary>"coast 5.2 miles west" / "shore 3.0 miles north"; null when there is no edge.</summary>
+    /// <summary>For C: "nearest land 5.2 miles west" over water, "English Channel coast 1.2 miles
+    /// south" (or plain "coast …" when the water is unnamed) over land; null when there is no edge.</summary>
     internal static string? EdgeClause(WhereYouAre where, bool kilometres)
     {
         if (where.EdgeNm is not double nm) return null;
-        string word = where.Water == WaterKind.Lake ? "shore" : "coast";
-        return word + " " + EdgeDistance(nm, kilometres) + " " + Direction(where.EdgeBearingTrue);
+        string what = IsOverWater(where) ? "nearest land"
+            : string.IsNullOrEmpty(where.CoastWater) ? "coast" : where.CoastWater + " coast";
+        return what + " " + EdgeDistance(nm, kilometres) + " " + Direction(where.EdgeBearingTrue);
     }
+
+    private static bool IsOverWater(WhereYouAre where) =>
+        where.Water != WaterKind.None && !string.IsNullOrEmpty(where.WaterName);
 
     /// <summary>Output > C.</summary>
     internal static string NearestCitySentence(WhereYouAre where, PlaceHit? place, bool kilometres, int nearbyRange)
     {
         string? edge = EdgeClause(where, kilometres);
-        if (where.Water != WaterKind.None && !string.IsNullOrEmpty(where.WaterName))
+        if (IsOverWater(where))
         {
             string lead = "Over " + where.WaterName + (edge is null ? "" : ", " + edge);
             return place is null ? lead : lead + ". " + PlaceClause(place, kilometres);
@@ -114,40 +124,37 @@ internal static class LocationPhrases
         return s + (coastClose ? ", " + edge : "");
     }
 
-    /// <summary>The "Where you are" box of the Location Info window, one fact per line.</summary>
+    /// <summary>The "Where you are" box of the Location Info window, one fact per line. Over water:
+    /// "Over …", "Nearest land: …", "Near: Maryland, United States". Over land: "In: Bavaria,
+    /// Germany", the region, "Coast: English Channel, 1.2 miles south" within 50 miles. Then the
+    /// time zone.</summary>
     internal static string WhereYouAreText(WhereYouAre where, bool kilometres)
     {
         var lines = new List<string>();
-        string? edge = EdgeDistanceLine(where, kilometres);
-        bool overWater = where.Water != WaterKind.None && !string.IsNullOrEmpty(where.WaterName);
+        bool overWater = IsOverWater(where);
+        string? distance = where.EdgeNm is double nm
+            ? EdgeDistance(nm, kilometres) + " " + Direction(where.EdgeBearingTrue)
+            : null;
+        string? area = StateAndCountry(where);
+
         if (overWater)
         {
             lines.Add("Over " + where.WaterName);
-            if (edge is not null) lines.Add(edge);
+            if (distance is not null) lines.Add("Nearest land: " + distance);
+            if (area is not null) lines.Add("Near: " + area);
         }
-
-        string? area = StateAndCountry(where);
-        if (area is not null)
+        else if (area is not null)
         {
-            string label = string.IsNullOrEmpty(where.State) ? "Country" : where.StateIsNearest ? "Nearest state" : "State";
-            lines.Add(label + ": " + area);
+            lines.Add("In: " + area);
         }
         if (!string.IsNullOrEmpty(where.Region))
             lines.Add("Region: " + where.Region + (string.IsNullOrEmpty(where.RegionKind) ? "" : ", " + where.RegionKind));
-        if (!overWater && edge is not null && CoastCloseOverLand(where.EdgeNm!.Value, kilometres))
-            lines.Add(edge);
+        if (!overWater && distance is not null && CoastCloseOverLand(where.EdgeNm!.Value, kilometres))
+            lines.Add("Coast: " + (string.IsNullOrEmpty(where.CoastWater) ? "" : where.CoastWater + ", ") + distance);
         if (!string.IsNullOrEmpty(where.TimeZone))
             lines.Add("Time zone: " + where.TimeZone);
 
         return lines.Count == 0 ? "No details for this position." : string.Join("\r\n", lines);
-    }
-
-    /// <summary>"Coast: 5.2 miles west" / "Shore: …"; null when there is no edge.</summary>
-    private static string? EdgeDistanceLine(WhereYouAre where, bool kilometres)
-    {
-        if (where.EdgeNm is not double nm) return null;
-        string label = where.Water == WaterKind.Lake ? "Shore" : "Coast";
-        return label + ": " + EdgeDistance(nm, kilometres) + " " + Direction(where.EdgeBearingTrue);
     }
 
     private static string? StateAndCountry(WhereYouAre where)

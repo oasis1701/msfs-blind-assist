@@ -30,10 +30,13 @@ internal sealed record LocationReport(WhereYouAre Where, PlaceHit? Nearest, Loca
 /// <summary>
 /// Answers Output C and Location Info from the local database: no network at lookup time. A
 /// position is classified lake first (Natural Earth's states cover the Great Lakes), then land
-/// (inside a state polygon), then sea (inside a named marine polygon); over a lake the edge is
-/// its shore, at sea the coast at any distance, over land the coast only within 50 miles.
-/// When no state polygon contains the position (a bay: the states stop at the shore) the state
-/// comes from the nearest place. Every lookup runs under the store's read lock.
+/// (inside a state polygon), then sea (inside a named marine polygon). Over water the edge is the
+/// nearest land (a lake's own outline, its islands included; the sea coast at any distance at
+/// sea); over land it is the sea coast, searched only within 50 miles and named by the sea just
+/// past it. The area (state, province, canton…) always comes from GeoNames, the source the C
+/// sentence names places from: over land the nearest town inside the same state outline (so a
+/// town across a border never names it), over water the nearest town. Every lookup runs under
+/// the store's read lock.
 /// </summary>
 internal sealed class OfflineLocationService
 {
@@ -68,25 +71,33 @@ internal sealed class OfflineLocationService
         bool land = !lake && hits.State is not null;
         bool sea = !lake && !land && hits.Marine is not null;
 
-        (double Nm, double Bearing)? edge = lake
+        EdgePoint? edge = lake
             ? NearestOnRings(hits.Lake!.Rings, closed: true, lat, lon)
             : NearestCoast(c, lat, lon, sea ? SeaCoastMaxKm : s.CoastOverLandKm);
+        // Over land, name the water at the coast: "English Channel coast", not just "coast".
+        string? coastWater = !lake && !sea && edge is { } e ? SeaBeyond(c, e, lat, lon) : null;
 
-        var nearby = Places(c, lat, lon, s.Km(s.NearbyRange), LocationCategory.Town, LocationCategory.Village);
-        var nearest = nearby.Count == 0 ? null : nearby.MinBy(p => p.DistanceNm);
+        var nearby = Places(c, lat, lon, s.Km(s.NearbyRange), LocationCategory.Town, LocationCategory.Village)
+            .OrderBy(p => p.DistanceNm).ToList();
+        var nearest = nearby.FirstOrDefault();
         PlaceHit? place = nearest is null ? null : ToHit(nearest, admins);
 
+        // The area in GeoNames' spelling, as C names places. Never Natural Earth's gn_a1_code:
+        // its French department numbers collide with GeoNames' region numbers (LOC-9).
         string? state = null, country = null;
-        bool stateIsNearest = false;
-        if (hits.State is not null)
+        var areaSource = land
+            ? nearby.FirstOrDefault(p => LocationGeometry.InPolygon(hits.State!.Rings, p.Lat, p.Lon))
+            : nearest;
+        if (areaSource is not null)
         {
-            (state, country) = admins.ForStatePolygon(hits.State.Name, hits.State.Extra);
+            var (s1, c1) = admins.Of(areaSource.AdminId);
+            state = s1.Length > 0 ? s1 : null;
+            country = c1.Length > 0 ? c1 : null;
         }
-        else if (place is not null)
+        else if (land)
         {
-            state = place.State.Length > 0 ? place.State : null;
-            country = place.Country.Length > 0 ? place.Country : null;
-            stateIsNearest = true;
+            // No town inside this state outline within range (a remote area): the outline's own name.
+            (state, country) = admins.ForStatePolygon(hits.State!.Name, hits.State.Extra);
         }
 
         var where = new WhereYouAre
@@ -95,9 +106,9 @@ internal sealed class OfflineLocationService
             WaterName = lake ? hits.Lake!.Name : sea ? hits.Marine!.Name : null,
             EdgeNm = edge?.Nm,
             EdgeBearingTrue = edge?.Bearing ?? 0,
+            CoastWater = coastWater,
             State = state,
             Country = country,
-            StateIsNearest = stateIsNearest,
             Region = hits.Region?.Name,
             RegionKind = hits.Region?.Extra,
             TimeZone = BaseAircraftDefinition.LookupTimeZoneName(lat, lon),
@@ -190,7 +201,7 @@ internal sealed class OfflineLocationService
 
     // ---- places ----
 
-    private sealed record FoundPlace(string Name, int Population, int AdminId, double DistanceNm, double BearingTrue);
+    private sealed record FoundPlace(string Name, double Lat, double Lon, int Population, int AdminId, double DistanceNm, double BearingTrue);
 
     private static List<FoundPlace> Places(SqliteConnection c, double lat, double lon, double radiusKm, params LocationCategory[] categories) =>
         Places(c, lat, lon, radiusKm, 0, categories);
@@ -218,7 +229,7 @@ internal sealed class OfflineLocationService
                 var (pLat, pLon) = LocationGrid.Decode(r.GetInt32(0), r.GetInt32(1), r.GetInt32(2));
                 double nm = LocationGeometry.GreatCircleNm(lat, lon, pLat, pLon);
                 if (nm > radiusNm) continue;
-                found.Add(new FoundPlace(r.GetString(5), r.GetInt32(3), r.GetInt32(4), nm,
+                found.Add(new FoundPlace(r.GetString(5), pLat, pLon, r.GetInt32(3), r.GetInt32(4), nm,
                     LocationGeometry.BearingTrue(lat, lon, pLat, pLon)));
             }
         }
@@ -230,41 +241,36 @@ internal sealed class OfflineLocationService
     {
         private readonly Dictionary<int, (string State, string Country)> _byId = new();
         private readonly Dictionary<string, string> _countryByCode = new(StringComparer.Ordinal);
-        private readonly Dictionary<string, string> _stateByCode = new(StringComparer.Ordinal);
 
         internal static AdminNames Load(SqliteConnection c)
         {
             var names = new AdminNames();
             using var cmd = c.CreateCommand();
-            cmd.CommandText = "SELECT id, state, country, cc, admin1 FROM admin";
+            cmd.CommandText = "SELECT id, state, country, cc FROM admin";
             using var r = cmd.ExecuteReader();
             while (r.Read())
             {
-                string state = r.GetString(1), country = r.GetString(2), cc = r.GetString(3), a1 = r.GetString(4);
-                names._byId[r.GetInt32(0)] = (state, country);
-                names._countryByCode.TryAdd(cc, country);
-                if (state.Length > 0) names._stateByCode.TryAdd(GeoNamesNameFiles.Admin1Key(cc, a1), state);
+                names._byId[r.GetInt32(0)] = (r.GetString(1), r.GetString(2));
+                names._countryByCode.TryAdd(r.GetString(3), r.GetString(2));
             }
             return names;
         }
 
         internal (string State, string Country) Of(int id) => _byId.GetValueOrDefault(id, ("", ""));
 
-        /// <summary>A state polygon's state and country ("gn_a1_code|iso|country"), in GeoNames'
-        /// spelling whenever the codes are known, so the box and the C sentence agree ("Grisons",
-        /// "United States"); otherwise Natural Earth's own names.</summary>
+        /// <summary>Only for a remote spot with no town inside its state outline: the outline's own
+        /// name, with the country in GeoNames' spelling when its ISO code is known. The stored
+        /// "gn_a1_code|iso|country" keeps Natural Earth's GeoNames code, but it is NOT used: its
+        /// French department numbers collide with GeoNames' region numbers (Paris read as "New
+        /// Aquitaine"), so the state name stays Natural Earth's own (LOC-9).</summary>
         internal (string? State, string? Country) ForStatePolygon(string polygonName, string? extra)
         {
             var parts = (extra ?? "").Split('|');
-            string gnCode = parts.Length > 0 ? parts[0] : "";
             string cc = parts.Length > 1 ? parts[1] : "";
             string neCountry = parts.Length > 2 ? parts[2] : "";
-
-            string? state = _stateByCode.TryGetValue(gnCode, out var gnState) ? gnState
-                : polygonName.Length > 0 ? polygonName : null;
             string? country = cc.Length == 2 && _countryByCode.TryGetValue(cc, out var gnCountry) ? gnCountry
                 : neCountry.Length > 0 ? neCountry : null;
-            return (state, country);
+            return (polygonName.Length > 0 ? polygonName : null, country);
         }
     }
 
@@ -305,7 +311,10 @@ internal sealed class OfflineLocationService
         return new ShapeHits(lake, state, marine, region);
     }
 
-    private static (double Nm, double Bearing)? NearestOnRings(IReadOnlyList<double[]> rings, bool closed, double lat, double lon)
+    /// <summary>The nearest point of land (over water) or of the sea coast (over land).</summary>
+    private sealed record EdgePoint(double Nm, double Bearing, double Lat, double Lon);
+
+    private static EdgePoint? NearestOnRings(IReadOnlyList<double[]> rings, bool closed, double lat, double lon)
     {
         (double Nm, double Lat, double Lon)? best = null;
         foreach (var ring in rings)
@@ -314,12 +323,60 @@ internal sealed class OfflineLocationService
             double gc = LocationGeometry.GreatCircleNm(lat, lon, hit.Lat, hit.Lon);
             if (best is null || gc < best.Value.Nm) best = (gc, hit.Lat, hit.Lon);
         }
-        return best is { } b ? (b.Nm, LocationGeometry.BearingTrue(lat, lon, b.Lat, b.Lon)) : null;
+        return best is { } b ? new EdgePoint(b.Nm, LocationGeometry.BearingTrue(lat, lon, b.Lat, b.Lon), b.Lat, b.Lon) : null;
+    }
+
+    private static readonly double[] SeaProbeStepsKm = { 1, 3, 6, 12, 25 };
+
+    /// <summary>
+    /// The named sea or bay at a coast point: steps past the point, away from the aircraft, until a
+    /// Natural Earth marine shape contains the step ("English Channel"). A coast point within about
+    /// 200 m has no meaningful "away", so every compass direction is tried. Null where the water is
+    /// not named in Natural Earth (San Francisco Bay, the Øresund): the coast is then said unnamed.
+    /// </summary>
+    private static string? SeaBeyond(SqliteConnection c, EdgePoint coast, double lat, double lon)
+    {
+        double[] bearings = coast.Nm >= 0.1 ? new[] { coast.Bearing } : new double[] { 0, 45, 90, 135, 180, 225, 270, 315 };
+        foreach (double km in SeaProbeStepsKm)
+        foreach (double bearing in bearings)
+        {
+            double rad = bearing * Math.PI / 180.0;
+            double probeLat = coast.Lat + km / LocationGrid.KmPerDegree * Math.Cos(rad);
+            double probeLon = coast.Lon + km / LocationGrid.KmPerDegree * Math.Sin(rad)
+                / Math.Max(0.01, Math.Cos(coast.Lat * Math.PI / 180.0));
+            if (MarineAt(c, Math.Clamp(probeLat, -90, 90), LocationGrid.NormalizeLon(probeLon)) is { } name) return name;
+        }
+        return null;
+    }
+
+    /// <summary>The smallest named marine shape containing a point, or null.</summary>
+    private static string? MarineAt(SqliteConnection c, double lat, double lon)
+    {
+        using var cmd = c.CreateCommand();
+        cmd.CommandText = """
+            SELECT s.name, s.blob, r.min_lon, r.max_lon, r.min_lat, r.max_lat
+            FROM shape_rt r JOIN shape s ON s.id = r.id
+            WHERE r.min_lon <= $lon AND r.max_lon >= $lon AND r.min_lat <= $lat AND r.max_lat >= $lat
+              AND s.layer = 1
+            """;
+        cmd.Parameters.AddWithValue("$lon", lon);
+        cmd.Parameters.AddWithValue("$lat", lat);
+        string? best = null;
+        double bestArea = double.MaxValue;
+        using var r = cmd.ExecuteReader();
+        while (r.Read())
+        {
+            double area = (r.GetDouble(3) - r.GetDouble(2)) * (r.GetDouble(5) - r.GetDouble(4));
+            if (area >= bestArea || !LocationGeometry.InPolygon(NaturalEarthShapes.Decode((byte[])r[1]), lat, lon)) continue;
+            best = r.GetString(0);
+            bestArea = area;
+        }
+        return best;
     }
 
     /// <summary>The nearest point of the sea coastline within <paramref name="maxKm"/>, searching
     /// outward in widening boxes until the box is wider than the best distance found.</summary>
-    private static (double Nm, double Bearing)? NearestCoast(SqliteConnection c, double lat, double lon, double maxKm)
+    private static EdgePoint? NearestCoast(SqliteConnection c, double lat, double lon, double maxKm)
     {
         using var cmd = c.CreateCommand();
         cmd.CommandText = """
@@ -358,7 +415,7 @@ internal sealed class OfflineLocationService
             if (bestNm * LocationPhrases.KmPerNm <= stepKm) break;
         }
         if (bestNm * LocationPhrases.KmPerNm > maxKm) return null;
-        return (bestNm, LocationGeometry.BearingTrue(lat, lon, bestLat, bestLon));
+        return new EdgePoint(bestNm, LocationGeometry.BearingTrue(lat, lon, bestLat, bestLon), bestLat, bestLon);
     }
 
     private static IEnumerable<(double West, double East)> LongitudeBoxes(double lon, double dLon)

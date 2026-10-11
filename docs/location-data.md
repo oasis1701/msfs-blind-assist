@@ -13,7 +13,8 @@ stayed silent for 60 s). The weather call had a misspelled endpoint and 404'd on
 time zone was fetched and never shown; the ocean was coarse ("North Atlantic Ocean" over
 Chesapeake Bay) and never reached the window. The local database answers in 5 to 25 ms, needs no
 account, and adds what the web service could not give: the sea or lake you are over, the distance
-and direction to the coast or shore, the mountain range or desert, and the state from a real outline.
+and direction to the nearest land or the named sea coast, the mountain range or desert, and which
+state or province you are in, decided by a real outline.
 
 ## Where the data comes from
 
@@ -79,24 +80,30 @@ what a download will take.
 `OfflineLocationService` classifies the position lake first, then land (inside a state polygon),
 then sea (inside a named marine polygon) (LOC-6):
 
-- Over a lake: "Over Lake Michigan, shore 24 miles east" (the shore from the lake's own outline).
-- At sea: "Over Chesapeake Bay, coast 5.2 miles west" (the coast searched outward up to 3,000 km;
-  Point Nemo gives about 1,670 miles). Over a bay no state polygon contains the point, so the box
-  says "Nearest state", from the nearest place.
-- Over land: the state polygon (in GeoNames' spelling through Natural Earth's `gn_a1_code`, so the
-  box and the sentence agree), the region, and the coast only within 50 miles or 80 km.
+- Over water, the distance is to the **nearest land**: a lake's own outline (islands included),
+  or at sea the coastline searched outward up to 3,000 km (Point Nemo gives about 1,670 miles).
+- Over land, the distance is to the **sea coast**, only within 50 miles or 80 km, and named by the
+  Natural Earth sea found by stepping 1 to 25 km past the coast point ("English Channel"); unnamed
+  where that water is not in Natural Earth (San Francisco Bay, the Øresund).
+- The **area** is each country's first-level division (a US state, a German state, a Swiss canton,
+  a French region, England or Scotland) in GeoNames' spelling, the one C uses: over land from the
+  nearest town inside the same state outline, so a town across a border never names it; over
+  water from the nearest town (LOC-9). Natural Earth's `gn_a1_code` is never used: French
+  department numbers collide with GeoNames' region numbers.
 
 `LocationPhrases` composes everything spoken or shown (LOC-8):
 
-- **Output C**, water first: "Over Chesapeake Bay, coast 5.2 miles west. Near Dares Beach,
-  Maryland, United States, 5.4 miles west." Over land: "Near Laurel Grove, Virginia, United
-  States, 1.6 miles north", plus ", coast N miles <direction>" within 50 miles. No town within the
-  nearby range: "No town within 25 miles, <state>, <country>". The periodic announcement uses the
-  same sentence and stays silent when no data is installed.
-- **Location Info**: a "Where you are" box first (the water, coast or shore, state, region, time
-  zone from the GeoTimeZone package), then the seven lists. The window opens already filled and
-  focused on that box, and speaks nothing itself. The landmark lists share the tab's one Landmarks
-  Range; the Major Cities range is capped at 310 miles or 500 km.
+- **Output C**, water first: "Over Chesapeake Bay, nearest land 5.2 miles west. Near Dares Beach,
+  Maryland, United States, 5.4 miles west." Over land: "Near Brighton, England, United Kingdom,
+  0.5 miles north, English Channel coast 1.2 miles south" (the coast clause only within 50 miles).
+  No town within the nearby range: "No town within 25 miles, <area>, <country>". The periodic
+  announcement uses the same sentence and stays silent when no data is installed.
+- **Location Info**: a "Where you are" box first, then the seven lists. Over water: "Over
+  Chesapeake Bay", "Nearest land: 5.2 miles west", "Near: Maryland, United States". Over land:
+  "In: Bavaria, Germany", "Region: Alps, mountain range" (when inside one), "Coast: English
+  Channel, 1.2 miles south" (within 50 miles). Then "Time zone: …" (the GeoTimeZone package). The
+  window opens already filled and focused on that box, and speaks nothing itself. The landmark
+  lists share the tab's one Landmarks Range; the Major Cities range is capped at 310 miles or 500 km.
 
 Numbers are invariant everywhere (LOC-3).
 

@@ -99,9 +99,10 @@ internal static class NaturalEarthShapes
                 extra = LocationPhrases.RegionKind(cls!);
                 return true;
             case NaturalEarthLayer.State:
-                // Stored as "gn_a1_code|iso_a2|country": Natural Earth carries GeoNames' own state
-                // code ("CH.GR"), so lookups can say the state and country in GeoNames' spelling,
-                // the one the place names use ("Grisons", "United States").
+                // Stored as "gn_a1_code|iso_a2|country". Lookups use the ISO code to say the country
+                // in GeoNames' spelling ("United States"). The gn_a1_code is kept in the stored format
+                // but never used: French department numbers collide with GeoNames' region numbers
+                // (LOC-9), so the area comes from the nearest GeoNames town inside this outline.
                 name = (Prop(props, "name", "NAME", "name_en") ?? "").Trim();
                 string country = (Prop(props, "admin", "ADMIN", "geonunit") ?? "").Trim();
                 string iso = (Prop(props, "iso_a2", "ISO_A2") ?? "").Trim();

@@ -52,7 +52,7 @@ public sealed class OfflineLocationServiceTests : IDisposable
     }
 
     [Fact]
-    public void Over_the_bay_the_sea_its_coast_and_the_nearest_state_are_found()
+    public void Over_the_bay_the_sea_the_nearest_land_and_the_nearby_state_are_found()
     {
         var report = Built().GetNearest(38.55, -76.42, Miles)!;
         Assert.Equal(WaterKind.Sea, report.Where.Water);
@@ -61,32 +61,59 @@ public sealed class OfflineLocationServiceTests : IDisposable
         Assert.Equal("west", LocationPhrases.Direction(report.Where.EdgeBearingTrue));
         Assert.Equal("Maryland", report.Where.State);
         Assert.Equal("United States", report.Where.Country);
-        Assert.True(report.Where.StateIsNearest);
         Assert.Equal("Bayside", report.Nearest!.Name);
-        Assert.StartsWith("Over Test Bay, coast 9.7 miles west. Near Bayside, Maryland, United States, ",
+        Assert.StartsWith("Over Test Bay, nearest land 9.7 miles west. Near Bayside, Maryland, United States, ",
             LocationPhrases.NearestCitySentence(report.Where, report.Nearest, false, 25));
+        Assert.Contains("Near: Maryland, United States", LocationPhrases.WhereYouAreText(report.Where, false));
     }
 
     [Fact]
-    public void Over_land_the_state_polygon_wins_with_geonames_spelling()
+    public void Over_land_the_area_is_spelled_as_geonames_spells_it()
     {
         var report = Built().GetNearest(38.9, -76.9, Miles)!;
         Assert.Equal(WaterKind.None, report.Where.Water);
-        Assert.Equal("Maryland", report.Where.State); // not "State of Maryland"
+        Assert.Equal("Maryland", report.Where.State); // not "State of Maryland", nor the misleading gn_a1_code
         Assert.Equal("United States", report.Where.Country); // not "United States of America"
-        Assert.False(report.Where.StateIsNearest);
-        Assert.NotNull(report.Where.EdgeNm); // the coast is 16 miles east: within the 50-mile land limit
+        Assert.NotNull(report.Where.EdgeNm); // the coast is 16 miles away: within the 50-mile land limit
+        Assert.StartsWith("In: Maryland, United States", LocationPhrases.WhereYouAreText(report.Where, false));
     }
 
     [Fact]
-    public void Over_a_lake_the_edge_is_its_shore()
+    public void Over_land_the_coast_is_named_by_the_sea_past_it()
+    {
+        var report = Built().GetNearest(38.9, -76.9, Miles)!;
+        Assert.Equal("Test Bay", report.Where.CoastWater);
+        Assert.Contains("Coast: Test Bay, ", LocationPhrases.WhereYouAreText(report.Where, false));
+        Assert.Contains(", Test Bay coast ", LocationPhrases.NearestCitySentence(report.Where, report.Nearest, false, 25));
+    }
+
+    [Fact]
+    public void A_town_across_the_border_never_names_the_area_you_are_in()
+    {
+        var report = Built().GetNearest(38.31, -76.9, Miles)!; // just inside Maryland's outline
+        Assert.Equal("Bordertown", report.Nearest!.Name);     // the nearest town is in Virginia...
+        Assert.Equal("Virginia", report.Nearest.State);       // ...and C names it with its own state
+        Assert.Equal("Maryland", report.Where.State);         // ...but the box says where the aircraft IS
+    }
+
+    [Fact]
+    public void A_remote_spot_with_no_town_in_its_outline_uses_the_outline_name()
+    {
+        var report = Built().GetNearest(39.4, -77.4, Miles)!;
+        Assert.Null(report.Nearest);
+        Assert.Equal("State of Maryland", report.Where.State);
+        Assert.Equal("United States", report.Where.Country);
+    }
+
+    [Fact]
+    public void Over_a_lake_the_nearest_land_comes_from_its_own_outline()
     {
         var report = Built().GetNearest(43.5, -87.0, Miles)!;
         Assert.Equal(WaterKind.Lake, report.Where.Water);
         Assert.Equal("Test Lake", report.Where.WaterName);
-        Assert.InRange(report.Where.EdgeNm!.Value, 21.0, 22.5); // 0.5° of longitude at 43.5°N
+        Assert.InRange(report.Where.EdgeNm!.Value, 21.0, 22.5); // 0.5° of longitude at 43.5°N, not the sea coast
         Assert.Null(report.Nearest);
-        Assert.StartsWith("Over Test Lake, shore ", LocationPhrases.NearestCitySentence(report.Where, null, false, 25));
+        Assert.StartsWith("Over Test Lake, nearest land ", LocationPhrases.NearestCitySentence(report.Where, null, false, 25));
     }
 
     [Fact]
