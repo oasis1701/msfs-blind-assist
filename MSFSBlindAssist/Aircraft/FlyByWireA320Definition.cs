@@ -2837,11 +2837,55 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         // All OnRequest (force-read on F5 / panel-show), NOT IsAnnounced (would spam).
         // Decoded in TryGetDisplayOverride unless ARINC429 / ValueDescriptions handle it.
         // ---- PFD: managed / preselect speeds (LVar; decoded) ----
+        // The plain managed-speed L:var. The A32NX's PFD box no longer lists it (FBW #10890 stopped
+        // writing the approach, go-around and expedite targets into it; PfdSpeedTargetKey below
+        // reads what the PFD draws); the Headwind A330, whose fork predates #10890, still does.
         ["A32NX_SPEEDS_MANAGED_PFD"] = new SimConnect.SimVarDefinition
         {
             Name = "A32NX_SPEEDS_MANAGED_PFD", DisplayName = "Managed speed",
             Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
             Units = "knots"
+        },
+        // The PFD's speed target and whether it is managed (FlyByWirePfdSpeedTarget). The row is
+        // FMGC 1's word; the other four are its siblings, force-read with it by OnDisplayPanelShown
+        // and read from the cache by TryGetDisplayOverride.
+        [PfdSpeedTargetKey] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_1_PFD_SELECTED_SPEED", DisplayName = "Speed target",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number"
+        },
+        ["A32NX_FMGC_2_PFD_SELECTED_SPEED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_2_PFD_SELECTED_SPEED", DisplayName = "FMGC 2 speed target",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number", ExcludeFromMonitorManager = true
+        },
+        ["A32NX_FMGC_1_DISCRETE_WORD_5"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_1_DISCRETE_WORD_5", DisplayName = "FMGC 1 discrete word 5",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number", ExcludeFromMonitorManager = true
+        },
+        ["A32NX_FMGC_2_DISCRETE_WORD_5"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FMGC_2_DISCRETE_WORD_5", DisplayName = "FMGC 2 discrete word 5",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number", ExcludeFromMonitorManager = true
+        },
+        ["A32NX_FCU_SELECTED_AIRSPEED"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_FCU_SELECTED_AIRSPEED", DisplayName = "FCU selected airspeed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number", ExcludeFromMonitorManager = true
+        },
+        // VAPP: the pilot's PERF APPR entry, else the FMS's computed one; 0 = none. Written by the
+        // A32NX FMS since FBW #10890 (A32NX_FMCMainDisplay.ts), unitless knots as on the A380.
+        ["A32NX_SPEEDS_VAPP"] = new SimConnect.SimVarDefinition
+        {
+            Name = "A32NX_SPEEDS_VAPP", DisplayName = "Approach speed",
+            Type = SimConnect.SimVarType.LVar, UpdateFrequency = SimConnect.UpdateFrequency.OnRequest,
+            Units = "number"
         },
         // Units = knots is REQUIRED (live-verified): the raw number is m/s; reading it
         // with the knots unit returns -1 unset / the real preselect in knots.
@@ -5665,7 +5709,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             // ---- A380-parity status-box additions ----
             "FCU_SEL_ALT",
             "FCU_SEL_HDG",
-            "A32NX_SPEEDS_MANAGED_PFD",
+            PfdSpeedTargetKey,
             "A32NX_SpeedPreselVal",
             "A32NX_MachPreselVal",
             "A32NX_AUTOPILOT_VS_SELECTED",
@@ -5677,6 +5721,7 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
             "PFD_GREENDOT",
             "PFD_VF",
             "PFD_VSLOW",
+            "A32NX_SPEEDS_VAPP",
             "PFD_VALPHAPROT",
             "PFD_VALPHAMAX",
             "PFD_VSW",
@@ -7460,9 +7505,25 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
     // Sim handle captured when any display panel is shown, so sibling-reading display
     // overrides (the computed Vertical Deviation) can read the PFD cache off-render.
     private SimConnect.SimConnectManager? _displaySim;
+    /// <summary>The PFD box's speed-target row (FlyByWirePfdSpeedTarget); FMGC 1's word.</summary>
+    public const string PfdSpeedTargetKey = "PFD_SPEED_TARGET";
+
+    // The speed-target row's siblings: not rows themselves, so a panel open or the live tick would
+    // never re-read them unless requested here.
+    private static readonly string[] PfdSpeedTargetSiblings =
+    {
+        "A32NX_FMGC_2_PFD_SELECTED_SPEED", "A32NX_FMGC_1_DISCRETE_WORD_5",
+        "A32NX_FMGC_2_DISCRETE_WORD_5", "A32NX_FCU_SELECTED_AIRSPEED",
+    };
+
     public override void OnDisplayPanelShown(string panelKey, SimConnect.SimConnectManager simConnect)
     {
         if (simConnect.IsConnected) _displaySim = simConnect;   // for sibling-reading overrides (V/DEV)
+        if (panelKey == "PFD" && simConnect.IsConnected && GetVariables().ContainsKey(PfdSpeedTargetKey))
+        {
+            foreach (string sibling in PfdSpeedTargetSiblings)
+                simConnect.RequestVariable(sibling, forceUpdate: true);
+        }
         // The packed-word *_1 halves aren't in the ND display set (only the *_0 keys render),
         // so a panel open / F5 wouldn't otherwise re-read them — request them here so the
         // decoded ident / approach message is built from fresh halves.
@@ -7786,6 +7847,23 @@ public class FlyByWireA320Definition : BaseAircraftDefinition,
         }
         // Managed target speed on the PFD (0 = none shown).
         if (varKey == "A32NX_SPEEDS_MANAGED_PFD") { displayText = value < 1 ? "none" : $"{value:0} knots"; return true; }
+        // The PFD's speed target, managed or selected, from the FMGC words it draws.
+        if (varKey == PfdSpeedTargetKey)
+        {
+            var s = _displaySim;
+            displayText = FlyByWirePfdSpeedTarget.Describe(value,
+                s?.GetCachedVariableValue("A32NX_FMGC_1_DISCRETE_WORD_5"),
+                s?.GetCachedVariableValue("A32NX_FMGC_2_PFD_SELECTED_SPEED"),
+                s?.GetCachedVariableValue("A32NX_FMGC_2_DISCRETE_WORD_5"),
+                s?.GetCachedVariableValue("A32NX_FCU_SELECTED_AIRSPEED"));
+            return true;
+        }
+        // Approach speed from the FMS (0 = none entered or computed).
+        if (varKey == "A32NX_SPEEDS_VAPP")
+        {
+            displayText = value < 1 ? "not set" : Math.Round(value).ToString("0", System.Globalization.CultureInfo.InvariantCulture) + " knots";
+            return true;
+        }
         // Preselected speed / Mach (set in the MCDU PERF page; -1 = none).
         if (varKey == "A32NX_SpeedPreselVal") { displayText = value < 0 ? "none" : $"{value:0} knots"; return true; }
         if (varKey == "A32NX_MachPreselVal") { displayText = value < 0 ? "none" : $"{value:0.00}"; return true; }

@@ -317,16 +317,34 @@ the base PFD panel's FAC rows (`PFD_VSW`, `PFD_VALPHAPROT`, `PFD_VALPHAMAX`), wh
 L-vars to be gone; the FAC words predate #10890, so this migration also works on an older
 build.
 
-⚠️ **Known residual from #10890, NOT fixed (found 2026-09-25): the PFD status box's "Managed
-speed" row (`A32NX_SPEEDS_MANAGED_PFD`) no longer matches the PFD in two phases.** #10890 moved
-ground-speed mini and the SRS go-around target out of the FMS and into the FMGC, so in approach the
-L-var holds plain VAPP while the PFD's target is VAPP plus ground-speed mini (whenever a wind is
-entered on PERF APPR), and in an SRS go-around it holds green dot or the speed constraint. The PFD
-now draws `A32NX_FMGC_{1,2}_PFD_SELECTED_SPEED` (FMGC 2 when FMGC 1's word is invalid; FCU selected
-speed when neither is) and calls it managed when `A32NX_FMGC_x_DISCRETE_WORD_5` bit 19 is set and
-bit 20 clear (`SpeedIndicator.tsx`). The fix is to read that word the same way — keeping the old
-L-var for the Headwind A330, whose pre-#10890 FMS still writes the ground-speed-mini target. Display
-only: nothing announces this row.
+**The PFD status box's speed target reads the FMGC, as the PFD does (fixed 2026-10-11; the
+residual was found 2026-09-25).** #10890 moved ground-speed mini, the SRS go-around target, the
+EXPED targets (green dot / S / F / VMAX−10) and the speed-protection limits out of the FMS and into
+the FMGC, so `A32NX_SPEEDS_MANAGED_PFD` no longer carries them: in approach it held plain VAPP
+while the PFD showed VAPP plus ground-speed mini, and on a live read in descent (2026-10-11) it held
+149 kt while the PFD showed a 290 kt managed target. The row is now "Speed target"
+(`PfdSpeedTargetKey`, decoded by `FlyByWirePfdSpeedTarget`, pinned by `A32nxPfdSpeedTargetTests`):
+`A32NX_FMGC_1_PFD_SELECTED_SPEED`, then FMGC 2's when FMGC 1's carries no data, then the FCU's
+selected airspeed; "managed" when that FMGC's `DISCRETE_WORD_5` has bit 19 set and bit 20 clear
+(`SpeedIndicator.tsx`), else "selected". The PFD chooses FMGC 1 or 2 from AP/FD engagement
+(`FgBusProvider.determineFmgcToUse`); both compute the same target, so the row does not replicate
+that choice. The four sibling words are force-read with the row by `OnDisplayPanelShown("PFD")`.
+The Headwind A330, whose pre-#10890 FMS still writes the plain L-var and whose installed package has
+none of these words, keeps the old "Managed speed" row. Display only: nothing announces it.
+
+**Approach speed (VAPP) on the PFD box (2026-10-11).** #10890 made the A32NX FMS write
+`A32NX_SPEEDS_VAPP` (the PERF APPR entry, else the computed VAPP, 0 when neither; unitless knots,
+as on the A380, which already shows it). The A32NX PFD box now lists it as "Approach speed"; the
+Headwind A330 does not (its package has no such variable).
+
+**INIT A stars after take-off are FBW's green, not a fault (#10735, checked 2026-10-11).** Since
+#10735 the INIT A city pair (and the company route) turn green once the flight phase is past
+PREFLIGHT in an active plan with a destination, and the cost index from DESCENT on: green is how
+FBW shows a field the pilot can no longer change. FBW builds each row as one cell, so a green city
+pair beside the white `----------` of an empty company route is a mixed-colour cell, and the
+mixed-green rule above writes "---------- *EGLL/LFPG"; the cost index beside the cyan TROPO reads
+"*137". That is the same marking the rule already gives green values on PERF TAKE OFF and FUEL PRED,
+so it is left alone rather than special-cased for one page.
 
 ### Cleared V-speeds are spoken "not set" (2026-09-25)
 

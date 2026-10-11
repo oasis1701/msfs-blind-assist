@@ -297,6 +297,18 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     {
         var vars = base.BuildVariables();
 
+        // The A32NX PFD box's speed target and VAPP rows read FMGC words and an L:var that FBW
+        // #10890 introduced; this fork predates it (the installed 0.9.0-382bacb contains neither the
+        // FMGC PFD_SELECTED_SPEED word nor A32NX_SPEEDS_VAPP) and keeps the plain managed-speed
+        // L:var, which GetPanelDisplayVariables restores below. Dropping the keys also stops
+        // OnDisplayPanelShown requesting the row's siblings.
+        foreach (string key in new[]
+                 {
+                     PfdSpeedTargetKey, "A32NX_FMGC_2_PFD_SELECTED_SPEED", "A32NX_FMGC_1_DISCRETE_WORD_5",
+                     "A32NX_FMGC_2_DISCRETE_WORD_5", "A32NX_FCU_SELECTED_AIRSPEED", "A32NX_SPEEDS_VAPP",
+                 })
+            vars.Remove(key);
+
         vars["KOHLSMAN SETTING MB:1"] = new SimConnect.SimVarDefinition
         {
             Name = "KOHLSMAN SETTING MB:1",
@@ -349,13 +361,15 @@ public class HeadwindA330Definition : FlyByWireA320Definition
     // right above it). Swap it for the stock STD flag registered above.
     // The PFD's FAC characteristic-speed rows go too: this airframe's FACs publish none of
     // them (see SpeedRequestTable above), so they would read "not available" all flight.
+    // The speed target goes back to the plain managed-speed L:var, and VAPP goes (BuildVariables).
     public override Dictionary<string, List<string>> GetPanelDisplayVariables()
     {
         var d = base.GetPanelDisplayVariables();
         ReplaceDisplayVar(d, "EFIS Captain", "A32NX_FCU_EFIS_L_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:1");
         ReplaceDisplayVar(d, "EFIS First Officer", "A32NX_FCU_EFIS_R_DISPLAY_BARO_VALUE_MODE", "KOHLSMAN SETTING STD:2");
+        ReplaceDisplayVar(d, "PFD", PfdSpeedTargetKey, "A32NX_SPEEDS_MANAGED_PFD");
         if (d.TryGetValue("PFD", out var pfd))
-            pfd.RemoveAll(v => v is "PFD_VSW" or "PFD_VALPHAPROT" or "PFD_VALPHAMAX");
+            pfd.RemoveAll(v => v is "PFD_VSW" or "PFD_VALPHAPROT" or "PFD_VALPHAMAX" or "A32NX_SPEEDS_VAPP");
         return d;
     }
 
