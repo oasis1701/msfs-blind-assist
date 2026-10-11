@@ -58,7 +58,8 @@ public class FenixMCDUForm : Form
     {
         this.SuspendLayout();
 
-        this.Text = "Fenix MCDU (Left)";
+        // The service outlives a window, and holds the selected side: start on it.
+        this.Text = $"Fenix MCDU ({SideName(_service.SelectedSide)})";
         this.ClientSize = new Size(600, 700);
         this.FormBorderStyle = FormBorderStyle.FixedSingle;
         this.MaximizeBox = false;
@@ -86,7 +87,7 @@ public class FenixMCDUForm : Form
             AccessibleName = "MCDU selector"
         };
         mcduSelector.Items.AddRange(new object[] { "Left (Captain)", "Right (First Officer)" });
-        mcduSelector.SelectedIndex = 0;
+        mcduSelector.SelectedIndex = _service.SelectedSide - 1;
         y += 25;
 
         // MCDU Display
@@ -350,6 +351,16 @@ public class FenixMCDUForm : Form
             }
             e.Handled = true;
             e.SuppressKeyPress = true;
+            return;
+        }
+
+        // The side selector keeps its own keyboard interface (Alt+Up/Down and F4 open its list, a
+        // letter jumps to an item): none of the window's MCDU keys below may take one from it. The
+        // MD-11 window's rule, shared.
+        if (ActiveControl == mcduSelector
+            && MSFSBlindAssist.Forms.MD11.Md11McduForm.KeyRouting.ComboBoxNeedsKey(
+                e.KeyCode, e.Alt, e.Control, e.Shift, mcduSelector.DroppedDown))
+        {
             return;
         }
 

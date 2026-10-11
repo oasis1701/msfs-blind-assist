@@ -34,21 +34,18 @@ public class FenixMcduSidesTests
         => Assert.Equal(new[] { "aircraft.mcdu1.display", "aircraft.mcdu2.display" }, FenixMcduSides.SubscribedRefs);
 
     [Fact]
-    public void DisplayRef_round_trips_through_TryGetSide()
+    public void Every_subscribed_screen_finds_its_side()
     {
-        foreach (int side in new[] { FenixMcduSides.Left, FenixMcduSides.Right })
+        for (int i = 0; i < FenixMcduSides.SubscribedRefs.Count; i++)
         {
-            Assert.True(FenixMcduSides.TryGetSide(FenixMcduSides.DisplayRef(side), out int back));
-            Assert.Equal(side, back);
+            Assert.True(FenixMcduSides.TryGetSide(FenixMcduSides.SubscribedRefs[i], out int side));
+            Assert.Equal(i + 1, side);
         }
     }
 
     [Theory]
     [InlineData(0)]
     [InlineData(3)]
-    public void DisplayRef_and_KeyRef_reject_a_side_the_Fenix_does_not_have(int side)
-    {
-        Assert.Throws<ArgumentOutOfRangeException>(() => FenixMcduSides.DisplayRef(side));
-        Assert.Throws<ArgumentOutOfRangeException>(() => FenixMcduSides.KeyRef(side, "A"));
-    }
+    public void KeyRef_rejects_a_side_the_Fenix_does_not_have(int side)
+        => Assert.Throws<ArgumentOutOfRangeException>(() => FenixMcduSides.KeyRef(side, "A"));
 }

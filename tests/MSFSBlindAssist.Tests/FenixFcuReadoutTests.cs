@@ -19,9 +19,9 @@ public class FenixFcuReadoutTests : IDisposable
 {
     private readonly CultureInfo _previousCulture = CultureInfo.CurrentCulture;
 
-    // The altimeter's inches are formatted with the current culture (app-wide, unchanged here), so
-    // pin the culture these expectations were written in.
-    public FenixFcuReadoutTests() => CultureInfo.CurrentCulture = new CultureInfo("en-US");
+    // Every spoken readout runs under a comma-decimal culture, since CI runs under en-US and would
+    // not catch a culture leak: the altimeter's inches must read 29.92, never 29,92.
+    public FenixFcuReadoutTests() => CultureInfo.CurrentCulture = new CultureInfo("sv-SE");
 
     public void Dispose() => CultureInfo.CurrentCulture = _previousCulture;
 

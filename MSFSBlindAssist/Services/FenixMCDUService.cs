@@ -83,14 +83,22 @@ public class FenixMCDUService : IDisposable
     }
 
     /// <summary>
-    /// Shows the other MCDU. Both screens stay subscribed, so this never reconnects: it raises
-    /// <see cref="DisplayUpdated"/> with the stored screen at once (nothing before that side's first
-    /// screen has arrived). UI thread only.
+    /// Shows the other MCDU. Both screens stay subscribed, so a connected service never reconnects:
+    /// it raises <see cref="DisplayUpdated"/> with the stored screen at once (nothing before that
+    /// side's first screen has arrived). While disconnected there is no stored screen, and the
+    /// switch retries the connection at once instead of waiting out the backoff. UI thread only.
     /// </summary>
     public void SwitchMCDU(int mcduIndex)
     {
-        if (_screens.TrySelect(mcduIndex, out var stored) && stored != null)
-            DisplayUpdated?.Invoke(stored);
+        if (!_screens.TrySelect(mcduIndex, out var stored)) return;
+        if (stored != null)
+            ShowScreen(stored);
+        else if (!_isConnected)
+        {
+            _reconnectAttempt = 0;
+            Disconnect();
+            Connect();
+        }
     }
 
     private async Task ConnectLoop(CancellationToken ct)
@@ -129,8 +137,9 @@ public class FenixMCDUService : IDisposable
         // Send connection_init
         await SendJson(new { type = "connection_init" }, ct);
 
-        // Wait for connection_ack
-        var response = await ReceiveJson(ct);
+        // Wait for connection_ack. One receive buffer for the connection, not one per message.
+        var buffer = new byte[65536];
+        var response = await ReceiveJson(buffer, ct);
         if (response?["type"]?.ToString() != "connection_ack")
         {
             throw new Exception($"Expected connection_ack, got: {response?["type"]}");
@@ -155,7 +164,7 @@ public class FenixMCDUService : IDisposable
         // Receive loop
         while (!ct.IsCancellationRequested && _ws.State == WebSocketState.Open)
         {
-            var msg = await ReceiveJson(ct);
+            var msg = await ReceiveJson(buffer, ct);
             if (msg == null) break;
 
             var msgType = msg["type"]?.ToString();
@@ -172,8 +181,8 @@ public class FenixMCDUService : IDisposable
                     }
                     else if (!string.IsNullOrEmpty(displayXml))
                     {
-                        var displayData = ParseDisplayXml(displayXml);
-                        PostToUI(() => StoreScreen(side, displayData));
+                        // Stored raw: only the shown side's screen is parsed (ShowScreen).
+                        PostToUI(() => StoreScreen(side, displayXml));
                     }
                 }
                 catch (Exception ex)
@@ -197,11 +206,26 @@ public class FenixMCDUService : IDisposable
     }
 
     // UI thread (posted from the receive loop). Only the selected side reaches the window; the
-    // other side's screen waits for a switch.
-    private void StoreScreen(int side, MCDUDisplayData data)
+    // other side's screen waits, unparsed, for a switch.
+    private void StoreScreen(int side, string displayXml)
     {
-        if (_screens.Store(side, data) is { } show)
-            DisplayUpdated?.Invoke(show);
+        if (_screens.Store(side, displayXml) is { } show)
+            ShowScreen(show);
+    }
+
+    private void ShowScreen(string displayXml)
+    {
+        MCDUDisplayData data;
+        try
+        {
+            data = ParseDisplayXml(displayXml);
+        }
+        catch (Exception ex)
+        {
+            Log.Debug("Services", $"Parse error: {ex.Message}");
+            return;
+        }
+        DisplayUpdated?.Invoke(data);
     }
 
     /// <summary>The side now shown in the window (<see cref="FenixMcduSides.Left"/> or Right). UI thread only.</summary>
@@ -350,11 +374,10 @@ public class FenixMCDUService : IDisposable
         await _ws.SendAsync(new ArraySegment<byte>(bytes), WebSocketMessageType.Text, true, ct);
     }
 
-    private async Task<JObject?> ReceiveJson(CancellationToken ct)
+    private async Task<JObject?> ReceiveJson(byte[] buffer, CancellationToken ct)
     {
         if (_ws == null) return null;
 
-        var buffer = new byte[65536];
         var sb = new StringBuilder();
 
         WebSocketReceiveResult result;
@@ -373,7 +396,13 @@ public class FenixMCDUService : IDisposable
     {
         if (_isConnected == connected) return;
         _isConnected = connected;
-        PostToUI(() => ConnectionStatusChanged?.Invoke(connected));
+        PostToUI(() =>
+        {
+            // A dropped connection's stored screens are no longer live: a side switch must not
+            // replay one as current. The reconnect's subscription delivers both screens afresh.
+            if (!connected) _screens.ClearScreens();
+            ConnectionStatusChanged?.Invoke(connected);
+        });
     }
 
     private void PostToUI(Action action)

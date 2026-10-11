@@ -16,13 +16,6 @@ public static class FenixMcduSides
 
     public static IReadOnlyList<string> SubscribedRefs { get; } = new[] { LeftDisplay, RightDisplay };
 
-    public static string DisplayRef(int side) => side switch
-    {
-        Left => LeftDisplay,
-        Right => RightDisplay,
-        _ => throw new ArgumentOutOfRangeException(nameof(side), side, "The Fenix has MCDU 1 and 2 only."),
-    };
-
     public static bool TryGetSide(string? name, out int side)
     {
         side = name switch

@@ -9,7 +9,20 @@ namespace MSFSBlindAssist.Tests;
 
 public class FenixMcduScreensTests
 {
-    private static MCDUDisplayData Screen(string title) => new() { Title = title };
+    // The store keeps the data service's raw XML; only the shown side's is parsed.
+    private static string Screen(string title) => $"<screen><title>{title}</title></screen>";
+
+    [Fact]
+    public void After_a_dropped_connection_a_switch_replays_no_stale_screen()
+    {
+        var screens = new FenixMcduScreens();
+        screens.Store(FenixMcduSides.Right, Screen("PERF"));
+        screens.ClearScreens();
+
+        Assert.True(screens.TrySelect(FenixMcduSides.Right, out var stored));
+        Assert.Null(stored);
+        Assert.Equal(FenixMcduSides.Right, screens.Selected);
+    }
 
     [Fact]
     public void The_left_MCDU_is_selected_at_start()

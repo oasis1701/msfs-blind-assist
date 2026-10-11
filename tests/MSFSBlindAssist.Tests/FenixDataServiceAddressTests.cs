@@ -13,17 +13,10 @@ public class FenixDataServiceAddressTests
     [Fact]
     public void Fenix_mcdu_service_never_addresses_the_data_service_by_name()
     {
-        string source = File.ReadAllText(Path.Combine(RepoRoot(), "MSFSBlindAssist", "Services", "FenixMCDUService.cs"));
+        string source = File.ReadAllText(Path.Combine(ClaudeContextBudgetTests.RepoRoot(), "MSFSBlindAssist", "Services", "FenixMCDUService.cs"));
 
         Assert.DoesNotMatch(new Regex(@"(?i)(ws|http)s?://localhost"), source);
         Assert.Contains("\"ws://127.0.0.1:8083/graphql\"", source);
         Assert.Contains("\"http://127.0.0.1:8083/graphql\"", source);
-    }
-
-    private static string RepoRoot()
-    {
-        for (var dir = new DirectoryInfo(AppContext.BaseDirectory); dir != null; dir = dir.Parent)
-            if (File.Exists(Path.Combine(dir.FullName, "MSFSBlindAssist.sln"))) return dir.FullName;
-        throw new InvalidOperationException($"MSFSBlindAssist.sln was not found above {AppContext.BaseDirectory}");
     }
 }
