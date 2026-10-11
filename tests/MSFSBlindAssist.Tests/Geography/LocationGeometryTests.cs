@@ -57,6 +57,18 @@ public class LocationGeometryTests
     }
 
     [Fact]
+    public void A_segment_across_the_antipodal_meridian_stays_on_the_far_side_of_the_globe()
+    {
+        // At 85°N 150°E this Peary Land coast segment crosses 30°W, the aircraft's antipodal
+        // meridian. Wrapped vertex by vertex, its ends landed 360° apart, so it seemed to pass
+        // through the aircraft's own meridian 86 nm away; it is across the pole, about 690 nm.
+        double[] segment = { -29.72652, 83.55648, -30.18682, 83.57912 };
+        var hit = LocationGeometry.NearestOnLine(segment, closed: false, lat: 85.0, lon: 150.0);
+        Assert.InRange(hit.Lon, -30.2, -29.7);
+        Assert.InRange(LocationGeometry.GreatCircleNm(85.0, 150.0, hit.Lat, hit.Lon), 680, 700);
+    }
+
+    [Fact]
     public void Great_circle_and_bearing_come_from_the_shared_navigation_math()
     {
         Assert.Equal(60.0, LocationGeometry.GreatCircleNm(0, 0, 1, 0), 0);

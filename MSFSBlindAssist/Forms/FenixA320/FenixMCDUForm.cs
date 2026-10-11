@@ -58,7 +58,8 @@ public class FenixMCDUForm : Form
     {
         this.SuspendLayout();
 
-        this.Text = "Fenix MCDU (Left)";
+        // The service outlives a window, and holds the selected side: start on it.
+        this.Text = $"Fenix MCDU ({SideName(_service.SelectedSide)})";
         this.ClientSize = new Size(600, 700);
         this.FormBorderStyle = FormBorderStyle.FixedSingle;
         this.MaximizeBox = false;
@@ -70,7 +71,7 @@ public class FenixMCDUForm : Form
         // Connection status
         connectionStatus = new Label
         {
-            Text = "MCDU (Left): Disconnected",
+            Text = "MCDU: Disconnected",
             Location = new Point(10, y),
             Size = new Size(400, 20),
             AccessibleName = "Connection status",
@@ -86,7 +87,7 @@ public class FenixMCDUForm : Form
             AccessibleName = "MCDU selector"
         };
         mcduSelector.Items.AddRange(new object[] { "Left (Captain)", "Right (First Officer)" });
-        mcduSelector.SelectedIndex = 0;
+        mcduSelector.SelectedIndex = _service.SelectedSide - 1;
         y += 25;
 
         // MCDU Display
@@ -253,18 +254,29 @@ public class FenixMCDUForm : Form
         // Form-level key handling
         this.KeyDown += Form_KeyDown;
 
-        mcduSelector.SelectedIndexChanged += (s, e) =>
-        {
-            int mcduIndex = mcduSelector.SelectedIndex + 1; // 0→1 (left), 1→2 (right)
-            _service.SwitchMCDU(mcduIndex);
-            _currentDisplay = null;
-            _lastAnnouncedScratchpad = "";
-            _lastAnnouncedTitle = "";
-            mcduDisplay.Items.Clear();
-            string mcduName = mcduSelector.SelectedIndex == 0 ? "Left" : "Right";
-            this.Text = $"Fenix MCDU ({mcduName})";
-        };
+        mcduSelector.SelectedIndexChanged += (s, e) => OnSideSelected();
     }
+
+    private void OnSideSelected()
+    {
+        int side = mcduSelector.SelectedIndex + 1; // 0→1 (left), 1→2 (right)
+
+        // Forget the old side's title and scratchpad so the new side's page title is spoken (and
+        // its scratchpad, if not empty), then show its stored screen. SwitchMCDU raises
+        // DisplayUpdated synchronously, so the list is rebuilt before this returns.
+        _currentDisplay = null;
+        _lastAnnouncedScratchpad = "";
+        _lastAnnouncedTitle = "";
+        mcduDisplay.Items.Clear();
+        this.Text = $"Fenix MCDU ({SideName(side)})";
+        // Off the selector, say which MCDU this is before its page title. On the selector the screen
+        // reader has just read the new item, so the app says only the title ([CORE-7]).
+        if (!mcduSelector.Focused)
+            _announcer.Announce($"{SideName(side)} MCDU");
+        _service.SwitchMCDU(side);
+    }
+
+    private static string SideName(int side) => side == FenixMcduSides.Right ? "Right" : "Left";
 
     private void McduDisplay_KeyDown(object? sender, KeyEventArgs e)
     {
@@ -300,8 +312,58 @@ public class FenixMCDUForm : Form
         }
     }
 
+    /// <summary>
+    /// Ctrl+Shift+L / Ctrl+Shift+R → the MCDU side they select (<see cref="FenixMcduSides.Left"/> /
+    /// <see cref="FenixMcduSides.Right"/>), or null for any other chord. Pure, so
+    /// FenixMcduSideShortcutTests pins it without building the form.
+    /// </summary>
+    internal static class SideShortcut
+    {
+        public static int? For(Keys keyCode, bool control, bool shift, bool alt)
+        {
+            if (!control || !shift || alt) return null;
+            return keyCode switch
+            {
+                Keys.L => FenixMcduSides.Left,
+                Keys.R => FenixMcduSides.Right,
+                _ => null,
+            };
+        }
+    }
+
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
+        // Ctrl+Shift+L / Ctrl+Shift+R: switch MCDU from anywhere in the window, the side selector
+        // included (MD-11 precedent). Setting the selector runs its change handler, which says the
+        // side. Choosing the side already shown fires no change event, so confirm it here instead
+        // (off the selector only, as the handler does, and as the MD-11 does for its unit chords):
+        // silence would sound like a dropped key.
+        if (SideShortcut.For(e.KeyCode, e.Control, e.Shift, e.Alt) is int side)
+        {
+            if (side - 1 == mcduSelector.SelectedIndex)
+            {
+                if (!mcduSelector.Focused)
+                    _announcer.Announce($"{SideName(side)} MCDU");
+            }
+            else
+            {
+                mcduSelector.SelectedIndex = side - 1;
+            }
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
+        }
+
+        // The side selector keeps its own keyboard interface (Alt+Up/Down and F4 open its list, a
+        // letter jumps to an item): none of the window's MCDU keys below may take one from it. The
+        // MD-11 window's rule, shared.
+        if (ActiveControl == mcduSelector
+            && MSFSBlindAssist.Forms.MD11.Md11McduForm.KeyRouting.ComboBoxNeedsKey(
+                e.KeyCode, e.Alt, e.Control, e.Shift, mcduSelector.DroppedDown))
+        {
+            return;
+        }
+
         // Line-select keys — two layouts, switchable in FMC Settings:
         //   Default: Ctrl+1..6 = LSK1L..LSK6L, Alt+1..6 = LSK1R..LSK6R
         //   Alternate: F1..F6 = LSK1L..LSK6L, F7..F12 = LSK1R..LSK6R
@@ -426,6 +488,9 @@ public class FenixMCDUForm : Form
 
     private async Task SendTextToMCDU(string text)
     {
+        // The side is read once, so the whole entry lands on the MCDU that was shown when Enter was
+        // pressed, even if the pilot switches sides while it is still being typed in.
+        int side = _service.SelectedSide;
         foreach (char c in text)
         {
             string? buttonName = c switch
@@ -441,7 +506,7 @@ public class FenixMCDUForm : Form
 
             if (buttonName != null)
             {
-                await _service.SendButtonPress(buttonName);
+                await _service.SendButtonPress(buttonName, side);
                 // Delay between presses to ensure the MCDU processes each press-release cycle
                 await Task.Delay(50);
             }
@@ -527,9 +592,9 @@ public class FenixMCDUForm : Form
 
     private void OnConnectionStatusChanged(bool isConnected)
     {
-        string mcduName = mcduSelector.SelectedIndex == 0 ? "Left" : "Right";
-        connectionStatus.Text = isConnected ? $"MCDU ({mcduName}): Connected" : $"MCDU ({mcduName}): Disconnected";
-        _announcer.Announce(isConnected ? $"{mcduName} MCDU connected" : $"{mcduName} MCDU disconnected");
+        // One connection serves both MCDUs, so the messages name no side.
+        connectionStatus.Text = isConnected ? "MCDU: Connected" : "MCDU: Disconnected";
+        _announcer.Announce(isConnected ? "MCDU connected" : "MCDU disconnected");
     }
 
     public void ShowForm()

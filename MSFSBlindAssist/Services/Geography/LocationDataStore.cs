@@ -81,6 +81,11 @@ internal sealed class LocationDataStore
     /// <summary>True when a database exists but was built for another schema.</summary>
     internal bool NeedsUpdate => Info is { } i && (i.SchemaVersion != SchemaVersion || !i.Complete);
 
+    /// <summary>True when a verified build waits to replace the live file: its swap was put off
+    /// until the next start (<see cref="Sweep"/>) because something held a file. Downloading again
+    /// would only fetch 400 MB and delete it.</summary>
+    internal bool ReadyAtNextStart => File.Exists(ReadyPath);
+
     /// <summary>Runs a lookup against the live database under the read lock; default when
     /// there is no usable database.</summary>
     internal T? Read<T>(Func<SqliteConnection, T> query)
@@ -109,13 +114,15 @@ internal sealed class LocationDataStore
     }
 
     /// <summary>Replaces the live database with the <c>.ready</c> file under the write lock,
-    /// retrying while something (usually an antivirus scan of the new file) holds it.</summary>
+    /// retrying while something (usually an antivirus scan of the new file) holds it. The
+    /// back-off sleeps OUTSIDE the lock: lookups, some on the UI thread, must never wait it out.</summary>
     internal bool TryPromote(TimeSpan retryFor)
     {
         var deadline = DateTime.UtcNow + retryFor;
         int delayMs = 250;
         while (true)
         {
+            Exception? failure = null;
             _swapLock.EnterWriteLock();
             try
             {
@@ -126,18 +133,22 @@ internal sealed class LocationDataStore
             }
             catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
             {
-                if (DateTime.UtcNow >= deadline)
-                {
-                    Log.Warn("LocationData", $"Could not replace the location database yet ({ex.Message}); it will be swapped in at the next start");
-                    return false;
-                }
-                Thread.Sleep(delayMs);
-                delayMs = Math.Min(delayMs * 2, 2000);
-                continue;
+                failure = ex;
             }
             finally { _swapLock.ExitWriteLock(); }
-            Swapped?.Invoke(this, EventArgs.Empty);
-            return true;
+
+            if (failure is null)
+            {
+                Swapped?.Invoke(this, EventArgs.Empty);
+                return true;
+            }
+            if (DateTime.UtcNow >= deadline)
+            {
+                Log.Warn("LocationData", $"Could not replace the location database yet ({failure.Message}); it will be swapped in at the next start");
+                return false;
+            }
+            Thread.Sleep(delayMs);
+            delayMs = Math.Min(delayMs * 2, 2000);
         }
     }
 

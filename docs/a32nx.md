@@ -91,6 +91,18 @@ The A32NX panel set in `FlyByWireA320Definition.cs` is now at parity with the A3
 **TO CONFIG announces its result** (`AnnounceTakeoffConfigResult`, via the `onHeld` callback + `TakeoffConfigTestHoldMs = 1500`): the button is held 1.5 s so the FWC evaluates the config, then the cached `I_MIP_MASTER_WARNING_CAPT` is read and spoken — "Takeoff config normal." / "Takeoff config: check configuration." — the blind-pilot equivalent of the sighted `TO CONFIG NORMAL`, then it releases. Verification is in-sim (no automated tests); the reproduce/validate recipe is the §5.3 MCP recipe: press `1 (>L:S_ECAM_TO)` → master warning fires → `0` → clears. **First Officer flow has the SAME bug on its own writer** (`FirstOfficer/Generic/LVarActionExecutor.cs` `PulseCoreAsync`, on the `feature/first-officer` branch) — apply the identical release there when that branch is worked.
 
 
+### Fenix MCDU window: the data service connection (2026-10)
+
+The Fenix MCDU window (`Forms/FenixA320/FenixMCDUForm.cs`, `Services/FenixMCDUService.cs`) reads the screens from the Fenix data service, a GraphQL server on port 8083: one `graphql-transport-ws` subscription for the screens, and one HTTP POST per key edge (`writeInt` 1 then 0 on `system.switches.S_CDU{n}_KEY_<key>`). Address it as `127.0.0.1`, never `localhost` ([A320-40]): it listens on IPv4 only, and Windows spends about 2 s refusing `::1` on every new connection. The key client's pooled connection goes after about a minute idle, so the first key press after a pause used to stall about 2 s (measured 2,005 ms against 1 ms). The receive loop answers the service's 15-second `ping` with a `pong`, and the app disposes the service on exit as well as on an aircraft switch.
+
+**Both MCDUs live.** One subscription carries `aircraft.mcdu1.display` and `aircraft.mcdu2.display` (`FenixMcduSides`), and each `next` message names its screen. `FenixMcduScreens` keeps the latest screen of each side as raw XML; only the selected side is parsed, shown and spoken, and a side switch shows the stored screen at once, with no reconnect (it used to disconnect and resubscribe, paying the 2 s address penalty). A dropped connection clears the stored screens, so a switch never replays a stale one; a switch while disconnected retries the connection at once instead of waiting out the backoff. Key presses go to the selected side (`FenixMcduSides.KeyRef`). The connection messages name no side: "MCDU connected" / "MCDU disconnected".
+
+**Ctrl+Shift+L / Ctrl+Shift+R** switch to the left / right MCDU from anywhere in the window, the side selector included (MD-11 precedent, `FenixMCDUForm.SideShortcut`). Off the selector the app says "Left MCDU" / "Right MCDU" before the page title; on it, only the title, because the screen reader reads the new item ([CORE-7]). Pressing the chord for the side already shown changes nothing on screen, so off the selector it says just "Left MCDU" / "Right MCDU" (a silent key would sound dropped); on the selector it stays silent. On the selector, the window's MCDU keys leave the list's own keys alone (Alt+Up/Down, F4, a letter), through the MD-11 window's `KeyRouting.ComboBoxNeedsKey`.
+
+### Fenix FCU and altimeter readouts read on request (2026-10)
+
+Output-mode Shift+H/S/A/V and B each force-read two values. Their continuous originals (`N_FCU_*`, `I_FCU_*_MANAGED`, `B_FCU_VERTICALSPEED_DASHED`, `N_FCU_EFIS1_BARO_*`) stream on their own once-a-second subscriptions (ExcludeFromBatch since `f500915db`), and since `c5c624a84` a forced read of such a var waits for its next delivery instead of replacing the subscription: up to a second before the readout spoke. The readouts now read on-request twins, `<name>_READOUT` (`FcuReadoutVariables`), answered within a frame ([A320-41]). The originals keep their subscriptions, Ctrl+M rows and the FCU set windows' cache reads, and a readout no longer swallows one of their deliveries. The wording is unchanged, except that the altimeter inches are written invariant (29.92 on a German or Swedish Windows too, never 29,92), in the B readout and the Ctrl+B "Altimeter set" confirmation. The Ctrl+B set's ±1 verify waits for the next delivery (`ReadFreshAsync`) instead of reading the cache after a forced read, which on these vars is a no-op: a cache older than the counter write made the correction repeat the whole delta.
+
 ### Fenix MCDU selected-option marker — colour ALONE is not enough (2026-08)
 
 **Symptom:** the CONFIG > FAILURES page (Failures = LSK 2R) cycles FAILURE TYPE between NONE / MINOR / ALL, but the MCDU window rendered `1: ←NONE/MINOR/ALL  RANDOM*` — **no accessible indication of which option was active**, on any of the three settings. Same for FAILURE RATE (REALISTIC / HIGH).
@@ -341,6 +353,36 @@ about 405 ms apart), and the FMS clears on its own 1-second throttle, so the cle
 before the CLIMB phase does. It can never arrive with anything below TAKEOFF, which is set when
 takeoff thrust is. (A first version gated on "past TAKEOFF", reasoning from the name sort within one
 batch; a second review found the two ride different batches.)
+
+### Take-off roll callouts: V1, Rotate, V2 (added 2026-10-11)
+
+The A32NX calls "V1", "Rotate" and "V2" on the take-off roll, as the A380, the MD-11 and the iFly
+do, through the same `TakeoffVSpeedCallouts` machine; `A320TakeoffCallouts` wires it. Before this,
+MSFSBA called nothing at V1 or VR on the A32NX: Takeoff Assist's "V1"/"rotate" have been Fenix-only
+since they were added, and the A32NX plays no V-speed callout of its own (its FWS sounds in
+`sound.xml` are the radio heights, "retard", minimums and the speed and pitch warnings). A pilot who
+flew the A380 or the Fenix expected them (user report, 2026-10-11: Takeoff Assist said "80 knots" and
+"100 knots", then nothing).
+
+- **Speeds** are the FMS's `L:AIRLINER_V1_SPEED`/`_VR_`/`_V2_` (knots), the `PFD_V1`/`PFD_VR`/`PFD_V2`
+  rows that already announce "V1: 142 knots" as the pilot enters them. They are peeked, never
+  consumed, AHEAD of the branch above that swallows the FMS's post-takeoff clear. That clear comes
+  only once the phase is past TAKEOFF (`A32NX_FMCMainDisplay.ts`), so the roll keeps its speeds;
+  cleared speeds (-1/-1/0 since #10855, 0/0/0 before it and on the Headwind A330) arm nothing.
+- **Airspeed** is `AIRSPEED INDICATED` on its own per-frame subscription (`A320_TAKEOFF_CALLOUT_IAS`:
+  `HighFrequency`, `ExcludeFromBatch`, hidden from Ctrl+M), paused once airborne with no roll armed
+  and resumed at touchdown (`TakeoffCalloutFeedNeeded`), as on the A380.
+- **The rule is the shared machine's**: armed on the ground below 40 kt with V1 and VR set, fired on
+  upward crossings, one utterance per sample ("V1, Rotate" when V1 = VR), interrupting, so it never
+  queues behind Takeoff Assist's "100 knots" or a ground-speed call.
+- **Mutes**: each call rides its speed's Ctrl+M row (V1 → "V1", Rotate → "VR", V2 → "V2"); the feed is
+  `IsMuteWrapExempt` and checks the rows itself.
+- **Resets**: the ARM is dropped, the speeds kept, on every context reset and on a reconnect. The
+  Headwind A330's `ResetAnnouncementBaselines` override calls the base, so it gets both.
+
+The Headwind A330 inherits all of it. The Fenix keeps Takeoff Assist's own "V1"/"rotate" (queued,
+only while Takeoff Assist is on); it was not moved onto the machine. Pinned by
+`A320TakeoffCalloutsTests` and `TakeoffCalloutFeedTests`; not yet flown.
 
 ### Discrete-word readouts were decoded from the wrong bits (fixed 2026-09-25)
 
