@@ -268,6 +268,10 @@ public class FenixMCDUForm : Form
         _lastAnnouncedTitle = "";
         mcduDisplay.Items.Clear();
         this.Text = $"Fenix MCDU ({SideName(side)})";
+        // Off the selector, say which MCDU this is before its page title. On the selector the screen
+        // reader has just read the new item, so the app says only the title ([CORE-7]).
+        if (!mcduSelector.Focused)
+            _announcer.Announce($"{SideName(side)} MCDU");
         _service.SwitchMCDU(side);
     }
 
@@ -307,8 +311,38 @@ public class FenixMCDUForm : Form
         }
     }
 
+    /// <summary>
+    /// Ctrl+Shift+L / Ctrl+Shift+R → the MCDU side they select (<see cref="FenixMcduSides.Left"/> /
+    /// <see cref="FenixMcduSides.Right"/>), or null for any other chord. Pure, so
+    /// FenixMcduSideShortcutTests pins it without building the form.
+    /// </summary>
+    internal static class SideShortcut
+    {
+        public static int? For(Keys keyCode, bool control, bool shift, bool alt)
+        {
+            if (!control || !shift || alt) return null;
+            return keyCode switch
+            {
+                Keys.L => FenixMcduSides.Left,
+                Keys.R => FenixMcduSides.Right,
+                _ => null,
+            };
+        }
+    }
+
     private void Form_KeyDown(object? sender, KeyEventArgs e)
     {
+        // Ctrl+Shift+L / Ctrl+Shift+R: switch MCDU from anywhere in the window, the side selector
+        // included (MD-11 precedent). Setting the selector runs its change handler; choosing the
+        // side already shown changes nothing, so nothing is said.
+        if (SideShortcut.For(e.KeyCode, e.Control, e.Shift, e.Alt) is int side)
+        {
+            mcduSelector.SelectedIndex = side - 1;
+            e.Handled = true;
+            e.SuppressKeyPress = true;
+            return;
+        }
+
         // Line-select keys — two layouts, switchable in FMC Settings:
         //   Default: Ctrl+1..6 = LSK1L..LSK6L, Alt+1..6 = LSK1R..LSK6R
         //   Alternate: F1..F6 = LSK1L..LSK6L, F7..F12 = LSK1R..LSK6R

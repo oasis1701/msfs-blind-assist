@@ -97,6 +97,8 @@ The Fenix MCDU window (`Forms/FenixA320/FenixMCDUForm.cs`, `Services/FenixMCDUSe
 
 **Both MCDUs live.** One subscription carries `aircraft.mcdu1.display` and `aircraft.mcdu2.display` (`FenixMcduSides`), and each `next` message names its screen. `FenixMcduScreens` keeps the latest screen of each side; only the selected side is shown and spoken, and a side switch shows the stored screen at once, with no reconnect (it used to disconnect and resubscribe, paying the 2 s address penalty). Key presses go to the selected side (`FenixMcduSides.KeyRef`). The connection messages name no side: "MCDU connected" / "MCDU disconnected".
 
+**Ctrl+Shift+L / Ctrl+Shift+R** switch to the left / right MCDU from anywhere in the window, the side selector included (MD-11 precedent, `FenixMCDUForm.SideShortcut`). Off the selector the app says "Left MCDU" / "Right MCDU" before the page title; on it, only the title, because the screen reader reads the new item ([CORE-7]).
+
 ### Fenix MCDU selected-option marker — colour ALONE is not enough (2026-08)
 
 **Symptom:** the CONFIG > FAILURES page (Failures = LSK 2R) cycles FAILURE TYPE between NONE / MINOR / ALL, but the MCDU window rendered `1: ←NONE/MINOR/ALL  RANDOM*` — **no accessible indication of which option was active**, on any of the three settings. Same for FAILURE RATE (REALISTIC / HIGH).
